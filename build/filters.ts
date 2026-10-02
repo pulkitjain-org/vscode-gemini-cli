@@ -56,6 +56,7 @@ export const unicodeFilter = Object.freeze<string[]>([
 	'!extensions/mermaid-markdown-features/chat-webview-out/**',
 	'!extensions/ipynb/notebook-out/**',
 	'!extensions/notebook-renderers/renderer-out/**',
+	'!extensions/gemini/media/*.js', // GEMINI-FORK: built chat webview bundle
 	'!extensions/php-language-features/src/features/phpGlobalFunctions.ts',
 	'!extensions/terminal-suggest/src/completions/upstream/**',
 	'!extensions/typescript-language-features/test-workspace/**',
@@ -169,6 +170,7 @@ export const indentationFilter = Object.freeze<string[]>([
 	'!extensions/ipynb/notebook-out/**',
 	'!extensions/notebook-renderers/renderer-out/*.js',
 	'!extensions/simple-browser/media/*.js',
+	'!extensions/gemini/media/*.js', // GEMINI-FORK: built chat webview bundle
 ]);
 
 export const copyrightFilter = Object.freeze<string[]>([
