@@ -154,7 +154,7 @@ describe('AgentClient', () => {
 			expect(wrote).toBe('wrote');
 			expect(files[path.join(root, 'b.ts')]).toBe('created');
 			expect(secret).toMatch(/^error:.*denied/);
-			expect(missing).toMatch(/^error:.*Resource not found/);
+			expect(missing).toBe('read:');
 		});
 	});
 });

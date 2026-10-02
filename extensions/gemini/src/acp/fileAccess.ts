@@ -6,8 +6,8 @@
 // Serves the agent's `fs/read_text_file` and `fs/write_text_file` requests
 // (plan Phase 2, fs-handlers). The host supplies the file system (open
 // editors, WorkspaceEdit and save); this module applies the access policy
-// and the protocol details. The CLI turns a "Resource not found" error into
-// ENOENT and any other error into a failed tool call the model can read.
+// and the protocol details. Any error fails the tool call with a message the
+// model can read.
 
 import * as path from 'node:path';
 import * as acp from '@agentclientprotocol/sdk';
@@ -105,10 +105,13 @@ export function createFileHandlers(fileSystem: ClientFileSystem, policy: () => F
 				throw new FileAccessDeniedError(params.path, denied);
 			}
 			const text = await fileSystem.readTextFile(params.path);
-			if (text === undefined) {
-				throw acp.RequestError.resourceNotFound(params.path);
-			}
-			return { content: sliceLines(text, params.line, params.limit) };
+			// A missing file reads as empty. ACP says to answer "Resource not
+			// found", but gemini-cli (0.62 to 0.64 nightly) rejects with the raw
+			// JSON-RPC error object, so its ENOENT check sees "[object Object]"
+			// and write_file fails to create any new file. Its read_file tool
+			// checks the disk for existence first, so only edit and write_file
+			// see the empty text, and both treat it as a new file.
+			return { content: sliceLines(text ?? '', params.line, params.limit) };
 		},
 		async writeTextFile(params: acp.WriteTextFileRequest): Promise<acp.WriteTextFileResponse> {
 			const denied = await checkFileAccess(params.path, 'write', policy());

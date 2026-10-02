@@ -80,9 +80,9 @@ describe('createFileHandlers', () => {
 		expect(fs.files[inRoot('b.ts')]).toBe('new');
 	});
 
-	it('reports a missing file the way the CLI maps to ENOENT', async () => {
+	it('reads a missing file as empty, so the CLI can create it (see the note in fileAccess.ts)', async () => {
 		const handlers = createFileHandlers(memoryFileSystem({}), () => ({ roots: [root] }));
-		await expect(handlers.readTextFile({ sessionId: 's', path: inRoot('missing.ts') })).rejects.toThrow(/Resource not found/);
+		expect(await handlers.readTextFile({ sessionId: 's', path: inRoot('missing.ts') })).toEqual({ content: '' });
 	});
 
 	it('refuses denied paths without touching the file system', async () => {
