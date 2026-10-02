@@ -148,6 +148,49 @@ body {
 	font-weight: 600;
 }
 
+.permission {
+	margin: 8px 0;
+	padding: 8px;
+	border-radius: 4px;
+	border: 1px solid var(--vscode-focusBorder);
+	background: var(--vscode-editorWidget-background);
+}
+
+.permission.answered {
+	border-color: var(--vscode-panel-border);
+}
+
+.permission-title {
+	font-weight: 600;
+	overflow-wrap: anywhere;
+	margin-bottom: 6px;
+}
+
+.permission-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 6px;
+}
+
+.permission-answer {
+	margin-top: 4px;
+	color: var(--vscode-descriptionForeground);
+}
+
+button.link {
+	display: block;
+	padding: 0;
+	color: var(--vscode-textLink-foreground);
+	background: none;
+	text-align: left;
+}
+
+button.link:hover {
+	background: none;
+	text-decoration: underline;
+}
+
 .notice {
 	margin: 6px 0;
 	font-size: 0.9em;

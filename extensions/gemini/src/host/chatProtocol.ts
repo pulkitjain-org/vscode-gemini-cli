@@ -26,12 +26,21 @@ export interface ChatStrings {
 	/** Contains `{0}` for the update kind. */
 	readonly unknownUpdate: string;
 	readonly terminal: string;
+	/** Contains `{0}` for the file name. */
+	readonly reviewChanges: string;
+	/** Contains `{0}` for the chosen option's name. */
+	readonly permissionAnswered: string;
+	readonly permissionCancelled: string;
 }
 
 export type FromWebview =
 	| { readonly type: 'ready' }
 	| { readonly type: 'prompt'; readonly text: string }
 	| { readonly type: 'stop' }
+	/** The user picked one of a permission request's options. */
+	| { readonly type: 'permission'; readonly id: string; readonly optionId: string }
+	/** Show the diff for one of the files a permission request would change. */
+	| { readonly type: 'openDiff'; readonly id: string; readonly path: string }
 	| { readonly type: 'clear' };
 
 export type ToWebview =

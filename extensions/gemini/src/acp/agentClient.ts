@@ -5,7 +5,7 @@
 
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import type * as acp from '@agentclientprotocol/sdk';
-import { AgentConnection } from './agentConnection';
+import { AgentClientHandlers, AgentConnection } from './agentConnection';
 import { AgentError, AgentErrorInfo, classifyAgentError } from './errors';
 import { Emitter } from './events';
 import { ChatEvent, SessionUpdateAdapter } from './sessionUpdates';
@@ -24,6 +24,8 @@ export interface AgentClientOptions {
 	readonly cwd: string;
 	/** Asked for every `session/request_permission`; must resolve, with `cancelled` if nothing else. */
 	readonly requestPermission: (params: acp.RequestPermissionRequest) => Promise<acp.RequestPermissionResponse>;
+	/** Serves the agent's file reads and writes; without it the agent uses the disk directly. */
+	readonly fileSystem?: Pick<AgentClientHandlers, 'readTextFile' | 'writeTextFile'>;
 }
 
 /**
@@ -107,6 +109,8 @@ export class AgentClient {
 		const connection = new AgentConnection(agentProcess.stdin, agentProcess.stdout, {
 			sessionUpdate: params => this.onDidReceiveEventEmitter.fire(this.adapter.adapt(params.update)),
 			requestPermission: params => this.options.requestPermission(params),
+			readTextFile: this.options.fileSystem?.readTextFile,
+			writeTextFile: this.options.fileSystem?.writeTextFile,
 		});
 		this.connection = connection;
 		this.setState({ kind: 'connecting' });

@@ -18,6 +18,7 @@ function summary(items: readonly TranscriptItem[]): string[] {
 			case 'plan': return `plan:${item.entries.map(e => `${e.content}=${e.status}`).join(',')}`;
 			case 'other': return `other:${item.type}`;
 			case 'notice': return `notice:${item.severity}:${item.text}`;
+			case 'permission': return `permission:${item.title}:${item.answer ? (item.answer.kind === 'selected' ? item.answer.name : 'cancelled') : 'pending'}`;
 		}
 	});
 }
@@ -84,6 +85,39 @@ describe('ChatTranscript', () => {
 		transcript.clear();
 		expect(transcript.items).toEqual([]);
 		expect(resets).toBe(1);
+	});
+});
+
+describe('ChatTranscript permissions', () => {
+	const request = {
+		sessionId: 's1',
+		toolCall: {
+			toolCallId: 'w1', title: 'Write a.ts',
+			content: [{ type: 'diff' as const, path: '/w/a.ts', oldText: 'a', newText: 'b' }, { type: 'content' as const, content: { type: 'text' as const, text: 'why' } }],
+		},
+		options: [
+			{ optionId: 'proceed_once', name: 'Allow', kind: 'allow_once' as const },
+			{ optionId: 'cancel', name: 'Reject', kind: 'reject_once' as const },
+		],
+	};
+
+	it('shows the request with its own options and the files it would change', () => {
+		const transcript = new ChatTranscript();
+		transcript.addPermission({ id: 'permission-0', request });
+		expect(transcript.items[0]).toEqual({
+			id: 'permission-0', kind: 'permission', title: 'Write a.ts',
+			options: [{ optionId: 'proceed_once', name: 'Allow', kind: 'allow_once' }, { optionId: 'cancel', name: 'Reject', kind: 'reject_once' }],
+			diffPaths: ['/w/a.ts'],
+		});
+	});
+
+	it('records the answer in place', () => {
+		const transcript = new ChatTranscript();
+		transcript.addPermission({ id: 'permission-0', request });
+		transcript.addPermission({ id: 'permission-1', request });
+		transcript.resolvePermission('permission-0', { outcome: 'selected', optionId: 'cancel' });
+		transcript.resolvePermission('permission-1', { outcome: 'cancelled' });
+		expect(summary(transcript.items)).toEqual(['permission:Write a.ts:Reject', 'permission:Write a.ts:cancelled']);
 	});
 });
 

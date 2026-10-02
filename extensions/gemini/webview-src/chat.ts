@@ -91,11 +91,43 @@ function render(item: TranscriptItem): HTMLElement {
 			plan.append(el('div', 'plan-title', strings.plan), list);
 			return plan;
 		}
+		case 'permission':
+			return renderPermission(item);
 		case 'other':
 			return el('div', 'notice', strings.unknownUpdate.replace('{0}', item.type));
 		case 'notice':
 			return el('div', `notice ${item.severity}`, item.text);
 	}
+}
+
+function renderPermission(item: Extract<TranscriptItem, { kind: 'permission' }>): HTMLElement {
+	const card = el('div', `permission${item.answer ? ' answered' : ''}`);
+	card.append(el('div', 'permission-title', item.title));
+	for (const filePath of item.diffPaths) {
+		const link = el('button', 'link', strings.reviewChanges.replace('{0}', basename(filePath)));
+		link.type = 'button';
+		link.title = filePath;
+		link.addEventListener('click', () => vscode.postMessage({ type: 'openDiff', id: item.id, path: filePath }));
+		card.append(link);
+	}
+	if (item.answer) {
+		card.append(el('div', 'permission-answer', item.answer.kind === 'selected' ? strings.permissionAnswered.replace('{0}', item.answer.name) : strings.permissionCancelled));
+		return card;
+	}
+	const actions = el('div', 'permission-actions');
+	for (const option of item.options) {
+		// Allow options are the primary action; rejections look secondary.
+		const button = el('button', option.kind.startsWith('reject') ? 'secondary' : undefined, option.name);
+		button.type = 'button';
+		button.addEventListener('click', () => vscode.postMessage({ type: 'permission', id: item.id, optionId: option.optionId }));
+		actions.append(button);
+	}
+	card.append(actions);
+	return card;
+}
+
+function basename(filePath: string): string {
+	return filePath.split(/[\\/]/).pop() ?? filePath;
 }
 
 function upsert(item: TranscriptItem): void {

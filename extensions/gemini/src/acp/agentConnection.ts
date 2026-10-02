@@ -13,6 +13,10 @@ import { CLIENT_INFO, SUPPORTED_PROTOCOL_VERSION, UnsupportedProtocolVersionErro
 export interface AgentClientHandlers {
 	sessionUpdate(params: acp.SessionNotification): void | Promise<void>;
 	requestPermission(params: acp.RequestPermissionRequest): Promise<acp.RequestPermissionResponse>;
+	/** When set, the client advertises `fs.readTextFile` and the agent reads workspace files through it. */
+	readTextFile?(params: acp.ReadTextFileRequest): Promise<acp.ReadTextFileResponse>;
+	/** When set, the client advertises `fs.writeTextFile` and the agent writes workspace files through it. */
+	writeTextFile?(params: acp.WriteTextFileRequest): Promise<acp.WriteTextFileResponse>;
 }
 
 /**
@@ -22,16 +26,25 @@ export interface AgentClientHandlers {
 export class AgentConnection {
 
 	private readonly connection: acp.ClientConnection;
+	private readonly fs: acp.FileSystemCapabilities;
 
 	constructor(toAgent: Writable, fromAgent: Readable, handlers: AgentClientHandlers) {
 		const stream = acp.ndJsonStream(
 			Writable.toWeb(toAgent) as WritableStream<Uint8Array>,
 			Readable.toWeb(fromAgent) as ReadableStream<Uint8Array>,
 		);
-		this.connection = acp.client({ name: CLIENT_INFO.name })
+		let builder = acp.client({ name: CLIENT_INFO.name })
 			.onRequest('session/request_permission', ctx => handlers.requestPermission(ctx.params))
-			.onNotification('session/update', ctx => handlers.sessionUpdate(ctx.params))
-			.connect(stream);
+			.onNotification('session/update', ctx => handlers.sessionUpdate(ctx.params));
+		const { readTextFile, writeTextFile } = handlers;
+		if (readTextFile) {
+			builder = builder.onRequest('fs/read_text_file', ctx => readTextFile.call(handlers, ctx.params));
+		}
+		if (writeTextFile) {
+			builder = builder.onRequest('fs/write_text_file', ctx => writeTextFile.call(handlers, ctx.params));
+		}
+		this.fs = { readTextFile: !!readTextFile, writeTextFile: !!writeTextFile };
+		this.connection = builder.connect(stream);
 	}
 
 	/** Resolves when the connection closes, for any reason. */
@@ -41,13 +54,14 @@ export class AgentConnection {
 
 	/**
 	 * Runs `initialize` and checks that the agent speaks our protocol version.
-	 * No file system or terminal capabilities are advertised yet.
+	 * File system capabilities follow the handlers given; terminals are never
+	 * advertised (the CLI runs shell commands itself, plan C1).
 	 */
 	async initialize(): Promise<acp.InitializeResponse> {
 		const response = await this.connection.agent.request('initialize', {
 			protocolVersion: SUPPORTED_PROTOCOL_VERSION,
 			clientCapabilities: {
-				fs: { readTextFile: false, writeTextFile: false },
+				fs: this.fs,
 				terminal: false,
 			},
 			clientInfo: CLIENT_INFO,

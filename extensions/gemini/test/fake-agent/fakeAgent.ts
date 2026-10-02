@@ -22,7 +22,13 @@ export type ScriptedStep =
 	| { readonly step: 'update'; readonly update: acp.SessionUpdate }
 	| { readonly step: 'delay'; readonly ms: number }
 	/** Asks the client; the outcome is echoed back as an agent message `permission:<optionId|cancelled>`. */
-	| { readonly step: 'permission'; readonly request: Omit<acp.RequestPermissionRequest, 'sessionId'> };
+	| { readonly step: 'permission'; readonly request: Omit<acp.RequestPermissionRequest, 'sessionId'> }
+	/** Calls `fs/read_text_file`; echoes `read:<content>` or `error:<message>`. */
+	| { readonly step: 'readFile'; readonly path: string; readonly line?: number; readonly limit?: number }
+	/** Calls `fs/write_text_file`; echoes `wrote` or `error:<message>`. */
+	| { readonly step: 'writeFile'; readonly path: string; readonly content: string }
+	/** Echoes the client's file system capabilities from `initialize` as `fs:<read>,<write>`. */
+	| { readonly step: 'capabilities' };
 
 export interface FakeAgentScript {
 	/** Exit with this code before reading anything, like a CLI that dies on startup. */
@@ -60,6 +66,7 @@ if (script.exitCode !== undefined) {
 }
 
 let authenticated = false;
+let clientCapabilities: acp.ClientCapabilities | undefined;
 let sessionCount = 0;
 let turnIndex = 0;
 const pendingTurns = new Map<string, AbortController>();
@@ -70,12 +77,12 @@ const stream = acp.ndJsonStream(
 );
 
 acp.agent({ name: 'fake-agent' })
-	.onRequest('initialize', () => answer<acp.InitializeResponse>({
+	.onRequest('initialize', ctx => (clientCapabilities = ctx.params.clientCapabilities, answer<acp.InitializeResponse>({
 		protocolVersion: acp.PROTOCOL_VERSION,
 		agentInfo: { name: 'fake-agent', version: '0.0.0' },
 		agentCapabilities: { loadSession: false },
 		authMethods: [{ id: 'oauth-personal', name: 'Log in with Google' }],
-	}, script.initialize))
+	}, script.initialize)))
 	.onRequest('authenticate', () => {
 		authenticated = true;
 		return {};
@@ -109,6 +116,13 @@ acp.agent({ name: 'fake-agent' })
 					case 'update':
 						await ctx.client.notify('session/update', { sessionId, update: step.update });
 						break;
+					case 'readFile':
+					case 'writeFile':
+					case 'capabilities': {
+						const text = await runClientStep(ctx.client, sessionId, step);
+						await ctx.client.notify('session/update', { sessionId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } } });
+						break;
+					}
 				}
 			}
 			return { stopReason: abort.signal.aborted ? 'cancelled' as const : 'end_turn' as const };
@@ -120,3 +134,21 @@ acp.agent({ name: 'fake-agent' })
 		pendingTurns.get(ctx.params.sessionId)?.abort();
 	})
 	.connect(stream);
+
+async function runClientStep(client: acp.AgentContext, sessionId: string, step: Extract<ScriptedStep, { step: 'readFile' | 'writeFile' | 'capabilities' }>): Promise<string> {
+	try {
+		switch (step.step) {
+			case 'readFile': {
+				const response = await client.request('fs/read_text_file', { sessionId, path: step.path, line: step.line, limit: step.limit });
+				return `read:${response.content}`;
+			}
+			case 'writeFile':
+				await client.request('fs/write_text_file', { sessionId, path: step.path, content: step.content });
+				return 'wrote';
+			case 'capabilities':
+				return `fs:${!!clientCapabilities?.fs?.readTextFile},${!!clientCapabilities?.fs?.writeTextFile}`;
+		}
+	} catch (err) {
+		return `error:${err instanceof Error ? err.message : JSON.stringify(err)}`;
+	}
+}

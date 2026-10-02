@@ -9,6 +9,7 @@
 
 import type * as acp from '@agentclientprotocol/sdk';
 import { Emitter } from './events';
+import type { PendingPermission } from './permissions';
 import { ChatEvent, contentBlockToText, ToolCallModel } from './sessionUpdates';
 
 export type ToolCallDetail =
@@ -23,6 +24,14 @@ export type TranscriptItem =
 		readonly status: acp.ToolCallStatus; readonly locations: readonly string[]; readonly details: readonly ToolCallDetail[];
 	}
 	| { readonly id: string; readonly kind: 'plan'; readonly entries: readonly { readonly content: string; readonly status: acp.PlanEntryStatus }[] }
+	| {
+		readonly id: string; readonly kind: 'permission'; readonly title: string;
+		readonly options: readonly { readonly optionId: string; readonly name: string; readonly kind: acp.PermissionOptionKind }[];
+		/** Files the tool would change; the view can open a diff for each. */
+		readonly diffPaths: readonly string[];
+		/** Unset while the agent waits for an answer. */
+		readonly answer?: { readonly kind: 'selected'; readonly name: string } | { readonly kind: 'cancelled' };
+	}
 	/** An update kind this version does not know (design rule 4). */
 	| { readonly id: string; readonly kind: 'other'; readonly type: string }
 	| { readonly id: string; readonly kind: 'notice'; readonly text: string; readonly severity: 'info' | 'error' };
@@ -89,6 +98,26 @@ export class ChatTranscript {
 				this.push({ id: this.newId(), kind: 'other', type: event.type });
 				break;
 		}
+	}
+
+	addPermission(permission: PendingPermission): void {
+		const { toolCall, options } = permission.request;
+		this.push({
+			id: permission.id,
+			kind: 'permission',
+			title: toolCall.title ?? toolCall.toolCallId,
+			options: options.map(o => ({ optionId: o.optionId, name: o.name, kind: o.kind })),
+			diffPaths: (toolCall.content ?? []).flatMap(c => c.type === 'diff' ? [c.path] : []),
+		});
+	}
+
+	resolvePermission(id: string, outcome: acp.RequestPermissionOutcome): void {
+		const item = this._items.find(i => i.id === id);
+		if (item?.kind !== 'permission') {
+			return;
+		}
+		const selected = outcome.outcome === 'selected' ? item.options.find(o => o.optionId === outcome.optionId) : undefined;
+		this.upsert({ ...item, answer: selected ? { kind: 'selected', name: selected.name } : { kind: 'cancelled' } });
 	}
 
 	addNotice(text: string, severity: 'info' | 'error' = 'info'): void {

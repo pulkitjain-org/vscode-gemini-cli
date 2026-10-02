@@ -8,17 +8,20 @@ import { validateProjectId } from './acp/projectId';
 import { AgentService } from './host/agentService';
 import { ChatViewProvider, chatViewId } from './host/chatView';
 import { checkAgent } from './host/checkAgent';
+import { DiffPreview } from './host/diffPreview';
 import { configSection } from './host/configuration';
 import { GeminiStatusBar } from './host/statusBar';
 
 export function activate(context: vscode.ExtensionContext): void {
 	const log = vscode.window.createOutputChannel('Gemini', { log: true });
 	const service = new AgentService(log);
-	const chatView = new ChatViewProvider(context.extensionUri, service);
+	const diffPreview = new DiffPreview();
+	const chatView = new ChatViewProvider(context.extensionUri, service, diffPreview);
 
 	context.subscriptions.push(
 		log,
 		service,
+		diffPreview,
 		chatView,
 		new GeminiStatusBar(service),
 		vscode.window.registerWebviewViewProvider(chatViewId, chatView),
