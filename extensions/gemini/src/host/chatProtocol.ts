@@ -10,10 +10,22 @@ import type { TranscriptItem } from '../acp/chatTranscript';
 import type { SessionSettings } from '../acp/sessionSettings';
 import type { AgentPhase } from '../acp/status';
 
+/**
+ * Bumped when the messages change, so the host can tell when the webview
+ * bundle in media/ is older than the extension (a stale development build).
+ */
+export const chatProtocolVersion = 2;
+
+/** Commands the status line may offer; the host runs only these. */
+export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
+export type StatusCommand = typeof statusCommands[number];
+
 export interface ViewStatus {
 	readonly phase: AgentPhase;
 	/** Shown above the composer when not empty. */
 	readonly text: string;
+	/** Buttons shown with the text, such as Start or Sign In. */
+	readonly actions?: readonly { readonly label: string; readonly command: StatusCommand }[];
 }
 
 /** Localised strings the webview shows; it has no l10n of its own. Placeholders are `{0}`. */
@@ -44,9 +56,10 @@ export interface ChatStrings {
 }
 
 export type FromWebview =
-	| { readonly type: 'ready' }
+	| { readonly type: 'ready'; readonly protocol?: number }
 	| { readonly type: 'prompt'; readonly text: string }
 	| { readonly type: 'stop' }
+	| { readonly type: 'command'; readonly command: StatusCommand }
 	| { readonly type: 'setMode'; readonly id: string }
 	| { readonly type: 'setModel'; readonly id: string }
 	/** The user picked one of a permission request's options. */

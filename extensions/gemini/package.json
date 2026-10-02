@@ -92,6 +92,16 @@
           "command": "gemini.newChat",
           "when": "view == gemini.chat",
           "group": "navigation"
+        },
+        {
+          "command": "gemini.restartAgent",
+          "when": "view == gemini.chat",
+          "group": "agent@1"
+        },
+        {
+          "command": "gemini.showLog",
+          "when": "view == gemini.chat",
+          "group": "agent@2"
         }
       ]
     },

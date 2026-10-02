@@ -11,7 +11,7 @@
 import MarkdownIt from 'markdown-it';
 import type { TranscriptItem } from '../src/acp/chatTranscript';
 import type { SessionSelector, SessionSettings } from '../src/acp/sessionSettings';
-import type { ChatStrings, FromWebview, ToWebview, ViewStatus } from '../src/host/chatProtocol';
+import { chatProtocolVersion, type ChatStrings, type FromWebview, type ToWebview, type ViewStatus } from '../src/host/chatProtocol';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromWebview): void };
 
@@ -408,7 +408,10 @@ function setStatus(value: ViewStatus): void {
 		} else if (value.phase === 'starting' || value.phase === 'restarting') {
 			status.append(icon('loading', 'codicon-modifier-spin'));
 		}
-		status.append(el('span', undefined, value.text));
+		status.append(el('span', 'status-text', value.text));
+		for (const action of value.actions ?? []) {
+			status.append(button('status-action', action.label, () => vscode.postMessage({ type: 'command', command: action.command })));
+		}
 	}
 	status.hidden = !value.text;
 }
@@ -509,6 +512,6 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 	}
 });
 
-vscode.postMessage({ type: 'ready' });
+vscode.postMessage({ type: 'ready', protocol: chatProtocolVersion });
 updateSendState();
 input.focus();

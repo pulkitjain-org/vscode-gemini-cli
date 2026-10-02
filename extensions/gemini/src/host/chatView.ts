@@ -10,7 +10,7 @@ import { ChatTranscript, toolCallItemId } from '../acp/chatTranscript';
 import { PendingPermission } from '../acp/permissions';
 import { AgentStatus } from '../acp/status';
 import { AgentService } from './agentService';
-import { ChatStrings, FromWebview, ToWebview, ViewStatus } from './chatProtocol';
+import { ChatStrings, chatProtocolVersion, FromWebview, statusCommands, ToWebview, ViewStatus } from './chatProtocol';
 import { DiffPreview } from './diffPreview';
 
 export const chatViewId = 'gemini.chat';
@@ -130,6 +130,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 	private onMessage(message: FromWebview): void {
 		switch (message.type) {
 			case 'ready':
+				if (message.protocol !== chatProtocolVersion) {
+					void vscode.window.showWarningMessage(vscode.l10n.t("The Gemini chat view's script is out of date. Rebuild it with \"npm run gulp compile-extension-media\" (or keep \"npm run watch\" running) and reload the window."));
+				}
 				this.postReset();
 				// Start the agent with the view, so the mode and model pickers are there before the first prompt.
 				// A failure shows in the view's status line.
@@ -140,6 +143,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 				break;
 			case 'stop':
 				void this.service.cancel();
+				break;
+			case 'command':
+				if (statusCommands.includes(message.command)) {
+					void vscode.commands.executeCommand(message.command);
+				}
 				break;
 			case 'permission':
 				this.service.permissions.select(message.id, message.optionId);
@@ -269,11 +277,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 
 function toViewStatus(status: AgentStatus): ViewStatus {
 	switch (status.phase) {
-		case 'stopped': return { phase: status.phase, text: vscode.l10n.t("The agent starts when you send a message.") };
+		case 'stopped': return { phase: status.phase, text: vscode.l10n.t("Gemini is not running."), actions: [{ label: vscode.l10n.t("Start Agent"), command: 'gemini.restartAgent' }] };
 		case 'starting': return { phase: status.phase, text: vscode.l10n.t("Starting the Gemini agent...") };
 		case 'restarting': return { phase: status.phase, text: vscode.l10n.t("The agent stopped unexpectedly. Restarting...") };
 		case 'ready': return { phase: status.phase, text: '' };
-		case 'error': return { phase: status.phase, text: status.error?.message ?? vscode.l10n.t("The agent needs attention.") };
+		case 'error': {
+			const retry = { label: vscode.l10n.t("Retry"), command: 'gemini.restartAgent' } as const;
+			const kind = status.error?.kind;
+			const fix = kind === 'auth-required' || kind === 'auth-failed'
+				? { label: vscode.l10n.t("Sign In"), command: 'gemini.completeSetupInTerminal' } as const
+				: kind === 'project-id-required' || kind === 'project-id-numeric'
+					? { label: vscode.l10n.t("Set Project ID"), command: 'gemini.setProjectId' } as const
+					: { label: vscode.l10n.t("Show Log"), command: 'gemini.showLog' } as const;
+			return { phase: status.phase, text: status.error?.message ?? vscode.l10n.t("The agent needs attention."), actions: [fix, retry] };
+		}
 	}
 }
 
