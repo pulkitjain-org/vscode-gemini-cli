@@ -48,19 +48,23 @@ jobs:
           npm ci --prefix extensions/gemini
 
       - name: Lint fork files
-        run: npx eslint --max-warnings 0 extensions/gemini build/hygiene.ts build/filters.ts build/npm/dirs.ts build/gulpfile.extensions.ts
+        run: npx eslint --max-warnings 0 extensions/gemini build/hygiene.ts build/filters.ts build/npm/dirs.ts build/gulpfile.extensions.ts build/lib/extensions.ts
 
       - name: Hygiene (fork files)
-        run: node build/hygiene.ts product.json $(git ls-files extensions/gemini gemini .github/workflows/gemini-ci.yml)
+        run: node build/hygiene.ts product.json .eslint-ignore build/lib/extensions.ts $(git ls-files extensions/gemini gemini .github/workflows/gemini-ci.yml)
 
       - name: Compile extension
         run: npm run gulp compile-extension:gemini
 
-      - name: Type check tests
-        run: npm run typecheck-tests --prefix extensions/gemini
+      - name: Type check tests and webview
+        run: |
+          npm run typecheck-tests --prefix extensions/gemini
+          npx tsc -p extensions/gemini/webview-src/tsconfig.json
 
-      - name: Bundle extension
-        run: node extensions/gemini/esbuild.mts
+      - name: Bundle extension and webview
+        run: |
+          node extensions/gemini/esbuild.mts
+          node extensions/gemini/esbuild.webview.mts
 
       - name: Install Gemini CLI (${{ matrix.gemini-cli }})
         run: |

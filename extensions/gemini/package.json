@@ -26,8 +26,8 @@
   "contributes": {
     "commands": [
       {
-        "command": "gemini.sendPrompt",
-        "title": "%command.sendPrompt%",
+        "command": "gemini.openChat",
+        "title": "%command.openChat%",
         "category": "%category%"
       },
       {
@@ -54,8 +54,31 @@
         "command": "gemini.showLog",
         "title": "%command.showLog%",
         "category": "%category%"
+      },
+      {
+        "command": "gemini.showStatusMenu",
+        "title": "%command.showStatusMenu%",
+        "category": "%category%"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "gemini",
+          "title": "%viewContainer.title%",
+          "icon": "media/gemini.svg"
+        }
+      ]
+    },
+    "views": {
+      "gemini": [
+        {
+          "type": "webview",
+          "id": "gemini.chat",
+          "name": "%view.chat%"
+        }
+      ]
+    },
     "configuration": {
       "title": "%configuration.title%",
       "properties": {

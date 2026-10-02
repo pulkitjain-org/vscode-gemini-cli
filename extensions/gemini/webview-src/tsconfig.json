@@ -1,0 +1,23 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"rootDir": "..",
+		"outDir": "./dist/",
+		"lib": [
+			"ES2024",
+			"DOM",
+			"DOM.Iterable"
+		],
+		"noEmit": true,
+		// The webview imports types from src, which reference Node types.
+		"types": [
+			"node"
+		],
+		"typeRoots": [
+			"../node_modules/@types"
+		]
+	},
+	"include": [
+		"./**/*"
+	]
+}

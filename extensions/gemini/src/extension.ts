@@ -6,24 +6,27 @@
 import * as vscode from 'vscode';
 import { validateProjectId } from './acp/projectId';
 import { AgentService } from './host/agentService';
+import { ChatViewProvider, chatViewId } from './host/chatView';
 import { checkAgent } from './host/checkAgent';
 import { configSection } from './host/configuration';
-import { sendPrompt } from './host/sendPrompt';
+import { GeminiStatusBar } from './host/statusBar';
 
 export function activate(context: vscode.ExtensionContext): void {
 	const log = vscode.window.createOutputChannel('Gemini', { log: true });
-	const transcript = vscode.window.createOutputChannel(vscode.l10n.t("Gemini Transcript"));
 	const service = new AgentService(log);
+	const chatView = new ChatViewProvider(context.extensionUri, service);
 
 	context.subscriptions.push(
 		log,
-		transcript,
 		service,
+		chatView,
+		new GeminiStatusBar(service),
+		vscode.window.registerWebviewViewProvider(chatViewId, chatView),
+		vscode.commands.registerCommand('gemini.openChat', () => vscode.commands.executeCommand(`${chatViewId}.focus`)),
 		vscode.commands.registerCommand('gemini.showLog', () => log.show()),
 		vscode.commands.registerCommand('gemini.checkAgent', () => checkAgent(log)),
 		vscode.commands.registerCommand('gemini.restartAgent', () => service.restart()),
 		vscode.commands.registerCommand('gemini.completeSetupInTerminal', () => service.completeSetupInTerminal()),
-		vscode.commands.registerCommand('gemini.sendPrompt', () => sendPrompt(service, transcript)),
 		vscode.commands.registerCommand('gemini.setProjectId', () => setProjectId()),
 	);
 }
