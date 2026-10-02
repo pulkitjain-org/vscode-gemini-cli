@@ -7,6 +7,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { googleAccountsPath, readActiveAccount } from '../acp/accounts';
+import { CliResolution } from '../acp/cliResolution';
 import { AgentStatus } from '../acp/status';
 import { AgentService } from './agentService';
 import { configSection, getProjectSettings } from './configuration';
@@ -88,7 +89,7 @@ export class GeminiStatusBar implements vscode.Disposable {
 		}
 		tooltip.appendMarkdown(`${vscode.l10n.t("Account")}: ${escape(this.account ?? vscode.l10n.t("not signed in"))}  \n`);
 		tooltip.appendMarkdown(`${vscode.l10n.t("Project")}: ${escape(project ? `${project.projectId} (${project.source})` : vscode.l10n.t("not set"))}  \n`);
-		tooltip.appendMarkdown(`${vscode.l10n.t("CLI")}: ${escape(this.cli ?? vscode.l10n.t("unknown until the agent starts"))}`);
+		tooltip.appendMarkdown(`${vscode.l10n.t("CLI")}: ${escape(this.cli ?? vscode.l10n.t("unknown until the agent starts"))}${escape(describeCliSource(this.service.cli))}`);
 		this.item.tooltip = tooltip;
 	}
 
@@ -120,4 +121,13 @@ function describePhase(status: AgentStatus): { icon: string; label: string } {
 
 function escape(text: string): string {
 	return text.replace(/[\\`*_{}[\]()#+\-.!|<>]/g, '\\$&');
+}
+
+function describeCliSource(cli: CliResolution | undefined): string {
+	switch (cli?.source) {
+		case 'setting': return ` (${vscode.l10n.t("from the gemini.cliPath setting")})`;
+		case 'managed': return ` (${vscode.l10n.t("GeminiCode's copy")})`;
+		case 'path': return ` (${vscode.l10n.t("from PATH")})`;
+		default: return '';
+	}
 }
