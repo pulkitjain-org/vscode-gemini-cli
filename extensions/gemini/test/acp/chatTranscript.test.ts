@@ -24,6 +24,22 @@ function summary(items: readonly TranscriptItem[]): string[] {
 }
 
 describe('ChatTranscript', () => {
+	it('labels the context sent with a prompt, without keeping its contents', () => {
+		const transcript = new ChatTranscript();
+		transcript.addPrompt('look', [
+			{ kind: 'file', path: '/w/a.ts' },
+			{ kind: 'selection', path: '/w/b.ts', text: 'x', startLine: 3, endLine: 4 },
+			{ kind: 'image', name: 'shot.png', mimeType: 'image/png', data: 'AAAA' },
+		]);
+		expect(transcript.items[0]).toEqual({
+			id: 'item-0', kind: 'user', text: 'look', attachments: [
+				{ kind: 'file', label: 'a.ts', path: '/w/a.ts' },
+				{ kind: 'selection', label: 'b.ts:3-4', path: '/w/b.ts', line: 3 },
+				{ kind: 'image', label: 'shot.png' },
+			],
+		});
+	});
+
 	it('joins streamed chunks into one message and starts a new one when the kind changes', () => {
 		const transcript = new ChatTranscript();
 		const adapter = new SessionUpdateAdapter();

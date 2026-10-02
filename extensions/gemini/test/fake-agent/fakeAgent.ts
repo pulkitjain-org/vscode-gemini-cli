@@ -30,7 +30,9 @@ export type ScriptedStep =
 	/** Echoes the client's file system capabilities from `initialize` as `fs:<read>,<write>`. */
 	| { readonly step: 'capabilities' }
 	/** Echoes the model last set with `session/set_model` as `model:<id>`. */
-	| { readonly step: 'model' };
+	| { readonly step: 'model' }
+	/** Echoes the prompt's content blocks as JSON, as `prompt:<json>`. */
+	| { readonly step: 'prompt' };
 
 export interface FakeAgentScript {
 	/** Exit with this code before reading anything, like a CLI that dies on startup. */
@@ -124,6 +126,9 @@ acp.agent({ name: 'fake-agent' })
 						break;
 					case 'model':
 						await ctx.client.notify('session/update', { sessionId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `model:${lastModel}` } } });
+						break;
+					case 'prompt':
+						await ctx.client.notify('session/update', { sessionId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `prompt:${JSON.stringify(ctx.params.prompt)}` } } });
 						break;
 					case 'readFile':
 					case 'writeFile':

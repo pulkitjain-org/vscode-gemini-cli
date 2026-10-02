@@ -699,3 +699,130 @@ button {
 .icon-button:hover {
 	background: var(--gemini-hover);
 }
+
+/* ---- Context: attachments and the @-mention picker ---- */
+
+.user-text {
+	white-space: pre-wrap;
+}
+
+.attachment-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin-top: 6px;
+}
+
+.message.user .attachment-chips:first-child {
+	margin-top: 0;
+}
+
+.chip.static {
+	cursor: default;
+}
+
+.attachments {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin-bottom: 6px;
+}
+
+.attachments[hidden] {
+	display: none;
+}
+
+.chip.attachment {
+	max-width: 220px;
+	height: 20px;
+	padding-right: 2px;
+	cursor: default;
+	background: var(--gemini-hover);
+	border-color: transparent;
+}
+
+.chip .thumbnail {
+	width: 14px;
+	height: 14px;
+	object-fit: cover;
+	border-radius: 3px;
+}
+
+.chip-remove {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	padding: 0;
+	border: none;
+	border-radius: 50%;
+	background: transparent;
+	color: var(--gemini-muted);
+	cursor: pointer;
+}
+
+.chip-remove:hover {
+	background: var(--gemini-hover);
+	color: var(--vscode-foreground);
+}
+
+.chip-remove .codicon {
+	font-size: 12px !important;
+}
+
+.picker {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: calc(100% + 4px);
+	max-height: 240px;
+	overflow-y: auto;
+	padding: 4px;
+	border-radius: var(--gemini-radius);
+	border: 1px solid var(--vscode-editorWidget-border, var(--gemini-border));
+	background: var(--vscode-quickInput-background, var(--gemini-surface));
+	box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+	z-index: 10;
+}
+
+.picker[hidden] {
+	display: none;
+}
+
+.picker-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 6px;
+	border-radius: 4px;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.picker-row.active {
+	background: var(--vscode-list-activeSelectionBackground, var(--gemini-hover));
+	color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground));
+}
+
+.picker-name {
+	flex: none;
+}
+
+.picker-folder {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	font-size: 0.9em;
+	color: var(--gemini-muted);
+}
+
+.picker-row.active .picker-folder {
+	color: inherit;
+	opacity: 0.8;
+}
+
+.picker-empty {
+	padding: 4px 6px;
+	color: var(--gemini-muted);
+}

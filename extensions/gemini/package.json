@@ -66,6 +66,25 @@
         "category": "%category%",
         "icon": "$(add)",
         "enablement": "!gemini.chatBusy"
+      },
+      {
+        "command": "gemini.addFileToChat",
+        "title": "%command.addFileToChat%",
+        "category": "%category%",
+        "icon": "$(attach)"
+      },
+      {
+        "command": "gemini.addSelectionToChat",
+        "title": "%command.addSelectionToChat%",
+        "category": "%category%"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "gemini.addSelectionToChat",
+        "key": "ctrl+l",
+        "mac": "cmd+l",
+        "when": "editorTextFocus && editorHasSelection && resourceScheme == file"
       }
     ],
     "viewsContainers": {
@@ -87,6 +106,32 @@
       ]
     },
     "menus": {
+      "explorer/context": [
+        {
+          "command": "gemini.addFileToChat",
+          "when": "!explorerResourceIsFolder && resourceScheme == file",
+          "group": "gemini@1"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "gemini.addFileToChat",
+          "when": "resourceScheme == file",
+          "group": "gemini@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "gemini.addSelectionToChat",
+          "when": "editorHasSelection && resourceScheme == file",
+          "group": "gemini@1"
+        },
+        {
+          "command": "gemini.addFileToChat",
+          "when": "!editorHasSelection && resourceScheme == file",
+          "group": "gemini@1"
+        }
+      ],
       "view/title": [
         {
           "command": "gemini.newChat",

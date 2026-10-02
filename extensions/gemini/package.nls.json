@@ -8,6 +8,8 @@
 	"configuration.cliPath": "Path to the Gemini CLI. Either a `gemini` executable or the CLI's JavaScript entry point (run with the application's bundled Node). When empty, `gemini` is looked up on `PATH`.",
 	"command.openChat": "Open Chat",
 	"command.newChat": "New Chat",
+	"command.addFileToChat": "Add File to Chat",
+	"command.addSelectionToChat": "Add Selection to Chat",
 	"command.showStatusMenu": "Show Status Menu",
 	"viewContainer.title": "Gemini",
 	"view.chat": "Chat",

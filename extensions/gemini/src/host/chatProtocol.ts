@@ -6,6 +6,7 @@
 // Messages between the chat view (chatView.ts) and its webview
 // (webview-src/chat.ts). Types only, so the webview bundle can import them.
 
+import type { Attachment } from '../acp/attachments';
 import type { TranscriptItem } from '../acp/chatTranscript';
 import type { SessionSettings } from '../acp/sessionSettings';
 import type { AgentPhase } from '../acp/status';
@@ -14,7 +15,7 @@ import type { AgentPhase } from '../acp/status';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 3;
+export const chatProtocolVersion = 4;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -49,6 +50,11 @@ export interface ChatStrings {
 	readonly copied: string;
 	readonly mode: string;
 	readonly model: string;
+	readonly addContext: string;
+	readonly noFiles: string;
+	readonly remove: string;
+	/** `{0}` is the image's file name. */
+	readonly imageTooLarge: string;
 	/** `{0}` is the chosen option's name. */
 	readonly permissionAnswered: string;
 	readonly permissionCancelled: string;
@@ -57,7 +63,9 @@ export interface ChatStrings {
 
 export type FromWebview =
 	| { readonly type: 'ready'; readonly protocol?: number }
-	| { readonly type: 'prompt'; readonly text: string }
+	| { readonly type: 'prompt'; readonly text: string; readonly attachments: readonly Attachment[] }
+	/** The @-mention picker wants files matching `query`; answered with `files` carrying the same `requestId`. */
+	| { readonly type: 'searchFiles'; readonly requestId: number; readonly query: string }
 	| { readonly type: 'stop' }
 	| { readonly type: 'command'; readonly command: StatusCommand }
 	| { readonly type: 'setMode'; readonly id: string }
@@ -74,4 +82,9 @@ export type ToWebview =
 	| { readonly type: 'items'; readonly items: readonly TranscriptItem[] }
 	| { readonly type: 'busy'; readonly busy: boolean }
 	| { readonly type: 'status'; readonly status: ViewStatus }
-	| { readonly type: 'settings'; readonly settings: SessionSettings };
+	| { readonly type: 'settings'; readonly settings: SessionSettings }
+	/** Whether the agent takes pasted images; sent with every session. */
+	| { readonly type: 'capabilities'; readonly image: boolean }
+	| { readonly type: 'files'; readonly requestId: number; readonly files: readonly { readonly path: string; readonly relative: string }[] }
+	/** Context to add to the composer, from the Add to Chat commands. */
+	| { readonly type: 'attach'; readonly attachments: readonly Attachment[] };
