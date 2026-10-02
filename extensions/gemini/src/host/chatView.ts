@@ -4,15 +4,19 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { randomBytes } from 'node:crypto';
+import * as path from 'node:path';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
+import { Attachment, maxImageBase64Length, supportedImageTypes } from '../acp/attachments';
 import { ChatTranscript, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
-import { UpdateBatcher } from '../acp/updateBatcher';
 import { PendingPermission } from '../acp/permissions';
+import { buildPromptContent } from '../acp/promptContent';
 import { AgentStatus } from '../acp/status';
+import { UpdateBatcher } from '../acp/updateBatcher';
 import { AgentService } from './agentService';
 import { ChatStrings, chatProtocolVersion, FromWebview, statusCommands, ToWebview, ViewStatus } from './chatProtocol';
 import { DiffPreview } from './diffPreview';
+import { WorkspaceFileIndex } from './workspaceFiles';
 
 export const chatViewId = 'gemini.chat';
 
@@ -34,7 +38,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 	/** Proposed edits by transcript item id (tool calls and permission requests), so their diffs can be opened later. */
 	private readonly diffs = new Map<string, readonly acp.Diff[]>();
 
-	constructor(private readonly extensionUri: vscode.Uri, private readonly service: AgentService, private readonly diffPreview: DiffPreview) {
+	/** Attachments from the Add to Chat commands that arrived before the view was ready. */
+	private pendingAttachments: Attachment[] = [];
+
+	constructor(
+		private readonly extensionUri: vscode.Uri,
+		private readonly service: AgentService,
+		private readonly diffPreview: DiffPreview,
+		private readonly fileIndex: WorkspaceFileIndex,
+	) {
 		this.disposables.push(
 			service.permissions.onDidChange(event => {
 				if (event.kind === 'requested') {
@@ -60,6 +72,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 			}),
 			service.client.onDidChangeState(state => {
 				if (state.kind === 'ready') {
+					this.post({ type: 'capabilities', image: service.client.promptCapabilities.image });
 					if (this.lastSessionId && state.sessionId !== this.lastSessionId && this.transcript.items.length) {
 						this.transcript.addNotice(vscode.l10n.t("The agent restarted. This is a new session, so it does not remember the messages above."));
 					}
@@ -73,6 +86,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 
 	resolveWebviewView(view: vscode.WebviewView): void {
 		this.view = view;
+		// Build the @-mention file list now, so the picker opens instantly.
+		this.fileIndex.warm();
 		const mediaUri = vscode.Uri.joinPath(this.extensionUri, 'media');
 		view.webview.options = { enableScripts: true, localResourceRoots: [mediaUri] };
 		view.webview.html = this.getHtml(view.webview, mediaUri);
@@ -86,15 +101,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 	}
 
 	/** Sends a prompt as if typed in the view. */
-	async send(text: string): Promise<void> {
-		if (this.busy || !text.trim()) {
+	async send(text: string, attachments: readonly Attachment[] = []): Promise<void> {
+		attachments = attachments.filter(isValidAttachment);
+		if (this.busy || (!text.trim() && !attachments.length)) {
 			return;
 		}
-		this.transcript.addPrompt(text);
+		this.transcript.addPrompt(text, attachments);
 		this.setBusy(true);
 		try {
 			await this.service.ensureReady();
-			const stopReason = await this.service.client.prompt(text);
+			// Built after the agent is ready, so it reflects what this agent accepts.
+			const content = buildPromptContent(text, attachments, this.service.client.promptCapabilities);
+			if (!content.length) {
+				throw new Error(vscode.l10n.t("The agent cannot take images, so there was nothing to send."));
+			}
+			const stopReason = await this.service.client.prompt(content);
 			const notice = stopReasonNotice(stopReason);
 			if (notice) {
 				this.transcript.addNotice(notice, stopReason === 'refusal' ? 'error' : 'info');
@@ -103,6 +124,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 			this.transcript.addNotice(errorMessage(err), 'error');
 		} finally {
 			this.setBusy(false);
+		}
+	}
+
+	/** Adds context to the composer (Add File / Add Selection to Chat), showing the view first. */
+	async attach(attachments: readonly Attachment[]): Promise<void> {
+		if (!attachments.length) {
+			return;
+		}
+		if (this.view) {
+			this.view.show(true);
+			this.post({ type: 'attach', attachments });
+		} else {
+			this.pendingAttachments.push(...attachments);
+			await vscode.commands.executeCommand(`${chatViewId}.focus`);
 		}
 	}
 
@@ -138,12 +173,23 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 					void vscode.window.showWarningMessage(vscode.l10n.t("The Gemini chat view's script is out of date. Rebuild it with \"npm run gulp compile-extension-media\" (or keep \"npm run watch\" running) and reload the window."));
 				}
 				this.postReset();
+				this.post({ type: 'capabilities', image: this.service.client.promptCapabilities.image });
+				if (this.pendingAttachments.length) {
+					this.post({ type: 'attach', attachments: this.pendingAttachments });
+					this.pendingAttachments = [];
+				}
 				// Start the agent with the view, so the mode and model pickers are there before the first prompt.
 				// A failure shows in the view's status line.
 				this.service.ensureReady().catch(() => undefined);
 				break;
 			case 'prompt':
-				void this.send(message.text);
+				void this.send(message.text, message.attachments ?? []);
+				break;
+			case 'searchFiles':
+				void this.fileIndex.search(message.query, 30).then(
+					files => this.post({ type: 'files', requestId: message.requestId, files }),
+					() => this.post({ type: 'files', requestId: message.requestId, files: [] }),
+				);
 				break;
 			case 'stop':
 				void this.service.cancel();
@@ -255,12 +301,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 			permissionAnswered: vscode.l10n.t("You chose: {0}"),
 			permissionCancelled: vscode.l10n.t("Not answered; the request was cancelled."),
 			permissionHint: vscode.l10n.t("Esc rejects"),
+			addContext: vscode.l10n.t("Add context (@)"),
+			noFiles: vscode.l10n.t("No matching files"),
+			remove: vscode.l10n.t("Remove"),
+			imageTooLarge: vscode.l10n.t("{0} is too large to send."),
 		};
 		return `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data:; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link href="${codicons}" rel="stylesheet">
 	<link href="${style}" rel="stylesheet">
@@ -271,8 +321,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 	<div id="status" class="status" role="status"></div>
 	<form id="composer" class="composer">
 		<div id="resize" class="composer-resize"></div>
+		<div id="picker" class="picker" role="listbox" hidden></div>
+		<div id="attachments" class="attachments" hidden></div>
 		<textarea id="input" rows="1"></textarea>
 		<div class="composer-bar">
+			<button type="button" id="mention" class="icon-button"><i class="codicon codicon-mention" aria-hidden="true"></i></button>
 			<span class="pill-wrap" hidden><select id="mode" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
 			<span class="pill-wrap" hidden><select id="model" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
 			<span class="spacer"></span>
@@ -302,6 +355,16 @@ function toViewStatus(status: AgentStatus): ViewStatus {
 					: { label: vscode.l10n.t("Show Log"), command: 'gemini.showLog' } as const;
 			return { phase: status.phase, text: status.error?.message ?? vscode.l10n.t("The agent needs attention."), actions: [fix, retry] };
 		}
+	}
+}
+
+/** Checks what the webview sent, since it builds attachments from pasted data. */
+function isValidAttachment(attachment: Attachment): boolean {
+	switch (attachment?.kind) {
+		case 'file': return typeof attachment.path === 'string' && path.isAbsolute(attachment.path);
+		case 'selection': return typeof attachment.path === 'string' && path.isAbsolute(attachment.path) && typeof attachment.text === 'string';
+		case 'image': return supportedImageTypes.has(attachment.mimeType) && typeof attachment.data === 'string' && attachment.data.length <= maxImageBase64Length;
+		default: return false;
 	}
 }
 

@@ -8,6 +8,7 @@ import type * as acp from '@agentclientprotocol/sdk';
 import { AgentClientHandlers, AgentConnection } from './agentConnection';
 import { AgentError, AgentErrorInfo, classifyAgentError } from './errors';
 import { Emitter } from './events';
+import { PromptCapabilities, readPromptCapabilities } from './promptContent';
 import { readSessionSettings, SessionSettings } from './sessionSettings';
 import { ChatEvent, SessionUpdateAdapter } from './sessionUpdates';
 import { AgentSidecar, SidecarState } from './sidecar';
@@ -96,14 +97,19 @@ export class AgentClient {
 		return this.changeSetting('model', modelId, (connection, sessionId) => connection.setModel(sessionId, modelId));
 	}
 
-	/** Sends a text prompt and resolves when the turn ends. Updates stream through `onDidReceiveEvent`. */
-	async prompt(text: string): Promise<acp.StopReason> {
+	/** What the agent accepts in a prompt besides text; text only until a session is ready. */
+	get promptCapabilities(): PromptCapabilities {
+		return readPromptCapabilities(this._state.kind === 'ready' ? this._state.agent : undefined);
+	}
+
+	/** Sends a prompt and resolves when the turn ends. Updates stream through `onDidReceiveEvent`. */
+	async prompt(content: string | acp.ContentBlock[]): Promise<acp.StopReason> {
 		const state = this._state;
 		if (state.kind !== 'ready' || !this.connection) {
 			throw new Error('The agent is not ready.');
 		}
 		try {
-			const response = await this.connection.prompt(state.sessionId, [{ type: 'text', text }]);
+			const response = await this.connection.prompt(state.sessionId, typeof content === 'string' ? [{ type: 'text', text: content }] : content);
 			return response.stopReason;
 		} catch (err) {
 			throw new AgentError(classifyAgentError(err));

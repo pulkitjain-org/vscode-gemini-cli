@@ -10,12 +10,21 @@
 import type * as acp from '@agentclientprotocol/sdk';
 import { Emitter } from './events';
 import type { PendingPermission } from './permissions';
+import { Attachment, attachmentLabel } from './attachments';
 import { ChatEvent, contentBlockToText, ToolCallModel } from './sessionUpdates';
 
 export type ToolCallDetail =
 	| { readonly type: 'text'; readonly text: string }
 	| { readonly type: 'diff'; readonly path: string; readonly added: number; readonly removed: number }
 	| { readonly type: 'terminal'; readonly terminalId: string };
+
+export interface PromptAttachmentLabel {
+	readonly kind: Attachment['kind'];
+	readonly label: string;
+	/** For files and selections, so the view can open them. */
+	readonly path?: string;
+	readonly line?: number;
+}
 
 export interface ToolCallLocation {
 	readonly path: string;
@@ -24,7 +33,11 @@ export interface ToolCallLocation {
 }
 
 export type TranscriptItem =
-	| { readonly id: string; readonly kind: 'user' | 'agent' | 'thought'; readonly text: string }
+	| {
+		readonly id: string; readonly kind: 'user' | 'agent' | 'thought'; readonly text: string;
+		/** Context sent with a user prompt, as labels (`app.ts`, `app.ts:10-20`). */
+		readonly attachments?: readonly PromptAttachmentLabel[];
+	}
 	| {
 		readonly id: string; readonly kind: 'toolCall'; readonly title: string; readonly toolKind: string | undefined;
 		readonly status: acp.ToolCallStatus; readonly locations: readonly ToolCallLocation[]; readonly details: readonly ToolCallDetail[];
@@ -76,10 +89,20 @@ export class ChatTranscript {
 		return this._items;
 	}
 
-	addPrompt(text: string): void {
+	addPrompt(text: string, attachments: readonly Attachment[] = []): void {
 		this.turnStart = this._items.length;
 		this.lastMessageId = undefined;
-		this.push({ id: this.newId(), kind: 'user', text });
+		this.push({
+			id: this.newId(), kind: 'user', text,
+			...(attachments.length ? {
+				attachments: attachments.map(a => ({
+					kind: a.kind,
+					label: attachmentLabel(a),
+					...(a.kind === 'image' ? {} : { path: a.path }),
+					...(a.kind === 'selection' ? { line: a.startLine } : {}),
+				})),
+			} : {}),
+		});
 	}
 
 	apply(event: ChatEvent): void {

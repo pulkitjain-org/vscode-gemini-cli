@@ -5,28 +5,34 @@
 
 import * as vscode from 'vscode';
 import { validateProjectId } from './acp/projectId';
+import { filesToAttach, selectionsToAttach } from './host/addToChat';
 import { AgentService } from './host/agentService';
 import { ChatViewProvider, chatViewId } from './host/chatView';
 import { checkAgent } from './host/checkAgent';
 import { DiffPreview } from './host/diffPreview';
 import { configSection } from './host/configuration';
 import { GeminiStatusBar } from './host/statusBar';
+import { WorkspaceFileIndex } from './host/workspaceFiles';
 
 export function activate(context: vscode.ExtensionContext): void {
 	const log = vscode.window.createOutputChannel('Gemini', { log: true });
 	const service = new AgentService(log);
 	const diffPreview = new DiffPreview();
-	const chatView = new ChatViewProvider(context.extensionUri, service, diffPreview);
+	const fileIndex = new WorkspaceFileIndex();
+	const chatView = new ChatViewProvider(context.extensionUri, service, diffPreview, fileIndex);
 
 	context.subscriptions.push(
 		log,
 		service,
 		diffPreview,
+		fileIndex,
 		chatView,
 		new GeminiStatusBar(service),
 		vscode.window.registerWebviewViewProvider(chatViewId, chatView),
 		vscode.commands.registerCommand('gemini.openChat', () => vscode.commands.executeCommand(`${chatViewId}.focus`)),
 		vscode.commands.registerCommand('gemini.newChat', () => chatView.newChat()),
+		vscode.commands.registerCommand('gemini.addFileToChat', async (uri: unknown, uris: unknown) => chatView.attach(await filesToAttach(uri, uris))),
+		vscode.commands.registerCommand('gemini.addSelectionToChat', () => chatView.attach(selectionsToAttach())),
 		vscode.commands.registerCommand('gemini.showLog', () => log.show()),
 		vscode.commands.registerCommand('gemini.checkAgent', () => checkAgent(log)),
 		vscode.commands.registerCommand('gemini.restartAgent', () => service.restart()),

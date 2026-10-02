@@ -9,7 +9,8 @@
 // inject markup; everything else is set with textContent.
 
 import MarkdownIt from 'markdown-it';
-import type { TranscriptItem } from '../src/acp/chatTranscript';
+import { Attachment, attachmentLabel, basename, maxImageBase64Length, supportedImageTypes } from '../src/acp/attachments';
+import type { PromptAttachmentLabel, TranscriptItem } from '../src/acp/chatTranscript';
 import type { SessionSelector, SessionSettings } from '../src/acp/sessionSettings';
 import { chatProtocolVersion, type ChatStrings, type FromWebview, type ToWebview, type ViewStatus } from '../src/host/chatProtocol';
 
@@ -34,6 +35,12 @@ const stopButton = byId<HTMLButtonElement>('stop');
 const modeSelect = byId<HTMLSelectElement>('mode');
 const modelSelect = byId<HTMLSelectElement>('model');
 const resizeHandle = byId<HTMLElement>('resize');
+const mentionButton = byId<HTMLButtonElement>('mention');
+const picker = byId<HTMLElement>('picker');
+const attachmentList = byId<HTMLElement>('attachments');
+
+mentionButton.title = strings.addContext;
+mentionButton.setAttribute('aria-label', strings.addContext);
 
 sendButton.title = strings.send;
 sendButton.setAttribute('aria-label', strings.send);
@@ -89,16 +96,13 @@ function format(template: string, value: string | number): string {
 	return template.replace('{0}', String(value));
 }
 
-function basename(filePath: string): string {
-	return filePath.split(/[\\/]/).pop() ?? filePath;
-}
 
 // ---- Items ---------------------------------------------------------------
 
 function render(item: TranscriptItem): HTMLElement {
 	switch (item.kind) {
 		case 'user':
-			return el('div', 'message user', item.text);
+			return renderUserMessage(item);
 		case 'agent':
 			return renderMarkdown(item.text);
 		case 'thought':
@@ -114,6 +118,33 @@ function render(item: TranscriptItem): HTMLElement {
 		case 'notice':
 			return renderNotice(item.text, item.severity);
 	}
+}
+
+function renderUserMessage(item: { readonly text: string; readonly attachments?: readonly PromptAttachmentLabel[] }): HTMLElement {
+	const node = el('div', 'message user');
+	if (item.text) {
+		node.append(el('div', 'user-text', item.text));
+	}
+	if (item.attachments?.length) {
+		const chips = el('div', 'attachment-chips');
+		for (const attachment of item.attachments) {
+			const { path, line } = attachment;
+			const chip = path
+				? button('chip', attachment.label, () => vscode.postMessage({ type: 'openLocation', path, line }), attachmentIcon(attachment.kind))
+				: el('span', 'chip static');
+			if (!path) {
+				chip.append(icon(attachmentIcon(attachment.kind)), el('span', undefined, attachment.label));
+			}
+			chip.title = path ?? attachment.label;
+			chips.append(chip);
+		}
+		node.append(chips);
+	}
+	return node;
+}
+
+function attachmentIcon(kind: Attachment['kind']): string {
+	return kind === 'image' ? 'file-media' : kind === 'selection' ? 'list-selection' : 'file';
 }
 
 function renderMarkdown(text: string): HTMLElement {
@@ -460,7 +491,205 @@ function updatePlaceholder(): void {
 }
 
 function updateSendState(): void {
-	sendButton.disabled = busy || !input.value.trim();
+	sendButton.disabled = busy || (!input.value.trim() && !attachments.length);
+}
+
+// ---- Attachments and the @-mention picker --------------------------------
+
+let attachments: Attachment[] = [];
+let imageInput = false;
+
+function sameAttachment(a: Attachment, b: Attachment): boolean {
+	if (a.kind === 'file' && b.kind === 'file') {
+		return a.path === b.path;
+	}
+	if (a.kind === 'selection' && b.kind === 'selection') {
+		return a.path === b.path && a.startLine === b.startLine && a.endLine === b.endLine;
+	}
+	return a.kind === 'image' && b.kind === 'image' && a.data === b.data;
+}
+
+function addAttachments(added: readonly Attachment[]): void {
+	for (const attachment of added) {
+		if (!attachments.some(existing => sameAttachment(existing, attachment))) {
+			attachments.push(attachment);
+		}
+	}
+	renderAttachments();
+	input.focus();
+}
+
+function renderAttachments(): void {
+	attachmentList.replaceChildren(...attachments.map(attachment => {
+		const chip = el('span', 'chip attachment');
+		if (attachment.kind === 'image') {
+			const thumbnail = el('img', 'thumbnail');
+			thumbnail.src = `data:${attachment.mimeType};base64,${attachment.data}`;
+			thumbnail.alt = '';
+			chip.append(thumbnail);
+		} else {
+			chip.append(icon(attachmentIcon(attachment.kind)));
+			chip.title = attachment.path;
+		}
+		chip.append(el('span', undefined, attachmentLabel(attachment)));
+		const remove = button('chip-remove', '', () => {
+			attachments = attachments.filter(a => a !== attachment);
+			renderAttachments();
+			input.focus();
+		}, 'close');
+		remove.title = strings.remove;
+		remove.setAttribute('aria-label', `${strings.remove} ${attachmentLabel(attachment)}`);
+		chip.append(remove);
+		return chip;
+	}));
+	attachmentList.hidden = !attachments.length;
+	updateSendState();
+}
+
+interface PickerState {
+	/** Where the "@" is in the input. */
+	readonly start: number;
+	query: string;
+	files: readonly { readonly path: string; readonly relative: string }[];
+	active: number;
+}
+
+let pickerState: PickerState | undefined;
+let lastSearchId = 0;
+
+/** The "@word" just before the caret, if the caret is in one. */
+function mentionAtCaret(): { start: number; query: string } | undefined {
+	const caret = input.selectionStart;
+	if (caret !== input.selectionEnd) {
+		return undefined;
+	}
+	const match = /(^|\s)@([^\s@]*)$/.exec(input.value.slice(0, caret));
+	return match ? { start: caret - match[2].length - 1, query: match[2] } : undefined;
+}
+
+function updatePicker(): void {
+	const mention = mentionAtCaret();
+	if (!mention) {
+		closePicker();
+		return;
+	}
+	if (pickerState?.start === mention.start && pickerState.query === mention.query) {
+		return;
+	}
+	pickerState = { start: mention.start, query: mention.query, files: pickerState?.start === mention.start ? pickerState.files : [], active: 0 };
+	vscode.postMessage({ type: 'searchFiles', requestId: ++lastSearchId, query: mention.query });
+	renderPicker();
+}
+
+function closePicker(): void {
+	pickerState = undefined;
+	picker.hidden = true;
+	input.removeAttribute('aria-activedescendant');
+}
+
+function renderPicker(): void {
+	const state = pickerState;
+	if (!state) {
+		return;
+	}
+	picker.hidden = false;
+	if (!state.files.length) {
+		picker.replaceChildren(el('div', 'picker-empty', strings.noFiles));
+		return;
+	}
+	picker.replaceChildren(...state.files.map((file, index) => {
+		const row = el('div', `picker-row${index === state.active ? ' active' : ''}`);
+		row.id = `picker-${index}`;
+		row.setAttribute('role', 'option');
+		row.setAttribute('aria-selected', String(index === state.active));
+		const folder = file.relative.includes('/') ? file.relative.slice(0, file.relative.lastIndexOf('/')) : '';
+		row.append(icon('file'), el('span', 'picker-name', basename(file.relative)), el('span', 'picker-folder', folder));
+		row.title = file.relative;
+		// mousedown, so the input keeps focus.
+		row.addEventListener('mousedown', event => {
+			event.preventDefault();
+			pick(index);
+		});
+		return row;
+	}));
+	input.setAttribute('aria-activedescendant', `picker-${state.active}`);
+	picker.querySelector('.active')?.scrollIntoView({ block: 'nearest' });
+}
+
+function pick(index: number): void {
+	const state = pickerState;
+	const file = state?.files[index];
+	if (!state || !file) {
+		return;
+	}
+	// Replace the typed "@query" with nothing; the chip shows the file.
+	const end = state.start + 1 + state.query.length;
+	input.value = input.value.slice(0, state.start) + input.value.slice(end);
+	input.setSelectionRange(state.start, state.start);
+	closePicker();
+	addAttachments([{ kind: 'file', path: file.path }]);
+	autoGrow();
+}
+
+function onPickerKey(event: KeyboardEvent): boolean {
+	const state = pickerState;
+	if (!state || picker.hidden) {
+		return false;
+	}
+	switch (event.key) {
+		case 'ArrowDown':
+		case 'ArrowUp':
+			if (state.files.length) {
+				state.active = (state.active + (event.key === 'ArrowDown' ? 1 : -1) + state.files.length) % state.files.length;
+				renderPicker();
+			}
+			return true;
+		case 'Enter':
+		case 'Tab':
+			if (state.files.length) {
+				pick(state.active);
+				return true;
+			}
+			return false;
+		case 'Escape':
+			closePicker();
+			return true;
+	}
+	return false;
+}
+
+function readImage(file: File): Promise<Attachment | undefined> {
+	return new Promise(resolve => {
+		const reader = new FileReader();
+		reader.onload = () => {
+			const data = String(reader.result).replace(/^data:[^,]*,/, '');
+			if (data.length > maxImageBase64Length) {
+				setTransientNotice(format(strings.imageTooLarge, file.name || 'image'));
+				resolve(undefined);
+				return;
+			}
+			resolve({ kind: 'image', name: file.name || `image.${file.type.split('/')[1] ?? 'png'}`, mimeType: file.type, data });
+		};
+		reader.onerror = () => resolve(undefined);
+		reader.readAsDataURL(file);
+	});
+}
+
+/** Takes the images from a paste or drop when the agent accepts images. */
+function takeImages(data: DataTransfer | null): boolean {
+	const files = imageInput ? [...data?.files ?? []].filter(file => supportedImageTypes.has(file.type)) : [];
+	if (!files.length) {
+		return false;
+	}
+	void Promise.all(files.map(readImage)).then(images => addAttachments(images.filter((i): i is Attachment => !!i)));
+	return true;
+}
+
+function setTransientNotice(text: string): void {
+	const notice = renderNotice(text, 'error');
+	transcript.append(notice);
+	transcript.scrollTop = transcript.scrollHeight;
+	setTimeout(() => notice.remove(), 6000);
 }
 
 /** Height the user dragged the composer to; the input never gets shorter than this. */
@@ -500,10 +729,13 @@ resizeHandle.addEventListener('dblclick', () => {
 
 function submit(): void {
 	const text = input.value;
-	if (busy || !text.trim()) {
+	if (busy || (!text.trim() && !attachments.length)) {
 		return;
 	}
-	vscode.postMessage({ type: 'prompt', text });
+	vscode.postMessage({ type: 'prompt', text, attachments });
+	attachments = [];
+	renderAttachments();
+	closePicker();
 	input.value = '';
 	autoGrow();
 	updateSendState();
@@ -519,6 +751,11 @@ form.addEventListener('click', event => {
 	}
 });
 input.addEventListener('keydown', event => {
+	if (!event.isComposing && onPickerKey(event)) {
+		event.preventDefault();
+		event.stopPropagation();
+		return;
+	}
 	if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
 		event.preventDefault();
 		submit();
@@ -527,6 +764,38 @@ input.addEventListener('keydown', event => {
 input.addEventListener('input', () => {
 	autoGrow();
 	updateSendState();
+	updatePicker();
+});
+input.addEventListener('click', updatePicker);
+input.addEventListener('blur', () => setTimeout(() => {
+	if (document.activeElement !== input) {
+		closePicker();
+	}
+}, 0));
+input.addEventListener('paste', event => {
+	if (takeImages(event.clipboardData)) {
+		event.preventDefault();
+	}
+});
+form.addEventListener('dragover', event => {
+	if (imageInput && event.dataTransfer?.types.includes('Files')) {
+		event.preventDefault();
+	}
+});
+form.addEventListener('drop', event => {
+	if (takeImages(event.dataTransfer)) {
+		event.preventDefault();
+	}
+});
+mentionButton.addEventListener('click', () => {
+	// Insert "@" at the caret (with a space before it when needed) and open the picker.
+	const caret = input.selectionStart;
+	const before = input.value.slice(0, caret);
+	const insert = before && !/\s$/.test(before) ? ' @' : '@';
+	input.setRangeText(insert, caret, input.selectionEnd, 'end');
+	input.focus();
+	autoGrow();
+	updatePicker();
 });
 stopButton.addEventListener('click', () => vscode.postMessage({ type: 'stop' }));
 modeSelect.addEventListener('change', () => {
@@ -562,6 +831,19 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'settings':
 			setSettings(message.settings);
+			break;
+		case 'capabilities':
+			imageInput = message.image;
+			break;
+		case 'files':
+			if (pickerState && message.requestId === lastSearchId) {
+				pickerState.files = message.files;
+				pickerState.active = 0;
+				renderPicker();
+			}
+			break;
+		case 'attach':
+			addAttachments(message.attachments);
 			break;
 	}
 });
