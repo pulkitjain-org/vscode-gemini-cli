@@ -7,6 +7,7 @@ import { execFile } from 'node:child_process';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { ClientFileSystem, FileAccessPolicyOptions } from '../acp/fileAccess';
+import { memoizeAsync } from '../acp/memoize';
 
 /**
  * The agent's view of workspace files: reads see unsaved editor changes, and
@@ -59,7 +60,7 @@ export class WorkspaceFileSystem implements ClientFileSystem {
 export function getFileAccessPolicy(): FileAccessPolicyOptions {
 	return {
 		roots: (vscode.workspace.workspaceFolders ?? []).filter(f => f.uri.scheme === 'file').map(f => f.uri.fsPath),
-		isIgnored: isIgnoredByGit,
+		isIgnored: isIgnoredByGitCached,
 	};
 }
 
@@ -75,6 +76,12 @@ async function exists(uri: vscode.Uri): Promise<boolean> {
 		return false;
 	}
 }
+
+/**
+ * Each check starts a git process, and the agent often reads the same files
+ * several times in a turn, so answers are kept for a few seconds.
+ */
+const isIgnoredByGitCached = memoizeAsync(isIgnoredByGit, { ttlMs: 5_000, maxEntries: 500 });
 
 /** `git check-ignore`: exit 0 means ignored. No git, or not a repository, means not ignored. */
 function isIgnoredByGit(filePath: string): Promise<boolean> {
