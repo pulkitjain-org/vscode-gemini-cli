@@ -548,8 +548,10 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			setStatus(message.status);
 			setSettings(message.settings);
 			break;
-		case 'item':
-			upsert(message.item, true);
+		case 'items':
+			for (const item of message.items) {
+				upsert(item, true);
+			}
 			updatePlaceholder();
 			break;
 		case 'busy':

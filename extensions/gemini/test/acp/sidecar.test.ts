@@ -27,6 +27,21 @@ describe('AgentSidecar', () => {
 		expect(kinds).toEqual(['starting', 'running', 'restarting', 'starting', 'running', 'restarting', 'starting', 'running', 'failed']);
 	});
 
+	it('starts the agent again at once when the CLI asks to be relaunched', async () => {
+		sidecar = new AgentSidecar({ command: () => fakeAgentCommand({ exitCode: 199 }), cwd: undefined, restartDelaysMs: [10] });
+		const kinds = record(sidecar);
+		sidecar.start();
+		await waitFor(sidecar.onDidChangeState, s => s.kind === 'failed');
+		// Three immediate relaunches, then the normal crash handling.
+		expect(kinds).toEqual([
+			'starting', 'running',
+			'restarting', 'starting', 'running',
+			'restarting', 'starting', 'running',
+			'restarting', 'starting', 'running',
+			'restarting', 'starting', 'running', 'failed',
+		]);
+	});
+
 	it('does not restart after a fatal authentication exit', async () => {
 		sidecar = new AgentSidecar({ command: () => fakeAgentCommand({ exitCode: 41 }), cwd: undefined, restartDelaysMs: [10] });
 		const kinds = record(sidecar);

@@ -31,3 +31,17 @@ From `AcpFileSystemService` and the tool-confirmation code in 0.62.0:
 - A client error does **not** fall back to the disk; it fails the tool call with the error's message, which the model sees.
 - **CLI bug, 0.62.0 through 0.64.0 nightly:** `normalizeFileSystemError` is meant to turn "Resource not found" into `ENOENT`, but the CLI's connection rejects with the raw JSON-RPC error object, so the check sees `[object Object]` and never matches. `write_file` then fails to create any new file ("Error checking existing file: Resource not found"). The IDE therefore answers a read of a missing file with empty content. This is safe because `read_file` checks the disk for existence before it asks the client, so only `write_file` and `edit` see the empty text. One side effect: `edit` with an empty `old_string` reports "already exists" for a missing file instead of creating it, and the model falls back to `write_file`. So the IDE's access policy (secrets denylist, `.gitignore` for reads, workspace folders only) holds for these three tools. It does not cover shell, `grep`, `glob` or `ls`, which run inside the sidecar.
 - Before an edit, the CLI sends a `tool_call` and then `session/request_permission` whose `toolCall.content` holds a `diff` (`path`, `oldText`, `newText`; `oldText` is empty for a new file). The options come from `toPermissionOptions`: `proceed_once`, `proceed_always` ("Allow for this session"), `proceed_always_and_save` only when permanent approval is enabled, and `cancel` (reject). The IDE renders whatever options arrive.
+
+## Agent startup time
+
+Measured with gemini-cli 0.62.0 on a 4-core Linux machine, three runs each, from spawning the agent to the `initialize` response (`session/new` adds about 75 ms):
+
+| Launch | `initialize` |
+| --- | --- |
+| Default: the CLI's entry point starts a second Node process to raise its heap limit | 1.75–1.97 s |
+| `GEMINI_CLI_NO_RELAUNCH=true`, so one process | 1.10–1.21 s |
+| One process plus `NODE_COMPILE_CACHE` | 1.25–1.28 s (no gain) |
+
+The relaunch always happens unless `GEMINI_CLI_NO_RELAUNCH` is set, even when the heap is already large enough. So the agent is started with `GEMINI_CLI_NO_RELAUNCH=true` and the heap the CLI would pick (half the machine's memory, unless `advanced.autoConfigureMemory` is false in `~/.gemini/settings.json`). For a JavaScript entry point the heap flag goes on the Node command line. For a `gemini` executable it goes in `NODE_OPTIONS`, as the CLI does for its single-file binary. That saves about 0.65 s, roughly a third of startup.
+
+Without the wrapper process, two things change. The CLI asks its wrapper to restart it by exiting with code 199, so the sidecar now restarts it at once on that code (at most three times before the normal crash handling). The wrapper also forwards admin settings over IPC between relaunches; the CLI only does that when `process.send` exists, so it is skipped. The interactive terminal used for sign-in keeps the CLI's default behaviour.

@@ -6,7 +6,8 @@
 import { randomBytes } from 'node:crypto';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
-import { ChatTranscript, toolCallItemId } from '../acp/chatTranscript';
+import { ChatTranscript, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
+import { UpdateBatcher } from '../acp/updateBatcher';
 import { PendingPermission } from '../acp/permissions';
 import { AgentStatus } from '../acp/status';
 import { AgentService } from './agentService';
@@ -24,6 +25,8 @@ export const chatViewId = 'gemini.chat';
 export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
 
 	private readonly transcript = new ChatTranscript();
+	/** Streams item changes to the webview at most about 30 times a second. */
+	private readonly items = new UpdateBatcher<TranscriptItem>(items => this.post({ type: 'items', items }));
 	private readonly disposables: vscode.Disposable[] = [];
 	private view: vscode.WebviewView | undefined;
 	private busy = false;
@@ -43,7 +46,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 				}
 			}),
 			this.transcript,
-			this.transcript.onDidChangeItem(item => this.post({ type: 'item', item })),
+			this.transcript.onDidChangeItem(item => this.items.push(item)),
+			{ dispose: () => this.items.dispose() },
 			this.transcript.onDidReset(() => this.postReset()),
 			service.client.onDidReceiveEvent(event => {
 				// Only a turn's updates belong in the transcript.
@@ -213,10 +217,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 	}
 
 	private postReset(): void {
+		// The reset carries every item, so pending updates are already in it.
+		this.items.clear();
 		this.post({ type: 'reset', items: this.transcript.items, busy: this.busy, status: toViewStatus(this.service.status), settings: this.service.client.settings });
 	}
 
 	private post(message: ToWebview): void {
+		if (message.type !== 'items') {
+			// Keep the order: item updates first, then whatever follows them.
+			this.items.flush();
+		}
 		void this.view?.webview.postMessage(message);
 	}
 

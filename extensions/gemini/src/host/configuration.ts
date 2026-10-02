@@ -4,9 +4,10 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { readFileSync } from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { AgentCommand, resolveAgentCommand } from '../acp/agentProcess';
+import { AgentCommand, cliHeapSizeMb, resolveAgentCommand } from '../acp/agentProcess';
 import { buildAgentEnv } from '../acp/env';
 import { ProjectIdProblem, ResolvedProjectId, resolveProjectId, validateProjectId } from '../acp/projectId';
 
@@ -52,5 +53,15 @@ export function getAgentCommand(options: { interactive?: boolean } = {}): AgentC
 		env: buildAgentEnv(process.env, getProjectSettings().resolved?.projectId),
 		platform: process.platform,
 		interactive: options.interactive,
+		heapSizeMb: options.interactive ? undefined : cliHeapSizeMb(readCliSettings(), os.totalmem()),
 	});
+}
+
+function readCliSettings(): string | undefined {
+	const home = process.env.GEMINI_CLI_HOME || path.join(os.homedir(), '.gemini');
+	try {
+		return readFileSync(path.join(home, 'settings.json'), 'utf8');
+	} catch {
+		return undefined;
+	}
 }

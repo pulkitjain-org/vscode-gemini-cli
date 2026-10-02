@@ -8,6 +8,10 @@ import { AgentCommand, spawnAgent } from './agentProcess';
 import { AgentErrorKind, FATAL_EXIT_CODES } from './errors';
 import { Emitter } from './events';
 
+/** The exit code the CLI uses to ask its parent wrapper to start it again. */
+export const RELAUNCH_EXIT_CODE = 199;
+const maxRelaunches = 3;
+
 export type SidecarState =
 	| { readonly kind: 'stopped' }
 	| { readonly kind: 'starting' }
@@ -44,6 +48,8 @@ export class AgentSidecar {
 
 	private _state: SidecarState = { kind: 'stopped' };
 	private restarts = 0;
+	/** Immediate relaunches the CLI asked for (exit code 199) since the agent last ran healthy. */
+	private relaunches = 0;
 	private restartTimer: ReturnType<typeof setTimeout> | undefined;
 	private healthyTimer: ReturnType<typeof setTimeout> | undefined;
 	private readonly restartDelaysMs: readonly number[];
@@ -63,6 +69,7 @@ export class AgentSidecar {
 	/** Starts the agent, or restarts it (resetting the restart budget) if it is already running. */
 	start(): void {
 		this.restarts = 0;
+		this.relaunches = 0;
 		this.launch();
 	}
 
@@ -127,7 +134,14 @@ export class AgentSidecar {
 			this.clearTimers();
 			const fatal = exitCode === null ? undefined : FATAL_EXIT_CODES.get(exitCode);
 			const message = error?.message ?? (stderrTail.trim().split(/\r?\n/).pop() || `Agent exited with code ${exitCode}`);
-			if ((error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT') {
+			if (exitCode === RELAUNCH_EXIT_CODE && this.relaunches < maxRelaunches) {
+				// The CLI asks its parent to start it again (for example after a
+				// settings change). We run it without that parent wrapper
+				// (GEMINI_CLI_NO_RELAUNCH), so do what the wrapper would: start it now.
+				this.relaunches++;
+				this.setState({ kind: 'restarting', attempt: this.restarts, delayMs: 0, exitCode });
+				this.launch();
+			} else if ((error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT') {
 				this.setState({ kind: 'failed', reason: 'agent-not-found', exitCode, message });
 			} else if (fatal) {
 				this.setState({ kind: 'failed', reason: fatal, exitCode, message });
@@ -143,7 +157,7 @@ export class AgentSidecar {
 		child.once('error', err => onExit(null, err));
 
 		this.setState({ kind: 'running', process: child });
-		this.healthyTimer = setTimeout(() => this.restarts = 0, this.healthyAfterMs);
+		this.healthyTimer = setTimeout(() => this.restarts = this.relaunches = 0, this.healthyAfterMs);
 	}
 
 	private clearTimers(): void {
