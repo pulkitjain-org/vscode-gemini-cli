@@ -46,7 +46,7 @@ jobs:
           npm ci --prefix extensions/gemini
 
       - name: Lint fork files
-        run: npx eslint --max-warnings 0 extensions/gemini gemini build/hygiene.ts build/filters.ts build/npm/dirs.ts build/gulpfile.extensions.ts
+        run: npx eslint --max-warnings 0 extensions/gemini build/hygiene.ts build/filters.ts build/npm/dirs.ts build/gulpfile.extensions.ts
 
       - name: Hygiene (fork files)
         run: node build/hygiene.ts product.json $(git ls-files extensions/gemini gemini .github/workflows/gemini-ci.yml)
