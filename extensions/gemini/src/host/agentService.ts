@@ -80,15 +80,20 @@ export class AgentService implements vscode.Disposable {
 	}
 
 	get status(): AgentStatus {
-		return describeAgentStatus(this.sidecar.state, this.client.state, this.blocked);
+		return this.statusFor(this.client);
 	}
 
-	/** Starts the agent if it is not running yet and waits until a session is ready. */
-	async ensureReady(): Promise<Extract<AgentClientState, { kind: 'ready' }>> {
+	/** The status of `client`'s session on the shared agent process. */
+	statusFor(client: AgentClient): AgentStatus {
+		return describeAgentStatus(this.sidecar.state, client.state, this.blocked);
+	}
+
+	/** Starts the agent if it is not running yet and waits until `client`'s session is ready. */
+	async ensureReady(client: AgentClient = this.client): Promise<Extract<AgentClientState, { kind: 'ready' }>> {
 		if (!this.started) {
 			this.restart();
 		}
-		const state = this.client.state;
+		const state = client.state;
 		if (state.kind === 'ready') {
 			return state;
 		}
@@ -96,7 +101,7 @@ export class AgentService implements vscode.Disposable {
 			throw new Error(state.kind === 'error' ? state.error.message : vscode.l10n.t("The Gemini agent is not running."));
 		}
 		return new Promise((resolve, reject) => {
-			const listener = this.client.onDidChangeState(s => {
+			const listener = client.onDidChangeState(s => {
 				if (s.kind === 'ready') {
 					listener.dispose();
 					resolve(s);
