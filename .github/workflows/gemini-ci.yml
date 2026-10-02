@@ -37,8 +37,10 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      - name: Install root tooling (no native modules)
-        run: npm ci --ignore-scripts
+      - name: Install root and build tooling (no native modules)
+        run: |
+          npm ci --ignore-scripts
+          npm ci --ignore-scripts --prefix build
 
       - name: Install extension dependencies
         run: |
