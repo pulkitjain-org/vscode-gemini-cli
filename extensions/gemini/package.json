@@ -1,0 +1,72 @@
+{
+  "name": "gemini",
+  "displayName": "%displayName%",
+  "description": "%description%",
+  "version": "0.1.0",
+  "publisher": "gemini-fork",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "capabilities": {
+    "virtualWorkspaces": false,
+    "untrustedWorkspaces": {
+      "supported": false
+    }
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension",
+  "contributes": {
+    "commands": [
+      {
+        "command": "gemini.showLog",
+        "title": "%command.showLog%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.checkAgent",
+        "title": "%command.checkAgent%",
+        "category": "%category%"
+      }
+    ],
+    "configuration": {
+      "title": "%configuration.title%",
+      "properties": {
+        "gemini.cliPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "%configuration.cliPath%"
+        }
+      }
+    },
+    "configurationDefaults": {
+      "chat.disableAIFeatures": true
+    }
+  },
+  "scripts": {
+    "compile": "gulp compile-extension:gemini",
+    "watch": "gulp watch-extension:gemini",
+    "typecheck-tests": "tsc -p tsconfig.test.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "1.6.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.x",
+    "vitest": "^4.1.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pulkitjain-org/vscode-gemini-cli.git"
+  }
+}

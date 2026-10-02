@@ -1,0 +1,120 @@
+# Fork CI for the Gemini IDE (gemini/docs/PLAN.md, Phase 1 "fork-ci").
+# Compiles the fork, builds and tests extensions/gemini, runs hygiene, and
+# checks the unauthenticated `gemini --acp` initialize handshake. No packaged builds yet.
+name: Gemini CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  extension:
+    name: Gemini extension
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        gemini-cli: [latest, preview]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install root tooling (no native modules)
+        run: npm ci --ignore-scripts
+
+      - name: Install extension dependencies
+        run: |
+          npm ci --ignore-scripts --prefix extensions
+          npm ci --prefix extensions/gemini
+
+      - name: Lint fork files
+        run: npx eslint --max-warnings 0 extensions/gemini gemini build/hygiene.ts build/filters.ts build/npm/dirs.ts build/gulpfile.extensions.ts
+
+      - name: Hygiene (fork files)
+        run: node build/hygiene.ts product.json $(git ls-files extensions/gemini gemini .github/workflows/gemini-ci.yml)
+
+      - name: Compile extension
+        run: npm run gulp compile-extension:gemini
+
+      - name: Type check tests
+        run: npm run typecheck-tests --prefix extensions/gemini
+
+      - name: Bundle extension
+        run: node extensions/gemini/esbuild.mts
+
+      - name: Install Gemini CLI (${{ matrix.gemini-cli }})
+        run: |
+          npm install --prefix "$RUNNER_TEMP/gemini-cli" "@google/gemini-cli@${{ matrix.gemini-cli }}"
+          echo "GEMINI_CLI_PATH=$RUNNER_TEMP/gemini-cli/node_modules/@google/gemini-cli/bundle/gemini.js" >> "$GITHUB_ENV"
+
+      - name: Unit tests and gemini --acp initialize
+        run: npm test --prefix extensions/gemini
+
+  compile:
+    name: Compile & hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Add swap space
+        run: |
+          sudo fallocate -l 10G /swapfile2
+          sudo chmod 600 /swapfile2
+          sudo mkswap /swapfile2
+          sudo swapon /swapfile2
+
+      - name: Install build tools
+        run: sudo apt update -y && sudo apt install -y build-essential pkg-config libx11-dev libx11-xcb-dev libxkbfile-dev libnotify-bin libkrb5-dev
+
+      - name: Install Electron headers
+        run: node build/npm/preinstall.ts
+
+      - name: Install dependencies
+        run: |
+          set -e
+          for i in {1..3}; do
+            npm ci && break
+            if [ $i -eq 3 ]; then
+              echo "npm ci failed too many times" >&2
+              exit 1
+            fi
+            echo "npm ci failed $i, trying again..."
+          done
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare Electron types
+        run: node build/npm/electronTypes.ts
+
+      - name: Compile
+        run: npm run compile
+
+      - name: Hygiene
+        run: npm run hygiene

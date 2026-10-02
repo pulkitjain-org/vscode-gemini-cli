@@ -1,0 +1,9 @@
+{
+	"displayName": "Gemini",
+	"description": "Gemini CLI agent integration, built in to the application.",
+	"category": "Gemini",
+	"command.showLog": "Show Log",
+	"command.checkAgent": "Check Agent Connection",
+	"configuration.title": "Gemini",
+	"configuration.cliPath": "Path to the Gemini CLI. Either a `gemini` executable or the CLI's JavaScript entry point (run with the application's bundled Node). When empty, `gemini` is looked up on `PATH`."
+}

@@ -22,6 +22,7 @@ export const dirs = [
 	'extensions/debug-server-ready',
 	'extensions/emmet',
 	'extensions/extension-editing',
+	'extensions/gemini', // GEMINI-FORK
 	'extensions/git',
 	'extensions/git-base',
 	'extensions/github',

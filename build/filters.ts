@@ -173,6 +173,9 @@ export const indentationFilter = Object.freeze<string[]>([
 
 export const copyrightFilter = Object.freeze<string[]>([
 	'**',
+	// GEMINI-FORK: fork files carry their own header, checked by ESLint
+	'!extensions/gemini/**',
+	'!gemini/**',
 	'!**/*.desktop',
 	'!**/*.json',
 	'!**/*.jsonc',
