@@ -8,6 +8,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AgentCommand, cliHeapSizeMb, resolveAgentCommand } from '../acp/agentProcess';
+import { CliResolution, resolveCli } from '../acp/cliResolution';
 import { buildAgentEnv } from '../acp/env';
 import { ProjectIdProblem, ResolvedProjectId, resolveProjectId, validateProjectId } from '../acp/projectId';
 
@@ -45,10 +46,27 @@ export function getWorkspaceCwd(): string {
 	return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
 }
 
+let managedCliDir: string | undefined;
+
+/** Where GeminiCode keeps its own CLI copies; set once on activation. */
+export function setManagedCliDir(dir: string): void {
+	managedCliDir = dir;
+}
+
+/** Which CLI the next agent process runs (plan Phase 3, runtime-resolution). */
+export function getCliResolution(): CliResolution {
+	const config = vscode.workspace.getConfiguration(configSection);
+	return resolveCli({
+		cliPath: config.get<string>('cliPath'),
+		version: config.get<string>('cli.version'),
+		managedDir: managedCliDir ?? '',
+	});
+}
+
 /** How to run the CLI, with the resolved project injected into its environment. */
-export function getAgentCommand(options: { interactive?: boolean } = {}): AgentCommand {
+export function getAgentCommand(options: { interactive?: boolean; cli?: CliResolution } = {}): AgentCommand {
 	return resolveAgentCommand({
-		cliPath: vscode.workspace.getConfiguration(configSection).get<string>('cliPath'),
+		cliPath: (options.cli ?? getCliResolution()).cliPath,
 		execPath: process.execPath,
 		env: buildAgentEnv(process.env, getProjectSettings().resolved?.projectId),
 		platform: process.platform,

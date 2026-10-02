@@ -9,9 +9,11 @@ import { AgentRuntime } from '../acp/agentRuntime';
 import { AgentErrorInfo } from '../acp/errors';
 import { createFileHandlers } from '../acp/fileAccess';
 import { PermissionBroker } from '../acp/permissions';
+import { CliResolution, isOlderThan } from '../acp/cliResolution';
+import { MIN_CLI_VERSION } from '../acp/protocol';
 import { AgentSidecar } from '../acp/sidecar';
 import { AgentStatus, describeAgentStatus } from '../acp/status';
-import { configSection, getAgentCommand, getProjectSettings, getWorkspaceCwd } from './configuration';
+import { configSection, getAgentCommand, getCliResolution, getProjectSettings, getWorkspaceCwd } from './configuration';
 import { getFileAccessPolicy, WorkspaceFileSystem } from './workspaceFileSystem';
 
 /**
@@ -32,12 +34,15 @@ export class AgentService implements vscode.Disposable {
 	private started = false;
 	/** Why the agent was not started at all; cleared on the next start. */
 	private blocked: AgentErrorInfo | undefined;
+	private _cli: CliResolution | undefined;
+	/** The agent version last warned about, so a restart does not warn again. */
+	private warnedVersion: string | undefined;
 
 	private readonly onDidChangeStatusEmitter = new vscode.EventEmitter<AgentStatus>();
 	readonly onDidChangeStatus = this.onDidChangeStatusEmitter.event;
 
 	constructor(private readonly log: vscode.LogOutputChannel) {
-		this.sidecar = new AgentSidecar({ command: () => getAgentCommand(), cwd: getWorkspaceCwd() });
+		this.sidecar = new AgentSidecar({ command: () => getAgentCommand({ cli: this.resolveCli() }), cwd: getWorkspaceCwd() });
 		this.runtime = new AgentRuntime(this.sidecar, {
 			fileSystem: createFileHandlers(new WorkspaceFileSystem(), getFileAccessPolicy),
 		});
@@ -64,7 +69,7 @@ export class AgentService implements vscode.Disposable {
 			}),
 			this.client.onDidChangeState(state => this.onClientState(state)),
 			vscode.workspace.onDidChangeConfiguration(e => {
-				if (this.started && (e.affectsConfiguration(`${configSection}.cliPath`) || e.affectsConfiguration(`${configSection}.projectId`))) {
+				if (this.started && (e.affectsConfiguration(`${configSection}.cliPath`) || e.affectsConfiguration(`${configSection}.cli.version`) || e.affectsConfiguration(`${configSection}.projectId`))) {
 					log.info('Gemini settings changed; restarting the agent');
 					this.restart();
 				}
@@ -77,6 +82,11 @@ export class AgentService implements vscode.Disposable {
 				}
 			}),
 		);
+	}
+
+	/** The CLI the agent process was last started with. */
+	get cli(): CliResolution | undefined {
+		return this._cli;
 	}
 
 	get status(): AgentStatus {
@@ -169,17 +179,41 @@ export class AgentService implements vscode.Disposable {
 		vscode.Disposable.from(...this.disposables).dispose();
 	}
 
+	/** Picks the CLI for each process start; the sidecar asks again on every restart. */
+	private resolveCli(): CliResolution {
+		const cli = this._cli = getCliResolution();
+		const where = cli.source === 'setting' ? `the ${configSection}.cliPath setting` : cli.source === 'managed' ? `GeminiCode's copy ${cli.version}` : 'PATH';
+		this.log.info(`Using the Gemini CLI from ${where}${cli.cliPath ? ` (${cli.cliPath})` : ''}`);
+		if (cli.missingVersion) {
+			this.log.warn(`Gemini CLI ${cli.missingVersion} is set in ${configSection}.cli.version but not installed; using PATH`);
+		}
+		return cli;
+	}
+
 	private onClientState(state: AgentClientState): void {
 		switch (state.kind) {
 			case 'ready': {
 				const agent = state.agent.agentInfo;
 				this.log.info(`Session ${state.sessionId} ready (${agent ? `${agent.name} ${agent.version}` : 'unknown agent'})`);
+				if (agent?.version && agent.version !== this.warnedVersion && isOlderThan(agent.version, MIN_CLI_VERSION)) {
+					this.warnedVersion = agent.version;
+					void this.showOldCli(agent.version);
+				}
 				break;
 			}
 			case 'error':
 				this.log.error(`Agent error (${state.error.kind}): ${state.error.message}`);
 				void this.showError(state.error);
 				break;
+		}
+	}
+
+	private async showOldCli(version: string): Promise<void> {
+		const setCliPath = vscode.l10n.t("Set CLI Path");
+		const choice = await vscode.window.showWarningMessage(
+			vscode.l10n.t("Gemini CLI {0} is older than {1}, the oldest version GeminiCode supports. Some features may not work.", version, MIN_CLI_VERSION), setCliPath);
+		if (choice === setCliPath) {
+			await vscode.commands.executeCommand('workbench.action.openSettings', `${configSection}.cliPath`);
 		}
 	}
 

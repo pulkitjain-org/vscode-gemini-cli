@@ -338,6 +338,13 @@
           "scope": "machine",
           "markdownDescription": "%configuration.cliPath%"
         },
+        "gemini.cli.version": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "pattern": "^$|^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$",
+          "markdownDescription": "%configuration.cli.version%"
+        },
         "gemini.projectId": {
           "type": "string",
           "default": "",

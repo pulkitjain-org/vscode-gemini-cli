@@ -254,5 +254,29 @@
 		"GitHub.copilot-chat"
 	],
 	"sessionsWindowAllowedExtensions": [],
-	"voiceWsUrl": "wss://falcon-caas.mai.microsoft.com/voice-code/api/v1/realtime/voice"
+	"voiceWsUrl": "wss://falcon-caas.mai.microsoft.com/voice-code/api/v1/realtime/voice",
+	"extensionConfigurationPolicy": {
+		"gemini.cliPath": {
+			"name": "GeminiCliPath",
+			"category": "Extensions",
+			"minimumVersion": "1.141",
+			"localization": {
+				"description": {
+					"key": "gemini.cliPath.policy",
+					"value": "Path to the Gemini CLI that GeminiCode runs. Set it to an empty string, with GeminiCliVersion, to pin GeminiCode's own copy."
+				}
+			}
+		},
+		"gemini.cli.version": {
+			"name": "GeminiCliVersion",
+			"category": "Extensions",
+			"minimumVersion": "1.141",
+			"localization": {
+				"description": {
+					"key": "gemini.cli.version.policy",
+					"value": "The version of GeminiCode's own copy of the Gemini CLI to run, such as 0.62.0."
+				}
+			}
+		}
+	}
 }
