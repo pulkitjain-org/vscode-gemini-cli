@@ -20,6 +20,7 @@ function summary(items: readonly TranscriptItem[]): string[] {
 			case 'other': return `other:${item.type}`;
 			case 'notice': return `notice:${item.severity}:${item.text}`;
 			case 'permission': return `permission:${item.title}:${item.answer ? (item.answer.kind === 'selected' ? item.answer.name : 'cancelled') : 'pending'}`;
+			case 'turnEnd': return 'turnEnd';
 		}
 	});
 }

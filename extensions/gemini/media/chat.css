@@ -491,6 +491,26 @@ button {
 	color: var(--vscode-errorForeground);
 }
 
+/* ---- End of a turn ---- */
+
+.turn-end {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	margin: 2px 0 10px;
+	font-size: 0.85em;
+	color: var(--gemini-muted);
+}
+
+.turn-end .copy-reply {
+	opacity: 0;
+}
+
+.turn-end:hover .copy-reply,
+.turn-end .copy-reply:focus-visible {
+	opacity: 1;
+}
+
 /* ---- Status and composer ---- */
 
 .status {
@@ -648,6 +668,30 @@ button {
 
 .pill:hover {
 	border-color: var(--gemini-border);
+}
+
+/* Buttons that look like the pickers: an icon and a label, no chevron. */
+button.pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 0 9px;
+	overflow: hidden;
+	white-space: nowrap;
+}
+
+button.pill[hidden] {
+	display: none;
+}
+
+button.pill span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+button.pill .codicon {
+	font-size: 12px;
+	color: var(--gemini-muted);
 }
 
 .pill option {

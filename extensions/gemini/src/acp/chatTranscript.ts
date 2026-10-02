@@ -53,7 +53,9 @@ export type TranscriptItem =
 	}
 	/** An update kind this version does not know (design rule 4). */
 	| { readonly id: string; readonly kind: 'other'; readonly type: string }
-	| { readonly id: string; readonly kind: 'notice'; readonly text: string; readonly severity: 'info' | 'error' };
+	| { readonly id: string; readonly kind: 'notice'; readonly text: string; readonly severity: 'info' | 'error' }
+	/** Ends a turn: how long the agent worked, with a way to copy its reply. */
+	| { readonly id: string; readonly kind: 'turnEnd'; readonly durationMs: number };
 
 /**
  * Update kinds that describe the session rather than the conversation. They
@@ -147,6 +149,10 @@ export class ChatTranscript {
 		}
 		const selected = outcome.outcome === 'selected' ? item.options.find(o => o.optionId === outcome.optionId) : undefined;
 		this.upsert({ ...item, answer: selected ? { kind: 'selected', name: selected.name } : { kind: 'cancelled' } });
+	}
+
+	addTurnEnd(durationMs: number): void {
+		this.push({ id: this.newId(), kind: 'turnEnd', durationMs: Math.max(0, Math.round(durationMs)) });
 	}
 
 	addNotice(text: string, severity: 'info' | 'error' = 'info'): void {
