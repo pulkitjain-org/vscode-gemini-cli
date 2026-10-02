@@ -58,6 +58,22 @@ export class AgentConnection {
 		return response;
 	}
 
+	newSession(cwd: string): Promise<acp.NewSessionResponse> {
+		return this.connection.agent.request('session/new', { cwd, mcpServers: [] });
+	}
+
+	authenticate(methodId: string): Promise<acp.AuthenticateResponse> {
+		return this.connection.agent.request('authenticate', { methodId });
+	}
+
+	prompt(sessionId: string, prompt: acp.ContentBlock[]): Promise<acp.PromptResponse> {
+		return this.connection.agent.request('session/prompt', { sessionId, prompt });
+	}
+
+	cancel(sessionId: string): Promise<void> {
+		return this.connection.agent.notify('session/cancel', { sessionId });
+	}
+
 	dispose(): void {
 		this.connection.close();
 	}

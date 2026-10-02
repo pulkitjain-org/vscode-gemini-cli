@@ -5,7 +5,8 @@
 
 import * as vscode from 'vscode';
 import { AgentConnection } from '../acp/agentConnection';
-import { resolveAgentCommand, spawnAgent } from '../acp/agentProcess';
+import { spawnAgent } from '../acp/agentProcess';
+import { getAgentCommand, getWorkspaceCwd } from './configuration';
 
 const initializeTimeoutMs = 30_000;
 
@@ -14,15 +15,10 @@ const initializeTimeoutMs = 30_000;
  * reports what the agent advertises, and stops the process again.
  */
 export async function checkAgent(log: vscode.LogOutputChannel): Promise<void> {
-	const command = resolveAgentCommand({
-		cliPath: vscode.workspace.getConfiguration('gemini').get<string>('cliPath'),
-		execPath: process.execPath,
-		env: process.env,
-		platform: process.platform,
-	});
+	const command = getAgentCommand();
 	log.info(`Starting agent: ${command.command} ${command.args.join(' ')}`);
 
-	const child = spawnAgent(command, vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
+	const child = spawnAgent(command, getWorkspaceCwd());
 	child.stderr.on('data', (chunk: Buffer) => log.info(`[agent] ${chunk.toString().trimEnd()}`));
 	const exited = new Promise<never>((_, reject) => {
 		child.once('error', reject);

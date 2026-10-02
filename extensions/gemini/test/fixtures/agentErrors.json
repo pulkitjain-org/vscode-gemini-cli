@@ -1,0 +1,10 @@
+{
+	"//": "Error messages exactly as gemini --acp sends them, per CLI version. Copied from the CLI source (packages/core/src/code_assist/setup.ts, packages/cli/src/acp) or captured from a live run.",
+	"0.62.0": [
+		{ "kind": "auth-required", "code": -32000, "message": "Gemini API key is missing or not configured.", "captured": "live, no auth type selected" },
+		{ "kind": "auth-required", "code": -32000, "message": "Authentication required." },
+		{ "kind": "project-id-required", "code": -32000, "message": "This account requires setting the GOOGLE_CLOUD_PROJECT or GOOGLE_CLOUD_PROJECT_ID env var. See https://geminicli.com/docs/get-started/authentication/#set-gcp" },
+		{ "kind": "project-id-numeric", "code": -32000, "message": "Invalid Google Cloud Project ID: \"123456789012\". The GOOGLE_CLOUD_PROJECT (or GOOGLE_CLOUD_PROJECT_ID) environment variable must be set to your string-based Project ID (e.g., \"my-project-123\"), not your numeric Project Number. Please update your environment variables." },
+		{ "kind": "auth-failed", "message": "Failed to authenticate with user code.", "captured": "live, stderr before exit code 41" }
+	]
+}

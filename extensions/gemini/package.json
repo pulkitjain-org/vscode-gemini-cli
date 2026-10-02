@@ -26,13 +26,33 @@
   "contributes": {
     "commands": [
       {
-        "command": "gemini.showLog",
-        "title": "%command.showLog%",
+        "command": "gemini.sendPrompt",
+        "title": "%command.sendPrompt%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.restartAgent",
+        "title": "%command.restartAgent%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.setProjectId",
+        "title": "%command.setProjectId%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.completeSetupInTerminal",
+        "title": "%command.completeSetupInTerminal%",
         "category": "%category%"
       },
       {
         "command": "gemini.checkAgent",
         "title": "%command.checkAgent%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.showLog",
+        "title": "%command.showLog%",
         "category": "%category%"
       }
     ],
@@ -44,6 +64,12 @@
           "default": "",
           "scope": "machine",
           "markdownDescription": "%configuration.cliPath%"
+        },
+        "gemini.projectId": {
+          "type": "string",
+          "default": "",
+          "scope": "window",
+          "markdownDescription": "%configuration.projectId%"
         }
       }
     },
