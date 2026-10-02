@@ -277,6 +277,17 @@
 					"value": "The version of GeminiCode's own copy of the Gemini CLI to run, such as 0.62.0."
 				}
 			}
+		},
+		"gemini.cli.checkForUpdates": {
+			"name": "GeminiCliCheckForUpdates",
+			"category": "Extensions",
+			"minimumVersion": "1.141",
+			"localization": {
+				"description": {
+					"key": "gemini.cli.checkForUpdates.policy",
+					"value": "Whether GeminiCode checks the npm registry once a day for a newer Gemini CLI and offers to install it."
+				}
+			}
 		}
 	}
 }
