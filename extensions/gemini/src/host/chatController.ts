@@ -18,6 +18,7 @@ import { readGitHead } from '../acp/gitHead';
 import { ChatStrings, chatProtocolVersion, FromWebview, statusCommands, ToWebview, ViewStatus } from './chatProtocol';
 import { DiffPreview } from './diffPreview';
 import { createBranchAndCommit, pickBranch } from './gitActions';
+import { rememberModel } from './modelPreference';
 import type { FileMatch } from './workspaceFiles';
 
 /** The agent session a chat talks to: the sidebar's, or one agent's in the Agents pane. */
@@ -337,7 +338,11 @@ export class ChatController implements vscode.Disposable {
 				void this.changeSetting(() => this.service.client.setMode(message.id));
 				break;
 			case 'setModel':
-				void this.changeSetting(() => this.service.client.setModel(message.id));
+				void this.changeSetting(() => this.service.client.setModel(message.id)).then(() => {
+					if (this.service.client.settings.model?.currentId === message.id) {
+						rememberModel(message.id);
+					}
+				});
 				break;
 			case 'pickBranch': {
 				const folder = this.options.git?.folder();

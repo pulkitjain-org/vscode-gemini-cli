@@ -14,6 +14,7 @@ import { MIN_CLI_VERSION } from '../acp/protocol';
 import { AgentSidecar } from '../acp/sidecar';
 import { AgentStatus, describeAgentStatus } from '../acp/status';
 import { configSection, getAgentCommand, getCliResolution, getProjectSettings, getWorkspaceCwd } from './configuration';
+import { preferredModel } from './modelPreference';
 import { getFileAccessPolicy, WorkspaceFileSystem } from './workspaceFileSystem';
 
 /**
@@ -49,6 +50,7 @@ export class AgentService implements vscode.Disposable {
 		this.client = new AgentClient(this.runtime, {
 			cwd: getWorkspaceCwd(),
 			requestPermission: params => this.permissions.request(params),
+			preferredModel,
 		});
 
 		this.disposables.push(

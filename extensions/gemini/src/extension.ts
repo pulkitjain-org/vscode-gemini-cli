@@ -13,11 +13,13 @@ import { ChatViewProvider, chatViewId } from './host/chatView';
 import { checkAgent } from './host/checkAgent';
 import { DiffPreview } from './host/diffPreview';
 import { configSection, setManagedCliDir } from './host/configuration';
+import { initModelPreference } from './host/modelPreference';
 import { GeminiStatusBar } from './host/statusBar';
 import { WorkspaceFileIndex } from './host/workspaceFiles';
 
 export function activate(context: vscode.ExtensionContext): void {
 	const log = vscode.window.createOutputChannel('Gemini', { log: true });
+	initModelPreference(context.globalState);
 	setManagedCliDir(vscode.Uri.joinPath(context.globalStorageUri, 'gemini-cli').fsPath);
 	const service = new AgentService(log);
 	const diffPreview = new DiffPreview();

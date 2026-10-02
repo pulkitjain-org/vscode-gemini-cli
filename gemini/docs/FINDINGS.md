@@ -73,3 +73,16 @@ Read from the gemini-cli 0.62.0 bundle:
 - Tool calls replay with title, kind, locations, diffs and text only, so a client cannot rebuild its own view from the replay.
 
 GeminiCode therefore keeps its own copy of each agent's conversation for display and uses `session/load` only so the agent remembers it. The replay arrives outside a turn and the chat ignores it. If the user sends a prompt while a long replay is still streaming, the tail of the replay could show in that turn; it has not been seen in practice.
+
+## Where a prompt's time goes
+
+Measured on 2 Oct 2026 with gemini-cli 0.62.0 in `--acp` mode against a local stand-in for the Gemini API (`GOOGLE_GEMINI_BASE_URL`) that answers at once. The scripts are not in the repo; the method is enough to redo it.
+
+- The CLI adds about 15 ms from `session/prompt` to the first `agent_message_chunk`, and answers `session/prompt` about 3 ms after the stream ends. The first turn of a process is 60 to 80 ms slower.
+- With the model on Auto, every prompt first makes a non-streaming routing call to Flash-Lite (JSON output, thinking level HIGH) to choose Pro or Flash. The reply waits for it: a 500 ms delay on that call delayed the first chunk by exactly 500 ms. With a model picked, through `session/set_model` or settings, the call is skipped. Tool-result follow-ups within a turn never make it.
+- The main request uses thinking level HIGH. No other model calls happen in a plain turn: in ACP mode the next-speaker check is off, the LLM loop check only starts after 30 model turns, and compression only starts past its threshold.
+- The routing call's thinking can only be lowered through `modelConfigs.customOverrides` that match the concrete model (`gemini-3.5-flash-lite`), in user or workspace settings. Matching the `classifier` alias has no effect. GeminiCode cannot supply this through `GEMINI_CLI_SYSTEM_DEFAULTS_PATH`, because the CLI ignores system settings and defaults files that fail its ownership check (not admin-owned), so it is left to admins (Phase 4 policy).
+- With usage statistics on, the CLI posts to `play.googleapis.com` in the background. These posts never delayed a turn, even when the network blocked them.
+- Per prompt, the CLI appends four small lines to its chat file under `~/.gemini/tmp/<project>/chats/`.
+
+In the chat view, re-rendering a whole streaming reply on every update cost about 25 ms per update at 30 KB. Rendering only the blocks after the last finished one costs about 2 ms (PR #15).

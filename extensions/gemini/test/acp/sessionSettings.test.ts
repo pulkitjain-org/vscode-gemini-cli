@@ -67,9 +67,9 @@ describe('AgentClient session settings', () => {
 		sidecar?.dispose();
 	});
 
-	async function start(script: FakeAgentScript): Promise<AgentClient> {
+	async function start(script: FakeAgentScript, preferredModel?: string): Promise<AgentClient> {
 		sidecar = new AgentSidecar({ command: () => fakeAgentCommand(script), cwd: undefined, restartDelaysMs: [] });
-		client = new AgentClient(runtime = new AgentRuntime(sidecar), { cwd: process.cwd(), requestPermission: async () => ({ outcome: { outcome: 'cancelled' } }) });
+		client = new AgentClient(runtime = new AgentRuntime(sidecar), { cwd: process.cwd(), requestPermission: async () => ({ outcome: { outcome: 'cancelled' } }), preferredModel: () => preferredModel });
 		const settled = waitFor<AgentClientState>(client.onDidChangeState, s => s.kind === 'ready' || s.kind === 'error');
 		sidecar.start();
 		expect(await settled).toMatchObject({ kind: 'ready' });
@@ -102,6 +102,23 @@ describe('AgentClient session settings', () => {
 		await client.setModel('gemini-2.5-flash');
 		expect(client.settings.model).toBeUndefined();
 		expect(client.settings.mode).toBeDefined();
+	});
+
+	it('opens each session on the preferred model, before the first prompt', async () => {
+		const client = await start({ newSession, supportsSetModel: true, turns: [[{ step: 'model' }]] }, 'gemini-2.5-flash');
+		expect(client.settings.model?.currentId).toBe('gemini-2.5-flash');
+		const events: ChatEvent[] = [];
+		client.onDidReceiveEvent(e => events.push(e));
+		await client.prompt('which model?');
+		expect(events).toContainEqual(expect.objectContaining({ kind: 'text', text: 'model:gemini-2.5-flash' }));
+	});
+
+	it('keeps the agent\'s model when the preferred one is not offered or cannot be set', async () => {
+		expect((await start({ newSession, supportsSetModel: true }, 'made-up-model')).settings.model?.currentId).toBe('auto');
+		client?.dispose();
+		runtime?.dispose();
+		sidecar?.dispose();
+		expect((await start({ newSession, supportsSetModel: false }, 'gemini-2.5-flash')).settings.model?.currentId).toBe('auto');
 	});
 
 	it('ignores choices the agent did not offer', async () => {

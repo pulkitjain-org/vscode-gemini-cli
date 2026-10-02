@@ -31,6 +31,13 @@ export interface AgentClientOptions {
 	readonly fileSystem?: FileSystemHandlers;
 	/** A session from an earlier run to reopen first, when the agent supports `session/load`. */
 	readonly resumeSessionId?: string;
+	/**
+	 * The model to switch each new or reopened session to, such as the one the
+	 * user picked last; ignored when the agent does not offer it. Picking a
+	 * model rather than Auto also spares gemini-cli its routing call before
+	 * every prompt.
+	 */
+	readonly preferredModel?: () => string | undefined;
 }
 
 /**
@@ -173,7 +180,11 @@ export class AgentClient {
 				fileSystem: this.options.fileSystem,
 			});
 			this.resumeSessionId = session.sessionId;
-			this.setReady(agent, session);
+			const settings = await this.applyPreferredModel(connection, session.sessionId, readSessionSettings(session));
+			if (generation !== this.generation) {
+				return;
+			}
+			this.setReady(agent, session, settings);
 		} catch (err) {
 			// If the process died, the runtime reports why (and the sidecar may
 			// restart it); the closed-connection error says less.
@@ -227,8 +238,24 @@ export class AgentClient {
 		this.connection = undefined;
 	}
 
-	private setReady(agent: acp.InitializeResponse, session: acp.NewSessionResponse): void {
-		this.setSettings(readSessionSettings(session));
+	/** Switches a session that just opened to the preferred model, before any prompt can reach it. */
+	private async applyPreferredModel(connection: AgentConnection, sessionId: string, settings: SessionSettings): Promise<SessionSettings> {
+		const preferred = this.options.preferredModel?.();
+		const model = settings.model;
+		if (!preferred || !model || model.currentId === preferred || !model.available.some(choice => choice.id === preferred)) {
+			return settings;
+		}
+		try {
+			await connection.setModel(sessionId, preferred);
+			return { ...settings, model: { ...model, currentId: preferred } };
+		} catch {
+			// The session keeps the agent's default; the picker shows it.
+			return settings;
+		}
+	}
+
+	private setReady(agent: acp.InitializeResponse, session: acp.NewSessionResponse, settings: SessionSettings): void {
+		this.setSettings(settings);
 		this.setState({ kind: 'ready', sessionId: session.sessionId, agent, session });
 	}
 
