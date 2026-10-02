@@ -8,6 +8,7 @@ import * as vscode from 'vscode';
 import { AgentClient, AgentClientState } from '../acp/agentClient';
 import { AgentErrorInfo } from '../acp/errors';
 import { AgentSidecar } from '../acp/sidecar';
+import { AgentStatus, describeAgentStatus } from '../acp/status';
 import { configSection, getAgentCommand, getProjectSettings, getWorkspaceCwd } from './configuration';
 
 /**
@@ -21,6 +22,11 @@ export class AgentService implements vscode.Disposable {
 	readonly client: AgentClient;
 	private readonly disposables: vscode.Disposable[] = [];
 	private started = false;
+	/** Why the agent was not started at all; cleared on the next start. */
+	private blocked: AgentErrorInfo | undefined;
+
+	private readonly onDidChangeStatusEmitter = new vscode.EventEmitter<AgentStatus>();
+	readonly onDidChangeStatus = this.onDidChangeStatusEmitter.event;
 
 	constructor(private readonly log: vscode.LogOutputChannel) {
 		this.sidecar = new AgentSidecar({ command: () => getAgentCommand(), cwd: getWorkspaceCwd() });
@@ -30,6 +36,9 @@ export class AgentService implements vscode.Disposable {
 		});
 
 		this.disposables.push(
+			this.onDidChangeStatusEmitter,
+			this.sidecar.onDidChangeState(() => this.onDidChangeStatusEmitter.fire(this.status)),
+			this.client.onDidChangeState(() => this.onDidChangeStatusEmitter.fire(this.status)),
 			this.sidecar.onStderr(line => log.info(`[agent] ${line}`)),
 			this.sidecar.onDidChangeState(state => {
 				const detail = state.kind === 'restarting' ? ` (attempt ${state.attempt} in ${state.delayMs}ms, exit code ${state.exitCode})`
@@ -51,6 +60,10 @@ export class AgentService implements vscode.Disposable {
 				}
 			}),
 		);
+	}
+
+	get status(): AgentStatus {
+		return describeAgentStatus(this.sidecar.state, this.client.state, this.blocked);
 	}
 
 	/** Starts the agent if it is not running yet and waits until a session is ready. */
@@ -82,10 +95,13 @@ export class AgentService implements vscode.Disposable {
 		const { resolved, problem } = getProjectSettings();
 		if (problem === 'numeric') {
 			this.started = false;
+			this.blocked = { kind: 'project-id-numeric', message: vscode.l10n.t("\"{0}\" is a project number. Set the project ID instead, for example my-project-123.", resolved!.projectId) };
 			this.sidecar.stop();
-			void this.showError({ kind: 'project-id-numeric', message: vscode.l10n.t("\"{0}\" is a project number. Set the project ID instead, for example my-project-123.", resolved!.projectId) });
+			this.onDidChangeStatusEmitter.fire(this.status);
+			void this.showError(this.blocked);
 			return;
 		}
+		this.blocked = undefined;
 		if (problem === 'malformed') {
 			this.log.warn(`Project ID "${resolved!.projectId}" does not look like a Google Cloud project ID; starting anyway`);
 		}

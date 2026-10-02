@@ -6,3 +6,4 @@ out/**
 esbuild*.mts
 vitest.config.mts
 package-lock.json
+webview-src/**
