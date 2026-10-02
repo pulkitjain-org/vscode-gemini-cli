@@ -48,6 +48,12 @@ export interface FakeAgentScript {
 	 * does when no auth type is selected.
 	 */
 	readonly requireAuth?: boolean;
+	/**
+	 * Sessions `session/load` can reopen, as if stored by an earlier process;
+	 * sessions this process opened can be reopened too. Setting it advertises
+	 * `loadSession`. A reopened session first replays `history:<id>` as a user message.
+	 */
+	readonly storedSessions?: readonly string[];
 	/** Returned from `session/new`, or an error to throw (e.g. a missing project ID). */
 	readonly newSession?: Partial<acp.NewSessionResponse> | ScriptedError;
 	/** Serve the unstable `session/set_model`, as gemini-cli does. Without it the call fails with -32601. */
@@ -94,7 +100,7 @@ acp.agent({ name: 'fake-agent' })
 	.onRequest('initialize', ctx => (clientCapabilities = ctx.params.clientCapabilities, answer<acp.InitializeResponse>({
 		protocolVersion: acp.PROTOCOL_VERSION,
 		agentInfo: { name: 'fake-agent', version: '0.0.0' },
-		agentCapabilities: { loadSession: false },
+		agentCapabilities: { loadSession: !!script.storedSessions },
 		authMethods: [{ id: 'oauth-personal', name: 'Log in with Google' }],
 	}, script.initialize)))
 	.onRequest('authenticate', () => {
@@ -109,6 +115,16 @@ acp.agent({ name: 'fake-agent' })
 		const response = answer<acp.NewSessionResponse>({ sessionId: `fake-session-${++sessionCount}` }, script.newSession);
 		sessionCwds.set(response.sessionId, ctx.params.cwd);
 		return response;
+	})
+	.onRequest('session/load', async ctx => {
+		const { sessionId, cwd } = ctx.params;
+		if (!script.storedSessions || (!script.storedSessions.includes(sessionId) && !sessionCwds.has(sessionId))) {
+			throw new acp.RequestError(-32603, `Session not found: ${sessionId}`);
+		}
+		sessionCwds.set(sessionId, cwd);
+		// Like gemini-cli, the history is replayed as updates.
+		await ctx.client.notify('session/update', { sessionId, update: { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: `history:${sessionId}` } } });
+		return {};
 	})
 	.onRequest('session/prompt', async ctx => {
 		const { sessionId } = ctx.params;

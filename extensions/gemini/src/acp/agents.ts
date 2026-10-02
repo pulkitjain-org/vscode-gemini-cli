@@ -27,6 +27,8 @@ export interface AgentRecord {
 	readonly createdAt: number;
 	/** Last prompt or creation, in ms since the epoch. */
 	readonly updatedAt: number;
+	/** The agent's ACP session, reopened with `session/load` in a later window. */
+	readonly sessionId?: string;
 }
 
 export interface AgentsSnapshot {
@@ -130,6 +132,12 @@ export class AgentsModel {
 			const title = !a.titleSetByUser && a.createdAt === a.updatedAt ? titleFromPrompt(text) : undefined;
 			return { ...a, title: title ?? a.title, updatedAt: Math.max(this.now(), a.updatedAt + 1) };
 		});
+	}
+
+	setSessionId(id: string, sessionId: string): void {
+		if (this.agent(id)?.sessionId !== sessionId) {
+			this.update(id, a => ({ ...a, sessionId }));
+		}
 	}
 
 	removeAgent(id: string): void {

@@ -36,7 +36,18 @@ describe('AgentsModel', () => {
 		expect(model.workspaces).toHaveLength(1);
 	});
 
-	it('names an agent after its first prompt only', () => {
+	it('keeps the session id across a reload', () => {
+		const model = new AgentsModel();
+		const agent = model.addAgent(model.addWorkspace('/work/api').id, 'New agent');
+		let changes = 0;
+		model.onDidChange(() => changes++);
+		model.setSessionId(agent.id, 's1');
+		model.setSessionId(agent.id, 's1');
+		expect(changes).toBe(1);
+		expect(new AgentsModel(JSON.parse(JSON.stringify(model.snapshot()))).agent(agent.id)?.sessionId).toBe('s1');
+	});
+
+		it('names an agent after its first prompt only', () => {
 		const time = clock();
 		const model = new AgentsModel(undefined, time.now);
 		const agent = model.addAgent(model.addWorkspace('/w').id, 'New agent');

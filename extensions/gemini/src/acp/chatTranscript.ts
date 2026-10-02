@@ -153,6 +153,15 @@ export class ChatTranscript {
 		this.push({ id: this.newId(), kind: 'notice', text, severity });
 	}
 
+	/** Replaces the conversation with saved items, such as an agent's from an earlier window. */
+	restore(items: readonly TranscriptItem[]): void {
+		this._items = [...items];
+		this.nextId = Math.max(this.nextId, ...items.map(i => /^item-(\d+)$/.exec(i.id)).map(m => m ? Number(m[1]) + 1 : 0));
+		this.turnStart = this._items.length;
+		this.lastMessageId = undefined;
+		this.onDidResetEmitter.fire();
+	}
+
 	clear(): void {
 		this._items = [];
 		this.turnStart = 0;

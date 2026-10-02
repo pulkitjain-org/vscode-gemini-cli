@@ -26,9 +26,10 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 	private readonly onDidChangeStatusEmitter = new vscode.EventEmitter<AgentStatus>();
 	readonly onDidChangeStatus = this.onDidChangeStatusEmitter.event;
 
-	constructor(private readonly service: AgentService, readonly folder: string) {
+	constructor(private readonly service: AgentService, readonly folder: string, resumeSessionId?: string) {
 		this.client = new AgentClient(service.runtime, {
 			cwd: folder,
+			resumeSessionId,
 			requestPermission: params => this.permissions.request(params),
 			// A folder outside this window's workspace is the agent's only root.
 			fileSystem: isInWorkspace(folder) ? undefined : createFileHandlers(new WorkspaceFileSystem(), () => ({ roots: [folder], isIgnored: isIgnoredByGitCached })),

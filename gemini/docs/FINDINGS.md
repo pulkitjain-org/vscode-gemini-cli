@@ -62,3 +62,14 @@ Measured with gemini-cli 0.62.0 on a 4-core Linux machine, with an API-key auth 
 Twenty sessions alternating between two folders took 25–41 ms each, and the process grew from about 231 MB to 274 MB. Each session loads the settings of its own `cwd`, so one process serves agents in different folders. The process environment (such as `GOOGLE_CLOUD_PROJECT`) is shared, so agents that need another project ID need another process.
 
 gemini-cli 0.62.0 advertises `loadSession` but implements neither `session/list` nor `session/close` over ACP. Sessions stay in the process until it exits, and a resumable list has to come from the client.
+
+## Reopening a session (`session/load`)
+
+Read from the gemini-cli 0.62.0 bundle:
+
+- `session/load` takes `sessionId`, `cwd` and `mcpServers` and finds the session among the chat files the CLI saves under its project temp folder (`chats/session-*-<short id>.json`). A chat is saved only once it has messages, so an empty session cannot be reopened.
+- It needs `security.auth.selectedType` in the user's settings, like `session/new`; without it the request fails with auth required.
+- It replays the history as `session/update` notifications (user and agent messages, thoughts, tool calls) without waiting for them, so some can arrive after the response. The reply carries modes and models but not the session id.
+- Tool calls replay with title, kind, locations, diffs and text only, so a client cannot rebuild its own view from the replay.
+
+GeminiCode therefore keeps its own copy of each agent's conversation for display and uses `session/load` only so the agent remembers it. The replay arrives outside a turn and the chat ignores it. If the user sends a prompt while a long replay is still streaming, the tail of the replay could show in that turn; it has not been seen in practice.

@@ -116,7 +116,7 @@ export class ChatController implements vscode.Disposable {
 				if (state.kind === 'ready') {
 					this.post({ type: 'capabilities', image: service.client.promptCapabilities.image });
 					if (this.lastSessionId && state.sessionId !== this.lastSessionId && this.transcript.items.length) {
-						this.transcript.addNotice(vscode.l10n.t("The agent restarted. This is a new session, so it does not remember the messages above."));
+						this.transcript.addNotice(vscode.l10n.t("The agent could not continue the earlier session, so it does not remember the messages above."));
 					}
 					this.lastSessionId = state.sessionId;
 				}
@@ -128,6 +128,28 @@ export class ChatController implements vscode.Disposable {
 
 	get activity(): ChatActivity {
 		return { busy: this.busy, needsPermission: this.service.permissions.pendingPermissions.length > 0 };
+	}
+
+	/** The conversation, as shown. */
+	get conversation(): readonly TranscriptItem[] {
+		return this.transcript.items;
+	}
+
+	/**
+	 * Shows a saved conversation, unless one has started here. `sessionId` is
+	 * the session it belongs to: if the agent opens another, the chat says the
+	 * agent does not remember it.
+	 */
+	restore(items: readonly TranscriptItem[], sessionId: string | undefined): void {
+		if (this.busy || this.transcript.items.length || !items.length) {
+			return;
+		}
+		this.transcript.restore(items);
+		const state = this.service.client.state;
+		if (state.kind === 'ready' && sessionId && state.sessionId !== sessionId) {
+			this.transcript.addNotice(vscode.l10n.t("The agent could not continue the earlier session, so it does not remember the messages above."));
+		}
+		this.lastSessionId = state.kind === 'ready' ? state.sessionId : sessionId;
 	}
 
 	/** Whether a webview shows this chat. */
@@ -212,6 +234,8 @@ export class ChatController implements vscode.Disposable {
 		this.diffs.clear();
 		if (this.service.client.state.kind !== 'ready') {
 			// The next prompt starts the agent, and with it a new session.
+			this.service.client.forgetSession();
+			this.fireActivity();
 			return;
 		}
 		this.setBusy(true);
