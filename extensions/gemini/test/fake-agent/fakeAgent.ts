@@ -32,7 +32,11 @@ export type ScriptedStep =
 	/** Echoes the model last set with `session/set_model` as `model:<id>`. */
 	| { readonly step: 'model' }
 	/** Echoes the prompt's content blocks as JSON, as `prompt:<json>`. */
-	| { readonly step: 'prompt' };
+	| { readonly step: 'prompt' }
+	/** Echoes the session's id and the `cwd` it was opened with, as `session:<id>:<cwd>`. */
+	| { readonly step: 'session' }
+	/** Echoes how many times `authenticate` was called, as `auth:<count>`. */
+	| { readonly step: 'auth' };
 
 export interface FakeAgentScript {
 	/** Exit with this code before reading anything, like a CLI that dies on startup. */
@@ -72,6 +76,8 @@ if (script.exitCode !== undefined) {
 }
 
 let authenticated = false;
+let authCount = 0;
+const sessionCwds = new Map<string, string>();
 let clientCapabilities: acp.ClientCapabilities | undefined;
 /** The last model set through `session/set_model`; the `model` step echoes it. */
 let lastModel: string | undefined;
@@ -93,13 +99,16 @@ acp.agent({ name: 'fake-agent' })
 	}, script.initialize)))
 	.onRequest('authenticate', () => {
 		authenticated = true;
+		authCount++;
 		return {};
 	})
-	.onRequest('session/new', () => {
+	.onRequest('session/new', ctx => {
 		if (script.requireAuth && !authenticated) {
 			throw new acp.RequestError(-32000, 'Gemini API key is missing or not configured.');
 		}
-		return answer<acp.NewSessionResponse>({ sessionId: `fake-session-${++sessionCount}` }, script.newSession);
+		const response = answer<acp.NewSessionResponse>({ sessionId: `fake-session-${++sessionCount}` }, script.newSession);
+		sessionCwds.set(response.sessionId, ctx.params.cwd);
+		return response;
 	})
 	.onRequest('session/prompt', async ctx => {
 		const { sessionId } = ctx.params;
@@ -129,6 +138,12 @@ acp.agent({ name: 'fake-agent' })
 						break;
 					case 'prompt':
 						await ctx.client.notify('session/update', { sessionId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `prompt:${JSON.stringify(ctx.params.prompt)}` } } });
+						break;
+					case 'session':
+						await ctx.client.notify('session/update', { sessionId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `session:${sessionId}:${sessionCwds.get(sessionId)}` } } });
+						break;
+					case 'auth':
+						await ctx.client.notify('session/update', { sessionId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `auth:${authCount}` } } });
 						break;
 					case 'readFile':
 					case 'writeFile':

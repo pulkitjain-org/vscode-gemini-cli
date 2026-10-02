@@ -225,7 +225,7 @@ Done: permission-ui and fs-handlers (PR #4), the chat redesign with model and mo
 
 One PR each, in this order. Each PR states what it did for startup and streaming speed.
 
-1. **multi-session-runtime**: one CLI process per workspace serves many ACP sessions, so a second agent in the same folder skips process startup. A process with no open or running agents shuts down after an idle timeout. Each agent keeps its own fs roots and permission state.
+1. **multi-session-runtime**: one CLI process serves every agent that shares its launch settings (CLI path and project ID), whatever folder each agent works in, because `session/new` takes its own `cwd`. A second agent starts in about 30 ms and costs about 2.5 MB, against about 1.2 s and 230 MB for a new process (FINDINGS.md). Each agent keeps its own permission answers and can have its own file roots. Processes for other launch settings, and shutting down idle ones, come with agents-pane, which is the first to need them.
 2. **agents-pane**: an Agents view container in the activity bar, shown first. A tree of workspaces (the open folder plus folders the user adds) with agents under each. Each row shows title, status (working, needs permission, done, error), relative time and git branch. Actions: add workspace (folder picker), new agent per workspace, rename, remove, and a search filter.
 3. **agent-tabs**: an agent opens as an editor tab (`WebviewPanel`) reusing the chat webview. Several agents can sit in split editors. The sidebar chat stays as a quick chat.
 4. **agent-resume**: when `loadSession` is advertised, agents survive a reload through `session/list` and `session/load`. Otherwise the pane keeps our own transcript and starts a fresh session on reopen, and says so.
@@ -284,6 +284,6 @@ The rev 1 risks still stand: the signing pipeline, gaps in Open VSX, daily CLI r
 - **Error-string coupling (C3).** Error classification breaks silently when the CLI changes its wording. This is mitigated by the fixture tests and by falling back to the raw message.
 - **No sandbox (C1).** "Ask, don't decide" depends on running in `default` mode under the admin policy. The UI must make the current mode impossible to miss.
 - **ACP OAuth flow (C4)** is unverified in an IDE-spawned sidecar. The Phase 1 spike settles it.
-- **Many agents, many processes (rev 4).** Each workspace runs its own CLI process. Idle shutdown and the per-workspace sharing in `multi-session-runtime` keep memory flat; the pane must show when an agent's process was stopped.
+- **Many agents in one process (rev 4).** gemini-cli 0.62 has no way to close a session, so a long-lived process keeps every session it opened (about 2.5 MB each). Restarting an idle process frees them; the pane must show when an agent's process was stopped.
 - **Upstream merge cost.** A hard fork on a ~monthly upstream cadence needs a named owner. The `GEMINI-FORK` marker list and keeping work in the built-in extension are the main controls.
 - **Build resources.** Full packaged VS Code builds need large CI runners (about 16 GB RAM) and an ARM64 macOS runner. Phase 1 CI compiles and tests only.

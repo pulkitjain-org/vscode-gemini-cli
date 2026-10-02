@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { AgentClient, AgentClientState } from '../../src/acp/agentClient';
 import { ChatTranscript, countChangedLines, TranscriptItem } from '../../src/acp/chatTranscript';
 import { SessionUpdateAdapter } from '../../src/acp/sessionUpdates';
+import { AgentRuntime } from '../../src/acp/agentRuntime';
 import { AgentSidecar } from '../../src/acp/sidecar';
 import { fakeAgentCommand, waitFor } from '../helpers';
 
@@ -147,10 +148,12 @@ describe('countChangedLines', () => {
 
 describe('ChatTranscript with the fake agent', () => {
 	let sidecar: AgentSidecar | undefined;
+	let runtime: AgentRuntime | undefined;
 	let client: AgentClient | undefined;
 
 	afterEach(() => {
 		client?.dispose();
+		runtime?.dispose();
 		sidecar?.dispose();
 	});
 
@@ -167,7 +170,7 @@ describe('ChatTranscript with the fake agent', () => {
 			cwd: undefined,
 			restartDelaysMs: [],
 		});
-		client = new AgentClient(sidecar, {
+		client = new AgentClient(runtime = new AgentRuntime(sidecar), {
 			cwd: process.cwd(),
 			requestPermission: async () => ({ outcome: { outcome: 'selected', optionId: 'allow' } }),
 		});

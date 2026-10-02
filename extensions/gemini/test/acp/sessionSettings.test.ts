@@ -7,6 +7,7 @@ import type * as acp from '@agentclientprotocol/sdk';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AgentClient, AgentClientState } from '../../src/acp/agentClient';
 import { readSessionSettings, SessionSettings } from '../../src/acp/sessionSettings';
+import { AgentRuntime } from '../../src/acp/agentRuntime';
 import { AgentSidecar } from '../../src/acp/sidecar';
 import type { ChatEvent } from '../../src/acp/sessionUpdates';
 import type { FakeAgentScript } from '../fake-agent/fakeAgent';
@@ -57,16 +58,18 @@ describe('readSessionSettings', () => {
 
 describe('AgentClient session settings', () => {
 	let sidecar: AgentSidecar | undefined;
+	let runtime: AgentRuntime | undefined;
 	let client: AgentClient | undefined;
 
 	afterEach(() => {
 		client?.dispose();
+		runtime?.dispose();
 		sidecar?.dispose();
 	});
 
 	async function start(script: FakeAgentScript): Promise<AgentClient> {
 		sidecar = new AgentSidecar({ command: () => fakeAgentCommand(script), cwd: undefined, restartDelaysMs: [] });
-		client = new AgentClient(sidecar, { cwd: process.cwd(), requestPermission: async () => ({ outcome: { outcome: 'cancelled' } }) });
+		client = new AgentClient(runtime = new AgentRuntime(sidecar), { cwd: process.cwd(), requestPermission: async () => ({ outcome: { outcome: 'cancelled' } }) });
 		const settled = waitFor<AgentClientState>(client.onDidChangeState, s => s.kind === 'ready' || s.kind === 'error');
 		sidecar.start();
 		expect(await settled).toMatchObject({ kind: 'ready' });

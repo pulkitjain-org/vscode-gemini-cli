@@ -7,7 +7,8 @@ import type * as acp from '@agentclientprotocol/sdk';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { AgentClient, AgentClientOptions, AgentClientState } from '../../src/acp/agentClient';
+import { AgentClient, AgentClientState } from '../../src/acp/agentClient';
+import { AgentRuntime, FileSystemHandlers } from '../../src/acp/agentRuntime';
 import { ClientFileSystem, createFileHandlers } from '../../src/acp/fileAccess';
 import { AgentSidecar } from '../../src/acp/sidecar';
 import type { ChatEvent } from '../../src/acp/sessionUpdates';
@@ -16,19 +17,21 @@ import { fakeAgentCommand, waitFor } from '../helpers';
 
 describe('AgentClient', () => {
 	let sidecar: AgentSidecar | undefined;
+	let runtime: AgentRuntime | undefined;
 	let client: AgentClient | undefined;
 
 	afterEach(() => {
 		client?.dispose();
+		runtime?.dispose();
 		sidecar?.dispose();
 	});
 
-	function start(script: FakeAgentScript, requestPermission?: (p: acp.RequestPermissionRequest) => Promise<acp.RequestPermissionResponse>, fileSystem?: AgentClientOptions['fileSystem']) {
+	function start(script: FakeAgentScript, requestPermission?: (p: acp.RequestPermissionRequest) => Promise<acp.RequestPermissionResponse>, fileSystem?: FileSystemHandlers) {
 		sidecar = new AgentSidecar({ command: () => fakeAgentCommand(script), cwd: undefined, restartDelaysMs: [] });
-		client = new AgentClient(sidecar, {
+		runtime = new AgentRuntime(sidecar, { fileSystem });
+		client = new AgentClient(runtime, {
 			cwd: process.cwd(),
 			requestPermission: requestPermission ?? (async () => ({ outcome: { outcome: 'cancelled' } })),
-			fileSystem,
 		});
 		const settled = waitFor<AgentClientState>(client.onDidChangeState, s => s.kind === 'ready' || s.kind === 'error');
 		sidecar.start();
@@ -126,6 +129,7 @@ describe('AgentClient', () => {
 			await withFs.client.prompt('caps');
 			expect(agentText(events)).toEqual(['fs:true,true']);
 			client!.dispose();
+			runtime!.dispose();
 			sidecar!.dispose();
 
 			const withoutFs = start({ turns: [turn] });

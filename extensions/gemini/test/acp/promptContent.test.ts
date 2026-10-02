@@ -8,6 +8,7 @@ import { AgentClient, AgentClientState } from '../../src/acp/agentClient';
 import { attachmentLabel } from '../../src/acp/attachments';
 import { buildPromptContent, readPromptCapabilities } from '../../src/acp/promptContent';
 import type { ChatEvent } from '../../src/acp/sessionUpdates';
+import { AgentRuntime } from '../../src/acp/agentRuntime';
 import { AgentSidecar } from '../../src/acp/sidecar';
 import { fakeAgentCommand, waitFor } from '../helpers';
 
@@ -54,10 +55,12 @@ describe('attachment helpers', () => {
 
 describe('prompting with attachments', () => {
 	let sidecar: AgentSidecar | undefined;
+	let runtime: AgentRuntime | undefined;
 	let client: AgentClient | undefined;
 
 	afterEach(() => {
 		client?.dispose();
+		runtime?.dispose();
 		sidecar?.dispose();
 	});
 
@@ -70,7 +73,7 @@ describe('prompting with attachments', () => {
 			cwd: undefined,
 			restartDelaysMs: [],
 		});
-		client = new AgentClient(sidecar, { cwd: process.cwd(), requestPermission: async () => ({ outcome: { outcome: 'cancelled' } }) });
+		client = new AgentClient(runtime = new AgentRuntime(sidecar), { cwd: process.cwd(), requestPermission: async () => ({ outcome: { outcome: 'cancelled' } }) });
 		const ready = waitFor<AgentClientState>(client.onDidChangeState, s => s.kind === 'ready');
 		sidecar.start();
 		await ready;

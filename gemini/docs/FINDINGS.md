@@ -49,3 +49,16 @@ Without the wrapper process, two things change. The CLI asks its wrapper to rest
 ## Attached context
 
 gemini-cli 0.62.0 advertises `promptCapabilities` `image`, `audio` and `embeddedContext`. A `resource_link` with a `file://` URI is resolved like an `@path` in the terminal: the CLI reads the file itself (skipping git-ignored files, and asking permission for files outside the workspace), so attaching a file sends only its path. An embedded `resource` is added as context and shown to the model as `@<uri>`, so selections carry a `#L<start>-L<end>` fragment in their URI. `image` blocks become inline data.
+
+## Several sessions in one agent process
+
+Measured with gemini-cli 0.62.0 on a 4-core Linux machine, with an API-key auth type and a placeholder key so `session/new` succeeds without the network:
+
+| Step | Time | Memory (RSS) |
+| --- | --- | --- |
+| New process, to the `initialize` response | 1.12–1.23 s | about 230 MB |
+| Each further `session/new` in that process | 25–41 ms | about 2.5 MB more per session |
+
+Twenty sessions alternating between two folders took 25–41 ms each, and the process grew from about 231 MB to 274 MB. Each session loads the settings of its own `cwd`, so one process serves agents in different folders. The process environment (such as `GOOGLE_CLOUD_PROJECT`) is shared, so agents that need another project ID need another process.
+
+gemini-cli 0.62.0 advertises `loadSession` but implements neither `session/list` nor `session/close` over ACP. Sessions stay in the process until it exits, and a resumable list has to come from the client.
