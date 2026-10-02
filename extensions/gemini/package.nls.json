@@ -5,5 +5,10 @@
 	"command.showLog": "Show Log",
 	"command.checkAgent": "Check Agent Connection",
 	"configuration.title": "Gemini",
-	"configuration.cliPath": "Path to the Gemini CLI. Either a `gemini` executable or the CLI's JavaScript entry point (run with the application's bundled Node). When empty, `gemini` is looked up on `PATH`."
+	"configuration.cliPath": "Path to the Gemini CLI. Either a `gemini` executable or the CLI's JavaScript entry point (run with the application's bundled Node). When empty, `gemini` is looked up on `PATH`.",
+	"command.sendPrompt": "Send Prompt",
+	"command.restartAgent": "Restart Agent",
+	"command.setProjectId": "Set Google Cloud Project ID",
+	"command.completeSetupInTerminal": "Complete Setup in Terminal",
+	"configuration.projectId": "Google Cloud project ID the agent bills to, passed to the CLI as `GOOGLE_CLOUD_PROJECT`. Use the project ID, not the project number. A workspace value wins over a user value; when neither is set, the organisation default and then the `GOOGLE_CLOUD_QUOTA_PROJECT`, `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_PROJECT_ID` environment variables are used."
 }

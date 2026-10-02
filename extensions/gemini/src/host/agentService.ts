@@ -1,0 +1,192 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) pulkitjain-org and contributors. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+import type * as acp from '@agentclientprotocol/sdk';
+import * as vscode from 'vscode';
+import { AgentClient, AgentClientState } from '../acp/agentClient';
+import { AgentErrorInfo } from '../acp/errors';
+import { AgentSidecar } from '../acp/sidecar';
+import { configSection, getAgentCommand, getProjectSettings, getWorkspaceCwd } from './configuration';
+
+/**
+ * The VS Code side of the agent: starts the sidecar on first use, logs it,
+ * restarts it when settings change, and turns failures into messages with
+ * a way out (plan C2, C3, C4).
+ */
+export class AgentService implements vscode.Disposable {
+
+	private readonly sidecar: AgentSidecar;
+	readonly client: AgentClient;
+	private readonly disposables: vscode.Disposable[] = [];
+	private started = false;
+
+	constructor(private readonly log: vscode.LogOutputChannel) {
+		this.sidecar = new AgentSidecar({ command: () => getAgentCommand(), cwd: getWorkspaceCwd() });
+		this.client = new AgentClient(this.sidecar, {
+			cwd: getWorkspaceCwd(),
+			requestPermission: params => this.requestPermission(params),
+		});
+
+		this.disposables.push(
+			this.sidecar.onStderr(line => log.info(`[agent] ${line}`)),
+			this.sidecar.onDidChangeState(state => {
+				const detail = state.kind === 'restarting' ? ` (attempt ${state.attempt} in ${state.delayMs}ms, exit code ${state.exitCode})`
+					: state.kind === 'failed' ? ` (${state.reason}: ${state.message})` : '';
+				log.info(`Sidecar ${state.kind}${detail}`);
+			}),
+			this.client.onDidChangeState(state => this.onClientState(state)),
+			vscode.workspace.onDidChangeConfiguration(e => {
+				if (this.started && (e.affectsConfiguration(`${configSection}.cliPath`) || e.affectsConfiguration(`${configSection}.projectId`))) {
+					log.info('Gemini settings changed; restarting the agent');
+					this.restart();
+				}
+			}),
+			vscode.window.onDidCloseTerminal(terminal => {
+				if (terminal === this.setupTerminal) {
+					this.setupTerminal = undefined;
+					log.info('Setup terminal closed; restarting the agent');
+					this.restart();
+				}
+			}),
+		);
+	}
+
+	/** Starts the agent if it is not running yet and waits until a session is ready. */
+	async ensureReady(): Promise<Extract<AgentClientState, { kind: 'ready' }>> {
+		if (!this.started) {
+			this.restart();
+		}
+		const state = this.client.state;
+		if (state.kind === 'ready') {
+			return state;
+		}
+		if (state.kind === 'error' || state.kind === 'idle') {
+			throw new Error(state.kind === 'error' ? state.error.message : vscode.l10n.t("The Gemini agent is not running."));
+		}
+		return new Promise((resolve, reject) => {
+			const listener = this.client.onDidChangeState(s => {
+				if (s.kind === 'ready') {
+					listener.dispose();
+					resolve(s);
+				} else if (s.kind === 'error' || s.kind === 'idle') {
+					listener.dispose();
+					reject(new Error(s.kind === 'error' ? s.error.message : vscode.l10n.t("The Gemini agent stopped.")));
+				}
+			});
+		});
+	}
+
+	restart(): void {
+		const { resolved, problem } = getProjectSettings();
+		if (problem === 'numeric') {
+			this.started = false;
+			this.sidecar.stop();
+			void this.showError({ kind: 'project-id-numeric', message: vscode.l10n.t("\"{0}\" is a project number. Set the project ID instead, for example my-project-123.", resolved!.projectId) });
+			return;
+		}
+		if (problem === 'malformed') {
+			this.log.warn(`Project ID "${resolved!.projectId}" does not look like a Google Cloud project ID; starting anyway`);
+		}
+		this.log.info(`Starting agent with project ${resolved ? `${resolved.projectId} (from ${resolved.source})` : '(none)'}`);
+		this.started = true;
+		this.sidecar.start();
+	}
+
+	private setupTerminal: vscode.Terminal | undefined;
+
+	/**
+	 * Opens the interactive CLI in a terminal with the agent's environment, so
+	 * its own login and account-validation flows can run (plan C2, C4).
+	 * The agent restarts when the terminal closes.
+	 */
+	completeSetupInTerminal(): void {
+		this.setupTerminal?.dispose();
+		const command = getAgentCommand({ interactive: true });
+		const useShell = command.shell;
+		this.setupTerminal = vscode.window.createTerminal({
+			name: vscode.l10n.t("Gemini setup"),
+			shellPath: useShell ? 'cmd.exe' : command.command,
+			shellArgs: useShell ? ['/c', command.command, ...command.args] : [...command.args],
+			env: command.env as Record<string, string>,
+			cwd: getWorkspaceCwd(),
+			message: vscode.l10n.t("Sign in and finish any account setup, then exit the Gemini CLI (/quit) to return to the editor."),
+		});
+		this.setupTerminal.show();
+	}
+
+	dispose(): void {
+		this.setupTerminal?.dispose();
+		this.client.dispose();
+		this.sidecar.dispose();
+		vscode.Disposable.from(...this.disposables).dispose();
+	}
+
+	private onClientState(state: AgentClientState): void {
+		switch (state.kind) {
+			case 'ready': {
+				const agent = state.agent.agentInfo;
+				this.log.info(`Session ${state.sessionId} ready (${agent ? `${agent.name} ${agent.version}` : 'unknown agent'})`);
+				break;
+			}
+			case 'error':
+				this.log.error(`Agent error (${state.error.kind}): ${state.error.message}`);
+				void this.showError(state.error);
+				break;
+		}
+	}
+
+	private async showError(error: AgentErrorInfo): Promise<void> {
+		const setUpInTerminal = vscode.l10n.t("Complete Setup in Terminal");
+		const setProject = vscode.l10n.t("Set Project ID");
+		const setCliPath = vscode.l10n.t("Set CLI Path");
+		const restart = vscode.l10n.t("Restart Agent");
+		const showLog = vscode.l10n.t("Show Log");
+
+		let message: string;
+		let actions: string[];
+		switch (error.kind) {
+			case 'auth-required':
+			case 'auth-failed':
+				message = vscode.l10n.t("Gemini needs you to sign in. Finish signing in in a terminal, then the agent restarts. ({0})", error.message);
+				actions = [setUpInTerminal, showLog];
+				break;
+			case 'project-id-required':
+				message = vscode.l10n.t("Your account needs a Google Cloud project ID.");
+				actions = [setProject, showLog];
+				break;
+			case 'project-id-numeric':
+				message = error.message;
+				actions = [setProject];
+				break;
+			case 'agent-not-found':
+				message = vscode.l10n.t("The Gemini CLI was not found. Install it, or set its path in the gemini.cliPath setting.");
+				actions = [setCliPath, showLog];
+				break;
+			default:
+				message = vscode.l10n.t("The Gemini agent failed: {0}", error.message);
+				actions = [restart, setUpInTerminal, showLog];
+		}
+
+		switch (await vscode.window.showErrorMessage(message, ...actions)) {
+			case setUpInTerminal: this.completeSetupInTerminal(); break;
+			case setProject: await vscode.commands.executeCommand('gemini.setProjectId'); break;
+			case setCliPath: await vscode.commands.executeCommand('workbench.action.openSettings', `${configSection}.cliPath`); break;
+			case restart: this.restart(); break;
+			case showLog: this.log.show(); break;
+		}
+	}
+
+	/**
+	 * Phase 1 permission prompt: the agent's own options in a quick pick.
+	 * Phase 2 replaces this with the permission UI and diff editor.
+	 */
+	private async requestPermission(params: acp.RequestPermissionRequest): Promise<acp.RequestPermissionResponse> {
+		const picked = await vscode.window.showQuickPick(
+			params.options.map(option => ({ label: option.name, description: option.kind, option })),
+			{ title: params.toolCall.title ?? vscode.l10n.t("Gemini wants to run a tool"), placeHolder: vscode.l10n.t("Choose how to respond"), ignoreFocusOut: true },
+		);
+		return picked ? { outcome: { outcome: 'selected', optionId: picked.option.optionId } } : { outcome: { outcome: 'cancelled' } };
+	}
+}

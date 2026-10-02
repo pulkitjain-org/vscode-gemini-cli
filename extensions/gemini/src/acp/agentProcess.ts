@@ -20,23 +20,26 @@ export interface ResolveAgentCommandOptions {
 	readonly execPath: string;
 	readonly env: NodeJS.ProcessEnv;
 	readonly platform: NodeJS.Platform;
+	/** Run the interactive CLI (for terminal setup) instead of `--acp`. */
+	readonly interactive?: boolean;
 }
 
 const scriptExtension = /\.(c|m)?js$/i;
 const windowsShim = /\.(cmd|bat)$/i;
 
 /**
- * Works out how to start `gemini --acp`.
+ * Works out how to start `gemini --acp` (or the interactive `gemini`).
  *
  * A JavaScript entry point runs under `execPath` with `ELECTRON_RUN_AS_NODE=1`,
  * so the app needs no Node installed on the host. Anything else is executed as is.
  */
 export function resolveAgentCommand(options: ResolveAgentCommandOptions): AgentCommand {
 	const cliPath = options.cliPath?.trim();
+	const modeArgs = options.interactive ? [] : ['--acp'];
 	if (cliPath && scriptExtension.test(cliPath)) {
 		return {
 			command: options.execPath,
-			args: [cliPath, '--acp'],
+			args: [cliPath, ...modeArgs],
 			env: { ...options.env, ELECTRON_RUN_AS_NODE: '1' },
 			shell: false,
 		};
@@ -44,7 +47,7 @@ export function resolveAgentCommand(options: ResolveAgentCommandOptions): AgentC
 	const command = cliPath || (options.platform === 'win32' ? 'gemini.cmd' : 'gemini');
 	return {
 		command,
-		args: ['--acp'],
+		args: modeArgs,
 		env: { ...options.env },
 		shell: options.platform === 'win32' && windowsShim.test(command),
 	};
