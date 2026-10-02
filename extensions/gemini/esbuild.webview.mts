@@ -12,7 +12,13 @@ const outDir = path.join(import.meta.dirname, 'media');
 run({
 	entryPoints: {
 		'chat': path.join(srcDir, 'chat.ts'),
+		'codicon': path.join(import.meta.dirname, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css'),
 	},
 	srcDir,
 	outdir: outDir,
+	additionalOptions: {
+		loader: {
+			'.ttf': 'dataurl',
+		}
+	}
 }, process.argv);

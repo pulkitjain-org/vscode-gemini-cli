@@ -65,7 +65,7 @@ describe('ChatTranscript', () => {
 		transcript.apply(adapter.adapt({ sessionUpdate: 'plan', entries: [{ content: 'Read', priority: 'medium', status: 'completed' }] }));
 
 		expect(summary(transcript.items)).toEqual(['user:edit it', 'plan:Read=completed', 'tool:Edit a.ts:completed']);
-		expect(transcript.items[2]).toMatchObject({ locations: ['/w/a.ts:3'], details: [{ type: 'diff', path: '/w/a.ts', added: 2, removed: 1 }] });
+		expect(transcript.items[2]).toMatchObject({ locations: [{ path: '/w/a.ts', line: 3 }], details: [{ type: 'diff', path: '/w/a.ts', added: 2, removed: 1 }] });
 		expect(changed).toEqual(['item-0', 'item-1', 'tool-t1', 'tool-t1', 'item-1']);
 	});
 

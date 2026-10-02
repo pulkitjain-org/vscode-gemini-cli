@@ -59,6 +59,13 @@
         "command": "gemini.showStatusMenu",
         "title": "%command.showStatusMenu%",
         "category": "%category%"
+      },
+      {
+        "command": "gemini.newChat",
+        "title": "%command.newChat%",
+        "category": "%category%",
+        "icon": "$(add)",
+        "enablement": "!gemini.chatBusy"
       }
     ],
     "viewsContainers": {
@@ -76,6 +83,15 @@
           "type": "webview",
           "id": "gemini.chat",
           "name": "%view.chat%"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "gemini.newChat",
+          "when": "view == gemini.chat",
+          "group": "navigation"
         }
       ]
     },
@@ -111,7 +127,10 @@
     "zod": "^4.1.0"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.2.0",
     "@types/node": "24.x",
+    "@vscode/codicons": "^0.0.36",
+    "markdown-it": "^14.3.2",
     "vitest": "^4.1.8"
   },
   "repository": {

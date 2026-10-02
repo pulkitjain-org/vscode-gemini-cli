@@ -6,7 +6,7 @@
 import { randomBytes } from 'node:crypto';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
-import { ChatTranscript } from '../acp/chatTranscript';
+import { ChatTranscript, toolCallItemId } from '../acp/chatTranscript';
 import { PendingPermission } from '../acp/permissions';
 import { AgentStatus } from '../acp/status';
 import { AgentService } from './agentService';
@@ -28,14 +28,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 	private view: vscode.WebviewView | undefined;
 	private busy = false;
 	private lastSessionId: string | undefined;
-	/** Permission requests by id, kept after they are answered so their diffs can still be opened. */
-	private readonly permissionRequests = new Map<string, PendingPermission>();
+	/** Proposed edits by transcript item id (tool calls and permission requests), so their diffs can be opened later. */
+	private readonly diffs = new Map<string, readonly acp.Diff[]>();
 
 	constructor(private readonly extensionUri: vscode.Uri, private readonly service: AgentService, private readonly diffPreview: DiffPreview) {
 		this.disposables.push(
 			service.permissions.onDidChange(event => {
 				if (event.kind === 'requested') {
-					this.permissionRequests.set(event.permission.id, event.permission);
+					this.diffs.set(event.permission.id, diffsOf(event.permission.request.toolCall.content));
 					this.transcript.addPermission(event.permission);
 					void this.revealForPermission(event.permission);
 				} else {
@@ -48,6 +48,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 			service.client.onDidReceiveEvent(event => {
 				// Only a turn's updates belong in the transcript.
 				if (this.busy) {
+					if (event.kind === 'toolCall') {
+						this.diffs.set(toolCallItemId(event.call.id), diffsOf(event.call.content));
+					}
 					this.transcript.apply(event);
 				}
 			}),
@@ -60,6 +63,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 				}
 			}),
 			service.onDidChangeStatus(status => this.post({ type: 'status', status: toViewStatus(status) })),
+			service.client.onDidChangeSettings(settings => this.post({ type: 'settings', settings })),
 		);
 	}
 
@@ -92,7 +96,28 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 				this.transcript.addNotice(notice, stopReason === 'refusal' ? 'error' : 'info');
 			}
 		} catch (err) {
-			this.transcript.addNotice(err instanceof Error ? err.message : String(err), 'error');
+			this.transcript.addNotice(errorMessage(err), 'error');
+		} finally {
+			this.setBusy(false);
+		}
+	}
+
+	/** Clears the conversation and, when the agent runs, starts a fresh session so it forgets it too. */
+	async newChat(): Promise<void> {
+		if (this.busy) {
+			return;
+		}
+		this.transcript.clear();
+		this.diffs.clear();
+		if (this.service.client.state.kind !== 'ready') {
+			// The next prompt starts the agent, and with it a new session.
+			return;
+		}
+		this.setBusy(true);
+		try {
+			await this.service.client.newSession();
+		} catch (err) {
+			this.transcript.addNotice(errorMessage(err), 'error');
 		} finally {
 			this.setBusy(false);
 		}
@@ -106,6 +131,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 		switch (message.type) {
 			case 'ready':
 				this.postReset();
+				// Start the agent with the view, so the mode and model pickers are there before the first prompt.
+				// A failure shows in the view's status line.
+				this.service.ensureReady().catch(() => undefined);
 				break;
 			case 'prompt':
 				void this.send(message.text);
@@ -117,15 +145,28 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 				this.service.permissions.select(message.id, message.optionId);
 				break;
 			case 'openDiff':
-				void this.openDiff(message.id, message.path, false);
+				void this.openDiff(message.itemId, message.path, false);
 				break;
-			case 'clear':
-				if (!this.busy) {
-					this.transcript.clear();
-					this.permissionRequests.clear();
-				}
+			case 'openLocation':
+				void this.openLocation(message.path, message.line);
+				break;
+			case 'setMode':
+				void this.changeSetting(() => this.service.client.setMode(message.id));
+				break;
+			case 'setModel':
+				void this.changeSetting(() => this.service.client.setModel(message.id));
 				break;
 		}
+	}
+
+	private async changeSetting(change: () => Promise<void>): Promise<void> {
+		try {
+			await change();
+		} catch (err) {
+			this.transcript.addNotice(errorMessage(err), 'error');
+		}
+		// Resync the pickers: the change may have failed or been ignored.
+		this.post({ type: 'settings', settings: this.service.client.settings });
 	}
 
 	/** Brings the chat into view so the request can be answered, and shows the first proposed edit. */
@@ -141,20 +182,30 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 		}
 	}
 
-	private async openDiff(id: string, filePath: string, preserveFocus: boolean): Promise<void> {
-		const diff = this.permissionRequests.get(id)?.request.toolCall.content?.find(c => c.type === 'diff' && c.path === filePath);
-		if (diff?.type === 'diff') {
+	private async openDiff(itemId: string, filePath: string, preserveFocus: boolean): Promise<void> {
+		const diff = this.diffs.get(itemId)?.find(d => d.path === filePath);
+		if (diff) {
 			await this.diffPreview.show(diff, { preserveFocus });
+		}
+	}
+
+	private async openLocation(filePath: string, line: number | undefined): Promise<void> {
+		const position = new vscode.Position(Math.max((line ?? 1) - 1, 0), 0);
+		try {
+			await vscode.window.showTextDocument(vscode.Uri.file(filePath), { selection: new vscode.Range(position, position), preview: true });
+		} catch (err) {
+			void vscode.window.showErrorMessage(errorMessage(err));
 		}
 	}
 
 	private setBusy(busy: boolean): void {
 		this.busy = busy;
+		void vscode.commands.executeCommand('setContext', 'gemini.chatBusy', busy);
 		this.post({ type: 'busy', busy });
 	}
 
 	private postReset(): void {
-		this.post({ type: 'reset', items: this.transcript.items, busy: this.busy, status: toViewStatus(this.service.status) });
+		this.post({ type: 'reset', items: this.transcript.items, busy: this.busy, status: toViewStatus(this.service.status), settings: this.service.client.settings });
 	}
 
 	private post(message: ToWebview): void {
@@ -165,38 +216,49 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 		const nonce = createNonce();
 		const script = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'chat.js'));
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'chat.css'));
+		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'codicon.css'));
 		const strings: ChatStrings = {
-			placeholder: vscode.l10n.t("Ask Gemini. Enter sends, Shift+Enter adds a line."),
-			send: vscode.l10n.t("Send"),
+			placeholder: vscode.l10n.t("Ask Gemini anything about this workspace"),
+			placeholderFollowUp: vscode.l10n.t("Ask a follow-up"),
+			send: vscode.l10n.t("Send (Enter)"),
 			stop: vscode.l10n.t("Stop"),
-			clear: vscode.l10n.t("Clear"),
+			welcome: vscode.l10n.t("Ask Gemini to explain, change or create code in this workspace. It asks before it edits files."),
 			thinking: vscode.l10n.t("Thinking"),
-			empty: vscode.l10n.t("Ask Gemini about this workspace."),
+			thought: vscode.l10n.t("Thought"),
+			thoughtFor: vscode.l10n.t("Thought for {0}s"),
 			plan: vscode.l10n.t("Plan"),
 			unknownUpdate: vscode.l10n.t("Update not shown in this version: {0}"),
 			terminal: vscode.l10n.t("Terminal output"),
-			reviewChanges: vscode.l10n.t("Review changes to {0}"),
+			openDiff: vscode.l10n.t("Open diff"),
+			copy: vscode.l10n.t("Copy"),
+			copied: vscode.l10n.t("Copied"),
+			mode: vscode.l10n.t("Mode"),
+			model: vscode.l10n.t("Model"),
 			permissionAnswered: vscode.l10n.t("You chose: {0}"),
 			permissionCancelled: vscode.l10n.t("Not answered; the request was cancelled."),
+			permissionHint: vscode.l10n.t("Esc rejects"),
 		};
 		return `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link href="${codicons}" rel="stylesheet">
 	<link href="${style}" rel="stylesheet">
 	<title>Gemini</title>
 </head>
 <body>
-	<div id="status" class="status" role="status"></div>
 	<main id="transcript" class="transcript" aria-live="polite"></main>
+	<div id="status" class="status" role="status"></div>
 	<form id="composer" class="composer">
-		<textarea id="input" rows="3"></textarea>
-		<div class="actions">
-			<button type="button" id="clear" class="secondary"></button>
-			<button type="button" id="stop" class="secondary" hidden></button>
-			<button type="submit" id="send"></button>
+		<textarea id="input" rows="1"></textarea>
+		<div class="composer-bar">
+			<select id="mode" class="pill" hidden></select>
+			<select id="model" class="pill" hidden></select>
+			<span class="spacer"></span>
+			<button type="submit" id="send" class="round-button"><i class="codicon codicon-arrow-up"></i></button>
+			<button type="button" id="stop" class="round-button" hidden><i class="codicon codicon-debug-stop"></i></button>
 		</div>
 	</form>
 	<script nonce="${nonce}" type="module" src="${script}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
@@ -213,6 +275,14 @@ function toViewStatus(status: AgentStatus): ViewStatus {
 		case 'ready': return { phase: status.phase, text: '' };
 		case 'error': return { phase: status.phase, text: status.error?.message ?? vscode.l10n.t("The agent needs attention.") };
 	}
+}
+
+function diffsOf(content: readonly acp.ToolCallContent[] | null | undefined): acp.Diff[] {
+	return (content ?? []).flatMap(c => c.type === 'diff' ? [c] : []);
+}
+
+function errorMessage(err: unknown): string {
+	return err instanceof Error ? err.message : String(err);
 }
 
 function stopReasonNotice(stopReason: acp.StopReason): string | undefined {
