@@ -8,6 +8,7 @@ import { validateProjectId } from './acp/projectId';
 import { filesToAttach, selectionsToAttach } from './host/addToChat';
 import { AgentService } from './host/agentService';
 import { AgentsView } from './host/agentsView';
+import { applyLayoutDefaults } from './host/layoutDefaults';
 import { ChatViewProvider, chatViewId } from './host/chatView';
 import { checkAgent } from './host/checkAgent';
 import { DiffPreview } from './host/diffPreview';
@@ -22,6 +23,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	const fileIndex = new WorkspaceFileIndex();
 	const chatView = new ChatViewProvider(context.extensionUri, service, diffPreview, fileIndex);
 	const agentsView = new AgentsView(context, service, diffPreview, fileIndex);
+	void applyLayoutDefaults(context);
 	// Add to Chat goes to the agent tab in front, else to the quick chat.
 	const chatInFront = () => agentsView.activeController() ?? chatView.controller;
 
