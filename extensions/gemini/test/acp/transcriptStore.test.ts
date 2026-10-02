@@ -30,26 +30,29 @@ describe('TranscriptStore', () => {
 			{ id: 'item-1', kind: 'agent', text: 'hello' },
 			{ id: 'tool-1', kind: 'toolCall', title: 'Read a.ts', toolKind: 'read', status: 'completed', locations: [{ path: '/a.ts' }], details: [] },
 		];
-		await s.save('a1', items);
-		expect(await s.load('a1')).toEqual(items);
-		expect(await s.load('other')).toEqual([]);
+		await s.save('a1', { items, changes: [] });
+		expect((await s.load('a1')).items).toEqual(items);
+		expect(await s.load('other')).toEqual({ items: [], changes: [] });
 	});
 
 	it('settles requests and tool calls that were still open', async () => {
 		const { store: s } = await store();
-		void s.save('a1', [
-			{ id: 'p1', kind: 'permission', title: 'Write', options: [], diffPaths: [] },
-			{ id: 'tool-1', kind: 'toolCall', title: 'Edit', toolKind: 'edit', status: 'in_progress', locations: [], details: [] },
-		]);
+		void s.save('a1', {
+			items: [
+				{ id: 'p1', kind: 'permission', title: 'Write', options: [], diffPaths: [] },
+				{ id: 'tool-1', kind: 'toolCall', title: 'Edit', toolKind: 'edit', status: 'in_progress', locations: [], details: [] },
+			],
+			changes: [],
+		});
 		// Loading waits for the save.
-		expect(await s.load('a1')).toMatchObject([{ answer: { kind: 'cancelled' } }, { status: 'failed' }]);
+		expect((await s.load('a1')).items).toMatchObject([{ answer: { kind: 'cancelled' } }, { status: 'failed' }]);
 	});
 
 	it('keeps the last items and cuts long text', async () => {
 		const { store: s } = await store();
 		const items: TranscriptItem[] = Array.from({ length: 400 }, (_, i) => ({ id: `item-${i}`, kind: 'agent', text: i === 399 ? 'x'.repeat(30_000) : `m${i}` }));
-		await s.save('a1', items);
-		const loaded = await s.load('a1');
+		await s.save('a1', { items, changes: [] });
+		const loaded = (await s.load('a1')).items;
 		expect(loaded).toHaveLength(300);
 		expect(loaded[0].id).toBe('item-100');
 		expect((loaded.at(-1) as { text: string }).text.length).toBe(20_001);
@@ -57,18 +60,19 @@ describe('TranscriptStore', () => {
 
 	it('ignores unreadable files and bad items', async () => {
 		const { dir, store: s } = await store();
-		await s.save('a1', []);
+		await s.save('a1', { items: [], changes: [] });
 		await writeFile(path.join(dir, 'agents', 'a1.json'), '{not json');
-		expect(await s.load('a1')).toEqual([]);
+		expect(await s.load('a1')).toEqual({ items: [], changes: [] });
 		await writeFile(path.join(dir, 'agents', 'a1.json'), JSON.stringify({ version: 1, items: [{ id: 'x', kind: 'agent', text: 'ok' }, { id: 'y', kind: 'agent' }, null] }));
-		expect(await s.load('a1')).toEqual([{ id: 'x', kind: 'agent', text: 'ok' }]);
+		expect(await s.load('a1')).toEqual({ items: [{ id: 'x', kind: 'agent', text: 'ok' }], changes: [] });
 	});
 
 	it('deletes an agent\'s conversation', async () => {
 		const { store: s } = await store();
-		await s.save('a1', [{ id: 'item-0', kind: 'agent', text: 'hi' }]);
+		await s.save('a1', { items: [{ id: 'item-0', kind: 'agent', text: 'hi' }], changes: [{ path: '/a.ts', created: true, original: '', added: 1, removed: 0 }] });
+		expect((await s.load('a1')).changes).toHaveLength(1);
 		await s.delete('a1');
-		expect(await s.load('a1')).toEqual([]);
+		expect(await s.load('a1')).toEqual({ items: [], changes: [] });
 	});
 });
 

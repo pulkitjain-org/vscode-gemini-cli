@@ -96,6 +96,12 @@
         "category": "%category%"
       },
       {
+        "command": "gemini.agents.openChanges",
+        "title": "%command.agents.openChanges%",
+        "category": "%category%",
+        "icon": "$(diff-multiple)"
+      },
+      {
         "command": "gemini.agents.rename",
         "title": "%command.agents.rename%",
         "category": "%category%"
@@ -115,6 +121,25 @@
         "command": "gemini.agents.removeWorkspace",
         "title": "%command.agents.removeWorkspace%",
         "category": "%category%"
+      },
+      {
+        "command": "gemini.changes.openAll",
+        "title": "%command.changes.openAll%",
+        "category": "%category%",
+        "icon": "$(diff-multiple)",
+        "enablement": "gemini.agentHasChanges"
+      },
+      {
+        "command": "gemini.changes.clear",
+        "title": "%command.changes.clear%",
+        "category": "%category%",
+        "icon": "$(clear-all)",
+        "enablement": "gemini.agentHasChanges"
+      },
+      {
+        "command": "gemini.changes.openFile",
+        "title": "%command.changes.openFile%",
+        "category": "%category%"
       }
     ],
     "keybindings": [
@@ -132,6 +157,13 @@
           "title": "%viewContainer.title%",
           "icon": "media/gemini.svg"
         }
+      ],
+      "secondarySidebar": [
+        {
+          "id": "gemini-changes",
+          "title": "%viewContainer.changes%",
+          "icon": "$(diff-multiple)"
+        }
       ]
     },
     "views": {
@@ -144,6 +176,12 @@
           "type": "webview",
           "id": "gemini.chat",
           "name": "%view.chat%"
+        }
+      ],
+      "gemini-changes": [
+        {
+          "id": "gemini.agentChanges",
+          "name": "%view.agentChanges%"
         }
       ]
     },
@@ -199,6 +237,16 @@
           "command": "gemini.agents.addWorkspace",
           "when": "view == gemini.agents",
           "group": "navigation@2"
+        },
+        {
+          "command": "gemini.changes.openAll",
+          "when": "view == gemini.agentChanges",
+          "group": "navigation@1"
+        },
+        {
+          "command": "gemini.changes.clear",
+          "when": "view == gemini.agentChanges",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -208,8 +256,13 @@
           "group": "inline"
         },
         {
+          "command": "gemini.agents.openChanges",
+          "when": "view == gemini.agents && viewItem =~ /\\.changes$/",
+          "group": "inline"
+        },
+        {
           "command": "gemini.agents.stop",
-          "when": "view == gemini.agents && viewItem == agent.busy",
+          "when": "view == gemini.agents && viewItem =~ /^agent\\.busy/",
           "group": "inline"
         },
         {
@@ -228,9 +281,14 @@
           "group": "1_agent@1"
         },
         {
-          "command": "gemini.agents.stop",
-          "when": "view == gemini.agents && viewItem == agent.busy",
+          "command": "gemini.agents.openChanges",
+          "when": "view == gemini.agents && viewItem =~ /\\.changes$/",
           "group": "1_agent@2"
+        },
+        {
+          "command": "gemini.agents.stop",
+          "when": "view == gemini.agents && viewItem =~ /^agent\\.busy/",
+          "group": "1_agent@3"
         },
         {
           "command": "gemini.agents.remove",
@@ -257,6 +315,14 @@
         },
         {
           "command": "gemini.agents.removeWorkspace",
+          "when": "false"
+        },
+        {
+          "command": "gemini.agents.openChanges",
+          "when": "false"
+        },
+        {
+          "command": "gemini.changes.openFile",
           "when": "false"
         }
       ]

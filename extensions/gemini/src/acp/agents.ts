@@ -10,6 +10,7 @@
 
 import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
+import type { ChangeTotals } from './agentChanges';
 import { Emitter } from './events';
 
 export interface WorkspaceRecord {
@@ -29,6 +30,8 @@ export interface AgentRecord {
 	readonly updatedAt: number;
 	/** The agent's ACP session, reopened with `session/load` in a later window. */
 	readonly sessionId?: string;
+	/** What the agent's edits add up to, for its row before it is opened. */
+	readonly changes?: ChangeTotals;
 }
 
 export interface AgentsSnapshot {
@@ -137,6 +140,19 @@ export class AgentsModel {
 	setSessionId(id: string, sessionId: string): void {
 		if (this.agent(id)?.sessionId !== sessionId) {
 			this.update(id, a => ({ ...a, sessionId }));
+		}
+	}
+
+	setChanges(id: string, changes: ChangeTotals): void {
+		const current = this.agent(id)?.changes;
+		const same = current
+			? current.files === changes.files && current.added === changes.added && current.removed === changes.removed
+			: !changes.files;
+		if (!same) {
+			this.update(id, a => {
+				const { changes: _, ...rest } = a;
+				return changes.files ? { ...rest, changes } : rest;
+			});
 		}
 	}
 

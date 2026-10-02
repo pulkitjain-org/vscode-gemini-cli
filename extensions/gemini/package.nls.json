@@ -22,8 +22,14 @@
 	"command.agents.newAgent": "New Agent",
 	"command.agents.addWorkspace": "Add Workspace...",
 	"command.agents.open": "Open Agent",
+	"command.agents.openChanges": "Open Changes",
 	"command.agents.rename": "Rename...",
 	"command.agents.stop": "Stop",
 	"command.agents.remove": "Remove Agent",
-	"command.agents.removeWorkspace": "Remove Workspace from List"
+	"command.agents.removeWorkspace": "Remove Workspace from List",
+	"viewContainer.changes": "Agent Changes",
+	"view.agentChanges": "Changes",
+	"command.changes.openAll": "Open All Changes",
+	"command.changes.clear": "Clear List",
+	"command.changes.openFile": "Open Changes"
 }
