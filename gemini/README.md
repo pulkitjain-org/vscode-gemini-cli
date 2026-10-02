@@ -1,4 +1,4 @@
-# Gemini IDE fork
+# GeminiCode fork
 
 This repository is a hard fork of [microsoft/vscode](https://github.com/microsoft/vscode) that integrates the Gemini CLI as a built-in agent over the Agent Client Protocol (ACP).
 

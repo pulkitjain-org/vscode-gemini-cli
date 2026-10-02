@@ -15,8 +15,8 @@ export const SUPPORTED_PROTOCOL_VERSION = acp.PROTOCOL_VERSION;
 export const MIN_CLI_VERSION = '0.61.0';
 
 export const CLIENT_INFO: acp.Implementation = {
-	name: 'gemini-ide',
-	title: 'Gemini IDE',
+	name: 'geminicode',
+	title: 'GeminiCode',
 	version: '0.1.0',
 };
 
