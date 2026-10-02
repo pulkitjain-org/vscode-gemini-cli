@@ -121,6 +121,16 @@ describe('AgentClient session settings', () => {
 		expect((await start({ newSession, supportsSetModel: false }, 'gemini-2.5-flash')).settings.model?.currentId).toBe('auto');
 	});
 
+	it('counts a running prompt as busy until it ends', async () => {
+		const client = await start({ newSession, supportsSetModel: true, turns: [[{ step: 'model' }]] });
+		const idle = waitFor<void>(runtime!.onDidBecomeIdle, () => true);
+		const turn = client.prompt('which model?');
+		expect(runtime!.busy).toBe(true);
+		await turn;
+		await idle;
+		expect(runtime!.busy).toBe(false);
+	});
+
 	it('ignores choices the agent did not offer', async () => {
 		const client = await start({ newSession, supportsSetModel: true });
 		await client.setModel('made-up-model');

@@ -36,6 +36,16 @@
         "category": "%category%"
       },
       {
+        "command": "gemini.installCli",
+        "title": "%command.installCli%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.installCliVersion",
+        "title": "%command.installCliVersion%",
+        "category": "%category%"
+      },
+      {
         "command": "gemini.setProjectId",
         "title": "%command.setProjectId%",
         "category": "%category%"
