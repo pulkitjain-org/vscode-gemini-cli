@@ -3025,4 +3025,42 @@ export default defineConfig(
 		rules: {
 			'local/code-no-new-javascript-files': 'error',
 		},
+	},
+	// GEMINI-FORK: fork-owned code carries its own copyright header.
+	{
+		files: [
+			'extensions/gemini/**/*.{ts,mts}',
+			'gemini/**/*.{ts,mts}',
+		],
+		rules: {
+			'header/header': [
+				2,
+				'block',
+				[
+					'---------------------------------------------------------------------------------------------',
+					' *  Copyright (c) pulkitjain-org and contributors. All rights reserved.',
+					' *  Licensed under the MIT License. See License.txt in the project root for license information.',
+					' *--------------------------------------------------------------------------------------------'
+				]
+			]
+		}
+	},
+	// GEMINI-FORK: the ACP client stays host-agnostic so it can move into the workbench.
+	{
+		files: [
+			'extensions/gemini/src/acp/**/*.ts',
+		],
+		rules: {
+			'no-restricted-imports': [
+				'error',
+				{
+					paths: [
+						{
+							name: 'vscode',
+							message: 'extensions/gemini/src/acp must not depend on the vscode API. Put host code in src/host.'
+						}
+					]
+				}
+			]
+		}
 	});
