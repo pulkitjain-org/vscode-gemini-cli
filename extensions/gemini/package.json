@@ -170,12 +170,14 @@
       "gemini": [
         {
           "id": "gemini.agents",
-          "name": "%view.agents%"
+          "name": "%view.agents%",
+          "initialSize": 2
         },
         {
           "type": "webview",
           "id": "gemini.chat",
-          "name": "%view.chat%"
+          "name": "%view.chat%",
+          "initialSize": 3
         }
       ],
       "gemini-changes": [
@@ -341,6 +343,12 @@
           "default": "",
           "scope": "window",
           "markdownDescription": "%configuration.projectId%"
+        },
+        "gemini.layout.showAgentsInNewWorkspaces": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "markdownDescription": "%configuration.layout.showAgentsInNewWorkspaces%"
         }
       }
     },

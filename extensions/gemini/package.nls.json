@@ -31,5 +31,6 @@
 	"view.agentChanges": "Changes",
 	"command.changes.openAll": "Open All Changes",
 	"command.changes.clear": "Clear List",
-	"command.changes.openFile": "Open Changes"
+	"command.changes.openFile": "Open Changes",
+	"configuration.layout.showAgentsInNewWorkspaces": "Show the Agents pane and the Changes view the first time a workspace opens. Afterwards the layout you arrange is kept."
 }
