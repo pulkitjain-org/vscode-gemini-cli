@@ -3,18 +3,16 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import type * as acp from '@agentclientprotocol/sdk';
-import { AgentClientHandlers, AgentConnection } from './agentConnection';
+import type { AgentConnection } from './agentConnection';
 import { AgentError, AgentErrorInfo, classifyAgentError } from './errors';
 import { Emitter } from './events';
+import { AgentRuntime, AgentRuntimeState, FileSystemHandlers } from './agentRuntime';
 import { PromptCapabilities, readPromptCapabilities } from './promptContent';
 import { readSessionSettings, SessionSettings } from './sessionSettings';
 import { ChatEvent, SessionUpdateAdapter } from './sessionUpdates';
-import { AgentSidecar, SidecarState } from './sidecar';
 
-/** The one auth method the IDE ever selects (plan C4). */
-export const AUTH_METHOD_ID = 'oauth-personal';
+export { AUTH_METHOD_ID } from './agentRuntime';
 
 /** JSON-RPC "method not found". */
 const METHOD_NOT_FOUND = -32601;
@@ -29,14 +27,15 @@ export interface AgentClientOptions {
 	readonly cwd: string;
 	/** Asked for every `session/request_permission`; must resolve, with `cancelled` if nothing else. */
 	readonly requestPermission: (params: acp.RequestPermissionRequest) => Promise<acp.RequestPermissionResponse>;
-	/** Serves the agent's file reads and writes; without it the agent uses the disk directly. */
-	readonly fileSystem?: Pick<AgentClientHandlers, 'readTextFile' | 'writeTextFile'>;
+	/** Serves this session's file reads and writes instead of the runtime's handlers. */
+	readonly fileSystem?: FileSystemHandlers;
 }
 
 /**
- * Owns the ACP conversation on top of the sidecar: on every new agent process
- * it runs `initialize` and `session/new` (authenticating once with
- * `oauth-personal` when the agent asks), then serves prompts for that session.
+ * One chat session on a shared `AgentRuntime`. Whenever the runtime has a
+ * ready process it opens a session in `cwd` (the runtime authenticates when
+ * the agent asks), then serves prompts for it. A restarted process gets a
+ * new session.
  */
 export class AgentClient {
 
@@ -54,10 +53,18 @@ export class AgentClient {
 	private _settings: SessionSettings = {};
 	private connection: AgentConnection | undefined;
 	private adapter = new SessionUpdateAdapter();
-	private readonly sidecarListener: { dispose(): void };
+	private registration: { dispose(): void } | undefined;
+	/** Bumped on every reconnect, so a slow `session/new` for an old process is ignored. */
+	private generation = 0;
+	private readonly runtimeListener: { dispose(): void };
 
-	constructor(sidecar: AgentSidecar, private readonly options: AgentClientOptions) {
-		this.sidecarListener = sidecar.onDidChangeState(state => this.onSidecarState(state));
+	constructor(private readonly runtime: AgentRuntime, private readonly options: AgentClientOptions) {
+		this.runtimeListener = runtime.onDidChangeState(state => this.onRuntimeState(state));
+		this.onRuntimeState(runtime.state);
+	}
+
+	get cwd(): string {
+		return this.options.cwd;
 	}
 
 	get state(): AgentClientState {
@@ -70,23 +77,10 @@ export class AgentClient {
 
 	/** Starts a fresh session on the running agent; the old conversation is gone for the agent too. */
 	async newSession(): Promise<void> {
-		const state = this._state;
-		const connection = this.connection;
-		if (state.kind !== 'ready' || !connection) {
+		if (this._state.kind !== 'ready' || this.runtime.state.kind !== 'ready') {
 			throw new Error('The agent is not ready.');
 		}
-		this.adapter = new SessionUpdateAdapter();
-		this.setState({ kind: 'connecting' });
-		try {
-			const session = await this.newSessionWithAuth(connection, state.agent);
-			if (this.connection === connection) {
-				this.setReady(state.agent, session);
-			}
-		} catch (err) {
-			if (this.connection === connection) {
-				this.setState({ kind: 'error', error: err instanceof AgentError ? err.info : classifyAgentError(err) });
-			}
-		}
+		await this.openSession();
 	}
 
 	setMode(modeId: string): Promise<void> {
@@ -124,87 +118,89 @@ export class AgentClient {
 	}
 
 	dispose(): void {
-		this.sidecarListener.dispose();
-		this.connection?.dispose();
+		this.runtimeListener.dispose();
+		this.dropSession();
 		this.onDidChangeStateEmitter.dispose();
 		this.onDidReceiveEventEmitter.dispose();
 		this.onDidChangeSettingsEmitter.dispose();
 	}
 
-	private onSidecarState(state: SidecarState): void {
+	private onRuntimeState(state: AgentRuntimeState): void {
 		switch (state.kind) {
-			case 'running':
-				void this.connect(state.process);
+			case 'ready':
+				void this.openSession();
 				break;
-			case 'starting':
-			case 'restarting':
-				this.dropConnection();
+			case 'connecting':
+				this.dropSession();
 				this.setState({ kind: 'connecting' });
 				break;
-			case 'failed':
-				this.dropConnection();
-				this.setState({ kind: 'error', error: { kind: state.reason, message: state.message } });
+			case 'error':
+				this.dropSession();
+				this.setState({ kind: 'error', error: state.error });
 				break;
-			case 'stopped':
-				this.dropConnection();
+			case 'idle':
+				this.dropSession();
 				this.setState({ kind: 'idle' });
 				break;
 		}
 	}
 
-	private async connect(agentProcess: ChildProcessWithoutNullStreams): Promise<void> {
-		this.dropConnection();
-		this.adapter = new SessionUpdateAdapter();
-		const connection = new AgentConnection(agentProcess.stdin, agentProcess.stdout, {
-			sessionUpdate: params => {
-				if (params.update.sessionUpdate === 'current_mode_update' && this._settings.mode) {
-					this.setSettings({ ...this._settings, mode: { ...this._settings.mode, currentId: params.update.currentModeId } });
-				}
-				this.onDidReceiveEventEmitter.fire(this.adapter.adapt(params.update));
-			},
-			requestPermission: params => this.options.requestPermission(params),
-			readTextFile: this.options.fileSystem?.readTextFile,
-			writeTextFile: this.options.fileSystem?.writeTextFile,
-		});
-		this.connection = connection;
+	private async openSession(): Promise<void> {
+		this.dropSession();
+		const generation = ++this.generation;
 		this.setState({ kind: 'connecting' });
 		try {
-			const agent = await connection.initialize();
-			const session = await this.newSessionWithAuth(connection, agent);
-			if (this.connection === connection) {
-				this.setReady(agent, session);
+			const { connection, agent, session } = await this.runtime.newSession(this.options.cwd);
+			if (generation !== this.generation) {
+				return;
 			}
+			this.connection = connection;
+			this.adapter = new SessionUpdateAdapter();
+			this.registration = this.runtime.register(session.sessionId, {
+				sessionUpdate: update => this.onSessionUpdate(update),
+				requestPermission: params => this.options.requestPermission(params),
+				fileSystem: this.options.fileSystem,
+			});
+			this.setReady(agent, session);
 		} catch (err) {
-			// If the process died, the sidecar reports why (and may restart it);
-			// the closed-connection error says less.
-			if (this.connection === connection && !await exitsWithin(agentProcess, 1_000)) {
+			// If the process died, the runtime reports why (and the sidecar may
+			// restart it); the closed-connection error says less.
+			if (generation === this.generation && await this.runtimeStaysReady(1_000) && generation === this.generation) {
 				this.setState({ kind: 'error', error: err instanceof AgentError ? err.info : classifyAgentError(err) });
 			}
 		}
 	}
 
-	private async newSessionWithAuth(connection: AgentConnection, agent: acp.InitializeResponse): Promise<acp.NewSessionResponse> {
-		try {
-			return await connection.newSession(this.options.cwd);
-		} catch (err) {
-			const info = classifyAgentError(err);
-			const canAuthenticate = agent.authMethods?.some(m => m.id === AUTH_METHOD_ID);
-			if (info.kind !== 'auth-required' || !canAuthenticate) {
-				throw new AgentError(info);
-			}
+	/** Whether the runtime is still ready after `ms`, or as soon as it changes state. */
+	private runtimeStaysReady(ms: number): Promise<boolean> {
+		if (this.runtime.state.kind !== 'ready') {
+			return Promise.resolve(false);
 		}
-		// Only now, and only with oauth-personal: `authenticate` rewrites the
-		// user's ~/.gemini/settings.json (plan C4).
-		try {
-			await connection.authenticate(AUTH_METHOD_ID);
-			return await connection.newSession(this.options.cwd);
-		} catch (err) {
-			throw new AgentError(classifyAgentError(err));
-		}
+		return new Promise(resolve => {
+			const timer = setTimeout(() => {
+				listener.dispose();
+				resolve(true);
+			}, ms);
+			const listener = this.runtime.onDidChangeState(() => {
+				clearTimeout(timer);
+				listener.dispose();
+				resolve(false);
+			});
+		});
 	}
 
-	private dropConnection(): void {
-		this.connection?.dispose();
+	private onSessionUpdate(update: acp.SessionUpdate): void {
+		if (update.sessionUpdate === 'current_mode_update' && this._settings.mode) {
+			this.setSettings({ ...this._settings, mode: { ...this._settings.mode, currentId: update.currentModeId } });
+		}
+		this.onDidReceiveEventEmitter.fire(this.adapter.adapt(update));
+	}
+
+	/** Stops listening to the current session. The CLI has no way to close one, so it stays in the agent's memory. */
+	private dropSession(): void {
+		this.generation++;
+		this.registration?.dispose();
+		this.registration = undefined;
 		this.connection = undefined;
 	}
 
@@ -247,21 +243,4 @@ export class AgentClient {
 		this._state = state;
 		this.onDidChangeStateEmitter.fire(state);
 	}
-}
-
-function exitsWithin(child: ChildProcessWithoutNullStreams, ms: number): Promise<boolean> {
-	if (child.exitCode !== null || child.signalCode !== null) {
-		return Promise.resolve(true);
-	}
-	return new Promise(resolve => {
-		const timer = setTimeout(() => {
-			child.off('exit', onExit);
-			resolve(false);
-		}, ms);
-		const onExit = () => {
-			clearTimeout(timer);
-			resolve(true);
-		};
-		child.once('exit', onExit);
-	});
 }

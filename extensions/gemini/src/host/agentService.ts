@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import { AgentClient, AgentClientState } from '../acp/agentClient';
+import { AgentRuntime } from '../acp/agentRuntime';
 import { AgentErrorInfo } from '../acp/errors';
 import { createFileHandlers } from '../acp/fileAccess';
 import { PermissionBroker } from '../acp/permissions';
@@ -21,6 +22,9 @@ import { getFileAccessPolicy, WorkspaceFileSystem } from './workspaceFileSystem'
 export class AgentService implements vscode.Disposable {
 
 	private readonly sidecar: AgentSidecar;
+	/** The agent process; every chat session shares it. */
+	readonly runtime: AgentRuntime;
+	/** The sidebar chat's session. */
 	readonly client: AgentClient;
 	/** The agent's permission requests, answered in the chat view. */
 	readonly permissions = new PermissionBroker();
@@ -34,10 +38,12 @@ export class AgentService implements vscode.Disposable {
 
 	constructor(private readonly log: vscode.LogOutputChannel) {
 		this.sidecar = new AgentSidecar({ command: () => getAgentCommand(), cwd: getWorkspaceCwd() });
-		this.client = new AgentClient(this.sidecar, {
+		this.runtime = new AgentRuntime(this.sidecar, {
+			fileSystem: createFileHandlers(new WorkspaceFileSystem(), getFileAccessPolicy),
+		});
+		this.client = new AgentClient(this.runtime, {
 			cwd: getWorkspaceCwd(),
 			requestPermission: params => this.permissions.request(params),
-			fileSystem: createFileHandlers(new WorkspaceFileSystem(), getFileAccessPolicy),
 		});
 
 		this.disposables.push(
@@ -153,6 +159,7 @@ export class AgentService implements vscode.Disposable {
 		this.setupTerminal?.dispose();
 		this.permissions.dispose();
 		this.client.dispose();
+		this.runtime.dispose();
 		this.sidecar.dispose();
 		vscode.Disposable.from(...this.disposables).dispose();
 	}

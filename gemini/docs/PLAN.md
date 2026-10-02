@@ -1,6 +1,8 @@
-# Gemini VS Code Fork: Build Plan (rev 3)
+# Gemini VS Code Fork: Build Plan (rev 4)
 
 This revises the original PLAN.md (1 Oct 2026). Rev 3 (2 Oct 2026) makes this repository the full fork and starts the integration as a built-in extension. The claims in rev 1 were checked against the published `@google/gemini-cli@0.62.0` bundle and `@agentclientprotocol/sdk@1.6.0` on 2 Oct 2026. Where rev 1 was wrong, it is corrected here and marked **[changed]**. Background research is in CONTEXT-HANDOFF.md.
+
+Rev 4 (2 Oct 2026) adds Phase 2B, the agent workspace: a left pane of workspaces with several agents under each, so GeminiCode feels like Cursor or Claude Code. It is built inside the extension so upstream merges and CLI upgrades stay cheap; see "Agent workspace" under Repo model.
 
 ## Decision
 
@@ -147,7 +149,21 @@ VS Code 1.140 ships its own chat UI wired to Copilot through `product.json` `def
 
 ### Chat UI
 
-The chat UI is a webview view (confirmed).
+The chat UI is a webview view (confirmed). From Phase 2B the same webview also runs in editor tabs, one per agent, and the sidebar view stays as a quick chat for the current folder.
+
+### Agent workspace **[new in rev 4]**
+
+Upstream already has an Agents Window (`src/vs/sessions`, backed by `src/vs/platform/agentHost`) with a workspaces and sessions sidebar. We do not build on it yet:
+
+- Agents register only in core code: harnesses implement `IAgent` (`src/vs/platform/agentHost/common/agent.ts`) and are added by hardcoded lines in `node/agentHostMain.ts`.
+- Session providers are core-only (`ISessionsProvidersService.registerProvider`), with no extension contribution point.
+- Extensions are disabled in that window unless listed in `sessionsWindowAllowedExtensions`.
+- Opening it needs Copilot chat setup and `chat.agent.enabled`, which clashes with our `chat.disableAIFeatures` default.
+- Those two folders are the fastest-moving areas of the repo (about 3,600 files and 197 of the last 339 commits on 2 Oct 2026).
+
+Plugging a Gemini harness in would mean patching those files on every upstream merge. Instead, the extension owns an Agents view built on public APIs (tree view, webview panels, git extension API, multi-diff). Its domain model (workspace, agent session, chat) copies upstream's naming, so moving onto the Agents Window later is a swap of the view layer. Phase 4 checks for an extension provider API at each upstream merge.
+
+Decisions (2 Oct 2026): an agent opens as an editor tab; agents for other workspaces run in this window with that folder as their root; Cmd/Ctrl+L adds the editor selection to chat.
 
 ### Tooling
 
@@ -195,20 +211,38 @@ Coding can start now against the fake agent. Only the pilot gate depends on Phas
 
 ### Phase 2: Native IDE experience (3–4 weeks)
 
+Done: permission-ui and fs-handlers (PR #4), the chat redesign with model and mode pickers (PR #5), startup and streaming speed (PR #6), context-attachment (PR #7). Session history moves to Phase 2B.
+
 - **permission-ui**: handle `session/request_permission` with the options the agent sends (`allow_once`, `allow_always`, `reject_once` or `reject_always`, rendered from the request rather than hardcoded). Edit permissions open a real diff editor from the tool call's `diff` content. Cancel resolves as `cancelled`.
 - **fs-handlers**: `fs/read_text_file` serves unsaved buffers, honours `line` and `limit`, and enforces policy (workspace trust, `.gitignore` and a secrets denylist). `fs/write_text_file` applies a `WorkspaceEdit` and then saves (C5).
 - **context-attachment**: `@`-mention file picker, "Add file / Add selection to chat" commands, `resource_link` for files, embedded `resource` for selections and snippets, and `image` blocks when `promptCapabilities.image` is set.
 - **tool-call-rendering** (replaces "terminal bridge", per C1): shell commands, output and exit status appear as tool-call cards with locations that link to files, and Stop cancels in-flight work.
 - **capability-discovery**: model, mode and config pickers are built only from server responses. A test fails the build if model or mode IDs are hardcoded in UI code.
 - **feature-detection**: `session/set_model` and `session/set_config_option` are optional, `-32601` hides the control, and an unsupported `protocolVersion` produces a clear message.
-- **session-history**: if `loadSession` is advertised, list and resume sessions with `session/list` and `session/load`.
+- **session-history**: moved to Phase 2B (`agent-resume`).
+
+### Phase 2B: Agent workspace **[new in rev 4]** (3–4 weeks, after tool-call-rendering)
+
+One PR each, in this order. Each PR states what it did for startup and streaming speed.
+
+1. **multi-session-runtime**: one CLI process serves every agent that shares its launch settings (CLI path and project ID), whatever folder each agent works in, because `session/new` takes its own `cwd`. A second agent starts in about 30 ms and costs about 2.5 MB, against about 1.2 s and 230 MB for a new process (FINDINGS.md). Each agent keeps its own permission answers and can have its own file roots. Processes for other launch settings, and shutting down idle ones, come with agents-pane, which is the first to need them.
+2. **agents-pane**: an Agents view container in the activity bar, shown first. A tree of workspaces (the open folder plus folders the user adds) with agents under each. Each row shows title, status (working, needs permission, done, error), relative time and git branch. Actions: add workspace (folder picker), new agent per workspace, rename, remove, and a search filter.
+3. **agent-tabs**: an agent opens as an editor tab (`WebviewPanel`) reusing the chat webview. Several agents can sit in split editors. The sidebar chat stays as a quick chat.
+4. **agent-resume**: when `loadSession` is advertised, agents survive a reload through `session/list` and `session/load`. Otherwise the pane keeps our own transcript and starts a fresh session on reopen, and says so.
+5. **agent-changes**: each agent tracks the files its tools edited, shows `+N −M` in its row and tab, and opens them in the multi-diff editor.
+6. **composer-extras**: "Worked for Ns" turn timing, copy on replies, a branch picker and "Create Branch & Commit" through the git extension API. Fork-from-here waits on `agent-resume`.
+7. **layout-defaults**: Agents pane first, panel and secondary sidebar tuned through `product.json` and `configurationDefaults`, not workbench code.
+
+Skipped for now: feedback thumbs, voice input, a machine picker (VS Code Remote covers it) and automations.
+
+Budgets: a new agent in a running workspace shows its composer in under 100 ms and is ready to prompt in under 300 ms; the pane renders 200 agents without lag.
 
 ### Phase 3: Version resilience and pilot (2–3 weeks; overlaps Phase 5 start)
 
 - **runtime-resolution**: resolve the CLI from an admin-pinned path or version, then the managed directory (`<userData>/gemini-cli/<version>`), then the global install. Support side-by-side versions, in-IDE upgrade with sidecar restart, and the minimum-version check.
 - **compat-ci**: run the hosted `initialize` matrix and the authenticated smoke test on a self-hosted runner, diffing the capability snapshots (C7).
 - **pilot-builds**: packaged builds of the branded app for the pilot team's platforms, signed if Phase 0 certificates are in hand, otherwise distributed under MDM trust or an explicit "unsigned internal build" note.
-- **app-pilot** (*gate*): pilot the branded application with the team and collect feedback on auth, approval UX and context attachment.
+- **app-pilot** (*gate*): pilot the branded application with the team and collect feedback on auth, approval UX, context attachment and the agent workspace. First run opens the Agents pane.
 
 ### Phase 4: Native deepening and policy (3–4 weeks, then ongoing)
 
@@ -216,10 +250,11 @@ Coding can start now against the fake agent. Only the pilot gate depends on Phas
   - first-run onboarding that walks through sign-in and project verification;
   - locking the Gemini built-in extension so it cannot be disabled;
   - hiding or replacing upstream chat entry points;
-  - layout defaults, for example the chat view docked in the secondary sidebar.
+  - layout defaults that `configurationDefaults` cannot express.
 - **policy-enforcement**: keep `default` mode, gate `yolo` and `autoEdit` behind admin policy (VS Code's policy system plus `--admin-policy` passed to the sidecar), and ship the org default project ID in `product.json`. Per C1, evaluate `--sandbox` and decide, as policy, whether shell tools are allowed at all.
 - **full-rebrand**: final icons, about dialog, license and issue-reporter URLs, and welcome page.
 - **upstream-merge-1**: the first scheduled merge of the next upstream release, to prove the process and the `GEMINI-FORK` touch list.
+- **upstream-agents-watch** **[new in rev 4]**: at each upstream merge, check whether the Agents Window (`src/vs/sessions`) gained an extension-contributed provider API. If it has, plan moving the agent workspace onto it.
 
 ### Phase 5: Distribution (overlaps Phases 3–4)
 
@@ -239,6 +274,8 @@ This phase covers:
 5. Keep a thin wire-to-UI adapter.
 6. **[new]** `extensions/gemini/src/acp` never imports `vscode`, so it can move into the workbench (or a platform service) mechanically if needed.
 7. **[new]** Every edit to an upstream file is marked `GEMINI-FORK` and kept to registration points.
+8. **[new in rev 4]** The agent workspace adds no core edits. Optional agent features (session load, model switch, images) turn on from advertised capabilities and are hidden otherwise.
+9. **[new in rev 4]** Never patch the Gemini CLI. Speed comes from GeminiCode's own code: process reuse, prewarming, batching and caching.
 
 ## Risks (updated)
 
@@ -247,5 +284,6 @@ The rev 1 risks still stand: the signing pipeline, gaps in Open VSX, daily CLI r
 - **Error-string coupling (C3).** Error classification breaks silently when the CLI changes its wording. This is mitigated by the fixture tests and by falling back to the raw message.
 - **No sandbox (C1).** "Ask, don't decide" depends on running in `default` mode under the admin policy. The UI must make the current mode impossible to miss.
 - **ACP OAuth flow (C4)** is unverified in an IDE-spawned sidecar. The Phase 1 spike settles it.
+- **Many agents in one process (rev 4).** gemini-cli 0.62 has no way to close a session, so a long-lived process keeps every session it opened (about 2.5 MB each). Restarting an idle process frees them; the pane must show when an agent's process was stopped.
 - **Upstream merge cost.** A hard fork on a ~monthly upstream cadence needs a named owner. The `GEMINI-FORK` marker list and keeping work in the built-in extension are the main controls.
 - **Build resources.** Full packaged VS Code builds need large CI runners (about 16 GB RAM) and an ARM64 macOS runner. Phase 1 CI compiles and tests only.
