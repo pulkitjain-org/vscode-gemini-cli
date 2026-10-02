@@ -81,7 +81,7 @@ async function exists(uri: vscode.Uri): Promise<boolean> {
  * Each check starts a git process, and the agent often reads the same files
  * several times in a turn, so answers are kept for a few seconds.
  */
-const isIgnoredByGitCached = memoizeAsync(isIgnoredByGit, { ttlMs: 5_000, maxEntries: 500 });
+export const isIgnoredByGitCached = memoizeAsync(isIgnoredByGit, { ttlMs: 5_000, maxEntries: 500 });
 
 /** `git check-ignore`: exit 0 means ignored. No git, or not a repository, means not ignored. */
 function isIgnoredByGit(filePath: string): Promise<boolean> {

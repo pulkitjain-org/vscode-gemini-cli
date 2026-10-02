@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import { validateProjectId } from './acp/projectId';
 import { filesToAttach, selectionsToAttach } from './host/addToChat';
 import { AgentService } from './host/agentService';
+import { AgentsView } from './host/agentsView';
 import { ChatViewProvider, chatViewId } from './host/chatView';
 import { checkAgent } from './host/checkAgent';
 import { DiffPreview } from './host/diffPreview';
@@ -20,6 +21,9 @@ export function activate(context: vscode.ExtensionContext): void {
 	const diffPreview = new DiffPreview();
 	const fileIndex = new WorkspaceFileIndex();
 	const chatView = new ChatViewProvider(context.extensionUri, service, diffPreview, fileIndex);
+	const agentsView = new AgentsView(context, service, diffPreview, fileIndex);
+	// Add to Chat goes to the agent tab in front, else to the quick chat.
+	const chatInFront = () => agentsView.activeController() ?? chatView.controller;
 
 	context.subscriptions.push(
 		log,
@@ -27,12 +31,13 @@ export function activate(context: vscode.ExtensionContext): void {
 		diffPreview,
 		fileIndex,
 		chatView,
+		agentsView,
 		new GeminiStatusBar(service),
 		vscode.window.registerWebviewViewProvider(chatViewId, chatView),
 		vscode.commands.registerCommand('gemini.openChat', () => vscode.commands.executeCommand(`${chatViewId}.focus`)),
 		vscode.commands.registerCommand('gemini.newChat', () => chatView.newChat()),
-		vscode.commands.registerCommand('gemini.addFileToChat', async (uri: unknown, uris: unknown) => chatView.attach(await filesToAttach(uri, uris))),
-		vscode.commands.registerCommand('gemini.addSelectionToChat', () => chatView.attach(selectionsToAttach())),
+		vscode.commands.registerCommand('gemini.addFileToChat', async (uri: unknown, uris: unknown) => chatInFront().addAttachments(await filesToAttach(uri, uris))),
+		vscode.commands.registerCommand('gemini.addSelectionToChat', () => chatInFront().addAttachments(selectionsToAttach())),
 		vscode.commands.registerCommand('gemini.showLog', () => log.show()),
 		vscode.commands.registerCommand('gemini.checkAgent', () => checkAgent(log)),
 		vscode.commands.registerCommand('gemini.restartAgent', () => service.restart()),

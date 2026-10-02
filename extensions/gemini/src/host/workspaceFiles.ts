@@ -4,18 +4,15 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
+import type { FileMatch } from '../acp/folderFiles';
 import { combineGlobs, indexPath, IndexedPath, rankPaths } from '../acp/fuzzy';
+
+export type { FileMatch };
 
 /** Cap on indexed files, so a huge workspace cannot stall the picker. */
 const maxFiles = 50_000;
 
 type IndexedFile = IndexedPath & { readonly path: string };
-
-export interface FileMatch {
-	readonly path: string;
-	/** Workspace-relative, for display. */
-	readonly relative: string;
-}
 
 /**
  * The file list behind the chat's @-mention picker. It is built once, on
