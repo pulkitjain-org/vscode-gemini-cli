@@ -84,6 +84,15 @@ export class AgentConnection {
 		return this.connection.agent.request('session/prompt', { sessionId, prompt });
 	}
 
+	setMode(sessionId: string, modeId: string): Promise<acp.SetSessionModeResponse> {
+		return this.connection.agent.request('session/set_mode', { sessionId, modeId });
+	}
+
+	/** The unstable `session/set_model` that gemini-cli implements; not in the SDK's stable method list. */
+	setModel(sessionId: string, modelId: string): Promise<unknown> {
+		return this.connection.agent.request('session/set_model', { sessionId, modelId });
+	}
+
 	cancel(sessionId: string): Promise<void> {
 		return this.connection.agent.notify('session/cancel', { sessionId });
 	}

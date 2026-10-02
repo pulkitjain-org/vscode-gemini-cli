@@ -8,11 +8,15 @@ import type * as acp from '@agentclientprotocol/sdk';
 import { AgentClientHandlers, AgentConnection } from './agentConnection';
 import { AgentError, AgentErrorInfo, classifyAgentError } from './errors';
 import { Emitter } from './events';
+import { readSessionSettings, SessionSettings } from './sessionSettings';
 import { ChatEvent, SessionUpdateAdapter } from './sessionUpdates';
 import { AgentSidecar, SidecarState } from './sidecar';
 
 /** The one auth method the IDE ever selects (plan C4). */
 export const AUTH_METHOD_ID = 'oauth-personal';
+
+/** JSON-RPC "method not found". */
+const METHOD_NOT_FOUND = -32601;
 
 export type AgentClientState =
 	| { readonly kind: 'idle' }
@@ -41,7 +45,12 @@ export class AgentClient {
 	private readonly onDidReceiveEventEmitter = new Emitter<ChatEvent>();
 	readonly onDidReceiveEvent = this.onDidReceiveEventEmitter.event;
 
+	private readonly onDidChangeSettingsEmitter = new Emitter<SessionSettings>();
+	/** The current session's mode and model choices changed. */
+	readonly onDidChangeSettings = this.onDidChangeSettingsEmitter.event;
+
 	private _state: AgentClientState = { kind: 'idle' };
+	private _settings: SessionSettings = {};
 	private connection: AgentConnection | undefined;
 	private adapter = new SessionUpdateAdapter();
 	private readonly sidecarListener: { dispose(): void };
@@ -52,6 +61,39 @@ export class AgentClient {
 
 	get state(): AgentClientState {
 		return this._state;
+	}
+
+	get settings(): SessionSettings {
+		return this._settings;
+	}
+
+	/** Starts a fresh session on the running agent; the old conversation is gone for the agent too. */
+	async newSession(): Promise<void> {
+		const state = this._state;
+		const connection = this.connection;
+		if (state.kind !== 'ready' || !connection) {
+			throw new Error('The agent is not ready.');
+		}
+		this.adapter = new SessionUpdateAdapter();
+		this.setState({ kind: 'connecting' });
+		try {
+			const session = await this.newSessionWithAuth(connection, state.agent);
+			if (this.connection === connection) {
+				this.setReady(state.agent, session);
+			}
+		} catch (err) {
+			if (this.connection === connection) {
+				this.setState({ kind: 'error', error: err instanceof AgentError ? err.info : classifyAgentError(err) });
+			}
+		}
+	}
+
+	setMode(modeId: string): Promise<void> {
+		return this.changeSetting('mode', modeId, (connection, sessionId) => connection.setMode(sessionId, modeId));
+	}
+
+	setModel(modelId: string): Promise<void> {
+		return this.changeSetting('model', modelId, (connection, sessionId) => connection.setModel(sessionId, modelId));
 	}
 
 	/** Sends a text prompt and resolves when the turn ends. Updates stream through `onDidReceiveEvent`. */
@@ -80,6 +122,7 @@ export class AgentClient {
 		this.connection?.dispose();
 		this.onDidChangeStateEmitter.dispose();
 		this.onDidReceiveEventEmitter.dispose();
+		this.onDidChangeSettingsEmitter.dispose();
 	}
 
 	private onSidecarState(state: SidecarState): void {
@@ -107,7 +150,12 @@ export class AgentClient {
 		this.dropConnection();
 		this.adapter = new SessionUpdateAdapter();
 		const connection = new AgentConnection(agentProcess.stdin, agentProcess.stdout, {
-			sessionUpdate: params => this.onDidReceiveEventEmitter.fire(this.adapter.adapt(params.update)),
+			sessionUpdate: params => {
+				if (params.update.sessionUpdate === 'current_mode_update' && this._settings.mode) {
+					this.setSettings({ ...this._settings, mode: { ...this._settings.mode, currentId: params.update.currentModeId } });
+				}
+				this.onDidReceiveEventEmitter.fire(this.adapter.adapt(params.update));
+			},
 			requestPermission: params => this.options.requestPermission(params),
 			readTextFile: this.options.fileSystem?.readTextFile,
 			writeTextFile: this.options.fileSystem?.writeTextFile,
@@ -116,9 +164,9 @@ export class AgentClient {
 		this.setState({ kind: 'connecting' });
 		try {
 			const agent = await connection.initialize();
-			const session = await this.newSession(connection, agent);
+			const session = await this.newSessionWithAuth(connection, agent);
 			if (this.connection === connection) {
-				this.setState({ kind: 'ready', sessionId: session.sessionId, agent, session });
+				this.setReady(agent, session);
 			}
 		} catch (err) {
 			// If the process died, the sidecar reports why (and may restart it);
@@ -129,7 +177,7 @@ export class AgentClient {
 		}
 	}
 
-	private async newSession(connection: AgentConnection, agent: acp.InitializeResponse): Promise<acp.NewSessionResponse> {
+	private async newSessionWithAuth(connection: AgentConnection, agent: acp.InitializeResponse): Promise<acp.NewSessionResponse> {
 		try {
 			return await connection.newSession(this.options.cwd);
 		} catch (err) {
@@ -154,7 +202,42 @@ export class AgentClient {
 		this.connection = undefined;
 	}
 
+	private setReady(agent: acp.InitializeResponse, session: acp.NewSessionResponse): void {
+		this.setSettings(readSessionSettings(session));
+		this.setState({ kind: 'ready', sessionId: session.sessionId, agent, session });
+	}
+
+	/**
+	 * Asks the agent to change the mode or model. An agent that does not
+	 * implement the method (-32601) loses the control instead of failing.
+	 */
+	private async changeSetting(key: keyof SessionSettings, id: string, request: (connection: AgentConnection, sessionId: string) => Promise<unknown>): Promise<void> {
+		const state = this._state;
+		const selector = this._settings[key];
+		if (state.kind !== 'ready' || !this.connection || !selector || !selector.available.some(choice => choice.id === id)) {
+			return;
+		}
+		try {
+			await request(this.connection, state.sessionId);
+			this.setSettings({ ...this._settings, [key]: { ...selector, currentId: id } });
+		} catch (err) {
+			if ((err as { code?: unknown }).code === METHOD_NOT_FOUND) {
+				this.setSettings({ ...this._settings, [key]: undefined });
+				return;
+			}
+			throw new AgentError(classifyAgentError(err));
+		}
+	}
+
+	private setSettings(settings: SessionSettings): void {
+		this._settings = settings;
+		this.onDidChangeSettingsEmitter.fire(settings);
+	}
+
 	private setState(state: AgentClientState): void {
+		if (state.kind !== 'ready' && (this._settings.mode || this._settings.model)) {
+			this.setSettings({});
+		}
 		this._state = state;
 		this.onDidChangeStateEmitter.fire(state);
 	}

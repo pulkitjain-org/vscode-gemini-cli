@@ -17,11 +17,17 @@ export type ToolCallDetail =
 	| { readonly type: 'diff'; readonly path: string; readonly added: number; readonly removed: number }
 	| { readonly type: 'terminal'; readonly terminalId: string };
 
+export interface ToolCallLocation {
+	readonly path: string;
+	/** 1-based, as ACP sends it. */
+	readonly line?: number;
+}
+
 export type TranscriptItem =
 	| { readonly id: string; readonly kind: 'user' | 'agent' | 'thought'; readonly text: string }
 	| {
 		readonly id: string; readonly kind: 'toolCall'; readonly title: string; readonly toolKind: string | undefined;
-		readonly status: acp.ToolCallStatus; readonly locations: readonly string[]; readonly details: readonly ToolCallDetail[];
+		readonly status: acp.ToolCallStatus; readonly locations: readonly ToolCallLocation[]; readonly details: readonly ToolCallDetail[];
 	}
 	| { readonly id: string; readonly kind: 'plan'; readonly entries: readonly { readonly content: string; readonly status: acp.PlanEntryStatus }[] }
 	| {
@@ -173,14 +179,18 @@ export class ChatTranscript {
 	}
 }
 
+export function toolCallItemId(toolCallId: string): string {
+	return `tool-${toolCallId}`;
+}
+
 export function toToolCallItem(call: ToolCallModel): TranscriptItem {
 	return {
-		id: `tool-${call.id}`,
+		id: toolCallItemId(call.id),
 		kind: 'toolCall',
 		title: call.title,
 		toolKind: call.kind,
 		status: call.status,
-		locations: call.locations.map(l => l.line ? `${l.path}:${l.line}` : l.path),
+		locations: call.locations.map(l => l.line ? { path: l.path, line: l.line } : { path: l.path }),
 		details: call.content.map(toToolCallDetail),
 	};
 }

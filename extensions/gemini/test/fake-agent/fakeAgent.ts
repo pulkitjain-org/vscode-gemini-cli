@@ -28,7 +28,9 @@ export type ScriptedStep =
 	/** Calls `fs/write_text_file`; echoes `wrote` or `error:<message>`. */
 	| { readonly step: 'writeFile'; readonly path: string; readonly content: string }
 	/** Echoes the client's file system capabilities from `initialize` as `fs:<read>,<write>`. */
-	| { readonly step: 'capabilities' };
+	| { readonly step: 'capabilities' }
+	/** Echoes the model last set with `session/set_model` as `model:<id>`. */
+	| { readonly step: 'model' };
 
 export interface FakeAgentScript {
 	/** Exit with this code before reading anything, like a CLI that dies on startup. */
@@ -42,6 +44,8 @@ export interface FakeAgentScript {
 	readonly requireAuth?: boolean;
 	/** Returned from `session/new`, or an error to throw (e.g. a missing project ID). */
 	readonly newSession?: Partial<acp.NewSessionResponse> | ScriptedError;
+	/** Serve the unstable `session/set_model`, as gemini-cli does. Without it the call fails with -32601. */
+	readonly supportsSetModel?: boolean;
 	/** Steps played for each successive `session/prompt`, one array per turn. */
 	readonly turns?: readonly (readonly ScriptedStep[])[];
 }
@@ -67,6 +71,8 @@ if (script.exitCode !== undefined) {
 
 let authenticated = false;
 let clientCapabilities: acp.ClientCapabilities | undefined;
+/** The last model set through `session/set_model`; the `model` step echoes it. */
+let lastModel: string | undefined;
 let sessionCount = 0;
 let turnIndex = 0;
 const pendingTurns = new Map<string, AbortController>();
@@ -116,6 +122,9 @@ acp.agent({ name: 'fake-agent' })
 					case 'update':
 						await ctx.client.notify('session/update', { sessionId, update: step.update });
 						break;
+					case 'model':
+						await ctx.client.notify('session/update', { sessionId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `model:${lastModel}` } } });
+						break;
 					case 'readFile':
 					case 'writeFile':
 					case 'capabilities': {
@@ -130,8 +139,20 @@ acp.agent({ name: 'fake-agent' })
 			pendingTurns.delete(sessionId);
 		}
 	})
+	.onRequest('session/set_mode', async ctx => {
+		// Echo the change the way gemini-cli does when its approval mode changes.
+		await ctx.client.notify('session/update', { sessionId: ctx.params.sessionId, update: { sessionUpdate: 'current_mode_update', currentModeId: ctx.params.modeId } });
+		return {};
+	})
 	.onNotification('session/cancel', ctx => {
 		pendingTurns.get(ctx.params.sessionId)?.abort();
+	})
+	.onRequest('session/set_model', (params: unknown) => params as { sessionId: string; modelId: string }, ctx => {
+		if (!script.supportsSetModel) {
+			throw acp.RequestError.methodNotFound('session/set_model');
+		}
+		lastModel = ctx.params.modelId;
+		return {};
 	})
 	.connect(stream);
 

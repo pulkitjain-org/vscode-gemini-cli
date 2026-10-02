@@ -1,0 +1,61 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) pulkitjain-org and contributors. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+// The session's mode and model, as the agent reports them (plan Phase 2,
+// capability-discovery). Nothing here is hardcoded: the pickers show exactly
+// what `session/new` returned, and a control disappears when the agent says
+// it does not support changing it (feature-detection).
+
+import type * as acp from '@agentclientprotocol/sdk';
+
+export interface SessionChoice {
+	readonly id: string;
+	readonly name: string;
+	readonly description?: string;
+}
+
+export interface SessionSelector {
+	readonly currentId: string;
+	readonly available: readonly SessionChoice[];
+}
+
+export interface SessionSettings {
+	readonly mode?: SessionSelector;
+	readonly model?: SessionSelector;
+}
+
+/**
+ * The unstable `models` field gemini-cli 0.62 still sends next to `modes`.
+ * It is no longer in the SDK's types, so it is read defensively.
+ */
+interface LegacyModelState {
+	readonly currentModelId?: unknown;
+	readonly availableModels?: unknown;
+}
+
+function isChoiceList(value: unknown): value is readonly Record<string, unknown>[] {
+	return Array.isArray(value) && value.every(v => typeof v === 'object' && v !== null);
+}
+
+export function readSessionSettings(response: acp.NewSessionResponse): SessionSettings {
+	const settings: { mode?: SessionSelector; model?: SessionSelector } = {};
+	const modes = response.modes;
+	if (modes && modes.availableModes.length > 1) {
+		settings.mode = {
+			currentId: modes.currentModeId,
+			available: modes.availableModes.map(m => ({ id: m.id, name: m.name, description: m.description ?? undefined })),
+		};
+	}
+	const models = (response as { models?: LegacyModelState }).models;
+	if (models && typeof models.currentModelId === 'string' && isChoiceList(models.availableModels)) {
+		const available = models.availableModels.flatMap(m => typeof m.modelId === 'string'
+			? [{ id: m.modelId, name: typeof m.name === 'string' ? m.name : m.modelId, description: typeof m.description === 'string' ? m.description : undefined }]
+			: []);
+		if (available.length > 1) {
+			settings.model = { currentId: models.currentModelId, available };
+		}
+	}
+	return settings;
+}
