@@ -192,6 +192,23 @@ button {
 	user-select: none;
 }
 
+.thought:not([open]) summary {
+	max-width: 100%;
+}
+
+.thought-preview {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	opacity: 0.85;
+}
+
+.thought-preview::before {
+	content: "\00b7";
+	margin-right: 4px;
+}
+
 .thought summary::-webkit-details-marker {
 	display: none;
 }

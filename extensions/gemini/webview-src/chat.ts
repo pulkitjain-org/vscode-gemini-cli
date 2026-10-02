@@ -12,6 +12,7 @@ import MarkdownIt from 'markdown-it';
 import { Attachment, attachmentLabel, basename, maxImageBase64Length, supportedImageTypes } from '../src/acp/attachments';
 import type { PromptAttachmentLabel, TranscriptItem } from '../src/acp/chatTranscript';
 import type { SessionSelector, SessionSettings } from '../src/acp/sessionSettings';
+import { stableEnd, thoughtPreview } from './streaming';
 import { chatProtocolVersion, type ChatStrings, type FromWebview, type ToWebview, type ViewGit, type ViewStatus } from '../src/host/chatProtocol';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromWebview): void };
@@ -191,6 +192,13 @@ function attachmentIcon(kind: Attachment['kind']): string {
 
 function renderMarkdown(text: string): HTMLElement {
 	const node = el('div', 'message agent markdown');
+	node.append(...renderBlocks(text));
+	return node;
+}
+
+/** Markdown as nodes, with a copy button on each code block. */
+function renderBlocks(text: string): Node[] {
+	const node = el('div');
 	node.innerHTML = markdown.render(text);
 	for (const pre of node.querySelectorAll('pre')) {
 		const wrapper = el('div', 'code-block');
@@ -205,7 +213,59 @@ function renderMarkdown(text: string): HTMLElement {
 		copy.setAttribute('aria-label', strings.copy);
 		wrapper.append(pre, copy);
 	}
-	return node;
+	return [...node.childNodes];
+}
+
+/**
+ * A reply that is still streaming. Its first `stableCount` child nodes show
+ * `stableText`, the blocks that no longer change; each update renders only
+ * the text after them, so a long reply stays cheap to update. When the reply
+ * is done it is rendered once more as a whole.
+ */
+interface StreamingReply {
+	readonly node: HTMLElement;
+	stableText: string;
+	stableCount: number;
+}
+
+const streamingReplies = new Map<string, StreamingReply>();
+
+function renderStreamingReply(item: { readonly id: string; readonly text: string }): HTMLElement {
+	const reply: StreamingReply = { node: el('div', 'message agent markdown'), stableText: '', stableCount: 0 };
+	streamingReplies.set(item.id, reply);
+	updateStreamingReply(reply, item.text);
+	return reply.node;
+}
+
+/** Whether `text` could be shown by rendering only its unfinished part. */
+function updateStreamingReply(reply: StreamingReply, text: string): boolean {
+	if (!text.startsWith(reply.stableText)) {
+		return false;
+	}
+	const { node } = reply;
+	while (node.childNodes.length > reply.stableCount) {
+		node.lastChild!.remove();
+	}
+	const end = stableEnd(text);
+	if (end > reply.stableText.length) {
+		const blocks = renderBlocks(text.slice(reply.stableText.length, end));
+		node.append(...blocks);
+		reply.stableCount += blocks.length;
+		reply.stableText = text.slice(0, end);
+	}
+	node.append(...renderBlocks(text.slice(reply.stableText.length)));
+	return true;
+}
+
+/** Renders finished replies as a whole, which also mends anything split across blocks (a loose list). */
+function finishStreamingReplies(): void {
+	for (const id of [...streamingReplies.keys()]) {
+		streamingReplies.delete(id);
+		const item = items.find(i => i.id === id);
+		if (item) {
+			rerender(item);
+		}
+	}
 }
 
 function thoughtLabel(item: { readonly id: string }): string {
@@ -221,6 +281,11 @@ function renderThought(item: { readonly id: string; readonly text: string }): HT
 	const summary = el('summary');
 	const thinking = busy && items.at(-1)?.id === item.id;
 	summary.append(icon('chevron-right', 'chevron'), el('span', thinking ? 'shimmer' : undefined, thoughtLabel(item)));
+	// While it thinks, show what about, so a long think does not look idle.
+	const preview = thinking ? thoughtPreview(item.text) : '';
+	if (preview) {
+		summary.append(el('span', 'thought-preview', preview));
+	}
 	details.append(summary, el('div', 'thought-text', item.text));
 	return details;
 }
@@ -399,7 +464,15 @@ function upsert(item: TranscriptItem, live = false): void {
 		items[index] = item;
 	}
 	const existing = elements.get(item.id);
-	const node = render(item);
+	const reply = item.kind === 'agent' && live && busy ? streamingReplies.get(item.id) : undefined;
+	if (reply && item.kind === 'agent' && existing === reply.node && updateStreamingReply(reply, item.text)) {
+		if (stick) {
+			transcript.scrollTop = transcript.scrollHeight;
+		}
+		return;
+	}
+	streamingReplies.delete(item.id);
+	const node = item.kind === 'agent' && live && busy ? renderStreamingReply(item) : render(item);
 	if (existing) {
 		// Keep a thought open if the user opened it while it streamed.
 		if (existing instanceof HTMLDetailsElement && node instanceof HTMLDetailsElement) {
@@ -411,6 +484,11 @@ function upsert(item: TranscriptItem, live = false): void {
 		transcript.append(node);
 	}
 	elements.set(item.id, node);
+	if (previous?.kind === 'agent' && streamingReplies.has(previous.id)) {
+		// Something came after the reply, so it is done.
+		streamingReplies.delete(previous.id);
+		rerender(previous);
+	}
 	if (previous?.kind === 'thought') {
 		// It is no longer the last item, so it is no longer "Thinking".
 		rerender(previous);
@@ -436,6 +514,7 @@ function rerender(item: TranscriptItem): void {
 }
 
 function reset(newItems: readonly TranscriptItem[]): void {
+	streamingReplies.clear();
 	transcript.replaceChildren();
 	elements.clear();
 	items = [];
@@ -457,6 +536,7 @@ function setBusy(value: boolean): void {
 	stopButton.hidden = !value;
 	sendButton.hidden = value;
 	if (!value) {
+		finishStreamingReplies();
 		// The turn ended: a thought that was still last has ended too.
 		const last = items.at(-1);
 		if (last?.kind === 'thought') {
