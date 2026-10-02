@@ -7,6 +7,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AgentChanges, formatCounts } from '../acp/agentChanges';
+import { branchNameFrom } from '../acp/branchNames';
 import { AgentRecord, AgentsModel, AgentsSnapshot, WorkspaceRecord } from '../acp/agents';
 import { FolderFileIndex } from '../acp/folderFiles';
 import { readGitHead } from '../acp/gitHead';
@@ -340,6 +341,19 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			changes,
 			controller: new ChatController(this.context.extensionUri, session, this.diffPreview, files, {
 				reveal: preserveFocus => this.reveal(record.id, preserveFocus),
+				git: {
+					folder: () => folder,
+					commit: {
+						files: () => changes.files.map(file => file.path),
+						onDidChange: listener => changes.onDidChange(listener),
+						suggestion: () => {
+							const title = this.model.agent(record.id)?.title ?? record.title;
+							return { branch: branchNameFrom(title), message: title };
+						},
+						// Committed changes are no longer the agent's to review.
+						committed: () => changes.clear(),
+					},
+				},
 			}),
 			unread: false,
 			activity: { busy: false, needsPermission: false },

@@ -14,8 +14,10 @@ import { buildPromptContent } from '../acp/promptContent';
 import { AgentStatus } from '../acp/status';
 import { UpdateBatcher } from '../acp/updateBatcher';
 import type { AgentClient } from '../acp/agentClient';
+import { readGitHead } from '../acp/gitHead';
 import { ChatStrings, chatProtocolVersion, FromWebview, statusCommands, ToWebview, ViewStatus } from './chatProtocol';
 import { DiffPreview } from './diffPreview';
+import { createBranchAndCommit, pickBranch } from './gitActions';
 import type { FileMatch } from './workspaceFiles';
 
 /** The agent session a chat talks to: the sidebar's, or one agent's in the Agents pane. */
@@ -42,6 +44,22 @@ export interface ChatControllerOptions {
 	reveal(preserveFocus: boolean): Promise<void>;
 	/** A context key kept equal to whether a turn runs, for menus. */
 	readonly busyContextKey?: string;
+	/** The branch pill and Create Branch & Commit; without it the composer shows neither. */
+	readonly git?: ChatGit;
+}
+
+export interface ChatGit {
+	/** The folder whose branch the chat shows; unset when there is none. */
+	folder(): string | undefined;
+	/** Create Branch & Commit, for chats that know which files their agent changed. */
+	readonly commit?: {
+		/** Absolute paths; empty hides the button. */
+		files(): readonly string[];
+		onDidChange(listener: () => void): { dispose(): void };
+		suggestion(): { readonly branch: string; readonly message: string };
+		/** The files were committed. */
+		committed(): void;
+	};
 }
 
 /** What the Agents pane shows about a chat. */
@@ -133,8 +151,14 @@ export class ChatController implements vscode.Disposable {
 				}
 			}),
 			service.onDidChangeStatus(status => this.post({ type: 'status', status: toViewStatus(status) })),
+			// The branch may have changed outside the editor.
+			vscode.window.onDidChangeWindowState(state => state.focused && this.webview && this.postGit()),
 			service.client.onDidChangeSettings(settings => this.post({ type: 'settings', settings })),
 		);
+		if (options.git?.commit) {
+			const listener = options.git.commit.onDidChange(() => this.postGit());
+			this.disposables.push(new vscode.Disposable(() => listener.dispose()));
+		}
 	}
 
 	get activity(): ChatActivity {
@@ -199,6 +223,7 @@ export class ChatController implements vscode.Disposable {
 		this.transcript.addPrompt(text, attachments);
 		this.onDidSendPromptEmitter.fire(text);
 		this.setBusy(true);
+		const started = Date.now();
 		try {
 			await this.service.ensureReady();
 			// Built after the agent is ready, so it reflects what this agent accepts.
@@ -211,6 +236,7 @@ export class ChatController implements vscode.Disposable {
 			if (notice) {
 				this.transcript.addNotice(notice, stopReason === 'refusal' ? 'error' : 'info');
 			}
+			this.transcript.addTurnEnd(Date.now() - started);
 		} catch (err) {
 			this.transcript.addNotice(errorMessage(err), 'error');
 		} finally {
@@ -276,6 +302,7 @@ export class ChatController implements vscode.Disposable {
 					this.post({ type: 'attach', attachments: this.pendingAttachments });
 					this.pendingAttachments = [];
 				}
+				this.postGit();
 				// Start the agent with the view, so the mode and model pickers are there before the first prompt.
 				// A failure shows in the view's status line.
 				this.service.ensureReady().catch(() => undefined);
@@ -312,7 +339,43 @@ export class ChatController implements vscode.Disposable {
 			case 'setModel':
 				void this.changeSetting(() => this.service.client.setModel(message.id));
 				break;
+			case 'pickBranch': {
+				const folder = this.options.git?.folder();
+				if (folder) {
+					void pickBranch(folder).finally(() => this.postGit());
+				}
+				break;
+			}
+			case 'createBranchAndCommit':
+				void this.commitChanges();
+				break;
 		}
+	}
+
+	private async commitChanges(): Promise<void> {
+		const folder = this.options.git?.folder();
+		const commit = this.options.git?.commit;
+		const files = commit?.files() ?? [];
+		if (!folder || !commit || !files.length || this.busy) {
+			return;
+		}
+		const suggestion = commit.suggestion();
+		if (await createBranchAndCommit({ folder, files, suggestedBranch: suggestion.branch, suggestedMessage: suggestion.message })) {
+			commit.committed();
+		}
+		this.postGit();
+	}
+
+	/** Sends the branch and whether there is anything to commit; the branch is read from `.git/HEAD`, which is cheap. */
+	private postGit(): void {
+		const git = this.options.git;
+		const folder = git?.folder();
+		if (!git || !this.webview) {
+			return;
+		}
+		const canCommit = !this.busy && !!git.commit?.files().length;
+		void (folder ? readGitHead(folder).catch(() => undefined) : Promise.resolve(undefined))
+			.then(branch => this.post({ type: 'git', git: { branch, canCommit } }));
 	}
 
 	private async changeSetting(change: () => Promise<void>): Promise<void> {
@@ -357,6 +420,8 @@ export class ChatController implements vscode.Disposable {
 		}
 		this.post({ type: 'busy', busy });
 		this.fireActivity();
+		// A turn may have switched branches or changed files.
+		this.postGit();
 	}
 
 	private fireActivity(): void {
@@ -402,6 +467,10 @@ export class ChatController implements vscode.Disposable {
 			permissionAnswered: vscode.l10n.t("You chose: {0}"),
 			permissionCancelled: vscode.l10n.t("Not answered; the request was cancelled."),
 			permissionHint: vscode.l10n.t("Esc rejects"),
+			workedFor: vscode.l10n.t("Worked for {0}"),
+			copyReply: vscode.l10n.t("Copy reply"),
+			switchBranch: vscode.l10n.t("Branch {0}: switch or create a branch"),
+			createBranchAndCommit: vscode.l10n.t("Create Branch & Commit"),
 			addContext: vscode.l10n.t("Add context (@)"),
 			noFiles: vscode.l10n.t("No matching files"),
 			remove: vscode.l10n.t("Remove"),
@@ -430,6 +499,8 @@ export class ChatController implements vscode.Disposable {
 			<span class="pill-wrap" hidden><select id="mode" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
 			<span class="pill-wrap" hidden><select id="model" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
 			<span class="spacer"></span>
+			<button type="button" id="commit" class="pill commit" hidden><i class="codicon codicon-git-commit" aria-hidden="true"></i><span></span></button>
+			<button type="button" id="branch" class="pill branch" hidden><i class="codicon codicon-git-branch" aria-hidden="true"></i><span></span></button>
 			<button type="submit" id="send" class="round-button"><i class="codicon codicon-arrow-up"></i></button>
 			<button type="button" id="stop" class="round-button" hidden><i class="codicon codicon-debug-stop"></i></button>
 		</div>

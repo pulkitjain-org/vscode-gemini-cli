@@ -107,7 +107,7 @@ function settle(item: TranscriptItem): TranscriptItem {
 	return item;
 }
 
-const kinds = new Set(['user', 'agent', 'thought', 'toolCall', 'plan', 'permission', 'other', 'notice']);
+const kinds = new Set(['user', 'agent', 'thought', 'toolCall', 'plan', 'permission', 'other', 'notice', 'turnEnd']);
 
 function isTranscriptItem(value: unknown): value is TranscriptItem {
 	const item = value as TranscriptItem;
@@ -128,5 +128,7 @@ function isTranscriptItem(value: unknown): value is TranscriptItem {
 			return typeof item.title === 'string' && Array.isArray(item.options) && Array.isArray(item.diffPaths);
 		case 'other':
 			return typeof item.type === 'string';
+		case 'turnEnd':
+			return typeof item.durationMs === 'number';
 	}
 }

@@ -12,7 +12,7 @@ import MarkdownIt from 'markdown-it';
 import { Attachment, attachmentLabel, basename, maxImageBase64Length, supportedImageTypes } from '../src/acp/attachments';
 import type { PromptAttachmentLabel, TranscriptItem } from '../src/acp/chatTranscript';
 import type { SessionSelector, SessionSettings } from '../src/acp/sessionSettings';
-import { chatProtocolVersion, type ChatStrings, type FromWebview, type ToWebview, type ViewStatus } from '../src/host/chatProtocol';
+import { chatProtocolVersion, type ChatStrings, type FromWebview, type ToWebview, type ViewGit, type ViewStatus } from '../src/host/chatProtocol';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromWebview): void };
 
@@ -38,6 +38,8 @@ const resizeHandle = byId<HTMLElement>('resize');
 const mentionButton = byId<HTMLButtonElement>('mention');
 const picker = byId<HTMLElement>('picker');
 const attachmentList = byId<HTMLElement>('attachments');
+const branchButton = byId<HTMLButtonElement>('branch');
+const commitButton = byId<HTMLButtonElement>('commit');
 
 mentionButton.title = strings.addContext;
 mentionButton.setAttribute('aria-label', strings.addContext);
@@ -117,7 +119,47 @@ function render(item: TranscriptItem): HTMLElement {
 			return renderNotice(format(strings.unknownUpdate, item.type), 'info');
 		case 'notice':
 			return renderNotice(item.text, item.severity);
+		case 'turnEnd':
+			return renderTurnEnd(item);
 	}
+}
+
+/** "12s", "2m 5s" or "1h 3m". */
+function formatDuration(ms: number): string {
+	const seconds = Math.max(1, Math.round(ms / 1000));
+	if (seconds < 60) {
+		return `${seconds}s`;
+	}
+	const minutes = Math.floor(seconds / 60);
+	return minutes < 60 ? `${minutes}m ${seconds % 60}s` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+/** The agent's reply in the turn that `turnEnd` closes, as Markdown. */
+function replyBefore(turnEnd: { readonly id: string }): string {
+	const end = items.findIndex(item => item.id === turnEnd.id);
+	const parts: string[] = [];
+	for (let i = end - 1; i >= 0 && items[i].kind !== 'user' && items[i].kind !== 'turnEnd'; i--) {
+		const item = items[i];
+		if (item.kind === 'agent') {
+			parts.unshift(item.text.trim());
+		}
+	}
+	return parts.filter(Boolean).join('\n\n');
+}
+
+function renderTurnEnd(item: ItemOf<'turnEnd'>): HTMLElement {
+	const node = el('div', 'turn-end');
+	node.append(el('span', undefined, format(strings.workedFor, formatDuration(item.durationMs))));
+	const copy = button('icon-button copy-reply', '', () => {
+		void navigator.clipboard.writeText(replyBefore(item)).then(() => {
+			copy.replaceChildren(icon('check'));
+			setTimeout(() => copy.replaceChildren(icon('copy')), 1500);
+		});
+	}, 'copy');
+	copy.title = strings.copyReply;
+	copy.setAttribute('aria-label', strings.copyReply);
+	node.append(copy);
+	return node;
 }
 
 function renderUserMessage(item: { readonly text: string; readonly attachments?: readonly PromptAttachmentLabel[] }): HTMLElement {
@@ -486,6 +528,17 @@ function setSettings(settings: SessionSettings): void {
 	fillSelect(modelSelect, settings.model);
 }
 
+function setGit(git: ViewGit): void {
+	branchButton.hidden = !git.branch;
+	branchButton.querySelector('span')!.textContent = git.branch ?? '';
+	const branchLabel = format(strings.switchBranch, git.branch ?? '');
+	branchButton.title = branchLabel;
+	branchButton.setAttribute('aria-label', branchLabel);
+	commitButton.hidden = !git.canCommit || !git.branch;
+	commitButton.querySelector('span')!.textContent = strings.createBranchAndCommit;
+	commitButton.title = strings.createBranchAndCommit;
+}
+
 function updatePlaceholder(): void {
 	input.placeholder = items.some(item => item.kind === 'user') ? strings.placeholderFollowUp : strings.placeholder;
 }
@@ -798,6 +851,8 @@ mentionButton.addEventListener('click', () => {
 	updatePicker();
 });
 stopButton.addEventListener('click', () => vscode.postMessage({ type: 'stop' }));
+branchButton.addEventListener('click', () => vscode.postMessage({ type: 'pickBranch' }));
+commitButton.addEventListener('click', () => vscode.postMessage({ type: 'createBranchAndCommit' }));
 modeSelect.addEventListener('change', () => {
 	fitSelect(modeSelect);
 	vscode.postMessage({ type: 'setMode', id: modeSelect.value });
@@ -844,6 +899,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'attach':
 			addAttachments(message.attachments);
+			break;
+		case 'git':
+			setGit(message.git);
 			break;
 	}
 });

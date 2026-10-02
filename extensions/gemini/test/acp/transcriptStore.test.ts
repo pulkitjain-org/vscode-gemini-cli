@@ -87,7 +87,22 @@ describe('ChatTranscript.restore', () => {
 		expect(transcript.items.map(i => i.id)).toEqual(['item-7', 'tool-x', 'item-8']);
 	});
 
-	it('starts a new message after the restored ones', () => {
+	it('ends a turn with how long it took, and keeps that across a reload', async () => {
+		const transcript = new ChatTranscript();
+		transcript.addPrompt('hi');
+		transcript.addTurnEnd(12_345.6);
+		expect(transcript.items.at(-1)).toEqual({ id: 'item-1', kind: 'turnEnd', durationMs: 12_346 });
+		const dir = await mkdtemp(path.join(tmpdir(), 'transcripts-'));
+		try {
+			const store = new TranscriptStore(dir);
+			await store.save('a1', { items: transcript.items, changes: [] });
+			expect((await store.load('a1')).items).toEqual(transcript.items);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+		it('starts a new message after the restored ones', () => {
 		const transcript = new ChatTranscript();
 		transcript.restore([{ id: 'item-0', kind: 'agent', text: 'old' }]);
 		transcript.addPrompt('again');

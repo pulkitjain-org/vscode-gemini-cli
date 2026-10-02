@@ -15,7 +15,7 @@ import type { AgentPhase } from '../acp/status';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 4;
+export const chatProtocolVersion = 5;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -59,6 +59,20 @@ export interface ChatStrings {
 	readonly permissionAnswered: string;
 	readonly permissionCancelled: string;
 	readonly permissionHint: string;
+	/** `{0}` is a duration such as "12s" or "2m 5s". */
+	readonly workedFor: string;
+	readonly copyReply: string;
+	/** `{0}` is the branch; the branch pill's tooltip. */
+	readonly switchBranch: string;
+	readonly createBranchAndCommit: string;
+}
+
+/** The chat folder's git state, for the branch pill and Create Branch & Commit. */
+export interface ViewGit {
+	/** Unset outside a repository. */
+	readonly branch?: string;
+	/** Whether there are agent changes to commit. */
+	readonly canCommit: boolean;
 }
 
 export type FromWebview =
@@ -74,7 +88,9 @@ export type FromWebview =
 	| { readonly type: 'permission'; readonly id: string; readonly optionId: string }
 	/** Show the diff for a file a tool call or permission request changes; `itemId` is the transcript item. */
 	| { readonly type: 'openDiff'; readonly itemId: string; readonly path: string }
-	| { readonly type: 'openLocation'; readonly path: string; readonly line?: number };
+	| { readonly type: 'openLocation'; readonly path: string; readonly line?: number }
+	| { readonly type: 'pickBranch' }
+	| { readonly type: 'createBranchAndCommit' };
 
 export type ToWebview =
 	| { readonly type: 'reset'; readonly items: readonly TranscriptItem[]; readonly busy: boolean; readonly status: ViewStatus; readonly settings: SessionSettings }
@@ -87,4 +103,5 @@ export type ToWebview =
 	| { readonly type: 'capabilities'; readonly image: boolean }
 	| { readonly type: 'files'; readonly requestId: number; readonly files: readonly { readonly path: string; readonly relative: string }[] }
 	/** Context to add to the composer, from the Add to Chat commands. */
-	| { readonly type: 'attach'; readonly attachments: readonly Attachment[] };
+	| { readonly type: 'attach'; readonly attachments: readonly Attachment[] }
+	| { readonly type: 'git'; readonly git: ViewGit };
