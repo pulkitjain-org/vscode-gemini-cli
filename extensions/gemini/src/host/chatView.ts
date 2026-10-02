@@ -260,10 +260,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 	<main id="transcript" class="transcript" aria-live="polite"></main>
 	<div id="status" class="status" role="status"></div>
 	<form id="composer" class="composer">
+		<div id="resize" class="composer-resize"></div>
 		<textarea id="input" rows="1"></textarea>
 		<div class="composer-bar">
-			<select id="mode" class="pill" hidden></select>
-			<select id="model" class="pill" hidden></select>
+			<span class="pill-wrap" hidden><select id="mode" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
+			<span class="pill-wrap" hidden><select id="model" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
 			<span class="spacer"></span>
 			<button type="submit" id="send" class="round-button"><i class="codicon codicon-arrow-up"></i></button>
 			<button type="button" id="stop" class="round-button" hidden><i class="codicon codicon-debug-stop"></i></button>

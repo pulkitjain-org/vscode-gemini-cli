@@ -33,6 +33,7 @@ const sendButton = byId<HTMLButtonElement>('send');
 const stopButton = byId<HTMLButtonElement>('stop');
 const modeSelect = byId<HTMLSelectElement>('mode');
 const modelSelect = byId<HTMLSelectElement>('model');
+const resizeHandle = byId<HTMLElement>('resize');
 
 sendButton.title = strings.send;
 sendButton.setAttribute('aria-label', strings.send);
@@ -416,8 +417,22 @@ function setStatus(value: ViewStatus): void {
 	status.hidden = !value.text;
 }
 
+const measureContext = document.createElement('canvas').getContext('2d');
+
+/** A select is as wide as its longest option; size it to the chosen one instead. */
+function fitSelect(select: HTMLSelectElement): void {
+	const text = select.selectedOptions[0]?.textContent ?? '';
+	const style = getComputedStyle(select);
+	if (!measureContext) {
+		return;
+	}
+	measureContext.font = style.font;
+	const chrome = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth);
+	select.style.width = `${Math.ceil(measureContext.measureText(text).width + chrome)}px`;
+}
+
 function fillSelect(select: HTMLSelectElement, selector: SessionSelector | undefined): void {
-	select.hidden = !selector;
+	select.parentElement!.hidden = !selector;
 	if (!selector) {
 		return;
 	}
@@ -430,6 +445,7 @@ function fillSelect(select: HTMLSelectElement, selector: SessionSelector | undef
 		return option;
 	}));
 	select.value = selector.currentId;
+	fitSelect(select);
 	const current = selector.available.find(choice => choice.id === selector.currentId);
 	select.title = current?.description ? `${select.getAttribute('aria-label')}: ${current.description}` : select.getAttribute('aria-label') ?? '';
 }
@@ -447,10 +463,40 @@ function updateSendState(): void {
 	sendButton.disabled = busy || !input.value.trim();
 }
 
+/** Height the user dragged the composer to; the input never gets shorter than this. */
+let userHeight = 0;
+
 function autoGrow(): void {
 	input.style.height = 'auto';
-	input.style.height = `${Math.min(input.scrollHeight, 200)}px`;
+	const max = Math.max(200, userHeight);
+	input.style.height = `${Math.max(userHeight, Math.min(input.scrollHeight, max))}px`;
 }
+
+// Dragging the composer's top edge resizes the input; a double-click resets it.
+resizeHandle.addEventListener('pointerdown', event => {
+	event.preventDefault();
+	resizeHandle.setPointerCapture(event.pointerId);
+	const startY = event.clientY;
+	const startHeight = input.getBoundingClientRect().height;
+	const onMove = (move: PointerEvent) => {
+		const limit = Math.max(60, window.innerHeight * 0.7);
+		userHeight = Math.min(limit, Math.max(20, startHeight + startY - move.clientY));
+		autoGrow();
+	};
+	const onUp = () => {
+		resizeHandle.removeEventListener('pointermove', onMove);
+		resizeHandle.removeEventListener('pointerup', onUp);
+		resizeHandle.removeEventListener('pointercancel', onUp);
+		input.focus();
+	};
+	resizeHandle.addEventListener('pointermove', onMove);
+	resizeHandle.addEventListener('pointerup', onUp);
+	resizeHandle.addEventListener('pointercancel', onUp);
+});
+resizeHandle.addEventListener('dblclick', () => {
+	userHeight = 0;
+	autoGrow();
+});
 
 function submit(): void {
 	const text = input.value;
@@ -483,8 +529,14 @@ input.addEventListener('input', () => {
 	updateSendState();
 });
 stopButton.addEventListener('click', () => vscode.postMessage({ type: 'stop' }));
-modeSelect.addEventListener('change', () => vscode.postMessage({ type: 'setMode', id: modeSelect.value }));
-modelSelect.addEventListener('change', () => vscode.postMessage({ type: 'setModel', id: modelSelect.value }));
+modeSelect.addEventListener('change', () => {
+	fitSelect(modeSelect);
+	vscode.postMessage({ type: 'setMode', id: modeSelect.value });
+});
+modelSelect.addEventListener('change', () => {
+	fitSelect(modelSelect);
+	vscode.postMessage({ type: 'setModel', id: modelSelect.value });
+});
 
 window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 	const message = event.data;
