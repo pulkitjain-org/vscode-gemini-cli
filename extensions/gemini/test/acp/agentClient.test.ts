@@ -4,8 +4,11 @@
  *--------------------------------------------------------------------------------------------*/
 
 import type * as acp from '@agentclientprotocol/sdk';
+import { tmpdir } from 'node:os';
+import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { AgentClient, AgentClientState } from '../../src/acp/agentClient';
+import { AgentClient, AgentClientOptions, AgentClientState } from '../../src/acp/agentClient';
+import { ClientFileSystem, createFileHandlers } from '../../src/acp/fileAccess';
 import { AgentSidecar } from '../../src/acp/sidecar';
 import type { ChatEvent } from '../../src/acp/sessionUpdates';
 import type { FakeAgentScript } from '../fake-agent/fakeAgent';
@@ -20,11 +23,12 @@ describe('AgentClient', () => {
 		sidecar?.dispose();
 	});
 
-	function start(script: FakeAgentScript, requestPermission?: (p: acp.RequestPermissionRequest) => Promise<acp.RequestPermissionResponse>) {
+	function start(script: FakeAgentScript, requestPermission?: (p: acp.RequestPermissionRequest) => Promise<acp.RequestPermissionResponse>, fileSystem?: AgentClientOptions['fileSystem']) {
 		sidecar = new AgentSidecar({ command: () => fakeAgentCommand(script), cwd: undefined, restartDelaysMs: [] });
 		client = new AgentClient(sidecar, {
 			cwd: process.cwd(),
 			requestPermission: requestPermission ?? (async () => ({ outcome: { outcome: 'cancelled' } })),
+			fileSystem,
 		});
 		const settled = waitFor<AgentClientState>(client.onDidChangeState, s => s.kind === 'ready' || s.kind === 'error');
 		sidecar.start();
@@ -99,5 +103,58 @@ describe('AgentClient', () => {
 	it('reports a fatal agent exit', async () => {
 		const { settled } = start({ exitCode: 41 });
 		expect(await settled).toMatchObject({ kind: 'error', error: { kind: 'auth-failed' } });
+	});
+
+	describe('file access', () => {
+		const root = path.resolve(tmpdir());
+		const files: Record<string, string> = { [path.join(root, 'a.ts')]: 'line 1\nline 2\nline 3' };
+		const fileSystem: ClientFileSystem = {
+			async readTextFile(p) { return files[p]; },
+			async writeTextFile(p, content) { files[p] = content; },
+		};
+
+		function agentText(events: ChatEvent[]): string[] {
+			return events.flatMap(e => e.kind === 'text' ? [e.text] : []);
+		}
+
+		it('advertises fs capabilities only when it serves them', async () => {
+			const turn = [{ step: 'capabilities' as const }];
+			const withFs = start({ turns: [turn] }, undefined, createFileHandlers(fileSystem, () => ({ roots: [root] })));
+			await withFs.settled;
+			const events: ChatEvent[] = [];
+			withFs.client.onDidReceiveEvent(e => events.push(e));
+			await withFs.client.prompt('caps');
+			expect(agentText(events)).toEqual(['fs:true,true']);
+			client!.dispose();
+			sidecar!.dispose();
+
+			const withoutFs = start({ turns: [turn] });
+			await withoutFs.settled;
+			const more: ChatEvent[] = [];
+			withoutFs.client.onDidReceiveEvent(e => more.push(e));
+			await withoutFs.client.prompt('caps');
+			expect(agentText(more)).toEqual(['fs:false,false']);
+		});
+
+		it('serves reads and writes and refuses secrets over the wire', async () => {
+			const { client, settled } = start({
+				turns: [[
+					{ step: 'readFile', path: path.join(root, 'a.ts'), line: 2, limit: 1 },
+					{ step: 'writeFile', path: path.join(root, 'b.ts'), content: 'created' },
+					{ step: 'readFile', path: path.join(root, '.env') },
+					{ step: 'readFile', path: path.join(root, 'missing.ts') },
+				]],
+			}, undefined, createFileHandlers(fileSystem, () => ({ roots: [root] })));
+			await settled;
+			const events: ChatEvent[] = [];
+			client.onDidReceiveEvent(e => events.push(e));
+			expect(await client.prompt('files')).toBe('end_turn');
+			const [read, wrote, secret, missing] = agentText(events);
+			expect(read).toBe('read:line 2');
+			expect(wrote).toBe('wrote');
+			expect(files[path.join(root, 'b.ts')]).toBe('created');
+			expect(secret).toMatch(/^error:.*denied/);
+			expect(missing).toMatch(/^error:.*Resource not found/);
+		});
 	});
 });

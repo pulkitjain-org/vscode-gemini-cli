@@ -3,13 +3,15 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
 import { AgentClient, AgentClientState } from '../acp/agentClient';
 import { AgentErrorInfo } from '../acp/errors';
+import { createFileHandlers } from '../acp/fileAccess';
+import { PermissionBroker } from '../acp/permissions';
 import { AgentSidecar } from '../acp/sidecar';
 import { AgentStatus, describeAgentStatus } from '../acp/status';
 import { configSection, getAgentCommand, getProjectSettings, getWorkspaceCwd } from './configuration';
+import { getFileAccessPolicy, WorkspaceFileSystem } from './workspaceFileSystem';
 
 /**
  * The VS Code side of the agent: starts the sidecar on first use, logs it,
@@ -20,6 +22,8 @@ export class AgentService implements vscode.Disposable {
 
 	private readonly sidecar: AgentSidecar;
 	readonly client: AgentClient;
+	/** The agent's permission requests, answered in the chat view. */
+	readonly permissions = new PermissionBroker();
 	private readonly disposables: vscode.Disposable[] = [];
 	private started = false;
 	/** Why the agent was not started at all; cleared on the next start. */
@@ -32,13 +36,20 @@ export class AgentService implements vscode.Disposable {
 		this.sidecar = new AgentSidecar({ command: () => getAgentCommand(), cwd: getWorkspaceCwd() });
 		this.client = new AgentClient(this.sidecar, {
 			cwd: getWorkspaceCwd(),
-			requestPermission: params => this.requestPermission(params),
+			requestPermission: params => this.permissions.request(params),
+			fileSystem: createFileHandlers(new WorkspaceFileSystem(), getFileAccessPolicy),
 		});
 
 		this.disposables.push(
 			this.onDidChangeStatusEmitter,
 			this.sidecar.onDidChangeState(() => this.onDidChangeStatusEmitter.fire(this.status)),
-			this.client.onDidChangeState(() => this.onDidChangeStatusEmitter.fire(this.status)),
+			this.client.onDidChangeState(state => {
+				// A request from an agent that is gone can no longer be answered.
+				if (state.kind !== 'ready') {
+					this.permissions.cancelAll();
+				}
+				this.onDidChangeStatusEmitter.fire(this.status);
+			}),
 			this.sidecar.onStderr(line => log.info(`[agent] ${line}`)),
 			this.sidecar.onDidChangeState(state => {
 				const detail = state.kind === 'restarting' ? ` (attempt ${state.attempt} in ${state.delayMs}ms, exit code ${state.exitCode})`
@@ -91,6 +102,12 @@ export class AgentService implements vscode.Disposable {
 		});
 	}
 
+	/** Stops the current turn. Open permission requests are answered `cancelled`. */
+	async cancel(): Promise<void> {
+		this.permissions.cancelAll();
+		await this.client.cancel();
+	}
+
 	restart(): void {
 		const { resolved, problem } = getProjectSettings();
 		if (problem === 'numeric') {
@@ -134,6 +151,7 @@ export class AgentService implements vscode.Disposable {
 
 	dispose(): void {
 		this.setupTerminal?.dispose();
+		this.permissions.dispose();
 		this.client.dispose();
 		this.sidecar.dispose();
 		vscode.Disposable.from(...this.disposables).dispose();
@@ -192,17 +210,5 @@ export class AgentService implements vscode.Disposable {
 			case restart: this.restart(); break;
 			case showLog: this.log.show(); break;
 		}
-	}
-
-	/**
-	 * Phase 1 permission prompt: the agent's own options in a quick pick.
-	 * Phase 2 replaces this with the permission UI and diff editor.
-	 */
-	private async requestPermission(params: acp.RequestPermissionRequest): Promise<acp.RequestPermissionResponse> {
-		const picked = await vscode.window.showQuickPick(
-			params.options.map(option => ({ label: option.name, description: option.kind, option })),
-			{ title: params.toolCall.title ?? vscode.l10n.t("Gemini wants to run a tool"), placeHolder: vscode.l10n.t("Choose how to respond"), ignoreFocusOut: true },
-		);
-		return picked ? { outcome: { outcome: 'selected', optionId: picked.option.optionId } } : { outcome: { outcome: 'cancelled' } };
 	}
 }

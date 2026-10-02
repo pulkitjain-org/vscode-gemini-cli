@@ -7,9 +7,11 @@ import { randomBytes } from 'node:crypto';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
 import { ChatTranscript } from '../acp/chatTranscript';
+import { PendingPermission } from '../acp/permissions';
 import { AgentStatus } from '../acp/status';
 import { AgentService } from './agentService';
 import { ChatStrings, FromWebview, ToWebview, ViewStatus } from './chatProtocol';
+import { DiffPreview } from './diffPreview';
 
 export const chatViewId = 'gemini.chat';
 
@@ -26,9 +28,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 	private view: vscode.WebviewView | undefined;
 	private busy = false;
 	private lastSessionId: string | undefined;
+	/** Permission requests by id, kept after they are answered so their diffs can still be opened. */
+	private readonly permissionRequests = new Map<string, PendingPermission>();
 
-	constructor(private readonly extensionUri: vscode.Uri, private readonly service: AgentService) {
+	constructor(private readonly extensionUri: vscode.Uri, private readonly service: AgentService, private readonly diffPreview: DiffPreview) {
 		this.disposables.push(
+			service.permissions.onDidChange(event => {
+				if (event.kind === 'requested') {
+					this.permissionRequests.set(event.permission.id, event.permission);
+					this.transcript.addPermission(event.permission);
+					void this.revealForPermission(event.permission);
+				} else {
+					this.transcript.resolvePermission(event.id, event.outcome);
+				}
+			}),
 			this.transcript,
 			this.transcript.onDidChangeItem(item => this.post({ type: 'item', item })),
 			this.transcript.onDidReset(() => this.postReset()),
@@ -98,13 +111,40 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 				void this.send(message.text);
 				break;
 			case 'stop':
-				void this.service.client.cancel();
+				void this.service.cancel();
+				break;
+			case 'permission':
+				this.service.permissions.select(message.id, message.optionId);
+				break;
+			case 'openDiff':
+				void this.openDiff(message.id, message.path, false);
 				break;
 			case 'clear':
 				if (!this.busy) {
 					this.transcript.clear();
+					this.permissionRequests.clear();
 				}
 				break;
+		}
+	}
+
+	/** Brings the chat into view so the request can be answered, and shows the first proposed edit. */
+	private async revealForPermission(permission: PendingPermission): Promise<void> {
+		if (this.view) {
+			this.view.show(true);
+		} else {
+			await vscode.commands.executeCommand(`${chatViewId}.focus`);
+		}
+		const firstDiff = permission.request.toolCall.content?.find(c => c.type === 'diff');
+		if (firstDiff) {
+			await this.openDiff(permission.id, firstDiff.path, true);
+		}
+	}
+
+	private async openDiff(id: string, filePath: string, preserveFocus: boolean): Promise<void> {
+		const diff = this.permissionRequests.get(id)?.request.toolCall.content?.find(c => c.type === 'diff' && c.path === filePath);
+		if (diff?.type === 'diff') {
+			await this.diffPreview.show(diff, { preserveFocus });
 		}
 	}
 
@@ -135,6 +175,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 			plan: vscode.l10n.t("Plan"),
 			unknownUpdate: vscode.l10n.t("Update not shown in this version: {0}"),
 			terminal: vscode.l10n.t("Terminal output"),
+			reviewChanges: vscode.l10n.t("Review changes to {0}"),
+			permissionAnswered: vscode.l10n.t("You chose: {0}"),
+			permissionCancelled: vscode.l10n.t("Not answered; the request was cancelled."),
 		};
 		return `<!DOCTYPE html>
 <html lang="en">
