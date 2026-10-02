@@ -29,6 +29,8 @@ export interface AgentClientOptions {
 	readonly requestPermission: (params: acp.RequestPermissionRequest) => Promise<acp.RequestPermissionResponse>;
 	/** Serves this session's file reads and writes instead of the runtime's handlers. */
 	readonly fileSystem?: FileSystemHandlers;
+	/** A session from an earlier run to reopen first, when the agent supports `session/load`. */
+	readonly resumeSessionId?: string;
 }
 
 /**
@@ -56,9 +58,12 @@ export class AgentClient {
 	private registration: { dispose(): void } | undefined;
 	/** Bumped on every reconnect, so a slow `session/new` for an old process is ignored. */
 	private generation = 0;
+	/** The session to reopen when the agent (re)starts, so a restart keeps the conversation. */
+	private resumeSessionId: string | undefined;
 	private readonly runtimeListener: { dispose(): void };
 
 	constructor(private readonly runtime: AgentRuntime, private readonly options: AgentClientOptions) {
+		this.resumeSessionId = options.resumeSessionId;
 		this.runtimeListener = runtime.onDidChangeState(state => this.onRuntimeState(state));
 		this.onRuntimeState(runtime.state);
 	}
@@ -80,7 +85,12 @@ export class AgentClient {
 		if (this._state.kind !== 'ready' || this.runtime.state.kind !== 'ready') {
 			throw new Error('The agent is not ready.');
 		}
-		await this.openSession();
+		await this.openSession(false);
+	}
+
+	/** Makes the next session a new one instead of reopening the last, for a chat cleared while the agent is not running. */
+	forgetSession(): void {
+		this.resumeSessionId = undefined;
 	}
 
 	setMode(modeId: string): Promise<void> {
@@ -128,7 +138,7 @@ export class AgentClient {
 	private onRuntimeState(state: AgentRuntimeState): void {
 		switch (state.kind) {
 			case 'ready':
-				void this.openSession();
+				void this.openSession(true);
 				break;
 			case 'connecting':
 				this.dropSession();
@@ -145,12 +155,13 @@ export class AgentClient {
 		}
 	}
 
-	private async openSession(): Promise<void> {
+	/** Opens a session: with `resume`, the last one is reopened if the agent can, else a new one. */
+	private async openSession(resume: boolean): Promise<void> {
 		this.dropSession();
 		const generation = ++this.generation;
 		this.setState({ kind: 'connecting' });
 		try {
-			const { connection, agent, session } = await this.runtime.newSession(this.options.cwd);
+			const { connection, agent, session } = await this.loadOrCreate(resume ? this.resumeSessionId : undefined);
 			if (generation !== this.generation) {
 				return;
 			}
@@ -161,6 +172,7 @@ export class AgentClient {
 				requestPermission: params => this.options.requestPermission(params),
 				fileSystem: this.options.fileSystem,
 			});
+			this.resumeSessionId = session.sessionId;
 			this.setReady(agent, session);
 		} catch (err) {
 			// If the process died, the runtime reports why (and the sidecar may
@@ -169,6 +181,17 @@ export class AgentClient {
 				this.setState({ kind: 'error', error: err instanceof AgentError ? err.info : classifyAgentError(err) });
 			}
 		}
+	}
+
+	private async loadOrCreate(resumeSessionId: string | undefined): ReturnType<AgentRuntime['newSession']> {
+		if (resumeSessionId) {
+			try {
+				return await this.runtime.loadSession(this.options.cwd, resumeSessionId);
+			} catch {
+				// Not supported, or the agent no longer has it: start afresh.
+			}
+		}
+		return this.runtime.newSession(this.options.cwd);
 	}
 
 	/** Whether the runtime is still ready after `ms`, or as soon as it changes state. */

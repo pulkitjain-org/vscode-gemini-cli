@@ -126,6 +126,52 @@ describe('AgentRuntime', () => {
 		expect(runtime!.sessionCount).toBe(2);
 	});
 
+	it('reopens the same session after a restart when the agent can load sessions', async () => {
+		const { sidecar } = start({ storedSessions: ['fake-session-1'], turns: [[{ step: 'session' }]] });
+		const a = await session('/work/a');
+		expect(a.state).toMatchObject({ sessionId: 'fake-session-1' });
+
+		const readyAgain = waitFor<AgentClientState>(a.client.onDidChangeState, s => s.kind === 'ready');
+		sidecar.stop();
+		sidecar.start();
+		expect(await readyAgain).toMatchObject({ sessionId: 'fake-session-1' });
+		await a.client.prompt('who');
+		// The replayed history arrives as updates, then the turn.
+		expect(a.texts).toEqual(['history:fake-session-1', 'session:fake-session-1:/work/a']);
+	});
+
+	it('reopens a session from an earlier run on first open', async () => {
+		start({ storedSessions: ['earlier'], turns: [[{ step: 'session' }]] });
+		const a = await session('/work/a', { resumeSessionId: 'earlier' });
+		expect(a.state).toMatchObject({ kind: 'ready', sessionId: 'earlier' });
+		await a.client.prompt('who');
+		expect(a.texts.at(-1)).toBe('session:earlier:/work/a');
+	});
+
+	it('opens a new session when the agent no longer has the old one', async () => {
+		start({ storedSessions: [] });
+		const a = await session('/work/a', { resumeSessionId: 'gone' });
+		expect(a.state).toMatchObject({ kind: 'ready', sessionId: 'fake-session-1' });
+	});
+
+	it('opens a new session when the agent cannot load sessions', async () => {
+		start({});
+		const a = await session('/work/a', { resumeSessionId: 'earlier' });
+		expect(a.state).toMatchObject({ kind: 'ready', sessionId: 'fake-session-1' });
+	});
+
+	it('does not reopen a session the client forgot or replaced', async () => {
+		const { sidecar } = start({ storedSessions: ['fake-session-1'] });
+		const a = await session('/work/a');
+		a.client.forgetSession();
+		const readyAgain = waitFor<AgentClientState>(a.client.onDidChangeState, s => s.kind === 'ready');
+		sidecar.stop();
+		sidecar.start();
+		expect(await readyAgain).toMatchObject({ sessionId: 'fake-session-1' });
+		// A new process numbers sessions from 1 again; no history replay shows it is a new one.
+		expect(a.texts).toEqual([]);
+	});
+
 	it('serves a session from its own file handlers', async () => {
 		const root = path.resolve(tmpdir());
 		const file = path.join(root, 'a.ts');

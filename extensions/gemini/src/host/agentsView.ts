@@ -10,6 +10,7 @@ import { AgentRecord, AgentsModel, AgentsSnapshot, WorkspaceRecord } from '../ac
 import { FolderFileIndex } from '../acp/folderFiles';
 import { readGitHead } from '../acp/gitHead';
 import { memoizeAsync } from '../acp/memoize';
+import { TranscriptStore } from '../acp/transcriptStore';
 import { AgentService } from './agentService';
 import { AgentSession } from './agentSession';
 import { ChatActivity, ChatController, FileSearch } from './chatController';
@@ -45,8 +46,13 @@ interface LiveAgent {
 	/** A turn finished while its tab was not in front. */
 	unread: boolean;
 	activity: ChatActivity;
+	/** A pending save of the conversation. */
+	saveTimer?: ReturnType<typeof setTimeout>;
 	readonly disposables: vscode.Disposable[];
 }
+
+/** How long after a turn ends its conversation is saved, so quick turns write once. */
+const saveDelayMs = 1_000;
 
 /**
  * The Agents pane (plan Phase 2B, agents-pane and agent-tabs): workspaces,
@@ -57,6 +63,8 @@ interface LiveAgent {
 export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposable {
 
 	private readonly model: AgentsModel;
+	/** Each agent's conversation as shown, so its tab looks the same after a reload. */
+	private readonly transcripts: TranscriptStore;
 	private readonly live = new Map<string, LiveAgent>();
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly tree: vscode.TreeView<Node>;
@@ -74,6 +82,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		private readonly workspaceFiles: WorkspaceFileIndex,
 	) {
 		this.model = new AgentsModel(context.globalState.get<AgentsSnapshot>(storageKey));
+		this.transcripts = new TranscriptStore(vscode.Uri.joinPath(context.globalStorageUri, 'agents').fsPath);
 		this.tree = vscode.window.createTreeView(agentsViewId, { treeDataProvider: this, showCollapseAll: false });
 		this.disposables.push(
 			this.tree,
@@ -247,7 +256,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		if (!live) {
 			live = this.start(record, workspace.folder);
 			if (record.updatedAt !== record.createdAt) {
-				live.controller.addNotice(vscode.l10n.t("This agent's earlier conversation is not kept after a reload yet, so this is a new session."));
+				// Read while the tab opens; the agent reopens its session meanwhile.
+				const started = live;
+				void this.transcripts.load(id).then(items => started.controller.restore(items, record.sessionId));
 			}
 		}
 		live.unread = false;
@@ -280,7 +291,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	}
 
 	private start(record: AgentRecord, folder: string): LiveAgent {
-		const session = new AgentSession(this.service, folder);
+		const session = new AgentSession(this.service, folder, record.sessionId);
 		const files: FileSearch = isOpenFolder(folder) ? this.workspaceFiles : new FolderFileIndex(folder);
 		const live: LiveAgent = {
 			session,
@@ -296,9 +307,17 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				if (live.activity.busy && !activity.busy && !live.panel?.active) {
 					live.unread = true;
 				}
+				if (!activity.busy) {
+					this.scheduleSave(record.id, live);
+				}
 				live.activity = activity;
 				this.refresh();
 			}),
+			toDisposable(session.client.onDidChangeState(state => {
+				if (state.kind === 'ready') {
+					this.model.setSessionId(record.id, state.sessionId);
+				}
+			})),
 			live.controller.onDidSendPrompt(text => {
 				this.model.recordPrompt(record.id, text);
 				const title = this.model.agent(record.id)?.title;
@@ -310,6 +329,14 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		);
 		this.live.set(record.id, live);
 		return live;
+	}
+
+	private scheduleSave(id: string, live: LiveAgent): void {
+		clearTimeout(live.saveTimer);
+		live.saveTimer = setTimeout(() => {
+			live.saveTimer = undefined;
+			void this.transcripts.save(id, live.controller.conversation);
+		}, saveDelayMs);
 	}
 
 	private async reveal(id: string, preserveFocus: boolean): Promise<void> {
@@ -342,8 +369,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const remove = vscode.l10n.t("Remove");
 		const answer = await vscode.window.showWarningMessage(vscode.l10n.t("Remove the agent \"{0}\"? Its conversation is closed.", node.record.title), { modal: true }, remove);
 		if (answer === remove) {
-			this.stop(node.record.id);
+			this.stop(node.record.id, false);
 			this.model.removeAgent(node.record.id);
+			void this.transcripts.delete(node.record.id);
 		}
 	}
 
@@ -358,18 +386,24 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			: vscode.l10n.t("Remove {0} from the list? The folder itself is not changed.", path.basename(node.folder));
 		if (await vscode.window.showWarningMessage(message, { modal: true }, remove) === remove) {
 			for (const agent of this.model.removeWorkspace(node.record.id)) {
-				this.stop(agent.id);
+				this.stop(agent.id, false);
+				void this.transcripts.delete(agent.id);
 			}
 		}
 	}
 
-	/** Ends the agent's session in this window and closes its tab. */
-	private stop(id: string): void {
+	/** Ends the agent's session in this window and closes its tab; with `save`, keeps its conversation for later. */
+	private stop(id: string, save: boolean): void {
 		const live = this.live.get(id);
 		if (!live) {
 			return;
 		}
 		this.live.delete(id);
+		// Saved already unless a save is pending or a turn runs.
+		if (save && (live.saveTimer !== undefined || live.activity.busy)) {
+			void this.transcripts.save(id, live.controller.conversation);
+		}
+		clearTimeout(live.saveTimer);
 		live.panel?.dispose();
 		void live.session.cancel();
 		vscode.Disposable.from(...live.disposables).dispose();
@@ -379,7 +413,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 
 	dispose(): void {
 		for (const id of [...this.live.keys()]) {
-			this.stop(id);
+			this.stop(id, true);
 		}
 		this.setRefreshing(false);
 		this.model.dispose();

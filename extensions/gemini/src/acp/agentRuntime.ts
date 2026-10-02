@@ -109,6 +109,28 @@ export class AgentRuntime {
 		}
 	}
 
+	/**
+	 * Reopens a stored session in `cwd`, when the agent advertises
+	 * `loadSession`. Rejects with an `AgentError` otherwise, or when the agent
+	 * cannot find it; the caller then opens a new session.
+	 */
+	async loadSession(cwd: string, sessionId: string): Promise<{ readonly connection: AgentConnection; readonly agent: acp.InitializeResponse; readonly session: acp.NewSessionResponse }> {
+		const state = this._state;
+		const connection = this.connection;
+		if (state.kind !== 'ready' || !connection) {
+			throw new AgentError({ kind: 'unknown', message: 'The agent is not ready.' });
+		}
+		if (!state.agent.agentCapabilities?.loadSession) {
+			throw new AgentError({ kind: 'unknown', message: 'The agent cannot reopen sessions.' });
+		}
+		try {
+			const response = await connection.loadSession(sessionId, cwd);
+			return { connection, agent: state.agent, session: { ...response, sessionId } };
+		} catch (err) {
+			throw new AgentError(classifyAgentError(err));
+		}
+	}
+
 	/** Routes the agent's messages for `sessionId` to `handlers` until disposed. */
 	register(sessionId: string, handlers: SessionHandlers): { dispose(): void } {
 		this.sessions.set(sessionId, handlers);
