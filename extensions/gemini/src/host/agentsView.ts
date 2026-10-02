@@ -6,6 +6,7 @@
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { AgentChanges, formatCounts } from '../acp/agentChanges';
 import { AgentRecord, AgentsModel, AgentsSnapshot, WorkspaceRecord } from '../acp/agents';
 import { FolderFileIndex } from '../acp/folderFiles';
 import { readGitHead } from '../acp/gitHead';
@@ -13,6 +14,7 @@ import { memoizeAsync } from '../acp/memoize';
 import { TranscriptStore } from '../acp/transcriptStore';
 import { AgentService } from './agentService';
 import { AgentSession } from './agentSession';
+import { ChangesSource, ChangesView } from './changesView';
 import { ChatActivity, ChatController, FileSearch } from './chatController';
 import { DiffPreview } from './diffPreview';
 import { WorkspaceFileIndex } from './workspaceFiles';
@@ -42,6 +44,8 @@ type Node = WorkspaceNode | AgentNode;
 interface LiveAgent {
 	readonly session: AgentSession;
 	readonly controller: ChatController;
+	/** The files this agent's tools edited. */
+	readonly changes: AgentChanges;
 	panel?: vscode.WebviewPanel;
 	/** A turn finished while its tab was not in front. */
 	unread: boolean;
@@ -66,6 +70,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	/** Each agent's conversation as shown, so its tab looks the same after a reload. */
 	private readonly transcripts: TranscriptStore;
 	private readonly live = new Map<string, LiveAgent>();
+	private readonly changesView: ChangesView;
+	/** The agent whose tab was last in front; the Changes view shows it. */
+	private focusedId: string | undefined;
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly tree: vscode.TreeView<Node>;
 	private refreshTimer: ReturnType<typeof setInterval> | undefined;
@@ -84,8 +91,10 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		this.model = new AgentsModel(context.globalState.get<AgentsSnapshot>(storageKey));
 		this.transcripts = new TranscriptStore(vscode.Uri.joinPath(context.globalStorageUri, 'agents').fsPath);
 		this.tree = vscode.window.createTreeView(agentsViewId, { treeDataProvider: this, showCollapseAll: false });
+		this.changesView = new ChangesView(id => this.live.get(id)?.changes);
 		this.disposables.push(
 			this.tree,
+			this.changesView,
 			this.onDidChangeTreeDataEmitter,
 			toDisposable(this.model.onDidChange(() => {
 				void context.globalState.update(storageKey, this.model.snapshot());
@@ -97,6 +106,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			vscode.commands.registerCommand('gemini.agents.newAgent', (node?: Node) => this.newAgent(node)),
 			vscode.commands.registerCommand('gemini.agents.addWorkspace', () => this.addWorkspace()),
 			vscode.commands.registerCommand('gemini.agents.open', (id: string) => this.open(id)),
+			vscode.commands.registerCommand('gemini.agents.openChanges', (node?: Node) => node?.kind === 'agent' && this.openChanges(node.record.id)),
 			vscode.commands.registerCommand('gemini.agents.rename', (node?: Node) => this.rename(node)),
 			vscode.commands.registerCommand('gemini.agents.stop', (node?: Node) => node?.kind === 'agent' && this.live.get(node.record.id)?.session.cancel()),
 			vscode.commands.registerCommand('gemini.agents.remove', (node?: Node) => this.removeAgent(node)),
@@ -160,11 +170,12 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const item = new vscode.TreeItem(record.title, vscode.TreeItemCollapsibleState.None);
 		item.id = `agent:${record.id}`;
 		const branch = await this.branchOf(node.folder).catch(() => undefined);
-		item.description = [relativeTime(record.updatedAt, Date.now()), branch].filter(Boolean).join(' · ');
+		const changes = live?.changes.totals ?? record.changes;
+		item.description = [changes?.files ? formatCounts(changes) : undefined, relativeTime(record.updatedAt, Date.now()), branch].filter(Boolean).join(' · ');
 		const state = this.agentState(live);
 		item.iconPath = state.icon;
 		item.tooltip = new vscode.MarkdownString(`**${escapeMarkdown(record.title)}**\n\n${escapeMarkdown(state.label)}\n\n${escapeMarkdown(node.folder)}${branch ? ` (${escapeMarkdown(branch)})` : ''}`);
-		item.contextValue = live?.activity.busy ? 'agent.busy' : 'agent';
+		item.contextValue = `${live?.activity.busy ? 'agent.busy' : 'agent'}${changes?.files ? '.changes' : ''}`;
 		item.command = { command: 'gemini.agents.open', title: vscode.l10n.t("Open Agent"), arguments: [record.id] };
 		item.accessibilityInformation = { label: `${record.title}, ${state.label}` };
 		return item;
@@ -258,7 +269,10 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			if (record.updatedAt !== record.createdAt) {
 				// Read while the tab opens; the agent reopens its session meanwhile.
 				const started = live;
-				void this.transcripts.load(id).then(items => started.controller.restore(items, record.sessionId));
+				void this.transcripts.load(id).then(saved => {
+					started.controller.restore(saved.items, record.sessionId);
+					started.changes.restore(saved.changes);
+				});
 			}
 		}
 		live.unread = false;
@@ -275,6 +289,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			live.panel = panel;
 			live.controller.attach(panel.webview);
 			panel.onDidChangeViewState(e => {
+				if (e.webviewPanel.active) {
+					this.focus(id);
+				}
 				if (e.webviewPanel.active && live.unread) {
 					live.unread = false;
 					this.refresh();
@@ -287,14 +304,40 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				}
 			});
 		}
+		this.focus(id);
 		this.refresh();
+	}
+
+	/** Opens the agent's changes in the multi-diff editor, starting it to read them if needed. */
+	private async openChanges(id: string): Promise<void> {
+		if (!this.live.has(id)) {
+			await this.open(id);
+		}
+		const source = this.changesSource(id);
+		if (source) {
+			await this.changesView.openAll(source);
+		}
+	}
+
+	private focus(id: string): void {
+		this.focusedId = id;
+		this.changesView.show(this.changesSource(id));
+	}
+
+	private changesSource(id: string): ChangesSource | undefined {
+		const live = this.live.get(id);
+		const record = this.model.agent(id);
+		const workspace = record && this.model.workspace(record.workspaceId);
+		return live && workspace ? { agentId: id, title: record.title, folder: workspace.folder, changes: live.changes } : undefined;
 	}
 
 	private start(record: AgentRecord, folder: string): LiveAgent {
 		const session = new AgentSession(this.service, folder, record.sessionId);
 		const files: FileSearch = isOpenFolder(folder) ? this.workspaceFiles : new FolderFileIndex(folder);
+		const changes = new AgentChanges(folder);
 		const live: LiveAgent = {
 			session,
+			changes,
 			controller: new ChatController(this.context.extensionUri, session, this.diffPreview, files, {
 				reveal: preserveFocus => this.reveal(record.id, preserveFocus),
 			}),
@@ -318,6 +361,12 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 					this.model.setSessionId(record.id, state.sessionId);
 				}
 			})),
+			live.controller.onDidEditFiles(diffs => changes.record(diffs)),
+			toDisposable(changes.onDidChange(() => {
+				this.model.setChanges(record.id, changes.totals);
+				this.scheduleSave(record.id, live);
+				this.refresh();
+			})),
 			live.controller.onDidSendPrompt(text => {
 				this.model.recordPrompt(record.id, text);
 				const title = this.model.agent(record.id)?.title;
@@ -335,7 +384,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		clearTimeout(live.saveTimer);
 		live.saveTimer = setTimeout(() => {
 			live.saveTimer = undefined;
-			void this.transcripts.save(id, live.controller.conversation);
+			void this.transcripts.save(id, { items: live.controller.conversation, changes: live.changes.files });
 		}, saveDelayMs);
 	}
 
@@ -358,6 +407,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			const panel = this.live.get(node.record.id)?.panel;
 			if (panel) {
 				panel.title = title.trim();
+			}
+			if (this.focusedId === node.record.id) {
+				this.focus(node.record.id);
 			}
 		}
 	}
@@ -401,13 +453,18 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		this.live.delete(id);
 		// Saved already unless a save is pending or a turn runs.
 		if (save && (live.saveTimer !== undefined || live.activity.busy)) {
-			void this.transcripts.save(id, live.controller.conversation);
+			void this.transcripts.save(id, { items: live.controller.conversation, changes: live.changes.files });
 		}
 		clearTimeout(live.saveTimer);
+		if (this.focusedId === id) {
+			this.focusedId = undefined;
+			this.changesView.show(undefined);
+		}
 		live.panel?.dispose();
 		void live.session.cancel();
 		vscode.Disposable.from(...live.disposables).dispose();
 		live.controller.dispose();
+		live.changes.dispose();
 		live.session.dispose();
 	}
 

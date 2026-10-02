@@ -36,7 +36,22 @@ describe('AgentsModel', () => {
 		expect(model.workspaces).toHaveLength(1);
 	});
 
-	it('keeps the session id across a reload', () => {
+	it('keeps change totals only while there are changes', () => {
+		const model = new AgentsModel();
+		const agent = model.addAgent(model.addWorkspace('/work/api').id, 'New agent');
+		let changes = 0;
+		model.onDidChange(() => changes++);
+		model.setChanges(agent.id, { files: 0, added: 0, removed: 0 });
+		expect(changes).toBe(0);
+		model.setChanges(agent.id, { files: 2, added: 5, removed: 1 });
+		model.setChanges(agent.id, { files: 2, added: 5, removed: 1 });
+		expect(model.agent(agent.id)?.changes).toEqual({ files: 2, added: 5, removed: 1 });
+		model.setChanges(agent.id, { files: 0, added: 0, removed: 0 });
+		expect(model.agent(agent.id)?.changes).toBeUndefined();
+		expect(changes).toBe(2);
+	});
+
+		it('keeps the session id across a reload', () => {
 		const model = new AgentsModel();
 		const agent = model.addAgent(model.addWorkspace('/work/api').id, 'New agent');
 		let changes = 0;

@@ -75,6 +75,11 @@ export class ChatController implements vscode.Disposable {
 	private readonly onDidChangeActivityEmitter = new vscode.EventEmitter<ChatActivity>();
 	readonly onDidChangeActivity = this.onDidChangeActivityEmitter.event;
 
+	private readonly onDidEditFilesEmitter = new vscode.EventEmitter<readonly acp.Diff[]>();
+	/** The edits of each tool call that completed, once per tool call. */
+	readonly onDidEditFiles = this.onDidEditFilesEmitter.event;
+	private readonly completedToolCalls = new Set<string>();
+
 	private readonly onDidSendPromptEmitter = new vscode.EventEmitter<string>();
 	/** The text of each prompt sent. */
 	readonly onDidSendPrompt = this.onDidSendPromptEmitter.event;
@@ -88,6 +93,7 @@ export class ChatController implements vscode.Disposable {
 	) {
 		this.disposables.push(
 			this.onDidChangeActivityEmitter,
+			this.onDidEditFilesEmitter,
 			this.onDidSendPromptEmitter,
 			service.permissions.onDidChange(event => {
 				if (event.kind === 'requested') {
@@ -107,7 +113,12 @@ export class ChatController implements vscode.Disposable {
 				// Only a turn's updates belong in the transcript.
 				if (this.busy) {
 					if (event.kind === 'toolCall') {
-						this.diffs.set(toolCallItemId(event.call.id), diffsOf(event.call.content));
+						const diffs = diffsOf(event.call.content);
+						this.diffs.set(toolCallItemId(event.call.id), diffs);
+						if (event.call.status === 'completed' && diffs.length && !this.completedToolCalls.has(event.call.id)) {
+							this.completedToolCalls.add(event.call.id);
+							this.onDidEditFilesEmitter.fire(diffs);
+						}
 					}
 					this.transcript.apply(event);
 				}

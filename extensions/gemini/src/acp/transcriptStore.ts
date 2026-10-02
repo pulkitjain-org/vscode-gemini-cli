@@ -3,22 +3,28 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Each agent's conversation as shown in its tab (plan Phase 2B, agent-resume),
-// one JSON file per agent. The agent keeps its own history for `session/load`;
+// Each agent's conversation as shown in its tab (plan Phase 2B, agent-resume)
+// and the files it changed (agent-changes), one JSON file per agent. The agent keeps its own history for `session/load`;
 // this is only what the tab displays, so it is capped to stay small and fast
 // to read: the last items, with long text cut.
 
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
+import type { EditedFile } from './agentChanges';
 import type { TranscriptItem } from './chatTranscript';
 
 const formatVersion = 1;
 const maxItems = 300;
 const maxTextLength = 20_000;
 
-interface StoredTranscript {
-	readonly version: number;
+export interface StoredAgent {
 	readonly items: readonly TranscriptItem[];
+	/** Checked by `AgentChanges` when it loads them. */
+	readonly changes: readonly EditedFile[];
+}
+
+interface StoredTranscript extends StoredAgent {
+	readonly version: number;
 }
 
 export class TranscriptStore {
@@ -29,18 +35,24 @@ export class TranscriptStore {
 	constructor(private readonly directory: string) { }
 
 	/** The saved items, ready to show; empty when there are none or the file is unreadable. */
-	async load(agentId: string): Promise<TranscriptItem[]> {
+	async load(agentId: string): Promise<StoredAgent> {
 		await this.writes.get(agentId);
 		try {
 			const stored = JSON.parse(await readFile(this.file(agentId), 'utf8')) as StoredTranscript;
-			return stored?.version === formatVersion && Array.isArray(stored.items) ? stored.items.filter(isTranscriptItem).map(settle) : [];
+			if (stored?.version !== formatVersion) {
+				return { items: [], changes: [] };
+			}
+			return {
+				items: Array.isArray(stored.items) ? stored.items.filter(isTranscriptItem).map(settle) : [],
+				changes: Array.isArray(stored.changes) ? stored.changes : [],
+			};
 		} catch {
-			return [];
+			return { items: [], changes: [] };
 		}
 	}
 
-	save(agentId: string, items: readonly TranscriptItem[]): Promise<void> {
-		const stored: StoredTranscript = { version: formatVersion, items: items.slice(-maxItems).map(trim) };
+	save(agentId: string, agent: StoredAgent): Promise<void> {
+		const stored: StoredTranscript = { version: formatVersion, items: agent.items.slice(-maxItems).map(trim), changes: agent.changes };
 		return this.enqueue(agentId, async () => {
 			const file = this.file(agentId);
 			await mkdir(this.directory, { recursive: true });
