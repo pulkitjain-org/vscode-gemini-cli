@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
+import { isModeAllowed } from '../acp/adminPolicy';
 import { AgentClient, AgentClientState } from '../acp/agentClient';
 import { AgentRuntime } from '../acp/agentRuntime';
 import { AgentErrorInfo } from '../acp/errors';
@@ -13,7 +14,7 @@ import { CliResolution, isOlderThan } from '../acp/cliResolution';
 import { MIN_CLI_VERSION } from '../acp/protocol';
 import { AgentSidecar } from '../acp/sidecar';
 import { AgentStatus, describeAgentStatus } from '../acp/status';
-import { configSection, getAgentCommand, getCliResolution, getProjectSettings, getWorkspaceCwd } from './configuration';
+import { agentLaunchSettings, configSection, getAgentCommand, getApprovalPolicy, getCliResolution, getProjectSettings, getWorkspaceCwd } from './configuration';
 import { preferredModel } from './modelPreference';
 import { getFileAccessPolicy, WorkspaceFileSystem } from './workspaceFileSystem';
 
@@ -54,6 +55,7 @@ export class AgentService implements vscode.Disposable {
 			cwd: getWorkspaceCwd(),
 			requestPermission: params => this.permissions.request(params),
 			preferredModel,
+			isModeAllowed: modeId => isModeAllowed(getApprovalPolicy(), modeId),
 		});
 
 		this.disposables.push(
@@ -74,7 +76,7 @@ export class AgentService implements vscode.Disposable {
 			}),
 			this.client.onDidChangeState(state => this.onClientState(state)),
 			vscode.workspace.onDidChangeConfiguration(e => {
-				if (this.started && (e.affectsConfiguration(`${configSection}.cliPath`) || e.affectsConfiguration(`${configSection}.cli.version`) || e.affectsConfiguration(`${configSection}.projectId`))) {
+				if (this.started && agentLaunchSettings.some(key => e.affectsConfiguration(key))) {
 					log.info('Gemini settings changed; restarting the agent');
 					this.restart();
 				}

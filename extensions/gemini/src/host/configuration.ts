@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { ApprovalPolicy, prepareAdminPolicy } from '../acp/adminPolicy';
 import { AgentCommand, cliHeapSizeMb, resolveAgentCommand } from '../acp/agentProcess';
 import { CliResolution, resolveCli } from '../acp/cliResolution';
 import { buildAgentEnv } from '../acp/env';
@@ -47,11 +48,26 @@ export function getWorkspaceCwd(): string {
 }
 
 let managedCliDir: string | undefined;
+let adminPolicyDir: string | undefined;
 
-/** Where GeminiCode keeps its own CLI copies; set once on activation. */
-export function setManagedCliDir(dir: string): void {
-	managedCliDir = dir;
+/** Where GeminiCode keeps its own CLI copies and the policy file it passes to the CLI; set once on activation. */
+export function setStorageDirs(dirs: { readonly managedCli: string; readonly adminPolicy: string }): void {
+	managedCliDir = dirs.managedCli;
+	adminPolicyDir = dirs.adminPolicy;
 }
+
+/** The approval settings, which an admin can lock through policy (plan Phase 4, policy-enforcement). */
+export function getApprovalPolicy(): ApprovalPolicy {
+	const config = vscode.workspace.getConfiguration(configSection);
+	return {
+		allowAutoEdit: config.get<boolean>('approval.allowAutoEdit', true),
+		allowYolo: config.get<boolean>('approval.allowYolo', false),
+		allowShell: config.get<boolean>('tools.allowShell', true),
+	};
+}
+
+/** The settings that change how the agent process starts; a change restarts it. */
+export const agentLaunchSettings = ['cliPath', 'cli.version', 'projectId', 'approval.allowAutoEdit', 'approval.allowYolo', 'tools.allowShell'].map(key => `${configSection}.${key}`);
 
 export function getManagedCliDir(): string | undefined {
 	return managedCliDir;
@@ -76,6 +92,7 @@ export function getAgentCommand(options: { interactive?: boolean; cli?: CliResol
 		platform: process.platform,
 		interactive: options.interactive,
 		heapSizeMb: options.interactive ? undefined : cliHeapSizeMb(readCliSettings(), os.totalmem()),
+		extraArgs: adminPolicyDir ? prepareAdminPolicy(adminPolicyDir, getApprovalPolicy()) : [],
 	});
 }
 

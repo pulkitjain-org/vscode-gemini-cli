@@ -5,12 +5,14 @@
 
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { isModeAllowed } from '../acp/adminPolicy';
 import { AgentClient } from '../acp/agentClient';
 import { createFileHandlers } from '../acp/fileAccess';
 import { PermissionBroker } from '../acp/permissions';
 import { AgentStatus } from '../acp/status';
 import { AgentService } from './agentService';
 import { ChatHost } from './chatController';
+import { getApprovalPolicy } from './configuration';
 import { preferredModel } from './modelPreference';
 import { getFileAccessPolicy, isIgnoredByGitCached, WorkspaceFileSystem } from './workspaceFileSystem';
 
@@ -32,6 +34,7 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 			cwd: folder,
 			resumeSessionId,
 			preferredModel,
+			isModeAllowed: modeId => isModeAllowed(getApprovalPolicy(), modeId),
 			requestPermission: params => this.permissions.request(params),
 			// A folder outside this window's workspace is the agent's only root.
 			fileSystem: isInWorkspace(folder) ? undefined : createFileHandlers(new WorkspaceFileSystem(), () => ({ roots: [folder], isIgnored: isIgnoredByGitCached })),

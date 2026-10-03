@@ -59,3 +59,13 @@ export function readSessionSettings(response: acp.NewSessionResponse): SessionSe
 	}
 	return settings;
 }
+
+/** Leaves out modes that `isAllowed` rejects, such as YOLO when admin policy turns it off. A picker with one mode left is hidden. */
+export function filterModes(settings: SessionSettings, isAllowed: ((modeId: string) => boolean) | undefined): SessionSettings {
+	const mode = settings.mode;
+	if (!mode || !isAllowed) {
+		return settings;
+	}
+	const available = mode.available.filter(choice => choice.id === mode.currentId || isAllowed(choice.id));
+	return { ...settings, mode: available.length > 1 ? { ...mode, available } : undefined };
+}

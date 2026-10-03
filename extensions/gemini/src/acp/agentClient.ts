@@ -9,7 +9,7 @@ import { AgentError, AgentErrorInfo, classifyAgentError } from './errors';
 import { Emitter } from './events';
 import { AgentRuntime, AgentRuntimeState, FileSystemHandlers } from './agentRuntime';
 import { PromptCapabilities, readPromptCapabilities } from './promptContent';
-import { readSessionSettings, SessionSettings } from './sessionSettings';
+import { filterModes, readSessionSettings, SessionSettings } from './sessionSettings';
 import { ChatEvent, SessionUpdateAdapter } from './sessionUpdates';
 
 export { AUTH_METHOD_ID } from './agentRuntime';
@@ -38,6 +38,8 @@ export interface AgentClientOptions {
 	 * every prompt.
 	 */
 	readonly preferredModel?: () => string | undefined;
+	/** Which approval modes the picker may offer (plan Phase 4, policy-enforcement); all of them when unset. */
+	readonly isModeAllowed?: (modeId: string) => boolean;
 }
 
 /**
@@ -180,7 +182,7 @@ export class AgentClient {
 				fileSystem: this.options.fileSystem,
 			});
 			this.resumeSessionId = session.sessionId;
-			const settings = await this.applyPreferredModel(connection, session.sessionId, readSessionSettings(session));
+			const settings = await this.applyPreferredModel(connection, session.sessionId, filterModes(readSessionSettings(session), this.options.isModeAllowed));
 			if (generation !== this.generation) {
 				return;
 			}
