@@ -35,6 +35,8 @@ The product code is in [`../extensions/gemini/`](../extensions/gemini/).
 
 ## Getting started
 
+Download GeminiCode for Mac (Apple silicon) from the [download page](https://pulkitjain-org.github.io/vscode-gemini-cli/), open the `.dmg` and drag GeminiCode to Applications.
+
 You need a Google account with a **Gemini Code Assist** license and a **Google Cloud project** to bill usage to. Your organisation may set the project for you.
 
 The **Get Started with GeminiCode** walkthrough opens on first launch, and again from **Gemini: Get Started**. It walks through four steps:
@@ -98,7 +100,7 @@ If the chat view warns that its script is out of date, the webview bundle in `me
 [`gemini-ci.yml`](../.github/workflows/gemini-ci.yml) runs on pull requests and pushes to `main`. It does three things:
 
 - It lints and hygiene-checks the fork files.
-- It builds and type-checks the extension and webview, then runs the unit tests and real-CLI tests against the `latest` and `preview` CLI.
+- It builds and type-checks the extension and webview, builds the download page from a sample release, then runs the unit tests and real-CLI tests against the `latest` and `preview` CLI.
 - It compiles the whole fork and runs upstream's hygiene check.
 
 Packaged builds come from [`gemini-release.yml`](../.github/workflows/gemini-release.yml), which a version tag starts; see [RELEASING.md](docs/RELEASING.md).

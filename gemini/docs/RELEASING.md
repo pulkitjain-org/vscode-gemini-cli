@@ -1,6 +1,6 @@
 # Releasing GeminiCode
 
-GeminiCode ships as a Mac app for Apple silicon, from this repository's [GitHub Releases](https://github.com/pulkitjain-org/vscode-gemini-cli/releases). Windows and Intel Macs are not built yet.
+GeminiCode ships as a Mac app for Apple silicon, from this repository's [GitHub Releases](https://github.com/pulkitjain-org/vscode-gemini-cli/releases), with a download page at <https://pulkitjain-org.github.io/vscode-gemini-cli/>. Share the page, not the release: it always points at the newest build. Windows and Intel Macs are not built yet.
 
 ## Versions
 
@@ -32,8 +32,20 @@ To try the pipeline without publishing, run **Gemini Release** by hand from the 
 5. Notarizes the app with `notarytool` and staples the ticket.
 6. Packs a `.dmg` with upstream's `build/darwin/create-dmg.ts` (drag to Applications), then signs, notarizes and staples the `.dmg` too.
 7. Publishes the GitHub Release with the `.dmg`, its checksum and generated release notes.
+8. Starts the download page build.
 
 Without the Apple secrets, steps 4 to 6 are replaced by an ad hoc signature. The file is then named `GeminiCode-<version>-arm64-unsigned.dmg`, the release title ends in "(unsigned)", and the notes explain how to open it. Setting only some of the six secrets fails the build, so a typo cannot quietly produce an unsigned release.
+
+## The download page
+
+[`gemini-pages.yml`](../../.github/workflows/gemini-pages.yml) builds the page with [`gemini/site/build.mts`](../site/build.mts) and deploys it to GitHub Pages. It reads the latest release (drafts and prereleases are skipped) and writes two files:
+
+- `index.html`: the version, a **Download for Mac (Apple silicon)** button, install steps, the release notes, and the checksum. An unsigned build also gets the steps to open it.
+- `latest.json`: the version, download and release links. The app's update notice reads it; keep its `version`, `url` and `notesUrl` fields stable.
+
+It runs when a release is published, edited or deleted, when `gemini/site/` changes on `main`, and by hand. It always deploys from `main`, because the `github-pages` environment accepts only the default branch. Turn Pages on once: **Settings → Pages → Source: GitHub Actions**.
+
+To preview the page, run `node gemini/site/build.mts /tmp/site --sample` (or `--none`, for before the first release) and open `/tmp/site/index.html`.
 
 ## Opening an unsigned build
 
