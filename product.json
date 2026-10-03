@@ -288,6 +288,39 @@
 					"value": "Whether GeminiCode checks the npm registry once a day for a newer Gemini CLI and offers to install it."
 				}
 			}
+		},
+		"gemini.approval.allowAutoEdit": {
+			"name": "GeminiAllowAutoEdit",
+			"category": "Extensions",
+			"minimumVersion": "1.141",
+			"localization": {
+				"description": {
+					"key": "gemini.approval.allowAutoEdit.policy",
+					"value": "Whether GeminiCode offers the Auto Edit approval mode, which applies file edits without asking."
+				}
+			}
+		},
+		"gemini.approval.allowYolo": {
+			"name": "GeminiAllowYolo",
+			"category": "Extensions",
+			"minimumVersion": "1.141",
+			"localization": {
+				"description": {
+					"key": "gemini.approval.allowYolo.policy",
+					"value": "Whether GeminiCode offers the YOLO approval mode, which runs every tool without asking."
+				}
+			}
+		},
+		"gemini.tools.allowShell": {
+			"name": "GeminiAllowShell",
+			"category": "Extensions",
+			"minimumVersion": "1.141",
+			"localization": {
+				"description": {
+					"key": "gemini.tools.allowShell.policy",
+					"value": "Whether the Gemini agent in GeminiCode may run shell commands."
+				}
+			}
 		}
 	}
 }

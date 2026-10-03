@@ -361,6 +361,24 @@
           "scope": "machine",
           "markdownDescription": "%configuration.cli.checkForUpdates%"
         },
+        "gemini.approval.allowAutoEdit": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "markdownDescription": "%configuration.approval.allowAutoEdit%"
+        },
+        "gemini.approval.allowYolo": {
+          "type": "boolean",
+          "default": false,
+          "scope": "machine",
+          "markdownDescription": "%configuration.approval.allowYolo%"
+        },
+        "gemini.tools.allowShell": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "markdownDescription": "%configuration.tools.allowShell%"
+        },
         "gemini.projectId": {
           "type": "string",
           "default": "",

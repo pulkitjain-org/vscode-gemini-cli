@@ -13,7 +13,7 @@ import { ChatViewProvider, chatViewId } from './host/chatView';
 import { checkAgent } from './host/checkAgent';
 import { CliManager } from './host/cliManager';
 import { DiffPreview } from './host/diffPreview';
-import { configSection, setManagedCliDir } from './host/configuration';
+import { configSection, setStorageDirs } from './host/configuration';
 import { initModelPreference } from './host/modelPreference';
 import { GeminiStatusBar } from './host/statusBar';
 import { WorkspaceFileIndex } from './host/workspaceFiles';
@@ -21,7 +21,10 @@ import { WorkspaceFileIndex } from './host/workspaceFiles';
 export function activate(context: vscode.ExtensionContext): void {
 	const log = vscode.window.createOutputChannel('Gemini', { log: true });
 	initModelPreference(context.globalState);
-	setManagedCliDir(vscode.Uri.joinPath(context.globalStorageUri, 'gemini-cli').fsPath);
+	setStorageDirs({
+		managedCli: vscode.Uri.joinPath(context.globalStorageUri, 'gemini-cli').fsPath,
+		adminPolicy: vscode.Uri.joinPath(context.globalStorageUri, 'policy').fsPath,
+	});
 	const service = new AgentService(log);
 	const diffPreview = new DiffPreview();
 	const fileIndex = new WorkspaceFileIndex();

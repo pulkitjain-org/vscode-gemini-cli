@@ -251,12 +251,20 @@ Budgets: a new agent in a running workspace shows its composer in under 100 ms a
 
 ### Phase 4: Native deepening and policy (3–4 weeks, then ongoing)
 
+Agreed on 3 Oct 2026 as five PRs, in order: policy-enforcement, upstream-chat-cleanup (the hidden-entry-points part of workbench-contrib, including retiring `defaultChatAgent`), first-run-onboarding (the rest of workbench-contrib), full-rebrand, then upstream-merge-1. Decisions:
+
+- Users get Default, Auto Edit and Plan; YOLO stays hidden unless an admin turns it on.
+- Shell tools stay allowed, always asking first, with a policy switch that removes them. `--sandbox` needs Docker or Podman on every machine, so it is not the default.
+- The org default project ID is not committed; each build sets `geminiDefaultProjectId` in `product.json`.
+- Icons are mocked up for approval before full-rebrand.
+- upstream-merge-1 targets the 1.141.0 release tag, not a moving main.
+
 - **workbench-contrib**: add `src/vs/workbench/contrib/gemini/` for what the extension API cannot do:
   - first-run onboarding that walks through sign-in and project verification;
   - locking the Gemini built-in extension so it cannot be disabled;
   - hiding or replacing upstream chat entry points;
   - layout defaults that `configurationDefaults` cannot express.
-- **policy-enforcement**: keep `default` mode, gate `yolo` and `autoEdit` behind admin policy (VS Code's policy system plus `--admin-policy` passed to the sidecar), and ship the org default project ID in `product.json`. Per C1, evaluate `--sandbox` and decide, as policy, whether shell tools are allowed at all.
+- **policy-enforcement**: keep `default` mode, gate `yolo` and `autoEdit` behind admin policy (VS Code's policy system plus `--admin-policy` passed to the sidecar), and ship the org default project ID in `product.json`. Per C1, evaluate `--sandbox` and decide, as policy, whether shell tools are allowed at all. Done in PR #18: the settings `gemini.approval.allowAutoEdit`, `gemini.approval.allowYolo` (off by default) and `gemini.tools.allowShell`, lockable through the GeminiAllowAutoEdit, GeminiAllowYolo and GeminiAllowShell policies. The mode picker leaves out modes that are off, and GeminiCode writes a policy file to its global storage and passes it with `--admin-policy`, so the CLI itself asks before every tool in a mode that is off and removes the shell tool when shell is off. The CLI ignores `--admin-policy` when a real system policy directory has rules, which then take over. test/acp/realAgentPolicy.test.ts checks all of this against the real CLI using a fake Gemini API on localhost. The org default project ID already ships through `geminiDefaultProjectId` (Phase 1).
 - **full-rebrand**: final icons, about dialog, license and issue-reporter URLs, and welcome page.
 - **upstream-merge-1**: the first scheduled merge of the next upstream release, to prove the process and the `GEMINI-FORK` touch list.
 - **upstream-agents-watch** **[new in rev 4]**: at each upstream merge, check whether the Agents Window (`src/vs/sessions`) gained an extension-contributed provider API. If it has, plan moving the agent workspace onto it.

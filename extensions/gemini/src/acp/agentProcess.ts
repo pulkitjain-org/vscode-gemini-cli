@@ -24,6 +24,8 @@ export interface ResolveAgentCommandOptions {
 	readonly interactive?: boolean;
 	/** V8 heap size for the agent, from {@link cliHeapSizeMb}; unset leaves Node's default. */
 	readonly heapSizeMb?: number;
+	/** More CLI arguments, such as `--admin-policy <dir>`. */
+	readonly extraArgs?: readonly string[];
 }
 
 /**
@@ -53,7 +55,7 @@ const windowsShim = /\.(cmd|bat)$/i;
  */
 export function resolveAgentCommand(options: ResolveAgentCommandOptions): AgentCommand {
 	const cliPath = options.cliPath?.trim();
-	const modeArgs = options.interactive ? [] : ['--acp'];
+	const modeArgs = [...options.interactive ? [] : ['--acp'], ...options.extraArgs ?? []];
 	const env: NodeJS.ProcessEnv = { ...options.env };
 	// By default the CLI starts a second Node process just to raise its heap
 	// limit, which costs about 0.6 s of the agent's startup (FINDINGS.md). For
