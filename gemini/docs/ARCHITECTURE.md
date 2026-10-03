@@ -30,7 +30,7 @@ Upstream files are touched only where a fork must register itself or rebrand. Ea
 
 - `product.json` (names, icons, links, Open VSX gallery, CLI policies);
 - the build lists that register the extension (`build/npm/dirs.ts`, `build/gulpfile.extensions.ts`, `build/lib/extensions.ts`, `build/filters.ts`, `build/hygiene.ts`, `.eslint-ignore`, `eslint.config.js`);
-- branding: packaging metadata (`build/lib/electron.ts`, `build/lib/preLaunch.ts`, `build/win32/code.iss`, `resources/`), the workbench icons (`code-icon.svg`, `letterpress-*.svg`), and the top-level `README.md`, `CONTRIBUTING.md`, `SECURITY.md` and `AGENTS.md`;
+- branding: packaging metadata (`build/lib/electron.ts`, `build/lib/preLaunch.ts`, `build/win32/code.iss`, `resources/`), and the workbench icons (`code-icon.svg`, `letterpress-*.svg`);
 - three workbench edits: Chat commands hidden from the Command Palette while upstream AI is off (`commandsQuickAccess.ts`), the Gemini extension cannot be disabled (`extensionEnablementService.ts`), and the product name in the welcome walkthrough (`gettingStartedContent.ts`).
 
 ## How a prompt flows

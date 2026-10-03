@@ -1,81 +1,76 @@
-# GeminiCode
+# Visual Studio Code - Open Source ("Code - OSS")
+[![Feature Requests](https://img.shields.io/github/issues/microsoft/vscode/feature-request.svg)](https://github.com/microsoft/vscode/issues?q=is%3Aopen+is%3Aissue+label%3Afeature-request+sort%3Areactions-%2B1-desc)
+[![Bugs](https://img.shields.io/github/issues/microsoft/vscode/bug.svg)](https://github.com/microsoft/vscode/issues?utf8=✓&q=is%3Aissue+is%3Aopen+label%3Abug)
 
-GeminiCode is a code editor with the [Gemini CLI](https://github.com/google-gemini/gemini-cli) built in as its coding agent. It is a fork of [Visual Studio Code](https://github.com/microsoft/vscode) (Code - OSS). It runs the official `gemini` CLI over the [Agent Client Protocol](https://agentclientprotocol.com), so you get the CLI's agent, sign-in and Gemini Code Assist license, inside a full editor.
+## The Repository
 
-## Features
+This repository ("`Code - OSS`") is where we (Microsoft) develop the [Visual Studio Code](https://code.visualstudio.com) product together with the community. Not only do we work on code and issues here, but we also publish our [roadmap](https://github.com/microsoft/vscode/wiki/Roadmap), [monthly iteration plans](https://github.com/microsoft/vscode/wiki/Iteration-Plans), and our [endgame plans](https://github.com/microsoft/vscode/wiki/Running-the-Endgame). This source code is available to everyone under the standard [MIT license](https://github.com/microsoft/vscode/blob/main/LICENSE.txt).
 
-- **Agents pane.** Run several agents side by side. Each one opens as an editor tab with its own chat, and can work in the open folder or any folder you add. Each row shows the agent's status, branch and changed lines.
-- **Quick Chat.** A chat in the Gemini sidebar for the open folder.
-- **Ask before acting.** Permission requests show the agent's own options, such as Allow, Allow for this session and Reject. Proposed edits open in a diff editor first.
-- **Edits through the editor.** Agent edits can be undone, and the agent reads your unsaved changes. The agent cannot read secret files such as `.env` and private keys, or git-ignored files.
-- **Context.** Type `@` to attach workspace files. Press <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>L</kbd> to add the editor selection. You can also attach or drop files and images from anywhere.
-- **Changes view.** See every file the agent in front has changed, as diffs or all together. **Create Branch & Commit** commits just that agent's files.
-- **Modes and models.** Pick an approval mode (**Default**, **Auto Edit**, **Plan**) and a model from the composer. The lists come from the agent.
-- **Conversations persist.** Agents keep their conversation across reloads and restarts, and resume their CLI session when the CLI supports it.
-- **Managed CLI.** GeminiCode can install, update and switch between Gemini CLI versions in its own storage, without touching your system.
-- **Admin policy.** Organisations can lock the CLI version, remove Auto Edit or YOLO, and turn off shell commands.
+## Visual Studio Code
 
-## Getting started
+<p align="center">
+  <img alt="VS Code in action" src="https://github.com/user-attachments/assets/56af271c-949d-454c-a3ea-16188c063414">
+</p>
 
-You need a Google account with a **Gemini Code Assist** license and a **Google Cloud project** to bill usage to. Your organisation may set the project for you.
+[Visual Studio Code](https://code.visualstudio.com) is a distribution of the `Code - OSS` repository with Microsoft-specific customizations released under a traditional [Microsoft product license](https://code.visualstudio.com/License/).
 
-The **Get Started with GeminiCode** walkthrough opens on first launch. You can reopen it any time with **Gemini: Get Started**. It walks through four steps:
+[Visual Studio Code](https://code.visualstudio.com) combines the simplicity of a code editor with what developers need for their core edit-build-debug cycle. It provides comprehensive code editing, navigation, and understanding support along with lightweight debugging, a rich extensibility model, and lightweight integration with existing tools.
 
-1. **Gemini CLI.** GeminiCode uses `gemini.cliPath`, then its own copy, then `gemini` on your `PATH`. If none is found, run **Gemini: Install Latest Gemini CLI**.
-2. **Sign in.** Run **Gemini: Sign In with Google**. If your account needs a one-time step that the editor cannot show, run **Gemini: Complete Setup in Terminal**.
-3. **Project.** Run **Gemini: Set Google Cloud Project ID**. Enter the project ID, not the project number.
-4. **First agent.** Choose **New Agent** in the Agents pane.
+Visual Studio Code is updated monthly with new features and bug fixes. You can download it for Windows, macOS, and Linux on the [Visual Studio Code website](https://code.visualstudio.com/Download). To get the latest releases every day, install the [Insiders build](https://code.visualstudio.com/insiders).
 
-The **Gemini** status bar item shows the agent's state. Hover over it to see the account, project and CLI version. Click it to restart the agent, change the project or CLI version, or open the log.
+## Contributing
 
-## Settings
+There are many ways in which you can participate in this project, for example:
 
-| Setting | What it does |
-| --- | --- |
-| `gemini.projectId` | Google Cloud project ID to bill. A workspace value overrides a user value. |
-| `gemini.cliPath` | Path to a `gemini` executable or `bundle/gemini.js`. Overrides GeminiCode's own copy. |
-| `gemini.cli.version` | Which of GeminiCode's own CLI copies to run. Empty means the newest. |
-| `gemini.cli.checkForUpdates` | Offer newer CLI releases, at most once a day. |
-| `gemini.approval.allowAutoEdit` | Offer the Auto Edit mode. |
-| `gemini.approval.allowYolo` | Offer the YOLO mode, which runs everything without asking. Off by default. |
-| `gemini.tools.allowShell` | Let the agent run shell commands. Each command still asks first. |
-| `gemini.layout.showAgentsInNewWorkspaces` | Open the Agents pane and Changes view the first time a workspace opens. |
+* [Submit bugs and feature requests](https://github.com/microsoft/vscode/issues), and help us verify them as they are checked in
+* Review [source code changes](https://github.com/microsoft/vscode/pulls)
+* Review the [documentation](https://github.com/microsoft/vscode-docs) and make pull requests for anything from typos to new content.
 
-Admins can lock all of these except the project and layout settings through policy. See [Architecture: Security model](gemini/docs/ARCHITECTURE.md#security-model).
+If you are interested in fixing issues and contributing directly to the codebase, please see the document [How to Contribute](https://github.com/microsoft/vscode/wiki/How-to-Contribute), which covers the following:
 
-> [!IMPORTANT]
-> The agent is not sandboxed. Its shell and search tools run with your permissions. **Default** mode asks before every change and command; use **Auto Edit** and **YOLO** only in folders you trust.
+* [How to build and run from source](https://github.com/microsoft/vscode/wiki/How-to-Contribute)
+* [The development workflow, including debugging and running tests](https://github.com/microsoft/vscode/wiki/How-to-Contribute#debugging)
+* [Coding guidelines](https://github.com/microsoft/vscode/wiki/Coding-Guidelines)
+* [Submitting pull requests](https://github.com/microsoft/vscode/wiki/How-to-Contribute#pull-requests)
+* [Finding an issue to work on](https://github.com/microsoft/vscode/wiki/How-to-Contribute#where-to-contribute)
+* [Contributing to translations](https://aka.ms/vscodeloc)
 
-## Building from source
+## Feedback
 
-```sh
-nvm use              # Node version from .nvmrc
-npm ci
-npm run watch        # keep running
-./scripts/code.sh    # on Windows: .\scripts\code.bat
-```
+* Ask a question on [Stack Overflow](https://stackoverflow.com/questions/tagged/vscode)
+* [Request a new feature](CONTRIBUTING.md)
+* Upvote [popular feature requests](https://github.com/microsoft/vscode/issues?q=is%3Aopen+is%3Aissue+label%3Afeature-request+sort%3Areactions-%2B1-desc)
+* [File an issue](https://github.com/microsoft/vscode/issues)
+* Connect with the extension author community on [GitHub Discussions](https://github.com/microsoft/vscode-discussions/discussions) or [Slack](https://aka.ms/vscode-dev-community)
+* Follow [@code](https://x.com/code) and let us know what you think!
 
-To run the extension's tests:
+See our [wiki](https://github.com/microsoft/vscode/wiki/Feedback-Channels) for a description of each of these channels and information on some other available community-driven channels.
 
-```sh
-cd extensions/gemini
-npm test
-```
+## Related Projects
 
-For upstream merges, CI and the rules for editing upstream files, see [gemini/README.md](gemini/README.md).
+Many of the core components and extensions to VS Code live in their own repositories on GitHub. For example, the [node debug adapter](https://github.com/microsoft/vscode-node-debug) and the [mono debug adapter](https://github.com/microsoft/vscode-mono-debug) repositories are separate from each other. For a complete list, please visit the [Related Projects](https://github.com/microsoft/vscode/wiki/Related-Projects) page on our [wiki](https://github.com/microsoft/vscode/wiki).
 
-## Repository layout
+## Bundled Extensions
 
-| Path | Contents |
-| --- | --- |
-| [`extensions/gemini/`](extensions/gemini/) | The built-in Gemini extension: the ACP client, chat, Agents pane and Changes view. |
-| [`gemini/`](gemini/) | Fork docs ([architecture](gemini/docs/ARCHITECTURE.md), [CLI findings](gemini/docs/FINDINGS.md), [roadmap](gemini/docs/ROADMAP.md)), icon sources and maintainer scripts. |
-| everything else | Upstream VS Code, changed only at the points marked `GEMINI-FORK`. |
+VS Code includes a set of built-in extensions located in the [extensions](extensions) folder, including grammars and snippets for many languages. Extensions that provide rich language support (inline suggestions, Go to Definition) for a language have the suffix `language-features`. For example, the `json` extension provides coloring for `JSON` and the `json-language-features` extension provides rich language support for `JSON`.
 
-## Feedback and security
+## Development Container
 
-Report bugs and requests in [GitHub Issues](https://github.com/pulkitjain-org/vscode-gemini-cli/issues). For vulnerabilities, see [SECURITY.md](SECURITY.md). To contribute, see [CONTRIBUTING.md](CONTRIBUTING.md).
+This repository includes a Visual Studio Code Dev Containers / GitHub Codespaces development container.
+
+* For [Dev Containers](https://aka.ms/vscode-remote/download/containers), use the **Dev Containers: Clone Repository in Container Volume...** command, which creates a Docker volume for better disk I/O on macOS and Windows.
+  * If you already have VS Code and Docker installed, you can also click [here](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/microsoft/vscode) to get started. This will cause VS Code to automatically install the Dev Containers extension if needed, clone the source code into a container volume, and spin up a dev container for use.
+
+* For Codespaces, install the [GitHub Codespaces](https://marketplace.visualstudio.com/items?itemName=GitHub.codespaces) extension in VS Code, and use the **Codespaces: Create New Codespace** command.
+
+Docker / the Codespace should have at least **4 cores and 6 GB of RAM (8 GB recommended)** to run a full build. See the [development container README](.devcontainer/README.md) for more information.
+
+## Code of Conduct
+
+This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/). For more information, see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
 ## License
 
-GeminiCode is licensed under the [MIT License](LICENSE.txt). It is based on Code - OSS, Copyright (c) Microsoft Corporation, and is not affiliated with or endorsed by Microsoft or Google. Third-party notices are in [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Licensed under the [MIT](LICENSE.txt) license.

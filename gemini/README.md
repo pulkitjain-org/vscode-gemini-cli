@@ -1,12 +1,68 @@
-# Maintaining the GeminiCode fork
+# GeminiCode
 
-This folder holds fork material that is not shipped: docs, icon sources and maintainer scripts. The product code is in [`../extensions/gemini/`](../extensions/gemini/).
+GeminiCode is a fork of VS Code (Code - OSS) with the [Gemini CLI](https://github.com/google-gemini/gemini-cli) built in as its coding agent. It runs the official `gemini` CLI over the [Agent Client Protocol](https://agentclientprotocol.com), so you get the CLI's agent, sign-in and Gemini Code Assist license inside a full editor.
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how GeminiCode works and why.
+The repository's top-level README, CONTRIBUTING, SECURITY and AGENTS files are upstream's and are left unchanged, so that upstream merges stay clean. This folder is where the fork's own docs live:
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how GeminiCode works and why, including the security model and admin policies.
 - [docs/FINDINGS.md](docs/FINDINGS.md): Gemini CLI behaviour and measurements the design relies on.
 - [docs/ROADMAP.md](docs/ROADMAP.md): open work and risks.
 - [branding/](branding/): icon sources.
 - [scripts/list-fork-touches.sh](scripts/list-fork-touches.sh): lists every upstream file the fork changes.
+
+The product code is in [`../extensions/gemini/`](../extensions/gemini/).
+
+## Features
+
+- **Agents pane.** Run several agents side by side. Each one opens as an editor tab with its own chat, and can work in the open folder or any folder you add. Each row shows the agent's status, branch and changed lines.
+- **Quick Chat.** A chat in the Gemini sidebar for the open folder.
+- **Ask before acting.** Permission requests show the agent's own options, such as Allow, Allow for this session and Reject. Proposed edits open in a diff editor first.
+- **Edits through the editor.** Agent edits can be undone, and the agent reads your unsaved changes. The agent cannot read secret files such as `.env` and private keys, or git-ignored files.
+- **Context.** Type `@` to attach workspace files. Press <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>L</kbd> to add the editor selection. You can also attach or drop files and images from anywhere.
+- **Changes view.** See every file the agent in front has changed, as diffs or all together. **Create Branch & Commit** commits just that agent's files.
+- **Modes and models.** Pick an approval mode and a model from the composer. The lists come from the agent.
+- **Conversations persist.** Agents keep their conversation across reloads and restarts, and resume their CLI session when the CLI supports it.
+- **Managed CLI.** GeminiCode can install, update and switch between Gemini CLI versions in its own storage, without touching your system.
+- **Admin policy.** Organisations can lock the CLI version, remove Auto Edit or YOLO, and turn off shell commands.
+
+> [!IMPORTANT]
+> The agent is not sandboxed. Its shell and search tools run with your permissions. **Default** mode asks before every change and command; use **Auto Edit** and **YOLO** only in folders you trust.
+
+## Getting started
+
+You need a Google account with a **Gemini Code Assist** license and a **Google Cloud project** to bill usage to. Your organisation may set the project for you.
+
+The **Get Started with GeminiCode** walkthrough opens on first launch, and again from **Gemini: Get Started**. It walks through four steps:
+
+1. **Gemini CLI.** GeminiCode uses `gemini.cliPath`, then its own copy, then `gemini` on your `PATH`. If none is found, run **Gemini: Install Latest Gemini CLI**.
+2. **Sign in.** Run **Gemini: Sign In with Google**. If your account needs a one-time step that the editor cannot show, run **Gemini: Complete Setup in Terminal**.
+3. **Project.** Run **Gemini: Set Google Cloud Project ID**. Enter the project ID, not the project number.
+4. **First agent.** Choose **New Agent** in the Agents pane.
+
+The **Gemini** status bar item shows the agent's state. Hover over it to see the account, project and CLI version. Click it to restart the agent, change the project or CLI version, or open the log.
+
+## Settings
+
+| Setting | What it does |
+| --- | --- |
+| `gemini.projectId` | Google Cloud project ID to bill. A workspace value overrides a user value. |
+| `gemini.cliPath` | Path to a `gemini` executable or `bundle/gemini.js`. Overrides GeminiCode's own copy. |
+| `gemini.cli.version` | Which of GeminiCode's own CLI copies to run. Empty means the newest. |
+| `gemini.cli.checkForUpdates` | Offer newer CLI releases, at most once a day. |
+| `gemini.approval.allowAutoEdit` | Offer the Auto Edit mode. |
+| `gemini.approval.allowYolo` | Offer the YOLO mode, which runs everything without asking. Off by default. |
+| `gemini.tools.allowShell` | Let the agent run shell commands. Each command still asks first. |
+| `gemini.layout.showAgentsInNewWorkspaces` | Open the Agents pane and Changes view the first time a workspace opens. |
+
+Admins can lock all of these except the project and layout settings through policy; see [Security model](docs/ARCHITECTURE.md#security-model).
+
+## Issues and security
+
+Report bugs in [GitHub Issues](https://github.com/pulkitjain-org/vscode-gemini-cli/issues). Include the GeminiCode and Gemini CLI versions and the relevant lines from **Gemini: Show Log**, with account names and project IDs removed. Report vulnerabilities privately through [GitHub's vulnerability reporting](https://github.com/pulkitjain-org/vscode-gemini-cli/security/advisories/new), never in a public issue.
+
+## Contributing
+
+Put new code in `extensions/gemini/`, follow the [design rules](docs/ARCHITECTURE.md#design-rules), and keep `src/acp` free of `vscode` imports. If you change the messages between the chat view and its webview (`src/host/chatProtocol.ts`), bump `chatProtocolVersion`. Before a pull request, run the checks under [Developing](#developing) and `npx eslint --max-warnings 0 extensions/gemini` from the repository root.
 
 ## Developing
 
