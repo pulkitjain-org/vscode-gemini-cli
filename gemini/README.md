@@ -7,9 +7,11 @@ The repository's top-level README, SECURITY and AGENTS files point here. CONTRIB
 - [docs/USING.md](docs/USING.md): approval modes, folder trust, attachments, long conversations and troubleshooting.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how GeminiCode works and why, including the security model and admin policies.
 - [docs/FINDINGS.md](docs/FINDINGS.md): Gemini CLI behaviour and measurements the design relies on.
+- [docs/RELEASING.md](docs/RELEASING.md): versions, cutting a release, and the Apple signing setup.
 - [docs/ROADMAP.md](docs/ROADMAP.md): open work and risks.
 - [branding/](branding/): icon sources.
 - [scripts/list-fork-touches.sh](scripts/list-fork-touches.sh): lists every upstream file the fork changes.
+- [scripts/notarize.sh](scripts/notarize.sh): sends a signed build to Apple's notary service, for the release workflow.
 
 The product code is in [`../extensions/gemini/`](../extensions/gemini/).
 
@@ -25,19 +27,22 @@ The product code is in [`../extensions/gemini/`](../extensions/gemini/).
 - **GeminiCode Dark and Light.** The default colour themes: a near-black (or soft grey) canvas with lighter cards and Gemini blue. GeminiCode also defaults to the view icons at the top of the side bar, pill-shaped tabs, and no minimap or breadcrumbs; change any of these in Settings.
 - **Modes and models.** Pick an approval mode and a model from the composer. The lists come from the agent.
 - **Conversations persist.** Agents keep their conversation across reloads and restarts, and resume their CLI session when the CLI supports it.
-- **Managed CLI.** GeminiCode can install, update and switch between Gemini CLI versions in its own storage, without touching your system.
-- **Admin policy.** Organisations can lock the CLI version, remove Auto Edit or YOLO, and turn off shell commands.
+- **Managed CLI.** GeminiCode ships with a tested Gemini CLI, and can install, update and switch between newer versions in its own storage, without touching your system.
+- **Update notice.** Once a day GeminiCode checks its download page. When a newer version is out it says so, with **Download** and **Release Notes** buttons; it downloads nothing on its own.
+- **Admin policy.** Organisations can lock the CLI version, remove Auto Edit or YOLO, turn off shell commands, and turn off the update notice.
 
 > [!IMPORTANT]
 > The agent is not sandboxed. Its shell and search tools run with your permissions. **Default** mode asks before every change and command; use **Auto Edit** and **YOLO** only in folders you trust.
 
 ## Getting started
 
+Download GeminiCode for Mac (Apple silicon) from the [download page](https://pulkitjain-org.github.io/vscode-gemini-cli/), open the `.dmg` and drag GeminiCode to Applications.
+
 You need a Google account with a **Gemini Code Assist** license and a **Google Cloud project** to bill usage to. Your organisation may set the project for you.
 
 The **Get Started with GeminiCode** walkthrough opens on first launch, and again from **Gemini: Get Started**. It walks through four steps:
 
-1. **Gemini CLI.** GeminiCode uses `gemini.cliPath`, then its own copy, then `gemini` on your `PATH`. If none is found, run **Gemini: Install Latest Gemini CLI**.
+1. **Gemini CLI.** GeminiCode comes with a tested Gemini CLI, so there is nothing to install. It uses `gemini.cliPath`, then a copy you installed from GeminiCode, then the bundled copy, then `gemini` on your `PATH`.
 2. **Sign in.** Run **Gemini: Sign In with Google**. If your account needs a one-time step that the editor cannot show, run **Gemini: Complete Setup in Terminal**.
 3. **Project.** Run **Gemini: Set Google Cloud Project ID**. Enter the project ID, not the project number.
 4. **First agent.** Choose **New Agent** in the Agents pane.
@@ -49,9 +54,10 @@ The **Gemini** status bar item shows the agent's state. Hover over it to see the
 | Setting | What it does |
 | --- | --- |
 | `gemini.projectId` | Google Cloud project ID to bill. A workspace value overrides a user value. |
-| `gemini.cliPath` | Path to a `gemini` executable or `bundle/gemini.js`. Overrides GeminiCode's own copy. |
+| `gemini.cliPath` | Path to a `gemini` executable or `bundle/gemini.js`. Overrides GeminiCode's own copies. |
 | `gemini.cli.version` | Which of GeminiCode's own CLI copies to run. Empty means the newest. |
 | `gemini.cli.checkForUpdates` | Offer newer CLI releases, at most once a day. |
+| `gemini.app.checkForUpdates` | Say when a newer GeminiCode is out, at most once a day. |
 | `gemini.approval.allowAutoEdit` | Offer the Auto Edit mode. |
 | `gemini.approval.allowYolo` | Offer the YOLO mode, which runs everything without asking. Off by default. |
 | `gemini.tools.allowShell` | Let the agent run shell commands. Each command still asks first. |
@@ -76,6 +82,8 @@ npm run watch            # keep running; rebuilds the workbench, extensions and 
 ./scripts/code.sh        # launches the branded dev build
 ```
 
+To run the dev build on the bundled CLI, as a release does, run `npm run bundle-cli --prefix extensions/gemini` once. Without it the dev build uses an installed copy or `gemini` on your `PATH`.
+
 The Gemini extension on its own:
 
 ```sh
@@ -94,10 +102,10 @@ If the chat view warns that its script is out of date, the webview bundle in `me
 [`gemini-ci.yml`](../.github/workflows/gemini-ci.yml) runs on pull requests and pushes to `main`. It does three things:
 
 - It lints and hygiene-checks the fork files.
-- It builds and type-checks the extension and webview, then runs the unit tests and real-CLI tests against the `latest` and `preview` CLI.
+- It builds and type-checks the extension and webview, builds the download page from a sample release, then runs the unit tests and real-CLI tests against the `latest` and `preview` CLI.
 - It compiles the whole fork and runs upstream's hygiene check.
 
-It does not produce packaged builds yet.
+Packaged builds come from [`gemini-release.yml`](../.github/workflows/gemini-release.yml), which a version tag starts; see [RELEASING.md](docs/RELEASING.md).
 
 ## Touching upstream files
 

@@ -17,7 +17,7 @@ What is left before and after the pilot. The design that is already built is des
 
 ## After the pilot
 
-- **Distribution.** Ship macOS on Apple silicon first, signed with an individual Apple Developer ID and notarised, from GitHub Releases, with a download page on GitHub Pages. Bundle a known-good CLI in the app and show a notice when a newer GeminiCode is out. Windows comes later.
+- **Distribution, remaining.** The Mac build for Apple silicon, the download page, the bundled CLI and the update notice are in place ([RELEASING.md](RELEASING.md)). Left: add the Apple Developer ID secrets so releases are signed and notarised, then Windows (one more runner and a code-signing certificate), and full auto-update, which needs a small update server.
 - **Workbench work.** Order the activity bar so the Gemini sidebar comes first, and reword upstream's welcome text. Both need workbench changes.
 - **Containment.** Evaluate the CLI's `--sandbox` mode as an admin option.
 - **Idle processes.** gemini-cli cannot close a session, so a long-lived process keeps every session it opened (about 2.5 MB each). Restart idle processes to free them, and show in the pane when an agent's process was stopped.

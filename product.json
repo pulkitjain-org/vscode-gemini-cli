@@ -32,6 +32,7 @@
 	"linuxIconName": "geminicode",
 	"licenseFileName": "LICENSE.txt",
 	"reportIssueUrl": "https://github.com/pulkitjain-org/vscode-gemini-cli/issues/new",
+	"geminiCodeDownloadUrl": "https://pulkitjain-org.github.io/vscode-gemini-cli/",
 	"nodejsArtifactFeed": "",
 	"electronArtifactFeed": "",
 	"urlProtocol": "geminicode",
@@ -286,6 +287,17 @@
 				"description": {
 					"key": "gemini.cli.checkForUpdates.policy",
 					"value": "Whether GeminiCode checks the npm registry once a day for a newer Gemini CLI and offers to install it."
+				}
+			}
+		},
+		"gemini.app.checkForUpdates": {
+			"name": "GeminiCodeCheckForUpdates",
+			"category": "Extensions",
+			"minimumVersion": "1.141",
+			"localization": {
+				"description": {
+					"key": "gemini.app.checkForUpdates.policy",
+					"value": "Whether GeminiCode checks its download page once a day for a newer GeminiCode and tells the user."
 				}
 			}
 		},

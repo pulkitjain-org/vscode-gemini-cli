@@ -30,7 +30,7 @@ Upstream files are touched only where a fork must register itself or rebrand. Ea
 
 - `product.json` (names, icons, links, Open VSX gallery, CLI policies);
 - the build lists that register the extension (`build/npm/dirs.ts`, `build/gulpfile.extensions.ts`, `build/lib/extensions.ts`, `build/filters.ts`, `build/hygiene.ts`, `.eslint-ignore`, `eslint.config.js`);
-- branding: packaging metadata (`build/lib/electron.ts`, `build/lib/preLaunch.ts`, `build/win32/code.iss`, `resources/`), and the workbench icons (`code-icon.svg`, `letterpress-*.svg`);
+- branding: packaging metadata (`build/lib/electron.ts`, `build/lib/preLaunch.ts`, `build/win32/code.iss`, `resources/`), the `.dmg` volume name (`build/darwin/create-dmg.ts`), GeminiCode's version in the About dialog (`platform/dialogs/electron-browser/dialog.ts`), and the workbench icons (`code-icon.svg`, `letterpress-*.svg`);
 - four workbench edits: Chat commands hidden from the Command Palette while upstream AI is off (`commandsQuickAccess.ts`), the Gemini extension cannot be disabled (`extensionEnablementService.ts`), the product name in the welcome walkthrough (`gettingStartedContent.ts`), and the default colour themes (`ThemeSettingDefaults` in `services/themes/common/workbenchThemeService.ts`, with a fallback to upstream's Dark/Light 2026 in `services/themes/browser/workbenchThemeService.ts` if the GeminiCode themes are ever missing). `product.json` lists the GeminiCode themes in `onboardingThemes` too.
 
 ## How a prompt flows
@@ -67,10 +67,17 @@ The extension contributes the **GeminiCode Dark** and **GeminiCode Light** colou
 GeminiCode picks the CLI to run in this order:
 
 1. The `gemini.cliPath` setting.
-2. GeminiCode's own copy, from `<globalStorage>/gemini-cli/<version>/`. It uses `gemini.cli.version` if set, or else the newest installed copy.
-3. `gemini` on `PATH`.
+2. A copy installed from GeminiCode, from `<globalStorage>/gemini-cli/<version>/`. It uses `gemini.cli.version` if set, or else the newest installed copy.
+3. The copy bundled with the app, in `extensions/gemini/cli/<version>/`, laid out the same way. Without a pinned version, a bundled copy newer than every installed one wins, so an app update is not held back by an older install. A pinned version that is neither installed nor bundled runs the bundled copy and offers to install the pinned one.
+4. `gemini` on `PATH`.
+
+The bundled version and its npm SHA-512 are pinned in `extensions/gemini/package.json` (`bundledCli`). `npm run bundle-cli` in `extensions/gemini` downloads it with `npm pack`, refuses a mismatched checksum, and unpacks `bundle/`, `package.json` and `LICENSE` into `cli/`, which git ignores. The release build runs it before packaging. The CLI is plain JavaScript with no native modules, so it needs nothing extra for macOS signing. Raise the pin only to a version the real-CLI tests pass on.
 
 **Install Gemini CLI** downloads the release from the npm registry, checks its SHA-512 checksum, and unpacks only `bundle/` and `package.json`. Switching versions restarts the agent once no agent is working, and GeminiCode keeps the current and previous copies. Once a day it checks for a newer release. It only asks first, and skips the check when a version or path is pinned. A CLI older than `MIN_CLI_VERSION` (0.61.0) gets a warning.
+
+## GeminiCode updates
+
+GeminiCode does not update itself. Upstream's updater needs a server that answers per build, and a static GitHub Pages site cannot, so `product.json` has no `updateUrl`. Instead, a minute after start and then at most once a day across windows, `AppUpdateNotice` reads `latest.json` next to the download page (`geminiCodeDownloadUrl` in `product.json`). When it names a release newer than `geminiCodeVersion`, a notification says so, with **Download** (the page) and **Release Notes**. Only `https` links are opened. Dev builds, which have no `geminiCodeVersion`, never check, and admins can turn the check off with `GeminiCodeCheckForUpdates`. Full auto-update can come later with a small update server. See [RELEASING.md](RELEASING.md) for how releases and the page are built.
 
 ## Security model
 
@@ -92,6 +99,7 @@ Each setting below can be locked through VS Code's policy system (Group Policy, 
 | `gemini.cliPath` | `GeminiCliPath` | empty |
 | `gemini.cli.version` | `GeminiCliVersion` | empty (newest copy) |
 | `gemini.cli.checkForUpdates` | `GeminiCliCheckForUpdates` | on |
+| `gemini.app.checkForUpdates` | `GeminiCodeCheckForUpdates` | on |
 | `gemini.approval.allowAutoEdit` | `GeminiAllowAutoEdit` | on |
 | `gemini.approval.allowYolo` | `GeminiAllowYolo` | off |
 | `gemini.tools.allowShell` | `GeminiAllowShell` | on |
@@ -113,7 +121,7 @@ The Gemini extension sets `chat.disableAIFeatures` by default. That hides upstre
 
 1. Discover model and mode IDs from the agent; never hardcode them.
 2. Entitlement comes from the server, never from the client.
-3. The CLI is a swappable runtime: any supported version, from any of the three sources.
+3. The CLI is a swappable runtime: any supported version, from any of the four sources.
 4. Feature-detect and degrade. Hide a control the agent does not support, and render unknown update kinds generically.
 5. Keep the wire-to-UI adapter thin (`sessionUpdates.ts`).
 6. `extensions/gemini/src/acp` never imports `vscode`. ESLint enforces this.

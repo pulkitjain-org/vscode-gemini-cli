@@ -48,13 +48,16 @@ jobs:
           npm ci --prefix extensions/gemini
 
       - name: Lint fork files
-        run: npx eslint --max-warnings 0 extensions/gemini build/hygiene.ts build/filters.ts build/npm/dirs.ts build/gulpfile.extensions.ts build/lib/extensions.ts
+        run: npx eslint --max-warnings 0 extensions/gemini gemini/site build/hygiene.ts build/filters.ts build/npm/dirs.ts build/gulpfile.extensions.ts build/lib/extensions.ts
 
       - name: Hygiene (fork files)
         run: node build/hygiene.ts product.json .eslint-ignore build/lib/extensions.ts $(git ls-files extensions/gemini gemini .github/workflows/gemini-ci.yml)
 
       - name: Compile extension
         run: npm run gulp compile-extension:gemini
+
+      - name: Build the download page (sample release)
+        run: node gemini/site/build.mts "$RUNNER_TEMP/site" --sample
 
       - name: Type check tests and webview
         run: |

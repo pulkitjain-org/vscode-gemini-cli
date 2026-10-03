@@ -36,6 +36,45 @@ describe('resolveCli', () => {
 		expect(resolveCli({ cliPath: undefined, version: undefined, managedDir, listVersions: () => [] }))
 			.toEqual({ cliPath: undefined, source: 'path' });
 	});
+
+	describe('with a bundled copy', () => {
+		const bundledDir = '/app/extensions/gemini/cli';
+		const folders = (managed: string[], bundled: string[]) => (dir: string) => dir === bundledDir ? bundled : managed;
+
+		it('uses the bundled copy when nothing is installed', () => {
+			expect(resolveCli({ cliPath: '', version: '', managedDir, bundledDir, listVersions: folders([], ['0.62.0']) }))
+				.toEqual({ cliPath: managedEntryPoint(bundledDir, '0.62.0'), source: 'bundled', version: '0.62.0' });
+		});
+
+		it('prefers an installed copy that is as new or newer', () => {
+			expect(resolveCli({ cliPath: '', version: '', managedDir, bundledDir, listVersions: folders(['0.62.0'], ['0.62.0']) }))
+				.toEqual({ cliPath: managedEntryPoint(managedDir, '0.62.0'), source: 'managed', version: '0.62.0' });
+			expect(resolveCli({ cliPath: '', version: '', managedDir, bundledDir, listVersions: folders(['0.63.0'], ['0.62.0']) }))
+				.toMatchObject({ source: 'managed', version: '0.63.0' });
+		});
+
+		it('prefers a newer bundled copy to an older install', () => {
+			expect(resolveCli({ cliPath: '', version: '', managedDir, bundledDir, listVersions: folders(['0.61.0'], ['0.62.0']) }))
+				.toMatchObject({ source: 'bundled', version: '0.62.0' });
+		});
+
+		it('honours a pinned version, installed or bundled', () => {
+			expect(resolveCli({ cliPath: '', version: '0.61.0', managedDir, bundledDir, listVersions: folders(['0.61.0'], ['0.62.0']) }))
+				.toMatchObject({ source: 'managed', version: '0.61.0' });
+			expect(resolveCli({ cliPath: '', version: '0.62.0', managedDir, bundledDir, listVersions: folders(['0.63.0'], ['0.62.0']) }))
+				.toMatchObject({ source: 'bundled', version: '0.62.0' });
+		});
+
+		it('runs the bundled copy and reports a pinned version that is missing', () => {
+			expect(resolveCli({ cliPath: '', version: '0.64.0', managedDir, bundledDir, listVersions: folders(['0.63.0'], ['0.62.0']) }))
+				.toEqual({ cliPath: managedEntryPoint(bundledDir, '0.62.0'), source: 'bundled', version: '0.62.0', missingVersion: '0.64.0' });
+		});
+
+		it('still lets the cliPath setting win', () => {
+			expect(resolveCli({ cliPath: '/opt/gemini', version: '', managedDir, bundledDir, listVersions: folders([], ['0.62.0']) }))
+				.toEqual({ cliPath: '/opt/gemini', source: 'setting' });
+		});
+	});
 });
 
 describe('listManagedVersions', () => {

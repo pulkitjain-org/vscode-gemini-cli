@@ -125,6 +125,7 @@ function describeCliSource(cli: CliResolution | undefined): string {
 	switch (cli?.source) {
 		case 'setting': return ` (${vscode.l10n.t("from the gemini.cliPath setting")})`;
 		case 'managed': return ` (${vscode.l10n.t("GeminiCode's copy")})`;
+		case 'bundled': return ` (${vscode.l10n.t("bundled with GeminiCode")})`;
 		case 'path': return ` (${vscode.l10n.t("from PATH")})`;
 		default: return '';
 	}
