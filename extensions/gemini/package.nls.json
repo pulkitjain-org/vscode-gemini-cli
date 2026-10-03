@@ -39,5 +39,17 @@
 	"command.changes.openAll": "Open All Changes",
 	"command.changes.clear": "Clear List",
 	"command.changes.openFile": "Open Changes",
-	"configuration.layout.showAgentsInNewWorkspaces": "Show the Agents pane and the Changes view the first time a workspace opens. Afterwards the layout you arrange is kept."
+	"configuration.layout.showAgentsInNewWorkspaces": "Show the Agents pane and the Changes view the first time a workspace opens. Afterwards the layout you arrange is kept.",
+	"command.signIn": "Sign In with Google",
+	"command.getStarted": "Get Started",
+	"walkthrough.title": "Get Started with GeminiCode",
+	"walkthrough.description": "Set up the Gemini agent and start your first agent.",
+	"walkthrough.cli.title": "Gemini CLI is ready",
+	"walkthrough.cli.description": "GeminiCode runs the Gemini CLI as its agent. This step ticks itself off once the CLI starts.\n[Install Gemini CLI](command:gemini.installCli)",
+	"walkthrough.signIn.title": "Sign in with Google",
+	"walkthrough.signIn.description": "Sign in with the Google account that holds your Gemini Code Assist license.\n[Sign In](command:gemini.signIn)\n[Use Terminal Instead](command:gemini.completeSetupInTerminal)",
+	"walkthrough.project.title": "Check your Google Cloud project",
+	"walkthrough.project.description": "Usage is billed to a Google Cloud project. Set its ID if your organization does not set one for you.\n[Set Project ID](command:gemini.setProjectId)",
+	"walkthrough.agent.title": "Start your first agent",
+	"walkthrough.agent.description": "Agents open as editor tabs, each with its own chat and folder.\n[New Agent](command:gemini.agents.newAgent)"
 }

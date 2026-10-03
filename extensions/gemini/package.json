@@ -51,6 +51,16 @@
         "category": "%category%"
       },
       {
+        "command": "gemini.signIn",
+        "title": "%command.signIn%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.getStarted",
+        "title": "%command.getStarted%",
+        "category": "%category%"
+      },
+      {
         "command": "gemini.completeSetupInTerminal",
         "title": "%command.completeSetupInTerminal%",
         "category": "%category%"
@@ -150,6 +160,43 @@
         "command": "gemini.changes.openFile",
         "title": "%command.changes.openFile%",
         "category": "%category%"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "gemini.getStarted",
+        "title": "%walkthrough.title%",
+        "description": "%walkthrough.description%",
+        "steps": [
+          {
+            "id": "cli",
+            "title": "%walkthrough.cli.title%",
+            "description": "%walkthrough.cli.description%",
+            "media": { "markdown": "walkthrough/cli.md" },
+            "completionEvents": ["onContext:gemini.setup.cliReady"]
+          },
+          {
+            "id": "signIn",
+            "title": "%walkthrough.signIn.title%",
+            "description": "%walkthrough.signIn.description%",
+            "media": { "markdown": "walkthrough/signIn.md" },
+            "completionEvents": ["onContext:gemini.setup.signedIn"]
+          },
+          {
+            "id": "project",
+            "title": "%walkthrough.project.title%",
+            "description": "%walkthrough.project.description%",
+            "media": { "markdown": "walkthrough/project.md" },
+            "completionEvents": ["onContext:gemini.setup.projectReady"]
+          },
+          {
+            "id": "agent",
+            "title": "%walkthrough.agent.title%",
+            "description": "%walkthrough.agent.description%",
+            "media": { "markdown": "walkthrough/agent.md" },
+            "completionEvents": ["onCommand:gemini.agents.newAgent"]
+          }
+        ]
       }
     ],
     "keybindings": [

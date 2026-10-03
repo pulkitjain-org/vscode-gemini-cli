@@ -15,6 +15,7 @@ import { CliManager } from './host/cliManager';
 import { DiffPreview } from './host/diffPreview';
 import { configSection, setStorageDirs } from './host/configuration';
 import { initModelPreference } from './host/modelPreference';
+import { SetupWalkthrough, walkthroughId } from './host/setupWalkthrough';
 import { GeminiStatusBar } from './host/statusBar';
 import { WorkspaceFileIndex } from './host/workspaceFiles';
 
@@ -33,6 +34,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	void applyLayoutDefaults(context);
 	// Add to Chat goes to the agent tab in front, else to the quick chat.
 	const chatInFront = () => agentsView.activeController() ?? chatView.controller;
+	const walkthrough = new SetupWalkthrough(service, context.globalState);
 
 	context.subscriptions.push(
 		log,
@@ -41,6 +43,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		fileIndex,
 		chatView,
 		agentsView,
+		walkthrough,
 		new GeminiStatusBar(service),
 		new CliManager(service, context.globalState, log),
 		vscode.window.registerWebviewViewProvider(chatViewId, chatView),
@@ -53,6 +56,8 @@ export function activate(context: vscode.ExtensionContext): void {
 		vscode.commands.registerCommand('gemini.restartAgent', () => service.restart()),
 		vscode.commands.registerCommand('gemini.completeSetupInTerminal', () => service.completeSetupInTerminal()),
 		vscode.commands.registerCommand('gemini.setProjectId', () => setProjectId()),
+		vscode.commands.registerCommand('gemini.signIn', () => walkthrough.signIn()),
+		vscode.commands.registerCommand('gemini.getStarted', () => vscode.commands.executeCommand('workbench.action.openWalkthrough', walkthroughId, false)),
 	);
 }
 

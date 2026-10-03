@@ -261,6 +261,11 @@ export class ExtensionEnablementService extends Disposable implements IWorkbench
 			throw new Error(localize('cannot disable settings sync auth extension', "Cannot change enablement of {0} extension because Settings Sync depends on it.", extension.manifest.displayName || extension.identifier.id));
 		}
 
+		// GEMINI-FORK: the built-in Gemini extension is the product's agent, so it cannot be turned off.
+		if (extension.type === ExtensionType.System && areSameExtensions(extension.identifier, { id: 'gemini-fork.gemini' })) {
+			throw new Error(localize('cannot disable gemini extension', "Cannot change enablement of {0} extension because the application depends on it.", extension.manifest.displayName || extension.identifier.id));
+		}
+
 		if (this._isEnabledInEnv(extension)) {
 			throw new Error(localize('cannot change enablement environment', "Cannot change enablement of {0} extension because it is enabled in environment", extension.manifest.displayName || extension.identifier.id));
 		}
