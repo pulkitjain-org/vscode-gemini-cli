@@ -2,8 +2,9 @@
 
 GeminiCode is a fork of VS Code (Code - OSS) with the [Gemini CLI](https://github.com/google-gemini/gemini-cli) built in as its coding agent. It runs the official `gemini` CLI over the [Agent Client Protocol](https://agentclientprotocol.com), so you get the CLI's agent, sign-in and Gemini Code Assist license inside a full editor.
 
-The repository's top-level README, CONTRIBUTING, SECURITY and AGENTS files are upstream's and are left unchanged, so that upstream merges stay clean. This folder is where the fork's own docs live:
+The repository's top-level README, SECURITY and AGENTS files point here. CONTRIBUTING.md and the `.github` agent instructions are upstream's and stay unchanged, so upstream merges stay clean. This folder is where the fork's own docs live:
 
+- [docs/USING.md](docs/USING.md): approval modes, folder trust, attachments, long conversations and troubleshooting.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how GeminiCode works and why, including the security model and admin policies.
 - [docs/FINDINGS.md](docs/FINDINGS.md): Gemini CLI behaviour and measurements the design relies on.
 - [docs/ROADMAP.md](docs/ROADMAP.md): open work and risks.

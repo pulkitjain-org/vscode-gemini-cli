@@ -17,7 +17,7 @@ What is left before and after the pilot. The design that is already built is des
 
 ## After the pilot
 
-- **Distribution.** Set up a release pipeline on a CI matrix with signing and notarisation, and a static update feed (`product.quality` and `downloadUrl`). Bundle a known-good CLI in the installer. Plan rollout through MDM or a download page, with insider and stable rings.
+- **Distribution.** Ship macOS on Apple silicon first, signed with an individual Apple Developer ID and notarised, from GitHub Releases, with a download page on GitHub Pages. Bundle a known-good CLI in the app and show a notice when a newer GeminiCode is out. Windows comes later.
 - **Workbench work.** Order the activity bar so the Gemini sidebar comes first, and reword upstream's welcome text. Both need workbench changes.
 - **Containment.** Evaluate the CLI's `--sandbox` mode as an admin option.
 - **Idle processes.** gemini-cli cannot close a session, so a long-lived process keeps every session it opened (about 2.5 MB each). Restart idle processes to free them, and show in the pane when an agent's process was stopped.
