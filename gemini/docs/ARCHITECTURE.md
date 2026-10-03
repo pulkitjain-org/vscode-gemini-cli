@@ -75,6 +75,10 @@ The bundled version and its npm SHA-512 are pinned in `extensions/gemini/package
 
 **Install Gemini CLI** downloads the release from the npm registry, checks its SHA-512 checksum, and unpacks only `bundle/` and `package.json`. Switching versions restarts the agent once no agent is working, and GeminiCode keeps the current and previous copies. Once a day it checks for a newer release. It only asks first, and skips the check when a version or path is pinned. A CLI older than `MIN_CLI_VERSION` (0.61.0) gets a warning.
 
+## GeminiCode updates
+
+GeminiCode does not update itself. Upstream's updater needs a server that answers per build, and a static GitHub Pages site cannot, so `product.json` has no `updateUrl`. Instead, a minute after start and then at most once a day across windows, `AppUpdateNotice` reads `latest.json` next to the download page (`geminiCodeDownloadUrl` in `product.json`). When it names a release newer than `geminiCodeVersion`, a notification says so, with **Download** (the page) and **Release Notes**. Only `https` links are opened. Dev builds, which have no `geminiCodeVersion`, never check, and admins can turn the check off with `GeminiCodeCheckForUpdates`. Full auto-update can come later with a small update server. See [RELEASING.md](RELEASING.md) for how releases and the page are built.
+
 ## Security model
 
 ACP does **not** sandbox the agent. The CLI routes only its `read_file`, `write_file` and `edit` tools through the client's file requests. Its shell, `grep`, `glob` and `ls` tools run inside the CLI process with the user's permissions. What keeps the user in control:
@@ -95,6 +99,7 @@ Each setting below can be locked through VS Code's policy system (Group Policy, 
 | `gemini.cliPath` | `GeminiCliPath` | empty |
 | `gemini.cli.version` | `GeminiCliVersion` | empty (newest copy) |
 | `gemini.cli.checkForUpdates` | `GeminiCliCheckForUpdates` | on |
+| `gemini.app.checkForUpdates` | `GeminiCodeCheckForUpdates` | on |
 | `gemini.approval.allowAutoEdit` | `GeminiAllowAutoEdit` | on |
 | `gemini.approval.allowYolo` | `GeminiAllowYolo` | off |
 | `gemini.tools.allowShell` | `GeminiAllowShell` | on |

@@ -28,7 +28,8 @@ The product code is in [`../extensions/gemini/`](../extensions/gemini/).
 - **Modes and models.** Pick an approval mode and a model from the composer. The lists come from the agent.
 - **Conversations persist.** Agents keep their conversation across reloads and restarts, and resume their CLI session when the CLI supports it.
 - **Managed CLI.** GeminiCode ships with a tested Gemini CLI, and can install, update and switch between newer versions in its own storage, without touching your system.
-- **Admin policy.** Organisations can lock the CLI version, remove Auto Edit or YOLO, and turn off shell commands.
+- **Update notice.** Once a day GeminiCode checks its download page. When a newer version is out it says so, with **Download** and **Release Notes** buttons; it downloads nothing on its own.
+- **Admin policy.** Organisations can lock the CLI version, remove Auto Edit or YOLO, turn off shell commands, and turn off the update notice.
 
 > [!IMPORTANT]
 > The agent is not sandboxed. Its shell and search tools run with your permissions. **Default** mode asks before every change and command; use **Auto Edit** and **YOLO** only in folders you trust.
@@ -56,6 +57,7 @@ The **Gemini** status bar item shows the agent's state. Hover over it to see the
 | `gemini.cliPath` | Path to a `gemini` executable or `bundle/gemini.js`. Overrides GeminiCode's own copies. |
 | `gemini.cli.version` | Which of GeminiCode's own CLI copies to run. Empty means the newest. |
 | `gemini.cli.checkForUpdates` | Offer newer CLI releases, at most once a day. |
+| `gemini.app.checkForUpdates` | Say when a newer GeminiCode is out, at most once a day. |
 | `gemini.approval.allowAutoEdit` | Offer the Auto Edit mode. |
 | `gemini.approval.allowYolo` | Offer the YOLO mode, which runs everything without asking. Off by default. |
 | `gemini.tools.allowShell` | Let the agent run shell commands. Each command still asks first. |

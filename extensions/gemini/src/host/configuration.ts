@@ -15,17 +15,27 @@ import { ProjectIdProblem, ResolvedProjectId, resolveProjectId, validateProjectI
 
 export const configSection = 'gemini';
 
-/** The org default project, from `geminiDefaultProjectId` in the app's product.json, if set. */
-function readOrgDefaultProjectId(): string | undefined {
+/** GeminiCode's own fields in the app's product.json. */
+export interface GeminiProductInfo {
+	/** The org default project (`geminiDefaultProjectId`), set by each build. */
+	readonly defaultProjectId?: string;
+	/** GeminiCode's release version (`geminiCodeVersion`), stamped by the release build; a dev build has none. */
+	readonly version?: string;
+	/** The download page (`geminiCodeDownloadUrl`). */
+	readonly downloadPageUrl?: string;
+}
+
+function readProductInfo(): GeminiProductInfo {
 	try {
 		const product = JSON.parse(readFileSync(path.join(vscode.env.appRoot, 'product.json'), 'utf8'));
-		return typeof product.geminiDefaultProjectId === 'string' ? product.geminiDefaultProjectId : undefined;
+		const field = (name: string) => typeof product[name] === 'string' && product[name] ? product[name] as string : undefined;
+		return { defaultProjectId: field('geminiDefaultProjectId'), version: field('geminiCodeVersion'), downloadPageUrl: field('geminiCodeDownloadUrl') };
 	} catch {
-		return undefined;
+		return {};
 	}
 }
 
-const orgDefaultProjectId = readOrgDefaultProjectId();
+export const productInfo = readProductInfo();
 
 /** The project ID in effect; a problem is only possible when there is one. */
 export type ProjectSettings =
@@ -37,7 +47,7 @@ export function getProjectSettings(): ProjectSettings {
 	const resolved = resolveProjectId({
 		workspace: inspected?.workspaceFolderValue ?? inspected?.workspaceValue,
 		user: inspected?.globalValue,
-		orgDefault: orgDefaultProjectId,
+		orgDefault: productInfo.defaultProjectId,
 		env: process.env,
 	});
 	return resolved ? { resolved, problem: validateProjectId(resolved.projectId) } : { resolved, problem: undefined };
