@@ -15,6 +15,8 @@
 	"viewContainer.title": "Gemini",
 	"view.chat": "Quick Chat",
 	"command.restartAgent": "Restart Agent",
+	"command.installCli": "Install Latest Gemini CLI",
+	"command.installCliVersion": "Install or Change Gemini CLI Version...",
 	"command.setProjectId": "Set Google Cloud Project ID",
 	"command.completeSetupInTerminal": "Complete Setup in Terminal",
 	"configuration.projectId": "Google Cloud project ID the agent bills to, passed to the CLI as `GOOGLE_CLOUD_PROJECT`. Use the project ID, not the project number. A workspace value wins over a user value; when neither is set, the organisation default and then the `GOOGLE_CLOUD_QUOTA_PROJECT`, `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_PROJECT_ID` environment variables are used.",

@@ -59,6 +59,11 @@ export class AgentRuntime {
 	/** Shared by concurrent `session/new` calls so the user's settings are rewritten at most once (plan C4). */
 	private authenticating: Promise<void> | undefined;
 	private readonly sidecarListener: { dispose(): void };
+	/** Prompts still running on this process, across its sessions. */
+	private turns = 0;
+	private readonly onDidBecomeIdleEmitter = new Emitter<void>();
+	/** Fires when the last running prompt ends. */
+	readonly onDidBecomeIdle = this.onDidBecomeIdleEmitter.event;
 
 	constructor(sidecar: AgentSidecar, private readonly options: AgentRuntimeOptions = {}) {
 		this.sidecarListener = sidecar.onDidChangeState(state => this.onSidecarState(state));
@@ -69,6 +74,23 @@ export class AgentRuntime {
 
 	get state(): AgentRuntimeState {
 		return this._state;
+	}
+
+	/** Whether a prompt is running in any session. */
+	get busy(): boolean {
+		return this.turns > 0;
+	}
+
+	/** Counts `turn` as running until it settles, for `busy`. */
+	async trackTurn<T>(turn: Promise<T>): Promise<T> {
+		this.turns++;
+		try {
+			return await turn;
+		} finally {
+			if (--this.turns === 0) {
+				this.onDidBecomeIdleEmitter.fire();
+			}
+		}
 	}
 
 	/** How many sessions are registered. */
@@ -152,6 +174,7 @@ export class AgentRuntime {
 		this.sidecarListener.dispose();
 		this.dropConnection();
 		this.onDidChangeStateEmitter.dispose();
+		this.onDidBecomeIdleEmitter.dispose();
 	}
 
 	private onSidecarState(state: SidecarState): void {

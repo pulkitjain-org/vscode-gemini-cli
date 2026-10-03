@@ -38,6 +38,9 @@ export class AgentService implements vscode.Disposable {
 	private _cli: CliResolution | undefined;
 	/** The agent version last warned about, so a restart does not warn again. */
 	private warnedVersion: string | undefined;
+	/** The missing pinned version last offered for install. */
+	private offeredVersion: string | undefined;
+	private idleRestart: { dispose(): void } | undefined;
 
 	private readonly onDidChangeStatusEmitter = new vscode.EventEmitter<AgentStatus>();
 	readonly onDidChangeStatus = this.onDidChangeStatusEmitter.event;
@@ -91,6 +94,31 @@ export class AgentService implements vscode.Disposable {
 		return this._cli;
 	}
 
+	get isStarted(): boolean {
+		return this.started;
+	}
+
+	/** Whether a prompt is running in any chat. */
+	get isBusy(): boolean {
+		return this.runtime.busy;
+	}
+
+	/** Restarts the agent now, or once the running prompts end, so no turn is cut off. */
+	restartWhenIdle(): void {
+		this.idleRestart?.dispose();
+		this.idleRestart = undefined;
+		if (!this.runtime.busy) {
+			this.restart();
+			return;
+		}
+		this.idleRestart = this.runtime.onDidBecomeIdle(() => {
+			this.idleRestart?.dispose();
+			this.idleRestart = undefined;
+			this.log.info('No agent is working; restarting on the new Gemini CLI');
+			this.restart();
+		});
+	}
+
 	get status(): AgentStatus {
 		return this.statusFor(this.client);
 	}
@@ -132,6 +160,8 @@ export class AgentService implements vscode.Disposable {
 	}
 
 	restart(): void {
+		this.idleRestart?.dispose();
+		this.idleRestart = undefined;
 		const { resolved, problem } = getProjectSettings();
 		if (problem === 'numeric') {
 			this.started = false;
@@ -173,6 +203,7 @@ export class AgentService implements vscode.Disposable {
 	}
 
 	dispose(): void {
+		this.idleRestart?.dispose();
 		this.setupTerminal?.dispose();
 		this.permissions.dispose();
 		this.client.dispose();
@@ -188,6 +219,10 @@ export class AgentService implements vscode.Disposable {
 		this.log.info(`Using the Gemini CLI from ${where}${cli.cliPath ? ` (${cli.cliPath})` : ''}`);
 		if (cli.missingVersion) {
 			this.log.warn(`Gemini CLI ${cli.missingVersion} is set in ${configSection}.cli.version but not installed; using PATH`);
+			if (cli.missingVersion !== this.offeredVersion) {
+				this.offeredVersion = cli.missingVersion;
+				void this.offerInstall(cli.missingVersion);
+			}
 		}
 		return cli;
 	}
@@ -211,11 +246,24 @@ export class AgentService implements vscode.Disposable {
 	}
 
 	private async showOldCli(version: string): Promise<void> {
+		const installLatest = vscode.l10n.t("Install Latest");
 		const setCliPath = vscode.l10n.t("Set CLI Path");
 		const choice = await vscode.window.showWarningMessage(
-			vscode.l10n.t("Gemini CLI {0} is older than {1}, the oldest version GeminiCode supports. Some features may not work.", version, MIN_CLI_VERSION), setCliPath);
-		if (choice === setCliPath) {
+			vscode.l10n.t("Gemini CLI {0} is older than {1}, the oldest version GeminiCode supports. Some features may not work.", version, MIN_CLI_VERSION),
+			...(this._cli?.source === 'setting' ? [setCliPath] : [installLatest, setCliPath]));
+		if (choice === installLatest) {
+			await vscode.commands.executeCommand('gemini.installCli');
+		} else if (choice === setCliPath) {
 			await vscode.commands.executeCommand('workbench.action.openSettings', `${configSection}.cliPath`);
+		}
+	}
+
+	private async offerInstall(version: string): Promise<void> {
+		const install = vscode.l10n.t("Install {0}", version);
+		const choice = await vscode.window.showWarningMessage(
+			vscode.l10n.t("Gemini CLI {0} is set in {1} but is not installed, so the gemini on PATH is used.", version, `${configSection}.cli.version`), install);
+		if (choice === install) {
+			await vscode.commands.executeCommand('gemini.installCli', version);
 		}
 	}
 
@@ -223,6 +271,7 @@ export class AgentService implements vscode.Disposable {
 		const setUpInTerminal = vscode.l10n.t("Complete Setup in Terminal");
 		const setProject = vscode.l10n.t("Set Project ID");
 		const setCliPath = vscode.l10n.t("Set CLI Path");
+		const installCli = vscode.l10n.t("Install Gemini CLI");
 		const restart = vscode.l10n.t("Restart Agent");
 		const showLog = vscode.l10n.t("Show Log");
 
@@ -244,7 +293,7 @@ export class AgentService implements vscode.Disposable {
 				break;
 			case 'agent-not-found':
 				message = vscode.l10n.t("The Gemini CLI was not found. Install it, or set its path in the gemini.cliPath setting.");
-				actions = [setCliPath, showLog];
+				actions = [installCli, setCliPath, showLog];
 				break;
 			default:
 				message = vscode.l10n.t("The Gemini agent failed: {0}", error.message);
@@ -255,6 +304,7 @@ export class AgentService implements vscode.Disposable {
 			case setUpInTerminal: this.completeSetupInTerminal(); break;
 			case setProject: await vscode.commands.executeCommand('gemini.setProjectId'); break;
 			case setCliPath: await vscode.commands.executeCommand('workbench.action.openSettings', `${configSection}.cliPath`); break;
+			case installCli: await vscode.commands.executeCommand('gemini.installCli'); break;
 			case restart: this.restart(); break;
 			case showLog: this.log.show(); break;
 		}

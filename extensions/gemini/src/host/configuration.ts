@@ -53,6 +53,10 @@ export function setManagedCliDir(dir: string): void {
 	managedCliDir = dir;
 }
 
+export function getManagedCliDir(): string | undefined {
+	return managedCliDir;
+}
+
 /** Which CLI the next agent process runs (plan Phase 3, runtime-resolution). */
 export function getCliResolution(): CliResolution {
 	const config = vscode.workspace.getConfiguration(configSection);

@@ -120,7 +120,7 @@ export class AgentClient {
 			throw new Error('The agent is not ready.');
 		}
 		try {
-			const response = await this.connection.prompt(state.sessionId, typeof content === 'string' ? [{ type: 'text', text: content }] : content);
+			const response = await this.runtime.trackTurn(this.connection.prompt(state.sessionId, typeof content === 'string' ? [{ type: 'text', text: content }] : content));
 			return response.stopReason;
 		} catch (err) {
 			throw new AgentError(classifyAgentError(err));

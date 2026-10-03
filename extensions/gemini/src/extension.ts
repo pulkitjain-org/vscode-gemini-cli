@@ -11,6 +11,7 @@ import { AgentsView } from './host/agentsView';
 import { applyLayoutDefaults } from './host/layoutDefaults';
 import { ChatViewProvider, chatViewId } from './host/chatView';
 import { checkAgent } from './host/checkAgent';
+import { CliManager } from './host/cliManager';
 import { DiffPreview } from './host/diffPreview';
 import { configSection, setManagedCliDir } from './host/configuration';
 import { initModelPreference } from './host/modelPreference';
@@ -38,6 +39,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		chatView,
 		agentsView,
 		new GeminiStatusBar(service),
+		new CliManager(service, log),
 		vscode.window.registerWebviewViewProvider(chatViewId, chatView),
 		vscode.commands.registerCommand('gemini.openChat', () => vscode.commands.executeCommand(`${chatViewId}.focus`)),
 		vscode.commands.registerCommand('gemini.newChat', () => chatView.newChat()),
