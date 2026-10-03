@@ -62,6 +62,7 @@ export class AgentClient {
 
 	private _state: AgentClientState = { kind: 'idle' };
 	private _settings: SessionSettings = {};
+	private pendingMode: string | undefined;
 	private connection: AgentConnection | undefined;
 	private adapter = new SessionUpdateAdapter();
 	private registration: { dispose(): void } | undefined;
@@ -100,6 +101,11 @@ export class AgentClient {
 	/** Makes the next session a new one instead of reopening the last, for a chat cleared while the agent is not running. */
 	forgetSession(): void {
 		this.resumeSessionId = undefined;
+	}
+
+	/** Switches the next session this client opens, such as the one reopened after a restart, to `modeId`. */
+	setModeOnNextSession(modeId: string): void {
+		this.pendingMode = modeId;
 	}
 
 	setMode(modeId: string): Promise<void> {
@@ -182,7 +188,8 @@ export class AgentClient {
 				fileSystem: this.options.fileSystem,
 			});
 			this.resumeSessionId = session.sessionId;
-			const settings = await this.applyPreferredModel(connection, session.sessionId, filterModes(readSessionSettings(session), this.options.isModeAllowed));
+			const preferred = await this.applyPreferredModel(connection, session.sessionId, filterModes(readSessionSettings(session), this.options.isModeAllowed));
+			const settings = await this.applyPendingMode(connection, session.sessionId, preferred);
 			if (generation !== this.generation) {
 				return;
 			}
@@ -252,6 +259,22 @@ export class AgentClient {
 			return { ...settings, model: { ...model, currentId: preferred } };
 		} catch {
 			// The session keeps the agent's default; the picker shows it.
+			return settings;
+		}
+	}
+
+	private async applyPendingMode(connection: AgentConnection, sessionId: string, settings: SessionSettings): Promise<SessionSettings> {
+		const modeId = this.pendingMode;
+		this.pendingMode = undefined;
+		const mode = settings.mode;
+		if (!modeId || !mode || mode.currentId === modeId || !mode.available.some(choice => choice.id === modeId)) {
+			return settings;
+		}
+		try {
+			await connection.setMode(sessionId, modeId);
+			return { ...settings, mode: { ...mode, currentId: modeId } };
+		} catch {
+			// The session still opens, in the mode the agent chose.
 			return settings;
 		}
 	}

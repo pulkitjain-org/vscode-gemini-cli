@@ -8,7 +8,7 @@ import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { classifyAgentError } from '../../src/acp/errors';
 
-interface Fixture { kind: string; code?: number; message: string }
+interface Fixture { kind: string; code?: number; message: string; details?: string }
 const fixtures: Record<string, Fixture[] | string> = JSON.parse(readFileSync(path.join(import.meta.dirname, '..', 'fixtures', 'agentErrors.json'), 'utf8'));
 
 describe('classifyAgentError', () => {
@@ -18,7 +18,8 @@ describe('classifyAgentError', () => {
 		}
 		for (const fixture of cases) {
 			it(`classifies ${fixture.kind} from CLI ${version}`, () => {
-				expect(classifyAgentError({ code: fixture.code, message: fixture.message })).toEqual({ kind: fixture.kind, code: fixture.code, message: fixture.message });
+				expect(classifyAgentError({ code: fixture.code, message: fixture.message, data: fixture.details ? { details: fixture.details } : undefined }))
+					.toEqual({ kind: fixture.kind, code: fixture.code, message: fixture.details ?? fixture.message });
 			});
 		}
 	}

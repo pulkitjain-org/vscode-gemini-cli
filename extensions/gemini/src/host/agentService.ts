@@ -13,6 +13,7 @@ import { PermissionBroker } from '../acp/permissions';
 import { CliResolution, isOlderThan } from '../acp/cliResolution';
 import { MIN_CLI_VERSION } from '../acp/protocol';
 import { AgentSidecar } from '../acp/sidecar';
+import { trustedFoldersPath, trustFolder } from '../acp/trustedFolders';
 import { AgentStatus, describeAgentStatus } from '../acp/status';
 import { agentLaunchSettings, configSection, getAgentCommand, getApprovalPolicy, getCliResolution, getProjectSettings, getWorkspaceCwd } from './configuration';
 import { preferredModel } from './modelPreference';
@@ -106,7 +107,7 @@ export class AgentService implements vscode.Disposable {
 	}
 
 	/** Restarts the agent now, or once the running prompts end, so no turn is cut off. */
-	restartWhenIdle(): void {
+	restartWhenIdle(reason = 'restarting on the new Gemini CLI'): void {
 		this.idleRestart?.dispose();
 		this.idleRestart = undefined;
 		if (!this.runtime.busy) {
@@ -116,9 +117,23 @@ export class AgentService implements vscode.Disposable {
 		this.idleRestart = this.runtime.onDidBecomeIdle(() => {
 			this.idleRestart?.dispose();
 			this.idleRestart = undefined;
-			this.log.info('No agent is working; restarting on the new Gemini CLI');
+			this.log.info(`No agent is working; ${reason}`);
 			this.restart();
 		});
+	}
+
+	/**
+	 * Adds `folder` to the CLI's trusted folders and restarts the agent once no
+	 * prompt runs, since the CLI reads that list once per process. Returns
+	 * whether the restart has to wait. Throws when the list cannot be updated.
+	 */
+	trustFolder(folder: string): boolean {
+		const file = trustedFoldersPath(process.env);
+		trustFolder(file, folder);
+		this.log.info(`Trusted ${folder} in ${file}`);
+		const waits = this.runtime.busy;
+		this.restartWhenIdle('restarting so the agent trusts the folder');
+		return waits;
 	}
 
 	get status(): AgentStatus {
