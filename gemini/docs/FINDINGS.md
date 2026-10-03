@@ -14,10 +14,13 @@ Still to verify on a desktop: the browser flow in ACP mode, and that it writes n
 
 ## Error strings
 
-These messages come from `packages/core/src/code_assist/setup.ts`. The fixtures are in `extensions/gemini/test/fixtures/agentErrors.json`.
+The project messages come from `packages/core/src/code_assist/setup.ts`. The fixtures are in `extensions/gemini/test/fixtures/agentErrors.json`.
 
 - `ProjectIdRequiredError`: "This account requires setting the GOOGLE_CLOUD_PROJECT or GOOGLE_CLOUD_PROJECT_ID env var. …"
 - `InvalidNumericProjectIdError`: "Invalid Google Cloud Project ID: "…". The GOOGLE_CLOUD_PROJECT …". The CLI checks this before any network call.
+- A failed user-code sign-in: "Failed to authenticate with user code …" (or "authorization code").
+- From 0.62.0, picking Auto Edit or YOLO in a folder the CLI does not trust fails with "Cannot enable privileged approval modes in an untrusted folder." The IDE offers to trust the folder ([USING.md](USING.md#folder-trust)).
+- Outside `authenticate` and `session/new`, the CLI answers a failure with a generic "Internal error" and puts its own message in `data.details`, which the IDE reads instead.
 - `IneligibleTierError` and `ValidationRequiredError` carry server-provided text, so they cannot be matched by pattern yet. They fall back to the raw message until a licensed smoke run captures them.
 
 The CLI reads `GOOGLE_CLOUD_PROJECT`, then `GOOGLE_CLOUD_PROJECT_ID`. It does not read `GOOGLE_CLOUD_QUOTA_PROJECT`. The IDE resolves the project itself and always passes `GOOGLE_CLOUD_PROJECT`.

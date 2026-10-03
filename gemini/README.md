@@ -7,9 +7,10 @@ The repository's top-level README, SECURITY and AGENTS files point here. CONTRIB
 - [docs/USING.md](docs/USING.md): approval modes, folder trust, attachments, long conversations and troubleshooting.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how GeminiCode works and why, including the security model and admin policies.
 - [docs/FINDINGS.md](docs/FINDINGS.md): Gemini CLI behaviour and measurements the design relies on.
-- [docs/RELEASING.md](docs/RELEASING.md): versions, cutting a release, and the Apple signing setup.
+- [docs/RELEASING.md](docs/RELEASING.md): versions, cutting a release, the download page, and the Apple signing setup.
 - [docs/ROADMAP.md](docs/ROADMAP.md): open work and risks.
 - [branding/](branding/): icon sources.
+- [site/](site/): the download page generator (`build.mts`), which the Pages workflow runs.
 - [scripts/list-fork-touches.sh](scripts/list-fork-touches.sh): lists every upstream file the fork changes.
 - [scripts/notarize.sh](scripts/notarize.sh): sends a signed build to Apple's notary service, for the release workflow.
 
@@ -18,18 +19,19 @@ The product code is in [`../extensions/gemini/`](../extensions/gemini/).
 ## Features
 
 - **Chat-first layout.** The agent's chat is the main editor tab; files and diffs it opens go in the editor group beside it, so the conversation stays in view. One side bar card holds the Agents pane, the agent's Changes and Quick Chat; every pane is a normal, resizable VS Code view or editor group.
-- **Agents pane.** Run several agents side by side. Each one opens as an editor tab with its own chat, and can work in the open folder or any folder you add. Each row shows the agent's status, branch and changed lines.
-- **Quick Chat.** A chat in the Gemini sidebar for the open folder.
+- **Agents pane.** Run several agents side by side. Each one opens as an editor tab with its own chat, and can work in the open folder or any folder you add. Each row shows the agent's status (working, waiting for your permission, done, needs attention), its changed lines, when it was last active and its git branch. Rename, stop or remove an agent from its context menu.
+- **Quick Chat.** A chat in the Gemini side bar for the open folder, collapsed below the Agents pane until you open it. **New Chat** in its title bar starts a fresh session.
 - **Ask before acting.** Permission requests show the agent's own options, such as Allow, Allow for this session and Reject. Proposed edits open in a diff editor first.
 - **Edits through the editor.** Agent edits can be undone, and the agent reads your unsaved changes. The agent cannot read secret files such as `.env` and private keys, or git-ignored files.
 - **Context.** Type `@` to attach workspace files. Press <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>L</kbd> to add the editor selection. You can also attach or drop files and images from anywhere.
-- **Changes view.** Below the Agents pane, see every file the agent in front has changed, as diffs or all together. **Create Branch & Commit** commits just that agent's files.
+- **Changes view.** Below the Agents pane, see every file the agent in front has changed, one diff at a time or all together with **Open All Changes**. **Clear List** empties it.
+- **Branches and commits.** A branch pill in each chat's composer switches or creates a branch. In an agent's chat, **Create Branch & Commit** commits just the files that agent changed to a new branch, and warns first if other files are staged.
 - **GeminiCode Dark and Light.** The default colour themes: a near-black (or soft grey) canvas with lighter cards and Gemini blue. GeminiCode also defaults to the view icons at the top of the side bar, pill-shaped tabs, and no minimap or breadcrumbs; change any of these in Settings.
-- **Modes and models.** Pick an approval mode and a model from the composer. The lists come from the agent.
+- **Modes and models.** Pick an approval mode and a model from the composer. The lists come from the agent. The model you picked last is used for new and reopened agents too.
 - **Conversations persist.** Agents keep their conversation across reloads and restarts, and resume their CLI session when the CLI supports it.
 - **Managed CLI.** GeminiCode ships with a tested Gemini CLI, and can install, update and switch between newer versions in its own storage, without touching your system.
 - **Update notice.** Once a day GeminiCode checks its download page. When a newer version is out it says so, with **Download** and **Release Notes** buttons; it downloads nothing on its own.
-- **Admin policy.** Organisations can lock the CLI version, remove Auto Edit or YOLO, turn off shell commands, and turn off the update notice.
+- **Admin policy.** Organisations can lock the CLI path or version, remove Auto Edit or YOLO, turn off shell commands, and turn off the CLI update offers and the update notice.
 
 > [!IMPORTANT]
 > The agent is not sandboxed. Its shell and search tools run with your permissions. **Default** mode asks before every change and command; use **Auto Edit** and **YOLO** only in folders you trust.
@@ -47,7 +49,7 @@ The **Get Started with GeminiCode** walkthrough opens on first launch, and again
 3. **Project.** Run **Gemini: Set Google Cloud Project ID**. Enter the project ID, not the project number.
 4. **First agent.** Choose **New Agent** in the Agents pane.
 
-The **Gemini** status bar item shows the agent's state. Hover over it to see the account, project and CLI version. Click it to restart the agent, change the project or CLI version, or open the log.
+The **Gemini** status bar item shows the agent's state. Hover over it to see the account, project and CLI version, and where that CLI came from. Click it to start or restart the agent, change the project or CLI version, sign in or finish setup in a terminal, open the chat, or open the log.
 
 ## Settings
 
@@ -63,7 +65,7 @@ The **Gemini** status bar item shows the agent's state. Hover over it to see the
 | `gemini.tools.allowShell` | Let the agent run shell commands. Each command still asks first. |
 | `gemini.layout.showAgentsInNewWorkspaces` | Open the Agents pane, with the agent's Changes below it, the first time a workspace opens. |
 
-Admins can lock all of these except the project and layout settings through policy; see [Security model](docs/ARCHITECTURE.md#security-model).
+Changing the CLI path or version, the project, or an approval or shell setting restarts the agent so the change applies. Admins can lock all of these except the project and layout settings through policy; see [Security model](docs/ARCHITECTURE.md#security-model).
 
 ## Issues and security
 
@@ -99,13 +101,13 @@ If the chat view warns that its script is out of date, the webview bundle in `me
 
 ## CI
 
-[`gemini-ci.yml`](../.github/workflows/gemini-ci.yml) runs on pull requests and pushes to `main`. It does three things:
+[`gemini-ci.yml`](../.github/workflows/gemini-ci.yml) runs on pull requests and pushes to `main`, and can be run by hand. It does three things:
 
 - It lints and hygiene-checks the fork files.
 - It builds and type-checks the extension and webview, builds the download page from a sample release, then runs the unit tests and real-CLI tests against the `latest` and `preview` CLI.
 - It compiles the whole fork and runs upstream's hygiene check.
 
-Packaged builds come from [`gemini-release.yml`](../.github/workflows/gemini-release.yml), which a version tag starts; see [RELEASING.md](docs/RELEASING.md).
+Packaged builds come from [`gemini-release.yml`](../.github/workflows/gemini-release.yml), which a version tag starts, and the download page from [`gemini-pages.yml`](../.github/workflows/gemini-pages.yml); see [RELEASING.md](docs/RELEASING.md).
 
 ## Touching upstream files
 

@@ -17,21 +17,25 @@ extensions/gemini/
                     file access policy, error classification, CLI install and resolution,
                     transcript model and storage.
   src/host/         VS Code side: chat view and agent tabs, Agents pane, Changes view, status bar,
-                    settings, commands, git actions, Get Started walkthrough.
+                    settings, commands, git actions, update notices, Get Started walkthrough.
   webview-src/      The chat webview (bundled to media/chat.js).
   media/            Webview stylesheet and icons.
+  themes/           The GeminiCode Dark and Light colour themes.
   walkthrough/      Get Started step pages.
+  scripts/          bundle-cli.mts, which fetches the pinned CLI into cli/ for release builds.
   test/             Vitest unit tests, a scripted fake ACP agent, and real-CLI tests.
-gemini/             Fork material that is not shipped: docs, icon sources, maintainer scripts.
-.github/workflows/gemini-ci.yml
+gemini/             Fork material that is not shipped: docs, icon sources, the download page
+                    generator (site/), maintainer scripts.
+.github/workflows/gemini-ci.yml, gemini-release.yml, gemini-pages.yml
 ```
 
 Upstream files are touched only where a fork must register itself or rebrand. Each such edit carries a `GEMINI-FORK` comment, and `gemini/scripts/list-fork-touches.sh` lists them (see [../README.md](../README.md)). Today these are:
 
-- `product.json` (names, icons, links, Open VSX gallery, CLI policies);
+- `product.json` (names, icons, links, Open VSX gallery, the download page URL, onboarding themes, Gemini setting policies);
+- the top-level `README.md`, `SECURITY.md` and `AGENTS.md`, which point at the fork's docs;
 - the build lists that register the extension (`build/npm/dirs.ts`, `build/gulpfile.extensions.ts`, `build/lib/extensions.ts`, `build/filters.ts`, `build/hygiene.ts`, `.eslint-ignore`, `eslint.config.js`);
-- branding: packaging metadata (`build/lib/electron.ts`, `build/lib/preLaunch.ts`, `build/win32/code.iss`, `resources/`), the `.dmg` volume name (`build/darwin/create-dmg.ts`), packaging without upstream's Copilot extension (`build/gulpfile.vscode.ts`), GeminiCode's version in the About dialog (`platform/dialogs/electron-browser/dialog.ts`), and the workbench icons (`code-icon.svg`, `letterpress-*.svg`);
-- four workbench edits: Chat commands hidden from the Command Palette while upstream AI is off (`commandsQuickAccess.ts`), the Gemini extension cannot be disabled (`extensionEnablementService.ts`), the product name in the welcome walkthrough (`gettingStartedContent.ts`), and the default colour themes (`ThemeSettingDefaults` in `services/themes/common/workbenchThemeService.ts`, with a fallback to upstream's Dark/Light 2026 in `services/themes/browser/workbenchThemeService.ts` if the GeminiCode themes are ever missing). `product.json` lists the GeminiCode themes in `onboardingThemes` too.
+- branding: packaging metadata (`build/lib/electron.ts`, `build/win32/code.iss`, and the Linux, Windows and server files and icons under `resources/`; the Debian scripts never add Microsoft's apt repository), a rebuild of the dev app when its name or icons change (`build/lib/preLaunch.ts`), the `.dmg` volume name (`build/darwin/create-dmg.ts`), packaging without upstream's Copilot extension (`build/gulpfile.vscode.ts`), GeminiCode's version in the About dialog (`platform/dialogs/electron-browser/dialog.ts`), and the workbench icons (`code-icon.svg`, `letterpress-*.svg`);
+- four workbench edits: Chat commands hidden from the Command Palette while upstream AI is off (`commandsQuickAccess.ts`), the Gemini extension cannot be disabled (`extensionEnablementService.ts`, with its test), the product name in the welcome walkthrough (`gettingStartedContent.ts`), and the default colour themes (`ThemeSettingDefaults` in `services/themes/common/workbenchThemeService.ts`, with a fallback to upstream's Dark/Light 2026 in `services/themes/browser/workbenchThemeService.ts` if the GeminiCode themes are ever missing). `product.json` lists the GeminiCode themes in `onboardingThemes` too.
 
 ## How a prompt flows
 
@@ -41,20 +45,21 @@ Chat webview ──postMessage──▶ ChatController ──▶ AgentClient ─
      └──── batched item updates ◀───┴── ChatTranscript ◀── session/update notifications
 ```
 
-1. **The agent process.** `Sidecar` spawns the CLI with the application's own Node (`ELECTRON_RUN_AS_NODE=1`), so users need no Node install. It passes `GOOGLE_CLOUD_PROJECT`, the proxy and CA variables, and `--admin-policy`. It restarts a crashed process with backoff (1 s, 4 s, 15 s), but never after a fatal exit such as a failed sign-in (exit code 41).
+1. **The agent process.** `AgentSidecar` spawns the CLI with the application's own Node (`ELECTRON_RUN_AS_NODE=1`), so users need no Node install. The process inherits the editor's environment, including proxy and CA variables, with `GOOGLE_CLOUD_PROJECT` set to the resolved project (and `GOOGLE_CLOUD_PROJECT_ID` cleared), `GEMINI_CLI_NO_RELAUNCH=true` and an explicit heap size ([FINDINGS.md](FINDINGS.md#agent-startup-time)), plus `--admin-policy`. It restarts a crashed process with backoff (1 s, 4 s, 15 s; the count resets once a process stays up for a minute), but never after a fatal exit such as a failed sign-in (exit code 41). Exit code 199, the CLI asking to be relaunched, restarts it at once. The process starts when a chat first opens, not at activation, and changing a setting that affects it (CLI path or version, project, approval or shell settings) restarts it.
 2. **One process, many agents.** `AgentRuntime` runs `initialize` once and serves every chat from that process; each chat is its own ACP session with its own `cwd`. A new agent starts in about 30 ms instead of about 1.2 s.
-3. **Sessions.** `AgentClient` opens a session (`session/new`, or `session/load` to resume), signs in when the CLI asks, sends prompts, and exposes the modes and models the agent reports. Nothing in the UI hardcodes a mode or model ID.
+3. **Sessions.** `AgentClient` opens a session (`session/new`, or `session/load` to resume), signs in when the CLI asks, sends prompts, and exposes the modes and models the agent reports, minus any mode the admin policy turns off. Nothing in the UI hardcodes a mode or model ID. The model the user picked last (kept in global state) is applied to each new or reopened session when the agent offers it, which also spares the CLI its Auto routing call ([FINDINGS.md](FINDINGS.md#where-a-prompts-time-goes)).
 4. **Rendering.** `sessionUpdates.ts` turns `session/update` notifications into a few UI events, and `ChatTranscript` folds them into plain, serialisable items. The controller streams item changes to the webview about 30 times a second, sending only appended text for streaming messages. The webview renders agent Markdown with raw HTML disabled.
 5. **Permissions.** `PermissionBroker` holds each `session/request_permission` until the user picks one of the options the agent sent. A request that proposes an edit opens a real diff editor. Stopping a turn answers any open request as cancelled.
 6. **Files.** The agent's `fs/read_text_file` and `fs/write_text_file` requests go through the editor. Reads see unsaved changes. Writes are applied as a `WorkspaceEdit`, so they can be undone, and then saved, because the CLI's own shell and search tools read the disk. Requests are limited to the agent's folder, skip git-ignored files for reads, and refuse secret files such as `.env`, private keys and credential files.
 
 ## The agent workspace
 
-- **Agents pane.** A tree of workspaces (the open folder plus any you add) with agents under each. Each row shows the agent's status, its git branch and its `+N −M` change count.
+- **Agents pane.** A tree of workspaces (the open folder plus any you add) with agents under each. Each row shows the agent's status (working, waiting for permission, done but unread, needs attention, idle, or not started in this window), its `+N −M` change count, how long ago it was active, and its git branch, read from `.git/HEAD`. An agent takes its name from its first prompt unless the user renames it. Removing an agent deletes its saved conversation; removing a workspace only drops it from the list.
 - **Agent tabs.** Each agent opens as an editor tab that reuses the chat webview, and is the main editor. Files, proposed edits and diffs that the agent's chat or its Changes open go in the editor group after the agent's tab (the one to its right, added once if there is none), so the chat stays in view and the same group is reused (`editorPlacement.ts`). The sidebar's **Quick Chat** is a separate session for the open folder and opens files in the active group, as before.
-- **Changes view.** This view sits below the Agents pane in the Gemini side bar and lists the files the agent in front has edited. Each file opens a diff against its text from before the agent's first edit, and **Open All Changes** shows them in the multi-diff editor. **Create Branch & Commit** commits only that agent's files.
+- **Changes view.** This view sits below the Agents pane in the Gemini side bar and lists the files the agent in front has edited, recorded from its completed edit tool calls. Each file opens a diff against its text from before the agent's first edit, **Open All Changes** shows them in the multi-diff editor, and **Clear List** forgets them.
+- **Git.** Each chat's composer shows the folder's branch as a pill that switches or creates a branch, through the built-in Git extension, which is only activated when the user picks an action (`gitActions.ts`). An agent's chat also offers **Create Branch & Commit**, which stages and commits only that agent's changed files to a new branch (suggested as `gemini/<agent name>`, with the agent's name as the message), warns first when other files are already staged, and then clears the agent's Changes list.
 - **First open.** The first time a workspace opens, `layoutDefaults.ts` reveals the Gemini side bar (the workbench would otherwise open on the Explorer). After that the workbench restores whatever the user arranged.
-- **Persistence.** Each agent's visible conversation (the last 300 items) and changed files are saved in the extension's global storage. On reopen, or after the process restarts, GeminiCode resumes the session with `session/load` when the CLI supports it. Otherwise it starts a fresh session and says so in the chat.
+- **Persistence.** The list of workspaces and agents is kept in global state, and each agent's visible conversation (the last 300 items, long text cut to 20,000 characters) and changed files are saved as one JSON file per agent in the extension's global storage. On reopen, or after the process restarts, GeminiCode resumes the session with `session/load` when the CLI supports it. Otherwise it starts a fresh session and says so in the chat.
 
 GeminiCode builds this pane on public extension APIs rather than upstream's Agents window (`src/vs/sessions`). That window only takes agents registered in core code, and it is the fastest-moving part of upstream. The domain names (workspace, agent session) follow upstream's, so the views can move onto it if it gains an extension API.
 
@@ -73,7 +78,7 @@ GeminiCode picks the CLI to run in this order:
 
 The bundled version and its npm SHA-512 are pinned in `extensions/gemini/package.json` (`bundledCli`). `npm run bundle-cli` in `extensions/gemini` downloads it with `npm pack`, refuses a mismatched checksum, and unpacks `bundle/`, `package.json` and `LICENSE` into `cli/`, which git ignores. The release build runs it before packaging. The CLI is plain JavaScript with no native modules, so it needs nothing extra for macOS signing. Raise the pin only to a version the real-CLI tests pass on.
 
-**Install Gemini CLI** downloads the release from the npm registry, checks its SHA-512 checksum, and unpacks only `bundle/` and `package.json`. Switching versions restarts the agent once no agent is working, and GeminiCode keeps the current and previous copies. Once a day it checks for a newer release. It only asks first, and skips the check when a version or path is pinned. A CLI older than `MIN_CLI_VERSION` (0.61.0) gets a warning.
+**Install Latest Gemini CLI** downloads the release from the npm registry, checks its SHA-512 checksum, and unpacks only `bundle/` and `package.json`. **Install or Change Gemini CLI Version...** lists the last 30 releases and pins the one picked in `gemini.cli.version` (unless policy locks it). Switching versions restarts the agent once no agent is working, and GeminiCode keeps the copy in use and one other. Once a day, after the agent is ready, it checks for a newer release and offers **Install**, **Skip This Version** or **Don't Check Again**; it never installs without a click, and skips the check when a version or path is pinned. A CLI older than `MIN_CLI_VERSION` (0.61.0) gets a warning.
 
 ## GeminiCode updates
 
@@ -104,14 +109,14 @@ Each setting below can be locked through VS Code's policy system (Group Policy, 
 | `gemini.approval.allowYolo` | `GeminiAllowYolo` | off |
 | `gemini.tools.allowShell` | `GeminiAllowShell` | on |
 
-To pin a CLI version for everyone, lock `GeminiCliPath` to an empty string and `GeminiCliVersion` to the version. An organisation's default Google Cloud project ID ships in `product.json` as `geminiDefaultProjectId`, which each build sets.
+To pin a CLI version for everyone, lock `GeminiCliPath` to an empty string and `GeminiCliVersion` to the version. An organisation's default Google Cloud project ID can ship in `product.json` as `geminiDefaultProjectId`. Nothing sets it today: the release workflow stamps only `geminiCodeVersion`, so an organisation that wants a default must add it to its own build.
 
 ## Sign-in and errors
 
 - **Sign-in is delegated.** The CLI owns OAuth. GeminiCode calls `authenticate("oauth-personal")` only when `session/new` reports that sign-in is required, because the call rewrites `security.auth.selectedType` in the user's `~/.gemini/settings.json`.
 - **Terminal fallback.** Some steps cannot finish over ACP: account validation, and a sign-in on a machine with no browser. For these, **Complete Setup in Terminal** runs the interactive `gemini` with the same environment, and GeminiCode restarts the agent when the terminal closes.
-- **Errors are strings.** The CLI turns every setup failure into JSON-RPC error `-32000` with a message string. `classifyAgentError()` matches those strings against a small table of known patterns, each with a test fixture. An unknown message is shown as it is.
-- **Project ID.** GeminiCode resolves the Google Cloud project from the workspace setting, then the user setting, then the organisation default, then the `GOOGLE_CLOUD_QUOTA_PROJECT`, `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_PROJECT_ID` environment variables. It rejects a project number before the CLI starts.
+- **Errors are strings.** The CLI turns every setup failure into JSON-RPC error `-32000` with a message string; other failures arrive as a generic internal error with the CLI's message in `data.details`. `classifyAgentError()` matches those strings against a small table of known patterns (sign-in required or failed, project ID missing or numeric, untrusted folder), each with a test fixture. An unknown message is shown as it is.
+- **Project ID.** GeminiCode resolves the Google Cloud project from the workspace setting, then the user setting, then the organisation default, then the `GOOGLE_CLOUD_QUOTA_PROJECT`, `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_PROJECT_ID` environment variables. It refuses to start the CLI with a project number, and only logs a warning for an ID that looks malformed.
 
 ## Upstream's own AI
 
@@ -130,6 +135,7 @@ The Gemini extension sets `chat.disableAIFeatures` by default. That hides upstre
 
 ## Testing
 
-- **Unit tests** (Vitest, `extensions/gemini/test/acp`) cover the ACP client against a scripted fake agent (`test/fake-agent`). The fake agent replays streaming, permission requests, file requests, error strings and unknown update kinds.
+- **Unit tests** (Vitest, `extensions/gemini/test/acp`) cover the ACP client against a scripted fake agent (`test/fake-agent`), which replays streaming, permission requests, file requests, error strings and unknown update kinds. They also cover the code around it that has no `vscode` dependency: CLI resolution, install and update checks, the app update check, admin policy, file access, project IDs, folder trust, attachments, the agents model, changes and transcript storage.
 - **Real CLI tests** run when `GEMINI_CLI_PATH` points at a CLI. They check the unauthenticated `initialize` handshake and the sign-in-required path. They also check that the CLI obeys GeminiCode's admin policy, against a fake Gemini API on localhost. CI runs them against the `latest` and `preview` CLI.
-- **Webview tests** (`test/webview`) cover the streaming Markdown splitter.
+- **Webview tests** (`test/webview`) cover the streaming Markdown splitter and the chat's view logic: mentions, attachments, permission defaults, durations, scrolling and the composer height.
+- The `src/host` code that needs VS Code has no automated tests yet; check it by running the dev build.

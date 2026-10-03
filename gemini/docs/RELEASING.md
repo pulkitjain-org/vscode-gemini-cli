@@ -1,6 +1,6 @@
 # Releasing GeminiCode
 
-GeminiCode ships as a Mac app for Apple silicon, from this repository's [GitHub Releases](https://github.com/pulkitjain-org/vscode-gemini-cli/releases), with a download page at <https://pulkitjain-org.github.io/vscode-gemini-cli/>. Share the page, not the release: it always points at the newest build. Windows and Intel Macs are not built yet.
+GeminiCode ships as a Mac app for Apple silicon, from this repository's [GitHub Releases](https://github.com/pulkitjain-org/vscode-gemini-cli/releases), with a download page at <https://pulkitjain-org.github.io/vscode-gemini-cli/>. Share the page, not the release: it always points at the newest build. The first release, `v0.1.0`, was published on 3 Oct 2026. Windows, Linux and Intel Macs are not built yet.
 
 ## Versions
 
@@ -21,7 +21,9 @@ There is one stable channel. A tag with a suffix, such as `v0.2.0-rc.1`, publish
 3. [`gemini-release.yml`](../../.github/workflows/gemini-release.yml) runs on a GitHub-hosted Apple silicon runner (`macos-15`). It takes about 40 to 60 minutes, and is free on a public repository.
 4. When it finishes, the release holds `GeminiCode-<version>-arm64.dmg` and its SHA-256 checksum.
 
-To try the pipeline without publishing, run **Gemini Release** by hand from the Actions tab. It builds `GeminiCode-0.0.0-dev.<run>-arm64.dmg` as a workflow artifact, kept for 14 days.
+To try the pipeline without publishing, run **Gemini Release** by hand from the Actions tab with no tag. It builds `GeminiCode-0.0.0-dev.<run>-arm64.dmg` as a workflow artifact, kept for 14 days. Running it by hand with an existing tag, such as `v0.1.0`, builds and publishes that tag as a tag push would, for example to retry a failed release. Every run keeps the `.dmg` as an artifact.
+
+If the release already exists, for example because it was made in GitHub's UI, the workflow uploads the `.dmg` and checksum to it (replacing any with the same name) and keeps its title and notes.
 
 ## What the workflow does
 
@@ -31,8 +33,8 @@ To try the pipeline without publishing, run **Gemini Release** by hand from the 
 4. Signs the app with the Developer ID, using upstream's `build/darwin/sign.ts`: hardened runtime and upstream's entitlements for the app and each helper.
 5. Notarizes the app with `notarytool` and staples the ticket.
 6. Packs a `.dmg` with upstream's `build/darwin/create-dmg.ts` (drag to Applications), then signs, notarizes and staples the `.dmg` too.
-7. Publishes the GitHub Release with the `.dmg`, its checksum and generated release notes.
-8. Starts the download page build.
+7. Publishes the GitHub Release with the `.dmg`, its checksum and release notes that name the upstream and bundled CLI versions, followed by GitHub's generated notes. A version with a suffix is marked as a prerelease.
+8. Starts the download page build. A release made by the workflow's own token fires no release event, so the workflow starts the page build itself.
 
 Without the Apple secrets, steps 4 to 6 are replaced by an ad hoc signature. The file is then named `GeminiCode-<version>-arm64-unsigned.dmg`, the release title ends in "(unsigned)", and the notes explain how to open it. Setting only some of the six secrets fails the build, so a typo cannot quietly produce an unsigned release.
 
@@ -43,7 +45,7 @@ Without the Apple secrets, steps 4 to 6 are replaced by an ad hoc signature. The
 - `index.html`: the version, a **Download for Mac (Apple silicon)** button, install steps, the release notes, and the checksum. An unsigned build also gets the steps to open it.
 - `latest.json`: the version, download and release links. The app's update notice reads it; keep its `version`, `url` and `notesUrl` fields stable.
 
-It runs when a release is published, edited or deleted, when `gemini/site/` changes on `main`, and by hand. It always deploys from `main`, because the `github-pages` environment accepts only the default branch. Turn Pages on once: **Settings → Pages → Source: GitHub Actions**.
+It runs when a release is published, edited, unpublished or deleted, when `gemini/site/` or `gemini/branding/icon.svg` changes on `main`, when the release workflow starts it, and by hand. It always deploys from `main`, because the `github-pages` environment accepts only the default branch. Turn Pages on once: **Settings → Pages → Source: GitHub Actions**.
 
 To preview the page, run `node gemini/site/build.mts /tmp/site --sample` (or `--none`, for before the first release) and open `/tmp/site/index.html`.
 
