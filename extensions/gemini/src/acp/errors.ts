@@ -23,6 +23,8 @@ export type AgentErrorKind =
 	| 'agent-not-found'
 	/** The agent process exited before answering. */
 	| 'agent-exited'
+	/** Auto Edit or YOLO was refused because the CLI does not trust the folder yet. */
+	| 'untrusted-folder'
 	| 'unknown';
 
 export interface AgentErrorInfo {
@@ -45,6 +47,7 @@ export const AGENT_ERROR_PATTERNS: readonly ErrorPattern[] = [
 	{ kind: 'project-id-required', pattern: /requires setting the GOOGLE_CLOUD_PROJECT or GOOGLE_CLOUD_PROJECT_ID env var/i, since: '0.61.0' },
 	{ kind: 'project-id-numeric', pattern: /^Invalid Google Cloud Project ID: ".*"\. The GOOGLE_CLOUD_PROJECT/i, since: '0.61.0' },
 	{ kind: 'auth-failed', pattern: /^Failed to authenticate with (user|authorization) code/i, since: '0.61.0' },
+	{ kind: 'untrusted-folder', pattern: /^Cannot enable privileged approval modes in an untrusted folder\.?$/i, since: '0.62.0' },
 ];
 
 /** JSON-RPC code the CLI uses for every auth and setup failure. */
@@ -60,7 +63,11 @@ export const FATAL_EXIT_CODES: ReadonlyMap<number, AgentErrorKind> = new Map([
 
 export function classifyAgentError(error: unknown): AgentErrorInfo {
 	const code = typeof (error as { code?: unknown })?.code === 'number' ? (error as { code: number }).code : undefined;
-	const message = (error instanceof Error ? error.message : typeof (error as { message?: unknown })?.message === 'string' ? (error as { message: string }).message : String(error)).trim();
+	const raw = (error instanceof Error ? error.message : typeof (error as { message?: unknown })?.message === 'string' ? (error as { message: string }).message : String(error)).trim();
+	// Outside `authenticate` and `session/new`, the CLI sends a generic
+	// "Internal error" with its own message in `data.details`.
+	const details = (error as { data?: { details?: unknown } })?.data?.details;
+	const message = typeof details === 'string' && details.trim() ? details.trim() : raw;
 	for (const { kind, pattern } of AGENT_ERROR_PATTERNS) {
 		if (pattern.test(message)) {
 			return { kind, message, code };

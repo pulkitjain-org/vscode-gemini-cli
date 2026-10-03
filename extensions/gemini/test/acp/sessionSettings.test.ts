@@ -137,6 +137,19 @@ describe('AgentClient session settings', () => {
 		expect(client.settings.model?.currentId).toBe('auto');
 	});
 
+	it('opens the next session in a mode asked for before it, once', async () => {
+		const client = await start({ newSession });
+		client.setModeOnNextSession('autoEdit');
+		let ready = waitFor<AgentClientState>(client.onDidChangeState, s => s.kind === 'ready');
+		await client.newSession();
+		await ready;
+		expect(client.settings.mode?.currentId).toBe('autoEdit');
+		ready = waitFor<AgentClientState>(client.onDidChangeState, s => s.kind === 'ready');
+		await client.newSession();
+		await ready;
+		expect(client.settings.mode?.currentId).toBe('default');
+	});
+
 	it('starts a new session on the same agent', async () => {
 		const client = await start({ newSession });
 		const ready = waitFor<AgentClientState>(client.onDidChangeState, s => s.kind === 'ready');

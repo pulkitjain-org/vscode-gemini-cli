@@ -14,6 +14,7 @@ import { buildPromptContent } from '../acp/promptContent';
 import { AgentStatus } from '../acp/status';
 import { UpdateBatcher } from '../acp/updateBatcher';
 import type { AgentClient } from '../acp/agentClient';
+import { AgentError } from '../acp/errors';
 import { readGitHead } from '../acp/gitHead';
 import { ChatStrings, chatProtocolVersion, FromWebview, statusCommands, ToWebview, ViewStatus } from './chatProtocol';
 import { DiffPreview } from './diffPreview';
@@ -32,6 +33,8 @@ export interface ChatHost {
 	ensureReady(): Promise<unknown>;
 	/** Stops the current turn. */
 	cancel(): Promise<void>;
+	/** Trusts `folder` for the CLI and restarts the agent; returns whether the restart waits for running prompts. */
+	trustFolder(folder: string): boolean;
 }
 
 /** The files the @-mention picker offers. */
@@ -335,7 +338,7 @@ export class ChatController implements vscode.Disposable {
 				void this.openLocation(message.path, message.line);
 				break;
 			case 'setMode':
-				void this.changeSetting(() => this.service.client.setMode(message.id));
+				void this.changeSetting(() => this.service.client.setMode(message.id).catch(err => this.offerFolderTrust(err, message.id)));
 				break;
 			case 'setModel':
 				void this.changeSetting(() => this.service.client.setModel(message.id)).then(() => {
@@ -391,6 +394,35 @@ export class ChatController implements vscode.Disposable {
 		}
 		// Resync the pickers: the change may have failed or been ignored.
 		this.post({ type: 'settings', settings: this.service.client.settings });
+	}
+
+	/**
+	 * When the CLI refused a mode because it does not trust the folder, asks
+	 * the user to trust it, as the CLI's own terminal does, and switches to the
+	 * mode once the agent restarts. Rethrows anything else.
+	 */
+	private async offerFolderTrust(err: unknown, modeId: string): Promise<void> {
+		if (!(err instanceof AgentError) || err.info.kind !== 'untrusted-folder') {
+			throw err;
+		}
+		const folder = this.service.client.cwd;
+		const modeName = this.service.client.settings.mode?.available.find(choice => choice.id === modeId)?.name ?? modeId;
+		const trust = vscode.l10n.t("Trust Folder");
+		const choice = await vscode.window.showWarningMessage(
+			vscode.l10n.t("Trust {0} for the Gemini agent?", path.basename(folder) || folder),
+			{
+				modal: true,
+				detail: vscode.l10n.t("{0} mode needs a trusted folder. Trusting it also lets the Gemini CLI load this folder's own Gemini settings and MCP servers, which can run programs. The Gemini CLI remembers the choice for this folder, including in the terminal.", modeName),
+			},
+			trust);
+		if (choice !== trust) {
+			return;
+		}
+		this.service.client.setModeOnNextSession(modeId);
+		const waits = this.service.trustFolder(folder);
+		this.transcript.addNotice(waits
+			? vscode.l10n.t("Folder trusted. The agent restarts in {0} mode once no agent is working.", modeName)
+			: vscode.l10n.t("Folder trusted. Restarting the agent in {0} mode.", modeName), 'info');
 	}
 
 	/** Brings the chat into view so the request can be answered, and shows the first proposed edit. */

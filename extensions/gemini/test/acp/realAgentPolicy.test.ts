@@ -17,6 +17,8 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ApprovalPolicy, prepareAdminPolicy, shellToolName } from '../../src/acp/adminPolicy';
+import { AgentErrorInfo, classifyAgentError } from '../../src/acp/errors';
+import { trustFolder } from '../../src/acp/trustedFolders';
 import { AgentConnection } from '../../src/acp/agentConnection';
 import { resolveAgentCommand, spawnAgent } from '../../src/acp/agentProcess';
 
@@ -62,16 +64,21 @@ describe.skipIf(!cliPath)('gemini --acp with a GeminiCode admin policy', () => {
 		server?.close();
 	});
 
-	/** Runs one prompt in `mode` under `policy`; resolves with what the agent asked and what the tool returned. */
-	async function runTurn(mode: string, policy: ApprovalPolicy): Promise<{ permissions: number; responses: FunctionResponse[]; ran: boolean }> {
+	/**
+	 * Runs one prompt in `mode` under `policy`; resolves with what the agent
+	 * asked and what the tool returned, or with why the mode was refused.
+	 */
+	async function runTurn(mode: string, policy: ApprovalPolicy, trusted = true): Promise<{ permissions: number; responses: FunctionResponse[]; ran: boolean; modeError?: AgentErrorInfo }> {
 		const responses: FunctionResponse[] = [];
 		server = await startFakeGemini(responses);
 		const home = mkdtempSync(path.join(tmpdir(), 'gemini-home-'));
 		const work = mkdtempSync(path.join(tmpdir(), 'gemini-work-'));
 		mkdirSync(path.join(home, '.gemini'));
 		writeFileSync(path.join(home, '.gemini', 'settings.json'), JSON.stringify({ security: { auth: { selectedType: 'gemini-api-key' } } }));
-		// YOLO and Auto Edit need a trusted folder.
-		writeFileSync(path.join(home, '.gemini', 'trustedFolders.json'), JSON.stringify({ [work]: 'TRUST_FOLDER' }));
+		// YOLO and Auto Edit need a trusted folder; GeminiCode adds it the way the CLI does.
+		if (trusted) {
+			trustFolder(path.join(home, '.gemini', 'trustedFolders.json'), work);
+		}
 		const env: NodeJS.ProcessEnv = {
 			...process.env,
 			HOME: home,
@@ -99,7 +106,10 @@ describe.skipIf(!cliPath)('gemini --acp with a GeminiCode admin policy', () => {
 		const { sessionId } = await connection.newSession(work);
 		// A concrete model skips the CLI's routing call.
 		await connection.setModel(sessionId, 'gemini-2.5-flash');
-		await connection.setMode(sessionId, mode);
+		const modeError = await connection.setMode(sessionId, mode).then(() => undefined, err => classifyAgentError(err));
+		if (modeError) {
+			return { permissions: 0, responses, ran: false, modeError };
+		}
 		await connection.prompt(sessionId, [{ type: 'text', text: 'Create the file.' }]);
 		return { permissions, responses, ran: existsSync(path.join(work, 'ran.txt')) };
 	}
@@ -123,5 +133,10 @@ describe.skipIf(!cliPath)('gemini --acp with a GeminiCode admin policy', () => {
 		const result = await runTurn('default', { allowAutoEdit: true, allowYolo: false, allowShell: false });
 		expect(result).toMatchObject({ permissions: 0, ran: false });
 		expect(result.responses[0]?.response.error).toMatch(/not found/);
+	}, 60_000);
+
+	it('refuses Auto Edit in a folder it does not trust, with an error GeminiCode recognises', async () => {
+		const result = await runTurn('autoEdit', { allowAutoEdit: true, allowYolo: false, allowShell: true }, false);
+		expect(result.modeError).toMatchObject({ kind: 'untrusted-folder' });
 	}, 60_000);
 });

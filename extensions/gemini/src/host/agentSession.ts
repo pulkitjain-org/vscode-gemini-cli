@@ -61,6 +61,10 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 		return this.service.ensureReady(this.client);
 	}
 
+	trustFolder(folder: string): boolean {
+		return this.service.trustFolder(folder);
+	}
+
 	async cancel(): Promise<void> {
 		this.permissions.cancelAll();
 		await this.client.cancel();
