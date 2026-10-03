@@ -3,10 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The files one agent changed (plan Phase 2B, agent-changes), from the diffs
-// its completed tool calls report. Each file keeps the text from before the
-// agent's first edit, so a diff against the file on disk shows everything the
-// agent did to it; the line counts follow the agent's latest edit.
+// The files one agent changed, from the diffs its completed tool calls report.
+// Each file keeps the text from before the agent's first edit, so a diff
+// against the file on disk shows everything the agent did to it; the line
+// counts follow the agent's latest edit.
 
 import * as path from 'node:path';
 import { countChangedLines } from './chatTranscript';

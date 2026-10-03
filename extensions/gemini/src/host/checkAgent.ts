@@ -6,6 +6,7 @@
 import * as vscode from 'vscode';
 import { AgentConnection } from '../acp/agentConnection';
 import { spawnAgent } from '../acp/agentProcess';
+import { errorMessage } from '../acp/errors';
 import { getAgentCommand, getWorkspaceCwd } from './configuration';
 
 const initializeTimeoutMs = 30_000;
@@ -38,11 +39,11 @@ export async function checkAgent(log: vscode.LogOutputChannel): Promise<void> {
 		const agent = info.agentInfo ? `${info.agentInfo.name} ${info.agentInfo.version}` : 'unknown agent';
 		const authMethods = (info.authMethods ?? []).map(m => m.id).join(', ') || 'none';
 		log.info(`Connected to ${agent}, protocol ${info.protocolVersion}, auth methods: ${authMethods}`);
-		vscode.window.showInformationMessage(vscode.l10n.t("Connected to {0} (ACP protocol {1}).", agent, info.protocolVersion));
+		void vscode.window.showInformationMessage(vscode.l10n.t("Connected to {0} (ACP protocol {1}).", agent, info.protocolVersion));
 	} catch (err) {
 		log.error(err instanceof Error ? err : String(err));
 		const showLog = vscode.l10n.t("Show Log");
-		const choice = await vscode.window.showErrorMessage(vscode.l10n.t("Could not connect to the Gemini CLI: {0}", err instanceof Error ? err.message : String(err)), showLog);
+		const choice = await vscode.window.showErrorMessage(vscode.l10n.t("Could not connect to the Gemini CLI: {0}", errorMessage(err)), showLog);
 		if (choice === showLog) {
 			log.show();
 		}

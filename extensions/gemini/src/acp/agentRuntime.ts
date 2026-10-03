@@ -3,12 +3,11 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// One running agent process shared by many chat sessions (plan Phase 2B,
-// multi-session-runtime). gemini-cli serves any number of ACP sessions from
-// one process, each with its own `cwd`: a new session takes about 30 ms and
-// 2.5 MB, against about 1.2 s and 230 MB for a new process (FINDINGS.md).
-// The runtime runs `initialize` once per process and routes the agent's
-// messages to the session they name.
+// One running agent process shared by many chat sessions. gemini-cli serves any
+// number of ACP sessions from one process, each with its own `cwd`: a new
+// session takes about 30 ms and 2.5 MB, against about 1.2 s and 230 MB for a
+// new process (FINDINGS.md). The runtime runs `initialize` once per process and
+// routes the agent's messages to the session they name.
 
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import type * as acp from '@agentclientprotocol/sdk';
@@ -17,7 +16,7 @@ import { AgentError, AgentErrorInfo, classifyAgentError } from './errors';
 import { Emitter } from './events';
 import { AgentSidecar, SidecarState } from './sidecar';
 
-/** The one auth method the IDE ever selects (plan C4). */
+/** The one auth method the IDE ever selects. */
 export const AUTH_METHOD_ID = 'oauth-personal';
 
 export type AgentRuntimeState =
@@ -56,7 +55,7 @@ export class AgentRuntime {
 	private connection: AgentConnection | undefined;
 	private readonly sessions = new Map<string, SessionHandlers>();
 	private readonly earlyUpdates = new Map<string, acp.SessionUpdate[]>();
-	/** Shared by concurrent `session/new` calls so the user's settings are rewritten at most once (plan C4). */
+	/** Shared by concurrent `session/new` calls so the user's settings are rewritten at most once. */
 	private authenticating: Promise<void> | undefined;
 	private readonly sidecarListener: { dispose(): void };
 	/** Prompts still running on this process, across its sessions. */
@@ -120,7 +119,7 @@ export class AgentRuntime {
 		}
 		try {
 			// Only now, and only with oauth-personal: `authenticate` rewrites the
-			// user's ~/.gemini/settings.json (plan C4).
+			// user's ~/.gemini/settings.json.
 			this.authenticating ??= connection.authenticate(AUTH_METHOD_ID).then(() => undefined);
 			await this.authenticating;
 			return { connection, agent: state.agent, session: await connection.newSession(cwd) };

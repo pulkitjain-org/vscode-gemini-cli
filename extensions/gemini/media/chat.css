@@ -5,11 +5,21 @@
 
 :root {
 	--gemini-radius: 8px;
+	--gemini-radius-small: 6px;
 	--gemini-muted: var(--vscode-descriptionForeground);
 	--gemini-border: var(--vscode-widget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.35)));
 	--gemini-surface: var(--vscode-editorWidget-background, var(--vscode-input-background));
 	--gemini-hover: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
-	--gemini-accent: var(--vscode-button-background);
+	--gemini-code-background: var(--vscode-textCodeBlock-background, var(--gemini-surface));
+	--gemini-shadow: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+	/* The Gemini spark's colours, for the few brand touches: the welcome icon and the working dots. */
+	--gemini-gradient: linear-gradient(135deg, #4796e3 10%, #9177c7 55%, #ca6673 90%);
+}
+
+/* High contrast themes keep to their own colours. */
+body.vscode-high-contrast,
+body.vscode-high-contrast-light {
+	--gemini-gradient: linear-gradient(var(--vscode-foreground), var(--vscode-foreground));
 }
 
 body {
@@ -51,17 +61,65 @@ button {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 8px;
-	margin: 18vh auto 0;
-	max-width: 280px;
+	gap: 6px;
+	margin: 14vh auto 0;
+	max-width: 300px;
 	text-align: center;
 	color: var(--gemini-muted);
 	line-height: 1.5;
 }
 
+.empty p {
+	margin: 0;
+}
+
 .empty .empty-icon {
-	font-size: 28px;
-	color: var(--vscode-textLink-foreground);
+	font-size: 32px !important;
+	margin-bottom: 4px;
+	background: var(--gemini-gradient);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+}
+
+.empty-title {
+	margin: 0;
+	font-size: 1.25em;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+.empty-hints {
+	display: grid;
+	grid-template-columns: auto auto;
+	align-items: center;
+	gap: 6px 8px;
+	margin: 14px 0 0;
+	padding: 0;
+	list-style: none;
+	font-size: 0.92em;
+	text-align: left;
+}
+
+.empty-hints li {
+	display: contents;
+}
+
+.empty-hints kbd,
+.empty-hints .codicon {
+	justify-self: end;
+}
+
+kbd {
+	padding: 0 5px;
+	border: 1px solid var(--vscode-keybindingLabel-border, var(--gemini-border));
+	border-bottom-color: var(--vscode-keybindingLabel-bottomBorder, var(--gemini-border));
+	border-radius: 3px;
+	background: var(--vscode-keybindingLabel-background, transparent);
+	color: var(--vscode-keybindingLabel-foreground, var(--vscode-foreground));
+	font-family: inherit;
+	font-size: 0.9em;
+	box-shadow: inset 0 -1px 0 var(--vscode-widget-shadow, transparent);
 }
 
 .message {
@@ -131,7 +189,7 @@ button {
 	font-size: 0.92em;
 	padding: 1px 4px;
 	border-radius: 4px;
-	background: var(--vscode-textCodeBlock-background, var(--gemini-surface));
+	background: var(--gemini-code-background);
 }
 
 .markdown blockquote {
@@ -152,24 +210,31 @@ button {
 	padding: 3px 8px;
 }
 
+/* A code block: a header with its language and a copy button, then the code. */
 .code-block {
-	position: relative;
 	margin: 0.6em 0;
-}
-
-.code-block pre {
-	margin: 0;
-	padding: 10px 12px;
-	overflow-x: auto;
+	overflow: hidden;
 	border-radius: var(--gemini-radius);
 	border: 1px solid var(--gemini-border);
-	background: var(--vscode-textCodeBlock-background, var(--gemini-surface));
+	background: var(--gemini-code-background);
 }
 
-.code-block pre code {
-	padding: 0;
-	background: none;
-	font-size: var(--vscode-editor-font-size, 0.92em);
+.code-header {
+	display: flex;
+	align-items: center;
+	min-height: 24px;
+	padding: 0 4px 0 10px;
+	border-bottom: 1px solid var(--gemini-border);
+	font-size: 0.85em;
+	color: var(--gemini-muted);
+}
+
+.code-language {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 /* The line height of a code block, as a length, so its streaming lines can use it. */
@@ -181,6 +246,16 @@ button {
 
 .code-block pre {
 	--gemini-pre-line-height: 1lh;
+	tab-size: 4;
+	margin: 0;
+	padding: 10px 12px;
+	overflow-x: auto;
+}
+
+.code-block pre code {
+	padding: 0;
+	background: none;
+	font-size: var(--vscode-editor-font-size, 0.92em);
 }
 
 /*
@@ -192,18 +267,6 @@ button {
 	line-height: var(--gemini-pre-line-height);
 }
 
-.code-block .copy {
-	position: absolute;
-	top: 4px;
-	right: 4px;
-	opacity: 0;
-	background: var(--gemini-surface);
-}
-
-.code-block:hover .copy,
-.code-block .copy:focus-visible {
-	opacity: 1;
-}
 
 /* ---- Thoughts ---- */
 
@@ -321,6 +384,10 @@ button {
 .status-icon.completed { color: var(--vscode-testing-iconPassed, var(--gemini-muted)); }
 .status-icon.failed { color: var(--vscode-errorForeground); }
 
+.tool-call.status-in_progress .tool-title {
+	color: var(--gemini-muted);
+}
+
 .tool-call.status-failed .tool-title {
 	text-decoration: line-through;
 	color: var(--gemini-muted);
@@ -340,8 +407,8 @@ button {
 	max-height: 240px;
 	overflow: auto;
 	padding: 8px 10px;
-	border-radius: 6px;
-	background: var(--vscode-textCodeBlock-background, var(--gemini-surface));
+	border-radius: var(--gemini-radius-small);
+	background: var(--gemini-code-background);
 	font-family: var(--vscode-editor-font-family);
 	font-size: 0.9em;
 	white-space: pre-wrap;
@@ -378,6 +445,8 @@ button {
 .chip:focus-visible,
 .icon-button:focus-visible,
 .round-button:focus-visible,
+.scroll-down:focus-visible,
+.status-action:focus-visible,
 .permission button:focus-visible,
 .pill:focus-visible {
 	outline: 1px solid var(--vscode-focusBorder);
@@ -444,12 +513,20 @@ button {
 	padding: 10px 12px;
 	border-radius: var(--gemini-radius);
 	border: 1px solid var(--vscode-focusBorder);
+	border-left-width: 3px;
 	background: var(--gemini-surface);
+	box-shadow: 0 2px 8px var(--gemini-shadow);
+}
+
+.permission-title .codicon-question {
+	color: var(--vscode-focusBorder);
 }
 
 .permission.answered {
 	border-color: var(--gemini-border);
+	border-left-width: 1px;
 	background: transparent;
+	box-shadow: none;
 }
 
 .permission-title {
@@ -487,7 +564,7 @@ button {
 
 .permission-actions button {
 	padding: 3px 10px;
-	border-radius: 5px;
+	border-radius: var(--gemini-radius-small);
 	border: 1px solid transparent;
 	cursor: pointer;
 }
@@ -561,6 +638,7 @@ button {
 
 .status {
 	display: flex;
+	flex-wrap: wrap;
 	gap: 6px;
 	align-items: center;
 	margin: 0 14px 6px;
@@ -572,10 +650,6 @@ button {
 	display: none;
 }
 
-.status {
-	flex-wrap: wrap;
-}
-
 .status-text {
 	flex: 1 1 auto;
 	min-width: 0;
@@ -584,7 +658,7 @@ button {
 .status-action {
 	padding: 2px 10px;
 	border: 1px solid var(--gemini-border);
-	border-radius: 5px;
+	border-radius: var(--gemini-radius-small);
 	background: var(--vscode-button-secondaryBackground, transparent);
 	color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
 	cursor: pointer;
@@ -610,14 +684,45 @@ button {
 	container: composer / inline-size;
 	margin: 0 10px 10px;
 	padding: 8px 8px 6px 10px;
-	border-radius: 10px;
+	border-radius: 12px;
 	border: 1px solid var(--vscode-input-border, var(--gemini-border));
 	background: var(--vscode-input-background);
+	box-shadow: 0 1px 4px var(--gemini-shadow);
 	cursor: text;
 }
 
 .composer:focus-within {
 	border-color: var(--vscode-focusBorder);
+}
+
+/* Jumps back to the latest message; floats above the composer while the user reads further up. */
+.scroll-down {
+	position: absolute;
+	bottom: calc(100% + 8px);
+	left: 50%;
+	z-index: 3;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	margin-left: -13px;
+	padding: 0;
+	border: 1px solid var(--gemini-border);
+	border-radius: 50%;
+	background: var(--gemini-surface);
+	color: var(--vscode-foreground);
+	box-shadow: 0 2px 8px var(--gemini-shadow);
+	cursor: pointer;
+}
+
+.scroll-down:hover {
+	background: var(--vscode-list-hoverBackground, var(--gemini-hover));
+}
+
+.scroll-down[hidden],
+.composer:has(.picker:not([hidden])) .scroll-down {
+	display: none;
 }
 
 .composer-resize {
@@ -723,11 +828,16 @@ button {
 	border-color: var(--gemini-border);
 }
 
-/* Buttons that look like the pickers: an icon and a label, no chevron. */
+/*
+ * Buttons that look like the pickers: an icon and a label, no chevron. The pickers
+ * shrink before the buttons do, and never past their own box.
+ */
 button.pill {
 	display: inline-flex;
+	flex-shrink: 0;
 	align-items: center;
 	gap: 4px;
+	max-width: 160px;
 	padding: 0 9px;
 	overflow: hidden;
 	white-space: nowrap;
@@ -735,26 +845,6 @@ button.pill {
 
 button.pill[hidden] {
 	display: none;
-}
-
-/* The pickers shrink before the buttons do, and never past their own box. */
-button.pill {
-	flex-shrink: 0;
-	max-width: 160px;
-}
-
-.pill-wrap .pill {
-	max-width: 100%;
-}
-
-@container composer (max-width: 420px) {
-	button.pill {
-		padding: 0 6px;
-	}
-
-	button.pill span {
-		display: none;
-	}
 }
 
 button.pill span {
@@ -767,11 +857,24 @@ button.pill .codicon {
 	color: var(--gemini-muted);
 }
 
+@container composer (max-width: 420px) {
+	button.pill {
+		padding: 0 6px;
+	}
+
+	button.pill span {
+		display: none;
+	}
+}
+
+.pill-wrap .pill {
+	max-width: 100%;
+}
+
 .pill option {
 	background: var(--vscode-dropdown-background);
 	color: var(--vscode-dropdown-foreground);
 }
-
 
 .round-button {
 	display: inline-flex;
@@ -798,6 +901,16 @@ button.pill .codicon {
 
 .round-button[hidden] {
 	display: none;
+}
+
+/* Stop reads as "in progress", not as another send. */
+.round-button.stop {
+	background: var(--vscode-button-secondaryBackground, var(--gemini-hover));
+	color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+}
+
+.round-button.stop:hover {
+	background: var(--vscode-button-secondaryHoverBackground, var(--gemini-hover));
 }
 
 .icon-button {
@@ -899,7 +1012,7 @@ button.pill .codicon {
 	border-radius: var(--gemini-radius);
 	border: 1px solid var(--vscode-editorWidget-border, var(--gemini-border));
 	background: var(--vscode-quickInput-background, var(--gemini-surface));
-	box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+	box-shadow: 0 4px 16px var(--gemini-shadow);
 	z-index: 10;
 }
 
@@ -985,8 +1098,17 @@ button.pill .codicon {
 	width: 6px;
 	height: 6px;
 	border-radius: 50%;
-	background: var(--gemini-muted);
+	background: var(--gemini-gradient);
+	background-size: 400% 100%;
 	opacity: 0.4;
+}
+
+.working span:nth-child(2) {
+	background-position: 50% 0;
+}
+
+.working span:nth-child(3) {
+	background-position: 100% 0;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -1006,6 +1128,23 @@ button.pill .codicon {
 	.picker:not([hidden]) {
 		animation: gemini-pop 120ms ease-out;
 		transform-origin: bottom left;
+	}
+
+	.scroll-down:not([hidden]) {
+		animation: gemini-pop 120ms ease-out;
+	}
+
+	.composer {
+		transition: border-color 120ms ease;
+	}
+
+	.tool-call.status-in_progress .tool-title {
+		background: linear-gradient(90deg, var(--gemini-muted) 30%, var(--vscode-foreground) 50%, var(--gemini-muted) 70%);
+		background-size: 200% 100%;
+		-webkit-background-clip: text;
+		background-clip: text;
+		color: transparent;
+		animation: shimmer 1.6s linear infinite;
 	}
 
 	.working span {

@@ -27,10 +27,10 @@ function readOrgDefaultProjectId(): string | undefined {
 
 const orgDefaultProjectId = readOrgDefaultProjectId();
 
-export interface ProjectSettings {
-	readonly resolved: ResolvedProjectId | undefined;
-	readonly problem: ProjectIdProblem | undefined;
-}
+/** The project ID in effect; a problem is only possible when there is one. */
+export type ProjectSettings =
+	| { readonly resolved: undefined; readonly problem: undefined }
+	| { readonly resolved: ResolvedProjectId; readonly problem: ProjectIdProblem | undefined };
 
 export function getProjectSettings(): ProjectSettings {
 	const inspected = vscode.workspace.getConfiguration(configSection).inspect<string>('projectId');
@@ -40,7 +40,7 @@ export function getProjectSettings(): ProjectSettings {
 		orgDefault: orgDefaultProjectId,
 		env: process.env,
 	});
-	return { resolved, problem: resolved && validateProjectId(resolved.projectId) };
+	return resolved ? { resolved, problem: validateProjectId(resolved.projectId) } : { resolved, problem: undefined };
 }
 
 export function getWorkspaceCwd(): string {
@@ -56,7 +56,7 @@ export function setStorageDirs(dirs: { readonly managedCli: string; readonly adm
 	adminPolicyDir = dirs.adminPolicy;
 }
 
-/** The approval settings, which an admin can lock through policy (plan Phase 4, policy-enforcement). */
+/** The approval settings, which an admin can lock through policy. */
 export function getApprovalPolicy(): ApprovalPolicy {
 	const config = vscode.workspace.getConfiguration(configSection);
 	return {
@@ -73,7 +73,7 @@ export function getManagedCliDir(): string | undefined {
 	return managedCliDir;
 }
 
-/** Which CLI the next agent process runs (plan Phase 3, runtime-resolution). */
+/** Which CLI the next agent process runs. */
 export function getCliResolution(): CliResolution {
 	const config = vscode.workspace.getConfiguration(configSection);
 	return resolveCli({
@@ -97,6 +97,8 @@ export function getAgentCommand(options: { interactive?: boolean; cli?: CliResol
 }
 
 function readCliSettings(): string | undefined {
+	// The CLI's launcher reads `$GEMINI_CLI_HOME/settings.json`, without the
+	// `.gemini` level its other files use, to decide on the heap flag; match it.
 	const home = process.env.GEMINI_CLI_HOME || path.join(os.homedir(), '.gemini');
 	try {
 		return readFileSync(path.join(home, 'settings.json'), 'utf8');

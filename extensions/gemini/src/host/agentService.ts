@@ -21,8 +21,8 @@ import { getFileAccessPolicy, WorkspaceFileSystem } from './workspaceFileSystem'
 
 /**
  * The VS Code side of the agent: starts the sidecar on first use, logs it,
- * restarts it when settings change, and turns failures into messages with
- * a way out (plan C2, C3, C4).
+ * restarts it when settings change, and turns failures into messages with a way
+ * out.
  */
 export class AgentService implements vscode.Disposable {
 
@@ -180,17 +180,17 @@ export class AgentService implements vscode.Disposable {
 		this.idleRestart?.dispose();
 		this.idleRestart = undefined;
 		const { resolved, problem } = getProjectSettings();
-		if (problem === 'numeric') {
+		if (resolved && problem === 'numeric') {
 			this.started = false;
-			this.blocked = { kind: 'project-id-numeric', message: vscode.l10n.t("\"{0}\" is a project number. Set the project ID instead, for example my-project-123.", resolved!.projectId) };
+			this.blocked = { kind: 'project-id-numeric', message: vscode.l10n.t("\"{0}\" is a project number. Set the project ID instead, for example my-project-123.", resolved.projectId) };
 			this.sidecar.stop();
 			this.onDidChangeStatusEmitter.fire(this.status);
 			void this.showError(this.blocked);
 			return;
 		}
 		this.blocked = undefined;
-		if (problem === 'malformed') {
-			this.log.warn(`Project ID "${resolved!.projectId}" does not look like a Google Cloud project ID; starting anyway`);
+		if (resolved && problem === 'malformed') {
+			this.log.warn(`Project ID "${resolved.projectId}" does not look like a Google Cloud project ID; starting anyway`);
 		}
 		this.log.info(`Starting agent with project ${resolved ? `${resolved.projectId} (from ${resolved.source})` : '(none)'}`);
 		this.started = true;
@@ -201,8 +201,8 @@ export class AgentService implements vscode.Disposable {
 
 	/**
 	 * Opens the interactive CLI in a terminal with the agent's environment, so
-	 * its own login and account-validation flows can run (plan C2, C4).
-	 * The agent restarts when the terminal closes.
+	 * its own login and account-validation flows can run. The agent restarts
+	 * when the terminal closes.
 	 */
 	completeSetupInTerminal(): void {
 		this.setupTerminal?.dispose();

@@ -3,11 +3,11 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The GeminiCode layout (plan Phase 2B, layout-defaults): the Agents pane on
-// the left and the Changes view on the right. The workbench always opens a
-// new workspace on the Explorer, and no setting or product.json field picks
-// another default container, so the extension shows both once per
-// workspace. After that the workbench restores whatever the user arranged.
+// The GeminiCode layout: the Agents pane on the left and the Changes view on
+// the right. The workbench always opens a new workspace on the Explorer, and no
+// setting or product.json field picks another default container, so the
+// extension shows both once per workspace. After that the workbench restores
+// whatever the user arranged.
 
 import * as vscode from 'vscode';
 

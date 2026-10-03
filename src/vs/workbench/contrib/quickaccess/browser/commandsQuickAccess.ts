@@ -40,6 +40,7 @@ import { CHAT_OPEN_ACTION_ID } from '../../chat/browser/actions/chatActions.js';
 import { ASK_QUICK_QUESTION_ACTION_ID } from '../../chat/browser/actions/chatQuickInputActions.js';
 import { IChatAgentService } from '../../chat/common/participants/chatAgents.js';
 import { ChatAgentLocation } from '../../chat/common/constants.js';
+import { ChatEntitlementContextKeys } from '../../../services/chat/common/chatEntitlementService.js'; // GEMINI-FORK
 
 export class CommandsQuickAccessProvider extends AbstractEditorCommandsQuickAccessProvider {
 
@@ -233,7 +234,7 @@ export class CommandsQuickAccessProvider extends AbstractEditorCommandsQuickAcce
 
 		// GEMINI-FORK: while upstream's AI features are off (`chat.disableAIFeatures`), leave out
 		// upstream's Chat commands, such as "Use AI Features with Copilot for free...".
-		const hideUpstreamChat = scopedContextKeyService.getContextKeyValue<boolean>('chatSetupHidden') === true;
+		const hideUpstreamChat = scopedContextKeyService.getContextKeyValue<boolean>(ChatEntitlementContextKeys.Setup.hidden.key) === true;
 
 		for (const action of globalCommandsMenuActions) {
 			if (hideUpstreamChat && isUpstreamChatCommand(action)) {
@@ -276,10 +277,11 @@ export class CommandsQuickAccessProvider extends AbstractEditorCommandsQuickAcce
 }
 
 // GEMINI-FORK: upstream's Chat commands; GeminiCode's own commands use the Gemini category.
+// Commands that extensions contribute carry a `source`, so another extension's Chat commands stay.
 function isUpstreamChatCommand(action: MenuItemAction): boolean {
 	const category = action.item.category;
 	const original = typeof category === 'string' ? category : category?.original;
-	return original === 'Chat' || action.item.id.startsWith('workbench.action.chat.') || action.item.id.startsWith('github.copilot.');
+	return (original === 'Chat' && !action.item.source) || action.item.id.startsWith('workbench.action.chat.') || action.item.id.startsWith('github.copilot.');
 }
 
 //#region Actions

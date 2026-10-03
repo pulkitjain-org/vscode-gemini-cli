@@ -11,6 +11,7 @@ import { CliResolution } from '../acp/cliResolution';
 import { AgentStatus } from '../acp/status';
 import { AgentService } from './agentService';
 import { configSection, getProjectSettings } from './configuration';
+import { escapeMarkdown } from './markdown';
 
 export const statusMenuCommand = 'gemini.showStatusMenu';
 
@@ -83,13 +84,13 @@ export class GeminiStatusBar implements vscode.Disposable {
 
 		const project = getProjectSettings().resolved;
 		const tooltip = new vscode.MarkdownString(undefined, true);
-		tooltip.appendMarkdown(`**${vscode.l10n.t("Gemini")}**: ${escape(label)}\n\n`);
+		tooltip.appendMarkdown(`**${vscode.l10n.t("Gemini")}**: ${escapeMarkdown(label)}\n\n`);
 		if (status.phase === 'error' && status.error) {
-			tooltip.appendMarkdown(`${escape(status.error.message)}\n\n`);
+			tooltip.appendMarkdown(`${escapeMarkdown(status.error.message)}\n\n`);
 		}
-		tooltip.appendMarkdown(`${vscode.l10n.t("Account")}: ${escape(this.account ?? vscode.l10n.t("not signed in"))}  \n`);
-		tooltip.appendMarkdown(`${vscode.l10n.t("Project")}: ${escape(project ? `${project.projectId} (${project.source})` : vscode.l10n.t("not set"))}  \n`);
-		tooltip.appendMarkdown(`${vscode.l10n.t("CLI")}: ${escape(this.cli ?? vscode.l10n.t("unknown until the agent starts"))}${escape(describeCliSource(this.service.cli))}`);
+		tooltip.appendMarkdown(`${vscode.l10n.t("Account")}: ${escapeMarkdown(this.account ?? vscode.l10n.t("not signed in"))}  \n`);
+		tooltip.appendMarkdown(`${vscode.l10n.t("Project")}: ${escapeMarkdown(project ? `${project.projectId} (${project.source})` : vscode.l10n.t("not set"))}  \n`);
+		tooltip.appendMarkdown(`${vscode.l10n.t("CLI")}: ${escapeMarkdown(this.cli ?? vscode.l10n.t("unknown until the agent starts"))}${escapeMarkdown(describeCliSource(this.service.cli))}`);
 		this.item.tooltip = tooltip;
 	}
 
@@ -118,10 +119,6 @@ function describePhase(status: AgentStatus): { icon: string; label: string } {
 		case 'ready': return { icon: '$(sparkle)', label: vscode.l10n.t("Gemini") };
 		case 'error': return { icon: '$(error)', label: vscode.l10n.t("Gemini: needs attention") };
 	}
-}
-
-function escape(text: string): string {
-	return text.replace(/[\\`*_{}[\]()#+\-.!|<>]/g, '\\$&');
 }
 
 function describeCliSource(cli: CliResolution | undefined): string {

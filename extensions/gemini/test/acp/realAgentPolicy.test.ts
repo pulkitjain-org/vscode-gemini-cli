@@ -3,10 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Checks that a real Gemini CLI obeys the policy file GeminiCode writes (plan
-// Phase 4, policy-enforcement). The CLI talks to a fake Gemini API on
-// localhost, through GOOGLE_GEMINI_BASE_URL, that always asks for one shell
-// command; no credentials or network are needed.
+// Checks that a real Gemini CLI obeys the policy file GeminiCode writes. The
+// CLI talks to a fake Gemini API on localhost, through GOOGLE_GEMINI_BASE_URL,
+// that always asks for one shell command; no credentials or network are needed.
 // Skipped unless GEMINI_CLI_PATH points at the CLI. Runs with an empty HOME.
 
 import { ChildProcessWithoutNullStreams } from 'node:child_process';

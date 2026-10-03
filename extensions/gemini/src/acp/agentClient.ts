@@ -38,7 +38,7 @@ export interface AgentClientOptions {
 	 * every prompt.
 	 */
 	readonly preferredModel?: () => string | undefined;
-	/** Which approval modes the picker may offer (plan Phase 4, policy-enforcement); all of them when unset. */
+	/** Which approval modes the picker may offer; all of them when unset. */
 	readonly isModeAllowed?: (modeId: string) => boolean;
 }
 

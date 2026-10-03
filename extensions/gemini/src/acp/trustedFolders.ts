@@ -3,11 +3,11 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Folder trust (plan Phase 4, policy-enforcement follow-up). gemini-cli 0.62
-// refuses Auto Edit and YOLO, and skips a folder's own .gemini settings and
-// MCP servers, until the folder is in its trusted-folders list. Its terminal
-// asks once per folder; GeminiCode asks the same question when the user picks
-// such a mode, and records the answer in the same file the CLI writes.
+// Folder trust. gemini-cli 0.62 refuses Auto Edit and YOLO, and skips a
+// folder's own .gemini settings and MCP servers, until the folder is in its
+// trusted-folders list. Its terminal asks once per folder; GeminiCode asks the
+// same question when the user picks such a mode, and records the answer in the
+// same file the CLI writes.
 
 import * as fs from 'node:fs';
 import * as os from 'node:os';

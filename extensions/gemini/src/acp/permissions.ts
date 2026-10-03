@@ -4,9 +4,9 @@
  *--------------------------------------------------------------------------------------------*/
 
 // Holds the agent's `session/request_permission` requests until the user
-// answers one in the UI (plan Phase 2, permission-ui). Options come from the
-// request, never from a hardcoded list, and every request is answered:
-// `cancelled` when the turn is stopped or the agent goes away.
+// answers one in the UI. Options come from the request, never from a hardcoded
+// list, and every request is answered: `cancelled` when the turn is stopped or
+// the agent goes away.
 
 import type * as acp from '@agentclientprotocol/sdk';
 import { Emitter } from './events';

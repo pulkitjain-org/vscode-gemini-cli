@@ -3,14 +3,14 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Serves the agent's `fs/read_text_file` and `fs/write_text_file` requests
-// (plan Phase 2, fs-handlers). The host supplies the file system (open
-// editors, WorkspaceEdit and save); this module applies the access policy
-// and the protocol details. Any error fails the tool call with a message the
-// model can read.
+// Serves the agent's `fs/read_text_file` and `fs/write_text_file` requests. The
+// host supplies the file system (open editors, WorkspaceEdit and save); this
+// module applies the access policy and the protocol details. Any error fails
+// the tool call with a message the model can read.
 
 import * as path from 'node:path';
 import * as acp from '@agentclientprotocol/sdk';
+import { AGENT_SETUP_ERROR_CODE } from './errors';
 
 /** The host's view of the workspace files. */
 export interface ClientFileSystem {
@@ -53,9 +53,11 @@ export function secretPathReason(filePath: string): string | undefined {
 	return SECRET_FILE_PATTERNS.some(pattern => pattern.test(base)) ? `${segments.at(-1)} may contain secrets` : undefined;
 }
 
-function isInside(root: string, filePath: string): boolean {
+/** Whether `filePath` is `root` or inside it. */
+export function isInside(root: string, filePath: string): boolean {
 	const relative = path.relative(root, filePath);
-	return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative));
+	// A child named `..foo` is inside; only `..` itself climbs out.
+	return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
 }
 
 /** The reason the agent may not access `filePath`, or `undefined` if it may. */
@@ -92,7 +94,7 @@ export function sliceLines(text: string, line?: number | null, limit?: number | 
 
 export class FileAccessDeniedError extends acp.RequestError {
 	constructor(filePath: string, reason: string) {
-		super(-32000, `Access to ${filePath} was denied: ${reason}.`);
+		super(AGENT_SETUP_ERROR_CODE, `Access to ${filePath} was denied: ${reason}.`);
 	}
 }
 

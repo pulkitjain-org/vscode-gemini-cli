@@ -3,8 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Installing and switching GeminiCode's own copies of the Gemini CLI (plan
-// Phase 3, runtime-resolution, cli-install and cli-update-check). Nothing
+// Installing and switching GeminiCode's own copies of the Gemini CLI. Nothing
 // here runs on the startup path: once the agent is ready there is a cleanup
 // and, at most once a day, one registry request to see whether a newer CLI
 // exists. Installing always waits for the user.
@@ -13,6 +12,7 @@ import * as vscode from 'vscode';
 import { fetchCliVersions, Fetch, installCli, pruneCliVersions } from '../acp/cliInstall';
 import { compareVersions, listManagedVersions } from '../acp/cliResolution';
 import { shouldCheckForUpdate, updateToOffer } from '../acp/cliUpdates';
+import { errorMessage } from '../acp/errors';
 import { AgentService } from './agentService';
 import { configSection, getCliResolution, getManagedCliDir } from './configuration';
 
@@ -203,8 +203,4 @@ export class CliManager implements vscode.Disposable {
 			this.log.warn(`Could not remove old Gemini CLI copies: ${errorMessage(err)}`);
 		}
 	}
-}
-
-function errorMessage(err: unknown): string {
-	return err instanceof Error ? err.message : String(err);
 }

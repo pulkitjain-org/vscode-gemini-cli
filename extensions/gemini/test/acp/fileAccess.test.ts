@@ -5,10 +5,24 @@
 
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { checkFileAccess, ClientFileSystem, createFileHandlers, secretPathReason, sliceLines } from '../../src/acp/fileAccess';
+import { checkFileAccess, ClientFileSystem, createFileHandlers, isInside, secretPathReason, sliceLines } from '../../src/acp/fileAccess';
 
 const root = path.resolve('/work/project');
 const inRoot = (...parts: string[]) => path.join(root, ...parts);
+
+describe('isInside', () => {
+	it('accepts the root and its children, including names starting with ..', () => {
+		expect(isInside('/repo', '/repo')).toBe(true);
+		expect(isInside('/repo', '/repo/src/a.ts')).toBe(true);
+		expect(isInside('/repo', '/repo/..foo')).toBe(true);
+	});
+
+	it('rejects parents and siblings', () => {
+		expect(isInside('/repo', '/')).toBe(false);
+		expect(isInside('/repo', '/repo2/a.ts')).toBe(false);
+		expect(isInside('/repo', '/repo/../other')).toBe(false);
+	});
+});
 
 describe('secretPathReason', () => {
 	it.each([

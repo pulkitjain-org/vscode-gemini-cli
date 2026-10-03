@@ -7,7 +7,8 @@ import { randomBytes } from 'node:crypto';
 import * as path from 'node:path';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
-import { Attachment, inlineType, maxDocumentTextBytes, maxImageBase64Length, supportedImageTypes } from '../acp/attachments';
+import { Attachment } from '../acp/attachments';
+import { isValidAttachment } from '../acp/attachmentValidation';
 import { ChatTranscript, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
 import { PendingPermission, PermissionBroker } from '../acp/permissions';
 import { buildPromptContent } from '../acp/promptContent';
@@ -15,9 +16,10 @@ import { AgentStatus } from '../acp/status';
 import { TextDeltas } from '../acp/textDeltas';
 import { UpdateBatcher } from '../acp/updateBatcher';
 import type { AgentClient } from '../acp/agentClient';
-import { AgentError } from '../acp/errors';
+import { AgentError, errorMessage } from '../acp/errors';
 import { readGitHead } from '../acp/gitHead';
-import { ChatStrings, chatProtocolVersion, FromWebview, statusCommands, ToWebview, ViewStatus } from './chatProtocol';
+import { ChatStrings, chatProtocolVersion, FromWebview, statusCommands, ToWebview } from './chatProtocol';
+import { stopReasonNotice, toViewStatus } from './chatStatus';
 import { DiffPreview } from './diffPreview';
 import { attachmentsForFiles } from './addToChat';
 import { createBranchAndCommit, pickBranch } from './gitActions';
@@ -75,10 +77,10 @@ export interface ChatActivity {
 }
 
 /**
- * One chat (plan Phase 1, item 9, and Phase 2B agent-tabs): sends prompts,
- * streams agent messages and thoughts, shows tool-call cards and stops a
- * turn, in whichever webview it is attached to. The transcript lives here,
- * so it survives the webview being hidden, moved or closed.
+ * One chat: sends prompts, streams agent messages and thoughts, shows
+ * tool-call cards and stops a turn, in whichever webview it is attached to.
+ * The transcript lives here, so it survives the webview being hidden, moved
+ * or closed.
  */
 export class ChatController implements vscode.Disposable {
 
@@ -122,7 +124,7 @@ export class ChatController implements vscode.Disposable {
 			this.onDidSendPromptEmitter,
 			service.permissions.onDidChange(event => {
 				if (event.kind === 'requested') {
-					this.diffs.set(event.permission.id, diffsOf(event.permission.request.toolCall.content));
+					this.rememberDiffs(event.permission.id, diffsOf(event.permission.request.toolCall.content));
 					this.transcript.addPermission(event.permission);
 					void this.revealForPermission(event.permission);
 				} else {
@@ -139,9 +141,10 @@ export class ChatController implements vscode.Disposable {
 				if (this.busy) {
 					if (event.kind === 'toolCall') {
 						const diffs = diffsOf(event.call.content);
-						this.diffs.set(toolCallItemId(event.call.id), diffs);
+						this.rememberDiffs(toolCallItemId(event.call.id), diffs);
 						if (event.call.status === 'completed' && diffs.length && !this.completedToolCalls.has(event.call.id)) {
 							this.completedToolCalls.add(event.call.id);
+							dropOldest(this.completedToolCalls);
 							this.onDidEditFilesEmitter.fire(diffs);
 						}
 					}
@@ -152,7 +155,7 @@ export class ChatController implements vscode.Disposable {
 				if (state.kind === 'ready') {
 					this.post({ type: 'capabilities', image: service.client.promptCapabilities.image });
 					if (this.lastSessionId && state.sessionId !== this.lastSessionId && this.transcript.items.length) {
-						this.transcript.addNotice(vscode.l10n.t("The agent could not continue the earlier session, so it does not remember the messages above."));
+						this.addSessionLostNotice();
 					}
 					this.lastSessionId = state.sessionId;
 				}
@@ -163,8 +166,7 @@ export class ChatController implements vscode.Disposable {
 			service.client.onDidChangeSettings(settings => this.post({ type: 'settings', settings })),
 		);
 		if (options.git?.commit) {
-			const listener = options.git.commit.onDidChange(() => this.postGit());
-			this.disposables.push(new vscode.Disposable(() => listener.dispose()));
+			this.disposables.push(options.git.commit.onDidChange(() => this.postGit()));
 		}
 	}
 
@@ -189,7 +191,7 @@ export class ChatController implements vscode.Disposable {
 		this.transcript.restore(items);
 		const state = this.service.client.state;
 		if (state.kind === 'ready' && sessionId && state.sessionId !== sessionId) {
-			this.transcript.addNotice(vscode.l10n.t("The agent could not continue the earlier session, so it does not remember the messages above."));
+			this.addSessionLostNotice();
 		}
 		this.lastSessionId = state.kind === 'ready' ? state.sessionId : sessionId;
 	}
@@ -293,6 +295,7 @@ export class ChatController implements vscode.Disposable {
 		}
 		this.transcript.clear();
 		this.diffs.clear();
+		this.completedToolCalls.clear();
 		if (this.service.client.state.kind !== 'ready') {
 			// The next prompt starts the agent, and with it a new session.
 			this.service.client.forgetSession();
@@ -456,6 +459,10 @@ export class ChatController implements vscode.Disposable {
 			: vscode.l10n.t("Folder trusted. Restarting the agent in {0} mode.", modeName), 'info');
 	}
 
+	private addSessionLostNotice(): void {
+		this.transcript.addNotice(vscode.l10n.t("The agent could not continue the earlier session, so it does not remember the messages above."));
+	}
+
 	/** Brings the chat into view so the request can be answered, and shows the first proposed edit. */
 	private async revealForPermission(permission: PendingPermission): Promise<void> {
 		await this.options.reveal(true);
@@ -465,11 +472,25 @@ export class ChatController implements vscode.Disposable {
 		}
 	}
 
+	private rememberDiffs(itemId: string, diffs: readonly acp.Diff[]): void {
+		if (diffs.length) {
+			// Re-inserting keeps the most recent edits when old ones are dropped.
+			this.diffs.delete(itemId);
+			this.diffs.set(itemId, diffs);
+			dropOldest(this.diffs);
+		}
+	}
+
 	private async openDiff(itemId: string, filePath: string, preserveFocus: boolean): Promise<void> {
 		const diff = this.diffs.get(itemId)?.find(d => d.path === filePath);
 		if (diff) {
 			await this.diffPreview.show(diff, { preserveFocus });
+			return;
 		}
+		// Proposed edits are kept in memory only, so a restored or old chat has
+		// none: show the file as it is now instead.
+		void vscode.window.showInformationMessage(vscode.l10n.t("The proposed change is no longer available, so the file is shown as it is now."));
+		await this.openLocation(filePath, undefined);
 	}
 
 	private async openLocation(filePath: string, line: number | undefined): Promise<void> {
@@ -521,7 +542,11 @@ export class ChatController implements vscode.Disposable {
 			placeholderFollowUp: vscode.l10n.t("Ask a follow-up"),
 			send: vscode.l10n.t("Send (Enter)"),
 			stop: vscode.l10n.t("Stop"),
+			welcomeTitle: vscode.l10n.t("What are we building?"),
 			welcome: vscode.l10n.t("Ask Gemini to explain, change or create code in this workspace. It asks before it edits files."),
+			hintMention: vscode.l10n.t("to add files as context"),
+			hintNewLine: vscode.l10n.t("for a new line"),
+			scrollToBottom: vscode.l10n.t("Jump to latest"),
 			thinking: vscode.l10n.t("Thinking"),
 			thought: vscode.l10n.t("Thought"),
 			thoughtFor: vscode.l10n.t("Thought for {0}s"),
@@ -543,7 +568,7 @@ export class ChatController implements vscode.Disposable {
 			addContext: vscode.l10n.t("Add context (@)"),
 			noFiles: vscode.l10n.t("No matching files"),
 			remove: vscode.l10n.t("Remove"),
-			imageTooLarge: vscode.l10n.t("{0} is too large to send."),
+			fileTooLarge: vscode.l10n.t("{0} is too large to send."),
 			attachFiles: vscode.l10n.t("Attach files. You can also drop files here; hold Shift when dragging from the Explorer."),
 			dropFiles: vscode.l10n.t("Drop files to attach"),
 			cannotAttach: vscode.l10n.t("{0} can't be attached: only text files, images and PDFs can be dropped here. Use the attach button to add other files."),
@@ -563,6 +588,7 @@ export class ChatController implements vscode.Disposable {
 	<div id="status" class="status" role="status"></div>
 	<form id="composer" class="composer">
 		<div id="resize" class="composer-resize"></div>
+		<button type="button" id="scroll-down" class="scroll-down" hidden><i class="codicon codicon-arrow-down" aria-hidden="true"></i></button>
 		<div class="drop-overlay" aria-hidden="true"><i class="codicon codicon-cloud-upload"></i><span id="drop-label"></span></div>
 		<div id="picker" class="picker" role="listbox" hidden></div>
 		<div id="attachments" class="attachments" hidden></div>
@@ -575,8 +601,8 @@ export class ChatController implements vscode.Disposable {
 			<span class="spacer"></span>
 			<button type="button" id="commit" class="pill commit" hidden><i class="codicon codicon-git-commit" aria-hidden="true"></i><span></span></button>
 			<button type="button" id="branch" class="pill branch" hidden><i class="codicon codicon-git-branch" aria-hidden="true"></i><span></span></button>
-			<button type="submit" id="send" class="round-button"><i class="codicon codicon-arrow-up"></i></button>
-			<button type="button" id="stop" class="round-button" hidden><i class="codicon codicon-debug-stop"></i></button>
+			<button type="submit" id="send" class="round-button"><i class="codicon codicon-arrow-up" aria-hidden="true"></i></button>
+			<button type="button" id="stop" class="round-button stop" hidden><i class="codicon codicon-debug-stop" aria-hidden="true"></i></button>
 		</div>
 	</form>
 	<script nonce="${nonce}" type="module" src="${script}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
@@ -585,58 +611,21 @@ export class ChatController implements vscode.Disposable {
 	}
 }
 
-function toViewStatus(status: AgentStatus): ViewStatus {
-	switch (status.phase) {
-		case 'stopped': return { phase: status.phase, text: vscode.l10n.t("Gemini is not running."), actions: [{ label: vscode.l10n.t("Start Agent"), command: 'gemini.restartAgent' }] };
-		case 'starting': return { phase: status.phase, text: vscode.l10n.t("Starting the Gemini agent...") };
-		case 'restarting': return { phase: status.phase, text: vscode.l10n.t("The agent stopped unexpectedly. Restarting...") };
-		case 'ready': return { phase: status.phase, text: '' };
-		case 'error': {
-			const retry = { label: vscode.l10n.t("Retry"), command: 'gemini.restartAgent' } as const;
-			const kind = status.error?.kind;
-			const fix = kind === 'auth-required' || kind === 'auth-failed'
-				? { label: vscode.l10n.t("Sign In"), command: 'gemini.completeSetupInTerminal' } as const
-				: kind === 'project-id-required' || kind === 'project-id-numeric'
-					? { label: vscode.l10n.t("Set Project ID"), command: 'gemini.setProjectId' } as const
-					: { label: vscode.l10n.t("Show Log"), command: 'gemini.showLog' } as const;
-			return { phase: status.phase, text: status.error?.message ?? vscode.l10n.t("The agent needs attention."), actions: [fix, retry] };
-		}
-	}
-}
+/** The most proposed edits kept for opening their diffs later. */
+const maxRememberedDiffs = 200;
 
-/** Checks what the webview sent, since it builds attachments from pasted data. */
-function isValidAttachment(attachment: Attachment): boolean {
-	switch (attachment?.kind) {
-		case 'file': return typeof attachment.path === 'string' && path.isAbsolute(attachment.path);
-		case 'selection': return typeof attachment.path === 'string' && path.isAbsolute(attachment.path) && typeof attachment.text === 'string';
-		case 'image': return supportedImageTypes.has(attachment.mimeType) && typeof attachment.data === 'string' && attachment.data.length <= maxImageBase64Length;
-		case 'document':
-			return typeof attachment.name === 'string' && typeof attachment.mimeType === 'string'
-				&& (attachment.path === undefined || (typeof attachment.path === 'string' && path.isAbsolute(attachment.path)))
-				&& (typeof attachment.text === 'string'
-					? attachment.text.length <= maxDocumentTextBytes
-					: typeof attachment.data === 'string' && attachment.data.length <= maxImageBase64Length && inlineType(attachment.name, attachment.mimeType) === attachment.mimeType);
-		default: return false;
+/** Drops the oldest entries of a set or map beyond {@link maxRememberedDiffs}. */
+function dropOldest<K>(collection: Set<K> | Map<K, unknown>): void {
+	for (const key of collection.keys()) {
+		if (collection.size <= maxRememberedDiffs) {
+			return;
+		}
+		collection.delete(key);
 	}
 }
 
 function diffsOf(content: readonly acp.ToolCallContent[] | null | undefined): acp.Diff[] {
 	return (content ?? []).flatMap(c => c.type === 'diff' ? [c] : []);
-}
-
-function errorMessage(err: unknown): string {
-	return err instanceof Error ? err.message : String(err);
-}
-
-function stopReasonNotice(stopReason: acp.StopReason): string | undefined {
-	switch (stopReason) {
-		case 'end_turn': return undefined;
-		case 'cancelled': return vscode.l10n.t("Stopped.");
-		case 'max_tokens': return vscode.l10n.t("The response reached the token limit.");
-		case 'max_turn_requests': return vscode.l10n.t("The turn reached the request limit.");
-		case 'refusal': return vscode.l10n.t("The agent declined to continue.");
-		default: return vscode.l10n.t("The turn ended ({0}).", String(stopReason));
-	}
 }
 
 function escapeAttribute(value: string): string {

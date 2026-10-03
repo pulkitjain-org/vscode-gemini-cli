@@ -3,10 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The Agents pane's model (plan Phase 2B, agents-pane): workspaces the user
-// added, and the agents under each. Names follow upstream's Agents Window
-// (workspace, session) so the pane can move onto it later. Plain data, so
-// the host can persist it as JSON.
+// The Agents pane's model: workspaces the user added, and the agents under
+// each. Names follow upstream's Agents Window (workspace, session) so the pane
+// can move onto it later. Plain data, so the host can persist it as JSON.
 
 import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';

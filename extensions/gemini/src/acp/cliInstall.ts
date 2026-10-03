@@ -3,9 +3,8 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Installs GeminiCode's own copies of the Gemini CLI (plan Phase 3,
-// runtime-resolution, cli-install): one folder per version under the
-// managed folder, taken from the npm registry. Only `bundle/` and
+// Installs GeminiCode's own copies of the Gemini CLI: one folder per version
+// under the managed folder, taken from the npm registry. Only `bundle/` and
 // `package.json` are kept; the CLI's optional packages (node-pty, keytar)
 // are left out, and the CLI runs without them.
 

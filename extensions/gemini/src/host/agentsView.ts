@@ -18,9 +18,10 @@ import { AgentSession } from './agentSession';
 import { ChangesSource, ChangesView } from './changesView';
 import { ChatActivity, ChatController, FileSearch } from './chatController';
 import { DiffPreview } from './diffPreview';
+import { escapeMarkdown } from './markdown';
 import { WorkspaceFileIndex } from './workspaceFiles';
 
-export const agentsViewId = 'gemini.agents';
+const agentsViewId = 'gemini.agents';
 const agentPanelType = 'gemini.agent';
 const storageKey = 'gemini.agents';
 
@@ -60,10 +61,9 @@ interface LiveAgent {
 const saveDelayMs = 1_000;
 
 /**
- * The Agents pane (plan Phase 2B, agents-pane and agent-tabs): workspaces,
- * the agents under each, and an editor tab per agent that reuses the chat.
- * Every agent is a session on the one shared agent process, so a new agent
- * is ready in tens of milliseconds once the agent runs.
+ * The Agents pane: workspaces, the agents under each, and an editor tab per
+ * agent that reuses the chat. Every agent is a session on the one shared agent
+ * process, so a new agent is ready in tens of milliseconds once the agent runs.
  */
 export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposable {
 
@@ -97,10 +97,10 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			this.tree,
 			this.changesView,
 			this.onDidChangeTreeDataEmitter,
-			toDisposable(this.model.onDidChange(() => {
+			this.model.onDidChange(() => {
 				void context.globalState.update(storageKey, this.model.snapshot());
 				this.refresh();
-			})),
+			}),
 			vscode.workspace.onDidChangeWorkspaceFolders(() => this.refresh()),
 			// Relative times go stale; refresh them only while the pane is visible.
 			this.tree.onDidChangeVisibility(e => this.setRefreshing(e.visible)),
@@ -271,6 +271,10 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				// Read while the tab opens; the agent reopens its session meanwhile.
 				const started = live;
 				void this.transcripts.load(id).then(saved => {
+					// The agent may have been stopped while the file was read.
+					if (this.live.get(id) !== started) {
+						return;
+					}
 					started.controller.restore(saved.items, record.sessionId);
 					started.changes.restore(saved.changes);
 				});
@@ -370,17 +374,17 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				live.activity = activity;
 				this.refresh();
 			}),
-			toDisposable(session.client.onDidChangeState(state => {
+			session.client.onDidChangeState(state => {
 				if (state.kind === 'ready') {
 					this.model.setSessionId(record.id, state.sessionId);
 				}
-			})),
+			}),
 			live.controller.onDidEditFiles(diffs => changes.record(diffs)),
-			toDisposable(changes.onDidChange(() => {
+			changes.onDidChange(() => {
 				this.model.setChanges(record.id, changes.totals);
 				this.scheduleSave(record.id, live);
 				this.refresh();
-			})),
+			}),
 			live.controller.onDidSendPrompt(text => {
 				this.model.recordPrompt(record.id, text);
 				const title = this.model.agent(record.id)?.title;
@@ -493,7 +497,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 }
 
 /** "now", "5m", "3h", "2d", "6w": short, like the screenshot's session list. */
-export function relativeTime(then: number, now: number): string {
+function relativeTime(then: number, now: number): string {
 	const minutes = Math.floor(Math.max(0, now - then) / 60_000);
 	if (minutes < 1) {
 		return vscode.l10n.t("now");
@@ -518,10 +522,3 @@ function tildify(folder: string): string {
 	return folder === home || folder.startsWith(home + path.sep) ? `~${folder.slice(home.length)}` : folder;
 }
 
-function escapeMarkdown(text: string): string {
-	return text.replace(/[\\`*_{}[\]()#+\-.!|<>]/g, '\\$&');
-}
-
-function toDisposable(listener: { dispose(): void }): vscode.Disposable {
-	return new vscode.Disposable(() => listener.dispose());
-}

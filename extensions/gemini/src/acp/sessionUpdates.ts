@@ -3,9 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The thin wire-to-UI adapter (design rule 5): turns `session/update`
-// notifications into a few UI-facing events. Update kinds it does not know
-// render generically instead of being dropped (design rule 4).
+// The thin wire-to-UI adapter: turns `session/update` notifications into a
+// few UI-facing events. Update kinds it does not know render generically
+// instead of being dropped (design rules 4 and 5 in
+// gemini/docs/ARCHITECTURE.md).
 
 import type * as acp from '@agentclientprotocol/sdk';
 

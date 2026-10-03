@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 // The CLI wraps every `authenticate` and `session/new` failure as a JSON-RPC
-// error -32000 with a message string (plan C3), so typed errors never reach us.
+// error -32000 with a message string, so typed errors never reach us.
 // This table maps the known message strings to kinds. Every pattern is copied
 // from the CLI source of the version in `since`, and each one has a fixture in
 // test/fixtures/agentErrors.json that Compat CI runs against new CLI versions.
@@ -13,7 +13,7 @@
 export type AgentErrorKind =
 	/** No auth type selected yet, or an API key is expected: call `authenticate`. */
 	| 'auth-required'
-	/** The OAuth login itself failed; it has to be completed in a terminal (C4). */
+	/** The OAuth login itself failed; it has to be completed in a terminal. */
 	| 'auth-failed'
 	/** The account needs GOOGLE_CLOUD_PROJECT set. */
 	| 'project-id-required'
@@ -74,6 +74,11 @@ export function classifyAgentError(error: unknown): AgentErrorInfo {
 		}
 	}
 	return { kind: 'unknown', message, code };
+}
+
+/** The message of an error of any shape, for showing to the user. */
+export function errorMessage(err: unknown): string {
+	return err instanceof Error ? err.message : String(err);
 }
 
 /** Raised by the client when the agent fails; carries the classification. */

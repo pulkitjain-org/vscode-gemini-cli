@@ -25,7 +25,7 @@ export function indexPath(relative: string): IndexedPath {
  * does not match. Higher is better: matches in the file name, at the start
  * of words and in runs score more; long paths score a little less.
  */
-export function scorePath(query: string, path: IndexedPath): number | undefined {
+function scorePath(query: string, path: IndexedPath): number | undefined {
 	if (!query) {
 		return 0;
 	}

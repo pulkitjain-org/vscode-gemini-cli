@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Branch names for Create Branch & Commit (plan Phase 2B, composer-extras).
+// Branch names for Create Branch & Commit.
 
 /** A branch name such as "gemini/fix-login-redirect" from an agent's title. */
 export function branchNameFrom(title: string): string {

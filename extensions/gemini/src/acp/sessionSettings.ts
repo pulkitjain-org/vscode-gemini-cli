@@ -3,10 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The session's mode and model, as the agent reports them (plan Phase 2,
-// capability-discovery). Nothing here is hardcoded: the pickers show exactly
-// what `session/new` returned, and a control disappears when the agent says
-// it does not support changing it (feature-detection).
+// The session's mode and model, as the agent reports them. Nothing here is
+// hardcoded: the pickers show exactly what `session/new` returned, and a
+// control disappears when the agent says it does not support changing it.
 
 import type * as acp from '@agentclientprotocol/sdk';
 
