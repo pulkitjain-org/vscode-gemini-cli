@@ -944,6 +944,32 @@ button.pill .codicon {
 	color: var(--gemini-muted);
 }
 
+/* The attach button's paperclip; the bundled codicons have none yet. */
+.paperclip {
+	width: 16px;
+	height: 16px;
+}
+
+/* Shown over the composer while files are dragged over the view. */
+.drop-overlay {
+	display: none;
+	position: absolute;
+	inset: -1px;
+	z-index: 2;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	border: 1px dashed var(--vscode-focusBorder);
+	border-radius: inherit;
+	background: var(--vscode-input-background);
+	color: var(--vscode-focusBorder);
+	pointer-events: none;
+}
+
+.composer.dragging .drop-overlay {
+	display: flex;
+}
+
 /* ---- Motion --------------------------------------------------------------
  * Short, and only opacity and transform, so nothing is laid out again while it
  * runs. Off when the system asks for reduced motion.
@@ -971,6 +997,10 @@ button.pill .codicon {
 	.tool-body.reveal,
 	.thought-text.reveal {
 		animation: gemini-reveal 160ms ease-out;
+	}
+
+	.composer.dragging .drop-overlay {
+		animation: gemini-pop 120ms ease-out;
 	}
 
 	.picker:not([hidden]) {

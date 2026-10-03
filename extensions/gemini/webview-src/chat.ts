@@ -9,7 +9,7 @@
 // inject markup; everything else is set with textContent.
 
 import MarkdownIt from 'markdown-it';
-import { Attachment, attachmentLabel, basename, maxImageBase64Length, supportedImageTypes } from '../src/acp/attachments';
+import { Attachment, attachmentLabel, basename, classifyFile, maxImageBase64Length, supportedImageTypes } from '../src/acp/attachments';
 import type { PromptAttachmentLabel, TranscriptItem } from '../src/acp/chatTranscript';
 import type { TextAppend } from '../src/acp/textDeltas';
 import type { SessionSelector, SessionSettings } from '../src/acp/sessionSettings';
@@ -45,6 +45,10 @@ const commitButton = byId<HTMLButtonElement>('commit');
 
 mentionButton.title = strings.addContext;
 mentionButton.setAttribute('aria-label', strings.addContext);
+const attachButton = byId<HTMLButtonElement>('attach');
+attachButton.title = strings.attachFiles;
+attachButton.setAttribute('aria-label', strings.attachFiles);
+byId<HTMLElement>('drop-label').textContent = strings.dropFiles;
 
 sendButton.title = strings.send;
 sendButton.setAttribute('aria-label', strings.send);
@@ -174,10 +178,10 @@ function renderUserMessage(item: { readonly text: string; readonly attachments?:
 		for (const attachment of item.attachments) {
 			const { path, line } = attachment;
 			const chip = path
-				? button('chip', attachment.label, () => vscode.postMessage({ type: 'openLocation', path, line }), attachmentIcon(attachment.kind))
+				? button('chip', attachment.label, () => vscode.postMessage({ type: 'openLocation', path, line }), attachmentIcon(attachment.kind, attachment.label))
 				: el('span', 'chip static');
 			if (!path) {
-				chip.append(icon(attachmentIcon(attachment.kind)), el('span', undefined, attachment.label));
+				chip.append(icon(attachmentIcon(attachment.kind, attachment.label)), el('span', undefined, attachment.label));
 			}
 			chip.title = path ?? attachment.label;
 			chips.append(chip);
@@ -187,8 +191,8 @@ function renderUserMessage(item: { readonly text: string; readonly attachments?:
 	return node;
 }
 
-function attachmentIcon(kind: Attachment['kind']): string {
-	return kind === 'image' ? 'file-media' : kind === 'selection' ? 'list-selection' : 'file';
+function attachmentIcon(kind: Attachment['kind'], label: string): string {
+	return kind === 'image' ? 'file-media' : kind === 'selection' ? 'list-selection' : /\.pdf$/i.test(label) ? 'file-pdf' : 'file';
 }
 
 function renderMarkdown(text: string): HTMLElement {
@@ -749,6 +753,9 @@ function sameAttachment(a: Attachment, b: Attachment): boolean {
 	if (a.kind === 'selection' && b.kind === 'selection') {
 		return a.path === b.path && a.startLine === b.startLine && a.endLine === b.endLine;
 	}
+	if (a.kind === 'document' && b.kind === 'document') {
+		return a.path !== undefined ? a.path === b.path : a.name === b.name && a.text === b.text && a.data === b.data;
+	}
 	return a.kind === 'image' && b.kind === 'image' && a.data === b.data;
 }
 
@@ -771,8 +778,8 @@ function renderAttachments(): void {
 			thumbnail.alt = '';
 			chip.append(thumbnail);
 		} else {
-			chip.append(icon(attachmentIcon(attachment.kind)));
-			chip.title = attachment.path;
+			chip.append(icon(attachmentIcon(attachment.kind, attachmentLabel(attachment))));
+			chip.title = attachment.path ?? attachmentLabel(attachment);
 		}
 		chip.append(el('span', undefined, attachmentLabel(attachment)));
 		const remove = button('chip-remove', '', () => {
@@ -918,14 +925,67 @@ function readImage(file: File): Promise<Attachment | undefined> {
 	});
 }
 
-/** Takes the images from a paste or drop when the agent accepts images. */
-function takeImages(data: DataTransfer | null): boolean {
-	const files = imageInput ? [...data?.files ?? []].filter(file => supportedImageTypes.has(file.type)) : [];
+/** File URIs in a drop, such as from the Explorer (which needs Shift held to drop into a view). */
+function droppedUris(data: DataTransfer): string[] {
+	const list = data.getData('application/vnd.code.uri-list') || data.getData('text/uri-list');
+	return list.split(/\r?\n/).map(line => line.trim()).filter(line => line.startsWith('file:'));
+}
+
+function readBase64(file: File): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''));
+		reader.onerror = () => reject(reader.error);
+		reader.readAsDataURL(file);
+	});
+}
+
+/** A file without a path (dropped from Finder or pasted) sent with its contents, if it can be. */
+async function readDroppedFile(file: File): Promise<Attachment | undefined> {
+	const name = file.name || 'file';
+	if (imageInput && supportedImageTypes.has(file.type)) {
+		return readImage(file);
+	}
+	const content = classifyFile(name, file.type, new Uint8Array(await file.arrayBuffer()));
+	switch (content.kind) {
+		case 'text':
+			return { kind: 'document', name, mimeType: 'text/plain', text: content.text };
+		case 'inline':
+			return { kind: 'document', name, mimeType: content.mimeType, data: await readBase64(file) };
+		case 'tooLarge':
+			setTransientNotice(format(strings.imageTooLarge, name));
+			return undefined;
+		case 'unsupported':
+			setTransientNotice(format(strings.cannotAttach, name));
+			return undefined;
+	}
+}
+
+/**
+ * Takes the files from a paste or drop. Ones with paths go to the extension,
+ * which links workspace files and reads others; ones without are read here.
+ */
+function takeFiles(data: DataTransfer | null): boolean {
+	if (!data) {
+		return false;
+	}
+	const uris = droppedUris(data);
+	if (uris.length) {
+		vscode.postMessage({ type: 'attachUris', uris });
+		return true;
+	}
+	const files = [...data.files];
 	if (!files.length) {
 		return false;
 	}
-	void Promise.all(files.map(readImage)).then(images => addAttachments(images.filter((i): i is Attachment => !!i)));
+	void Promise.all(files.map(file => readDroppedFile(file).catch(() => undefined)))
+		.then(added => addAttachments(added.filter((a): a is Attachment => !!a)));
 	return true;
+}
+
+function carriesFiles(data: DataTransfer | null): boolean {
+	const types = data?.types ?? [];
+	return types.includes('Files') || types.includes('text/uri-list') || types.includes('application/vnd.code.uri-list');
 }
 
 function setTransientNotice(text: string): void {
@@ -1028,20 +1088,32 @@ input.addEventListener('blur', () => setTimeout(() => {
 	}
 }, 0));
 input.addEventListener('paste', event => {
-	if (takeImages(event.clipboardData)) {
+	// Pasted files only; pasted text (and a link list copied as text) stays text.
+	if (event.clipboardData?.files.length && takeFiles(event.clipboardData)) {
 		event.preventDefault();
 	}
 });
-form.addEventListener('dragover', event => {
-	if (imageInput && event.dataTransfer?.types.includes('Files')) {
+// Files can be dropped anywhere in the view; the composer shows where they go.
+document.addEventListener('dragover', event => {
+	if (carriesFiles(event.dataTransfer)) {
+		event.preventDefault();
+		event.dataTransfer!.dropEffect = 'copy';
+		form.classList.add('dragging');
+	}
+});
+document.addEventListener('dragleave', event => {
+	// Leaving the view, not just moving between its elements.
+	if (!event.relatedTarget) {
+		form.classList.remove('dragging');
+	}
+});
+document.addEventListener('drop', event => {
+	form.classList.remove('dragging');
+	if (takeFiles(event.dataTransfer)) {
 		event.preventDefault();
 	}
 });
-form.addEventListener('drop', event => {
-	if (takeImages(event.dataTransfer)) {
-		event.preventDefault();
-	}
-});
+attachButton.addEventListener('click', () => vscode.postMessage({ type: 'pickFiles' }));
 mentionButton.addEventListener('click', () => {
 	// Insert "@" at the caret (with a space before it when needed) and open the picker.
 	const caret = input.selectionStart;
