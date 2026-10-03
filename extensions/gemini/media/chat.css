@@ -38,6 +38,15 @@ button {
 	padding: 12px 14px 8px;
 }
 
+/*
+ * Older messages skip layout and paint while scrolled out of view, so a long chat stays as cheap
+ * as a short one. The latest ones are always laid out, so scrolling to the bottom lands exactly.
+ */
+.transcript > :nth-last-child(n+30) {
+	content-visibility: auto;
+	contain-intrinsic-size: auto 80px;
+}
+
 .empty {
 	display: flex;
 	flex-direction: column;
@@ -161,6 +170,26 @@ button {
 	padding: 0;
 	background: none;
 	font-size: var(--vscode-editor-font-size, 0.92em);
+}
+
+/* The line height of a code block, as a length, so its streaming lines can use it. */
+@property --gemini-pre-line-height {
+	syntax: '<length>';
+	inherits: true;
+	initial-value: 0px;
+}
+
+.code-block pre {
+	--gemini-pre-line-height: 1lh;
+}
+
+/*
+ * Lines of a code block that is still streaming, see appendCode in chat.ts. As blocks they
+ * would size lines by the code's font; this keeps them as tall as lines inside the <pre>.
+ */
+.code-chunk {
+	display: block;
+	line-height: var(--gemini-pre-line-height);
 }
 
 .code-block .copy {
@@ -633,6 +662,9 @@ button {
 	font-family: inherit;
 	font-size: inherit;
 	line-height: 1.5;
+	/* Grows with its text up to max-height (set from script), without script measuring it. */
+	field-sizing: content;
+	max-height: 200px;
 }
 
 .composer textarea::placeholder {

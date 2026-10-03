@@ -8,6 +8,7 @@
 
 import type { Attachment } from '../acp/attachments';
 import type { TranscriptItem } from '../acp/chatTranscript';
+import type { ItemUpdate } from '../acp/textDeltas';
 import type { SessionSettings } from '../acp/sessionSettings';
 import type { AgentPhase } from '../acp/status';
 
@@ -15,7 +16,7 @@ import type { AgentPhase } from '../acp/status';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 5;
+export const chatProtocolVersion = 6;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -95,7 +96,7 @@ export type FromWebview =
 export type ToWebview =
 	| { readonly type: 'reset'; readonly items: readonly TranscriptItem[]; readonly busy: boolean; readonly status: ViewStatus; readonly settings: SessionSettings }
 	/** Added or changed items, in the order they first changed; streaming updates are batched. */
-	| { readonly type: 'items'; readonly items: readonly TranscriptItem[] }
+	| { readonly type: 'items'; readonly items: readonly ItemUpdate[] }
 	| { readonly type: 'busy'; readonly busy: boolean }
 	| { readonly type: 'status'; readonly status: ViewStatus }
 	| { readonly type: 'settings'; readonly settings: SessionSettings }

@@ -11,8 +11,9 @@
 import MarkdownIt from 'markdown-it';
 import { Attachment, attachmentLabel, basename, maxImageBase64Length, supportedImageTypes } from '../src/acp/attachments';
 import type { PromptAttachmentLabel, TranscriptItem } from '../src/acp/chatTranscript';
+import type { TextAppend } from '../src/acp/textDeltas';
 import type { SessionSelector, SessionSettings } from '../src/acp/sessionSettings';
-import { stableEnd, thoughtPreview } from './streaming';
+import { scanStreaming, thoughtPreview } from './streaming';
 import { chatProtocolVersion, type ChatStrings, type FromWebview, type ToWebview, type ViewGit, type ViewStatus } from '../src/host/chatProtocol';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromWebview): void };
@@ -219,13 +220,49 @@ function renderBlocks(text: string): Node[] {
 /**
  * A reply that is still streaming. Its first `stableCount` child nodes show
  * `stableText`, the blocks that no longer change; each update renders only
- * the text after them, so a long reply stays cheap to update. When the reply
- * is done it is rendered once more as a whole.
+ * the text after them, so a long reply stays cheap to update. A code block
+ * that is still open is not rendered again: its new code is appended as
+ * text. When the reply is done it is rendered once more as a whole.
  */
 interface StreamingReply {
 	readonly node: HTMLElement;
 	stableText: string;
 	stableCount: number;
+	/** The open code block at the end, if any: where its opening line starts, its code and how much text it shows. */
+	fence?: StreamingCode;
+}
+
+/**
+ * The code of an open code block, in blocks of whole lines. New code only
+ * goes into the last block, so the browser lays out just that block again
+ * rather than every line of a long block.
+ */
+interface StreamingCode {
+	readonly start: number;
+	readonly code: HTMLElement;
+	shown: number;
+	tail: HTMLElement;
+	tailLines: number;
+}
+
+const linesPerCodeChunk = 50;
+
+function appendCode(fence: StreamingCode, text: string): void {
+	const newlines = text.split('\n').length - 1;
+	if (fence.tailLines + newlines < linesPerCodeChunk) {
+		fence.tail.append(text);
+		fence.tailLines += newlines;
+		return;
+	}
+	// Close this block after its last whole line and start the next.
+	const cut = text.lastIndexOf('\n') + 1;
+	fence.tail.append(text.slice(0, cut));
+	fence.tail = el('span', 'code-chunk');
+	fence.tailLines = 0;
+	fence.code.append(fence.tail);
+	if (cut < text.length) {
+		fence.tail.append(text.slice(cut));
+	}
 }
 
 const streamingReplies = new Map<string, StreamingReply>();
@@ -242,16 +279,38 @@ function updateStreamingReply(reply: StreamingReply, text: string): boolean {
 	if (!text.startsWith(reply.stableText)) {
 		return false;
 	}
-	const { node } = reply;
+	const scan = scanStreaming(text, reply.stableText.length);
+	const { node, fence } = reply;
+	if (fence && scan.openFence?.start === fence.start && text.length >= fence.shown) {
+		// Still the same open code block, and nothing before it changed: add the new code.
+		appendCode(fence, text.slice(fence.shown));
+		fence.shown = text.length;
+		return true;
+	}
+	reply.fence = undefined;
 	while (node.childNodes.length > reply.stableCount) {
 		node.lastChild!.remove();
 	}
-	const end = stableEnd(text);
-	if (end > reply.stableText.length) {
-		const blocks = renderBlocks(text.slice(reply.stableText.length, end));
+	if (scan.stableEnd > reply.stableText.length) {
+		const blocks = renderBlocks(text.slice(reply.stableText.length, scan.stableEnd));
 		node.append(...blocks);
 		reply.stableCount += blocks.length;
-		reply.stableText = text.slice(0, end);
+		reply.stableText = text.slice(0, scan.stableEnd);
+	}
+	const open = scan.openFence;
+	if (open && open.start >= reply.stableText.length) {
+		node.append(...renderBlocks(text.slice(reply.stableText.length, open.start)));
+		// Render the empty block once for its classes and copy button, then fill in the code.
+		const blocks = renderBlocks(`${open.opener}\n${open.opener.trimEnd().replace(/^([`~]+).*$/, '$1')}\n`);
+		const code = blocks.map(b => b instanceof HTMLElement ? b.querySelector('code') : null).find(c => c);
+		if (code) {
+			node.append(...blocks);
+			const tail = el('span', 'code-chunk');
+			code.replaceChildren(tail);
+			reply.fence = { start: open.start, code, shown: text.length, tail, tailLines: 0 };
+			appendCode(reply.fence, text.slice(open.codeStart));
+			return true;
+		}
 	}
 	node.append(...renderBlocks(text.slice(reply.stableText.length)));
 	return true;
@@ -450,9 +509,30 @@ function trackThoughts(previous: TranscriptItem | undefined, item: TranscriptIte
 	}
 }
 
+function scrollToBottom(): void {
+	transcript.scrollTop = transcript.scrollHeight;
+}
+
+/** Adds or replaces one item, keeping the view scrolled to the bottom if it was there. */
 function upsert(item: TranscriptItem, live = false): void {
 	const stick = isNearBottom();
-	const index = items.findIndex(existing => existing.id === item.id);
+	if (applyItem(item, live) || stick) {
+		scrollToBottom();
+	}
+}
+
+/** The index of the item with `id`; streaming updates are nearly always to the last one. */
+function indexOfItem(id: string): number {
+	return items.at(-1)?.id === id ? items.length - 1 : items.findIndex(existing => existing.id === id);
+}
+
+/**
+ * Adds or replaces one item without touching the scroll position, so a batch
+ * of them causes one layout rather than one each. True if the view should
+ * scroll to the bottom whatever its position (the user's own message).
+ */
+function applyItem(item: TranscriptItem, live: boolean): boolean {
+	const index = indexOfItem(item.id);
 	let previous: TranscriptItem | undefined;
 	if (index === -1) {
 		previous = items.at(-1);
@@ -466,10 +546,7 @@ function upsert(item: TranscriptItem, live = false): void {
 	const existing = elements.get(item.id);
 	const reply = item.kind === 'agent' && live && busy ? streamingReplies.get(item.id) : undefined;
 	if (reply && item.kind === 'agent' && existing === reply.node && updateStreamingReply(reply, item.text)) {
-		if (stick) {
-			transcript.scrollTop = transcript.scrollHeight;
-		}
-		return;
+		return false;
 	}
 	streamingReplies.delete(item.id);
 	const node = item.kind === 'agent' && live && busy ? renderStreamingReply(item) : render(item);
@@ -496,9 +573,13 @@ function upsert(item: TranscriptItem, live = false): void {
 	if (item.kind === 'permission' && !item.answer) {
 		node.querySelector<HTMLButtonElement>('button.primary')?.focus();
 	}
-	if (stick || item.kind === 'user') {
-		transcript.scrollTop = transcript.scrollHeight;
-	}
+	return item.kind === 'user';
+}
+
+/** The item that `update` adds text to, with that text added. */
+function appended(update: TextAppend): TranscriptItem | undefined {
+	const current = items[indexOfItem(update.id)];
+	return current?.kind === 'agent' || current?.kind === 'thought' ? { ...current, text: current.text + update.append } : undefined;
 }
 
 function rerender(item: TranscriptItem): void {
@@ -518,9 +599,11 @@ function reset(newItems: readonly TranscriptItem[]): void {
 	transcript.replaceChildren();
 	elements.clear();
 	items = [];
+	// No layout reads while adding, so the whole transcript is laid out once.
 	for (const item of newItems) {
-		upsert(item);
+		applyItem(item, false);
 	}
+	scrollToBottom();
 	if (!items.length) {
 		transcript.append(renderEmpty());
 		expanded.clear();
@@ -828,10 +911,14 @@ function setTransientNotice(text: string): void {
 /** Height the user dragged the composer to; the input never gets shorter than this. */
 let userHeight = 0;
 
+/**
+ * Applies the dragged height. The input grows with its text by itself (CSS
+ * field-sizing), so typing never measures it, which would lay out the whole
+ * transcript on every keystroke.
+ */
 function autoGrow(): void {
-	input.style.height = 'auto';
-	const max = Math.max(200, userHeight);
-	input.style.height = `${Math.max(userHeight, Math.min(input.scrollHeight, max))}px`;
+	input.style.minHeight = userHeight ? `${userHeight}px` : '';
+	input.style.maxHeight = `${Math.max(200, userHeight)}px`;
 }
 
 // Dragging the composer's top edge resizes the input; a double-click resets it.
@@ -952,12 +1039,21 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			setStatus(message.status);
 			setSettings(message.settings);
 			break;
-		case 'items':
-			for (const item of message.items) {
-				upsert(item, true);
+		case 'items': {
+			const stick = isNearBottom();
+			let scroll = stick;
+			for (const update of message.items) {
+				const item = update.kind === 'append' ? appended(update) : update;
+				if (item) {
+					scroll = applyItem(item, true) || scroll;
+				}
+			}
+			if (scroll) {
+				scrollToBottom();
 			}
 			updatePlaceholder();
 			break;
+		}
 		case 'busy':
 			setBusy(message.busy);
 			break;

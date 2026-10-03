@@ -12,6 +12,7 @@ import { ChatTranscript, toolCallItemId, TranscriptItem } from '../acp/chatTrans
 import { PendingPermission, PermissionBroker } from '../acp/permissions';
 import { buildPromptContent } from '../acp/promptContent';
 import { AgentStatus } from '../acp/status';
+import { TextDeltas } from '../acp/textDeltas';
 import { UpdateBatcher } from '../acp/updateBatcher';
 import type { AgentClient } from '../acp/agentClient';
 import { AgentError } from '../acp/errors';
@@ -82,7 +83,8 @@ export class ChatController implements vscode.Disposable {
 
 	private readonly transcript = new ChatTranscript();
 	/** Streams item changes to the webview at most about 30 times a second. */
-	private readonly items = new UpdateBatcher<TranscriptItem>(items => this.post({ type: 'items', items }));
+	private readonly textDeltas = new TextDeltas();
+	private readonly items = new UpdateBatcher<TranscriptItem>(items => this.post({ type: 'items', items: this.textDeltas.toUpdates(items) }));
 	private readonly disposables: vscode.Disposable[] = [];
 	private webview: vscode.Webview | undefined;
 	private webviewListener: vscode.Disposable | undefined;
@@ -200,8 +202,11 @@ export class ChatController implements vscode.Disposable {
 	attach(webview: vscode.Webview): void {
 		this.detach();
 		this.webview = webview;
-		// Build the @-mention file list now, so the picker opens instantly.
-		this.fileIndex.warm();
+		// Start the agent with the view rather than once its script has loaded, and build the
+		// @-mention file list after that, so the two do not compete while the agent starts.
+		// A failure shows in the view's status line.
+		const warmFiles = () => this.fileIndex.warm();
+		this.service.ensureReady().then(warmFiles, warmFiles);
 		const mediaUri = vscode.Uri.joinPath(this.extensionUri, 'media');
 		webview.options = { enableScripts: true, localResourceRoots: [mediaUri] };
 		webview.html = this.getHtml(webview, mediaUri);
@@ -307,8 +312,7 @@ export class ChatController implements vscode.Disposable {
 					this.pendingAttachments = [];
 				}
 				this.postGit();
-				// Start the agent with the view, so the mode and model pickers are there before the first prompt.
-				// A failure shows in the view's status line.
+				// The agent was started with the view (see attach); this retries one that has since stopped.
 				this.service.ensureReady().catch(() => undefined);
 				break;
 			case 'prompt':
@@ -468,6 +472,7 @@ export class ChatController implements vscode.Disposable {
 	private postReset(): void {
 		// The reset carries every item, so pending updates are already in it.
 		this.items.clear();
+		this.textDeltas.reset(this.transcript.items);
 		this.post({ type: 'reset', items: this.transcript.items, busy: this.busy, status: toViewStatus(this.service.status), settings: this.service.client.settings });
 	}
 
