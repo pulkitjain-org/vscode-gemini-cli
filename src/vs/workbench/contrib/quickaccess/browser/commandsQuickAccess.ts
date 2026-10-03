@@ -231,7 +231,14 @@ export class CommandsQuickAccessProvider extends AbstractEditorCommandsQuickAcce
 			.reduce((r, [, actions]) => [...r, ...actions], <Array<MenuItemAction | SubmenuItemAction | string>>[])
 			.filter(action => action instanceof MenuItemAction && action.enabled) as MenuItemAction[];
 
+		// GEMINI-FORK: while upstream's AI features are off (`chat.disableAIFeatures`), leave out
+		// upstream's Chat commands, such as "Use AI Features with Copilot for free...".
+		const hideUpstreamChat = scopedContextKeyService.getContextKeyValue<boolean>('chatSetupHidden') === true;
+
 		for (const action of globalCommandsMenuActions) {
+			if (hideUpstreamChat && isUpstreamChatCommand(action)) {
+				continue;
+			}
 
 			// Label
 			let label = (typeof action.item.title === 'string' ? action.item.title : action.item.title.value) || action.item.id;
@@ -266,6 +273,13 @@ export class CommandsQuickAccessProvider extends AbstractEditorCommandsQuickAcce
 
 		return globalCommandPicks;
 	}
+}
+
+// GEMINI-FORK: upstream's Chat commands; GeminiCode's own commands use the Gemini category.
+function isUpstreamChatCommand(action: MenuItemAction): boolean {
+	const category = action.item.category;
+	const original = typeof category === 'string' ? category : category?.original;
+	return original === 'Chat' || action.item.id.startsWith('workbench.action.chat.') || action.item.id.startsWith('github.copilot.');
 }
 
 //#region Actions
