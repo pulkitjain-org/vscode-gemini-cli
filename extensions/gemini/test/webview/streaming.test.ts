@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { stableEnd, thoughtPreview } from '../../webview-src/streaming';
+import { scanStreaming, stableEnd, thoughtPreview } from '../../webview-src/streaming';
 
 describe('stableEnd', () => {
 	it('ends after the last blank line', () => {
@@ -31,6 +31,33 @@ describe('stableEnd', () => {
 	it('keeps a fence open until a long enough marker closes it', () => {
 		const text = '````md\n```\n\nstill code';
 		expect(stableEnd(text)).toBe(0);
+	});
+});
+
+describe('scanStreaming', () => {
+	it('gives the same stable end when started from an earlier one', () => {
+		const text = 'One.\n\nTwo.\n\n```\na\n\nb\n```\n\nThree.\n\nFour';
+		const first = stableEnd(text.slice(0, 10));
+		expect(first).toBe(6);
+		expect(stableEnd(text, first)).toBe(stableEnd(text));
+	});
+
+	it('keeps the earlier stable end when nothing new is finished', () => {
+		expect(stableEnd('One.\n\nTwo is stream', 6)).toBe(6);
+	});
+
+	it('reports a code fence that is still open', () => {
+		const text = 'Intro.\n\nSee:\n```ts\nconst a = 1;\n\nconst b';
+		const scan = scanStreaming(text);
+		expect(scan.stableEnd).toBe(8);
+		expect(scan.openFence).toEqual({ start: 13, codeStart: 19, opener: '```ts' });
+		expect(text.slice(scan.openFence!.codeStart)).toBe('const a = 1;\n\nconst b');
+	});
+
+	it('reports no open fence once it closes, before its opening line ends, or when indented', () => {
+		expect(scanStreaming('```\nx\n```\nafter').openFence).toBeUndefined();
+		expect(scanStreaming('Intro\n```t').openFence).toBeUndefined();
+		expect(scanStreaming('  ```\nx').openFence).toBeUndefined();
 	});
 });
 

@@ -46,7 +46,8 @@ export function activate(context: vscode.ExtensionContext): void {
 		walkthrough,
 		new GeminiStatusBar(service),
 		new CliManager(service, context.globalState, log),
-		vscode.window.registerWebviewViewProvider(chatViewId, chatView),
+		// Kept alive while hidden, so switching back to the chat is instant instead of reloading it.
+		vscode.window.registerWebviewViewProvider(chatViewId, chatView, { webviewOptions: { retainContextWhenHidden: true } }),
 		vscode.commands.registerCommand('gemini.openChat', () => vscode.commands.executeCommand(`${chatViewId}.focus`)),
 		vscode.commands.registerCommand('gemini.newChat', () => chatView.newChat()),
 		vscode.commands.registerCommand('gemini.addFileToChat', async (uri: unknown, uris: unknown) => chatInFront().addAttachments(await filesToAttach(uri, uris))),
