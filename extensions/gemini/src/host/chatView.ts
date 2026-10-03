@@ -31,12 +31,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 
 	resolveWebviewView(view: vscode.WebviewView): void {
 		this.view = view;
-		this.controller.attach(view.webview);
+		const webview = view.webview;
+		this.controller.attach(webview);
 		view.onDidDispose(() => {
-			this.controller.detach(view.webview);
 			if (this.view === view) {
 				this.view = undefined;
 			}
+			this.controller.detach(webview);
 		});
 	}
 

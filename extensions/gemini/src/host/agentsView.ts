@@ -293,7 +293,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			});
 			panel.iconPath = vscode.Uri.joinPath(this.context.extensionUri, 'media', 'gemini.svg');
 			live.panel = panel;
-			live.controller.attach(panel.webview);
+			// A disposed panel throws on `.webview`, so keep the webview for detaching.
+			const webview = panel.webview;
+			live.controller.attach(webview);
 			panel.onDidChangeViewState(e => {
 				if (e.webviewPanel.active) {
 					this.focus(id);
@@ -304,10 +306,10 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				}
 			});
 			panel.onDidDispose(() => {
-				live.controller.detach(panel.webview);
 				if (live.panel === panel) {
 					live.panel = undefined;
 				}
+				live.controller.detach(webview);
 			});
 		}
 		this.focus(id);
