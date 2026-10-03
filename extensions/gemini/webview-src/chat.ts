@@ -345,7 +345,10 @@ function renderThought(item: { readonly id: string; readonly text: string }): HT
 	if (preview) {
 		summary.append(el('span', 'thought-preview', preview));
 	}
-	details.append(summary, el('div', 'thought-text', item.text));
+	const text = el('div', 'thought-text', item.text);
+	// Animate opening by the user only, not the re-renders while it streams.
+	summary.addEventListener('click', () => text.classList.toggle('reveal', !details.open));
+	details.append(summary, text);
 	return details;
 }
 
@@ -409,10 +412,14 @@ function renderToolCall(item: ItemOf<'toolCall'>): HTMLElement {
 		row.setAttribute('role', 'button');
 		row.setAttribute('aria-expanded', String(expanded.has(item.id)));
 		const toggle = () => {
-			if (!expanded.delete(item.id)) {
+			const opening = !expanded.delete(item.id);
+			if (opening) {
 				expanded.add(item.id);
 			}
 			upsert(item);
+			if (opening) {
+				elements.get(item.id)?.querySelector('.tool-body')?.classList.add('reveal');
+			}
 		};
 		row.addEventListener('click', toggle);
 		row.addEventListener('keydown', event => {
@@ -558,6 +565,10 @@ function applyItem(item: TranscriptItem, live: boolean): boolean {
 		existing.replaceWith(node);
 	} else {
 		transcript.querySelector('.empty')?.remove();
+		if (live) {
+			// Only new items animate in, not ones shown again or restored.
+			node.classList.add('enter');
+		}
 		transcript.append(node);
 	}
 	elements.set(item.id, node);
@@ -614,6 +625,21 @@ function reset(newItems: readonly TranscriptItem[]): void {
 
 // ---- Composer ------------------------------------------------------------
 
+/** Three pulsing dots after the user's message, until the agent's first reply, thought or tool call. */
+const working = el('div', 'working');
+working.setAttribute('aria-hidden', 'true');
+working.append(el('span'), el('span'), el('span'));
+
+function updateWorking(): void {
+	if (busy && items.at(-1)?.kind === 'user') {
+		if (transcript.lastElementChild !== working) {
+			transcript.append(working);
+		}
+	} else {
+		working.remove();
+	}
+}
+
 function setBusy(value: boolean): void {
 	busy = value;
 	stopButton.hidden = !value;
@@ -633,6 +659,7 @@ function setBusy(value: boolean): void {
 	if (last?.kind === 'thought') {
 		rerender(last);
 	}
+	updateWorking();
 	updateSendState();
 }
 
@@ -918,7 +945,8 @@ let userHeight = 0;
  */
 function autoGrow(): void {
 	input.style.minHeight = userHeight ? `${userHeight}px` : '';
-	input.style.maxHeight = `${Math.max(200, userHeight)}px`;
+	// It grows with its text to 40% of the view, or further if dragged taller.
+	input.style.maxHeight = userHeight ? `max(40vh, ${userHeight}px)` : '';
 }
 
 // Dragging the composer's top edge resizes the input; a double-click resets it.
@@ -927,7 +955,9 @@ resizeHandle.addEventListener('pointerdown', event => {
 	resizeHandle.setPointerCapture(event.pointerId);
 	const startY = event.clientY;
 	const startHeight = input.getBoundingClientRect().height;
+	let moved = false;
 	const onMove = (move: PointerEvent) => {
+		moved = true;
 		const limit = Math.max(60, window.innerHeight * 0.7);
 		userHeight = Math.min(limit, Math.max(20, startHeight + startY - move.clientY));
 		autoGrow();
@@ -937,6 +967,10 @@ resizeHandle.addEventListener('pointerdown', event => {
 		resizeHandle.removeEventListener('pointerup', onUp);
 		resizeHandle.removeEventListener('pointercancel', onUp);
 		input.focus();
+		if (moved) {
+			// Remembered for every chat, also after a restart.
+			vscode.postMessage({ type: 'composerHeight', height: userHeight });
+		}
 	};
 	resizeHandle.addEventListener('pointermove', onMove);
 	resizeHandle.addEventListener('pointerup', onUp);
@@ -945,6 +979,7 @@ resizeHandle.addEventListener('pointerdown', event => {
 resizeHandle.addEventListener('dblclick', () => {
 	userHeight = 0;
 	autoGrow();
+	vscode.postMessage({ type: 'composerHeight', height: 0 });
 });
 
 function submit(): void {
@@ -1048,6 +1083,7 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 					scroll = applyItem(item, true) || scroll;
 				}
 			}
+			updateWorking();
 			if (scroll) {
 				scrollToBottom();
 			}
@@ -1065,6 +1101,10 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'capabilities':
 			imageInput = message.image;
+			break;
+		case 'composerHeight':
+			userHeight = window.innerHeight ? Math.min(message.height, Math.max(60, window.innerHeight * 0.7)) : message.height;
+			autoGrow();
 			break;
 		case 'files':
 			if (pickerState && message.requestId === lastSearchId) {

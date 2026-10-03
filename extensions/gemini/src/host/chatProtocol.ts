@@ -16,7 +16,7 @@ import type { AgentPhase } from '../acp/status';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 6;
+export const chatProtocolVersion = 7;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -91,6 +91,8 @@ export type FromWebview =
 	| { readonly type: 'openDiff'; readonly itemId: string; readonly path: string }
 	| { readonly type: 'openLocation'; readonly path: string; readonly line?: number }
 	| { readonly type: 'pickBranch' }
+	/** The user dragged the input to `height` pixels, or reset it (0). */
+	| { readonly type: 'composerHeight'; readonly height: number }
 	| { readonly type: 'createBranchAndCommit' };
 
 export type ToWebview =
@@ -102,6 +104,8 @@ export type ToWebview =
 	| { readonly type: 'settings'; readonly settings: SessionSettings }
 	/** Whether the agent takes pasted images; sent with every session. */
 	| { readonly type: 'capabilities'; readonly image: boolean }
+	/** The input height the user dragged to last, in any chat; 0 for its natural height. */
+	| { readonly type: 'composerHeight'; readonly height: number }
 	| { readonly type: 'files'; readonly requestId: number; readonly files: readonly { readonly path: string; readonly relative: string }[] }
 	/** Context to add to the composer, from the Add to Chat commands. */
 	| { readonly type: 'attach'; readonly attachments: readonly Attachment[] }

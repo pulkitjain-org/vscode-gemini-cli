@@ -20,7 +20,7 @@ import { readGitHead } from '../acp/gitHead';
 import { ChatStrings, chatProtocolVersion, FromWebview, statusCommands, ToWebview, ViewStatus } from './chatProtocol';
 import { DiffPreview } from './diffPreview';
 import { createBranchAndCommit, pickBranch } from './gitActions';
-import { rememberModel } from './modelPreference';
+import { preferredComposerHeight, rememberComposerHeight, rememberModel } from './modelPreference';
 import type { FileMatch } from './workspaceFiles';
 
 /** The agent session a chat talks to: the sidebar's, or one agent's in the Agents pane. */
@@ -307,6 +307,7 @@ export class ChatController implements vscode.Disposable {
 				}
 				this.postReset();
 				this.post({ type: 'capabilities', image: this.service.client.promptCapabilities.image });
+				this.post({ type: 'composerHeight', height: preferredComposerHeight() });
 				if (this.pendingAttachments.length) {
 					this.post({ type: 'attach', attachments: this.pendingAttachments });
 					this.pendingAttachments = [];
@@ -317,6 +318,9 @@ export class ChatController implements vscode.Disposable {
 				break;
 			case 'prompt':
 				void this.send(message.text, message.attachments ?? []);
+				break;
+			case 'composerHeight':
+				rememberComposerHeight(message.height);
 				break;
 			case 'searchFiles':
 				void this.fileIndex.search(message.query, 30).then(
