@@ -54,6 +54,8 @@ export interface ChatControllerOptions {
 	readonly busyContextKey?: string;
 	/** The branch pill and Create Branch & Commit; without it the composer shows neither. */
 	readonly git?: ChatGit;
+	/** Where files and diffs open; unset opens them in the active editor group. */
+	editorColumn?(): vscode.ViewColumn;
 }
 
 export interface ChatGit {
@@ -484,7 +486,7 @@ export class ChatController implements vscode.Disposable {
 	private async openDiff(itemId: string, filePath: string, preserveFocus: boolean): Promise<void> {
 		const diff = this.diffs.get(itemId)?.find(d => d.path === filePath);
 		if (diff) {
-			await this.diffPreview.show(diff, { preserveFocus });
+			await this.diffPreview.show(diff, { preserveFocus, viewColumn: this.options.editorColumn?.() });
 			return;
 		}
 		// Proposed edits are kept in memory only, so a restored or old chat has
@@ -496,7 +498,7 @@ export class ChatController implements vscode.Disposable {
 	private async openLocation(filePath: string, line: number | undefined): Promise<void> {
 		const position = new vscode.Position(Math.max((line ?? 1) - 1, 0), 0);
 		try {
-			await vscode.window.showTextDocument(vscode.Uri.file(filePath), { selection: new vscode.Range(position, position), preview: true });
+			await vscode.window.showTextDocument(vscode.Uri.file(filePath), { selection: new vscode.Range(position, position), preview: true, viewColumn: this.options.editorColumn?.() });
 		} catch (err) {
 			void vscode.window.showErrorMessage(errorMessage(err));
 		}

@@ -213,7 +213,8 @@ export class WorkbenchThemeService extends Disposable implements IWorkbenchTheme
 				await this.userDataInitializationService.whenInitializationFinished();
 				// try to get the theme again, now with a fallback to the default themes
 				const fallbackTheme = this.currentColorTheme.type === ColorScheme.LIGHT ? ThemeSettingDefaults.COLOR_THEME_LIGHT : ThemeSettingDefaults.COLOR_THEME_DARK;
-				theme = this.colorThemeRegistry.findThemeBySettingsId(this.settings.colorTheme, fallbackTheme);
+				theme = this.colorThemeRegistry.findThemeBySettingsId(this.settings.colorTheme, fallbackTheme)
+					?? this.colorThemeRegistry.findThemeBySettingsId(this.currentColorTheme.type === ColorScheme.LIGHT ? ThemeSettingDefaults.COLOR_THEME_LIGHT_FALLBACK : ThemeSettingDefaults.COLOR_THEME_DARK_FALLBACK); // GEMINI-FORK
 			}
 			return this.setColorTheme(theme && theme.id, undefined);
 		};
@@ -397,7 +398,7 @@ export class WorkbenchThemeService extends Disposable implements IWorkbenchTheme
 			} else if (event.removed.some(t => t.settingsId === this.currentColorTheme.settingsId)) {
 				// current theme is no longer available
 				prevColorId = this.currentColorTheme.id;
-				const defaultTheme = this.colorThemeRegistry.findThemeBySettingsId(ThemeSettingDefaults.COLOR_THEME_DARK);
+				const defaultTheme = this.colorThemeRegistry.findThemeBySettingsId(ThemeSettingDefaults.COLOR_THEME_DARK, ThemeSettingDefaults.COLOR_THEME_DARK_FALLBACK); // GEMINI-FORK: fallback
 				await this.setColorTheme(defaultTheme, 'auto');
 			}
 		}));

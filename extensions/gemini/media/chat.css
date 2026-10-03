@@ -4,15 +4,25 @@
  *--------------------------------------------------------------------------------------------*/
 
 :root {
-	--gemini-radius: 8px;
-	--gemini-radius-small: 6px;
+	--gemini-radius: 10px;
+	--gemini-radius-small: 7px;
+	--gemini-radius-large: 14px;
 	--gemini-muted: var(--vscode-descriptionForeground);
 	--gemini-border: var(--vscode-widget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.35)));
 	--gemini-surface: var(--vscode-editorWidget-background, var(--vscode-input-background));
 	--gemini-hover: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
 	--gemini-code-background: var(--vscode-textCodeBlock-background, var(--gemini-surface));
 	--gemini-shadow: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
-	/* The Gemini spark's colours, for the few brand touches: the welcome icon and the working dots. */
+	/* The theme's accent: links, the permission card's bar, the plan step in progress. */
+	--gemini-accent: var(--vscode-textLink-foreground, var(--vscode-focusBorder));
+	/* High contrast themes give every surface a border; other themes leave it out. */
+	--gemini-contrast-border: var(--vscode-contrastBorder, transparent);
+	/*
+	 * Side margin of the transcript and the composer: roomy in an agent tab, which is wide, and
+	 * snug in the side bar; past about 800px the conversation stays one readable column.
+	 */
+	--gemini-gutter: max(14px, min(56px, 7vw - 4px), calc((100vw - 780px) / 2));
+	/* The Gemini spark's colours, for the few brand touches: the welcome icon, the working dots and Send. */
 	--gemini-gradient: linear-gradient(135deg, #4796e3 10%, #9177c7 55%, #ca6673 90%);
 }
 
@@ -45,7 +55,7 @@ button {
 .transcript {
 	flex: 1;
 	overflow-y: auto;
-	padding: 12px 14px 8px;
+	padding: 20px var(--gemini-gutter) 8px;
 }
 
 /*
@@ -128,13 +138,18 @@ kbd {
 	word-wrap: break-word;
 }
 
+/* The user's message: a bubble on the right, sized to its text. */
 .message.user {
 	white-space: pre-wrap;
-	margin-top: 18px;
-	padding: 8px 12px;
-	border-radius: var(--gemini-radius);
-	background: var(--gemini-surface);
-	border: 1px solid var(--gemini-border);
+	width: fit-content;
+	max-width: 88%;
+	box-sizing: border-box;
+	margin: 18px 0 14px auto;
+	padding: 10px 14px;
+	border-radius: 12px;
+	background: var(--vscode-button-secondaryBackground, var(--gemini-surface));
+	color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+	border: 1px solid var(--gemini-contrast-border);
 }
 
 .message.user:first-child {
@@ -425,11 +440,11 @@ kbd {
 	gap: 4px;
 	flex: none;
 	max-width: 180px;
-	padding: 0 6px;
-	height: 18px;
-	border: 1px solid var(--gemini-border);
-	border-radius: 9px;
-	background: transparent;
+	padding: 0 7px;
+	height: 20px;
+	border: 1px solid var(--gemini-contrast-border);
+	border-radius: var(--gemini-radius-small);
+	background: var(--gemini-hover);
 	font-size: 0.85em;
 	color: var(--vscode-foreground);
 	cursor: pointer;
@@ -439,7 +454,8 @@ kbd {
 }
 
 .chip:hover {
-	background: var(--gemini-hover);
+	background: var(--vscode-list-hoverBackground, var(--gemini-hover));
+	border-color: var(--gemini-border);
 }
 
 .chip:focus-visible,
@@ -464,10 +480,11 @@ kbd {
 /* ---- Plan ---- */
 
 .plan {
-	margin: 8px 0;
-	padding: 8px 12px;
+	margin: 10px 0;
+	padding: 10px 14px;
 	border-radius: var(--gemini-radius);
 	border: 1px solid var(--gemini-border);
+	background: var(--gemini-surface);
 }
 
 .plan-title {
@@ -495,7 +512,17 @@ kbd {
 
 .plan-completed {
 	color: var(--gemini-muted);
+}
+
+/* Only the step's text is struck through, not its check. */
+.plan-completed span {
 	text-decoration: line-through;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.plan .codicon-modifier-spin {
+		animation: none;
+	}
 }
 
 .plan-completed .codicon {
@@ -503,28 +530,26 @@ kbd {
 }
 
 .plan-in_progress .codicon {
-	color: var(--vscode-textLink-foreground);
+	color: var(--gemini-accent);
 }
 
 /* ---- Permission ---- */
 
+/* A request waiting for an answer: a card with the accent as a bar down its left edge. */
 .permission {
-	margin: 10px 0;
-	padding: 10px 12px;
-	border-radius: var(--gemini-radius);
-	border: 1px solid var(--vscode-focusBorder);
-	border-left-width: 3px;
+	margin: 12px 0;
+	padding: 12px 14px 12px 16px;
+	border-radius: 12px;
+	border: 1px solid var(--gemini-border);
 	background: var(--gemini-surface);
-	box-shadow: 0 2px 8px var(--gemini-shadow);
+	box-shadow: inset 3px 0 0 var(--gemini-accent);
 }
 
 .permission-title .codicon-question {
-	color: var(--vscode-focusBorder);
+	color: var(--gemini-accent);
 }
 
 .permission.answered {
-	border-color: var(--gemini-border);
-	border-left-width: 1px;
 	background: transparent;
 	box-shadow: none;
 }
@@ -563,15 +588,16 @@ kbd {
 }
 
 .permission-actions button {
-	padding: 3px 10px;
+	padding: 4px 14px;
 	border-radius: var(--gemini-radius-small);
-	border: 1px solid transparent;
+	border: 1px solid var(--vscode-button-border, transparent);
 	cursor: pointer;
 }
 
 .permission-actions button.primary {
 	background: var(--vscode-button-background);
 	color: var(--vscode-button-foreground);
+	font-weight: 600;
 }
 
 .permission-actions button.primary:hover {
@@ -581,7 +607,7 @@ kbd {
 .permission-actions button.secondary {
 	background: var(--vscode-button-secondaryBackground, transparent);
 	color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
-	border-color: var(--gemini-border);
+	border-color: var(--vscode-button-secondaryBorder, var(--vscode-button-border, var(--gemini-border)));
 }
 
 .permission-actions button.secondary:hover {
@@ -641,7 +667,7 @@ kbd {
 	flex-wrap: wrap;
 	gap: 6px;
 	align-items: center;
-	margin: 0 14px 6px;
+	margin: 0 var(--gemini-gutter) 6px;
 	font-size: 0.9em;
 	color: var(--gemini-muted);
 }
@@ -682,12 +708,12 @@ kbd {
 	position: relative;
 	/* The bar's labels collapse to icons in a narrow chat (see below). */
 	container: composer / inline-size;
-	margin: 0 10px 10px;
-	padding: 8px 8px 6px 10px;
-	border-radius: 12px;
+	margin: 0 var(--gemini-gutter) 14px;
+	padding: 12px 10px 8px 12px;
+	border-radius: var(--gemini-radius-large);
 	border: 1px solid var(--vscode-input-border, var(--gemini-border));
 	background: var(--vscode-input-background);
-	box-shadow: 0 1px 4px var(--gemini-shadow);
+	box-shadow: 0 4px 16px var(--gemini-shadow);
 	cursor: text;
 }
 
@@ -782,7 +808,7 @@ kbd {
 	display: flex;
 	align-items: center;
 	gap: 4px;
-	margin-top: 6px;
+	margin-top: 8px;
 	cursor: default;
 }
 
@@ -812,10 +838,10 @@ kbd {
 .pill {
 	appearance: none;
 	max-width: 180px;
-	height: 22px;
+	height: 24px;
 	padding: 0 22px 0 9px;
-	border: 1px solid transparent;
-	border-radius: 11px;
+	border: 1px solid var(--gemini-contrast-border);
+	border-radius: 12px;
 	background: var(--gemini-hover);
 	color: var(--vscode-foreground);
 	font-family: inherit;
@@ -878,10 +904,11 @@ button.pill .codicon {
 
 .round-button {
 	display: inline-flex;
+	flex: none;
 	align-items: center;
 	justify-content: center;
-	width: 24px;
-	height: 24px;
+	width: 28px;
+	height: 28px;
 	padding: 0;
 	border: none;
 	border-radius: 50%;
@@ -897,6 +924,30 @@ button.pill .codicon {
 .round-button:disabled {
 	opacity: 0.4;
 	cursor: default;
+}
+
+/* Send carries the Gemini gradient; high contrast themes keep their own button colours. */
+#send {
+	margin-left: 2px;
+	background: var(--gemini-gradient);
+	color: #fff;
+}
+
+#send:disabled {
+	opacity: 0.55;
+}
+
+#send:hover:not(:disabled) {
+	background: var(--gemini-gradient);
+	filter: brightness(1.12);
+}
+
+body.vscode-high-contrast #send,
+body.vscode-high-contrast-light #send {
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	outline: 1px solid var(--vscode-contrastBorder);
+	filter: none;
 }
 
 .round-button[hidden] {

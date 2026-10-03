@@ -214,13 +214,6 @@
           "title": "%viewContainer.title%",
           "icon": "media/gemini.svg"
         }
-      ],
-      "secondarySidebar": [
-        {
-          "id": "gemini-changes",
-          "title": "%viewContainer.changes%",
-          "icon": "$(diff-multiple)"
-        }
       ]
     },
     "views": {
@@ -231,16 +224,16 @@
           "initialSize": 2
         },
         {
+          "id": "gemini.agentChanges",
+          "name": "%view.agentChanges%",
+          "initialSize": 1
+        },
+        {
           "type": "webview",
           "id": "gemini.chat",
           "name": "%view.chat%",
-          "initialSize": 3
-        }
-      ],
-      "gemini-changes": [
-        {
-          "id": "gemini.agentChanges",
-          "name": "%view.agentChanges%"
+          "initialSize": 3,
+          "visibility": "collapsed"
         }
       ]
     },
@@ -441,8 +434,33 @@
       }
     },
     "configurationDefaults": {
-      "chat.disableAIFeatures": true
+      "chat.disableAIFeatures": true,
+      "workbench.activityBar.location": "top",
+      "workbench.secondarySideBar.defaultVisibility": "hidden",
+      "workbench.experimental.modernUIEditorTabStyle": "pill",
+      "workbench.startupEditor": "none",
+      "workbench.editor.empty.hint": "hidden",
+      "breadcrumbs.enabled": false,
+      "editor.minimap.enabled": false,
+      "editor.lineHeight": 20,
+      "editor.padding.top": 10,
+      "editor.renderLineHighlight": "gutter",
+      "editor.overviewRulerBorder": false
     },
+    "themes": [
+      {
+        "id": "GeminiCode Dark",
+        "label": "%theme.dark%",
+        "uiTheme": "vs-dark",
+        "path": "./themes/geminicode-dark.json"
+      },
+      {
+        "id": "GeminiCode Light",
+        "label": "%theme.light%",
+        "uiTheme": "vs",
+        "path": "./themes/geminicode-light.json"
+      }
+    ],
     "viewsWelcome": [
       {
         "view": "gemini.agents",

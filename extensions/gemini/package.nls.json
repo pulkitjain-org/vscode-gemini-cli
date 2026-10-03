@@ -34,12 +34,11 @@
 	"command.agents.stop": "Stop",
 	"command.agents.remove": "Remove Agent",
 	"command.agents.removeWorkspace": "Remove Workspace from List",
-	"viewContainer.changes": "Agent Changes",
 	"view.agentChanges": "Changes",
 	"command.changes.openAll": "Open All Changes",
 	"command.changes.clear": "Clear List",
 	"command.changes.openFile": "Open Changes",
-	"configuration.layout.showAgentsInNewWorkspaces": "Show the Agents pane and the Changes view the first time a workspace opens. Afterwards the layout you arrange is kept.",
+	"configuration.layout.showAgentsInNewWorkspaces": "Show the Agents pane, with the agent's Changes below it, the first time a workspace opens. Afterwards the layout you arrange is kept.",
 	"command.signIn": "Sign In with Google",
 	"command.getStarted": "Get Started",
 	"walkthrough.title": "Get Started with GeminiCode",
@@ -51,5 +50,7 @@
 	"walkthrough.project.title": "Check your Google Cloud project",
 	"walkthrough.project.description": "Usage is billed to a Google Cloud project. Set its ID if your organization does not set one for you.\n[Set Project ID](command:gemini.setProjectId)",
 	"walkthrough.agent.title": "Start your first agent",
-	"walkthrough.agent.description": "Agents open as editor tabs, each with its own chat and folder.\n[New Agent](command:gemini.agents.newAgent)"
+	"walkthrough.agent.description": "Agents open as editor tabs, each with its own chat and folder.\n[New Agent](command:gemini.agents.newAgent)",
+	"theme.dark": "GeminiCode Dark",
+	"theme.light": "GeminiCode Light"
 }

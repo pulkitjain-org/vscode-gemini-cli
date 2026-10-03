@@ -18,6 +18,7 @@ import { AgentSession } from './agentSession';
 import { ChangesSource, ChangesView } from './changesView';
 import { ChatActivity, ChatController, FileSearch } from './chatController';
 import { DiffPreview } from './diffPreview';
+import { besideAgent } from './editorPlacement';
 import { escapeMarkdown } from './markdown';
 import { WorkspaceFileIndex } from './workspaceFiles';
 
@@ -292,7 +293,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			});
 			panel.iconPath = vscode.Uri.joinPath(this.context.extensionUri, 'media', 'gemini.svg');
 			live.panel = panel;
-			live.controller.attach(panel.webview);
+			// A disposed panel throws on `.webview`, so keep the webview for detaching.
+			const webview = panel.webview;
+			live.controller.attach(webview);
 			panel.onDidChangeViewState(e => {
 				if (e.webviewPanel.active) {
 					this.focus(id);
@@ -303,10 +306,10 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				}
 			});
 			panel.onDidDispose(() => {
-				live.controller.detach(panel.webview);
 				if (live.panel === panel) {
 					live.panel = undefined;
 				}
+				live.controller.detach(webview);
 			});
 		}
 		this.focus(id);
@@ -333,7 +336,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const live = this.live.get(id);
 		const record = this.model.agent(id);
 		const workspace = record && this.model.workspace(record.workspaceId);
-		return live && workspace ? { agentId: id, title: record.title, folder: workspace.folder, changes: live.changes } : undefined;
+		return live && workspace ? { agentId: id, title: record.title, folder: workspace.folder, changes: live.changes, editorColumn: () => besideAgent(live.panel) } : undefined;
 	}
 
 	private start(record: AgentRecord, folder: string): LiveAgent {
@@ -345,6 +348,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			changes,
 			controller: new ChatController(this.context.extensionUri, session, this.diffPreview, files, {
 				reveal: preserveFocus => this.reveal(record.id, preserveFocus),
+				editorColumn: () => besideAgent(this.live.get(record.id)?.panel),
 				git: {
 					folder: () => folder,
 					commit: {
