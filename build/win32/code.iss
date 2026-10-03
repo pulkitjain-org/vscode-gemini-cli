@@ -8,10 +8,11 @@
 AppId={#AppId}
 AppName={#NameLong}
 AppVerName={#NameVersion}
-AppPublisher=Microsoft Corporation
-AppPublisherURL=https://code.visualstudio.com/
-AppSupportURL=https://code.visualstudio.com/
-AppUpdatesURL=https://code.visualstudio.com/
+; GEMINI-FORK: publisher and links
+AppPublisher=pulkitjain-org
+AppPublisherURL=https://github.com/pulkitjain-org/vscode-gemini-cli
+AppSupportURL=https://github.com/pulkitjain-org/vscode-gemini-cli/issues
+AppUpdatesURL=https://github.com/pulkitjain-org/vscode-gemini-cli/releases
 DefaultGroupName={#NameLong}
 AllowNoIcons=yes
 OutputDir={#OutputDir}
