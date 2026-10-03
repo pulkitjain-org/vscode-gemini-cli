@@ -40,8 +40,11 @@ export enum ThemeSettings {
 }
 
 export namespace ThemeSettingDefaults {
-	export const COLOR_THEME_DARK = 'Dark 2026';
-	export const COLOR_THEME_LIGHT = 'Light 2026';
+	export const COLOR_THEME_DARK = 'GeminiCode Dark'; // GEMINI-FORK: theme from extensions/gemini (upstream: 'Dark 2026')
+	export const COLOR_THEME_LIGHT = 'GeminiCode Light'; // GEMINI-FORK: theme from extensions/gemini (upstream: 'Light 2026')
+	// GEMINI-FORK: upstream's defaults, used when the GeminiCode themes are not available (e.g. extension disabled)
+	export const COLOR_THEME_DARK_FALLBACK = 'Dark 2026';
+	export const COLOR_THEME_LIGHT_FALLBACK = 'Light 2026';
 	export const COLOR_THEME_HC_DARK = 'Default High Contrast';
 	export const COLOR_THEME_HC_LIGHT = 'Default High Contrast Light';
 

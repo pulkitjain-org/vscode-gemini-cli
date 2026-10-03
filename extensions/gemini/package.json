@@ -441,8 +441,33 @@
       }
     },
     "configurationDefaults": {
-      "chat.disableAIFeatures": true
+      "chat.disableAIFeatures": true,
+      "workbench.activityBar.location": "top",
+      "workbench.secondarySideBar.defaultVisibility": "hidden",
+      "workbench.experimental.modernUIEditorTabStyle": "pill",
+      "workbench.startupEditor": "none",
+      "workbench.editor.empty.hint": "hidden",
+      "breadcrumbs.enabled": false,
+      "editor.minimap.enabled": false,
+      "editor.lineHeight": 20,
+      "editor.padding.top": 10,
+      "editor.renderLineHighlight": "gutter",
+      "editor.overviewRulerBorder": false
     },
+    "themes": [
+      {
+        "id": "GeminiCode Dark",
+        "label": "%theme.dark%",
+        "uiTheme": "vs-dark",
+        "path": "./themes/geminicode-dark.json"
+      },
+      {
+        "id": "GeminiCode Light",
+        "label": "%theme.light%",
+        "uiTheme": "vs",
+        "path": "./themes/geminicode-light.json"
+      }
+    ],
     "viewsWelcome": [
       {
         "view": "gemini.agents",

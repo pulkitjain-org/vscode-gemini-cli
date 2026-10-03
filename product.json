@@ -215,8 +215,8 @@
 	"onboardingThemes": [
 		{
 			"id": "dark-2026",
-			"label": "Dark 2026",
-			"themeId": "Dark 2026",
+			"label": "GeminiCode Dark",
+			"themeId": "GeminiCode Dark",
 			"type": "dark"
 		},
 		{
@@ -233,8 +233,8 @@
 		},
 		{
 			"id": "light-2026",
-			"label": "Light 2026",
-			"themeId": "Light 2026",
+			"label": "GeminiCode Light",
+			"themeId": "GeminiCode Light",
 			"type": "light"
 		},
 		{
