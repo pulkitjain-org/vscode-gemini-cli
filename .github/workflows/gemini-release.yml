@@ -133,6 +133,10 @@ jobs:
 
       - name: Bundle the Gemini CLI
         run: npm run bundle-cli --prefix extensions/gemini
+        env:
+          # The pinned SHA-512 vouches for the download; a CLI pinned in its first week
+          # must pass the package's min-release-age (bundle-cli.mts also passes this, from v0.1.1).
+          npm_config_min_release_age: 0
 
       - name: Build the app
         run: npm run gulp vscode-darwin-arm64-min

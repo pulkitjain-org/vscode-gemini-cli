@@ -32,9 +32,16 @@ if (fs.existsSync(path.join(target, 'bundle', 'gemini.js')) && fs.existsSync(mar
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'gemini-cli-bundle-'));
 try {
-	// npm pack uses the user's registry, proxy and cache settings.
-	const tarballName = execFileSync(npm, ['pack', `@google/gemini-cli@${version}`, '--pack-destination', work, '--silent'], { encoding: 'utf8', shell: process.platform === 'win32' }).trim().split('\n').at(-1)!;
-	const tarball = path.join(work, tarballName);
+	// npm pack uses the user's registry, proxy and cache settings. The pinned
+	// checksum, not a release-age rule such as this package's `min-release-age`,
+	// decides whether the download is trusted, so a CLI released this week can
+	// be pinned. npm's errors go to the console.
+	const packed = execFileSync(npm, ['pack', `@google/gemini-cli@${version}`, '--pack-destination', work, '--json', '--min-release-age=0'], {
+		encoding: 'utf8',
+		stdio: ['ignore', 'pipe', 'inherit'],
+		shell: process.platform === 'win32',
+	});
+	const tarball = path.join(work, (JSON.parse(packed) as { filename: string }[])[0].filename);
 	const actual = `sha512-${createHash('sha512').update(fs.readFileSync(tarball)).digest('base64')}`;
 	if (actual !== integrity) {
 		throw new Error(`@google/gemini-cli ${version} does not match the pinned checksum.\n  expected ${integrity}\n  got      ${actual}`);
