@@ -13,7 +13,7 @@ import { memoizeAsync } from '../acp/memoize';
  * The agent's view of workspace files: reads see unsaved editor changes, and
  * writes go through a WorkspaceEdit (so they show in the editor and can be
  * undone) and are then saved, because the agent's own shell and search tools
- * read the disk (plan C1, C5).
+ * read the disk.
  */
 export class WorkspaceFileSystem implements ClientFileSystem {
 

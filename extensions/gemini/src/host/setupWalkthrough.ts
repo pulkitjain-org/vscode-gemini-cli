@@ -3,9 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The Get Started walkthrough (plan Phase 4, first-run-onboarding). It opens
-// once, on the first start, and its steps tick themselves off from the agent's
-// status through the `gemini.setup.*` context keys.
+// The Get Started walkthrough. It opens once, on the first start, and its steps
+// tick themselves off from the agent's status through the `gemini.setup.*`
+// context keys.
 
 import * as vscode from 'vscode';
 import { advanceSetupProgress, noSetupProgress, SetupProgress } from '../acp/setupProgress';

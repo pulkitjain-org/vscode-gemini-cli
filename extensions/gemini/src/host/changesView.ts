@@ -20,10 +20,10 @@ export interface ChangesSource {
 }
 
 /**
- * The Changes view (plan Phase 2B, agent-changes): the files the agent in
- * front edited, each opening a diff from before the agent's first edit to
- * the file on disk, and all of them together in the multi-diff editor. A
- * native view in the secondary sidebar, so it resizes like any other.
+ * The Changes view: the files the agent in front edited, each opening a diff
+ * from before the agent's first edit to the file on disk, and all of them
+ * together in the multi-diff editor. A native view in the secondary sidebar, so
+ * it resizes like any other.
  */
 export class ChangesView implements vscode.TreeDataProvider<EditedFile>, vscode.TextDocumentContentProvider, vscode.Disposable {
 

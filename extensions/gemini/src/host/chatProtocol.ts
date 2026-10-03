@@ -16,7 +16,7 @@ import type { AgentPhase } from '../acp/status';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 8;
+export const chatProtocolVersion = 9;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -36,7 +36,13 @@ export interface ChatStrings {
 	readonly placeholderFollowUp: string;
 	readonly send: string;
 	readonly stop: string;
+	/** The empty chat's heading, and the line and hints under it. */
+	readonly welcomeTitle: string;
 	readonly welcome: string;
+	readonly hintMention: string;
+	readonly hintNewLine: string;
+	/** The button that jumps back to the latest message. */
+	readonly scrollToBottom: string;
 	readonly thinking: string;
 	/** `{0}` is a number of seconds. */
 	readonly thoughtFor: string;

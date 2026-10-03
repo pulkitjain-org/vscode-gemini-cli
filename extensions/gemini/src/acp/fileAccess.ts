@@ -3,11 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Serves the agent's `fs/read_text_file` and `fs/write_text_file` requests
-// (plan Phase 2, fs-handlers). The host supplies the file system (open
-// editors, WorkspaceEdit and save); this module applies the access policy
-// and the protocol details. Any error fails the tool call with a message the
-// model can read.
+// Serves the agent's `fs/read_text_file` and `fs/write_text_file` requests. The
+// host supplies the file system (open editors, WorkspaceEdit and save); this
+// module applies the access policy and the protocol details. Any error fails
+// the tool call with a message the model can read.
 
 import * as path from 'node:path';
 import * as acp from '@agentclientprotocol/sdk';

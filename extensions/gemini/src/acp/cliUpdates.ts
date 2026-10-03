@@ -3,9 +3,8 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// When to tell the user about a newer Gemini CLI (plan Phase 3,
-// runtime-resolution, cli-update-check). At most one registry request a day,
-// made after the agent is ready; installing waits for a click.
+// When to tell the user about a newer Gemini CLI. At most one registry request
+// a day, made after the agent is ready; installing waits for a click.
 
 import { CliSource, compareVersions, isVersion } from './cliResolution';
 

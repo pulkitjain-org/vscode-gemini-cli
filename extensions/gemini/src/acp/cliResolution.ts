@@ -3,11 +3,11 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Which Gemini CLI to run (plan Phase 3, runtime-resolution). The first of
-// these that has one wins: the `gemini.cliPath` setting, GeminiCode's own
-// copies (one folder per version), then `gemini` on PATH. An admin pins a
-// path or a version by locking those settings through policy, which the
-// workbench applies before the extension reads them.
+// Which Gemini CLI to run. The first of these that has one wins: the
+// `gemini.cliPath` setting, GeminiCode's own copies (one folder per version),
+// then `gemini` on PATH. An admin pins a path or a version by locking those
+// settings through policy, which the workbench applies before the extension
+// reads them.
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';

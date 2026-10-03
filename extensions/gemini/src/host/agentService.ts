@@ -21,8 +21,8 @@ import { getFileAccessPolicy, WorkspaceFileSystem } from './workspaceFileSystem'
 
 /**
  * The VS Code side of the agent: starts the sidecar on first use, logs it,
- * restarts it when settings change, and turns failures into messages with
- * a way out (plan C2, C3, C4).
+ * restarts it when settings change, and turns failures into messages with a way
+ * out.
  */
 export class AgentService implements vscode.Disposable {
 
@@ -201,8 +201,8 @@ export class AgentService implements vscode.Disposable {
 
 	/**
 	 * Opens the interactive CLI in a terminal with the agent's environment, so
-	 * its own login and account-validation flows can run (plan C2, C4).
-	 * The agent restarts when the terminal closes.
+	 * its own login and account-validation flows can run. The agent restarts
+	 * when the terminal closes.
 	 */
 	completeSetupInTerminal(): void {
 		this.setupTerminal?.dispose();

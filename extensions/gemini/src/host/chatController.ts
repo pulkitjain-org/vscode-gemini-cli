@@ -15,7 +15,7 @@ import { AgentStatus } from '../acp/status';
 import { TextDeltas } from '../acp/textDeltas';
 import { UpdateBatcher } from '../acp/updateBatcher';
 import type { AgentClient } from '../acp/agentClient';
-import { AgentError } from '../acp/errors';
+import { AgentError, errorMessage } from '../acp/errors';
 import { readGitHead } from '../acp/gitHead';
 import { ChatStrings, chatProtocolVersion, FromWebview, statusCommands, ToWebview, ViewStatus } from './chatProtocol';
 import { DiffPreview } from './diffPreview';
@@ -75,10 +75,10 @@ export interface ChatActivity {
 }
 
 /**
- * One chat (plan Phase 1, item 9, and Phase 2B agent-tabs): sends prompts,
- * streams agent messages and thoughts, shows tool-call cards and stops a
- * turn, in whichever webview it is attached to. The transcript lives here,
- * so it survives the webview being hidden, moved or closed.
+ * One chat: sends prompts, streams agent messages and thoughts, shows
+ * tool-call cards and stops a turn, in whichever webview it is attached to.
+ * The transcript lives here, so it survives the webview being hidden, moved
+ * or closed.
  */
 export class ChatController implements vscode.Disposable {
 
@@ -152,7 +152,7 @@ export class ChatController implements vscode.Disposable {
 				if (state.kind === 'ready') {
 					this.post({ type: 'capabilities', image: service.client.promptCapabilities.image });
 					if (this.lastSessionId && state.sessionId !== this.lastSessionId && this.transcript.items.length) {
-						this.transcript.addNotice(vscode.l10n.t("The agent could not continue the earlier session, so it does not remember the messages above."));
+						this.addSessionLostNotice();
 					}
 					this.lastSessionId = state.sessionId;
 				}
@@ -189,7 +189,7 @@ export class ChatController implements vscode.Disposable {
 		this.transcript.restore(items);
 		const state = this.service.client.state;
 		if (state.kind === 'ready' && sessionId && state.sessionId !== sessionId) {
-			this.transcript.addNotice(vscode.l10n.t("The agent could not continue the earlier session, so it does not remember the messages above."));
+			this.addSessionLostNotice();
 		}
 		this.lastSessionId = state.kind === 'ready' ? state.sessionId : sessionId;
 	}
@@ -456,6 +456,10 @@ export class ChatController implements vscode.Disposable {
 			: vscode.l10n.t("Folder trusted. Restarting the agent in {0} mode.", modeName), 'info');
 	}
 
+	private addSessionLostNotice(): void {
+		this.transcript.addNotice(vscode.l10n.t("The agent could not continue the earlier session, so it does not remember the messages above."));
+	}
+
 	/** Brings the chat into view so the request can be answered, and shows the first proposed edit. */
 	private async revealForPermission(permission: PendingPermission): Promise<void> {
 		await this.options.reveal(true);
@@ -521,7 +525,11 @@ export class ChatController implements vscode.Disposable {
 			placeholderFollowUp: vscode.l10n.t("Ask a follow-up"),
 			send: vscode.l10n.t("Send (Enter)"),
 			stop: vscode.l10n.t("Stop"),
+			welcomeTitle: vscode.l10n.t("What are we building?"),
 			welcome: vscode.l10n.t("Ask Gemini to explain, change or create code in this workspace. It asks before it edits files."),
+			hintMention: vscode.l10n.t("to add files as context"),
+			hintNewLine: vscode.l10n.t("for a new line"),
+			scrollToBottom: vscode.l10n.t("Jump to latest"),
 			thinking: vscode.l10n.t("Thinking"),
 			thought: vscode.l10n.t("Thought"),
 			thoughtFor: vscode.l10n.t("Thought for {0}s"),
@@ -563,6 +571,7 @@ export class ChatController implements vscode.Disposable {
 	<div id="status" class="status" role="status"></div>
 	<form id="composer" class="composer">
 		<div id="resize" class="composer-resize"></div>
+		<button type="button" id="scroll-down" class="scroll-down" hidden><i class="codicon codicon-arrow-down" aria-hidden="true"></i></button>
 		<div class="drop-overlay" aria-hidden="true"><i class="codicon codicon-cloud-upload"></i><span id="drop-label"></span></div>
 		<div id="picker" class="picker" role="listbox" hidden></div>
 		<div id="attachments" class="attachments" hidden></div>
@@ -575,8 +584,8 @@ export class ChatController implements vscode.Disposable {
 			<span class="spacer"></span>
 			<button type="button" id="commit" class="pill commit" hidden><i class="codicon codicon-git-commit" aria-hidden="true"></i><span></span></button>
 			<button type="button" id="branch" class="pill branch" hidden><i class="codicon codicon-git-branch" aria-hidden="true"></i><span></span></button>
-			<button type="submit" id="send" class="round-button"><i class="codicon codicon-arrow-up"></i></button>
-			<button type="button" id="stop" class="round-button" hidden><i class="codicon codicon-debug-stop"></i></button>
+			<button type="submit" id="send" class="round-button"><i class="codicon codicon-arrow-up" aria-hidden="true"></i></button>
+			<button type="button" id="stop" class="round-button stop" hidden><i class="codicon codicon-debug-stop" aria-hidden="true"></i></button>
 		</div>
 	</form>
 	<script nonce="${nonce}" type="module" src="${script}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
@@ -622,10 +631,6 @@ function isValidAttachment(attachment: Attachment): boolean {
 
 function diffsOf(content: readonly acp.ToolCallContent[] | null | undefined): acp.Diff[] {
 	return (content ?? []).flatMap(c => c.type === 'diff' ? [c] : []);
-}
-
-function errorMessage(err: unknown): string {
-	return err instanceof Error ? err.message : String(err);
 }
 
 function stopReasonNotice(stopReason: acp.StopReason): string | undefined {

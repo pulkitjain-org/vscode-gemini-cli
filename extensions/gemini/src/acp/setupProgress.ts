@@ -3,9 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// How far first-run setup has got (plan Phase 4, first-run-onboarding),
-// read from the agent's status so the walkthrough ticks itself off. Each
-// step stays done once reached, even if the agent later restarts.
+// How far first-run setup has got, read from the agent's status so the
+// walkthrough ticks itself off. Each step stays done once reached, even if the
+// agent later restarts.
 
 import type { AgentStatus } from './status';
 

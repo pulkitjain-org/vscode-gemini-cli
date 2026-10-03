@@ -56,7 +56,7 @@ export function setStorageDirs(dirs: { readonly managedCli: string; readonly adm
 	adminPolicyDir = dirs.adminPolicy;
 }
 
-/** The approval settings, which an admin can lock through policy (plan Phase 4, policy-enforcement). */
+/** The approval settings, which an admin can lock through policy. */
 export function getApprovalPolicy(): ApprovalPolicy {
 	const config = vscode.workspace.getConfiguration(configSection);
 	return {
@@ -73,7 +73,7 @@ export function getManagedCliDir(): string | undefined {
 	return managedCliDir;
 }
 
-/** Which CLI the next agent process runs (plan Phase 3, runtime-resolution). */
+/** Which CLI the next agent process runs. */
 export function getCliResolution(): CliResolution {
 	const config = vscode.workspace.getConfiguration(configSection);
 	return resolveCli({

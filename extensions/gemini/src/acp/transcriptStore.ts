@@ -3,10 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Each agent's conversation as shown in its tab (plan Phase 2B, agent-resume)
-// and the files it changed (agent-changes), one JSON file per agent. The agent keeps its own history for `session/load`;
-// this is only what the tab displays, so it is capped to stay small and fast
-// to read: the last items, with long text cut.
+// Each agent's conversation as shown in its tab and the files it changed, one
+// JSON file per agent. The agent keeps its own history for `session/load`; this
+// is only what the tab displays, so it is capped to stay small and fast to
+// read: the last items, with long text cut.
 
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';

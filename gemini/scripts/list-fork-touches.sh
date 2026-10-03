@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Lists every place the fork touches upstream VS Code files: the checklist for
-# each upstream merge (see gemini/docs/PLAN.md, "Where our code lives").
+# each upstream merge (see gemini/README.md, "Upstream merges").
 #
 #   gemini/scripts/list-fork-touches.sh [upstream-ref]
 #

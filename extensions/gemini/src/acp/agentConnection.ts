@@ -55,7 +55,7 @@ export class AgentConnection {
 	/**
 	 * Runs `initialize` and checks that the agent speaks our protocol version.
 	 * File system capabilities follow the handlers given; terminals are never
-	 * advertised (the CLI runs shell commands itself, plan C1).
+	 * advertised (the CLI runs shell commands itself).
 	 */
 	async initialize(): Promise<acp.InitializeResponse> {
 		const response = await this.connection.agent.request('initialize', {

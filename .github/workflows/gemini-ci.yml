@@ -1,4 +1,4 @@
-# Fork CI for GeminiCode (gemini/docs/PLAN.md, Phase 1 "fork-ci").
+# Fork CI for GeminiCode (see gemini/README.md, "CI").
 # Compiles the fork, builds and tests extensions/gemini, runs hygiene, and
 # checks the unauthenticated `gemini --acp` initialize handshake. No packaged builds yet.
 name: Gemini CI

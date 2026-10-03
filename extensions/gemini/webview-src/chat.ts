@@ -43,21 +43,17 @@ const attachmentList = byId<HTMLElement>('attachments');
 const branchButton = byId<HTMLButtonElement>('branch');
 const commitButton = byId<HTMLButtonElement>('commit');
 
-mentionButton.title = strings.addContext;
-mentionButton.setAttribute('aria-label', strings.addContext);
 const attachButton = byId<HTMLButtonElement>('attach');
-attachButton.title = strings.attachFiles;
-attachButton.setAttribute('aria-label', strings.attachFiles);
-byId<HTMLElement>('drop-label').textContent = strings.dropFiles;
+const scrollButton = byId<HTMLButtonElement>('scroll-down');
 
-sendButton.title = strings.send;
-sendButton.setAttribute('aria-label', strings.send);
-stopButton.title = strings.stop;
-stopButton.setAttribute('aria-label', strings.stop);
-modeSelect.title = strings.mode;
-modeSelect.setAttribute('aria-label', strings.mode);
-modelSelect.title = strings.model;
-modelSelect.setAttribute('aria-label', strings.model);
+setLabel(mentionButton, strings.addContext);
+setLabel(attachButton, strings.attachFiles);
+setLabel(sendButton, strings.send);
+setLabel(stopButton, strings.stop);
+setLabel(modeSelect, strings.mode);
+setLabel(modelSelect, strings.model);
+setLabel(scrollButton, strings.scrollToBottom);
+byId<HTMLElement>('drop-label').textContent = strings.dropFiles;
 
 const elements = new Map<string, HTMLElement>();
 let items: TranscriptItem[] = [];
@@ -100,10 +96,31 @@ function button(className: string, label: string, onClick: () => void, iconName?
 	return node;
 }
 
+/** Sets the tooltip and the accessible name together, as icon-only controls need both. */
+function setLabel(node: HTMLElement, label: string): void {
+	node.title = label;
+	node.setAttribute('aria-label', label);
+}
+
+/** A button that copies `text()` and briefly shows a check mark. */
+function copyButton(className: string, label: string, text: () => string): HTMLButtonElement {
+	const copy = button(`icon-button ${className}`, '', () => {
+		void navigator.clipboard.writeText(text()).then(() => {
+			copy.replaceChildren(icon('check'));
+			setLabel(copy, strings.copied);
+			setTimeout(() => {
+				copy.replaceChildren(icon('copy'));
+				setLabel(copy, label);
+			}, 1500);
+		});
+	}, 'copy');
+	setLabel(copy, label);
+	return copy;
+}
+
 function format(template: string, value: string | number): string {
 	return template.replace('{0}', String(value));
 }
-
 
 // ---- Items ---------------------------------------------------------------
 
@@ -155,16 +172,10 @@ function replyBefore(turnEnd: { readonly id: string }): string {
 
 function renderTurnEnd(item: ItemOf<'turnEnd'>): HTMLElement {
 	const node = el('div', 'turn-end');
-	node.append(el('span', undefined, format(strings.workedFor, formatDuration(item.durationMs))));
-	const copy = button('icon-button copy-reply', '', () => {
-		void navigator.clipboard.writeText(replyBefore(item)).then(() => {
-			copy.replaceChildren(icon('check'));
-			setTimeout(() => copy.replaceChildren(icon('copy')), 1500);
-		});
-	}, 'copy');
-	copy.title = strings.copyReply;
-	copy.setAttribute('aria-label', strings.copyReply);
-	node.append(copy);
+	node.append(
+		el('span', undefined, format(strings.workedFor, formatDuration(item.durationMs))),
+		copyButton('copy-reply', strings.copyReply, () => replyBefore(item)),
+	);
 	return node;
 }
 
@@ -201,22 +212,17 @@ function renderMarkdown(text: string): HTMLElement {
 	return node;
 }
 
-/** Markdown as nodes, with a copy button on each code block. */
+/** Markdown as nodes, with each code block under a header that names its language and copies it. */
 function renderBlocks(text: string): Node[] {
 	const node = el('div');
 	node.innerHTML = markdown.render(text);
 	for (const pre of node.querySelectorAll('pre')) {
 		const wrapper = el('div', 'code-block');
 		pre.replaceWith(wrapper);
-		const copy = button('icon-button copy', '', () => {
-			void navigator.clipboard.writeText(pre.textContent ?? '').then(() => {
-				copy.replaceChildren(icon('check'));
-				setTimeout(() => copy.replaceChildren(icon('copy')), 1500);
-			});
-		}, 'copy');
-		copy.title = strings.copy;
-		copy.setAttribute('aria-label', strings.copy);
-		wrapper.append(pre, copy);
+		const language = /(?:^|\s)language-(\S+)/.exec(pre.querySelector('code')?.className ?? '')?.[1] ?? '';
+		const header = el('div', 'code-header');
+		header.append(el('span', 'code-language', language), copyButton('copy', strings.copy, () => pre.textContent ?? ''));
+		wrapper.append(header, pre);
 	}
 	return [...node.childNodes];
 }
@@ -331,19 +337,27 @@ function finishStreamingReplies(): void {
 	}
 }
 
-function thoughtLabel(item: { readonly id: string }): string {
+function thoughtLabel(item: { readonly id: string }, thinking: boolean): string {
 	const times = thoughtTimes.get(item.id);
 	if (times?.end !== undefined) {
 		return format(strings.thoughtFor, Math.max(1, Math.round((times.end - times.start) / 1000)));
 	}
-	return busy && items.at(-1)?.id === item.id ? strings.thinking : strings.thought;
+	return thinking ? strings.thinking : strings.thought;
+}
+
+/** Records when thought `id` ended, if it was still running. */
+function endThought(id: string): void {
+	const times = thoughtTimes.get(id);
+	if (times && times.end === undefined) {
+		times.end = Date.now();
+	}
 }
 
 function renderThought(item: { readonly id: string; readonly text: string }): HTMLElement {
 	const details = el('details', 'thought');
 	const summary = el('summary');
 	const thinking = busy && items.at(-1)?.id === item.id;
-	summary.append(icon('chevron-right', 'chevron'), el('span', thinking ? 'shimmer' : undefined, thoughtLabel(item)));
+	summary.append(icon('chevron-right', 'chevron'), el('span', thinking ? 'shimmer' : undefined, thoughtLabel(item, thinking)));
 	// While it thinks, show what about, so a long think does not look idle.
 	const preview = thinking ? thoughtPreview(item.text) : '';
 	if (preview) {
@@ -498,7 +512,13 @@ function renderNotice(text: string, severity: 'info' | 'error'): HTMLElement {
 
 function renderEmpty(): HTMLElement {
 	const node = el('div', 'empty');
-	node.append(icon('sparkle', 'empty-icon'), el('p', undefined, strings.welcome));
+	const hints = el('ul', 'empty-hints');
+	for (const [key, text] of [['@', strings.hintMention], ['Shift+Enter', strings.hintNewLine], ['', strings.dropFiles]] as const) {
+		const hint = el('li');
+		hint.append(key ? el('kbd', undefined, key) : icon('cloud-upload'), el('span', undefined, text));
+		hints.append(hint);
+	}
+	node.append(icon('sparkle', 'empty-icon'), el('h2', 'empty-title', strings.welcomeTitle), el('p', undefined, strings.welcome), hints);
 	return node;
 }
 
@@ -510,10 +530,7 @@ function isNearBottom(): boolean {
 
 function trackThoughts(previous: TranscriptItem | undefined, item: TranscriptItem): void {
 	if (previous?.kind === 'thought') {
-		const times = thoughtTimes.get(previous.id);
-		if (times && times.end === undefined) {
-			times.end = Date.now();
-		}
+		endThought(previous.id);
 	}
 	if (item.kind === 'thought') {
 		thoughtTimes.set(item.id, { start: Date.now() });
@@ -524,12 +541,27 @@ function scrollToBottom(): void {
 	transcript.scrollTop = transcript.scrollHeight;
 }
 
+/** Shows the jump-to-latest button while the user reads further up. */
+function updateScrollButton(): void {
+	scrollButton.hidden = isNearBottom();
+}
+
+/**
+ * Scrolls to the bottom after an update if `scroll`, else shows the
+ * jump-to-latest button: the view was not at the bottom, and the update
+ * added below it. Uses no layout reads of its own.
+ */
+function settleScroll(scroll: boolean): void {
+	if (scroll) {
+		scrollToBottom();
+	}
+	scrollButton.hidden = scroll;
+}
+
 /** Adds or replaces one item, keeping the view scrolled to the bottom if it was there. */
 function upsert(item: TranscriptItem, live = false): void {
 	const stick = isNearBottom();
-	if (applyItem(item, live) || stick) {
-		scrollToBottom();
-	}
+	settleScroll(applyItem(item, live) || stick);
 }
 
 /** The index of the item with `id`; streaming updates are nearly always to the last one. */
@@ -562,11 +594,7 @@ function applyItem(item: TranscriptItem, live: boolean): boolean {
 	streamingReplies.delete(item.id);
 	const node = item.kind === 'agent' && live && busy ? renderStreamingReply(item) : render(item);
 	if (existing) {
-		// Keep a thought open if the user opened it while it streamed.
-		if (existing instanceof HTMLDetailsElement && node instanceof HTMLDetailsElement) {
-			node.open = existing.open;
-		}
-		existing.replaceWith(node);
+		replaceNode(existing, node);
 	} else {
 		transcript.querySelector('.empty')?.remove();
 		if (live) {
@@ -601,12 +629,17 @@ function rerender(item: TranscriptItem): void {
 	const existing = elements.get(item.id);
 	if (existing) {
 		const node = render(item);
-		if (existing instanceof HTMLDetailsElement && node instanceof HTMLDetailsElement) {
-			node.open = existing.open;
-		}
-		existing.replaceWith(node);
+		replaceNode(existing, node);
 		elements.set(item.id, node);
 	}
+}
+
+/** Puts `node` in place of `existing`, keeping a thought open if the user opened it. */
+function replaceNode(existing: HTMLElement, node: HTMLElement): void {
+	if (existing instanceof HTMLDetailsElement && node instanceof HTMLDetailsElement) {
+		node.open = existing.open;
+	}
+	existing.replaceWith(node);
 }
 
 function reset(newItems: readonly TranscriptItem[]): void {
@@ -618,7 +651,7 @@ function reset(newItems: readonly TranscriptItem[]): void {
 	for (const item of newItems) {
 		applyItem(item, false);
 	}
-	scrollToBottom();
+	settleScroll(true);
 	if (!items.length) {
 		transcript.append(renderEmpty());
 		expanded.clear();
@@ -648,18 +681,14 @@ function setBusy(value: boolean): void {
 	busy = value;
 	stopButton.hidden = !value;
 	sendButton.hidden = value;
+	const last = items.at(-1);
 	if (!value) {
 		finishStreamingReplies();
 		// The turn ended: a thought that was still last has ended too.
-		const last = items.at(-1);
 		if (last?.kind === 'thought') {
-			const times = thoughtTimes.get(last.id);
-			if (times && times.end === undefined) {
-				times.end = Date.now();
-			}
+			endThought(last.id);
 		}
 	}
-	const last = items.at(-1);
 	if (last?.kind === 'thought') {
 		rerender(last);
 	}
@@ -908,21 +937,13 @@ function onPickerKey(event: KeyboardEvent): boolean {
 	return false;
 }
 
-function readImage(file: File): Promise<Attachment | undefined> {
-	return new Promise(resolve => {
-		const reader = new FileReader();
-		reader.onload = () => {
-			const data = String(reader.result).replace(/^data:[^,]*,/, '');
-			if (data.length > maxImageBase64Length) {
-				setTransientNotice(format(strings.imageTooLarge, file.name || 'image'));
-				resolve(undefined);
-				return;
-			}
-			resolve({ kind: 'image', name: file.name || `image.${file.type.split('/')[1] ?? 'png'}`, mimeType: file.type, data });
-		};
-		reader.onerror = () => resolve(undefined);
-		reader.readAsDataURL(file);
-	});
+async function readImage(file: File): Promise<Attachment | undefined> {
+	const data = await readBase64(file);
+	if (data.length > maxImageBase64Length) {
+		setTransientNotice(format(strings.imageTooLarge, file.name || 'image'));
+		return undefined;
+	}
+	return { kind: 'image', name: file.name || `image.${file.type.split('/')[1] ?? 'png'}`, mimeType: file.type, data };
 }
 
 /** File URIs in a drop, such as from the Explorer (which needs Shift held to drop into a view). */
@@ -991,7 +1012,7 @@ function carriesFiles(data: DataTransfer | null): boolean {
 function setTransientNotice(text: string): void {
 	const notice = renderNotice(text, 'error');
 	transcript.append(notice);
-	transcript.scrollTop = transcript.scrollHeight;
+	scrollToBottom();
 	setTimeout(() => notice.remove(), 6000);
 }
 
@@ -1125,6 +1146,11 @@ mentionButton.addEventListener('click', () => {
 	updatePicker();
 });
 stopButton.addEventListener('click', () => vscode.postMessage({ type: 'stop' }));
+scrollButton.addEventListener('click', () => {
+	transcript.scrollTo({ top: transcript.scrollHeight, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+	input.focus();
+});
+transcript.addEventListener('scroll', updateScrollButton, { passive: true });
 branchButton.addEventListener('click', () => vscode.postMessage({ type: 'pickBranch' }));
 commitButton.addEventListener('click', () => vscode.postMessage({ type: 'createBranchAndCommit' }));
 modeSelect.addEventListener('change', () => {
@@ -1156,9 +1182,7 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 				}
 			}
 			updateWorking();
-			if (scroll) {
-				scrollToBottom();
-			}
+			settleScroll(scroll);
 			updatePlaceholder();
 			break;
 		}

@@ -3,13 +3,14 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Branch switching and Create Branch & Commit for the chat (plan Phase 2B,
-// composer-extras), through the built-in git extension's API. The extension
-// is only activated when the user picks one of these actions; showing the
-// branch reads `.git/HEAD` instead (gitHead.ts).
+// Branch switching and Create Branch & Commit for the chat, through the
+// built-in git extension's API. The extension is only activated when the user
+// picks one of these actions; showing the branch reads `.git/HEAD` instead
+// (gitHead.ts).
 
 import * as vscode from 'vscode';
 import { isValidBranchName } from '../acp/branchNames';
+import { errorMessage } from '../acp/errors';
 
 /** The parts of the git extension's API (extensions/git/src/api/git.d.ts) used here. */
 interface GitRef {
@@ -124,8 +125,4 @@ async function askBranchName(value: string | undefined): Promise<string | undefi
 		validateInput: name => isValidBranchName(name.trim()) ? undefined : vscode.l10n.t("Enter a valid branch name."),
 	});
 	return name?.trim() || undefined;
-}
-
-function errorMessage(err: unknown): string {
-	return err instanceof Error ? err.message : String(err);
 }

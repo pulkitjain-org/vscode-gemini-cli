@@ -3,13 +3,13 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Approval modes and shell access as policy (plan Phase 4,
-// policy-enforcement). GeminiCode's settings, which an admin can lock through
-// VS Code's policy system, become two things: the modes the picker offers, and
-// a policy file passed to the CLI with `--admin-policy`. The CLI ranks that
-// file above user and workspace policies, so a disallowed mode still asks
-// before every tool, and a blocked shell tool is removed from the agent.
-// Checked against gemini-cli 0.62 in test/acp/realAgentPolicy.test.ts.
+// Approval modes and shell access as policy. GeminiCode's settings, which an
+// admin can lock through VS Code's policy system, become two things: the modes
+// the picker offers, and a policy file passed to the CLI with `--admin-policy`.
+// The CLI ranks that file above user and workspace policies, so a disallowed
+// mode still asks before every tool, and a blocked shell tool is removed from
+// the agent. Checked against gemini-cli 0.62 in
+// test/acp/realAgentPolicy.test.ts.
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -19,7 +19,7 @@ export interface ApprovalPolicy {
 	readonly allowAutoEdit: boolean;
 	/** YOLO: every tool runs without asking. */
 	readonly allowYolo: boolean;
-	/** The shell tool, which runs commands outside any sandbox (plan C1). */
+	/** The shell tool, which runs commands outside any sandbox. */
 	readonly allowShell: boolean;
 }
 

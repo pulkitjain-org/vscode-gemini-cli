@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Resolves which Google Cloud project the agent bills to (plan Phase 1 "project-id").
+// Resolves which Google Cloud project the agent bills to.
 
 export type ProjectIdSource = 'workspace' | 'user' | 'org' | 'env';
 

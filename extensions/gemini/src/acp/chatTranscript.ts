@@ -51,7 +51,7 @@ export type TranscriptItem =
 		/** Unset while the agent waits for an answer. */
 		readonly answer?: { readonly kind: 'selected'; readonly name: string } | { readonly kind: 'cancelled' };
 	}
-	/** An update kind this version does not know (design rule 4). */
+	/** An update kind this version does not know (design rule 4 in gemini/docs/ARCHITECTURE.md). */
 	| { readonly id: string; readonly kind: 'other'; readonly type: string }
 	| { readonly id: string; readonly kind: 'notice'; readonly text: string; readonly severity: 'info' | 'error' }
 	/** Ends a turn: how long the agent worked, with a way to copy its reply. */

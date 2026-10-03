@@ -60,10 +60,9 @@ interface LiveAgent {
 const saveDelayMs = 1_000;
 
 /**
- * The Agents pane (plan Phase 2B, agents-pane and agent-tabs): workspaces,
- * the agents under each, and an editor tab per agent that reuses the chat.
- * Every agent is a session on the one shared agent process, so a new agent
- * is ready in tens of milliseconds once the agent runs.
+ * The Agents pane: workspaces, the agents under each, and an editor tab per
+ * agent that reuses the chat. Every agent is a session on the one shared agent
+ * process, so a new agent is ready in tens of milliseconds once the agent runs.
  */
 export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposable {
 
