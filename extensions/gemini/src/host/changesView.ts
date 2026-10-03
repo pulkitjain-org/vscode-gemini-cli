@@ -7,7 +7,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AgentChanges, EditedFile, formatCounts } from '../acp/agentChanges';
 
-export const changesViewId = 'gemini.agentChanges';
+const changesViewId = 'gemini.agentChanges';
 /** Read-only documents holding a file's text from before an agent's first edit. */
 const originalScheme = 'gemini-agent-original';
 

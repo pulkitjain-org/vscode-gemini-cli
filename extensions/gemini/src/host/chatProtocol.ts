@@ -60,8 +60,8 @@ export interface ChatStrings {
 	readonly addContext: string;
 	readonly noFiles: string;
 	readonly remove: string;
-	/** `{0}` is the image's file name. */
-	readonly imageTooLarge: string;
+	/** `{0}` is the file's name. */
+	readonly fileTooLarge: string;
 	readonly attachFiles: string;
 	readonly dropFiles: string;
 	readonly cannotAttach: string;

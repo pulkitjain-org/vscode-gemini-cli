@@ -20,7 +20,10 @@ interface GitRef {
 
 interface GitRepository {
 	readonly rootUri: vscode.Uri;
-	readonly state: { readonly HEAD: GitRef | undefined };
+	readonly state: {
+		readonly HEAD: GitRef | undefined;
+		readonly indexChanges: readonly { readonly uri: vscode.Uri }[];
+	};
 	getBranches(query: { readonly remote?: boolean; readonly sort?: 'alphabetically' | 'committerdate' }): Promise<GitRef[]>;
 	checkout(treeish: string): Promise<void>;
 	createBranch(name: string, checkout: boolean, ref?: string): Promise<void>;
@@ -94,6 +97,19 @@ export async function createBranchAndCommit(request: CommitRequest): Promise<boo
 	if (!repository) {
 		return false;
 	}
+	// `commit` takes everything staged, so files the user staged would go too.
+	const agentFiles = new Set(request.files.map(file => vscode.Uri.file(file).fsPath));
+	const otherStaged = repository.state.indexChanges.filter(change => !agentFiles.has(change.uri.fsPath)).length;
+	if (otherStaged) {
+		const commitAnyway = vscode.l10n.t("Commit Anyway");
+		const choice = await vscode.window.showWarningMessage(
+			vscode.l10n.t("{0} other staged files will be committed too.", otherStaged),
+			{ modal: true, detail: vscode.l10n.t("Unstage them first to commit only the agent's changes.") },
+			commitAnyway);
+		if (choice !== commitAnyway) {
+			return false;
+		}
+	}
 	const branch = await askBranchName(request.suggestedBranch);
 	if (!branch) {
 		return false;
@@ -109,11 +125,16 @@ export async function createBranchAndCommit(request: CommitRequest): Promise<boo
 	}
 	try {
 		await repository.createBranch(branch, true);
+	} catch (err) {
+		void vscode.window.showErrorMessage(errorMessage(err));
+		return false;
+	}
+	try {
 		await repository.add([...request.files]);
 		await repository.commit(message.trim());
 		return true;
 	} catch (err) {
-		void vscode.window.showErrorMessage(errorMessage(err));
+		void vscode.window.showErrorMessage(vscode.l10n.t("Created and switched to {0}, but could not commit: {1}", branch, errorMessage(err)));
 		return false;
 	}
 }

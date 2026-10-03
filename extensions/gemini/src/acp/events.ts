@@ -15,9 +15,14 @@ export class Emitter<T> {
 		return { dispose: () => this.listeners.delete(listener) };
 	};
 
+	/** Calls every listener; one that throws is reported and does not stop the rest, as with vscode's emitter. */
 	fire(event: T): void {
 		for (const listener of [...this.listeners]) {
-			listener(event);
+			try {
+				listener(event);
+			} catch (err) {
+				console.error(err);
+			}
 		}
 	}
 

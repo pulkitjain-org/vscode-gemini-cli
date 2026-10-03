@@ -62,7 +62,7 @@ export type TranscriptItem =
  * are not chat content, so the transcript skips them; later phases show them
  * elsewhere (commands, modes, usage).
  */
-export const SESSION_STATE_UPDATES: ReadonlySet<string> = new Set([
+const SESSION_STATE_UPDATES: ReadonlySet<string> = new Set([
 	'available_commands_update',
 	'current_mode_update',
 	'config_option_update',
@@ -221,7 +221,7 @@ export function toolCallItemId(toolCallId: string): string {
 	return `tool-${toolCallId}`;
 }
 
-export function toToolCallItem(call: ToolCallModel): TranscriptItem {
+function toToolCallItem(call: ToolCallModel): TranscriptItem {
 	return {
 		id: toolCallItemId(call.id),
 		kind: 'toolCall',

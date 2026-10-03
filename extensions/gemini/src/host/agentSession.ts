@@ -3,11 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { isModeAllowed } from '../acp/adminPolicy';
 import { AgentClient } from '../acp/agentClient';
-import { createFileHandlers } from '../acp/fileAccess';
+import { createFileHandlers, isInside } from '../acp/fileAccess';
 import { PermissionBroker } from '../acp/permissions';
 import { AgentStatus } from '../acp/status';
 import { AgentService } from './agentService';
@@ -43,13 +42,13 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 		this.disposables.push(
 			this.onDidChangeStatusEmitter,
 			service.onDidChangeStatus(fire),
-			toDisposable(this.client.onDidChangeState(state => {
+			this.client.onDidChangeState(state => {
 				// A request from a session that is gone can no longer be answered.
 				if (state.kind !== 'ready') {
 					this.permissions.cancelAll();
 				}
 				fire();
-			})),
+			}),
 		);
 	}
 
@@ -78,12 +77,5 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 }
 
 function isInWorkspace(folder: string): boolean {
-	return getFileAccessPolicy().roots.some(root => {
-		const relative = path.relative(root, folder);
-		return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
-	});
-}
-
-function toDisposable(listener: { dispose(): void }): vscode.Disposable {
-	return new vscode.Disposable(() => listener.dispose());
+	return getFileAccessPolicy().roots.some(root => isInside(root, folder));
 }

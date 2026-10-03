@@ -940,7 +940,7 @@ function onPickerKey(event: KeyboardEvent): boolean {
 async function readImage(file: File): Promise<Attachment | undefined> {
 	const data = await readBase64(file);
 	if (data.length > maxImageBase64Length) {
-		setTransientNotice(format(strings.imageTooLarge, file.name || 'image'));
+		setTransientNotice(format(strings.fileTooLarge, file.name || 'file'));
 		return undefined;
 	}
 	return { kind: 'image', name: file.name || `image.${file.type.split('/')[1] ?? 'png'}`, mimeType: file.type, data };
@@ -974,7 +974,7 @@ async function readDroppedFile(file: File): Promise<Attachment | undefined> {
 		case 'inline':
 			return { kind: 'document', name, mimeType: content.mimeType, data: await readBase64(file) };
 		case 'tooLarge':
-			setTransientNotice(format(strings.imageTooLarge, name));
+			setTransientNotice(format(strings.fileTooLarge, name));
 			return undefined;
 		case 'unsupported':
 			setTransientNotice(format(strings.cannotAttach, name));

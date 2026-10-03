@@ -42,7 +42,7 @@ export class DiffPreview implements vscode.TextDocumentContentProvider, vscode.D
 		const right = vscode.Uri.from({ scheme, path: `/${id}/proposed/${name}` });
 		this.set(left, change.oldText ?? '');
 		this.set(right, change.newText);
-		const title = change.oldText ? vscode.l10n.t("{0} (proposed by Gemini)", name) : vscode.l10n.t("{0} (new file proposed by Gemini)", name);
+		const title = typeof change.oldText === 'string' ? vscode.l10n.t("{0} (proposed by Gemini)", name) : vscode.l10n.t("{0} (new file proposed by Gemini)", name);
 		await vscode.commands.executeCommand('vscode.diff', left, right, title, { preview: true, preserveFocus: options.preserveFocus });
 	}
 

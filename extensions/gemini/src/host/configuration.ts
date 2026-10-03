@@ -97,6 +97,8 @@ export function getAgentCommand(options: { interactive?: boolean; cli?: CliResol
 }
 
 function readCliSettings(): string | undefined {
+	// The CLI's launcher reads `$GEMINI_CLI_HOME/settings.json`, without the
+	// `.gemini` level its other files use, to decide on the heap flag; match it.
 	const home = process.env.GEMINI_CLI_HOME || path.join(os.homedir(), '.gemini');
 	try {
 		return readFileSync(path.join(home, 'settings.json'), 'utf8');

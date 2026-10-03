@@ -7,7 +7,8 @@ import { randomBytes } from 'node:crypto';
 import * as path from 'node:path';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
-import { Attachment, inlineType, maxDocumentTextBytes, maxImageBase64Length, supportedImageTypes } from '../acp/attachments';
+import { Attachment } from '../acp/attachments';
+import { isValidAttachment } from '../acp/attachmentValidation';
 import { ChatTranscript, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
 import { PendingPermission, PermissionBroker } from '../acp/permissions';
 import { buildPromptContent } from '../acp/promptContent';
@@ -122,7 +123,7 @@ export class ChatController implements vscode.Disposable {
 			this.onDidSendPromptEmitter,
 			service.permissions.onDidChange(event => {
 				if (event.kind === 'requested') {
-					this.diffs.set(event.permission.id, diffsOf(event.permission.request.toolCall.content));
+					this.rememberDiffs(event.permission.id, diffsOf(event.permission.request.toolCall.content));
 					this.transcript.addPermission(event.permission);
 					void this.revealForPermission(event.permission);
 				} else {
@@ -139,9 +140,10 @@ export class ChatController implements vscode.Disposable {
 				if (this.busy) {
 					if (event.kind === 'toolCall') {
 						const diffs = diffsOf(event.call.content);
-						this.diffs.set(toolCallItemId(event.call.id), diffs);
+						this.rememberDiffs(toolCallItemId(event.call.id), diffs);
 						if (event.call.status === 'completed' && diffs.length && !this.completedToolCalls.has(event.call.id)) {
 							this.completedToolCalls.add(event.call.id);
+							dropOldest(this.completedToolCalls);
 							this.onDidEditFilesEmitter.fire(diffs);
 						}
 					}
@@ -163,8 +165,7 @@ export class ChatController implements vscode.Disposable {
 			service.client.onDidChangeSettings(settings => this.post({ type: 'settings', settings })),
 		);
 		if (options.git?.commit) {
-			const listener = options.git.commit.onDidChange(() => this.postGit());
-			this.disposables.push(new vscode.Disposable(() => listener.dispose()));
+			this.disposables.push(options.git.commit.onDidChange(() => this.postGit()));
 		}
 	}
 
@@ -293,6 +294,7 @@ export class ChatController implements vscode.Disposable {
 		}
 		this.transcript.clear();
 		this.diffs.clear();
+		this.completedToolCalls.clear();
 		if (this.service.client.state.kind !== 'ready') {
 			// The next prompt starts the agent, and with it a new session.
 			this.service.client.forgetSession();
@@ -469,11 +471,25 @@ export class ChatController implements vscode.Disposable {
 		}
 	}
 
+	private rememberDiffs(itemId: string, diffs: readonly acp.Diff[]): void {
+		if (diffs.length) {
+			// Re-inserting keeps the most recent edits when old ones are dropped.
+			this.diffs.delete(itemId);
+			this.diffs.set(itemId, diffs);
+			dropOldest(this.diffs);
+		}
+	}
+
 	private async openDiff(itemId: string, filePath: string, preserveFocus: boolean): Promise<void> {
 		const diff = this.diffs.get(itemId)?.find(d => d.path === filePath);
 		if (diff) {
 			await this.diffPreview.show(diff, { preserveFocus });
+			return;
 		}
+		// Proposed edits are kept in memory only, so a restored or old chat has
+		// none: show the file as it is now instead.
+		void vscode.window.showInformationMessage(vscode.l10n.t("The proposed change is no longer available, so the file is shown as it is now."));
+		await this.openLocation(filePath, undefined);
 	}
 
 	private async openLocation(filePath: string, line: number | undefined): Promise<void> {
@@ -551,7 +567,7 @@ export class ChatController implements vscode.Disposable {
 			addContext: vscode.l10n.t("Add context (@)"),
 			noFiles: vscode.l10n.t("No matching files"),
 			remove: vscode.l10n.t("Remove"),
-			imageTooLarge: vscode.l10n.t("{0} is too large to send."),
+			fileTooLarge: vscode.l10n.t("{0} is too large to send."),
 			attachFiles: vscode.l10n.t("Attach files. You can also drop files here; hold Shift when dragging from the Explorer."),
 			dropFiles: vscode.l10n.t("Drop files to attach"),
 			cannotAttach: vscode.l10n.t("{0} can't be attached: only text files, images and PDFs can be dropped here. Use the attach button to add other files."),
@@ -614,18 +630,16 @@ function toViewStatus(status: AgentStatus): ViewStatus {
 }
 
 /** Checks what the webview sent, since it builds attachments from pasted data. */
-function isValidAttachment(attachment: Attachment): boolean {
-	switch (attachment?.kind) {
-		case 'file': return typeof attachment.path === 'string' && path.isAbsolute(attachment.path);
-		case 'selection': return typeof attachment.path === 'string' && path.isAbsolute(attachment.path) && typeof attachment.text === 'string';
-		case 'image': return supportedImageTypes.has(attachment.mimeType) && typeof attachment.data === 'string' && attachment.data.length <= maxImageBase64Length;
-		case 'document':
-			return typeof attachment.name === 'string' && typeof attachment.mimeType === 'string'
-				&& (attachment.path === undefined || (typeof attachment.path === 'string' && path.isAbsolute(attachment.path)))
-				&& (typeof attachment.text === 'string'
-					? attachment.text.length <= maxDocumentTextBytes
-					: typeof attachment.data === 'string' && attachment.data.length <= maxImageBase64Length && inlineType(attachment.name, attachment.mimeType) === attachment.mimeType);
-		default: return false;
+/** The most proposed edits kept for opening their diffs later. */
+const maxRememberedDiffs = 200;
+
+/** Drops the oldest entries of a set or map beyond {@link maxRememberedDiffs}. */
+function dropOldest<K>(collection: Set<K> | Map<K, unknown>): void {
+	for (const key of collection.keys()) {
+		if (collection.size <= maxRememberedDiffs) {
+			return;
+		}
+		collection.delete(key);
 	}
 }
 
