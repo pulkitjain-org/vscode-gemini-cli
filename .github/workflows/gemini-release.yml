@@ -131,6 +131,11 @@ jobs:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Leave out upstream's Copilot extension
+        # GeminiCode turns upstream's AI off, and upstream ships Copilot from a prebuilt
+        # package its own pipeline makes; built from source here it lacks its runtime.
+        run: rm -rf extensions/copilot
+
       - name: Bundle the Gemini CLI
         run: npm run bundle-cli --prefix extensions/gemini
         env:
@@ -153,6 +158,7 @@ jobs:
           CLI_VERSION="$(node -p 'require("./extensions/gemini/package.json").bundledCli.version')"
           test -d "$APP" || { echo "::error::$APP was not built"; exit 1; }
           test -f "$RESOURCES/extensions/gemini/cli/$CLI_VERSION/bundle/gemini.js" || { echo "::error::The bundled Gemini CLI is missing from the app"; exit 1; }
+          test ! -e "$RESOURCES/extensions/copilot" || { echo "::error::Upstream's Copilot extension is in the app"; exit 1; }
           # shellcheck disable=SC2016 # a JavaScript template string, not shell
           node -e 'const p = require(process.argv[1]); if (p.geminiCodeVersion !== process.argv[2]) { throw new Error(`product.json has ${p.geminiCodeVersion}`); }' "$RESOURCES/product.json" "${{ steps.version.outputs.version }}"
           echo "build-dir=$BUILD_DIR" >> "$GITHUB_OUTPUT"

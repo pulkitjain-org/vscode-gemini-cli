@@ -12,7 +12,7 @@ What is left before and after the pilot. The design that is already built is des
   - Whether a proxy or custom CA is needed.
 - **Signed sign-in check.** On a desktop, verify the browser sign-in flow in ACP mode, and that it never writes to stdout.
 - **Compat CI.** Run `initialize` against `latest`, `latest-1`, `preview` and `nightly`, and diff the reported capabilities. A scheduled job on a machine that holds a seat should also run a signed-in smoke test of models and modes, because hosted CI cannot sign in.
-- **Pilot builds.** Produce packaged, branded builds for the pilot platforms, signed when the Apple Developer ID and Windows code-signing certificates are in hand. Regenerate the policy templates (`policyData.jsonc`), which need a built app. Stop shipping upstream's `extensions/copilot`, and trim `defaultChatAgent` to a stub.
+- **Pilot builds.** Produce packaged, branded builds for the pilot platforms, signed when the Apple Developer ID and Windows code-signing certificates are in hand. Regenerate the policy templates (`policyData.jsonc`), which need a built app. Release builds already leave out upstream's `extensions/copilot` (upstream ships it from a prebuilt package its own pipeline makes); remove it from dev builds too, and trim `defaultChatAgent` to a stub.
 - **Pilot.** Collect feedback on sign-in, approvals, attached context and the agent workspace.
 
 ## After the pilot
