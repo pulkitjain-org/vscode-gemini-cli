@@ -26,8 +26,8 @@ To try the pipeline without publishing, run **Gemini Release** by hand from the 
 ## What the workflow does
 
 1. Stamps the version into `product.json`.
-2. Installs dependencies, bundles the pinned Gemini CLI (`npm run bundle-cli` in `extensions/gemini`), and builds the app with `npm run gulp vscode-darwin-arm64-min`.
-3. Checks that the app holds the bundled CLI and the stamped version.
+2. Installs dependencies, leaves out upstream's Copilot extension, bundles the pinned Gemini CLI (`npm run bundle-cli` in `extensions/gemini`), and builds the app with `npm run gulp vscode-darwin-arm64-min`.
+3. Checks that the app holds the bundled CLI and the stamped version, and no Copilot extension.
 4. Signs the app with the Developer ID, using upstream's `build/darwin/sign.ts`: hardened runtime and upstream's entitlements for the app and each helper.
 5. Notarizes the app with `notarytool` and staples the ticket.
 6. Packs a `.dmg` with upstream's `build/darwin/create-dmg.ts` (drag to Applications), then signs, notarizes and staples the `.dmg` too.
