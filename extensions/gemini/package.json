@@ -355,6 +355,12 @@
           "pattern": "^$|^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$",
           "markdownDescription": "%configuration.cli.version%"
         },
+        "gemini.cli.checkForUpdates": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "markdownDescription": "%configuration.cli.checkForUpdates%"
+        },
         "gemini.projectId": {
           "type": "string",
           "default": "",

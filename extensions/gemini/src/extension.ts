@@ -39,7 +39,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		chatView,
 		agentsView,
 		new GeminiStatusBar(service),
-		new CliManager(service, log),
+		new CliManager(service, context.globalState, log),
 		vscode.window.registerWebviewViewProvider(chatViewId, chatView),
 		vscode.commands.registerCommand('gemini.openChat', () => vscode.commands.executeCommand(`${chatViewId}.focus`)),
 		vscode.commands.registerCommand('gemini.newChat', () => chatView.newChat()),

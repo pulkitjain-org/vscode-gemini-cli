@@ -4,39 +4,57 @@
  *--------------------------------------------------------------------------------------------*/
 
 // Installing and switching GeminiCode's own copies of the Gemini CLI (plan
-// Phase 3, runtime-resolution, cli-install). Nothing here runs on startup
-// except a cleanup once the agent is ready; the network is only used when
-// the user asks for an install.
+// Phase 3, runtime-resolution, cli-install and cli-update-check). Nothing
+// here runs on the startup path: once the agent is ready there is a cleanup
+// and, at most once a day, one registry request to see whether a newer CLI
+// exists. Installing always waits for the user.
 
 import * as vscode from 'vscode';
 import { fetchCliVersions, Fetch, installCli, pruneCliVersions } from '../acp/cliInstall';
 import { compareVersions, listManagedVersions } from '../acp/cliResolution';
+import { shouldCheckForUpdate, updateToOffer } from '../acp/cliUpdates';
 import { AgentService } from './agentService';
 import { configSection, getCliResolution, getManagedCliDir } from './configuration';
 
 export const installCliCommand = 'gemini.installCli';
 export const installCliVersionCommand = 'gemini.installCliVersion';
 
+const lastUpdateCheckKey = 'gemini.cli.lastUpdateCheck';
+const skippedVersionKey = 'gemini.cli.skippedVersion';
+/** How often a long-running window looks again whether a day has passed; the check itself is a timestamp comparison. */
+const updateCheckPoll = 60 * 60 * 1000;
+
 export class CliManager implements vscode.Disposable {
 
 	private readonly disposables: vscode.Disposable[] = [];
 	private pruned = false;
+	private updateTimer: ReturnType<typeof setInterval> | undefined;
+	private runningVersion: string | undefined;
 
-	constructor(private readonly service: AgentService, private readonly log: vscode.LogOutputChannel) {
+	constructor(private readonly service: AgentService, private readonly globalState: vscode.Memento, private readonly log: vscode.LogOutputChannel) {
 		this.disposables.push(
 			vscode.commands.registerCommand(installCliCommand, (version?: string) => this.install(typeof version === 'string' ? version : 'latest')),
 			vscode.commands.registerCommand(installCliVersionCommand, () => this.pickVersion()),
 			service.onDidChangeStatus(status => {
-				if (status.phase === 'ready' && !this.pruned) {
+				if (status.phase !== 'ready') {
+					return;
+				}
+				this.runningVersion = status.agentVersion;
+				if (!this.pruned) {
 					this.pruned = true;
 					// Off the startup path: the agent is already answering.
-					setTimeout(() => this.prune(), 5_000);
+					setTimeout(() => {
+						this.prune();
+						void this.checkForUpdate();
+					}, 5_000);
+					this.updateTimer = setInterval(() => void this.checkForUpdate(), updateCheckPoll);
 				}
 			}),
 		);
 	}
 
 	dispose(): void {
+		clearInterval(this.updateTimer);
 		vscode.Disposable.from(...this.disposables).dispose();
 	}
 
@@ -120,6 +138,50 @@ export class CliManager implements vscode.Disposable {
 			void vscode.window.showInformationMessage(
 				vscode.l10n.t("Gemini CLI {0} is installed. The agent switches to it when no agent is working.", installed), restartNow,
 			).then(choice => choice === restartNow && this.service.restart());
+		}
+	}
+
+	/** Tells the user about a newer CLI, at most once a day and never for a pinned version. */
+	private async checkForUpdate(): Promise<void> {
+		const cli = this.service.cli;
+		const config = vscode.workspace.getConfiguration(configSection);
+		const now = Date.now();
+		if (!cli || !shouldCheckForUpdate({
+			enabled: config.get<boolean>('cli.checkForUpdates', true),
+			pinnedVersion: config.get<string>('cli.version'),
+			source: cli.source,
+			lastCheck: this.globalState.get<number>(lastUpdateCheckKey),
+			now,
+		})) {
+			return;
+		}
+		// Stored first, so other windows skip this day's check.
+		await this.globalState.update(lastUpdateCheckKey, now);
+		let latest: string | undefined;
+		try {
+			({ latest } = await fetchCliVersions({ fetch: fetch as Fetch }));
+		} catch (err) {
+			this.log.info(`Could not check for a newer Gemini CLI: ${errorMessage(err)}`);
+			return;
+		}
+		const running = cli.version ?? this.runningVersion;
+		const offer = updateToOffer(running, latest, this.globalState.get<string>(skippedVersionKey));
+		this.log.info(`Gemini CLI update check: running ${running ?? 'unknown'}, latest ${latest ?? 'unknown'}`);
+		if (!offer) {
+			return;
+		}
+		const install = vscode.l10n.t("Install");
+		const skip = vscode.l10n.t("Skip This Version");
+		const turnOff = vscode.l10n.t("Don't Check Again");
+		const choice = await vscode.window.showInformationMessage(
+			vscode.l10n.t("Gemini CLI {0} is available. You are using {1}.", offer, running ?? ''), install, skip, turnOff);
+		if (choice === install) {
+			await this.install(offer);
+		} else if (choice === skip) {
+			await this.globalState.update(skippedVersionKey, offer);
+		} else if (choice === turnOff) {
+			// Locked by policy, the admin's choice stays.
+			await config.update('cli.checkForUpdates', false, vscode.ConfigurationTarget.Global).then(undefined, err => this.log.warn(`Could not turn off update checks: ${errorMessage(err)}`));
 		}
 	}
 
