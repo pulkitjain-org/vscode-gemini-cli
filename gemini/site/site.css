@@ -1,0 +1,205 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) pulkitjain-org and contributors. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/* The GeminiCode download page; colours follow the GeminiCode themes. */
+
+:root {
+	color-scheme: light dark;
+	--bg: #f4f5f8;
+	--card: #ffffff;
+	--text: #1d2230;
+	--muted: #5d667a;
+	--border: #dde1ea;
+	--link: #2f6fe0;
+	--accent: #4f8df7;
+	--gradient: linear-gradient(135deg, #4f8df7 0%, #8b5cf6 55%, #e05fa8 100%);
+	--note-bg: #fff6e0;
+	--note-border: #f0c75e;
+	--code-bg: #eef0f5;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: #0d1017;
+		--card: #161b25;
+		--text: #e4e8f0;
+		--muted: #9aa3b5;
+		--border: #283042;
+		--link: #7aa7ff;
+		--note-bg: #2a2414;
+		--note-border: #7a6224;
+		--code-bg: #1f2633;
+	}
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--text);
+	font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+main {
+	max-width: 720px;
+	margin: 0 auto;
+	padding: 48px 16px 32px;
+}
+
+a {
+	color: var(--link);
+}
+
+h1, h2 {
+	line-height: 1.25;
+}
+
+h2 {
+	font-size: 1.25rem;
+	margin: 0 0 12px;
+}
+
+code {
+	font: 0.875em ui-monospace, SFMono-Regular, Menlo, monospace;
+	background: var(--code-bg);
+	border-radius: 4px;
+	padding: 1px 5px;
+	overflow-wrap: anywhere;
+}
+
+.hero {
+	text-align: center;
+	padding: 24px 0 40px;
+}
+
+.logo {
+	display: block;
+	margin: 0 auto 8px;
+}
+
+.hero h1 {
+	font-size: 2.5rem;
+	margin: 0;
+	letter-spacing: -0.02em;
+}
+
+.tagline {
+	font-size: 1.15rem;
+	color: var(--muted);
+	margin: 4px 0 28px;
+}
+
+.download {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	padding: 14px 28px;
+	border-radius: 999px;
+	background: var(--gradient);
+	color: #fff;
+	font-weight: 600;
+	font-size: 1.05rem;
+	text-decoration: none;
+	box-shadow: 0 6px 20px rgb(79 141 247 / 30%);
+	margin: 0;
+}
+
+.download:hover,
+.download:focus-visible {
+	filter: brightness(1.08);
+}
+
+.download:focus-visible {
+	outline: 3px solid var(--accent);
+	outline-offset: 3px;
+}
+
+.download svg {
+	width: 20px;
+	height: 20px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2.2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.download.disabled {
+	background: var(--border);
+	color: var(--muted);
+	box-shadow: none;
+}
+
+.meta,
+.platforms {
+	color: var(--muted);
+	font-size: 0.9rem;
+	margin: 12px 0 0;
+}
+
+.platforms {
+	margin-top: 4px;
+}
+
+section,
+.note {
+	background: var(--card);
+	border: 1px solid var(--border);
+	border-radius: 16px;
+	padding: 24px;
+	margin: 0 0 20px;
+}
+
+.note {
+	background: var(--note-bg);
+	border-color: var(--note-border);
+}
+
+.note h2 {
+	font-size: 1.05rem;
+}
+
+.note p {
+	margin: 8px 0 0;
+}
+
+.steps {
+	margin: 0 0 12px;
+	padding-left: 1.4em;
+}
+
+.steps li {
+	margin: 6px 0;
+}
+
+.notes h2 {
+	font-size: 1.05rem;
+	margin-top: 16px;
+}
+
+.notes img {
+	max-width: 100%;
+}
+
+.notes .markdown-alert {
+	border-left: 4px solid var(--note-border);
+	padding: 4px 12px;
+	margin: 12px 0;
+}
+
+footer {
+	color: var(--muted);
+	font-size: 0.875rem;
+	text-align: center;
+	padding-top: 8px;
+}
+
+.checksum code {
+	display: inline-block;
+	margin-top: 4px;
+}

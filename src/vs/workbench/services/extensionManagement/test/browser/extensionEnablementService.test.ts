@@ -6,7 +6,7 @@ import assert from 'assert';
 import * as sinon from 'sinon';
 import { IExtensionManagementService, DidUninstallExtensionEvent, ILocalExtension, InstallExtensionEvent, InstallExtensionResult, UninstallExtensionEvent, DidUpdateExtensionMetadata, InstallOperation, IAllowedExtensionsService, AllowedExtensionsConfigKey, IExtensionsControlManifest } from '../../../../../platform/extensionManagement/common/extensionManagement.js';
 import { EnablementState, IExtensionManagementServerService, IExtensionManagementServer, IWorkbenchExtensionManagementService, ExtensionInstallLocation, IProfileAwareExtensionManagementService, DidChangeProfileEvent } from '../../common/extensionManagement.js';
-import { ExtensionEnablementService } from '../../browser/extensionEnablementService.js';
+import { ExtensionEnablementService, GEMINI_EXTENSION_ID } from '../../browser/extensionEnablementService.js';
 import { TestInstantiationService } from '../../../../../platform/instantiation/test/common/instantiationServiceMock.js';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import { IWorkspace, IWorkspaceContextService, WorkbenchState } from '../../../../../platform/workspace/common/workspace.js';
@@ -503,6 +503,12 @@ suite('ExtensionEnablementService Test', () => {
 
 	test('test canChangeEnablement return false for language packs', () => {
 		assert.strictEqual(testObject.canChangeEnablement(aLocalExtension('pub.a', { localizations: [{ languageId: 'gr', translations: [{ id: 'vscode', path: 'path' }] }] })), false);
+	});
+
+	// GEMINI-FORK
+	test('test canChangeEnablement return false for the built-in Gemini extension', () => {
+		assert.strictEqual(testObject.canChangeEnablement(aLocalExtension(GEMINI_EXTENSION_ID, undefined, ExtensionType.System)), false);
+		assert.strictEqual(testObject.canChangeEnablement(aLocalExtension(GEMINI_EXTENSION_ID, undefined, ExtensionType.User)), true);
 	});
 
 	test('test canChangeEnablement return true for auth extension', () => {

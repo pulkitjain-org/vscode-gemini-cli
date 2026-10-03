@@ -165,7 +165,7 @@ async function main(buildDir?: string, outDir?: string): Promise<void> {
 	let title = 'Code OSS';
 	switch (quality) {
 		case 'stable':
-			title = 'VS Code';
+			title = product.nameLong; // GEMINI-FORK: was 'VS Code'
 			break;
 		case 'insider':
 			title = 'VS Code Insiders';

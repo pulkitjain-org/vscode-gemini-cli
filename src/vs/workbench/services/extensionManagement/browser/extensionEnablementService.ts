@@ -44,6 +44,9 @@ type WorkspaceType = { readonly virtual: boolean; readonly trusted: boolean };
 const EXTENSION_UNIFICATION_SETTING = 'chat.extensionUnification.enabled';
 const MALICIOUS_EXTENSIONS_STORAGE_KEY = 'extensionsEnablement/malicious';
 
+// GEMINI-FORK: the built-in Gemini extension (extensions/gemini), which cannot be turned off.
+export const GEMINI_EXTENSION_ID = 'gemini-fork.gemini';
+
 export class ExtensionEnablementService extends Disposable implements IWorkbenchExtensionEnablementService {
 
 	declare readonly _serviceBrand: undefined;
@@ -259,6 +262,11 @@ export class ExtensionEnablementService extends Disposable implements IWorkbench
 
 		if (this.isDefaultOrSettingsSyncAuthProviderExtension(extension.manifest)) {
 			throw new Error(localize('cannot disable settings sync auth extension', "Cannot change enablement of {0} extension because Settings Sync depends on it.", extension.manifest.displayName || extension.identifier.id));
+		}
+
+		// GEMINI-FORK: the built-in Gemini extension is the product's agent, so it cannot be turned off.
+		if (extension.type === ExtensionType.System && areSameExtensions(extension.identifier, { id: GEMINI_EXTENSION_ID })) {
+			throw new Error(localize('cannot disable gemini extension', "Cannot change enablement of {0} extension because the application depends on it.", extension.manifest.displayName || extension.identifier.id));
 		}
 
 		if (this._isEnabledInEnv(extension)) {

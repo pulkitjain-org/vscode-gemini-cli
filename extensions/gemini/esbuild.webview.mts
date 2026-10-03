@@ -1,0 +1,24 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) pulkitjain-org and contributors. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+import * as path from 'node:path';
+import { run } from '../esbuild-webview-common.mts';
+
+const srcDir = path.join(import.meta.dirname, 'webview-src');
+const outDir = path.join(import.meta.dirname, 'media');
+
+run({
+	entryPoints: {
+		'chat': path.join(srcDir, 'chat.ts'),
+		'codicon': path.join(import.meta.dirname, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css'),
+	},
+	srcDir,
+	outdir: outDir,
+	additionalOptions: {
+		loader: {
+			'.ttf': 'dataurl',
+		}
+	}
+}, process.argv);

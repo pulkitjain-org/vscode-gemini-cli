@@ -1,0 +1,339 @@
+# GeminiCode release build (see gemini/docs/RELEASING.md).
+# Pushing a tag like v0.1.0 builds the Mac app for Apple silicon, signs it
+# with the Developer ID in the repository secrets, notarizes and staples it,
+# packs a .dmg and publishes it to a GitHub Release. Without the Apple
+# secrets the app is only ad-hoc signed and the release is marked unsigned.
+# If the release already exists (made in GitHub's UI, say), the .dmg is
+# added to it and its title and notes are kept. Every run also keeps the
+# .dmg as a workflow artifact. Running the workflow by hand builds a dev .dmg
+# and publishes nothing, unless a tag is given: then it builds that tag and
+# publishes it, as a tag push would.
+name: Gemini Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Build and publish this existing tag, such as v0.1.0. Leave empty for a dev build that publishes nothing.'
+        required: false
+        default: ''
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: macOS (Apple silicon)
+    runs-on: macos-15
+    timeout-minutes: 240
+    permissions:
+      contents: write # create the GitHub Release
+      actions: write # start the download page build
+    env:
+      VSCODE_ARCH: arm64
+      VSCODE_QUALITY: stable
+      NPM_CONFIG_AUDIT: false
+      NPM_CONFIG_FUND: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Work out the version
+        id: version
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          TAG="${INPUT_TAG:-}"
+          if [[ -z "$TAG" && "$GITHUB_REF_TYPE" == "tag" ]]; then TAG="$GITHUB_REF_NAME"; fi
+          if [[ -n "$TAG" ]]; then
+            VERSION="${TAG#v}"
+            PUBLISH=true
+          else
+            VERSION="0.0.0-dev.${GITHUB_RUN_NUMBER}"
+            PUBLISH=false
+          fi
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::'$VERSION' is not a version like 0.1.0"
+            exit 1
+          fi
+          {
+            echo "tag=$TAG"
+            echo "version=$VERSION"
+            echo "publish=$PUBLISH"
+          } >> "$GITHUB_OUTPUT"
+          echo "Building GeminiCode $VERSION (publish: $PUBLISH)"
+
+      - name: Check the Apple secrets
+        id: signing
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          SET=0
+          for NAME in MACOS_CERTIFICATE MACOS_CERTIFICATE_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER_ID APPLE_TEAM_ID; do
+            if [[ -n "${!NAME}" ]]; then SET=$((SET + 1)); else MISSING="${MISSING:-} $NAME"; fi
+          done
+          if [[ $SET -eq 6 ]]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+            echo "Signing and notarizing with the Developer ID."
+          elif [[ $SET -eq 0 ]]; then
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No Apple secrets: building an unsigned app."
+          else
+            echo "::error::Some Apple secrets are set but these are missing:$MISSING"
+            exit 1
+          fi
+
+      - name: Stamp the version into product.json
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const product = JSON.parse(fs.readFileSync("product.json", "utf8"));
+            product.geminiCodeVersion = process.env.VERSION;
+            fs.writeFileSync("product.json", JSON.stringify(product, null, "\t") + "\n");
+          '
+
+      - name: Install dependencies
+        run: |
+          set -e
+          for i in 1 2 3; do
+            npm ci && break
+            if [ $i -eq 3 ]; then
+              echo "npm ci failed too many times" >&2
+              exit 1
+            fi
+            echo "npm ci failed $i, trying again..."
+          done
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Leave out upstream's Copilot extension
+        # GeminiCode turns upstream's AI off, and upstream ships Copilot from a prebuilt
+        # package its own pipeline makes; built from source here it lacks its runtime.
+        run: rm -rf extensions/copilot
+
+      - name: Bundle the Gemini CLI
+        run: npm run bundle-cli --prefix extensions/gemini
+        env:
+          # The pinned SHA-512 vouches for the download; a CLI pinned in its first week
+          # must pass the package's min-release-age (bundle-cli.mts also passes this, from v0.1.1).
+          npm_config_min_release_age: 0
+
+      - name: Build the app
+        run: npm run gulp vscode-darwin-arm64-min
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check the app
+        id: app
+        run: |
+          set -euo pipefail
+          BUILD_DIR="$(dirname "$GITHUB_WORKSPACE")"
+          APP="$BUILD_DIR/VSCode-darwin-arm64/GeminiCode.app"
+          RESOURCES="$APP/Contents/Resources/app"
+          CLI_VERSION="$(node -p 'require("./extensions/gemini/package.json").bundledCli.version')"
+          test -d "$APP" || { echo "::error::$APP was not built"; exit 1; }
+          test -f "$RESOURCES/extensions/gemini/cli/$CLI_VERSION/bundle/gemini.js" || { echo "::error::The bundled Gemini CLI is missing from the app"; exit 1; }
+          test ! -e "$RESOURCES/extensions/copilot" || { echo "::error::Upstream's Copilot extension is in the app"; exit 1; }
+          # shellcheck disable=SC2016 # a JavaScript template string, not shell
+          node -e 'const p = require(process.argv[1]); if (p.geminiCodeVersion !== process.argv[2]) { throw new Error(`product.json has ${p.geminiCodeVersion}`); }' "$RESOURCES/product.json" "${{ steps.version.outputs.version }}"
+          echo "build-dir=$BUILD_DIR" >> "$GITHUB_OUTPUT"
+          echo "path=$APP" >> "$GITHUB_OUTPUT"
+          du -sh "$APP"
+
+      - name: Import the Developer ID certificate
+        if: steps.signing.outputs.signed == 'true'
+        id: keychain
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          # build/darwin/sign.ts looks for this keychain in $AGENT_TEMPDIRECTORY.
+          KEYCHAIN="$RUNNER_TEMP/buildagent.keychain"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          # shellcheck disable=SC2046 # one argument per existing keychain
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | grep "Developer ID Application" | grep "($APPLE_TEAM_ID)" | grep -oE '[0-9A-F]{40}' | head -n 1 || true)"
+          if [[ -z "$IDENTITY" ]]; then
+            echo "::error::No 'Developer ID Application' certificate for team $APPLE_TEAM_ID in MACOS_CERTIFICATE"
+            security find-identity -v -p codesigning "$KEYCHAIN"
+            exit 1
+          fi
+          echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
+
+      - name: Sign the app (Developer ID, hardened runtime)
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          AGENT_TEMPDIRECTORY: ${{ runner.temp }}
+          CODESIGN_IDENTITY: ${{ steps.keychain.outputs.identity }}
+        run: |
+          set -euo pipefail
+          DEBUG='electron-osx-sign*' node build/darwin/sign.ts "${{ steps.app.outputs.build-dir }}"
+          codesign --verify --deep --strict --verbose=2 "${{ steps.app.outputs.path }}"
+
+      - name: Sign the app (ad hoc)
+        if: steps.signing.outputs.signed != 'true'
+        run: |
+          set -euo pipefail
+          # Apple silicon runs no code without a signature; ad hoc is enough to start after the user allows it.
+          codesign --force --deep --sign - "${{ steps.app.outputs.path }}"
+          codesign --verify --deep --strict --verbose=2 "${{ steps.app.outputs.path }}"
+
+      - name: Write the App Store Connect API key
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: |
+          set -euo pipefail
+          KEY="$RUNNER_TEMP/AuthKey_$APPLE_API_KEY_ID.p8"
+          # Accept the .p8 file as is, or base64-encoded.
+          if [[ "$APPLE_API_KEY" == *"BEGIN PRIVATE KEY"* ]]; then
+            printf '%s\n' "$APPLE_API_KEY" > "$KEY"
+          else
+            echo "$APPLE_API_KEY" | base64 --decode > "$KEY"
+          fi
+          chmod 600 "$KEY"
+          echo "APPLE_API_KEY_PATH=$KEY" >> "$GITHUB_ENV"
+
+      - name: Notarize and staple the app
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          APP="${{ steps.app.outputs.path }}"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "$RUNNER_TEMP/GeminiCode.zip"
+          bash gemini/scripts/notarize.sh "$RUNNER_TEMP/GeminiCode.zip"
+          xcrun stapler staple "$APP"
+          spctl --assess --type execute --verbose=2 "$APP"
+
+      - name: Create the .dmg
+        id: dmg
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SIGNED: ${{ steps.signing.outputs.signed }}
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/dmg"
+          mkdir -p "$OUT"
+          node build/darwin/create-dmg.ts "${{ steps.app.outputs.build-dir }}" "$OUT"
+          NAME="GeminiCode-$VERSION-arm64"
+          if [[ "$SIGNED" != "true" ]]; then NAME="$NAME-unsigned"; fi
+          mv "$OUT/VSCode-darwin-arm64.dmg" "$OUT/$NAME.dmg"
+          echo "path=$OUT/$NAME.dmg" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME.dmg" >> "$GITHUB_OUTPUT"
+
+      - name: Sign, notarize and staple the .dmg
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          DMG="${{ steps.dmg.outputs.path }}"
+          codesign --sign "${{ steps.keychain.outputs.identity }}" --timestamp "$DMG"
+          bash gemini/scripts/notarize.sh "$DMG"
+          xcrun stapler staple "$DMG"
+          spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG"
+
+      - name: Checksum
+        id: checksum
+        run: |
+          set -euo pipefail
+          cd "$(dirname "${{ steps.dmg.outputs.path }}")"
+          shasum -a 256 "${{ steps.dmg.outputs.name }}" > "${{ steps.dmg.outputs.name }}.sha256"
+          cat "${{ steps.dmg.outputs.name }}.sha256"
+          echo "path=$PWD/${{ steps.dmg.outputs.name }}.sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the .dmg as a workflow artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.dmg.outputs.name }}
+          path: |
+            ${{ steps.dmg.outputs.path }}
+            ${{ steps.checksum.outputs.path }}
+          retention-days: 14
+
+      - name: Publish the GitHub Release
+        if: steps.version.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          SIGNED: ${{ steps.signing.outputs.signed }}
+        run: |
+          set -euo pipefail
+          FILES=("${{ steps.dmg.outputs.path }}" "${{ steps.checksum.outputs.path }}")
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            # Made by hand: keep its title and notes, and add (or replace) the files.
+            gh release upload "$TAG" "${FILES[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+            exit 0
+          fi
+          CLI_VERSION="$(node -p 'require("./extensions/gemini/package.json").bundledCli.version')"
+          UPSTREAM_VERSION="$(node -p 'require("./package.json").version')"
+          NOTES="$RUNNER_TEMP/notes.md"
+          {
+            echo "GeminiCode $VERSION for Mac with Apple silicon, built on Code - OSS $UPSTREAM_VERSION with Gemini CLI $CLI_VERSION."
+            echo
+            if [[ "$SIGNED" != "true" ]]; then
+              echo "> [!WARNING]"
+              echo "> This build is not signed or notarized by Apple yet, so macOS blocks it on first launch. After moving GeminiCode to Applications, open it once, then choose **Open Anyway** in **System Settings → Privacy & Security**. Or run \`xattr -dr com.apple.quarantine /Applications/GeminiCode.app\`."
+              echo
+            fi
+            echo "Install: open the .dmg and drag GeminiCode to Applications."
+            echo
+          } > "$NOTES"
+          TITLE="GeminiCode $VERSION"
+          if [[ "$SIGNED" != "true" ]]; then TITLE="$TITLE (unsigned)"; fi
+          PRERELEASE=""
+          if [[ "$VERSION" == *-* ]]; then PRERELEASE="--prerelease"; fi
+          gh release create "$TAG" "${FILES[@]}" --repo "$GITHUB_REPOSITORY" \
+            --title "$TITLE" --notes-file "$NOTES" --generate-notes --verify-tag $PRERELEASE
+
+      - name: Update the download page
+        if: steps.version.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # A release made with this token fires no release event, so start the page build directly.
+        run: gh workflow run gemini-pages.yml --repo "$GITHUB_REPOSITORY" --ref "${{ github.event.repository.default_branch }}"
+
+      - name: Remove the keychain and API key
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/buildagent.keychain" 2> /dev/null || true
+          rm -f "$RUNNER_TEMP"/AuthKey_*.p8
