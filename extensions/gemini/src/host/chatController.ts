@@ -18,7 +18,8 @@ import { UpdateBatcher } from '../acp/updateBatcher';
 import type { AgentClient } from '../acp/agentClient';
 import { AgentError, errorMessage } from '../acp/errors';
 import { readGitHead } from '../acp/gitHead';
-import { ChatStrings, chatProtocolVersion, FromWebview, statusCommands, ToWebview, ViewStatus } from './chatProtocol';
+import { ChatStrings, chatProtocolVersion, FromWebview, statusCommands, ToWebview } from './chatProtocol';
+import { stopReasonNotice, toViewStatus } from './chatStatus';
 import { DiffPreview } from './diffPreview';
 import { attachmentsForFiles } from './addToChat';
 import { createBranchAndCommit, pickBranch } from './gitActions';
@@ -610,26 +611,6 @@ export class ChatController implements vscode.Disposable {
 	}
 }
 
-function toViewStatus(status: AgentStatus): ViewStatus {
-	switch (status.phase) {
-		case 'stopped': return { phase: status.phase, text: vscode.l10n.t("Gemini is not running."), actions: [{ label: vscode.l10n.t("Start Agent"), command: 'gemini.restartAgent' }] };
-		case 'starting': return { phase: status.phase, text: vscode.l10n.t("Starting the Gemini agent...") };
-		case 'restarting': return { phase: status.phase, text: vscode.l10n.t("The agent stopped unexpectedly. Restarting...") };
-		case 'ready': return { phase: status.phase, text: '' };
-		case 'error': {
-			const retry = { label: vscode.l10n.t("Retry"), command: 'gemini.restartAgent' } as const;
-			const kind = status.error?.kind;
-			const fix = kind === 'auth-required' || kind === 'auth-failed'
-				? { label: vscode.l10n.t("Sign In"), command: 'gemini.completeSetupInTerminal' } as const
-				: kind === 'project-id-required' || kind === 'project-id-numeric'
-					? { label: vscode.l10n.t("Set Project ID"), command: 'gemini.setProjectId' } as const
-					: { label: vscode.l10n.t("Show Log"), command: 'gemini.showLog' } as const;
-			return { phase: status.phase, text: status.error?.message ?? vscode.l10n.t("The agent needs attention."), actions: [fix, retry] };
-		}
-	}
-}
-
-/** Checks what the webview sent, since it builds attachments from pasted data. */
 /** The most proposed edits kept for opening their diffs later. */
 const maxRememberedDiffs = 200;
 
@@ -645,17 +626,6 @@ function dropOldest<K>(collection: Set<K> | Map<K, unknown>): void {
 
 function diffsOf(content: readonly acp.ToolCallContent[] | null | undefined): acp.Diff[] {
 	return (content ?? []).flatMap(c => c.type === 'diff' ? [c] : []);
-}
-
-function stopReasonNotice(stopReason: acp.StopReason): string | undefined {
-	switch (stopReason) {
-		case 'end_turn': return undefined;
-		case 'cancelled': return vscode.l10n.t("Stopped.");
-		case 'max_tokens': return vscode.l10n.t("The response reached the token limit.");
-		case 'max_turn_requests': return vscode.l10n.t("The turn reached the request limit.");
-		case 'refusal': return vscode.l10n.t("The agent declined to continue.");
-		default: return vscode.l10n.t("The turn ended ({0}).", String(stopReason));
-	}
 }
 
 function escapeAttribute(value: string): string {

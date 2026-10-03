@@ -27,10 +27,10 @@ function readOrgDefaultProjectId(): string | undefined {
 
 const orgDefaultProjectId = readOrgDefaultProjectId();
 
-export interface ProjectSettings {
-	readonly resolved: ResolvedProjectId | undefined;
-	readonly problem: ProjectIdProblem | undefined;
-}
+/** The project ID in effect; a problem is only possible when there is one. */
+export type ProjectSettings =
+	| { readonly resolved: undefined; readonly problem: undefined }
+	| { readonly resolved: ResolvedProjectId; readonly problem: ProjectIdProblem | undefined };
 
 export function getProjectSettings(): ProjectSettings {
 	const inspected = vscode.workspace.getConfiguration(configSection).inspect<string>('projectId');
@@ -40,7 +40,7 @@ export function getProjectSettings(): ProjectSettings {
 		orgDefault: orgDefaultProjectId,
 		env: process.env,
 	});
-	return { resolved, problem: resolved && validateProjectId(resolved.projectId) };
+	return resolved ? { resolved, problem: validateProjectId(resolved.projectId) } : { resolved, problem: undefined };
 }
 
 export function getWorkspaceCwd(): string {
