@@ -505,6 +505,12 @@ suite('ExtensionEnablementService Test', () => {
 		assert.strictEqual(testObject.canChangeEnablement(aLocalExtension('pub.a', { localizations: [{ languageId: 'gr', translations: [{ id: 'vscode', path: 'path' }] }] })), false);
 	});
 
+	// GEMINI-FORK
+	test('test canChangeEnablement return false for the built-in Gemini extension', () => {
+		assert.strictEqual(testObject.canChangeEnablement(aLocalExtension('gemini-fork.gemini', undefined, ExtensionType.System)), false);
+		assert.strictEqual(testObject.canChangeEnablement(aLocalExtension('gemini-fork.gemini', undefined, ExtensionType.User)), true);
+	});
+
 	test('test canChangeEnablement return true for auth extension', () => {
 		assert.strictEqual(testObject.canChangeEnablement(aLocalExtension('pub.a', { authentication: [{ id: 'a', label: 'a' }] })), true);
 	});
