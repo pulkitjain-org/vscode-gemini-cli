@@ -232,10 +232,12 @@ export class AgentService implements vscode.Disposable {
 	/** Picks the CLI for each process start; the sidecar asks again on every restart. */
 	private resolveCli(): CliResolution {
 		const cli = this._cli = getCliResolution();
-		const where = cli.source === 'setting' ? `the ${configSection}.cliPath setting` : cli.source === 'managed' ? `GeminiCode's copy ${cli.version}` : 'PATH';
+		const where = cli.source === 'setting' ? `the ${configSection}.cliPath setting`
+			: cli.source === 'managed' ? `GeminiCode's copy ${cli.version}`
+				: cli.source === 'bundled' ? `the copy bundled with GeminiCode, ${cli.version}` : 'PATH';
 		this.log.info(`Using the Gemini CLI from ${where}${cli.cliPath ? ` (${cli.cliPath})` : ''}`);
 		if (cli.missingVersion) {
-			this.log.warn(`Gemini CLI ${cli.missingVersion} is set in ${configSection}.cli.version but not installed; using PATH`);
+			this.log.warn(`Gemini CLI ${cli.missingVersion} is set in ${configSection}.cli.version but not installed; using ${where}`);
 			if (cli.missingVersion !== this.offeredVersion) {
 				this.offeredVersion = cli.missingVersion;
 				void this.offerInstall(cli.missingVersion);

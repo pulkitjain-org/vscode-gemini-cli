@@ -472,7 +472,12 @@
     "compile": "gulp compile-extension:gemini",
     "watch": "gulp watch-extension:gemini",
     "typecheck-tests": "tsc -p tsconfig.test.json",
+    "bundle-cli": "node scripts/bundle-cli.mts",
     "test": "vitest run"
+  },
+  "bundledCli": {
+    "version": "0.62.0",
+    "integrity": "sha512-A1rw0Tf2sHLpGncfYdaq5WaJIufKAP8il4BmHD5Yw4ewmB/Wo0vRQb2bEvx7OqyaPFPZCh0hVhcMKsICZyIBww=="
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.6.0",

@@ -25,7 +25,7 @@ The product code is in [`../extensions/gemini/`](../extensions/gemini/).
 - **GeminiCode Dark and Light.** The default colour themes: a near-black (or soft grey) canvas with lighter cards and Gemini blue. GeminiCode also defaults to the view icons at the top of the side bar, pill-shaped tabs, and no minimap or breadcrumbs; change any of these in Settings.
 - **Modes and models.** Pick an approval mode and a model from the composer. The lists come from the agent.
 - **Conversations persist.** Agents keep their conversation across reloads and restarts, and resume their CLI session when the CLI supports it.
-- **Managed CLI.** GeminiCode can install, update and switch between Gemini CLI versions in its own storage, without touching your system.
+- **Managed CLI.** GeminiCode ships with a tested Gemini CLI, and can install, update and switch between newer versions in its own storage, without touching your system.
 - **Admin policy.** Organisations can lock the CLI version, remove Auto Edit or YOLO, and turn off shell commands.
 
 > [!IMPORTANT]
@@ -37,7 +37,7 @@ You need a Google account with a **Gemini Code Assist** license and a **Google C
 
 The **Get Started with GeminiCode** walkthrough opens on first launch, and again from **Gemini: Get Started**. It walks through four steps:
 
-1. **Gemini CLI.** GeminiCode uses `gemini.cliPath`, then its own copy, then `gemini` on your `PATH`. If none is found, run **Gemini: Install Latest Gemini CLI**.
+1. **Gemini CLI.** GeminiCode comes with a tested Gemini CLI, so there is nothing to install. It uses `gemini.cliPath`, then a copy you installed from GeminiCode, then the bundled copy, then `gemini` on your `PATH`.
 2. **Sign in.** Run **Gemini: Sign In with Google**. If your account needs a one-time step that the editor cannot show, run **Gemini: Complete Setup in Terminal**.
 3. **Project.** Run **Gemini: Set Google Cloud Project ID**. Enter the project ID, not the project number.
 4. **First agent.** Choose **New Agent** in the Agents pane.
@@ -49,7 +49,7 @@ The **Gemini** status bar item shows the agent's state. Hover over it to see the
 | Setting | What it does |
 | --- | --- |
 | `gemini.projectId` | Google Cloud project ID to bill. A workspace value overrides a user value. |
-| `gemini.cliPath` | Path to a `gemini` executable or `bundle/gemini.js`. Overrides GeminiCode's own copy. |
+| `gemini.cliPath` | Path to a `gemini` executable or `bundle/gemini.js`. Overrides GeminiCode's own copies. |
 | `gemini.cli.version` | Which of GeminiCode's own CLI copies to run. Empty means the newest. |
 | `gemini.cli.checkForUpdates` | Offer newer CLI releases, at most once a day. |
 | `gemini.approval.allowAutoEdit` | Offer the Auto Edit mode. |
@@ -75,6 +75,8 @@ npm ci
 npm run watch            # keep running; rebuilds the workbench, extensions and the chat webview
 ./scripts/code.sh        # launches the branded dev build
 ```
+
+To run the dev build on the bundled CLI, as a release does, run `npm run bundle-cli --prefix extensions/gemini` once. Without it the dev build uses an installed copy or `gemini` on your `PATH`.
 
 The Gemini extension on its own:
 

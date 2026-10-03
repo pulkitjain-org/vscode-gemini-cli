@@ -24,6 +24,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	initModelPreference(context.globalState);
 	setStorageDirs({
 		managedCli: vscode.Uri.joinPath(context.globalStorageUri, 'gemini-cli').fsPath,
+		bundledCli: vscode.Uri.joinPath(context.extensionUri, 'cli').fsPath,
 		adminPolicy: vscode.Uri.joinPath(context.globalStorageUri, 'policy').fsPath,
 	});
 	const service = new AgentService(log);

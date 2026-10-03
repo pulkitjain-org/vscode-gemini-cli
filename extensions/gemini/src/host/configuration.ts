@@ -48,11 +48,13 @@ export function getWorkspaceCwd(): string {
 }
 
 let managedCliDir: string | undefined;
+let bundledCliDir: string | undefined;
 let adminPolicyDir: string | undefined;
 
-/** Where GeminiCode keeps its own CLI copies and the policy file it passes to the CLI; set once on activation. */
-export function setStorageDirs(dirs: { readonly managedCli: string; readonly adminPolicy: string }): void {
+/** Where GeminiCode keeps its own CLI copies, the copy shipped with the app, and the policy file it passes to the CLI; set once on activation. */
+export function setStorageDirs(dirs: { readonly managedCli: string; readonly bundledCli: string; readonly adminPolicy: string }): void {
 	managedCliDir = dirs.managedCli;
+	bundledCliDir = dirs.bundledCli;
 	adminPolicyDir = dirs.adminPolicy;
 }
 
@@ -80,6 +82,7 @@ export function getCliResolution(): CliResolution {
 		cliPath: config.get<string>('cliPath'),
 		version: config.get<string>('cli.version'),
 		managedDir: managedCliDir ?? '',
+		bundledDir: bundledCliDir,
 	});
 }
 
