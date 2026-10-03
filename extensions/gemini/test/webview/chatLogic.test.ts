@@ -200,7 +200,7 @@ describe('icons', () => {
 		expect(toolKindIcon('other')).toBe('tools');
 		expect(toolKindIcon(undefined)).toBe('tools');
 		expect(planIcon('completed')).toBe('pass-filled');
-		expect(planIcon('in_progress')).toBe('circle-large-filled');
+		expect(planIcon('in_progress')).toBe('loading');
 		expect(planIcon('pending')).toBe('circle-large-outline');
 	});
 });

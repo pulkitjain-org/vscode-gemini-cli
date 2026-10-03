@@ -232,7 +232,8 @@
           "type": "webview",
           "id": "gemini.chat",
           "name": "%view.chat%",
-          "initialSize": 3
+          "initialSize": 3,
+          "visibility": "collapsed"
         }
       ]
     },

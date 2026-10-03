@@ -512,7 +512,17 @@ kbd {
 
 .plan-completed {
 	color: var(--gemini-muted);
+}
+
+/* Only the step's text is struck through, not its check. */
+.plan-completed span {
 	text-decoration: line-through;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.plan .codicon-modifier-spin {
+		animation: none;
+	}
 }
 
 .plan-completed .codicon {

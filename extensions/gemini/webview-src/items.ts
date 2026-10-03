@@ -185,7 +185,7 @@ function renderPlan(item: ItemOf<'plan'>): HTMLElement {
 	const list = el('ul');
 	for (const entry of item.entries) {
 		const li = el('li', `plan-${entry.status}`);
-		li.append(icon(planIcon(entry.status)), el('span', undefined, entry.content));
+		li.append(icon(planIcon(entry.status), entry.status === 'in_progress' ? 'codicon-modifier-spin' : ''), el('span', undefined, entry.content));
 		list.append(li);
 	}
 	plan.append(list);

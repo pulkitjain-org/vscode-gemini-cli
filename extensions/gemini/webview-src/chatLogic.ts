@@ -149,7 +149,7 @@ export function toolKindIcon(kind: string | undefined): string {
 
 /** The codicon for a plan entry. */
 export function planIcon(status: ItemOf<'plan'>['entries'][number]['status']): string {
-	return status === 'completed' ? 'pass-filled' : status === 'in_progress' ? 'circle-large-filled' : 'circle-large-outline';
+	return status === 'completed' ? 'pass-filled' : status === 'in_progress' ? 'loading' : 'circle-large-outline';
 }
 
 type PermissionOption = ItemOf<'permission'>['options'][number];
