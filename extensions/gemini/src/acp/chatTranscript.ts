@@ -100,7 +100,7 @@ export class ChatTranscript {
 				attachments: attachments.map(a => ({
 					kind: a.kind,
 					label: attachmentLabel(a),
-					...(a.kind === 'image' ? {} : { path: a.path }),
+					...(a.kind === 'image' || a.path === undefined ? {} : { path: a.path }),
 					...(a.kind === 'selection' ? { line: a.startLine } : {}),
 				})),
 			} : {}),

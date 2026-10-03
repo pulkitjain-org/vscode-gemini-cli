@@ -24,6 +24,19 @@ describe('buildPromptContent', () => {
 		]);
 	});
 
+	it('embeds documents: text as text, PDFs as blobs, named by path when they have one', () => {
+		const text = { kind: 'document', name: 'notes.md', path: '/home/me/notes.md', mimeType: 'text/plain', text: '# Notes' } as const;
+		const pdf = { kind: 'document', name: 'spec.pdf', mimeType: 'application/pdf', data: 'JVBERi0=' } as const;
+		expect(buildPromptContent('read', [text, pdf], all).slice(1)).toEqual([
+			{ type: 'resource', resource: { uri: 'file:///home/me/notes.md', text: '# Notes', mimeType: 'text/plain' } },
+			{ type: 'resource', resource: { uri: 'spec.pdf', blob: 'JVBERi0=', mimeType: 'application/pdf' } },
+		]);
+		// Without embedded context, text still gets through and a PDF cannot.
+		expect(buildPromptContent('read', [text, pdf], none).slice(1)).toEqual([
+			{ type: 'text', text: 'notes.md (/home/me/notes.md):\n```\n# Notes\n```' },
+		]);
+	});
+
 	it('embeds selections when the agent allows it, and inlines them as text otherwise', () => {
 		expect(buildPromptContent('fix', [selection], all)[1]).toEqual({
 			type: 'resource', resource: { uri: 'file:///w/src/app.ts#L10-L12', text: 'const a = 1;', mimeType: 'text/plain' },

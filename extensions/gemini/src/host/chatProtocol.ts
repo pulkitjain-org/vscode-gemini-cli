@@ -16,7 +16,7 @@ import type { AgentPhase } from '../acp/status';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 7;
+export const chatProtocolVersion = 8;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -56,6 +56,9 @@ export interface ChatStrings {
 	readonly remove: string;
 	/** `{0}` is the image's file name. */
 	readonly imageTooLarge: string;
+	readonly attachFiles: string;
+	readonly dropFiles: string;
+	readonly cannotAttach: string;
 	/** `{0}` is the chosen option's name. */
 	readonly permissionAnswered: string;
 	readonly permissionCancelled: string;
@@ -91,6 +94,10 @@ export type FromWebview =
 	| { readonly type: 'openDiff'; readonly itemId: string; readonly path: string }
 	| { readonly type: 'openLocation'; readonly path: string; readonly line?: number }
 	| { readonly type: 'pickBranch' }
+	/** The attach button: pick files from anywhere to attach. */
+	| { readonly type: 'pickFiles' }
+	/** Files dropped with paths (file: URIs), such as from the Explorer. */
+	| { readonly type: 'attachUris'; readonly uris: readonly string[] }
 	/** The user dragged the input to `height` pixels, or reset it (0). */
 	| { readonly type: 'composerHeight'; readonly height: number }
 	| { readonly type: 'createBranchAndCommit' };

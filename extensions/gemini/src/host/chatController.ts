@@ -7,7 +7,7 @@ import { randomBytes } from 'node:crypto';
 import * as path from 'node:path';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
-import { Attachment, maxImageBase64Length, supportedImageTypes } from '../acp/attachments';
+import { Attachment, inlineType, maxDocumentTextBytes, maxImageBase64Length, supportedImageTypes } from '../acp/attachments';
 import { ChatTranscript, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
 import { PendingPermission, PermissionBroker } from '../acp/permissions';
 import { buildPromptContent } from '../acp/promptContent';
@@ -19,6 +19,7 @@ import { AgentError } from '../acp/errors';
 import { readGitHead } from '../acp/gitHead';
 import { ChatStrings, chatProtocolVersion, FromWebview, statusCommands, ToWebview, ViewStatus } from './chatProtocol';
 import { DiffPreview } from './diffPreview';
+import { attachmentsForFiles } from './addToChat';
 import { createBranchAndCommit, pickBranch } from './gitActions';
 import { preferredComposerHeight, rememberComposerHeight, rememberModel } from './modelPreference';
 import type { FileMatch } from './workspaceFiles';
@@ -266,6 +267,20 @@ export class ChatController implements vscode.Disposable {
 		await this.options.reveal(true);
 	}
 
+	/** Lets the user pick files from anywhere to attach. */
+	private async pickFiles(): Promise<void> {
+		const uris = await vscode.window.showOpenDialog({
+			canSelectMany: true,
+			canSelectFiles: true,
+			canSelectFolders: false,
+			openLabel: vscode.l10n.t("Attach"),
+			title: vscode.l10n.t("Attach Files to Chat"),
+		});
+		if (uris?.length) {
+			await this.addAttachments(await attachmentsForFiles(uris));
+		}
+	}
+
 	/** Shows an information line in the conversation. */
 	addNotice(text: string): void {
 		this.transcript.addNotice(text);
@@ -322,6 +337,14 @@ export class ChatController implements vscode.Disposable {
 			case 'composerHeight':
 				rememberComposerHeight(message.height);
 				break;
+			case 'pickFiles':
+				void this.pickFiles();
+				break;
+			case 'attachUris': {
+				const uris = message.uris.map(uri => vscode.Uri.parse(uri)).filter(uri => uri.scheme === 'file');
+				void attachmentsForFiles(uris).then(attachments => this.addAttachments(attachments));
+				break;
+			}
 			case 'searchFiles':
 				void this.fileIndex.search(message.query, 30).then(
 					files => this.post({ type: 'files', requestId: message.requestId, files }),
@@ -521,6 +544,9 @@ export class ChatController implements vscode.Disposable {
 			noFiles: vscode.l10n.t("No matching files"),
 			remove: vscode.l10n.t("Remove"),
 			imageTooLarge: vscode.l10n.t("{0} is too large to send."),
+			attachFiles: vscode.l10n.t("Attach files. You can also drop files here; hold Shift when dragging from the Explorer."),
+			dropFiles: vscode.l10n.t("Drop files to attach"),
+			cannotAttach: vscode.l10n.t("{0} can't be attached: only text files, images and PDFs can be dropped here. Use the attach button to add other files."),
 		};
 		return `<!DOCTYPE html>
 <html lang="en">
@@ -537,10 +563,12 @@ export class ChatController implements vscode.Disposable {
 	<div id="status" class="status" role="status"></div>
 	<form id="composer" class="composer">
 		<div id="resize" class="composer-resize"></div>
+		<div class="drop-overlay" aria-hidden="true"><i class="codicon codicon-cloud-upload"></i><span id="drop-label"></span></div>
 		<div id="picker" class="picker" role="listbox" hidden></div>
 		<div id="attachments" class="attachments" hidden></div>
 		<textarea id="input" rows="1"></textarea>
 		<div class="composer-bar">
+			<button type="button" id="attach" class="icon-button"><svg class="paperclip" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 3.5 4.9 9.1a1.8 1.8 0 0 0 2.5 2.5l6-6a3 3 0 0 0-4.2-4.2L3.1 7.5a4.2 4.2 0 0 0 6 6l4.4-4.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
 			<button type="button" id="mention" class="icon-button"><i class="codicon codicon-mention" aria-hidden="true"></i></button>
 			<span class="pill-wrap" hidden><select id="mode" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
 			<span class="pill-wrap" hidden><select id="model" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
@@ -582,6 +610,12 @@ function isValidAttachment(attachment: Attachment): boolean {
 		case 'file': return typeof attachment.path === 'string' && path.isAbsolute(attachment.path);
 		case 'selection': return typeof attachment.path === 'string' && path.isAbsolute(attachment.path) && typeof attachment.text === 'string';
 		case 'image': return supportedImageTypes.has(attachment.mimeType) && typeof attachment.data === 'string' && attachment.data.length <= maxImageBase64Length;
+		case 'document':
+			return typeof attachment.name === 'string' && typeof attachment.mimeType === 'string'
+				&& (attachment.path === undefined || (typeof attachment.path === 'string' && path.isAbsolute(attachment.path)))
+				&& (typeof attachment.text === 'string'
+					? attachment.text.length <= maxDocumentTextBytes
+					: typeof attachment.data === 'string' && attachment.data.length <= maxImageBase64Length && inlineType(attachment.name, attachment.mimeType) === attachment.mimeType);
 		default: return false;
 	}
 }
