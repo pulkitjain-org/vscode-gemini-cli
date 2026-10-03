@@ -34,7 +34,8 @@ export class DiffPreview implements vscode.TextDocumentContentProvider, vscode.D
 		return this.contents.get(uri.toString()) ?? '';
 	}
 
-	async show(change: ProposedChange, options: { preserveFocus?: boolean } = {}): Promise<void> {
+	/** `viewColumn` unset opens the diff in the active editor group. */
+	async show(change: ProposedChange, options: { preserveFocus?: boolean; viewColumn?: vscode.ViewColumn } = {}): Promise<void> {
 		const id = this.nextId++;
 		const name = path.basename(change.path);
 		// The file name stays last so the editor picks the right language.
@@ -43,7 +44,7 @@ export class DiffPreview implements vscode.TextDocumentContentProvider, vscode.D
 		this.set(left, change.oldText ?? '');
 		this.set(right, change.newText);
 		const title = typeof change.oldText === 'string' ? vscode.l10n.t("{0} (proposed by Gemini)", name) : vscode.l10n.t("{0} (new file proposed by Gemini)", name);
-		await vscode.commands.executeCommand('vscode.diff', left, right, title, { preview: true, preserveFocus: options.preserveFocus });
+		await vscode.commands.executeCommand('vscode.diff', left, right, title, { preview: true, preserveFocus: options.preserveFocus, viewColumn: options.viewColumn });
 	}
 
 	dispose(): void {

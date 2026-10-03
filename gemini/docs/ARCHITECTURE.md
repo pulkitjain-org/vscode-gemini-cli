@@ -31,7 +31,7 @@ Upstream files are touched only where a fork must register itself or rebrand. Ea
 - `product.json` (names, icons, links, Open VSX gallery, CLI policies);
 - the build lists that register the extension (`build/npm/dirs.ts`, `build/gulpfile.extensions.ts`, `build/lib/extensions.ts`, `build/filters.ts`, `build/hygiene.ts`, `.eslint-ignore`, `eslint.config.js`);
 - branding: packaging metadata (`build/lib/electron.ts`, `build/lib/preLaunch.ts`, `build/win32/code.iss`, `resources/`), and the workbench icons (`code-icon.svg`, `letterpress-*.svg`);
-- three workbench edits: Chat commands hidden from the Command Palette while upstream AI is off (`commandsQuickAccess.ts`), the Gemini extension cannot be disabled (`extensionEnablementService.ts`), and the product name in the welcome walkthrough (`gettingStartedContent.ts`).
+- four workbench edits: Chat commands hidden from the Command Palette while upstream AI is off (`commandsQuickAccess.ts`), the Gemini extension cannot be disabled (`extensionEnablementService.ts`), the product name in the welcome walkthrough (`gettingStartedContent.ts`), and the default colour themes (`ThemeSettingDefaults` in `services/themes/common/workbenchThemeService.ts`, with a fallback to upstream's Dark/Light 2026 in `services/themes/browser/workbenchThemeService.ts` if the GeminiCode themes are ever missing). `product.json` lists the GeminiCode themes in `onboardingThemes` too.
 
 ## How a prompt flows
 
@@ -51,11 +51,16 @@ Chat webview ──postMessage──▶ ChatController ──▶ AgentClient ─
 ## The agent workspace
 
 - **Agents pane.** A tree of workspaces (the open folder plus any you add) with agents under each. Each row shows the agent's status, its git branch and its `+N −M` change count.
-- **Agent tabs.** Each agent opens as an editor tab that reuses the chat webview. The sidebar's **Quick Chat** is a separate session for the open folder.
-- **Changes view.** This view sits in the secondary sidebar and lists the files the agent in front has edited. Each file opens a diff against its text from before the agent's first edit, and **Open All Changes** shows them in the multi-diff editor. **Create Branch & Commit** commits only that agent's files.
+- **Agent tabs.** Each agent opens as an editor tab that reuses the chat webview, and is the main editor. Files, proposed edits and diffs that the agent's chat or its Changes open go in the editor group after the agent's tab (the one to its right, added once if there is none), so the chat stays in view and the same group is reused (`editorPlacement.ts`). The sidebar's **Quick Chat** is a separate session for the open folder and opens files in the active group, as before.
+- **Changes view.** This view sits below the Agents pane in the Gemini side bar and lists the files the agent in front has edited. Each file opens a diff against its text from before the agent's first edit, and **Open All Changes** shows them in the multi-diff editor. **Create Branch & Commit** commits only that agent's files.
+- **First open.** The first time a workspace opens, `layoutDefaults.ts` reveals the Gemini side bar (the workbench would otherwise open on the Explorer). After that the workbench restores whatever the user arranged.
 - **Persistence.** Each agent's visible conversation (the last 300 items) and changed files are saved in the extension's global storage. On reopen, or after the process restarts, GeminiCode resumes the session with `session/load` when the CLI supports it. Otherwise it starts a fresh session and says so in the chat.
 
 GeminiCode builds this pane on public extension APIs rather than upstream's Agents window (`src/vs/sessions`). That window only takes agents registered in core code, and it is the fastest-moving part of upstream. The domain names (workspace, agent session) follow upstream's, so the views can move onto it if it gains an extension API.
+
+### Look
+
+The extension contributes the **GeminiCode Dark** and **GeminiCode Light** colour themes (`extensions/gemini/themes/`), which are complete themes with their own token colours, so they need no other theme. The `ThemeSettingDefaults` edit above makes them the defaults directly; a `configurationDefaults` entry would let upstream's default theme show first. High contrast defaults stay upstream's. The extension's `configurationDefaults` also set the view icons at the top of the side bar, the secondary side bar hidden by default, pill editor tabs, no startup editor or empty-editor hint, no breadcrumbs or minimap, and a slightly roomier editor; users can change each one. The layout uses only native views and editor groups, so every part stays resizable. The chat webview's `media/chat.css` uses theme variables (plus the Gemini gradient on Send), so it follows any theme; high contrast themes keep their own colours and borders.
 
 ## Gemini CLI management
 

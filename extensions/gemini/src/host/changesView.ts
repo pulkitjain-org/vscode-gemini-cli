@@ -6,6 +6,7 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AgentChanges, EditedFile, formatCounts } from '../acp/agentChanges';
+import { focusColumn } from './editorPlacement';
 
 const changesViewId = 'gemini.agentChanges';
 /** Read-only documents holding a file's text from before an agent's first edit. */
@@ -17,13 +18,15 @@ export interface ChangesSource {
 	readonly title: string;
 	readonly folder: string;
 	readonly changes: AgentChanges;
+	/** Where the agent's files and diffs open: beside its tab, so its chat stays in view. */
+	editorColumn(): vscode.ViewColumn;
 }
 
 /**
  * The Changes view: the files the agent in front edited, each opening a diff
  * from before the agent's first edit to the file on disk, and all of them
- * together in the multi-diff editor. A native view in the secondary sidebar, so
- * it resizes like any other.
+ * together in the multi-diff editor. A native view below the Agents pane, so it
+ * resizes like any other. Files and diffs open beside the agent's tab.
  */
 export class ChangesView implements vscode.TreeDataProvider<EditedFile>, vscode.TextDocumentContentProvider, vscode.Disposable {
 
@@ -71,6 +74,8 @@ export class ChangesView implements vscode.TreeDataProvider<EditedFile>, vscode.
 			const uri = vscode.Uri.file(file.path);
 			return [uri, file.created || file.original === undefined ? undefined : this.originalUri(source.agentId, file), uri];
 		});
+		// The multi-diff editor opens in the active group only.
+		await focusColumn(source.editorColumn());
 		await vscode.commands.executeCommand('vscode.changes', vscode.l10n.t("Changes by {0}", source.title), resources);
 	}
 
@@ -107,13 +112,14 @@ export class ChangesView implements vscode.TreeDataProvider<EditedFile>, vscode.
 	private async openFile(file: EditedFile): Promise<void> {
 		const uri = vscode.Uri.file(file.path);
 		const source = this.source;
+		const viewColumn = source?.editorColumn();
 		if (!source || file.original === undefined) {
-			await vscode.commands.executeCommand('vscode.open', uri);
+			await vscode.commands.executeCommand('vscode.open', uri, { viewColumn });
 			return;
 		}
 		const name = path.basename(file.path);
 		const title = file.created ? vscode.l10n.t("{0} (new, by {1})", name, source.title) : vscode.l10n.t("{0} (changes by {1})", name, source.title);
-		await vscode.commands.executeCommand('vscode.diff', this.originalUri(source.agentId, file), uri, title, { preview: true });
+		await vscode.commands.executeCommand('vscode.diff', this.originalUri(source.agentId, file), uri, title, { preview: true, viewColumn });
 	}
 
 	private originalUri(agentId: string, file: EditedFile): vscode.Uri {

@@ -214,13 +214,6 @@
           "title": "%viewContainer.title%",
           "icon": "media/gemini.svg"
         }
-      ],
-      "secondarySidebar": [
-        {
-          "id": "gemini-changes",
-          "title": "%viewContainer.changes%",
-          "icon": "$(diff-multiple)"
-        }
       ]
     },
     "views": {
@@ -231,16 +224,15 @@
           "initialSize": 2
         },
         {
+          "id": "gemini.agentChanges",
+          "name": "%view.agentChanges%",
+          "initialSize": 1
+        },
+        {
           "type": "webview",
           "id": "gemini.chat",
           "name": "%view.chat%",
           "initialSize": 3
-        }
-      ],
-      "gemini-changes": [
-        {
-          "id": "gemini.agentChanges",
-          "name": "%view.agentChanges%"
         }
       ]
     },
