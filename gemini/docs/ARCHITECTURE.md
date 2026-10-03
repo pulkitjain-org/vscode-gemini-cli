@@ -30,7 +30,7 @@ Upstream files are touched only where a fork must register itself or rebrand. Ea
 
 - `product.json` (names, icons, links, Open VSX gallery, CLI policies);
 - the build lists that register the extension (`build/npm/dirs.ts`, `build/gulpfile.extensions.ts`, `build/lib/extensions.ts`, `build/filters.ts`, `build/hygiene.ts`, `.eslint-ignore`, `eslint.config.js`);
-- branding: packaging metadata (`build/lib/electron.ts`, `build/lib/preLaunch.ts`, `build/win32/code.iss`, `resources/`), and the workbench icons (`code-icon.svg`, `letterpress-*.svg`);
+- branding: packaging metadata (`build/lib/electron.ts`, `build/lib/preLaunch.ts`, `build/win32/code.iss`, `resources/`), the `.dmg` volume name (`build/darwin/create-dmg.ts`), GeminiCode's version in the About dialog (`platform/dialogs/electron-browser/dialog.ts`), and the workbench icons (`code-icon.svg`, `letterpress-*.svg`);
 - four workbench edits: Chat commands hidden from the Command Palette while upstream AI is off (`commandsQuickAccess.ts`), the Gemini extension cannot be disabled (`extensionEnablementService.ts`), the product name in the welcome walkthrough (`gettingStartedContent.ts`), and the default colour themes (`ThemeSettingDefaults` in `services/themes/common/workbenchThemeService.ts`, with a fallback to upstream's Dark/Light 2026 in `services/themes/browser/workbenchThemeService.ts` if the GeminiCode themes are ever missing). `product.json` lists the GeminiCode themes in `onboardingThemes` too.
 
 ## How a prompt flows

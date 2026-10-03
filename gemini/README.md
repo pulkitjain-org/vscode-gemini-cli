@@ -7,9 +7,11 @@ The repository's top-level README, SECURITY and AGENTS files point here. CONTRIB
 - [docs/USING.md](docs/USING.md): approval modes, folder trust, attachments, long conversations and troubleshooting.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how GeminiCode works and why, including the security model and admin policies.
 - [docs/FINDINGS.md](docs/FINDINGS.md): Gemini CLI behaviour and measurements the design relies on.
+- [docs/RELEASING.md](docs/RELEASING.md): versions, cutting a release, and the Apple signing setup.
 - [docs/ROADMAP.md](docs/ROADMAP.md): open work and risks.
 - [branding/](branding/): icon sources.
 - [scripts/list-fork-touches.sh](scripts/list-fork-touches.sh): lists every upstream file the fork changes.
+- [scripts/notarize.sh](scripts/notarize.sh): sends a signed build to Apple's notary service, for the release workflow.
 
 The product code is in [`../extensions/gemini/`](../extensions/gemini/).
 
@@ -99,7 +101,7 @@ If the chat view warns that its script is out of date, the webview bundle in `me
 - It builds and type-checks the extension and webview, then runs the unit tests and real-CLI tests against the `latest` and `preview` CLI.
 - It compiles the whole fork and runs upstream's hygiene check.
 
-It does not produce packaged builds yet.
+Packaged builds come from [`gemini-release.yml`](../.github/workflows/gemini-release.yml), which a version tag starts; see [RELEASING.md](docs/RELEASING.md).
 
 ## Touching upstream files
 

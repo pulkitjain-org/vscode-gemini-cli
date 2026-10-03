@@ -21,6 +21,11 @@ export function createNativeAboutDialogDetails(productService: IProductService, 
 	} else if (productService.darwinUniversalAssetId) {
 		version = `${version} (Universal)`;
 	}
+	// GEMINI-FORK: a release build stamps GeminiCode's own version into product.json; show it first.
+	const geminiCodeVersion = (productService as { readonly geminiCodeVersion?: string }).geminiCodeVersion;
+	if (geminiCodeVersion) {
+		version = `${geminiCodeVersion} (Code - OSS ${version})`;
+	}
 
 	const copilotRuntimeVersion = formatCopilotVersion(productService.copilotVersions?.runtime);
 	const copilotSdkVersion = formatCopilotVersion(productService.copilotVersions?.sdk);
