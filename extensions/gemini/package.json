@@ -26,6 +26,11 @@
   "contributes": {
     "commands": [
       {
+        "command": "gemini.appearance",
+        "title": "%command.appearance%",
+        "category": "%category%"
+      },
+      {
         "command": "gemini.openChat",
         "title": "%command.openChat%",
         "category": "%category%"
@@ -188,6 +193,13 @@
             "description": "%walkthrough.project.description%",
             "media": { "markdown": "walkthrough/project.md" },
             "completionEvents": ["onContext:gemini.setup.projectReady"]
+          },
+          {
+            "id": "look",
+            "title": "%walkthrough.look.title%",
+            "description": "%walkthrough.look.description%",
+            "media": { "markdown": "walkthrough/look.md" },
+            "completionEvents": ["onCommand:gemini.appearance"]
           },
           {
             "id": "agent",
@@ -431,6 +443,14 @@
           "scope": "window",
           "markdownDescription": "%configuration.projectId%"
         },
+        "gemini.appearance.accent": {
+          "type": "string",
+          "default": "theme",
+          "enum": ["theme", "blue", "violet", "rose", "teal", "amber", "gradient"],
+          "enumItemLabels": ["%configuration.appearance.accent.theme%", "%configuration.appearance.accent.blue%", "%configuration.appearance.accent.violet%", "%configuration.appearance.accent.rose%", "%configuration.appearance.accent.teal%", "%configuration.appearance.accent.amber%", "%configuration.appearance.accent.gradient%"],
+          "scope": "application",
+          "markdownDescription": "%configuration.appearance.accent%"
+        },
         "gemini.notifications.enabled": {
           "type": "boolean",
           "default": true,
@@ -457,7 +477,9 @@
       "editor.lineHeight": 20,
       "editor.padding.top": 10,
       "editor.renderLineHighlight": "gutter",
-      "editor.overviewRulerBorder": false
+      "editor.overviewRulerBorder": false,
+      "editor.fontFamily": "'JetBrains Mono', Menlo, Monaco, 'Courier New', monospace",
+      "workbench.iconTheme": "geminicode-icons"
     },
     "themes": [
       {
@@ -471,6 +493,25 @@
         "label": "%theme.light%",
         "uiTheme": "vs",
         "path": "./themes/geminicode-light.json"
+      },
+      {
+        "id": "GeminiCode Midnight",
+        "label": "%theme.midnight%",
+        "uiTheme": "vs-dark",
+        "path": "./themes/geminicode-midnight.json"
+      },
+      {
+        "id": "GeminiCode Dusk",
+        "label": "%theme.dusk%",
+        "uiTheme": "vs-dark",
+        "path": "./themes/geminicode-dusk.json"
+      }
+    ],
+    "iconThemes": [
+      {
+        "id": "geminicode-icons",
+        "label": "%iconTheme.label%",
+        "path": "./icons/geminicode-icon-theme.json"
       }
     ],
     "viewsWelcome": [

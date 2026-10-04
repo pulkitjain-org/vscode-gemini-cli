@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import { validateProjectId } from './acp/projectId';
 import { filesToAttach, selectionsToAttach } from './host/addToChat';
 import { AppUpdateNotice } from './host/appUpdateNotice';
+import { Appearance } from './host/appearance';
 import { AgentService } from './host/agentService';
 import { AgentsView } from './host/agentsView';
 import { applyLayoutDefaults } from './host/layoutDefaults';
@@ -49,6 +50,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		chatView,
 		agentsView,
 		walkthrough,
+		new Appearance(context.extensionUri),
 		new GeminiStatusBar(service),
 		new CliManager(service, context.globalState, log),
 		new AppUpdateNotice(context.globalState, log),

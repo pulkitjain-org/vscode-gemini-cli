@@ -3,14 +3,60 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// GEMINI-FORK: the extension API has no OS notifications or Dock badge, so the
-// Gemini extension reaches them through these two internal commands.
+// GEMINI-FORK: what the Gemini extension needs from the workbench that the
+// extension API does not offer: OS notifications, the Dock badge, and the
+// code fonts that ship with GeminiCode.
 
+import './geminiFonts.css';
 import { mainWindow } from '../../../../base/browser/window.js';
 import { CancellationTokenSource } from '../../../../base/common/cancellation.js';
+import { Disposable } from '../../../../base/common/lifecycle.js';
+import { FontMeasurements } from '../../../../editor/browser/config/fontMeasurements.js';
 import { CommandsRegistry } from '../../../../platform/commands/common/commands.js';
+import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { FocusMode, INativeHostService } from '../../../../platform/native/common/native.js';
+import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
 import { IHostService } from '../../../services/host/browser/host.js';
+
+/** The code fonts in geminiFonts.css. */
+const bundledFonts = ['JetBrains Mono', 'Geist Mono'];
+
+/**
+ * Loads a bundled code font as soon as the editor font names it. Editors
+ * measure their font when they open; a font still loading would be measured
+ * as its fallback, so the measurements are taken again once it has loaded.
+ */
+class GeminiCodeFonts extends Disposable implements IWorkbenchContribution {
+
+	static readonly ID = 'workbench.contrib.geminiCodeFonts';
+
+	constructor(@IConfigurationService private readonly configurationService: IConfigurationService) {
+		super();
+		this.load();
+		this._register(configurationService.onDidChangeConfiguration(e => {
+			if (e.affectsConfiguration('editor.fontFamily') || e.affectsConfiguration('terminal.integrated.fontFamily')) {
+				this.load();
+			}
+		}));
+	}
+
+	private load(): void {
+		const families = `${this.configurationService.getValue('editor.fontFamily')} ${this.configurationService.getValue('terminal.integrated.fontFamily')}`;
+		const fonts = bundledFonts.filter(name => families.includes(name)).flatMap(name => [`400 13px '${name}'`, `700 13px '${name}'`]);
+		if (!fonts.length) {
+			return;
+		}
+		// `document.fonts.check` answers true for faces that have not loaded, so compare statuses instead.
+		const loaded = new Set([...mainWindow.document.fonts].filter(face => face.status === 'loaded'));
+		Promise.all(fonts.map(font => mainWindow.document.fonts.load(font))).then(faces => {
+			if (faces.flat().some(face => !loaded.has(face))) {
+				FontMeasurements.clearAllFontInfos();
+			}
+		}, () => undefined);
+	}
+}
+
+registerWorkbenchContribution2(GeminiCodeFonts.ID, GeminiCodeFonts, WorkbenchPhase.BlockStartup);
 
 interface GeminiToast {
 	readonly title: string;

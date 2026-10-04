@@ -17,7 +17,7 @@ import type { AgentPhase } from '../acp/status';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 10;
+export const chatProtocolVersion = 11;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -132,4 +132,6 @@ export type ToWebview =
 	| { readonly type: 'commands'; readonly commands: readonly SlashCommand[] }
 	/** Context to add to the composer, from the Add to Chat commands. */
 	| { readonly type: 'attach'; readonly attachments: readonly Attachment[] }
-	| { readonly type: 'git'; readonly git: ViewGit };
+	| { readonly type: 'git'; readonly git: ViewGit }
+	/** Whether Send shows the accent colour (true) or the Gemini gradient. */
+	| { readonly type: 'accent'; readonly solid: boolean };
