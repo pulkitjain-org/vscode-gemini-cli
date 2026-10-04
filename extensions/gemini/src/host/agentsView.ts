@@ -7,16 +7,19 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AgentChanges, formatCounts } from '../acp/agentChanges';
+import { attentionChange, waitingCount } from '../acp/attention';
 import { branchNameFrom } from '../acp/branchNames';
 import { AgentRecord, AgentsModel, AgentsSnapshot, WorkspaceRecord } from '../acp/agents';
 import { FolderFileIndex } from '../acp/folderFiles';
 import { readGitHead } from '../acp/gitHead';
 import { memoizeAsync } from '../acp/memoize';
 import { TranscriptStore } from '../acp/transcriptStore';
+import { AgentNotifier } from './agentNotifier';
 import { AgentService } from './agentService';
 import { AgentSession } from './agentSession';
 import { ChangesSource, ChangesView } from './changesView';
 import { ChatActivity, ChatController, FileSearch } from './chatController';
+import { configSection } from './configuration';
 import { DiffPreview } from './diffPreview';
 import { besideAgent } from './editorPlacement';
 import { escapeMarkdown } from './markdown';
@@ -77,6 +80,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	private focusedId: string | undefined;
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly tree: vscode.TreeView<Node>;
+	private readonly notifier = new AgentNotifier();
 	private refreshTimer: ReturnType<typeof setInterval> | undefined;
 	/** Branch names are read from `.git/HEAD`; kept for a few seconds so a refresh reads each folder once. */
 	private readonly branchOf = memoizeAsync(readGitHead, { ttlMs: 5_000, maxEntries: 100 });
@@ -96,6 +100,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		this.changesView = new ChangesView(id => this.live.get(id)?.changes);
 		this.disposables.push(
 			this.tree,
+			this.notifier,
 			this.changesView,
 			this.onDidChangeTreeDataEmitter,
 			this.model.onDidChange(() => {
@@ -103,6 +108,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				this.refresh();
 			}),
 			vscode.workspace.onDidChangeWorkspaceFolders(() => this.refresh()),
+			vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.notifications`) && this.refresh()),
 			// Relative times go stale; refresh them only while the pane is visible.
 			this.tree.onDidChangeVisibility(e => this.setRefreshing(e.visible)),
 			vscode.commands.registerCommand('gemini.agents.newAgent', (node?: Node) => this.newAgent(node)),
@@ -201,6 +207,17 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 
 	private refresh(): void {
 		this.onDidChangeTreeDataEmitter.fire(undefined);
+		this.updateBadge();
+	}
+
+	/** The number of agents waiting on the user, on the pane's icon and the Dock. */
+	private updateBadge(): void {
+		const count = waitingCount(this.live.values());
+		const tooltip = count === 1 ? vscode.l10n.t("1 agent is waiting for you") : vscode.l10n.t("{0} agents are waiting for you", count);
+		if (this.tree.badge?.value !== count) {
+			this.tree.badge = count ? { value: count, tooltip } : undefined;
+		}
+		this.notifier.setWaiting(count);
 	}
 
 	private setRefreshing(visible: boolean): void {
@@ -282,6 +299,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			}
 		}
 		live.unread = false;
+		this.notifier.clear(id);
 		if (live.panel) {
 			live.panel.reveal();
 		} else {
@@ -299,6 +317,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			panel.onDidChangeViewState(e => {
 				if (e.webviewPanel.active) {
 					this.focus(id);
+				}
+				if (e.webviewPanel.active) {
+					this.notifier.clear(id);
 				}
 				if (e.webviewPanel.active && live.unread) {
 					live.unread = false;
@@ -371,6 +392,10 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			live.controller.onDidChangeActivity(activity => {
 				if (live.activity.busy && !activity.busy && !live.panel?.active) {
 					live.unread = true;
+				}
+				const change = attentionChange(live.activity, activity);
+				if (change) {
+					this.notifier.notify(record.id, change, this.model.agent(record.id)?.title ?? record.title, () => void this.open(record.id));
 				}
 				if (!activity.busy) {
 					this.scheduleSave(record.id, live);
@@ -473,6 +498,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			return;
 		}
 		this.live.delete(id);
+		this.notifier.clear(id);
 		// Saved already unless a save is pending or a turn runs.
 		if (save && (live.saveTimer !== undefined || live.activity.busy)) {
 			void this.transcripts.save(id, { items: live.controller.conversation, changes: live.changes.files });

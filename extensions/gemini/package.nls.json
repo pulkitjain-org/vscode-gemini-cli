@@ -8,6 +8,7 @@
 	"configuration.approval.allowAutoEdit": "Offer the Auto Edit approval mode, which applies the agent's file edits without asking. When off, the mode is hidden and the Gemini CLI asks before every tool in it.",
 	"configuration.approval.allowYolo": "Offer the YOLO approval mode, which runs every tool, including shell commands, without asking. When off, the mode is hidden and the Gemini CLI asks before every tool in it.",
 	"configuration.tools.allowShell": "Let the agent run shell commands. Each command still asks first unless YOLO mode is on. When off, the Gemini CLI removes its shell tool.",
+	"configuration.notifications.enabled": "Show a system notification when an agent finishes or needs your permission while GeminiCode is in the background, and show how many agents are waiting on the Dock icon.",
 	"configuration.cli.checkForUpdates": "Once a day, check the npm registry for a newer Gemini CLI and offer to install it. Nothing is installed without your click. No check is made when `#gemini.cli.version#` or `#gemini.cliPath#` is set.",
 	"configuration.app.checkForUpdates": "Once a day, check the GeminiCode download page for a newer GeminiCode and say so. GeminiCode downloads nothing itself; the notice links to the page.",
 	"configuration.cli.version": "The version of GeminiCode's own copy of the Gemini CLI to run, such as `0.62.0`. When empty, the newest copy is used, installed or bundled with GeminiCode. Ignored when `#gemini.cliPath#` is set.",

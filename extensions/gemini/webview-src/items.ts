@@ -239,7 +239,7 @@ export function renderNotice(text: string, severity: 'info' | 'error'): HTMLElem
 export function renderEmpty(): HTMLElement {
 	const node = el('div', 'empty');
 	const hints = el('ul', 'empty-hints');
-	for (const [key, text] of [['@', strings.hintMention], ['Shift+Enter', strings.hintNewLine], ['', strings.dropFiles]] as const) {
+	for (const [key, text] of [['@', strings.hintMention], ['/', strings.hintCommands], ['Shift+Enter', strings.hintNewLine], ['', strings.dropFiles]] as const) {
 		const hint = el('li');
 		hint.append(key ? el('kbd', undefined, key) : icon('cloud-upload'), el('span', undefined, text));
 		hints.append(hint);

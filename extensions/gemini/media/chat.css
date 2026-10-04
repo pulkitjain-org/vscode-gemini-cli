@@ -1103,6 +1103,11 @@ body.vscode-high-contrast-light #send {
 	opacity: 0.8;
 }
 
+.picker-command .picker-name {
+	font-family: var(--vscode-editor-font-family);
+	font-size: 0.95em;
+}
+
 .picker-empty {
 	padding: 4px 6px;
 	color: var(--gemini-muted);

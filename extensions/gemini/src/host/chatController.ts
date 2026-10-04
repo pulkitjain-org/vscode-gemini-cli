@@ -12,6 +12,7 @@ import { isValidAttachment } from '../acp/attachmentValidation';
 import { ChatTranscript, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
 import { PendingPermission, PermissionBroker } from '../acp/permissions';
 import { buildPromptContent } from '../acp/promptContent';
+import { expandTeamCommand, mergeCommands, parseInvocation } from '../acp/slashCommands';
 import { AgentStatus } from '../acp/status';
 import { TextDeltas } from '../acp/textDeltas';
 import { UpdateBatcher } from '../acp/updateBatcher';
@@ -24,6 +25,7 @@ import { DiffPreview } from './diffPreview';
 import { attachmentsForFiles } from './addToChat';
 import { createBranchAndCommit, pickBranch } from './gitActions';
 import { preferredComposerHeight, rememberComposerHeight, rememberModel } from './modelPreference';
+import { teamCommands } from './teamCommands';
 import type { FileMatch } from './workspaceFiles';
 
 /** The agent session a chat talks to: the sidebar's, or one agent's in the Agents pane. */
@@ -166,6 +168,8 @@ export class ChatController implements vscode.Disposable {
 			// The branch may have changed outside the editor.
 			vscode.window.onDidChangeWindowState(state => state.focused && this.webview && this.postGit()),
 			service.client.onDidChangeSettings(settings => this.post({ type: 'settings', settings })),
+			// Keeps an open "/" menu current; the agent lists its commands just after a session opens.
+			service.client.onDidChangeCommands(() => this.webview && void this.postCommands()),
 		);
 		if (options.git?.commit) {
 			this.disposables.push(options.git.commit.onDidChange(() => this.postGit()));
@@ -241,7 +245,7 @@ export class ChatController implements vscode.Disposable {
 		try {
 			await this.service.ensureReady();
 			// Built after the agent is ready, so it reflects what this agent accepts.
-			const content = buildPromptContent(text, attachments, this.service.client.promptCapabilities);
+			const content = buildPromptContent(await this.expandCommand(text), attachments, this.service.client.promptCapabilities);
 			if (!content.length) {
 				throw new Error(vscode.l10n.t("The agent cannot take images, so there was nothing to send."));
 			}
@@ -256,6 +260,25 @@ export class ChatController implements vscode.Disposable {
 		} finally {
 			this.setBusy(false);
 		}
+	}
+
+	/**
+	 * The text to send for `text`: a team command's prompt when it invokes
+	 * one, else `text` itself. The agent's own commands go as typed, and win
+	 * over a team command with the same name.
+	 */
+	private async expandCommand(text: string): Promise<string> {
+		const invocation = parseInvocation(text);
+		if (!invocation || this.service.client.commands.some(c => c.name === invocation.name)) {
+			return text;
+		}
+		const command = (await teamCommands(this.service.client.cwd)).find(c => c.name === invocation.name);
+		return command ? expandTeamCommand(command, text) : text;
+	}
+
+	private async postCommands(): Promise<void> {
+		const team = await teamCommands(this.service.client.cwd);
+		this.post({ type: 'commands', commands: mergeCommands(this.service.client.commands, team) });
 	}
 
 	/** Adds context to the composer (Add File / Add Selection to Chat), showing the chat first. */
@@ -355,6 +378,9 @@ export class ChatController implements vscode.Disposable {
 					files => this.post({ type: 'files', requestId: message.requestId, files }),
 					() => this.post({ type: 'files', requestId: message.requestId, files: [] }),
 				);
+				break;
+			case 'listCommands':
+				void this.postCommands();
 				break;
 			case 'stop':
 				void this.service.cancel();
@@ -548,6 +574,7 @@ export class ChatController implements vscode.Disposable {
 			welcome: vscode.l10n.t("Ask Gemini to explain, change or create code in this workspace. It asks before it edits files."),
 			hintMention: vscode.l10n.t("to add files as context"),
 			hintNewLine: vscode.l10n.t("for a new line"),
+			hintCommands: vscode.l10n.t("for commands"),
 			scrollToBottom: vscode.l10n.t("Jump to latest"),
 			thinking: vscode.l10n.t("Thinking"),
 			thought: vscode.l10n.t("Thought"),
@@ -569,6 +596,9 @@ export class ChatController implements vscode.Disposable {
 			createBranchAndCommit: vscode.l10n.t("Create Branch & Commit"),
 			addContext: vscode.l10n.t("Add context (@)"),
 			noFiles: vscode.l10n.t("No matching files"),
+			noCommands: vscode.l10n.t("No matching commands"),
+			commandFromCli: vscode.l10n.t("Gemini CLI"),
+			commandFromTeam: vscode.l10n.t("Team"),
 			remove: vscode.l10n.t("Remove"),
 			fileTooLarge: vscode.l10n.t("{0} is too large to send."),
 			attachFiles: vscode.l10n.t("Attach files. You can also drop files here; hold Shift when dragging from the Explorer."),

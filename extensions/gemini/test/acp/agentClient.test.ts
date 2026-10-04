@@ -55,6 +55,20 @@ describe('AgentClient', () => {
 		expect(await settled).toMatchObject({ kind: 'error', error: { kind: 'project-id-required' } });
 	});
 
+	it('keeps the slash commands the agent lists', async () => {
+		const { client, settled } = start({
+			turns: [[{ step: 'update', update: { sessionUpdate: 'available_commands_update', availableCommands: [{ name: 'init', description: 'Analyze the project' }, { name: '/memory', description: '' }] } }]],
+		});
+		await settled;
+		const changed = waitFor(client.onDidChangeCommands, () => true);
+		await client.prompt('hello');
+		await changed;
+		expect(client.commands).toEqual([
+			{ name: 'init', description: 'Analyze the project', source: 'cli' },
+			{ name: 'memory', description: '', source: 'cli' },
+		]);
+	});
+
 	it('streams a turn through the adapter', async () => {
 		const { client, settled } = start({
 			turns: [[

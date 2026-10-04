@@ -12,14 +12,14 @@
 //   composer.ts        sending, the selects, git pills and status line
 //   inputBox.ts        the input's height, placeholder and send button
 //   attachmentChips.ts attachments, and files pasted or dropped
-//   picker.ts          the @-mention file picker
+//   picker.ts          the @-mention file picker and the slash command menu
 
 import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
 import { addAttachments } from './attachmentChips';
 import { setBusy, setGit, setSettings, setStatus } from './composer';
 import { setLabel } from './dom';
 import { restoreComposerHeight, updatePlaceholder, updateSendState } from './inputBox';
-import { showFiles } from './picker';
+import { showCommands, showFiles } from './picker';
 import { appended, applyItem, isNearBottom, reset, settleScroll, updateWorking } from './transcript';
 import { state, strings, ui, vscode } from './view';
 
@@ -71,6 +71,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'composerHeight':
 			restoreComposerHeight(message.height);
+			break;
+		case 'commands':
+			showCommands(message.commands);
 			break;
 		case 'files':
 			showFiles(message.requestId, message.files);
