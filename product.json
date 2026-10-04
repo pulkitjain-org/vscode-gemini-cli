@@ -44,7 +44,6 @@
 		"resourceUrlTemplate": "https://open-vsx.org/vscode/unpkg/{publisher}/{name}/{version}/{path}",
 		"nlsBaseUrl": ""
 	},
-	"agentsTelemetryAppName": "agents",
 	"webviewContentExternalBaseUrlTemplate": "https://{{uuid}}.vscode-cdn.net/insider/ef65ac1ba57f57f2a3961bfe94aa20481caca4c6/out/vs/workbench/contrib/webview/browser/pre/",
 	"builtInExtensions": [
 		{
@@ -166,12 +165,6 @@
 		"managedSettingsUrl": "https://api.github.com/copilot_internal/managed_settings"
 	},
 	"trustedExtensionAuthAccess": {
-		"github": [
-			"GitHub.copilot-chat"
-		],
-		"github-enterprise": [
-			"GitHub.copilot-chat"
-		],
 		"microsoft": [
 			"vscode.github-authentication"
 		]
@@ -251,11 +244,8 @@
 			"type": "light"
 		}
 	],
-	"builtInExtensionsEnabledWithAutoUpdates": [
-		"GitHub.copilot-chat"
-	],
+	"builtInExtensionsEnabledWithAutoUpdates": [],
 	"sessionsWindowAllowedExtensions": [],
-	"voiceWsUrl": "wss://falcon-caas.mai.microsoft.com/voice-code/api/v1/realtime/voice",
 	"extensionConfigurationPolicy": {
 		"gemini.cliPath": {
 			"name": "GeminiCliPath",

@@ -89,6 +89,11 @@ export class ChatSetupContribution extends Disposable implements IWorkbenchContr
 		super();
 
 		const context = chatEntitlementService.context?.value;
+		// GEMINI-FORK: with upstream AI turned off (GeminiCode's default), skip Copilot setup: no entitlement
+		// requests to GitHub at startup, no setup agents, no sign-in entry. The context above still sets its keys.
+		if (configurationService.getValue<boolean>('chat.disableAIFeatures') === true) {
+			return;
+		}
 		const requests = chatEntitlementService.requests?.value;
 		if (!context || !requests) {
 			return; // disabled
