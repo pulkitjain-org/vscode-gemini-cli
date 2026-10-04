@@ -86,6 +86,8 @@ interface LiveAgent {
 	activity: ChatActivity;
 	/** A pending save of the conversation. */
 	saveTimer?: ReturnType<typeof setTimeout>;
+	/** The state its tab's icon shows; unset for the Gemini icon. */
+	tabIcon?: AgentStateKind;
 	readonly disposables: vscode.Disposable[];
 }
 
@@ -125,6 +127,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	readonly onDidFocus = this.onDidFocusEmitter.event;
 	/** The pills last sent to the title bar, to send only changes. */
 	private lastStatus = '';
+	private lastTabs = '';
 
 	constructor(
 		private readonly context: vscode.ExtensionContext,
@@ -375,7 +378,37 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		this.onDidChangeTreeDataEmitter.fire(undefined);
 		this.updateBadge();
 		this.updateTitleBar();
+		this.updateTabs();
 		this.onDidChangeAgentsEmitter.fire();
+	}
+
+	/** Each agent tab's icon shows its state, and its description its line counts. */
+	private updateTabs(): void {
+		const tabs: { title: string; description: string }[] = [];
+		for (const live of this.live.values()) {
+			if (!live.panel) {
+				continue;
+			}
+			const state = this.agentState(live);
+			const icon = state.kind === 'idle' || state.kind === 'stopped' ? undefined : state.kind;
+			if (icon !== live.tabIcon) {
+				live.tabIcon = icon;
+				// Tab icons draw a ThemeIcon without its colour or spin, so these are SVGs (the spinner is animated).
+				live.panel.iconPath = icon ? vscode.Uri.joinPath(this.context.extensionUri, 'media', 'tabs', `${icon}.svg`) : this.agentIcon();
+			}
+			const totals = live.changes.totals;
+			tabs.push({ title: live.panel.title, description: totals.files ? `+${totals.added} \u2212${totals.removed}` : '' });
+		}
+		const json = JSON.stringify(tabs);
+		if (json !== this.lastTabs) {
+			this.lastTabs = json;
+			// Only GeminiCode's workbench has this command.
+			void Promise.resolve(vscode.commands.executeCommand('_gemini.setAgentTabs', tabs)).catch(() => undefined);
+		}
+	}
+
+	private agentIcon(): vscode.Uri {
+		return vscode.Uri.joinPath(this.context.extensionUri, 'media', 'gemini.svg');
 	}
 
 	/** The number of agents waiting on the user, on the pane's icon and the Dock. */
@@ -605,7 +638,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				retainContextWhenHidden: true,
 				localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'media')],
 			});
-			panel.iconPath = vscode.Uri.joinPath(this.context.extensionUri, 'media', 'gemini.svg');
+			panel.iconPath = this.agentIcon();
 			live.panel = panel;
 			// A disposed panel throws on `.webview`, so keep the webview for detaching.
 			const webview = panel.webview;
@@ -625,6 +658,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			panel.onDidDispose(() => {
 				if (live.panel === panel) {
 					live.panel = undefined;
+					live.tabIcon = undefined;
 				}
 				live.controller.detach(webview);
 			});

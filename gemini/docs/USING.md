@@ -9,7 +9,7 @@ The switch at the top of the window, or Cmd+Alt+M, changes the layout:
 - **Agents mode** (the default) is for working with agents: your agents on the left, the agent's chat in the middle, and its changes on the right. When no tab is open, **Agent Home** shows: describe a task and press Enter to start an agent on it, tick **On its own branch** to give it a branch of its own, and see each agent's status, changes and next step as a card.
 - **Editor mode** is the classic VS Code layout, with Explorer, Search and Source Control, for hands-on coding.
 
-Each mode remembers which panels you had open. Agents that are working or waiting for you show as pills in the title bar in both modes; click one to open that agent.
+Each mode remembers which panels you had open. An agent's tab shows what it is doing (a spinner while it works, an amber dot when it needs you, a tick when it has finished) and how many lines it has changed. On a Mac, right-click GeminiCode in the Dock for **New Agent**. Agents that are working or waiting for you show as pills in the title bar in both modes; click one to open that agent.
 
 In the **Changes** panel, hover over a change to **Keep** or **Undo** it. **Keep All** accepts everything, **Undo All** puts the files back, and **Commit** commits the agent's files on a new branch (an agent on its own branch has **Merge Back** instead).
 

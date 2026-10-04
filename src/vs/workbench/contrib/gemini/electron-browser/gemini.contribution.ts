@@ -4,8 +4,9 @@
  *--------------------------------------------------------------------------------------------*/
 
 // GEMINI-FORK: what the Gemini extension needs from the workbench that the
-// extension API does not offer: OS notifications, the Dock badge, and the
-// code fonts that ship with GeminiCode. The window modes are in geminiModes.ts.
+// extension API does not offer: OS notifications, the Dock badge, agent tab
+// descriptions and the code fonts that ship with GeminiCode. The window modes
+// are in geminiModes.ts.
 
 import './geminiFonts.css';
 import './geminiModes.js';
@@ -17,7 +18,9 @@ import { CommandsRegistry } from '../../../../platform/commands/common/commands.
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { FocusMode, INativeHostService } from '../../../../platform/native/common/native.js';
 import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
+import { IEditorService } from '../../../services/editor/common/editorService.js';
 import { IHostService } from '../../../services/host/browser/host.js';
+import { WebviewInput } from '../../webviewPanel/browser/webviewEditorInput.js';
 
 /** The code fonts in geminiFonts.css. */
 const bundledFonts = ['JetBrains Mono', 'Geist Mono'];
@@ -108,4 +111,26 @@ CommandsRegistry.registerCommand('_gemini.hideToast', (_accessor, key: string) =
 CommandsRegistry.registerCommand('_gemini.setApplicationBadge', (accessor, count: number, description: string) => {
 	const n = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
 	return accessor.get(INativeHostService).setApplicationBadge(n ? { count: n, description: String(description ?? '') } : undefined);
+});
+
+interface AgentTab {
+	readonly title: string;
+	/** Shown after the title, such as the agent's line counts; empty for none. */
+	readonly description: string;
+}
+
+/** The webview type of the Gemini extension's agent tabs, as the workbench names it. */
+const agentTabViewType = 'mainThreadWebview-gemini.agent';
+
+/**
+ * Sets the description of each agent tab, matched by title. The extension
+ * API can set a webview tab's title and icon but not a description.
+ */
+CommandsRegistry.registerCommand('_gemini.setAgentTabs', (accessor, tabs: readonly AgentTab[]) => {
+	const descriptions = new Map((Array.isArray(tabs) ? tabs : []).map(tab => [String(tab.title), String(tab.description ?? '')]));
+	for (const editor of accessor.get(IEditorService).editors) {
+		if (editor instanceof WebviewInput && editor.viewType === agentTabViewType) {
+			editor.setGeminiDescription(descriptions.get(editor.getName()) || undefined);
+		}
+	}
 });
