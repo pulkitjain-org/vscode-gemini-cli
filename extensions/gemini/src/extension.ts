@@ -19,6 +19,7 @@ import { configSection, setStorageDirs } from './host/configuration';
 import { initModelPreference } from './host/modelPreference';
 import { SetupWalkthrough, walkthroughId } from './host/setupWalkthrough';
 import { GeminiStatusBar } from './host/statusBar';
+import { QuickEdits } from './host/quickEdits';
 import { initTeamCommands } from './host/teamCommands';
 import { WorkspaceFileIndex } from './host/workspaceFiles';
 
@@ -49,6 +50,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		fileIndex,
 		chatView,
 		agentsView,
+		new QuickEdits(agentsView.review, log),
 		walkthrough,
 		new Appearance(context.extensionUri),
 		new GeminiStatusBar(service),

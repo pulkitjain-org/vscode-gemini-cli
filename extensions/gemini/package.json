@@ -155,6 +155,20 @@
         "enablement": "gemini.agentHasChanges"
       },
       {
+        "command": "gemini.inlineEdit",
+        "title": "%command.inlineEdit%",
+        "category": "%category%",
+        "icon": "$(sparkle)",
+        "enablement": "config.gemini.inlineEdit.enabled"
+      },
+      {
+        "command": "gemini.generateCommitMessage",
+        "title": "%command.generateCommitMessage%",
+        "category": "%category%",
+        "icon": "$(sparkle)",
+        "enablement": "config.gemini.inlineEdit.enabled"
+      },
+      {
         "command": "gemini.review.previousChange",
         "title": "%command.review.previousChange%",
         "category": "%category%",
@@ -260,6 +274,12 @@
         "key": "ctrl+l",
         "mac": "cmd+l",
         "when": "editorTextFocus && editorHasSelection && resourceScheme == file"
+      },
+      {
+        "command": "gemini.inlineEdit",
+        "key": "ctrl+i",
+        "mac": "cmd+i",
+        "when": "editorTextFocus && !editorReadonly && resourceScheme == file && config.gemini.inlineEdit.enabled"
       }
     ],
     "viewsContainers": {
@@ -329,7 +349,19 @@
           "group": "gemini@1"
         }
       ],
+      "scm/title": [
+        {
+          "command": "gemini.generateCommitMessage",
+          "when": "scmProvider == git && config.gemini.inlineEdit.enabled",
+          "group": "navigation@1"
+        }
+      ],
       "editor/context": [
+        {
+          "command": "gemini.inlineEdit",
+          "when": "!editorReadonly && resourceScheme == file && config.gemini.inlineEdit.enabled",
+          "group": "gemini@0"
+        },
         {
           "command": "gemini.addSelectionToChat",
           "when": "editorHasSelection && resourceScheme == file",
@@ -495,6 +527,18 @@
           "default": true,
           "scope": "machine",
           "markdownDescription": "%configuration.app.checkForUpdates%"
+        },
+        "gemini.inlineEdit.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "markdownDescription": "%configuration.inlineEdit.enabled%"
+        },
+        "gemini.inlineEdit.model": {
+          "type": "string",
+          "default": "latestFlash",
+          "scope": "machine",
+          "markdownDescription": "%configuration.inlineEdit.model%"
         },
         "gemini.approval.allowAutoEdit": {
           "type": "boolean",

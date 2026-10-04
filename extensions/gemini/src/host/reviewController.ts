@@ -14,6 +14,8 @@ import { deleteFile, replaceFileText } from './workspaceFileSystem';
 export interface ReviewSource {
 	readonly title: string;
 	readonly changes: AgentChanges;
+	/** Whether undoing a change saves the file, as agents' edits are saved. Inline edits leave saving to the user. */
+	readonly saves?: boolean;
 }
 
 /** A file an agent changed, with its changes against the text now. */
@@ -64,6 +66,7 @@ export class ReviewController implements vscode.CodeLensProvider, vscode.HoverPr
 	private readonly disposables: vscode.Disposable[] = [];
 	private timer: ReturnType<typeof setTimeout> | undefined;
 	private active = false;
+	private readonly extraSources: ReviewSource[] = [];
 
 	constructor(private readonly sources: () => Iterable<ReviewSource>) {
 		const selector: vscode.DocumentSelector = { scheme: 'file' };
@@ -86,6 +89,17 @@ export class ReviewController implements vscode.CodeLensProvider, vscode.HoverPr
 			vscode.commands.registerCommand('gemini.review.nextFile', (uri?: unknown) => this.nextFile(fileOf(uri))),
 		);
 		this.refresh();
+	}
+
+	/** Reviews `source`'s changes too, such as inline edits, until disposed. */
+	addSource(source: ReviewSource): vscode.Disposable {
+		this.extraSources.push(source);
+		const listener = source.changes.onDidChange(() => this.refresh());
+		return new vscode.Disposable(() => {
+			listener.dispose();
+			this.extraSources.splice(this.extraSources.indexOf(source), 1);
+			this.refresh();
+		});
 	}
 
 	/** Works out the changes again, for example after an agent edited or the user kept some. */
@@ -118,7 +132,7 @@ export class ReviewController implements vscode.CodeLensProvider, vscode.HoverPr
 			new vscode.CodeLens(top, {
 				title: review.hunks.length === 1 ? vscode.l10n.t("$(sparkle) 1 change by Gemini") : vscode.l10n.t("$(sparkle) {0} changes by Gemini", review.hunks.length),
 				command: 'gemini.review.nextChange',
-				tooltip: vscode.l10n.t("Made by the agent \"{0}\". Click to go to the next change.", review.source.title),
+				tooltip: vscode.l10n.t("From {0}. Click to go to the next change.", review.source.title),
 			}),
 			new vscode.CodeLens(top, { title: vscode.l10n.t("$(check-all) Keep All"), command: 'gemini.review.keepFile', arguments: [uri] }),
 			new vscode.CodeLens(top, { title: vscode.l10n.t("$(discard) Undo All"), command: 'gemini.review.undoFile', arguments: [uri] }),
@@ -169,7 +183,7 @@ export class ReviewController implements vscode.CodeLensProvider, vscode.HoverPr
 		if (document.uri.scheme !== 'file') {
 			return undefined;
 		}
-		for (const source of this.sources()) {
+		for (const source of [...this.extraSources, ...this.sources()]) {
 			const file = source.changes.file(document.uri.fsPath);
 			if (file?.original !== undefined) {
 				const hunks = diffLines(splitLines(file.original), splitLines(document.getText()));
@@ -272,7 +286,7 @@ export class ReviewController implements vscode.CodeLensProvider, vscode.HoverPr
 		}
 		if (review.file.created) {
 			const remove = vscode.l10n.t("Delete File");
-			const choice = await vscode.window.showWarningMessage(vscode.l10n.t("{0} created {1}. Delete it?", review.source.title, path.basename(review.file.path)), { modal: true }, remove);
+			const choice = await vscode.window.showWarningMessage(vscode.l10n.t("{0} was created by {1}. Delete it?", path.basename(review.file.path), review.source.title), { modal: true }, remove);
 			if (choice !== remove) {
 				return;
 			}
@@ -286,7 +300,7 @@ export class ReviewController implements vscode.CodeLensProvider, vscode.HoverPr
 			if (next === undefined) {
 				await deleteFile(review.file.path);
 			} else {
-				await replaceFileText(review.file.path, next);
+				await replaceFileText(review.file.path, next, review.source.saves !== false);
 			}
 			review.source.changes.record([{ path: review.file.path, oldText: current, newText: next ?? '' }]);
 		} catch (err) {
