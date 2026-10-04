@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { detectAuth, DirectClient, DirectRequestError, readCliBundle } from '../../src/acp/directRequest';
+import { cliEnvProject, detectAuth, DirectClient, DirectRequestError, readCliBundle } from '../../src/acp/directRequest';
 
 let home: string;
 
@@ -134,6 +134,7 @@ describe('readCliBundle', () => {
 		await fs.writeFile(path.join(bundle, 'chunk-A.js'), [
 			'var BASE_GEMINI_FLASH_MODEL = "gemini-3.5-flash";',
 			'var LATEST_GEMINI_FLASH_MODEL = "gemini-3.8-flash";',
+			'var LEGACY_CCPA_FLASH_MODEL = "gemini-3-flash";',
 			'var OAUTH_CLIENT_ID = "123-abc.apps.googleusercontent.com";',
 			'var OAUTH_CLIENT_SECRET = "test-secret";',
 		].join('\n'));
@@ -143,6 +144,22 @@ describe('readCliBundle', () => {
 			oauthClient: { id: '123-abc.apps.googleusercontent.com', secret: 'test-secret' },
 			latestFlash: 'gemini-3.8-flash',
 			baseFlash: 'gemini-3.5-flash',
+			codeAssistFlash: 'gemini-3-flash',
 		});
+	});
+});
+
+describe('cliEnvProject', () => {
+	it('reads the project from the .env file the CLI would load', async () => {
+		const repo = path.join(home, 'code', 'app');
+		await fs.mkdir(path.join(repo, 'src'), { recursive: true });
+		expect(await cliEnvProject(path.join(repo, 'src'), home)).toBeUndefined();
+		await fs.writeFile(path.join(home, '.gemini', '.env'), 'GOOGLE_CLOUD_PROJECT="home-proj"\n');
+		expect(await cliEnvProject(path.join(repo, 'src'), home)).toBe('home-proj');
+		await fs.writeFile(path.join(repo, '.env'), '# app\nexport GOOGLE_CLOUD_PROJECT=app-proj\n');
+		expect(await cliEnvProject(path.join(repo, 'src'), home)).toBe('app-proj');
+		// Only the first file found counts, even without a project in it.
+		await fs.writeFile(path.join(repo, 'src', '.env'), 'OTHER=1\n');
+		expect(await cliEnvProject(path.join(repo, 'src'), home)).toBeUndefined();
 	});
 });

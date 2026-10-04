@@ -6,15 +6,17 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AgentChanges } from '../acp/agentChanges';
-import { CliBundleInfo, DirectClient, DirectRequest, DirectRequestError, readCliBundle } from '../acp/directRequest';
+import { CliBundleInfo, cliEnvProject, detectAuth, DirectClient, DirectRequest, DirectRequestError, readCliBundle } from '../acp/directRequest';
 import { errorMessage } from '../acp/errors';
 import { cleanCommitMessage, cleanEdit, commitMessagePrompt, inlineEditPrompt, latestFlashModel, quickEditModels } from '../acp/quickPrompts';
-import { configSection, getCliResolution, getProjectSettings } from './configuration';
+import { configSection, getCliResolution, getProjectSettings, getWorkspaceCwd } from './configuration';
 import { preferredModel } from './modelPreference';
 import { ReviewController, ReviewSource } from './reviewController';
 
 const enabledSetting = 'inlineEdit.enabled';
 const modelSetting = 'inlineEdit.model';
+/** How long a refusal of the latest Flash model sends requests straight to the fallback. */
+const refusalMemoryMs = 30 * 60_000;
 
 /** The parts of the built-in Git extension's API used here. */
 interface GitRepository {
@@ -41,12 +43,13 @@ export class QuickEdits implements vscode.Disposable {
 	private readonly disposables: vscode.Disposable[] = [];
 	private lastInstruction = '';
 	private cliBundle: Promise<CliBundleInfo> | undefined;
-	/** The account was refused the latest Flash model, so this window goes straight to the one every account has. */
-	private latestRefused = false;
+	/** When the account was last refused the latest Flash model; for a while after, requests go straight to the one every account has. */
+	private latestRefusedAt = 0;
 
 	constructor(review: ReviewController, private readonly log: vscode.LogOutputChannel) {
 		this.client = new DirectClient({
-			projectId: () => getProjectSettings().resolved?.projectId,
+			// As the agent gets it: GeminiCode's setting or the environment, else the .env file the CLI reads.
+			projectId: async () => getProjectSettings().resolved?.projectId ?? await cliEnvProject(getWorkspaceCwd()),
 			oauthClient: () => this.readCliBundle().then(info => info.oauthClient),
 		});
 		// Reading the CLI's bundle takes a moment, so do it before the first request needs it.
@@ -89,12 +92,13 @@ export class QuickEdits implements vscode.Disposable {
 	 * goes to the one every account has, and so does every later one.
 	 */
 	private async generate(request: Omit<DirectRequest, 'model'>): Promise<string> {
-		const cli = await this.readCliBundle();
+		const [cli, auth] = await Promise.all([this.readCliBundle(), detectAuth()]);
 		const models = quickEditModels({
 			setting: vscode.workspace.getConfiguration(configSection).get<string>(modelSetting, latestFlashModel),
 			chatModel: preferredModel(),
-			cliFlash: { latest: cli.latestFlash, base: cli.baseFlash },
-			latestRefused: this.latestRefused,
+			cliFlash: { latest: cli.latestFlash, base: cli.baseFlash, codeAssist: cli.codeAssistFlash },
+			codeAssist: auth.kind === 'google',
+			latestRefused: Date.now() - this.latestRefusedAt < refusalMemoryMs,
 		});
 		for (let i = 0; ; i++) {
 			const started = Date.now();
@@ -103,12 +107,13 @@ export class QuickEdits implements vscode.Disposable {
 				this.log.info(`Direct request: ${Date.now() - started} ms with ${models[i]}`);
 				return text;
 			} catch (err) {
-				const refused = err instanceof DirectRequestError && (err.status === 400 || err.status === 403 || err.status === 404);
+				// Code Assist answers 429 "exhausted your capacity" for a model the account can't use, even with quota left.
+				const refused = err instanceof DirectRequestError && (err.status === 400 || err.status === 403 || err.status === 404 || err.status === 429);
 				if (!refused || i === models.length - 1 || request.signal?.aborted) {
 					throw err;
 				}
 				this.log.info(`${models[i]} was refused (${errorMessage(err)}); using ${models[i + 1]}`);
-				this.latestRefused = true;
+				this.latestRefusedAt = Date.now();
 			}
 		}
 	}

@@ -85,15 +85,17 @@ export const latestFlashModel = 'latestFlash';
 export const sameAsChatModel = 'sameAsChat';
 
 /** Used when the installed CLI does not name its Flash models. */
-export const knownFlash = { latest: 'gemini-3.8-flash', base: 'gemini-3.5-flash' } as const;
+export const knownFlash = { latest: 'gemini-3.8-flash', base: 'gemini-3.5-flash', codeAssist: 'gemini-3-flash' } as const;
 
 export interface ModelChoice {
 	/** The `gemini.inlineEdit.model` setting. */
 	readonly setting: string;
 	/** The model last picked in chat, if any. */
 	readonly chatModel: string | undefined;
-	/** The installed CLI's Flash models. */
-	readonly cliFlash: { readonly latest?: string; readonly base?: string };
+	/** The installed CLI's Flash models; `codeAssist` is the name Code Assist serves the base one under. */
+	readonly cliFlash: { readonly latest?: string; readonly base?: string; readonly codeAssist?: string };
+	/** Signed in with Google, so requests go to Code Assist rather than the Gemini API. */
+	readonly codeAssist: boolean;
 	/** The account was refused the latest Flash model earlier. */
 	readonly latestRefused: boolean;
 }
@@ -101,8 +103,13 @@ export interface ModelChoice {
 /**
  * The models to try, in order: the newest Flash model first, falling back to
  * the one every account has, unless the setting or the chat names another.
+ * On Code Assist the CLI sends the base Flash model under its older name
+ * unless the account has the newest one, so this does too.
  */
 export function quickEditModels(choice: ModelChoice): string[] {
+	const latest = choice.cliFlash.latest ?? knownFlash.latest;
+	const base = choice.cliFlash.base ?? knownFlash.base;
+	const fallback = choice.codeAssist ? choice.cliFlash.codeAssist ?? knownFlash.codeAssist : base;
 	const setting = choice.setting.trim();
 	let model: string | undefined = setting === latestFlashModel || !setting ? undefined : setting;
 	if (setting === sameAsChatModel) {
@@ -110,9 +117,7 @@ export function quickEditModels(choice: ModelChoice): string[] {
 		model = choice.chatModel && !/^auto(-|$)/.test(choice.chatModel) && choice.chatModel !== 'flash' ? choice.chatModel : undefined;
 	}
 	if (model) {
-		return [model];
+		return [model === base ? fallback : model];
 	}
-	const latest = choice.cliFlash.latest ?? knownFlash.latest;
-	const base = choice.cliFlash.base ?? knownFlash.base;
-	return choice.latestRefused || latest === base ? [base] : [latest, base];
+	return choice.latestRefused || latest === fallback ? [fallback] : [latest, fallback];
 }
