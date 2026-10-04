@@ -2,6 +2,17 @@
 
 How the parts of GeminiCode that differ from VS Code behave day to day. For setup, see [Getting started](../README.md#getting-started).
 
+## Make it yours
+
+Run **Make It Yours** from the Command Palette, or open the step of the same name in Get Started, to pick:
+
+- a theme: GeminiCode Dark (the default), Midnight (true black), Dusk (warm greys) or Light;
+- an accent colour for selection, focus, links and the chat's Send button: the theme's own, Blue, Violet, Rose, Teal, Amber or the Gemini gradient. It applies to the GeminiCode themes only, through `workbench.colorCustomizations`, and is kept in `gemini.appearance.accent`;
+- a code font: JetBrains Mono (the default) and Geist Mono ship with GeminiCode; SF Mono and Menlo come with macOS;
+- file icons: GeminiCode's own, Seti, or none.
+
+Each choice applies at once. To change the themes or icons, edit the sources and rerun `node extensions/gemini/scripts/build-themes.mts` or `python3 extensions/gemini/scripts/build-file-icons.py`; a unit test fails when the generated themes are out of date.
+
 ## Approval modes
 
 Pick a mode from the composer. The list comes from the Gemini CLI, minus any mode your admin turned off.

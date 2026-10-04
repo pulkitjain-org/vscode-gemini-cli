@@ -72,6 +72,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 		case 'composerHeight':
 			restoreComposerHeight(message.height);
 			break;
+		case 'accent':
+			document.body.dataset.accent = message.solid ? 'solid' : 'gradient';
+			break;
 		case 'commands':
 			showCommands(message.commands);
 			break;

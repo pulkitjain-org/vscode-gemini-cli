@@ -8,6 +8,17 @@
 	"configuration.approval.allowAutoEdit": "Offer the Auto Edit approval mode, which applies the agent's file edits without asking. When off, the mode is hidden and the Gemini CLI asks before every tool in it.",
 	"configuration.approval.allowYolo": "Offer the YOLO approval mode, which runs every tool, including shell commands, without asking. When off, the mode is hidden and the Gemini CLI asks before every tool in it.",
 	"configuration.tools.allowShell": "Let the agent run shell commands. Each command still asks first unless YOLO mode is on. When off, the Gemini CLI removes its shell tool.",
+	"command.appearance": "Make It Yours: Theme, Accent, Font and Icons",
+	"configuration.appearance.accent": "The accent colour of the GeminiCode themes: selection, focus, links and the chat's Send button. Pick it on the **Make It Yours** page (`Gemini: Make It Yours`). Other themes keep their own colours.",
+	"configuration.appearance.accent.theme": "The theme's own",
+	"configuration.appearance.accent.blue": "Blue",
+	"configuration.appearance.accent.violet": "Violet",
+	"configuration.appearance.accent.rose": "Rose",
+	"configuration.appearance.accent.teal": "Teal",
+	"configuration.appearance.accent.amber": "Amber",
+	"configuration.appearance.accent.gradient": "Gemini gradient",
+	"walkthrough.look.title": "Make it yours",
+	"walkthrough.look.description": "Pick a theme, an accent colour, a code font and file icons. Each choice applies at once.\n[Choose a Look](command:gemini.appearance)",
 	"configuration.notifications.enabled": "Show a system notification when an agent finishes or needs your permission while GeminiCode is in the background, and show how many agents are waiting on the Dock icon.",
 	"configuration.cli.checkForUpdates": "Once a day, check the npm registry for a newer Gemini CLI and offer to install it. Nothing is installed without your click. No check is made when `#gemini.cli.version#` or `#gemini.cliPath#` is set.",
 	"configuration.app.checkForUpdates": "Once a day, check the GeminiCode download page for a newer GeminiCode and say so. GeminiCode downloads nothing itself; the notice links to the page.",
@@ -54,5 +65,8 @@
 	"walkthrough.agent.title": "Start your first agent",
 	"walkthrough.agent.description": "Agents open as editor tabs, each with its own chat and folder.\n[New Agent](command:gemini.agents.newAgent)",
 	"theme.dark": "GeminiCode Dark",
-	"theme.light": "GeminiCode Light"
+	"theme.light": "GeminiCode Light",
+	"theme.midnight": "GeminiCode Midnight",
+	"theme.dusk": "GeminiCode Dusk",
+	"iconTheme.label": "GeminiCode Icons"
 }

@@ -42,6 +42,7 @@ export const unicodeFilter = Object.freeze<string[]>([
 	'!**/LICENSE',
 
 	'!**/*.{dll,exe,png,bmp,jpg,gif,scpt,cur,ttf,woff,eot,template,ico,icns,opus,wasm}',
+	'!**/*.woff2', // GEMINI-FORK: fonts bundled with the chat webview
 	'!**/test/**',
 	'!**/*.test.ts',
 	'!**/*.{d.ts,json,md}',
@@ -148,6 +149,7 @@ export const indentationFilter = Object.freeze<string[]>([
 	'!src/typings/**/*.d.ts',
 	'!extensions/**/*.d.ts',
 	'!**/*.{svg,exe,png,bmp,jpg,gif,scpt,bat,cmd,cur,ttf,woff,eot,md,ps1,psm1,template,yaml,yml,d.ts.recipe,ico,icns,plist,opus,admx,adml,wasm}',
+	'!**/*.woff2', // GEMINI-FORK: fonts bundled with the chat webview
 	'!build/{lib,download,linux,darwin}/**/*.js',
 	'!build/**/*.sh',
 	'!build/azure-pipelines/**/*.js',

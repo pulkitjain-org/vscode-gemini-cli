@@ -168,6 +168,7 @@ export class ChatController implements vscode.Disposable {
 			// The branch may have changed outside the editor.
 			vscode.window.onDidChangeWindowState(state => state.focused && this.webview && this.postGit()),
 			service.client.onDidChangeSettings(settings => this.post({ type: 'settings', settings })),
+			vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration('gemini.appearance.accent') && this.post({ type: 'accent', solid: solidAccent() })),
 			// Keeps an open "/" menu current; the agent lists its commands just after a session opens.
 			service.client.onDidChangeCommands(() => this.webview && void this.postCommands()),
 		);
@@ -609,13 +610,13 @@ export class ChatController implements vscode.Disposable {
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data:; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link href="${codicons}" rel="stylesheet">
 	<link href="${style}" rel="stylesheet">
 	<title>Gemini</title>
 </head>
-<body>
+<body data-accent="${solidAccent() ? 'solid' : 'gradient'}">
 	<main id="transcript" class="transcript" aria-live="polite"></main>
 	<div id="status" class="status" role="status"></div>
 	<form id="composer" class="composer">
@@ -662,6 +663,12 @@ function diffsOf(content: readonly acp.ToolCallContent[] | null | undefined): ac
 
 function escapeAttribute(value: string): string {
 	return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+/** Whether Send shows a solid accent picked on the Make It Yours page instead of the Gemini gradient. */
+function solidAccent(): boolean {
+	const accent = vscode.workspace.getConfiguration('gemini').get<string>('appearance.accent', 'theme');
+	return accent !== 'theme' && accent !== 'gradient';
 }
 
 function createNonce(): string {
