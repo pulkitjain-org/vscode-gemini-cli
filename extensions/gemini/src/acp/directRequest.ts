@@ -88,6 +88,8 @@ export interface CliBundleInfo {
 	readonly latestFlash?: string;
 	/** The Flash model every account can use. */
 	readonly baseFlash?: string;
+	/** The name Code Assist serves the base Flash model under, for accounts without the newest one. */
+	readonly codeAssistFlash?: string;
 }
 
 /**
@@ -104,6 +106,7 @@ export async function readCliBundle(entry: string): Promise<CliBundleInfo> {
 	let oauthClient: OAuthClient | undefined;
 	let latestFlash: string | undefined;
 	let baseFlash: string | undefined;
+	let codeAssistFlash: string | undefined;
 	for (const file of ordered) {
 		let text: string;
 		try {
@@ -116,11 +119,12 @@ export async function readCliBundle(entry: string): Promise<CliBundleInfo> {
 		oauthClient ??= id && secret ? { id, secret } : undefined;
 		latestFlash ??= /\bLATEST_GEMINI_FLASH_MODEL\s*=\s*["']([\w.-]+)["']/.exec(text)?.[1];
 		baseFlash ??= /\bBASE_GEMINI_FLASH_MODEL\s*=\s*["']([\w.-]+)["']/.exec(text)?.[1];
-		if (oauthClient && latestFlash && baseFlash) {
+		codeAssistFlash ??= /\bLEGACY_CCPA_FLASH_MODEL\s*=\s*["']([\w.-]+)["']/.exec(text)?.[1];
+		if (oauthClient && latestFlash && baseFlash && codeAssistFlash) {
 			break;
 		}
 	}
-	return { oauthClient, latestFlash, baseFlash };
+	return { oauthClient, latestFlash, baseFlash, codeAssistFlash };
 }
 
 const projectEnvVars = ['GOOGLE_CLOUD_QUOTA_PROJECT', 'GOOGLE_CLOUD_PROJECT', 'GOOGLE_CLOUD_PROJECT_ID'];

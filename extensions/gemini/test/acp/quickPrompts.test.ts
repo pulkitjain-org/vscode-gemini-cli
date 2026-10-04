@@ -63,14 +63,21 @@ describe('cleanCommitMessage', () => {
 });
 
 describe('quickEditModels', () => {
-	const cliFlash = { latest: 'gemini-9-flash', base: 'gemini-8-flash' };
-	const choose = (setting: string, chatModel?: string, latestRefused = false) => quickEditModels({ setting, chatModel, cliFlash, latestRefused });
+	const cliFlash = { latest: 'gemini-9-flash', base: 'gemini-8-flash', codeAssist: 'gemini-7-flash' };
+	const choose = (setting: string, chatModel?: string, latestRefused = false, codeAssist = false) => quickEditModels({ setting, chatModel, cliFlash, codeAssist, latestRefused });
 
 	it('tries the latest Flash model, then the one every account has', () => {
 		expect(choose('latestFlash')).toEqual(['gemini-9-flash', 'gemini-8-flash']);
 		expect(choose('')).toEqual(['gemini-9-flash', 'gemini-8-flash']);
 		expect(choose('latestFlash', undefined, true)).toEqual(['gemini-8-flash']);
-		expect(quickEditModels({ setting: 'latestFlash', chatModel: undefined, cliFlash: {}, latestRefused: false })).toEqual([knownFlash.latest, knownFlash.base]);
+		expect(quickEditModels({ setting: 'latestFlash', chatModel: undefined, cliFlash: {}, codeAssist: false, latestRefused: false })).toEqual([knownFlash.latest, knownFlash.base]);
+	});
+
+	it('falls back to the name Code Assist serves the base Flash model under', () => {
+		expect(choose('latestFlash', undefined, false, true)).toEqual(['gemini-9-flash', 'gemini-7-flash']);
+		expect(choose('latestFlash', undefined, true, true)).toEqual(['gemini-7-flash']);
+		expect(choose('sameAsChat', 'gemini-8-flash', false, true)).toEqual(['gemini-7-flash']);
+		expect(quickEditModels({ setting: 'latestFlash', chatModel: undefined, cliFlash: {}, codeAssist: true, latestRefused: false })).toEqual([knownFlash.latest, knownFlash.codeAssist]);
 	});
 
 	it('follows the chat unless it is on Auto', () => {

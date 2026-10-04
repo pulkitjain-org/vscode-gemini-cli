@@ -134,6 +134,7 @@ describe('readCliBundle', () => {
 		await fs.writeFile(path.join(bundle, 'chunk-A.js'), [
 			'var BASE_GEMINI_FLASH_MODEL = "gemini-3.5-flash";',
 			'var LATEST_GEMINI_FLASH_MODEL = "gemini-3.8-flash";',
+			'var LEGACY_CCPA_FLASH_MODEL = "gemini-3-flash";',
 			'var OAUTH_CLIENT_ID = "123-abc.apps.googleusercontent.com";',
 			'var OAUTH_CLIENT_SECRET = "test-secret";',
 		].join('\n'));
@@ -143,6 +144,7 @@ describe('readCliBundle', () => {
 			oauthClient: { id: '123-abc.apps.googleusercontent.com', secret: 'test-secret' },
 			latestFlash: 'gemini-3.8-flash',
 			baseFlash: 'gemini-3.5-flash',
+			codeAssistFlash: 'gemini-3-flash',
 		});
 	});
 });
