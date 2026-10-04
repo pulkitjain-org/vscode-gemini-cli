@@ -60,14 +60,14 @@ describe('expandTeamCommand', () => {
 });
 
 describe('mergeCommands', () => {
-	it('keeps the agent command when a team command has its name', () => {
+	it('lists team commands first and keeps the agent command when a team command has its name', () => {
 		const merged = mergeCommands(
 			[{ name: 'init', description: 'cli', source: 'cli' }],
 			[team('init', 'x'), team('review', 'y')],
 		);
 		expect(merged).toEqual([
-			{ name: 'init', description: 'cli', source: 'cli' },
 			{ name: 'review', description: '', source: 'team' },
+			{ name: 'init', description: 'cli', source: 'cli' },
 		]);
 	});
 });

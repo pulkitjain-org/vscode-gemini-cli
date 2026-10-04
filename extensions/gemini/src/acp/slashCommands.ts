@@ -49,10 +49,14 @@ export function expandTeamCommand(command: TeamCommand, invocation: string): str
 	return args ? `${command.prompt}\n\n${invocation.trim()}` : command.prompt;
 }
 
-/** The commands for the menu: the agent's own, then team commands whose names the agent does not use (the agent's win, as in the CLI). */
+/**
+ * The commands for the menu: the team's own first, since they are what people
+ * reach for, then the agent's. A team command whose name the agent uses is
+ * left out, because the agent's runs (as in the CLI).
+ */
 export function mergeCommands(cli: readonly SlashCommand[], team: readonly SlashCommand[]): SlashCommand[] {
 	const taken = new Set(cli.map(c => c.name));
-	return [...cli, ...team.filter(c => !taken.has(c.name))].map(({ name, description, source }) => ({ name, description, source }));
+	return [...team.filter(c => !taken.has(c.name)), ...cli].map(({ name, description, source }) => ({ name, description, source }));
 }
 
 /** The folders team commands are read from: the user's, then the project's, which wins on a clash. */
