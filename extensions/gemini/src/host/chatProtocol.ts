@@ -17,7 +17,7 @@ import type { AgentPhase } from '../acp/status';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 11;
+export const chatProtocolVersion = 12;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -78,6 +78,13 @@ export interface ChatStrings {
 	/** `{0}` is a duration such as "12s" or "2m 5s". */
 	readonly workedFor: string;
 	readonly copyReply: string;
+	readonly undoTurn: string;
+	readonly undoTurnTooltip: string;
+	/** `{0}` is a number of files. */
+	readonly undoTurnFiles: string;
+	readonly turnUndone: string;
+	readonly retry: string;
+	readonly retryTooltip: string;
 	/** `{0}` is the branch; the branch pill's tooltip. */
 	readonly switchBranch: string;
 	readonly createBranchAndCommit: string;
@@ -114,7 +121,11 @@ export type FromWebview =
 	| { readonly type: 'attachUris'; readonly uris: readonly string[] }
 	/** The user dragged the input to `height` pixels, or reset it (0). */
 	| { readonly type: 'composerHeight'; readonly height: number }
-	| { readonly type: 'createBranchAndCommit' };
+	| { readonly type: 'createBranchAndCommit' }
+	/** Put back the files the turn ending with turnEnd item `itemId` changed, and those of later turns. */
+	| { readonly type: 'undoTurn'; readonly itemId: string }
+	/** Send the prompt of the turn ending with `itemId` again; only the latest turn offers it. */
+	| { readonly type: 'retry'; readonly itemId: string };
 
 export type ToWebview =
 	| { readonly type: 'reset'; readonly items: readonly TranscriptItem[]; readonly busy: boolean; readonly status: ViewStatus; readonly settings: SessionSettings }

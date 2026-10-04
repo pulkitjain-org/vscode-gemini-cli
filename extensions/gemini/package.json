@@ -155,6 +155,49 @@
         "enablement": "gemini.agentHasChanges"
       },
       {
+        "command": "gemini.review.previousChange",
+        "title": "%command.review.previousChange%",
+        "category": "%category%",
+        "icon": "$(arrow-up)",
+        "enablement": "gemini.review.active"
+      },
+      {
+        "command": "gemini.review.nextChange",
+        "title": "%command.review.nextChange%",
+        "category": "%category%",
+        "icon": "$(arrow-down)",
+        "enablement": "gemini.review.active"
+      },
+      {
+        "command": "gemini.review.keepFile",
+        "title": "%command.review.keepFile%",
+        "category": "%category%",
+        "icon": "$(check-all)",
+        "enablement": "gemini.review.active"
+      },
+      {
+        "command": "gemini.review.undoFile",
+        "title": "%command.review.undoFile%",
+        "category": "%category%",
+        "icon": "$(discard)",
+        "enablement": "gemini.review.active"
+      },
+      {
+        "command": "gemini.review.keepChange",
+        "title": "%command.review.keepChange%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.review.undoChange",
+        "title": "%command.review.undoChange%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.review.nextFile",
+        "title": "%command.review.nextFile%",
+        "category": "%category%"
+      },
+      {
         "command": "gemini.changes.clear",
         "title": "%command.changes.clear%",
         "category": "%category%",
@@ -255,6 +298,28 @@
           "command": "gemini.addFileToChat",
           "when": "!explorerResourceIsFolder && resourceScheme == file",
           "group": "gemini@1"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "gemini.review.previousChange",
+          "when": "gemini.review.active && resourceScheme == file",
+          "group": "navigation@1"
+        },
+        {
+          "command": "gemini.review.nextChange",
+          "when": "gemini.review.active && resourceScheme == file",
+          "group": "navigation@2"
+        },
+        {
+          "command": "gemini.review.keepFile",
+          "when": "gemini.review.active && resourceScheme == file",
+          "group": "navigation@3"
+        },
+        {
+          "command": "gemini.review.undoFile",
+          "when": "gemini.review.active && resourceScheme == file",
+          "group": "navigation@4"
         }
       ],
       "editor/title/context": [
@@ -361,6 +426,18 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "gemini.review.keepChange",
+          "when": "false"
+        },
+        {
+          "command": "gemini.review.undoChange",
+          "when": "false"
+        },
+        {
+          "command": "gemini.review.nextFile",
+          "when": "false"
+        },
         {
           "command": "gemini.agents.open",
           "when": "false"

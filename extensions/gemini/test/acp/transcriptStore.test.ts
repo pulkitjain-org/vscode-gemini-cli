@@ -87,6 +87,21 @@ describe('ChatTranscript.restore', () => {
 		expect(transcript.items.map(i => i.id)).toEqual(['item-7', 'tool-x', 'item-8']);
 	});
 
+	it('drops Undo and Retry from a reloaded conversation, but keeps that changes were undone', async () => {
+		const items: TranscriptItem[] = [
+			{ id: 'item-1', kind: 'turnEnd', durationMs: 5, files: 1, undo: 'undone' },
+			{ id: 'item-2', kind: 'turnEnd', durationMs: 5, files: 2, undo: 'available', retry: true },
+		];
+		const dir = await mkdtemp(path.join(tmpdir(), 'transcripts-'));
+		try {
+			const store = new TranscriptStore(dir);
+			await store.save('a1', { items, changes: [] });
+			expect((await store.load('a1')).items).toEqual([items[0], { id: 'item-2', kind: 'turnEnd', durationMs: 5, files: 2 }]);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
 	it('ends a turn with how long it took, and keeps that across a reload', async () => {
 		const transcript = new ChatTranscript();
 		transcript.addPrompt('hi');

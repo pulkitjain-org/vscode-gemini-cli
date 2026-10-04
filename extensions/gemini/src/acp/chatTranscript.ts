@@ -54,8 +54,16 @@ export type TranscriptItem =
 	/** An update kind this version does not know (design rule 4 in gemini/docs/ARCHITECTURE.md). */
 	| { readonly id: string; readonly kind: 'other'; readonly type: string }
 	| { readonly id: string; readonly kind: 'notice'; readonly text: string; readonly severity: 'info' | 'error' }
-	/** Ends a turn: how long the agent worked, with a way to copy its reply. */
-	| { readonly id: string; readonly kind: 'turnEnd'; readonly durationMs: number };
+	/** Ends a turn: how long the agent worked, with a way to copy its reply, retry it, or undo its file changes. */
+	| {
+		readonly id: string; readonly kind: 'turnEnd'; readonly durationMs: number;
+		/** How many files the turn changed. */
+		readonly files?: number;
+		/** `available` while the turn's changes can be undone in this window; `undone` once they were. */
+		readonly undo?: 'available' | 'undone';
+		/** The latest turn offers to send its prompt again. */
+		readonly retry?: boolean;
+	};
 
 /**
  * Update kinds that describe the session rather than the conversation. They
@@ -71,6 +79,7 @@ const SESSION_STATE_UPDATES: ReadonlySet<string> = new Set([
 ]);
 
 type TextItem = Extract<TranscriptItem, { kind: 'user' | 'agent' | 'thought' }>;
+export type TurnEndItem = Extract<TranscriptItem, { kind: 'turnEnd' }>;
 
 export class ChatTranscript {
 
@@ -151,8 +160,25 @@ export class ChatTranscript {
 		this.upsert({ ...item, answer: selected ? { kind: 'selected', name: selected.name } : { kind: 'cancelled' } });
 	}
 
-	addTurnEnd(durationMs: number): void {
-		this.push({ id: this.newId(), kind: 'turnEnd', durationMs: Math.max(0, Math.round(durationMs)) });
+	/** Ends the turn; returns the item's id. */
+	addTurnEnd(durationMs: number): string {
+		const id = this.newId();
+		this.push({ id, kind: 'turnEnd', durationMs: Math.max(0, Math.round(durationMs)) });
+		return id;
+	}
+
+	/** Changes what a turnEnd item offers. */
+	updateTurnEnd(id: string, patch: Pick<TurnEndItem, 'files' | 'undo' | 'retry'>): void {
+		const item = this._items.find(i => i.id === id);
+		if (item?.kind === 'turnEnd') {
+			const next: Record<string, unknown> = { ...item, ...patch };
+			for (const key of Object.keys(patch) as (keyof typeof patch)[]) {
+				if (patch[key] === undefined) {
+					delete next[key];
+				}
+			}
+			this.upsert(next as TurnEndItem);
+		}
 	}
 
 	addNotice(text: string, severity: 'info' | 'error' = 'info'): void {

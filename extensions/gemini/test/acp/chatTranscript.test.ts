@@ -188,3 +188,15 @@ describe('ChatTranscript with the fake agent', () => {
 		]);
 	});
 });
+
+describe('ChatTranscript.updateTurnEnd', () => {
+	it('adds and removes what a turn end offers', () => {
+		const transcript = new ChatTranscript();
+		transcript.addPrompt('hi');
+		const id = transcript.addTurnEnd(1200);
+		transcript.updateTurnEnd(id, { retry: true, undo: 'available', files: 2 });
+		expect(transcript.items.at(-1)).toEqual({ id, kind: 'turnEnd', durationMs: 1200, retry: true, undo: 'available', files: 2 });
+		transcript.updateTurnEnd(id, { retry: undefined, undo: 'undone' });
+		expect(transcript.items.at(-1)).toEqual({ id, kind: 'turnEnd', durationMs: 1200, undo: 'undone', files: 2 });
+	});
+});
