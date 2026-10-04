@@ -54,6 +54,15 @@ export async function repositoryRoot(folder: string): Promise<string | undefined
 	}
 }
 
+/**
+ * `folder`'s path inside its repository ('' at the top). Asked of Git rather
+ * than worked out from `repositoryRoot`, which is the real path: through a
+ * symlink (such as /tmp on macOS) the two would not line up.
+ */
+export async function folderInRepository(folder: string): Promise<string> {
+	return (await git(folder, ['rev-parse', '--show-prefix'])).trim().replace(/\/$/, '');
+}
+
 /** Where agent worktrees for `repository` go: ~/.geminicode/worktrees/<repository name>. */
 export function worktreesHome(repository: string, home: string = os.homedir()): string {
 	return path.join(home, '.geminicode', 'worktrees', path.basename(repository) || 'repository');

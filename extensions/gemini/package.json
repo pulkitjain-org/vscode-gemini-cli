@@ -310,8 +310,58 @@
         "key": "ctrl+i",
         "mac": "cmd+i",
         "when": "editorTextFocus && !editorReadonly && resourceScheme == file && config.gemini.inlineEdit.enabled"
+      },
+      {
+        "command": "gemini.openChat",
+        "key": "ctrl+l",
+        "mac": "cmd+l",
+        "when": "editorTextFocus && !editorHasSelection"
+      },
+      {
+        "command": "gemini.agents.newAgent",
+        "key": "ctrl+alt+n",
+        "mac": "cmd+alt+n"
+      },
+      {
+        "command": "gemini.newChat",
+        "key": "ctrl+n",
+        "mac": "cmd+n",
+        "when": "focusedView == gemini.chat"
+      },
+      {
+        "command": "gemini.review.keepFile",
+        "key": "ctrl+enter",
+        "mac": "cmd+enter",
+        "when": "gemini.review.active && editorTextFocus"
+      },
+      {
+        "command": "gemini.review.undoFile",
+        "key": "ctrl+backspace",
+        "mac": "cmd+backspace",
+        "when": "gemini.review.active && editorTextFocus"
+      },
+      {
+        "command": "gemini.review.nextChange",
+        "key": "alt+]",
+        "when": "gemini.review.active && editorTextFocus"
+      },
+      {
+        "command": "gemini.review.previousChange",
+        "key": "alt+[",
+        "when": "gemini.review.active && editorTextFocus"
+      },
+      {
+        "command": "gemini.agents.rename",
+        "key": "f2",
+        "when": "focusedView == gemini.agents"
+      },
+      {
+        "command": "gemini.agents.remove",
+        "key": "delete",
+        "mac": "cmd+backspace",
+        "when": "focusedView == gemini.agents"
       }
-    ],
+     ],
     "viewsContainers": {
       "activitybar": [
         {

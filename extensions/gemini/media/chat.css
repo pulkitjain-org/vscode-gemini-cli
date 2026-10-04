@@ -1493,3 +1493,13 @@ body.vscode-high-contrast-light #send {
 		transform: scale(1);
 	}
 }
+
+/* Read out by screen readers only. */
+.announce {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}

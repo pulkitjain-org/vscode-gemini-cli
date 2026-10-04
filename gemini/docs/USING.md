@@ -13,6 +13,20 @@ Each mode remembers which panels you had open. An agent's tab shows what it is d
 
 In the **Changes** panel, hover over a change to **Keep** or **Undo** it. **Keep All** accepts everything, **Undo All** puts the files back, and **Commit** commits the agent's files on a new branch (an agent on its own branch has **Merge Back** instead).
 
+## Keyboard shortcuts
+
+| Keys | What it does |
+| --- | --- |
+| Cmd+L | Open the chat; with a selection, add it to the chat |
+| Cmd+Alt+N | New agent |
+| Cmd+N (in the chat) | New chat |
+| Esc (in the chat input) | Stop the agent |
+| Up / Down (empty chat input) | Bring back an earlier prompt |
+| Cmd+I | Inline edit |
+| Cmd+Enter / Cmd+Backspace | Keep or undo the agent's changes to the file you're in |
+| Alt+] / Alt+[ | Next or previous agent change in the file |
+| F2 / Cmd+Backspace (Agents pane) | Rename or remove the selected agent |
+
 ## Make it yours
 
 Run **Make It Yours** from the Command Palette, or open the step of the same name in Get Started, to pick:

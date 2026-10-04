@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { branchExists, commitAll, createWorktree, currentBranch, freeFolder, git, mergeBranch, removeWorktree, repositoryRoot, worktreesHome, worktreeStatus } from '../../src/acp/worktrees';
+import { branchExists, commitAll, createWorktree, currentBranch, folderInRepository, freeFolder, git, mergeBranch, removeWorktree, repositoryRoot, worktreesHome, worktreeStatus } from '../../src/acp/worktrees';
 
 let root: string;
 let repo: string;
@@ -41,6 +41,13 @@ describe('worktrees', () => {
 		expect(await currentBranch(repo)).toBe('main');
 		expect(await branchExists(repo, 'gemini/fix-total')).toBe(true);
 		expect(await freeFolder(worktreesHome(repo, home), 'other/fix-total')).toBe(path.join(worktreesHome(repo, home), 'fix-total-2'));
+	});
+
+	it('finds a folder inside its repository through a symlink', async () => {
+		const link = path.join(root, 'link');
+		await fs.symlink(repo, link);
+		expect(await folderInRepository(path.join(link, 'src'))).toBe('src');
+		expect(await folderInRepository(link)).toBe('');
 	});
 
 	it('merges the agent\'s work back after committing it', async () => {

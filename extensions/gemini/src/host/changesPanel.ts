@@ -3,6 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { errorMessage } from '../acp/errors';
@@ -34,6 +35,10 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 	private timer: ReturnType<typeof setTimeout> | undefined;
 	/** Bumped on every refresh, so a slower earlier one doesn't overwrite a later one. */
 	private generation = 0;
+	/** Each file's last diff, so typing in one file re-diffs only that file. */
+	private readonly diffs = new Map<string, { readonly original: string; readonly current: string; readonly hunks: NonNullable<ChangedFileView['hunks']> }>();
+	/** The last view posted, to skip posting the same one again. */
+	private lastView: string | undefined;
 	private readonly disposables: vscode.Disposable[] = [];
 
 	constructor(private readonly extensionUri: vscode.Uri) {
@@ -45,6 +50,9 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 
 	show(source: ChangesSource | undefined): void {
 		this.sourceListener?.dispose();
+		if (this.source !== source) {
+			this.diffs.clear();
+		}
 		this.source = source;
 		this.sourceListener = source?.changes.onDidChange(() => this.schedule());
 		this.schedule(0);
@@ -56,7 +64,12 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		view.webview.options = { enableScripts: true, localResourceRoots: [media] };
 		view.webview.html = this.html(view.webview, media);
 		view.webview.onDidReceiveMessage((message: FromChangesPanel) => this.onMessage(message));
-		view.onDidChangeVisibility(() => view.visible && this.schedule(0));
+		view.onDidChangeVisibility(() => {
+			if (view.visible) {
+				this.lastView = undefined;
+				this.schedule(0);
+			}
+		});
 		view.onDidDispose(() => {
 			if (this.view === view) {
 				this.view = undefined;
@@ -82,7 +95,10 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		}
 		const generation = ++this.generation;
 		const panelView = await this.build(this.source);
-		if (generation === this.generation) {
+		const json = JSON.stringify(panelView);
+		// Not when a later refresh started, the view closed meanwhile (it throws once disposed), or nothing changed.
+		if (generation === this.generation && this.view === view && json !== this.lastView) {
+			this.lastView = json;
 			void view.webview.postMessage({ type: 'view', view: panelView } satisfies ToChangesPanel);
 			view.badge = panelView.totals.files ? { value: panelView.totals.files, tooltip: vscode.l10n.t("{0} files changed", panelView.totals.files) } : undefined;
 			view.description = this.source?.title;
@@ -103,11 +119,21 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 			if (current === undefined) {
 				return base;
 			}
+			const cached = this.diffs.get(file.path);
+			if (cached?.original === file.original && cached.current === current) {
+				return { ...base, hunks: cached.hunks };
+			}
 			const original = splitLines(file.original);
 			const modified = splitLines(current);
 			const hunks = diffLines(original, modified).map((hunk, index) => ({ index, ...hunkLines(original, modified, hunk, 1) }));
+			this.diffs.set(file.path, { original: file.original, current, hunks });
 			return { ...base, hunks };
 		}));
+		for (const filePath of this.diffs.keys()) {
+			if (!source.changes.file(filePath)) {
+				this.diffs.delete(filePath);
+			}
+		}
 		const busy = source.busy();
 		return {
 			agent: { title: source.title, busy, ...(source.branch ? { branch: source.branch } : {}), canCommit: !!source.commit && !busy && files.length > 0 },
@@ -120,8 +146,16 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		const source = this.source;
 		switch (message.type) {
 			case 'ready':
+				this.lastView = undefined;
 				this.schedule(0);
 				return;
+		}
+		const filePath = message.type === 'keep' || message.type === 'undo' || message.type === 'keepFile' || message.type === 'undoFile' || message.type === 'openFile' ? message.path : undefined;
+		// Only files the agent changed.
+		if (filePath !== undefined && !source?.changes.file(filePath)) {
+			return;
+		}
+		switch (message.type) {
 			case 'keep':
 				await vscode.commands.executeCommand('gemini.review.keepChange', vscode.Uri.file(message.path).toString(), message.index);
 				return;
@@ -233,10 +267,18 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 	}
 }
 
-/** The file's text: the open document's, unsaved edits included, else what is on disk. */
+/**
+ * The file's text: the open document's, unsaved edits included, else what is
+ * on disk. Read from disk rather than opened as a document, which would make
+ * language servers start on every changed file.
+ */
 async function currentText(filePath: string): Promise<string | undefined> {
+	const open = vscode.workspace.textDocuments.find(document => document.uri.scheme === 'file' && document.uri.fsPath === filePath);
+	if (open) {
+		return open.getText();
+	}
 	try {
-		return (await vscode.workspace.openTextDocument(vscode.Uri.file(filePath))).getText();
+		return await fs.readFile(filePath, 'utf8');
 	} catch {
 		return undefined;
 	}

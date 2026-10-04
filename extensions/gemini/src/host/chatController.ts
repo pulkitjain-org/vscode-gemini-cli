@@ -75,6 +75,8 @@ export interface ChatGit {
 		/** The files were committed. */
 		committed(): void;
 	};
+	/** Set for an agent on its own branch: the chat must not switch it, or Merge Back would miss the work. */
+	readonly ownBranch?: string;
 }
 
 /** What the Agents pane shows about a chat. */
@@ -412,7 +414,8 @@ export class ChatController implements vscode.Disposable {
 		} else {
 			this.pendingAttachments.push(...attachments);
 		}
-		await this.options.reveal(true);
+		// Focus the chat, so the user can type about what they just added.
+		await this.options.reveal(false);
 	}
 
 	/** Lets the user pick files from anywhere to attach. */
@@ -481,9 +484,10 @@ export class ChatController implements vscode.Disposable {
 					this.pendingAttachments = [];
 				}
 				this.postGit();
-				void this.postTokenColors();
 				// The agent was started with the view (see attach); this retries one that has since stopped.
 				this.service.ensureReady().catch(() => undefined);
+				// After starting the agent: finding the theme's file scans every extension the first time.
+				setTimeout(() => void this.postTokenColors(), 0);
 				break;
 			case 'prompt':
 				void this.send(message.text, message.attachments ?? []);
@@ -540,7 +544,10 @@ export class ChatController implements vscode.Disposable {
 				break;
 			case 'pickBranch': {
 				const folder = this.options.git?.folder();
-				if (folder) {
+				const ownBranch = this.options.git?.ownBranch;
+				if (ownBranch) {
+					void vscode.window.showInformationMessage(vscode.l10n.t("This agent works on its own branch, {0}. Use Merge Back to bring its work into your branch.", ownBranch));
+				} else if (folder) {
 					void pickBranch(folder).finally(() => this.postGit());
 				}
 				break;
@@ -740,7 +747,8 @@ export class ChatController implements vscode.Disposable {
 			placeholder: vscode.l10n.t("Ask Gemini anything about this workspace"),
 			placeholderFollowUp: vscode.l10n.t("Ask a follow-up"),
 			send: vscode.l10n.t("Send (Enter)"),
-			stop: vscode.l10n.t("Stop"),
+			stop: vscode.l10n.t("Stop (Esc)"),
+			replyFinished: vscode.l10n.t("Reply finished"),
 			welcomeTitle: vscode.l10n.t("What are we building?"),
 			welcome: vscode.l10n.t("Ask Gemini to explain, change or create code in this workspace. It asks before it edits files."),
 			hintMention: vscode.l10n.t("to add files as context"),
@@ -770,7 +778,8 @@ export class ChatController implements vscode.Disposable {
 			retry: vscode.l10n.t("Retry"),
 			retryTooltip: vscode.l10n.t("Send this message again"),
 			switchBranch: vscode.l10n.t("Branch {0}: switch or create a branch"),
-			createBranchAndCommit: vscode.l10n.t("Create Branch & Commit"),
+			createBranchAndCommit: vscode.l10n.t("Create a branch and commit these changes"),
+			commit: vscode.l10n.t("Commit\u2026"),
 			addContext: vscode.l10n.t("Add context (@)"),
 			noFiles: vscode.l10n.t("No matching files"),
 			noCommands: vscode.l10n.t("No matching commands"),
@@ -799,7 +808,8 @@ export class ChatController implements vscode.Disposable {
 	<title>Gemini</title>
 </head>
 <body data-accent="${solidAccent() ? 'solid' : 'gradient'}">
-	<main id="transcript" class="transcript" aria-live="polite"></main>
+	<main id="transcript" class="transcript"></main>
+	<div id="announce" class="announce" aria-live="polite"></div>
 	<div id="status" class="status" role="status"></div>
 	<form id="composer" class="composer">
 		<div id="resize" class="composer-resize"></div>

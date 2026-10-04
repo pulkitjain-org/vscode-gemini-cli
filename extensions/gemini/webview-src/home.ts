@@ -108,8 +108,14 @@ function render(next: HomeView): void {
 function card(agent: HomeAgent): HTMLElement {
 	const node = el('article', `card ${agent.state}`);
 	node.tabIndex = 0;
+	node.setAttribute('aria-label', `${agent.title}, ${agent.status}`);
 	node.addEventListener('click', () => vscode.postMessage({ type: 'open', id: agent.id }));
-	node.addEventListener('keydown', e => e.key === 'Enter' && e.target === node && vscode.postMessage({ type: 'open', id: agent.id }));
+	node.addEventListener('keydown', e => {
+		if ((e.key === 'Enter' || e.key === ' ') && e.target === node) {
+			e.preventDefault();
+			vscode.postMessage({ type: 'open', id: agent.id });
+		}
+	});
 	const head = el('div', 'card-head');
 	head.append(el('span', 'dot'), el('span', 'title', agent.title), el('span', 'muted', agent.updated));
 	const status = el('div', 'card-status', agent.status);
@@ -144,9 +150,6 @@ function submit(): void {
 		return;
 	}
 	vscode.postMessage({ type: 'start', folder: workspace.value, text, ownBranch: !ownBranchLabel.hidden && ownBranch.checked });
-	prompt.value = '';
-	save();
-	updateControls();
 }
 
 form.addEventListener('submit', e => {
@@ -181,6 +184,10 @@ window.addEventListener('message', (event: MessageEvent<ToHome>) => {
 		render(message.view);
 	} else if (message.type === 'focus') {
 		prompt.focus();
+	} else if (message.type === 'started') {
+		prompt.value = '';
+		save();
+		updateControls();
 	}
 });
 

@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 // Highlights finished code blocks. The highlighter (webview-src/highlight.ts)
-// loads on the first code block, and blocks are highlighted when the view is
+// loads when the view is idle after opening, or on the first code block, and blocks are highlighted when the view is
 // idle, so streaming and typing never wait for it. Results are cached, so a
 // block rendered again (a reply finishing, the view reloading) is coloured at
 // once.
@@ -27,6 +27,9 @@ function load(): Promise<Highlighter | undefined> {
 	// eslint-disable-next-line no-restricted-syntax
 	return loading ??= url ? import(/* webpackIgnore: true */ url).catch(() => undefined) : Promise.resolve(undefined);
 }
+
+// Not at startup, so the chat opens fast, but warm well before most replies show code, so the first block doesn't flash plain.
+setTimeout(() => requestIdleCallback(() => void load(), { timeout: 3000 }), 2000);
 
 /** Colours `code` (a `<code>` in a `<pre>`) as `language` soon; at once when it was coloured before. */
 export function highlightCode(code: HTMLElement, language: string): void {

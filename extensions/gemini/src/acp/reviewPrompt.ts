@@ -22,7 +22,10 @@ export interface WorkingChanges {
 /** The repository's uncommitted changes. A repository without commits yet diffs what is staged. */
 export async function workingChanges(repository: string): Promise<WorkingChanges> {
 	const [diff, untracked] = await Promise.all([
-		git(repository, ['diff', 'HEAD', '--no-color', '--no-ext-diff']).catch(() => git(repository, ['diff', '--cached', '--no-color', '--no-ext-diff'])),
+		git(repository, ['rev-parse', '--verify', '--quiet', 'HEAD']).then(
+			() => git(repository, ['diff', 'HEAD', '--no-color', '--no-ext-diff']),
+			// No commits yet; any other failure (such as a diff too large to read) is reported, not narrowed to what is staged.
+			() => git(repository, ['diff', '--cached', '--no-color', '--no-ext-diff'])),
 		git(repository, ['ls-files', '--others', '--exclude-standard']),
 	]);
 	return { diff, untracked: untracked.split('\n').filter(Boolean) };

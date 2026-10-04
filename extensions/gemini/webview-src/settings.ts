@@ -41,6 +41,7 @@ function serverRow(server: McpServerView): HTMLElement {
 	toggle.title = strings.enable;
 	toggle.addEventListener('click', () => {
 		toggle.classList.toggle('on');
+		toggle.setAttribute('aria-checked', String(!server.enabled));
 		post({ type: 'toggle', name: server.name, enabled: !server.enabled });
 	});
 	const main = el('div', 'row-main');
@@ -87,7 +88,12 @@ function render(view: SettingsPageView): void {
 	rulesList.append(...view.rules.map(rulesRow));
 	rules.append(rulesList);
 
+	// Re-rendering replaces every element; keep keyboard focus on the same control.
+	const focused = document.activeElement instanceof HTMLElement && page.contains(document.activeElement) ? document.activeElement.getAttribute('aria-label') ?? document.activeElement.textContent : undefined;
 	page.replaceChildren(header, servers, rules);
+	if (focused) {
+		[...page.querySelectorAll<HTMLElement>('button')].find(b => (b.getAttribute('aria-label') ?? b.textContent) === focused)?.focus();
+	}
 }
 
 window.addEventListener('message', (event: MessageEvent<ToSettingsPage>) => {

@@ -293,7 +293,7 @@ export class Menubar extends Disposable {
 
 			const dockMenu = new Menu();
 			// GEMINI-FORK: New Agent in the Dock menu, in the window last used.
-			dockMenu.append(new MenuItem({ label: nls.localize('geminiNewAgent', "New Agent"), click: () => this.runInLastActiveWindow('gemini.agents.newAgent') }));
+			dockMenu.append(new MenuItem({ label: nls.localize('geminiNewAgent', "New Agent"), click: () => void this.runInLastActiveWindow('gemini.agents.newAgent') }));
 			dockMenu.append(new MenuItem({ label: this.mnemonicLabel(nls.localize({ key: 'miNewWindow', comment: ['&& denotes a mnemonic'] }, "New &&Window")), click: () => this.windowsMainService.openEmptyWindow({ context: OpenContext.DOCK }) }));
 
 			app.dock!.setMenu(dockMenu);
@@ -767,10 +767,10 @@ export class Menubar extends Disposable {
 	}
 
 	// GEMINI-FORK: runs a command from the Dock menu, which does not focus a window first.
-	private runInLastActiveWindow(commandId: string): void {
-		const window = this.windowsMainService.getLastActiveWindow();
+	private async runInLastActiveWindow(commandId: string): Promise<void> {
+		// With no window open, open one and run the command there once it is ready.
+		const window = this.windowsMainService.getLastActiveWindow() ?? (await this.windowsMainService.openEmptyWindow({ context: OpenContext.DOCK }))[0];
 		if (!window) {
-			this.windowsMainService.openEmptyWindow({ context: OpenContext.DOCK });
 			return;
 		}
 		window.focus();

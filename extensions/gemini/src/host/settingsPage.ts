@@ -69,6 +69,9 @@ export class SettingsPage implements vscode.Disposable {
 			return;
 		}
 		const view = await this.build();
+		if (this.panel !== panel) {
+			return;
+		}
 		this.files = new Set([...view.servers.map(s => s.file), ...view.rules.map(r => r.path)]);
 		void panel.webview.postMessage({ type: 'view', view } satisfies ToSettingsPage);
 	}
@@ -103,11 +106,11 @@ export class SettingsPage implements vscode.Disposable {
 		}
 		const rules: RulesFileView[] = [];
 		for (const { folder, settings } of projects) {
-			const name = rulesFileNames({ ...personal, ...settings })[0];
+			const name = plainFileName(rulesFileNames({ ...personal, ...settings })[0]);
 			const file = path.join(folder.uri.fsPath, name);
 			rules.push(await rulesView(folders.length > 1 ? vscode.l10n.t("Project rules ({0})", folder.name) : vscode.l10n.t("Project rules"), file, name));
 		}
-		const personalRules = path.join(dir, rulesFileNames(personal)[0]);
+		const personalRules = path.join(dir, plainFileName(rulesFileNames(personal)[0]));
 		rules.push(await rulesView(vscode.l10n.t("Personal rules"), personalRules, tildify(personalRules)));
 		return { servers, rules };
 	}
@@ -245,4 +248,9 @@ async function openAt(file: string, needle?: string): Promise<void> {
 	const offset = needle ? document.getText().indexOf(needle) : -1;
 	const position = offset >= 0 ? document.positionAt(offset) : new vscode.Position(0, 0);
 	await vscode.window.showTextDocument(document, { selection: new vscode.Range(position, position) });
+}
+
+/** A rules file name from settings, which may come from the repository: never a path that leaves its folder. */
+function plainFileName(name: string): string {
+	return name && path.basename(name) === name && name !== '..' && name !== '.' ? name : 'GEMINI.md';
 }

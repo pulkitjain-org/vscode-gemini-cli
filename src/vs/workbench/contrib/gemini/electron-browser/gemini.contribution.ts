@@ -13,6 +13,7 @@ import './geminiModes.js';
 import { mainWindow } from '../../../../base/browser/window.js';
 import { CancellationTokenSource } from '../../../../base/common/cancellation.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
+import { ThemeIcon } from '../../../../base/common/themables.js';
 import { FontMeasurements } from '../../../../editor/browser/config/fontMeasurements.js';
 import { CommandsRegistry } from '../../../../platform/commands/common/commands.js';
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
@@ -114,6 +115,8 @@ CommandsRegistry.registerCommand('_gemini.setApplicationBadge', (accessor, count
 });
 
 interface AgentTab {
+	/** The agent's id, also in its tab icon's fragment, as `gemini-agent=<id>`. */
+	readonly id?: string;
 	readonly title: string;
 	/** Shown after the title, such as the agent's line counts; empty for none. */
 	readonly description: string;
@@ -127,10 +130,16 @@ const agentTabViewType = 'mainThreadWebview-gemini.agent';
  * API can set a webview tab's title and icon but not a description.
  */
 CommandsRegistry.registerCommand('_gemini.setAgentTabs', (accessor, tabs: readonly AgentTab[]) => {
-	const descriptions = new Map((Array.isArray(tabs) ? tabs : []).map(tab => [String(tab.title), String(tab.description ?? '')]));
+	const list = Array.isArray(tabs) ? tabs : [];
+	const byId = new Map(list.map(tab => [String(tab.id), String(tab.description ?? '')]));
+	// Titles can repeat ("New agent"); the id in the icon's fragment can't. The title is only a fallback.
+	const byTitle = new Map(list.map(tab => [String(tab.title), String(tab.description ?? '')]));
 	for (const editor of accessor.get(IEditorService).editors) {
 		if (editor instanceof WebviewInput && editor.viewType === agentTabViewType) {
-			editor.setGeminiDescription(descriptions.get(editor.getName()) || undefined);
+			const icon = editor.iconPath;
+			const fragment = icon && !ThemeIcon.isThemeIcon(icon) ? icon.light.fragment : '';
+			const id = fragment.startsWith('gemini-agent=') ? fragment.slice('gemini-agent='.length) : undefined;
+			editor.setGeminiDescription((id !== undefined ? byId.get(id) : byTitle.get(editor.getName())) || undefined);
 		}
 	}
 });

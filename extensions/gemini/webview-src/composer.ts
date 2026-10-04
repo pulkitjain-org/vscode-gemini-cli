@@ -21,6 +21,14 @@ const { form, input, status, modeSelect, modelSelect, branchButton, commitButton
 export function setBusy(value: boolean): void {
 	ui.stopButton.hidden = !value;
 	ui.sendButton.hidden = value;
+	if (!value && document.activeElement === ui.stopButton) {
+		input.focus();
+	}
+	if (!value && state.busy !== value) {
+		ui.announce.textContent = strings.replyFinished;
+	} else if (value) {
+		ui.announce.textContent = '';
+	}
 	setTranscriptBusy(value);
 	updateSendState();
 }
@@ -87,8 +95,39 @@ export function setGit(git: ViewGit): void {
 	branchButton.title = branchLabel;
 	branchButton.setAttribute('aria-label', branchLabel);
 	commitButton.hidden = !git.canCommit || !git.branch;
-	ui.commitLabel.textContent = strings.createBranchAndCommit;
+	ui.commitLabel.textContent = strings.commit;
 	commitButton.title = strings.createBranchAndCommit;
+	commitButton.setAttribute('aria-label', strings.createBranchAndCommit);
+}
+
+/** Prompts sent from this view, newest last, for Up and Down in an empty input. */
+const sent: string[] = [];
+let recalled = -1;
+
+/** Up or Down at the edge of the input steps through earlier prompts, as in a terminal. */
+function recall(event: KeyboardEvent): boolean {
+	const up = event.key === 'ArrowUp';
+	if ((!up && event.key !== 'ArrowDown') || event.shiftKey || event.altKey || event.metaKey || event.ctrlKey || !sent.length) {
+		return false;
+	}
+	const browsing = recalled >= 0 && input.value === sent[recalled];
+	if (!browsing && input.value) {
+		return false;
+	}
+	if (up) {
+		recalled = browsing ? Math.max(0, recalled - 1) : sent.length - 1;
+	} else if (!browsing) {
+		return false;
+	} else {
+		recalled++;
+	}
+	input.value = recalled < sent.length ? sent[recalled] : '';
+	if (recalled >= sent.length) {
+		recalled = -1;
+	}
+	autoGrow();
+	updateSendState();
+	return true;
 }
 
 function submit(): void {
@@ -96,6 +135,10 @@ function submit(): void {
 	if (state.busy || (!text.trim() && !state.attachments.length)) {
 		return;
 	}
+	if (text.trim() && sent[sent.length - 1] !== text) {
+		sent.push(text);
+	}
+	recalled = -1;
 	vscode.postMessage({ type: 'prompt', text, attachments: state.attachments });
 	state.attachments = [];
 	renderAttachments();
@@ -118,6 +161,15 @@ input.addEventListener('keydown', event => {
 	if (!event.isComposing && onPickerKey(event)) {
 		event.preventDefault();
 		event.stopPropagation();
+		return;
+	}
+	if (event.key === 'Escape' && state.busy) {
+		event.preventDefault();
+		vscode.postMessage({ type: 'stop' });
+		return;
+	}
+	if (!event.isComposing && recall(event)) {
+		event.preventDefault();
 		return;
 	}
 	if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {

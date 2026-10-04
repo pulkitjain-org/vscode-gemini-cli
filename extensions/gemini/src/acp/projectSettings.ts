@@ -160,11 +160,14 @@ export function stripJsonComments(text: string): string {
 		} else if (c === '/' && text[i + 1] === '*') {
 			const end = text.indexOf('*/', i + 2);
 			i = end < 0 ? text.length : end + 1;
+		} else if (c === '}' || c === ']') {
+			// A trailing comma; only here, outside strings.
+			out = out.replace(/,(\s*)$/, '$1') + c;
 		} else {
 			out += c;
 		}
 	}
-	return out.replace(/,(\s*[}\]])/g, '$1');
+	return out;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

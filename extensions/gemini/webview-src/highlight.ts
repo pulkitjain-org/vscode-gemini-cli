@@ -93,8 +93,8 @@ hljs.registerAliases(['html', 'svg', 'vue'], { languageName: 'xml' });
 hljs.registerAliases(['toml', 'env', 'properties'], { languageName: 'ini' });
 hljs.registerAliases(['text', 'txt'], { languageName: 'plaintext' });
 
-/** Lines past this aren't worth the time; the block shows as plain text. */
-const maxLength = 50_000;
+/** Code longer than this (in characters) isn't worth the time; the block shows as plain text. */
+const maxLength = 20_000;
 
 /**
  * `code` as highlighted HTML (highlight.js escapes the text), or undefined

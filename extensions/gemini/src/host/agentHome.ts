@@ -31,6 +31,8 @@ export class AgentHome implements vscode.Disposable {
 	private panel: vscode.WebviewPanel | undefined;
 	private mode: Mode = 'editor';
 	private timer: ReturnType<typeof setTimeout> | undefined;
+	/** The last view posted, to skip posting the same one again. */
+	private lastView: string | undefined;
 	private readonly disposables: vscode.Disposable[] = [];
 
 	constructor(private readonly extensionUri: vscode.Uri, private readonly agents: AgentsView) {
@@ -98,6 +100,12 @@ export class AgentHome implements vscode.Disposable {
 			return;
 		}
 		const view = await this.build();
+		const json = JSON.stringify(view);
+		// Closed while building (the webview throws once disposed), or nothing changed.
+		if (this.panel !== panel || json === this.lastView) {
+			return;
+		}
+		this.lastView = json;
 		void panel.webview.postMessage({ type: 'view', view } satisfies ToHome);
 	}
 
@@ -123,12 +131,15 @@ export class AgentHome implements vscode.Disposable {
 	private async onMessage(message: FromHome): Promise<void> {
 		switch (message.type) {
 			case 'ready':
+				this.lastView = undefined;
 				await this.update();
 				void this.panel?.webview.postMessage({ type: 'focus' } satisfies ToHome);
 				return;
 			case 'start':
 				if (message.text.trim()) {
-					await this.agents.startWithPrompt(message.folder, message.text.trim(), message.ownBranch);
+					if (await this.agents.startWithPrompt(message.folder, message.text.trim(), message.ownBranch)) {
+						void this.panel?.webview.postMessage({ type: 'started' } satisfies ToHome);
+					}
 				}
 				return;
 			case 'addWorkspace':

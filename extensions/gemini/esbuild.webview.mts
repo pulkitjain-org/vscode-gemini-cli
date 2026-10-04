@@ -21,8 +21,11 @@ run({
 	srcDir,
 	outdir: outDir,
 	additionalOptions: {
+		// The icon font as its own file rather than inlined: every page (chat, Home, Changes, settings)
+		// then parses a small stylesheet and shares one cached font.
 		loader: {
-			'.ttf': 'dataurl',
-		}
+			'.ttf': 'file',
+		},
+		assetNames: '[name]',
 	}
 }, process.argv);

@@ -22,6 +22,10 @@ describe('stripJsonComments', () => {
 		const text = '{\n // note\n "url": "http://a/b//c", /* x */ "list": [1, 2,],\n}';
 		expect(JSON.parse(stripJsonComments(text))).toEqual({ url: 'http://a/b//c', list: [1, 2] });
 	});
+
+	it('keeps a comma before a brace inside a string', () => {
+		expect(JSON.parse(stripJsonComments('{ "args": ["--fmt={a, }"], // x\n }'))).toEqual({ args: ['--fmt={a, }'] });
+	});
 });
 
 describe('mcpServersIn', () => {

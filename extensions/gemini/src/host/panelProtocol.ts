@@ -130,7 +130,11 @@ export interface HomeStrings {
 	readonly noWorkspace: string;
 }
 
-export type ToHome = { readonly type: 'view'; readonly view: HomeView } | { readonly type: 'focus' };
+export type ToHome =
+	| { readonly type: 'view'; readonly view: HomeView }
+	| { readonly type: 'focus' }
+	/** The agent asked for has started; the prompt box can be cleared. Until then it keeps the text, in case starting fails. */
+	| { readonly type: 'started' };
 
 export type FromHome =
 	| { readonly type: 'ready' }

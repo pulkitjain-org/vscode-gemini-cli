@@ -191,7 +191,8 @@ function renderToolCall(item: ItemOf<'toolCall'>, toggleToolCall: ToggleToolCall
 		row.setAttribute('aria-expanded', String(expanded.has(item.id)));
 		row.addEventListener('click', () => toggleToolCall(item));
 		row.addEventListener('keydown', event => {
-			if (event.key === 'Enter' || event.key === ' ') {
+			// Not when a file or diff chip inside the row has focus.
+			if (event.target === row && (event.key === 'Enter' || event.key === ' ')) {
 				event.preventDefault();
 				toggleToolCall(item);
 			}

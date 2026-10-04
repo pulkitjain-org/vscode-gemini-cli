@@ -78,11 +78,14 @@ function renderFile(file: ChangedFileView): HTMLElement {
 		header.setAttribute('aria-expanded', String(!folded.has(file.path)));
 	};
 	header.addEventListener('click', toggle);
-	header.addEventListener('keydown', e => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggle()));
+	// Only the header itself: Enter on one of its buttons should press that button.
+	header.addEventListener('keydown', e => e.target === header && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggle()));
 	const name = el('span', 'file-name');
 	name.append(icon('chevron-down'), el('span', 'name', file.name));
 	if (file.dir) {
-		name.append(el('span', 'dir', file.dir));
+		const dir = el('span', 'dir', file.dir);
+		dir.title = file.dir;
+		name.append(dir);
 	}
 	if (file.created) {
 		name.append(el('span', 'tag', strings.newFile));

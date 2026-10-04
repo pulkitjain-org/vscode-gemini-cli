@@ -38,6 +38,8 @@ export interface ChatStrings {
 	readonly placeholderFollowUp: string;
 	readonly send: string;
 	readonly stop: string;
+	/** Read out by screen readers when a turn ends. */
+	readonly replyFinished: string;
 	/** The empty chat's heading, and the line and hints under it. */
 	readonly welcomeTitle: string;
 	readonly welcome: string;
@@ -94,7 +96,9 @@ export interface ChatStrings {
 	readonly retryTooltip: string;
 	/** `{0}` is the branch; the branch pill's tooltip. */
 	readonly switchBranch: string;
+	/** The commit pill's tooltip, and its short label. */
 	readonly createBranchAndCommit: string;
+	readonly commit: string;
 }
 
 /** The chat folder's git state, for the branch pill and Create Branch & Commit. */

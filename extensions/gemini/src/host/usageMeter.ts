@@ -13,6 +13,8 @@ const enabledSetting = 'usageMeter.enabled';
 const refreshMs = 10 * 60_000;
 /** The first read waits until startup has settled. */
 const firstReadDelayMs = 15_000;
+/** Slack for the timer: a tick a little under 10 minutes after the last read still reads. */
+const toleranceMs = 60_000;
 
 /**
  * Today's Gemini quota use, for the status bar: one small `retrieveUserQuota`
@@ -24,6 +26,8 @@ export class UsageMeter implements vscode.Disposable {
 	private readonly onDidChangeEmitter = new vscode.EventEmitter<readonly ModelQuota[] | undefined>();
 	readonly onDidChange = this.onDidChangeEmitter.event;
 	private lastRead = 0;
+	/** The last value sent, so listeners hear only changes. */
+	private last: string | undefined = '';
 	private reading = false;
 	private readonly timer: ReturnType<typeof setInterval>;
 	private readonly first: ReturnType<typeof setTimeout>;
@@ -50,23 +54,31 @@ export class UsageMeter implements vscode.Disposable {
 
 	private async read(): Promise<void> {
 		if (!this.enabled()) {
-			this.onDidChangeEmitter.fire(undefined);
+			this.update(undefined);
 			return;
 		}
-		if (this.reading || !vscode.window.state.focused || Date.now() - this.lastRead < refreshMs) {
+		if (this.reading || !vscode.window.state.focused || Date.now() - this.lastRead < refreshMs - toleranceMs) {
 			return;
 		}
 		this.reading = true;
 		this.lastRead = Date.now();
 		try {
 			const quota = await this.client.quota(AbortSignal.timeout(15_000));
-			this.onDidChangeEmitter.fire(quota?.length ? quota : undefined);
+			this.update(quota?.length ? quota : undefined);
 		} catch (err) {
 			// The meter is a nicety; a failure only leaves it out.
 			this.log.debug(`Could not read the Gemini quota: ${errorMessage(err)}`);
-			this.onDidChangeEmitter.fire(undefined);
+			this.update(undefined);
 		} finally {
 			this.reading = false;
+		}
+	}
+
+	private update(quota: readonly ModelQuota[] | undefined): void {
+		const json = quota && JSON.stringify(quota);
+		if (json !== this.last) {
+			this.last = json;
+			this.onDidChangeEmitter.fire(quota);
 		}
 	}
 
