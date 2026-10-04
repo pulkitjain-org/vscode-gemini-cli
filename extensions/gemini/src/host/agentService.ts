@@ -6,11 +6,13 @@
 import * as vscode from 'vscode';
 import { isModeAllowed } from '../acp/adminPolicy';
 import { AgentClient, AgentClientState } from '../acp/agentClient';
+import type { AgentCommand } from '../acp/agentProcess';
 import { AgentRuntime } from '../acp/agentRuntime';
 import { AgentErrorInfo } from '../acp/errors';
 import { createFileHandlers } from '../acp/fileAccess';
 import { PermissionBroker } from '../acp/permissions';
 import { CliResolution, isOlderThan } from '../acp/cliResolution';
+import { McpDiagnostics, McpProblem } from '../acp/mcpDiagnostics';
 import { MIN_CLI_VERSION } from '../acp/protocol';
 import { AgentSidecar } from '../acp/sidecar';
 import { trustedFoldersPath, trustFolder } from '../acp/trustedFolders';
@@ -47,8 +49,13 @@ export class AgentService implements vscode.Disposable {
 	private readonly onDidChangeStatusEmitter = new vscode.EventEmitter<AgentStatus>();
 	readonly onDidChangeStatus = this.onDidChangeStatusEmitter.event;
 
-	constructor(private readonly log: vscode.LogOutputChannel) {
-		this.sidecar = new AgentSidecar({ command: () => getAgentCommand({ cli: this.resolveCli() }), cwd: getWorkspaceCwd() });
+	/** MCP servers that fail to start, read from the CLI's debug log; unset in tests. */
+	private readonly mcpDiagnostics: McpDiagnostics | undefined;
+
+	/** `debugLog` is where the agent writes its debug log, read for MCP failures the CLI does not report over ACP. */
+	constructor(private readonly log: vscode.LogOutputChannel, debugLog?: string) {
+		this.mcpDiagnostics = debugLog ? new McpDiagnostics(debugLog) : undefined;
+		this.sidecar = new AgentSidecar({ command: () => this.agentCommand(), cwd: getWorkspaceCwd() });
 		this.runtime = new AgentRuntime(this.sidecar, {
 			fileSystem: createFileHandlers(new WorkspaceFileSystem(), getFileAccessPolicy),
 		});
@@ -70,6 +77,7 @@ export class AgentService implements vscode.Disposable {
 				this.onDidChangeStatusEmitter.fire(this.status);
 			}),
 			this.sidecar.onStderr(line => log.info(`[agent] ${line}`)),
+			...(this.mcpDiagnostics ? [this.mcpDiagnostics, this.mcpDiagnostics.onDidReport(problem => this.reportMcpProblem(problem))] : []),
 			this.sidecar.onDidChangeState(state => {
 				const detail = state.kind === 'restarting' ? ` (attempt ${state.attempt} in ${state.delayMs}ms, exit code ${state.exitCode})`
 					: state.kind === 'failed' ? ` (${state.reason}: ${state.message})` : '';
@@ -217,6 +225,28 @@ export class AgentService implements vscode.Disposable {
 			message: vscode.l10n.t("Sign in and finish any account setup, then exit the Gemini CLI (/quit) to return to the editor."),
 		});
 		this.setupTerminal.show();
+	}
+
+	/** The agent's command, with its debug log pointed at a file GeminiCode reads, unless the user set one. */
+	private agentCommand(): AgentCommand {
+		const command = getAgentCommand({ cli: this.resolveCli() });
+		if (!this.mcpDiagnostics || command.env.GEMINI_DEBUG_LOG_FILE || !this.mcpDiagnostics.reset()) {
+			return command;
+		}
+		return { ...command, env: { ...command.env, GEMINI_DEBUG_LOG_FILE: this.mcpDiagnostics.file } };
+	}
+
+	private reportMcpProblem(problem: McpProblem): void {
+		this.log.warn(`MCP server ${problem.server ?? '(unknown)'}: ${problem.message}`);
+		const text = problem.server
+			? vscode.l10n.t("Gemini could not start the MCP server \"{0}\": {1}. Its tools are not available.", problem.server, problem.message)
+			: vscode.l10n.t("An MCP server failed: {0}", problem.message);
+		const showLog = vscode.l10n.t("Show Log");
+		void vscode.window.showWarningMessage(text, showLog).then(choice => {
+			if (choice === showLog) {
+				this.log.show();
+			}
+		});
 	}
 
 	dispose(): void {

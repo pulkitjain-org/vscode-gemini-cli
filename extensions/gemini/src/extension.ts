@@ -30,7 +30,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		adminPolicy: vscode.Uri.joinPath(context.globalStorageUri, 'policy').fsPath,
 	});
 	const teamCommandStore = initTeamCommands(log);
-	const service = new AgentService(log);
+	const service = new AgentService(log, vscode.Uri.joinPath(context.globalStorageUri, 'cli-debug.log').fsPath);
 	const diffPreview = new DiffPreview();
 	const fileIndex = new WorkspaceFileIndex();
 	const chatView = new ChatViewProvider(context.extensionUri, service, diffPreview, fileIndex);

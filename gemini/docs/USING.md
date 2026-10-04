@@ -44,7 +44,7 @@ The agent cannot read secret files such as `.env` and private keys, or git-ignor
 
 ## Slash commands
 
-Type `/` at the start of the composer to list commands. Keep typing to filter, then press <kbd>Tab</kbd> or <kbd>Enter</kbd> to complete the name and add arguments.
+Type `/` at the start of the composer to list commands, with team commands first. Keep typing to filter, then press <kbd>Tab</kbd> or <kbd>Enter</kbd> to complete the name and add arguments.
 
 - **Gemini CLI commands** such as `/init`, `/memory` and `/restore` come from the CLI and run in the CLI.
 - **Team commands** are TOML files in `.gemini/commands/` in the workspace, or in `~/.gemini/commands/` for your own. This is the Gemini CLI's own format, so the same files work in the terminal. `git/commit.toml` becomes `/git:commit`. GeminiCode sends the file's `prompt`, with `{{args}}` replaced by what you typed after the name. A workspace command replaces a personal one with the same name, and a CLI command wins over both.
@@ -59,6 +59,10 @@ Prompts that use `!{...}` (run a shell command) or `@{...}` (read a file) are no
 ## Notifications
 
 When an agent finishes or needs your permission while GeminiCode is in the background, a system notification appears and the Dock icon bounces. Click it to open the agent. The Dock icon and the Agents pane show how many agents are waiting for you. Turn both off with `gemini.notifications.enabled`. macOS asks once whether GeminiCode may show notifications.
+
+## MCP servers
+
+The Gemini CLI starts the MCP servers in its `settings.json` files. When one cannot start, GeminiCode shows a warning naming the server and the reason, and writes it to the Gemini log (**Gemini: Show Log**). The CLI does not report these over ACP, so GeminiCode reads them from the CLI's debug log, which it keeps under 1 MB in its own storage. If you set `GEMINI_DEBUG_LOG_FILE` yourself, GeminiCode leaves it alone and shows no warnings.
 
 ## Long conversations
 
