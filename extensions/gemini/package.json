@@ -116,6 +116,12 @@
         "icon": "$(git-branch)"
       },
       {
+        "command": "gemini.agentHome",
+        "title": "%command.agentHome%",
+        "category": "%category%",
+        "icon": "$(home)"
+      },
+      {
         "command": "gemini.agents.addWorkspace",
         "title": "%command.agents.addWorkspace%",
         "category": "%category%",
@@ -301,6 +307,13 @@
           "title": "%viewContainer.title%",
           "icon": "media/gemini.svg"
         }
+      ],
+      "secondarySidebar": [
+        {
+          "id": "geminiChanges",
+          "title": "%viewContainer.changes%",
+          "icon": "$(diff-multiple)"
+        }
       ]
     },
     "views": {
@@ -313,7 +326,8 @@
         {
           "id": "gemini.agentChanges",
           "name": "%view.agentChanges%",
-          "initialSize": 1
+          "initialSize": 1,
+          "when": "gemini.mode != agents"
         },
         {
           "type": "webview",
@@ -321,6 +335,14 @@
           "name": "%view.chat%",
           "initialSize": 3,
           "visibility": "collapsed"
+        }
+      ],
+      "geminiChanges": [
+        {
+          "type": "webview",
+          "id": "gemini.changesPanel",
+          "name": "%view.changesPanel%",
+          "when": "gemini.mode == agents"
         }
       ]
     },
@@ -410,6 +432,11 @@
           "command": "gemini.agents.addWorkspace",
           "when": "view == gemini.agents",
           "group": "navigation@2"
+        },
+        {
+          "command": "gemini.agentHome",
+          "when": "view == gemini.agents",
+          "group": "navigation@3"
         },
         {
           "command": "gemini.changes.openAll",

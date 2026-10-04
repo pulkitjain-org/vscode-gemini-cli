@@ -6,7 +6,7 @@
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { AgentChanges, formatCounts } from '../acp/agentChanges';
+import { AgentChanges, ChangeTotals, formatCounts } from '../acp/agentChanges';
 import { attentionChange, waitingCount } from '../acp/attention';
 import { branchNameFrom, isValidBranchName } from '../acp/branchNames';
 import { AgentRecord, AgentsModel, AgentsSnapshot, WorkspaceRecord } from '../acp/agents';
@@ -20,6 +20,7 @@ import { AgentNotifier } from './agentNotifier';
 import { AgentService } from './agentService';
 import { AgentSession } from './agentSession';
 import { ChangesSource, ChangesView } from './changesView';
+import type { AgentStateKind } from './panelProtocol';
 import { ReviewController } from './reviewController';
 import { ChatActivity, ChatController, FileSearch } from './chatController';
 import { configSection } from './configuration';
@@ -48,6 +49,29 @@ interface AgentNode {
 }
 
 type Node = WorkspaceNode | AgentNode;
+
+/** One agent, as Agent Home and the title bar show it. */
+export interface AgentSummary {
+	readonly id: string;
+	readonly title: string;
+	/** The workspace it belongs to. */
+	readonly folder: string;
+	readonly state: AgentStateKind;
+	/** A plain status line, such as "Needs you: Shell npm test". */
+	readonly status: string;
+	readonly changes?: ChangeTotals;
+	readonly worktree?: AgentWorktree;
+	readonly updatedAt: number;
+}
+
+/** A workspace agents can start in. */
+export interface WorkspaceSummary {
+	readonly folder: string;
+	/** In a Git repository, so an agent can have its own branch. */
+	readonly git: boolean;
+	/** Open in this window. */
+	readonly current: boolean;
+}
 
 /** An agent with a live session in this window. */
 interface LiveAgent {
@@ -92,6 +116,14 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 
 	private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<Node | undefined>();
 	readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
+	/** Agents, their states or their workspaces changed. */
+	private readonly onDidChangeAgentsEmitter = new vscode.EventEmitter<void>();
+	readonly onDidChangeAgents = this.onDidChangeAgentsEmitter.event;
+	/** The agent whose changes show changed; Agents mode's Changes panel follows it. */
+	private readonly onDidFocusEmitter = new vscode.EventEmitter<ChangesSource | undefined>();
+	readonly onDidFocus = this.onDidFocusEmitter.event;
+	/** The pills last sent to the title bar, to send only changes. */
+	private lastStatus = '';
 
 	constructor(
 		private readonly context: vscode.ExtensionContext,
@@ -110,6 +142,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			this.changesView,
 			this.review,
 			this.onDidChangeTreeDataEmitter,
+			this.onDidChangeAgentsEmitter,
+			this.onDidFocusEmitter,
 			this.model.onDidChange(() => {
 				void context.globalState.update(storageKey, this.model.snapshot());
 				this.refresh();
@@ -120,12 +154,12 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			this.tree.onDidChangeVisibility(e => this.setRefreshing(e.visible)),
 			vscode.commands.registerCommand('gemini.agents.newAgent', (node?: Node) => this.newAgent(node)),
 			vscode.commands.registerCommand('gemini.agents.newAgentOnBranch', (node?: Node) => this.newAgent(node, true)),
-			vscode.commands.registerCommand('gemini.agents.mergeBack', (node?: Node) => this.mergeBack(node)),
+			vscode.commands.registerCommand('gemini.agents.mergeBack', (node?: Node) => node?.kind === 'agent' && this.mergeBack(node.record.id)),
 			vscode.commands.registerCommand('gemini.agents.addWorkspace', () => this.addWorkspace()),
 			vscode.commands.registerCommand('gemini.agents.open', (id: string) => this.open(id)),
 			vscode.commands.registerCommand('gemini.agents.openChanges', (node?: Node) => node?.kind === 'agent' && this.openChanges(node.record.id)),
 			vscode.commands.registerCommand('gemini.agents.rename', (node?: Node) => this.rename(node)),
-			vscode.commands.registerCommand('gemini.agents.stop', (node?: Node) => node?.kind === 'agent' && this.live.get(node.record.id)?.session.cancel()),
+			vscode.commands.registerCommand('gemini.agents.stop', (node?: Node) => node?.kind === 'agent' && this.stopTurn(node.record.id)),
 			vscode.commands.registerCommand('gemini.agents.remove', (node?: Node) => this.removeAgent(node)),
 			vscode.commands.registerCommand('gemini.agents.removeWorkspace', (node?: Node) => this.removeWorkspace(node)),
 		);
@@ -190,38 +224,111 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		item.id = `agent:${record.id}`;
 		const branch = await this.branchOf(node.folder).catch(() => undefined);
 		const changes = live?.changes.totals ?? record.changes;
-		item.description = [changes?.files ? formatCounts(changes) : undefined, relativeTime(record.updatedAt, Date.now()), branch].filter(Boolean).join(' · ');
 		const state = this.agentState(live);
+		const statusLine = state.kind === 'working' || state.kind === 'waiting' ? state.status : undefined;
+		item.description = [statusLine ?? (changes?.files ? formatCounts(changes) : undefined), relativeTime(record.updatedAt, Date.now()), branch].filter(Boolean).join(' · ');
 		item.iconPath = state.icon;
 		const where = record.worktree
 			? vscode.l10n.t("On its own branch {0}, in {1}", escapeMarkdown(record.worktree.branch), escapeMarkdown(tildify(record.worktree.folder)))
 			: `${escapeMarkdown(node.folder)}${branch ? ` (${escapeMarkdown(branch)})` : ''}`;
-		item.tooltip = new vscode.MarkdownString(`**${escapeMarkdown(record.title)}**\n\n${escapeMarkdown(state.label)}\n\n${where}`);
+		item.tooltip = new vscode.MarkdownString(`**${escapeMarkdown(record.title)}**\n\n${escapeMarkdown(state.status)}\n\n${where}`);
 		item.contextValue = `${live?.activity.busy ? 'agent.busy' : 'agent'}${record.worktree ? '.worktree' : ''}${changes?.files ? '.changes' : ''}`;
 		item.command = { command: 'gemini.agents.open', title: vscode.l10n.t("Open Agent"), arguments: [record.id] };
-		item.accessibilityInformation = { label: `${record.title}, ${state.label}` };
+		item.accessibilityInformation = { label: `${record.title}, ${state.status}` };
 		return item;
 	}
 
-	private agentState(live: LiveAgent | undefined): { icon: vscode.ThemeIcon; label: string } {
+	private agentState(live: LiveAgent | undefined): { kind: AgentStateKind; icon: vscode.ThemeIcon; status: string } {
+		const step = live?.activity.step;
 		if (live?.session.status.phase === 'error') {
-			return { icon: new vscode.ThemeIcon('error', new vscode.ThemeColor('errorForeground')), label: vscode.l10n.t("Needs attention") };
+			return { kind: 'error', icon: new vscode.ThemeIcon('error', new vscode.ThemeColor('errorForeground')), status: vscode.l10n.t("Needs attention") };
 		}
 		if (live?.activity.needsPermission) {
-			return { icon: new vscode.ThemeIcon('bell-dot', new vscode.ThemeColor('charts.yellow')), label: vscode.l10n.t("Waiting for your permission") };
+			return { kind: 'waiting', icon: new vscode.ThemeIcon('bell-dot', new vscode.ThemeColor('charts.yellow')), status: step ? vscode.l10n.t("Needs you: {0}", step) : vscode.l10n.t("Waiting for your permission") };
 		}
 		if (live?.activity.busy) {
-			return { icon: new vscode.ThemeIcon('loading~spin'), label: vscode.l10n.t("Working") };
+			return { kind: 'working', icon: new vscode.ThemeIcon('loading~spin'), status: step ?? vscode.l10n.t("Working") };
 		}
 		if (live?.unread) {
-			return { icon: new vscode.ThemeIcon('check', new vscode.ThemeColor('charts.green')), label: vscode.l10n.t("Done") };
+			return { kind: 'done', icon: new vscode.ThemeIcon('check', new vscode.ThemeColor('charts.green')), status: vscode.l10n.t("Done") };
 		}
-		return { icon: new vscode.ThemeIcon('comment-discussion'), label: live ? vscode.l10n.t("Idle") : vscode.l10n.t("Not started in this window") };
+		return live
+			? { kind: 'idle', icon: new vscode.ThemeIcon('comment-discussion'), status: vscode.l10n.t("Idle") }
+			: { kind: 'stopped', icon: new vscode.ThemeIcon('comment-discussion'), status: vscode.l10n.t("Not started in this window") };
+	}
+
+	/** Every agent, newest first. */
+	summaries(): AgentSummary[] {
+		const summaries: AgentSummary[] = [];
+		for (const workspace of this.model.workspaces) {
+			for (const record of this.model.agentsIn(workspace.id)) {
+				const live = this.live.get(record.id);
+				const state = this.agentState(live);
+				const changes = live?.changes.totals ?? record.changes;
+				summaries.push({
+					id: record.id, title: record.title, folder: workspace.folder, state: state.kind, status: state.status,
+					...(changes?.files ? { changes } : {}), ...(record.worktree ? { worktree: record.worktree } : {}), updatedAt: record.updatedAt,
+				});
+			}
+		}
+		return summaries.sort((a, b) => b.updatedAt - a.updatedAt);
+	}
+
+	/** The workspaces a new agent can start in: the open folders first. */
+	async workspaces(): Promise<WorkspaceSummary[]> {
+		return Promise.all(this.workspaceNodes().map(async node => ({
+			folder: node.folder, current: node.current, git: await this.branchOf(node.folder).then(Boolean, () => false),
+		})));
+	}
+
+	/** Starts an agent in `folder` (on its own branch, named after the prompt, with `ownBranch`) and sends it `text`. */
+	async startWithPrompt(folder: string, text: string, ownBranch: boolean): Promise<void> {
+		let worktree: AgentWorktree | undefined;
+		if (ownBranch) {
+			const repository = await repositoryRoot(folder);
+			if (!repository) {
+				void vscode.window.showErrorMessage(vscode.l10n.t("{0} is not in a Git repository, so the agent can't have its own branch.", path.basename(folder)));
+				return;
+			}
+			const branch = await freeBranchName(repository, branchNameFrom(text));
+			try {
+				worktree = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Creating the agent's branch...") },
+					() => createWorktree(repository, branch, path.relative(repository, folder)));
+			} catch (err) {
+				void vscode.window.showErrorMessage(vscode.l10n.t("Could not create the agent's branch: {0}", errorMessage(err)));
+				return;
+			}
+		}
+		const workspace = this.model.addWorkspace(folder);
+		const agent = this.model.addAgent(workspace.id, vscode.l10n.t("New agent"), worktree);
+		await this.open(agent.id);
+		await this.live.get(agent.id)?.controller.send(text);
+	}
+
+	/** Stops the agent's current turn. */
+	stopTurn(id: string): void {
+		void this.live.get(id)?.session.cancel();
+	}
+
+	/** Sends the title bar a pill for each agent that is working, waiting or done and unread. */
+	private updateTitleBar(): void {
+		const pills = this.summaries()
+			.filter(agent => agent.state === 'working' || agent.state === 'waiting' || agent.state === 'done' || agent.state === 'error')
+			.sort((a, b) => pillOrder(a.state) - pillOrder(b.state))
+			.map(agent => ({ id: agent.id, title: agent.title, state: agent.state, detail: agent.status }));
+		const json = JSON.stringify(pills);
+		if (json !== this.lastStatus) {
+			this.lastStatus = json;
+			// Only GeminiCode's workbench has this command.
+			void Promise.resolve(vscode.commands.executeCommand('_gemini.setAgentStatus', pills)).catch(() => undefined);
+		}
 	}
 
 	private refresh(): void {
 		this.onDidChangeTreeDataEmitter.fire(undefined);
 		this.updateBadge();
+		this.updateTitleBar();
+		this.onDidChangeAgentsEmitter.fire();
 	}
 
 	/** The number of agents waiting on the user, on the pane's icon and the Dock. */
@@ -302,8 +409,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	}
 
 	/** Merges an agent's branch into what its workspace has checked out, committing its work first. */
-	private async mergeBack(node: Node | undefined): Promise<void> {
-		const record = node?.kind === 'agent' ? this.model.agent(node.record.id) : undefined;
+	/** Merges an agent's branch into the branch its workspace has checked out. */
+	async mergeBack(id: string): Promise<void> {
+		const record = this.model.agent(id);
 		const workspace = record && this.model.workspace(record.workspaceId);
 		const worktree = record?.worktree;
 		if (!record || !workspace || !worktree) {
@@ -479,7 +587,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	}
 
 	/** Opens the agent's changes in the multi-diff editor, starting it to read them if needed. */
-	private async openChanges(id: string): Promise<void> {
+	async openChanges(id: string): Promise<void> {
 		if (!this.live.has(id)) {
 			await this.open(id);
 		}
@@ -491,14 +599,26 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 
 	private focus(id: string): void {
 		this.focusedId = id;
-		this.changesView.show(this.changesSource(id));
+		const source = this.changesSource(id);
+		this.changesView.show(source);
+		this.onDidFocusEmitter.fire(source);
+	}
+
+	/** The agent whose changes show: the one whose tab was last in front. */
+	get focusedSource(): ChangesSource | undefined {
+		return this.focusedId ? this.changesSource(this.focusedId) : undefined;
 	}
 
 	private changesSource(id: string): ChangesSource | undefined {
 		const live = this.live.get(id);
 		const record = this.model.agent(id);
 		const workspace = record && this.model.workspace(record.workspaceId);
-		return live && workspace ? { agentId: id, title: record.title, folder: record.worktree?.cwd ?? workspace.folder, changes: live.changes, editorColumn: () => besideAgent(live.panel) } : undefined;
+		return live && workspace ? {
+			agentId: id, title: record.title, folder: record.worktree?.cwd ?? workspace.folder, changes: live.changes,
+			editorColumn: () => besideAgent(live.panel),
+			busy: () => live.activity.busy,
+			...(record.worktree ? { branch: record.worktree.branch, mergeBack: () => this.mergeBack(id) } : { commit: () => live.controller.commit() }),
+		} : undefined;
 	}
 
 	private start(record: AgentRecord, folder: string): LiveAgent {
@@ -675,6 +795,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		if (this.focusedId === id) {
 			this.focusedId = undefined;
 			this.changesView.show(undefined);
+			this.onDidFocusEmitter.fire(undefined);
 		}
 		live.panel?.dispose();
 		void live.session.cancel();
@@ -696,7 +817,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 }
 
 /** "now", "5m", "3h", "2d", "6w": short, like the screenshot's session list. */
-function relativeTime(then: number, now: number): string {
+export function relativeTime(then: number, now: number): string {
 	const minutes = Math.floor(Math.max(0, now - then) / 60_000);
 	if (minutes < 1) {
 		return vscode.l10n.t("now");
@@ -725,8 +846,22 @@ function isOpenFolder(folder: string): boolean {
 	return (vscode.workspace.workspaceFolders ?? []).some(f => f.uri.scheme === 'file' && f.uri.fsPath === folder);
 }
 
-function tildify(folder: string): string {
+export function tildify(folder: string): string {
 	const home = os.homedir();
 	return folder === home || folder.startsWith(home + path.sep) ? `~${folder.slice(home.length)}` : folder;
 }
 
+/** Agents waiting on the user come first in the title bar, then working ones. */
+function pillOrder(state: AgentStateKind): number {
+	return state === 'waiting' || state === 'error' ? 0 : state === 'working' ? 1 : 2;
+}
+
+/** `branch`, or `branch-2`, `branch-3`... when taken. */
+async function freeBranchName(repository: string, branch: string): Promise<string> {
+	for (let n = 1; ; n++) {
+		const candidate = n === 1 ? branch : `${branch}-${n}`;
+		if (!await branchExists(repository, candidate)) {
+			return candidate;
+		}
+	}
+}

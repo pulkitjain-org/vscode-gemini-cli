@@ -2,6 +2,17 @@
 
 How the parts of GeminiCode that differ from VS Code behave day to day. For setup, see [Getting started](../README.md#getting-started).
 
+## Agents and Editor modes
+
+The switch at the top of the window, or Cmd+Alt+M, changes the layout:
+
+- **Agents mode** (the default) is for working with agents: your agents on the left, the agent's chat in the middle, and its changes on the right. When no tab is open, **Agent Home** shows: describe a task and press Enter to start an agent on it, tick **On its own branch** to give it a branch of its own, and see each agent's status, changes and next step as a card.
+- **Editor mode** is the classic VS Code layout, with Explorer, Search and Source Control, for hands-on coding.
+
+Each mode remembers which panels you had open. Agents that are working or waiting for you show as pills in the title bar in both modes; click one to open that agent.
+
+In the **Changes** panel, hover over a change to **Keep** or **Undo** it. **Keep All** accepts everything, **Undo All** puts the files back, and **Commit** commits the agent's files on a new branch (an agent on its own branch has **Merge Back** instead).
+
 ## Make it yours
 
 Run **Make It Yours** from the Command Palette, or open the step of the same name in Get Started, to pick:

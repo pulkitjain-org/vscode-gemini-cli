@@ -131,3 +131,24 @@ export function minimalEdit(before: string, after: string): { readonly start: nu
 	}
 	return { start, end: before.length - end, text: after.slice(start, after.length - end) };
 }
+
+export interface HunkLine {
+	readonly kind: 'add' | 'del' | 'ctx';
+	readonly text: string;
+}
+
+/**
+ * A change as a unified diff: `context` unchanged lines either side, its
+ * removed lines, then its added ones. Past `maxLines` changed lines the rest
+ * is counted in `hidden` rather than shown.
+ */
+export function hunkLines(original: readonly string[], modified: readonly string[], hunk: Hunk, context = 2, maxLines = 80): { lines: HunkLine[]; hidden: number } {
+	const before = modified.slice(Math.max(0, hunk.modifiedStart - context), hunk.modifiedStart).map(text => ({ kind: 'ctx' as const, text }));
+	const after = modified.slice(hunk.modifiedEnd, hunk.modifiedEnd + context).map(text => ({ kind: 'ctx' as const, text }));
+	const changed: HunkLine[] = [
+		...original.slice(hunk.originalStart, hunk.originalEnd).map(text => ({ kind: 'del' as const, text })),
+		...modified.slice(hunk.modifiedStart, hunk.modifiedEnd).map(text => ({ kind: 'add' as const, text })),
+	];
+	const shown = changed.slice(0, maxLines);
+	return { lines: [...before, ...shown, ...(changed.length > maxLines ? [] : after)], hidden: changed.length - shown.length };
+}

@@ -5,9 +5,10 @@
 
 // GEMINI-FORK: what the Gemini extension needs from the workbench that the
 // extension API does not offer: OS notifications, the Dock badge, and the
-// code fonts that ship with GeminiCode.
+// code fonts that ship with GeminiCode. The window modes are in geminiModes.ts.
 
 import './geminiFonts.css';
+import './geminiModes.js';
 import { mainWindow } from '../../../../base/browser/window.js';
 import { CancellationTokenSource } from '../../../../base/common/cancellation.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';

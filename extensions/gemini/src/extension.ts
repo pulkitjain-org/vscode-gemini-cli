@@ -9,7 +9,9 @@ import { filesToAttach, selectionsToAttach } from './host/addToChat';
 import { AppUpdateNotice } from './host/appUpdateNotice';
 import { Appearance } from './host/appearance';
 import { AgentService } from './host/agentService';
+import { AgentHome } from './host/agentHome';
 import { AgentsView } from './host/agentsView';
+import { ChangesPanel } from './host/changesPanel';
 import { applyLayoutDefaults } from './host/layoutDefaults';
 import { ChatViewProvider, chatViewId } from './host/chatView';
 import { checkAgent } from './host/checkAgent';
@@ -37,6 +39,9 @@ export function activate(context: vscode.ExtensionContext): void {
 	const fileIndex = new WorkspaceFileIndex();
 	const chatView = new ChatViewProvider(context.extensionUri, service, diffPreview, fileIndex);
 	const agentsView = new AgentsView(context, service, diffPreview, fileIndex);
+	// Agents mode's Changes panel follows the agent in front, as the Changes view does.
+	const changesPanel = new ChangesPanel(context.extensionUri);
+	changesPanel.show(agentsView.focusedSource);
 	void applyLayoutDefaults(context);
 	// Add to Chat goes to the agent tab in front, else to the quick chat.
 	const chatInFront = () => agentsView.activeController() ?? chatView.controller;
@@ -50,6 +55,9 @@ export function activate(context: vscode.ExtensionContext): void {
 		fileIndex,
 		chatView,
 		agentsView,
+		changesPanel,
+		agentsView.onDidFocus(source => changesPanel.show(source)),
+		new AgentHome(context.extensionUri, agentsView),
 		new QuickEdits(agentsView.review, log),
 		walkthrough,
 		new Appearance(context.extensionUri),

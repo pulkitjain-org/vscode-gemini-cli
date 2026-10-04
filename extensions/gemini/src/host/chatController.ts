@@ -3,7 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { randomBytes } from 'node:crypto';
 import * as path from 'node:path';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
@@ -27,6 +26,7 @@ import { attachmentsForFiles } from './addToChat';
 import { createBranchAndCommit, pickBranch } from './gitActions';
 import { preferredComposerHeight, rememberComposerHeight, rememberModel } from './modelPreference';
 import { teamCommands } from './teamCommands';
+import { createNonce, escapeAttribute } from './webviewHtml';
 import type { FileMatch } from './workspaceFiles';
 import { deleteFile, replaceFileText, WorkspaceFileSystem } from './workspaceFileSystem';
 
@@ -80,6 +80,8 @@ export interface ChatGit {
 export interface ChatActivity {
 	readonly busy: boolean;
 	readonly needsPermission: boolean;
+	/** What the agent asks permission for, or the step it is on: a tool call's title. */
+	readonly step?: string;
 }
 
 /**
@@ -98,6 +100,8 @@ export class ChatController implements vscode.Disposable {
 	private webview: vscode.Webview | undefined;
 	private webviewListener: vscode.Disposable | undefined;
 	private busy = false;
+	/** The step last reported, so tool call updates report only a new one. */
+	private lastStep: string | undefined;
 	private lastSessionId: string | undefined;
 	/** Proposed edits by transcript item id (tool calls and permission requests), so their diffs can be opened later. */
 	private readonly diffs = new Map<string, readonly acp.Diff[]>();
@@ -166,6 +170,9 @@ export class ChatController implements vscode.Disposable {
 						}
 					}
 					this.transcript.apply(event);
+					if (event.kind === 'toolCall' && this.activity.step !== this.lastStep) {
+						this.fireActivity();
+					}
 				}
 			}),
 			service.client.onDidChangeState(state => {
@@ -191,7 +198,24 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	get activity(): ChatActivity {
-		return { busy: this.busy, needsPermission: this.service.permissions.pendingPermissions.length > 0 };
+		const [permission] = this.service.permissions.pendingPermissions;
+		const step = permission ? permission.request.toolCall.title ?? undefined : this.busy ? this.runningStep() : undefined;
+		return { busy: this.busy, needsPermission: !!permission, ...(step ? { step } : {}) };
+	}
+
+	/** The title of the tool call the turn is on, if any. */
+	private runningStep(): string | undefined {
+		const items = this.transcript.items;
+		for (let i = items.length - 1; i >= 0; i--) {
+			const item = items[i];
+			if (item.kind === 'user') {
+				return undefined;
+			}
+			if (item.kind === 'toolCall') {
+				return item.status === 'pending' || item.status === 'in_progress' ? item.title : undefined;
+			}
+		}
+		return undefined;
 	}
 
 	/** The conversation, as shown. */
@@ -516,7 +540,7 @@ export class ChatController implements vscode.Disposable {
 				break;
 			}
 			case 'createBranchAndCommit':
-				void this.commitChanges();
+				void this.commit();
 				break;
 			case 'undoTurn':
 				void this.undoTurn(message.itemId);
@@ -529,7 +553,8 @@ export class ChatController implements vscode.Disposable {
 		}
 	}
 
-	private async commitChanges(): Promise<void> {
+	/** Commits the files the agent changed on a new branch, as the composer's Commit button does. */
+	async commit(): Promise<void> {
 		const folder = this.options.git?.folder();
 		const commit = this.options.git?.commit;
 		const files = commit?.files() ?? [];
@@ -649,7 +674,9 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	private fireActivity(): void {
-		this.onDidChangeActivityEmitter.fire(this.activity);
+		const activity = this.activity;
+		this.lastStep = activity.step;
+		this.onDidChangeActivityEmitter.fire(activity);
 	}
 
 	private postReset(): void {
@@ -773,16 +800,8 @@ function diffsOf(content: readonly acp.ToolCallContent[] | null | undefined): ac
 	return (content ?? []).flatMap(c => c.type === 'diff' ? [c] : []);
 }
 
-function escapeAttribute(value: string): string {
-	return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-}
-
 /** Whether Send shows a solid accent picked on the Make It Yours page instead of the Gemini gradient. */
 function solidAccent(): boolean {
 	const accent = vscode.workspace.getConfiguration('gemini').get<string>('appearance.accent', 'theme');
 	return accent !== 'theme' && accent !== 'gradient';
-}
-
-function createNonce(): string {
-	return randomBytes(16).toString('base64');
 }

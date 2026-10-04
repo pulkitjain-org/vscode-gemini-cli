@@ -12,6 +12,8 @@ const outDir = path.join(import.meta.dirname, 'media');
 run({
 	entryPoints: {
 		'chat': path.join(srcDir, 'chat.ts'),
+		'changes': path.join(srcDir, 'changes.ts'),
+		'home': path.join(srcDir, 'home.ts'),
 		'codicon': path.join(import.meta.dirname, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css'),
 	},
 	srcDir,

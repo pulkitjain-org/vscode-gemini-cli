@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { acceptHunk, diffLines, minimalEdit, revertHunk, splitLines } from '../../src/acp/lineDiff';
+import { acceptHunk, diffLines, hunkLines, minimalEdit, revertHunk, splitLines } from '../../src/acp/lineDiff';
 
 const lines = (text: string) => splitLines(text);
 
@@ -90,3 +90,24 @@ function lcsLength(a: readonly string[], b: readonly string[]): number {
 	}
 	return table[0][0];
 }
+
+describe('hunkLines', () => {
+	it('shows removed then added lines with context either side', () => {
+		const original = ['a', 'b', 'c', 'd', 'e', 'f'];
+		const modified = ['a', 'b', 'C', 'd', 'e', 'f'];
+		const [hunk] = diffLines(original, modified);
+		expect(hunkLines(original, modified, hunk, 1)).toEqual({
+			lines: [{ kind: 'ctx', text: 'b' }, { kind: 'del', text: 'c' }, { kind: 'add', text: 'C' }, { kind: 'ctx', text: 'd' }],
+			hidden: 0,
+		});
+	});
+
+	it('counts the changed lines past the limit instead of showing them', () => {
+		const original = ['x'];
+		const modified = ['1', '2', '3', '4', 'x'];
+		const [hunk] = diffLines(original, modified);
+		const { lines, hidden } = hunkLines(original, modified, hunk, 2, 2);
+		expect(lines.map(l => l.text)).toEqual(['1', '2']);
+		expect(hidden).toBe(2);
+	});
+});
