@@ -7,6 +7,7 @@ import { execFile } from 'node:child_process';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { ClientFileSystem, FileAccessPolicyOptions } from '../acp/fileAccess';
+import { minimalEdit } from '../acp/lineDiff';
 import { memoizeAsync } from '../acp/memoize';
 
 /**
@@ -53,6 +54,39 @@ export class WorkspaceFileSystem implements ClientFileSystem {
 		if (!await document.save()) {
 			throw new Error(`Edited ${filePath} but could not save it.`);
 		}
+	}
+}
+
+/**
+ * Puts `text` into a file with the smallest edit, so open editors keep their
+ * cursor and one undo puts it back, then saves it. Creates the file if it is
+ * missing.
+ */
+export async function replaceFileText(filePath: string, text: string): Promise<void> {
+	const uri = vscode.Uri.file(filePath);
+	if (!findOpenDocument(uri) && !await exists(uri)) {
+		return new WorkspaceFileSystem().writeTextFile(filePath, text);
+	}
+	const document = await vscode.workspace.openTextDocument(uri);
+	const change = minimalEdit(document.getText(), text);
+	if (change.start !== change.end || change.text) {
+		const edit = new vscode.WorkspaceEdit();
+		edit.replace(uri, new vscode.Range(document.positionAt(change.start), document.positionAt(change.end)), change.text, { label: vscode.l10n.t("Gemini"), needsConfirmation: false });
+		if (!await vscode.workspace.applyEdit(edit)) {
+			throw new Error(`Could not edit ${filePath}.`);
+		}
+	}
+	if (document.isDirty && !await document.save()) {
+		throw new Error(`Edited ${filePath} but could not save it.`);
+	}
+}
+
+/** Deletes a file through a WorkspaceEdit, so it can be undone like an edit. */
+export async function deleteFile(filePath: string): Promise<void> {
+	const edit = new vscode.WorkspaceEdit();
+	edit.deleteFile(vscode.Uri.file(filePath), { ignoreIfNotExists: true }, { label: vscode.l10n.t("Gemini"), needsConfirmation: false });
+	if (!await vscode.workspace.applyEdit(edit)) {
+		throw new Error(`Could not delete ${filePath}.`);
 	}
 }
 

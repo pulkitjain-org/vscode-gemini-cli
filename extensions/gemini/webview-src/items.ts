@@ -11,7 +11,7 @@ import MarkdownIt from 'markdown-it';
 import { basename } from '../src/acp/attachments';
 import type { PromptAttachmentLabel, TranscriptItem } from '../src/acp/chatTranscript';
 import { attachmentIcon, codeLanguage, format, formatDuration, permissionDefaults, planIcon, replyBefore, thoughtSeconds, toolKindIcon, type ItemOf } from './chatLogic';
-import { button, copyButton, el, icon } from './dom';
+import { button, copyButton, el, icon, setLabel } from './dom';
 import { thoughtPreview } from './streaming';
 import { expanded, state, strings, thoughtTimes, vscode } from './view';
 
@@ -49,6 +49,18 @@ function renderTurnEnd(item: ItemOf<'turnEnd'>): HTMLElement {
 		el('span', undefined, format(strings.workedFor, formatDuration(item.durationMs))),
 		copyButton('copy-reply', strings.copyReply, () => replyBefore(state.items, item.id)),
 	);
+	if (item.retry) {
+		const retry = button('turn-action', strings.retry, () => vscode.postMessage({ type: 'retry', itemId: item.id }), 'refresh');
+		setLabel(retry, strings.retryTooltip);
+		node.append(retry);
+	}
+	if (item.undo === 'available') {
+		const undo = button('turn-action undo-turn', strings.undoTurn, () => vscode.postMessage({ type: 'undoTurn', itemId: item.id }), 'discard');
+		setLabel(undo, item.files && item.files > 1 ? format(strings.undoTurnFiles, item.files) : strings.undoTurnTooltip);
+		node.append(undo);
+	} else if (item.undo === 'undone') {
+		node.append(el('span', 'turn-undone', strings.turnUndone));
+	}
 	return node;
 }
 

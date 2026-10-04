@@ -10,6 +10,7 @@ import * as vscode from 'vscode';
 import { Attachment } from '../acp/attachments';
 import { isValidAttachment } from '../acp/attachmentValidation';
 import { ChatTranscript, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
+import { Checkpoints } from '../acp/checkpoints';
 import { PendingPermission, PermissionBroker } from '../acp/permissions';
 import { buildPromptContent } from '../acp/promptContent';
 import { expandTeamCommand, mergeCommands, parseInvocation } from '../acp/slashCommands';
@@ -27,6 +28,7 @@ import { createBranchAndCommit, pickBranch } from './gitActions';
 import { preferredComposerHeight, rememberComposerHeight, rememberModel } from './modelPreference';
 import { teamCommands } from './teamCommands';
 import type { FileMatch } from './workspaceFiles';
+import { deleteFile, replaceFileText, WorkspaceFileSystem } from './workspaceFileSystem';
 
 /** The agent session a chat talks to: the sidebar's, or one agent's in the Agents pane. */
 export interface ChatHost {
@@ -103,6 +105,15 @@ export class ChatController implements vscode.Disposable {
 	/** Attachments from the Add to Chat commands that arrived before the view was ready. */
 	private pendingAttachments: Attachment[] = [];
 
+	/** What each recent turn's edits replaced, so a turn can be undone. */
+	private readonly checkpoints: Checkpoints;
+	/** The last prompt, for Retry. */
+	private lastPrompt: { readonly text: string; readonly attachments: readonly Attachment[] } | undefined;
+	/** The turnEnd item that offers Retry. */
+	private retryItemId: string | undefined;
+	/** Told to the agent with the next prompt: files the user put back, which it would otherwise think it changed. */
+	private undoNote: string | undefined;
+
 	private readonly onDidChangeActivityEmitter = new vscode.EventEmitter<ChatActivity>();
 	readonly onDidChangeActivity = this.onDidChangeActivityEmitter.event;
 
@@ -122,6 +133,7 @@ export class ChatController implements vscode.Disposable {
 		private readonly fileIndex: FileSearch,
 		private readonly options: ChatControllerOptions,
 	) {
+		this.checkpoints = new Checkpoints(service.client.cwd);
 		this.disposables.push(
 			this.onDidChangeActivityEmitter,
 			this.onDidEditFilesEmitter,
@@ -149,6 +161,7 @@ export class ChatController implements vscode.Disposable {
 						if (event.call.status === 'completed' && diffs.length && !this.completedToolCalls.has(event.call.id)) {
 							this.completedToolCalls.add(event.call.id);
 							dropOldest(this.completedToolCalls);
+							this.checkpoints.record(diffs);
 							this.onDidEditFilesEmitter.fire(diffs);
 						}
 					}
@@ -239,10 +252,17 @@ export class ChatController implements vscode.Disposable {
 		if (this.busy || (!text.trim() && !attachments.length)) {
 			return;
 		}
+		if (this.retryItemId) {
+			this.transcript.updateTurnEnd(this.retryItemId, { retry: undefined });
+			this.retryItemId = undefined;
+		}
 		this.transcript.addPrompt(text, attachments);
 		this.onDidSendPromptEmitter.fire(text);
+		this.lastPrompt = { text, attachments };
+		this.checkpoints.beginTurn();
 		this.setBusy(true);
 		const started = Date.now();
+		let ended = false;
 		try {
 			await this.service.ensureReady();
 			// Built after the agent is ready, so it reflects what this agent accepts.
@@ -250,16 +270,90 @@ export class ChatController implements vscode.Disposable {
 			if (!content.length) {
 				throw new Error(vscode.l10n.t("The agent cannot take images, so there was nothing to send."));
 			}
+			if (this.undoNote) {
+				content.unshift({ type: 'text', text: this.undoNote });
+			}
 			const stopReason = await this.service.client.prompt(content);
+			this.undoNote = undefined;
 			const notice = stopReasonNotice(stopReason);
 			if (notice) {
 				this.transcript.addNotice(notice, stopReason === 'refusal' ? 'error' : 'info');
 			}
-			this.transcript.addTurnEnd(Date.now() - started);
+			this.endTurn(Date.now() - started);
+			ended = true;
 		} catch (err) {
 			this.transcript.addNotice(errorMessage(err), 'error');
 		} finally {
+			if (!ended && this.checkpoints.running) {
+				// The turn failed after changing files; they can still be undone.
+				this.endTurn(Date.now() - started);
+			}
 			this.setBusy(false);
+		}
+	}
+
+	/** Adds the turn's end, offering Retry and, when it changed files, Undo. */
+	private endTurn(durationMs: number): void {
+		const id = this.transcript.addTurnEnd(durationMs);
+		const { undoable, dropped } = this.checkpoints.endTurn(id);
+		for (const old of dropped) {
+			this.transcript.updateTurnEnd(old, { undo: undefined });
+		}
+		const files = this.checkpoints.fileCount(id);
+		this.transcript.updateTurnEnd(id, { retry: true, ...(files ? { files } : {}), ...(undoable ? { undo: 'available' } : {}) });
+		this.retryItemId = id;
+	}
+
+	/**
+	 * Puts back every file turn `id` changed, and the changes of the turns
+	 * after it. Asks first when that reaches further than the turn, or when a
+	 * file was changed after the agent wrote it.
+	 */
+	private async undoTurn(id: string): Promise<void> {
+		const plan = this.checkpoints.plan(id);
+		if (this.busy || !plan) {
+			return;
+		}
+		const files = new WorkspaceFileSystem();
+		const current = await Promise.all(plan.restores.map(r => files.readTextFile(r.path).catch(() => undefined)));
+		const changedSince = plan.restores.filter((r, i) => (current[i] ?? '') !== r.agentText);
+		if (plan.laterTurns || changedSince.length) {
+			const undo = vscode.l10n.t("Undo Changes");
+			const detail = [
+				plan.laterTurns === 1 ? vscode.l10n.t("This also undoes the changes from the reply after it.") : plan.laterTurns ? vscode.l10n.t("This also undoes the changes from the {0} replies after it.", plan.laterTurns) : '',
+				changedSince.length ? vscode.l10n.t("These files changed after Gemini edited them, and those changes will be lost: {0}", changedSince.map(r => path.basename(r.path)).join(', ')) : '',
+			].filter(Boolean).join('\n\n');
+			if (await vscode.window.showWarningMessage(vscode.l10n.t("Undo the changes to {0} files?", plan.restores.length), { modal: true, detail }, undo) !== undo) {
+				return;
+			}
+		}
+		const restored: acp.Diff[] = [];
+		const failed: string[] = [];
+		for (const [i, restore] of plan.restores.entries()) {
+			try {
+				if (restore.text === undefined) {
+					await deleteFile(restore.path);
+				} else {
+					await replaceFileText(restore.path, restore.text);
+				}
+				restored.push({ path: restore.path, oldText: current[i] ?? '', newText: restore.text ?? '' });
+			} catch (err) {
+				failed.push(`${path.basename(restore.path)}: ${errorMessage(err)}`);
+			}
+		}
+		for (const undone of this.checkpoints.undone(id)) {
+			this.transcript.updateTurnEnd(undone, { undo: 'undone' });
+		}
+		if (restored.length) {
+			this.onDidEditFilesEmitter.fire(restored);
+			const names = restored.map(r => path.relative(this.service.client.cwd, r.path) || r.path);
+			this.undoNote = `[The user undid your file changes. These files are back to how they were before those replies, so read them again before editing them: ${names.join(', ')}]`;
+			this.transcript.addNotice(restored.length === 1
+				? vscode.l10n.t("Undid the changes to {0}. Gemini will be told with your next message.", path.basename(restored[0].path))
+				: vscode.l10n.t("Undid the changes to {0} files. Gemini will be told with your next message.", restored.length));
+		}
+		if (failed.length) {
+			this.transcript.addNotice(vscode.l10n.t("Some files could not be put back: {0}", failed.join('; ')), 'error');
 		}
 	}
 
@@ -322,6 +416,10 @@ export class ChatController implements vscode.Disposable {
 		this.transcript.clear();
 		this.diffs.clear();
 		this.completedToolCalls.clear();
+		this.checkpoints.clear();
+		this.lastPrompt = undefined;
+		this.retryItemId = undefined;
+		this.undoNote = undefined;
 		if (this.service.client.state.kind !== 'ready') {
 			// The next prompt starts the agent, and with it a new session.
 			this.service.client.forgetSession();
@@ -419,6 +517,14 @@ export class ChatController implements vscode.Disposable {
 			}
 			case 'createBranchAndCommit':
 				void this.commitChanges();
+				break;
+			case 'undoTurn':
+				void this.undoTurn(message.itemId);
+				break;
+			case 'retry':
+				if (this.lastPrompt && message.itemId === this.retryItemId) {
+					void this.send(this.lastPrompt.text, this.lastPrompt.attachments);
+				}
 				break;
 		}
 	}
@@ -593,6 +699,12 @@ export class ChatController implements vscode.Disposable {
 			permissionHint: vscode.l10n.t("Esc rejects"),
 			workedFor: vscode.l10n.t("Worked for {0}"),
 			copyReply: vscode.l10n.t("Copy reply"),
+			undoTurn: vscode.l10n.t("Undo"),
+			undoTurnTooltip: vscode.l10n.t("Put back the files this reply changed"),
+			undoTurnFiles: vscode.l10n.t("Put back the {0} files this reply changed"),
+			turnUndone: vscode.l10n.t("Changes undone"),
+			retry: vscode.l10n.t("Retry"),
+			retryTooltip: vscode.l10n.t("Send this message again"),
 			switchBranch: vscode.l10n.t("Branch {0}: switch or create a branch"),
 			createBranchAndCommit: vscode.l10n.t("Create Branch & Commit"),
 			addContext: vscode.l10n.t("Add context (@)"),

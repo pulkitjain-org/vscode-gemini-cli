@@ -100,6 +100,24 @@ export class AgentChanges {
 		this.onDidChangeEmitter.fire();
 	}
 
+	/**
+	 * The user kept some of the agent's changes to a file: `original` is the
+	 * new baseline and `current` the file now. Forgets the file once nothing
+	 * differs.
+	 */
+	keep(filePath: string, original: string, current: string): void {
+		const file = this.byPath.get(filePath);
+		if (!file) {
+			return;
+		}
+		if (original === current) {
+			this.byPath.delete(filePath);
+		} else {
+			this.byPath.set(filePath, { path: filePath, created: file.created && !original, original, ...countChangedLines(original, current) });
+		}
+		this.onDidChangeEmitter.fire();
+	}
+
 	/** Shows changes saved in an earlier window, unless edits were recorded since. */
 	restore(files: readonly EditedFile[]): void {
 		if (this.byPath.size) {

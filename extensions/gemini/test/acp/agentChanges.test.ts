@@ -64,3 +64,14 @@ describe('AgentChanges', () => {
 		expect(changes.totals).toEqual({ files: 0, added: 0, removed: 0 });
 	});
 });
+
+describe('AgentChanges.keep', () => {
+	it('moves the baseline to what was kept, and forgets the file once all is kept', () => {
+		const changes = new AgentChanges(root);
+		changes.record([{ path: file('a.ts'), oldText: 'a\nb\nc', newText: 'a\nB\nC' }]);
+		changes.keep(file('a.ts'), 'a\nB\nc', 'a\nB\nC');
+		expect(changes.file(file('a.ts'))).toMatchObject({ original: 'a\nB\nc', added: 1, removed: 1 });
+		changes.keep(file('a.ts'), 'a\nB\nC', 'a\nB\nC');
+		expect(changes.files).toEqual([]);
+	});
+});

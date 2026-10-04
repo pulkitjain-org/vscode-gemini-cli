@@ -18,6 +18,7 @@ import { AgentNotifier } from './agentNotifier';
 import { AgentService } from './agentService';
 import { AgentSession } from './agentSession';
 import { ChangesSource, ChangesView } from './changesView';
+import { ReviewController } from './reviewController';
 import { ChatActivity, ChatController, FileSearch } from './chatController';
 import { configSection } from './configuration';
 import { DiffPreview } from './diffPreview';
@@ -76,6 +77,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	private readonly transcripts: TranscriptStore;
 	private readonly live = new Map<string, LiveAgent>();
 	private readonly changesView: ChangesView;
+	/** Keep and Undo on each agent change, in the files themselves. */
+	private readonly review: ReviewController;
 	/** The agent whose tab was last in front; the Changes view shows it. */
 	private focusedId: string | undefined;
 	private readonly disposables: vscode.Disposable[] = [];
@@ -98,10 +101,12 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		this.transcripts = new TranscriptStore(vscode.Uri.joinPath(context.globalStorageUri, 'agents').fsPath);
 		this.tree = vscode.window.createTreeView(agentsViewId, { treeDataProvider: this, showCollapseAll: false });
 		this.changesView = new ChangesView(id => this.live.get(id)?.changes);
+		this.review = new ReviewController(() => [...this.live.entries()].map(([id, live]) => ({ title: this.model.agent(id)?.title ?? '', changes: live.changes })));
 		this.disposables.push(
 			this.tree,
 			this.notifier,
 			this.changesView,
+			this.review,
 			this.onDidChangeTreeDataEmitter,
 			this.model.onDidChange(() => {
 				void context.globalState.update(storageKey, this.model.snapshot());
@@ -410,6 +415,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			}),
 			live.controller.onDidEditFiles(diffs => changes.record(diffs)),
 			changes.onDidChange(() => {
+				this.review.refresh();
 				this.model.setChanges(record.id, changes.totals);
 				this.scheduleSave(record.id, live);
 				this.refresh();
@@ -514,6 +520,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		live.controller.dispose();
 		live.changes.dispose();
 		live.session.dispose();
+		this.review.refresh();
 	}
 
 	dispose(): void {

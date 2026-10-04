@@ -104,6 +104,11 @@ function settle(item: TranscriptItem): TranscriptItem {
 	if (item.kind === 'toolCall' && (item.status === 'pending' || item.status === 'in_progress')) {
 		return { ...item, status: 'failed' };
 	}
+	if (item.kind === 'turnEnd' && (item.undo === 'available' || item.retry)) {
+		// Checkpoints and the last prompt live in memory, so another window cannot undo or retry.
+		const { undo, retry, ...rest } = item;
+		return undo === 'undone' ? { ...rest, undo } : rest;
+	}
 	return item;
 }
 
