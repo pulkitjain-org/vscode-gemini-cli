@@ -26,6 +26,7 @@ import { attachmentsForFiles } from './addToChat';
 import { createBranchAndCommit, pickBranch } from './gitActions';
 import { preferredComposerHeight, rememberComposerHeight, rememberModel } from './modelPreference';
 import { teamCommands } from './teamCommands';
+import { onDidChangeThemeTokens, themeTokenColors } from './themeTokens';
 import { createNonce, escapeAttribute } from './webviewHtml';
 import type { FileMatch } from './workspaceFiles';
 import { deleteFile, replaceFileText, WorkspaceFileSystem } from './workspaceFileSystem';
@@ -189,6 +190,7 @@ export class ChatController implements vscode.Disposable {
 			vscode.window.onDidChangeWindowState(state => state.focused && this.webview && this.postGit()),
 			service.client.onDidChangeSettings(settings => this.post({ type: 'settings', settings })),
 			vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration('gemini.appearance.accent') && this.post({ type: 'accent', solid: solidAccent() })),
+			onDidChangeThemeTokens(() => this.webview && void this.postTokenColors()),
 			// Keeps an open "/" menu current; the agent lists its commands just after a session opens.
 			service.client.onDidChangeCommands(() => this.webview && void this.postCommands()),
 		);
@@ -479,6 +481,7 @@ export class ChatController implements vscode.Disposable {
 					this.pendingAttachments = [];
 				}
 				this.postGit();
+				void this.postTokenColors();
 				// The agent was started with the view (see attach); this retries one that has since stopped.
 				this.service.ensureReady().catch(() => undefined);
 				break;
@@ -521,6 +524,9 @@ export class ChatController implements vscode.Disposable {
 				break;
 			case 'openLocation':
 				void this.openLocation(message.path, message.line);
+				break;
+			case 'openPath':
+				void this.openPath(message.path, message.line);
 				break;
 			case 'setMode':
 				void this.changeSetting(() => this.service.client.setMode(message.id).catch(err => this.offerFolderTrust(err, message.id)));
@@ -653,6 +659,31 @@ export class ChatController implements vscode.Disposable {
 		await this.openLocation(filePath, undefined);
 	}
 
+	/** Opens a file the reply names: by its path from the agent's folder, else by its name anywhere in the workspace. */
+	private async openPath(name: string, line: number | undefined): Promise<void> {
+		if (typeof name !== 'string' || !name || name.length > 500) {
+			return;
+		}
+		const folder = this.options.git?.folder() ?? this.service.client.cwd;
+		const direct = path.resolve(folder, name);
+		if (await isFile(direct)) {
+			return this.openLocation(direct, line);
+		}
+		const pattern = `**/${name.replace(/^(\.\.?\/)+/, '').replace(/[[\]{}*?!]/g, '?')}`;
+		const matches = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, pattern), '**/{node_modules,.git}/**', 20);
+		if (matches.length === 1) {
+			return this.openLocation(matches[0].fsPath, line);
+		}
+		if (!matches.length) {
+			void vscode.window.setStatusBarMessage(vscode.l10n.t("No file named {0} in {1}", name, path.basename(folder)), 4000);
+			return;
+		}
+		const pick = await vscode.window.showQuickPick(matches.map(uri => ({ label: path.basename(uri.fsPath), description: vscode.workspace.asRelativePath(uri), uri })), { placeHolder: vscode.l10n.t("Which {0}?", name) });
+		if (pick) {
+			return this.openLocation(pick.uri.fsPath, line);
+		}
+	}
+
 	private async openLocation(filePath: string, line: number | undefined): Promise<void> {
 		const position = new vscode.Position(Math.max((line ?? 1) - 1, 0), 0);
 		try {
@@ -694,11 +725,17 @@ export class ChatController implements vscode.Disposable {
 		void this.webview?.postMessage(message);
 	}
 
+	private async postTokenColors(): Promise<void> {
+		this.post({ type: 'tokenColors', colors: await themeTokenColors() });
+	}
+
 	private getHtml(webview: vscode.Webview, mediaUri: vscode.Uri): string {
 		const nonce = createNonce();
 		const script = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'chat.js'));
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'chat.css'));
 		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'codicon.css'));
+		// Loaded by the view when it first shows code.
+		const highlighter = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'highlight.js'));
 		const strings: ChatStrings = {
 			placeholder: vscode.l10n.t("Ask Gemini anything about this workspace"),
 			placeholderFollowUp: vscode.l10n.t("Ask a follow-up"),
@@ -743,13 +780,19 @@ export class ChatController implements vscode.Disposable {
 			fileTooLarge: vscode.l10n.t("{0} is too large to send."),
 			attachFiles: vscode.l10n.t("Attach files. You can also drop files here; hold Shift when dragging from the Explorer."),
 			dropFiles: vscode.l10n.t("Drop files to attach"),
+			calloutNote: vscode.l10n.t("Note"),
+			calloutTip: vscode.l10n.t("Tip"),
+			calloutImportant: vscode.l10n.t("Important"),
+			calloutWarning: vscode.l10n.t("Warning"),
+			calloutCaution: vscode.l10n.t("Caution"),
+			openFile: vscode.l10n.t("Open file"),
 			cannotAttach: vscode.l10n.t("{0} can't be attached: only text files, images and PDFs can be dropped here. Use the attach button to add other files."),
 		};
 		return `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}' ${webview.cspSource};">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link href="${codicons}" rel="stylesheet">
 	<link href="${style}" rel="stylesheet">
@@ -777,7 +820,7 @@ export class ChatController implements vscode.Disposable {
 			<button type="button" id="stop" class="round-button stop" hidden><i class="codicon codicon-debug-stop" aria-hidden="true"></i></button>
 		</div>
 	</form>
-	<script nonce="${nonce}" type="module" src="${script}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
+	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
 </html>`;
 	}
@@ -804,4 +847,12 @@ function diffsOf(content: readonly acp.ToolCallContent[] | null | undefined): ac
 function solidAccent(): boolean {
 	const accent = vscode.workspace.getConfiguration('gemini').get<string>('appearance.accent', 'theme');
 	return accent !== 'theme' && accent !== 'gradient';
+}
+
+async function isFile(filePath: string): Promise<boolean> {
+	try {
+		return (await vscode.workspace.fs.stat(vscode.Uri.file(filePath))).type === vscode.FileType.File;
+	} catch {
+		return false;
+	}
 }

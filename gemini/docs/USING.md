@@ -84,6 +84,10 @@ The new copy has no `node_modules` or build output, so an agent that runs tests 
 
 The agent cannot read secret files such as `.env` and private keys, or git-ignored files, through the editor.
 
+## Replies
+
+Code in replies is coloured like the editor, in your colour theme. The button at the top of a code block copies it. A file name in a reply, such as `src/cart/total.ts:11`, opens the file at that line; when only the name is given, GeminiCode looks for it in the agent's folder. Notes, tips and warnings show as coloured callouts.
+
 ## Slash commands
 
 Type `/` at the start of the composer to list commands, with team commands first. Keep typing to filter, then press <kbd>Tab</kbd> or <kbd>Enter</kbd> to complete the name and add arguments.

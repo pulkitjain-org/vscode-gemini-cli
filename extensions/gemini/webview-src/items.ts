@@ -11,11 +11,15 @@ import MarkdownIt from 'markdown-it';
 import { basename } from '../src/acp/attachments';
 import type { PromptAttachmentLabel, TranscriptItem } from '../src/acp/chatTranscript';
 import { attachmentIcon, codeLanguage, format, formatDuration, permissionDefaults, planIcon, replyBefore, thoughtSeconds, toolKindIcon, type ItemOf } from './chatLogic';
+import { highlightCode } from './codeHighlight';
+import { enhanceMarkdown } from './markdownExtras';
 import { button, copyButton, el, icon, setLabel } from './dom';
 import { thoughtPreview } from './streaming';
 import { expanded, state, strings, thoughtTimes, vscode } from './view';
 
 const markdown = new MarkdownIt({ html: false, linkify: true });
+// Only links with a scheme or www.; file names such as README.md are not web addresses.
+markdown.linkify.set({ fuzzyLink: false });
 
 /** Called when the user expands or collapses a tool call's output. */
 export type ToggleToolCall = (item: ItemOf<'toolCall'>) => void;
@@ -97,12 +101,18 @@ function renderMarkdown(text: string): HTMLElement {
 export function renderBlocks(text: string): Node[] {
 	const node = el('div');
 	node.innerHTML = markdown.render(text);
+	enhanceMarkdown(node);
 	for (const pre of node.querySelectorAll('pre')) {
 		const wrapper = el('div', 'code-block');
 		pre.replaceWith(wrapper);
 		const header = el('div', 'code-header');
-		header.append(el('span', 'code-language', codeLanguage(pre.querySelector('code')?.className ?? '')), copyButton('copy', strings.copy, () => pre.textContent ?? ''));
+		const code = pre.querySelector('code');
+		const language = codeLanguage(code?.className ?? '');
+		header.append(el('span', 'code-language', language), copyButton('copy', strings.copy, () => pre.textContent ?? ''));
 		wrapper.append(header, pre);
+		if (code) {
+			highlightCode(code, language.toLowerCase());
+		}
 	}
 	return [...node.childNodes];
 }

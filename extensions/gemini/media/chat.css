@@ -303,6 +303,175 @@ kbd {
 }
 
 /*
+ * Syntax colours. The theme's (themeTokens.ts) are set as --gemini-tok-*;
+ * these fallbacks are Dark Modern's and Light Modern's.
+ */
+body {
+	--gemini-hl-keyword: var(--gemini-tok-keyword, #569cd6);
+	--gemini-hl-string: var(--gemini-tok-string, #ce9178);
+	--gemini-hl-comment: var(--gemini-tok-comment, #6a9955);
+	--gemini-hl-number: var(--gemini-tok-number, #b5cea8);
+	--gemini-hl-literal: var(--gemini-tok-literal, #569cd6);
+	--gemini-hl-function: var(--gemini-tok-function, #dcdcaa);
+	--gemini-hl-type: var(--gemini-tok-type, #4ec9b0);
+	--gemini-hl-builtin: var(--gemini-tok-builtin, #dcdcaa);
+	--gemini-hl-variable: var(--gemini-tok-variable, #9cdcfe);
+	--gemini-hl-property: var(--gemini-tok-property, #9cdcfe);
+	--gemini-hl-params: var(--gemini-tok-params, #9cdcfe);
+	--gemini-hl-attribute: var(--gemini-tok-attribute, #9cdcfe);
+	--gemini-hl-tag: var(--gemini-tok-tag, #569cd6);
+	--gemini-hl-regexp: var(--gemini-tok-regexp, #d16969);
+	--gemini-hl-meta: var(--gemini-tok-meta, #c586c0);
+	--gemini-hl-heading: var(--gemini-tok-heading, #569cd6);
+	--gemini-hl-inserted: var(--gemini-tok-inserted, #b5cea8);
+	--gemini-hl-deleted: var(--gemini-tok-deleted, #ce9178);
+	--gemini-hl-escape: var(--gemini-tok-escape, #d7ba7d);
+}
+
+body.vscode-light {
+	--gemini-hl-keyword: var(--gemini-tok-keyword, #0000ff);
+	--gemini-hl-string: var(--gemini-tok-string, #a31515);
+	--gemini-hl-comment: var(--gemini-tok-comment, #008000);
+	--gemini-hl-number: var(--gemini-tok-number, #098658);
+	--gemini-hl-literal: var(--gemini-tok-literal, #0000ff);
+	--gemini-hl-function: var(--gemini-tok-function, #795e26);
+	--gemini-hl-type: var(--gemini-tok-type, #267f99);
+	--gemini-hl-builtin: var(--gemini-tok-builtin, #795e26);
+	--gemini-hl-variable: var(--gemini-tok-variable, #001080);
+	--gemini-hl-property: var(--gemini-tok-property, #0451a5);
+	--gemini-hl-params: var(--gemini-tok-params, #001080);
+	--gemini-hl-attribute: var(--gemini-tok-attribute, #e50000);
+	--gemini-hl-tag: var(--gemini-tok-tag, #800000);
+	--gemini-hl-regexp: var(--gemini-tok-regexp, #811f3f);
+	--gemini-hl-meta: var(--gemini-tok-meta, #af00db);
+	--gemini-hl-heading: var(--gemini-tok-heading, #800000);
+	--gemini-hl-inserted: var(--gemini-tok-inserted, #098658);
+	--gemini-hl-deleted: var(--gemini-tok-deleted, #a31515);
+	--gemini-hl-escape: var(--gemini-tok-escape, #ee0000);
+}
+
+/* High contrast themes keep code in the foreground colour unless the theme says otherwise. */
+body.vscode-high-contrast,
+body.vscode-high-contrast-light {
+	--gemini-hl-keyword: var(--gemini-tok-keyword, inherit);
+	--gemini-hl-string: var(--gemini-tok-string, inherit);
+	--gemini-hl-comment: var(--gemini-tok-comment, inherit);
+}
+
+.hljs-keyword,
+.hljs-doctag,
+.hljs-selector-pseudo { color: var(--gemini-hl-keyword); font-style: var(--gemini-tok-keyword-style, normal); }
+.hljs-string,
+.hljs-template-tag,
+.hljs-char.escape_ { color: var(--gemini-hl-string); }
+.hljs-comment,
+.hljs-quote { color: var(--gemini-hl-comment); font-style: var(--gemini-tok-comment-style, normal); }
+.hljs-number { color: var(--gemini-hl-number); }
+.hljs-literal,
+.hljs-symbol { color: var(--gemini-hl-literal); }
+.hljs-title,
+.hljs-title.function_ { color: var(--gemini-hl-function); }
+.hljs-title.class_,
+.hljs-title.class_.inherited__,
+.hljs-type { color: var(--gemini-hl-type); }
+.hljs-built_in { color: var(--gemini-hl-builtin); }
+.hljs-variable,
+.hljs-template-variable,
+.hljs-variable.language_ { color: var(--gemini-hl-variable); }
+.hljs-property,
+.hljs-attr,
+.hljs-attribute { color: var(--gemini-hl-property); }
+.hljs-params { color: var(--gemini-hl-params); }
+.hljs-selector-class,
+.hljs-selector-id,
+.hljs-selector-attr { color: var(--gemini-hl-attribute); }
+.hljs-tag,
+.hljs-name,
+.hljs-selector-tag { color: var(--gemini-hl-tag); }
+.hljs-regexp,
+.hljs-link { color: var(--gemini-hl-regexp); }
+.hljs-meta,
+.hljs-meta .hljs-keyword { color: var(--gemini-hl-meta); }
+.hljs-meta .hljs-string { color: var(--gemini-hl-string); }
+.hljs-section,
+.hljs-bullet { color: var(--gemini-hl-heading); }
+.hljs-addition { color: var(--gemini-hl-inserted); }
+.hljs-deletion { color: var(--gemini-hl-deleted); }
+.hljs-subst { color: inherit; }
+.hljs-operator { color: inherit; }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: bold; }
+
+/* ---- Callouts, tables and file links in replies ---- */
+
+.markdown blockquote.callout {
+	margin: 0.7em 0;
+	padding: 8px 12px;
+	border-left: 3px solid var(--gemini-callout);
+	border-radius: 0 var(--gemini-radius) var(--gemini-radius) 0;
+	background: color-mix(in srgb, var(--gemini-callout) 9%, transparent);
+	color: inherit;
+}
+
+.markdown blockquote.callout > :last-child {
+	margin-bottom: 0;
+}
+
+.callout-title {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-bottom: 2px;
+	font-weight: 600;
+	color: var(--gemini-callout);
+}
+
+.callout-note { --gemini-callout: var(--vscode-editorInfo-foreground, #3794ff); }
+.callout-tip { --gemini-callout: var(--vscode-testing-iconPassed, #73c991); }
+.callout-important { --gemini-callout: var(--vscode-charts-purple, #b180d7); }
+.callout-warning { --gemini-callout: var(--vscode-editorWarning-foreground, #cca700); }
+.callout-caution { --gemini-callout: var(--vscode-editorError-foreground, #f14c4c); }
+
+.table-wrap {
+	margin: 0.6em 0;
+	overflow-x: auto;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius);
+}
+
+.table-wrap table {
+	margin: 0;
+	min-width: 100%;
+	border-style: hidden;
+}
+
+.table-wrap th {
+	text-align: left;
+	font-weight: 600;
+	background: var(--gemini-code-background);
+}
+
+.table-wrap th,
+.table-wrap td {
+	padding: 5px 10px;
+	vertical-align: top;
+}
+
+.table-wrap tbody tr:hover {
+	background: var(--gemini-hover, rgba(128, 128, 128, 0.08));
+}
+
+.markdown code.file-link {
+	cursor: pointer;
+	color: var(--vscode-textLink-foreground);
+}
+
+.markdown code.file-link:hover,
+.markdown code.file-link:focus-visible {
+	text-decoration: underline;
+}
+
+/*
  * Lines of a code block that is still streaming, see appendCode in chat.ts. As blocks they
  * would size lines by the code's font; this keeps them as tall as lines inside the <pre>.
  */

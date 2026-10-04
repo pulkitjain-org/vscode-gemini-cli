@@ -15,6 +15,7 @@ run({
 		'changes': path.join(srcDir, 'changes.ts'),
 		'home': path.join(srcDir, 'home.ts'),
 		'settings': path.join(srcDir, 'settings.ts'),
+		'highlight': path.join(srcDir, 'highlight.ts'),
 		'codicon': path.join(import.meta.dirname, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css'),
 	},
 	srcDir,

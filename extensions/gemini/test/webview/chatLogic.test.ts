@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TranscriptItem } from '../../src/acp/chatTranscript';
 import {
-	attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, draggedHeight, emptyFence, fileUris, folderOf, format, formatDuration,
+	attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, draggedHeight, emptyFence, fileReference, fileUris, folderOf, format, formatDuration,
 	imageName, indexOfItem, isNearBottom, matchCommands, mentionAt, mentionInsertion, permissionDefaults, planIcon, replyBefore, restoredHeight,
 	sameAttachment, slashQuery, thoughtSeconds, toolKindIcon, withAppended, withoutMention, wrapIndex,
 } from '../../webview-src/chatLogic';
@@ -271,5 +271,20 @@ describe('matchCommands', () => {
 		expect(matchCommands(commands, 'com').map(c => c.name)).toEqual(['commit', 'git:commit']);
 		expect(matchCommands(commands, '').map(c => c.name)).toEqual(['init', 'git:commit', 'memory', 'commit']);
 		expect(matchCommands(commands, 'MEM').map(c => c.name)).toEqual(['memory']);
+	});
+});
+
+describe('fileReference', () => {
+	it('reads file names, paths and lines', () => {
+		expect(fileReference('src/cart/total.ts')).toEqual({ path: 'src/cart/total.ts' });
+		expect(fileReference('total.ts:11')).toEqual({ path: 'total.ts', line: 11 });
+		expect(fileReference('./test/total.test.ts:4:2')).toEqual({ path: './test/total.test.ts', line: 4 });
+		expect(fileReference('package.json')).toEqual({ path: 'package.json' });
+	});
+
+	it('ignores code that only looks like a name with a dot', () => {
+		for (const text of ['item.price', 'Math.round', 'cartTotal()', 'npm test', 'v1.2.3', '.ts']) {
+			expect(fileReference(text)).toBeUndefined();
+		}
 	});
 });
