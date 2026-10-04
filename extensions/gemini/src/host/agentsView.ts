@@ -14,6 +14,7 @@ import { FolderFileIndex } from '../acp/folderFiles';
 import { readGitHead } from '../acp/gitHead';
 import { errorMessage } from '../acp/errors';
 import { memoizeAsync } from '../acp/memoize';
+import { reviewRequest, workingChanges } from '../acp/reviewPrompt';
 import { TranscriptStore } from '../acp/transcriptStore';
 import { AgentWorktree, branchExists, commitAll, createWorktree, currentBranch, mergeBranch, removeWorktree, repositoryRoot, worktreeStatus } from '../acp/worktrees';
 import { AgentNotifier } from './agentNotifier';
@@ -155,6 +156,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			vscode.commands.registerCommand('gemini.agents.newAgent', (node?: Node) => this.newAgent(node)),
 			vscode.commands.registerCommand('gemini.agents.newAgentOnBranch', (node?: Node) => this.newAgent(node, true)),
 			vscode.commands.registerCommand('gemini.agents.mergeBack', (node?: Node) => node?.kind === 'agent' && this.mergeBack(node.record.id)),
+			vscode.commands.registerCommand('gemini.reviewChanges', (source?: { readonly rootUri?: vscode.Uri }) => this.reviewChanges(source)),
 			vscode.commands.registerCommand('gemini.agents.addWorkspace', () => this.addWorkspace()),
 			vscode.commands.registerCommand('gemini.agents.open', (id: string) => this.open(id)),
 			vscode.commands.registerCommand('gemini.agents.openChanges', (node?: Node) => node?.kind === 'agent' && this.openChanges(node.record.id)),
@@ -303,6 +305,51 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const agent = this.model.addAgent(workspace.id, vscode.l10n.t("New agent"), worktree);
 		await this.open(agent.id);
 		await this.live.get(agent.id)?.controller.send(text);
+	}
+
+	/**
+	 * "Review my changes": starts an agent in Plan mode, so it reads but does
+	 * not edit, with the repository's uncommitted diff attached.
+	 */
+	async reviewChanges(source?: { readonly rootUri?: vscode.Uri }): Promise<void> {
+		const folder = source?.rootUri?.fsPath ?? await this.reviewFolder();
+		if (!folder) {
+			return;
+		}
+		const repository = await repositoryRoot(folder);
+		if (!repository) {
+			void vscode.window.showErrorMessage(vscode.l10n.t("{0} is not in a Git repository, so there are no changes to review.", path.basename(folder)));
+			return;
+		}
+		let changes;
+		try {
+			changes = await workingChanges(repository);
+		} catch (err) {
+			void vscode.window.showErrorMessage(vscode.l10n.t("Could not read the changes: {0}", errorMessage(err)));
+			return;
+		}
+		if (!changes.diff.trim() && !changes.untracked.length) {
+			void vscode.window.showInformationMessage(vscode.l10n.t("{0} has no uncommitted changes to review.", path.basename(repository)));
+			return;
+		}
+		const request = reviewRequest(changes);
+		const workspace = this.model.addWorkspace(folder);
+		const agent = this.model.addAgent(workspace.id, vscode.l10n.t("Review my changes"));
+		this.model.rename(agent.id, agent.title);
+		// Started here, so it opens its session in Plan mode.
+		this.start(agent, folder).session.client.setModeOnNextSession('plan');
+		await this.open(agent.id);
+		await this.live.get(agent.id)?.controller.send(request.text, request.attachments);
+	}
+
+	/** The folder of the active editor, else the only open folder, else the one the user picks. */
+	private async reviewFolder(): Promise<string | undefined> {
+		const active = vscode.window.activeTextEditor && vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri);
+		const folders = vscode.workspace.workspaceFolders ?? [];
+		if (active || folders.length <= 1) {
+			return (active ?? folders[0])?.uri.fsPath;
+		}
+		return (await vscode.window.showWorkspaceFolderPick({ placeHolder: vscode.l10n.t("Review the changes in which folder?") }))?.uri.fsPath;
 	}
 
 	/** Stops the agent's current turn. */

@@ -301,6 +301,17 @@
 				}
 			}
 		},
+		"gemini.usageMeter.enabled": {
+			"name": "GeminiUsageMeter",
+			"category": "Extensions",
+			"minimumVersion": "1.141",
+			"localization": {
+				"description": {
+					"key": "gemini.usageMeter.enabled.policy",
+					"value": "Whether GeminiCode reads today's Gemini quota use for its status bar, with the CLI's saved sign-in."
+				}
+			}
+		},
 		"gemini.app.checkForUpdates": {
 			"name": "GeminiCodeCheckForUpdates",
 			"category": "Extensions",

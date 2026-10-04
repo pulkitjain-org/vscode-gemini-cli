@@ -115,6 +115,7 @@ Each setting below can be locked through VS Code's policy system (Group Policy, 
 | `gemini.approval.allowYolo` | `GeminiAllowYolo` | off |
 | `gemini.tools.allowShell` | `GeminiAllowShell` | on |
 | `gemini.inlineEdit.enabled` | `GeminiInlineEdit` | on |
+| `gemini.usageMeter.enabled` | `GeminiUsageMeter` | on |
 
 To pin a CLI version for everyone, lock `GeminiCliPath` to an empty string and `GeminiCliVersion` to the version. An organisation's default Google Cloud project ID can ship in `product.json` as `geminiDefaultProjectId`. Nothing sets it today: the release workflow stamps only `geminiCodeVersion`, so an organisation that wants a default must add it to its own build.
 
@@ -127,6 +128,12 @@ Inline edit and commit messages don't need a whole agent turn, so they skip the 
 - Vertex AI, and sign-ins kept in the system keychain, are not supported yet; the command says so.
 
 A request carries only the selection with up to 80 lines around it, or the diff (cut at 40,000 characters) and the last few commit subjects. `GeminiInlineEdit` turns both features off.
+
+The **usage meter** (`usageMeter.ts`) makes the same `retrieveUserQuota` request the CLI makes, with the same project, at most every 10 minutes and only while the window is in front. The Gemini status bar item's tooltip lists each model's share of today's quota and when it resets, and the item shows the percentage once a model passes 80%. API key sign-ins have no quota to read, so it shows nothing. `GeminiUsageMeter` turns it off.
+
+**Review My Changes** (`reviewPrompt.ts`, `AgentsView.reviewChanges`) starts an ordinary agent whose session opens in Plan mode (`setModeOnNextSession('plan')`), so the CLI itself refuses edits. The `git diff HEAD` (cut at 100,000 characters) goes as a `uncommitted.diff` document attachment, which keeps the chat bubble short and reaches the model as an embedded resource.
+
+The **MCP Servers and Rules** page (`settingsPage.ts`, `projectSettings.ts`) edits the CLI's own files rather than keeping settings of its own: `mcpServers` in the personal and workspace `settings.json` (read as JSON with comments, and only rewritten when they have none), `mcp-server-enablement.json` keyed by the lowercased server name as gemini-cli's `McpServerEnablementManager` writes it, and the `context.fileName` rules files. Startup failures come from the same debug-log reader as the warnings. The page reads the files only when it is shown or changed.
 
 ## Sign-in and errors
 

@@ -122,6 +122,18 @@
         "icon": "$(home)"
       },
       {
+        "command": "gemini.reviewChanges",
+        "title": "%command.reviewChanges%",
+        "category": "%category%",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "gemini.projectSettings",
+        "title": "%command.projectSettings%",
+        "category": "%category%",
+        "icon": "$(server-environment)"
+      },
+      {
         "command": "gemini.agents.addWorkspace",
         "title": "%command.agents.addWorkspace%",
         "category": "%category%",
@@ -388,6 +400,11 @@
           "command": "gemini.generateCommitMessage",
           "when": "scmProvider == git && config.gemini.inlineEdit.enabled",
           "group": "navigation@1"
+        },
+        {
+          "command": "gemini.reviewChanges",
+          "when": "scmProvider == git",
+          "group": "navigation@2"
         }
       ],
       "editor/context": [
@@ -437,6 +454,16 @@
           "command": "gemini.agentHome",
           "when": "view == gemini.agents",
           "group": "navigation@3"
+        },
+        {
+          "command": "gemini.reviewChanges",
+          "when": "view == gemini.agents",
+          "group": "helpers@1"
+        },
+        {
+          "command": "gemini.projectSettings",
+          "when": "view == gemini.agents",
+          "group": "helpers@2"
         },
         {
           "command": "gemini.changes.openAll",
@@ -601,6 +628,12 @@
           "default": true,
           "scope": "machine",
           "markdownDescription": "%configuration.inlineEdit.enabled%"
+        },
+        "gemini.usageMeter.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "markdownDescription": "%configuration.usageMeter.enabled%"
         },
         "gemini.inlineEdit.model": {
           "type": "string",

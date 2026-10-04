@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Element helpers for Agents mode's webviews (changes.ts and home.ts), which
+// Element helpers for the page webviews (changes.ts, home.ts and settings.ts), which
 // don't load the chat view's modules.
 
 export function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {

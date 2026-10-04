@@ -3,8 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Messages between the extension and Agents mode's two webviews: the Changes
-// panel (webview-src/changes.ts) and Agent Home (webview-src/home.ts).
+// Messages between the extension and its page webviews: Agents mode's Changes
+// panel (webview-src/changes.ts) and Agent Home (webview-src/home.ts), and the
+// MCP Servers and Rules page (webview-src/settings.ts).
 
 import type { ChangeTotals } from '../acp/agentChanges';
 
@@ -136,3 +137,58 @@ export type FromHome =
 	| { readonly type: 'start'; readonly folder: string; readonly text: string; readonly ownBranch: boolean }
 	| { readonly type: 'addWorkspace' }
 	| { readonly type: 'open' | 'stop' | 'review' | 'mergeBack'; readonly id: string };
+
+// --- MCP Servers and Rules
+
+export interface McpServerView {
+	readonly name: string;
+	/** "Personal", or the project folder's name. */
+	readonly scope: string;
+	readonly transport: 'stdio' | 'http' | 'sse';
+	readonly target: string;
+	readonly file: string;
+	readonly enabled: boolean;
+	/** Why it failed to start in the running agent. */
+	readonly problem?: string;
+}
+
+export interface RulesFileView {
+	readonly label: string;
+	/** Shown as `~/...` or relative to the folder. */
+	readonly display: string;
+	readonly path: string;
+	readonly exists: boolean;
+	/** The first line of text, to recognise it by. */
+	readonly preview?: string;
+}
+
+export interface SettingsPageView {
+	readonly servers: readonly McpServerView[];
+	readonly rules: readonly RulesFileView[];
+}
+
+export interface SettingsPageStrings {
+	readonly title: string;
+	readonly subtitle: string;
+	readonly restart: string;
+	readonly servers: string;
+	readonly serversHint: string;
+	readonly addServer: string;
+	readonly noServers: string;
+	readonly edit: string;
+	readonly enable: string;
+	readonly failed: string;
+	readonly rules: string;
+	readonly rulesHint: string;
+	readonly open: string;
+	readonly create: string;
+	readonly missing: string;
+}
+
+export type ToSettingsPage = { readonly type: 'view'; readonly view: SettingsPageView };
+
+export type FromSettingsPage =
+	| { readonly type: 'ready' | 'restart' | 'addServer' }
+	| { readonly type: 'toggle'; readonly name: string; readonly enabled: boolean }
+	| { readonly type: 'openFile'; readonly path: string; readonly server?: string }
+	| { readonly type: 'createRules'; readonly path: string };

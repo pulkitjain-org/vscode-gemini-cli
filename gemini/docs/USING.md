@@ -102,9 +102,19 @@ Prompts that use `!{...}` (run a shell command) or `@{...}` (read a file) are no
 
 When an agent finishes or needs your permission while GeminiCode is in the background, a system notification appears and the Dock icon bounces. Click it to open the agent. The Dock icon and the Agents pane show how many agents are waiting for you. Turn both off with `gemini.notifications.enabled`. macOS asks once whether GeminiCode may show notifications.
 
-## MCP servers
+## MCP servers and rules
 
-The Gemini CLI starts the MCP servers in its `settings.json` files. When one cannot start, GeminiCode shows a warning naming the server and the reason, and writes it to the Gemini log (**Gemini: Show Log**). The CLI does not report these over ACP, so GeminiCode reads them from the CLI's debug log, which it keeps under 1 MB in its own storage. If you set `GEMINI_DEBUG_LOG_FILE` yourself, GeminiCode leaves it alone and shows no warnings.
+**Gemini: MCP Servers and Rules** (also in the Agents pane's **...** menu) lists the MCP servers in your personal `~/.gemini/settings.json` and in each open folder's `.gemini/settings.json`. Each has a switch that turns it on or off, the same way the CLI's `/mcp enable` and `/mcp disable` do, so the `gemini` command in your terminal sees the change too. **Add Server** asks for a name and the command that starts the server, or its URL, and adds it to your personal settings. The page also opens or creates your project's rules (`GEMINI.md`, or the name in `context.fileName`) and your personal rules (`~/.gemini/GEMINI.md`). Changes apply to agents started afterwards; **Restart Agent** applies them now.
+
+When an MCP server cannot start, GeminiCode shows a warning naming the server and the reason, marks it on the MCP Servers and Rules page, and writes it to the Gemini log (**Gemini: Show Log**). The CLI does not report these over ACP, so GeminiCode reads them from the CLI's debug log, which it keeps under 1 MB in its own storage. If you set `GEMINI_DEBUG_LOG_FILE` yourself, GeminiCode leaves it alone and shows no warnings.
+
+## Review my changes
+
+**Review My Changes**, in the Source Control title bar and the Agents pane's **...** menu, starts an agent in Plan mode with your uncommitted diff attached and new files listed. It reads the code around the changes and replies with a summary and its findings, most serious first, without editing anything. Ask it to fix one when you agree.
+
+## Today's use
+
+Hover the **Gemini** item in the status bar to see how much of today's quota each model has used and when it resets. Once a model passes 80%, the item shows the percentage. Turn this off with `gemini.usageMeter.enabled`.
 
 ## Long conversations
 
