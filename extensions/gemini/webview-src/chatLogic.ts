@@ -90,6 +90,23 @@ export function mentionAt(text: string, selectionStart: number, selectionEnd: nu
 	return match ? { start: selectionStart - match[2].length - 1, query: match[2] } : undefined;
 }
 
+/** The command name typed so far when the input is just "/name" up to the caret, which opens the command menu. */
+export function slashQuery(text: string, selectionStart: number, selectionEnd: number): string | undefined {
+	if (selectionStart !== selectionEnd) {
+		return undefined;
+	}
+	const match = /^\/(\S*)$/.exec(text.slice(0, selectionStart));
+	return match && !/^\S/.test(text.slice(selectionStart)) ? match[1] : undefined;
+}
+
+/** Commands whose names start with `query`, then those that contain it. */
+export function matchCommands<T extends { readonly name: string }>(commands: readonly T[], query: string, limit = 50): T[] {
+	const q = query.toLowerCase();
+	const prefix = commands.filter(c => c.name.toLowerCase().startsWith(q));
+	const inside = commands.filter(c => !c.name.toLowerCase().startsWith(q) && c.name.toLowerCase().includes(q));
+	return [...prefix, ...inside].slice(0, limit);
+}
+
 /** What to insert to start a mention after `before`: "@", with a space first when it would join a word. */
 export function mentionInsertion(before: string): string {
 	return before && !/\s$/.test(before) ? ' @' : '@';

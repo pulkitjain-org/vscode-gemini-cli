@@ -18,6 +18,7 @@ import { configSection, setStorageDirs } from './host/configuration';
 import { initModelPreference } from './host/modelPreference';
 import { SetupWalkthrough, walkthroughId } from './host/setupWalkthrough';
 import { GeminiStatusBar } from './host/statusBar';
+import { initTeamCommands } from './host/teamCommands';
 import { WorkspaceFileIndex } from './host/workspaceFiles';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -28,6 +29,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		bundledCli: vscode.Uri.joinPath(context.extensionUri, 'cli').fsPath,
 		adminPolicy: vscode.Uri.joinPath(context.globalStorageUri, 'policy').fsPath,
 	});
+	const teamCommandStore = initTeamCommands(log);
 	const service = new AgentService(log);
 	const diffPreview = new DiffPreview();
 	const fileIndex = new WorkspaceFileIndex();
@@ -40,6 +42,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
 	context.subscriptions.push(
 		log,
+		teamCommandStore,
 		service,
 		diffPreview,
 		fileIndex,

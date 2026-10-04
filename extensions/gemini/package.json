@@ -431,6 +431,12 @@
           "scope": "window",
           "markdownDescription": "%configuration.projectId%"
         },
+        "gemini.notifications.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "application",
+          "markdownDescription": "%configuration.notifications.enabled%"
+        },
         "gemini.layout.showAgentsInNewWorkspaces": {
           "type": "boolean",
           "default": true,

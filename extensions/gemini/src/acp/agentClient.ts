@@ -10,6 +10,7 @@ import { Emitter } from './events';
 import { AgentRuntime, AgentRuntimeState, FileSystemHandlers } from './agentRuntime';
 import { PromptCapabilities, readPromptCapabilities } from './promptContent';
 import { filterModes, readSessionSettings, SessionSettings } from './sessionSettings';
+import type { SlashCommand } from './slashCommands';
 import { ChatEvent, SessionUpdateAdapter } from './sessionUpdates';
 
 export { AUTH_METHOD_ID } from './agentRuntime';
@@ -60,6 +61,11 @@ export class AgentClient {
 	/** The current session's mode and model choices changed. */
 	readonly onDidChangeSettings = this.onDidChangeSettingsEmitter.event;
 
+	private readonly onDidChangeCommandsEmitter = new Emitter<readonly SlashCommand[]>();
+	/** The agent listed a new set of slash commands for the current session. */
+	readonly onDidChangeCommands = this.onDidChangeCommandsEmitter.event;
+
+	private _commands: readonly SlashCommand[] = [];
 	private _state: AgentClientState = { kind: 'idle' };
 	private _settings: SessionSettings = {};
 	private pendingMode: string | undefined;
@@ -88,6 +94,11 @@ export class AgentClient {
 
 	get settings(): SessionSettings {
 		return this._settings;
+	}
+
+	/** The slash commands the agent runs itself, from its latest `available_commands_update`. */
+	get commands(): readonly SlashCommand[] {
+		return this._commands;
 	}
 
 	/** Starts a fresh session on the running agent; the old conversation is gone for the agent too. */
@@ -148,6 +159,7 @@ export class AgentClient {
 		this.onDidChangeStateEmitter.dispose();
 		this.onDidReceiveEventEmitter.dispose();
 		this.onDidChangeSettingsEmitter.dispose();
+		this.onDidChangeCommandsEmitter.dispose();
 	}
 
 	private onRuntimeState(state: AgentRuntimeState): void {
@@ -236,6 +248,12 @@ export class AgentClient {
 		if (update.sessionUpdate === 'current_mode_update' && this._settings.mode) {
 			this.setSettings({ ...this._settings, mode: { ...this._settings.mode, currentId: update.currentModeId } });
 		}
+		if (update.sessionUpdate === 'available_commands_update') {
+			this.setCommands(update.availableCommands
+				.filter(c => typeof c.name === 'string' && c.name)
+				.map(c => ({ name: c.name.replace(/^\//, ''), description: c.description ?? '', source: 'cli' as const })));
+			return;
+		}
 		this.onDidReceiveEventEmitter.fire(this.adapter.adapt(update));
 	}
 
@@ -306,6 +324,13 @@ export class AgentClient {
 		}
 	}
 
+	private setCommands(commands: readonly SlashCommand[]): void {
+		if (commands.length || this._commands.length) {
+			this._commands = commands;
+			this.onDidChangeCommandsEmitter.fire(commands);
+		}
+	}
+
 	private setSettings(settings: SessionSettings): void {
 		this._settings = settings;
 		this.onDidChangeSettingsEmitter.fire(settings);
@@ -314,6 +339,9 @@ export class AgentClient {
 	private setState(state: AgentClientState): void {
 		if (state.kind !== 'ready' && (this._settings.mode || this._settings.model)) {
 			this.setSettings({});
+		}
+		if (state.kind !== 'ready' && state.kind !== 'connecting') {
+			this.setCommands([]);
 		}
 		this._state = state;
 		this.onDidChangeStateEmitter.fire(state);

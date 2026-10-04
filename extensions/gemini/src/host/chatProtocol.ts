@@ -10,13 +10,14 @@ import type { Attachment } from '../acp/attachments';
 import type { TranscriptItem } from '../acp/chatTranscript';
 import type { ItemUpdate } from '../acp/textDeltas';
 import type { SessionSettings } from '../acp/sessionSettings';
+import type { SlashCommand } from '../acp/slashCommands';
 import type { AgentPhase } from '../acp/status';
 
 /**
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 9;
+export const chatProtocolVersion = 10;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -41,6 +42,7 @@ export interface ChatStrings {
 	readonly welcome: string;
 	readonly hintMention: string;
 	readonly hintNewLine: string;
+	readonly hintCommands: string;
 	/** The button that jumps back to the latest message. */
 	readonly scrollToBottom: string;
 	readonly thinking: string;
@@ -59,6 +61,10 @@ export interface ChatStrings {
 	readonly model: string;
 	readonly addContext: string;
 	readonly noFiles: string;
+	readonly noCommands: string;
+	/** Labels for a command from the agent and one from .gemini/commands. */
+	readonly commandFromCli: string;
+	readonly commandFromTeam: string;
 	readonly remove: string;
 	/** `{0}` is the file's name. */
 	readonly fileTooLarge: string;
@@ -90,6 +96,8 @@ export type FromWebview =
 	| { readonly type: 'prompt'; readonly text: string; readonly attachments: readonly Attachment[] }
 	/** The @-mention picker wants files matching `query`; answered with `files` carrying the same `requestId`. */
 	| { readonly type: 'searchFiles'; readonly requestId: number; readonly query: string }
+	/** The "/" menu opened; answered with `commands`. */
+	| { readonly type: 'listCommands' }
 	| { readonly type: 'stop' }
 	| { readonly type: 'command'; readonly command: StatusCommand }
 	| { readonly type: 'setMode'; readonly id: string }
@@ -120,6 +128,8 @@ export type ToWebview =
 	/** The input height the user dragged to last, in any chat; 0 for its natural height. */
 	| { readonly type: 'composerHeight'; readonly height: number }
 	| { readonly type: 'files'; readonly requestId: number; readonly files: readonly { readonly path: string; readonly relative: string }[] }
+	/** Every slash command this chat offers: the agent's, then the team's. */
+	| { readonly type: 'commands'; readonly commands: readonly SlashCommand[] }
 	/** Context to add to the composer, from the Add to Chat commands. */
 	| { readonly type: 'attach'; readonly attachments: readonly Attachment[] }
 	| { readonly type: 'git'; readonly git: ViewGit };

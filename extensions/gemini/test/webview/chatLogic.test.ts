@@ -7,8 +7,8 @@ import { describe, expect, it } from 'vitest';
 import type { TranscriptItem } from '../../src/acp/chatTranscript';
 import {
 	attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, draggedHeight, emptyFence, fileUris, folderOf, format, formatDuration,
-	imageName, indexOfItem, isNearBottom, mentionAt, mentionInsertion, permissionDefaults, planIcon, replyBefore, restoredHeight,
-	sameAttachment, thoughtSeconds, toolKindIcon, withAppended, withoutMention, wrapIndex,
+	imageName, indexOfItem, isNearBottom, matchCommands, mentionAt, mentionInsertion, permissionDefaults, planIcon, replyBefore, restoredHeight,
+	sameAttachment, slashQuery, thoughtSeconds, toolKindIcon, withAppended, withoutMention, wrapIndex,
 } from '../../webview-src/chatLogic';
 
 describe('format', () => {
@@ -247,5 +247,29 @@ describe('scroll and composer height', () => {
 		expect(restoredHeight(300, 1000)).toBe(300);
 		expect(restoredHeight(900, 1000)).toBe(700);
 		expect(restoredHeight(900, 0)).toBe(900);
+	});
+});
+
+describe('slashQuery', () => {
+	it('opens the menu for a "/name" at the start of the input', () => {
+		expect(slashQuery('/', 1, 1)).toBe('');
+		expect(slashQuery('/ini', 4, 4)).toBe('ini');
+		expect(slashQuery('/ini', 2, 2)).toBeUndefined();
+	});
+
+	it('closes it once arguments start, elsewhere in the text, or with a selection', () => {
+		expect(slashQuery('/init ', 6, 6)).toBeUndefined();
+		expect(slashQuery('fix /init', 9, 9)).toBeUndefined();
+		expect(slashQuery('/init', 0, 5)).toBeUndefined();
+	});
+});
+
+describe('matchCommands', () => {
+	const commands = [{ name: 'init' }, { name: 'git:commit' }, { name: 'memory' }, { name: 'commit' }];
+
+	it('lists names starting with the query first, then those containing it', () => {
+		expect(matchCommands(commands, 'com').map(c => c.name)).toEqual(['commit', 'git:commit']);
+		expect(matchCommands(commands, '').map(c => c.name)).toEqual(['init', 'git:commit', 'memory', 'commit']);
+		expect(matchCommands(commands, 'MEM').map(c => c.name)).toEqual(['memory']);
 	});
 });

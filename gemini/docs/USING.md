@@ -42,6 +42,24 @@ The branch pill in a chat's composer switches to another branch or creates one. 
 
 The agent cannot read secret files such as `.env` and private keys, or git-ignored files, through the editor.
 
+## Slash commands
+
+Type `/` at the start of the composer to list commands. Keep typing to filter, then press <kbd>Tab</kbd> or <kbd>Enter</kbd> to complete the name and add arguments.
+
+- **Gemini CLI commands** such as `/init`, `/memory` and `/restore` come from the CLI and run in the CLI.
+- **Team commands** are TOML files in `.gemini/commands/` in the workspace, or in `~/.gemini/commands/` for your own. This is the Gemini CLI's own format, so the same files work in the terminal. `git/commit.toml` becomes `/git:commit`. GeminiCode sends the file's `prompt`, with `{{args}}` replaced by what you typed after the name. A workspace command replaces a personal one with the same name, and a CLI command wins over both.
+
+```toml
+description = "Review a file for bugs"
+prompt = "Review {{args}} for bugs and suggest fixes."
+```
+
+Prompts that use `!{...}` (run a shell command) or `@{...}` (read a file) are not offered yet; the Gemini log says which files were skipped.
+
+## Notifications
+
+When an agent finishes or needs your permission while GeminiCode is in the background, a system notification appears and the Dock icon bounces. Click it to open the agent. The Dock icon and the Agents pane show how many agents are waiting for you. Turn both off with `gemini.notifications.enabled`. macOS asks once whether GeminiCode may show notifications.
+
 ## Long conversations
 
 The Gemini CLI manages the model's context. When a session's history reaches half of the model's context window, the CLI summarises the older part and keeps the most recent 30% as it was. Large tool outputs are cut to 40,000 characters. Both limits come from the CLI's own settings (`model.compressionThreshold` and `tools.truncateToolOutputThreshold` in `~/.gemini/settings.json`).
