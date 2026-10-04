@@ -8,12 +8,14 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AgentChanges, formatCounts } from '../acp/agentChanges';
 import { attentionChange, waitingCount } from '../acp/attention';
-import { branchNameFrom } from '../acp/branchNames';
+import { branchNameFrom, isValidBranchName } from '../acp/branchNames';
 import { AgentRecord, AgentsModel, AgentsSnapshot, WorkspaceRecord } from '../acp/agents';
 import { FolderFileIndex } from '../acp/folderFiles';
 import { readGitHead } from '../acp/gitHead';
+import { errorMessage } from '../acp/errors';
 import { memoizeAsync } from '../acp/memoize';
 import { TranscriptStore } from '../acp/transcriptStore';
+import { AgentWorktree, branchExists, commitAll, createWorktree, currentBranch, mergeBranch, removeWorktree, repositoryRoot, worktreeStatus } from '../acp/worktrees';
 import { AgentNotifier } from './agentNotifier';
 import { AgentService } from './agentService';
 import { AgentSession } from './agentSession';
@@ -117,6 +119,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			// Relative times go stale; refresh them only while the pane is visible.
 			this.tree.onDidChangeVisibility(e => this.setRefreshing(e.visible)),
 			vscode.commands.registerCommand('gemini.agents.newAgent', (node?: Node) => this.newAgent(node)),
+			vscode.commands.registerCommand('gemini.agents.newAgentOnBranch', (node?: Node) => this.newAgent(node, true)),
+			vscode.commands.registerCommand('gemini.agents.mergeBack', (node?: Node) => this.mergeBack(node)),
 			vscode.commands.registerCommand('gemini.agents.addWorkspace', () => this.addWorkspace()),
 			vscode.commands.registerCommand('gemini.agents.open', (id: string) => this.open(id)),
 			vscode.commands.registerCommand('gemini.agents.openChanges', (node?: Node) => node?.kind === 'agent' && this.openChanges(node.record.id)),
@@ -149,7 +153,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			return this.workspaceNodes();
 		}
 		if (node.kind === 'workspace' && node.record) {
-			return this.model.agentsIn(node.record.id).map(record => ({ kind: 'agent', record, folder: node.folder }));
+			return this.model.agentsIn(node.record.id).map(record => ({ kind: 'agent', record, folder: record.worktree?.cwd ?? node.folder }));
 		}
 		return [];
 	}
@@ -165,7 +169,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		return nodes;
 	}
 
-	private workspaceItem(node: WorkspaceNode): vscode.TreeItem {
+	private async workspaceItem(node: WorkspaceNode): Promise<vscode.TreeItem> {
 		const hasAgents = !!node.record && this.model.agentsIn(node.record.id).length > 0;
 		const item = new vscode.TreeItem(path.basename(node.folder) || node.folder, hasAgents ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
 		// The id changes with the expander, so a workspace that gets its first agent opens.
@@ -173,7 +177,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		item.description = tildify(path.dirname(node.folder));
 		item.tooltip = node.folder;
 		item.iconPath = new vscode.ThemeIcon(node.current ? 'root-folder-opened' : 'folder');
-		item.contextValue = node.current ? 'workspace.current' : 'workspace';
+		// `.git` offers New Agent on Its Own Branch.
+		const inGit = await this.branchOf(node.folder).then(Boolean, () => false);
+		item.contextValue = `${node.current ? 'workspace.current' : 'workspace'}${inGit ? '.git' : ''}`;
 		return item;
 	}
 
@@ -187,8 +193,11 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		item.description = [changes?.files ? formatCounts(changes) : undefined, relativeTime(record.updatedAt, Date.now()), branch].filter(Boolean).join(' · ');
 		const state = this.agentState(live);
 		item.iconPath = state.icon;
-		item.tooltip = new vscode.MarkdownString(`**${escapeMarkdown(record.title)}**\n\n${escapeMarkdown(state.label)}\n\n${escapeMarkdown(node.folder)}${branch ? ` (${escapeMarkdown(branch)})` : ''}`);
-		item.contextValue = `${live?.activity.busy ? 'agent.busy' : 'agent'}${changes?.files ? '.changes' : ''}`;
+		const where = record.worktree
+			? vscode.l10n.t("On its own branch {0}, in {1}", escapeMarkdown(record.worktree.branch), escapeMarkdown(tildify(record.worktree.folder)))
+			: `${escapeMarkdown(node.folder)}${branch ? ` (${escapeMarkdown(branch)})` : ''}`;
+		item.tooltip = new vscode.MarkdownString(`**${escapeMarkdown(record.title)}**\n\n${escapeMarkdown(state.label)}\n\n${where}`);
+		item.contextValue = `${live?.activity.busy ? 'agent.busy' : 'agent'}${record.worktree ? '.worktree' : ''}${changes?.files ? '.changes' : ''}`;
 		item.command = { command: 'gemini.agents.open', title: vscode.l10n.t("Open Agent"), arguments: [record.id] };
 		item.accessibilityInformation = { label: `${record.title}, ${state.label}` };
 		return item;
@@ -236,14 +245,136 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 
 	// --- Commands
 
-	private async newAgent(node: Node | undefined): Promise<void> {
-		const folder = node?.kind === 'workspace' ? node.folder : node?.kind === 'agent' ? node.folder : await this.pickFolder();
+	/**
+	 * Starts an agent in a workspace. With `ownBranch` (or the setting), it
+	 * works on a new branch in its own worktree; unset falls back to the
+	 * workspace folder outside a Git repository.
+	 */
+	private async newAgent(node: Node | undefined, ownBranch?: boolean): Promise<void> {
+		const folder = node?.kind === 'workspace' ? node.folder : node?.kind === 'agent' ? this.model.workspace(node.record.workspaceId)?.folder : await this.pickFolder();
 		if (!folder) {
 			return;
 		}
+		let worktree: AgentWorktree | undefined;
+		if (ownBranch ?? vscode.workspace.getConfiguration(configSection).get<boolean>('agents.ownBranch', false)) {
+			const repository = await repositoryRoot(folder);
+			if (repository) {
+				worktree = await this.createWorktree(repository, folder);
+				if (!worktree) {
+					return;
+				}
+			} else if (ownBranch) {
+				void vscode.window.showErrorMessage(vscode.l10n.t("{0} is not in a Git repository, so the agent can't have its own branch.", path.basename(folder)));
+				return;
+			}
+		}
 		const workspace = this.model.addWorkspace(folder);
-		const agent = this.model.addAgent(workspace.id, vscode.l10n.t("New agent"));
+		const agent = this.model.addAgent(workspace.id, vscode.l10n.t("New agent"), worktree);
 		await this.open(agent.id);
+	}
+
+	/** Asks for a branch name and makes the agent's worktree; undefined when dismissed or failed (the failure is shown). */
+	private async createWorktree(repository: string, folder: string): Promise<AgentWorktree | undefined> {
+		const suggestion = `gemini/agent-${Math.random().toString(16).slice(2, 6)}`;
+		const branch = await vscode.window.showInputBox({
+			title: vscode.l10n.t("New Agent on Its Own Branch"),
+			prompt: vscode.l10n.t("The agent works on this new branch, in its own copy of {0}. Merge Back brings its work into your branch.", path.basename(repository)),
+			value: suggestion,
+			valueSelection: [suggestion.indexOf('/') + 1, suggestion.length],
+			validateInput: async value => {
+				const name = value.trim();
+				if (!isValidBranchName(name)) {
+					return vscode.l10n.t("Enter a valid branch name.");
+				}
+				return await branchExists(repository, name) ? vscode.l10n.t("A branch named {0} already exists.", name) : undefined;
+			},
+		});
+		if (!branch?.trim()) {
+			return undefined;
+		}
+		try {
+			return await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Creating the agent's branch...") },
+				() => createWorktree(repository, branch.trim(), path.relative(repository, folder)));
+		} catch (err) {
+			void vscode.window.showErrorMessage(vscode.l10n.t("Could not create the agent's branch: {0}", errorMessage(err)));
+			return undefined;
+		}
+	}
+
+	/** Merges an agent's branch into what its workspace has checked out, committing its work first. */
+	private async mergeBack(node: Node | undefined): Promise<void> {
+		const record = node?.kind === 'agent' ? this.model.agent(node.record.id) : undefined;
+		const workspace = record && this.model.workspace(record.workspaceId);
+		const worktree = record?.worktree;
+		if (!record || !workspace || !worktree) {
+			return;
+		}
+		const live = this.live.get(record.id);
+		if (live?.activity.busy) {
+			void vscode.window.showInformationMessage(vscode.l10n.t("\"{0}\" is still working. Merge back once it finishes.", record.title));
+			return;
+		}
+		try {
+			const repository = await repositoryRoot(workspace.folder);
+			if (!repository) {
+				throw new Error(vscode.l10n.t("{0} is no longer a Git repository.", workspace.folder));
+			}
+			const into = await currentBranch(repository);
+			const status = await worktreeStatus(worktree, into);
+			if (!status.uncommitted && !status.commits) {
+				void vscode.window.showInformationMessage(vscode.l10n.t("{0} has nothing to merge into {1}.", worktree.branch, into));
+				return;
+			}
+			const detail = [
+				status.commits === 1 ? vscode.l10n.t("1 commit") : status.commits ? vscode.l10n.t("{0} commits", status.commits) : undefined,
+				status.uncommitted === 1 ? vscode.l10n.t("1 changed file not committed yet; it is committed first as \"{0}\"", record.title)
+					: status.uncommitted ? vscode.l10n.t("{0} changed files not committed yet; they are committed first as \"{1}\"", status.uncommitted, record.title) : undefined,
+			].filter(Boolean).join('\n');
+			const merge = vscode.l10n.t("Merge");
+			if (await vscode.window.showInformationMessage(vscode.l10n.t("Merge {0} into {1}?", worktree.branch, into), { modal: true, detail }, merge) !== merge) {
+				return;
+			}
+			if (status.uncommitted) {
+				await commitAll(worktree.folder, record.title);
+				live?.changes.clear();
+			}
+			const result = await mergeBranch(repository, worktree.branch);
+			if (result.kind === 'conflicts') {
+				const open = vscode.l10n.t("Open Source Control");
+				const message = result.files.length === 1
+					? vscode.l10n.t("{0} conflicts with {1}. Finish the merge in Source Control.", result.files[0], into)
+					: vscode.l10n.t("{0} files conflict with {1}. Finish the merge in Source Control.", result.files.length, into);
+				if (await vscode.window.showWarningMessage(message, open) === open) {
+					await vscode.commands.executeCommand('workbench.view.scm');
+				}
+				return;
+			}
+			const done = vscode.l10n.t("Remove Agent and Branch");
+			const keep = vscode.l10n.t("Keep Working");
+			if (await vscode.window.showInformationMessage(vscode.l10n.t("Merged {0} into {1}.", worktree.branch, into), done, keep) === done) {
+				await this.removeAgentAndWorktree(record.id, true);
+			}
+		} catch (err) {
+			if (/Author identity unknown|Please tell me who you are/.test(errorMessage(err))) {
+				void vscode.window.showErrorMessage(vscode.l10n.t("Could not merge {0}: Git doesn't know your name and email yet. Set them with git config --global user.name and user.email, then try again.", worktree.branch));
+				return;
+			}
+			void vscode.window.showErrorMessage(vscode.l10n.t("Could not merge {0}: {1}", worktree.branch, errorMessage(err)));
+		}
+	}
+
+	/** Removes the agent, its worktree folder and, with `deleteBranch`, its branch. */
+	private async removeAgentAndWorktree(id: string, deleteBranch: boolean): Promise<void> {
+		const record = this.model.agent(id);
+		const workspace = record && this.model.workspace(record.workspaceId);
+		this.stop(id, false);
+		this.model.removeAgent(id);
+		void this.transcripts.delete(id);
+		if (record?.worktree && workspace) {
+			const repository = await repositoryRoot(workspace.folder) ?? workspace.folder;
+			await removeWorktree(repository, record.worktree, deleteBranch).catch(err =>
+				vscode.window.showWarningMessage(vscode.l10n.t("The agent was removed, but its folder {0} could not be: {1}", tildify(record.worktree!.folder), errorMessage(err))));
+		}
 	}
 
 	private async pickFolder(): Promise<string | undefined> {
@@ -289,7 +420,12 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		}
 		let live = this.live.get(id);
 		if (!live) {
-			live = this.start(record, workspace.folder);
+			const folder = record.worktree?.cwd ?? workspace.folder;
+			if (record.worktree && !await exists(folder)) {
+				void vscode.window.showErrorMessage(vscode.l10n.t("The folder of \"{0}\"'s branch, {1}, no longer exists.", record.title, tildify(record.worktree.folder)));
+				return;
+			}
+			live = this.start(record, folder);
 			if (record.updatedAt !== record.createdAt) {
 				// Read while the tab opens; the agent reopens its session meanwhile.
 				const started = live;
@@ -362,7 +498,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const live = this.live.get(id);
 		const record = this.model.agent(id);
 		const workspace = record && this.model.workspace(record.workspaceId);
-		return live && workspace ? { agentId: id, title: record.title, folder: workspace.folder, changes: live.changes, editorColumn: () => besideAgent(live.panel) } : undefined;
+		return live && workspace ? { agentId: id, title: record.title, folder: record.worktree?.cwd ?? workspace.folder, changes: live.changes, editorColumn: () => besideAgent(live.panel) } : undefined;
 	}
 
 	private start(record: AgentRecord, folder: string): LiveAgent {
@@ -472,11 +608,35 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			return;
 		}
 		const remove = vscode.l10n.t("Remove");
+		const worktree = this.model.agent(node.record.id)?.worktree;
+		if (worktree) {
+			await this.removeWorktreeAgent(node.record, worktree);
+			return;
+		}
 		const answer = await vscode.window.showWarningMessage(vscode.l10n.t("Remove the agent \"{0}\"? Its conversation is closed.", node.record.title), { modal: true }, remove);
 		if (answer === remove) {
 			this.stop(node.record.id, false);
 			this.model.removeAgent(node.record.id);
 			void this.transcripts.delete(node.record.id);
+		}
+	}
+
+	private async removeWorktreeAgent(record: AgentRecord, worktree: AgentWorktree): Promise<void> {
+		const workspace = this.model.workspace(record.workspaceId);
+		const repository = workspace && await repositoryRoot(workspace.folder);
+		const status = repository ? await worktreeStatus(worktree, worktree.base).catch(() => undefined) : undefined;
+		const unsaved = [
+			status?.commits === 1 ? vscode.l10n.t("1 commit not in {0}", worktree.base) : status?.commits ? vscode.l10n.t("{0} commits not in {1}", status.commits, worktree.base) : undefined,
+			status?.uncommitted === 1 ? vscode.l10n.t("1 uncommitted changed file") : status?.uncommitted ? vscode.l10n.t("{0} uncommitted changed files", status.uncommitted) : undefined,
+		].filter(Boolean).join(', ');
+		const detail = unsaved
+			? vscode.l10n.t("Its branch {0} has {1}. Deleting the branch loses them; keeping it leaves the branch in your repository.", worktree.branch, unsaved)
+			: vscode.l10n.t("Its branch {0} has no work of its own.", worktree.branch);
+		const deleteBranch = vscode.l10n.t("Remove and Delete Branch");
+		const keepBranch = vscode.l10n.t("Remove, Keep Branch");
+		const answer = await vscode.window.showWarningMessage(vscode.l10n.t("Remove the agent \"{0}\" and its folder?", record.title), { modal: true, detail }, deleteBranch, keepBranch);
+		if (answer) {
+			await this.removeAgentAndWorktree(record.id, answer === deleteBranch);
 		}
 	}
 
@@ -489,7 +649,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const message = count
 			? vscode.l10n.t("Remove {0} and its {1} agents from the list? The folder itself is not changed.", path.basename(node.folder), count)
 			: vscode.l10n.t("Remove {0} from the list? The folder itself is not changed.", path.basename(node.folder));
-		if (await vscode.window.showWarningMessage(message, { modal: true }, remove) === remove) {
+		const branches = this.model.agentsIn(node.record.id).filter(a => a.worktree).length;
+		const detail = branches ? vscode.l10n.t("Agents on their own branches keep their branches and folders in ~/.geminicode/worktrees. To delete those, remove the agents first.") : undefined;
+		if (await vscode.window.showWarningMessage(message, { modal: true, detail }, remove) === remove) {
 			for (const agent of this.model.removeWorkspace(node.record.id)) {
 				this.stop(agent.id, false);
 				void this.transcripts.delete(agent.id);
@@ -548,6 +710,15 @@ function relativeTime(then: number, now: number): string {
 	}
 	const days = Math.floor(hours / 24);
 	return days < 7 ? vscode.l10n.t("{0}d", days) : vscode.l10n.t("{0}w", Math.floor(days / 7));
+}
+
+async function exists(folder: string): Promise<boolean> {
+	try {
+		await vscode.workspace.fs.stat(vscode.Uri.file(folder));
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 function isOpenFolder(folder: string): boolean {

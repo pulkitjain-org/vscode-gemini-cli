@@ -54,6 +54,14 @@ Each reply that changed files ends with **Undo**, which puts back every file it 
 
 The branch pill in a chat's composer switches to another branch or creates one. In an agent's chat, **Create Branch & Commit** creates a branch, stages only the files that agent changed, and commits them. If other files are already staged it warns first, because they would be committed too. After the commit the agent's Changes list is cleared.
 
+## Agents on their own branch
+
+Two agents in the same folder can trip over each other's edits. **New Agent on Its Own Branch** (the branch icon next to **+** on a workspace in a Git repository) asks for a branch name and gives the agent its own copy of the repository on that new branch, in `~/.geminicode/worktrees/<repository>/` (a Git worktree). The agent reads, edits and runs commands there, so your folder and other agents are untouched. Its row in the Agents pane shows the branch.
+
+When it's done, **Merge Back** (the merge icon on the agent's row) commits anything the agent left uncommitted, using the agent's name as the message, and merges its branch into the branch your folder has checked out. If the merge conflicts, it stops for you to finish in Source Control. After a clean merge it offers to remove the agent with its branch and folder. Removing such an agent asks whether to keep its branch, and says what is on it that isn't merged yet.
+
+The new copy has no `node_modules` or build output, so an agent that runs tests may need to install dependencies first. To start every new agent this way, turn on `gemini.agents.ownBranch`.
+
 ## Attaching context
 
 - **Workspace files.** Type `@` or use the **@** button. The agent gets a link and reads the file itself, including unsaved changes.
