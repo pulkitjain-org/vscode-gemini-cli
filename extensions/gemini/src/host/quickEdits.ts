@@ -6,10 +6,10 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AgentChanges } from '../acp/agentChanges';
-import { CliBundleInfo, DirectClient, DirectRequest, DirectRequestError, readCliBundle } from '../acp/directRequest';
+import { CliBundleInfo, cliEnvProject, DirectClient, DirectRequest, DirectRequestError, readCliBundle } from '../acp/directRequest';
 import { errorMessage } from '../acp/errors';
 import { cleanCommitMessage, cleanEdit, commitMessagePrompt, inlineEditPrompt, latestFlashModel, quickEditModels } from '../acp/quickPrompts';
-import { configSection, getCliResolution, getProjectSettings } from './configuration';
+import { configSection, getCliResolution, getProjectSettings, getWorkspaceCwd } from './configuration';
 import { preferredModel } from './modelPreference';
 import { ReviewController, ReviewSource } from './reviewController';
 
@@ -46,7 +46,8 @@ export class QuickEdits implements vscode.Disposable {
 
 	constructor(review: ReviewController, private readonly log: vscode.LogOutputChannel) {
 		this.client = new DirectClient({
-			projectId: () => getProjectSettings().resolved?.projectId,
+			// As the agent gets it: GeminiCode's setting or the environment, else the .env file the CLI reads.
+			projectId: async () => getProjectSettings().resolved?.projectId ?? await cliEnvProject(getWorkspaceCwd()),
 			oauthClient: () => this.readCliBundle().then(info => info.oauthClient),
 		});
 		// Reading the CLI's bundle takes a moment, so do it before the first request needs it.

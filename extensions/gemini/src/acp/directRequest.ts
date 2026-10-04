@@ -123,9 +123,45 @@ export async function readCliBundle(entry: string): Promise<CliBundleInfo> {
 	return { oauthClient, latestFlash, baseFlash };
 }
 
+const projectEnvVars = ['GOOGLE_CLOUD_QUOTA_PROJECT', 'GOOGLE_CLOUD_PROJECT', 'GOOGLE_CLOUD_PROJECT_ID'];
+
+/**
+ * The project in the `.env` file the CLI loads when it starts in `cwd`: the
+ * nearest `.gemini/.env` or `.env` from there up, then `~/.gemini/.env`, then
+ * `~/.env`. The CLI reads it itself, so GeminiCode never passes it on.
+ */
+export async function cliEnvProject(cwd: string, home: string = os.homedir()): Promise<string | undefined> {
+	const candidates: string[] = [];
+	for (let dir = path.resolve(cwd); ; dir = path.dirname(dir)) {
+		candidates.push(path.join(dir, '.gemini', '.env'), path.join(dir, '.env'));
+		if (path.dirname(dir) === dir) {
+			break;
+		}
+	}
+	candidates.push(path.join(home, '.gemini', '.env'), path.join(home, '.env'));
+	for (const file of candidates) {
+		let text: string;
+		try {
+			text = await fs.readFile(file, 'utf8');
+		} catch {
+			continue;
+		}
+		// The CLI loads only the first file it finds.
+		const values = new Map<string, string>();
+		for (const line of text.split(/\r?\n/)) {
+			const match = /^\s*(?:export\s+)?([A-Za-z_]\w*)\s*=\s*(.*?)\s*$/.exec(line);
+			if (match) {
+				values.set(match[1], match[2].replace(/^(['"])(.*)\1$/, '$2'));
+			}
+		}
+		return projectEnvVars.map(name => values.get(name)?.trim()).find(Boolean);
+	}
+	return undefined;
+}
+
 export interface DirectClientOptions {
 	/** The Google Cloud project, as the agent gets it; unset asks Code Assist for the user's own. */
-	readonly projectId?: () => string | undefined;
+	readonly projectId?: () => string | undefined | Promise<string | undefined>;
 	/** The CLI's OAuth client, for refreshing an expired sign-in. */
 	readonly oauthClient?: () => Promise<OAuthClient | undefined>;
 	readonly env?: NodeJS.ProcessEnv;
@@ -216,8 +252,8 @@ export class DirectClient {
 	}
 
 	/** The project to bill: the one the agent is given, else the user's own from Code Assist, asked once. */
-	private projectId(headers: Record<string, string>, signal: AbortSignal | undefined): Promise<string> {
-		const configured = this.options.projectId?.();
+	private async projectId(headers: Record<string, string>, signal: AbortSignal | undefined): Promise<string> {
+		const configured = await this.options.projectId?.();
 		if (!this.project || this.project.configured !== configured) {
 			const id = configured ? Promise.resolve(configured) : this.loadProject(headers, signal);
 			this.project = { configured, id };
@@ -231,7 +267,7 @@ export class DirectClient {
 		const response = await this.post(`${this.codeAssistBase()}:loadCodeAssist`, headers, { metadata }, signal) as { cloudaicompanionProject?: string | { id?: string } };
 		const project = typeof response.cloudaicompanionProject === 'string' ? response.cloudaicompanionProject : response.cloudaicompanionProject?.id;
 		if (!project) {
-			throw new DirectRequestError('Gemini needs a Google Cloud project. Set one with "Gemini: Set Project ID".', 'auth');
+			throw new DirectRequestError('Gemini needs a Google Cloud project. Set one with "Gemini: Set Google Cloud Project ID".', 'auth');
 		}
 		return project;
 	}
