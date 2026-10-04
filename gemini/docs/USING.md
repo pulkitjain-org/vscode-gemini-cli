@@ -19,7 +19,7 @@ Select some code (or put the cursor on a line), press **Cmd+I**, and say what to
 
 In the Source Control view, the sparkle button writes a commit message for the staged changes (or, with nothing staged, all changes) into the message box.
 
-Both send the selected lines (or the diff) straight to a fast Gemini model with the sign-in the Gemini CLI saved. They work with Google sign-in and with a Gemini API key, not yet with Vertex AI. `gemini.inlineEdit.enabled` turns them off and `gemini.inlineEdit.model` picks the model.
+Both send the selected lines (or the diff) straight to a fast Gemini model with the sign-in the Gemini CLI saved. They work with Google sign-in and with a Gemini API key, not yet with Vertex AI. They use the newest Flash model, for speed. `gemini.inlineEdit.model` can switch them to the model you last picked in chat (`sameAsChat`) or any model you name, and `gemini.inlineEdit.enabled` turns them off.
 
 ## Approval modes
 

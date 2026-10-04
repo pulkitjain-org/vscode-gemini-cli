@@ -79,3 +79,40 @@ export function cleanCommitMessage(reply: string): string {
 	}
 	return text.replace(/^["'](.*)["']$/s, '$1');
 }
+
+/** `gemini.inlineEdit.model` values that are not model names. */
+export const latestFlashModel = 'latestFlash';
+export const sameAsChatModel = 'sameAsChat';
+
+/** Used when the installed CLI does not name its Flash models. */
+export const knownFlash = { latest: 'gemini-3.8-flash', base: 'gemini-3.5-flash' } as const;
+
+export interface ModelChoice {
+	/** The `gemini.inlineEdit.model` setting. */
+	readonly setting: string;
+	/** The model last picked in chat, if any. */
+	readonly chatModel: string | undefined;
+	/** The installed CLI's Flash models. */
+	readonly cliFlash: { readonly latest?: string; readonly base?: string };
+	/** The account was refused the latest Flash model earlier. */
+	readonly latestRefused: boolean;
+}
+
+/**
+ * The models to try, in order: the newest Flash model first, falling back to
+ * the one every account has, unless the setting or the chat names another.
+ */
+export function quickEditModels(choice: ModelChoice): string[] {
+	const setting = choice.setting.trim();
+	let model: string | undefined = setting === latestFlashModel || !setting ? undefined : setting;
+	if (setting === sameAsChatModel) {
+		// Auto picks a model per request inside the CLI, so there is none to follow; Flash is what it uses for quick work.
+		model = choice.chatModel && !/^auto(-|$)/.test(choice.chatModel) && choice.chatModel !== 'flash' ? choice.chatModel : undefined;
+	}
+	if (model) {
+		return [model];
+	}
+	const latest = choice.cliFlash.latest ?? knownFlash.latest;
+	const base = choice.cliFlash.base ?? knownFlash.base;
+	return choice.latestRefused || latest === base ? [base] : [latest, base];
+}

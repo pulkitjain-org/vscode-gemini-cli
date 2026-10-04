@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { cleanCommitMessage, cleanEdit, commitMessagePrompt, inlineEditPrompt } from '../../src/acp/quickPrompts';
+import { cleanCommitMessage, cleanEdit, commitMessagePrompt, inlineEditPrompt, knownFlash, quickEditModels } from '../../src/acp/quickPrompts';
 
 describe('inlineEditPrompt', () => {
 	it('marks the selection inside its surrounding lines', () => {
@@ -59,5 +59,28 @@ describe('cleanCommitMessage', () => {
 	it('removes fences and quotes', () => {
 		expect(cleanCommitMessage('```\nFix the total\n\nBody.\n```')).toBe('Fix the total\n\nBody.');
 		expect(cleanCommitMessage('"Fix the total"\n')).toBe('Fix the total');
+	});
+});
+
+describe('quickEditModels', () => {
+	const cliFlash = { latest: 'gemini-9-flash', base: 'gemini-8-flash' };
+	const choose = (setting: string, chatModel?: string, latestRefused = false) => quickEditModels({ setting, chatModel, cliFlash, latestRefused });
+
+	it('tries the latest Flash model, then the one every account has', () => {
+		expect(choose('latestFlash')).toEqual(['gemini-9-flash', 'gemini-8-flash']);
+		expect(choose('')).toEqual(['gemini-9-flash', 'gemini-8-flash']);
+		expect(choose('latestFlash', undefined, true)).toEqual(['gemini-8-flash']);
+		expect(quickEditModels({ setting: 'latestFlash', chatModel: undefined, cliFlash: {}, latestRefused: false })).toEqual([knownFlash.latest, knownFlash.base]);
+	});
+
+	it('follows the chat unless it is on Auto', () => {
+		expect(choose('sameAsChat', 'gemini-2.5-pro')).toEqual(['gemini-2.5-pro']);
+		expect(choose('sameAsChat', 'auto')).toEqual(['gemini-9-flash', 'gemini-8-flash']);
+		expect(choose('sameAsChat', 'auto-gemini-3')).toEqual(['gemini-9-flash', 'gemini-8-flash']);
+		expect(choose('sameAsChat', undefined)).toEqual(['gemini-9-flash', 'gemini-8-flash']);
+	});
+
+	it('uses a model named in the setting', () => {
+		expect(choose(' gemini-2.5-pro ', 'auto')).toEqual(['gemini-2.5-pro']);
 	});
 });

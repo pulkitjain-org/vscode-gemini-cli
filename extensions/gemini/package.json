@@ -536,7 +536,7 @@
         },
         "gemini.inlineEdit.model": {
           "type": "string",
-          "default": "gemini-2.5-flash",
+          "default": "latestFlash",
           "scope": "machine",
           "markdownDescription": "%configuration.inlineEdit.model%"
         },

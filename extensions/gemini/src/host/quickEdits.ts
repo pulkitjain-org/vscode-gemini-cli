@@ -6,15 +6,15 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AgentChanges } from '../acp/agentChanges';
-import { DirectClient, DirectRequestError, findCliOAuthClient } from '../acp/directRequest';
+import { CliBundleInfo, DirectClient, DirectRequest, DirectRequestError, readCliBundle } from '../acp/directRequest';
 import { errorMessage } from '../acp/errors';
-import { cleanCommitMessage, cleanEdit, commitMessagePrompt, inlineEditPrompt } from '../acp/quickPrompts';
+import { cleanCommitMessage, cleanEdit, commitMessagePrompt, inlineEditPrompt, latestFlashModel, quickEditModels } from '../acp/quickPrompts';
 import { configSection, getCliResolution, getProjectSettings } from './configuration';
+import { preferredModel } from './modelPreference';
 import { ReviewController, ReviewSource } from './reviewController';
 
 const enabledSetting = 'inlineEdit.enabled';
 const modelSetting = 'inlineEdit.model';
-const defaultModel = 'gemini-2.5-flash';
 
 /** The parts of the built-in Git extension's API used here. */
 interface GitRepository {
@@ -40,16 +40,21 @@ export class QuickEdits implements vscode.Disposable {
 	private readonly source: ReviewSource;
 	private readonly disposables: vscode.Disposable[] = [];
 	private lastInstruction = '';
+	private cliBundle: Promise<CliBundleInfo> | undefined;
+	/** The account was refused the latest Flash model, so this window goes straight to the one every account has. */
+	private latestRefused = false;
 
 	constructor(review: ReviewController, private readonly log: vscode.LogOutputChannel) {
-		let oauthClient: ReturnType<typeof findCliOAuthClient> | undefined;
 		this.client = new DirectClient({
 			projectId: () => getProjectSettings().resolved?.projectId,
-			oauthClient: () => oauthClient ??= findCliEntry().then(entry => entry ? findCliOAuthClient(entry) : undefined),
+			oauthClient: () => this.readCliBundle().then(info => info.oauthClient),
 		});
+		// Reading the CLI's bundle takes a moment, so do it before the first request needs it.
+		const warm = setTimeout(() => void this.readCliBundle(), 5000);
 		const changes = new AgentChanges(path.sep);
 		this.source = { title: vscode.l10n.t("inline edit"), changes, saves: false };
 		this.disposables.push(
+			{ dispose: () => clearTimeout(warm) },
 			changes,
 			review.addSource(this.source),
 			vscode.commands.registerCommand('gemini.inlineEdit', () => this.inlineEdit()),
@@ -69,8 +74,43 @@ export class QuickEdits implements vscode.Disposable {
 		return false;
 	}
 
-	private model(): string {
-		return vscode.workspace.getConfiguration(configSection).get<string>(modelSetting)?.trim() || defaultModel;
+	private readCliBundle(): Promise<CliBundleInfo> {
+		return this.cliBundle ??= findCliEntry()
+			.then(entry => entry ? readCliBundle(entry) : {})
+			.catch(err => {
+				this.log.warn(`Could not read the Gemini CLI bundle: ${errorMessage(err)}`);
+				return {};
+			});
+	}
+
+	/**
+	 * Sends the request to the first model that takes it. The latest Flash
+	 * model is not open to every account yet; if it is refused, the request
+	 * goes to the one every account has, and so does every later one.
+	 */
+	private async generate(request: Omit<DirectRequest, 'model'>): Promise<string> {
+		const cli = await this.readCliBundle();
+		const models = quickEditModels({
+			setting: vscode.workspace.getConfiguration(configSection).get<string>(modelSetting, latestFlashModel),
+			chatModel: preferredModel(),
+			cliFlash: { latest: cli.latestFlash, base: cli.baseFlash },
+			latestRefused: this.latestRefused,
+		});
+		for (let i = 0; ; i++) {
+			const started = Date.now();
+			try {
+				const text = await this.client.generate({ ...request, model: models[i] });
+				this.log.info(`Direct request: ${Date.now() - started} ms with ${models[i]}`);
+				return text;
+			} catch (err) {
+				const refused = err instanceof DirectRequestError && (err.status === 400 || err.status === 403 || err.status === 404);
+				if (!refused || i === models.length - 1 || request.signal?.aborted) {
+					throw err;
+				}
+				this.log.info(`${models[i]} was refused (${errorMessage(err)}); using ${models[i + 1]}`);
+				this.latestRefused = true;
+			}
+		}
 	}
 
 	/** Asks what to change in the selected lines (or the line with the cursor), and shows Gemini's rewrite in place. */
@@ -100,13 +140,11 @@ export class QuickEdits implements vscode.Disposable {
 		const lines = before.split('\n');
 		const original = lines.slice(start, end).join('\n') + (end < lines.length ? '\n' : '');
 		const { system, prompt } = inlineEditPrompt({ path: vscode.workspace.asRelativePath(document.uri), languageId: document.languageId, lines, start, end, instruction });
-		const started = Date.now();
 		const reply = await this.withProgress(vscode.ProgressLocation.Notification, vscode.l10n.t("Gemini is editing…"), signal =>
-			this.client.generate({ model: this.model(), system, prompt, signal }));
+			this.generate({ system, prompt, signal }));
 		if (reply === undefined) {
 			return;
 		}
-		this.log.info(`Inline edit: ${Date.now() - started} ms with ${this.model()}`);
 		if (document.version !== version) {
 			void vscode.window.showWarningMessage(vscode.l10n.t("The file changed while Gemini was working, so the edit was not applied. Try again."));
 			return;
@@ -146,7 +184,7 @@ export class QuickEdits implements vscode.Disposable {
 		const subjects = await repository.log({ maxEntries: 8 }).then(commits => commits.map(c => c.message.split('\n')[0]), () => []);
 		const { system, prompt } = commitMessagePrompt(diff, subjects);
 		const reply = await this.withProgress(vscode.ProgressLocation.SourceControl, vscode.l10n.t("Writing a commit message…"), signal =>
-			this.client.generate({ model: this.model(), system, prompt, signal, temperature: 0.3 }));
+			this.generate({ system, prompt, signal, temperature: 0.3 }));
 		if (reply) {
 			repository.inputBox.value = cleanCommitMessage(reply);
 		}

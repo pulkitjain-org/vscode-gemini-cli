@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { detectAuth, DirectClient, DirectRequestError, findCliOAuthClient } from '../../src/acp/directRequest';
+import { detectAuth, DirectClient, DirectRequestError, readCliBundle } from '../../src/acp/directRequest';
 
 let home: string;
 
@@ -61,6 +61,15 @@ describe('DirectClient', () => {
 		expect(JSON.parse(calls[0].init.body as string).generationConfig.thinkingConfig).toEqual({ thinkingBudget: 0 });
 	});
 
+	it('asks Gemini 3 Flash models for little thinking', async () => {
+		const { fetch, calls } = fakeFetch({ ':generateContent': () => json(answer('done')) });
+		const client = new DirectClient({ env: { GEMINI_CLI_HOME: home, GEMINI_API_KEY: 'k' }, fetch });
+		await client.generate({ ...request, model: 'gemini-3.8-flash' });
+		await client.generate({ ...request, model: 'gemini-2.5-pro' });
+		expect(JSON.parse(calls[0].init.body as string).generationConfig.thinkingConfig).toEqual({ thinkingLevel: 'LOW' });
+		expect(JSON.parse(calls[1].init.body as string).generationConfig.thinkingConfig).toBeUndefined();
+	});
+
 	it('calls Code Assist with the saved sign-in, asking for the project once', async () => {
 		await writeGemini('oauth_creds.json', { access_token: 'tok', refresh_token: 'r', expiry_date: Date.now() + 3_600_000 });
 		const { fetch, calls } = fakeFetch({
@@ -106,23 +115,34 @@ describe('DirectClient', () => {
 		const env = { GEMINI_CLI_HOME: home, GEMINI_API_KEY: 'k' };
 		const fails = async (response: () => Response) => {
 			const client = new DirectClient({ env, fetch: fakeFetch({ ':generateContent': response }).fetch });
-			return client.generate(request).catch((err: DirectRequestError) => ({ kind: err.kind, message: err.message }));
+			return client.generate(request).catch((err: DirectRequestError) => ({ kind: err.kind, message: err.message, status: err.status }));
 		};
-		expect(await fails(() => json({ error: { message: 'bad key' } }, 403))).toEqual({ kind: 'auth', message: 'Gemini answered 403: bad key' });
+		expect(await fails(() => json({ error: { message: 'bad key' } }, 403))).toEqual({ kind: 'auth', message: 'Gemini answered 403: bad key', status: 403 });
+		expect(await fails(() => json({}, 404))).toMatchObject({ kind: 'other', status: 404 });
 		expect(await fails(() => json({}, 429))).toMatchObject({ kind: 'quota' });
 		expect(await fails(() => { throw new Error('offline'); })).toMatchObject({ kind: 'network' });
 		expect(await new DirectClient({ env: { GEMINI_CLI_HOME: home } }).generate(request).catch((err: DirectRequestError) => err.kind)).toBe('auth');
 	});
 });
 
-describe('findCliOAuthClient', () => {
-	it('reads the client from the CLI bundle next to its entry', async () => {
+describe('readCliBundle', () => {
+	it('reads the OAuth client and Flash models from the CLI bundle next to its entry', async () => {
 		const bundle = path.join(home, 'bundle');
 		await fs.mkdir(bundle);
-		await fs.writeFile(path.join(bundle, 'gemini.js'), 'import "./chunk.js";');
-		await fs.writeFile(path.join(bundle, 'chunk.js'), 'var OAUTH_CLIENT_ID = "123-abc.apps.googleusercontent.com";\nvar OAUTH_CLIENT_SECRET = "test-secret";');
+		await fs.writeFile(path.join(bundle, 'gemini.js'), 'import "./chunk-A.js";');
+		await fs.writeFile(path.join(bundle, 'other.js'), 'var LATEST_GEMINI_FLASH_MODEL = "wrong";');
+		await fs.writeFile(path.join(bundle, 'chunk-A.js'), [
+			'var BASE_GEMINI_FLASH_MODEL = "gemini-3.5-flash";',
+			'var LATEST_GEMINI_FLASH_MODEL = "gemini-3.8-flash";',
+			'var OAUTH_CLIENT_ID = "123-abc.apps.googleusercontent.com";',
+			'var OAUTH_CLIENT_SECRET = "test-secret";',
+		].join('\n'));
 		const link = path.join(home, 'gemini');
 		await fs.symlink(path.join(bundle, 'gemini.js'), link);
-		expect(await findCliOAuthClient(link)).toEqual({ id: '123-abc.apps.googleusercontent.com', secret: 'test-secret' });
+		expect(await readCliBundle(link)).toEqual({
+			oauthClient: { id: '123-abc.apps.googleusercontent.com', secret: 'test-secret' },
+			latestFlash: 'gemini-3.8-flash',
+			baseFlash: 'gemini-3.5-flash',
+		});
 	});
 });

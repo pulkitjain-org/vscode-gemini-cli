@@ -64,7 +64,7 @@ export interface DirectRequest {
 
 /** A direct request failed; `kind` says whether signing in again or something else would help. */
 export class DirectRequestError extends Error {
-	constructor(message: string, readonly kind: 'auth' | 'quota' | 'network' | 'other') {
+	constructor(message: string, readonly kind: 'auth' | 'quota' | 'network' | 'other', readonly status?: number) {
 		super(message);
 	}
 }
@@ -81,28 +81,46 @@ export interface OAuthClient {
 	readonly secret: string;
 }
 
+/** What GeminiCode reads from the installed CLI: its OAuth client and its Flash models. */
+export interface CliBundleInfo {
+	readonly oauthClient?: OAuthClient;
+	/** The newest Flash model, which not every account can use yet. */
+	readonly latestFlash?: string;
+	/** The Flash model every account can use. */
+	readonly baseFlash?: string;
+}
+
 /**
- * The Gemini CLI's own OAuth client, read from its installed bundle next to
- * `entry` (its `gemini.js`). The CLI is a desktop app, so its client "secret"
- * is public; reading it from the CLI keeps GeminiCode in step with whichever
- * CLI saved the sign-in.
+ * Reads the Gemini CLI's OAuth client and Flash models from its installed
+ * bundle next to `entry` (its `gemini.js`). The CLI is a desktop app, so its
+ * client "secret" is public; reading both from the CLI keeps GeminiCode in
+ * step with whichever CLI is installed, with no model names to update here.
  */
-export async function findCliOAuthClient(entry: string): Promise<OAuthClient | undefined> {
+export async function readCliBundle(entry: string): Promise<CliBundleInfo> {
 	const dir = path.dirname(await fs.realpath(entry));
 	const files = (await fs.readdir(dir)).filter(f => f.endsWith('.js'));
-	for (const file of [path.basename(entry), ...files.filter(f => f !== path.basename(entry))]) {
+	// The constants live together in one shared chunk, which the CLI's entry imports.
+	const ordered = [path.basename(entry), ...files.filter(f => f.startsWith('chunk-')), ...files.filter(f => !f.startsWith('chunk-') && f !== path.basename(entry))];
+	let oauthClient: OAuthClient | undefined;
+	let latestFlash: string | undefined;
+	let baseFlash: string | undefined;
+	for (const file of ordered) {
+		let text: string;
 		try {
-			const text = await fs.readFile(path.join(dir, file), 'utf8');
-			const id = /OAUTH_CLIENT_ID\s*=\s*["']([\w.-]+\.apps\.googleusercontent\.com)["']/.exec(text)?.[1];
-			const secret = /OAUTH_CLIENT_SECRET\s*=\s*["']([\w-]+)["']/.exec(text)?.[1];
-			if (id && secret) {
-				return { id, secret };
-			}
+			text = await fs.readFile(path.join(dir, file), 'utf8');
 		} catch {
-			// Unreadable; try the next file.
+			continue;
+		}
+		const id = /OAUTH_CLIENT_ID\s*=\s*["']([\w.-]+\.apps\.googleusercontent\.com)["']/.exec(text)?.[1];
+		const secret = /OAUTH_CLIENT_SECRET\s*=\s*["']([\w-]+)["']/.exec(text)?.[1];
+		oauthClient ??= id && secret ? { id, secret } : undefined;
+		latestFlash ??= /\bLATEST_GEMINI_FLASH_MODEL\s*=\s*["']([\w.-]+)["']/.exec(text)?.[1];
+		baseFlash ??= /\bBASE_GEMINI_FLASH_MODEL\s*=\s*["']([\w.-]+)["']/.exec(text)?.[1];
+		if (oauthClient && latestFlash && baseFlash) {
+			break;
 		}
 	}
-	return undefined;
+	return { oauthClient, latestFlash, baseFlash };
 }
 
 export interface DirectClientOptions {
@@ -135,8 +153,8 @@ export class DirectClient {
 			systemInstruction: { role: 'user', parts: [{ text: request.system }] },
 			generationConfig: {
 				temperature: request.temperature ?? 0.2,
-				// Gemini 2.5 Flash thinks unless told not to, which costs seconds an edit does not need.
-				...(/^gemini-2\.5-flash/.test(request.model) ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+				// Flash models think unless told not to, which costs seconds an edit does not need.
+				...thinkingConfig(request.model),
 			},
 		};
 		switch (auth.kind) {
@@ -244,7 +262,7 @@ export class DirectClient {
 			if (kind === 'auth') {
 				this.token = undefined;
 			}
-			throw new DirectRequestError(`Gemini answered ${response.status}: ${message}`, kind);
+			throw new DirectRequestError(`Gemini answered ${response.status}: ${message}`, kind, response.status);
 		}
 		try {
 			return JSON.parse(text);
@@ -252,6 +270,17 @@ export class DirectClient {
 			throw new DirectRequestError('Gemini sent an answer that is not JSON.', 'other');
 		}
 	}
+}
+
+/** As little thinking as the model allows: Gemini 2.5 takes a budget, Gemini 3 a level. */
+function thinkingConfig(model: string): { thinkingConfig?: Record<string, unknown> } {
+	if (/^gemini-2\.5-flash/.test(model)) {
+		return { thinkingConfig: { thinkingBudget: 0 } };
+	}
+	if (/^gemini-[3-9][\d.]*-flash/.test(model)) {
+		return { thinkingConfig: { thinkingLevel: 'LOW' } };
+	}
+	return {};
 }
 
 /** The text of a generateContent response's first candidate. */
