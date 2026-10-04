@@ -13,6 +13,14 @@ Run **Make It Yours** from the Command Palette, or open the step of the same nam
 
 Each choice applies at once. To change the themes or icons, edit the sources and rerun `node extensions/gemini/scripts/build-themes.mts` or `python3 extensions/gemini/scripts/build-file-icons.py`; a unit test fails when the generated themes are out of date.
 
+## Inline edit and commit messages
+
+Select some code (or put the cursor on a line), press **Cmd+I**, and say what to change. Gemini rewrites just those lines in a second or two, and the change shows in the file with **Keep** and **Undo**, like an agent's. The request box remembers your last request, so a retry is Cmd+I and Enter. Inline edit doesn't save the file and doesn't start an agent.
+
+In the Source Control view, the sparkle button writes a commit message for the staged changes (or, with nothing staged, all changes) into the message box.
+
+Both send the selected lines (or the diff) straight to a fast Gemini model with the sign-in the Gemini CLI saved. They work with Google sign-in and with a Gemini API key, not yet with Vertex AI. `gemini.inlineEdit.enabled` turns them off and `gemini.inlineEdit.model` picks the model.
+
 ## Approval modes
 
 Pick a mode from the composer. The list comes from the Gemini CLI, minus any mode your admin turned off.

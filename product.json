@@ -290,6 +290,17 @@
 				}
 			}
 		},
+		"gemini.inlineEdit.enabled": {
+			"name": "GeminiInlineEdit",
+			"category": "Extensions",
+			"minimumVersion": "1.141",
+			"localization": {
+				"description": {
+					"key": "gemini.inlineEdit.enabled.policy",
+					"value": "Whether GeminiCode offers inline edit and commit messages, which send the selected code or the diff straight to Gemini with the CLI's saved sign-in."
+				}
+			}
+		},
 		"gemini.app.checkForUpdates": {
 			"name": "GeminiCodeCheckForUpdates",
 			"category": "Extensions",

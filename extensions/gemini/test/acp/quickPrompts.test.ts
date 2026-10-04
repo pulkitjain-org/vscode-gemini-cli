@@ -1,0 +1,63 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) pulkitjain-org and contributors. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+import { describe, expect, it } from 'vitest';
+import { cleanCommitMessage, cleanEdit, commitMessagePrompt, inlineEditPrompt } from '../../src/acp/quickPrompts';
+
+describe('inlineEditPrompt', () => {
+	it('marks the selection inside its surrounding lines', () => {
+		const lines = ['a', 'b', 'c', 'd'];
+		const { system, prompt } = inlineEditPrompt({ path: 'src/x.ts', languageId: 'typescript', lines, start: 1, end: 3, instruction: 'rename' });
+		expect(system).toContain('<selection>');
+		expect(prompt).toBe('File: src/x.ts (typescript)\n\na\n<selection>\nb\nc\n</selection>\nd\n\nRequest: rename');
+	});
+
+	it('shows at most 80 lines on each side', () => {
+		const lines = Array.from({ length: 300 }, (_, i) => `line ${i}`);
+		const { prompt } = inlineEditPrompt({ path: 'x', languageId: 'plaintext', lines, start: 150, end: 151, instruction: 'x' });
+		expect(prompt).toContain('line 70\n');
+		expect(prompt).not.toContain('line 69\n');
+		expect(prompt).toContain('line 230\n');
+		expect(prompt).not.toContain('line 231\n');
+	});
+});
+
+describe('cleanEdit', () => {
+	it('strips a code fence and keeps the original ending', () => {
+		expect(cleanEdit('```ts\nconst a = 1;\n```', 'const a = 0;\n')).toBe('const a = 1;\n');
+		expect(cleanEdit('const a = 1;\n\n', 'const a = 0;')).toBe('const a = 1;');
+	});
+
+	it('strips selection tags', () => {
+		expect(cleanEdit('<selection>\n  x();\n</selection>', '  y();\n')).toBe('  x();\n');
+	});
+
+	it('keeps leading indentation', () => {
+		expect(cleanEdit('    return 1;', '    return 0;\n')).toBe('    return 1;\n');
+	});
+});
+
+describe('commitMessagePrompt', () => {
+	it('includes recent subjects and the diff', () => {
+		const { system, prompt } = commitMessagePrompt('diff --git a/a.ts b/a.ts\n+x', ['Fix y', 'Add z']);
+		expect(system).toContain('recent subjects');
+		expect(prompt).toContain('- Fix y\n- Add z');
+		expect(prompt).toContain('+x');
+	});
+
+	it('cuts a long diff and lists its files', () => {
+		const diff = 'diff --git a/a.ts b/a.ts\n' + '+x\n'.repeat(30_000) + 'diff --git a/b.ts b/b.ts\n+y';
+		const { prompt } = commitMessagePrompt(diff, []);
+		expect(prompt.length).toBeLessThan(41_000);
+		expect(prompt).toContain('files changed: a.ts, b.ts');
+	});
+});
+
+describe('cleanCommitMessage', () => {
+	it('removes fences and quotes', () => {
+		expect(cleanCommitMessage('```\nFix the total\n\nBody.\n```')).toBe('Fix the total\n\nBody.');
+		expect(cleanCommitMessage('"Fix the total"\n')).toBe('Fix the total');
+	});
+});

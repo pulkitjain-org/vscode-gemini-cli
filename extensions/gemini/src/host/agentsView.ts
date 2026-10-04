@@ -78,7 +78,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	private readonly live = new Map<string, LiveAgent>();
 	private readonly changesView: ChangesView;
 	/** Keep and Undo on each agent change, in the files themselves. */
-	private readonly review: ReviewController;
+	readonly review: ReviewController;
 	/** The agent whose tab was last in front; the Changes view shows it. */
 	private focusedId: string | undefined;
 	private readonly disposables: vscode.Disposable[] = [];
@@ -101,7 +101,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		this.transcripts = new TranscriptStore(vscode.Uri.joinPath(context.globalStorageUri, 'agents').fsPath);
 		this.tree = vscode.window.createTreeView(agentsViewId, { treeDataProvider: this, showCollapseAll: false });
 		this.changesView = new ChangesView(id => this.live.get(id)?.changes);
-		this.review = new ReviewController(() => [...this.live.entries()].map(([id, live]) => ({ title: this.model.agent(id)?.title ?? '', changes: live.changes })));
+		this.review = new ReviewController(() => [...this.live.entries()].map(([id, live]) => ({ title: vscode.l10n.t("the agent \"{0}\"", this.model.agent(id)?.title ?? ''), changes: live.changes })));
 		this.disposables.push(
 			this.tree,
 			this.notifier,

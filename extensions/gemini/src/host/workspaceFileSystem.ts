@@ -59,10 +59,10 @@ export class WorkspaceFileSystem implements ClientFileSystem {
 
 /**
  * Puts `text` into a file with the smallest edit, so open editors keep their
- * cursor and one undo puts it back, then saves it. Creates the file if it is
- * missing.
+ * cursor and one undo puts it back, then saves it unless `save` is false.
+ * Creates the file if it is missing.
  */
-export async function replaceFileText(filePath: string, text: string): Promise<void> {
+export async function replaceFileText(filePath: string, text: string, save = true): Promise<void> {
 	const uri = vscode.Uri.file(filePath);
 	if (!findOpenDocument(uri) && !await exists(uri)) {
 		return new WorkspaceFileSystem().writeTextFile(filePath, text);
@@ -76,7 +76,7 @@ export async function replaceFileText(filePath: string, text: string): Promise<v
 			throw new Error(`Could not edit ${filePath}.`);
 		}
 	}
-	if (document.isDirty && !await document.save()) {
+	if (save && document.isDirty && !await document.save()) {
 		throw new Error(`Edited ${filePath} but could not save it.`);
 	}
 }

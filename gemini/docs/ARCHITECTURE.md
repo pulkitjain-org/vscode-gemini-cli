@@ -109,8 +109,19 @@ Each setting below can be locked through VS Code's policy system (Group Policy, 
 | `gemini.approval.allowAutoEdit` | `GeminiAllowAutoEdit` | on |
 | `gemini.approval.allowYolo` | `GeminiAllowYolo` | off |
 | `gemini.tools.allowShell` | `GeminiAllowShell` | on |
+| `gemini.inlineEdit.enabled` | `GeminiInlineEdit` | on |
 
 To pin a CLI version for everyone, lock `GeminiCliPath` to an empty string and `GeminiCliVersion` to the version. An organisation's default Google Cloud project ID can ship in `product.json` as `geminiDefaultProjectId`. Nothing sets it today: the release workflow stamps only `geminiCodeVersion`, so an organisation that wants a default must add it to its own build.
+
+## Direct requests
+
+Inline edit and commit messages don't need a whole agent turn, so they skip the agent and send one request to a fast model (`gemini.inlineEdit.model`, Gemini 2.5 Flash by default) from `src/acp/directRequest.ts`. They use the sign-in the CLI saved, read only, and never change the CLI or its files:
+
+- **Google sign-in** (`oauth-personal`): the access token in `~/.gemini/oauth_creds.json` calls the Gemini Code Assist service (`cloudcode-pa.googleapis.com`, the same one and the same license the CLI uses), billed to `gemini.projectId` or, without one, the project Code Assist reports for the user. An expired token is refreshed in memory with the CLI's own OAuth client, read from the installed CLI's bundle.
+- **API key** (`gemini-api-key`): `GEMINI_API_KEY` calls the Gemini API.
+- Vertex AI, and sign-ins kept in the system keychain, are not supported yet; the command says so.
+
+A request carries only the selection with up to 80 lines around it, or the diff (cut at 40,000 characters) and the last few commit subjects. `GeminiInlineEdit` turns both features off.
 
 ## Sign-in and errors
 
