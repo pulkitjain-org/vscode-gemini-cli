@@ -275,8 +275,8 @@ kbd {
 }
 
 .message.user {
-	white-space: pre-wrap;
 	width: fit-content;
+	min-width: 0;
 	max-width: 88%;
 	box-sizing: border-box;
 	margin: 0 0 0 auto;
@@ -1577,7 +1577,12 @@ body.vscode-high-contrast-light #send {
 /* ---- Context: attachments and the @-mention picker ---- */
 
 .user-text {
-	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+/* Code blocks in the user's bubble take its width, not the transcript's. */
+.user-text .code-block {
+	max-width: 100%;
 }
 
 .attachment-chips {

@@ -3,9 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Renders transcript items. Agent Markdown is rendered by markdown-it with raw
-// HTML disabled, so agent text can never inject markup; everything else is
-// set with textContent.
+// Renders transcript items. Agent and user Markdown is rendered by markdown-it
+// with raw HTML disabled, so message text can never inject markup; everything
+// else is set with textContent.
 
 import MarkdownIt from 'markdown-it';
 import { basename } from '../src/acp/attachments';
@@ -21,6 +21,9 @@ import { expanded, state, strings, thoughtTimes, ui, vscode } from './view';
 const markdown = new MarkdownIt({ html: false, linkify: true });
 // Only links with a scheme or www.; file names such as README.md are not web addresses.
 markdown.linkify.set({ fuzzyLink: false });
+// The user's own messages keep their line breaks, as typed.
+const userMarkdown = new MarkdownIt({ html: false, linkify: true, breaks: true });
+userMarkdown.linkify.set({ fuzzyLink: false });
 
 /** Called when the user expands or collapses a tool call's output. */
 export type ToggleToolCall = (item: ItemOf<'toolCall'>) => void;
@@ -84,7 +87,9 @@ function renderUserMessage(item: { readonly text: string; readonly attachments?:
 	const node = el('div', 'message user');
 	turn.append(node);
 	if (item.text) {
-		node.append(el('div', 'user-text', item.text));
+		const text = el('div', 'user-text markdown');
+		text.append(...renderBlocks(item.text, userMarkdown));
+		node.append(text);
 	}
 	if (item.attachments?.length) {
 		const chips = el('div', 'attachment-chips');
@@ -121,9 +126,9 @@ function renderMarkdown(text: string): HTMLElement {
 }
 
 /** Markdown as nodes, with each code block under a header that names its language and copies it. */
-export function renderBlocks(text: string): Node[] {
+export function renderBlocks(text: string, renderer = markdown): Node[] {
 	const node = el('div');
-	node.innerHTML = markdown.render(text);
+	node.innerHTML = renderer.render(text);
 	enhanceMarkdown(node);
 	for (const pre of node.querySelectorAll('pre')) {
 		const wrapper = el('div', 'code-block');

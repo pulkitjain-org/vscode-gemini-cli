@@ -13,11 +13,13 @@ import { format } from './chatLogic';
 import { button, el, icon, setLabel } from './dom';
 import { autoGrow, updateSendState } from './inputBox';
 import { onEnhanceKey } from './enhance';
+import { continueList, formatShortcut, toggleWrap, type TextEdit } from './markdownEdit';
 import { closePicker, onPickerKey, updatePicker } from './picker';
 import { setTranscriptBusy } from './transcript';
 import { state, strings, ui, vscode } from './view';
 
 const { form, input, status, modeSelect, modelSelect, branchButton, commitButton } = ui;
+const mac = /Mac/.test(navigator.platform);
 
 export function setBusy(value: boolean): void {
 	ui.stopButton.hidden = !value;
@@ -137,6 +139,36 @@ function recall(event: KeyboardEvent): boolean {
 	return true;
 }
 
+/** ⌘B and ⌘E wrap the selection in bold or code, as does typing ` over a selection; Shift+Enter continues a list. */
+function onMarkdownKey(event: KeyboardEvent): boolean {
+	const { selectionStart: start, selectionEnd: end, value } = input;
+	const marker = formatShortcut(event, mac) ?? (event.key === '`' && start !== end && !event.metaKey && !event.ctrlKey && !event.altKey ? '`' : undefined);
+	if (marker) {
+		applyEdit(toggleWrap(value, start, end, marker));
+		return true;
+	}
+	if (event.key === 'Enter' && event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey && start === end) {
+		const edit = continueList(value, start);
+		if (edit) {
+			applyEdit(edit);
+			return true;
+		}
+	}
+	return false;
+}
+
+/** Applies an edit as one step the user can undo. */
+function applyEdit(edit: TextEdit): void {
+	input.setSelectionRange(edit.start, edit.end);
+	// insertText keeps the textarea's undo history; setRangeText would not.
+	const done = edit.text ? document.execCommand('insertText', false, edit.text) : edit.start === edit.end || document.execCommand('delete');
+	if (!done) {
+		input.setRangeText(edit.text, edit.start, edit.end);
+		input.dispatchEvent(new Event('input'));
+	}
+	input.setSelectionRange(edit.selectionStart, edit.selectionEnd);
+}
+
 function submit(): void {
 	const text = input.value;
 	if (state.busy || state.enhancing || (!text.trim() && !state.attachments.length)) {
@@ -178,6 +210,11 @@ input.addEventListener('keydown', event => {
 	if (event.key === 'Escape' && state.busy) {
 		event.preventDefault();
 		vscode.postMessage({ type: 'stop' });
+		return;
+	}
+	if (!event.isComposing && onMarkdownKey(event)) {
+		event.preventDefault();
+		event.stopPropagation();
 		return;
 	}
 	if (!event.isComposing && recall(event)) {
