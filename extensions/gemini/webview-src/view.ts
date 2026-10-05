@@ -57,6 +57,8 @@ export const ui = {
 	modelWrap: parentOf(modelSelect),
 	resizeHandle: byId('resize', HTMLElement),
 	mentionButton: byId('mention', HTMLButtonElement),
+	previewButton: byId('preview-markdown', HTMLButtonElement),
+	preview: byId('preview', HTMLElement),
 	picker: byId('picker', HTMLElement),
 	attachmentList: byId('attachments', HTMLElement),
 	branchButton,

@@ -1028,6 +1028,7 @@ export class ChatController implements vscode.Disposable {
 			commit: vscode.l10n.t("Commit\u2026"),
 			enhance: vscode.l10n.t("Enhance prompt"),
 			enhanceShort: vscode.l10n.t("Enhance"),
+			previewMarkdown: vscode.l10n.t("Preview Markdown ({0})"),
 			enhanceTooltip: vscode.l10n.t("Rewrite this as a clearer, more precise prompt ({0})"),
 			enhancing: vscode.l10n.t("Enhancing the prompt"),
 			enhanced: vscode.l10n.t("Prompt enhanced. Review it, then send."),
@@ -1080,6 +1081,7 @@ export class ChatController implements vscode.Disposable {
 		<div class="drop-overlay" aria-hidden="true"><i class="codicon codicon-cloud-upload"></i><span id="drop-label"></span></div>
 		<div id="picker" class="picker" role="listbox" hidden></div>
 		<div id="attachments" class="attachments" hidden></div>
+		<div id="preview" class="composer-preview markdown" aria-live="polite" hidden></div>
 		<div class="input-wrap">
 			<textarea id="input" rows="1"></textarea>
 			<div class="input-mirror" aria-hidden="true"></div>
@@ -1091,6 +1093,7 @@ export class ChatController implements vscode.Disposable {
 		<div class="composer-bar">
 			<button type="button" id="attach" class="icon-button"><svg class="paperclip" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 3.5 4.9 9.1a1.8 1.8 0 0 0 2.5 2.5l6-6a3 3 0 0 0-4.2-4.2L3.1 7.5a4.2 4.2 0 0 0 6 6l4.4-4.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
 			<button type="button" id="mention" class="icon-button"><i class="codicon codicon-mention" aria-hidden="true"></i></button>
+			<button type="button" id="preview-markdown" class="icon-button"><i class="codicon codicon-open-preview" aria-hidden="true"></i></button>
 			<span class="pill-wrap" hidden><select id="mode" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
 			<span class="pill-wrap" hidden><select id="model" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
 			<span class="spacer"></span>

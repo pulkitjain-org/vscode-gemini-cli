@@ -88,7 +88,7 @@ function renderUserMessage(item: { readonly text: string; readonly attachments?:
 	turn.append(node);
 	if (item.text) {
 		const text = el('div', 'user-text markdown');
-		text.append(...renderBlocks(item.text, userMarkdown));
+		text.append(...renderUserMarkdown(item.text));
 		node.append(text);
 	}
 	if (item.attachments?.length) {
@@ -123,6 +123,11 @@ function renderMarkdown(text: string): HTMLElement {
 	const node = el('div', 'message agent markdown');
 	node.append(...renderBlocks(text));
 	return node;
+}
+
+/** The user's Markdown as nodes, with line breaks as typed. */
+export function renderUserMarkdown(text: string): Node[] {
+	return renderBlocks(text, userMarkdown);
 }
 
 /** Markdown as nodes, with each code block under a header that names its language and copies it. */

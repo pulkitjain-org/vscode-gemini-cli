@@ -14,6 +14,7 @@ import { button, el, icon, setLabel } from './dom';
 import { autoGrow, updateSendState } from './inputBox';
 import { onEnhanceKey } from './enhance';
 import { continueList, formatShortcut, toggleWrap, type TextEdit } from './markdownEdit';
+import { isPreviewShortcut, togglePreview, updatePreview } from './markdownPreview';
 import { closePicker, onPickerKey, updatePicker } from './picker';
 import { setTranscriptBusy } from './transcript';
 import { state, strings, ui, vscode } from './view';
@@ -136,6 +137,7 @@ function recall(event: KeyboardEvent): boolean {
 	}
 	autoGrow();
 	updateSendState();
+	updatePreview();
 	return true;
 }
 
@@ -185,6 +187,7 @@ function submit(): void {
 	input.value = '';
 	autoGrow();
 	updateSendState();
+	updatePreview();
 }
 
 form.addEventListener('submit', event => {
@@ -210,6 +213,12 @@ input.addEventListener('keydown', event => {
 	if (event.key === 'Escape' && state.busy) {
 		event.preventDefault();
 		vscode.postMessage({ type: 'stop' });
+		return;
+	}
+	if (!event.isComposing && isPreviewShortcut(event)) {
+		event.preventDefault();
+		event.stopPropagation();
+		togglePreview();
 		return;
 	}
 	if (!event.isComposing && onMarkdownKey(event)) {
