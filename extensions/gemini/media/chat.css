@@ -1165,21 +1165,6 @@ body.vscode-high-contrast-light {
 	color: var(--vscode-input-placeholderForeground);
 }
 
-/* Preview Markdown (markdownPreview.ts): the draft as it will look, above the input. */
-.composer-preview {
-	max-height: 30vh;
-	overflow-y: auto;
-	margin: 0 0 8px;
-	padding: 0 0 8px;
-	border-bottom: 1px solid var(--gemini-border);
-	overflow-wrap: anywhere;
-}
-
-.icon-button.active {
-	background: var(--gemini-hover);
-	color: var(--vscode-textLink-foreground);
-}
-
 /* Enhance prompt (enhance.ts): a spark button floating just after the draft's last character. */
 .input-wrap {
 	position: relative;

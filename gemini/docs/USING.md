@@ -112,7 +112,7 @@ The agent cannot read secret files such as `.env` and private keys, or git-ignor
 
 Code in replies is coloured like the editor, in your colour theme. The button at the top of a code block copies it. A file name in a reply, such as `src/cart/total.ts:11`, opens the file at that line; when only the name is given, GeminiCode looks for it in the agent's folder. Notes, tips and warnings show as coloured callouts.
 
-Messages you send show Markdown the way replies do: bold, lists, `code`, code blocks and links, with your line breaks kept. In the composer, ⌘B makes the selection bold and ⌘E makes it code (Ctrl on Windows and Linux), typing a backtick over a selection wraps it in code, and Shift+Enter on a list line starts the next item; on an empty item it ends the list. The preview button next to @ (⇧⌘V) shows the draft formatted above the input as you type; press it again to hide it.
+Messages you send show Markdown the way replies do: bold, lists, `code`, code blocks and links, with your line breaks kept. In the composer, ⌘B makes the selection bold and ⌘E makes it code (Ctrl on Windows and Linux), typing a backtick over a selection wraps it in code, and Shift+Enter on a list line starts the next item; on an empty item it ends the list.
 
 Each message you send shows the time you sent it and a **Copy** button when you point at it. Under each reply, next to how long the agent worked, is the time it finished, with the same **Copy** button. The pill next to the branch in the composer names the agent's workspace (and its worktree, when it has one); click it to copy the path, reveal the folder in Finder or show the Agents pane.
 
