@@ -133,6 +133,8 @@ export interface HomeStrings {
 export type ToHome =
 	| { readonly type: 'view'; readonly view: HomeView }
 	| { readonly type: 'focus' }
+	/** The text size in pixels (`gemini.chat.fontSize`). */
+	| { readonly type: 'fontSize'; readonly size: number }
 	/**
 	 * The agent asked for could not start (the user has been told why); put the
 	 * task back in the prompt box. Sent only on failure: on success the agent's

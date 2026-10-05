@@ -39,6 +39,7 @@ const modeSelect = byId('mode', HTMLSelectElement);
 const modelSelect = byId('model', HTMLSelectElement);
 const branchButton = byId('branch', HTMLButtonElement);
 const commitButton = byId('commit', HTMLButtonElement);
+const workspaceButton = byId('workspace', HTMLButtonElement);
 
 export const ui = {
 	transcript: byId('transcript', HTMLElement),
@@ -60,6 +61,8 @@ export const ui = {
 	branchLabel: within(branchButton, 'span', HTMLSpanElement),
 	commitButton,
 	commitLabel: within(commitButton, 'span', HTMLSpanElement),
+	workspaceButton,
+	workspaceLabel: within(workspaceButton, 'span', HTMLSpanElement),
 	attachButton: byId('attach', HTMLButtonElement),
 	scrollButton: byId('scroll-down', HTMLButtonElement),
 	dropLabel: byId('drop-label', HTMLElement),

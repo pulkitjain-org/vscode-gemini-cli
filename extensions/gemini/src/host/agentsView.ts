@@ -3,7 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AgentChanges, ChangeTotals, formatCounts } from '../acp/agentChanges';
@@ -25,6 +24,8 @@ import type { AgentStateKind } from './panelProtocol';
 import { ReviewController } from './reviewController';
 import { ChatActivity, ChatController, FileSearch } from './chatController';
 import { configSection } from './configuration';
+import { relativeTime, tildify } from './displayText';
+export { relativeTime } from './displayText';
 import { DiffPreview } from './diffPreview';
 import { besideAgent } from './editorPlacement';
 import { escapeMarkdown } from './markdown';
@@ -761,6 +762,13 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			controller: new ChatController(this.context.extensionUri, session, this.diffPreview, files, {
 				reveal: preserveFocus => this.reveal(record.id, preserveFocus),
 				editorColumn: () => besideAgent(this.live.get(record.id)?.panel),
+				savedSessions: {
+					inUse: () => new Set(this.model.snapshot().agents.flatMap(a => a.id !== record.id && a.sessionId ? [a.sessionId] : [])),
+				},
+				workspace: () => {
+					const workspace = this.model.workspace(record.workspaceId);
+					return workspace && { folder: workspace.folder, cwd: folder, worktree: !!this.model.agent(record.id)?.worktree };
+				},
 				git: {
 					folder: () => folder,
 					// An agent on its own branch commits there with Merge Back, not from the chat.
@@ -799,7 +807,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			}),
 			session.client.onDidChangeState(state => {
 				if (state.kind === 'ready') {
-					this.model.setSessionId(record.id, state.sessionId);
+					this.model.setSessionId(record.id, state.savedSessionId);
 				}
 			}),
 			live.controller.onDidEditFiles(diffs => changes.record(diffs)),
@@ -808,6 +816,14 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				this.model.setChanges(record.id, changes.totals);
 				this.scheduleSave(record.id, live);
 				this.refresh();
+			}),
+			live.controller.onDidRestoreSession(title => {
+				this.model.recordRestore(record.id, title);
+				const name = this.model.agent(record.id)?.title;
+				if (live.panel && name) {
+					live.panel.title = name;
+				}
+				this.scheduleSave(record.id, live);
 			}),
 			live.controller.onDidSendPrompt(text => {
 				this.model.recordPrompt(record.id, text);
@@ -955,22 +971,6 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	}
 }
 
-/** "now", "5m", "3h", "2d", "6w": short, like the screenshot's session list. */
-export function relativeTime(then: number, now: number): string {
-	const minutes = Math.floor(Math.max(0, now - then) / 60_000);
-	if (minutes < 1) {
-		return vscode.l10n.t("now");
-	}
-	if (minutes < 60) {
-		return vscode.l10n.t("{0}m", minutes);
-	}
-	const hours = Math.floor(minutes / 60);
-	if (hours < 24) {
-		return vscode.l10n.t("{0}h", hours);
-	}
-	const days = Math.floor(hours / 24);
-	return days < 7 ? vscode.l10n.t("{0}d", days) : vscode.l10n.t("{0}w", Math.floor(days / 7));
-}
 
 async function exists(folder: string): Promise<boolean> {
 	try {
@@ -985,10 +985,6 @@ function isOpenFolder(folder: string): boolean {
 	return (vscode.workspace.workspaceFolders ?? []).some(f => f.uri.scheme === 'file' && f.uri.fsPath === folder);
 }
 
-export function tildify(folder: string): string {
-	const home = os.homedir();
-	return folder === home || folder.startsWith(home + path.sep) ? `~${folder.slice(home.length)}` : folder;
-}
 
 /** Agents waiting on the user come first in the title bar, then working ones. */
 function pillOrder(state: AgentStateKind): number {

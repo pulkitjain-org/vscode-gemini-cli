@@ -14,6 +14,7 @@ const running: SidecarState = { kind: 'running', process: {} as ChildProcessWith
 const ready: AgentClientState = {
 	kind: 'ready',
 	sessionId: 's1',
+	savedSessionId: 's1',
 	agent: { protocolVersion: 1, agentInfo: { name: 'gemini-cli', version: '0.62.0' } } as acp.InitializeResponse,
 	session: { sessionId: 's1' },
 };

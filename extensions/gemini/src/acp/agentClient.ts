@@ -8,6 +8,7 @@ import type { AgentConnection } from './agentConnection';
 import { AgentError, AgentErrorInfo, classifyAgentError } from './errors';
 import { Emitter } from './events';
 import { AgentRuntime, AgentRuntimeState, FileSystemHandlers } from './agentRuntime';
+import { findCliSession } from './cliSessions';
 import { PromptCapabilities, readPromptCapabilities } from './promptContent';
 import { filterModes, readSessionSettings, SessionSettings } from './sessionSettings';
 import type { SlashCommand } from './slashCommands';
@@ -21,7 +22,15 @@ const METHOD_NOT_FOUND = -32601;
 export type AgentClientState =
 	| { readonly kind: 'idle' }
 	| { readonly kind: 'connecting' }
-	| { readonly kind: 'ready'; readonly sessionId: string; readonly agent: acp.InitializeResponse; readonly session: acp.NewSessionResponse }
+	| {
+		readonly kind: 'ready';
+		/** The session's id on the wire, for this run of the agent. */
+		readonly sessionId: string;
+		/** The id the CLI saved the session under, to reopen it by later; differs when it was loaded by its number. */
+		readonly savedSessionId: string;
+		readonly agent: acp.InitializeResponse;
+		readonly session: acp.NewSessionResponse;
+	}
 	| { readonly kind: 'error'; readonly error: AgentErrorInfo };
 
 export interface AgentClientOptions {
@@ -41,6 +50,8 @@ export interface AgentClientOptions {
 	readonly preferredModel?: () => string | undefined;
 	/** Which approval modes the picker may offer; all of them when unset. */
 	readonly isModeAllowed?: (modeId: string) => boolean;
+	/** Finds a saved session's number and first prompt; the CLI's own files when unset. */
+	readonly findSavedSession?: (cwd: string, id: string) => Promise<{ readonly index: number; readonly firstPrompt: string } | undefined>;
 }
 
 /**
@@ -107,6 +118,20 @@ export class AgentClient {
 			throw new Error('The agent is not ready.');
 		}
 		await this.openSession(false);
+	}
+
+	/**
+	 * Replaces the current session with saved session `id`, such as one
+	 * started in the terminal. Resolves with whether the agent opened it; if
+	 * not, the chat carries on in a new session.
+	 */
+	async loadSession(id: string): Promise<boolean> {
+		if (this._state.kind !== 'ready' || this.runtime.state.kind !== 'ready') {
+			throw new Error('The agent is not ready.');
+		}
+		this.resumeSessionId = id;
+		await this.openSession(true);
+		return this._state.kind === 'ready' && this._state.savedSessionId === id;
 	}
 
 	/** Makes the next session a new one instead of reopening the last, for a chat cleared while the agent is not running. */
@@ -188,7 +213,7 @@ export class AgentClient {
 		const generation = ++this.generation;
 		this.setState({ kind: 'connecting' });
 		try {
-			const { connection, agent, session } = await this.loadOrCreate(resume ? this.resumeSessionId : undefined);
+			const { connection, agent, session, savedSessionId } = await this.loadOrCreate(resume ? this.resumeSessionId : undefined);
 			if (generation !== this.generation) {
 				return;
 			}
@@ -199,13 +224,13 @@ export class AgentClient {
 				requestPermission: params => this.options.requestPermission(params),
 				fileSystem: this.options.fileSystem,
 			});
-			this.resumeSessionId = session.sessionId;
+			this.resumeSessionId = savedSessionId;
 			const preferred = await this.applyPreferredModel(connection, session.sessionId, filterModes(readSessionSettings(session), this.options.isModeAllowed));
 			const settings = await this.applyPendingMode(connection, session.sessionId, preferred);
 			if (generation !== this.generation) {
 				return;
 			}
-			this.setReady(agent, session, settings);
+			this.setReady(agent, session, savedSessionId, settings);
 		} catch (err) {
 			// If the process died, the runtime reports why (and the sidecar may
 			// restart it); the closed-connection error says less.
@@ -215,15 +240,19 @@ export class AgentClient {
 		}
 	}
 
-	private async loadOrCreate(resumeSessionId: string | undefined): ReturnType<AgentRuntime['newSession']> {
+	private async loadOrCreate(resumeSessionId: string | undefined): Promise<Awaited<ReturnType<AgentRuntime['newSession']>> & { readonly savedSessionId: string }> {
 		if (resumeSessionId) {
 			try {
-				return await this.runtime.loadSession(this.options.cwd, resumeSessionId);
+				// By its number where the CLI lists it: gemini-cli 0.62 loses a saved session loaded by its id (see cliSessions.ts).
+				const saved = await (this.options.findSavedSession ?? findCliSession)(this.options.cwd, resumeSessionId).catch(() => undefined);
+				const loaded = await this.runtime.loadSession(this.options.cwd, saved ? String(saved.index) : resumeSessionId, saved?.firstPrompt);
+				return { ...loaded, savedSessionId: resumeSessionId };
 			} catch {
 				// Not supported, or the agent no longer has it: start afresh.
 			}
 		}
-		return this.runtime.newSession(this.options.cwd);
+		const created = await this.runtime.newSession(this.options.cwd);
+		return { ...created, savedSessionId: created.session.sessionId };
 	}
 
 	/** Whether the runtime is still ready after `ms`, or as soon as it changes state. */
@@ -297,9 +326,9 @@ export class AgentClient {
 		}
 	}
 
-	private setReady(agent: acp.InitializeResponse, session: acp.NewSessionResponse, settings: SessionSettings): void {
+	private setReady(agent: acp.InitializeResponse, session: acp.NewSessionResponse, savedSessionId: string, settings: SessionSettings): void {
 		this.setSettings(settings);
-		this.setState({ kind: 'ready', sessionId: session.sessionId, agent, session });
+		this.setState({ kind: 'ready', sessionId: session.sessionId, savedSessionId, agent, session });
 	}
 
 	/**

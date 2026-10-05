@@ -148,6 +148,29 @@ describe('AgentRuntime', () => {
 		expect(a.texts.at(-1)).toBe('session:earlier:/work/a');
 	});
 
+	it('reopens a saved session by its number in the CLI list, keeping its saved id', async () => {
+		start({ storedSessions: ['3'], turns: [[{ step: 'session' }]] });
+		const a = await session('/work/a', { resumeSessionId: 'uuid-of-3', findSavedSession: async () => ({ index: 3, firstPrompt: 'history:3' }) });
+		expect(a.state).toMatchObject({ kind: 'ready', sessionId: '3', savedSessionId: 'uuid-of-3' });
+		await a.client.prompt('who');
+		expect(a.texts.at(-1)).toBe('session:3:/work/a');
+	});
+
+	it('opens a new session when the number led to a different conversation', async () => {
+		start({ storedSessions: ['3'] });
+		const a = await session('/work/a', { resumeSessionId: 'uuid-of-3', findSavedSession: async () => ({ index: 3, firstPrompt: 'something else' }) });
+		expect(a.state).toMatchObject({ kind: 'ready', sessionId: 'fake-session-1', savedSessionId: 'fake-session-1' });
+	});
+
+	it('switches a ready chat to a saved session, and says when it could not', async () => {
+		start({ storedSessions: ['earlier'] });
+		const a = await session('/work/a', { findSavedSession: async () => undefined });
+		expect(await a.client.loadSession('earlier')).toBe(true);
+		expect(a.client.state).toMatchObject({ kind: 'ready', sessionId: 'earlier', savedSessionId: 'earlier' });
+		expect(await a.client.loadSession('missing')).toBe(false);
+		expect(a.client.state).toMatchObject({ kind: 'ready', savedSessionId: 'fake-session-2' });
+	});
+
 	it('opens a new session when the agent no longer has the old one', async () => {
 		start({ storedSessions: [] });
 		const a = await session('/work/a', { resumeSessionId: 'gone' });

@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TranscriptItem } from '../../src/acp/chatTranscript';
 import {
-	attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, draggedHeight, emptyFence, fileReference, fileUris, folderOf, format, formatDuration,
+	attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, draggedHeight, emptyFence, fileReference, fileUris, folderOf, format, formatDuration, formatSentAt,
 	imageName, indexOfItem, isNearBottom, matchCommands, mentionAt, mentionInsertion, permissionDefaults, planIcon, replyBefore, restoredHeight,
 	sameAttachment, slashQuery, thoughtSeconds, toolKindIcon, withAppended, withoutMention, wrapIndex,
 } from '../../webview-src/chatLogic';
@@ -286,5 +286,16 @@ describe('fileReference', () => {
 		for (const text of ['item.price', 'Math.round', 'cartTotal()', 'npm test', 'v1.2.3', '.ts']) {
 			expect(fileReference(text)).toBeUndefined();
 		}
+	});
+});
+
+describe('formatSentAt', () => {
+	const at = new Date(2026, 9, 5, 10, 42).getTime();
+	it('shows the time alone for today', () => {
+		expect(formatSentAt(at, new Date(2026, 9, 5, 18, 0).getTime(), 'en-GB')).toBe('10:42');
+	});
+	it('adds the day before today, and the year before this year', () => {
+		expect(formatSentAt(at, new Date(2026, 9, 6, 9, 0).getTime(), 'en-GB')).toBe('5 Oct, 10:42');
+		expect(formatSentAt(at, new Date(2027, 0, 2).getTime(), 'en-GB')).toBe('5 Oct 2026, 10:42');
 	});
 });

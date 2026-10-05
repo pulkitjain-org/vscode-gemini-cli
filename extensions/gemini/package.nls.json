@@ -21,6 +21,7 @@
 	"configuration.appearance.accent.gradient": "Gemini gradient",
 	"walkthrough.look.title": "Make it yours",
 	"walkthrough.look.description": "Pick a theme, an accent colour, a code font and file icons. Each choice applies at once.\n[Choose a Look](command:gemini.appearance)",
+	"configuration.chat.fontSize": "The text size, in pixels, of the chat, agent tabs and Agent Home. Code blocks use the editor font size. Also on the **Make It Yours** page.",
 	"configuration.notifications.enabled": "Show a system notification when an agent finishes or needs your permission while GeminiCode is in the background, and show how many agents are waiting on the Dock icon.",
 	"configuration.cli.checkForUpdates": "Once a day, check the npm registry for a newer Gemini CLI and offer to install it. Nothing is installed without your click. No check is made when `#gemini.cli.version#` or `#gemini.cliPath#` is set.",
 	"configuration.app.checkForUpdates": "Once a day, check the GeminiCode download page for a newer GeminiCode and say so. GeminiCode downloads nothing itself; the notice links to the page.",

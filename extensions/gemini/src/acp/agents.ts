@@ -139,6 +139,11 @@ export class AgentsModel {
 		});
 	}
 
+	/** A saved session was reopened in the agent: it takes that session's title, unless the user named the agent. */
+	recordRestore(id: string, title: string): void {
+		this.update(id, a => ({ ...a, title: a.titleSetByUser ? a.title : titleFromPrompt(title) ?? a.title, updatedAt: Math.max(this.now(), a.updatedAt + 1) }));
+	}
+
 	setSessionId(id: string, sessionId: string): void {
 		if (this.agent(id)?.sessionId !== sessionId) {
 			this.update(id, a => ({ ...a, sessionId }));
