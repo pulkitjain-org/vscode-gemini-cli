@@ -147,7 +147,7 @@ code {
 .frame { border-radius: 14px; overflow: hidden; border: 1px solid var(--line); background: oklch(0.16 0.01 260); box-shadow: 0 24px 60px -24px oklch(0.2 0.02 260 / 0.4); }
 .frame img { display: block; width: 100%; height: auto; }
 @media (min-width: 880px) { .feature.flip > :first-child { order: 2; } }
-.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 12px; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px; }
 .card h3 { margin: 0; font-size: 17px; font-weight: 600; }
 .card p { margin: 8px 0 0; font-size: 15px; line-height: 1.55; color: var(--muted); }
