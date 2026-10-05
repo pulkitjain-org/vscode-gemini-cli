@@ -186,6 +186,41 @@ section,
 	max-width: 100%;
 }
 
+.notes table {
+	display: block;
+	max-width: 100%;
+	overflow-x: auto;
+	border-collapse: collapse;
+	margin: 12px 0;
+	font-size: 0.9rem;
+}
+
+.notes th,
+.notes td {
+	border: 1px solid var(--border);
+	padding: 6px 12px;
+	text-align: left;
+	vertical-align: top;
+}
+
+.notes th {
+	background: var(--code-bg);
+	font-weight: 600;
+}
+
+.notes tbody tr:nth-child(even) {
+	background: color-mix(in srgb, var(--code-bg) 45%, transparent);
+}
+
+.notes td:first-child {
+	white-space: nowrap;
+}
+
+/* On a phone the table scrolls sideways rather than squeezing this column. */
+.notes td:last-child {
+	min-width: 14em;
+}
+
 .notes .markdown-alert {
 	border-left: 4px solid var(--note-border);
 	padding: 4px 12px;
