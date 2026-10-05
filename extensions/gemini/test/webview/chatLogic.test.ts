@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TranscriptItem } from '../../src/acp/chatTranscript';
 import {
-	attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, draggedHeight, emptyFence, fileReference, fileUris, folderOf, format, formatDuration,
+	acceptsEnhanceReply, attachmentIcon, enhanceButtonPlacement, carriesFiles, enhanceOriginal, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, isEnhanceShortcut, type EnhancePhase, codeLanguage, composerHeightLimit, draggedHeight, emptyFence, fileReference, fileUris, folderOf, format, formatDuration,
 	imageName, indexOfItem, isNearBottom, matchCommands, mentionAt, mentionInsertion, permissionDefaults, planIcon, replyBefore, restoredHeight,
 	sameAttachment, slashQuery, thoughtSeconds, toolKindIcon, withAppended, withoutMention, wrapIndex,
 } from '../../webview-src/chatLogic';
@@ -286,5 +286,60 @@ describe('fileReference', () => {
 		for (const text of ['item.price', 'Math.round', 'cartTotal()', 'npm test', 'v1.2.3', '.ts']) {
 			expect(fileReference(text)).toBeUndefined();
 		}
+	});
+});
+
+describe('Enhance prompt', () => {
+	const working: EnhancePhase = { kind: 'working', requestId: 2, original: 'fix it' };
+	const done: EnhancePhase = { kind: 'done', original: 'fix it', rewrite: 'Fix the login bug.' };
+
+	it('turns a rewrite the user edits or undoes back into their own draft', () => {
+		expect(enhancePhaseAfterInput(done, 'Fix the login bug.')).toBe(done);
+		expect(enhancePhaseAfterInput(done, 'Fix the login bug now.')).toEqual({ kind: 'idle' });
+		expect(enhancePhaseAfterInput(done, 'fix it')).toEqual({ kind: 'idle' });
+		expect(enhancePhaseAfterInput(working, 'anything')).toBe(working);
+	});
+
+	it('takes only the reply to the rewrite in progress', () => {
+		expect(acceptsEnhanceReply(working, 2)).toBe(true);
+		expect(acceptsEnhanceReply(working, 1)).toBe(false);
+		expect(acceptsEnhanceReply({ kind: 'idle' }, 2)).toBe(false);
+		expect(acceptsEnhanceReply(done, 2)).toBe(false);
+	});
+
+	it('reverts to what the user wrote, also after enhancing a rewrite again', () => {
+		expect(enhanceOriginal({ kind: 'idle' }, 'my draft')).toBe('my draft');
+		expect(enhanceOriginal(done, 'Fix the login bug.')).toBe('fix it');
+		expect(enhanceOriginal(done, 'something else')).toBe('something else');
+	});
+
+	it('keeps the line endings a textarea keeps', () => {
+		expect(enhanceText('Goal: a\r\nDone when: b\rend')).toBe('Goal: a\nDone when: b\nend');
+	});
+
+	it('knows the shortcut on each platform', () => {
+		const key = (code: string, mods: Partial<Record<'altKey' | 'metaKey' | 'ctrlKey' | 'shiftKey', boolean>>) => ({ code, altKey: false, metaKey: false, ctrlKey: false, shiftKey: false, ...mods });
+		expect(isEnhanceShortcut(key('KeyE', { altKey: true, metaKey: true }), true)).toBe(true);
+		expect(isEnhanceShortcut(key('KeyE', { altKey: true, ctrlKey: true }), false)).toBe(true);
+		expect(isEnhanceShortcut(key('KeyE', { altKey: true, ctrlKey: true }), true)).toBe(false);
+		expect(isEnhanceShortcut(key('KeyE', { altKey: true, metaKey: true, shiftKey: true }), true)).toBe(false);
+		expect(isEnhanceShortcut(key('KeyR', { altKey: true, metaKey: true }), true)).toBe(false);
+		expect(enhanceShortcutLabel(true)).toBe('\u2325\u2318E');
+		expect(enhanceShortcutLabel(false)).toBe('Ctrl+Alt+E');
+	});
+});
+
+describe('enhanceButtonPlacement', () => {
+	const end = { left: 100, top: 20, lineHeight: 20, width: 300, height: 60, scrollTop: 0 };
+	const button = { width: 22, height: 22 };
+	it('sits just after the text, centred on its line', () => {
+		expect(enhanceButtonPlacement(end, button)).toEqual({ x: 106, y: 19, below: false });
+	});
+	it('starts the next line when it does not fit after the text', () => {
+		expect(enhanceButtonPlacement({ ...end, left: 290 }, button)).toEqual({ x: 0, y: 38, below: true });
+	});
+	it('stays in the visible part of a scrolled input', () => {
+		expect(enhanceButtonPlacement({ ...end, top: 200 }, button).y).toBe(38);
+		expect(enhanceButtonPlacement({ ...end, scrollTop: 100 }, button).y).toBe(0);
 	});
 });

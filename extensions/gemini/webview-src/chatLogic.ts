@@ -214,3 +214,64 @@ export function draggedHeight(startHeight: number, startY: number, y: number, vi
 export function restoredHeight(height: number, viewHeight: number): number {
 	return viewHeight ? Math.min(height, composerHeightLimit(viewHeight)) : height;
 }
+
+/** Where Enhance prompt is: offered, rewriting the draft, or showing its rewrite. */
+export type EnhancePhase =
+	| { readonly kind: 'idle' }
+	| { readonly kind: 'working'; readonly requestId: number; readonly original: string }
+	| { readonly kind: 'done'; readonly original: string; readonly rewrite: string };
+
+/** The phase once the input reads `value`: a rewrite the user edits (or undoes) is their own draft again. */
+export function enhancePhaseAfterInput(phase: EnhancePhase, value: string): EnhancePhase {
+	return phase.kind === 'done' && value !== phase.rewrite ? { kind: 'idle' } : phase;
+}
+
+/** Whether a reply answers the rewrite in progress; one that was cancelled or replaced is dropped. */
+export function acceptsEnhanceReply(phase: EnhancePhase, requestId: number): phase is Extract<EnhancePhase, { kind: 'working' }> {
+	return phase.kind === 'working' && phase.requestId === requestId;
+}
+
+/** What Revert puts back when enhancing `draft`: what the user wrote, also when they enhance a rewrite again. */
+export function enhanceOriginal(phase: EnhancePhase, draft: string): string {
+	return phase.kind === 'done' && draft === phase.rewrite ? phase.original : draft;
+}
+
+/** The text a rewrite puts in the input, with the line endings a textarea keeps. */
+export function enhanceText(text: string): string {
+	return text.replace(/\r\n?/g, '\n');
+}
+
+/** Whether a key press is the Enhance shortcut: ⌥⌘E on a Mac, Ctrl+Alt+E elsewhere. */
+export function isEnhanceShortcut(event: { readonly code: string; readonly altKey: boolean; readonly metaKey: boolean; readonly ctrlKey: boolean; readonly shiftKey: boolean }, mac: boolean): boolean {
+	// The key's code, not its character: Alt changes the character on a Mac.
+	return event.code === 'KeyE' && event.altKey && !event.shiftKey && (mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey);
+}
+
+/** The Enhance shortcut as the platform writes it. */
+export function enhanceShortcutLabel(mac: boolean): string {
+	return mac ? '⌥⌘E' : 'Ctrl+Alt+E';
+}
+
+/** Where the text of the input ends, and the room around it, in pixels from the input's top left. */
+export interface TextEnd {
+	readonly left: number;
+	readonly top: number;
+	readonly lineHeight: number;
+	/** The input's inner width and visible height, and how far it is scrolled. */
+	readonly width: number;
+	readonly height: number;
+	readonly scrollTop: number;
+}
+
+/**
+ * Where the floating Enhance button goes: just after the last character,
+ * centred on its line, or at the start of the next line when it does not fit
+ * after it (`below`); kept inside the visible part of the input.
+ */
+export function enhanceButtonPlacement(end: TextEnd, button: { readonly width: number; readonly height: number }, gap = 6): { readonly x: number; readonly y: number; readonly below: boolean } {
+	const below = end.left + gap + button.width > end.width;
+	const x = below ? 0 : end.left + gap;
+	const lineTop = (below ? end.top + end.lineHeight : end.top) - end.scrollTop;
+	const y = Math.max(0, Math.min(lineTop + (end.lineHeight - button.height) / 2, end.height - button.height));
+	return { x: Math.round(x), y: Math.round(y), below };
+}

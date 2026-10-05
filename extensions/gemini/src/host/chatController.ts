@@ -6,7 +6,7 @@
 import * as path from 'node:path';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
-import { Attachment } from '../acp/attachments';
+import { Attachment, attachmentLabel } from '../acp/attachments';
 import { isValidAttachment } from '../acp/attachmentValidation';
 import { ChatTranscript, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
 import { Checkpoints } from '../acp/checkpoints';
@@ -19,6 +19,8 @@ import { UpdateBatcher } from '../acp/updateBatcher';
 import type { AgentClient } from '../acp/agentClient';
 import { AgentError, errorMessage } from '../acp/errors';
 import { readGitHead } from '../acp/gitHead';
+import { EnhanceCancelledError, enhanceHistory } from '../acp/promptEnhancer';
+import type { EnhancePromptInput } from '../acp/quickPrompts';
 import { ChatStrings, chatProtocolVersion, FromWebview, statusCommands, ToWebview } from './chatProtocol';
 import { stopReasonNotice, toViewStatus } from './chatStatus';
 import { DiffPreview } from './diffPreview';
@@ -61,6 +63,15 @@ export interface ChatControllerOptions {
 	readonly git?: ChatGit;
 	/** Where files and diffs open; unset opens them in the active editor group. */
 	editorColumn?(): vscode.ViewColumn;
+	/** Rewrites the composer's draft for Enhance prompt. */
+	readonly enhancer: ChatEnhancer;
+}
+
+/** Rewrites drafts as precise prompts; one, shared by every chat. */
+export interface ChatEnhancer {
+	/** Gets a rewrite ready, so the next one only waits for the model. */
+	prepare(): void;
+	enhance(input: EnhancePromptInput, signal: AbortSignal): Promise<string>;
 }
 
 export interface ChatGit {
@@ -120,6 +131,8 @@ export class ChatController implements vscode.Disposable {
 	private retryItemId: string | undefined;
 	/** Told to the agent with the next prompt: files the user put back, which it would otherwise think it changed. */
 	private undoNote: string | undefined;
+	/** The rewrite running for the composer, so it can be cancelled. */
+	private enhancing: { readonly requestId: number; readonly abort: AbortController } | undefined;
 
 	private readonly onDidChangeActivityEmitter = new vscode.EventEmitter<ChatActivity>();
 	readonly onDidChangeActivity = this.onDidChangeActivityEmitter.event;
@@ -466,6 +479,7 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	dispose(): void {
+		this.enhancing?.abort.abort();
 		this.detach();
 		vscode.Disposable.from(...this.disposables).dispose();
 	}
@@ -563,7 +577,69 @@ export class ChatController implements vscode.Disposable {
 					void this.send(this.lastPrompt.text, this.lastPrompt.attachments);
 				}
 				break;
+			case 'prepareEnhance':
+				// Only once the agent runs: a rewrite is no reason to start it.
+				this.options.enhancer.prepare();
+				break;
+			case 'enhancePrompt':
+				void this.enhance(message.requestId, message.text, message.attachments);
+				break;
+			case 'cancelEnhance':
+				if (this.enhancing?.requestId === message.requestId) {
+					this.enhancing.abort.abort();
+				}
+				break;
 		}
+	}
+
+	/** The Enhance Prompt command: enhances what the composer holds, showing the chat first. */
+	async requestEnhance(): Promise<void> {
+		await this.options.reveal(false);
+		this.post({ type: 'enhanceRequested' });
+	}
+
+	/** Rewrites the composer's draft as a precise prompt and sends it back for the user to review. */
+	private async enhance(requestId: number, draft: string, attachments: readonly Attachment[]): Promise<void> {
+		const enhancer = this.options.enhancer;
+		if (!draft.trim()) {
+			return;
+		}
+		this.enhancing?.abort.abort();
+		const abort = new AbortController();
+		this.enhancing = { requestId, abort };
+		try {
+			// The rewrite waits for the agent process itself, not for this chat's session.
+			const text = await enhancer.enhance(await this.enhanceInput(draft, attachments), abort.signal);
+			this.post({ type: 'enhanced', requestId, text });
+		} catch (err) {
+			if (!(err instanceof EnhanceCancelledError)) {
+				this.post({ type: 'enhanceFailed', requestId, message: errorMessage(err) });
+			}
+		} finally {
+			if (this.enhancing?.abort === abort) {
+				this.enhancing = undefined;
+			}
+		}
+	}
+
+	/** The draft with what a rewrite may use: attachment names, the chat so far, the folder, branch, open file and mode. */
+	private async enhanceInput(draft: string, attachments: readonly Attachment[]): Promise<EnhancePromptInput> {
+		const client = this.service.client;
+		const folder = this.options.git?.folder() ?? client.cwd;
+		const branch = await readGitHead(folder).catch(() => undefined);
+		const document = vscode.window.activeTextEditor?.document;
+		const relative = document?.uri.scheme === 'file' ? path.relative(client.cwd, document.uri.fsPath) : undefined;
+		const activeFile = relative && !relative.startsWith('..') && !path.isAbsolute(relative) ? `${relative.split(path.sep).join('/')} (${document!.languageId})` : undefined;
+		const mode = client.settings.mode;
+		return {
+			draft,
+			attachments: attachments.map(attachmentLabel),
+			history: enhanceHistory(this.transcript.items),
+			folder: path.basename(client.cwd),
+			branch,
+			activeFile,
+			mode: mode?.available.find(choice => choice.id === mode.currentId)?.name,
+		};
 	}
 
 	/** Commits the files the agent changed on a new branch, as the composer's Commit button does. */
@@ -780,6 +856,16 @@ export class ChatController implements vscode.Disposable {
 			switchBranch: vscode.l10n.t("Branch {0}: switch or create a branch"),
 			createBranchAndCommit: vscode.l10n.t("Create a branch and commit these changes"),
 			commit: vscode.l10n.t("Commit\u2026"),
+			enhance: vscode.l10n.t("Enhance prompt"),
+			enhanceShort: vscode.l10n.t("Enhance"),
+			enhanceTooltip: vscode.l10n.t("Rewrite this as a clearer, more precise prompt ({0})"),
+			enhancing: vscode.l10n.t("Enhancing the prompt"),
+			enhanced: vscode.l10n.t("Prompt enhanced. Review it, then send."),
+			stillEnhancing: vscode.l10n.t("Still working\u2026"),
+			enhanceWaiting: vscode.l10n.t("Gemini is busy or rate-limited and is retrying\u2026"),
+			cancel: vscode.l10n.t("Cancel"),
+			revert: vscode.l10n.t("Revert"),
+			revertTooltip: vscode.l10n.t("Put back what you wrote"),
 			addContext: vscode.l10n.t("Add context (@)"),
 			noFiles: vscode.l10n.t("No matching files"),
 			noCommands: vscode.l10n.t("No matching commands"),
@@ -817,7 +903,14 @@ export class ChatController implements vscode.Disposable {
 		<div class="drop-overlay" aria-hidden="true"><i class="codicon codicon-cloud-upload"></i><span id="drop-label"></span></div>
 		<div id="picker" class="picker" role="listbox" hidden></div>
 		<div id="attachments" class="attachments" hidden></div>
-		<textarea id="input" rows="1"></textarea>
+		<div class="input-wrap">
+			<textarea id="input" rows="1"></textarea>
+			<div class="input-mirror" aria-hidden="true"></div>
+			<span id="enhance-float" class="enhance-float" hidden><button type="button" id="revert" class="enhance-chip" hidden><i class="codicon codicon-discard" aria-hidden="true"></i><span></span></button><button type="button" id="enhance" class="enhance-chip"><svg class="enhance-icon" viewBox="0 0 16 16" aria-hidden="true"><defs><linearGradient id="enhance-spark" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f8df7"/><stop offset=".55" stop-color="#8b5cf6"/><stop offset="1" stop-color="#e05fa8"/></linearGradient></defs><path d="M6.5 3.5C6.88 7 9 9.12 12.5 9.5C9 9.88 6.88 12 6.5 15.5C6.12 12 4 9.88 0.5 9.5C4 9.12 6.12 7 6.5 3.5Z"/><path d="M12.75 0.5C12.92 2.1 13.9 3.08 15.5 3.25C13.9 3.42 12.92 4.4 12.75 6C12.58 4.4 11.6 3.42 10 3.25C11.6 3.08 12.58 2.1 12.75 0.5Z"/></svg><i class="codicon codicon-loading codicon-modifier-spin" aria-hidden="true"></i><span></span></button></span>
+		</div>
+		<div id="enhance-row" class="enhance-row" hidden>
+			<span id="enhance-note" class="enhance-note" role="status" hidden></span>
+		</div>
 		<div class="composer-bar">
 			<button type="button" id="attach" class="icon-button"><svg class="paperclip" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 3.5 4.9 9.1a1.8 1.8 0 0 0 2.5 2.5l6-6a3 3 0 0 0-4.2-4.2L3.1 7.5a4.2 4.2 0 0 0 6 6l4.4-4.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
 			<button type="button" id="mention" class="icon-button"><i class="codicon codicon-mention" aria-hidden="true"></i></button>

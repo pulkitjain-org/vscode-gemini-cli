@@ -104,6 +104,11 @@
         "category": "%category%"
       },
       {
+        "command": "gemini.enhancePrompt",
+        "title": "%command.enhancePrompt%",
+        "category": "%category%"
+      },
+      {
         "command": "gemini.agents.newAgent",
         "title": "%command.agents.newAgent%",
         "category": "%category%",
@@ -316,6 +321,12 @@
         "key": "ctrl+l",
         "mac": "cmd+l",
         "when": "editorTextFocus && !editorHasSelection"
+      },
+      {
+        "command": "gemini.enhancePrompt",
+        "key": "ctrl+alt+e",
+        "mac": "cmd+alt+e",
+        "when": "!webviewFocus"
       },
       {
         "command": "gemini.agents.newAgent",

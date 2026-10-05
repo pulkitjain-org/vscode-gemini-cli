@@ -13,11 +13,13 @@
 //   inputBox.ts        the input's height, placeholder and send button
 //   attachmentChips.ts attachments, and files pasted or dropped
 //   picker.ts          the @-mention file picker and the slash command menu
+//   enhance.ts         Enhance prompt: rewriting the draft as a precise prompt
 
 import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
 import { addAttachments } from './attachmentChips';
 import { setBusy, setGit, setSettings, setStatus } from './composer';
 import { applyTokenColors } from './codeHighlight';
+import { onEnhanced, onEnhanceFailed, toggleEnhance } from './enhance';
 import { setLabel } from './dom';
 import { restoreComposerHeight, updatePlaceholder, updateSendState } from './inputBox';
 import { showCommands, showFiles } from './picker';
@@ -90,6 +92,17 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'git':
 			setGit(message.git);
+			break;
+		case 'enhanceRequested':
+			if (!state.enhancing) {
+				toggleEnhance();
+			}
+			break;
+		case 'enhanced':
+			onEnhanced(message.requestId, message.text);
+			break;
+		case 'enhanceFailed':
+			onEnhanceFailed(message.requestId, message.message);
 			break;
 	}
 });

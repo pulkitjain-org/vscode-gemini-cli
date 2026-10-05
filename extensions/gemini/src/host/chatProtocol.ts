@@ -18,7 +18,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 12;
+export const chatProtocolVersion = 13;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -99,6 +99,20 @@ export interface ChatStrings {
 	/** The commit pill's tooltip, and its short label. */
 	readonly createBranchAndCommit: string;
 	readonly commit: string;
+	/** The Enhance prompt pill, its tooltip, and what screen readers hear while and after it works. */
+	readonly enhance: string;
+	/** The floating button's own label, short as it follows the text. */
+	readonly enhanceShort: string;
+	readonly enhanceTooltip: string;
+	readonly enhancing: string;
+	readonly enhanced: string;
+	/** Shown when a rewrite takes a while. */
+	readonly stillEnhancing: string;
+	/** Shown when a rewrite takes long enough that Gemini is likely waiting out a rate limit. */
+	readonly enhanceWaiting: string;
+	readonly cancel: string;
+	readonly revert: string;
+	readonly revertTooltip: string;
 }
 
 /** The chat folder's git state, for the branch pill and Create Branch & Commit. */
@@ -138,7 +152,12 @@ export type FromWebview =
 	/** Put back the files the turn ending with turnEnd item `itemId` changed, and those of later turns. */
 	| { readonly type: 'undoTurn'; readonly itemId: string }
 	/** Send the prompt of the turn ending with `itemId` again; only the latest turn offers it. */
-	| { readonly type: 'retry'; readonly itemId: string };
+	| { readonly type: 'retry'; readonly itemId: string }
+	/** The composer has text: get a rewrite session ready. */
+	| { readonly type: 'prepareEnhance' }
+	/** Rewrite the draft as a precise prompt; answered with `enhanced` or `enhanceFailed` carrying the same `requestId`. */
+	| { readonly type: 'enhancePrompt'; readonly requestId: number; readonly text: string; readonly attachments: readonly Attachment[] }
+	| { readonly type: 'cancelEnhance'; readonly requestId: number };
 
 export type ToWebview =
 	| { readonly type: 'reset'; readonly items: readonly TranscriptItem[]; readonly busy: boolean; readonly status: ViewStatus; readonly settings: SessionSettings }
@@ -160,4 +179,8 @@ export type ToWebview =
 	/** Whether Send shows the accent colour (true) or the Gemini gradient. */
 	| { readonly type: 'accent'; readonly solid: boolean }
 	/** The colour theme's syntax colours, for code blocks. */
-	| { readonly type: 'tokenColors'; readonly colors: TokenColors };
+	| { readonly type: 'tokenColors'; readonly colors: TokenColors }
+	/** The Enhance Prompt command: enhance what the composer holds. */
+	| { readonly type: 'enhanceRequested' }
+	| { readonly type: 'enhanced'; readonly requestId: number; readonly text: string }
+	| { readonly type: 'enhanceFailed'; readonly requestId: number; readonly message: string };

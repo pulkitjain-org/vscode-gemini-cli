@@ -3,8 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The prompts of direct requests (inline edit and commit messages), and
-// cleaning up what the model sends back. No editor API, so it can be tested.
+// The prompts of direct requests (inline edit, commit messages and prompt
+// enhancement), and cleaning up what the model sends back. No editor API, so
+// it can be tested.
 
 /** Lines of the file shown around the selection, so the edit fits in. */
 const contextLines = 80;
@@ -78,6 +79,116 @@ export function cleanCommitMessage(reply: string): string {
 		text = fenced[2].trim();
 	}
 	return text.replace(/^["'](.*)["']$/s, '$1');
+}
+
+/** The recent conversation shown to prompt enhancement is cut to this many characters, newest kept. */
+const maxHistoryLength = 4000;
+/** And each message in it to this many. */
+const maxHistoryMessageLength = 1500;
+
+export interface EnhancePromptInput {
+	/** What the user typed. */
+	readonly draft: string;
+	/** Names of the files and selections attached to it. */
+	readonly attachments?: readonly string[];
+	/** The chat so far, oldest first; only the last few messages are sent. */
+	readonly history?: readonly { readonly role: 'user' | 'agent'; readonly text: string }[];
+	readonly folder?: string;
+	readonly branch?: string;
+	/** The file in the editor, relative to the folder, and its language. */
+	readonly activeFile?: string;
+	/** The agent's approval mode, such as Plan. */
+	readonly mode?: string;
+}
+
+export function enhancePromptPrompt(input: EnhancePromptInput): { readonly system: string; readonly prompt: string } {
+	const system = [
+		'You turn a request a developer typed for an AI coding agent into a clearer, more precise prompt for that agent.',
+		'Rewrite the request; never answer it, carry it out, or write the code it asks for.',
+		'Match the length to the request: a short, simple request stays a sentence or two;',
+		'a larger one may use short labelled sections such as Goal, Context, Requirements, Constraints and Done when, only where they add something.',
+		'Say what to do, where, and how to tell it is done. Use the context given (files, recent conversation) to resolve words like "it" or "the same".',
+		'Keep every @mention, file path, identifier, code snippet, URL and number exactly as written.',
+		'If the request starts with a /command, keep it first; never start with a /command the request does not start with.',
+		'Write in the language the request is written in.',
+		'Never invent file names, functions, APIs or facts that are not in the request or the context.',
+		'Where something important is unclear, add a short Assumptions or Open questions part instead of guessing.',
+		input.mode ? `The agent is in ${input.mode} mode; do not ask it for anything that mode does not allow.` : '',
+		'Do not use any tools and do not read or change files: answer straight away.',
+		'Answer with the new prompt only: no preamble, no explanation, no quotes or code fence around it.',
+	].filter(Boolean).join(' ');
+	const context = [
+		input.folder ? `Folder: ${input.folder}` : '',
+		input.branch ? `Branch: ${input.branch}` : '',
+		input.activeFile ? `Open file: ${input.activeFile}` : '',
+		input.attachments?.length ? `Attached: ${input.attachments.join(', ')}` : '',
+	].filter(Boolean);
+	const history = recentHistory(input.history ?? []);
+	const prompt = [
+		context.length ? `Context:\n${context.join('\n')}\n` : '',
+		history ? `Recent conversation:\n${history}\n` : '',
+		`Request to rewrite:\n<request>\n${input.draft}\n</request>`,
+	].filter(Boolean).join('\n');
+	return { system, prompt };
+}
+
+/** The newest messages that fit, oldest first. */
+function recentHistory(messages: EnhancePromptInput['history'] & {}): string {
+	const shown: string[] = [];
+	let length = 0;
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const text = messages[i].text.trim();
+		if (!text) {
+			continue;
+		}
+		const cut = text.length > maxHistoryMessageLength ? `${text.slice(0, maxHistoryMessageLength)}…` : text;
+		const line = `${messages[i].role === 'user' ? 'User' : 'Agent'}: ${cut}`;
+		if (length + line.length > maxHistoryLength) {
+			break;
+		}
+		shown.unshift(line);
+		length += line.length;
+	}
+	return shown.join('\n');
+}
+
+/** `@word`s at the start of a word, without trailing punctuation; e-mail addresses are not mentions. */
+function mentionsOf(text: string): string[] {
+	return [...text.matchAll(/(?:^|\s)(@[^\s@]+)/g)].map(m => m[1].replace(/[.,;:!?)\]}'"]+$/, '')).filter(m => m.length > 1);
+}
+
+/**
+ * The model's prompt without a preamble, request tags, quotes or a code fence
+ * around it; the original when it sent nothing. A leading /command or an
+ * @mention the model dropped is put back, and a leading /command it made up
+ * is taken out, since the composer would run it.
+ */
+export function cleanEnhancedPrompt(reply: string, original: string): string {
+	let text = reply.trim()
+		// gemini-cli's notice of a mode change, sent as message text and run into the reply.
+		.replace(/^\[MODE_UPDATE\] (?:default|autoEdit|yolo|plan)\s*/, '')
+		.replace(/^(?:\*\*)?(?:here(?:'s| is)[^\n]*?|(?:enhanced|improved|rewritten|new) prompt)(?:\*\*)?:(?:\*\*)?\s*\n/i, '')
+		.replace(/^<request>\s*/, '').replace(/\s*<\/request>$/, '')
+		.trim();
+	const fenced = /^(`{3,}|~{3,})[^\n]*\n([\s\S]*?)\n?\1$/.exec(text);
+	if (fenced) {
+		text = fenced[2].trim();
+	}
+	text = text.replace(/^"([\s\S]*)"$/, '$1').trim();
+	if (!text) {
+		return original;
+	}
+	const command = /^\s*(\/[\w:.-]+)/.exec(original)?.[1];
+	if (!command) {
+		// "/task Implement it" loses the word; in "/refactor the parser" it is the verb.
+		text = text.replace(/^\/([\w:.-]+)\s+(\S)/, (_, word: string, next: string) =>
+			/\p{Lu}/u.test(next) ? next : `${word[0].toUpperCase()}${word.slice(1)} ${next}`);
+	} else if (!text.startsWith(command)) {
+		text = `${command} ${text.replace(new RegExp(`(^|\\s)${command.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s+|$)`), '$1').trim()}`;
+	}
+	const kept = new Set(mentionsOf(text));
+	const dropped = [...new Set(mentionsOf(original))].filter(m => !kept.has(m));
+	return dropped.length ? `${text}\n\n${dropped.join(' ')}` : text;
 }
 
 /** `gemini.inlineEdit.model` values that are not model names. */

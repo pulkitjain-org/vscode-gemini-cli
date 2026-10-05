@@ -11,7 +11,7 @@ import { addAttachments } from './attachmentChips';
 import type { SlashCommand } from '../src/acp/slashCommands';
 import { folderOf, matchCommands, mentionAt, mentionInsertion, slashQuery, withoutMention, wrapIndex } from './chatLogic';
 import { el, icon } from './dom';
-import { autoGrow } from './inputBox';
+import { autoGrow, updateSendState } from './inputBox';
 import { strings, ui, vscode } from './view';
 
 const { input, picker } = ui;
@@ -154,6 +154,7 @@ function pick(index: number): void {
 			input.setSelectionRange(head.length, head.length);
 			closePicker();
 			autoGrow();
+			updateSendState();
 		}
 		return;
 	}

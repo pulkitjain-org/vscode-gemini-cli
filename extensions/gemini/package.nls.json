@@ -34,6 +34,7 @@
 	"command.newChat": "New Chat",
 	"command.addFileToChat": "Add File to Chat",
 	"command.addSelectionToChat": "Add Selection to Chat",
+	"command.enhancePrompt": "Enhance Prompt",
 	"command.showStatusMenu": "Show Status Menu",
 	"viewContainer.title": "Gemini",
 	"view.chat": "Quick Chat",

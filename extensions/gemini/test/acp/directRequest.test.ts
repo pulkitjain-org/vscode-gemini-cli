@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cliEnvProject, detectAuth, DirectClient, DirectRequestError, parseQuota, readCliBundle } from '../../src/acp/directRequest';
+import { cliEnvProject, detectAuth, DirectClient, DirectRequestError, parseQuota, readCliBundle, refusalDetails } from '../../src/acp/directRequest';
 
 let home: string;
 
@@ -84,6 +84,19 @@ describe('DirectClient', () => {
 		expect(JSON.parse(calls[1].init.body as string)).toMatchObject({ model: 'gemini-2.5-flash', project: 'proj-1' });
 	});
 
+	it('sends what the CLI sends with each request: its User-Agent, a prompt id and a session id', async () => {
+		await writeGemini('oauth_creds.json', { access_token: 'tok', expiry_date: Date.now() + 3_600_000 });
+		const { fetch, calls } = fakeFetch({ ':generateContent': () => json({ response: answer('x') }) });
+		const client = new DirectClient({ env: { GEMINI_CLI_HOME: home, CODE_ASSIST_ENDPOINT: 'http://fake' }, fetch, projectId: () => 'p', cliVersion: async () => '0.62.0' });
+		await client.generate({ ...request, model: 'gemini-3.8-flash' });
+		await client.generate(request);
+		const [first, second] = calls.map(c => JSON.parse(c.init.body as string));
+		expect((calls[0].init.headers as Record<string, string>)['user-agent']).toBe(`GeminiCLI-geminicode/0.62.0/gemini-3.8-flash (${process.platform}; ${process.arch}; acp)`);
+		expect(first.user_prompt_id).toBe(`${first.request.session_id}########1`);
+		expect(second.user_prompt_id).toBe(`${first.request.session_id}########2`);
+		expect(second.request.session_id).toBe(first.request.session_id);
+	});
+
 	it('uses the configured project', async () => {
 		await writeGemini('oauth_creds.json', { access_token: 'tok', expiry_date: Date.now() + 3_600_000 });
 		const { fetch, calls } = fakeFetch({ ':generateContent': () => json({ response: answer('x') }) });
@@ -122,6 +135,33 @@ describe('DirectClient', () => {
 		expect(await fails(() => json({}, 429))).toMatchObject({ kind: 'quota' });
 		expect(await fails(() => { throw new Error('offline'); })).toMatchObject({ kind: 'network' });
 		expect(await new DirectClient({ env: { GEMINI_CLI_HOME: home } }).generate(request).catch((err: DirectRequestError) => err.kind)).toBe('auth');
+	});
+
+	it('keeps why a request was refused and when to try again', async () => {
+		const env = { GEMINI_CLI_HOME: home, GEMINI_API_KEY: 'k' };
+		const error = {
+			code: 429, message: 'You have exhausted your capacity on this model.', details: [
+				{ '@type': 'type.googleapis.com/google.rpc.ErrorInfo', reason: 'MODEL_CAPACITY_EXHAUSTED', domain: 'cloudcode-pa.googleapis.com' },
+				{ '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '1.5s' },
+			],
+		};
+		const client = new DirectClient({ env, fetch: fakeFetch({ ':generateContent': () => json({ error }, 429) }).fetch });
+		const err = await client.generate(request).catch((e: DirectRequestError) => e);
+		expect(err).toBeInstanceOf(DirectRequestError);
+		expect((err as DirectRequestError).details).toEqual({ reason: 'MODEL_CAPACITY_EXHAUSTED', retryDelayMs: 1500 });
+	});
+});
+
+describe('refusalDetails', () => {
+	it('reads the quota that ran out', () => {
+		const error = { details: [{ '@type': 'type.googleapis.com/google.rpc.QuotaFailure', violations: [{ quotaId: 'GenerateRequestsPerMinutePerProject' }] }] };
+		expect(refusalDetails(error, '')).toEqual({ quotaId: 'GenerateRequestsPerMinutePerProject' });
+	});
+
+	it('takes the delay from the message when there are no details', () => {
+		expect(refusalDetails(undefined, 'You have exhausted your capacity on this model. Your quota will reset after 55s.')).toEqual({ retryDelayMs: 55_000 });
+		expect(refusalDetails({ details: [] }, 'Please retry in 200ms.')).toEqual({ retryDelayMs: 200 });
+		expect(refusalDetails(null, 'Too many requests')).toEqual({});
 	});
 });
 
@@ -168,6 +208,7 @@ describe('readCliBundle', () => {
 			'var OAUTH_CLIENT_ID = "123-abc.apps.googleusercontent.com";',
 			'var OAUTH_CLIENT_SECRET = "test-secret";',
 		].join('\n'));
+		await fs.writeFile(path.join(home, 'package.json'), JSON.stringify({ name: '@google/gemini-cli', version: '0.62.0' }));
 		const link = path.join(home, 'gemini');
 		await fs.symlink(path.join(bundle, 'gemini.js'), link);
 		expect(await readCliBundle(link)).toEqual({
@@ -175,6 +216,7 @@ describe('readCliBundle', () => {
 			latestFlash: 'gemini-3.8-flash',
 			baseFlash: 'gemini-3.5-flash',
 			codeAssistFlash: 'gemini-3-flash',
+			version: '0.62.0',
 		});
 	});
 });

@@ -52,6 +52,7 @@ export class QuickEdits implements vscode.Disposable {
 			// As the agent gets it: GeminiCode's setting or the environment, else the .env file the CLI reads.
 			projectId: async () => getProjectSettings().resolved?.projectId ?? await cliEnvProject(getWorkspaceCwd()),
 			oauthClient: () => this.readCliBundle().then(info => info.oauthClient),
+			cliVersion: () => this.readCliBundle().then(info => info.version),
 		});
 		// Reading the CLI's bundle takes a moment, so do it before the first request needs it.
 		const warm = setTimeout(() => void this.readCliBundle(), 5000);
@@ -117,6 +118,18 @@ export class QuickEdits implements vscode.Disposable {
 				this.latestRefusedAt = Date.now();
 			}
 		}
+	}
+
+	/**
+	 * A direct request for Enhance prompt, on the inline edit model; undefined
+	 * when inline edit is turned off or the sign-in cannot make direct requests,
+	 * so the rewrite goes through the CLI instead.
+	 */
+	async enhancePrompt(request: Omit<DirectRequest, 'model'>): Promise<string | undefined> {
+		if (!vscode.workspace.getConfiguration(configSection).get<boolean>(enabledSetting, true) || (await detectAuth()).kind === 'unsupported') {
+			return undefined;
+		}
+		return this.generate(request);
 	}
 
 	/** Asks what to change in the selected lines (or the line with the cursor), and shows Gemini's rewrite in place. */

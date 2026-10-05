@@ -12,6 +12,7 @@ import { renderAttachments } from './attachmentChips';
 import { format } from './chatLogic';
 import { button, el, icon } from './dom';
 import { autoGrow, updateSendState } from './inputBox';
+import { onEnhanceKey } from './enhance';
 import { closePicker, onPickerKey, updatePicker } from './picker';
 import { setTranscriptBusy } from './transcript';
 import { state, strings, ui, vscode } from './view';
@@ -132,7 +133,7 @@ function recall(event: KeyboardEvent): boolean {
 
 function submit(): void {
 	const text = input.value;
-	if (state.busy || (!text.trim() && !state.attachments.length)) {
+	if (state.busy || state.enhancing || (!text.trim() && !state.attachments.length)) {
 		return;
 	}
 	if (text.trim() && sent[sent.length - 1] !== text) {
@@ -159,6 +160,11 @@ form.addEventListener('click', event => {
 });
 input.addEventListener('keydown', event => {
 	if (!event.isComposing && onPickerKey(event)) {
+		event.preventDefault();
+		event.stopPropagation();
+		return;
+	}
+	if (!event.isComposing && onEnhanceKey(event)) {
 		event.preventDefault();
 		event.stopPropagation();
 		return;
