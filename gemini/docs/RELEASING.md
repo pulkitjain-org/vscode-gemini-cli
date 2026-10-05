@@ -40,14 +40,17 @@ Without the Apple secrets, steps 4 to 6 are replaced by an ad hoc signature. The
 
 ## The download page
 
-[`gemini-pages.yml`](../../.github/workflows/gemini-pages.yml) builds the page with [`gemini/site/build.mts`](../site/build.mts) and deploys it to GitHub Pages. It reads the latest release (drafts and prereleases are skipped) and writes two files:
+[`gemini-pages.yml`](../../.github/workflows/gemini-pages.yml) builds the page with [`gemini/site/build.mts`](../site/build.mts) and deploys it to GitHub Pages. It reads the latest release (drafts and prereleases are skipped) and writes:
 
-- `index.html`: the version, a **Download for Mac (Apple silicon)** button, install steps, the release notes, and the checksum. An unsigned build also gets the steps to open it.
+- `index.html`: the landing page, with a **Download for Mac** button, the main features with screenshots, and the install steps. An unsigned build also gets the steps to open it. The feature text is fixed in `renderPage()` in `build.mts`, so update it when a release changes the main features. Its screenshots are `gemini/site/images/hero.webp`, `agents.webp` and `review.webp` (2000 × 1250); a missing one is left out.
+- `notes.html`: the release notes from the GitHub release, with the download button and the checksum. Its `##` and `###` headings, and lines that are only bold text, become the side navigation. Images pasted into the notes are copied onto the site, because GitHub's links to them expire.
 - `latest.json`: the version, download and release links. The app's update notice reads it; keep its `version`, `url` and `notesUrl` fields stable.
+
+The Geist fonts in `gemini/site/fonts/` are served with the page, so it loads nothing from other sites.
 
 It runs when a release is published, edited, unpublished or deleted, when `gemini/site/` or `gemini/branding/icon.svg` changes on `main`, when the release workflow starts it, and by hand. It always deploys from `main`, because the `github-pages` environment accepts only the default branch. Turn Pages on once: **Settings → Pages → Source: GitHub Actions**.
 
-To preview the page, run `node gemini/site/build.mts /tmp/site --sample` (or `--none`, for before the first release) and open `/tmp/site/index.html`.
+To preview the page, run `node gemini/site/build.mts /tmp/site --sample` (or `--none`, for before the first release) and open `/tmp/site/index.html`. A real build needs network access to the GitHub API.
 
 ## Opening an unsigned build
 
