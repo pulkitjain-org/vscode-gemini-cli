@@ -137,8 +137,8 @@ export class AgentHome implements vscode.Disposable {
 				return;
 			case 'start':
 				if (message.text.trim()) {
-					if (await this.agents.startWithPrompt(message.folder, message.text.trim(), message.ownBranch)) {
-						void this.panel?.webview.postMessage({ type: 'started' } satisfies ToHome);
+					if (!await this.agents.startWithPrompt(message.folder, message.text.trim(), message.ownBranch)) {
+						void this.panel?.webview.postMessage({ type: 'startFailed', text: message.text } satisfies ToHome);
 					}
 				}
 				return;

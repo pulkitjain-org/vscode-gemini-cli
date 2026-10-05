@@ -150,6 +150,9 @@ function submit(): void {
 		return;
 	}
 	vscode.postMessage({ type: 'start', folder: workspace.value, text, ownBranch: !ownBranchLabel.hidden && ownBranch.checked });
+	prompt.value = '';
+	save();
+	updateControls();
 }
 
 form.addEventListener('submit', e => {
@@ -184,8 +187,8 @@ window.addEventListener('message', (event: MessageEvent<ToHome>) => {
 		render(message.view);
 	} else if (message.type === 'focus') {
 		prompt.focus();
-	} else if (message.type === 'started') {
-		prompt.value = '';
+	} else if (message.type === 'startFailed') {
+		prompt.value ||= message.text;
 		save();
 		updateControls();
 	}
