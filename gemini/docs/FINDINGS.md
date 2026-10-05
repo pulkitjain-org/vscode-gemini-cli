@@ -77,6 +77,27 @@ Read from the gemini-cli 0.62.0 bundle:
 
 GeminiCode therefore keeps its own copy of each agent's conversation for display and uses `session/load` only so the agent remembers it. The replay arrives outside a turn and the chat ignores it. If the user sends a prompt while a long replay is still streaming, the tail of the replay could show in that turn; it has not been seen in practice.
 
+## Prompt enhancement: direct requests or the CLI
+
+Measured on 5 Oct 2026 on a Gemini Code Assist account (Google sign-in) with `extensions/gemini/scripts/probe-enhance.mts`: twelve sample drafts, one every 10 seconds, then five at once.
+
+| Route | Answered | p50 / p95 |
+| --- | --- | --- |
+| Direct request (`DirectClient`), Flash | 2 of 12 | n/a |
+| Direct request, Flash-Lite or Pro | 2 of 12 each | n/a |
+| The CLI over ACP, Flash, session in the repository | 12 of 12, first try | 12.3 s / 16.5 s |
+| The CLI over ACP, Flash-Lite, session in an empty folder | 12 of 12, first try | 5.0 s / 9.4 s |
+| Direct request with the CLI's User-Agent, prompt id and session id, Flash (gemini-3.8-flash) | 12 of 12, first try | 3.4 s / 4.8 s |
+
+- Direct requests to Code Assist were refused with 429 `RATE_LIMIT_EXCEEDED` ("Your quota will reset after N s") after about one request a minute, in each quota bucket: every Flash model shares one, and Flash-Lite and Pro have their own. Daily use stayed under 1%. The CLI's own requests on the same account were not limited this way. The CLI names itself on each request (User-Agent `GeminiCLI-<client>/<version>/<model> (…)`, `user_prompt_id`, `session_id`), and direct requests did not.
+- With those three added (`DirectClient` now sends them, naming the CLI version GeminiCode runs), the same account answered 12 of 12 spaced direct requests on the first try, including on gemini-3.8-flash, which had refused direct requests before. A burst of five at once was answered too, three after a 429 that asked for under 2 s. So the fields, not the route, decide the limit. Inline edit and commit messages, which use the same client, get the same lift. Measured on 5 Oct 2026 with `probe-enhance.mts`.
+- The CLI retries a refused request itself: after the delay the server names for `RATE_LIMIT_EXCEEDED` (up to 300 s, ten attempts), or 1 s then 3 s when the model is out of capacity (`MODEL_CAPACITY_EXHAUSTED`). One of five rewrites sent at once took 43 s while it waited.
+- Of a rewrite through the CLI, about 1 s was opening the session and setting its mode and model, which GeminiCode now does ahead of the click; the rest was the model call, slower with Flash because the CLI asks for thinking level HIGH. A session in an empty folder carries no folder context.
+- No rewrite used a tool when told not to. Two of twelve began with a `/command` the draft did not have; the prompt now forbids it and the cleanup removes one.
+- gemini-cli 0.62.0 implements no `session/close`, so each rewrite's session stays in the agent process until it restarts. GeminiCode closes it when the CLI offers `sessionCapabilities.close`. Measured against a stand-in API, 40 rewrite sessions left the agent's memory flat (162 MB) and 228 KB of chat files on disk: the empty folder is untrusted, so the CLI starts no MCP servers, hooks or project agents there, and a session opens in about 40 ms. (A chat session in a real repository is larger, about 2.5 MB.)
+- Each rewrite through the CLI sends about 47 KB: the CLI's agent system prompt (32,500 characters) and 12 tool declarations, with `thinkingLevel: HIGH` even on Flash-Lite. A direct request sends 1 to 2 KB with little thinking, so Enhance prompt now uses one and keeps the CLI for when it fails.
+- Setting a session's mode makes gemini-cli 0.62.0 send `[MODE_UPDATE] <mode>` as `agent_message_chunk` text, outside any turn. The rewrite listens only while its prompt runs, and `cleanEnhancedPrompt` strips the notice too.
+
 ## Where a prompt's time goes
 
 Measured on 2 Oct 2026 with gemini-cli 0.62.0 in `--acp` mode against a local stand-in for the Gemini API (`GOOGLE_GEMINI_BASE_URL`) that answers at once. The scripts are not in the repo; the method is enough to redo it.

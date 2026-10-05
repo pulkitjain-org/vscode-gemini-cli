@@ -39,6 +39,8 @@ const modeSelect = byId('mode', HTMLSelectElement);
 const modelSelect = byId('model', HTMLSelectElement);
 const branchButton = byId('branch', HTMLButtonElement);
 const commitButton = byId('commit', HTMLButtonElement);
+const enhanceButton = byId('enhance', HTMLButtonElement);
+const revertButton = byId('revert', HTMLButtonElement);
 const workspaceButton = byId('workspace', HTMLButtonElement);
 
 export const ui = {
@@ -66,6 +68,14 @@ export const ui = {
 	attachButton: byId('attach', HTMLButtonElement),
 	scrollButton: byId('scroll-down', HTMLButtonElement),
 	dropLabel: byId('drop-label', HTMLElement),
+	enhanceRow: byId('enhance-row', HTMLElement),
+	enhanceFloat: byId('enhance-float', HTMLElement),
+	enhanceButton,
+	enhanceLabel: within(enhanceButton, 'span', HTMLSpanElement),
+	revertButton,
+	revertLabel: within(revertButton, 'span', HTMLSpanElement),
+	enhanceNote: byId('enhance-note', HTMLElement),
+	inputWrap: parentOf(byId('input', HTMLTextAreaElement)),
 };
 
 /** The view's state, shared by its modules. */
@@ -77,6 +87,8 @@ export const state = {
 	attachments: [] as Attachment[],
 	/** Whether the agent takes images, so pasted ones are sent as images. */
 	imageInput: false,
+	/** Whether a rewrite of the draft is running; the draft cannot be sent meanwhile. */
+	enhancing: false,
 };
 
 /** Each item's element in the transcript. */

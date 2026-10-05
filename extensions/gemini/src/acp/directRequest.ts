@@ -9,6 +9,7 @@
 // service and project the CLI uses (the same license); with an API key, the
 // Gemini API. The CLI itself is not involved or changed.
 
+import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -62,9 +63,19 @@ export interface DirectRequest {
 	readonly signal?: AbortSignal;
 }
 
+/** What a Google API error says about why it was refused, as the CLI reads it. */
+export interface RefusalDetails {
+	/** `ErrorInfo.reason`, such as RATE_LIMIT_EXCEEDED, QUOTA_EXHAUSTED or MODEL_CAPACITY_EXHAUSTED. */
+	readonly reason?: string;
+	/** How long to wait before trying again, from `RetryInfo` or the message. */
+	readonly retryDelayMs?: number;
+	/** The quota that ran out, such as a per-minute or per-day one. */
+	readonly quotaId?: string;
+}
+
 /** A direct request failed; `kind` says whether signing in again or something else would help. */
 export class DirectRequestError extends Error {
-	constructor(message: string, readonly kind: 'auth' | 'quota' | 'network' | 'other', readonly status?: number) {
+	constructor(message: string, readonly kind: 'auth' | 'quota' | 'network' | 'other', readonly status?: number, readonly details: RefusalDetails = {}) {
 		super(message);
 	}
 }
@@ -90,6 +101,8 @@ export interface CliBundleInfo {
 	readonly baseFlash?: string;
 	/** The name Code Assist serves the base Flash model under, for accounts without the newest one. */
 	readonly codeAssistFlash?: string;
+	/** The CLI's version, from the package.json beside its bundle. */
+	readonly version?: string;
 }
 
 /**
@@ -124,7 +137,9 @@ export async function readCliBundle(entry: string): Promise<CliBundleInfo> {
 			break;
 		}
 	}
-	return { oauthClient, latestFlash, baseFlash, codeAssistFlash };
+	const version = await fs.readFile(path.join(dir, '..', 'package.json'), 'utf8')
+		.then(text => (JSON.parse(text) as { version?: unknown }).version, () => undefined);
+	return { oauthClient, latestFlash, baseFlash, codeAssistFlash, ...(typeof version === 'string' ? { version } : {}) };
 }
 
 const projectEnvVars = ['GOOGLE_CLOUD_QUOTA_PROJECT', 'GOOGLE_CLOUD_PROJECT', 'GOOGLE_CLOUD_PROJECT_ID'];
@@ -168,6 +183,12 @@ export interface DirectClientOptions {
 	readonly projectId?: () => string | undefined | Promise<string | undefined>;
 	/** The CLI's OAuth client, for refreshing an expired sign-in. */
 	readonly oauthClient?: () => Promise<OAuthClient | undefined>;
+	/**
+	 * The version of the CLI whose sign-in the requests use. Code Assist allows
+	 * requests without the CLI's User-Agent, prompt id and session id only about
+	 * once a minute; with them, as many as the CLI's own (FINDINGS.md).
+	 */
+	readonly cliVersion?: () => Promise<string | undefined>;
 	readonly env?: NodeJS.ProcessEnv;
 	readonly fetch?: typeof fetch;
 }
@@ -179,6 +200,9 @@ export class DirectClient {
 	private project: { readonly configured: string | undefined; readonly id: Promise<string> } | undefined;
 	private readonly env: NodeJS.ProcessEnv;
 	private readonly fetch: typeof fetch;
+	/** One session per window, as the CLI has one per chat; each request is a new prompt in it. */
+	private readonly sessionId = randomUUID();
+	private prompts = 0;
 
 	constructor(private readonly options: DirectClientOptions = {}) {
 		this.env = options.env ?? process.env;
@@ -204,9 +228,17 @@ export class DirectClient {
 				return textOf(response);
 			}
 			case 'google': {
-				const headers = { authorization: `Bearer ${await this.accessToken(auth.credsFile, request.signal)}` };
+				const [token, version] = await Promise.all([this.accessToken(auth.credsFile, request.signal), this.options.cliVersion?.()]);
+				const headers: Record<string, string> = { authorization: `Bearer ${token}` };
 				const project = await this.projectId(headers, request.signal);
-				const response = await this.post(`${this.codeAssistBase()}:generateContent`, headers, { model: request.model, project, request: body }, request.signal) as { response?: unknown };
+				// What the CLI sends with each request when GeminiCode runs it (its ACP client name is geminicode).
+				const cliHeaders: Record<string, string> = version ? { 'user-agent': `GeminiCLI-geminicode/${version}/${request.model} (${process.platform}; ${process.arch}; acp)` } : {};
+				const response = await this.post(`${this.codeAssistBase()}:generateContent`, { ...headers, ...cliHeaders }, {
+					model: request.model,
+					project,
+					user_prompt_id: `${this.sessionId}########${++this.prompts}`,
+					request: { ...body, session_id: this.sessionId },
+				}, request.signal) as { response?: unknown };
 				return textOf(response.response);
 			}
 			case 'unsupported':
@@ -307,8 +339,10 @@ export class DirectClient {
 		const text = await response.text();
 		if (!response.ok) {
 			let message = text.slice(0, 300);
+			let error: unknown;
 			try {
-				message = JSON.parse(text)?.error?.message ?? message;
+				error = JSON.parse(text)?.error;
+				message = (error as { message?: string })?.message ?? message;
 			} catch {
 				// Not JSON.
 			}
@@ -316,7 +350,7 @@ export class DirectClient {
 			if (kind === 'auth') {
 				this.token = undefined;
 			}
-			throw new DirectRequestError(`Gemini answered ${response.status}: ${message}`, kind, response.status);
+			throw new DirectRequestError(`Gemini answered ${response.status}: ${message}`, kind, response.status, refusalDetails(error, message));
 		}
 		try {
 			return JSON.parse(text);
@@ -349,6 +383,35 @@ export function parseQuota(response: unknown): ModelQuota[] {
 		}
 	}
 	return [...byModel.values()].sort((a, b) => b.used - a.used || a.model.localeCompare(b.model));
+}
+
+/**
+ * The reason, retry delay and quota of a Google API error, from its details
+ * (`ErrorInfo`, `RetryInfo`, `QuotaFailure`), or the delay from its message
+ * ("Please retry in 3s", "Your quota will reset after 55s").
+ */
+export function refusalDetails(error: unknown, message: string): RefusalDetails {
+	const details = (error as { details?: unknown })?.details;
+	const list: Record<string, unknown>[] = Array.isArray(details) ? details.filter(d => d && typeof d === 'object') : [];
+	const ofType = (type: string) => list.find(d => d['@type'] === `type.googleapis.com/google.rpc.${type}`);
+	const reason = ofType('ErrorInfo')?.reason;
+	const violations = ofType('QuotaFailure')?.violations;
+	const quotaId = Array.isArray(violations) ? violations.map(v => v?.quotaId).find(id => typeof id === 'string') : undefined;
+	const retryDelay = ofType('RetryInfo')?.retryDelay;
+	const delay = typeof retryDelay === 'string' ? retryDelay : /(?:retry in|reset after)\s+([\d.]+\s*(?:ms|s))\b/i.exec(message)?.[1];
+	const retryDelayMs = delay === undefined ? undefined : durationMs(delay.replace(/\s+/g, ''));
+	return {
+		...(typeof reason === 'string' ? { reason } : {}),
+		...(retryDelayMs !== undefined ? { retryDelayMs } : {}),
+		...(quotaId ? { quotaId } : {}),
+	};
+}
+
+/** "1.5s" or "200ms" in milliseconds. */
+function durationMs(duration: string): number | undefined {
+	const match = /^([\d.]+)(ms|s)$/.exec(duration);
+	const value = match ? parseFloat(match[1]) : NaN;
+	return Number.isFinite(value) ? Math.round(match![2] === 'ms' ? value : value * 1000) : undefined;
 }
 
 /** As little thinking as the model allows: Gemini 2.5 takes a budget, Gemini 3 a level. */

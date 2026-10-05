@@ -31,8 +31,24 @@ export function restoreComposerHeight(height: number): void {
 	autoGrow();
 }
 
+const changeListeners: (() => void)[] = [];
+
+/** Calls `listener` after the composer's text or attachments may have changed. */
+export function onComposerChange(listener: () => void): void {
+	changeListeners.push(listener);
+}
+
+/** Enables Send when there is something to send and nothing in the way. */
+export function updateSendButton(): void {
+	sendButton.disabled = state.busy || state.enhancing || (!input.value.trim() && !state.attachments.length);
+}
+
+/** Updates what depends on the composer's text: Send, and whatever listens (Enhance prompt). */
 export function updateSendState(): void {
-	sendButton.disabled = state.busy || (!input.value.trim() && !state.attachments.length);
+	updateSendButton();
+	for (const listener of changeListeners) {
+		listener();
+	}
 }
 
 export function updatePlaceholder(): void {

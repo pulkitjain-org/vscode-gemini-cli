@@ -100,6 +100,20 @@ export interface ChatStrings {
 	/** The commit pill's tooltip, and its short label. */
 	readonly createBranchAndCommit: string;
 	readonly commit: string;
+	/** The Enhance prompt pill, its tooltip, and what screen readers hear while and after it works. */
+	readonly enhance: string;
+	/** The floating button's own label, short as it follows the text. */
+	readonly enhanceShort: string;
+	readonly enhanceTooltip: string;
+	readonly enhancing: string;
+	readonly enhanced: string;
+	/** Shown when a rewrite takes a while. */
+	readonly stillEnhancing: string;
+	/** Shown when a rewrite takes long enough that Gemini is likely waiting out a rate limit. */
+	readonly enhanceWaiting: string;
+	readonly cancel: string;
+	readonly revert: string;
+	readonly revertTooltip: string;
 	/** `{0}` is the folder's path; the workspace pill's tooltip. */
 	readonly workspaceTooltip: string;
 	/** After the workspace's name when the agent works in its own copy of it. */
@@ -174,7 +188,12 @@ export type FromWebview =
 	/** Put back the files the turn ending with turnEnd item `itemId` changed, and those of later turns. */
 	| { readonly type: 'undoTurn'; readonly itemId: string }
 	/** Send the prompt of the turn ending with `itemId` again; only the latest turn offers it. */
-	| { readonly type: 'retry'; readonly itemId: string };
+	| { readonly type: 'retry'; readonly itemId: string }
+	/** The composer has text: get a rewrite session ready. */
+	| { readonly type: 'prepareEnhance' }
+	/** Rewrite the draft as a precise prompt; answered with `enhanced` or `enhanceFailed` carrying the same `requestId`. */
+	| { readonly type: 'enhancePrompt'; readonly requestId: number; readonly text: string; readonly attachments: readonly Attachment[] }
+	| { readonly type: 'cancelEnhance'; readonly requestId: number };
 
 export type ToWebview =
 	| { readonly type: 'reset'; readonly items: readonly TranscriptItem[]; readonly busy: boolean; readonly status: ViewStatus; readonly settings: SessionSettings }
@@ -197,6 +216,10 @@ export type ToWebview =
 	| { readonly type: 'accent'; readonly solid: boolean }
 	/** The colour theme's syntax colours, for code blocks. */
 	| { readonly type: 'tokenColors'; readonly colors: TokenColors }
+	/** The Enhance Prompt command: enhance what the composer holds. */
+	| { readonly type: 'enhanceRequested' }
+	| { readonly type: 'enhanced'; readonly requestId: number; readonly text: string }
+	| { readonly type: 'enhanceFailed'; readonly requestId: number; readonly message: string }
 	/** The text size in pixels (`gemini.chat.fontSize`). */
 	| { readonly type: 'fontSize'; readonly size: number }
 	/** The newest saved sessions the empty chat offers to reopen, of `total`. */

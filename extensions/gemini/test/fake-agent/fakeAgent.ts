@@ -58,6 +58,8 @@ export interface FakeAgentScript {
 	readonly newSession?: Partial<acp.NewSessionResponse> | ScriptedError;
 	/** Serve the unstable `session/set_model`, as gemini-cli does. Without it the call fails with -32601. */
 	readonly supportsSetModel?: boolean;
+	/** Also announce a mode change as message text ("[MODE_UPDATE] plan"), as gemini-cli 0.62 does. */
+	readonly modeUpdateText?: boolean;
 	/** Steps played for each successive `session/prompt`, one array per turn. */
 	readonly turns?: readonly (readonly ScriptedStep[])[];
 }
@@ -178,6 +180,9 @@ acp.agent({ name: 'fake-agent' })
 	.onRequest('session/set_mode', async ctx => {
 		// Echo the change the way gemini-cli does when its approval mode changes.
 		await ctx.client.notify('session/update', { sessionId: ctx.params.sessionId, update: { sessionUpdate: 'current_mode_update', currentModeId: ctx.params.modeId } });
+		if (script.modeUpdateText) {
+			await ctx.client.notify('session/update', { sessionId: ctx.params.sessionId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `[MODE_UPDATE] ${ctx.params.modeId}` } } });
+		}
 		return {};
 	})
 	.onNotification('session/cancel', ctx => {

@@ -1165,6 +1165,225 @@ body.vscode-high-contrast-light {
 	color: var(--vscode-input-placeholderForeground);
 }
 
+/* Enhance prompt (enhance.ts): a spark button floating just after the draft's last character. */
+.input-wrap {
+	position: relative;
+}
+
+/* A copy of the draft that wraps like the input, to find where its text ends. */
+.input-mirror {
+	position: absolute;
+	top: 0;
+	left: 0;
+	box-sizing: border-box;
+	visibility: hidden;
+	pointer-events: none;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+	contain: layout style paint;
+}
+
+.enhance-float {
+	position: absolute;
+	top: 0;
+	left: 0;
+	z-index: 1;
+	display: inline-flex;
+	align-items: stretch;
+	height: 22px;
+	box-sizing: border-box;
+	border: 1px solid color-mix(in srgb, #8b5cf6 50%, transparent);
+	border-radius: 11px;
+	background: color-mix(in srgb, #8b5cf6 16%, var(--vscode-input-background));
+	overflow: hidden;
+	will-change: transform;
+	transition: transform 90ms ease-out, box-shadow 120ms;
+}
+
+.enhance-float[hidden],
+.enhance-chip[hidden] {
+	display: none;
+}
+
+.enhance-float:hover {
+	box-shadow: 0 0 10px color-mix(in srgb, #8b5cf6 45%, transparent);
+}
+
+.enhance-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 0 9px 0 7px;
+	border: none;
+	background: transparent;
+	color: var(--gemini-accent);
+	font-family: inherit;
+	font-size: 0.8em;
+	font-weight: 600;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+/* Revert and Enhance share the pill, split by a hairline. */
+.enhance-chip + .enhance-chip {
+	border-left: 1px solid color-mix(in srgb, #8b5cf6 40%, transparent);
+}
+
+.enhance-chip:hover {
+	background: color-mix(in srgb, #8b5cf6 14%, transparent);
+}
+
+.enhance-chip:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -2px;
+}
+
+.enhance-chip .codicon {
+	font-size: 12px;
+}
+
+/* When the button does not fit after the text, it sits on a line of its own. */
+.input-wrap.enhance-below textarea {
+	padding-bottom: 1.6em;
+}
+
+/* The GeminiCode spark, in the logo's colours; high contrast themes draw it in the text colour. */
+.enhance-icon {
+	flex: none;
+	width: 14px;
+	height: 14px;
+	fill: url(#enhance-spark);
+}
+
+body.vscode-high-contrast .enhance-icon,
+body.vscode-high-contrast-light .enhance-icon {
+	fill: currentColor;
+}
+
+/* While it works, the spark gives way to a spinner and the pill cancels. */
+.enhance-chip .codicon-loading,
+.composer.enhancing .enhance-chip .enhance-icon {
+	display: none;
+}
+
+.composer.enhancing .enhance-chip .codicon-loading {
+	display: inline-block;
+}
+
+/* Notes, under the input. */
+.enhance-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin-top: 6px;
+	cursor: default;
+}
+
+.enhance-row[hidden],
+.enhance-note[hidden] {
+	display: none;
+}
+
+.enhance-note {
+	color: var(--gemini-muted);
+	font-size: 0.85em;
+}
+
+.enhance-note.error {
+	color: var(--vscode-errorForeground);
+}
+
+/* A rewrite may name the attachments, so they stay until it is back. */
+.composer.enhancing .chip-remove {
+	visibility: hidden;
+}
+
+/*
+ * While the draft is rewritten it dims, a band in the Gemini colours sweeps
+ * across it, and the composer glows. Every animation is a transform or an
+ * opacity on a layer of its own, so the compositor runs it and the text is
+ * never repainted.
+ */
+.composer.enhancing textarea {
+	color: var(--gemini-muted);
+	cursor: progress;
+}
+
+.composer.enhancing .input-wrap {
+	overflow: hidden;
+	border-radius: 6px;
+}
+
+.composer.enhancing {
+	border-color: color-mix(in srgb, #8b5cf6 60%, var(--vscode-focusBorder));
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.composer.enhancing .input-wrap::after {
+		content: '';
+		position: absolute;
+		top: -10%;
+		bottom: -10%;
+		left: 0;
+		width: 55%;
+		pointer-events: none;
+		background: linear-gradient(100deg,
+			transparent 0%,
+			color-mix(in srgb, #4f8df7 28%, transparent) 30%,
+			color-mix(in srgb, #8b5cf6 42%, transparent) 50%,
+			color-mix(in srgb, #e05fa8 28%, transparent) 70%,
+			transparent 100%);
+		filter: blur(6px);
+		mix-blend-mode: plus-lighter;
+		animation: gemini-shimmer 1.8s cubic-bezier(.45, 0, .25, 1) infinite;
+		will-change: transform;
+	}
+
+	body.vscode-light .composer.enhancing .input-wrap::after,
+	body.vscode-high-contrast-light .composer.enhancing .input-wrap::after {
+		mix-blend-mode: multiply;
+	}
+
+	.composer.enhancing::after {
+		content: '';
+		position: absolute;
+		inset: -1px;
+		border-radius: inherit;
+		pointer-events: none;
+		box-shadow: 0 0 0 1px color-mix(in srgb, #8b5cf6 55%, transparent), 0 0 22px color-mix(in srgb, #8b5cf6 40%, transparent), 0 0 8px color-mix(in srgb, #4f8df7 35%, transparent);
+		animation: gemini-glow 1.8s ease-in-out infinite alternate;
+		will-change: opacity;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.enhance-chip .codicon-modifier-spin {
+		animation: none;
+	}
+}
+
+@keyframes gemini-shimmer {
+	from {
+		transform: translateX(-100%);
+	}
+
+	to {
+		transform: translateX(190%);
+	}
+}
+
+@keyframes gemini-glow {
+	from {
+		opacity: .35;
+	}
+
+	to {
+		opacity: 1;
+	}
+}
+
+
 .composer-bar {
 	display: flex;
 	align-items: center;

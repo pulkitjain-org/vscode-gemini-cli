@@ -22,7 +22,7 @@ import { AgentSession } from './agentSession';
 import { ChangesSource, ChangesView } from './changesView';
 import type { AgentStateKind } from './panelProtocol';
 import { ReviewController } from './reviewController';
-import { ChatActivity, ChatController, FileSearch } from './chatController';
+import { ChatActivity, ChatController, ChatEnhancer, FileSearch } from './chatController';
 import { configSection } from './configuration';
 import { relativeTime, tildify } from './displayText';
 export { relativeTime } from './displayText';
@@ -139,6 +139,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		private readonly service: AgentService,
 		private readonly diffPreview: DiffPreview,
 		private readonly workspaceFiles: WorkspaceFileIndex,
+		private readonly enhancer: ChatEnhancer,
 	) {
 		this.model = new AgentsModel(context.globalState.get<AgentsSnapshot>(storageKey));
 		this.transcripts = new TranscriptStore(vscode.Uri.joinPath(context.globalStorageUri, 'agents').fsPath);
@@ -762,6 +763,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			controller: new ChatController(this.context.extensionUri, session, this.diffPreview, files, {
 				reveal: preserveFocus => this.reveal(record.id, preserveFocus),
 				editorColumn: () => besideAgent(this.live.get(record.id)?.panel),
+				enhancer: this.enhancer,
 				savedSessions: {
 					inUse: () => new Set(this.model.snapshot().agents.flatMap(a => a.id !== record.id && a.sessionId ? [a.sessionId] : [])),
 				},

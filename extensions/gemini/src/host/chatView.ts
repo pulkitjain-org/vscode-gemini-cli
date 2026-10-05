@@ -6,7 +6,7 @@
 import * as vscode from 'vscode';
 import { Attachment } from '../acp/attachments';
 import { AgentService } from './agentService';
-import { ChatController } from './chatController';
+import { ChatController, ChatEnhancer } from './chatController';
 import { DiffPreview } from './diffPreview';
 import { WorkspaceFileIndex } from './workspaceFiles';
 
@@ -21,11 +21,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 	readonly controller: ChatController;
 	private view: vscode.WebviewView | undefined;
 
-	constructor(extensionUri: vscode.Uri, service: AgentService, diffPreview: DiffPreview, fileIndex: WorkspaceFileIndex) {
+	constructor(extensionUri: vscode.Uri, service: AgentService, diffPreview: DiffPreview, fileIndex: WorkspaceFileIndex, enhancer: ChatEnhancer) {
 		this.controller = new ChatController(extensionUri, service, diffPreview, fileIndex, {
 			reveal: preserveFocus => this.reveal(preserveFocus),
 			busyContextKey: 'gemini.chatBusy',
 			git: { folder: () => workspaceFolder() },
+			enhancer,
 			workspace: () => {
 				const folder = workspaceFolder();
 				return folder ? { folder, cwd: folder, worktree: false } : undefined;

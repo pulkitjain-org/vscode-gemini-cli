@@ -20,7 +20,8 @@ In the **Changes** panel, hover over a change to **Keep** or **Undo** it. **Keep
 | Cmd+L | Open the chat; with a selection, add it to the chat |
 | Cmd+Alt+N | New agent |
 | Cmd+N (in the chat) | New chat |
-| Esc (in the chat input) | Stop the agent |
+| Esc (in the chat input) | Stop the agent, or cancel Enhance prompt |
+| Cmd+Alt+E | Enhance prompt (the draft in the chat in front) |
 | Up / Down (empty chat input) | Bring back an earlier prompt |
 | Cmd+I | Inline edit |
 | Cmd+Enter / Cmd+Backspace | Keep or undo the agent's changes to the file you're in |
@@ -38,6 +39,14 @@ Run **Make It Yours** from the Command Palette, or open the step of the same nam
 - chat text size: 13 to 16 px (14 px by default), kept in `gemini.chat.fontSize`.
 
 Each choice applies at once. To change the themes or icons, edit the sources and rerun `node extensions/gemini/scripts/build-themes.mts` or `python3 extensions/gemini/scripts/build-file-icons.py`; a unit test fails when the generated themes are out of date.
+
+## Enhance prompt
+
+Write what you want in plain words, then click **Enhance**, which follows the end of your text (or press **Cmd+Alt+E**). Gemini rewrites the draft as a clearer, more precise prompt: what to do, where, and how to tell it is done, with open questions where your draft leaves something out. It keeps your `@` mentions, a leading `/command`, file names and code as you wrote them, and uses the files you attached, the open file and the chat so far.
+
+The text shimmers while Gemini works, usually for about three seconds; **Enhance** turns into **Cancel**, and Esc stops it too. The rewrite replaces your draft for you to read and change before sending: **Revert**, beside **Enhance** (or Cmd+Z), puts your draft back, and **Enhance** rewrites it again. Nothing is sent to the agent until you press Send.
+
+The rewrite is one quick request to Gemini Flash, like inline edit. When inline edit is turned off, or that request fails, the Gemini CLI does it instead, in Plan mode so it cannot change anything. It does not go into the chat, and it works while the agent is busy.
 
 ## Inline edit and commit messages
 

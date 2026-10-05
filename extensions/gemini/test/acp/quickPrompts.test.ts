@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { cleanCommitMessage, cleanEdit, commitMessagePrompt, inlineEditPrompt, knownFlash, quickEditModels } from '../../src/acp/quickPrompts';
+import { cleanCommitMessage, cleanEdit, cleanEnhancedPrompt, commitMessagePrompt, enhancePromptPrompt, inlineEditPrompt, knownFlash, quickEditModels } from '../../src/acp/quickPrompts';
 
 describe('inlineEditPrompt', () => {
 	it('marks the selection inside its surrounding lines', () => {
@@ -89,5 +89,76 @@ describe('quickEditModels', () => {
 
 	it('uses a model named in the setting', () => {
 		expect(choose(' gemini-2.5-pro ', 'auto')).toEqual(['gemini-2.5-pro']);
+	});
+});
+
+describe('enhancePromptPrompt', () => {
+	it('sends the draft with the context it has', () => {
+		const { system, prompt } = enhancePromptPrompt({ draft: 'fix login', folder: 'app', branch: 'main', activeFile: 'src/auth.ts (typescript)', attachments: ['auth.ts'], mode: 'Plan' });
+		expect(system).toContain('never answer it');
+		expect(system).toContain('Plan mode');
+		expect(prompt).toBe('Context:\nFolder: app\nBranch: main\nOpen file: src/auth.ts (typescript)\nAttached: auth.ts\n\nRequest to rewrite:\n<request>\nfix login\n</request>');
+	});
+
+	it('sends only the request when there is no context', () => {
+		const { system, prompt } = enhancePromptPrompt({ draft: 'x' });
+		expect(system).not.toContain('mode;');
+		expect(prompt).toBe('Request to rewrite:\n<request>\nx\n</request>');
+	});
+
+	it('keeps the newest messages of the conversation that fit, oldest first', () => {
+		const history = Array.from({ length: 10 }, (_, i) => ({ role: i % 2 ? 'agent' as const : 'user' as const, text: `${i} ${'x'.repeat(1000)}` }));
+		const { prompt } = enhancePromptPrompt({ draft: 'again', history });
+		expect(prompt).toContain('Agent: 9 ');
+		expect(prompt).toContain('User: 8 ');
+		expect(prompt).not.toContain('User: 6 ');
+		expect(prompt.indexOf('User: 8')).toBeLessThan(prompt.indexOf('Agent: 9'));
+	});
+
+	it('cuts a long message', () => {
+		const { prompt } = enhancePromptPrompt({ draft: 'x', history: [{ role: 'agent', text: 'y'.repeat(3000) }] });
+		expect(prompt).toContain(`Agent: ${'y'.repeat(1500)}…`);
+	});
+});
+
+describe('cleanEnhancedPrompt', () => {
+	it('removes a preamble, tags, quotes and a fence', () => {
+		expect(cleanEnhancedPrompt('Here is the improved prompt:\nFix the bug.', 'fix')).toBe('Fix the bug.');
+		expect(cleanEnhancedPrompt('[MODE_UPDATE] planFix the bug.', 'fix')).toBe('Fix the bug.');
+		expect(cleanEnhancedPrompt('[MODE_UPDATE] plan\nHere is the improved prompt:\nFix the bug.', 'fix')).toBe('Fix the bug.');
+		expect(cleanEnhancedPrompt('**Enhanced prompt:**\nFix the bug.', 'fix')).toBe('Fix the bug.');
+		expect(cleanEnhancedPrompt('<request>\nFix the bug.\n</request>', 'fix')).toBe('Fix the bug.');
+		expect(cleanEnhancedPrompt('```\nFix the bug.\n```', 'fix')).toBe('Fix the bug.');
+		expect(cleanEnhancedPrompt('"Fix the bug."', 'fix')).toBe('Fix the bug.');
+	});
+
+	it('keeps a fence inside the prompt', () => {
+		const reply = 'Make this pass:\n```ts\nexpect(a).toBe(1);\n```';
+		expect(cleanEnhancedPrompt(reply, 'x')).toBe(reply);
+	});
+
+	it('returns the original for an empty answer', () => {
+		expect(cleanEnhancedPrompt('  \n', 'fix it')).toBe('fix it');
+	});
+
+	it('puts a dropped leading command back first', () => {
+		expect(cleanEnhancedPrompt('Review the auth changes.', '/review auth')).toBe('/review Review the auth changes.');
+		expect(cleanEnhancedPrompt('Then /review the auth changes.', '/review auth')).toBe('/review Then the auth changes.');
+		expect(cleanEnhancedPrompt('/review the auth changes.', '/review auth')).toBe('/review the auth changes.');
+	});
+
+	it('takes out a leading command the draft did not have', () => {
+		expect(cleanEnhancedPrompt('/refactor @src/auth.ts to extract the refresh.', 'refactor @src/auth.ts')).toBe('Refactor @src/auth.ts to extract the refresh.');
+		expect(cleanEnhancedPrompt('/task Implement validation.', 'now do the same for signup')).toBe('Implement validation.');
+		expect(cleanEnhancedPrompt('/usr/local/bin/node crashes on start.', 'node crashes')).toBe('/usr/local/bin/node crashes on start.');
+	});
+
+	it('puts dropped mentions back at the end', () => {
+		expect(cleanEnhancedPrompt('Fix the empty-email case in the login form.', 'fix @src/auth.ts and @src/form.ts.')).toBe('Fix the empty-email case in the login form.\n\n@src/auth.ts @src/form.ts');
+		expect(cleanEnhancedPrompt('Fix @src/auth.ts.', 'fix @src/auth.ts')).toBe('Fix @src/auth.ts.');
+	});
+
+	it('does not treat an e-mail address as a mention', () => {
+		expect(cleanEnhancedPrompt('Email the owner.', 'email me@example.com')).toBe('Email the owner.');
 	});
 });

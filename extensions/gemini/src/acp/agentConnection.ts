@@ -102,6 +102,11 @@ export class AgentConnection {
 		return this.connection.agent.notify('session/cancel', { sessionId });
 	}
 
+	/** Frees a session the agent keeps in memory; only when it advertises `sessionCapabilities.close`. */
+	close(sessionId: string): Promise<unknown> {
+		return this.connection.agent.request('session/close', { sessionId });
+	}
+
 	dispose(): void {
 		this.connection.close();
 	}

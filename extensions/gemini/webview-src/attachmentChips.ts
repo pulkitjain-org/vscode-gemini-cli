@@ -39,6 +39,10 @@ export function renderAttachments(): void {
 		}
 		chip.append(el('span', undefined, attachmentLabel(attachment)));
 		const remove = button('chip-remove', '', () => {
+			// The rewrite running may name it; it can go once the rewrite is back.
+			if (state.enhancing) {
+				return;
+			}
 			state.attachments = state.attachments.filter(a => a !== attachment);
 			renderAttachments();
 			input.focus();
