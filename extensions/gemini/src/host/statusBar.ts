@@ -8,6 +8,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { googleAccountsPath, readActiveAccount } from '../acp/accounts';
 import { CliResolution } from '../acp/cliResolution';
+import type { ModelQuota } from '../acp/directRequest';
 import { AgentStatus } from '../acp/status';
 import { AgentService } from './agentService';
 import { configSection, getProjectSettings } from './configuration';
@@ -28,6 +29,8 @@ export class GeminiStatusBar implements vscode.Disposable {
 	private account: string | undefined;
 	/** The last CLI seen, kept while the agent is down so the tooltip still says which CLI failed. */
 	private cli: string | undefined;
+	/** Today's quota use per model, from the usage meter. */
+	private usage: readonly ModelQuota[] | undefined;
 
 	constructor(private readonly service: AgentService) {
 		this.item.name = vscode.l10n.t("Gemini");
@@ -65,6 +68,11 @@ export class GeminiStatusBar implements vscode.Disposable {
 		vscode.Disposable.from(...this.disposables).dispose();
 	}
 
+	setUsage(usage: readonly ModelQuota[] | undefined): void {
+		this.usage = usage;
+		this.render();
+	}
+
 	private async refreshAccount(): Promise<void> {
 		const account = await readActiveAccount(this.accountsFile);
 		if (account !== this.account) {
@@ -79,8 +87,11 @@ export class GeminiStatusBar implements vscode.Disposable {
 			this.cli = `${status.agentName ?? 'gemini'} ${status.agentVersion}`;
 		}
 		const { icon, label } = describePhase(status);
-		this.item.text = `${icon} ${label}`;
-		this.item.backgroundColor = status.phase === 'error' ? new vscode.ThemeColor('statusBarItem.errorBackground') : undefined;
+		// Near a limit, the most used model's share shows in the bar itself.
+		const top = this.usage?.[0];
+		const nearLimit = status.phase === 'ready' && top && top.used >= nearLimitShare ? ` ${Math.round(top.used * 100)}%` : '';
+		this.item.text = `${icon} ${label}${nearLimit}`;
+		this.item.backgroundColor = status.phase === 'error' ? new vscode.ThemeColor('statusBarItem.errorBackground') : nearLimit && top!.used >= 0.95 ? new vscode.ThemeColor('statusBarItem.warningBackground') : undefined;
 
 		const project = getProjectSettings().resolved;
 		const tooltip = new vscode.MarkdownString(undefined, true);
@@ -91,6 +102,10 @@ export class GeminiStatusBar implements vscode.Disposable {
 		tooltip.appendMarkdown(`${vscode.l10n.t("Account")}: ${escapeMarkdown(this.account ?? vscode.l10n.t("not signed in"))}  \n`);
 		tooltip.appendMarkdown(`${vscode.l10n.t("Project")}: ${escapeMarkdown(project ? `${project.projectId} (${project.source})` : vscode.l10n.t("not set"))}  \n`);
 		tooltip.appendMarkdown(`${vscode.l10n.t("CLI")}: ${escapeMarkdown(this.cli ?? vscode.l10n.t("unknown until the agent starts"))}${escapeMarkdown(describeCliSource(this.service.cli))}`);
+		if (this.usage?.length) {
+			tooltip.appendMarkdown(`\n\n**${vscode.l10n.t("Today's use")}**  \n`);
+			tooltip.appendMarkdown(this.usage.slice(0, 6).map(q => describeQuota(q, Date.now())).join('  \n'));
+		}
 		this.item.tooltip = tooltip;
 	}
 
@@ -109,6 +124,20 @@ export class GeminiStatusBar implements vscode.Disposable {
 			await vscode.commands.executeCommand(picked.command);
 		}
 	}
+}
+
+/** From this share of a model's daily quota, the bar shows the percentage. */
+const nearLimitShare = 0.8;
+
+/** "gemini-2.5-pro: 35% used, resets in 3h". */
+function describeQuota(quota: ModelQuota, now: number): string {
+	const used = `${escapeMarkdown(quota.model)}: ${vscode.l10n.t("{0}% used", Math.round(quota.used * 100))}`;
+	const reset = quota.resetTime ? Date.parse(quota.resetTime) - now : NaN;
+	if (!Number.isFinite(reset) || reset <= 0) {
+		return used;
+	}
+	const hours = Math.floor(reset / 3_600_000);
+	return `${used}, ${hours ? vscode.l10n.t("resets in {0}h", hours) : vscode.l10n.t("resets in {0}m", Math.max(1, Math.round(reset / 60_000)))}`;
 }
 
 function describePhase(status: AgentStatus): { icon: string; label: string } {

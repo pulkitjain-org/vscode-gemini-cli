@@ -43,6 +43,7 @@ const commitButton = byId('commit', HTMLButtonElement);
 export const ui = {
 	transcript: byId('transcript', HTMLElement),
 	status: byId('status', HTMLElement),
+	announce: byId('announce', HTMLElement),
 	form: byId('composer', HTMLFormElement),
 	input: byId('input', HTMLTextAreaElement),
 	sendButton: byId('send', HTMLButtonElement),

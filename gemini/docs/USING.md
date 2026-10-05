@@ -2,6 +2,31 @@
 
 How the parts of GeminiCode that differ from VS Code behave day to day. For setup, see [Getting started](../README.md#getting-started).
 
+## Agents and Editor modes
+
+The switch at the top of the window, or Cmd+Alt+M, changes the layout:
+
+- **Agents mode** (the default) is for working with agents: your agents on the left, the agent's chat in the middle, and its changes on the right. When no tab is open, **Agent Home** shows: describe a task and press Enter to start an agent on it, tick **On its own branch** to give it a branch of its own, and see each agent's status, changes and next step as a card.
+- **Editor mode** is the classic VS Code layout, with Explorer, Search and Source Control, for hands-on coding.
+
+Each mode remembers which panels you had open. An agent's tab shows what it is doing (a spinner while it works, an amber dot when it needs you, a tick when it has finished) and how many lines it has changed. On a Mac, right-click GeminiCode in the Dock for **New Agent**. Agents that are working or waiting for you show as pills in the title bar in both modes; click one to open that agent.
+
+In the **Changes** panel, hover over a change to **Keep** or **Undo** it. **Keep All** accepts everything, **Undo All** puts the files back, and **Commit** commits the agent's files on a new branch (an agent on its own branch has **Merge Back** instead).
+
+## Keyboard shortcuts
+
+| Keys | What it does |
+| --- | --- |
+| Cmd+L | Open the chat; with a selection, add it to the chat |
+| Cmd+Alt+N | New agent |
+| Cmd+N (in the chat) | New chat |
+| Esc (in the chat input) | Stop the agent |
+| Up / Down (empty chat input) | Bring back an earlier prompt |
+| Cmd+I | Inline edit |
+| Cmd+Enter / Cmd+Backspace | Keep or undo the agent's changes to the file you're in |
+| Alt+] / Alt+[ | Next or previous agent change in the file |
+| F2 / Cmd+Backspace (Agents pane) | Rename or remove the selected agent |
+
 ## Make it yours
 
 Run **Make It Yours** from the Command Palette, or open the step of the same name in Get Started, to pick:
@@ -54,6 +79,14 @@ Each reply that changed files ends with **Undo**, which puts back every file it 
 
 The branch pill in a chat's composer switches to another branch or creates one. In an agent's chat, **Create Branch & Commit** creates a branch, stages only the files that agent changed, and commits them. If other files are already staged it warns first, because they would be committed too. After the commit the agent's Changes list is cleared.
 
+## Agents on their own branch
+
+Two agents in the same folder can trip over each other's edits. **New Agent on Its Own Branch** (the branch icon next to **+** on a workspace in a Git repository) asks for a branch name and gives the agent its own copy of the repository on that new branch, in `~/.geminicode/worktrees/<repository>/` (a Git worktree). The agent reads, edits and runs commands there, so your folder and other agents are untouched. Its row in the Agents pane shows the branch.
+
+When it's done, **Merge Back** (the merge icon on the agent's row) commits anything the agent left uncommitted, using the agent's name as the message, and merges its branch into the branch your folder has checked out. If the merge conflicts, it stops for you to finish in Source Control. After a clean merge it offers to remove the agent with its branch and folder. Removing such an agent asks whether to keep its branch, and says what is on it that isn't merged yet.
+
+The new copy has no `node_modules` or build output, so an agent that runs tests may need to install dependencies first. To start every new agent this way, turn on `gemini.agents.ownBranch`.
+
 ## Attaching context
 
 - **Workspace files.** Type `@` or use the **@** button. The agent gets a link and reads the file itself, including unsaved changes.
@@ -64,6 +97,10 @@ The branch pill in a chat's composer switches to another branch or creates one. 
   - Other files outside the workspace are sent as links. The CLI then asks once per file before reading it.
 
 The agent cannot read secret files such as `.env` and private keys, or git-ignored files, through the editor.
+
+## Replies
+
+Code in replies is coloured like the editor, in your colour theme. The button at the top of a code block copies it. A file name in a reply, such as `src/cart/total.ts:11`, opens the file at that line; when only the name is given, GeminiCode looks for it in the agent's folder. Notes, tips and warnings show as coloured callouts.
 
 ## Slash commands
 
@@ -83,9 +120,19 @@ Prompts that use `!{...}` (run a shell command) or `@{...}` (read a file) are no
 
 When an agent finishes or needs your permission while GeminiCode is in the background, a system notification appears and the Dock icon bounces. Click it to open the agent. The Dock icon and the Agents pane show how many agents are waiting for you. Turn both off with `gemini.notifications.enabled`. macOS asks once whether GeminiCode may show notifications.
 
-## MCP servers
+## MCP servers and rules
 
-The Gemini CLI starts the MCP servers in its `settings.json` files. When one cannot start, GeminiCode shows a warning naming the server and the reason, and writes it to the Gemini log (**Gemini: Show Log**). The CLI does not report these over ACP, so GeminiCode reads them from the CLI's debug log, which it keeps under 1 MB in its own storage. If you set `GEMINI_DEBUG_LOG_FILE` yourself, GeminiCode leaves it alone and shows no warnings.
+**Gemini: MCP Servers and Rules** (also in the Agents pane's **...** menu) lists the MCP servers in your personal `~/.gemini/settings.json` and in each open folder's `.gemini/settings.json`. Each has a switch that turns it on or off, the same way the CLI's `/mcp enable` and `/mcp disable` do, so the `gemini` command in your terminal sees the change too. **Add Server** asks for a name and the command that starts the server, or its URL, and adds it to your personal settings. The page also opens or creates your project's rules (`GEMINI.md`, or the name in `context.fileName`) and your personal rules (`~/.gemini/GEMINI.md`). Changes apply to agents started afterwards; **Restart Agent** applies them now.
+
+When an MCP server cannot start, GeminiCode shows a warning naming the server and the reason, marks it on the MCP Servers and Rules page, and writes it to the Gemini log (**Gemini: Show Log**). The CLI does not report these over ACP, so GeminiCode reads them from the CLI's debug log, which it keeps under 1 MB in its own storage. If you set `GEMINI_DEBUG_LOG_FILE` yourself, GeminiCode leaves it alone and shows no warnings.
+
+## Review my changes
+
+**Review My Changes**, in the Source Control title bar and the Agents pane's **...** menu, starts an agent in Plan mode with your uncommitted diff attached and new files listed. It reads the code around the changes and replies with a summary and its findings, most serious first, without editing anything. Ask it to fix one when you agree.
+
+## Today's use
+
+Hover the **Gemini** item in the status bar to see how much of today's quota each model has used and when it resets. Once a model passes 80%, the item shows the percentage. Turn this off with `gemini.usageMeter.enabled`.
 
 ## Long conversations
 

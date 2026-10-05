@@ -231,6 +231,10 @@
 			"project": "vscode-workbench"
 		},
 		{
+			"name": "vs/workbench/contrib/gemini",
+			"project": "vscode-workbench"
+		},
+		{
 			"name": "vs/workbench/contrib/tags",
 			"project": "vscode-workbench"
 		},

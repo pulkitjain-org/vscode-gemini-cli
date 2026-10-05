@@ -1,0 +1,123 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/* GEMINI-FORK: the title bar's agent pills and Agents | Editor switch. */
+
+.monaco-workbench .part.titlebar .action-item.gemini-mode-switcher {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 100%;
+	padding: 0 6px;
+	cursor: default;
+	-webkit-app-region: no-drag;
+}
+
+.monaco-workbench .gemini-mode-switcher .gemini-agent-pills {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.monaco-workbench .gemini-mode-switcher button {
+	font: inherit;
+	font-size: 12px;
+	color: inherit;
+	background: none;
+	border: none;
+	cursor: pointer;
+	-webkit-app-region: no-drag;
+}
+
+.monaco-workbench .gemini-mode-switcher button:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.monaco-workbench .gemini-agent-pill {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	max-width: 160px;
+	height: 22px;
+	padding: 0 8px;
+	border-radius: 11px;
+	background-color: var(--vscode-toolbar-hoverBackground) !important;
+}
+
+.monaco-workbench .gemini-agent-pill:hover {
+	background-color: var(--vscode-toolbar-activeBackground) !important;
+}
+
+.monaco-workbench .gemini-agent-pill .title {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.monaco-workbench .gemini-agent-pill .dot {
+	flex: none;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background-color: var(--vscode-descriptionForeground);
+}
+
+.monaco-workbench .gemini-agent-pill.working .dot {
+	background-color: var(--vscode-button-background);
+	animation: gemini-pill-pulse 1.4s ease-in-out infinite;
+}
+
+.monaco-workbench .gemini-agent-pill.waiting .dot {
+	background-color: var(--vscode-charts-yellow);
+}
+
+.monaco-workbench .gemini-agent-pill.done .dot {
+	background-color: var(--vscode-charts-green);
+}
+
+.monaco-workbench .gemini-agent-pill.error .dot {
+	background-color: var(--vscode-errorForeground);
+}
+
+.monaco-workbench .gemini-agent-pill.more {
+	padding: 0 7px;
+	color: var(--vscode-descriptionForeground);
+}
+
+@keyframes gemini-pill-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.35; }
+}
+
+.monaco-workbench.monaco-reduce-motion .gemini-agent-pill.working .dot {
+	animation: none;
+}
+
+.monaco-workbench .gemini-mode-toggle {
+	display: flex;
+	align-items: center;
+	height: 22px;
+	padding: 2px;
+	border-radius: 6px;
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.monaco-workbench .gemini-mode-toggle .gemini-mode-button {
+	height: 18px;
+	padding: 0 10px;
+	border-radius: 4px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.monaco-workbench .gemini-mode-toggle .gemini-mode-button:hover {
+	color: var(--vscode-foreground);
+}
+
+.monaco-workbench .gemini-mode-toggle .gemini-mode-button.checked {
+	color: var(--vscode-foreground);
+	background-color: var(--vscode-editor-background);
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}

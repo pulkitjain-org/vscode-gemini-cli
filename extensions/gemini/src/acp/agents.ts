@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
 import type { ChangeTotals } from './agentChanges';
 import { Emitter } from './events';
+import type { AgentWorktree } from './worktrees';
 
 export interface WorkspaceRecord {
 	readonly id: string;
@@ -31,6 +32,8 @@ export interface AgentRecord {
 	readonly sessionId?: string;
 	/** What the agent's edits add up to, for its row before it is opened. */
 	readonly changes?: ChangeTotals;
+	/** The agent's own branch and folder, when it works in a worktree instead of the workspace folder. */
+	readonly worktree?: AgentWorktree;
 }
 
 export interface AgentsSnapshot {
@@ -113,12 +116,12 @@ export class AgentsModel {
 		return removed;
 	}
 
-	addAgent(workspaceId: string, title: string): AgentRecord {
+	addAgent(workspaceId: string, title: string, worktree?: AgentWorktree): AgentRecord {
 		if (!this.workspace(workspaceId)) {
 			throw new Error(`Unknown workspace ${workspaceId}`);
 		}
 		const now = this.now();
-		const agent: AgentRecord = { id: randomUUID(), workspaceId, title, createdAt: now, updatedAt: now };
+		const agent: AgentRecord = { id: randomUUID(), workspaceId, title, createdAt: now, updatedAt: now, ...(worktree ? { worktree } : {}) };
 		this._agents = [...this._agents, agent];
 		this.changed();
 		return agent;
@@ -153,6 +156,11 @@ export class AgentsModel {
 				return changes.files ? { ...rest, changes } : rest;
 			});
 		}
+	}
+
+	/** Where the agent runs: its worktree, else its workspace's folder. */
+	folderOf(agent: AgentRecord): string | undefined {
+		return agent.worktree?.cwd ?? this.workspace(agent.workspaceId)?.folder;
 	}
 
 	removeAgent(id: string): void {
@@ -190,5 +198,6 @@ function isWorkspaceRecord(value: unknown): value is WorkspaceRecord {
 function isAgentRecord(value: unknown): value is AgentRecord {
 	const a = value as AgentRecord;
 	return typeof a?.id === 'string' && typeof a.workspaceId === 'string' && typeof a.title === 'string'
-		&& typeof a.createdAt === 'number' && typeof a.updatedAt === 'number';
+		&& typeof a.createdAt === 'number' && typeof a.updatedAt === 'number'
+		&& (a.worktree === undefined || (typeof a.worktree.folder === 'string' && typeof a.worktree.cwd === 'string' && typeof a.worktree.branch === 'string' && typeof a.worktree.base === 'string'));
 }

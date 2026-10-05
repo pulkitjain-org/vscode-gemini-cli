@@ -3,7 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { randomBytes } from 'node:crypto';
 import * as path from 'node:path';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
@@ -27,6 +26,8 @@ import { attachmentsForFiles } from './addToChat';
 import { createBranchAndCommit, pickBranch } from './gitActions';
 import { preferredComposerHeight, rememberComposerHeight, rememberModel } from './modelPreference';
 import { teamCommands } from './teamCommands';
+import { onDidChangeThemeTokens, themeTokenColors } from './themeTokens';
+import { createNonce, escapeAttribute } from './webviewHtml';
 import type { FileMatch } from './workspaceFiles';
 import { deleteFile, replaceFileText, WorkspaceFileSystem } from './workspaceFileSystem';
 
@@ -74,12 +75,16 @@ export interface ChatGit {
 		/** The files were committed. */
 		committed(): void;
 	};
+	/** Set for an agent on its own branch: the chat must not switch it, or Merge Back would miss the work. */
+	readonly ownBranch?: string;
 }
 
 /** What the Agents pane shows about a chat. */
 export interface ChatActivity {
 	readonly busy: boolean;
 	readonly needsPermission: boolean;
+	/** What the agent asks permission for, or the step it is on: a tool call's title. */
+	readonly step?: string;
 }
 
 /**
@@ -98,6 +103,8 @@ export class ChatController implements vscode.Disposable {
 	private webview: vscode.Webview | undefined;
 	private webviewListener: vscode.Disposable | undefined;
 	private busy = false;
+	/** The step last reported, so tool call updates report only a new one. */
+	private lastStep: string | undefined;
 	private lastSessionId: string | undefined;
 	/** Proposed edits by transcript item id (tool calls and permission requests), so their diffs can be opened later. */
 	private readonly diffs = new Map<string, readonly acp.Diff[]>();
@@ -166,6 +173,9 @@ export class ChatController implements vscode.Disposable {
 						}
 					}
 					this.transcript.apply(event);
+					if (event.kind === 'toolCall' && this.activity.step !== this.lastStep) {
+						this.fireActivity();
+					}
 				}
 			}),
 			service.client.onDidChangeState(state => {
@@ -182,6 +192,7 @@ export class ChatController implements vscode.Disposable {
 			vscode.window.onDidChangeWindowState(state => state.focused && this.webview && this.postGit()),
 			service.client.onDidChangeSettings(settings => this.post({ type: 'settings', settings })),
 			vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration('gemini.appearance.accent') && this.post({ type: 'accent', solid: solidAccent() })),
+			onDidChangeThemeTokens(() => this.webview && void this.postTokenColors()),
 			// Keeps an open "/" menu current; the agent lists its commands just after a session opens.
 			service.client.onDidChangeCommands(() => this.webview && void this.postCommands()),
 		);
@@ -191,7 +202,24 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	get activity(): ChatActivity {
-		return { busy: this.busy, needsPermission: this.service.permissions.pendingPermissions.length > 0 };
+		const [permission] = this.service.permissions.pendingPermissions;
+		const step = permission ? permission.request.toolCall.title ?? undefined : this.busy ? this.runningStep() : undefined;
+		return { busy: this.busy, needsPermission: !!permission, ...(step ? { step } : {}) };
+	}
+
+	/** The title of the tool call the turn is on, if any. */
+	private runningStep(): string | undefined {
+		const items = this.transcript.items;
+		for (let i = items.length - 1; i >= 0; i--) {
+			const item = items[i];
+			if (item.kind === 'user') {
+				return undefined;
+			}
+			if (item.kind === 'toolCall') {
+				return item.status === 'pending' || item.status === 'in_progress' ? item.title : undefined;
+			}
+		}
+		return undefined;
 	}
 
 	/** The conversation, as shown. */
@@ -386,7 +414,8 @@ export class ChatController implements vscode.Disposable {
 		} else {
 			this.pendingAttachments.push(...attachments);
 		}
-		await this.options.reveal(true);
+		// Focus the chat, so the user can type about what they just added.
+		await this.options.reveal(false);
 	}
 
 	/** Lets the user pick files from anywhere to attach. */
@@ -457,6 +486,8 @@ export class ChatController implements vscode.Disposable {
 				this.postGit();
 				// The agent was started with the view (see attach); this retries one that has since stopped.
 				this.service.ensureReady().catch(() => undefined);
+				// After starting the agent: finding the theme's file scans every extension the first time.
+				setTimeout(() => void this.postTokenColors(), 0);
 				break;
 			case 'prompt':
 				void this.send(message.text, message.attachments ?? []);
@@ -498,6 +529,9 @@ export class ChatController implements vscode.Disposable {
 			case 'openLocation':
 				void this.openLocation(message.path, message.line);
 				break;
+			case 'openPath':
+				void this.openPath(message.path, message.line);
+				break;
 			case 'setMode':
 				void this.changeSetting(() => this.service.client.setMode(message.id).catch(err => this.offerFolderTrust(err, message.id)));
 				break;
@@ -510,13 +544,16 @@ export class ChatController implements vscode.Disposable {
 				break;
 			case 'pickBranch': {
 				const folder = this.options.git?.folder();
-				if (folder) {
+				const ownBranch = this.options.git?.ownBranch;
+				if (ownBranch) {
+					void vscode.window.showInformationMessage(vscode.l10n.t("This agent works on its own branch, {0}. Use Merge Back to bring its work into your branch.", ownBranch));
+				} else if (folder) {
 					void pickBranch(folder).finally(() => this.postGit());
 				}
 				break;
 			}
 			case 'createBranchAndCommit':
-				void this.commitChanges();
+				void this.commit();
 				break;
 			case 'undoTurn':
 				void this.undoTurn(message.itemId);
@@ -529,7 +566,8 @@ export class ChatController implements vscode.Disposable {
 		}
 	}
 
-	private async commitChanges(): Promise<void> {
+	/** Commits the files the agent changed on a new branch, as the composer's Commit button does. */
+	async commit(): Promise<void> {
 		const folder = this.options.git?.folder();
 		const commit = this.options.git?.commit;
 		const files = commit?.files() ?? [];
@@ -628,6 +666,31 @@ export class ChatController implements vscode.Disposable {
 		await this.openLocation(filePath, undefined);
 	}
 
+	/** Opens a file the reply names: by its path from the agent's folder, else by its name anywhere in the workspace. */
+	private async openPath(name: string, line: number | undefined): Promise<void> {
+		if (typeof name !== 'string' || !name || name.length > 500) {
+			return;
+		}
+		const folder = this.options.git?.folder() ?? this.service.client.cwd;
+		const direct = path.resolve(folder, name);
+		if (await isFile(direct)) {
+			return this.openLocation(direct, line);
+		}
+		const pattern = `**/${name.replace(/^(\.\.?\/)+/, '').replace(/[[\]{}*?!]/g, '?')}`;
+		const matches = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, pattern), '**/{node_modules,.git}/**', 20);
+		if (matches.length === 1) {
+			return this.openLocation(matches[0].fsPath, line);
+		}
+		if (!matches.length) {
+			void vscode.window.setStatusBarMessage(vscode.l10n.t("No file named {0} in {1}", name, path.basename(folder)), 4000);
+			return;
+		}
+		const pick = await vscode.window.showQuickPick(matches.map(uri => ({ label: path.basename(uri.fsPath), description: vscode.workspace.asRelativePath(uri), uri })), { placeHolder: vscode.l10n.t("Which {0}?", name) });
+		if (pick) {
+			return this.openLocation(pick.uri.fsPath, line);
+		}
+	}
+
 	private async openLocation(filePath: string, line: number | undefined): Promise<void> {
 		const position = new vscode.Position(Math.max((line ?? 1) - 1, 0), 0);
 		try {
@@ -649,7 +712,9 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	private fireActivity(): void {
-		this.onDidChangeActivityEmitter.fire(this.activity);
+		const activity = this.activity;
+		this.lastStep = activity.step;
+		this.onDidChangeActivityEmitter.fire(activity);
 	}
 
 	private postReset(): void {
@@ -667,16 +732,23 @@ export class ChatController implements vscode.Disposable {
 		void this.webview?.postMessage(message);
 	}
 
+	private async postTokenColors(): Promise<void> {
+		this.post({ type: 'tokenColors', colors: await themeTokenColors() });
+	}
+
 	private getHtml(webview: vscode.Webview, mediaUri: vscode.Uri): string {
 		const nonce = createNonce();
 		const script = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'chat.js'));
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'chat.css'));
 		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'codicon.css'));
+		// Loaded by the view when it first shows code.
+		const highlighter = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'highlight.js'));
 		const strings: ChatStrings = {
 			placeholder: vscode.l10n.t("Ask Gemini anything about this workspace"),
 			placeholderFollowUp: vscode.l10n.t("Ask a follow-up"),
 			send: vscode.l10n.t("Send (Enter)"),
-			stop: vscode.l10n.t("Stop"),
+			stop: vscode.l10n.t("Stop (Esc)"),
+			replyFinished: vscode.l10n.t("Reply finished"),
 			welcomeTitle: vscode.l10n.t("What are we building?"),
 			welcome: vscode.l10n.t("Ask Gemini to explain, change or create code in this workspace. It asks before it edits files."),
 			hintMention: vscode.l10n.t("to add files as context"),
@@ -706,7 +778,8 @@ export class ChatController implements vscode.Disposable {
 			retry: vscode.l10n.t("Retry"),
 			retryTooltip: vscode.l10n.t("Send this message again"),
 			switchBranch: vscode.l10n.t("Branch {0}: switch or create a branch"),
-			createBranchAndCommit: vscode.l10n.t("Create Branch & Commit"),
+			createBranchAndCommit: vscode.l10n.t("Create a branch and commit these changes"),
+			commit: vscode.l10n.t("Commit\u2026"),
 			addContext: vscode.l10n.t("Add context (@)"),
 			noFiles: vscode.l10n.t("No matching files"),
 			noCommands: vscode.l10n.t("No matching commands"),
@@ -716,20 +789,27 @@ export class ChatController implements vscode.Disposable {
 			fileTooLarge: vscode.l10n.t("{0} is too large to send."),
 			attachFiles: vscode.l10n.t("Attach files. You can also drop files here; hold Shift when dragging from the Explorer."),
 			dropFiles: vscode.l10n.t("Drop files to attach"),
+			calloutNote: vscode.l10n.t("Note"),
+			calloutTip: vscode.l10n.t("Tip"),
+			calloutImportant: vscode.l10n.t("Important"),
+			calloutWarning: vscode.l10n.t("Warning"),
+			calloutCaution: vscode.l10n.t("Caution"),
+			openFile: vscode.l10n.t("Open file"),
 			cannotAttach: vscode.l10n.t("{0} can't be attached: only text files, images and PDFs can be dropped here. Use the attach button to add other files."),
 		};
 		return `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}' ${webview.cspSource};">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link href="${codicons}" rel="stylesheet">
 	<link href="${style}" rel="stylesheet">
 	<title>Gemini</title>
 </head>
 <body data-accent="${solidAccent() ? 'solid' : 'gradient'}">
-	<main id="transcript" class="transcript" aria-live="polite"></main>
+	<main id="transcript" class="transcript"></main>
+	<div id="announce" class="announce" aria-live="polite"></div>
 	<div id="status" class="status" role="status"></div>
 	<form id="composer" class="composer">
 		<div id="resize" class="composer-resize"></div>
@@ -750,7 +830,7 @@ export class ChatController implements vscode.Disposable {
 			<button type="button" id="stop" class="round-button stop" hidden><i class="codicon codicon-debug-stop" aria-hidden="true"></i></button>
 		</div>
 	</form>
-	<script nonce="${nonce}" type="module" src="${script}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
+	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
 </html>`;
 	}
@@ -773,16 +853,16 @@ function diffsOf(content: readonly acp.ToolCallContent[] | null | undefined): ac
 	return (content ?? []).flatMap(c => c.type === 'diff' ? [c] : []);
 }
 
-function escapeAttribute(value: string): string {
-	return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-}
-
 /** Whether Send shows a solid accent picked on the Make It Yours page instead of the Gemini gradient. */
 function solidAccent(): boolean {
 	const accent = vscode.workspace.getConfiguration('gemini').get<string>('appearance.accent', 'theme');
 	return accent !== 'theme' && accent !== 'gradient';
 }
 
-function createNonce(): string {
-	return randomBytes(16).toString('base64');
+async function isFile(filePath: string): Promise<boolean> {
+	try {
+		return (await vscode.workspace.fs.stat(vscode.Uri.file(filePath))).type === vscode.FileType.File;
+	} catch {
+		return false;
+	}
 }

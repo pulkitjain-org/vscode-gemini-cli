@@ -51,6 +51,10 @@ export class AgentService implements vscode.Disposable {
 
 	/** MCP servers that fail to start, read from the CLI's debug log; unset in tests. */
 	private readonly mcpDiagnostics: McpDiagnostics | undefined;
+	private _mcpProblems: McpProblem[] = [];
+	private readonly onDidChangeMcpProblemsEmitter = new vscode.EventEmitter<void>();
+	/** Fires when an MCP server fails, or the agent restarts and they start afresh. */
+	readonly onDidChangeMcpProblems = this.onDidChangeMcpProblemsEmitter.event;
 
 	/** `debugLog` is where the agent writes its debug log, read for MCP failures the CLI does not report over ACP. */
 	constructor(private readonly log: vscode.LogOutputChannel, debugLog?: string) {
@@ -77,6 +81,7 @@ export class AgentService implements vscode.Disposable {
 				this.onDidChangeStatusEmitter.fire(this.status);
 			}),
 			this.sidecar.onStderr(line => log.info(`[agent] ${line}`)),
+			this.onDidChangeMcpProblemsEmitter,
 			...(this.mcpDiagnostics ? [this.mcpDiagnostics, this.mcpDiagnostics.onDidReport(problem => this.reportMcpProblem(problem))] : []),
 			this.sidecar.onDidChangeState(state => {
 				const detail = state.kind === 'restarting' ? ` (attempt ${state.attempt} in ${state.delayMs}ms, exit code ${state.exitCode})`
@@ -233,17 +238,31 @@ export class AgentService implements vscode.Disposable {
 		if (!this.mcpDiagnostics || command.env.GEMINI_DEBUG_LOG_FILE || !this.mcpDiagnostics.reset()) {
 			return command;
 		}
+		if (this._mcpProblems.length) {
+			this._mcpProblems = [];
+			this.onDidChangeMcpProblemsEmitter.fire();
+		}
 		return { ...command, env: { ...command.env, GEMINI_DEBUG_LOG_FILE: this.mcpDiagnostics.file } };
 	}
 
+	/** The MCP problems the running agent process reported. */
+	get mcpProblems(): readonly McpProblem[] {
+		return this._mcpProblems;
+	}
+
 	private reportMcpProblem(problem: McpProblem): void {
+		this._mcpProblems = [...this._mcpProblems, problem];
+		this.onDidChangeMcpProblemsEmitter.fire();
 		this.log.warn(`MCP server ${problem.server ?? '(unknown)'}: ${problem.message}`);
 		const text = problem.server
 			? vscode.l10n.t("Gemini could not start the MCP server \"{0}\": {1}. Its tools are not available.", problem.server, problem.message)
 			: vscode.l10n.t("An MCP server failed: {0}", problem.message);
+		const manage = vscode.l10n.t("MCP Servers");
 		const showLog = vscode.l10n.t("Show Log");
-		void vscode.window.showWarningMessage(text, showLog).then(choice => {
-			if (choice === showLog) {
+		void vscode.window.showWarningMessage(text, manage, showLog).then(choice => {
+			if (choice === manage) {
+				void vscode.commands.executeCommand('gemini.projectSettings');
+			} else if (choice === showLog) {
 				this.log.show();
 			}
 		});

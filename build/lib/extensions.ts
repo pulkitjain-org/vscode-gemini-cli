@@ -317,6 +317,8 @@ const nativeExtensions = [
 
 const excludedExtensions = [
 	'copilot',
+	// GEMINI-FORK: forwards ports through Microsoft dev tunnels with the `code` CLI, which GeminiCode does not ship.
+	'tunnel-forwarding',
 	'vscode-api-tests',
 	'vscode-colorize-tests',
 	'vscode-colorize-perf-tests',

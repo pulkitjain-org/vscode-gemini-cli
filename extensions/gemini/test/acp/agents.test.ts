@@ -3,6 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { AgentsModel, titleFromPrompt } from '../../src/acp/agents';
 
@@ -122,5 +123,21 @@ describe('AgentsModel', () => {
 		model.rename(agent.id, 'b');
 		model.removeAgent(agent.id);
 		expect(changes).toBe(4);
+	});
+
+	it('keeps the branch an agent works on and runs it there', () => {
+		const folder = path.resolve('/work/api');
+		const model = new AgentsModel();
+		const workspace = model.addWorkspace(folder);
+		const worktree = { folder: path.resolve('/wt/fix'), cwd: path.resolve('/wt/fix/app'), branch: 'gemini/fix', base: 'main' };
+		const agent = model.addAgent(workspace.id, 'New agent', worktree);
+		const plain = model.addAgent(workspace.id, 'Other');
+		expect(model.folderOf(agent)).toBe(worktree.cwd);
+		expect(model.folderOf(plain)).toBe(folder);
+		const reloaded = new AgentsModel(JSON.parse(JSON.stringify(model.snapshot())));
+		expect(reloaded.agent(agent.id)?.worktree).toEqual(worktree);
+		expect(reloaded.agent(plain.id)?.worktree).toBeUndefined();
+		const broken = { ...model.snapshot(), agents: [{ ...agent, worktree: { folder: 1 } }] };
+		expect(new AgentsModel(broken as never).agent(agent.id)).toBeUndefined();
 	});
 });

@@ -110,6 +110,30 @@
         "icon": "$(add)"
       },
       {
+        "command": "gemini.agents.newAgentOnBranch",
+        "title": "%command.agents.newAgentOnBranch%",
+        "category": "%category%",
+        "icon": "$(git-branch)"
+      },
+      {
+        "command": "gemini.agentHome",
+        "title": "%command.agentHome%",
+        "category": "%category%",
+        "icon": "$(home)"
+      },
+      {
+        "command": "gemini.reviewChanges",
+        "title": "%command.reviewChanges%",
+        "category": "%category%",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "gemini.projectSettings",
+        "title": "%command.projectSettings%",
+        "category": "%category%",
+        "icon": "$(server-environment)"
+      },
+      {
         "command": "gemini.agents.addWorkspace",
         "title": "%command.agents.addWorkspace%",
         "category": "%category%",
@@ -125,6 +149,12 @@
         "title": "%command.agents.openChanges%",
         "category": "%category%",
         "icon": "$(diff-multiple)"
+      },
+      {
+        "command": "gemini.agents.mergeBack",
+        "title": "%command.agents.mergeBack%",
+        "category": "%category%",
+        "icon": "$(git-merge)"
       },
       {
         "command": "gemini.agents.rename",
@@ -280,14 +310,71 @@
         "key": "ctrl+i",
         "mac": "cmd+i",
         "when": "editorTextFocus && !editorReadonly && resourceScheme == file && config.gemini.inlineEdit.enabled"
+      },
+      {
+        "command": "gemini.openChat",
+        "key": "ctrl+l",
+        "mac": "cmd+l",
+        "when": "editorTextFocus && !editorHasSelection"
+      },
+      {
+        "command": "gemini.agents.newAgent",
+        "key": "ctrl+alt+n",
+        "mac": "cmd+alt+n"
+      },
+      {
+        "command": "gemini.newChat",
+        "key": "ctrl+n",
+        "mac": "cmd+n",
+        "when": "focusedView == gemini.chat"
+      },
+      {
+        "command": "gemini.review.keepFile",
+        "key": "ctrl+enter",
+        "mac": "cmd+enter",
+        "when": "gemini.review.active && editorTextFocus"
+      },
+      {
+        "command": "gemini.review.undoFile",
+        "key": "ctrl+backspace",
+        "mac": "cmd+backspace",
+        "when": "gemini.review.active && editorTextFocus"
+      },
+      {
+        "command": "gemini.review.nextChange",
+        "key": "alt+]",
+        "when": "gemini.review.active && editorTextFocus"
+      },
+      {
+        "command": "gemini.review.previousChange",
+        "key": "alt+[",
+        "when": "gemini.review.active && editorTextFocus"
+      },
+      {
+        "command": "gemini.agents.rename",
+        "key": "f2",
+        "when": "focusedView == gemini.agents"
+      },
+      {
+        "command": "gemini.agents.remove",
+        "key": "delete",
+        "mac": "cmd+backspace",
+        "when": "focusedView == gemini.agents"
       }
-    ],
+     ],
     "viewsContainers": {
       "activitybar": [
         {
           "id": "gemini",
           "title": "%viewContainer.title%",
           "icon": "media/gemini.svg"
+        }
+      ],
+      "secondarySidebar": [
+        {
+          "id": "geminiChanges",
+          "title": "%viewContainer.changes%",
+          "icon": "$(diff-multiple)"
         }
       ]
     },
@@ -301,7 +388,8 @@
         {
           "id": "gemini.agentChanges",
           "name": "%view.agentChanges%",
-          "initialSize": 1
+          "initialSize": 1,
+          "when": "gemini.mode != agents"
         },
         {
           "type": "webview",
@@ -309,6 +397,14 @@
           "name": "%view.chat%",
           "initialSize": 3,
           "visibility": "collapsed"
+        }
+      ],
+      "geminiChanges": [
+        {
+          "type": "webview",
+          "id": "gemini.changesPanel",
+          "name": "%view.changesPanel%",
+          "when": "gemini.mode == agents"
         }
       ]
     },
@@ -354,6 +450,11 @@
           "command": "gemini.generateCommitMessage",
           "when": "scmProvider == git && config.gemini.inlineEdit.enabled",
           "group": "navigation@1"
+        },
+        {
+          "command": "gemini.reviewChanges",
+          "when": "scmProvider == git",
+          "group": "navigation@2"
         }
       ],
       "editor/context": [
@@ -400,6 +501,21 @@
           "group": "navigation@2"
         },
         {
+          "command": "gemini.agentHome",
+          "when": "view == gemini.agents",
+          "group": "navigation@3"
+        },
+        {
+          "command": "gemini.reviewChanges",
+          "when": "view == gemini.agents",
+          "group": "helpers@1"
+        },
+        {
+          "command": "gemini.projectSettings",
+          "when": "view == gemini.agents",
+          "group": "helpers@2"
+        },
+        {
           "command": "gemini.changes.openAll",
           "when": "view == gemini.agentChanges",
           "group": "navigation@1"
@@ -417,8 +533,18 @@
           "group": "inline"
         },
         {
+          "command": "gemini.agents.newAgentOnBranch",
+          "when": "view == gemini.agents && viewItem =~ /^workspace.*\\.git$/",
+          "group": "inline"
+        },
+        {
           "command": "gemini.agents.openChanges",
           "when": "view == gemini.agents && viewItem =~ /\\.changes$/",
+          "group": "inline"
+        },
+        {
+          "command": "gemini.agents.mergeBack",
+          "when": "view == gemini.agents && viewItem =~ /\\.worktree/",
           "group": "inline"
         },
         {
@@ -432,8 +558,13 @@
           "group": "1_agent@1"
         },
         {
+          "command": "gemini.agents.newAgentOnBranch",
+          "when": "view == gemini.agents && viewItem =~ /^workspace.*\\.git$/",
+          "group": "1_agent@2"
+        },
+        {
           "command": "gemini.agents.removeWorkspace",
-          "when": "view == gemini.agents && viewItem == workspace",
+          "when": "view == gemini.agents && viewItem =~ /^workspace(\\.git)?$/",
           "group": "2_remove@1"
         },
         {
@@ -450,6 +581,11 @@
           "command": "gemini.agents.stop",
           "when": "view == gemini.agents && viewItem =~ /^agent\\.busy/",
           "group": "1_agent@3"
+        },
+        {
+          "command": "gemini.agents.mergeBack",
+          "when": "view == gemini.agents && viewItem =~ /\\.worktree/",
+          "group": "1_agent@4"
         },
         {
           "command": "gemini.agents.remove",
@@ -491,6 +627,10 @@
           "when": "false"
         },
         {
+          "command": "gemini.agents.mergeBack",
+          "when": "false"
+        },
+        {
           "command": "gemini.agents.openChanges",
           "when": "false"
         },
@@ -528,11 +668,22 @@
           "scope": "machine",
           "markdownDescription": "%configuration.app.checkForUpdates%"
         },
+        "gemini.agents.ownBranch": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "%configuration.agents.ownBranch%"
+        },
         "gemini.inlineEdit.enabled": {
           "type": "boolean",
           "default": true,
           "scope": "machine",
           "markdownDescription": "%configuration.inlineEdit.enabled%"
+        },
+        "gemini.usageMeter.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "markdownDescription": "%configuration.usageMeter.enabled%"
         },
         "gemini.inlineEdit.model": {
           "type": "string",
@@ -661,6 +812,7 @@
     "@types/markdown-it": "^14.2.0",
     "@types/node": "24.x",
     "@vscode/codicons": "^0.0.36",
+    "highlight.js": "^11.12.0",
     "markdown-it": "^14.3.2",
     "vitest": "^4.1.8"
   },

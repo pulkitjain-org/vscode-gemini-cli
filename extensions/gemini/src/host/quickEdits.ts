@@ -38,7 +38,8 @@ interface GitApi {
  */
 export class QuickEdits implements vscode.Disposable {
 
-	private readonly client: DirectClient;
+	/** Shared with the usage meter, which reads the quota with the same sign-in and project. */
+	readonly client: DirectClient;
 	private readonly source: ReviewSource;
 	private readonly disposables: vscode.Disposable[] = [];
 	private lastInstruction = '';

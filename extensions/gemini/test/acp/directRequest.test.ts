@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cliEnvProject, detectAuth, DirectClient, DirectRequestError, readCliBundle } from '../../src/acp/directRequest';
+import { cliEnvProject, detectAuth, DirectClient, DirectRequestError, parseQuota, readCliBundle } from '../../src/acp/directRequest';
 
 let home: string;
 
@@ -122,6 +122,36 @@ describe('DirectClient', () => {
 		expect(await fails(() => json({}, 429))).toMatchObject({ kind: 'quota' });
 		expect(await fails(() => { throw new Error('offline'); })).toMatchObject({ kind: 'network' });
 		expect(await new DirectClient({ env: { GEMINI_CLI_HOME: home } }).generate(request).catch((err: DirectRequestError) => err.kind)).toBe('auth');
+	});
+});
+
+describe('quota', () => {
+	it('reads the quota with the saved sign-in and project', async () => {
+		await writeGemini('oauth_creds.json', { access_token: 'tok', expiry_date: Date.now() + 3_600_000 });
+		const { fetch, calls } = fakeFetch({
+			':retrieveUserQuota': () => json({ buckets: [{ modelId: 'gemini-2.5-pro', remainingFraction: 0.25, resetTime: '2026-10-05T00:00:00Z' }] }),
+		});
+		const client = new DirectClient({ env: { GEMINI_CLI_HOME: home, CODE_ASSIST_ENDPOINT: 'http://fake' }, fetch, projectId: () => 'p' });
+		expect(await client.quota()).toEqual([{ model: 'gemini-2.5-pro', used: 0.75, resetTime: '2026-10-05T00:00:00Z' }]);
+		expect(JSON.parse(calls[0].init.body as string)).toEqual({ project: 'p' });
+	});
+
+	it('has none with an API key', async () => {
+		const client = new DirectClient({ env: { GEMINI_CLI_HOME: home, GEMINI_API_KEY: 'k' }, fetch: fakeFetch({}).fetch });
+		expect(await client.quota()).toBeUndefined();
+	});
+
+	it('keeps the most used bucket per model, most used first, and skips odd ones', () => {
+		expect(parseQuota({
+			buckets: [
+				{ modelId: 'flash', remainingFraction: 0.9 },
+				{ modelId: 'pro', remainingFraction: 0.5 },
+				{ modelId: 'flash', remainingFraction: 0.6, tokenType: 'OUTPUT' },
+				{ modelId: 'odd' },
+				null,
+			],
+		})).toEqual([{ model: 'pro', used: 0.5 }, { model: 'flash', used: 0.4 }]);
+		expect(parseQuota(undefined)).toEqual([]);
 	});
 });
 

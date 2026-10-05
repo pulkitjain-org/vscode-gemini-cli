@@ -20,6 +20,14 @@ export interface ChangesSource {
 	readonly changes: AgentChanges;
 	/** Where the agent's files and diffs open: beside its tab, so its chat stays in view. */
 	editorColumn(): vscode.ViewColumn;
+	/** A turn is running. */
+	busy(): boolean;
+	/** The agent's own branch, when it works in a worktree. */
+	readonly branch?: string;
+	/** Commits the changed files on a new branch (agents in the workspace folder). */
+	commit?(): Promise<void>;
+	/** Merges the agent's branch back (agents on their own branch). */
+	mergeBack?(): Promise<void>;
 }
 
 /**

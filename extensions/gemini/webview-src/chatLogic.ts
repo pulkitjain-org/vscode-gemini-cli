@@ -142,6 +142,22 @@ export function codeLanguage(className: string): string {
 	return /(?:^|\s)language-(\S+)/.exec(className)?.[1] ?? '';
 }
 
+/** File extensions a `code` span must end in to be taken for a file. */
+const fileExtensions = new Set('ts tsx mts cts js jsx mjs cjs json jsonc md mdx py go rs java kt kts swift css scss less html htm xml yml yaml toml sql sh bash zsh c h cc cpp hpp cs rb php vue svelte lock txt env gradle proto graphql ini cfg conf dart lua r scala ex exs erl hs ml clj tf hcl mk dockerfile'.split(' '));
+
+/**
+ * The file a `code` span names, such as `src/cart/total.ts`, `total.ts:11` or
+ * `README.md`, with its line; undefined for anything else, such as `item.price`.
+ */
+export function fileReference(text: string): { path: string; line?: number } | undefined {
+	const match = /^((?:\.{0,2}\/)?(?:[\w@.-]+\/)*[\w@-][\w@.-]*\.([A-Za-z][\w]{0,9}))(?::(\d+)(?::\d+)?)?$/.exec(text.trim());
+	if (!match || !fileExtensions.has(match[2].toLowerCase())) {
+		return undefined;
+	}
+	const line = match[3] ? Number(match[3]) : undefined;
+	return { path: match[1], ...(line ? { line } : {}) };
+}
+
 /** An empty code block opened by `opener`, closed with its own marker. */
 export function emptyFence(opener: string): string {
 	return `${opener}\n${opener.trimEnd().replace(/^([`~]+).*$/, '$1')}\n`;

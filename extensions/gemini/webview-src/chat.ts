@@ -17,6 +17,7 @@
 import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
 import { addAttachments } from './attachmentChips';
 import { setBusy, setGit, setSettings, setStatus } from './composer';
+import { applyTokenColors } from './codeHighlight';
 import { setLabel } from './dom';
 import { restoreComposerHeight, updatePlaceholder, updateSendState } from './inputBox';
 import { showCommands, showFiles } from './picker';
@@ -74,6 +75,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'accent':
 			document.body.dataset.accent = message.solid ? 'solid' : 'gradient';
+			break;
+		case 'tokenColors':
+			applyTokenColors(message.colors);
 			break;
 		case 'commands':
 			showCommands(message.commands);

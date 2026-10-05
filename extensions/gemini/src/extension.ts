@@ -9,7 +9,9 @@ import { filesToAttach, selectionsToAttach } from './host/addToChat';
 import { AppUpdateNotice } from './host/appUpdateNotice';
 import { Appearance } from './host/appearance';
 import { AgentService } from './host/agentService';
+import { AgentHome } from './host/agentHome';
 import { AgentsView } from './host/agentsView';
+import { ChangesPanel } from './host/changesPanel';
 import { applyLayoutDefaults } from './host/layoutDefaults';
 import { ChatViewProvider, chatViewId } from './host/chatView';
 import { checkAgent } from './host/checkAgent';
@@ -20,6 +22,8 @@ import { initModelPreference } from './host/modelPreference';
 import { SetupWalkthrough, walkthroughId } from './host/setupWalkthrough';
 import { GeminiStatusBar } from './host/statusBar';
 import { QuickEdits } from './host/quickEdits';
+import { SettingsPage } from './host/settingsPage';
+import { UsageMeter } from './host/usageMeter';
 import { initTeamCommands } from './host/teamCommands';
 import { WorkspaceFileIndex } from './host/workspaceFiles';
 
@@ -37,9 +41,15 @@ export function activate(context: vscode.ExtensionContext): void {
 	const fileIndex = new WorkspaceFileIndex();
 	const chatView = new ChatViewProvider(context.extensionUri, service, diffPreview, fileIndex);
 	const agentsView = new AgentsView(context, service, diffPreview, fileIndex);
+	// Agents mode's Changes panel follows the agent in front, as the Changes view does.
+	const changesPanel = new ChangesPanel(context.extensionUri);
+	changesPanel.show(agentsView.focusedSource);
 	void applyLayoutDefaults(context);
 	// Add to Chat goes to the agent tab in front, else to the quick chat.
 	const chatInFront = () => agentsView.activeController() ?? chatView.controller;
+	const quickEdits = new QuickEdits(agentsView.review, log);
+	const statusBar = new GeminiStatusBar(service);
+	const usageMeter = new UsageMeter(quickEdits.client, log);
 	const walkthrough = new SetupWalkthrough(service, context.globalState);
 
 	context.subscriptions.push(
@@ -50,10 +60,16 @@ export function activate(context: vscode.ExtensionContext): void {
 		fileIndex,
 		chatView,
 		agentsView,
-		new QuickEdits(agentsView.review, log),
+		changesPanel,
+		agentsView.onDidFocus(source => changesPanel.show(source)),
+		new AgentHome(context.extensionUri, agentsView),
+		new SettingsPage(context.extensionUri, service),
+		quickEdits,
+		statusBar,
+		usageMeter,
+		usageMeter.onDidChange(usage => statusBar.setUsage(usage)),
 		walkthrough,
 		new Appearance(context.extensionUri),
-		new GeminiStatusBar(service),
 		new CliManager(service, context.globalState, log),
 		new AppUpdateNotice(context.globalState, log),
 		// Kept alive while hidden, so switching back to the chat is instant instead of reloading it.

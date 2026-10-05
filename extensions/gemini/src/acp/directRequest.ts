@@ -218,6 +218,20 @@ export class DirectClient {
 		}
 	}
 
+	/**
+	 * Today's quota per model, as `retrieveUserQuota` reports it to the CLI;
+	 * undefined when signed in with an API key or not at all, which have no quota to read.
+	 */
+	async quota(signal?: AbortSignal): Promise<ModelQuota[] | undefined> {
+		const auth = await detectAuth(this.env);
+		if (auth.kind !== 'google') {
+			return undefined;
+		}
+		const headers = { authorization: `Bearer ${await this.accessToken(auth.credsFile, signal)}` };
+		const project = await this.projectId(headers, signal);
+		return parseQuota(await this.post(`${this.codeAssistBase()}:retrieveUserQuota`, headers, { project }, signal));
+	}
+
 	private codeAssistBase(): string {
 		return `${this.env.CODE_ASSIST_ENDPOINT || 'https://cloudcode-pa.googleapis.com'}/${this.env.CODE_ASSIST_API_VERSION || 'v1internal'}`;
 	}
@@ -310,6 +324,31 @@ export class DirectClient {
 			throw new DirectRequestError('Gemini sent an answer that is not JSON.', 'other');
 		}
 	}
+}
+
+export interface ModelQuota {
+	readonly model: string;
+	/** 0 to 1. */
+	readonly used: number;
+	/** ISO time the quota resets. */
+	readonly resetTime?: string;
+}
+
+/** One entry per model from a `retrieveUserQuota` answer, the most used bucket where a model has several. */
+export function parseQuota(response: unknown): ModelQuota[] {
+	const buckets = (response as { buckets?: unknown })?.buckets;
+	const byModel = new Map<string, ModelQuota>();
+	for (const bucket of Array.isArray(buckets) ? buckets : []) {
+		const { modelId, remainingFraction, resetTime } = bucket ?? {};
+		if (typeof modelId !== 'string' || typeof remainingFraction !== 'number' || !Number.isFinite(remainingFraction)) {
+			continue;
+		}
+		const used = Math.min(1, Math.max(0, 1 - remainingFraction));
+		if ((byModel.get(modelId)?.used ?? -1) < used) {
+			byModel.set(modelId, { model: modelId, used, ...(typeof resetTime === 'string' ? { resetTime } : {}) });
+		}
+	}
+	return [...byModel.values()].sort((a, b) => b.used - a.used || a.model.localeCompare(b.model));
 }
 
 /** As little thinking as the model allows: Gemini 2.5 takes a budget, Gemini 3 a level. */

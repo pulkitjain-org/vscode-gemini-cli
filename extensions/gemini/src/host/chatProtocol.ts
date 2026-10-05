@@ -12,6 +12,7 @@ import type { ItemUpdate } from '../acp/textDeltas';
 import type { SessionSettings } from '../acp/sessionSettings';
 import type { SlashCommand } from '../acp/slashCommands';
 import type { AgentPhase } from '../acp/status';
+import type { TokenColors } from '../acp/tokenColors';
 
 /**
  * Bumped when the messages change, so the host can tell when the webview
@@ -37,6 +38,8 @@ export interface ChatStrings {
 	readonly placeholderFollowUp: string;
 	readonly send: string;
 	readonly stop: string;
+	/** Read out by screen readers when a turn ends. */
+	readonly replyFinished: string;
 	/** The empty chat's heading, and the line and hints under it. */
 	readonly welcomeTitle: string;
 	readonly welcome: string;
@@ -71,6 +74,12 @@ export interface ChatStrings {
 	readonly attachFiles: string;
 	readonly dropFiles: string;
 	readonly cannotAttach: string;
+	readonly calloutNote: string;
+	readonly calloutTip: string;
+	readonly calloutImportant: string;
+	readonly calloutWarning: string;
+	readonly calloutCaution: string;
+	readonly openFile: string;
 	/** `{0}` is the chosen option's name. */
 	readonly permissionAnswered: string;
 	readonly permissionCancelled: string;
@@ -87,7 +96,9 @@ export interface ChatStrings {
 	readonly retryTooltip: string;
 	/** `{0}` is the branch; the branch pill's tooltip. */
 	readonly switchBranch: string;
+	/** The commit pill's tooltip, and its short label. */
 	readonly createBranchAndCommit: string;
+	readonly commit: string;
 }
 
 /** The chat folder's git state, for the branch pill and Create Branch & Commit. */
@@ -114,6 +125,8 @@ export type FromWebview =
 	/** Show the diff for a file a tool call or permission request changes; `itemId` is the transcript item. */
 	| { readonly type: 'openDiff'; readonly itemId: string; readonly path: string }
 	| { readonly type: 'openLocation'; readonly path: string; readonly line?: number }
+	/** A file named in the reply's text: absolute, relative to the agent's folder, or a bare name to look for. */
+	| { readonly type: 'openPath'; readonly path: string; readonly line?: number }
 	| { readonly type: 'pickBranch' }
 	/** The attach button: pick files from anywhere to attach. */
 	| { readonly type: 'pickFiles' }
@@ -145,4 +158,6 @@ export type ToWebview =
 	| { readonly type: 'attach'; readonly attachments: readonly Attachment[] }
 	| { readonly type: 'git'; readonly git: ViewGit }
 	/** Whether Send shows the accent colour (true) or the Gemini gradient. */
-	| { readonly type: 'accent'; readonly solid: boolean };
+	| { readonly type: 'accent'; readonly solid: boolean }
+	/** The colour theme's syntax colours, for code blocks. */
+	| { readonly type: 'tokenColors'; readonly colors: TokenColors };

@@ -35,7 +35,19 @@ export class WebviewInput extends EditorInput {
 	}
 
 	public override get capabilities(): EditorInputCapabilities {
-		return EditorInputCapabilities.Readonly | EditorInputCapabilities.Singleton | EditorInputCapabilities.CanDropIntoEditor;
+		// GEMINI-FORK: a description set by GeminiCode (an agent's line counts) always shows.
+		return EditorInputCapabilities.Readonly | EditorInputCapabilities.Singleton | EditorInputCapabilities.CanDropIntoEditor | (this._geminiDescription ? EditorInputCapabilities.ForceDescription : EditorInputCapabilities.None);
+	}
+
+	// GEMINI-FORK: shown after the tab's name, such as "+12 -6" on an agent's tab (see contrib/gemini).
+	private _geminiDescription: string | undefined;
+
+	public setGeminiDescription(value: string | undefined): void {
+		if (value !== this._geminiDescription) {
+			this._geminiDescription = value;
+			this._onDidChangeCapabilities.fire();
+			this._onDidChangeLabel.fire();
+		}
 	}
 
 	private readonly _resourceId = generateUuid();
@@ -96,7 +108,7 @@ export class WebviewInput extends EditorInput {
 	}
 
 	public override getDescription(): string | undefined {
-		return undefined;
+		return this._geminiDescription; // GEMINI-FORK: undefined upstream
 	}
 
 	public setWebviewTitle(value: string): void {
