@@ -11,8 +11,8 @@
 //
 // The landing page's feature sections are fixed in `renderPage`; edit them by
 // hand when they change. Their screenshots live in `gemini/site/images/`
-// (hero.webp, agents.webp, review.webp, 2000 × 1250); a missing image is left
-// out. The Geist fonts in `gemini/site/fonts/` are served with the page.
+// (hero.webp, agents.webp and review.webp at 2000 × 1250, chat.webp at
+// 1720 × 1240); a missing image is left out. The Geist fonts in `gemini/site/fonts/` are served with the page.
 //
 //   node gemini/site/build.mts <out-dir>            # needs GITHUB_REPOSITORY, uses GITHUB_TOKEN if set
 //   node gemini/site/build.mts <out-dir> --sample   # a made-up release, to preview the page
@@ -42,6 +42,8 @@ export interface LatestRelease {
 interface GitHubAsset { readonly name: string; readonly browser_download_url: string; readonly size: number }
 interface GitHubRelease {
 	readonly tag_name: string;
+	readonly draft?: boolean;
+	readonly prerelease?: boolean;
 	readonly name: string | null;
 	readonly html_url: string;
 	readonly published_at: string;
@@ -51,8 +53,9 @@ interface GitHubRelease {
 
 const siteDir = import.meta.dirname;
 const dmgPattern = /^GeminiCode-.+-arm64(-unsigned)?\.dmg$/;
-const images = ['hero.webp', 'agents.webp', 'review.webp'] as const;
+const images = ['hero.webp', 'agents.webp', 'review.webp', 'chat.webp'] as const;
 type Image = typeof images[number];
+const imageSizes: Record<Image, readonly [number, number]> = { 'hero.webp': [2000, 1250], 'agents.webp': [2000, 1250], 'review.webp': [2000, 1250], 'chat.webp': [1720, 1240] };
 
 async function main(outDir: string | undefined, mode: string | undefined): Promise<void> {
 	if (!outDir) {
@@ -98,7 +101,25 @@ async function fetchLatestRelease(repo: string): Promise<GitHubRelease | undefin
 	if (!response.ok) {
 		throw new Error(`GitHub answered HTTP ${response.status} for the latest release.`);
 	}
-	return await response.json() as GitHubRelease;
+	const latest = await response.json() as GitHubRelease;
+	if (hasDmg(latest)) {
+		return latest;
+	}
+	// A release published by hand has no .dmg until gemini-release.yml uploads
+	// it, which takes a while, and that upload rebuilds the page again. Until
+	// then keep offering the newest release that has one, rather than "No
+	// release yet" (and a latest.json without a version).
+	const listed = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=20`, { headers });
+	if (!listed.ok) {
+		throw new Error(`GitHub answered HTTP ${listed.status} for the list of releases.`);
+	}
+	const previous = (await listed.json() as GitHubRelease[]).find(release => !release.draft && !release.prerelease && hasDmg(release));
+	console.log(`${latest.tag_name} has no .dmg yet; ${previous ? `showing ${previous.tag_name} until it does` : 'no earlier release has one either'}.`);
+	return previous ?? latest;
+}
+
+function hasDmg(release: GitHubRelease): boolean {
+	return release.assets.some(asset => dmgPattern.test(asset.name));
 }
 
 // Images pasted into release notes come back in `body_html` as
@@ -273,7 +294,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 	const c = context(latest, repo);
 	// The hero shows straight away; the rest load as they scroll into view.
 	const figure = (image: Image, alt: string, cls: string) => available.has(image)
-		? `<div class="${cls}"><img src="images/${image}" alt="${attr(alt)}" width="2000" height="1250" ${image === 'hero.webp' ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async"></div>` : '';
+		? `<div class="${cls}"><img src="images/${image}" alt="${attr(alt)}" width="${imageSizes[image][0]}" height="${imageSizes[image][1]}" ${image === 'hero.webp' ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async"></div>` : '';
 
 	const pill = c.version
 		? `<a class="pill" href="notes.html"><b>New in ${text(c.version)}</b><span>See what's new →</span></a>` : '';
@@ -317,11 +338,21 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 			</div>
 			${figure('review.webp', 'Reviewing changes in a file', 'frame')}
 		</article>
+		<article class="feature">
+			<div>
+				<p class="eyebrow">Chat</p>
+				<h2 class="h2">Turn a rough idea into a clear prompt.</h2>
+				<p class="lede">Write what you want in plain words and press Enhance, or Cmd+Alt+E. Gemini rewrites it with what to do, where, and how to tell it's done, and nothing is sent until you press Send. Your messages show Markdown, and each one has its time and a Copy button.</p>
+			</div>
+			${figure('chat.webp', 'A prompt rewritten by Enhance', 'frame')}
+		</article>
 		<div class="cards">
 			<div class="card"><h3>Agents on their own branch</h3><p>Tick On its own branch and the agent works in a Git worktree of its own, away from your files. Merge Back when it's done.</p></div>
-			<div class="card"><h3>Inline edit</h3><p>Select code, press Cmd+I and say what to change. Gemini rewrites just those lines in a second or two.</p></div>
+			<div class="card"><h3>Pick up a CLI session</h3><p>A new agent lists the Gemini CLI sessions saved for its folder, including ones you started in the terminal. Click Restore to carry on.</p></div>
+			<div class="card"><h3>Inline edit</h3><p>Select code, press Cmd+I and say what to change. Gemini rewrites just those lines. The sparkle in Source Control writes your commit message.</p></div>
 			<div class="card"><h3>Review My Changes</h3><p>An agent in Plan mode reads your uncommitted diff and reports findings without editing anything.</p></div>
-			<div class="card"><h3>Make it yours</h3><p>Midnight and Dusk themes, accent colours, and JetBrains Mono and Geist Mono included.</p></div>
+			<div class="card"><h3>Know when it's done</h3><p>A Mac notification and a Dock badge when an agent finishes or needs you, so you can work on something else.</p></div>
+			<div class="card"><h3>Make it yours</h3><p>Midnight and Dusk themes, accent colours, chat text size, and JetBrains Mono and Geist Mono included.</p></div>
 		</div>
 	</section>
 
@@ -338,7 +369,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 			<li><span class="n">02</span><b>Launch GeminiCode</b><span>The Get Started walkthrough opens. The Gemini CLI comes with the app.</span></li>
 			<li><span class="n">03</span><b>Sign in with Google</b><span>Use the account that holds your Gemini Code Assist license.</span></li>
 			<li><span class="n">04</span><b>Check your Cloud project</b><span>Only if your organisation doesn't set it for you.</span></li>
-			<li><span class="n">05</span><b>Start an agent</b><span>From the Agents pane.</span></li>
+			<li><span class="n">05</span><b>Start an agent</b><span>Describe a task in Agent Home and press Enter.</span></li>
 		</ol>
 		<p class="fine">GeminiCode tells you when an update is out and links back here.</p>
 	</section>`;

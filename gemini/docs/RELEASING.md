@@ -42,11 +42,13 @@ Without the Apple secrets, steps 4 to 6 are replaced by an ad hoc signature. The
 
 [`gemini-pages.yml`](../../.github/workflows/gemini-pages.yml) builds the page with [`gemini/site/build.mts`](../site/build.mts) and deploys it to GitHub Pages. It reads the latest release (drafts and prereleases are skipped) and writes:
 
-- `index.html`: the landing page, with a **Download for Mac** button, the main features with screenshots, and the install steps. An unsigned build also gets the steps to open it. The feature text is fixed in `renderPage()` in `build.mts`, so update it when a release changes the main features. Its screenshots are `gemini/site/images/hero.webp`, `agents.webp` and `review.webp` (2000 × 1250); a missing one is left out.
+- `index.html`: the landing page, with a **Download for Mac** button, the main features with screenshots, and the install steps. An unsigned build also gets the steps to open it. The feature text is fixed in `renderPage()` in `build.mts`, so update it when a release changes the main features. Its screenshots are `gemini/site/images/hero.webp`, `agents.webp` and `review.webp` (2000 × 1250) and `chat.webp` (1720 × 1240); a missing one is left out.
 - `notes.html`: the release notes from the GitHub release, with the download button and the checksum. Its `##` and `###` headings, and lines that are only bold text, become the side navigation. Images pasted into the notes are copied onto the site, because GitHub's links to them expire.
 - `latest.json`: the version, download and release links. The app's update notice reads it; keep its `version`, `url` and `notesUrl` fields stable.
 
 The Geist fonts in `gemini/site/fonts/` are served with the page, so it loads nothing from other sites.
+
+A release published by hand has no .dmg until the release workflow uploads it, so until then the page keeps offering the newest release that has one; the upload rebuilds the page.
 
 It runs when a release is published, edited, unpublished or deleted, when `gemini/site/` or `gemini/branding/icon.svg` changes on `main`, when the release workflow starts it, and by hand. It always deploys from `main`, because the `github-pages` environment accepts only the default branch. Turn Pages on once: **Settings → Pages → Source: GitHub Actions**.
 
