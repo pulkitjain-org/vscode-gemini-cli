@@ -107,6 +107,8 @@ export interface ChatStrings {
 	readonly enhanceTooltip: string;
 	/** The composer's preview toggle; `{0}` is its shortcut. */
 	readonly previewMarkdown: string;
+	/** The heading on the preview, so it never reads as the draft itself. */
+	readonly previewLabel: string;
 	readonly enhancing: string;
 	readonly enhanced: string;
 	/** Shown when a rewrite takes a while. */

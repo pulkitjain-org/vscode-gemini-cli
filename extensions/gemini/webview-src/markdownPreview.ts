@@ -13,12 +13,13 @@ import { setLabel } from './dom';
 import { renderUserMarkdown } from './items';
 import { strings, ui } from './view';
 
-const { input, preview, previewButton } = ui;
+const { input, preview, previewBody, previewButton } = ui;
 const mac = /Mac/.test(navigator.platform);
 
 let open = false;
 let frame = 0;
 
+ui.previewLabel.textContent = strings.previewLabel;
 setLabel(previewButton, format(strings.previewMarkdown, mac ? '⇧⌘V' : 'Ctrl+Shift+V'));
 previewButton.setAttribute('aria-pressed', 'false');
 previewButton.addEventListener('click', () => {
@@ -51,7 +52,7 @@ export function updatePreview(): void {
 			const text = input.value;
 			preview.hidden = !open || !text.trim();
 			if (!preview.hidden) {
-				preview.replaceChildren(...renderUserMarkdown(text));
+				previewBody.replaceChildren(...renderUserMarkdown(text));
 			}
 		});
 	}

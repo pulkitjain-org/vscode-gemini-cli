@@ -1029,6 +1029,7 @@ export class ChatController implements vscode.Disposable {
 			enhance: vscode.l10n.t("Enhance prompt"),
 			enhanceShort: vscode.l10n.t("Enhance"),
 			previewMarkdown: vscode.l10n.t("Preview Markdown ({0})"),
+			previewLabel: vscode.l10n.t("Preview"),
 			enhanceTooltip: vscode.l10n.t("Rewrite this as a clearer, more precise prompt ({0})"),
 			enhancing: vscode.l10n.t("Enhancing the prompt"),
 			enhanced: vscode.l10n.t("Prompt enhanced. Review it, then send."),
@@ -1081,7 +1082,7 @@ export class ChatController implements vscode.Disposable {
 		<div class="drop-overlay" aria-hidden="true"><i class="codicon codicon-cloud-upload"></i><span id="drop-label"></span></div>
 		<div id="picker" class="picker" role="listbox" hidden></div>
 		<div id="attachments" class="attachments" hidden></div>
-		<div id="preview" class="composer-preview markdown" aria-live="polite" hidden></div>
+		<div id="preview" class="composer-preview" hidden><div class="preview-label"><i class="codicon codicon-open-preview" aria-hidden="true"></i><span></span></div><div class="preview-body markdown"></div></div>
 		<div class="input-wrap">
 			<textarea id="input" rows="1"></textarea>
 			<div class="input-mirror" aria-hidden="true"></div>
