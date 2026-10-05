@@ -85,10 +85,11 @@ async function fetchLatestRelease(repo: string): Promise<GitHubRelease | undefin
 // Images pasted into release notes come back in `body_html` as
 // private-user-images.githubusercontent.com links whose token expires five
 // minutes later, so the page would show broken images from then on. Copy each
-// one next to the page while its link still works and point the notes at the
-// copy. If a copy fails, use the image's permanent
-// github.com/user-attachments link, which GitHub redirects to a fresh one.
-const privateImagePattern = /(<img\b[^>]*?\ssrc=")(https:\/\/private-user-images\.githubusercontent\.com\/[^"]+)(")/g;
+// one next to the page while its link still works and point the notes, both
+// the image and the link GitHub wraps it in, at the copy. If a copy fails, use
+// the image's permanent github.com/user-attachments link, which GitHub
+// redirects to a fresh one.
+const privateImagePattern = /(\s(?:src|href)=")(https:\/\/private-user-images\.githubusercontent\.com\/[^"]+)(")/g;
 const attachmentIdPattern = /\/\d+-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(\.[a-z0-9]+)?\?/i;
 
 export async function copyNotesImages(notesHtml: string, outDir: string): Promise<string> {
