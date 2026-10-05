@@ -57,8 +57,9 @@ async function main(outDir: string | undefined, mode: string | undefined): Promi
 	const latest = await toLatest(release, pageUrl);
 
 	fs.mkdirSync(outDir, { recursive: true });
+	const notesHtml = await copyNotesImages(release?.body_html ?? '', outDir);
 	fs.writeFileSync(path.join(outDir, 'latest.json'), JSON.stringify(latest, null, '\t') + '\n');
-	fs.writeFileSync(path.join(outDir, 'index.html'), renderPage(latest, release?.body_html ?? '', repo));
+	fs.writeFileSync(path.join(outDir, 'index.html'), renderPage(latest, notesHtml, repo));
 	fs.copyFileSync(path.join(siteDir, 'site.css'), path.join(outDir, 'site.css'));
 	fs.copyFileSync(path.join(siteDir, '..', 'branding', 'icon.svg'), path.join(outDir, 'icon.svg'));
 	fs.writeFileSync(path.join(outDir, '.nojekyll'), '');
@@ -79,6 +80,47 @@ async function fetchLatestRelease(repo: string): Promise<GitHubRelease | undefin
 		throw new Error(`GitHub answered HTTP ${response.status} for the latest release.`);
 	}
 	return await response.json() as GitHubRelease;
+}
+
+// Images pasted into release notes come back in `body_html` as
+// private-user-images.githubusercontent.com links whose token expires five
+// minutes later, so the page would show broken images from then on. Copy each
+// one next to the page while its link still works and point the notes at the
+// copy. If a copy fails, use the image's permanent
+// github.com/user-attachments link, which GitHub redirects to a fresh one.
+const privateImagePattern = /(<img\b[^>]*?\ssrc=")(https:\/\/private-user-images\.githubusercontent\.com\/[^"]+)(")/g;
+const attachmentIdPattern = /\/\d+-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(\.[a-z0-9]+)?\?/i;
+
+export async function copyNotesImages(notesHtml: string, outDir: string): Promise<string> {
+	const sources = new Set(Array.from(notesHtml.matchAll(privateImagePattern), match => decodeEntities(match[2])));
+	const replacements = new Map<string, string>();
+	for (const source of sources) {
+		const id = attachmentIdPattern.exec(source);
+		if (!id) {
+			continue;
+		}
+		const file = `notes/${id[1]}${id[2]?.toLowerCase() ?? ''}`;
+		try {
+			const response = await fetch(source);
+			if (!response.ok) {
+				throw new Error(`HTTP ${response.status}`);
+			}
+			fs.mkdirSync(path.join(outDir, 'notes'), { recursive: true });
+			fs.writeFileSync(path.join(outDir, file), Buffer.from(await response.arrayBuffer()));
+			replacements.set(source, file);
+		} catch (err) {
+			console.warn(`Could not copy release notes image ${id[1]} (${err}); linking to GitHub instead.`);
+			replacements.set(source, `https://github.com/user-attachments/assets/${id[1]}`);
+		}
+	}
+	return notesHtml.replace(privateImagePattern, (match, before: string, source: string, after: string) => {
+		const replacement = replacements.get(decodeEntities(source));
+		return replacement ? `${before}${attr(replacement)}${after}` : match;
+	});
+}
+
+function decodeEntities(value: string): string {
+	return value.replace(/&amp;/g, '&');
 }
 
 async function toLatest(release: GitHubRelease | undefined, pageUrl: string): Promise<LatestRelease> {
