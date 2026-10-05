@@ -312,7 +312,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const workspace = this.model.addWorkspace(folder);
 		const agent = this.model.addAgent(workspace.id, vscode.l10n.t("New agent"), worktree);
 		await this.open(agent.id);
-		await this.live.get(agent.id)?.controller.send(text);
+		// Not awaited: send resolves when the whole turn ends, and the agent has started now.
+		void this.live.get(agent.id)?.controller.send(text);
 		return true;
 	}
 

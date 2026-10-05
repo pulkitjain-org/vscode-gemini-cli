@@ -133,8 +133,12 @@ export interface HomeStrings {
 export type ToHome =
 	| { readonly type: 'view'; readonly view: HomeView }
 	| { readonly type: 'focus' }
-	/** The agent asked for has started; the prompt box can be cleared. Until then it keeps the text, in case starting fails. */
-	| { readonly type: 'started' };
+	/**
+	 * The agent asked for could not start (the user has been told why); put the
+	 * task back in the prompt box. Sent only on failure: on success the agent's
+	 * tab covers Home, whose hidden webview would not get a message anyway.
+	 */
+	| { readonly type: 'startFailed'; readonly text: string };
 
 export type FromHome =
 	| { readonly type: 'ready' }
