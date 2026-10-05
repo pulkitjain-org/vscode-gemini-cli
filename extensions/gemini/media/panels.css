@@ -318,6 +318,8 @@ button.chip:hover {
 
 .agent-home {
 	background: var(--vscode-editor-background);
+	/* gemini.chat.fontSize, set by the script. */
+	font-size: var(--gemini-font-size, var(--vscode-font-size));
 }
 
 .home {

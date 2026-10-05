@@ -12,6 +12,7 @@ import { randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import * as vscode from 'vscode';
 import { AccentId, accentIds, AccentTable, codeFontOf, codeFonts, themeIds, withAccent } from '../acp/appearance';
+import { chatFontSize, setChatFontSize } from './chatFont';
 import { configSection } from './configuration';
 
 const accentSetting = 'appearance.accent';
@@ -27,13 +28,18 @@ interface Choices {
 	readonly accent: AccentId;
 	readonly font: string | undefined;
 	readonly icons: string | null;
+	readonly chatFontSize: number;
 }
+
+/** The chat text sizes the page offers; the setting takes any size. */
+const chatFontSizes = [13, 14, 15, 16];
 
 type FromPage =
 	| { readonly type: 'theme'; readonly id: string }
 	| { readonly type: 'accent'; readonly id: AccentId }
 	| { readonly type: 'font'; readonly id: string }
 	| { readonly type: 'icons'; readonly id: string | null }
+	| { readonly type: 'chatFontSize'; readonly size: number }
 	| { readonly type: 'moreThemes' };
 
 /** The colours a theme card is drawn with. */
@@ -62,7 +68,7 @@ export class Appearance implements vscode.Disposable {
 				if (e.affectsConfiguration(`${configSection}.${accentSetting}`) || e.affectsConfiguration('workbench.colorTheme')) {
 					void this.applyAccent();
 				}
-				if (this.panel && ['workbench.colorTheme', 'workbench.iconTheme', 'editor.fontFamily', `${configSection}.${accentSetting}`].some(key => e.affectsConfiguration(key))) {
+				if (this.panel && ['workbench.colorTheme', 'workbench.iconTheme', 'editor.fontFamily', `${configSection}.${accentSetting}`, `${configSection}.chat.fontSize`].some(key => e.affectsConfiguration(key))) {
 					void this.panel.webview.postMessage({ type: 'choices', choices: this.choices() });
 				}
 			}),
@@ -129,6 +135,7 @@ export class Appearance implements vscode.Disposable {
 			accent: this.accent(),
 			font: codeFontOf(vscode.workspace.getConfiguration('editor').get<string>('fontFamily'))?.id,
 			icons: workbench.get<string | null>('iconTheme', null),
+			chatFontSize: chatFontSize(),
 		};
 	}
 
@@ -155,6 +162,11 @@ export class Appearance implements vscode.Disposable {
 			case 'icons':
 				if (iconThemes.some(theme => theme.id === message.id)) {
 					await setOrReset('workbench', 'iconTheme', message.id);
+				}
+				break;
+			case 'chatFontSize':
+				if (chatFontSizes.includes(message.size)) {
+					await setChatFontSize(message.size);
 				}
 				break;
 			case 'moreThemes':
@@ -208,6 +220,9 @@ export class Appearance implements vscode.Disposable {
 			accentHint: vscode.l10n.t("Used for selection, focus, links and the Send button."),
 			font: vscode.l10n.t("Code font"),
 			icons: vscode.l10n.t("File icons"),
+			chatText: vscode.l10n.t("Chat text"),
+			chatTextSample: vscode.l10n.t("Fix the rounding in the cart total and add a test."),
+			chatTextHint: vscode.l10n.t("For the chat, agent tabs and Agent Home. Code blocks follow the editor font size."),
 			accents: {
 				theme: vscode.l10n.t("Theme's own"),
 				blue: vscode.l10n.t("Blue"),
@@ -224,6 +239,7 @@ export class Appearance implements vscode.Disposable {
 			accents: accentIds.map(id => ({ id, label: strings.accents[id] })),
 			accentColors,
 			fonts: codeFonts.map(({ id, label }) => ({ id, label })),
+			chatFontSizes,
 			icons: iconThemes.map(theme => ({ id: theme.id, label: theme.label() })),
 			iconUris: Object.fromEntries(['dark', 'light'].map(kind => [kind, Object.fromEntries(['typescript', 'javascript', 'html', 'json', 'gemini', 'folder-src'].map(name =>
 				[name, webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'icons', kind, `${name}.svg`)).toString()]))])),
@@ -289,6 +305,7 @@ h2 { font-size: 13px; font-weight: 600; margin: 0 0 12px; }
 .sample { line-height: 1.6; font-size: 13px; font-variant-ligatures: none; }
 .sample .kw { color: var(--vscode-symbolIcon-keywordForeground, #B69CF6); }
 .sample .fn { color: var(--vscode-symbolIcon-functionForeground, #8AB4F8); }
+.chat-sample { display: inline-block; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--vscode-input-background); line-height: 1.5; }
 .files div { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
 .files img { width: 16px; height: 16px; }
 .files.hidden img { visibility: hidden; }
@@ -379,8 +396,20 @@ function render() {
 	}
 	iconCard.append(el('h2', '', s.icons), iconPills, files);
 
+	const textCard = el('section', 'card');
+	const sizes = el('div', 'pills');
+	for (const size of data.chatFontSizes) {
+		const b = el('button', 'pill' + (choices.chatFontSize === size ? ' chosen' : ''), size + ' px');
+		b.setAttribute('aria-pressed', String(choices.chatFontSize === size));
+		b.addEventListener('click', () => vscode.postMessage({ type: 'chatFontSize', size }));
+		sizes.append(b);
+	}
+	const bubble = el('div', 'chat-sample', s.chatTextSample);
+	bubble.style.fontSize = choices.chatFontSize + 'px';
+	textCard.append(el('h2', '', s.chatText), sizes, bubble, el('div', 'hint', s.chatTextHint));
+
 	const row = el('div', 'row');
-	row.append(accentCard, fontCard, iconCard);
+	row.append(accentCard, fontCard, textCard, iconCard);
 	page.replaceChildren(title, subtitle, el('h2', '', s.theme), themes, more, row);
 }
 

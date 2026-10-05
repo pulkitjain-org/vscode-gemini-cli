@@ -37,6 +37,8 @@ export type TranscriptItem =
 		readonly id: string; readonly kind: 'user' | 'agent' | 'thought'; readonly text: string;
 		/** Context sent with a user prompt, as labels (`app.ts`, `app.ts:10-20`). */
 		readonly attachments?: readonly PromptAttachmentLabel[];
+		/** When the user sent it, in ms since the epoch; unset for messages replayed from a saved session. */
+		readonly at?: number;
 	}
 	| {
 		readonly id: string; readonly kind: 'toolCall'; readonly title: string; readonly toolKind: string | undefined;
@@ -57,6 +59,8 @@ export type TranscriptItem =
 	/** Ends a turn: how long the agent worked, with a way to copy its reply, retry it, or undo its file changes. */
 	| {
 		readonly id: string; readonly kind: 'turnEnd'; readonly durationMs: number;
+		/** When the turn ended, in ms since the epoch; unset in transcripts saved before it was recorded. */
+		readonly at?: number;
 		/** How many files the turn changed. */
 		readonly files?: number;
 		/** `available` while the turn's changes can be undone in this window; `undone` once they were. */
@@ -96,6 +100,8 @@ export class ChatTranscript {
 	private turnStart = 0;
 	private lastMessageId: string | null | undefined;
 
+	constructor(private readonly now: () => number = Date.now) { }
+
 	get items(): readonly TranscriptItem[] {
 		return this._items;
 	}
@@ -104,7 +110,7 @@ export class ChatTranscript {
 		this.turnStart = this._items.length;
 		this.lastMessageId = undefined;
 		this.push({
-			id: this.newId(), kind: 'user', text,
+			id: this.newId(), kind: 'user', text, at: this.now(),
 			...(attachments.length ? {
 				attachments: attachments.map(a => ({
 					kind: a.kind,
@@ -114,6 +120,13 @@ export class ChatTranscript {
 				})),
 			} : {}),
 		});
+	}
+
+	/** A user message replayed from a saved session: its own bubble, with no time, since the replay does not carry one. */
+	addReplayedPrompt(text: string): void {
+		this.turnStart = this._items.length;
+		this.lastMessageId = undefined;
+		this.push({ id: this.newId(), kind: 'user', text });
 	}
 
 	apply(event: ChatEvent): void {
@@ -163,7 +176,7 @@ export class ChatTranscript {
 	/** Ends the turn; returns the item's id. */
 	addTurnEnd(durationMs: number): string {
 		const id = this.newId();
-		this.push({ id, kind: 'turnEnd', durationMs: Math.max(0, Math.round(durationMs)) });
+		this.push({ id, kind: 'turnEnd', durationMs: Math.max(0, Math.round(durationMs)), at: this.now() });
 		return id;
 	}
 

@@ -18,7 +18,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 12;
+export const chatProtocolVersion = 13;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -87,6 +87,7 @@ export interface ChatStrings {
 	/** `{0}` is a duration such as "12s" or "2m 5s". */
 	readonly workedFor: string;
 	readonly copyReply: string;
+	readonly copyMessage: string;
 	readonly undoTurn: string;
 	readonly undoTurnTooltip: string;
 	/** `{0}` is a number of files. */
@@ -99,6 +100,25 @@ export interface ChatStrings {
 	/** The commit pill's tooltip, and its short label. */
 	readonly createBranchAndCommit: string;
 	readonly commit: string;
+	/** `{0}` is the folder's path; the workspace pill's tooltip. */
+	readonly workspaceTooltip: string;
+	/** After the workspace's name when the agent works in its own copy of it. */
+	readonly worktree: string;
+	/** The saved sessions card in an empty agent chat. */
+	readonly restoreTitle: string;
+	readonly restoreHint: string;
+	readonly restore: string;
+	/** `{0}` is how many sessions there are. */
+	readonly showAllSessions: string;
+	readonly commandFromApp: string;
+}
+
+/** A saved Gemini CLI session the chat can reopen. */
+export interface ViewSession {
+	readonly id: string;
+	readonly title: string;
+	/** "3 prompts · 2h", already localised. */
+	readonly detail: string;
 }
 
 /** The chat folder's git state, for the branch pill and Create Branch & Commit. */
@@ -107,6 +127,16 @@ export interface ViewGit {
 	readonly branch?: string;
 	/** Whether there are agent changes to commit. */
 	readonly canCommit: boolean;
+	/** The workspace the chat's agent works in, for the workspace pill. */
+	readonly workspace?: ViewWorkspace;
+}
+
+export interface ViewWorkspace {
+	readonly name: string;
+	/** Where the agent runs, with the home folder as ~. */
+	readonly path: string;
+	/** Whether the agent works in its own copy (a worktree) rather than the folder itself. */
+	readonly worktree: boolean;
 }
 
 export type FromWebview =
@@ -128,6 +158,12 @@ export type FromWebview =
 	/** A file named in the reply's text: absolute, relative to the agent's folder, or a bare name to look for. */
 	| { readonly type: 'openPath'; readonly path: string; readonly line?: number }
 	| { readonly type: 'pickBranch' }
+	/** The workspace pill: copy its path, reveal it, or show the Agents list. */
+	| { readonly type: 'workspaceMenu' }
+	/** Reopen saved session `id` in this chat. */
+	| { readonly type: 'restoreSession'; readonly id: string }
+	/** Pick from every saved session for the folder. */
+	| { readonly type: 'pickSession' }
 	/** The attach button: pick files from anywhere to attach. */
 	| { readonly type: 'pickFiles' }
 	/** Files dropped with paths (file: URIs), such as from the Explorer. */
@@ -160,4 +196,8 @@ export type ToWebview =
 	/** Whether Send shows the accent colour (true) or the Gemini gradient. */
 	| { readonly type: 'accent'; readonly solid: boolean }
 	/** The colour theme's syntax colours, for code blocks. */
-	| { readonly type: 'tokenColors'; readonly colors: TokenColors };
+	| { readonly type: 'tokenColors'; readonly colors: TokenColors }
+	/** The text size in pixels (`gemini.chat.fontSize`). */
+	| { readonly type: 'fontSize'; readonly size: number }
+	/** The newest saved sessions the empty chat offers to reopen, of `total`. */
+	| { readonly type: 'sessions'; readonly sessions: readonly ViewSession[]; readonly total: number };

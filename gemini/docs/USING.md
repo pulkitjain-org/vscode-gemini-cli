@@ -34,7 +34,8 @@ Run **Make It Yours** from the Command Palette, or open the step of the same nam
 - a theme: GeminiCode Dark (the default), Midnight (true black), Dusk (warm greys) or Light;
 - an accent colour for selection, focus, links and the chat's Send button: the theme's own, Blue, Violet, Rose, Teal, Amber or the Gemini gradient. It applies to the GeminiCode themes only, through `workbench.colorCustomizations`, and is kept in `gemini.appearance.accent`;
 - a code font: JetBrains Mono (the default) and Geist Mono ship with GeminiCode; SF Mono and Menlo come with macOS;
-- file icons: GeminiCode's own, Seti, or none.
+- file icons: GeminiCode's own, Seti, or none;
+- chat text size: 13 to 16 px (14 px by default), kept in `gemini.chat.fontSize`.
 
 Each choice applies at once. To change the themes or icons, edit the sources and rerun `node extensions/gemini/scripts/build-themes.mts` or `python3 extensions/gemini/scripts/build-file-icons.py`; a unit test fails when the generated themes are out of date.
 
@@ -101,6 +102,12 @@ The agent cannot read secret files such as `.env` and private keys, or git-ignor
 ## Replies
 
 Code in replies is coloured like the editor, in your colour theme. The button at the top of a code block copies it. A file name in a reply, such as `src/cart/total.ts:11`, opens the file at that line; when only the name is given, GeminiCode looks for it in the agent's folder. Notes, tips and warnings show as coloured callouts.
+
+Each message you send shows the time you sent it and a **Copy** button when you point at it. Under each reply, next to how long the agent worked, is the time it finished, with the same **Copy** button. The pill next to the branch in the composer names the agent's workspace (and its worktree, when it has one); click it to copy the path, reveal the folder in Finder or show the Agents pane.
+
+## Restoring a Gemini CLI session
+
+A new, empty agent lists the three sessions the Gemini CLI saved most recently for its folder, including ones started with `gemini` in the terminal, with a link to show them all. Pick one to continue it in that agent: its conversation appears in the chat, and the agent takes the session's title. `/resume` in the composer opens the same list at any time. Sessions open in another agent are left out. GeminiCode reads the list from the CLI's own files in `~/.gemini/tmp` and never changes them.
 
 ## Slash commands
 
