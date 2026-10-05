@@ -14,6 +14,8 @@ import type * as acp from '@agentclientprotocol/sdk';
 import { AgentClientHandlers, AgentConnection } from './agentConnection';
 import { AgentError, AgentErrorInfo, classifyAgentError } from './errors';
 import { Emitter } from './events';
+import { isPrompt } from './cliSessions';
+import { contentBlockToText } from './sessionUpdates';
 import { AgentSidecar, SidecarState } from './sidecar';
 
 /** The one auth method the IDE ever selects. */
@@ -44,7 +46,14 @@ export interface AgentRuntimeOptions {
 }
 
 /** Updates kept for a session the client has not registered yet, such as one whose `session/new` reply is still being handled. */
-const maxEarlyUpdates = 100;
+/** Enough for a long conversation the agent replays when it reopens a session. */
+const maxEarlyUpdates = 5000;
+/** How long a reopened session's replay is waited for, to check it is the one asked for. */
+const replayCheckMs = 1_000;
+
+function normalizePrompt(text: string): string {
+	return text.trim().replace(/\s+/g, ' ');
+}
 
 export class AgentRuntime {
 
@@ -135,7 +144,7 @@ export class AgentRuntime {
 	 * `loadSession`. Rejects with an `AgentError` otherwise, or when the agent
 	 * cannot find it; the caller then opens a new session.
 	 */
-	async loadSession(cwd: string, sessionId: string): Promise<{ readonly connection: AgentConnection; readonly agent: acp.InitializeResponse; readonly session: acp.NewSessionResponse }> {
+	async loadSession(cwd: string, sessionId: string, firstPrompt?: string): Promise<{ readonly connection: AgentConnection; readonly agent: acp.InitializeResponse; readonly session: acp.NewSessionResponse }> {
 		const state = this._state;
 		const connection = this.connection;
 		if (state.kind !== 'ready' || !connection) {
@@ -144,12 +153,41 @@ export class AgentRuntime {
 		if (!state.agent.agentCapabilities?.loadSession) {
 			throw new AgentError({ kind: 'unknown', message: 'The agent cannot reopen sessions.' });
 		}
+		if (this.sessions.has(sessionId)) {
+			// A session loaded by its number keeps that number as its id; another chat still uses it.
+			throw new AgentError({ kind: 'unknown', message: 'Another chat has that session open.' });
+		}
+		this.earlyUpdates.delete(sessionId);
 		try {
 			const response = await connection.loadSession(sessionId, cwd);
+			if (firstPrompt !== undefined && !await this.replayStartsWith(sessionId, firstPrompt)) {
+				throw new AgentError({ kind: 'unknown', message: 'The agent opened a different session.' });
+			}
 			return { connection, agent: state.agent, session: { ...response, sessionId } };
 		} catch (err) {
-			throw new AgentError(classifyAgentError(err));
+			this.earlyUpdates.delete(sessionId);
+			throw err instanceof AgentError ? err : new AgentError(classifyAgentError(err));
 		}
+	}
+
+	/**
+	 * Whether the conversation the agent replays for `sessionId` begins with
+	 * `firstPrompt`. True when no prompt arrives in time: the check is there
+	 * to catch the wrong session, which shows at once.
+	 */
+	private async replayStartsWith(sessionId: string, firstPrompt: string): Promise<boolean> {
+		const expected = normalizePrompt(firstPrompt);
+		const deadline = Date.now() + replayCheckMs;
+		do {
+			const replayed = (this.earlyUpdates.get(sessionId) ?? [])
+				.flatMap(update => update.sessionUpdate === 'user_message_chunk' ? [normalizePrompt(contentBlockToText(update.content))] : [])
+				.find(isPrompt);
+			if (replayed !== undefined) {
+				return replayed.startsWith(expected.slice(0, 40)) || expected.startsWith(replayed.slice(0, 40));
+			}
+			await new Promise(resolve => setTimeout(resolve, 20));
+		} while (Date.now() < deadline);
+		return true;
 	}
 
 	/** Routes the agent's messages for `sessionId` to `handlers` until disposed. */

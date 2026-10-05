@@ -20,7 +20,8 @@ export interface SlashCommand {
 	/** Without the slash, such as "init" or "git:commit". */
 	readonly name: string;
 	readonly description: string;
-	readonly source: 'cli' | 'team';
+	/** The agent's, the team's (.gemini/commands), or GeminiCode's own, such as /resume. */
+	readonly source: 'cli' | 'team' | 'app';
 }
 
 export interface TeamCommand extends SlashCommand {

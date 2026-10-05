@@ -27,14 +27,14 @@ function summary(items: readonly TranscriptItem[]): string[] {
 
 describe('ChatTranscript', () => {
 	it('labels the context sent with a prompt, without keeping its contents', () => {
-		const transcript = new ChatTranscript();
+		const transcript = new ChatTranscript(() => 7000);
 		transcript.addPrompt('look', [
 			{ kind: 'file', path: '/w/a.ts' },
 			{ kind: 'selection', path: '/w/b.ts', text: 'x', startLine: 3, endLine: 4 },
 			{ kind: 'image', name: 'shot.png', mimeType: 'image/png', data: 'AAAA' },
 		]);
 		expect(transcript.items[0]).toEqual({
-			id: 'item-0', kind: 'user', text: 'look', attachments: [
+			id: 'item-0', kind: 'user', text: 'look', at: 7000, attachments: [
 				{ kind: 'file', label: 'a.ts', path: '/w/a.ts' },
 				{ kind: 'selection', label: 'b.ts:3-4', path: '/w/b.ts', line: 3 },
 				{ kind: 'image', label: 'shot.png' },
@@ -191,12 +191,12 @@ describe('ChatTranscript with the fake agent', () => {
 
 describe('ChatTranscript.updateTurnEnd', () => {
 	it('adds and removes what a turn end offers', () => {
-		const transcript = new ChatTranscript();
+		const transcript = new ChatTranscript(() => 5000);
 		transcript.addPrompt('hi');
 		const id = transcript.addTurnEnd(1200);
 		transcript.updateTurnEnd(id, { retry: true, undo: 'available', files: 2 });
-		expect(transcript.items.at(-1)).toEqual({ id, kind: 'turnEnd', durationMs: 1200, retry: true, undo: 'available', files: 2 });
+		expect(transcript.items.at(-1)).toEqual({ id, kind: 'turnEnd', durationMs: 1200, at: 5000, retry: true, undo: 'available', files: 2 });
 		transcript.updateTurnEnd(id, { retry: undefined, undo: 'undone' });
-		expect(transcript.items.at(-1)).toEqual({ id, kind: 'turnEnd', durationMs: 1200, undo: 'undone', files: 2 });
+		expect(transcript.items.at(-1)).toEqual({ id, kind: 'turnEnd', durationMs: 1200, at: 5000, undo: 'undone', files: 2 });
 	});
 });

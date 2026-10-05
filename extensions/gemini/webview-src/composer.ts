@@ -10,7 +10,7 @@ import type { SessionSelector, SessionSettings } from '../src/acp/sessionSetting
 import type { ViewGit, ViewStatus } from '../src/host/chatProtocol';
 import { renderAttachments } from './attachmentChips';
 import { format } from './chatLogic';
-import { button, el, icon } from './dom';
+import { button, el, icon, setLabel } from './dom';
 import { autoGrow, updateSendState } from './inputBox';
 import { onEnhanceKey } from './enhance';
 import { closePicker, onPickerKey, updatePicker } from './picker';
@@ -96,6 +96,12 @@ export function setGit(git: ViewGit): void {
 	branchButton.title = branchLabel;
 	branchButton.setAttribute('aria-label', branchLabel);
 	commitButton.hidden = !git.canCommit || !git.branch;
+	const workspace = git.workspace;
+	ui.workspaceButton.hidden = !workspace;
+	if (workspace) {
+		ui.workspaceLabel.textContent = workspace.worktree ? `${workspace.name} \u00b7 ${strings.worktree}` : workspace.name;
+		setLabel(ui.workspaceButton, format(strings.workspaceTooltip, workspace.path));
+	}
 	ui.commitLabel.textContent = strings.commit;
 	commitButton.title = strings.createBranchAndCommit;
 	commitButton.setAttribute('aria-label', strings.createBranchAndCommit);
@@ -196,6 +202,7 @@ input.addEventListener('blur', () => setTimeout(() => {
 }, 0));
 ui.stopButton.addEventListener('click', () => vscode.postMessage({ type: 'stop' }));
 branchButton.addEventListener('click', () => vscode.postMessage({ type: 'pickBranch' }));
+ui.workspaceButton.addEventListener('click', () => vscode.postMessage({ type: 'workspaceMenu' }));
 commitButton.addEventListener('click', () => vscode.postMessage({ type: 'createBranchAndCommit' }));
 modeSelect.addEventListener('change', () => {
 	fitSelect(modeSelect);

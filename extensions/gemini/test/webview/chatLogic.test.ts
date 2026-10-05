@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TranscriptItem } from '../../src/acp/chatTranscript';
 import {
-	acceptsEnhanceReply, attachmentIcon, enhanceButtonPlacement, carriesFiles, enhanceOriginal, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, isEnhanceShortcut, type EnhancePhase, codeLanguage, composerHeightLimit, draggedHeight, emptyFence, fileReference, fileUris, folderOf, format, formatDuration,
+	acceptsEnhanceReply, attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, draggedHeight, emptyFence, enhanceButtonPlacement, enhanceOriginal, type EnhancePhase, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, fileReference, fileUris, folderOf, format, formatDuration, formatSentAt, isEnhanceShortcut,
 	imageName, indexOfItem, isNearBottom, matchCommands, mentionAt, mentionInsertion, permissionDefaults, planIcon, replyBefore, restoredHeight,
 	sameAttachment, slashQuery, thoughtSeconds, toolKindIcon, withAppended, withoutMention, wrapIndex,
 } from '../../webview-src/chatLogic';
@@ -341,5 +341,16 @@ describe('enhanceButtonPlacement', () => {
 	it('stays in the visible part of a scrolled input', () => {
 		expect(enhanceButtonPlacement({ ...end, top: 200 }, button).y).toBe(38);
 		expect(enhanceButtonPlacement({ ...end, scrollTop: 100 }, button).y).toBe(0);
+	});
+});
+
+describe('formatSentAt', () => {
+	const at = new Date(2026, 9, 5, 10, 42).getTime();
+	it('shows the time alone for today', () => {
+		expect(formatSentAt(at, new Date(2026, 9, 5, 18, 0).getTime(), 'en-GB')).toBe('10:42');
+	});
+	it('adds the day before today, and the year before this year', () => {
+		expect(formatSentAt(at, new Date(2026, 9, 6, 9, 0).getTime(), 'en-GB')).toBe('5 Oct, 10:42');
+		expect(formatSentAt(at, new Date(2027, 0, 2).getTime(), 'en-GB')).toBe('5 Oct 2026, 10:42');
 	});
 });

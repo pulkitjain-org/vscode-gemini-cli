@@ -16,6 +16,17 @@ export function format(template: string, value: string | number): string {
 	return template.replace('{0}', String(value));
 }
 
+/** When a message was sent: the time alone today, with the day before that ("10:42", "3 Oct, 10:42"). */
+export function formatSentAt(at: number, now: number, locale?: string): string {
+	const sent = new Date(at);
+	const time = sent.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
+	if (sent.toDateString() === new Date(now).toDateString()) {
+		return time;
+	}
+	const sameYear = sent.getFullYear() === new Date(now).getFullYear();
+	return `${sent.toLocaleDateString(locale, sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' })}, ${time}`;
+}
+
 /** "12s", "2m 5s" or "1h 3m". */
 export function formatDuration(ms: number): string {
 	const seconds = Math.max(1, Math.round(ms / 1000));

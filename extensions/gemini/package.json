@@ -734,6 +734,14 @@
           "scope": "application",
           "markdownDescription": "%configuration.appearance.accent%"
         },
+        "gemini.chat.fontSize": {
+          "type": "number",
+          "default": 14,
+          "minimum": 10,
+          "maximum": 24,
+          "scope": "application",
+          "markdownDescription": "%configuration.chat.fontSize%"
+        },
         "gemini.notifications.enabled": {
           "type": "boolean",
           "default": true,

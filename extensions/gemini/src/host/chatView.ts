@@ -25,8 +25,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 		this.controller = new ChatController(extensionUri, service, diffPreview, fileIndex, {
 			reveal: preserveFocus => this.reveal(preserveFocus),
 			busyContextKey: 'gemini.chatBusy',
-			git: { folder: () => vscode.workspace.workspaceFolders?.find(f => f.uri.scheme === 'file')?.uri.fsPath },
+			git: { folder: () => workspaceFolder() },
 			enhancer,
+			workspace: () => {
+				const folder = workspaceFolder();
+				return folder ? { folder, cwd: folder, worktree: false } : undefined;
+			},
 		});
 	}
 
@@ -65,4 +69,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 			await vscode.commands.executeCommand(`${chatViewId}.focus`);
 		}
 	}
+}
+
+function workspaceFolder(): string | undefined {
+	return vscode.workspace.workspaceFolders?.find(f => f.uri.scheme === 'file')?.uri.fsPath;
 }

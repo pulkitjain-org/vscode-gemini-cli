@@ -209,11 +209,14 @@ onComposerChange(() => {
 	}
 	updateRow();
 });
-input.addEventListener('scroll', placeButton, { passive: true });
-new ResizeObserver(() => {
+/** Measures the input's text style again, as after a font size change, and moves the pill. */
+export function restyleEnhanceButton(): void {
 	mirrorStyled = false;
 	placeButton();
-}).observe(input);
+}
+
+input.addEventListener('scroll', placeButton, { passive: true });
+new ResizeObserver(restyleEnhanceButton).observe(input);
 input.addEventListener('input', () => {
 	// A failure note goes once the user changes the draft.
 	if (enhanceNote.classList.contains('error')) {

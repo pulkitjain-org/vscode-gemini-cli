@@ -12,7 +12,9 @@ import { ChatTranscript, toolCallItemId, TranscriptItem } from '../acp/chatTrans
 import { Checkpoints } from '../acp/checkpoints';
 import { PendingPermission, PermissionBroker } from '../acp/permissions';
 import { buildPromptContent } from '../acp/promptContent';
-import { expandTeamCommand, mergeCommands, parseInvocation } from '../acp/slashCommands';
+import { expandTeamCommand, mergeCommands, parseInvocation, SlashCommand } from '../acp/slashCommands';
+import { CliSession, isPrompt, listCliSessions } from '../acp/cliSessions';
+import type { ChatEvent } from '../acp/sessionUpdates';
 import { AgentStatus } from '../acp/status';
 import { TextDeltas } from '../acp/textDeltas';
 import { UpdateBatcher } from '../acp/updateBatcher';
@@ -23,7 +25,9 @@ import { EnhanceCancelledError, enhanceHistory } from '../acp/promptEnhancer';
 import type { EnhancePromptInput } from '../acp/quickPrompts';
 import { ChatStrings, chatProtocolVersion, FromWebview, statusCommands, ToWebview } from './chatProtocol';
 import { stopReasonNotice, toViewStatus } from './chatStatus';
+import { chatFontSize, onDidChangeChatFontSize } from './chatFont';
 import { DiffPreview } from './diffPreview';
+import { relativeTime, tildify } from './displayText';
 import { attachmentsForFiles } from './addToChat';
 import { createBranchAndCommit, pickBranch } from './gitActions';
 import { preferredComposerHeight, rememberComposerHeight, rememberModel } from './modelPreference';
@@ -65,6 +69,21 @@ export interface ChatControllerOptions {
 	editorColumn?(): vscode.ViewColumn;
 	/** Rewrites the composer's draft for Enhance prompt. */
 	readonly enhancer: ChatEnhancer;
+	/** The workspace pill; without it the composer shows none. */
+	workspace?(): ChatWorkspace | undefined;
+	/** Offers to reopen the CLI's saved sessions for the folder (and /resume); unset in chats that do not. */
+	readonly savedSessions?: {
+		/** Sessions other chats have open, which this one must not take. */
+		inUse(): ReadonlySet<string>;
+	};
+}
+
+export interface ChatWorkspace {
+	/** The workspace folder, which names the pill. */
+	readonly folder: string;
+	/** Where the agent runs: the folder, or its place in the agent's own worktree. */
+	readonly cwd: string;
+	readonly worktree: boolean;
 }
 
 /** Rewrites drafts as precise prompts; one, shared by every chat. */
@@ -133,6 +152,8 @@ export class ChatController implements vscode.Disposable {
 	private undoNote: string | undefined;
 	/** The rewrite running for the composer, so it can be cancelled. */
 	private enhancing: { readonly requestId: number; readonly abort: AbortController } | undefined;
+	/** While a reopened session replays, its messages belong in the transcript. Ends with the next prompt. */
+	private replaying = false;
 
 	private readonly onDidChangeActivityEmitter = new vscode.EventEmitter<ChatActivity>();
 	readonly onDidChangeActivity = this.onDidChangeActivityEmitter.event;
@@ -141,6 +162,10 @@ export class ChatController implements vscode.Disposable {
 	/** The edits of each tool call that completed, once per tool call. */
 	readonly onDidEditFiles = this.onDidEditFilesEmitter.event;
 	private readonly completedToolCalls = new Set<string>();
+
+	private readonly onDidRestoreSessionEmitter = new vscode.EventEmitter<string>();
+	/** A saved session was reopened here; fires with its title. */
+	readonly onDidRestoreSession = this.onDidRestoreSessionEmitter.event;
 
 	private readonly onDidSendPromptEmitter = new vscode.EventEmitter<string>();
 	/** The text of each prompt sent. */
@@ -158,6 +183,7 @@ export class ChatController implements vscode.Disposable {
 			this.onDidChangeActivityEmitter,
 			this.onDidEditFilesEmitter,
 			this.onDidSendPromptEmitter,
+			this.onDidRestoreSessionEmitter,
 			service.permissions.onDidChange(event => {
 				if (event.kind === 'requested') {
 					this.rememberDiffs(event.permission.id, diffsOf(event.permission.request.toolCall.content));
@@ -173,6 +199,10 @@ export class ChatController implements vscode.Disposable {
 			{ dispose: () => this.items.dispose() },
 			this.transcript.onDidReset(() => this.postReset()),
 			service.client.onDidReceiveEvent(event => {
+				if (this.replaying) {
+					this.applyReplayed(event);
+					return;
+				}
 				// Only a turn's updates belong in the transcript.
 				if (this.busy) {
 					if (event.kind === 'toolCall') {
@@ -194,10 +224,10 @@ export class ChatController implements vscode.Disposable {
 			service.client.onDidChangeState(state => {
 				if (state.kind === 'ready') {
 					this.post({ type: 'capabilities', image: service.client.promptCapabilities.image });
-					if (this.lastSessionId && state.sessionId !== this.lastSessionId && this.transcript.items.length) {
+					if (this.lastSessionId && state.savedSessionId !== this.lastSessionId && this.transcript.items.length) {
 						this.addSessionLostNotice();
 					}
-					this.lastSessionId = state.sessionId;
+					this.lastSessionId = state.savedSessionId;
 				}
 			}),
 			service.onDidChangeStatus(status => this.post({ type: 'status', status: toViewStatus(status) })),
@@ -206,6 +236,7 @@ export class ChatController implements vscode.Disposable {
 			service.client.onDidChangeSettings(settings => this.post({ type: 'settings', settings })),
 			vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration('gemini.appearance.accent') && this.post({ type: 'accent', solid: solidAccent() })),
 			onDidChangeThemeTokens(() => this.webview && void this.postTokenColors()),
+			onDidChangeChatFontSize(size => this.post({ type: 'fontSize', size })),
 			// Keeps an open "/" menu current; the agent lists its commands just after a session opens.
 			service.client.onDidChangeCommands(() => this.webview && void this.postCommands()),
 		);
@@ -251,10 +282,10 @@ export class ChatController implements vscode.Disposable {
 		}
 		this.transcript.restore(items);
 		const state = this.service.client.state;
-		if (state.kind === 'ready' && sessionId && state.sessionId !== sessionId) {
+		if (state.kind === 'ready' && sessionId && state.savedSessionId !== sessionId) {
 			this.addSessionLostNotice();
 		}
-		this.lastSessionId = state.kind === 'ready' ? state.sessionId : sessionId;
+		this.lastSessionId = state.kind === 'ready' ? state.savedSessionId : sessionId;
 	}
 
 	/** Whether a webview shows this chat. */
@@ -293,6 +324,11 @@ export class ChatController implements vscode.Disposable {
 		if (this.busy || (!text.trim() && !attachments.length)) {
 			return;
 		}
+		if (this.options.savedSessions && text.trim() === `/${resumeCommand().name}` && !attachments.length) {
+			void this.pickSession();
+			return;
+		}
+		this.replaying = false;
 		if (this.retryItemId) {
 			this.transcript.updateTurnEnd(this.retryItemId, { retry: undefined });
 			this.retryItemId = undefined;
@@ -414,7 +450,108 @@ export class ChatController implements vscode.Disposable {
 
 	private async postCommands(): Promise<void> {
 		const team = await teamCommands(this.service.client.cwd);
-		this.post({ type: 'commands', commands: mergeCommands(this.service.client.commands, team) });
+		const commands = mergeCommands(this.service.client.commands, team);
+		this.post({ type: 'commands', commands: this.options.savedSessions && !commands.some(c => c.name === 'resume') ? [...commands, resumeCommand()] : commands });
+	}
+
+	/** The saved sessions this chat may reopen: not its own, nor one another chat has open. */
+	private async savedSessions(): Promise<CliSession[]> {
+		const exclude = new Set(this.options.savedSessions?.inUse());
+		const state = this.service.client.state;
+		if (state.kind === 'ready') {
+			exclude.add(state.savedSessionId);
+		}
+		return listCliSessions(this.service.client.cwd, { exclude }).catch(() => []);
+	}
+
+	/** Offers the newest saved sessions in an empty chat. Read after the view is up, so it never holds the chat back. */
+	private async postSessions(): Promise<void> {
+		if (!this.options.savedSessions || !this.webview || this.transcript.items.length) {
+			return;
+		}
+		const sessions = await this.savedSessions();
+		const now = Date.now();
+		this.post({ type: 'sessions', total: sessions.length, sessions: sessions.slice(0, shownSessions).map(s => ({ id: s.id, title: s.title, detail: sessionDetail(s, now) })) });
+	}
+
+	/** Every saved session for the folder, in a quick pick; the one picked opens here. */
+	async pickSession(): Promise<void> {
+		if (!this.options.savedSessions || this.busy) {
+			return;
+		}
+		const now = Date.now();
+		const picks = this.savedSessions().then(sessions => sessions.map(s => ({ label: s.title, description: sessionDetail(s, now), session: s })));
+		const pick = await vscode.window.showQuickPick(picks, {
+			title: vscode.l10n.t("Restore a Gemini CLI Session"),
+			placeHolder: vscode.l10n.t("Sessions saved for {0}, newest first", path.basename(this.service.client.cwd)),
+			matchOnDescription: true,
+		});
+		if (pick) {
+			await this.restoreSession(pick.session.id, pick.session.title);
+		}
+	}
+
+	/**
+	 * Reopens saved session `id` here: the agent picks it up where it left
+	 * off and replays it into the chat. A conversation already here is
+	 * replaced, after asking; it stays saved by the CLI.
+	 */
+	async restoreSession(id: string, title?: string): Promise<void> {
+		if (this.busy) {
+			return;
+		}
+		title ??= (await this.savedSessions()).find(s => s.id === id)?.title ?? id;
+		if (this.transcript.items.length) {
+			const restore = vscode.l10n.t("Restore");
+			const answer = await vscode.window.showWarningMessage(
+				vscode.l10n.t("Restore \"{0}\" in this chat?", title),
+				{ modal: true, detail: vscode.l10n.t("The conversation here is replaced. The Gemini CLI keeps it, so you can restore it again later.") },
+				restore);
+			if (answer !== restore) {
+				return;
+			}
+		}
+		this.setBusy(true);
+		let restored = false;
+		try {
+			await this.service.ensureReady();
+			this.transcript.clear();
+			this.diffs.clear();
+			this.completedToolCalls.clear();
+			this.checkpoints.clear();
+			this.lastPrompt = undefined;
+			this.retryItemId = undefined;
+			this.undoNote = undefined;
+			this.transcript.addNotice(vscode.l10n.t("Restored \"{0}\" from the Gemini CLI.", title));
+			this.replaying = true;
+			// So the switch does not read as the agent losing the session.
+			this.lastSessionId = id;
+			restored = await this.service.client.loadSession(id);
+			if (restored) {
+				this.onDidRestoreSessionEmitter.fire(title);
+			}
+		} catch (err) {
+			this.transcript.addNotice(errorMessage(err), 'error');
+		} finally {
+			this.setBusy(false);
+		}
+		if (!restored) {
+			this.replaying = false;
+			this.transcript.clear();
+			this.transcript.addNotice(vscode.l10n.t("The agent could not reopen \"{0}\", so this chat starts afresh.", title), 'error');
+		}
+	}
+
+	/** A message of a reopened session as it replays: the CLI's own context and commands are left out. */
+	private applyReplayed(event: ChatEvent): void {
+		if (event.kind === 'text' && event.role === 'user') {
+			const text = event.text.trim();
+			if (isPrompt(text)) {
+				this.transcript.addReplayedPrompt(text);
+			}
+			return;
+		}
+		this.transcript.apply(event);
 	}
 
 	/** Adds context to the composer (Add File / Add Selection to Chat), showing the chat first. */
@@ -462,6 +599,7 @@ export class ChatController implements vscode.Disposable {
 		this.lastPrompt = undefined;
 		this.retryItemId = undefined;
 		this.undoNote = undefined;
+		this.replaying = false;
 		if (this.service.client.state.kind !== 'ready') {
 			// The next prompt starts the agent, and with it a new session.
 			this.service.client.forgetSession();
@@ -569,6 +707,17 @@ export class ChatController implements vscode.Disposable {
 			case 'createBranchAndCommit':
 				void this.commit();
 				break;
+			case 'workspaceMenu':
+				void this.workspaceMenu();
+				break;
+			case 'restoreSession':
+				if (typeof message.id === 'string') {
+					void this.restoreSession(message.id);
+				}
+				break;
+			case 'pickSession':
+				void this.pickSession();
+				break;
 			case 'undoTurn':
 				void this.undoTurn(message.itemId);
 				break;
@@ -665,8 +814,25 @@ export class ChatController implements vscode.Disposable {
 			return;
 		}
 		const canCommit = !this.busy && !!git.commit?.files().length;
+		const ws = this.options.workspace?.();
+		const workspace = ws && { name: path.basename(ws.folder) || ws.folder, path: tildify(ws.cwd), worktree: ws.worktree };
 		void (folder ? readGitHead(folder).catch(() => undefined) : Promise.resolve(undefined))
-			.then(branch => this.post({ type: 'git', git: { branch, canCommit } }));
+			.then(branch => this.post({ type: 'git', git: { branch, canCommit, ...(workspace ? { workspace } : {}) } }));
+	}
+
+	/** What the workspace pill offers, in a quick pick. */
+	private async workspaceMenu(): Promise<void> {
+		const workspace = this.options.workspace?.();
+		if (!workspace) {
+			return;
+		}
+		const items: (vscode.QuickPickItem & { run(): Thenable<unknown> })[] = [
+			{ label: `$(copy) ${vscode.l10n.t("Copy Path")}`, description: tildify(workspace.cwd), run: () => vscode.env.clipboard.writeText(workspace.cwd) },
+			{ label: `$(folder-opened) ${vscode.l10n.t("Reveal in Finder")}`, run: () => vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(workspace.cwd)) },
+			{ label: `$(list-tree) ${vscode.l10n.t("Show Agents")}`, run: () => vscode.commands.executeCommand('gemini.agents.focus') },
+		];
+		const pick = await vscode.window.showQuickPick(items, { title: path.basename(workspace.folder) || workspace.folder });
+		await pick?.run();
 	}
 
 	private async changeSetting(change: () => Promise<void>): Promise<void> {
@@ -798,6 +964,9 @@ export class ChatController implements vscode.Disposable {
 		this.items.clear();
 		this.textDeltas.reset(this.transcript.items);
 		this.post({ type: 'reset', items: this.transcript.items, busy: this.busy, status: toViewStatus(this.service.status), settings: this.service.client.settings });
+		if (!this.busy) {
+			void this.postSessions();
+		}
 	}
 
 	private post(message: ToWebview): void {
@@ -847,6 +1016,7 @@ export class ChatController implements vscode.Disposable {
 			permissionHint: vscode.l10n.t("Esc rejects"),
 			workedFor: vscode.l10n.t("Worked for {0}"),
 			copyReply: vscode.l10n.t("Copy reply"),
+			copyMessage: vscode.l10n.t("Copy message"),
 			undoTurn: vscode.l10n.t("Undo"),
 			undoTurnTooltip: vscode.l10n.t("Put back the files this reply changed"),
 			undoTurnFiles: vscode.l10n.t("Put back the {0} files this reply changed"),
@@ -866,6 +1036,13 @@ export class ChatController implements vscode.Disposable {
 			cancel: vscode.l10n.t("Cancel"),
 			revert: vscode.l10n.t("Revert"),
 			revertTooltip: vscode.l10n.t("Put back what you wrote"),
+			workspaceTooltip: vscode.l10n.t("Workspace {0}"),
+			worktree: vscode.l10n.t("worktree"),
+			restoreTitle: vscode.l10n.t("Restore a session"),
+			restoreHint: vscode.l10n.t("Saved by the Gemini CLI for this folder"),
+			restore: vscode.l10n.t("Restore"),
+			showAllSessions: vscode.l10n.t("Show all {0} sessions\u2026"),
+			commandFromApp: vscode.l10n.t("GeminiCode"),
 			addContext: vscode.l10n.t("Add context (@)"),
 			noFiles: vscode.l10n.t("No matching files"),
 			noCommands: vscode.l10n.t("No matching commands"),
@@ -893,7 +1070,7 @@ export class ChatController implements vscode.Disposable {
 	<link href="${style}" rel="stylesheet">
 	<title>Gemini</title>
 </head>
-<body data-accent="${solidAccent() ? 'solid' : 'gradient'}">
+<body data-accent="${solidAccent() ? 'solid' : 'gradient'}" data-font-size="${chatFontSize()}">
 	<main id="transcript" class="transcript"></main>
 	<div id="announce" class="announce" aria-live="polite"></div>
 	<div id="status" class="status" role="status"></div>
@@ -918,6 +1095,7 @@ export class ChatController implements vscode.Disposable {
 			<span class="pill-wrap" hidden><select id="model" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
 			<span class="spacer"></span>
 			<button type="button" id="commit" class="pill commit" hidden><i class="codicon codicon-git-commit" aria-hidden="true"></i><span></span></button>
+			<button type="button" id="workspace" class="pill workspace" hidden><i class="codicon codicon-folder" aria-hidden="true"></i><span></span></button>
 			<button type="button" id="branch" class="pill branch" hidden><i class="codicon codicon-git-branch" aria-hidden="true"></i><span></span></button>
 			<button type="submit" id="send" class="round-button"><i class="codicon codicon-arrow-up" aria-hidden="true"></i></button>
 			<button type="button" id="stop" class="round-button stop" hidden><i class="codicon codicon-debug-stop" aria-hidden="true"></i></button>
@@ -927,6 +1105,19 @@ export class ChatController implements vscode.Disposable {
 </body>
 </html>`;
 	}
+}
+
+/** How many saved sessions an empty chat lists before "Show all". */
+const shownSessions = 3;
+
+function resumeCommand(): SlashCommand {
+	return { name: 'resume', description: vscode.l10n.t("Restore a saved Gemini CLI session for this folder"), source: 'app' };
+}
+
+/** "3 prompts · 2h" */
+function sessionDetail(session: CliSession, now: number): string {
+	const prompts = session.messages === 1 ? vscode.l10n.t("1 prompt") : vscode.l10n.t("{0} prompts", session.messages);
+	return `${prompts} \u00b7 ${relativeTime(session.updatedAt, now)}`;
 }
 
 /** The most proposed edits kept for opening their diffs later. */

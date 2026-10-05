@@ -41,6 +41,7 @@ const branchButton = byId('branch', HTMLButtonElement);
 const commitButton = byId('commit', HTMLButtonElement);
 const enhanceButton = byId('enhance', HTMLButtonElement);
 const revertButton = byId('revert', HTMLButtonElement);
+const workspaceButton = byId('workspace', HTMLButtonElement);
 
 export const ui = {
 	transcript: byId('transcript', HTMLElement),
@@ -62,6 +63,8 @@ export const ui = {
 	branchLabel: within(branchButton, 'span', HTMLSpanElement),
 	commitButton,
 	commitLabel: within(commitButton, 'span', HTMLSpanElement),
+	workspaceButton,
+	workspaceLabel: within(workspaceButton, 'span', HTMLSpanElement),
 	attachButton: byId('attach', HTMLButtonElement),
 	scrollButton: byId('scroll-down', HTMLButtonElement),
 	dropLabel: byId('drop-label', HTMLElement),

@@ -69,7 +69,8 @@ body {
 	padding: 0;
 	box-sizing: border-box;
 	font-family: var(--vscode-font-family);
-	font-size: var(--vscode-font-size);
+	/* gemini.chat.fontSize, set by the script. */
+	font-size: var(--gemini-font-size, var(--vscode-font-size));
 	color: var(--vscode-foreground);
 }
 
@@ -108,6 +109,11 @@ button {
 	line-height: 1.5;
 }
 
+.empty:has(.restore-card) {
+	max-width: 520px;
+	margin-top: 8vh;
+}
+
 .empty p {
 	margin: 0;
 }
@@ -140,6 +146,92 @@ button {
 	text-align: left;
 }
 
+/* Saved Gemini CLI sessions an empty agent chat offers to reopen. */
+.restore-card {
+	align-self: stretch;
+	margin-top: 22px;
+	border: 1px solid var(--gemini-contrast-border);
+	border-radius: var(--gemini-radius);
+	background: var(--gemini-surface);
+	text-align: left;
+	overflow: hidden;
+}
+
+.restore-header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin: 0;
+	padding: 10px 12px 0;
+	font-size: 0.92em;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+.restore-hint {
+	padding: 2px 12px 8px;
+	font-size: 0.85em;
+	border-bottom: 1px solid var(--gemini-contrast-border);
+}
+
+.restore-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--gemini-contrast-border);
+}
+
+.restore-row:last-child {
+	border-bottom: none;
+}
+
+.restore-text {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	min-width: 0;
+}
+
+.restore-title {
+	overflow: hidden;
+	color: var(--vscode-foreground);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.restore-detail {
+	font-size: 0.85em;
+}
+
+.restore-button,
+.restore-more {
+	flex: none;
+	border: 1px solid var(--gemini-contrast-border);
+	border-radius: var(--gemini-radius-small);
+	background: var(--gemini-hover);
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-size: 0.92em;
+	padding: 3px 10px;
+	cursor: pointer;
+}
+
+.restore-button:hover,
+.restore-more:hover {
+	border-color: var(--gemini-border);
+}
+
+.restore-more {
+	display: block;
+	width: 100%;
+	border: none;
+	border-radius: 0;
+	background: none;
+	color: var(--vscode-textLink-foreground);
+	padding: 8px 12px;
+}
+
 .empty-hints li {
 	display: contents;
 }
@@ -168,12 +260,26 @@ kbd {
 }
 
 /* The user's message: a bubble on the right, sized to its text. */
+/* The user's message and, under it, its time and Copy. */
+.user-turn {
+	margin: 18px 0 14px;
+}
+
+/* The time and Copy row takes the space under the message. */
+.user-turn:has(.user-meta) {
+	margin-bottom: 0;
+}
+
+.user-turn:first-child {
+	margin-top: 0;
+}
+
 .message.user {
 	white-space: pre-wrap;
 	width: fit-content;
 	max-width: 88%;
 	box-sizing: border-box;
-	margin: 18px 0 14px auto;
+	margin: 0 0 0 auto;
 	padding: 10px 14px;
 	border-radius: 12px;
 	background: var(--vscode-button-secondaryBackground, var(--gemini-surface));
@@ -181,8 +287,32 @@ kbd {
 	border: 1px solid var(--gemini-contrast-border);
 }
 
-.message.user:first-child {
-	margin-top: 0;
+/* Shown on hover and keyboard focus, so the conversation stays quiet. */
+.user-meta {
+	display: flex;
+	justify-content: flex-end;
+	align-items: center;
+	gap: 2px;
+	height: 20px;
+	margin-top: 2px;
+	font-size: 0.85em;
+	color: var(--gemini-muted);
+	opacity: 0;
+	transition: opacity 0.12s ease;
+}
+
+.user-turn:hover .user-meta,
+.user-meta:focus-within {
+	opacity: 1;
+}
+
+.turn-dot {
+	margin: 0 2px;
+}
+
+.sent-at {
+	font-variant-numeric: tabular-nums;
+	cursor: default;
 }
 
 /* ---- Markdown ---- */
@@ -1321,6 +1451,12 @@ button.pill {
 
 button.pill[hidden] {
 	display: none;
+}
+
+/* The workspace's name can be long; it gives way before the branch does. */
+button.pill.workspace {
+	flex-shrink: 1;
+	min-width: 28px;
 }
 
 button.pill span {

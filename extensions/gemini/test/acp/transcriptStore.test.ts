@@ -102,11 +102,11 @@ describe('ChatTranscript.restore', () => {
 		}
 	});
 
-	it('ends a turn with how long it took, and keeps that across a reload', async () => {
-		const transcript = new ChatTranscript();
+	it('ends a turn with how long it took and when, and keeps that across a reload', async () => {
+		const transcript = new ChatTranscript(() => 9000);
 		transcript.addPrompt('hi');
 		transcript.addTurnEnd(12_345.6);
-		expect(transcript.items.at(-1)).toEqual({ id: 'item-1', kind: 'turnEnd', durationMs: 12_346 });
+		expect(transcript.items.at(-1)).toEqual({ id: 'item-1', kind: 'turnEnd', durationMs: 12_346, at: 9000 });
 		const dir = await mkdtemp(path.join(tmpdir(), 'transcripts-'));
 		try {
 			const store = new TranscriptStore(dir);

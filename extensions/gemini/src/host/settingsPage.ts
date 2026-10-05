@@ -10,7 +10,7 @@ import { geminiDir } from '../acp/directRequest';
 import { errorMessage } from '../acp/errors';
 import { addMcpServer, disabledServers, isServerEnabled, mcpServersIn, readSettingsFile, rulesFileNames, serverConfigFrom, setServerEnabled } from '../acp/projectSettings';
 import { AgentService } from './agentService';
-import { tildify } from './agentsView';
+import { tildify } from './displayText';
 import { FromSettingsPage, McpServerView, RulesFileView, SettingsPageStrings, SettingsPageView, ToSettingsPage } from './panelProtocol';
 import { createNonce, escapeAttribute } from './webviewHtml';
 

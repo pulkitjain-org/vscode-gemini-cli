@@ -10,12 +10,13 @@
 import MarkdownIt from 'markdown-it';
 import { basename } from '../src/acp/attachments';
 import type { PromptAttachmentLabel, TranscriptItem } from '../src/acp/chatTranscript';
-import { attachmentIcon, codeLanguage, format, formatDuration, permissionDefaults, planIcon, replyBefore, thoughtSeconds, toolKindIcon, type ItemOf } from './chatLogic';
+import type { ViewSession } from '../src/host/chatProtocol';
+import { attachmentIcon, codeLanguage, format, formatDuration, formatSentAt, permissionDefaults, planIcon, replyBefore, thoughtSeconds, toolKindIcon, type ItemOf } from './chatLogic';
 import { highlightCode } from './codeHighlight';
 import { enhanceMarkdown } from './markdownExtras';
 import { button, copyButton, el, icon, setLabel } from './dom';
 import { thoughtPreview } from './streaming';
-import { expanded, state, strings, thoughtTimes, vscode } from './view';
+import { expanded, state, strings, thoughtTimes, ui, vscode } from './view';
 
 const markdown = new MarkdownIt({ html: false, linkify: true });
 // Only links with a scheme or www.; file names such as README.md are not web addresses.
@@ -49,10 +50,11 @@ export function render(item: TranscriptItem, toggleToolCall: ToggleToolCall): HT
 
 function renderTurnEnd(item: ItemOf<'turnEnd'>): HTMLElement {
 	const node = el('div', 'turn-end');
-	node.append(
-		el('span', undefined, format(strings.workedFor, formatDuration(item.durationMs))),
-		copyButton('copy-reply', strings.copyReply, () => replyBefore(state.items, item.id)),
-	);
+	node.append(el('span', undefined, format(strings.workedFor, formatDuration(item.durationMs))));
+	if (item.at) {
+		node.append(el('span', 'turn-dot', '\u00b7'), sentAt(item.at));
+	}
+	node.append(copyButton('copy-reply', strings.copyReply, () => replyBefore(state.items, item.id)));
 	if (item.retry) {
 		const retry = button('turn-action', strings.retry, () => vscode.postMessage({ type: 'retry', itemId: item.id }), 'refresh');
 		setLabel(retry, strings.retryTooltip);
@@ -68,8 +70,19 @@ function renderTurnEnd(item: ItemOf<'turnEnd'>): HTMLElement {
 	return node;
 }
 
-function renderUserMessage(item: { readonly text: string; readonly attachments?: readonly PromptAttachmentLabel[] }): HTMLElement {
+/** A message's time, with the full date and time as its tooltip. */
+function sentAt(at: number): HTMLElement {
+	const time = el('time', 'sent-at', formatSentAt(at, Date.now()));
+	time.dateTime = new Date(at).toISOString();
+	time.title = new Date(at).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'medium' });
+	return time;
+}
+
+/** The user's message, with its time and Copy under it, shown on hover. */
+function renderUserMessage(item: { readonly text: string; readonly attachments?: readonly PromptAttachmentLabel[]; readonly at?: number }): HTMLElement {
+	const turn = el('div', 'user-turn');
 	const node = el('div', 'message user');
+	turn.append(node);
 	if (item.text) {
 		node.append(el('div', 'user-text', item.text));
 	}
@@ -88,7 +101,17 @@ function renderUserMessage(item: { readonly text: string; readonly attachments?:
 		}
 		node.append(chips);
 	}
-	return node;
+	const meta = el('div', 'user-meta');
+	if (item.at) {
+		meta.append(sentAt(item.at));
+	}
+	if (item.text) {
+		meta.append(copyButton('copy-message', strings.copyMessage, () => item.text));
+	}
+	if (meta.childElementCount) {
+		turn.append(meta);
+	}
+	return turn;
 }
 
 function renderMarkdown(text: string): HTMLElement {
@@ -259,6 +282,43 @@ export function renderNotice(text: string, severity: 'info' | 'error'): HTMLElem
 	return node;
 }
 
+/** The saved sessions last sent, so the empty chat shows them again when it is drawn again. */
+let savedSessions: { readonly sessions: readonly ViewSession[]; readonly total: number } = { sessions: [], total: 0 };
+
+/** The empty chat's card of saved sessions to reopen; nothing when there are none. */
+export function showSavedSessions(sessions: readonly ViewSession[], total: number): void {
+	savedSessions = { sessions, total };
+	const empty = ui.transcript.querySelector('.empty');
+	empty?.querySelector('.restore-card')?.remove();
+	const card = restoreCard();
+	if (empty && card) {
+		empty.append(card);
+	}
+}
+
+function restoreCard(): HTMLElement | undefined {
+	const { sessions, total } = savedSessions;
+	if (!sessions.length) {
+		return undefined;
+	}
+	const card = el('section', 'restore-card');
+	const header = el('h3', 'restore-header');
+	header.append(icon('history'), el('span', undefined, strings.restoreTitle));
+	card.append(header, el('p', 'restore-hint', strings.restoreHint));
+	for (const session of sessions) {
+		const row = el('div', 'restore-row');
+		const text = el('div', 'restore-text');
+		text.append(el('span', 'restore-title', session.title), el('span', 'restore-detail', session.detail));
+		text.title = session.title;
+		row.append(text, button('restore-button', strings.restore, () => vscode.postMessage({ type: 'restoreSession', id: session.id })));
+		card.append(row);
+	}
+	if (total > sessions.length) {
+		card.append(button('restore-more', format(strings.showAllSessions, total), () => vscode.postMessage({ type: 'pickSession' })));
+	}
+	return card;
+}
+
 export function renderEmpty(): HTMLElement {
 	const node = el('div', 'empty');
 	const hints = el('ul', 'empty-hints');
@@ -268,5 +328,9 @@ export function renderEmpty(): HTMLElement {
 		hints.append(hint);
 	}
 	node.append(icon('sparkle', 'empty-icon'), el('h2', 'empty-title', strings.welcomeTitle), el('p', undefined, strings.welcome), hints);
+	const card = restoreCard();
+	if (card) {
+		node.append(card);
+	}
 	return node;
 }
