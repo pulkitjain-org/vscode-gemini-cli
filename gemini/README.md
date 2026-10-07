@@ -67,7 +67,7 @@ The **Gemini** status bar item shows the agent's state. Hover over it to see the
 | `gemini.browser.enabled` | Let agents open and use a page in the GeminiCode browser. On by default. |
 | `gemini.browser.allowOtherSites` | Let agents open sites other than local ones, after asking. On by default. |
 | `gemini.keepAwake` | Keep the Mac awake while any agent works. On by default. |
-| `gemini.chat.followAgent` | Open each file the agent reads or edits as it works. The eye in the composer toggles it. |
+| `gemini.chat.followAgent` | Open each file the agent reads or edits as it works. The eye in the composer toggles it. Off by default. |
 | `gemini.layout.showAgentsInNewWorkspaces` | Open the Agents pane, with the agent's Changes below it, the first time a workspace opens. |
 
 Changing the CLI path or version, the project, or an approval or shell setting restarts the agent so the change applies. Admins can lock all of these except the project and layout settings through policy; see [Security model](docs/ARCHITECTURE.md#security-model).

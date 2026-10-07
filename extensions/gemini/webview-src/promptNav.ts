@@ -58,7 +58,7 @@ function updateActive(): void {
 	}
 }
 
-/** Rebuilds the outline when the prompts changed; cheap to call after every update. */
+/** Rebuilds the outline from the prompts; called on a reset and when a prompt arrives, not for every streamed update. */
 export function updateOutline(): void {
 	const ids = state.items.flatMap(item => item.kind === 'user' ? [item.id] : []);
 	if (ids.length === promptIds.length && ids.every((id, i) => id === promptIds[i])) {

@@ -11,6 +11,7 @@ import { isValidAttachment } from '../acp/attachmentValidation';
 import { chatToMarkdown } from '../acp/chatMarkdown';
 import { ChatTranscript, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
 import { Checkpoints } from '../acp/checkpoints';
+import { isInside, secretPathReason } from '../acp/fileAccess';
 import { FollowTarget, FollowTracker } from '../acp/follow';
 import { PendingPermission, PermissionBroker } from '../acp/permissions';
 import { buildPromptContent } from '../acp/promptContent';
@@ -765,7 +766,6 @@ export class ChatController implements vscode.Disposable {
 		}
 	}
 
-	/** The Enhance Prompt command: enhances what the composer holds, showing the chat first. */
 	/** Opens the conversation as a Markdown document, titled `title`. */
 	openAsMarkdown(title: string): Promise<void> {
 		return openChatAsMarkdown(title, this.transcript.items, this.options.editorColumn?.());
@@ -802,14 +802,20 @@ export class ChatController implements vscode.Disposable {
 		}, followIntervalMs);
 	}
 
-	/** Shows a file the agent is on, leaving focus in the chat; folders and missing files are skipped. */
+	/**
+	 * Shows a file the agent is on, leaving focus in the chat. Folders, missing
+	 * files, files outside the agent's folder and files that may hold secrets
+	 * are skipped.
+	 */
 	private async showFollowed(target: FollowTarget): Promise<void> {
-		if (!await isFile(target.path)) {
+		const root = path.resolve(this.service.client.cwd);
+		const file = path.resolve(root, target.path);
+		if (!isInside(root, file) || secretPathReason(path.relative(root, file)) || !await isFile(file)) {
 			return;
 		}
 		const position = new vscode.Position(Math.max((target.line ?? 1) - 1, 0), 0);
 		try {
-			await vscode.window.showTextDocument(vscode.Uri.file(target.path), {
+			await vscode.window.showTextDocument(vscode.Uri.file(file), {
 				selection: new vscode.Range(position, position), preview: true, preserveFocus: true, viewColumn: this.options.editorColumn?.(),
 			});
 		} catch {
@@ -817,6 +823,7 @@ export class ChatController implements vscode.Disposable {
 		}
 	}
 
+	/** The Enhance Prompt command: enhances what the composer holds, showing the chat first. */
 	async requestEnhance(): Promise<void> {
 		await this.options.reveal(false);
 		this.post({ type: 'enhanceRequested' });

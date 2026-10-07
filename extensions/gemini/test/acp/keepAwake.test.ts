@@ -37,7 +37,7 @@ describe('KeepAwake', () => {
 		keepAwake.setBusy(true);
 		keepAwake.setBusy(true);
 		expect(spawned).toHaveLength(1);
-		expect(spawned[0]).toMatchObject({ command: 'caffeinate', args: ['-i', '-w', '4242'] });
+		expect(spawned[0]).toMatchObject({ command: '/usr/bin/caffeinate', args: ['-i', '-w', '4242'] });
 		expect(keepAwake.active).toBe(true);
 		keepAwake.setBusy(false);
 		expect(spawned[0].child.killed).toBe(true);
@@ -67,9 +67,23 @@ describe('KeepAwake', () => {
 		const { keepAwake, spawned } = setup();
 		keepAwake.setBusy(true);
 		spawned[0].child.emit('error', new Error('spawn caffeinate ENOENT'));
+		expect(keepAwake.active).toBe(false);
 		spawned[0].child.emit('exit', -2, null);
 		keepAwake.setBusy(false);
 		keepAwake.setBusy(true);
 		expect(spawned).toHaveLength(1);
+	});
+
+	it('starts caffeinate again when it exits early while an agent works, a few times at most', () => {
+		const { keepAwake, spawned } = setup();
+		keepAwake.setBusy(true);
+		for (let i = 0; i < 5; i++) {
+			spawned.at(-1)!.child.emit('exit', 0, null);
+		}
+		expect({ spawned: spawned.length, active: keepAwake.active }).toEqual({ spawned: 4, active: false });
+		// A new busy spell tries again.
+		keepAwake.setBusy(false);
+		keepAwake.setBusy(true);
+		expect({ spawned: spawned.length, active: keepAwake.active }).toEqual({ spawned: 5, active: true });
 	});
 });

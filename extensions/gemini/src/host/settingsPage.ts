@@ -6,7 +6,7 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { CliExtension, isExtensionSource, parseExtensionList, parseMemoryList, runCliCommand } from '../acp/cliCommands';
+import { CliExtension, isExtensionSource, parseExtensionList, parseMemoryList, runCliCommands } from '../acp/cliCommands';
 import { geminiDir } from '../acp/directRequest';
 import { appendMemory } from '../acp/memory';
 import { errorMessage } from '../acp/errors';
@@ -25,8 +25,10 @@ const viewType = 'gemini.projectSettings';
  * Project Helpers: what every Gemini agent loads when it starts. MCP servers,
  * skills, hooks and rules come from the Gemini CLI's own files, which the page
  * edits so the terminal CLI sees the same. Extensions and memory come from the
- * CLI itself (/extensions list, /memory list), asked when the page opens and
- * after a change. Files are read when the page is shown and after each change.
+ * CLI itself (/extensions list, /memory list), asked in one hidden session when
+ * the agent is already running (on open, when it starts, after a change) or when
+ * the user presses Refresh, which starts it. Files are read when the page is
+ * shown and after each change.
  */
 export class SettingsPage implements vscode.Disposable {
 
@@ -36,6 +38,8 @@ export class SettingsPage implements vscode.Disposable {
 	/** The extension and memory lists the CLI last reported. */
 	private extensions: CliReport<ExtensionView> = { state: 'loading' };
 	private memory: CliReport<MemoryFileView> = { state: 'loading' };
+	/** Counts CLI refreshes, so an older answer never replaces a newer one. */
+	private cliGeneration = 0;
 	private terminal: vscode.Terminal | undefined;
 	private readonly disposables: vscode.Disposable[] = [];
 
@@ -44,6 +48,8 @@ export class SettingsPage implements vscode.Disposable {
 			vscode.commands.registerCommand('gemini.projectSettings', () => this.show()),
 			vscode.commands.registerCommand('gemini.newSkill', () => this.newSkill()),
 			service.onDidChangeMcpProblems(() => void this.update()),
+			// The CLI could not be asked while the agent was not running; ask now.
+			service.runtime.onDidChangeState(state => state.kind === 'ready' && this.panel && void this.refreshCli()),
 			vscode.window.onDidCloseTerminal(terminal => {
 				if (terminal === this.terminal) {
 					// An install, update or removal finished.
@@ -98,25 +104,42 @@ export class SettingsPage implements vscode.Disposable {
 		void panel.webview.postMessage({ type: 'view', view } satisfies ToSettingsPage);
 	}
 
-	/** Asks the CLI for its extensions and memory files, then shows them. Starts the agent if it is not running. */
-	private async refreshCli(): Promise<void> {
+	/**
+	 * Asks the CLI for its extensions and memory files, then shows them. Only
+	 * when the agent is running, unless `start` (the user pressed Refresh): the
+	 * page alone never starts the CLI.
+	 */
+	private async refreshCli(start = false): Promise<void> {
+		const generation = ++this.cliGeneration;
+		if (!start && this.service.runtime.state.kind !== 'ready') {
+			const message = vscode.l10n.t("The agent is not running. Press Refresh to start it and ask the Gemini CLI.");
+			this.extensions = { state: 'unavailable', message };
+			this.memory = { state: 'unavailable', message };
+			await this.update();
+			return;
+		}
 		this.extensions = { state: 'loading' };
 		this.memory = { state: 'loading' };
 		void this.update();
-		const cwd = getWorkspaceCwd();
+		let extensions: CliReport<ExtensionView>;
+		let memory: CliReport<MemoryFileView>;
 		try {
-			await this.service.ensureReady();
-			const [extensions, memory] = await Promise.all([
-				runCliCommand(this.service.runtime, cwd, '/extensions list'),
-				runCliCommand(this.service.runtime, cwd, '/memory list'),
-			]);
-			this.extensions = { state: 'ready', items: parseExtensionList(extensions).map(extensionView) };
-			this.memory = { state: 'ready', items: await Promise.all(parseMemoryList(memory).map(memoryView)) };
+			if (start) {
+				await this.service.ensureReady();
+			}
+			const [extensionsReply, memoryReply] = await runCliCommands(this.service.runtime, getWorkspaceCwd(), ['/extensions list', '/memory list']);
+			extensions = extensionsReply === undefined ? notOffered('/extensions') : { state: 'ready', items: parseExtensionList(extensionsReply).map(extensionView) };
+			memory = memoryReply === undefined ? notOffered('/memory') : { state: 'ready', items: await Promise.all(parseMemoryList(memoryReply).map(memoryView)) };
 		} catch (err) {
 			const message = vscode.l10n.t("The Gemini CLI did not answer: {0}", errorMessage(err));
-			this.extensions = { state: 'unavailable', message };
-			this.memory = { state: 'unavailable', message };
+			extensions = { state: 'unavailable', message };
+			memory = { state: 'unavailable', message };
 		}
+		if (generation !== this.cliGeneration) {
+			return;
+		}
+		this.extensions = extensions;
+		this.memory = memory;
 		await this.update();
 	}
 
@@ -152,12 +175,14 @@ export class SettingsPage implements vscode.Disposable {
 		const personalLabel = vscode.l10n.t("Personal");
 		const home = path.dirname(dir);
 		const skills: SkillView[] = (await loadSkills(skillFolders(undefined, home))).map(s => ({ name: s.name, description: s.description, scope: personalLabel, file: s.file }));
-		for (const { folder } of projects) {
+		// The CLI loads a project's skills only in a trusted folder.
+		for (const { folder } of vscode.workspace.isTrusted ? projects : []) {
 			const project = await loadSkills(skillFolders(folder.uri.fsPath, home).filter(f => !f.personal));
 			skills.push(...project.map(s => ({ name: s.name, description: s.description, scope: folder.name, file: s.file })));
 		}
 
-		// hooksConfig.disabled is merged across files, so a hook off in either is off.
+		// hooksConfig.disabled is merged across files, so a hook off in either is off;
+		// switching one on removes it from both lists (see the toggleHook message).
 		const personalOff = disabledHooks(personal);
 		const hooks: HookView[] = hooksIn(personal, this.personalSettings(), personalOff).map(h => ({ ...h, scope: personalLabel }));
 		for (const { folder, file, settings } of projects) {
@@ -211,19 +236,28 @@ export class SettingsPage implements vscode.Disposable {
 					}
 					if (!await setHookEnabled(message.file, message.name, message.enabled)) {
 						await this.cannotRewrite(message.file, '"hooksConfig"');
+					} else if (message.enabled && message.file !== this.personalSettings()) {
+						// The CLI merges the disabled lists, so a project hook the personal list switches off stays off until it leaves that list too.
+						const personal = this.personalSettings();
+						if (disabledHooks(await readSettingsFile(personal)).has(message.name) && !await setHookEnabled(personal, message.name, true)) {
+							await this.cannotRewrite(personal, '"hooksConfig"');
+						}
 					}
 					break;
 				case 'installExtension':
 					await this.installExtension();
 					return;
 				case 'extension':
+					if (!isExtensionAction(message.action)) {
+						return;
+					}
 					await this.extensionAction(message.action, message.name);
 					return;
 				case 'addMemory':
 					await this.addMemory();
 					return;
 				case 'refreshMemory':
-					await this.refreshCli();
+					await this.refreshCli(true);
 					return;
 				case 'openFile':
 					if (!this.files.has(message.path)) {
@@ -318,7 +352,17 @@ export class SettingsPage implements vscode.Disposable {
 		const slug = skillSlug(name);
 		const file = path.join(base, slug, 'SKILL.md');
 		await fs.mkdir(path.dirname(file), { recursive: true });
-		await fs.writeFile(file, skillTemplate(slug, description), { flag: 'wx' });
+		try {
+			await fs.writeFile(file, skillTemplate(slug, description), { flag: 'wx' });
+		} catch (err) {
+			if ((err as NodeJS.ErrnoException).code !== 'EEXIST') {
+				throw err;
+			}
+			// Made since the name was checked, perhaps in another window: open it rather than overwrite it.
+			void vscode.window.showWarningMessage(vscode.l10n.t("The \"{0}\" skill already exists.", slug));
+			await openAt(file);
+			return;
+		}
 		await openAt(file, '## When to use');
 		this.offerRestart(vscode.l10n.t("Created the \"{0}\" skill. New agents can use it; it is also in the / menu.", slug));
 		await this.update();
@@ -406,7 +450,10 @@ export class SettingsPage implements vscode.Disposable {
 			return;
 		}
 		await this.service.ensureReady();
-		const reply = await runCliCommand(this.service.runtime, getWorkspaceCwd(), `/extensions ${action} ${name}`);
+		const [reply] = await runCliCommands(this.service.runtime, getWorkspaceCwd(), [`/extensions ${action} ${name}`]);
+		if (reply === undefined) {
+			throw new Error(vscode.l10n.t("This Gemini CLI has no {0} command.", '/extensions'));
+		}
 		await this.refreshCli();
 		this.offerRestart(reply.trim() || name);
 	}
@@ -517,6 +564,18 @@ export class SettingsPage implements vscode.Disposable {
 </body>
 </html>`;
 	}
+}
+
+const extensionActions: ReadonlySet<string> = new Set(['enable', 'disable', 'update', 'uninstall']);
+
+/** Whether a webview message names an extension action the page offers. */
+function isExtensionAction(action: unknown): action is 'enable' | 'disable' | 'update' | 'uninstall' {
+	return typeof action === 'string' && extensionActions.has(action);
+}
+
+/** A list the CLI cannot report because it has no such command. */
+function notOffered<T>(command: string): CliReport<T> {
+	return { state: 'unavailable', message: vscode.l10n.t("This Gemini CLI has no {0} command.", command) };
 }
 
 function extensionView(extension: CliExtension): ExtensionView {

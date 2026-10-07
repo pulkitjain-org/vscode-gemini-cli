@@ -7,22 +7,42 @@
 // typed in a chat. gemini-cli 0.62 handles /extensions and /memory itself over
 // ACP, without the model: the command's result comes back as the reply's text
 // (`CommandHandler.runCommand`), and `/extensions list` sends its list as JSON.
-// Each run uses a session of its own, so no chat sees it.
+// The commands of one run share a hidden session of their own, so no chat sees
+// them, and a command the CLI does not list in `available_commands_update` is
+// never sent: it would reach the model as a prompt.
 
 import type * as acp from '@agentclientprotocol/sdk';
 import type { AgentRuntime } from './agentRuntime';
 
 /** Commands answer in milliseconds; an install clones a repository. */
 const defaultTimeoutMs = 120_000;
+/** How long a new session's command list is waited for; gemini-cli sends it as soon as the session opens. */
+const commandListMs = 2_000;
 
-/** Runs `/command` in a new session in `cwd` and returns the text it replied with. */
-export async function runCliCommand(runtime: AgentRuntime, cwd: string, command: string, timeoutMs = defaultTimeoutMs): Promise<string> {
+/** The command a `/name args` line runs: `name`, without the slash. */
+function commandName(line: string): string {
+	return line.trim().replace(/^\//, '').split(/\s+/)[0];
+}
+
+/**
+ * Runs each `/command` in turn in one new session in `cwd` and returns the
+ * text each replied with, or `undefined` for one the CLI does not offer. A
+ * command that does not answer within `timeoutMs` is cancelled and the run
+ * rejects. The session is closed afterwards when the CLI can close sessions.
+ */
+export async function runCliCommands(runtime: AgentRuntime, cwd: string, commands: readonly string[], timeoutMs = defaultTimeoutMs, listWaitMs = commandListMs): Promise<(string | undefined)[]> {
 	const { connection, agent, session } = await runtime.newSession(cwd);
+	const sessionId = session.sessionId;
 	let reply = '';
-	const registration = runtime.register(session.sessionId, {
+	let offered: ReadonlySet<string> | undefined;
+	let onOffered: (() => void) | undefined;
+	const registration = runtime.register(sessionId, {
 		sessionUpdate: (update: acp.SessionUpdate) => {
 			if (update.sessionUpdate === 'agent_message_chunk' && update.content.type === 'text') {
 				reply += update.content.text;
+			} else if (update.sessionUpdate === 'available_commands_update') {
+				offered = new Set(update.availableCommands.filter(c => typeof c.name === 'string').map(c => commandName(c.name)));
+				onOffered?.();
 			}
 		},
 		// A command never asks; refuse anything that does.
@@ -30,16 +50,39 @@ export async function runCliCommand(runtime: AgentRuntime, cwd: string, command:
 	});
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	try {
-		const timeout = new Promise<never>((_, reject) => {
-			timer = setTimeout(() => reject(new Error(`The Gemini CLI did not answer ${command} in time.`)), timeoutMs);
-		});
-		await Promise.race([connection.prompt(session.sessionId, [{ type: 'text', text: command }]), timeout]);
-		return reply;
+		if (!offered) {
+			await new Promise<void>(resolve => {
+				timer = setTimeout(resolve, listWaitMs);
+				onOffered = resolve;
+			});
+			clearTimeout(timer);
+		}
+		const replies: (string | undefined)[] = [];
+		for (const command of commands) {
+			if (!offered?.has(commandName(command))) {
+				replies.push(undefined);
+				continue;
+			}
+			reply = '';
+			const timeout = new Promise<never>((_, reject) => {
+				timer = setTimeout(() => {
+					void connection.cancel(sessionId).catch(() => undefined);
+					reject(new Error(`The Gemini CLI did not answer ${command} in time.`));
+				}, timeoutMs);
+			});
+			try {
+				await Promise.race([connection.prompt(sessionId, [{ type: 'text', text: command }]), timeout]);
+			} finally {
+				clearTimeout(timer);
+			}
+			replies.push(reply);
+		}
+		return replies;
 	} finally {
 		clearTimeout(timer);
 		registration.dispose();
 		if (agent.agentCapabilities?.sessionCapabilities?.close) {
-			void connection.close(session.sessionId).catch(() => undefined);
+			void connection.close(sessionId).catch(() => undefined);
 		}
 	}
 }

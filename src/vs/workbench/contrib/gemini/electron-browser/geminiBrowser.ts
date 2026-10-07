@@ -11,6 +11,7 @@
 // never code. A bar on an agent's page says Gemini is using it, with Stop.
 
 import { $, append } from '../../../../base/browser/dom.js';
+import { raceTimeout } from '../../../../base/common/async.js';
 import { Codicon } from '../../../../base/common/codicons.js';
 import { DisposableStore } from '../../../../base/common/lifecycle.js';
 import { ThemeIcon } from '../../../../base/common/themables.js';
@@ -19,7 +20,7 @@ import { getAgentBrowserViewCreationDefaults } from '../../../../platform/browse
 import { IPlaywrightService } from '../../../../platform/browserView/common/playwrightService.js';
 import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
 import { EditorsOrder } from '../../../common/editor.js';
-import { IEditorService } from '../../../services/editor/common/editorService.js';
+import { IEditorService, SIDE_GROUP } from '../../../services/editor/common/editorService.js';
 import { BrowserEditorInput } from '../../browserView/common/browserEditorInput.js';
 import { IBrowserViewModel, IBrowserViewWorkbenchService } from '../../browserView/common/browserView.js';
 import { BrowserEditor, BrowserEditorContribution, BrowserWidgetLocation, IBrowserEditorWidget } from '../../browserView/electron-browser/browserEditor.js';
@@ -28,7 +29,9 @@ import './geminiBrowser.css';
 /** Agent sessions are `gemini-agent:<key>`; the key is the extension's id for the agent. */
 const sessionPrefix = 'gemini-agent:';
 const pageReadyTimeoutMs = 8000;
+const navigationTimeoutMs = 30000;
 const actionTimeoutMs = 30000;
+const currentUrl = 'async (page) => page.url()';
 
 function sessionOf(key: unknown): string {
 	if (typeof key !== 'string' || !/^[\w-]{1,80}$/.test(key)) {
@@ -48,7 +51,14 @@ function pagesOf(service: IBrowserViewWorkbenchService, session: string): string
 		.map(input => input.id);
 }
 
-/** Opens `url` in a new page the agent owns, beside the editor in front without taking focus. */
+/**
+ * Opens `url` in a new page the agent owns, in a tab beside the editor in
+ * front (the agent's chat) without taking focus, so the user sees it load.
+ * Upstream opens agents' pages in the background unless their chat widget is
+ * visible, which a Gemini agent's never is, so the page is opened here. Resolves
+ * with where the page ended up, after any redirect. When it throws, the page
+ * may still be open, and is the agent's newest.
+ */
 CommandsRegistry.registerCommand('_gemini.browser.open', async (accessor, key: string, url: string) => {
 	const session = sessionOf(key);
 	const parsed = typeof url === 'string' ? URL.parse(url) : null;
@@ -57,21 +67,28 @@ CommandsRegistry.registerCommand('_gemini.browser.open', async (accessor, key: s
 	}
 	const browserViews = accessor.get(IBrowserViewWorkbenchService);
 	const playwright = accessor.get(IPlaywrightService);
-	const input = await browserViews.createBrowserView({ ...getAgentBrowserViewCreationDefaults(session), initialUrl: parsed.href, openSource: 'cdpCreated' }, { preserveFocus: true });
+	const editorService = accessor.get(IEditorService);
+	const input = await browserViews.createBrowserView({ ...getAgentBrowserViewCreationDefaults(session), openSource: 'cdpCreated' });
+	await editorService.openEditor(input, { preserveFocus: true, pinned: true }, SIDE_GROUP);
+	const model = await input.resolve();
+	await raceTimeout(model.loadURL(parsed.href), navigationTimeoutMs);
 	const summary = await playwright.waitForPageAndGetSummary(session, input.id, parsed.href, pageReadyTimeoutMs);
-	return { pageId: input.id, summary };
+	return { pageId: input.id, summary, url: await playwright.invokeFunctionRaw<string>(session, input.id, currentUrl) };
 });
 
 /** The agent's open pages. */
 CommandsRegistry.registerCommand('_gemini.browser.pages', (accessor, key: string) => pagesOf(accessor.get(IBrowserViewWorkbenchService), sessionOf(key)));
 
-/** The page's accessibility snapshot, with the element refs actions take. */
-CommandsRegistry.registerCommand('_gemini.browser.snapshot', (accessor, key: string, pageId: string) => {
+/** The page's accessibility snapshot, with the element refs actions take, and where the page is. */
+CommandsRegistry.registerCommand('_gemini.browser.snapshot', async (accessor, key: string, pageId: string) => {
 	const session = sessionOf(key);
 	if (!pagesOf(accessor.get(IBrowserViewWorkbenchService), session).includes(pageId)) {
 		throw new Error('The page was closed.');
 	}
-	return accessor.get(IPlaywrightService).getSummary(session, pageId);
+	const playwright = accessor.get(IPlaywrightService);
+	const summary = await playwright.getSummary(session, pageId);
+	// Read after the content, so the extension checks where the content came from.
+	return { summary, url: await playwright.invokeFunctionRaw<string>(session, pageId, currentUrl) };
 });
 
 /** The fixed actions an agent can take on its page; `target` is an element ref from the snapshot (`aria-ref=e12`) or a CSS selector. */
@@ -100,21 +117,19 @@ CommandsRegistry.registerCommand('_gemini.browser.act', async (accessor, key: st
 	}
 	const playwright = accessor.get(IPlaywrightService);
 	const result = await playwright.invokeFunction(session, pageId, fn, Array.isArray(args) ? args : [], actionTimeoutMs);
-	const url = await playwright.invokeFunctionRaw<string>(session, pageId, 'async (page) => page.url()').catch(() => undefined);
-	return { summary: result.summary, error: result.error, url, pending: !!result.deferredResultId };
+	const url = await playwright.invokeFunctionRaw<string>(session, pageId, currentUrl).catch(() => undefined);
+	return { summary: result.summary, error: result.error, url };
 });
 
-/** Where the agent's page is now, without reading it. */
-CommandsRegistry.registerCommand('_gemini.browser.url', (accessor, key: string, pageId: string) =>
-	accessor.get(IPlaywrightService).invokeFunctionRaw<string>(sessionOf(key), pageId, 'async (page) => page.url()'));
-
-/** A JPEG of the visible part of the agent's page, base64-encoded. */
+/** A JPEG of the visible part of the agent's page, base64-encoded, and where the page is. */
 CommandsRegistry.registerCommand('_gemini.browser.screenshot', async (accessor, key: string, pageId: string) => {
 	const session = sessionOf(key);
 	if (!pagesOf(accessor.get(IBrowserViewWorkbenchService), session).includes(pageId)) {
 		throw new Error('The page was closed.');
 	}
-	return accessor.get(IPlaywrightService).invokeFunctionRaw<string>(session, pageId, 'async (page) => (await page.screenshot({ type: "jpeg", quality: 70 })).toString("base64")');
+	const playwright = accessor.get(IPlaywrightService);
+	const data = await playwright.invokeFunctionRaw<string>(session, pageId, 'async (page) => (await page.screenshot({ type: "jpeg", quality: 70 })).toString("base64")');
+	return { data, url: await playwright.invokeFunctionRaw<string>(session, pageId, currentUrl) };
 });
 
 /** Closes the agent's pages and ends its Playwright session, for an agent that was removed. */

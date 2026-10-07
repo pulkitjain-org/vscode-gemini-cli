@@ -8,11 +8,15 @@
 // Browser. It listens on 127.0.0.1 only, wants a secret token, and serves each
 // agent at its own path, so an agent only ever reaches its own page. The page
 // itself is driven by a `BrowserBackend` (the workbench's `_gemini.browser.*`
-// commands in the app). Local pages open freely; anything else asks first.
+// commands in the app). Pages on this machine open freely; files follow the
+// agent's file access policy; other sites ask first. Where the page ends up
+// (after a redirect, a click, or on its own) is checked again each time.
 
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { fileURLToPath } from 'node:url';
+import { checkFileAccess, FileAccessPolicyOptions } from './fileAccess';
 
 export interface PageState {
 	/** The page's accessibility snapshot, with refs such as e12 for elements. */
@@ -22,22 +26,28 @@ export interface PageState {
 	readonly url?: string;
 }
 
-/** What drives an agent's pages. */
+/** What drives an agent's pages. Each answer says where the page is now. */
 export interface BrowserBackend {
-	open(agent: string, url: string): Promise<{ readonly pageId: string; readonly summary: string }>;
-	/** The agent's pages that are still open. */
+	/** Opens a new page; when it throws, the page may still have opened (see `pages`). */
+	open(agent: string, url: string): Promise<{ readonly pageId: string; readonly summary: string; readonly url: string }>;
+	/** The agent's pages that are still open, oldest first. */
 	pages(agent: string): Promise<readonly string[]>;
-	snapshot(agent: string, pageId: string): Promise<string>;
+	snapshot(agent: string, pageId: string): Promise<{ readonly summary: string; readonly url: string }>;
 	act(agent: string, pageId: string, action: BrowserAction, args: readonly unknown[]): Promise<PageState>;
-	/** A JPEG, base64. */
-	screenshot(agent: string, pageId: string): Promise<string>;
+	/** `data` is a JPEG, base64. */
+	screenshot(agent: string, pageId: string): Promise<{ readonly data: string; readonly url: string }>;
 }
 
 export type BrowserAction = 'goto' | 'back' | 'reload' | 'click' | 'hover' | 'type' | 'select' | 'press' | 'scroll' | 'wait';
 
-/** Decides about pages that are not local: asks the user, or follows policy. */
+/** Decides which pages an agent may see. */
 export interface BrowserGate {
+	/** For a site that is not local: asks the user, or follows policy. */
 	allow(agent: string, url: URL): Promise<boolean>;
+	/** The file access policy for the agent's `file:` pages, as for its file reads. */
+	files(agent: string): FileAccessPolicyOptions;
+	/** Whether the browser is on; when it is off every tool call fails. */
+	enabled?(): boolean;
 }
 
 export interface McpTool {
@@ -118,13 +128,18 @@ export const browserTools: readonly McpTool[] = [
 	},
 ];
 
-/** Pages the agent may open without asking: this machine, and files. */
+/** Sites the agent may open without asking: this machine. */
 export function isLocalUrl(url: URL): boolean {
-	if (url.protocol === 'file:') {
-		return true;
+	if (!/^https?:$/.test(url.protocol)) {
+		return false;
 	}
 	const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
 	return host === 'localhost' || host.endsWith('.localhost') || host === '::1' || host === '0.0.0.0' || /^127(\.\d{1,3}){3}$/.test(host);
+}
+
+/** A URL as messages show it: a site by its origin, a file in full. */
+function where(url: URL): string {
+	return url.protocol === 'file:' ? url.href : url.origin;
 }
 
 function failure(value: string): McpToolResult {
@@ -157,6 +172,9 @@ export class BrowserToolHost {
 	}
 
 	async call(agent: string, name: string, args: Record<string, unknown>): Promise<McpToolResult> {
+		if (this.gate.enabled && !this.gate.enabled()) {
+			return failure('The GeminiCode browser is turned off.');
+		}
 		try {
 			return await this.run(agent, name, args);
 		} catch (err) {
@@ -170,14 +188,14 @@ export class BrowserToolHost {
 			if (!url || !/^(https?|file):$/.test(url.protocol)) {
 				return failure('Give an absolute http, https or file URL.');
 			}
-			if (!await this.allowed(agent, url)) {
-				return failure(`The user did not allow opening ${url.origin}. Ask them before trying another site.`);
+			const refused = await this.refusal(agent, url);
+			if (refused) {
+				return failure(`Did not open ${where(url)}: ${refused}.${/^https?:$/.test(url.protocol) ? ' Ask the user before trying another site.' : ''}`);
 			}
 			const page = await this.livePage(agent);
 			if (!page) {
-				const opened = await this.backend.open(agent, url.href);
-				this.pageOf.set(agent, opened.pageId);
-				return pageText({ summary: opened.summary, url: url.href });
+				const opened = await this.open(agent, url);
+				return await this.leftFor(agent, opened.pageId, opened.url) ?? pageText(opened);
 			}
 			return this.act(agent, page, 'goto', [url.href]);
 		}
@@ -186,10 +204,14 @@ export class BrowserToolHost {
 			return failure('You have no page open. Use browser_navigate first.');
 		}
 		switch (name) {
-			case 'browser_snapshot':
-				return pageText({ summary: await this.backend.snapshot(agent, page) });
-			case 'browser_screenshot':
-				return { content: [{ type: 'image', data: await this.backend.screenshot(agent, page), mimeType: 'image/jpeg' }] };
+			case 'browser_snapshot': {
+				const state = await this.backend.snapshot(agent, page);
+				return await this.leftFor(agent, page, state.url) ?? pageText(state);
+			}
+			case 'browser_screenshot': {
+				const shot = await this.backend.screenshot(agent, page);
+				return await this.leftFor(agent, page, shot.url) ?? { content: [{ type: 'image', data: shot.data, mimeType: 'image/jpeg' }, { type: 'text', text: `URL: ${shot.url}` }] };
+			}
 			case 'browser_back':
 				return this.act(agent, page, 'back', []);
 			case 'browser_press_key':
@@ -218,19 +240,58 @@ export class BrowserToolHost {
 		return failure(`Unknown tool: ${name}`);
 	}
 
-	/** Runs an action; when it leads somewhere that is not local and the user does not allow it, goes back. */
-	private async act(agent: string, page: string, action: BrowserAction, args: readonly unknown[]): Promise<McpToolResult> {
-		const state = await this.backend.act(agent, page, action, args);
-		const url = state.url ? URL.parse(state.url) : null;
-		if (url && /^https?:$/.test(url.protocol) && !await this.allowed(agent, url)) {
-			await this.backend.act(agent, page, 'back', []).catch(() => undefined);
-			return failure(`That led to ${url.origin}, which the user did not allow, so the page went back.`);
+	/** Opens the agent's page. When that fails part way (a slow page), keeps the page that opened, so the next navigate reuses it. */
+	private async open(agent: string, url: URL): Promise<{ readonly pageId: string; readonly summary: string; readonly url: string }> {
+		try {
+			const opened = await this.backend.open(agent, url.href);
+			this.pageOf.set(agent, opened.pageId);
+			return opened;
+		} catch (err) {
+			const newest = (await this.backend.pages(agent).catch(() => [])).at(-1);
+			if (newest) {
+				this.pageOf.set(agent, newest);
+			}
+			throw err;
 		}
-		return pageText(state);
 	}
 
-	private allowed(agent: string, url: URL): Promise<boolean> | boolean {
-		return isLocalUrl(url) || url.href === 'about:blank' || this.gate.allow(agent, url);
+	/** Runs an action, then checks where the page went. */
+	private async act(agent: string, page: string, action: BrowserAction, args: readonly unknown[]): Promise<McpToolResult> {
+		const state = await this.backend.act(agent, page, action, args);
+		return await this.leftFor(agent, page, state.url) ?? pageText(state);
+	}
+
+	/**
+	 * When the page is at `current` (after a redirect, an action, or on its
+	 * own) and the agent may not see it there: sends the page back and answers
+	 * with why. Undefined when the page may stay.
+	 */
+	private async leftFor(agent: string, page: string, current: string | undefined): Promise<McpToolResult | undefined> {
+		const url = current ? URL.parse(current) : null;
+		const refused = url ? await this.refusal(agent, url) : undefined;
+		if (!url || !refused) {
+			return undefined;
+		}
+		await this.backend.act(agent, page, 'back', []).catch(() => undefined);
+		return failure(`The page went to ${where(url)}, but ${refused}, so it went back.`);
+	}
+
+	/** Why the agent may not see `url`, or undefined when it may. */
+	private async refusal(agent: string, url: URL): Promise<string | undefined> {
+		if (url.protocol === 'file:') {
+			let filePath: string;
+			try {
+				filePath = fileURLToPath(url);
+			} catch {
+				return 'that is not a local file';
+			}
+			return checkFileAccess(filePath, 'read', this.gate.files(agent));
+		}
+		if (!/^https?:$/.test(url.protocol) || isLocalUrl(url) || await this.gate.allow(agent, url)) {
+			// Other schemes (about:blank, an error page) show nothing from elsewhere; navigate opens only http, https and file.
+			return undefined;
+		}
+		return 'the user did not allow that site';
 	}
 
 	private async livePage(agent: string): Promise<string | undefined> {
@@ -257,29 +318,40 @@ interface JsonRpcRequest {
 /**
  * The MCP endpoint, over Streamable HTTP with plain JSON replies (no event
  * stream, which the protocol allows): `initialize`, `ping`, `tools/list` and
- * `tools/call`. POST to `/mcp/<agent>` with `Authorization: Bearer <token>`.
+ * `tools/call`. POST to `/mcp/<agent>` with `Authorization: Bearer <token>`,
+ * where the token is the agent's own (an HMAC of its id), so one agent's
+ * token does not reach another agent's page.
  */
 export class BrowserMcpServer {
 
-	private readonly token = randomBytes(24).toString('base64url');
+	private readonly secret = randomBytes(32);
 	private server: http.Server | undefined;
 	private port: number | undefined;
+	private starting: Promise<number> | undefined;
 
 	constructor(private readonly tools: BrowserToolHost, private readonly version: string) { }
 
-	/** Starts listening, once; resolves with the port. */
-	async start(): Promise<number> {
-		if (this.port) {
-			return this.port;
+	/** Starts listening, once (concurrent calls share it); resolves with the port. */
+	start(): Promise<number> {
+		if (!this.starting) {
+			const starting: Promise<number> = listen(http.createServer((req, res) => void this.handle(req, res))).then(server => {
+				if (this.starting !== starting) {
+					// Disposed while starting.
+					server.close();
+					throw new Error('The browser tools were stopped.');
+				}
+				this.server = server;
+				this.port = (server.address() as AddressInfo).port;
+				return this.port;
+			}, err => {
+				if (this.starting === starting) {
+					this.starting = undefined;
+				}
+				throw err;
+			});
+			this.starting = starting;
 		}
-		const server = http.createServer((req, res) => void this.handle(req, res));
-		await new Promise<void>((resolve, reject) => {
-			server.once('error', reject);
-			server.listen(0, '127.0.0.1', () => resolve());
-		});
-		this.server = server;
-		this.port = (server.address() as AddressInfo).port;
-		return this.port;
+		return this.starting;
 	}
 
 	/** The ACP `mcpServers` entry for an agent; undefined until started. */
@@ -287,13 +359,20 @@ export class BrowserMcpServer {
 		if (!this.port || !/^[\w-]{1,80}$/.test(agent)) {
 			return undefined;
 		}
-		return { type: 'http', name: 'geminicode-browser', url: `http://127.0.0.1:${this.port}/mcp/${agent}`, headers: [{ name: 'Authorization', value: `Bearer ${this.token}` }] };
+		return { type: 'http', name: 'geminicode-browser', url: `http://127.0.0.1:${this.port}/mcp/${agent}`, headers: [{ name: 'Authorization', value: `Bearer ${this.tokenFor(agent)}` }] };
 	}
 
+	/** Stops listening and drops open connections, so agents lose the tools at once. */
 	dispose(): void {
+		this.starting = undefined;
 		this.server?.close();
+		this.server?.closeAllConnections();
 		this.server = undefined;
 		this.port = undefined;
+	}
+
+	private tokenFor(agent: string): string {
+		return createHmac('sha256', this.secret).update(agent).digest('base64url');
 	}
 
 	private async handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -301,7 +380,7 @@ export class BrowserMcpServer {
 		if (!agent) {
 			return void res.writeHead(404).end();
 		}
-		if (!this.authorized(req.headers.authorization)) {
+		if (!this.authorized(agent, req.headers.authorization)) {
 			return void res.writeHead(401).end();
 		}
 		if (req.method === 'DELETE') {
@@ -353,11 +432,18 @@ export class BrowserMcpServer {
 		}
 	}
 
-	private authorized(header: string | undefined): boolean {
-		const expected = Buffer.from(`Bearer ${this.token}`);
+	private authorized(agent: string, header: string | undefined): boolean {
+		const expected = Buffer.from(`Bearer ${this.tokenFor(agent)}`);
 		const given = Buffer.from(header ?? '');
 		return given.length === expected.length && timingSafeEqual(given, expected);
 	}
+}
+
+function listen(server: http.Server): Promise<http.Server> {
+	return new Promise((resolve, reject) => {
+		server.once('error', reject);
+		server.listen(0, '127.0.0.1', () => resolve(server));
+	});
 }
 
 function readBody(req: http.IncomingMessage): Promise<string> {

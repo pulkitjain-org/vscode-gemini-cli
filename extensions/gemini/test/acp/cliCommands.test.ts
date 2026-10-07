@@ -5,11 +5,12 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { AgentRuntime, AgentRuntimeState } from '../../src/acp/agentRuntime';
-import { isExtensionSource, parseExtensionList, parseMemoryList, runCliCommand } from '../../src/acp/cliCommands';
+import { isExtensionSource, parseExtensionList, parseMemoryList, runCliCommands } from '../../src/acp/cliCommands';
 import { AgentSidecar } from '../../src/acp/sidecar';
+import type { FakeAgentScript } from '../fake-agent/fakeAgent';
 import { fakeAgentCommand, waitFor } from '../helpers';
 
-describe('runCliCommand', () => {
+describe('runCliCommands', () => {
 	let sidecar: AgentSidecar | undefined;
 	let runtime: AgentRuntime | undefined;
 	afterEach(() => {
@@ -17,21 +18,43 @@ describe('runCliCommand', () => {
 		sidecar?.dispose();
 	});
 
-	it('returns what the command replied, in a session of its own, without counting as work', async () => {
-		sidecar = new AgentSidecar({
-			command: () => fakeAgentCommand({ turns: [[{ step: 'update', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '[{"name":"x",' } } }, { step: 'update', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '"version":"1"}]' } } }]] }),
-			cwd: undefined, restartDelaysMs: [],
-		});
-		runtime = new AgentRuntime(sidecar);
-		const ready = waitFor<AgentRuntimeState>(runtime.onDidChangeState, s => s.kind === 'ready');
+	async function start(script: FakeAgentScript): Promise<AgentRuntime> {
+		sidecar = new AgentSidecar({ command: () => fakeAgentCommand(script), cwd: undefined, restartDelaysMs: [] });
+		const started = new AgentRuntime(sidecar);
+		runtime = started;
+		const ready = waitFor<AgentRuntimeState>(started.onDidChangeState, s => s.kind === 'ready');
 		sidecar.start();
 		await ready;
+		return started;
+	}
+
+	it('runs the commands the CLI offers in one session, without counting as work, and skips the rest', async () => {
+		const started = await start({
+			availableCommands: [{ name: 'extensions', description: '' }, { name: 'init', description: '' }],
+			turns: [
+				[{ step: 'update', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '[{"name":"x",' } } }, { step: 'update', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '"version":"1"}]' } } }],
+				[{ step: 'session' }],
+			],
+		});
 		let busy = false;
-		runtime.onDidBecomeBusy(() => busy = true);
-		const reply = await runCliCommand(runtime, '/work', '/extensions list');
-		expect(parseExtensionList(reply).map(e => e.name)).toEqual(['x']);
-		expect(busy).toBe(false);
-		expect(runtime.sessionCount).toBe(0);
+		started.onDidBecomeBusy(() => busy = true);
+		const [extensions, memory, init] = await runCliCommands(started, '/work', ['/extensions list', '/memory list', '/init']);
+		expect({ extensions: parseExtensionList(extensions!).map(e => e.name), memory, init, busy, sessions: started.sessionCount })
+			.toEqual({ extensions: ['x'], memory: undefined, init: 'session:fake-session-1:/work', busy: false, sessions: 0 });
+	});
+
+	it('sends nothing when the CLI lists no commands', async () => {
+		const started = await start({ turns: [[{ step: 'session' }]] });
+		expect(await runCliCommands(started, '/work', ['/extensions list'], 1_000, 50)).toEqual([undefined]);
+	});
+
+	it('cancels a command that does not answer in time', async () => {
+		const started = await start({
+			availableCommands: [{ name: 'memory', description: '' }],
+			turns: [[{ step: 'delay', ms: 300 }, { step: 'session' }], [{ step: 'auth' }]],
+		});
+		await expect(runCliCommands(started, '/work', ['/memory list'], 100)).rejects.toThrow('did not answer /memory list in time');
+		expect(started.sessionCount).toBe(0);
 	});
 });
 

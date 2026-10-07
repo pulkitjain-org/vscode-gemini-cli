@@ -6,7 +6,7 @@ How the parts of GeminiCode that differ from VS Code behave day to day. For setu
 
 The switch at the top of the window, or ⌥⌘M, changes the layout:
 
-- **Agents mode** (the default) is for working with agents: your agents on the left, the agent's chat in the middle, and its changes on the right. When no tab is open, **Agent Home** shows: describe a task and press Return to start an agent on it, tick **On its own branch** to give it a branch of its own, and see each agent's status, changes and next step as a card. Agents mode always shows Gemini on the left and Changes on the right; opening Explorer, Search or any other view switches to Editor mode with that view open.
+- **Agents mode** (the default) is for working with agents: your agents on the left, the agent's chat in the middle, and its changes on the right. When no tab is open, **Agent Home** shows: describe a task and press Return to start an agent on it, tick **On its own branch** to give it a branch of its own, and see each agent's status, changes and next step as a card. Agents mode always shows Gemini on the left and Changes on the right, unless you put another view on the right; opening Explorer, Search or any other view switches to Editor mode with that view open.
 - **Editor mode** is the classic VS Code layout, with Explorer, Search and Source Control, for hands-on coding.
 
 Each mode remembers which panels you had open. An agent's tab shows what it is doing (a spinner while it works, an amber dot when it needs you, a tick when it has finished) and how many lines it has changed. On a Mac, right-click GeminiCode in the Dock for **New Agent**. Agents that are working or waiting for you show as pills in the title bar in both modes; click one to open that agent.
@@ -15,7 +15,7 @@ In the **Changes** panel, hover over a change to **Keep** or **Undo** it. **Keep
 
 An agent on its own branch can get a ready folder: set **Gemini › Agents: Worktree Setup** to a command (such as `npm ci`), or commit `.gemini/worktree-setup.sh` to the repository, and it runs in the new branch's folder before the agent starts. `GEMINI_SOURCE_REPOSITORY` names the repository it came from, to copy files Git does not carry, such as `.env`. Its output is in the **Gemini Worktree Setup** output; if it fails, the agent starts anyway.
 
-**Follow the agent.** Click the eye in a chat's composer, or run **Gemini: Follow the Agent**, to watch the agent work: each file it reads opens at the line it is on, and each file it edits opens once the edit is written. Focus stays in the chat. New chats start the way you left the last one.
+**Follow the agent.** Click the eye in a chat's composer, or run **Gemini: Follow the Agent**, to watch the agent work: each file it reads opens at the line it is on, and each file it edits opens once the edit is written. Files outside the agent's folder, and files that may hold secrets such as `.env` or anything under `.ssh`, are not opened. Focus stays in the chat. New chats start the way you left the last one.
 
 **Keep awake.** While any agent works, GeminiCode keeps the Mac from going to sleep, so a long task carries on when you step away. The display can still sleep, and the Mac may sleep again as soon as no agent is working. Turn it off with `gemini.keepAwake`.
 
@@ -133,10 +133,11 @@ A new, empty agent lists the three sessions the Gemini CLI saved most recently f
 
 ## Slash commands
 
-Type `/` at the start of the composer to list commands, with team commands first. Keep typing to filter, then press <kbd>Tab</kbd> or <kbd>Enter</kbd> to complete the name and add arguments.
+Type `/` at the start of the composer to list commands: team commands first, then skills, then the CLI's own. Keep typing to filter, then press <kbd>Tab</kbd> or <kbd>Enter</kbd> to complete the name and add arguments.
 
 - **Gemini CLI commands** such as `/init`, `/memory` and `/restore` come from the CLI and run in the CLI.
 - **Team commands** are TOML files in `.gemini/commands/` in the workspace, or in `~/.gemini/commands/` for your own. This is the Gemini CLI's own format, so the same files work in the terminal. `git/commit.toml` becomes `/git:commit`. GeminiCode sends the file's `prompt`, with `{{args}}` replaced by what you typed after the name. A workspace command replaces a personal one with the same name, and a CLI command wins over both.
+- **Skills** are folders with a `SKILL.md`, in `.gemini/skills/` (or `.agents/skills/`) in the workspace or in `~/.gemini/skills/` (or `~/.agents/skills/`) for your own. Picking one asks the agent to load it, with what you typed after the name as the task. A team command or CLI command with the same name wins. A workspace's skills are offered only once you trust the folder.
 
 ```toml
 description = "Review a file for bugs"
@@ -153,18 +154,20 @@ When an agent finishes or needs your permission while GeminiCode is in the backg
 
 **Gemini: Project Helpers** (also in the Agents pane's **...** menu) shows what every agent loads when it starts. Its **MCP servers** section lists the MCP servers in your personal `~/.gemini/settings.json` and in each open folder's `.gemini/settings.json`. Each has a switch that turns it on or off, the same way the CLI's `/mcp enable` and `/mcp disable` do, so the `gemini` command in your terminal sees the change too. **Add Server** asks for a name and the command that starts the server, or its URL, and adds it to your personal settings. The page also opens or creates your project's rules (`GEMINI.md`, or the name in `context.fileName`) and your personal rules (`~/.gemini/GEMINI.md`). Changes apply to agents started afterwards; **Restart Agent** applies them now.
 
-- **Skills** are folders with a `SKILL.md` that teaches Gemini a task, such as cutting a release. The page lists your own (`~/.gemini/skills`) and each project's (`.gemini/skills`, and `.agents/skills` in both places). **New Skill** (or **Gemini: New Skill**) makes one from a template and opens it. Gemini loads a skill by itself when a task calls for it; to use one now, pick it from the `/` menu, optionally followed by what to do.
-- **Hooks** are commands the CLI runs at set points: before or after a tool, when a turn starts or ends, and so on. Each has a switch, and **Add Hook** asks when it runs, which tools it applies to, the command and whether it is yours or the project's, then adds it to that `settings.json`. A project's hooks run only in trusted folders.
+- **Skills** are folders with a `SKILL.md` that teaches Gemini a task, such as cutting a release. The page lists your own (`~/.gemini/skills`) and each project's (`.gemini/skills`, and `.agents/skills` in both places); a project's skills are listed only once you trust the folder, as the CLI loads them only then. **New Skill** (or **Gemini: New Skill**) makes one from a template and opens it. Gemini loads a skill by itself when a task calls for it; to use one now, pick it from the `/` menu, optionally followed by what to do.
+- **Hooks** are commands the CLI runs at set points: before or after a tool, when a turn starts or ends, and so on. Each has a switch, and **Add Hook** asks when it runs, which tools it applies to, the command and whether it is yours or the project's, then adds it to that `settings.json`. Turning on a project hook that your personal settings turn off also removes it from your personal list, since the CLI keeps a hook off when either file does. A project's hooks run only in trusted folders.
 - **Extensions** lists the Gemini CLI extensions installed, as the CLI's own `/extensions list` reports them, with a switch to turn each on or off. **Install**, **Update** and **Uninstall** run the CLI's installer in a terminal, because it shows a security warning and may ask you questions; the page updates when it finishes.
 - **Memory** lists the `GEMINI.md` files the CLI loads for the folder (`/memory list`), including those in subfolders and extensions. **Add Memory** adds a line under "Gemini Added Memories" in your own or the project's `GEMINI.md`; **Refresh** asks the CLI again.
+
+Opening the page never starts the Gemini CLI. Extensions and memory are asked for when the agent is already running (and again when it starts); otherwise the page says so, and **Refresh** starts the agent and asks. A CLI without the `/extensions` or `/memory` command says so instead of a list.
 
 When an MCP server cannot start, GeminiCode shows a warning naming the server and the reason, marks it on the Project Helpers page, and writes it to the Gemini log (**Gemini: Show Log**). The CLI does not report these over ACP, so GeminiCode reads them from the CLI's debug log, which it keeps under 1 MB in its own storage. If you set `GEMINI_DEBUG_LOG_FILE` yourself, GeminiCode leaves it alone and shows no warnings.
 
 ## The GeminiCode browser
 
-Agents can open the web app they are working on in GeminiCode's browser and check their own work: read the page, click, type, press keys and take screenshots, while you watch. Ask, for example, "open http://localhost:5173 and check the cart total". Each agent gets its own tab beside its chat, with a **Gemini is using this page** bar; **Stop** on it stops the agent's turn. Pages on this machine (`localhost`, `127.0.0.1`, files) open freely. Any other site asks you first, once per agent and site, because a page can contain instructions aimed at the agent. Default mode still asks before each browser action, like any other tool.
+Agents can open the web app they are working on in GeminiCode's browser and check their own work: read the page, click, type, press keys and take screenshots, while you watch. Ask, for example, "open http://localhost:5173 and check the cart total". Each agent gets its own tab beside its chat, with a **Gemini is using this page** bar; **Stop** on it stops the agent's turn. Pages on this machine (`localhost`, `127.0.0.1`) open freely, and local files follow the same rules as the agent's file tools. Any other site asks you first, once per agent and site, because a page can contain instructions aimed at the agent. That check uses the page's real address after every step, so a redirect or a link the agent clicks can't skip it. The tab opens beside the chat without taking focus. Default mode still asks before each browser action, like any other tool.
 
-Links to `localhost` from the terminal and chat also open in GeminiCode's browser. Turn the agent's browser off with `gemini.browser.enabled`; `gemini.browser.allowOtherSites` (also an admin policy) limits agents to local pages.
+Links to `localhost` from the terminal and chat also open in GeminiCode's browser. Turn the agent's browser off with `gemini.browser.enabled`; it stops at once for running agents, and turning it back on reaches each agent from its next new session; `gemini.browser.allowOtherSites` (also an admin policy) limits agents to local pages.
 
 ## Review my changes
 
@@ -184,7 +187,7 @@ GeminiCode keeps its own share small:
 - Messages scrolled out of view are not laid out, and streaming sends only new text.
 - Proposed edits are remembered for the last 200 tool calls. Older diff links open the file as it is now.
 
-To find your way round a long chat, use the thin outline of your prompts down the chat's right edge: point at a tick to see the prompt, click it to jump there. ⌥⌘↑ and ⌥⌘↓ jump to your previous and next prompt. **Open Chat as Markdown** (in Quick Chat's **...** menu, an agent's right-click menu in the Agents pane, or the Command Palette for the chat in front) opens the whole conversation as a Markdown document you can search, save or share.
+To find your way round a long chat, use the thin outline of your prompts down the chat's right edge: point at a tick to see the prompt, click it to jump there. ⌥⌘↑ and ⌥⌘↓ jump to your previous and next prompt. **Open Chat as Markdown** (in Quick Chat's **...** menu, an agent's right-click menu in the Agents pane, or the Command Palette for the chat in front) opens the whole conversation as a Markdown document you can search, save or share. For an agent that is not running, it opens the saved copy, which keeps the last 300 messages.
 
 Every agent in a window shares one Gemini CLI process, and that process keeps each session's history until it restarts. In Quick Chat, **New Chat** starts a fresh session; for agents, start a new agent. If an old agent is no longer needed, remove it from the Agents pane, which also deletes its saved conversation.
 

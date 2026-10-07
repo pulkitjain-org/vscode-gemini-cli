@@ -7,7 +7,8 @@
 // left, the agent's chat in the middle and its Changes on the right, with no
 // activity bar; Editor mode is the classic layout. Each mode remembers which
 // parts were open, and switching only shows and hides parts, so it is instant.
-// Agents mode always shows the Gemini view and Changes; opening any other view
+// Agents mode always shows the Gemini view, and Changes on the right unless the
+// user put another view there; opening any other view
 // in the side bar switches to Editor mode with that view open.
 // The title bar carries the switch and a pill for each agent that is working
 // or waiting, which the Gemini extension reports through `_gemini.setAgentStatus`.
@@ -204,16 +205,16 @@ class GeminiModes extends Disposable implements IWorkbenchContribution {
 	}
 
 	/**
-	 * In Agents mode the right side shows Changes: replaces another view there
-	 * (upstream's Chat on a new profile), and shows it when a layout asked for
-	 * it before the extension had registered it.
+	 * In Agents mode the right side shows Changes when a layout asked for it
+	 * before the extension had registered it, or when the side is open with no
+	 * view in it. A view the user put there is left alone.
 	 */
 	private showChanges(): void {
 		if (state.mode !== 'agents' || !this.viewDescriptorService.getViewContainerById(changesContainer)) {
 			return;
 		}
-		const visible = this.layoutService.isVisible(Parts.AUXILIARYBAR_PART);
-		if (this.changesPending || (visible && this.paneCompositeService.getActivePaneComposite(ViewContainerLocation.AuxiliaryBar)?.getId() !== changesContainer)) {
+		const empty = this.layoutService.isVisible(Parts.AUXILIARYBAR_PART) && !this.paneCompositeService.getActivePaneComposite(ViewContainerLocation.AuxiliaryBar);
+		if (this.changesPending || empty) {
 			this.changesPending = false;
 			this.layoutService.setPartHidden(false, Parts.AUXILIARYBAR_PART);
 			void this.openFixed(changesContainer, ViewContainerLocation.AuxiliaryBar);

@@ -820,7 +820,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	}
 
 	private start(record: AgentRecord, folder: string): LiveAgent {
-		const session = new AgentSession(this.service, folder, record.sessionId, () => this.browser?.mcpServersFor(record.id) ?? []);
+		const session = new AgentSession(this.service, folder, record.sessionId, () => this.browser?.mcpServersFor(record.id, folder) ?? []);
 		const files: FileSearch = isOpenFolder(folder) ? this.workspaceFiles : new FolderFileIndex(folder);
 		const changes = new AgentChanges(folder);
 		const live: LiveAgent = {

@@ -19,7 +19,12 @@ class TeamCommandStore implements vscode.Disposable {
 	private readonly skillCache = new Map<string, Promise<readonly Skill[]>>();
 	private readonly watchers = new Map<string, vscode.Disposable>();
 
-	constructor(private readonly log: vscode.LogOutputChannel) { }
+	private readonly trustListener: vscode.Disposable;
+
+	constructor(private readonly log: vscode.LogOutputChannel) {
+		// Project skills are offered only once the folder is trusted.
+		this.trustListener = vscode.workspace.onDidGrantWorkspaceTrust(() => this.skillCache.clear());
+	}
 
 	/** The team commands for an agent working in `cwd`. */
 	get(cwd: string): Promise<readonly TeamCommand[]> {
@@ -38,12 +43,13 @@ class TeamCommandStore implements vscode.Disposable {
 		return commands;
 	}
 
-	/** The skills an agent working in `cwd` can load. */
+	/** The skills an agent working in `cwd` can load: the project's only in a trusted workspace, as the CLI loads them only in trusted folders. */
 	skills(cwd: string): Promise<readonly Skill[]> {
 		let skills = this.skillCache.get(cwd);
 		if (!skills) {
-			const folders = skillFolders(cwd, path.dirname(geminiHome()));
-			folders.forEach(({ folder }) => this.watch(folder, '*/SKILL.md'));
+			const folders = skillFolders(vscode.workspace.isTrusted ? cwd : undefined, path.dirname(geminiHome()));
+			// The loader reads a SKILL.md at the top of the folder as well as one level down.
+			folders.forEach(({ folder }) => this.watch(folder, '{SKILL.md,*/SKILL.md}'));
 			skills = loadSkills(folders).catch(() => []);
 			this.skillCache.set(cwd, skills);
 		}
@@ -51,6 +57,7 @@ class TeamCommandStore implements vscode.Disposable {
 	}
 
 	dispose(): void {
+		this.trustListener.dispose();
 		this.watchers.forEach(watcher => watcher.dispose());
 		this.watchers.clear();
 		this.cache.clear();

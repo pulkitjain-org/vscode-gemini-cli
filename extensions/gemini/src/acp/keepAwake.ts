@@ -5,6 +5,11 @@
 
 import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process';
 
+/** By its full path, so a `caffeinate` earlier on PATH is never run instead. */
+const caffeinatePath = '/usr/bin/caffeinate';
+/** How often `caffeinate` is started again in one busy spell after it exits on its own. */
+const maxRestarts = 3;
+
 export interface KeepAwakeOptions {
 	readonly platform: NodeJS.Platform;
 	/** The process `caffeinate` watches: it exits on its own when that process does, so it cannot outlive GeminiCode. */
@@ -24,6 +29,8 @@ export class KeepAwake {
 	private busy = false;
 	/** Set when `caffeinate` cannot run, so it is not tried on every turn. */
 	private broken = false;
+	/** Restarts left in this busy spell, so one that keeps exiting is not started in a loop. */
+	private restartsLeft = maxRestarts;
 
 	constructor(private readonly options: KeepAwakeOptions) { }
 
@@ -57,20 +64,33 @@ export class KeepAwake {
 			child.kill();
 			this.options.log?.('An agent stopped working; the Mac may sleep again');
 		}
+		if (!want) {
+			this.restartsLeft = maxRestarts;
+		}
 	}
 
 	private start(): void {
 		const spawn = this.options.spawn ?? ((command, args) => nodeSpawn(command, args, { stdio: 'ignore' }));
-		const child = spawn('caffeinate', ['-i', '-w', String(this.options.pid)]);
+		const child = spawn(caffeinatePath, ['-i', '-w', String(this.options.pid)]);
 		this.child = child;
 		this.options.log?.('An agent is working; keeping the Mac awake');
 		child.on('error', err => {
 			this.broken = true;
+			if (this.child === child) {
+				this.child = undefined;
+			}
 			this.options.log?.(`Could not keep the Mac awake: ${err.message}`);
 		});
 		child.on('exit', () => {
-			if (this.child === child) {
-				this.child = undefined;
+			if (this.child !== child) {
+				// Stopped on purpose, or already reported as an error.
+				return;
+			}
+			this.child = undefined;
+			// It exited on its own (killed by someone else, say) while an agent still works.
+			if (this.restartsLeft > 0) {
+				this.restartsLeft--;
+				this.update();
 			}
 		});
 	}

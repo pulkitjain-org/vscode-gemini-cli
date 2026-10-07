@@ -62,7 +62,10 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			}
 			updateWorking();
 			settleScroll(scroll);
-			updateOutline();
+			// Only a prompt changes the outline; streamed replies, thoughts and tool calls do not.
+			if (message.items.some(update => update.kind === 'user')) {
+				updateOutline();
+			}
 			updatePlaceholder();
 			break;
 		}
