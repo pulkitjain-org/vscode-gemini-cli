@@ -36,6 +36,7 @@ setLabel(ui.stopButton, strings.stop);
 setLabel(ui.modeSelect, strings.mode);
 setLabel(ui.modelSelect, strings.model);
 setLabel(ui.scrollButton, strings.scrollToBottom);
+ui.scrollLabel.textContent = strings.latest;
 ui.dropLabel.textContent = strings.dropFiles;
 applyFontSize(Number(document.body.dataset.fontSize));
 

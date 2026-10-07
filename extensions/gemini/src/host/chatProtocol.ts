@@ -48,6 +48,8 @@ export interface ChatStrings {
 	readonly hintCommands: string;
 	/** The button that jumps back to the latest message. */
 	readonly scrollToBottom: string;
+	/** The jump-to-latest button's label, where it shows one (the Glass themes). */
+	readonly latest: string;
 	readonly thinking: string;
 	/** The working strip above the composer: what the agent is doing while a turn runs. */
 	readonly activityWorking: string;

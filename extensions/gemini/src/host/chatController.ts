@@ -119,6 +119,8 @@ export interface ChatActivity {
 	readonly needsPermission: boolean;
 	/** What the agent asks permission for, or the step it is on: a tool call's title. */
 	readonly step?: string;
+	/** When the running turn started, in ms since the epoch. */
+	readonly startedAt?: number;
 }
 
 /**
@@ -137,6 +139,8 @@ export class ChatController implements vscode.Disposable {
 	private webview: vscode.Webview | undefined;
 	private webviewListener: vscode.Disposable | undefined;
 	private busy = false;
+	/** When the running turn started, for the Agents side bar's clock. */
+	private turnStartedAt: number | undefined;
 	/** The step last reported, so tool call updates report only a new one. */
 	private lastStep: string | undefined;
 	private lastSessionId: string | undefined;
@@ -261,7 +265,19 @@ export class ChatController implements vscode.Disposable {
 	get activity(): ChatActivity {
 		const [permission] = this.service.permissions.pendingPermissions;
 		const step = permission ? permission.request.toolCall.title ?? undefined : this.busy ? this.runningStep() : undefined;
-		return { busy: this.busy, needsPermission: !!permission, ...(step ? { step } : {}) };
+		return { busy: this.busy, needsPermission: !!permission, ...(step ? { step } : {}), ...(this.busy && this.turnStartedAt !== undefined ? { startedAt: this.turnStartedAt } : {}) };
+	}
+
+	/** When the latest prompt was sent, as the working strip's clock counts from it. */
+	private lastPromptAt(): number | undefined {
+		const items = this.transcript.items;
+		for (let i = items.length - 1; i >= 0; i--) {
+			const item = items[i];
+			if (item.kind === 'user') {
+				return item.at;
+			}
+		}
+		return undefined;
 	}
 
 	/** The title of the tool call the turn is on, if any. */
@@ -1025,6 +1041,9 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	private setBusy(busy: boolean): void {
+		if (busy && !this.busy) {
+			this.turnStartedAt = this.lastPromptAt() ?? Date.now();
+		}
 		this.busy = busy;
 		if (this.options.busyContextKey) {
 			void vscode.commands.executeCommand('setContext', this.options.busyContextKey, busy);
@@ -1082,6 +1101,7 @@ export class ChatController implements vscode.Disposable {
 			hintNewLine: vscode.l10n.t("for a new line"),
 			hintCommands: vscode.l10n.t("for commands"),
 			scrollToBottom: vscode.l10n.t("Jump to latest"),
+			latest: vscode.l10n.t("Latest"),
 			thinking: vscode.l10n.t("Thinking"),
 			activityWorking: vscode.l10n.t("Working"),
 			activityWaiting: vscode.l10n.t("Waiting on you"),
@@ -1168,38 +1188,40 @@ export class ChatController implements vscode.Disposable {
 	<main id="transcript" class="transcript"></main>
 	<nav id="outline" class="prompt-outline" hidden></nav>
 	<div id="announce" class="announce" aria-live="polite"></div>
-	<div id="activity" class="activity" hidden><svg class="activity-spark" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5c.4 3.4 2.9 6 6.5 6.5-3.6.4-6.1 3-6.5 6.5-.4-3.5-2.9-6.1-6.5-6.5C5.1 7.5 7.6 4.9 8 1.5z"/></svg><span class="activity-label"></span><span class="activity-clock"></span><span class="activity-detail"></span><span class="activity-hint"></span></div>
-	<div id="status" class="status" role="status"></div>
-	<form id="composer" class="composer">
-		<div id="resize" class="composer-resize"></div>
-		<button type="button" id="scroll-down" class="scroll-down" hidden><i class="codicon codicon-arrow-down" aria-hidden="true"></i></button>
-		<div class="drop-overlay" aria-hidden="true"><i class="codicon codicon-cloud-upload"></i><span id="drop-label"></span></div>
-		<div id="picker" class="picker" role="listbox" hidden></div>
-		<div id="attachments" class="attachments" hidden></div>
-		<div class="composer-tabs" role="tablist"><button type="button" id="tab-write" class="composer-tab" role="tab" aria-selected="true" aria-controls="input"></button><button type="button" id="tab-preview" class="composer-tab" role="tab" aria-selected="false" aria-controls="preview"></button></div>
-		<div id="preview" class="composer-preview markdown" role="tabpanel" tabindex="0" hidden></div>
-		<div class="input-wrap">
-			<textarea id="input" rows="1"></textarea>
-			<div class="input-mirror" aria-hidden="true"></div>
-			<span id="enhance-float" class="enhance-float" hidden><button type="button" id="revert" class="enhance-chip" hidden><i class="codicon codicon-discard" aria-hidden="true"></i><span></span></button><button type="button" id="enhance" class="enhance-chip"><svg class="enhance-icon" viewBox="0 0 16 16" aria-hidden="true"><defs><linearGradient id="enhance-spark" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f8df7"/><stop offset=".55" stop-color="#8b5cf6"/><stop offset="1" stop-color="#e05fa8"/></linearGradient></defs><path d="M6.5 3.5C6.88 7 9 9.12 12.5 9.5C9 9.88 6.88 12 6.5 15.5C6.12 12 4 9.88 0.5 9.5C4 9.12 6.12 7 6.5 3.5Z"/><path d="M12.75 0.5C12.92 2.1 13.9 3.08 15.5 3.25C13.9 3.42 12.92 4.4 12.75 6C12.58 4.4 11.6 3.42 10 3.25C11.6 3.08 12.58 2.1 12.75 0.5Z"/></svg><i class="codicon codicon-loading codicon-modifier-spin" aria-hidden="true"></i><span></span></button></span>
-		</div>
-		<div id="enhance-row" class="enhance-row" hidden>
-			<span id="enhance-note" class="enhance-note" role="status" hidden></span>
-		</div>
-		<div class="composer-bar">
-			<button type="button" id="attach" class="icon-button"><svg class="paperclip" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 3.5 4.9 9.1a1.8 1.8 0 0 0 2.5 2.5l6-6a3 3 0 0 0-4.2-4.2L3.1 7.5a4.2 4.2 0 0 0 6 6l4.4-4.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-			<button type="button" id="mention" class="icon-button"><i class="codicon codicon-mention" aria-hidden="true"></i></button>
-			<button type="button" id="follow" class="icon-button follow" aria-pressed="false"><i class="codicon codicon-eye" aria-hidden="true"></i></button>
-			<span class="pill-wrap" hidden><select id="mode" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
-			<span class="pill-wrap" hidden><select id="model" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
-			<span class="spacer"></span>
-			<button type="button" id="commit" class="pill commit" hidden><i class="codicon codicon-git-commit" aria-hidden="true"></i><span></span></button>
-			<button type="button" id="workspace" class="pill workspace" hidden><i class="codicon codicon-folder" aria-hidden="true"></i><span></span></button>
-			<button type="button" id="branch" class="pill branch" hidden><i class="codicon codicon-git-branch" aria-hidden="true"></i><span></span></button>
-			<button type="submit" id="send" class="round-button"><i class="codicon codicon-arrow-up" aria-hidden="true"></i></button>
-			<button type="button" id="stop" class="round-button stop" hidden><i class="codicon codicon-debug-stop" aria-hidden="true"></i></button>
-		</div>
-	</form>
+	<div id="dock" class="dock">
+		<button type="button" id="scroll-down" class="scroll-down" hidden><i class="codicon codicon-arrow-down" aria-hidden="true"></i><i class="codicon codicon-chevron-down" aria-hidden="true"></i><span class="scroll-down-label"></span></button>
+		<div id="activity" class="activity" hidden><svg class="activity-spark" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5c.4 3.4 2.9 6 6.5 6.5-3.6.4-6.1 3-6.5 6.5-.4-3.5-2.9-6.1-6.5-6.5C5.1 7.5 7.6 4.9 8 1.5z"/></svg><span class="activity-label"></span><span class="activity-clock"></span><span class="activity-detail"></span><span class="activity-hint"></span></div>
+		<div id="status" class="status" role="status"></div>
+		<form id="composer" class="composer">
+			<div id="resize" class="composer-resize"></div>
+			<div class="drop-overlay" aria-hidden="true"><i class="codicon codicon-cloud-upload"></i><span id="drop-label"></span></div>
+			<div id="picker" class="picker" role="listbox" hidden></div>
+			<div id="attachments" class="attachments" hidden></div>
+			<div class="composer-tabs" role="tablist"><button type="button" id="tab-write" class="composer-tab" role="tab" aria-selected="true" aria-controls="input"></button><button type="button" id="tab-preview" class="composer-tab" role="tab" aria-selected="false" aria-controls="preview"></button></div>
+			<div id="preview" class="composer-preview markdown" role="tabpanel" tabindex="0" hidden></div>
+			<div class="input-wrap">
+				<textarea id="input" rows="1"></textarea>
+				<div class="input-mirror" aria-hidden="true"></div>
+				<span id="enhance-float" class="enhance-float" hidden><button type="button" id="revert" class="enhance-chip" hidden><i class="codicon codicon-discard" aria-hidden="true"></i><span></span></button><button type="button" id="enhance" class="enhance-chip"><svg class="enhance-icon" viewBox="0 0 16 16" aria-hidden="true"><defs><linearGradient id="enhance-spark" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f8df7"/><stop offset=".55" stop-color="#8b5cf6"/><stop offset="1" stop-color="#e05fa8"/></linearGradient></defs><path d="M6.5 3.5C6.88 7 9 9.12 12.5 9.5C9 9.88 6.88 12 6.5 15.5C6.12 12 4 9.88 0.5 9.5C4 9.12 6.12 7 6.5 3.5Z"/><path d="M12.75 0.5C12.92 2.1 13.9 3.08 15.5 3.25C13.9 3.42 12.92 4.4 12.75 6C12.58 4.4 11.6 3.42 10 3.25C11.6 3.08 12.58 2.1 12.75 0.5Z"/></svg><i class="codicon codicon-loading codicon-modifier-spin" aria-hidden="true"></i><span></span></button></span>
+			</div>
+			<div id="enhance-row" class="enhance-row" hidden>
+				<span id="enhance-note" class="enhance-note" role="status" hidden></span>
+			</div>
+			<div class="composer-bar">
+				<button type="button" id="attach" class="icon-button"><svg class="paperclip" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 3.5 4.9 9.1a1.8 1.8 0 0 0 2.5 2.5l6-6a3 3 0 0 0-4.2-4.2L3.1 7.5a4.2 4.2 0 0 0 6 6l4.4-4.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+				<button type="button" id="mention" class="icon-button"><i class="codicon codicon-mention" aria-hidden="true"></i></button>
+				<button type="button" id="follow" class="icon-button follow" aria-pressed="false"><i class="codicon codicon-eye" aria-hidden="true"></i></button>
+				<span class="pill-wrap" hidden><select id="mode" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
+				<span class="pill-wrap" hidden><select id="model" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
+				<span class="spacer"></span>
+				<button type="button" id="commit" class="pill commit" hidden><i class="codicon codicon-git-commit" aria-hidden="true"></i><span></span></button>
+				<button type="button" id="workspace" class="pill workspace" hidden><i class="codicon codicon-folder" aria-hidden="true"></i><span></span></button>
+				<button type="button" id="branch" class="pill branch" hidden><i class="codicon codicon-git-branch" aria-hidden="true"></i><span></span></button>
+				<button type="submit" id="send" class="round-button"><i class="codicon codicon-arrow-up" aria-hidden="true"></i></button>
+				<button type="button" id="stop" class="round-button stop" hidden><i class="codicon codicon-debug-stop" aria-hidden="true"></i></button>
+			</div>
+		</form>
+	</div>
 	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
 </html>`;

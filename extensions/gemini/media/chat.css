@@ -1323,6 +1323,14 @@ body[data-accent="solid"] .round-button.stop::before {
 	border-color: var(--vscode-focusBorder);
 }
 
+/* The working strip, status and composer, under the transcript (floating over it in the Glass themes). */
+.dock {
+	position: relative;
+	display: flex;
+	flex: none;
+	flex-direction: column;
+}
+
 /* Jumps back to the latest message; floats above the composer while the user reads further up. */
 .scroll-down {
 	position: absolute;
@@ -1349,7 +1357,9 @@ body[data-accent="solid"] .round-button.stop::before {
 }
 
 .scroll-down[hidden],
-.composer:has(.picker:not([hidden])) .scroll-down {
+.dock:has(.picker:not([hidden])) .scroll-down,
+.scroll-down .codicon-chevron-down,
+.scroll-down-label {
 	display: none;
 }
 
@@ -2159,51 +2169,183 @@ body.vscode-high-contrast-light #send {
 }
 
 /*
- * The Glass themes: a rounder composer edged in the Gemini gradient, a soft gradient on the
- * user's messages and a floating working strip. Other themes keep the styles above.
+ * The Glass themes (Liquid Glass): the transcript scrolls under a floating, translucent composer
+ * and working strip, and fades out just above them. Floating controls catch the light on their
+ * top edge, menus are frosted, and corners nest (composer 22, chips and buttons as capsules).
+ * Blur is only on these few small floating surfaces, and nothing here animates. Other themes keep
+ * the styles above; without transparency (or with forced colours) they are flat and opaque.
  */
 body[data-vscode-theme-id^="GeminiCode Glass"] {
-	--glass-composer: #FFFFFF;
+	position: relative;
+	--glass-composer: #FFFFFFA6;
+	--glass-composer-solid: #FFFFFF;
+	--glass-composer-saturate: 1.8;
 	--glass-composer-edge: linear-gradient(120deg, #4285F4, #9B72CB 45%, #D96570 70%, #FFFFFF 88%);
-	--glass-composer-glow: 0 10px 36px #4285F424, inset 0 1px 0 #FFFFFF;
+	--glass-composer-glow: 0 12px 40px #4285F42E;
+	--glass-composer-top: #FFFFFF;
+	--glass-saturate: 1.8;
 	--glass-user: linear-gradient(135deg, #EEF3FF, #F4EEFC);
 	--glass-user-edge: #DCE3F8;
-	--glass-strip: #FFFFFFC7;
-	--glass-strip-edge: #FFFFFF;
+	--glass-strip: #FFFFFF8C;
+	--glass-strip-solid: #FFFFFF;
+	--glass-float-shadow: 0 4px 16px #1B1C221F;
+	--glass-menu: #FFFFFFB8;
+	--glass-menu-solid: #FFFFFF;
+	--glass-menu-shadow: 0 18px 50px #1B1C222E, 0 1px 3px #0000001A;
+	--glass-rim-top: #FFFFFFF2;
+	--glass-rim-bottom: #FFFFFF80;
+	--glass-selected: #0000000D;
 }
 
 body[data-vscode-theme-id="GeminiCode Glass Dark"] {
-	--glass-composer: #171826;
-	--glass-composer-edge: linear-gradient(120deg, #4285F4, #9B72CB 45%, #D96570 70%, #FFFFFF1A 88%);
-	--glass-composer-glow: 0 0 50px -12px #4285F480, inset 0 1px 0 #FFFFFF14;
+	--glass-composer: #171826B3;
+	--glass-composer-solid: #171826;
+	--glass-composer-saturate: 1.3;
+	--glass-composer-edge: linear-gradient(120deg, #4285F4, #9B72CB 45%, #D96570 70%, #FFFFFF33 88%);
+	--glass-composer-glow: 0 0 50px -12px #4285F480;
+	--glass-composer-top: #FFFFFF26;
+	--glass-saturate: 1.4;
 	--glass-user: linear-gradient(135deg, #1F2A44, #2A2140);
 	--glass-user-edge: #FFFFFF1A;
-	--glass-strip: #1A1C28CC;
-	--glass-strip-edge: #FFFFFF1A;
+	--glass-strip: #1A1C2899;
+	--glass-strip-solid: #1A1C28;
+	--glass-float-shadow: 0 4px 16px #00000088;
+	--glass-menu: #22232DCC;
+	--glass-menu-solid: #22232D;
+	--glass-menu-shadow: 0 18px 50px #000000A6;
+	--glass-rim-top: #FFFFFF4D;
+	--glass-rim-bottom: #FFFFFF14;
+	--glass-selected: #FFFFFF14;
 }
 
+/* The strip and composer float over the transcript, which keeps room below its last item for them (transcript.ts sets --dock-height). */
+body[data-vscode-theme-id^="GeminiCode Glass"] .dock {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 2;
+	/* Only the controls take the pointer, so the transcript's scroll bar still works beside them. */
+	pointer-events: none;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .dock > * {
+	pointer-events: auto;
+}
+
+/* Scroll edge: the transcript fades out from just above the strip down to the bottom, and in at the top. */
+body[data-vscode-theme-id^="GeminiCode Glass"] .transcript {
+	padding-bottom: calc(var(--dock-height, 140px) + 12px);
+	-webkit-mask-image: linear-gradient(180deg, transparent 0, #000 18px, #000 calc(100% - var(--dock-height, 140px) - 24px), #0000008C calc(100% - var(--dock-height, 140px) + 24px), #00000026 100%);
+	mask-image: linear-gradient(180deg, transparent 0, #000 18px, #000 calc(100% - var(--dock-height, 140px) - 24px), #0000008C calc(100% - var(--dock-height, 140px) + 24px), #00000026 100%);
+}
+
+/*
+ * The composer's frosted fill is its ::before, not the composer itself: a backdrop filter on the
+ * composer would stop the "/" and "@" menu inside it from frosting what is behind it. The
+ * gradient rim is a masked ::after, so the translucent fill does not show the gradient through.
+ */
 body[data-vscode-theme-id^="GeminiCode Glass"] .composer {
-	border-radius: 24px;
-	padding: 12px 12px 10px 16px;
-	border: 1.5px solid transparent;
-	background: linear-gradient(var(--glass-composer), var(--glass-composer)) padding-box, var(--glass-composer-edge) border-box;
+	isolation: isolate;
+	padding: 12px 12px 10px;
+	border: none;
+	border-radius: 22px;
+	background: none;
 	box-shadow: var(--glass-composer-glow);
 }
 
-body[data-vscode-theme-id^="GeminiCode Glass"][data-accent="solid"] .composer {
-	background: linear-gradient(var(--glass-composer), var(--glass-composer)) padding-box, linear-gradient(var(--gemini-accent), var(--gemini-accent)) border-box;
+body[data-vscode-theme-id^="GeminiCode Glass"] .composer::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	border-radius: inherit;
+	background: var(--glass-composer);
+	box-shadow: inset 0 1px 0 var(--glass-composer-top);
+	-webkit-backdrop-filter: blur(26px) saturate(var(--glass-composer-saturate));
+	backdrop-filter: blur(26px) saturate(var(--glass-composer-saturate));
+	pointer-events: none;
 }
 
+body[data-vscode-theme-id^="GeminiCode Glass"] .composer::after,
+body[data-vscode-theme-id^="GeminiCode Glass"] .activity::after,
+body[data-vscode-theme-id^="GeminiCode Glass"] .scroll-down::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	padding: 1px;
+	/* Specular rim: a light-catching edge, brightest at the top. */
+	background: linear-gradient(180deg, var(--glass-rim-top) 0%, transparent 45%, transparent 70%, var(--glass-rim-bottom) 100%);
+	-webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+	-webkit-mask-composite: xor;
+	mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+	pointer-events: none;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .composer::after {
+	padding: 1.5px;
+	background: var(--glass-composer-edge);
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"][data-accent="solid"] .composer::after {
+	background: var(--gemini-accent);
+}
+
+/* The rim stays still while the agent works; Stop's ring and the strip say it is working. */
 body[data-vscode-theme-id^="GeminiCode Glass"] .composer.busy {
-	background:
-		linear-gradient(var(--glass-composer), var(--glass-composer)) padding-box,
-		conic-gradient(from var(--gemini-sweep), #4285F4 0deg, #9B72CB 90deg, #D96570 160deg, #4285F466 240deg, #4285F4 360deg) border-box;
+	border: none;
+	background: none;
+	animation: none;
 }
 
-body[data-vscode-theme-id^="GeminiCode Glass"][data-accent="solid"] .composer.busy {
-	background:
-		linear-gradient(var(--glass-composer), var(--glass-composer)) padding-box,
-		conic-gradient(from var(--gemini-sweep), var(--gemini-border) 0deg 220deg, var(--gemini-accent) 290deg, var(--gemini-border) 350deg) border-box;
+@media (prefers-reduced-motion: no-preference) {
+	/* Rewriting the draft glows instead of showing the rim. */
+	body[data-vscode-theme-id^="GeminiCode Glass"] .composer.enhancing::after {
+		inset: -1px;
+		padding: 0;
+		background: none;
+		-webkit-mask: none;
+		mask: none;
+	}
+}
+
+/* A slimmer composer: two lines to start with, as it floats over the transcript. */
+body[data-vscode-theme-id^="GeminiCode Glass"] .composer textarea {
+	min-height: 3em;
+}
+
+/* Write and Preview: small capsules, the chosen one filled. */
+body[data-vscode-theme-id^="GeminiCode Glass"] .composer-tabs {
+	gap: 2px;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .composer-tab {
+	padding: 2px 9px;
+	border-radius: 999px;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .composer-tab[aria-selected="true"] {
+	font-weight: normal;
+	background: var(--glass-selected);
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .composer-tab:focus-visible {
+	border-radius: 999px;
+}
+
+/* Capsules inside the composer and for buttons; code 12 and the user's message 18, nesting in the composer's 22. */
+body[data-vscode-theme-id^="GeminiCode Glass"] .pill,
+body[data-vscode-theme-id^="GeminiCode Glass"] .chip,
+body[data-vscode-theme-id^="GeminiCode Glass"] .enhance-chip,
+body[data-vscode-theme-id^="GeminiCode Glass"] .status-action,
+body[data-vscode-theme-id^="GeminiCode Glass"] .permission-actions button {
+	border-radius: 999px;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .code-block,
+body[data-vscode-theme-id^="GeminiCode Glass"] .tool-output {
+	border-radius: 12px;
 }
 
 body[data-vscode-theme-id^="GeminiCode Glass"] .message.user {
@@ -2213,9 +2355,105 @@ body[data-vscode-theme-id^="GeminiCode Glass"] .message.user {
 	border-color: var(--glass-user-edge);
 }
 
+/* The working strip: a glass capsule, centred over the composer. */
 body[data-vscode-theme-id^="GeminiCode Glass"] .activity {
+	position: relative;
+	margin-bottom: 10px;
+	padding: 6px 14px 6px 12px;
+	border: none;
 	border-radius: 999px;
 	background: var(--glass-strip);
-	border: 1px solid var(--glass-strip-edge);
-	box-shadow: 0 4px 16px #00000024;
+	box-shadow: var(--glass-float-shadow);
+	-webkit-backdrop-filter: blur(22px) saturate(var(--glass-saturate));
+	backdrop-filter: blur(22px) saturate(var(--glass-saturate));
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .activity-hint {
+	display: none;
+}
+
+/* Sign-in and errors sit over the transcript too, so they get a glass backing when there is something to say. */
+body[data-vscode-theme-id^="GeminiCode Glass"] .status:not(:empty) {
+	padding: 6px 8px 6px 14px;
+	border-radius: 18px;
+	background: var(--glass-strip);
+	box-shadow: var(--glass-float-shadow);
+	-webkit-backdrop-filter: blur(22px) saturate(var(--glass-saturate));
+	backdrop-filter: blur(22px) saturate(var(--glass-saturate));
+}
+
+/* "Latest": a glass capsule at the composer's right edge while the user reads further up. */
+body[data-vscode-theme-id^="GeminiCode Glass"] .scroll-down {
+	left: auto;
+	right: var(--gemini-gutter);
+	bottom: calc(100% + 14px);
+	gap: 6px;
+	width: auto;
+	height: auto;
+	margin: 0;
+	padding: 5px 12px 5px 10px;
+	border: none;
+	border-radius: 999px;
+	background: var(--glass-strip);
+	box-shadow: var(--glass-float-shadow);
+	font-size: 12px;
+	-webkit-backdrop-filter: blur(20px) saturate(var(--glass-saturate));
+	backdrop-filter: blur(20px) saturate(var(--glass-saturate));
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .scroll-down:hover {
+	background: var(--glass-menu);
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .scroll-down .codicon-arrow-down {
+	display: none;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .scroll-down .codicon-chevron-down,
+body[data-vscode-theme-id^="GeminiCode Glass"] .scroll-down-label {
+	display: inline;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .scroll-down .codicon {
+	font-size: 14px;
+}
+
+/* The "/" and "@" menu: frosted where it covers the transcript, with a light-catching edge. */
+body[data-vscode-theme-id^="GeminiCode Glass"] .picker {
+	bottom: calc(100% + 6px);
+	padding: 6px;
+	border: none;
+	border-radius: 16px;
+	background: var(--glass-menu);
+	box-shadow: var(--glass-menu-shadow), inset 0 1px 0 var(--glass-rim-top), inset 0 -1px 0 var(--glass-rim-bottom);
+	-webkit-backdrop-filter: blur(30px) saturate(var(--glass-saturate));
+	backdrop-filter: blur(30px) saturate(var(--glass-saturate));
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .picker-row {
+	padding: 5px 10px;
+	border-radius: 10px;
+}
+
+/* Flat and opaque when the system asks for less transparency, or in forced colours. */
+@media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+	body[data-vscode-theme-id^="GeminiCode Glass"] {
+		--glass-composer: var(--glass-composer-solid);
+		--glass-strip: var(--glass-strip-solid);
+		--glass-menu: var(--glass-menu-solid);
+	}
+
+	body[data-vscode-theme-id^="GeminiCode Glass"] .transcript {
+		-webkit-mask-image: none;
+		mask-image: none;
+	}
+
+	body[data-vscode-theme-id^="GeminiCode Glass"] .composer::before,
+	body[data-vscode-theme-id^="GeminiCode Glass"] .activity,
+	body[data-vscode-theme-id^="GeminiCode Glass"] .status:not(:empty),
+	body[data-vscode-theme-id^="GeminiCode Glass"] .scroll-down,
+	body[data-vscode-theme-id^="GeminiCode Glass"] .picker {
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+	}
 }

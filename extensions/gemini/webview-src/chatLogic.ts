@@ -288,13 +288,8 @@ export function enhanceButtonPlacement(end: TextEnd, button: { readonly width: n
 	return { x: Math.round(x), y: Math.round(y), below };
 }
 
-/** A running clock for a turn: "0:07", "1:42" or "1:02:03". */
-export function formatClock(ms: number): string {
-	const total = Math.max(0, Math.floor(ms / 1000));
-	const seconds = String(total % 60).padStart(2, '0');
-	const minutes = Math.floor(total / 60);
-	return minutes < 60 ? `${minutes}:${seconds}` : `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}:${seconds}`;
-}
+/** A running clock for a turn: "0:07", "1:42" or "1:02:03"; shared with the Agents side bar. */
+export { formatClock } from '../src/acp/agentRow';
 
 /** What the agent is doing now, for the working strip above the composer. */
 export interface Activity {

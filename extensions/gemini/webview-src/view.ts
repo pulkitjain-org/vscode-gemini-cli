@@ -77,6 +77,9 @@ export const ui = {
 	workspaceLabel: within(workspaceButton, 'span', HTMLSpanElement),
 	attachButton: byId('attach', HTMLButtonElement),
 	scrollButton: byId('scroll-down', HTMLButtonElement),
+	scrollLabel: within(byId('scroll-down', HTMLButtonElement), '.scroll-down-label', HTMLSpanElement),
+	/** The working strip, status and composer; the Glass themes float it over the transcript. */
+	dock: byId('dock', HTMLElement),
 	dropLabel: byId('drop-label', HTMLElement),
 	enhanceRow: byId('enhance-row', HTMLElement),
 	enhanceFloat: byId('enhance-float', HTMLElement),

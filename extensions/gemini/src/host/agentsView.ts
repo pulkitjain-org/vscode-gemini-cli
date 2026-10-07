@@ -6,6 +6,7 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AgentChanges, ChangeTotals, formatCounts } from '../acp/agentChanges';
+import { agentRowMeta } from '../acp/agentRow';
 import { attentionChange, waitingCount } from '../acp/attention';
 import { branchNameFrom, isValidBranchName } from '../acp/branchNames';
 import { AgentRecord, AgentsModel, AgentsSnapshot, WorkspaceRecord } from '../acp/agents';
@@ -118,6 +119,10 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	private readonly tree: vscode.TreeView<Node>;
 	private readonly notifier = new AgentNotifier();
 	private refreshTimer: ReturnType<typeof setInterval> | undefined;
+	/** Ticks working agents' clocks once a second while the pane shows one. */
+	private clockTimer: ReturnType<typeof setInterval> | undefined;
+	/** The agent rows last handed to the tree, so a clock tick redraws just those rows. */
+	private readonly agentNodes = new Map<string, AgentNode>();
 	/** Output of worktree setup scripts, made the first time one runs. */
 	private setupOutput: vscode.OutputChannel | undefined;
 	/** Branch names are read from `.git/HEAD`; kept for a few seconds so a refresh reads each folder once. */
@@ -211,6 +216,11 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		return undefined;
 	}
 
+	/** Agent `id`'s chat, when the agent runs in this window. */
+	controllerOf(id: string): ChatController | undefined {
+		return this.live.get(id)?.controller;
+	}
+
 	/** The chat in the agent tab that is in front, if any. */
 	activeController(): ChatController | undefined {
 		for (const agent of this.live.values()) {
@@ -232,7 +242,11 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			return this.workspaceNodes();
 		}
 		if (node.kind === 'workspace' && node.record) {
-			return this.model.agentsIn(node.record.id).map(record => ({ kind: 'agent', record, folder: record.worktree?.cwd ?? node.folder }));
+			return this.model.agentsIn(node.record.id).map(record => {
+				const agent: AgentNode = { kind: 'agent', record, folder: record.worktree?.cwd ?? node.folder };
+				this.agentNodes.set(record.id, agent);
+				return agent;
+			});
 		}
 		return [];
 	}
@@ -253,9 +267,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const item = new vscode.TreeItem(path.basename(node.folder) || node.folder, hasAgents ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
 		// The id changes with the expander, so a workspace that gets its first agent opens.
 		item.id = `workspace:${node.folder}:${hasAgents}`;
-		item.description = tildify(path.dirname(node.folder));
-		item.tooltip = node.folder;
-		item.iconPath = new vscode.ThemeIcon(node.current ? 'root-folder-opened' : 'folder');
+		// Just the name, as a heading over its agents; the path is in the tooltip.
+		item.tooltip = tildify(node.folder);
 		// `.git` offers New Agent on Its Own Branch.
 		const inGit = await this.branchOf(node.folder).then(Boolean, () => false);
 		item.contextValue = `${node.current ? 'workspace.current' : 'workspace'}${inGit ? '.git' : ''}`;
@@ -270,36 +283,52 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const branch = await this.branchOf(node.folder).catch(() => undefined);
 		const changes = live?.changes.totals ?? record.changes;
 		const state = this.agentState(live);
-		const statusLine = state.kind === 'working' || state.kind === 'waiting' ? state.status : undefined;
-		item.description = [statusLine ?? (changes?.files ? formatCounts(changes) : undefined), relativeTime(record.updatedAt, Date.now()), branch].filter(Boolean).join(' · ');
+		item.description = this.rowMeta(record, live, state.kind, changes);
 		item.iconPath = state.icon;
 		const where = record.worktree
 			? vscode.l10n.t("On its own branch {0}, in {1}", escapeMarkdown(record.worktree.branch), escapeMarkdown(tildify(record.worktree.folder)))
-			: `${escapeMarkdown(node.folder)}${branch ? ` (${escapeMarkdown(branch)})` : ''}`;
-		item.tooltip = new vscode.MarkdownString(`**${escapeMarkdown(record.title)}**\n\n${escapeMarkdown(state.status)}\n\n${where}`);
+			: `${escapeMarkdown(tildify(node.folder))}${branch ? ` (${escapeMarkdown(branch)})` : ''}`;
+		const counts = changes?.files ? `\n\n${escapeMarkdown(formatCounts(changes))}` : '';
+		item.tooltip = new vscode.MarkdownString(`**${escapeMarkdown(record.title)}**\n\n${escapeMarkdown(state.status)}${counts}\n\n${where}`);
 		item.contextValue = `${live?.activity.busy ? 'agent.busy' : 'agent'}${record.worktree ? '.worktree' : ''}${changes?.files ? '.changes' : ''}`;
 		item.command = { command: 'gemini.agents.open', title: vscode.l10n.t("Open Agent"), arguments: [record.id] };
 		item.accessibilityInformation = { label: `${record.title}, ${state.status}` };
 		return item;
 	}
 
+	/** The row's note after the title: the turn's clock, "waiting", lines added, or how old it is. */
+	private rowMeta(record: AgentRecord, live: LiveAgent | undefined, state: AgentStateKind, changes: ChangeTotals | undefined): string {
+		const meta = agentRowMeta({ state, startedAt: live?.activity.startedAt, added: changes?.added }, Date.now());
+		switch (meta.kind) {
+			case 'clock':
+			case 'added':
+				return meta.text;
+			case 'waiting':
+				return vscode.l10n.t("waiting");
+			case 'age':
+				return relativeTime(record.updatedAt, Date.now());
+		}
+	}
+
+	/** Each state's icon is a dot in its colour, or a spinner while the agent works. */
 	private agentState(live: LiveAgent | undefined): { kind: AgentStateKind; icon: vscode.ThemeIcon; status: string } {
 		const step = live?.activity.step;
 		if (live?.session.status.phase === 'error') {
-			return { kind: 'error', icon: new vscode.ThemeIcon('error', new vscode.ThemeColor('errorForeground')), status: vscode.l10n.t("Needs attention") };
+			return { kind: 'error', icon: new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor('errorForeground')), status: vscode.l10n.t("Needs attention") };
 		}
 		if (live?.activity.needsPermission) {
-			return { kind: 'waiting', icon: new vscode.ThemeIcon('bell-dot', new vscode.ThemeColor('charts.yellow')), status: step ? vscode.l10n.t("Needs you: {0}", step) : vscode.l10n.t("Waiting for your permission") };
+			return { kind: 'waiting', icon: new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor('charts.yellow')), status: step ? vscode.l10n.t("Needs you: {0}", step) : vscode.l10n.t("Waiting for your permission") };
 		}
 		if (live?.activity.busy) {
 			return { kind: 'working', icon: new vscode.ThemeIcon('loading~spin'), status: step ?? vscode.l10n.t("Working") };
 		}
 		if (live?.unread) {
-			return { kind: 'done', icon: new vscode.ThemeIcon('check', new vscode.ThemeColor('charts.green')), status: vscode.l10n.t("Done") };
+			return { kind: 'done', icon: new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor('charts.green')), status: vscode.l10n.t("Done") };
 		}
+		const quiet = new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor('descriptionForeground'));
 		return live
-			? { kind: 'idle', icon: new vscode.ThemeIcon('comment-discussion'), status: vscode.l10n.t("Idle") }
-			: { kind: 'stopped', icon: new vscode.ThemeIcon('comment-discussion'), status: vscode.l10n.t("Paused \u00b7 open to continue") };
+			? { kind: 'idle', icon: quiet, status: vscode.l10n.t("Idle") }
+			: { kind: 'stopped', icon: quiet, status: vscode.l10n.t("Paused \u00b7 open to continue") };
 	}
 
 	/** Every agent, newest first. */
@@ -453,7 +482,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	}
 
 	private refreshNow(): void {
+		this.agentNodes.clear();
 		this.onDidChangeTreeDataEmitter.fire(undefined);
+		this.updateClock();
 		this.updateBadge();
 		this.updateTitleBar();
 		this.updateTabs();
@@ -509,6 +540,30 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		} else if (!visible && this.refreshTimer) {
 			clearInterval(this.refreshTimer);
 			this.refreshTimer = undefined;
+		}
+		this.updateClock();
+	}
+
+	/** Agents working now (not waiting on the user), whose rows show a running clock. */
+	private workingIds(): string[] {
+		return [...this.live].filter(([, live]) => live.activity.busy && !live.activity.needsPermission && live.session.status.phase !== 'error').map(([id]) => id);
+	}
+
+	/** Runs the clock tick while the pane is visible and an agent works; it redraws only those rows. */
+	private updateClock(): void {
+		const ticking = this.tree.visible && this.workingIds().length > 0;
+		if (ticking && !this.clockTimer) {
+			this.clockTimer = setInterval(() => {
+				for (const id of this.workingIds()) {
+					const node = this.agentNodes.get(id);
+					if (node) {
+						this.onDidChangeTreeDataEmitter.fire(node);
+					}
+				}
+			}, 1000);
+		} else if (!ticking && this.clockTimer) {
+			clearInterval(this.clockTimer);
+			this.clockTimer = undefined;
 		}
 	}
 
@@ -1033,6 +1088,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		}
 		this.setRefreshing(false);
 		clearTimeout(this.refreshTimeout);
+		clearInterval(this.clockTimer);
 		if (this.persistTimeout) {
 			this.persist();
 		}
