@@ -64,11 +64,15 @@ export function activate(context: vscode.ExtensionContext): void {
 	const statusBar = new GeminiStatusBar(service);
 	const usageMeter = new UsageMeter(quickEdits.client, log);
 	const walkthrough = new SetupWalkthrough(service, context.globalState);
-	const browserTools = new BrowserTools(
-		String(context.extension.packageJSON.version ?? ''), log,
-		agent => agentsView.stopTurn(agent),
-		agent => agentsView.agentTitle(agent) ?? vscode.l10n.t("Agent"),
-	);
+	const browserTools = new BrowserTools(String(context.extension.packageJSON.version ?? ''), log, {
+		stop: agent => agentsView.stopTurn(agent),
+		title: agent => agentsView.agentTitle(agent) ?? vscode.l10n.t("Agent"),
+		open: () => agentsView.summaries().filter(agent => agent.state !== 'stopped'),
+		attach: async (agent, attachments) => {
+			await agentsView.open(agent);
+			await agentsView.controllerOf(agent)?.addAttachments(attachments);
+		},
+	});
 	agentsView.browser = browserTools;
 	// caffeinate watches this process, so it ends with GeminiCode even if GeminiCode crashes.
 	const keepAwake = new KeepAwake({ platform: process.platform, pid: process.pid, log: message => log.info(message) });

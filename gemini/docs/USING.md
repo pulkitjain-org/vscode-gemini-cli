@@ -9,7 +9,7 @@ The switch at the top of the window, or ⌥⌘M, changes the layout:
 - **Agents mode** (the default) is for working with agents: your agents on the left, the agent's chat in the middle, and its changes on the right. When no tab is open, **Agent Home** shows: describe a task and press Return to start an agent on it, tick **On its own branch** to give it a branch of its own, and see each agent's status, changes and next step as a card. Agents mode always shows Gemini on the left and Changes on the right, unless you put another view on the right; opening Explorer, Search or any other view switches to Editor mode with that view open.
 - **Editor mode** is the classic VS Code layout, with Explorer, Search and Source Control, for hands-on coding.
 
-Each mode remembers which panels you had open. An agent's tab shows what it is doing (a spinner while it works, an amber dot when it needs you, a tick when it has finished) and how many lines it has changed. On a Mac, right-click GeminiCode in the Dock for **New Agent**. Agents that are working or waiting for you show as pills in the title bar in both modes; click one to open that agent.
+Each mode remembers which panels you had open. An agent's tab shows what it is doing (a spinner while it works, an amber dot when it needs you, a tick when it has finished) and how many lines it has changed. In the Agents pane, each agent's row has the same signal (a spinner, an amber dot when it needs you, a green dot when it has finished, grey otherwise) and, on the right, how long it has been working, "waiting", the lines it added, or how long ago it was last active; point at a row for its branch and folder. On a Mac, right-click GeminiCode in the Dock for **New Agent**. Agents that are working or waiting for you show as pills in the title bar in both modes; click one to open that agent.
 
 In the **Changes** panel, hover over a change to **Keep** or **Undo** it. **Keep All** accepts everything, **Undo All** puts the files back, and **Commit** commits the agent's files on a new branch (an agent on its own branch has **Merge Back** instead).
 
@@ -78,7 +78,7 @@ Pick a mode from the composer. The list comes from the Gemini CLI, minus any mod
 | **Plan** | Reads and proposes a plan without making changes. The CLI can turn this mode off in its own settings. |
 | **YOLO** | Runs everything without asking. Off unless your admin enables it. |
 
-Permission cards show the CLI's own choices, such as **Allow**, **Allow for this session** and **Reject**. <kbd>esc</kbd> rejects. Stopping a turn cancels any open request. When an agent asks for permission, its tab comes to the front and the proposed edit opens as a diff; in the Agents pane its row shows a bell.
+Permission cards show the CLI's own choices, such as **Allow**, **Allow for this session** and **Reject**. <kbd>esc</kbd> rejects. Stopping a turn cancels any open request. When an agent asks for permission, its tab comes to the front and the proposed edit opens as a diff; in the Agents pane its row shows an amber dot and "waiting".
 
 The model picker works the same way. The model you pick is remembered and used for every new or reopened agent, in any window, when the agent offers it.
 
@@ -102,7 +102,7 @@ The branch pill in a chat's composer switches to another branch or creates one. 
 
 ## Agents on their own branch
 
-Two agents in the same folder can trip over each other's edits. **New Agent on Its Own Branch** (the branch icon next to **+** on a workspace in a Git repository) asks for a branch name and gives the agent its own copy of the repository on that new branch, in `~/.geminicode/worktrees/<repository>/` (a Git worktree). The agent reads, edits and runs commands there, so your folder and other agents are untouched. Its row in the Agents pane shows the branch.
+Two agents in the same folder can trip over each other's edits. **New Agent on Its Own Branch** (the branch icon next to **+** on a workspace in a Git repository) asks for a branch name and gives the agent its own copy of the repository on that new branch, in `~/.geminicode/worktrees/<repository>/` (a Git worktree). The agent reads, edits and runs commands there, so your folder and other agents are untouched. Point at its row in the Agents pane to see the branch.
 
 When it's done, **Merge Back** (the merge icon on the agent's row) commits anything the agent left uncommitted, using the agent's name as the message, and merges its branch into the branch your folder has checked out. If the merge conflicts, it stops for you to finish in Source Control. After a clean merge it offers to remove the agent with its branch and folder. Removing such an agent asks whether to keep its branch, and says what is on it that isn't merged yet.
 
@@ -167,6 +167,8 @@ When an MCP server cannot start, GeminiCode shows a warning naming the server an
 
 Agents can open the web app they are working on in GeminiCode's browser and check their own work: read the page, click, type, press keys and take screenshots, while you watch. Ask, for example, "open http://localhost:5173 and check the cart total". Each agent gets its own tab beside its chat, with a **Gemini is using this page** bar; **Stop** on it stops the agent's turn. Pages on this machine (`localhost`, `127.0.0.1`) open freely, and local files follow the same rules as the agent's file tools. Any other site asks you first, once per agent and site, because a page can contain instructions aimed at the agent. That check uses the page's real address after every step, so a redirect or a link the agent clicks can't skip it. The tab opens beside the chat without taking focus. Default mode still asks before each browser action, like any other tool.
 
+To let an agent use a page you opened yourself (a page you are signed in to, say), click the sparkle **Let Gemini Use This Page** in the page's toolbar, or run **Browser: Let Gemini Use This Page** from the Command Palette. Pick the agent (the open agents in this window, most recent first; with just one, it is used; with none, open an agent first). The page gets the **Gemini is using this page** bar, and the agent's chat comes to the front with the page attached, so you can say what to do with it; its browser tools then act on that page. The agent can read and use the page as you, signed in, so share only pages you trust it with. Your choice counts as allowing that site for that agent, files still follow its file rules, and the `gemini.browser.allowOtherSites` policy still applies. A page belongs to one agent at a time. **Stop Sharing** on the bar (or **Browser: Stop Sharing This Page with Gemini**) gives it back to you, and removing the agent does too; the page stays open. Pages are never shared any other way.
+
 Links to `localhost` from the terminal and chat also open in GeminiCode's browser. Turn the agent's browser off with `gemini.browser.enabled`; it stops at once for running agents, and turning it back on reaches each agent from its next new session; `gemini.browser.allowOtherSites` (also an admin policy) limits agents to local pages.
 
 ## Review my changes
@@ -186,6 +188,8 @@ GeminiCode keeps its own share small:
 - Saved conversations keep the last 300 messages, each cut to 20,000 characters.
 - Messages scrolled out of view are not laid out, and streaming sends only new text.
 - Proposed edits are remembered for the last 200 tool calls. Older diff links open the file as it is now.
+
+When you scroll up in a chat, **Latest** (an arrow under the other themes) takes you back to the newest message. Under the Glass themes the chat scrolls on under the see-through input and fades out just above it; turn on **Reduce transparency** in macOS to make the input solid.
 
 To find your way round a long chat, use the thin outline of your prompts down the chat's right edge: point at a tick to see the prompt, click it to jump there. ⌥⌘↑ and ⌥⌘↓ jump to your previous and next prompt. **Open Chat as Markdown** (in Quick Chat's **...** menu, an agent's right-click menu in the Agents pane, or the Command Palette for the chat in front) opens the whole conversation as a Markdown document you can search, save or share. For an agent that is not running, it opens the saved copy, which keeps the last 300 messages.
 

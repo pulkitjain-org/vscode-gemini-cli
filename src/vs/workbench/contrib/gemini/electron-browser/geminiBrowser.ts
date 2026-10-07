@@ -9,21 +9,31 @@
 // src/host/browserTools.ts) offers to the Gemini CLI. Each agent has its own
 // Playwright session and pages it owns; the commands take only fixed actions,
 // never code. A bar on an agent's page says Gemini is using it, with Stop.
+// "Let Gemini Use This Page" hands a page the user opened to one agent the
+// user picks (in the extension): the page joins the agent's Playwright
+// session and becomes the agent's, until Stop Sharing or the agent's removal
+// gives it back to the user, still open.
 
 import { $, append } from '../../../../base/browser/dom.js';
 import { raceTimeout } from '../../../../base/common/async.js';
 import { Codicon } from '../../../../base/common/codicons.js';
 import { DisposableStore } from '../../../../base/common/lifecycle.js';
 import { ThemeIcon } from '../../../../base/common/themables.js';
-import { localize } from '../../../../nls.js';
-import { getAgentBrowserViewCreationDefaults } from '../../../../platform/browserView/common/browserView.js';
+import { ProxyChannel } from '../../../../base/parts/ipc/common/ipc.js';
+import { localize, localize2 } from '../../../../nls.js';
+import { Action2, MenuId, registerAction2 } from '../../../../platform/actions/common/actions.js';
+import { BrowserViewStorageScope, getAgentBrowserViewCreationDefaults, IBrowserViewService, ipcBrowserViewChannelName } from '../../../../platform/browserView/common/browserView.js';
 import { IPlaywrightService } from '../../../../platform/browserView/common/playwrightService.js';
 import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
+import { ContextKeyExpr, IContextKey, IContextKeyService, RawContextKey } from '../../../../platform/contextkey/common/contextkey.js';
+import { ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
+import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
+import { INotificationService } from '../../../../platform/notification/common/notification.js';
 import { EditorsOrder } from '../../../common/editor.js';
 import { IEditorService, SIDE_GROUP } from '../../../services/editor/common/editorService.js';
 import { BrowserEditorInput } from '../../browserView/common/browserEditorInput.js';
 import { IBrowserViewModel, IBrowserViewWorkbenchService } from '../../browserView/common/browserView.js';
-import { BrowserEditor, BrowserEditorContribution, BrowserWidgetLocation, IBrowserEditorWidget } from '../../browserView/electron-browser/browserEditor.js';
+import { BROWSER_EDITOR_ACTIVE, BrowserActionCategory, BrowserActionGroup, BrowserEditor, BrowserEditorContribution, BrowserWidgetLocation, CONTEXT_BROWSER_HAS_URL, IBrowserEditorWidget } from '../../browserView/electron-browser/browserEditor.js';
 import './geminiBrowser.css';
 
 /** Agent sessions are `gemini-agent:<key>`; the key is the extension's id for the agent. */
@@ -74,6 +84,77 @@ CommandsRegistry.registerCommand('_gemini.browser.open', async (accessor, key: s
 	await raceTimeout(model.loadURL(parsed.href), navigationTimeoutMs);
 	const summary = await playwright.waitForPageAndGetSummary(session, input.id, parsed.href, pageReadyTimeoutMs);
 	return { pageId: input.id, summary, url: await playwright.invokeFunctionRaw<string>(session, input.id, currentUrl) };
+});
+
+/**
+ * Pages the user handed to an agent, by id, with the agent's session. A page
+ * is in here from the moment it is being handed over, so a second hand-over
+ * of the same page fails: one agent per page.
+ */
+const handedOver = new Map<string, string>();
+
+/**
+ * Whether `model`, an agent's page, is one the user handed over. Pages agents
+ * open themselves always live in agent storage, so a page in the user's own
+ * storage was handed over even when `handedOver` forgot it (a window reload).
+ */
+function isHandedOver(model: IBrowserViewModel): boolean {
+	return handedOver.has(model.id) || model.storageScope !== BrowserViewStorageScope.Agent;
+}
+
+function browserViewServiceOf(accessor: ServicesAccessor): IBrowserViewService {
+	return ProxyChannel.toService<IBrowserViewService>(accessor.get(IMainProcessService).getChannel(ipcBrowserViewChannelName));
+}
+
+/** Gives a handed-over page back to the user: no longer the agent's, and out of its Playwright session. */
+async function release(views: IBrowserViewService, model: IBrowserViewModel, session: string): Promise<void> {
+	handedOver.delete(model.id);
+	await model.setOwner({ type: 'user' });
+	await views.setAudience(model.id, { type: 'agent', sessionId: session }, false);
+}
+
+/**
+ * Hands the user's page `pageId` to the agent, for "Let Gemini Use This
+ * Page" once the user picked the agent. The page joins the agent's Playwright
+ * session (the main process refuses that for a page outside the network
+ * policy) and becomes the agent's, so the other commands act on it and its
+ * bar shows. Resolves with where the page is and its title.
+ */
+CommandsRegistry.registerCommand('_gemini.browser.share', async (accessor, key: string, pageId: string) => {
+	const session = sessionOf(key);
+	const model = typeof pageId === 'string' ? accessor.get(IBrowserViewWorkbenchService).getKnownBrowserViews().get(pageId)?.model : undefined;
+	const playwright = accessor.get(IPlaywrightService);
+	const views = browserViewServiceOf(accessor);
+	if (!model) {
+		throw new Error('The page was closed.');
+	}
+	if (model.owner.type !== 'user' || handedOver.has(model.id)) {
+		throw new Error('An agent is using the page already.');
+	}
+	const parsed = URL.parse(model.url);
+	if (!parsed || !/^(https?|file):$/.test(parsed.protocol)) {
+		throw new Error('Only web pages and files can be shared.');
+	}
+	handedOver.set(model.id, session);
+	try {
+		await views.setAudience(model.id, { type: 'agent', sessionId: session }, true);
+		await model.setOwner({ type: 'agent', sessionId: session });
+		await playwright.waitForPageAndGetSummary(session, model.id, model.url, pageReadyTimeoutMs);
+		return { url: await playwright.invokeFunctionRaw<string>(session, model.id, currentUrl), title: model.title };
+	} catch (err) {
+		await release(views, model, session).catch(() => undefined);
+		throw err;
+	}
+});
+
+/** Gives a page the user handed to the agent back to the user. */
+CommandsRegistry.registerCommand('_gemini.browser.release', async (accessor, key: string, pageId: string) => {
+	const session = sessionOf(key);
+	const model = typeof pageId === 'string' ? accessor.get(IBrowserViewWorkbenchService).getKnownBrowserViews().get(pageId)?.model : undefined;
+	const views = browserViewServiceOf(accessor);
+	if (model && handedOver.get(model.id) === session) {
+		await release(views, model, session);
+	}
 });
 
 /** The agent's open pages. */
@@ -132,29 +213,128 @@ CommandsRegistry.registerCommand('_gemini.browser.screenshot', async (accessor, 
 	return { data, url: await playwright.invokeFunctionRaw<string>(session, pageId, currentUrl) };
 });
 
-/** Closes the agent's pages and ends its Playwright session, for an agent that was removed. */
+/**
+ * Closes the agent's pages and ends its Playwright session, for an agent that
+ * was removed. Pages the user handed it go back to the user, still open.
+ */
 CommandsRegistry.registerCommand('_gemini.browser.close', async (accessor, key: string) => {
 	const session = sessionOf(key);
 	const browserViews = accessor.get(IBrowserViewWorkbenchService);
 	const editorService = accessor.get(IEditorService);
-	const pages = new Set(pagesOf(browserViews, session));
+	const playwright = accessor.get(IPlaywrightService);
+	const views = browserViewServiceOf(accessor);
+	const pages = new Set<string>();
+	const released: Promise<void>[] = [];
+	for (const id of pagesOf(browserViews, session)) {
+		const model = browserViews.getKnownBrowserViews().get(id)?.model;
+		if (model && isHandedOver(model)) {
+			released.push(release(views, model, session));
+		} else {
+			pages.add(id);
+		}
+	}
 	const editors = editorService.getEditors(EditorsOrder.SEQUENTIAL).filter(({ editor }) => editor instanceof BrowserEditorInput && pages.has(editor.id));
-	await editorService.closeEditors(editors);
-	await accessor.get(IPlaywrightService).disposeSession(session);
+	await Promise.all([...released, editorService.closeEditors(editors)]);
+	await playwright.disposeSession(session);
 });
 
-/** "Gemini is using this page", with Stop, on pages an agent owns. */
+/** Whether the page in the browser editor is an agent's (any agent's), so it can't be handed over. */
+const pageIsAgents = new RawContextKey<boolean>('geminiBrowserPageIsAgents', false, localize('gemini.browser.pageIsAgents', "Whether an agent is using the page in the browser editor"));
+/** Whether the page in the browser editor is one the user handed to a Gemini agent. */
+const pageHandedOver = new RawContextKey<boolean>('geminiBrowserPageHandedOver', false, localize('gemini.browser.pageHandedOver', "Whether the page in the browser editor is shared with a Gemini agent"));
+const browserEnabled = ContextKeyExpr.equals('config.gemini.browser.enabled', true);
+
+/** The browser editor an action runs on: the one whose toolbar it is in, else the active one. */
+function browserEditorOf(accessor: ServicesAccessor, editor: unknown): BrowserEditor | undefined {
+	const target = editor ?? accessor.get(IEditorService).activeEditorPane;
+	return target instanceof BrowserEditor ? target : undefined;
+}
+
+/** "Let Gemini Use This Page": the extension asks which agent, checks the page as the agent's own, and shares it. */
+class LetGeminiUsePageAction extends Action2 {
+	constructor() {
+		super({
+			id: 'gemini.browser.sharePage',
+			title: localize2('gemini.browser.sharePage', "Let Gemini Use This Page"),
+			category: BrowserActionCategory,
+			icon: Codicon.sparkle,
+			f1: true,
+			precondition: ContextKeyExpr.and(BROWSER_EDITOR_ACTIVE, CONTEXT_BROWSER_HAS_URL, browserEnabled, pageIsAgents.negate()),
+			menu: {
+				id: MenuId.BrowserActionsToolbar,
+				group: BrowserActionGroup.Tools,
+				order: 0,
+				when: ContextKeyExpr.and(browserEnabled, pageIsAgents.negate()),
+			},
+		});
+	}
+
+	async run(accessor: ServicesAccessor, editor?: unknown): Promise<void> {
+		const model = browserEditorOf(accessor, editor)?.model;
+		const commandService = accessor.get(ICommandService);
+		const notificationService = accessor.get(INotificationService);
+		if (!model || model.owner.type !== 'user' || handedOver.has(model.id)) {
+			return;
+		}
+		try {
+			await commandService.executeCommand('_gemini.browser.handOver', model.id, model.url, model.title);
+		} catch {
+			// The Gemini extension is not running (yet).
+			notificationService.warn(localize('gemini.browser.notReady', "Gemini isn't ready to use pages yet. Try again in a moment."));
+		}
+	}
+}
+
+/** "Stop Sharing": gives a page the user handed to an agent back to the user. */
+class StopSharingPageAction extends Action2 {
+	static readonly ID = 'gemini.browser.stopSharingPage';
+
+	constructor() {
+		super({
+			id: StopSharingPageAction.ID,
+			title: localize2('gemini.browser.stopSharingPage', "Stop Sharing This Page with Gemini"),
+			category: BrowserActionCategory,
+			f1: true,
+			precondition: ContextKeyExpr.and(BROWSER_EDITOR_ACTIVE, pageHandedOver),
+		});
+	}
+
+	async run(accessor: ServicesAccessor, editor?: unknown): Promise<void> {
+		const model = browserEditorOf(accessor, editor)?.model;
+		const views = browserViewServiceOf(accessor);
+		const key = model && keyOf(model);
+		if (model && key && isHandedOver(model)) {
+			await release(views, model, sessionOf(key));
+		}
+	}
+}
+
+registerAction2(LetGeminiUsePageAction);
+registerAction2(StopSharingPageAction);
+
+/**
+ * "Gemini is using this page", with Stop, on pages a Gemini agent owns, and
+ * Stop Sharing on those the user handed over. Also sets the editor's context
+ * keys that show "Let Gemini Use This Page" only on the user's own pages.
+ */
 class GeminiAgentPageBar extends BrowserEditorContribution {
 
 	private readonly bar = $('.gemini-browser-bar');
+	private readonly releaseButton: HTMLButtonElement;
+	private readonly isAgents: IContextKey<boolean>;
+	private readonly isHandedOver: IContextKey<boolean>;
 	private key: string | undefined;
 
-	constructor(editor: BrowserEditor, @ICommandService private readonly commandService: ICommandService) {
+	constructor(editor: BrowserEditor, @ICommandService private readonly commandService: ICommandService, @IContextKeyService contextKeyService: IContextKeyService) {
 		super(editor);
+		this.isAgents = pageIsAgents.bindTo(contextKeyService);
+		this.isHandedOver = pageHandedOver.bindTo(contextKeyService);
 		append(this.bar, $(`span${ThemeIcon.asCSSSelector(Codicon.sparkle)}`));
 		append(this.bar, $('span.label', undefined, localize('gemini.browser.using', "Gemini is using this page")));
 		const stop = append(this.bar, $('button.stop', { type: 'button' }, localize('gemini.browser.stop', "Stop")));
 		stop.addEventListener('click', () => this.key && this.commandService.executeCommand('gemini.browser.stop', this.key));
+		this.releaseButton = append(this.bar, $('button.stop', { type: 'button' }, localize('gemini.browser.stopSharing', "Stop Sharing")));
+		this.releaseButton.addEventListener('click', () => this.commandService.executeCommand(StopSharingPageAction.ID, this.editor));
 		this.bar.style.display = 'none';
 	}
 
@@ -162,14 +342,25 @@ class GeminiAgentPageBar extends BrowserEditorContribution {
 		return [{ location: BrowserWidgetLocation.Toolbar, element: this.bar, order: -10 }];
 	}
 
-	protected override onModelAttached(model: IBrowserViewModel, _store: DisposableStore): void {
-		this.key = keyOf(model);
-		this.bar.style.display = this.key ? '' : 'none';
+	protected override onModelAttached(model: IBrowserViewModel, store: DisposableStore): void {
+		this.update(model);
+		store.add(model.onDidChangeOwner(() => this.update(model)));
 	}
 
 	override onModelDetached(): void {
 		this.key = undefined;
 		this.bar.style.display = 'none';
+		this.isAgents.reset();
+		this.isHandedOver.reset();
+	}
+
+	private update(model: IBrowserViewModel): void {
+		this.key = keyOf(model);
+		const handed = !!this.key && isHandedOver(model);
+		this.bar.style.display = this.key ? '' : 'none';
+		this.releaseButton.style.display = handed ? '' : 'none';
+		this.isAgents.set(model.owner.type === 'agent');
+		this.isHandedOver.set(handed);
 	}
 }
 
