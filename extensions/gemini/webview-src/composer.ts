@@ -111,6 +111,12 @@ export function setGit(git: ViewGit): void {
 	commitButton.setAttribute('aria-label', strings.createBranchAndCommit);
 }
 
+/** The eye toggle: lit while the chat opens each file the agent reads or edits. */
+export function setFollow(on: boolean): void {
+	ui.followButton.classList.toggle('active', on);
+	ui.followButton.setAttribute('aria-pressed', String(on));
+}
+
 /** Prompts sent from this view, newest last, for Up and Down in an empty input. */
 const sent: string[] = [];
 let recalled = -1;
@@ -249,6 +255,7 @@ input.addEventListener('blur', () => setTimeout(() => {
 }, 0));
 ui.stopButton.addEventListener('click', () => vscode.postMessage({ type: 'stop' }));
 branchButton.addEventListener('click', () => vscode.postMessage({ type: 'pickBranch' }));
+ui.followButton.addEventListener('click', () => vscode.postMessage({ type: 'setFollow', on: ui.followButton.getAttribute('aria-pressed') !== 'true' }));
 ui.workspaceButton.addEventListener('click', () => vscode.postMessage({ type: 'workspaceMenu' }));
 commitButton.addEventListener('click', () => vscode.postMessage({ type: 'createBranchAndCommit' }));
 modeSelect.addEventListener('change', () => {

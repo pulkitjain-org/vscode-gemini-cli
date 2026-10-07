@@ -64,6 +64,8 @@ The **Gemini** status bar item shows the agent's state. Hover over it to see the
 | `gemini.approval.allowAutoEdit` | Offer the Auto Edit mode. |
 | `gemini.approval.allowYolo` | Offer the YOLO mode, which runs everything without asking. Off by default. |
 | `gemini.tools.allowShell` | Let the agent run shell commands. Each command still asks first. |
+| `gemini.keepAwake` | Keep the Mac awake while any agent works. On by default. |
+| `gemini.chat.followAgent` | Open each file the agent reads or edits as it works. The eye in the composer toggles it. |
 | `gemini.layout.showAgentsInNewWorkspaces` | Open the Agents pane, with the agent's Changes below it, the first time a workspace opens. |
 
 Changing the CLI path or version, the project, or an approval or shell setting restarts the agent so the change applies. Admins can lock all of these except the project and layout settings through policy; see [Security model](docs/ARCHITECTURE.md#security-model).

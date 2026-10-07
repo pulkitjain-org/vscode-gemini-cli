@@ -10,6 +10,7 @@ import { Attachment, attachmentLabel } from '../acp/attachments';
 import { isValidAttachment } from '../acp/attachmentValidation';
 import { ChatTranscript, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
 import { Checkpoints } from '../acp/checkpoints';
+import { FollowTarget, FollowTracker } from '../acp/follow';
 import { PendingPermission, PermissionBroker } from '../acp/permissions';
 import { buildPromptContent } from '../acp/promptContent';
 import { expandTeamCommand, mergeCommands, parseInvocation, SlashCommand } from '../acp/slashCommands';
@@ -154,6 +155,12 @@ export class ChatController implements vscode.Disposable {
 	private enhancing: { readonly requestId: number; readonly abort: AbortController } | undefined;
 	/** While a reopened session replays, its messages belong in the transcript. Ends with the next prompt. */
 	private replaying = false;
+	/** Follow the agent: open each file it reads or edits. Starts as the last chat left it. */
+	private following = vscode.workspace.getConfiguration('gemini').get<boolean>('chat.followAgent', false);
+	private readonly follow = new FollowTracker();
+	/** The file to show next; files are shown at most every {@link followIntervalMs}, the latest winning. */
+	private followTarget: FollowTarget | undefined;
+	private followTimer: ReturnType<typeof setTimeout> | undefined;
 
 	private readonly onDidChangeActivityEmitter = new vscode.EventEmitter<ChatActivity>();
 	readonly onDidChangeActivity = this.onDidChangeActivityEmitter.event;
@@ -216,6 +223,9 @@ export class ChatController implements vscode.Disposable {
 						}
 					}
 					this.transcript.apply(event);
+					if (event.kind === 'toolCall' && this.following) {
+						this.scheduleFollow(this.follow.next(event.call));
+					}
 					if (event.kind === 'toolCall' && this.activity.step !== this.lastStep) {
 						this.fireActivity();
 					}
@@ -618,6 +628,7 @@ export class ChatController implements vscode.Disposable {
 
 	dispose(): void {
 		this.enhancing?.abort.abort();
+		clearTimeout(this.followTimer);
 		this.detach();
 		vscode.Disposable.from(...this.disposables).dispose();
 	}
@@ -631,6 +642,7 @@ export class ChatController implements vscode.Disposable {
 				this.postReset();
 				this.post({ type: 'capabilities', image: this.service.client.promptCapabilities.image });
 				this.post({ type: 'composerHeight', height: preferredComposerHeight() });
+				this.post({ type: 'follow', on: this.following });
 				if (this.pendingAttachments.length) {
 					this.post({ type: 'attach', attachments: this.pendingAttachments });
 					this.pendingAttachments = [];
@@ -646,6 +658,9 @@ export class ChatController implements vscode.Disposable {
 				break;
 			case 'composerHeight':
 				rememberComposerHeight(message.height);
+				break;
+			case 'setFollow':
+				this.setFollowing(message.on);
 				break;
 			case 'pickFiles':
 				void this.pickFiles();
@@ -742,6 +757,52 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	/** The Enhance Prompt command: enhances what the composer holds, showing the chat first. */
+	/** Turns Follow the agent on or off in this chat; new chats start the same way. */
+	toggleFollowing(): void {
+		this.setFollowing(!this.following);
+	}
+
+	private setFollowing(on: boolean): void {
+		this.following = on;
+		if (!on) {
+			clearTimeout(this.followTimer);
+			this.followTimer = undefined;
+			this.followTarget = undefined;
+		}
+		this.post({ type: 'follow', on });
+		void vscode.workspace.getConfiguration('gemini').update('chat.followAgent', on, vscode.ConfigurationTarget.Global);
+	}
+
+	private scheduleFollow(target: FollowTarget | undefined): void {
+		if (!target) {
+			return;
+		}
+		this.followTarget = target;
+		this.followTimer ??= setTimeout(() => {
+			this.followTimer = undefined;
+			const next = this.followTarget;
+			this.followTarget = undefined;
+			if (next && this.following) {
+				void this.showFollowed(next);
+			}
+		}, followIntervalMs);
+	}
+
+	/** Shows a file the agent is on, leaving focus in the chat; folders and missing files are skipped. */
+	private async showFollowed(target: FollowTarget): Promise<void> {
+		if (!await isFile(target.path)) {
+			return;
+		}
+		const position = new vscode.Position(Math.max((target.line ?? 1) - 1, 0), 0);
+		try {
+			await vscode.window.showTextDocument(vscode.Uri.file(target.path), {
+				selection: new vscode.Range(position, position), preview: true, preserveFocus: true, viewColumn: this.options.editorColumn?.(),
+			});
+		} catch {
+			// A file that cannot be shown, such as a binary one, is skipped.
+		}
+	}
+
 	async requestEnhance(): Promise<void> {
 		await this.options.reveal(false);
 		this.post({ type: 'enhanceRequested' });
@@ -1036,6 +1097,7 @@ export class ChatController implements vscode.Disposable {
 			previewMarkdown: vscode.l10n.t("Preview ({0})"),
 			previewLabel: vscode.l10n.t("Preview"),
 			writeLabel: vscode.l10n.t("Write"),
+			followAgent: vscode.l10n.t("Follow the agent: open each file it reads or edits"),
 			previewEmpty: vscode.l10n.t("Nothing to preview yet."),
 			enhanceTooltip: vscode.l10n.t("Rewrite this as a clearer, more precise prompt ({0})"),
 			enhancing: vscode.l10n.t("Enhancing the prompt"),
@@ -1103,6 +1165,7 @@ export class ChatController implements vscode.Disposable {
 		<div class="composer-bar">
 			<button type="button" id="attach" class="icon-button"><svg class="paperclip" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 3.5 4.9 9.1a1.8 1.8 0 0 0 2.5 2.5l6-6a3 3 0 0 0-4.2-4.2L3.1 7.5a4.2 4.2 0 0 0 6 6l4.4-4.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
 			<button type="button" id="mention" class="icon-button"><i class="codicon codicon-mention" aria-hidden="true"></i></button>
+			<button type="button" id="follow" class="icon-button follow" aria-pressed="false"><i class="codicon codicon-eye" aria-hidden="true"></i></button>
 			<span class="pill-wrap" hidden><select id="mode" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
 			<span class="pill-wrap" hidden><select id="model" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
 			<span class="spacer"></span>
@@ -1118,6 +1181,9 @@ export class ChatController implements vscode.Disposable {
 </html>`;
 	}
 }
+
+/** At most one file is shown this often while following the agent, so a burst of reads does not flicker the editor. */
+const followIntervalMs = 250;
 
 /** How many saved sessions an empty chat lists before "Show all". */
 const shownSessions = 3;

@@ -31,6 +31,11 @@
         "category": "%category%"
       },
       {
+        "command": "gemini.toggleFollowAgent",
+        "title": "%command.toggleFollowAgent%",
+        "category": "%category%"
+      },
+      {
         "command": "gemini.openChat",
         "title": "%command.openChat%",
         "category": "%category%"
@@ -695,6 +700,18 @@
           "default": "",
           "scope": "resource",
           "markdownDescription": "%configuration.agents.worktreeSetup%"
+        },
+        "gemini.chat.followAgent": {
+          "type": "boolean",
+          "default": false,
+          "scope": "machine",
+          "markdownDescription": "%configuration.chat.followAgent%"
+        },
+        "gemini.keepAwake": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "markdownDescription": "%configuration.keepAwake%"
         },
         "gemini.inlineEdit.enabled": {
           "type": "boolean",

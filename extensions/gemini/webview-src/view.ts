@@ -62,6 +62,7 @@ export const ui = {
 	modelWrap: parentOf(modelSelect),
 	resizeHandle: byId('resize', HTMLElement),
 	mentionButton: byId('mention', HTMLButtonElement),
+	followButton: byId('follow', HTMLButtonElement),
 	writeTab: byId('tab-write', HTMLButtonElement),
 	previewTab: byId('tab-preview', HTMLButtonElement),
 	preview: byId('preview', HTMLElement),

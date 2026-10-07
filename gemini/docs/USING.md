@@ -15,6 +15,10 @@ In the **Changes** panel, hover over a change to **Keep** or **Undo** it. **Keep
 
 An agent on its own branch can get a ready folder: set **Gemini › Agents: Worktree Setup** to a command (such as `npm ci`), or commit `.gemini/worktree-setup.sh` to the repository, and it runs in the new branch's folder before the agent starts. `GEMINI_SOURCE_REPOSITORY` names the repository it came from, to copy files Git does not carry, such as `.env`. Its output is in the **Gemini Worktree Setup** output; if it fails, the agent starts anyway.
 
+**Follow the agent.** Click the eye in a chat's composer, or run **Gemini: Follow the Agent**, to watch the agent work: each file it reads opens at the line it is on, and each file it edits opens once the edit is written. Focus stays in the chat. New chats start the way you left the last one.
+
+**Keep awake.** While any agent works, GeminiCode keeps the Mac from going to sleep, so a long task carries on when you step away. The display can still sleep, and the Mac may sleep again as soon as no agent is working. Turn it off with `gemini.keepAwake`.
+
 ## Keyboard shortcuts
 
 ⌘ is Command, ⌥ is Option, ⇧ is Shift, ↩ is Return and ⌫ is Delete.

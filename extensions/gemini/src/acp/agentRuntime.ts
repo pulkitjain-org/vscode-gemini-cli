@@ -69,6 +69,9 @@ export class AgentRuntime {
 	private readonly sidecarListener: { dispose(): void };
 	/** Prompts still running on this process, across its sessions. */
 	private turns = 0;
+	private readonly onDidBecomeBusyEmitter = new Emitter<void>();
+	/** Fires when a prompt starts while none was running. */
+	readonly onDidBecomeBusy = this.onDidBecomeBusyEmitter.event;
 	private readonly onDidBecomeIdleEmitter = new Emitter<void>();
 	/** Fires when the last running prompt ends. */
 	readonly onDidBecomeIdle = this.onDidBecomeIdleEmitter.event;
@@ -91,7 +94,9 @@ export class AgentRuntime {
 
 	/** Counts `turn` as running until it settles, for `busy`. */
 	async trackTurn<T>(turn: Promise<T>): Promise<T> {
-		this.turns++;
+		if (this.turns++ === 0) {
+			this.onDidBecomeBusyEmitter.fire();
+		}
 		try {
 			return await turn;
 		} finally {
@@ -211,6 +216,7 @@ export class AgentRuntime {
 		this.sidecarListener.dispose();
 		this.dropConnection();
 		this.onDidChangeStateEmitter.dispose();
+		this.onDidBecomeBusyEmitter.dispose();
 		this.onDidBecomeIdleEmitter.dispose();
 	}
 

@@ -17,7 +17,7 @@
 
 import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
 import { addAttachments } from './attachmentChips';
-import { setBusy, setGit, setSettings, setStatus } from './composer';
+import { setBusy, setFollow, setGit, setSettings, setStatus } from './composer';
 import { applyTokenColors } from './codeHighlight';
 import { onEnhanced, onEnhanceFailed, restyleEnhanceButton, toggleEnhance } from './enhance';
 import { applyFontSize, setLabel } from './dom';
@@ -29,6 +29,7 @@ import { state, strings, ui, vscode } from './view';
 
 setLabel(ui.mentionButton, strings.addContext);
 setLabel(ui.attachButton, strings.attachFiles);
+setLabel(ui.followButton, strings.followAgent);
 setLabel(ui.sendButton, strings.send);
 setLabel(ui.stopButton, strings.stop);
 setLabel(ui.modeSelect, strings.mode);
@@ -76,6 +77,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'composerHeight':
 			restoreComposerHeight(message.height);
+			break;
+		case 'follow':
+			setFollow(message.on);
 			break;
 		case 'accent':
 			document.body.dataset.accent = message.solid ? 'solid' : 'gradient';

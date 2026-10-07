@@ -18,7 +18,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 13;
+export const chatProtocolVersion = 14;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -117,6 +117,8 @@ export interface ChatStrings {
 	/** The composer's tabs: the draft, and the draft as it will look once sent. */
 	readonly previewLabel: string;
 	readonly writeLabel: string;
+	/** The eye toggle in the composer bar. */
+	readonly followAgent: string;
 	readonly previewEmpty: string;
 	readonly enhancing: string;
 	readonly enhanced: string;
@@ -197,6 +199,8 @@ export type FromWebview =
 	| { readonly type: 'attachUris'; readonly uris: readonly string[] }
 	/** The user dragged the input to `height` pixels, or reset it (0). */
 	| { readonly type: 'composerHeight'; readonly height: number }
+	/** The eye toggle: open each file the agent reads or edits. */
+	| { readonly type: 'setFollow'; readonly on: boolean }
 	| { readonly type: 'createBranchAndCommit' }
 	/** Put back the files the turn ending with turnEnd item `itemId` changed, and those of later turns. */
 	| { readonly type: 'undoTurn'; readonly itemId: string }
@@ -219,6 +223,8 @@ export type ToWebview =
 	| { readonly type: 'capabilities'; readonly image: boolean }
 	/** The input height the user dragged to last, in any chat; 0 for its natural height. */
 	| { readonly type: 'composerHeight'; readonly height: number }
+	/** Whether this chat follows the agent. */
+	| { readonly type: 'follow'; readonly on: boolean }
 	| { readonly type: 'files'; readonly requestId: number; readonly files: readonly { readonly path: string; readonly relative: string }[] }
 	/** Every slash command this chat offers: the agent's, then the team's. */
 	| { readonly type: 'commands'; readonly commands: readonly SlashCommand[] }
