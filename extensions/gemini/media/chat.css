@@ -422,6 +422,26 @@ kbd {
 	background: var(--gemini-code-background);
 }
 
+/*
+ * Inline code: a light tint of the accent with text leaning the same way, so names read as
+ * code without a dark block in the sentence (the code-block colour is near black in dark themes).
+ */
+.markdown :not(pre) > code {
+	font-size: 0.88em;
+	padding: 1px 5px;
+	border-radius: 5px;
+	background: color-mix(in srgb, var(--gemini-accent) 13%, transparent);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gemini-accent) 18%, transparent);
+	color: color-mix(in srgb, var(--gemini-accent) 45%, var(--vscode-foreground));
+}
+
+body.vscode-high-contrast .markdown :not(pre) > code,
+body.vscode-high-contrast-light .markdown :not(pre) > code {
+	background: var(--vscode-textPreformat-background, transparent);
+	box-shadow: inset 0 0 0 1px var(--vscode-contrastBorder, transparent);
+	color: var(--vscode-textPreformat-foreground, var(--vscode-foreground));
+}
+
 .markdown blockquote {
 	margin: 0.5em 0;
 	padding-left: 10px;
@@ -1196,11 +1216,12 @@ body.vscode-high-contrast-light .composer.busy {
 .round-button.stop::before {
 	content: "";
 	position: absolute;
-	inset: -3px;
+	inset: -2.5px;
 	border-radius: 50%;
 	background: conic-gradient(#4796e3 0deg, #9177c7 60deg, #ca6673 110deg, transparent 120deg);
-	-webkit-mask: radial-gradient(circle, transparent calc(50% - 2px), #000 calc(50% - 1.5px));
-	mask: radial-gradient(circle, transparent calc(50% - 2px), #000 calc(50% - 1.5px));
+	/* A 1.5px ring: closest-side, so 100% is the ring's own radius (the default, farthest-corner, made it about 5px). */
+	-webkit-mask: radial-gradient(circle closest-side, transparent calc(100% - 1.75px), #000 calc(100% - 1.25px));
+	mask: radial-gradient(circle closest-side, transparent calc(100% - 1.75px), #000 calc(100% - 1.25px));
 	pointer-events: none;
 }
 
