@@ -46,6 +46,11 @@ const workspaceButton = byId('workspace', HTMLButtonElement);
 export const ui = {
 	transcript: byId('transcript', HTMLElement),
 	status: byId('status', HTMLElement),
+	activity: byId('activity', HTMLElement),
+	activityLabel: within(byId('activity', HTMLElement), '.activity-label', HTMLElement),
+	activityClock: within(byId('activity', HTMLElement), '.activity-clock', HTMLElement),
+	activityDetail: within(byId('activity', HTMLElement), '.activity-detail', HTMLElement),
+	activityHint: within(byId('activity', HTMLElement), '.activity-hint', HTMLElement),
 	announce: byId('announce', HTMLElement),
 	form: byId('composer', HTMLFormElement),
 	input: byId('input', HTMLTextAreaElement),

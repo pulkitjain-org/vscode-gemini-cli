@@ -25,6 +25,7 @@ const mac = /Mac/.test(navigator.platform);
 export function setBusy(value: boolean): void {
 	ui.stopButton.hidden = !value;
 	ui.sendButton.hidden = value;
+	form.classList.toggle('busy', value);
 	if (!value && document.activeElement === ui.stopButton) {
 		input.focus();
 	}

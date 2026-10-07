@@ -1001,6 +1001,11 @@ export class ChatController implements vscode.Disposable {
 			hintCommands: vscode.l10n.t("for commands"),
 			scrollToBottom: vscode.l10n.t("Jump to latest"),
 			thinking: vscode.l10n.t("Thinking"),
+			activityWorking: vscode.l10n.t("Working"),
+			activityWaiting: vscode.l10n.t("Waiting on you"),
+			activityWriting: vscode.l10n.t("Writing the reply"),
+			activityDone: vscode.l10n.t("Done in {0}"),
+			activityStopHint: vscode.l10n.t("Esc to stop"),
 			thought: vscode.l10n.t("Thought"),
 			thoughtFor: vscode.l10n.t("Thought for {0}s"),
 			plan: vscode.l10n.t("Plan"),
@@ -1075,6 +1080,7 @@ export class ChatController implements vscode.Disposable {
 <body data-accent="${solidAccent() ? 'solid' : 'gradient'}" data-font-size="${chatFontSize()}">
 	<main id="transcript" class="transcript"></main>
 	<div id="announce" class="announce" aria-live="polite"></div>
+	<div id="activity" class="activity" hidden><svg class="activity-spark" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5c.4 3.4 2.9 6 6.5 6.5-3.6.4-6.1 3-6.5 6.5-.4-3.5-2.9-6.1-6.5-6.5C5.1 7.5 7.6 4.9 8 1.5z"/></svg><span class="activity-label"></span><span class="activity-clock"></span><span class="activity-detail"></span><span class="activity-hint"></span></div>
 	<div id="status" class="status" role="status"></div>
 	<form id="composer" class="composer">
 		<div id="resize" class="composer-resize"></div>

@@ -8,6 +8,7 @@
 import type { Attachment } from '../src/acp/attachments';
 import type { TranscriptItem } from '../src/acp/chatTranscript';
 import type { TextAppend } from '../src/acp/textDeltas';
+import { thoughtPreview } from './streaming';
 
 export type ItemOf<K extends TranscriptItem['kind']> = Extract<TranscriptItem, { kind: K }>;
 
@@ -285,4 +286,60 @@ export function enhanceButtonPlacement(end: TextEnd, button: { readonly width: n
 	const lineTop = (below ? end.top + end.lineHeight : end.top) - end.scrollTop;
 	const y = Math.max(0, Math.min(lineTop + (end.lineHeight - button.height) / 2, end.height - button.height));
 	return { x: Math.round(x), y: Math.round(y), below };
+}
+
+/** A running clock for a turn: "0:07", "1:42" or "1:02:03". */
+export function formatClock(ms: number): string {
+	const total = Math.max(0, Math.floor(ms / 1000));
+	const seconds = String(total % 60).padStart(2, '0');
+	const minutes = Math.floor(total / 60);
+	return minutes < 60 ? `${minutes}:${seconds}` : `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}:${seconds}`;
+}
+
+/** What the agent is doing now, for the working strip above the composer. */
+export interface Activity {
+	readonly kind: 'thinking' | 'tool' | 'writing' | 'waiting';
+	/** A tool call's or question's title, or the thought's latest heading; empty when there is nothing more to say. */
+	readonly detail: string;
+}
+
+/** The newest thing still happening in a turn: an unanswered question, a running tool call, a thought or the reply. */
+export function currentActivity(items: readonly TranscriptItem[]): Activity {
+	for (let i = items.length - 1; i >= 0; i--) {
+		const item = items[i];
+		switch (item.kind) {
+			case 'permission':
+				if (!item.answer) {
+					return { kind: 'waiting', detail: item.title };
+				}
+				return { kind: 'thinking', detail: '' };
+			case 'toolCall':
+				return item.status === 'pending' || item.status === 'in_progress' ? { kind: 'tool', detail: item.title } : { kind: 'thinking', detail: '' };
+			case 'thought':
+				return { kind: 'thinking', detail: thoughtPreview(item.text) };
+			case 'agent':
+				return { kind: 'writing', detail: '' };
+			case 'user':
+			case 'turnEnd':
+				return { kind: 'thinking', detail: '' };
+			default:
+				// Plans, notices and unknown updates say nothing about what happens now.
+				continue;
+		}
+	}
+	return { kind: 'thinking', detail: '' };
+}
+
+/** When the turn now running started: the newest prompt's send time, if it has one. */
+export function turnStart(items: readonly TranscriptItem[]): number | undefined {
+	for (let i = items.length - 1; i >= 0; i--) {
+		const item = items[i];
+		if (item.kind === 'user') {
+			return item.at;
+		}
+		if (item.kind === 'turnEnd') {
+			return undefined;
+		}
+	}
+	return undefined;
 }

@@ -49,6 +49,13 @@ export interface ChatStrings {
 	/** The button that jumps back to the latest message. */
 	readonly scrollToBottom: string;
 	readonly thinking: string;
+	/** The working strip above the composer: what the agent is doing while a turn runs. */
+	readonly activityWorking: string;
+	readonly activityWaiting: string;
+	readonly activityWriting: string;
+	/** `{0}` is a clock such as "1:12". */
+	readonly activityDone: string;
+	readonly activityStopHint: string;
 	/** `{0}` is a number of seconds. */
 	readonly thoughtFor: string;
 	/** A thought whose duration is not known (the view reloaded). */

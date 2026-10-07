@@ -8,6 +8,7 @@
 
 import type { TranscriptItem } from '../src/acp/chatTranscript';
 import type { TextAppend } from '../src/acp/textDeltas';
+import { updateActivity } from './activity';
 import { indexOfItem, isNearBottom as nearBottom, withAppended, type ItemOf } from './chatLogic';
 import { el } from './dom';
 import { render, renderEmpty, renderNotice } from './items';
@@ -187,6 +188,7 @@ working.setAttribute('aria-hidden', 'true');
 working.append(el('span'), el('span'), el('span'));
 
 export function updateWorking(): void {
+	updateActivity();
 	if (state.busy && state.items.at(-1)?.kind === 'user') {
 		if (transcript.lastElementChild !== working) {
 			transcript.append(working);
