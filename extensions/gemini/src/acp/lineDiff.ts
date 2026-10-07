@@ -140,11 +140,14 @@ export interface HunkLine {
 /**
  * A change as a unified diff: `context` unchanged lines either side, its
  * removed lines, then its added ones. Past `maxLines` changed lines the rest
- * is counted in `hidden` rather than shown.
+ * is counted in `hidden` rather than shown. `next` is the following hunk:
+ * lines its own leading context shows are left out of this one's trailing
+ * context, so hunks close together never show a line twice.
  */
-export function hunkLines(original: readonly string[], modified: readonly string[], hunk: Hunk, context = 2, maxLines = 80): { lines: HunkLine[]; hidden: number } {
+export function hunkLines(original: readonly string[], modified: readonly string[], hunk: Hunk, context = 2, maxLines = 80, next?: Hunk): { lines: HunkLine[]; hidden: number } {
 	const before = modified.slice(Math.max(0, hunk.modifiedStart - context), hunk.modifiedStart).map(text => ({ kind: 'ctx' as const, text }));
-	const after = modified.slice(hunk.modifiedEnd, hunk.modifiedEnd + context).map(text => ({ kind: 'ctx' as const, text }));
+	const afterEnd = next ? Math.min(hunk.modifiedEnd + context, Math.max(hunk.modifiedEnd, next.modifiedStart - context)) : hunk.modifiedEnd + context;
+	const after = modified.slice(hunk.modifiedEnd, afterEnd).map(text => ({ kind: 'ctx' as const, text }));
 	const changed: HunkLine[] = [
 		...original.slice(hunk.originalStart, hunk.originalEnd).map(text => ({ kind: 'del' as const, text })),
 		...modified.slice(hunk.modifiedStart, hunk.modifiedEnd).map(text => ({ kind: 'add' as const, text })),

@@ -92,6 +92,19 @@ function lcsLength(a: readonly string[], b: readonly string[]): number {
 }
 
 describe('hunkLines', () => {
+	it('shows a line between two close hunks once', () => {
+		const original = ['a', 'b', 'c', 'd', 'e'];
+		const modified = ['a', 'B', 'c', 'D', 'e'];
+		const [first, second] = diffLines(original, modified);
+		const shown = [...hunkLines(original, modified, first, 1, 80, second).lines, ...hunkLines(original, modified, second, 1).lines];
+		expect(shown.filter(l => l.text === 'c')).toHaveLength(1);
+		expect(hunkLines(original, modified, first, 1, 80, second).lines.map(l => l.text)).toEqual(['a', 'b', 'B']);
+		// Far apart, each keeps its full context.
+		const far = ['a', 'B', 'c', 'x', 'y', 'D', 'e'];
+		const [f1, f2] = diffLines(['a', 'b', 'c', 'x', 'y', 'd', 'e'], far);
+		expect(hunkLines(['a', 'b', 'c', 'x', 'y', 'd', 'e'], far, f1, 1, 80, f2).lines.map(l => l.text)).toEqual(['a', 'b', 'B', 'c']);
+	});
+
 	it('shows removed then added lines with context either side', () => {
 		const original = ['a', 'b', 'c', 'd', 'e', 'f'];
 		const modified = ['a', 'b', 'C', 'd', 'e', 'f'];

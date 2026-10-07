@@ -125,7 +125,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 			}
 			const original = splitLines(file.original);
 			const modified = splitLines(current);
-			const hunks = diffLines(original, modified).map((hunk, index) => ({ index, ...hunkLines(original, modified, hunk, 1) }));
+			const hunks = diffLines(original, modified).map((hunk, index, all) => ({ index, ...hunkLines(original, modified, hunk, 1, undefined, all[index + 1]) }));
 			this.diffs.set(file.path, { original: file.original, current, hunks });
 			return { ...base, hunks };
 		}));

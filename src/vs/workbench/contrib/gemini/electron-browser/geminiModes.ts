@@ -64,6 +64,7 @@ const explorerContainer = 'workbench.view.explorer';
 const activityBarLocation = 'workbench.activityBar.location';
 
 const modeKey = 'gemini.mode';
+const changesPendingKey = 'gemini.mode.changesPending';
 /** Set once the "Switched to Editor mode" hint has been shown. */
 const switchHintKey = 'gemini.mode.switchHintShown';
 const layoutKey = (mode: Mode) => `gemini.mode.layout.${mode}`;
@@ -91,6 +92,21 @@ class GeminiModes extends Disposable implements IWorkbenchContribution {
 	private readonly context: IContextKey<Mode>;
 	/** True while this class opens views itself, so those opens are not taken as the user's. */
 	private applying = false;
+	/**
+	 * A layout wanted Changes on the right before the extension had registered it, as on a first
+	 * open in Restricted Mode, where the extension does not run. Kept until Changes shows.
+	 */
+	private get changesPending(): boolean {
+		return this.storageService.getBoolean(changesPendingKey, StorageScope.WORKSPACE, false);
+	}
+
+	private set changesPending(pending: boolean) {
+		if (pending) {
+			this.storageService.store(changesPendingKey, true, StorageScope.WORKSPACE, StorageTarget.MACHINE);
+		} else {
+			this.storageService.remove(changesPendingKey, StorageScope.WORKSPACE);
+		}
+	}
 
 	constructor(
 		@IStorageService private readonly storageService: IStorageService,
@@ -125,6 +141,13 @@ class GeminiModes extends Disposable implements IWorkbenchContribution {
 			if (state.mode === 'agents' && this.layoutService.isVisible(Parts.SIDEBAR_PART) && this.sideBarContainer() !== geminiContainer) {
 				void this.openFixed(geminiContainer, ViewContainerLocation.Sidebar);
 			}
+			this.showChanges();
+			// The Changes panel comes from the extension, which can register it after the layout is applied.
+			this._register(this.viewDescriptorService.onDidChangeViewContainers(({ added }) => {
+				if (added.some(({ container }) => container.id === changesContainer)) {
+					this.showChanges();
+				}
+			}));
 			this._register(this.paneCompositeService.onDidPaneCompositeOpen(({ composite, viewContainerLocation }) => {
 				if (state.mode === 'agents' && !this.applying && viewContainerLocation === ViewContainerLocation.Sidebar && composite.getId() !== geminiContainer) {
 					void this.showInEditorMode(composite.getId());
@@ -180,6 +203,23 @@ class GeminiModes extends Disposable implements IWorkbenchContribution {
 		return this.paneCompositeService.getActivePaneComposite(ViewContainerLocation.Sidebar)?.getId();
 	}
 
+	/**
+	 * In Agents mode the right side shows Changes: replaces another view there
+	 * (upstream's Chat on a new profile), and shows it when a layout asked for
+	 * it before the extension had registered it.
+	 */
+	private showChanges(): void {
+		if (state.mode !== 'agents' || !this.viewDescriptorService.getViewContainerById(changesContainer)) {
+			return;
+		}
+		const visible = this.layoutService.isVisible(Parts.AUXILIARYBAR_PART);
+		if (this.changesPending || (visible && this.paneCompositeService.getActivePaneComposite(ViewContainerLocation.AuxiliaryBar)?.getId() !== changesContainer)) {
+			this.changesPending = false;
+			this.layoutService.setPartHidden(false, Parts.AUXILIARYBAR_PART);
+			void this.openFixed(changesContainer, ViewContainerLocation.AuxiliaryBar);
+		}
+	}
+
 	private async openFixed(container: string, location: ViewContainerLocation): Promise<void> {
 		this.applying = true;
 		try {
@@ -225,6 +265,9 @@ class GeminiModes extends Disposable implements IWorkbenchContribution {
 
 	private async applyLayout(layout: ModeLayout): Promise<void> {
 		this.applying = true;
+		if (layout.auxiliaryBar && layout.auxiliaryBarContainer === changesContainer && !this.viewDescriptorService.getViewContainerById(changesContainer)) {
+			this.changesPending = true;
+		}
 		try {
 			this.layoutService.setPartHidden(!layout.panel, Parts.PANEL_PART);
 			this.layoutService.setPartHidden(!layout.auxiliaryBar, Parts.AUXILIARYBAR_PART);
