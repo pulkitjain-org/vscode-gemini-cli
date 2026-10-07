@@ -83,6 +83,7 @@ export function chatToMarkdown(title: string, items: readonly TranscriptItem[], 
 }
 
 function toolMark(status: string): string {
+	// allow-any-unicode-next-line
 	return status === 'completed' ? '✓' : status === 'failed' ? '✗' : '…';
 }
 

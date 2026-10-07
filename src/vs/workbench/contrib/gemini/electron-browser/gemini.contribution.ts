@@ -23,6 +23,8 @@ import { FocusMode, INativeHostService } from '../../../../platform/native/commo
 import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
 import { IEditorService } from '../../../services/editor/common/editorService.js';
 import { IHostService } from '../../../services/host/browser/host.js';
+import { ILayoutService } from '../../../../platform/layout/browser/layoutService.js';
+import { IWorkbenchColorTheme, IWorkbenchThemeService } from '../../../services/themes/common/workbenchThemeService.js';
 import { WebviewInput } from '../../webviewPanel/browser/webviewEditorInput.js';
 
 /** The code fonts in geminiFonts.css. */
@@ -64,6 +66,43 @@ class GeminiCodeFonts extends Disposable implements IWorkbenchContribution {
 }
 
 registerWorkbenchContribution2(GeminiCodeFonts.ID, GeminiCodeFonts, WorkbenchPhase.BlockStartup);
+
+/**
+ * Marks every workbench window with `gemini-glass-light` or `gemini-glass-dark`
+ * while a Glass theme is on, for geminiGlass.css: a stable class rather than a
+ * match on the theme's class name, which would restyle on every class change.
+ */
+class GeminiGlassMarker extends Disposable implements IWorkbenchContribution {
+
+	static readonly ID = 'workbench.contrib.geminiGlassMarker';
+
+	constructor(
+		@IWorkbenchThemeService themeService: IWorkbenchThemeService,
+		@ILayoutService private readonly layoutService: ILayoutService,
+	) {
+		super();
+		let theme = themeService.getColorTheme();
+		this.mark(theme, [...layoutService.containers]);
+		this._register(themeService.onDidColorThemeChange(next => {
+			theme = next;
+			this.mark(theme, [...this.layoutService.containers]);
+		}));
+		this._register(layoutService.onDidAddContainer(({ container }) => this.mark(theme, [container])));
+	}
+
+	private mark(theme: IWorkbenchColorTheme, containers: readonly HTMLElement[]): void {
+		// The theme's id ends with its file's path, as in `themes-geminicode-glass-dark-json`.
+		const light = theme.id.includes('themes-geminicode-glass-light-json');
+		const dark = theme.id.includes('themes-geminicode-glass-dark-json');
+		for (const container of containers) {
+			container.classList.toggle('gemini-glass', light || dark);
+			container.classList.toggle('gemini-glass-light', light);
+			container.classList.toggle('gemini-glass-dark', dark);
+		}
+	}
+}
+
+registerWorkbenchContribution2(GeminiGlassMarker.ID, GeminiGlassMarker, WorkbenchPhase.BlockStartup);
 
 interface GeminiToast {
 	readonly title: string;
