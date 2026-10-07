@@ -36,6 +36,16 @@
         "category": "%category%"
       },
       {
+        "command": "gemini.openChatAsMarkdown",
+        "title": "%command.openChatAsMarkdown%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.agents.openAsMarkdown",
+        "title": "%command.openChatAsMarkdown%",
+        "category": "%category%"
+      },
+      {
         "command": "gemini.openChat",
         "title": "%command.openChat%",
         "category": "%category%"
@@ -513,6 +523,11 @@
           "group": "agent@2"
         },
         {
+          "command": "gemini.openChatAsMarkdown",
+          "when": "view == gemini.chat",
+          "group": "chat@1"
+        },
+        {
           "command": "gemini.agents.newAgent",
           "when": "view == gemini.agents",
           "group": "navigation@1"
@@ -610,6 +625,11 @@
           "group": "1_agent@4"
         },
         {
+          "command": "gemini.agents.openAsMarkdown",
+          "when": "view == gemini.agents && viewItem =~ /^agent/",
+          "group": "1_agent@5"
+        },
+        {
           "command": "gemini.agents.remove",
           "when": "view == gemini.agents && viewItem =~ /^agent/",
           "group": "2_remove@1"
@@ -650,6 +670,10 @@
         },
         {
           "command": "gemini.agents.mergeBack",
+          "when": "false"
+        },
+        {
+          "command": "gemini.agents.openAsMarkdown",
           "when": "false"
         },
         {

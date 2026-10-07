@@ -45,6 +45,7 @@ const workspaceButton = byId('workspace', HTMLButtonElement);
 
 export const ui = {
 	transcript: byId('transcript', HTMLElement),
+	outline: byId('outline', HTMLElement),
 	status: byId('status', HTMLElement),
 	activity: byId('activity', HTMLElement),
 	activityLabel: within(byId('activity', HTMLElement), '.activity-label', HTMLElement),

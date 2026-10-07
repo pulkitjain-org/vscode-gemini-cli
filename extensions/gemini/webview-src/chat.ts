@@ -24,6 +24,7 @@ import { applyFontSize, setLabel } from './dom';
 import { restoreComposerHeight, updatePlaceholder, updateSendState } from './inputBox';
 import { showSavedSessions } from './items';
 import { showCommands, showFiles } from './picker';
+import { updateOutline } from './promptNav';
 import { appended, applyItem, isNearBottom, reset, settleScroll, updateWorking } from './transcript';
 import { state, strings, ui, vscode } from './view';
 
@@ -44,6 +45,7 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 		case 'reset':
 			state.busy = message.busy;
 			reset(message.items);
+			updateOutline();
 			updatePlaceholder();
 			setBusy(message.busy);
 			setStatus(message.status);
@@ -60,6 +62,7 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			}
 			updateWorking();
 			settleScroll(scroll);
+			updateOutline();
 			updatePlaceholder();
 			break;
 		}

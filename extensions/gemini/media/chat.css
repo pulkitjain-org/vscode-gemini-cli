@@ -88,6 +88,62 @@ button {
 	padding: 20px var(--gemini-gutter) 8px;
 }
 
+/* Long chats (promptNav.ts): a tick per prompt down the right edge; the current one is lit. */
+.prompt-outline {
+	position: fixed;
+	top: 20px;
+	right: 2px;
+	z-index: 2;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	max-height: 45vh;
+	padding: 2px 0;
+}
+
+.prompt-outline[hidden] {
+	display: none;
+}
+
+.outline-tick {
+	flex: 0 1 10px;
+	min-height: 3px;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	width: 14px;
+	padding: 0 2px;
+	border: none;
+	background: transparent;
+	cursor: pointer;
+	opacity: .55;
+	transition: opacity .12s;
+}
+
+.outline-tick::before {
+	content: '';
+	height: 2px;
+	width: 8px;
+	border-radius: 1px;
+	background: var(--gemini-muted);
+	transition: width .12s;
+}
+
+.prompt-outline:hover .outline-tick {
+	opacity: .8;
+}
+
+.outline-tick:hover,
+.outline-tick.current {
+	opacity: 1;
+}
+
+.outline-tick:hover::before,
+.outline-tick.current::before {
+	width: 12px;
+	background: var(--vscode-textLink-foreground);
+}
+
 /*
  * Older messages skip layout and paint while scrolled out of view, so a long chat stays as cheap
  * as a short one. The latest ones are always laid out, so scrolling to the bottom lands exactly.

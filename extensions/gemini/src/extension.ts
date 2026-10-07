@@ -99,6 +99,10 @@ export function activate(context: vscode.ExtensionContext): void {
 		vscode.commands.registerCommand('gemini.newChat', () => chatView.newChat()),
 		vscode.commands.registerCommand('gemini.enhancePrompt', () => chatInFront().requestEnhance()),
 		vscode.commands.registerCommand('gemini.toggleFollowAgent', () => chatInFront().toggleFollowing()),
+		vscode.commands.registerCommand('gemini.openChatAsMarkdown', () => {
+			const agent = agentsView.activeAgentId();
+			return agent ? agentsView.openAsMarkdown(agent) : chatView.controller.openAsMarkdown(vscode.l10n.t("Quick Chat"));
+		}),
 		vscode.commands.registerCommand('gemini.addFileToChat', async (uri: unknown, uris: unknown) => chatInFront().addAttachments(await filesToAttach(uri, uris))),
 		vscode.commands.registerCommand('gemini.addSelectionToChat', () => chatInFront().addAttachments(selectionsToAttach())),
 		vscode.commands.registerCommand('gemini.showLog', () => log.show()),

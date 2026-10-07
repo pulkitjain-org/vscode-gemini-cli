@@ -343,3 +343,32 @@ export function turnStart(items: readonly TranscriptItem[]): number | undefined 
 	}
 	return undefined;
 }
+
+/** How close (in pixels) a prompt's top must be to the view's top to count as the one in view; a jump leaves 12. */
+const promptSlack = 24;
+
+/**
+ * The prompt that is current when the view's top is at `viewTop`: the last
+ * one starting at or above it, or -1 above the first. `tops` are the
+ * prompts' tops, in order.
+ */
+export function currentPrompt(tops: readonly number[], viewTop: number): number {
+	let current = -1;
+	for (let i = 0; i < tops.length && tops[i] <= viewTop + promptSlack; i++) {
+		current = i;
+	}
+	return current;
+}
+
+/** The prompt to jump to from `viewTop`: the next one below it, or the previous one above; -1 when there is none. */
+export function promptStep(tops: readonly number[], viewTop: number, direction: 1 | -1): number {
+	if (direction === 1) {
+		return tops.findIndex(top => top > viewTop + promptSlack);
+	}
+	for (let i = tops.length - 1; i >= 0; i--) {
+		if (tops[i] < viewTop - promptSlack) {
+			return i;
+		}
+	}
+	return -1;
+}

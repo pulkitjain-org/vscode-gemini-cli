@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TranscriptItem } from '../../src/acp/chatTranscript';
 import {
-	acceptsEnhanceReply, attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, currentActivity, formatClock, turnStart, draggedHeight, emptyFence, enhanceButtonPlacement, enhanceOriginal, type EnhancePhase, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, fileReference, fileUris, folderOf, format, formatDuration, formatSentAt, isEnhanceShortcut,
+	acceptsEnhanceReply, attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, currentActivity, currentPrompt, promptStep, formatClock, turnStart, draggedHeight, emptyFence, enhanceButtonPlacement, enhanceOriginal, type EnhancePhase, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, fileReference, fileUris, folderOf, format, formatDuration, formatSentAt, isEnhanceShortcut,
 	imageName, indexOfItem, isNearBottom, matchCommands, mentionAt, mentionInsertion, permissionDefaults, planIcon, replyBefore, restoredHeight,
 	sameAttachment, slashQuery, thoughtSeconds, toolKindIcon, withAppended, withoutMention, wrapIndex,
 } from '../../webview-src/chatLogic';
@@ -401,5 +401,24 @@ describe('turnStart', () => {
 		expect(turnStart([{ id: 'u', kind: 'user', text: 'a', at: 5 }, { id: 'a', kind: 'agent', text: 'b' }])).toBe(5);
 		expect(turnStart([{ id: 'u', kind: 'user', text: 'a' }])).toBeUndefined();
 		expect(turnStart([{ id: 'u', kind: 'user', text: 'a', at: 5 }, { id: 'e', kind: 'turnEnd', durationMs: 1 }])).toBeUndefined();
+	});
+});
+
+describe('prompt navigation', () => {
+	const tops = [0, 400, 1200];
+	it('finds the prompt in view', () => {
+		expect(currentPrompt([], 0)).toBe(-1);
+		expect(currentPrompt(tops, 0)).toBe(0);
+		expect(currentPrompt(tops, 395)).toBe(1);
+		expect(currentPrompt(tops, 1000)).toBe(1);
+		expect(currentPrompt([50], 0)).toBe(-1);
+	});
+	it('steps to the next and previous prompt', () => {
+		expect(promptStep(tops, 0, 1)).toBe(1);
+		expect(promptStep(tops, 400, 1)).toBe(2);
+		expect(promptStep(tops, 1200, 1)).toBe(-1);
+		expect(promptStep(tops, 1200, -1)).toBe(1);
+		expect(promptStep(tops, 600, -1)).toBe(1);
+		expect(promptStep(tops, 0, -1)).toBe(-1);
 	});
 });

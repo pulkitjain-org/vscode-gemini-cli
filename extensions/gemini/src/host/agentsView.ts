@@ -22,7 +22,7 @@ import { AgentSession } from './agentSession';
 import { ChangesSource, ChangesView } from './changesView';
 import type { AgentStateKind } from './panelProtocol';
 import { ReviewController } from './reviewController';
-import { ChatActivity, ChatController, ChatEnhancer, FileSearch } from './chatController';
+import { ChatActivity, ChatController, ChatEnhancer, FileSearch, openChatAsMarkdown } from './chatController';
 import { configSection } from './configuration';
 import { relativeTime, tildify } from './displayText';
 export { relativeTime } from './displayText';
@@ -177,11 +177,30 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			}),
 			vscode.commands.registerCommand('gemini.agents.openChanges', (node?: Node) => node?.kind === 'agent' && this.openChanges(node.record.id)),
 			vscode.commands.registerCommand('gemini.agents.rename', (node?: Node) => this.rename(node)),
+			vscode.commands.registerCommand('gemini.agents.openAsMarkdown', (node?: Node) => node?.kind === 'agent' && this.openAsMarkdown(node.record.id)),
 			vscode.commands.registerCommand('gemini.agents.stop', (node?: Node) => node?.kind === 'agent' && this.stopTurn(node.record.id)),
 			vscode.commands.registerCommand('gemini.agents.remove', (node?: Node) => this.removeAgent(node)),
 			vscode.commands.registerCommand('gemini.agents.removeWorkspace', (node?: Node) => this.removeWorkspace(node)),
 		);
 		this.setRefreshing(this.tree.visible);
+	}
+
+	/** Opens agent `id`'s conversation as Markdown; one not running in this window is read from its saved file. */
+	async openAsMarkdown(id: string): Promise<void> {
+		const record = this.model.agent(id);
+		const live = this.live.get(id);
+		const items = live ? live.controller.conversation : (await this.transcripts.load(id)).items;
+		await openChatAsMarkdown(record?.title ?? vscode.l10n.t("Agent"), items, live ? besideAgent(live.panel) : undefined);
+	}
+
+	/** The agent whose tab is in front, if any. */
+	activeAgentId(): string | undefined {
+		for (const [id, agent] of this.live) {
+			if (agent.panel?.active) {
+				return id;
+			}
+		}
+		return undefined;
 	}
 
 	/** The chat in the agent tab that is in front, if any. */

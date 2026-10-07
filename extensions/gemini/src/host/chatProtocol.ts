@@ -119,6 +119,8 @@ export interface ChatStrings {
 	readonly writeLabel: string;
 	/** The eye toggle in the composer bar. */
 	readonly followAgent: string;
+	/** The outline of the user's prompts, with its keys. */
+	readonly promptOutline: string;
 	readonly previewEmpty: string;
 	readonly enhancing: string;
 	readonly enhanced: string;

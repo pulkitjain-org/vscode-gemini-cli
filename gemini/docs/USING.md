@@ -33,6 +33,7 @@ An agent on its own branch can get a ready folder: set **Gemini › Agents: Work
 | esc (in the chat input) | Stop the agent, or cancel Enhance prompt |
 | ⌥⌘E | Enhance prompt (the draft in the chat in front) |
 | ↑ / ↓ (empty chat input) | Bring back an earlier prompt |
+| ⌥⌘↑ / ⌥⌘↓ (in the chat) | Jump to your previous or next prompt |
 | ⌘I | Inline edit |
 | ⌘↩ / ⌘⌫ | Keep or undo the agent's changes to the file you're in |
 | ⌥] / ⌥[ | Next or previous agent change in the file |
@@ -171,6 +172,8 @@ GeminiCode keeps its own share small:
 - Saved conversations keep the last 300 messages, each cut to 20,000 characters.
 - Messages scrolled out of view are not laid out, and streaming sends only new text.
 - Proposed edits are remembered for the last 200 tool calls. Older diff links open the file as it is now.
+
+To find your way round a long chat, use the thin outline of your prompts down the chat's right edge: point at a tick to see the prompt, click it to jump there. ⌥⌘↑ and ⌥⌘↓ jump to your previous and next prompt. **Open Chat as Markdown** (in Quick Chat's **...** menu, an agent's right-click menu in the Agents pane, or the Command Palette for the chat in front) opens the whole conversation as a Markdown document you can search, save or share.
 
 Every agent in a window shares one Gemini CLI process, and that process keeps each session's history until it restarts. In Quick Chat, **New Chat** starts a fresh session; for agents, start a new agent. If an old agent is no longer needed, remove it from the Agents pane, which also deletes its saved conversation.
 

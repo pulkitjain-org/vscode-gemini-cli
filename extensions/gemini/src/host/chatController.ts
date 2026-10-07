@@ -8,6 +8,7 @@ import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
 import { Attachment, attachmentLabel } from '../acp/attachments';
 import { isValidAttachment } from '../acp/attachmentValidation';
+import { chatToMarkdown } from '../acp/chatMarkdown';
 import { ChatTranscript, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
 import { Checkpoints } from '../acp/checkpoints';
 import { FollowTarget, FollowTracker } from '../acp/follow';
@@ -757,6 +758,11 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	/** The Enhance Prompt command: enhances what the composer holds, showing the chat first. */
+	/** Opens the conversation as a Markdown document, titled `title`. */
+	openAsMarkdown(title: string): Promise<void> {
+		return openChatAsMarkdown(title, this.transcript.items, this.options.editorColumn?.());
+	}
+
 	/** Turns Follow the agent on or off in this chat; new chats start the same way. */
 	toggleFollowing(): void {
 		this.setFollowing(!this.following);
@@ -1098,6 +1104,7 @@ export class ChatController implements vscode.Disposable {
 			previewLabel: vscode.l10n.t("Preview"),
 			writeLabel: vscode.l10n.t("Write"),
 			followAgent: vscode.l10n.t("Follow the agent: open each file it reads or edits"),
+			promptOutline: process.platform === 'darwin' ? vscode.l10n.t("Your prompts (⌥⌘↑ and ⌥⌘↓ to jump between them)") : vscode.l10n.t("Your prompts (Ctrl+Alt+Up and Ctrl+Alt+Down to jump between them)"),
 			previewEmpty: vscode.l10n.t("Nothing to preview yet."),
 			enhanceTooltip: vscode.l10n.t("Rewrite this as a clearer, more precise prompt ({0})"),
 			enhancing: vscode.l10n.t("Enhancing the prompt"),
@@ -1143,6 +1150,7 @@ export class ChatController implements vscode.Disposable {
 </head>
 <body data-accent="${solidAccent() ? 'solid' : 'gradient'}" data-font-size="${chatFontSize()}">
 	<main id="transcript" class="transcript"></main>
+	<nav id="outline" class="prompt-outline" hidden></nav>
 	<div id="announce" class="announce" aria-live="polite"></div>
 	<div id="activity" class="activity" hidden><svg class="activity-spark" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5c.4 3.4 2.9 6 6.5 6.5-3.6.4-6.1 3-6.5 6.5-.4-3.5-2.9-6.1-6.5-6.5C5.1 7.5 7.6 4.9 8 1.5z"/></svg><span class="activity-label"></span><span class="activity-clock"></span><span class="activity-detail"></span><span class="activity-hint"></span></div>
 	<div id="status" class="status" role="status"></div>
@@ -1180,6 +1188,22 @@ export class ChatController implements vscode.Disposable {
 </body>
 </html>`;
 	}
+}
+
+/** Opens `items` as an untitled Markdown document, beside the chat when `column` is set. */
+export async function openChatAsMarkdown(title: string, items: readonly TranscriptItem[], column?: vscode.ViewColumn): Promise<void> {
+	const content = chatToMarkdown(title, items, {
+		you: vscode.l10n.t("You"),
+		gemini: vscode.l10n.t("Gemini"),
+		thought: vscode.l10n.t("Thought"),
+		plan: vscode.l10n.t("Plan"),
+		attached: vscode.l10n.t("Attached"),
+		workedFor: vscode.l10n.t("Worked for {0}"),
+		permission: vscode.l10n.t("Permission for {0}: {1}"),
+		cancelled: vscode.l10n.t("Cancelled"),
+	});
+	const document = await vscode.workspace.openTextDocument({ language: 'markdown', content });
+	await vscode.window.showTextDocument(document, { preview: false, viewColumn: column });
 }
 
 /** At most one file is shown this often while following the agent, so a burst of reads does not flicker the editor. */
