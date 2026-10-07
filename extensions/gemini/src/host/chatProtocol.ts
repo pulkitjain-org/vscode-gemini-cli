@@ -75,6 +75,7 @@ export interface ChatStrings {
 	/** Labels for a command from the agent and one from .gemini/commands. */
 	readonly commandFromCli: string;
 	readonly commandFromTeam: string;
+	readonly commandFromSkill: string;
 	readonly remove: string;
 	/** `{0}` is the file's name. */
 	readonly fileTooLarge: string;

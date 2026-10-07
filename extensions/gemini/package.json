@@ -46,6 +46,11 @@
         "category": "%category%"
       },
       {
+        "command": "gemini.newSkill",
+        "title": "%command.newSkill%",
+        "category": "%category%"
+      },
+      {
         "command": "gemini.openChat",
         "title": "%command.openChat%",
         "category": "%category%"

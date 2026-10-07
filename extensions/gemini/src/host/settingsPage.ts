@@ -6,33 +6,51 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { CliExtension, isExtensionSource, parseExtensionList, parseMemoryList, runCliCommand } from '../acp/cliCommands';
 import { geminiDir } from '../acp/directRequest';
+import { appendMemory } from '../acp/memory';
 import { errorMessage } from '../acp/errors';
+import { addHook, disabledHooks, HookEvent, hookEvents, hooksIn, setHookEnabled, toolEvents } from '../acp/hooks';
 import { addMcpServer, disabledServers, isServerEnabled, mcpServersIn, readSettingsFile, rulesFileNames, serverConfigFrom, setServerEnabled } from '../acp/projectSettings';
+import { loadSkills, skillFolders, skillSlug, skillTemplate } from '../acp/skills';
 import { AgentService } from './agentService';
+import { getAgentCommand, getWorkspaceCwd } from './configuration';
 import { tildify } from './displayText';
-import { FromSettingsPage, McpServerView, RulesFileView, SettingsPageStrings, SettingsPageView, ToSettingsPage } from './panelProtocol';
+import { CliReport, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage } from './panelProtocol';
 import { createNonce, escapeAttribute } from './webviewHtml';
 
 const viewType = 'gemini.projectSettings';
 
 /**
- * MCP Servers and Rules: the MCP servers in the Gemini CLI's settings, each
- * with a switch and why it failed to start, and the rules (GEMINI.md) files
- * every agent reads. It edits the CLI's own files, so the terminal CLI sees
- * the same. The page reads them when shown and after each change.
+ * Project Helpers: what every Gemini agent loads when it starts. MCP servers,
+ * skills, hooks and rules come from the Gemini CLI's own files, which the page
+ * edits so the terminal CLI sees the same. Extensions and memory come from the
+ * CLI itself (/extensions list, /memory list), asked when the page opens and
+ * after a change. Files are read when the page is shown and after each change.
  */
 export class SettingsPage implements vscode.Disposable {
 
 	private panel: vscode.WebviewPanel | undefined;
 	/** The files the page shows; the only ones it may open or create. */
 	private files = new Set<string>();
+	/** The extension and memory lists the CLI last reported. */
+	private extensions: CliReport<ExtensionView> = { state: 'loading' };
+	private memory: CliReport<MemoryFileView> = { state: 'loading' };
+	private terminal: vscode.Terminal | undefined;
 	private readonly disposables: vscode.Disposable[] = [];
 
 	constructor(private readonly extensionUri: vscode.Uri, private readonly service: AgentService) {
 		this.disposables.push(
 			vscode.commands.registerCommand('gemini.projectSettings', () => this.show()),
+			vscode.commands.registerCommand('gemini.newSkill', () => this.newSkill()),
 			service.onDidChangeMcpProblems(() => void this.update()),
+			vscode.window.onDidCloseTerminal(terminal => {
+				if (terminal === this.terminal) {
+					// An install, update or removal finished.
+					this.terminal = undefined;
+					void this.refreshCli();
+				}
+			}),
 		);
 	}
 
@@ -42,7 +60,7 @@ export class SettingsPage implements vscode.Disposable {
 			return;
 		}
 		const media = vscode.Uri.joinPath(this.extensionUri, 'media');
-		const panel = vscode.window.createWebviewPanel(viewType, vscode.l10n.t("MCP Servers and Rules"), vscode.ViewColumn.Active, {
+		const panel = vscode.window.createWebviewPanel(viewType, vscode.l10n.t("Project Helpers"), vscode.ViewColumn.Active, {
 			enableScripts: true,
 			localResourceRoots: [media],
 		});
@@ -56,6 +74,7 @@ export class SettingsPage implements vscode.Disposable {
 			}
 		});
 		this.panel = panel;
+		void this.refreshCli();
 	}
 
 	dispose(): void {
@@ -72,8 +91,33 @@ export class SettingsPage implements vscode.Disposable {
 		if (this.panel !== panel) {
 			return;
 		}
-		this.files = new Set([...view.servers.map(s => s.file), ...view.rules.map(r => r.path)]);
+		this.files = new Set([
+			...view.servers.map(s => s.file), ...view.rules.map(r => r.path), ...view.skills.map(s => s.file), ...view.hooks.map(h => h.file),
+			...view.memory.state === 'ready' ? view.memory.items.map(m => m.path) : [],
+		]);
 		void panel.webview.postMessage({ type: 'view', view } satisfies ToSettingsPage);
+	}
+
+	/** Asks the CLI for its extensions and memory files, then shows them. Starts the agent if it is not running. */
+	private async refreshCli(): Promise<void> {
+		this.extensions = { state: 'loading' };
+		this.memory = { state: 'loading' };
+		void this.update();
+		const cwd = getWorkspaceCwd();
+		try {
+			await this.service.ensureReady();
+			const [extensions, memory] = await Promise.all([
+				runCliCommand(this.service.runtime, cwd, '/extensions list'),
+				runCliCommand(this.service.runtime, cwd, '/memory list'),
+			]);
+			this.extensions = { state: 'ready', items: parseExtensionList(extensions).map(extensionView) };
+			this.memory = { state: 'ready', items: await Promise.all(parseMemoryList(memory).map(memoryView)) };
+		} catch (err) {
+			const message = vscode.l10n.t("The Gemini CLI did not answer: {0}", errorMessage(err));
+			this.extensions = { state: 'unavailable', message };
+			this.memory = { state: 'unavailable', message };
+		}
+		await this.update();
 	}
 
 	private personalSettings(): string {
@@ -104,6 +148,23 @@ export class SettingsPage implements vscode.Disposable {
 				servers.push(this.serverView(server, vscode.l10n.t("Personal"), disabled, problems));
 			}
 		}
+
+		const personalLabel = vscode.l10n.t("Personal");
+		const home = path.dirname(dir);
+		const skills: SkillView[] = (await loadSkills(skillFolders(undefined, home))).map(s => ({ name: s.name, description: s.description, scope: personalLabel, file: s.file }));
+		for (const { folder } of projects) {
+			const project = await loadSkills(skillFolders(folder.uri.fsPath, home).filter(f => !f.personal));
+			skills.push(...project.map(s => ({ name: s.name, description: s.description, scope: folder.name, file: s.file })));
+		}
+
+		// hooksConfig.disabled is merged across files, so a hook off in either is off.
+		const personalOff = disabledHooks(personal);
+		const hooks: HookView[] = hooksIn(personal, this.personalSettings(), personalOff).map(h => ({ ...h, scope: personalLabel }));
+		for (const { folder, file, settings } of projects) {
+			const off = new Set([...personalOff, ...disabledHooks(settings)]);
+			hooks.push(...hooksIn(settings, file, off).map(h => ({ ...h, scope: folder.name })));
+		}
+
 		const rules: RulesFileView[] = [];
 		for (const { folder, settings } of projects) {
 			const name = plainFileName(rulesFileNames({ ...personal, ...settings })[0]);
@@ -112,7 +173,7 @@ export class SettingsPage implements vscode.Disposable {
 		}
 		const personalRules = path.join(dir, plainFileName(rulesFileNames(personal)[0]));
 		rules.push(await rulesView(vscode.l10n.t("Personal rules"), personalRules, tildify(personalRules)));
-		return { servers, rules };
+		return { servers, skills, hooks, extensions: this.extensions, memory: this.memory, rules };
 	}
 
 	private serverView(server: ReturnType<typeof mcpServersIn>[number], scope: string, disabled: ReadonlySet<string>, problems: ReadonlyMap<string, string>): McpServerView {
@@ -138,11 +199,37 @@ export class SettingsPage implements vscode.Disposable {
 				case 'addServer':
 					await this.addServer();
 					break;
+				case 'newSkill':
+					await this.newSkill();
+					break;
+				case 'addHook':
+					await this.addHook();
+					break;
+				case 'toggleHook':
+					if (!this.files.has(message.file)) {
+						return;
+					}
+					if (!await setHookEnabled(message.file, message.name, message.enabled)) {
+						await this.cannotRewrite(message.file, '"hooksConfig"');
+					}
+					break;
+				case 'installExtension':
+					await this.installExtension();
+					return;
+				case 'extension':
+					await this.extensionAction(message.action, message.name);
+					return;
+				case 'addMemory':
+					await this.addMemory();
+					return;
+				case 'refreshMemory':
+					await this.refreshCli();
+					return;
 				case 'openFile':
 					if (!this.files.has(message.path)) {
 						return;
 					}
-					await openAt(message.path, message.server && `"${message.server}"`);
+					await openAt(message.path, message.server ? `"${message.server}"` : message.needle);
 					return;
 				case 'createRules':
 					if (!this.files.has(message.path)) {
@@ -182,9 +269,186 @@ export class SettingsPage implements vscode.Disposable {
 		if (await addMcpServer(file, name.trim(), serverConfigFrom(target))) {
 			this.offerRestart(vscode.l10n.t("Added \"{0}\". New agents can use its tools.", name.trim()));
 		} else {
-			void vscode.window.showWarningMessage(vscode.l10n.t("{0} has comments, so GeminiCode won't rewrite it. Add the server under \"mcpServers\" yourself.", tildify(file)));
-			await openAt(file, '"mcpServers"');
+			await this.cannotRewrite(file, '"mcpServers"');
 		}
+	}
+
+	/** Where to put a new skill, hook or memory: a project folder, or the user's own. */
+	private async pickScope(title: string, personalDetail: string, projectDetail: (folder: string) => string): Promise<{ readonly folder?: string } | undefined> {
+		const folders = vscode.workspace.workspaceFolders ?? [];
+		const items = [
+			...folders.map(f => ({ label: f.name, description: vscode.l10n.t("Project"), detail: projectDetail(f.uri.fsPath), folder: f.uri.fsPath as string | undefined })),
+			{ label: vscode.l10n.t("Personal"), description: '', detail: personalDetail, folder: undefined },
+		];
+		const pick = items.length === 1 ? items[0] : await vscode.window.showQuickPick(items, { title, placeHolder: vscode.l10n.t("Who it is for") });
+		return pick ? { folder: pick.folder } : undefined;
+	}
+
+	/** New Skill: a folder with a SKILL.md from a template, opened to fill in. */
+	private async newSkill(): Promise<void> {
+		const title = vscode.l10n.t("New Skill");
+		const scope = await this.pickScope(title, tildify(path.join(geminiDir(), 'skills')), folder => path.join(path.basename(folder), '.gemini', 'skills'));
+		if (!scope) {
+			return;
+		}
+		const base = scope.folder ? path.join(scope.folder, '.gemini', 'skills') : path.join(geminiDir(), 'skills');
+		const name = await vscode.window.showInputBox({
+			title: `${title} (1/2)`,
+			prompt: vscode.l10n.t("A short name, such as release-notes or db-migrations"),
+			validateInput: async value => {
+				const slug = skillSlug(value);
+				if (!slug) {
+					return vscode.l10n.t("Use letters and numbers.");
+				}
+				return await fs.access(path.join(base, slug)).then(() => vscode.l10n.t("{0} already exists.", slug), () => undefined);
+			},
+		});
+		if (!name) {
+			return;
+		}
+		const description = await vscode.window.showInputBox({
+			title: `${title} (2/2)`,
+			prompt: vscode.l10n.t("When Gemini should use it, in one sentence; Gemini reads this to decide"),
+			placeHolder: vscode.l10n.t("Use when writing a database migration for this project."),
+			validateInput: value => value.trim() ? undefined : vscode.l10n.t("Say when to use it."),
+		});
+		if (!description) {
+			return;
+		}
+		const slug = skillSlug(name);
+		const file = path.join(base, slug, 'SKILL.md');
+		await fs.mkdir(path.dirname(file), { recursive: true });
+		await fs.writeFile(file, skillTemplate(slug, description), { flag: 'wx' });
+		await openAt(file, '## When to use');
+		this.offerRestart(vscode.l10n.t("Created the \"{0}\" skill. New agents can use it; it is also in the / menu.", slug));
+		await this.update();
+	}
+
+	private async addHook(): Promise<void> {
+		const title = vscode.l10n.t("Add Hook");
+		const descriptions: Record<HookEvent, string> = {
+			SessionStart: vscode.l10n.t("When an agent starts"),
+			BeforeAgent: vscode.l10n.t("After you send a prompt, before Gemini works on it"),
+			BeforeModel: vscode.l10n.t("Before each request to the model"),
+			AfterModel: vscode.l10n.t("After each reply from the model"),
+			BeforeToolSelection: vscode.l10n.t("Before the model picks its tools"),
+			BeforeTool: vscode.l10n.t("Before a tool runs; can block it"),
+			AfterTool: vscode.l10n.t("After a tool runs, such as formatting an edited file"),
+			Notification: vscode.l10n.t("When the agent needs your attention"),
+			AfterAgent: vscode.l10n.t("When a turn ends"),
+			PreCompress: vscode.l10n.t("Before the conversation is summarised"),
+			SessionEnd: vscode.l10n.t("When an agent stops"),
+		};
+		const event = await vscode.window.showQuickPick(hookEvents.map(e => ({ label: e, description: descriptions[e] })), { title: `${title} (1/3)`, placeHolder: vscode.l10n.t("When it runs") });
+		if (!event) {
+			return;
+		}
+		let matcher: string | undefined;
+		if (toolEvents.has(event.label)) {
+			matcher = await vscode.window.showInputBox({
+				title: `${title} (2/3)`,
+				prompt: vscode.l10n.t("Which tools it runs for, as a regular expression of tool names; empty for every tool"),
+				placeHolder: 'write_file|replace',
+				validateInput: value => {
+					try {
+						new RegExp(value);
+						return undefined;
+					} catch {
+						return vscode.l10n.t("This is not a valid regular expression.");
+					}
+				},
+			});
+			if (matcher === undefined) {
+				return;
+			}
+		}
+		const command = await vscode.window.showInputBox({
+			title: `${title} (3/3)`,
+			prompt: vscode.l10n.t("The shell command to run. It gets the event as JSON on standard input."),
+			placeHolder: 'npx prettier --write .',
+			validateInput: value => value.trim() ? undefined : vscode.l10n.t("Enter a command."),
+		});
+		if (!command) {
+			return;
+		}
+		const scope = await this.pickScope(title, tildify(this.personalSettings()), folder => path.join(path.basename(folder), '.gemini', 'settings.json'));
+		if (!scope) {
+			return;
+		}
+		const file = scope.folder ? path.join(scope.folder, '.gemini', 'settings.json') : this.personalSettings();
+		if (await addHook(file, event.label as HookEvent, command.trim(), matcher?.trim() || undefined)) {
+			this.offerRestart(vscode.l10n.t("Added a {0} hook. It runs in new agents.", event.label));
+		} else {
+			await this.cannotRewrite(file, '"hooks"');
+		}
+	}
+
+	/** Install runs the CLI's own installer in a terminal, where it shows its security warning and asks before installing. */
+	private async installExtension(): Promise<void> {
+		const source = await vscode.window.showInputBox({
+			title: vscode.l10n.t("Install Gemini CLI Extension"),
+			prompt: vscode.l10n.t("A GitHub repository URL or a local folder. Browse extensions at geminicli.com/extensions."),
+			placeHolder: 'https://github.com/gemini-cli-extensions/security',
+			validateInput: value => isExtensionSource(value) ? undefined : vscode.l10n.t("Enter a URL or a path, without spaces or quotes."),
+		});
+		if (source) {
+			this.runInTerminal(vscode.l10n.t("Install Extension"), ['extensions', 'install', source.trim()]);
+		}
+	}
+
+	private async extensionAction(action: 'enable' | 'disable' | 'update' | 'uninstall', name: string): Promise<void> {
+		if (!/^[\w.@-]+$/.test(name)) {
+			return;
+		}
+		if (action === 'update' || action === 'uninstall') {
+			// These can ask questions (consent, settings), which only a terminal can answer.
+			this.runInTerminal(action === 'update' ? vscode.l10n.t("Update Extension") : vscode.l10n.t("Uninstall Extension"), ['extensions', action, name]);
+			return;
+		}
+		await this.service.ensureReady();
+		const reply = await runCliCommand(this.service.runtime, getWorkspaceCwd(), `/extensions ${action} ${name}`);
+		await this.refreshCli();
+		this.offerRestart(reply.trim() || name);
+	}
+
+	private runInTerminal(name: string, args: readonly string[]): void {
+		this.terminal?.dispose();
+		const command = getAgentCommand({ subcommand: args });
+		this.terminal = vscode.window.createTerminal({
+			name: vscode.l10n.t("Gemini: {0}", name),
+			shellPath: command.shell ? 'cmd.exe' : command.command,
+			shellArgs: command.shell ? ['/c', command.command, ...command.args] : [...command.args],
+			env: command.env as Record<string, string>,
+			cwd: getWorkspaceCwd(),
+			message: vscode.l10n.t("Answer the Gemini CLI's questions here. Project Helpers updates when it finishes; restart the agent to use the change."),
+		});
+		this.terminal.show();
+	}
+
+	/** Add Memory: a line in a GEMINI.md file, which every new agent reads. */
+	private async addMemory(): Promise<void> {
+		const text = await vscode.window.showInputBox({
+			title: vscode.l10n.t("Add Memory"),
+			prompt: vscode.l10n.t("Something Gemini should always remember, such as \"Use pnpm, not npm\""),
+			validateInput: value => value.trim() ? undefined : vscode.l10n.t("Enter what to remember."),
+		});
+		if (!text) {
+			return;
+		}
+		const personal = await readSettingsFile(this.personalSettings());
+		const scope = await this.pickScope(vscode.l10n.t("Add Memory"), tildify(path.join(geminiDir(), plainFileName(rulesFileNames(personal)[0]))), folder => path.join(path.basename(folder), plainFileName(rulesFileNames(personal)[0])));
+		if (!scope) {
+			return;
+		}
+		const file = path.join(scope.folder ?? geminiDir(), plainFileName(rulesFileNames(personal)[0]));
+		await appendMemory(file, text.trim());
+		await this.refreshCli();
+		this.offerRestart(vscode.l10n.t("Saved to {0}. New agents remember it.", tildify(file)));
+	}
+
+	private async cannotRewrite(file: string, needle: string): Promise<void> {
+		void vscode.window.showWarningMessage(vscode.l10n.t("{0} has comments, so GeminiCode won't rewrite it. Make the change under {1} yourself.", tildify(file), needle));
+		await openAt(file, needle);
 	}
 
 	private offerRestart(message: string): void {
@@ -195,7 +459,7 @@ export class SettingsPage implements vscode.Disposable {
 	private html(webview: vscode.Webview, media: vscode.Uri): string {
 		const nonce = createNonce();
 		const strings: SettingsPageStrings = {
-			title: vscode.l10n.t("MCP Servers and Rules"),
+			title: vscode.l10n.t("Project Helpers"),
 			subtitle: vscode.l10n.t("What every Gemini agent loads when it starts, shared with the gemini command in your terminal. Changes apply to new agents."),
 			restart: vscode.l10n.t("Restart Agent"),
 			servers: vscode.l10n.t("MCP servers"),
@@ -205,6 +469,29 @@ export class SettingsPage implements vscode.Disposable {
 			edit: vscode.l10n.t("Edit in settings"),
 			enable: vscode.l10n.t("Use this server"),
 			failed: vscode.l10n.t("Failed to start: {0}"),
+			skills: vscode.l10n.t("Skills"),
+			skillsHint: vscode.l10n.t("Know-how Gemini loads when a task calls for it, such as how to cut a release. Pick one from the / menu to use it now."),
+			newSkill: vscode.l10n.t("New Skill"),
+			noSkills: vscode.l10n.t("No skills yet."),
+			hooks: vscode.l10n.t("Hooks"),
+			hooksHint: vscode.l10n.t("Commands the CLI runs at set points, such as a formatter after every edit. A project's hooks run once you trust its folder."),
+			addHook: vscode.l10n.t("Add Hook"),
+			noHooks: vscode.l10n.t("No hooks yet."),
+			hookMatcher: vscode.l10n.t("for {0}"),
+			enableHook: vscode.l10n.t("Run this hook"),
+			extensions: vscode.l10n.t("Extensions"),
+			extensionsHint: vscode.l10n.t("Gemini CLI extensions bundle commands, MCP servers, skills and rules. Installing one runs the CLI's installer in a terminal."),
+			installExtension: vscode.l10n.t("Install"),
+			noExtensions: vscode.l10n.t("No extensions installed."),
+			enableExtension: vscode.l10n.t("Use this extension"),
+			updateExtension: vscode.l10n.t("Update"),
+			uninstallExtension: vscode.l10n.t("Uninstall"),
+			memory: vscode.l10n.t("Memory"),
+			memoryHint: vscode.l10n.t("The GEMINI.md files the CLI loads for this folder, from your home folder down to subfolders and extensions."),
+			addMemory: vscode.l10n.t("Add Memory"),
+			refresh: vscode.l10n.t("Refresh"),
+			noMemory: vscode.l10n.t("No GEMINI.md files in use."),
+			loading: vscode.l10n.t("Asking the Gemini CLI…"),
 			rules: vscode.l10n.t("Rules"),
 			rulesHint: vscode.l10n.t("Instructions every agent follows, such as how to build, test and write code here."),
 			open: vscode.l10n.t("Open"),
@@ -232,11 +519,35 @@ export class SettingsPage implements vscode.Disposable {
 	}
 }
 
+function extensionView(extension: CliExtension): ExtensionView {
+	const parts = [
+		extension.mcpServers.length === 1 ? vscode.l10n.t("1 MCP server") : extension.mcpServers.length ? vscode.l10n.t("{0} MCP servers", extension.mcpServers.length) : '',
+		extension.skills === 1 ? vscode.l10n.t("1 skill") : extension.skills ? vscode.l10n.t("{0} skills", extension.skills) : '',
+		extension.contextFiles.length ? vscode.l10n.t("rules") : '',
+		extension.hooks ? vscode.l10n.t("hooks") : '',
+	].filter(Boolean);
+	return {
+		name: extension.name,
+		version: extension.version,
+		active: extension.active,
+		...(extension.source ? { source: extension.kind === 'local' || extension.kind === 'link' ? tildify(extension.source) : extension.source } : {}),
+		detail: parts.join(' · '),
+	};
+}
+
+async function memoryView(file: string): Promise<MemoryFileView> {
+	const preview = await fs.readFile(file, 'utf8').then(firstLine, () => undefined);
+	return { path: file, display: tildify(file), ...(preview ? { preview } : {}) };
+}
+
+function firstLine(text: string): string | undefined {
+	return text.split('\n').map(line => line.replace(/^#+\s*/, '').trim()).find(Boolean)?.slice(0, 120);
+}
+
 async function rulesView(label: string, file: string, display: string): Promise<RulesFileView> {
 	try {
-		const text = await fs.readFile(file, 'utf8');
-		const preview = text.split('\n').map(line => line.replace(/^#+\s*/, '').trim()).find(Boolean);
-		return { label, display, path: file, exists: true, ...(preview ? { preview: preview.slice(0, 120) } : {}) };
+		const preview = firstLine(await fs.readFile(file, 'utf8'));
+		return { label, display, path: file, exists: true, ...(preview ? { preview } : {}) };
 	} catch {
 		return { label, display, path: file, exists: false };
 	}

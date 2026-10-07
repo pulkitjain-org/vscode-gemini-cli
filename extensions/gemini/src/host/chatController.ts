@@ -14,6 +14,7 @@ import { Checkpoints } from '../acp/checkpoints';
 import { FollowTarget, FollowTracker } from '../acp/follow';
 import { PendingPermission, PermissionBroker } from '../acp/permissions';
 import { buildPromptContent } from '../acp/promptContent';
+import { skillPrompt } from '../acp/skills';
 import { expandTeamCommand, mergeCommands, parseInvocation, SlashCommand } from '../acp/slashCommands';
 import { CliSession, isPrompt, listCliSessions } from '../acp/cliSessions';
 import type { ChatEvent } from '../acp/sessionUpdates';
@@ -33,7 +34,7 @@ import { relativeTime, tildify } from './displayText';
 import { attachmentsForFiles } from './addToChat';
 import { createBranchAndCommit, pickBranch } from './gitActions';
 import { preferredComposerHeight, rememberComposerHeight, rememberModel } from './modelPreference';
-import { teamCommands } from './teamCommands';
+import { skills, teamCommands } from './teamCommands';
 import { onDidChangeThemeTokens, themeTokenColors } from './themeTokens';
 import { createNonce, escapeAttribute } from './webviewHtml';
 import type { FileMatch } from './workspaceFiles';
@@ -447,7 +448,7 @@ export class ChatController implements vscode.Disposable {
 
 	/**
 	 * The text to send for `text`: a team command's prompt when it invokes
-	 * one, else `text` itself. The agent's own commands go as typed, and win
+	 * one, a request to load the skill when it names one, else `text` itself. The agent's own commands go as typed, and win
 	 * over a team command with the same name.
 	 */
 	private async expandCommand(text: string): Promise<string> {
@@ -456,12 +457,19 @@ export class ChatController implements vscode.Disposable {
 			return text;
 		}
 		const command = (await teamCommands(this.service.client.cwd)).find(c => c.name === invocation.name);
-		return command ? expandTeamCommand(command, text) : text;
+		if (command) {
+			return expandTeamCommand(command, text);
+		}
+		const skill = (await skills(this.service.client.cwd)).find(s => s.name === invocation.name);
+		return skill ? skillPrompt(skill.name, invocation.args) : text;
 	}
 
 	private async postCommands(): Promise<void> {
-		const team = await teamCommands(this.service.client.cwd);
-		const commands = mergeCommands(this.service.client.commands, team);
+		const [team, skillList] = await Promise.all([teamCommands(this.service.client.cwd), skills(this.service.client.cwd)]);
+		// Team commands, then skills whose names they do not take.
+		const teamNames = new Set(team.map(c => c.name));
+		const local: SlashCommand[] = [...team, ...skillList.filter(s => !teamNames.has(s.name)).map(s => ({ name: s.name, description: s.description, source: 'skill' as const }))];
+		const commands = mergeCommands(this.service.client.commands, local);
 		this.post({ type: 'commands', commands: this.options.savedSessions && !commands.some(c => c.name === 'resume') ? [...commands, resumeCommand()] : commands });
 	}
 
@@ -1126,6 +1134,7 @@ export class ChatController implements vscode.Disposable {
 			noCommands: vscode.l10n.t("No matching commands"),
 			commandFromCli: vscode.l10n.t("Gemini CLI"),
 			commandFromTeam: vscode.l10n.t("Team"),
+			commandFromSkill: vscode.l10n.t("Skill"),
 			remove: vscode.l10n.t("Remove"),
 			fileTooLarge: vscode.l10n.t("{0} is too large to send."),
 			attachFiles: vscode.l10n.t("Attach files. You can also drop files here; hold Shift when dragging from the Explorer."),
