@@ -3,7 +3,77 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-/* GEMINI-FORK: the title bar's agent pills and Agents | Editor switch. */
+/*
+ * GEMINI-FORK: the title bar's Agents | Editor switch, agent pills and (in Agents mode) editor tabs.
+ * The switch sits right after the window controls: the right-hand group of the title bar is laid
+ * out as part of the title bar row, so its first toolbar (the switch and the tabs) can come before
+ * the centre, with the layout buttons still on the right.
+ */
+
+.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-right {
+	display: contents;
+}
+
+.monaco-workbench .part.titlebar > .titlebar-container:is(.has-center, :not(.has-center)) > .titlebar-left {
+	order: 0;
+	flex: 0 0 auto;
+	width: auto;
+}
+
+/* Room for the macOS window controls, which the title bar does not draw. */
+.monaco-workbench.mac:not(.web):not(.fullscreen) .part.titlebar > .titlebar-container:is(.has-center, :not(.has-center)) > .titlebar-left {
+	min-width: 72px;
+}
+
+.monaco-workbench .part.titlebar > .titlebar-container:is(.has-center, :not(.has-center)) > .titlebar-right > .center-adjacent-toolbar-container {
+	order: 1;
+	flex: 1 1 0;
+	min-width: min-content;
+	margin-right: 0;
+	padding-left: 6px;
+}
+
+.monaco-workbench .part.titlebar > .titlebar-container:is(.has-center, :not(.has-center)) > .titlebar-center {
+	order: 2;
+}
+
+.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-right > :not(.center-adjacent-toolbar-container) {
+	order: 3;
+}
+
+.monaco-workbench .part.titlebar > .titlebar-container:is(.has-center, :not(.has-center)) > .titlebar-right > .action-toolbar-container:not(.has-no-actions) {
+	flex: 1 1 0;
+	justify-content: flex-end;
+}
+
+/*
+ * Agents mode: no Command Center or window title (see geminiModes.ts), and the tabs take the
+ * room up to the buttons on the right, scrolling when they do not fit. The toolbar is only as
+ * wide as its items, so the rest of the row still drags the window.
+ */
+.monaco-workbench.gemini-agents-mode .part.titlebar > .titlebar-container:is(.has-center, :not(.has-center)) > .titlebar-center {
+	display: none;
+}
+
+.monaco-workbench.gemini-agents-mode .part.titlebar > .titlebar-container:is(.has-center, :not(.has-center)) > .titlebar-right > .center-adjacent-toolbar-container {
+	flex: 0 1 auto;
+	min-width: 0;
+}
+
+.monaco-workbench.gemini-agents-mode .part.titlebar > .titlebar-container:is(.has-center, :not(.has-center)) > .titlebar-right > .action-toolbar-container:not(.has-no-actions) {
+	flex: 0 0 auto;
+	margin-left: auto;
+	padding-left: 12px;
+}
+
+.monaco-workbench.gemini-agents-mode .part.titlebar .center-adjacent-toolbar-container :is(.monaco-toolbar, .monaco-action-bar, .actions-container) {
+	min-width: 0;
+	max-width: 100%;
+}
+
+.monaco-workbench .part.titlebar .center-adjacent-toolbar-container .actions-container {
+	gap: 8px;
+}
 
 .monaco-workbench .part.titlebar .action-item.gemini-mode-switcher {
 	display: flex;
@@ -120,4 +190,234 @@
 	color: var(--vscode-foreground);
 	background-color: var(--vscode-editor-background);
 	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+/* Agents mode's editor tabs in the title bar (geminiTitleTabs.ts). */
+.monaco-workbench .part.titlebar .action-item.gemini-title-tabs {
+	flex: 0 1 auto;
+	min-width: 0;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	cursor: default;
+}
+
+.monaco-workbench .gemini-title-tabs-strip {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	min-width: 0;
+	max-width: 100%;
+	height: 28px;
+	padding: 0 3px;
+	box-sizing: border-box;
+	border-radius: 14px;
+	overflow-x: auto;
+	overflow-y: hidden;
+	scrollbar-width: none;
+	-webkit-app-region: no-drag;
+}
+
+.monaco-workbench .gemini-title-tabs-strip:empty {
+	display: none;
+}
+
+.monaco-workbench .gemini-title-tabs-strip::-webkit-scrollbar {
+	display: none;
+}
+
+.monaco-workbench .gemini-title-tab {
+	position: relative;
+	display: flex;
+	flex: none;
+	align-items: center;
+	gap: 6px;
+	max-width: 220px;
+	height: 22px;
+	padding: 0 6px 0 10px;
+	border-radius: 11px;
+	font-size: 12px;
+	color: var(--vscode-tab-inactiveForeground, var(--vscode-descriptionForeground));
+	cursor: pointer;
+}
+
+.monaco-workbench .gemini-title-tab:hover {
+	color: var(--vscode-tab-activeForeground, var(--vscode-foreground));
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.monaco-workbench .gemini-title-tab.active {
+	color: var(--vscode-tab-activeForeground, var(--vscode-foreground));
+	background-color: var(--vscode-tab-activeBackground, var(--vscode-toolbar-activeBackground));
+}
+
+.monaco-workbench .gemini-title-tab:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.monaco-workbench .gemini-title-tab-label {
+	min-width: 0;
+	overflow: hidden;
+}
+
+.monaco-workbench .gemini-title-tab-label .monaco-icon-label {
+	display: flex;
+	align-items: center;
+	line-height: 22px;
+}
+
+.monaco-workbench .gemini-title-tab-label .monaco-icon-label-container {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.monaco-workbench .gemini-title-tab-label .monaco-icon-label::before {
+	flex: none;
+	width: 16px;
+	height: 22px;
+	padding-right: 4px;
+	background-size: 16px;
+	background-position: left center;
+	background-repeat: no-repeat;
+}
+
+.monaco-workbench .gemini-title-tab.preview .label-name {
+	font-style: italic;
+}
+
+.monaco-workbench .gemini-title-tab-close {
+	flex: none;
+	width: 16px;
+	height: 16px;
+	border-radius: 8px;
+	font-size: 12px;
+	line-height: 16px;
+	text-align: center;
+	visibility: hidden;
+}
+
+.monaco-workbench .gemini-title-tab:is(.active, :hover, .dirty) .gemini-title-tab-close {
+	visibility: visible;
+}
+
+.monaco-workbench .gemini-title-tab-close:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.monaco-workbench .gemini-title-tab.dirty:not(:hover) .gemini-title-tab-close.codicon-circle-filled {
+	font-size: 9px;
+}
+
+.monaco-workbench .gemini-title-tab.dirty:hover .gemini-title-tab-close.codicon-circle-filled::before {
+	content: var(--vscode-icon-close-content);
+	font-family: var(--vscode-icon-close-font-family);
+}
+
+/* The tabs have their own close buttons; the editor's Close action would repeat it on the right. */
+.monaco-workbench.gemini-agents-mode .part.titlebar .action-toolbar-container .action-item:has(> .action-label.codicon-close) {
+	display: none;
+}
+
+/*
+ * Agents mode's side bar: the agent list with no "Gemini" title and no "Agents" header. Workspaces
+ * are small uppercase labels (with their + on hover), agents are rows with a status icon, the
+ * title and a right-aligned meta ("0:42", "+38", "waiting") that the Gemini extension provides.
+ * The side bar shows only the Gemini view in Agents mode, so its one tree is the agent list.
+ */
+.monaco-workbench.gemini-agents-mode .part.sidebar > .composite.title,
+.monaco-workbench.gemini-agents-mode .part.sidebar .pane > .pane-header:has(> .icon.view-gemini-agents) {
+	display: none;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row {
+	left: 8px;
+	width: calc(100% - 16px);
+	border-radius: 8px;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-tl-indent {
+	display: none;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-tl-twistie {
+	width: 0;
+	padding-left: 6px !important;
+	visibility: hidden;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-level="1"] :is(.custom-view-tree-node-item-icon, .monaco-icon-description-container) {
+	display: none;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-level="1"] .label-name {
+	font-size: 11px;
+	font-weight: 500;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--vscode-descriptionForeground);
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-level="1"].selected,
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-level="1"]:hover {
+	background: none !important;
+	box-shadow: none !important;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-level="2"] .monaco-icon-label-container {
+	display: flex;
+	align-items: baseline;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-level="2"] .monaco-icon-name-container {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-level="2"] .monaco-icon-description-container {
+	flex: none;
+	margin-left: auto;
+	padding-left: 8px;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-level="2"] .label-description {
+	margin-left: 0;
+	font-size: 11.5px;
+	opacity: 1;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* The selected agent's branch at the foot of Agents mode's side bar (geminiModes.ts). */
+.monaco-workbench .part.sidebar > .gemini-agents-footer {
+	display: none;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar > .gemini-agents-footer:not(.empty) {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 1;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 35px;
+	padding: 0 16px;
+	font-size: 12.5px;
+	color: var(--vscode-sideBar-foreground, var(--vscode-foreground));
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar > .gemini-agents-footer .codicon {
+	font-size: 14px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.monaco-workbench .gemini-agents-footer-label {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
 }

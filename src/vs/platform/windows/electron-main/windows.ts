@@ -17,7 +17,7 @@ import { ServicesAccessor, createDecorator } from '../../instantiation/common/in
 import { ILogService } from '../../log/common/log.js';
 import { IProductService } from '../../product/common/productService.js';
 import { IThemeMainService } from '../../theme/electron-main/themeMainService.js';
-import { AgentsWindowOpenSource, IAgentsWindowDraft, IOpenEmptyWindowOptions, IWindowOpenable, IWindowSettings, TitlebarStyle, WindowMinimumSize, hasNativeTitlebar, useNativeFullScreen, useWindowControlsOverlay, zoomLevelToZoomFactor } from '../../window/common/window.js';
+import { AgentsWindowOpenSource, IAgentsWindowDraft, IColorScheme, IOpenEmptyWindowOptions, IWindowOpenable, IWindowSettings, TitlebarStyle, WindowMinimumSize, hasNativeTitlebar, useNativeFullScreen, useWindowControlsOverlay, zoomLevelToZoomFactor } from '../../window/common/window.js';
 import { ICodeWindow, IWindowState, WindowMode, defaultWindowState } from '../../window/electron-main/window.js';
 
 export const IWindowsMainService = createDecorator<IWindowsMainService>('windowsMainService');
@@ -129,6 +129,21 @@ export interface IDefaultBrowserWindowOptionsOverrides {
 	notResizable?: boolean;
 	noBackgroundThrottling?: boolean;
 	backgroundColor?: string;
+}
+
+/**
+ * GEMINI-FORK: whether the user's colour theme is one of GeminiCode's Glass themes, read from their
+ * settings (the main process does not know the theme itself). No theme set means GeminiCode's default,
+ * Glass Dark; high contrast is never Glass.
+ */
+export function isGeminiGlassTheme(configurationService: IConfigurationService, colorScheme: IColorScheme): boolean {
+	if (colorScheme.highContrast && configurationService.getValue('window.autoDetectHighContrast') !== false) {
+		return false;
+	}
+	const theme = configurationService.getValue('window.autoDetectColorScheme') === true
+		? configurationService.getValue(colorScheme.dark ? 'workbench.preferredDarkColorTheme' : 'workbench.preferredLightColorTheme') ?? (colorScheme.dark ? 'GeminiCode Glass Dark' : 'GeminiCode Glass Light')
+		: configurationService.getValue('workbench.colorTheme') ?? 'GeminiCode Glass Dark';
+	return typeof theme === 'string' && theme.startsWith('GeminiCode Glass');
 }
 
 export function defaultBrowserWindowOptions(accessor: ServicesAccessor, windowState: IWindowState, overrides?: IDefaultBrowserWindowOptionsOverrides, webPreferences?: electron.WebPreferences): electron.BrowserWindowConstructorOptions & { experimentalDarkMode: boolean } {
@@ -244,6 +259,14 @@ export function defaultBrowserWindowOptions(accessor: ServicesAccessor, windowSt
 		options.titleBarOverlay = undefined;
 		options.minWidth = 1;
 		options.minHeight = 1;
+	}
+
+	// GEMINI-FORK: with a Glass theme the desktop shows through the side bars (geminiGlass.css). With no
+	// background colour, Electron makes the page see-through over the vibrancy material.
+	if (isMacintosh && !overrides?.forceNativeTitlebar && !overrides?.frameless && !overrides?.transparent && isGeminiGlassTheme(configurationService, themeMainService.getColorScheme())) {
+		options.vibrancy = 'sidebar';
+		options.visualEffectState = 'followWindow';
+		options.backgroundColor = undefined;
 	}
 
 	if (overrides?.backgroundColor) {
