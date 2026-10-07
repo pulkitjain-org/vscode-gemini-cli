@@ -36,7 +36,7 @@ In the **Changes** panel, hover over a change to **Keep** or **Undo** it. **Keep
 
 Run **Make It Yours** from the Command Palette, or open the step of the same name in Get Started, to pick:
 
-- a theme: GeminiCode Dark (the default), Midnight (true black), Dusk (warm greys) or Light;
+- a theme: Glass Dark and Glass Light (the defaults: see-through side bars over an aurora wallpaper, with the Gemini gradient round the chat input), Dark, Midnight (true black), Dusk (warm greys) or Light;
 - an accent colour for selection, focus, links and the chat's Send button: the theme's own, Blue, Violet, Rose, Teal, Amber or the Gemini gradient. It applies to the GeminiCode themes only, through `workbench.colorCustomizations`, and is kept in `gemini.appearance.accent`;
 - a code font: JetBrains Mono (the default) and Geist Mono ship with GeminiCode; SF Mono and Menlo come with macOS;
 - file icons: GeminiCode's own, Seti, or none;
@@ -116,7 +116,7 @@ The agent cannot read secret files such as `.env` and private keys, or git-ignor
 
 Code in replies is coloured like the editor, in your colour theme. The button at the top of a code block copies it. A file name in a reply, such as `src/cart/total.ts:11`, opens the file at that line; when only the name is given, GeminiCode looks for it in the agent's folder. Notes, tips and warnings show as coloured callouts.
 
-Messages you send show Markdown the way replies do: bold, lists, `code`, code blocks and links, with your line breaks kept. In the composer, ⌘B makes the selection bold and ⌘E makes it code, typing a backtick over a selection wraps it in code, and ⇧↩ on a list line starts the next item; on an empty item it ends the list. The preview button next to @ (⇧⌘V) shows the draft formatted above the input as you type; press it again to hide it.
+Messages you send show Markdown the way replies do: bold, lists, `code`, code blocks and links, with your line breaks kept. In the composer, ⌘B makes the selection bold and ⌘E makes it code, typing a backtick over a selection wraps it in code, and ⇧↩ on a list line starts the next item; on an empty item it ends the list. The **Write** and **Preview** tabs at the top of the input (or ⇧⌘V) switch between your draft and how it will look once sent; typing in Preview goes back to Write.
 
 Each message you send shows the time you sent it and a **Copy** button when you point at it. Under each reply, next to how long the agent worked, is the time it finished, with the same **Copy** button. The pill next to the branch in the composer names the agent's workspace (and its worktree, when it has one); click it to copy the path, reveal the folder in Finder or show the Agents pane.
 

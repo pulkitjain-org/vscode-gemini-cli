@@ -9,6 +9,7 @@
 // are in geminiModes.ts.
 
 import './geminiFonts.css';
+import './geminiGlass.css';
 import './geminiModes.js';
 import { mainWindow } from '../../../../base/browser/window.js';
 import { CancellationTokenSource } from '../../../../base/common/cancellation.js';

@@ -1329,39 +1329,52 @@ body[data-accent="solid"] .round-button.stop::before {
 	color: var(--vscode-input-placeholderForeground);
 }
 
-/* Preview Markdown (markdownPreview.ts): the draft as it will look, above the input. */
-.composer-preview {
-	margin: -4px -6px 10px;
-	border: 1px solid var(--gemini-border);
-	border-radius: var(--gemini-radius);
-	background: var(--gemini-code-background);
-	overflow: hidden;
-}
-
-/* A heading, so the preview never reads as the draft below it. */
-.preview-label {
+/* Write and Preview (markdownPreview.ts): tabs at the top of the composer; Preview takes the input's place. */
+.composer-tabs {
 	display: flex;
-	align-items: center;
-	gap: 6px;
-	padding: 5px 10px;
-	border-bottom: 1px solid var(--gemini-border);
-	font-size: 0.8em;
-	font-weight: 600;
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
+	gap: 14px;
+	margin: -4px 0 6px;
+	font-size: 0.85em;
+}
+
+.composer-tab {
+	padding: 0;
+	border: none;
+	background: none;
 	color: var(--gemini-muted);
+	font: inherit;
+	cursor: pointer;
 }
 
-/* Inline code would vanish into the card's own code-coloured background. */
-.preview-body :not(pre) > code {
-	background: var(--gemini-surface);
+.composer-tab:hover,
+.composer-tab[aria-selected="true"] {
+	color: var(--vscode-foreground);
 }
 
-.preview-body {
-	max-height: 30vh;
+.composer-tab[aria-selected="true"] {
+	font-weight: 600;
+}
+
+.composer-tab:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 2px;
+	border-radius: 3px;
+}
+
+.composer-preview {
+	max-height: 40vh;
 	overflow-y: auto;
-	padding: 8px 10px;
+	padding: 2px 2px 6px;
 	overflow-wrap: anywhere;
+	cursor: default;
+}
+
+.composer-preview:focus {
+	outline: none;
+}
+
+.preview-empty {
+	color: var(--gemini-muted);
 }
 
 .icon-button.active {
@@ -2066,4 +2079,66 @@ body.vscode-high-contrast-light #send {
 	overflow: hidden;
 	clip-path: inset(50%);
 	white-space: nowrap;
+}
+
+/*
+ * The Glass themes: a rounder composer edged in the Gemini gradient, a soft gradient on the
+ * user's messages and a floating working strip. Other themes keep the styles above.
+ */
+body[data-vscode-theme-id^="GeminiCode Glass"] {
+	--glass-composer: #FFFFFF;
+	--glass-composer-edge: linear-gradient(120deg, #4285F4, #9B72CB 45%, #D96570 70%, #FFFFFF 88%);
+	--glass-composer-glow: 0 10px 36px #4285F424, inset 0 1px 0 #FFFFFF;
+	--glass-user: linear-gradient(135deg, #EEF3FF, #F4EEFC);
+	--glass-user-edge: #DCE3F8;
+	--glass-strip: #FFFFFFC7;
+	--glass-strip-edge: #FFFFFF;
+}
+
+body[data-vscode-theme-id="GeminiCode Glass Dark"] {
+	--glass-composer: #171826;
+	--glass-composer-edge: linear-gradient(120deg, #4285F4, #9B72CB 45%, #D96570 70%, #FFFFFF1A 88%);
+	--glass-composer-glow: 0 0 50px -12px #4285F480, inset 0 1px 0 #FFFFFF14;
+	--glass-user: linear-gradient(135deg, #1F2A44, #2A2140);
+	--glass-user-edge: #FFFFFF1A;
+	--glass-strip: #1A1C28CC;
+	--glass-strip-edge: #FFFFFF1A;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .composer {
+	border-radius: 24px;
+	padding: 12px 12px 10px 16px;
+	border: 1.5px solid transparent;
+	background: linear-gradient(var(--glass-composer), var(--glass-composer)) padding-box, var(--glass-composer-edge) border-box;
+	box-shadow: var(--glass-composer-glow);
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"][data-accent="solid"] .composer {
+	background: linear-gradient(var(--glass-composer), var(--glass-composer)) padding-box, linear-gradient(var(--gemini-accent), var(--gemini-accent)) border-box;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .composer.busy {
+	background:
+		linear-gradient(var(--glass-composer), var(--glass-composer)) padding-box,
+		conic-gradient(from var(--gemini-sweep), #4285F4 0deg, #9B72CB 90deg, #D96570 160deg, #4285F466 240deg, #4285F4 360deg) border-box;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"][data-accent="solid"] .composer.busy {
+	background:
+		linear-gradient(var(--glass-composer), var(--glass-composer)) padding-box,
+		conic-gradient(from var(--gemini-sweep), var(--gemini-border) 0deg 220deg, var(--gemini-accent) 290deg, var(--gemini-border) 350deg) border-box;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .message.user {
+	border-radius: 18px;
+	background: var(--glass-user);
+	color: var(--vscode-foreground);
+	border-color: var(--glass-user-edge);
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .activity {
+	border-radius: 999px;
+	background: var(--glass-strip);
+	border: 1px solid var(--glass-strip-edge);
+	box-shadow: 0 4px 16px #00000024;
 }

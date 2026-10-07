@@ -1,0 +1,136 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/*
+ * GEMINI-FORK: the Glass themes (extensions/gemini/themes/geminicode-glass-*.json). A theme can
+ * only set flat colours, so the rest is here, keyed to the theme's class on the workbench:
+ * an aurora wallpaper behind the floating cards of the Modern UI layout, see-through side bars,
+ * the editor as a white (or ink) sheet with the tabs as capsules above it, and a capsule mode
+ * switch. Everything is static paint: no blur over moving content and no animation, so it costs
+ * nothing while typing or scrolling. High contrast and reduced transparency get the flat theme.
+ */
+
+.monaco-workbench[class*="themes-geminicode-glass-light-json"] {
+	--gemini-wallpaper:
+		radial-gradient(55% 65% at 12% 18%, #A9C4FF 0%, transparent 62%),
+		radial-gradient(45% 55% at 88% 22%, #E7C3F2 0%, transparent 62%),
+		radial-gradient(60% 60% at 70% 105%, #FFD0C7 0%, transparent 60%),
+		#ECEEF6;
+	--gemini-glass-aux: #FFFFFFB0;
+	--gemini-glass-edge: #FFFFFF99;
+	--gemini-sheet-shadow: 0 12px 40px #1B1C2224, 0 1px 2px #00000014;
+	--gemini-capsule: #FFFFFF66;
+	--gemini-capsule-on: #FFFFFFE6;
+	--gemini-capsule-shadow: 0 1px 3px #0000001F;
+	--gemini-selection: linear-gradient(90deg, #4285F42E, #9B72CB24);
+}
+
+.monaco-workbench[class*="themes-geminicode-glass-dark-json"] {
+	--gemini-wallpaper:
+		radial-gradient(50% 60% at 10% 15%, #1B2A55 0%, transparent 62%),
+		radial-gradient(40% 50% at 92% 20%, #2E2147 0%, transparent 62%),
+		radial-gradient(55% 55% at 65% 108%, #3A1E2A 0%, transparent 60%),
+		#0A0B10;
+	--gemini-glass-aux: #1B1C23E6;
+	--gemini-glass-edge: #FFFFFF0F;
+	--gemini-sheet-shadow: 0 24px 60px -12px #000000B3;
+	--gemini-capsule: #FFFFFF12;
+	--gemini-capsule-on: #FFFFFF24;
+	--gemini-capsule-shadow: inset 0 1px 0 #FFFFFF1F, 0 1px 3px #00000066;
+	--gemini-selection: #FFFFFF14;
+}
+
+@media (prefers-reduced-transparency: no-preference) and (forced-colors: none) {
+
+	/* The wallpaper shows through the title bar, the status bar and the gaps between the cards. */
+	.monaco-workbench.floating-panels[class*="themes-geminicode-glass-"] {
+		background: var(--gemini-wallpaper);
+		background-attachment: fixed;
+	}
+
+	.monaco-workbench.floating-panels[class*="themes-geminicode-glass-"] > .monaco-grid-view,
+	.monaco-workbench.floating-panels[class*="themes-geminicode-glass-"] .part.titlebar,
+	.monaco-workbench.floating-panels[class*="themes-geminicode-glass-"] .part.statusbar,
+	.monaco-workbench.floating-panels[class*="themes-geminicode-glass-"] .part.banner {
+		background-color: transparent !important;
+	}
+
+	/* Side bars: glass cards. `surface.background` is see-through; the secondary side bar is a little more solid. */
+	.monaco-workbench.floating-panels[class*="themes-geminicode-glass-"] .part.sidebar,
+	.monaco-workbench.floating-panels[class*="themes-geminicode-glass-"] .part.auxiliarybar {
+		border-color: var(--gemini-glass-edge) !important;
+		box-shadow: inset 0 1px 0 #FFFFFF0D;
+	}
+
+	.monaco-workbench.floating-panels[class*="themes-geminicode-glass-"] .part.auxiliarybar {
+		background-color: var(--gemini-glass-aux) !important;
+	}
+
+	/* The views inside paint the solid side bar colour; let the glass through. */
+	.monaco-workbench.floating-panels[class*="themes-geminicode-glass-"] :is(.part.sidebar, .part.auxiliarybar) :is(.pane, .pane-header, .composite.title) {
+		background-color: transparent !important;
+	}
+
+	.monaco-workbench.floating-panels[class*="themes-geminicode-glass-"] .part.sidebar .monaco-list-row.selected {
+		background: var(--gemini-selection) !important;
+	}
+
+	.monaco-workbench.floating-panels[class*="themes-geminicode-glass-dark-json"] .part.sidebar .monaco-list-row.selected {
+		box-shadow: inset 2px 0 0 var(--vscode-textLink-foreground);
+	}
+
+	/*
+	 * The editor: tabs sit on the wallpaper as capsules, and each group's content is a sheet
+	 * with a soft shadow. Webview editors (agent chats) are overlays, rounded to match.
+	 */
+	.monaco-workbench.floating-panels[class*="themes-geminicode-glass-"] .part.editor,
+	.monaco-workbench.floating-panels[class*="themes-geminicode-glass-"] .part.editor > .content,
+	.monaco-workbench.floating-panels[class*="themes-geminicode-glass-"] .part.editor > .content .editor-group-container,
+	.monaco-workbench.floating-panels[class*="themes-geminicode-glass-"] .part.editor > .content .editor-group-container > .title {
+		background-color: transparent !important;
+	}
+
+	.monaco-workbench.floating-panels[class*="themes-geminicode-glass-"] .part.editor > .content .editor-group-container > .editor-container {
+		border-radius: 14px;
+		overflow: hidden;
+		background-color: var(--vscode-editor-background);
+		box-shadow: var(--gemini-sheet-shadow);
+	}
+
+	.monaco-workbench.floating-panels[class*="themes-geminicode-glass-"] .part.editor > .content .editor-group-container > .title .tabs-container > .tab {
+		border-radius: 999px;
+	}
+
+	.monaco-workbench.floating-panels[class*="themes-geminicode-glass-"] .part.editor > .content .editor-group-container > .title .tabs-container > .tab.active {
+		box-shadow: var(--gemini-capsule-shadow);
+	}
+
+	.monaco-workbench.floating-panels[class*="themes-geminicode-glass-"] .webview-overlay-content:not(.webview-overlay-modal) {
+		border-radius: 14px;
+	}
+
+	/* The Agents | Editor switch as a capsule. */
+	.monaco-workbench[class*="themes-geminicode-glass-"] .gemini-mode-toggle {
+		height: 26px;
+		border-radius: 999px;
+		background-color: var(--gemini-capsule);
+		box-shadow: var(--gemini-capsule-shadow);
+	}
+
+	.monaco-workbench[class*="themes-geminicode-glass-"] .gemini-mode-toggle .gemini-mode-button {
+		height: 22px;
+		padding: 0 12px;
+		border-radius: 999px;
+	}
+
+	.monaco-workbench[class*="themes-geminicode-glass-"] .gemini-mode-toggle .gemini-mode-button.checked {
+		background-color: var(--gemini-capsule-on);
+		box-shadow: var(--gemini-capsule-shadow);
+	}
+
+	.monaco-workbench[class*="themes-geminicode-glass-"] .gemini-agent-pill {
+		background-color: var(--gemini-capsule) !important;
+	}
+}

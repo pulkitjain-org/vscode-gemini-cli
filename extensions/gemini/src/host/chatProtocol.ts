@@ -112,10 +112,12 @@ export interface ChatStrings {
 	/** The floating button's own label, short as it follows the text. */
 	readonly enhanceShort: string;
 	readonly enhanceTooltip: string;
-	/** The composer's preview toggle; `{0}` is its shortcut. */
+	/** The Preview tab's tooltip; `{0}` is its shortcut. */
 	readonly previewMarkdown: string;
-	/** The heading on the preview, so it never reads as the draft itself. */
+	/** The composer's tabs: the draft, and the draft as it will look once sent. */
 	readonly previewLabel: string;
+	readonly writeLabel: string;
+	readonly previewEmpty: string;
 	readonly enhancing: string;
 	readonly enhanced: string;
 	/** Shown when a rewrite takes a while. */

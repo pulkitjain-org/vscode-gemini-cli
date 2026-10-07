@@ -86,6 +86,8 @@
 	"walkthrough.project.description": "Usage is billed to a Google Cloud project. Set its ID if your organization does not set one for you.\n[Set Project ID](command:gemini.setProjectId)",
 	"walkthrough.agent.title": "Start your first agent",
 	"walkthrough.agent.description": "Agents open as editor tabs, each with its own chat and folder.\n[New Agent](command:gemini.agents.newAgent)",
+	"theme.glassDark": "GeminiCode Glass Dark",
+	"theme.glassLight": "GeminiCode Glass Light",
 	"theme.dark": "GeminiCode Dark",
 	"theme.light": "GeminiCode Light",
 	"theme.midnight": "GeminiCode Midnight",

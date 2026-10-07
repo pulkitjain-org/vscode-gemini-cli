@@ -780,6 +780,18 @@
     },
     "themes": [
       {
+        "id": "GeminiCode Glass Dark",
+        "label": "%theme.glassDark%",
+        "uiTheme": "vs-dark",
+        "path": "./themes/geminicode-glass-dark.json"
+      },
+      {
+        "id": "GeminiCode Glass Light",
+        "label": "%theme.glassLight%",
+        "uiTheme": "vs",
+        "path": "./themes/geminicode-glass-light.json"
+      },
+      {
         "id": "GeminiCode Dark",
         "label": "%theme.dark%",
         "uiTheme": "vs-dark",
