@@ -15,7 +15,7 @@ import { errorMessage } from '../acp/errors';
 import { memoizeAsync } from '../acp/memoize';
 import { reviewRequest, workingChanges } from '../acp/reviewPrompt';
 import { TranscriptStore } from '../acp/transcriptStore';
-import { AgentWorktree, branchExists, commitAll, createWorktree, currentBranch, folderInRepository, mergeBranch, removeWorktree, repositoryRoot, worktreeStatus } from '../acp/worktrees';
+import { AgentWorktree, branchExists, commitAll, createWorktree, currentBranch, folderInRepository, mergeBranch, removeWorktree, repositoryRoot, runWorktreeSetup, worktreeSetupCommand, worktreeStatus } from '../acp/worktrees';
 import { AgentNotifier } from './agentNotifier';
 import { AgentService } from './agentService';
 import { AgentSession } from './agentSession';
@@ -117,6 +117,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	private readonly tree: vscode.TreeView<Node>;
 	private readonly notifier = new AgentNotifier();
 	private refreshTimer: ReturnType<typeof setInterval> | undefined;
+	/** Output of worktree setup scripts, made the first time one runs. */
+	private setupOutput: vscode.OutputChannel | undefined;
 	/** Branch names are read from `.git/HEAD`; kept for a few seconds so a refresh reads each folder once. */
 	private readonly branchOf = memoizeAsync(readGitHead, { ttlMs: 5_000, maxEntries: 100 });
 
@@ -309,8 +311,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			}
 			const branch = await freeBranchName(repository, branchNameFrom(text));
 			try {
-				worktree = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Creating the agent's branch...") },
-					async () => createWorktree(repository, branch, await folderInRepository(folder)));
+				worktree = await this.makeWorktree(repository, branch, folder);
 			} catch (err) {
 				void vscode.window.showErrorMessage(vscode.l10n.t("Could not create the agent's branch: {0}", errorMessage(err)));
 				return false;
@@ -534,12 +535,44 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			return undefined;
 		}
 		try {
-			return await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Creating the agent's branch...") },
-				async () => createWorktree(repository, branch.trim(), await folderInRepository(folder)));
+			return await this.makeWorktree(repository, branch.trim(), folder);
 		} catch (err) {
 			void vscode.window.showErrorMessage(vscode.l10n.t("Could not create the agent's branch: {0}", errorMessage(err)));
 			return undefined;
 		}
+	}
+
+	/**
+	 * Makes the agent's worktree, then runs the repository's setup in it (`gemini.agents.worktreeSetup`,
+	 * else `.gemini/worktree-setup.sh`), such as installing packages or copying .env. A failed setup is
+	 * reported with its output, but the agent still starts: the branch is there either way.
+	 */
+	private makeWorktree(repository: string, branch: string, folder: string): Thenable<AgentWorktree> {
+		return vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Creating the agent's branch..."), cancellable: true }, async (progress, token) => {
+			const worktree = await createWorktree(repository, branch, await folderInRepository(folder));
+			const command = vscode.workspace.isTrusted
+				? await worktreeSetupCommand(repository, vscode.workspace.getConfiguration(configSection).get<string>('agents.worktreeSetup'))
+				: undefined;
+			if (!command || token.isCancellationRequested) {
+				return worktree;
+			}
+			progress.report({ message: vscode.l10n.t("Running the setup script...") });
+			if (!this.setupOutput) {
+				this.setupOutput = vscode.window.createOutputChannel(vscode.l10n.t("Gemini Worktree Setup"));
+				this.disposables.push(this.setupOutput);
+			}
+			const output = this.setupOutput;
+			output.appendLine(`$ ${command}    (${worktree.folder})`);
+			const abort = new AbortController();
+			const cancel = token.onCancellationRequested(() => abort.abort());
+			const code = await runWorktreeSetup(command, worktree, repository, text => output.append(text), abort.signal).finally(() => cancel.dispose());
+			output.appendLine(code === 0 ? '' : vscode.l10n.t("Exited with {0}.", code));
+			if (code !== 0 && !token.isCancellationRequested) {
+				const show = vscode.l10n.t("Show Output");
+				void vscode.window.showWarningMessage(vscode.l10n.t("The setup script for {0} failed. The agent starts anyway.", branch), show).then(choice => choice === show && output.show());
+			}
+			return worktree;
+		});
 	}
 
 	/** Merges an agent's branch into what its workspace has checked out, committing its work first. */

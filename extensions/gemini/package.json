@@ -690,6 +690,12 @@
           "default": false,
           "markdownDescription": "%configuration.agents.ownBranch%"
         },
+        "gemini.agents.worktreeSetup": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "markdownDescription": "%configuration.agents.worktreeSetup%"
+        },
         "gemini.inlineEdit.enabled": {
           "type": "boolean",
           "default": true,
