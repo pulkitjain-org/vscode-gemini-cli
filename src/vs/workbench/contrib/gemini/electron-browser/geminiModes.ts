@@ -7,6 +7,8 @@
 // left, the agent's chat in the middle and its Changes on the right, with no
 // activity bar; Editor mode is the classic layout. Each mode remembers which
 // parts were open, and switching only shows and hides parts, so it is instant.
+// Agents mode always shows the Gemini view and Changes; opening any other view
+// in the side bar switches to Editor mode with that view open.
 // The title bar carries the switch and a pill for each agent that is working
 // or waiting, which the Gemini extension reports through `_gemini.setAgentStatus`.
 
@@ -26,10 +28,12 @@ import { ConfigurationTarget, IConfigurationService } from '../../../../platform
 import { ContextKeyExpr, IContextKey, IContextKeyService, RawContextKey } from '../../../../platform/contextkey/common/contextkey.js';
 import { IHoverService } from '../../../../platform/hover/browser/hover.js';
 import { IInstantiationService, ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
+import { IKeybindingService } from '../../../../platform/keybinding/common/keybinding.js';
 import { KeybindingWeight } from '../../../../platform/keybinding/common/keybindingsRegistry.js';
+import { INotificationService, Severity } from '../../../../platform/notification/common/notification.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
-import { ViewContainerLocation } from '../../../common/views.js';
+import { IViewDescriptorService, ViewContainerLocation } from '../../../common/views.js';
 import { IWorkbenchLayoutService, Parts } from '../../../services/layout/browser/layoutService.js';
 import { ILifecycleService, LifecyclePhase } from '../../../services/lifecycle/common/lifecycle.js';
 import { IPaneCompositePartService } from '../../../services/panecomposite/browser/panecomposite.js';
@@ -60,6 +64,8 @@ const explorerContainer = 'workbench.view.explorer';
 const activityBarLocation = 'workbench.activityBar.location';
 
 const modeKey = 'gemini.mode';
+/** Set once the "Switched to Editor mode" hint has been shown. */
+const switchHintKey = 'gemini.mode.switchHintShown';
 const layoutKey = (mode: Mode) => `gemini.mode.layout.${mode}`;
 const defaults: Record<Mode, ModeLayout> = {
 	agents: { sideBar: true, sideBarContainer: geminiContainer, auxiliaryBar: true, auxiliaryBarContainer: changesContainer, panel: false },
@@ -83,6 +89,8 @@ class GeminiModes extends Disposable implements IWorkbenchContribution {
 	static readonly ID = 'workbench.contrib.geminiModes';
 
 	private readonly context: IContextKey<Mode>;
+	/** True while this class opens views itself, so those opens are not taken as the user's. */
+	private applying = false;
 
 	constructor(
 		@IStorageService private readonly storageService: IStorageService,
@@ -94,6 +102,9 @@ class GeminiModes extends Disposable implements IWorkbenchContribution {
 		@IActionViewItemService actionViewItemService: IActionViewItemService,
 		@IInstantiationService instantiationService: IInstantiationService,
 		@ILifecycleService lifecycleService: ILifecycleService,
+		@IViewDescriptorService private readonly viewDescriptorService: IViewDescriptorService,
+		@INotificationService private readonly notificationService: INotificationService,
+		@IKeybindingService private readonly keybindingService: IKeybindingService,
 	) {
 		super();
 		modes = this;
@@ -109,6 +120,17 @@ class GeminiModes extends Disposable implements IWorkbenchContribution {
 			this.storageService.store(modeKey, mode, StorageScope.WORKSPACE, StorageTarget.MACHINE);
 			lifecycleService.when(LifecyclePhase.Restored).then(() => this.applyLayout(defaults[mode]));
 		}
+		lifecycleService.when(LifecyclePhase.Restored).then(() => {
+			// A window left with another view in the side bar comes back showing Gemini.
+			if (state.mode === 'agents' && this.layoutService.isVisible(Parts.SIDEBAR_PART) && this.sideBarContainer() !== geminiContainer) {
+				void this.openFixed(geminiContainer, ViewContainerLocation.Sidebar);
+			}
+			this._register(this.paneCompositeService.onDidPaneCompositeOpen(({ composite, viewContainerLocation }) => {
+				if (state.mode === 'agents' && !this.applying && viewContainerLocation === ViewContainerLocation.Sidebar && composite.getId() !== geminiContainer) {
+					void this.showInEditorMode(composite.getId());
+				}
+			}));
+		});
 	}
 
 	get mode(): Mode {
@@ -122,7 +144,49 @@ class GeminiModes extends Disposable implements IWorkbenchContribution {
 		this.storageService.store(layoutKey(state.mode), JSON.stringify(this.currentLayout()), StorageScope.WORKSPACE, StorageTarget.MACHINE);
 		this.setMode(mode, true);
 		this.storageService.store(modeKey, mode, StorageScope.WORKSPACE, StorageTarget.MACHINE);
-		await this.applyLayout(this.savedLayout(mode));
+		const layout = this.savedLayout(mode);
+		// Agents mode remembers only which parts were open; its views are always Gemini and Changes.
+		await this.applyLayout(mode === 'agents'
+			? { ...layout, sideBar: true, sideBarContainer: geminiContainer, auxiliaryBarContainer: changesContainer }
+			: layout);
+	}
+
+	/** The user opened another view in Agents mode: carry on in Editor mode with it open. */
+	private async showInEditorMode(container: string): Promise<void> {
+		// Agents mode is saved as Gemini and Changes, not as the view that pushed Gemini aside.
+		this.storageService.store(layoutKey('agents'), JSON.stringify({ ...this.currentLayout(), sideBar: true, sideBarContainer: geminiContainer }), StorageScope.WORKSPACE, StorageTarget.MACHINE);
+		this.setMode('editor', true);
+		this.storageService.store(modeKey, 'editor', StorageScope.WORKSPACE, StorageTarget.MACHINE);
+		const layout = this.savedLayout('editor');
+		await this.applyLayout({ ...layout, sideBar: true, sideBarContainer: container });
+		this.showSwitchHint(container);
+	}
+
+	private showSwitchHint(container: string): void {
+		if (this.storageService.getBoolean(switchHintKey, StorageScope.APPLICATION, false)) {
+			return;
+		}
+		this.storageService.store(switchHintKey, true, StorageScope.APPLICATION, StorageTarget.USER);
+		const name = this.viewDescriptorService.getViewContainerById(container)?.title.value ?? container;
+		const keys = this.keybindingService.lookupKeybinding('gemini.mode.toggle')?.getLabel();
+		this.notificationService.prompt(Severity.Info,
+			keys
+				? localize('gemini.mode.switchedKeys', "Switched to Editor mode to show {0}. Agents mode always shows Gemini; press {1} to go back.", name, keys)
+				: localize('gemini.mode.switched', "Switched to Editor mode to show {0}. Agents mode always shows Gemini.", name),
+			[{ label: localize('gemini.mode.backToAgents', "Back to Agents"), run: () => this.switchTo('agents') }]);
+	}
+
+	private sideBarContainer(): string | undefined {
+		return this.paneCompositeService.getActivePaneComposite(ViewContainerLocation.Sidebar)?.getId();
+	}
+
+	private async openFixed(container: string, location: ViewContainerLocation): Promise<void> {
+		this.applying = true;
+		try {
+			await this.paneCompositeService.openPaneComposite(container, location);
+		} finally {
+			this.applying = false;
+		}
 	}
 
 	private setMode(mode: Mode, changed: boolean): void {
@@ -140,7 +204,7 @@ class GeminiModes extends Disposable implements IWorkbenchContribution {
 	private currentLayout(): ModeLayout {
 		return {
 			sideBar: this.layoutService.isVisible(Parts.SIDEBAR_PART),
-			sideBarContainer: this.paneCompositeService.getActivePaneComposite(ViewContainerLocation.Sidebar)?.getId(),
+			sideBarContainer: this.sideBarContainer(),
 			auxiliaryBar: this.layoutService.isVisible(Parts.AUXILIARYBAR_PART),
 			auxiliaryBarContainer: this.paneCompositeService.getActivePaneComposite(ViewContainerLocation.AuxiliaryBar)?.getId(),
 			panel: this.layoutService.isVisible(Parts.PANEL_PART),
@@ -160,13 +224,18 @@ class GeminiModes extends Disposable implements IWorkbenchContribution {
 	}
 
 	private async applyLayout(layout: ModeLayout): Promise<void> {
-		this.layoutService.setPartHidden(!layout.panel, Parts.PANEL_PART);
-		this.layoutService.setPartHidden(!layout.auxiliaryBar, Parts.AUXILIARYBAR_PART);
-		this.layoutService.setPartHidden(!layout.sideBar, Parts.SIDEBAR_PART);
-		await Promise.all([
-			layout.sideBar && layout.sideBarContainer ? this.paneCompositeService.openPaneComposite(layout.sideBarContainer, ViewContainerLocation.Sidebar) : undefined,
-			layout.auxiliaryBar && layout.auxiliaryBarContainer ? this.paneCompositeService.openPaneComposite(layout.auxiliaryBarContainer, ViewContainerLocation.AuxiliaryBar) : undefined,
-		]);
+		this.applying = true;
+		try {
+			this.layoutService.setPartHidden(!layout.panel, Parts.PANEL_PART);
+			this.layoutService.setPartHidden(!layout.auxiliaryBar, Parts.AUXILIARYBAR_PART);
+			this.layoutService.setPartHidden(!layout.sideBar, Parts.SIDEBAR_PART);
+			await Promise.all([
+				layout.sideBar && layout.sideBarContainer ? this.paneCompositeService.openPaneComposite(layout.sideBarContainer, ViewContainerLocation.Sidebar) : undefined,
+				layout.auxiliaryBar && layout.auxiliaryBarContainer ? this.paneCompositeService.openPaneComposite(layout.auxiliaryBarContainer, ViewContainerLocation.AuxiliaryBar) : undefined,
+			]);
+		} finally {
+			this.applying = false;
+		}
 	}
 }
 

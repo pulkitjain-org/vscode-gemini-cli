@@ -6,7 +6,7 @@ How the parts of GeminiCode that differ from VS Code behave day to day. For setu
 
 The switch at the top of the window, or Cmd+Alt+M, changes the layout:
 
-- **Agents mode** (the default) is for working with agents: your agents on the left, the agent's chat in the middle, and its changes on the right. When no tab is open, **Agent Home** shows: describe a task and press Enter to start an agent on it, tick **On its own branch** to give it a branch of its own, and see each agent's status, changes and next step as a card.
+- **Agents mode** (the default) is for working with agents: your agents on the left, the agent's chat in the middle, and its changes on the right. When no tab is open, **Agent Home** shows: describe a task and press Enter to start an agent on it, tick **On its own branch** to give it a branch of its own, and see each agent's status, changes and next step as a card. Agents mode always shows Gemini on the left and Changes on the right; opening Explorer, Search or any other view switches to Editor mode with that view open.
 - **Editor mode** is the classic VS Code layout, with Explorer, Search and Source Control, for hands-on coding.
 
 Each mode remembers which panels you had open. An agent's tab shows what it is doing (a spinner while it works, an amber dot when it needs you, a tick when it has finished) and how many lines it has changed. On a Mac, right-click GeminiCode in the Dock for **New Agent**. Agents that are working or waiting for you show as pills in the title bar in both modes; click one to open that agent.
