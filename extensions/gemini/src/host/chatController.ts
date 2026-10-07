@@ -991,7 +991,7 @@ export class ChatController implements vscode.Disposable {
 		const strings: ChatStrings = {
 			placeholder: vscode.l10n.t("Ask Gemini anything about this workspace"),
 			placeholderFollowUp: vscode.l10n.t("Ask a follow-up"),
-			send: vscode.l10n.t("Send (Enter)"),
+			send: process.platform === 'darwin' ? vscode.l10n.t("Send (Return)") : vscode.l10n.t("Send (Enter)"),
 			stop: vscode.l10n.t("Stop (Esc)"),
 			replyFinished: vscode.l10n.t("Reply finished"),
 			welcomeTitle: vscode.l10n.t("What are we building?"),

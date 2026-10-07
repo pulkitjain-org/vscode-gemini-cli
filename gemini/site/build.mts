@@ -326,7 +326,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 			<div>
 				<p class="eyebrow">Agents mode</p>
 				<h2 class="h2">Describe a task. Press Enter. An agent starts.</h2>
-				<p class="lede">Each agent gets a card with its status, changes and next step. Title-bar pills show which agents are working or waiting for you. Switch to the classic editor layout with Cmd+Alt+M.</p>
+				<p class="lede">Each agent gets a card with its status, changes and next step. Title-bar pills show which agents are working or waiting for you. Switch to the classic editor layout with ⌥⌘M.</p>
 			</div>
 			${figure('agents.webp', 'Agent Home', 'frame')}
 		</article>
@@ -342,14 +342,14 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 			<div>
 				<p class="eyebrow">Chat</p>
 				<h2 class="h2">Turn a rough idea into a clear prompt.</h2>
-				<p class="lede">Write what you want in plain words and press Enhance, or Cmd+Alt+E. Gemini rewrites it with what to do, where, and how to tell it's done, and nothing is sent until you press Send. Your messages show Markdown, and each one has its time and a Copy button.</p>
+				<p class="lede">Write what you want in plain words and press Enhance, or ⌥⌘E. Gemini rewrites it with what to do, where, and how to tell it's done, and nothing is sent until you press Send. Your messages show Markdown, and each one has its time and a Copy button.</p>
 			</div>
 			${figure('chat.webp', 'A prompt rewritten by Enhance', 'frame')}
 		</article>
 		<div class="cards">
 			<div class="card"><h3>Agents on their own branch</h3><p>Tick On its own branch and the agent works in a Git worktree of its own, away from your files. Merge Back when it's done.</p></div>
 			<div class="card"><h3>Pick up a CLI session</h3><p>A new agent lists the Gemini CLI sessions saved for its folder, including ones you started in the terminal. Click Restore to carry on.</p></div>
-			<div class="card"><h3>Inline edit</h3><p>Select code, press Cmd+I and say what to change. Gemini rewrites just those lines. The sparkle in Source Control writes your commit message.</p></div>
+			<div class="card"><h3>Inline edit</h3><p>Select code, press ⌘I and say what to change. Gemini rewrites just those lines. The sparkle in Source Control writes your commit message.</p></div>
 			<div class="card"><h3>Review My Changes</h3><p>An agent in Plan mode reads your uncommitted diff and reports findings without editing anything.</p></div>
 			<div class="card"><h3>Know when it's done</h3><p>A Mac notification and a Dock badge when an agent finishes or needs you, so you can work on something else.</p></div>
 			<div class="card"><h3>Make it yours</h3><p>Midnight and Dusk themes, accent colours, chat text size, and JetBrains Mono and Geist Mono included.</p></div>

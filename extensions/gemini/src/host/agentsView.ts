@@ -167,7 +167,12 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			vscode.commands.registerCommand('gemini.agents.mergeBack', (node?: Node) => node?.kind === 'agent' && this.mergeBack(node.record.id)),
 			vscode.commands.registerCommand('gemini.reviewChanges', (source?: { readonly rootUri?: vscode.Uri }) => this.reviewChanges(source)),
 			vscode.commands.registerCommand('gemini.agents.addWorkspace', () => this.addWorkspace()),
-			vscode.commands.registerCommand('gemini.agents.open', (id: string) => this.open(id)),
+			// From the keyboard (⌘↓ on a Mac, where Return renames as in Finder) it opens the selected agent.
+			vscode.commands.registerCommand('gemini.agents.open', (id?: string) => {
+				const selected = this.tree.selection[0];
+				const target = typeof id === 'string' ? id : selected?.kind === 'agent' ? selected.record.id : undefined;
+				return target && this.open(target);
+			}),
 			vscode.commands.registerCommand('gemini.agents.openChanges', (node?: Node) => node?.kind === 'agent' && this.openChanges(node.record.id)),
 			vscode.commands.registerCommand('gemini.agents.rename', (node?: Node) => this.rename(node)),
 			vscode.commands.registerCommand('gemini.agents.stop', (node?: Node) => node?.kind === 'agent' && this.stopTurn(node.record.id)),

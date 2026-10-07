@@ -4,9 +4,9 @@ How the parts of GeminiCode that differ from VS Code behave day to day. For setu
 
 ## Agents and Editor modes
 
-The switch at the top of the window, or Cmd+Alt+M, changes the layout:
+The switch at the top of the window, or ⌥⌘M, changes the layout:
 
-- **Agents mode** (the default) is for working with agents: your agents on the left, the agent's chat in the middle, and its changes on the right. When no tab is open, **Agent Home** shows: describe a task and press Enter to start an agent on it, tick **On its own branch** to give it a branch of its own, and see each agent's status, changes and next step as a card. Agents mode always shows Gemini on the left and Changes on the right; opening Explorer, Search or any other view switches to Editor mode with that view open.
+- **Agents mode** (the default) is for working with agents: your agents on the left, the agent's chat in the middle, and its changes on the right. When no tab is open, **Agent Home** shows: describe a task and press Return to start an agent on it, tick **On its own branch** to give it a branch of its own, and see each agent's status, changes and next step as a card. Agents mode always shows Gemini on the left and Changes on the right; opening Explorer, Search or any other view switches to Editor mode with that view open.
 - **Editor mode** is the classic VS Code layout, with Explorer, Search and Source Control, for hands-on coding.
 
 Each mode remembers which panels you had open. An agent's tab shows what it is doing (a spinner while it works, an amber dot when it needs you, a tick when it has finished) and how many lines it has changed. On a Mac, right-click GeminiCode in the Dock for **New Agent**. Agents that are working or waiting for you show as pills in the title bar in both modes; click one to open that agent.
@@ -15,18 +15,22 @@ In the **Changes** panel, hover over a change to **Keep** or **Undo** it. **Keep
 
 ## Keyboard shortcuts
 
+⌘ is Command, ⌥ is Option, ⇧ is Shift, ↩ is Return and ⌫ is Delete.
+
 | Keys | What it does |
 | --- | --- |
-| Cmd+L | Open the chat; with a selection, add it to the chat |
-| Cmd+Alt+N | New agent |
-| Cmd+N (in the chat) | New chat |
-| Esc (in the chat input) | Stop the agent, or cancel Enhance prompt |
-| Cmd+Alt+E | Enhance prompt (the draft in the chat in front) |
-| Up / Down (empty chat input) | Bring back an earlier prompt |
-| Cmd+I | Inline edit |
-| Cmd+Enter / Cmd+Backspace | Keep or undo the agent's changes to the file you're in |
-| Alt+] / Alt+[ | Next or previous agent change in the file |
-| F2 / Cmd+Backspace (Agents pane) | Rename or remove the selected agent |
+| ⌥⌘M | Switch between Agents and Editor mode |
+| ⌘L | Open the chat; with a selection, add it to the chat |
+| ⌥⌘N | New agent |
+| ⌘N (in the chat) | New chat |
+| ↩ / ⇧↩ (in the chat input) | Send, or start a new line |
+| esc (in the chat input) | Stop the agent, or cancel Enhance prompt |
+| ⌥⌘E | Enhance prompt (the draft in the chat in front) |
+| ↑ / ↓ (empty chat input) | Bring back an earlier prompt |
+| ⌘I | Inline edit |
+| ⌘↩ / ⌘⌫ | Keep or undo the agent's changes to the file you're in |
+| ⌥] / ⌥[ | Next or previous agent change in the file |
+| ↩ / ⌘↓ / ⌘⌫ (Agents pane) | Rename, open or remove the selected agent |
 
 ## Make it yours
 
@@ -42,15 +46,15 @@ Each choice applies at once. To change the themes or icons, edit the sources and
 
 ## Enhance prompt
 
-Write what you want in plain words, then click **Enhance**, which follows the end of your text (or press **Cmd+Alt+E**). Gemini rewrites the draft as a clearer, more precise prompt: what to do, where, and how to tell it is done, with open questions where your draft leaves something out. It keeps your `@` mentions, a leading `/command`, file names and code as you wrote them, and uses the files you attached, the open file and the chat so far.
+Write what you want in plain words, then click **Enhance**, which follows the end of your text (or press **⌥⌘E**). Gemini rewrites the draft as a clearer, more precise prompt: what to do, where, and how to tell it is done, with open questions where your draft leaves something out. It keeps your `@` mentions, a leading `/command`, file names and code as you wrote them, and uses the files you attached, the open file and the chat so far.
 
-The text shimmers while Gemini works, usually for about three seconds; **Enhance** turns into **Cancel**, and Esc stops it too. The rewrite replaces your draft for you to read and change before sending: **Revert**, beside **Enhance** (or Cmd+Z), puts your draft back, and **Enhance** rewrites it again. Nothing is sent to the agent until you press Send.
+The text shimmers while Gemini works, usually for about three seconds; **Enhance** turns into **Cancel**, and esc stops it too. The rewrite replaces your draft for you to read and change before sending: **Revert**, beside **Enhance** (or ⌘Z), puts your draft back, and **Enhance** rewrites it again. Nothing is sent to the agent until you press Send.
 
 The rewrite is one quick request to Gemini Flash, like inline edit. When inline edit is turned off, or that request fails, the Gemini CLI does it instead, in Plan mode so it cannot change anything. It does not go into the chat, and it works while the agent is busy.
 
 ## Inline edit and commit messages
 
-Select some code (or put the cursor on a line), press **Cmd+I**, and say what to change. Gemini rewrites just those lines in a second or two, and the change shows in the file with **Keep** and **Undo**, like an agent's. The request box remembers your last request, so a retry is Cmd+I and Enter. Inline edit doesn't save the file and doesn't start an agent.
+Select some code (or put the cursor on a line), press **⌘I**, and say what to change. Gemini rewrites just those lines in a second or two, and the change shows in the file with **Keep** and **Undo**, like an agent's. The request box remembers your last request, so a retry is ⌘I and Return. Inline edit doesn't save the file and doesn't start an agent.
 
 In the Source Control view, the sparkle button writes a commit message for the staged changes (or, with nothing staged, all changes) into the message box.
 
@@ -67,7 +71,7 @@ Pick a mode from the composer. The list comes from the Gemini CLI, minus any mod
 | **Plan** | Reads and proposes a plan without making changes. The CLI can turn this mode off in its own settings. |
 | **YOLO** | Runs everything without asking. Off unless your admin enables it. |
 
-Permission cards show the CLI's own choices, such as **Allow**, **Allow for this session** and **Reject**. <kbd>Esc</kbd> rejects. Stopping a turn cancels any open request. When an agent asks for permission, its tab comes to the front and the proposed edit opens as a diff; in the Agents pane its row shows a bell.
+Permission cards show the CLI's own choices, such as **Allow**, **Allow for this session** and **Reject**. <kbd>esc</kbd> rejects. Stopping a turn cancels any open request. When an agent asks for permission, its tab comes to the front and the proposed edit opens as a diff; in the Agents pane its row shows a bell.
 
 The model picker works the same way. The model you pick is remembered and used for every new or reopened agent, in any window, when the agent offers it.
 
@@ -100,8 +104,8 @@ The new copy has no `node_modules` or build output, so an agent that runs tests 
 ## Attaching context
 
 - **Workspace files.** Type `@` or use the **@** button. The agent gets a link and reads the file itself, including unsaved changes.
-- **The selection.** <kbd>Cmd</kbd>+<kbd>L</kbd> adds the editor selection with its line numbers.
-- **Files from anywhere.** Use the paperclip, paste, or drop files from Finder. Hold <kbd>Shift</kbd> when dropping from the Explorer.
+- **The selection.** <kbd>⌘L</kbd> adds the editor selection with its line numbers.
+- **Files from anywhere.** Use the paperclip, paste, or drop files from Finder. Hold <kbd>⇧</kbd> when dropping from the Explorer.
   - Text and code files up to 1 MB are sent with their contents.
   - Images and PDFs up to about 7 MB are sent inline.
   - Other files outside the workspace are sent as links. The CLI then asks once per file before reading it.
@@ -112,7 +116,7 @@ The agent cannot read secret files such as `.env` and private keys, or git-ignor
 
 Code in replies is coloured like the editor, in your colour theme. The button at the top of a code block copies it. A file name in a reply, such as `src/cart/total.ts:11`, opens the file at that line; when only the name is given, GeminiCode looks for it in the agent's folder. Notes, tips and warnings show as coloured callouts.
 
-Messages you send show Markdown the way replies do: bold, lists, `code`, code blocks and links, with your line breaks kept. In the composer, ⌘B makes the selection bold and ⌘E makes it code (Ctrl on Windows and Linux), typing a backtick over a selection wraps it in code, and Shift+Enter on a list line starts the next item; on an empty item it ends the list. The preview button next to @ (⇧⌘V) shows the draft formatted above the input as you type; press it again to hide it.
+Messages you send show Markdown the way replies do: bold, lists, `code`, code blocks and links, with your line breaks kept. In the composer, ⌘B makes the selection bold and ⌘E makes it code, typing a backtick over a selection wraps it in code, and ⇧↩ on a list line starts the next item; on an empty item it ends the list. The preview button next to @ (⇧⌘V) shows the draft formatted above the input as you type; press it again to hide it.
 
 Each message you send shows the time you sent it and a **Copy** button when you point at it. Under each reply, next to how long the agent worked, is the time it finished, with the same **Copy** button. The pill next to the branch in the composer names the agent's workspace (and its worktree, when it has one); click it to copy the path, reveal the folder in Finder or show the Agents pane.
 

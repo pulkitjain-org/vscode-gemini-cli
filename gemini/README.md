@@ -23,8 +23,8 @@ The product code is in [`../extensions/gemini/`](../extensions/gemini/).
 - **Quick Chat.** A chat in the Gemini side bar for the open folder, collapsed below the Agents pane until you open it. **New Chat** in its title bar starts a fresh session.
 - **Ask before acting.** Permission requests show the agent's own options, such as Allow, Allow for this session and Reject. Proposed edits open in a diff editor first.
 - **Edits through the editor.** Agent edits can be undone, and the agent reads your unsaved changes. The agent cannot read secret files such as `.env` and private keys, or git-ignored files.
-- **Enhance prompt.** Write what you want in plain words and choose **Enhance prompt** (Cmd+Alt+E): Gemini rewrites it as a precise prompt for you to review, with **Revert** to undo.
-- **Context.** Type `@` to attach workspace files. Press <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>L</kbd> to add the editor selection. You can also attach or drop files and images from anywhere.
+- **Enhance prompt.** Write what you want in plain words and choose **Enhance prompt** (⌥⌘E): Gemini rewrites it as a precise prompt for you to review, with **Revert** to undo.
+- **Context.** Type `@` to attach workspace files. Press <kbd>⌘L</kbd> to add the editor selection. You can also attach or drop files and images from anywhere.
 - **Changes view.** Below the Agents pane, see every file the agent in front has changed, one diff at a time or all together with **Open All Changes**. **Clear List** empties it.
 - **Branches and commits.** A branch pill in each chat's composer switches or creates a branch. In an agent's chat, **Create Branch & Commit** commits just the files that agent changed to a new branch, and warns first if other files are staged.
 - **GeminiCode Dark and Light.** The default colour themes: a near-black (or soft grey) canvas with lighter cards and Gemini blue. GeminiCode also defaults to the view icons at the top of the side bar, pill-shaped tabs, and no minimap or breadcrumbs; change any of these in Settings.

@@ -364,7 +364,13 @@
       {
         "command": "gemini.agents.rename",
         "key": "f2",
-        "when": "focusedView == gemini.agents"
+        "mac": "enter",
+        "when": "focusedView == gemini.agents && !inputFocus"
+      },
+      {
+        "command": "gemini.agents.open",
+        "key": "cmd+down",
+        "when": "isMac && focusedView == gemini.agents && !inputFocus"
       },
       {
         "command": "gemini.agents.remove",
