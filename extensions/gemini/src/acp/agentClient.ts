@@ -392,5 +392,9 @@ export class AgentClient {
 /** `servers` without those over a transport the agent does not advertise (ACP `mcpCapabilities`); every agent takes stdio. */
 export function supportedMcpServers(agent: acp.InitializeResponse | undefined, servers: readonly acp.McpServer[]): acp.McpServer[] {
 	const transports = agent?.agentCapabilities?.mcpCapabilities;
-	return servers.filter(server => !('type' in server) || transports?.[server.type] === true);
+	return servers.filter(server => {
+		// Only stdio servers come without a `type`.
+		const type = (server as { readonly type?: 'http' | 'sse' | 'acp' }).type;
+		return type === undefined || transports?.[type] === true;
+	});
 }
