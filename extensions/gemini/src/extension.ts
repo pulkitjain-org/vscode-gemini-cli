@@ -28,6 +28,7 @@ import { SettingsPage } from './host/settingsPage';
 import { UsageMeter } from './host/usageMeter';
 import { initTeamCommands } from './host/teamCommands';
 import { KeepAwake } from './acp/keepAwake';
+import { BrowserTools } from './host/browserTools';
 import { WorkspaceFileIndex } from './host/workspaceFiles';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -63,6 +64,12 @@ export function activate(context: vscode.ExtensionContext): void {
 	const statusBar = new GeminiStatusBar(service);
 	const usageMeter = new UsageMeter(quickEdits.client, log);
 	const walkthrough = new SetupWalkthrough(service, context.globalState);
+	const browserTools = new BrowserTools(
+		String(context.extension.packageJSON.version ?? ''), log,
+		agent => agentsView.stopTurn(agent),
+		agent => agentsView.agentTitle(agent) ?? vscode.l10n.t("Agent"),
+	);
+	agentsView.browser = browserTools;
 	// caffeinate watches this process, so it ends with GeminiCode even if GeminiCode crashes.
 	const keepAwake = new KeepAwake({ platform: process.platform, pid: process.pid, log: message => log.info(message) });
 	const readKeepAwake = () => keepAwake.setEnabled(vscode.workspace.getConfiguration(configSection).get<boolean>('keepAwake', true));
@@ -90,6 +97,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		new CliManager(service, context.globalState, log),
 		new AppUpdateNotice(context.globalState, log),
 		keepAwake,
+		browserTools,
 		service.runtime.onDidBecomeBusy(() => keepAwake.setBusy(true)),
 		service.runtime.onDidBecomeIdle(() => keepAwake.setBusy(false)),
 		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.keepAwake`) && readKeepAwake()),

@@ -22,6 +22,7 @@ import { AgentSession } from './agentSession';
 import { ChangesSource, ChangesView } from './changesView';
 import type { AgentStateKind } from './panelProtocol';
 import { ReviewController } from './reviewController';
+import type { BrowserTools } from './browserTools';
 import { ChatActivity, ChatController, ChatEnhancer, FileSearch, openChatAsMarkdown } from './chatController';
 import { configSection } from './configuration';
 import { relativeTime, tildify } from './displayText';
@@ -134,6 +135,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	private lastStatus = '';
 	private lastTabs = '';
 	private refreshTimeout: ReturnType<typeof setTimeout> | undefined;
+	/** Each agent's page in the GeminiCode browser; set once the extension has made it. */
+	browser: BrowserTools | undefined;
 	private persistTimeout: ReturnType<typeof setTimeout> | undefined;
 
 	constructor(
@@ -191,6 +194,11 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const live = this.live.get(id);
 		const items = live ? live.controller.conversation : (await this.transcripts.load(id)).items;
 		await openChatAsMarkdown(record?.title ?? vscode.l10n.t("Agent"), items, live ? besideAgent(live.panel) : undefined);
+	}
+
+	/** An agent's name, for questions about it. */
+	agentTitle(id: string): string | undefined {
+		return this.model.agent(id)?.title;
 	}
 
 	/** The agent whose tab is in front, if any. */
@@ -664,6 +672,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		this.stop(id, false);
 		this.model.removeAgent(id);
 		void this.transcripts.delete(id);
+		this.browser?.closeAgent(id);
 		if (record?.worktree && workspace) {
 			const repository = await repositoryRoot(workspace.folder) ?? workspace.folder;
 			await removeWorktree(repository, record.worktree, deleteBranch).catch(err =>
@@ -811,7 +820,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	}
 
 	private start(record: AgentRecord, folder: string): LiveAgent {
-		const session = new AgentSession(this.service, folder, record.sessionId);
+		const session = new AgentSession(this.service, folder, record.sessionId, () => this.browser?.mcpServersFor(record.id) ?? []);
 		const files: FileSearch = isOpenFolder(folder) ? this.workspaceFiles : new FolderFileIndex(folder);
 		const changes = new AgentChanges(folder);
 		const live: LiveAgent = {
@@ -948,6 +957,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			this.stop(node.record.id, false);
 			this.model.removeAgent(node.record.id);
 			void this.transcripts.delete(node.record.id);
+			this.browser?.closeAgent(node.record.id);
 		}
 	}
 
@@ -985,6 +995,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			for (const agent of this.model.removeWorkspace(node.record.id)) {
 				this.stop(agent.id, false);
 				void this.transcripts.delete(agent.id);
+				this.browser?.closeAgent(agent.id);
 			}
 		}
 	}

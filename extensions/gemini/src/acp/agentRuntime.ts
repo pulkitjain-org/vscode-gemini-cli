@@ -116,14 +116,14 @@ export class AgentRuntime {
 	 * auth, authenticates once with `oauth-personal` and retries.
 	 * Rejects with an `AgentError`.
 	 */
-	async newSession(cwd: string): Promise<{ readonly connection: AgentConnection; readonly agent: acp.InitializeResponse; readonly session: acp.NewSessionResponse }> {
+	async newSession(cwd: string, mcpServers: readonly acp.McpServer[] = []): Promise<{ readonly connection: AgentConnection; readonly agent: acp.InitializeResponse; readonly session: acp.NewSessionResponse }> {
 		const state = this._state;
 		const connection = this.connection;
 		if (state.kind !== 'ready' || !connection) {
 			throw new AgentError({ kind: 'unknown', message: 'The agent is not ready.' });
 		}
 		try {
-			return { connection, agent: state.agent, session: await connection.newSession(cwd) };
+			return { connection, agent: state.agent, session: await connection.newSession(cwd, mcpServers) };
 		} catch (err) {
 			const info = classifyAgentError(err);
 			const canAuthenticate = state.agent.authMethods?.some(m => m.id === AUTH_METHOD_ID);
@@ -136,7 +136,7 @@ export class AgentRuntime {
 			// user's ~/.gemini/settings.json.
 			this.authenticating ??= connection.authenticate(AUTH_METHOD_ID).then(() => undefined);
 			await this.authenticating;
-			return { connection, agent: state.agent, session: await connection.newSession(cwd) };
+			return { connection, agent: state.agent, session: await connection.newSession(cwd, mcpServers) };
 		} catch (err) {
 			throw new AgentError(classifyAgentError(err));
 		} finally {
@@ -149,7 +149,7 @@ export class AgentRuntime {
 	 * `loadSession`. Rejects with an `AgentError` otherwise, or when the agent
 	 * cannot find it; the caller then opens a new session.
 	 */
-	async loadSession(cwd: string, sessionId: string, firstPrompt?: string): Promise<{ readonly connection: AgentConnection; readonly agent: acp.InitializeResponse; readonly session: acp.NewSessionResponse }> {
+	async loadSession(cwd: string, sessionId: string, firstPrompt?: string, mcpServers: readonly acp.McpServer[] = []): Promise<{ readonly connection: AgentConnection; readonly agent: acp.InitializeResponse; readonly session: acp.NewSessionResponse }> {
 		const state = this._state;
 		const connection = this.connection;
 		if (state.kind !== 'ready' || !connection) {
@@ -164,7 +164,7 @@ export class AgentRuntime {
 		}
 		this.earlyUpdates.delete(sessionId);
 		try {
-			const response = await connection.loadSession(sessionId, cwd);
+			const response = await connection.loadSession(sessionId, cwd, mcpServers);
 			if (firstPrompt !== undefined && !await this.replayStartsWith(sessionId, firstPrompt)) {
 				throw new AgentError({ kind: 'unknown', message: 'The agent opened a different session.' });
 			}

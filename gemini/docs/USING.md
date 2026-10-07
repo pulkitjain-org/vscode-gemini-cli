@@ -160,6 +160,12 @@ When an agent finishes or needs your permission while GeminiCode is in the backg
 
 When an MCP server cannot start, GeminiCode shows a warning naming the server and the reason, marks it on the Project Helpers page, and writes it to the Gemini log (**Gemini: Show Log**). The CLI does not report these over ACP, so GeminiCode reads them from the CLI's debug log, which it keeps under 1 MB in its own storage. If you set `GEMINI_DEBUG_LOG_FILE` yourself, GeminiCode leaves it alone and shows no warnings.
 
+## The GeminiCode browser
+
+Agents can open the web app they are working on in GeminiCode's browser and check their own work: read the page, click, type, press keys and take screenshots, while you watch. Ask, for example, "open http://localhost:5173 and check the cart total". Each agent gets its own tab beside its chat, with a **Gemini is using this page** bar; **Stop** on it stops the agent's turn. Pages on this machine (`localhost`, `127.0.0.1`, files) open freely. Any other site asks you first, once per agent and site, because a page can contain instructions aimed at the agent. Default mode still asks before each browser action, like any other tool.
+
+Links to `localhost` from the terminal and chat also open in GeminiCode's browser. Turn the agent's browser off with `gemini.browser.enabled`; `gemini.browser.allowOtherSites` (also an admin policy) limits agents to local pages.
+
 ## Review my changes
 
 **Review My Changes**, in the Source Control title bar and the Agents pane's **...** menu, starts an agent in Plan mode with your uncommitted diff attached and new files listed. It reads the code around the changes and replies with a summary and its findings, most serious first, without editing anything. Ask it to fix one when you agree.

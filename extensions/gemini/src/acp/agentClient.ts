@@ -52,6 +52,8 @@ export interface AgentClientOptions {
 	readonly isModeAllowed?: (modeId: string) => boolean;
 	/** Finds a saved session's number and first prompt; the CLI's own files when unset. */
 	readonly findSavedSession?: (cwd: string, id: string) => Promise<{ readonly index: number; readonly firstPrompt: string } | undefined>;
+	/** MCP servers GeminiCode itself serves to this session, such as the browser; asked each time a session opens. */
+	readonly mcpServers?: () => readonly acp.McpServer[];
 }
 
 /**
@@ -245,13 +247,13 @@ export class AgentClient {
 			try {
 				// By its number where the CLI lists it: gemini-cli 0.62 loses a saved session loaded by its id (see cliSessions.ts).
 				const saved = await (this.options.findSavedSession ?? findCliSession)(this.options.cwd, resumeSessionId).catch(() => undefined);
-				const loaded = await this.runtime.loadSession(this.options.cwd, saved ? String(saved.index) : resumeSessionId, saved?.firstPrompt);
+				const loaded = await this.runtime.loadSession(this.options.cwd, saved ? String(saved.index) : resumeSessionId, saved?.firstPrompt, this.options.mcpServers?.());
 				return { ...loaded, savedSessionId: resumeSessionId };
 			} catch {
 				// Not supported, or the agent no longer has it: start afresh.
 			}
 		}
-		const created = await this.runtime.newSession(this.options.cwd);
+		const created = await this.runtime.newSession(this.options.cwd, this.options.mcpServers?.());
 		return { ...created, savedSessionId: created.session.sessionId };
 	}
 

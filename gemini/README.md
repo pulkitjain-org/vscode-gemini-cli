@@ -64,6 +64,8 @@ The **Gemini** status bar item shows the agent's state. Hover over it to see the
 | `gemini.approval.allowAutoEdit` | Offer the Auto Edit mode. |
 | `gemini.approval.allowYolo` | Offer the YOLO mode, which runs everything without asking. Off by default. |
 | `gemini.tools.allowShell` | Let the agent run shell commands. Each command still asks first. |
+| `gemini.browser.enabled` | Let agents open and use a page in the GeminiCode browser. On by default. |
+| `gemini.browser.allowOtherSites` | Let agents open sites other than local ones, after asking. On by default. |
 | `gemini.keepAwake` | Keep the Mac awake while any agent works. On by default. |
 | `gemini.chat.followAgent` | Open each file the agent reads or edits as it works. The eye in the composer toggles it. |
 | `gemini.layout.showAgentsInNewWorkspaces` | Open the Agents pane, with the agent's Changes below it, the first time a workspace opens. |

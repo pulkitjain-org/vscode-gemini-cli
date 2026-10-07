@@ -736,6 +736,18 @@
           "scope": "machine",
           "markdownDescription": "%configuration.chat.followAgent%"
         },
+        "gemini.browser.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "markdownDescription": "%configuration.browser.enabled%"
+        },
+        "gemini.browser.allowOtherSites": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "markdownDescription": "%configuration.browser.allowOtherSites%"
+        },
         "gemini.keepAwake": {
           "type": "boolean",
           "default": true,
@@ -816,6 +828,7 @@
     },
     "configurationDefaults": {
       "chat.disableAIFeatures": true,
+      "workbench.browser.openLocalhostLinks": true,
       "workbench.activityBar.location": "top",
       "workbench.secondarySideBar.defaultVisibility": "hidden",
       "workbench.experimental.modernUIEditorTabStyle": "pill",
