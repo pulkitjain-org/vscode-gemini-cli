@@ -24,7 +24,9 @@ import { ThemeIcon } from '../../../../base/common/themables.js';
 import { localize } from '../../../../nls.js';
 import { MenuId } from '../../../../platform/actions/common/actions.js';
 import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
+import { IHoverService } from '../../../../platform/hover/browser/hover.js';
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
+import { IKeybindingService } from '../../../../platform/keybinding/common/keybinding.js';
 import { DEFAULT_LABELS_CONTAINER, ResourceLabels } from '../../../browser/labels.js';
 import { EditorResourceAccessor, SideBySideEditor, Verbosity } from '../../../common/editor.js';
 import { EditorInput } from '../../../common/editor/editorInput.js';
@@ -47,6 +49,8 @@ export class GeminiTitleTabs extends BaseActionViewItem {
 		@IEditorService private readonly editorService: IEditorService,
 		@IInstantiationService private readonly instantiationService: IInstantiationService,
 		@IContextMenuService private readonly contextMenuService: IContextMenuService,
+		@IHoverService private readonly hoverService: IHoverService,
+		@IKeybindingService private readonly keybindingService: IKeybindingService,
 	) {
 		super(undefined, action, options);
 	}
@@ -135,6 +139,12 @@ export class GeminiTitleTabs extends BaseActionViewItem {
 		const close = append(tab, $('span.gemini-title-tab-close', { role: 'button' }));
 		close.classList.add(...ThemeIcon.asClassNameArray(isDirty ? Codicon.circleFilled : Codicon.close));
 		close.setAttribute('aria-label', localize('gemini.titleTabs.close', "Close {0}", editor.getName()));
+		// As upstream's tabs: the shortcut closes the active editor, so only its tab shows it.
+		this.renderStore.add(this.hoverService.setupManagedHover(getDefaultHoverDelegate('mouse'), close, () => {
+			const keys = group.isActive(editor) ? this.keybindingService.lookupKeybinding('workbench.action.closeActiveEditor')?.getLabel() : undefined;
+			const label = isDirty ? localize('gemini.titleTabs.closeDirty', "Close (unsaved changes)") : localize('gemini.titleTabs.closeHover', "Close");
+			return keys ? `${label} (${keys})` : label;
+		}));
 
 		this.renderStore.add(addDisposableListener(tab, EventType.MOUSE_DOWN, e => {
 			if (e.button === 1) {

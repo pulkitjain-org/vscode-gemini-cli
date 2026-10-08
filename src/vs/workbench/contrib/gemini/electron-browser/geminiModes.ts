@@ -29,7 +29,7 @@ import { ThemeIcon } from '../../../../base/common/themables.js';
 import { mainWindow } from '../../../../base/browser/window.js';
 import { localize, localize2 } from '../../../../nls.js';
 import { IActionViewItemService } from '../../../../platform/actions/browser/actionViewItemService.js';
-import { Action2, MenuId, registerAction2 } from '../../../../platform/actions/common/actions.js';
+import { Action2, MenuId, MenuRegistry, registerAction2 } from '../../../../platform/actions/common/actions.js';
 import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
 import { ConfigurationTarget, IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { ContextKeyExpr, IContextKey, IContextKeyService, RawContextKey } from '../../../../platform/contextkey/common/contextkey.js';
@@ -426,24 +426,16 @@ class TitleTabsAction extends Action2 {
 	run(): void { }
 }
 
-/** Agents mode has no Command Center; this button on the right of the title bar opens the same Quick Open. */
-class TitleSearchAction extends Action2 {
-	constructor() {
-		super({
-			id: 'gemini.mode.search',
-			title: localize2('gemini.mode.search', "Search Files and Commands"),
-			icon: Codicon.search,
-			f1: false,
-			menu: { id: MenuId.TitleBar, group: TitleBarLeadingActionsGroup, order: 1, when: GeminiModeContext.isEqualTo('agents') },
-		});
-	}
-	run(accessor: ServicesAccessor): Promise<unknown> {
-		return accessor.get(ICommandService).executeCommand('workbench.action.quickOpen');
-	}
-}
+// Agents mode has no Command Center; this button on the right of the title bar opens the same Quick Open.
+// It runs Quick Open's own command, so its tooltip shows Quick Open's shortcut.
+MenuRegistry.appendMenuItem(MenuId.TitleBar, {
+	command: { id: 'workbench.action.quickOpen', title: localize2('gemini.mode.search', "Search Files and Commands"), icon: Codicon.search },
+	group: TitleBarLeadingActionsGroup,
+	order: 1,
+	when: GeminiModeContext.isEqualTo('agents'),
+});
 
 registerAction2(TitleTabsAction);
-registerAction2(TitleSearchAction);
 registerAction2(SwitchToAgentsMode);
 registerAction2(SwitchToEditorMode);
 registerAction2(ToggleMode);
@@ -465,6 +457,7 @@ class ModeSwitcher extends BaseActionViewItem {
 		options: IBaseActionViewItemOptions | undefined,
 		@ICommandService private readonly commandService: ICommandService,
 		@IHoverService private readonly hoverService: IHoverService,
+		@IKeybindingService private readonly keybindingService: IKeybindingService,
 	) {
 		super(undefined, action, options);
 		this._register(state.onDidChange.event(() => this.update()));
@@ -492,8 +485,12 @@ class ModeSwitcher extends BaseActionViewItem {
 			e.stopPropagation();
 			void this.commandService.executeCommand(mode === 'agents' ? 'gemini.mode.agents' : 'gemini.mode.editor');
 		}));
-		this._register(this.hoverService.setupManagedHover(getDefaultHoverDelegate('element'), button,
-			mode === 'agents' ? localize('gemini.mode.agentsHover', "Agents mode: your agents, their chats and their changes") : localize('gemini.mode.editorHover', "Editor mode: the classic editor layout")));
+		const hover = mode === 'agents' ? localize('gemini.mode.agentsHover', "Agents mode: your agents, their chats and their changes") : localize('gemini.mode.editorHover', "Editor mode: the classic editor layout");
+		// Read the shortcut on each hover, so a rebinding shows at once.
+		this._register(this.hoverService.setupManagedHover(getDefaultHoverDelegate('element'), button, () => {
+			const keys = this.keybindingService.lookupKeybinding('gemini.mode.toggle')?.getLabel();
+			return keys ? localize('gemini.mode.hoverKeys', "{0} ({1} switches modes)", hover, keys) : hover;
+		}));
 		return button;
 	}
 
@@ -515,7 +512,7 @@ class ModeSwitcher extends BaseActionViewItem {
 			const pill = append(pills, $(`button.gemini-agent-pill.${agent.state}`, { type: 'button' }));
 			append(pill, $('span.dot'));
 			append(pill, $('span.title', undefined, agent.title));
-			const hover = [agent.title, agent.detail ?? stateLabel(agent.state)].join('\n');
+			const hover = [agent.title, agent.detail ?? stateLabel(agent.state), localize('gemini.mode.openAgent', "Click to open its chat")].join('\n');
 			pill.setAttribute('aria-label', hover);
 			this.renderStore.add(this.hoverService.setupManagedHover(getDefaultHoverDelegate('element'), pill, hover));
 			this.renderStore.add(addDisposableListener(pill, EventType.CLICK, e => {
@@ -527,7 +524,7 @@ class ModeSwitcher extends BaseActionViewItem {
 		const rest = agents.length - shown.length;
 		if (rest > 0) {
 			const more = append(pills, $('button.gemini-agent-pill.more', { type: 'button' }, `+${rest}`));
-			const label = localize('gemini.mode.more', "{0} more agents", rest);
+			const label = localize('gemini.mode.more', "{0} more agents: click to show them all", rest);
 			more.setAttribute('aria-label', label);
 			this.renderStore.add(this.hoverService.setupManagedHover(getDefaultHoverDelegate('element'), more, label));
 			this.renderStore.add(addDisposableListener(more, EventType.CLICK, e => {
