@@ -1139,7 +1139,6 @@ export class ChatController implements vscode.Disposable {
 			previewLabel: vscode.l10n.t("Preview"),
 			writeLabel: vscode.l10n.t("Write"),
 			followAgent: vscode.l10n.t("Follow the agent: open each file it reads or edits"),
-			followAgentOn: vscode.l10n.t("Following the agent: each file it reads or edits opens. Click to stop."),
 			promptOutline: process.platform === 'darwin' ? vscode.l10n.t("Your prompts (⌥⌘↑ and ⌥⌘↓ to jump between them)") : vscode.l10n.t("Your prompts (Ctrl+Alt+Up and Ctrl+Alt+Down to jump between them)"),
 			previewEmpty: vscode.l10n.t("Nothing to preview yet."),
 			enhanceTooltip: vscode.l10n.t("Rewrite this as a clearer, more precise prompt ({0})"),

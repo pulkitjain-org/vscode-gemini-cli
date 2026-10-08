@@ -115,7 +115,6 @@ export function setGit(git: ViewGit): void {
 export function setFollow(on: boolean): void {
 	ui.followButton.classList.toggle('active', on);
 	ui.followButton.setAttribute('aria-pressed', String(on));
-	ui.followButton.title = on ? strings.followAgentOn : strings.followAgent;
 }
 
 /** Prompts sent from this view, newest last, for Up and Down in an empty input. */
