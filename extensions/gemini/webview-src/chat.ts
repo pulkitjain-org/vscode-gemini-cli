@@ -14,7 +14,8 @@
 //   attachmentChips.ts attachments, and files pasted or dropped
 //   picker.ts          the @-mention file picker and the slash command menu
 //   enhance.ts         Enhance prompt: rewriting the draft as a precise prompt
-//   usage.ts           the usage popover: this chat's tokens and today's quota
+//   plusMenu.ts        the "+" menu: mode, files, context, follow, model, usage
+//   usage.ts           the context ring and usage popover: context, quota and tokens
 
 import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
 import { addAttachments } from './attachmentChips';
@@ -27,15 +28,11 @@ import { showSavedSessions } from './items';
 import { showCommands, showFiles } from './picker';
 import { updateOutline } from './promptNav';
 import { appended, applyItem, isNearBottom, reset, settleScroll, updateWorking } from './transcript';
-import { showQuota, toggleUsage, updateUsage } from './usage';
+import { showContext, showQuota, toggleUsage, updateUsage } from './usage';
 import { state, strings, ui, vscode } from './view';
 
-setLabel(ui.mentionButton, strings.addContext);
-setLabel(ui.attachButton, strings.attachFiles);
-setLabel(ui.followButton, strings.followAgent);
 setLabel(ui.sendButton, strings.send);
 setLabel(ui.stopButton, strings.stop);
-setLabel(ui.modeSelect, strings.mode);
 setLabel(ui.modelSelect, strings.model);
 setLabel(ui.scrollButton, strings.scrollToBottom);
 ui.scrollLabel.textContent = strings.latest;
@@ -132,6 +129,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'quota':
 			showQuota(message.quota);
+			break;
+		case 'context':
+			showContext(message.context);
 			break;
 		case 'toggleUsage':
 			toggleUsage();

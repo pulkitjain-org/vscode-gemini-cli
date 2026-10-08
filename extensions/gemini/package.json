@@ -479,11 +479,6 @@
           "command": "gemini.review.undoFile",
           "when": "gemini.review.active && resourceScheme == file",
           "group": "navigation@4"
-        },
-        {
-          "command": "gemini.showUsage",
-          "when": "activeWebviewPanelId == 'gemini.agent'",
-          "group": "navigation@1"
         }
       ],
       "editor/title/context": [
@@ -526,12 +521,7 @@
         {
           "command": "gemini.newChat",
           "when": "view == gemini.chat",
-          "group": "navigation@2"
-        },
-        {
-          "command": "gemini.showUsage",
-          "when": "view == gemini.chat",
-          "group": "navigation@1"
+          "group": "navigation"
         },
         {
           "command": "gemini.restartAgent",

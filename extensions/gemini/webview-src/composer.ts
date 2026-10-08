@@ -16,10 +16,11 @@ import { onEnhanceKey } from './enhance';
 import { continueList, formatShortcut, toggleWrap, type TextEdit } from './markdownEdit';
 import { closePreview, isPreviewShortcut, togglePreview, updatePreview } from './markdownPreview';
 import { closePicker, onPickerKey, updatePicker } from './picker';
+import { modeIcon, openPlusMenu, updatePlusMenu } from './plusMenu';
 import { setTranscriptBusy } from './transcript';
 import { state, strings, ui, vscode } from './view';
 
-const { form, input, status, modeSelect, modelSelect, branchButton, commitButton } = ui;
+const { form, input, status, modelSelect, branchButton, commitButton } = ui;
 const mac = /Mac/.test(navigator.platform);
 
 export function setBusy(value: boolean): void {
@@ -89,8 +90,26 @@ function fillSelect(select: HTMLSelectElement, wrap: HTMLElement, selector: Sess
 }
 
 export function setSettings(settings: SessionSettings): void {
-	fillSelect(modeSelect, ui.modeWrap, settings.mode);
+	state.settings = settings;
 	fillSelect(modelSelect, ui.modelWrap, settings.model);
+	updateModeChip();
+	updatePlusMenu();
+}
+
+/** A mode other than the first (the agent's default) shows as a chip beside "+"; its × goes back to the default. */
+function updateModeChip(): void {
+	const mode = state.settings.mode;
+	const current = mode?.available.find(choice => choice.id === mode.currentId);
+	const base = mode?.available[0];
+	ui.modeChip.hidden = !current || !base || current.id === base.id;
+	if (ui.modeChip.hidden || !current || !base) {
+		return;
+	}
+	ui.modeChip.dataset.mode = current.id;
+	ui.modeChipLabel.querySelector('.codicon')!.className = `codicon codicon-${modeIcon(current.id)}`;
+	ui.modeChipLabel.querySelector('span')!.textContent = current.name;
+	setLabel(ui.modeChipLabel, format(strings.modeChip, current.description ? `${current.name}: ${current.description}` : current.name));
+	setLabel(ui.modeChipReset, format(strings.modeChipReset, base.name));
 }
 
 export function setGit(git: ViewGit): void {
@@ -111,10 +130,10 @@ export function setGit(git: ViewGit): void {
 	commitButton.setAttribute('aria-label', strings.createBranchAndCommit);
 }
 
-/** The eye toggle: lit while the chat opens each file the agent reads or edits. */
+/** Follow the agent: whether the chat opens each file the agent reads or edits; a switch in the "+" menu. */
 export function setFollow(on: boolean): void {
-	ui.followButton.classList.toggle('active', on);
-	ui.followButton.setAttribute('aria-pressed', String(on));
+	state.following = on;
+	updatePlusMenu();
 }
 
 /** Prompts sent from this view, newest last, for Up and Down in an empty input. */
@@ -255,12 +274,15 @@ input.addEventListener('blur', () => setTimeout(() => {
 }, 0));
 ui.stopButton.addEventListener('click', () => vscode.postMessage({ type: 'stop' }));
 branchButton.addEventListener('click', () => vscode.postMessage({ type: 'pickBranch' }));
-ui.followButton.addEventListener('click', () => vscode.postMessage({ type: 'setFollow', on: ui.followButton.getAttribute('aria-pressed') !== 'true' }));
 ui.workspaceButton.addEventListener('click', () => vscode.postMessage({ type: 'workspaceMenu' }));
 commitButton.addEventListener('click', () => vscode.postMessage({ type: 'createBranchAndCommit' }));
-modeSelect.addEventListener('change', () => {
-	fitSelect(modeSelect);
-	vscode.postMessage({ type: 'setMode', id: modeSelect.value });
+ui.modeChipLabel.addEventListener('click', () => openPlusMenu());
+ui.modeChipReset.addEventListener('click', () => {
+	const base = state.settings.mode?.available[0];
+	if (base) {
+		vscode.postMessage({ type: 'setMode', id: base.id });
+	}
+	input.focus();
 });
 modelSelect.addEventListener('change', () => {
 	fitSelect(modelSelect);

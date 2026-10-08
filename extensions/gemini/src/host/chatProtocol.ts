@@ -72,7 +72,6 @@ export interface ChatStrings {
 	readonly copied: string;
 	readonly mode: string;
 	readonly model: string;
-	readonly addContext: string;
 	readonly noFiles: string;
 	readonly noCommands: string;
 	/** Labels for a command from the agent and one from .gemini/commands. */
@@ -177,6 +176,47 @@ export interface ChatStrings {
 	readonly usageQuotaNone: string;
 	readonly usageQuotaFailed: string;
 	readonly close: string;
+	/** The "+" button's tooltip and its menu. */
+	readonly plusMenu: string;
+	readonly menuSearch: string;
+	readonly menuFiles: string;
+	readonly menuFilesDetail: string;
+	readonly menuContext: string;
+	readonly menuContextDetail: string;
+	readonly menuFollow: string;
+	readonly menuFollowDetail: string;
+	/** Follow the agent's tooltip while it is on. */
+	readonly followAgentOn: string;
+	/** `{0}` is a percentage. */
+	readonly menuUsageDetail: string;
+	readonly menuCommands: string;
+	readonly back: string;
+	/** `{0}` is the mode and what it does. */
+	readonly modeChip: string;
+	/** `{0}` is the default mode. */
+	readonly modeChipReset: string;
+	/** The context ring's tooltip; `{0}` is a percentage. */
+	readonly usageRing: string;
+	readonly usageContext: string;
+	readonly usageThisChatScope: string;
+	readonly usageAccount: string;
+	readonly usageContextNone: string;
+	/** `{0}` is a short token count such as 1M. */
+	readonly usageContextOf: string;
+	/** `{0}` is a percentage. */
+	readonly usageContextNote: string;
+	/** `{0}` is a short token count. */
+	readonly usageCached: string;
+}
+
+/** How full the session's context window is, from the counts the CLI saved with its replies. */
+export interface ViewContext {
+	/** The latest request's input tokens. */
+	readonly used: number;
+	readonly limit: number;
+	/** Input tokens served from the cache over the session. */
+	readonly cached: number;
+	readonly model?: string;
 }
 
 /** Today's quota for the usage popover. */
@@ -294,5 +334,7 @@ export type ToWebview =
 	/** The newest saved sessions the empty chat offers to reopen, of `total`. */
 	| { readonly type: 'sessions'; readonly sessions: readonly ViewSession[]; readonly total: number }
 	| { readonly type: 'quota'; readonly quota: ViewQuota }
+	/** The context window's use; unset when unknown, such as before the first reply. */
+	| { readonly type: 'context'; readonly context: ViewContext | undefined }
 	/** Show Usage and Quota: open the usage popover, or close it if open. */
 	| { readonly type: 'toggleUsage' };

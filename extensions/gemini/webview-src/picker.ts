@@ -203,11 +203,22 @@ export function onPickerKey(event: KeyboardEvent): boolean {
 	return false;
 }
 
-ui.mentionButton.addEventListener('click', () => {
-	// Insert "@" at the caret (with a space before it when needed) and open the picker.
+/** Inserts "@" at the caret (with a space before it when needed) and opens the file picker. */
+export function startMention(): void {
 	const caret = input.selectionStart;
 	input.setRangeText(mentionInsertion(input.value.slice(0, caret)), caret, input.selectionEnd, 'end');
 	input.focus();
 	autoGrow();
 	updatePicker();
-});
+}
+
+/** Starts a slash command at the start of the input, where commands go, and opens the command menu. */
+export function startCommand(): void {
+	input.focus();
+	if (!input.value.startsWith('/')) {
+		input.setRangeText(input.value.trim() ? '/ ' : '/', 0, 0);
+	}
+	input.setSelectionRange(1, 1);
+	autoGrow();
+	updatePicker();
+}

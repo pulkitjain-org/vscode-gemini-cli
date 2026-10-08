@@ -3,23 +3,54 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The usage popover, from Show Usage and Quota in the chat's title bar: the tokens this
-// chat used per model, from its turn ends, and today's quota per model, which
-// the extension reads when the popover opens.
+// The context ring under the composer and the usage popover it opens: how
+// full this chat's context window is, today's quota per model for the
+// account, which the extension reads when the popover opens, and the tokens
+// this chat used per model, from its turn ends.
 
-import type { ViewQuota } from '../src/host/chatProtocol';
+import type { ViewContext, ViewQuota } from '../src/host/chatProtocol';
 import { chatUsage } from '../src/acp/turnUsage';
 import { format, formatTokens, resetsIn } from './chatLogic';
 import { button, el, setLabel } from './dom';
 import { closePicker } from './picker';
 import { state, strings, ui, vscode } from './view';
 
-const { usagePopover: popover } = ui;
+const { usagePopover: popover, usageRing: ring } = ui;
 let quota: ViewQuota = { kind: 'checking' };
+let context: ViewContext | undefined;
+/** Where the CLI starts summarising older history, as a share of the window (its default `model.compressionThreshold`). */
+const summariseAt = 0.5;
 
 popover.setAttribute('aria-label', strings.usage);
 // Focus stays on the popover itself, which survives re-rendering its contents.
 popover.tabIndex = -1;
+
+ring.addEventListener('click', () => toggleUsage());
+updateRing();
+
+/** How full the context window is, in whole percent; undefined until known. */
+export function contextPercent(): number | undefined {
+	return context ? Math.round(Math.min(1, context.used / context.limit) * 100) : undefined;
+}
+
+/** The context window's use from the extension: the ring shows it, and an open popover too. */
+export function showContext(value: ViewContext | undefined): void {
+	context = value;
+	updateRing();
+	if (!popover.hidden) {
+		renderUsage();
+	}
+}
+
+function updateRing(): void {
+	const percent = contextPercent();
+	const share = context ? context.used / context.limit : 0;
+	ring.classList.toggle('high', share >= summariseAt && share < 0.9);
+	ring.classList.toggle('full', share >= 0.9);
+	ring.querySelector('.ring-fill')?.setAttribute('stroke-dasharray', `${percent ?? 0} 100`);
+	ring.querySelector('span')!.textContent = percent === undefined ? '' : `${percent}%`;
+	setLabel(ring, percent === undefined ? strings.usage : format(strings.usageRing, percent));
+}
 
 /** Opens the popover, or closes it if open. */
 export function toggleUsage(): void {
@@ -30,6 +61,8 @@ export function toggleUsage(): void {
 	closePicker();
 	quota = { kind: 'checking' };
 	popover.hidden = false;
+	ring.setAttribute('aria-expanded', 'true');
+	ring.classList.add('active');
 	renderUsage();
 	popover.focus();
 	vscode.postMessage({ type: 'readQuota' });
@@ -40,6 +73,8 @@ function closeUsage(): void {
 		return;
 	}
 	popover.hidden = true;
+	ring.setAttribute('aria-expanded', 'false');
+	ring.classList.remove('active');
 	ui.input.focus();
 }
 
@@ -68,7 +103,7 @@ document.addEventListener('keydown', event => {
 
 document.addEventListener('mousedown', event => {
 	const target = event.target as Node | null;
-	if (!popover.hidden && target && !popover.contains(target)) {
+	if (!popover.hidden && target && !popover.contains(target) && !ring.contains(target)) {
 		closeUsage();
 	}
 });
@@ -79,7 +114,30 @@ function renderUsage(): void {
 	const close = button('icon-button usage-close', '', closeUsage, 'close');
 	setLabel(close, strings.close);
 	head.append(close);
-	popover.replaceChildren(head, renderChat(), renderQuota());
+	popover.replaceChildren(head, renderContext(), renderQuota(), renderChat());
+}
+
+function renderContext(): HTMLElement {
+	const section = el('section', 'usage-section');
+	const heading = el('div', 'usage-heading');
+	heading.append(el('span', undefined, strings.usageContext), el('span', 'usage-sub', strings.usageThisChatScope));
+	section.append(heading);
+	if (!context) {
+		section.append(el('p', 'usage-note', strings.usageContextNone));
+		return section;
+	}
+	const share = Math.min(1, context.used / context.limit);
+	const row = el('div', `usage-context${share >= 0.9 ? ' full' : share >= summariseAt ? ' high' : ''}`);
+	const big = ring.querySelector('svg')!.cloneNode(true) as SVGElement;
+	big.classList.add('ring-large');
+	const figures = el('div');
+	const used = el('div', 'usage-context-used', formatTokens(context.used));
+	used.title = context.used.toLocaleString();
+	used.append(el('span', 'usage-context-of', ` ${format(strings.usageContextOf, formatTokens(context.limit))}`));
+	figures.append(used, el('div', 'usage-note', format(strings.usageContextNote, Math.round(summariseAt * 100))));
+	row.append(big, figures);
+	section.append(row);
+	return section;
 }
 
 function renderChat(): HTMLElement {
@@ -111,6 +169,9 @@ function renderChat(): HTMLElement {
 	}
 	section.append(table);
 	const notes = [strings.usageInputNote];
+	if (context?.cached) {
+		notes.unshift(format(strings.usageCached, formatTokens(context.cached)));
+	}
 	if (usage.countedTurns < usage.turns) {
 		notes.unshift(strings.usageSomeCounted.replace('{0}', String(usage.countedTurns)).replace('{1}', String(usage.turns)));
 	}
@@ -127,7 +188,7 @@ function tokensCell(count: number): HTMLElement {
 function renderQuota(): HTMLElement {
 	const section = el('section', 'usage-section');
 	const heading = el('div', 'usage-heading');
-	heading.append(el('span', undefined, strings.usageQuota));
+	heading.append(el('span', undefined, strings.usageQuota), el('span', 'usage-sub', strings.usageAccount));
 	section.append(heading);
 	switch (quota.kind) {
 		case 'checking':

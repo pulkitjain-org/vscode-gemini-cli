@@ -17,7 +17,7 @@ import { PendingPermission, PermissionBroker } from '../acp/permissions';
 import { buildPromptContent } from '../acp/promptContent';
 import { skillPrompt } from '../acp/skills';
 import { expandTeamCommand, mergeCommands, parseInvocation, SlashCommand } from '../acp/slashCommands';
-import { CliSession, isPrompt, listCliSessions } from '../acp/cliSessions';
+import { CliSession, isPrompt, listCliSessions, readSessionTokens } from '../acp/cliSessions';
 import type { ChatEvent } from '../acp/sessionUpdates';
 import { AgentStatus } from '../acp/status';
 import { TextDeltas } from '../acp/textDeltas';
@@ -42,6 +42,12 @@ import type { UsageMeter } from './usageMeter';
 import { createNonce, escapeAttribute } from './webviewHtml';
 import type { FileMatch } from './workspaceFiles';
 import { deleteFile, replaceFileText, WorkspaceFileSystem } from './workspaceFileSystem';
+
+/**
+ * Every current Gemini model's context window, in tokens, as gemini-cli's
+ * `tokenLimit` has it; the CLI's footer shows context use against it too.
+ */
+const contextWindow = 1_048_576;
 
 /** The agent session a chat talks to: the sidebar's, or one agent's in the Agents pane. */
 export interface ChatHost {
@@ -251,6 +257,7 @@ export class ChatController implements vscode.Disposable {
 						this.addSessionLostNotice();
 					}
 					this.lastSessionId = state.savedSessionId;
+					void this.postContext();
 				}
 			}),
 			service.onDidChangeStatus(status => this.post({ type: 'status', status: toViewStatus(status) })),
@@ -401,6 +408,7 @@ export class ChatController implements vscode.Disposable {
 				this.endTurn(Date.now() - started);
 			}
 			this.setBusy(false);
+			void this.postContext();
 		}
 	}
 
@@ -1092,6 +1100,14 @@ export class ChatController implements vscode.Disposable {
 		if (!this.busy) {
 			void this.postSessions();
 		}
+		void this.postContext();
+	}
+
+	/** How full this session's context window is, from the counts the CLI saved; none until the agent has answered. */
+	private async postContext(): Promise<void> {
+		const state = this.service.client.state;
+		const tokens = state.kind === 'ready' && this.transcript.items.length ? await readSessionTokens(this.service.client.cwd, state.savedSessionId).catch(() => undefined) : undefined;
+		this.post({ type: 'context', context: tokens && { used: tokens.context, limit: contextWindow, cached: tokens.cached, ...(tokens.model ? { model: tokens.model } : {}) } });
 	}
 
 	/** Today's quota for the usage popover: what is known now, then a fresh read if that was not fresh. */
@@ -1215,7 +1231,28 @@ export class ChatController implements vscode.Disposable {
 			usageQuotaNone: vscode.l10n.t("Shown when you sign in with Google. API keys have no daily quota to read."),
 			usageQuotaFailed: vscode.l10n.t("Couldn't read the quota. Try again in a moment."),
 			close: vscode.l10n.t("Close"),
-			addContext: vscode.l10n.t("Add context (@)"),
+			plusMenu: vscode.l10n.t("Add files, context, modes and more"),
+			menuSearch: vscode.l10n.t("Search modes, files, commands\u2026"),
+			menuFiles: vscode.l10n.t("Files"),
+			menuFilesDetail: vscode.l10n.t("Attach files or images"),
+			menuContext: vscode.l10n.t("Context"),
+			menuContextDetail: vscode.l10n.t("Add workspace files (@)"),
+			menuFollow: vscode.l10n.t("Follow the agent"),
+			menuFollowDetail: vscode.l10n.t("Open each file it reads or edits"),
+			followAgentOn: vscode.l10n.t("Following the agent: each file it reads or edits opens. Click to stop."),
+			menuUsageDetail: vscode.l10n.t("Context {0}%"),
+			menuCommands: vscode.l10n.t("Skills and commands"),
+			back: vscode.l10n.t("Back"),
+			modeChip: vscode.l10n.t("Mode: {0}. Click to change it."),
+			modeChipReset: vscode.l10n.t("Back to {0}"),
+			usageRing: vscode.l10n.t("Context {0}% used. Click for usage and quota."),
+			usageContext: vscode.l10n.t("Context window"),
+			usageThisChatScope: vscode.l10n.t("this chat"),
+			usageAccount: vscode.l10n.t("your account"),
+			usageContextNone: vscode.l10n.t("Shown after Gemini's first reply in this chat."),
+			usageContextOf: vscode.l10n.t("of {0} tokens"),
+			usageContextNote: vscode.l10n.t("Gemini summarises older messages at {0}%."),
+			usageCached: vscode.l10n.t("{0} of the input came from the cache."),
 			noFiles: vscode.l10n.t("No matching files"),
 			noCommands: vscode.l10n.t("No matching commands"),
 			commandFromCli: vscode.l10n.t("Gemini CLI"),
@@ -1268,19 +1305,22 @@ export class ChatController implements vscode.Disposable {
 				<span id="enhance-note" class="enhance-note" role="status" hidden></span>
 			</div>
 			<div class="composer-bar">
-				<button type="button" id="attach" class="icon-button"><svg class="paperclip" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 3.5 4.9 9.1a1.8 1.8 0 0 0 2.5 2.5l6-6a3 3 0 0 0-4.2-4.2L3.1 7.5a4.2 4.2 0 0 0 6 6l4.4-4.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-				<button type="button" id="mention" class="icon-button"><i class="codicon codicon-mention" aria-hidden="true"></i></button>
-				<button type="button" id="follow" class="icon-button follow" aria-pressed="false"><i class="codicon codicon-eye" aria-hidden="true"></i></button>
-				<span class="pill-wrap" hidden><select id="mode" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
-				<span class="pill-wrap" hidden><select id="model" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
+				<button type="button" id="plus" class="plus-button" aria-haspopup="menu" aria-expanded="false" aria-controls="plus-menu"><i class="codicon codicon-add" aria-hidden="true"></i></button>
+				<span id="mode-chip" class="mode-chip" hidden><button type="button" class="mode-chip-label"><i class="codicon" aria-hidden="true"></i><span></span></button><button type="button" class="mode-chip-reset"><i class="codicon codicon-close" aria-hidden="true"></i></button></span>
 				<span class="spacer"></span>
-				<button type="button" id="commit" class="pill commit" hidden><i class="codicon codicon-git-commit" aria-hidden="true"></i><span></span></button>
-				<button type="button" id="workspace" class="pill workspace" hidden><i class="codicon codicon-folder" aria-hidden="true"></i><span></span></button>
-				<button type="button" id="branch" class="pill branch" hidden><i class="codicon codicon-git-branch" aria-hidden="true"></i><span></span></button>
+				<span class="pill-wrap model-wrap" hidden><select id="model" class="pill model"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
 				<button type="submit" id="send" class="round-button"><i class="codicon codicon-arrow-up" aria-hidden="true"></i></button>
 				<button type="button" id="stop" class="round-button stop" hidden><i class="codicon codicon-debug-stop" aria-hidden="true"></i></button>
 			</div>
+			<div id="plus-menu" class="plus-menu" role="menu" hidden></div>
 		</form>
+		<div class="composer-foot">
+			<button type="button" id="branch" class="foot-button branch" hidden><i class="codicon codicon-git-branch" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button>
+			<button type="button" id="workspace" class="foot-button workspace" hidden><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button>
+			<button type="button" id="commit" class="foot-button commit" hidden><i class="codicon codicon-git-commit" aria-hidden="true"></i><span></span></button>
+			<span class="spacer"></span>
+			<button type="button" id="usage-ring" class="foot-button usage-ring" aria-expanded="false" aria-controls="usage-popover"><svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="ring-track" cx="8" cy="8" r="6"/><circle class="ring-fill" cx="8" cy="8" r="6" pathLength="100" stroke-dasharray="0 100" transform="rotate(-90 8 8)"/></svg><span></span></button>
+		</div>
 	</div>
 	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>

@@ -149,4 +149,3 @@ document.addEventListener('drop', event => {
 		event.preventDefault();
 	}
 });
-ui.attachButton.addEventListener('click', () => vscode.postMessage({ type: 'pickFiles' }));

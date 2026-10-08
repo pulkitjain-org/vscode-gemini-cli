@@ -8,6 +8,7 @@
 
 import type { Attachment } from '../src/acp/attachments';
 import type { TranscriptItem } from '../src/acp/chatTranscript';
+import type { SessionSettings } from '../src/acp/sessionSettings';
 import type { ChatStrings, FromWebview } from '../src/host/chatProtocol';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromWebview): void };
@@ -35,8 +36,8 @@ function parentOf(node: HTMLElement): HTMLElement {
 	return found(node.parentElement, HTMLElement, `the parent of #${node.id}`);
 }
 
-const modeSelect = byId('mode', HTMLSelectElement);
 const modelSelect = byId('model', HTMLSelectElement);
+const modeChip = byId('mode-chip', HTMLElement);
 const branchButton = byId('branch', HTMLButtonElement);
 const commitButton = byId('commit', HTMLButtonElement);
 const enhanceButton = byId('enhance', HTMLButtonElement);
@@ -57,13 +58,15 @@ export const ui = {
 	input: byId('input', HTMLTextAreaElement),
 	sendButton: byId('send', HTMLButtonElement),
 	stopButton: byId('stop', HTMLButtonElement),
-	modeSelect,
-	modeWrap: parentOf(modeSelect),
+	modeChip,
+	modeChipLabel: within(modeChip, '.mode-chip-label', HTMLButtonElement),
+	modeChipReset: within(modeChip, '.mode-chip-reset', HTMLButtonElement),
 	modelSelect,
 	modelWrap: parentOf(modelSelect),
 	resizeHandle: byId('resize', HTMLElement),
-	mentionButton: byId('mention', HTMLButtonElement),
-	followButton: byId('follow', HTMLButtonElement),
+	plusButton: byId('plus', HTMLButtonElement),
+	plusMenu: byId('plus-menu', HTMLElement),
+	usageRing: byId('usage-ring', HTMLButtonElement),
 	usagePopover: byId('usage-popover', HTMLElement),
 	writeTab: byId('tab-write', HTMLButtonElement),
 	previewTab: byId('tab-preview', HTMLButtonElement),
@@ -76,7 +79,6 @@ export const ui = {
 	commitLabel: within(commitButton, 'span', HTMLSpanElement),
 	workspaceButton,
 	workspaceLabel: within(workspaceButton, 'span', HTMLSpanElement),
-	attachButton: byId('attach', HTMLButtonElement),
 	scrollButton: byId('scroll-down', HTMLButtonElement),
 	scrollLabel: within(byId('scroll-down', HTMLButtonElement), '.scroll-down-label', HTMLSpanElement),
 	/** The working strip, status and composer; the Glass themes float it over the transcript. */
@@ -92,6 +94,8 @@ export const ui = {
 	inputWrap: parentOf(byId('input', HTMLTextAreaElement)),
 };
 
+const noSettings: SessionSettings = {};
+
 /** The view's state, shared by its modules. */
 export const state = {
 	/** The transcript, as the extension last sent it. */
@@ -103,6 +107,10 @@ export const state = {
 	imageInput: false,
 	/** Whether a rewrite of the draft is running; the draft cannot be sent meanwhile. */
 	enhancing: false,
+	/** The session's mode and model choices. */
+	settings: noSettings,
+	/** Whether the chat opens each file the agent reads or edits. */
+	following: false,
 };
 
 /** Each item's element in the transcript. */
