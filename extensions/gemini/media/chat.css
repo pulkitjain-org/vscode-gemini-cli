@@ -1897,6 +1897,10 @@ body.vscode-high-contrast-light #send {
 	cursor: default;
 }
 
+.usage-popover:focus {
+	outline: none;
+}
+
 .usage-popover[hidden] {
 	display: none;
 }

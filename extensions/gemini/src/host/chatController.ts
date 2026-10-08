@@ -151,6 +151,8 @@ export class ChatController implements vscode.Disposable {
 	/** Proposed edits by transcript item id (tool calls and permission requests), so their diffs can be opened later. */
 	private readonly diffs = new Map<string, readonly acp.Diff[]>();
 
+	/** Show Usage and Quota ran before the view was ready; the popover opens once it is. */
+	private usageRequested = false;
 	/** Attachments from the Add to Chat commands that arrived before the view was ready. */
 	private pendingAttachments: Attachment[] = [];
 
@@ -627,6 +629,17 @@ export class ChatController implements vscode.Disposable {
 		this.transcript.addNotice(text);
 	}
 
+	/** Opens the usage popover, or closes it if open; the chat comes into view first. */
+	async showUsage(): Promise<void> {
+		if (!this.webview) {
+			this.usageRequested = true;
+		}
+		await this.options.reveal(false);
+		if (this.webview && !this.usageRequested) {
+			this.post({ type: 'toggleUsage' });
+		}
+	}
+
 	/** Clears the conversation and, when the agent runs, starts a fresh session so it forgets it too. */
 	async newChat(): Promise<void> {
 		if (this.busy) {
@@ -676,6 +689,10 @@ export class ChatController implements vscode.Disposable {
 				if (this.pendingAttachments.length) {
 					this.post({ type: 'attach', attachments: this.pendingAttachments });
 					this.pendingAttachments = [];
+				}
+				if (this.usageRequested) {
+					this.usageRequested = false;
+					this.post({ type: 'toggleUsage' });
 				}
 				this.postGit();
 				// The agent was started with the view (see attach); this retries one that has since stopped.
@@ -1254,7 +1271,6 @@ export class ChatController implements vscode.Disposable {
 				<button type="button" id="attach" class="icon-button"><svg class="paperclip" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 3.5 4.9 9.1a1.8 1.8 0 0 0 2.5 2.5l6-6a3 3 0 0 0-4.2-4.2L3.1 7.5a4.2 4.2 0 0 0 6 6l4.4-4.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
 				<button type="button" id="mention" class="icon-button"><i class="codicon codicon-mention" aria-hidden="true"></i></button>
 				<button type="button" id="follow" class="icon-button follow" aria-pressed="false"><i class="codicon codicon-eye" aria-hidden="true"></i></button>
-				<button type="button" id="usage" class="icon-button usage" aria-expanded="false" aria-controls="usage-popover"><i class="codicon codicon-graph" aria-hidden="true"></i></button>
 				<span class="pill-wrap" hidden><select id="mode" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
 				<span class="pill-wrap" hidden><select id="model" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
 				<span class="spacer"></span>

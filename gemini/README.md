@@ -34,7 +34,7 @@ The product code is in [`../extensions/gemini/`](../extensions/gemini/).
 - **Keep the Mac awake.** While any agent works, the Mac doesn't go to sleep.
 - **Long chats.** Jump between your prompts with ⌥⌘↑ and ⌥⌘↓, return to the newest message with **Latest**, or open the whole chat as Markdown.
 - **Modes and models.** Pick an approval mode and a model from the composer. The lists come from the agent. The model you picked last is used for new and reopened agents too.
-- **Usage and quota.** The graph button in the composer shows the tokens each model used in the chat, and how much of today's quota each model has left and when it resets.
+- **Usage and quota.** The graph button in the chat's title bar shows the tokens each model used in the chat, and how much of today's quota each model has left and when it resets.
 - **Conversations persist.** Agents keep their conversation across reloads and restarts, and resume their CLI session when the CLI supports it.
 - **Managed CLI.** GeminiCode ships with a tested Gemini CLI, and can install, update and switch between newer versions in its own storage, without touching your system.
 - **Update notice.** Once a day GeminiCode checks its download page. When a newer version is out it says so, with **Download** and **Release Notes** buttons; it downloads nothing on its own.

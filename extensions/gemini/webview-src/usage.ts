@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The usage popover, from the graph button in the composer: the tokens this
+// The usage popover, from Show Usage and Quota in the chat's title bar: the tokens this
 // chat used per model, from its turn ends, and today's quota per model, which
 // the extension reads when the popover opens.
 
@@ -14,31 +14,33 @@ import { button, el, setLabel } from './dom';
 import { closePicker } from './picker';
 import { state, strings, ui, vscode } from './view';
 
-const { usageButton: toggle, usagePopover: popover } = ui;
+const { usagePopover: popover } = ui;
 let quota: ViewQuota = { kind: 'checking' };
 
-setLabel(toggle, strings.usage);
 popover.setAttribute('aria-label', strings.usage);
+// Focus stays on the popover itself, which survives re-rendering its contents.
+popover.tabIndex = -1;
 
-toggle.addEventListener('click', () => popover.hidden ? openUsage() : closeUsage());
-
-function openUsage(): void {
+/** Opens the popover, or closes it if open. */
+export function toggleUsage(): void {
+	if (!popover.hidden) {
+		closeUsage();
+		return;
+	}
 	closePicker();
 	quota = { kind: 'checking' };
 	popover.hidden = false;
-	toggle.setAttribute('aria-expanded', 'true');
-	toggle.classList.add('active');
 	renderUsage();
+	popover.focus();
 	vscode.postMessage({ type: 'readQuota' });
 }
 
-export function closeUsage(): void {
+function closeUsage(): void {
 	if (popover.hidden) {
 		return;
 	}
 	popover.hidden = true;
-	toggle.setAttribute('aria-expanded', 'false');
-	toggle.classList.remove('active');
+	ui.input.focus();
 }
 
 /** Today's quota from the extension; shown if the popover is still open. */
@@ -61,13 +63,12 @@ document.addEventListener('keydown', event => {
 		event.preventDefault();
 		event.stopPropagation();
 		closeUsage();
-		toggle.focus();
 	}
 }, true);
 
 document.addEventListener('mousedown', event => {
 	const target = event.target as Node | null;
-	if (!popover.hidden && target && !popover.contains(target) && !toggle.contains(target)) {
+	if (!popover.hidden && target && !popover.contains(target)) {
 		closeUsage();
 	}
 });
@@ -75,10 +76,7 @@ document.addEventListener('mousedown', event => {
 function renderUsage(): void {
 	const head = el('div', 'usage-head');
 	head.append(el('span', 'usage-title', strings.usage));
-	const close = button('icon-button usage-close', '', () => {
-		closeUsage();
-		toggle.focus();
-	}, 'close');
+	const close = button('icon-button usage-close', '', closeUsage, 'close');
 	setLabel(close, strings.close);
 	head.append(close);
 	popover.replaceChildren(head, renderChat(), renderQuota());

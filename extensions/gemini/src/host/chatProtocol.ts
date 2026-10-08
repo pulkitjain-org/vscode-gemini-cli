@@ -146,7 +146,7 @@ export interface ChatStrings {
 	/** `{0}` is how many sessions there are. */
 	readonly showAllSessions: string;
 	readonly commandFromApp: string;
-	/** The usage button's tooltip, and the popover it opens. */
+	/** The usage popover's title. */
 	readonly usage: string;
 	readonly usageThisChat: string;
 	/** `{0}` is a number of replies. */
@@ -293,4 +293,6 @@ export type ToWebview =
 	| { readonly type: 'fontSize'; readonly size: number }
 	/** The newest saved sessions the empty chat offers to reopen, of `total`. */
 	| { readonly type: 'sessions'; readonly sessions: readonly ViewSession[]; readonly total: number }
-	| { readonly type: 'quota'; readonly quota: ViewQuota };
+	| { readonly type: 'quota'; readonly quota: ViewQuota }
+	/** Show Usage and Quota: open the usage popover, or close it if open. */
+	| { readonly type: 'toggleUsage' };

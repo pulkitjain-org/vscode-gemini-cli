@@ -106,6 +106,12 @@
         "category": "%category%"
       },
       {
+        "command": "gemini.showUsage",
+        "title": "%command.showUsage%",
+        "category": "%category%",
+        "icon": "$(graph)"
+      },
+      {
         "command": "gemini.newChat",
         "title": "%command.newChat%",
         "category": "%category%",
@@ -473,6 +479,11 @@
           "command": "gemini.review.undoFile",
           "when": "gemini.review.active && resourceScheme == file",
           "group": "navigation@4"
+        },
+        {
+          "command": "gemini.showUsage",
+          "when": "activeWebviewPanelId == 'gemini.agent'",
+          "group": "navigation@1"
         }
       ],
       "editor/title/context": [
@@ -515,7 +526,12 @@
         {
           "command": "gemini.newChat",
           "when": "view == gemini.chat",
-          "group": "navigation"
+          "group": "navigation@2"
+        },
+        {
+          "command": "gemini.showUsage",
+          "when": "view == gemini.chat",
+          "group": "navigation@1"
         },
         {
           "command": "gemini.restartAgent",

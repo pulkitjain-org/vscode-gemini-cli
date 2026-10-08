@@ -179,7 +179,7 @@ Links to `localhost` from the terminal and chat also open in GeminiCode's browse
 
 ## Usage and quota
 
-The graph button in the composer opens **Usage and quota** for that chat. **This chat** lists the input and output tokens each model used, summed over the chat's replies, as the Gemini CLI reports them with each reply. Input counts the conversation again for every model call within a reply, as the CLI's `/stats` does, so a reply with many tool calls counts more. Replies saved before GeminiCode kept these counts have none. **Today's quota** shows how much of today's quota each model has used and when it resets; GeminiCode reads it when you open the popover, unless it read it in the last minute. Escape or a click outside closes it.
+The graph button in the chat's title bar (an agent's tab, or Quick Chat) opens **Usage and quota** for that chat, as does **Gemini: Show Usage and Quota** for the chat in front. **This chat** lists the input and output tokens each model used, summed over the chat's replies, as the Gemini CLI reports them with each reply. Input counts the conversation again for every model call within a reply, as the CLI's `/stats` does, so a reply with many tool calls counts more. Replies saved before GeminiCode kept these counts have none. **Today's quota** shows how much of today's quota each model has used and when it resets; GeminiCode reads it when you open the popover, unless it read it in the last minute. Escape or a click outside closes it.
 
 You can also hover the **Gemini** item in the status bar to see today's quota. Once a model passes 80%, the item shows the percentage. Turn the quota off in both places with `gemini.usageMeter.enabled`. The quota needs a Google sign-in; API keys have none to read.
 

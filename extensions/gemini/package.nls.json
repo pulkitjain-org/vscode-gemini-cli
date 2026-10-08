@@ -38,6 +38,7 @@
 	"configuration.cliPath": "Path to the Gemini CLI. Either a `gemini` executable or the CLI's JavaScript entry point (run with the application's bundled Node). When empty, GeminiCode's own copy is used (see `#gemini.cli.version#`): one installed from GeminiCode, the one bundled with it, or else `gemini` on `PATH`.",
 	"command.toggleFollowAgent": "Follow the Agent",
 	"command.openChatAsMarkdown": "Open Chat as Markdown",
+	"command.showUsage": "Show Usage and Quota",
 	"command.openChat": "Open Chat",
 	"command.newChat": "New Chat",
 	"command.addFileToChat": "Add File to Chat",
