@@ -37,6 +37,13 @@ describe('AgentsModel', () => {
 		expect(model.workspaces).toHaveLength(1);
 	});
 
+	it('adds an agent with an id given ahead, once', () => {
+		const model = new AgentsModel();
+		const workspace = model.addWorkspace('/work/api').id;
+		expect(model.addAgent(workspace, 'New agent', undefined, 'given').id).toBe('given');
+		expect(() => model.addAgent(workspace, 'Again', undefined, 'given')).toThrow();
+	});
+
 	it('keeps change totals only while there are changes', () => {
 		const model = new AgentsModel();
 		const agent = model.addAgent(model.addWorkspace('/work/api').id, 'New agent');

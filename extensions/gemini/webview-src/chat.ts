@@ -23,7 +23,7 @@ import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
 import { addAttachments } from './attachmentChips';
 import { setBusy, setFollow, setFollowed, setGit, setSettings, setStatus } from './composer';
 import { applyTokenColors } from './codeHighlight';
-import { onEnhanced, onEnhanceFailed, toggleEnhance } from './enhance';
+import { onEnhanced, onEnhanceFailed, onEnhanceProgress, toggleEnhance } from './enhance';
 import { setLabel } from './dom';
 import { restoreComposerHeight, updatePlaceholder, updateSendState } from './inputBox';
 import { showSavedSessions } from './items';
@@ -55,6 +55,8 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			setStatus(message.status);
 			setSettings(message.settings);
 			updateUsage();
+			// After the next frame is drawn: an agent reopened from its saved chat reopens its session then.
+			requestAnimationFrame(() => setTimeout(() => vscode.postMessage({ type: 'shown' })));
 			break;
 		case 'items': {
 			const stick = isNearBottom();
@@ -123,6 +125,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			if (!state.enhancing) {
 				toggleEnhance();
 			}
+			break;
+		case 'enhanceProgress':
+			onEnhanceProgress(message.requestId, message.text);
 			break;
 		case 'enhanced':
 			onEnhanced(message.requestId, message.text);

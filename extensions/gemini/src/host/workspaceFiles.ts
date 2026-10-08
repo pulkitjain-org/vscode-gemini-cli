@@ -11,6 +11,8 @@ export type { FileMatch };
 
 /** Cap on indexed files, so a huge workspace cannot stall the picker. */
 const maxFiles = 50_000;
+/** Deleted paths kept to filter results until the next rebuild; past this the list is built again. */
+const maxTrackedDeletes = 500;
 
 type IndexedFile = IndexedPath & { readonly path: string };
 
@@ -32,28 +34,16 @@ export class WorkspaceFileIndex implements vscode.Disposable {
 	private deleted = new Set<string>();
 	/** Bumped when the list must be rebuilt from scratch, so an older rebuild does not replace it. */
 	private generation = 0;
-	private readonly watcher: vscode.FileSystemWatcher;
+	/** Made with the first list, so a window whose chat never searches files watches nothing. */
+	private watcher: vscode.FileSystemWatcher | undefined;
 	private readonly disposables: vscode.Disposable[] = [];
 
 	constructor() {
-		this.watcher = vscode.workspace.createFileSystemWatcher('**/*', false, true, false);
-		const invalidate = () => {
-			this.files = undefined;
-			this.generation++;
-		};
-		const markStale = () => this.stale = true;
 		this.disposables.push(
-			this.watcher,
-			this.watcher.onDidCreate(markStale),
-			this.watcher.onDidDelete(uri => {
-				markStale();
-				// Until the rebuild, results under it are left out, so the picker does not offer a file that is gone.
-				this.deleted.add(uri.fsPath);
-			}),
-			vscode.workspace.onDidChangeWorkspaceFolders(invalidate),
+			vscode.workspace.onDidChangeWorkspaceFolders(() => this.invalidate()),
 			vscode.workspace.onDidChangeConfiguration(e => {
 				if (e.affectsConfiguration('files.exclude') || e.affectsConfiguration('search.exclude')) {
-					invalidate();
+					this.invalidate();
 				}
 			}),
 		);
@@ -62,6 +52,33 @@ export class WorkspaceFileIndex implements vscode.Disposable {
 	/** Starts building the index ahead of the first search. */
 	warm(): void {
 		void this.load();
+	}
+
+	private invalidate(): void {
+		this.files = undefined;
+		this.generation++;
+	}
+
+	private watch(): void {
+		if (this.watcher) {
+			return;
+		}
+		const watcher = this.watcher = vscode.workspace.createFileSystemWatcher('**/*', false, true, false);
+		const markStale = () => this.stale = true;
+		this.disposables.push(
+			watcher,
+			watcher.onDidCreate(markStale),
+			watcher.onDidDelete(uri => {
+				markStale();
+				if (this.deleted.size >= maxTrackedDeletes) {
+					// A branch switch or a clean build: build the list again rather than filter every search by each path.
+					this.invalidate();
+					return;
+				}
+				// Until the rebuild, results under it are left out, so the picker does not offer a file that is gone.
+				this.deleted.add(uri.fsPath);
+			}),
+		);
 	}
 
 	async search(query: string, limit: number): Promise<FileMatch[]> {
@@ -87,6 +104,7 @@ export class WorkspaceFileIndex implements vscode.Disposable {
 	}
 
 	private load(): Promise<IndexedFile[]> {
+		this.watch();
 		if (this.files && this.stale && !this.rebuilding) {
 			this.stale = false;
 			const generation = this.generation;

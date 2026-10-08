@@ -68,3 +68,14 @@ export function filterModes(settings: SessionSettings, isAllowed: ((modeId: stri
 	const available = mode.available.filter(choice => choice.id === mode.currentId || isAllowed(choice.id));
 	return { ...settings, mode: available.length > 1 ? { ...mode, available } : undefined };
 }
+
+/**
+ * The model a session starts on when the user has not picked one: the first
+ * Flash model the agent offers, not Flash-Lite. gemini-cli lists its preview
+ * models first, and only to accounts that can use them, so this is the newest
+ * Flash the account has. Auto, the CLI's own default, makes a routing call
+ * before every prompt (FINDINGS.md); a named model does not.
+ */
+export function defaultModel(available: readonly SessionChoice[]): string | undefined {
+	return available.find(choice => /flash/i.test(choice.id) && !/lite/i.test(choice.id))?.id;
+}

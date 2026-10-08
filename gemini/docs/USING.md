@@ -55,13 +55,13 @@ Each choice applies at once. GeminiCode Dark and Light share one calm look: soft
 
 Write what you want in plain words, then click **Enhance**, which follows the end of your text (or press **⌥⌘E**). Gemini rewrites the draft as a clearer, more precise prompt: what to do, where, and how to tell it is done, with open questions where your draft leaves something out. It keeps your `@` mentions, a leading `/command`, file names and code as you wrote them, and uses the files you attached, the open file and the chat so far.
 
-Your draft fades while Gemini works, usually for about three seconds; **Enhance** turns into **Cancel**, and esc stops it too. The rewrite replaces your draft for you to read and change before sending: **Revert**, beside **Enhance** (or ⌘Z), puts your draft back, and **Enhance** rewrites it again. Nothing is sent to the agent until you press Send.
+The rewrite appears in place of your draft as Gemini writes it; **Enhance** turns into **Cancel**, and esc stops it too. The finished rewrite stays for you to read and change before sending: **Revert**, beside **Enhance** (or ⌘Z), puts your draft back, and **Enhance** rewrites it again. Nothing is sent to the agent until you press Send.
 
 The rewrite is one quick request to Gemini Flash, like inline edit. When inline edit is turned off, or that request fails, the Gemini CLI does it instead, in Plan mode so it cannot change anything. It does not go into the chat, and it works while the agent is busy.
 
 ## Inline edit and commit messages
 
-Select some code (or put the cursor on a line), press **⌘I**, and say what to change. Gemini rewrites just those lines in a second or two, and the change shows in the file with **Keep** and **Undo**, like an agent's. The request box remembers your last request, so a retry is ⌘I and Return. Inline edit doesn't save the file and doesn't start an agent.
+Select some code (or put the cursor on a line), press **⌘I**, and say what to change. Gemini rewrites just those lines in a second or two, showing the new lines above the old ones as they arrive, and the change shows in the file with **Keep** and **Undo**, like an agent's. The request box remembers your last request, so a retry is ⌘I and Return. Inline edit doesn't save the file and doesn't start an agent.
 
 In the Source Control view, the sparkle button writes a commit message for the staged changes (or, with nothing staged, all changes) into the message box.
 
@@ -80,7 +80,7 @@ Pick a mode from the composer's **+** menu. The list comes from the Gemini CLI, 
 
 Permission cards show the CLI's own choices, such as **Allow**, **Allow for this session** and **Reject**. Turn on **Allow for all future sessions** in Project Helpers and they also offer to allow a tool or command from now on, in every new chat and in the terminal CLI. <kbd>esc</kbd> rejects. Stopping a turn cancels any open request. When an agent asks for permission, its tab comes to the front and the proposed edit opens as a diff; in the Agents pane its row shows an amber dot and "waiting".
 
-The model picker works the same way. The model you pick is remembered and used for every new or reopened agent, in any window, when the agent offers it.
+The model picker works the same way. The model you pick is remembered and used for every new or reopened agent, in any window, when the agent offers it. Until you pick one, agents use Flash, which answers sooner than Auto because Auto first asks a smaller model which one to use.
 
 Changing `gemini.cliPath`, `gemini.cli.version`, `gemini.projectId`, or an approval or shell setting restarts the agent so the change applies. Open agents resume their sessions.
 

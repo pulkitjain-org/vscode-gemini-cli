@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { cleanCommitMessage, cleanEdit, cleanEnhancedPrompt, commitMessagePrompt, enhancePromptPrompt, inlineEditPrompt, knownFlash, quickEditModels } from '../../src/acp/quickPrompts';
+import { cleanCommitMessage, cleanEdit, cleanEnhancedPrompt, commitMessagePrompt, enhancePromptPrompt, inlineEditPrompt, knownFlash, partialEdit, partialEnhancedPrompt, quickEditModels } from '../../src/acp/quickPrompts';
 
 describe('inlineEditPrompt', () => {
 	it('marks the selection inside its surrounding lines', () => {
@@ -160,5 +160,31 @@ describe('cleanEnhancedPrompt', () => {
 
 	it('does not treat an e-mail address as a mention', () => {
 		expect(cleanEnhancedPrompt('Email the owner.', 'email me@example.com')).toBe('Email the owner.');
+	});
+});
+
+describe('partialEdit', () => {
+	it('shows whole lines only', () => {
+		expect(partialEdit('const a = 1;\nconst b')).toBe('const a = 1;\n');
+		expect(partialEdit('const a')).toBe('');
+	});
+
+	it('leaves out the opening fence or tag and stops at the closing one', () => {
+		expect(partialEdit('```ts\na();\nb();\n```\nDone.')).toBe('a();\nb();\n');
+		expect(partialEdit('<selection>\na();\n</selection>\n')).toBe('a();\n');
+		expect(partialEdit('```t')).toBe('');
+	});
+});
+
+describe('partialEnhancedPrompt', () => {
+	it('shows the rewrite without its wrapping', () => {
+		expect(partialEnhancedPrompt('Here is the enhanced prompt:\nAdd tests for')).toBe('Add tests for');
+		expect(partialEnhancedPrompt('```\nAdd tests')).toBe('Add tests');
+		expect(partialEnhancedPrompt('<request>Add tests\nand docs</request>')).toBe('Add tests\nand docs');
+	});
+
+	it('waits while the first line may still be a preamble', () => {
+		expect(partialEnhancedPrompt('Here is')).toBe('');
+		expect(partialEnhancedPrompt('Add tests')).toBe('Add tests');
 	});
 });

@@ -18,7 +18,7 @@ import { AgentSidecar } from '../acp/sidecar';
 import { trustedFoldersPath, trustFolder } from '../acp/trustedFolders';
 import { AgentStatus, describeAgentStatus } from '../acp/status';
 import { agentLaunchSettings, configSection, getAgentCommand, getApprovalPolicy, getCliResolution, getProjectSettings, getWorkspaceCwd, workspaceFolderPaths } from './configuration';
-import { preferredModel } from './modelPreference';
+import { sessionModel } from './modelPreference';
 import { getFileAccessPolicy, WorkspaceFileSystem } from './workspaceFileSystem';
 
 /**
@@ -68,7 +68,7 @@ export class AgentService implements vscode.Disposable {
 		this.client = new AgentClient(this.runtime, {
 			cwd: getWorkspaceCwd(),
 			requestPermission: params => this.permissions.request(params),
-			preferredModel,
+			preferredModel: sessionModel,
 			isModeAllowed: modeId => isModeAllowed(getApprovalPolicy(), modeId),
 		});
 

@@ -109,6 +109,8 @@ Measured on 2 Oct 2026 with gemini-cli 0.62.0 in `--acp` mode against a local st
 - With usage statistics on, the CLI posts to `play.googleapis.com` in the background. These posts never delayed a turn, even when the network blocked them.
 - Per prompt, the CLI appends four small lines to its chat file under `~/.gemini/tmp/<project>/chats/`.
 
+`extensions/gemini/scripts/perf-first-reply.mts` redoes the first-reply part of this against a stand-in API that takes 300 ms per model call. On 8 Oct 2026 with gemini-cli 0.63.0 on a 4-core Linux machine (median of three runs): the agent started in 1154 ms, `session/new` took 40 ms, and the first text came 695 ms after the prompt with the model on Auto (which ran first, so it also carries the first turn's extra 60 to 80 ms) and 313 ms with Flash picked. Auto's routing call is one more model call before every reply, which is why agents default to Flash until the user picks a model, and why GeminiCode starts the agent early and opens a session ahead while the user types.
+
 In the chat view, re-rendering a whole streaming reply on every update cost about 25 ms per update at 30 KB. Rendering only the blocks after the last finished one costs about 2 ms.
 
 ## Token counts over ACP

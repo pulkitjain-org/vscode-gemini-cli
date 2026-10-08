@@ -124,6 +124,26 @@ describe('PromptEnhancer', () => {
 		expect(newSession).not.toHaveBeenCalled();
 	});
 
+	it('shows a direct rewrite as it arrives, without its preamble', async () => {
+		const direct = vi.fn(async (request: { onText?: (text: string) => void }) => {
+			request.onText?.('Here is');
+			request.onText?.('Here is the improved prompt:\nFix');
+			request.onText?.('Here is the improved prompt:\nFix it.');
+			return 'Here is the improved prompt:\nFix it.';
+		});
+		const { enhancer } = await start({}, undefined, { direct });
+		const seen: string[] = [];
+		expect(await enhancer.enhance({ draft: 'fix it' }, undefined, text => seen.push(text))).toBe('Fix it.');
+		expect(seen).toEqual(['', 'Fix', 'Fix it.']);
+	});
+
+	it('shows a rewrite from the CLI as it arrives', async () => {
+		const { enhancer } = await start({ turns: [[reply('Fix '), reply('it.')]] });
+		const seen: string[] = [];
+		expect(await enhancer.enhance({ draft: 'fix it' }, undefined, text => seen.push(text))).toBe('Fix it.');
+		expect(seen.at(-1)).toBe('Fix it.');
+	});
+
 	it('asks the CLI when direct requests are off, or fail, and skips them for a while after a failure', async () => {
 		const off = await start({ turns: [[reply('from the CLI')], [reply('from the CLI')], [reply('again')]] }, undefined, { direct: async () => undefined });
 		expect(await off.enhancer.enhance({ draft: 'x' })).toBe('from the CLI');

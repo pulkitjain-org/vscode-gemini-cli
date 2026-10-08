@@ -19,7 +19,7 @@ import type { AgentConnection } from './agentConnection';
 import type { AgentRuntime, AgentRuntimeState } from './agentRuntime';
 import type { TranscriptItem } from './chatTranscript';
 import { AgentError, classifyAgentError } from './errors';
-import { cleanEnhancedPrompt, enhancePromptPrompt, type EnhancePromptInput } from './quickPrompts';
+import { cleanEnhancedPrompt, enhancePromptPrompt, partialEnhancedPrompt, type EnhancePromptInput } from './quickPrompts';
 import { readSessionSettings, type SessionSelector } from './sessionSettings';
 
 export interface PromptEnhancerOptions {
@@ -47,6 +47,8 @@ export interface DirectEnhanceRequest {
 	readonly prompt: string;
 	readonly temperature: number;
 	readonly signal: AbortSignal;
+	/** Streams the rewrite: called with the text so far as it arrives. */
+	readonly onText?: (text: string) => void;
 }
 
 /** The user cancelled the rewrite. */
@@ -69,7 +71,7 @@ interface ReadySession {
 	 * is set. The registration stays for the session's life so no update is
 	 * queued unread.
 	 */
-	readonly reply: { text: string; collecting: boolean };
+	readonly reply: { text: string; collecting: boolean; onText?: (text: string) => void };
 	readonly registration: { dispose(): void };
 }
 
@@ -138,11 +140,14 @@ export class PromptEnhancer {
 	 * The draft rewritten as a precise prompt. Rejects with
 	 * {@link EnhanceCancelledError} when `signal` aborts, and with an error
 	 * whose message can be shown when the agent fails or takes too long.
+	 * `onText` is called with the rewrite so far as it arrives, tidied for
+	 * showing; it starts again from nothing if the CLI takes over.
 	 */
-	async enhance(input: EnhancePromptInput, signal?: AbortSignal): Promise<string> {
+	async enhance(input: EnhancePromptInput, signal?: AbortSignal, onText?: (text: string) => void): Promise<string> {
 		const started = Date.now();
 		const { system, prompt } = enhancePromptPrompt(input);
-		const direct = await this.tryDirect(system, prompt, signal);
+		const show = onText && ((text: string) => onText(partialEnhancedPrompt(text)));
+		const direct = await this.tryDirect(system, prompt, signal, show);
 		if (direct !== undefined) {
 			this.options.onDidEnhance?.({ ms: Date.now() - started, model: 'a direct request' });
 			return cleanEnhancedPrompt(direct, input.draft);
@@ -155,6 +160,7 @@ export class PromptEnhancer {
 		try {
 			session = await abortable(pending, signal);
 			session.reply.collecting = true;
+			session.reply.onText = show;
 			const turn = session.connection.prompt(session.sessionId, [{ type: 'text', text: `${system}\n\n${prompt}` }]);
 			try {
 				await abortable(withTimeout(turn, this.options.timeoutMs ?? defaultTimeoutMs), signal);
@@ -197,7 +203,7 @@ export class PromptEnhancer {
 	}
 
 	/** The direct request's reply, or undefined when the CLI should make the rewrite. */
-	private async tryDirect(system: string, prompt: string, signal: AbortSignal | undefined): Promise<string | undefined> {
+	private async tryDirect(system: string, prompt: string, signal: AbortSignal | undefined, onText: ((text: string) => void) | undefined): Promise<string | undefined> {
 		if (!this.options.direct || Date.now() - this.directFailedAt < directRetryAfterMs) {
 			return undefined;
 		}
@@ -206,7 +212,7 @@ export class PromptEnhancer {
 		signal?.addEventListener('abort', onAbort, { once: true });
 		const timer = setTimeout(() => abort.abort(), this.options.directTimeoutMs ?? defaultDirectTimeoutMs);
 		try {
-			const reply = await abortable(this.options.direct({ system, prompt, temperature: 0.3, signal: abort.signal }), signal);
+			const reply = await abortable(this.options.direct({ system, prompt, temperature: 0.3, signal: abort.signal, ...(onText ? { onText } : {}) }), signal);
 			if (reply === undefined) {
 				this.directWorks = false;
 				return undefined;
@@ -264,11 +270,12 @@ export class PromptEnhancer {
 		});
 		await this.folderReady;
 		const { connection, agent, session } = await this.runtime.newSession(this.options.cwd);
-		const reply = { text: '', collecting: false };
+		const reply: ReadySession['reply'] = { text: '', collecting: false };
 		const registration = this.runtime.register(session.sessionId, {
 			sessionUpdate: (update: acp.SessionUpdate) => {
 				if (reply.collecting && update.sessionUpdate === 'agent_message_chunk' && update.content.type === 'text') {
 					reply.text += update.content.text;
+					reply.onText?.(reply.text);
 				}
 			},
 			// Plan mode should never ask; refuse anything that does.

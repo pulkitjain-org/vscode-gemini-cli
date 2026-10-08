@@ -1583,6 +1583,11 @@ body.vscode-high-contrast-light .enhance-icon {
 	cursor: progress;
 }
 
+/* Once the rewrite arrives, it shows in full as it grows. */
+.composer.enhancing.enhance-streaming textarea {
+	opacity: 1;
+}
+
 .composer-bar {
 	display: flex;
 	align-items: center;

@@ -53,6 +53,10 @@ import { deleteFile, replaceFileText, WorkspaceFileSystem } from './workspaceFil
  * `tokenLimit` has it; the CLI's footer shows context use against it too.
  */
 const contextWindow = 1_048_576;
+/** How often a rewrite arriving is shown, at most. */
+const progressIntervalMs = 33;
+/** How long after the view loads a session waiting for it to show opens anyway. */
+const openFallbackMs = 2_000;
 
 /** The agent session a chat talks to: the sidebar's, or one agent's in the Agents pane. */
 export interface ChatHost {
@@ -63,6 +67,8 @@ export interface ChatHost {
 	readonly onDidChangeStatus: vscode.Event<AgentStatus>;
 	/** Starts the agent if needed and resolves once this session is ready. */
 	ensureReady(): Promise<unknown>;
+	/** Opens a session that waits to be opened until its chat is on screen; unset when sessions open at once. */
+	open?(): void;
 	/** Stops the current turn. */
 	cancel(): Promise<void>;
 	/** Trusts `folder` for the CLI and restarts the agent; returns whether the restart waits for running prompts. */
@@ -109,7 +115,8 @@ export interface ChatWorkspace {
 export interface ChatEnhancer {
 	/** Gets a rewrite ready, so the next one only waits for the model. */
 	prepare(): void;
-	enhance(input: EnhancePromptInput, signal: AbortSignal): Promise<string>;
+	/** `onText` is called with the rewrite so far as it arrives. */
+	enhance(input: EnhancePromptInput, signal: AbortSignal, onText?: (text: string) => void): Promise<string>;
 }
 
 export interface ChatGit {
@@ -185,6 +192,8 @@ export class ChatController implements vscode.Disposable {
 	/** The file to show next; files are shown at most every {@link followIntervalMs}, the latest winning. */
 	private followTarget: FollowTarget | undefined;
 	private followTimer: ReturnType<typeof setTimeout> | undefined;
+	/** Opens a session waiting for the chat to show, if the view does not say it is shown. */
+	private openTimer: ReturnType<typeof setTimeout> | undefined;
 	/** The file Follow the agent opened last, until its tab closes. */
 	private followed: vscode.Uri | undefined;
 
@@ -350,11 +359,9 @@ export class ChatController implements vscode.Disposable {
 	attach(webview: vscode.Webview): void {
 		this.detach();
 		this.webview = webview;
-		// Start the agent with the view rather than once its script has loaded, and build the
-		// @-mention file list after that, so the two do not compete while the agent starts.
-		// A failure shows in the view's status line.
-		const warmFiles = () => this.fileIndex.warm();
-		this.service.ensureReady().then(warmFiles, warmFiles);
+		// Start the agent with the view rather than once its script has loaded. The @-mention
+		// file list waits until the chat is used. A failure shows in the view's status line.
+		this.service.ensureReady().catch(() => undefined);
 		const mediaUri = vscode.Uri.joinPath(this.extensionUri, 'media');
 		webview.options = { enableScripts: true, localResourceRoots: [mediaUri] };
 		webview.html = this.getHtml(webview, mediaUri);
@@ -382,6 +389,7 @@ export class ChatController implements vscode.Disposable {
 			return;
 		}
 		this.replaying = false;
+		this.service.open?.();
 		if (this.retryItemId) {
 			this.transcript.updateTurnEnd(this.retryItemId, { retry: undefined, buildPlan: undefined });
 			this.retryItemId = undefined;
@@ -713,17 +721,30 @@ export class ChatController implements vscode.Disposable {
 	dispose(): void {
 		this.enhancing?.abort.abort();
 		clearTimeout(this.followTimer);
+		clearTimeout(this.openTimer);
 		this.detach();
 		vscode.Disposable.from(...this.disposables).dispose();
 	}
 
 	private onMessage(message: FromWebview): void {
+		if (message.type !== 'ready' && message.type !== 'shown') {
+			// The user is using the chat: a session waiting for it to show opens now, and the
+			// @-mention file list starts building, well before an @ is typed.
+			this.service.open?.();
+			this.fileIndex.warm();
+		}
 		switch (message.type) {
+			case 'shown':
+				this.service.open?.();
+				break;
 			case 'ready':
 				if (message.protocol !== chatProtocolVersion) {
 					void vscode.window.showWarningMessage(vscode.l10n.t("The Gemini chat view's script is out of date. Rebuild it with \"npm run gulp compile-extension-media\" (or keep \"npm run watch\" running) and reload the window."));
 				}
 				this.postReset();
+				// In case the view never says it is shown, such as one hidden as it loads.
+				clearTimeout(this.openTimer);
+				this.openTimer = setTimeout(() => this.service.open?.(), openFallbackMs);
 				this.post({ type: 'capabilities', image: this.service.client.promptCapabilities.image });
 				this.post({ type: 'composerHeight', height: preferredComposerHeight() });
 				this.post({ type: 'follow', on: this.following });
@@ -953,8 +974,24 @@ export class ChatController implements vscode.Disposable {
 		this.enhancing = { requestId, abort };
 		try {
 			// The rewrite waits for the agent process itself, not for this chat's session.
-			const text = await enhancer.enhance(await this.enhanceInput(draft, attachments), abort.signal);
-			this.post({ type: 'enhanced', requestId, text });
+			// It shows as it arrives, at most about 30 times a second.
+			let progress: { text: string; timer?: ReturnType<typeof setTimeout> } | undefined;
+			const onText = (text: string) => {
+				progress ??= { text };
+				progress.text = text;
+				progress.timer ??= setTimeout(() => {
+					if (progress && !abort.signal.aborted) {
+						progress.timer = undefined;
+						this.post({ type: 'enhanceProgress', requestId, text: progress.text });
+					}
+				}, progressIntervalMs);
+			};
+			try {
+				const text = await enhancer.enhance(await this.enhanceInput(draft, attachments), abort.signal, onText);
+				this.post({ type: 'enhanced', requestId, text });
+			} finally {
+				clearTimeout(progress?.timer);
+			}
 		} catch (err) {
 			if (!(err instanceof EnhanceCancelledError)) {
 				this.post({ type: 'enhanceFailed', requestId, message: errorMessage(err) });

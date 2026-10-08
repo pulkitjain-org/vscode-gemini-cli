@@ -12,6 +12,7 @@ import { updateActivity } from './activity';
 import { indexOfItem, isNearBottom as nearBottom, withAppended, type ItemOf } from './chatLogic';
 import { el } from './dom';
 import { render, renderEmpty, renderNotice } from './items';
+import { updateOutline } from './promptNav';
 import { renderStreamingReply, streamingReplies, updateStreamingReply } from './streamingReply';
 import { elements, expanded, state, thoughtTimes, ui } from './view';
 
@@ -127,6 +128,10 @@ export function applyItem(item: TranscriptItem, live: boolean): boolean {
 		items[index] = item;
 	}
 	const existing = elements.get(item.id);
+	if (!existing && index !== -1 && backfill.includes(item.id)) {
+		// Not shown yet: it is added, as it is now, with the other older items.
+		return false;
+	}
 	const reply = item.kind === 'agent' && live && state.busy ? streamingReplies.get(item.id) : undefined;
 	if (reply && item.kind === 'agent' && existing === reply.node && updateStreamingReply(reply, item.text)) {
 		return false;
@@ -192,13 +197,29 @@ function finishStreamingReplies(): void {
 	}
 }
 
+/** How many of the newest items a reset shows at once; older ones follow in idle time. */
+const firstItems = 30;
+/** How many older items each idle slice adds. */
+const backfillChunk = 20;
+/** Older items a reset has not shown yet, oldest first; their elements are added above the rest. */
+let backfill: string[] = [];
+let backfillHandle: number | undefined;
+
+/**
+ * Shows `newItems` in place of the transcript. A long chat shows its newest
+ * items at once and adds the older ones above them in idle time, newest
+ * first, so it opens as fast as a short one; Markdown is the slow part.
+ */
 export function reset(newItems: readonly TranscriptItem[]): void {
 	streamingReplies.clear();
 	transcript.replaceChildren();
 	elements.clear();
-	state.items = [];
-	// No layout reads while adding, so the whole transcript is laid out once.
-	for (const item of newItems) {
+	cancelBackfill();
+	const split = Math.max(0, newItems.length - firstItems);
+	state.items = newItems.slice(0, split);
+	backfill = state.items.map(item => item.id);
+	// No layout reads while adding, so the shown part is laid out once.
+	for (const item of newItems.slice(split)) {
 		applyItem(item, false);
 	}
 	settleScroll(true);
@@ -206,6 +227,47 @@ export function reset(newItems: readonly TranscriptItem[]): void {
 		transcript.append(renderEmpty());
 		expanded.clear();
 		thoughtTimes.clear();
+	}
+	if (backfill.length) {
+		backfillHandle = requestIdleCallback(addOlder, { timeout: 500 });
+	}
+}
+
+function cancelBackfill(): void {
+	if (backfillHandle !== undefined) {
+		cancelIdleCallback(backfillHandle);
+		backfillHandle = undefined;
+	}
+	backfill = [];
+}
+
+/** Adds the next slice of older items above the ones shown, keeping a view at the bottom there. */
+function addOlder(deadline: IdleDeadline): void {
+	backfillHandle = undefined;
+	const stick = isNearBottom();
+	while (backfill.length && (deadline.timeRemaining() > 4 || deadline.didTimeout)) {
+		const ids = backfill.splice(-backfillChunk);
+		const nodes = ids.flatMap(id => {
+			const item = state.items[indexOfItem(state.items, id)];
+			if (!item) {
+				return [];
+			}
+			const node = renderItem(item);
+			elements.set(id, node);
+			return [node];
+		});
+		transcript.prepend(...nodes);
+		if (deadline.didTimeout) {
+			break;
+		}
+	}
+	if (stick) {
+		scrollToBottom();
+	}
+	if (backfill.length) {
+		backfillHandle = requestIdleCallback(addOlder, { timeout: 500 });
+	} else {
+		updateOutline();
 	}
 }
 

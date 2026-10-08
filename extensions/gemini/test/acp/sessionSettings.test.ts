@@ -6,7 +6,7 @@
 import type * as acp from '@agentclientprotocol/sdk';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AgentClient, AgentClientState } from '../../src/acp/agentClient';
-import { readSessionSettings, SessionSettings } from '../../src/acp/sessionSettings';
+import { defaultModel, readSessionSettings, SessionSettings } from '../../src/acp/sessionSettings';
 import { AgentRuntime } from '../../src/acp/agentRuntime';
 import { AgentSidecar } from '../../src/acp/sidecar';
 import type { ChatEvent } from '../../src/acp/sessionUpdates';
@@ -156,5 +156,18 @@ describe('AgentClient session settings', () => {
 		await client.newSession();
 		expect(await ready).toMatchObject({ kind: 'ready', sessionId: 'fake-session-2' });
 		expect(client.settings.mode?.currentId).toBe('default');
+	});
+});
+
+describe('defaultModel', () => {
+	const choice = (id: string) => ({ id, name: id });
+
+	it('picks the first Flash model, not Flash-Lite', () => {
+		expect(defaultModel(['auto-gemini-3', 'gemini-3-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-flash-lite', 'gemini-2.5-flash'].map(choice))).toBe('gemini-3-flash-preview');
+		expect(defaultModel(['auto', 'gemini-2.5-pro', 'gemini-2.5-flash-lite', 'gemini-2.5-flash'].map(choice))).toBe('gemini-2.5-flash');
+	});
+
+	it('picks nothing when there is no Flash model', () => {
+		expect(defaultModel(['auto', 'gemini-2.5-pro'].map(choice))).toBeUndefined();
 	});
 });

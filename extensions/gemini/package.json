@@ -754,6 +754,12 @@
           "scope": "machine",
           "markdownDescription": "%configuration.browser.allowOtherSites%"
         },
+        "gemini.agent.startEarly": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "markdownDescription": "%configuration.agent.startEarly%"
+        },
         "gemini.keepAwake": {
           "type": "boolean",
           "default": true,
