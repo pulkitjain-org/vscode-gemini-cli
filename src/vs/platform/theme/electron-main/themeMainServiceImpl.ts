@@ -14,7 +14,7 @@ import { IColorScheme } from '../../window/common/window.js';
 import { ThemeTypeSelector } from '../common/theme.js';
 import { ISingleFolderWorkspaceIdentifier, IWorkspaceIdentifier } from '../../workspace/common/workspace.js';
 import { coalesce } from '../../../base/common/arrays.js';
-import { getAllWindowsExcludingOffscreen, isGeminiGlassTheme } from '../../windows/electron-main/windows.js';
+import { getAllWindowsExcludingOffscreen } from '../../windows/electron-main/windows.js';
 import { ILogService, LogLevel } from '../../log/common/log.js';
 import { IThemeMainService } from './themeMainService.js';
 
@@ -329,15 +329,6 @@ export class ThemeMainService extends Disposable implements IThemeMainService {
 	private updateBackgroundColor(windowId: number, splash: IPartsSplash): void {
 		for (const window of getAllWindowsExcludingOffscreen()) {
 			if (window.id === windowId) {
-				// GEMINI-FORK: a Glass theme keeps the window see-through over the desktop (windows.ts); other themes paint it.
-				if (isMacintosh) {
-					const glass = isGeminiGlassTheme(this.configurationService, this.getColorScheme());
-					window.setVibrancy(glass ? 'sidebar' : null);
-					if (glass) {
-						window.setBackgroundColor('#00000000');
-						break;
-					}
-				}
 				window.setBackgroundColor(splash.colorInfo.background);
 				break;
 			}

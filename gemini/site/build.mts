@@ -333,7 +333,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 			<div>
 				<p class="eyebrow">Glass Light and Glass Dark</p>
 				<h2 class="h2">A calmer window that stays out of the way.</h2>
-				<p class="lede">The new default themes take after macOS Liquid Glass. On a Mac your desktop shows softly through the side bars, the chat scrolls on under a glass composer, and tabs and the Agents | Editor switch sit in the title bar. Each agent's row shows a status dot and a short note, such as how long it has worked or that it's waiting for you.</p>
+				<p class="lede">The new default themes take after macOS Liquid Glass. The side bars are glass over an aurora wallpaper, the chat scrolls on under a glass composer, and tabs and the Agents | Editor switch sit in the title bar. Each agent's row shows a status dot and a short note, such as how long it has worked or that it's waiting for you.</p>
 			</div>
 			${figure('agents.webp', 'Glass Dark: the agent list, a chat with a test run and the Changes panel', 'frame')}
 		</article>

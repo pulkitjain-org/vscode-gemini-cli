@@ -45,7 +45,7 @@ An agent on its own branch can get a ready folder: set **Gemini › Agents: Work
 
 Run **Make It Yours** from the Command Palette, or open the step of the same name in Get Started, to pick:
 
-- a theme: Glass Dark and Glass Light (the defaults: see-through side bars over an aurora wallpaper, with the Gemini gradient round the chat input; on macOS your own desktop shows blurred through the side bars, and the Command Palette, menus and hovers are frosted), Dark, Midnight (true black), Dusk (warm greys) or Light;
+- a theme: Glass Dark and Glass Light (the defaults: see-through side bars over an aurora wallpaper, with the Gemini gradient round the chat input, and the Command Palette, menus and hovers are frosted), Dark, Midnight (true black), Dusk (warm greys) or Light;
 - an accent colour for selection, focus, links and the chat's Send button: the theme's own, Blue, Violet, Rose, Teal, Amber or the Gemini gradient. It applies to the GeminiCode themes only, through `workbench.colorCustomizations`, and is kept in `gemini.appearance.accent`;
 - a code font: JetBrains Mono (the default) and Geist Mono ship with GeminiCode; SF Mono and Menlo come with macOS;
 - file icons: GeminiCode's own, Seti, or none;
