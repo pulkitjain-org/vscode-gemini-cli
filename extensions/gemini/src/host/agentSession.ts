@@ -3,7 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
 import { isModeAllowed } from '../acp/adminPolicy';
 import { AgentClient } from '../acp/agentClient';
@@ -29,12 +28,10 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 	private readonly onDidChangeStatusEmitter = new vscode.EventEmitter<AgentStatus>();
 	readonly onDidChangeStatus = this.onDidChangeStatusEmitter.event;
 
-	/** `mcpServers` are the servers GeminiCode serves this agent, such as its browser. */
-	constructor(private readonly service: AgentService, readonly folder: string, resumeSessionId?: string, mcpServers?: () => readonly acp.McpServer[]) {
+	constructor(private readonly service: AgentService, readonly folder: string, resumeSessionId?: string) {
 		this.client = new AgentClient(service.runtime, {
 			cwd: folder,
 			resumeSessionId,
-			mcpServers,
 			preferredModel,
 			isModeAllowed: modeId => isModeAllowed(getApprovalPolicy(), modeId),
 			requestPermission: params => this.permissions.request(params),

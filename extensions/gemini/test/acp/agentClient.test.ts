@@ -7,7 +7,7 @@ import type * as acp from '@agentclientprotocol/sdk';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { AgentClient, AgentClientState, supportedMcpServers } from '../../src/acp/agentClient';
+import { AgentClient, AgentClientState } from '../../src/acp/agentClient';
 import { AgentRuntime, FileSystemHandlers } from '../../src/acp/agentRuntime';
 import { ClientFileSystem, createFileHandlers } from '../../src/acp/fileAccess';
 import { AgentSidecar } from '../../src/acp/sidecar';
@@ -174,17 +174,5 @@ describe('AgentClient', () => {
 			expect(secret).toMatch(/^error:.*denied/);
 			expect(missing).toBe('read:');
 		});
-	});
-
-	it('offers only MCP servers over transports the agent advertises', () => {
-		const http: acp.McpServer = { type: 'http', name: 'browser', url: 'http://127.0.0.1:1/mcp/a1', headers: [] };
-		const stdio: acp.McpServer = { name: 'tool', command: 'tool', args: [], env: [] };
-		const agent = (mcpCapabilities?: acp.McpCapabilities): acp.InitializeResponse => ({ protocolVersion: 1, agentCapabilities: { mcpCapabilities } });
-		expect([
-			supportedMcpServers(agent({ http: true }), [http, stdio]),
-			supportedMcpServers(agent({ http: false, sse: true }), [http, stdio]),
-			supportedMcpServers(agent(), [http, stdio]),
-			supportedMcpServers(undefined, [http]),
-		]).toEqual([[http, stdio], [stdio], [stdio], []]);
 	});
 });

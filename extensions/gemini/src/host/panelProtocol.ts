@@ -5,7 +5,7 @@
 
 // Messages between the extension and its page webviews: Agents mode's Changes
 // panel (webview-src/changes.ts) and Agent Home (webview-src/home.ts), and the
-// Project Helpers page (webview-src/settings.ts).
+// MCP Servers and Rules page (webview-src/settings.ts).
 
 import type { ChangeTotals } from '../acp/agentChanges';
 
@@ -148,7 +148,7 @@ export type FromHome =
 	| { readonly type: 'addWorkspace' }
 	| { readonly type: 'open' | 'stop' | 'review' | 'mergeBack'; readonly id: string };
 
-// --- Project Helpers
+// --- MCP Servers and Rules
 
 export interface McpServerView {
 	readonly name: string;
@@ -172,53 +172,8 @@ export interface RulesFileView {
 	readonly preview?: string;
 }
 
-export interface SkillView {
-	readonly name: string;
-	readonly description: string;
-	/** "Personal", or the project folder's name. */
-	readonly scope: string;
-	readonly file: string;
-}
-
-export interface HookView {
-	readonly event: string;
-	readonly matcher?: string;
-	readonly command: string;
-	/** What `hooksConfig.disabled` lists. */
-	readonly name: string;
-	readonly enabled: boolean;
-	readonly scope: string;
-	readonly file: string;
-}
-
-export interface ExtensionView {
-	readonly name: string;
-	readonly version: string;
-	readonly active: boolean;
-	readonly source?: string;
-	/** "2 MCP servers · 3 skills", already localised; empty when it adds nothing. */
-	readonly detail: string;
-}
-
-export interface MemoryFileView {
-	readonly path: string;
-	/** Shown as `~/...`. */
-	readonly display: string;
-	readonly preview?: string;
-}
-
-/** What the running Gemini CLI reports; `loading` until it answers, `unavailable` when it cannot. */
-export type CliReport<T> =
-	| { readonly state: 'loading' }
-	| { readonly state: 'unavailable'; readonly message: string }
-	| { readonly state: 'ready'; readonly items: readonly T[] };
-
 export interface SettingsPageView {
 	readonly servers: readonly McpServerView[];
-	readonly skills: readonly SkillView[];
-	readonly hooks: readonly HookView[];
-	readonly extensions: CliReport<ExtensionView>;
-	readonly memory: CliReport<MemoryFileView>;
 	readonly rules: readonly RulesFileView[];
 }
 
@@ -233,30 +188,6 @@ export interface SettingsPageStrings {
 	readonly edit: string;
 	readonly enable: string;
 	readonly failed: string;
-	readonly skills: string;
-	readonly skillsHint: string;
-	readonly newSkill: string;
-	readonly noSkills: string;
-	readonly hooks: string;
-	readonly hooksHint: string;
-	readonly addHook: string;
-	readonly noHooks: string;
-	/** `{0}` is the tool names a hook applies to. */
-	readonly hookMatcher: string;
-	readonly enableHook: string;
-	readonly extensions: string;
-	readonly extensionsHint: string;
-	readonly installExtension: string;
-	readonly noExtensions: string;
-	readonly enableExtension: string;
-	readonly updateExtension: string;
-	readonly uninstallExtension: string;
-	readonly memory: string;
-	readonly memoryHint: string;
-	readonly addMemory: string;
-	readonly refresh: string;
-	readonly noMemory: string;
-	readonly loading: string;
 	readonly rules: string;
 	readonly rulesHint: string;
 	readonly open: string;
@@ -267,9 +198,7 @@ export interface SettingsPageStrings {
 export type ToSettingsPage = { readonly type: 'view'; readonly view: SettingsPageView };
 
 export type FromSettingsPage =
-	| { readonly type: 'ready' | 'restart' | 'addServer' | 'newSkill' | 'addHook' | 'installExtension' | 'addMemory' | 'refreshMemory' }
+	| { readonly type: 'ready' | 'restart' | 'addServer' }
 	| { readonly type: 'toggle'; readonly name: string; readonly enabled: boolean }
-	| { readonly type: 'toggleHook'; readonly file: string; readonly name: string; readonly enabled: boolean }
-	| { readonly type: 'extension'; readonly action: 'enable' | 'disable' | 'update' | 'uninstall'; readonly name: string }
-	| { readonly type: 'openFile'; readonly path: string; readonly server?: string; readonly needle?: string }
+	| { readonly type: 'openFile'; readonly path: string; readonly server?: string }
 	| { readonly type: 'createRules'; readonly path: string };

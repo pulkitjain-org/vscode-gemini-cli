@@ -60,8 +60,6 @@ export interface FakeAgentScript {
 	readonly supportsSetModel?: boolean;
 	/** Also announce a mode change as message text ("[MODE_UPDATE] plan"), as gemini-cli 0.62 does. */
 	readonly modeUpdateText?: boolean;
-	/** Sent as `available_commands_update` right after each `session/new`, as gemini-cli does. */
-	readonly availableCommands?: readonly acp.AvailableCommand[];
 	/** Steps played for each successive `session/prompt`, one array per turn. */
 	readonly turns?: readonly (readonly ScriptedStep[])[];
 }
@@ -118,10 +116,6 @@ acp.agent({ name: 'fake-agent' })
 		}
 		const response = answer<acp.NewSessionResponse>({ sessionId: `fake-session-${++sessionCount}` }, script.newSession);
 		sessionCwds.set(response.sessionId, ctx.params.cwd);
-		if (script.availableCommands) {
-			const availableCommands = [...script.availableCommands];
-			setTimeout(() => void ctx.client.notify('session/update', { sessionId: response.sessionId, update: { sessionUpdate: 'available_commands_update', availableCommands } }), 0);
-		}
 		return response;
 	})
 	.onRequest('session/load', async ctx => {

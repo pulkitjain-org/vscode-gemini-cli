@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { branchExists, commitAll, createWorktree, currentBranch, folderInRepository, freeFolder, git, mergeBranch, removeWorktree, repositoryRoot, runWorktreeSetup, worktreeSetupCommand, worktreesHome, worktreeStatus } from '../../src/acp/worktrees';
+import { branchExists, commitAll, createWorktree, currentBranch, folderInRepository, freeFolder, git, mergeBranch, removeWorktree, repositoryRoot, worktreesHome, worktreeStatus } from '../../src/acp/worktrees';
 
 let root: string;
 let repo: string;
@@ -92,26 +92,5 @@ describe('worktrees', () => {
 		await removeWorktree(repo, second, true);
 		expect(await branchExists(repo, 'gemini/second')).toBe(false);
 		expect(await git(repo, ['worktree', 'list'])).not.toContain('second');
-	});
-});
-
-describe('worktree setup', () => {
-	it('uses the setting, else the repository\'s own script, else nothing', async () => {
-		expect(await worktreeSetupCommand(repo, '  npm ci  ')).toBe('npm ci');
-		expect(await worktreeSetupCommand(repo, '')).toBeUndefined();
-		await fs.mkdir(path.join(repo, '.gemini'));
-		await fs.writeFile(path.join(repo, '.gemini', 'worktree-setup.sh'), 'echo hi\n');
-		expect(await worktreeSetupCommand(repo, undefined)).toBe(`sh '${path.join(repo, '.gemini', 'worktree-setup.sh')}'`);
-	});
-
-	it('runs in the new folder, knows where it came from, and reports the exit code', async () => {
-		await fs.writeFile(path.join(repo, '.env'), 'KEY=1\n');
-		const worktree = await createWorktree(repo, 'gemini/setup', '', home);
-		let output = '';
-		const code = await runWorktreeSetup('cp "$GEMINI_SOURCE_REPOSITORY/.env" . && echo copied on $GEMINI_BRANCH', worktree, repo, text => output += text);
-		expect(code).toBe(0);
-		expect(output.trim()).toBe('copied on gemini/setup');
-		expect(await fs.readFile(path.join(worktree.folder, '.env'), 'utf8')).toBe('KEY=1\n');
-		expect(await runWorktreeSetup('exit 3', worktree, repo, () => undefined)).toBe(3);
 	});
 });

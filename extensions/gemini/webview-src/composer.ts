@@ -14,7 +14,7 @@ import { button, el, icon, setLabel } from './dom';
 import { autoGrow, updateSendState } from './inputBox';
 import { onEnhanceKey } from './enhance';
 import { continueList, formatShortcut, toggleWrap, type TextEdit } from './markdownEdit';
-import { closePreview, isPreviewShortcut, togglePreview, updatePreview } from './markdownPreview';
+import { isPreviewShortcut, togglePreview, updatePreview } from './markdownPreview';
 import { closePicker, onPickerKey, updatePicker } from './picker';
 import { setTranscriptBusy } from './transcript';
 import { state, strings, ui, vscode } from './view';
@@ -25,7 +25,6 @@ const mac = /Mac/.test(navigator.platform);
 export function setBusy(value: boolean): void {
 	ui.stopButton.hidden = !value;
 	ui.sendButton.hidden = value;
-	form.classList.toggle('busy', value);
 	if (!value && document.activeElement === ui.stopButton) {
 		input.focus();
 	}
@@ -111,13 +110,6 @@ export function setGit(git: ViewGit): void {
 	commitButton.setAttribute('aria-label', strings.createBranchAndCommit);
 }
 
-/** The eye toggle: lit while the chat opens each file the agent reads or edits. */
-export function setFollow(on: boolean): void {
-	ui.followButton.classList.toggle('active', on);
-	ui.followButton.setAttribute('aria-pressed', String(on));
-	ui.followButton.title = on ? strings.followAgentOn : strings.followAgent;
-}
-
 /** Prompts sent from this view, newest last, for Up and Down in an empty input. */
 const sent: string[] = [];
 let recalled = -1;
@@ -195,7 +187,7 @@ function submit(): void {
 	input.value = '';
 	autoGrow();
 	updateSendState();
-	closePreview();
+	updatePreview();
 }
 
 form.addEventListener('submit', event => {
@@ -256,7 +248,6 @@ input.addEventListener('blur', () => setTimeout(() => {
 }, 0));
 ui.stopButton.addEventListener('click', () => vscode.postMessage({ type: 'stop' }));
 branchButton.addEventListener('click', () => vscode.postMessage({ type: 'pickBranch' }));
-ui.followButton.addEventListener('click', () => vscode.postMessage({ type: 'setFollow', on: ui.followButton.getAttribute('aria-pressed') !== 'true' }));
 ui.workspaceButton.addEventListener('click', () => vscode.postMessage({ type: 'workspaceMenu' }));
 commitButton.addEventListener('click', () => vscode.postMessage({ type: 'createBranchAndCommit' }));
 modeSelect.addEventListener('change', () => {

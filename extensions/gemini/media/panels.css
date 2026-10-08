@@ -639,18 +639,6 @@ select.pill option {
 	margin-top: 32px;
 }
 
-.section-actions {
-	display: flex;
-	flex: none;
-	align-items: center;
-	gap: 6px;
-}
-
-.settings .empty.row-problem {
-	margin: 0;
-	color: var(--vscode-editorWarning-foreground, var(--gemini-muted));
-}
-
 .settings .rows {
 	margin-top: 12px;
 	border: 1px solid var(--gemini-border);

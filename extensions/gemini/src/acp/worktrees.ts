@@ -9,7 +9,7 @@
 // repository, so the open workspace's search, file watchers and language
 // servers don't see every file twice.
 
-import { execFile, spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -164,53 +164,4 @@ export async function removeWorktree(repository: string, worktree: AgentWorktree
 	if (deleteBranch && await branchExists(repository, worktree.branch)) {
 		await git(repository, ['branch', '-D', worktree.branch]);
 	}
-}
-
-/** The script a repository keeps for setting up a new agent worktree, relative to its top folder. */
-export const setupScriptFile = path.join('.gemini', 'worktree-setup.sh');
-
-/**
- * The setup to run in a new worktree: the `gemini.agents.worktreeSetup` command when set, else
- * the repository's own `.gemini/worktree-setup.sh` when it has one. Undefined when neither.
- */
-export async function worktreeSetupCommand(repository: string, configured: string | undefined): Promise<string | undefined> {
-	if (configured?.trim()) {
-		return configured.trim();
-	}
-	const script = path.join(repository, setupScriptFile);
-	try {
-		await fs.access(script);
-		// From the repository, so a script not yet committed (and so not in the worktree) still runs.
-		return `sh ${shellQuote(script)}`;
-	} catch {
-		return undefined;
-	}
-}
-
-function shellQuote(value: string): string {
-	return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-/**
- * Runs `command` through the shell in the new worktree's top folder, with
- * GEMINI_SOURCE_REPOSITORY naming the repository it came from (to copy files
- * such as .env that Git does not carry). Resolves with the exit code; the
- * output goes to `onOutput` as it comes. `signal` stops it.
- */
-export function runWorktreeSetup(command: string, worktree: AgentWorktree, repository: string, onOutput: (text: string) => void, signal?: AbortSignal): Promise<number> {
-	return new Promise(resolve => {
-		const child = spawn(command, {
-			cwd: worktree.folder,
-			shell: process.env.SHELL || true,
-			env: { ...process.env, GEMINI_SOURCE_REPOSITORY: repository, GEMINI_WORKTREE: worktree.folder, GEMINI_BRANCH: worktree.branch },
-			signal,
-		});
-		child.stdout.on('data', data => onOutput(String(data)));
-		child.stderr.on('data', data => onOutput(String(data)));
-		child.on('error', err => {
-			onOutput(`${err.message}\n`);
-			resolve(-1);
-		});
-		child.on('close', code => resolve(code ?? -1));
-	});
 }

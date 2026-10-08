@@ -31,26 +31,6 @@
         "category": "%category%"
       },
       {
-        "command": "gemini.toggleFollowAgent",
-        "title": "%command.toggleFollowAgent%",
-        "category": "%category%"
-      },
-      {
-        "command": "gemini.openChatAsMarkdown",
-        "title": "%command.openChatAsMarkdown%",
-        "category": "%category%"
-      },
-      {
-        "command": "gemini.agents.openAsMarkdown",
-        "title": "%command.openChatAsMarkdown%",
-        "category": "%category%"
-      },
-      {
-        "command": "gemini.newSkill",
-        "title": "%command.newSkill%",
-        "category": "%category%"
-      },
-      {
         "command": "gemini.openChat",
         "title": "%command.openChat%",
         "category": "%category%"
@@ -384,13 +364,7 @@
       {
         "command": "gemini.agents.rename",
         "key": "f2",
-        "mac": "enter",
-        "when": "focusedView == gemini.agents && !inputFocus"
-      },
-      {
-        "command": "gemini.agents.open",
-        "key": "cmd+down",
-        "when": "isMac && focusedView == gemini.agents && !inputFocus"
+        "when": "focusedView == gemini.agents"
       },
       {
         "command": "gemini.agents.remove",
@@ -528,11 +502,6 @@
           "group": "agent@2"
         },
         {
-          "command": "gemini.openChatAsMarkdown",
-          "when": "view == gemini.chat",
-          "group": "chat@1"
-        },
-        {
           "command": "gemini.agents.newAgent",
           "when": "view == gemini.agents",
           "group": "navigation@1"
@@ -630,11 +599,6 @@
           "group": "1_agent@4"
         },
         {
-          "command": "gemini.agents.openAsMarkdown",
-          "when": "view == gemini.agents && viewItem =~ /^agent/",
-          "group": "1_agent@5"
-        },
-        {
           "command": "gemini.agents.remove",
           "when": "view == gemini.agents && viewItem =~ /^agent/",
           "group": "2_remove@1"
@@ -675,10 +639,6 @@
         },
         {
           "command": "gemini.agents.mergeBack",
-          "when": "false"
-        },
-        {
-          "command": "gemini.agents.openAsMarkdown",
           "when": "false"
         },
         {
@@ -723,36 +683,6 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "%configuration.agents.ownBranch%"
-        },
-        "gemini.agents.worktreeSetup": {
-          "type": "string",
-          "default": "",
-          "scope": "resource",
-          "markdownDescription": "%configuration.agents.worktreeSetup%"
-        },
-        "gemini.chat.followAgent": {
-          "type": "boolean",
-          "default": false,
-          "scope": "machine",
-          "markdownDescription": "%configuration.chat.followAgent%"
-        },
-        "gemini.browser.enabled": {
-          "type": "boolean",
-          "default": true,
-          "scope": "machine",
-          "markdownDescription": "%configuration.browser.enabled%"
-        },
-        "gemini.browser.allowOtherSites": {
-          "type": "boolean",
-          "default": true,
-          "scope": "machine",
-          "markdownDescription": "%configuration.browser.allowOtherSites%"
-        },
-        "gemini.keepAwake": {
-          "type": "boolean",
-          "default": true,
-          "scope": "machine",
-          "markdownDescription": "%configuration.keepAwake%"
         },
         "gemini.inlineEdit.enabled": {
           "type": "boolean",
@@ -828,8 +758,6 @@
     },
     "configurationDefaults": {
       "chat.disableAIFeatures": true,
-      "workbench.browser.openLocalhostLinks": true,
-      "workbench.browser.showInTitleBar": true,
       "workbench.activityBar.location": "top",
       "workbench.secondarySideBar.defaultVisibility": "hidden",
       "workbench.experimental.modernUIEditorTabStyle": "pill",
@@ -845,18 +773,6 @@
       "workbench.iconTheme": "geminicode-icons"
     },
     "themes": [
-      {
-        "id": "GeminiCode Glass Dark",
-        "label": "%theme.glassDark%",
-        "uiTheme": "vs-dark",
-        "path": "./themes/geminicode-glass-dark.json"
-      },
-      {
-        "id": "GeminiCode Glass Light",
-        "label": "%theme.glassLight%",
-        "uiTheme": "vs",
-        "path": "./themes/geminicode-glass-light.json"
-      },
       {
         "id": "GeminiCode Dark",
         "label": "%theme.dark%",

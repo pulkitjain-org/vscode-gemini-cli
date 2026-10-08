@@ -72,13 +72,13 @@ export class AgentConnection {
 		return response;
 	}
 
-	newSession(cwd: string, mcpServers: readonly acp.McpServer[] = []): Promise<acp.NewSessionResponse> {
-		return this.connection.agent.request('session/new', { cwd, mcpServers: [...mcpServers] });
+	newSession(cwd: string): Promise<acp.NewSessionResponse> {
+		return this.connection.agent.request('session/new', { cwd, mcpServers: [] });
 	}
 
 	/** Reopens a session the agent stored; the agent replays its history as `session/update` notifications. */
-	loadSession(sessionId: string, cwd: string, mcpServers: readonly acp.McpServer[] = []): Promise<acp.LoadSessionResponse> {
-		return this.connection.agent.request('session/load', { sessionId, cwd, mcpServers: [...mcpServers] });
+	loadSession(sessionId: string, cwd: string): Promise<acp.LoadSessionResponse> {
+		return this.connection.agent.request('session/load', { sessionId, cwd, mcpServers: [] });
 	}
 
 	authenticate(methodId: string): Promise<acp.AuthenticateResponse> {

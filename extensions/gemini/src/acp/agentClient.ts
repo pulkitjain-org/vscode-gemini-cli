@@ -52,12 +52,6 @@ export interface AgentClientOptions {
 	readonly isModeAllowed?: (modeId: string) => boolean;
 	/** Finds a saved session's number and first prompt; the CLI's own files when unset. */
 	readonly findSavedSession?: (cwd: string, id: string) => Promise<{ readonly index: number; readonly firstPrompt: string } | undefined>;
-	/**
-	 * MCP servers GeminiCode itself serves to this session, such as the
-	 * browser; asked each time a session opens. Servers over a transport the
-	 * agent does not advertise (`mcpCapabilities`) are left out.
-	 */
-	readonly mcpServers?: () => readonly acp.McpServer[];
 }
 
 /**
@@ -251,20 +245,14 @@ export class AgentClient {
 			try {
 				// By its number where the CLI lists it: gemini-cli 0.62 loses a saved session loaded by its id (see cliSessions.ts).
 				const saved = await (this.options.findSavedSession ?? findCliSession)(this.options.cwd, resumeSessionId).catch(() => undefined);
-				const loaded = await this.runtime.loadSession(this.options.cwd, saved ? String(saved.index) : resumeSessionId, saved?.firstPrompt, this.mcpServers());
+				const loaded = await this.runtime.loadSession(this.options.cwd, saved ? String(saved.index) : resumeSessionId, saved?.firstPrompt);
 				return { ...loaded, savedSessionId: resumeSessionId };
 			} catch {
 				// Not supported, or the agent no longer has it: start afresh.
 			}
 		}
-		const created = await this.runtime.newSession(this.options.cwd, this.mcpServers());
+		const created = await this.runtime.newSession(this.options.cwd);
 		return { ...created, savedSessionId: created.session.sessionId };
-	}
-
-	/** The servers for a session the runtime opens now, as far as the agent can take them. */
-	private mcpServers(): acp.McpServer[] {
-		const state = this.runtime.state;
-		return supportedMcpServers(state.kind === 'ready' ? state.agent : undefined, this.options.mcpServers?.() ?? []);
 	}
 
 	/** Whether the runtime is still ready after `ms`, or as soon as it changes state. */
@@ -387,14 +375,4 @@ export class AgentClient {
 		this._state = state;
 		this.onDidChangeStateEmitter.fire(state);
 	}
-}
-
-/** `servers` without those over a transport the agent does not advertise (ACP `mcpCapabilities`); every agent takes stdio. */
-export function supportedMcpServers(agent: acp.InitializeResponse | undefined, servers: readonly acp.McpServer[]): acp.McpServer[] {
-	const transports = agent?.agentCapabilities?.mcpCapabilities;
-	return servers.filter(server => {
-		// Only stdio servers come without a `type`.
-		const type = (server as { readonly type?: 'http' | 'sse' | 'acp' }).type;
-		return type === undefined || transports?.[type] === true;
-	});
 }

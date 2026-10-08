@@ -18,7 +18,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 15;
+export const chatProtocolVersion = 13;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -48,16 +48,7 @@ export interface ChatStrings {
 	readonly hintCommands: string;
 	/** The button that jumps back to the latest message. */
 	readonly scrollToBottom: string;
-	/** The jump-to-latest button's label, where it shows one (the Glass themes). */
-	readonly latest: string;
 	readonly thinking: string;
-	/** The working strip above the composer: what the agent is doing while a turn runs. */
-	readonly activityWorking: string;
-	readonly activityWaiting: string;
-	readonly activityWriting: string;
-	/** `{0}` is a clock such as "1:12". */
-	readonly activityDone: string;
-	readonly activityStopHint: string;
 	/** `{0}` is a number of seconds. */
 	readonly thoughtFor: string;
 	/** A thought whose duration is not known (the view reloaded). */
@@ -77,7 +68,6 @@ export interface ChatStrings {
 	/** Labels for a command from the agent and one from .gemini/commands. */
 	readonly commandFromCli: string;
 	readonly commandFromTeam: string;
-	readonly commandFromSkill: string;
 	readonly remove: string;
 	/** `{0}` is the file's name. */
 	readonly fileTooLarge: string;
@@ -115,17 +105,10 @@ export interface ChatStrings {
 	/** The floating button's own label, short as it follows the text. */
 	readonly enhanceShort: string;
 	readonly enhanceTooltip: string;
-	/** The Preview tab's tooltip; `{0}` is its shortcut. */
+	/** The composer's preview toggle; `{0}` is its shortcut. */
 	readonly previewMarkdown: string;
-	/** The composer's tabs: the draft, and the draft as it will look once sent. */
+	/** The heading on the preview, so it never reads as the draft itself. */
 	readonly previewLabel: string;
-	readonly writeLabel: string;
-	/** The eye toggle in the composer bar, while off and while on. */
-	readonly followAgent: string;
-	readonly followAgentOn: string;
-	/** The outline of the user's prompts, with its keys. */
-	readonly promptOutline: string;
-	readonly previewEmpty: string;
 	readonly enhancing: string;
 	readonly enhanced: string;
 	/** Shown when a rewrite takes a while. */
@@ -205,8 +188,6 @@ export type FromWebview =
 	| { readonly type: 'attachUris'; readonly uris: readonly string[] }
 	/** The user dragged the input to `height` pixels, or reset it (0). */
 	| { readonly type: 'composerHeight'; readonly height: number }
-	/** The eye toggle: open each file the agent reads or edits. */
-	| { readonly type: 'setFollow'; readonly on: boolean }
 	| { readonly type: 'createBranchAndCommit' }
 	/** Put back the files the turn ending with turnEnd item `itemId` changed, and those of later turns. */
 	| { readonly type: 'undoTurn'; readonly itemId: string }
@@ -229,8 +210,6 @@ export type ToWebview =
 	| { readonly type: 'capabilities'; readonly image: boolean }
 	/** The input height the user dragged to last, in any chat; 0 for its natural height. */
 	| { readonly type: 'composerHeight'; readonly height: number }
-	/** Whether this chat follows the agent. */
-	| { readonly type: 'follow'; readonly on: boolean }
 	| { readonly type: 'files'; readonly requestId: number; readonly files: readonly { readonly path: string; readonly relative: string }[] }
 	/** Every slash command this chat offers: the agent's, then the team's. */
 	| { readonly type: 'commands'; readonly commands: readonly SlashCommand[] }

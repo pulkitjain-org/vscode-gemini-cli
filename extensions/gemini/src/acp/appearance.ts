@@ -6,7 +6,7 @@
 // The choices on the Make It Yours page, and how an accent becomes colour
 // customizations. No editor API here, so it can be tested.
 
-export const themeIds = ['GeminiCode Glass Dark', 'GeminiCode Glass Light', 'GeminiCode Dark', 'GeminiCode Midnight', 'GeminiCode Dusk', 'GeminiCode Light'] as const;
+export const themeIds = ['GeminiCode Dark', 'GeminiCode Midnight', 'GeminiCode Dusk', 'GeminiCode Light'] as const;
 
 export const accentIds = ['theme', 'blue', 'violet', 'rose', 'teal', 'amber', 'gradient'] as const;
 export type AccentId = typeof accentIds[number];

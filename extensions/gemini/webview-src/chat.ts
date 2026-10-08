@@ -17,26 +17,23 @@
 
 import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
 import { addAttachments } from './attachmentChips';
-import { setBusy, setFollow, setGit, setSettings, setStatus } from './composer';
+import { setBusy, setGit, setSettings, setStatus } from './composer';
 import { applyTokenColors } from './codeHighlight';
 import { onEnhanced, onEnhanceFailed, restyleEnhanceButton, toggleEnhance } from './enhance';
 import { applyFontSize, setLabel } from './dom';
 import { restoreComposerHeight, updatePlaceholder, updateSendState } from './inputBox';
 import { showSavedSessions } from './items';
 import { showCommands, showFiles } from './picker';
-import { updateOutline } from './promptNav';
 import { appended, applyItem, isNearBottom, reset, settleScroll, updateWorking } from './transcript';
 import { state, strings, ui, vscode } from './view';
 
 setLabel(ui.mentionButton, strings.addContext);
 setLabel(ui.attachButton, strings.attachFiles);
-setLabel(ui.followButton, strings.followAgent);
 setLabel(ui.sendButton, strings.send);
 setLabel(ui.stopButton, strings.stop);
 setLabel(ui.modeSelect, strings.mode);
 setLabel(ui.modelSelect, strings.model);
 setLabel(ui.scrollButton, strings.scrollToBottom);
-ui.scrollLabel.textContent = strings.latest;
 ui.dropLabel.textContent = strings.dropFiles;
 applyFontSize(Number(document.body.dataset.fontSize));
 
@@ -46,7 +43,6 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 		case 'reset':
 			state.busy = message.busy;
 			reset(message.items);
-			updateOutline();
 			updatePlaceholder();
 			setBusy(message.busy);
 			setStatus(message.status);
@@ -63,10 +59,6 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			}
 			updateWorking();
 			settleScroll(scroll);
-			// Only a prompt changes the outline; streamed replies, thoughts and tool calls do not.
-			if (message.items.some(update => update.kind === 'user')) {
-				updateOutline();
-			}
 			updatePlaceholder();
 			break;
 		}
@@ -84,9 +76,6 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'composerHeight':
 			restoreComposerHeight(message.height);
-			break;
-		case 'follow':
-			setFollow(message.on);
 			break;
 		case 'accent':
 			document.body.dataset.accent = message.solid ? 'solid' : 'gradient';

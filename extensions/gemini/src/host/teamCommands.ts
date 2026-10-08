@@ -8,30 +8,21 @@
 // without touching the disk.
 
 import * as vscode from 'vscode';
-import * as os from 'node:os';
-import * as path from 'node:path';
-import { loadSkills, Skill, skillFolders } from '../acp/skills';
 import { loadTeamCommands, TeamCommand, teamCommandFolders } from '../acp/slashCommands';
 
 class TeamCommandStore implements vscode.Disposable {
 
 	private readonly cache = new Map<string, Promise<readonly TeamCommand[]>>();
-	private readonly skillCache = new Map<string, Promise<readonly Skill[]>>();
 	private readonly watchers = new Map<string, vscode.Disposable>();
 
-	private readonly trustListener: vscode.Disposable;
-
-	constructor(private readonly log: vscode.LogOutputChannel) {
-		// Project skills are offered only once the folder is trusted.
-		this.trustListener = vscode.workspace.onDidGrantWorkspaceTrust(() => this.skillCache.clear());
-	}
+	constructor(private readonly log: vscode.LogOutputChannel) { }
 
 	/** The team commands for an agent working in `cwd`. */
 	get(cwd: string): Promise<readonly TeamCommand[]> {
 		let commands = this.cache.get(cwd);
 		if (!commands) {
 			const folders = teamCommandFolders(cwd);
-			folders.forEach(folder => this.watch(folder, '**/*.toml'));
+			folders.forEach(folder => this.watch(folder));
 			commands = loadTeamCommands(folders).then(result => {
 				for (const { file, reason } of result.skipped) {
 					this.log.warn(`Team command ${file} not offered: ${reason}`);
@@ -43,37 +34,19 @@ class TeamCommandStore implements vscode.Disposable {
 		return commands;
 	}
 
-	/** The skills an agent working in `cwd` can load: the project's only in a trusted workspace, as the CLI loads them only in trusted folders. */
-	skills(cwd: string): Promise<readonly Skill[]> {
-		let skills = this.skillCache.get(cwd);
-		if (!skills) {
-			const folders = skillFolders(vscode.workspace.isTrusted ? cwd : undefined, path.dirname(geminiHome()));
-			// The loader reads a SKILL.md at the top of the folder as well as one level down.
-			folders.forEach(({ folder }) => this.watch(folder, '{SKILL.md,*/SKILL.md}'));
-			skills = loadSkills(folders).catch(() => []);
-			this.skillCache.set(cwd, skills);
-		}
-		return skills;
-	}
-
 	dispose(): void {
-		this.trustListener.dispose();
 		this.watchers.forEach(watcher => watcher.dispose());
 		this.watchers.clear();
 		this.cache.clear();
-		this.skillCache.clear();
 	}
 
-	private watch(folder: string, pattern: string): void {
+	private watch(folder: string): void {
 		if (this.watchers.has(folder)) {
 			return;
 		}
-		const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(folder), pattern));
+		const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(folder), '**/*.toml'));
 		// A change anywhere is rare; forgetting every folder's list keeps this simple.
-		const forget = () => {
-			this.cache.clear();
-			this.skillCache.clear();
-		};
+		const forget = () => this.cache.clear();
 		this.watchers.set(folder, vscode.Disposable.from(watcher, watcher.onDidCreate(forget), watcher.onDidChange(forget), watcher.onDidDelete(forget)));
 	}
 }
@@ -84,16 +57,6 @@ let store: TeamCommandStore | undefined;
 export function initTeamCommands(log: vscode.LogOutputChannel): vscode.Disposable {
 	store = new TeamCommandStore(log);
 	return store;
-}
-
-/** The skills for `cwd`; none before `initTeamCommands`, as in tests. */
-export function skills(cwd: string): Promise<readonly Skill[]> {
-	return store?.skills(cwd) ?? Promise.resolve([]);
-}
-
-/** ~/.gemini, or $GEMINI_CLI_HOME/.gemini as the CLI reads it. */
-function geminiHome(): string {
-	return path.join(process.env.GEMINI_CLI_HOME || os.homedir(), '.gemini');
 }
 
 /** The team commands for `cwd`; none before `initTeamCommands`, as in tests. */

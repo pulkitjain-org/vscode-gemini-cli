@@ -3,95 +3,57 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The composer's Write and Preview tabs. Preview shows the draft as it will
-// look once sent, in the input's place, so the two never read as one; typing
-// goes back to Write. The draft is rendered only when Preview is shown.
+// Preview Markdown: a panel above the composer's input that shows the draft
+// as it will look once sent. The input stays as it is, so @-mentions, the /
+// menu, paste and IME typing work the same with the preview open. It renders
+// only while open, at most once a frame.
 
 import { format } from './chatLogic';
+import { setLabel } from './dom';
 import { renderUserMarkdown } from './items';
 import { strings, ui } from './view';
 
-const { input, preview, writeTab, previewTab, form } = ui;
-const inputWrap = input.parentElement!;
+const { input, preview, previewBody, previewButton } = ui;
 const mac = /Mac/.test(navigator.platform);
 
 let open = false;
+let frame = 0;
 
-writeTab.textContent = strings.writeLabel;
-previewTab.textContent = strings.previewLabel;
-previewTab.title = format(strings.previewMarkdown, mac ? '⇧⌘V' : 'Ctrl+Shift+V');
-writeTab.addEventListener('click', () => showPreview(false));
-previewTab.addEventListener('click', () => showPreview(true));
-// Arrow keys move between the tabs, as in any tab list.
-for (const tab of [writeTab, previewTab]) {
-	tab.addEventListener('keydown', event => {
-		if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-			event.preventDefault();
-			showPreview(tab === writeTab);
-			(tab === writeTab ? previewTab : writeTab).focus();
-		}
-	});
-}
-for (const target of [preview, writeTab, previewTab]) {
-	target.addEventListener('keydown', event => {
-		if (isPreviewShortcut(event)) {
-			event.preventDefault();
-			togglePreview();
-		} else if (target === preview && event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey) {
-			// Typing in Preview goes back to the draft, keeping the key.
-			showPreview(false);
-		}
-	});
-}
+ui.previewLabel.textContent = strings.previewLabel;
+setLabel(previewButton, format(strings.previewMarkdown, mac ? '⇧⌘V' : 'Ctrl+Shift+V'));
+previewButton.setAttribute('aria-pressed', 'false');
+previewButton.addEventListener('click', () => {
+	togglePreview();
+	input.focus();
+});
+input.addEventListener('input', updatePreview);
 
 export function togglePreview(): void {
-	showPreview(!open);
+	open = !open;
+	previewButton.classList.toggle('active', open);
+	previewButton.setAttribute('aria-pressed', String(open));
+	updatePreview();
 }
 
-/** Back to Write, as after sending. */
-export function closePreview(): void {
-	if (open) {
-		showPreview(false);
-	}
-}
-
-function showPreview(value: boolean): void {
-	if (value) {
-		// The preview takes the input's place at the input's height, so nothing below it jumps.
-		preview.style.minHeight = `${input.offsetHeight}px`;
-	}
-	open = value;
-	form.classList.toggle('previewing', open);
-	writeTab.setAttribute('aria-selected', String(!open));
-	previewTab.setAttribute('aria-selected', String(open));
-	writeTab.tabIndex = open ? -1 : 0;
-	previewTab.tabIndex = open ? 0 : -1;
-	inputWrap.hidden = open;
-	preview.hidden = !open;
-	if (open) {
-		updatePreview();
-	} else {
-		input.focus();
-	}
-}
-
-/** ⇧⌘V (Ctrl+Shift+V on Windows and Linux) switches between Write and Preview, as for Markdown files in the editor. */
+/** ⇧⌘V (Ctrl+Shift+V on Windows and Linux) toggles the preview, as for Markdown files in the editor. */
 export function isPreviewShortcut(event: KeyboardEvent): boolean {
 	return event.code === 'KeyV' && event.shiftKey && !event.altKey && (mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey);
 }
 
-/** Shows the draft as it will look; call after changing the input's text. */
+/** Shows the draft as it will look; call after changing the input's text without an input event. */
 export function updatePreview(): void {
 	if (!open) {
+		preview.hidden = true;
 		return;
 	}
-	const text = input.value;
-	if (text.trim()) {
-		preview.replaceChildren(...renderUserMarkdown(text));
-	} else {
-		const empty = document.createElement('p');
-		empty.className = 'preview-empty';
-		empty.textContent = strings.previewEmpty;
-		preview.replaceChildren(empty);
+	if (!frame) {
+		frame = requestAnimationFrame(() => {
+			frame = 0;
+			const text = input.value;
+			preview.hidden = !open || !text.trim();
+			if (!preview.hidden) {
+				previewBody.replaceChildren(...renderUserMarkdown(text));
+			}
+		});
 	}
 }

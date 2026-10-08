@@ -18,8 +18,6 @@ import { button, copyButton, el, icon, setLabel } from './dom';
 import { thoughtPreview } from './streaming';
 import { expanded, state, strings, thoughtTimes, ui, vscode } from './view';
 
-const mac = /Mac/.test(navigator.platform);
-
 const markdown = new MarkdownIt({ html: false, linkify: true });
 // Only links with a scheme or www.; file names such as README.md are not web addresses.
 markdown.linkify.set({ fuzzyLink: false });
@@ -334,7 +332,7 @@ function restoreCard(): HTMLElement | undefined {
 export function renderEmpty(): HTMLElement {
 	const node = el('div', 'empty');
 	const hints = el('ul', 'empty-hints');
-	for (const [key, text] of [['@', strings.hintMention], ['/', strings.hintCommands], [mac ? '⇧↩' : 'Shift+Enter', strings.hintNewLine], ['', strings.dropFiles]] as const) {
+	for (const [key, text] of [['@', strings.hintMention], ['/', strings.hintCommands], ['Shift+Enter', strings.hintNewLine], ['', strings.dropFiles]] as const) {
 		const hint = el('li');
 		hint.append(key ? el('kbd', undefined, key) : icon('cloud-upload'), el('span', undefined, text));
 		hints.append(hint);
