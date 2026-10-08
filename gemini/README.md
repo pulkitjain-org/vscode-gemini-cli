@@ -126,7 +126,7 @@ Its output is the checklist for each upstream merge.
 
 ## Upstream merges
 
-The fork branched from upstream `main` at 1.141.0-dev (1 Oct 2026). Add the remote once:
+The fork branched from upstream `main` at 1.141.0-dev (1 Oct 2026) and merged the 1.141.0 release on 8 Oct 2026. Add the remote once:
 
 ```sh
 git remote add upstream https://github.com/microsoft/vscode.git
