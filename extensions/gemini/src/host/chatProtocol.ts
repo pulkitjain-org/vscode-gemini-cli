@@ -19,7 +19,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 15;
+export const chatProtocolVersion = 16;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -105,6 +105,8 @@ export interface ChatStrings {
 	readonly turnUndone: string;
 	readonly retry: string;
 	readonly retryTooltip: string;
+	readonly buildPlan: string;
+	readonly buildPlanTooltip: string;
 	/** `{0}` is the branch; the branch pill's tooltip. */
 	readonly switchBranch: string;
 	/** The commit pill's tooltip, and its short label. */
@@ -175,6 +177,7 @@ export interface ChatStrings {
 	readonly usageQuotaOff: string;
 	readonly usageQuotaNone: string;
 	readonly usageQuotaFailed: string;
+	readonly usageUpgrade: string;
 	/** The "+" button's tooltip and its menu. */
 	readonly plusMenu: string;
 	readonly menuSearch: string;
@@ -304,13 +307,17 @@ export type FromWebview =
 	| { readonly type: 'undoTurn'; readonly itemId: string }
 	/** Send the prompt of the turn ending with `itemId` again; only the latest turn offers it. */
 	| { readonly type: 'retry'; readonly itemId: string }
+	/** Leave Plan mode and carry out the plan; only the latest turn offers it, when it ended in Plan mode. */
+	| { readonly type: 'buildPlan'; readonly itemId: string }
 	/** The composer has text: get a rewrite session ready. */
 	| { readonly type: 'prepareEnhance' }
 	/** Rewrite the draft as a precise prompt; answered with `enhanced` or `enhanceFailed` carrying the same `requestId`. */
 	| { readonly type: 'enhancePrompt'; readonly requestId: number; readonly text: string; readonly attachments: readonly Attachment[] }
 	| { readonly type: 'cancelEnhance'; readonly requestId: number }
 	/** The usage popover opened; answered with `quota`, once or twice. */
-	| { readonly type: 'readQuota' };
+	| { readonly type: 'readQuota' }
+	/** "Get higher limits" in the usage popover, shown when a model's quota runs low. */
+	| { readonly type: 'openUpgrade' };
 
 export type ToWebview =
 	| { readonly type: 'reset'; readonly items: readonly TranscriptItem[]; readonly busy: boolean; readonly status: ViewStatus; readonly settings: SessionSettings }
@@ -344,7 +351,8 @@ export type ToWebview =
 	/** The text size in pixels (`gemini.chat.fontSize`). */
 	| { readonly type: 'fontSize'; readonly size: number }
 	/** The newest saved sessions the empty chat offers to reopen, of `total`. */
-	| { readonly type: 'sessions'; readonly sessions: readonly ViewSession[]; readonly total: number }
+	/** `retention` says how long the CLI keeps saved chats. */
+	| { readonly type: 'sessions'; readonly sessions: readonly ViewSession[]; readonly total: number; readonly retention: string }
 	| { readonly type: 'quota'; readonly quota: ViewQuota }
 	/** The context window's use; unset when unknown, such as before the first reply. */
 	| { readonly type: 'context'; readonly context: ViewContext | undefined }

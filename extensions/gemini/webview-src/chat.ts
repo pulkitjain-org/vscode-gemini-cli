@@ -105,7 +105,7 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			restyleEnhanceButton();
 			break;
 		case 'sessions':
-			showSavedSessions(message.sessions, message.total);
+			showSavedSessions(message.sessions, message.total, message.retention);
 			break;
 		case 'commands':
 			showCommands(message.commands);

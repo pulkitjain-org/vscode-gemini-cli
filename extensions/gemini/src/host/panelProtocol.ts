@@ -162,6 +162,19 @@ export interface McpServerView {
 	readonly problem?: string;
 }
 
+/** A Gemini CLI setting the page offers, from the user's own settings.json. */
+export interface PreferencesView {
+	readonly permanentApproval: boolean;
+	readonly planRouting: boolean;
+	readonly usageStatistics: boolean;
+	/** "30d" and so on, or "forever". */
+	readonly keepChats: string;
+	/** The choices, in order, with their labels; includes `keepChats` when it was set by hand. */
+	readonly keepChatsChoices: readonly { readonly value: string; readonly label: string }[];
+	/** The settings file, shown as `~/...`. */
+	readonly display: string;
+}
+
 export interface RulesFileView {
 	readonly label: string;
 	/** Shown as `~/...` or relative to the folder. */
@@ -178,6 +191,9 @@ export interface SkillView {
 	/** "Personal", or the project folder's name. */
 	readonly scope: string;
 	readonly file: string;
+	readonly enabled: boolean;
+	/** The settings file whose `skills.disabled` switches it off. */
+	readonly settingsFile: string;
 }
 
 export interface HookView {
@@ -220,6 +236,7 @@ export interface SettingsPageView {
 	readonly extensions: CliReport<ExtensionView>;
 	readonly memory: CliReport<MemoryFileView>;
 	readonly rules: readonly RulesFileView[];
+	readonly preferences: PreferencesView;
 }
 
 export interface SettingsPageStrings {
@@ -262,6 +279,19 @@ export interface SettingsPageStrings {
 	readonly open: string;
 	readonly create: string;
 	readonly missing: string;
+	readonly enableSkill: string;
+	readonly signIn: string;
+	readonly preferences: string;
+	/** `{0}` is the settings file. */
+	readonly preferencesHint: string;
+	readonly permanentApproval: string;
+	readonly permanentApprovalHint: string;
+	readonly planRouting: string;
+	readonly planRoutingHint: string;
+	readonly usageStatistics: string;
+	readonly usageStatisticsHint: string;
+	readonly keepChats: string;
+	readonly keepChatsHint: string;
 }
 
 export type ToSettingsPage = { readonly type: 'view'; readonly view: SettingsPageView };
@@ -270,6 +300,11 @@ export type FromSettingsPage =
 	| { readonly type: 'ready' | 'restart' | 'addServer' | 'newSkill' | 'addHook' | 'installExtension' | 'addMemory' | 'refreshMemory' }
 	| { readonly type: 'toggle'; readonly name: string; readonly enabled: boolean }
 	| { readonly type: 'toggleHook'; readonly file: string; readonly name: string; readonly enabled: boolean }
+	| { readonly type: 'toggleSkill'; readonly file: string; readonly name: string; readonly enabled: boolean }
+	/** Sign in to a remote MCP server, through the CLI's /mcp auth in a terminal. */
+	| { readonly type: 'signIn'; readonly name: string }
+	| { readonly type: 'setPreference'; readonly key: 'permanentApproval' | 'planRouting' | 'usageStatistics'; readonly value: boolean }
+	| { readonly type: 'setPreference'; readonly key: 'keepChats'; readonly value: string }
 	| { readonly type: 'extension'; readonly action: 'enable' | 'disable' | 'update' | 'uninstall'; readonly name: string }
 	| { readonly type: 'openFile'; readonly path: string; readonly server?: string; readonly needle?: string }
 	| { readonly type: 'createRules'; readonly path: string };

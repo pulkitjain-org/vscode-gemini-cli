@@ -8,10 +8,11 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { googleAccountsPath, readActiveAccount } from '../acp/accounts';
 import { CliResolution } from '../acp/cliResolution';
+import { cliDocsUrl, defaultIssueUrl, issueUrl } from '../acp/helpLinks';
 import type { ModelQuota } from '../acp/directRequest';
 import { AgentStatus } from '../acp/status';
 import { AgentService } from './agentService';
-import { configSection, getProjectSettings } from './configuration';
+import { configSection, getProjectSettings, productInfo } from './configuration';
 import { escapeMarkdown } from './markdown';
 
 export const statusMenuCommand = 'gemini.showStatusMenu';
@@ -111,18 +112,33 @@ export class GeminiStatusBar implements vscode.Disposable {
 
 	private async showMenu(): Promise<void> {
 		const status = this.service.status;
-		const items: (vscode.QuickPickItem & { command?: string })[] = [
+		const items: (vscode.QuickPickItem & { command?: string; run?: () => void })[] = [
 			{ label: status.phase === 'stopped' ? vscode.l10n.t("$(play) Start Agent") : vscode.l10n.t("$(debug-restart) Restart Agent"), command: 'gemini.restartAgent' },
 			{ label: vscode.l10n.t("$(project) Change Project ID"), description: getProjectSettings().resolved?.projectId, command: 'gemini.setProjectId' },
 			{ label: vscode.l10n.t("$(versions) Install or Change Gemini CLI Version..."), description: this.cli, command: 'gemini.installCliVersion' },
 			{ label: vscode.l10n.t("$(account) Sign In or Finish Setup in Terminal"), description: this.account, command: 'gemini.completeSetupInTerminal' },
 			{ label: vscode.l10n.t("$(comment-discussion) Open Chat"), command: 'gemini.openChat' },
 			{ label: vscode.l10n.t("$(output) Show Log"), command: 'gemini.showLog' },
+			{ label: '', kind: vscode.QuickPickItemKind.Separator },
+			{ label: vscode.l10n.t("$(book) Gemini CLI Docs"), run: () => void vscode.env.openExternal(vscode.Uri.parse(cliDocsUrl)) },
+			{ label: vscode.l10n.t("$(report) Report an Issue..."), detail: vscode.l10n.t("Opens a new issue with the GeminiCode, VS Code, Gemini CLI and OS versions filled in"), run: () => void this.reportIssue() },
 		];
 		const picked = await vscode.window.showQuickPick(items, { title: vscode.l10n.t("Gemini: {0}", describePhase(status).label) });
-		if (picked?.command) {
+		if (picked?.run) {
+			picked.run();
+		} else if (picked?.command) {
 			await vscode.commands.executeCommand(picked.command);
 		}
+	}
+
+	private async reportIssue(): Promise<void> {
+		const url = issueUrl(productInfo.reportIssueUrl ?? defaultIssueUrl, {
+			geminiCode: productInfo.version,
+			vscode: vscode.version,
+			os: `${process.platform} ${os.release()} (${process.arch})`,
+			...(this.cli ? { cli: `${this.cli}${describeCliSource(this.service.cli)}` } : {}),
+		});
+		await vscode.env.openExternal(vscode.Uri.parse(url));
 	}
 }
 

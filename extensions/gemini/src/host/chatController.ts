@@ -11,12 +11,16 @@ import { isValidAttachment } from '../acp/attachmentValidation';
 import { chatToMarkdown } from '../acp/chatMarkdown';
 import { ChatTranscript, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
 import { Checkpoints } from '../acp/checkpoints';
+import { keepChatsForever, readCliPreferences } from '../acp/cliPreferences';
+import { geminiDir } from '../acp/directRequest';
 import { isInside, secretPathReason } from '../acp/fileAccess';
 import { FollowTarget, FollowTracker } from '../acp/follow';
 import { PendingPermission, PermissionBroker } from '../acp/permissions';
+import { readSettingsFile } from '../acp/projectSettings';
 import { buildPromptContent } from '../acp/promptContent';
 import { skillPrompt } from '../acp/skills';
-import { expandTeamCommand, mergeCommands, parseInvocation, SlashCommand } from '../acp/slashCommands';
+import { mergeCommands, parseInvocation, SlashCommand } from '../acp/slashCommands';
+import { expandTeamCommandWithInjections, TeamCommandCancelled } from '../acp/teamCommandExpansion';
 import { CliSession, isPrompt, listCliSessions, readSessionTokens } from '../acp/cliSessions';
 import type { ChatEvent } from '../acp/sessionUpdates';
 import { AgentStatus } from '../acp/status';
@@ -26,6 +30,7 @@ import { UpdateBatcher } from '../acp/updateBatcher';
 import type { AgentClient } from '../acp/agentClient';
 import { AgentError, errorMessage } from '../acp/errors';
 import { readGitHead } from '../acp/gitHead';
+import { upgradeUrl } from '../acp/helpLinks';
 import { EnhanceCancelledError, enhanceHistory } from '../acp/promptEnhancer';
 import type { EnhancePromptInput } from '../acp/quickPrompts';
 import { ChatStrings, chatProtocolVersion, FromWebview, statusCommands, ToWebview } from './chatProtocol';
@@ -36,6 +41,7 @@ import { relativeTime, tildify } from './displayText';
 import { attachmentsForFiles } from './addToChat';
 import { createBranchAndCommit, pickBranch } from './gitActions';
 import { preferredComposerHeight, rememberComposerHeight, rememberModel } from './modelPreference';
+import { teamCommandHost } from './teamCommandHost';
 import { skills, teamCommands } from './teamCommands';
 import { onDidChangeThemeTokens, themeTokenColors } from './themeTokens';
 import type { UsageMeter } from './usageMeter';
@@ -380,7 +386,7 @@ export class ChatController implements vscode.Disposable {
 		}
 		this.replaying = false;
 		if (this.retryItemId) {
-			this.transcript.updateTurnEnd(this.retryItemId, { retry: undefined });
+			this.transcript.updateTurnEnd(this.retryItemId, { retry: undefined, buildPlan: undefined });
 			this.retryItemId = undefined;
 		}
 		this.transcript.addPrompt(text, attachments);
@@ -409,7 +415,7 @@ export class ChatController implements vscode.Disposable {
 			this.endTurn(Date.now() - started, usage);
 			ended = true;
 		} catch (err) {
-			this.transcript.addNotice(errorMessage(err), 'error');
+			this.transcript.addNotice(errorMessage(err), err instanceof TeamCommandCancelled ? 'info' : 'error');
 		} finally {
 			if (!ended && this.checkpoints.running) {
 				// The turn failed after changing files; they can still be undone.
@@ -428,8 +434,26 @@ export class ChatController implements vscode.Disposable {
 			this.transcript.updateTurnEnd(old, { undo: undefined });
 		}
 		const files = this.checkpoints.fileCount(id);
-		this.transcript.updateTurnEnd(id, { retry: true, ...(files ? { files } : {}), ...(undoable ? { undo: 'available' } : {}) });
+		this.transcript.updateTurnEnd(id, { retry: true, ...(files ? { files } : {}), ...(undoable ? { undo: 'available' } : {}), ...(this.buildModeAfterPlan() ? { buildPlan: true } : {}) });
 		this.retryItemId = id;
+	}
+
+	/** The mode Build This Plan switches to: Default, when the chat is in Plan mode and the agent offers both. */
+	private buildModeAfterPlan(): string | undefined {
+		const mode = this.service.client.settings.mode;
+		return mode?.currentId === planModeId && mode.available.some(m => m.id === defaultModeId) ? defaultModeId : undefined;
+	}
+
+	/** Leaves Plan mode and asks the agent to carry out the plan it just wrote. */
+	private async buildPlan(itemId: string): Promise<void> {
+		const mode = this.buildModeAfterPlan();
+		if (this.busy || itemId !== this.retryItemId || !mode) {
+			return;
+		}
+		await this.changeSetting(() => this.service.client.setMode(mode));
+		if (this.service.client.settings.mode?.currentId === mode) {
+			await this.send(vscode.l10n.t("Carry out the plan above."));
+		}
 	}
 
 	/**
@@ -497,7 +521,11 @@ export class ChatController implements vscode.Disposable {
 		}
 		const command = (await teamCommands(this.service.client.cwd)).find(c => c.name === invocation.name);
 		if (command) {
-			return expandTeamCommand(command, text);
+			const { text: prompt, problems } = await expandTeamCommandWithInjections(command, text, teamCommandHost(command.name, this.service.client.cwd));
+			for (const problem of problems) {
+				this.transcript.addNotice(vscode.l10n.t("/{0} could not include {1}", command.name, problem), 'error');
+			}
+			return prompt;
 		}
 		const skill = (await skills(this.service.client.cwd)).find(s => s.name === invocation.name);
 		return skill ? skillPrompt(skill.name, invocation.args) : text;
@@ -527,9 +555,9 @@ export class ChatController implements vscode.Disposable {
 		if (!this.options.savedSessions || !this.webview || this.transcript.items.length) {
 			return;
 		}
-		const sessions = await this.savedSessions();
+		const [sessions, retention] = await Promise.all([this.savedSessions(), retentionNote()]);
 		const now = Date.now();
-		this.post({ type: 'sessions', total: sessions.length, sessions: sessions.slice(0, shownSessions).map(s => ({ id: s.id, title: s.title, detail: sessionDetail(s, now) })) });
+		this.post({ type: 'sessions', total: sessions.length, retention, sessions: sessions.slice(0, shownSessions).map(s => ({ id: s.id, title: s.title, detail: sessionDetail(s, now) })) });
 	}
 
 	/** Every saved session for the folder, in a quick pick; the one picked opens here. */
@@ -541,7 +569,7 @@ export class ChatController implements vscode.Disposable {
 		const picks = this.savedSessions().then(sessions => sessions.map(s => ({ label: s.title, description: sessionDetail(s, now), session: s })));
 		const pick = await vscode.window.showQuickPick(picks, {
 			title: vscode.l10n.t("Restore a Gemini CLI Session"),
-			placeHolder: vscode.l10n.t("Sessions saved for {0}, newest first", path.basename(this.service.client.cwd)),
+			placeHolder: `${vscode.l10n.t("Sessions saved for {0}, newest first.", path.basename(this.service.client.cwd))} ${await retentionNote()}`,
 			matchOnDescription: true,
 		});
 		if (pick) {
@@ -813,12 +841,18 @@ export class ChatController implements vscode.Disposable {
 					void this.send(this.lastPrompt.text, this.lastPrompt.attachments);
 				}
 				break;
+			case 'buildPlan':
+				void this.buildPlan(message.itemId);
+				break;
 			case 'prepareEnhance':
 				// Only once the agent runs: a rewrite is no reason to start it.
 				this.options.enhancer.prepare();
 				break;
 			case 'enhancePrompt':
 				void this.enhance(message.requestId, message.text, message.attachments);
+				break;
+			case 'openUpgrade':
+				void vscode.env.openExternal(vscode.Uri.parse(upgradeUrl));
 				break;
 			case 'readQuota':
 				void this.postQuota();
@@ -1216,6 +1250,8 @@ export class ChatController implements vscode.Disposable {
 			turnUndone: vscode.l10n.t("Changes undone"),
 			retry: vscode.l10n.t("Retry"),
 			retryTooltip: vscode.l10n.t("Send this message again"),
+			buildPlan: vscode.l10n.t("Build This Plan"),
+			buildPlanTooltip: vscode.l10n.t("Leave Plan mode and carry out this plan"),
 			switchBranch: vscode.l10n.t("Branch {0}: switch or create a branch"),
 			createBranchAndCommit: vscode.l10n.t("Create a branch and commit these changes"),
 			commit: vscode.l10n.t("Commit\u2026"),
@@ -1260,6 +1296,7 @@ export class ChatController implements vscode.Disposable {
 			usageResetsMinutes: vscode.l10n.t("resets in {0}m"),
 			usageChecking: vscode.l10n.t("Checking\u2026"),
 			usageCheckedJustNow: vscode.l10n.t("Checked just now"),
+			usageUpgrade: vscode.l10n.t("Get higher limits"),
 			usageCheckedMinutes: vscode.l10n.t("Checked {0} min ago"),
 			usageQuotaOff: vscode.l10n.t("Turned off in Settings (Gemini \u203a Usage Meter)."),
 			usageQuotaNone: vscode.l10n.t("Shown when you sign in with Google. API keys have no daily quota to read."),
@@ -1388,8 +1425,29 @@ export async function openChatAsMarkdown(title: string, items: readonly Transcri
 /** At most one file is shown this often while following the agent, so a burst of reads does not flicker the editor. */
 const followIntervalMs = 250;
 
+/** How long the CLI keeps saved chats, from the user's own settings (Project Helpers changes it). */
+async function retentionNote(): Promise<string> {
+	const { keepChats } = readCliPreferences(await readSettingsFile(path.join(geminiDir(), 'settings.json')));
+	if (keepChats === keepChatsForever) {
+		return vscode.l10n.t("They are kept until you delete them.");
+	}
+	const match = /^(\d+)([hdwm])$/.exec(keepChats);
+	if (!match) {
+		return '';
+	}
+	const count = Number(match[1]);
+	const period = match[2] === 'h' ? vscode.l10n.t("{0} hours", count)
+		: match[2] === 'd' ? (count === 1 ? vscode.l10n.t("1 day") : vscode.l10n.t("{0} days", count))
+			: match[2] === 'w' ? (count === 1 ? vscode.l10n.t("1 week") : vscode.l10n.t("{0} weeks", count))
+				: count === 1 ? vscode.l10n.t("1 month") : vscode.l10n.t("{0} months", count);
+	return vscode.l10n.t("The Gemini CLI deletes them after {0}; Project Helpers can change that.", period);
+}
+
 /** How many saved sessions an empty chat lists before "Show all". */
 const shownSessions = 3;
+/** The CLI's Plan and Default mode IDs (gemini-cli 0.63 `ApprovalMode`); Build This Plan shows only when the agent offers both. */
+const planModeId = 'plan';
+const defaultModeId = 'default';
 
 function resumeCommand(): SlashCommand {
 	return { name: 'resume', description: vscode.l10n.t("Restore a saved Gemini CLI session for this folder"), source: 'app' };

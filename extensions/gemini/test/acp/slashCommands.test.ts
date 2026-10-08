@@ -81,7 +81,7 @@ describe('loadTeamCommands', () => {
 		}
 	});
 
-	it('names commands by their path and lets the later folder win', async () => {
+	it('names commands by their path, lets the later folder win and keeps commands that run or read', async () => {
 		dir = await mkdtemp(path.join(tmpdir(), 'gemini-commands-'));
 		const user = path.join(dir, 'user');
 		const project = path.join(dir, 'project');
@@ -99,8 +99,9 @@ describe('loadTeamCommands', () => {
 		expect(result.commands.map(c => [c.name, c.description, c.prompt])).toEqual([
 			['git:commit', 'Commit', 'Commit {{args}}'],
 			['review', 'Project review', '\nProject review\nmore'],
+			['shell', 'Run !{git diff}', 'Run !{git diff}'],
 		]);
-		expect(result.skipped.map(s => path.basename(s.file)).sort()).toEqual(['empty.toml', 'shell.toml']);
+		expect(result.skipped.map(s => path.basename(s.file)).sort()).toEqual(['empty.toml']);
 	});
 });
 

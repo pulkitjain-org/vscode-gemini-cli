@@ -8,7 +8,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { ApprovalPolicy, prepareAdminPolicy } from '../acp/adminPolicy';
-import { AgentCommand, cliHeapSizeMb, resolveAgentCommand } from '../acp/agentProcess';
+import { AgentCommand, cliHeapSizeMb, includeDirectoryArgs, resolveAgentCommand } from '../acp/agentProcess';
 import { CliResolution, resolveCli } from '../acp/cliResolution';
 import { buildAgentEnv } from '../acp/env';
 import { ProjectIdProblem, ResolvedProjectId, resolveProjectId, validateProjectId } from '../acp/projectId';
@@ -23,13 +23,15 @@ export interface GeminiProductInfo {
 	readonly version?: string;
 	/** The download page (`geminiCodeDownloadUrl`). */
 	readonly downloadPageUrl?: string;
+	/** Where to file an issue (`reportIssueUrl`). */
+	readonly reportIssueUrl?: string;
 }
 
 function readProductInfo(): GeminiProductInfo {
 	try {
 		const product = JSON.parse(readFileSync(path.join(vscode.env.appRoot, 'product.json'), 'utf8'));
 		const field = (name: string) => typeof product[name] === 'string' && product[name] ? product[name] as string : undefined;
-		return { defaultProjectId: field('geminiDefaultProjectId'), version: field('geminiCodeVersion'), downloadPageUrl: field('geminiCodeDownloadUrl') };
+		return { defaultProjectId: field('geminiDefaultProjectId'), version: field('geminiCodeVersion'), downloadPageUrl: field('geminiCodeDownloadUrl'), reportIssueUrl: field('reportIssueUrl') };
 	} catch {
 		return {};
 	}
@@ -106,8 +108,16 @@ export function getAgentCommand(options: { interactive?: boolean; cli?: CliResol
 		platform: process.platform,
 		interactive: options.interactive || !!options.subcommand,
 		heapSizeMb: options.interactive || options.subcommand ? undefined : cliHeapSizeMb(readCliSettings(), os.totalmem()),
-		extraArgs: options.subcommand ? [...options.subcommand] : adminPolicyDir ? prepareAdminPolicy(adminPolicyDir, getApprovalPolicy()) : [],
+		extraArgs: options.subcommand ? [...options.subcommand] : [
+			...adminPolicyDir ? prepareAdminPolicy(adminPolicyDir, getApprovalPolicy()) : [],
+			...includeDirectoryArgs(workspaceFolderPaths()),
+		],
 	});
+}
+
+/** The window's folders on disk, in order. */
+export function workspaceFolderPaths(): string[] {
+	return (vscode.workspace.workspaceFolders ?? []).filter(f => f.uri.scheme === 'file').map(f => f.uri.fsPath);
 }
 
 function readCliSettings(): string | undefined {

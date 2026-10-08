@@ -5,7 +5,7 @@
 
 // The Project Helpers page (src/host/settingsPage.ts).
 
-import type { CliReport, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage } from '../src/host/panelProtocol';
+import type { CliReport, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage } from '../src/host/panelProtocol';
 import { button, el, format, icon, pageStrings } from './panelDom';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromSettingsPage): void };
@@ -59,18 +59,66 @@ function serverRow(server: McpServerView): HTMLElement {
 		problem.append(icon('error'), el('span', undefined, format(strings.failed, server.problem)));
 		main.append(problem);
 	}
-	row.append(toggle, main, button('icon-button', '', () => post({ type: 'openFile', path: server.file, server: server.name }), 'go-to-file', strings.edit));
+	row.append(toggle, main);
+	if (server.transport !== 'stdio') {
+		// Remote servers may need an OAuth sign-in, which the CLI runs in a terminal.
+		row.append(button('icon-button', '', () => post({ type: 'signIn', name: server.name }), 'sign-in', `${strings.signIn}: ${server.name}`));
+	}
+	row.append(button('icon-button', '', () => post({ type: 'openFile', path: server.file, server: server.name }), 'go-to-file', strings.edit));
 	return row;
 }
 
 function skillRow(skill: SkillView): HTMLElement {
-	const row = el('div', 'row skill');
+	const row = el('div', `row skill${skill.enabled ? '' : ' off'}`);
+	const toggle = switchButton(skill.enabled, `${strings.enableSkill}: ${skill.name}`, strings.enableSkill, enabled => post({ type: 'toggleSkill', file: skill.settingsFile, name: skill.name, enabled }));
 	const main = el('div', 'row-main');
 	const title = el('div', 'row-title');
 	title.append(icon('mortar-board'), el('span', 'name', `/${skill.name}`), el('span', 'tag', skill.scope));
 	main.append(title, el('div', 'row-detail', skill.description));
-	row.append(main, button('icon-button', '', () => post({ type: 'openFile', path: skill.file }), 'go-to-file', strings.open));
+	row.append(toggle, main, button('icon-button', '', () => post({ type: 'openFile', path: skill.file }), 'go-to-file', strings.open));
 	return row;
+}
+
+/** A setting with a switch, its name and what it does. */
+function preferenceRow(label: string, hint: string, on: boolean, onChange: (on: boolean) => void): HTMLElement {
+	const row = el('div', `row preference${on ? '' : ' off'}`);
+	const main = el('div', 'row-main');
+	const title = el('div', 'row-title');
+	title.append(el('span', 'name', label));
+	main.append(title, el('div', 'row-detail', hint));
+	row.append(switchButton(on, label, label, onChange), main);
+	return row;
+}
+
+function preferencesSection(preferences: PreferencesView): HTMLElement {
+	const node = section(strings.preferences, format(strings.preferencesHint, preferences.display));
+	const list = el('div', 'rows');
+	list.append(
+		preferenceRow(strings.permanentApproval, strings.permanentApprovalHint, preferences.permanentApproval, value => post({ type: 'setPreference', key: 'permanentApproval', value })),
+		preferenceRow(strings.planRouting, strings.planRoutingHint, preferences.planRouting, value => post({ type: 'setPreference', key: 'planRouting', value })),
+		preferenceRow(strings.usageStatistics, strings.usageStatisticsHint, preferences.usageStatistics, value => post({ type: 'setPreference', key: 'usageStatistics', value })),
+	);
+	const row = el('div', 'row preference');
+	const main = el('div', 'row-main');
+	const title = el('div', 'row-title');
+	const id = 'keep-chats';
+	const label = el('label', 'name', strings.keepChats);
+	label.htmlFor = id;
+	title.append(label);
+	main.append(title, el('div', 'row-detail', strings.keepChatsHint));
+	const select = el('select', 'select');
+	select.id = id;
+	for (const choice of preferences.keepChatsChoices) {
+		const option = el('option', undefined, choice.label);
+		option.value = choice.value;
+		option.selected = choice.value === preferences.keepChats;
+		select.append(option);
+	}
+	select.addEventListener('change', () => post({ type: 'setPreference', key: 'keepChats', value: select.value }));
+	row.append(main, select);
+	list.append(row);
+	node.append(list);
+	return node;
 }
 
 function hookRow(hook: HookView): HTMLElement {
@@ -188,7 +236,7 @@ function render(view: SettingsPageView): void {
 
 	// Re-rendering replaces every element; keep keyboard focus on the same control.
 	const focused = document.activeElement instanceof HTMLElement && page.contains(document.activeElement) ? document.activeElement.getAttribute('aria-label') ?? document.activeElement.textContent : undefined;
-	page.replaceChildren(header, servers, skills, hooks, extensions, memory, rules);
+	page.replaceChildren(header, servers, skills, hooks, extensions, memory, rules, preferencesSection(view.preferences));
 	if (focused) {
 		[...page.querySelectorAll<HTMLElement>('button')].find(b => (b.getAttribute('aria-label') ?? b.textContent) === focused)?.focus();
 	}

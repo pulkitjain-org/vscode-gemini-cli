@@ -10,8 +10,9 @@
 //         the agent runs the command itself.
 //   skill Agent skills (skills.ts); picking one asks the agent to load it.
 //   team  Prompts saved as TOML under .gemini/commands, the format the Gemini
-//         CLI uses for custom commands. gemini-cli 0.62 does not run these
-//         over ACP, so GeminiCode expands the template before sending.
+//         CLI uses for custom commands. gemini-cli 0.63 does not run these
+//         over ACP, so GeminiCode expands the template before sending, with
+//         its @{file} and !{command} (teamCommandExpansion.ts).
 
 import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
@@ -96,12 +97,6 @@ export async function loadTeamCommands(folders: readonly string[]): Promise<Load
 				const prompt = fields.prompt;
 				if (typeof prompt !== 'string' || !prompt.trim()) {
 					skipped.push({ file, reason: 'no prompt' });
-					continue;
-				}
-				if (/[!@]\{/.test(prompt)) {
-					// The CLI runs a shell command for !{...} and reads a file for @{...};
-					// GeminiCode does neither yet, so the command would not do what it says.
-					skipped.push({ file, reason: 'uses !{...} or @{...}, which GeminiCode does not run yet' });
 					continue;
 				}
 				const description = typeof fields.description === 'string' && fields.description.trim()

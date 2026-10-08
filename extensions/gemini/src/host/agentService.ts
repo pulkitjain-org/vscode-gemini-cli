@@ -6,7 +6,7 @@
 import * as vscode from 'vscode';
 import { isModeAllowed } from '../acp/adminPolicy';
 import { AgentClient, AgentClientState } from '../acp/agentClient';
-import type { AgentCommand } from '../acp/agentProcess';
+import { AgentCommand, includeDirectoryArgs } from '../acp/agentProcess';
 import { AgentRuntime } from '../acp/agentRuntime';
 import { AgentErrorInfo } from '../acp/errors';
 import { createFileHandlers } from '../acp/fileAccess';
@@ -17,7 +17,7 @@ import { MIN_CLI_VERSION } from '../acp/protocol';
 import { AgentSidecar } from '../acp/sidecar';
 import { trustedFoldersPath, trustFolder } from '../acp/trustedFolders';
 import { AgentStatus, describeAgentStatus } from '../acp/status';
-import { agentLaunchSettings, configSection, getAgentCommand, getApprovalPolicy, getCliResolution, getProjectSettings, getWorkspaceCwd } from './configuration';
+import { agentLaunchSettings, configSection, getAgentCommand, getApprovalPolicy, getCliResolution, getProjectSettings, getWorkspaceCwd, workspaceFolderPaths } from './configuration';
 import { preferredModel } from './modelPreference';
 import { getFileAccessPolicy, WorkspaceFileSystem } from './workspaceFileSystem';
 
@@ -45,6 +45,8 @@ export class AgentService implements vscode.Disposable {
 	/** The missing pinned version last offered for install. */
 	private offeredVersion: string | undefined;
 	private idleRestart: { dispose(): void } | undefined;
+	/** The --include-directories the running process was started with. */
+	private includedFolders = '';
 
 	private readonly onDidChangeStatusEmitter = new vscode.EventEmitter<AgentStatus>();
 	readonly onDidChangeStatus = this.onDidChangeStatusEmitter.event;
@@ -93,6 +95,13 @@ export class AgentService implements vscode.Disposable {
 				if (this.started && agentLaunchSettings.some(key => e.affectsConfiguration(key))) {
 					log.info('Gemini settings changed; restarting the agent');
 					this.restart();
+				}
+			}),
+			vscode.workspace.onDidChangeWorkspaceFolders(() => {
+				// Every folder of a multi-root window is passed with --include-directories, which the process reads once.
+				if (this.started && this.includedFolders !== includeDirectoryArgs(workspaceFolderPaths()).join('\n')) {
+					log.info('Workspace folders changed; restarting the agent once it is idle');
+					this.restartWhenIdle('restarting so agents see the workspace folders');
 				}
 			}),
 			vscode.window.onDidCloseTerminal(terminal => {
@@ -234,6 +243,7 @@ export class AgentService implements vscode.Disposable {
 
 	/** The agent's command, with its debug log pointed at a file GeminiCode reads, unless the user set one. */
 	private agentCommand(): AgentCommand {
+		this.includedFolders = includeDirectoryArgs(workspaceFolderPaths()).join('\n');
 		const command = getAgentCommand({ cli: this.resolveCli() });
 		if (!this.mcpDiagnostics || command.env.GEMINI_DEBUG_LOG_FILE || !this.mcpDiagnostics.reset()) {
 			return command;

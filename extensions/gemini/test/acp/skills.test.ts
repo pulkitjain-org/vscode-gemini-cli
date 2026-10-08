@@ -7,7 +7,8 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { loadSkills, parseSkillFrontmatter, skillFolders, skillPrompt, skillSlug, skillTemplate } from '../../src/acp/skills';
+import { readSettingsFile } from '../../src/acp/projectSettings';
+import { disabledSkills, loadSkills, parseSkillFrontmatter, setSkillEnabled, skillFolders, skillPrompt, skillSlug, skillTemplate } from '../../src/acp/skills';
 
 let dir: string;
 beforeEach(async () => { dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'skills-'))); });
@@ -48,5 +49,19 @@ describe('skills', () => {
 		expect(parseSkillFrontmatter(skillTemplate('db', 'Use when\nmigrating.'))).toEqual({ name: 'db', description: 'Use when migrating.' });
 		expect(skillPrompt('db', '')).toBe('Use the activate_skill tool to load the "db" skill, then follow it.');
 		expect(skillPrompt('db', ' add users ')).toBe('Use the activate_skill tool to load the "db" skill, then follow it.\n\nadd users');
+	});
+});
+
+describe('skill switches', () => {
+	it('switches a skill off and on in skills.disabled, ignoring case, and keeps other keys', async () => {
+		const file = path.join(dir, 'settings.json');
+		await fs.writeFile(file, JSON.stringify({ skills: { enabled: true, disabled: ['Other'] }, model: { name: 'x' } }));
+		expect(await setSkillEnabled(file, 'Release-Notes', false)).toBe(true);
+		let settings = await readSettingsFile(file);
+		expect([...disabledSkills(settings)]).toEqual(['other', 'release-notes']);
+		expect(settings.model).toEqual({ name: 'x' });
+		expect(await setSkillEnabled(file, 'release-notes', true)).toBe(true);
+		settings = await readSettingsFile(file);
+		expect(settings.skills).toEqual({ enabled: true, disabled: ['Other'] });
 	});
 });
