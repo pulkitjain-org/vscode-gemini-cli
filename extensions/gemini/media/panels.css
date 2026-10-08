@@ -18,6 +18,8 @@
 	--gemini-muted: var(--vscode-descriptionForeground);
 	--gemini-faint: var(--vscode-disabledForeground, var(--gemini-muted));
 	--gemini-hover: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
+	/* An off switch's track: plain grey that still shows on a hovered row. */
+	--gemini-switch-off: color-mix(in srgb, var(--vscode-foreground) 24%, transparent);
 	--gemini-selected: var(--vscode-list-activeSelectionBackground, var(--gemini-hover));
 	--gemini-shadow: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
 	--gemini-accent: var(--vscode-button-background, var(--vscode-focusBorder));
@@ -357,6 +359,61 @@ button.chip {
 		var(--gemini-gradient) border-box;
 }
 
+/* Files the task is sent with, as chips over the text (as in the chat). */
+.attachments {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin-bottom: 6px;
+}
+
+.attachments[hidden] {
+	display: none;
+}
+
+.chip.attachment {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	max-width: 220px;
+	height: 20px;
+	padding: 0 2px 0 7px;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius-small);
+	background: var(--gemini-raised);
+	font-size: 11.5px;
+	white-space: nowrap;
+}
+
+.chip.attachment > span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.chip.attachment > .codicon {
+	font-size: 13px;
+}
+
+button.chip-remove {
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	padding: 0;
+	border: none;
+	border-radius: 50%;
+	background: transparent;
+	color: var(--gemini-muted);
+}
+
+button.chip-remove:hover {
+	background: var(--gemini-hover);
+	color: var(--vscode-foreground);
+}
+
+button.chip-remove .codicon {
+	font-size: 12px;
+}
+
 .home-composer textarea {
 	display: block;
 	width: 100%;
@@ -389,6 +446,23 @@ button.chip {
 	flex: 1;
 }
 
+/* "+": round and quiet, like the chat's. */
+button.plus-button {
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	border-radius: 50%;
+}
+
+button.plus-button[aria-expanded="true"] {
+	background: var(--gemini-hover);
+}
+
+button.plus-button .codicon {
+	font-size: 14px;
+}
+
 /* Start: round, in the accent, like the chat's Send. */
 button.send {
 	justify-content: center;
@@ -412,7 +486,7 @@ button.send:disabled {
 	color: var(--gemini-faint);
 }
 
-/* The folder and the own-branch switch, under the composer. */
+/* The folder, the own-branch switch and the mode, under the composer. */
 .home-options {
 	display: flex;
 	align-items: center;
@@ -422,8 +496,19 @@ button.send:disabled {
 	color: var(--gemini-muted);
 }
 
-.home-folder {
+.home-folder,
+.home-mode,
+.home-plus {
 	position: relative;
+}
+
+.home-mode[hidden] {
+	display: none;
+}
+
+/* The "+" menu: modes and files, opening under the button. */
+.home-plus .home-menu {
+	width: 300px;
 }
 
 .home-menu {
@@ -480,7 +565,7 @@ button.option-button .codicon-chevron-down {
 	width: 26px;
 	height: 15px;
 	border-radius: 8px;
-	background: var(--gemini-border-strong);
+	background: var(--gemini-switch-off);
 }
 
 .switch-track::after {
@@ -825,7 +910,7 @@ button.option-button .codicon-chevron-down {
 	padding: 0;
 	border: none;
 	border-radius: 999px;
-	background: var(--gemini-border-strong);
+	background: var(--gemini-switch-off);
 }
 
 .switch::after {

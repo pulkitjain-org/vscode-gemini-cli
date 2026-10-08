@@ -45,6 +45,8 @@
 	--gemini-muted: var(--vscode-descriptionForeground);
 	--gemini-faint: var(--vscode-disabledForeground, var(--gemini-muted));
 	--gemini-hover: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
+	/* An off switch's track: plain grey that still shows on a hovered row. */
+	--gemini-switch-off: color-mix(in srgb, var(--vscode-foreground) 24%, transparent);
 	--gemini-selected: var(--vscode-list-activeSelectionBackground, var(--gemini-hover));
 	--gemini-code-background: var(--vscode-textCodeBlock-background, var(--gemini-raised));
 	--gemini-shadow: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
@@ -404,6 +406,19 @@ kbd {
 .markdown ul,
 .markdown ol {
 	padding-left: 1.4em;
+}
+
+.markdown li > ul,
+.markdown li > ol {
+	margin: 0.2em 0;
+}
+
+/* A rule between sections: a hairline, not the browser's raised line. */
+.markdown hr {
+	height: 1px;
+	margin: 1em 0;
+	border: none;
+	background: var(--gemini-border);
 }
 
 .markdown h1,

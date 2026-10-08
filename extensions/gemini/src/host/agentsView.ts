@@ -10,6 +10,7 @@ import { agentRowMeta } from '../acp/agentRow';
 import { attentionChange, waitingCount } from '../acp/attention';
 import { branchNameFrom, isValidBranchName } from '../acp/branchNames';
 import { AgentRecord, AgentsModel, AgentsSnapshot, WorkspaceRecord } from '../acp/agents';
+import type { Attachment } from '../acp/attachments';
 import { FolderFileIndex } from '../acp/folderFiles';
 import { readGitHead } from '../acp/gitHead';
 import { errorMessage } from '../acp/errors';
@@ -360,7 +361,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 
 	/** Starts an agent in `folder` (on its own branch, named after the prompt, with `ownBranch`) and sends it `text`. */
 	/** Returns whether the agent started; when not, the user has been told why. */
-	async startWithPrompt(folder: string, text: string, ownBranch: boolean): Promise<boolean> {
+	async startWithPrompt(folder: string, text: string, ownBranch: boolean, mode: string, attachments: readonly Attachment[]): Promise<boolean> {
 		let worktree: AgentWorktree | undefined;
 		if (ownBranch) {
 			const repository = await repositoryRoot(folder);
@@ -378,9 +379,14 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		}
 		const workspace = this.model.addWorkspace(folder);
 		const agent = this.model.addAgent(workspace.id, vscode.l10n.t("New agent"), worktree);
+		// Started here, so its session opens in the mode picked.
+		const live = this.start(agent, worktree?.cwd ?? folder);
+		if (mode !== 'default') {
+			live.session.client.setModeOnNextSession(mode);
+		}
 		await this.open(agent.id);
 		// Not awaited: send resolves when the whole turn ends, and the agent has started now.
-		void this.live.get(agent.id)?.controller.send(text);
+		void live.controller.send(text, attachments);
 		return true;
 	}
 

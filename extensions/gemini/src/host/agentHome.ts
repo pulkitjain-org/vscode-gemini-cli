@@ -5,11 +5,13 @@
 
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { isModeAllowed } from '../acp/adminPolicy';
 import { formatCounts } from '../acp/agentChanges';
+import { attachmentsForFiles } from './addToChat';
 import { AgentsView, AgentSummary, relativeTime } from './agentsView';
 import { tildify } from './displayText';
-import { configSection } from './configuration';
-import { FromHome, HomeAgent, HomeStrings, HomeView, ToHome } from './panelProtocol';
+import { configSection, getApprovalPolicy } from './configuration';
+import { FromHome, HomeAgent, HomeMode, HomeStrings, HomeView, ToHome } from './panelProtocol';
 import { createNonce, escapeAttribute } from './webviewHtml';
 
 const homeViewType = 'gemini.agentHome';
@@ -126,6 +128,7 @@ export class AgentHome implements vscode.Disposable {
 			active: summaries.filter(isActive).map(toView),
 			earlier: summaries.filter(a => !isActive(a)).slice(0, maxEarlier).map(toView),
 			ownBranch: vscode.workspace.getConfiguration(configSection).get<boolean>('agents.ownBranch', false),
+			modes: startModes().filter(mode => isModeAllowed(getApprovalPolicy(), mode.id)),
 		};
 	}
 
@@ -138,7 +141,7 @@ export class AgentHome implements vscode.Disposable {
 				return;
 			case 'start':
 				if (message.text.trim()) {
-					if (!await this.agents.startWithPrompt(message.folder, message.text.trim(), message.ownBranch)) {
+					if (!await this.agents.startWithPrompt(message.folder, message.text.trim(), message.ownBranch, message.mode, message.attachments)) {
 						void this.panel?.webview.postMessage({ type: 'startFailed', text: message.text } satisfies ToHome);
 					}
 				}
@@ -146,6 +149,19 @@ export class AgentHome implements vscode.Disposable {
 			case 'addFolder':
 				await vscode.commands.executeCommand('workbench.action.addRootFolder');
 				return;
+			case 'pickFiles': {
+				const uris = await vscode.window.showOpenDialog({
+					canSelectMany: true,
+					canSelectFiles: true,
+					canSelectFolders: false,
+					openLabel: vscode.l10n.t("Attach"),
+					title: vscode.l10n.t("Attach Files to the Task"),
+				});
+				if (uris?.length) {
+					void this.panel?.webview.postMessage({ type: 'attached', attachments: await attachmentsForFiles(uris) } satisfies ToHome);
+				}
+				return;
+			}
 			case 'projectHelpers':
 				await vscode.commands.executeCommand('gemini.projectSettings');
 				return;
@@ -177,6 +193,11 @@ export class AgentHome implements vscode.Disposable {
 			addFolder: vscode.l10n.t("Add Folder to Workspace..."),
 			projectHelpers: vscode.l10n.t("Project Helpers"),
 			projectHelpersHint: vscode.l10n.t("MCP servers, rules and hooks for your projects"),
+			plusMenu: vscode.l10n.t("Add files and pick a mode"),
+			mode: vscode.l10n.t("Mode"),
+			files: vscode.l10n.t("Files"),
+			filesDetail: vscode.l10n.t("Attach files or images"),
+			remove: vscode.l10n.t("Remove"),
 			active: vscode.l10n.t("Agents"),
 			earlier: vscode.l10n.t("Earlier"),
 			open: vscode.l10n.t("Open"),
@@ -207,8 +228,10 @@ export class AgentHome implements vscode.Disposable {
 			<h1 id="title"></h1>
 			<p id="subtitle" class="muted"></p>
 			<form id="composer" class="home-composer">
+				<div id="attachments" class="attachments" hidden></div>
 				<textarea id="prompt" rows="3"></textarea>
 				<div class="home-composer-bar">
+					<span class="home-plus"><button type="button" id="plus" class="plus-button"><i class="codicon codicon-add" aria-hidden="true"></i></button><div id="plus-menu" class="home-menu" hidden></div></span>
 					<span class="spacer"></span>
 					<button type="submit" id="start" class="send"><i class="codicon codicon-arrow-up" aria-hidden="true"></i></button>
 				</div>
@@ -216,6 +239,7 @@ export class AgentHome implements vscode.Disposable {
 			<div class="home-options">
 				<span class="home-folder"><button type="button" id="workspace" class="option-button"><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="workspace-menu" class="home-menu" hidden></div></span>
 				<label id="own-branch-label" class="option-switch"><input type="checkbox" id="own-branch"><span class="switch-track" aria-hidden="true"></span><span class="switch-label"></span></label>
+				<span class="home-mode"><button type="button" id="mode" class="option-button"><i class="codicon" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="mode-menu" class="home-menu" hidden></div></span>
 				<button type="button" id="helpers" class="option-button helpers-button"><i class="codicon codicon-tools" aria-hidden="true"></i><span></span></button>
 			</div>
 		</section>
@@ -226,6 +250,15 @@ export class AgentHome implements vscode.Disposable {
 </body>
 </html>`;
 	}
+}
+
+/** The approval modes Agent Home offers, in the order the chat lists them. */
+function startModes(): HomeMode[] {
+	return [
+		{ id: 'default', name: vscode.l10n.t("Default"), description: vscode.l10n.t("Asks before changes") },
+		{ id: 'autoEdit', name: vscode.l10n.t("Auto Edit"), description: vscode.l10n.t("Edits without asking") },
+		{ id: 'plan', name: vscode.l10n.t("Plan"), description: vscode.l10n.t("Read-only") },
+	];
 }
 
 function openTabs(): number {

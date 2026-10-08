@@ -17,7 +17,8 @@ import { continueList, formatShortcut, toggleWrap, type TextEdit } from './markd
 import { closePreview, isPreviewShortcut, togglePreview, updatePreview } from './markdownPreview';
 import { closePicker, onPickerKey, updatePicker } from './picker';
 import { setWorkspace, updateModel } from './pickers';
-import { modeIcon, openPlusMenu, updatePlusMenu } from './plusMenu';
+import { modeIcon } from './modeIcon';
+import { openPlusMenu, updatePlusMenu } from './plusMenu';
 import { setTranscriptBusy } from './transcript';
 import { state, strings, ui, vscode } from './view';
 

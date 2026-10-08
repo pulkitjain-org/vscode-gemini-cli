@@ -11,6 +11,7 @@
 import { format } from './chatLogic';
 import { setLabel } from './dom';
 import { Menu, type MenuSection } from './menu';
+import { modeIcon } from './modeIcon';
 import { closePicker, startCommand, startMention } from './picker';
 import { contextPercent, toggleUsage } from './usage';
 import { state, strings, ui, vscode } from './view';
@@ -20,17 +21,6 @@ const { plusButton: button, input } = ui;
 let page: 'main' | 'model' = 'main';
 
 setLabel(button, strings.plusMenu);
-
-/** A codicon for each of gemini-cli's approval modes. */
-export function modeIcon(id: string): string {
-	switch (id) {
-		case 'default': return 'shield';
-		case 'autoEdit': return 'edit';
-		case 'plan': return 'checklist';
-		case 'yolo': return 'warning';
-		default: return 'circle-large-outline';
-	}
-}
 
 const menu = new Menu({
 	element: ui.plusMenu,
@@ -115,7 +105,7 @@ function sections(): MenuSection[] {
 	result.push({
 		rows: [
 			...(model ? [{ icon: 'sparkle', name: strings.model, detail: model.available.find(choice => choice.id === model.currentId)?.name, submenu: true, run: () => show('model') }] : []),
-			{ icon: 'graph', name: strings.usage, detail: percent === undefined ? undefined : format(strings.menuUsageDetail, percent), run: () => { closePlusMenu(false); toggleUsage(); } },
+			{ icon: 'gemini-usage', name: strings.usage, detail: percent === undefined ? undefined : format(strings.menuUsageDetail, percent), run: () => { closePlusMenu(false); toggleUsage(); } },
 			{ icon: 'library', name: strings.menuCommands, detail: '/', run: () => { closePlusMenu(false); startCommand(); } },
 		],
 	});
