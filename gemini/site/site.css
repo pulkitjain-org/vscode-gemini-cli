@@ -151,6 +151,17 @@ code {
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px; }
 .card h3 { margin: 0; font-size: 17px; font-weight: 600; }
 .card p { margin: 8px 0 0; font-size: 15px; line-height: 1.55; color: var(--muted); }
+.card code { font-size: 0.82em; padding: 1px 5px; }
+/* A section's heading sits closer to its first feature than the features sit to each other. */
+.highlights > .row { margin-bottom: calc(-1 * clamp(20px, 4vw, 48px)); }
+.h3 { margin: 10px 0 0; font-size: clamp(22px, 2.4vw, 28px); line-height: 1.2; letter-spacing: -0.02em; font-weight: 600; text-wrap: balance; }
+
+/* Earlier releases' features: smaller, after what's new. */
+.highlights.earlier { padding-top: clamp(72px, 10vw, 128px); gap: clamp(40px, 6vw, 72px); }
+.cards.compact { grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); }
+.cards.compact .card { padding: 18px; }
+.cards.compact .card h3 { font-size: 15px; }
+.cards.compact .card p { font-size: 14px; }
 
 /* Install */
 .install { padding-top: clamp(72px, 10vw, 128px); scroll-margin-top: 64px; }
