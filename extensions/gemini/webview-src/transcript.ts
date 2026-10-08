@@ -43,19 +43,16 @@ function onScroll(): void {
 	});
 }
 
-/**
- * The Glass themes float the working strip and composer over the transcript,
- * which keeps room for them below its last item (chat.css reads --dock-height).
- * When they grow, a transcript that was at the bottom stays there.
- */
+let dockHeight = 0;
+
+/** When the working strip or composer grows, a transcript that was at the bottom stays there. */
 function onDockResize(entries: readonly ResizeObserverEntry[]): void {
 	const height = Math.ceil(entries.at(-1)?.borderBoxSize[0]?.blockSize ?? dock.offsetHeight);
-	if (transcript.style.getPropertyValue('--dock-height') === `${height}px`) {
+	if (height === dockHeight) {
 		return;
 	}
-	const stick = isNearBottom();
-	transcript.style.setProperty('--dock-height', `${height}px`);
-	if (stick) {
+	dockHeight = height;
+	if (isNearBottom()) {
 		scrollToBottom();
 	}
 }

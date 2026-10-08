@@ -3,10 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The composer: sending a prompt, the mode and model selects, the git pills
-// and the status line above it.
+// The composer: sending a prompt, the mode chip, the model, the branch and
+// folder buttons and the status line above it.
 
-import type { SessionSelector, SessionSettings } from '../src/acp/sessionSettings';
+import type { SessionSettings } from '../src/acp/sessionSettings';
 import type { ViewGit, ViewStatus } from '../src/host/chatProtocol';
 import { renderAttachments } from './attachmentChips';
 import { format } from './chatLogic';
@@ -16,11 +16,13 @@ import { onEnhanceKey } from './enhance';
 import { continueList, formatShortcut, toggleWrap, type TextEdit } from './markdownEdit';
 import { closePreview, isPreviewShortcut, togglePreview, updatePreview } from './markdownPreview';
 import { closePicker, onPickerKey, updatePicker } from './picker';
-import { modeIcon, openPlusMenu, updatePlusMenu } from './plusMenu';
+import { setWorkspace, updateModel } from './pickers';
+import { modeIcon } from './modeIcon';
+import { openPlusMenu, updatePlusMenu } from './plusMenu';
 import { setTranscriptBusy } from './transcript';
 import { state, strings, ui, vscode } from './view';
 
-const { form, input, status, modelSelect, branchButton, commitButton } = ui;
+const { form, input, status, branchButton, commitButton } = ui;
 const mac = /Mac/.test(navigator.platform);
 
 export function setBusy(value: boolean): void {
@@ -56,42 +58,9 @@ export function setStatus(value: ViewStatus): void {
 	status.hidden = !value.text;
 }
 
-const measureContext = document.createElement('canvas').getContext('2d');
-
-/** A select is as wide as its longest option; size it to the chosen one instead. */
-function fitSelect(select: HTMLSelectElement): void {
-	const text = select.selectedOptions[0]?.textContent ?? '';
-	const style = getComputedStyle(select);
-	if (!measureContext) {
-		return;
-	}
-	measureContext.font = style.font;
-	const chrome = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth);
-	select.style.width = `${Math.ceil(measureContext.measureText(text).width + chrome)}px`;
-}
-
-function fillSelect(select: HTMLSelectElement, wrap: HTMLElement, selector: SessionSelector | undefined): void {
-	wrap.hidden = !selector;
-	if (!selector) {
-		return;
-	}
-	select.replaceChildren(...selector.available.map(choice => {
-		const option = el('option', undefined, choice.name);
-		option.value = choice.id;
-		if (choice.description) {
-			option.title = choice.description;
-		}
-		return option;
-	}));
-	select.value = selector.currentId;
-	fitSelect(select);
-	const current = selector.available.find(choice => choice.id === selector.currentId);
-	select.title = current?.description ? `${select.getAttribute('aria-label')}: ${current.description}` : select.getAttribute('aria-label') ?? '';
-}
-
 export function setSettings(settings: SessionSettings): void {
 	state.settings = settings;
-	fillSelect(modelSelect, ui.modelWrap, settings.model);
+	updateModel();
 	updateModeChip();
 	updatePlusMenu();
 }
@@ -120,6 +89,7 @@ export function setGit(git: ViewGit): void {
 	branchButton.setAttribute('aria-label', branchLabel);
 	commitButton.hidden = !git.canCommit || !git.branch;
 	const workspace = git.workspace;
+	setWorkspace(workspace);
 	ui.workspaceButton.hidden = !workspace;
 	if (workspace) {
 		ui.workspaceLabel.textContent = workspace.worktree ? `${workspace.name} \u00b7 ${strings.worktree}` : workspace.name;
@@ -288,8 +258,6 @@ input.addEventListener('blur', () => setTimeout(() => {
 	}
 }, 0));
 ui.stopButton.addEventListener('click', () => vscode.postMessage({ type: 'stop' }));
-branchButton.addEventListener('click', () => vscode.postMessage({ type: 'pickBranch' }));
-ui.workspaceButton.addEventListener('click', () => vscode.postMessage({ type: 'workspaceMenu' }));
 commitButton.addEventListener('click', () => vscode.postMessage({ type: 'createBranchAndCommit' }));
 ui.modeChipLabel.addEventListener('click', () => openPlusMenu());
 ui.modeChipReset.addEventListener('click', () => {
@@ -298,8 +266,4 @@ ui.modeChipReset.addEventListener('click', () => {
 		vscode.postMessage({ type: 'setMode', id: base.id });
 	}
 	input.focus();
-});
-modelSelect.addEventListener('change', () => {
-	fitSelect(modelSelect);
-	vscode.postMessage({ type: 'setModel', id: modelSelect.value });
 });

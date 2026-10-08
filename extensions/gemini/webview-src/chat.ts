@@ -9,22 +9,25 @@
 //   transcript.ts      the items shown and the scroll position
 //   items.ts           rendering each kind of item
 //   streamingReply.ts  updating a reply while it streams
-//   composer.ts        sending, the selects, git pills and status line
+//   composer.ts        sending, the mode chip, the foot buttons and status line
 //   inputBox.ts        the input's height, placeholder and send button
 //   attachmentChips.ts attachments, and files pasted or dropped
 //   picker.ts          the @-mention file picker and the slash command menu
 //   enhance.ts         Enhance prompt: rewriting the draft as a precise prompt
+//   menu.ts            the pop-up list the menus share
 //   plusMenu.ts        the "+" menu: mode, files, context, follow, model, usage
+//   pickers.ts         the model, branch and folder menus
 //   usage.ts           the context ring and usage popover: context, quota and tokens
 
 import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
 import { addAttachments } from './attachmentChips';
 import { setBusy, setFollow, setFollowed, setGit, setSettings, setStatus } from './composer';
 import { applyTokenColors } from './codeHighlight';
-import { onEnhanced, onEnhanceFailed, restyleEnhanceButton, toggleEnhance } from './enhance';
-import { applyFontSize, setLabel } from './dom';
+import { onEnhanced, onEnhanceFailed, toggleEnhance } from './enhance';
+import { setLabel } from './dom';
 import { restoreComposerHeight, updatePlaceholder, updateSendState } from './inputBox';
 import { showSavedSessions } from './items';
+import { setBranches } from './pickers';
 import { showCommands, showFiles } from './picker';
 import { updateOutline } from './promptNav';
 import { appended, applyItem, isNearBottom, reset, settleScroll, updateWorking } from './transcript';
@@ -33,11 +36,12 @@ import { state, strings, ui, vscode } from './view';
 
 setLabel(ui.sendButton, strings.send);
 setLabel(ui.stopButton, strings.stop);
-setLabel(ui.modelSelect, strings.model);
 setLabel(ui.scrollButton, strings.scrollToBottom);
 ui.scrollLabel.textContent = strings.latest;
 ui.dropLabel.textContent = strings.dropFiles;
-applyFontSize(Number(document.body.dataset.fontSize));
+
+// Nothing animates while the view is hidden.
+document.addEventListener('visibilitychange', () => document.body.classList.toggle('paused', document.hidden));
 
 window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 	const message = event.data;
@@ -94,15 +98,8 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 		case 'followed':
 			setFollowed(message.file);
 			break;
-		case 'accent':
-			document.body.dataset.accent = message.solid ? 'solid' : 'gradient';
-			break;
 		case 'tokenColors':
 			applyTokenColors(message.colors);
-			break;
-		case 'fontSize':
-			applyFontSize(message.size);
-			restyleEnhanceButton();
 			break;
 		case 'sessions':
 			showSavedSessions(message.sessions, message.total, message.retention);
@@ -118,6 +115,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'git':
 			setGit(message.git);
+			break;
+		case 'branches':
+			setBranches(message.branches, message.notice);
 			break;
 		case 'enhanceRequested':
 			if (!state.enhancing) {

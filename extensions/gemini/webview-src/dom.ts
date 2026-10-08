@@ -63,8 +63,3 @@ export function copyButton(className: string, label: string, text: () => string)
 }
 
 /** Sizes the view's text, which everything else is sized from; anything but a number keeps the app's UI size. */
-export function applyFontSize(size: number): void {
-	if (Number.isFinite(size) && size > 0) {
-		document.body.style.setProperty('--gemini-font-size', `${size}px`);
-	}
-}

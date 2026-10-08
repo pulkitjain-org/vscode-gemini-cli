@@ -45,19 +45,17 @@ An agent on its own branch can get a ready folder: set **Gemini › Agents: Work
 
 Run **Make It Yours** from the Command Palette, or open the step of the same name in Get Started, to pick:
 
-- a theme: Glass Dark and Glass Light (the defaults: glass side bars over an aurora wallpaper, with the Gemini gradient round the chat input, and the Command Palette, menus and hovers are frosted), Dark, Midnight (true black), Dusk (warm greys) or Light;
-- an accent colour for selection, focus, links and the chat's Send button: the theme's own, Blue, Violet, Rose, Teal, Amber or the Gemini gradient. It applies to the GeminiCode themes only, through `workbench.colorCustomizations`, and is kept in `gemini.appearance.accent`;
+- a theme: GeminiCode Dark or GeminiCode Light (the defaults follow your system), or any other installed theme with **More themes**;
 - a code font: JetBrains Mono (the default) and Geist Mono ship with GeminiCode; SF Mono and Menlo come with macOS;
-- file icons: GeminiCode's own, Seti, or none;
-- chat text size: 13 to 16 px (14 px by default), kept in `gemini.chat.fontSize`.
+- file icons: GeminiCode's own, Seti, or none.
 
-Each choice applies at once. To change the themes or icons, edit the sources and rerun `node extensions/gemini/scripts/build-themes.mts` or `python3 extensions/gemini/scripts/build-file-icons.py`; a unit test fails when the generated themes are out of date.
+Each choice applies at once. GeminiCode Dark and Light share one calm look: soft greys with a faint tint at the top of the window, panels as cards with a hairline border, solid menus and pop-ups, Graphite as the one accent (Send, primary buttons, links and the context ring), and the Gemini colours kept for the sparkle, the bar that runs along the chat input while an agent works, the active tab's underline and the focused chat input. Chat text is 14 px. To change the file icons, edit the sources and rerun `python3 extensions/gemini/scripts/build-file-icons.py`.
 
 ## Enhance prompt
 
 Write what you want in plain words, then click **Enhance**, which follows the end of your text (or press **⌥⌘E**). Gemini rewrites the draft as a clearer, more precise prompt: what to do, where, and how to tell it is done, with open questions where your draft leaves something out. It keeps your `@` mentions, a leading `/command`, file names and code as you wrote them, and uses the files you attached, the open file and the chat so far.
 
-The text shimmers while Gemini works, usually for about three seconds; **Enhance** turns into **Cancel**, and esc stops it too. The rewrite replaces your draft for you to read and change before sending: **Revert**, beside **Enhance** (or ⌘Z), puts your draft back, and **Enhance** rewrites it again. Nothing is sent to the agent until you press Send.
+Your draft fades while Gemini works, usually for about three seconds; **Enhance** turns into **Cancel**, and esc stops it too. The rewrite replaces your draft for you to read and change before sending: **Revert**, beside **Enhance** (or ⌘Z), puts your draft back, and **Enhance** rewrites it again. Nothing is sent to the agent until you press Send.
 
 The rewrite is one quick request to Gemini Flash, like inline edit. When inline edit is turned off, or that request fails, the Gemini CLI does it instead, in Plan mode so it cannot change anything. It does not go into the chat, and it works while the agent is busy.
 
@@ -202,7 +200,7 @@ GeminiCode keeps its own share small:
 - Messages scrolled out of view are not laid out, and streaming sends only new text.
 - Proposed edits are remembered for the last 200 tool calls. Older diff links open the file as it is now.
 
-When you scroll up in a chat, **Latest** (an arrow under the other themes) takes you back to the newest message. Under the Glass themes the chat scrolls on under the see-through input and fades out just above it; turn on **Reduce transparency** in macOS to make the input solid.
+When you scroll up in a chat, **Latest** above the input takes you back to the newest message.
 
 To find your way round a long chat, use the thin outline of your prompts down the chat's right edge: point at a tick to see the prompt, click it to jump there. ⌥⌘↑ and ⌥⌘↓ jump to your previous and next prompt. **Open Chat as Markdown** (in Quick Chat's **...** menu, an agent's right-click menu in the Agents pane, or the Command Palette for the chat in front) opens the whole conversation as a Markdown document you can search, save or share. For an agent that is not running, it opens the saved copy, which keeps the last 300 messages.
 

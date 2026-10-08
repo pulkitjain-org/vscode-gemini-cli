@@ -3,13 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The choices on the Make It Yours page, and how an accent becomes colour
-// customizations. No editor API here, so it can be tested.
+// The choices on the Make It Yours page. No editor API here, so it can be tested.
 
-export const themeIds = ['GeminiCode Glass Dark', 'GeminiCode Glass Light', 'GeminiCode Dark', 'GeminiCode Midnight', 'GeminiCode Dusk', 'GeminiCode Light'] as const;
-
-export const accentIds = ['theme', 'blue', 'violet', 'rose', 'teal', 'amber', 'gradient'] as const;
-export type AccentId = typeof accentIds[number];
+export const themeIds = ['GeminiCode Dark', 'GeminiCode Light'] as const;
 
 export interface CodeFont {
 	readonly id: string;
@@ -32,51 +28,19 @@ export function codeFontOf(family: string | undefined): CodeFont | undefined {
 	return codeFonts.find(font => normalize(font.family) === normalize(family ?? ''));
 }
 
-export interface AccentTable {
-	/** Accent id to its colour on dark themes and on light ones. */
-	readonly accents: Record<string, readonly [string, string]>;
-	/** Theme name to the colour keys that carry its accent, with the alpha each adds. */
-	readonly themes: Record<string, { readonly kind: 'dark' | 'light'; readonly keys: Record<string, string> }>;
-}
-
 type Customizations = Record<string, unknown>;
 
 /**
- * `workbench.colorCustomizations` with `accent` applied to the GeminiCode
- * theme in use, or undefined when it already is. Only the accent keys inside
- * the `[GeminiCode …]` blocks change; anything else the user set is kept. The
- * other themes, and the theme's own accent ("theme"), get those keys removed,
- * so settings.json holds one theme's worth of them.
+ * `workbench.colorCustomizations` without the `[GeminiCode …]` blocks that the
+ * accent picker of earlier versions wrote, or undefined when there are none.
+ * Everything else the user customized is kept.
  */
-export function withAccent(current: Customizations | undefined, accent: AccentId, activeTheme: string, table: AccentTable): Customizations | undefined {
-	const next: Customizations = { ...current };
-	let changed = false;
-	for (const [theme, { kind, keys }] of Object.entries(table.themes)) {
-		const colors = accent === 'theme' || theme !== activeTheme ? undefined : table.accents[accent];
-		const blockKey = `[${theme}]`;
-		const existing = next[blockKey];
-		const block: Record<string, unknown> = isRecord(existing) ? { ...existing } : {};
-		for (const [key, alpha] of Object.entries(keys)) {
-			const value = colors ? `${colors[kind === 'light' ? 1 : 0]}${alpha}` : undefined;
-			if (block[key] !== value) {
-				if (value === undefined) {
-					delete block[key];
-				} else {
-					block[key] = value;
-				}
-				changed = true;
-			}
-		}
-		if (Object.keys(block).length) {
-			next[blockKey] = block;
-		} else if (next[blockKey] !== undefined) {
-			delete next[blockKey];
-			changed = true;
-		}
+export function withoutOldAccents(current: Customizations | undefined): Customizations | undefined {
+	const keys = Object.keys(current ?? {}).filter(key => key.startsWith('[GeminiCode '));
+	if (!current || !keys.length) {
+		return undefined;
 	}
-	return changed ? next : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null && !Array.isArray(value);
+	const next = { ...current };
+	keys.forEach(key => delete next[key]);
+	return next;
 }

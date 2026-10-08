@@ -1,0 +1,66 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/*
+ * GEMINI-FORK: the Soft look of GeminiCode Dark and Light. A theme can only set flat colours, so
+ * the rest is here, keyed to the gemini-soft class gemini.contribution.ts puts on the workbench:
+ *
+ * - one static tint at the top of the window, from the accent, behind upstream's floating cards;
+ * - cards with 8px corners and a hairline;
+ * - the active title bar tab underlined in the Gemini colours;
+ * - solid pop-ups with one shadow and no blur.
+ *
+ * Performance: all of it is static paint. Nothing animates and nothing blurs.
+ */
+
+.monaco-workbench.gemini-soft {
+	--vscode-cornerRadius-large: 8px;
+	--gemini-soft-tint: linear-gradient(180deg, color-mix(in srgb, var(--vscode-button-background) 9%, var(--vscode-titleBar-activeBackground)) 0, var(--vscode-titleBar-activeBackground) 260px);
+	--gemini-gradient: linear-gradient(90deg, #4f8df7, #9b72cb 55%, #d96570);
+}
+
+/* The tint shows through the title bar, the status bar and the gaps between the cards. */
+.monaco-workbench.floating-panels.gemini-soft {
+	background: var(--gemini-soft-tint);
+}
+
+.monaco-workbench.floating-panels.gemini-soft > .monaco-grid-view,
+.monaco-workbench.floating-panels.gemini-soft .part.titlebar,
+.monaco-workbench.floating-panels.gemini-soft .part.statusbar,
+.monaco-workbench.floating-panels.gemini-soft .part.banner {
+	background-color: transparent !important;
+}
+
+/* The active tab in Agents mode's title bar: a raised card underlined in the Gemini colours. */
+.monaco-workbench.gemini-soft .gemini-title-tab.active {
+	background-color: var(--vscode-editor-background);
+	box-shadow: inset 0 0 0 1px var(--vscode-widget-border);
+}
+
+.monaco-workbench.gemini-soft .gemini-title-tab.active::after {
+	content: '';
+	position: absolute;
+	left: 10px;
+	right: 10px;
+	bottom: 0;
+	height: 2px;
+	border-radius: 2px;
+	background: var(--gemini-gradient);
+	pointer-events: none;
+}
+
+/* Pop-ups are solid: upstream's frosted glass keeps its layer, without the blur or the see-through. */
+.monaco-workbench.modern-ui-frosted-glass.gemini-soft {
+	--modern-ui-glass-opacity: 100% !important;
+}
+
+/* Specific enough to win over upstream's layer (0,8,0) whatever order the two files load in. */
+.monaco-workbench.modern-ui-frosted-glass.gemini-soft:not(.hc-black):not(.hc-light) :is(.quick-input-widget.quick-input-widget:not(.quick-input-widget-overlay), .action-widget, .monaco-hover, .monaco-dialog-box, .notifications-center, .notification-toast)::before {
+	backdrop-filter: none;
+}
+
+.monaco-workbench.gemini-soft :is(.quick-input-widget:not(.quick-input-widget-overlay), .context-view .monaco-menu .monaco-action-bar.vertical, .action-widget, .notification-toast) {
+	box-shadow: 0 8px 28px var(--vscode-widget-shadow);
+}

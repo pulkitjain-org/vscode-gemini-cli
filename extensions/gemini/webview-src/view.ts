@@ -36,7 +36,7 @@ function parentOf(node: HTMLElement): HTMLElement {
 	return found(node.parentElement, HTMLElement, `the parent of #${node.id}`);
 }
 
-const modelSelect = byId('model', HTMLSelectElement);
+const modelButton = byId('model', HTMLButtonElement);
 const modeChip = byId('mode-chip', HTMLElement);
 const branchButton = byId('branch', HTMLButtonElement);
 const commitButton = byId('commit', HTMLButtonElement);
@@ -61,8 +61,9 @@ export const ui = {
 	modeChip,
 	modeChipLabel: within(modeChip, '.mode-chip-label', HTMLButtonElement),
 	modeChipReset: within(modeChip, '.mode-chip-reset', HTMLButtonElement),
-	modelSelect,
-	modelWrap: parentOf(modelSelect),
+	modelButton,
+	modelLabel: within(modelButton, 'span', HTMLSpanElement),
+	modelMenu: byId('model-menu', HTMLElement),
 	resizeHandle: byId('resize', HTMLElement),
 	plusButton: byId('plus', HTMLButtonElement),
 	plusMenu: byId('plus-menu', HTMLElement),
@@ -80,9 +81,11 @@ export const ui = {
 	commitLabel: within(commitButton, 'span', HTMLSpanElement),
 	workspaceButton,
 	workspaceLabel: within(workspaceButton, 'span', HTMLSpanElement),
+	branchMenu: byId('branch-menu', HTMLElement),
+	workspaceMenu: byId('workspace-menu', HTMLElement),
 	scrollButton: byId('scroll-down', HTMLButtonElement),
 	scrollLabel: within(byId('scroll-down', HTMLButtonElement), '.scroll-down-label', HTMLSpanElement),
-	/** The working strip, status and composer; the Glass themes float it over the transcript. */
+	/** The working strip, status and composer, under the transcript. */
 	dock: byId('dock', HTMLElement),
 	dropLabel: byId('drop-label', HTMLElement),
 	enhanceRow: byId('enhance-row', HTMLElement),

@@ -49,7 +49,7 @@ export interface ChatStrings {
 	readonly hintCommands: string;
 	/** The button that jumps back to the latest message. */
 	readonly scrollToBottom: string;
-	/** The jump-to-latest button's label, where it shows one (the Glass themes). */
+	/** The jump-to-latest button's label. */
 	readonly latest: string;
 	readonly thinking: string;
 	/** The working strip above the composer: what the agent is doing while a turn runs. */
@@ -129,6 +129,10 @@ export interface ChatStrings {
 	readonly previewEmpty: string;
 	readonly enhancing: string;
 	readonly enhanced: string;
+	/** Under the draft while it is rewritten. */
+	readonly enhancingNote: string;
+	/** Under the rewrite; {0} is the undo shortcut. */
+	readonly enhancedNote: string;
 	/** Shown when a rewrite takes a while. */
 	readonly stillEnhancing: string;
 	/** Shown when a rewrite takes long enough that Gemini is likely waiting out a rate limit. */
@@ -193,6 +197,20 @@ export interface ChatStrings {
 	readonly menuUsageDetail: string;
 	readonly menuCommands: string;
 	readonly back: string;
+	/** The model, branch and folder menus under and beside the composer. */
+	readonly branchSearch: string;
+	readonly createBranch: string;
+	readonly newBranchName: string;
+	/** `{0}` is the new branch's name. */
+	readonly createBranchNamed: string;
+	readonly invalidBranchName: string;
+	readonly noBranches: string;
+	readonly loading: string;
+	readonly currentBranch: string;
+	readonly copyPath: string;
+	readonly revealFolder: string;
+	readonly showAgents: string;
+	readonly addFolder: string;
 	/** `{0}` is the mode and what it does. */
 	readonly modeChip: string;
 	/** `{0}` is the default mode. */
@@ -257,6 +275,13 @@ export interface ViewGit {
 	readonly workspace?: ViewWorkspace;
 }
 
+export interface ViewBranch {
+	readonly name: string;
+	readonly current: boolean;
+	/** How long ago its last commit was, already localised. */
+	readonly age?: string;
+}
+
 export interface ViewWorkspace {
 	readonly name: string;
 	/** Where the agent runs, with the home folder as ~. */
@@ -283,9 +308,12 @@ export type FromWebview =
 	| { readonly type: 'openLocation'; readonly path: string; readonly line?: number }
 	/** A file named in the reply's text: absolute, relative to the agent's folder, or a bare name to look for. */
 	| { readonly type: 'openPath'; readonly path: string; readonly line?: number }
-	| { readonly type: 'pickBranch' }
-	/** The workspace pill: copy its path, reveal it, or show the Agents list. */
-	| { readonly type: 'workspaceMenu' }
+	/** The branch menu opened; answered with `branches`. */
+	| { readonly type: 'listBranches' }
+	/** Switch to branch `name`, or create it from the current one. */
+	| { readonly type: 'switchBranch'; readonly name: string; readonly create: boolean }
+	/** The folder menu: copy the folder's path, reveal it, or show the Agents list. */
+	| { readonly type: 'workspaceAction'; readonly action: 'copyPath' | 'reveal' | 'showAgents' | 'addFolder' }
 	/** Reopen saved session `id` in this chat. */
 	| { readonly type: 'restoreSession'; readonly id: string }
 	/** Pick from every saved session for the folder. */
@@ -340,16 +368,14 @@ export type ToWebview =
 	/** Context to add to the composer, from the Add to Chat commands. */
 	| { readonly type: 'attach'; readonly attachments: readonly Attachment[] }
 	| { readonly type: 'git'; readonly git: ViewGit }
-	/** Whether Send shows the accent colour (true) or the Gemini gradient. */
-	| { readonly type: 'accent'; readonly solid: boolean }
+	/** The folder's local branches for the branch menu, or why it cannot switch (`notice`). */
+	| { readonly type: 'branches'; readonly branches: readonly ViewBranch[]; readonly notice?: string }
 	/** The colour theme's syntax colours, for code blocks. */
 	| { readonly type: 'tokenColors'; readonly colors: TokenColors }
 	/** The Enhance Prompt command: enhance what the composer holds. */
 	| { readonly type: 'enhanceRequested' }
 	| { readonly type: 'enhanced'; readonly requestId: number; readonly text: string }
 	| { readonly type: 'enhanceFailed'; readonly requestId: number; readonly message: string }
-	/** The text size in pixels (`gemini.chat.fontSize`). */
-	| { readonly type: 'fontSize'; readonly size: number }
 	/** The newest saved sessions the empty chat offers to reopen, of `total`. */
 	/** `retention` says how long the CLI keeps saved chats. */
 	| { readonly type: 'sessions'; readonly sessions: readonly ViewSession[]; readonly total: number; readonly retention: string }

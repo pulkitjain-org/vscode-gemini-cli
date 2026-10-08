@@ -8,6 +8,7 @@
 // Project Helpers page (webview-src/settings.ts).
 
 import type { ChangeTotals } from '../acp/agentChanges';
+import type { Attachment } from '../acp/attachments';
 
 /** Where an agent is at, for the title bar, Agent Home and the Changes panel. */
 export type AgentStateKind = 'working' | 'waiting' | 'done' | 'error' | 'idle' | 'stopped';
@@ -109,6 +110,14 @@ export interface HomeView {
 	/** The rest, newest first, to resume. */
 	readonly earlier: readonly HomeAgent[];
 	readonly ownBranch: boolean;
+	/** The approval modes a new agent can start in, as policy allows. */
+	readonly modes: readonly HomeMode[];
+}
+
+export interface HomeMode {
+	readonly id: string;
+	readonly name: string;
+	readonly description: string;
 }
 
 export interface HomeStrings {
@@ -119,7 +128,14 @@ export interface HomeStrings {
 	readonly ownBranch: string;
 	readonly ownBranchHint: string;
 	readonly workspace: string;
-	readonly addWorkspace: string;
+	readonly addFolder: string;
+	readonly projectHelpers: string;
+	readonly projectHelpersHint: string;
+	readonly plusMenu: string;
+	readonly mode: string;
+	readonly files: string;
+	readonly filesDetail: string;
+	readonly remove: string;
 	readonly active: string;
 	readonly earlier: string;
 	readonly open: string;
@@ -133,19 +149,19 @@ export interface HomeStrings {
 export type ToHome =
 	| { readonly type: 'view'; readonly view: HomeView }
 	| { readonly type: 'focus' }
-	/** The text size in pixels (`gemini.chat.fontSize`). */
-	| { readonly type: 'fontSize'; readonly size: number }
 	/**
 	 * The agent asked for could not start (the user has been told why); put the
 	 * task back in the prompt box. Sent only on failure: on success the agent's
 	 * tab covers Home, whose hidden webview would not get a message anyway.
 	 */
-	| { readonly type: 'startFailed'; readonly text: string };
+	| { readonly type: 'startFailed'; readonly text: string }
+	/** Files the user picked to send with the task. */
+	| { readonly type: 'attached'; readonly attachments: readonly Attachment[] };
 
 export type FromHome =
 	| { readonly type: 'ready' }
-	| { readonly type: 'start'; readonly folder: string; readonly text: string; readonly ownBranch: boolean }
-	| { readonly type: 'addWorkspace' }
+	| { readonly type: 'start'; readonly folder: string; readonly text: string; readonly ownBranch: boolean; readonly mode: string; readonly attachments: readonly Attachment[] }
+	| { readonly type: 'addFolder' | 'projectHelpers' | 'pickFiles' }
 	| { readonly type: 'open' | 'stop' | 'review' | 'mergeBack'; readonly id: string };
 
 // --- Project Helpers

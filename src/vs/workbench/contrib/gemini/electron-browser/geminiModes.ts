@@ -24,9 +24,7 @@ import { IAction } from '../../../../base/common/actions.js';
 import { Emitter } from '../../../../base/common/event.js';
 import { KeyCode, KeyMod } from '../../../../base/common/keyCodes.js';
 import { Codicon } from '../../../../base/common/codicons.js';
-import { Disposable, DisposableStore, toDisposable } from '../../../../base/common/lifecycle.js';
-import { ThemeIcon } from '../../../../base/common/themables.js';
-import { mainWindow } from '../../../../base/browser/window.js';
+import { Disposable, DisposableStore } from '../../../../base/common/lifecycle.js';
 import { localize, localize2 } from '../../../../nls.js';
 import { IActionViewItemService } from '../../../../platform/actions/browser/actionViewItemService.js';
 import { Action2, MenuId, MenuRegistry, registerAction2 } from '../../../../platform/actions/common/actions.js';
@@ -39,6 +37,7 @@ import { IKeybindingService } from '../../../../platform/keybinding/common/keybi
 import { KeybindingWeight } from '../../../../platform/keybinding/common/keybindingsRegistry.js';
 import { INotificationService, Severity } from '../../../../platform/notification/common/notification.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
+import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
 import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
 import { IViewDescriptorService, ViewContainerLocation } from '../../../common/views.js';
 import { IWorkbenchLayoutService, Parts } from '../../../services/layout/browser/layoutService.js';
@@ -73,6 +72,8 @@ const explorerContainer = 'workbench.view.explorer';
 const activityBarLocation = 'workbench.activityBar.location';
 /** Agents mode draws the editor tabs in the title bar; see {@link GeminiModes.setMode}. */
 const editorShowTabs = 'workbench.editor.showTabs';
+/** The settings Agents mode sets in memory, in {@link GeminiModes.setMode}. */
+const agentsModeSettings = [activityBarLocation, editorShowTabs];
 /** On the workbench's windows while in Agents mode, for geminiModes.css and geminiGlass.css. */
 const agentsModeClass = 'gemini-agents-mode';
 
@@ -93,9 +94,6 @@ class ModeState {
 	mode: Mode = 'editor';
 	agents: readonly AgentStatus[] = [];
 	readonly onDidChange = new Emitter<void>();
-	/** The selected agent's branch, shown at the foot of Agents mode's side bar; empty for none. */
-	footer = '';
-	readonly onDidChangeFooter = new Emitter<void>();
 }
 
 const state = new ModeState();
@@ -137,6 +135,7 @@ class GeminiModes extends Disposable implements IWorkbenchContribution {
 		@IViewDescriptorService private readonly viewDescriptorService: IViewDescriptorService,
 		@INotificationService private readonly notificationService: INotificationService,
 		@IKeybindingService private readonly keybindingService: IKeybindingService,
+		@IWorkspaceContextService workspaceContextService: IWorkspaceContextService,
 	) {
 		super();
 		modes = this;
@@ -146,8 +145,17 @@ class GeminiModes extends Disposable implements IWorkbenchContribution {
 		this._register(actionViewItemService.register(MenuId.TitleBarAdjacentCenter, TitleTabsAction.ID, (action, options) =>
 			instantiationService.createInstance(GeminiTitleTabs, action, options)));
 		this._register(layoutService.onDidAddContainer(({ container }) => container.classList.toggle(agentsModeClass, state.mode === 'agents')));
-		this._register(state.onDidChangeFooter.event(() => this.renderFooter()));
-		this._register(toDisposable(() => this.footer?.element.remove()));
+		// Adding a folder to a one-folder window turns it into a workspace without a reload: the in-memory
+		// settings that hide the activity bar and the tab row are dropped, and storage moves to the new workspace.
+		this._register(configurationService.onDidChangeConfiguration(e => {
+			if (state.mode === 'agents' && agentsModeSettings.some(key => e.affectsConfiguration(key) && configurationService.inspect(key).memoryValue === undefined)) {
+				this.setMode('agents', false);
+			}
+		}));
+		this._register(workspaceContextService.onDidChangeWorkbenchState(() => {
+			this.storageService.store(modeKey, state.mode, StorageScope.WORKSPACE, StorageTarget.MACHINE);
+			this.setMode(state.mode, false);
+		}));
 		const saved = this.storageService.get(modeKey, StorageScope.WORKSPACE);
 		const mode: Mode = saved === 'editor' ? 'editor' : 'agents';
 		// The workbench restores the parts as they were left, so only the activity bar needs setting,
@@ -179,29 +187,6 @@ class GeminiModes extends Disposable implements IWorkbenchContribution {
 
 	get mode(): Mode {
 		return state.mode;
-	}
-
-	/** The side bar's footer, made the first time the extension sends a branch. */
-	private footer: { readonly element: HTMLElement; readonly label: HTMLElement } | undefined;
-
-	/**
-	 * Agents mode's side bar ends with the selected agent's branch, as a tree view cannot. It sits in
-	 * the room the hidden side bar title leaves at the bottom (geminiModes.css), so it needs no layout.
-	 */
-	private renderFooter(): void {
-		if (!this.footer && state.footer) {
-			const sideBar = this.layoutService.getContainer(mainWindow, Parts.SIDEBAR_PART);
-			if (sideBar) {
-				const element = append(sideBar, $('.gemini-agents-footer'));
-				append(element, $(ThemeIcon.asCSSSelector(Codicon.gitBranch)));
-				this.footer = { element, label: append(element, $('span.gemini-agents-footer-label')) };
-			}
-		}
-		if (this.footer) {
-			this.footer.element.classList.toggle('empty', !state.footer);
-			this.footer.label.textContent = state.footer;
-			this.footer.element.setAttribute('aria-label', localize('gemini.mode.footer', "Branch {0}", state.footer));
-		}
 	}
 
 	async switchTo(mode: Mode): Promise<void> {
@@ -338,12 +323,6 @@ registerWorkbenchContribution2(GeminiModes.ID, GeminiModes, WorkbenchPhase.Block
 
 /** The mode now, for the extension as it starts. */
 CommandsRegistry.registerCommand('_gemini.getMode', () => state.mode);
-
-/** The extension reports the selected agent's branch for the foot of Agents mode's side bar; empty for none. */
-CommandsRegistry.registerCommand('_gemini.setAgentFooter', (_accessor, branch: string) => {
-	state.footer = typeof branch === 'string' ? branch : '';
-	state.onDidChangeFooter.fire();
-});
 
 /** The extension reports the agents worth a pill: working, waiting on the user, or done and unread. */
 CommandsRegistry.registerCommand('_gemini.setAgentStatus', (_accessor, agents: readonly AgentStatus[]) => {

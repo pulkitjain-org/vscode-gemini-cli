@@ -6,7 +6,11 @@
 // Agent Home (src/host/agentHome.ts): a composer that starts a new agent,
 // cards for the agents at work, and earlier agents to resume.
 
+import { type Attachment, attachmentLabel } from '../src/acp/attachments';
 import type { FromHome, HomeAgent, HomeStrings, HomeView, ToHome } from '../src/host/panelProtocol';
+import { attachmentIcon, sameAttachment } from './chatLogic';
+import { Menu, type MenuRow } from './menu';
+import { modeIcon } from './modeIcon';
 import { button, el, icon, pageStrings } from './panelDom';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromHome): void; getState(): unknown; setState(state: unknown): void };
@@ -14,24 +18,25 @@ declare function acquireVsCodeApi(): { postMessage(message: FromHome): void; get
 interface SavedState {
 	readonly draft?: string;
 	readonly folder?: string;
+	readonly mode?: string;
 }
 
 const vscode = acquireVsCodeApi();
 
-function applyFontSize(size: number): void {
-	if (Number.isFinite(size) && size > 0) {
-		document.body.style.setProperty('--gemini-font-size', `${size}px`);
-	}
-}
 const strings = pageStrings<HomeStrings>();
 const saved = (vscode.getState() ?? {}) as SavedState;
 
 const form = document.getElementById('composer') as HTMLFormElement;
 const prompt = document.getElementById('prompt') as HTMLTextAreaElement;
-const workspace = document.getElementById('workspace') as HTMLSelectElement;
+const workspaceButton = document.getElementById('workspace') as HTMLButtonElement;
+const workspaceLabel = workspaceButton.querySelector('span')!;
 const ownBranch = document.getElementById('own-branch') as HTMLInputElement;
 const ownBranchLabel = document.getElementById('own-branch-label') as HTMLLabelElement;
 const start = document.getElementById('start') as HTMLButtonElement;
+const helpers = document.getElementById('helpers') as HTMLButtonElement;
+const plusButton = document.getElementById('plus') as HTMLButtonElement;
+const modeButton = document.getElementById('mode') as HTMLButtonElement;
+const attachmentList = document.getElementById('attachments')!;
 const active = document.getElementById('active')!;
 const earlier = document.getElementById('earlier')!;
 
@@ -40,42 +45,155 @@ document.getElementById('subtitle')!.textContent = strings.subtitle;
 prompt.placeholder = strings.placeholder;
 prompt.value = saved.draft ?? '';
 prompt.setAttribute('aria-label', strings.title);
-workspace.setAttribute('aria-label', strings.workspace);
-ownBranchLabel.querySelector('span')!.textContent = strings.ownBranch;
+ownBranchLabel.querySelector('.switch-label')!.textContent = strings.ownBranch;
 ownBranchLabel.title = strings.ownBranchHint;
-start.textContent = strings.start;
+start.title = strings.start;
+helpers.querySelector('span')!.textContent = strings.projectHelpers;
+helpers.title = strings.projectHelpersHint;
+helpers.addEventListener('click', () => vscode.postMessage({ type: 'projectHelpers' }));
+start.setAttribute('aria-label', strings.start);
+plusButton.title = strings.plusMenu;
+plusButton.setAttribute('aria-label', strings.plusMenu);
 
-const addWorkspaceValue = '\u0000add';
 let view: HomeView | undefined;
+/** The folder the next agent starts in. */
+let folder = saved.folder ?? '';
 let ownBranchTouched = false;
+/** The approval mode the next agent starts in. */
+let mode = saved.mode ?? 'default';
+/** Files the next agent's task is sent with. */
+let attachments: Attachment[] = [];
+
+/** A row per mode the next agent can start in; picking one closes `menu`. */
+function modeRows(menu: () => Menu): MenuRow[] {
+	return (view?.modes ?? []).map(choice => ({
+		icon: modeIcon(choice.id),
+		name: choice.name,
+		detail: choice.description,
+		checked: choice.id === mode,
+		run: () => {
+			mode = choice.id;
+			save();
+			updateControls();
+			menu().close();
+		},
+	}));
+}
+
+const plusMenu: Menu = new Menu({
+	element: document.getElementById('plus-menu')!,
+	anchor: plusButton,
+	label: strings.plusMenu,
+	sections: () => [
+		{ heading: strings.mode, rows: modeRows(() => plusMenu) },
+		{
+			rows: [{
+				icon: 'files',
+				name: strings.files,
+				detail: strings.filesDetail,
+				run: () => {
+					plusMenu.close();
+					vscode.postMessage({ type: 'pickFiles' });
+				},
+			}],
+		},
+	],
+	empty: () => '',
+});
+
+const modeMenu: Menu = new Menu({
+	element: document.getElementById('mode-menu')!,
+	anchor: modeButton,
+	label: strings.mode,
+	sections: () => [{ rows: modeRows(() => modeMenu) }],
+	empty: () => '',
+});
+
+const folderMenu = new Menu({
+	element: document.getElementById('workspace-menu')!,
+	anchor: workspaceButton,
+	label: strings.workspace,
+	sections: () => [
+		{
+			rows: (view?.workspaces ?? []).map(w => ({
+				icon: 'folder',
+				name: w.name,
+				detail: w.description,
+				checked: w.folder === folder,
+				run: () => {
+					pickFolder(w.folder);
+					folderMenu.close();
+				},
+			})),
+		},
+		{
+			rows: [{
+				icon: 'add',
+				name: strings.addFolder,
+				run: () => {
+					folderMenu.close();
+					vscode.postMessage({ type: 'addFolder' });
+				},
+			}],
+		},
+	],
+	empty: () => strings.noWorkspace,
+});
 
 function save(): void {
-	vscode.setState({ draft: prompt.value, folder: workspace.value } satisfies SavedState);
+	vscode.setState({ draft: prompt.value, folder, mode } satisfies SavedState);
+}
+
+function pickFolder(next: string): void {
+	folder = next;
+	save();
+	updateControls();
 }
 
 function updateControls(): void {
-	const folder = view?.workspaces.find(w => w.folder === workspace.value);
-	ownBranchLabel.hidden = !folder?.git;
-	start.disabled = !prompt.value.trim() || !folder;
+	const current = view?.workspaces.find(w => w.folder === folder);
+	workspaceLabel.textContent = current?.name ?? strings.addFolder;
+	const label = current ? `${strings.workspace}: ${current.description}/${current.name}` : strings.workspace;
+	workspaceButton.title = label;
+	workspaceButton.setAttribute('aria-label', label);
+	ownBranchLabel.hidden = !current?.git;
+	start.disabled = !prompt.value.trim() || !current;
+	const currentMode = view?.modes.find(choice => choice.id === mode) ?? view?.modes[0];
+	modeButton.parentElement!.hidden = !currentMode;
+	if (currentMode) {
+		mode = currentMode.id;
+		modeButton.querySelector('span')!.textContent = currentMode.name;
+		modeButton.querySelector('.codicon')!.className = `codicon codicon-${modeIcon(currentMode.id)}`;
+		const label = `${strings.mode}: ${currentMode.name}`;
+		modeButton.title = label;
+		modeButton.setAttribute('aria-label', label);
+	}
+	folderMenu.render();
+	plusMenu.render();
+	modeMenu.render();
+}
+
+function renderAttachments(): void {
+	attachmentList.replaceChildren(...attachments.map(attachment => {
+		const chip = el('span', 'chip attachment');
+		const label = attachmentLabel(attachment);
+		chip.title = attachment.kind !== 'image' && attachment.path || label;
+		chip.append(icon(attachmentIcon(attachment.kind, label)), el('span', undefined, label));
+		const remove = button('chip-remove', '', () => {
+			attachments = attachments.filter(a => a !== attachment);
+			renderAttachments();
+			prompt.focus();
+		}, 'close', `${strings.remove} ${label}`);
+		chip.append(remove);
+		return chip;
+	}));
+	attachmentList.hidden = !attachments.length;
 }
 
 function render(next: HomeView): void {
 	view = next;
-	const selected = workspace.value || saved.folder;
-	workspace.replaceChildren();
-	for (const w of next.workspaces) {
-		const option = el('option', undefined, w.name);
-		option.value = w.folder;
-		option.title = `${w.description}/${w.name}`;
-		workspace.append(option);
-	}
-	const add = el('option', undefined, strings.addWorkspace);
-	add.value = addWorkspaceValue;
-	workspace.append(add);
-	if (selected && next.workspaces.some(w => w.folder === selected)) {
-		workspace.value = selected;
-	} else if (next.workspaces.length) {
-		workspace.value = next.workspaces[0].folder;
+	if (!next.workspaces.some(w => w.folder === folder)) {
+		folder = next.workspaces[0]?.folder ?? '';
 	}
 	if (!ownBranchTouched) {
 		ownBranch.checked = next.ownBranch;
@@ -152,11 +270,13 @@ function card(agent: HomeAgent): HTMLElement {
 
 function submit(): void {
 	const text = prompt.value.trim();
-	if (!text || !workspace.value || workspace.value === addWorkspaceValue) {
+	if (!text || !folder) {
 		return;
 	}
-	vscode.postMessage({ type: 'start', folder: workspace.value, text, ownBranch: !ownBranchLabel.hidden && ownBranch.checked });
+	vscode.postMessage({ type: 'start', folder, text, ownBranch: !ownBranchLabel.hidden && ownBranch.checked, mode, attachments });
 	prompt.value = '';
+	attachments = [];
+	renderAttachments();
 	save();
 	updateControls();
 }
@@ -175,14 +295,6 @@ prompt.addEventListener('input', () => {
 	save();
 	updateControls();
 });
-workspace.addEventListener('change', () => {
-	if (workspace.value === addWorkspaceValue) {
-		workspace.value = view?.workspaces[0]?.folder ?? '';
-		vscode.postMessage({ type: 'addWorkspace' });
-	}
-	save();
-	updateControls();
-});
 ownBranch.addEventListener('change', () => {
 	ownBranchTouched = true;
 });
@@ -191,9 +303,11 @@ window.addEventListener('message', (event: MessageEvent<ToHome>) => {
 	const message = event.data;
 	if (message.type === 'view') {
 		render(message.view);
-	} else if (message.type === 'fontSize') {
-		applyFontSize(message.size);
 	} else if (message.type === 'focus') {
+		prompt.focus();
+	} else if (message.type === 'attached') {
+		attachments = [...attachments, ...message.attachments.filter(a => !attachments.some(b => sameAttachment(a, b)))];
+		renderAttachments();
 		prompt.focus();
 	} else if (message.type === 'startFailed') {
 		prompt.value ||= message.text;
@@ -202,5 +316,4 @@ window.addEventListener('message', (event: MessageEvent<ToHome>) => {
 	}
 });
 
-applyFontSize(Number(document.body.dataset.fontSize));
 vscode.postMessage({ type: 'ready' });

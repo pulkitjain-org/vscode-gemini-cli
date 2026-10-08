@@ -10,6 +10,7 @@ import { agentRowMeta } from '../acp/agentRow';
 import { attentionChange, waitingCount } from '../acp/attention';
 import { branchNameFrom, isValidBranchName } from '../acp/branchNames';
 import { AgentRecord, AgentsModel, AgentsSnapshot, WorkspaceRecord } from '../acp/agents';
+import type { Attachment } from '../acp/attachments';
 import { FolderFileIndex } from '../acp/folderFiles';
 import { readGitHead } from '../acp/gitHead';
 import { errorMessage } from '../acp/errors';
@@ -140,8 +141,6 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	/** The pills last sent to the title bar, to send only changes. */
 	private lastStatus = '';
 	private lastTabs = '';
-	/** The branch last shown at the foot of Agents mode's side bar. */
-	private lastFooter: string | undefined;
 	private refreshTimeout: ReturnType<typeof setTimeout> | undefined;
 	/** Each agent's page in the GeminiCode browser; set once the extension has made it. */
 	browser: BrowserTools | undefined;
@@ -177,7 +176,6 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.notifications`) && this.refresh()),
 			// Relative times go stale; refresh them only while the pane is visible.
 			this.tree.onDidChangeVisibility(e => this.setRefreshing(e.visible)),
-			this.tree.onDidChangeSelection(() => void this.updateFooter()),
 			vscode.commands.registerCommand('gemini.agents.newAgent', (node?: Node) => this.newAgent(node)),
 			vscode.commands.registerCommand('gemini.agents.newAgentOnBranch', (node?: Node) => this.newAgent(node, true)),
 			vscode.commands.registerCommand('gemini.agents.mergeBack', (node?: Node) => node?.kind === 'agent' && this.mergeBack(node.record.id)),
@@ -363,7 +361,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 
 	/** Starts an agent in `folder` (on its own branch, named after the prompt, with `ownBranch`) and sends it `text`. */
 	/** Returns whether the agent started; when not, the user has been told why. */
-	async startWithPrompt(folder: string, text: string, ownBranch: boolean): Promise<boolean> {
+	async startWithPrompt(folder: string, text: string, ownBranch: boolean, mode: string, attachments: readonly Attachment[]): Promise<boolean> {
 		let worktree: AgentWorktree | undefined;
 		if (ownBranch) {
 			const repository = await repositoryRoot(folder);
@@ -381,9 +379,14 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		}
 		const workspace = this.model.addWorkspace(folder);
 		const agent = this.model.addAgent(workspace.id, vscode.l10n.t("New agent"), worktree);
+		// Started here, so its session opens in the mode picked.
+		const live = this.start(agent, worktree?.cwd ?? folder);
+		if (mode !== 'default') {
+			live.session.client.setModeOnNextSession(mode);
+		}
 		await this.open(agent.id);
 		// Not awaited: send resolves when the whole turn ends, and the agent has started now.
-		void this.live.get(agent.id)?.controller.send(text);
+		void live.controller.send(text, attachments);
 		return true;
 	}
 
@@ -450,19 +453,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		void this.live.get(id)?.session.cancel();
 	}
 
-	/** Shows the selected agent's branch at the foot of Agents mode's side bar; only GeminiCode's workbench has the command. */
-	private async updateFooter(): Promise<void> {
-		const node = this.tree.selection[0];
-		const branch = node?.kind === 'agent' ? node.record.worktree?.branch ?? await this.branchOf(node.folder).catch(() => undefined) : undefined;
-		if (branch !== this.lastFooter) {
-			this.lastFooter = branch;
-			void Promise.resolve(vscode.commands.executeCommand('_gemini.setAgentFooter', branch ?? '')).catch(() => undefined);
-		}
-	}
-
 	/** Sends the title bar a pill for each agent that is working, waiting or done and unread. */
 	private updateTitleBar(): void {
-		void this.updateFooter();
 		const pills = this.summaries()
 			.filter(agent => agent.state === 'working' || agent.state === 'waiting' || agent.state === 'done' || agent.state === 'error')
 			.sort((a, b) => pillOrder(a.state) - pillOrder(b.state))

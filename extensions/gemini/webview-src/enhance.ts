@@ -6,7 +6,7 @@
 // Enhance prompt: rewrites the draft as a precise prompt (the extension's
 // src/acp/promptEnhancer.ts). A pill floats just after the draft's last
 // character, moving as the user types: Enhance starts it; while it works the
-// text shimmers and the pill cancels; then the rewrite replaces the draft as an
+// draft fades and the pill cancels; then the rewrite replaces the draft as an
 // edit, and the pill offers Revert beside Enhance (Undo works too).
 
 import { acceptsEnhanceReply, enhanceButtonPlacement, EnhancePhase, enhanceOriginal, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, format, isEnhanceShortcut } from './chatLogic';
@@ -33,6 +33,7 @@ let prepared = false;
 
 setLabel(enhanceButton, format(strings.enhanceTooltip, enhanceShortcutLabel(mac)));
 setLabel(revertButton, strings.revertTooltip);
+enhanceButton.querySelector('.enhance-key')!.textContent = enhanceShortcutLabel(mac);
 revertLabel.textContent = strings.revert;
 
 function setPhase(next: EnhancePhase): void {
@@ -46,6 +47,9 @@ function setPhase(next: EnhancePhase): void {
 	setLabel(enhanceButton, working ? strings.cancel : format(strings.enhanceTooltip, enhanceShortcutLabel(mac)));
 	revertButton.hidden = next.kind !== 'done';
 	updateSendButton();
+	if (next.kind !== 'idle' || !enhanceNote.classList.contains('error')) {
+		showNote(next.kind === 'working' ? strings.enhancingNote : next.kind === 'done' ? format(strings.enhancedNote, mac ? '\u2318Z' : 'Ctrl+Z') : '');
+	}
 	slowTimers.forEach(clearTimeout);
 	slowTimers = working ? [
 		setTimeout(() => showNote(strings.stillEnhancing), slowAfterMs),
@@ -131,7 +135,6 @@ export function toggleEnhance(): void {
 		return;
 	}
 	const requestId = nextRequestId++;
-	showNote('');
 	setPhase({ kind: 'working', requestId, original: enhanceOriginal(phase, draft) });
 	ui.announce.textContent = strings.enhancing;
 	vscode.postMessage({ type: 'enhancePrompt', requestId, text: draft, attachments: state.attachments });
@@ -143,7 +146,6 @@ export function cancelEnhance(): void {
 		return;
 	}
 	vscode.postMessage({ type: 'cancelEnhance', requestId: phase.requestId });
-	showNote('');
 	setPhase({ kind: 'idle' });
 	input.focus();
 }
@@ -154,7 +156,6 @@ export function onEnhanced(requestId: number, text: string): void {
 		return;
 	}
 	const rewrite = enhanceText(text);
-	showNote('');
 	// Set first: replacing the text fires an input event, which must see the rewrite.
 	setPhase({ kind: 'done', original: phase.original, rewrite });
 	replaceInput(rewrite);
@@ -209,8 +210,8 @@ onComposerChange(() => {
 	}
 	updateRow();
 });
-/** Measures the input's text style again, as after a font size change, and moves the pill. */
-export function restyleEnhanceButton(): void {
+/** Measures the input's text style again, as after a resize, and moves the pill. */
+function restyleEnhanceButton(): void {
 	mirrorStyled = false;
 	placeButton();
 }
