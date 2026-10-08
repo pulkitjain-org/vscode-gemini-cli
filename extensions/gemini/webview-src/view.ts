@@ -64,6 +64,8 @@ export const ui = {
 	resizeHandle: byId('resize', HTMLElement),
 	mentionButton: byId('mention', HTMLButtonElement),
 	followButton: byId('follow', HTMLButtonElement),
+	usageButton: byId('usage', HTMLButtonElement),
+	usagePopover: byId('usage-popover', HTMLElement),
 	writeTab: byId('tab-write', HTMLButtonElement),
 	previewTab: byId('tab-preview', HTMLButtonElement),
 	preview: byId('preview', HTMLElement),

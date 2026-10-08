@@ -12,6 +12,7 @@ import { Emitter } from './events';
 import type { PendingPermission } from './permissions';
 import { Attachment, attachmentLabel } from './attachments';
 import { ChatEvent, contentBlockToText, ToolCallModel } from './sessionUpdates';
+import type { ModelTokens } from './turnUsage';
 
 export type ToolCallDetail =
 	| { readonly type: 'text'; readonly text: string }
@@ -67,6 +68,8 @@ export type TranscriptItem =
 		readonly undo?: 'available' | 'undone';
 		/** The latest turn offers to send its prompt again. */
 		readonly retry?: boolean;
+		/** Tokens the turn used per model, when the agent reported them. */
+		readonly usage?: readonly ModelTokens[];
 	};
 
 /**
@@ -174,9 +177,9 @@ export class ChatTranscript {
 	}
 
 	/** Ends the turn; returns the item's id. */
-	addTurnEnd(durationMs: number): string {
+	addTurnEnd(durationMs: number, usage?: readonly ModelTokens[]): string {
 		const id = this.newId();
-		this.push({ id, kind: 'turnEnd', durationMs: Math.max(0, Math.round(durationMs)), at: this.now() });
+		this.push({ id, kind: 'turnEnd', durationMs: Math.max(0, Math.round(durationMs)), at: this.now(), ...(usage?.length ? { usage } : {}) });
 		return id;
 	}
 

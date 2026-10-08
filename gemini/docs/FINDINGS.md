@@ -110,3 +110,12 @@ Measured on 2 Oct 2026 with gemini-cli 0.62.0 in `--acp` mode against a local st
 - Per prompt, the CLI appends four small lines to its chat file under `~/.gemini/tmp/<project>/chats/`.
 
 In the chat view, re-rendering a whole streaming reply on every update cost about 25 ms per update at 30 KB. Rendering only the blocks after the last finished one costs about 2 ms.
+
+## Token counts over ACP
+
+Read from gemini-cli 0.62.0 and 0.63.0 on 8 Oct 2026.
+
+- Each `session/prompt` answer carries `_meta.quota`: `token_count` (`input_tokens`, `output_tokens`) for the whole turn and `model_usage`, one entry per model with its own `token_count`. A slash command the CLI runs itself answers with zeros.
+- The counts are each model call's `promptTokenCount` and `candidatesTokenCount`, summed over the calls of the turn, so a turn with tool calls counts the conversation once per call, as `/stats` does. Cached and thinking tokens are not reported separately.
+- Over ACP the CLI handles only `/memory`, `/extensions`, `/init`, `/restore`, `/about` and `/help` itself; `/stats` is not one of them, so GeminiCode keeps the counts itself, on each turn's end in the transcript.
+- The CLI sends no `usage_update` session update.

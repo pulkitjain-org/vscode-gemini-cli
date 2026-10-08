@@ -7,6 +7,7 @@
 // (webview-src/chat.ts). Types only, so the webview bundle can import them.
 
 import type { Attachment } from '../acp/attachments';
+import type { ModelQuota } from '../acp/directRequest';
 import type { TranscriptItem } from '../acp/chatTranscript';
 import type { ItemUpdate } from '../acp/textDeltas';
 import type { SessionSettings } from '../acp/sessionSettings';
@@ -18,7 +19,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 14;
+export const chatProtocolVersion = 15;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -145,7 +146,49 @@ export interface ChatStrings {
 	/** `{0}` is how many sessions there are. */
 	readonly showAllSessions: string;
 	readonly commandFromApp: string;
+	/** The usage button's tooltip, and the popover it opens. */
+	readonly usage: string;
+	readonly usageThisChat: string;
+	/** `{0}` is a number of replies. */
+	readonly usageTurns: string;
+	readonly usageOneTurn: string;
+	readonly usageInput: string;
+	readonly usageOutput: string;
+	readonly usageModel: string;
+	readonly usageTotal: string;
+	/** Under the chat's counts: what input counts. */
+	readonly usageInputNote: string;
+	readonly usageNoTurns: string;
+	/** Only replies from before GeminiCode kept counts. */
+	readonly usageNoCounts: string;
+	/** `{0}` and `{1}` are numbers of replies. */
+	readonly usageSomeCounted: string;
+	readonly usageQuota: string;
+	/** `{0}` is a percentage. */
+	readonly usageUsed: string;
+	/** `{0}` is a number of hours or minutes. */
+	readonly usageResetsHours: string;
+	readonly usageResetsMinutes: string;
+	readonly usageChecking: string;
+	/** `{0}` is a time such as "2 min ago", already short. */
+	readonly usageCheckedJustNow: string;
+	readonly usageCheckedMinutes: string;
+	readonly usageQuotaOff: string;
+	readonly usageQuotaNone: string;
+	readonly usageQuotaFailed: string;
+	readonly close: string;
 }
+
+/** Today's quota for the usage popover. */
+export type ViewQuota =
+	| { readonly kind: 'ok'; readonly quota: readonly ModelQuota[]; /** When it was read, in ms since the epoch. */ readonly at: number; /** A newer read is on its way. */ readonly checking?: boolean }
+	/** Being read, with nothing to show yet. */
+	| { readonly kind: 'checking' }
+	/** Signed in with an API key, which has no quota to read. */
+	| { readonly kind: 'none' }
+	| { readonly kind: 'failed' }
+	/** Turned off with `gemini.usageMeter.enabled`. */
+	| { readonly kind: 'off' };
 
 /** A saved Gemini CLI session the chat can reopen. */
 export interface ViewSession {
@@ -215,7 +258,9 @@ export type FromWebview =
 	| { readonly type: 'prepareEnhance' }
 	/** Rewrite the draft as a precise prompt; answered with `enhanced` or `enhanceFailed` carrying the same `requestId`. */
 	| { readonly type: 'enhancePrompt'; readonly requestId: number; readonly text: string; readonly attachments: readonly Attachment[] }
-	| { readonly type: 'cancelEnhance'; readonly requestId: number };
+	| { readonly type: 'cancelEnhance'; readonly requestId: number }
+	/** The usage popover opened; answered with `quota`, once or twice. */
+	| { readonly type: 'readQuota' };
 
 export type ToWebview =
 	| { readonly type: 'reset'; readonly items: readonly TranscriptItem[]; readonly busy: boolean; readonly status: ViewStatus; readonly settings: SessionSettings }
@@ -247,4 +292,5 @@ export type ToWebview =
 	/** The text size in pixels (`gemini.chat.fontSize`). */
 	| { readonly type: 'fontSize'; readonly size: number }
 	/** The newest saved sessions the empty chat offers to reopen, of `total`. */
-	| { readonly type: 'sessions'; readonly sessions: readonly ViewSession[]; readonly total: number };
+	| { readonly type: 'sessions'; readonly sessions: readonly ViewSession[]; readonly total: number }
+	| { readonly type: 'quota'; readonly quota: ViewQuota };

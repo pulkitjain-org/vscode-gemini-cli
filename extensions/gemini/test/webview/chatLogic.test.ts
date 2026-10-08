@@ -8,7 +8,7 @@ import type { TranscriptItem } from '../../src/acp/chatTranscript';
 import {
 	acceptsEnhanceReply, attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, currentActivity, currentPrompt, promptStep, formatClock, turnStart, draggedHeight, emptyFence, enhanceButtonPlacement, enhanceOriginal, type EnhancePhase, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, fileReference, fileUris, folderOf, format, formatDuration, formatSentAt, isEnhanceShortcut,
 	imageName, indexOfItem, isNearBottom, matchCommands, mentionAt, mentionInsertion, permissionDefaults, planIcon, replyBefore, restoredHeight,
-	sameAttachment, slashQuery, thoughtSeconds, toolKindIcon, withAppended, withoutMention, wrapIndex,
+	formatTokens, resetsIn, sameAttachment, slashQuery, thoughtSeconds, toolKindIcon, withAppended, withoutMention, wrapIndex,
 } from '../../webview-src/chatLogic';
 
 describe('format', () => {
@@ -420,5 +420,29 @@ describe('prompt navigation', () => {
 		expect(promptStep(tops, 1200, -1)).toBe(1);
 		expect(promptStep(tops, 600, -1)).toBe(1);
 		expect(promptStep(tops, 0, -1)).toBe(-1);
+	});
+});
+
+describe('formatTokens', () => {
+	it('shortens large counts', () => {
+		expect(formatTokens(950, 'en')).toBe('950');
+		expect(formatTokens(48_210, 'en')).toBe('48.2K');
+		expect(formatTokens(1_340_000, 'en')).toBe('1.3M');
+	});
+});
+
+describe('resetsIn', () => {
+	const now = Date.parse('2026-10-08T10:00:00Z');
+
+	it('counts whole hours, then minutes under an hour', () => {
+		expect(resetsIn('2026-10-08T15:40:00Z', now)).toEqual({ unit: 'hours', value: 5 });
+		expect(resetsIn('2026-10-08T10:25:00Z', now)).toEqual({ unit: 'minutes', value: 25 });
+		expect(resetsIn('2026-10-08T10:00:10Z', now)).toEqual({ unit: 'minutes', value: 1 });
+	});
+
+	it('is undefined once passed or when unknown', () => {
+		expect(resetsIn('2026-10-08T09:00:00Z', now)).toBeUndefined();
+		expect(resetsIn(undefined, now)).toBeUndefined();
+		expect(resetsIn('soon', now)).toBeUndefined();
 	});
 });

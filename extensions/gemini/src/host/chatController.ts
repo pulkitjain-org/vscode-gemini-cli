@@ -21,6 +21,7 @@ import { CliSession, isPrompt, listCliSessions } from '../acp/cliSessions';
 import type { ChatEvent } from '../acp/sessionUpdates';
 import { AgentStatus } from '../acp/status';
 import { TextDeltas } from '../acp/textDeltas';
+import type { ModelTokens } from '../acp/turnUsage';
 import { UpdateBatcher } from '../acp/updateBatcher';
 import type { AgentClient } from '../acp/agentClient';
 import { AgentError, errorMessage } from '../acp/errors';
@@ -37,6 +38,7 @@ import { createBranchAndCommit, pickBranch } from './gitActions';
 import { preferredComposerHeight, rememberComposerHeight, rememberModel } from './modelPreference';
 import { skills, teamCommands } from './teamCommands';
 import { onDidChangeThemeTokens, themeTokenColors } from './themeTokens';
+import type { UsageMeter } from './usageMeter';
 import { createNonce, escapeAttribute } from './webviewHtml';
 import type { FileMatch } from './workspaceFiles';
 import { deleteFile, replaceFileText, WorkspaceFileSystem } from './workspaceFileSystem';
@@ -75,6 +77,8 @@ export interface ChatControllerOptions {
 	readonly enhancer: ChatEnhancer;
 	/** The workspace pill; without it the composer shows none. */
 	workspace?(): ChatWorkspace | undefined;
+	/** Today's quota, for the usage popover; unset shows it as off. */
+	usage?(): UsageMeter | undefined;
 	/** Offers to reopen the CLI's saved sessions for the folder (and /resume); unset in chats that do not. */
 	readonly savedSessions?: {
 		/** Sessions other chats have open, which this one must not take. */
@@ -379,13 +383,13 @@ export class ChatController implements vscode.Disposable {
 			if (this.undoNote) {
 				content.unshift({ type: 'text', text: this.undoNote });
 			}
-			const stopReason = await this.service.client.prompt(content);
+			const { stopReason, usage } = await this.service.client.promptTurn(content);
 			this.undoNote = undefined;
 			const notice = stopReasonNotice(stopReason);
 			if (notice) {
 				this.transcript.addNotice(notice, stopReason === 'refusal' ? 'error' : 'info');
 			}
-			this.endTurn(Date.now() - started);
+			this.endTurn(Date.now() - started, usage);
 			ended = true;
 		} catch (err) {
 			this.transcript.addNotice(errorMessage(err), 'error');
@@ -399,8 +403,8 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	/** Adds the turn's end, offering Retry and, when it changed files, Undo. */
-	private endTurn(durationMs: number): void {
-		const id = this.transcript.addTurnEnd(durationMs);
+	private endTurn(durationMs: number, usage?: readonly ModelTokens[]): void {
+		const id = this.transcript.addTurnEnd(durationMs, usage);
 		const { undoable, dropped } = this.checkpoints.endTurn(id);
 		for (const old of dropped) {
 			this.transcript.updateTurnEnd(old, { undo: undefined });
@@ -774,6 +778,9 @@ export class ChatController implements vscode.Disposable {
 			case 'enhancePrompt':
 				void this.enhance(message.requestId, message.text, message.attachments);
 				break;
+			case 'readQuota':
+				void this.postQuota();
+				break;
 			case 'cancelEnhance':
 				if (this.enhancing?.requestId === message.requestId) {
 					this.enhancing.abort.abort();
@@ -1070,6 +1077,18 @@ export class ChatController implements vscode.Disposable {
 		}
 	}
 
+	/** Today's quota for the usage popover: what is known now, then a fresh read if that was not fresh. */
+	private async postQuota(): Promise<void> {
+		const meter = this.options.usage?.();
+		const current = meter?.reading ?? { kind: 'off' as const };
+		if (!meter || current.kind === 'off') {
+			this.post({ type: 'quota', quota: { kind: 'off' } });
+			return;
+		}
+		this.post({ type: 'quota', quota: current.kind === 'ok' ? { ...current, checking: true } : { kind: 'checking' } });
+		this.post({ type: 'quota', quota: await meter.refresh() });
+	}
+
 	private post(message: ToWebview): void {
 		if (message.type !== 'items') {
 			// Keep the order: item updates first, then whatever follows them.
@@ -1156,6 +1175,29 @@ export class ChatController implements vscode.Disposable {
 			restore: vscode.l10n.t("Restore"),
 			showAllSessions: vscode.l10n.t("Show all {0} sessions\u2026"),
 			commandFromApp: vscode.l10n.t("GeminiCode"),
+			usage: vscode.l10n.t("Usage and quota"),
+			usageThisChat: vscode.l10n.t("This chat"),
+			usageTurns: vscode.l10n.t("{0} replies"),
+			usageOneTurn: vscode.l10n.t("1 reply"),
+			usageInput: vscode.l10n.t("Input"),
+			usageOutput: vscode.l10n.t("Output"),
+			usageModel: vscode.l10n.t("Model"),
+			usageTotal: vscode.l10n.t("Total"),
+			usageInputNote: vscode.l10n.t("Input counts the conversation again for each model call, as the CLI's /stats does."),
+			usageNoTurns: vscode.l10n.t("No replies yet."),
+			usageNoCounts: vscode.l10n.t("No token counts for these replies. Gemini reports them for new replies."),
+			usageSomeCounted: vscode.l10n.t("Counts for {0} of {1} replies."),
+			usageQuota: vscode.l10n.t("Today's quota"),
+			usageUsed: vscode.l10n.t("{0}% used"),
+			usageResetsHours: vscode.l10n.t("resets in {0}h"),
+			usageResetsMinutes: vscode.l10n.t("resets in {0}m"),
+			usageChecking: vscode.l10n.t("Checking\u2026"),
+			usageCheckedJustNow: vscode.l10n.t("Checked just now"),
+			usageCheckedMinutes: vscode.l10n.t("Checked {0} min ago"),
+			usageQuotaOff: vscode.l10n.t("Turned off in Settings (Gemini \u203a Usage Meter)."),
+			usageQuotaNone: vscode.l10n.t("Shown when you sign in with Google. API keys have no daily quota to read."),
+			usageQuotaFailed: vscode.l10n.t("Couldn't read the quota. Try again in a moment."),
+			close: vscode.l10n.t("Close"),
 			addContext: vscode.l10n.t("Add context (@)"),
 			noFiles: vscode.l10n.t("No matching files"),
 			noCommands: vscode.l10n.t("No matching commands"),
@@ -1196,6 +1238,7 @@ export class ChatController implements vscode.Disposable {
 			<div id="resize" class="composer-resize"></div>
 			<div class="drop-overlay" aria-hidden="true"><i class="codicon codicon-cloud-upload"></i><span id="drop-label"></span></div>
 			<div id="picker" class="picker" role="listbox" hidden></div>
+			<div id="usage-popover" class="usage-popover" role="dialog" hidden></div>
 			<div id="attachments" class="attachments" hidden></div>
 			<div class="composer-tabs" role="tablist"><button type="button" id="tab-write" class="composer-tab" role="tab" aria-selected="true" aria-controls="input"></button><button type="button" id="tab-preview" class="composer-tab" role="tab" aria-selected="false" aria-controls="preview"></button></div>
 			<div id="preview" class="composer-preview markdown" role="tabpanel" tabindex="0" hidden></div>
@@ -1211,6 +1254,7 @@ export class ChatController implements vscode.Disposable {
 				<button type="button" id="attach" class="icon-button"><svg class="paperclip" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 3.5 4.9 9.1a1.8 1.8 0 0 0 2.5 2.5l6-6a3 3 0 0 0-4.2-4.2L3.1 7.5a4.2 4.2 0 0 0 6 6l4.4-4.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
 				<button type="button" id="mention" class="icon-button"><i class="codicon codicon-mention" aria-hidden="true"></i></button>
 				<button type="button" id="follow" class="icon-button follow" aria-pressed="false"><i class="codicon codicon-eye" aria-hidden="true"></i></button>
+				<button type="button" id="usage" class="icon-button usage" aria-expanded="false" aria-controls="usage-popover"><i class="codicon codicon-graph" aria-hidden="true"></i></button>
 				<span class="pill-wrap" hidden><select id="mode" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
 				<span class="pill-wrap" hidden><select id="model" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
 				<span class="spacer"></span>

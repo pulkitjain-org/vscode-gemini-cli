@@ -8,6 +8,7 @@ import { Attachment } from '../acp/attachments';
 import { AgentService } from './agentService';
 import { ChatController, ChatEnhancer } from './chatController';
 import { DiffPreview } from './diffPreview';
+import type { UsageMeter } from './usageMeter';
 import { WorkspaceFileIndex } from './workspaceFiles';
 
 export const chatViewId = 'gemini.chat';
@@ -19,6 +20,8 @@ export const chatViewId = 'gemini.chat';
 export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
 
 	readonly controller: ChatController;
+	/** Today's quota, for the usage popover. */
+	usage: UsageMeter | undefined;
 	private view: vscode.WebviewView | undefined;
 
 	constructor(extensionUri: vscode.Uri, service: AgentService, diffPreview: DiffPreview, fileIndex: WorkspaceFileIndex, enhancer: ChatEnhancer) {
@@ -27,6 +30,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 			busyContextKey: 'gemini.chatBusy',
 			git: { folder: () => workspaceFolder() },
 			enhancer,
+			usage: () => this.usage,
 			workspace: () => {
 				const folder = workspaceFolder();
 				return folder ? { folder, cwd: folder, worktree: false } : undefined;

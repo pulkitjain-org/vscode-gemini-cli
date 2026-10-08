@@ -34,6 +34,7 @@ The product code is in [`../extensions/gemini/`](../extensions/gemini/).
 - **Keep the Mac awake.** While any agent works, the Mac doesn't go to sleep.
 - **Long chats.** Jump between your prompts with ⌥⌘↑ and ⌥⌘↓, return to the newest message with **Latest**, or open the whole chat as Markdown.
 - **Modes and models.** Pick an approval mode and a model from the composer. The lists come from the agent. The model you picked last is used for new and reopened agents too.
+- **Usage and quota.** The graph button in the composer shows the tokens each model used in the chat, and how much of today's quota each model has left and when it resets.
 - **Conversations persist.** Agents keep their conversation across reloads and restarts, and resume their CLI session when the CLI supports it.
 - **Managed CLI.** GeminiCode ships with a tested Gemini CLI, and can install, update and switch between newer versions in its own storage, without touching your system.
 - **Update notice.** Once a day GeminiCode checks its download page. When a newer version is out it says so, with **Download** and **Release Notes** buttons; it downloads nothing on its own.
@@ -72,6 +73,7 @@ The **Gemini** status bar item shows the agent's state. Hover over it to see the
 | `gemini.tools.allowShell` | Let the agent run shell commands. Each command still asks first. |
 | `gemini.browser.enabled` | Let agents open and use a page in the GeminiCode browser. On by default. |
 | `gemini.browser.allowOtherSites` | Let agents open sites other than local ones, after asking. On by default. |
+| `gemini.usageMeter.enabled` | Show today's quota in the Gemini status bar item and the chat's Usage and quota popover. On by default. |
 | `gemini.keepAwake` | Keep the Mac awake while any agent works. On by default. |
 | `gemini.chat.followAgent` | Open each file the agent reads or edits as it works. The eye in the composer toggles it. Off by default. |
 | `gemini.layout.showAgentsInNewWorkspaces` | Show the Gemini side bar rather than Explorer the first time a workspace opens in Editor mode. |

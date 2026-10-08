@@ -367,3 +367,18 @@ export function promptStep(tops: readonly number[], viewTop: number, direction: 
 	}
 	return -1;
 }
+
+/** A token count, short: "950", "48.2k", "1.3M". */
+export function formatTokens(count: number, locale?: string): string {
+	return new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }).format(count);
+}
+
+/** How long until `resetTime`, in whole hours or, under an hour, minutes; undefined once it has passed or when unknown. */
+export function resetsIn(resetTime: string | undefined, now: number): { readonly unit: 'hours' | 'minutes'; readonly value: number } | undefined {
+	const ms = resetTime ? Date.parse(resetTime) - now : NaN;
+	if (!Number.isFinite(ms) || ms <= 0) {
+		return undefined;
+	}
+	const hours = Math.floor(ms / 3_600_000);
+	return hours ? { unit: 'hours', value: hours } : { unit: 'minutes', value: Math.max(1, Math.round(ms / 60_000)) };
+}

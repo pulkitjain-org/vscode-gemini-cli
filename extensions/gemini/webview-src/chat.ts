@@ -14,6 +14,7 @@
 //   attachmentChips.ts attachments, and files pasted or dropped
 //   picker.ts          the @-mention file picker and the slash command menu
 //   enhance.ts         Enhance prompt: rewriting the draft as a precise prompt
+//   usage.ts           the usage popover: this chat's tokens and today's quota
 
 import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
 import { addAttachments } from './attachmentChips';
@@ -26,6 +27,7 @@ import { showSavedSessions } from './items';
 import { showCommands, showFiles } from './picker';
 import { updateOutline } from './promptNav';
 import { appended, applyItem, isNearBottom, reset, settleScroll, updateWorking } from './transcript';
+import { showQuota, updateUsage } from './usage';
 import { state, strings, ui, vscode } from './view';
 
 setLabel(ui.mentionButton, strings.addContext);
@@ -51,6 +53,7 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			setBusy(message.busy);
 			setStatus(message.status);
 			setSettings(message.settings);
+			updateUsage();
 			break;
 		case 'items': {
 			const stick = isNearBottom();
@@ -66,6 +69,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			// Only a prompt changes the outline; streamed replies, thoughts and tool calls do not.
 			if (message.items.some(update => update.kind === 'user')) {
 				updateOutline();
+			}
+			if (message.items.some(update => update.kind === 'turnEnd')) {
+				updateUsage();
 			}
 			updatePlaceholder();
 			break;
@@ -123,6 +129,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'enhanceFailed':
 			onEnhanceFailed(message.requestId, message.message);
+			break;
+		case 'quota':
+			showQuota(message.quota);
 			break;
 	}
 });

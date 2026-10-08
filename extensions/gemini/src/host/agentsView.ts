@@ -31,6 +31,7 @@ export { relativeTime } from './displayText';
 import { DiffPreview } from './diffPreview';
 import { besideAgent } from './editorPlacement';
 import { escapeMarkdown } from './markdown';
+import type { UsageMeter } from './usageMeter';
 import { WorkspaceFileIndex } from './workspaceFiles';
 
 const agentsViewId = 'gemini.agents';
@@ -144,6 +145,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	private refreshTimeout: ReturnType<typeof setTimeout> | undefined;
 	/** Each agent's page in the GeminiCode browser; set once the extension has made it. */
 	browser: BrowserTools | undefined;
+	/** Today's quota, for the chats' usage popover. */
+	usage: UsageMeter | undefined;
 	private persistTimeout: ReturnType<typeof setTimeout> | undefined;
 
 	constructor(
@@ -899,6 +902,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				reveal: preserveFocus => this.reveal(record.id, preserveFocus),
 				editorColumn: () => besideAgent(this.live.get(record.id)?.panel),
 				enhancer: this.enhancer,
+				usage: () => this.usage,
 				savedSessions: {
 					inUse: () => new Set(this.model.snapshot().agents.flatMap(a => a.id !== record.id && a.sessionId ? [a.sessionId] : [])),
 				},
