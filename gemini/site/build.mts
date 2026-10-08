@@ -350,7 +350,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 			<div class="card"><h3>Keep the Mac awake</h3><p>While any agent works, the Mac doesn't go to sleep, so a long task carries on when you step away. The display can still sleep.</p></div>
 			<div class="card"><h3>Follow the agent</h3><p>Click the eye in the composer and each file the agent reads or edits opens at the line it's on. Focus stays in the chat.</p></div>
 			<div class="card"><h3>Find your way in long chats</h3><p>Point at the outline of your prompts down the chat's edge to jump back, or press ⌥⌘↑ and ⌥⌘↓. Open Chat as Markdown gives you the whole conversation as one file.</p></div>
-			<div class="card"><h3>Project Helpers</h3><p>One page for what every agent loads: MCP servers, skills, hooks, Gemini CLI extensions and memory, each with a switch. Skills show in the / menu too.</p></div>
+			<div class="card"><h3>Project Helpers</h3><p>One page for what every agent loads: MCP servers, skills, hooks, Gemini CLI extensions and memory, with switches for servers, hooks and extensions. Skills show in the / menu too.</p></div>
 			<div class="card"><h3>Branches ready to run</h3><p>Set a setup command, or commit <code>.gemini/worktree-setup.sh</code>, and it runs in each new agent branch before the agent starts.</p></div>
 		</div>
 	</section>
@@ -487,14 +487,14 @@ function attr(value: string): string {
 
 function sampleRelease(repo: string): GitHubRelease {
 	return {
-		tag_name: 'v0.1.0',
-		name: 'GeminiCode 0.1.0 (unsigned)',
-		html_url: `https://github.com/${repo}/releases/tag/v0.1.0`,
-		published_at: '2026-10-03T12:00:00Z',
-		body_html: '<p>GeminiCode 0.1.0 for Mac with Apple silicon, built on Code - OSS 1.141.0 with Gemini CLI 0.62.0.</p><h2>What\'s Changed</h2><ul><li>Bundle a known-good Gemini CLI with the app</li><li>Tell users when a newer GeminiCode is out</li></ul><h3>Shortcuts</h3><table><thead><tr><th>Keys</th><th>What it does</th></tr></thead><tbody><tr><td><kbd>Cmd</kbd>+<kbd>I</kbd></td><td>Inline edit on the selected lines</td></tr><tr><td><kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>M</kbd></td><td>Switch between Agents and Editor modes</td></tr></tbody></table><h3>Known limitations</h3><ul><li>No autocomplete.</li></ul>',
+		tag_name: 'v0.4.0',
+		name: 'GeminiCode 0.4.0',
+		html_url: `https://github.com/${repo}/releases/tag/v0.4.0`,
+		published_at: '2026-10-08T12:00:00Z',
+		body_html: '<p>GeminiCode 0.4.0 for Mac with Apple silicon, built on Code - OSS 1.141.0 with Gemini CLI 0.62.0.</p><h2>What\'s Changed</h2><ul><li>Glass Light and Glass Dark, styled after macOS Liquid Glass</li><li>A browser your agents can use</li><li>Keep the Mac awake while agents work</li></ul><h3>Shortcuts</h3><table><thead><tr><th>Keys</th><th>What it does</th></tr></thead><tbody><tr><td><kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>Up</kbd></td><td>Jump to your previous prompt</td></tr><tr><td><kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>M</kbd></td><td>Switch between Agents and Editor modes</td></tr></tbody></table><h3>Known limitations</h3><ul><li>No autocomplete.</li></ul>',
 		assets: [
-			{ name: 'GeminiCode-0.1.0-arm64-unsigned.dmg', browser_download_url: `https://github.com/${repo}/releases/download/v0.1.0/GeminiCode-0.1.0-arm64-unsigned.dmg`, size: 212_000_000 },
-			{ name: 'GeminiCode-0.1.0-arm64-unsigned.dmg.sha256', browser_download_url: `sample:${'0123456789abcdef'.repeat(4)}`, size: 100 },
+			{ name: 'GeminiCode-0.4.0-arm64.dmg', browser_download_url: `https://github.com/${repo}/releases/download/v0.4.0/GeminiCode-0.4.0-arm64.dmg`, size: 212_000_000 },
+			{ name: 'GeminiCode-0.4.0-arm64.dmg.sha256', browser_download_url: `sample:${'0123456789abcdef'.repeat(4)}`, size: 100 },
 		],
 	};
 }

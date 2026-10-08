@@ -4,7 +4,7 @@ GeminiCode is a fork of VS Code (Code - OSS) with the [Gemini CLI](https://githu
 
 The repository's top-level README, SECURITY and AGENTS files point here. CONTRIBUTING.md and the `.github` agent instructions are upstream's and stay unchanged, so upstream merges stay clean. This folder is where the fork's own docs live:
 
-- [docs/USING.md](docs/USING.md): approval modes, folder trust, attachments, long conversations and troubleshooting.
+- [docs/USING.md](docs/USING.md): Agents and Editor modes, shortcuts, themes, Enhance prompt, inline edit, approvals, branches, the browser, long chats and troubleshooting.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how GeminiCode works and why, including the security model and admin policies.
 - [docs/FINDINGS.md](docs/FINDINGS.md): Gemini CLI behaviour and measurements the design relies on.
 - [docs/RELEASING.md](docs/RELEASING.md): versions, cutting a release, the download page, and the Apple signing setup.
@@ -18,16 +18,21 @@ The product code is in [`../extensions/gemini/`](../extensions/gemini/).
 
 ## Features
 
-- **Chat-first layout.** The agent's chat is the main editor tab; files and diffs it opens go in the editor group beside it, so the conversation stays in view. One side bar card holds the Agents pane, the agent's Changes and Quick Chat; every pane is a normal, resizable VS Code view or editor group.
-- **Agents pane.** Run several agents side by side. Each one opens as an editor tab with its own chat, and can work in the open folder or any folder you add. Each row shows the agent's status (working, waiting for your permission, done, needs attention), its changed lines, when it was last active and its git branch. Rename, stop or remove an agent from its context menu.
+- **Agents and Editor modes.** Agents mode (the default) puts the agent list on the left, the chat in the middle and its Changes on the right, with each agent as a tab in the title bar. Editor mode is the classic layout, with Changes and Quick Chat under the Agents pane. Switch with the Agents | Editor switch or ⌥⌘M; every pane is a normal, resizable VS Code view or editor group.
+- **Agent Home.** Describe a task and press Return to start an agent on it, optionally on its own branch, and see each agent's status, changes and next step as a card.
+- **Agents pane.** Run several agents side by side. Each one opens as an editor tab with its own chat, and can work in the open folder or any folder you add. Each row shows a status dot (a spinner while it works, amber when it waits for you, green when done, red when something went wrong, grey otherwise) and one short note, such as how long it has worked or the lines it added; point at it for the line counts and branch. Rename, stop or remove an agent from its context menu.
 - **Quick Chat.** A chat in the Gemini side bar for the open folder, collapsed below the Agents pane until you open it. **New Chat** in its title bar starts a fresh session.
 - **Ask before acting.** Permission requests show the agent's own options, such as Allow, Allow for this session and Reject. Proposed edits open in a diff editor first.
 - **Edits through the editor.** Agent edits can be undone, and the agent reads your unsaved changes. The agent cannot read secret files such as `.env` and private keys, or git-ignored files.
 - **Enhance prompt.** Write what you want in plain words and choose **Enhance prompt** (⌥⌘E): Gemini rewrites it as a precise prompt for you to review, with **Revert** to undo.
 - **Context.** Type `@` to attach workspace files. Press <kbd>⌘L</kbd> to add the editor selection. You can also attach or drop files and images from anywhere.
-- **Changes view.** Below the Agents pane, see every file the agent in front has changed, one diff at a time or all together with **Open All Changes**. **Clear List** empties it.
+- **Changes.** See every file the agent in front has changed, one diff at a time or all together with **Open All Changes**. **Clear List** empties it.
 - **Branches and commits.** A branch pill in each chat's composer switches or creates a branch. In an agent's chat, **Create Branch & Commit** commits just the files that agent changed to a new branch, and warns first if other files are staged.
-- **Glass Dark and Glass Light.** The default colour themes: see-through side bars and floating cards over an aurora wallpaper, with the Gemini gradient for Gemini's own moments. GeminiCode Dark, Light, Midnight and Dusk are there too. GeminiCode also defaults to the view icons at the top of the side bar, pill-shaped tabs, and no minimap or breadcrumbs; change any of these in Settings.
+- **Glass Dark and Glass Light.** The default colour themes, styled after macOS Liquid Glass: glass side bars and floating cards over an aurora wallpaper, a glass composer the chat scrolls under, and frosted pop-ups, with the Gemini gradient for Gemini's own moments. GeminiCode Dark, Light, Midnight and Dusk are there too. GeminiCode also defaults to the view icons at the top of the side bar, pill-shaped tabs, and no minimap or breadcrumbs; change any of these in Settings.
+- **Agent browser.** The globe in the title bar opens GeminiCode's browser. Agents can open and use pages in it, and **Let Gemini Use This Page** hands one of your own tabs to an agent.
+- **Follow the agent.** The eye in the composer opens each file the agent reads or edits as it works.
+- **Keep the Mac awake.** While any agent works, the Mac doesn't go to sleep.
+- **Long chats.** Jump between your prompts with ⌥⌘↑ and ⌥⌘↓, return to the newest message with **Latest**, or open the whole chat as Markdown.
 - **Modes and models.** Pick an approval mode and a model from the composer. The lists come from the agent. The model you picked last is used for new and reopened agents too.
 - **Conversations persist.** Agents keep their conversation across reloads and restarts, and resume their CLI session when the CLI supports it.
 - **Managed CLI.** GeminiCode ships with a tested Gemini CLI, and can install, update and switch between newer versions in its own storage, without touching your system.
@@ -43,12 +48,13 @@ Download GeminiCode for Mac (Apple silicon) from the [download page](https://pul
 
 You need a Google account with a **Gemini Code Assist** license and a **Google Cloud project** to bill usage to. Your organisation may set the project for you.
 
-The **Get Started with GeminiCode** walkthrough opens on first launch, and again from **Gemini: Get Started**. It walks through four steps:
+The **Get Started with GeminiCode** walkthrough opens on first launch, and again from **Gemini: Get Started**. It walks through five steps:
 
 1. **Gemini CLI.** GeminiCode comes with a tested Gemini CLI, so there is nothing to install. It uses `gemini.cliPath`, then a copy you installed from GeminiCode, then the bundled copy, then `gemini` on your `PATH`.
 2. **Sign in.** Run **Gemini: Sign In with Google**. If your account needs a one-time step that the editor cannot show, run **Gemini: Complete Setup in Terminal**.
 3. **Project.** Run **Gemini: Set Google Cloud Project ID**. Enter the project ID, not the project number.
-4. **First agent.** Choose **New Agent** in the Agents pane.
+4. **Make it yours.** Pick a theme, an accent colour, a code font and file icons.
+5. **First agent.** Choose **New Agent** in the Agents pane.
 
 The **Gemini** status bar item shows the agent's state. Hover over it to see the account, project and CLI version, and where that CLI came from. Click it to start or restart the agent, change the project or CLI version, sign in or finish setup in a terminal, open the chat, or open the log.
 
@@ -68,9 +74,9 @@ The **Gemini** status bar item shows the agent's state. Hover over it to see the
 | `gemini.browser.allowOtherSites` | Let agents open sites other than local ones, after asking. On by default. |
 | `gemini.keepAwake` | Keep the Mac awake while any agent works. On by default. |
 | `gemini.chat.followAgent` | Open each file the agent reads or edits as it works. The eye in the composer toggles it. Off by default. |
-| `gemini.layout.showAgentsInNewWorkspaces` | Open the Agents pane, with the agent's Changes below it, the first time a workspace opens. |
+| `gemini.layout.showAgentsInNewWorkspaces` | Show the Gemini side bar rather than Explorer the first time a workspace opens in Editor mode. |
 
-Changing the CLI path or version, the project, or an approval or shell setting restarts the agent so the change applies. Admins can lock all of these except the project and layout settings through policy; see [Security model](docs/ARCHITECTURE.md#security-model).
+Changing the CLI path or version, the project, or an approval or shell setting restarts the agent so the change applies. Admins can lock all of these except the project, layout, keep-awake and follow-the-agent settings through policy; see [Security model](docs/ARCHITECTURE.md#security-model).
 
 ## Issues and security
 

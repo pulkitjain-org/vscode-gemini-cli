@@ -11,7 +11,7 @@ The switch at the top of the window, or ⌥⌘M, changes the layout:
 
 In Agents mode the top of the window is one row: the **Agents | Editor** switch, then your open tabs — agents, Agent Home, files and browser pages — in one capsule, then a globe for the integrated browser, a magnifier that opens Quick Open and the layout buttons. Editor mode keeps the classic tab row under the title bar, because split editors need it, and shows the search box in the middle again.
 
-Each mode remembers which panels you had open. An agent's tab shows what it is doing (a spinner while it works, an amber dot when it needs you, a tick when it has finished) and how many lines it has changed. In the Agents pane, each agent's row has the same signal (a spinner, an amber dot when it needs you, a green dot when it has finished, grey otherwise) and, on the right, how long it has been working, "waiting", the lines it added, or how long ago it was last active; point at a row for its branch and folder. On a Mac, right-click GeminiCode in the Dock for **New Agent**. Agents that are working or waiting for you show as pills in Editor mode's title bar; click one to open that agent. In Agents mode the tabs and the agent list already carry those signals, so there are no pills. The foot of the agent list shows the branch of the agent you selected.
+Each mode remembers which panels you had open. An agent's tab shows what it is doing (a spinner while it works, an amber dot when it needs you, a tick when it has finished) and how many lines it has changed. In the Agents pane, each agent's row has the same signal (a spinner, an amber dot when it needs you, a green dot when it has finished, a red dot when something went wrong, grey otherwise) and, on the right, how long it has been working, "waiting", the lines it added, or how long ago it was last active; point at a row for its branch and folder. On a Mac, right-click GeminiCode in the Dock for **New Agent**. Agents that are working, waiting for you, finished but not yet read, or need attention show as pills in Editor mode's title bar; click one to open that agent. In Agents mode the tabs and the agent list already carry those signals, so there are no pills. The foot of the agent list shows the branch of the agent you selected.
 
 In the **Changes** panel, hover over a change to **Keep** or **Undo** it. **Keep All** accepts everything, **Undo All** puts the files back, and **Commit** commits the agent's files on a new branch (an agent on its own branch has **Merge Back** instead).
 
@@ -45,7 +45,7 @@ An agent on its own branch can get a ready folder: set **Gemini › Agents: Work
 
 Run **Make It Yours** from the Command Palette, or open the step of the same name in Get Started, to pick:
 
-- a theme: Glass Dark and Glass Light (the defaults: see-through side bars over an aurora wallpaper, with the Gemini gradient round the chat input, and the Command Palette, menus and hovers are frosted), Dark, Midnight (true black), Dusk (warm greys) or Light;
+- a theme: Glass Dark and Glass Light (the defaults: glass side bars over an aurora wallpaper, with the Gemini gradient round the chat input, and the Command Palette, menus and hovers are frosted), Dark, Midnight (true black), Dusk (warm greys) or Light;
 - an accent colour for selection, focus, links and the chat's Send button: the theme's own, Blue, Violet, Rose, Teal, Amber or the Gemini gradient. It applies to the GeminiCode themes only, through `workbench.colorCustomizations`, and is kept in `gemini.appearance.accent`;
 - a code font: JetBrains Mono (the default) and Geist Mono ship with GeminiCode; SF Mono and Menlo come with macOS;
 - file icons: GeminiCode's own, Seti, or none;
@@ -94,7 +94,7 @@ The Gemini CLI refuses Auto Edit and YOLO in a folder it does not trust. When yo
 
 ## Agent changes and commits
 
-The **Changes** view below the Agents pane lists the files the agent in front has edited. Click a file for a diff against its text before the agent's first edit, or use **Open All Changes** for one multi-diff editor. **Clear List** forgets them without touching the files.
+The **Changes** panel (on the right in Agents mode, below the Agents pane in Editor mode) lists the files the agent in front has edited. Click a file for a diff against its text before the agent's first edit, or use **Open All Changes** for one multi-diff editor. **Clear List** forgets them without touching the files.
 
 Open a file an agent changed and its changes show in place: added lines are tinted, a rule marks removed lines (hover to see them), and **Keep** and **Undo** sit above each change. The line at the top of the file keeps or undoes them all and moves to the agent's next file, and the arrows in the editor's title bar step through the changes. Keeping a change takes it off the Changes list; undoing one puts the old lines back and saves the file.
 
