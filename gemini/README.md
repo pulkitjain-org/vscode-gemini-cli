@@ -30,11 +30,11 @@ The product code is in [`../extensions/gemini/`](../extensions/gemini/).
 - **Branches and commits.** A branch pill in each chat's composer switches or creates a branch. In an agent's chat, **Create Branch & Commit** commits just the files that agent changed to a new branch, and warns first if other files are staged.
 - **Glass Dark and Glass Light.** The default colour themes, styled after macOS Liquid Glass: glass side bars and floating cards over an aurora wallpaper, a glass composer the chat scrolls under, and frosted pop-ups, with the Gemini gradient for Gemini's own moments. GeminiCode Dark, Light, Midnight and Dusk are there too. GeminiCode also defaults to the view icons at the top of the side bar, pill-shaped tabs, and no minimap or breadcrumbs; change any of these in Settings.
 - **Agent browser.** The globe in the title bar opens GeminiCode's browser. Agents can open and use pages in it, and **Let Gemini Use This Page** hands one of your own tabs to an agent.
-- **Follow the agent.** A switch in the composer's **+** menu opens each file the agent reads or edits as it works.
+- **Follow the agent.** A switch in the composer's **+** menu opens each file the agent reads or edits as it works, and names the file it opened last under the composer with a button to close it.
 - **Keep the Mac awake.** While any agent works, the Mac doesn't go to sleep.
 - **Long chats.** Jump between your prompts with ⌥⌘↑ and ⌥⌘↓, return to the newest message with **Latest**, or open the whole chat as Markdown.
 - **Modes and models.** Pick an approval mode and a model from the composer. The lists come from the agent. The model you picked last is used for new and reopened agents too.
-- **Composer.** The **+** menu holds the approval mode, files, `@` context, Follow the agent, the model, usage, Markdown preview and the slash commands, so the composer shows only the input, the model and Send. A mode other than Default shows as a chip beside **+**.
+- **Composer.** The **+** menu holds the approval mode, files, `@` context, Follow the agent, the model, usage and the slash commands, so the composer shows only the input, its Write and Preview tabs, the model and Send. A mode other than Default shows as a chip beside **+**.
 - **Usage and quota.** The ring under the composer shows how full the chat's context window is. Click it for today's quota per model for your account, and the tokens each model used in the chat.
 - **Conversations persist.** Agents keep their conversation across reloads and restarts, and resume their CLI session when the CLI supports it.
 - **Managed CLI.** GeminiCode ships with a tested Gemini CLI, and can install, update and switch between newer versions in its own storage, without touching your system.

@@ -67,6 +67,7 @@ export const ui = {
 	plusButton: byId('plus', HTMLButtonElement),
 	plusMenu: byId('plus-menu', HTMLElement),
 	usageRing: byId('usage-ring', HTMLButtonElement),
+	followed: byId('followed', HTMLElement),
 	usagePopover: byId('usage-popover', HTMLElement),
 	writeTab: byId('tab-write', HTMLButtonElement),
 	previewTab: byId('tab-preview', HTMLButtonElement),

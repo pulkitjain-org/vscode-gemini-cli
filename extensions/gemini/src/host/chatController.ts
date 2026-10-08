@@ -180,6 +180,8 @@ export class ChatController implements vscode.Disposable {
 	/** The file to show next; files are shown at most every {@link followIntervalMs}, the latest winning. */
 	private followTarget: FollowTarget | undefined;
 	private followTimer: ReturnType<typeof setTimeout> | undefined;
+	/** The file Follow the agent opened last, until its tab closes. */
+	private followed: vscode.Uri | undefined;
 
 	private readonly onDidChangeActivityEmitter = new vscode.EventEmitter<ChatActivity>();
 	readonly onDidChangeActivity = this.onDidChangeActivityEmitter.event;
@@ -223,6 +225,12 @@ export class ChatController implements vscode.Disposable {
 			this.transcript,
 			this.transcript.onDidChangeItem(item => this.items.push(item)),
 			{ dispose: () => this.items.dispose() },
+			vscode.window.tabGroups.onDidChangeTabs(() => {
+				if (this.followed && !followedTabs(this.followed).length) {
+					this.followed = undefined;
+					this.postFollowed();
+				}
+			}),
 			this.transcript.onDidReset(() => this.postReset()),
 			service.client.onDidReceiveEvent(event => {
 				if (this.replaying) {
@@ -694,6 +702,7 @@ export class ChatController implements vscode.Disposable {
 				this.post({ type: 'capabilities', image: this.service.client.promptCapabilities.image });
 				this.post({ type: 'composerHeight', height: preferredComposerHeight() });
 				this.post({ type: 'follow', on: this.following });
+				this.postFollowed();
 				if (this.pendingAttachments.length) {
 					this.post({ type: 'attach', attachments: this.pendingAttachments });
 					this.pendingAttachments = [];
@@ -716,6 +725,14 @@ export class ChatController implements vscode.Disposable {
 				break;
 			case 'setFollow':
 				this.setFollowing(message.on);
+				break;
+			case 'showFollowed':
+				if (this.followed) {
+					void vscode.window.showTextDocument(this.followed, { preview: true, viewColumn: this.options.editorColumn?.() });
+				}
+				break;
+			case 'closeFollowed':
+				void this.closeFollowed();
 				break;
 			case 'pickFiles':
 				void this.pickFiles();
@@ -862,12 +879,29 @@ export class ChatController implements vscode.Disposable {
 			return;
 		}
 		const position = new vscode.Position(Math.max((target.line ?? 1) - 1, 0), 0);
+		const uri = vscode.Uri.file(file);
 		try {
-			await vscode.window.showTextDocument(vscode.Uri.file(file), {
+			await vscode.window.showTextDocument(uri, {
 				selection: new vscode.Range(position, position), preview: true, preserveFocus: true, viewColumn: this.options.editorColumn?.(),
 			});
 		} catch {
 			// A file that cannot be shown, such as a binary one, is skipped.
+			return;
+		}
+		this.followed = uri;
+		this.postFollowed();
+	}
+
+	/** The chat names the followed file, with a close button, while its tab is open. */
+	private postFollowed(): void {
+		const uri = this.followed;
+		this.post({ type: 'followed', file: uri && { name: path.basename(uri.fsPath), path: vscode.workspace.asRelativePath(uri) } });
+	}
+
+	private async closeFollowed(): Promise<void> {
+		const uri = this.followed;
+		if (uri) {
+			await vscode.window.tabGroups.close(followedTabs(uri));
 		}
 	}
 
@@ -1230,7 +1264,6 @@ export class ChatController implements vscode.Disposable {
 			usageQuotaOff: vscode.l10n.t("Turned off in Settings (Gemini \u203a Usage Meter)."),
 			usageQuotaNone: vscode.l10n.t("Shown when you sign in with Google. API keys have no daily quota to read."),
 			usageQuotaFailed: vscode.l10n.t("Couldn't read the quota. Try again in a moment."),
-			close: vscode.l10n.t("Close"),
 			plusMenu: vscode.l10n.t("Add files, context, modes and more"),
 			menuSearch: vscode.l10n.t("Search modes, files, commands\u2026"),
 			menuFiles: vscode.l10n.t("Files"),
@@ -1246,13 +1279,20 @@ export class ChatController implements vscode.Disposable {
 			modeChip: vscode.l10n.t("Mode: {0}. Click to change it."),
 			modeChipReset: vscode.l10n.t("Back to {0}"),
 			usageRing: vscode.l10n.t("Context {0}% used. Click for usage and quota."),
+			followedFile: vscode.l10n.t("{0}, the file the agent is on. Click to show it."),
+			closeFollowed: vscode.l10n.t("Close {0}"),
 			usageContext: vscode.l10n.t("Context window"),
 			usageThisChatScope: vscode.l10n.t("this chat"),
 			usageAccount: vscode.l10n.t("your account"),
 			usageContextNone: vscode.l10n.t("Shown after Gemini's first reply in this chat."),
 			usageContextOf: vscode.l10n.t("of {0} tokens"),
 			usageContextNote: vscode.l10n.t("Gemini summarises older messages at {0}%."),
-			usageCached: vscode.l10n.t("{0} of the input came from the cache."),
+			usageCached: vscode.l10n.t("Cached"),
+			usageCachedNote: vscode.l10n.t("Cached: input served from Gemini's cache, from the CLI's session file."),
+			usageDetails: vscode.l10n.t("Details by model"),
+			usageHideDetails: vscode.l10n.t("Hide details"),
+			usageAllModels: vscode.l10n.t("All {0} models"),
+			usageFewerModels: vscode.l10n.t("Fewer models"),
 			noFiles: vscode.l10n.t("No matching files"),
 			noCommands: vscode.l10n.t("No matching commands"),
 			commandFromCli: vscode.l10n.t("Gemini CLI"),
@@ -1318,6 +1358,7 @@ export class ChatController implements vscode.Disposable {
 			<button type="button" id="branch" class="foot-button branch" hidden><i class="codicon codicon-git-branch" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button>
 			<button type="button" id="workspace" class="foot-button workspace" hidden><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button>
 			<button type="button" id="commit" class="foot-button commit" hidden><i class="codicon codicon-git-commit" aria-hidden="true"></i><span></span></button>
+			<span id="followed" class="foot-followed" hidden><button type="button" class="foot-button followed-name"><i class="codicon codicon-eye" aria-hidden="true"></i><span></span></button><button type="button" class="followed-close"><i class="codicon codicon-close" aria-hidden="true"></i></button></span>
 			<span class="spacer"></span>
 			<button type="button" id="usage-ring" class="foot-button usage-ring" aria-expanded="false" aria-controls="usage-popover"><svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="ring-track" cx="8" cy="8" r="6"/><circle class="ring-fill" cx="8" cy="8" r="6" pathLength="100" stroke-dasharray="0 100" transform="rotate(-90 8 8)"/></svg><span></span></button>
 		</div>
@@ -1381,6 +1422,11 @@ function diffsOf(content: readonly acp.ToolCallContent[] | null | undefined): ac
 function solidAccent(): boolean {
 	const accent = vscode.workspace.getConfiguration('gemini').get<string>('appearance.accent', 'theme');
 	return accent !== 'theme' && accent !== 'gradient';
+}
+
+/** The editor tabs showing `uri`. */
+function followedTabs(uri: vscode.Uri): vscode.Tab[] {
+	return vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => tab.input instanceof vscode.TabInputText && tab.input.uri.toString() === uri.toString());
 }
 
 async function isFile(filePath: string): Promise<boolean> {

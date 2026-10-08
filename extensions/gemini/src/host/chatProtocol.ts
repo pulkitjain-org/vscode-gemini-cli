@@ -175,7 +175,6 @@ export interface ChatStrings {
 	readonly usageQuotaOff: string;
 	readonly usageQuotaNone: string;
 	readonly usageQuotaFailed: string;
-	readonly close: string;
 	/** The "+" button's tooltip and its menu. */
 	readonly plusMenu: string;
 	readonly menuSearch: string;
@@ -197,6 +196,8 @@ export interface ChatStrings {
 	readonly modeChipReset: string;
 	/** The context ring's tooltip; `{0}` is a percentage. */
 	readonly usageRing: string;
+	readonly followedFile: string;
+	readonly closeFollowed: string;
 	readonly usageContext: string;
 	readonly usageThisChatScope: string;
 	readonly usageAccount: string;
@@ -207,6 +208,11 @@ export interface ChatStrings {
 	readonly usageContextNote: string;
 	/** `{0}` is a short token count. */
 	readonly usageCached: string;
+	readonly usageCachedNote: string;
+	readonly usageDetails: string;
+	readonly usageHideDetails: string;
+	readonly usageAllModels: string;
+	readonly usageFewerModels: string;
 }
 
 /** How full the session's context window is, from the counts the CLI saved with its replies. */
@@ -289,6 +295,10 @@ export type FromWebview =
 	| { readonly type: 'composerHeight'; readonly height: number }
 	/** The eye toggle: open each file the agent reads or edits. */
 	| { readonly type: 'setFollow'; readonly on: boolean }
+	/** Show the file Follow the agent opened last. */
+	| { readonly type: 'showFollowed' }
+	/** Close the file Follow the agent opened last. */
+	| { readonly type: 'closeFollowed' }
 	| { readonly type: 'createBranchAndCommit' }
 	/** Put back the files the turn ending with turnEnd item `itemId` changed, and those of later turns. */
 	| { readonly type: 'undoTurn'; readonly itemId: string }
@@ -315,6 +325,8 @@ export type ToWebview =
 	| { readonly type: 'composerHeight'; readonly height: number }
 	/** Whether this chat follows the agent. */
 	| { readonly type: 'follow'; readonly on: boolean }
+	/** The file Follow the agent opened last, while it is still open. */
+	| { readonly type: 'followed'; readonly file: { readonly name: string; readonly path: string } | undefined }
 	| { readonly type: 'files'; readonly requestId: number; readonly files: readonly { readonly path: string; readonly relative: string }[] }
 	/** Every slash command this chat offers: the agent's, then the team's. */
 	| { readonly type: 'commands'; readonly commands: readonly SlashCommand[] }

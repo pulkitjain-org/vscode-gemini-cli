@@ -19,7 +19,7 @@
 
 import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
 import { addAttachments } from './attachmentChips';
-import { setBusy, setFollow, setGit, setSettings, setStatus } from './composer';
+import { setBusy, setFollow, setFollowed, setGit, setSettings, setStatus } from './composer';
 import { applyTokenColors } from './codeHighlight';
 import { onEnhanced, onEnhanceFailed, restyleEnhanceButton, toggleEnhance } from './enhance';
 import { applyFontSize, setLabel } from './dom';
@@ -90,6 +90,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'follow':
 			setFollow(message.on);
+			break;
+		case 'followed':
+			setFollowed(message.file);
 			break;
 		case 'accent':
 			document.body.dataset.accent = message.solid ? 'solid' : 'gradient';

@@ -1937,11 +1937,6 @@ body.vscode-high-contrast-light #send {
 	color: var(--vscode-foreground);
 }
 
-/* The draft's Write and Preview tabs show once there is a draft to preview. */
-.composer:not(.previewing):has(textarea:placeholder-shown) .composer-tabs {
-	display: none;
-}
-
 .plus-menu {
 	position: absolute;
 	left: 0;
@@ -2143,6 +2138,56 @@ body.vscode-high-contrast-light #send {
 	flex-shrink: 1;
 }
 
+/* The file Follow the agent opened last: its name shows it, the × closes it. */
+.foot-followed {
+	display: inline-flex;
+	flex-shrink: 1;
+	align-items: center;
+	min-width: 0;
+	max-width: 40%;
+	border-radius: 6px;
+}
+
+.foot-followed[hidden] {
+	display: none;
+}
+
+.foot-followed .followed-name {
+	flex-shrink: 1;
+	max-width: none;
+	padding-right: 2px;
+	border-radius: 6px 0 0 6px;
+}
+
+.followed-close {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 22px;
+	padding: 0;
+	border: none;
+	border-radius: 0 6px 6px 0;
+	background: none;
+	color: var(--gemini-muted);
+	cursor: pointer;
+}
+
+.followed-close .codicon {
+	font-size: 12px;
+}
+
+.followed-close:hover {
+	background: var(--gemini-hover);
+	color: var(--vscode-foreground);
+}
+
+.followed-close:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
 @media (max-width: 360px) {
 	.foot-button.workspace span,
 	.foot-button.commit span {
@@ -2208,20 +2253,9 @@ body.vscode-high-contrast-light #send {
 	display: none;
 }
 
-.usage-head {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	margin-bottom: 4px;
-}
-
-.usage-title {
-	font-weight: 600;
-}
-
 .usage-section + .usage-section {
-	margin-top: 10px;
-	padding-top: 8px;
+	margin-top: 12px;
+	padding-top: 10px;
 	border-top: 1px solid var(--vscode-editorWidget-border, var(--gemini-border));
 }
 
@@ -2353,6 +2387,51 @@ body.vscode-high-contrast-light #send {
 	height: 100%;
 	border-radius: 2px;
 	background: var(--usage-fill);
+}
+
+.usage-summary {
+	display: flex;
+	flex-wrap: wrap;
+	column-gap: 16px;
+	row-gap: 2px;
+	font-variant-numeric: tabular-nums;
+}
+
+.usage-figure-label {
+	margin-right: 6px;
+	color: var(--gemini-muted);
+}
+
+.usage-more {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	margin-top: 6px;
+	padding: 0;
+	border: none;
+	background: none;
+	color: var(--vscode-textLink-foreground);
+	font: inherit;
+	cursor: pointer;
+}
+
+.usage-more .codicon {
+	order: 1;
+	font-size: 12px;
+}
+
+.usage-more:hover {
+	color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
+}
+
+.usage-more:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 2px;
+	border-radius: 2px;
+}
+
+.usage-table {
+	margin-top: 6px;
 }
 
 /* ---- Context: attachments and the @-mention picker ---- */
@@ -2668,7 +2747,9 @@ body[data-vscode-theme-id^="GeminiCode Glass"] {
 	--glass-strip: #FFFFFF8C;
 	--glass-strip-solid: #FFFFFF;
 	--glass-float-shadow: 0 4px 16px #1B1C221F;
-	--glass-menu: #FFFFFFB8;
+	--glass-menu: #FFFFFF9E;
+	--glass-menu-sheen: linear-gradient(180deg, #FFFFFF99, #FFFFFF00 40%);
+	--glass-menu-edge: #FFFFFFCC;
 	--glass-menu-solid: #FFFFFF;
 	--glass-menu-shadow: 0 18px 50px #1B1C222E, 0 1px 3px #0000001A;
 	--glass-rim-top: #FFFFFFF2;
@@ -2689,7 +2770,9 @@ body[data-vscode-theme-id="GeminiCode Glass Dark"] {
 	--glass-strip: #1A1C2899;
 	--glass-strip-solid: #1A1C28;
 	--glass-float-shadow: 0 4px 16px #00000088;
-	--glass-menu: #22232DCC;
+	--glass-menu: #1F2130A6;
+	--glass-menu-sheen: linear-gradient(180deg, #FFFFFF14, #FFFFFF00 45%);
+	--glass-menu-edge: #FFFFFF24;
 	--glass-menu-solid: #22232D;
 	--glass-menu-shadow: 0 18px 50px #000000A6;
 	--glass-rim-top: #FFFFFF4D;
@@ -2901,23 +2984,23 @@ body[data-vscode-theme-id^="GeminiCode Glass"] .scroll-down .codicon {
 body[data-vscode-theme-id^="GeminiCode Glass"] .picker {
 	bottom: calc(100% + 6px);
 	padding: 6px;
-	border: none;
+	border: 1px solid var(--glass-menu-edge);
 	border-radius: 16px;
-	background: var(--glass-menu);
+	background: var(--glass-menu-sheen), var(--glass-menu);
 	box-shadow: var(--glass-menu-shadow), inset 0 1px 0 var(--glass-rim-top), inset 0 -1px 0 var(--glass-rim-bottom);
-	-webkit-backdrop-filter: blur(30px) saturate(var(--glass-saturate));
-	backdrop-filter: blur(30px) saturate(var(--glass-saturate));
+	-webkit-backdrop-filter: blur(40px) saturate(calc(var(--glass-saturate) * 1.2));
+	backdrop-filter: blur(40px) saturate(calc(var(--glass-saturate) * 1.2));
 }
 
 body[data-vscode-theme-id^="GeminiCode Glass"] .plus-menu {
 	bottom: calc(100% + 6px);
 	padding: 6px;
-	border: none;
+	border: 1px solid var(--glass-menu-edge);
 	border-radius: 16px;
-	background: var(--glass-menu);
+	background: var(--glass-menu-sheen), var(--glass-menu);
 	box-shadow: var(--glass-menu-shadow), inset 0 1px 0 var(--glass-rim-top), inset 0 -1px 0 var(--glass-rim-bottom);
-	-webkit-backdrop-filter: blur(30px) saturate(var(--glass-saturate));
-	backdrop-filter: blur(30px) saturate(var(--glass-saturate));
+	-webkit-backdrop-filter: blur(40px) saturate(calc(var(--glass-saturate) * 1.2));
+	backdrop-filter: blur(40px) saturate(calc(var(--glass-saturate) * 1.2));
 }
 
 body[data-vscode-theme-id^="GeminiCode Glass"] .plus-row {
@@ -2933,15 +3016,23 @@ body[data-vscode-theme-id^="GeminiCode Glass"] .foot-button {
 	border-radius: 999px;
 }
 
+body[data-vscode-theme-id^="GeminiCode Glass"] .foot-followed .followed-name {
+	border-radius: 999px 0 0 999px;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .followed-close {
+	border-radius: 0 999px 999px 0;
+}
+
 body[data-vscode-theme-id^="GeminiCode Glass"] .usage-popover {
 	bottom: calc(100% + 6px);
 	padding: 10px 14px 12px;
-	border: none;
+	border: 1px solid var(--glass-menu-edge);
 	border-radius: 16px;
-	background: var(--glass-menu);
+	background: var(--glass-menu-sheen), var(--glass-menu);
 	box-shadow: var(--glass-menu-shadow), inset 0 1px 0 var(--glass-rim-top), inset 0 -1px 0 var(--glass-rim-bottom);
-	-webkit-backdrop-filter: blur(30px) saturate(var(--glass-saturate));
-	backdrop-filter: blur(30px) saturate(var(--glass-saturate));
+	-webkit-backdrop-filter: blur(40px) saturate(calc(var(--glass-saturate) * 1.2));
+	backdrop-filter: blur(40px) saturate(calc(var(--glass-saturate) * 1.2));
 }
 
 body[data-vscode-theme-id^="GeminiCode Glass"] .picker-row {
@@ -2955,6 +3046,7 @@ body[data-vscode-theme-id^="GeminiCode Glass"] .picker-row {
 		--glass-composer: var(--glass-composer-solid);
 		--glass-strip: var(--glass-strip-solid);
 		--glass-menu: var(--glass-menu-solid);
+		--glass-menu-sheen: none;
 	}
 
 	body[data-vscode-theme-id^="GeminiCode Glass"] .transcript {

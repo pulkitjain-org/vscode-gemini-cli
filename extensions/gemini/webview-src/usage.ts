@@ -18,6 +18,11 @@ import { state, strings, ui, vscode } from './view';
 const { usagePopover: popover, usageRing: ring } = ui;
 let quota: ViewQuota = { kind: 'checking' };
 let context: ViewContext | undefined;
+/** Whether the popover lists every model's quota, and this chat's tokens per model. */
+let allModels = false;
+let details = false;
+/** The quota rows shown before "All N models". */
+const shownQuota = 4;
 /** Where the CLI starts summarising older history, as a share of the window (its default `model.compressionThreshold`). */
 const summariseAt = 0.5;
 
@@ -60,6 +65,8 @@ export function toggleUsage(): void {
 	}
 	closePicker();
 	quota = { kind: 'checking' };
+	allModels = false;
+	details = false;
 	popover.hidden = false;
 	ring.setAttribute('aria-expanded', 'true');
 	ring.classList.add('active');
@@ -109,12 +116,18 @@ document.addEventListener('mousedown', event => {
 });
 
 function renderUsage(): void {
-	const head = el('div', 'usage-head');
-	head.append(el('span', 'usage-title', strings.usage));
-	const close = button('icon-button usage-close', '', closeUsage, 'close');
-	setLabel(close, strings.close);
-	head.append(close);
-	popover.replaceChildren(head, renderContext(), renderQuota(), renderChat());
+	popover.replaceChildren(renderContext(), renderQuota(), renderChat());
+}
+
+/** A link-styled button that shows or hides more of the popover. */
+function moreLink(label: string, expanded: boolean, toggle: () => void): HTMLElement {
+	const link = button('usage-more', label, () => {
+		toggle();
+		renderUsage();
+		popover.focus();
+	}, expanded ? 'chevron-up' : 'chevron-right');
+	link.setAttribute('aria-expanded', String(expanded));
+	return link;
 }
 
 function renderContext(): HTMLElement {
@@ -157,6 +170,20 @@ function renderChat(): HTMLElement {
 		section.append(el('p', 'usage-note', strings.usageNoCounts));
 		return section;
 	}
+	const summary = el('div', 'usage-summary');
+	summary.append(figure(strings.usageInput, usage.input, strings.usageInputNote));
+	if (context?.cached) {
+		summary.append(figure(strings.usageCached, context.cached, strings.usageCachedNote));
+	}
+	summary.append(figure(strings.usageOutput, usage.output));
+	section.append(summary);
+	if (usage.countedTurns < usage.turns) {
+		section.append(el('p', 'usage-note', strings.usageSomeCounted.replace('{0}', String(usage.countedTurns)).replace('{1}', String(usage.turns))));
+	}
+	section.append(moreLink(details ? strings.usageHideDetails : strings.usageDetails, details, () => details = !details));
+	if (!details) {
+		return section;
+	}
 	const table = el('table', 'usage-table');
 	const header = el('tr');
 	header.append(el('th', undefined, strings.usageModel), el('th', 'num', strings.usageInput), el('th', 'num', strings.usageOutput));
@@ -167,16 +194,16 @@ function renderChat(): HTMLElement {
 		row.append(el('td', 'usage-model', model || strings.usageTotal), tokensCell(input), tokensCell(output));
 		table.append(row);
 	}
-	section.append(table);
-	const notes = [strings.usageInputNote];
-	if (context?.cached) {
-		notes.unshift(format(strings.usageCached, formatTokens(context.cached)));
-	}
-	if (usage.countedTurns < usage.turns) {
-		notes.unshift(strings.usageSomeCounted.replace('{0}', String(usage.countedTurns)).replace('{1}', String(usage.turns)));
-	}
-	section.append(el('p', 'usage-note', notes.join(' ')));
+	section.append(table, el('p', 'usage-note', strings.usageInputNote));
 	return section;
+}
+
+/** "Input 295.8K", with the exact count and what it means on hover. */
+function figure(label: string, count: number, note?: string): HTMLElement {
+	const item = el('span', 'usage-figure');
+	item.append(el('span', 'usage-figure-label', label), el('span', 'usage-figure-value', formatTokens(count)));
+	item.title = note ? `${count.toLocaleString()}. ${note}` : count.toLocaleString();
+	return item;
 }
 
 function tokensCell(count: number): HTMLElement {
@@ -206,7 +233,9 @@ function renderQuota(): HTMLElement {
 	}
 	const now = Date.now();
 	const list = el('div', 'usage-quota');
-	for (const model of quota.quota) {
+	const models = [...quota.quota].sort((a, b) => b.used - a.used);
+	const shown = allModels || models.length <= shownQuota + 1 ? models : models.slice(0, shownQuota);
+	for (const model of shown) {
 		const percent = Math.round(model.used * 100);
 		const row = el('div', `usage-quota-row${model.used >= 0.95 ? ' full' : model.used >= 0.8 ? ' high' : ''}`);
 		const bar = el('div', 'usage-bar');
@@ -227,6 +256,9 @@ function renderQuota(): HTMLElement {
 		list.append(row);
 	}
 	section.append(list);
+	if (models.length > shownQuota + 1) {
+		section.append(moreLink(allModels ? strings.usageFewerModels : format(strings.usageAllModels, models.length), allModels, () => allModels = !allModels));
+	}
 	const minutes = Math.floor((now - quota.at) / 60_000);
 	section.append(el('p', 'usage-note', quota.checking ? strings.usageChecking : minutes < 1 ? strings.usageCheckedJustNow : format(strings.usageCheckedMinutes, minutes)));
 	return section;

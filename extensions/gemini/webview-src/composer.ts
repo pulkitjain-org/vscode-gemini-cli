@@ -136,6 +136,21 @@ export function setFollow(on: boolean): void {
 	updatePlusMenu();
 }
 
+const followedName = ui.followed.querySelector<HTMLButtonElement>('.followed-name')!;
+const followedClose = ui.followed.querySelector<HTMLButtonElement>('.followed-close')!;
+followedName.addEventListener('click', () => vscode.postMessage({ type: 'showFollowed' }));
+followedClose.addEventListener('click', () => vscode.postMessage({ type: 'closeFollowed' }));
+
+/** Names the file Follow the agent opened last, with a button to close it, while it is open. */
+export function setFollowed(file: { readonly name: string; readonly path: string } | undefined): void {
+	ui.followed.hidden = !file;
+	if (file) {
+		followedName.querySelector('span')!.textContent = file.name;
+		setLabel(followedName, format(strings.followedFile, file.path));
+		setLabel(followedClose, format(strings.closeFollowed, file.name));
+	}
+}
+
 /** Prompts sent from this view, newest last, for Up and Down in an empty input. */
 const sent: string[] = [];
 let recalled = -1;

@@ -4,19 +4,17 @@
  *--------------------------------------------------------------------------------------------*/
 
 // The composer's "+" menu: the approval mode, attaching files and context,
-// following the agent, the model, usage, Markdown preview and the slash
-// commands, in one searchable list, so the composer itself holds only the
-// input, the model and Send.
+// following the agent, the model, usage and the slash commands, in one
+// searchable list, so the composer itself holds only the input, the Write
+// and Preview tabs, the model and Send.
 
 import { format } from './chatLogic';
 import { el, icon, setLabel } from './dom';
-import { togglePreview } from './markdownPreview';
 import { closePicker, startCommand, startMention } from './picker';
 import { contextPercent, toggleUsage } from './usage';
 import { state, strings, ui, vscode } from './view';
 
 const { plusButton: button, plusMenu: menu, input } = ui;
-const mac = /Mac/.test(navigator.platform);
 
 interface Row {
 	readonly icon: string;
@@ -135,7 +133,6 @@ function sections(): Section[] {
 		rows: [
 			...(model ? [{ icon: 'sparkle', name: strings.model, detail: model.available.find(choice => choice.id === model.currentId)?.name, submenu: true, run: () => show('model') }] : []),
 			{ icon: 'graph', name: strings.usage, detail: percent === undefined ? undefined : format(strings.menuUsageDetail, percent), run: () => { closePlusMenu(false); toggleUsage(); } },
-			{ icon: 'open-preview', name: strings.previewLabel, detail: mac ? '⇧⌘V' : 'Ctrl+Shift+V', run: () => { closePlusMenu(false); togglePreview(); } },
 			{ icon: 'library', name: strings.menuCommands, detail: '/', run: () => { closePlusMenu(false); startCommand(); } },
 		],
 	});
