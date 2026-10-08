@@ -179,12 +179,16 @@ export class Appearance implements vscode.Disposable {
 	private async swatches(): Promise<Swatch[]> {
 		const table = await this.accentTable();
 		const files: Record<string, string> = {
+			'GeminiCode Glass Dark': 'geminicode-glass-dark.json',
+			'GeminiCode Glass Light': 'geminicode-glass-light.json',
 			'GeminiCode Dark': 'geminicode-dark.json',
 			'GeminiCode Midnight': 'geminicode-midnight.json',
 			'GeminiCode Dusk': 'geminicode-dusk.json',
 			'GeminiCode Light': 'geminicode-light.json',
 		};
 		const labels: Record<string, string> = {
+			'GeminiCode Glass Dark': vscode.l10n.t("Glass Dark"),
+			'GeminiCode Glass Light': vscode.l10n.t("Glass Light"),
 			'GeminiCode Dark': vscode.l10n.t("Dark"),
 			'GeminiCode Midnight': vscode.l10n.t("Midnight"),
 			'GeminiCode Dusk': vscode.l10n.t("Dusk"),

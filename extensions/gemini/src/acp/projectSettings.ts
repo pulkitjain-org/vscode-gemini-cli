@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// What the MCP Servers and Rules page reads and writes: the MCP servers in the
+// What the Project Helpers page reads and writes: the MCP servers in the
 // Gemini CLI's settings files, which of them the CLI has switched off, and
 // where its rules (GEMINI.md) files are. Mirrors gemini-cli 0.62:
 // `McpServerEnablementManager` keeps switched-off servers in
@@ -112,7 +112,19 @@ export function serverConfigFrom(input: string): Record<string, unknown> {
  * Adds a server to a settings file. Returns false, leaving the file alone,
  * when it has comments (rewriting it would lose them) or is not an object.
  */
-export async function addMcpServer(file: string, name: string, config: Record<string, unknown>): Promise<boolean> {
+export function addMcpServer(file: string, name: string, config: Record<string, unknown>): Promise<boolean> {
+	return updateSettingsFile(file, settings => {
+		const servers = isRecord(settings.mcpServers) ? settings.mcpServers : {};
+		settings.mcpServers = { ...servers, [name]: config };
+	});
+}
+
+/**
+ * Reads a settings file, lets `change` edit it and writes it back, creating
+ * it if missing. Returns false, leaving the file alone, when it has comments
+ * (rewriting it would lose them) or is not an object.
+ */
+export async function updateSettingsFile(file: string, change: (settings: Record<string, unknown>) => void): Promise<boolean> {
 	let text = '';
 	try {
 		text = await fs.readFile(file, 'utf8');
@@ -132,8 +144,7 @@ export async function addMcpServer(file: string, name: string, config: Record<st
 	if (!isRecord(settings)) {
 		return false;
 	}
-	const servers = isRecord(settings.mcpServers) ? settings.mcpServers : {};
-	settings.mcpServers = { ...servers, [name]: config };
+	change(settings);
 	await fs.mkdir(path.dirname(file), { recursive: true });
 	await fs.writeFile(file, JSON.stringify(settings, null, 2) + '\n', 'utf8');
 	return true;
@@ -170,6 +181,6 @@ export function stripJsonComments(text: string): string {
 	return out;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

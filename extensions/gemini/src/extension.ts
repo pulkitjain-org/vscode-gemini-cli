@@ -27,6 +27,8 @@ import { QuickEdits } from './host/quickEdits';
 import { SettingsPage } from './host/settingsPage';
 import { UsageMeter } from './host/usageMeter';
 import { initTeamCommands } from './host/teamCommands';
+import { KeepAwake } from './acp/keepAwake';
+import { BrowserTools } from './host/browserTools';
 import { WorkspaceFileIndex } from './host/workspaceFiles';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -62,6 +64,20 @@ export function activate(context: vscode.ExtensionContext): void {
 	const statusBar = new GeminiStatusBar(service);
 	const usageMeter = new UsageMeter(quickEdits.client, log);
 	const walkthrough = new SetupWalkthrough(service, context.globalState);
+	const browserTools = new BrowserTools(String(context.extension.packageJSON.version ?? ''), log, {
+		stop: agent => agentsView.stopTurn(agent),
+		title: agent => agentsView.agentTitle(agent) ?? vscode.l10n.t("Agent"),
+		open: () => agentsView.summaries().filter(agent => agent.state !== 'stopped'),
+		attach: async (agent, attachments) => {
+			await agentsView.open(agent);
+			await agentsView.controllerOf(agent)?.addAttachments(attachments);
+		},
+	});
+	agentsView.browser = browserTools;
+	// caffeinate watches this process, so it ends with GeminiCode even if GeminiCode crashes.
+	const keepAwake = new KeepAwake({ platform: process.platform, pid: process.pid, log: message => log.info(message) });
+	const readKeepAwake = () => keepAwake.setEnabled(vscode.workspace.getConfiguration(configSection).get<boolean>('keepAwake', true));
+	readKeepAwake();
 
 	context.subscriptions.push(
 		log,
@@ -84,11 +100,21 @@ export function activate(context: vscode.ExtensionContext): void {
 		new Appearance(context.extensionUri),
 		new CliManager(service, context.globalState, log),
 		new AppUpdateNotice(context.globalState, log),
+		keepAwake,
+		browserTools,
+		service.runtime.onDidBecomeBusy(() => keepAwake.setBusy(true)),
+		service.runtime.onDidBecomeIdle(() => keepAwake.setBusy(false)),
+		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.keepAwake`) && readKeepAwake()),
 		// Kept alive while hidden, so switching back to the chat is instant instead of reloading it.
 		vscode.window.registerWebviewViewProvider(chatViewId, chatView, { webviewOptions: { retainContextWhenHidden: true } }),
 		vscode.commands.registerCommand('gemini.openChat', () => vscode.commands.executeCommand(`${chatViewId}.focus`)),
 		vscode.commands.registerCommand('gemini.newChat', () => chatView.newChat()),
 		vscode.commands.registerCommand('gemini.enhancePrompt', () => chatInFront().requestEnhance()),
+		vscode.commands.registerCommand('gemini.toggleFollowAgent', () => chatInFront().toggleFollowing()),
+		vscode.commands.registerCommand('gemini.openChatAsMarkdown', () => {
+			const agent = agentsView.activeAgentId();
+			return agent ? agentsView.openAsMarkdown(agent) : chatView.controller.openAsMarkdown(vscode.l10n.t("Quick Chat"));
+		}),
 		vscode.commands.registerCommand('gemini.addFileToChat', async (uri: unknown, uris: unknown) => chatInFront().addAttachments(await filesToAttach(uri, uris))),
 		vscode.commands.registerCommand('gemini.addSelectionToChat', () => chatInFront().addAttachments(selectionsToAttach())),
 		vscode.commands.registerCommand('gemini.showLog', () => log.show()),

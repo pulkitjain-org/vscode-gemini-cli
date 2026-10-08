@@ -8,13 +8,14 @@
 
 import type { TranscriptItem } from '../src/acp/chatTranscript';
 import type { TextAppend } from '../src/acp/textDeltas';
+import { updateActivity } from './activity';
 import { indexOfItem, isNearBottom as nearBottom, withAppended, type ItemOf } from './chatLogic';
 import { el } from './dom';
 import { render, renderEmpty, renderNotice } from './items';
 import { renderStreamingReply, streamingReplies, updateStreamingReply } from './streamingReply';
 import { elements, expanded, state, thoughtTimes, ui } from './view';
 
-const { transcript, scrollButton } = ui;
+const { transcript, scrollButton, dock } = ui;
 
 export function isNearBottom(): boolean {
 	return nearBottom(transcript.scrollHeight, transcript.scrollTop, transcript.clientHeight);
@@ -26,7 +27,37 @@ function scrollToBottom(): void {
 
 /** Shows the jump-to-latest button while the user reads further up. */
 function updateScrollButton(): void {
-	scrollButton.hidden = isNearBottom();
+	const hidden = isNearBottom();
+	if (scrollButton.hidden !== hidden) {
+		scrollButton.hidden = hidden;
+	}
+}
+
+/** A pending check of the jump-to-latest button; scrolling checks at most once a frame. */
+let scrollFrame: number | undefined;
+
+function onScroll(): void {
+	scrollFrame ??= requestAnimationFrame(() => {
+		scrollFrame = undefined;
+		updateScrollButton();
+	});
+}
+
+/**
+ * The Glass themes float the working strip and composer over the transcript,
+ * which keeps room for them below its last item (chat.css reads --dock-height).
+ * When they grow, a transcript that was at the bottom stays there.
+ */
+function onDockResize(entries: readonly ResizeObserverEntry[]): void {
+	const height = Math.ceil(entries.at(-1)?.borderBoxSize[0]?.blockSize ?? dock.offsetHeight);
+	if (transcript.style.getPropertyValue('--dock-height') === `${height}px`) {
+		return;
+	}
+	const stick = isNearBottom();
+	transcript.style.setProperty('--dock-height', `${height}px`);
+	if (stick) {
+		scrollToBottom();
+	}
 }
 
 /**
@@ -187,6 +218,7 @@ working.setAttribute('aria-hidden', 'true');
 working.append(el('span'), el('span'), el('span'));
 
 export function updateWorking(): void {
+	updateActivity();
 	if (state.busy && state.items.at(-1)?.kind === 'user') {
 		if (transcript.lastElementChild !== working) {
 			transcript.append(working);
@@ -225,4 +257,5 @@ scrollButton.addEventListener('click', () => {
 	transcript.scrollTo({ top: transcript.scrollHeight, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
 	ui.input.focus();
 });
-transcript.addEventListener('scroll', updateScrollButton, { passive: true });
+transcript.addEventListener('scroll', onScroll, { passive: true });
+new ResizeObserver(onDockResize).observe(dock);

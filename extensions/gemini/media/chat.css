@@ -88,6 +88,62 @@ button {
 	padding: 20px var(--gemini-gutter) 8px;
 }
 
+/* Long chats (promptNav.ts): a tick per prompt down the right edge; the current one is lit. */
+.prompt-outline {
+	position: fixed;
+	top: 20px;
+	right: 2px;
+	z-index: 2;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	max-height: 45vh;
+	padding: 2px 0;
+}
+
+.prompt-outline[hidden] {
+	display: none;
+}
+
+.outline-tick {
+	flex: 0 1 10px;
+	min-height: 3px;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	width: 14px;
+	padding: 0 2px;
+	border: none;
+	background: transparent;
+	cursor: pointer;
+	opacity: .55;
+	transition: opacity .12s;
+}
+
+.outline-tick::before {
+	content: '';
+	height: 2px;
+	width: 8px;
+	border-radius: 1px;
+	background: var(--gemini-muted);
+	transition: width .12s;
+}
+
+.prompt-outline:hover .outline-tick {
+	opacity: .8;
+}
+
+.outline-tick:hover,
+.outline-tick.current {
+	opacity: 1;
+}
+
+.outline-tick:hover::before,
+.outline-tick.current::before {
+	width: 12px;
+	background: var(--vscode-textLink-foreground);
+}
+
 /*
  * Older messages skip layout and paint while scrolled out of view, so a long chat stays as cheap
  * as a short one. The latest ones are always laid out, so scrolling to the bottom lands exactly.
@@ -364,6 +420,26 @@ kbd {
 	padding: 1px 4px;
 	border-radius: 4px;
 	background: var(--gemini-code-background);
+}
+
+/*
+ * Inline code: a light tint of the accent with text leaning the same way, so names read as
+ * code without a dark block in the sentence (the code-block colour is near black in dark themes).
+ */
+.markdown :not(pre) > code {
+	font-size: 0.88em;
+	padding: 1px 5px;
+	border-radius: 5px;
+	background: color-mix(in srgb, var(--gemini-accent) 13%, transparent);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gemini-accent) 18%, transparent);
+	color: color-mix(in srgb, var(--gemini-accent) 45%, var(--vscode-foreground));
+}
+
+body.vscode-high-contrast .markdown :not(pre) > code,
+body.vscode-high-contrast-light .markdown :not(pre) > code {
+	background: var(--vscode-textPreformat-background, transparent);
+	box-shadow: inset 0 0 0 1px var(--vscode-contrastBorder, transparent);
+	color: var(--vscode-textPreformat-foreground, var(--vscode-foreground));
 }
 
 .markdown blockquote {
@@ -1021,6 +1097,171 @@ body.vscode-high-contrast-light {
 	font-style: italic;
 }
 
+/* ---- Working strip: the whole turn, with a clock and the current step ---- */
+
+.activity {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	width: fit-content;
+	max-width: calc(100% - 2 * var(--gemini-gutter));
+	margin: 0 auto 8px;
+	padding: 5px 14px 5px 11px;
+	border: 1px solid var(--gemini-border);
+	border-radius: 999px;
+	background: var(--gemini-surface);
+	box-shadow: 0 4px 16px var(--gemini-shadow);
+	font-size: 0.92em;
+	color: var(--vscode-foreground);
+	white-space: nowrap;
+}
+
+.activity[hidden],
+.activity [hidden] {
+	display: none;
+}
+
+.activity-spark {
+	flex: none;
+	width: 14px;
+	height: 14px;
+	fill: var(--gemini-accent);
+}
+
+.activity-label {
+	flex: none;
+	font-weight: 600;
+}
+
+.activity.running .activity-label {
+	background: var(--gemini-gradient);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+}
+
+body[data-accent="solid"] .activity.running .activity-label,
+body.vscode-high-contrast .activity.running .activity-label,
+body.vscode-high-contrast-light .activity.running .activity-label {
+	background: none;
+	color: var(--vscode-foreground);
+}
+
+.activity-clock {
+	flex: none;
+	color: var(--gemini-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.activity-detail {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: var(--gemini-muted);
+}
+
+.activity-detail::before {
+	content: "\00b7";
+	margin-right: 8px;
+}
+
+.activity-hint {
+	flex: none;
+	margin-left: 6px;
+	font-size: 0.92em;
+	color: var(--vscode-disabledForeground, var(--gemini-muted));
+}
+
+.activity.waiting .activity-spark {
+	fill: var(--vscode-editorWarning-foreground, #e2b340);
+}
+
+.activity.done .activity-spark {
+	fill: var(--vscode-testing-iconPassed, #73c991);
+}
+
+@property --gemini-sweep {
+	syntax: "<angle>";
+	inherits: false;
+	initial-value: 0deg;
+}
+
+/* While the agent works, a slow highlight travels round the composer's border. */
+.composer.busy,
+.composer.busy:focus-within {
+	border-color: transparent;
+	background:
+		linear-gradient(var(--vscode-input-background), var(--vscode-input-background)) padding-box,
+		conic-gradient(from var(--gemini-sweep), var(--gemini-border) 0deg 200deg, #4796e3 250deg, #9177c7 290deg, #ca6673 320deg, var(--gemini-border) 350deg) border-box;
+}
+
+body[data-accent="solid"] .composer.busy {
+	background:
+		linear-gradient(var(--vscode-input-background), var(--vscode-input-background)) padding-box,
+		conic-gradient(from var(--gemini-sweep), var(--gemini-border) 0deg 220deg, var(--gemini-accent) 290deg, var(--gemini-border) 350deg) border-box;
+}
+
+body.vscode-high-contrast .composer.busy,
+body.vscode-high-contrast-light .composer.busy {
+	background: var(--vscode-input-background);
+	border-color: var(--vscode-contrastActiveBorder, var(--vscode-focusBorder));
+}
+
+/* Stop carries a spinning ring while the turn runs. */
+.round-button.stop {
+	position: relative;
+}
+
+.round-button.stop::before {
+	content: "";
+	position: absolute;
+	inset: -2.5px;
+	border-radius: 50%;
+	background: conic-gradient(#4796e3 0deg, #9177c7 60deg, #ca6673 110deg, transparent 120deg);
+	/* A 1.5px ring: closest-side, so 100% is the ring's own radius (the default, farthest-corner, made it about 5px). */
+	-webkit-mask: radial-gradient(circle closest-side, transparent calc(100% - 1.75px), #000 calc(100% - 1.25px));
+	mask: radial-gradient(circle closest-side, transparent calc(100% - 1.75px), #000 calc(100% - 1.25px));
+	pointer-events: none;
+}
+
+body[data-accent="solid"] .round-button.stop::before {
+	background: conic-gradient(var(--gemini-accent) 0deg 110deg, transparent 120deg);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.composer.busy {
+		animation: gemini-sweep 2.4s linear infinite;
+	}
+
+	.round-button.stop::before {
+		animation: gemini-spin 1s linear infinite;
+	}
+
+	.activity.running .activity-spark {
+		animation: gemini-spark 1.6s ease-in-out infinite;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.composer.busy {
+		background: var(--vscode-input-background);
+		border-color: var(--gemini-accent);
+	}
+}
+
+@keyframes gemini-sweep {
+	to { --gemini-sweep: 360deg; }
+}
+
+@keyframes gemini-spin {
+	to { transform: rotate(360deg); }
+}
+
+@keyframes gemini-spark {
+	50% { transform: scale(0.8) rotate(45deg); opacity: 0.7; }
+}
+
 /* ---- Status and composer ---- */
 
 .status {
@@ -1082,6 +1323,14 @@ body.vscode-high-contrast-light {
 	border-color: var(--vscode-focusBorder);
 }
 
+/* The working strip, status and composer, under the transcript (floating over it in the Glass themes). */
+.dock {
+	position: relative;
+	display: flex;
+	flex: none;
+	flex-direction: column;
+}
+
 /* Jumps back to the latest message; floats above the composer while the user reads further up. */
 .scroll-down {
 	position: absolute;
@@ -1108,7 +1357,9 @@ body.vscode-high-contrast-light {
 }
 
 .scroll-down[hidden],
-.composer:has(.picker:not([hidden])) .scroll-down {
+.dock:has(.picker:not([hidden])) .scroll-down,
+.scroll-down .codicon-chevron-down,
+.scroll-down-label {
 	display: none;
 }
 
@@ -1165,39 +1416,52 @@ body.vscode-high-contrast-light {
 	color: var(--vscode-input-placeholderForeground);
 }
 
-/* Preview Markdown (markdownPreview.ts): the draft as it will look, above the input. */
-.composer-preview {
-	margin: -4px -6px 10px;
-	border: 1px solid var(--gemini-border);
-	border-radius: var(--gemini-radius);
-	background: var(--gemini-code-background);
-	overflow: hidden;
-}
-
-/* A heading, so the preview never reads as the draft below it. */
-.preview-label {
+/* Write and Preview (markdownPreview.ts): tabs at the top of the composer; Preview takes the input's place. */
+.composer-tabs {
 	display: flex;
-	align-items: center;
-	gap: 6px;
-	padding: 5px 10px;
-	border-bottom: 1px solid var(--gemini-border);
-	font-size: 0.8em;
-	font-weight: 600;
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
+	gap: 14px;
+	margin: -4px 0 6px;
+	font-size: 0.85em;
+}
+
+.composer-tab {
+	padding: 0;
+	border: none;
+	background: none;
 	color: var(--gemini-muted);
+	font: inherit;
+	cursor: pointer;
 }
 
-/* Inline code would vanish into the card's own code-coloured background. */
-.preview-body :not(pre) > code {
-	background: var(--gemini-surface);
+.composer-tab:hover,
+.composer-tab[aria-selected="true"] {
+	color: var(--vscode-foreground);
 }
 
-.preview-body {
-	max-height: 30vh;
+.composer-tab[aria-selected="true"] {
+	font-weight: 600;
+}
+
+.composer-tab:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 2px;
+	border-radius: 3px;
+}
+
+.composer-preview {
+	max-height: 40vh;
 	overflow-y: auto;
-	padding: 8px 10px;
+	padding: 2px 2px 6px;
 	overflow-wrap: anywhere;
+	cursor: default;
+}
+
+.composer-preview:focus {
+	outline: none;
+}
+
+.preview-empty {
+	color: var(--gemini-muted);
 }
 
 .icon-button.active {
@@ -1902,4 +2166,294 @@ body.vscode-high-contrast-light #send {
 	overflow: hidden;
 	clip-path: inset(50%);
 	white-space: nowrap;
+}
+
+/*
+ * The Glass themes (Liquid Glass): the transcript scrolls under a floating, translucent composer
+ * and working strip, and fades out just above them. Floating controls catch the light on their
+ * top edge, menus are frosted, and corners nest (composer 22, chips and buttons as capsules).
+ * Blur is only on these few small floating surfaces, and nothing here animates. Other themes keep
+ * the styles above; without transparency (or with forced colours) they are flat and opaque.
+ */
+body[data-vscode-theme-id^="GeminiCode Glass"] {
+	position: relative;
+	--glass-composer: #FFFFFFA6;
+	--glass-composer-solid: #FFFFFF;
+	--glass-composer-saturate: 1.8;
+	--glass-composer-edge: linear-gradient(120deg, #4285F4, #9B72CB 45%, #D96570 70%, #FFFFFF 88%);
+	--glass-composer-glow: 0 12px 40px #4285F42E;
+	--glass-composer-top: #FFFFFF;
+	--glass-saturate: 1.8;
+	--glass-user: linear-gradient(135deg, #EEF3FF, #F4EEFC);
+	--glass-user-edge: #DCE3F8;
+	--glass-strip: #FFFFFF8C;
+	--glass-strip-solid: #FFFFFF;
+	--glass-float-shadow: 0 4px 16px #1B1C221F;
+	--glass-menu: #FFFFFFB8;
+	--glass-menu-solid: #FFFFFF;
+	--glass-menu-shadow: 0 18px 50px #1B1C222E, 0 1px 3px #0000001A;
+	--glass-rim-top: #FFFFFFF2;
+	--glass-rim-bottom: #FFFFFF80;
+	--glass-selected: #0000000D;
+}
+
+body[data-vscode-theme-id="GeminiCode Glass Dark"] {
+	--glass-composer: #171826B3;
+	--glass-composer-solid: #171826;
+	--glass-composer-saturate: 1.3;
+	--glass-composer-edge: linear-gradient(120deg, #4285F4, #9B72CB 45%, #D96570 70%, #FFFFFF33 88%);
+	--glass-composer-glow: 0 0 50px -12px #4285F480;
+	--glass-composer-top: #FFFFFF26;
+	--glass-saturate: 1.4;
+	--glass-user: linear-gradient(135deg, #1F2A44, #2A2140);
+	--glass-user-edge: #FFFFFF1A;
+	--glass-strip: #1A1C2899;
+	--glass-strip-solid: #1A1C28;
+	--glass-float-shadow: 0 4px 16px #00000088;
+	--glass-menu: #22232DCC;
+	--glass-menu-solid: #22232D;
+	--glass-menu-shadow: 0 18px 50px #000000A6;
+	--glass-rim-top: #FFFFFF4D;
+	--glass-rim-bottom: #FFFFFF14;
+	--glass-selected: #FFFFFF14;
+}
+
+/* The strip and composer float over the transcript, which keeps room below its last item for them (transcript.ts sets --dock-height). */
+body[data-vscode-theme-id^="GeminiCode Glass"] .dock {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 2;
+	/* Only the controls take the pointer, so the transcript's scroll bar still works beside them. */
+	pointer-events: none;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .dock > * {
+	pointer-events: auto;
+}
+
+/* Scroll edge: the transcript fades out from just above the strip down to the bottom, and in at the top. */
+body[data-vscode-theme-id^="GeminiCode Glass"] .transcript {
+	padding-bottom: calc(var(--dock-height, 140px) + 12px);
+	-webkit-mask-image: linear-gradient(180deg, transparent 0, #000 18px, #000 calc(100% - var(--dock-height, 140px) - 24px), #0000008C calc(100% - var(--dock-height, 140px) + 24px), #00000026 100%);
+	mask-image: linear-gradient(180deg, transparent 0, #000 18px, #000 calc(100% - var(--dock-height, 140px) - 24px), #0000008C calc(100% - var(--dock-height, 140px) + 24px), #00000026 100%);
+}
+
+/*
+ * The composer's frosted fill is its ::before, not the composer itself: a backdrop filter on the
+ * composer would stop the "/" and "@" menu inside it from frosting what is behind it. The
+ * gradient rim is a masked ::after, so the translucent fill does not show the gradient through.
+ */
+body[data-vscode-theme-id^="GeminiCode Glass"] .composer {
+	isolation: isolate;
+	padding: 12px 12px 10px;
+	border: none;
+	border-radius: 22px;
+	background: none;
+	box-shadow: var(--glass-composer-glow);
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .composer::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	border-radius: inherit;
+	background: var(--glass-composer);
+	box-shadow: inset 0 1px 0 var(--glass-composer-top);
+	-webkit-backdrop-filter: blur(26px) saturate(var(--glass-composer-saturate));
+	backdrop-filter: blur(26px) saturate(var(--glass-composer-saturate));
+	pointer-events: none;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .composer::after,
+body[data-vscode-theme-id^="GeminiCode Glass"] .activity::after,
+body[data-vscode-theme-id^="GeminiCode Glass"] .scroll-down::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	padding: 1px;
+	/* Specular rim: a light-catching edge, brightest at the top. */
+	background: linear-gradient(180deg, var(--glass-rim-top) 0%, transparent 45%, transparent 70%, var(--glass-rim-bottom) 100%);
+	-webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+	-webkit-mask-composite: xor;
+	mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+	pointer-events: none;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .composer::after {
+	padding: 1.5px;
+	background: var(--glass-composer-edge);
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"][data-accent="solid"] .composer::after {
+	background: var(--gemini-accent);
+}
+
+/* The rim stays still while the agent works; Stop's ring and the strip say it is working. */
+body[data-vscode-theme-id^="GeminiCode Glass"] .composer.busy {
+	border: none;
+	background: none;
+	animation: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	/* Rewriting the draft glows instead of showing the rim. */
+	body[data-vscode-theme-id^="GeminiCode Glass"] .composer.enhancing::after {
+		inset: -1px;
+		padding: 0;
+		background: none;
+		-webkit-mask: none;
+		mask: none;
+	}
+}
+
+/* A slimmer composer: two lines to start with, as it floats over the transcript. */
+body[data-vscode-theme-id^="GeminiCode Glass"] .composer textarea {
+	min-height: 3em;
+}
+
+/* Write and Preview: small capsules, the chosen one filled. */
+body[data-vscode-theme-id^="GeminiCode Glass"] .composer-tabs {
+	gap: 2px;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .composer-tab {
+	padding: 2px 9px;
+	border-radius: 999px;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .composer-tab[aria-selected="true"] {
+	font-weight: normal;
+	background: var(--glass-selected);
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .composer-tab:focus-visible {
+	border-radius: 999px;
+}
+
+/* Capsules inside the composer and for buttons; code 12 and the user's message 18, nesting in the composer's 22. */
+body[data-vscode-theme-id^="GeminiCode Glass"] .pill,
+body[data-vscode-theme-id^="GeminiCode Glass"] .chip,
+body[data-vscode-theme-id^="GeminiCode Glass"] .enhance-chip,
+body[data-vscode-theme-id^="GeminiCode Glass"] .status-action,
+body[data-vscode-theme-id^="GeminiCode Glass"] .permission-actions button {
+	border-radius: 999px;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .code-block,
+body[data-vscode-theme-id^="GeminiCode Glass"] .tool-output {
+	border-radius: 12px;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .message.user {
+	border-radius: 18px;
+	background: var(--glass-user);
+	color: var(--vscode-foreground);
+	border-color: var(--glass-user-edge);
+}
+
+/* The working strip: a glass capsule, centred over the composer. */
+body[data-vscode-theme-id^="GeminiCode Glass"] .activity {
+	position: relative;
+	margin-bottom: 10px;
+	padding: 6px 14px 6px 12px;
+	border: none;
+	border-radius: 999px;
+	background: var(--glass-strip);
+	box-shadow: var(--glass-float-shadow);
+	-webkit-backdrop-filter: blur(22px) saturate(var(--glass-saturate));
+	backdrop-filter: blur(22px) saturate(var(--glass-saturate));
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .activity-hint {
+	display: none;
+}
+
+/* Sign-in and errors sit over the transcript too, so they get a glass backing when there is something to say. */
+body[data-vscode-theme-id^="GeminiCode Glass"] .status:not(:empty) {
+	padding: 6px 8px 6px 14px;
+	border-radius: 18px;
+	background: var(--glass-strip);
+	box-shadow: var(--glass-float-shadow);
+	-webkit-backdrop-filter: blur(22px) saturate(var(--glass-saturate));
+	backdrop-filter: blur(22px) saturate(var(--glass-saturate));
+}
+
+/* "Latest": a glass capsule at the composer's right edge while the user reads further up. */
+body[data-vscode-theme-id^="GeminiCode Glass"] .scroll-down {
+	left: auto;
+	right: var(--gemini-gutter);
+	bottom: calc(100% + 14px);
+	gap: 6px;
+	width: auto;
+	height: auto;
+	margin: 0;
+	padding: 5px 12px 5px 10px;
+	border: none;
+	border-radius: 999px;
+	background: var(--glass-strip);
+	box-shadow: var(--glass-float-shadow);
+	font-size: 12px;
+	-webkit-backdrop-filter: blur(20px) saturate(var(--glass-saturate));
+	backdrop-filter: blur(20px) saturate(var(--glass-saturate));
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .scroll-down:hover {
+	background: var(--glass-menu);
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .scroll-down .codicon-arrow-down {
+	display: none;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .scroll-down .codicon-chevron-down,
+body[data-vscode-theme-id^="GeminiCode Glass"] .scroll-down-label {
+	display: inline;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .scroll-down .codicon {
+	font-size: 14px;
+}
+
+/* The "/" and "@" menu: frosted where it covers the transcript, with a light-catching edge. */
+body[data-vscode-theme-id^="GeminiCode Glass"] .picker {
+	bottom: calc(100% + 6px);
+	padding: 6px;
+	border: none;
+	border-radius: 16px;
+	background: var(--glass-menu);
+	box-shadow: var(--glass-menu-shadow), inset 0 1px 0 var(--glass-rim-top), inset 0 -1px 0 var(--glass-rim-bottom);
+	-webkit-backdrop-filter: blur(30px) saturate(var(--glass-saturate));
+	backdrop-filter: blur(30px) saturate(var(--glass-saturate));
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .picker-row {
+	padding: 5px 10px;
+	border-radius: 10px;
+}
+
+/* Flat and opaque when the system asks for less transparency, or in forced colours. */
+@media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+	body[data-vscode-theme-id^="GeminiCode Glass"] {
+		--glass-composer: var(--glass-composer-solid);
+		--glass-strip: var(--glass-strip-solid);
+		--glass-menu: var(--glass-menu-solid);
+	}
+
+	body[data-vscode-theme-id^="GeminiCode Glass"] .transcript {
+		-webkit-mask-image: none;
+		mask-image: none;
+	}
+
+	body[data-vscode-theme-id^="GeminiCode Glass"] .composer::before,
+	body[data-vscode-theme-id^="GeminiCode Glass"] .activity,
+	body[data-vscode-theme-id^="GeminiCode Glass"] .status:not(:empty),
+	body[data-vscode-theme-id^="GeminiCode Glass"] .scroll-down,
+	body[data-vscode-theme-id^="GeminiCode Glass"] .picker {
+		-webkit-backdrop-filter: none;
+		backdrop-filter: none;
+	}
 }

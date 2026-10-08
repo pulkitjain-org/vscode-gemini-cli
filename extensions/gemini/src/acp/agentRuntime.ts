@@ -69,6 +69,9 @@ export class AgentRuntime {
 	private readonly sidecarListener: { dispose(): void };
 	/** Prompts still running on this process, across its sessions. */
 	private turns = 0;
+	private readonly onDidBecomeBusyEmitter = new Emitter<void>();
+	/** Fires when a prompt starts while none was running. */
+	readonly onDidBecomeBusy = this.onDidBecomeBusyEmitter.event;
 	private readonly onDidBecomeIdleEmitter = new Emitter<void>();
 	/** Fires when the last running prompt ends. */
 	readonly onDidBecomeIdle = this.onDidBecomeIdleEmitter.event;
@@ -91,7 +94,9 @@ export class AgentRuntime {
 
 	/** Counts `turn` as running until it settles, for `busy`. */
 	async trackTurn<T>(turn: Promise<T>): Promise<T> {
-		this.turns++;
+		if (this.turns++ === 0) {
+			this.onDidBecomeBusyEmitter.fire();
+		}
 		try {
 			return await turn;
 		} finally {
@@ -111,14 +116,14 @@ export class AgentRuntime {
 	 * auth, authenticates once with `oauth-personal` and retries.
 	 * Rejects with an `AgentError`.
 	 */
-	async newSession(cwd: string): Promise<{ readonly connection: AgentConnection; readonly agent: acp.InitializeResponse; readonly session: acp.NewSessionResponse }> {
+	async newSession(cwd: string, mcpServers: readonly acp.McpServer[] = []): Promise<{ readonly connection: AgentConnection; readonly agent: acp.InitializeResponse; readonly session: acp.NewSessionResponse }> {
 		const state = this._state;
 		const connection = this.connection;
 		if (state.kind !== 'ready' || !connection) {
 			throw new AgentError({ kind: 'unknown', message: 'The agent is not ready.' });
 		}
 		try {
-			return { connection, agent: state.agent, session: await connection.newSession(cwd) };
+			return { connection, agent: state.agent, session: await connection.newSession(cwd, mcpServers) };
 		} catch (err) {
 			const info = classifyAgentError(err);
 			const canAuthenticate = state.agent.authMethods?.some(m => m.id === AUTH_METHOD_ID);
@@ -131,7 +136,7 @@ export class AgentRuntime {
 			// user's ~/.gemini/settings.json.
 			this.authenticating ??= connection.authenticate(AUTH_METHOD_ID).then(() => undefined);
 			await this.authenticating;
-			return { connection, agent: state.agent, session: await connection.newSession(cwd) };
+			return { connection, agent: state.agent, session: await connection.newSession(cwd, mcpServers) };
 		} catch (err) {
 			throw new AgentError(classifyAgentError(err));
 		} finally {
@@ -144,7 +149,7 @@ export class AgentRuntime {
 	 * `loadSession`. Rejects with an `AgentError` otherwise, or when the agent
 	 * cannot find it; the caller then opens a new session.
 	 */
-	async loadSession(cwd: string, sessionId: string, firstPrompt?: string): Promise<{ readonly connection: AgentConnection; readonly agent: acp.InitializeResponse; readonly session: acp.NewSessionResponse }> {
+	async loadSession(cwd: string, sessionId: string, firstPrompt?: string, mcpServers: readonly acp.McpServer[] = []): Promise<{ readonly connection: AgentConnection; readonly agent: acp.InitializeResponse; readonly session: acp.NewSessionResponse }> {
 		const state = this._state;
 		const connection = this.connection;
 		if (state.kind !== 'ready' || !connection) {
@@ -159,7 +164,7 @@ export class AgentRuntime {
 		}
 		this.earlyUpdates.delete(sessionId);
 		try {
-			const response = await connection.loadSession(sessionId, cwd);
+			const response = await connection.loadSession(sessionId, cwd, mcpServers);
 			if (firstPrompt !== undefined && !await this.replayStartsWith(sessionId, firstPrompt)) {
 				throw new AgentError({ kind: 'unknown', message: 'The agent opened a different session.' });
 			}
@@ -211,6 +216,7 @@ export class AgentRuntime {
 		this.sidecarListener.dispose();
 		this.dropConnection();
 		this.onDidChangeStateEmitter.dispose();
+		this.onDidBecomeBusyEmitter.dispose();
 		this.onDidBecomeIdleEmitter.dispose();
 	}
 
