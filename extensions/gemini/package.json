@@ -802,22 +802,6 @@
           "scope": "window",
           "markdownDescription": "%configuration.projectId%"
         },
-        "gemini.appearance.accent": {
-          "type": "string",
-          "default": "theme",
-          "enum": ["theme", "blue", "violet", "rose", "teal", "amber", "gradient"],
-          "enumItemLabels": ["%configuration.appearance.accent.theme%", "%configuration.appearance.accent.blue%", "%configuration.appearance.accent.violet%", "%configuration.appearance.accent.rose%", "%configuration.appearance.accent.teal%", "%configuration.appearance.accent.amber%", "%configuration.appearance.accent.gradient%"],
-          "scope": "application",
-          "markdownDescription": "%configuration.appearance.accent%"
-        },
-        "gemini.chat.fontSize": {
-          "type": "number",
-          "default": 14,
-          "minimum": 10,
-          "maximum": 24,
-          "scope": "application",
-          "markdownDescription": "%configuration.chat.fontSize%"
-        },
         "gemini.notifications.enabled": {
           "type": "boolean",
           "default": true,
@@ -852,18 +836,6 @@
     },
     "themes": [
       {
-        "id": "GeminiCode Glass Dark",
-        "label": "%theme.glassDark%",
-        "uiTheme": "vs-dark",
-        "path": "./themes/geminicode-glass-dark.json"
-      },
-      {
-        "id": "GeminiCode Glass Light",
-        "label": "%theme.glassLight%",
-        "uiTheme": "vs",
-        "path": "./themes/geminicode-glass-light.json"
-      },
-      {
         "id": "GeminiCode Dark",
         "label": "%theme.dark%",
         "uiTheme": "vs-dark",
@@ -874,18 +846,6 @@
         "label": "%theme.light%",
         "uiTheme": "vs",
         "path": "./themes/geminicode-light.json"
-      },
-      {
-        "id": "GeminiCode Midnight",
-        "label": "%theme.midnight%",
-        "uiTheme": "vs-dark",
-        "path": "./themes/geminicode-midnight.json"
-      },
-      {
-        "id": "GeminiCode Dusk",
-        "label": "%theme.dusk%",
-        "uiTheme": "vs-dark",
-        "path": "./themes/geminicode-dusk.json"
       }
     ],
     "iconThemes": [

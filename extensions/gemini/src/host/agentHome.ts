@@ -8,7 +8,6 @@ import * as vscode from 'vscode';
 import { formatCounts } from '../acp/agentChanges';
 import { AgentsView, AgentSummary, relativeTime } from './agentsView';
 import { tildify } from './displayText';
-import { chatFontSize, onDidChangeChatFontSize } from './chatFont';
 import { configSection } from './configuration';
 import { FromHome, HomeAgent, HomeStrings, HomeView, ToHome } from './panelProtocol';
 import { createNonce, escapeAttribute } from './webviewHtml';
@@ -49,7 +48,6 @@ export class AgentHome implements vscode.Disposable {
 				}
 			}),
 			agents.onDidChangeAgents(() => this.schedule()),
-			onDidChangeChatFontSize(size => void this.panel?.webview.postMessage({ type: 'fontSize', size } satisfies ToHome)),
 		);
 		void Promise.resolve(vscode.commands.executeCommand<Mode>('_gemini.getMode')).then(mode => this.setMode(mode), () => undefined);
 	}
@@ -196,7 +194,7 @@ export class AgentHome implements vscode.Disposable {
 	<link href="${style}" rel="stylesheet">
 	<title>Agent Home</title>
 </head>
-<body class="agent-home" data-font-size="${chatFontSize()}">
+<body class="agent-home">
 	<main class="home">
 		<section class="home-start">
 			<div class="home-spark" aria-hidden="true"></div>

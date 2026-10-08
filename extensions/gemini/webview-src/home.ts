@@ -18,11 +18,6 @@ interface SavedState {
 
 const vscode = acquireVsCodeApi();
 
-function applyFontSize(size: number): void {
-	if (Number.isFinite(size) && size > 0) {
-		document.body.style.setProperty('--gemini-font-size', `${size}px`);
-	}
-}
 const strings = pageStrings<HomeStrings>();
 const saved = (vscode.getState() ?? {}) as SavedState;
 
@@ -191,8 +186,6 @@ window.addEventListener('message', (event: MessageEvent<ToHome>) => {
 	const message = event.data;
 	if (message.type === 'view') {
 		render(message.view);
-	} else if (message.type === 'fontSize') {
-		applyFontSize(message.size);
 	} else if (message.type === 'focus') {
 		prompt.focus();
 	} else if (message.type === 'startFailed') {
@@ -202,5 +195,4 @@ window.addEventListener('message', (event: MessageEvent<ToHome>) => {
 	}
 });
 
-applyFontSize(Number(document.body.dataset.fontSize));
 vscode.postMessage({ type: 'ready' });

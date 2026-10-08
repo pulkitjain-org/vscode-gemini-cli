@@ -6,46 +6,19 @@
 import { existsSync, readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { AccentTable, codeFontOf, codeFonts, themeIds, withAccent } from '../../src/acp/appearance';
-import { buildThemes } from '../../scripts/build-themes.mjs';
+import { codeFontOf, codeFonts, themeIds, withoutOldAccents } from '../../src/acp/appearance';
 
 const extensionDir = path.join(__dirname, '..', '..');
-const table: AccentTable = {
-	accents: { blue: ['#8AB4F8', '#1A5FD6'], violet: ['#B69CF6', '#7A3EC8'] },
-	themes: {
-		'GeminiCode Dark': { kind: 'dark', keys: { focusBorder: '99', 'textLink.foreground': '' } },
-		'GeminiCode Light': { kind: 'light', keys: { focusBorder: '99' } },
-	},
-};
 
-describe('withAccent', () => {
-	it('sets the accent keys of the theme in use, in its light or dark shade', () => {
-		expect(withAccent(undefined, 'violet', 'GeminiCode Dark', table)).toEqual({
-			'[GeminiCode Dark]': { focusBorder: '#B69CF699', 'textLink.foreground': '#B69CF6' },
-		});
-		expect(withAccent(undefined, 'violet', 'GeminiCode Light', table)).toEqual({
-			'[GeminiCode Light]': { focusBorder: '#7A3EC899' },
-		});
+describe('withoutOldAccents', () => {
+	it('drops the GeminiCode theme blocks and keeps everything else', () => {
+		const current = { 'editor.background': '#000000', '[GeminiCode Dark]': { focusBorder: '#B69CF699' }, '[Monokai]': { 'tab.border': '#111111' } };
+		expect(withoutOldAccents(current)).toEqual({ 'editor.background': '#000000', '[Monokai]': { 'tab.border': '#111111' } });
 	});
 
-	it('moves the accent when the theme changes, and drops it for other themes', () => {
-		const dark = withAccent(undefined, 'blue', 'GeminiCode Dark', table)!;
-		expect(withAccent(dark, 'blue', 'GeminiCode Light', table)).toEqual({ '[GeminiCode Light]': { focusBorder: '#1A5FD699' } });
-		expect(withAccent(dark, 'blue', 'Default Dark Modern', table)).toEqual({});
-	});
-
-	it('keeps what the user customized, and changes nothing when the accent is already shown', () => {
-		const current = { 'editor.background': '#000000', '[GeminiCode Dark]': { 'tab.border': '#111111' } };
-		const next = withAccent(current, 'blue', 'GeminiCode Dark', table)!;
-		expect(next['editor.background']).toBe('#000000');
-		expect(next['[GeminiCode Dark]']).toEqual({ 'tab.border': '#111111', focusBorder: '#8AB4F899', 'textLink.foreground': '#8AB4F8' });
-		expect(withAccent(next, 'blue', 'GeminiCode Dark', table)).toBeUndefined();
-	});
-
-	it('removes its keys, and blocks it emptied, for the theme\'s own accent', () => {
-		const next = withAccent({ '[GeminiCode Dark]': { 'tab.border': '#111111' } }, 'violet', 'GeminiCode Dark', table)!;
-		expect(withAccent(next, 'theme', 'GeminiCode Dark', table)).toEqual({ '[GeminiCode Dark]': { 'tab.border': '#111111' } });
-		expect(withAccent(undefined, 'theme', 'GeminiCode Dark', table)).toBeUndefined();
+	it('changes nothing when there is no GeminiCode block', () => {
+		expect(withoutOldAccents(undefined)).toBeUndefined();
+		expect(withoutOldAccents({ 'editor.background': '#000000' })).toBeUndefined();
 	});
 });
 
@@ -58,19 +31,9 @@ describe('codeFontOf', () => {
 });
 
 describe('themes', () => {
-	it('are what scripts/build-themes.mts makes (run it after editing GeminiCode Dark or Light)', () => {
-		for (const [file, text] of buildThemes()) {
-			expect(readFileSync(path.join(extensionDir, 'themes', file), 'utf8'), file).toBe(text);
-		}
-	});
-
-	it('are all contributed, with an accent table entry each', () => {
+	it('are all contributed', () => {
 		const contributed = JSON.parse(readFileSync(path.join(extensionDir, 'package.json'), 'utf8')).contributes.themes.map((t: { id: string }) => t.id);
-		const accents = JSON.parse(readFileSync(path.join(extensionDir, 'themes', 'accents.json'), 'utf8')) as AccentTable;
-		for (const id of themeIds) {
-			expect(contributed).toContain(id);
-			expect(Object.keys(accents.themes[id].keys).length).toBeGreaterThan(40);
-		}
+		expect(contributed).toEqual([...themeIds]);
 	});
 });
 

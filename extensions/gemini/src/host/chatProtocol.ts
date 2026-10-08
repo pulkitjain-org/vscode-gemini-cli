@@ -340,16 +340,12 @@ export type ToWebview =
 	/** Context to add to the composer, from the Add to Chat commands. */
 	| { readonly type: 'attach'; readonly attachments: readonly Attachment[] }
 	| { readonly type: 'git'; readonly git: ViewGit }
-	/** Whether Send shows the accent colour (true) or the Gemini gradient. */
-	| { readonly type: 'accent'; readonly solid: boolean }
 	/** The colour theme's syntax colours, for code blocks. */
 	| { readonly type: 'tokenColors'; readonly colors: TokenColors }
 	/** The Enhance Prompt command: enhance what the composer holds. */
 	| { readonly type: 'enhanceRequested' }
 	| { readonly type: 'enhanced'; readonly requestId: number; readonly text: string }
 	| { readonly type: 'enhanceFailed'; readonly requestId: number; readonly message: string }
-	/** The text size in pixels (`gemini.chat.fontSize`). */
-	| { readonly type: 'fontSize'; readonly size: number }
 	/** The newest saved sessions the empty chat offers to reopen, of `total`. */
 	/** `retention` says how long the CLI keeps saved chats. */
 	| { readonly type: 'sessions'; readonly sessions: readonly ViewSession[]; readonly total: number; readonly retention: string }

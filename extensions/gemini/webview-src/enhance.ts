@@ -210,7 +210,7 @@ onComposerChange(() => {
 	updateRow();
 });
 /** Measures the input's text style again, as after a font size change, and moves the pill. */
-export function restyleEnhanceButton(): void {
+function restyleEnhanceButton(): void {
 	mirrorStyled = false;
 	placeButton();
 }

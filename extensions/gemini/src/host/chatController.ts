@@ -35,7 +35,6 @@ import { EnhanceCancelledError, enhanceHistory } from '../acp/promptEnhancer';
 import type { EnhancePromptInput } from '../acp/quickPrompts';
 import { ChatStrings, chatProtocolVersion, FromWebview, statusCommands, ToWebview } from './chatProtocol';
 import { stopReasonNotice, toViewStatus } from './chatStatus';
-import { chatFontSize, onDidChangeChatFontSize } from './chatFont';
 import { DiffPreview } from './diffPreview';
 import { relativeTime, tildify } from './displayText';
 import { attachmentsForFiles } from './addToChat';
@@ -278,9 +277,7 @@ export class ChatController implements vscode.Disposable {
 			// The branch may have changed outside the editor.
 			vscode.window.onDidChangeWindowState(state => state.focused && this.webview && this.postGit()),
 			service.client.onDidChangeSettings(settings => this.post({ type: 'settings', settings })),
-			vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration('gemini.appearance.accent') && this.post({ type: 'accent', solid: solidAccent() })),
 			onDidChangeThemeTokens(() => this.webview && void this.postTokenColors()),
-			onDidChangeChatFontSize(size => this.post({ type: 'fontSize', size })),
 			// Keeps an open "/" menu current; the agent lists its commands just after a session opens.
 			service.client.onDidChangeCommands(() => this.webview && void this.postCommands()),
 		);
@@ -1357,7 +1354,7 @@ export class ChatController implements vscode.Disposable {
 	<link href="${style}" rel="stylesheet">
 	<title>Gemini</title>
 </head>
-<body data-accent="${solidAccent() ? 'solid' : 'gradient'}" data-font-size="${chatFontSize()}">
+<body>
 	<main id="transcript" class="transcript"></main>
 	<nav id="outline" class="prompt-outline" hidden></nav>
 	<div id="announce" class="announce" aria-live="polite"></div>
@@ -1476,11 +1473,6 @@ function diffsOf(content: readonly acp.ToolCallContent[] | null | undefined): ac
 	return (content ?? []).flatMap(c => c.type === 'diff' ? [c] : []);
 }
 
-/** Whether Send shows a solid accent picked on the Make It Yours page instead of the Gemini gradient. */
-function solidAccent(): boolean {
-	const accent = vscode.workspace.getConfiguration('gemini').get<string>('appearance.accent', 'theme');
-	return accent !== 'theme' && accent !== 'gradient';
-}
 
 /** The editor tabs showing `uri`. */
 function followedTabs(uri: vscode.Uri): vscode.Tab[] {

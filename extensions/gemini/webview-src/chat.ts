@@ -21,8 +21,8 @@ import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
 import { addAttachments } from './attachmentChips';
 import { setBusy, setFollow, setFollowed, setGit, setSettings, setStatus } from './composer';
 import { applyTokenColors } from './codeHighlight';
-import { onEnhanced, onEnhanceFailed, restyleEnhanceButton, toggleEnhance } from './enhance';
-import { applyFontSize, setLabel } from './dom';
+import { onEnhanced, onEnhanceFailed, toggleEnhance } from './enhance';
+import { setLabel } from './dom';
 import { restoreComposerHeight, updatePlaceholder, updateSendState } from './inputBox';
 import { showSavedSessions } from './items';
 import { showCommands, showFiles } from './picker';
@@ -37,7 +37,6 @@ setLabel(ui.modelSelect, strings.model);
 setLabel(ui.scrollButton, strings.scrollToBottom);
 ui.scrollLabel.textContent = strings.latest;
 ui.dropLabel.textContent = strings.dropFiles;
-applyFontSize(Number(document.body.dataset.fontSize));
 
 window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 	const message = event.data;
@@ -94,15 +93,8 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 		case 'followed':
 			setFollowed(message.file);
 			break;
-		case 'accent':
-			document.body.dataset.accent = message.solid ? 'solid' : 'gradient';
-			break;
 		case 'tokenColors':
 			applyTokenColors(message.colors);
-			break;
-		case 'fontSize':
-			applyFontSize(message.size);
-			restyleEnhanceButton();
 			break;
 		case 'sessions':
 			showSavedSessions(message.sessions, message.total, message.retention);
