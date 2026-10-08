@@ -71,12 +71,18 @@ describe('AgentRuntime', () => {
 		});
 		const a = await session('/work/a');
 		const b = await session('/work/b');
+		// Busy and idle fire once each, for the first turn to start and the last to end.
+		const events: string[] = [];
+		runtime!.onDidBecomeBusy(() => events.push('busy'));
+		runtime!.onDidBecomeIdle(() => events.push('idle'));
 		const slow = a.client.prompt('slow');
 		await b.client.prompt('fast');
 		expect(b.texts).toEqual(['fast']);
 		expect(a.texts).toEqual([]);
+		expect(events).toEqual(['busy']);
 		await slow;
 		expect(a.texts).toEqual(['slow']);
+		expect(events).toEqual(['busy', 'idle']);
 	});
 
 	it('asks the session that owns the request for permission', async () => {

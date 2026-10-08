@@ -8,6 +8,7 @@
 import type { Attachment } from '../src/acp/attachments';
 import type { TranscriptItem } from '../src/acp/chatTranscript';
 import type { TextAppend } from '../src/acp/textDeltas';
+import { thoughtPreview } from './streaming';
 
 export type ItemOf<K extends TranscriptItem['kind']> = Extract<TranscriptItem, { kind: K }>;
 
@@ -285,4 +286,84 @@ export function enhanceButtonPlacement(end: TextEnd, button: { readonly width: n
 	const lineTop = (below ? end.top + end.lineHeight : end.top) - end.scrollTop;
 	const y = Math.max(0, Math.min(lineTop + (end.lineHeight - button.height) / 2, end.height - button.height));
 	return { x: Math.round(x), y: Math.round(y), below };
+}
+
+/** A running clock for a turn: "0:07", "1:42" or "1:02:03"; shared with the Agents side bar. */
+export { formatClock } from '../src/acp/agentRow';
+
+/** What the agent is doing now, for the working strip above the composer. */
+export interface Activity {
+	readonly kind: 'thinking' | 'tool' | 'writing' | 'waiting';
+	/** A tool call's or question's title, or the thought's latest heading; empty when there is nothing more to say. */
+	readonly detail: string;
+}
+
+/** The newest thing still happening in a turn: an unanswered question, a running tool call, a thought or the reply. */
+export function currentActivity(items: readonly TranscriptItem[]): Activity {
+	for (let i = items.length - 1; i >= 0; i--) {
+		const item = items[i];
+		switch (item.kind) {
+			case 'permission':
+				if (!item.answer) {
+					return { kind: 'waiting', detail: item.title };
+				}
+				return { kind: 'thinking', detail: '' };
+			case 'toolCall':
+				return item.status === 'pending' || item.status === 'in_progress' ? { kind: 'tool', detail: item.title } : { kind: 'thinking', detail: '' };
+			case 'thought':
+				return { kind: 'thinking', detail: thoughtPreview(item.text) };
+			case 'agent':
+				return { kind: 'writing', detail: '' };
+			case 'user':
+			case 'turnEnd':
+				return { kind: 'thinking', detail: '' };
+			default:
+				// Plans, notices and unknown updates say nothing about what happens now.
+				continue;
+		}
+	}
+	return { kind: 'thinking', detail: '' };
+}
+
+/** When the turn now running started: the newest prompt's send time, if it has one. */
+export function turnStart(items: readonly TranscriptItem[]): number | undefined {
+	for (let i = items.length - 1; i >= 0; i--) {
+		const item = items[i];
+		if (item.kind === 'user') {
+			return item.at;
+		}
+		if (item.kind === 'turnEnd') {
+			return undefined;
+		}
+	}
+	return undefined;
+}
+
+/** How close (in pixels) a prompt's top must be to the view's top to count as the one in view; a jump leaves 12. */
+const promptSlack = 24;
+
+/**
+ * The prompt that is current when the view's top is at `viewTop`: the last
+ * one starting at or above it, or -1 above the first. `tops` are the
+ * prompts' tops, in order.
+ */
+export function currentPrompt(tops: readonly number[], viewTop: number): number {
+	let current = -1;
+	for (let i = 0; i < tops.length && tops[i] <= viewTop + promptSlack; i++) {
+		current = i;
+	}
+	return current;
+}
+
+/** The prompt to jump to from `viewTop`: the next one below it, or the previous one above; -1 when there is none. */
+export function promptStep(tops: readonly number[], viewTop: number, direction: 1 | -1): number {
+	if (direction === 1) {
+		return tops.findIndex(top => top > viewTop + promptSlack);
+	}
+	for (let i = tops.length - 1; i >= 0; i--) {
+		if (tops[i] < viewTop - promptSlack) {
+			return i;
+		}
+	}
+	return -1;
 }

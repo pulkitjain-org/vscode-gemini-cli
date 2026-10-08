@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TranscriptItem } from '../../src/acp/chatTranscript';
 import {
-	acceptsEnhanceReply, attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, draggedHeight, emptyFence, enhanceButtonPlacement, enhanceOriginal, type EnhancePhase, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, fileReference, fileUris, folderOf, format, formatDuration, formatSentAt, isEnhanceShortcut,
+	acceptsEnhanceReply, attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, currentActivity, currentPrompt, promptStep, formatClock, turnStart, draggedHeight, emptyFence, enhanceButtonPlacement, enhanceOriginal, type EnhancePhase, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, fileReference, fileUris, folderOf, format, formatDuration, formatSentAt, isEnhanceShortcut,
 	imageName, indexOfItem, isNearBottom, matchCommands, mentionAt, mentionInsertion, permissionDefaults, planIcon, replyBefore, restoredHeight,
 	sameAttachment, slashQuery, thoughtSeconds, toolKindIcon, withAppended, withoutMention, wrapIndex,
 } from '../../webview-src/chatLogic';
@@ -352,5 +352,73 @@ describe('formatSentAt', () => {
 	it('adds the day before today, and the year before this year', () => {
 		expect(formatSentAt(at, new Date(2026, 9, 6, 9, 0).getTime(), 'en-GB')).toBe('5 Oct, 10:42');
 		expect(formatSentAt(at, new Date(2027, 0, 2).getTime(), 'en-GB')).toBe('5 Oct 2026, 10:42');
+	});
+});
+
+describe('formatClock', () => {
+	it('shows minutes and seconds, then hours', () => {
+		expect(formatClock(0)).toBe('0:00');
+		expect(formatClock(7_400)).toBe('0:07');
+		expect(formatClock(102_000)).toBe('1:42');
+		expect(formatClock(3_723_000)).toBe('1:02:03');
+		expect(formatClock(-5)).toBe('0:00');
+	});
+});
+
+describe('currentActivity', () => {
+	const user: TranscriptItem = { id: 'u', kind: 'user', text: 'Fix it', at: 1000 };
+	const tool = (status: 'pending' | 'in_progress' | 'completed' | 'failed'): TranscriptItem => ({ id: 't', kind: 'toolCall', title: 'npm test', toolKind: 'execute', status, locations: [], details: [] });
+
+	it('thinks when the turn has just started', () => {
+		expect(currentActivity([user])).toEqual({ kind: 'thinking', detail: '' });
+		expect(currentActivity([])).toEqual({ kind: 'thinking', detail: '' });
+	});
+
+	it('names a running tool call, and thinks again once it ends', () => {
+		expect(currentActivity([user, tool('in_progress')])).toEqual({ kind: 'tool', detail: 'npm test' });
+		expect(currentActivity([user, tool('pending')])).toEqual({ kind: 'tool', detail: 'npm test' });
+		expect(currentActivity([user, tool('completed')])).toEqual({ kind: 'thinking', detail: '' });
+	});
+
+	it('shows the latest heading of a thought', () => {
+		expect(currentActivity([user, { id: 'th', kind: 'thought', text: '**Reading the code**\n\n**Planning the fix**\nmore' }])).toEqual({ kind: 'thinking', detail: 'Planning the fix' });
+	});
+
+	it('is writing once the reply streams, waiting while a question is open', () => {
+		expect(currentActivity([user, { id: 'a', kind: 'agent', text: 'Done' }])).toEqual({ kind: 'writing', detail: '' });
+		const question: TranscriptItem = { id: 'p', kind: 'permission', title: 'Run npm install', options: [], diffPaths: [] };
+		expect(currentActivity([user, question])).toEqual({ kind: 'waiting', detail: 'Run npm install' });
+		expect(currentActivity([user, { ...question, answer: { kind: 'selected', name: 'Allow' } }])).toEqual({ kind: 'thinking', detail: '' });
+	});
+
+	it('skips plans and notices', () => {
+		expect(currentActivity([user, tool('in_progress'), { id: 'pl', kind: 'plan', entries: [] }, { id: 'n', kind: 'notice', text: 'x', severity: 'info' }])).toEqual({ kind: 'tool', detail: 'npm test' });
+	});
+});
+
+describe('turnStart', () => {
+	it('is the newest prompt’s send time within the running turn', () => {
+		expect(turnStart([{ id: 'u', kind: 'user', text: 'a', at: 5 }, { id: 'a', kind: 'agent', text: 'b' }])).toBe(5);
+		expect(turnStart([{ id: 'u', kind: 'user', text: 'a' }])).toBeUndefined();
+		expect(turnStart([{ id: 'u', kind: 'user', text: 'a', at: 5 }, { id: 'e', kind: 'turnEnd', durationMs: 1 }])).toBeUndefined();
+	});
+});
+
+describe('prompt navigation', () => {
+	const tops = [0, 400, 1200];
+	it('finds the prompt in view', () => {
+		expect(currentPrompt([], 0)).toBe(-1);
+		expect(currentPrompt(tops, 0)).toBe(0);
+		expect(currentPrompt(tops, 395)).toBe(1);
+		expect(currentPrompt(tops, 1000)).toBe(1);
+		expect(currentPrompt([50], 0)).toBe(-1);
+	});
+	it('steps to the next and previous prompt', () => {
+		expect(promptStep(tops, 0, 1)).toBe(1);
+		expect(promptStep(tops, 400, 1)).toBe(2);
+		expect(promptStep(tops, 1200, 1)).toBe(-1);
+		expect(promptStep(tops, 1200, -1)).toBe(1);
+		expect(promptStep(tops, 600, -1)).toBe(1);
+		expect(promptStep(tops, 0, -1)).toBe(-1);
 	});
 });

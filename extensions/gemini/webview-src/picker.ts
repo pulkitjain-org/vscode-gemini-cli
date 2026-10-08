@@ -127,11 +127,11 @@ function renderPicker(): void {
 			const r = row(index);
 			r.classList.add('picker-command');
 			r.append(
-				icon(command.source === 'team' ? 'organization' : command.source === 'app' ? 'history' : 'terminal'),
+				icon(command.source === 'team' ? 'organization' : command.source === 'skill' ? 'mortar-board' : command.source === 'app' ? 'history' : 'terminal'),
 				el('span', 'picker-name', `/${command.name}`),
 				el('span', 'picker-folder', command.description),
 			);
-			r.title = `${command.source === 'team' ? strings.commandFromTeam : command.source === 'app' ? strings.commandFromApp : strings.commandFromCli}: /${command.name}`;
+			r.title = `${command.source === 'team' ? strings.commandFromTeam : command.source === 'skill' ? strings.commandFromSkill : command.source === 'app' ? strings.commandFromApp : strings.commandFromCli}: /${command.name}`;
 			return r;
 		})));
 	input.setAttribute('aria-activedescendant', `picker-${state.active}`);

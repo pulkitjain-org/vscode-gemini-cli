@@ -4,35 +4,48 @@ How the parts of GeminiCode that differ from VS Code behave day to day. For setu
 
 ## Agents and Editor modes
 
-The switch at the top of the window, or Cmd+Alt+M, changes the layout:
+The switch at the top of the window, or ⌥⌘M, changes the layout:
 
-- **Agents mode** (the default) is for working with agents: your agents on the left, the agent's chat in the middle, and its changes on the right. When no tab is open, **Agent Home** shows: describe a task and press Enter to start an agent on it, tick **On its own branch** to give it a branch of its own, and see each agent's status, changes and next step as a card.
+- **Agents mode** (the default) is for working with agents: your agents on the left, the agent's chat in the middle, and its changes on the right. When no tab is open, **Agent Home** shows: describe a task and press Return to start an agent on it, tick **On its own branch** to give it a branch of its own, and see each agent's status, changes and next step as a card. Agents mode always shows Gemini on the left and Changes on the right, unless you put another view on the right; opening Explorer, Search or any other view switches to Editor mode with that view open.
 - **Editor mode** is the classic VS Code layout, with Explorer, Search and Source Control, for hands-on coding.
 
-Each mode remembers which panels you had open. An agent's tab shows what it is doing (a spinner while it works, an amber dot when it needs you, a tick when it has finished) and how many lines it has changed. On a Mac, right-click GeminiCode in the Dock for **New Agent**. Agents that are working or waiting for you show as pills in the title bar in both modes; click one to open that agent.
+In Agents mode the top of the window is one row: the **Agents | Editor** switch, then your open tabs — agents, Agent Home, files and browser pages — in one capsule, then a globe for the integrated browser, a magnifier that opens Quick Open and the layout buttons. Editor mode keeps the classic tab row under the title bar, because split editors need it, and shows the search box in the middle again.
+
+Each mode remembers which panels you had open. An agent's tab shows what it is doing (a spinner while it works, an amber dot when it needs you, a tick when it has finished) and how many lines it has changed. In the Agents pane, each agent's row has the same signal (a spinner, an amber dot when it needs you, a green dot when it has finished, grey otherwise) and, on the right, how long it has been working, "waiting", the lines it added, or how long ago it was last active; point at a row for its branch and folder. On a Mac, right-click GeminiCode in the Dock for **New Agent**. Agents that are working or waiting for you show as pills in Editor mode's title bar; click one to open that agent. In Agents mode the tabs and the agent list already carry those signals, so there are no pills. The foot of the agent list shows the branch of the agent you selected.
 
 In the **Changes** panel, hover over a change to **Keep** or **Undo** it. **Keep All** accepts everything, **Undo All** puts the files back, and **Commit** commits the agent's files on a new branch (an agent on its own branch has **Merge Back** instead).
 
+An agent on its own branch can get a ready folder: set **Gemini › Agents: Worktree Setup** to a command (such as `npm ci`), or commit `.gemini/worktree-setup.sh` to the repository, and it runs in the new branch's folder before the agent starts. `GEMINI_SOURCE_REPOSITORY` names the repository it came from, to copy files Git does not carry, such as `.env`. Its output is in the **Gemini Worktree Setup** output; if it fails, the agent starts anyway.
+
+**Follow the agent.** Click the eye in a chat's composer, or run **Gemini: Follow the Agent**, to watch the agent work: each file it reads opens at the line it is on, and each file it edits opens once the edit is written. Files outside the agent's folder, and files that may hold secrets such as `.env` or anything under `.ssh`, are not opened. Focus stays in the chat. New chats start the way you left the last one.
+
+**Keep awake.** While any agent works, GeminiCode keeps the Mac from going to sleep, so a long task carries on when you step away. The display can still sleep, and the Mac may sleep again as soon as no agent is working. Turn it off with `gemini.keepAwake`.
+
 ## Keyboard shortcuts
+
+⌘ is Command, ⌥ is Option, ⇧ is Shift, ↩ is Return and ⌫ is Delete.
 
 | Keys | What it does |
 | --- | --- |
-| Cmd+L | Open the chat; with a selection, add it to the chat |
-| Cmd+Alt+N | New agent |
-| Cmd+N (in the chat) | New chat |
-| Esc (in the chat input) | Stop the agent, or cancel Enhance prompt |
-| Cmd+Alt+E | Enhance prompt (the draft in the chat in front) |
-| Up / Down (empty chat input) | Bring back an earlier prompt |
-| Cmd+I | Inline edit |
-| Cmd+Enter / Cmd+Backspace | Keep or undo the agent's changes to the file you're in |
-| Alt+] / Alt+[ | Next or previous agent change in the file |
-| F2 / Cmd+Backspace (Agents pane) | Rename or remove the selected agent |
+| ⌥⌘M | Switch between Agents and Editor mode |
+| ⌘L | Open the chat; with a selection, add it to the chat |
+| ⌥⌘N | New agent |
+| ⌘N (in the chat) | New chat |
+| ↩ / ⇧↩ (in the chat input) | Send, or start a new line |
+| esc (in the chat input) | Stop the agent, or cancel Enhance prompt |
+| ⌥⌘E | Enhance prompt (the draft in the chat in front) |
+| ↑ / ↓ (empty chat input) | Bring back an earlier prompt |
+| ⌥⌘↑ / ⌥⌘↓ (in the chat) | Jump to your previous or next prompt |
+| ⌘I | Inline edit |
+| ⌘↩ / ⌘⌫ | Keep or undo the agent's changes to the file you're in |
+| ⌥] / ⌥[ | Next or previous agent change in the file |
+| ↩ / ⌘↓ / ⌘⌫ (Agents pane) | Rename, open or remove the selected agent |
 
 ## Make it yours
 
 Run **Make It Yours** from the Command Palette, or open the step of the same name in Get Started, to pick:
 
-- a theme: GeminiCode Dark (the default), Midnight (true black), Dusk (warm greys) or Light;
+- a theme: Glass Dark and Glass Light (the defaults: see-through side bars over an aurora wallpaper, with the Gemini gradient round the chat input; on macOS your own desktop shows blurred through the side bars, and the Command Palette, menus and hovers are frosted), Dark, Midnight (true black), Dusk (warm greys) or Light;
 - an accent colour for selection, focus, links and the chat's Send button: the theme's own, Blue, Violet, Rose, Teal, Amber or the Gemini gradient. It applies to the GeminiCode themes only, through `workbench.colorCustomizations`, and is kept in `gemini.appearance.accent`;
 - a code font: JetBrains Mono (the default) and Geist Mono ship with GeminiCode; SF Mono and Menlo come with macOS;
 - file icons: GeminiCode's own, Seti, or none;
@@ -42,15 +55,15 @@ Each choice applies at once. To change the themes or icons, edit the sources and
 
 ## Enhance prompt
 
-Write what you want in plain words, then click **Enhance**, which follows the end of your text (or press **Cmd+Alt+E**). Gemini rewrites the draft as a clearer, more precise prompt: what to do, where, and how to tell it is done, with open questions where your draft leaves something out. It keeps your `@` mentions, a leading `/command`, file names and code as you wrote them, and uses the files you attached, the open file and the chat so far.
+Write what you want in plain words, then click **Enhance**, which follows the end of your text (or press **⌥⌘E**). Gemini rewrites the draft as a clearer, more precise prompt: what to do, where, and how to tell it is done, with open questions where your draft leaves something out. It keeps your `@` mentions, a leading `/command`, file names and code as you wrote them, and uses the files you attached, the open file and the chat so far.
 
-The text shimmers while Gemini works, usually for about three seconds; **Enhance** turns into **Cancel**, and Esc stops it too. The rewrite replaces your draft for you to read and change before sending: **Revert**, beside **Enhance** (or Cmd+Z), puts your draft back, and **Enhance** rewrites it again. Nothing is sent to the agent until you press Send.
+The text shimmers while Gemini works, usually for about three seconds; **Enhance** turns into **Cancel**, and esc stops it too. The rewrite replaces your draft for you to read and change before sending: **Revert**, beside **Enhance** (or ⌘Z), puts your draft back, and **Enhance** rewrites it again. Nothing is sent to the agent until you press Send.
 
 The rewrite is one quick request to Gemini Flash, like inline edit. When inline edit is turned off, or that request fails, the Gemini CLI does it instead, in Plan mode so it cannot change anything. It does not go into the chat, and it works while the agent is busy.
 
 ## Inline edit and commit messages
 
-Select some code (or put the cursor on a line), press **Cmd+I**, and say what to change. Gemini rewrites just those lines in a second or two, and the change shows in the file with **Keep** and **Undo**, like an agent's. The request box remembers your last request, so a retry is Cmd+I and Enter. Inline edit doesn't save the file and doesn't start an agent.
+Select some code (or put the cursor on a line), press **⌘I**, and say what to change. Gemini rewrites just those lines in a second or two, and the change shows in the file with **Keep** and **Undo**, like an agent's. The request box remembers your last request, so a retry is ⌘I and Return. Inline edit doesn't save the file and doesn't start an agent.
 
 In the Source Control view, the sparkle button writes a commit message for the staged changes (or, with nothing staged, all changes) into the message box.
 
@@ -67,7 +80,7 @@ Pick a mode from the composer. The list comes from the Gemini CLI, minus any mod
 | **Plan** | Reads and proposes a plan without making changes. The CLI can turn this mode off in its own settings. |
 | **YOLO** | Runs everything without asking. Off unless your admin enables it. |
 
-Permission cards show the CLI's own choices, such as **Allow**, **Allow for this session** and **Reject**. <kbd>Esc</kbd> rejects. Stopping a turn cancels any open request. When an agent asks for permission, its tab comes to the front and the proposed edit opens as a diff; in the Agents pane its row shows a bell.
+Permission cards show the CLI's own choices, such as **Allow**, **Allow for this session** and **Reject**. <kbd>esc</kbd> rejects. Stopping a turn cancels any open request. When an agent asks for permission, its tab comes to the front and the proposed edit opens as a diff; in the Agents pane its row shows an amber dot and "waiting".
 
 The model picker works the same way. The model you pick is remembered and used for every new or reopened agent, in any window, when the agent offers it.
 
@@ -91,7 +104,7 @@ The branch pill in a chat's composer switches to another branch or creates one. 
 
 ## Agents on their own branch
 
-Two agents in the same folder can trip over each other's edits. **New Agent on Its Own Branch** (the branch icon next to **+** on a workspace in a Git repository) asks for a branch name and gives the agent its own copy of the repository on that new branch, in `~/.geminicode/worktrees/<repository>/` (a Git worktree). The agent reads, edits and runs commands there, so your folder and other agents are untouched. Its row in the Agents pane shows the branch.
+Two agents in the same folder can trip over each other's edits. **New Agent on Its Own Branch** (the branch icon next to **+** on a workspace in a Git repository) asks for a branch name and gives the agent its own copy of the repository on that new branch, in `~/.geminicode/worktrees/<repository>/` (a Git worktree). The agent reads, edits and runs commands there, so your folder and other agents are untouched. Point at its row in the Agents pane to see the branch.
 
 When it's done, **Merge Back** (the merge icon on the agent's row) commits anything the agent left uncommitted, using the agent's name as the message, and merges its branch into the branch your folder has checked out. If the merge conflicts, it stops for you to finish in Source Control. After a clean merge it offers to remove the agent with its branch and folder. Removing such an agent asks whether to keep its branch, and says what is on it that isn't merged yet.
 
@@ -100,8 +113,8 @@ The new copy has no `node_modules` or build output, so an agent that runs tests 
 ## Attaching context
 
 - **Workspace files.** Type `@` or use the **@** button. The agent gets a link and reads the file itself, including unsaved changes.
-- **The selection.** <kbd>Cmd</kbd>+<kbd>L</kbd> adds the editor selection with its line numbers.
-- **Files from anywhere.** Use the paperclip, paste, or drop files from Finder. Hold <kbd>Shift</kbd> when dropping from the Explorer.
+- **The selection.** <kbd>⌘L</kbd> adds the editor selection with its line numbers.
+- **Files from anywhere.** Use the paperclip, paste, or drop files from Finder. Hold <kbd>⇧</kbd> when dropping from the Explorer.
   - Text and code files up to 1 MB are sent with their contents.
   - Images and PDFs up to about 7 MB are sent inline.
   - Other files outside the workspace are sent as links. The CLI then asks once per file before reading it.
@@ -112,7 +125,7 @@ The agent cannot read secret files such as `.env` and private keys, or git-ignor
 
 Code in replies is coloured like the editor, in your colour theme. The button at the top of a code block copies it. A file name in a reply, such as `src/cart/total.ts:11`, opens the file at that line; when only the name is given, GeminiCode looks for it in the agent's folder. Notes, tips and warnings show as coloured callouts.
 
-Messages you send show Markdown the way replies do: bold, lists, `code`, code blocks and links, with your line breaks kept. In the composer, ⌘B makes the selection bold and ⌘E makes it code (Ctrl on Windows and Linux), typing a backtick over a selection wraps it in code, and Shift+Enter on a list line starts the next item; on an empty item it ends the list. The preview button next to @ (⇧⌘V) shows the draft formatted above the input as you type; press it again to hide it.
+Messages you send show Markdown the way replies do: bold, lists, `code`, code blocks and links, with your line breaks kept. In the composer, ⌘B makes the selection bold and ⌘E makes it code, typing a backtick over a selection wraps it in code, and ⇧↩ on a list line starts the next item; on an empty item it ends the list. The **Write** and **Preview** tabs at the top of the input (or ⇧⌘V) switch between your draft and how it will look once sent; typing in Preview goes back to Write.
 
 Each message you send shows the time you sent it and a **Copy** button when you point at it. Under each reply, next to how long the agent worked, is the time it finished, with the same **Copy** button. The pill next to the branch in the composer names the agent's workspace (and its worktree, when it has one); click it to copy the path, reveal the folder in Finder or show the Agents pane.
 
@@ -122,10 +135,11 @@ A new, empty agent lists the three sessions the Gemini CLI saved most recently f
 
 ## Slash commands
 
-Type `/` at the start of the composer to list commands, with team commands first. Keep typing to filter, then press <kbd>Tab</kbd> or <kbd>Enter</kbd> to complete the name and add arguments.
+Type `/` at the start of the composer to list commands: team commands first, then skills, then the CLI's own. Keep typing to filter, then press <kbd>Tab</kbd> or <kbd>Enter</kbd> to complete the name and add arguments.
 
 - **Gemini CLI commands** such as `/init`, `/memory` and `/restore` come from the CLI and run in the CLI.
 - **Team commands** are TOML files in `.gemini/commands/` in the workspace, or in `~/.gemini/commands/` for your own. This is the Gemini CLI's own format, so the same files work in the terminal. `git/commit.toml` becomes `/git:commit`. GeminiCode sends the file's `prompt`, with `{{args}}` replaced by what you typed after the name. A workspace command replaces a personal one with the same name, and a CLI command wins over both.
+- **Skills** are folders with a `SKILL.md`, in `.gemini/skills/` (or `.agents/skills/`) in the workspace or in `~/.gemini/skills/` (or `~/.agents/skills/`) for your own. Picking one asks the agent to load it, with what you typed after the name as the task. A team command or CLI command with the same name wins. A workspace's skills are offered only once you trust the folder.
 
 ```toml
 description = "Review a file for bugs"
@@ -138,11 +152,26 @@ Prompts that use `!{...}` (run a shell command) or `@{...}` (read a file) are no
 
 When an agent finishes or needs your permission while GeminiCode is in the background, a system notification appears and the Dock icon bounces. Click it to open the agent. The Dock icon and the Agents pane show how many agents are waiting for you. Turn both off with `gemini.notifications.enabled`. macOS asks once whether GeminiCode may show notifications.
 
-## MCP servers and rules
+## Project Helpers: MCP servers, skills, hooks, extensions, memory and rules
 
-**Gemini: MCP Servers and Rules** (also in the Agents pane's **...** menu) lists the MCP servers in your personal `~/.gemini/settings.json` and in each open folder's `.gemini/settings.json`. Each has a switch that turns it on or off, the same way the CLI's `/mcp enable` and `/mcp disable` do, so the `gemini` command in your terminal sees the change too. **Add Server** asks for a name and the command that starts the server, or its URL, and adds it to your personal settings. The page also opens or creates your project's rules (`GEMINI.md`, or the name in `context.fileName`) and your personal rules (`~/.gemini/GEMINI.md`). Changes apply to agents started afterwards; **Restart Agent** applies them now.
+**Gemini: Project Helpers** (also in the Agents pane's **...** menu) shows what every agent loads when it starts. Its **MCP servers** section lists the MCP servers in your personal `~/.gemini/settings.json` and in each open folder's `.gemini/settings.json`. Each has a switch that turns it on or off, the same way the CLI's `/mcp enable` and `/mcp disable` do, so the `gemini` command in your terminal sees the change too. **Add Server** asks for a name and the command that starts the server, or its URL, and adds it to your personal settings. The page also opens or creates your project's rules (`GEMINI.md`, or the name in `context.fileName`) and your personal rules (`~/.gemini/GEMINI.md`). Changes apply to agents started afterwards; **Restart Agent** applies them now.
 
-When an MCP server cannot start, GeminiCode shows a warning naming the server and the reason, marks it on the MCP Servers and Rules page, and writes it to the Gemini log (**Gemini: Show Log**). The CLI does not report these over ACP, so GeminiCode reads them from the CLI's debug log, which it keeps under 1 MB in its own storage. If you set `GEMINI_DEBUG_LOG_FILE` yourself, GeminiCode leaves it alone and shows no warnings.
+- **Skills** are folders with a `SKILL.md` that teaches Gemini a task, such as cutting a release. The page lists your own (`~/.gemini/skills`) and each project's (`.gemini/skills`, and `.agents/skills` in both places); a project's skills are listed only once you trust the folder, as the CLI loads them only then. **New Skill** (or **Gemini: New Skill**) makes one from a template and opens it. Gemini loads a skill by itself when a task calls for it; to use one now, pick it from the `/` menu, optionally followed by what to do.
+- **Hooks** are commands the CLI runs at set points: before or after a tool, when a turn starts or ends, and so on. Each has a switch, and **Add Hook** asks when it runs, which tools it applies to, the command and whether it is yours or the project's, then adds it to that `settings.json`. Turning on a project hook that your personal settings turn off also removes it from your personal list, since the CLI keeps a hook off when either file does. A project's hooks run only in trusted folders.
+- **Extensions** lists the Gemini CLI extensions installed, as the CLI's own `/extensions list` reports them, with a switch to turn each on or off. **Install**, **Update** and **Uninstall** run the CLI's installer in a terminal, because it shows a security warning and may ask you questions; the page updates when it finishes.
+- **Memory** lists the `GEMINI.md` files the CLI loads for the folder (`/memory list`), including those in subfolders and extensions. **Add Memory** adds a line under "Gemini Added Memories" in your own or the project's `GEMINI.md`; **Refresh** asks the CLI again.
+
+Opening the page never starts the Gemini CLI. Extensions and memory are asked for when the agent is already running (and again when it starts); otherwise the page says so, and **Refresh** starts the agent and asks. A CLI without the `/extensions` or `/memory` command says so instead of a list.
+
+When an MCP server cannot start, GeminiCode shows a warning naming the server and the reason, marks it on the Project Helpers page, and writes it to the Gemini log (**Gemini: Show Log**). The CLI does not report these over ACP, so GeminiCode reads them from the CLI's debug log, which it keeps under 1 MB in its own storage. If you set `GEMINI_DEBUG_LOG_FILE` yourself, GeminiCode leaves it alone and shows no warnings.
+
+## The GeminiCode browser
+
+Agents can open the web app they are working on in GeminiCode's browser and check their own work: read the page, click, type, press keys and take screenshots, while you watch. Ask, for example, "open http://localhost:5173 and check the cart total". Each agent gets its own tab beside its chat, with a **Gemini is using this page** bar; **Stop** on it stops the agent's turn. Pages on this machine (`localhost`, `127.0.0.1`) open freely, and local files follow the same rules as the agent's file tools. Any other site asks you first, once per agent and site, because a page can contain instructions aimed at the agent. That check uses the page's real address after every step, so a redirect or a link the agent clicks can't skip it. The tab opens beside the chat without taking focus. Default mode still asks before each browser action, like any other tool.
+
+To let an agent use a page you opened yourself (a page you are signed in to, say), click the sparkle **Let Gemini Use This Page** in the page's toolbar, or run **Browser: Let Gemini Use This Page** from the Command Palette. Pick the agent (the open agents in this window, most recent first; with just one, it is used; with none, open an agent first). The page gets the **Gemini is using this page** bar, and the agent's chat comes to the front with the page attached, so you can say what to do with it; its browser tools then act on that page. The agent can read and use the page as you, signed in, so share only pages you trust it with. Your choice counts as allowing that site for that agent, files still follow its file rules, and the `gemini.browser.allowOtherSites` policy still applies. A page belongs to one agent at a time. **Stop Sharing** on the bar (or **Browser: Stop Sharing This Page with Gemini**) gives it back to you, and removing the agent does too; the page stays open. Pages are never shared any other way.
+
+Links to `localhost` from the terminal and chat also open in GeminiCode's browser. Turn the agent's browser off with `gemini.browser.enabled`; it stops at once for running agents, and turning it back on reaches each agent from its next new session; `gemini.browser.allowOtherSites` (also an admin policy) limits agents to local pages.
 
 ## Review my changes
 
@@ -161,6 +190,10 @@ GeminiCode keeps its own share small:
 - Saved conversations keep the last 300 messages, each cut to 20,000 characters.
 - Messages scrolled out of view are not laid out, and streaming sends only new text.
 - Proposed edits are remembered for the last 200 tool calls. Older diff links open the file as it is now.
+
+When you scroll up in a chat, **Latest** (an arrow under the other themes) takes you back to the newest message. Under the Glass themes the chat scrolls on under the see-through input and fades out just above it; turn on **Reduce transparency** in macOS to make the input solid.
+
+To find your way round a long chat, use the thin outline of your prompts down the chat's right edge: point at a tick to see the prompt, click it to jump there. ⌥⌘↑ and ⌥⌘↓ jump to your previous and next prompt. **Open Chat as Markdown** (in Quick Chat's **...** menu, an agent's right-click menu in the Agents pane, or the Command Palette for the chat in front) opens the whole conversation as a Markdown document you can search, save or share. For an agent that is not running, it opens the saved copy, which keeps the last 300 messages.
 
 Every agent in a window shares one Gemini CLI process, and that process keeps each session's history until it restarts. In Quick Chat, **New Chat** starts a fresh session; for agents, start a new agent. If an old agent is no longer needed, remove it from the Agents pane, which also deletes its saved conversation.
 

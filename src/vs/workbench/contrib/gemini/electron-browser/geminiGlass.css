@@ -1,0 +1,329 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/*
+ * GEMINI-FORK: the Glass themes (extensions/gemini/themes/geminicode-glass-*.json) with the Liquid
+ * Glass pass. A theme can only set flat colours, so the rest is here, keyed to the gemini-glass
+ * classes gemini.contribution.ts puts on the workbench:
+ *
+ * - an aurora wallpaper behind the floating cards of the Modern UI layout; on macOS the window is
+ *   see-through (Electron vibrancy, windows.ts), so the wallpaper is only a faint tint over the
+ *   blurred desktop that macOS draws, and the side bars let it through;
+ * - the editor as a white (or ink) sheet; side bars as glass cards; concentric corners
+ *   (cards 14, rows 8, controls and title bar groups as capsules);
+ * - the title bar as floating capsule groups (mode switch, tabs, buttons) with a light-catching rim;
+ * - upstream's frosted pop-ups (frostedGlass.css) tuned for the Glass themes: same single blur
+ *   layer, a lighter tint, a rim and the overlay corner.
+ *
+ * Performance: everything is static paint. No animation, and the only blur is upstream's, on
+ * small pop-ups; nothing blurs a list, the editor or the chat. High contrast, forced colours and
+ * reduced transparency get the flat theme.
+ */
+
+.monaco-workbench.gemini-glass-light {
+	--gemini-wallpaper:
+		radial-gradient(55% 65% at 12% 18%, #A9C4FF8C 0%, transparent 62%),
+		radial-gradient(45% 55% at 88% 22%, #E7C3F28C 0%, transparent 62%),
+		radial-gradient(60% 60% at 70% 105%, #FFD0C78C 0%, transparent 60%),
+		linear-gradient(#EEF0F7B3, #EEF0F7B3),
+		radial-gradient(40% 50% at 8% 30%, #3E7BFA 0%, transparent 70%),
+		radial-gradient(35% 45% at 30% 85%, #FF9F6E 0%, transparent 70%),
+		radial-gradient(40% 50% at 95% 75%, #2BB3A3 0%, transparent 70%),
+		radial-gradient(45% 50% at 80% 5%, #C58BF2 0%, transparent 70%),
+		#DCE6F7;
+	/* Over the real desktop (macOS): the aurora as a faint tint. */
+	--gemini-wallpaper-see-through:
+		radial-gradient(55% 65% at 12% 18%, #A9C4FF33 0%, transparent 62%),
+		radial-gradient(45% 55% at 88% 22%, #E7C3F233 0%, transparent 62%),
+		radial-gradient(60% 60% at 70% 105%, #FFD0C733 0%, transparent 60%),
+		#F4F6FB73;
+	--gemini-glass-side: #FFFFFF38;
+	--gemini-glass-aux: #FFFFFF8C;
+	--gemini-glass-side-see-through: #FFFFFF2E;
+	--gemini-glass-aux-see-through: #FFFFFF80;
+	--gemini-glass-edge: #FFFFFF73;
+	--gemini-sheet-shadow: 0 12px 40px #1B1C2224, 0 1px 2px #00000014;
+	--gemini-capsule: #FFFFFF59;
+	--gemini-capsule-on: #FFFFFFE6;
+	--gemini-capsule-shadow: 0 2px 10px #1B1C2214;
+	--gemini-capsule-on-shadow: 0 1px 3px #0000001F;
+	--gemini-tab-on: #FFFFFFB8;
+	--gemini-tab-on-shadow: 0 1px 3px #00000014, inset 0 0 0 1px #FFFFFF;
+	--gemini-rim-top: #FFFFFFF2;
+	--gemini-rim-bottom: #FFFFFF80;
+	--gemini-selection: linear-gradient(90deg, #4285F42E, #9B72CB24);
+	--gemini-popup: #FFFFFFB8;
+	--gemini-popup-shadow: 0 18px 50px #1B1C222E, 0 1px 3px #0000001A;
+	--gemini-popup-blur: blur(30px) saturate(1.8);
+}
+
+.monaco-workbench.gemini-glass-dark {
+	--gemini-wallpaper:
+		radial-gradient(50% 60% at 10% 15%, #1B2A558C 0%, transparent 62%),
+		radial-gradient(40% 50% at 92% 20%, #2E21478C 0%, transparent 62%),
+		radial-gradient(55% 55% at 65% 108%, #3A1E2A8C 0%, transparent 60%),
+		linear-gradient(#0A0B10C7, #0A0B10C7),
+		radial-gradient(40% 50% at 6% 30%, #1E3FA8 0%, transparent 70%),
+		radial-gradient(35% 45% at 25% 95%, #7A2E5C 0%, transparent 70%),
+		radial-gradient(40% 50% at 98% 70%, #0F6B66 0%, transparent 70%),
+		radial-gradient(45% 50% at 80% 0%, #4B2A8A 0%, transparent 70%),
+		#05060B;
+	--gemini-wallpaper-see-through:
+		radial-gradient(50% 60% at 10% 15%, #1B2A5533 0%, transparent 62%),
+		radial-gradient(40% 50% at 92% 20%, #2E214733 0%, transparent 62%),
+		radial-gradient(55% 55% at 65% 108%, #3A1E2A33 0%, transparent 60%),
+		#0C0D14A6;
+	--gemini-glass-side: #1B1C2399;
+	--gemini-glass-aux: #1B1C23D1;
+	--gemini-glass-side-see-through: #1B1C2366;
+	--gemini-glass-aux-see-through: #1B1C23C7;
+	--gemini-glass-edge: #FFFFFF0F;
+	--gemini-sheet-shadow: 0 24px 60px -12px #000000B3;
+	--gemini-capsule: #FFFFFF0F;
+	--gemini-capsule-on: #FFFFFF24;
+	--gemini-capsule-shadow: 0 2px 10px #00000066;
+	--gemini-capsule-on-shadow: inset 0 1px 0 #FFFFFF1F, 0 1px 3px #00000066;
+	--gemini-tab-on: #FFFFFF1A;
+	--gemini-tab-on-shadow: inset 0 1px 0 #FFFFFF1F, 0 1px 3px #00000055;
+	--gemini-rim-top: #FFFFFF4D;
+	--gemini-rim-bottom: #FFFFFF14;
+	--gemini-selection: #FFFFFF12;
+	--gemini-popup: #22232DCC;
+	--gemini-popup-shadow: 0 18px 50px #000000A6;
+	--gemini-popup-blur: blur(30px) saturate(1.4);
+}
+
+@media (prefers-reduced-transparency: no-preference) and (forced-colors: none) {
+
+	/* Concentric corners: overlays follow the cards (14); controls and rows keep their own tier. */
+	.monaco-workbench.gemini-glass {
+		--vscode-cornerRadius-large: 14px;
+	}
+
+	/* The wallpaper shows through the title bar, the status bar and the gaps between the cards. */
+	.monaco-workbench.floating-panels.gemini-glass {
+		background: var(--gemini-wallpaper);
+		background-attachment: fixed;
+	}
+
+	/*
+	 * macOS: the window has the 'sidebar' vibrancy material behind the page (windows.ts), so the
+	 * page itself is see-through and the wallpaper is a faint tint over the blurred desktop.
+	 */
+	body.gemini-glass-window {
+		background-color: transparent !important;
+	}
+
+	.monaco-workbench.mac:not(.web).floating-panels.gemini-glass {
+		background: var(--gemini-wallpaper-see-through);
+		--gemini-glass-side: var(--gemini-glass-side-see-through);
+		--gemini-glass-aux: var(--gemini-glass-aux-see-through);
+	}
+
+	.monaco-workbench.floating-panels.gemini-glass > .monaco-grid-view,
+	.monaco-workbench.floating-panels.gemini-glass .part.titlebar,
+	.monaco-workbench.floating-panels.gemini-glass .part.statusbar,
+	.monaco-workbench.floating-panels.gemini-glass .part.banner {
+		background-color: transparent !important;
+	}
+
+	/* Side bars: glass cards with a light edge; the secondary side bar is a little more solid. */
+	.monaco-workbench.floating-panels.gemini-glass .part.sidebar,
+	.monaco-workbench.floating-panels.gemini-glass .part.auxiliarybar {
+		border-color: var(--gemini-glass-edge) !important;
+		border-radius: 14px;
+		box-shadow: inset 0 1px 0 #FFFFFF0D;
+	}
+
+	.monaco-workbench.floating-panels.gemini-glass .part.sidebar {
+		background-color: var(--gemini-glass-side) !important;
+	}
+
+	.monaco-workbench.floating-panels.gemini-glass .part.auxiliarybar {
+		background-color: var(--gemini-glass-aux) !important;
+	}
+
+	/* The views inside paint the solid side bar colour; let the glass through. */
+	.monaco-workbench.floating-panels.gemini-glass :is(.part.sidebar, .part.auxiliarybar) :is(.pane, .pane-header, .composite.title, .monaco-list-rows) {
+		background-color: transparent !important;
+	}
+
+	.monaco-workbench.floating-panels.gemini-glass .part.sidebar .monaco-list-row.selected {
+		background: var(--gemini-selection) !important;
+	}
+
+	.monaco-workbench.floating-panels.gemini-glass-dark .part.sidebar .monaco-list-row.selected {
+		box-shadow: inset 2px 0 0 var(--vscode-textLink-foreground);
+	}
+
+	/*
+	 * The editor: each group's content is a sheet with a soft shadow. Webview editors (agent
+	 * chats) are overlays, rounded to match. In Editor mode the tabs sit on the wallpaper as capsules.
+	 */
+	.monaco-workbench.floating-panels.gemini-glass .part.editor,
+	.monaco-workbench.floating-panels.gemini-glass .part.editor > .content,
+	.monaco-workbench.floating-panels.gemini-glass .part.editor > .content .editor-group-container,
+	.monaco-workbench.floating-panels.gemini-glass .part.editor > .content .editor-group-container > .title {
+		background-color: transparent !important;
+	}
+
+	.monaco-workbench.floating-panels.gemini-glass .part.editor > .content .editor-group-container > .editor-container {
+		border-radius: 14px;
+		overflow: hidden;
+		background-color: var(--vscode-editor-background);
+		box-shadow: var(--gemini-sheet-shadow);
+	}
+
+	.monaco-workbench.floating-panels.gemini-glass .part.editor > .content .editor-group-container > .title .tabs-container > .tab {
+		border-radius: 999px;
+	}
+
+	.monaco-workbench.floating-panels.gemini-glass .part.editor > .content .editor-group-container > .title .tabs-container > .tab.active {
+		box-shadow: var(--gemini-tab-on-shadow);
+	}
+
+	.monaco-workbench.floating-panels.gemini-glass .webview-overlay-content:not(.webview-overlay-modal) {
+		border-radius: 14px;
+	}
+
+	/*
+	 * The title bar as floating capsule groups: the Agents | Editor switch, the tabs (Agents mode)
+	 * and the buttons on the right, each with a light-catching rim. They sit on the static
+	 * wallpaper, so they need no blur of their own.
+	 */
+	.monaco-workbench.gemini-glass .gemini-mode-toggle,
+	.monaco-workbench.gemini-glass .gemini-title-tabs-strip,
+	.monaco-workbench.gemini-glass .part.titlebar .action-toolbar-container > .monaco-toolbar > .monaco-action-bar {
+		position: relative;
+		height: 28px;
+		padding: 0 3px;
+		box-sizing: border-box;
+		border-radius: 14px;
+		background-color: var(--gemini-capsule);
+		box-shadow: var(--gemini-capsule-shadow);
+	}
+
+	.monaco-workbench.gemini-glass .gemini-mode-toggle::after,
+	.monaco-workbench.gemini-glass .part.titlebar .action-toolbar-container > .monaco-toolbar > .monaco-action-bar::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		padding: 1px;
+		border-radius: inherit;
+		pointer-events: none;
+		background: linear-gradient(180deg, var(--gemini-rim-top) 0%, transparent 45%, transparent 70%, var(--gemini-rim-bottom) 100%);
+		mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+	}
+
+	/* The tab strip scrolls, so its rim is drawn by the item around it. */
+	.monaco-workbench.gemini-glass .action-item.gemini-title-tabs {
+		position: relative;
+	}
+
+	.monaco-workbench.gemini-glass .action-item.gemini-title-tabs::after {
+		content: '';
+		position: absolute;
+		inset: calc(50% - 14px) 0;
+		padding: 1px;
+		border-radius: 14px;
+		pointer-events: none;
+		background: linear-gradient(180deg, var(--gemini-rim-top) 0%, transparent 45%, transparent 70%, var(--gemini-rim-bottom) 100%);
+		mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+	}
+
+	.monaco-workbench.gemini-glass .action-item.gemini-title-tabs:has(.gemini-title-tabs-strip:empty)::after {
+		display: none;
+	}
+
+	.monaco-workbench.gemini-glass .gemini-mode-toggle {
+		display: flex;
+		align-items: center;
+	}
+
+	.monaco-workbench.gemini-glass .gemini-mode-toggle .gemini-mode-button {
+		height: 22px;
+		padding: 0 12px;
+		border-radius: 11px;
+		font-size: 12px;
+	}
+
+	.monaco-workbench.gemini-glass .gemini-mode-toggle .gemini-mode-button.checked {
+		background-color: var(--gemini-capsule-on);
+		box-shadow: var(--gemini-capsule-on-shadow);
+	}
+
+	.monaco-workbench.gemini-glass .gemini-title-tab {
+		font-size: 12.5px;
+	}
+
+	.monaco-workbench.gemini-glass .gemini-title-tab:hover:not(.active) {
+		background-color: transparent;
+	}
+
+	.monaco-workbench.gemini-glass .gemini-title-tab.active {
+		background-color: var(--gemini-tab-on);
+		box-shadow: var(--gemini-tab-on-shadow);
+	}
+
+	.monaco-workbench.gemini-glass .gemini-agent-pill {
+		background-color: var(--gemini-capsule) !important;
+	}
+
+	/* The buttons on the right: one capsule, round buttons, no separators. */
+	.monaco-workbench.gemini-glass .part.titlebar .action-toolbar-container > .monaco-toolbar > .monaco-action-bar {
+		display: flex;
+		align-items: center;
+		padding: 0 5px;
+	}
+
+	.monaco-workbench.gemini-glass .part.titlebar .action-toolbar-container .actions-container {
+		gap: 2px;
+	}
+
+	.monaco-workbench.gemini-glass .part.titlebar .action-toolbar-container .action-item.separator,
+	.monaco-workbench.gemini-glass .part.titlebar .action-toolbar-container .action-item:has(> .action-label.separator) {
+		display: none;
+	}
+
+	.monaco-workbench.gemini-glass .part.titlebar .action-toolbar-container .action-label {
+		border-radius: 11px;
+	}
+
+	/* The browser button (upstream's `workbench.browser.showInTitleBar`) leads the capsule. */
+	.monaco-workbench.gemini-glass .part.titlebar .action-toolbar-container .action-item:has(> .action-label.codicon-globe) {
+		order: -1;
+	}
+
+	/*
+	 * Frosted pop-ups: upstream's frosted glass (frostedGlass.css, on by default) with a lighter
+	 * tint, a stronger blur on its one backdrop layer, a soft shadow and a rim. Nothing here adds a
+	 * second blur.
+	 */
+	.monaco-workbench.modern-ui-frosted-glass.gemini-glass:is(.gemini-glass-light, .gemini-glass-dark):not(.hc-black):not(.hc-light) {
+		--modern-ui-glass-quick-input-background: var(--gemini-popup);
+		--modern-ui-glass-menu-background: var(--gemini-popup);
+		--modern-ui-glass-hover-background: var(--gemini-popup);
+	}
+
+	/* Specific enough to win over upstream's layer (0,8,0) whatever order the two files load in. */
+	.monaco-workbench.modern-ui-frosted-glass.gemini-glass:is(.gemini-glass-light, .gemini-glass-dark):not(.hc-black):not(.hc-light) :is(.quick-input-widget.quick-input-widget:not(.quick-input-widget-overlay), .action-widget, .monaco-hover)::before {
+		backdrop-filter: var(--gemini-popup-blur);
+		box-shadow: inset 0 1px 0 var(--gemini-rim-top), inset 0 0 0 1px var(--gemini-glass-edge);
+	}
+
+	.monaco-workbench.gemini-glass .quick-input-widget:not(.quick-input-widget-overlay),
+	.monaco-workbench.gemini-glass .context-view .monaco-menu .monaco-action-bar.vertical,
+	.monaco-workbench.gemini-glass .action-widget {
+		box-shadow: var(--gemini-popup-shadow);
+	}
+
+	.monaco-workbench.gemini-glass .quick-input-widget .monaco-list-row {
+		border-radius: 8px;
+	}
+
+	.monaco-workbench.gemini-glass .quick-input-widget .monaco-list-row.focused {
+		background: var(--gemini-selection) !important;
+	}
+}

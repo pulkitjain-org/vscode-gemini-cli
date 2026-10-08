@@ -209,8 +209,8 @@
 	"onboardingThemes": [
 		{
 			"id": "dark-2026",
-			"label": "GeminiCode Dark",
-			"themeId": "GeminiCode Dark",
+			"label": "GeminiCode Glass Dark",
+			"themeId": "GeminiCode Glass Dark",
 			"type": "dark"
 		},
 		{
@@ -227,8 +227,8 @@
 		},
 		{
 			"id": "light-2026",
-			"label": "GeminiCode Light",
-			"themeId": "GeminiCode Light",
+			"label": "GeminiCode Glass Light",
+			"themeId": "GeminiCode Glass Light",
 			"type": "light"
 		},
 		{
@@ -343,6 +343,28 @@
 				"description": {
 					"key": "gemini.tools.allowShell.policy",
 					"value": "Whether the Gemini agent in GeminiCode may run shell commands."
+				}
+			}
+		},
+		"gemini.browser.enabled": {
+			"name": "GeminiBrowser",
+			"category": "Extensions",
+			"minimumVersion": "1.141",
+			"localization": {
+				"description": {
+					"key": "gemini.browser.enabled.policy",
+					"value": "Whether Gemini agents in GeminiCode can open and use pages in the integrated browser."
+				}
+			}
+		},
+		"gemini.browser.allowOtherSites": {
+			"name": "GeminiBrowserOtherSites",
+			"category": "Extensions",
+			"minimumVersion": "1.141",
+			"localization": {
+				"description": {
+					"key": "gemini.browser.allowOtherSites.policy",
+					"value": "Whether Gemini agents may open sites other than localhost in the integrated browser, after asking the user. When off, they can only open local pages."
 				}
 			}
 		}

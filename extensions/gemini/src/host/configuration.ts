@@ -97,15 +97,16 @@ export function getCliResolution(): CliResolution {
 }
 
 /** How to run the CLI, with the resolved project injected into its environment. */
-export function getAgentCommand(options: { interactive?: boolean; cli?: CliResolution } = {}): AgentCommand {
+/** `subcommand` runs the interactive CLI with those arguments instead, such as `extensions install <source>`. */
+export function getAgentCommand(options: { interactive?: boolean; cli?: CliResolution; subcommand?: readonly string[] } = {}): AgentCommand {
 	return resolveAgentCommand({
 		cliPath: (options.cli ?? getCliResolution()).cliPath,
 		execPath: process.execPath,
 		env: buildAgentEnv(process.env, getProjectSettings().resolved?.projectId),
 		platform: process.platform,
-		interactive: options.interactive,
-		heapSizeMb: options.interactive ? undefined : cliHeapSizeMb(readCliSettings(), os.totalmem()),
-		extraArgs: adminPolicyDir ? prepareAdminPolicy(adminPolicyDir, getApprovalPolicy()) : [],
+		interactive: options.interactive || !!options.subcommand,
+		heapSizeMb: options.interactive || options.subcommand ? undefined : cliHeapSizeMb(readCliSettings(), os.totalmem()),
+		extraArgs: options.subcommand ? [...options.subcommand] : adminPolicyDir ? prepareAdminPolicy(adminPolicyDir, getApprovalPolicy()) : [],
 	});
 }
 

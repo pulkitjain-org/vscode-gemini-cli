@@ -8,6 +8,7 @@
 //   cli   The commands the agent lists in `available_commands_update` (/init,
 //         /memory, /restore, ...). The prompt goes to the agent as typed and
 //         the agent runs the command itself.
+//   skill Agent skills (skills.ts); picking one asks the agent to load it.
 //   team  Prompts saved as TOML under .gemini/commands, the format the Gemini
 //         CLI uses for custom commands. gemini-cli 0.62 does not run these
 //         over ACP, so GeminiCode expands the template before sending.
@@ -20,8 +21,8 @@ export interface SlashCommand {
 	/** Without the slash, such as "init" or "git:commit". */
 	readonly name: string;
 	readonly description: string;
-	/** The agent's, the team's (.gemini/commands), or GeminiCode's own, such as /resume. */
-	readonly source: 'cli' | 'team' | 'app';
+	/** The agent's, the team's (.gemini/commands), a skill (.gemini/skills), or GeminiCode's own, such as /resume. */
+	readonly source: 'cli' | 'team' | 'skill' | 'app';
 }
 
 export interface TeamCommand extends SlashCommand {
