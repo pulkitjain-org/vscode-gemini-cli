@@ -125,7 +125,7 @@ function moreLink(label: string, expanded: boolean, toggle: () => void): HTMLEle
 		toggle();
 		renderUsage();
 		popover.focus();
-	}, expanded ? 'chevron-up' : 'chevron-right');
+	});
 	link.setAttribute('aria-expanded', String(expanded));
 	return link;
 }
@@ -133,23 +133,20 @@ function moreLink(label: string, expanded: boolean, toggle: () => void): HTMLEle
 function renderContext(): HTMLElement {
 	const section = el('section', 'usage-section');
 	const heading = el('div', 'usage-heading');
-	heading.append(el('span', undefined, strings.usageContext), el('span', 'usage-sub', strings.usageThisChatScope));
+	heading.append(el('span', undefined, strings.usageContext), el('span', undefined, strings.usageThisChatScope));
 	section.append(heading);
 	if (!context) {
 		section.append(el('p', 'usage-note', strings.usageContextNone));
 		return section;
 	}
 	const share = Math.min(1, context.used / context.limit);
-	const row = el('div', `usage-context${share >= 0.9 ? ' full' : share >= summariseAt ? ' high' : ''}`);
-	const big = ring.querySelector('svg')!.cloneNode(true) as SVGElement;
-	big.classList.add('ring-large');
-	const figures = el('div');
-	const used = el('div', 'usage-context-used', formatTokens(context.used));
+	const percent = contextPercent() ?? 0;
+	const row = el('div', 'usage-row');
+	const used = el('span');
+	used.append(el('b', undefined, formatTokens(context.used)), ` ${format(strings.usageContextOf, formatTokens(context.limit))}`);
 	used.title = context.used.toLocaleString();
-	used.append(el('span', 'usage-context-of', ` ${format(strings.usageContextOf, formatTokens(context.limit))}`));
-	figures.append(used, el('div', 'usage-note', format(strings.usageContextNote, Math.round(summariseAt * 100))));
-	row.append(big, figures);
-	section.append(row);
+	row.append(used, el('span', 'usage-detail', `${percent}%`));
+	section.append(row, meter(percent, share >= 0.9 ? 'full' : share >= summariseAt ? 'high' : '', strings.usageContext), el('p', 'usage-note', format(strings.usageContextNote, Math.round(summariseAt * 100))));
 	return section;
 }
 
@@ -159,7 +156,7 @@ function renderChat(): HTMLElement {
 	const heading = el('div', 'usage-heading');
 	heading.append(el('span', undefined, strings.usageThisChat));
 	if (usage.turns) {
-		heading.append(el('span', 'usage-sub', usage.turns === 1 ? strings.usageOneTurn : format(strings.usageTurns, usage.turns)));
+		heading.append(el('span', undefined, usage.turns === 1 ? strings.usageOneTurn : format(strings.usageTurns, usage.turns)));
 	}
 	section.append(heading);
 	if (!usage.turns) {
@@ -170,7 +167,7 @@ function renderChat(): HTMLElement {
 		section.append(el('p', 'usage-note', strings.usageNoCounts));
 		return section;
 	}
-	const summary = el('div', 'usage-summary');
+	const summary = el('div', 'usage-row usage-summary');
 	summary.append(figure(strings.usageInput, usage.input, strings.usageInputNote));
 	if (context?.cached) {
 		summary.append(figure(strings.usageCached, context.cached, strings.usageCachedNote));
@@ -200,10 +197,23 @@ function renderChat(): HTMLElement {
 
 /** "Input 295.8K", with the exact count and what it means on hover. */
 function figure(label: string, count: number, note?: string): HTMLElement {
-	const item = el('span', 'usage-figure');
-	item.append(el('span', 'usage-figure-label', label), el('span', 'usage-figure-value', formatTokens(count)));
+	const item = el('span', undefined, `${label} ${formatTokens(count)}`);
 	item.title = note ? `${count.toLocaleString()}. ${note}` : count.toLocaleString();
 	return item;
+}
+
+/** A thin bar filled to `percent`: the accent colour, amber when `level` is high and red when full. */
+function meter(percent: number, level: '' | 'high' | 'full', label: string): HTMLElement {
+	const bar = el('div', `usage-bar${level ? ` ${level}` : ''}`);
+	bar.setAttribute('role', 'meter');
+	bar.setAttribute('aria-valuemin', '0');
+	bar.setAttribute('aria-valuemax', '100');
+	bar.setAttribute('aria-valuenow', String(percent));
+	bar.setAttribute('aria-label', label);
+	const fill = el('div', 'usage-fill');
+	fill.style.width = `${Math.max(percent ? 2 : 0, percent)}%`;
+	bar.append(fill);
+	return bar;
 }
 
 function tokensCell(count: number): HTMLElement {
@@ -215,7 +225,7 @@ function tokensCell(count: number): HTMLElement {
 function renderQuota(): HTMLElement {
 	const section = el('section', 'usage-section');
 	const heading = el('div', 'usage-heading');
-	heading.append(el('span', undefined, strings.usageQuota), el('span', 'usage-sub', strings.usageAccount));
+	heading.append(el('span', undefined, strings.usageQuota), el('span', undefined, strings.usageAccount));
 	section.append(heading);
 	switch (quota.kind) {
 		case 'checking':
@@ -232,38 +242,30 @@ function renderQuota(): HTMLElement {
 			return section;
 	}
 	const now = Date.now();
-	const list = el('div', 'usage-quota');
 	const models = [...quota.quota].sort((a, b) => b.used - a.used);
 	const shown = allModels || models.length <= shownQuota + 1 ? models : models.slice(0, shownQuota);
 	for (const model of shown) {
 		const percent = Math.round(model.used * 100);
-		const row = el('div', `usage-quota-row${model.used >= 0.95 ? ' full' : model.used >= 0.8 ? ' high' : ''}`);
-		const bar = el('div', 'usage-bar');
-		bar.setAttribute('role', 'meter');
-		bar.setAttribute('aria-valuemin', '0');
-		bar.setAttribute('aria-valuemax', '100');
-		bar.setAttribute('aria-valuenow', String(percent));
-		bar.setAttribute('aria-label', model.model);
-		const fill = el('div', 'usage-fill');
-		fill.style.width = `${Math.max(percent ? 2 : 0, percent)}%`;
-		bar.append(fill);
 		const reset = resetsIn(model.resetTime, now);
 		const detail = [format(strings.usageUsed, percent)];
 		if (reset) {
 			detail.push(format(reset.unit === 'hours' ? strings.usageResetsHours : strings.usageResetsMinutes, reset.value));
 		}
-		row.append(el('span', 'usage-model', model.model), el('span', 'usage-detail', detail.join(' \u00b7 ')), bar);
-		list.append(row);
+		const row = el('div', 'usage-row');
+		row.append(el('span', 'usage-model', model.model), el('span', 'usage-detail', detail.join(' \u00b7 ')));
+		section.append(row, meter(percent, model.used >= 0.95 ? 'full' : model.used >= 0.8 ? 'high' : '', model.model));
 	}
-	section.append(list);
-	if (models.length > shownQuota + 1) {
-		section.append(moreLink(allModels ? strings.usageFewerModels : format(strings.usageAllModels, models.length), allModels, () => allModels = !allModels));
-	}
+	// "All N models" on the left, when the quota was read on the right.
+	const minutes = Math.floor((now - quota.at) / 60_000);
+	const foot = el('div', 'usage-row');
+	foot.append(models.length > shownQuota + 1
+		? moreLink(allModels ? strings.usageFewerModels : format(strings.usageAllModels, models.length), allModels, () => allModels = !allModels)
+		: el('span'));
+	foot.append(el('span', 'usage-detail', quota.checking ? strings.usageChecking : minutes < 1 ? strings.usageCheckedJustNow : format(strings.usageCheckedMinutes, minutes)));
+	section.append(foot);
 	if (models.some(model => model.used >= 0.8)) {
 		// What the CLI's /upgrade opens; the quota is a Google account's, so it applies.
-		section.append(button('usage-more', strings.usageUpgrade, () => vscode.postMessage({ type: 'openUpgrade' }), 'link-external'));
+		section.append(button('usage-more', strings.usageUpgrade, () => vscode.postMessage({ type: 'openUpgrade' })));
 	}
-	const minutes = Math.floor((now - quota.at) / 60_000);
-	section.append(el('p', 'usage-note', quota.checking ? strings.usageChecking : minutes < 1 ? strings.usageCheckedJustNow : format(strings.usageCheckedMinutes, minutes)));
 	return section;
 }

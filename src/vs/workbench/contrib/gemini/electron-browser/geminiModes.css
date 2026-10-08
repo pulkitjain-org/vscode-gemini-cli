@@ -66,6 +66,19 @@
 	padding-left: 12px;
 }
 
+/*
+ * Agents mode's buttons on the right read browser, search, then the three layout toggles, with no
+ * dividers. A chat tab's Split and its overflow menu are left out; a file's own buttons, such as
+ * those of a review, still show.
+ */
+.monaco-workbench.gemini-agents-mode .part.titlebar > .titlebar-container > .titlebar-right > .action-toolbar-container .action-item:has(> .codicon-globe) {
+	order: -1;
+}
+
+.monaco-workbench.gemini-agents-mode .part.titlebar > .titlebar-container > .titlebar-right > .action-toolbar-container .action-item:is(:has(> :is(.action-label.separator, .codicon-split-horizontal)), :has(.codicon-toolbar-more)) {
+	display: none;
+}
+
 .monaco-workbench.gemini-agents-mode .part.titlebar .center-adjacent-toolbar-container :is(.monaco-toolbar, .monaco-action-bar, .actions-container) {
 	min-width: 0;
 	max-width: 100%;
@@ -391,35 +404,4 @@
 	font-size: 11.5px;
 	opacity: 1;
 	color: var(--vscode-disabledForeground, var(--vscode-descriptionForeground));
-}
-
-/* The selected agent's branch at the foot of Agents mode's side bar (geminiModes.ts). */
-.monaco-workbench .part.sidebar > .gemini-agents-footer {
-	display: none;
-}
-
-.monaco-workbench.gemini-agents-mode .part.sidebar > .gemini-agents-footer:not(.empty) {
-	position: absolute;
-	left: 0;
-	right: 0;
-	bottom: 0;
-	z-index: 1;
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	height: 35px;
-	padding: 0 16px;
-	font-size: 12.5px;
-	color: var(--vscode-sideBar-foreground, var(--vscode-foreground));
-}
-
-.monaco-workbench.gemini-agents-mode .part.sidebar > .gemini-agents-footer .codicon {
-	font-size: 14px;
-	color: var(--vscode-descriptionForeground);
-}
-
-.monaco-workbench .gemini-agents-footer-label {
-	overflow: hidden;
-	white-space: nowrap;
-	text-overflow: ellipsis;
 }

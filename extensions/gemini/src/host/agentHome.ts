@@ -143,8 +143,11 @@ export class AgentHome implements vscode.Disposable {
 					}
 				}
 				return;
-			case 'addWorkspace':
-				await vscode.commands.executeCommand('gemini.agents.addWorkspace');
+			case 'addFolder':
+				await vscode.commands.executeCommand('workbench.action.addRootFolder');
+				return;
+			case 'projectHelpers':
+				await vscode.commands.executeCommand('gemini.projectSettings');
 				return;
 			case 'open':
 				await this.agents.open(message.id);
@@ -171,7 +174,9 @@ export class AgentHome implements vscode.Disposable {
 			ownBranch: vscode.l10n.t("On its own branch"),
 			ownBranchHint: vscode.l10n.t("The agent works in its own copy of the repository, on a new branch. Merge Back brings its work into yours."),
 			workspace: vscode.l10n.t("Workspace"),
-			addWorkspace: vscode.l10n.t("Add Workspace..."),
+			addFolder: vscode.l10n.t("Add Folder to Workspace..."),
+			projectHelpers: vscode.l10n.t("Project Helpers"),
+			projectHelpersHint: vscode.l10n.t("MCP servers, rules and hooks for your projects"),
 			active: vscode.l10n.t("Agents"),
 			earlier: vscode.l10n.t("Earlier"),
 			open: vscode.l10n.t("Open"),
@@ -192,8 +197,8 @@ export class AgentHome implements vscode.Disposable {
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link href="${codicons}" rel="stylesheet">
-	<link href="${style}" rel="stylesheet">
 	<link href="${menuStyle}" rel="stylesheet">
+	<link href="${style}" rel="stylesheet">
 	<title>Agent Home</title>
 </head>
 <body class="agent-home">
@@ -211,6 +216,7 @@ export class AgentHome implements vscode.Disposable {
 			<div class="home-options">
 				<span class="home-folder"><button type="button" id="workspace" class="option-button"><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="workspace-menu" class="home-menu" hidden></div></span>
 				<label id="own-branch-label" class="option-switch"><input type="checkbox" id="own-branch"><span class="switch-track" aria-hidden="true"></span><span class="switch-label"></span></label>
+				<button type="button" id="helpers" class="option-button helpers-button"><i class="codicon codicon-tools" aria-hidden="true"></i><span></span></button>
 			</div>
 		</section>
 		<section id="active" class="home-section"></section>

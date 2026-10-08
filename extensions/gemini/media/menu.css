@@ -5,7 +5,8 @@
 
 /*
  * Menus (webview-src/menu.ts): the chat's "+" menu, model, branch and folder, and Agent Home's
- * folder. Solid, with one shadow and no blur. The page that loads this defines the --gemini-* colours.
+ * folder. Solid, with one shadow and no blur. The page that loads this defines the --gemini-* colours
+ * and loads its own stylesheet after this one, so it can place each menu.
  */
 
 .menu {
@@ -21,6 +22,7 @@
 	background: var(--gemini-popover);
 	box-shadow: 0 8px 28px var(--gemini-shadow);
 	font-size: 12.5px;
+	line-height: 1.5;
 	cursor: default;
 }
 
@@ -89,6 +91,10 @@
 	height: 1px;
 	margin: 5px 0;
 	background: var(--gemini-border);
+}
+
+.menu > .menu-row:first-child {
+	margin-top: 5px;
 }
 
 .menu-row {

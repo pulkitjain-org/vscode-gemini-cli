@@ -448,6 +448,11 @@ button.option-button[aria-expanded="true"] {
 	color: var(--vscode-foreground);
 }
 
+/* Project Helpers, at the far end of the options. */
+button.helpers-button {
+	margin-left: auto;
+}
+
 button.option-button .codicon-chevron-down {
 	font-size: 11px;
 }

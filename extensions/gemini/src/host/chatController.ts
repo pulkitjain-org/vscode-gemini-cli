@@ -1036,7 +1036,10 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	/** What the folder menu offers. */
-	private async workspaceAction(action: 'copyPath' | 'reveal' | 'showAgents'): Promise<void> {
+	private async workspaceAction(action: 'copyPath' | 'reveal' | 'showAgents' | 'addFolder'): Promise<void> {
+		if (action === 'addFolder') {
+			return vscode.commands.executeCommand('workbench.action.addRootFolder');
+		}
 		const workspace = this.options.workspace?.();
 		if (!workspace) {
 			return;
@@ -1285,6 +1288,8 @@ export class ChatController implements vscode.Disposable {
 			enhanceTooltip: vscode.l10n.t("Rewrite this as a clearer, more precise prompt ({0})"),
 			enhancing: vscode.l10n.t("Enhancing the prompt"),
 			enhanced: vscode.l10n.t("Prompt enhanced. Review it, then send."),
+			enhancingNote: vscode.l10n.t("Rewriting as a precise prompt \u00b7 Esc to cancel"),
+			enhancedNote: vscode.l10n.t("Enhanced. Edit it, send it, or Revert to your words ({0} works too)."),
 			stillEnhancing: vscode.l10n.t("Still working\u2026"),
 			enhanceWaiting: vscode.l10n.t("Gemini is busy or rate-limited and is retrying\u2026"),
 			cancel: vscode.l10n.t("Cancel"),
@@ -1343,6 +1348,7 @@ export class ChatController implements vscode.Disposable {
 			copyPath: vscode.l10n.t("Copy Path"),
 			revealFolder: process.platform === 'darwin' ? vscode.l10n.t("Reveal in Finder") : process.platform === 'win32' ? vscode.l10n.t("Reveal in File Explorer") : vscode.l10n.t("Open Containing Folder"),
 			showAgents: vscode.l10n.t("Show Agents"),
+			addFolder: vscode.l10n.t("Add Folder to Workspace..."),
 			modeChip: vscode.l10n.t("Mode: {0}. Click to change it."),
 			modeChipReset: vscode.l10n.t("Back to {0}"),
 			usageRing: vscode.l10n.t("Context {0}% used. Click for usage and quota."),
@@ -1384,8 +1390,8 @@ export class ChatController implements vscode.Disposable {
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}' ${webview.cspSource};">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link href="${codicons}" rel="stylesheet">
-	<link href="${style}" rel="stylesheet">
 	<link href="${menuStyle}" rel="stylesheet">
+	<link href="${style}" rel="stylesheet">
 	<title>Gemini</title>
 </head>
 <body>

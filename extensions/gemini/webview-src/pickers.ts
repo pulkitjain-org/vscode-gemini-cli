@@ -124,22 +124,23 @@ const folderMenu = new Menu({
 	anchor: ui.workspaceButton,
 	label: strings.workspaceTooltip.replace('{0}', '').trim(),
 	title: () => workspace && { name: workspace.name, detail: workspace.path },
-	sections: () => [{
-		rows: ([
-			['copy', strings.copyPath, 'copyPath'],
-			['folder-opened', strings.revealFolder, 'reveal'],
-			['list-tree', strings.showAgents, 'showAgents'],
-		] as const).map(([iconName, name, action]) => ({
-			icon: iconName,
-			name,
-			run: () => {
-				vscode.postMessage({ type: 'workspaceAction', action });
-				folderMenu.close();
-			},
-		})),
-	}],
+	sections: () => [
+		{ rows: folderRows([['copy', strings.copyPath, 'copyPath'], ['folder-opened', strings.revealFolder, 'reveal'], ['list-tree', strings.showAgents, 'showAgents']]) },
+		{ rows: folderRows([['new-folder', strings.addFolder, 'addFolder']]) },
+	],
 	empty: () => '',
 });
+
+function folderRows(rows: readonly (readonly [string, string, 'copyPath' | 'reveal' | 'showAgents' | 'addFolder'])[]): MenuRow[] {
+	return rows.map(([iconName, name, action]) => ({
+		icon: iconName,
+		name,
+		run: () => {
+			vscode.postMessage({ type: 'workspaceAction', action });
+			folderMenu.close();
+		},
+	}));
+}
 
 /** The folder the folder menu is about. */
 export function setWorkspace(value: ViewWorkspace | undefined): void {

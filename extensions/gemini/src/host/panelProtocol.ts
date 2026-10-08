@@ -119,7 +119,9 @@ export interface HomeStrings {
 	readonly ownBranch: string;
 	readonly ownBranchHint: string;
 	readonly workspace: string;
-	readonly addWorkspace: string;
+	readonly addFolder: string;
+	readonly projectHelpers: string;
+	readonly projectHelpersHint: string;
 	readonly active: string;
 	readonly earlier: string;
 	readonly open: string;
@@ -143,7 +145,7 @@ export type ToHome =
 export type FromHome =
 	| { readonly type: 'ready' }
 	| { readonly type: 'start'; readonly folder: string; readonly text: string; readonly ownBranch: boolean }
-	| { readonly type: 'addWorkspace' }
+	| { readonly type: 'addFolder' | 'projectHelpers' }
 	| { readonly type: 'open' | 'stop' | 'review' | 'mergeBack'; readonly id: string };
 
 // --- Project Helpers

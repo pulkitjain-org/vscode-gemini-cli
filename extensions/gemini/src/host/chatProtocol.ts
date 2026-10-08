@@ -129,6 +129,10 @@ export interface ChatStrings {
 	readonly previewEmpty: string;
 	readonly enhancing: string;
 	readonly enhanced: string;
+	/** Under the draft while it is rewritten. */
+	readonly enhancingNote: string;
+	/** Under the rewrite; {0} is the undo shortcut. */
+	readonly enhancedNote: string;
 	/** Shown when a rewrite takes a while. */
 	readonly stillEnhancing: string;
 	/** Shown when a rewrite takes long enough that Gemini is likely waiting out a rate limit. */
@@ -206,6 +210,7 @@ export interface ChatStrings {
 	readonly copyPath: string;
 	readonly revealFolder: string;
 	readonly showAgents: string;
+	readonly addFolder: string;
 	/** `{0}` is the mode and what it does. */
 	readonly modeChip: string;
 	/** `{0}` is the default mode. */
@@ -308,7 +313,7 @@ export type FromWebview =
 	/** Switch to branch `name`, or create it from the current one. */
 	| { readonly type: 'switchBranch'; readonly name: string; readonly create: boolean }
 	/** The folder menu: copy the folder's path, reveal it, or show the Agents list. */
-	| { readonly type: 'workspaceAction'; readonly action: 'copyPath' | 'reveal' | 'showAgents' }
+	| { readonly type: 'workspaceAction'; readonly action: 'copyPath' | 'reveal' | 'showAgents' | 'addFolder' }
 	/** Reopen saved session `id` in this chat. */
 	| { readonly type: 'restoreSession'; readonly id: string }
 	/** Pick from every saved session for the folder. */

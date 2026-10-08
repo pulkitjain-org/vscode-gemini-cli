@@ -194,12 +194,28 @@ function statusIcon(value: ItemOf<'toolCall'>['status']): HTMLElement {
 function renderToolCall(item: ItemOf<'toolCall'>, toggleToolCall: ToggleToolCall): HTMLElement {
 	const card = el('div', `tool-call status-${item.status}`);
 	const row = el('div', 'tool-row');
-	row.append(icon(toolKindIcon(item.toolKind), 'kind-icon'), el('span', 'tool-title', item.title));
+	// "Read src/cart/total.ts": the verb in the text colour, what it acted on quieter.
+	const [verb, target] = splitToolTitle(item.title);
+	const title = el('span', 'tool-title');
+	title.append(el('span', 'tool-verb', verb));
+	if (target) {
+		title.append(` ${target}`);
+	}
+	row.append(icon(toolKindIcon(item.toolKind), 'kind-icon'), title);
 	row.title = item.title;
 
 	for (const location of item.locations) {
+		// A file the title already names needs no chip of its own; the title opens it.
+		const named = !item.details.some(detail => detail.type === 'text' || detail.type === 'terminal') && item.locations.length === 1 && item.title.includes(basename(location.path));
+		const open = () => vscode.postMessage({ type: 'openLocation', path: location.path, line: location.line });
+		if (named) {
+			title.classList.add('tool-link');
+			title.addEventListener('click', open);
+			title.title = location.path;
+			continue;
+		}
 		const label = location.line ? `${basename(location.path)}:${location.line}` : basename(location.path);
-		const chip = button('chip', label, () => vscode.postMessage({ type: 'openLocation', path: location.path, line: location.line }));
+		const chip = button('chip', label, open);
 		chip.title = location.path;
 		row.append(chip);
 	}
@@ -240,6 +256,12 @@ function renderToolCall(item: ItemOf<'toolCall'>, toggleToolCall: ToggleToolCall
 		card.append(body);
 	}
 	return card;
+}
+
+/** A tool call's title as its first word and the rest. */
+function splitToolTitle(title: string): readonly [string, string] {
+	const space = title.indexOf(' ');
+	return space === -1 ? [title, ''] : [title.slice(0, space), title.slice(space + 1)];
 }
 
 function renderPlan(item: ItemOf<'plan'>): HTMLElement {

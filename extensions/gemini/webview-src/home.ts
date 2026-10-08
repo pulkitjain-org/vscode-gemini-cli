@@ -29,6 +29,7 @@ const workspaceLabel = workspaceButton.querySelector('span')!;
 const ownBranch = document.getElementById('own-branch') as HTMLInputElement;
 const ownBranchLabel = document.getElementById('own-branch-label') as HTMLLabelElement;
 const start = document.getElementById('start') as HTMLButtonElement;
+const helpers = document.getElementById('helpers') as HTMLButtonElement;
 const active = document.getElementById('active')!;
 const earlier = document.getElementById('earlier')!;
 
@@ -40,6 +41,9 @@ prompt.setAttribute('aria-label', strings.title);
 ownBranchLabel.querySelector('.switch-label')!.textContent = strings.ownBranch;
 ownBranchLabel.title = strings.ownBranchHint;
 start.title = strings.start;
+helpers.querySelector('span')!.textContent = strings.projectHelpers;
+helpers.title = strings.projectHelpersHint;
+helpers.addEventListener('click', () => vscode.postMessage({ type: 'projectHelpers' }));
 start.setAttribute('aria-label', strings.start);
 
 let view: HomeView | undefined;
@@ -67,10 +71,10 @@ const folderMenu = new Menu({
 		{
 			rows: [{
 				icon: 'add',
-				name: strings.addWorkspace,
+				name: strings.addFolder,
 				run: () => {
 					folderMenu.close();
-					vscode.postMessage({ type: 'addWorkspace' });
+					vscode.postMessage({ type: 'addFolder' });
 				},
 			}],
 		},
@@ -90,8 +94,7 @@ function pickFolder(next: string): void {
 
 function updateControls(): void {
 	const current = view?.workspaces.find(w => w.folder === folder);
-	workspaceButton.hidden = !view?.workspaces.length;
-	workspaceLabel.textContent = current?.name ?? '';
+	workspaceLabel.textContent = current?.name ?? strings.addFolder;
 	const label = current ? `${strings.workspace}: ${current.description}/${current.name}` : strings.workspace;
 	workspaceButton.title = label;
 	workspaceButton.setAttribute('aria-label', label);
