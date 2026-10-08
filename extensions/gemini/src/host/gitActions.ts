@@ -16,6 +16,7 @@ import { errorMessage } from '../acp/errors';
 interface GitRef {
 	readonly name?: string;
 	readonly remote?: string;
+	readonly commitDetails?: { readonly commitDate?: Date };
 }
 
 interface GitRepository {
@@ -54,29 +55,37 @@ async function repositoryFor(folder: string): Promise<GitRepository | undefined>
 	return repository ?? undefined;
 }
 
-/** Lets the user switch `folder`'s repository to another local branch or a new one. Resolves once done or dismissed. */
-export async function pickBranch(folder: string): Promise<void> {
+/** A local branch for the chat's branch menu. */
+export interface LocalBranch {
+	readonly name: string;
+	/** When its last commit was made, in ms since the epoch, if the git extension says. */
+	readonly committedAt?: number;
+}
+
+/** `folder`'s local branches, most recently committed first, and the current one. */
+export async function localBranches(folder: string): Promise<{ readonly branches: readonly LocalBranch[]; readonly current?: string } | undefined> {
+	const repository = await repositoryFor(folder);
+	if (!repository) {
+		return undefined;
+	}
+	const refs = await repository.getBranches({ remote: false, sort: 'committerdate' });
+	return {
+		current: repository.state.HEAD?.name,
+		branches: refs.flatMap(ref => ref.name ? [{ name: ref.name, committedAt: ref.commitDetails?.commitDate?.getTime() }] : []),
+	};
+}
+
+/** Switches `folder`'s repository to branch `name`, creating it from the current one when `create` is set. */
+export async function switchBranch(folder: string, name: string, create: boolean): Promise<void> {
 	const repository = await repositoryFor(folder);
 	if (!repository) {
 		return;
 	}
-	const current = repository.state.HEAD?.name;
-	const create: vscode.QuickPickItem = { label: `$(add) ${vscode.l10n.t("Create New Branch...")}`, alwaysShow: true };
-	const branches = (await repository.getBranches({ remote: false, sort: 'committerdate' })).flatMap(ref => ref.name ? [ref.name] : []);
-	const items: vscode.QuickPickItem[] = [
-		create,
-		{ label: '', kind: vscode.QuickPickItemKind.Separator },
-		...branches.map(name => ({ label: name, description: name === current ? vscode.l10n.t("current") : undefined })),
-	];
-	const picked = await vscode.window.showQuickPick(items, { placeHolder: vscode.l10n.t("Switch branch") });
 	try {
-		if (picked === create) {
-			const name = await askBranchName(undefined);
-			if (name) {
-				await repository.createBranch(name, true);
-			}
-		} else if (picked && picked.label !== current) {
-			await repository.checkout(picked.label);
+		if (create) {
+			await repository.createBranch(name, true);
+		} else if (name !== repository.state.HEAD?.name) {
+			await repository.checkout(name);
 		}
 	} catch (err) {
 		void vscode.window.showErrorMessage(errorMessage(err));

@@ -38,7 +38,7 @@ import { stopReasonNotice, toViewStatus } from './chatStatus';
 import { DiffPreview } from './diffPreview';
 import { relativeTime, tildify } from './displayText';
 import { attachmentsForFiles } from './addToChat';
-import { createBranchAndCommit, pickBranch } from './gitActions';
+import { createBranchAndCommit, localBranches, switchBranch } from './gitActions';
 import { preferredComposerHeight, rememberComposerHeight, rememberModel } from './modelPreference';
 import { teamCommandHost } from './teamCommandHost';
 import { skills, teamCommands } from './teamCommands';
@@ -806,21 +806,21 @@ export class ChatController implements vscode.Disposable {
 					}
 				});
 				break;
-			case 'pickBranch': {
+			case 'listBranches':
+				void this.postBranches();
+				break;
+			case 'switchBranch': {
 				const folder = this.options.git?.folder();
-				const ownBranch = this.options.git?.ownBranch;
-				if (ownBranch) {
-					void vscode.window.showInformationMessage(vscode.l10n.t("This agent works on its own branch, {0}. Use Merge Back to bring its work into your branch.", ownBranch));
-				} else if (folder) {
-					void pickBranch(folder).finally(() => this.postGit());
+				if (folder && !this.options.git?.ownBranch && typeof message.name === 'string') {
+					void switchBranch(folder, message.name, !!message.create).finally(() => this.postGit());
 				}
 				break;
 			}
 			case 'createBranchAndCommit':
 				void this.commit();
 				break;
-			case 'workspaceMenu':
-				void this.workspaceMenu();
+			case 'workspaceAction':
+				void this.workspaceAction(message.action);
 				break;
 			case 'restoreSession':
 				if (typeof message.id === 'string') {
@@ -1015,19 +1015,40 @@ export class ChatController implements vscode.Disposable {
 			.then(branch => this.post({ type: 'git', git: { branch, canCommit, ...(workspace ? { workspace } : {}) } }));
 	}
 
-	/** What the workspace pill offers, in a quick pick. */
-	private async workspaceMenu(): Promise<void> {
+	/** The branch menu's list: the folder's local branches, or why this agent cannot switch. */
+	private async postBranches(): Promise<void> {
+		const ownBranch = this.options.git?.ownBranch;
+		if (ownBranch) {
+			this.post({ type: 'branches', branches: [], notice: vscode.l10n.t("This agent works on its own branch, {0}. Use Merge Back to bring its work into your branch.", ownBranch) });
+			return;
+		}
+		const folder = this.options.git?.folder();
+		const result = folder ? await localBranches(folder).catch(() => undefined) : undefined;
+		const now = Date.now();
+		this.post({
+			type: 'branches',
+			branches: (result?.branches ?? []).map(branch => ({
+				name: branch.name,
+				current: branch.name === result?.current,
+				...(branch.committedAt ? { age: relativeTime(branch.committedAt, now) } : {}),
+			})),
+		});
+	}
+
+	/** What the folder menu offers. */
+	private async workspaceAction(action: 'copyPath' | 'reveal' | 'showAgents'): Promise<void> {
 		const workspace = this.options.workspace?.();
 		if (!workspace) {
 			return;
 		}
-		const items: (vscode.QuickPickItem & { run(): Thenable<unknown> })[] = [
-			{ label: `$(copy) ${vscode.l10n.t("Copy Path")}`, description: tildify(workspace.cwd), run: () => vscode.env.clipboard.writeText(workspace.cwd) },
-			{ label: `$(folder-opened) ${vscode.l10n.t("Reveal in Finder")}`, run: () => vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(workspace.cwd)) },
-			{ label: `$(list-tree) ${vscode.l10n.t("Show Agents")}`, run: () => vscode.commands.executeCommand('gemini.agents.focus') },
-		];
-		const pick = await vscode.window.showQuickPick(items, { title: path.basename(workspace.folder) || workspace.folder });
-		await pick?.run();
+		switch (action) {
+			case 'copyPath':
+				return vscode.env.clipboard.writeText(workspace.cwd);
+			case 'reveal':
+				return vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(workspace.cwd));
+			case 'showAgents':
+				return vscode.commands.executeCommand('gemini.agents.focus');
+		}
 	}
 
 	private async changeSetting(change: () => Promise<void>): Promise<void> {
@@ -1203,6 +1224,7 @@ export class ChatController implements vscode.Disposable {
 		const nonce = createNonce();
 		const script = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'chat.js'));
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'chat.css'));
+		const menuStyle = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'menu.css'));
 		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'codicon.css'));
 		// Loaded by the view when it first shows code.
 		const highlighter = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'highlight.js'));
@@ -1310,6 +1332,17 @@ export class ChatController implements vscode.Disposable {
 			menuUsageDetail: vscode.l10n.t("Context {0}%"),
 			menuCommands: vscode.l10n.t("Skills and commands"),
 			back: vscode.l10n.t("Back"),
+			branchSearch: vscode.l10n.t("Switch branch"),
+			createBranch: vscode.l10n.t("Create branch\u2026"),
+			newBranchName: vscode.l10n.t("New branch name"),
+			createBranchNamed: vscode.l10n.t("Create {0}"),
+			invalidBranchName: vscode.l10n.t("Enter a valid branch name."),
+			noBranches: vscode.l10n.t("No matching branches"),
+			loading: vscode.l10n.t("Loading\u2026"),
+			currentBranch: vscode.l10n.t("current"),
+			copyPath: vscode.l10n.t("Copy Path"),
+			revealFolder: process.platform === 'darwin' ? vscode.l10n.t("Reveal in Finder") : process.platform === 'win32' ? vscode.l10n.t("Reveal in File Explorer") : vscode.l10n.t("Open Containing Folder"),
+			showAgents: vscode.l10n.t("Show Agents"),
 			modeChip: vscode.l10n.t("Mode: {0}. Click to change it."),
 			modeChipReset: vscode.l10n.t("Back to {0}"),
 			usageRing: vscode.l10n.t("Context {0}% used. Click for usage and quota."),
@@ -1352,17 +1385,20 @@ export class ChatController implements vscode.Disposable {
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link href="${codicons}" rel="stylesheet">
 	<link href="${style}" rel="stylesheet">
+	<link href="${menuStyle}" rel="stylesheet">
 	<title>Gemini</title>
 </head>
 <body>
+	<svg class="defs" aria-hidden="true"><linearGradient id="gemini-spark-gradient" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f8df7"/><stop offset=".55" stop-color="#9b72cb"/><stop offset="1" stop-color="#d96570"/></linearGradient></svg>
 	<main id="transcript" class="transcript"></main>
 	<nav id="outline" class="prompt-outline" hidden></nav>
 	<div id="announce" class="announce" aria-live="polite"></div>
 	<div id="dock" class="dock">
 		<button type="button" id="scroll-down" class="scroll-down" hidden><i class="codicon codicon-arrow-down" aria-hidden="true"></i><i class="codicon codicon-chevron-down" aria-hidden="true"></i><span class="scroll-down-label"></span></button>
-		<div id="activity" class="activity" hidden><svg class="activity-spark" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5c.4 3.4 2.9 6 6.5 6.5-3.6.4-6.1 3-6.5 6.5-.4-3.5-2.9-6.1-6.5-6.5C5.1 7.5 7.6 4.9 8 1.5z"/></svg><span class="activity-label"></span><span class="activity-clock"></span><span class="activity-detail"></span><span class="activity-hint"></span></div>
+		<div id="activity" class="activity" hidden><span class="activity-icon" aria-hidden="true"><i class="codicon codicon-check"></i></span><span class="activity-label"></span><span class="activity-clock"></span><span class="activity-detail"></span><span class="activity-hint"></span></div>
 		<div id="status" class="status" role="status"></div>
 		<form id="composer" class="composer">
+			<div class="working-bar" aria-hidden="true"></div>
 			<div id="resize" class="composer-resize"></div>
 			<div class="drop-overlay" aria-hidden="true"><i class="codicon codicon-cloud-upload"></i><span id="drop-label"></span></div>
 			<div id="picker" class="picker" role="listbox" hidden></div>
@@ -1373,7 +1409,7 @@ export class ChatController implements vscode.Disposable {
 			<div class="input-wrap">
 				<textarea id="input" rows="1"></textarea>
 				<div class="input-mirror" aria-hidden="true"></div>
-				<span id="enhance-float" class="enhance-float" hidden><button type="button" id="revert" class="enhance-chip" hidden><i class="codicon codicon-discard" aria-hidden="true"></i><span></span></button><button type="button" id="enhance" class="enhance-chip"><svg class="enhance-icon" viewBox="0 0 16 16" aria-hidden="true"><defs><linearGradient id="enhance-spark" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f8df7"/><stop offset=".55" stop-color="#8b5cf6"/><stop offset="1" stop-color="#e05fa8"/></linearGradient></defs><path d="M6.5 3.5C6.88 7 9 9.12 12.5 9.5C9 9.88 6.88 12 6.5 15.5C6.12 12 4 9.88 0.5 9.5C4 9.12 6.12 7 6.5 3.5Z"/><path d="M12.75 0.5C12.92 2.1 13.9 3.08 15.5 3.25C13.9 3.42 12.92 4.4 12.75 6C12.58 4.4 11.6 3.42 10 3.25C11.6 3.08 12.58 2.1 12.75 0.5Z"/></svg><i class="codicon codicon-loading codicon-modifier-spin" aria-hidden="true"></i><span></span></button></span>
+				<span id="enhance-float" class="enhance-float" hidden><button type="button" id="revert" class="enhance-chip" hidden><i class="codicon codicon-discard" aria-hidden="true"></i><span></span></button><button type="button" id="enhance" class="enhance-chip"><svg class="enhance-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 3.5C6.88 7 9 9.12 12.5 9.5C9 9.88 6.88 12 6.5 15.5C6.12 12 4 9.88 0.5 9.5C4 9.12 6.12 7 6.5 3.5Z"/><path d="M12.75 0.5C12.92 2.1 13.9 3.08 15.5 3.25C13.9 3.42 12.92 4.4 12.75 6C12.58 4.4 11.6 3.42 10 3.25C11.6 3.08 12.58 2.1 12.75 0.5Z"/></svg><i class="codicon codicon-loading codicon-modifier-spin" aria-hidden="true"></i><span></span><span class="enhance-key"></span></button></span>
 			</div>
 			<div id="enhance-row" class="enhance-row" hidden>
 				<span id="enhance-note" class="enhance-note" role="status" hidden></span>
@@ -1382,11 +1418,12 @@ export class ChatController implements vscode.Disposable {
 				<button type="button" id="plus" class="plus-button" aria-haspopup="menu" aria-expanded="false" aria-controls="plus-menu"><i class="codicon codicon-add" aria-hidden="true"></i></button>
 				<span id="mode-chip" class="mode-chip" hidden><button type="button" class="mode-chip-label"><i class="codicon" aria-hidden="true"></i><span></span></button><button type="button" class="mode-chip-reset"><i class="codicon codicon-close" aria-hidden="true"></i></button></span>
 				<span class="spacer"></span>
-				<span class="pill-wrap model-wrap" hidden><select id="model" class="pill model"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
+				<button type="button" id="model" class="model-button" hidden><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button>
 				<button type="submit" id="send" class="round-button"><i class="codicon codicon-arrow-up" aria-hidden="true"></i></button>
 				<button type="button" id="stop" class="round-button stop" hidden><i class="codicon codicon-debug-stop" aria-hidden="true"></i></button>
 			</div>
-			<div id="plus-menu" class="plus-menu" role="menu" hidden></div>
+			<div id="plus-menu" class="plus-menu" hidden></div>
+			<div id="model-menu" class="model-menu" hidden></div>
 		</form>
 		<div class="composer-foot">
 			<button type="button" id="branch" class="foot-button branch" hidden><i class="codicon codicon-git-branch" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button>
@@ -1395,6 +1432,8 @@ export class ChatController implements vscode.Disposable {
 			<span id="followed" class="foot-followed" hidden><button type="button" class="foot-button followed-name"><i class="codicon codicon-eye" aria-hidden="true"></i><span></span></button><button type="button" class="followed-close"><i class="codicon codicon-close" aria-hidden="true"></i></button></span>
 			<span class="spacer"></span>
 			<button type="button" id="usage-ring" class="foot-button usage-ring" aria-expanded="false" aria-controls="usage-popover"><svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="ring-track" cx="8" cy="8" r="6"/><circle class="ring-fill" cx="8" cy="8" r="6" pathLength="100" stroke-dasharray="0 100" transform="rotate(-90 8 8)"/></svg><span></span></button>
+			<div id="branch-menu" class="foot-menu" hidden></div>
+			<div id="workspace-menu" class="foot-menu" hidden></div>
 		</div>
 	</div>
 	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>

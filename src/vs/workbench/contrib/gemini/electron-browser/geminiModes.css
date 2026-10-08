@@ -141,11 +141,11 @@
 }
 
 .monaco-workbench .gemini-agent-pill.waiting .dot {
-	background-color: var(--vscode-charts-yellow);
+	background-color: var(--vscode-editorWarning-foreground);
 }
 
 .monaco-workbench .gemini-agent-pill.done .dot {
-	background-color: var(--vscode-charts-green);
+	background-color: var(--vscode-testing-iconPassed);
 }
 
 .monaco-workbench .gemini-agent-pill.error .dot {
@@ -166,19 +166,22 @@
 	animation: none;
 }
 
+/* The Agents | Editor switch: a hairline segment whose chosen side is a raised card. */
 .monaco-workbench .gemini-mode-toggle {
 	display: flex;
 	align-items: center;
-	height: 22px;
+	height: 24px;
 	padding: 2px;
-	border-radius: 6px;
-	background-color: var(--vscode-toolbar-hoverBackground);
+	box-sizing: border-box;
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 7px;
+	background-color: var(--vscode-sideBar-background);
 }
 
 .monaco-workbench .gemini-mode-toggle .gemini-mode-button {
 	height: 18px;
 	padding: 0 10px;
-	border-radius: 4px;
+	border-radius: 5px;
 	color: var(--vscode-descriptionForeground);
 }
 
@@ -189,7 +192,7 @@
 .monaco-workbench .gemini-mode-toggle .gemini-mode-button.checked {
 	color: var(--vscode-foreground);
 	background-color: var(--vscode-editor-background);
-	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+	box-shadow: 0 0 0 1px var(--vscode-widget-border);
 }
 
 /* Agents mode's editor tabs in the title bar (geminiTitleTabs.ts). */
@@ -208,10 +211,9 @@
 	gap: 2px;
 	min-width: 0;
 	max-width: 100%;
-	height: 28px;
-	padding: 0 3px;
+	height: 100%;
+	padding: 0 1px;
 	box-sizing: border-box;
-	border-radius: 14px;
 	overflow-x: auto;
 	overflow-y: hidden;
 	scrollbar-width: none;
@@ -233,15 +235,15 @@
 	align-items: center;
 	gap: 6px;
 	max-width: 220px;
-	height: 22px;
-	padding: 0 6px 0 10px;
-	border-radius: 11px;
-	font-size: 12px;
+	height: 25px;
+	padding: 0 6px 0 12px;
+	border-radius: 6px;
+	font-size: 12.5px;
 	color: var(--vscode-tab-inactiveForeground, var(--vscode-descriptionForeground));
 	cursor: pointer;
 }
 
-.monaco-workbench .gemini-title-tab:hover {
+.monaco-workbench .gemini-title-tab:hover:not(.active) {
 	color: var(--vscode-tab-activeForeground, var(--vscode-foreground));
 	background-color: var(--vscode-toolbar-hoverBackground);
 }
@@ -264,7 +266,7 @@
 .monaco-workbench .gemini-title-tab-label .monaco-icon-label {
 	display: flex;
 	align-items: center;
-	line-height: 22px;
+	line-height: 25px;
 }
 
 .monaco-workbench .gemini-title-tab-label .monaco-icon-label-container {
@@ -277,7 +279,7 @@
 .monaco-workbench .gemini-title-tab-label .monaco-icon-label::before {
 	flex: none;
 	width: 16px;
-	height: 22px;
+	height: 25px;
 	padding-right: 4px;
 	background-size: 16px;
 	background-position: left center;
@@ -333,9 +335,9 @@
 }
 
 .monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row {
-	left: 8px;
-	width: calc(100% - 16px);
-	border-radius: 8px;
+	left: 6px;
+	width: calc(100% - 12px);
+	border-radius: 5px;
 }
 
 .monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-tl-indent {
@@ -355,9 +357,9 @@
 .monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-level="1"] .label-name {
 	font-size: 11px;
 	font-weight: 500;
-	letter-spacing: 0.04em;
+	letter-spacing: 0.05em;
 	text-transform: uppercase;
-	color: var(--vscode-descriptionForeground);
+	color: var(--vscode-disabledForeground, var(--vscode-descriptionForeground));
 }
 
 .monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-level="1"].selected,
@@ -388,7 +390,7 @@
 	margin-left: 0;
 	font-size: 11.5px;
 	opacity: 1;
-	color: var(--vscode-descriptionForeground);
+	color: var(--vscode-disabledForeground, var(--vscode-descriptionForeground));
 }
 
 /* The selected agent's branch at the foot of Agents mode's side bar (geminiModes.ts). */

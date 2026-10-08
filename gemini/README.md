@@ -27,8 +27,8 @@ The product code is in [`../extensions/gemini/`](../extensions/gemini/).
 - **Enhance prompt.** Write what you want in plain words and choose **Enhance prompt** (⌥⌘E): Gemini rewrites it as a precise prompt for you to review, with **Revert** to undo.
 - **Context.** Type `@` to attach workspace files. Press <kbd>⌘L</kbd> to add the editor selection. You can also attach or drop files and images from anywhere.
 - **Changes.** See every file the agent in front has changed, one diff at a time or all together with **Open All Changes**. **Clear List** empties it.
-- **Branches and commits.** A branch pill in each chat's composer switches or creates a branch. In an agent's chat, **Create Branch & Commit** commits just the files that agent changed to a new branch, and warns first if other files are staged.
-- **Glass Dark and Glass Light.** The default colour themes, styled after macOS Liquid Glass: glass side bars and floating cards over an aurora wallpaper, a glass composer the chat scrolls under, and frosted pop-ups, with the Gemini gradient for Gemini's own moments. GeminiCode Dark, Light, Midnight and Dusk are there too. GeminiCode also defaults to the view icons at the top of the side bar, pill-shaped tabs, and no minimap or breadcrumbs; change any of these in Settings.
+- **Branches and commits.** The branch under each chat's composer opens a list in the chat to switch or create a branch. In an agent's chat, **Create Branch & Commit** commits just the files that agent changed to a new branch, and warns first if other files are staged.
+- **GeminiCode Dark and Light.** Calm, functional themes: soft greys, panels as cards with a hairline, solid pop-ups, Graphite as the one accent, and the Gemini colours only for Gemini's own moments. The model, branch and folder menus open in the chat, not as system menus. GeminiCode also defaults to the view icons at the top of the side bar, pill-shaped tabs, and no minimap or breadcrumbs; change any of these in Settings.
 - **Agent browser.** The globe in the title bar opens GeminiCode's browser. Agents can open and use pages in it, and **Let Gemini Use This Page** hands one of your own tabs to an agent.
 - **Follow the agent.** A switch in the composer's **+** menu opens each file the agent reads or edits as it works, and names the file it opened last under the composer with a button to close it.
 - **Keep the Mac awake.** While any agent works, the Mac doesn't go to sleep.
@@ -55,7 +55,7 @@ The **Get Started with GeminiCode** walkthrough opens on first launch, and again
 1. **Gemini CLI.** GeminiCode comes with a tested Gemini CLI, so there is nothing to install. It uses `gemini.cliPath`, then a copy you installed from GeminiCode, then the bundled copy, then `gemini` on your `PATH`.
 2. **Sign in.** Run **Gemini: Sign In with Google**. If your account needs a one-time step that the editor cannot show, run **Gemini: Complete Setup in Terminal**.
 3. **Project.** Run **Gemini: Set Google Cloud Project ID**. Enter the project ID, not the project number.
-4. **Make it yours.** Pick a theme, an accent colour, a code font and file icons.
+4. **Make it yours.** Pick a theme, a code font and file icons.
 5. **First agent.** Choose **New Agent** in the Agents pane.
 
 The **Gemini** status bar item shows the agent's state. Hover over it to see the account, project and CLI version, and where that CLI came from. Click it to start or restart the agent, change the project or CLI version, sign in or finish setup in a terminal, open the chat, or open the log.

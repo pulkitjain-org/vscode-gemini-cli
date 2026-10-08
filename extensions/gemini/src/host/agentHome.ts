@@ -183,6 +183,7 @@ export class AgentHome implements vscode.Disposable {
 		};
 		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'home.js'));
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
+		const menuStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'menu.css'));
 		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'codicon.css'));
 		return `<!DOCTYPE html>
 <html lang="en">
@@ -192,23 +193,25 @@ export class AgentHome implements vscode.Disposable {
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link href="${codicons}" rel="stylesheet">
 	<link href="${style}" rel="stylesheet">
+	<link href="${menuStyle}" rel="stylesheet">
 	<title>Agent Home</title>
 </head>
 <body class="agent-home">
 	<main class="home">
 		<section class="home-start">
-			<div class="home-spark" aria-hidden="true"></div>
 			<h1 id="title"></h1>
 			<p id="subtitle" class="muted"></p>
 			<form id="composer" class="home-composer">
 				<textarea id="prompt" rows="3"></textarea>
 				<div class="home-composer-bar">
-					<span class="pill-wrap"><select id="workspace" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
-					<label id="own-branch-label" class="check"><input type="checkbox" id="own-branch"><i class="codicon codicon-git-branch" aria-hidden="true"></i><span></span></label>
 					<span class="spacer"></span>
-					<button type="submit" id="start" class="primary"></button>
+					<button type="submit" id="start" class="send"><i class="codicon codicon-arrow-up" aria-hidden="true"></i></button>
 				</div>
 			</form>
+			<div class="home-options">
+				<span class="home-folder"><button type="button" id="workspace" class="option-button"><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="workspace-menu" class="home-menu" hidden></div></span>
+				<label id="own-branch-label" class="option-switch"><input type="checkbox" id="own-branch"><span class="switch-track" aria-hidden="true"></span><span class="switch-label"></span></label>
+			</div>
 		</section>
 		<section id="active" class="home-section"></section>
 		<section id="earlier" class="home-section"></section>

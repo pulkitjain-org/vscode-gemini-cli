@@ -6,7 +6,7 @@
 // Enhance prompt: rewrites the draft as a precise prompt (the extension's
 // src/acp/promptEnhancer.ts). A pill floats just after the draft's last
 // character, moving as the user types: Enhance starts it; while it works the
-// text shimmers and the pill cancels; then the rewrite replaces the draft as an
+// draft fades and the pill cancels; then the rewrite replaces the draft as an
 // edit, and the pill offers Revert beside Enhance (Undo works too).
 
 import { acceptsEnhanceReply, enhanceButtonPlacement, EnhancePhase, enhanceOriginal, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, format, isEnhanceShortcut } from './chatLogic';
@@ -33,6 +33,7 @@ let prepared = false;
 
 setLabel(enhanceButton, format(strings.enhanceTooltip, enhanceShortcutLabel(mac)));
 setLabel(revertButton, strings.revertTooltip);
+enhanceButton.querySelector('.enhance-key')!.textContent = enhanceShortcutLabel(mac);
 revertLabel.textContent = strings.revert;
 
 function setPhase(next: EnhancePhase): void {
@@ -209,7 +210,7 @@ onComposerChange(() => {
 	}
 	updateRow();
 });
-/** Measures the input's text style again, as after a font size change, and moves the pill. */
+/** Measures the input's text style again, as after a resize, and moves the pill. */
 function restyleEnhanceButton(): void {
 	mirrorStyled = false;
 	placeButton();

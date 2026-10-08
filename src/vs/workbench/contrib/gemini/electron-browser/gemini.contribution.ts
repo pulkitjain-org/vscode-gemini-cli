@@ -9,7 +9,7 @@
 // are in geminiModes.ts.
 
 import './geminiFonts.css';
-import './geminiGlass.css';
+import './geminiSoft.css';
 import './geminiModes.js';
 import './geminiBrowser.js';
 import { mainWindow } from '../../../../base/browser/window.js';
@@ -68,13 +68,13 @@ class GeminiCodeFonts extends Disposable implements IWorkbenchContribution {
 registerWorkbenchContribution2(GeminiCodeFonts.ID, GeminiCodeFonts, WorkbenchPhase.BlockStartup);
 
 /**
- * Marks every workbench window with `gemini-glass-light` or `gemini-glass-dark`
- * while a Glass theme is on, for geminiGlass.css: a stable class rather than a
- * match on the theme's class name, which would restyle on every class change.
+ * Marks every workbench window with `gemini-soft` while GeminiCode Dark or
+ * Light is on, for geminiSoft.css: a stable class rather than a match on the
+ * theme's class name, which would restyle on every class change.
  */
-class GeminiGlassMarker extends Disposable implements IWorkbenchContribution {
+class GeminiSoftMarker extends Disposable implements IWorkbenchContribution {
 
-	static readonly ID = 'workbench.contrib.geminiGlassMarker';
+	static readonly ID = 'workbench.contrib.geminiSoftMarker';
 
 	constructor(
 		@IWorkbenchThemeService themeService: IWorkbenchThemeService,
@@ -91,18 +91,15 @@ class GeminiGlassMarker extends Disposable implements IWorkbenchContribution {
 	}
 
 	private mark(theme: IWorkbenchColorTheme, containers: readonly HTMLElement[]): void {
-		// The theme's id ends with its file's path, as in `themes-geminicode-glass-dark-json`.
-		const light = theme.id.includes('themes-geminicode-glass-light-json');
-		const dark = theme.id.includes('themes-geminicode-glass-dark-json');
+		// The theme's id ends with its file's path, as in `themes-geminicode-dark-json`.
+		const soft = /themes-geminicode-(dark|light)-json/.test(theme.id);
 		for (const container of containers) {
-			container.classList.toggle('gemini-glass', light || dark);
-			container.classList.toggle('gemini-glass-light', light);
-			container.classList.toggle('gemini-glass-dark', dark);
+			container.classList.toggle('gemini-soft', soft);
 		}
 	}
 }
 
-registerWorkbenchContribution2(GeminiGlassMarker.ID, GeminiGlassMarker, WorkbenchPhase.BlockStartup);
+registerWorkbenchContribution2(GeminiSoftMarker.ID, GeminiSoftMarker, WorkbenchPhase.BlockStartup);
 
 interface GeminiToast {
 	readonly title: string;

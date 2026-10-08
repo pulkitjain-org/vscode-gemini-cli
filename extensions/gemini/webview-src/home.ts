@@ -7,6 +7,7 @@
 // cards for the agents at work, and earlier agents to resume.
 
 import type { FromHome, HomeAgent, HomeStrings, HomeView, ToHome } from '../src/host/panelProtocol';
+import { Menu } from './menu';
 import { button, el, icon, pageStrings } from './panelDom';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromHome): void; getState(): unknown; setState(state: unknown): void };
@@ -23,7 +24,8 @@ const saved = (vscode.getState() ?? {}) as SavedState;
 
 const form = document.getElementById('composer') as HTMLFormElement;
 const prompt = document.getElementById('prompt') as HTMLTextAreaElement;
-const workspace = document.getElementById('workspace') as HTMLSelectElement;
+const workspaceButton = document.getElementById('workspace') as HTMLButtonElement;
+const workspaceLabel = workspaceButton.querySelector('span')!;
 const ownBranch = document.getElementById('own-branch') as HTMLInputElement;
 const ownBranchLabel = document.getElementById('own-branch-label') as HTMLLabelElement;
 const start = document.getElementById('start') as HTMLButtonElement;
@@ -35,42 +37,73 @@ document.getElementById('subtitle')!.textContent = strings.subtitle;
 prompt.placeholder = strings.placeholder;
 prompt.value = saved.draft ?? '';
 prompt.setAttribute('aria-label', strings.title);
-workspace.setAttribute('aria-label', strings.workspace);
-ownBranchLabel.querySelector('span')!.textContent = strings.ownBranch;
+ownBranchLabel.querySelector('.switch-label')!.textContent = strings.ownBranch;
 ownBranchLabel.title = strings.ownBranchHint;
-start.textContent = strings.start;
+start.title = strings.start;
+start.setAttribute('aria-label', strings.start);
 
-const addWorkspaceValue = '\u0000add';
 let view: HomeView | undefined;
+/** The folder the next agent starts in. */
+let folder = saved.folder ?? '';
 let ownBranchTouched = false;
 
+const folderMenu = new Menu({
+	element: document.getElementById('workspace-menu')!,
+	anchor: workspaceButton,
+	label: strings.workspace,
+	sections: () => [
+		{
+			rows: (view?.workspaces ?? []).map(w => ({
+				icon: 'folder',
+				name: w.name,
+				detail: w.description,
+				checked: w.folder === folder,
+				run: () => {
+					pickFolder(w.folder);
+					folderMenu.close();
+				},
+			})),
+		},
+		{
+			rows: [{
+				icon: 'add',
+				name: strings.addWorkspace,
+				run: () => {
+					folderMenu.close();
+					vscode.postMessage({ type: 'addWorkspace' });
+				},
+			}],
+		},
+	],
+	empty: () => strings.noWorkspace,
+});
+
 function save(): void {
-	vscode.setState({ draft: prompt.value, folder: workspace.value } satisfies SavedState);
+	vscode.setState({ draft: prompt.value, folder } satisfies SavedState);
+}
+
+function pickFolder(next: string): void {
+	folder = next;
+	save();
+	updateControls();
 }
 
 function updateControls(): void {
-	const folder = view?.workspaces.find(w => w.folder === workspace.value);
-	ownBranchLabel.hidden = !folder?.git;
-	start.disabled = !prompt.value.trim() || !folder;
+	const current = view?.workspaces.find(w => w.folder === folder);
+	workspaceButton.hidden = !view?.workspaces.length;
+	workspaceLabel.textContent = current?.name ?? '';
+	const label = current ? `${strings.workspace}: ${current.description}/${current.name}` : strings.workspace;
+	workspaceButton.title = label;
+	workspaceButton.setAttribute('aria-label', label);
+	ownBranchLabel.hidden = !current?.git;
+	start.disabled = !prompt.value.trim() || !current;
+	folderMenu.render();
 }
 
 function render(next: HomeView): void {
 	view = next;
-	const selected = workspace.value || saved.folder;
-	workspace.replaceChildren();
-	for (const w of next.workspaces) {
-		const option = el('option', undefined, w.name);
-		option.value = w.folder;
-		option.title = `${w.description}/${w.name}`;
-		workspace.append(option);
-	}
-	const add = el('option', undefined, strings.addWorkspace);
-	add.value = addWorkspaceValue;
-	workspace.append(add);
-	if (selected && next.workspaces.some(w => w.folder === selected)) {
-		workspace.value = selected;
-	} else if (next.workspaces.length) {
-		workspace.value = next.workspaces[0].folder;
+	if (!next.workspaces.some(w => w.folder === folder)) {
+		folder = next.workspaces[0]?.folder ?? '';
 	}
 	if (!ownBranchTouched) {
 		ownBranch.checked = next.ownBranch;
@@ -147,10 +180,10 @@ function card(agent: HomeAgent): HTMLElement {
 
 function submit(): void {
 	const text = prompt.value.trim();
-	if (!text || !workspace.value || workspace.value === addWorkspaceValue) {
+	if (!text || !folder) {
 		return;
 	}
-	vscode.postMessage({ type: 'start', folder: workspace.value, text, ownBranch: !ownBranchLabel.hidden && ownBranch.checked });
+	vscode.postMessage({ type: 'start', folder, text, ownBranch: !ownBranchLabel.hidden && ownBranch.checked });
 	prompt.value = '';
 	save();
 	updateControls();
@@ -167,14 +200,6 @@ prompt.addEventListener('keydown', e => {
 	}
 });
 prompt.addEventListener('input', () => {
-	save();
-	updateControls();
-});
-workspace.addEventListener('change', () => {
-	if (workspace.value === addWorkspaceValue) {
-		workspace.value = view?.workspaces[0]?.folder ?? '';
-		vscode.postMessage({ type: 'addWorkspace' });
-	}
 	save();
 	updateControls();
 });

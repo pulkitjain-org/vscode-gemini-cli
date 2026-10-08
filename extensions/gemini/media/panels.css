@@ -7,17 +7,26 @@
 
 :root {
 	--gemini-radius: 10px;
-	--gemini-radius-small: 7px;
-	--gemini-radius-large: 14px;
-	--gemini-muted: var(--vscode-descriptionForeground);
+	--gemini-radius-small: 6px;
+	--gemini-radius-large: 12px;
+	/* Soft: the theme's own colours, named as the mockups name them (as in chat.css). */
+	--gemini-surface: var(--vscode-editor-background);
+	--gemini-raised: var(--vscode-editorWidget-background, var(--vscode-input-background));
+	--gemini-popover: var(--vscode-quickInput-background, var(--gemini-raised));
 	--gemini-border: var(--vscode-widget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.35)));
-	--gemini-surface: var(--vscode-editorWidget-background, var(--vscode-input-background));
+	--gemini-border-strong: var(--vscode-input-border, var(--gemini-border));
+	--gemini-muted: var(--vscode-descriptionForeground);
+	--gemini-faint: var(--vscode-disabledForeground, var(--gemini-muted));
 	--gemini-hover: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
-	--gemini-accent: var(--vscode-textLink-foreground, var(--vscode-focusBorder));
+	--gemini-selected: var(--vscode-list-activeSelectionBackground, var(--gemini-hover));
+	--gemini-shadow: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+	--gemini-accent: var(--vscode-button-background, var(--vscode-focusBorder));
+	--gemini-on-accent: var(--vscode-button-foreground, #fff);
+	--gemini-ok: var(--vscode-testing-iconPassed, #4fb98a);
+	--gemini-warn: var(--vscode-editorWarning-foreground, #e2a94f);
+	--gemini-error: var(--vscode-errorForeground, #e66a72);
 	--gemini-contrast-border: var(--vscode-contrastBorder, transparent);
-	--gemini-gradient: linear-gradient(135deg, #4796e3 10%, #9177c7 55%, #ca6673 90%);
-	--gemini-added: var(--vscode-gitDecoration-addedResourceForeground, #81b88b);
-	--gemini-removed: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39);
+	--gemini-gradient: linear-gradient(90deg, #4f8df7, #9b72cb 55%, #d96570);
 }
 
 body.vscode-high-contrast,
@@ -29,7 +38,7 @@ body {
 	margin: 0;
 	padding: 0;
 	font-family: var(--vscode-font-family);
-	font-size: var(--vscode-font-size);
+	font-size: 13px;
 	color: var(--vscode-foreground);
 }
 
@@ -44,18 +53,27 @@ textarea {
 button {
 	display: inline-flex;
 	align-items: center;
-	gap: 4px;
-	cursor: pointer;
-	border: 1px solid var(--gemini-contrast-border);
+	gap: 6px;
+	padding: 4px 11px;
+	border: 1px solid var(--gemini-border-strong);
 	border-radius: var(--gemini-radius-small);
-	background: none;
-	padding: 3px 9px;
+	background: var(--gemini-surface);
+	font-size: 12px;
 	white-space: nowrap;
+	cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+	background: var(--gemini-hover);
 }
 
 button:disabled {
 	opacity: 0.5;
 	cursor: default;
+}
+
+button .codicon {
+	font-size: 13px;
 }
 
 button:focus-visible,
@@ -66,30 +84,25 @@ select:focus-visible {
 }
 
 button.primary {
-	color: var(--vscode-button-foreground);
-	background: var(--vscode-button-background);
+	border-color: var(--gemini-accent);
+	background: var(--gemini-accent);
+	color: var(--gemini-on-accent);
+	font-weight: 500;
 }
 
 button.primary:hover:not(:disabled) {
-	background: var(--vscode-button-hoverBackground);
-}
-
-button.secondary {
-	color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
-	background: var(--vscode-button-secondaryBackground, var(--gemini-hover));
-}
-
-button.secondary:hover:not(:disabled) {
-	background: var(--vscode-button-secondaryHoverBackground, var(--gemini-hover));
+	background: var(--vscode-button-hoverBackground, var(--gemini-accent));
 }
 
 button.icon-button {
 	padding: 3px;
+	border-color: transparent;
 	border-radius: 5px;
-	color: var(--gemini-muted);
+	background: none;
+	color: var(--gemini-faint);
 }
 
-button.icon-button:hover {
+button.icon-button:hover:not(:disabled) {
 	color: var(--vscode-foreground);
 	background: var(--gemini-hover);
 }
@@ -99,21 +112,22 @@ button.icon-button:hover {
 }
 
 .added {
-	color: var(--gemini-added);
+	color: var(--gemini-ok);
 }
 
 .removed {
-	color: var(--gemini-removed);
+	color: var(--gemini-error);
 }
 
 .counts {
 	display: inline-flex;
 	gap: 6px;
+	font-family: var(--vscode-editor-font-family);
+	font-size: 11.5px;
 	font-variant-numeric: tabular-nums;
-	font-size: 12px;
 }
 
-/* --- Changes panel */
+/* --- Changes panel: a summary and the files, each a header over its diff, divided by hairlines */
 
 .changes-panel {
 	display: flex;
@@ -124,9 +138,9 @@ button.icon-button:hover {
 .changes-bar {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 6px;
 	flex-wrap: wrap;
-	padding: 8px 12px;
+	padding: 9px 12px 10px;
 	border-bottom: 1px solid var(--gemini-border);
 }
 
@@ -144,7 +158,7 @@ button.icon-button:hover {
 .changes-files {
 	flex: 1;
 	overflow: auto;
-	padding: 6px 0 16px;
+	padding-bottom: 16px;
 }
 
 .changes-panel .empty {
@@ -155,20 +169,16 @@ button.icon-button:hover {
 }
 
 .file {
-	margin: 6px 10px;
-	border: 1px solid var(--gemini-border);
-	border-radius: var(--gemini-radius);
-	overflow: hidden;
-	background: var(--vscode-editor-background);
+	border-bottom: 1px solid var(--gemini-border);
 }
 
 .file-header {
 	display: flex;
 	align-items: center;
-	gap: 8px;
-	padding: 5px 6px 5px 8px;
+	gap: 7px;
+	padding: 6px 8px 6px 12px;
+	font-size: 12px;
 	cursor: pointer;
-	background: var(--gemini-surface);
 }
 
 .file-header:hover {
@@ -185,7 +195,8 @@ button.icon-button:hover {
 
 .file-name .codicon {
 	flex: none;
-	transition: transform 120ms ease;
+	font-size: 13px;
+	color: var(--gemini-faint);
 }
 
 .file.folded .file-name .codicon-chevron-down {
@@ -193,13 +204,12 @@ button.icon-button:hover {
 }
 
 .file-name .name {
-	font-weight: 600;
 	white-space: nowrap;
 }
 
 .file-name .dir {
-	color: var(--gemini-muted);
-	font-size: 12px;
+	color: var(--gemini-faint);
+	font-size: 11.5px;
 	overflow: hidden;
 	white-space: nowrap;
 	text-overflow: ellipsis;
@@ -211,8 +221,8 @@ button.icon-button:hover {
 	flex: none;
 	padding: 0 5px;
 	border-radius: 4px;
-	font-size: 11px;
-	color: var(--gemini-added);
+	font-size: 10.5px;
+	color: var(--gemini-ok);
 	border: 1px solid currentColor;
 }
 
@@ -226,20 +236,23 @@ button.icon-button:hover {
 }
 
 .file-body .note {
-	margin: 8px 12px;
-	color: var(--gemini-muted);
+	margin: 4px 12px 10px;
+	color: var(--gemini-faint);
 }
 
 .hunk {
 	position: relative;
-	border-top: 1px solid var(--gemini-border);
+}
+
+.hunk + .hunk {
+	border-top: 1px dashed var(--gemini-border);
 }
 
 .hunk-lines {
-	padding: 4px 0;
+	padding: 0 0 6px;
 	font-family: var(--vscode-editor-font-family);
-	font-size: 12px;
-	line-height: 1.5;
+	font-size: 11px;
+	line-height: 1.6;
 	tab-size: 2;
 }
 
@@ -248,52 +261,50 @@ button.icon-button:hover {
 	display: flex;
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
-	padding-right: 8px;
+	padding-right: 12px;
+	color: var(--gemini-muted);
 }
 
 .line .sign {
 	flex: none;
-	width: 20px;
+	width: 22px;
 	text-align: center;
-	color: var(--gemini-muted);
+	color: var(--gemini-faint);
 	user-select: none;
 }
 
 .line.add {
-	background: var(--vscode-diffEditor-insertedLineBackground, rgba(155, 185, 85, 0.15));
+	background: color-mix(in srgb, var(--gemini-ok) 12%, transparent);
+	color: var(--vscode-foreground);
 }
 
 .line.add .sign {
-	color: var(--gemini-added);
+	color: var(--gemini-ok);
 }
 
 .line.del {
-	background: var(--vscode-diffEditor-removedLineBackground, rgba(255, 0, 0, 0.12));
+	background: color-mix(in srgb, var(--gemini-error) 12%, transparent);
+	color: var(--vscode-foreground);
 }
 
 .line.del .sign {
-	color: var(--gemini-removed);
-}
-
-.line.ctx {
-	color: var(--gemini-muted);
+	color: var(--gemini-error);
 }
 
 .line.more {
-	padding-left: 20px;
-	color: var(--gemini-muted);
+	padding-left: 22px;
+	color: var(--gemini-faint);
 	font-family: var(--vscode-font-family);
 	font-style: italic;
 }
 
 .hunk-actions {
 	position: absolute;
-	top: 4px;
-	right: 6px;
+	top: 2px;
+	right: 8px;
 	display: flex;
 	gap: 4px;
 	opacity: 0;
-	transition: opacity 100ms ease;
 }
 
 .hunk:hover .hunk-actions,
@@ -303,92 +314,74 @@ button.icon-button:hover {
 
 button.chip {
 	padding: 1px 7px;
-	font-size: 12px;
-	border-radius: 6px;
-	background: var(--vscode-editorWidget-background);
-	border: 1px solid var(--gemini-border);
-	box-shadow: 0 1px 3px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
+	font-size: 11.5px;
+	background: var(--gemini-popover);
+	box-shadow: 0 2px 8px var(--gemini-shadow);
 }
 
-button.chip:hover {
-	background: var(--gemini-hover);
-}
-
-/* --- Agent Home */
+/* --- Agent Home: start an agent, and every agent at a glance */
 
 .agent-home {
-	background: var(--vscode-editor-background);
-	/* gemini.chat.fontSize, set by the script. */
-	font-size: var(--gemini-font-size, var(--vscode-font-size));
+	background: var(--gemini-surface);
 }
 
 .home {
-	max-width: 760px;
+	max-width: 820px;
 	margin: 0 auto;
-	padding: max(32px, 9vh) 24px 48px;
-}
-
-.home-start {
-	text-align: center;
-}
-
-.home-spark {
-	width: 36px;
-	height: 36px;
-	margin: 0 auto 12px;
-	background: var(--gemini-gradient);
-	-webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1c.6 5.7 5.3 10.4 11 11-5.7.6-10.4 5.3-11 11-.6-5.7-5.3-10.4-11-11C6.7 11.4 11.4 6.7 12 1z'/%3E%3C/svg%3E") center / contain no-repeat;
-	mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1c.6 5.7 5.3 10.4 11 11-5.7.6-10.4 5.3-11 11-.6-5.7-5.3-10.4-11-11C6.7 11.4 11.4 6.7 12 1z'/%3E%3C/svg%3E") center / contain no-repeat;
+	padding: 56px 28px 48px;
 }
 
 .home h1 {
-	margin: 0 0 6px;
-	font-size: 22px;
+	margin: 0 0 4px;
+	font-size: 20px;
 	font-weight: 600;
 }
 
 .home-start > p {
-	margin: 0 auto 20px;
-	max-width: 520px;
+	margin: 0 0 18px;
 	line-height: 1.5;
 }
 
+/* The same composer as the chat's: a hairline box whose outline takes the Gemini colours when focused. */
 .home-composer {
-	text-align: left;
-	border: 1px solid var(--gemini-border);
+	padding: 10px 10px 8px 12px;
+	border: 1px solid var(--gemini-border-strong);
 	border-radius: var(--gemini-radius-large);
-	background: var(--vscode-input-background);
-	padding: 12px 12px 8px;
-	box-shadow: 0 4px 18px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.25));
-	transition: border-color 120ms ease;
+	background: var(--gemini-surface);
 }
 
 .home-composer:focus-within {
-	border-color: var(--vscode-focusBorder);
+	border-color: transparent;
+	background:
+		linear-gradient(var(--gemini-surface), var(--gemini-surface)) padding-box,
+		var(--gemini-gradient) border-box;
 }
 
 .home-composer textarea {
 	display: block;
 	width: 100%;
 	box-sizing: border-box;
-	min-height: 64px;
+	min-height: 52px;
 	max-height: 40vh;
-	resize: vertical;
+	padding: 0;
+	resize: none;
+	field-sizing: content;
 	border: none;
 	outline: none;
 	background: none;
+	font-size: 14px;
 	line-height: 1.5;
 	color: var(--vscode-input-foreground);
 }
 
 .home-composer textarea::placeholder {
-	color: var(--vscode-input-placeholderForeground);
+	color: var(--gemini-faint);
 }
 
 .home-composer-bar {
 	display: flex;
 	align-items: center;
-	gap: 10px;
+	gap: 8px;
 	margin-top: 8px;
 }
 
@@ -396,90 +389,152 @@ button.chip:hover {
 	flex: 1;
 }
 
-.pill-wrap {
-	position: relative;
-	display: inline-flex;
-	align-items: center;
+/* Start: round, in the accent, like the chat's Send. */
+button.send {
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	border-color: var(--gemini-accent);
+	border-radius: 50%;
+	background: var(--gemini-accent);
+	color: var(--gemini-on-accent);
 }
 
-.pill-wrap .codicon {
-	position: absolute;
-	right: 6px;
-	pointer-events: none;
+button.send:hover:not(:disabled) {
+	background: var(--vscode-button-hoverBackground, var(--gemini-accent));
+}
+
+button.send:disabled {
+	opacity: 1;
+	border-color: var(--gemini-border);
+	background: var(--gemini-raised);
+	color: var(--gemini-faint);
+}
+
+/* The folder and the own-branch switch, under the composer. */
+.home-options {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	padding: 8px 2px 0;
 	font-size: 12px;
 	color: var(--gemini-muted);
 }
 
-select.pill {
-	appearance: none;
-	border: none;
-	border-radius: var(--gemini-radius-small);
-	padding: 3px 22px 3px 9px;
+.home-folder {
+	position: relative;
+}
+
+.home-menu {
+	top: calc(100% + 6px);
+	bottom: auto;
+	left: 0;
+	width: 360px;
+	padding-top: 5px;
+}
+
+button.option-button {
+	gap: 6px;
+	padding: 2px 6px;
+	border-color: transparent;
+	background: none;
+	color: inherit;
+}
+
+button.option-button:hover,
+button.option-button[aria-expanded="true"] {
 	background: var(--gemini-hover);
-	cursor: pointer;
-	max-width: 220px;
+	color: var(--vscode-foreground);
 }
 
-select.pill option {
-	background: var(--vscode-dropdown-background);
-	color: var(--vscode-dropdown-foreground);
+button.option-button .codicon-chevron-down {
+	font-size: 11px;
 }
 
-.check {
+.option-switch {
 	display: inline-flex;
 	align-items: center;
-	gap: 5px;
-	color: var(--gemini-muted);
+	gap: 6px;
 	cursor: pointer;
 	user-select: none;
 }
 
-.check:hover {
-	color: var(--vscode-foreground);
-}
-
-.check[hidden] {
+.option-switch[hidden] {
 	display: none;
 }
 
-.check input {
-	margin: 0;
-	accent-color: var(--vscode-button-background);
+.option-switch input {
+	position: absolute;
+	opacity: 0;
+	pointer-events: none;
+}
+
+.switch-track {
+	position: relative;
+	width: 26px;
+	height: 15px;
+	border-radius: 8px;
+	background: var(--gemini-border-strong);
+}
+
+.switch-track::after {
+	content: "";
+	position: absolute;
+	top: 2px;
+	left: 2px;
+	width: 11px;
+	height: 11px;
+	border-radius: 50%;
+	background: var(--gemini-surface);
+}
+
+.option-switch input:checked + .switch-track {
+	background: var(--gemini-accent);
+}
+
+.option-switch input:checked + .switch-track::after {
+	left: 13px;
+}
+
+.option-switch input:focus-visible + .switch-track {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 2px;
 }
 
 .home-section {
-	margin-top: 36px;
+	margin-top: 30px;
 }
 
 .home-section h2 {
 	margin: 0 0 10px;
 	font-size: 11px;
-	font-weight: 600;
+	font-weight: normal;
 	text-transform: uppercase;
-	letter-spacing: 0.06em;
-	color: var(--gemini-muted);
+	letter-spacing: 0.05em;
+	color: var(--gemini-faint);
 }
 
 .cards {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+	grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
 	gap: 10px;
 }
 
+/* Cards are bordered, not shadowed; the state is the dot and one coloured word. */
 .card {
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
-	padding: 12px;
+	padding: 12px 14px;
 	border: 1px solid var(--gemini-border);
-	border-radius: var(--gemini-radius);
+	border-radius: 9px;
 	background: var(--gemini-surface);
 	cursor: pointer;
-	transition: border-color 120ms ease, transform 120ms ease;
 }
 
 .card:hover {
-	border-color: var(--vscode-focusBorder);
+	border-color: var(--gemini-border-strong);
 }
 
 .card-head {
@@ -491,45 +546,56 @@ select.pill option {
 .card-head .title {
 	flex: 1;
 	min-width: 0;
-	font-weight: 600;
+	font-weight: 500;
 	overflow: hidden;
 	white-space: nowrap;
 	text-overflow: ellipsis;
 }
 
-.card .dot {
-	flex: none;
-	width: 8px;
-	height: 8px;
-	border-radius: 50%;
-	background: var(--gemini-muted);
+.card-head .muted {
+	font-size: 11.5px;
+	color: var(--gemini-faint);
 }
 
+.card .dot {
+	flex: none;
+	box-sizing: border-box;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--gemini-faint);
+}
+
+/* Working: a small spinner in place of the dot. */
 .card.working .dot {
-	background: var(--gemini-accent);
-	animation: home-pulse 1.4s ease-in-out infinite;
+	width: 11px;
+	height: 11px;
+	border: 1.6px solid var(--gemini-border-strong);
+	border-top-color: var(--gemini-accent);
+	background: none;
 }
 
 .card.waiting .dot {
-	background: var(--vscode-charts-yellow, #cca700);
+	background: var(--gemini-warn);
 }
 
 .card.done .dot {
-	background: var(--vscode-charts-green, #89d185);
+	background: var(--gemini-ok);
 }
 
 .card.error .dot {
-	background: var(--vscode-errorForeground);
+	background: var(--gemini-error);
 }
 
-@keyframes home-pulse {
-	0%, 100% { opacity: 1; }
-	50% { opacity: 0.35; }
-}
-
-@media (prefers-reduced-motion: reduce) {
+@media (prefers-reduced-motion: no-preference) {
 	.card.working .dot {
-		animation: none;
+		animation: home-spin 0.8s linear infinite;
+	}
+}
+
+@keyframes home-spin {
+	to {
+		transform: rotate(360deg);
 	}
 }
 
@@ -537,23 +603,26 @@ select.pill option {
 	overflow: hidden;
 	white-space: nowrap;
 	text-overflow: ellipsis;
+	font-size: 12.5px;
+	color: var(--gemini-muted);
 }
 
 .card.waiting .card-status {
-	color: var(--vscode-charts-yellow, #cca700);
+	color: var(--gemini-warn);
 }
 
 .card-meta {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 4px 10px;
-	font-size: 12px;
+	gap: 4px 12px;
+	font-size: 11.5px;
+	color: var(--gemini-faint);
 }
 
 .card-meta .branch {
 	display: inline-flex;
 	align-items: center;
-	gap: 3px;
+	gap: 5px;
 }
 
 .card-meta .codicon {
@@ -573,17 +642,13 @@ select.pill option {
 }
 
 .earlier-row {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	padding: 6px 8px;
+	gap: 9px;
+	padding: 5px 8px;
 	border: none;
 	border-radius: var(--gemini-radius-small);
+	background: none;
+	font-size: 12.5px;
 	text-align: left;
-}
-
-.earlier-row:hover {
-	background: var(--gemini-hover);
 }
 
 .earlier-row .title {
@@ -593,12 +658,13 @@ select.pill option {
 	text-overflow: ellipsis;
 }
 
+.earlier-row .muted,
 .earlier-row .codicon {
-	color: var(--gemini-muted);
+	color: var(--gemini-faint);
 }
 
 .counts .files {
-	color: var(--gemini-muted);
+	color: var(--gemini-faint);
 }
 
 /* MCP Servers and Rules */
@@ -648,7 +714,7 @@ select.pill option {
 
 .settings .empty.row-problem {
 	margin: 0;
-	color: var(--vscode-editorWarning-foreground, var(--gemini-muted));
+	color: var(--gemini-warn);
 }
 
 .settings .rows {
@@ -682,10 +748,10 @@ select.pill option {
 	flex: none;
 	max-width: 200px;
 	padding: 3px 6px;
-	border: 1px solid var(--vscode-dropdown-border, var(--gemini-contrast-border));
+	border: 1px solid var(--gemini-border-strong);
 	border-radius: var(--gemini-radius-small);
-	color: var(--vscode-dropdown-foreground);
-	background: var(--vscode-dropdown-background);
+	color: var(--vscode-foreground);
+	background: var(--gemini-surface);
 }
 
 .settings .row-main {
@@ -709,13 +775,12 @@ select.pill option {
 	border-radius: 999px;
 	font-size: 11px;
 	line-height: 18px;
-	color: var(--vscode-badge-foreground);
-	background: var(--vscode-badge-background);
+	color: var(--gemini-muted);
+	border: 1px solid var(--gemini-border);
 }
 
 .settings .tag.subtle {
-	color: var(--gemini-muted);
-	background: var(--gemini-hover);
+	color: var(--gemini-faint);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -738,7 +803,7 @@ select.pill option {
 	display: flex;
 	gap: 6px;
 	margin-top: 4px;
-	color: var(--vscode-errorForeground);
+	color: var(--gemini-error);
 }
 
 .settings .empty {
@@ -753,10 +818,9 @@ select.pill option {
 	width: 30px;
 	height: 18px;
 	padding: 0;
+	border: none;
 	border-radius: 999px;
-	background: var(--vscode-input-background, var(--gemini-hover));
-	border: 1px solid var(--gemini-border);
-	transition: background 120ms ease;
+	background: var(--gemini-border-strong);
 }
 
 .switch::after {
@@ -767,22 +831,23 @@ select.pill option {
 	width: 12px;
 	height: 12px;
 	border-radius: 50%;
-	background: var(--gemini-muted);
-	transition: transform 120ms ease, background 120ms ease;
+	background: var(--gemini-surface);
+	transition: transform 120ms ease;
 }
 
 .switch.on {
-	background: var(--vscode-button-background);
-	border-color: transparent;
+	background: var(--gemini-accent);
+}
+
+.switch.on:hover:not(:disabled) {
+	background: var(--gemini-accent);
 }
 
 .switch.on::after {
 	transform: translateX(12px);
-	background: var(--vscode-button-foreground);
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.switch,
 	.switch::after {
 		transition: none;
 	}
