@@ -62,6 +62,8 @@ export interface FakeAgentScript {
 	readonly modeUpdateText?: boolean;
 	/** Sent as `available_commands_update` right after each `session/new`, as gemini-cli does. */
 	readonly availableCommands?: readonly acp.AvailableCommand[];
+	/** Sent as each `session/prompt` answer's `_meta`, such as gemini-cli's token counts. */
+	readonly promptMeta?: Record<string, unknown>;
 	/** Steps played for each successive `session/prompt`, one array per turn. */
 	readonly turns?: readonly (readonly ScriptedStep[])[];
 }
@@ -178,7 +180,7 @@ acp.agent({ name: 'fake-agent' })
 					}
 				}
 			}
-			return { stopReason: abort.signal.aborted ? 'cancelled' as const : 'end_turn' as const };
+			return { stopReason: abort.signal.aborted ? 'cancelled' as const : 'end_turn' as const, ...(script.promptMeta ? { _meta: script.promptMeta } : {}) };
 		} finally {
 			pendingTurns.delete(sessionId);
 		}

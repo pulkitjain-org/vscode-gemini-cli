@@ -63,6 +63,8 @@ export function activate(context: vscode.ExtensionContext): void {
 	const quickEdits = new QuickEdits(agentsView.review, log);
 	const statusBar = new GeminiStatusBar(service);
 	const usageMeter = new UsageMeter(quickEdits.client, log);
+	chatView.usage = usageMeter;
+	agentsView.usage = usageMeter;
 	const walkthrough = new SetupWalkthrough(service, context.globalState);
 	const browserTools = new BrowserTools(String(context.extension.packageJSON.version ?? ''), log, {
 		stop: agent => agentsView.stopTurn(agent),
@@ -115,6 +117,7 @@ export function activate(context: vscode.ExtensionContext): void {
 			const agent = agentsView.activeAgentId();
 			return agent ? agentsView.openAsMarkdown(agent) : chatView.controller.openAsMarkdown(vscode.l10n.t("Quick Chat"));
 		}),
+		vscode.commands.registerCommand('gemini.showUsage', () => chatInFront().showUsage()),
 		vscode.commands.registerCommand('gemini.addFileToChat', async (uri: unknown, uris: unknown) => chatInFront().addAttachments(await filesToAttach(uri, uris))),
 		vscode.commands.registerCommand('gemini.addSelectionToChat', () => chatInFront().addAttachments(selectionsToAttach())),
 		vscode.commands.registerCommand('gemini.showLog', () => log.show()),

@@ -1358,6 +1358,8 @@ body[data-accent="solid"] .round-button.stop::before {
 
 .scroll-down[hidden],
 .dock:has(.picker:not([hidden])) .scroll-down,
+.dock:has(.usage-popover:not([hidden])) .scroll-down,
+.dock:has(.plus-menu:not([hidden])) .scroll-down,
 .scroll-down .codicon-chevron-down,
 .scroll-down-label {
 	display: none;
@@ -1738,51 +1740,6 @@ body.vscode-high-contrast-light .enhance-icon {
 	border-color: var(--gemini-border);
 }
 
-/*
- * Buttons that look like the pickers: an icon and a label, no chevron. The pickers
- * shrink before the buttons do, and never past their own box.
- */
-button.pill {
-	display: inline-flex;
-	flex-shrink: 0;
-	align-items: center;
-	gap: 4px;
-	max-width: 160px;
-	padding: 0 9px;
-	overflow: hidden;
-	white-space: nowrap;
-}
-
-button.pill[hidden] {
-	display: none;
-}
-
-/* The workspace's name can be long; it gives way before the branch does. */
-button.pill.workspace {
-	flex-shrink: 1;
-	min-width: 28px;
-}
-
-button.pill span {
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-
-button.pill .codicon {
-	font-size: 12px;
-	color: var(--gemini-muted);
-}
-
-@container composer (max-width: 420px) {
-	button.pill {
-		padding: 0 6px;
-	}
-
-	button.pill span {
-		display: none;
-	}
-}
-
 .pill-wrap .pill {
 	max-width: 100%;
 }
@@ -1876,6 +1833,605 @@ body.vscode-high-contrast-light #send {
 
 .icon-button:hover {
 	background: var(--gemini-hover);
+}
+
+/* ---- The composer's "+" menu (plusMenu.ts), mode chip and the row under the composer ---- */
+
+.plus-button {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: none;
+	border-radius: 50%;
+	background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+	color: var(--vscode-foreground);
+	cursor: pointer;
+}
+
+.plus-button:hover,
+.plus-button[aria-expanded="true"] {
+	background: color-mix(in srgb, var(--vscode-foreground) 17%, transparent);
+}
+
+.plus-button .codicon {
+	font-size: 16px;
+}
+
+.mode-chip {
+	--mode-colour: var(--gemini-accent);
+	display: inline-flex;
+	align-items: center;
+	min-width: 0;
+	height: 26px;
+	border-radius: 13px;
+	background: color-mix(in srgb, var(--mode-colour) 18%, transparent);
+	color: color-mix(in srgb, var(--mode-colour) 65%, var(--vscode-foreground));
+}
+
+.mode-chip[hidden] {
+	display: none;
+}
+
+.mode-chip[data-mode="autoEdit"] {
+	--mode-colour: #34A853;
+}
+
+.mode-chip[data-mode="plan"] {
+	--mode-colour: #9B72CB;
+}
+
+.mode-chip[data-mode="yolo"] {
+	--mode-colour: var(--vscode-errorForeground, #f14c4c);
+}
+
+.mode-chip button {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	height: 100%;
+	border: none;
+	background: none;
+	color: inherit;
+	font: inherit;
+	font-size: 0.85em;
+	cursor: pointer;
+}
+
+.mode-chip-label {
+	min-width: 0;
+	padding: 0 2px 0 10px;
+	white-space: nowrap;
+}
+
+.mode-chip-label span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.mode-chip-reset {
+	padding: 0 9px 0 4px;
+	opacity: 0.7;
+}
+
+.mode-chip-reset:hover {
+	opacity: 1;
+}
+
+.mode-chip .codicon {
+	font-size: 13px;
+}
+
+/* The model picker reads as text beside Send, not as a second capsule. */
+.pill.model {
+	border-color: transparent;
+	background: transparent;
+	color: var(--gemini-muted);
+}
+
+.pill.model:hover {
+	background: var(--gemini-hover);
+	color: var(--vscode-foreground);
+}
+
+.plus-menu {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: calc(100% + 4px);
+	max-height: min(420px, 70vh);
+	overflow-y: auto;
+	padding: 4px;
+	border-radius: var(--gemini-radius);
+	border: 1px solid var(--vscode-editorWidget-border, var(--gemini-border));
+	background: var(--vscode-quickInput-background, var(--gemini-surface));
+	box-shadow: 0 4px 16px var(--gemini-shadow);
+	z-index: 10;
+	cursor: default;
+}
+
+.plus-menu[hidden] {
+	display: none;
+}
+
+.plus-search {
+	box-sizing: border-box;
+	width: 100%;
+	margin-bottom: 4px;
+	padding: 6px 8px 8px;
+	border: none;
+	border-bottom: 1px solid color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+	outline: none;
+	background: transparent;
+	color: var(--vscode-foreground);
+	font: inherit;
+}
+
+.plus-search::placeholder {
+	color: var(--gemini-muted);
+}
+
+.plus-heading {
+	padding: 6px 8px 2px;
+	font-size: 0.8em;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--gemini-muted);
+}
+
+.plus-separator {
+	height: 1px;
+	margin: 4px 8px;
+	background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+}
+
+.plus-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 8px;
+	border-radius: 4px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.plus-row.active {
+	background: var(--vscode-list-hoverBackground, var(--gemini-hover));
+}
+
+.plus-icon {
+	flex: none;
+	width: 16px;
+	color: var(--gemini-muted);
+}
+
+.plus-icon-shield {
+	color: #4285F4;
+}
+
+.plus-icon-edit {
+	color: #34A853;
+}
+
+.plus-icon-checklist {
+	color: #9B72CB;
+}
+
+.plus-icon-warning {
+	color: var(--vscode-errorForeground, #f14c4c);
+}
+
+.plus-name {
+	flex: none;
+}
+
+.plus-detail {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: var(--gemini-muted);
+}
+
+.plus-end {
+	margin-left: auto;
+	padding-left: 8px;
+	color: var(--gemini-muted);
+}
+
+.plus-switch {
+	position: relative;
+	flex: none;
+	width: 26px;
+	height: 14px;
+	margin-left: auto;
+	border-radius: 7px;
+	background: color-mix(in srgb, var(--vscode-foreground) 22%, transparent);
+}
+
+.plus-switch::after {
+	content: "";
+	position: absolute;
+	top: 2px;
+	left: 2px;
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	background: var(--vscode-foreground);
+}
+
+.plus-switch.on {
+	background: var(--gemini-accent);
+}
+
+.plus-switch.on::after {
+	left: 14px;
+	background: var(--vscode-button-foreground, #fff);
+}
+
+.plus-empty {
+	padding: 4px 8px;
+	color: var(--gemini-muted);
+}
+
+/* Branch, workspace and Commit, and the context ring: quiet text under the composer. */
+.composer-foot {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	min-width: 0;
+	margin: -8px var(--gemini-gutter) 8px;
+	padding: 0 6px;
+}
+
+.foot-button {
+	display: inline-flex;
+	flex-shrink: 0;
+	align-items: center;
+	gap: 4px;
+	min-width: 0;
+	max-width: 45%;
+	height: 22px;
+	padding: 0 6px;
+	border: none;
+	border-radius: 6px;
+	background: none;
+	color: var(--gemini-muted);
+	font: inherit;
+	font-size: 0.85em;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.foot-button[hidden] {
+	display: none;
+}
+
+.foot-button:hover,
+.foot-button.active {
+	background: var(--gemini-hover);
+	color: var(--vscode-foreground);
+}
+
+.foot-button:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.foot-button span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.foot-button .codicon {
+	font-size: 13px;
+}
+
+.foot-button .codicon-chevron-down {
+	font-size: 11px;
+}
+
+/* The workspace's name can be long; it gives way before the branch does. */
+.foot-button.workspace {
+	flex-shrink: 1;
+}
+
+/* The file Follow the agent opened last: its name shows it, the × closes it. */
+.foot-followed {
+	display: inline-flex;
+	flex-shrink: 1;
+	align-items: center;
+	min-width: 0;
+	max-width: 40%;
+	border-radius: 6px;
+}
+
+.foot-followed[hidden] {
+	display: none;
+}
+
+.foot-followed .followed-name {
+	flex-shrink: 1;
+	max-width: none;
+	padding-right: 2px;
+	border-radius: 6px 0 0 6px;
+}
+
+.followed-close {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 22px;
+	padding: 0;
+	border: none;
+	border-radius: 0 6px 6px 0;
+	background: none;
+	color: var(--gemini-muted);
+	cursor: pointer;
+}
+
+.followed-close .codicon {
+	font-size: 12px;
+}
+
+.followed-close:hover {
+	background: var(--gemini-hover);
+	color: var(--vscode-foreground);
+}
+
+.followed-close:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+@media (max-width: 360px) {
+	.foot-button.workspace span,
+	.foot-button.commit span {
+		display: none;
+	}
+}
+
+.ring {
+	flex: none;
+	width: 14px;
+	height: 14px;
+}
+
+.ring-track {
+	fill: none;
+	stroke: color-mix(in srgb, var(--vscode-foreground) 18%, transparent);
+	stroke-width: 2.2;
+}
+
+.ring-fill {
+	fill: none;
+	stroke: var(--gemini-accent);
+	stroke-width: 2.2;
+}
+
+.usage-ring.high .ring-fill,
+.usage-context.high .ring-fill {
+	stroke: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.usage-ring.full .ring-fill,
+.usage-context.full .ring-fill {
+	stroke: var(--vscode-errorForeground, #f14c4c);
+}
+
+.usage-ring span {
+	font-variant-numeric: tabular-nums;
+}
+
+/* ---- Usage (usage.ts): this chat's tokens and today's quota, above the composer ---- */
+
+.usage-popover {
+	position: absolute;
+	right: 0;
+	bottom: calc(100% + 4px);
+	width: min(360px, 100%);
+	max-height: 60vh;
+	overflow-y: auto;
+	padding: 8px 10px 10px;
+	border-radius: var(--gemini-radius);
+	border: 1px solid var(--vscode-editorWidget-border, var(--gemini-border));
+	background: var(--vscode-quickInput-background, var(--gemini-surface));
+	box-shadow: 0 4px 16px var(--gemini-shadow);
+	z-index: 10;
+	cursor: default;
+}
+
+.usage-popover:focus {
+	outline: none;
+}
+
+.usage-popover[hidden] {
+	display: none;
+}
+
+.usage-section + .usage-section {
+	margin-top: 12px;
+	padding-top: 10px;
+	border-top: 1px solid var(--vscode-editorWidget-border, var(--gemini-border));
+}
+
+.usage-heading {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 8px;
+	margin-bottom: 4px;
+	font-size: 0.85em;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	text-transform: uppercase;
+	color: var(--gemini-muted);
+}
+
+.usage-sub {
+	font-weight: normal;
+	text-transform: none;
+	letter-spacing: 0;
+}
+
+.usage-table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.usage-table th {
+	padding: 2px 0;
+	font-weight: normal;
+	text-align: left;
+	color: var(--gemini-muted);
+}
+
+.usage-table td {
+	padding: 2px 0;
+}
+
+.usage-table .num {
+	width: 64px;
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+
+.usage-total td {
+	border-top: 1px solid var(--vscode-editorWidget-border, var(--gemini-border));
+	font-weight: 600;
+}
+
+.usage-model {
+	overflow-wrap: anywhere;
+}
+
+.usage-context {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.ring.ring-large {
+	width: 34px;
+	height: 34px;
+}
+
+.ring-large circle {
+	stroke-width: 2;
+}
+
+.usage-context-used {
+	font-size: 1.15em;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+}
+
+.usage-context-of {
+	font-size: 0.87em;
+	font-weight: normal;
+	color: var(--gemini-muted);
+}
+
+.usage-context .usage-note {
+	margin-top: 2px;
+}
+
+.usage-note {
+	margin: 6px 0 0;
+	font-size: 0.9em;
+	color: var(--gemini-muted);
+}
+
+.usage-quota {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.usage-quota-row {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	column-gap: 8px;
+	row-gap: 3px;
+	--usage-fill: var(--gemini-accent);
+}
+
+.usage-quota-row.high {
+	--usage-fill: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.usage-quota-row.full {
+	--usage-fill: var(--vscode-errorForeground, #f14c4c);
+}
+
+.usage-detail {
+	font-size: 0.9em;
+	color: var(--gemini-muted);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.usage-bar {
+	grid-column: 1 / -1;
+	height: 4px;
+	border-radius: 2px;
+	background: color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+	overflow: hidden;
+}
+
+.usage-fill {
+	height: 100%;
+	border-radius: 2px;
+	background: var(--usage-fill);
+}
+
+.usage-summary {
+	display: flex;
+	flex-wrap: wrap;
+	column-gap: 16px;
+	row-gap: 2px;
+	font-variant-numeric: tabular-nums;
+}
+
+.usage-figure-label {
+	margin-right: 6px;
+	color: var(--gemini-muted);
+}
+
+.usage-more {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	margin-top: 6px;
+	padding: 0;
+	border: none;
+	background: none;
+	color: var(--vscode-textLink-foreground);
+	font: inherit;
+	cursor: pointer;
+}
+
+.usage-more .codicon {
+	order: 1;
+	font-size: 12px;
+}
+
+.usage-more:hover {
+	color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
+}
+
+.usage-more:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 2px;
+	border-radius: 2px;
+}
+
+.usage-table {
+	margin-top: 6px;
 }
 
 /* ---- Context: attachments and the @-mention picker ---- */
@@ -2083,7 +2639,9 @@ body.vscode-high-contrast-light #send {
 		animation: gemini-pop 120ms ease-out;
 	}
 
-	.picker:not([hidden]) {
+	.picker:not([hidden]),
+	.plus-menu:not([hidden]),
+	.usage-popover:not([hidden]) {
 		animation: gemini-pop 120ms ease-out;
 		transform-origin: bottom left;
 	}
@@ -2189,7 +2747,9 @@ body[data-vscode-theme-id^="GeminiCode Glass"] {
 	--glass-strip: #FFFFFF8C;
 	--glass-strip-solid: #FFFFFF;
 	--glass-float-shadow: 0 4px 16px #1B1C221F;
-	--glass-menu: #FFFFFFB8;
+	--glass-menu: #FFFFFF9E;
+	--glass-menu-sheen: linear-gradient(180deg, #FFFFFF99, #FFFFFF00 40%);
+	--glass-menu-edge: #FFFFFFCC;
 	--glass-menu-solid: #FFFFFF;
 	--glass-menu-shadow: 0 18px 50px #1B1C222E, 0 1px 3px #0000001A;
 	--glass-rim-top: #FFFFFFF2;
@@ -2210,7 +2770,9 @@ body[data-vscode-theme-id="GeminiCode Glass Dark"] {
 	--glass-strip: #1A1C2899;
 	--glass-strip-solid: #1A1C28;
 	--glass-float-shadow: 0 4px 16px #00000088;
-	--glass-menu: #22232DCC;
+	--glass-menu: #1F2130A6;
+	--glass-menu-sheen: linear-gradient(180deg, #FFFFFF14, #FFFFFF00 45%);
+	--glass-menu-edge: #FFFFFF24;
 	--glass-menu-solid: #22232D;
 	--glass-menu-shadow: 0 18px 50px #000000A6;
 	--glass-rim-top: #FFFFFF4D;
@@ -2422,12 +2984,55 @@ body[data-vscode-theme-id^="GeminiCode Glass"] .scroll-down .codicon {
 body[data-vscode-theme-id^="GeminiCode Glass"] .picker {
 	bottom: calc(100% + 6px);
 	padding: 6px;
-	border: none;
+	border: 1px solid var(--glass-menu-edge);
 	border-radius: 16px;
-	background: var(--glass-menu);
+	background: var(--glass-menu-sheen), var(--glass-menu);
 	box-shadow: var(--glass-menu-shadow), inset 0 1px 0 var(--glass-rim-top), inset 0 -1px 0 var(--glass-rim-bottom);
-	-webkit-backdrop-filter: blur(30px) saturate(var(--glass-saturate));
-	backdrop-filter: blur(30px) saturate(var(--glass-saturate));
+	-webkit-backdrop-filter: blur(40px) saturate(calc(var(--glass-saturate) * 1.2));
+	backdrop-filter: blur(40px) saturate(calc(var(--glass-saturate) * 1.2));
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .plus-menu {
+	bottom: calc(100% + 6px);
+	padding: 6px;
+	border: 1px solid var(--glass-menu-edge);
+	border-radius: 16px;
+	background: var(--glass-menu-sheen), var(--glass-menu);
+	box-shadow: var(--glass-menu-shadow), inset 0 1px 0 var(--glass-rim-top), inset 0 -1px 0 var(--glass-rim-bottom);
+	-webkit-backdrop-filter: blur(40px) saturate(calc(var(--glass-saturate) * 1.2));
+	backdrop-filter: blur(40px) saturate(calc(var(--glass-saturate) * 1.2));
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .plus-row {
+	padding: 5px 10px;
+	border-radius: 10px;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .plus-row.active {
+	background: var(--glass-selected);
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .foot-button {
+	border-radius: 999px;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .foot-followed .followed-name {
+	border-radius: 999px 0 0 999px;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .followed-close {
+	border-radius: 0 999px 999px 0;
+}
+
+body[data-vscode-theme-id^="GeminiCode Glass"] .usage-popover {
+	bottom: calc(100% + 6px);
+	padding: 10px 14px 12px;
+	border: 1px solid var(--glass-menu-edge);
+	border-radius: 16px;
+	background: var(--glass-menu-sheen), var(--glass-menu);
+	box-shadow: var(--glass-menu-shadow), inset 0 1px 0 var(--glass-rim-top), inset 0 -1px 0 var(--glass-rim-bottom);
+	-webkit-backdrop-filter: blur(40px) saturate(calc(var(--glass-saturate) * 1.2));
+	backdrop-filter: blur(40px) saturate(calc(var(--glass-saturate) * 1.2));
 }
 
 body[data-vscode-theme-id^="GeminiCode Glass"] .picker-row {
@@ -2441,6 +3046,7 @@ body[data-vscode-theme-id^="GeminiCode Glass"] .picker-row {
 		--glass-composer: var(--glass-composer-solid);
 		--glass-strip: var(--glass-strip-solid);
 		--glass-menu: var(--glass-menu-solid);
+		--glass-menu-sheen: none;
 	}
 
 	body[data-vscode-theme-id^="GeminiCode Glass"] .transcript {
@@ -2452,7 +3058,9 @@ body[data-vscode-theme-id^="GeminiCode Glass"] .picker-row {
 	body[data-vscode-theme-id^="GeminiCode Glass"] .activity,
 	body[data-vscode-theme-id^="GeminiCode Glass"] .status:not(:empty),
 	body[data-vscode-theme-id^="GeminiCode Glass"] .scroll-down,
-	body[data-vscode-theme-id^="GeminiCode Glass"] .picker {
+	body[data-vscode-theme-id^="GeminiCode Glass"] .picker,
+	body[data-vscode-theme-id^="GeminiCode Glass"] .plus-menu,
+	body[data-vscode-theme-id^="GeminiCode Glass"] .usage-popover {
 		-webkit-backdrop-filter: none;
 		backdrop-filter: none;
 	}

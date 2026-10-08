@@ -30,10 +30,12 @@ The product code is in [`../extensions/gemini/`](../extensions/gemini/).
 - **Branches and commits.** A branch pill in each chat's composer switches or creates a branch. In an agent's chat, **Create Branch & Commit** commits just the files that agent changed to a new branch, and warns first if other files are staged.
 - **Glass Dark and Glass Light.** The default colour themes, styled after macOS Liquid Glass: glass side bars and floating cards over an aurora wallpaper, a glass composer the chat scrolls under, and frosted pop-ups, with the Gemini gradient for Gemini's own moments. GeminiCode Dark, Light, Midnight and Dusk are there too. GeminiCode also defaults to the view icons at the top of the side bar, pill-shaped tabs, and no minimap or breadcrumbs; change any of these in Settings.
 - **Agent browser.** The globe in the title bar opens GeminiCode's browser. Agents can open and use pages in it, and **Let Gemini Use This Page** hands one of your own tabs to an agent.
-- **Follow the agent.** The eye in the composer opens each file the agent reads or edits as it works.
+- **Follow the agent.** A switch in the composer's **+** menu opens each file the agent reads or edits as it works, and names the file it opened last under the composer with a button to close it.
 - **Keep the Mac awake.** While any agent works, the Mac doesn't go to sleep.
 - **Long chats.** Jump between your prompts with ⌥⌘↑ and ⌥⌘↓, return to the newest message with **Latest**, or open the whole chat as Markdown.
 - **Modes and models.** Pick an approval mode and a model from the composer. The lists come from the agent. The model you picked last is used for new and reopened agents too.
+- **Composer.** The **+** menu holds the approval mode, files, `@` context, Follow the agent, the model, usage and the slash commands, so the composer shows only the input, its Write and Preview tabs, the model and Send. A mode other than Default shows as a chip beside **+**.
+- **Usage and quota.** The ring under the composer shows how full the chat's context window is. Click it for today's quota per model for your account, and the tokens each model used in the chat.
 - **Conversations persist.** Agents keep their conversation across reloads and restarts, and resume their CLI session when the CLI supports it.
 - **Managed CLI.** GeminiCode ships with a tested Gemini CLI, and can install, update and switch between newer versions in its own storage, without touching your system.
 - **Update notice.** Once a day GeminiCode checks its download page. When a newer version is out it says so, with **Download** and **Release Notes** buttons; it downloads nothing on its own.
@@ -72,8 +74,9 @@ The **Gemini** status bar item shows the agent's state. Hover over it to see the
 | `gemini.tools.allowShell` | Let the agent run shell commands. Each command still asks first. |
 | `gemini.browser.enabled` | Let agents open and use a page in the GeminiCode browser. On by default. |
 | `gemini.browser.allowOtherSites` | Let agents open sites other than local ones, after asking. On by default. |
+| `gemini.usageMeter.enabled` | Show today's quota in the Gemini status bar item and the chat's Usage and quota popover. On by default. |
 | `gemini.keepAwake` | Keep the Mac awake while any agent works. On by default. |
-| `gemini.chat.followAgent` | Open each file the agent reads or edits as it works. The eye in the composer toggles it. Off by default. |
+| `gemini.chat.followAgent` | Open each file the agent reads or edits as it works. The switch in the composer's + menu toggles it. Off by default. |
 | `gemini.layout.showAgentsInNewWorkspaces` | Show the Gemini side bar rather than Explorer the first time a workspace opens in Editor mode. |
 
 Changing the CLI path or version, the project, or an approval or shell setting restarts the agent so the change applies. Admins can lock all of these except the project, layout, keep-awake and follow-the-agent settings through policy; see [Security model](docs/ARCHITECTURE.md#security-model).

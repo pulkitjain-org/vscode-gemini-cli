@@ -14,10 +14,12 @@
 //   attachmentChips.ts attachments, and files pasted or dropped
 //   picker.ts          the @-mention file picker and the slash command menu
 //   enhance.ts         Enhance prompt: rewriting the draft as a precise prompt
+//   plusMenu.ts        the "+" menu: mode, files, context, follow, model, usage
+//   usage.ts           the context ring and usage popover: context, quota and tokens
 
 import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
 import { addAttachments } from './attachmentChips';
-import { setBusy, setFollow, setGit, setSettings, setStatus } from './composer';
+import { setBusy, setFollow, setFollowed, setGit, setSettings, setStatus } from './composer';
 import { applyTokenColors } from './codeHighlight';
 import { onEnhanced, onEnhanceFailed, restyleEnhanceButton, toggleEnhance } from './enhance';
 import { applyFontSize, setLabel } from './dom';
@@ -26,14 +28,11 @@ import { showSavedSessions } from './items';
 import { showCommands, showFiles } from './picker';
 import { updateOutline } from './promptNav';
 import { appended, applyItem, isNearBottom, reset, settleScroll, updateWorking } from './transcript';
+import { showContext, showQuota, toggleUsage, updateUsage } from './usage';
 import { state, strings, ui, vscode } from './view';
 
-setLabel(ui.mentionButton, strings.addContext);
-setLabel(ui.attachButton, strings.attachFiles);
-setLabel(ui.followButton, strings.followAgent);
 setLabel(ui.sendButton, strings.send);
 setLabel(ui.stopButton, strings.stop);
-setLabel(ui.modeSelect, strings.mode);
 setLabel(ui.modelSelect, strings.model);
 setLabel(ui.scrollButton, strings.scrollToBottom);
 ui.scrollLabel.textContent = strings.latest;
@@ -51,6 +50,7 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			setBusy(message.busy);
 			setStatus(message.status);
 			setSettings(message.settings);
+			updateUsage();
 			break;
 		case 'items': {
 			const stick = isNearBottom();
@@ -66,6 +66,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			// Only a prompt changes the outline; streamed replies, thoughts and tool calls do not.
 			if (message.items.some(update => update.kind === 'user')) {
 				updateOutline();
+			}
+			if (message.items.some(update => update.kind === 'turnEnd')) {
+				updateUsage();
 			}
 			updatePlaceholder();
 			break;
@@ -87,6 +90,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'follow':
 			setFollow(message.on);
+			break;
+		case 'followed':
+			setFollowed(message.file);
 			break;
 		case 'accent':
 			document.body.dataset.accent = message.solid ? 'solid' : 'gradient';
@@ -123,6 +129,15 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'enhanceFailed':
 			onEnhanceFailed(message.requestId, message.message);
+			break;
+		case 'quota':
+			showQuota(message.quota);
+			break;
+		case 'context':
+			showContext(message.context);
+			break;
+		case 'toggleUsage':
+			toggleUsage();
 			break;
 	}
 });

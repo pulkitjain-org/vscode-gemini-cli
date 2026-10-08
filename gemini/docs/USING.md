@@ -17,7 +17,7 @@ In the **Changes** panel, hover over a change to **Keep** or **Undo** it. **Keep
 
 An agent on its own branch can get a ready folder: set **Gemini › Agents: Worktree Setup** to a command (such as `npm ci`), or commit `.gemini/worktree-setup.sh` to the repository, and it runs in the new branch's folder before the agent starts. `GEMINI_SOURCE_REPOSITORY` names the repository it came from, to copy files Git does not carry, such as `.env`. Its output is in the **Gemini Worktree Setup** output; if it fails, the agent starts anyway.
 
-**Follow the agent.** Click the eye in a chat's composer, or run **Gemini: Follow the Agent**, to watch the agent work: each file it reads opens at the line it is on, and each file it edits opens once the edit is written. Files outside the agent's folder, and files that may hold secrets such as `.env` or anything under `.ssh`, are not opened. Focus stays in the chat. New chats start the way you left the last one.
+**Follow the agent.** Turn on **Follow the agent** in the composer's **+** menu, or run **Gemini: Follow the Agent**, to watch the agent work: each file it reads opens at the line it is on, and each file it edits opens once the edit is written. The file it opened last is named under the composer; click the name to show it, or **×** to close it. Files outside the agent's folder, and files that may hold secrets such as `.env` or anything under `.ssh`, are not opened. Focus stays in the chat. New chats start the way you left the last one.
 
 **Keep awake.** While any agent works, GeminiCode keeps the Mac from going to sleep, so a long task carries on when you step away. The display can still sleep, and the Mac may sleep again as soon as no agent is working. Turn it off with `gemini.keepAwake`.
 
@@ -71,7 +71,7 @@ Both send the selected lines (or the diff) straight to a fast Gemini model with 
 
 ## Approval modes
 
-Pick a mode from the composer. The list comes from the Gemini CLI, minus any mode your admin turned off.
+Pick a mode from the composer's **+** menu. The list comes from the Gemini CLI, minus any mode your admin turned off. A mode other than the first shows as a chip beside **+**; click its × to go back.
 
 | Mode | What the agent does |
 | --- | --- |
@@ -100,7 +100,7 @@ Open a file an agent changed and its changes show in place: added lines are tint
 
 Each reply that changed files ends with **Undo**, which puts back every file it changed. Undoing an earlier reply also undoes the replies after it, and GeminiCode asks first when that happens or when a file changed after Gemini wrote it. The next message tells Gemini which files went back, so it reads them again. The last 20 replies of each chat can be undone, until the window closes. **Retry** under the latest reply sends the same message again.
 
-The branch pill in a chat's composer switches to another branch or creates one. In an agent's chat, **Create Branch & Commit** creates a branch, stages only the files that agent changed, and commits them. If other files are already staged it warns first, because they would be committed too. After the commit the agent's Changes list is cleared.
+The branch under a chat's composer switches to another branch or creates one. In an agent's chat, **Create Branch & Commit** creates a branch, stages only the files that agent changed, and commits them. If other files are already staged it warns first, because they would be committed too. After the commit the agent's Changes list is cleared.
 
 ## Agents on their own branch
 
@@ -112,9 +112,9 @@ The new copy has no `node_modules` or build output, so an agent that runs tests 
 
 ## Attaching context
 
-- **Workspace files.** Type `@` or use the **@** button. The agent gets a link and reads the file itself, including unsaved changes.
+- **Workspace files.** Type `@`, or choose **Context** in the composer's **+** menu. The agent gets a link and reads the file itself, including unsaved changes.
 - **The selection.** <kbd>⌘L</kbd> adds the editor selection with its line numbers.
-- **Files from anywhere.** Use the paperclip, paste, or drop files from Finder. Hold <kbd>⇧</kbd> when dropping from the Explorer.
+- **Files from anywhere.** Choose **Files** in the **+** menu, paste, or drop files from Finder. Hold <kbd>⇧</kbd> when dropping from the Explorer.
   - Text and code files up to 1 MB are sent with their contents.
   - Images and PDFs up to about 7 MB are sent inline.
   - Other files outside the workspace are sent as links. The CLI then asks once per file before reading it.
@@ -127,7 +127,7 @@ Code in replies is coloured like the editor, in your colour theme. The button at
 
 Messages you send show Markdown the way replies do: bold, lists, `code`, code blocks and links, with your line breaks kept. In the composer, ⌘B makes the selection bold and ⌘E makes it code, typing a backtick over a selection wraps it in code, and ⇧↩ on a list line starts the next item; on an empty item it ends the list. The **Write** and **Preview** tabs at the top of the input (or ⇧⌘V) switch between your draft and how it will look once sent; typing in Preview goes back to Write.
 
-Each message you send shows the time you sent it and a **Copy** button when you point at it. Under each reply, next to how long the agent worked, is the time it finished, with the same **Copy** button. The pill next to the branch in the composer names the agent's workspace (and its worktree, when it has one); click it to copy the path, reveal the folder in Finder or show the Agents pane.
+Each message you send shows the time you sent it and a **Copy** button when you point at it. Under each reply, next to how long the agent worked, is the time it finished, with the same **Copy** button. The folder next to the branch under the composer names the agent's workspace (and its worktree, when it has one); click it to copy the path, reveal the folder in Finder or show the Agents pane.
 
 ## Restoring a Gemini CLI session
 
@@ -135,7 +135,7 @@ A new, empty agent lists the three sessions the Gemini CLI saved most recently f
 
 ## Slash commands
 
-Type `/` at the start of the composer to list commands: team commands first, then skills, then the CLI's own. Keep typing to filter, then press <kbd>Tab</kbd> or <kbd>Enter</kbd> to complete the name and add arguments.
+Type `/` at the start of the composer, or choose **Skills and commands** in the **+** menu, to list commands: team commands first, then skills, then the CLI's own. Keep typing to filter, then press <kbd>Tab</kbd> or <kbd>Enter</kbd> to complete the name and add arguments.
 
 - **Gemini CLI commands** such as `/init`, `/memory` and `/restore` come from the CLI and run in the CLI.
 - **Team commands** are TOML files in `.gemini/commands/` in the workspace, or in `~/.gemini/commands/` for your own. This is the Gemini CLI's own format, so the same files work in the terminal. `git/commit.toml` becomes `/git:commit`. GeminiCode sends the file's `prompt`, with `{{args}}` replaced by what you typed after the name. A workspace command replaces a personal one with the same name, and a CLI command wins over both.
@@ -177,9 +177,11 @@ Links to `localhost` from the terminal and chat also open in GeminiCode's browse
 
 **Review My Changes**, in the Source Control title bar and the Agents pane's **...** menu, starts an agent in Plan mode with your uncommitted diff attached and new files listed. It reads the code around the changes and replies with a summary and its findings, most serious first, without editing anything. Ask it to fix one when you agree.
 
-## Today's use
+## Usage and quota
 
-Hover the **Gemini** item in the status bar to see how much of today's quota each model has used and when it resets. Once a model passes 80%, the item shows the percentage. Turn this off with `gemini.usageMeter.enabled`.
+The ring at the bottom right of the composer shows how full this chat's context window is: the tokens in the latest request out of the model's 1M, as the Gemini CLI footer counts them. It turns amber at 50%, where Gemini starts summarising older messages, and red at 90%. Click it, choose **Usage and quota** in the **+** menu, or run **Gemini: Show Usage and Quota** to open the popover. **Context window** repeats that figure. **Today's quota** is for your account: how much of today's quota each model has used and when it resets; GeminiCode reads it when you open the popover, unless it read it in the last minute. It lists the four models with the most use; **All models** shows the rest. **This chat** totals the input, cached and output tokens over the chat's replies, as the Gemini CLI reports them with each reply; **Details by model** splits them by model. Input counts the conversation again for every model call within a reply, as the CLI's `/stats` does, so a reply with many tool calls counts more. Replies saved before GeminiCode kept these counts have none. Escape or a click outside closes it.
+
+You can also hover the **Gemini** item in the status bar to see today's quota. Once a model passes 80%, the item shows the percentage. Turn the quota off in both places with `gemini.usageMeter.enabled`. The quota needs a Google sign-in; API keys have none to read.
 
 ## Long conversations
 

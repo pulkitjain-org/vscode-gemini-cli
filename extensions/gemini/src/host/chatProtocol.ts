@@ -7,6 +7,7 @@
 // (webview-src/chat.ts). Types only, so the webview bundle can import them.
 
 import type { Attachment } from '../acp/attachments';
+import type { ModelQuota } from '../acp/directRequest';
 import type { TranscriptItem } from '../acp/chatTranscript';
 import type { ItemUpdate } from '../acp/textDeltas';
 import type { SessionSettings } from '../acp/sessionSettings';
@@ -18,7 +19,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 14;
+export const chatProtocolVersion = 15;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -71,7 +72,6 @@ export interface ChatStrings {
 	readonly copied: string;
 	readonly mode: string;
 	readonly model: string;
-	readonly addContext: string;
 	readonly noFiles: string;
 	readonly noCommands: string;
 	/** Labels for a command from the agent and one from .gemini/commands. */
@@ -145,7 +145,96 @@ export interface ChatStrings {
 	/** `{0}` is how many sessions there are. */
 	readonly showAllSessions: string;
 	readonly commandFromApp: string;
+	/** The usage popover's title. */
+	readonly usage: string;
+	readonly usageThisChat: string;
+	/** `{0}` is a number of replies. */
+	readonly usageTurns: string;
+	readonly usageOneTurn: string;
+	readonly usageInput: string;
+	readonly usageOutput: string;
+	readonly usageModel: string;
+	readonly usageTotal: string;
+	/** Under the chat's counts: what input counts. */
+	readonly usageInputNote: string;
+	readonly usageNoTurns: string;
+	/** Only replies from before GeminiCode kept counts. */
+	readonly usageNoCounts: string;
+	/** `{0}` and `{1}` are numbers of replies. */
+	readonly usageSomeCounted: string;
+	readonly usageQuota: string;
+	/** `{0}` is a percentage. */
+	readonly usageUsed: string;
+	/** `{0}` is a number of hours or minutes. */
+	readonly usageResetsHours: string;
+	readonly usageResetsMinutes: string;
+	readonly usageChecking: string;
+	/** `{0}` is a time such as "2 min ago", already short. */
+	readonly usageCheckedJustNow: string;
+	readonly usageCheckedMinutes: string;
+	readonly usageQuotaOff: string;
+	readonly usageQuotaNone: string;
+	readonly usageQuotaFailed: string;
+	/** The "+" button's tooltip and its menu. */
+	readonly plusMenu: string;
+	readonly menuSearch: string;
+	readonly menuFiles: string;
+	readonly menuFilesDetail: string;
+	readonly menuContext: string;
+	readonly menuContextDetail: string;
+	readonly menuFollow: string;
+	readonly menuFollowDetail: string;
+	/** Follow the agent's tooltip while it is on. */
+	readonly followAgentOn: string;
+	/** `{0}` is a percentage. */
+	readonly menuUsageDetail: string;
+	readonly menuCommands: string;
+	readonly back: string;
+	/** `{0}` is the mode and what it does. */
+	readonly modeChip: string;
+	/** `{0}` is the default mode. */
+	readonly modeChipReset: string;
+	/** The context ring's tooltip; `{0}` is a percentage. */
+	readonly usageRing: string;
+	readonly followedFile: string;
+	readonly closeFollowed: string;
+	readonly usageContext: string;
+	readonly usageThisChatScope: string;
+	readonly usageAccount: string;
+	readonly usageContextNone: string;
+	/** `{0}` is a short token count such as 1M. */
+	readonly usageContextOf: string;
+	/** `{0}` is a percentage. */
+	readonly usageContextNote: string;
+	/** `{0}` is a short token count. */
+	readonly usageCached: string;
+	readonly usageCachedNote: string;
+	readonly usageDetails: string;
+	readonly usageHideDetails: string;
+	readonly usageAllModels: string;
+	readonly usageFewerModels: string;
 }
+
+/** How full the session's context window is, from the counts the CLI saved with its replies. */
+export interface ViewContext {
+	/** The latest request's input tokens. */
+	readonly used: number;
+	readonly limit: number;
+	/** Input tokens served from the cache over the session. */
+	readonly cached: number;
+	readonly model?: string;
+}
+
+/** Today's quota for the usage popover. */
+export type ViewQuota =
+	| { readonly kind: 'ok'; readonly quota: readonly ModelQuota[]; /** When it was read, in ms since the epoch. */ readonly at: number; /** A newer read is on its way. */ readonly checking?: boolean }
+	/** Being read, with nothing to show yet. */
+	| { readonly kind: 'checking' }
+	/** Signed in with an API key, which has no quota to read. */
+	| { readonly kind: 'none' }
+	| { readonly kind: 'failed' }
+	/** Turned off with `gemini.usageMeter.enabled`. */
+	| { readonly kind: 'off' };
 
 /** A saved Gemini CLI session the chat can reopen. */
 export interface ViewSession {
@@ -206,6 +295,10 @@ export type FromWebview =
 	| { readonly type: 'composerHeight'; readonly height: number }
 	/** The eye toggle: open each file the agent reads or edits. */
 	| { readonly type: 'setFollow'; readonly on: boolean }
+	/** Show the file Follow the agent opened last. */
+	| { readonly type: 'showFollowed' }
+	/** Close the file Follow the agent opened last. */
+	| { readonly type: 'closeFollowed' }
 	| { readonly type: 'createBranchAndCommit' }
 	/** Put back the files the turn ending with turnEnd item `itemId` changed, and those of later turns. */
 	| { readonly type: 'undoTurn'; readonly itemId: string }
@@ -215,7 +308,9 @@ export type FromWebview =
 	| { readonly type: 'prepareEnhance' }
 	/** Rewrite the draft as a precise prompt; answered with `enhanced` or `enhanceFailed` carrying the same `requestId`. */
 	| { readonly type: 'enhancePrompt'; readonly requestId: number; readonly text: string; readonly attachments: readonly Attachment[] }
-	| { readonly type: 'cancelEnhance'; readonly requestId: number };
+	| { readonly type: 'cancelEnhance'; readonly requestId: number }
+	/** The usage popover opened; answered with `quota`, once or twice. */
+	| { readonly type: 'readQuota' };
 
 export type ToWebview =
 	| { readonly type: 'reset'; readonly items: readonly TranscriptItem[]; readonly busy: boolean; readonly status: ViewStatus; readonly settings: SessionSettings }
@@ -230,6 +325,8 @@ export type ToWebview =
 	| { readonly type: 'composerHeight'; readonly height: number }
 	/** Whether this chat follows the agent. */
 	| { readonly type: 'follow'; readonly on: boolean }
+	/** The file Follow the agent opened last, while it is still open. */
+	| { readonly type: 'followed'; readonly file: { readonly name: string; readonly path: string } | undefined }
 	| { readonly type: 'files'; readonly requestId: number; readonly files: readonly { readonly path: string; readonly relative: string }[] }
 	/** Every slash command this chat offers: the agent's, then the team's. */
 	| { readonly type: 'commands'; readonly commands: readonly SlashCommand[] }
@@ -247,4 +344,9 @@ export type ToWebview =
 	/** The text size in pixels (`gemini.chat.fontSize`). */
 	| { readonly type: 'fontSize'; readonly size: number }
 	/** The newest saved sessions the empty chat offers to reopen, of `total`. */
-	| { readonly type: 'sessions'; readonly sessions: readonly ViewSession[]; readonly total: number };
+	| { readonly type: 'sessions'; readonly sessions: readonly ViewSession[]; readonly total: number }
+	| { readonly type: 'quota'; readonly quota: ViewQuota }
+	/** The context window's use; unset when unknown, such as before the first reply. */
+	| { readonly type: 'context'; readonly context: ViewContext | undefined }
+	/** Show Usage and Quota: open the usage popover, or close it if open. */
+	| { readonly type: 'toggleUsage' };

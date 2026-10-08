@@ -12,6 +12,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import type { EditedFile } from './agentChanges';
 import type { TranscriptItem } from './chatTranscript';
+import type { ModelTokens } from './turnUsage';
 
 const formatVersion = 1;
 const maxItems = 300;
@@ -134,6 +135,11 @@ function isTranscriptItem(value: unknown): value is TranscriptItem {
 		case 'other':
 			return typeof item.type === 'string';
 		case 'turnEnd':
-			return typeof item.durationMs === 'number';
+			return typeof item.durationMs === 'number' && (item.usage === undefined || (Array.isArray(item.usage) && item.usage.every(isModelTokens)));
 	}
+}
+
+function isModelTokens(value: unknown): boolean {
+	const tokens = value as ModelTokens;
+	return typeof tokens?.model === 'string' && Number.isFinite(tokens.input) && Number.isFinite(tokens.output);
 }

@@ -106,6 +106,12 @@
         "category": "%category%"
       },
       {
+        "command": "gemini.showUsage",
+        "title": "%command.showUsage%",
+        "category": "%category%",
+        "icon": "$(graph)"
+      },
+      {
         "command": "gemini.newChat",
         "title": "%command.newChat%",
         "category": "%category%",

@@ -13,6 +13,7 @@ import { PromptCapabilities, readPromptCapabilities } from './promptContent';
 import { filterModes, readSessionSettings, SessionSettings } from './sessionSettings';
 import type { SlashCommand } from './slashCommands';
 import { ChatEvent, SessionUpdateAdapter } from './sessionUpdates';
+import { ModelTokens, readTurnUsage } from './turnUsage';
 
 export { AUTH_METHOD_ID } from './agentRuntime';
 
@@ -32,6 +33,12 @@ export type AgentClientState =
 		readonly session: acp.NewSessionResponse;
 	}
 	| { readonly kind: 'error'; readonly error: AgentErrorInfo };
+
+export interface TurnResult {
+	readonly stopReason: acp.StopReason;
+	/** Tokens per model, from gemini-cli's `_meta`; unset when the agent sent none. */
+	readonly usage?: readonly ModelTokens[];
+}
 
 export interface AgentClientOptions {
 	readonly cwd: string;
@@ -165,13 +172,19 @@ export class AgentClient {
 
 	/** Sends a prompt and resolves when the turn ends. Updates stream through `onDidReceiveEvent`. */
 	async prompt(content: string | acp.ContentBlock[]): Promise<acp.StopReason> {
+		return (await this.promptTurn(content)).stopReason;
+	}
+
+	/** Like `prompt`, and also resolves with the tokens the turn used, when the agent reports them. */
+	async promptTurn(content: string | acp.ContentBlock[]): Promise<TurnResult> {
 		const state = this._state;
 		if (state.kind !== 'ready' || !this.connection) {
 			throw new Error('The agent is not ready.');
 		}
 		try {
 			const response = await this.runtime.trackTurn(this.connection.prompt(state.sessionId, typeof content === 'string' ? [{ type: 'text', text: content }] : content));
-			return response.stopReason;
+			const usage = readTurnUsage(response._meta);
+			return { stopReason: response.stopReason, ...(usage ? { usage } : {}) };
 		} catch (err) {
 			throw new AgentError(classifyAgentError(err));
 		}

@@ -87,6 +87,16 @@ describe('AgentClient', () => {
 		]);
 	});
 
+	it('reports the tokens gemini-cli counted for a turn', async () => {
+		const { client, settled } = start({
+			turns: [[], []],
+			promptMeta: { quota: { token_count: { input_tokens: 120, output_tokens: 8 }, model_usage: [{ model: 'gemini-3.8-flash', token_count: { input_tokens: 120, output_tokens: 8 } }] } },
+		});
+		await settled;
+		expect(await client.promptTurn('hello')).toEqual({ stopReason: 'end_turn', usage: [{ model: 'gemini-3.8-flash', input: 120, output: 8 }] });
+		expect(await client.prompt('again')).toBe('end_turn');
+	});
+
 	it('cancels a running turn', async () => {
 		const { client, settled } = start({ turns: [[{ step: 'delay', ms: 200 }, { step: 'update', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'too late' } } }]] });
 		await settled;

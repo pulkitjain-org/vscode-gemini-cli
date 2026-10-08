@@ -17,10 +17,11 @@ import { PendingPermission, PermissionBroker } from '../acp/permissions';
 import { buildPromptContent } from '../acp/promptContent';
 import { skillPrompt } from '../acp/skills';
 import { expandTeamCommand, mergeCommands, parseInvocation, SlashCommand } from '../acp/slashCommands';
-import { CliSession, isPrompt, listCliSessions } from '../acp/cliSessions';
+import { CliSession, isPrompt, listCliSessions, readSessionTokens } from '../acp/cliSessions';
 import type { ChatEvent } from '../acp/sessionUpdates';
 import { AgentStatus } from '../acp/status';
 import { TextDeltas } from '../acp/textDeltas';
+import type { ModelTokens } from '../acp/turnUsage';
 import { UpdateBatcher } from '../acp/updateBatcher';
 import type { AgentClient } from '../acp/agentClient';
 import { AgentError, errorMessage } from '../acp/errors';
@@ -37,9 +38,16 @@ import { createBranchAndCommit, pickBranch } from './gitActions';
 import { preferredComposerHeight, rememberComposerHeight, rememberModel } from './modelPreference';
 import { skills, teamCommands } from './teamCommands';
 import { onDidChangeThemeTokens, themeTokenColors } from './themeTokens';
+import type { UsageMeter } from './usageMeter';
 import { createNonce, escapeAttribute } from './webviewHtml';
 import type { FileMatch } from './workspaceFiles';
 import { deleteFile, replaceFileText, WorkspaceFileSystem } from './workspaceFileSystem';
+
+/**
+ * Every current Gemini model's context window, in tokens, as gemini-cli's
+ * `tokenLimit` has it; the CLI's footer shows context use against it too.
+ */
+const contextWindow = 1_048_576;
 
 /** The agent session a chat talks to: the sidebar's, or one agent's in the Agents pane. */
 export interface ChatHost {
@@ -75,6 +83,8 @@ export interface ChatControllerOptions {
 	readonly enhancer: ChatEnhancer;
 	/** The workspace pill; without it the composer shows none. */
 	workspace?(): ChatWorkspace | undefined;
+	/** Today's quota, for the usage popover; unset shows it as off. */
+	usage?(): UsageMeter | undefined;
 	/** Offers to reopen the CLI's saved sessions for the folder (and /resume); unset in chats that do not. */
 	readonly savedSessions?: {
 		/** Sessions other chats have open, which this one must not take. */
@@ -147,6 +157,8 @@ export class ChatController implements vscode.Disposable {
 	/** Proposed edits by transcript item id (tool calls and permission requests), so their diffs can be opened later. */
 	private readonly diffs = new Map<string, readonly acp.Diff[]>();
 
+	/** Show Usage and Quota ran before the view was ready; the popover opens once it is. */
+	private usageRequested = false;
 	/** Attachments from the Add to Chat commands that arrived before the view was ready. */
 	private pendingAttachments: Attachment[] = [];
 
@@ -168,6 +180,8 @@ export class ChatController implements vscode.Disposable {
 	/** The file to show next; files are shown at most every {@link followIntervalMs}, the latest winning. */
 	private followTarget: FollowTarget | undefined;
 	private followTimer: ReturnType<typeof setTimeout> | undefined;
+	/** The file Follow the agent opened last, until its tab closes. */
+	private followed: vscode.Uri | undefined;
 
 	private readonly onDidChangeActivityEmitter = new vscode.EventEmitter<ChatActivity>();
 	readonly onDidChangeActivity = this.onDidChangeActivityEmitter.event;
@@ -211,6 +225,12 @@ export class ChatController implements vscode.Disposable {
 			this.transcript,
 			this.transcript.onDidChangeItem(item => this.items.push(item)),
 			{ dispose: () => this.items.dispose() },
+			vscode.window.tabGroups.onDidChangeTabs(() => {
+				if (this.followed && !followedTabs(this.followed).length) {
+					this.followed = undefined;
+					this.postFollowed();
+				}
+			}),
 			this.transcript.onDidReset(() => this.postReset()),
 			service.client.onDidReceiveEvent(event => {
 				if (this.replaying) {
@@ -245,6 +265,7 @@ export class ChatController implements vscode.Disposable {
 						this.addSessionLostNotice();
 					}
 					this.lastSessionId = state.savedSessionId;
+					void this.postContext();
 				}
 			}),
 			service.onDidChangeStatus(status => this.post({ type: 'status', status: toViewStatus(status) })),
@@ -379,13 +400,13 @@ export class ChatController implements vscode.Disposable {
 			if (this.undoNote) {
 				content.unshift({ type: 'text', text: this.undoNote });
 			}
-			const stopReason = await this.service.client.prompt(content);
+			const { stopReason, usage } = await this.service.client.promptTurn(content);
 			this.undoNote = undefined;
 			const notice = stopReasonNotice(stopReason);
 			if (notice) {
 				this.transcript.addNotice(notice, stopReason === 'refusal' ? 'error' : 'info');
 			}
-			this.endTurn(Date.now() - started);
+			this.endTurn(Date.now() - started, usage);
 			ended = true;
 		} catch (err) {
 			this.transcript.addNotice(errorMessage(err), 'error');
@@ -395,12 +416,13 @@ export class ChatController implements vscode.Disposable {
 				this.endTurn(Date.now() - started);
 			}
 			this.setBusy(false);
+			void this.postContext();
 		}
 	}
 
 	/** Adds the turn's end, offering Retry and, when it changed files, Undo. */
-	private endTurn(durationMs: number): void {
-		const id = this.transcript.addTurnEnd(durationMs);
+	private endTurn(durationMs: number, usage?: readonly ModelTokens[]): void {
+		const id = this.transcript.addTurnEnd(durationMs, usage);
 		const { undoable, dropped } = this.checkpoints.endTurn(id);
 		for (const old of dropped) {
 			this.transcript.updateTurnEnd(old, { undo: undefined });
@@ -623,6 +645,17 @@ export class ChatController implements vscode.Disposable {
 		this.transcript.addNotice(text);
 	}
 
+	/** Opens the usage popover, or closes it if open; the chat comes into view first. */
+	async showUsage(): Promise<void> {
+		if (!this.webview) {
+			this.usageRequested = true;
+		}
+		await this.options.reveal(false);
+		if (this.webview && !this.usageRequested) {
+			this.post({ type: 'toggleUsage' });
+		}
+	}
+
 	/** Clears the conversation and, when the agent runs, starts a fresh session so it forgets it too. */
 	async newChat(): Promise<void> {
 		if (this.busy) {
@@ -669,9 +702,14 @@ export class ChatController implements vscode.Disposable {
 				this.post({ type: 'capabilities', image: this.service.client.promptCapabilities.image });
 				this.post({ type: 'composerHeight', height: preferredComposerHeight() });
 				this.post({ type: 'follow', on: this.following });
+				this.postFollowed();
 				if (this.pendingAttachments.length) {
 					this.post({ type: 'attach', attachments: this.pendingAttachments });
 					this.pendingAttachments = [];
+				}
+				if (this.usageRequested) {
+					this.usageRequested = false;
+					this.post({ type: 'toggleUsage' });
 				}
 				this.postGit();
 				// The agent was started with the view (see attach); this retries one that has since stopped.
@@ -687,6 +725,14 @@ export class ChatController implements vscode.Disposable {
 				break;
 			case 'setFollow':
 				this.setFollowing(message.on);
+				break;
+			case 'showFollowed':
+				if (this.followed) {
+					void vscode.window.showTextDocument(this.followed, { preview: true, viewColumn: this.options.editorColumn?.() });
+				}
+				break;
+			case 'closeFollowed':
+				void this.closeFollowed();
 				break;
 			case 'pickFiles':
 				void this.pickFiles();
@@ -774,6 +820,9 @@ export class ChatController implements vscode.Disposable {
 			case 'enhancePrompt':
 				void this.enhance(message.requestId, message.text, message.attachments);
 				break;
+			case 'readQuota':
+				void this.postQuota();
+				break;
 			case 'cancelEnhance':
 				if (this.enhancing?.requestId === message.requestId) {
 					this.enhancing.abort.abort();
@@ -830,12 +879,29 @@ export class ChatController implements vscode.Disposable {
 			return;
 		}
 		const position = new vscode.Position(Math.max((target.line ?? 1) - 1, 0), 0);
+		const uri = vscode.Uri.file(file);
 		try {
-			await vscode.window.showTextDocument(vscode.Uri.file(file), {
+			await vscode.window.showTextDocument(uri, {
 				selection: new vscode.Range(position, position), preview: true, preserveFocus: true, viewColumn: this.options.editorColumn?.(),
 			});
 		} catch {
 			// A file that cannot be shown, such as a binary one, is skipped.
+			return;
+		}
+		this.followed = uri;
+		this.postFollowed();
+	}
+
+	/** The chat names the followed file, with a close button, while its tab is open. */
+	private postFollowed(): void {
+		const uri = this.followed;
+		this.post({ type: 'followed', file: uri && { name: path.basename(uri.fsPath), path: vscode.workspace.asRelativePath(uri) } });
+	}
+
+	private async closeFollowed(): Promise<void> {
+		const uri = this.followed;
+		if (uri) {
+			await vscode.window.tabGroups.close(followedTabs(uri));
 		}
 	}
 
@@ -1068,6 +1134,26 @@ export class ChatController implements vscode.Disposable {
 		if (!this.busy) {
 			void this.postSessions();
 		}
+		void this.postContext();
+	}
+
+	/** How full this session's context window is, from the counts the CLI saved; none until the agent has answered. */
+	private async postContext(): Promise<void> {
+		const state = this.service.client.state;
+		const tokens = state.kind === 'ready' && this.transcript.items.length ? await readSessionTokens(this.service.client.cwd, state.savedSessionId).catch(() => undefined) : undefined;
+		this.post({ type: 'context', context: tokens && { used: tokens.context, limit: contextWindow, cached: tokens.cached, ...(tokens.model ? { model: tokens.model } : {}) } });
+	}
+
+	/** Today's quota for the usage popover: what is known now, then a fresh read if that was not fresh. */
+	private async postQuota(): Promise<void> {
+		const meter = this.options.usage?.();
+		const current = meter?.reading ?? { kind: 'off' as const };
+		if (!meter || current.kind === 'off') {
+			this.post({ type: 'quota', quota: { kind: 'off' } });
+			return;
+		}
+		this.post({ type: 'quota', quota: current.kind === 'ok' ? { ...current, checking: true } : { kind: 'checking' } });
+		this.post({ type: 'quota', quota: await meter.refresh() });
 	}
 
 	private post(message: ToWebview): void {
@@ -1156,7 +1242,57 @@ export class ChatController implements vscode.Disposable {
 			restore: vscode.l10n.t("Restore"),
 			showAllSessions: vscode.l10n.t("Show all {0} sessions\u2026"),
 			commandFromApp: vscode.l10n.t("GeminiCode"),
-			addContext: vscode.l10n.t("Add context (@)"),
+			usage: vscode.l10n.t("Usage and quota"),
+			usageThisChat: vscode.l10n.t("This chat"),
+			usageTurns: vscode.l10n.t("{0} replies"),
+			usageOneTurn: vscode.l10n.t("1 reply"),
+			usageInput: vscode.l10n.t("Input"),
+			usageOutput: vscode.l10n.t("Output"),
+			usageModel: vscode.l10n.t("Model"),
+			usageTotal: vscode.l10n.t("Total"),
+			usageInputNote: vscode.l10n.t("Input counts the conversation again for each model call, as the CLI's /stats does."),
+			usageNoTurns: vscode.l10n.t("No replies yet."),
+			usageNoCounts: vscode.l10n.t("No token counts for these replies. Gemini reports them for new replies."),
+			usageSomeCounted: vscode.l10n.t("Counts for {0} of {1} replies."),
+			usageQuota: vscode.l10n.t("Today's quota"),
+			usageUsed: vscode.l10n.t("{0}% used"),
+			usageResetsHours: vscode.l10n.t("resets in {0}h"),
+			usageResetsMinutes: vscode.l10n.t("resets in {0}m"),
+			usageChecking: vscode.l10n.t("Checking\u2026"),
+			usageCheckedJustNow: vscode.l10n.t("Checked just now"),
+			usageCheckedMinutes: vscode.l10n.t("Checked {0} min ago"),
+			usageQuotaOff: vscode.l10n.t("Turned off in Settings (Gemini \u203a Usage Meter)."),
+			usageQuotaNone: vscode.l10n.t("Shown when you sign in with Google. API keys have no daily quota to read."),
+			usageQuotaFailed: vscode.l10n.t("Couldn't read the quota. Try again in a moment."),
+			plusMenu: vscode.l10n.t("Add files, context, modes and more"),
+			menuSearch: vscode.l10n.t("Search modes, files, commands\u2026"),
+			menuFiles: vscode.l10n.t("Files"),
+			menuFilesDetail: vscode.l10n.t("Attach files or images"),
+			menuContext: vscode.l10n.t("Context"),
+			menuContextDetail: vscode.l10n.t("Add workspace files (@)"),
+			menuFollow: vscode.l10n.t("Follow the agent"),
+			menuFollowDetail: vscode.l10n.t("Open each file it reads or edits"),
+			followAgentOn: vscode.l10n.t("Following the agent: each file it reads or edits opens. Click to stop."),
+			menuUsageDetail: vscode.l10n.t("Context {0}%"),
+			menuCommands: vscode.l10n.t("Skills and commands"),
+			back: vscode.l10n.t("Back"),
+			modeChip: vscode.l10n.t("Mode: {0}. Click to change it."),
+			modeChipReset: vscode.l10n.t("Back to {0}"),
+			usageRing: vscode.l10n.t("Context {0}% used. Click for usage and quota."),
+			followedFile: vscode.l10n.t("{0}, the file the agent is on. Click to show it."),
+			closeFollowed: vscode.l10n.t("Close {0}"),
+			usageContext: vscode.l10n.t("Context window"),
+			usageThisChatScope: vscode.l10n.t("this chat"),
+			usageAccount: vscode.l10n.t("your account"),
+			usageContextNone: vscode.l10n.t("Shown after Gemini's first reply in this chat."),
+			usageContextOf: vscode.l10n.t("of {0} tokens"),
+			usageContextNote: vscode.l10n.t("Gemini summarises older messages at {0}%."),
+			usageCached: vscode.l10n.t("Cached"),
+			usageCachedNote: vscode.l10n.t("Cached: input served from Gemini's cache, from the CLI's session file."),
+			usageDetails: vscode.l10n.t("Details by model"),
+			usageHideDetails: vscode.l10n.t("Hide details"),
+			usageAllModels: vscode.l10n.t("All {0} models"),
+			usageFewerModels: vscode.l10n.t("Fewer models"),
 			noFiles: vscode.l10n.t("No matching files"),
 			noCommands: vscode.l10n.t("No matching commands"),
 			commandFromCli: vscode.l10n.t("Gemini CLI"),
@@ -1196,6 +1332,7 @@ export class ChatController implements vscode.Disposable {
 			<div id="resize" class="composer-resize"></div>
 			<div class="drop-overlay" aria-hidden="true"><i class="codicon codicon-cloud-upload"></i><span id="drop-label"></span></div>
 			<div id="picker" class="picker" role="listbox" hidden></div>
+			<div id="usage-popover" class="usage-popover" role="dialog" hidden></div>
 			<div id="attachments" class="attachments" hidden></div>
 			<div class="composer-tabs" role="tablist"><button type="button" id="tab-write" class="composer-tab" role="tab" aria-selected="true" aria-controls="input"></button><button type="button" id="tab-preview" class="composer-tab" role="tab" aria-selected="false" aria-controls="preview"></button></div>
 			<div id="preview" class="composer-preview markdown" role="tabpanel" tabindex="0" hidden></div>
@@ -1208,19 +1345,23 @@ export class ChatController implements vscode.Disposable {
 				<span id="enhance-note" class="enhance-note" role="status" hidden></span>
 			</div>
 			<div class="composer-bar">
-				<button type="button" id="attach" class="icon-button"><svg class="paperclip" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 3.5 4.9 9.1a1.8 1.8 0 0 0 2.5 2.5l6-6a3 3 0 0 0-4.2-4.2L3.1 7.5a4.2 4.2 0 0 0 6 6l4.4-4.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-				<button type="button" id="mention" class="icon-button"><i class="codicon codicon-mention" aria-hidden="true"></i></button>
-				<button type="button" id="follow" class="icon-button follow" aria-pressed="false"><i class="codicon codicon-eye" aria-hidden="true"></i></button>
-				<span class="pill-wrap" hidden><select id="mode" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
-				<span class="pill-wrap" hidden><select id="model" class="pill"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
+				<button type="button" id="plus" class="plus-button" aria-haspopup="menu" aria-expanded="false" aria-controls="plus-menu"><i class="codicon codicon-add" aria-hidden="true"></i></button>
+				<span id="mode-chip" class="mode-chip" hidden><button type="button" class="mode-chip-label"><i class="codicon" aria-hidden="true"></i><span></span></button><button type="button" class="mode-chip-reset"><i class="codicon codicon-close" aria-hidden="true"></i></button></span>
 				<span class="spacer"></span>
-				<button type="button" id="commit" class="pill commit" hidden><i class="codicon codicon-git-commit" aria-hidden="true"></i><span></span></button>
-				<button type="button" id="workspace" class="pill workspace" hidden><i class="codicon codicon-folder" aria-hidden="true"></i><span></span></button>
-				<button type="button" id="branch" class="pill branch" hidden><i class="codicon codicon-git-branch" aria-hidden="true"></i><span></span></button>
+				<span class="pill-wrap model-wrap" hidden><select id="model" class="pill model"></select><i class="codicon codicon-chevron-down" aria-hidden="true"></i></span>
 				<button type="submit" id="send" class="round-button"><i class="codicon codicon-arrow-up" aria-hidden="true"></i></button>
 				<button type="button" id="stop" class="round-button stop" hidden><i class="codicon codicon-debug-stop" aria-hidden="true"></i></button>
 			</div>
+			<div id="plus-menu" class="plus-menu" role="menu" hidden></div>
 		</form>
+		<div class="composer-foot">
+			<button type="button" id="branch" class="foot-button branch" hidden><i class="codicon codicon-git-branch" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button>
+			<button type="button" id="workspace" class="foot-button workspace" hidden><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button>
+			<button type="button" id="commit" class="foot-button commit" hidden><i class="codicon codicon-git-commit" aria-hidden="true"></i><span></span></button>
+			<span id="followed" class="foot-followed" hidden><button type="button" class="foot-button followed-name"><i class="codicon codicon-eye" aria-hidden="true"></i><span></span></button><button type="button" class="followed-close"><i class="codicon codicon-close" aria-hidden="true"></i></button></span>
+			<span class="spacer"></span>
+			<button type="button" id="usage-ring" class="foot-button usage-ring" aria-expanded="false" aria-controls="usage-popover"><svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="ring-track" cx="8" cy="8" r="6"/><circle class="ring-fill" cx="8" cy="8" r="6" pathLength="100" stroke-dasharray="0 100" transform="rotate(-90 8 8)"/></svg><span></span></button>
+		</div>
 	</div>
 	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
@@ -1281,6 +1422,11 @@ function diffsOf(content: readonly acp.ToolCallContent[] | null | undefined): ac
 function solidAccent(): boolean {
 	const accent = vscode.workspace.getConfiguration('gemini').get<string>('appearance.accent', 'theme');
 	return accent !== 'theme' && accent !== 'gradient';
+}
+
+/** The editor tabs showing `uri`. */
+function followedTabs(uri: vscode.Uri): vscode.Tab[] {
+	return vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => tab.input instanceof vscode.TabInputText && tab.input.uri.toString() === uri.toString());
 }
 
 async function isFile(filePath: string): Promise<boolean> {

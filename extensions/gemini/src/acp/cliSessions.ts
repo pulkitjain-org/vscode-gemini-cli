@@ -51,6 +51,18 @@ export interface ParsedSession {
 	readonly resumable: boolean;
 	readonly startedAt: number;
 	readonly updatedAt: number;
+	/** The token counts the CLI saved with its replies; unset when it saved none. */
+	readonly tokens?: SessionTokens;
+}
+
+/** What a session's model requests used, from the counts the CLI saves with each reply. */
+export interface SessionTokens {
+	/** The latest request's input tokens: how much of the context window the conversation fills. */
+	readonly context: number;
+	/** The model of that request. */
+	readonly model?: string;
+	/** Input tokens served from the cache, summed over the session's replies. */
+	readonly cached: number;
 }
 
 /** The CLI's own folder: ~/.gemini, or under GEMINI_CLI_HOME when that is set. */
@@ -251,7 +263,49 @@ export function parseSessionFile(text: string, wholeJson: boolean, mtime = 0): P
 		resumable,
 		startedAt: Number.isFinite(started) ? started : Number.isFinite(updated) ? updated : mtime,
 		updatedAt: Number.isFinite(updated) ? updated : Number.isFinite(started) ? started : mtime,
+		...withTokens(all),
 	};
+}
+
+/** The session's token counts from its replies' `tokens` (`input`, `cached`, ...), as gemini-cli 0.62 and 0.63 save them. */
+function withTokens(messages: readonly MessageRecord[]): { tokens?: SessionTokens } {
+	let latest: { readonly input: number; readonly model?: string } | undefined;
+	let cached = 0;
+	for (const message of messages) {
+		const tokens = (message as { tokens?: unknown }).tokens;
+		if (message.type !== 'gemini' || !isObject(tokens)) {
+			continue;
+		}
+		const model = (message as { model?: unknown }).model;
+		if (typeof tokens.input === 'number' && Number.isFinite(tokens.input) && tokens.input > 0) {
+			latest = { input: tokens.input, ...(typeof model === 'string' && model ? { model } : {}) };
+		}
+		if (typeof tokens.cached === 'number' && Number.isFinite(tokens.cached) && tokens.cached > 0) {
+			cached += tokens.cached;
+		}
+	}
+	return latest ? { tokens: { context: Math.round(latest.input), ...(latest.model ? { model: latest.model } : {}), cached: Math.round(cached) } } : {};
+}
+
+/**
+ * The token counts saved for session `id` in `cwd`, from its newest file;
+ * undefined when the CLI saved none (chat recording off, or nothing sent yet).
+ */
+export async function readSessionTokens(cwd: string, id: string, home?: string): Promise<SessionTokens | undefined> {
+	const folder = await chatsFolder(cwd, home);
+	if (!folder || !id) {
+		return undefined;
+	}
+	let names: string[];
+	try {
+		// The CLI names a session's file after the first 8 characters of its id.
+		const suffix = `-${id.slice(0, 8)}.json`;
+		names = (await fs.readdir(folder)).filter(name => name.startsWith('session-') && (name.endsWith(suffix) || name.endsWith(`${suffix}l`)));
+	} catch {
+		return undefined;
+	}
+	const sessions = (await Promise.all(names.map(name => readSessionFile(path.join(folder, name))))).filter(session => session?.id === id);
+	return sessions.sort((a, b) => b!.updatedAt - a!.updatedAt)[0]?.tokens;
 }
 
 /** A model message the CLI would resume: one with text, tool calls or thoughts. */

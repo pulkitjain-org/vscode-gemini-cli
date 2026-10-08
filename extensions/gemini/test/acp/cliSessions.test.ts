@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { chatsFolder, findCliSession, listCliSessions, parseSessionFile } from '../../src/acp/cliSessions';
+import { chatsFolder, findCliSession, listCliSessions, parseSessionFile, readSessionTokens } from '../../src/acp/cliSessions';
 
 /** Written by gemini-cli 0.62 for `gemini -p "Fix the rounding in the cart total"`, paths changed. */
 const terminalSession = readFileSync(path.join(__dirname, '..', 'fixtures', 'cli-sessions', 'session-terminal.jsonl'), 'utf8');
@@ -24,6 +24,7 @@ describe('parseSessionFile', () => {
 			resumable: true,
 			startedAt: Date.parse('2026-10-05T10:27:08.057Z'),
 			updatedAt: Date.parse('2026-10-05T10:27:08.130Z'),
+			tokens: { context: 1, model: 'gemini-2.5-flash', cached: 0 },
 		});
 	});
 
@@ -51,6 +52,18 @@ describe('parseSessionFile', () => {
 		expect(parseSessionFile([line({ sessionId: 's4', projectHash: 'h' }), line({ id: 'a', type: 'gemini', content: '', toolCalls: [{}] })].join('\n'), false)).toMatchObject({ resumable: true, prompts: [] });
 		expect(parseSessionFile([line({ sessionId: 's5', projectHash: 'h', kind: 'subagent' }), line({ id: 'a', type: 'user', content: 'go' })].join('\n'), false)).toBeUndefined();
 		expect(parseSessionFile('not json', true)).toBeUndefined();
+	});
+
+	it('takes the context from the latest reply, and sums the cached tokens', () => {
+		const text = [
+			line({ sessionId: 's7', projectHash: 'h' }),
+			line({ id: 'a', type: 'user', content: 'go' }),
+			line({ id: 'b', type: 'gemini', content: 'one', model: 'gemini-3.5-pro', tokens: { input: 1000, output: 10, cached: 400, total: 1010 } }),
+			line({ id: 'c', type: 'gemini', content: 'two', model: 'gemini-3.8-flash', tokens: { input: 1500, output: 20, cached: 900, total: 1520 } }),
+			line({ id: 'd', type: 'gemini', content: 'no counts' }),
+		].join('\n');
+		expect(parseSessionFile(text, false)?.tokens).toEqual({ context: 1500, model: 'gemini-3.8-flash', cached: 1300 });
+		expect(parseSessionFile([line({ sessionId: 's8', projectHash: 'h' }), line({ id: 'a', type: 'user', content: 'go' })].join('\n'), false)?.tokens).toBeUndefined();
 	});
 
 	it('shortens long titles to one line', () => {
@@ -112,5 +125,23 @@ describe('listCliSessions', () => {
 		saveSession(path.join(home, 'tmp', hashed, 'chats'), 'session-x.json', 'legacy', 'From before', '2026-08-01T00:00:00.000Z');
 		expect((await listCliSessions(work, { home })).map(s => s.id)).toEqual(['legacy']);
 		expect(await listCliSessions(path.join(home, 'elsewhere'), { home })).toEqual([]);
+	});
+
+	it('reads a session\'s token counts from its own file, by id', async () => {
+		home = mkdtempSync(path.join(tmpdir(), 'cli-home-'));
+		const work = path.join(home, 'shop');
+		writeFileSync(path.join(home, 'projects.json'), JSON.stringify({ projects: { [work]: 'shop' } }));
+		const chats = path.join(home, 'tmp', 'shop', 'chats');
+		mkdirSync(chats, { recursive: true });
+		const id = 'abcd1234-0000-4000-8000-000000000000';
+		writeFileSync(path.join(chats, 'session-2026-10-08T10-00-abcd1234.jsonl'), [
+			line({ sessionId: id, projectHash: 'h' }),
+			line({ id: 'a', type: 'user', content: 'go' }),
+			line({ id: 'b', type: 'gemini', content: 'done', model: 'gemini-3.8-flash', tokens: { input: 124_300, cached: 80_000 } }),
+		].join('\n'));
+		saveSession(chats, 'session-2026-10-08T09-00-other000.jsonl', 'other000-0000', 'Other', '2026-10-08T09:00:00.000Z');
+		expect(await readSessionTokens(work, id, home)).toEqual({ context: 124_300, model: 'gemini-3.8-flash', cached: 80_000 });
+		expect(await readSessionTokens(work, 'other000-0000', home)).toBeUndefined();
+		expect(await readSessionTokens(work, 'missing0-0000', home)).toBeUndefined();
 	});
 });
