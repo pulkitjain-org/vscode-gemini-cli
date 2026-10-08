@@ -13,7 +13,6 @@ import './geminiGlass.css';
 import './geminiModes.js';
 import './geminiBrowser.js';
 import { mainWindow } from '../../../../base/browser/window.js';
-import { isMacintosh } from '../../../../base/common/platform.js';
 import { CancellationTokenSource } from '../../../../base/common/cancellation.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { ThemeIcon } from '../../../../base/common/themables.js';
@@ -99,9 +98,6 @@ class GeminiGlassMarker extends Disposable implements IWorkbenchContribution {
 			container.classList.toggle('gemini-glass', light || dark);
 			container.classList.toggle('gemini-glass-light', light);
 			container.classList.toggle('gemini-glass-dark', dark);
-			// On macOS a Glass window is see-through over the desktop (vibrancy, windows.ts), so the
-			// page behind the workbench must be transparent too; the body's colour is set in code.
-			container.ownerDocument.body.classList.toggle('gemini-glass-window', (light || dark) && isMacintosh);
 		}
 	}
 }

@@ -12,7 +12,7 @@
 // The landing page's feature sections are fixed in `renderPage`; edit them by
 // hand when they change. Their screenshots live in `gemini/site/images/`
 // (hero.webp, agents.webp and review.webp at 2000 × 1250, chat.webp at
-// 1720 × 1240); a missing image is left out. The Geist fonts in `gemini/site/fonts/` are served with the page.
+// 1620 × 1168); a missing image is left out. The Geist fonts in `gemini/site/fonts/` are served with the page.
 //
 //   node gemini/site/build.mts <out-dir>            # needs GITHUB_REPOSITORY, uses GITHUB_TOKEN if set
 //   node gemini/site/build.mts <out-dir> --sample   # a made-up release, to preview the page
@@ -55,7 +55,7 @@ const siteDir = import.meta.dirname;
 const dmgPattern = /^GeminiCode-.+-arm64(-unsigned)?\.dmg$/;
 const images = ['hero.webp', 'agents.webp', 'review.webp', 'chat.webp'] as const;
 type Image = typeof images[number];
-const imageSizes: Record<Image, readonly [number, number]> = { 'hero.webp': [2000, 1250], 'agents.webp': [2000, 1250], 'review.webp': [2000, 1250], 'chat.webp': [1720, 1240] };
+const imageSizes: Record<Image, readonly [number, number]> = { 'hero.webp': [2000, 1250], 'agents.webp': [2000, 1250], 'review.webp': [2000, 1250], 'chat.webp': [1620, 1168] };
 
 async function main(outDir: string | undefined, mode: string | undefined): Promise<void> {
 	if (!outDir) {
@@ -305,14 +305,14 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 	const meta = c.version
 		? `v${text(c.version)}${c.releasedShort ? ` · ${text(c.releasedShort)}` : ''} · macOS 12+ · M1 or later`
 		: `<a href="${attr(c.repoUrl)}/releases">Check GitHub Releases</a> · Mac with Apple silicon`;
-	const hero = figure('hero.webp', 'GeminiCode in Agents mode', 'shot');
+	const hero = figure('hero.webp', 'GeminiCode in Agents mode with Glass Light: agents on the left, an agent at work in the middle, its changes on the right', 'shot');
 
 	const body = `
 	<section class="hero">
 		<div class="wrap${hero ? '' : ' no-shot'}">
 			${pill}
-			<h1>A full code editor with Gemini as its agent.</h1>
-			<p class="sub">Run agents side by side, give any of them a branch of its own, and review every change before you keep it. The Gemini CLI is built in.</p>
+			<h1>Watch your agents work. Keep only what you want.</h1>
+			<p class="sub">A full code editor with Gemini as its agent. Run agents side by side, see what each one is doing as it works, and review every change before you keep it. The Gemini CLI is built in.</p>
 			<div class="actions">${download}
 				<a class="ghost" href="#install">How to install</a>
 			</div>
@@ -322,37 +322,63 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 	</section>
 
 	<section class="highlights wrap">
+		<div class="row">
+			<div>
+				<p class="eyebrow">New in 0.4.0</p>
+				<h2 class="h2">Glass, a browser for your agents, and long tasks that keep going</h2>
+			</div>
+			<a href="notes.html">Read the release notes →</a>
+		</div>
 		<article class="feature">
 			<div>
-				<p class="eyebrow">Agents mode</p>
-				<h2 class="h2">Describe a task. Press Enter. An agent starts.</h2>
-				<p class="lede">Each agent gets a card with its status, changes and next step. Title-bar pills show which agents are working or waiting for you. Switch to the classic editor layout with ⌥⌘M.</p>
+				<p class="eyebrow">Glass Light and Glass Dark</p>
+				<h2 class="h2">A calmer window that stays out of the way.</h2>
+				<p class="lede">The new default themes take after macOS Liquid Glass. The side bars are glass over an aurora wallpaper, the chat scrolls on under a glass composer, and tabs and the Agents | Editor switch sit in the title bar. Each agent's row shows a status dot and a short note, such as how long it has worked or that it's waiting for you.</p>
 			</div>
-			${figure('agents.webp', 'Agent Home', 'frame')}
+			${figure('agents.webp', 'Glass Dark: the agent list, a chat with a test run and the Changes panel', 'frame')}
 		</article>
 		<article class="feature flip">
 			<div>
-				<p class="eyebrow">Review</p>
-				<h2 class="h2">Keep or undo every change.</h2>
-				<p class="lede">The Changes panel lists everything an agent edited, with Keep, Undo and Commit. Open a changed file to review each edit in place. Any reply that touched files can be undone.</p>
+				<p class="eyebrow">Every turn</p>
+				<h2 class="h2">See what the agent is doing right now.</h2>
+				<p class="lede">A strip above the composer shows how long the agent has worked and its current step, such as a test run, or that it's waiting for you. A ring turns round Stop while it works. Write and Preview tabs show your message as it will look once sent.</p>
 			</div>
-			${figure('review.webp', 'Reviewing changes in a file', 'frame')}
-		</article>
-		<article class="feature">
-			<div>
-				<p class="eyebrow">Chat</p>
-				<h2 class="h2">Turn a rough idea into a clear prompt.</h2>
-				<p class="lede">Write what you want in plain words and press Enhance, or ⌥⌘E. Gemini rewrites it with what to do, where, and how to tell it's done, and nothing is sent until you press Send. Your messages show Markdown, and each one has its time and a Copy button.</p>
-			</div>
-			${figure('chat.webp', 'A prompt rewritten by Enhance', 'frame')}
+			${figure('chat.webp', 'A test run in the chat, with the working strip and the Stop button', 'frame')}
 		</article>
 		<div class="cards">
+			<div class="card"><h3>A browser your agents can use</h3><p>Agents open the app they're building in the built-in browser, then read, click, type and take screenshots to check their work. Local pages open freely; other sites ask you first. Let Gemini Use This Page hands over a page you opened.</p></div>
+			<div class="card"><h3>Keep the Mac awake</h3><p>While any agent works, the Mac doesn't go to sleep, so a long task carries on when you step away. The display can still sleep.</p></div>
+			<div class="card"><h3>Follow the agent</h3><p>Click the eye in the composer and each file the agent reads or edits opens at the line it's on. Focus stays in the chat.</p></div>
+			<div class="card"><h3>Find your way in long chats</h3><p>Point at the outline of your prompts down the chat's edge to jump back, or press ⌥⌘↑ and ⌥⌘↓. Open Chat as Markdown gives you the whole conversation as one file.</p></div>
+			<div class="card"><h3>Project Helpers</h3><p>One page for what every agent loads: MCP servers, skills, hooks, Gemini CLI extensions and memory, with switches for servers, hooks and extensions. Skills show in the / menu too.</p></div>
+			<div class="card"><h3>Branches ready to run</h3><p>Set a setup command, or commit <code>.gemini/worktree-setup.sh</code>, and it runs in each new agent branch before the agent starts.</p></div>
+		</div>
+	</section>
+
+	<section class="highlights earlier wrap">
+		<div class="row">
+			<div>
+				<p class="eyebrow">Also in GeminiCode</p>
+				<h2 class="h2">Agents, review and chat</h2>
+			</div>
+		</div>
+		<article class="feature">
+			<div>
+				<p class="eyebrow">Review</p>
+				<h3 class="h3">Keep or undo every change.</h3>
+				<p class="lede">The Changes panel lists everything an agent edited, with Keep, Undo and Commit. Open a changed file to review each edit in place. Any reply that touched files can be undone.</p>
+			</div>
+			${figure('review.webp', 'Reviewing an agent\'s changes in a file, with Keep and Undo above each one', 'frame')}
+		</article>
+		<div class="cards compact">
+			<div class="card"><h3>Agents mode</h3><p>Describe a task in Agent Home and press Return. Each agent gets a card with its status, changes and next step. ⌥⌘M switches to the classic editor layout.</p></div>
 			<div class="card"><h3>Agents on their own branch</h3><p>Tick On its own branch and the agent works in a Git worktree of its own, away from your files. Merge Back when it's done.</p></div>
+			<div class="card"><h3>Enhance your prompt</h3><p>Write what you want in plain words and press Enhance, or ⌥⌘E. Gemini rewrites it as a clear prompt, and nothing is sent until you press Send.</p></div>
 			<div class="card"><h3>Pick up a CLI session</h3><p>A new agent lists the Gemini CLI sessions saved for its folder, including ones you started in the terminal. Click Restore to carry on.</p></div>
 			<div class="card"><h3>Inline edit</h3><p>Select code, press ⌘I and say what to change. Gemini rewrites just those lines. The sparkle in Source Control writes your commit message.</p></div>
 			<div class="card"><h3>Review My Changes</h3><p>An agent in Plan mode reads your uncommitted diff and reports findings without editing anything.</p></div>
 			<div class="card"><h3>Know when it's done</h3><p>A Mac notification and a Dock badge when an agent finishes or needs you, so you can work on something else.</p></div>
-			<div class="card"><h3>Make it yours</h3><p>Midnight and Dusk themes, accent colours, chat text size, and JetBrains Mono and Geist Mono included.</p></div>
+			<div class="card"><h3>Make it yours</h3><p>Glass Light and Glass Dark, or Dark, Midnight, Dusk and Light. Accent colours, chat text size, and JetBrains Mono and Geist Mono included.</p></div>
 		</div>
 	</section>
 
@@ -369,7 +395,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 			<li><span class="n">02</span><b>Launch GeminiCode</b><span>The Get Started walkthrough opens. The Gemini CLI comes with the app.</span></li>
 			<li><span class="n">03</span><b>Sign in with Google</b><span>Use the account that holds your Gemini Code Assist license.</span></li>
 			<li><span class="n">04</span><b>Check your Cloud project</b><span>Only if your organisation doesn't set it for you.</span></li>
-			<li><span class="n">05</span><b>Start an agent</b><span>Describe a task in Agent Home and press Enter.</span></li>
+			<li><span class="n">05</span><b>Start an agent</b><span>Describe a task in Agent Home and press Return.</span></li>
 		</ol>
 		<p class="fine">GeminiCode tells you when an update is out and links back here.</p>
 	</section>`;
@@ -461,14 +487,14 @@ function attr(value: string): string {
 
 function sampleRelease(repo: string): GitHubRelease {
 	return {
-		tag_name: 'v0.1.0',
-		name: 'GeminiCode 0.1.0 (unsigned)',
-		html_url: `https://github.com/${repo}/releases/tag/v0.1.0`,
-		published_at: '2026-10-03T12:00:00Z',
-		body_html: '<p>GeminiCode 0.1.0 for Mac with Apple silicon, built on Code - OSS 1.141.0 with Gemini CLI 0.62.0.</p><h2>What\'s Changed</h2><ul><li>Bundle a known-good Gemini CLI with the app</li><li>Tell users when a newer GeminiCode is out</li></ul><h3>Shortcuts</h3><table><thead><tr><th>Keys</th><th>What it does</th></tr></thead><tbody><tr><td><kbd>Cmd</kbd>+<kbd>I</kbd></td><td>Inline edit on the selected lines</td></tr><tr><td><kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>M</kbd></td><td>Switch between Agents and Editor modes</td></tr></tbody></table><h3>Known limitations</h3><ul><li>No autocomplete.</li></ul>',
+		tag_name: 'v0.4.0',
+		name: 'GeminiCode 0.4.0',
+		html_url: `https://github.com/${repo}/releases/tag/v0.4.0`,
+		published_at: '2026-10-08T12:00:00Z',
+		body_html: '<p>GeminiCode 0.4.0 for Mac with Apple silicon, built on Code - OSS 1.141.0 with Gemini CLI 0.62.0.</p><h2>What\'s Changed</h2><ul><li>Glass Light and Glass Dark, styled after macOS Liquid Glass</li><li>A browser your agents can use</li><li>Keep the Mac awake while agents work</li></ul><h3>Shortcuts</h3><table><thead><tr><th>Keys</th><th>What it does</th></tr></thead><tbody><tr><td><kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>Up</kbd></td><td>Jump to your previous prompt</td></tr><tr><td><kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>M</kbd></td><td>Switch between Agents and Editor modes</td></tr></tbody></table><h3>Known limitations</h3><ul><li>No autocomplete.</li></ul>',
 		assets: [
-			{ name: 'GeminiCode-0.1.0-arm64-unsigned.dmg', browser_download_url: `https://github.com/${repo}/releases/download/v0.1.0/GeminiCode-0.1.0-arm64-unsigned.dmg`, size: 212_000_000 },
-			{ name: 'GeminiCode-0.1.0-arm64-unsigned.dmg.sha256', browser_download_url: `sample:${'0123456789abcdef'.repeat(4)}`, size: 100 },
+			{ name: 'GeminiCode-0.4.0-arm64.dmg', browser_download_url: `https://github.com/${repo}/releases/download/v0.4.0/GeminiCode-0.4.0-arm64.dmg`, size: 212_000_000 },
+			{ name: 'GeminiCode-0.4.0-arm64.dmg.sha256', browser_download_url: `sample:${'0123456789abcdef'.repeat(4)}`, size: 100 },
 		],
 	};
 }

@@ -8,9 +8,8 @@
  * Glass pass. A theme can only set flat colours, so the rest is here, keyed to the gemini-glass
  * classes gemini.contribution.ts puts on the workbench:
  *
- * - an aurora wallpaper behind the floating cards of the Modern UI layout; on macOS the window is
- *   see-through (Electron vibrancy, windows.ts), so the wallpaper is only a faint tint over the
- *   blurred desktop that macOS draws, and the side bars let it through;
+ * - an aurora wallpaper behind the floating cards of the Modern UI layout, the same on every
+ *   platform, with the side bars as glass over it;
  * - the editor as a white (or ink) sheet; side bars as glass cards; concentric corners
  *   (cards 14, rows 8, controls and title bar groups as capsules);
  * - the title bar as floating capsule groups (mode switch, tabs, buttons) with a light-catching rim;
@@ -33,16 +32,8 @@
 		radial-gradient(40% 50% at 95% 75%, #2BB3A3 0%, transparent 70%),
 		radial-gradient(45% 50% at 80% 5%, #C58BF2 0%, transparent 70%),
 		#DCE6F7;
-	/* Over the real desktop (macOS): the aurora as a faint tint. */
-	--gemini-wallpaper-see-through:
-		radial-gradient(55% 65% at 12% 18%, #A9C4FF33 0%, transparent 62%),
-		radial-gradient(45% 55% at 88% 22%, #E7C3F233 0%, transparent 62%),
-		radial-gradient(60% 60% at 70% 105%, #FFD0C733 0%, transparent 60%),
-		#F4F6FB73;
 	--gemini-glass-side: #FFFFFF38;
 	--gemini-glass-aux: #FFFFFF8C;
-	--gemini-glass-side-see-through: #FFFFFF2E;
-	--gemini-glass-aux-see-through: #FFFFFF80;
 	--gemini-glass-edge: #FFFFFF73;
 	--gemini-sheet-shadow: 0 12px 40px #1B1C2224, 0 1px 2px #00000014;
 	--gemini-capsule: #FFFFFF59;
@@ -70,15 +61,8 @@
 		radial-gradient(40% 50% at 98% 70%, #0F6B66 0%, transparent 70%),
 		radial-gradient(45% 50% at 80% 0%, #4B2A8A 0%, transparent 70%),
 		#05060B;
-	--gemini-wallpaper-see-through:
-		radial-gradient(50% 60% at 10% 15%, #1B2A5533 0%, transparent 62%),
-		radial-gradient(40% 50% at 92% 20%, #2E214733 0%, transparent 62%),
-		radial-gradient(55% 55% at 65% 108%, #3A1E2A33 0%, transparent 60%),
-		#0C0D14A6;
 	--gemini-glass-side: #1B1C2399;
 	--gemini-glass-aux: #1B1C23D1;
-	--gemini-glass-side-see-through: #1B1C2366;
-	--gemini-glass-aux-see-through: #1B1C23C7;
 	--gemini-glass-edge: #FFFFFF0F;
 	--gemini-sheet-shadow: 0 24px 60px -12px #000000B3;
 	--gemini-capsule: #FFFFFF0F;
@@ -106,20 +90,6 @@
 	.monaco-workbench.floating-panels.gemini-glass {
 		background: var(--gemini-wallpaper);
 		background-attachment: fixed;
-	}
-
-	/*
-	 * macOS: the window has the 'sidebar' vibrancy material behind the page (windows.ts), so the
-	 * page itself is see-through and the wallpaper is a faint tint over the blurred desktop.
-	 */
-	body.gemini-glass-window {
-		background-color: transparent !important;
-	}
-
-	.monaco-workbench.mac:not(.web).floating-panels.gemini-glass {
-		background: var(--gemini-wallpaper-see-through);
-		--gemini-glass-side: var(--gemini-glass-side-see-through);
-		--gemini-glass-aux: var(--gemini-glass-aux-see-through);
 	}
 
 	.monaco-workbench.floating-panels.gemini-glass > .monaco-grid-view,

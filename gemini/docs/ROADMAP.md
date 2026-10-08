@@ -2,7 +2,7 @@
 
 What is left before and after the pilot. The design that is already built is described in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-Distribution is done: release builds for Mac (Apple silicon) with the bundled Gemini CLI, published to GitHub Releases, the download page, and the in-app update notice ([RELEASING.md](RELEASING.md)). The first release, `v0.1.0`, is out. What remains of it is listed below: signing before the pilot, and other platforms and auto-update after it.
+Distribution is done: release builds for Mac (Apple silicon) with the bundled Gemini CLI, published to GitHub Releases, the download page, and the in-app update notice ([RELEASING.md](RELEASING.md)). Releases have shipped since `v0.1.0`; the current one is 0.4.0. What remains of distribution is listed below: signing before the pilot, and other platforms and auto-update after it.
 
 ## Before the pilot
 
@@ -23,7 +23,7 @@ Distribution is done: release builds for Mac (Apple silicon) with the bundled Ge
 
 - **More platforms.** Windows (one more runner in the release workflow and a code-signing certificate), then Intel Macs and Linux if pilot users ask for them. Bring this forward if the pilot includes Windows users.
 - **Auto-update.** Today the update notice only links to the download page. Upstream's updater needs a server that answers per build, which a static GitHub Pages site cannot do, so full auto-update needs a small update server.
-- **Workbench work.** Order the activity bar so the Gemini side bar comes first (today the extension only reveals it the first time a workspace opens), and reword the rest of upstream's welcome text (only the product name in its setup walkthrough is changed). Both need workbench changes.
+- **Workbench work.** Reword the rest of upstream's welcome text (only the product name in its setup walkthrough is changed). This needs a workbench change.
 - **Containment.** Evaluate the CLI's `--sandbox` mode as an admin option.
 - **Idle processes.** gemini-cli cannot close a session, so a long-lived process keeps every session it opened (about 2.5 MB each). Restart idle processes to free them, and show in the pane when an agent's process was stopped.
 - **Per-project processes.** Agents in other folders share this window's project ID today. Add a process per project ID when someone needs it.
