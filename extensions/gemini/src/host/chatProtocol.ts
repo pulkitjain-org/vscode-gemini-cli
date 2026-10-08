@@ -18,7 +18,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 14;
+export const chatProtocolVersion = 15;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -120,8 +120,9 @@ export interface ChatStrings {
 	/** The composer's tabs: the draft, and the draft as it will look once sent. */
 	readonly previewLabel: string;
 	readonly writeLabel: string;
-	/** The eye toggle in the composer bar. */
+	/** The eye toggle in the composer bar, while off and while on. */
 	readonly followAgent: string;
+	readonly followAgentOn: string;
 	/** The outline of the user's prompts, with its keys. */
 	readonly promptOutline: string;
 	readonly previewEmpty: string;
