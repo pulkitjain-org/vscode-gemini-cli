@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { cliHeapSizeMb, resolveAgentCommand } from '../../src/acp/agentProcess';
+import { cliHeapSizeMb, includeDirectoryArgs, resolveAgentCommand } from '../../src/acp/agentProcess';
 
 const base = { execPath: '/app/electron', env: { PATH: '/usr/bin' }, platform: 'linux' as const };
 
@@ -57,5 +57,16 @@ describe('cliHeapSizeMb', () => {
 
 	it('honours autoConfigureMemory: false', () => {
 		expect(cliHeapSizeMb('{"advanced":{"autoConfigureMemory":false}}', sixteenGb)).toBeUndefined();
+	});
+});
+
+describe('includeDirectoryArgs', () => {
+	it('passes every folder of a multi-root window, and nothing for one folder', () => {
+		expect(includeDirectoryArgs(['/a'])).toEqual([]);
+		expect(includeDirectoryArgs(['/a', '/b c'])).toEqual(['--include-directories', '/a', '--include-directories', '/b c']);
+	});
+
+	it('leaves out a folder with a comma, which the CLI would split', () => {
+		expect(includeDirectoryArgs(['/a', '/x,y'])).toEqual(['--include-directories', '/a']);
 	});
 });

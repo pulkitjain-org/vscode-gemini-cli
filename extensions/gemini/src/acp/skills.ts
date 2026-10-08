@@ -8,11 +8,14 @@
 // reads SKILL.md and */SKILL.md under ~/.gemini/skills and ~/.agents/skills,
 // then, in trusted folders, under the project's .gemini/skills and
 // .agents/skills; a later folder's skill replaces one with the same name.
-// The model loads one with its `activate_skill` tool.
+// The model loads one with its `activate_skill` tool. `skills.disabled` in a
+// settings file switches skills off by name, ignoring case; the CLI merges the
+// lists of every file, so a skill off in any of them is off.
 
 import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { isRecord, updateSettingsFile } from './projectSettings';
 
 export interface Skill {
 	readonly name: string;
@@ -124,6 +127,22 @@ export function parseSkillFrontmatter(text: string): { name: string; description
 function unquote(value: string): string {
 	const quoted = /^(["'])([\s\S]*)\1$/.exec(value);
 	return quoted ? quoted[2] : value;
+}
+
+/** The skill names, lowercased, that `skills.disabled` in a settings object switches off. */
+export function disabledSkills(settings: Record<string, unknown>): Set<string> {
+	const list = isRecord(settings.skills) && Array.isArray(settings.skills.disabled) ? settings.skills.disabled : [];
+	return new Set(list.filter((n): n is string => typeof n === 'string').map(n => n.toLowerCase()));
+}
+
+/** Switches a skill on or off in `file`, as the CLI's /skills enable and disable do. False when the file has comments. */
+export function setSkillEnabled(file: string, name: string, enabled: boolean): Promise<boolean> {
+	return updateSettingsFile(file, settings => {
+		const config = isRecord(settings.skills) ? settings.skills : {};
+		const list = Array.isArray(config.disabled) ? config.disabled.filter((n): n is string => typeof n === 'string') : [];
+		const others = list.filter(n => n.toLowerCase() !== name.toLowerCase());
+		settings.skills = { ...config, disabled: enabled ? others : [...others, name] };
+	});
 }
 
 /** A skill name as the CLI writes them: lowercase words joined by dashes. */

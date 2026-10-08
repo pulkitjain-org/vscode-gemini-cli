@@ -1,6 +1,6 @@
 # Findings against the real CLI
 
-What GeminiCode's design relies on, checked against `@google/gemini-cli@0.62.0` on 2 Oct 2026. Re-check these when moving to a new CLI version; [ARCHITECTURE.md](ARCHITECTURE.md) explains how each one is used.
+What GeminiCode's design relies on, checked against `@google/gemini-cli@0.62.0` on 2 Oct 2026 and re-checked against 0.63.0, which GeminiCode bundles, on 8 Oct 2026: its ACP code (`packages/cli/src/acp/`) differs only in the order a session starts up, and the real-CLI tests pass. Re-check these when moving to a new CLI version; [ARCHITECTURE.md](ARCHITECTURE.md) explains how each one is used.
 
 ## `session/new` without credentials
 

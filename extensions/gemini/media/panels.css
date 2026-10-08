@@ -674,6 +674,20 @@ select.pill option {
 	opacity: 0.6;
 }
 
+.settings .row.preference.off .row-main {
+	opacity: 1;
+}
+
+.settings select.select {
+	flex: none;
+	max-width: 200px;
+	padding: 3px 6px;
+	border: 1px solid var(--vscode-dropdown-border, var(--gemini-contrast-border));
+	border-radius: var(--gemini-radius-small);
+	color: var(--vscode-dropdown-foreground);
+	background: var(--vscode-dropdown-background);
+}
+
 .settings .row-main {
 	flex: 1;
 	min-width: 0;

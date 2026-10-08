@@ -3,14 +3,16 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Team commands (.gemini/commands/*.toml) for each agent folder, read once and
-// read again only when a file in those folders changes, so the "/" menu opens
-// without touching the disk.
+// Team commands (.gemini/commands/*.toml) and skills for each agent folder,
+// read once and read again only when a file in those folders (or a settings
+// file that switches skills off) changes, so the "/" menu opens without
+// touching the disk.
 
 import * as vscode from 'vscode';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { loadSkills, Skill, skillFolders } from '../acp/skills';
+import { readSettingsFile } from '../acp/projectSettings';
+import { disabledSkills, loadSkills, Skill, skillFolders } from '../acp/skills';
 import { loadTeamCommands, TeamCommand, teamCommandFolders } from '../acp/slashCommands';
 
 class TeamCommandStore implements vscode.Disposable {
@@ -43,17 +45,31 @@ class TeamCommandStore implements vscode.Disposable {
 		return commands;
 	}
 
-	/** The skills an agent working in `cwd` can load: the project's only in a trusted workspace, as the CLI loads them only in trusted folders. */
+	/**
+	 * The skills an agent working in `cwd` can load: the project's only in a
+	 * trusted workspace, as the CLI loads them only in trusted folders, and
+	 * none that `skills.disabled` switches off.
+	 */
 	skills(cwd: string): Promise<readonly Skill[]> {
 		let skills = this.skillCache.get(cwd);
 		if (!skills) {
-			const folders = skillFolders(vscode.workspace.isTrusted ? cwd : undefined, path.dirname(geminiHome()));
+			const trusted = vscode.workspace.isTrusted;
+			const folders = skillFolders(trusted ? cwd : undefined, path.dirname(geminiHome()));
 			// The loader reads a SKILL.md at the top of the folder as well as one level down.
 			folders.forEach(({ folder }) => this.watch(folder, '{SKILL.md,*/SKILL.md}'));
-			skills = loadSkills(folders).catch(() => []);
+			const settingsFiles = [path.join(geminiHome(), 'settings.json'), ...trusted ? [path.join(cwd, '.gemini', 'settings.json')] : []];
+			settingsFiles.forEach(file => this.watch(path.dirname(file), 'settings.json'));
+			skills = Promise.all([loadSkills(folders), ...settingsFiles.map(readSettingsFile)]).then(([found, ...settings]) => {
+				const off = new Set(settings.flatMap(s => [...disabledSkills(s)]));
+				return found.filter(s => !off.has(s.name.toLowerCase()));
+			}).catch(() => []);
 			this.skillCache.set(cwd, skills);
 		}
 		return skills;
+	}
+
+	forgetSkills(): void {
+		this.skillCache.clear();
 	}
 
 	dispose(): void {
@@ -65,7 +81,8 @@ class TeamCommandStore implements vscode.Disposable {
 	}
 
 	private watch(folder: string, pattern: string): void {
-		if (this.watchers.has(folder)) {
+		const key = `${folder}\0${pattern}`;
+		if (this.watchers.has(key)) {
 			return;
 		}
 		const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(folder), pattern));
@@ -74,7 +91,7 @@ class TeamCommandStore implements vscode.Disposable {
 			this.cache.clear();
 			this.skillCache.clear();
 		};
-		this.watchers.set(folder, vscode.Disposable.from(watcher, watcher.onDidCreate(forget), watcher.onDidChange(forget), watcher.onDidDelete(forget)));
+		this.watchers.set(key, vscode.Disposable.from(watcher, watcher.onDidCreate(forget), watcher.onDidChange(forget), watcher.onDidDelete(forget)));
 	}
 }
 
@@ -89,6 +106,11 @@ export function initTeamCommands(log: vscode.LogOutputChannel): vscode.Disposabl
 /** The skills for `cwd`; none before `initTeamCommands`, as in tests. */
 export function skills(cwd: string): Promise<readonly Skill[]> {
 	return store?.skills(cwd) ?? Promise.resolve([]);
+}
+
+/** Reads the skills again on next use, after a skill was switched on or off. */
+export function forgetSkills(): void {
+	store?.forgetSkills();
 }
 
 /** ~/.gemini, or $GEMINI_CLI_HOME/.gemini as the CLI reads it. */

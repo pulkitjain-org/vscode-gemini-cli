@@ -65,6 +65,11 @@ function renderTurnEnd(item: ItemOf<'turnEnd'>): HTMLElement {
 		setLabel(retry, strings.retryTooltip);
 		node.append(retry);
 	}
+	if (item.buildPlan) {
+		const build = button('turn-action', strings.buildPlan, () => vscode.postMessage({ type: 'buildPlan', itemId: item.id }), 'play');
+		setLabel(build, strings.buildPlanTooltip);
+		node.append(build);
+	}
 	if (item.undo === 'available') {
 		const undo = button('turn-action undo-turn', strings.undoTurn, () => vscode.postMessage({ type: 'undoTurn', itemId: item.id }), 'discard');
 		setLabel(undo, item.files && item.files > 1 ? format(strings.undoTurnFiles, item.files) : strings.undoTurnTooltip);
@@ -295,11 +300,11 @@ export function renderNotice(text: string, severity: 'info' | 'error'): HTMLElem
 }
 
 /** The saved sessions last sent, so the empty chat shows them again when it is drawn again. */
-let savedSessions: { readonly sessions: readonly ViewSession[]; readonly total: number } = { sessions: [], total: 0 };
+let savedSessions: { readonly sessions: readonly ViewSession[]; readonly total: number; readonly retention: string } = { sessions: [], total: 0, retention: '' };
 
 /** The empty chat's card of saved sessions to reopen; nothing when there are none. */
-export function showSavedSessions(sessions: readonly ViewSession[], total: number): void {
-	savedSessions = { sessions, total };
+export function showSavedSessions(sessions: readonly ViewSession[], total: number, retention: string): void {
+	savedSessions = { sessions, total, retention };
 	const empty = ui.transcript.querySelector('.empty');
 	empty?.querySelector('.restore-card')?.remove();
 	const card = restoreCard();
@@ -327,6 +332,9 @@ function restoreCard(): HTMLElement | undefined {
 	}
 	if (total > sessions.length) {
 		card.append(button('restore-more', format(strings.showAllSessions, total), () => vscode.postMessage({ type: 'pickSession' })));
+	}
+	if (savedSessions.retention) {
+		card.append(el('p', 'restore-hint restore-retention', savedSessions.retention));
 	}
 	return card;
 }

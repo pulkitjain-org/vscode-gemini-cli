@@ -68,6 +68,8 @@ export type TranscriptItem =
 		readonly undo?: 'available' | 'undone';
 		/** The latest turn offers to send its prompt again. */
 		readonly retry?: boolean;
+		/** The latest turn ended in Plan mode: it offers to leave Plan mode and carry out the plan. */
+		readonly buildPlan?: boolean;
 		/** Tokens the turn used per model, when the agent reported them. */
 		readonly usage?: readonly ModelTokens[];
 	};
@@ -184,7 +186,7 @@ export class ChatTranscript {
 	}
 
 	/** Changes what a turnEnd item offers. */
-	updateTurnEnd(id: string, patch: Pick<TurnEndItem, 'files' | 'undo' | 'retry'>): void {
+	updateTurnEnd(id: string, patch: Pick<TurnEndItem, 'files' | 'undo' | 'retry' | 'buildPlan'>): void {
 		const item = this._items.find(i => i.id === id);
 		if (item?.kind === 'turnEnd') {
 			const next: Record<string, unknown> = { ...item, ...patch };

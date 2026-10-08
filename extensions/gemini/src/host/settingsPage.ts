@@ -7,16 +7,18 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { CliExtension, isExtensionSource, parseExtensionList, parseMemoryList, runCliCommands } from '../acp/cliCommands';
+import { CliPreference, defaultKeepChats, isKeepChats, keepChatsChoices, keepChatsForever, readCliPreferences, setCliPreference } from '../acp/cliPreferences';
 import { geminiDir } from '../acp/directRequest';
 import { appendMemory } from '../acp/memory';
 import { errorMessage } from '../acp/errors';
 import { addHook, disabledHooks, HookEvent, hookEvents, hooksIn, setHookEnabled, toolEvents } from '../acp/hooks';
 import { addMcpServer, disabledServers, isServerEnabled, mcpServersIn, readSettingsFile, rulesFileNames, serverConfigFrom, setServerEnabled } from '../acp/projectSettings';
-import { loadSkills, skillFolders, skillSlug, skillTemplate } from '../acp/skills';
+import { disabledSkills, loadSkills, setSkillEnabled, skillFolders, skillSlug, skillTemplate } from '../acp/skills';
 import { AgentService } from './agentService';
 import { getAgentCommand, getWorkspaceCwd } from './configuration';
 import { tildify } from './displayText';
-import { CliReport, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage } from './panelProtocol';
+import { CliReport, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage } from './panelProtocol';
+import { forgetSkills } from './teamCommands';
 import { createNonce, escapeAttribute } from './webviewHtml';
 
 const viewType = 'gemini.projectSettings';
@@ -98,7 +100,7 @@ export class SettingsPage implements vscode.Disposable {
 			return;
 		}
 		this.files = new Set([
-			...view.servers.map(s => s.file), ...view.rules.map(r => r.path), ...view.skills.map(s => s.file), ...view.hooks.map(h => h.file),
+			...view.servers.map(s => s.file), ...view.rules.map(r => r.path), ...view.skills.flatMap(s => [s.file, s.settingsFile]), ...view.hooks.map(h => h.file),
 			...view.memory.state === 'ready' ? view.memory.items.map(m => m.path) : [],
 		]);
 		void panel.webview.postMessage({ type: 'view', view } satisfies ToSettingsPage);
@@ -174,11 +176,16 @@ export class SettingsPage implements vscode.Disposable {
 
 		const personalLabel = vscode.l10n.t("Personal");
 		const home = path.dirname(dir);
-		const skills: SkillView[] = (await loadSkills(skillFolders(undefined, home))).map(s => ({ name: s.name, description: s.description, scope: personalLabel, file: s.file }));
+		// skills.disabled is merged across files like hooksConfig.disabled; see the toggleSkill message.
+		const skillsOff = disabledSkills(personal);
+		const skills: SkillView[] = (await loadSkills(skillFolders(undefined, home))).map(s => ({
+			name: s.name, description: s.description, scope: personalLabel, file: s.file, enabled: !skillsOff.has(s.name.toLowerCase()), settingsFile: this.personalSettings(),
+		}));
 		// The CLI loads a project's skills only in a trusted folder.
-		for (const { folder } of vscode.workspace.isTrusted ? projects : []) {
+		for (const { folder, file, settings } of vscode.workspace.isTrusted ? projects : []) {
+			const off = new Set([...skillsOff, ...disabledSkills(settings)]);
 			const project = await loadSkills(skillFolders(folder.uri.fsPath, home).filter(f => !f.personal));
-			skills.push(...project.map(s => ({ name: s.name, description: s.description, scope: folder.name, file: s.file })));
+			skills.push(...project.map(s => ({ name: s.name, description: s.description, scope: folder.name, file: s.file, enabled: !off.has(s.name.toLowerCase()), settingsFile: file })));
 		}
 
 		// hooksConfig.disabled is merged across files, so a hook off in either is off;
@@ -198,7 +205,23 @@ export class SettingsPage implements vscode.Disposable {
 		}
 		const personalRules = path.join(dir, plainFileName(rulesFileNames(personal)[0]));
 		rules.push(await rulesView(vscode.l10n.t("Personal rules"), personalRules, tildify(personalRules)));
-		return { servers, skills, hooks, extensions: this.extensions, memory: this.memory, rules };
+		return { servers, skills, hooks, extensions: this.extensions, memory: this.memory, rules, preferences: this.preferencesView(personal) };
+	}
+
+	private preferencesView(personal: Record<string, unknown>): PreferencesView {
+		const preferences = readCliPreferences(personal);
+		const labels: Record<string, string> = {
+			'7d': vscode.l10n.t("7 days"),
+			'30d': vscode.l10n.t("30 days"),
+			'90d': vscode.l10n.t("90 days"),
+			[keepChatsForever]: vscode.l10n.t("Until I delete them"),
+		};
+		const values = keepChatsChoices.includes(preferences.keepChats) ? keepChatsChoices : [...keepChatsChoices, preferences.keepChats];
+		return {
+			...preferences,
+			keepChatsChoices: values.map(value => ({ value, label: value === defaultKeepChats ? vscode.l10n.t("{0} (default)", labels[value]) : labels[value] ?? value })),
+			display: tildify(this.personalSettings()),
+		};
 	}
 
 	private serverView(server: ReturnType<typeof mcpServersIn>[number], scope: string, disabled: ReadonlySet<string>, problems: ReadonlyMap<string, string>): McpServerView {
@@ -243,6 +266,18 @@ export class SettingsPage implements vscode.Disposable {
 							await this.cannotRewrite(personal, '"hooksConfig"');
 						}
 					}
+					break;
+				case 'toggleSkill':
+					if (!this.files.has(message.file)) {
+						return;
+					}
+					await this.toggleSkill(message.file, message.name, message.enabled);
+					break;
+				case 'signIn':
+					await this.signIn(message.name);
+					return;
+				case 'setPreference':
+					await this.setPreference(message.key, message.value);
 					break;
 				case 'installExtension':
 					await this.installExtension();
@@ -427,6 +462,61 @@ export class SettingsPage implements vscode.Disposable {
 		}
 	}
 
+	/** Switches a skill on or off in the settings file of its scope. */
+	private async toggleSkill(file: string, name: string, enabled: boolean): Promise<void> {
+		if (!await setSkillEnabled(file, name, enabled)) {
+			await this.cannotRewrite(file, '"skills"');
+			return;
+		}
+		if (enabled && file !== this.personalSettings()) {
+			// The CLI merges the disabled lists, so a project skill the personal list switches off stays off until it leaves that list too.
+			const personal = this.personalSettings();
+			if (disabledSkills(await readSettingsFile(personal)).has(name.toLowerCase()) && !await setSkillEnabled(personal, name, true)) {
+				await this.cannotRewrite(personal, '"skills"');
+				return;
+			}
+		}
+		forgetSkills();
+		this.offerRestart(enabled
+			? vscode.l10n.t("\"{0}\" is on for new agents.", name)
+			: vscode.l10n.t("\"{0}\" is off for new agents.", name));
+	}
+
+	/**
+	 * Signs in to a remote MCP server with the CLI's own /mcp auth, in a
+	 * terminal: over ACP the CLI cannot open the browser flow, and it keeps the
+	 * tokens where every agent reads them.
+	 */
+	private async signIn(name: string): Promise<void> {
+		const view = await this.build();
+		const server = view.servers.find(s => s.name === name);
+		if (!server || server.transport === 'stdio' || !/^[\w.-]+$/.test(name)) {
+			return;
+		}
+		this.runInTerminal(vscode.l10n.t("Sign In to {0}", name), ['-i', `/mcp auth ${name}`],
+			vscode.l10n.t("Finish signing in to \"{0}\" in your browser, then type /quit here. Restart the agent to use the server.", name));
+	}
+
+	private async setPreference(key: CliPreference, value: unknown): Promise<void> {
+		const file = this.personalSettings();
+		let written: boolean;
+		if (key === 'keepChats') {
+			if (typeof value !== 'string' || !isKeepChats(value)) {
+				return;
+			}
+			written = await setCliPreference(file, key, value);
+		} else if ((key === 'permanentApproval' || key === 'planRouting' || key === 'usageStatistics') && typeof value === 'boolean') {
+			written = await setCliPreference(file, key, value);
+		} else {
+			return;
+		}
+		if (!written) {
+			await this.cannotRewrite(file, key === 'keepChats' ? '"general"' : key === 'permanentApproval' ? '"security"' : key === 'planRouting' ? '"general"' : '"privacy"');
+			return;
+		}
+		this.offerRestart(vscode.l10n.t("Saved to {0}. New agents use it.", tildify(file)));
+	}
+
 	/** Install runs the CLI's own installer in a terminal, where it shows its security warning and asks before installing. */
 	private async installExtension(): Promise<void> {
 		const source = await vscode.window.showInputBox({
@@ -458,7 +548,7 @@ export class SettingsPage implements vscode.Disposable {
 		this.offerRestart(reply.trim() || name);
 	}
 
-	private runInTerminal(name: string, args: readonly string[]): void {
+	private runInTerminal(name: string, args: readonly string[], message = vscode.l10n.t("Answer the Gemini CLI's questions here. Project Helpers updates when it finishes; restart the agent to use the change.")): void {
 		this.terminal?.dispose();
 		const command = getAgentCommand({ subcommand: args });
 		this.terminal = vscode.window.createTerminal({
@@ -467,7 +557,7 @@ export class SettingsPage implements vscode.Disposable {
 			shellArgs: command.shell ? ['/c', command.command, ...command.args] : [...command.args],
 			env: command.env as Record<string, string>,
 			cwd: getWorkspaceCwd(),
-			message: vscode.l10n.t("Answer the Gemini CLI's questions here. Project Helpers updates when it finishes; restart the agent to use the change."),
+			message,
 		});
 		this.terminal.show();
 	}
@@ -544,6 +634,18 @@ export class SettingsPage implements vscode.Disposable {
 			open: vscode.l10n.t("Open"),
 			create: vscode.l10n.t("Create"),
 			missing: vscode.l10n.t("Not created yet"),
+			enableSkill: vscode.l10n.t("Use this skill"),
+			signIn: vscode.l10n.t("Sign In"),
+			preferences: vscode.l10n.t("Gemini CLI settings"),
+			preferencesHint: vscode.l10n.t("Your own settings in {0}. A project's .gemini/settings.json can override them."),
+			permanentApproval: vscode.l10n.t("Allow for all future sessions"),
+			permanentApprovalHint: vscode.l10n.t("Permission prompts offer to allow a tool or command from now on, so trusted commands such as npm test stop asking in every new chat."),
+			planRouting: vscode.l10n.t("Plan with Pro, build with Flash"),
+			planRoutingHint: vscode.l10n.t("In Plan mode, the model on Auto plans with Pro and carries out the plan with Flash. Turn off to keep one model throughout."),
+			usageStatistics: vscode.l10n.t("Send usage statistics"),
+			usageStatisticsHint: vscode.l10n.t("The Gemini CLI sends anonymous usage statistics to Google to improve it."),
+			keepChats: vscode.l10n.t("Keep saved chats for"),
+			keepChatsHint: vscode.l10n.t("The Gemini CLI deletes saved chats older than this, so they no longer show under Restore Session."),
 		};
 		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'settings.js'));
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));

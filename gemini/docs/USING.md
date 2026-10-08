@@ -80,13 +80,17 @@ Pick a mode from the composer's **+** menu. The list comes from the Gemini CLI, 
 | **Plan** | Reads and proposes a plan without making changes. The CLI can turn this mode off in its own settings. |
 | **YOLO** | Runs everything without asking. Off unless your admin enables it. |
 
-Permission cards show the CLI's own choices, such as **Allow**, **Allow for this session** and **Reject**. <kbd>esc</kbd> rejects. Stopping a turn cancels any open request. When an agent asks for permission, its tab comes to the front and the proposed edit opens as a diff; in the Agents pane its row shows an amber dot and "waiting".
+Permission cards show the CLI's own choices, such as **Allow**, **Allow for this session** and **Reject**. Turn on **Allow for all future sessions** in Project Helpers and they also offer to allow a tool or command from now on, in every new chat and in the terminal CLI. <kbd>esc</kbd> rejects. Stopping a turn cancels any open request. When an agent asks for permission, its tab comes to the front and the proposed edit opens as a diff; in the Agents pane its row shows an amber dot and "waiting".
 
 The model picker works the same way. The model you pick is remembered and used for every new or reopened agent, in any window, when the agent offers it.
 
 Changing `gemini.cliPath`, `gemini.cli.version`, `gemini.projectId`, or an approval or shell setting restarts the agent so the change applies. Open agents resume their sessions.
 
 The agent is not sandboxed. Its shell and search tools run with your permissions, so use Auto Edit and YOLO only in folders you trust.
+
+When a reply ends in Plan mode, **Build This Plan** under it switches the chat to Default mode and asks Gemini to carry out the plan. With the model on Auto, Gemini plans with Pro and builds with Flash; turn off **Plan with Pro, build with Flash** in Project Helpers to keep one model throughout.
+
+In a window with several folders, every agent can read and edit all of them, not just its own (the CLI's `--include-directories`). Adding or removing a folder restarts the agent once no agent is working.
 
 ## Folder trust
 
@@ -131,14 +135,14 @@ Each message you send shows the time you sent it and a **Copy** button when you 
 
 ## Restoring a Gemini CLI session
 
-A new, empty agent lists the three sessions the Gemini CLI saved most recently for its folder, including ones started with `gemini` in the terminal, with a link to show them all. Pick one to continue it in that agent: its conversation appears in the chat, and the agent takes the session's title. `/resume` in the composer opens the same list at any time. Sessions open in another agent are left out. GeminiCode reads the list from the CLI's own files in `~/.gemini/tmp` and never changes them.
+A new, empty agent lists the three sessions the Gemini CLI saved most recently for its folder, including ones started with `gemini` in the terminal, with a link to show them all. Pick one to continue it in that agent: its conversation appears in the chat, and the agent takes the session's title. `/resume` in the composer opens the same list at any time. Sessions open in another agent are left out. GeminiCode reads the list from the CLI's own files in `~/.gemini/tmp` and never changes them. The CLI deletes saved sessions after 30 days; the list says when, and **Keep saved chats for** in Project Helpers changes it.
 
 ## Slash commands
 
 Type `/` at the start of the composer, or choose **Skills and commands** in the **+** menu, to list commands: team commands first, then skills, then the CLI's own. Keep typing to filter, then press <kbd>Tab</kbd> or <kbd>Enter</kbd> to complete the name and add arguments.
 
 - **Gemini CLI commands** such as `/init`, `/memory` and `/restore` come from the CLI and run in the CLI.
-- **Team commands** are TOML files in `.gemini/commands/` in the workspace, or in `~/.gemini/commands/` for your own. This is the Gemini CLI's own format, so the same files work in the terminal. `git/commit.toml` becomes `/git:commit`. GeminiCode sends the file's `prompt`, with `{{args}}` replaced by what you typed after the name. A workspace command replaces a personal one with the same name, and a CLI command wins over both.
+- **Team commands** are TOML files in `.gemini/commands/` in the workspace, or in `~/.gemini/commands/` for your own. This is the Gemini CLI's own format, so the same files work in the terminal. `git/commit.toml` becomes `/git:commit`. GeminiCode sends the file's `prompt`, with `{{args}}` replaced by what you typed after the name. `@{path}` puts a file's text in the prompt, and `!{command}` the output of a shell command run in the agent's folder. A workspace command replaces a personal one with the same name, and a CLI command wins over both.
 - **Skills** are folders with a `SKILL.md`, in `.gemini/skills/` (or `.agents/skills/`) in the workspace or in `~/.gemini/skills/` (or `~/.agents/skills/`) for your own. Picking one asks the agent to load it, with what you typed after the name as the task. A team command or CLI command with the same name wins. A workspace's skills are offered only once you trust the folder.
 
 ```toml
@@ -146,7 +150,7 @@ description = "Review a file for bugs"
 prompt = "Review {{args}} for bugs and suggest fixes."
 ```
 
-Prompts that use `!{...}` (run a shell command) or `@{...}` (read a file) are not offered yet; the Gemini log says which files were skipped.
+`@{path}` reads a file in the workspace, following the same rules as the agent's file tools (no secrets, nothing git ignores, no folders), and leaves the placeholder with a note in the chat when it cannot. Before any `!{command}` runs, GeminiCode shows every command the team command will run and asks; inside `!{...}`, `{{args}}` is quoted for the shell. Commands need shell access (`gemini.tools.allowShell`), stop after a minute, and their output is cut at 100,000 characters. A file's text or a command's output is never searched for more commands.
 
 ## Notifications
 
@@ -154,12 +158,15 @@ When an agent finishes or needs your permission while GeminiCode is in the backg
 
 ## Project Helpers: MCP servers, skills, hooks, extensions, memory and rules
 
-**Gemini: Project Helpers** (also in the Agents pane's **...** menu) shows what every agent loads when it starts. Its **MCP servers** section lists the MCP servers in your personal `~/.gemini/settings.json` and in each open folder's `.gemini/settings.json`. Each has a switch that turns it on or off, the same way the CLI's `/mcp enable` and `/mcp disable` do, so the `gemini` command in your terminal sees the change too. **Add Server** asks for a name and the command that starts the server, or its URL, and adds it to your personal settings. The page also opens or creates your project's rules (`GEMINI.md`, or the name in `context.fileName`) and your personal rules (`~/.gemini/GEMINI.md`). Changes apply to agents started afterwards; **Restart Agent** applies them now.
+**Gemini: Project Helpers** (also in the Agents pane's **...** menu) shows what every agent loads when it starts. Its **MCP servers** section lists the MCP servers in your personal `~/.gemini/settings.json` and in each open folder's `.gemini/settings.json`. Each has a switch that turns it on or off, the same way the CLI's `/mcp enable` and `/mcp disable` do, so the `gemini` command in your terminal sees the change too. A server reached by URL also has **Sign In**, for servers that need an OAuth sign-in: it runs the CLI's `/mcp auth` in a terminal, which opens your browser; type `/quit` when it is done and restart the agent. The CLI keeps the sign-in, so every agent can use the server. **Add Server** asks for a name and the command that starts the server, or its URL, and adds it to your personal settings. The page also opens or creates your project's rules (`GEMINI.md`, or the name in `context.fileName`) and your personal rules (`~/.gemini/GEMINI.md`). Changes apply to agents started afterwards; **Restart Agent** applies them now.
 
-- **Skills** are folders with a `SKILL.md` that teaches Gemini a task, such as cutting a release. The page lists your own (`~/.gemini/skills`) and each project's (`.gemini/skills`, and `.agents/skills` in both places); a project's skills are listed only once you trust the folder, as the CLI loads them only then. **New Skill** (or **Gemini: New Skill**) makes one from a template and opens it. Gemini loads a skill by itself when a task calls for it; to use one now, pick it from the `/` menu, optionally followed by what to do.
+- **Skills** are folders with a `SKILL.md` that teaches Gemini a task, such as cutting a release. The page lists your own (`~/.gemini/skills`) and each project's (`.gemini/skills`, and `.agents/skills` in both places); a project's skills are listed only once you trust the folder, as the CLI loads them only then. **New Skill** (or **Gemini: New Skill**) makes one from a template and opens it. Gemini loads a skill by itself when a task calls for it; to use one now, pick it from the `/` menu, optionally followed by what to do. Each skill has a switch, like the CLI's `/skills enable` and `/skills disable`: it writes `skills.disabled` in the settings file of the skill's scope, and a skill that is off leaves the `/` menu. Turning on a project skill also removes it from your personal list, since the CLI keeps a skill off when either file does.
 - **Hooks** are commands the CLI runs at set points: before or after a tool, when a turn starts or ends, and so on. Each has a switch, and **Add Hook** asks when it runs, which tools it applies to, the command and whether it is yours or the project's, then adds it to that `settings.json`. Turning on a project hook that your personal settings turn off also removes it from your personal list, since the CLI keeps a hook off when either file does. A project's hooks run only in trusted folders.
 - **Extensions** lists the Gemini CLI extensions installed, as the CLI's own `/extensions list` reports them, with a switch to turn each on or off. **Install**, **Update** and **Uninstall** run the CLI's installer in a terminal, because it shows a security warning and may ask you questions; the page updates when it finishes.
 - **Memory** lists the `GEMINI.md` files the CLI loads for the folder (`/memory list`), including those in subfolders and extensions. **Add Memory** adds a line under "Gemini Added Memories" in your own or the project's `GEMINI.md`; **Refresh** asks the CLI again.
+- **Gemini CLI settings** are four of the CLI's own settings, in your personal `~/.gemini/settings.json`: **Allow for all future sessions** (`security.enablePermanentToolApproval`, off by default), **Plan with Pro, build with Flash** (`general.plan.modelRouting`, on), **Send usage statistics** (`privacy.usageStatisticsEnabled`, on) and **Keep saved chats for** (`general.sessionRetention`: 7, 30 or 90 days, or until you delete them; 30 days by default). A project's `.gemini/settings.json` can still override them, as in the CLI.
+
+A settings file with comments is never rewritten: GeminiCode opens it at the right place instead, so you can make the change yourself.
 
 Opening the page never starts the Gemini CLI. Extensions and memory are asked for when the agent is already running (and again when it starts); otherwise the page says so, and **Refresh** starts the agent and asks. A CLI without the `/extensions` or `/memory` command says so instead of a list.
 
@@ -180,6 +187,8 @@ Links to `localhost` from the terminal and chat also open in GeminiCode's browse
 ## Usage and quota
 
 The ring at the bottom right of the composer shows how full this chat's context window is: the tokens in the latest request out of the model's 1M, as the Gemini CLI footer counts them. It turns amber at 50%, where Gemini starts summarising older messages, and red at 90%. Click it, choose **Usage and quota** in the **+** menu, or run **Gemini: Show Usage and Quota** to open the popover. **Context window** repeats that figure. **Today's quota** is for your account: how much of today's quota each model has used and when it resets; GeminiCode reads it when you open the popover, unless it read it in the last minute. It lists the four models with the most use; **All models** shows the rest. **This chat** totals the input, cached and output tokens over the chat's replies, as the Gemini CLI reports them with each reply; **Details by model** splits them by model. Input counts the conversation again for every model call within a reply, as the CLI's `/stats` does, so a reply with many tool calls counts more. Replies saved before GeminiCode kept these counts have none. Escape or a click outside closes it.
+
+Once a model passes 80% of today's quota, the popover also offers **Get higher limits**, the page the CLI's `/upgrade` opens.
 
 You can also hover the **Gemini** item in the status bar to see today's quota. Once a model passes 80%, the item shows the percentage. Turn the quota off in both places with `gemini.usageMeter.enabled`. The quota needs a Google sign-in; API keys have none to read.
 
@@ -209,4 +218,4 @@ Every agent in a window shares one Gemini CLI process, and that process keeps ea
 | "older than 0.61.0" | The CLI in use is too old. Choose **Install Latest**, or run **Gemini: Install or Change Gemini CLI Version...**. |
 | Not sure the CLI starts at all | Run **Gemini: Check Agent Connection**. It starts the CLI on its own and reports its version and protocol, or the error. |
 | The agent stops or misbehaves | Click the **Gemini** status bar item and choose **Restart Agent**. Open agents resume their sessions. |
-| Something else | Run **Gemini: Show Log** and include the relevant lines, with account names and project IDs removed, when you [report an issue](https://github.com/pulkitjain-org/vscode-gemini-cli/issues). |
+| Something else | Click the **Gemini** status bar item and choose **Report an Issue...**, which opens a new issue with the GeminiCode, VS Code, Gemini CLI and OS versions filled in. Run **Gemini: Show Log** and include the relevant lines, with account names and project IDs removed. **Gemini CLI Docs** in the same menu opens the CLI's documentation. |

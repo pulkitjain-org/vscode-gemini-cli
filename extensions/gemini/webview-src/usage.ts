@@ -259,6 +259,10 @@ function renderQuota(): HTMLElement {
 	if (models.length > shownQuota + 1) {
 		section.append(moreLink(allModels ? strings.usageFewerModels : format(strings.usageAllModels, models.length), allModels, () => allModels = !allModels));
 	}
+	if (models.some(model => model.used >= 0.8)) {
+		// What the CLI's /upgrade opens; the quota is a Google account's, so it applies.
+		section.append(button('usage-more', strings.usageUpgrade, () => vscode.postMessage({ type: 'openUpgrade' }), 'link-external'));
+	}
 	const minutes = Math.floor((now - quota.at) / 60_000);
 	section.append(el('p', 'usage-note', quota.checking ? strings.usageChecking : minutes < 1 ? strings.usageCheckedJustNow : format(strings.usageCheckedMinutes, minutes)));
 	return section;

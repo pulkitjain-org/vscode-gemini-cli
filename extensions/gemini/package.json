@@ -910,8 +910,8 @@
     "test": "vitest run"
   },
   "bundledCli": {
-    "version": "0.62.0",
-    "integrity": "sha512-A1rw0Tf2sHLpGncfYdaq5WaJIufKAP8il4BmHD5Yw4ewmB/Wo0vRQb2bEvx7OqyaPFPZCh0hVhcMKsICZyIBww=="
+    "version": "0.63.0",
+    "integrity": "sha512-mmhqMmAdsoplCzrLQQC4yJBqr4uSKXghnrLspgUU6N9drmsaq7pi7oF09skRYzEq2dYK6eMT4UpFQP6rG2o/ew=="
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.6.0",

@@ -44,6 +44,17 @@ export function cliHeapSizeMb(settingsJson: string | undefined, totalMemoryBytes
 	return Math.floor(totalMemoryBytes / (1024 * 1024) * 0.5);
 }
 
+/**
+ * `--include-directories` for a multi-root window, so an agent in one folder
+ * can read and edit the others (gemini-cli 0.63 `loadCliConfig` adds them to
+ * every session's workspace). One folder needs nothing. A folder with a comma
+ * is left out, since the CLI splits the flag's values on commas.
+ */
+export function includeDirectoryArgs(folders: readonly string[]): string[] {
+	const usable = [...new Set(folders)].filter(folder => folder && !folder.includes(','));
+	return folders.length > 1 ? usable.flatMap(folder => ['--include-directories', folder]) : [];
+}
+
 const scriptExtension = /\.(c|m)?js$/i;
 const windowsShim = /\.(cmd|bat)$/i;
 
