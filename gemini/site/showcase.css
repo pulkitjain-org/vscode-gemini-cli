@@ -1,0 +1,50 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) pulkitjain-org and contributors. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/* The showcase under the hero: real clips of the app, one per tab, played by showcase.mts.
+   On a narrow screen the stage crops each clip to the chat in the middle of the window. */
+
+.showcase { margin-top: 8px; border-radius: 24px; padding: 10px; }
+.sc-bar { display: flex; align-items: center; gap: 12px; padding: 4px 4px 12px; }
+.sc-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; min-width: 0; flex: 1; }
+.sc-tabs::-webkit-scrollbar { display: none; }
+.sc-tabs button {
+	position: relative; display: inline-flex; align-items: center; gap: 8px; flex: none;
+	padding: 8px 14px; border: 0; border-radius: 10px; background: none; cursor: pointer;
+	font: 500 14px var(--sans); color: var(--muted); white-space: nowrap;
+}
+.sc-tabs button svg { width: 16px; height: 16px; }
+.sc-tabs button:hover { color: var(--fg); background: var(--raised); }
+.sc-tabs button[aria-selected="true"] { color: var(--fg); background: var(--raised); box-shadow: inset 0 0 0 1px var(--line); }
+/* How far the clip has played, as a thin line under the selected tab. */
+.sc-tabs button::after {
+	content: ""; position: absolute; left: 12px; right: 12px; bottom: 3px; height: 2px; border-radius: 2px;
+	background: var(--grad); transform-origin: left; transform: scaleX(var(--p, 0)); opacity: 0;
+}
+.sc-tabs button[aria-selected="true"]::after { opacity: 1; }
+.sc-theme { display: flex; flex: none; padding: 3px; border-radius: 10px; background: var(--raised); border: 1px solid var(--line); }
+.sc-theme button { border: 0; background: none; cursor: pointer; padding: 5px 12px; border-radius: 7px; font: 500 13px var(--sans); color: var(--muted); }
+.sc-theme button[aria-pressed="true"] { color: var(--fg); background: var(--surface); box-shadow: var(--shadow); }
+
+.sc-stage {
+	position: relative; overflow: hidden; border-radius: 14px; border: 1px solid var(--line);
+	aspect-ratio: 1440 / 900; background: var(--bg-deep);
+}
+.sc-stage img, .sc-stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 0; }
+.sc-stage video { opacity: 0; transition: opacity 0.25s; }
+.sc-stage video.ready { opacity: 1; }
+.sc-stage:focus-visible { outline: 2px solid var(--link); outline-offset: 3px; }
+
+.sc-caption { display: flex; align-items: center; gap: 10px; margin: 0; padding: 14px 8px 6px; color: var(--muted); font-size: 15px; min-height: 52px; }
+.sc-caption .sc-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--grad); flex: none; }
+
+/* Phones and narrow windows: the chat column in the middle of the window, tall enough to read. */
+@media (max-width: 899px) {
+	.showcase { padding: 8px; border-radius: 20px; }
+	.sc-bar { flex-direction: column; align-items: stretch; gap: 8px; }
+	.sc-theme { align-self: flex-start; }
+	.sc-stage { aspect-ratio: 1160 / 1250; }
+	.sc-caption { font-size: 14px; }
+}
