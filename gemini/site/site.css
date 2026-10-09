@@ -285,16 +285,32 @@ section.block { padding: 112px 0 0; }
 .toc a.sub { padding-left: 12px; font-size: 13.5px; }
 .sha { font-size: 12px; color: var(--faint); word-break: break-all; }
 .sha code { display: block; margin-top: 6px; font-size: 11px; padding: 6px 8px; }
-.notes { border-radius: 20px; padding: 36px 40px; font-size: 16px; }
+/* Release notes body (rendered from the release's markdown by GitHub) */
+.notes { min-width: 0; border-radius: 20px; padding: 36px 40px; font-size: 16px; color: var(--muted); }
 .notes > :first-child { margin-top: 0; }
-.notes h2 { font-size: 24px; letter-spacing: -0.02em; margin: 36px 0 10px; }
-.notes h3 { font-size: 19px; margin: 28px 0 8px; }
+.notes p { margin: 14px 0; }
+.notes > p:first-child { font-size: 18px; line-height: 1.55; color: var(--fg); text-wrap: pretty; }
+.notes strong, .notes b { color: var(--fg); font-weight: 600; }
+.notes h1, .notes h2, .notes h3, .notes h4 { color: var(--fg); letter-spacing: -0.02em; line-height: 1.25; scroll-margin-top: 80px; }
+.notes h1, .notes h2 { font-size: 24px; margin: 36px 0 10px; }
+.notes h3 { font-size: 19px; margin: 32px 0 10px; padding-top: 22px; border-top: 1px solid var(--line); }
 .notes h4 { font-size: 16px; margin: 24px 0 6px; }
-.notes img { border-radius: 10px; border: 1px solid var(--line); margin: 12px 0; height: auto; }
-.notes table { border-collapse: collapse; width: 100%; font-size: 14.5px; display: block; overflow-x: auto; }
-.notes th, .notes td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; }
+.notes .markdown-heading { position: relative; }
+.notes .markdown-heading .anchor { display: none; }
+.notes ul, .notes ol { padding-left: 20px; }
+.notes li { margin: 6px 0; }
+.notes img { display: block; max-width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); margin: 16px 0; }
+.notes a:has(> img) { display: block; }
+.notes kbd { font: 12px var(--mono); background: var(--code); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; padding: 2px 6px; color: var(--fg); }
+.notes table { display: block; width: fit-content; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 18px 0; font-size: 14.5px; }
+.notes th, .notes td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+.notes thead th { background: var(--code); color: var(--fg); font-weight: 600; }
+.notes td:first-child { color: var(--fg); }
 .notes pre { background: var(--code); border-radius: 10px; padding: 12px 14px; overflow-x: auto; }
 .notes pre code { background: none; padding: 0; }
+.notes .markdown-alert { background: var(--note-bg); border: 1px solid var(--note-line); border-radius: 12px; padding: 4px 16px; margin: 18px 0; }
+.notes .markdown-alert-title { font-weight: 600; color: var(--fg); }
+.notes .markdown-alert svg { display: none; }
 .release .more { margin-top: 20px; }
 
 @media (max-width: 1000px) {
@@ -307,7 +323,7 @@ section.block { padding: 112px 0 0; }
 	.feature, .feature.flip { grid-template-columns: 1fr; gap: 28px; }
 	.feature.flip > :first-child { order: 0; }
 	.mini { grid-template-columns: 1fr 1fr; }
-	.release { grid-template-columns: 1fr; gap: 28px; }
+	.release { grid-template-columns: minmax(0, 1fr); gap: 28px; }
 	.release aside { position: static; }
 	.toc, .sha { display: none; }
 }
