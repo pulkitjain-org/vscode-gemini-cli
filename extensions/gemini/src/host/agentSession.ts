@@ -13,7 +13,7 @@ import { AgentStatus } from '../acp/status';
 import { AgentService } from './agentService';
 import { ChatHost } from './chatController';
 import { getApprovalPolicy } from './configuration';
-import { preferredModel } from './modelPreference';
+import { sessionModel } from './modelPreference';
 import { getFileAccessPolicy, isIgnoredByGitCached, WorkspaceFileSystem } from './workspaceFileSystem';
 
 /**
@@ -30,12 +30,14 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 	readonly onDidChangeStatus = this.onDidChangeStatusEmitter.event;
 
 	/** `mcpServers` are the servers GeminiCode serves this agent, such as its browser. */
-	constructor(private readonly service: AgentService, readonly folder: string, resumeSessionId?: string, mcpServers?: () => readonly acp.McpServer[]) {
+	/** With `openLater`, the session opens on `open()` (see `AgentClientOptions.openLater`). */
+	constructor(private readonly service: AgentService, readonly folder: string, resumeSessionId?: string, mcpServers?: () => readonly acp.McpServer[], openLater = false) {
 		this.client = new AgentClient(service.runtime, {
 			cwd: folder,
 			resumeSessionId,
+			openLater,
 			mcpServers,
-			preferredModel,
+			preferredModel: sessionModel,
 			isModeAllowed: modeId => isModeAllowed(getApprovalPolicy(), modeId),
 			requestPermission: params => this.permissions.request(params),
 			// A folder outside this window's workspace is the agent's only root.
@@ -57,6 +59,10 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 
 	get status(): AgentStatus {
 		return this.service.statusFor(this.client);
+	}
+
+	open(): void {
+		this.client.open();
 	}
 
 	ensureReady(): Promise<unknown> {

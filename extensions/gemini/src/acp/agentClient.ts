@@ -10,7 +10,7 @@ import { Emitter } from './events';
 import { AgentRuntime, AgentRuntimeState, FileSystemHandlers } from './agentRuntime';
 import { findCliSession } from './cliSessions';
 import { PromptCapabilities, readPromptCapabilities } from './promptContent';
-import { filterModes, readSessionSettings, SessionSettings } from './sessionSettings';
+import { filterModes, readSessionSettings, SessionChoice, SessionSettings } from './sessionSettings';
 import type { SlashCommand } from './slashCommands';
 import { ChatEvent, SessionUpdateAdapter } from './sessionUpdates';
 import { ModelTokens, readTurnUsage } from './turnUsage';
@@ -49,12 +49,18 @@ export interface AgentClientOptions {
 	/** A session from an earlier run to reopen first, when the agent supports `session/load`. */
 	readonly resumeSessionId?: string;
 	/**
-	 * The model to switch each new or reopened session to, such as the one the
-	 * user picked last; ignored when the agent does not offer it. Picking a
-	 * model rather than Auto also spares gemini-cli its routing call before
-	 * every prompt.
+	 * Waits for `open()` before opening the first session. Reopening a session
+	 * replays its whole history, so an agent reopened from its saved chat shows
+	 * that chat first and reopens the session once it is on screen.
 	 */
-	readonly preferredModel?: () => string | undefined;
+	readonly openLater?: boolean;
+	/**
+	 * The model to switch each new or reopened session to, from the ones the
+	 * agent offers, such as the one the user picked last; ignored when the
+	 * agent does not offer it. Picking a model rather than Auto also spares
+	 * gemini-cli its routing call before every prompt.
+	 */
+	readonly preferredModel?: (available: readonly SessionChoice[]) => string | undefined;
 	/** Which approval modes the picker may offer; all of them when unset. */
 	readonly isModeAllowed?: (modeId: string) => boolean;
 	/** Finds a saved session's number and first prompt; the CLI's own files when unset. */
@@ -101,9 +107,12 @@ export class AgentClient {
 	/** The session to reopen when the agent (re)starts, so a restart keeps the conversation. */
 	private resumeSessionId: string | undefined;
 	private readonly runtimeListener: { dispose(): void };
+	/** Set until `open()` with `openLater`: the runtime may be ready, but no session is opened yet. */
+	private held: boolean;
 
 	constructor(private readonly runtime: AgentRuntime, private readonly options: AgentClientOptions) {
 		this.resumeSessionId = options.resumeSessionId;
+		this.held = !!options.openLater;
 		this.runtimeListener = runtime.onDidChangeState(state => this.onRuntimeState(state));
 		this.onRuntimeState(runtime.state);
 	}
@@ -123,6 +132,17 @@ export class AgentClient {
 	/** The slash commands the agent runs itself, from its latest `available_commands_update`. */
 	get commands(): readonly SlashCommand[] {
 		return this._commands;
+	}
+
+	/** Opens the session a client made with `openLater` waits to open; does nothing otherwise. */
+	open(): void {
+		if (!this.held) {
+			return;
+		}
+		this.held = false;
+		if (this.runtime.state.kind === 'ready') {
+			void this.openSession(true);
+		}
 	}
 
 	/** Starts a fresh session on the running agent; the old conversation is gone for the agent too. */
@@ -209,7 +229,12 @@ export class AgentClient {
 	private onRuntimeState(state: AgentRuntimeState): void {
 		switch (state.kind) {
 			case 'ready':
-				void this.openSession(true);
+				if (this.held) {
+					// The process is ready; the session opens on `open()`.
+					this.setState({ kind: 'connecting' });
+				} else {
+					void this.openSession(true);
+				}
 				break;
 			case 'connecting':
 				this.dropSession();
@@ -321,8 +346,8 @@ export class AgentClient {
 
 	/** Switches a session that just opened to the preferred model, before any prompt can reach it. */
 	private async applyPreferredModel(connection: AgentConnection, sessionId: string, settings: SessionSettings): Promise<SessionSettings> {
-		const preferred = this.options.preferredModel?.();
 		const model = settings.model;
+		const preferred = model && this.options.preferredModel?.(model.available);
 		if (!preferred || !model || model.currentId === preferred || !model.available.some(choice => choice.id === preferred)) {
 			return settings;
 		}

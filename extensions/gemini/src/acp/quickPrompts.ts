@@ -53,6 +53,26 @@ export function cleanEdit(reply: string, original: string): string {
 	return text + trailing;
 }
 
+/**
+ * The whole lines of a rewrite still arriving, each ending with a newline,
+ * without the selection tags or a code fence around them. A first line that
+ * may still turn out to be a tag or fence is left out until it is whole;
+ * `cleanEdit` tidies the whole rewrite once it is in.
+ */
+export function partialEdit(reply: string): string {
+	let text = reply.replace(/^\s*<selection>\n?/, '');
+	const fence = /^\s*(`{3,}|~{3,})[^\n]*\n/.exec(text);
+	if (fence) {
+		text = text.slice(fence[0].length);
+	} else if (!text.includes('\n') && /^\s*[`~<]/.test(text)) {
+		return '';
+	}
+	const lines = text.slice(0, text.lastIndexOf('\n') + 1);
+	// The closing fence or tag, and anything after it, is not part of the edit.
+	const close = new RegExp(`^(?:${fence ? `${fence[1]}|` : ''}</selection>)\\s*$`, 'm').exec(lines);
+	return close ? lines.slice(0, close.index) : lines;
+}
+
 /** Diffs longer than this are cut; the model still gets the list of files. */
 const maxDiffLength = 40_000;
 
@@ -163,6 +183,27 @@ function mentionsOf(text: string): string[] {
  * @mention the model dropped is put back, and a leading /command it made up
  * is taken out, since the composer would run it.
  */
+/**
+ * A rewrite still arriving, tidied for showing: without the mode notice, a
+ * lead-in line, the request tag or an opening code fence. A line that may
+ * still become one of those is left out until it is whole.
+ * `cleanEnhancedPrompt` tidies the whole rewrite once it is in.
+ */
+export function partialEnhancedPrompt(reply: string): string {
+	let text = reply.trimStart();
+	const firstLineDone = text.includes('\n');
+	if (!firstLineDone && /^(?:\[|\*|<|`|~|here|enhanced|improved|rewritten|new)/i.test(text)) {
+		return '';
+	}
+	text = text
+		.replace(/^\[MODE_UPDATE\] (?:default|autoEdit|yolo|plan)\s*/, '')
+		.replace(/^(?:\*\*)?(?:here(?:'s| is)[^\n]*?|(?:enhanced|improved|rewritten|new) prompt)(?:\*\*)?:(?:\*\*)?\s*\n/i, '')
+		.replace(/^<request>\s*/, '')
+		.replace(/^(`{3,}|~{3,})[^\n]*\n/, '')
+		.replace(/^"/, '');
+	return text.replace(/\n?(?:`{3,}|~{3,}|<\/request>)\s*$/, '');
+}
+
 export function cleanEnhancedPrompt(reply: string, original: string): string {
 	let text = reply.trim()
 		// gemini-cli's notice of a mode change, sent as message text and run into the reply.

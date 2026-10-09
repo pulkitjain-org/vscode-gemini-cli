@@ -6,8 +6,9 @@
 // Enhance prompt: rewrites the draft as a precise prompt (the extension's
 // src/acp/promptEnhancer.ts). A pill floats just after the draft's last
 // character, moving as the user types: Enhance starts it; while it works the
-// draft fades and the pill cancels; then the rewrite replaces the draft as an
-// edit, and the pill offers Revert beside Enhance (Undo works too).
+// rewrite shows in place of the draft as it arrives and the pill cancels; then
+// the whole rewrite replaces the draft as an edit, and the pill offers Revert
+// beside Enhance (Undo works too).
 
 import { acceptsEnhanceReply, enhanceButtonPlacement, EnhancePhase, enhanceOriginal, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, format, isEnhanceShortcut } from './chatLogic';
 import { setLabel } from './dom';
@@ -30,6 +31,8 @@ let nextRequestId = 1;
 let slowTimers: ReturnType<typeof setTimeout>[] = [];
 /** Whether the extension was asked to get a rewrite ready since the draft was last empty. */
 let prepared = false;
+/** The draft a rewrite is showing over as it arrives, to put back when it is done, cancelled or failed. */
+let streamedOver: string | undefined;
 
 setLabel(enhanceButton, format(strings.enhanceTooltip, enhanceShortcutLabel(mac)));
 setLabel(revertButton, strings.revertTooltip);
@@ -146,8 +149,36 @@ export function cancelEnhance(): void {
 		return;
 	}
 	vscode.postMessage({ type: 'cancelEnhance', requestId: phase.requestId });
+	restoreDraft();
 	setPhase({ kind: 'idle' });
 	input.focus();
+}
+
+/**
+ * Shows the rewrite in the input as it arrives. The input is read-only
+ * meanwhile, and the draft goes back before the whole rewrite replaces it, so
+ * that is one edit Undo takes back.
+ */
+export function onEnhanceProgress(requestId: number, text: string): void {
+	if (!acceptsEnhanceReply(phase, requestId) || !text.trim()) {
+		return;
+	}
+	streamedOver ??= input.value;
+	form.classList.add('enhance-streaming');
+	input.value = text;
+	autoGrow();
+	input.scrollTop = input.scrollHeight;
+	placeButton();
+}
+
+/** Puts back the draft a rewrite was showing over. */
+function restoreDraft(): void {
+	form.classList.remove('enhance-streaming');
+	if (streamedOver !== undefined) {
+		input.value = streamedOver;
+		streamedOver = undefined;
+		autoGrow();
+	}
 }
 
 /** The rewrite arrived: it replaces the draft, and Revert is offered. */
@@ -155,6 +186,7 @@ export function onEnhanced(requestId: number, text: string): void {
 	if (!acceptsEnhanceReply(phase, requestId)) {
 		return;
 	}
+	restoreDraft();
 	const rewrite = enhanceText(text);
 	// Set first: replacing the text fires an input event, which must see the rewrite.
 	setPhase({ kind: 'done', original: phase.original, rewrite });
@@ -166,6 +198,7 @@ export function onEnhanceFailed(requestId: number, message: string): void {
 	if (!acceptsEnhanceReply(phase, requestId)) {
 		return;
 	}
+	restoreDraft();
 	setPhase({ kind: 'idle' });
 	showNote(message, true);
 	updateRow();

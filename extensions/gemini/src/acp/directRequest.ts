@@ -61,6 +61,8 @@ export interface DirectRequest {
 	/** Lower is more predictable; edits want low. */
 	readonly temperature?: number;
 	readonly signal?: AbortSignal;
+	/** Streams the answer: called with the text so far each time more arrives. */
+	readonly onText?: (text: string) => void;
 }
 
 /** What a Google API error says about why it was refused, as the CLI reads it. */
@@ -224,8 +226,11 @@ export class DirectClient {
 		switch (auth.kind) {
 			case 'apiKey': {
 				const base = this.env.GOOGLE_GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com';
-				const response = await this.post(`${base}/v1beta/models/${encodeURIComponent(request.model)}:generateContent`, { 'x-goog-api-key': auth.apiKey }, body, request.signal);
-				return textOf(response);
+				const url = `${base}/v1beta/models/${encodeURIComponent(request.model)}`;
+				const headers = { 'x-goog-api-key': auth.apiKey };
+				return request.onText
+					? this.stream(`${url}:streamGenerateContent?alt=sse`, headers, body, request.signal, chunk => chunk, request.onText)
+					: textOf(await this.post(`${url}:generateContent`, headers, body, request.signal));
 			}
 			case 'google': {
 				const [token, version] = await Promise.all([this.accessToken(auth.credsFile, request.signal), this.options.cliVersion?.()]);
@@ -233,13 +238,17 @@ export class DirectClient {
 				const project = await this.projectId(headers, request.signal);
 				// What the CLI sends with each request when GeminiCode runs it (its ACP client name is geminicode).
 				const cliHeaders: Record<string, string> = version ? { 'user-agent': `GeminiCLI-geminicode/${version}/${request.model} (${process.platform}; ${process.arch}; acp)` } : {};
-				const response = await this.post(`${this.codeAssistBase()}:generateContent`, { ...headers, ...cliHeaders }, {
+				const payload = {
 					model: request.model,
 					project,
 					user_prompt_id: `${this.sessionId}########${++this.prompts}`,
 					request: { ...body, session_id: this.sessionId },
-				}, request.signal) as { response?: unknown };
-				return textOf(response.response);
+				};
+				// Code Assist wraps each answer in `response`.
+				const unwrap = (answer: unknown) => (answer as { response?: unknown } | undefined)?.response;
+				return request.onText
+					? this.stream(`${this.codeAssistBase()}:streamGenerateContent?alt=sse`, { ...headers, ...cliHeaders }, payload, request.signal, unwrap, request.onText)
+					: textOf(unwrap(await this.post(`${this.codeAssistBase()}:generateContent`, { ...headers, ...cliHeaders }, payload, request.signal)));
 			}
 			case 'unsupported':
 				throw new DirectRequestError(auth.reason === 'vertex'
@@ -326,7 +335,71 @@ export class DirectClient {
 		return this.request(url, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body), signal });
 	}
 
+	/**
+	 * Sends a streaming request and reads its server-sent events as they
+	 * arrive, calling `onText` with the text so far after each one. Resolves
+	 * with the whole text; `unwrap` finds the `generateContent` answer in an event.
+	 */
+	private async stream(url: string, headers: Record<string, string>, body: unknown, signal: AbortSignal | undefined, unwrap: (event: unknown) => unknown, onText: (text: string) => void): Promise<string> {
+		const response = await this.send(url, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body), signal });
+		let text = '';
+		let finishReason: string | undefined;
+		const onEvent = (data: string) => {
+			let event: unknown;
+			try {
+				event = unwrap(JSON.parse(data));
+			} catch {
+				throw new DirectRequestError('Gemini sent an answer that is not JSON.', 'other');
+			}
+			const candidate = (event as { candidates?: { finishReason?: string }[] } | undefined)?.candidates?.[0];
+			finishReason = candidate?.finishReason ?? finishReason;
+			const more = partsText(event);
+			if (more) {
+				text += more;
+				onText(text);
+			}
+		};
+		if (!response.body) {
+			readEvents(await response.text(), onEvent);
+		} else {
+			const decoder = new TextDecoder();
+			let pending = '';
+			const reader = response.body.getReader();
+			try {
+				for (; ;) {
+					const { done, value } = await reader.read();
+					pending = (pending + decoder.decode(value, { stream: !done })).replace(/\r\n/g, '\n');
+					// Events end with a blank line; keep a partial one for the next read.
+					const end = pending.lastIndexOf('\n\n');
+					if (end !== -1 || done) {
+						readEvents(done ? pending : pending.slice(0, end), onEvent);
+						pending = done ? '' : pending.slice(end + 2);
+					}
+					if (done) {
+						break;
+					}
+				}
+			} finally {
+				reader.releaseLock();
+			}
+		}
+		if (!text && finishReason && finishReason !== 'STOP') {
+			throw new DirectRequestError(`Gemini stopped without an answer (${finishReason}).`, 'other');
+		}
+		return text;
+	}
+
 	private async request(url: string, init: RequestInit): Promise<unknown> {
+		const text = await (await this.send(url, init)).text();
+		try {
+			return JSON.parse(text);
+		} catch {
+			throw new DirectRequestError('Gemini sent an answer that is not JSON.', 'other');
+		}
+	}
+
+	/** Sends a request; rejects with a `DirectRequestError` when it fails or is refused. */
+	private async send(url: string, init: RequestInit): Promise<Response> {
 		let response: Response;
 		try {
 			response = await this.fetch(url, init);
@@ -336,8 +409,8 @@ export class DirectClient {
 			}
 			throw new DirectRequestError(`Could not reach Gemini: ${err instanceof Error ? err.message : String(err)}`, 'network');
 		}
-		const text = await response.text();
 		if (!response.ok) {
+			const text = await response.text();
 			let message = text.slice(0, 300);
 			let error: unknown;
 			try {
@@ -352,10 +425,16 @@ export class DirectClient {
 			}
 			throw new DirectRequestError(`Gemini answered ${response.status}: ${message}`, kind, response.status, refusalDetails(error, message));
 		}
-		try {
-			return JSON.parse(text);
-		} catch {
-			throw new DirectRequestError('Gemini sent an answer that is not JSON.', 'other');
+		return response;
+	}
+}
+
+/** Calls `onData` with the data of each server-sent event in `text`, its `data:` lines joined. */
+export function readEvents(text: string, onData: (data: string) => void): void {
+	for (const block of text.split(/\r?\n\r?\n/)) {
+		const data = block.split(/\r?\n/).filter(line => line.startsWith('data:')).map(line => line.slice(5).replace(/^ /, '')).join('\n');
+		if (data.trim()) {
+			onData(data);
 		}
 	}
 }
@@ -425,10 +504,16 @@ function thinkingConfig(model: string): { thinkingConfig?: Record<string, unknow
 	return {};
 }
 
+/** The answer's text in a generateContent response's first candidate, without its thoughts. */
+function partsText(response: unknown): string {
+	const candidate = (response as { candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[] })?.candidates?.[0];
+	return candidate?.content?.parts?.filter(p => !p.thought).map(p => p.text ?? '').join('') ?? '';
+}
+
 /** The text of a generateContent response's first candidate. */
 export function textOf(response: unknown): string {
-	const candidate = (response as { candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] }; finishReason?: string }[] })?.candidates?.[0];
-	const text = candidate?.content?.parts?.filter(p => !p.thought).map(p => p.text ?? '').join('') ?? '';
+	const candidate = (response as { candidates?: { finishReason?: string }[] })?.candidates?.[0];
+	const text = partsText(response);
 	if (!text && candidate?.finishReason && candidate.finishReason !== 'STOP') {
 		throw new DirectRequestError(`Gemini stopped without an answer (${candidate.finishReason}).`, 'other');
 	}

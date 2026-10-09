@@ -8,8 +8,9 @@ import * as vscode from 'vscode';
 import { AgentChanges } from '../acp/agentChanges';
 import { CliBundleInfo, cliEnvProject, detectAuth, DirectClient, DirectRequest, DirectRequestError, readCliBundle } from '../acp/directRequest';
 import { errorMessage } from '../acp/errors';
-import { cleanCommitMessage, cleanEdit, commitMessagePrompt, inlineEditPrompt, latestFlashModel, quickEditModels } from '../acp/quickPrompts';
+import { cleanCommitMessage, cleanEdit, commitMessagePrompt, inlineEditPrompt, latestFlashModel, partialEdit, quickEditModels } from '../acp/quickPrompts';
 import { configSection, getCliResolution, getProjectSettings, getWorkspaceCwd } from './configuration';
+import { InlineEditPreview } from './inlineEditPreview';
 import { preferredModel } from './modelPreference';
 import { ReviewController, ReviewSource } from './reviewController';
 
@@ -154,17 +155,24 @@ export class QuickEdits implements vscode.Disposable {
 			return;
 		}
 		this.lastInstruction = instruction;
-		const version = document.version;
 		const before = document.getText();
 		const lines = before.split('\n');
 		const original = lines.slice(start, end).join('\n') + (end < lines.length ? '\n' : '');
 		const { system, prompt } = inlineEditPrompt({ path: vscode.workspace.asRelativePath(document.uri), languageId: document.languageId, lines, start, end, instruction });
-		const reply = await this.withProgress(vscode.ProgressLocation.Notification, vscode.l10n.t("Gemini is editing…"), signal =>
-			this.generate({ system, prompt, signal }));
+		// The rewrite shows in the file as it arrives, and goes again before the clean one is applied.
+		const preview = new InlineEditPreview(editor, start, end - start);
+		let intact = true;
+		const reply = await this.withProgress(vscode.ProgressLocation.Notification, vscode.l10n.t("Gemini is editing…"), async signal => {
+			try {
+				return await this.generate({ system, prompt, signal, onText: text => preview.show(partialEdit(text)) });
+			} finally {
+				intact = await preview.finish();
+			}
+		});
 		if (reply === undefined) {
 			return;
 		}
-		if (document.version !== version) {
+		if (!intact || document.getText() !== before) {
 			void vscode.window.showWarningMessage(vscode.l10n.t("The file changed while Gemini was working, so the edit was not applied. Try again."));
 			return;
 		}
@@ -175,7 +183,8 @@ export class QuickEdits implements vscode.Disposable {
 		}
 		const range = new vscode.Range(start, 0, end, 0);
 		const target = end < lines.length ? range : document.validateRange(new vscode.Range(start, 0, end, Number.MAX_SAFE_INTEGER));
-		if (!await editor.edit(edit => edit.replace(target, text))) {
+		// After a preview, this edit joins its undo step, so one Undo takes the whole edit back.
+		if (!await editor.edit(edit => edit.replace(target, text), { undoStopBefore: !preview.edited, undoStopAfter: true })) {
 			return;
 		}
 		this.source.changes.record([{ path: document.uri.fsPath, oldText: before, newText: document.getText() }]);

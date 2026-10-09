@@ -19,7 +19,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 16;
+export const chatProtocolVersion = 17;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -292,6 +292,8 @@ export interface ViewWorkspace {
 
 export type FromWebview =
 	| { readonly type: 'ready'; readonly protocol?: number }
+	/** The transcript from `reset` is on screen. */
+	| { readonly type: 'shown' }
 	| { readonly type: 'prompt'; readonly text: string; readonly attachments: readonly Attachment[] }
 	/** The @-mention picker wants files matching `query`; answered with `files` carrying the same `requestId`. */
 	| { readonly type: 'searchFiles'; readonly requestId: number; readonly query: string }
@@ -374,6 +376,8 @@ export type ToWebview =
 	| { readonly type: 'tokenColors'; readonly colors: TokenColors }
 	/** The Enhance Prompt command: enhance what the composer holds. */
 	| { readonly type: 'enhanceRequested' }
+	/** The rewrite so far, while it arrives; `enhanced` follows with the whole of it. */
+	| { readonly type: 'enhanceProgress'; readonly requestId: number; readonly text: string }
 	| { readonly type: 'enhanced'; readonly requestId: number; readonly text: string }
 	| { readonly type: 'enhanceFailed'; readonly requestId: number; readonly message: string }
 	/** The newest saved sessions the empty chat offers to reopen, of `total`. */

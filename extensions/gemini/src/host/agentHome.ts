@@ -38,7 +38,8 @@ export class AgentHome implements vscode.Disposable {
 	private lastView: string | undefined;
 	private readonly disposables: vscode.Disposable[] = [];
 
-	constructor(private readonly extensionUri: vscode.Uri, private readonly agents: AgentsView) {
+	/** `onTyping` runs when the user starts typing a task, so the agent can start meanwhile. */
+	constructor(private readonly extensionUri: vscode.Uri, private readonly agents: AgentsView, private readonly onTyping: () => void = () => undefined) {
 		this.disposables.push(
 			vscode.commands.registerCommand('gemini.agentHome', () => this.show(false)),
 			// GeminiCode's workbench reports the window mode.
@@ -144,6 +145,12 @@ export class AgentHome implements vscode.Disposable {
 					if (!await this.agents.startWithPrompt(message.folder, message.text.trim(), message.ownBranch, message.mode, message.attachments)) {
 						void this.panel?.webview.postMessage({ type: 'startFailed', text: message.text } satisfies ToHome);
 					}
+				}
+				return;
+			case 'typing':
+				this.onTyping();
+				if (!message.ownBranch) {
+					this.agents.prepareStart(message.folder);
 				}
 				return;
 			case 'addFolder':

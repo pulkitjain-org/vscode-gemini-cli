@@ -214,4 +214,43 @@ describe('AgentRuntime', () => {
 		expect(a.texts).toEqual(['read:shared']);
 		expect(b.texts).toEqual(['read:own']);
 	});
+
+	async function ready(runtime: AgentRuntime): Promise<void> {
+		if (runtime.state.kind !== 'ready') {
+			await waitFor(runtime.onDidChangeState, s => s.kind === 'ready');
+		}
+	}
+
+	it('gives a session prepared ahead to the next chat in the same folder', async () => {
+		start({ turns: [[{ step: 'session' }]] });
+		await ready(runtime!);
+		runtime!.prepareSession('/work/a');
+		runtime!.prepareSession('/work/a');
+		const b = await session('/work/b');
+		const a = await session('/work/a');
+		expect([a.state, b.state]).toMatchObject([{ kind: 'ready', sessionId: 'fake-session-1' }, { kind: 'ready', sessionId: 'fake-session-2' }]);
+		await a.client.prompt('who');
+		expect(a.texts).toEqual(['session:fake-session-1:/work/a']);
+	});
+
+	it('does not give a prepared session to a chat with other servers', async () => {
+		start({});
+		await ready(runtime!);
+		runtime!.prepareSession('/work/a', [{ name: 'browser', command: 'x', args: [], env: [] }]);
+		const a = await session('/work/a');
+		expect(a.state).toMatchObject({ kind: 'ready', sessionId: 'fake-session-2' });
+	});
+
+	it('opens a chat made to open later only when asked', async () => {
+		start({});
+		await ready(runtime!);
+		const client = new AgentClient(runtime!, { cwd: '/work/a', requestPermission: cancelled, openLater: true });
+		clients.push(client);
+		await new Promise(resolve => setTimeout(resolve, 50));
+		expect(client.state.kind).toBe('connecting');
+		expect(runtime!.sessionCount).toBe(0);
+		const opened = waitFor<AgentClientState>(client.onDidChangeState, s => s.kind === 'ready');
+		client.open();
+		expect(await opened).toMatchObject({ sessionId: 'fake-session-1' });
+	});
 });

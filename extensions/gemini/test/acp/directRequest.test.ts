@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cliEnvProject, detectAuth, DirectClient, DirectRequestError, parseQuota, readCliBundle, refusalDetails } from '../../src/acp/directRequest';
+import { cliEnvProject, detectAuth, DirectClient, DirectRequestError, parseQuota, readCliBundle, readEvents, refusalDetails } from '../../src/acp/directRequest';
 
 let home: string;
 
@@ -233,5 +233,54 @@ describe('cliEnvProject', () => {
 		// Only the first file found counts, even without a project in it.
 		await fs.writeFile(path.join(repo, 'src', '.env'), 'OTHER=1\n');
 		expect(await cliEnvProject(path.join(repo, 'src'), home)).toBeUndefined();
+	});
+});
+
+/** A server-sent events answer that arrives in the given pieces, split anywhere. */
+function sse(...pieces: string[]): Response {
+	const encoder = new TextEncoder();
+	return new Response(new ReadableStream({
+		start(controller) {
+			pieces.forEach(piece => controller.enqueue(encoder.encode(piece)));
+			controller.close();
+		},
+	}));
+}
+
+const event = (value: unknown) => `data: ${JSON.stringify(value)}\r\n\r\n`;
+
+describe('streaming', () => {
+	it('streams with an API key, reporting the text so far', async () => {
+		const first = event(answer('Hel'));
+		const { fetch, calls } = fakeFetch({ ':streamGenerateContent?alt=sse': () => sse(first.slice(0, 20), first.slice(20), event(answer('lo'))) });
+		const client = new DirectClient({ env: { GEMINI_CLI_HOME: home, GEMINI_API_KEY: 'k', GOOGLE_GEMINI_BASE_URL: 'http://fake' }, fetch });
+		const seen: string[] = [];
+		expect(await client.generate({ ...request, onText: text => seen.push(text) })).toBe('Hello');
+		expect(seen).toEqual(['Hel', 'Hello']);
+		expect(calls[0].url).toBe('http://fake/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse');
+	});
+
+	it('unwraps Code Assist events', async () => {
+		await writeGemini('oauth_creds.json', { access_token: 'tok', expiry_date: Date.now() + 3_600_000 });
+		const { fetch, calls } = fakeFetch({ ':streamGenerateContent?alt=sse': () => sse(event({ response: answer('a') }), event({ response: answer('b') })) });
+		const client = new DirectClient({ env: { GEMINI_CLI_HOME: home, CODE_ASSIST_ENDPOINT: 'http://fake' }, fetch, projectId: () => 'p' });
+		const seen: string[] = [];
+		expect(await client.generate({ ...request, onText: text => seen.push(text) })).toBe('ab');
+		expect(seen).toEqual(['a', 'ab']);
+		expect(calls[0].url).toBe('http://fake/v1internal:streamGenerateContent?alt=sse');
+	});
+
+	it('fails a stream the server refuses like a plain request', async () => {
+		const { fetch } = fakeFetch({ ':streamGenerateContent?alt=sse': () => json({ error: { code: 403, message: 'no' } }, 403) });
+		const client = new DirectClient({ env: { GEMINI_CLI_HOME: home, GEMINI_API_KEY: 'k' }, fetch });
+		await expect(client.generate({ ...request, onText: () => undefined })).rejects.toBeInstanceOf(DirectRequestError);
+	});
+});
+
+describe('readEvents', () => {
+	it('joins multi-line data and skips other fields', () => {
+		const seen: string[] = [];
+		readEvents('event: x\ndata: {"a":\ndata: 1}\n\n: comment\n\ndata:2\n\n', data => seen.push(data));
+		expect(seen).toEqual(['{"a":\n1}', '2']);
 	});
 });

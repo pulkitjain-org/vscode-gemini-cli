@@ -43,18 +43,40 @@ export function updateActivity(): void {
 	}
 }
 
+/**
+ * Shows what the agent is doing. It runs on every update batch, about 30
+ * times a second while a reply streams, so it only writes what changed.
+ */
 function showWorking(): void {
 	const activity = currentActivity(state.items);
 	const waiting = activity.kind === 'waiting';
-	strip.className = `activity ${waiting ? 'waiting' : 'running'}`;
-	label.textContent = waiting ? strings.activityWaiting : strings.activityWorking;
-	clock.hidden = waiting;
+	setClass(`activity ${waiting ? 'waiting' : 'running'}`);
+	setText(label, waiting ? strings.activityWaiting : strings.activityWorking);
+	setHidden(clock, waiting);
 	tick();
 	const text = activity.kind === 'writing' ? strings.activityWriting : activity.detail || (activity.kind === 'thinking' ? strings.thinking : '');
-	detail.textContent = text;
-	detail.hidden = !text;
-	hint.hidden = waiting;
-	strip.hidden = false;
+	setText(detail, text);
+	setHidden(detail, !text);
+	setHidden(hint, waiting);
+	setHidden(strip, false);
+}
+
+function setClass(name: string): void {
+	if (strip.className !== name) {
+		strip.className = name;
+	}
+}
+
+function setText(node: HTMLElement, text: string): void {
+	if (node.textContent !== text) {
+		node.textContent = text;
+	}
+}
+
+function setHidden(node: HTMLElement, hidden: boolean): void {
+	if (node.hidden !== hidden) {
+		node.hidden = hidden;
+	}
 }
 
 function showDone(elapsed: number): void {
@@ -70,5 +92,5 @@ function showDone(elapsed: number): void {
 }
 
 function tick(): void {
-	clock.textContent = formatClock(Date.now() - (started ?? Date.now()));
+	setText(clock, formatClock(Date.now() - (started ?? Date.now())));
 }

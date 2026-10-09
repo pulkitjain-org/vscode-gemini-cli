@@ -274,6 +274,8 @@ function submit(): void {
 		return;
 	}
 	vscode.postMessage({ type: 'start', folder, text, ownBranch: !ownBranchLabel.hidden && ownBranch.checked, mode, attachments });
+	// The next task gets a session of its own.
+	typingFor = undefined;
 	prompt.value = '';
 	attachments = [];
 	renderAttachments();
@@ -291,12 +293,28 @@ prompt.addEventListener('keydown', e => {
 		submit();
 	}
 });
+/** What the extension was last told the user is typing a task for, so it hears once per folder. */
+let typingFor: string | undefined;
+
+/** Lets the extension start the agent, and a session for this task, while the user types it. */
+function reportTyping(): void {
+	const own = !ownBranchLabel.hidden && ownBranch.checked;
+	const key = `${folder}\n${own}`;
+	if (!prompt.value.trim() || !folder || key === typingFor) {
+		return;
+	}
+	typingFor = key;
+	vscode.postMessage({ type: 'typing', folder, ownBranch: own });
+}
+
 prompt.addEventListener('input', () => {
 	save();
 	updateControls();
+	reportTyping();
 });
 ownBranch.addEventListener('change', () => {
 	ownBranchTouched = true;
+	reportTyping();
 });
 
 window.addEventListener('message', (event: MessageEvent<ToHome>) => {

@@ -50,8 +50,19 @@ let branches: readonly ViewBranch[] | undefined;
 let branchNotice: string | undefined;
 /** Whether the field names a new branch rather than filtering the list. */
 let creating = false;
+/** When the list was last asked for; a pointer on the button asks ahead, so the menu opens with it. */
+let branchesAskedAt = 0;
+/** A list asked for this recently is shown at once when the menu opens, while a fresh one comes. */
+const branchesFreshMs = 10_000;
+/** Rows the menu draws at most; typing narrows the rest. */
+const maxBranchRows = 50;
 
-const branchMenu = new Menu({
+function askForBranches(): void {
+	branchesAskedAt = Date.now();
+	vscode.postMessage({ type: 'listBranches' });
+}
+
+const branchMenu: Menu = new Menu({
 	element: ui.branchMenu,
 	anchor: ui.branchButton,
 	label: strings.branchSearch,
@@ -65,7 +76,7 @@ const branchMenu = new Menu({
 		if (creating) {
 			return isValidBranchName(q) ? [{ rows: [{ icon: 'add', name: format(strings.createBranchNamed, q), run: () => pickBranch(q, true) }] }] : [];
 		}
-		const shown = (branches ?? []).filter(branch => branch.name.toLowerCase().includes(q.toLowerCase()));
+		const shown = (branches ?? []).filter(branch => branch.name.toLowerCase().includes(q.toLowerCase())).slice(0, maxBranchRows);
 		return [
 			{ rows: [{ icon: 'add', name: strings.createBranch, run: startCreating }] },
 			{
@@ -79,12 +90,14 @@ const branchMenu = new Menu({
 			},
 		];
 	},
-	empty: () => branchNotice ?? (creating ? (branchMenu.text.trim() ? strings.invalidBranchName : strings.newBranchName) : branches ? strings.noBranches : strings.loading),
+	empty: (): string => branchNotice ?? (creating ? (branchMenu.text.trim() ? strings.invalidBranchName : strings.newBranchName) : branches ? strings.noBranches : strings.loading),
 	onOpen: () => {
-		branches = undefined;
-		branchNotice = undefined;
+		if (Date.now() - branchesAskedAt > branchesFreshMs) {
+			branches = undefined;
+			branchNotice = undefined;
+		}
 		creating = false;
-		vscode.postMessage({ type: 'listBranches' });
+		askForBranches();
 	},
 	onKey: event => {
 		if (event.key === 'Escape' && creating) {
@@ -95,6 +108,12 @@ const branchMenu = new Menu({
 		}
 		return false;
 	},
+});
+
+ui.branchButton.addEventListener('pointerenter', () => {
+	if (Date.now() - branchesAskedAt > branchesFreshMs) {
+		askForBranches();
+	}
 });
 
 function startCreating(): void {

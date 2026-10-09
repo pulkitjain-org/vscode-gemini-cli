@@ -116,12 +116,16 @@ export class AgentsModel {
 		return removed;
 	}
 
-	addAgent(workspaceId: string, title: string, worktree?: AgentWorktree): AgentRecord {
+	/** `id` is one chosen ahead, such as the one a session was opened for before the agent existed; it must be unused. */
+	addAgent(workspaceId: string, title: string, worktree?: AgentWorktree, id: string = randomUUID()): AgentRecord {
 		if (!this.workspace(workspaceId)) {
 			throw new Error(`Unknown workspace ${workspaceId}`);
 		}
+		if (this.agent(id)) {
+			throw new Error(`Agent ${id} already exists`);
+		}
 		const now = this.now();
-		const agent: AgentRecord = { id: randomUUID(), workspaceId, title, createdAt: now, updatedAt: now, ...(worktree ? { worktree } : {}) };
+		const agent: AgentRecord = { id, workspaceId, title, createdAt: now, updatedAt: now, ...(worktree ? { worktree } : {}) };
 		this._agents = [...this._agents, agent];
 		this.changed();
 		return agent;

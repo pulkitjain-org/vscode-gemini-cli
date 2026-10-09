@@ -4,9 +4,11 @@
  *--------------------------------------------------------------------------------------------*/
 
 import type * as vscode from 'vscode';
+import { defaultModel, SessionChoice } from '../acp/sessionSettings';
 
 // The model the user picked last in any chat. New and reopened sessions
-// start on it, so a pick sticks across agents and windows. Also the height
+// start on it, so a pick sticks across agents and windows; until there is
+// one, they start on the newest Flash model. Also the height
 // the chat input was dragged to, shared by every chat the same way.
 
 const lastModelKey = 'gemini.lastModel';
@@ -19,6 +21,12 @@ export function initModelPreference(globalState: vscode.Memento): void {
 
 export function preferredModel(): string | undefined {
 	return storage?.get<string>(lastModelKey);
+}
+
+/** The model a session opens on: the user's last pick while the agent still offers it, else the newest Flash. */
+export function sessionModel(available: readonly SessionChoice[]): string | undefined {
+	const picked = preferredModel();
+	return picked && available.some(choice => choice.id === picked) ? picked : defaultModel(available);
 }
 
 export function rememberModel(modelId: string): void {

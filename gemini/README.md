@@ -75,6 +75,7 @@ The **Gemini** status bar item shows the agent's state. Hover over it to see the
 | `gemini.browser.enabled` | Let agents open and use a page in the GeminiCode browser. On by default. |
 | `gemini.browser.allowOtherSites` | Let agents open sites other than local ones, after asking. On by default. |
 | `gemini.usageMeter.enabled` | Show today's quota in the Gemini status bar item and the chat's Usage and quota popover. On by default. |
+| `gemini.agent.startEarly` | Start the agent a few seconds after the window opens, so the first chat doesn't wait for it. Only when GeminiCode was set up before and the sign-in is saved. On by default. |
 | `gemini.keepAwake` | Keep the Mac awake while any agent works. On by default. |
 | `gemini.chat.followAgent` | Open each file the agent reads or edits as it works. The switch in the composer's + menu toggles it. Off by default. |
 | `gemini.layout.showAgentsInNewWorkspaces` | Show the Gemini side bar rather than Explorer the first time a workspace opens in Editor mode. |

@@ -31,6 +31,11 @@ export class SetupWalkthrough extends vscode.Disposable {
 		}
 	}
 
+	/** Whether a session has opened before, so sign-in and the project were in order. */
+	get isSetUp(): boolean {
+		return this.progress.projectReady;
+	}
+
 	/** Starts the agent, which signs in with Google when the CLI asks for it. */
 	async signIn(): Promise<void> {
 		const status = this.service.status;

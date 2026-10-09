@@ -10,6 +10,7 @@ import { AppUpdateNotice } from './host/appUpdateNotice';
 import { Appearance } from './host/appearance';
 import { AgentService } from './host/agentService';
 import { AgentHome } from './host/agentHome';
+import { AgentWarmup } from './host/agentWarmup';
 import { AgentsView } from './host/agentsView';
 import { ChangesPanel } from './host/changesPanel';
 import { applyLayoutDefaults } from './host/layoutDefaults';
@@ -66,6 +67,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	chatView.usage = usageMeter;
 	agentsView.usage = usageMeter;
 	const walkthrough = new SetupWalkthrough(service, context.globalState);
+	const warmup = new AgentWarmup(service, () => walkthrough.isSetUp, log);
 	const browserTools = new BrowserTools(String(context.extension.packageJSON.version ?? ''), log, {
 		stop: agent => agentsView.stopTurn(agent),
 		title: agent => agentsView.agentTitle(agent) ?? vscode.l10n.t("Agent"),
@@ -92,13 +94,14 @@ export function activate(context: vscode.ExtensionContext): void {
 		agentsView,
 		changesPanel,
 		agentsView.onDidFocus(source => changesPanel.show(source)),
-		new AgentHome(context.extensionUri, agentsView),
+		new AgentHome(context.extensionUri, agentsView, () => warmup.startSoon()),
 		new SettingsPage(context.extensionUri, service),
 		quickEdits,
 		statusBar,
 		usageMeter,
 		usageMeter.onDidChange(usage => statusBar.setUsage(usage)),
 		walkthrough,
+		warmup,
 		new Appearance(context.extensionUri),
 		new CliManager(service, context.globalState, log),
 		new AppUpdateNotice(context.globalState, log),

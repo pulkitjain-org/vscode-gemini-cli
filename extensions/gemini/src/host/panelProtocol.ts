@@ -161,6 +161,8 @@ export type ToHome =
 export type FromHome =
 	| { readonly type: 'ready' }
 	| { readonly type: 'start'; readonly folder: string; readonly text: string; readonly ownBranch: boolean; readonly mode: string; readonly attachments: readonly Attachment[] }
+	/** The user is typing a task, so the agent and a session for it can get ready. */
+	| { readonly type: 'typing'; readonly folder: string; readonly ownBranch: boolean }
 	| { readonly type: 'addFolder' | 'projectHelpers' | 'pickFiles' }
 	| { readonly type: 'open' | 'stop' | 'review' | 'mergeBack'; readonly id: string };
 

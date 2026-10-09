@@ -51,6 +51,17 @@ const maxEarlyUpdates = 5000;
 /** How long a reopened session's replay is waited for, to check it is the one asked for. */
 const replayCheckMs = 1_000;
 
+/** A session the runtime opened, with the connection and agent it belongs to. */
+export interface RuntimeSession {
+	readonly connection: AgentConnection;
+	readonly agent: acp.InitializeResponse;
+	readonly session: acp.NewSessionResponse;
+}
+
+function spareKey(cwd: string, mcpServers: readonly acp.McpServer[]): string {
+	return JSON.stringify([cwd, mcpServers]);
+}
+
 function normalizePrompt(text: string): string {
 	return text.trim().replace(/\s+/g, ' ');
 }
@@ -64,6 +75,8 @@ export class AgentRuntime {
 	private connection: AgentConnection | undefined;
 	private readonly sessions = new Map<string, SessionHandlers>();
 	private readonly earlyUpdates = new Map<string, acp.SessionUpdate[]>();
+	/** A session opened ahead of use (`prepareSession`), keyed by its folder and servers. */
+	private spare: { readonly key: string; readonly connection: AgentConnection; readonly session: Promise<RuntimeSession> } | undefined;
 	/** Shared by concurrent `session/new` calls so the user's settings are rewritten at most once. */
 	private authenticating: Promise<void> | undefined;
 	private readonly sidecarListener: { dispose(): void };
@@ -116,7 +129,47 @@ export class AgentRuntime {
 	 * auth, authenticates once with `oauth-personal` and retries.
 	 * Rejects with an `AgentError`.
 	 */
-	async newSession(cwd: string, mcpServers: readonly acp.McpServer[] = []): Promise<{ readonly connection: AgentConnection; readonly agent: acp.InitializeResponse; readonly session: acp.NewSessionResponse }> {
+	async newSession(cwd: string, mcpServers: readonly acp.McpServer[] = []): Promise<RuntimeSession> {
+		const spare = this.takeSpare(cwd, mcpServers);
+		if (spare) {
+			try {
+				return await spare;
+			} catch {
+				// Open another; this one's error may have been passing, such as a sign-in that has since finished.
+			}
+		}
+		return this.openNewSession(cwd, mcpServers);
+	}
+
+	/**
+	 * Opens a session in `cwd` ahead of the chat that will use it, such as while
+	 * the user types a task on Agent Home, so starting the agent waits for no
+	 * `session/new`. The next `newSession` with the same folder and servers on
+	 * this process takes it. Does nothing until the process is ready. One spare
+	 * at a time: gemini-cli cannot close a session, so one not taken stays in
+	 * the process (about 2.5 MB) until it exits.
+	 */
+	prepareSession(cwd: string, mcpServers: readonly acp.McpServer[] = []): void {
+		const key = spareKey(cwd, mcpServers);
+		const connection = this.connection;
+		if (this._state.kind !== 'ready' || !connection || (this.spare?.key === key && this.spare.connection === connection)) {
+			return;
+		}
+		const session = this.openNewSession(cwd, mcpServers);
+		session.catch(() => undefined);
+		this.spare = { key, connection, session };
+	}
+
+	private takeSpare(cwd: string, mcpServers: readonly acp.McpServer[]): Promise<RuntimeSession> | undefined {
+		const spare = this.spare;
+		if (!spare || spare.key !== spareKey(cwd, mcpServers) || spare.connection !== this.connection) {
+			return undefined;
+		}
+		this.spare = undefined;
+		return spare.session;
+	}
+
+	private async openNewSession(cwd: string, mcpServers: readonly acp.McpServer[]): Promise<RuntimeSession> {
 		const state = this._state;
 		const connection = this.connection;
 		if (state.kind !== 'ready' || !connection) {
@@ -149,7 +202,7 @@ export class AgentRuntime {
 	 * `loadSession`. Rejects with an `AgentError` otherwise, or when the agent
 	 * cannot find it; the caller then opens a new session.
 	 */
-	async loadSession(cwd: string, sessionId: string, firstPrompt?: string, mcpServers: readonly acp.McpServer[] = []): Promise<{ readonly connection: AgentConnection; readonly agent: acp.InitializeResponse; readonly session: acp.NewSessionResponse }> {
+	async loadSession(cwd: string, sessionId: string, firstPrompt?: string, mcpServers: readonly acp.McpServer[] = []): Promise<RuntimeSession> {
 		const state = this._state;
 		const connection = this.connection;
 		if (state.kind !== 'ready' || !connection) {
@@ -303,6 +356,7 @@ export class AgentRuntime {
 	private dropConnection(): void {
 		this.connection?.dispose();
 		this.connection = undefined;
+		this.spare = undefined;
 		this.authenticating = undefined;
 		this.earlyUpdates.clear();
 	}

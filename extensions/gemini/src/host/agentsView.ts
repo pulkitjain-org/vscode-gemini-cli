@@ -3,6 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AgentChanges, ChangeTotals, formatCounts } from '../acp/agentChanges';
@@ -142,11 +143,16 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	private lastStatus = '';
 	private lastTabs = '';
 	private refreshTimeout: ReturnType<typeof setTimeout> | undefined;
+	/** What the pending refresh redraws: the whole tree, or just these agents' rows. */
+	private refreshAll = false;
+	private readonly refreshRows = new Set<string>();
 	/** Each agent's page in the GeminiCode browser; set once the extension has made it. */
 	browser: BrowserTools | undefined;
 	/** Today's quota, for the chats' usage popover. */
 	usage: UsageMeter | undefined;
 	private persistTimeout: ReturnType<typeof setTimeout> | undefined;
+	/** The agent Agent Home starts next, chosen while the user types (`prepareStart`). */
+	private nextAgent: { readonly folder: string; readonly id: string; listener?: { dispose(): void } } | undefined;
 
 	constructor(
 		private readonly context: vscode.ExtensionContext,
@@ -359,6 +365,38 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		})));
 	}
 
+	/**
+	 * Gets the next agent Agent Home starts in `folder` ready while the user
+	 * types its task: an id for it, and a session opened for that id, so
+	 * Return waits for no `session/new`. An agent on its own branch works in a
+	 * folder that does not exist yet, so it gets none.
+	 */
+	prepareStart(folder: string): void {
+		if (this.nextAgent?.folder !== folder) {
+			this.clearNextAgent();
+			this.nextAgent = { folder, id: randomUUID() };
+		}
+		const next = this.nextAgent;
+		const runtime = this.service.runtime;
+		const open = () => runtime.prepareSession(folder, this.browser?.mcpServersFor(next.id, folder) ?? []);
+		if (runtime.state.kind === 'ready') {
+			open();
+		} else {
+			next.listener ??= runtime.onDidChangeState(state => {
+				if (state.kind === 'ready' && this.nextAgent === next) {
+					next.listener?.dispose();
+					next.listener = undefined;
+					open();
+				}
+			});
+		}
+	}
+
+	private clearNextAgent(): void {
+		this.nextAgent?.listener?.dispose();
+		this.nextAgent = undefined;
+	}
+
 	/** Starts an agent in `folder` (on its own branch, named after the prompt, with `ownBranch`) and sends it `text`. */
 	/** Returns whether the agent started; when not, the user has been told why. */
 	async startWithPrompt(folder: string, text: string, ownBranch: boolean, mode: string, attachments: readonly Attachment[]): Promise<boolean> {
@@ -377,8 +415,11 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				return false;
 			}
 		}
+		// The agent the session opened while the user typed was for, when it is in this folder.
+		const next = !worktree && this.nextAgent?.folder === folder ? this.nextAgent.id : undefined;
+		this.clearNextAgent();
 		const workspace = this.model.addWorkspace(folder);
-		const agent = this.model.addAgent(workspace.id, vscode.l10n.t("New agent"), worktree);
+		const agent = this.model.addAgent(workspace.id, vscode.l10n.t("New agent"), worktree, next);
 		// Started here, so its session opens in the mode picked.
 		const live = this.start(agent, worktree?.cwd ?? folder);
 		if (mode !== 'default') {
@@ -472,7 +513,12 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	 * together once per frame keeps a busy turn from redrawing the tree,
 	 * Home, the title bar and the tabs dozens of times.
 	 */
-	private refresh(): void {
+	private refresh(agentId?: string): void {
+		if (agentId === undefined) {
+			this.refreshAll = true;
+		} else {
+			this.refreshRows.add(agentId);
+		}
 		this.refreshTimeout ??= setTimeout(() => {
 			this.refreshTimeout = undefined;
 			this.refreshNow();
@@ -491,8 +537,19 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	}
 
 	private refreshNow(): void {
-		this.agentNodes.clear();
-		this.onDidChangeTreeDataEmitter.fire(undefined);
+		const rows = [...this.refreshRows].map(id => this.agentNodes.get(id));
+		const all = this.refreshAll || rows.some(node => !node);
+		this.refreshAll = false;
+		this.refreshRows.clear();
+		if (all) {
+			this.agentNodes.clear();
+			this.onDidChangeTreeDataEmitter.fire(undefined);
+		} else {
+			// Only these agents changed state: redraw their rows, not the whole tree.
+			for (const node of rows) {
+				this.onDidChangeTreeDataEmitter.fire(node);
+			}
+		}
 		this.updateClock();
 		this.updateBadge();
 		this.updateTitleBar();
@@ -792,8 +849,10 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				void vscode.window.showErrorMessage(vscode.l10n.t("The folder of \"{0}\"'s branch, {1}, no longer exists.", record.title, tildify(record.worktree.folder)));
 				return;
 			}
-			live = this.start(record, folder);
-			if (record.updatedAt !== record.createdAt) {
+			// A saved chat shows first; its session reopens, replaying the whole history, once it is on screen.
+			const saved = record.updatedAt !== record.createdAt;
+			live = this.start(record, folder, saved && !!record.sessionId);
+			if (saved) {
 				// Read while the tab opens; the agent reopens its session meanwhile.
 				const started = live;
 				void this.transcripts.load(id).then(saved => {
@@ -831,7 +890,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				}
 				if (e.webviewPanel.active && live.unread) {
 					live.unread = false;
-					this.refresh();
+					this.refresh(id);
 				}
 			});
 			panel.onDidDispose(() => {
@@ -883,8 +942,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		} : undefined;
 	}
 
-	private start(record: AgentRecord, folder: string): LiveAgent {
-		const session = new AgentSession(this.service, folder, record.sessionId, () => this.browser?.mcpServersFor(record.id, folder) ?? []);
+	private start(record: AgentRecord, folder: string, openLater = false): LiveAgent {
+		const session = new AgentSession(this.service, folder, record.sessionId, () => this.browser?.mcpServersFor(record.id, folder) ?? [], openLater);
 		const files: FileSearch = isOpenFolder(folder) ? this.workspaceFiles : new FolderFileIndex(folder);
 		const changes = new AgentChanges(folder);
 		const live: LiveAgent = {
@@ -936,7 +995,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 					this.scheduleSave(record.id, live);
 				}
 				live.activity = activity;
-				this.refresh();
+				this.refresh(record.id);
 			}),
 			session.client.onDidChangeState(state => {
 				if (state.kind === 'ready') {
@@ -965,7 +1024,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 					live.panel.title = title;
 				}
 			}),
-			session.onDidChangeStatus(() => this.refresh()),
+			session.onDidChangeStatus(() => this.refresh(record.id)),
 		);
 		this.live.set(record.id, live);
 		return live;
@@ -1097,6 +1156,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			this.stop(id, true);
 		}
 		this.setRefreshing(false);
+		this.clearNextAgent();
 		clearTimeout(this.refreshTimeout);
 		clearInterval(this.clockTimer);
 		if (this.persistTimeout) {
