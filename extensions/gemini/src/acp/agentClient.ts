@@ -71,6 +71,13 @@ export interface AgentClientOptions {
 	 * agent does not advertise (`mcpCapabilities`) are left out.
 	 */
 	readonly mcpServers?: () => readonly acp.McpServer[];
+	/**
+	 * The key of a spare session this client may take instead of opening one
+	 * (see `AgentRuntime.prepareSession`); by default, the folder and servers.
+	 */
+	readonly spareKey?: () => string | undefined;
+	/** Told the servers each session opened with, which differ from `mcpServers` when it took a spare. */
+	readonly onDidOpenSession?: (mcpServers: readonly acp.McpServer[]) => void;
 }
 
 /**
@@ -269,8 +276,13 @@ export class AgentClient {
 				fileSystem: this.options.fileSystem,
 			});
 			this.resumeSessionId = savedSessionId;
-			const preferred = await this.applyPreferredModel(connection, session.sessionId, filterModes(readSessionSettings(session), this.options.isModeAllowed));
-			const settings = await this.applyPendingMode(connection, session.sessionId, preferred);
+			// Model and mode together rather than one after the other: they are independent, and each is a round trip before the chat is ready.
+			const opened = filterModes(readSessionSettings(session), this.options.isModeAllowed);
+			const [withModel, withMode] = await Promise.all([
+				this.applyPreferredModel(connection, session.sessionId, opened),
+				this.applyPendingMode(connection, session.sessionId, opened),
+			]);
+			const settings: SessionSettings = { ...opened, model: withModel.model, mode: withMode.mode };
 			if (generation !== this.generation) {
 				return;
 			}
@@ -295,7 +307,8 @@ export class AgentClient {
 				// Not supported, or the agent no longer has it: start afresh.
 			}
 		}
-		const created = await this.runtime.newSession(this.options.cwd, this.mcpServers());
+		const created = await this.runtime.newSession(this.options.cwd, this.mcpServers(), this.options.spareKey?.());
+		this.options.onDidOpenSession?.(created.mcpServers);
 		return { ...created, savedSessionId: created.session.sessionId };
 	}
 

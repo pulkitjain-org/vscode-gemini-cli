@@ -56,6 +56,8 @@ export interface RuntimeSession {
 	readonly connection: AgentConnection;
 	readonly agent: acp.InitializeResponse;
 	readonly session: acp.NewSessionResponse;
+	/** The MCP servers the session was opened with: a spare's own, when one was taken. */
+	readonly mcpServers: readonly acp.McpServer[];
 }
 
 function spareKey(cwd: string, mcpServers: readonly acp.McpServer[]): string {
@@ -127,10 +129,12 @@ export class AgentRuntime {
 	/**
 	 * Opens a session in `cwd` on the running process. When the agent asks for
 	 * auth, authenticates once with `oauth-personal` and retries.
-	 * Rejects with an `AgentError`.
+	 * Rejects with an `AgentError`. Takes the spare session when its `key`
+	 * matches (by default, the folder and servers); the spare then has the
+	 * servers it was prepared with, which the result carries.
 	 */
-	async newSession(cwd: string, mcpServers: readonly acp.McpServer[] = []): Promise<RuntimeSession> {
-		const spare = this.takeSpare(cwd, mcpServers);
+	async newSession(cwd: string, mcpServers: readonly acp.McpServer[] = [], key = spareKey(cwd, mcpServers)): Promise<RuntimeSession> {
+		const spare = this.takeSpare(key);
 		if (spare) {
 			try {
 				return await spare;
@@ -149,8 +153,7 @@ export class AgentRuntime {
 	 * at a time: gemini-cli cannot close a session, so one not taken stays in
 	 * the process (about 2.5 MB) until it exits.
 	 */
-	prepareSession(cwd: string, mcpServers: readonly acp.McpServer[] = []): void {
-		const key = spareKey(cwd, mcpServers);
+	prepareSession(cwd: string, mcpServers: readonly acp.McpServer[] = [], key = spareKey(cwd, mcpServers)): void {
 		const connection = this.connection;
 		if (this._state.kind !== 'ready' || !connection || (this.spare?.key === key && this.spare.connection === connection)) {
 			return;
@@ -160,9 +163,14 @@ export class AgentRuntime {
 		this.spare = { key, connection, session };
 	}
 
-	private takeSpare(cwd: string, mcpServers: readonly acp.McpServer[]): Promise<RuntimeSession> | undefined {
+	/** The key of the spare session on the running process, if there is one. */
+	get spareKey(): string | undefined {
+		return this.spare?.connection === this.connection ? this.spare?.key : undefined;
+	}
+
+	private takeSpare(key: string): Promise<RuntimeSession> | undefined {
 		const spare = this.spare;
-		if (!spare || spare.key !== spareKey(cwd, mcpServers) || spare.connection !== this.connection) {
+		if (!spare || spare.key !== key || spare.connection !== this.connection) {
 			return undefined;
 		}
 		this.spare = undefined;
@@ -176,7 +184,7 @@ export class AgentRuntime {
 			throw new AgentError({ kind: 'unknown', message: 'The agent is not ready.' });
 		}
 		try {
-			return { connection, agent: state.agent, session: await connection.newSession(cwd, mcpServers) };
+			return { connection, agent: state.agent, session: await connection.newSession(cwd, mcpServers), mcpServers };
 		} catch (err) {
 			const info = classifyAgentError(err);
 			const canAuthenticate = state.agent.authMethods?.some(m => m.id === AUTH_METHOD_ID);
@@ -189,7 +197,7 @@ export class AgentRuntime {
 			// user's ~/.gemini/settings.json.
 			this.authenticating ??= connection.authenticate(AUTH_METHOD_ID).then(() => undefined);
 			await this.authenticating;
-			return { connection, agent: state.agent, session: await connection.newSession(cwd, mcpServers) };
+			return { connection, agent: state.agent, session: await connection.newSession(cwd, mcpServers), mcpServers };
 		} catch (err) {
 			throw new AgentError(classifyAgentError(err));
 		} finally {
@@ -221,7 +229,7 @@ export class AgentRuntime {
 			if (firstPrompt !== undefined && !await this.replayStartsWith(sessionId, firstPrompt)) {
 				throw new AgentError({ kind: 'unknown', message: 'The agent opened a different session.' });
 			}
-			return { connection, agent: state.agent, session: { ...response, sessionId } };
+			return { connection, agent: state.agent, session: { ...response, sessionId }, mcpServers };
 		} catch (err) {
 			this.earlyUpdates.delete(sessionId);
 			throw err instanceof AgentError ? err : new AgentError(classifyAgentError(err));

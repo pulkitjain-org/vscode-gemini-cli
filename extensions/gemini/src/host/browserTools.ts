@@ -72,6 +72,28 @@ export class BrowserTools implements vscode.Disposable {
 		return config ? [config] : [];
 	}
 
+	/** Whether a session opened now gets the browser. */
+	get serving(): boolean {
+		return enabled() && this.server.listening;
+	}
+
+	/** The `mcpServers` for a spare session, which no agent has yet: the browser on a slot of its own. */
+	spareServers(): acp.McpServer[] {
+		const config = enabled() ? this.server.configForSlot() : undefined;
+		return config ? [config] : [];
+	}
+
+	/** Gives `agent` the browser slot of a session it took (see `spareServers`); `folder` is its working folder. */
+	bindSession(agent: string, folder: string, servers: readonly acp.McpServer[]): void {
+		this.folders.set(agent, folder);
+		for (const server of servers) {
+			const url = (server as { readonly url?: unknown }).url;
+			if (typeof url === 'string') {
+				this.server.bind(url, agent);
+			}
+		}
+	}
+
 	/**
 	 * Hands the user's page `pageId` (at `url`, titled `title`) to an agent
 	 * the user picks, for "Let Gemini Use This Page". Tells the user when it
@@ -113,6 +135,7 @@ export class BrowserTools implements vscode.Disposable {
 	/** Closes an agent's pages, for an agent that was removed; pages the user handed it go back to the user, open. */
 	closeAgent(agent: string): void {
 		this.host.forget(agent);
+		this.server.unbind(agent);
 		this.allowed.delete(agent);
 		this.folders.delete(agent);
 		void vscode.commands.executeCommand('_gemini.browser.close', agent).then(undefined, () => undefined);

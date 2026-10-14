@@ -316,6 +316,27 @@ describe('BrowserMcpServer', () => {
 		]).toEqual([200, 401, 200]);
 	});
 
+	it('serves a spare session no page until it is bound to the agent that took it', async () => {
+		const { host, browser } = setup();
+		server = new BrowserMcpServer(host, '1.0.0');
+		await server.start();
+		const slot = server.configForSlot()!;
+		const auth = { Authorization: slot.headers[0].value };
+		const navigate = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'browser_navigate', arguments: { url: 'http://localhost:5173' } } };
+		expect((await post(slot.url, auth, { jsonrpc: '2.0', id: 1, method: 'tools/list' })).status).toBe(200);
+		expect((await post(slot.url, auth, navigate)).json).toMatchObject({ result: { isError: true } });
+		expect(browser.calls).toEqual([]);
+
+		expect(server.bind(slot.url, 'a1')).toBe(true);
+		expect(server.bind(server.configFor('a2')!.url, 'a1')).toBe(false);
+		await post(slot.url, auth, navigate);
+		expect(browser.calls).toEqual(['open a1 http://localhost:5173/']);
+
+		server.unbind('a1');
+		expect((await post(slot.url, auth, navigate)).json).toMatchObject({ result: { isError: true } });
+		expect(browser.calls).toEqual(['open a1 http://localhost:5173/']);
+	});
+
 	it('starts once when asked twice at the same time, and stops listening when disposed', async () => {
 		server = new BrowserMcpServer(setup().host, '1.0.0');
 		const [first, second] = await Promise.all([server.start(), server.start()]);

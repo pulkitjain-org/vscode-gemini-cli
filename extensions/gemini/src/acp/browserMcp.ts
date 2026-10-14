@@ -374,7 +374,9 @@ interface JsonRpcRequest {
  * stream, which the protocol allows): `initialize`, `ping`, `tools/list` and
  * `tools/call`. POST to `/mcp/<agent>` with `Authorization: Bearer <token>`,
  * where the token is the agent's own (an HMAC of its id), so one agent's
- * token does not reach another agent's page.
+ * token does not reach another agent's page. A spare session, opened before
+ * any agent takes it, gets a slot of its own instead (`/mcp/<slot>`), which
+ * `bind` later points at the agent that took it.
  */
 export class BrowserMcpServer {
 
@@ -382,6 +384,8 @@ export class BrowserMcpServer {
 	private server: http.Server | undefined;
 	private port: number | undefined;
 	private starting: Promise<number> | undefined;
+	/** Spare sessions' slots, to the agent each is bound to; unbound slots serve no page. */
+	private readonly slots = new Map<string, string | undefined>();
 
 	constructor(private readonly tools: BrowserToolHost, private readonly version: string) { }
 
@@ -408,12 +412,49 @@ export class BrowserMcpServer {
 		return this.starting;
 	}
 
+	/** Whether it is listening, so sessions can be given it. */
+	get listening(): boolean {
+		return !!this.port;
+	}
+
 	/** The ACP `mcpServers` entry for an agent; undefined until started. */
 	configFor(agent: string): { type: 'http'; name: string; url: string; headers: { name: string; value: string }[] } | undefined {
 		if (!this.port || !/^[\w-]{1,80}$/.test(agent)) {
 			return undefined;
 		}
 		return { type: 'http', name: 'geminicode-browser', url: `http://127.0.0.1:${this.port}/mcp/${agent}`, headers: [{ name: 'Authorization', value: `Bearer ${this.tokenFor(agent)}` }] };
+	}
+
+	/**
+	 * The `mcpServers` entry for a session not yet any agent's, such as a spare
+	 * one: it has a slot of its own until `bind` gives it to an agent.
+	 */
+	configForSlot(): { type: 'http'; name: string; url: string; headers: { name: string; value: string }[] } | undefined {
+		if (!this.port) {
+			return undefined;
+		}
+		const slot = `slot-${randomBytes(12).toString('hex')}`;
+		this.slots.set(slot, undefined);
+		return this.configFor(slot);
+	}
+
+	/** Gives a session opened with `configForSlot` (its server's `url`) to `agent`. Returns whether the url was a slot. */
+	bind(url: string, agent: string): boolean {
+		const slot = /\/mcp\/([\w-]+)$/.exec(url)?.[1];
+		if (!slot || !isSlot(slot) || !this.slots.has(slot)) {
+			return false;
+		}
+		this.slots.set(slot, agent);
+		return true;
+	}
+
+	/** Forgets the slots bound to `agent`, for an agent that was removed. */
+	unbind(agent: string): void {
+		for (const [slot, bound] of this.slots) {
+			if (bound === agent) {
+				this.slots.delete(slot);
+			}
+		}
 	}
 
 	/** Stops listening and drops open connections, so agents lose the tools at once. */
@@ -430,13 +471,15 @@ export class BrowserMcpServer {
 	}
 
 	private async handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-		const agent = /^\/mcp\/([\w-]{1,80})$/.exec(req.url ?? '')?.[1];
-		if (!agent) {
+		const id = /^\/mcp\/([\w-]{1,80})$/.exec(req.url ?? '')?.[1];
+		if (!id) {
 			return void res.writeHead(404).end();
 		}
-		if (!this.authorized(agent, req.headers.authorization)) {
+		if (!this.authorized(id, req.headers.authorization)) {
 			return void res.writeHead(401).end();
 		}
+		// A slot acts for the agent it is bound to; one not bound (yet, or any more) lists the tools but has no page.
+		const agent = isSlot(id) ? this.slots.get(id) : id;
 		if (req.method === 'DELETE') {
 			return void res.writeHead(200).end();
 		}
@@ -459,7 +502,7 @@ export class BrowserMcpServer {
 	}
 
 	/** The reply to one message; undefined for a notification. */
-	private async answer(agent: string, message: JsonRpcRequest): Promise<unknown> {
+	private async answer(agent: string | undefined, message: JsonRpcRequest): Promise<unknown> {
 		if (!message || typeof message !== 'object' || message.id === undefined || message.id === null) {
 			return undefined;
 		}
@@ -477,6 +520,9 @@ export class BrowserMcpServer {
 			case 'tools/list':
 				return ok({ tools: browserTools });
 			case 'tools/call': {
+				if (!agent) {
+					return ok({ content: [{ type: 'text', text: 'The browser is not ready for this session yet.' }], isError: true });
+				}
 				const name = typeof message.params?.name === 'string' ? message.params.name : '';
 				const args = message.params?.arguments;
 				return ok(await this.tools.call(agent, name, typeof args === 'object' && args !== null && !Array.isArray(args) ? args as Record<string, unknown> : {}));
@@ -491,6 +537,10 @@ export class BrowserMcpServer {
 		const given = Buffer.from(header ?? '');
 		return given.length === expected.length && timingSafeEqual(given, expected);
 	}
+}
+
+function isSlot(id: string): boolean {
+	return id.startsWith('slot-');
 }
 
 function listen(server: http.Server): Promise<http.Server> {

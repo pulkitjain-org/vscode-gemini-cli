@@ -241,6 +241,23 @@ describe('AgentRuntime', () => {
 		expect(a.state).toMatchObject({ kind: 'ready', sessionId: 'fake-session-2' });
 	});
 
+	it('gives a spare prepared with a key to any chat with that key, with the spare\'s own servers', async () => {
+		start({});
+		await ready(runtime!);
+		const spareServers = [{ type: 'http' as const, name: 'browser', url: 'http://127.0.0.1:1/mcp/slot-1', headers: [] }];
+		runtime!.prepareSession('/work/a', spareServers, 'agent:/work/a');
+		expect(runtime!.spareKey).toBe('agent:/work/a');
+		const opened: unknown[] = [];
+		const a = await session('/work/a', {
+			mcpServers: () => [{ type: 'http', name: 'browser', url: 'http://127.0.0.1:1/mcp/a1', headers: [] }],
+			spareKey: () => 'agent:/work/a',
+			onDidOpenSession: servers => opened.push(servers),
+		});
+		expect(a.state).toMatchObject({ kind: 'ready', sessionId: 'fake-session-1' });
+		expect(opened).toEqual([spareServers]);
+		expect(runtime!.spareKey).toBeUndefined();
+	});
+
 	it('opens a chat made to open later only when asked', async () => {
 		start({});
 		await ready(runtime!);

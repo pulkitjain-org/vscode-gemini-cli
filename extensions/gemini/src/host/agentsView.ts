@@ -3,7 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AgentChanges, ChangeTotals, formatCounts } from '../acp/agentChanges';
@@ -19,6 +18,7 @@ import { memoizeAsync } from '../acp/memoize';
 import { reviewRequest, workingChanges } from '../acp/reviewPrompt';
 import { TranscriptStore } from '../acp/transcriptStore';
 import { AgentWorktree, branchExists, commitAll, createWorktree, currentBranch, folderInRepository, mergeBranch, removeWorktree, repositoryRoot, runWorktreeSetup, worktreeSetupCommand, worktreeStatus } from '../acp/worktrees';
+import { supportedMcpServers } from '../acp/agentClient';
 import { AgentNotifier } from './agentNotifier';
 import { AgentService } from './agentService';
 import { AgentSession } from './agentSession';
@@ -38,6 +38,8 @@ import { WorkspaceFileIndex } from './workspaceFiles';
 
 const agentsViewId = 'gemini.agents';
 const agentPanelType = 'gemini.agent';
+/** How long after the agent is ready, or a spare was taken, to open the next spare: out of the way of the start itself. */
+const spareDelayMs = 1500;
 const storageKey = 'gemini.agents';
 /** Agent tab icons end in #gemini-agent=<id>; GeminiCode's workbench matches tabs on it (gemini.contribution.ts). */
 const agentTabFragment = 'gemini-agent=';
@@ -151,8 +153,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	/** Today's quota, for the chats' usage popover. */
 	usage: UsageMeter | undefined;
 	private persistTimeout: ReturnType<typeof setTimeout> | undefined;
-	/** The agent Agent Home starts next, chosen while the user types (`prepareStart`). */
-	private nextAgent: { readonly folder: string; readonly id: string; listener?: { dispose(): void } } | undefined;
+	/** The folder the spare session is kept for, and the wait for the agent to be ready to open it. */
+	private spare: { folder: string; waiting?: { dispose(): void }; timer?: ReturnType<typeof setTimeout> } | undefined;
 
 	constructor(
 		private readonly context: vscode.ExtensionContext,
@@ -201,6 +203,11 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			vscode.commands.registerCommand('gemini.agents.removeWorkspace', (node?: Node) => this.removeWorkspace(node)),
 		);
 		this.setRefreshing(this.tree.visible);
+		// A spare session for the first agent, opened once the agent process is up (the warm-up starts it).
+		const folder = this.likelyFolder();
+		if (folder) {
+			this.prepareStart(folder, spareDelayMs);
+		}
 	}
 
 	/** Opens agent `id`'s conversation as Markdown; one not running in this window is read from its saved file. */
@@ -366,35 +373,58 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	}
 
 	/**
-	 * Gets the next agent Agent Home starts in `folder` ready while the user
-	 * types its task: an id for it, and a session opened for that id, so
-	 * Return waits for no `session/new`. An agent on its own branch works in a
-	 * folder that does not exist yet, so it gets none.
+	 * Keeps a spare session open in `folder` for the next agent started there,
+	 * such as while the user types a task on Agent Home, so starting it waits
+	 * for no `session/new`. Every way of starting an agent takes it, and it is
+	 * refilled once taken. One spare at a time: gemini-cli cannot close a
+	 * session, so moving it to another folder leaves the old one in the agent.
 	 */
-	prepareStart(folder: string): void {
-		if (this.nextAgent?.folder !== folder) {
-			this.clearNextAgent();
-			this.nextAgent = { folder, id: randomUUID() };
+	prepareStart(folder: string, delayMs = 0): void {
+		if (this.spare?.folder !== folder) {
+			this.clearSpare();
+			this.spare = { folder };
 		}
-		const next = this.nextAgent;
+		const spare = this.spare;
 		const runtime = this.service.runtime;
-		const open = () => runtime.prepareSession(folder, this.browser?.mcpServersFor(next.id, folder) ?? []);
+		const open = () => {
+			if (this.spare !== spare || runtime.state.kind !== 'ready') {
+				return;
+			}
+			const key = this.spareKey(folder);
+			if (runtime.spareKey === key) {
+				return;
+			}
+			runtime.prepareSession(folder, supportedMcpServers(runtime.state.agent, this.browser?.spareServers() ?? []), key);
+		};
 		if (runtime.state.kind === 'ready') {
-			open();
-		} else {
-			next.listener ??= runtime.onDidChangeState(state => {
-				if (state.kind === 'ready' && this.nextAgent === next) {
-					next.listener?.dispose();
-					next.listener = undefined;
-					open();
-				}
-			});
+			clearTimeout(spare.timer);
+			spare.timer = setTimeout(open, delayMs);
 		}
+		// Again whenever the agent restarts, since a spare belongs to the process that opened it.
+		spare.waiting ??= runtime.onDidChangeState(state => {
+			if (state.kind === 'ready') {
+				clearTimeout(spare.timer);
+				spare.timer = setTimeout(open, spareDelayMs);
+			}
+		});
 	}
 
-	private clearNextAgent(): void {
-		this.nextAgent?.listener?.dispose();
-		this.nextAgent = undefined;
+	/** Matches a spare session to the agents that can take it: same folder, and the browser the same way. */
+	private spareKey(folder: string): string {
+		return JSON.stringify(['agent', folder, !!this.browser?.serving]);
+	}
+
+	/** Where the next agent most likely starts: where the last one did, else the first open folder. */
+	private likelyFolder(): string | undefined {
+		const last = [...this.model.snapshot().agents].filter(a => !a.worktree).sort((a, b) => b.createdAt - a.createdAt)[0];
+		const folder = last && this.model.workspace(last.workspaceId)?.folder;
+		return folder ?? vscode.workspace.workspaceFolders?.find(f => f.uri.scheme === 'file')?.uri.fsPath;
+	}
+
+	private clearSpare(): void {
+		this.spare?.waiting?.dispose();
+		clearTimeout(this.spare?.timer);
+		this.spare = undefined;
 	}
 
 	/** Starts an agent in `folder` (on its own branch, named after the prompt, with `ownBranch`) and sends it `text`. */
@@ -415,11 +445,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				return false;
 			}
 		}
-		// The agent the session opened while the user typed was for, when it is in this folder.
-		const next = !worktree && this.nextAgent?.folder === folder ? this.nextAgent.id : undefined;
-		this.clearNextAgent();
 		const workspace = this.model.addWorkspace(folder);
-		const agent = this.model.addAgent(workspace.id, vscode.l10n.t("New agent"), worktree, next);
+		const agent = this.model.addAgent(workspace.id, vscode.l10n.t("New agent"), worktree);
 		// Started here, so its session opens in the mode picked.
 		const live = this.start(agent, worktree?.cwd ?? folder);
 		if (mode !== 'default') {
@@ -943,7 +970,16 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	}
 
 	private start(record: AgentRecord, folder: string, openLater = false): LiveAgent {
-		const session = new AgentSession(this.service, folder, record.sessionId, () => this.browser?.mcpServersFor(record.id, folder) ?? [], openLater);
+		const session = new AgentSession(this.service, folder, record.sessionId, () => this.browser?.mcpServersFor(record.id, folder) ?? [], openLater, {
+			spareKey: () => this.spareKey(folder),
+			onDidOpenSession: servers => {
+				this.browser?.bindSession(record.id, folder, servers);
+				// Refill, for the next agent, which most likely starts in the same folder; not in an agent's own worktree.
+				if (!this.model.agent(record.id)?.worktree) {
+					this.prepareStart(folder, spareDelayMs);
+				}
+			},
+		});
 		const files: FileSearch = isOpenFolder(folder) ? this.workspaceFiles : new FolderFileIndex(folder);
 		const changes = new AgentChanges(folder);
 		const live: LiveAgent = {
@@ -1156,7 +1192,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			this.stop(id, true);
 		}
 		this.setRefreshing(false);
-		this.clearNextAgent();
+		this.clearSpare();
 		clearTimeout(this.refreshTimeout);
 		clearInterval(this.clockTimer);
 		if (this.persistTimeout) {

@@ -6,7 +6,7 @@
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
 import { isModeAllowed } from '../acp/adminPolicy';
-import { AgentClient } from '../acp/agentClient';
+import { AgentClient, type AgentClientOptions } from '../acp/agentClient';
 import { createFileHandlers, isInside } from '../acp/fileAccess';
 import { PermissionBroker } from '../acp/permissions';
 import { AgentStatus } from '../acp/status';
@@ -31,12 +31,21 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 
 	/** `mcpServers` are the servers GeminiCode serves this agent, such as its browser. */
 	/** With `openLater`, the session opens on `open()` (see `AgentClientOptions.openLater`). */
-	constructor(private readonly service: AgentService, readonly folder: string, resumeSessionId?: string, mcpServers?: () => readonly acp.McpServer[], openLater = false) {
+	/** `spare` lets a new session take the spare one (see `AgentClientOptions.spareKey`). */
+	constructor(
+		private readonly service: AgentService,
+		readonly folder: string,
+		resumeSessionId?: string,
+		mcpServers?: () => readonly acp.McpServer[],
+		openLater = false,
+		spare?: Pick<AgentClientOptions, 'spareKey' | 'onDidOpenSession'>,
+	) {
 		this.client = new AgentClient(service.runtime, {
 			cwd: folder,
 			resumeSessionId,
 			openLater,
 			mcpServers,
+			...spare,
 			preferredModel: sessionModel,
 			isModeAllowed: modeId => isModeAllowed(getApprovalPolicy(), modeId),
 			requestPermission: params => this.permissions.request(params),
