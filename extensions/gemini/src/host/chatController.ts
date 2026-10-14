@@ -198,6 +198,10 @@ export class ChatController implements vscode.Disposable {
 	private retryItemId: string | undefined;
 	/** A project chat's side panel, as last shown. */
 	private projectPanel: ProjectPanel | undefined;
+	/** Whether the view's script has said it is ready since the view was attached. */
+	private viewReady = false;
+	/** New Thread was asked for before the view was ready. */
+	private newThreadPending = false;
 	/** Told to the agent with the next prompt: files the user put back, which it would otherwise think it changed. */
 	private undoNote: string | undefined;
 	/** A conversation the agent could not reopen, given to the new session with the next prompt. */
@@ -397,6 +401,7 @@ export class ChatController implements vscode.Disposable {
 	attach(webview: vscode.Webview): void {
 		this.detach();
 		this.webview = webview;
+		this.viewReady = false;
 		// Start the agent with the view rather than once its script has loaded. The @-mention
 		// file list waits until the chat is used. A failure shows in the view's status line.
 		this.service.ensureReady().catch(() => undefined);
@@ -414,6 +419,7 @@ export class ChatController implements vscode.Disposable {
 		this.webviewListener?.dispose();
 		this.webviewListener = undefined;
 		this.webview = undefined;
+		this.viewReady = false;
 	}
 
 	/** Leaves Plan mode and carries out the plan, as the latest turn's Build button does; false when it offers none. */
@@ -441,9 +447,13 @@ export class ChatController implements vscode.Disposable {
 		this.post({ type: 'projectPanel', panel });
 	}
 
-	/** Opens the New thread dialog in a project chat. */
+	/** Opens the New thread dialog in a project chat, once its view has loaded if it is still loading. */
 	openNewThread(): void {
-		this.post({ type: 'openNewThread' });
+		if (this.viewReady) {
+			this.post({ type: 'openNewThread' });
+		} else {
+			this.newThreadPending = true;
+		}
 	}
 
 	/** Sends a prompt as if typed in the view; `from` marks one its project's coordinator sent. */
@@ -937,6 +947,7 @@ export class ChatController implements vscode.Disposable {
 				if (message.protocol !== chatProtocolVersion) {
 					void vscode.window.showWarningMessage(vscode.l10n.t("The Gemini chat view's script is out of date. Rebuild it with \"npm run gulp compile-extension-media\" (or keep \"npm run watch\" running) and reload the window."));
 				}
+				this.viewReady = true;
 				this.postReset();
 				// In case the view never says it is shown, such as one hidden as it loads.
 				clearTimeout(this.openTimer);
@@ -1428,6 +1439,10 @@ export class ChatController implements vscode.Disposable {
 		this.post({ type: 'reset', items: this.transcript.items, busy: this.busy, status: toViewStatus(this.service.status), settings: this.service.client.settings });
 		if (this.projectPanel) {
 			this.post({ type: 'projectPanel', panel: this.projectPanel });
+		}
+		if (this.newThreadPending) {
+			this.newThreadPending = false;
+			this.post({ type: 'openNewThread' });
 		}
 		if (!this.busy) {
 			void this.postSessions();

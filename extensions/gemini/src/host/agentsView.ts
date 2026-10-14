@@ -63,7 +63,19 @@ interface AgentNode {
 	readonly folder: string;
 }
 
-type Node = WorkspaceNode | AgentNode;
+/** The list's two sections: projects (with Projects on) and agents, each with its own +. */
+interface SectionNode {
+	readonly kind: 'section';
+	readonly section: 'projects' | 'agents';
+}
+
+/** What an empty section says, in place of its rows. */
+interface MessageNode {
+	readonly kind: 'message';
+	readonly section: 'projects' | 'agents';
+}
+
+type Node = SectionNode | MessageNode | WorkspaceNode | AgentNode;
 
 /** One agent, as Agent Home and the title bar show it. */
 export interface AgentSummary {
@@ -207,7 +219,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				this.refresh();
 			}),
 			vscode.workspace.onDidChangeWorkspaceFolders(() => this.refresh()),
-			vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.notifications`) && this.refresh()),
+			vscode.workspace.onDidChangeConfiguration(e => (e.affectsConfiguration(`${configSection}.notifications`) || e.affectsConfiguration(`${configSection}.projects.enabled`)) && this.refresh()),
 			// Relative times go stale; refresh them only while the pane is visible.
 			this.tree.onDidChangeVisibility(e => this.setRefreshing(e.visible)),
 			vscode.commands.registerCommand('gemini.agents.newAgent', (node?: Node) => this.newAgent(node)),
@@ -228,6 +240,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			vscode.commands.registerCommand('gemini.agents.remove', (node?: Node) => this.removeAgent(node)),
 			vscode.commands.registerCommand('gemini.agents.removeWorkspace', (node?: Node) => this.removeWorkspace(node)),
 			vscode.commands.registerCommand('gemini.projects.new', (node?: Node) => this.newProject(node)),
+			// The Projects section's +: the same command, drawn as a plus.
+			vscode.commands.registerCommand('gemini.projects.add', (node?: Node) => this.newProject(node)),
+			vscode.commands.registerCommand('gemini.projects.newThread', (node?: Node) => node?.kind === 'agent' && this.projects.openNewThread(node.record.id)),
 			this.projects,
 		);
 		this.setRefreshing(this.tree.visible);
@@ -279,16 +294,29 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	// --- Tree
 
 	getTreeItem(node: Node): Promise<vscode.TreeItem> | vscode.TreeItem {
-		return node.kind === 'workspace' ? this.workspaceItem(node) : this.agentItem(node);
+		switch (node.kind) {
+			case 'section':
+				return this.sectionItem(node);
+			case 'message':
+				return this.messageItem(node);
+			case 'workspace':
+				return this.workspaceItem(node);
+			case 'agent':
+				return this.agentItem(node);
+		}
 	}
 
 	getChildren(node?: Node): Node[] {
 		if (!node) {
-			return this.workspaceNodes();
+			const agents: SectionNode = { kind: 'section', section: 'agents' };
+			return projectsEnabled() ? [{ kind: 'section', section: 'projects' }, agents] : [agents];
+		}
+		if (node.kind === 'section') {
+			const rows: Node[] = node.section === 'projects' ? this.projectNodes() : this.workspaceNodes();
+			return rows.length ? rows : [{ kind: 'message', section: node.section }];
 		}
 		if (node.kind === 'workspace' && node.record) {
-			// A project's threads show under its coordinator.
-			return this.model.agentsIn(node.record.id).filter(record => record.project?.role !== 'thread' || !this.model.coordinatorOf(record)).map(record => {
+			return this.agentsOf(node.record.id).map(record => {
 				const agent: AgentNode = { kind: 'agent', record, folder: record.worktree?.cwd ?? node.folder };
 				this.agentNodes.set(record.id, agent);
 				return agent;
@@ -304,6 +332,53 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		return [];
 	}
 
+	/** A workspace's own agents; projects and their threads are in the Projects section while it shows. */
+	private agentsOf(workspaceId: string): AgentRecord[] {
+		const projects = projectsEnabled();
+		return this.model.agentsIn(workspaceId).filter(record => record.project?.role === 'thread'
+			? !this.model.coordinatorOf(record) || !projects
+			: record.project?.role !== 'coordinator' || !projects);
+	}
+
+	/** Every project, newest first, whichever workspace it is in. */
+	private projectNodes(): AgentNode[] {
+		return this.model.snapshot().agents
+			.filter(record => record.project?.role === 'coordinator')
+			.sort((a, b) => b.createdAt - a.createdAt)
+			.flatMap(record => {
+				const folder = this.model.workspace(record.workspaceId)?.folder;
+				if (!folder) {
+					return [];
+				}
+				const agent: AgentNode = { kind: 'agent', record, folder };
+				this.agentNodes.set(record.id, agent);
+				return [agent];
+			});
+	}
+
+	private sectionItem(node: SectionNode): vscode.TreeItem {
+		const item = new vscode.TreeItem(node.section === 'projects' ? vscode.l10n.t("Projects") : vscode.l10n.t("Agents"), vscode.TreeItemCollapsibleState.Expanded);
+		item.id = `section:${node.section}`;
+		item.contextValue = `section.${node.section}`;
+		return item;
+	}
+
+	private messageItem(node: MessageNode): vscode.TreeItem {
+		const projects = node.section === 'projects';
+		const item = new vscode.TreeItem(projects ? vscode.l10n.t("No projects yet") : vscode.l10n.t("No agents yet"));
+		item.id = `message:${node.section}`;
+		item.description = vscode.l10n.t("+ to start one");
+		item.iconPath = new vscode.ThemeIcon('info');
+		item.tooltip = projects
+			? vscode.l10n.t("A project's coordinator splits work into threads, each an agent on its own branch. Start one on any folder in a Git repository.")
+			: vscode.l10n.t("Start an agent on a folder.");
+		item.command = projects
+			? { command: 'gemini.projects.new', title: vscode.l10n.t("New Project") }
+			: { command: 'gemini.agents.newAgent', title: vscode.l10n.t("New Agent") };
+		item.contextValue = 'message';
+		return item;
+	}
+
 	private workspaceNodes(): WorkspaceNode[] {
 		const open = (vscode.workspace.workspaceFolders ?? []).filter(f => f.uri.scheme === 'file').map(f => f.uri.fsPath);
 		const nodes: WorkspaceNode[] = open.map(folder => ({ kind: 'workspace', folder, record: this.model.workspaceFor(folder), current: true }));
@@ -316,12 +391,14 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	}
 
 	private async workspaceItem(node: WorkspaceNode): Promise<vscode.TreeItem> {
-		const hasAgents = !!node.record && this.model.agentsIn(node.record.id).length > 0;
+		const hasAgents = !!node.record && this.agentsOf(node.record.id).length > 0;
 		const item = new vscode.TreeItem(path.basename(node.folder) || node.folder, hasAgents ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
 		// The id changes with the expander, so a workspace that gets its first agent opens.
 		item.id = `workspace:${node.folder}:${hasAgents}`;
 		// Just the name, as a heading over its agents; the path is in the tooltip.
 		item.tooltip = tildify(node.folder);
+		// Agents mode draws workspaces as headings by this icon (geminiModes.css).
+		item.iconPath = new vscode.ThemeIcon('folder');
 		// `.git` offers New Agent on Its Own Branch.
 		const inGit = await this.branchOf(node.folder).then(Boolean, () => false);
 		item.contextValue = `${node.current ? 'workspace.current' : 'workspace'}${inGit ? '.git' : ''}`;
@@ -346,7 +423,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			: `${escapeMarkdown(tildify(node.folder))}${branch ? ` (${escapeMarkdown(branch)})` : ''}`;
 		const counts = changes?.files ? `\n\n${escapeMarkdown(formatCounts(changes))}` : '';
 		item.tooltip = new vscode.MarkdownString(`**${escapeMarkdown(record.title)}**\n\n${escapeMarkdown(state.status)}${counts}\n\n${where}`);
-		item.contextValue = `${live?.activity.busy ? 'agent.busy' : 'agent'}${record.worktree ? '.worktree' : ''}${changes?.files ? '.changes' : ''}`;
+		item.contextValue = `${live?.activity.busy ? 'agent.busy' : 'agent'}${record.worktree ? '.worktree' : ''}${changes?.files ? '.changes' : ''}${record.project?.role === 'coordinator' ? '.project' : ''}`;
 		item.command = { command: 'gemini.agents.open', title: vscode.l10n.t("Open Agent"), arguments: [record.id] };
 		item.accessibilityInformation = { label: `${record.title}, ${state.status}` };
 		return item;
@@ -888,6 +965,24 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		return pick.folder ?? this.chooseFolder();
 	}
 
+	/** Where a new project works: a workspace the list knows, or any folder. */
+	private async pickProjectFolder(): Promise<string | undefined> {
+		const choose = vscode.l10n.t("Choose a Folder...");
+		const picks: (vscode.QuickPickItem & { folder?: string })[] = [
+			...this.workspaceNodes().map(w => ({ label: `$(folder) ${path.basename(w.folder)}`, description: tildify(w.folder), folder: w.folder })),
+			{ label: '', kind: vscode.QuickPickItemKind.Separator },
+			{ label: `$(folder-opened) ${choose}` },
+		];
+		const pick = await vscode.window.showQuickPick(picks, {
+			title: vscode.l10n.t("New Project"),
+			placeHolder: vscode.l10n.t("Which folder should the project work in? It must be in a Git repository, as each thread gets its own branch."),
+		});
+		if (!pick) {
+			return undefined;
+		}
+		return pick.folder ?? this.chooseFolder();
+	}
+
 	private async addWorkspace(): Promise<void> {
 		const folder = await this.chooseFolder();
 		if (folder) {
@@ -1066,7 +1161,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			}
 			await vscode.workspace.getConfiguration(configSection).update('projects.enabled', true, vscode.ConfigurationTarget.Global);
 		}
-		const folder = node?.kind === 'workspace' ? node.folder : node?.kind === 'agent' ? this.model.workspace(node.record.workspaceId)?.folder : await this.pickFolder();
+		const folder = node?.kind === 'workspace' ? node.folder : node?.kind === 'agent' ? this.model.workspace(node.record.workspaceId)?.folder : await this.pickProjectFolder();
 		if (!folder) {
 			return;
 		}

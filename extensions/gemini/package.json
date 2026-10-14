@@ -158,6 +158,18 @@
         "icon": "$(comment-discussion)"
       },
       {
+        "command": "gemini.projects.add",
+        "title": "%command.projects.new%",
+        "category": "%category%",
+        "icon": "$(add)"
+      },
+      {
+        "command": "gemini.projects.newThread",
+        "title": "%command.projects.newThread%",
+        "category": "%category%",
+        "icon": "$(add)"
+      },
+      {
         "command": "gemini.agentHome",
         "title": "%command.agentHome%",
         "category": "%category%",
@@ -597,6 +609,21 @@
           "group": "inline"
         },
         {
+          "command": "gemini.projects.add",
+          "when": "view == gemini.agents && viewItem == section.projects",
+          "group": "inline"
+        },
+        {
+          "command": "gemini.agents.newAgent",
+          "when": "view == gemini.agents && viewItem == section.agents",
+          "group": "inline"
+        },
+        {
+          "command": "gemini.projects.newThread",
+          "when": "view == gemini.agents && viewItem =~ /\\.project$/ && config.gemini.projects.enabled",
+          "group": "inline"
+        },
+        {
           "command": "gemini.agents.newAgentOnBranch",
           "when": "view == gemini.agents && viewItem =~ /^workspace.*\\.git$/",
           "group": "inline"
@@ -625,6 +652,16 @@
           "command": "gemini.agents.newAgentOnBranch",
           "when": "view == gemini.agents && viewItem =~ /^workspace.*\\.git$/",
           "group": "1_agent@2"
+        },
+        {
+          "command": "gemini.projects.new",
+          "when": "view == gemini.agents && viewItem =~ /^workspace.*\\.git$/ && config.gemini.projects.enabled",
+          "group": "1_agent@3"
+        },
+        {
+          "command": "gemini.projects.newThread",
+          "when": "view == gemini.agents && viewItem =~ /\\.project$/ && config.gemini.projects.enabled",
+          "group": "1_agent@0"
         },
         {
           "command": "gemini.agents.removeWorkspace",
@@ -663,6 +700,14 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "gemini.projects.add",
+          "when": "false"
+        },
+        {
+          "command": "gemini.projects.newThread",
+          "when": "false"
+        },
         {
           "command": "gemini.review.keepChange",
           "when": "false"
