@@ -148,3 +148,18 @@ Read from gemini-cli 0.62.0 and 0.63.0 on 8 Oct 2026.
 - The counts are each model call's `promptTokenCount` and `candidatesTokenCount`, summed over the calls of the turn, so a turn with tool calls counts the conversation once per call, as `/stats` does. Cached and thinking tokens are not reported separately.
 - Over ACP the CLI handles only `/memory`, `/extensions`, `/init`, `/restore`, `/about` and `/help` itself; `/stats` is not one of them, so GeminiCode keeps the counts itself, on each turn's end in the transcript.
 - The CLI sends no `usage_update` session update.
+
+## A project's coordinator and threads in one process
+
+Measured on 14 Oct 2026 with gemini-cli 0.63.0 on a 4-core Linux machine, with `npm run spike-coordinator` in `extensions/gemini`. All of a project's sessions share one `gemini --acp` process, which runs on one thread, so the question was whether a busy thread's stream holds up the others. The real CLI streamed from a local stand-in for the Gemini API, and every chunk carried the time it was sent:
+
+| Load | Delay from send to arrival, median | p95 |
+| --- | --- | --- |
+| 1 session alone, 40 chunks 25 ms apart | 2 ms | 3 ms |
+| 1 coordinator and 5 threads at once, same stream | 2 ms | 4 ms |
+| 1 session alone, 200 chunks 5 ms apart | 2 ms | 2 ms |
+| 1 coordinator and 10 threads at once, same stream | 3 ms | 10 ms |
+
+That is at most 7 ms extra per chunk at p95, against a budget of 50 ms, so one CLI process holds a project and threads are not spread over more processes. Streaming text is most of a thread's work in the process; tool calls run as child processes or file reads, which this does not measure.
+
+How well a Flash model keeps to the coordinator's role needs a real account: `npm run spike-coordinator -- --real` sends five scripted asks to a coordinator on a named Flash model, in a temp git repo, and prints a go/no-go. The CLI titles an MCP tool's permission request by the tool and its arguments only, without the server's name; only MCP calls offer "Allow all server tools", which together with the tool name tells the project's tools apart.

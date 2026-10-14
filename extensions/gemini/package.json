@@ -884,6 +884,7 @@
     "watch": "gulp watch-extension:gemini",
     "typecheck-tests": "tsc -p tsconfig.test.json",
     "bundle-cli": "node scripts/bundle-cli.mts",
+    "spike-coordinator": "node --experimental-transform-types --no-warnings scripts/coordinator-spike.mts",
     "test": "vitest run"
   },
   "bundledCli": {
