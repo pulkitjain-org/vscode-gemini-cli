@@ -340,7 +340,7 @@
  * Agents mode's side bar: the agent list with no "Gemini" title and no "Agents" header. It has
  * two sections (the extension's agentsView.ts): Projects, while Projects are on, and Agents,
  * each a heading with its + always showing. Under Projects are the projects, with their threads
- * indented below; under Agents, workspaces are small uppercase labels (with their + on hover) over
+ * indented below; a blank row with a rule keeps the sections apart; under Agents, workspaces are small uppercase labels (with their + on hover) over
  * their agents. Agent rows have a status icon, the title and a right-aligned meta ("0:42",
  * "+38", "waiting") that the Gemini extension provides. An empty section says so in a muted row.
  * The side bar shows only the Gemini view in Agents mode, so its one tree is the agent list.
@@ -363,6 +363,22 @@
 .monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-tl-twistie {
 	width: 0;
 	padding-left: 6px !important;
+	visibility: hidden;
+}
+
+/* Room above the first heading; the hidden header leaves more than this free below the list. */
+.monaco-workbench.gemini-agents-mode .part.sidebar .pane:has(> .pane-header > .icon.view-gemini-agents) > .pane-body {
+	margin-top: 10px;
+}
+
+/* The gap between the sections: a faint rule across its middle, and nothing on hover. */
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row:has(.custom-view-tree-node-item-icon.codicon-blank) {
+	background: linear-gradient(var(--vscode-sideBarSectionHeader-border, var(--vscode-widget-border, rgba(128, 128, 128, 0.25))), var(--vscode-sideBarSectionHeader-border, var(--vscode-widget-border, rgba(128, 128, 128, 0.25)))) center / calc(100% - 12px) 1px no-repeat !important;
+	box-shadow: none !important;
+	pointer-events: none;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row:has(.custom-view-tree-node-item-icon.codicon-blank) > * {
 	visibility: hidden;
 }
 

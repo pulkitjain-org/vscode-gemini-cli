@@ -75,7 +75,12 @@ interface MessageNode {
 	readonly section: 'projects' | 'agents';
 }
 
-type Node = SectionNode | MessageNode | WorkspaceNode | AgentNode;
+/** A blank row that keeps the two sections apart. */
+interface GapNode {
+	readonly kind: 'gap';
+}
+
+type Node = SectionNode | MessageNode | GapNode | WorkspaceNode | AgentNode;
 
 /** One agent, as Agent Home and the title bar show it. */
 export interface AgentSummary {
@@ -299,6 +304,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				return this.sectionItem(node);
 			case 'message':
 				return this.messageItem(node);
+			case 'gap':
+				return gapItem();
 			case 'workspace':
 				return this.workspaceItem(node);
 			case 'agent':
@@ -309,7 +316,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	getChildren(node?: Node): Node[] {
 		if (!node) {
 			const agents: SectionNode = { kind: 'section', section: 'agents' };
-			return projectsEnabled() ? [{ kind: 'section', section: 'projects' }, agents] : [agents];
+			return projectsEnabled() ? [{ kind: 'section', section: 'projects' }, { kind: 'gap' }, agents] : [agents];
 		}
 		if (node.kind === 'section') {
 			const rows: Node[] = node.section === 'projects' ? this.projectNodes() : this.workspaceNodes();
@@ -1239,7 +1246,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const project = projectsEnabled() ? record.project : undefined;
 		const servers = () => [...this.browser?.mcpServersFor(record.id, folder) ?? [], ...project ? this.projects.mcpServersFor(this.model.agent(record.id) ?? record) : []];
 		const session = new AgentSession(this.service, folder, record.sessionId, servers, openLater, {
-			spareKey: () => this.spareKey(folder),
+			// A project agent's session needs the project's server, which a spare never has.
+			...(project ? {} : { spareKey: () => this.spareKey(folder) }),
 			onDidOpenSession: servers => {
 				this.browser?.bindSession(record.id, folder, servers);
 				// Refill, for the next agent, which most likely starts in the same folder; not in an agent's own worktree.
@@ -1495,6 +1503,16 @@ async function exists(folder: string): Promise<boolean> {
 	} catch {
 		return false;
 	}
+}
+
+/** The gap between the sections: no label, and the blank icon marks it for Agents mode's styles (geminiModes.css). */
+function gapItem(): vscode.TreeItem {
+	const item = new vscode.TreeItem('');
+	item.id = 'gap';
+	item.iconPath = new vscode.ThemeIcon('blank');
+	item.contextValue = 'gap';
+	item.accessibilityInformation = { label: '', role: 'none' };
+	return item;
 }
 
 function isOpenFolder(folder: string): boolean {

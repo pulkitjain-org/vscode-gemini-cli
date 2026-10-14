@@ -137,7 +137,7 @@ export function showProjectPanel(next: ProjectPanel): void {
 	if (!aside) {
 		aside = el('aside', 'project-panel');
 		aside.id = 'project-panel';
-		document.body.append(aside);
+		document.body.append(aside, panelSash(text.title));
 		document.body.classList.add('has-project-panel');
 	}
 	aside.setAttribute('aria-label', text.title);
@@ -168,4 +168,48 @@ export function showProjectPanel(next: ProjectPanel): void {
 		context.append(el('p', 'panel-row', format(text.model, name)));
 	}
 	aside.replaceChildren(threads, context);
+}
+
+/** Panel widths the sash allows: the chat keeps at least 520 px. */
+const minPanelWidth = 200;
+const maxPanelWidth = 600;
+
+/** The panel's left edge, dragged (or moved with the arrow keys) to resize it, as a VS Code sash is. */
+function panelSash(label: string): HTMLElement {
+	const sash = el('div', 'project-panel-sash');
+	sash.setAttribute('role', 'separator');
+	sash.setAttribute('aria-orientation', 'vertical');
+	sash.setAttribute('aria-label', label);
+	sash.tabIndex = 0;
+	const width = () => document.getElementById('project-panel')?.getBoundingClientRect().width ?? 280;
+	const resize = (next: number) => {
+		const clamped = Math.round(Math.max(minPanelWidth, Math.min(next, maxPanelWidth, window.innerWidth - 520)));
+		document.body.style.setProperty('--gemini-panel-width', `${clamped}px`);
+		sash.setAttribute('aria-valuenow', String(clamped));
+	};
+	sash.addEventListener('pointerdown', event => {
+		event.preventDefault();
+		sash.setPointerCapture(event.pointerId);
+		sash.classList.add('active');
+		const startX = event.clientX;
+		const startWidth = width();
+		const move = (moved: PointerEvent) => resize(startWidth + startX - moved.clientX);
+		const end = () => {
+			sash.classList.remove('active');
+			sash.removeEventListener('pointermove', move);
+		};
+		sash.addEventListener('pointermove', move);
+		sash.addEventListener('pointerup', end, { once: true });
+		sash.addEventListener('pointercancel', end, { once: true });
+	});
+	sash.addEventListener('keydown', event => {
+		const step = event.shiftKey ? 40 : 10;
+		if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+			event.preventDefault();
+			resize(width() + (event.key === 'ArrowLeft' ? step : -step));
+		}
+	});
+	// Double-click restores the default width, as a VS Code sash does.
+	sash.addEventListener('dblclick', () => document.body.style.removeProperty('--gemini-panel-width'));
+	return sash;
 }

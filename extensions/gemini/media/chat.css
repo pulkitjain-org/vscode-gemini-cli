@@ -333,7 +333,7 @@ kbd {
 	word-wrap: break-word;
 }
 
-/* The user's message, a bubble on the right with a faint accent tint, and under it its time and Copy. */
+/* The user's message, a graphite bubble on the right (the mockups' #2b2b2b on #1f1f1f, and the same step in light), and under it its time and Copy. */
 .user-turn {
 	margin: 18px 0 14px;
 }
@@ -355,8 +355,8 @@ kbd {
 	margin: 0 0 0 auto;
 	padding: 10px 14px;
 	border-radius: 12px;
-	background: color-mix(in srgb, var(--gemini-accent) 9%, var(--gemini-surface));
-	border: 1px solid color-mix(in srgb, var(--gemini-accent) 22%, var(--gemini-border));
+	background: color-mix(in srgb, var(--vscode-editor-foreground) 7%, var(--gemini-surface));
+	border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground) 15%, var(--gemini-surface));
 }
 
 /* The time stays, quiet; Copy shows on hover and keyboard focus. */
@@ -2703,7 +2703,8 @@ textarea.new-thread-input {
  * The project chat's side panel (project.ts): shown beside the chat only
  * when the view is wide enough for both; the chat column narrows to make room.
  */
-.project-panel {
+.project-panel,
+.project-panel-sash {
 	display: none;
 }
 
@@ -2733,6 +2734,26 @@ textarea.new-thread-input {
 		border-left: 1px solid var(--gemini-border);
 		background: var(--vscode-sideBar-background, var(--gemini-surface));
 		font-size: 0.93em;
+	}
+
+	/* The panel's left edge, dragged to resize it (project.ts). */
+	.project-panel-sash {
+		display: block;
+		position: fixed;
+		top: 0;
+		bottom: 0;
+		right: calc(var(--gemini-panel-width) - 2px);
+		z-index: 5;
+		width: 4px;
+		cursor: ew-resize;
+		outline: none;
+		transition: background-color 0.1s ease-out 0.3s;
+	}
+
+	.project-panel-sash:hover,
+	.project-panel-sash.active,
+	.project-panel-sash:focus-visible {
+		background: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder));
 	}
 }
 
