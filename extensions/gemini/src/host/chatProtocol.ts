@@ -19,7 +19,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 20;
+export const chatProtocolVersion = 21;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -446,6 +446,8 @@ export type ToWebview =
 	/** Added or changed items, in the order they first changed; streaming updates are batched. */
 	| { readonly type: 'items'; readonly items: readonly ItemUpdate[] }
 	| { readonly type: 'busy'; readonly busy: boolean }
+	/** The view's tab or pane went out of sight, or came back: a hidden view keeps updates and renders them when shown. */
+	| { readonly type: 'visibility'; readonly hidden: boolean }
 	| { readonly type: 'status'; readonly status: ViewStatus }
 	| { readonly type: 'settings'; readonly settings: SessionSettings }
 	/** Whether the agent takes pasted images; sent with every session. */

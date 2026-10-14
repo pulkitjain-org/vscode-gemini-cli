@@ -15,6 +15,34 @@
 /** Programs that reach the network, which an approval never covers. */
 const networkPrograms = new Set(['curl', 'wget', 'ssh', 'scp', 'sftp', 'rsync', 'nc', 'ncat', 'netcat', 'telnet', 'ftp', 'socat', 'http', 'https', 'xh']);
 
+/**
+ * Programs that run other programs or code given to them: approving one would
+ * approve whatever it runs, so they always ask.
+ */
+const wrapperPrograms = new Set([
+	'xargs', 'env', 'sudo', 'doas', 'su', 'timeout', 'nice', 'nohup', 'time', 'command', 'builtin', 'exec', 'eval', 'source', '.',
+	'sh', 'bash', 'zsh', 'fish', 'dash', 'ksh', 'csh', 'tcsh', 'python', 'python2', 'python3', 'node', 'deno', 'bun', 'perl',
+	'ruby', 'php', 'lua', 'npx', 'bunx', 'pnpx', 'osascript', 'watch', 'parallel', 'script', 'unbuffer', 'stdbuf', 'chroot',
+]);
+
+/** `NAME=value` prefixes that only change formatting; any other can make a program run code (`GIT_SSH_COMMAND`, `LD_PRELOAD`). */
+const harmlessVariable = /^(LC_\w+|LANG|LANGUAGE|TZ|NO_COLOR|FORCE_COLOR|CLICOLOR|CI|TERM|COLUMNS|LINES)$/;
+
+/** Arguments that make an otherwise plain program run code, by program. */
+function runsCode(program: string, args: readonly string[]): boolean {
+	switch (program) {
+		case 'find':
+			return args.some(arg => /^-(exec|execdir|ok|okdir|delete|fprint|fprintf|fls)$/.test(arg));
+		case 'awk': case 'gawk': case 'mawk': case 'nawk':
+			return args.some(arg => /\bsystem\s*\(|\|\s*getline|print[^;]*\|/.test(arg));
+		case 'git':
+			// `-c core.sshCommand=…`, `-c alias.x=!…` and friends run what they name.
+			return args.some(arg => arg === '-c' || arg.startsWith('--config-env') || arg.startsWith('--exec-path'));
+		default:
+			return false;
+	}
+}
+
 /** A shell command as far as approvals go: the programs it runs, or why it always asks. */
 export type ParsedCommand =
 	| { readonly kind: 'ok'; readonly programs: readonly string[]; readonly redirects: boolean }
@@ -24,8 +52,9 @@ export type AskReason = 'unreadable' | 'network' | 'dynamic';
 
 /**
  * Splits `command` on `|`, `||`, `&&`, `;`, `&` and new lines, outside
- * quotes, and takes each part's program (after any `NAME=value`). Fails
- * safe: anything it is unsure of asks.
+ * quotes, and takes each part's program. Fails safe: anything it is unsure
+ * of asks, as do variables that can change what a program runs, programs
+ * that run other programs, and scripts in the workspace.
  */
 export function parseCommand(command: string): ParsedCommand {
 	const text = command.trim();
@@ -114,15 +143,24 @@ export function parseCommand(command: string): ParsedCommand {
 	endSegment();
 	const programs: string[] = [];
 	for (const segment of segments) {
-		const program = segment.find(w => !/^[A-Za-z_]\w*=/.test(w));
-		if (!program) {
-			continue;
-		}
-		if (program === 'eval' || program === 'exec' || program === 'source' || program === '.') {
+		const start = segment.findIndex(w => !/^[A-Za-z_]\w*=/.test(w));
+		if (segment.slice(0, start < 0 ? segment.length : start).some(w => !harmlessVariable.test(w.slice(0, w.indexOf('='))))) {
 			return { kind: 'asks', reason: 'dynamic' };
 		}
-		if (networkPrograms.has(program.split('/').pop()!)) {
+		if (start < 0) {
+			continue;
+		}
+		const program = segment[start];
+		const name = program.split('/').pop()!;
+		if (networkPrograms.has(name)) {
 			return { kind: 'asks', reason: 'network' };
+		}
+		// A script in the workspace can be rewritten by the agent after it was approved.
+		if (program.includes('/') && !program.startsWith('/')) {
+			return { kind: 'asks', reason: 'dynamic' };
+		}
+		if (wrapperPrograms.has(name) || runsCode(name, segment.slice(start + 1))) {
+			return { kind: 'asks', reason: 'dynamic' };
 		}
 		programs.push(program);
 	}

@@ -101,6 +101,12 @@ interface CachedFile {
 	readonly mtime: number;
 	readonly size: number;
 	readonly session: ParsedSession | undefined;
+	/** For a .jsonl file: its records so far, to add only what the CLI appended. */
+	readonly records?: SessionRecords;
+	/** The bytes parsed: up to the end of the last whole line. */
+	readonly offset?: number;
+	/** The bytes just before `offset`, to tell an append from a rewrite. */
+	readonly tail?: Buffer;
 }
 
 /** Parsed files by path, so listing again reads only the files that changed. */
@@ -143,6 +149,9 @@ async function numberedSessions(cwd: string, home?: string): Promise<CliSession[
 		}));
 }
 
+/** Bytes compared to tell that a session file only grew. */
+const tailCheckBytes = 256;
+
 async function readSessionFile(file: string): Promise<ParsedSession | undefined> {
 	try {
 		const stat = await fs.stat(file);
@@ -150,15 +159,74 @@ async function readSessionFile(file: string): Promise<ParsedSession | undefined>
 		if (cached && cached.mtime === stat.mtimeMs && cached.size === stat.size) {
 			return cached.session;
 		}
-		const session = parseSessionFile(await fs.readFile(file, 'utf8'), file.endsWith('.json'), stat.mtimeMs);
+		// The CLI appends a record or two per message, so after the first read
+		// of a long session only the new lines are parsed, not the whole file.
+		const appended = cached?.records && stat.size > cached.size ? await readAppended(file, cached, stat.size) : undefined;
+		const entry = appended ?? parseWholeFile(await fs.readFile(file), file.endsWith('.json'));
+		let session: ParsedSession | undefined;
+		if (entry.records) {
+			// A last line without its line end may still be complete; it is read but not kept, since the next append may finish it.
+			const current = entry.rest?.trim() ? entry.records.clone() : entry.records;
+			if (current !== entry.records) {
+				current.addLines(entry.rest!);
+			}
+			session = sessionFrom(current.meta, current.messages(), stat.mtimeMs);
+		} else {
+			session = parseSessionFile(entry.text ?? '', true, stat.mtimeMs);
+		}
 		if (parsedFiles.size >= maxCachedFiles) {
 			parsedFiles.clear();
 		}
-		parsedFiles.set(file, { mtime: stat.mtimeMs, size: stat.size, session });
+		parsedFiles.set(file, { mtime: stat.mtimeMs, size: stat.size, session, ...(entry.records ? { records: entry.records, offset: entry.offset, tail: entry.tail } : {}) });
 		return session;
 	} catch {
 		return undefined;
 	}
+}
+
+interface ParsedFile {
+	readonly records?: SessionRecords;
+	readonly offset?: number;
+	readonly tail?: Buffer;
+	/** Text after the last line end. */
+	readonly rest?: string;
+	/** A whole-JSON file's text. */
+	readonly text?: string;
+}
+
+function parseWholeFile(data: Buffer, wholeJson: boolean): ParsedFile {
+	if (wholeJson) {
+		return { text: data.toString('utf8') };
+	}
+	const records = new SessionRecords();
+	const end = data.lastIndexOf(0x0a) + 1;
+	records.addLines(data.subarray(0, end).toString('utf8'));
+	return { records, offset: end, tail: Buffer.from(data.subarray(Math.max(0, end - tailCheckBytes), end)), rest: data.subarray(end).toString('utf8') };
+}
+
+/** The records appended since `cached` was parsed; undefined when the file was rewritten instead. */
+async function readAppended(file: string, cached: CachedFile, size: number): Promise<ParsedFile | undefined> {
+	const offset = cached.offset ?? 0;
+	const tail = cached.tail ?? Buffer.alloc(0);
+	const handle = await fs.open(file, 'r');
+	let data: Buffer;
+	try {
+		const start = offset - tail.length;
+		data = Buffer.alloc(size - start);
+		const { bytesRead } = await handle.read(data, 0, data.length, start);
+		data = data.subarray(0, bytesRead);
+	} finally {
+		await handle.close();
+	}
+	if (!data.subarray(0, tail.length).equals(tail)) {
+		return undefined;
+	}
+	const added = data.subarray(tail.length);
+	const end = added.lastIndexOf(0x0a) + 1;
+	const records = cached.records!.clone();
+	records.addLines(added.subarray(0, end).toString('utf8'));
+	const parsed = Buffer.concat([tail, added.subarray(0, end)]);
+	return { records, offset: offset + end, tail: Buffer.from(parsed.subarray(Math.max(0, parsed.length - tailCheckBytes))), rest: added.subarray(end).toString('utf8') };
 }
 
 /**
@@ -185,6 +253,10 @@ interface MessageRecord {
 /** One session file's session, or undefined when it has none worth reopening. */
 export function parseSessionFile(text: string, wholeJson: boolean, mtime = 0): ParsedSession | undefined {
 	const { meta, all } = parseSessionRecords(text, wholeJson);
+	return sessionFrom(meta, all, mtime);
+}
+
+function sessionFrom(meta: Record<string, unknown>, all: readonly MessageRecord[], mtime: number): ParsedSession | undefined {
 	const id = meta.sessionId;
 	if (typeof id !== 'string' || !id || meta.kind === 'subagent') {
 		return undefined;
@@ -207,52 +279,84 @@ export function parseSessionFile(text: string, wholeJson: boolean, mtime = 0): P
 	};
 }
 
-/** A session file's metadata and its messages as they stand, after rewinds and rewrites. */
-function parseSessionRecords(text: string, wholeJson: boolean): { meta: Record<string, unknown>; all: MessageRecord[] } {
-	let meta: Record<string, unknown> = {};
-	const messages = new Map<string, MessageRecord>();
-	const setMessages = (list: unknown) => {
-		messages.clear();
-		for (const message of Array.isArray(list) ? list : []) {
-			if (isMessage(message)) {
-				messages.set(message.id, message);
+/** A .jsonl session file's metadata and messages as they stand, after rewinds and rewrites, built up record by record. */
+class SessionRecords {
+	meta: Record<string, unknown> = {};
+	private readonly byId = new Map<string, MessageRecord>();
+
+	messages(): MessageRecord[] {
+		return [...this.byId.values()];
+	}
+
+	clone(): SessionRecords {
+		const copy = new SessionRecords();
+		copy.meta = this.meta;
+		for (const [id, message] of this.byId) {
+			copy.byId.set(id, message);
+		}
+		return copy;
+	}
+
+	/** Whole lines of the file; a line cut short by a crash is skipped, as the CLI does. */
+	addLines(text: string): void {
+		for (const line of text.split('\n')) {
+			if (line.trim()) {
+				try {
+					this.add(JSON.parse(line));
+				} catch {
+					// Skipped.
+				}
 			}
 		}
-	};
-	const record = (value: unknown) => {
+	}
+
+	setMessages(list: unknown): void {
+		this.byId.clear();
+		for (const message of Array.isArray(list) ? list : []) {
+			if (isMessage(message)) {
+				this.byId.set(message.id, message);
+			}
+		}
+	}
+
+	private add(value: unknown): void {
 		if (!isObject(value)) {
 			return;
 		}
 		if (typeof value.$rewindTo === 'string') {
 			// Drops that message and everything after it.
 			let found = false;
-			for (const id of [...messages.keys()]) {
+			for (const id of [...this.byId.keys()]) {
 				found ||= id === value.$rewindTo;
 				if (found) {
-					messages.delete(id);
+					this.byId.delete(id);
 				}
 			}
 			if (!found) {
-				messages.clear();
+				this.byId.clear();
 			}
 		} else if (isMessage(value)) {
-			messages.set(value.id, value);
+			this.byId.set(value.id, value);
 		} else if (isObject(value.$set)) {
 			if (Array.isArray(value.$set.messages)) {
-				setMessages(value.$set.messages);
+				this.setMessages(value.$set.messages);
 			}
-			meta = { ...meta, ...value.$set };
+			this.meta = { ...this.meta, ...value.$set };
 		} else if (typeof value.sessionId === 'string') {
-			meta = { ...meta, ...value };
+			this.meta = { ...this.meta, ...value };
 			if (Array.isArray(value.messages)) {
 				for (const message of value.messages) {
 					if (isMessage(message)) {
-						messages.set(message.id, message);
+						this.byId.set(message.id, message);
 					}
 				}
 			}
 		}
-	};
+	}
+}
+
+/** A session file's metadata and its messages as they stand, after rewinds and rewrites. */
+function parseSessionRecords(text: string, wholeJson: boolean): { meta: Record<string, unknown>; all: MessageRecord[] } {
 	let whole: unknown;
 	if (wholeJson) {
 		try {
@@ -261,21 +365,14 @@ function parseSessionRecords(text: string, wholeJson: boolean): { meta: Record<s
 			// Not one object: read it as records.
 		}
 	}
+	const records = new SessionRecords();
 	if (isObject(whole)) {
-		meta = whole;
-		setMessages(whole.messages);
+		records.meta = whole;
+		records.setMessages(whole.messages);
 	} else {
-		for (const line of text.split('\n')) {
-			if (line.trim()) {
-				try {
-					record(JSON.parse(line));
-				} catch {
-					// A line cut short by a crash; the CLI skips it too.
-				}
-			}
-		}
+		records.addLines(text);
 	}
-	return { meta, all: [...messages.values()] };
+	return { meta: records.meta, all: records.messages() };
 }
 
 /**

@@ -39,8 +39,19 @@ export function contentBlockToText(block: acp.ContentBlock): string {
 	}
 }
 
+/** Whether a tool call is over; the agent rarely updates one after that. */
+function isFinished(status: ToolCallModel['status']): boolean {
+	return status === 'completed' || status === 'failed';
+}
+
 export class SessionUpdateAdapter {
 
+	/**
+	 * Tool calls so far, so an update that leaves fields out keeps them. A
+	 * finished call keeps no content: an edit's content holds the whole file
+	 * before and after, and a long session has hundreds of them. The
+	 * transcript keeps what it showed of it.
+	 */
 	private readonly toolCalls = new Map<string, ToolCallModel>();
 
 	adapt(update: acp.SessionUpdate): ChatEvent {
@@ -60,7 +71,7 @@ export class SessionUpdateAdapter {
 					locations: update.locations ?? [],
 					content: update.content ?? [],
 				};
-				this.toolCalls.set(call.id, call);
+				this.remember(call);
 				return { kind: 'toolCall', call };
 			}
 			case 'tool_call_update': {
@@ -73,13 +84,21 @@ export class SessionUpdateAdapter {
 					locations: update.locations ?? previous?.locations ?? [],
 					content: update.content ?? previous?.content ?? [],
 				};
-				this.toolCalls.set(call.id, call);
+				this.remember(call);
 				return { kind: 'toolCall', call };
 			}
 			case 'plan':
 				return { kind: 'plan', entries: update.entries };
 			default:
 				return { kind: 'other', type: (update as { sessionUpdate: string }).sessionUpdate, update };
+		}
+	}
+
+	private remember(call: ToolCallModel): void {
+		if (isFinished(call.status)) {
+			this.toolCalls.set(call.id, call.content.length ? { ...call, content: [] } : call);
+		} else {
+			this.toolCalls.set(call.id, call);
 		}
 	}
 }

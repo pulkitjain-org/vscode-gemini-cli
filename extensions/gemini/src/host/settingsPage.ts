@@ -43,6 +43,8 @@ export class SettingsPage implements vscode.Disposable {
 	/** Counts CLI refreshes, so an older answer never replaces a newer one. */
 	private cliGeneration = 0;
 	private terminal: vscode.Terminal | undefined;
+	/** The CLI's lists changed while the page was hidden. */
+	private cliStale = false;
 	private readonly disposables: vscode.Disposable[] = [];
 
 	constructor(private readonly extensionUri: vscode.Uri, private readonly service: AgentService) {
@@ -51,12 +53,13 @@ export class SettingsPage implements vscode.Disposable {
 			vscode.commands.registerCommand('gemini.newSkill', () => this.newSkill()),
 			service.onDidChangeMcpProblems(() => void this.update()),
 			// The CLI could not be asked while the agent was not running; ask now.
-			service.runtime.onDidChangeState(state => state.kind === 'ready' && this.panel && void this.refreshCli()),
+			// Each ask opens a CLI session, so a hidden page asks once it shows again.
+			service.runtime.onDidChangeState(state => state.kind === 'ready' && this.panel && this.refreshCliWhenShown()),
 			vscode.window.onDidCloseTerminal(terminal => {
 				if (terminal === this.terminal) {
 					// An install, update or removal finished.
 					this.terminal = undefined;
-					void this.refreshCli();
+					this.refreshCliWhenShown();
 				}
 			}),
 		);
@@ -75,7 +78,14 @@ export class SettingsPage implements vscode.Disposable {
 		panel.iconPath = new vscode.ThemeIcon('server-environment');
 		panel.webview.html = this.html(panel.webview, media);
 		panel.webview.onDidReceiveMessage((message: FromSettingsPage) => this.onMessage(message));
-		panel.onDidChangeViewState(e => e.webviewPanel.active && void this.update());
+		panel.onDidChangeViewState(e => {
+			if (e.webviewPanel.visible && this.cliStale) {
+				this.cliStale = false;
+				void this.refreshCli();
+			} else if (e.webviewPanel.active) {
+				void this.update();
+			}
+		});
 		panel.onDidDispose(() => {
 			if (this.panel === panel) {
 				this.panel = undefined;
@@ -83,6 +93,14 @@ export class SettingsPage implements vscode.Disposable {
 		});
 		this.panel = panel;
 		void this.refreshCli();
+	}
+
+	private refreshCliWhenShown(): void {
+		if (this.panel?.visible) {
+			void this.refreshCli();
+		} else {
+			this.cliStale = true;
+		}
 	}
 
 	dispose(): void {

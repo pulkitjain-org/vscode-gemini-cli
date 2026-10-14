@@ -31,6 +31,13 @@ run({
 			'.woff2': 'file',
 		},
 		plugins: [{
+			// markdown-it needs only entities' decoder; its package entry also pulls in the
+			// encoder tables, which esbuild cannot drop (about 23 KB of every page's script).
+			name: 'entities-decode-only',
+			setup(build) {
+				build.onResolve({ filter: /^entities$/ }, () => ({ path: path.join(import.meta.dirname, 'node_modules', 'entities', 'lib', 'esm', 'decode.js') }));
+			},
+		}, {
 			// KaTeX's fonts ship as woff2 only, which every webview reads first; its woff and
 			// ttf copies stay unresolved links that are never fetched.
 			name: 'katex-woff2-only',

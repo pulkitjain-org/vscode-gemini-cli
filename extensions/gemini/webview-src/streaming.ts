@@ -19,6 +19,8 @@ export interface StreamingScan {
 	 * and the opening line itself. Its code only grows until the fence closes.
 	 */
 	readonly openFence?: { readonly start: number; readonly codeStart: number; readonly opener: string };
+	/** Whether any code fence, indented ones included, is still open at the end. */
+	readonly inFence: boolean;
 }
 
 /**
@@ -46,7 +48,7 @@ export function scanStreaming(text: string, from = 0): StreamingScan {
 	const openFence = fence && fenceAt && !fenceAt.indented && fenceAt.codeStart <= text.length
 		? { start: fenceAt.start, codeStart: fenceAt.codeStart, opener: fenceAt.opener }
 		: undefined;
-	return { stableEnd: end, openFence };
+	return { stableEnd: end, openFence, inFence: !!fence };
 }
 
 /** {@link StreamingScan.stableEnd} of `text`. */

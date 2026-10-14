@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import type { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { AgentCommand, spawnAgent } from './agentProcess';
 import { AgentErrorKind, FATAL_EXIT_CODES } from './errors';
 import { Emitter } from './events';
@@ -31,6 +31,32 @@ export interface SidecarOptions {
 }
 
 const defaultRestartDelaysMs = [1_000, 4_000, 15_000];
+/** How long a stopped CLI gets to exit on SIGTERM before it is killed. */
+const killAfterMs = 3_000;
+/** The longest stderr line kept while waiting for its end. */
+const maxStderrLine = 64 * 1024;
+
+/**
+ * Ends the CLI. On Windows a `.cmd` shim runs it under cmd.exe, which `kill`
+ * alone would end without the CLI, so the whole tree goes. Elsewhere a CLI
+ * that ignores SIGTERM, for example while a shell tool runs, is killed.
+ */
+function stopProcess(child: ChildProcessWithoutNullStreams): void {
+	if (process.platform === 'win32' && child.pid) {
+		try {
+			spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }).on('error', () => child.kill());
+			return;
+		} catch {
+			// Fall through to kill.
+		}
+	}
+	child.kill();
+	if (child.exitCode === null && child.signalCode === null) {
+		const timer = setTimeout(() => child.kill('SIGKILL'), killAfterMs);
+		timer.unref?.();
+		child.once('exit', () => clearTimeout(timer));
+	}
+}
 
 /**
  * Runs `gemini --acp` and keeps it running: crash detection, bounded restarts
@@ -78,7 +104,7 @@ export class AgentSidecar {
 		const current = this._state;
 		this.setState({ kind: 'stopped' });
 		if (current.kind === 'running') {
-			current.process.kill();
+			stopProcess(current.process);
 		}
 	}
 
@@ -94,7 +120,7 @@ export class AgentSidecar {
 		if (previous.kind === 'running') {
 			// Mark stopped first so the old process's exit is not treated as a crash.
 			this.setState({ kind: 'stopped' });
-			previous.process.kill();
+			stopProcess(previous.process);
 		}
 		this.setState({ kind: 'starting' });
 
@@ -113,6 +139,11 @@ export class AgentSidecar {
 			stderrTail = (stderrTail + chunk).slice(-2_000);
 			const lines = (pending + chunk).split(/\r?\n/);
 			pending = lines.pop() ?? '';
+			if (pending.length > maxStderrLine) {
+				// Output with no line ends, such as a progress bar: pass it on in pieces.
+				lines.push(pending);
+				pending = '';
+			}
 			for (const line of lines) {
 				this.onStderrEmitter.fire(line);
 			}

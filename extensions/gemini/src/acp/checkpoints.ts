@@ -72,10 +72,14 @@ export class Checkpoints {
 			if (!turn.before.has(filePath)) {
 				// As in AgentChanges, no old text means the edit made the file.
 				const before = edit.oldText ? edit.oldText : undefined;
-				turn.before.set(filePath, before);
+				// A turn that can't be undone keeps only which files it changed, not their text.
+				turn.before.set(filePath, turn.undoable ? before : undefined);
 				turn.bytes += before?.length ?? 0;
-				if (turn.bytes > this.limits.maxTurnBytes) {
+				if (turn.undoable && turn.bytes > this.limits.maxTurnBytes) {
 					turn.undoable = false;
+					for (const file of turn.before.keys()) {
+						turn.before.set(file, undefined);
+					}
 				}
 			}
 			this.agentText.set(filePath, edit.newText);
@@ -95,7 +99,9 @@ export class Checkpoints {
 		}
 		turn.id = id;
 		this.turns.push(turn);
-		const dropped = this.turns.splice(0, Math.max(0, this.turns.length - this.limits.maxTurns)).map(t => t.id);
+		// Undo goes back through every later turn, so nothing before a turn that can't be undone can be either.
+		const keep = turn.undoable ? this.limits.maxTurns : 1;
+		const dropped = this.turns.splice(0, Math.max(0, this.turns.length - keep)).map(t => t.id);
 		this.forgetUnusedFiles();
 		return { undoable: turn.undoable, dropped };
 	}

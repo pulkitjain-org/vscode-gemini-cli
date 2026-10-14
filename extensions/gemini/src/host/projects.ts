@@ -44,6 +44,8 @@ export interface ProjectAgents {
 	undoThread(id: string): Promise<boolean>;
 	/** Starts a thread's agent without a tab, when it isn't running and its folder still exists. */
 	resume(id: string): Promise<void>;
+	/** Whether a new thread's worktree setup still runs: it gets its brief, and then any notes, when setup ends. */
+	settingUp(id: string): boolean;
 	/** Keeps a thread's resolved state across reloads. */
 	setResolved(id: string, resolved: boolean): void;
 }
@@ -176,6 +178,19 @@ export class Projects implements vscode.Disposable {
 		this.showCard(project, record.id);
 	}
 
+	/** A thread was removed (Undo thread, or Remove in the Agents pane): its card says so and the coordinator no longer lists it. */
+	threadRemoved(record: AgentRecord): void {
+		const project = record.project?.role === 'thread' ? this.projects.get(record.project.coordinator) : undefined;
+		if (!project || project.removed.has(record.id)) {
+			return;
+		}
+		project.removed.add(record.id);
+		project.queued.delete(record.id);
+		project.coordinator.showThread({ thread: record.id, title: record.title, state: 'done', startedAt: record.createdAt, removed: true });
+		project.hub.removeThread(record.id);
+		this.schedulePanel(project);
+	}
+
 	/** A thread's files changed: its card shows the new counts. */
 	threadChanged(record: AgentRecord): void {
 		const project = record.project?.role === 'thread' ? this.projects.get(record.project.coordinator) : undefined;
@@ -240,13 +255,17 @@ export class Projects implements vscode.Disposable {
 		this.schedulePanel(project);
 		// The project's unresolved threads start with it, so their chats are live and the
 		// coordinator can reach them; a resolved one starts only when it is opened.
-		setTimeout(() => {
-			if (this.projects.get(record.id) === project) {
-				for (const thread of open) {
-					void this.agents.resume(thread);
+		// One at a time, a moment apart: each is a Gemini CLI process, and starting them all at once
+		// would compete with the window's own start. A thread the coordinator reaches first starts then.
+		void (async () => {
+			for (const thread of open) {
+				await new Promise(resolve => setTimeout(resolve, threadStartGapMs));
+				if (this.projects.get(record.id) !== project) {
+					return;
 				}
+				await this.agents.resume(thread).catch(() => undefined);
 			}
-		}, 0);
+		})();
 	}
 
 	private threadTurnEnded(project: LiveProject, record: AgentRecord): void {
@@ -282,12 +301,32 @@ export class Projects implements vscode.Disposable {
 			this.agents.setResolved(thread, false);
 			this.showCard(project, thread);
 		}
-		if (this.agents.activity(thread)?.busy) {
+		this.deliver(project, thread, controller, text, 'coordinator');
+		return true;
+	}
+
+	/** Sends a thread `text` now, or when its running turn (or its setup) ends. */
+	sendToThread(thread: string, text: string, from?: 'coordinator'): void {
+		const coordinator = this.agents.record(thread)?.project;
+		const project = coordinator?.role === 'thread' ? this.projects.get(coordinator.coordinator) : undefined;
+		const controller = this.agents.controller(thread);
+		if (!controller) {
+			return;
+		}
+		if (project) {
+			this.deliver(project, thread, controller, text, from);
+		} else {
+			void controller.send(text, [], from);
+		}
+	}
+
+	private deliver(project: LiveProject, thread: string, controller: ChatController, text: string, from: 'coordinator' | undefined): void {
+		// The pane's activity can lag the controller by a tick, so both are asked: a note sent to a busy chat would be dropped.
+		if (this.agents.settingUp(thread) || this.agents.activity(thread)?.busy || controller.running) {
 			project.queued.set(thread, [...project.queued.get(thread) ?? [], text]);
 		} else {
-			void controller.send(text, [], 'coordinator');
+			void controller.send(text, [], from);
 		}
-		return true;
 	}
 
 	private read(thread: string, last: number): string | undefined {
@@ -381,15 +420,10 @@ export class Projects implements vscode.Disposable {
 					this.showCard(project, thread);
 				}
 				return;
-			case 'undo': {
-				const record = this.agents.record(thread);
-				if (project && record && await this.agents.undoThread(thread)) {
-					project.removed.add(thread);
-					project.coordinator.showThread({ thread, title: record.title, state: 'done', startedAt: record.createdAt, removed: true });
-					project.hub.removeThread(thread);
-				}
+			case 'undo':
+				// threadRemoved updates the card and the hub.
+				await this.agents.undoThread(thread);
 				return;
-			}
 			case 'approve': {
 				const controller = this.agents.controller(thread);
 				if (controller && !await controller.approvePlan()) {
@@ -429,6 +463,8 @@ export class Projects implements vscode.Disposable {
 
 /** How long the side panel waits for a burst of card updates to settle. */
 const panelDelayMs = 100;
+/** The gap between starting one of an opened project's threads and the next. */
+const threadStartGapMs = 1_500;
 
 function callerOf(record: AgentRecord): ProjectCaller | undefined {
 	const role: AgentProjectRole | undefined = record.project;

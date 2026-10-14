@@ -44,7 +44,7 @@ export class CliManager implements vscode.Disposable {
 					this.pruned = true;
 					// Off the startup path: the agent is already answering.
 					setTimeout(() => {
-						this.prune();
+						void this.prune();
 						void this.checkForUpdate();
 					}, 5_000);
 					this.updateTimer = setInterval(() => void this.checkForUpdate(), updateCheckPoll);
@@ -186,7 +186,7 @@ export class CliManager implements vscode.Disposable {
 	}
 
 	/** Keeps the CLI in use and the newest other copy, so going back stays one step. */
-	private prune(): void {
+	private async prune(): Promise<void> {
 		const managedDir = getManagedCliDir();
 		if (!managedDir) {
 			return;
@@ -195,7 +195,7 @@ export class CliManager implements vscode.Disposable {
 		const current = this.service.cli?.source === 'managed' ? this.service.cli.version : undefined;
 		const keep = current ? [current, ...versions.filter(v => v !== current).slice(0, 1)] : versions.slice(0, 2);
 		try {
-			const removed = pruneCliVersions(managedDir, keep);
+			const removed = await pruneCliVersions(managedDir, keep);
 			if (removed.length) {
 				this.log.info(`Removed old Gemini CLI copies: ${removed.join(', ')}`);
 			}

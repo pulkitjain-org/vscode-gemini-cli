@@ -8,6 +8,7 @@
 // module applies the access policy and the protocol details. Any error fails
 // the tool call with a message the model can read.
 
+import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as acp from '@agentclientprotocol/sdk';
 import { AGENT_SETUP_ERROR_CODE } from './errors';
@@ -75,10 +76,47 @@ export async function checkFileAccess(filePath: string, mode: FileAccessMode, op
 	if (secret) {
 		return secret;
 	}
+	// A symlink in the workspace can point anywhere, such as at ~/.aws/credentials:
+	// the file it reaches has to pass the same checks.
+	const real = await realPath(resolved);
+	if (real !== resolved) {
+		const realRoots = await Promise.all(options.roots.map(r => realPath(path.resolve(r))));
+		const realRoot = realRoots.find(r => isInside(r, real));
+		if (!realRoot) {
+			return 'the file is a link to a file outside the workspace';
+		}
+		const realSecret = secretPathReason(path.relative(realRoot, real));
+		if (realSecret) {
+			return realSecret;
+		}
+	}
 	if (mode === 'read' && await options.isIgnored?.(resolved)) {
 		return 'the file is ignored by git';
 	}
 	return undefined;
+}
+
+/**
+ * `filePath` with every symlink resolved. For a file that does not exist yet,
+ * the nearest folder that does is resolved and the rest appended, so a write
+ * through a linked folder is caught too.
+ */
+async function realPath(filePath: string): Promise<string> {
+	let rest = '';
+	let current = filePath;
+	for (;;) {
+		try {
+			const real = await fs.realpath(current);
+			return rest ? path.join(real, rest) : real;
+		} catch {
+			const parent = path.dirname(current);
+			if (parent === current) {
+				return filePath;
+			}
+			rest = rest ? path.join(path.basename(current), rest) : path.basename(current);
+			current = parent;
+		}
+	}
 }
 
 /** Lines `line` (1-based) to `line + limit - 1`, as `fs/read_text_file` defines them. */

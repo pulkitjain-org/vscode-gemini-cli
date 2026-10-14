@@ -31,6 +31,10 @@ import { initTeamCommands } from './host/teamCommands';
 import { KeepAwake } from './acp/keepAwake';
 import { BrowserTools } from './host/browserTools';
 import { WorkspaceFileIndex } from './host/workspaceFiles';
+import { disposeGitIgnore } from './host/workspaceFileSystem';
+
+/** Finishes the writes that must outlive the window; set by activate. */
+let saveBeforeExit: (() => Promise<void>) | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
 	const log = vscode.window.createOutputChannel('Gemini', { log: true });
@@ -55,6 +59,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	});
 	const chatView = new ChatViewProvider(context.extensionUri, service, diffPreview, fileIndex, enhancer);
 	const agentsView = new AgentsView(context, service, diffPreview, fileIndex, enhancer);
+	saveBeforeExit = () => agentsView.saveAll();
 	// Agents mode's Changes panel follows the agent in front, as the Changes view does.
 	const changesPanel = new ChangesPanel(context.extensionUri);
 	changesPanel.show(agentsView.focusedSource);
@@ -93,6 +98,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
 	context.subscriptions.push(
 		log,
+		{ dispose: disposeGitIgnore },
 		teamCommandStore,
 		enhancer,
 		service,
@@ -142,7 +148,10 @@ export function activate(context: vscode.ExtensionContext): void {
 	);
 }
 
-export function deactivate(): void { }
+export function deactivate(): Promise<void> | undefined {
+	// VS Code waits for this (a few seconds at most) before the process ends.
+	return saveBeforeExit?.().catch(() => undefined);
+}
 
 async function setProjectId(): Promise<void> {
 	const config = vscode.workspace.getConfiguration(configSection);

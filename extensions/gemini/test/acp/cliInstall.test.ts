@@ -126,12 +126,12 @@ describe('checkIntegrity', () => {
 });
 
 describe('pruneCliVersions', () => {
-	it('keeps the given versions and removes the rest and leftovers', () => {
+	it('keeps the given versions and removes the rest and leftovers', async () => {
 		for (const name of ['0.60.0', '0.61.0', '0.62.0', '.tmp-0.63.0-abc', 'notes']) {
 			fs.mkdirSync(path.join(dir, name, 'bundle'), { recursive: true });
 			fs.writeFileSync(path.join(dir, name, 'bundle', 'gemini.js'), '');
 		}
-		expect(pruneCliVersions(dir, ['0.62.0', '0.61.0']).sort()).toEqual(['.tmp-0.63.0-abc', '0.60.0']);
+		expect((await pruneCliVersions(dir, ['0.62.0', '0.61.0'])).sort()).toEqual(['.tmp-0.63.0-abc', '0.60.0']);
 		expect(listManagedVersions(dir).sort()).toEqual(['0.61.0', '0.62.0']);
 		expect(fs.existsSync(path.join(dir, 'notes'))).toBe(true);
 	});

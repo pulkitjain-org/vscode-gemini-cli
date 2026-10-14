@@ -7,6 +7,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { onDidChangeSpellCheck, spellCheckOn } from './spellCheck';
 import { isModeAllowed } from '../acp/adminPolicy';
+import { errorMessage } from '../acp/errors';
 import { formatCounts } from '../acp/agentChanges';
 import { attachmentsForFiles } from './addToChat';
 import { AgentsView, AgentSummary, relativeTime } from './agentsView';
@@ -85,7 +86,7 @@ export class AgentHome implements vscode.Disposable {
 		});
 		panel.iconPath = vscode.Uri.joinPath(this.extensionUri, 'media', 'gemini.svg');
 		panel.webview.html = this.html(panel.webview, media);
-		panel.webview.onDidReceiveMessage((message: FromHome) => this.onMessage(message));
+		panel.webview.onDidReceiveMessage((message: FromHome) => this.onMessage(message).catch(err => void vscode.window.showErrorMessage(errorMessage(err))));
 		panel.onDidChangeViewState(e => e.webviewPanel.visible && this.schedule(0));
 		panel.onDidDispose(() => {
 			if (this.panel === panel) {
@@ -108,12 +109,20 @@ export class AgentHome implements vscode.Disposable {
 		}
 	}
 
+	/** At most one update per `updateDelayMs`, so steady agent activity can't hold the cards back; `0` updates now. */
 	private schedule(delay = updateDelayMs): void {
 		if (!this.panel?.visible) {
 			return;
 		}
-		clearTimeout(this.timer);
-		this.timer = setTimeout(() => void this.update(), delay);
+		if (delay === 0) {
+			clearTimeout(this.timer);
+		} else if (this.timer !== undefined) {
+			return;
+		}
+		this.timer = setTimeout(() => {
+			this.timer = undefined;
+			void this.update();
+		}, delay);
 	}
 
 	private async update(): Promise<void> {
