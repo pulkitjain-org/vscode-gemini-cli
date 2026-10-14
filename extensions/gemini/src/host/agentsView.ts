@@ -215,6 +215,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			mergeBack: id => this.mergeBack(id),
 			openChanges: id => this.openChanges(id),
 			undoThread: id => this.undoThread(id),
+			resume: id => this.resumeThread(id),
+			setResolved: (id, resolved) => this.model.setThreadResolved(id, resolved),
 		}, String(context.extension.packageJSON.version ?? '0'));
 		this.review = new ReviewController(() => [...this.live.entries()].map(([id, live]) => ({ title: vscode.l10n.t("the agent \"{0}\"", this.model.agent(id)?.title ?? ''), changes: live.changes })));
 		this.disposables.push(
@@ -1118,6 +1120,21 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		// Reopened without a tab, its session opens now rather than when shown.
 		started.session.open();
 		return started;
+	}
+
+	/** Starts a project thread's agent without a tab, as its project opens; skipped when it runs or its worktree is gone. */
+	private async resumeThread(id: string): Promise<void> {
+		const record = this.model.agent(id);
+		const folder = record && this.model.folderOf(record);
+		if (this.live.has(id) || !folder || !await exists(folder)) {
+			return;
+		}
+		if (this.live.has(id)) {
+			// Opened while the folder was checked.
+			return;
+		}
+		this.ensureLive(id);
+		this.refresh(id);
 	}
 
 	/**

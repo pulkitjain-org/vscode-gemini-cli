@@ -42,6 +42,10 @@ export interface ProjectAgents {
 	openChanges(id: string): Promise<void>;
 	/** Asks, then removes the thread with its folder and branch; returns whether it did. */
 	undoThread(id: string): Promise<boolean>;
+	/** Starts a thread's agent without a tab, when it isn't running and its folder still exists. */
+	resume(id: string): Promise<void>;
+	/** Keeps a thread's resolved state across reloads. */
+	setResolved(id: string, resolved: boolean): void;
 }
 
 export function projectsEnabled(): boolean {
@@ -210,9 +214,16 @@ export class Projects implements vscode.Disposable {
 			reported: new Set(), queued: new Map(), planning: new Set(), merged: new Set(), removed: new Set(),
 			disposables: [],
 		};
+		const open: string[] = [];
 		for (const thread of this.agents.threadsOf(record.id)) {
 			if (thread.project?.role === 'thread') {
-				hub.restoreThread({ id: thread.id, title: thread.title, state: 'done', byCoordinator: thread.project.byCoordinator });
+				const resolved = !!thread.project.resolved;
+				hub.restoreThread({ id: thread.id, title: thread.title, state: 'done', byCoordinator: thread.project.byCoordinator, ...(resolved ? { resolved } : {}) });
+				if (resolved) {
+					project.merged.add(thread.id);
+				} else {
+					open.push(thread.id);
+				}
 			}
 		}
 		project.disposables.push(
@@ -227,6 +238,15 @@ export class Projects implements vscode.Disposable {
 		);
 		this.projects.set(record.id, project);
 		this.schedulePanel(project);
+		// The project's unresolved threads start with it, so their chats are live and the
+		// coordinator can reach them; a resolved one starts only when it is opened.
+		setTimeout(() => {
+			if (this.projects.get(record.id) === project) {
+				for (const thread of open) {
+					void this.agents.resume(thread);
+				}
+			}
+		}, 0);
 	}
 
 	private threadTurnEnded(project: LiveProject, record: AgentRecord): void {
@@ -259,6 +279,7 @@ export class Projects implements vscode.Disposable {
 		}
 		// Reopened: the hub only sends to a resolved thread when the user asked to reopen it.
 		if (project.merged.delete(thread)) {
+			this.agents.setResolved(thread, false);
 			this.showCard(project, thread);
 		}
 		if (this.agents.activity(thread)?.busy) {
@@ -355,6 +376,7 @@ export class Projects implements vscode.Disposable {
 			case 'merge':
 				if (await this.agents.mergeBack(thread) && project) {
 					project.merged.add(thread);
+					this.agents.setResolved(thread, true);
 					project.hub.updateThread(thread, { resolved: true });
 					this.showCard(project, thread);
 				}

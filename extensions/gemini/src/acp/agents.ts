@@ -49,6 +49,8 @@ export type AgentProjectRole =
 		readonly planFirst?: boolean;
 		/** The Conductor track its brief came from. */
 		readonly track?: string;
+		/** Merged back: the thread's work is done, and it takes no more unless the user reopens it. */
+		readonly resolved?: boolean;
 	};
 
 export interface AgentsSnapshot {
@@ -180,6 +182,16 @@ export class AgentsModel {
 				return changes.files ? { ...rest, changes } : rest;
 			});
 		}
+	}
+
+	/** Marks a project's thread resolved (merged back) or open again. */
+	setThreadResolved(id: string, resolved: boolean): void {
+		const project = this.agent(id)?.project;
+		if (project?.role !== 'thread' || !!project.resolved === resolved) {
+			return;
+		}
+		const { resolved: _, ...rest } = project;
+		this.update(id, a => ({ ...a, project: resolved ? { ...rest, resolved: true } : rest }));
 	}
 
 	/** A project's threads, oldest first. */
