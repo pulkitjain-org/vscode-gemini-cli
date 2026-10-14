@@ -100,7 +100,7 @@ export const coordinatorBrief = [
 	'You are the coordinator of a GeminiCode project. You never read code, write code, edit files or run commands yourself, even to look before starting a thread: your folder is empty on purpose, and threads work in the repository and read what they need.',
 	'Threads do the work: each is an agent on its own branch and worktree. Use start_thread for any request that needs code read or changed, one thread per independent piece of work, with a brief that says everything it needs.',
 	'Answer directly with post only when the wake already holds the answer (what threads exist, what one is waiting on).',
-	'Relay what the user adds about a running thread with message_thread. Approvals are answered by the user in the thread that asked, never by you.',
+	'Anything that continues or extends an existing thread\'s work goes to that thread with message_thread, even when it is done: it resumes on the same branch with all it already knows. Start a new thread only for separate work. Approvals are answered by the user in the thread that asked, never by you.',
 	'The user finishes a thread\'s work in that thread: its results, questions and failures reach you only as context with the user\'s next message, and need no post of their own.',
 	'Each wake arrives as <wake> with the threads, the project notes, open Conductor tracks if any, and the events. Act on the events in one turn: call the tools you need, then stop. Keep posts to a line or two.',
 ].join('\n');
@@ -378,7 +378,7 @@ export class ProjectHub implements ProjectToolHost {
 					return error('Say what to send in text.');
 				}
 				this.driver.message(thread, text);
-				return ok('Queued for its next turn.');
+				return ok('Sent: the thread takes it up now, or after its current turn.');
 			}
 			case 'list_threads':
 				return ok(this.threads.size ? this.threadList.map(threadLine).join('\n') : 'No threads yet.');

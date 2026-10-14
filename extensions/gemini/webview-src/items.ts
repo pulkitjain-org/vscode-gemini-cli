@@ -84,11 +84,14 @@ function renderThreadCard(item: ItemOf<'thread'>): HTMLElement {
 			? [['approve', true], ['open', false]]
 			: item.state === 'error'
 				? [['retry', true], ['open', false]]
-				: item.state === 'done' && !item.merged
-					? [['merge', !!item.changes?.files], ['review', false], ['undo', false]]
-					: item.state === 'done'
-						? [['open', false]]
-						: [['open', false], ['stop', false]];
+				: item.state === 'done' && !item.merged && item.changes?.files
+					? [['merge', true], ['review', false], ['undo', false]]
+					// Done with nothing to merge, such as an assessment: its answer is in the thread.
+					: item.state === 'done' && !item.merged
+						? [['open', true], ['undo', false]]
+						: item.state === 'done'
+							? [['open', false]]
+							: [['open', false], ['stop', false]];
 	const row = el('div', 'permission-actions');
 	for (const [action, primary] of actions) {
 		row.append(button(primary ? 'primary' : 'secondary', action === 'open' && item.state === 'waiting' ? project.openToAnswer : project.actions[action], () => send(action)));

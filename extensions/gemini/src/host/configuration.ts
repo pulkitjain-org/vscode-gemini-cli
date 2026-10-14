@@ -81,7 +81,7 @@ export function getApprovalPolicy(): ApprovalPolicy {
 }
 
 /** The settings that change how the agent process starts; a change restarts it. */
-export const agentLaunchSettings = ['cliPath', 'cli.version', 'projectId', 'approval.allowAutoEdit', 'approval.allowYolo', 'tools.allowShell'].map(key => `${configSection}.${key}`);
+export const agentLaunchSettings = ['cliPath', 'cli.version', 'projectId', 'approval.allowAutoEdit', 'approval.allowYolo', 'tools.allowShell', 'agents.allWorkspaceFolders'].map(key => `${configSection}.${key}`);
 
 export function getManagedCliDir(): string | undefined {
 	return managedCliDir;
@@ -110,9 +110,18 @@ export function getAgentCommand(options: { interactive?: boolean; cli?: CliResol
 		heapSizeMb: options.interactive || options.subcommand ? undefined : cliHeapSizeMb(readCliSettings(), os.totalmem()),
 		extraArgs: options.subcommand ? [...options.subcommand] : [
 			...adminPolicyDir ? prepareAdminPolicy(adminPolicyDir, getApprovalPolicy()) : [],
-			...includeDirectoryArgs(workspaceFolderPaths()),
+			...includeDirectoryArgs(includedFolderPaths()),
 		],
 	});
+}
+
+/**
+ * The folders every agent may read and edit besides its own: none, so an
+ * agent keeps to the folder it works in, unless the user turns on
+ * `gemini.agents.allWorkspaceFolders` for every folder of a multi-root window.
+ */
+export function includedFolderPaths(): string[] {
+	return vscode.workspace.getConfiguration(configSection).get<boolean>('agents.allWorkspaceFolders', false) ? workspaceFolderPaths() : [];
 }
 
 /** The window's folders on disk, in order. */

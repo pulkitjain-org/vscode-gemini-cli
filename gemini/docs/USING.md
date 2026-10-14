@@ -88,7 +88,7 @@ The agent is not sandboxed. Its shell and search tools run with your permissions
 
 When a reply ends in Plan mode, **Build This Plan** under it switches the chat to Default mode and asks Gemini to carry out the plan. With the model on Auto, Gemini plans with Pro and builds with Flash; turn off **Plan with Pro, build with Flash** in Project Helpers to keep one model throughout.
 
-In a window with several folders, every agent can read and edit all of them, not just its own (the CLI's `--include-directories`). Adding or removing a folder restarts the agent once no agent is working.
+In a window with several folders, each agent keeps to the folder it works in. To let every agent read and edit all of them, turn on `gemini.agents.allWorkspaceFolders` (the CLI's `--include-directories`); then adding or removing a folder restarts the agent once no agent is working.
 
 ## Folder trust
 

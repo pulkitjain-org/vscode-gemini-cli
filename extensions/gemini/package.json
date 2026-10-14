@@ -799,6 +799,11 @@
           "default": false,
           "markdownDescription": "%configuration.agents.ownBranch%"
         },
+        "gemini.agents.allWorkspaceFolders": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "%configuration.agents.allWorkspaceFolders%"
+        },
         "gemini.agents.worktreeSetup": {
           "type": "string",
           "default": "",
