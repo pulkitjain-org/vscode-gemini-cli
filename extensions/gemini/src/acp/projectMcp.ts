@@ -42,7 +42,7 @@ export const coordinatorTools: readonly McpTool[] = [
 	{
 		name: 'message_thread',
 		description: 'Sends a note to a thread: an idle or done thread starts a turn on it at once, on its own branch, and a working one gets it after its current turn. Use it for anything that extends that thread\'s work, such as something the user added in the project chat.',
-		inputSchema: { type: 'object', properties: { thread: { ...text, description: 'The thread id.' }, text }, required: ['thread', 'text'] },
+		inputSchema: { type: 'object', properties: { thread: { ...text, description: 'The thread id.' }, text, reopen: { type: 'boolean', description: 'Reopen a resolved (merged) thread. Only when the user asked to reopen it.' } }, required: ['thread', 'text'] },
 	},
 	{
 		name: 'list_threads',

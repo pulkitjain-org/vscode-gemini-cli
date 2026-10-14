@@ -241,5 +241,7 @@ export function showParentProject(parent: ParentProject): void {
 	back.append(icon('arrow-left'), el('span', undefined, parent.action));
 	back.addEventListener('click', () => vscode.postMessage({ type: 'openParentProject' }));
 	bar.setAttribute('aria-label', parent.label);
-	bar.replaceChildren(icon('project'), el('span', 'parent-project-name', parent.label), back);
+	const name = el('span', 'parent-project-name');
+	name.append(icon('project'), el('span', undefined, parent.label));
+	bar.replaceChildren(back, name);
 }

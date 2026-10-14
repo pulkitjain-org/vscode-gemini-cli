@@ -33,6 +33,8 @@ export interface ThreadInfo {
 	readonly branch?: string;
 	/** Started by the coordinator rather than the user. */
 	readonly byCoordinator: boolean;
+	/** Merged back: the thread's work is resolved, and it takes no more unless the user asks to reopen it. */
+	readonly resolved?: boolean;
 }
 
 export interface ThreadRequest {
@@ -55,8 +57,8 @@ export interface ThreadDriver {
 	 * its id as soon as it exists, without waiting for its first reply.
 	 */
 	start(request: ThreadRequest): Promise<string>;
-	/** Adds `text` to the thread's next turn. */
-	message(thread: string, text: string): void;
+	/** Adds `text` to the thread's next turn; false when the thread's agent is gone, such as removed after its merge. */
+	message(thread: string, text: string): boolean | void;
 	/** The thread's latest messages as text, newest last. */
 	read(thread: string, last: number): string | undefined;
 }
@@ -100,7 +102,7 @@ export const coordinatorBrief = [
 	'You are the coordinator of a GeminiCode project. You never read code, write code, edit files or run commands yourself, even to look before starting a thread: your folder is empty on purpose, and threads work in the repository and read what they need.',
 	'Threads do the work: each is an agent on its own branch and worktree. Use start_thread for any request that needs code read or changed, one thread per independent piece of work, with a brief that says everything it needs.',
 	'Answer directly with post only when the wake already holds the answer (what threads exist, what one is waiting on).',
-	'Anything that continues or extends an existing thread\'s work goes to that thread with message_thread, even when it is done: it resumes on the same branch with all it already knows. Start a new thread only for separate work. Approvals are answered by the user in the thread that asked, never by you.',
+	'Anything that continues or extends an existing thread\'s work goes to that thread with message_thread, whether it is working, waiting, planned or done: it resumes on the same branch with all it already knows. Start a new thread only for separate work, or when the related thread is resolved (merged). Never reopen a resolved thread unless the user asks to reopen it. Approvals are answered by the user in the thread that asked, never by you.',
 	'The user finishes a thread\'s work in that thread: its results, questions and failures reach you only as context with the user\'s next message, and need no post of their own.',
 	'Each wake arrives as <wake> with the threads, the project notes, open Conductor tracks if any, and the events. Act on the events in one turn: call the tools you need, then stop. Keep posts to a line or two.',
 ].join('\n');
@@ -377,7 +379,15 @@ export class ProjectHub implements ProjectToolHost {
 				if (!text) {
 					return error('Say what to send in text.');
 				}
-				this.driver.message(thread, text);
+				if (this.threads.get(thread)?.resolved && args.reopen !== true) {
+					return error(`Thread ${thread} is resolved (merged). Start a new thread for this work. Only if the user asked to reopen ${thread}, call message_thread again with reopen: true.`);
+				}
+				if (this.driver.message(thread, text) === false) {
+					return error(`Thread ${thread} is gone, removed after its merge. Start a new thread for this work.`);
+				}
+				if (args.reopen === true) {
+					this.updateThread(thread, { resolved: false });
+				}
 				return ok('Sent: the thread takes it up now, or after its current turn.');
 			}
 			case 'list_threads':
@@ -412,7 +422,7 @@ function wakes(event: ProjectEvent): boolean {
 }
 
 function threadLine(thread: ThreadInfo): string {
-	return `- ${thread.id} "${thread.title}": ${thread.state}${thread.detail ? `, ${oneLine(thread.detail)}` : ''}${thread.byCoordinator ? '' : ' (started by the user)'}`;
+	return `- ${thread.id} "${thread.title}": ${thread.resolved ? 'resolved (merged)' : thread.state}${thread.detail ? `, ${oneLine(thread.detail)}` : ''}${thread.byCoordinator ? '' : ' (started by the user)'}`;
 }
 
 function eventText(event: ProjectEvent): string {

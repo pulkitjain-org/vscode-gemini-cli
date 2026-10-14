@@ -2836,7 +2836,7 @@ textarea.new-thread-input {
 	white-space: nowrap;
 }
 
-/* A project thread's bar (project.ts): which project it belongs to, and the way back to the project chat. */
+/* A project thread's bar (project.ts): the way back to the project chat on the left, and which project it belongs to on the right. */
 .parent-project {
 	flex: none;
 	display: flex;
@@ -2849,11 +2849,23 @@ textarea.new-thread-input {
 }
 
 .parent-project-name {
-	flex: 1;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
 	min-width: 0;
+	margin-left: auto;
+	overflow: hidden;
+}
+
+.parent-project-name > span {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.parent-project-link {
+	flex: none;
+	margin-left: -6px;
 }
 
 .parent-project-link {

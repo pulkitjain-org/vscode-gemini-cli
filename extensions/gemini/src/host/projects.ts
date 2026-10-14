@@ -251,17 +251,22 @@ export class Projects implements vscode.Disposable {
 		}
 	}
 
-	private message(coordinatorId: string, thread: string, text: string): void {
+	private message(coordinatorId: string, thread: string, text: string): boolean {
 		const project = this.projects.get(coordinatorId);
 		const controller = this.agents.controller(thread);
 		if (!project || !controller) {
-			return;
+			return false;
+		}
+		// Reopened: the hub only sends to a resolved thread when the user asked to reopen it.
+		if (project.merged.delete(thread)) {
+			this.showCard(project, thread);
 		}
 		if (this.agents.activity(thread)?.busy) {
 			project.queued.set(thread, [...project.queued.get(thread) ?? [], text]);
 		} else {
 			void controller.send(text, [], 'coordinator');
 		}
+		return true;
 	}
 
 	private read(thread: string, last: number): string | undefined {
@@ -350,6 +355,7 @@ export class Projects implements vscode.Disposable {
 			case 'merge':
 				if (await this.agents.mergeBack(thread) && project) {
 					project.merged.add(thread);
+					project.hub.updateThread(thread, { resolved: true });
 					this.showCard(project, thread);
 				}
 				return;

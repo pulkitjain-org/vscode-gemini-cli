@@ -16,7 +16,7 @@ function setup(turn: (prompt: string, hub: ProjectHub) => Promise<void> = async 
 			started.push(request);
 			return `t${++next}`;
 		},
-		message: (thread, text) => messages.push([thread, text]),
+		message: (thread, text) => { messages.push([thread, text]); },
 		read: thread => `messages of ${thread}`,
 	};
 	const coordinator: CoordinatorSession = {
@@ -131,6 +131,21 @@ describe('ProjectHub', () => {
 		expect(prompts).toHaveLength(1);
 		expect(prompts[0]).toContain('<event kind="thread-user" thread="t1">');
 		expect(prompts[0]).toContain('<event kind="report" thread="t1" report="result">\nBuild passes.\n</event>');
+	});
+
+	it('sends follow-ups to a done thread, but to a resolved one only when reopened', async () => {
+		const { hub, messages } = setup();
+		await hub.call(coordinator, 'start_thread', { title: 'A', brief: 'b' });
+		hub.updateThread('t1', { state: 'done' });
+		expect((await hub.call(coordinator, 'message_thread', { thread: 't1', text: 'Add the menu too' })).isError).toBeFalsy();
+		hub.updateThread('t1', { resolved: true });
+		expect((await hub.call(coordinator, 'list_threads', {})).content[0]).toMatchObject({ text: '- t1 "A": resolved (merged)' });
+		const refused = await hub.call(coordinator, 'message_thread', { thread: 't1', text: 'More' });
+		expect(refused.isError).toBe(true);
+		expect(refused.content[0]).toMatchObject({ text: expect.stringContaining('Start a new thread') });
+		expect((await hub.call(coordinator, 'message_thread', { thread: 't1', text: 'Reopen it', reopen: true })).isError).toBeFalsy();
+		expect(messages).toEqual([['t1', 'Add the menu too'], ['t1', 'Reopen it']]);
+		expect((await hub.call(coordinator, 'list_threads', {})).content[0]).toMatchObject({ text: '- t1 "A": done' });
 	});
 
 	it('keeps a thread to its own tools and project', async () => {

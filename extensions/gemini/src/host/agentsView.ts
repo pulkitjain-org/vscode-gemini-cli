@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AgentChanges, ChangeTotals, formatCounts } from '../acp/agentChanges';
@@ -12,6 +13,7 @@ import { attentionChange, waitingCount } from '../acp/attention';
 import { branchNameFrom, isValidBranchName } from '../acp/branchNames';
 import { AgentRecord, AgentsModel, AgentsSnapshot, WorkspaceRecord } from '../acp/agents';
 import { coordinatorModel, threadPrompt, type ThreadRequest } from '../acp/projectHub';
+import { linkCoordinatorRules, linkThreadRules, ruleEntries } from '../acp/projectRules';
 import type { Attachment } from '../acp/attachments';
 import { FolderFileIndex } from '../acp/folderFiles';
 import { readGitHead } from '../acp/gitHead';
@@ -1031,6 +1033,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				// Its session gets the project's tools, so their server must listen first, in a folder the CLI trusts.
 				await this.projects.ready();
 				await this.ensureProjectTrust(workspace.folder);
+				if (record.project.role === 'coordinator') {
+					await this.linkRules(workspace.folder, coordinatorHome(record.id), 'coordinator');
+				}
 			}
 			live = this.live.get(id) ?? this.startSaved(record, folder);
 		}
@@ -1130,6 +1135,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const named = request.branch && isValidBranchName(request.branch) ? request.branch : branchNameFrom(request.title);
 		const branch = await freeBranchName(repository, named);
 		const worktree = await this.makeWorktree(repository, branch, workspace.folder);
+		await this.linkRules(workspace.folder, worktree.cwd, 'thread');
 		const agent = this.model.addAgent(workspace.id, request.title, worktree, undefined, {
 			role: 'thread', coordinator: coordinatorId, byCoordinator: request.byCoordinator,
 			...(request.planFirst ? { planFirst: true } : {}),
@@ -1199,6 +1205,23 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const agent = this.model.addAgent(workspace.id, title, undefined, undefined, { role: 'coordinator' });
 		this.model.rename(agent.id, title);
 		await this.open(agent.id);
+	}
+
+	/**
+	 * Gives a project agent's folder the repository's own rules and skills
+	 * (projectRules.ts): a coordinator's empty folder all of them, a thread's
+	 * worktree those the repository ignores. Never stops the agent starting.
+	 */
+	private async linkRules(folder: string, into: string, role: 'coordinator' | 'thread'): Promise<void> {
+		try {
+			const entries = await ruleEntries(folder, path.join(process.env.GEMINI_CLI_HOME || os.homedir(), '.gemini', 'settings.json'));
+			const linked = role === 'coordinator' ? await linkCoordinatorRules(folder, into, entries) : await linkThreadRules(folder, into, entries);
+			if (linked.length) {
+				this.service.writeLog(`Linked ${linked.join(', ')} from ${folder} into ${into}`);
+			}
+		} catch (err) {
+			this.service.writeLog(`Could not link the project's rules into ${into}: ${errorMessage(err)}`);
+		}
 	}
 
 	/**
