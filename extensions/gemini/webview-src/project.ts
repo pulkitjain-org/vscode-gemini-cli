@@ -9,7 +9,7 @@
 // when the extension sends it, after a burst of thread changes settles.
 
 import { branchNameFrom } from '../src/acp/branchNames';
-import type { ProjectPanel } from '../src/host/chatProtocol';
+import type { ParentProject, ProjectPanel } from '../src/host/chatProtocol';
 import { format } from './chatLogic';
 import { el, icon, setLabel } from './dom';
 import { state, strings, vscode } from './view';
@@ -160,6 +160,19 @@ export function showProjectPanel(next: ProjectPanel): void {
 		row.append(el('span', `panel-dot state-${kind}`), el('span', undefined, format(label, String(count))));
 		threads.append(row);
 	}
+	// Each thread, to open its chat; its card in the chat may have scrolled far up.
+	if (next.threads.length) {
+		const list = el('div', 'panel-threads');
+		for (const thread of next.threads) {
+			const row = el('button', 'panel-thread');
+			row.type = 'button';
+			row.title = thread.title;
+			row.append(el('span', `panel-dot state-${thread.state}`), el('span', 'panel-thread-title', thread.title));
+			row.addEventListener('click', () => vscode.postMessage({ type: 'threadAction', thread: thread.id, action: 'open' }));
+			list.append(row);
+		}
+		threads.append(list);
+	}
 	const context = el('section', 'panel-section');
 	context.append(el('h3', undefined, text.context));
 	context.append(el('p', 'panel-row', next.conductor ? format(text.conductorTracks, String(next.conductor.openTracks)) : text.noConductor));
@@ -212,4 +225,21 @@ function panelSash(label: string): HTMLElement {
 	// Double-click restores the default width, as a VS Code sash does.
 	sash.addEventListener('dblclick', () => document.body.style.removeProperty('--gemini-panel-width'));
 	return sash;
+}
+
+/** A project thread's bar at the top of its chat, leading back to the project chat. */
+export function showParentProject(parent: ParentProject): void {
+	let bar = document.getElementById('parent-project');
+	if (!bar) {
+		bar = el('nav', 'parent-project');
+		bar.id = 'parent-project';
+		document.body.prepend(bar);
+		document.body.classList.add('has-parent-project');
+	}
+	const back = el('button', 'parent-project-link');
+	back.type = 'button';
+	back.append(icon('arrow-left'), el('span', undefined, parent.action));
+	back.addEventListener('click', () => vscode.postMessage({ type: 'openParentProject' }));
+	bar.setAttribute('aria-label', parent.label);
+	bar.replaceChildren(icon('project'), el('span', 'parent-project-name', parent.label), back);
 }

@@ -101,6 +101,8 @@ export interface ChatControllerOptions {
 	usage?(): UsageMeter | undefined;
 	/** Set in a project's chat. */
 	readonly project?: ChatProject;
+	/** A project thread's chat: names its project, and opens the project chat. */
+	readonly parentProject?: { name(): string; open(): void };
 	/** Offers to reopen the CLI's saved sessions for the folder (and /resume); unset in chats that do not. */
 	readonly savedSessions?: {
 		/** Sessions other chats have open, which this one must not take. */
@@ -1068,6 +1070,9 @@ export class ChatController implements vscode.Disposable {
 			case 'startThread':
 				this.options.project?.startThread(message.thread);
 				break;
+			case 'openParentProject':
+				this.options.parentProject?.open();
+				break;
 			case 'retry':
 				if (this.lastPrompt && message.itemId === this.retryItemId) {
 					void this.send(this.lastPrompt.text, this.lastPrompt.attachments);
@@ -1443,6 +1448,9 @@ export class ChatController implements vscode.Disposable {
 		if (this.newThreadPending) {
 			this.newThreadPending = false;
 			this.post({ type: 'openNewThread' });
+		}
+		if (this.options.parentProject) {
+			this.post({ type: 'parentProject', parent: { label: vscode.l10n.t("Thread in {0}", this.options.parentProject.name()), action: vscode.l10n.t("Open Project Chat") } });
 		}
 		if (!this.busy) {
 			void this.postSessions();

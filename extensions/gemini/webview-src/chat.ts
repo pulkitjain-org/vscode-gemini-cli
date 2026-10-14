@@ -30,7 +30,7 @@ import { restoreComposerHeight, updatePlaceholder, updateSendState } from './inp
 import { showSavedSessions } from './items';
 import { setBranches } from './pickers';
 import { showCommands, showFiles } from './picker';
-import { openNewThread, showProjectPanel } from './project';
+import { openNewThread, showParentProject, showProjectPanel } from './project';
 import { updateOutline } from './promptNav';
 import { appended, applyItem, isNearBottom, reset, settleScroll, updateWorking } from './transcript';
 import { showContext, showQuota, toggleUsage, updateUsage } from './usage';
@@ -154,6 +154,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'openNewThread':
 			openNewThread();
+			break;
+		case 'parentProject':
+			showParentProject(message.parent);
 			break;
 	}
 });

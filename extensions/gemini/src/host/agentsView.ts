@@ -1340,6 +1340,12 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				enhancer: this.enhancer,
 				usage: () => this.usage,
 				...(project?.role === 'coordinator' ? { project: this.projects.chatProject(record.id) } : {}),
+				...(project?.role === 'thread' ? {
+					parentProject: {
+						name: () => this.model.agent(project.coordinator)?.title ?? '',
+						open: () => void this.open(project.coordinator),
+					},
+				} : {}),
 				savedSessions: {
 					inUse: () => new Set(this.model.snapshot().agents.flatMap(a => a.id !== record.id && a.sessionId ? [a.sessionId] : [])),
 				},

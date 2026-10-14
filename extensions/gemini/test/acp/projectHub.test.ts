@@ -117,13 +117,16 @@ describe('ProjectHub', () => {
 		expect(feed.at(-1)).toMatchObject({ kind: 'coordinator', text: 'Started A.' });
 	});
 
-	it('wakes on a report but not on a thread\'s own progress', async () => {
+	it('wakes only on the user\'s message, carrying the threads\' reports and progress as context', async () => {
 		const { hub, prompts } = setup();
 		await hub.call(coordinator, 'start_thread', { title: 'A', brief: 'b' });
 		hub.updateThread('t1', { state: 'done' });
 		hub.notify({ kind: 'threadUser', thread: 't1', text: 'looks good' });
-		expect(prompts).toHaveLength(0);
 		await hub.call({ role: 'thread', project: 'p1', thread: 't1' }, 'report', { kind: 'result', text: 'Build passes.' });
+		hub.notify({ kind: 'failed', thread: 't1', text: 'crashed' });
+		await hub.idle();
+		expect(prompts).toHaveLength(0);
+		hub.post('What next?');
 		await hub.idle();
 		expect(prompts).toHaveLength(1);
 		expect(prompts[0]).toContain('<event kind="thread-user" thread="t1">');

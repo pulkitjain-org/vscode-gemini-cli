@@ -19,7 +19,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 19;
+export const chatProtocolVersion = 20;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -57,6 +57,16 @@ export interface ProjectPanel {
 	readonly conductor?: { readonly openTracks: number };
 	/** The model the coordinator runs on, when known. */
 	readonly model?: string;
+	/** Every thread, oldest first, each opening its own chat. */
+	readonly threads: readonly { readonly id: string; readonly title: string; readonly state: 'working' | 'waiting' | 'planned' | 'done' | 'merged' }[];
+}
+
+/** A project thread's way back to its project chat. */
+export interface ParentProject {
+	/** "Thread in vca-qa-automation" */
+	readonly label: string;
+	/** "Open project chat" */
+	readonly action: string;
 }
 
 /** The strings only a project's chat shows (Projects preview). */
@@ -412,6 +422,7 @@ export type FromWebview =
 	| { readonly type: 'threadAction'; readonly thread: string; readonly action: ThreadAction }
 	/** The New thread dialog: start a thread directly; the coordinator hears afterwards. */
 	| { readonly type: 'startThread'; readonly thread: NewThread }
+	| { readonly type: 'openParentProject' }
 	/** Put back the files the turn ending with turnEnd item `itemId` changed, and those of later turns. */
 	| { readonly type: 'undoTurn'; readonly itemId: string }
 	/** Send the prompt of the turn ending with `itemId` again; only the latest turn offers it. */
@@ -472,4 +483,6 @@ export type ToWebview =
 	/** A project chat's side panel. */
 	| { readonly type: 'projectPanel'; readonly panel: ProjectPanel }
 	/** Open the New thread dialog, from the New Thread command. */
-	| { readonly type: 'openNewThread' };
+	| { readonly type: 'openNewThread' }
+	/** A project thread's chat: the bar that leads back to its project chat. */
+	| { readonly type: 'parentProject'; readonly parent: ParentProject };

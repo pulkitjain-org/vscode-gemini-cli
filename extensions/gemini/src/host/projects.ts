@@ -19,7 +19,7 @@ import type { AgentProjectRole, AgentRecord } from '../acp/agents';
 import { attachmentLabel, type Attachment } from '../acp/attachments';
 import { ConductorReader } from '../acp/conductor';
 import type { InstantAnswer } from '../acp/permissions';
-import { ProjectHub, threadCounts, type ThreadRequest } from '../acp/projectHub';
+import { ProjectHub, panelState, threadCounts, type ThreadRequest } from '../acp/projectHub';
 import { coordinatorTools, isProjectToolCall, isProjectToolTitle, ProjectMcpServer, threadTools, type ProjectCaller } from '../acp/projectMcp';
 import type { McpToolResult } from '../acp/browserMcp';
 import type { ChatActivity, ChatController, ChatProject } from './chatController';
@@ -329,6 +329,10 @@ export class Projects implements vscode.Disposable {
 		project.coordinator.showProjectPanel({
 			name: this.agents.record(project.id)?.title ?? '',
 			counts: threadCounts(project.hub.threadList, project.merged, project.removed),
+			threads: project.hub.threadList.flatMap(thread => {
+				const state = panelState(thread, project.merged, project.removed);
+				return state ? [{ id: thread.id, title: this.agents.record(thread.id)?.title ?? thread.title, state }] : [];
+			}),
 			...(conductor ? { conductor: { openTracks: conductor.tracks.filter(track => track.state !== 'done').length } } : {}),
 			...(model ? { model } : {}),
 		});

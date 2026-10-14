@@ -2801,3 +2801,80 @@ textarea.new-thread-input {
 .panel-dot.state-merged {
 	background: var(--gemini-faint);
 }
+
+/* The project panel's threads, each opening its chat. */
+.panel-threads {
+	display: flex;
+	flex-direction: column;
+	margin-top: 6px;
+}
+
+.panel-thread {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 4px 6px;
+	margin: 0 -6px;
+	border: none;
+	border-radius: var(--gemini-radius-small);
+	background: none;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.panel-thread:hover,
+.panel-thread:focus-visible {
+	background: var(--gemini-hover);
+}
+
+.panel-thread-title {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* A project thread's bar (project.ts): which project it belongs to, and the way back to the project chat. */
+.parent-project {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px var(--gemini-gutter);
+	border-bottom: 1px solid var(--gemini-border);
+	color: var(--gemini-muted);
+	font-size: 12px;
+}
+
+.parent-project-name {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.parent-project-link {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 6px;
+	border: none;
+	border-radius: var(--gemini-radius-small);
+	background: none;
+	color: var(--vscode-textLink-foreground);
+	font: inherit;
+	cursor: pointer;
+}
+
+.parent-project-link:hover,
+.parent-project-link:focus-visible {
+	background: var(--gemini-hover);
+	color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
+}
+
+body.has-parent-project .prompt-outline {
+	top: 52px;
+}

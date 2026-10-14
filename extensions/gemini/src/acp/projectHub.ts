@@ -69,6 +69,7 @@ export interface CoordinatorSession {
 
 export type ProjectEvent =
 	| { readonly kind: 'user'; readonly text: string }
+	/** A thread's report; context only, like the rest below. */
 	| { readonly kind: 'report'; readonly thread: string; readonly report: 'result' | 'blocker' | 'question'; readonly text: string }
 	| { readonly kind: 'failed'; readonly thread: string; readonly text: string }
 	/** A thread the user started themselves; context for the next wake, which it doesn't cause. */
@@ -100,6 +101,7 @@ export const coordinatorBrief = [
 	'Threads do the work: each is an agent on its own branch and worktree. Use start_thread for any request that needs code read or changed, one thread per independent piece of work, with a brief that says everything it needs.',
 	'Answer directly with post only when the wake already holds the answer (what threads exist, what one is waiting on).',
 	'Relay what the user adds about a running thread with message_thread. Approvals are answered by the user in the thread that asked, never by you.',
+	'The user finishes a thread\'s work in that thread: its results, questions and failures reach you only as context with the user\'s next message, and need no post of their own.',
 	'Each wake arrives as <wake> with the threads, the project notes, open Conductor tracks if any, and the events. Act on the events in one turn: call the tools you need, then stop. Keep posts to a line or two.',
 ].join('\n');
 
@@ -111,32 +113,37 @@ export const coordinatorBrief = [
 export function threadCounts(threads: readonly Pick<ThreadInfo, 'id' | 'state'>[], merged: ReadonlySet<string>, removed: ReadonlySet<string>): { working: number; waiting: number; planned: number; done: number; merged: number } {
 	const counts = { working: 0, waiting: 0, planned: 0, done: 0, merged: 0 };
 	for (const thread of threads) {
-		if (removed.has(thread.id)) {
-			continue;
-		}
-		if (merged.has(thread.id)) {
-			counts.merged++;
-			continue;
-		}
-		switch (thread.state) {
-			case 'starting':
-			case 'working':
-				counts.working++;
-				break;
-			case 'waiting':
-				counts.waiting++;
-				break;
-			case 'planned':
-				counts.planned++;
-				break;
-			case 'done':
-			case 'error':
-				counts.done++;
-				break;
+		const state = panelState(thread, merged, removed);
+		if (state) {
+			counts[state]++;
 		}
 	}
 	return counts;
 }
+
+/** The side panel's state for a thread, as `threadCounts` counts it; undefined for an undone thread. */
+export function panelState(thread: Pick<ThreadInfo, 'id' | 'state'>, merged: ReadonlySet<string>, removed: ReadonlySet<string>): PanelThreadState | undefined {
+	if (removed.has(thread.id)) {
+		return undefined;
+	}
+	if (merged.has(thread.id)) {
+		return 'merged';
+	}
+	switch (thread.state) {
+		case 'starting':
+		case 'working':
+			return 'working';
+		case 'waiting':
+			return 'waiting';
+		case 'planned':
+			return 'planned';
+		case 'done':
+		case 'error':
+			return 'done';
+	}
+}
+
+export type PanelThreadState = 'working' | 'waiting' | 'planned' | 'done' | 'merged';
 
 /**
  * The coordinator's model: a named Flash model (never Auto, which adds a
@@ -395,8 +402,13 @@ export class ProjectHub implements ProjectToolHost {
 	}
 }
 
+/**
+ * Only the user's own messages wake the coordinator. A thread's result,
+ * question or failure is the user's to take up in that thread, where its card
+ * leads; it reaches the coordinator as context with the next message.
+ */
 function wakes(event: ProjectEvent): boolean {
-	return event.kind === 'user' || event.kind === 'report' || event.kind === 'failed';
+	return event.kind === 'user';
 }
 
 function threadLine(thread: ThreadInfo): string {
