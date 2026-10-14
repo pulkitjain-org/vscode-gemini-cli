@@ -13,7 +13,7 @@ import { attentionChange, waitingCount } from '../acp/attention';
 import { branchNameFrom, isValidBranchName } from '../acp/branchNames';
 import { AgentRecord, AgentsModel, AgentsSnapshot, WorkspaceRecord } from '../acp/agents';
 import { coordinatorModel, threadPrompt, type ThreadRequest } from '../acp/projectHub';
-import { linkCoordinatorRules, linkThreadRules, ruleEntries } from '../acp/projectRules';
+import { linkCoordinatorRules, linkThreadRules, ruleEntries, ruleFolders } from '../acp/projectRules';
 import type { Attachment } from '../acp/attachments';
 import { FolderFileIndex } from '../acp/folderFiles';
 import { readGitHead } from '../acp/gitHead';
@@ -1209,13 +1209,15 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 
 	/**
 	 * Gives a project agent's folder the repository's own rules and skills
-	 * (projectRules.ts): a coordinator's empty folder all of them, a thread's
-	 * worktree those the repository ignores. Never stops the agent starting.
+	 * (projectRules.ts): a coordinator's empty folder its context files, a
+	 * thread's worktree all those the repository ignores. Never stops the
+	 * agent starting.
 	 */
 	private async linkRules(folder: string, into: string, role: 'coordinator' | 'thread'): Promise<void> {
 		try {
 			const entries = await ruleEntries(folder, path.join(process.env.GEMINI_CLI_HOME || os.homedir(), '.gemini', 'settings.json'));
-			const linked = role === 'coordinator' ? await linkCoordinatorRules(folder, into, entries) : await linkThreadRules(folder, into, entries);
+			// The coordinator gets the context files only: skills, commands and the repository's MCP servers would pull it into doing the work.
+			const linked = role === 'coordinator' ? await linkCoordinatorRules(folder, into, entries.filter(name => !ruleFolders.includes(name)), ruleFolders) : await linkThreadRules(folder, into, entries);
 			if (linked.length) {
 				this.service.writeLog(`Linked ${linked.join(', ')} from ${folder} into ${into}`);
 			}

@@ -8,16 +8,17 @@
 // .gemini folder (settings, commands, skills, agents) and .agents/skills. A
 // coordinator runs in an empty folder of its own, and a thread in a worktree,
 // which lacks whatever the repository ignores, such as a local .gemini folder.
-// Both get links to the repository's own, so its rules and skills apply there
-// too. Links, not copies, so an edit to a rule reaches every agent.
+// A thread gets links to everything the repository has there; a coordinator,
+// which only routes work, gets its context files alone. Links, not copies, so
+// an edit to a rule reaches every agent.
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { stripJsonComments } from './projectSettings';
 import { git } from './worktrees';
 
-/** What the CLI reads from a session's folder, besides context files. */
-const ruleFolders = ['.gemini', '.agents'];
+/** What the CLI reads from a session's folder, besides context files: settings (and their MCP servers), commands, skills. */
+export const ruleFolders = ['.gemini', '.agents'];
 
 /** Context files the CLI reads by default, and the one other agents use. */
 const defaultContextFiles = ['GEMINI.md', 'AGENTS.md'];
@@ -40,15 +41,15 @@ export async function ruleEntries(folder: string, userSettings: string): Promise
 }
 
 /**
- * Links the rule entries `from` has into `to`, a coordinator's own folder:
- * the links are remade each time, so a rule added since shows up and one
- * removed goes. Only links are touched; anything else in `to` stays.
- * Returns the entries linked.
+ * Links the rule entries `from` has into `to`, a coordinator's own folder,
+ * leaving out `skip`: the links are remade each time, so a rule added since
+ * shows up, and one removed or now skipped goes. Only links are touched;
+ * anything else in `to` stays. Returns the entries linked.
  */
-export async function linkCoordinatorRules(from: string, to: string, entries: readonly string[]): Promise<string[]> {
+export async function linkCoordinatorRules(from: string, to: string, entries: readonly string[], skip: readonly string[] = []): Promise<string[]> {
 	await fs.mkdir(to, { recursive: true });
 	const linked: string[] = [];
-	for (const name of entries) {
+	for (const name of [...entries, ...skip]) {
 		const target = path.join(to, name);
 		const existing = await fs.lstat(target).catch(() => undefined);
 		if (existing && !existing.isSymbolicLink() && !existing.isFile()) {
@@ -58,7 +59,7 @@ export async function linkCoordinatorRules(from: string, to: string, entries: re
 			// Unlink, not rm: a junction's removal must never reach the folder it points to.
 			await fs.unlink(target).catch(() => undefined);
 		}
-		if (await link(path.join(from, name), target)) {
+		if (!skip.includes(name) && await link(path.join(from, name), target)) {
 			linked.push(name);
 		}
 	}

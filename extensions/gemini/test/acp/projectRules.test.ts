@@ -41,6 +41,10 @@ describe('project rules', () => {
 		expect(await linkCoordinatorRules(repo, home, entries)).toEqual(['.gemini', 'GEMINI.md']);
 		expect(fs.existsSync(path.join(home, 'CLAUDE.md'))).toBe(false);
 		expect(fs.existsSync(path.join(repo, '.gemini', 'skills'))).toBe(true);
+		// Skipped now: the earlier link goes, and the folder it pointed to stays.
+		expect(await linkCoordinatorRules(repo, home, ['GEMINI.md'], ['.gemini', '.agents'])).toEqual(['GEMINI.md']);
+		expect(fs.existsSync(path.join(home, '.gemini'))).toBe(false);
+		expect(fs.existsSync(path.join(repo, '.gemini', 'skills'))).toBe(true);
 	});
 
 	it('links into a worktree only what the repository ignores and the worktree lacks', async () => {
