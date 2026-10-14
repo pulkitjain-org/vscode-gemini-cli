@@ -140,6 +140,18 @@ Those numbers were taken in an empty, untrusted folder. Redone on 14 Oct 2026 wi
 
 In the chat view, re-rendering a whole streaming reply on every update cost about 25 ms per update at 30 KB. Rendering only the blocks after the last finished one costs about 2 ms.
 
+## Bundle sizes and the extension's start (1.0.0)
+
+Measured on 14 Oct 2026 on a 4-core Linux machine, from the production builds (`esbuild.mts`, `esbuild.webview.mts`):
+
+| Bundle | 0.5.0 | 1.0.0 |
+| --- | --- | --- |
+| `media/chat.js` | 220,120 bytes | 197,577 bytes |
+| `media/draftMarkdown.js` | 150,178 bytes | 126,052 bytes |
+| `dist/extension.js` | 865,562 bytes | 874,835 bytes |
+
+The webview saving comes from bundling only the `entities` package's decoder, which markdown-it needs; its encoder tables were dead weight. `test/perf/budgets.test.ts` now holds `chat.js` to 215,000 bytes and `draftMarkdown.js` to 140,000. In `extension.js`, zod (pulled in by the ACP SDK's validation) is about 453 KB, and the SDK and zod take about 60 ms of the roughly 130 ms it takes to load the bundle; loading them lazily is the next saving there.
+
 ## Token counts over ACP
 
 Read from gemini-cli 0.62.0 and 0.63.0 on 8 Oct 2026.
