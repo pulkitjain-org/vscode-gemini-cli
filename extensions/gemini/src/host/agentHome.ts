@@ -14,6 +14,7 @@ import { tildify } from './displayText';
 import { configSection, getApprovalPolicy } from './configuration';
 import { FromHome, HomeAgent, HomeMode, HomeProject, HomeStrings, HomeView, ToHome } from './panelProtocol';
 import { projectsEnabled } from './projects';
+import { agentsColumn } from './editorPlacement';
 import { createNonce, escapeAttribute } from './webviewHtml';
 
 const homeViewType = 'gemini.agentHome';
@@ -63,8 +64,22 @@ export class AgentHome implements vscode.Disposable {
 			this.panel.reveal(undefined, preserveFocus);
 			return;
 		}
+		if (this.opening) {
+			return;
+		}
+		// Beside the agents, never in one agent's side group.
+		this.opening = agentsColumn().then(viewColumn => this.create(viewColumn, preserveFocus)).finally(() => this.opening = undefined);
+	}
+
+	private opening: Promise<void> | undefined;
+
+	private create(viewColumn: vscode.ViewColumn, preserveFocus: boolean): void {
+		if (this.panel) {
+			this.panel.reveal(undefined, preserveFocus);
+			return;
+		}
 		const media = vscode.Uri.joinPath(this.extensionUri, 'media');
-		const panel = vscode.window.createWebviewPanel(homeViewType, vscode.l10n.t("Agent Home"), { viewColumn: vscode.ViewColumn.Active, preserveFocus }, {
+		const panel = vscode.window.createWebviewPanel(homeViewType, vscode.l10n.t("Agent Home"), { viewColumn, preserveFocus }, {
 			enableScripts: true,
 			localResourceRoots: [media],
 		});

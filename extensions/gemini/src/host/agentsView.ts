@@ -38,7 +38,7 @@ import { relativeTime, tildify } from './displayText';
 import { Projects, projectsEnabled } from './projects';
 export { relativeTime } from './displayText';
 import { DiffPreview } from './diffPreview';
-import { agentColumn, closeAgentFiles } from './editorPlacement';
+import { agentColumn, agentsColumn, closeAgentFiles } from './editorPlacement';
 import { escapeMarkdown } from './markdown';
 import { sessionModel } from './modelPreference';
 import type { UsageMeter } from './usageMeter';
@@ -1041,10 +1041,12 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		}
 		live.unread = false;
 		this.notifier.clear(id);
+		// Beside the other agents, never in one agent's side group.
+		const viewColumn = live.panel ? undefined : await agentsColumn();
 		if (live.panel) {
 			live.panel.reveal();
 		} else {
-			const panel = vscode.window.createWebviewPanel(agentPanelType, record.title, vscode.ViewColumn.Active, {
+			const panel = vscode.window.createWebviewPanel(agentPanelType, record.title, viewColumn ?? vscode.ViewColumn.Active, {
 				enableScripts: true,
 				// Switching tabs then costs no re-render of a long conversation.
 				retainContextWhenHidden: true,

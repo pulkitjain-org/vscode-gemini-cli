@@ -154,7 +154,16 @@ class GeminiAgentGroups extends Disposable implements IWorkbenchContribution {
 			this.current = agentIdOf(front);
 		}
 		const part = this.part as unknown as Partial<GroupVisibility>;
-		for (const [id, group] of this.groups) {
+		for (const [id, group] of [...this.groups]) {
+			if (this.part.getGroup(group)?.editors.some(isGeminiTab)) {
+				// An agent or Agent Home opened in this group (it was the active
+				// one), so it holds agents now, not one agent's files: hiding it
+				// would leave the editor area blank with a stale webview over it.
+				this.groups.delete(id);
+				this.save();
+				part.geminiSetGroupVisible?.(group, true);
+				continue;
+			}
 			part.geminiSetGroupVisible?.(group, id === this.current);
 		}
 	}
@@ -244,3 +253,10 @@ CommandsRegistry.registerCommand('_gemini.agentGroupColumn', (_accessor, agent: 
 
 CommandsRegistry.registerCommand('_gemini.closeAgentGroup', (_accessor, agent: unknown) =>
 	typeof agent === 'string' ? agentGroups?.close(agent) : undefined);
+
+/** The 1-based column of the group holding the agents, where a new agent or Agent Home opens; undefined when there is none. */
+CommandsRegistry.registerCommand('_gemini.agentsColumn', accessor => {
+	const part = accessor.get(IEditorGroupsService).mainPart;
+	const group = agentsGroupOf(part);
+	return group ? part.getGroups(GroupsOrder.GRID_APPEARANCE).indexOf(group) + 1 : undefined;
+});

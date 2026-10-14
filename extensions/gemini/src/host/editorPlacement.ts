@@ -36,6 +36,23 @@ export async function agentColumn(agentId: string, panel: vscode.WebviewPanel | 
 	return column;
 }
 
+/**
+ * The column a new agent or Agent Home opens in: the agents' group, so neither
+ * lands in an agent's side group when that group is the active one. Elsewhere
+ * (or with no agents' group yet) the active group.
+ */
+export async function agentsColumn(): Promise<vscode.ViewColumn> {
+	try {
+		const column = await vscode.commands.executeCommand<number | undefined>('_gemini.agentsColumn');
+		if (typeof column === 'number' && column >= 1) {
+			return column;
+		}
+	} catch {
+		// Not GeminiCode's workbench.
+	}
+	return vscode.ViewColumn.Active;
+}
+
 /** Closes agent `agentId`'s side group and its files; files with unsaved changes stay open. */
 export function closeAgentFiles(agentId: string): void {
 	vscode.commands.executeCommand('_gemini.closeAgentGroup', agentId).then(undefined, () => undefined);
