@@ -20,8 +20,8 @@ import { CliManager } from './host/cliManager';
 import { DiffPreview } from './host/diffPreview';
 import { errorMessage } from './acp/errors';
 import { PromptEnhancer } from './acp/promptEnhancer';
-import { configSection, setStorageDirs } from './host/configuration';
-import { initModelPreference } from './host/modelPreference';
+import { configSection, getWorkspaceCwd, setStorageDirs } from './host/configuration';
+import { initModelList, initModelPreference } from './host/modelPreference';
 import { SetupWalkthrough, walkthroughId } from './host/setupWalkthrough';
 import { GeminiStatusBar } from './host/statusBar';
 import { QuickEdits } from './host/quickEdits';
@@ -66,6 +66,13 @@ export function activate(context: vscode.ExtensionContext): void {
 	const usageMeter = new UsageMeter(quickEdits.client, log);
 	chatView.usage = usageMeter;
 	agentsView.usage = usageMeter;
+	initModelList({
+		quotaModels: () => {
+			const reading = usageMeter.reading;
+			return reading?.kind === 'ok' ? reading.quota.map(q => q.model) : undefined;
+		},
+		workspaceFolder: getWorkspaceCwd,
+	});
 	const walkthrough = new SetupWalkthrough(service, context.globalState);
 	const warmup = new AgentWarmup(service, () => walkthrough.isSetUp, log);
 	const browserTools = new BrowserTools(String(context.extension.packageJSON.version ?? ''), log, {

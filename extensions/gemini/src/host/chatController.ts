@@ -1381,6 +1381,9 @@ export class ChatController implements vscode.Disposable {
 		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'codicon.css'));
 		// Loaded by the view when it first shows code.
 		const highlighter = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'highlight.js'));
+		// Loaded by the view when a reply first has math.
+		const katex = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'katex.js'));
+		const katexStyle = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'katex-style.css'));
 		const strings: ChatStrings = {
 			placeholder: vscode.l10n.t("Ask Gemini anything about this workspace"),
 			placeholderFollowUp: vscode.l10n.t("Ask a follow-up"),
@@ -1592,7 +1595,7 @@ export class ChatController implements vscode.Disposable {
 			<div id="workspace-menu" class="foot-menu" hidden></div>
 		</div>
 	</div>
-	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
+	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
 </html>`;
 	}

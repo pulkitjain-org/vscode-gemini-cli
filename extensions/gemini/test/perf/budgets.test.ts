@@ -31,6 +31,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	'media/changes.js': 16_000,
 	'media/settings.js': 16_000,
 	'media/highlight.js': 180_000,
+	// Loaded only when a reply has math.
+	'media/katex.js': 290_000,
 	'dist/extension.js': 900_000,
 };
 

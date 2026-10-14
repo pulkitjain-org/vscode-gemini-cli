@@ -16,6 +16,8 @@ run({
 		'home': path.join(srcDir, 'home.ts'),
 		'settings': path.join(srcDir, 'settings.ts'),
 		'highlight': path.join(srcDir, 'highlight.ts'),
+		'katex': path.join(srcDir, 'katex.ts'),
+		'katex-style': path.join(import.meta.dirname, 'node_modules', 'katex', 'dist', 'katex.min.css'),
 		'codicon': path.join(import.meta.dirname, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css'),
 	},
 	srcDir,
@@ -25,7 +27,16 @@ run({
 		// then parses a small stylesheet and shares one cached font.
 		loader: {
 			'.ttf': 'file',
+			'.woff2': 'file',
 		},
+		plugins: [{
+			// KaTeX's fonts ship as woff2 only, which every webview reads first; its woff and
+			// ttf copies stay unresolved links that are never fetched.
+			name: 'katex-woff2-only',
+			setup(build) {
+				build.onResolve({ filter: /KaTeX_.*\.(woff|ttf)$/ }, args => ({ path: args.path, external: true }));
+			},
+		}],
 		assetNames: '[name]',
 	}
 }, process.argv);

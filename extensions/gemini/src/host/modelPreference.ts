@@ -3,7 +3,11 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import * as path from 'node:path';
 import type * as vscode from 'vscode';
+import { cliHome } from '../acp/cliSessions';
+import { ModelListContext, proAccessFromQuota, terminalModelList } from '../acp/modelList';
+import { readSettingsFile } from '../acp/projectSettings';
 import { defaultModel, SessionChoice } from '../acp/sessionSettings';
 
 // The model the user picked last in any chat. New and reopened sessions
@@ -40,4 +44,36 @@ export function preferredComposerHeight(): number {
 
 export function rememberComposerHeight(height: number): void {
 	void storage?.update(composerHeightKey, height > 0 ? Math.round(height) : undefined);
+}
+
+/** What the model list depends on besides the CLI's own list, kept in memory so opening a session reads no file. */
+let gemma = true;
+let quotaModels: () => readonly string[] | undefined = () => undefined;
+let workspaceFolder: () => string | undefined = () => undefined;
+
+/** Where the model list reads Pro access (today's quota) and the project folder from. */
+export function initModelList(options: { readonly quotaModels: () => readonly string[] | undefined; readonly workspaceFolder: () => string | undefined }): void {
+	quotaModels = options.quotaModels;
+	workspaceFolder = options.workspaceFolder;
+	void refreshGemma();
+}
+
+/** Reads `experimental.gemma` from the user's and the project's Gemini settings, project first, as the CLI merges them. */
+async function refreshGemma(): Promise<void> {
+	const folder = workspaceFolder();
+	const [user, project] = await Promise.all([
+		readSettingsFile(path.join(cliHome(), 'settings.json')),
+		folder ? readSettingsFile(path.join(folder, '.gemini', 'settings.json')) : Promise.resolve({}),
+	]);
+	const flag = (settings: Record<string, unknown>) => (settings.experimental as { gemma?: unknown } | undefined)?.gemma;
+	const value = flag(project) ?? flag(user);
+	gemma = value !== false;
+}
+
+/** The models the picker lists: the terminal's `/model` list (see modelList.ts). */
+export function sessionModelList(available: readonly SessionChoice[]): SessionChoice[] {
+	const context: ModelListContext = { gemma, proAccess: proAccessFromQuota(quotaModels()) };
+	// For the next session; this one uses what was read before, so opening it reads no file.
+	void refreshGemma();
+	return terminalModelList(available, context);
 }

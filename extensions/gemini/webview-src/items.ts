@@ -13,6 +13,8 @@ import type { PromptAttachmentLabel, TranscriptItem } from '../src/acp/chatTrans
 import type { ViewSession } from '../src/host/chatProtocol';
 import { attachmentIcon, codeLanguage, format, formatDuration, formatSentAt, permissionDefaults, planIcon, replyBefore, thoughtSeconds, toolKindIcon, type ItemOf } from './chatLogic';
 import { highlightCode } from './codeHighlight';
+import { renderMath } from './math';
+import { mathPlugin } from './mathRule';
 import { enhanceMarkdown } from './markdownExtras';
 import { button, copyButton, el, icon, setLabel } from './dom';
 import { thoughtPreview } from './streaming';
@@ -20,7 +22,7 @@ import { expanded, state, strings, thoughtTimes, ui, vscode } from './view';
 
 const mac = /Mac/.test(navigator.platform);
 
-const markdown = new MarkdownIt({ html: false, linkify: true });
+const markdown = new MarkdownIt({ html: false, linkify: true }).use(mathPlugin);
 // Only links with a scheme or www.; file names such as README.md are not web addresses.
 markdown.linkify.set({ fuzzyLink: false });
 // The user's own messages keep their line breaks, as typed.
@@ -142,6 +144,7 @@ export function renderBlocks(text: string, renderer = markdown): Node[] {
 	const node = el('div');
 	node.innerHTML = renderer.render(text);
 	enhanceMarkdown(node);
+	renderMath(node);
 	for (const pre of node.querySelectorAll('pre')) {
 		const wrapper = el('div', 'code-block');
 		pre.replaceWith(wrapper);

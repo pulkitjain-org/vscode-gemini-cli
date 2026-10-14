@@ -13,7 +13,7 @@ import { AgentStatus } from '../acp/status';
 import { AgentService } from './agentService';
 import { ChatHost } from './chatController';
 import { getApprovalPolicy } from './configuration';
-import { sessionModel } from './modelPreference';
+import { sessionModel, sessionModelList } from './modelPreference';
 import { getFileAccessPolicy, isIgnoredByGitCached, WorkspaceFileSystem } from './workspaceFileSystem';
 
 /**
@@ -47,6 +47,7 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 			mcpServers,
 			...spare,
 			preferredModel: sessionModel,
+			modelList: sessionModelList,
 			isModeAllowed: modeId => isModeAllowed(getApprovalPolicy(), modeId),
 			requestPermission: params => this.permissions.request(params),
 			// A folder outside this window's workspace is the agent's only root.

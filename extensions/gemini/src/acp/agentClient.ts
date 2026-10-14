@@ -90,6 +90,8 @@ export interface AgentClientOptions {
 	 * gemini-cli its routing call before every prompt.
 	 */
 	readonly preferredModel?: (available: readonly SessionChoice[]) => string | undefined;
+	/** Shapes the models the agent offers into the list the picker shows, such as the terminal's `/model` list. */
+	readonly modelList?: (available: readonly SessionChoice[]) => readonly SessionChoice[];
 	/** Which approval modes the picker may offer; all of them when unset. */
 	readonly isModeAllowed?: (modeId: string) => boolean;
 	/**
@@ -386,7 +388,7 @@ export class AgentClient {
 			});
 			this.resumeSessionId = savedSessionId;
 			// Model and mode together rather than one after the other: they are independent, and each is a round trip before the chat is ready.
-			const opened = filterModes(readSessionSettings(session), this.options.isModeAllowed);
+			const opened = withModelList(filterModes(readSessionSettings(session), this.options.isModeAllowed), this.options.modelList);
 			const [withModel, withMode] = await Promise.all([
 				this.applyPreferredModel(connection, session.sessionId, opened),
 				this.applyPendingMode(connection, session.sessionId, opened),
@@ -671,4 +673,20 @@ export function supportedMcpServers(agent: acp.InitializeResponse | undefined, s
 /** The CLI's saved session `id` in `cwd`: from its own file, or numbered as the CLI lists it for a load by number. */
 async function findSavedCliSession(cwd: string, id: string, byNumber: boolean): Promise<SavedSession | undefined> {
 	return byNumber ? findCliSession(cwd, id) : readCliSession(cwd, id);
+}
+
+/** `settings` with its models shaped by `modelList`, keeping the current model listed even when the shaping would drop it. */
+function withModelList(settings: SessionSettings, modelList: AgentClientOptions['modelList']): SessionSettings {
+	const model = settings.model;
+	if (!model || !modelList) {
+		return settings;
+	}
+	const available = [...modelList(model.available)];
+	if (!available.some(choice => choice.id === model.currentId)) {
+		const current = model.available.find(choice => choice.id === model.currentId);
+		if (current) {
+			available.unshift(current);
+		}
+	}
+	return { ...settings, model: { ...model, available } };
 }
