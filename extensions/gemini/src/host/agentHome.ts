@@ -12,7 +12,8 @@ import { attachmentsForFiles } from './addToChat';
 import { AgentsView, AgentSummary, relativeTime } from './agentsView';
 import { tildify } from './displayText';
 import { configSection, getApprovalPolicy } from './configuration';
-import { FromHome, HomeAgent, HomeMode, HomeStrings, HomeView, ToHome } from './panelProtocol';
+import { FromHome, HomeAgent, HomeMode, HomeProject, HomeStrings, HomeView, ToHome } from './panelProtocol';
+import { projectsEnabled } from './projects';
 import { createNonce, escapeAttribute } from './webviewHtml';
 
 const homeViewType = 'gemini.agentHome';
@@ -118,7 +119,9 @@ export class AgentHome implements vscode.Disposable {
 	private async build(): Promise<HomeView> {
 		const now = Date.now();
 		const workspaces = (await this.agents.workspaces()).map(w => ({ folder: w.folder, name: path.basename(w.folder) || w.folder, description: tildify(path.dirname(w.folder)), git: w.git }));
-		const summaries = this.agents.summaries();
+		const all = this.agents.summaries();
+		// Projects and their threads have their own list.
+		const summaries = all.filter(a => !a.project);
 		const isActive = (a: AgentSummary) => a.state === 'working' || a.state === 'waiting' || a.state === 'done' || a.state === 'error' || !!a.changes?.files;
 		const toView = (a: AgentSummary): HomeAgent => ({
 			id: a.id, title: a.title, workspace: path.basename(a.folder), state: a.state, status: a.status,
@@ -130,6 +133,12 @@ export class AgentHome implements vscode.Disposable {
 			workspaces,
 			active: summaries.filter(isActive).map(toView),
 			earlier: summaries.filter(a => !isActive(a)).slice(0, maxEarlier).map(toView),
+			...(projectsEnabled() ? {
+				projects: all.flatMap((a): HomeProject[] => a.project?.role === 'coordinator' ? [{
+					id: a.id, title: a.title, workspace: path.basename(a.folder), state: a.state, updated: relativeTime(a.updatedAt, now),
+					threads: a.project.threads === 1 ? vscode.l10n.t("1 thread") : vscode.l10n.t("{0} threads", a.project.threads),
+				}] : []),
+			} : {}),
 			ownBranch: vscode.workspace.getConfiguration(configSection).get<boolean>('agents.ownBranch', false),
 			modes: startModes().filter(mode => isModeAllowed(getApprovalPolicy(), mode.id)),
 		};
@@ -154,6 +163,9 @@ export class AgentHome implements vscode.Disposable {
 				if (!message.ownBranch) {
 					this.agents.prepareStart(message.folder);
 				}
+				return;
+			case 'newProject':
+				await vscode.commands.executeCommand('gemini.projects.new');
 				return;
 			case 'addFolder':
 				await vscode.commands.executeCommand('workbench.action.addRootFolder');
@@ -218,6 +230,9 @@ export class AgentHome implements vscode.Disposable {
 			remove: vscode.l10n.t("Remove"),
 			active: vscode.l10n.t("Agents"),
 			earlier: vscode.l10n.t("Earlier"),
+			projects: vscode.l10n.t("Projects"),
+			noProjects: vscode.l10n.t("No projects yet. A project's coordinator splits work into threads, each an agent on its own branch."),
+			newProject: vscode.l10n.t("New Project"),
 			open: vscode.l10n.t("Open"),
 			stop: vscode.l10n.t("Stop"),
 			review: vscode.l10n.t("Review"),
@@ -266,6 +281,7 @@ export class AgentHome implements vscode.Disposable {
 			</div>
 		</section>
 		<section id="active" class="home-section"></section>
+		<section id="projects" class="home-section" hidden></section>
 		<section id="earlier" class="home-section"></section>
 	</main>
 	<script nonce="${nonce}" type="module" src="${script}" data-draft-markdown="${draftMarkdown}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>

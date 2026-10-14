@@ -54,7 +54,8 @@ export type TranscriptItem =
 		/** Files the tool would change; the view can open a diff for each. */
 		readonly diffPaths: readonly string[];
 		/** Unset while the agent waits for an answer. */
-		readonly answer?: { readonly kind: 'selected'; readonly name: string } | { readonly kind: 'cancelled' };
+		/** `automatic` when GeminiCode answered without asking, so the row doesn't say the user chose. */
+		readonly answer?: { readonly kind: 'selected'; readonly name: string; readonly automatic?: true } | { readonly kind: 'cancelled' };
 	}
 	/** A project's thread, as a card in the project chat that updates in place. */
 	| ThreadCard
@@ -207,7 +208,7 @@ export class ChatTranscript {
 			return;
 		}
 		const selected = outcome.outcome === 'selected' ? item.options.find(o => o.optionId === outcome.optionId) : undefined;
-		this.upsert({ ...item, answer: selected ? { kind: 'selected', name: label ?? selected.name } : { kind: 'cancelled' } });
+		this.upsert({ ...item, answer: selected ? { kind: 'selected', name: label ?? selected.name, ...(label === undefined ? {} : { automatic: true as const }) } : { kind: 'cancelled' } });
 	}
 
 	/** Ends the turn; returns the item's id. */

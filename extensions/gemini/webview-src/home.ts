@@ -41,6 +41,7 @@ const modeButton = document.getElementById('mode') as HTMLButtonElement;
 const attachmentList = document.getElementById('attachments')!;
 const active = document.getElementById('active')!;
 const earlier = document.getElementById('earlier')!;
+const projects = document.getElementById('projects')!;
 
 document.getElementById('title')!.textContent = strings.title;
 document.getElementById('subtitle')!.textContent = strings.subtitle;
@@ -215,6 +216,8 @@ function render(next: HomeView): void {
 	}
 	active.append(cards);
 
+	renderProjects(next);
+
 	earlier.replaceChildren();
 	earlier.hidden = !next.earlier.length;
 	if (next.earlier.length) {
@@ -229,6 +232,32 @@ function render(next: HomeView): void {
 		}
 		earlier.append(rows);
 	}
+}
+
+/** Projects, apart from the agents: each opens its project chat. */
+function renderProjects(next: HomeView): void {
+	projects.replaceChildren();
+	projects.hidden = !next.projects;
+	if (!next.projects) {
+		return;
+	}
+	const heading = el('div', 'section-heading');
+	const add = button('icon-button', '', () => vscode.postMessage({ type: 'newProject' }), 'add', strings.newProject);
+	heading.append(el('h2', undefined, strings.projects), add);
+	projects.append(heading);
+	if (!next.projects.length) {
+		projects.append(el('p', 'muted', strings.noProjects));
+		return;
+	}
+	const rows = el('div', 'earlier');
+	for (const project of next.projects) {
+		const row = el('button', `earlier-row project-row ${project.state}`);
+		row.type = 'button';
+		row.append(icon('project'), el('span', 'title', project.title), el('span', 'muted', [project.workspace, project.threads, project.updated].join(' · ')));
+		row.addEventListener('click', () => vscode.postMessage({ type: 'open', id: project.id }));
+		rows.append(row);
+	}
+	projects.append(rows);
 }
 
 function card(agent: HomeAgent): HTMLElement {

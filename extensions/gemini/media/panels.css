@@ -738,6 +738,18 @@ button.option-button .codicon-chevron-down {
 	flex-direction: column;
 }
 
+/* A section's heading with its own +, such as Projects. */
+.section-heading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 6px;
+}
+
+.home-section .section-heading h2 {
+	margin: 0;
+}
+
 .earlier-row {
 	gap: 9px;
 	padding: 5px 8px;

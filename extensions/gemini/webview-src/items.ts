@@ -340,7 +340,7 @@ function renderPermission(item: ItemOf<'permission'>): HTMLElement {
 		card.append(files);
 	}
 	if (item.answer) {
-		card.append(el('div', 'permission-answer', item.answer.kind === 'selected' ? format(strings.permissionAnswered, item.answer.name) : strings.permissionCancelled));
+		card.append(el('div', 'permission-answer', item.answer.kind !== 'selected' ? strings.permissionCancelled : item.answer.automatic ? item.answer.name : format(strings.permissionAnswered, item.answer.name)));
 		return card;
 	}
 	const actions = el('div', 'permission-actions');

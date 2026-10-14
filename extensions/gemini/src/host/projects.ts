@@ -99,7 +99,7 @@ export class Projects implements vscode.Disposable {
 				return allow && { optionId: allow.optionId, quiet: true };
 			}
 			const reject = request.options.find(option => option.kind === 'reject_once') ?? request.options.find(option => option.kind.startsWith('reject'));
-			return reject && { optionId: reject.optionId, label: vscode.l10n.t("Refused: the coordinator starts a thread for this") };
+			return reject && { optionId: reject.optionId, label: vscode.l10n.t("Refused automatically: the coordinator hands work to threads") };
 		}
 		if (record.project?.role === 'thread' && isProjectToolCall(request, threadTools)) {
 			return allow && { optionId: allow.optionId, quiet: true };
@@ -144,9 +144,9 @@ export class Projects implements vscode.Disposable {
 	/** A thread's chat changed what it is doing. */
 	threadActivity(record: AgentRecord, before: ChatActivity, after: ChatActivity): void {
 		if (record.project?.role === 'coordinator') {
-			// The coordinator's model is known once its session is ready, and a turn may have started threads.
+			// The coordinator's model is known once its session is ready (by the time a turn starts), and a turn may have started threads.
 			const project = this.projects.get(record.id);
-			if (project && !after.busy) {
+			if (project && (!after.busy || !before.busy)) {
 				this.schedulePanel(project);
 			}
 			return;

@@ -96,6 +96,17 @@ export interface HomeAgent {
 	readonly updated: string;
 }
 
+/** A project on Agent Home: its coordinator's chat, and how many threads it has. */
+export interface HomeProject {
+	readonly id: string;
+	readonly title: string;
+	readonly workspace: string;
+	readonly state: AgentStateKind;
+	/** "3 threads" */
+	readonly threads: string;
+	readonly updated: string;
+}
+
 export interface HomeWorkspace {
 	readonly folder: string;
 	readonly name: string;
@@ -109,6 +120,8 @@ export interface HomeView {
 	readonly active: readonly HomeAgent[];
 	/** The rest, newest first, to resume. */
 	readonly earlier: readonly HomeAgent[];
+	/** Every project, newest first; absent while Projects are off. Neither list above has projects or their threads. */
+	readonly projects?: readonly HomeProject[];
 	readonly ownBranch: boolean;
 	/** The approval modes a new agent can start in, as policy allows. */
 	readonly modes: readonly HomeMode[];
@@ -148,6 +161,9 @@ export interface HomeStrings {
 	readonly remove: string;
 	readonly active: string;
 	readonly earlier: string;
+	readonly projects: string;
+	readonly noProjects: string;
+	readonly newProject: string;
 	readonly open: string;
 	readonly stop: string;
 	readonly review: string;
@@ -175,7 +191,7 @@ export type FromHome =
 	| { readonly type: 'start'; readonly folder: string; readonly text: string; readonly ownBranch: boolean; readonly mode: string; readonly attachments: readonly Attachment[] }
 	/** The user is typing a task, so the agent and a session for it can get ready. */
 	| { readonly type: 'typing'; readonly folder: string; readonly ownBranch: boolean }
-	| { readonly type: 'addFolder' | 'projectHelpers' | 'pickFiles' }
+	| { readonly type: 'addFolder' | 'projectHelpers' | 'pickFiles' | 'newProject' }
 	| { readonly type: 'open' | 'stop' | 'review' | 'mergeBack'; readonly id: string };
 
 // --- Project Helpers

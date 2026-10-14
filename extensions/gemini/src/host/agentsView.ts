@@ -3,6 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AgentChanges, ChangeTotals, formatCounts } from '../acp/agentChanges';
@@ -20,7 +21,7 @@ import { reviewRequest, workingChanges } from '../acp/reviewPrompt';
 import type { SessionChoice } from '../acp/sessionSettings';
 import { TranscriptStore } from '../acp/transcriptStore';
 import { folderTrustApplies, isFolderTrusted, trustedFoldersPath } from '../acp/trustedFolders';
-import { AgentWorktree, branchExists, commitAll, createWorktree, currentBranch, folderInRepository, mergeBranch, removeWorktree, repositoryRoot, runWorktreeSetup, worktreeSetupCommand, worktreesHome, worktreeStatus } from '../acp/worktrees';
+import { AgentWorktree, branchExists, commitAll, coordinatorHome, createWorktree, currentBranch, folderInRepository, mergeBranch, removeWorktree, repositoryRoot, runWorktreeSetup, worktreeSetupCommand, projectsHome, worktreesHome, worktreeStatus } from '../acp/worktrees';
 import { supportedMcpServers } from '../acp/agentClient';
 import { AgentNotifier } from './agentNotifier';
 import { AgentService } from './agentService';
@@ -95,6 +96,8 @@ export interface AgentSummary {
 	readonly changes?: ChangeTotals;
 	readonly worktree?: AgentWorktree;
 	readonly updatedAt: number;
+	/** Its part in a project, while Projects are on; a coordinator also has its thread count. */
+	readonly project?: { readonly role: 'coordinator'; readonly threads: number } | { readonly role: 'thread' };
 }
 
 /** A workspace agents can start in. */
@@ -475,6 +478,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	/** Every agent, newest first. */
 	summaries(): AgentSummary[] {
 		const summaries: AgentSummary[] = [];
+		const projects = projectsEnabled();
 		for (const workspace of this.model.workspaces) {
 			for (const record of this.model.agentsIn(workspace.id)) {
 				const live = this.live.get(record.id);
@@ -483,6 +487,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				summaries.push({
 					id: record.id, title: record.title, folder: workspace.folder, state: state.kind, status: state.status,
 					...(changes?.files ? { changes } : {}), ...(record.worktree ? { worktree: record.worktree } : {}), updatedAt: record.updatedAt,
+					...(projects && record.project?.role === 'coordinator' ? { project: { role: 'coordinator', threads: this.model.threadsOf(record.id).length } } : {}),
+					...(projects && record.project?.role === 'thread' && this.model.coordinatorOf(record) ? { project: { role: 'thread' } } : {}),
 				});
 			}
 		}
@@ -1204,17 +1210,18 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	 */
 	private async ensureProjectTrust(folder: string): Promise<boolean> {
 		const repository = await repositoryRoot(folder) ?? folder;
-		const folders = [repository, worktreesHome(repository)];
+		// The coordinators' own folders hold nothing; the threads' worktrees hold the repository.
+		const folders = [projectsHome(), worktreesHome(repository)];
 		const file = trustedFoldersPath(process.env);
 		if (!folderTrustApplies(process.env) || folders.every(each => isFolderTrusted(file, each))) {
 			return true;
 		}
 		const trust = vscode.l10n.t("Trust Folder");
 		const choice = await vscode.window.showWarningMessage(
-			vscode.l10n.t("Trust {0} for this project?", path.basename(repository)),
+			vscode.l10n.t("Trust {0}'s project folders?", path.basename(repository)),
 			{
 				modal: true,
-				detail: vscode.l10n.t("A project's coordinator starts threads with GeminiCode's project tools, which the Gemini CLI loads only in trusted folders. Its threads' worktrees, in {0}, are trusted too. Trusting also lets the Gemini CLI load the repository's own Gemini settings and MCP servers, which can run programs. The Gemini CLI remembers the choice, including in the terminal.", tildify(folders[1])),
+				detail: vscode.l10n.t("A project's coordinator and threads work through GeminiCode's project tools, which the Gemini CLI loads only in trusted folders: {0}, where coordinators run, and {1}, where threads check out their branches. Trusting the threads' folder also lets the Gemini CLI load the repository's own Gemini settings and MCP servers there, which can run programs. The Gemini CLI remembers the choice, including in the terminal.", tildify(folders[0]), tildify(folders[1])),
 			},
 			trust);
 		if (choice !== trust) {
@@ -1303,7 +1310,12 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	private start(record: AgentRecord, folder: string, openLater = false): LiveAgent {
 		const project = projectsEnabled() ? record.project : undefined;
 		const servers = () => [...this.browser?.mcpServersFor(record.id, folder) ?? [], ...project ? this.projects.mcpServersFor(this.model.agent(record.id) ?? record) : []];
-		const session = new AgentSession(this.service, folder, record.sessionId, servers, openLater, {
+		// A coordinator's session runs in its own empty folder (coordinatorHome); its chat still belongs to the workspace.
+		const cwd = project?.role === 'coordinator' ? coordinatorHome(record.id) : folder;
+		if (cwd !== folder) {
+			fs.mkdirSync(cwd, { recursive: true });
+		}
+		const session = new AgentSession(this.service, cwd, record.sessionId, servers, openLater, {
 			// A project agent's session needs the project's server, which a spare never has.
 			...(project ? {} : { spareKey: () => this.spareKey(folder) }),
 			onDidOpenSession: servers => {
