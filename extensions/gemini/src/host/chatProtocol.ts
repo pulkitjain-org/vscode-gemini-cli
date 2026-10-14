@@ -350,6 +350,8 @@ export type FromWebview =
 	| { readonly type: 'openUpgrade' };
 
 export type ToWebview =
+	/** `gemini.chat.spellCheck` changed. */
+	| { readonly type: 'spellCheck'; readonly on: boolean }
 	| { readonly type: 'reset'; readonly items: readonly TranscriptItem[]; readonly busy: boolean; readonly status: ViewStatus; readonly settings: SessionSettings }
 	/** Added or changed items, in the order they first changed; streaming updates are batched. */
 	| { readonly type: 'items'; readonly items: readonly ItemUpdate[] }

@@ -5,6 +5,7 @@
 
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { onDidChangeSpellCheck, spellCheckOn } from './spellCheck';
 import { isModeAllowed } from '../acp/adminPolicy';
 import { formatCounts } from '../acp/agentChanges';
 import { attachmentsForFiles } from './addToChat';
@@ -41,6 +42,7 @@ export class AgentHome implements vscode.Disposable {
 	/** `onTyping` runs when the user starts typing a task, so the agent can start meanwhile. */
 	constructor(private readonly extensionUri: vscode.Uri, private readonly agents: AgentsView, private readonly onTyping: () => void = () => undefined) {
 		this.disposables.push(
+			onDidChangeSpellCheck(on => void this.panel?.webview.postMessage({ type: 'spellCheck', on } satisfies ToHome)),
 			vscode.commands.registerCommand('gemini.agentHome', () => this.show(false)),
 			// GeminiCode's workbench reports the window mode.
 			vscode.commands.registerCommand('_gemini.modeChanged', (mode: Mode) => this.setMode(mode)),
@@ -191,6 +193,15 @@ export class AgentHome implements vscode.Disposable {
 		const nonce = createNonce();
 		const strings: HomeStrings = {
 			title: vscode.l10n.t("What should an agent do?"),
+			writeLabel: vscode.l10n.t("Write"),
+			previewLabel: vscode.l10n.t("Preview"),
+			previewMarkdown: vscode.l10n.t("Preview ({0})"),
+			previewEmpty: vscode.l10n.t("Nothing to preview yet."),
+			calloutNote: vscode.l10n.t("Note"),
+			calloutTip: vscode.l10n.t("Tip"),
+			calloutImportant: vscode.l10n.t("Important"),
+			calloutWarning: vscode.l10n.t("Warning"),
+			calloutCaution: vscode.l10n.t("Caution"),
 			subtitle: vscode.l10n.t("Describe the task. A new agent starts on it right away, and you can start more while it works."),
 			placeholder: vscode.l10n.t("Fix the rounding in the cart total and add a test"),
 			start: vscode.l10n.t("Start Agent"),
@@ -215,6 +226,8 @@ export class AgentHome implements vscode.Disposable {
 			noWorkspace: vscode.l10n.t("Add a workspace folder for agents to work in."),
 		};
 		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'home.js'));
+		// Preview's renderer, loaded at idle or on the first Preview so home.js stays small.
+		const draftMarkdown = webview.asWebviewUri(vscode.Uri.joinPath(media, 'draftMarkdown.js'));
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
 		const menuStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'menu.css'));
 		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'codicon.css'));
@@ -222,21 +235,23 @@ export class AgentHome implements vscode.Disposable {
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}' ${webview.cspSource};">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link href="${codicons}" rel="stylesheet">
 	<link href="${menuStyle}" rel="stylesheet">
 	<link href="${style}" rel="stylesheet">
 	<title>Agent Home</title>
 </head>
-<body class="agent-home">
+<body class="agent-home" spellcheck="false">
 	<main class="home">
 		<section class="home-start">
 			<h1 id="title"></h1>
 			<p id="subtitle" class="muted"></p>
 			<form id="composer" class="home-composer">
 				<div id="attachments" class="attachments" hidden></div>
-				<textarea id="prompt" rows="3"></textarea>
+				<div class="composer-tabs" role="tablist"><button type="button" id="tab-write" class="composer-tab" role="tab" aria-selected="true" aria-controls="prompt"></button><button type="button" id="tab-preview" class="composer-tab" role="tab" aria-selected="false" aria-controls="preview"></button></div>
+				<textarea id="prompt" rows="3" spellcheck="${spellCheckOn()}"></textarea>
+				<div id="preview" class="composer-preview markdown" role="tabpanel" tabindex="0" hidden></div>
 				<div class="home-composer-bar">
 					<span class="home-plus"><button type="button" id="plus" class="plus-button"><i class="codicon codicon-add" aria-hidden="true"></i></button><div id="plus-menu" class="home-menu" hidden></div></span>
 					<span class="spacer"></span>
@@ -253,7 +268,7 @@ export class AgentHome implements vscode.Disposable {
 		<section id="active" class="home-section"></section>
 		<section id="earlier" class="home-section"></section>
 	</main>
-	<script nonce="${nonce}" type="module" src="${script}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
+	<script nonce="${nonce}" type="module" src="${script}" data-draft-markdown="${draftMarkdown}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
 </html>`;
 	}

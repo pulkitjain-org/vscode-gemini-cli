@@ -11,6 +11,9 @@
 	--gemini-radius-large: 12px;
 	/* Soft: the theme's own colours, named as the mockups name them (as in chat.css). */
 	--gemini-surface: var(--vscode-editor-background);
+	/* The approved mockups' cards and composer: a step above the page. */
+	--gemini-card: var(--vscode-editorWidget-background, var(--gemini-surface));
+	--gemini-composer: var(--vscode-input-background, var(--gemini-surface));
 	--gemini-raised: var(--vscode-editorWidget-background, var(--vscode-input-background));
 	--gemini-popover: var(--vscode-quickInput-background, var(--gemini-raised));
 	--gemini-border: var(--vscode-widget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.35)));
@@ -349,13 +352,13 @@ button.chip {
 	padding: 10px 10px 8px 12px;
 	border: 1px solid var(--gemini-border-strong);
 	border-radius: var(--gemini-radius-large);
-	background: var(--gemini-surface);
+	background: var(--gemini-composer);
 }
 
 .home-composer:focus-within {
 	border-color: transparent;
 	background:
-		linear-gradient(var(--gemini-surface), var(--gemini-surface)) padding-box,
+		linear-gradient(var(--gemini-composer), var(--gemini-composer)) padding-box,
 		var(--gemini-gradient) border-box;
 }
 
@@ -377,9 +380,9 @@ button.chip {
 	gap: 4px;
 	max-width: 220px;
 	height: 20px;
-	padding: 0 2px 0 7px;
-	border: 1px solid var(--gemini-border);
-	border-radius: var(--gemini-radius-small);
+	padding: 0 2px 0 9px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: 999px;
 	background: var(--gemini-raised);
 	font-size: 11.5px;
 	white-space: nowrap;
@@ -429,6 +432,10 @@ button.chip-remove .codicon {
 	font-size: 14px;
 	line-height: 1.5;
 	color: var(--vscode-input-foreground);
+}
+
+.home-composer textarea[hidden] {
+	display: none;
 }
 
 .home-composer textarea::placeholder {
@@ -941,4 +948,143 @@ button.option-button .codicon-chevron-down {
 	.switch::after {
 		transition: none;
 	}
+}
+
+/* Write and Preview in Agent Home's composer (markdownPreview.ts), as in the chat's: tabs once there is a draft. */
+.home-composer .composer-tabs {
+	display: flex;
+	gap: 12px;
+	margin: -2px 0 4px;
+	font-size: 11.5px;
+}
+
+.home-composer:has(textarea:placeholder-shown) .composer-tabs {
+	display: none;
+}
+
+.composer-tab {
+	padding: 1px 0;
+	border: none;
+	background: none;
+	color: var(--gemini-faint);
+	font: inherit;
+	cursor: pointer;
+}
+
+.composer-tab:hover,
+.composer-tab[aria-selected="true"] {
+	color: var(--vscode-foreground);
+}
+
+.composer-tab[aria-selected="true"] {
+	box-shadow: inset 0 -1.5px var(--vscode-foreground);
+}
+
+.composer-tab:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 2px;
+	border-radius: 3px;
+}
+
+.composer-preview {
+	max-height: 40vh;
+	overflow-y: auto;
+	font-size: 14px;
+	line-height: 1.5;
+	overflow-wrap: anywhere;
+	cursor: default;
+}
+
+.composer-preview:focus {
+	outline: none;
+}
+
+.preview-empty {
+	color: var(--gemini-faint);
+}
+
+/* The draft's Markdown, as the chat shows a sent message. */
+.composer-preview > :first-child { margin-top: 0; }
+.composer-preview > :last-child { margin-bottom: 0; }
+.composer-preview :is(p, ul, ol) { margin: 0.5em 0; }
+.composer-preview :is(ul, ol) { padding-left: 1.4em; }
+.composer-preview :is(h1, h2, h3, h4) { margin: 0.9em 0 0.4em; line-height: 1.3; }
+.composer-preview h1 { font-size: 1.3em; }
+.composer-preview h2 { font-size: 1.18em; }
+.composer-preview :is(h3, h4) { font-size: 1.05em; }
+.composer-preview a { color: var(--vscode-textLink-foreground); text-decoration: none; }
+
+.composer-preview code {
+	font-family: var(--vscode-editor-font-family);
+	font-size: 0.92em;
+	padding: 1px 4px;
+	border-radius: 4px;
+	background: var(--vscode-textCodeBlock-background);
+}
+
+.composer-preview :not(pre) > code {
+	font-size: 0.88em;
+	padding: 0 4px;
+	border: 1px solid var(--gemini-border);
+}
+
+.composer-preview pre {
+	padding: 8px 10px;
+	overflow-x: auto;
+	border-radius: var(--gemini-radius);
+	background: var(--vscode-textCodeBlock-background);
+}
+
+.composer-preview pre code {
+	padding: 0;
+	background: none;
+}
+
+.composer-preview blockquote {
+	margin: 0.5em 0;
+	padding-left: 10px;
+	border-left: 3px solid var(--gemini-border);
+	color: var(--gemini-muted);
+}
+
+.composer-preview blockquote.callout {
+	padding: 8px 12px;
+	border-left-color: var(--gemini-callout);
+	border-radius: 0 var(--gemini-radius) var(--gemini-radius) 0;
+	background: color-mix(in srgb, var(--gemini-callout) 9%, transparent);
+	color: inherit;
+}
+
+.composer-preview .callout-title {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-weight: 600;
+	color: var(--gemini-callout);
+}
+
+.composer-preview .callout-note { --gemini-callout: var(--vscode-editorInfo-foreground, #3794ff); }
+.composer-preview .callout-tip { --gemini-callout: var(--gemini-ok); }
+.composer-preview .callout-important { --gemini-callout: var(--vscode-charts-purple, #b180d7); }
+.composer-preview .callout-warning { --gemini-callout: var(--gemini-warn); }
+.composer-preview .callout-caution { --gemini-callout: var(--gemini-error); }
+
+.composer-preview .table-wrap {
+	margin: 0.6em 0;
+	overflow-x: auto;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius);
+}
+
+.composer-preview table {
+	min-width: 100%;
+	border-collapse: collapse;
+	border-style: hidden;
+}
+
+.composer-preview :is(th, td) {
+	padding: 5px 10px;
+	border: 1px solid var(--gemini-border);
+	text-align: left;
+	vertical-align: top;
 }

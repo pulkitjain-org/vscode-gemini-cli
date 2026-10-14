@@ -27,12 +27,14 @@ import { fakeAgentCommand, waitFor } from '../helpers';
 /** Bundle size budgets in bytes, minified. KaTeX and the highlighter load on demand and are not part of the chat view's first paint. */
 export const bundleBudgets: Readonly<Record<string, number>> = {
 	'media/chat.js': 260_000,
-	'media/home.js': 260_000,
+	// Agent Home's startup script: Preview's renderer is its own file.
+	'media/home.js': 16_000,
 	'media/changes.js': 16_000,
 	'media/settings.js': 16_000,
 	'media/highlight.js': 180_000,
 	// Loaded only when a reply has math.
 	'media/katex.js': 290_000,
+	'media/draftMarkdown.js': 160_000,
 	'dist/extension.js': 900_000,
 };
 

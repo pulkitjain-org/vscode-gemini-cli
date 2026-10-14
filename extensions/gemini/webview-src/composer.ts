@@ -14,15 +14,22 @@ import { button, el, icon, setLabel } from './dom';
 import { autoGrow, updateSendState } from './inputBox';
 import { onEnhanceKey } from './enhance';
 import { continueList, formatShortcut, toggleWrap, type TextEdit } from './markdownEdit';
-import { closePreview, isPreviewShortcut, togglePreview, updatePreview } from './markdownPreview';
+import { createPreviewTabs, isPreviewShortcut } from './markdownPreview';
+import { renderUserMarkdown } from './items';
 import { closePicker, onPickerKey, updatePicker } from './picker';
 import { setWorkspace, updateModel } from './pickers';
 import { modeIcon } from './modeIcon';
 import { openPlusMenu, updatePlusMenu } from './plusMenu';
 import { setTranscriptBusy } from './transcript';
 import { state, strings, ui, vscode } from './view';
+import { letSpellingMenuThrough } from './spellCheck';
 
 const { form, input, status, branchButton, commitButton } = ui;
+
+const previewTabs = createPreviewTabs({
+	input, inputWrap: input.parentElement!, preview: ui.preview, writeTab: ui.writeTab, previewTab: ui.previewTab, form, strings,
+	render: renderUserMarkdown,
+});
 const mac = /Mac/.test(navigator.platform);
 
 export function setBusy(value: boolean): void {
@@ -148,7 +155,7 @@ function recall(event: KeyboardEvent): boolean {
 	}
 	autoGrow();
 	updateSendState();
-	updatePreview();
+	previewTabs.update();
 	return true;
 }
 
@@ -198,7 +205,7 @@ function submit(): void {
 	input.value = '';
 	autoGrow();
 	updateSendState();
-	closePreview();
+	previewTabs.close();
 }
 
 form.addEventListener('submit', event => {
@@ -210,6 +217,8 @@ form.addEventListener('click', event => {
 		input.focus();
 	}
 });
+letSpellingMenuThrough(input);
+
 input.addEventListener('keydown', event => {
 	if (!event.isComposing && onPickerKey(event)) {
 		event.preventDefault();
@@ -229,7 +238,7 @@ input.addEventListener('keydown', event => {
 	if (!event.isComposing && isPreviewShortcut(event)) {
 		event.preventDefault();
 		event.stopPropagation();
-		togglePreview();
+		previewTabs.toggle();
 		return;
 	}
 	if (!event.isComposing && onMarkdownKey(event)) {

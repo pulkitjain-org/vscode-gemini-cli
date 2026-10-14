@@ -17,7 +17,7 @@ describe('mathPlugin', () => {
 	});
 
 	it('leaves prices, variables and spaced dollars as text', () => {
-		for (const text of ['costs $5 and $10 today', 'echo $HOME', 'a $ b $ c', 'only $ one']) {
+		for (const text of ['costs $5 and $10 today', 'echo $HOME', 'a $ b $ c', 'only $ one', 'Prices like $5 and $10 stay as text, and so does `$HOME`.']) {
 			expect(md.renderInline(text)).not.toContain('class="math"');
 		}
 	});

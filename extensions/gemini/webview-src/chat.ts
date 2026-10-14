@@ -46,6 +46,9 @@ document.addEventListener('visibilitychange', () => document.body.classList.togg
 window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 	const message = event.data;
 	switch (message.type) {
+		case 'spellCheck':
+			ui.input.spellcheck = message.on;
+			break;
 		case 'reset':
 			state.busy = message.busy;
 			reset(message.items);

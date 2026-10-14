@@ -8,7 +8,8 @@
 // has loaded. KaTeX itself is not called while parsing, so a reply without
 // math pays only a character test per text run. The dollar rules follow
 // markdown-it-katex: no space just inside the dollars, and no digit right
-// after the closing one, so "$5 and $10" and `$HOME` stay text.
+// after the closing one, so "$5 and $10" and `$HOME` stay text; and none
+// across a code span.
 
 import type MarkdownIt from 'markdown-it';
 
@@ -59,7 +60,8 @@ function inlineMath(state: StateInline, silent: boolean): boolean {
 		break;
 	}
 	const tex = src.slice(from, end);
-	if (!tex.trim() || (open === '$' && (isWhitespace(src[end - 1]) || /\d/.test(src[end + 1] ?? '')))) {
+	// A backtick means the dollars belong to code spans, as in "$5 and `$HOME`".
+	if (!tex.trim() || (open === '$' && (isWhitespace(src[end - 1]) || /\d/.test(src[end + 1] ?? '') || tex.includes('`')))) {
 		return false;
 	}
 	if (!silent) {

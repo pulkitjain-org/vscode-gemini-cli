@@ -122,6 +122,16 @@ export interface HomeMode {
 
 export interface HomeStrings {
 	readonly title: string;
+	readonly writeLabel: string;
+	readonly previewLabel: string;
+	/** Preview's tooltip; {0} is the shortcut. */
+	readonly previewMarkdown: string;
+	readonly previewEmpty: string;
+	readonly calloutNote: string;
+	readonly calloutTip: string;
+	readonly calloutImportant: string;
+	readonly calloutWarning: string;
+	readonly calloutCaution: string;
 	readonly subtitle: string;
 	readonly placeholder: string;
 	readonly start: string;
@@ -148,6 +158,8 @@ export interface HomeStrings {
 
 export type ToHome =
 	| { readonly type: 'view'; readonly view: HomeView }
+	/** `gemini.chat.spellCheck` changed. */
+	| { readonly type: 'spellCheck'; readonly on: boolean }
 	| { readonly type: 'focus' }
 	/**
 	 * The agent asked for could not start (the user has been told why); put the

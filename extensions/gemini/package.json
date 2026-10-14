@@ -747,6 +747,12 @@
           "scope": "machine",
           "markdownDescription": "%configuration.chat.followAgent%"
         },
+        "gemini.chat.spellCheck": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "markdownDescription": "%configuration.chat.spellCheck%"
+        },
         "gemini.browser.enabled": {
           "type": "boolean",
           "default": true,

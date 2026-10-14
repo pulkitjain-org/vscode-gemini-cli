@@ -12,6 +12,8 @@ import { attachmentIcon, sameAttachment } from './chatLogic';
 import { Menu, type MenuRow } from './menu';
 import { modeIcon } from './modeIcon';
 import { button, el, icon, pageStrings } from './panelDom';
+import { letSpellingMenuThrough } from './spellCheck';
+import { createPreviewTabs, isPreviewShortcut } from './markdownPreview';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromHome): void; getState(): unknown; setState(state: unknown): void };
 
@@ -277,6 +279,7 @@ function submit(): void {
 	// The next task gets a session of its own.
 	typingFor = undefined;
 	prompt.value = '';
+	previewTabs.close();
 	attachments = [];
 	renderAttachments();
 	save();
@@ -287,7 +290,42 @@ form.addEventListener('submit', e => {
 	e.preventDefault();
 	submit();
 });
+letSpellingMenuThrough(prompt);
+
+type DraftMarkdown = typeof import('./draftMarkdown');
+const draftMarkdownUrl = document.querySelector<HTMLScriptElement>('script[data-draft-markdown]')?.dataset.draftMarkdown;
+let draftMarkdown: Promise<DraftMarkdown> | undefined;
+
+/** Preview's renderer, a chunk of its own so Home's startup script stays small. */
+function loadDraftMarkdown(): Promise<DraftMarkdown> {
+	// eslint-disable-next-line no-restricted-syntax
+	draftMarkdown ??= draftMarkdownUrl ? import(/* webpackIgnore: true */ draftMarkdownUrl) : Promise.reject(new Error('no renderer'));
+	return draftMarkdown;
+}
+
+const calloutLabels: Record<string, string> = {
+	note: strings.calloutNote, tip: strings.calloutTip, important: strings.calloutImportant, warning: strings.calloutWarning, caution: strings.calloutCaution,
+};
+
+const previewTabs = createPreviewTabs({
+	input: prompt,
+	inputWrap: prompt,
+	preview: document.getElementById('preview')!,
+	writeTab: document.getElementById('tab-write') as HTMLButtonElement,
+	previewTab: document.getElementById('tab-preview') as HTMLButtonElement,
+	form,
+	strings,
+	render: text => loadDraftMarkdown().then(module => module.renderDraft(text, kind => calloutLabels[kind] ?? kind)),
+});
+// Warm the renderer once Home has settled, so the first Preview is instant.
+setTimeout(() => (window.requestIdleCallback ?? setTimeout)(() => void loadDraftMarkdown().catch(() => undefined)), 2000);
+
 prompt.addEventListener('keydown', e => {
+	if (!e.isComposing && isPreviewShortcut(e)) {
+		e.preventDefault();
+		previewTabs.toggle();
+		return;
+	}
 	if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
 		e.preventDefault();
 		submit();
@@ -308,6 +346,7 @@ function reportTyping(): void {
 }
 
 prompt.addEventListener('input', () => {
+	previewTabs.update();
 	save();
 	updateControls();
 	reportTyping();
@@ -323,6 +362,8 @@ window.addEventListener('message', (event: MessageEvent<ToHome>) => {
 		render(message.view);
 	} else if (message.type === 'focus') {
 		prompt.focus();
+	} else if (message.type === 'spellCheck') {
+		prompt.spellcheck = message.on;
 	} else if (message.type === 'attached') {
 		attachments = [...attachments, ...message.attachments.filter(a => !attachments.some(b => sameAttachment(a, b)))];
 		renderAttachments();

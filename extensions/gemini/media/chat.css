@@ -38,6 +38,9 @@
 	--gemini-radius-large: 12px;
 	/* Soft: the theme's own colours, named as the mockups name them. */
 	--gemini-surface: var(--vscode-editor-background);
+	/* The approved mockups' cards and composer: a step above the page. */
+	--gemini-card: var(--vscode-editorWidget-background, var(--gemini-surface));
+	--gemini-composer: var(--vscode-input-background, var(--gemini-surface));
 	--gemini-raised: var(--vscode-editorWidget-background, var(--vscode-input-background));
 	--gemini-popover: var(--vscode-quickInput-background, var(--gemini-raised));
 	--gemini-border: var(--vscode-widget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.35)));
@@ -223,7 +226,7 @@ button {
 	margin-top: 22px;
 	border: 1px solid var(--gemini-border);
 	border-radius: var(--gemini-radius);
-	background: var(--gemini-surface);
+	background: var(--gemini-card);
 	text-align: left;
 	overflow: hidden;
 }
@@ -867,10 +870,11 @@ body.vscode-high-contrast-light {
 	gap: 4px;
 	flex: none;
 	max-width: 180px;
-	padding: 0 7px;
+	padding: 0 9px;
 	height: 20px;
-	border: 1px solid var(--gemini-border);
-	border-radius: var(--gemini-radius-small);
+	/* Pills, as in the approved mockups. */
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: 999px;
 	background: var(--gemini-surface);
 	font-size: 11.5px;
 	color: var(--vscode-foreground);
@@ -985,7 +989,7 @@ body.vscode-high-contrast-light {
 	padding: 10px 12px;
 	border-radius: 9px;
 	border: 1px solid var(--gemini-border-strong);
-	background: var(--gemini-surface);
+	background: var(--gemini-card);
 }
 
 .permission-title .codicon-question {
@@ -1278,7 +1282,7 @@ body.vscode-high-contrast-light {
 	padding: 10px 10px 8px 12px;
 	border-radius: var(--gemini-radius-large);
 	border: 1px solid var(--gemini-border-strong);
-	background: var(--gemini-surface);
+	background: var(--gemini-composer);
 	cursor: text;
 }
 
@@ -1286,7 +1290,7 @@ body.vscode-high-contrast-light {
 .composer:focus-within {
 	border-color: transparent;
 	background:
-		linear-gradient(var(--gemini-surface), var(--gemini-surface)) padding-box,
+		linear-gradient(var(--gemini-composer), var(--gemini-composer)) padding-box,
 		var(--gemini-gradient) border-box;
 }
 

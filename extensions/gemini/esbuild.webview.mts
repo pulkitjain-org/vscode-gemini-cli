@@ -17,6 +17,7 @@ run({
 		'settings': path.join(srcDir, 'settings.ts'),
 		'highlight': path.join(srcDir, 'highlight.ts'),
 		'katex': path.join(srcDir, 'katex.ts'),
+		'draftMarkdown': path.join(srcDir, 'draftMarkdown.ts'),
 		'katex-style': path.join(import.meta.dirname, 'node_modules', 'katex', 'dist', 'katex.min.css'),
 		'codicon': path.join(import.meta.dirname, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css'),
 	},

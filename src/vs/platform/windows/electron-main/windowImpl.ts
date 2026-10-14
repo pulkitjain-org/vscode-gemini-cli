@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import electron, { BrowserWindowConstructorOptions, Display } from 'electron';
+import { registerGeminiSpellCheckMenu } from './geminiSpellCheck.js'; // GEMINI-FORK
 import { DeferredPromise, RunOnceScheduler, timeout, Delayer } from '../../../base/common/async.js';
 import { CancellationToken } from '../../../base/common/cancellation.js';
 import { toErrorMessage } from '../../../base/common/errorMessage.js';
@@ -891,6 +892,9 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
 		// with the DOM way.
 		// (https://github.com/microsoft/vscode/issues/122736)
 		this._register(Event.fromNodeEventEmitter<electron.Event>(this._win.webContents, 'will-prevent-unload')(event => event.preventDefault()));
+
+		// GEMINI-FORK: spelling suggestions in the chat composers
+		this._register(registerGeminiSpellCheckMenu(this._win.webContents));
 
 		// Remember that we loaded
 		this._register(Event.fromNodeEventEmitter(this._win.webContents, 'did-finish-load')(() => {

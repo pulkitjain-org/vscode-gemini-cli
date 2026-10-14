@@ -6,6 +6,7 @@
 import * as path from 'node:path';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
+import { onDidChangeSpellCheck, spellCheckOn } from './spellCheck';
 import { Attachment, attachmentLabel } from '../acp/attachments';
 import { isValidAttachment } from '../acp/attachmentValidation';
 import { chatToMarkdown } from '../acp/chatMarkdown';
@@ -226,6 +227,7 @@ export class ChatController implements vscode.Disposable {
 	) {
 		this.checkpoints = new Checkpoints(service.client.cwd);
 		this.disposables.push(
+			onDidChangeSpellCheck(on => this.post({ type: 'spellCheck', on })),
 			this.onDidChangeActivityEmitter,
 			this.onDidEditFilesEmitter,
 			this.onDidSendPromptEmitter,
@@ -1548,7 +1550,7 @@ export class ChatController implements vscode.Disposable {
 	<link href="${style}" rel="stylesheet">
 	<title>Gemini</title>
 </head>
-<body>
+<body spellcheck="false">
 	<svg class="defs" aria-hidden="true"><linearGradient id="gemini-spark-gradient" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f8df7"/><stop offset=".55" stop-color="#9b72cb"/><stop offset="1" stop-color="#d96570"/></linearGradient></svg>
 	<main id="transcript" class="transcript"></main>
 	<nav id="outline" class="prompt-outline" hidden></nav>
@@ -1567,7 +1569,7 @@ export class ChatController implements vscode.Disposable {
 			<div class="composer-tabs" role="tablist"><button type="button" id="tab-write" class="composer-tab" role="tab" aria-selected="true" aria-controls="input"></button><button type="button" id="tab-preview" class="composer-tab" role="tab" aria-selected="false" aria-controls="preview"></button></div>
 			<div id="preview" class="composer-preview markdown" role="tabpanel" tabindex="0" hidden></div>
 			<div class="input-wrap">
-				<textarea id="input" rows="1"></textarea>
+				<textarea id="input" rows="1" spellcheck="${spellCheckOn()}"></textarea>
 				<div class="input-mirror" aria-hidden="true"></div>
 				<span id="enhance-float" class="enhance-float" hidden><button type="button" id="revert" class="enhance-chip" hidden><i class="codicon codicon-discard" aria-hidden="true"></i><span></span></button><button type="button" id="enhance" class="enhance-chip"><svg class="enhance-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 3.5C6.88 7 9 9.12 12.5 9.5C9 9.88 6.88 12 6.5 15.5C6.12 12 4 9.88 0.5 9.5C4 9.12 6.12 7 6.5 3.5Z"/><path d="M12.75 0.5C12.92 2.1 13.9 3.08 15.5 3.25C13.9 3.42 12.92 4.4 12.75 6C12.58 4.4 11.6 3.42 10 3.25C11.6 3.08 12.58 2.1 12.75 0.5Z"/></svg><i class="codicon codicon-loading codicon-modifier-spin" aria-hidden="true"></i><span></span><span class="enhance-key"></span></button></span>
 			</div>
