@@ -148,14 +148,16 @@ export class AgentService implements vscode.Disposable {
 	}
 
 	/**
-	 * Adds `folder` to the CLI's trusted folders and restarts the agent once no
+	 * Adds `folders` to the CLI's trusted folders and restarts the agent once no
 	 * prompt runs, since the CLI reads that list once per process. Returns
 	 * whether the restart has to wait. Throws when the list cannot be updated.
 	 */
-	trustFolder(folder: string): boolean {
+	trustFolder(...folders: string[]): boolean {
 		const file = trustedFoldersPath(process.env);
-		trustFolder(file, folder);
-		this.log.info(`Trusted ${folder} in ${file}`);
+		for (const folder of folders) {
+			trustFolder(file, folder);
+			this.log.info(`Trusted ${folder} in ${file}`);
+		}
 		const waits = this.runtime.busy;
 		this.restartWhenIdle('restarting so the agent trusts the folder');
 		return waits;

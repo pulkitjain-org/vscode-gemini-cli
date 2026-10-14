@@ -12,6 +12,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { stripJsonComments } from './projectSettings';
 
 /** Where the CLI keeps its trusted folders; mirrors `Storage.getTrustedFoldersPath` in gemini-cli. */
 export function trustedFoldersPath(env: NodeJS.ProcessEnv, homedir: string = os.homedir()): string {
@@ -50,4 +51,61 @@ export function trustFolder(file: string, folder: string): void {
 		fs.rmSync(temp, { force: true });
 		throw err;
 	}
+}
+
+/**
+ * Whether the CLI trusts `folder` by `file`, decided as gemini-cli's
+ * `isPathTrusted` does: the longest rule that covers the folder wins, where
+ * TRUST_FOLDER covers its folder and TRUST_PARENT the folder's parent.
+ * Undefined when no rule covers it, which the CLI treats as untrusted.
+ */
+export function isFolderTrusted(file: string, folder: string): boolean | undefined {
+	let config: Record<string, unknown>;
+	try {
+		const parsed: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
+		if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+			return undefined;
+		}
+		config = parsed as Record<string, unknown>;
+	} catch {
+		return undefined;
+	}
+	const location = comparable(folder);
+	let longest = -1;
+	let level: unknown;
+	for (const [rule, value] of Object.entries(config)) {
+		const covered = comparable(value === 'TRUST_PARENT' ? path.dirname(rule) : rule);
+		if ((location === covered || location.startsWith(covered.endsWith(path.sep) ? covered : covered + path.sep)) && rule.length > longest) {
+			longest = rule.length;
+			level = value;
+		}
+	}
+	return level === 'DO_NOT_TRUST' ? false : level === 'TRUST_FOLDER' || level === 'TRUST_PARENT' ? true : undefined;
+}
+
+/**
+ * Whether the CLI checks folder trust at all: not when the environment
+ * decides it for every folder, or when the user's settings turn it off.
+ */
+export function folderTrustApplies(env: NodeJS.ProcessEnv, homedir: string = os.homedir()): boolean {
+	if (env.GEMINI_CLI_TRUST_WORKSPACE === 'true') {
+		return false;
+	}
+	try {
+		const settings = JSON.parse(stripJsonComments(fs.readFileSync(path.join(env.GEMINI_CLI_HOME || homedir, '.gemini', 'settings.json'), 'utf8'))) as { security?: { folderTrust?: { enabled?: unknown } } };
+		return settings.security?.folderTrust?.enabled !== false;
+	} catch {
+		return true;
+	}
+}
+
+/** `folder` resolved through links, in the case the file system compares in. */
+function comparable(folder: string): string {
+	let resolved = path.resolve(folder);
+	try {
+		resolved = fs.realpathSync.native(resolved);
+	} catch {
+		// Not there yet, such as a worktrees folder no thread has made: compare as written.
+	}
+	return process.platform === 'win32' || process.platform === 'darwin' ? resolved.toLowerCase() : resolved;
 }

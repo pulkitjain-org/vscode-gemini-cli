@@ -19,7 +19,8 @@ import { memoizeAsync } from '../acp/memoize';
 import { reviewRequest, workingChanges } from '../acp/reviewPrompt';
 import type { SessionChoice } from '../acp/sessionSettings';
 import { TranscriptStore } from '../acp/transcriptStore';
-import { AgentWorktree, branchExists, commitAll, createWorktree, currentBranch, folderInRepository, mergeBranch, removeWorktree, repositoryRoot, runWorktreeSetup, worktreeSetupCommand, worktreeStatus } from '../acp/worktrees';
+import { folderTrustApplies, isFolderTrusted, trustedFoldersPath } from '../acp/trustedFolders';
+import { AgentWorktree, branchExists, commitAll, createWorktree, currentBranch, folderInRepository, mergeBranch, removeWorktree, repositoryRoot, runWorktreeSetup, worktreeSetupCommand, worktreesHome, worktreeStatus } from '../acp/worktrees';
 import { supportedMcpServers } from '../acp/agentClient';
 import { AgentNotifier } from './agentNotifier';
 import { AgentService } from './agentService';
@@ -1021,8 +1022,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				return;
 			}
 			if (record.project && projectsEnabled()) {
-				// Its session gets the project's tools, so their server must listen first.
+				// Its session gets the project's tools, so their server must listen first, in a folder the CLI trusts.
 				await this.projects.ready();
+				await this.ensureProjectTrust(workspace.folder);
 			}
 			live = this.live.get(id) ?? this.startSaved(record, folder);
 		}
@@ -1177,7 +1179,10 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			void vscode.window.showErrorMessage(vscode.l10n.t("{0} is not in a Git repository. A project's threads each work on their own branch, so a project needs one.", path.basename(folder)));
 			return;
 		}
-		// No questions first: the project chat opens at once, named after its repository; Rename changes it.
+		if (!await this.ensureProjectTrust(folder)) {
+			return;
+		}
+		// No other questions: the project chat opens at once, named after its repository; Rename changes it.
 		const workspace = this.model.addWorkspace(folder);
 		const taken = new Set(this.model.snapshot().agents.filter(a => a.project?.role === 'coordinator').map(a => a.title));
 		const base = path.basename(repository);
@@ -1188,6 +1193,59 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const agent = this.model.addAgent(workspace.id, title, undefined, undefined, { role: 'coordinator' });
 		this.model.rename(agent.id, title);
 		await this.open(agent.id);
+	}
+
+	/**
+	 * A project works through its own MCP server, and the Gemini CLI loads MCP
+	 * servers only in folders it trusts, so a project needs its repository and
+	 * its threads' worktrees trusted. Asks when either isn't, and once trusted,
+	 * waits for the agent's restart (unless a turn holds it up) so the next
+	 * session has the tools. False when the user declines.
+	 */
+	private async ensureProjectTrust(folder: string): Promise<boolean> {
+		const repository = await repositoryRoot(folder) ?? folder;
+		const folders = [repository, worktreesHome(repository)];
+		const file = trustedFoldersPath(process.env);
+		if (!folderTrustApplies(process.env) || folders.every(each => isFolderTrusted(file, each))) {
+			return true;
+		}
+		const trust = vscode.l10n.t("Trust Folder");
+		const choice = await vscode.window.showWarningMessage(
+			vscode.l10n.t("Trust {0} for this project?", path.basename(repository)),
+			{
+				modal: true,
+				detail: vscode.l10n.t("A project's coordinator starts threads with GeminiCode's project tools, which the Gemini CLI loads only in trusted folders. Its threads' worktrees, in {0}, are trusted too. Trusting also lets the Gemini CLI load the repository's own Gemini settings and MCP servers, which can run programs. The Gemini CLI remembers the choice, including in the terminal.", tildify(folders[1])),
+			},
+			trust);
+		if (choice !== trust) {
+			return false;
+		}
+		const runtime = this.service.runtime;
+		let waits: boolean;
+		try {
+			waits = this.service.trustFolder(...folders);
+		} catch (err) {
+			void vscode.window.showErrorMessage(vscode.l10n.t("Could not trust {0}: {1}", path.basename(repository), errorMessage(err)));
+			return false;
+		}
+		if (waits) {
+			void vscode.window.showInformationMessage(vscode.l10n.t("Folder trusted. The project's tools arrive when the agent restarts, once no agent is working."));
+			return true;
+		}
+		await new Promise<void>(resolve => {
+			const done = () => {
+				clearTimeout(timer);
+				listener.dispose();
+				resolve();
+			};
+			const timer = setTimeout(done, 30_000);
+			const listener = runtime.onDidChangeState(state => {
+				if (state.kind === 'ready' || state.kind === 'error') {
+					done();
+				}
+			});
+		});
+		return true;
 	}
 
 	/** Opens the agent's changes in the multi-diff editor, starting it to read them if needed. */
