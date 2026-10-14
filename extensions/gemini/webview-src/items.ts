@@ -10,7 +10,7 @@
 import MarkdownIt from 'markdown-it';
 import { basename } from '../src/acp/attachments';
 import type { PromptAttachmentLabel, TranscriptItem } from '../src/acp/chatTranscript';
-import type { ViewSession } from '../src/host/chatProtocol';
+import type { ThreadAction, ViewSession } from '../src/host/chatProtocol';
 import { attachmentIcon, codeLanguage, format, formatDuration, formatSentAt, permissionDefaults, planIcon, replyBefore, thoughtSeconds, toolKindIcon, type ItemOf } from './chatLogic';
 import { highlightCode } from './codeHighlight';
 import { renderMath } from './math';
@@ -52,7 +52,49 @@ export function render(item: TranscriptItem, toggleToolCall: ToggleToolCall): HT
 			return renderNotice(item.text, item.severity);
 		case 'turnEnd':
 			return renderTurnEnd(item);
+		case 'thread':
+			return renderThreadCard(item);
 	}
+}
+
+/** A project's thread: its state, what it is doing, its branch and changes, and what can be done with it. */
+function renderThreadCard(item: ItemOf<'thread'>): HTMLElement {
+	const project = strings.project;
+	const card = el('div', `thread-card state-${item.state}${item.removed ? ' removed' : ''}`);
+	const send = (action: ThreadAction) => vscode.postMessage({ type: 'threadAction', thread: item.thread, action });
+	const title = button('thread-title', item.title, () => send('open'));
+	title.prepend(el('span', 'thread-dot'));
+	card.append(title);
+	const state = project?.states[item.state] ?? item.state;
+	const line = item.removed ? project?.undone : item.merged ? project?.merged : item.detail ? `${state} \u00b7 ${item.detail}` : state;
+	card.append(el('div', 'thread-line', line ?? state));
+	const meta = [
+		item.branch,
+		item.changes?.files ? `+${item.changes.added} \u2212${item.changes.removed}` : undefined,
+		item.track && project ? format(project.track, item.track) : undefined,
+		formatDuration(Date.now() - item.startedAt),
+	].filter(Boolean).join(' \u00b7 ');
+	card.append(el('div', 'thread-meta', meta));
+	if (item.removed || !project) {
+		return card;
+	}
+	const actions: [ThreadAction, boolean][] = item.state === 'waiting'
+		? [['open', true]]
+		: item.state === 'planned'
+			? [['approve', true], ['open', false]]
+			: item.state === 'error'
+				? [['retry', true], ['open', false]]
+				: item.state === 'done' && !item.merged
+					? [['merge', !!item.changes?.files], ['review', false], ['undo', false]]
+					: item.state === 'done'
+						? [['open', false]]
+						: [['open', false], ['stop', false]];
+	const row = el('div', 'permission-actions');
+	for (const [action, primary] of actions) {
+		row.append(button(primary ? 'primary' : 'secondary', action === 'open' && item.state === 'waiting' ? project.openToAnswer : project.actions[action], () => send(action)));
+	}
+	card.append(row);
+	return card;
 }
 
 function renderTurnEnd(item: ItemOf<'turnEnd'>): HTMLElement {
@@ -91,9 +133,12 @@ function sentAt(at: number): HTMLElement {
 }
 
 /** The user's message, with its time and Copy under it, shown on hover. */
-function renderUserMessage(item: { readonly text: string; readonly attachments?: readonly PromptAttachmentLabel[]; readonly at?: number }): HTMLElement {
-	const turn = el('div', 'user-turn');
+function renderUserMessage(item: { readonly text: string; readonly attachments?: readonly PromptAttachmentLabel[]; readonly at?: number; readonly from?: 'coordinator' }): HTMLElement {
+	const turn = el('div', `user-turn${item.from ? ' from-coordinator' : ''}`);
 	const node = el('div', 'message user');
+	if (item.from) {
+		node.append(el('span', 'from-badge', strings.fromCoordinator));
+	}
 	turn.append(node);
 	if (item.text) {
 		const text = el('div', 'user-text markdown');

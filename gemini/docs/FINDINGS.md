@@ -162,4 +162,11 @@ Measured on 14 Oct 2026 with gemini-cli 0.63.0 on a 4-core Linux machine, with `
 
 That is at most 7 ms extra per chunk at p95, against a budget of 50 ms, so one CLI process holds a project and threads are not spread over more processes. Streaming text is most of a thread's work in the process; tool calls run as child processes or file reads, which this does not measure.
 
-How well a Flash model keeps to the coordinator's role needs a real account: `npm run spike-coordinator -- --real` sends five scripted asks to a coordinator on a named Flash model, in a temp git repo, and prints a go/no-go. The CLI titles an MCP tool's permission request by the tool and its arguments only, without the server's name; only MCP calls offer "Allow all server tools", which together with the tool name tells the project's tools apart.
+How well a Flash model keeps to the coordinator's role needs a real account: `npm run spike-coordinator -- --real` sends five scripted asks to a coordinator on a named Flash model, in a temp git repo, and prints a go/no-go. Pulkit ran it on 14 Oct 2026 with `gemini-3.8-flash`:
+
+- It held its role: no edits or commands of its own, and all five asks were handled as expected (one thread, a status answer, two threads, a relay to the running thread, and a thread for a question that needed the code read).
+- Each thread started within the coordinator's first turn, 26 s and 10 s after the ask (the first included the session's start). The median coordinator turn took 9.4 s, which is the model's time.
+- Every thread called `report`; 5 of its 10 turns answered those reports.
+- Each turn read a median of 28,807 input tokens for 58 output tokens, about 267,000 in all. Most of that is the CLI's own system prompt and tool list, which every turn sends again, not the wake. That makes the coordinator cheap per turn in time but not in quota.
+
+Verdict: go. Projects ship as a preview behind `gemini.projects.enabled`. The CLI titles an MCP tool's permission request by the tool and its arguments only, without the server's name; only MCP calls offer "Allow all server tools", which together with the tool name tells the project's tools apart.

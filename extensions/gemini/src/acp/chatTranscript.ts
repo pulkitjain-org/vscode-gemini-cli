@@ -40,6 +40,8 @@ export type TranscriptItem =
 		readonly attachments?: readonly PromptAttachmentLabel[];
 		/** When the user sent it, in ms since the epoch; unset for messages replayed from a saved session. */
 		readonly at?: number;
+		/** A thread's brief or a note relayed to it, sent by its project's coordinator rather than typed here. */
+		readonly from?: 'coordinator';
 	}
 	| {
 		readonly id: string; readonly kind: 'toolCall'; readonly title: string; readonly toolKind: string | undefined;
@@ -54,6 +56,8 @@ export type TranscriptItem =
 		/** Unset while the agent waits for an answer. */
 		readonly answer?: { readonly kind: 'selected'; readonly name: string } | { readonly kind: 'cancelled' };
 	}
+	/** A project's thread, as a card in the project chat that updates in place. */
+	| ThreadCard
 	/** An update kind this version does not know (design rule 4 in gemini/docs/ARCHITECTURE.md). */
 	| { readonly id: string; readonly kind: 'other'; readonly type: string }
 	| { readonly id: string; readonly kind: 'notice'; readonly text: string; readonly severity: 'info' | 'error' }
@@ -87,6 +91,31 @@ const SESSION_STATE_UPDATES: ReadonlySet<string> = new Set([
 	'usage_update',
 ]);
 
+export interface ThreadCard {
+	readonly id: string;
+	readonly kind: 'thread';
+	/** The thread's agent id. */
+	readonly thread: string;
+	readonly title: string;
+	readonly state: 'starting' | 'working' | 'waiting' | 'planned' | 'done' | 'error';
+	/** What it is doing, waiting on, or last said; one line. */
+	readonly detail?: string;
+	readonly branch?: string;
+	readonly changes?: { readonly files: number; readonly added: number; readonly removed: number };
+	readonly startedAt: number;
+	/** The Conductor track its brief came from. */
+	readonly track?: string;
+	/** Merged back into the project's branch. */
+	readonly merged?: boolean;
+	/** Undone: its branch and folder are gone. */
+	readonly removed?: boolean;
+}
+
+/** A thread card's item id. */
+export function threadCardId(thread: string): string {
+	return `thread-${thread}`;
+}
+
 type TextItem = Extract<TranscriptItem, { kind: 'user' | 'agent' | 'thought' }>;
 export type TurnEndItem = Extract<TranscriptItem, { kind: 'turnEnd' }>;
 
@@ -104,6 +133,8 @@ export class ChatTranscript {
 	/** Index of the first item of the current turn; tool calls and the plan are looked up from here. */
 	private turnStart = 0;
 	private lastMessageId: string | null | undefined;
+	/** The next text starts a new item even when it continues the last message. */
+	private breakText = false;
 
 	constructor(private readonly now: () => number = Date.now) { }
 
@@ -111,11 +142,11 @@ export class ChatTranscript {
 		return this._items;
 	}
 
-	addPrompt(text: string, attachments: readonly Attachment[] = []): void {
+	addPrompt(text: string, attachments: readonly Attachment[] = [], from?: 'coordinator'): void {
 		this.turnStart = this._items.length;
 		this.lastMessageId = undefined;
 		this.push({
-			id: this.newId(), kind: 'user', text, at: this.now(),
+			id: this.newId(), kind: 'user', text, at: this.now(), ...(from ? { from } : {}),
 			...(attachments.length ? {
 				attachments: attachments.map(a => ({
 					kind: a.kind,
@@ -200,6 +231,24 @@ export class ChatTranscript {
 		}
 	}
 
+	/** Adds a thread's card, or updates it in place. */
+	showThread(card: Omit<ThreadCard, 'id' | 'kind'>): void {
+		const id = threadCardId(card.thread);
+		const current = this._items.find(item => item.id === id);
+		const next: ThreadCard = { ...(current?.kind === 'thread' ? current : {}), ...card, id, kind: 'thread' };
+		if (current?.kind === 'thread' && JSON.stringify(current) === JSON.stringify(next)) {
+			return;
+		}
+		this.upsert(next);
+	}
+
+	/** A message from a project's coordinator, as its own paragraph of the reply. */
+	addCoordinatorPost(text: string): void {
+		this.push({ id: this.newId(), kind: 'agent', text });
+		// Whatever it says next starts a new message.
+		this.breakText = true;
+	}
+
 	addNotice(text: string, severity: 'info' | 'error' = 'info'): void {
 		this.push({ id: this.newId(), kind: 'notice', text, severity });
 	}
@@ -228,11 +277,12 @@ export class ChatTranscript {
 	private appendText(role: TextItem['kind'], text: string, messageId: string | null | undefined): void {
 		const last = this._items.at(-1);
 		const sameMessage = !messageId || !this.lastMessageId || messageId === this.lastMessageId;
-		if (last && last.kind === role && sameMessage) {
+		if (last && last.kind === role && sameMessage && !this.breakText) {
 			this.upsert({ ...last, text: last.text + text });
 		} else {
 			this.push({ id: this.newId(), kind: role, text });
 		}
+		this.breakText = false;
 		if (messageId) {
 			this.lastMessageId = messageId;
 		}

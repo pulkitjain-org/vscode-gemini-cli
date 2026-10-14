@@ -21,6 +21,7 @@ function summary(items: readonly TranscriptItem[]): string[] {
 			case 'notice': return `notice:${item.severity}:${item.text}`;
 			case 'permission': return `permission:${item.title}:${item.answer ? (item.answer.kind === 'selected' ? item.answer.name : 'cancelled') : 'pending'}`;
 			case 'turnEnd': return 'turnEnd';
+			case 'thread': return `thread:${item.title}:${item.state}`;
 		}
 	});
 }

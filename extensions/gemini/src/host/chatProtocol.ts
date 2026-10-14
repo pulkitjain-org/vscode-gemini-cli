@@ -19,7 +19,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 17;
+export const chatProtocolVersion = 18;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -33,9 +33,30 @@ export interface ViewStatus {
 	readonly actions?: readonly { readonly label: string; readonly command: StatusCommand }[];
 }
 
+/** What a project chat's thread card buttons do. */
+export type ThreadAction = 'open' | 'stop' | 'merge' | 'review' | 'undo' | 'approve' | 'retry';
+
+/** The strings only a project's chat shows (Projects preview). */
+export interface ProjectChatStrings {
+	readonly placeholder: string;
+	/** The "+" menu's item to start a thread directly. */
+	readonly newThread: string;
+	readonly states: { readonly starting: string; readonly working: string; readonly waiting: string; readonly planned: string; readonly done: string; readonly error: string };
+	readonly actions: { readonly [action in ThreadAction]: string };
+	readonly openToAnswer: string;
+	readonly merged: string;
+	readonly undone: string;
+	/** `{0}` is a Conductor track's id. */
+	readonly track: string;
+}
+
 /** Localised strings the webview shows; it has no l10n of its own. Placeholders are `{0}`. */
 export interface ChatStrings {
 	readonly placeholder: string;
+	/** Set only in a project's chat. */
+	readonly project?: ProjectChatStrings;
+	/** The badge on a thread's brief and the notes its coordinator relays. */
+	readonly fromCoordinator: string;
 	readonly placeholderFollowUp: string;
 	readonly send: string;
 	readonly stop: string;
@@ -333,6 +354,10 @@ export type FromWebview =
 	/** Close the file Follow the agent opened last. */
 	| { readonly type: 'closeFollowed' }
 	| { readonly type: 'createBranchAndCommit' }
+	/** A project chat's thread card button. */
+	| { readonly type: 'threadAction'; readonly thread: string; readonly action: ThreadAction }
+	/** A project chat's "New thread": start one directly, without the coordinator. */
+	| { readonly type: 'newThread' }
 	/** Put back the files the turn ending with turnEnd item `itemId` changed, and those of later turns. */
 	| { readonly type: 'undoTurn'; readonly itemId: string }
 	/** Send the prompt of the turn ending with `itemId` again; only the latest turn offers it. */

@@ -34,7 +34,22 @@ export interface AgentRecord {
 	readonly changes?: ChangeTotals;
 	/** The agent's own branch and folder, when it works in a worktree instead of the workspace folder. */
 	readonly worktree?: AgentWorktree;
+	/** Its part in a project (Projects preview): the project's coordinator, or one of its threads. */
+	readonly project?: AgentProjectRole;
 }
+
+export type AgentProjectRole =
+	| { readonly role: 'coordinator' }
+	| {
+		readonly role: 'thread';
+		/** The coordinator agent's id. */
+		readonly coordinator: string;
+		/** Started by the coordinator, rather than by the user. */
+		readonly byCoordinator: boolean;
+		readonly planFirst?: boolean;
+		/** The Conductor track its brief came from. */
+		readonly track?: string;
+	};
 
 export interface AgentsSnapshot {
 	readonly workspaces: readonly WorkspaceRecord[];
@@ -117,7 +132,7 @@ export class AgentsModel {
 	}
 
 	/** `id` is one chosen ahead, such as the one a session was opened for before the agent existed; it must be unused. */
-	addAgent(workspaceId: string, title: string, worktree?: AgentWorktree, id: string = randomUUID()): AgentRecord {
+	addAgent(workspaceId: string, title: string, worktree?: AgentWorktree, id: string = randomUUID(), project?: AgentProjectRole): AgentRecord {
 		if (!this.workspace(workspaceId)) {
 			throw new Error(`Unknown workspace ${workspaceId}`);
 		}
@@ -125,7 +140,7 @@ export class AgentsModel {
 			throw new Error(`Agent ${id} already exists`);
 		}
 		const now = this.now();
-		const agent: AgentRecord = { id, workspaceId, title, createdAt: now, updatedAt: now, ...(worktree ? { worktree } : {}) };
+		const agent: AgentRecord = { id, workspaceId, title, createdAt: now, updatedAt: now, ...(worktree ? { worktree } : {}), ...(project ? { project } : {}) };
 		this._agents = [...this._agents, agent];
 		this.changed();
 		return agent;
@@ -165,6 +180,18 @@ export class AgentsModel {
 				return changes.files ? { ...rest, changes } : rest;
 			});
 		}
+	}
+
+	/** A project's threads, oldest first. */
+	threadsOf(coordinatorId: string): readonly AgentRecord[] {
+		return this._agents.filter(a => a.project?.role === 'thread' && a.project.coordinator === coordinatorId).sort((a, b) => a.createdAt - b.createdAt);
+	}
+
+	/** The project `agent` belongs to: its coordinator, when that still exists. */
+	coordinatorOf(agent: AgentRecord): AgentRecord | undefined {
+		const id = agent.project?.role === 'thread' ? agent.project.coordinator : agent.project?.role === 'coordinator' ? agent.id : undefined;
+		const coordinator = id === undefined ? undefined : this.agent(id);
+		return coordinator?.project?.role === 'coordinator' ? coordinator : undefined;
 	}
 
 	/** Where the agent runs: its worktree, else its workspace's folder. */
@@ -208,5 +235,6 @@ function isAgentRecord(value: unknown): value is AgentRecord {
 	const a = value as AgentRecord;
 	return typeof a?.id === 'string' && typeof a.workspaceId === 'string' && typeof a.title === 'string'
 		&& typeof a.createdAt === 'number' && typeof a.updatedAt === 'number'
-		&& (a.worktree === undefined || (typeof a.worktree.folder === 'string' && typeof a.worktree.cwd === 'string' && typeof a.worktree.branch === 'string' && typeof a.worktree.base === 'string'));
+		&& (a.worktree === undefined || (typeof a.worktree.folder === 'string' && typeof a.worktree.cwd === 'string' && typeof a.worktree.branch === 'string' && typeof a.worktree.base === 'string'))
+		&& (a.project === undefined || a.project.role === 'coordinator' || (a.project.role === 'thread' && typeof a.project.coordinator === 'string'));
 }

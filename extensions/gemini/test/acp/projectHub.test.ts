@@ -74,7 +74,7 @@ describe('ProjectHub', () => {
 		const { hub, prompts, started } = setup();
 		const id = await hub.startThread('Loader state', 'Show the loader');
 		expect(id).toBe('t1');
-		expect(started).toEqual([{ title: 'Loader state', brief: 'Show the loader', planFirst: false }]);
+		expect(started).toEqual([{ title: 'Loader state', brief: 'Show the loader', planFirst: false, byCoordinator: false }]);
 		expect(prompts).toHaveLength(0);
 		hub.post('What is running?');
 		await hub.idle();
@@ -86,8 +86,8 @@ describe('ProjectHub', () => {
 		const { hub, started, feed } = setup();
 		const result = await hub.call(coordinator, 'start_thread', { title: 'Mobile sizes', brief: 'Make the panel 85vh', planFirst: true });
 		expect(result).toEqual({ content: [{ type: 'text', text: 'Started thread t1.' }] });
-		expect(started[0]).toEqual({ title: 'Mobile sizes', brief: 'Make the panel 85vh', planFirst: true });
-		expect(hub.threadList[0]).toMatchObject({ id: 't1', state: 'planned', byCoordinator: true });
+		expect(started[0]).toEqual({ title: 'Mobile sizes', brief: 'Make the panel 85vh', planFirst: true, byCoordinator: true });
+		expect(hub.threadList[0]).toMatchObject({ id: 't1', state: 'starting', byCoordinator: true });
 		expect(feed.at(-1)).toMatchObject({ kind: 'thread', thread: 't1' });
 	});
 

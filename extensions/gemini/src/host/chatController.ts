@@ -10,7 +10,7 @@ import { onDidChangeSpellCheck, spellCheckOn } from './spellCheck';
 import { Attachment, attachmentLabel } from '../acp/attachments';
 import { isValidAttachment } from '../acp/attachmentValidation';
 import { chatToMarkdown } from '../acp/chatMarkdown';
-import { ChatTranscript, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
+import { ChatTranscript, ThreadCard, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
 import { Checkpoints } from '../acp/checkpoints';
 import { keepChatsForever, readCliPreferences } from '../acp/cliPreferences';
 import { geminiDir } from '../acp/directRequest';
@@ -34,7 +34,7 @@ import { readGitHead } from '../acp/gitHead';
 import { upgradeUrl } from '../acp/helpLinks';
 import { EnhanceCancelledError, enhanceHistory } from '../acp/promptEnhancer';
 import type { EnhancePromptInput } from '../acp/quickPrompts';
-import { ChatStrings, chatProtocolVersion, FromWebview, statusCommands, ToWebview } from './chatProtocol';
+import { ChatStrings, chatProtocolVersion, FromWebview, ProjectChatStrings, statusCommands, ThreadAction, ToWebview } from './chatProtocol';
 import { stopReasonNotice, toViewStatus } from './chatStatus';
 import { DiffPreview } from './diffPreview';
 import { relativeTime, tildify } from './displayText';
@@ -99,11 +99,23 @@ export interface ChatControllerOptions {
 	workspace?(): ChatWorkspace | undefined;
 	/** Today's quota, for the usage popover; unset shows it as off. */
 	usage?(): UsageMeter | undefined;
+	/** Set in a project's chat. */
+	readonly project?: ChatProject;
 	/** Offers to reopen the CLI's saved sessions for the folder (and /resume); unset in chats that do not. */
 	readonly savedSessions?: {
 		/** Sessions other chats have open, which this one must not take. */
 		inUse(): ReadonlySet<string>;
 	};
+}
+
+/** Makes a chat a project's chat (Projects preview): the coordinator's, fed through the project's hub. */
+export interface ChatProject {
+	/** What the user sends goes to the hub, which wakes the coordinator with it. */
+	post(text: string, attachments: readonly Attachment[]): void;
+	/** Tool calls the chat leaves out: the project's own tools, which show as posts and thread cards. */
+	hidesToolCall(title: string): boolean;
+	threadAction(thread: string, action: ThreadAction): void;
+	newThread(): void;
 }
 
 export interface ChatWorkspace {
@@ -209,6 +221,8 @@ export class ChatController implements vscode.Disposable {
 	/** The edits of each tool call that completed, once per tool call. */
 	readonly onDidEditFiles = this.onDidEditFilesEmitter.event;
 	private readonly completedToolCalls = new Set<string>();
+	/** A project chat's calls of the project's own tools, which it leaves out. */
+	private readonly hiddenToolCalls = new Set<string>();
 
 	private readonly onDidRestoreSessionEmitter = new vscode.EventEmitter<string>();
 	/** A saved session was reopened here; fires with its title. */
@@ -239,7 +253,7 @@ export class ChatController implements vscode.Disposable {
 					void this.revealForPermission(event.permission);
 				} else if (event.kind === 'allowed') {
 					this.transcript.addPermission(event.permission);
-					this.transcript.resolvePermission(event.permission.id, event.outcome, vscode.l10n.t("Allowed for this session"));
+					this.transcript.resolvePermission(event.permission.id, event.outcome, event.label ?? vscode.l10n.t("Allowed for this session"));
 				} else {
 					this.transcript.resolvePermission(event.id, event.outcome);
 				}
@@ -268,6 +282,12 @@ export class ChatController implements vscode.Disposable {
 			service.client.onDidReceiveEvent(event => {
 				// Only a turn's updates belong in the transcript.
 				if (this.busy) {
+					if (event.kind === 'toolCall' && this.options.project && (this.hiddenToolCalls.has(event.call.id) || this.options.project.hidesToolCall(event.call.title ?? ''))) {
+						// The project's own tools show as posts and thread cards instead.
+						this.hiddenToolCalls.add(event.call.id);
+						dropOldest(this.hiddenToolCalls);
+						return;
+					}
 					if (event.kind === 'toolCall') {
 						const diffs = diffsOf(event.call.content);
 						this.rememberDiffs(toolCallItemId(event.call.id), diffs);
@@ -393,10 +413,40 @@ export class ChatController implements vscode.Disposable {
 		this.webview = undefined;
 	}
 
-	/** Sends a prompt as if typed in the view. */
-	async send(text: string, attachments: readonly Attachment[] = []): Promise<void> {
+	/** Leaves Plan mode and carries out the plan, as the latest turn's Build button does; false when it offers none. */
+	async approvePlan(): Promise<boolean> {
+		if (!this.retryItemId || !this.buildModeAfterPlan()) {
+			return false;
+		}
+		await this.buildPlan(this.retryItemId);
+		return true;
+	}
+
+	/** A project chat's card for one of its threads, added or updated in place. */
+	showThread(card: Omit<ThreadCard, 'id' | 'kind'>): void {
+		this.transcript.showThread(card);
+	}
+
+	/** A message the project's coordinator posted. */
+	addCoordinatorPost(text: string): void {
+		this.transcript.addCoordinatorPost(text);
+	}
+
+	/** Sends a prompt as if typed in the view; `from` marks one its project's coordinator sent. */
+	async send(text: string, attachments: readonly Attachment[] = [], from?: 'coordinator'): Promise<void> {
 		attachments = attachments.filter(isValidAttachment);
-		if (this.busy || (!text.trim() && !attachments.length)) {
+		if (!text.trim() && !attachments.length) {
+			return;
+		}
+		const project = this.options.project;
+		if (project) {
+			// A project's chat: the message goes to the hub, which wakes the coordinator with it.
+			this.transcript.addPrompt(text, attachments);
+			this.onDidSendPromptEmitter.fire(text);
+			project.post(text, attachments);
+			return;
+		}
+		if (this.busy) {
 			return;
 		}
 		if (this.options.savedSessions && text.trim() === `/${resumeCommand().name}` && !attachments.length) {
@@ -409,9 +459,26 @@ export class ChatController implements vscode.Disposable {
 			this.transcript.updateTurnEnd(this.retryItemId, { retry: undefined, buildPlan: undefined });
 			this.retryItemId = undefined;
 		}
-		this.transcript.addPrompt(text, attachments);
+		this.transcript.addPrompt(text, attachments, from);
 		this.onDidSendPromptEmitter.fire(text);
 		this.lastPrompt = { text, attachments };
+		await this.runTurn(text, attachments, true);
+	}
+
+	/**
+	 * Sends `text` as a turn with no message of its own in the chat, such as a
+	 * project's wake for its coordinator; resolves when the turn ends.
+	 */
+	async sendUnseen(text: string): Promise<void> {
+		if (this.busy) {
+			throw new Error('A turn is already running.');
+		}
+		this.replaying = false;
+		this.service.open?.();
+		await this.runTurn(text, [], false);
+	}
+
+	private async runTurn(text: string, attachments: readonly Attachment[], expand: boolean): Promise<void> {
 		this.checkpoints.beginTurn();
 		this.setBusy(true);
 		const started = Date.now();
@@ -419,7 +486,7 @@ export class ChatController implements vscode.Disposable {
 		try {
 			await this.service.ensureReady();
 			// Built after the agent is ready, so it reflects what this agent accepts.
-			const content = buildPromptContent(await this.expandCommand(text), attachments, this.service.client.promptCapabilities);
+			const content = buildPromptContent(expand ? await this.expandCommand(text) : text, attachments, this.service.client.promptCapabilities);
 			if (!content.length) {
 				throw new Error(vscode.l10n.t("The agent cannot take images, so there was nothing to send."));
 			}
@@ -481,7 +548,7 @@ export class ChatController implements vscode.Disposable {
 			this.transcript.updateTurnEnd(old, { undo: undefined });
 		}
 		const files = this.checkpoints.fileCount(id);
-		this.transcript.updateTurnEnd(id, { retry: true, ...(files ? { files } : {}), ...(undoable ? { undo: 'available' } : {}), ...(this.buildModeAfterPlan() ? { buildPlan: true } : {}) });
+		this.transcript.updateTurnEnd(id, { retry: !this.options.project, ...(files ? { files } : {}), ...(undoable ? { undo: 'available' } : {}), ...(this.buildModeAfterPlan() ? { buildPlan: true } : {}) });
 		this.retryItemId = id;
 	}
 
@@ -970,6 +1037,12 @@ export class ChatController implements vscode.Disposable {
 			case 'undoTurn':
 				void this.undoTurn(message.itemId);
 				break;
+			case 'threadAction':
+				this.options.project?.threadAction(message.thread, message.action);
+				break;
+			case 'newThread':
+				this.options.project?.newThread();
+				break;
 			case 'retry':
 				if (this.lastPrompt && message.itemId === this.retryItemId) {
 					void this.send(this.lastPrompt.text, this.lastPrompt.attachments);
@@ -1389,6 +1462,8 @@ export class ChatController implements vscode.Disposable {
 		const katexStyle = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'katex-style.css'));
 		const strings: ChatStrings = {
 			placeholder: vscode.l10n.t("Ask Gemini anything about this workspace"),
+			fromCoordinator: vscode.l10n.t("From coordinator"),
+			...(this.options.project ? { project: projectStrings() } : {}),
 			placeholderFollowUp: vscode.l10n.t("Ask a follow-up"),
 			send: process.platform === 'darwin' ? vscode.l10n.t("Send (Return)") : vscode.l10n.t("Send (Enter)"),
 			stop: vscode.l10n.t("Stop (Esc)"),
@@ -1712,6 +1787,34 @@ function reopenFailureText(error: AgentErrorInfo): string {
 	}
 	const message = error.message.trim();
 	return /[.!?]$/.test(message) ? message : `${message}.`;
+}
+
+function projectStrings(): ProjectChatStrings {
+	return {
+		placeholder: vscode.l10n.t("Message the coordinator, or describe work to split into threads"),
+		newThread: vscode.l10n.t("New thread"),
+		states: {
+			starting: vscode.l10n.t("Starting"),
+			working: vscode.l10n.t("Working"),
+			waiting: vscode.l10n.t("Waiting on you"),
+			planned: vscode.l10n.t("Plan ready, waiting for your OK"),
+			done: vscode.l10n.t("Done"),
+			error: vscode.l10n.t("Error"),
+		},
+		actions: {
+			open: vscode.l10n.t("Open"),
+			stop: vscode.l10n.t("Stop"),
+			merge: vscode.l10n.t("Merge back"),
+			review: vscode.l10n.t("Review changes"),
+			undo: vscode.l10n.t("Undo thread"),
+			approve: vscode.l10n.t("Approve plan"),
+			retry: vscode.l10n.t("Retry"),
+		},
+		openToAnswer: vscode.l10n.t("Open to answer"),
+		merged: vscode.l10n.t("Merged back"),
+		undone: vscode.l10n.t("Undone: its branch and folder were removed"),
+		track: vscode.l10n.t("From Conductor track {0}"),
+	};
 }
 
 /** A turn's steps for the log, without their contents: "user, thought, tool(browser_snapshot: completed), agent". */

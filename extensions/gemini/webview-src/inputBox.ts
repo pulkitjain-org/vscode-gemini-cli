@@ -52,7 +52,7 @@ export function updateSendState(): void {
 }
 
 export function updatePlaceholder(): void {
-	input.placeholder = state.items.some(item => item.kind === 'user') ? strings.placeholderFollowUp : strings.placeholder;
+	input.placeholder = strings.project?.placeholder ?? (state.items.some(item => item.kind === 'user') ? strings.placeholderFollowUp : strings.placeholder);
 }
 
 // Dragging the composer's top edge resizes the input; a double-click resets it.

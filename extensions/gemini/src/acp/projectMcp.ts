@@ -73,6 +73,23 @@ export const threadTools: readonly McpTool[] = [
 	},
 ];
 
+/**
+ * Whether a permission request is for one of `tools` from this server. The
+ * CLI titles an MCP call by its tool and arguments, without the server's
+ * name; only MCP calls offer "Allow all server tools", which together with the
+ * tool's name tells the project's tools apart from the user's own servers.
+ */
+export function isProjectToolCall(request: { readonly toolCall: { readonly title?: string | null }; readonly options: readonly { readonly optionId: string }[] }, tools: readonly McpTool[]): boolean {
+	const title = request.toolCall.title ?? '';
+	return request.options.some(option => /server/i.test(option.optionId))
+		&& tools.some(tool => title === tool.name || title.startsWith(`${tool.name}(`));
+}
+
+/** Whether a tool call's title is a call of one of `tools`, as the CLI titles MCP calls. */
+export function isProjectToolTitle(title: string, tools: readonly McpTool[]): boolean {
+	return tools.some(tool => title === tool.name || title.startsWith(`${tool.name}(`));
+}
+
 interface JsonRpcRequest {
 	readonly jsonrpc?: string;
 	readonly id?: string | number | null;

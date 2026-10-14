@@ -21,8 +21,18 @@ export interface PendingPermission {
 export type PermissionEvent =
 	| { readonly kind: 'requested'; readonly permission: PendingPermission }
 	| { readonly kind: 'resolved'; readonly id: string; readonly outcome: acp.RequestPermissionOutcome }
-	/** Answered at once, with no card: covered by the session's approvals. */
-	| { readonly kind: 'allowed'; readonly permission: PendingPermission; readonly outcome: acp.RequestPermissionOutcome };
+	/** Answered at once, with no card: covered by the session's approvals, or by `answerAtOnce` with the `label` it gave. */
+	| { readonly kind: 'allowed'; readonly permission: PendingPermission; readonly outcome: acp.RequestPermissionOutcome; readonly label?: string };
+
+/**
+ * A request answered without asking: the option to pick, and either `quiet`
+ * (nothing shows, as for a project's own tools) or the label its row shows.
+ */
+export interface InstantAnswer {
+	readonly optionId: string;
+	readonly quiet?: boolean;
+	readonly label?: string;
+}
 
 export class PermissionBroker {
 
@@ -33,6 +43,8 @@ export class PermissionBroker {
 	private nextId = 0;
 	/** The shell programs allowed for this session. */
 	readonly approvals = new SessionApprovals();
+	/** Answers some requests at once, such as a project coordinator's (see projectMcp.ts). */
+	answerAtOnce: ((request: acp.RequestPermissionRequest) => InstantAnswer | undefined) | undefined;
 
 	get pendingPermissions(): readonly PendingPermission[] {
 		return [...this.pending.values()].map(entry => entry.permission);
@@ -40,6 +52,14 @@ export class PermissionBroker {
 
 	/** Waits for the user's answer. Never rejects. */
 	request(request: acp.RequestPermissionRequest): Promise<acp.RequestPermissionResponse> {
+		const instant = this.answerAtOnce?.(request);
+		if (instant && request.options.some(option => option.optionId === instant.optionId)) {
+			const outcome: acp.RequestPermissionOutcome = { outcome: 'selected', optionId: instant.optionId };
+			if (!instant.quiet) {
+				this.onDidChangeEmitter.fire({ kind: 'allowed', permission: { id: `permission-${this.nextId++}`, request }, outcome, label: instant.label });
+			}
+			return Promise.resolve({ outcome });
+		}
 		const command = shellCommand(request);
 		const once = request.options.find(option => option.kind === 'allow_once');
 		if (command !== undefined && once && this.approvals.covers(command).kind === 'covered') {

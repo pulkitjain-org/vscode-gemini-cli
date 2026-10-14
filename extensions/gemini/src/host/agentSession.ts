@@ -39,6 +39,8 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 		mcpServers?: () => readonly acp.McpServer[],
 		openLater = false,
 		spare?: Pick<AgentClientOptions, 'spareKey' | 'onDidOpenSession'>,
+		/** Overrides the model each session switches to, such as a project coordinator's Flash model. */
+		preferredModel?: AgentClientOptions['preferredModel'],
 	) {
 		this.client = new AgentClient(service.runtime, {
 			cwd: folder,
@@ -46,7 +48,7 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 			openLater,
 			mcpServers,
 			...spare,
-			preferredModel: sessionModel,
+			preferredModel: preferredModel ?? sessionModel,
 			modelList: sessionModelList,
 			isModeAllowed: modeId => isModeAllowed(getApprovalPolicy(), modeId),
 			requestPermission: params => this.permissions.request(params),

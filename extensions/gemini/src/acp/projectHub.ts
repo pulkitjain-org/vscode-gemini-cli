@@ -35,13 +35,22 @@ export interface ThreadInfo {
 	readonly byCoordinator: boolean;
 }
 
+export interface ThreadRequest {
+	readonly title: string;
+	readonly brief: string;
+	readonly planFirst: boolean;
+	readonly byCoordinator: boolean;
+	/** The Conductor track the brief came from. */
+	readonly track?: string;
+}
+
 /** Makes and drives threads: agents in the extension, or plain sessions in the spike. */
 export interface ThreadDriver {
 	/**
 	 * Creates a thread and queues `brief` as its first prompt. Resolves with
 	 * its id as soon as it exists, without waiting for its first reply.
 	 */
-	start(request: { readonly title: string; readonly brief: string; readonly planFirst: boolean }): Promise<string>;
+	start(request: ThreadRequest): Promise<string>;
 	/** Adds `text` to the thread's next turn. */
 	message(thread: string, text: string): void;
 	/** The thread's latest messages as text, newest last. */
@@ -89,6 +98,17 @@ export const coordinatorBrief = [
 	'Relay what the user adds about a running thread with message_thread. Approvals are answered by the user in the thread that asked, never by you.',
 	'Each wake arrives as <wake> with the threads, the project notes, open Conductor tracks if any, and the events. Act on the events in one turn: call the tools you need, then stop. Keep posts to a line or two.',
 ].join('\n');
+
+/**
+ * The coordinator's model: a named Flash model (never Auto, which adds a
+ * routing call before every prompt), the newest the agent offers, leaving out
+ * Flash-Lite and the image, live and speech models.
+ */
+export function coordinatorModel(ids: readonly string[]): string | undefined {
+	const flash = ids.filter(id => /flash/i.test(id) && !/lite|image|live|tts|audio/i.test(id));
+	const version = (id: string) => Number(/(\d+(?:\.\d+)?)/.exec(id)?.[1] ?? 0);
+	return [...flash].sort((a, b) => version(b) - version(a) || Number(/preview/i.test(a)) - Number(/preview/i.test(b)))[0];
+}
 
 /** A thread's first prompt: its brief, then how it reports back. */
 export function threadPrompt(brief: string, planFirst: boolean): string {
@@ -143,11 +163,25 @@ export class ProjectHub implements ProjectToolHost {
 
 	/** A thread the user starts directly: it begins at once, and the coordinator hears with the next wake. */
 	async startThread(title: string, brief: string, planFirst = false): Promise<string> {
-		const id = await this.driver.start({ title, brief, planFirst });
-		this.setThread({ id, title, state: planFirst ? 'planned' : 'starting', byCoordinator: false });
+		const id = await this.driver.start({ title, brief, planFirst, byCoordinator: false });
+		this.setThread({ id, title, state: 'starting', byCoordinator: false });
 		this.onDidPostEmitter.fire({ kind: 'thread', thread: id, at: Date.now() });
 		this.notify({ kind: 'started', thread: id });
 		return id;
+	}
+
+	/**
+	 * Whether the coordinator's session already has the role brief: true when
+	 * it was reopened with its history, false for a new session, which gets
+	 * the brief with its next wake.
+	 */
+	setBriefed(briefed: boolean): void {
+		this.briefed = briefed;
+	}
+
+	/** A thread from before a reload; tells nobody. */
+	restoreThread(thread: ThreadInfo): void {
+		this.threads.set(thread.id, thread);
 	}
 
 	/** The extension's view of a thread changed; never wakes the coordinator by itself. */
@@ -283,8 +317,8 @@ export class ProjectHub implements ProjectToolHost {
 					return error('A thread needs a title and a brief.');
 				}
 				const planFirst = args.planFirst === true;
-				const id = await this.driver.start({ title, brief, planFirst });
-				this.setThread({ id, title, state: planFirst ? 'planned' : 'starting', byCoordinator: true });
+				const id = await this.driver.start({ title, brief, planFirst, byCoordinator: true, ...(track ? { track } : {}) });
+				this.setThread({ id, title, state: 'starting', byCoordinator: true });
 				this.onDidPostEmitter.fire({ kind: 'thread', thread: id, at: Date.now() });
 				return ok(`Started thread ${id}.`);
 			}

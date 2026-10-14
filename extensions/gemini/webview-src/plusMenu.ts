@@ -78,6 +78,10 @@ function sections(): MenuSection[] {
 	}
 	const mode = state.settings.mode;
 	const result: MenuSection[] = [];
+	const project = strings.project;
+	if (project) {
+		result.push({ rows: [{ icon: 'git-branch', name: project.newThread, run: () => { closePlusMenu(); vscode.postMessage({ type: 'newThread' }); } }] });
+	}
 	if (mode) {
 		result.push({
 			heading: strings.mode,

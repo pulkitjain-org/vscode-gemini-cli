@@ -134,7 +134,7 @@ export function withoutLeakedReplay(items: readonly TranscriptItem[]): Transcrip
 	});
 }
 
-const kinds = new Set(['user', 'agent', 'thought', 'toolCall', 'plan', 'permission', 'other', 'notice', 'turnEnd']);
+const kinds = new Set(['user', 'agent', 'thought', 'toolCall', 'plan', 'permission', 'other', 'notice', 'turnEnd', 'thread']);
 
 function isTranscriptItem(value: unknown): value is TranscriptItem {
 	const item = value as TranscriptItem;
@@ -157,6 +157,8 @@ function isTranscriptItem(value: unknown): value is TranscriptItem {
 			return typeof item.type === 'string';
 		case 'turnEnd':
 			return typeof item.durationMs === 'number' && (item.usage === undefined || (Array.isArray(item.usage) && item.usage.every(isModelTokens)));
+		case 'thread':
+			return typeof item.thread === 'string' && typeof item.title === 'string' && typeof item.state === 'string' && typeof item.startedAt === 'number';
 	}
 }
 

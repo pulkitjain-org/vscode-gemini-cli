@@ -2485,3 +2485,90 @@ body.vscode-high-contrast-light #send {
 .markdown .math-display[data-formatted] {
 	white-space: normal;
 }
+
+/* ---- Projects (preview): thread cards in the project chat, and relayed messages in a thread ---- */
+
+.thread-card {
+	--gemini-thread: var(--vscode-charts-blue, #3794ff);
+	margin: 10px 0;
+	padding: 12px 14px;
+	border-radius: var(--gemini-radius);
+	border: 1px solid var(--gemini-border-strong);
+	background: var(--gemini-card);
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.thread-card.state-waiting,
+.thread-card.state-planned {
+	--gemini-thread: var(--gemini-warn);
+	border-color: color-mix(in srgb, var(--gemini-warn) 45%, var(--gemini-border-strong));
+}
+
+.thread-card.state-done {
+	--gemini-thread: var(--gemini-ok);
+}
+
+.thread-card.state-error {
+	--gemini-thread: var(--gemini-error);
+	border-color: color-mix(in srgb, var(--gemini-error) 45%, var(--gemini-border-strong));
+}
+
+.thread-card.state-starting {
+	--gemini-thread: var(--gemini-faint);
+}
+
+.thread-card.removed {
+	opacity: 0.6;
+}
+
+.thread-title {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 0;
+	border: none;
+	background: none;
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-weight: 600;
+	text-align: left;
+	cursor: pointer;
+}
+
+.thread-title:hover {
+	text-decoration: underline;
+}
+
+.thread-dot {
+	width: 8px;
+	height: 8px;
+	flex: none;
+	border-radius: 50%;
+	background: var(--gemini-thread);
+}
+
+.thread-line {
+	overflow-wrap: anywhere;
+}
+
+.thread-meta {
+	font-size: 0.9em;
+	color: var(--gemini-muted);
+}
+
+.thread-card .permission-actions {
+	margin-top: 6px;
+}
+
+.from-badge {
+	display: inline-block;
+	margin-bottom: 6px;
+	padding: 1px 9px;
+	border-radius: 999px;
+	font-size: 0.85em;
+	font-weight: 600;
+	color: var(--vscode-charts-purple, #c586c0);
+	background: color-mix(in srgb, var(--vscode-charts-purple, #c586c0) 18%, transparent);
+}
