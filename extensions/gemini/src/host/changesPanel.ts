@@ -169,7 +169,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 				await vscode.commands.executeCommand('gemini.review.undoFile', vscode.Uri.file(message.path).toString());
 				return;
 			case 'openFile':
-				await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(message.path), { viewColumn: source?.editorColumn(), preview: true });
+				await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(message.path), { viewColumn: await source?.editorColumn(), preview: true });
 				return;
 			case 'openAll':
 				await vscode.commands.executeCommand('gemini.changes.openAll');

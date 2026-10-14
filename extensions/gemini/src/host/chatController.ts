@@ -91,7 +91,7 @@ export interface ChatControllerOptions {
 	/** The branch pill and Create Branch & Commit; without it the composer shows neither. */
 	readonly git?: ChatGit;
 	/** Where files and diffs open; unset opens them in the active editor group. */
-	editorColumn?(): vscode.ViewColumn;
+	editorColumn?(): Promise<vscode.ViewColumn>;
 	/** Rewrites the composer's draft for Enhance prompt. */
 	readonly enhancer: ChatEnhancer;
 	/** The workspace pill; without it the composer shows none. */
@@ -887,7 +887,8 @@ export class ChatController implements vscode.Disposable {
 				break;
 			case 'showFollowed':
 				if (this.followed) {
-					void vscode.window.showTextDocument(this.followed, { preview: true, viewColumn: this.options.editorColumn?.() });
+					const followed = this.followed;
+					void Promise.resolve(this.options.editorColumn?.()).then(viewColumn => vscode.window.showTextDocument(followed, { preview: true, viewColumn }));
 				}
 				break;
 			case 'closeFollowed':
@@ -997,8 +998,8 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	/** Opens the conversation as a Markdown document, titled `title`. */
-	openAsMarkdown(title: string): Promise<void> {
-		return openChatAsMarkdown(title, this.transcript.items, this.options.editorColumn?.());
+	async openAsMarkdown(title: string): Promise<void> {
+		return openChatAsMarkdown(title, this.transcript.items, await this.options.editorColumn?.());
 	}
 
 	/** Turns Follow the agent on or off in this chat; new chats start the same way. */
@@ -1047,7 +1048,7 @@ export class ChatController implements vscode.Disposable {
 		const uri = vscode.Uri.file(file);
 		try {
 			await vscode.window.showTextDocument(uri, {
-				selection: new vscode.Range(position, position), preview: true, preserveFocus: true, viewColumn: this.options.editorColumn?.(),
+				selection: new vscode.Range(position, position), preview: true, preserveFocus: true, viewColumn: await this.options.editorColumn?.(),
 			});
 		} catch {
 			// A file that cannot be shown, such as a binary one, is skipped.
@@ -1268,7 +1269,7 @@ export class ChatController implements vscode.Disposable {
 	private async openDiff(itemId: string, filePath: string, preserveFocus: boolean): Promise<void> {
 		const diff = this.diffs.get(itemId)?.find(d => d.path === filePath);
 		if (diff) {
-			await this.diffPreview.show(diff, { preserveFocus, viewColumn: this.options.editorColumn?.() });
+			await this.diffPreview.show(diff, { preserveFocus, viewColumn: await this.options.editorColumn?.() });
 			return;
 		}
 		// Proposed edits are kept in memory only, so a restored or old chat has
@@ -1305,7 +1306,7 @@ export class ChatController implements vscode.Disposable {
 	private async openLocation(filePath: string, line: number | undefined): Promise<void> {
 		const position = new vscode.Position(Math.max((line ?? 1) - 1, 0), 0);
 		try {
-			await vscode.window.showTextDocument(vscode.Uri.file(filePath), { selection: new vscode.Range(position, position), preview: true, viewColumn: this.options.editorColumn?.() });
+			await vscode.window.showTextDocument(vscode.Uri.file(filePath), { selection: new vscode.Range(position, position), preview: true, viewColumn: await this.options.editorColumn?.() });
 		} catch (err) {
 			void vscode.window.showErrorMessage(errorMessage(err));
 		}

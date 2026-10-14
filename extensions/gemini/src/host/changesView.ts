@@ -6,7 +6,6 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AgentChanges, EditedFile, formatCounts } from '../acp/agentChanges';
-import { focusColumn } from './editorPlacement';
 
 const changesViewId = 'gemini.agentChanges';
 /** Read-only documents holding a file's text from before an agent's first edit. */
@@ -19,7 +18,9 @@ export interface ChangesSource {
 	readonly folder: string;
 	readonly changes: AgentChanges;
 	/** Where the agent's files and diffs open: beside its tab, so its chat stays in view. */
-	editorColumn(): vscode.ViewColumn;
+	editorColumn(): Promise<vscode.ViewColumn>;
+	/** Makes the agent's editor group the active one, for editors that open only there. */
+	focusEditors(): Promise<void>;
 	/** A turn is running. */
 	busy(): boolean;
 	/** The agent's own branch, when it works in a worktree. */
@@ -83,7 +84,7 @@ export class ChangesView implements vscode.TreeDataProvider<EditedFile>, vscode.
 			return [uri, file.created || file.original === undefined ? undefined : this.originalUri(source.agentId, file), uri];
 		});
 		// The multi-diff editor opens in the active group only.
-		await focusColumn(source.editorColumn());
+		await source.focusEditors();
 		await vscode.commands.executeCommand('vscode.changes', vscode.l10n.t("Changes by {0}", source.title), resources);
 	}
 
@@ -120,7 +121,7 @@ export class ChangesView implements vscode.TreeDataProvider<EditedFile>, vscode.
 	private async openFile(file: EditedFile): Promise<void> {
 		const uri = vscode.Uri.file(file.path);
 		const source = this.source;
-		const viewColumn = source?.editorColumn();
+		const viewColumn = await source?.editorColumn();
 		if (!source || file.original === undefined) {
 			await vscode.commands.executeCommand('vscode.open', uri, { viewColumn });
 			return;

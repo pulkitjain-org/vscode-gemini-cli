@@ -31,7 +31,7 @@ import { configSection } from './configuration';
 import { relativeTime, tildify } from './displayText';
 export { relativeTime } from './displayText';
 import { DiffPreview } from './diffPreview';
-import { besideAgent } from './editorPlacement';
+import { agentColumn, closeAgentFiles } from './editorPlacement';
 import { escapeMarkdown } from './markdown';
 import type { UsageMeter } from './usageMeter';
 import { WorkspaceFileIndex } from './workspaceFiles';
@@ -126,6 +126,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	private refreshTimer: ReturnType<typeof setInterval> | undefined;
 	/** Ticks working agents' clocks once a second while the pane shows one. */
 	private clockTimer: ReturnType<typeof setInterval> | undefined;
+	/** Set while the extension shuts down, when closing agent tabs must not close their files. */
+	private disposing = false;
 	/** The agent rows last handed to the tree, so a clock tick redraws just those rows. */
 	private readonly agentNodes = new Map<string, AgentNode>();
 	/** Output of worktree setup scripts, made the first time one runs. */
@@ -215,7 +217,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const record = this.model.agent(id);
 		const live = this.live.get(id);
 		const items = live ? live.controller.conversation : (await this.transcripts.load(id)).items;
-		await openChatAsMarkdown(record?.title ?? vscode.l10n.t("Agent"), items, live ? besideAgent(live.panel) : undefined);
+		await openChatAsMarkdown(record?.title ?? vscode.l10n.t("Agent"), items, live ? await agentColumn(id, live.panel) : undefined);
 	}
 
 	/** An agent's name, for questions about it. */
@@ -928,6 +930,10 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				// A reopened tab is a new editor without the description, so send the tabs again.
 				this.lastTabs = '';
 				live.controller.detach(webview);
+				// Closing the tab or removing the agent closes its files; quitting keeps them for next time.
+				if (!this.disposing) {
+					closeAgentFiles(id);
+				}
 			});
 		}
 		this.focus(id);
@@ -963,7 +969,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const workspace = record && this.model.workspace(record.workspaceId);
 		return live && workspace ? {
 			agentId: id, title: record.title, folder: record.worktree?.cwd ?? workspace.folder, changes: live.changes,
-			editorColumn: () => besideAgent(live.panel),
+			editorColumn: () => agentColumn(id, live.panel),
+			focusEditors: async () => { await agentColumn(id, live.panel, true); },
 			busy: () => live.activity.busy,
 			...(record.worktree ? { branch: record.worktree.branch, mergeBack: () => this.mergeBack(id) } : { commit: () => live.controller.commit() }),
 		} : undefined;
@@ -987,7 +994,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			changes,
 			controller: new ChatController(this.context.extensionUri, session, this.diffPreview, files, {
 				reveal: preserveFocus => this.reveal(record.id, preserveFocus),
-				editorColumn: () => besideAgent(this.live.get(record.id)?.panel),
+				editorColumn: () => agentColumn(record.id, this.live.get(record.id)?.panel),
 				enhancer: this.enhancer,
 				usage: () => this.usage,
 				savedSessions: {
@@ -1188,6 +1195,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	}
 
 	dispose(): void {
+		this.disposing = true;
 		for (const id of [...this.live.keys()]) {
 			this.stop(id, true);
 		}

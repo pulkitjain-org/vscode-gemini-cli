@@ -4,9 +4,10 @@
  *--------------------------------------------------------------------------------------------*/
 
 // GEMINI-FORK: the editor tabs of Agents mode, drawn in the title bar as one
-// capsule, as in the Liquid Glass design. They mirror the active editor group
-// of the window they are in (the group's own tab row is hidden in Agents mode,
-// see geminiModes.ts) and redraw only when that group changes: an editor opens,
+// capsule, as in the Liquid Glass design. They mirror the editor group holding
+// the agents (else the active group) of the window they are in; that group's own
+// tab row is hidden in Agents mode (geminiTabRows.ts), while the groups beside
+// it keep theirs. They redraw only when that group changes: an editor opens,
 // closes, moves, becomes active, is renamed or becomes dirty. An agent's tab
 // shows its state through the icon the Gemini extension gives it. Nothing is
 // animated, and layout is read only to reveal the active tab when they overflow.
@@ -32,6 +33,7 @@ import { EditorResourceAccessor, SideBySideEditor, Verbosity } from '../../../co
 import { EditorInput } from '../../../common/editor/editorInput.js';
 import { IEditorGroup, IEditorGroupsService, IEditorPart } from '../../../services/editor/common/editorGroupsService.js';
 import { IEditorService } from '../../../services/editor/common/editorService.js';
+import { agentsGroupOf } from './geminiAgentGroups.js';
 
 /** The title bar tab strip: one capsule with a tab per editor of the window's active group. */
 export class GeminiTitleTabs extends BaseActionViewItem {
@@ -41,6 +43,7 @@ export class GeminiTitleTabs extends BaseActionViewItem {
 	private labels: ResourceLabels | undefined;
 	private strip: HTMLElement | undefined;
 	private part: IEditorPart | undefined;
+	private watched: IEditorGroup | undefined;
 
 	constructor(
 		action: IAction,
@@ -81,8 +84,17 @@ export class GeminiTitleTabs extends BaseActionViewItem {
 		(this.strip?.querySelector('.gemini-title-tab.active') as HTMLElement | null)?.focus();
 	}
 
+	/** The agents' group, so clicking into a file beside an agent keeps the agent tabs; else the active group. */
+	private get group(): IEditorGroup | undefined {
+		return this.part && (agentsGroupOf(this.part) ?? this.part.activeGroup);
+	}
+
 	private watchGroup(): void {
-		const group = this.part?.activeGroup;
+		const group = this.group;
+		if (group && group === this.watched) {
+			return;
+		}
+		this.watched = group;
 		const store = new DisposableStore();
 		if (group) {
 			store.add(group.onDidModelChange(() => this.update()));
@@ -94,7 +106,7 @@ export class GeminiTitleTabs extends BaseActionViewItem {
 	private update(): void {
 		const strip = this.strip;
 		const labels = this.labels;
-		const group = this.part?.activeGroup;
+		const group = this.group;
 		if (!strip || !group || !labels) {
 			return;
 		}
