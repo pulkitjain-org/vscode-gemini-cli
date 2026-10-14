@@ -54,9 +54,15 @@ export function holdsAgents(model: IReadonlyEditorGroupModel): boolean {
 	return model.getEditors(EditorsOrder.SEQUENTIAL).some(isGeminiTab);
 }
 
-/** The group holding the agents in `part`, if any. */
+/**
+ * The group holding the agents in `part`, if any. The title bar is built
+ * before the editor part has groups, so `part` may have no active group yet.
+ */
 export function agentsGroupOf(part: IEditorPart): IEditorGroup | undefined {
-	const active = part.activeGroup;
+	const active: IEditorGroup | undefined = part.activeGroup;
+	if (!active) {
+		return undefined;
+	}
 	return active.editors.some(isGeminiTab) ? active : part.getGroups(GroupsOrder.GRID_APPEARANCE).find(group => group.editors.some(isGeminiTab));
 }
 
@@ -184,6 +190,9 @@ class GeminiAgentGroups extends Disposable implements IWorkbenchContribution {
 
 	/** The column of `agent`'s side group, made the first time and made active on `activate`; undefined when the agent has no tab. */
 	columnFor(agent: string, activate: boolean): number | undefined {
+		if (!this.restored) {
+			return undefined;
+		}
 		const part = this.part;
 		let group = this.groups.has(agent) ? part.getGroup(this.groups.get(agent)!) : undefined;
 		if (!group) {
