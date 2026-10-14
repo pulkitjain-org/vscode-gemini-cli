@@ -13,6 +13,7 @@ import { setLabel } from './dom';
 import { Menu, type MenuSection } from './menu';
 import { modeIcon } from './modeIcon';
 import { closePicker, startCommand, startMention } from './picker';
+import { openNewThread } from './project';
 import { contextPercent, toggleUsage } from './usage';
 import { state, strings, ui, vscode } from './view';
 
@@ -80,7 +81,7 @@ function sections(): MenuSection[] {
 	const result: MenuSection[] = [];
 	const project = strings.project;
 	if (project) {
-		result.push({ rows: [{ icon: 'git-branch', name: project.newThread, run: () => { closePlusMenu(); vscode.postMessage({ type: 'newThread' }); } }] });
+		result.push({ rows: [{ icon: 'git-branch', name: project.newThread, run: () => { closePlusMenu(); openNewThread(); } }] });
 	}
 	if (mode) {
 		result.push({

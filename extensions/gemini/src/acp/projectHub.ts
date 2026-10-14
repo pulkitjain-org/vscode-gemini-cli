@@ -42,6 +42,10 @@ export interface ThreadRequest {
 	readonly byCoordinator: boolean;
 	/** The Conductor track the brief came from. */
 	readonly track?: string;
+	/** The branch the user named in the New thread dialog. */
+	readonly branch?: string;
+	/** The model the user picked in the New thread dialog. */
+	readonly model?: string;
 }
 
 /** Makes and drives threads: agents in the extension, or plain sessions in the spike. */
@@ -98,6 +102,41 @@ export const coordinatorBrief = [
 	'Relay what the user adds about a running thread with message_thread. Approvals are answered by the user in the thread that asked, never by you.',
 	'Each wake arrives as <wake> with the threads, the project notes, open Conductor tracks if any, and the events. Act on the events in one turn: call the tools you need, then stop. Keep posts to a line or two.',
 ].join('\n');
+
+/**
+ * How many threads are in each state, for the project chat's side panel.
+ * Starting counts as working and an error as done; merged threads count only
+ * as merged, and undone ones not at all.
+ */
+export function threadCounts(threads: readonly Pick<ThreadInfo, 'id' | 'state'>[], merged: ReadonlySet<string>, removed: ReadonlySet<string>): { working: number; waiting: number; planned: number; done: number; merged: number } {
+	const counts = { working: 0, waiting: 0, planned: 0, done: 0, merged: 0 };
+	for (const thread of threads) {
+		if (removed.has(thread.id)) {
+			continue;
+		}
+		if (merged.has(thread.id)) {
+			counts.merged++;
+			continue;
+		}
+		switch (thread.state) {
+			case 'starting':
+			case 'working':
+				counts.working++;
+				break;
+			case 'waiting':
+				counts.waiting++;
+				break;
+			case 'planned':
+				counts.planned++;
+				break;
+			case 'done':
+			case 'error':
+				counts.done++;
+				break;
+		}
+	}
+	return counts;
+}
 
 /**
  * The coordinator's model: a named Flash model (never Auto, which adds a
@@ -162,8 +201,8 @@ export class ProjectHub implements ProjectToolHost {
 	}
 
 	/** A thread the user starts directly: it begins at once, and the coordinator hears with the next wake. */
-	async startThread(title: string, brief: string, planFirst = false): Promise<string> {
-		const id = await this.driver.start({ title, brief, planFirst, byCoordinator: false });
+	async startThread(title: string, brief: string, planFirst = false, options: Pick<ThreadRequest, 'branch' | 'model'> = {}): Promise<string> {
+		const id = await this.driver.start({ title, brief, planFirst, byCoordinator: false, ...options });
 		this.setThread({ id, title, state: 'starting', byCoordinator: false });
 		this.onDidPostEmitter.fire({ kind: 'thread', thread: id, at: Date.now() });
 		this.notify({ kind: 'started', thread: id });

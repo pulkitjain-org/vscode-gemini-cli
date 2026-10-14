@@ -2572,3 +2572,211 @@ body.vscode-high-contrast-light #send {
 	color: var(--vscode-charts-purple, #c586c0);
 	background: color-mix(in srgb, var(--vscode-charts-purple, #c586c0) 18%, transparent);
 }
+
+/* The New thread dialog (project.ts), as in the approved mockup. */
+.new-thread {
+	width: min(600px, calc(100vw - 32px));
+	max-height: calc(100vh - 48px);
+	box-sizing: border-box;
+	padding: 22px 24px;
+	border-radius: var(--gemini-radius-large);
+	border: 1px solid var(--gemini-border-strong);
+	background: var(--gemini-popover);
+	color: var(--vscode-foreground);
+	box-shadow: 0 20px 60px var(--gemini-shadow);
+}
+
+.new-thread::backdrop {
+	background: color-mix(in srgb, var(--vscode-editor-background, #000) 55%, transparent);
+}
+
+.new-thread form {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.new-thread-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.new-thread-head h2 {
+	margin: 0;
+	font-size: 1.15em;
+	font-weight: 600;
+}
+
+.new-thread-field {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+}
+
+.new-thread-field > label {
+	font-size: 0.9em;
+	font-weight: 600;
+	color: var(--gemini-muted);
+}
+
+.new-thread-input {
+	box-sizing: border-box;
+	width: 100%;
+	padding: 8px 10px;
+	border-radius: var(--gemini-radius-small);
+	border: 1px solid var(--gemini-border-strong);
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground, var(--vscode-foreground));
+	font: inherit;
+}
+
+textarea.new-thread-input {
+	resize: vertical;
+	min-height: 5.5em;
+}
+
+.new-thread-input:focus {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.new-thread-pair {
+	display: flex;
+	gap: 12px;
+}
+
+.new-thread-pair > .new-thread-field {
+	flex: 1;
+}
+
+.new-thread-pair > .new-thread-model-field {
+	flex: 0 0 200px;
+}
+
+.new-thread-hint {
+	margin: 0;
+	font-size: 0.9em;
+	color: var(--gemini-muted);
+}
+
+.new-thread-plan {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+}
+
+.new-thread-plan input {
+	margin: 3px 0 0;
+}
+
+.new-thread-plan label {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	line-height: 1.4;
+}
+
+.new-thread-foot {
+	margin-top: 0;
+	padding-top: 14px;
+	border-top: 1px solid var(--gemini-border);
+}
+
+.new-thread-foot .new-thread-hint {
+	margin-right: auto;
+}
+
+@media (max-width: 520px) {
+	.new-thread-pair {
+		flex-direction: column;
+	}
+
+	.new-thread-pair > .new-thread-model-field {
+		flex-basis: auto;
+	}
+}
+
+/*
+ * The project chat's side panel (project.ts): shown beside the chat only
+ * when the view is wide enough for both; the chat column narrows to make room.
+ */
+.project-panel {
+	display: none;
+}
+
+@media (min-width: 1000px) {
+	body.has-project-panel {
+		--gemini-panel-width: 280px;
+		--gemini-gutter: max(28px, calc((100vw - var(--gemini-panel-width) - 760px) / 2));
+		padding-right: var(--gemini-panel-width);
+	}
+
+	body.has-project-panel .prompt-outline {
+		right: calc(var(--gemini-panel-width) + 2px);
+	}
+
+	.project-panel {
+		position: fixed;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		width: var(--gemini-panel-width);
+		box-sizing: border-box;
+		overflow-y: auto;
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+		padding: 16px;
+		border-left: 1px solid var(--gemini-border);
+		background: var(--vscode-sideBar-background, var(--gemini-surface));
+		font-size: 0.93em;
+	}
+}
+
+.panel-section + .panel-section {
+	padding-top: 12px;
+	border-top: 1px solid var(--gemini-border);
+}
+
+.panel-section h3 {
+	margin: 0 0 6px;
+	font-size: 1em;
+	font-weight: 600;
+}
+
+.panel-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin: 0;
+	padding: 4px 0;
+	overflow-wrap: anywhere;
+}
+
+.panel-empty {
+	color: var(--gemini-muted);
+}
+
+.panel-dot {
+	width: 8px;
+	height: 8px;
+	flex: none;
+	border-radius: 50%;
+	background: var(--vscode-charts-blue, #3794ff);
+}
+
+.panel-dot.state-waiting,
+.panel-dot.state-planned {
+	background: var(--gemini-warn);
+}
+
+.panel-dot.state-done {
+	background: var(--gemini-ok);
+}
+
+.panel-dot.state-merged {
+	background: var(--gemini-faint);
+}

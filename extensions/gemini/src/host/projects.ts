@@ -19,11 +19,11 @@ import type { AgentProjectRole, AgentRecord } from '../acp/agents';
 import { attachmentLabel, type Attachment } from '../acp/attachments';
 import { ConductorReader } from '../acp/conductor';
 import type { InstantAnswer } from '../acp/permissions';
-import { ProjectHub, type ThreadRequest } from '../acp/projectHub';
+import { ProjectHub, threadCounts, type ThreadRequest } from '../acp/projectHub';
 import { coordinatorTools, isProjectToolCall, isProjectToolTitle, ProjectMcpServer, threadTools, type ProjectCaller } from '../acp/projectMcp';
 import type { McpToolResult } from '../acp/browserMcp';
 import type { ChatActivity, ChatController, ChatProject } from './chatController';
-import type { ThreadAction } from './chatProtocol';
+import type { NewThread, ThreadAction } from './chatProtocol';
 import { configSection } from './configuration';
 
 /** What Projects needs from the Agents pane. */
@@ -50,7 +50,11 @@ export function projectsEnabled(): boolean {
 
 /** One open project: its hub, and what the threads are doing. */
 interface LiveProject {
+	readonly id: string;
 	readonly hub: ProjectHub;
+	readonly conductor: ConductorReader;
+	/** The side panel's next refresh, while one is pending. */
+	panelTimer?: ReturnType<typeof setTimeout>;
 	readonly coordinator: ChatController;
 	/** Threads that called report in the turn now running. */
 	readonly reported: Set<string>;
@@ -109,7 +113,7 @@ export class Projects implements vscode.Disposable {
 			post: (text, attachments) => this.projects.get(coordinatorId)?.hub.post(withAttachments(text, attachments)),
 			hidesToolCall: title => isProjectToolTitle(title, coordinatorTools),
 			threadAction: (thread, action) => void this.threadAction(coordinatorId, thread, action),
-			newThread: () => void this.newThread(coordinatorId),
+			startThread: thread => void this.startThread(coordinatorId, thread),
 		};
 	}
 
@@ -120,11 +124,18 @@ export class Projects implements vscode.Disposable {
 		}
 	}
 
+	/** The New Thread command: opens the project chat with its dialog. */
+	async openNewThread(coordinatorId: string): Promise<void> {
+		await this.agents.open(coordinatorId);
+		this.agents.controller(coordinatorId)?.openNewThread();
+	}
+
 	/** A project agent's session stopped in this window. */
 	detach(id: string): void {
 		const project = this.projects.get(id);
 		if (project) {
 			this.projects.delete(id);
+			clearTimeout(project.panelTimer);
 			vscode.Disposable.from(...project.disposables).dispose();
 			project.hub.dispose();
 		}
@@ -132,6 +143,14 @@ export class Projects implements vscode.Disposable {
 
 	/** A thread's chat changed what it is doing. */
 	threadActivity(record: AgentRecord, before: ChatActivity, after: ChatActivity): void {
+		if (record.project?.role === 'coordinator') {
+			// The coordinator's model is known once its session is ready, and a turn may have started threads.
+			const project = this.projects.get(record.id);
+			if (project && !after.busy) {
+				this.schedulePanel(project);
+			}
+			return;
+		}
 		if (record.project?.role !== 'thread') {
 			return;
 		}
@@ -187,7 +206,7 @@ export class Projects implements vscode.Disposable {
 		// A coordinator reopened with its history already has the role brief.
 		hub.setBriefed(!!record.sessionId);
 		const project: LiveProject = {
-			hub, coordinator,
+			id: record.id, hub, coordinator, conductor,
 			reported: new Set(), queued: new Map(), planning: new Set(), merged: new Set(), removed: new Set(),
 			disposables: [],
 		};
@@ -207,6 +226,7 @@ export class Projects implements vscode.Disposable {
 			hub.onDidChangeThread(thread => this.showCard(project, thread.id)),
 		);
 		this.projects.set(record.id, project);
+		this.schedulePanel(project);
 	}
 
 	private threadTurnEnded(project: LiveProject, record: AgentRecord): void {
@@ -285,6 +305,33 @@ export class Projects implements vscode.Disposable {
 			...(project.merged.has(thread) ? { merged: true } : {}),
 			...(project.removed.has(thread) ? { removed: true } : {}),
 		});
+		this.schedulePanel(project);
+	}
+
+	/** Refreshes the side panel once a burst of card updates has settled. */
+	private schedulePanel(project: LiveProject): void {
+		if (project.panelTimer) {
+			return;
+		}
+		project.panelTimer = setTimeout(() => {
+			project.panelTimer = undefined;
+			void this.showPanel(project);
+		}, panelDelayMs);
+	}
+
+	private async showPanel(project: LiveProject): Promise<void> {
+		// Three stats at most: the reader keeps the files until they change.
+		const conductor = await project.conductor.read().catch(() => undefined);
+		if (this.projects.get(project.id) !== project) {
+			return;
+		}
+		const model = project.coordinator.model;
+		project.coordinator.showProjectPanel({
+			name: this.agents.record(project.id)?.title ?? '',
+			counts: threadCounts(project.hub.threadList, project.merged, project.removed),
+			...(conductor ? { conductor: { openTracks: conductor.tracks.filter(track => track.state !== 'done').length } } : {}),
+			...(model ? { model } : {}),
+		});
 	}
 
 	private async threadAction(coordinatorId: string, thread: string, action: ThreadAction): Promise<void> {
@@ -329,44 +376,27 @@ export class Projects implements vscode.Disposable {
 		}
 	}
 
-	/** "New thread": the user starts one directly; the coordinator hears with its next wake. */
-	private async newThread(coordinatorId: string): Promise<void> {
+	/** The New thread dialog: the thread starts at once, and the coordinator hears with its next wake. */
+	private async startThread(coordinatorId: string, thread: NewThread): Promise<void> {
 		const project = this.projects.get(coordinatorId);
-		if (!project) {
-			return;
-		}
-		const title = await vscode.window.showInputBox({
-			title: vscode.l10n.t("New Thread"),
-			prompt: vscode.l10n.t("A few words naming the work. The thread gets its own new branch and worktree."),
-			validateInput: value => value.trim() ? undefined : vscode.l10n.t("Enter a title."),
-		});
-		if (!title?.trim()) {
-			return;
-		}
-		const brief = await vscode.window.showInputBox({
-			title: vscode.l10n.t("New Thread: {0}", title.trim()),
-			prompt: vscode.l10n.t("What should it do? Say which files, and how to check the work."),
-			validateInput: value => value.trim() ? undefined : vscode.l10n.t("Say what the thread should do."),
-		});
-		if (!brief?.trim()) {
-			return;
-		}
-		const start = vscode.l10n.t("Start Now");
-		const plan = vscode.l10n.t("Plan First");
-		const pick = await vscode.window.showQuickPick([
-			{ label: start, detail: vscode.l10n.t("The thread starts working right away.") },
-			{ label: plan, detail: vscode.l10n.t("The thread writes a short plan and waits for your OK before changing files.") },
-		], { title: vscode.l10n.t("New Thread: {0}", title.trim()) });
-		if (!pick) {
+		const title = thread.title.trim();
+		const brief = thread.brief.trim();
+		if (!project || !title || !brief) {
 			return;
 		}
 		try {
-			await project.hub.startThread(title.trim(), brief.trim(), pick.label === plan);
+			await project.hub.startThread(title, brief, thread.planFirst, {
+				...(thread.branch?.trim() ? { branch: thread.branch.trim() } : {}),
+				...(thread.model ? { model: thread.model } : {}),
+			});
 		} catch (err) {
 			void vscode.window.showErrorMessage(vscode.l10n.t("Could not start the thread: {0}", err instanceof Error ? err.message : String(err)));
 		}
 	}
 }
+
+/** How long the side panel waits for a burst of card updates to settle. */
+const panelDelayMs = 100;
 
 function callerOf(record: AgentRecord): ProjectCaller | undefined {
 	const role: AgentProjectRole | undefined = record.project;

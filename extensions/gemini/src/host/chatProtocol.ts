@@ -19,7 +19,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 18;
+export const chatProtocolVersion = 19;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -36,11 +36,65 @@ export interface ViewStatus {
 /** What a project chat's thread card buttons do. */
 export type ThreadAction = 'open' | 'stop' | 'merge' | 'review' | 'undo' | 'approve' | 'retry';
 
+/** A thread the user starts from the project chat's New thread dialog. */
+export interface NewThread {
+	readonly title: string;
+	readonly brief: string;
+	/** The branch to create; a free name is picked from the title when empty or taken. */
+	readonly branch?: string;
+	/** The model the thread starts on; unset for the one new agents get. */
+	readonly model?: string;
+	readonly planFirst: boolean;
+}
+
+/** The project chat's side panel: what the threads are doing and what the coordinator reads. */
+export interface ProjectPanel {
+	/** The project's name, which the New thread dialog's title shows. */
+	readonly name: string;
+	/** How many threads are in each state; merged and undone threads are left out. */
+	readonly counts: { readonly working: number; readonly waiting: number; readonly planned: number; readonly done: number; readonly merged: number };
+	/** The repo's Conductor files, when it has a `conductor/` folder. */
+	readonly conductor?: { readonly openTracks: number };
+	/** The model the coordinator runs on, when known. */
+	readonly model?: string;
+}
+
 /** The strings only a project's chat shows (Projects preview). */
 export interface ProjectChatStrings {
 	readonly placeholder: string;
 	/** The "+" menu's item to start a thread directly. */
 	readonly newThread: string;
+	/** The New thread dialog; `{0}` in its title is the project's name. */
+	readonly dialog: {
+		readonly title: string;
+		readonly titleLabel: string;
+		readonly briefLabel: string;
+		readonly briefPlaceholder: string;
+		readonly branchLabel: string;
+		readonly modelLabel: string;
+		readonly defaultModel: string;
+		readonly worktreeHint: string;
+		readonly planFirst: string;
+		readonly planFirstHint: string;
+		readonly startsAtOnce: string;
+		readonly cancel: string;
+		readonly start: string;
+		readonly close: string;
+	};
+	/** The side panel; `{0}` is a count or a model's name. */
+	readonly panel: {
+		readonly title: string;
+		readonly noThreads: string;
+		readonly working: string;
+		readonly waiting: string;
+		readonly planned: string;
+		readonly done: string;
+		readonly merged: string;
+		readonly context: string;
+		readonly conductorTracks: string;
+		readonly noConductor: string;
+		readonly model: string;
+	};
 	readonly states: { readonly starting: string; readonly working: string; readonly waiting: string; readonly planned: string; readonly done: string; readonly error: string };
 	readonly actions: { readonly [action in ThreadAction]: string };
 	readonly openToAnswer: string;
@@ -356,8 +410,8 @@ export type FromWebview =
 	| { readonly type: 'createBranchAndCommit' }
 	/** A project chat's thread card button. */
 	| { readonly type: 'threadAction'; readonly thread: string; readonly action: ThreadAction }
-	/** A project chat's "New thread": start one directly, without the coordinator. */
-	| { readonly type: 'newThread' }
+	/** The New thread dialog: start a thread directly; the coordinator hears afterwards. */
+	| { readonly type: 'startThread'; readonly thread: NewThread }
 	/** Put back the files the turn ending with turnEnd item `itemId` changed, and those of later turns. */
 	| { readonly type: 'undoTurn'; readonly itemId: string }
 	/** Send the prompt of the turn ending with `itemId` again; only the latest turn offers it. */
@@ -414,4 +468,8 @@ export type ToWebview =
 	/** The context window's use; unset when unknown, such as before the first reply. */
 	| { readonly type: 'context'; readonly context: ViewContext | undefined }
 	/** Show Usage and Quota: open the usage popover, or close it if open. */
-	| { readonly type: 'toggleUsage' };
+	| { readonly type: 'toggleUsage' }
+	/** A project chat's side panel. */
+	| { readonly type: 'projectPanel'; readonly panel: ProjectPanel }
+	/** Open the New thread dialog, from the New Thread command. */
+	| { readonly type: 'openNewThread' };

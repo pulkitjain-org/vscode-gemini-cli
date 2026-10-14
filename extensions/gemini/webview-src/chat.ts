@@ -18,6 +18,7 @@
 //   plusMenu.ts        the "+" menu: mode, files, context, follow, model, usage
 //   pickers.ts         the model, branch and folder menus
 //   usage.ts           the context ring and usage popover: context, quota and tokens
+//   project.ts         a project chat's New thread dialog and side panel
 
 import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
 import { addAttachments } from './attachmentChips';
@@ -29,6 +30,7 @@ import { restoreComposerHeight, updatePlaceholder, updateSendState } from './inp
 import { showSavedSessions } from './items';
 import { setBranches } from './pickers';
 import { showCommands, showFiles } from './picker';
+import { openNewThread, showProjectPanel } from './project';
 import { updateOutline } from './promptNav';
 import { appended, applyItem, isNearBottom, reset, settleScroll, updateWorking } from './transcript';
 import { showContext, showQuota, toggleUsage, updateUsage } from './usage';
@@ -146,6 +148,12 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'toggleUsage':
 			toggleUsage();
+			break;
+		case 'projectPanel':
+			showProjectPanel(message.panel);
+			break;
+		case 'openNewThread':
+			openNewThread();
 			break;
 	}
 });

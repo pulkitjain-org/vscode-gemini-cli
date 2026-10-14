@@ -34,7 +34,7 @@ import { readGitHead } from '../acp/gitHead';
 import { upgradeUrl } from '../acp/helpLinks';
 import { EnhanceCancelledError, enhanceHistory } from '../acp/promptEnhancer';
 import type { EnhancePromptInput } from '../acp/quickPrompts';
-import { ChatStrings, chatProtocolVersion, FromWebview, ProjectChatStrings, statusCommands, ThreadAction, ToWebview } from './chatProtocol';
+import { ChatStrings, chatProtocolVersion, FromWebview, NewThread, ProjectChatStrings, ProjectPanel, statusCommands, ThreadAction, ToWebview } from './chatProtocol';
 import { stopReasonNotice, toViewStatus } from './chatStatus';
 import { DiffPreview } from './diffPreview';
 import { relativeTime, tildify } from './displayText';
@@ -115,7 +115,8 @@ export interface ChatProject {
 	/** Tool calls the chat leaves out: the project's own tools, which show as posts and thread cards. */
 	hidesToolCall(title: string): boolean;
 	threadAction(thread: string, action: ThreadAction): void;
-	newThread(): void;
+	/** The New thread dialog's Start thread. */
+	startThread(thread: NewThread): void;
 }
 
 export interface ChatWorkspace {
@@ -195,6 +196,8 @@ export class ChatController implements vscode.Disposable {
 	private lastPrompt: { readonly text: string; readonly attachments: readonly Attachment[] } | undefined;
 	/** The turnEnd item that offers Retry. */
 	private retryItemId: string | undefined;
+	/** A project chat's side panel, as last shown. */
+	private projectPanel: ProjectPanel | undefined;
 	/** Told to the agent with the next prompt: files the user put back, which it would otherwise think it changed. */
 	private undoNote: string | undefined;
 	/** A conversation the agent could not reopen, given to the new session with the next prompt. */
@@ -430,6 +433,17 @@ export class ChatController implements vscode.Disposable {
 	/** A message the project's coordinator posted. */
 	addCoordinatorPost(text: string): void {
 		this.transcript.addCoordinatorPost(text);
+	}
+
+	/** The project chat's side panel; kept to show again when the view reloads. */
+	showProjectPanel(panel: ProjectPanel): void {
+		this.projectPanel = panel;
+		this.post({ type: 'projectPanel', panel });
+	}
+
+	/** Opens the New thread dialog in a project chat. */
+	openNewThread(): void {
+		this.post({ type: 'openNewThread' });
 	}
 
 	/** Sends a prompt as if typed in the view; `from` marks one its project's coordinator sent. */
@@ -1040,8 +1054,8 @@ export class ChatController implements vscode.Disposable {
 			case 'threadAction':
 				this.options.project?.threadAction(message.thread, message.action);
 				break;
-			case 'newThread':
-				this.options.project?.newThread();
+			case 'startThread':
+				this.options.project?.startThread(message.thread);
 				break;
 			case 'retry':
 				if (this.lastPrompt && message.itemId === this.retryItemId) {
@@ -1412,6 +1426,9 @@ export class ChatController implements vscode.Disposable {
 		this.items.clear();
 		this.textDeltas.reset(this.transcript.items);
 		this.post({ type: 'reset', items: this.transcript.items, busy: this.busy, status: toViewStatus(this.service.status), settings: this.service.client.settings });
+		if (this.projectPanel) {
+			this.post({ type: 'projectPanel', panel: this.projectPanel });
+		}
 		if (!this.busy) {
 			void this.postSessions();
 		}
@@ -1793,6 +1810,35 @@ function projectStrings(): ProjectChatStrings {
 	return {
 		placeholder: vscode.l10n.t("Message the coordinator, or describe work to split into threads"),
 		newThread: vscode.l10n.t("New thread"),
+		dialog: {
+			title: vscode.l10n.t("New thread in {0}"),
+			titleLabel: vscode.l10n.t("Title"),
+			briefLabel: vscode.l10n.t("What should it do?"),
+			briefPlaceholder: vscode.l10n.t("The whole task: what to do, which files, and how to check the work."),
+			branchLabel: vscode.l10n.t("Branch"),
+			modelLabel: vscode.l10n.t("Model"),
+			defaultModel: vscode.l10n.t("Default"),
+			worktreeHint: vscode.l10n.t("Every thread gets its own new branch and worktree. Its chat opens at once while the worktree is created."),
+			planFirst: vscode.l10n.t("Plan first"),
+			planFirstHint: vscode.l10n.t("The thread writes a short plan and waits for your OK before changing files."),
+			startsAtOnce: vscode.l10n.t("Starts right away. The coordinator is told afterwards."),
+			cancel: vscode.l10n.t("Cancel"),
+			start: vscode.l10n.t("Start thread"),
+			close: vscode.l10n.t("Close"),
+		},
+		panel: {
+			title: vscode.l10n.t("Project"),
+			noThreads: vscode.l10n.t("No threads yet"),
+			working: vscode.l10n.t("{0} working"),
+			waiting: vscode.l10n.t("{0} waiting on you"),
+			planned: vscode.l10n.t("{0} with a plan to approve"),
+			done: vscode.l10n.t("{0} done, ready to merge"),
+			merged: vscode.l10n.t("{0} merged back"),
+			context: vscode.l10n.t("Context the coordinator reads"),
+			conductorTracks: vscode.l10n.t("Conductor: {0} open tracks"),
+			noConductor: vscode.l10n.t("No conductor/ folder"),
+			model: vscode.l10n.t("Coordinator model: {0}"),
+		},
 		states: {
 			starting: vscode.l10n.t("Starting"),
 			working: vscode.l10n.t("Working"),

@@ -17,6 +17,7 @@ import { readGitHead } from '../acp/gitHead';
 import { errorMessage } from '../acp/errors';
 import { memoizeAsync } from '../acp/memoize';
 import { reviewRequest, workingChanges } from '../acp/reviewPrompt';
+import type { SessionChoice } from '../acp/sessionSettings';
 import { TranscriptStore } from '../acp/transcriptStore';
 import { AgentWorktree, branchExists, commitAll, createWorktree, currentBranch, folderInRepository, mergeBranch, removeWorktree, repositoryRoot, runWorktreeSetup, worktreeSetupCommand, worktreeStatus } from '../acp/worktrees';
 import { supportedMcpServers } from '../acp/agentClient';
@@ -35,6 +36,7 @@ export { relativeTime } from './displayText';
 import { DiffPreview } from './diffPreview';
 import { agentColumn, closeAgentFiles } from './editorPlacement';
 import { escapeMarkdown } from './markdown';
+import { sessionModel } from './modelPreference';
 import type { UsageMeter } from './usageMeter';
 import { WorkspaceFileIndex } from './workspaceFiles';
 
@@ -117,6 +119,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	/** Each agent's conversation as shown, so its tab looks the same after a reload. */
 	private readonly transcripts: TranscriptStore;
 	private readonly live = new Map<string, LiveAgent>();
+	/** The model a thread's first session starts on, picked in the New thread dialog. */
+	private readonly threadModels = new Map<string, string>();
 	private readonly changesView: ChangesView;
 	/** Keep and Undo on each agent change, in the files themselves. */
 	readonly review: ReviewController;
@@ -1013,7 +1017,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		if (!repository) {
 			throw new Error(vscode.l10n.t("{0} is not in a Git repository, so a thread can't have its own branch.", path.basename(workspace.folder)));
 		}
-		const branch = await freeBranchName(repository, branchNameFrom(request.title));
+		const named = request.branch && isValidBranchName(request.branch) ? request.branch : branchNameFrom(request.title);
+		const branch = await freeBranchName(repository, named);
 		const worktree = await this.makeWorktree(repository, branch, workspace.folder);
 		const agent = this.model.addAgent(workspace.id, request.title, worktree, undefined, {
 			role: 'thread', coordinator: coordinatorId, byCoordinator: request.byCoordinator,
@@ -1021,6 +1026,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			...(request.track ? { track: request.track } : {}),
 		});
 		this.model.rename(agent.id, request.title);
+		if (request.model) {
+			this.threadModels.set(agent.id, request.model);
+		}
 		await this.projects.ready();
 		const live = this.start(this.model.agent(agent.id) ?? agent, worktree.cwd);
 		if (request.planFirst) {
@@ -1062,21 +1070,21 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		if (!folder) {
 			return;
 		}
-		if (!await repositoryRoot(folder)) {
+		const repository = await repositoryRoot(folder);
+		if (!repository) {
 			void vscode.window.showErrorMessage(vscode.l10n.t("{0} is not in a Git repository. A project's threads each work on their own branch, so a project needs one.", path.basename(folder)));
 			return;
 		}
-		const title = await vscode.window.showInputBox({
-			title: vscode.l10n.t("New Project"),
-			prompt: vscode.l10n.t("A name for the project. Its chat splits work into threads, each on its own branch."),
-			validateInput: value => value.trim() ? undefined : vscode.l10n.t("Enter a name."),
-		});
-		if (!title?.trim()) {
-			return;
-		}
+		// No questions first: the project chat opens at once, named after its repository; Rename changes it.
 		const workspace = this.model.addWorkspace(folder);
-		const agent = this.model.addAgent(workspace.id, title.trim(), undefined, undefined, { role: 'coordinator' });
-		this.model.rename(agent.id, title.trim());
+		const taken = new Set(this.model.snapshot().agents.filter(a => a.project?.role === 'coordinator').map(a => a.title));
+		const base = path.basename(repository);
+		let title = base;
+		for (let n = 2; taken.has(title); n++) {
+			title = `${base} ${n}`;
+		}
+		const agent = this.model.addAgent(workspace.id, title, undefined, undefined, { role: 'coordinator' });
+		this.model.rename(agent.id, title);
 		await this.open(agent.id);
 	}
 
@@ -1116,6 +1124,22 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		} : undefined;
 	}
 
+	/** A coordinator runs on Flash; a thread on the model picked for it, once; others on the user's choice. */
+	private preferredModel(record: AgentRecord): ((available: readonly SessionChoice[]) => string | undefined) | undefined {
+		if (!projectsEnabled()) {
+			return undefined;
+		}
+		if (record.project?.role === 'coordinator') {
+			return available => coordinatorModel(available.map(choice => choice.id));
+		}
+		const picked = this.threadModels.get(record.id);
+		if (!picked) {
+			return undefined;
+		}
+		this.threadModels.delete(record.id);
+		return available => available.some(choice => choice.id === picked) ? picked : sessionModel(available);
+	}
+
 	private start(record: AgentRecord, folder: string, openLater = false): LiveAgent {
 		const project = projectsEnabled() ? record.project : undefined;
 		const servers = () => [...this.browser?.mcpServersFor(record.id, folder) ?? [], ...project ? this.projects.mcpServersFor(this.model.agent(record.id) ?? record) : []];
@@ -1128,7 +1152,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 					this.prepareStart(folder, spareDelayMs);
 				}
 			},
-		}, project?.role === 'coordinator' ? available => coordinatorModel(available.map(choice => choice.id)) : undefined);
+		}, this.preferredModel(record));
 		if (project) {
 			session.permissions.answerAtOnce = request => this.projects.instantAnswer(this.model.agent(record.id) ?? record, request);
 		}

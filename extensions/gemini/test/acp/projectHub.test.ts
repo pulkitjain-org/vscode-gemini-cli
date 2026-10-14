@@ -82,6 +82,12 @@ describe('ProjectHub', () => {
 		expect(prompts[0]).toContain('<event kind="started" thread="t1">');
 	});
 
+	it('passes the branch and model picked in the New thread dialog to the thread', async () => {
+		const { hub, started } = setup();
+		await hub.startThread('Review MR', 'Review it', true, { branch: 'gemini/review-mr', model: 'gemini-3.1-pro' });
+		expect(started).toEqual([{ title: 'Review MR', brief: 'Review it', planFirst: true, byCoordinator: false, branch: 'gemini/review-mr', model: 'gemini-3.1-pro' }]);
+	});
+
 	it('runs start_thread for the coordinator and returns at once', async () => {
 		const { hub, started, feed } = setup();
 		const result = await hub.call(coordinator, 'start_thread', { title: 'Mobile sizes', brief: 'Make the panel 85vh', planFirst: true });

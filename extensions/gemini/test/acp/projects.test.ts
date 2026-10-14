@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { AgentsModel } from '../../src/acp/agents';
 import { ChatTranscript, threadCardId } from '../../src/acp/chatTranscript';
 import { PermissionBroker, PermissionEvent } from '../../src/acp/permissions';
-import { coordinatorModel, threadPrompt } from '../../src/acp/projectHub';
+import { coordinatorModel, threadCounts, threadPrompt } from '../../src/acp/projectHub';
 import { coordinatorTools, isProjectToolCall, isProjectToolTitle, threadTools } from '../../src/acp/projectMcp';
 
 const mcpOptions: acp.PermissionOption[] = [
@@ -122,5 +122,22 @@ describe('the coordinator', () => {
 	it('briefs a thread with how to report, and to plan first when asked', () => {
 		expect(threadPrompt('Fix range()', false)).toMatch(/^Fix range\(\)\n\nWhen the work is done.*report tool/s);
 		expect(threadPrompt('Fix range()', true)).toContain('write a short plan and stop');
+	});
+});
+
+describe('the project side panel', () => {
+	it('counts threads by state, with merged ones apart and undone ones left out', () => {
+		const threads = [
+			{ id: 'a', state: 'starting' as const },
+			{ id: 'b', state: 'working' as const },
+			{ id: 'c', state: 'waiting' as const },
+			{ id: 'd', state: 'planned' as const },
+			{ id: 'e', state: 'done' as const },
+			{ id: 'f', state: 'error' as const },
+			{ id: 'g', state: 'done' as const },
+			{ id: 'h', state: 'done' as const },
+		];
+		expect(threadCounts(threads, new Set(['g']), new Set(['h']))).toEqual({ working: 2, waiting: 1, planned: 1, done: 2, merged: 1 });
+		expect(threadCounts([], new Set(), new Set())).toEqual({ working: 0, waiting: 0, planned: 0, done: 0, merged: 0 });
 	});
 });
