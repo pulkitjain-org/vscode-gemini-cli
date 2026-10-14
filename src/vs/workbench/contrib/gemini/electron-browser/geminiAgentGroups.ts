@@ -19,12 +19,12 @@ import { ThemeIcon } from '../../../../base/common/themables.js';
 import { CommandsRegistry } from '../../../../platform/commands/common/commands.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
-import { EditorsOrder, GroupModelChangeKind } from '../../../common/editor.js';
+import { EditorsOrder, GroupIdentifier, GroupModelChangeKind } from '../../../common/editor.js';
 import { EditorInput } from '../../../common/editor/editorInput.js';
 import { IReadonlyEditorGroupModel } from '../../../common/editor/editorGroupModel.js';
 import { refreshGeminiTabRows } from '../../../browser/parts/editor/geminiTabRows.js';
 import { EditorActivation } from '../../../../platform/editor/common/editor.js';
-import { GroupDirection, GroupIdentifier, GroupsOrder, IEditorGroup, IEditorGroupsService, IEditorPart } from '../../../services/editor/common/editorGroupsService.js';
+import { GroupDirection, GroupsOrder, IEditorGroup, IEditorGroupsService, IEditorPart } from '../../../services/editor/common/editorGroupsService.js';
 import { ILifecycleService, LifecyclePhase } from '../../../services/lifecycle/common/lifecycle.js';
 import { WebviewInput } from '../../webviewPanel/browser/webviewEditorInput.js';
 
