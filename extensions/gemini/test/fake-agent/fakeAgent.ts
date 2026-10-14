@@ -54,6 +54,12 @@ export interface FakeAgentScript {
 	 * `loadSession`. A reopened session first replays `history:<id>` as a user message.
 	 */
 	readonly storedSessions?: readonly string[];
+	/**
+	 * More of the history a reopened session replays, after `session/load`
+	 * answers, as gemini-cli does: `updates` agent messages ("Part 1" and on,
+	 * each ending in a `[Function Call: replace]` marker), one every `delayMs`.
+	 */
+	readonly replay?: { readonly updates: number; readonly delayMs?: number };
 	/** Returned from `session/new`, or an error to throw (e.g. a missing project ID). */
 	readonly newSession?: Partial<acp.NewSessionResponse> | ScriptedError;
 	/** Serve the unstable `session/set_model`, as gemini-cli does. Without it the call fails with -32601. */
@@ -134,6 +140,15 @@ acp.agent({ name: 'fake-agent' })
 		sessionCwds.set(sessionId, cwd);
 		// Like gemini-cli, the history is replayed as updates.
 		await ctx.client.notify('session/update', { sessionId, update: { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: `history:${sessionId}` } } });
+		const replay = script.replay;
+		if (replay) {
+			void (async () => {
+				for (let i = 1; i <= replay.updates; i++) {
+					await new Promise(resolve => setTimeout(resolve, replay.delayMs ?? 0));
+					await ctx.client.notify('session/update', { sessionId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `[Thought: true]Part ${i}[Function Call: replace]` } } });
+				}
+			})();
+		}
 		return {};
 	})
 	.onRequest('session/prompt', async ctx => {

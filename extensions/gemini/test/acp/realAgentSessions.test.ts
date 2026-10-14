@@ -19,7 +19,7 @@ import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AgentConnection } from '../../src/acp/agentConnection';
 import { resolveAgentCommand, spawnAgent } from '../../src/acp/agentProcess';
-import { findCliSession, listCliSessions } from '../../src/acp/cliSessions';
+import { findCliSession, isPrompt, listCliSessions } from '../../src/acp/cliSessions';
 import { contentBlockToText } from '../../src/acp/sessionUpdates';
 
 const cliPath = process.env.GEMINI_CLI_PATH;
@@ -115,6 +115,29 @@ describe.skipIf(!cliPath)('reopening a saved session over ACP', () => {
 		const [command, args] = cliPath!.endsWith('.js') ? [process.execPath, [cliPath!]] : [cliPath!, []];
 		await promisify(execFile)(command, [...args, '-m', 'gemini-2.5-flash', '-p', 'Fix the rounding in the cart total'], { cwd: work, env, timeout: 60_000 });
 		await expectReplay(env, work, geminiHome);
+	}, 90_000);
+
+	it('reopens a session by its id, twice, with its whole history', async () => {
+		const { env, work, geminiHome } = await setUp();
+		const first = await startAgent(env, work);
+		const { sessionId } = await first.newSession(work);
+		await first.setModel(sessionId, 'gemini-2.5-flash');
+		await first.prompt(sessionId, [{ type: 'text', text: 'Fix the rounding in the cart total' }]);
+		await first.prompt(sessionId, [{ type: 'text', text: 'And the tax line' }]);
+		const listed = await findCliSession(work, sessionId, geminiHome);
+		expect(listed).toMatchObject({ id: sessionId, messages: 2 });
+		for (let i = 0; i < 2; i++) {
+			const updates: acp.SessionUpdate[] = [];
+			const connection = await startAgent(env, work, updates);
+			const loaded = await connection.loadSession(sessionId, work);
+			await new Promise(resolve => setTimeout(resolve, 500));
+			const replayed = updates.filter(u => ['user_message_chunk', 'agent_message_chunk', 'agent_thought_chunk', 'tool_call'].includes(u.sessionUpdate));
+			// The count GeminiCode works out from the file is what the CLI replays, so it knows when the replay ends.
+			expect(replayed).toHaveLength(listed!.replayUpdates);
+			expect(replayed.flatMap(u => u.sessionUpdate === 'user_message_chunk' ? [contentBlockToText(u.content)] : []).filter(isPrompt)).toEqual(['Fix the rounding in the cart total', 'And the tax line']);
+			expect(loaded).toBeDefined();
+			expect(await findCliSession(work, sessionId, geminiHome)).toMatchObject({ id: sessionId, messages: 2 });
+		}
 	}, 90_000);
 
 	it('reopens an agent session after the agent restarts', async () => {

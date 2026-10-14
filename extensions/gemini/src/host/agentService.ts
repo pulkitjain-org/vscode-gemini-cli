@@ -168,6 +168,11 @@ export class AgentService implements vscode.Disposable {
 	}
 
 	/** Starts the agent if it is not running yet and waits until `client`'s session is ready. */
+	/** Writes `message` to the Gemini log. */
+	writeLog(message: string): void {
+		this.log.info(message);
+	}
+
 	async ensureReady(client: AgentClient = this.client): Promise<Extract<AgentClientState, { kind: 'ready' }>> {
 		if (!this.started) {
 			this.restart();

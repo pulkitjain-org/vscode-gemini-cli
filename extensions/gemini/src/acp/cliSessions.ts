@@ -40,6 +40,8 @@ export interface CliSession {
 	 * reads them, so the load fails and the session is lost.
 	 */
 	readonly index: number;
+	/** How many updates the CLI sends when it replays the session on `session/load` (see `replayUpdateCount`). */
+	readonly replayUpdates: number;
 }
 
 /** One session file's session, before the list is put together. */
@@ -53,6 +55,8 @@ export interface ParsedSession {
 	readonly updatedAt: number;
 	/** The token counts the CLI saved with its replies; unset when it saved none. */
 	readonly tokens?: SessionTokens;
+	/** How many updates the CLI sends when it replays the session (see `replayUpdateCount`). */
+	readonly replayUpdates: number;
 }
 
 /** What a session's model requests used, from the counts the CLI saves with each reply. */
@@ -135,6 +139,7 @@ async function numberedSessions(cwd: string, home?: string): Promise<CliSession[
 			messages: session.prompts.length,
 			updatedAt: session.updatedAt,
 			index: i + 1,
+			replayUpdates: session.replayUpdates,
 		}));
 }
 
@@ -179,6 +184,31 @@ interface MessageRecord {
 
 /** One session file's session, or undefined when it has none worth reopening. */
 export function parseSessionFile(text: string, wholeJson: boolean, mtime = 0): ParsedSession | undefined {
+	const { meta, all } = parseSessionRecords(text, wholeJson);
+	const id = meta.sessionId;
+	if (typeof id !== 'string' || !id || meta.kind === 'subagent') {
+		return undefined;
+	}
+	const prompts = all.filter(m => m.type === 'user').map(m => textOf(m.content).trim()).filter(isPrompt);
+	const resumable = prompts.length > 0 || all.some(isReply);
+	const summary = typeof meta.summary === 'string' ? meta.summary.trim() : '';
+	const time = (key: string) => typeof meta[key] === 'string' ? Date.parse(meta[key] as string) : NaN;
+	const started = time('startTime');
+	const updated = time('lastUpdated');
+	return {
+		id,
+		title: oneLine(summary || prompts[0] || ''),
+		prompts,
+		resumable,
+		startedAt: Number.isFinite(started) ? started : Number.isFinite(updated) ? updated : mtime,
+		updatedAt: Number.isFinite(updated) ? updated : Number.isFinite(started) ? started : mtime,
+		replayUpdates: replayUpdateCount(all),
+		...withTokens(all),
+	};
+}
+
+/** A session file's metadata and its messages as they stand, after rewinds and rewrites. */
+function parseSessionRecords(text: string, wholeJson: boolean): { meta: Record<string, unknown>; all: MessageRecord[] } {
 	let meta: Record<string, unknown> = {};
 	const messages = new Map<string, MessageRecord>();
 	const setMessages = (list: unknown) => {
@@ -245,26 +275,44 @@ export function parseSessionFile(text: string, wholeJson: boolean, mtime = 0): P
 			}
 		}
 	}
-	const id = meta.sessionId;
-	if (typeof id !== 'string' || !id || meta.kind === 'subagent') {
-		return undefined;
+	return { meta, all: [...messages.values()] };
+}
+
+/**
+ * How many updates gemini-cli 0.63 sends when it replays `messages` after a
+ * `session/load` (`streamHistory`): one per user message with any text or
+ * part, and for each model message one per thought, one for its text or
+ * parts, and one per tool call. The CLI answers `session/load` before the
+ * replay is over, so this is how GeminiCode knows when it is.
+ */
+export function replayUpdateCount(messages: readonly unknown[]): number {
+	let count = 0;
+	for (const message of messages) {
+		if (!isObject(message)) {
+			continue;
+		}
+		if (message.type === 'user') {
+			count += hasReplayText(message.content) ? 1 : 0;
+		} else if (message.type === 'gemini') {
+			count += (Array.isArray(message.thoughts) ? message.thoughts.length : 0)
+				+ (hasReplayText(message.content) ? 1 : 0)
+				+ (Array.isArray(message.toolCalls) ? message.toolCalls.length : 0);
+		}
 	}
-	const all = [...messages.values()];
-	const prompts = all.filter(m => m.type === 'user').map(m => textOf(m.content).trim()).filter(isPrompt);
-	const resumable = prompts.length > 0 || all.some(isReply);
-	const summary = typeof meta.summary === 'string' ? meta.summary.trim() : '';
-	const time = (key: string) => typeof meta[key] === 'string' ? Date.parse(meta[key] as string) : NaN;
-	const started = time('startTime');
-	const updated = time('lastUpdated');
-	return {
-		id,
-		title: oneLine(summary || prompts[0] || ''),
-		prompts,
-		resumable,
-		startedAt: Number.isFinite(started) ? started : Number.isFinite(updated) ? updated : mtime,
-		updatedAt: Number.isFinite(updated) ? updated : Number.isFinite(started) ? started : mtime,
-		...withTokens(all),
-	};
+	return count;
+}
+
+/** Parts the CLI's verbose converter writes as a marker such as `[Function Call: replace]`, which is never empty. */
+const markerParts = ['videoMetadata', 'thought', 'codeExecutionResult', 'executableCode', 'fileData', 'functionCall', 'functionResponse', 'inlineData'];
+
+/** Whether the CLI's verbose text of `content` is more than white space. */
+function hasReplayText(content: unknown): boolean {
+	if (typeof content === 'string') {
+		return !!content.trim();
+	}
+	const parts = Array.isArray(content) ? content : [content];
+	return parts.some(part => typeof part === 'string' ? !!part.trim()
+		: isObject(part) && (markerParts.some(key => part[key] !== undefined) || (typeof part.text === 'string' && !!part.text.trim())));
 }
 
 /** The session's token counts from its replies' `tokens` (`input`, `cached`, ...), as gemini-cli 0.62 and 0.63 save them. */
@@ -287,11 +335,13 @@ function withTokens(messages: readonly MessageRecord[]): { tokens?: SessionToken
 	return latest ? { tokens: { context: Math.round(latest.input), ...(latest.model ? { model: latest.model } : {}), cached: Math.round(cached) } } : {};
 }
 
-/**
- * The token counts saved for session `id` in `cwd`, from its newest file;
- * undefined when the CLI saved none (chat recording off, or nothing sent yet).
- */
-export async function readSessionTokens(cwd: string, id: string, home?: string): Promise<SessionTokens | undefined> {
+/** Session `id` in `cwd` from its newest file, reading only that session's files; undefined when there is none. */
+async function readSessionById(cwd: string, id: string, home?: string): Promise<ParsedSession | undefined> {
+	return (await newestSessionFile(cwd, id, home))?.session;
+}
+
+/** The newest file of session `id` in `cwd`, and its session. */
+async function newestSessionFile(cwd: string, id: string, home?: string): Promise<{ readonly file: string; readonly session: ParsedSession } | undefined> {
 	const folder = await chatsFolder(cwd, home);
 	if (!folder || !id) {
 		return undefined;
@@ -304,8 +354,63 @@ export async function readSessionTokens(cwd: string, id: string, home?: string):
 	} catch {
 		return undefined;
 	}
-	const sessions = (await Promise.all(names.map(name => readSessionFile(path.join(folder, name))))).filter(session => session?.id === id);
-	return sessions.sort((a, b) => b!.updatedAt - a!.updatedAt)[0]?.tokens;
+	const files = await Promise.all(names.map(async name => ({ file: path.join(folder, name), session: await readSessionFile(path.join(folder, name)) })));
+	return files.filter((f): f is { file: string; session: ParsedSession } => f.session?.id === id).sort((a, b) => b.session.updatedAt - a.session.updatedAt)[0];
+}
+
+/** One message of a saved conversation, as text: the user's prompts and the model's replies. */
+export interface ConversationEntry {
+	readonly role: 'user' | 'model';
+	readonly text: string;
+}
+
+/**
+ * The conversation saved for session `id` in `cwd`, as the user saw it:
+ * prompts and the model's text, without the CLI's context, commands, thoughts
+ * and tool results. Undefined when there is no file.
+ */
+export async function readCliConversation(cwd: string, id: string, home?: string): Promise<ConversationEntry[] | undefined> {
+	const newest = await newestSessionFile(cwd, id, home);
+	if (!newest) {
+		return undefined;
+	}
+	const { all } = parseSessionRecords(await fs.readFile(newest.file, 'utf8'), newest.file.endsWith('.json'));
+	const entries: ConversationEntry[] = [];
+	for (const message of all) {
+		const text = textOf(message.content).trim();
+		if (message.type === 'user' && isPrompt(text)) {
+			entries.push({ role: 'user', text });
+		} else if (message.type === 'gemini' && text) {
+			entries.push({ role: 'model', text });
+		}
+	}
+	return entries;
+}
+
+/** How much of a carried conversation is given to the new session, in characters: the latest part when it is longer. */
+const carriedConversationLimit = 40_000;
+
+/** The note that gives a new session a conversation the agent could not reopen. */
+export function carriedConversationNote(title: string, conversation: readonly ConversationEntry[]): string {
+	let text = conversation.map(entry => `${entry.role === 'user' ? 'User' : 'You'}: ${entry.text}`).join('\n\n');
+	if (text.length > carriedConversationLimit) {
+		text = `…${text.slice(text.length - carriedConversationLimit)}`;
+	}
+	return `This continues an earlier conversation ("${title}") that could not be reopened. Here it is, for context; carry on from it.\n\n<earlier_conversation>\n${text}\n</earlier_conversation>`;
+}
+
+/**
+ * The token counts saved for session `id` in `cwd`, from its newest file;
+ * undefined when the CLI saved none (chat recording off, or nothing sent yet).
+ */
+export async function readSessionTokens(cwd: string, id: string, home?: string): Promise<SessionTokens | undefined> {
+	return (await readSessionById(cwd, id, home))?.tokens;
+}
+
+/** What reopening session `id` in `cwd` by its id needs: its replay length. Reads only that session's files. */
+export async function readCliSession(cwd: string, id: string, home?: string): Promise<{ readonly firstPrompt: string; readonly replayUpdates: number } | undefined> {
+	const session = await readSessionById(cwd, id, home);
+	return session && { firstPrompt: session.prompts[0] ?? '', replayUpdates: session.replayUpdates };
 }
 
 /** A model message the CLI would resume: one with text, tool calls or thoughts. */

@@ -21,14 +21,14 @@ import { buildPromptContent } from '../acp/promptContent';
 import { skillPrompt } from '../acp/skills';
 import { mergeCommands, parseInvocation, SlashCommand } from '../acp/slashCommands';
 import { expandTeamCommandWithInjections, TeamCommandCancelled } from '../acp/teamCommandExpansion';
-import { CliSession, isPrompt, listCliSessions, readSessionTokens } from '../acp/cliSessions';
+import { carriedConversationNote, CliSession, isPrompt, listCliSessions, readCliConversation, readSessionTokens } from '../acp/cliSessions';
 import type { ChatEvent } from '../acp/sessionUpdates';
 import { AgentStatus } from '../acp/status';
 import { TextDeltas } from '../acp/textDeltas';
 import type { ModelTokens } from '../acp/turnUsage';
 import { UpdateBatcher } from '../acp/updateBatcher';
 import type { AgentClient } from '../acp/agentClient';
-import { AgentError, errorMessage } from '../acp/errors';
+import { AgentError, AgentErrorInfo, errorMessage } from '../acp/errors';
 import { readGitHead } from '../acp/gitHead';
 import { upgradeUrl } from '../acp/helpLinks';
 import { EnhanceCancelledError, enhanceHistory } from '../acp/promptEnhancer';
@@ -73,6 +73,8 @@ export interface ChatHost {
 	cancel(): Promise<void>;
 	/** Trusts `folder` for the CLI and restarts the agent; returns whether the restart waits for running prompts. */
 	trustFolder(folder: string): boolean;
+	/** Writes to the Gemini log. */
+	writeLog?(message: string): void;
 }
 
 /** The files the @-mention picker offers. */
@@ -182,6 +184,8 @@ export class ChatController implements vscode.Disposable {
 	private retryItemId: string | undefined;
 	/** Told to the agent with the next prompt: files the user put back, which it would otherwise think it changed. */
 	private undoNote: string | undefined;
+	/** A conversation the agent could not reopen, given to the new session with the next prompt. */
+	private carriedConversation: string | undefined;
 	/** The rewrite running for the composer, so it can be cancelled. */
 	private enhancing: { readonly requestId: number; readonly abort: AbortController } | undefined;
 	/** While a reopened session replays, its messages belong in the transcript. Ends with the next prompt. */
@@ -246,11 +250,10 @@ export class ChatController implements vscode.Disposable {
 				}
 			}),
 			this.transcript.onDidReset(() => this.postReset()),
+			// A reopened session's history shows only when it was restored on purpose; otherwise the saved copy shows.
+			service.client.onDidReplayEvent(event => this.replaying && this.applyReplayed(event)),
+			service.client.onDidFailToReopen(({ sessionId, error }) => service.writeLog?.(`Could not reopen session ${sessionId}: ${error.message}`)),
 			service.client.onDidReceiveEvent(event => {
-				if (this.replaying) {
-					this.applyReplayed(event);
-					return;
-				}
 				// Only a turn's updates belong in the transcript.
 				if (this.busy) {
 					if (event.kind === 'toolCall') {
@@ -411,8 +414,15 @@ export class ChatController implements vscode.Disposable {
 			if (this.undoNote) {
 				content.unshift({ type: 'text', text: this.undoNote });
 			}
+			const carried = this.carriedConversation;
+			if (carried) {
+				content.unshift({ type: 'text', text: carried });
+			}
 			const { stopReason, usage } = await this.service.client.promptTurn(content);
 			this.undoNote = undefined;
+			if (carried === this.carriedConversation) {
+				this.carriedConversation = undefined;
+			}
 			const notice = stopReasonNotice(stopReason);
 			if (notice) {
 				this.transcript.addNotice(notice, stopReason === 'refusal' ? 'error' : 'info');
@@ -587,12 +597,12 @@ export class ChatController implements vscode.Disposable {
 	 * off and replays it into the chat. A conversation already here is
 	 * replaced, after asking; it stays saved by the CLI.
 	 */
-	async restoreSession(id: string, title?: string): Promise<void> {
+	async restoreSession(id: string, title?: string, again = false): Promise<void> {
 		if (this.busy) {
 			return;
 		}
 		title ??= (await this.savedSessions()).find(s => s.id === id)?.title ?? id;
-		if (this.transcript.items.length) {
+		if (this.transcript.items.length && !again) {
 			const restore = vscode.l10n.t("Restore");
 			const answer = await vscode.window.showWarningMessage(
 				vscode.l10n.t("Restore \"{0}\" in this chat?", title),
@@ -604,9 +614,11 @@ export class ChatController implements vscode.Disposable {
 		}
 		this.setBusy(true);
 		let restored = false;
+		let reason: string | undefined;
 		try {
 			await this.service.ensureReady();
 			this.transcript.clear();
+			this.carriedConversation = undefined;
 			this.diffs.clear();
 			this.completedToolCalls.clear();
 			this.checkpoints.clear();
@@ -617,19 +629,57 @@ export class ChatController implements vscode.Disposable {
 			this.replaying = true;
 			// So the switch does not read as the agent losing the session.
 			this.lastSessionId = id;
-			restored = await this.service.client.loadSession(id);
+			let failure: AgentErrorInfo | undefined;
+			const failed = this.service.client.onDidFailToReopen(e => e.sessionId === id && (failure = e.error));
+			try {
+				restored = await this.service.client.loadSession(id);
+				if (!restored && failure && isPassingFailure(failure)) {
+					// Once more after a restart or a start: those pass.
+					failure = undefined;
+					await this.service.ensureReady();
+					restored = await this.service.client.loadSession(id);
+				}
+			} finally {
+				failed.dispose();
+			}
 			if (restored) {
 				this.onDidRestoreSessionEmitter.fire(title);
+			} else {
+				reason = failure && reopenFailureText(failure);
 			}
 		} catch (err) {
-			this.transcript.addNotice(errorMessage(err), 'error');
+			reason = errorMessage(err);
 		} finally {
 			this.setBusy(false);
 		}
 		if (!restored) {
 			this.replaying = false;
 			this.transcript.clear();
-			this.transcript.addNotice(vscode.l10n.t("The agent could not reopen \"{0}\", so this chat starts afresh.", title), 'error');
+			const conversation = await readCliConversation(this.service.client.cwd, id).catch(() => undefined);
+			if (conversation?.length) {
+				// The CLI can't take it up, but the conversation is still in its file: show it, and carry it into the new session.
+				for (const entry of conversation) {
+					if (entry.role === 'user') {
+						this.transcript.addReplayedPrompt(entry.text);
+					} else {
+						this.transcript.apply({ kind: 'text', role: 'agent', text: entry.text });
+					}
+				}
+				this.transcript.addNotice(reason
+					? vscode.l10n.t("The agent could not reopen \"{0}\": {1} It continues in a new session that is given this conversation.", title, reason)
+					: vscode.l10n.t("The agent could not reopen \"{0}\". It continues in a new session that is given this conversation.", title), 'error');
+				this.carriedConversation = carriedConversationNote(title, conversation);
+			} else {
+				this.transcript.addNotice(reason
+					? vscode.l10n.t("The agent could not reopen \"{0}\": {1}", title, reason)
+					: vscode.l10n.t("The agent could not reopen \"{0}\", so this chat starts afresh.", title), 'error');
+			}
+			const retry = vscode.l10n.t("Try Again");
+			void vscode.window.showErrorMessage(vscode.l10n.t("Could not restore \"{0}\".", title), retry).then(choice => {
+				if (choice === retry) {
+					void this.restoreSession(id, title, true);
+				}
+			});
 		}
 	}
 
@@ -701,6 +751,7 @@ export class ChatController implements vscode.Disposable {
 		this.lastPrompt = undefined;
 		this.retryItemId = undefined;
 		this.undoNote = undefined;
+		this.carriedConversation = undefined;
 		this.replaying = false;
 		if (this.service.client.state.kind !== 'ready') {
 			// The next prompt starts the agent, and with it a new session.
@@ -1567,4 +1618,30 @@ async function isFile(filePath: string): Promise<boolean> {
 	} catch {
 		return false;
 	}
+}
+
+/** Whether reopening a session failed for a reason that passes, such as the agent restarting, so trying once more can work. */
+function isPassingFailure(error: AgentErrorInfo): boolean {
+	return error.kind === 'agent-exited' || /not ready|restart/i.test(error.message);
+}
+
+/** Why a saved session could not be reopened, in plain words, as a sentence. */
+function reopenFailureText(error: AgentErrorInfo): string {
+	if (error.kind === 'auth-required' || error.kind === 'auth-failed') {
+		return vscode.l10n.t("Sign-in expired. Sign in again, then try again.");
+	}
+	if (isPassingFailure(error)) {
+		return vscode.l10n.t("The agent restarted while reopening it.");
+	}
+	if (/another chat has that session open/i.test(error.message)) {
+		return vscode.l10n.t("Another chat has it open.");
+	}
+	if (/not found|no previous sessions|ENOENT/i.test(error.message)) {
+		return vscode.l10n.t("The Gemini CLI no longer has it; its cleanup may have removed it.");
+	}
+	if (/different session/i.test(error.message)) {
+		return vscode.l10n.t("The agent opened a different session.");
+	}
+	const message = error.message.trim();
+	return /[.!?]$/.test(message) ? message : `${message}.`;
 }

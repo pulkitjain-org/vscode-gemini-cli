@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { chatsFolder, findCliSession, listCliSessions, parseSessionFile, readSessionTokens } from '../../src/acp/cliSessions';
+import { carriedConversationNote, chatsFolder, findCliSession, listCliSessions, parseSessionFile, readCliConversation, readCliSession, readSessionTokens, replayUpdateCount } from '../../src/acp/cliSessions';
 
 /** Written by gemini-cli 0.62 for `gemini -p "Fix the rounding in the cart total"`, paths changed. */
 const terminalSession = readFileSync(path.join(__dirname, '..', 'fixtures', 'cli-sessions', 'session-terminal.jsonl'), 'utf8');
@@ -24,6 +24,8 @@ describe('parseSessionFile', () => {
 			resumable: true,
 			startedAt: Date.parse('2026-10-05T10:27:08.057Z'),
 			updatedAt: Date.parse('2026-10-05T10:27:08.130Z'),
+			// The context the CLI adds and the prompt, then the reply.
+			replayUpdates: 3,
 			tokens: { context: 1, model: 'gemini-2.5-flash', cached: 0 },
 		});
 	});
@@ -118,6 +120,28 @@ describe('listCliSessions', () => {
 		expect(await findCliSession(work, 'empty', home)).toBeUndefined();
 	});
 
+	it('reads one session by its id, with its replay length and conversation, from its own files only', async () => {
+		home = mkdtempSync(path.join(tmpdir(), 'cli-home-'));
+		const work = path.join(home, 'shop');
+		writeFileSync(path.join(home, 'projects.json'), JSON.stringify({ projects: { [work]: 'shop' } }));
+		const chats = path.join(home, 'tmp', 'shop', 'chats');
+		mkdirSync(chats, { recursive: true });
+		writeFileSync(path.join(chats, 'session-2026-10-01T09-00-abcdef12.jsonl'), [
+			line({ sessionId: 'abcdef12-0000', projectHash: 'h', startTime: '2026-10-01T09:00:00.000Z' }),
+			line({ id: 'm1', type: 'user', content: [{ text: '<session_context>ctx</session_context>' }] }),
+			line({ id: 'm2', type: 'user', content: [{ text: 'Fix the cart' }] }),
+			line({ id: 'm3', type: 'gemini', content: [{ text: 'Done.' }], thoughts: [{ subject: 'a', description: 'b' }], toolCalls: [{ id: 't1', name: 'replace' }] }),
+			line({ id: 'm4', type: 'user', content: [{ functionResponse: { name: 'replace' } }] }),
+		].join('\n'));
+		// Another session's file is not read.
+		writeFileSync(path.join(chats, 'session-2026-10-01T09-00-99999999.jsonl'), '{not json');
+		expect(await readCliSession(work, 'abcdef12-0000', home)).toEqual({ firstPrompt: 'Fix the cart', replayUpdates: 6 });
+		expect(await readCliSession(work, 'abcdef12-other', home)).toBeUndefined();
+		const conversation = await readCliConversation(work, 'abcdef12-0000', home);
+		expect(conversation).toEqual([{ role: 'user', text: 'Fix the cart' }, { role: 'model', text: 'Done.' }]);
+		expect(carriedConversationNote('Cart', conversation!)).toContain('User: Fix the cart\n\nYou: Done.');
+	});
+
 	it('falls back to the older hashed folder, and is empty when the CLI never ran there', async () => {
 		home = mkdtempSync(path.join(tmpdir(), 'cli-home-'));
 		const work = path.join(home, 'legacy');
@@ -143,5 +167,19 @@ describe('listCliSessions', () => {
 		expect(await readSessionTokens(work, id, home)).toEqual({ context: 124_300, model: 'gemini-3.8-flash', cached: 80_000 });
 		expect(await readSessionTokens(work, 'other000-0000', home)).toBeUndefined();
 		expect(await readSessionTokens(work, 'missing0-0000', home)).toBeUndefined();
+	});
+});
+
+describe('replayUpdateCount', () => {
+	it('counts what gemini-cli replays: user messages with any part, and each model message\'s thoughts, text and tool calls', () => {
+		expect(replayUpdateCount([
+			{ type: 'user', content: '  ' },
+			{ type: 'user', content: [{ text: 'Hi' }] },
+			{ type: 'user', content: [{ inlineData: { mimeType: 'image/png', data: '' } }] },
+			{ type: 'gemini', content: [], toolCalls: [{}, {}] },
+			{ type: 'gemini', content: [{ text: ' ' }], thoughts: [{}] },
+			{ type: 'gemini', content: [{ thought: true, text: 'x' }] },
+			{ type: 'info', content: 'not replayed' },
+		])).toBe(6);
 	});
 });

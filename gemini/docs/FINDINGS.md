@@ -75,7 +75,15 @@ Read from the gemini-cli 0.62.0 bundle:
 - It replays the history as `session/update` notifications (user and agent messages, thoughts, tool calls) without waiting for them, so some can arrive after the response. The reply carries modes and models but not the session id.
 - Tool calls replay with title, kind, locations, diffs and text only, so a client cannot rebuild its own view from the replay.
 
-GeminiCode therefore keeps its own copy of each agent's conversation for display and uses `session/load` only so the agent remembers it. The replay arrives outside a turn and the chat ignores it. If the user sends a prompt while a long replay is still streaming, the tail of the replay could show in that turn; it has not been seen in practice.
+GeminiCode therefore keeps its own copy of each agent's conversation for display and uses `session/load` only so the agent remembers it.
+
+Re-read in 0.63.0 on 14 Oct 2026 (`streamHistory` and `partToString` in the bundle):
+
+- The replay turns each saved message into text with the CLI's verbose converter, so thoughts, tool calls and tool results come through as markers: `[Thought: true]`, `[Function Call: replace]`, and tool results, which the CLI saves as user messages, as user messages such as `[Function Response: run_shell_command]`. A pasted image is `[Image: image/png, 45.2 KB]`.
+- It sends one update per user message with any text or part, and per model message one per thought, one for its text or parts, and one per tool call. GeminiCode works this count out from the session file (`replayUpdateCount`); a real-CLI test checks it against the CLI.
+- A prompt sent while the replay still streamed used to pick up the rest of the replay as its own turn, which saved markers into the chat. Now the client keeps replayed updates apart (`onDidReplayEvent`), holds a prompt until the counted replay is over (or no update came for 250 ms), and cleans the markers wherever the replay is shown, such as Restore a Session. Chats saved before this are cleaned when they load.
+- Loading by the session's id works from 0.63.0: the CLI matches the exact id first and no longer resets the session (checked twice in a row by `realAgentSessions.test.ts`). GeminiCode loads by id from 0.63.0 and reads only that session's file; it still loads by the CLI's list number, with the first-prompt check, for older CLIs.
+- When a session can't be reopened, the chat says why (sign-in, the CLI no longer has it, another chat has it open, a restart), retries once after a restart, and shows the conversation from the CLI's file, giving it to the new session with the next prompt.
 
 ## Prompt enhancement: direct requests or the CLI
 

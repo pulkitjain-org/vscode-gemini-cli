@@ -12,9 +12,14 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import type { EditedFile } from './agentChanges';
 import type { TranscriptItem } from './chatTranscript';
+import { hasReplayMarkers, withoutReplayMarkers } from './replayText';
 import type { ModelTokens } from './turnUsage';
 
-const formatVersion = 1;
+/**
+ * 2 since replayed history can no longer leak into a chat (see replayText.ts);
+ * a version 1 file is cleaned of the markers it may have when it loads.
+ */
+const formatVersion = 2;
 const maxItems = 300;
 const maxTextLength = 20_000;
 
@@ -40,11 +45,12 @@ export class TranscriptStore {
 		await this.writes.get(agentId);
 		try {
 			const stored = JSON.parse(await readFile(this.file(agentId), 'utf8')) as StoredTranscript;
-			if (stored?.version !== formatVersion) {
+			if (stored?.version !== formatVersion && stored?.version !== 1) {
 				return { items: [], changes: [] };
 			}
+			const items = Array.isArray(stored.items) ? stored.items.filter(isTranscriptItem).map(settle) : [];
 			return {
-				items: Array.isArray(stored.items) ? stored.items.filter(isTranscriptItem).map(settle) : [],
+				items: stored.version === 1 ? withoutLeakedReplay(items) : items,
 				changes: Array.isArray(stored.changes) ? stored.changes : [],
 			};
 		} catch {
@@ -111,6 +117,21 @@ function settle(item: TranscriptItem): TranscriptItem {
 		return undo === 'undone' ? { ...rest, undo } : rest;
 	}
 	return item;
+}
+
+/**
+ * A version 1 chat with the CLI's replay markers cleaned out: a prompt or
+ * reply made only of markers, such as `[Function Response: replace]`, goes,
+ * and markers at the start or end of other text are taken off.
+ */
+export function withoutLeakedReplay(items: readonly TranscriptItem[]): TranscriptItem[] {
+	return items.flatMap(item => {
+		if ((item.kind !== 'user' && item.kind !== 'agent' && item.kind !== 'thought') || !hasReplayMarkers(item.text)) {
+			return [item];
+		}
+		const text = withoutReplayMarkers(item.text);
+		return text ? [{ ...item, text }] : [];
+	});
 }
 
 const kinds = new Set(['user', 'agent', 'thought', 'toolCall', 'plan', 'permission', 'other', 'notice', 'turnEnd']);

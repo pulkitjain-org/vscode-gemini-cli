@@ -8,7 +8,9 @@ import type { AgentConnection } from './agentConnection';
 import { AgentError, AgentErrorInfo, classifyAgentError } from './errors';
 import { Emitter } from './events';
 import { AgentRuntime, AgentRuntimeState, FileSystemHandlers } from './agentRuntime';
-import { findCliSession } from './cliSessions';
+import { findCliSession, readCliSession } from './cliSessions';
+import { isOlderThan } from './cliResolution';
+import { withoutReplayMarkers } from './replayText';
 import { PromptCapabilities, readPromptCapabilities } from './promptContent';
 import { filterModes, readSessionSettings, SessionChoice, SessionSettings } from './sessionSettings';
 import type { SlashCommand } from './slashCommands';
@@ -40,6 +42,26 @@ export interface TurnResult {
 	readonly usage?: readonly ModelTokens[];
 }
 
+/** What the client knows of a saved session before reopening it. */
+export interface SavedSession {
+	readonly index?: number;
+	readonly firstPrompt?: string;
+	/** How many updates the CLI replays on `session/load`; unknown when unset. */
+	readonly replayUpdates?: number;
+}
+
+/**
+ * gemini-cli before 0.63 loses a saved session loaded by its id (see
+ * cliSessions.ts), so those are loaded by their number in the CLI's list.
+ */
+const loadsByIdFrom = '0.63.0';
+
+/** After this long without a replayed update, a replay whose length is not known is taken as over. */
+const replayQuietMs = 250;
+
+/** Updates the CLI sends when it replays a saved session's history. */
+const replayKinds: ReadonlySet<string> = new Set(['user_message_chunk', 'agent_message_chunk', 'agent_thought_chunk', 'tool_call']);
+
 export interface AgentClientOptions {
 	readonly cwd: string;
 	/** Asked for every `session/request_permission`; must resolve, with `cancelled` if nothing else. */
@@ -63,8 +85,12 @@ export interface AgentClientOptions {
 	readonly preferredModel?: (available: readonly SessionChoice[]) => string | undefined;
 	/** Which approval modes the picker may offer; all of them when unset. */
 	readonly isModeAllowed?: (modeId: string) => boolean;
-	/** Finds a saved session's number and first prompt; the CLI's own files when unset. */
-	readonly findSavedSession?: (cwd: string, id: string) => Promise<{ readonly index: number; readonly firstPrompt: string } | undefined>;
+	/**
+	 * Finds a saved session in the CLI's files: its number and first prompt
+	 * (for a CLI that must load it by number) and how many updates its replay
+	 * has. The CLI's own files when unset.
+	 */
+	readonly findSavedSession?: (cwd: string, id: string, byNumber: boolean) => Promise<SavedSession | undefined>;
 	/**
 	 * MCP servers GeminiCode itself serves to this session, such as the
 	 * browser; asked each time a session opens. Servers over a transport the
@@ -94,6 +120,17 @@ export class AgentClient {
 	private readonly onDidReceiveEventEmitter = new Emitter<ChatEvent>();
 	readonly onDidReceiveEvent = this.onDidReceiveEventEmitter.event;
 
+	private readonly onDidFailToReopenEmitter = new Emitter<{ readonly sessionId: string; readonly error: AgentErrorInfo }>();
+	/** A saved session could not be reopened, and why; a new session opens instead. */
+	readonly onDidFailToReopen = this.onDidFailToReopenEmitter.event;
+
+	private readonly onDidReplayEventEmitter = new Emitter<ChatEvent>();
+	/**
+	 * The history a reopened session replays, apart from new turns, with the
+	 * CLI's markers taken out. A chat that already shows its saved copy can ignore it.
+	 */
+	readonly onDidReplayEvent = this.onDidReplayEventEmitter.event;
+
 	private readonly onDidChangeSettingsEmitter = new Emitter<SessionSettings>();
 	/** The current session's mode and model choices changed. */
 	readonly onDidChangeSettings = this.onDidChangeSettingsEmitter.event;
@@ -116,6 +153,8 @@ export class AgentClient {
 	private readonly runtimeListener: { dispose(): void };
 	/** Set until `open()` with `openLater`: the runtime may be ready, but no session is opened yet. */
 	private held: boolean;
+	/** While a reopened session replays its history: updates still to come (unknown when unset), and the end that prompts wait for. */
+	private replay: { remaining?: number; quiet?: ReturnType<typeof setTimeout>; readonly done: Promise<void>; readonly end: () => void } | undefined;
 
 	constructor(private readonly runtime: AgentRuntime, private readonly options: AgentClientOptions) {
 		this.resumeSessionId = options.resumeSessionId;
@@ -204,6 +243,10 @@ export class AgentClient {
 
 	/** Like `prompt`, and also resolves with the tokens the turn used, when the agent reports them. */
 	async promptTurn(content: string | acp.ContentBlock[]): Promise<TurnResult> {
+		if (this.replay) {
+			// The answer must not mix with the history still arriving.
+			await this.replay.done;
+		}
 		const state = this._state;
 		if (state.kind !== 'ready' || !this.connection) {
 			throw new Error('The agent is not ready.');
@@ -229,6 +272,8 @@ export class AgentClient {
 		this.dropSession();
 		this.onDidChangeStateEmitter.dispose();
 		this.onDidReceiveEventEmitter.dispose();
+		this.onDidReplayEventEmitter.dispose();
+		this.onDidFailToReopenEmitter.dispose();
 		this.onDidChangeSettingsEmitter.dispose();
 		this.onDidChangeCommandsEmitter.dispose();
 	}
@@ -264,12 +309,16 @@ export class AgentClient {
 		const generation = ++this.generation;
 		this.setState({ kind: 'connecting' });
 		try {
-			const { connection, agent, session, savedSessionId } = await this.loadOrCreate(resume ? this.resumeSessionId : undefined);
+			const { connection, agent, session, savedSessionId, replayUpdates } = await this.loadOrCreate(resume ? this.resumeSessionId : undefined);
 			if (generation !== this.generation) {
 				return;
 			}
 			this.connection = connection;
 			this.adapter = new SessionUpdateAdapter();
+			if (replayUpdates !== null) {
+				// Before registering, which hands over the updates that came first.
+				this.beginReplay(replayUpdates);
+			}
 			this.registration = this.runtime.register(session.sessionId, {
 				sessionUpdate: update => this.onSessionUpdate(update),
 				requestPermission: params => this.options.requestPermission(params),
@@ -296,20 +345,25 @@ export class AgentClient {
 		}
 	}
 
-	private async loadOrCreate(resumeSessionId: string | undefined): Promise<Awaited<ReturnType<AgentRuntime['newSession']>> & { readonly savedSessionId: string }> {
+	/** `replayUpdates` is null for a new session, which replays nothing, and undefined for a reopened one whose replay length is unknown. */
+	private async loadOrCreate(resumeSessionId: string | undefined): Promise<Awaited<ReturnType<AgentRuntime['newSession']>> & { readonly savedSessionId: string; readonly replayUpdates: number | undefined | null }> {
 		if (resumeSessionId) {
 			try {
-				// By its number where the CLI lists it: gemini-cli 0.62 loses a saved session loaded by its id (see cliSessions.ts).
-				const saved = await (this.options.findSavedSession ?? findCliSession)(this.options.cwd, resumeSessionId).catch(() => undefined);
-				const loaded = await this.runtime.loadSession(this.options.cwd, saved ? String(saved.index) : resumeSessionId, saved?.firstPrompt, this.mcpServers());
-				return { ...loaded, savedSessionId: resumeSessionId };
-			} catch {
-				// Not supported, or the agent no longer has it: start afresh.
+				const version = this.runtime.state.kind === 'ready' ? this.runtime.state.agent.agentInfo?.version ?? '' : '';
+				const byNumber = isOlderThan(version, loadsByIdFrom);
+				const saved = await (this.options.findSavedSession ?? findSavedCliSession)(this.options.cwd, resumeSessionId, byNumber).catch(() => undefined);
+				const loadId = byNumber && saved?.index !== undefined ? String(saved.index) : resumeSessionId;
+				// The first-prompt check is only for a load by number, where the number may have moved to another session.
+				const loaded = await this.runtime.loadSession(this.options.cwd, loadId, byNumber ? saved?.firstPrompt : undefined, this.mcpServers());
+				return { ...loaded, savedSessionId: resumeSessionId, replayUpdates: saved?.replayUpdates };
+			} catch (err) {
+				// Not supported, or the agent no longer has it: start afresh, and say why.
+				this.onDidFailToReopenEmitter.fire({ sessionId: resumeSessionId, error: err instanceof AgentError ? err.info : classifyAgentError(err) });
 			}
 		}
 		const created = await this.runtime.newSession(this.options.cwd, this.mcpServers(), this.options.spareKey?.());
 		this.options.onDidOpenSession?.(created.mcpServers);
-		return { ...created, savedSessionId: created.session.sessionId };
+		return { ...created, savedSessionId: created.session.sessionId, replayUpdates: null };
 	}
 
 	/** The servers for a session the runtime opens now, as far as the agent can take them. */
@@ -337,6 +391,10 @@ export class AgentClient {
 	}
 
 	private onSessionUpdate(update: acp.SessionUpdate): void {
+		if (this.replay && replayKinds.has(update.sessionUpdate)) {
+			this.onReplayed(update);
+			return;
+		}
 		if (update.sessionUpdate === 'current_mode_update' && this._settings.mode) {
 			this.setSettings({ ...this._settings, mode: { ...this._settings.mode, currentId: update.currentModeId } });
 		}
@@ -349,8 +407,62 @@ export class AgentClient {
 		this.onDidReceiveEventEmitter.fire(this.adapter.adapt(update));
 	}
 
+	/** Starts counting a reopened session's replay; `count` updates are coming, or an unknown number. */
+	private beginReplay(count: number | undefined): void {
+		this.endReplay();
+		let end!: () => void;
+		const done = new Promise<void>(resolve => end = resolve);
+		this.replay = { remaining: count, done, end };
+		if (count === 0) {
+			this.endReplay();
+		} else {
+			this.armReplayQuiet();
+		}
+	}
+
+	/** One replayed update: shown to whoever shows the replay (cleaned), never as part of a turn. */
+	private onReplayed(update: acp.SessionUpdate): void {
+		const replay = this.replay!;
+		const event = this.adapter.adapt(update);
+		if (event.kind === 'text') {
+			const text = withoutReplayMarkers(event.text);
+			if (text) {
+				this.onDidReplayEventEmitter.fire({ ...event, text });
+			}
+		} else {
+			this.onDidReplayEventEmitter.fire(event);
+		}
+		if (replay.remaining !== undefined && --replay.remaining <= 0) {
+			this.endReplay();
+		} else {
+			this.armReplayQuiet();
+		}
+	}
+
+	/**
+	 * Ends the replay when no update came for a while. With a known count it
+	 * is a fallback for a count that is off; prompts wait for nothing longer.
+	 */
+	private armReplayQuiet(): void {
+		const replay = this.replay;
+		if (replay) {
+			clearTimeout(replay.quiet);
+			replay.quiet = setTimeout(() => this.replay === replay && this.endReplay(), replayQuietMs);
+		}
+	}
+
+	private endReplay(): void {
+		const replay = this.replay;
+		this.replay = undefined;
+		if (replay) {
+			clearTimeout(replay.quiet);
+			replay.end();
+		}
+	}
+
 	/** Stops listening to the current session. The CLI has no way to close one, so it stays in the agent's memory. */
 	private dropSession(): void {
+		this.endReplay();
 		this.generation++;
 		this.registration?.dispose();
 		this.registration = undefined;
@@ -448,4 +560,9 @@ export function supportedMcpServers(agent: acp.InitializeResponse | undefined, s
 		const type = (server as { readonly type?: 'http' | 'sse' | 'acp' }).type;
 		return type === undefined || transports?.[type] === true;
 	});
+}
+
+/** The CLI's saved session `id` in `cwd`: from its own file, or numbered as the CLI lists it for a load by number. */
+async function findSavedCliSession(cwd: string, id: string, byNumber: boolean): Promise<SavedSession | undefined> {
+	return byNumber ? findCliSession(cwd, id) : readCliSession(cwd, id);
 }

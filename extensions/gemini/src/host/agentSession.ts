@@ -78,6 +78,10 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 		return this.service.ensureReady(this.client);
 	}
 
+	writeLog(message: string): void {
+		this.service.writeLog(message);
+	}
+
 	trustFolder(folder: string): boolean {
 		return this.service.trustFolder(folder);
 	}

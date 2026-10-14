@@ -67,6 +67,23 @@ describe('TranscriptStore', () => {
 		expect(await s.load('a1')).toEqual({ items: [{ id: 'x', kind: 'agent', text: 'ok' }], changes: [] });
 	});
 
+	it('cleans the CLI\'s replay markers out of a version 1 chat', async () => {
+		const { dir, store: s } = await store();
+		await s.save('a1', { items: [], changes: [] });
+		await writeFile(path.join(dir, 'agents', 'a1.json'), JSON.stringify({ version: 1, items: [
+			{ id: 'a', kind: 'user', text: 'Fix it' },
+			{ id: 'b', kind: 'agent', text: '[Thought: true][Function Call: replace]' },
+			{ id: 'c', kind: 'user', text: '[Function Response: run_shell_command]' },
+			{ id: 'd', kind: 'agent', text: '[Thought: true]Fixed the total.[Function Call: replace]' },
+			{ id: 'e', kind: 'agent', text: '[x] is a checkbox' },
+		], changes: [] }));
+		expect((await s.load('a1')).items).toEqual([
+			{ id: 'a', kind: 'user', text: 'Fix it' },
+			{ id: 'd', kind: 'agent', text: 'Fixed the total.' },
+			{ id: 'e', kind: 'agent', text: '[x] is a checkbox' },
+		]);
+	});
+
 	it('deletes an agent\'s conversation', async () => {
 		const { store: s } = await store();
 		await s.save('a1', { items: [{ id: 'item-0', kind: 'agent', text: 'hi' }], changes: [{ path: '/a.ts', created: true, original: '', added: 1, removed: 0 }] });
