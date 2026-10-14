@@ -169,4 +169,14 @@ How well a Flash model keeps to the coordinator's role needs a real account: `np
 - Every thread called `report`; 5 of its 10 turns answered those reports.
 - Each turn read a median of 28,807 input tokens for 58 output tokens, about 267,000 in all. Most of that is the CLI's own system prompt and tool list, which every turn sends again, not the wake. That makes the coordinator cheap per turn in time but not in quota.
 
+Since then, a thread's `report` no longer wakes the coordinator: only the user's messages do, and reports reach it as context with the next one, which saves those turns.
+
 Verdict: go. Projects ship as a preview behind `gemini.projects.enabled`. The CLI titles an MCP tool's permission request by the tool and its arguments only, without the server's name; only MCP calls offer "Allow all server tools", which together with the tool name tells the project's tools apart.
+
+## Folder trust and a session's MCP servers
+
+Checked on 14 Oct 2026 with gemini-cli 0.63.0, with `security.folderTrust.enabled` on (the CLI's default):
+
+- In a folder the CLI does not trust, a session loads no MCP servers at all, not even those the client passes in `session/new`'s `mcpServers`, and no project settings or skills. A probe server got no request from a session in an untrusted folder and one from the same session in a trusted folder. The spike ran with `GEMINI_CLI_TRUST_WORKSPACE=true`, which trusts every folder, so it never saw this.
+- Trust follows the longest matching rule in `~/.gemini/trustedFolders.json` (`TRUST_FOLDER`, `TRUST_PARENT` or `DO_NOT_TRUST`), so trusting `~/.geminicode/projects` and `~/.geminicode/worktrees/<repository>` covers every coordinator and thread folder under them.
+- The CLI reads that file once per process, so a folder trusted while it runs counts only after a restart. GeminiCode restarts the agent once no prompt runs, and a project waits for that before opening its sessions.

@@ -456,7 +456,7 @@ ${renderShowcase(available)}
 					<div>
 						<div class="ico">${icon('sparkles')}</div>
 						<h3>A calmer look</h3>
-						<p>GeminiCode Dark and Light share one quiet look: soft greys, panels as cards with a hairline edge, and Graphite as the one accent. The Gemini colours are kept for the moments that matter, such as the bar that runs while an agent works.</p>
+						<p>GeminiCode Dark and Light share one quiet look: soft greys, panels as cards with a hairline edge, one blue accent and graphite selections. The Gemini colours are kept for the moments that matter, such as the bar that runs while an agent works.</p>
 					</div>
 					${crop('look', 'An agent at work in GeminiCode: the chat, the working strip and the Changes panel')}
 				</article>

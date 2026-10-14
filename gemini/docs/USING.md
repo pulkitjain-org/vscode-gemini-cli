@@ -9,6 +9,8 @@ The switch at the top of the window, or ⌥⌘M, changes the layout:
 - **Agents mode** (the default) is for working with agents: your agents on the left, the agent's chat in the middle, and its changes on the right. When no tab is open, **Agent Home** shows: describe a task and press Return to start an agent on it, tick **On its own branch** to give it a branch of its own, and see each agent's status, changes and next step as a card. Agents mode always shows Gemini on the left and Changes on the right, unless you put another view on the right; opening Explorer, Search or any other view switches to Editor mode with that view open.
 - **Editor mode** is the classic VS Code layout, with Explorer, Search and Source Control, for hands-on coding.
 
+Files, diffs and pages an agent opens go in an editor group beside its chat, with VS Code's own tab row so you can close them. Each agent has its own group: switching agents hides the others' groups without closing them, so coming back to an agent shows its files as you left them. Closing an agent's tab, or removing the agent, closes its files, except those with unsaved changes.
+
 In Agents mode the top of the window is one row: the **Agents | Editor** switch, then your open tabs — agents, Agent Home, files and browser pages — in one capsule, then a globe for the integrated browser, a magnifier that opens Quick Open and the layout buttons. Editor mode keeps the classic tab row under the title bar, because split editors need it, and shows the search box in the middle again.
 
 Each mode remembers which panels you had open. An agent's tab shows what it is doing (a spinner while it works, an amber dot when it needs you, a tick when it has finished) and how many lines it has changed. In the Agents pane, each agent's row has the same signal (a spinner, an amber dot when it needs you, a green dot when it has finished, a red dot when something went wrong, grey otherwise) and, on the right, how long it has been working, "waiting", the lines it added, or how long ago it was last active; point at a row for its branch and folder. On a Mac, right-click GeminiCode in the Dock for **New Agent**. Agents that are working, waiting for you, finished but not yet read, or need attention show as pills in Editor mode's title bar; click one to open that agent. In Agents mode the tabs and the agent list already carry those signals, so there are no pills. The foot of the agent list shows the branch of the agent you selected.
@@ -49,7 +51,9 @@ Run **Make It Yours** from the Command Palette, or open the step of the same nam
 - a code font: JetBrains Mono (the default) and Geist Mono ship with GeminiCode; SF Mono and Menlo come with macOS;
 - file icons: GeminiCode's own, Seti, or none.
 
-Each choice applies at once. GeminiCode Dark and Light share one calm look: soft greys with a faint tint at the top of the window, panels as cards with a hairline border, solid menus and pop-ups, Graphite as the one accent (Send, primary buttons, links and the context ring), and the Gemini colours kept for the sparkle, the bar that runs along the chat input while an agent works, the active tab's underline and the focused chat input. Chat text is 14 px. To change the file icons, edit the sources and rerun `python3 extensions/gemini/scripts/build-file-icons.py`.
+Each choice applies at once, and the page marks what the window shows now. When the window follows your system's light or dark appearance, it marks the theme in use, and picking a theme on the page stops following the system so your pick holds.
+
+GeminiCode Dark and Light share one calm look: soft greys with a faint tint at the top of the window, panels as cards with a hairline border, and solid menus and pop-ups. Blue is the one accent (Send, primary buttons, links and the context ring). Selected rows, menu highlights and your own messages in the chat are graphite greys, not blue. The Gemini colours are kept for the sparkle, the bar that runs along the chat input while an agent works, the active tab's underline and the focused chat input. Chat text is 14 px. To change the file icons, edit the sources and rerun `python3 extensions/gemini/scripts/build-file-icons.py`.
 
 ## Enhance prompt
 
@@ -78,9 +82,9 @@ Pick a mode from the composer's **+** menu. The list comes from the Gemini CLI, 
 | **Plan** | Reads and proposes a plan without making changes. The CLI can turn this mode off in its own settings. |
 | **YOLO** | Runs everything without asking. Off unless your admin enables it. |
 
-Permission cards show the CLI's own choices, such as **Allow**, **Allow for this session** and **Reject**. Turn on **Allow for all future sessions** in Project Helpers and they also offer to allow a tool or command from now on, in every new chat and in the terminal CLI. <kbd>esc</kbd> rejects. Stopping a turn cancels any open request. When an agent asks for permission, its tab comes to the front and the proposed edit opens as a diff; in the Agents pane its row shows an amber dot and "waiting".
+Permission cards show the CLI's own choices, such as **Allow**, **Allow for this session** and **Reject**. **Allow for this session** on a shell command covers the programs it runs for the rest of that chat's session, so a later command that runs the same programs doesn't ask again. A command that reaches the network, writes through a redirection or runs code it builds still asks each time. **Gemini: Commands Allowed for This Session...** lists what the chat in front allowed, and lets you forget any of it. Turn on **Allow for all future sessions** in Project Helpers and they also offer to allow a tool or command from now on, in every new chat and in the terminal CLI. <kbd>esc</kbd> rejects. Stopping a turn cancels any open request. When an agent asks for permission, its tab comes to the front and the proposed edit opens as a diff; in the Agents pane its row shows an amber dot and "waiting".
 
-The model picker works the same way. The model you pick is remembered and used for every new or reopened agent, in any window, when the agent offers it. Until you pick one, agents use Flash, which answers sooner than Auto because Auto first asks a smaller model which one to use.
+The model picker lists the models the terminal's `/model` shows, in the same order: preview models first, then the stable ones, with Pro left out when your account can't use it. The model you pick is remembered and used for every new or reopened agent, in any window, when the agent offers it. Until you pick one, agents use Flash, which answers sooner than Auto because Auto first asks a smaller model which one to use.
 
 Changing `gemini.cliPath`, `gemini.cli.version`, `gemini.projectId`, or an approval or shell setting restarts the agent so the change applies. Open agents resume their sessions.
 
@@ -93,6 +97,8 @@ In a window with several folders, each agent keeps to the folder it works in. To
 ## Folder trust
 
 The Gemini CLI refuses Auto Edit and YOLO in a folder it does not trust. When you pick one of those modes in such a folder, GeminiCode asks whether to trust it. Trusting a folder also lets the CLI load that folder's own Gemini settings and MCP servers, which can run programs. The CLI remembers the choice in `~/.gemini/trustedFolders.json`, and the terminal `gemini` sees it too.
+
+Projects need trust as well: the CLI loads a project's tools only in a trusted folder. Opening or starting a project asks once to trust the folders its agents run in (see [Projects](#projects-preview)).
 
 ## Agent changes and commits
 
@@ -112,6 +118,24 @@ When it's done, **Merge Back** (the merge icon on the agent's row) commits anyth
 
 The new copy has no `node_modules` or build output, so an agent that runs tests may need to install dependencies first. To start every new agent this way, turn on `gemini.agents.ownBranch`.
 
+## Projects (preview)
+
+A project hands a larger piece of work to a team of agents. Its chat is a **coordinator**: you describe the work, and it splits it into **threads**, each an agent on a new branch in its own worktree (as in [Agents on their own branch](#agents-on-their-own-branch)). The coordinator never edits files or reads the code itself; it plans, starts threads, passes your follow-ups to them and answers questions about their progress. Projects are off by default; turn them on with `gemini.projects.enabled`, or choose **New Project** and say yes when it asks.
+
+**Starting one.** Choose **+** next to **Projects** in the agent list or on Agent Home, and pick a folder in a Git repository: an open workspace or any other folder. The project chat opens at once, named after the repository. The first time, GeminiCode asks to trust two folders, because the Gemini CLI loads the project's tools only in trusted folders: `~/.geminicode/projects`, where coordinators run, and `~/.geminicode/worktrees/<repository>`, where threads check out their branches. The tools arrive when the agent restarts, once no agent is working.
+
+**Where it runs.** The coordinator works in an empty folder of its own, so it has nothing to read but what you and its threads tell it. It does get the repository's context files (`GEMINI.md`, `AGENTS.md` and any file `context.fileName` names), but not its `.gemini` or `.agents` folders, whose skills, commands and servers are for doing the work. Threads run in the repository's worktrees with all of its rules; rules the repository's `.gitignore` leaves out, such as a local `.gemini` folder, are linked in, so threads load them too. The coordinator runs on a Flash model; if it asks to use any tool besides its own, the request is refused automatically and the chat says so.
+
+**Threads.** Each thread shows as a card in the project chat, with its state, branch, changed lines and time, and updates in place. Click its title, or **Open**, to open its chat in a tab of its own; a bar at the top of a thread's chat leads back to the project chat on the left and names its project on the right. A thread's questions and permission requests stay in its own chat (**Open to answer**). When a thread finishes with changes, its card offers **Merge back** (into the branch your folder has checked out), **Review changes** and **Undo thread**, which removes its branch and folder; a thread that finished without changes, such as an assessment, offers **Open** to read its answer.
+
+To start a thread yourself, choose **New thread** in the project chat's **+** menu, or **New Thread** on the project's row in the agent list: give it a title, what it should do, a branch name and a model, and tick **Plan first** to have it write a plan and wait for **Approve plan** before changing files. It starts at once, and the coordinator hears about it afterwards.
+
+**Talking to the coordinator.** Only your messages wake the coordinator. When a thread finishes, asks something or fails, you take it up in that thread; the coordinator sees what changed the next time you write to it. A follow-up on work a thread already has goes to that thread, whether it is working, waiting or done. Once you merge a thread back, it is resolved: the coordinator starts a new thread for further work and reopens a resolved one only when you ask it to.
+
+**The side panel.** When the project chat is at least 1000 px wide, a panel on its right lists the threads by state (click one to open it), the Conductor tracks the coordinator reads from a `conductor/` folder, and the coordinator's model. Drag its left edge to resize it, or focus the edge and use the arrow keys; double-click the edge to reset it.
+
+In the agent list, the **Projects** section lists each project with its threads below it, above the **Agents** section; each section has its own **+**. Agent Home lists projects apart from agents too.
+
 ## Attaching context
 
 - **Workspace files.** Type `@`, or choose **Context** in the composer's **+** menu. The agent gets a link and reads the file itself, including unsaved changes.
@@ -125,9 +149,11 @@ The agent cannot read secret files such as `.env` and private keys, or git-ignor
 
 ## Replies
 
-Code in replies is coloured like the editor, in your colour theme. The button at the top of a code block copies it. A file name in a reply, such as `src/cart/total.ts:11`, opens the file at that line; when only the name is given, GeminiCode looks for it in the agent's folder. Notes, tips and warnings show as coloured callouts.
+Code in replies is coloured like the editor, in your colour theme. The button at the top of a code block copies it. A file name in a reply, such as `src/cart/total.ts:11`, opens the file at that line; when only the name is given, GeminiCode looks for it in the agent's folder. Notes, tips and warnings show as coloured callouts. Math written as `$...$`, `$$...$$`, `\(...\)` or `\[...\]` is typeset; prices and shell variables stay plain text.
 
-Messages you send show Markdown the way replies do: bold, lists, `code`, code blocks and links, with your line breaks kept. In the composer, ⌘B makes the selection bold and ⌘E makes it code, typing a backtick over a selection wraps it in code, and ⇧↩ on a list line starts the next item; on an empty item it ends the list. The **Write** and **Preview** tabs at the top of the input (or ⇧⌘V) switch between your draft and how it will look once sent; typing in Preview goes back to Write.
+Messages you send show Markdown the way replies do: bold, lists, `code`, code blocks and links, with your line breaks kept. In the composer, ⌘B makes the selection bold and ⌘E makes it code, typing a backtick over a selection wraps it in code, and ⇧↩ on a list line starts the next item; on an empty item it ends the list. The **Write** and **Preview** tabs at the top of the input (or ⇧⌘V) switch between your draft and how it will look once sent; typing in Preview goes back to Write. Agent Home's composer has the same tabs.
+
+The chat and Agent Home composers underline misspelt words with your system's spell checker; right-click a word for suggestions or **Add to Dictionary**. Turn it off with `gemini.chat.spellCheck`.
 
 Each message you send shows the time you sent it and a **Copy** button when you point at it. Under each reply, next to how long the agent worked, is the time it finished, with the same **Copy** button. The folder next to the branch under the composer names the agent's workspace (and its worktree, when it has one); click it to copy the path, reveal the folder in Finder or show the Agents pane.
 
