@@ -85,6 +85,23 @@ Re-read in 0.63.0 on 14 Oct 2026 (`streamHistory` and `partToString` in the bund
 - Loading by the session's id works from 0.63.0: the CLI matches the exact id first and no longer resets the session (checked twice in a row by `realAgentSessions.test.ts`). GeminiCode loads by id from 0.63.0 and reads only that session's file; it still loads by the CLI's list number, with the first-prompt check, for older CLIs.
 - When a session can't be reopened, the chat says why (sign-in, the CLI no longer has it, another chat has it open, a restart), retries once after a restart, and shows the conversation from the CLI's file, giving it to the new session with the next prompt.
 
+## Approval modes and permissions in 0.63
+
+Read from the gemini-cli 0.63.0 bundle on 14 Oct 2026:
+
+- The CLI tells the client about a mode change it makes itself with message text, `[MODE_UPDATE] <mode>` (`handleApprovalModeChanged`), not with `current_mode_update`. It does this when leaving Plan once a plan is approved, and when an edit is allowed for the session: `updatePolicy` then calls `setApprovalMode(AUTO_EDIT)` even from YOLO (`isAutoEditTransition`), so YOLO starts asking again. GeminiCode reads the text (exact form only), follows the change, and puts the user's YOLO straight back. A permission request that still comes in YOLO is allowed at once.
+- Switching to or from YOLO or Plan clears the turn's routed model (`clearCurrentSequenceModel`), so with Auto the rest of the turn is routed again, with one more routing call, possibly to another model. YOLO picked during a turn on Auto is therefore sent to the CLI when the turn ends; until then GeminiCode allows requests itself.
+- Before every shell command the CLI runs a taint check (`hasTaintedOrBuildFileRisk`): a command that reuses a path or a flag's value seen in earlier tool output, or a build command after build files changed, always asks, and its "Allow for this session" is accepted but not saved. The ACP layer still offers that option and sends no taint details. GeminiCode keeps its own session approvals for shell programs (`sessionApprovals.ts`), and still asks for commands that reach the network, write through a new redirection, build code as they run, or can't be read.
+- A shell request's title is the whole command (`getDisplayTitle`).
+- The CLI reads its trusted folders once per process (`loadTrustedFolders`), so trusting a folder needs a restart. GeminiCode restarts once no agent is working, and every chat reopens its session by id in the mode it had.
+
+## Tool images and Gemini 3 models
+
+Checked on 14 Oct 2026 with gemini-cli 0.63.0 against a stand-in API that logs requests, with an MCP tool returning an image and a text line:
+
+- For models named `gemini-3-…` the CLI puts the tool's image inside the function response (`supportsMultimodalFunctionResponse`), and the request it sends then has only the text: the model never sees the image. `gemini-3.1-pro-preview` gets the image next to the response. So for those models, and under Auto, `browser_screenshot` also returns the page's text snapshot, and for an affected model says it can't see screenshots.
+- "Requests ending with a model turn are not supported" (a 400 seen once after a screenshot) did not reproduce against the stand-in. When it happens, GeminiCode logs the turn's shape (no contents) and asks the agent once to carry on from the last tool result.
+
 ## Prompt enhancement: direct requests or the CLI
 
 Measured on 5 Oct 2026 on a Gemini Code Assist account (Google sign-in) with `extensions/gemini/scripts/probe-enhance.mts`: twelve sample drafts, one every 10 seconds, then five at once.

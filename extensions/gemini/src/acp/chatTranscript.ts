@@ -169,13 +169,14 @@ export class ChatTranscript {
 		});
 	}
 
-	resolvePermission(id: string, outcome: acp.RequestPermissionOutcome): void {
+	/** Records the answer; `label` says how it was chosen when the user didn't, such as "Allowed for this session". */
+	resolvePermission(id: string, outcome: acp.RequestPermissionOutcome, label?: string): void {
 		const item = this._items.find(i => i.id === id);
 		if (item?.kind !== 'permission') {
 			return;
 		}
 		const selected = outcome.outcome === 'selected' ? item.options.find(o => o.optionId === outcome.optionId) : undefined;
-		this.upsert({ ...item, answer: selected ? { kind: 'selected', name: selected.name } : { kind: 'cancelled' } });
+		this.upsert({ ...item, answer: selected ? { kind: 'selected', name: label ?? selected.name } : { kind: 'cancelled' } });
 	}
 
 	/** Ends the turn; returns the item's id. */

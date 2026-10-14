@@ -59,6 +59,13 @@ const loadsByIdFrom = '0.63.0';
 /** After this long without a replayed update, a replay whose length is not known is taken as over. */
 const replayQuietMs = 250;
 
+/**
+ * gemini-cli 0.62 and 0.63 tell the client about a mode change they make
+ * themselves with message text such as `[MODE_UPDATE] autoEdit`, not with
+ * `current_mode_update`. Several can arrive in one chunk.
+ */
+const modeUpdateText = /^(?:\[MODE_UPDATE\] [\w-]+)+$/;
+
 /** Updates the CLI sends when it replays a saved session's history. */
 const replayKinds: ReadonlySet<string> = new Set(['user_message_chunk', 'agent_message_chunk', 'agent_thought_chunk', 'tool_call']);
 
@@ -120,6 +127,14 @@ export class AgentClient {
 	private readonly onDidReceiveEventEmitter = new Emitter<ChatEvent>();
 	readonly onDidReceiveEvent = this.onDidReceiveEventEmitter.event;
 
+	private readonly onDidChangeModeByAgentEmitter = new Emitter<{ readonly from: string | undefined; readonly to: string }>();
+	/** The agent changed the session's mode itself, such as out of Plan once a plan is approved. */
+	readonly onDidChangeModeByAgent = this.onDidChangeModeByAgentEmitter.event;
+
+	private readonly onDidAllowInYoloEmitter = new Emitter<acp.RequestPermissionRequest>();
+	/** A permission request that came in YOLO mode, which the client allowed at once. */
+	readonly onDidAllowInYolo = this.onDidAllowInYoloEmitter.event;
+
 	private readonly onDidFailToReopenEmitter = new Emitter<{ readonly sessionId: string; readonly error: AgentErrorInfo }>();
 	/** A saved session could not be reopened, and why; a new session opens instead. */
 	readonly onDidFailToReopen = this.onDidFailToReopenEmitter.event;
@@ -143,6 +158,12 @@ export class AgentClient {
 	private _state: AgentClientState = { kind: 'idle' };
 	private _settings: SessionSettings = {};
 	private pendingMode: string | undefined;
+	/** The mode the user picked last, which a mode change the CLI makes on its own must not undo (see `onModeUpdate`). */
+	private chosenMode: string | undefined;
+	/** Prompts running in this session. */
+	private turns = 0;
+	/** YOLO picked during a turn on Auto, sent to the CLI when the turn ends (see `setMode`). */
+	private deferredMode: string | undefined;
 	private connection: AgentConnection | undefined;
 	private adapter = new SessionUpdateAdapter();
 	private registration: { dispose(): void } | undefined;
@@ -221,10 +242,30 @@ export class AgentClient {
 	/** Switches the next session this client opens, such as the one reopened after a restart, to `modeId`. */
 	setModeOnNextSession(modeId: string): void {
 		this.pendingMode = modeId;
+		this.chosenMode = modeId;
 	}
 
-	setMode(modeId: string): Promise<void> {
-		return this.changeSetting('mode', modeId, (connection, sessionId) => connection.setMode(sessionId, modeId));
+	async setMode(modeId: string): Promise<void> {
+		if (this._state.kind !== 'ready') {
+			// Picked while the agent starts: the session opens in it.
+			this.setModeOnNextSession(modeId);
+			return;
+		}
+		this.deferredMode = undefined;
+		const mode = this._settings.mode;
+		if (modeId === 'yolo' && this.turns > 0 && mode?.available.some(choice => choice.id === modeId) && /^auto/.test(this._settings.model?.currentId ?? '')) {
+			// Switching to or from YOLO makes gemini-cli 0.63 route Auto again in the middle of the
+			// turn (`clearCurrentSequenceModel`), which can move the task to another model. So the
+			// switch waits for the turn's end, and until then requests are allowed here, as in YOLO.
+			this.deferredMode = modeId;
+			this.chosenMode = modeId;
+			this.setSettings({ ...this._settings, mode: { ...mode, currentId: modeId } });
+			return;
+		}
+		await this.changeSetting('mode', modeId, (connection, sessionId) => connection.setMode(sessionId, modeId));
+		if (this._settings.mode?.currentId === modeId) {
+			this.chosenMode = modeId;
+		}
 	}
 
 	setModel(modelId: string): Promise<void> {
@@ -251,12 +292,20 @@ export class AgentClient {
 		if (state.kind !== 'ready' || !this.connection) {
 			throw new Error('The agent is not ready.');
 		}
+		const connection = this.connection;
+		this.turns++;
 		try {
-			const response = await this.runtime.trackTurn(this.connection.prompt(state.sessionId, typeof content === 'string' ? [{ type: 'text', text: content }] : content));
+			const response = await this.runtime.trackTurn(connection.prompt(state.sessionId, typeof content === 'string' ? [{ type: 'text', text: content }] : content));
 			const usage = readTurnUsage(response._meta);
 			return { stopReason: response.stopReason, ...(usage ? { usage } : {}) };
 		} catch (err) {
 			throw new AgentError(classifyAgentError(err));
+		} finally {
+			const deferred = this.deferredMode;
+			if (--this.turns === 0 && deferred && this.connection === connection) {
+				this.deferredMode = undefined;
+				void connection.setMode(state.sessionId, deferred).catch(() => undefined);
+			}
 		}
 	}
 
@@ -274,6 +323,8 @@ export class AgentClient {
 		this.onDidReceiveEventEmitter.dispose();
 		this.onDidReplayEventEmitter.dispose();
 		this.onDidFailToReopenEmitter.dispose();
+		this.onDidChangeModeByAgentEmitter.dispose();
+		this.onDidAllowInYoloEmitter.dispose();
 		this.onDidChangeSettingsEmitter.dispose();
 		this.onDidChangeCommandsEmitter.dispose();
 	}
@@ -289,6 +340,7 @@ export class AgentClient {
 				}
 				break;
 			case 'connecting':
+				this.keepModeAcrossRestart();
 				this.dropSession();
 				this.setState({ kind: 'connecting' });
 				break;
@@ -300,6 +352,14 @@ export class AgentClient {
 				this.dropSession();
 				this.setState({ kind: 'idle' });
 				break;
+		}
+	}
+
+	/** The session reopened after the agent restarts, such as to trust a folder, opens in the mode this one had. */
+	private keepModeAcrossRestart(): void {
+		const mode = this._settings.mode?.currentId;
+		if (mode && this._state.kind === 'ready') {
+			this.pendingMode ??= mode;
 		}
 	}
 
@@ -321,7 +381,7 @@ export class AgentClient {
 			}
 			this.registration = this.runtime.register(session.sessionId, {
 				sessionUpdate: update => this.onSessionUpdate(update),
-				requestPermission: params => this.options.requestPermission(params),
+				requestPermission: params => this.requestPermission(params),
 				fileSystem: this.options.fileSystem,
 			});
 			this.resumeSessionId = savedSessionId;
@@ -395,6 +455,11 @@ export class AgentClient {
 			this.onReplayed(update);
 			return;
 		}
+		if (update.sessionUpdate === 'agent_message_chunk' && update.content.type === 'text' && modeUpdateText.test(update.content.text.trim())) {
+			const modes = update.content.text.trim().split('[MODE_UPDATE] ').filter(Boolean);
+			this.onModeUpdate(modes[modes.length - 1].trim());
+			return;
+		}
 		if (update.sessionUpdate === 'current_mode_update' && this._settings.mode) {
 			this.setSettings({ ...this._settings, mode: { ...this._settings.mode, currentId: update.currentModeId } });
 		}
@@ -405,6 +470,47 @@ export class AgentClient {
 			return;
 		}
 		this.onDidReceiveEventEmitter.fire(this.adapter.adapt(update));
+	}
+
+	/**
+	 * A mode change the CLI made itself. Allowing an edit for the session
+	 * makes gemini-cli 0.63 switch to Auto Edit even from YOLO
+	 * (`isAutoEditTransition`), which would make YOLO ask again: the user's
+	 * YOLO is put back at once. Other changes, such as out of Plan once a plan
+	 * is approved, are the agent's to make and are kept.
+	 */
+	private onModeUpdate(modeId: string): void {
+		const mode = this._settings.mode;
+		const state = this._state;
+		if (!mode || !mode.available.some(choice => choice.id === modeId) || mode.currentId === modeId) {
+			return;
+		}
+		if (this.chosenMode === 'yolo' && modeId === 'autoEdit' && this.deferredMode === 'yolo') {
+			// YOLO is sent when the turn ends.
+			return;
+		}
+		if (this.chosenMode === 'yolo' && modeId === 'autoEdit' && state.kind === 'ready' && this.connection) {
+			void this.connection.setMode(state.sessionId, 'yolo').catch(() => this.setSettings({ ...this._settings, mode: { ...mode, currentId: modeId } }));
+			return;
+		}
+		const from = mode.currentId;
+		this.chosenMode = modeId;
+		this.setSettings({ ...this._settings, mode: { ...mode, currentId: modeId } });
+		this.onDidChangeModeByAgentEmitter.fire({ from, to: modeId });
+	}
+
+	/**
+	 * Asks the user, through the chat. In YOLO a request should not come; when
+	 * one does anyway, it is allowed at once, as the user chose (and as the
+	 * admin policy allows, else YOLO would not be offered).
+	 */
+	private requestPermission(params: acp.RequestPermissionRequest): Promise<acp.RequestPermissionResponse> {
+		const allow = params.options.find(option => option.kind === 'allow_once') ?? params.options.find(option => option.kind === 'allow_always');
+		if (this._settings.mode?.currentId === 'yolo' && allow && (this.options.isModeAllowed?.('yolo') ?? true)) {
+			this.onDidAllowInYoloEmitter.fire(params);
+			return Promise.resolve({ outcome: { outcome: 'selected', optionId: allow.optionId } });
+		}
+		return this.options.requestPermission(params);
 	}
 
 	/** Starts counting a reopened session's replay; `count` updates are coming, or an unknown number. */

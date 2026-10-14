@@ -76,6 +76,7 @@ export function activate(context: vscode.ExtensionContext): void {
 			await agentsView.open(agent);
 			await agentsView.controllerOf(agent)?.addAttachments(attachments);
 		},
+		model: agent => agentsView.controllerOf(agent)?.model,
 	});
 	agentsView.browser = browserTools;
 	// caffeinate watches this process, so it ends with GeminiCode even if GeminiCode crashes.
@@ -121,6 +122,7 @@ export function activate(context: vscode.ExtensionContext): void {
 			return agent ? agentsView.openAsMarkdown(agent) : chatView.controller.openAsMarkdown(vscode.l10n.t("Quick Chat"));
 		}),
 		vscode.commands.registerCommand('gemini.showUsage', () => chatInFront().showUsage()),
+		vscode.commands.registerCommand('gemini.sessionApprovals', () => chatInFront().manageApprovals()),
 		vscode.commands.registerCommand('gemini.addFileToChat', async (uri: unknown, uris: unknown) => chatInFront().addAttachments(await filesToAttach(uri, uris))),
 		vscode.commands.registerCommand('gemini.addSelectionToChat', () => chatInFront().addAttachments(selectionsToAttach())),
 		vscode.commands.registerCommand('gemini.showLog', () => log.show()),

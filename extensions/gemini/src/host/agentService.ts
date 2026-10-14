@@ -79,6 +79,8 @@ export class AgentService implements vscode.Disposable {
 				// A request from an agent that is gone can no longer be answered.
 				if (state.kind !== 'ready') {
 					this.permissions.cancelAll();
+					// Session approvals end with the session.
+					this.permissions.approvals.clear();
 				}
 				this.onDidChangeStatusEmitter.fire(this.status);
 			}),
@@ -167,12 +169,12 @@ export class AgentService implements vscode.Disposable {
 		return describeAgentStatus(this.sidecar.state, client.state, this.blocked);
 	}
 
-	/** Starts the agent if it is not running yet and waits until `client`'s session is ready. */
 	/** Writes `message` to the Gemini log. */
 	writeLog(message: string): void {
 		this.log.info(message);
 	}
 
+	/** Starts the agent if it is not running yet and waits until `client`'s session is ready. */
 	async ensureReady(client: AgentClient = this.client): Promise<Extract<AgentClientState, { kind: 'ready' }>> {
 		if (!this.started) {
 			this.restart();

@@ -235,6 +235,9 @@ export class ChatController implements vscode.Disposable {
 					this.rememberDiffs(event.permission.id, diffsOf(event.permission.request.toolCall.content));
 					this.transcript.addPermission(event.permission);
 					void this.revealForPermission(event.permission);
+				} else if (event.kind === 'allowed') {
+					this.transcript.addPermission(event.permission);
+					this.transcript.resolvePermission(event.permission.id, event.outcome, vscode.l10n.t("Allowed for this session"));
 				} else {
 					this.transcript.resolvePermission(event.id, event.outcome);
 				}
@@ -253,6 +256,13 @@ export class ChatController implements vscode.Disposable {
 			// A reopened session's history shows only when it was restored on purpose; otherwise the saved copy shows.
 			service.client.onDidReplayEvent(event => this.replaying && this.applyReplayed(event)),
 			service.client.onDidFailToReopen(({ sessionId, error }) => service.writeLog?.(`Could not reopen session ${sessionId}: ${error.message}`)),
+			service.client.onDidChangeModeByAgent(({ from, to }) => {
+				const name = (id: string | undefined) => service.client.settings.mode?.available.find(choice => choice.id === id)?.name ?? id ?? '';
+				this.transcript.addNotice(from === 'plan'
+					? vscode.l10n.t("Plan approved, now in {0} mode.", name(to))
+					: vscode.l10n.t("The agent switched to {0} mode.", name(to)));
+			}),
+			service.client.onDidAllowInYolo(params => service.writeLog?.(`Allowed "${params.toolCall.title ?? params.toolCall.toolCallId}" at once: the chat is in YOLO mode`)),
 			service.client.onDidReceiveEvent(event => {
 				// Only a turn's updates belong in the transcript.
 				if (this.busy) {
@@ -418,7 +428,7 @@ export class ChatController implements vscode.Disposable {
 			if (carried) {
 				content.unshift({ type: 'text', text: carried });
 			}
-			const { stopReason, usage } = await this.service.client.promptTurn(content);
+			const { stopReason, usage } = await this.promptRecovering(content);
 			this.undoNote = undefined;
 			if (carried === this.carriedConversation) {
 				this.carriedConversation = undefined;
@@ -438,6 +448,26 @@ export class ChatController implements vscode.Disposable {
 			}
 			this.setBusy(false);
 			void this.postContext();
+		}
+	}
+
+	/**
+	 * Sends a prompt; when Gemini refuses the request after a tool result with
+	 * "Requests ending with a model turn are not supported", logs the shape of
+	 * the turn (no contents) and asks the agent once to carry on from the last
+	 * tool result, as typing "continue" does.
+	 */
+	private async promptRecovering(content: acp.ContentBlock[]): ReturnType<AgentClient['promptTurn']> {
+		const turnStart = this.transcript.items.length;
+		try {
+			return await this.service.client.promptTurn(content);
+		} catch (err) {
+			if (!/ending with a model turn/i.test(errorMessage(err))) {
+				throw err;
+			}
+			this.service.writeLog?.(`Gemini refused the turn's request (${errorMessage(err)}). Mode ${this.service.client.settings.mode?.currentId ?? '?'}, model ${this.service.client.settings.model?.currentId ?? '?'}. Turn so far: ${turnShape(this.transcript.items.slice(turnStart))}`);
+			this.transcript.addNotice(vscode.l10n.t("Recovered after an API error: the agent carries on from the last tool result."));
+			return this.service.client.promptTurn([{ type: 'text', text: 'Continue from the last tool result.' }]);
 		}
 	}
 
@@ -726,6 +756,38 @@ export class ChatController implements vscode.Disposable {
 	/** Shows an information line in the conversation. */
 	addNotice(text: string): void {
 		this.transcript.addNotice(text);
+	}
+
+	/** The model the session is on, when known. */
+	get model(): string | undefined {
+		return this.service.client.settings.model?.currentId;
+	}
+
+	/** Lists the shell programs allowed for this session, to forget some or all of them. */
+	async manageApprovals(): Promise<void> {
+		const approvals = this.service.permissions.approvals;
+		if (!approvals.approved.length) {
+			void vscode.window.showInformationMessage(vscode.l10n.t("No commands are allowed for this session. Choose \"Allow for this session\" on a shell command to stop being asked about its programs."));
+			return;
+		}
+		const forgetAll: vscode.QuickPickItem = { label: vscode.l10n.t("Forget All"), alwaysShow: true };
+		const picks = await vscode.window.showQuickPick<vscode.QuickPickItem>([
+			...approvals.approved.map(program => ({ label: program })),
+			{ label: '', kind: vscode.QuickPickItemKind.Separator },
+			forgetAll,
+		], {
+			canPickMany: true,
+			title: vscode.l10n.t("Allowed for This Session"),
+			placeHolder: vscode.l10n.t("Pick programs to forget; the agent asks before running them again"),
+		});
+		if (!picks?.length) {
+			return;
+		}
+		if (picks.includes(forgetAll)) {
+			approvals.clear();
+		} else {
+			picks.forEach(pick => approvals.forget(pick.label));
+		}
 	}
 
 	/** Opens the usage popover, or closes it if open; the chat comes into view first. */
@@ -1644,4 +1706,20 @@ function reopenFailureText(error: AgentErrorInfo): string {
 	}
 	const message = error.message.trim();
 	return /[.!?]$/.test(message) ? message : `${message}.`;
+}
+
+/** A turn's steps for the log, without their contents: "user, thought, tool(browser_snapshot: completed), agent". */
+function turnShape(items: readonly TranscriptItem[]): string {
+	return items.map(item => {
+		switch (item.kind) {
+			case 'toolCall':
+				return `tool(${item.title.slice(0, 40)}: ${item.status}${item.details.length ? `, ${item.details.length} parts` : ''})`;
+			case 'permission':
+				return `permission(${item.answer?.kind ?? 'open'})`;
+			case 'notice':
+				return 'notice';
+			default:
+				return item.kind;
+		}
+	}).join(', ') || 'nothing';
 }

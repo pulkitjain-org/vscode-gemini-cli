@@ -45,6 +45,7 @@ export class BrowserTools implements vscode.Disposable {
 			enabled,
 			otherSites,
 			grant: (agent, url) => this.grant(agent, url),
+			model: agent => this.agents.model?.(agent),
 		} satisfies BrowserGate);
 		this.server = new BrowserMcpServer(this.host, version);
 		this.disposables.push(
@@ -226,6 +227,8 @@ export interface BrowserAgents {
 	open(): readonly { readonly id: string; readonly title: string }[];
 	/** Shows the agent's chat and adds `attachments` to its composer. */
 	attach(agent: string, attachments: readonly Attachment[]): Promise<void>;
+	/** The model the agent's session is on, when known. */
+	model?(agent: string): string | undefined;
 }
 
 function enabled(): boolean {

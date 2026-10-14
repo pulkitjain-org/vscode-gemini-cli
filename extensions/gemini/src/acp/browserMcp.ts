@@ -54,6 +54,27 @@ export interface BrowserGate {
 	otherSites(): boolean;
 	/** The user handed the agent a page at `url`: lets it see that page's site, as if it had asked and the user allowed it. */
 	grant(agent: string, url: URL): void;
+	/** The model the agent's session is on, when known, for what its screenshots can carry. */
+	model?(agent: string): string | undefined;
+}
+
+/**
+ * Whether a model loses an image a tool returns. gemini-cli 0.63 puts a
+ * tool's image inside the function response for models named `gemini-3-…`
+ * (`supportsMultimodalFunctionResponse`), and in the request it sends that
+ * image is gone: only the text arrives. Other models get the image next to
+ * the response and see it.
+ */
+export function losesToolImages(model: string): boolean {
+	return /^gemini-3-/.test(model);
+}
+
+/**
+ * Under Auto the model is picked per request, possibly one that loses the
+ * image, so a screenshot also carries the page's text.
+ */
+function mayLoseToolImages(model: string | undefined): boolean {
+	return !model || /^auto/.test(model) || losesToolImages(model);
 }
 
 export interface McpTool {
@@ -264,7 +285,20 @@ export class BrowserToolHost {
 			}
 			case 'browser_screenshot': {
 				const shot = await this.backend.screenshot(agent, page);
-				return await this.leftFor(agent, page, shot.url) ?? { content: [{ type: 'image', data: shot.data, mimeType: 'image/jpeg' }, { type: 'text', text: `URL: ${shot.url}` }] };
+				const left = await this.leftFor(agent, page, shot.url);
+				if (left) {
+					return left;
+				}
+				const model = this.gate.model?.(agent);
+				if (!mayLoseToolImages(model)) {
+					return { content: [{ type: 'image', data: shot.data, mimeType: 'image/jpeg' }, { type: 'text', text: `URL: ${shot.url}` }] };
+				}
+				// The image may not reach the model, so the layout facts also come as text.
+				const text = pageText(await this.backend.snapshot(agent, page)).content[0];
+				const note = model && losesToolImages(model)
+					? `This model (${model}) can't see screenshots: the image does not reach it. Here is the page's text snapshot instead; for visual checks, ask the user to switch to Gemini 3.1 Pro.`
+					: 'In case the image does not reach you, here is the page\'s text snapshot too.';
+				return { content: [{ type: 'image', data: shot.data, mimeType: 'image/jpeg' }, { type: 'text', text: `${note}\n\n${text.type === 'text' ? text.text : `URL: ${shot.url}`}` }] };
 			}
 			case 'browser_back':
 				return this.act(agent, page, 'back', []);
@@ -311,7 +345,12 @@ export class BrowserToolHost {
 
 	/** Runs an action, then checks where the page went. */
 	private async act(agent: string, page: string, action: BrowserAction, args: readonly unknown[]): Promise<McpToolResult> {
-		const state = await this.backend.act(agent, page, action, args);
+		let state = await this.backend.act(agent, page, action, args);
+		const ref = typeof args[0] === 'string' ? /^aria-ref=(.+)$/.exec(args[0])?.[1] : undefined;
+		if (ref && state.error && /not found|resolved to 0|no element|timeout|detached/i.test(state.error)) {
+			// A ref from a snapshot taken before the page changed.
+			state = { ...state, error: `Element ${ref} is not on the page any more: the page changed since that snapshot. Take a new browser_snapshot and use its refs.` };
+		}
 		return await this.leftFor(agent, page, state.url) ?? pageText(state);
 	}
 

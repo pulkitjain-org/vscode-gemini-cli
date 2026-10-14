@@ -60,6 +60,8 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 				// A request from a session that is gone can no longer be answered.
 				if (state.kind !== 'ready') {
 					this.permissions.cancelAll();
+					// Session approvals end with the session.
+					this.permissions.approvals.clear();
 				}
 				fire();
 			}),

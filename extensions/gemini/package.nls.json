@@ -89,5 +89,6 @@
 	"walkthrough.agent.description": "Agents open as editor tabs, each with its own chat and folder.\n[New Agent](command:gemini.agents.newAgent)",
 	"theme.dark": "GeminiCode Dark",
 	"theme.light": "GeminiCode Light",
-	"iconTheme.label": "GeminiCode Icons"
+	"iconTheme.label": "GeminiCode Icons",
+	"command.sessionApprovals": "Commands Allowed for This Session..."
 }
