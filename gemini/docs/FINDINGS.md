@@ -95,6 +95,17 @@ Read from the gemini-cli 0.63.0 bundle on 14 Oct 2026:
 - A shell request's title is the whole command (`getDisplayTitle`).
 - The CLI reads its trusted folders once per process (`loadTrustedFolders`), so trusting a folder needs a restart. GeminiCode restarts once no agent is working, and every chat reopens its session by id in the mode it had.
 
+## The model list in 0.63
+
+Read from the gemini-cli 0.63.0 bundle on 15 Oct 2026. The CLI builds the models it sends in `session/new` (`buildAvailableModels`) apart from the terminal's `/model` list (`ModelDialog`), from the same groups: Auto, the preview models, then 2.5 Pro and the default Flash and Flash-Lite.
+
+- The app list never removes a repeat. With the latest Flash on Google sign-in, the preview Flash and the default Flash are both `gemini-3.8-flash` (`setFlashModels`), so it names that model twice. The terminal keeps the first.
+- The terminal lists the default Flash-Lite before Flash; the app list has them the other way round.
+- The terminal adds `gemma-4-31b-it` and `gemma-4-26b-a4b-it` unless `experimental.gemma` is off (on by default), and hides Pro models from an account without Pro access (`getProModelNoAccess`). The app list does neither. `session/set_model` accepts any of them.
+- With `experimental.dynamicModelConfiguration` both come from `getAvailableModelOptions`, already in one order and without repeats, and each entry carries a `tier`.
+
+`modelList.ts` applies these rules so the picker lists what the terminal does, and reads Pro access from the quota. `realAgentModels.test.ts` checks the shaped list against a real CLI with an API key, so a CLI upgrade that changes the app list fails it.
+
 ## Tool images and Gemini 3 models
 
 Checked on 14 Oct 2026 with gemini-cli 0.63.0 against a stand-in API that logs requests, with an MCP tool returning an image and a text line:
