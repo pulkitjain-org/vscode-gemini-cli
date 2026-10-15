@@ -400,9 +400,12 @@ export class AgentClient {
 			this.setReady(agent, session, savedSessionId, settings);
 		} catch (err) {
 			// If the process died, the runtime reports why (and the sidecar may
-			// restart it); the closed-connection error says less.
-			if (generation === this.generation && await this.runtimeStaysReady(1_000) && generation === this.generation) {
-				this.setState({ kind: 'error', error: err instanceof AgentError ? err.info : classifyAgentError(err) });
+			// restart it); the closed-connection error says less. An error the
+			// agent explained, such as a sign-in one, shows at once.
+			const error = err instanceof AgentError ? err.info : classifyAgentError(err);
+			const explained = error.kind !== 'unknown' && error.kind !== 'agent-exited';
+			if (generation === this.generation && (explained || await this.runtimeStaysReady(1_000)) && generation === this.generation) {
+				this.setState({ kind: 'error', error });
 			}
 		}
 	}
@@ -413,10 +416,16 @@ export class AgentClient {
 			try {
 				const version = this.runtime.state.kind === 'ready' ? this.runtime.state.agent.agentInfo?.version ?? '' : '';
 				const byNumber = isOlderThan(version, loadsByIdFrom);
-				const saved = await (this.options.findSavedSession ?? findSavedCliSession)(this.options.cwd, resumeSessionId, byNumber).catch(() => undefined);
-				const loadId = byNumber && saved?.index !== undefined ? String(saved.index) : resumeSessionId;
+				const finding = (this.options.findSavedSession ?? findSavedCliSession)(this.options.cwd, resumeSessionId, byNumber).catch(() => undefined);
+				if (!byNumber) {
+					// Loaded by id: the session file is read for its replay length while the agent loads it.
+					const loaded = await this.runtime.loadSession(this.options.cwd, resumeSessionId, undefined, this.mcpServers());
+					return { ...loaded, savedSessionId: resumeSessionId, replayUpdates: (await finding)?.replayUpdates };
+				}
+				const saved = await finding;
+				const loadId = saved?.index !== undefined ? String(saved.index) : resumeSessionId;
 				// The first-prompt check is only for a load by number, where the number may have moved to another session.
-				const loaded = await this.runtime.loadSession(this.options.cwd, loadId, byNumber ? saved?.firstPrompt : undefined, this.mcpServers());
+				const loaded = await this.runtime.loadSession(this.options.cwd, loadId, saved?.firstPrompt, this.mcpServers());
 				return { ...loaded, savedSessionId: resumeSessionId, replayUpdates: saved?.replayUpdates };
 			} catch (err) {
 				// Not supported, or the agent no longer has it: start afresh, and say why.

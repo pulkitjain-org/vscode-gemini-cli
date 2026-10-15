@@ -48,6 +48,15 @@ export interface AgentRuntimeOptions {
 /** Updates kept for a session the client has not registered yet, such as one whose `session/new` reply is still being handled. */
 /** Enough for a long conversation the agent replays when it reopens a session. */
 const maxEarlyUpdates = 5000;
+/**
+ * How long updates for a session nobody registered are kept. A session being
+ * opened registers within this; one that never will (a tab closed mid-turn, a
+ * reopen that lost a race, a spare replaced) would otherwise keep its updates,
+ * whole file diffs included, until the process ends.
+ */
+const earlyUpdatesTtlMs = 60_000;
+/** Sessions whose chat went away, remembered so the rest of their updates are dropped. */
+const maxClosedSessions = 1000;
 /** How long a reopened session's replay is waited for, to check it is the one asked for. */
 const replayCheckMs = 1_000;
 
@@ -76,7 +85,8 @@ export class AgentRuntime {
 	private _state: AgentRuntimeState = { kind: 'idle' };
 	private connection: AgentConnection | undefined;
 	private readonly sessions = new Map<string, SessionHandlers>();
-	private readonly earlyUpdates = new Map<string, acp.SessionUpdate[]>();
+	private readonly earlyUpdates = new Map<string, { readonly since: number; readonly updates: acp.SessionUpdate[] }>();
+	private readonly closedSessions = new Set<string>();
 	/** A session opened ahead of use (`prepareSession`), keyed by its folder and servers. */
 	private spare: { readonly key: string; readonly connection: AgentConnection; readonly session: Promise<RuntimeSession> } | undefined;
 	/** Shared by concurrent `session/new` calls so the user's settings are rewritten at most once. */
@@ -224,6 +234,7 @@ export class AgentRuntime {
 			throw new AgentError({ kind: 'unknown', message: 'Another chat has that session open.' });
 		}
 		this.earlyUpdates.delete(sessionId);
+		this.closedSessions.delete(sessionId);
 		try {
 			const response = await connection.loadSession(sessionId, cwd, mcpServers);
 			if (firstPrompt !== undefined && !await this.replayStartsWith(sessionId, firstPrompt)) {
@@ -245,7 +256,7 @@ export class AgentRuntime {
 		const expected = normalizePrompt(firstPrompt);
 		const deadline = Date.now() + replayCheckMs;
 		do {
-			const replayed = (this.earlyUpdates.get(sessionId) ?? [])
+			const replayed = (this.earlyUpdates.get(sessionId)?.updates ?? [])
 				.flatMap(update => update.sessionUpdate === 'user_message_chunk' ? [normalizePrompt(contentBlockToText(update.content))] : [])
 				.find(isPrompt);
 			if (replayed !== undefined) {
@@ -259,15 +270,20 @@ export class AgentRuntime {
 	/** Routes the agent's messages for `sessionId` to `handlers` until disposed. */
 	register(sessionId: string, handlers: SessionHandlers): { dispose(): void } {
 		this.sessions.set(sessionId, handlers);
+		this.closedSessions.delete(sessionId);
 		const early = this.earlyUpdates.get(sessionId);
 		this.earlyUpdates.delete(sessionId);
-		for (const update of early ?? []) {
+		for (const update of early?.updates ?? []) {
 			handlers.sessionUpdate(update);
 		}
 		return {
 			dispose: () => {
 				if (this.sessions.get(sessionId) === handlers) {
 					this.sessions.delete(sessionId);
+					if (this.closedSessions.size >= maxClosedSessions) {
+						this.closedSessions.clear();
+					}
+					this.closedSessions.add(sessionId);
 				}
 			},
 		};
@@ -354,10 +370,22 @@ export class AgentRuntime {
 			session.sessionUpdate(params.update);
 			return;
 		}
-		const early = this.earlyUpdates.get(params.sessionId) ?? [];
-		if (early.length < maxEarlyUpdates) {
-			early.push(params.update);
+		if (this.closedSessions.has(params.sessionId)) {
+			return;
+		}
+		let early = this.earlyUpdates.get(params.sessionId);
+		if (!early) {
+			const now = Date.now();
+			for (const [id, entry] of this.earlyUpdates) {
+				if (now - entry.since > earlyUpdatesTtlMs) {
+					this.earlyUpdates.delete(id);
+				}
+			}
+			early = { since: now, updates: [] };
 			this.earlyUpdates.set(params.sessionId, early);
+		}
+		if (early.updates.length < maxEarlyUpdates) {
+			early.updates.push(params.update);
 		}
 	}
 
@@ -367,6 +395,7 @@ export class AgentRuntime {
 		this.spare = undefined;
 		this.authenticating = undefined;
 		this.earlyUpdates.clear();
+		this.closedSessions.clear();
 	}
 
 	private setState(state: AgentRuntimeState): void {

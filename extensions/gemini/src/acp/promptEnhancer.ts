@@ -284,13 +284,12 @@ export class PromptEnhancer {
 		const canClose = !!agent.agentCapabilities?.sessionCapabilities?.close;
 		try {
 			const settings = readSessionSettings(session);
-			if (settings.mode && settings.mode.currentId !== 'plan' && settings.mode.available.some(choice => choice.id === 'plan')) {
-				await connection.setMode(session.sessionId, 'plan');
-			}
 			const model = enhanceModel(settings.model);
-			if (model && model !== settings.model?.currentId) {
-				await connection.setModel(session.sessionId, model);
-			}
+			// Both at once: two round trips before the rewrite would be one too many.
+			await Promise.all([
+				settings.mode && settings.mode.currentId !== 'plan' && settings.mode.available.some(choice => choice.id === 'plan') ? connection.setMode(session.sessionId, 'plan') : undefined,
+				model && model !== settings.model?.currentId ? connection.setModel(session.sessionId, model) : undefined,
+			]);
 			return { connection, sessionId: session.sessionId, model: model ?? settings.model?.currentId, canClose, reply, registration };
 		} catch (err) {
 			this.release({ connection, sessionId: session.sessionId, model: undefined, canClose, reply, registration });

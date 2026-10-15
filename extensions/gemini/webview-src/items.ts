@@ -13,6 +13,7 @@ import type { PromptAttachmentLabel, TranscriptItem } from '../src/acp/chatTrans
 import type { ThreadAction, ViewSession } from '../src/host/chatProtocol';
 import { attachmentIcon, codeLanguage, format, formatDuration, formatSentAt, permissionDefaults, planIcon, replyBefore, thoughtSeconds, toolKindIcon, type ItemOf } from './chatLogic';
 import { highlightCode } from './codeHighlight';
+import { applyInlineStyles } from './inlineStyles';
 import { renderMath } from './math';
 import { mathPlugin } from './mathRule';
 import { enhanceMarkdown } from './markdownExtras';
@@ -187,10 +188,15 @@ export function renderUserMarkdown(text: string): Node[] {
 	return renderBlocks(text, userMarkdown);
 }
 
-/** Markdown as nodes, with each code block under a header that names its language and copies it. */
-export function renderBlocks(text: string, renderer = markdown): Node[] {
+/**
+ * Markdown as nodes, with each code block under a header that names its
+ * language and copies it. Without `highlight`, code is left plain: for the
+ * tail of a streaming reply, whose last code block is still growing.
+ */
+export function renderBlocks(text: string, renderer = markdown, highlight = true): Node[] {
 	const node = el('div');
 	node.innerHTML = renderer.render(text);
+	applyInlineStyles(node);
 	enhanceMarkdown(node);
 	renderMath(node);
 	for (const pre of node.querySelectorAll('pre')) {
@@ -201,7 +207,7 @@ export function renderBlocks(text: string, renderer = markdown): Node[] {
 		const language = codeLanguage(code?.className ?? '');
 		header.append(el('span', 'code-language', language), copyButton('copy', strings.copy, () => pre.textContent ?? ''));
 		wrapper.append(header, pre);
-		if (code) {
+		if (code && highlight) {
 			highlightCode(code, language.toLowerCase());
 		}
 	}

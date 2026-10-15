@@ -40,6 +40,18 @@ describe('PermissionBroker', () => {
 		broker.cancelAll();
 	});
 
+	it('reads the command from the tool input when the agent sends it, not from the title', async () => {
+		const broker = new PermissionBroker();
+		const titled = (title: string, command: string): acp.RequestPermissionRequest => ({ ...request, toolCall: { toolCallId: title, title, kind: 'execute', rawInput: { command } } });
+		const first = broker.request(titled('List files', 'ls -la'));
+		const [pending] = broker.pendingPermissions;
+		expect(pending.request.options.map(o => o.name)).toContain('Allow ls for this session');
+		broker.select(pending.id, 'proceed_always');
+		await first;
+		void broker.request(titled('ls -la', 'GIT_SSH_COMMAND=x git fetch'));
+		expect(broker.pendingPermissions).toHaveLength(1);
+		broker.cancelAll();
+	});
 
 	it('answers with the option the user picked', async () => {
 		const broker = new PermissionBroker();

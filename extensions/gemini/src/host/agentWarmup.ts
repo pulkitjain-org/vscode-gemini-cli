@@ -39,6 +39,7 @@ export class AgentWarmup implements vscode.Disposable {
 
 	private readonly timer: ReturnType<typeof setTimeout>;
 	private checked: Promise<boolean> | undefined;
+	private disposed = false;
 
 	/** `isSetUp` says whether a session has opened before (the walkthrough's progress). */
 	constructor(private readonly service: AgentService, private readonly isSetUp: () => boolean, private readonly log: vscode.LogOutputChannel) {
@@ -54,9 +55,13 @@ export class AgentWarmup implements vscode.Disposable {
 		if (getProjectSettings().problem === 'numeric') {
 			return;
 		}
-		this.checked ??= detectAuth().then(auth => startsQuietly(auth), () => false);
-		void this.checked.then(quiet => {
-			if (quiet && !this.service.isStarted) {
+		const checked = this.checked ??= detectAuth().then(auth => startsQuietly(auth), () => false);
+		void checked.then(quiet => {
+			if (!quiet && this.checked === checked) {
+				// Not signed in yet: ask again next time, since the user may sign in meanwhile.
+				this.checked = undefined;
+			}
+			if (quiet && !this.disposed && !this.service.isStarted) {
 				this.log.info('Starting the agent ahead of the first chat');
 				this.service.restart();
 			}
@@ -64,6 +69,7 @@ export class AgentWarmup implements vscode.Disposable {
 	}
 
 	dispose(): void {
+		this.disposed = true;
 		clearTimeout(this.timer);
 	}
 }

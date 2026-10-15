@@ -2,7 +2,7 @@
 
 What is left before and after the pilot. The design that is already built is described in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-Distribution is done: release builds for Mac (Apple silicon) with the bundled Gemini CLI, published to GitHub Releases, the download page, and the in-app update notice ([RELEASING.md](RELEASING.md)). Releases have shipped since `v0.1.0`; the current one is 0.5.0. What remains of distribution is listed below: signing before the pilot, and other platforms and auto-update after it.
+Distribution is done: release builds for Mac (Apple silicon) with the bundled Gemini CLI, published to GitHub Releases, the download page, and the in-app update notice ([RELEASING.md](RELEASING.md)). Releases have shipped since `v0.1.0`; the current one is 1.0.0. What remains of distribution is listed below: signing before the pilot, and other platforms and auto-update after it.
 
 ## Before the pilot
 

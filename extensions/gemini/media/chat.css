@@ -165,8 +165,9 @@ button {
 /*
  * Older messages skip layout and paint while scrolled out of view, so a long chat stays as cheap
  * as a short one. The latest ones are always laid out, so scrolling to the bottom lands exactly.
+ * transcript.ts marks the older ones (`markSettled`).
  */
-.transcript > :nth-last-child(n+30) {
+.transcript > .settled {
 	content-visibility: auto;
 	contain-intrinsic-size: auto 80px;
 }
@@ -2368,6 +2369,11 @@ body.vscode-high-contrast-light #send {
 	.shimmer,
 	.tool-call.status-in_progress .tool-title {
 		animation: gemini-breathe 1.6s ease-in-out infinite;
+	}
+
+	/* Once the turn is over, a step it left "in progress" (stopped, or never updated) stops moving. */
+	.transcript:not(.turn-running) :is(.shimmer, .tool-call.status-in_progress .tool-title, .codicon-modifier-spin) {
+		animation: none;
 	}
 
 	.activity.running .activity-icon::before {

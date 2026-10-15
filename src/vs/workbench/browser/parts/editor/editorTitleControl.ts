@@ -11,7 +11,7 @@ import { IEditorGroupMenuIds, IEditorGroupsView, IEditorGroupTitleHeight, IEdito
 import { IEditorTabsControl } from './editorTabsControl.js';
 import { MultiEditorTabsControl } from './multiEditorTabsControl.js';
 import { SingleEditorTabsControl } from './singleEditorTabsControl.js';
-import { EditorsOrder, IEditorPartOptions } from '../../../common/editor.js';
+import { EditorsOrder, IEditorPartOptions } from '../../../common/editor.js'; // GEMINI-FORK: EditorsOrder
 import { EditorInput } from '../../../common/editor/editorInput.js';
 import { DisposableStore, MutableDisposable } from '../../../../base/common/lifecycle.js';
 import { MultiRowEditorControl } from './multiRowEditorTabsControl.js';
@@ -200,6 +200,7 @@ export class EditorTitleControl extends Themable {
 		}
 	}
 
+	// GEMINI-FORK: updateOptions' own code, moved here so checkGeminiTabRow can share it
 	private recreateControls(): void {
 
 		// Clear old

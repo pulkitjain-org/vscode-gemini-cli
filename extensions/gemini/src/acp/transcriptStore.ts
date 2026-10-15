@@ -69,6 +69,11 @@ export class TranscriptStore {
 		});
 	}
 
+	/** Resolves once every write queued so far is on disk. */
+	async flush(): Promise<void> {
+		await Promise.all([...this.writes.values()]);
+	}
+
 	delete(agentId: string): Promise<void> {
 		return this.enqueue(agentId, () => rm(this.file(agentId), { force: true }));
 	}

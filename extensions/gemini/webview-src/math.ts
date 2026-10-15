@@ -8,6 +8,8 @@
 // if it can't load, the TeX source shows in a quiet style. Results are
 // cached by source, so a reply finishing or the view reloading costs nothing.
 
+import { applyInlineStyles } from './inlineStyles';
+
 type Katex = { renderTex(tex: string, display: boolean): string };
 
 const script = document.querySelector<HTMLScriptElement>('script[data-katex]');
@@ -63,6 +65,7 @@ function apply(node: HTMLElement): boolean {
 	}
 	// KaTeX escapes the source; with trust off its output is only spans and SVG.
 	node.innerHTML = html;
+	applyInlineStyles(node);
 	node.setAttribute('role', 'math');
 	node.setAttribute('aria-label', tex);
 	node.removeAttribute('data-tex');

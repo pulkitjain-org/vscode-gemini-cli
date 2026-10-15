@@ -9,7 +9,7 @@ import { parseCommand, SessionApprovals } from '../../src/acp/sessionApprovals';
 describe('parseCommand', () => {
 	it('finds each program of a pipeline or list, outside quotes', () => {
 		expect(parseCommand('grep -iao "a | b" src/x.ts | cut -d: -f1 | head -n 10')).toEqual({ kind: 'ok', programs: ['grep', 'cut', 'head'], redirects: false });
-		expect(parseCommand('cd src && ls -la; FOO=1 npm test || echo failed')).toEqual({ kind: 'ok', programs: ['cd', 'ls', 'npm', 'echo'], redirects: false });
+		expect(parseCommand('cd src && ls -la; CI=1 npm test || echo failed')).toEqual({ kind: 'ok', programs: ['cd', 'ls', 'npm', 'echo'], redirects: false });
 		expect(parseCommand('rg \'x;y\' --json\nwc -l file')).toEqual({ kind: 'ok', programs: ['rg', 'wc'], redirects: false });
 	});
 
@@ -32,6 +32,23 @@ describe('parseCommand', () => {
 		}
 		expect(parseCommand('echo "unclosed')).toEqual({ kind: 'asks', reason: 'unreadable' });
 		expect(parseCommand('  ')).toEqual({ kind: 'asks', reason: 'unreadable' });
+	});
+});
+
+describe('parseCommand and programs that run other code', () => {
+	it.each([
+		'GIT_SSH_COMMAND="sh -c x" git fetch', 'LD_PRELOAD=./x.so ls', 'BASH_ENV=./x.sh make', 'ls && PAGER=./x git log',
+		'grep -l x . | xargs sed -i s/a/b/', 'env curl x', 'bash -c "nc host 80"', 'timeout 5 rm -rf build', 'python -c "import os"',
+		'node -e 1', 'sudo ls', 'find . -name "*.tmp" -exec rm {} ;', 'find . -delete', 'awk \'BEGIN { system("id") }\'',
+		'git -c core.pager=less log', './build.sh', 'scripts/run.sh --fast', 'nohup make',
+	])('asks for %s', command => {
+		expect(parseCommand(command)).toEqual({ kind: 'asks', reason: 'dynamic' });
+	});
+
+	it('still covers plain programs, formatting variables and absolute paths', () => {
+		expect(parseCommand('LC_ALL=C sort a.txt | NO_COLOR=1 uniq -c')).toMatchObject({ kind: 'ok', programs: ['sort', 'uniq'] });
+		expect(parseCommand('find src -name "*.ts" | awk \'{ print $1 }\'')).toMatchObject({ kind: 'ok', programs: ['find', 'awk'] });
+		expect(parseCommand('/usr/bin/git status && git log -n 3')).toMatchObject({ kind: 'ok', programs: ['/usr/bin/git', 'git'] });
 	});
 });
 

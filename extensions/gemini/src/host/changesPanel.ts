@@ -50,7 +50,8 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 
 	show(source: ChangesSource | undefined): void {
 		this.sourceListener?.dispose();
-		if (this.source !== source) {
+		// The same agent comes back as a new source object on every tab switch; its diffs still hold.
+		if (this.source?.agentId !== source?.agentId || this.source?.changes !== source?.changes) {
 			this.diffs.clear();
 		}
 		this.source = source;
@@ -63,7 +64,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		const media = vscode.Uri.joinPath(this.extensionUri, 'media');
 		view.webview.options = { enableScripts: true, localResourceRoots: [media] };
 		view.webview.html = this.html(view.webview, media);
-		view.webview.onDidReceiveMessage((message: FromChangesPanel) => this.onMessage(message));
+		view.webview.onDidReceiveMessage((message: FromChangesPanel) => this.onMessage(message).catch(err => void vscode.window.showErrorMessage(errorMessage(err))));
 		view.onDidChangeVisibility(() => {
 			if (view.visible) {
 				this.lastView = undefined;

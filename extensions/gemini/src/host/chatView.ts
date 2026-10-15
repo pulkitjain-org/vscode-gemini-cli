@@ -42,6 +42,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 		this.view = view;
 		const webview = view.webview;
 		this.controller.attach(webview);
+		view.onDidChangeVisibility(() => this.controller.setHidden(!view.visible));
 		view.onDidDispose(() => {
 			if (this.view === view) {
 				this.view = undefined;

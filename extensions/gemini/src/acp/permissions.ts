@@ -117,9 +117,20 @@ export class PermissionBroker {
 	}
 }
 
-/** The command of a shell tool's request (gemini-cli 0.63 titles it with the whole command); undefined for other tools. */
+/**
+ * The command of a shell tool's request; undefined for other tools. The tool's
+ * own input wins when the agent sends it, since a title is display text;
+ * gemini-cli 0.63 sends none and titles the request with the whole command.
+ */
 function shellCommand(request: acp.RequestPermissionRequest): string | undefined {
-	return request.toolCall.kind === 'execute' && typeof request.toolCall.title === 'string' ? request.toolCall.title : undefined;
+	if (request.toolCall.kind !== 'execute') {
+		return undefined;
+	}
+	const input = request.toolCall.rawInput as { command?: unknown } | null | undefined;
+	if (typeof input?.command === 'string') {
+		return input.command;
+	}
+	return typeof request.toolCall.title === 'string' ? request.toolCall.title : undefined;
 }
 
 /** Says what "Allow for this session" covers for a shell command: "Allow grep, cut, head for this session". */

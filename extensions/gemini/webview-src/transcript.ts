@@ -147,6 +147,7 @@ export function applyItem(item: TranscriptItem, live: boolean): boolean {
 			node.classList.add('enter');
 		}
 		transcript.append(node);
+		markSettled(false);
 	}
 	elements.set(item.id, node);
 	if (previous?.kind === 'agent' && streamingReplies.has(previous.id)) {
@@ -158,10 +159,17 @@ export function applyItem(item: TranscriptItem, live: boolean): boolean {
 		// It is no longer the last item, so it is no longer "Thinking".
 		rerender(previous);
 	}
-	if (item.kind === 'permission' && !item.answer) {
+	if (item.kind === 'permission' && !item.answer && live && !isEditing()) {
+		// Never while the user types: a Space or Return meant for the composer would answer it unseen.
 		node.querySelector<HTMLButtonElement>('button.primary')?.focus();
 	}
 	return item.kind === 'user';
+}
+
+/** Whether focus is in something the user types into. */
+function isEditing(): boolean {
+	const active = document.activeElement;
+	return active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement || (active instanceof HTMLElement && active.isContentEditable);
 }
 
 /** The item that `update` adds text to, with that text added. */
@@ -182,6 +190,9 @@ function rerender(item: TranscriptItem): void {
 function replaceNode(existing: HTMLElement, node: HTMLElement): void {
 	if (existing instanceof HTMLDetailsElement && node instanceof HTMLDetailsElement) {
 		node.open = existing.open;
+	}
+	if (existing.classList.contains('settled')) {
+		node.classList.add('settled');
 	}
 	existing.replaceWith(node);
 }
@@ -222,6 +233,7 @@ export function reset(newItems: readonly TranscriptItem[]): void {
 	for (const item of newItems.slice(split)) {
 		applyItem(item, false);
 	}
+	markSettled(true);
 	settleScroll(true);
 	if (!state.items.length) {
 		transcript.append(renderEmpty());
@@ -257,6 +269,7 @@ function addOlder(deadline: IdleDeadline): void {
 			return [node];
 		});
 		transcript.prepend(...nodes);
+		markSettled(true);
 		if (deadline.didTimeout) {
 			break;
 		}
@@ -268,6 +281,30 @@ function addOlder(deadline: IdleDeadline): void {
 		backfillHandle = requestIdleCallback(addOlder, { timeout: 500 });
 	} else {
 		updateOutline();
+	}
+}
+
+/** How many of the latest elements are always laid out (chat.css, `.settled`). */
+const liveElements = 30;
+
+/**
+ * Marks the elements older than the latest few as settled, so they skip
+ * layout while out of view. A class rather than `:nth-last-child`, which
+ * would make every append restyle the whole transcript. `all` checks every
+ * element, after older ones were added at the top; otherwise it stops at
+ * the first one already marked.
+ */
+function markSettled(all: boolean): void {
+	const children = transcript.children;
+	for (let i = children.length - liveElements - 1; i >= 0; i--) {
+		const child = children[i];
+		if (child.classList.contains('settled')) {
+			if (!all) {
+				return;
+			}
+			continue;
+		}
+		child.classList.add('settled');
 	}
 }
 
@@ -290,6 +327,8 @@ export function updateWorking(): void {
 /** Shows whether the agent is working on a turn. */
 export function setTranscriptBusy(value: boolean): void {
 	state.busy = value;
+	// A tool call or plan step stopped mid-turn stays "in progress": its spinner stops with the turn (chat.css).
+	transcript.classList.toggle('turn-running', value);
 	const last = state.items.at(-1);
 	if (!value) {
 		finishStreamingReplies();

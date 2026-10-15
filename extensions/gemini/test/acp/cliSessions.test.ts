@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -167,6 +167,29 @@ describe('listCliSessions', () => {
 		expect(await readSessionTokens(work, id, home)).toEqual({ context: 124_300, model: 'gemini-3.8-flash', cached: 80_000 });
 		expect(await readSessionTokens(work, 'other000-0000', home)).toBeUndefined();
 		expect(await readSessionTokens(work, 'missing0-0000', home)).toBeUndefined();
+	});
+
+	it('reads only what the CLI appended to a session file, and the whole file again after a rewrite', async () => {
+		home = mkdtempSync(path.join(tmpdir(), 'cli-home-'));
+		const work = path.join(home, 'shop');
+		writeFileSync(path.join(home, 'projects.json'), JSON.stringify({ projects: { [work]: 'shop' } }));
+		const chats = path.join(home, 'tmp', 'shop', 'chats');
+		mkdirSync(chats, { recursive: true });
+		const id = 'feed1234-0000-4000-8000-000000000000';
+		const file = path.join(chats, 'session-2026-10-08T10-00-feed1234.jsonl');
+		const reply = (n: number, input: number) => line({ id: `r${n}`, type: 'gemini', content: `reply ${n}`, model: 'm', tokens: { input, cached: 10 } });
+		writeFileSync(file, [line({ sessionId: id, projectHash: 'h' }), line({ id: 'u1', type: 'user', content: 'go' }), reply(1, 100)].join('\n') + '\n');
+		expect(await readSessionTokens(work, id, home)).toEqual({ context: 100, model: 'm', cached: 10 });
+		// Appended, the last line without its line end yet.
+		appendFileSync(file, [line({ id: 'u2', type: 'user', content: 'more' }), reply(2, 250)].join('\n'));
+		expect(await readSessionTokens(work, id, home)).toEqual({ context: 250, model: 'm', cached: 20 });
+		appendFileSync(file, '\n' + line({ $rewindTo: 'u2' }) + '\n');
+		expect(await readSessionTokens(work, id, home)).toEqual({ context: 100, model: 'm', cached: 10 });
+		expect((await readCliSession(work, id, home))?.firstPrompt).toBe('go');
+		// Rewritten from the start, longer than before: read whole again.
+		writeFileSync(file, [line({ sessionId: id, projectHash: 'h' }), line({ id: 'x1', type: 'user', content: 'a different start that is long enough' }), reply(9, 900), reply(10, 950)].join('\n') + '\n');
+		expect(await readSessionTokens(work, id, home)).toEqual({ context: 950, model: 'm', cached: 20 });
+		expect((await readCliSession(work, id, home))?.firstPrompt).toBe('a different start that is long enough');
 	});
 });
 

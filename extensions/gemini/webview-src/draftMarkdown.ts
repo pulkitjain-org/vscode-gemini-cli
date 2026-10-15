@@ -10,6 +10,7 @@
 // time the user is likely to want Preview.
 
 import MarkdownIt from 'markdown-it';
+import { applyInlineStyles } from './inlineStyles';
 
 export const calloutIcons: Readonly<Record<string, string>> = {
 	note: 'info',
@@ -68,6 +69,7 @@ export function renderDraft(text: string, calloutLabel: (kind: string) => string
 	const node = document.createElement('div');
 	draftMarkdown ??= new MarkdownIt({ html: false, linkify: true, breaks: true });
 	node.innerHTML = draftMarkdown.render(text);
+	applyInlineStyles(node);
 	addCallouts(node, calloutLabel);
 	wrapTables(node);
 	return [...node.childNodes];

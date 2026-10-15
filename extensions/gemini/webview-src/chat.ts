@@ -20,7 +20,9 @@
 //   usage.ts           the context ring and usage popover: context, quota and tokens
 //   project.ts         a project chat's New thread dialog and side panel
 
+import type { ItemUpdate } from '../src/acp/textDeltas';
 import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
+import { coalesceUpdates } from './chatLogic';
 import { addAttachments } from './attachmentChips';
 import { setBusy, setFollow, setFollowed, setGit, setSettings, setStatus } from './composer';
 import { applyTokenColors } from './codeHighlight';
@@ -42,8 +44,51 @@ setLabel(ui.scrollButton, strings.scrollToBottom);
 ui.scrollLabel.textContent = strings.latest;
 ui.dropLabel.textContent = strings.dropFiles;
 
-// Nothing animates while the view is hidden.
-document.addEventListener('visibilitychange', () => document.body.classList.toggle('paused', document.hidden));
+/**
+ * Updates that came while the view was hidden. An agent's tab keeps its view
+ * when hidden, and rendering every streamed chunk there would cost as much as
+ * in the tab in front; they are rendered together when it shows.
+ */
+let hiddenUpdates: ItemUpdate[] = [];
+/** The host says the view's tab or pane is out of sight; `document.hidden` covers a hidden window. */
+let tabHidden = false;
+
+function isHidden(): boolean {
+	return tabHidden || document.hidden;
+}
+
+/** Nothing animates while the view is hidden, and updates kept meanwhile render once it shows. */
+function onVisibility(): void {
+	document.body.classList.toggle('paused', isHidden());
+	if (!isHidden() && hiddenUpdates.length) {
+		const updates = coalesceUpdates(hiddenUpdates);
+		hiddenUpdates = [];
+		applyUpdates(updates);
+	}
+}
+
+document.addEventListener('visibilitychange', onVisibility);
+
+function applyUpdates(updates: readonly ItemUpdate[]): void {
+	const stick = isNearBottom();
+	let scroll = stick;
+	for (const update of updates) {
+		const item = update.kind === 'append' ? appended(update) : update;
+		if (item) {
+			scroll = applyItem(item, true) || scroll;
+		}
+	}
+	updateWorking();
+	settleScroll(scroll);
+	// Only a prompt changes the outline; streamed replies, thoughts and tool calls do not.
+	if (updates.some(update => update.kind === 'user')) {
+		updateOutline();
+	}
+	if (updates.some(update => update.kind === 'turnEnd')) {
+		updateUsage();
+	}
+	updatePlaceholder();
+}
 
 window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 	const message = event.data;
@@ -52,6 +97,8 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			ui.input.spellcheck = message.on;
 			break;
 		case 'reset':
+			// The reset carries every item as it is now.
+			hiddenUpdates = [];
 			state.busy = message.busy;
 			reset(message.items);
 			updateOutline();
@@ -63,27 +110,17 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			// After the next frame is drawn: an agent reopened from its saved chat reopens its session then.
 			requestAnimationFrame(() => setTimeout(() => vscode.postMessage({ type: 'shown' })));
 			break;
-		case 'items': {
-			const stick = isNearBottom();
-			let scroll = stick;
-			for (const update of message.items) {
-				const item = update.kind === 'append' ? appended(update) : update;
-				if (item) {
-					scroll = applyItem(item, true) || scroll;
-				}
-			}
-			updateWorking();
-			settleScroll(scroll);
-			// Only a prompt changes the outline; streamed replies, thoughts and tool calls do not.
-			if (message.items.some(update => update.kind === 'user')) {
-				updateOutline();
-			}
-			if (message.items.some(update => update.kind === 'turnEnd')) {
-				updateUsage();
-			}
-			updatePlaceholder();
+		case 'visibility':
+			tabHidden = message.hidden;
+			onVisibility();
 			break;
-		}
+		case 'items':
+			if (isHidden()) {
+				hiddenUpdates.push(...message.items);
+			} else {
+				applyUpdates(message.items);
+			}
+			break;
 		case 'busy':
 			setBusy(message.busy);
 			break;

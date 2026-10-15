@@ -414,6 +414,13 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	/** Forgets the webview, when it is disposed. The conversation carries on. */
+	/** The view went out of sight or came back (its tab or pane); a hidden view defers rendering. */
+	setHidden(hidden: boolean): void {
+		if (this.viewReady) {
+			this.post({ type: 'visibility', hidden });
+		}
+	}
+
 	detach(webview?: vscode.Webview): void {
 		if (webview && webview !== this.webview) {
 			return;
@@ -456,6 +463,11 @@ export class ChatController implements vscode.Disposable {
 		} else {
 			this.newThreadPending = true;
 		}
+	}
+
+	/** Whether a turn is running; `send` does nothing meanwhile. */
+	get running(): boolean {
+		return this.busy;
 	}
 
 	/** Sends a prompt as if typed in the view; `from` marks one its project's coordinator sent. */
@@ -984,7 +996,7 @@ export class ChatController implements vscode.Disposable {
 			case 'showFollowed':
 				if (this.followed) {
 					const followed = this.followed;
-					void Promise.resolve(this.options.editorColumn?.()).then(viewColumn => vscode.window.showTextDocument(followed, { preview: true, viewColumn }));
+					void Promise.resolve(this.options.editorColumn?.()).then(viewColumn => vscode.window.showTextDocument(followed, { preview: true, viewColumn })).then(undefined, () => undefined);
 				}
 				break;
 			case 'closeFollowed':

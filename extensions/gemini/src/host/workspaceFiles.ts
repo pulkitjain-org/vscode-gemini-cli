@@ -13,6 +13,8 @@ export type { FileMatch };
 const maxFiles = 50_000;
 /** Deleted paths kept to filter results until the next rebuild; past this the list is built again. */
 const maxTrackedDeletes = 500;
+/** The least time between background rebuilds, so a burst of new files (an install, a build) costs one. */
+const minRebuildIntervalMs = 5_000;
 
 type IndexedFile = IndexedPath & { readonly path: string };
 
@@ -34,6 +36,7 @@ export class WorkspaceFileIndex implements vscode.Disposable {
 	private deleted = new Set<string>();
 	/** Bumped when the list must be rebuilt from scratch, so an older rebuild does not replace it. */
 	private generation = 0;
+	private lastRebuild = 0;
 	/** Made with the first list, so a window whose chat never searches files watches nothing. */
 	private watcher: vscode.FileSystemWatcher | undefined;
 	private readonly disposables: vscode.Disposable[] = [];
@@ -49,9 +52,15 @@ export class WorkspaceFileIndex implements vscode.Disposable {
 		);
 	}
 
-	/** Starts building the index ahead of the first search. */
+	/**
+	 * Starts building the index ahead of the first search. Only the first
+	 * list: a stale one is rebuilt by the next search, not by every click in
+	 * the chat while an agent creates files.
+	 */
 	warm(): void {
-		void this.load();
+		if (!this.files) {
+			void this.load();
+		}
 	}
 
 	private invalidate(): void {
@@ -105,8 +114,9 @@ export class WorkspaceFileIndex implements vscode.Disposable {
 
 	private load(): Promise<IndexedFile[]> {
 		this.watch();
-		if (this.files && this.stale && !this.rebuilding) {
+		if (this.files && this.stale && !this.rebuilding && Date.now() - this.lastRebuild >= minRebuildIntervalMs) {
 			this.stale = false;
+			this.lastRebuild = Date.now();
 			const generation = this.generation;
 			const deleted = new Set(this.deleted);
 			this.rebuilding = findWorkspaceFiles().then(result => {

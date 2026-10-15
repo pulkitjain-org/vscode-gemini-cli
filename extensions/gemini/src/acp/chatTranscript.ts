@@ -171,9 +171,13 @@ export class ChatTranscript {
 			case 'text':
 				this.appendText(event.role, event.text, event.messageId);
 				break;
-			case 'toolCall':
-				this.upsert(toToolCallItem(event.call));
+			case 'toolCall': {
+				const item = toToolCallItem(event.call);
+				const shown = !item.details.length ? this._items.findLast(i => i.id === item.id) : undefined;
+				// An update of a finished call carries no content: it keeps what it showed.
+				this.upsert(shown?.kind === 'toolCall' ? { ...item, details: shown.details } : item);
 				break;
+			}
 			case 'plan':
 				this.upsert({
 					id: this.currentPlanId() ?? this.newId(),
@@ -317,7 +321,7 @@ export function toolCallItemId(toolCallId: string): string {
 	return `tool-${toolCallId}`;
 }
 
-function toToolCallItem(call: ToolCallModel): TranscriptItem {
+function toToolCallItem(call: ToolCallModel): Extract<TranscriptItem, { readonly kind: 'toolCall' }> {
 	return {
 		id: toolCallItemId(call.id),
 		kind: 'toolCall',

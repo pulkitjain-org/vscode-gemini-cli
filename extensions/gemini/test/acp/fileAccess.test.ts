@@ -3,8 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { checkFileAccess, ClientFileSystem, createFileHandlers, isInside, secretPathReason, sliceLines } from '../../src/acp/fileAccess';
 
 const root = path.resolve('/work/project');
@@ -66,6 +68,44 @@ describe('checkFileAccess', () => {
 	it('denies reading git-ignored files but allows writing them', async () => {
 		expect(await checkFileAccess(inRoot('node_modules', 'x', 'index.js'), 'read', options)).toMatch(/ignored by git/);
 		expect(await checkFileAccess(inRoot('node_modules', 'x', 'index.js'), 'write', options)).toBeUndefined();
+	});
+});
+
+describe('checkFileAccess with symlinks', () => {
+	const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'gemini-links-')));
+	const workspace = path.join(base, 'workspace');
+	const outside = path.join(base, 'home');
+	fs.mkdirSync(path.join(outside, '.aws'), { recursive: true });
+	fs.writeFileSync(path.join(outside, '.aws', 'credentials'), 'secret');
+	fs.writeFileSync(path.join(outside, 'notes.txt'), 'notes');
+	fs.mkdirSync(path.join(workspace, 'docs'), { recursive: true });
+	fs.mkdirSync(path.join(workspace, 'secrets'), { recursive: true });
+	fs.writeFileSync(path.join(workspace, 'secrets', '.env'), 'KEY=1');
+	fs.writeFileSync(path.join(workspace, 'real.md'), 'real');
+	fs.symlinkSync(path.join(outside, '.aws', 'credentials'), path.join(workspace, 'docs', 'setup.txt'));
+	fs.symlinkSync(outside, path.join(workspace, 'linked'));
+	fs.symlinkSync(path.join(workspace, 'secrets', '.env'), path.join(workspace, 'env.txt'));
+	fs.symlinkSync(path.join(workspace, 'real.md'), path.join(workspace, 'alias.md'));
+	afterAll(() => fs.rmSync(base, { recursive: true, force: true }));
+	const policy = { roots: [workspace] };
+
+	it('denies a link to a file outside the workspace, for reads and writes', async () => {
+		expect(await checkFileAccess(path.join(workspace, 'docs', 'setup.txt'), 'read', policy)).toMatch(/outside the workspace/);
+		expect(await checkFileAccess(path.join(workspace, 'docs', 'setup.txt'), 'write', policy)).toMatch(/outside the workspace/);
+	});
+
+	it('denies new files in a linked folder that leads out of the workspace', async () => {
+		expect(await checkFileAccess(path.join(workspace, 'linked', 'notes.txt'), 'read', policy)).toMatch(/outside the workspace/);
+		expect(await checkFileAccess(path.join(workspace, 'linked', 'new', 'file.txt'), 'write', policy)).toMatch(/outside the workspace/);
+	});
+
+	it('denies a link to a secret inside the workspace', async () => {
+		expect(await checkFileAccess(path.join(workspace, 'env.txt'), 'read', policy)).toMatch(/secrets/);
+	});
+
+	it('allows links within the workspace and new files', async () => {
+		expect(await checkFileAccess(path.join(workspace, 'alias.md'), 'read', policy)).toBeUndefined();
+		expect(await checkFileAccess(path.join(workspace, 'docs', 'new.md'), 'write', policy)).toBeUndefined();
 	});
 });
 
