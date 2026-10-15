@@ -38,6 +38,9 @@
 	--gemini-radius-large: 12px;
 	/* Soft: the theme's own colours, named as the mockups name them. */
 	--gemini-surface: var(--vscode-editor-background);
+	/* The approved mockups' cards and composer: a step above the page. */
+	--gemini-card: var(--vscode-editorWidget-background, var(--gemini-surface));
+	--gemini-composer: var(--vscode-input-background, var(--gemini-surface));
 	--gemini-raised: var(--vscode-editorWidget-background, var(--vscode-input-background));
 	--gemini-popover: var(--vscode-quickInput-background, var(--gemini-raised));
 	--gemini-border: var(--vscode-widget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.35)));
@@ -162,8 +165,9 @@ button {
 /*
  * Older messages skip layout and paint while scrolled out of view, so a long chat stays as cheap
  * as a short one. The latest ones are always laid out, so scrolling to the bottom lands exactly.
+ * transcript.ts marks the older ones (`markSettled`).
  */
-.transcript > :nth-last-child(n+30) {
+.transcript > .settled {
 	content-visibility: auto;
 	contain-intrinsic-size: auto 80px;
 }
@@ -223,7 +227,7 @@ button {
 	margin-top: 22px;
 	border: 1px solid var(--gemini-border);
 	border-radius: var(--gemini-radius);
-	background: var(--gemini-surface);
+	background: var(--gemini-card);
 	text-align: left;
 	overflow: hidden;
 }
@@ -330,7 +334,7 @@ kbd {
 	word-wrap: break-word;
 }
 
-/* The user's message, a bubble on the right with a faint accent tint, and under it its time and Copy. */
+/* The user's message, a graphite bubble on the right (the mockups' #2b2b2b on #1f1f1f, and the same step in light), and under it its time and Copy. */
 .user-turn {
 	margin: 18px 0 14px;
 }
@@ -352,8 +356,8 @@ kbd {
 	margin: 0 0 0 auto;
 	padding: 10px 14px;
 	border-radius: 12px;
-	background: color-mix(in srgb, var(--gemini-accent) 9%, var(--gemini-surface));
-	border: 1px solid color-mix(in srgb, var(--gemini-accent) 22%, var(--gemini-border));
+	background: color-mix(in srgb, var(--vscode-editor-foreground) 7%, var(--gemini-surface));
+	border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground) 15%, var(--gemini-surface));
 }
 
 /* The time stays, quiet; Copy shows on hover and keyboard focus. */
@@ -867,10 +871,11 @@ body.vscode-high-contrast-light {
 	gap: 4px;
 	flex: none;
 	max-width: 180px;
-	padding: 0 7px;
+	padding: 0 9px;
 	height: 20px;
-	border: 1px solid var(--gemini-border);
-	border-radius: var(--gemini-radius-small);
+	/* Pills, as in the approved mockups. */
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: 999px;
 	background: var(--gemini-surface);
 	font-size: 11.5px;
 	color: var(--vscode-foreground);
@@ -985,7 +990,7 @@ body.vscode-high-contrast-light {
 	padding: 10px 12px;
 	border-radius: 9px;
 	border: 1px solid var(--gemini-border-strong);
-	background: var(--gemini-surface);
+	background: var(--gemini-card);
 }
 
 .permission-title .codicon-question {
@@ -1278,7 +1283,7 @@ body.vscode-high-contrast-light {
 	padding: 10px 10px 8px 12px;
 	border-radius: var(--gemini-radius-large);
 	border: 1px solid var(--gemini-border-strong);
-	background: var(--gemini-surface);
+	background: var(--gemini-composer);
 	cursor: text;
 }
 
@@ -1286,7 +1291,7 @@ body.vscode-high-contrast-light {
 .composer:focus-within {
 	border-color: transparent;
 	background:
-		linear-gradient(var(--gemini-surface), var(--gemini-surface)) padding-box,
+		linear-gradient(var(--gemini-composer), var(--gemini-composer)) padding-box,
 		var(--gemini-gradient) border-box;
 }
 
@@ -2366,6 +2371,11 @@ body.vscode-high-contrast-light #send {
 		animation: gemini-breathe 1.6s ease-in-out infinite;
 	}
 
+	/* Once the turn is over, a step it left "in progress" (stopped, or never updated) stops moving. */
+	.transcript:not(.turn-running) :is(.shimmer, .tool-call.status-in_progress .tool-title, .codicon-modifier-spin) {
+		animation: none;
+	}
+
 	.activity.running .activity-icon::before {
 		animation: gemini-spin 0.8s linear infinite;
 	}
@@ -2461,4 +2471,428 @@ body.vscode-high-contrast-light #send {
 	overflow: hidden;
 	clip-path: inset(50%);
 	white-space: nowrap;
+}
+
+/* Math: the TeX source in a quiet style until KaTeX (loaded on demand) formats it. */
+.markdown .math:not([data-formatted]) {
+	font-family: var(--vscode-editor-font-family);
+	font-size: 0.92em;
+	color: var(--vscode-descriptionForeground);
+}
+
+.markdown .math-display {
+	display: block;
+	margin: 8px 0;
+	overflow-x: auto;
+	overflow-y: hidden;
+	white-space: pre-wrap;
+}
+
+.markdown .math-display[data-formatted] {
+	white-space: normal;
+}
+
+/* ---- Projects (preview): thread cards in the project chat, and relayed messages in a thread ---- */
+
+.thread-card {
+	--gemini-thread: var(--vscode-charts-blue, #3794ff);
+	margin: 10px 0;
+	padding: 12px 14px;
+	border-radius: var(--gemini-radius);
+	border: 1px solid var(--gemini-border-strong);
+	background: var(--gemini-card);
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.thread-card.state-waiting,
+.thread-card.state-planned {
+	--gemini-thread: var(--gemini-warn);
+	border-color: color-mix(in srgb, var(--gemini-warn) 45%, var(--gemini-border-strong));
+}
+
+.thread-card.state-done {
+	--gemini-thread: var(--gemini-ok);
+}
+
+.thread-card.state-error {
+	--gemini-thread: var(--gemini-error);
+	border-color: color-mix(in srgb, var(--gemini-error) 45%, var(--gemini-border-strong));
+}
+
+.thread-card.state-starting {
+	--gemini-thread: var(--gemini-faint);
+}
+
+.thread-card.removed {
+	opacity: 0.6;
+}
+
+.thread-title {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 0;
+	border: none;
+	background: none;
+	color: var(--vscode-foreground);
+	font: inherit;
+	font-weight: 600;
+	text-align: left;
+	cursor: pointer;
+}
+
+.thread-title:hover {
+	text-decoration: underline;
+}
+
+.thread-dot {
+	width: 8px;
+	height: 8px;
+	flex: none;
+	border-radius: 50%;
+	background: var(--gemini-thread);
+}
+
+.thread-line {
+	overflow-wrap: anywhere;
+}
+
+.thread-meta {
+	font-size: 0.9em;
+	color: var(--gemini-muted);
+}
+
+.thread-card .permission-actions {
+	margin-top: 6px;
+}
+
+.from-badge {
+	display: inline-block;
+	margin-bottom: 6px;
+	padding: 1px 9px;
+	border-radius: 999px;
+	font-size: 0.85em;
+	font-weight: 600;
+	color: var(--vscode-charts-purple, #c586c0);
+	background: color-mix(in srgb, var(--vscode-charts-purple, #c586c0) 18%, transparent);
+}
+
+/* The New thread dialog (project.ts), as in the approved mockup. */
+.new-thread {
+	width: min(600px, calc(100vw - 32px));
+	max-height: calc(100vh - 48px);
+	box-sizing: border-box;
+	padding: 22px 24px;
+	border-radius: var(--gemini-radius-large);
+	border: 1px solid var(--gemini-border-strong);
+	background: var(--gemini-popover);
+	color: var(--vscode-foreground);
+	box-shadow: 0 20px 60px var(--gemini-shadow);
+}
+
+.new-thread::backdrop {
+	background: color-mix(in srgb, var(--vscode-editor-background, #000) 55%, transparent);
+}
+
+.new-thread form {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.new-thread-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.new-thread-head h2 {
+	margin: 0;
+	font-size: 1.15em;
+	font-weight: 600;
+}
+
+.new-thread-field {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+}
+
+.new-thread-field > label {
+	font-size: 0.9em;
+	font-weight: 600;
+	color: var(--gemini-muted);
+}
+
+.new-thread-input {
+	box-sizing: border-box;
+	width: 100%;
+	padding: 8px 10px;
+	border-radius: var(--gemini-radius-small);
+	border: 1px solid var(--gemini-border-strong);
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground, var(--vscode-foreground));
+	font: inherit;
+}
+
+textarea.new-thread-input {
+	resize: vertical;
+	min-height: 5.5em;
+}
+
+.new-thread-input:focus {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.new-thread-pair {
+	display: flex;
+	gap: 12px;
+}
+
+.new-thread-pair > .new-thread-field {
+	flex: 1;
+}
+
+.new-thread-pair > .new-thread-model-field {
+	flex: 0 0 200px;
+}
+
+.new-thread-hint {
+	margin: 0;
+	font-size: 0.9em;
+	color: var(--gemini-muted);
+}
+
+.new-thread-plan {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+}
+
+.new-thread-plan input {
+	margin: 3px 0 0;
+}
+
+.new-thread-plan label {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	line-height: 1.4;
+}
+
+.new-thread-foot {
+	margin-top: 0;
+	padding-top: 14px;
+	border-top: 1px solid var(--gemini-border);
+}
+
+.new-thread-foot .new-thread-hint {
+	margin-right: auto;
+}
+
+@media (max-width: 520px) {
+	.new-thread-pair {
+		flex-direction: column;
+	}
+
+	.new-thread-pair > .new-thread-model-field {
+		flex-basis: auto;
+	}
+}
+
+/*
+ * The project chat's side panel (project.ts): shown beside the chat only
+ * when the view is wide enough for both; the chat column narrows to make room.
+ */
+.project-panel,
+.project-panel-sash {
+	display: none;
+}
+
+@media (min-width: 1000px) {
+	body.has-project-panel {
+		--gemini-panel-width: 280px;
+		--gemini-gutter: max(28px, calc((100vw - var(--gemini-panel-width) - 760px) / 2));
+		padding-right: var(--gemini-panel-width);
+	}
+
+	body.has-project-panel .prompt-outline {
+		right: calc(var(--gemini-panel-width) + 2px);
+	}
+
+	.project-panel {
+		position: fixed;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		width: var(--gemini-panel-width);
+		box-sizing: border-box;
+		overflow-y: auto;
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+		padding: 16px;
+		border-left: 1px solid var(--gemini-border);
+		background: var(--vscode-sideBar-background, var(--gemini-surface));
+		font-size: 0.93em;
+	}
+
+	/* The panel's left edge, dragged to resize it (project.ts). */
+	.project-panel-sash {
+		display: block;
+		position: fixed;
+		top: 0;
+		bottom: 0;
+		right: calc(var(--gemini-panel-width) - 2px);
+		z-index: 5;
+		width: 4px;
+		cursor: ew-resize;
+		outline: none;
+		transition: background-color 0.1s ease-out 0.3s;
+	}
+
+	.project-panel-sash:hover,
+	.project-panel-sash.active,
+	.project-panel-sash:focus-visible {
+		background: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder));
+	}
+}
+
+.panel-section + .panel-section {
+	padding-top: 12px;
+	border-top: 1px solid var(--gemini-border);
+}
+
+.panel-section h3 {
+	margin: 0 0 6px;
+	font-size: 1em;
+	font-weight: 600;
+}
+
+.panel-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin: 0;
+	padding: 4px 0;
+	overflow-wrap: anywhere;
+}
+
+.panel-empty {
+	color: var(--gemini-muted);
+}
+
+.panel-dot {
+	width: 8px;
+	height: 8px;
+	flex: none;
+	border-radius: 50%;
+	background: var(--vscode-charts-blue, #3794ff);
+}
+
+.panel-dot.state-waiting,
+.panel-dot.state-planned {
+	background: var(--gemini-warn);
+}
+
+.panel-dot.state-done {
+	background: var(--gemini-ok);
+}
+
+.panel-dot.state-merged {
+	background: var(--gemini-faint);
+}
+
+/* The project panel's threads, each opening its chat. */
+.panel-threads {
+	display: flex;
+	flex-direction: column;
+	margin-top: 6px;
+}
+
+.panel-thread {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 4px 6px;
+	margin: 0 -6px;
+	border: none;
+	border-radius: var(--gemini-radius-small);
+	background: none;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.panel-thread:hover,
+.panel-thread:focus-visible {
+	background: var(--gemini-hover);
+}
+
+.panel-thread-title {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* A project thread's bar (project.ts): the way back to the project chat on the left, and which project it belongs to on the right. */
+.parent-project {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px var(--gemini-gutter);
+	border-bottom: 1px solid var(--gemini-border);
+	color: var(--gemini-muted);
+	font-size: 12px;
+}
+
+.parent-project-name {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	margin-left: auto;
+	overflow: hidden;
+}
+
+.parent-project-name > span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.parent-project-link {
+	flex: none;
+	margin-left: -6px;
+}
+
+.parent-project-link {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 6px;
+	border: none;
+	border-radius: var(--gemini-radius-small);
+	background: none;
+	color: var(--vscode-textLink-foreground);
+	font: inherit;
+	cursor: pointer;
+}
+
+.parent-project-link:hover,
+.parent-project-link:focus-visible {
+	background: var(--gemini-hover);
+	color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
+}
+
+body.has-parent-project .prompt-outline {
+	top: 52px;
 }

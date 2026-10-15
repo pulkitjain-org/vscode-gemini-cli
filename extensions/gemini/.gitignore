@@ -2,3 +2,5 @@ media/*.js
 media/codicon.css
 /cli/
 media/codicon.ttf
+media/katex-style.css
+media/KaTeX_*.woff2

@@ -44,6 +44,23 @@ describe('AgentsModel', () => {
 		expect(() => model.addAgent(workspace, 'Again', undefined, 'given')).toThrow();
 	});
 
+	it('keeps a thread resolved until it is reopened, and only for threads', () => {
+		const model = new AgentsModel();
+		const workspace = model.addWorkspace('/work/api').id;
+		const coordinator = model.addAgent(workspace, 'Project', undefined, 'c', { role: 'coordinator' });
+		const thread = model.addAgent(workspace, 'Thread', undefined, 't', { role: 'thread', coordinator: 'c', byCoordinator: true });
+		let changes = 0;
+		model.onDidChange(() => changes++);
+		model.setThreadResolved(thread.id, true);
+		model.setThreadResolved(thread.id, true);
+		model.setThreadResolved(coordinator.id, true);
+		expect(model.agent('t')?.project).toEqual({ role: 'thread', coordinator: 'c', byCoordinator: true, resolved: true });
+		expect(model.agent('c')?.project).toEqual({ role: 'coordinator' });
+		model.setThreadResolved(thread.id, false);
+		expect(model.agent('t')?.project).toEqual({ role: 'thread', coordinator: 'c', byCoordinator: true });
+		expect(changes).toBe(2);
+	});
+
 	it('keeps change totals only while there are changes', () => {
 		const model = new AgentsModel();
 		const agent = model.addAgent(model.addWorkspace('/work/api').id, 'New agent');

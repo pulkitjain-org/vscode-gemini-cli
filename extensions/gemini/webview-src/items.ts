@@ -10,9 +10,12 @@
 import MarkdownIt from 'markdown-it';
 import { basename } from '../src/acp/attachments';
 import type { PromptAttachmentLabel, TranscriptItem } from '../src/acp/chatTranscript';
-import type { ViewSession } from '../src/host/chatProtocol';
+import type { ThreadAction, ViewSession } from '../src/host/chatProtocol';
 import { attachmentIcon, codeLanguage, format, formatDuration, formatSentAt, permissionDefaults, planIcon, replyBefore, thoughtSeconds, toolKindIcon, type ItemOf } from './chatLogic';
 import { highlightCode } from './codeHighlight';
+import { applyInlineStyles } from './inlineStyles';
+import { renderMath } from './math';
+import { mathPlugin } from './mathRule';
 import { enhanceMarkdown } from './markdownExtras';
 import { button, copyButton, el, icon, setLabel } from './dom';
 import { thoughtPreview } from './streaming';
@@ -20,7 +23,7 @@ import { expanded, state, strings, thoughtTimes, ui, vscode } from './view';
 
 const mac = /Mac/.test(navigator.platform);
 
-const markdown = new MarkdownIt({ html: false, linkify: true });
+const markdown = new MarkdownIt({ html: false, linkify: true }).use(mathPlugin);
 // Only links with a scheme or www.; file names such as README.md are not web addresses.
 markdown.linkify.set({ fuzzyLink: false });
 // The user's own messages keep their line breaks, as typed.
@@ -50,7 +53,52 @@ export function render(item: TranscriptItem, toggleToolCall: ToggleToolCall): HT
 			return renderNotice(item.text, item.severity);
 		case 'turnEnd':
 			return renderTurnEnd(item);
+		case 'thread':
+			return renderThreadCard(item);
 	}
+}
+
+/** A project's thread: its state, what it is doing, its branch and changes, and what can be done with it. */
+function renderThreadCard(item: ItemOf<'thread'>): HTMLElement {
+	const project = strings.project;
+	const card = el('div', `thread-card state-${item.state}${item.removed ? ' removed' : ''}`);
+	const send = (action: ThreadAction) => vscode.postMessage({ type: 'threadAction', thread: item.thread, action });
+	const title = button('thread-title', item.title, () => send('open'));
+	title.prepend(el('span', 'thread-dot'));
+	card.append(title);
+	const state = project?.states[item.state] ?? item.state;
+	const line = item.removed ? project?.undone : item.merged ? project?.merged : item.detail ? `${state} \u00b7 ${item.detail}` : state;
+	card.append(el('div', 'thread-line', line ?? state));
+	const meta = [
+		item.branch,
+		item.changes?.files ? `+${item.changes.added} \u2212${item.changes.removed}` : undefined,
+		item.track && project ? format(project.track, item.track) : undefined,
+		formatDuration(Date.now() - item.startedAt),
+	].filter(Boolean).join(' \u00b7 ');
+	card.append(el('div', 'thread-meta', meta));
+	if (item.removed || !project) {
+		return card;
+	}
+	const actions: [ThreadAction, boolean][] = item.state === 'waiting'
+		? [['open', true]]
+		: item.state === 'planned'
+			? [['approve', true], ['open', false]]
+			: item.state === 'error'
+				? [['retry', true], ['open', false]]
+				: item.state === 'done' && !item.merged && item.changes?.files
+					? [['merge', true], ['review', false], ['undo', false]]
+					// Done with nothing to merge, such as an assessment: its answer is in the thread.
+					: item.state === 'done' && !item.merged
+						? [['open', true], ['undo', false]]
+						: item.state === 'done'
+							? [['open', false]]
+							: [['open', false], ['stop', false]];
+	const row = el('div', 'permission-actions');
+	for (const [action, primary] of actions) {
+		row.append(button(primary ? 'primary' : 'secondary', action === 'open' && item.state === 'waiting' ? project.openToAnswer : project.actions[action], () => send(action)));
+	}
+	card.append(row);
+	return card;
 }
 
 function renderTurnEnd(item: ItemOf<'turnEnd'>): HTMLElement {
@@ -89,9 +137,12 @@ function sentAt(at: number): HTMLElement {
 }
 
 /** The user's message, with its time and Copy under it, shown on hover. */
-function renderUserMessage(item: { readonly text: string; readonly attachments?: readonly PromptAttachmentLabel[]; readonly at?: number }): HTMLElement {
-	const turn = el('div', 'user-turn');
+function renderUserMessage(item: { readonly text: string; readonly attachments?: readonly PromptAttachmentLabel[]; readonly at?: number; readonly from?: 'coordinator' }): HTMLElement {
+	const turn = el('div', `user-turn${item.from ? ' from-coordinator' : ''}`);
 	const node = el('div', 'message user');
+	if (item.from) {
+		node.append(el('span', 'from-badge', strings.fromCoordinator));
+	}
 	turn.append(node);
 	if (item.text) {
 		const text = el('div', 'user-text markdown');
@@ -137,11 +188,17 @@ export function renderUserMarkdown(text: string): Node[] {
 	return renderBlocks(text, userMarkdown);
 }
 
-/** Markdown as nodes, with each code block under a header that names its language and copies it. */
-export function renderBlocks(text: string, renderer = markdown): Node[] {
+/**
+ * Markdown as nodes, with each code block under a header that names its
+ * language and copies it. Without `highlight`, code is left plain: for the
+ * tail of a streaming reply, whose last code block is still growing.
+ */
+export function renderBlocks(text: string, renderer = markdown, highlight = true): Node[] {
 	const node = el('div');
 	node.innerHTML = renderer.render(text);
+	applyInlineStyles(node);
 	enhanceMarkdown(node);
+	renderMath(node);
 	for (const pre of node.querySelectorAll('pre')) {
 		const wrapper = el('div', 'code-block');
 		pre.replaceWith(wrapper);
@@ -150,7 +207,7 @@ export function renderBlocks(text: string, renderer = markdown): Node[] {
 		const language = codeLanguage(code?.className ?? '');
 		header.append(el('span', 'code-language', language), copyButton('copy', strings.copy, () => pre.textContent ?? ''));
 		wrapper.append(header, pre);
-		if (code) {
+		if (code && highlight) {
 			highlightCode(code, language.toLowerCase());
 		}
 	}
@@ -292,7 +349,7 @@ function renderPermission(item: ItemOf<'permission'>): HTMLElement {
 		card.append(files);
 	}
 	if (item.answer) {
-		card.append(el('div', 'permission-answer', item.answer.kind === 'selected' ? format(strings.permissionAnswered, item.answer.name) : strings.permissionCancelled));
+		card.append(el('div', 'permission-answer', item.answer.kind !== 'selected' ? strings.permissionCancelled : item.answer.automatic ? item.answer.name : format(strings.permissionAnswered, item.answer.name)));
 		return card;
 	}
 	const actions = el('div', 'permission-actions');

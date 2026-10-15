@@ -12,6 +12,7 @@ import './geminiFonts.css';
 import './geminiSoft.css';
 import './geminiModes.js';
 import './geminiBrowser.js';
+import './geminiAgentGroups.js';
 import { mainWindow } from '../../../../base/browser/window.js';
 import { CancellationTokenSource } from '../../../../base/common/cancellation.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';

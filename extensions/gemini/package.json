@@ -31,6 +31,11 @@
         "category": "%category%"
       },
       {
+        "command": "gemini.sessionApprovals",
+        "title": "%command.sessionApprovals%",
+        "category": "%category%"
+      },
+      {
         "command": "gemini.toggleFollowAgent",
         "title": "%command.toggleFollowAgent%",
         "category": "%category%"
@@ -145,6 +150,24 @@
         "title": "%command.agents.newAgentOnBranch%",
         "category": "%category%",
         "icon": "$(git-branch)"
+      },
+      {
+        "command": "gemini.projects.new",
+        "title": "%command.projects.new%",
+        "category": "%category%",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "gemini.projects.add",
+        "title": "%command.projects.new%",
+        "category": "%category%",
+        "icon": "$(add)"
+      },
+      {
+        "command": "gemini.projects.newThread",
+        "title": "%command.projects.newThread%",
+        "category": "%category%",
+        "icon": "$(add)"
       },
       {
         "command": "gemini.agentHome",
@@ -549,6 +572,11 @@
           "group": "navigation@2"
         },
         {
+          "command": "gemini.projects.new",
+          "when": "view == gemini.agents && config.gemini.projects.enabled",
+          "group": "navigation@3"
+        },
+        {
           "command": "gemini.agentHome",
           "when": "view == gemini.agents",
           "group": "navigation@3"
@@ -581,6 +609,21 @@
           "group": "inline"
         },
         {
+          "command": "gemini.projects.add",
+          "when": "view == gemini.agents && viewItem == section.projects",
+          "group": "inline"
+        },
+        {
+          "command": "gemini.agents.newAgent",
+          "when": "view == gemini.agents && viewItem == section.agents",
+          "group": "inline"
+        },
+        {
+          "command": "gemini.projects.newThread",
+          "when": "view == gemini.agents && viewItem =~ /\\.project$/ && config.gemini.projects.enabled",
+          "group": "inline"
+        },
+        {
           "command": "gemini.agents.newAgentOnBranch",
           "when": "view == gemini.agents && viewItem =~ /^workspace.*\\.git$/",
           "group": "inline"
@@ -609,6 +652,16 @@
           "command": "gemini.agents.newAgentOnBranch",
           "when": "view == gemini.agents && viewItem =~ /^workspace.*\\.git$/",
           "group": "1_agent@2"
+        },
+        {
+          "command": "gemini.projects.new",
+          "when": "view == gemini.agents && viewItem =~ /^workspace.*\\.git$/ && config.gemini.projects.enabled",
+          "group": "1_agent@3"
+        },
+        {
+          "command": "gemini.projects.newThread",
+          "when": "view == gemini.agents && viewItem =~ /\\.project$/ && config.gemini.projects.enabled",
+          "group": "1_agent@0"
         },
         {
           "command": "gemini.agents.removeWorkspace",
@@ -647,6 +700,14 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "gemini.projects.add",
+          "when": "false"
+        },
+        {
+          "command": "gemini.projects.newThread",
+          "when": "false"
+        },
         {
           "command": "gemini.review.keepChange",
           "when": "false"
@@ -725,10 +786,23 @@
           "scope": "machine",
           "markdownDescription": "%configuration.app.checkForUpdates%"
         },
+        "gemini.projects.enabled": {
+          "type": "boolean",
+          "default": false,
+          "tags": [
+            "preview"
+          ],
+          "markdownDescription": "%configuration.projects.enabled%"
+        },
         "gemini.agents.ownBranch": {
           "type": "boolean",
           "default": false,
           "markdownDescription": "%configuration.agents.ownBranch%"
+        },
+        "gemini.agents.allWorkspaceFolders": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "%configuration.agents.allWorkspaceFolders%"
         },
         "gemini.agents.worktreeSetup": {
           "type": "string",
@@ -741,6 +815,12 @@
           "default": false,
           "scope": "machine",
           "markdownDescription": "%configuration.chat.followAgent%"
+        },
+        "gemini.chat.spellCheck": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "markdownDescription": "%configuration.chat.spellCheck%"
         },
         "gemini.browser.enabled": {
           "type": "boolean",
@@ -873,6 +953,7 @@
     "watch": "gulp watch-extension:gemini",
     "typecheck-tests": "tsc -p tsconfig.test.json",
     "bundle-cli": "node scripts/bundle-cli.mts",
+    "spike-coordinator": "node --experimental-transform-types --no-warnings scripts/coordinator-spike.mts",
     "test": "vitest run"
   },
   "bundledCli": {
@@ -888,6 +969,7 @@
     "@types/node": "24.x",
     "@vscode/codicons": "^0.0.36",
     "highlight.js": "^11.12.0",
+    "katex": "^0.16.22",
     "markdown-it": "^14.3.2",
     "vitest": "^4.1.8"
   },

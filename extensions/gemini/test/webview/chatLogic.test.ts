@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TranscriptItem } from '../../src/acp/chatTranscript';
 import {
-	acceptsEnhanceReply, attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, currentActivity, currentPrompt, promptStep, formatClock, turnStart, draggedHeight, emptyFence, enhanceButtonPlacement, enhanceOriginal, type EnhancePhase, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, fileReference, fileUris, folderOf, format, formatDuration, formatSentAt, isEnhanceShortcut,
+	acceptsEnhanceReply, coalesceUpdates, attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, currentActivity, currentPrompt, promptStep, formatClock, turnStart, draggedHeight, emptyFence, enhanceButtonPlacement, enhanceOriginal, type EnhancePhase, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, fileReference, fileUris, folderOf, format, formatDuration, formatSentAt, isEnhanceShortcut,
 	imageName, indexOfItem, isNearBottom, matchCommands, mentionAt, mentionInsertion, permissionDefaults, planIcon, replyBefore, restoredHeight,
 	formatTokens, resetsIn, sameAttachment, slashQuery, thoughtSeconds, toolKindIcon, withAppended, withoutMention, wrapIndex,
 } from '../../webview-src/chatLogic';
@@ -444,5 +444,19 @@ describe('resetsIn', () => {
 		expect(resetsIn('2026-10-08T09:00:00Z', now)).toBeUndefined();
 		expect(resetsIn(undefined, now)).toBeUndefined();
 		expect(resetsIn('soon', now)).toBeUndefined();
+	});
+});
+
+describe('coalesceUpdates', () => {
+	const agent = (id: string, text: string) => ({ id, kind: 'agent' as const, text });
+	const append = (id: string, text: string) => ({ kind: 'append' as const, id, append: text });
+
+	it('joins appends to one item and keeps the order items first changed in', () => {
+		expect(coalesceUpdates([append('a', 'He'), agent('b', 'x'), append('a', 'llo'), append('a', '!')])).toEqual([append('a', 'Hello!'), agent('b', 'x')]);
+	});
+
+	it('lets a whole item replace what came before it, and keeps appends after it', () => {
+		expect(coalesceUpdates([agent('a', 'one'), append('a', ' two'), agent('b', 'x'), agent('a', 'three'), append('a', ' four')]))
+			.toEqual([agent('a', 'three'), agent('b', 'x'), append('a', ' four')]);
 	});
 });

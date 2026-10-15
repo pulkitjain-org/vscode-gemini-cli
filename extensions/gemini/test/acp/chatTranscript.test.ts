@@ -21,6 +21,7 @@ function summary(items: readonly TranscriptItem[]): string[] {
 			case 'notice': return `notice:${item.severity}:${item.text}`;
 			case 'permission': return `permission:${item.title}:${item.answer ? (item.answer.kind === 'selected' ? item.answer.name : 'cancelled') : 'pending'}`;
 			case 'turnEnd': return 'turnEnd';
+			case 'thread': return `thread:${item.title}:${item.state}`;
 		}
 	});
 }
@@ -136,6 +137,16 @@ describe('ChatTranscript permissions', () => {
 		transcript.resolvePermission('permission-0', { outcome: 'selected', optionId: 'cancel' });
 		transcript.resolvePermission('permission-1', { outcome: 'cancelled' });
 		expect(summary(transcript.items)).toEqual(['permission:Write a.ts:Reject', 'permission:Write a.ts:cancelled']);
+	});
+
+	it('marks an answer GeminiCode gave on its own as automatic, and the user\'s as not', () => {
+		const transcript = new ChatTranscript();
+		transcript.addPermission({ id: 'permission-0', request });
+		transcript.addPermission({ id: 'permission-1', request });
+		transcript.resolvePermission('permission-0', { outcome: 'selected', optionId: 'cancel' }, 'Refused automatically');
+		transcript.resolvePermission('permission-1', { outcome: 'selected', optionId: 'cancel' });
+		const answers = transcript.items.map(item => item.kind === 'permission' ? item.answer : undefined);
+		expect(answers).toEqual([{ kind: 'selected', name: 'Refused automatically', automatic: true }, { kind: 'selected', name: 'Reject' }]);
 	});
 });
 

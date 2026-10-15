@@ -3,7 +3,8 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { randomUUID } from 'node:crypto';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AgentChanges, ChangeTotals, formatCounts } from '../acp/agentChanges';
@@ -11,14 +12,19 @@ import { agentRowMeta } from '../acp/agentRow';
 import { attentionChange, waitingCount } from '../acp/attention';
 import { branchNameFrom, isValidBranchName } from '../acp/branchNames';
 import { AgentRecord, AgentsModel, AgentsSnapshot, WorkspaceRecord } from '../acp/agents';
+import { coordinatorModel, threadPrompt, type ThreadRequest } from '../acp/projectHub';
+import { linkCoordinatorRules, linkThreadRules, ruleEntries, ruleFolders } from '../acp/projectRules';
 import type { Attachment } from '../acp/attachments';
 import { FolderFileIndex } from '../acp/folderFiles';
 import { readGitHead } from '../acp/gitHead';
 import { errorMessage } from '../acp/errors';
 import { memoizeAsync } from '../acp/memoize';
 import { reviewRequest, workingChanges } from '../acp/reviewPrompt';
+import type { SessionChoice } from '../acp/sessionSettings';
 import { TranscriptStore } from '../acp/transcriptStore';
-import { AgentWorktree, branchExists, commitAll, createWorktree, currentBranch, folderInRepository, mergeBranch, removeWorktree, repositoryRoot, runWorktreeSetup, worktreeSetupCommand, worktreeStatus } from '../acp/worktrees';
+import { folderTrustApplies, isFolderTrusted, trustedFoldersPath } from '../acp/trustedFolders';
+import { AgentWorktree, branchExists, commitAll, coordinatorHome, createWorktree, currentBranch, folderInRepository, mergeBranch, removeWorktree, repositoryRoot, runWorktreeSetup, worktreeSetupCommand, projectsHome, worktreesHome, worktreeStatus } from '../acp/worktrees';
+import { supportedMcpServers } from '../acp/agentClient';
 import { AgentNotifier } from './agentNotifier';
 import { AgentService } from './agentService';
 import { AgentSession } from './agentSession';
@@ -29,15 +35,19 @@ import type { BrowserTools } from './browserTools';
 import { ChatActivity, ChatController, ChatEnhancer, FileSearch, openChatAsMarkdown } from './chatController';
 import { configSection } from './configuration';
 import { relativeTime, tildify } from './displayText';
+import { Projects, projectsEnabled } from './projects';
 export { relativeTime } from './displayText';
 import { DiffPreview } from './diffPreview';
-import { besideAgent } from './editorPlacement';
+import { agentColumn, agentsColumn, closeAgentFiles } from './editorPlacement';
 import { escapeMarkdown } from './markdown';
+import { sessionModel } from './modelPreference';
 import type { UsageMeter } from './usageMeter';
 import { WorkspaceFileIndex } from './workspaceFiles';
 
 const agentsViewId = 'gemini.agents';
 const agentPanelType = 'gemini.agent';
+/** How long after the agent is ready, or a spare was taken, to open the next spare: out of the way of the start itself. */
+const spareDelayMs = 1500;
 const storageKey = 'gemini.agents';
 /** Agent tab icons end in #gemini-agent=<id>; GeminiCode's workbench matches tabs on it (gemini.contribution.ts). */
 const agentTabFragment = 'gemini-agent=';
@@ -57,7 +67,24 @@ interface AgentNode {
 	readonly folder: string;
 }
 
-type Node = WorkspaceNode | AgentNode;
+/** The list's two sections: projects (with Projects on) and agents, each with its own +. */
+interface SectionNode {
+	readonly kind: 'section';
+	readonly section: 'projects' | 'agents';
+}
+
+/** What an empty section says, in place of its rows. */
+interface MessageNode {
+	readonly kind: 'message';
+	readonly section: 'projects' | 'agents';
+}
+
+/** A blank row that keeps the two sections apart. */
+interface GapNode {
+	readonly kind: 'gap';
+}
+
+type Node = SectionNode | MessageNode | GapNode | WorkspaceNode | AgentNode;
 
 /** One agent, as Agent Home and the title bar show it. */
 export interface AgentSummary {
@@ -71,6 +98,8 @@ export interface AgentSummary {
 	readonly changes?: ChangeTotals;
 	readonly worktree?: AgentWorktree;
 	readonly updatedAt: number;
+	/** Its part in a project, while Projects are on; a coordinator also has its thread count. */
+	readonly project?: { readonly role: 'coordinator'; readonly threads: number } | { readonly role: 'thread' };
 }
 
 /** A workspace agents can start in. */
@@ -113,6 +142,14 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	/** Each agent's conversation as shown, so its tab looks the same after a reload. */
 	private readonly transcripts: TranscriptStore;
 	private readonly live = new Map<string, LiveAgent>();
+	/** Agents being merged back, so a second Merge waits for the first. */
+	private readonly merging = new Set<string>();
+	/** Threads whose worktree setup still runs; they get their brief when it ends. */
+	private readonly settingUp = new Set<string>();
+	/** The last worktree being added in each repository, so threads started together take turns. */
+	private readonly worktreeQueue = new Map<string, Promise<void>>();
+	/** The model a thread's first session starts on, picked in the New thread dialog. */
+	private readonly threadModels = new Map<string, string>();
 	private readonly changesView: ChangesView;
 	/** Keep and Undo on each agent change, in the files themselves. */
 	readonly review: ReviewController;
@@ -124,6 +161,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	private refreshTimer: ReturnType<typeof setInterval> | undefined;
 	/** Ticks working agents' clocks once a second while the pane shows one. */
 	private clockTimer: ReturnType<typeof setInterval> | undefined;
+	/** Set while the extension shuts down, when closing agent tabs must not close their files. */
+	private disposing = false;
 	/** The agent rows last handed to the tree, so a clock tick redraws just those rows. */
 	private readonly agentNodes = new Map<string, AgentNode>();
 	/** Output of worktree setup scripts, made the first time one runs. */
@@ -151,8 +190,10 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	/** Today's quota, for the chats' usage popover. */
 	usage: UsageMeter | undefined;
 	private persistTimeout: ReturnType<typeof setTimeout> | undefined;
-	/** The agent Agent Home starts next, chosen while the user types (`prepareStart`). */
-	private nextAgent: { readonly folder: string; readonly id: string; listener?: { dispose(): void } } | undefined;
+	/** Projects (preview): coordinators and their threads. */
+	private readonly projects: Projects;
+	/** The folder the spare session is kept for, and the wait for the agent to be ready to open it. */
+	private spare: { folder: string; waiting?: { dispose(): void }; timer?: ReturnType<typeof setTimeout> } | undefined;
 
 	constructor(
 		private readonly context: vscode.ExtensionContext,
@@ -165,6 +206,25 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		this.transcripts = new TranscriptStore(vscode.Uri.joinPath(context.globalStorageUri, 'agents').fsPath);
 		this.tree = vscode.window.createTreeView(agentsViewId, { treeDataProvider: this, showCollapseAll: false });
 		this.changesView = new ChangesView(id => this.live.get(id)?.changes);
+		this.projects = new Projects({
+			record: id => this.model.agent(id),
+			workspaceFolder: id => {
+				const record = this.model.agent(id);
+				return record && this.model.workspace(record.workspaceId)?.folder;
+			},
+			threadsOf: id => this.model.threadsOf(id),
+			controller: id => this.ensureLive(id)?.controller,
+			activity: id => this.live.get(id)?.activity,
+			startThread: (id, request) => this.startThread(id, request),
+			open: id => this.open(id),
+			stopTurn: id => this.stopTurn(id),
+			mergeBack: id => this.mergeBack(id),
+			openChanges: id => this.openChanges(id),
+			undoThread: id => this.undoThread(id),
+			resume: id => this.resumeThread(id),
+			settingUp: id => this.settingUp.has(id),
+			setResolved: (id, resolved) => this.model.setThreadResolved(id, resolved),
+		}, String(context.extension.packageJSON.version ?? '0'));
 		this.review = new ReviewController(() => [...this.live.entries()].map(([id, live]) => ({ title: vscode.l10n.t("the agent \"{0}\"", this.model.agent(id)?.title ?? ''), changes: live.changes })));
 		this.disposables.push(
 			this.tree,
@@ -179,7 +239,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				this.refresh();
 			}),
 			vscode.workspace.onDidChangeWorkspaceFolders(() => this.refresh()),
-			vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.notifications`) && this.refresh()),
+			vscode.workspace.onDidChangeConfiguration(e => (e.affectsConfiguration(`${configSection}.notifications`) || e.affectsConfiguration(`${configSection}.projects.enabled`)) && this.refresh()),
 			// Relative times go stale; refresh them only while the pane is visible.
 			this.tree.onDidChangeVisibility(e => this.setRefreshing(e.visible)),
 			vscode.commands.registerCommand('gemini.agents.newAgent', (node?: Node) => this.newAgent(node)),
@@ -199,8 +259,18 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			vscode.commands.registerCommand('gemini.agents.stop', (node?: Node) => node?.kind === 'agent' && this.stopTurn(node.record.id)),
 			vscode.commands.registerCommand('gemini.agents.remove', (node?: Node) => this.removeAgent(node)),
 			vscode.commands.registerCommand('gemini.agents.removeWorkspace', (node?: Node) => this.removeWorkspace(node)),
+			vscode.commands.registerCommand('gemini.projects.new', (node?: Node) => this.newProject(node)),
+			// The Projects section's +: the same command, drawn as a plus.
+			vscode.commands.registerCommand('gemini.projects.add', (node?: Node) => this.newProject(node)),
+			vscode.commands.registerCommand('gemini.projects.newThread', (node?: Node) => node?.kind === 'agent' && this.projects.openNewThread(node.record.id)),
+			this.projects,
 		);
 		this.setRefreshing(this.tree.visible);
+		// A spare session for the first agent, opened once the agent process is up (the warm-up starts it).
+		const folder = this.likelyFolder();
+		if (folder) {
+			this.prepareStart(folder, spareDelayMs);
+		}
 	}
 
 	/** Opens agent `id`'s conversation as Markdown; one not running in this window is read from its saved file. */
@@ -208,7 +278,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const record = this.model.agent(id);
 		const live = this.live.get(id);
 		const items = live ? live.controller.conversation : (await this.transcripts.load(id)).items;
-		await openChatAsMarkdown(record?.title ?? vscode.l10n.t("Agent"), items, live ? besideAgent(live.panel) : undefined);
+		await openChatAsMarkdown(record?.title ?? vscode.l10n.t("Agent"), items, live ? await agentColumn(id, live.panel) : undefined);
 	}
 
 	/** An agent's name, for questions about it. */
@@ -244,21 +314,91 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	// --- Tree
 
 	getTreeItem(node: Node): Promise<vscode.TreeItem> | vscode.TreeItem {
-		return node.kind === 'workspace' ? this.workspaceItem(node) : this.agentItem(node);
+		switch (node.kind) {
+			case 'section':
+				return this.sectionItem(node);
+			case 'message':
+				return this.messageItem(node);
+			case 'gap':
+				return gapItem();
+			case 'workspace':
+				return this.workspaceItem(node);
+			case 'agent':
+				return this.agentItem(node);
+		}
 	}
 
 	getChildren(node?: Node): Node[] {
 		if (!node) {
-			return this.workspaceNodes();
+			const agents: SectionNode = { kind: 'section', section: 'agents' };
+			return projectsEnabled() ? [{ kind: 'section', section: 'projects' }, { kind: 'gap' }, agents] : [agents];
+		}
+		if (node.kind === 'section') {
+			const rows: Node[] = node.section === 'projects' ? this.projectNodes() : this.workspaceNodes();
+			return rows.length ? rows : [{ kind: 'message', section: node.section }];
 		}
 		if (node.kind === 'workspace' && node.record) {
-			return this.model.agentsIn(node.record.id).map(record => {
+			return this.agentsOf(node.record.id).map(record => {
+				const agent: AgentNode = { kind: 'agent', record, folder: record.worktree?.cwd ?? node.folder };
+				this.agentNodes.set(record.id, agent);
+				return agent;
+			});
+		}
+		if (node.kind === 'agent' && node.record.project?.role === 'coordinator') {
+			return this.model.threadsOf(node.record.id).map(record => {
 				const agent: AgentNode = { kind: 'agent', record, folder: record.worktree?.cwd ?? node.folder };
 				this.agentNodes.set(record.id, agent);
 				return agent;
 			});
 		}
 		return [];
+	}
+
+	/** A workspace's own agents; projects and their threads are in the Projects section while it shows. */
+	private agentsOf(workspaceId: string): AgentRecord[] {
+		const projects = projectsEnabled();
+		return this.model.agentsIn(workspaceId).filter(record => record.project?.role === 'thread'
+			? !this.model.coordinatorOf(record) || !projects
+			: record.project?.role !== 'coordinator' || !projects);
+	}
+
+	/** Every project, newest first, whichever workspace it is in. */
+	private projectNodes(): AgentNode[] {
+		return this.model.snapshot().agents
+			.filter(record => record.project?.role === 'coordinator')
+			.sort((a, b) => b.createdAt - a.createdAt)
+			.flatMap(record => {
+				const folder = this.model.workspace(record.workspaceId)?.folder;
+				if (!folder) {
+					return [];
+				}
+				const agent: AgentNode = { kind: 'agent', record, folder };
+				this.agentNodes.set(record.id, agent);
+				return [agent];
+			});
+	}
+
+	private sectionItem(node: SectionNode): vscode.TreeItem {
+		const item = new vscode.TreeItem(node.section === 'projects' ? vscode.l10n.t("Projects") : vscode.l10n.t("Agents"), vscode.TreeItemCollapsibleState.Expanded);
+		item.id = `section:${node.section}`;
+		item.contextValue = `section.${node.section}`;
+		return item;
+	}
+
+	private messageItem(node: MessageNode): vscode.TreeItem {
+		const projects = node.section === 'projects';
+		const item = new vscode.TreeItem(projects ? vscode.l10n.t("No projects yet") : vscode.l10n.t("No agents yet"));
+		item.id = `message:${node.section}`;
+		item.description = vscode.l10n.t("+ to start one");
+		item.iconPath = new vscode.ThemeIcon('info');
+		item.tooltip = projects
+			? vscode.l10n.t("A project's coordinator splits work into threads, each an agent on its own branch. Start one on any folder in a Git repository.")
+			: vscode.l10n.t("Start an agent on a folder.");
+		item.command = projects
+			? { command: 'gemini.projects.new', title: vscode.l10n.t("New Project") }
+			: { command: 'gemini.agents.newAgent', title: vscode.l10n.t("New Agent") };
+		item.contextValue = 'message';
+		return item;
 	}
 
 	private workspaceNodes(): WorkspaceNode[] {
@@ -273,12 +413,14 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	}
 
 	private async workspaceItem(node: WorkspaceNode): Promise<vscode.TreeItem> {
-		const hasAgents = !!node.record && this.model.agentsIn(node.record.id).length > 0;
+		const hasAgents = !!node.record && this.agentsOf(node.record.id).length > 0;
 		const item = new vscode.TreeItem(path.basename(node.folder) || node.folder, hasAgents ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
 		// The id changes with the expander, so a workspace that gets its first agent opens.
 		item.id = `workspace:${node.folder}:${hasAgents}`;
 		// Just the name, as a heading over its agents; the path is in the tooltip.
 		item.tooltip = tildify(node.folder);
+		// Agents mode draws workspaces as headings by this icon (geminiModes.css).
+		item.iconPath = new vscode.ThemeIcon('folder');
 		// `.git` offers New Agent on Its Own Branch.
 		const inGit = await this.branchOf(node.folder).then(Boolean, () => false);
 		item.contextValue = `${node.current ? 'workspace.current' : 'workspace'}${inGit ? '.git' : ''}`;
@@ -288,19 +430,22 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	private async agentItem(node: AgentNode): Promise<vscode.TreeItem> {
 		const { record } = node;
 		const live = this.live.get(record.id);
-		const item = new vscode.TreeItem(record.title, vscode.TreeItemCollapsibleState.None);
-		item.id = `agent:${record.id}`;
+		const coordinator = record.project?.role === 'coordinator';
+		const threads = coordinator ? this.model.threadsOf(record.id).length : 0;
+		const item = new vscode.TreeItem(record.title, threads ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
+		// The id changes with the expander, so a project that gets its first thread opens.
+		item.id = `agent:${record.id}${threads ? ':threads' : ''}`;
 		const branch = await this.branchOf(node.folder).catch(() => undefined);
 		const changes = live?.changes.totals ?? record.changes;
 		const state = this.agentState(live);
 		item.description = this.rowMeta(record, live, state.kind, changes);
-		item.iconPath = state.icon;
+		item.iconPath = coordinator && (state.kind === 'idle' || state.kind === 'stopped') ? new vscode.ThemeIcon('comment-discussion') : state.icon;
 		const where = record.worktree
 			? vscode.l10n.t("On its own branch {0}, in {1}", escapeMarkdown(record.worktree.branch), escapeMarkdown(tildify(record.worktree.folder)))
 			: `${escapeMarkdown(tildify(node.folder))}${branch ? ` (${escapeMarkdown(branch)})` : ''}`;
 		const counts = changes?.files ? `\n\n${escapeMarkdown(formatCounts(changes))}` : '';
 		item.tooltip = new vscode.MarkdownString(`**${escapeMarkdown(record.title)}**\n\n${escapeMarkdown(state.status)}${counts}\n\n${where}`);
-		item.contextValue = `${live?.activity.busy ? 'agent.busy' : 'agent'}${record.worktree ? '.worktree' : ''}${changes?.files ? '.changes' : ''}`;
+		item.contextValue = `${live?.activity.busy ? 'agent.busy' : 'agent'}${record.worktree ? '.worktree' : ''}${changes?.files ? '.changes' : ''}${record.project?.role === 'coordinator' ? '.project' : ''}`;
 		item.command = { command: 'gemini.agents.open', title: vscode.l10n.t("Open Agent"), arguments: [record.id] };
 		item.accessibilityInformation = { label: `${record.title}, ${state.status}` };
 		return item;
@@ -344,6 +489,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	/** Every agent, newest first. */
 	summaries(): AgentSummary[] {
 		const summaries: AgentSummary[] = [];
+		const projects = projectsEnabled();
 		for (const workspace of this.model.workspaces) {
 			for (const record of this.model.agentsIn(workspace.id)) {
 				const live = this.live.get(record.id);
@@ -352,6 +498,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				summaries.push({
 					id: record.id, title: record.title, folder: workspace.folder, state: state.kind, status: state.status,
 					...(changes?.files ? { changes } : {}), ...(record.worktree ? { worktree: record.worktree } : {}), updatedAt: record.updatedAt,
+					...(projects && record.project?.role === 'coordinator' ? { project: { role: 'coordinator', threads: this.model.threadsOf(record.id).length } } : {}),
+					...(projects && record.project?.role === 'thread' && this.model.coordinatorOf(record) ? { project: { role: 'thread' } } : {}),
 				});
 			}
 		}
@@ -366,35 +514,58 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	}
 
 	/**
-	 * Gets the next agent Agent Home starts in `folder` ready while the user
-	 * types its task: an id for it, and a session opened for that id, so
-	 * Return waits for no `session/new`. An agent on its own branch works in a
-	 * folder that does not exist yet, so it gets none.
+	 * Keeps a spare session open in `folder` for the next agent started there,
+	 * such as while the user types a task on Agent Home, so starting it waits
+	 * for no `session/new`. Every way of starting an agent takes it, and it is
+	 * refilled once taken. One spare at a time: gemini-cli cannot close a
+	 * session, so moving it to another folder leaves the old one in the agent.
 	 */
-	prepareStart(folder: string): void {
-		if (this.nextAgent?.folder !== folder) {
-			this.clearNextAgent();
-			this.nextAgent = { folder, id: randomUUID() };
+	prepareStart(folder: string, delayMs = 0): void {
+		if (this.spare?.folder !== folder) {
+			this.clearSpare();
+			this.spare = { folder };
 		}
-		const next = this.nextAgent;
+		const spare = this.spare;
 		const runtime = this.service.runtime;
-		const open = () => runtime.prepareSession(folder, this.browser?.mcpServersFor(next.id, folder) ?? []);
+		const open = () => {
+			if (this.spare !== spare || runtime.state.kind !== 'ready') {
+				return;
+			}
+			const key = this.spareKey(folder);
+			if (runtime.spareKey === key) {
+				return;
+			}
+			runtime.prepareSession(folder, supportedMcpServers(runtime.state.agent, this.browser?.spareServers() ?? []), key);
+		};
 		if (runtime.state.kind === 'ready') {
-			open();
-		} else {
-			next.listener ??= runtime.onDidChangeState(state => {
-				if (state.kind === 'ready' && this.nextAgent === next) {
-					next.listener?.dispose();
-					next.listener = undefined;
-					open();
-				}
-			});
+			clearTimeout(spare.timer);
+			spare.timer = setTimeout(open, delayMs);
 		}
+		// Again whenever the agent restarts, since a spare belongs to the process that opened it.
+		spare.waiting ??= runtime.onDidChangeState(state => {
+			if (state.kind === 'ready') {
+				clearTimeout(spare.timer);
+				spare.timer = setTimeout(open, spareDelayMs);
+			}
+		});
 	}
 
-	private clearNextAgent(): void {
-		this.nextAgent?.listener?.dispose();
-		this.nextAgent = undefined;
+	/** Matches a spare session to the agents that can take it: same folder, and the browser the same way. */
+	private spareKey(folder: string): string {
+		return JSON.stringify(['agent', folder, !!this.browser?.serving]);
+	}
+
+	/** Where the next agent most likely starts: where the last one did, else the first open folder. */
+	private likelyFolder(): string | undefined {
+		const last = [...this.model.snapshot().agents].filter(a => !a.worktree).sort((a, b) => b.createdAt - a.createdAt)[0];
+		const folder = last && this.model.workspace(last.workspaceId)?.folder;
+		return folder ?? vscode.workspace.workspaceFolders?.find(f => f.uri.scheme === 'file')?.uri.fsPath;
+	}
+
+	private clearSpare(): void {
+		this.spare?.waiting?.dispose();
+		clearTimeout(this.spare?.timer);
+		this.spare = undefined;
 	}
 
 	/** Starts an agent in `folder` (on its own branch, named after the prompt, with `ownBranch`) and sends it `text`. */
@@ -415,11 +586,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				return false;
 			}
 		}
-		// The agent the session opened while the user typed was for, when it is in this folder.
-		const next = !worktree && this.nextAgent?.folder === folder ? this.nextAgent.id : undefined;
-		this.clearNextAgent();
 		const workspace = this.model.addWorkspace(folder);
-		const agent = this.model.addAgent(workspace.id, vscode.l10n.t("New agent"), worktree, next);
+		const agent = this.model.addAgent(workspace.id, vscode.l10n.t("New agent"), worktree);
 		// Started here, so its session opens in the mode picked.
 		const live = this.start(agent, worktree?.cwd ?? folder);
 		if (mode !== 'default') {
@@ -530,10 +698,10 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		this.persistTimeout ??= setTimeout(() => this.persist(), 1000);
 	}
 
-	private persist(): void {
+	private persist(): Thenable<void> {
 		clearTimeout(this.persistTimeout);
 		this.persistTimeout = undefined;
-		void this.context.globalState.update(storageKey, this.model.snapshot());
+		return this.context.globalState.update(storageKey, this.model.snapshot());
 	}
 
 	private refreshNow(): void {
@@ -698,45 +866,80 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	private makeWorktree(repository: string, branch: string, folder: string): Thenable<AgentWorktree> {
 		return vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Creating the agent's branch..."), cancellable: true }, async (progress, token) => {
 			const worktree = await createWorktree(repository, branch, await folderInRepository(folder));
-			const command = vscode.workspace.isTrusted
-				? await worktreeSetupCommand(repository, vscode.workspace.getConfiguration(configSection).get<string>('agents.worktreeSetup'))
-				: undefined;
+			const command = await this.setupCommand(repository);
 			if (!command || token.isCancellationRequested) {
 				return worktree;
 			}
 			progress.report({ message: vscode.l10n.t("Running the setup script...") });
-			if (!this.setupOutput) {
-				this.setupOutput = vscode.window.createOutputChannel(vscode.l10n.t("Gemini Worktree Setup"));
-				this.disposables.push(this.setupOutput);
-			}
-			const output = this.setupOutput;
-			output.appendLine(`$ ${command}    (${worktree.folder})`);
-			const abort = new AbortController();
-			const cancel = token.onCancellationRequested(() => abort.abort());
-			const code = await runWorktreeSetup(command, worktree, repository, text => output.append(text), abort.signal).finally(() => cancel.dispose());
-			output.appendLine(code === 0 ? '' : vscode.l10n.t("Exited with {0}.", code));
-			if (code !== 0 && !token.isCancellationRequested) {
-				const show = vscode.l10n.t("Show Output");
-				void vscode.window.showWarningMessage(vscode.l10n.t("The setup script for {0} failed. The agent starts anyway.", branch), show).then(choice => choice === show && output.show());
-			}
+			await this.runSetup(command, worktree, repository, branch, token);
 			return worktree;
 		});
 	}
 
+	/** The repository's setup command for a new worktree; none in an untrusted workspace. */
+	private async setupCommand(repository: string): Promise<string | undefined> {
+		return vscode.workspace.isTrusted
+			? worktreeSetupCommand(repository, vscode.workspace.getConfiguration(configSection).get<string>('agents.worktreeSetup'))
+			: undefined;
+	}
+
+	/** Runs `command` in a new worktree, with its output in an output channel; a failure is reported, never thrown. */
+	private async runSetup(command: string, worktree: AgentWorktree, repository: string, branch: string, token: vscode.CancellationToken): Promise<void> {
+		if (!this.setupOutput) {
+			this.setupOutput = vscode.window.createOutputChannel(vscode.l10n.t("Gemini Worktree Setup"));
+			this.disposables.push(this.setupOutput);
+		}
+		const output = this.setupOutput;
+		output.appendLine(`$ ${command}    (${worktree.folder})`);
+		const abort = new AbortController();
+		const cancel = token.onCancellationRequested(() => abort.abort());
+		const code = await runWorktreeSetup(command, worktree, repository, text => output.append(text), abort.signal).finally(() => cancel.dispose());
+		output.appendLine(code === 0 ? '' : vscode.l10n.t("Exited with {0}.", code));
+		if (code !== 0 && !token.isCancellationRequested) {
+			const show = vscode.l10n.t("Show Output");
+			void vscode.window.showWarningMessage(vscode.l10n.t("The setup script for {0} failed. The agent starts anyway.", branch), show).then(choice => choice === show && output.show());
+		}
+	}
+
+	/**
+	 * Picks a free branch name and adds its worktree, one at a time per
+	 * repository: threads started together could otherwise pick the same name.
+	 */
+	private addThreadWorktree(repository: string, named: string, folder: string): Promise<AgentWorktree> {
+		const previous = this.worktreeQueue.get(repository) ?? Promise.resolve();
+		const next = previous.catch(() => undefined).then(async () => createWorktree(repository, await freeBranchName(repository, named), await folderInRepository(folder)));
+		const tail = next.then(() => undefined, () => undefined);
+		this.worktreeQueue.set(repository, tail);
+		void tail.then(() => {
+			if (this.worktreeQueue.get(repository) === tail) {
+				this.worktreeQueue.delete(repository);
+			}
+		});
+		return next;
+	}
+
 	/** Merges an agent's branch into what its workspace has checked out, committing its work first. */
 	/** Merges an agent's branch into the branch its workspace has checked out. */
-	async mergeBack(id: string): Promise<void> {
+	/** Returns whether the branch was merged. */
+	async mergeBack(id: string): Promise<boolean> {
 		const record = this.model.agent(id);
 		const workspace = record && this.model.workspace(record.workspaceId);
 		const worktree = record?.worktree;
 		if (!record || !workspace || !worktree) {
-			return;
+			return false;
 		}
 		const live = this.live.get(record.id);
-		if (live?.activity.busy) {
+		const stillWorking = () => {
+			if (!live?.activity.busy) {
+				return false;
+			}
 			void vscode.window.showInformationMessage(vscode.l10n.t("\"{0}\" is still working. Merge back once it finishes.", record.title));
-			return;
+			return true;
+		};
+		if (stillWorking() || this.merging.has(record.id)) {
+			return false;
 		}
+		this.merging.add(record.id);
 		try {
 			const repository = await repositoryRoot(workspace.folder);
 			if (!repository) {
@@ -746,7 +949,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			const status = await worktreeStatus(worktree, into);
 			if (!status.uncommitted && !status.commits) {
 				void vscode.window.showInformationMessage(vscode.l10n.t("{0} has nothing to merge into {1}.", worktree.branch, into));
-				return;
+				return false;
 			}
 			const detail = [
 				status.commits === 1 ? vscode.l10n.t("1 commit") : status.commits ? vscode.l10n.t("{0} commits", status.commits) : undefined,
@@ -755,7 +958,11 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			].filter(Boolean).join('\n');
 			const merge = vscode.l10n.t("Merge");
 			if (await vscode.window.showInformationMessage(vscode.l10n.t("Merge {0} into {1}?", worktree.branch, into), { modal: true, detail }, merge) !== merge) {
-				return;
+				return false;
+			}
+			// A turn may have started while the question was open; its edits are not done yet.
+			if (stillWorking()) {
+				return false;
 			}
 			if (status.uncommitted) {
 				await commitAll(worktree.folder, record.title);
@@ -770,19 +977,26 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				if (await vscode.window.showWarningMessage(message, open) === open) {
 					await vscode.commands.executeCommand('workbench.view.scm');
 				}
-				return;
+				return false;
 			}
 			const done = vscode.l10n.t("Remove Agent and Branch");
 			const keep = vscode.l10n.t("Keep Working");
-			if (await vscode.window.showInformationMessage(vscode.l10n.t("Merged {0} into {1}.", worktree.branch, into), done, keep) === done) {
-				await this.removeAgentAndWorktree(record.id, true);
-			}
+			// The merge is done now, not when the notice is answered, which may be never.
+			void Promise.resolve(vscode.window.showInformationMessage(vscode.l10n.t("Merged {0} into {1}.", worktree.branch, into), done, keep)).then(async choice => {
+				if (choice === done && this.model.agent(record.id)) {
+					await this.removeAgentAndWorktree(record.id, true);
+				}
+			});
+			return true;
 		} catch (err) {
 			if (/Author identity unknown|Please tell me who you are/.test(errorMessage(err))) {
 				void vscode.window.showErrorMessage(vscode.l10n.t("Could not merge {0}: Git doesn't know your name and email yet. Set them with git config --global user.name and user.email, then try again.", worktree.branch));
-				return;
+				return false;
 			}
 			void vscode.window.showErrorMessage(vscode.l10n.t("Could not merge {0}: {1}", worktree.branch, errorMessage(err)));
+			return false;
+		} finally {
+			this.merging.delete(record.id);
 		}
 	}
 
@@ -791,6 +1005,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const record = this.model.agent(id);
 		const workspace = record && this.model.workspace(record.workspaceId);
 		this.stop(id, false);
+		if (record) {
+			this.projects.threadRemoved(record);
+		}
 		this.model.removeAgent(id);
 		void this.transcripts.delete(id);
 		this.browser?.closeAgent(id);
@@ -813,6 +1030,24 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			{ label: `$(new-folder) ${addWorkspace}` },
 		];
 		const pick = await vscode.window.showQuickPick(picks, { title: vscode.l10n.t("New Agent"), placeHolder: vscode.l10n.t("Which workspace should the agent work in?") });
+		if (!pick) {
+			return undefined;
+		}
+		return pick.folder ?? this.chooseFolder();
+	}
+
+	/** Where a new project works: a workspace the list knows, or any folder. */
+	private async pickProjectFolder(): Promise<string | undefined> {
+		const choose = vscode.l10n.t("Choose a Folder...");
+		const picks: (vscode.QuickPickItem & { folder?: string })[] = [
+			...this.workspaceNodes().map(w => ({ label: `$(folder) ${path.basename(w.folder)}`, description: tildify(w.folder), folder: w.folder })),
+			{ label: '', kind: vscode.QuickPickItemKind.Separator },
+			{ label: `$(folder-opened) ${choose}` },
+		];
+		const pick = await vscode.window.showQuickPick(picks, {
+			title: vscode.l10n.t("New Project"),
+			placeHolder: vscode.l10n.t("Which folder should the project work in? It must be in a Git repository, as each thread gets its own branch."),
+		});
 		if (!pick) {
 			return undefined;
 		}
@@ -849,28 +1084,24 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				void vscode.window.showErrorMessage(vscode.l10n.t("The folder of \"{0}\"'s branch, {1}, no longer exists.", record.title, tildify(record.worktree.folder)));
 				return;
 			}
-			// A saved chat shows first; its session reopens, replaying the whole history, once it is on screen.
-			const saved = record.updatedAt !== record.createdAt;
-			live = this.start(record, folder, saved && !!record.sessionId);
-			if (saved) {
-				// Read while the tab opens; the agent reopens its session meanwhile.
-				const started = live;
-				void this.transcripts.load(id).then(saved => {
-					// The agent may have been stopped while the file was read.
-					if (this.live.get(id) !== started) {
-						return;
-					}
-					started.controller.restore(saved.items, record.sessionId);
-					started.changes.restore(saved.changes);
-				});
+			if (record.project && projectsEnabled()) {
+				// Its session gets the project's tools, so their server must listen first, in a folder the CLI trusts.
+				await this.projects.ready();
+				await this.ensureProjectTrust(workspace.folder);
+				if (record.project.role === 'coordinator') {
+					await this.linkRules(workspace.folder, coordinatorHome(record.id), 'coordinator');
+				}
 			}
+			live = this.live.get(id) ?? this.startSaved(record, folder);
 		}
 		live.unread = false;
 		this.notifier.clear(id);
+		// Beside the other agents, never in one agent's side group.
+		const viewColumn = live.panel ? undefined : await agentsColumn();
 		if (live.panel) {
 			live.panel.reveal();
 		} else {
-			const panel = vscode.window.createWebviewPanel(agentPanelType, record.title, vscode.ViewColumn.Active, {
+			const panel = vscode.window.createWebviewPanel(agentPanelType, record.title, viewColumn ?? vscode.ViewColumn.Active, {
 				enableScripts: true,
 				// Switching tabs then costs no re-render of a long conversation.
 				retainContextWhenHidden: true,
@@ -882,6 +1113,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			const webview = panel.webview;
 			live.controller.attach(webview);
 			panel.onDidChangeViewState(e => {
+				live.controller.setHidden(!e.webviewPanel.visible);
 				if (e.webviewPanel.active) {
 					this.focus(id);
 				}
@@ -901,10 +1133,254 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				// A reopened tab is a new editor without the description, so send the tabs again.
 				this.lastTabs = '';
 				live.controller.detach(webview);
+				// Closing the tab or removing the agent closes its files; quitting keeps them for next time.
+				if (!this.disposing) {
+					closeAgentFiles(id);
+				}
 			});
 		}
 		this.focus(id);
 		this.refresh();
+	}
+
+	/** Starts an agent's session in this window, showing its saved chat first. */
+	private startSaved(record: AgentRecord, folder: string): LiveAgent {
+		// A saved chat shows first; its session reopens, replaying the whole history, once it is on screen.
+		const saved = record.updatedAt !== record.createdAt;
+		const live = this.start(record, folder, saved && !!record.sessionId);
+		if (saved) {
+			// Read while the tab opens; the agent reopens its session meanwhile.
+			void this.transcripts.load(record.id).then(stored => {
+				// The agent may have been stopped while the file was read.
+				if (this.live.get(record.id) !== live) {
+					return;
+				}
+				live.controller.restore(stored.items, record.sessionId);
+				live.changes.restore(stored.changes);
+			});
+		}
+		return live;
+	}
+
+	/** An agent's live chat, started without a tab when it has none in this window; for a project's threads. */
+	private ensureLive(id: string): LiveAgent | undefined {
+		const live = this.live.get(id);
+		const record = this.model.agent(id);
+		const folder = record && this.model.folderOf(record);
+		if (live || !record || !folder) {
+			return live;
+		}
+		const started = this.startSaved(record, folder);
+		// Reopened without a tab, its session opens now rather than when shown.
+		started.session.open();
+		return started;
+	}
+
+	/** Starts a project thread's agent without a tab, as its project opens; skipped when it runs or its worktree is gone. */
+	private async resumeThread(id: string): Promise<void> {
+		const record = this.model.agent(id);
+		const folder = record && this.model.folderOf(record);
+		if (this.live.has(id) || !folder || !await exists(folder)) {
+			return;
+		}
+		if (this.live.has(id)) {
+			// Opened while the folder was checked.
+			return;
+		}
+		this.ensureLive(id);
+		this.refresh(id);
+	}
+
+	/**
+	 * Starts one of a project's threads: a new agent on a new branch in its own
+	 * worktree, sent its brief at once. Its tab opens only when the user opens it.
+	 */
+	private async startThread(coordinatorId: string, request: ThreadRequest): Promise<string> {
+		const coordinator = this.model.agent(coordinatorId);
+		const workspace = coordinator && this.model.workspace(coordinator.workspaceId);
+		if (!workspace) {
+			throw new Error(vscode.l10n.t("The project is gone."));
+		}
+		const repository = await repositoryRoot(workspace.folder);
+		if (!repository) {
+			throw new Error(vscode.l10n.t("{0} is not in a Git repository, so a thread can't have its own branch.", path.basename(workspace.folder)));
+		}
+		const named = request.branch && isValidBranchName(request.branch) ? request.branch : branchNameFrom(request.title);
+		const worktree = await this.addThreadWorktree(repository, named, workspace.folder);
+		let agentId: string | undefined;
+		try {
+			await this.linkRules(workspace.folder, worktree.cwd, 'thread');
+			const agent = this.model.addAgent(workspace.id, request.title, worktree, undefined, {
+				role: 'thread', coordinator: coordinatorId, byCoordinator: request.byCoordinator,
+				...(request.planFirst ? { planFirst: true } : {}),
+				...(request.track ? { track: request.track } : {}),
+			});
+			agentId = agent.id;
+			this.model.rename(agent.id, request.title);
+			if (request.model) {
+				this.threadModels.set(agent.id, request.model);
+			}
+			await this.projects.ready();
+			const live = this.start(this.model.agent(agent.id) ?? agent, worktree.cwd);
+			if (request.planFirst) {
+				live.session.client.setModeOnNextSession('plan');
+			}
+			this.refresh();
+			// The agent starts while the repository's setup runs, and gets its brief
+			// when setup ends; the caller (the coordinator's start_thread) doesn't wait.
+			this.settingUp.add(agent.id);
+			void this.setUpThread(repository, worktree).then(() => {
+				this.settingUp.delete(agent.id);
+				const current = this.model.agent(agent.id) && this.live.get(agent.id);
+				if (current) {
+					// Not awaited: send resolves when the whole turn ends.
+					this.projects.sendToThread(agent.id, threadPrompt(request.brief, request.planFirst), request.byCoordinator ? 'coordinator' : undefined);
+				}
+			});
+			return agent.id;
+		} catch (err) {
+			// Nothing points at the worktree any more: remove it with its branch.
+			if (agentId) {
+				this.stop(agentId, false);
+				this.model.removeAgent(agentId);
+			}
+			void removeWorktree(repository, worktree, true).catch(() => undefined);
+			throw err;
+		}
+	}
+
+	/** Runs the repository's setup in a thread's new worktree, behind a notification; resolves when it ends, however it ends. */
+	private async setUpThread(repository: string, worktree: AgentWorktree): Promise<void> {
+		const command = await this.setupCommand(repository).catch(() => undefined);
+		if (!command) {
+			return;
+		}
+		await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Setting up the thread's branch {0}...", worktree.branch), cancellable: true },
+			(_progress, token) => this.runSetup(command, worktree, repository, worktree.branch, token)).then(undefined, () => undefined);
+	}
+
+	/** "Undo thread": asks, then removes the thread with its folder and branch. */
+	private async undoThread(id: string): Promise<boolean> {
+		const record = this.model.agent(id);
+		if (!record) {
+			return false;
+		}
+		const undo = vscode.l10n.t("Undo Thread");
+		const detail = record.worktree
+			? vscode.l10n.t("Its branch {0} and its folder are deleted, with any work on them.", record.worktree.branch)
+			: undefined;
+		if (await vscode.window.showWarningMessage(vscode.l10n.t("Undo the thread \"{0}\"?", record.title), { modal: true, detail }, undo) !== undo) {
+			return false;
+		}
+		await this.removeAgentAndWorktree(id, true);
+		return true;
+	}
+
+	/** Starts a project: a coordinator agent in a Git workspace, whose chat is the project chat. */
+	private async newProject(node: Node | undefined): Promise<void> {
+		if (!projectsEnabled()) {
+			const enable = vscode.l10n.t("Turn On");
+			if (await vscode.window.showInformationMessage(vscode.l10n.t("Projects are a preview. Turn them on?"), enable) !== enable) {
+				return;
+			}
+			await vscode.workspace.getConfiguration(configSection).update('projects.enabled', true, vscode.ConfigurationTarget.Global);
+		}
+		const folder = node?.kind === 'workspace' ? node.folder : node?.kind === 'agent' ? this.model.workspace(node.record.workspaceId)?.folder : await this.pickProjectFolder();
+		if (!folder) {
+			return;
+		}
+		const repository = await repositoryRoot(folder);
+		if (!repository) {
+			void vscode.window.showErrorMessage(vscode.l10n.t("{0} is not in a Git repository. A project's threads each work on their own branch, so a project needs one.", path.basename(folder)));
+			return;
+		}
+		if (!await this.ensureProjectTrust(folder)) {
+			return;
+		}
+		// No other questions: the project chat opens at once, named after its repository; Rename changes it.
+		const workspace = this.model.addWorkspace(folder);
+		const taken = new Set(this.model.snapshot().agents.filter(a => a.project?.role === 'coordinator').map(a => a.title));
+		const base = path.basename(repository);
+		let title = base;
+		for (let n = 2; taken.has(title); n++) {
+			title = `${base} ${n}`;
+		}
+		const agent = this.model.addAgent(workspace.id, title, undefined, undefined, { role: 'coordinator' });
+		this.model.rename(agent.id, title);
+		await this.open(agent.id);
+	}
+
+	/**
+	 * Gives a project agent's folder the repository's own rules and skills
+	 * (projectRules.ts): a coordinator's empty folder its context files, a
+	 * thread's worktree all those the repository ignores. Never stops the
+	 * agent starting.
+	 */
+	private async linkRules(folder: string, into: string, role: 'coordinator' | 'thread'): Promise<void> {
+		try {
+			const entries = await ruleEntries(folder, path.join(process.env.GEMINI_CLI_HOME || os.homedir(), '.gemini', 'settings.json'));
+			// The coordinator gets the context files only: skills, commands and the repository's MCP servers would pull it into doing the work.
+			const linked = role === 'coordinator' ? await linkCoordinatorRules(folder, into, entries.filter(name => !ruleFolders.includes(name)), ruleFolders) : await linkThreadRules(folder, into, entries);
+			if (linked.length) {
+				this.service.writeLog(`Linked ${linked.join(', ')} from ${folder} into ${into}`);
+			}
+		} catch (err) {
+			this.service.writeLog(`Could not link the project's rules into ${into}: ${errorMessage(err)}`);
+		}
+	}
+
+	/**
+	 * A project works through its own MCP server, and the Gemini CLI loads MCP
+	 * servers only in folders it trusts, so a project needs its repository and
+	 * its threads' worktrees trusted. Asks when either isn't, and once trusted,
+	 * waits for the agent's restart (unless a turn holds it up) so the next
+	 * session has the tools. False when the user declines.
+	 */
+	private async ensureProjectTrust(folder: string): Promise<boolean> {
+		const repository = await repositoryRoot(folder) ?? folder;
+		// The coordinators' own folders hold nothing; the threads' worktrees hold the repository.
+		const folders = [projectsHome(), worktreesHome(repository)];
+		const file = trustedFoldersPath(process.env);
+		if (!folderTrustApplies(process.env) || folders.every(each => isFolderTrusted(file, each))) {
+			return true;
+		}
+		const trust = vscode.l10n.t("Trust Folder");
+		const choice = await vscode.window.showWarningMessage(
+			vscode.l10n.t("Trust {0}'s project folders?", path.basename(repository)),
+			{
+				modal: true,
+				detail: vscode.l10n.t("A project's coordinator and threads work through GeminiCode's project tools, which the Gemini CLI loads only in trusted folders: {0}, where coordinators run, and {1}, where threads check out their branches. Trusting the threads' folder also lets the Gemini CLI load the repository's own Gemini settings and MCP servers there, which can run programs. The Gemini CLI remembers the choice, including in the terminal.", tildify(folders[0]), tildify(folders[1])),
+			},
+			trust);
+		if (choice !== trust) {
+			return false;
+		}
+		const runtime = this.service.runtime;
+		let waits: boolean;
+		try {
+			waits = this.service.trustFolder(...folders);
+		} catch (err) {
+			void vscode.window.showErrorMessage(vscode.l10n.t("Could not trust {0}: {1}", path.basename(repository), errorMessage(err)));
+			return false;
+		}
+		if (waits) {
+			void vscode.window.showInformationMessage(vscode.l10n.t("Folder trusted. The project's tools arrive when the agent restarts, once no agent is working."));
+			return true;
+		}
+		await new Promise<void>(resolve => {
+			const done = () => {
+				clearTimeout(timer);
+				listener.dispose();
+				resolve();
+			};
+			const timer = setTimeout(done, 30_000);
+			const listener = runtime.onDidChangeState(state => {
+				if (state.kind === 'ready' || state.kind === 'error') {
+					done();
+				}
+			});
+		});
+		return true;
 	}
 
 	/** Opens the agent's changes in the multi-diff editor, starting it to read them if needed. */
@@ -936,14 +1412,51 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const workspace = record && this.model.workspace(record.workspaceId);
 		return live && workspace ? {
 			agentId: id, title: record.title, folder: record.worktree?.cwd ?? workspace.folder, changes: live.changes,
-			editorColumn: () => besideAgent(live.panel),
+			editorColumn: () => agentColumn(id, live.panel),
+			focusEditors: async () => { await agentColumn(id, live.panel, true); },
 			busy: () => live.activity.busy,
-			...(record.worktree ? { branch: record.worktree.branch, mergeBack: () => this.mergeBack(id) } : { commit: () => live.controller.commit() }),
+			...(record.worktree ? { branch: record.worktree.branch, mergeBack: async () => { await this.mergeBack(id); } } : { commit: () => live.controller.commit() }),
 		} : undefined;
 	}
 
+	/** A coordinator runs on Flash; a thread on the model picked for it, once; others on the user's choice. */
+	private preferredModel(record: AgentRecord): ((available: readonly SessionChoice[]) => string | undefined) | undefined {
+		if (!projectsEnabled()) {
+			return undefined;
+		}
+		if (record.project?.role === 'coordinator') {
+			return available => coordinatorModel(available.map(choice => choice.id));
+		}
+		const picked = this.threadModels.get(record.id);
+		if (!picked) {
+			return undefined;
+		}
+		this.threadModels.delete(record.id);
+		return available => available.some(choice => choice.id === picked) ? picked : sessionModel(available);
+	}
+
 	private start(record: AgentRecord, folder: string, openLater = false): LiveAgent {
-		const session = new AgentSession(this.service, folder, record.sessionId, () => this.browser?.mcpServersFor(record.id, folder) ?? [], openLater);
+		const project = projectsEnabled() ? record.project : undefined;
+		const servers = () => [...this.browser?.mcpServersFor(record.id, folder) ?? [], ...project ? this.projects.mcpServersFor(this.model.agent(record.id) ?? record) : []];
+		// A coordinator's session runs in its own empty folder (coordinatorHome); its chat still belongs to the workspace.
+		const cwd = project?.role === 'coordinator' ? coordinatorHome(record.id) : folder;
+		if (cwd !== folder) {
+			fs.mkdirSync(cwd, { recursive: true });
+		}
+		const session = new AgentSession(this.service, cwd, record.sessionId, servers, openLater, {
+			// A project agent's session needs the project's server, which a spare never has.
+			...(project ? {} : { spareKey: () => this.spareKey(folder) }),
+			onDidOpenSession: servers => {
+				this.browser?.bindSession(record.id, folder, servers);
+				// Refill, for the next agent, which most likely starts in the same folder; not in an agent's own worktree.
+				if (!this.model.agent(record.id)?.worktree) {
+					this.prepareStart(folder, spareDelayMs);
+				}
+			},
+		}, this.preferredModel(record));
+		if (project) {
+			session.permissions.answerAtOnce = request => this.projects.instantAnswer(this.model.agent(record.id) ?? record, request);
+		}
 		const files: FileSearch = isOpenFolder(folder) ? this.workspaceFiles : new FolderFileIndex(folder);
 		const changes = new AgentChanges(folder);
 		const live: LiveAgent = {
@@ -951,9 +1464,16 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			changes,
 			controller: new ChatController(this.context.extensionUri, session, this.diffPreview, files, {
 				reveal: preserveFocus => this.reveal(record.id, preserveFocus),
-				editorColumn: () => besideAgent(this.live.get(record.id)?.panel),
+				editorColumn: () => agentColumn(record.id, this.live.get(record.id)?.panel),
 				enhancer: this.enhancer,
 				usage: () => this.usage,
+				...(project?.role === 'coordinator' ? { project: this.projects.chatProject(record.id) } : {}),
+				...(project?.role === 'thread' ? {
+					parentProject: {
+						name: () => this.model.agent(project.coordinator)?.title ?? '',
+						open: () => void this.open(project.coordinator),
+					},
+				} : {}),
 				savedSessions: {
 					inUse: () => new Set(this.model.snapshot().agents.flatMap(a => a.id !== record.id && a.sessionId ? [a.sessionId] : [])),
 				},
@@ -994,7 +1514,11 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				if (!activity.busy) {
 					this.scheduleSave(record.id, live);
 				}
+				const before = live.activity;
 				live.activity = activity;
+				if (project) {
+					this.projects.threadActivity(this.model.agent(record.id) ?? record, before, activity);
+				}
 				this.refresh(record.id);
 			}),
 			session.client.onDidChangeState(state => {
@@ -1004,8 +1528,11 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			}),
 			live.controller.onDidEditFiles(diffs => changes.record(diffs)),
 			changes.onDidChange(() => {
-				this.review.refresh();
+				this.review.refreshSoon();
 				this.model.setChanges(record.id, changes.totals);
+				if (project) {
+					this.projects.threadChanged(this.model.agent(record.id) ?? record);
+				}
 				this.scheduleSave(record.id, live);
 				this.refresh();
 			}),
@@ -1027,6 +1554,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			session.onDidChangeStatus(() => this.refresh(record.id)),
 		);
 		this.live.set(record.id, live);
+		if (project) {
+			this.projects.attach(record);
+		}
 		return live;
 	}
 
@@ -1079,6 +1609,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const answer = await vscode.window.showWarningMessage(vscode.l10n.t("Remove the agent \"{0}\"? Its conversation is closed.", node.record.title), { modal: true }, remove);
 		if (answer === remove) {
 			this.stop(node.record.id, false);
+			this.projects.threadRemoved(node.record);
 			this.model.removeAgent(node.record.id);
 			void this.transcripts.delete(node.record.id);
 			this.browser?.closeAgent(node.record.id);
@@ -1131,6 +1662,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			return;
 		}
 		this.live.delete(id);
+		this.projects.detach(id);
 		this.notifier.clear(id);
 		// Saved already unless a save is pending or a turn runs.
 		if (save && (live.saveTimer !== undefined || live.activity.busy)) {
@@ -1151,16 +1683,34 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		this.review.refresh();
 	}
 
+	/**
+	 * Saves every open agent's conversation and the agent list, and resolves
+	 * once they are written; for deactivate, so a reply that ended just before
+	 * a reload or quit is kept.
+	 */
+	async saveAll(): Promise<void> {
+		for (const [id, live] of this.live) {
+			if (live.saveTimer !== undefined || live.activity.busy) {
+				clearTimeout(live.saveTimer);
+				live.saveTimer = undefined;
+				void this.transcripts.save(id, { items: live.controller.conversation, changes: live.changes.files });
+			}
+		}
+		const list = this.persistTimeout ? this.persist() : undefined;
+		await Promise.all([this.transcripts.flush(), list]);
+	}
+
 	dispose(): void {
+		this.disposing = true;
 		for (const id of [...this.live.keys()]) {
 			this.stop(id, true);
 		}
 		this.setRefreshing(false);
-		this.clearNextAgent();
+		this.clearSpare();
 		clearTimeout(this.refreshTimeout);
 		clearInterval(this.clockTimer);
 		if (this.persistTimeout) {
-			this.persist();
+			void this.persist();
 		}
 		this.model.dispose();
 		vscode.Disposable.from(...this.disposables).dispose();
@@ -1175,6 +1725,16 @@ async function exists(folder: string): Promise<boolean> {
 	} catch {
 		return false;
 	}
+}
+
+/** The gap between the sections: no label, and the blank icon marks it for Agents mode's styles (geminiModes.css). */
+function gapItem(): vscode.TreeItem {
+	const item = new vscode.TreeItem('');
+	item.id = 'gap';
+	item.iconPath = new vscode.ThemeIcon('blank');
+	item.contextValue = 'gap';
+	item.accessibilityInformation = { label: '', role: 'none' };
+	return item;
 }
 
 function isOpenFolder(folder: string): boolean {

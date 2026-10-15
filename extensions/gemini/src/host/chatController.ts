@@ -6,10 +6,11 @@
 import * as path from 'node:path';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
+import { onDidChangeSpellCheck, spellCheckOn } from './spellCheck';
 import { Attachment, attachmentLabel } from '../acp/attachments';
 import { isValidAttachment } from '../acp/attachmentValidation';
 import { chatToMarkdown } from '../acp/chatMarkdown';
-import { ChatTranscript, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
+import { ChatTranscript, ThreadCard, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
 import { Checkpoints } from '../acp/checkpoints';
 import { keepChatsForever, readCliPreferences } from '../acp/cliPreferences';
 import { geminiDir } from '../acp/directRequest';
@@ -21,19 +22,19 @@ import { buildPromptContent } from '../acp/promptContent';
 import { skillPrompt } from '../acp/skills';
 import { mergeCommands, parseInvocation, SlashCommand } from '../acp/slashCommands';
 import { expandTeamCommandWithInjections, TeamCommandCancelled } from '../acp/teamCommandExpansion';
-import { CliSession, isPrompt, listCliSessions, readSessionTokens } from '../acp/cliSessions';
+import { carriedConversationNote, CliSession, isPrompt, listCliSessions, readCliConversation, readSessionTokens } from '../acp/cliSessions';
 import type { ChatEvent } from '../acp/sessionUpdates';
 import { AgentStatus } from '../acp/status';
 import { TextDeltas } from '../acp/textDeltas';
 import type { ModelTokens } from '../acp/turnUsage';
 import { UpdateBatcher } from '../acp/updateBatcher';
 import type { AgentClient } from '../acp/agentClient';
-import { AgentError, errorMessage } from '../acp/errors';
+import { AgentError, AgentErrorInfo, errorMessage } from '../acp/errors';
 import { readGitHead } from '../acp/gitHead';
 import { upgradeUrl } from '../acp/helpLinks';
 import { EnhanceCancelledError, enhanceHistory } from '../acp/promptEnhancer';
 import type { EnhancePromptInput } from '../acp/quickPrompts';
-import { ChatStrings, chatProtocolVersion, FromWebview, statusCommands, ToWebview } from './chatProtocol';
+import { ChatStrings, chatProtocolVersion, FromWebview, NewThread, ProjectChatStrings, ProjectPanel, statusCommands, ThreadAction, ToWebview } from './chatProtocol';
 import { stopReasonNotice, toViewStatus } from './chatStatus';
 import { DiffPreview } from './diffPreview';
 import { relativeTime, tildify } from './displayText';
@@ -73,6 +74,8 @@ export interface ChatHost {
 	cancel(): Promise<void>;
 	/** Trusts `folder` for the CLI and restarts the agent; returns whether the restart waits for running prompts. */
 	trustFolder(folder: string): boolean;
+	/** Writes to the Gemini log. */
+	writeLog?(message: string): void;
 }
 
 /** The files the @-mention picker offers. */
@@ -89,18 +92,33 @@ export interface ChatControllerOptions {
 	/** The branch pill and Create Branch & Commit; without it the composer shows neither. */
 	readonly git?: ChatGit;
 	/** Where files and diffs open; unset opens them in the active editor group. */
-	editorColumn?(): vscode.ViewColumn;
+	editorColumn?(): Promise<vscode.ViewColumn>;
 	/** Rewrites the composer's draft for Enhance prompt. */
 	readonly enhancer: ChatEnhancer;
 	/** The workspace pill; without it the composer shows none. */
 	workspace?(): ChatWorkspace | undefined;
 	/** Today's quota, for the usage popover; unset shows it as off. */
 	usage?(): UsageMeter | undefined;
+	/** Set in a project's chat. */
+	readonly project?: ChatProject;
+	/** A project thread's chat: names its project, and opens the project chat. */
+	readonly parentProject?: { name(): string; open(): void };
 	/** Offers to reopen the CLI's saved sessions for the folder (and /resume); unset in chats that do not. */
 	readonly savedSessions?: {
 		/** Sessions other chats have open, which this one must not take. */
 		inUse(): ReadonlySet<string>;
 	};
+}
+
+/** Makes a chat a project's chat (Projects preview): the coordinator's, fed through the project's hub. */
+export interface ChatProject {
+	/** What the user sends goes to the hub, which wakes the coordinator with it. */
+	post(text: string, attachments: readonly Attachment[]): void;
+	/** Tool calls the chat leaves out: the project's own tools, which show as posts and thread cards. */
+	hidesToolCall(title: string): boolean;
+	threadAction(thread: string, action: ThreadAction): void;
+	/** The New thread dialog's Start thread. */
+	startThread(thread: NewThread): void;
 }
 
 export interface ChatWorkspace {
@@ -180,8 +198,16 @@ export class ChatController implements vscode.Disposable {
 	private lastPrompt: { readonly text: string; readonly attachments: readonly Attachment[] } | undefined;
 	/** The turnEnd item that offers Retry. */
 	private retryItemId: string | undefined;
+	/** A project chat's side panel, as last shown. */
+	private projectPanel: ProjectPanel | undefined;
+	/** Whether the view's script has said it is ready since the view was attached. */
+	private viewReady = false;
+	/** New Thread was asked for before the view was ready. */
+	private newThreadPending = false;
 	/** Told to the agent with the next prompt: files the user put back, which it would otherwise think it changed. */
 	private undoNote: string | undefined;
+	/** A conversation the agent could not reopen, given to the new session with the next prompt. */
+	private carriedConversation: string | undefined;
 	/** The rewrite running for the composer, so it can be cancelled. */
 	private enhancing: { readonly requestId: number; readonly abort: AbortController } | undefined;
 	/** While a reopened session replays, its messages belong in the transcript. Ends with the next prompt. */
@@ -204,6 +230,8 @@ export class ChatController implements vscode.Disposable {
 	/** The edits of each tool call that completed, once per tool call. */
 	readonly onDidEditFiles = this.onDidEditFilesEmitter.event;
 	private readonly completedToolCalls = new Set<string>();
+	/** A project chat's calls of the project's own tools, which it leaves out. */
+	private readonly hiddenToolCalls = new Set<string>();
 
 	private readonly onDidRestoreSessionEmitter = new vscode.EventEmitter<string>();
 	/** A saved session was reopened here; fires with its title. */
@@ -222,6 +250,7 @@ export class ChatController implements vscode.Disposable {
 	) {
 		this.checkpoints = new Checkpoints(service.client.cwd);
 		this.disposables.push(
+			onDidChangeSpellCheck(on => this.post({ type: 'spellCheck', on })),
 			this.onDidChangeActivityEmitter,
 			this.onDidEditFilesEmitter,
 			this.onDidSendPromptEmitter,
@@ -231,6 +260,9 @@ export class ChatController implements vscode.Disposable {
 					this.rememberDiffs(event.permission.id, diffsOf(event.permission.request.toolCall.content));
 					this.transcript.addPermission(event.permission);
 					void this.revealForPermission(event.permission);
+				} else if (event.kind === 'allowed') {
+					this.transcript.addPermission(event.permission);
+					this.transcript.resolvePermission(event.permission.id, event.outcome, event.label ?? vscode.l10n.t("Allowed for this session"));
 				} else {
 					this.transcript.resolvePermission(event.id, event.outcome);
 				}
@@ -246,13 +278,25 @@ export class ChatController implements vscode.Disposable {
 				}
 			}),
 			this.transcript.onDidReset(() => this.postReset()),
+			// A reopened session's history shows only when it was restored on purpose; otherwise the saved copy shows.
+			service.client.onDidReplayEvent(event => this.replaying && this.applyReplayed(event)),
+			service.client.onDidFailToReopen(({ sessionId, error }) => service.writeLog?.(`Could not reopen session ${sessionId}: ${error.message}`)),
+			service.client.onDidChangeModeByAgent(({ from, to }) => {
+				const name = (id: string | undefined) => service.client.settings.mode?.available.find(choice => choice.id === id)?.name ?? id ?? '';
+				this.transcript.addNotice(from === 'plan'
+					? vscode.l10n.t("Plan approved, now in {0} mode.", name(to))
+					: vscode.l10n.t("The agent switched to {0} mode.", name(to)));
+			}),
+			service.client.onDidAllowInYolo(params => service.writeLog?.(`Allowed "${params.toolCall.title ?? params.toolCall.toolCallId}" at once: the chat is in YOLO mode`)),
 			service.client.onDidReceiveEvent(event => {
-				if (this.replaying) {
-					this.applyReplayed(event);
-					return;
-				}
 				// Only a turn's updates belong in the transcript.
 				if (this.busy) {
+					if (event.kind === 'toolCall' && this.options.project && (this.hiddenToolCalls.has(event.call.id) || this.options.project.hidesToolCall(event.call.title ?? ''))) {
+						// The project's own tools show as posts and thread cards instead.
+						this.hiddenToolCalls.add(event.call.id);
+						dropOldest(this.hiddenToolCalls);
+						return;
+					}
 					if (event.kind === 'toolCall') {
 						const diffs = diffsOf(event.call.content);
 						this.rememberDiffs(toolCallItemId(event.call.id), diffs);
@@ -359,6 +403,7 @@ export class ChatController implements vscode.Disposable {
 	attach(webview: vscode.Webview): void {
 		this.detach();
 		this.webview = webview;
+		this.viewReady = false;
 		// Start the agent with the view rather than once its script has loaded. The @-mention
 		// file list waits until the chat is used. A failure shows in the view's status line.
 		this.service.ensureReady().catch(() => undefined);
@@ -369,6 +414,13 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	/** Forgets the webview, when it is disposed. The conversation carries on. */
+	/** The view went out of sight or came back (its tab or pane); a hidden view defers rendering. */
+	setHidden(hidden: boolean): void {
+		if (this.viewReady) {
+			this.post({ type: 'visibility', hidden });
+		}
+	}
+
 	detach(webview?: vscode.Webview): void {
 		if (webview && webview !== this.webview) {
 			return;
@@ -376,12 +428,63 @@ export class ChatController implements vscode.Disposable {
 		this.webviewListener?.dispose();
 		this.webviewListener = undefined;
 		this.webview = undefined;
+		this.viewReady = false;
 	}
 
-	/** Sends a prompt as if typed in the view. */
-	async send(text: string, attachments: readonly Attachment[] = []): Promise<void> {
+	/** Leaves Plan mode and carries out the plan, as the latest turn's Build button does; false when it offers none. */
+	async approvePlan(): Promise<boolean> {
+		if (!this.retryItemId || !this.buildModeAfterPlan()) {
+			return false;
+		}
+		await this.buildPlan(this.retryItemId);
+		return true;
+	}
+
+	/** A project chat's card for one of its threads, added or updated in place. */
+	showThread(card: Omit<ThreadCard, 'id' | 'kind'>): void {
+		this.transcript.showThread(card);
+	}
+
+	/** A message the project's coordinator posted. */
+	addCoordinatorPost(text: string): void {
+		this.transcript.addCoordinatorPost(text);
+	}
+
+	/** The project chat's side panel; kept to show again when the view reloads. */
+	showProjectPanel(panel: ProjectPanel): void {
+		this.projectPanel = panel;
+		this.post({ type: 'projectPanel', panel });
+	}
+
+	/** Opens the New thread dialog in a project chat, once its view has loaded if it is still loading. */
+	openNewThread(): void {
+		if (this.viewReady) {
+			this.post({ type: 'openNewThread' });
+		} else {
+			this.newThreadPending = true;
+		}
+	}
+
+	/** Whether a turn is running; `send` does nothing meanwhile. */
+	get running(): boolean {
+		return this.busy;
+	}
+
+	/** Sends a prompt as if typed in the view; `from` marks one its project's coordinator sent. */
+	async send(text: string, attachments: readonly Attachment[] = [], from?: 'coordinator'): Promise<void> {
 		attachments = attachments.filter(isValidAttachment);
-		if (this.busy || (!text.trim() && !attachments.length)) {
+		if (!text.trim() && !attachments.length) {
+			return;
+		}
+		const project = this.options.project;
+		if (project) {
+			// A project's chat: the message goes to the hub, which wakes the coordinator with it.
+			this.transcript.addPrompt(text, attachments);
+			this.onDidSendPromptEmitter.fire(text);
+			project.post(text, attachments);
+			return;
+		}
+		if (this.busy) {
 			return;
 		}
 		if (this.options.savedSessions && text.trim() === `/${resumeCommand().name}` && !attachments.length) {
@@ -394,9 +497,26 @@ export class ChatController implements vscode.Disposable {
 			this.transcript.updateTurnEnd(this.retryItemId, { retry: undefined, buildPlan: undefined });
 			this.retryItemId = undefined;
 		}
-		this.transcript.addPrompt(text, attachments);
+		this.transcript.addPrompt(text, attachments, from);
 		this.onDidSendPromptEmitter.fire(text);
 		this.lastPrompt = { text, attachments };
+		await this.runTurn(text, attachments, true);
+	}
+
+	/**
+	 * Sends `text` as a turn with no message of its own in the chat, such as a
+	 * project's wake for its coordinator; resolves when the turn ends.
+	 */
+	async sendUnseen(text: string): Promise<void> {
+		if (this.busy) {
+			throw new Error('A turn is already running.');
+		}
+		this.replaying = false;
+		this.service.open?.();
+		await this.runTurn(text, [], false);
+	}
+
+	private async runTurn(text: string, attachments: readonly Attachment[], expand: boolean): Promise<void> {
 		this.checkpoints.beginTurn();
 		this.setBusy(true);
 		const started = Date.now();
@@ -404,15 +524,22 @@ export class ChatController implements vscode.Disposable {
 		try {
 			await this.service.ensureReady();
 			// Built after the agent is ready, so it reflects what this agent accepts.
-			const content = buildPromptContent(await this.expandCommand(text), attachments, this.service.client.promptCapabilities);
+			const content = buildPromptContent(expand ? await this.expandCommand(text) : text, attachments, this.service.client.promptCapabilities);
 			if (!content.length) {
 				throw new Error(vscode.l10n.t("The agent cannot take images, so there was nothing to send."));
 			}
 			if (this.undoNote) {
 				content.unshift({ type: 'text', text: this.undoNote });
 			}
-			const { stopReason, usage } = await this.service.client.promptTurn(content);
+			const carried = this.carriedConversation;
+			if (carried) {
+				content.unshift({ type: 'text', text: carried });
+			}
+			const { stopReason, usage } = await this.promptRecovering(content);
 			this.undoNote = undefined;
+			if (carried === this.carriedConversation) {
+				this.carriedConversation = undefined;
+			}
 			const notice = stopReasonNotice(stopReason);
 			if (notice) {
 				this.transcript.addNotice(notice, stopReason === 'refusal' ? 'error' : 'info');
@@ -431,6 +558,26 @@ export class ChatController implements vscode.Disposable {
 		}
 	}
 
+	/**
+	 * Sends a prompt; when Gemini refuses the request after a tool result with
+	 * "Requests ending with a model turn are not supported", logs the shape of
+	 * the turn (no contents) and asks the agent once to carry on from the last
+	 * tool result, as typing "continue" does.
+	 */
+	private async promptRecovering(content: acp.ContentBlock[]): ReturnType<AgentClient['promptTurn']> {
+		const turnStart = this.transcript.items.length;
+		try {
+			return await this.service.client.promptTurn(content);
+		} catch (err) {
+			if (!/ending with a model turn/i.test(errorMessage(err))) {
+				throw err;
+			}
+			this.service.writeLog?.(`Gemini refused the turn's request (${errorMessage(err)}). Mode ${this.service.client.settings.mode?.currentId ?? '?'}, model ${this.service.client.settings.model?.currentId ?? '?'}. Turn so far: ${turnShape(this.transcript.items.slice(turnStart))}`);
+			this.transcript.addNotice(vscode.l10n.t("Recovered after an API error: the agent carries on from the last tool result."));
+			return this.service.client.promptTurn([{ type: 'text', text: 'Continue from the last tool result.' }]);
+		}
+	}
+
 	/** Adds the turn's end, offering Retry and, when it changed files, Undo. */
 	private endTurn(durationMs: number, usage?: readonly ModelTokens[]): void {
 		const id = this.transcript.addTurnEnd(durationMs, usage);
@@ -439,7 +586,7 @@ export class ChatController implements vscode.Disposable {
 			this.transcript.updateTurnEnd(old, { undo: undefined });
 		}
 		const files = this.checkpoints.fileCount(id);
-		this.transcript.updateTurnEnd(id, { retry: true, ...(files ? { files } : {}), ...(undoable ? { undo: 'available' } : {}), ...(this.buildModeAfterPlan() ? { buildPlan: true } : {}) });
+		this.transcript.updateTurnEnd(id, { retry: !this.options.project, ...(files ? { files } : {}), ...(undoable ? { undo: 'available' } : {}), ...(this.buildModeAfterPlan() ? { buildPlan: true } : {}) });
 		this.retryItemId = id;
 	}
 
@@ -587,12 +734,12 @@ export class ChatController implements vscode.Disposable {
 	 * off and replays it into the chat. A conversation already here is
 	 * replaced, after asking; it stays saved by the CLI.
 	 */
-	async restoreSession(id: string, title?: string): Promise<void> {
+	async restoreSession(id: string, title?: string, again = false): Promise<void> {
 		if (this.busy) {
 			return;
 		}
 		title ??= (await this.savedSessions()).find(s => s.id === id)?.title ?? id;
-		if (this.transcript.items.length) {
+		if (this.transcript.items.length && !again) {
 			const restore = vscode.l10n.t("Restore");
 			const answer = await vscode.window.showWarningMessage(
 				vscode.l10n.t("Restore \"{0}\" in this chat?", title),
@@ -604,9 +751,11 @@ export class ChatController implements vscode.Disposable {
 		}
 		this.setBusy(true);
 		let restored = false;
+		let reason: string | undefined;
 		try {
 			await this.service.ensureReady();
 			this.transcript.clear();
+			this.carriedConversation = undefined;
 			this.diffs.clear();
 			this.completedToolCalls.clear();
 			this.checkpoints.clear();
@@ -617,19 +766,57 @@ export class ChatController implements vscode.Disposable {
 			this.replaying = true;
 			// So the switch does not read as the agent losing the session.
 			this.lastSessionId = id;
-			restored = await this.service.client.loadSession(id);
+			let failure: AgentErrorInfo | undefined;
+			const failed = this.service.client.onDidFailToReopen(e => e.sessionId === id && (failure = e.error));
+			try {
+				restored = await this.service.client.loadSession(id);
+				if (!restored && failure && isPassingFailure(failure)) {
+					// Once more after a restart or a start: those pass.
+					failure = undefined;
+					await this.service.ensureReady();
+					restored = await this.service.client.loadSession(id);
+				}
+			} finally {
+				failed.dispose();
+			}
 			if (restored) {
 				this.onDidRestoreSessionEmitter.fire(title);
+			} else {
+				reason = failure && reopenFailureText(failure);
 			}
 		} catch (err) {
-			this.transcript.addNotice(errorMessage(err), 'error');
+			reason = errorMessage(err);
 		} finally {
 			this.setBusy(false);
 		}
 		if (!restored) {
 			this.replaying = false;
 			this.transcript.clear();
-			this.transcript.addNotice(vscode.l10n.t("The agent could not reopen \"{0}\", so this chat starts afresh.", title), 'error');
+			const conversation = await readCliConversation(this.service.client.cwd, id).catch(() => undefined);
+			if (conversation?.length) {
+				// The CLI can't take it up, but the conversation is still in its file: show it, and carry it into the new session.
+				for (const entry of conversation) {
+					if (entry.role === 'user') {
+						this.transcript.addReplayedPrompt(entry.text);
+					} else {
+						this.transcript.apply({ kind: 'text', role: 'agent', text: entry.text });
+					}
+				}
+				this.transcript.addNotice(reason
+					? vscode.l10n.t("The agent could not reopen \"{0}\": {1} It continues in a new session that is given this conversation.", title, reason)
+					: vscode.l10n.t("The agent could not reopen \"{0}\". It continues in a new session that is given this conversation.", title), 'error');
+				this.carriedConversation = carriedConversationNote(title, conversation);
+			} else {
+				this.transcript.addNotice(reason
+					? vscode.l10n.t("The agent could not reopen \"{0}\": {1}", title, reason)
+					: vscode.l10n.t("The agent could not reopen \"{0}\", so this chat starts afresh.", title), 'error');
+			}
+			const retry = vscode.l10n.t("Try Again");
+			void vscode.window.showErrorMessage(vscode.l10n.t("Could not restore \"{0}\".", title), retry).then(choice => {
+				if (choice === retry) {
+					void this.restoreSession(id, title, true);
+				}
+			});
 		}
 	}
 
@@ -678,6 +865,38 @@ export class ChatController implements vscode.Disposable {
 		this.transcript.addNotice(text);
 	}
 
+	/** The model the session is on, when known. */
+	get model(): string | undefined {
+		return this.service.client.settings.model?.currentId;
+	}
+
+	/** Lists the shell programs allowed for this session, to forget some or all of them. */
+	async manageApprovals(): Promise<void> {
+		const approvals = this.service.permissions.approvals;
+		if (!approvals.approved.length) {
+			void vscode.window.showInformationMessage(vscode.l10n.t("No commands are allowed for this session. Choose \"Allow for this session\" on a shell command to stop being asked about its programs."));
+			return;
+		}
+		const forgetAll: vscode.QuickPickItem = { label: vscode.l10n.t("Forget All"), alwaysShow: true };
+		const picks = await vscode.window.showQuickPick<vscode.QuickPickItem>([
+			...approvals.approved.map(program => ({ label: program })),
+			{ label: '', kind: vscode.QuickPickItemKind.Separator },
+			forgetAll,
+		], {
+			canPickMany: true,
+			title: vscode.l10n.t("Allowed for This Session"),
+			placeHolder: vscode.l10n.t("Pick programs to forget; the agent asks before running them again"),
+		});
+		if (!picks?.length) {
+			return;
+		}
+		if (picks.includes(forgetAll)) {
+			approvals.clear();
+		} else {
+			picks.forEach(pick => approvals.forget(pick.label));
+		}
+	}
+
 	/** Opens the usage popover, or closes it if open; the chat comes into view first. */
 	async showUsage(): Promise<void> {
 		if (!this.webview) {
@@ -701,6 +920,7 @@ export class ChatController implements vscode.Disposable {
 		this.lastPrompt = undefined;
 		this.retryItemId = undefined;
 		this.undoNote = undefined;
+		this.carriedConversation = undefined;
 		this.replaying = false;
 		if (this.service.client.state.kind !== 'ready') {
 			// The next prompt starts the agent, and with it a new session.
@@ -741,6 +961,7 @@ export class ChatController implements vscode.Disposable {
 				if (message.protocol !== chatProtocolVersion) {
 					void vscode.window.showWarningMessage(vscode.l10n.t("The Gemini chat view's script is out of date. Rebuild it with \"npm run gulp compile-extension-media\" (or keep \"npm run watch\" running) and reload the window."));
 				}
+				this.viewReady = true;
 				this.postReset();
 				// In case the view never says it is shown, such as one hidden as it loads.
 				clearTimeout(this.openTimer);
@@ -774,7 +995,8 @@ export class ChatController implements vscode.Disposable {
 				break;
 			case 'showFollowed':
 				if (this.followed) {
-					void vscode.window.showTextDocument(this.followed, { preview: true, viewColumn: this.options.editorColumn?.() });
+					const followed = this.followed;
+					void Promise.resolve(this.options.editorColumn?.()).then(viewColumn => vscode.window.showTextDocument(followed, { preview: true, viewColumn })).then(undefined, () => undefined);
 				}
 				break;
 			case 'closeFollowed':
@@ -854,6 +1076,15 @@ export class ChatController implements vscode.Disposable {
 			case 'undoTurn':
 				void this.undoTurn(message.itemId);
 				break;
+			case 'threadAction':
+				this.options.project?.threadAction(message.thread, message.action);
+				break;
+			case 'startThread':
+				this.options.project?.startThread(message.thread);
+				break;
+			case 'openParentProject':
+				this.options.parentProject?.open();
+				break;
 			case 'retry':
 				if (this.lastPrompt && message.itemId === this.retryItemId) {
 					void this.send(this.lastPrompt.text, this.lastPrompt.attachments);
@@ -884,8 +1115,8 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	/** Opens the conversation as a Markdown document, titled `title`. */
-	openAsMarkdown(title: string): Promise<void> {
-		return openChatAsMarkdown(title, this.transcript.items, this.options.editorColumn?.());
+	async openAsMarkdown(title: string): Promise<void> {
+		return openChatAsMarkdown(title, this.transcript.items, await this.options.editorColumn?.());
 	}
 
 	/** Turns Follow the agent on or off in this chat; new chats start the same way. */
@@ -934,7 +1165,7 @@ export class ChatController implements vscode.Disposable {
 		const uri = vscode.Uri.file(file);
 		try {
 			await vscode.window.showTextDocument(uri, {
-				selection: new vscode.Range(position, position), preview: true, preserveFocus: true, viewColumn: this.options.editorColumn?.(),
+				selection: new vscode.Range(position, position), preview: true, preserveFocus: true, viewColumn: await this.options.editorColumn?.(),
 			});
 		} catch {
 			// A file that cannot be shown, such as a binary one, is skipped.
@@ -1155,7 +1386,7 @@ export class ChatController implements vscode.Disposable {
 	private async openDiff(itemId: string, filePath: string, preserveFocus: boolean): Promise<void> {
 		const diff = this.diffs.get(itemId)?.find(d => d.path === filePath);
 		if (diff) {
-			await this.diffPreview.show(diff, { preserveFocus, viewColumn: this.options.editorColumn?.() });
+			await this.diffPreview.show(diff, { preserveFocus, viewColumn: await this.options.editorColumn?.() });
 			return;
 		}
 		// Proposed edits are kept in memory only, so a restored or old chat has
@@ -1192,7 +1423,7 @@ export class ChatController implements vscode.Disposable {
 	private async openLocation(filePath: string, line: number | undefined): Promise<void> {
 		const position = new vscode.Position(Math.max((line ?? 1) - 1, 0), 0);
 		try {
-			await vscode.window.showTextDocument(vscode.Uri.file(filePath), { selection: new vscode.Range(position, position), preview: true, viewColumn: this.options.editorColumn?.() });
+			await vscode.window.showTextDocument(vscode.Uri.file(filePath), { selection: new vscode.Range(position, position), preview: true, viewColumn: await this.options.editorColumn?.() });
 		} catch (err) {
 			void vscode.window.showErrorMessage(errorMessage(err));
 		}
@@ -1223,6 +1454,16 @@ export class ChatController implements vscode.Disposable {
 		this.items.clear();
 		this.textDeltas.reset(this.transcript.items);
 		this.post({ type: 'reset', items: this.transcript.items, busy: this.busy, status: toViewStatus(this.service.status), settings: this.service.client.settings });
+		if (this.projectPanel) {
+			this.post({ type: 'projectPanel', panel: this.projectPanel });
+		}
+		if (this.newThreadPending) {
+			this.newThreadPending = false;
+			this.post({ type: 'openNewThread' });
+		}
+		if (this.options.parentProject) {
+			this.post({ type: 'parentProject', parent: { label: vscode.l10n.t("Thread in {0}", this.options.parentProject.name()), action: vscode.l10n.t("Open Project Chat") } });
+		}
 		if (!this.busy) {
 			void this.postSessions();
 		}
@@ -1268,8 +1509,13 @@ export class ChatController implements vscode.Disposable {
 		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'codicon.css'));
 		// Loaded by the view when it first shows code.
 		const highlighter = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'highlight.js'));
+		// Loaded by the view when a reply first has math.
+		const katex = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'katex.js'));
+		const katexStyle = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'katex-style.css'));
 		const strings: ChatStrings = {
 			placeholder: vscode.l10n.t("Ask Gemini anything about this workspace"),
+			fromCoordinator: vscode.l10n.t("From coordinator"),
+			...(this.options.project ? { project: projectStrings() } : {}),
 			placeholderFollowUp: vscode.l10n.t("Ask a follow-up"),
 			send: process.platform === 'darwin' ? vscode.l10n.t("Send (Return)") : vscode.l10n.t("Send (Enter)"),
 			stop: vscode.l10n.t("Stop (Esc)"),
@@ -1431,7 +1677,7 @@ export class ChatController implements vscode.Disposable {
 	<link href="${style}" rel="stylesheet">
 	<title>Gemini</title>
 </head>
-<body>
+<body spellcheck="false">
 	<svg class="defs" aria-hidden="true"><linearGradient id="gemini-spark-gradient" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f8df7"/><stop offset=".55" stop-color="#9b72cb"/><stop offset="1" stop-color="#d96570"/></linearGradient></svg>
 	<main id="transcript" class="transcript"></main>
 	<nav id="outline" class="prompt-outline" hidden></nav>
@@ -1450,7 +1696,7 @@ export class ChatController implements vscode.Disposable {
 			<div class="composer-tabs" role="tablist"><button type="button" id="tab-write" class="composer-tab" role="tab" aria-selected="true" aria-controls="input"></button><button type="button" id="tab-preview" class="composer-tab" role="tab" aria-selected="false" aria-controls="preview"></button></div>
 			<div id="preview" class="composer-preview markdown" role="tabpanel" tabindex="0" hidden></div>
 			<div class="input-wrap">
-				<textarea id="input" rows="1"></textarea>
+				<textarea id="input" rows="1" spellcheck="${spellCheckOn()}"></textarea>
 				<div class="input-mirror" aria-hidden="true"></div>
 				<span id="enhance-float" class="enhance-float" hidden><button type="button" id="revert" class="enhance-chip" hidden><i class="codicon codicon-discard" aria-hidden="true"></i><span></span></button><button type="button" id="enhance" class="enhance-chip"><svg class="enhance-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 3.5C6.88 7 9 9.12 12.5 9.5C9 9.88 6.88 12 6.5 15.5C6.12 12 4 9.88 0.5 9.5C4 9.12 6.12 7 6.5 3.5Z"/><path d="M12.75 0.5C12.92 2.1 13.9 3.08 15.5 3.25C13.9 3.42 12.92 4.4 12.75 6C12.58 4.4 11.6 3.42 10 3.25C11.6 3.08 12.58 2.1 12.75 0.5Z"/></svg><i class="codicon codicon-loading codicon-modifier-spin" aria-hidden="true"></i><span></span><span class="enhance-key"></span></button></span>
 			</div>
@@ -1479,7 +1725,7 @@ export class ChatController implements vscode.Disposable {
 			<div id="workspace-menu" class="foot-menu" hidden></div>
 		</div>
 	</div>
-	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
+	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
 </html>`;
 	}
@@ -1567,4 +1813,103 @@ async function isFile(filePath: string): Promise<boolean> {
 	} catch {
 		return false;
 	}
+}
+
+/** Whether reopening a session failed for a reason that passes, such as the agent restarting, so trying once more can work. */
+function isPassingFailure(error: AgentErrorInfo): boolean {
+	return error.kind === 'agent-exited' || /not ready|restart/i.test(error.message);
+}
+
+/** Why a saved session could not be reopened, in plain words, as a sentence. */
+function reopenFailureText(error: AgentErrorInfo): string {
+	if (error.kind === 'auth-required' || error.kind === 'auth-failed') {
+		return vscode.l10n.t("Sign-in expired. Sign in again, then try again.");
+	}
+	if (isPassingFailure(error)) {
+		return vscode.l10n.t("The agent restarted while reopening it.");
+	}
+	if (/another chat has that session open/i.test(error.message)) {
+		return vscode.l10n.t("Another chat has it open.");
+	}
+	if (/not found|no previous sessions|ENOENT/i.test(error.message)) {
+		return vscode.l10n.t("The Gemini CLI no longer has it; its cleanup may have removed it.");
+	}
+	if (/different session/i.test(error.message)) {
+		return vscode.l10n.t("The agent opened a different session.");
+	}
+	const message = error.message.trim();
+	return /[.!?]$/.test(message) ? message : `${message}.`;
+}
+
+function projectStrings(): ProjectChatStrings {
+	return {
+		placeholder: vscode.l10n.t("Message the coordinator, or describe work to split into threads"),
+		newThread: vscode.l10n.t("New thread"),
+		dialog: {
+			title: vscode.l10n.t("New thread in {0}"),
+			titleLabel: vscode.l10n.t("Title"),
+			briefLabel: vscode.l10n.t("What should it do?"),
+			briefPlaceholder: vscode.l10n.t("The whole task: what to do, which files, and how to check the work."),
+			branchLabel: vscode.l10n.t("Branch"),
+			modelLabel: vscode.l10n.t("Model"),
+			defaultModel: vscode.l10n.t("Default"),
+			worktreeHint: vscode.l10n.t("Every thread gets its own new branch and worktree. Its chat opens at once while the worktree is created."),
+			planFirst: vscode.l10n.t("Plan first"),
+			planFirstHint: vscode.l10n.t("The thread writes a short plan and waits for your OK before changing files."),
+			startsAtOnce: vscode.l10n.t("Starts right away. The coordinator is told afterwards."),
+			cancel: vscode.l10n.t("Cancel"),
+			start: vscode.l10n.t("Start thread"),
+			close: vscode.l10n.t("Close"),
+		},
+		panel: {
+			title: vscode.l10n.t("Project"),
+			noThreads: vscode.l10n.t("No threads yet"),
+			working: vscode.l10n.t("{0} working"),
+			waiting: vscode.l10n.t("{0} waiting on you"),
+			planned: vscode.l10n.t("{0} with a plan to approve"),
+			done: vscode.l10n.t("{0} done, ready to merge"),
+			merged: vscode.l10n.t("{0} merged back"),
+			context: vscode.l10n.t("Context the coordinator reads"),
+			conductorTracks: vscode.l10n.t("Conductor: {0} open tracks"),
+			noConductor: vscode.l10n.t("No conductor/ folder"),
+			model: vscode.l10n.t("Coordinator model: {0}"),
+		},
+		states: {
+			starting: vscode.l10n.t("Starting"),
+			working: vscode.l10n.t("Working"),
+			waiting: vscode.l10n.t("Waiting on you"),
+			planned: vscode.l10n.t("Plan ready, waiting for your OK"),
+			done: vscode.l10n.t("Done"),
+			error: vscode.l10n.t("Error"),
+		},
+		actions: {
+			open: vscode.l10n.t("Open"),
+			stop: vscode.l10n.t("Stop"),
+			merge: vscode.l10n.t("Merge back"),
+			review: vscode.l10n.t("Review changes"),
+			undo: vscode.l10n.t("Undo thread"),
+			approve: vscode.l10n.t("Approve plan"),
+			retry: vscode.l10n.t("Retry"),
+		},
+		openToAnswer: vscode.l10n.t("Open to answer"),
+		merged: vscode.l10n.t("Merged back"),
+		undone: vscode.l10n.t("Undone: its branch and folder were removed"),
+		track: vscode.l10n.t("From Conductor track {0}"),
+	};
+}
+
+/** A turn's steps for the log, without their contents: "user, thought, tool(browser_snapshot: completed), agent". */
+function turnShape(items: readonly TranscriptItem[]): string {
+	return items.map(item => {
+		switch (item.kind) {
+			case 'toolCall':
+				return `tool(${item.title.slice(0, 40)}: ${item.status}${item.details.length ? `, ${item.details.length} parts` : ''})`;
+			case 'permission':
+				return `permission(${item.answer?.kind ?? 'open'})`;
+			case 'notice':
+				return 'notice';
+			default:
+				return item.kind;
+		}
+	}).join(', ') || 'nothing';
 }

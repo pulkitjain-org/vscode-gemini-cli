@@ -45,6 +45,7 @@ export class BrowserTools implements vscode.Disposable {
 			enabled,
 			otherSites,
 			grant: (agent, url) => this.grant(agent, url),
+			model: agent => this.agents.model?.(agent),
 		} satisfies BrowserGate);
 		this.server = new BrowserMcpServer(this.host, version);
 		this.disposables.push(
@@ -70,6 +71,28 @@ export class BrowserTools implements vscode.Disposable {
 		}
 		const config = this.server.configFor(agent);
 		return config ? [config] : [];
+	}
+
+	/** Whether a session opened now gets the browser. */
+	get serving(): boolean {
+		return enabled() && this.server.listening;
+	}
+
+	/** The `mcpServers` for a spare session, which no agent has yet: the browser on a slot of its own. */
+	spareServers(): acp.McpServer[] {
+		const config = enabled() ? this.server.configForSlot() : undefined;
+		return config ? [config] : [];
+	}
+
+	/** Gives `agent` the browser slot of a session it took (see `spareServers`); `folder` is its working folder. */
+	bindSession(agent: string, folder: string, servers: readonly acp.McpServer[]): void {
+		this.folders.set(agent, folder);
+		for (const server of servers) {
+			const url = (server as { readonly url?: unknown }).url;
+			if (typeof url === 'string') {
+				this.server.bind(url, agent);
+			}
+		}
 	}
 
 	/**
@@ -113,6 +136,7 @@ export class BrowserTools implements vscode.Disposable {
 	/** Closes an agent's pages, for an agent that was removed; pages the user handed it go back to the user, open. */
 	closeAgent(agent: string): void {
 		this.host.forget(agent);
+		this.server.unbind(agent);
 		this.allowed.delete(agent);
 		this.folders.delete(agent);
 		void vscode.commands.executeCommand('_gemini.browser.close', agent).then(undefined, () => undefined);
@@ -203,6 +227,8 @@ export interface BrowserAgents {
 	open(): readonly { readonly id: string; readonly title: string }[];
 	/** Shows the agent's chat and adds `attachments` to its composer. */
 	attach(agent: string, attachments: readonly Attachment[]): Promise<void>;
+	/** The model the agent's session is on, when known. */
+	model?(agent: string): string | undefined;
 }
 
 function enabled(): boolean {

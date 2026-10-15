@@ -20,8 +20,8 @@ import { CliManager } from './host/cliManager';
 import { DiffPreview } from './host/diffPreview';
 import { errorMessage } from './acp/errors';
 import { PromptEnhancer } from './acp/promptEnhancer';
-import { configSection, setStorageDirs } from './host/configuration';
-import { initModelPreference } from './host/modelPreference';
+import { configSection, getWorkspaceCwd, setStorageDirs } from './host/configuration';
+import { initModelList, initModelPreference } from './host/modelPreference';
 import { SetupWalkthrough, walkthroughId } from './host/setupWalkthrough';
 import { GeminiStatusBar } from './host/statusBar';
 import { QuickEdits } from './host/quickEdits';
@@ -31,6 +31,10 @@ import { initTeamCommands } from './host/teamCommands';
 import { KeepAwake } from './acp/keepAwake';
 import { BrowserTools } from './host/browserTools';
 import { WorkspaceFileIndex } from './host/workspaceFiles';
+import { disposeGitIgnore } from './host/workspaceFileSystem';
+
+/** Finishes the writes that must outlive the window; set by activate. */
+let saveBeforeExit: (() => Promise<void>) | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
 	const log = vscode.window.createOutputChannel('Gemini', { log: true });
@@ -55,6 +59,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	});
 	const chatView = new ChatViewProvider(context.extensionUri, service, diffPreview, fileIndex, enhancer);
 	const agentsView = new AgentsView(context, service, diffPreview, fileIndex, enhancer);
+	saveBeforeExit = () => agentsView.saveAll();
 	// Agents mode's Changes panel follows the agent in front, as the Changes view does.
 	const changesPanel = new ChangesPanel(context.extensionUri);
 	changesPanel.show(agentsView.focusedSource);
@@ -66,6 +71,13 @@ export function activate(context: vscode.ExtensionContext): void {
 	const usageMeter = new UsageMeter(quickEdits.client, log);
 	chatView.usage = usageMeter;
 	agentsView.usage = usageMeter;
+	initModelList({
+		quotaModels: () => {
+			const reading = usageMeter.reading;
+			return reading?.kind === 'ok' ? reading.quota.map(q => q.model) : undefined;
+		},
+		workspaceFolder: getWorkspaceCwd,
+	});
 	const walkthrough = new SetupWalkthrough(service, context.globalState);
 	const warmup = new AgentWarmup(service, () => walkthrough.isSetUp, log);
 	const browserTools = new BrowserTools(String(context.extension.packageJSON.version ?? ''), log, {
@@ -76,6 +88,7 @@ export function activate(context: vscode.ExtensionContext): void {
 			await agentsView.open(agent);
 			await agentsView.controllerOf(agent)?.addAttachments(attachments);
 		},
+		model: agent => agentsView.controllerOf(agent)?.model,
 	});
 	agentsView.browser = browserTools;
 	// caffeinate watches this process, so it ends with GeminiCode even if GeminiCode crashes.
@@ -85,6 +98,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
 	context.subscriptions.push(
 		log,
+		{ dispose: disposeGitIgnore },
 		teamCommandStore,
 		enhancer,
 		service,
@@ -121,6 +135,7 @@ export function activate(context: vscode.ExtensionContext): void {
 			return agent ? agentsView.openAsMarkdown(agent) : chatView.controller.openAsMarkdown(vscode.l10n.t("Quick Chat"));
 		}),
 		vscode.commands.registerCommand('gemini.showUsage', () => chatInFront().showUsage()),
+		vscode.commands.registerCommand('gemini.sessionApprovals', () => chatInFront().manageApprovals()),
 		vscode.commands.registerCommand('gemini.addFileToChat', async (uri: unknown, uris: unknown) => chatInFront().addAttachments(await filesToAttach(uri, uris))),
 		vscode.commands.registerCommand('gemini.addSelectionToChat', () => chatInFront().addAttachments(selectionsToAttach())),
 		vscode.commands.registerCommand('gemini.showLog', () => log.show()),
@@ -133,7 +148,10 @@ export function activate(context: vscode.ExtensionContext): void {
 	);
 }
 
-export function deactivate(): void { }
+export function deactivate(): Promise<void> | undefined {
+	// VS Code waits for this (a few seconds at most) before the process ends.
+	return saveBeforeExit?.().catch(() => undefined);
+}
 
 async function setProjectId(): Promise<void> {
 	const config = vscode.workspace.getConfiguration(configSection);

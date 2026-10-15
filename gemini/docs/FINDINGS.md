@@ -75,7 +75,43 @@ Read from the gemini-cli 0.62.0 bundle:
 - It replays the history as `session/update` notifications (user and agent messages, thoughts, tool calls) without waiting for them, so some can arrive after the response. The reply carries modes and models but not the session id.
 - Tool calls replay with title, kind, locations, diffs and text only, so a client cannot rebuild its own view from the replay.
 
-GeminiCode therefore keeps its own copy of each agent's conversation for display and uses `session/load` only so the agent remembers it. The replay arrives outside a turn and the chat ignores it. If the user sends a prompt while a long replay is still streaming, the tail of the replay could show in that turn; it has not been seen in practice.
+GeminiCode therefore keeps its own copy of each agent's conversation for display and uses `session/load` only so the agent remembers it.
+
+Re-read in 0.63.0 on 14 Oct 2026 (`streamHistory` and `partToString` in the bundle):
+
+- The replay turns each saved message into text with the CLI's verbose converter, so thoughts, tool calls and tool results come through as markers: `[Thought: true]`, `[Function Call: replace]`, and tool results, which the CLI saves as user messages, as user messages such as `[Function Response: run_shell_command]`. A pasted image is `[Image: image/png, 45.2 KB]`.
+- It sends one update per user message with any text or part, and per model message one per thought, one for its text or parts, and one per tool call. GeminiCode works this count out from the session file (`replayUpdateCount`); a real-CLI test checks it against the CLI.
+- A prompt sent while the replay still streamed used to pick up the rest of the replay as its own turn, which saved markers into the chat. Now the client keeps replayed updates apart (`onDidReplayEvent`), holds a prompt until the counted replay is over (or no update came for 250 ms), and cleans the markers wherever the replay is shown, such as Restore a Session. Chats saved before this are cleaned when they load.
+- Loading by the session's id works from 0.63.0: the CLI matches the exact id first and no longer resets the session (checked twice in a row by `realAgentSessions.test.ts`). GeminiCode loads by id from 0.63.0 and reads only that session's file; it still loads by the CLI's list number, with the first-prompt check, for older CLIs.
+- When a session can't be reopened, the chat says why (sign-in, the CLI no longer has it, another chat has it open, a restart), retries once after a restart, and shows the conversation from the CLI's file, giving it to the new session with the next prompt.
+
+## Approval modes and permissions in 0.63
+
+Read from the gemini-cli 0.63.0 bundle on 14 Oct 2026:
+
+- The CLI tells the client about a mode change it makes itself with message text, `[MODE_UPDATE] <mode>` (`handleApprovalModeChanged`), not with `current_mode_update`. It does this when leaving Plan once a plan is approved, and when an edit is allowed for the session: `updatePolicy` then calls `setApprovalMode(AUTO_EDIT)` even from YOLO (`isAutoEditTransition`), so YOLO starts asking again. GeminiCode reads the text (exact form only), follows the change, and puts the user's YOLO straight back. A permission request that still comes in YOLO is allowed at once.
+- Switching to or from YOLO or Plan clears the turn's routed model (`clearCurrentSequenceModel`), so with Auto the rest of the turn is routed again, with one more routing call, possibly to another model. YOLO picked during a turn on Auto is therefore sent to the CLI when the turn ends; until then GeminiCode allows requests itself.
+- Before every shell command the CLI runs a taint check (`hasTaintedOrBuildFileRisk`): a command that reuses a path or a flag's value seen in earlier tool output, or a build command after build files changed, always asks, and its "Allow for this session" is accepted but not saved. The ACP layer still offers that option and sends no taint details. GeminiCode keeps its own session approvals for shell programs (`sessionApprovals.ts`), and still asks for commands that reach the network, write through a new redirection, build code as they run, or can't be read.
+- A shell request's title is the whole command (`getDisplayTitle`).
+- The CLI reads its trusted folders once per process (`loadTrustedFolders`), so trusting a folder needs a restart. GeminiCode restarts once no agent is working, and every chat reopens its session by id in the mode it had.
+
+## The model list in 0.63
+
+Read from the gemini-cli 0.63.0 bundle on 15 Oct 2026. The CLI builds the models it sends in `session/new` (`buildAvailableModels`) apart from the terminal's `/model` list (`ModelDialog`), from the same groups: Auto, the preview models, then 2.5 Pro and the default Flash and Flash-Lite.
+
+- The app list never removes a repeat. With the latest Flash on Google sign-in, the preview Flash and the default Flash are both `gemini-3.8-flash` (`setFlashModels`), so it names that model twice. The terminal keeps the first.
+- The terminal lists the default Flash-Lite before Flash; the app list has them the other way round.
+- The terminal adds `gemma-4-31b-it` and `gemma-4-26b-a4b-it` unless `experimental.gemma` is off (on by default), and hides Pro models from an account without Pro access (`getProModelNoAccess`). The app list does neither. `session/set_model` accepts any of them.
+- With `experimental.dynamicModelConfiguration` both come from `getAvailableModelOptions`, already in one order and without repeats, and each entry carries a `tier`.
+
+`modelList.ts` applies these rules so the picker lists what the terminal does, and reads Pro access from the quota. `realAgentModels.test.ts` checks the shaped list against a real CLI with an API key, so a CLI upgrade that changes the app list fails it.
+
+## Tool images and Gemini 3 models
+
+Checked on 14 Oct 2026 with gemini-cli 0.63.0 against a stand-in API that logs requests, with an MCP tool returning an image and a text line:
+
+- For models named `gemini-3-…` the CLI puts the tool's image inside the function response (`supportsMultimodalFunctionResponse`), and the request it sends then has only the text: the model never sees the image. `gemini-3.1-pro-preview` gets the image next to the response. So for those models, and under Auto, `browser_screenshot` also returns the page's text snapshot, and for an affected model says it can't see screenshots.
+- "Requests ending with a model turn are not supported" (a 400 seen once after a screenshot) did not reproduce against the stand-in. When it happens, GeminiCode logs the turn's shape (no contents) and asks the agent once to carry on from the last tool result.
 
 ## Prompt enhancement: direct requests or the CLI
 
@@ -111,7 +147,21 @@ Measured on 2 Oct 2026 with gemini-cli 0.62.0 in `--acp` mode against a local st
 
 `extensions/gemini/scripts/perf-first-reply.mts` redoes the first-reply part of this against a stand-in API that takes 300 ms per model call. On 8 Oct 2026 with gemini-cli 0.63.0 on a 4-core Linux machine (median of three runs): the agent started in 1154 ms, `session/new` took 40 ms, and the first text came 695 ms after the prompt with the model on Auto (which ran first, so it also carries the first turn's extra 60 to 80 ms) and 313 ms with Flash picked. Auto's routing call is one more model call before every reply, which is why agents default to Flash until the user picks a model, and why GeminiCode starts the agent early and opens a session ahead while the user types.
 
+Those numbers were taken in an empty, untrusted folder. Redone on 14 Oct 2026 with gemini-cli 0.63.0 on the same kind of machine, `--repo` runs the agent in a real, trusted repository (this one) as a user's agent does: the agent started in 1512 ms, `session/new` took 84 ms and a second `session/new` 84 ms. The empty folder was not faster to start (1735 ms that day). So with an API key the CLI's own session work is small, and a start of several seconds comes from what the stand-in leaves out: with a Google sign-in, every `session/new` runs the CLI's auth refresh, which calls Code Assist over the network, and starts the session's MCP servers. GeminiCode hides both behind a spare session that every way of starting an agent takes. `test/perf/budgets.test.ts` checks the parts GeminiCode owns in CI: bundle sizes, the work per keystroke and per streamed chunk, snapshotting a long chat when switching agents, and the overhead from Enter to the first chunk.
+
 In the chat view, re-rendering a whole streaming reply on every update cost about 25 ms per update at 30 KB. Rendering only the blocks after the last finished one costs about 2 ms.
+
+## Bundle sizes and the extension's start (1.0.0)
+
+Measured on 14 Oct 2026 on a 4-core Linux machine, from the production builds (`esbuild.mts`, `esbuild.webview.mts`):
+
+| Bundle | 0.5.0 | 1.0.0 |
+| --- | --- | --- |
+| `media/chat.js` | 220,120 bytes | 197,577 bytes |
+| `media/draftMarkdown.js` | 150,178 bytes | 126,052 bytes |
+| `dist/extension.js` | 865,562 bytes | 874,835 bytes |
+
+The webview saving comes from bundling only the `entities` package's decoder, which markdown-it needs; its encoder tables were dead weight. `test/perf/budgets.test.ts` now holds `chat.js` to 215,000 bytes and `draftMarkdown.js` to 140,000. In `extension.js`, zod (pulled in by the ACP SDK's validation) is about 453 KB, and the SDK and zod take about 60 ms of the roughly 130 ms it takes to load the bundle; loading them lazily is the next saving there.
 
 ## Token counts over ACP
 
@@ -121,3 +171,35 @@ Read from gemini-cli 0.62.0 and 0.63.0 on 8 Oct 2026.
 - The counts are each model call's `promptTokenCount` and `candidatesTokenCount`, summed over the calls of the turn, so a turn with tool calls counts the conversation once per call, as `/stats` does. Cached and thinking tokens are not reported separately.
 - Over ACP the CLI handles only `/memory`, `/extensions`, `/init`, `/restore`, `/about` and `/help` itself; `/stats` is not one of them, so GeminiCode keeps the counts itself, on each turn's end in the transcript.
 - The CLI sends no `usage_update` session update.
+
+## A project's coordinator and threads in one process
+
+Measured on 14 Oct 2026 with gemini-cli 0.63.0 on a 4-core Linux machine, with `npm run spike-coordinator` in `extensions/gemini`. All of a project's sessions share one `gemini --acp` process, which runs on one thread, so the question was whether a busy thread's stream holds up the others. The real CLI streamed from a local stand-in for the Gemini API, and every chunk carried the time it was sent:
+
+| Load | Delay from send to arrival, median | p95 |
+| --- | --- | --- |
+| 1 session alone, 40 chunks 25 ms apart | 2 ms | 3 ms |
+| 1 coordinator and 5 threads at once, same stream | 2 ms | 4 ms |
+| 1 session alone, 200 chunks 5 ms apart | 2 ms | 2 ms |
+| 1 coordinator and 10 threads at once, same stream | 3 ms | 10 ms |
+
+That is at most 7 ms extra per chunk at p95, against a budget of 50 ms, so one CLI process holds a project and threads are not spread over more processes. Streaming text is most of a thread's work in the process; tool calls run as child processes or file reads, which this does not measure.
+
+How well a Flash model keeps to the coordinator's role needs a real account: `npm run spike-coordinator -- --real` sends five scripted asks to a coordinator on a named Flash model, in a temp git repo, and prints a go/no-go. Pulkit ran it on 14 Oct 2026 with `gemini-3.8-flash`:
+
+- It held its role: no edits or commands of its own, and all five asks were handled as expected (one thread, a status answer, two threads, a relay to the running thread, and a thread for a question that needed the code read).
+- Each thread started within the coordinator's first turn, 26 s and 10 s after the ask (the first included the session's start). The median coordinator turn took 9.4 s, which is the model's time.
+- Every thread called `report`; 5 of its 10 turns answered those reports.
+- Each turn read a median of 28,807 input tokens for 58 output tokens, about 267,000 in all. Most of that is the CLI's own system prompt and tool list, which every turn sends again, not the wake. That makes the coordinator cheap per turn in time but not in quota.
+
+Since then, a thread's `report` no longer wakes the coordinator: only the user's messages do, and reports reach it as context with the next one, which saves those turns.
+
+Verdict: go. Projects ship as a preview behind `gemini.projects.enabled`. The CLI titles an MCP tool's permission request by the tool and its arguments only, without the server's name; only MCP calls offer "Allow all server tools", which together with the tool name tells the project's tools apart.
+
+## Folder trust and a session's MCP servers
+
+Checked on 14 Oct 2026 with gemini-cli 0.63.0, with `security.folderTrust.enabled` on (the CLI's default):
+
+- In a folder the CLI does not trust, a session loads no MCP servers at all, not even those the client passes in `session/new`'s `mcpServers`, and no project settings or skills. A probe server got no request from a session in an untrusted folder and one from the same session in a trusted folder. The spike ran with `GEMINI_CLI_TRUST_WORKSPACE=true`, which trusts every folder, so it never saw this.
+- Trust follows the longest matching rule in `~/.gemini/trustedFolders.json` (`TRUST_FOLDER`, `TRUST_PARENT` or `DO_NOT_TRUST`), so trusting `~/.geminicode/projects` and `~/.geminicode/worktrees/<repository>` covers every coordinator and thread folder under them.
+- The CLI reads that file once per process, so a folder trusted while it runs counts only after a restart. GeminiCode restarts the agent once no prompt runs, and a project waits for that before opening its sessions.

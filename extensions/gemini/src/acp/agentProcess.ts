@@ -47,7 +47,7 @@ export function cliHeapSizeMb(settingsJson: string | undefined, totalMemoryBytes
 /**
  * `--include-directories` for a multi-root window, so an agent in one folder
  * can read and edit the others (gemini-cli 0.63 `loadCliConfig` adds them to
- * every session's workspace). One folder needs nothing. A folder with a comma
+ * every session's workspace); only with `gemini.agents.allWorkspaceFolders`. One folder needs nothing. A folder with a comma
  * is left out, since the CLI splits the flag's values on commas.
  */
 export function includeDirectoryArgs(folders: readonly string[]): string[] {

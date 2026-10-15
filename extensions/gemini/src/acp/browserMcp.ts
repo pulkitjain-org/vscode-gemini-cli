@@ -54,6 +54,27 @@ export interface BrowserGate {
 	otherSites(): boolean;
 	/** The user handed the agent a page at `url`: lets it see that page's site, as if it had asked and the user allowed it. */
 	grant(agent: string, url: URL): void;
+	/** The model the agent's session is on, when known, for what its screenshots can carry. */
+	model?(agent: string): string | undefined;
+}
+
+/**
+ * Whether a model loses an image a tool returns. gemini-cli 0.63 puts a
+ * tool's image inside the function response for models named `gemini-3-…`
+ * (`supportsMultimodalFunctionResponse`), and in the request it sends that
+ * image is gone: only the text arrives. Other models get the image next to
+ * the response and see it.
+ */
+export function losesToolImages(model: string): boolean {
+	return /^gemini-3-/.test(model);
+}
+
+/**
+ * Under Auto the model is picked per request, possibly one that loses the
+ * image, so a screenshot also carries the page's text.
+ */
+function mayLoseToolImages(model: string | undefined): boolean {
+	return !model || /^auto/.test(model) || losesToolImages(model);
 }
 
 export interface McpTool {
@@ -264,7 +285,20 @@ export class BrowserToolHost {
 			}
 			case 'browser_screenshot': {
 				const shot = await this.backend.screenshot(agent, page);
-				return await this.leftFor(agent, page, shot.url) ?? { content: [{ type: 'image', data: shot.data, mimeType: 'image/jpeg' }, { type: 'text', text: `URL: ${shot.url}` }] };
+				const left = await this.leftFor(agent, page, shot.url);
+				if (left) {
+					return left;
+				}
+				const model = this.gate.model?.(agent);
+				if (!mayLoseToolImages(model)) {
+					return { content: [{ type: 'image', data: shot.data, mimeType: 'image/jpeg' }, { type: 'text', text: `URL: ${shot.url}` }] };
+				}
+				// The image may not reach the model, so the layout facts also come as text.
+				const text = pageText(await this.backend.snapshot(agent, page)).content[0];
+				const note = model && losesToolImages(model)
+					? `This model (${model}) can't see screenshots: the image does not reach it. Here is the page's text snapshot instead; for visual checks, ask the user to switch to Gemini 3.1 Pro.`
+					: 'In case the image does not reach you, here is the page\'s text snapshot too.';
+				return { content: [{ type: 'image', data: shot.data, mimeType: 'image/jpeg' }, { type: 'text', text: `${note}\n\n${text.type === 'text' ? text.text : `URL: ${shot.url}`}` }] };
 			}
 			case 'browser_back':
 				return this.act(agent, page, 'back', []);
@@ -311,7 +345,12 @@ export class BrowserToolHost {
 
 	/** Runs an action, then checks where the page went. */
 	private async act(agent: string, page: string, action: BrowserAction, args: readonly unknown[]): Promise<McpToolResult> {
-		const state = await this.backend.act(agent, page, action, args);
+		let state = await this.backend.act(agent, page, action, args);
+		const ref = typeof args[0] === 'string' ? /^aria-ref=(.+)$/.exec(args[0])?.[1] : undefined;
+		if (ref && state.error && /not found|resolved to 0|no element|timeout|detached/i.test(state.error)) {
+			// A ref from a snapshot taken before the page changed.
+			state = { ...state, error: `Element ${ref} is not on the page any more: the page changed since that snapshot. Take a new browser_snapshot and use its refs.` };
+		}
 		return await this.leftFor(agent, page, state.url) ?? pageText(state);
 	}
 
@@ -374,7 +413,9 @@ interface JsonRpcRequest {
  * stream, which the protocol allows): `initialize`, `ping`, `tools/list` and
  * `tools/call`. POST to `/mcp/<agent>` with `Authorization: Bearer <token>`,
  * where the token is the agent's own (an HMAC of its id), so one agent's
- * token does not reach another agent's page.
+ * token does not reach another agent's page. A spare session, opened before
+ * any agent takes it, gets a slot of its own instead (`/mcp/<slot>`), which
+ * `bind` later points at the agent that took it.
  */
 export class BrowserMcpServer {
 
@@ -382,6 +423,8 @@ export class BrowserMcpServer {
 	private server: http.Server | undefined;
 	private port: number | undefined;
 	private starting: Promise<number> | undefined;
+	/** Spare sessions' slots, to the agent each is bound to; unbound slots serve no page. */
+	private readonly slots = new Map<string, string | undefined>();
 
 	constructor(private readonly tools: BrowserToolHost, private readonly version: string) { }
 
@@ -408,12 +451,49 @@ export class BrowserMcpServer {
 		return this.starting;
 	}
 
+	/** Whether it is listening, so sessions can be given it. */
+	get listening(): boolean {
+		return !!this.port;
+	}
+
 	/** The ACP `mcpServers` entry for an agent; undefined until started. */
 	configFor(agent: string): { type: 'http'; name: string; url: string; headers: { name: string; value: string }[] } | undefined {
 		if (!this.port || !/^[\w-]{1,80}$/.test(agent)) {
 			return undefined;
 		}
 		return { type: 'http', name: 'geminicode-browser', url: `http://127.0.0.1:${this.port}/mcp/${agent}`, headers: [{ name: 'Authorization', value: `Bearer ${this.tokenFor(agent)}` }] };
+	}
+
+	/**
+	 * The `mcpServers` entry for a session not yet any agent's, such as a spare
+	 * one: it has a slot of its own until `bind` gives it to an agent.
+	 */
+	configForSlot(): { type: 'http'; name: string; url: string; headers: { name: string; value: string }[] } | undefined {
+		if (!this.port) {
+			return undefined;
+		}
+		const slot = `slot-${randomBytes(12).toString('hex')}`;
+		this.slots.set(slot, undefined);
+		return this.configFor(slot);
+	}
+
+	/** Gives a session opened with `configForSlot` (its server's `url`) to `agent`. Returns whether the url was a slot. */
+	bind(url: string, agent: string): boolean {
+		const slot = /\/mcp\/([\w-]+)$/.exec(url)?.[1];
+		if (!slot || !isSlot(slot) || !this.slots.has(slot)) {
+			return false;
+		}
+		this.slots.set(slot, agent);
+		return true;
+	}
+
+	/** Forgets the slots bound to `agent`, for an agent that was removed. */
+	unbind(agent: string): void {
+		for (const [slot, bound] of this.slots) {
+			if (bound === agent) {
+				this.slots.delete(slot);
+			}
+		}
 	}
 
 	/** Stops listening and drops open connections, so agents lose the tools at once. */
@@ -430,13 +510,15 @@ export class BrowserMcpServer {
 	}
 
 	private async handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-		const agent = /^\/mcp\/([\w-]{1,80})$/.exec(req.url ?? '')?.[1];
-		if (!agent) {
+		const id = /^\/mcp\/([\w-]{1,80})$/.exec(req.url ?? '')?.[1];
+		if (!id) {
 			return void res.writeHead(404).end();
 		}
-		if (!this.authorized(agent, req.headers.authorization)) {
+		if (!this.authorized(id, req.headers.authorization)) {
 			return void res.writeHead(401).end();
 		}
+		// A slot acts for the agent it is bound to; one not bound (yet, or any more) lists the tools but has no page.
+		const agent = isSlot(id) ? this.slots.get(id) : id;
 		if (req.method === 'DELETE') {
 			return void res.writeHead(200).end();
 		}
@@ -459,7 +541,7 @@ export class BrowserMcpServer {
 	}
 
 	/** The reply to one message; undefined for a notification. */
-	private async answer(agent: string, message: JsonRpcRequest): Promise<unknown> {
+	private async answer(agent: string | undefined, message: JsonRpcRequest): Promise<unknown> {
 		if (!message || typeof message !== 'object' || message.id === undefined || message.id === null) {
 			return undefined;
 		}
@@ -477,6 +559,9 @@ export class BrowserMcpServer {
 			case 'tools/list':
 				return ok({ tools: browserTools });
 			case 'tools/call': {
+				if (!agent) {
+					return ok({ content: [{ type: 'text', text: 'The browser is not ready for this session yet.' }], isError: true });
+				}
 				const name = typeof message.params?.name === 'string' ? message.params.name : '';
 				const args = message.params?.arguments;
 				return ok(await this.tools.call(agent, name, typeof args === 'object' && args !== null && !Array.isArray(args) ? args as Record<string, unknown> : {}));
@@ -491,6 +576,10 @@ export class BrowserMcpServer {
 		const given = Buffer.from(header ?? '');
 		return given.length === expected.length && timingSafeEqual(given, expected);
 	}
+}
+
+function isSlot(id: string): boolean {
+	return id.startsWith('slot-');
 }
 
 function listen(server: http.Server): Promise<http.Server> {

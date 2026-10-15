@@ -87,6 +87,57 @@ describe('AgentClient session settings', () => {
 		expect(client.settings.mode?.currentId).toBe('autoEdit');
 	});
 
+	it('reads the CLI\'s mode text, keeps the YOLO the user chose, and allows what still asks in YOLO', async () => {
+		const permission = {
+			step: 'permission' as const,
+			request: { toolCall: { toolCallId: 't1', title: 'git --no-ext-diff diff', kind: 'execute' as const }, options: [{ optionId: 'proceed_once', name: 'Allow', kind: 'allow_once' as const }, { optionId: 'cancel', name: 'Reject', kind: 'reject_once' as const }] },
+		};
+		const client = await start({ newSession, turns: [[
+			// An edit allowed for the session drops gemini-cli 0.63 from YOLO to Auto Edit.
+			{ step: 'update', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '[MODE_UPDATE] yolo[MODE_UPDATE] autoEdit' } } },
+			{ step: 'delay', ms: 50 },
+			permission,
+		]] });
+		await client.setMode('yolo');
+		const texts: string[] = [];
+		const allowed: string[] = [];
+		client.onDidReceiveEvent(e => e.kind === 'text' && texts.push(e.text));
+		client.onDidAllowInYolo(p => allowed.push(p.toolCall.title ?? ''));
+		await client.prompt('go');
+		expect(client.settings.mode?.currentId).toBe('yolo');
+		expect(texts).toEqual(['permission:proceed_once']);
+		expect(allowed).toEqual(['git --no-ext-diff diff']);
+	});
+
+	it('follows a mode change the agent makes itself, and says so', async () => {
+		const client = await start({ newSession, turns: [[{ step: 'update', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: '[MODE_UPDATE] default' } } }]] });
+		await client.setMode('autoEdit');
+		const changes: unknown[] = [];
+		client.onDidChangeModeByAgent(change => changes.push(change));
+		await client.prompt('go');
+		expect(client.settings.mode?.currentId).toBe('default');
+		expect(changes).toEqual([{ from: 'autoEdit', to: 'default' }]);
+	});
+
+	it('keeps text that only mentions a mode update', async () => {
+		const client = await start({ newSession, turns: [[{ step: 'update', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'The CLI prints [MODE_UPDATE] yolo when it switches.' } } }]] });
+		const texts: string[] = [];
+		client.onDidReceiveEvent(e => e.kind === 'text' && texts.push(e.text));
+		await client.prompt('go');
+		expect(texts).toEqual(['The CLI prints [MODE_UPDATE] yolo when it switches.']);
+		expect(client.settings.mode?.currentId).toBe('default');
+	});
+
+	it('keeps a mode picked while the agent starts, for the session it opens', async () => {
+		sidecar = new AgentSidecar({ command: () => fakeAgentCommand({ newSession }), cwd: undefined, restartDelaysMs: [] });
+		client = new AgentClient(runtime = new AgentRuntime(sidecar), { cwd: process.cwd(), requestPermission: async () => ({ outcome: { outcome: 'cancelled' } }) });
+		await client.setMode('autoEdit');
+		const settled = waitFor<AgentClientState>(client.onDidChangeState, s => s.kind === 'ready');
+		sidecar.start();
+		await settled;
+		expect(client.settings.mode?.currentId).toBe('autoEdit');
+	});
+
 	it('changes the model when the agent supports it', async () => {
 		const client = await start({ newSession, supportsSetModel: true, turns: [[{ step: 'model' }]] });
 		await client.setModel('gemini-2.5-flash');

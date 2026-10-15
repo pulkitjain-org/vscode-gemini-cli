@@ -52,7 +52,7 @@ class FakeBrowser implements BrowserBackend {
 
 const workspace = path.resolve('/work/app');
 
-function setup(answer = false, otherSites = true) {
+function setup(answer = false, otherSites = true, model = 'gemini-3.1-pro-preview') {
 	const browser = new FakeBrowser();
 	const asked: string[] = [];
 	/** Origins allowed per agent without asking, as `BrowserTools` keeps them. */
@@ -64,6 +64,7 @@ function setup(answer = false, otherSites = true) {
 		enabled: () => on,
 		otherSites: () => otherSites,
 		grant: (agent, url) => void granted.add(`${agent} ${url.origin}`),
+		model: () => model,
 	});
 	return { browser, asked, granted, host, turnOff: () => on = false };
 }
@@ -90,6 +91,17 @@ describe('BrowserToolHost', () => {
 			'type a1 p1 ["#q","shoes",true]',
 		]);
 		expect(asked).toEqual([]);
+	});
+
+	it('adds the page\'s text to a screenshot for a model that may not see the image', async () => {
+		for (const [model, note] of [['gemini-3-flash-preview', 'can\'t see screenshots'], ['auto-gemini-3', 'In case the image does not reach you']]) {
+			const { host } = setup(false, true, model);
+			await host.call('a1', 'browser_navigate', { url: 'http://localhost' });
+			const shot = await host.call('a1', 'browser_screenshot', {});
+			expect(shot.content[0]).toMatchObject({ type: 'image' });
+			expect(shot.content[1]).toMatchObject({ type: 'text', text: expect.stringContaining(note) });
+			expect((shot.content[1] as { text: string }).text).toContain('snapshot p1');
+		}
 	});
 
 	it('asks before other sites, and goes back when an action leads to one not allowed', async () => {
@@ -314,6 +326,27 @@ describe('BrowserMcpServer', () => {
 			(await post(a2.url, { Authorization: a1.headers[0].value }, ping)).status,
 			(await post(a2.url, { Authorization: a2.headers[0].value }, ping)).status,
 		]).toEqual([200, 401, 200]);
+	});
+
+	it('serves a spare session no page until it is bound to the agent that took it', async () => {
+		const { host, browser } = setup();
+		server = new BrowserMcpServer(host, '1.0.0');
+		await server.start();
+		const slot = server.configForSlot()!;
+		const auth = { Authorization: slot.headers[0].value };
+		const navigate = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'browser_navigate', arguments: { url: 'http://localhost:5173' } } };
+		expect((await post(slot.url, auth, { jsonrpc: '2.0', id: 1, method: 'tools/list' })).status).toBe(200);
+		expect((await post(slot.url, auth, navigate)).json).toMatchObject({ result: { isError: true } });
+		expect(browser.calls).toEqual([]);
+
+		expect(server.bind(slot.url, 'a1')).toBe(true);
+		expect(server.bind(server.configFor('a2')!.url, 'a1')).toBe(false);
+		await post(slot.url, auth, navigate);
+		expect(browser.calls).toEqual(['open a1 http://localhost:5173/']);
+
+		server.unbind('a1');
+		expect((await post(slot.url, auth, navigate)).json).toMatchObject({ result: { isError: true } });
+		expect(browser.calls).toEqual(['open a1 http://localhost:5173/']);
 	});
 
 	it('starts once when asked twice at the same time, and stops listening when disposed', async () => {

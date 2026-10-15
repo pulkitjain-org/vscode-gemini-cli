@@ -13,6 +13,8 @@ export interface SessionChoice {
 	readonly id: string;
 	readonly name: string;
 	readonly description?: string;
+	/** The model's tier (auto, pro, flash…), sent only with gemini-cli's `experimental.dynamicModelConfiguration`. */
+	readonly tier?: string;
 }
 
 export interface SessionSelector {
@@ -50,7 +52,7 @@ export function readSessionSettings(response: acp.NewSessionResponse): SessionSe
 	const models = (response as { models?: LegacyModelState }).models;
 	if (models && typeof models.currentModelId === 'string' && isChoiceList(models.availableModels)) {
 		const available = models.availableModels.flatMap(m => typeof m.modelId === 'string'
-			? [{ id: m.modelId, name: typeof m.name === 'string' ? m.name : m.modelId, description: typeof m.description === 'string' ? m.description : undefined }]
+			? [{ id: m.modelId, name: typeof m.name === 'string' ? m.name : m.modelId, description: typeof m.description === 'string' ? m.description : undefined, ...(typeof m.tier === 'string' ? { tier: m.tier } : {}) }]
 			: []);
 		if (available.length > 1) {
 			settings.model = { currentId: models.currentModelId, available };

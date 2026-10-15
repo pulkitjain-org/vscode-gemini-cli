@@ -137,13 +137,31 @@ describe('AgentRuntime', () => {
 		const a = await session('/work/a');
 		expect(a.state).toMatchObject({ sessionId: 'fake-session-1' });
 
+		const replayed: string[] = [];
+		a.client.onDidReplayEvent(e => e.kind === 'text' && replayed.push(e.text));
 		const readyAgain = waitFor<AgentClientState>(a.client.onDidChangeState, s => s.kind === 'ready');
 		sidecar.stop();
 		sidecar.start();
 		expect(await readyAgain).toMatchObject({ sessionId: 'fake-session-1' });
 		await a.client.prompt('who');
-		// The replayed history arrives as updates, then the turn.
-		expect(a.texts).toEqual(['history:fake-session-1', 'session:fake-session-1:/work/a']);
+		// The replayed history comes apart from the turn.
+		expect(replayed).toEqual(['history:fake-session-1']);
+		expect(a.texts).toEqual(['session:fake-session-1:/work/a']);
+	});
+
+	it('holds a prompt sent while the history replays until the replay is over, and keeps the replay out of the turn', async () => {
+		const { sidecar } = start({ storedSessions: ['fake-session-1'], replay: { updates: 6, delayMs: 30 }, turns: [[{ step: 'session' }]] });
+		const a = await session('/work/a', { findSavedSession: async () => ({ replayUpdates: 7 }) });
+		const replayed: string[] = [];
+		a.client.onDidReplayEvent(e => e.kind === 'text' && replayed.push(e.text));
+		const readyAgain = waitFor<AgentClientState>(a.client.onDidChangeState, s => s.kind === 'ready');
+		sidecar.stop();
+		sidecar.start();
+		await readyAgain;
+		// Sent at once, while most of the replay is still to come.
+		await a.client.prompt('who');
+		expect(replayed).toEqual(['history:fake-session-1', 'Part 1', 'Part 2', 'Part 3', 'Part 4', 'Part 5', 'Part 6']);
+		expect(a.texts).toEqual(['session:fake-session-1:/work/a']);
 	});
 
 	it('reopens a session from an earlier run on first open', async () => {
@@ -156,7 +174,7 @@ describe('AgentRuntime', () => {
 
 	it('reopens a saved session by its number in the CLI list, keeping its saved id', async () => {
 		start({ storedSessions: ['3'], turns: [[{ step: 'session' }]] });
-		const a = await session('/work/a', { resumeSessionId: 'uuid-of-3', findSavedSession: async () => ({ index: 3, firstPrompt: 'history:3' }) });
+		const a = await session('/work/a', { resumeSessionId: 'uuid-of-3', findSavedSession: async (_cwd, _id, byNumber) => byNumber ? { index: 3, firstPrompt: 'history:3' } : undefined });
 		expect(a.state).toMatchObject({ kind: 'ready', sessionId: '3', savedSessionId: 'uuid-of-3' });
 		await a.client.prompt('who');
 		expect(a.texts.at(-1)).toBe('session:3:/work/a');
@@ -239,6 +257,23 @@ describe('AgentRuntime', () => {
 		runtime!.prepareSession('/work/a', [{ name: 'browser', command: 'x', args: [], env: [] }]);
 		const a = await session('/work/a');
 		expect(a.state).toMatchObject({ kind: 'ready', sessionId: 'fake-session-2' });
+	});
+
+	it('gives a spare prepared with a key to any chat with that key, with the spare\'s own servers', async () => {
+		start({});
+		await ready(runtime!);
+		const spareServers = [{ type: 'http' as const, name: 'browser', url: 'http://127.0.0.1:1/mcp/slot-1', headers: [] }];
+		runtime!.prepareSession('/work/a', spareServers, 'agent:/work/a');
+		expect(runtime!.spareKey).toBe('agent:/work/a');
+		const opened: unknown[] = [];
+		const a = await session('/work/a', {
+			mcpServers: () => [{ type: 'http', name: 'browser', url: 'http://127.0.0.1:1/mcp/a1', headers: [] }],
+			spareKey: () => 'agent:/work/a',
+			onDidOpenSession: servers => opened.push(servers),
+		});
+		expect(a.state).toMatchObject({ kind: 'ready', sessionId: 'fake-session-1' });
+		expect(opened).toEqual([spareServers]);
+		expect(runtime!.spareKey).toBeUndefined();
 	});
 
 	it('opens a chat made to open later only when asked', async () => {

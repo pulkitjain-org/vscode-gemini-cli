@@ -7,7 +7,7 @@
 
 import type { Attachment } from '../src/acp/attachments';
 import type { TranscriptItem } from '../src/acp/chatTranscript';
-import type { TextAppend } from '../src/acp/textDeltas';
+import type { ItemUpdate, TextAppend } from '../src/acp/textDeltas';
 import { thoughtPreview } from './streaming';
 
 export type ItemOf<K extends TranscriptItem['kind']> = Extract<TranscriptItem, { kind: K }>;
@@ -381,4 +381,41 @@ export function resetsIn(resetTime: string | undefined, now: number): { readonly
 	}
 	const hours = Math.floor(ms / 3_600_000);
 	return hours ? { unit: 'hours', value: hours } : { unit: 'minutes', value: Math.max(1, Math.round(ms / 60_000)) };
+}
+
+/**
+ * Updates that arrived while the view was hidden, as few as give the same
+ * result: appends to one item joined into one, and an item sent whole
+ * replacing what came before it for that item. Each item is then rendered
+ * once when the view shows, not once per streamed chunk.
+ */
+export function coalesceUpdates(updates: readonly ItemUpdate[]): ItemUpdate[] {
+	const out: (ItemUpdate | undefined)[] = [];
+	const whole = new Map<string, number>();
+	const appends = new Map<string, number>();
+	for (const update of updates) {
+		if (update.kind === 'append') {
+			const at = appends.get(update.id);
+			const previous = at === undefined ? undefined : out[at];
+			if (previous?.kind === 'append') {
+				out[at!] = { kind: 'append', id: update.id, append: previous.append + update.append };
+			} else {
+				appends.set(update.id, out.push(update) - 1);
+			}
+			continue;
+		}
+		const at = appends.get(update.id);
+		if (at !== undefined) {
+			// The whole item already has that text.
+			out[at] = undefined;
+			appends.delete(update.id);
+		}
+		const slot = whole.get(update.id);
+		if (slot === undefined) {
+			whole.set(update.id, out.push(update) - 1);
+		} else {
+			out[slot] = update;
+		}
+	}
+	return out.filter((update): update is ItemUpdate => update !== undefined);
 }

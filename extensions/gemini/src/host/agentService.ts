@@ -17,8 +17,8 @@ import { MIN_CLI_VERSION } from '../acp/protocol';
 import { AgentSidecar } from '../acp/sidecar';
 import { trustedFoldersPath, trustFolder } from '../acp/trustedFolders';
 import { AgentStatus, describeAgentStatus } from '../acp/status';
-import { agentLaunchSettings, configSection, getAgentCommand, getApprovalPolicy, getCliResolution, getProjectSettings, getWorkspaceCwd, workspaceFolderPaths } from './configuration';
-import { sessionModel } from './modelPreference';
+import { agentLaunchSettings, configSection, getAgentCommand, getApprovalPolicy, getCliResolution, getProjectSettings, getWorkspaceCwd, includedFolderPaths } from './configuration';
+import { sessionModel, sessionModelList } from './modelPreference';
 import { getFileAccessPolicy, WorkspaceFileSystem } from './workspaceFileSystem';
 
 /**
@@ -69,6 +69,7 @@ export class AgentService implements vscode.Disposable {
 			cwd: getWorkspaceCwd(),
 			requestPermission: params => this.permissions.request(params),
 			preferredModel: sessionModel,
+			modelList: sessionModelList,
 			isModeAllowed: modeId => isModeAllowed(getApprovalPolicy(), modeId),
 		});
 
@@ -79,6 +80,8 @@ export class AgentService implements vscode.Disposable {
 				// A request from an agent that is gone can no longer be answered.
 				if (state.kind !== 'ready') {
 					this.permissions.cancelAll();
+					// Session approvals end with the session.
+					this.permissions.approvals.clear();
 				}
 				this.onDidChangeStatusEmitter.fire(this.status);
 			}),
@@ -99,7 +102,7 @@ export class AgentService implements vscode.Disposable {
 			}),
 			vscode.workspace.onDidChangeWorkspaceFolders(() => {
 				// Every folder of a multi-root window is passed with --include-directories, which the process reads once.
-				if (this.started && this.includedFolders !== includeDirectoryArgs(workspaceFolderPaths()).join('\n')) {
+				if (this.started && this.includedFolders !== includeDirectoryArgs(includedFolderPaths()).join('\n')) {
 					log.info('Workspace folders changed; restarting the agent once it is idle');
 					this.restartWhenIdle('restarting so agents see the workspace folders');
 				}
@@ -145,14 +148,16 @@ export class AgentService implements vscode.Disposable {
 	}
 
 	/**
-	 * Adds `folder` to the CLI's trusted folders and restarts the agent once no
+	 * Adds `folders` to the CLI's trusted folders and restarts the agent once no
 	 * prompt runs, since the CLI reads that list once per process. Returns
 	 * whether the restart has to wait. Throws when the list cannot be updated.
 	 */
-	trustFolder(folder: string): boolean {
+	trustFolder(...folders: string[]): boolean {
 		const file = trustedFoldersPath(process.env);
-		trustFolder(file, folder);
-		this.log.info(`Trusted ${folder} in ${file}`);
+		for (const folder of folders) {
+			trustFolder(file, folder);
+			this.log.info(`Trusted ${folder} in ${file}`);
+		}
 		const waits = this.runtime.busy;
 		this.restartWhenIdle('restarting so the agent trusts the folder');
 		return waits;
@@ -165,6 +170,11 @@ export class AgentService implements vscode.Disposable {
 	/** The status of `client`'s session on the shared agent process. */
 	statusFor(client: AgentClient): AgentStatus {
 		return describeAgentStatus(this.sidecar.state, client.state, this.blocked);
+	}
+
+	/** Writes `message` to the Gemini log. */
+	writeLog(message: string): void {
+		this.log.info(message);
 	}
 
 	/** Starts the agent if it is not running yet and waits until `client`'s session is ready. */
@@ -243,7 +253,7 @@ export class AgentService implements vscode.Disposable {
 
 	/** The agent's command, with its debug log pointed at a file GeminiCode reads, unless the user set one. */
 	private agentCommand(): AgentCommand {
-		this.includedFolders = includeDirectoryArgs(workspaceFolderPaths()).join('\n');
+		this.includedFolders = includeDirectoryArgs(includedFolderPaths()).join('\n');
 		const command = getAgentCommand({ cli: this.resolveCli() });
 		if (!this.mcpDiagnostics || command.env.GEMINI_DEBUG_LOG_FILE || !this.mcpDiagnostics.reset()) {
 			return command;

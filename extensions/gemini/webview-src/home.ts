@@ -12,6 +12,8 @@ import { attachmentIcon, sameAttachment } from './chatLogic';
 import { Menu, type MenuRow } from './menu';
 import { modeIcon } from './modeIcon';
 import { button, el, icon, pageStrings } from './panelDom';
+import { letSpellingMenuThrough } from './spellCheck';
+import { createPreviewTabs, isPreviewShortcut } from './markdownPreview';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromHome): void; getState(): unknown; setState(state: unknown): void };
 
@@ -39,6 +41,7 @@ const modeButton = document.getElementById('mode') as HTMLButtonElement;
 const attachmentList = document.getElementById('attachments')!;
 const active = document.getElementById('active')!;
 const earlier = document.getElementById('earlier')!;
+const projects = document.getElementById('projects')!;
 
 document.getElementById('title')!.textContent = strings.title;
 document.getElementById('subtitle')!.textContent = strings.subtitle;
@@ -213,6 +216,8 @@ function render(next: HomeView): void {
 	}
 	active.append(cards);
 
+	renderProjects(next);
+
 	earlier.replaceChildren();
 	earlier.hidden = !next.earlier.length;
 	if (next.earlier.length) {
@@ -227,6 +232,32 @@ function render(next: HomeView): void {
 		}
 		earlier.append(rows);
 	}
+}
+
+/** Projects, apart from the agents: each opens its project chat. */
+function renderProjects(next: HomeView): void {
+	projects.replaceChildren();
+	projects.hidden = !next.projects;
+	if (!next.projects) {
+		return;
+	}
+	const heading = el('div', 'section-heading');
+	const add = button('icon-button', '', () => vscode.postMessage({ type: 'newProject' }), 'add', strings.newProject);
+	heading.append(el('h2', undefined, strings.projects), add);
+	projects.append(heading);
+	if (!next.projects.length) {
+		projects.append(el('p', 'muted', strings.noProjects));
+		return;
+	}
+	const rows = el('div', 'earlier');
+	for (const project of next.projects) {
+		const row = el('button', `earlier-row project-row ${project.state}`);
+		row.type = 'button';
+		row.append(icon('project'), el('span', 'title', project.title), el('span', 'muted', [project.workspace, project.threads, project.updated].join(' · ')));
+		row.addEventListener('click', () => vscode.postMessage({ type: 'open', id: project.id }));
+		rows.append(row);
+	}
+	projects.append(rows);
 }
 
 function card(agent: HomeAgent): HTMLElement {
@@ -277,6 +308,7 @@ function submit(): void {
 	// The next task gets a session of its own.
 	typingFor = undefined;
 	prompt.value = '';
+	previewTabs.close();
 	attachments = [];
 	renderAttachments();
 	save();
@@ -287,7 +319,42 @@ form.addEventListener('submit', e => {
 	e.preventDefault();
 	submit();
 });
+letSpellingMenuThrough(prompt);
+
+type DraftMarkdown = typeof import('./draftMarkdown');
+const draftMarkdownUrl = document.querySelector<HTMLScriptElement>('script[data-draft-markdown]')?.dataset.draftMarkdown;
+let draftMarkdown: Promise<DraftMarkdown> | undefined;
+
+/** Preview's renderer, a chunk of its own so Home's startup script stays small. */
+function loadDraftMarkdown(): Promise<DraftMarkdown> {
+	// eslint-disable-next-line no-restricted-syntax
+	draftMarkdown ??= draftMarkdownUrl ? import(/* webpackIgnore: true */ draftMarkdownUrl) : Promise.reject(new Error('no renderer'));
+	return draftMarkdown;
+}
+
+const calloutLabels: Record<string, string> = {
+	note: strings.calloutNote, tip: strings.calloutTip, important: strings.calloutImportant, warning: strings.calloutWarning, caution: strings.calloutCaution,
+};
+
+const previewTabs = createPreviewTabs({
+	input: prompt,
+	inputWrap: prompt,
+	preview: document.getElementById('preview')!,
+	writeTab: document.getElementById('tab-write') as HTMLButtonElement,
+	previewTab: document.getElementById('tab-preview') as HTMLButtonElement,
+	form,
+	strings,
+	render: text => loadDraftMarkdown().then(module => module.renderDraft(text, kind => calloutLabels[kind] ?? kind)),
+});
+// Warm the renderer once Home has settled, so the first Preview is instant.
+setTimeout(() => (window.requestIdleCallback ?? setTimeout)(() => void loadDraftMarkdown().catch(() => undefined)), 2000);
+
 prompt.addEventListener('keydown', e => {
+	if (!e.isComposing && isPreviewShortcut(e)) {
+		e.preventDefault();
+		previewTabs.toggle();
+		return;
+	}
 	if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
 		e.preventDefault();
 		submit();
@@ -308,6 +375,7 @@ function reportTyping(): void {
 }
 
 prompt.addEventListener('input', () => {
+	previewTabs.update();
 	save();
 	updateControls();
 	reportTyping();
@@ -323,6 +391,8 @@ window.addEventListener('message', (event: MessageEvent<ToHome>) => {
 		render(message.view);
 	} else if (message.type === 'focus') {
 		prompt.focus();
+	} else if (message.type === 'spellCheck') {
+		prompt.spellcheck = message.on;
 	} else if (message.type === 'attached') {
 		attachments = [...attachments, ...message.attachments.filter(a => !attachments.some(b => sameAttachment(a, b)))];
 		renderAttachments();

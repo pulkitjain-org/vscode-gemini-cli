@@ -23,7 +23,19 @@ export interface StreamingReply {
 	stableCount: number;
 	/** The open code block at the end, if any: where its opening line starts, its code and how much text it shows. */
 	fence?: StreamingCode;
+	/** When the unfinished part was last rendered, and the text waiting for the next render. */
+	renderedAt?: number;
+	waiting?: string;
+	timer?: ReturnType<typeof setTimeout>;
 }
+
+/**
+ * The unfinished part of a reply is rendered again on each update. A long
+ * one, such as a table or a list with no blank lines, is rendered at most
+ * this often, so a 200-row table does not cost a full parse 30 times a second.
+ */
+const longTail = 4_000;
+const longTailIntervalMs = 150;
 
 /**
  * The code of an open code block, in blocks of whole lines. New code only
@@ -81,6 +93,24 @@ export function updateStreamingReply(reply: StreamingReply, text: string): boole
 		fence.shown = text.length;
 		return true;
 	}
+	const now = performance.now();
+	if (text.length - Math.max(scan.stableEnd, reply.stableText.length) > longTail && reply.renderedAt !== undefined && now - reply.renderedAt < longTailIntervalMs) {
+		reply.waiting = text;
+		reply.timer ??= setTimeout(() => {
+			reply.timer = undefined;
+			const waiting = reply.waiting;
+			reply.waiting = undefined;
+			// Only while it still streams; a finished reply was rendered whole.
+			if (waiting !== undefined && reply.node.isConnected && [...streamingReplies.values()].includes(reply)) {
+				updateStreamingReply(reply, waiting);
+			}
+		}, longTailIntervalMs - (now - reply.renderedAt));
+		return true;
+	}
+	reply.renderedAt = now;
+	reply.waiting = undefined;
+	// A wide table keeps its horizontal scroll when it is drawn again.
+	const scrolled = lastTable(node)?.scrollLeft ?? 0;
 	reply.fence = undefined;
 	while (node.childNodes.length > reply.stableCount) {
 		node.lastChild?.remove();
@@ -106,6 +136,16 @@ export function updateStreamingReply(reply: StreamingReply, text: string): boole
 			return true;
 		}
 	}
-	node.append(...renderBlocks(text.slice(reply.stableText.length)));
+	// A code block still open (one in a list item) is highlighted once it is finished.
+	node.append(...renderBlocks(text.slice(reply.stableText.length), undefined, !scan.inFence));
+	const table = scrolled ? lastTable(node) : undefined;
+	if (table) {
+		table.scrollLeft = scrolled;
+	}
 	return true;
+}
+
+function lastTable(node: HTMLElement): HTMLElement | undefined {
+	const tables = node.querySelectorAll<HTMLElement>('.table-wrap');
+	return tables[tables.length - 1];
 }

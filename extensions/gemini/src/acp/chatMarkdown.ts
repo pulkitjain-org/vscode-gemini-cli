@@ -71,6 +71,9 @@ export function chatToMarkdown(title: string, items: readonly TranscriptItem[], 
 				blocks.push(`*${format(labels.workedFor, formatDuration(item.durationMs))}*`, '---');
 				lastSpeaker = undefined;
 				break;
+			case 'thread':
+				blocks.push(`- **${oneLine(item.title)}**: ${item.state}${item.detail ? `, ${oneLine(item.detail)}` : ''}`);
+				break;
 			case 'other':
 				break;
 		}

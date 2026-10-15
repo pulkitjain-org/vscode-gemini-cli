@@ -38,10 +38,12 @@ export class Appearance implements vscode.Disposable {
 		this.disposables.push(
 			vscode.commands.registerCommand('gemini.appearance', () => this.show()),
 			vscode.workspace.onDidChangeConfiguration(e => {
-				if (this.panel && ['workbench.colorTheme', 'workbench.iconTheme', 'editor.fontFamily'].some(key => e.affectsConfiguration(key))) {
-					void this.panel.webview.postMessage({ type: 'choices', choices: this.choices() });
+				if (this.panel && ['workbench.colorTheme', 'workbench.iconTheme', 'editor.fontFamily', 'window.autoDetectColorScheme', 'workbench.preferredDarkColorTheme', 'workbench.preferredLightColorTheme'].some(key => e.affectsConfiguration(key))) {
+					this.postChoices();
 				}
 			}),
+			// The OS switching light and dark changes the theme shown while the settings stay put.
+			vscode.window.onDidChangeActiveColorTheme(() => this.postChoices()),
 		);
 		void removeOldAccent();
 	}
@@ -69,10 +71,14 @@ export class Appearance implements vscode.Disposable {
 		panel.webview.html = this.html(panel.webview);
 	}
 
+	private postChoices(): void {
+		void this.panel?.webview.postMessage({ type: 'choices', choices: this.choices() });
+	}
+
 	private choices(): Choices {
 		const workbench = vscode.workspace.getConfiguration('workbench');
 		return {
-			theme: workbench.get<string>('colorTheme', ''),
+			theme: shownTheme(),
 			font: codeFontOf(vscode.workspace.getConfiguration('editor').get<string>('fontFamily'))?.id,
 			icons: workbench.get<string | null>('iconTheme', null),
 		};
@@ -82,6 +88,10 @@ export class Appearance implements vscode.Disposable {
 		switch (message.type) {
 			case 'theme':
 				if ((themeIds as readonly string[]).includes(message.id)) {
+					// A pick here is the theme to show: following the OS would undo it.
+					if (vscode.workspace.getConfiguration('window').get<boolean>('autoDetectColorScheme')) {
+						await vscode.workspace.getConfiguration('window').update('autoDetectColorScheme', false, vscode.ConfigurationTarget.Global);
+					}
 					await setOrReset('workbench', 'colorTheme', message.id);
 				}
 				break;
@@ -159,6 +169,25 @@ async function removeOldAccent(): Promise<void> {
 		await workbench.update('colorCustomizations', Object.keys(next).length ? next : undefined, vscode.ConfigurationTarget.Global);
 	}
 	await gemini.update('appearance.accent', undefined, vscode.ConfigurationTarget.Global);
+}
+
+/**
+ * The colour theme on screen: `workbench.colorTheme`, unless the window
+ * follows the OS, when it is the preferred theme for the light or dark the
+ * window shows. Between GeminiCode's own two, the one the window shows wins.
+ */
+function shownTheme(): string {
+	const workbench = vscode.workspace.getConfiguration('workbench');
+	const kind = vscode.window.activeColorTheme.kind;
+	const light = kind === vscode.ColorThemeKind.Light || kind === vscode.ColorThemeKind.HighContrastLight;
+	const setting = vscode.workspace.getConfiguration('window').get<boolean>('autoDetectColorScheme')
+		? workbench.get<string>(light ? 'preferredLightColorTheme' : 'preferredDarkColorTheme')
+		: workbench.get<string>('colorTheme');
+	// Ours by name but not what the window shows (the setting yet to apply, say): the window is right.
+	if (setting === 'GeminiCode Dark' || setting === 'GeminiCode Light') {
+		return light ? 'GeminiCode Light' : 'GeminiCode Dark';
+	}
+	return setting ?? '';
 }
 
 /** Sets a setting for the user, or removes their value when `value` is the default. */

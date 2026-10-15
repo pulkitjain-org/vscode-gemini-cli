@@ -3,10 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { execFile } from 'node:child_process';
-import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { ClientFileSystem, FileAccessPolicyOptions } from '../acp/fileAccess';
+import { ClientFileSystem, FileAccessPolicyOptions, isInside } from '../acp/fileAccess';
+import { GitIgnoreChecker } from '../acp/gitIgnore';
 import { minimalEdit } from '../acp/lineDiff';
 import { memoizeAsync } from '../acp/memoize';
 
@@ -111,17 +110,25 @@ async function exists(uri: vscode.Uri): Promise<boolean> {
 	}
 }
 
-/**
- * Each check starts a git process, and the agent often reads the same files
- * several times in a turn, so answers are kept for a few seconds.
- */
-export const isIgnoredByGitCached = memoizeAsync(isIgnoredByGit, { ttlMs: 5_000, maxEntries: 500 });
+/** One `git check-ignore` process per workspace folder answers every check (see gitIgnore.ts). */
+const gitIgnore = new GitIgnoreChecker();
 
-/** `git check-ignore`: exit 0 means ignored. No git, or not a repository, means not ignored. */
+/**
+ * The agent often reads the same files several times in a turn, so answers
+ * are kept for a while; a change to an ignore file is rare mid-turn.
+ */
+export const isIgnoredByGitCached = memoizeAsync(isIgnoredByGit, { ttlMs: 30_000, maxEntries: 2_000 });
+
+/** Whether git ignores `filePath`. No git, or not a repository, means not ignored. */
 function isIgnoredByGit(filePath: string): Promise<boolean> {
-	return new Promise(resolve => {
-		execFile('git', ['check-ignore', '--quiet', '--', filePath], { cwd: path.dirname(filePath), timeout: 5_000 }, err => {
-			resolve(!err);
-		});
-	});
+	const root = (vscode.workspace.workspaceFolders ?? [])
+		.filter(f => f.uri.scheme === 'file' && isInside(f.uri.fsPath, filePath))
+		.map(f => f.uri.fsPath)
+		.sort((a, b) => b.length - a.length)[0];
+	return gitIgnore.isIgnored(filePath, root);
+}
+
+/** Ends the git processes that answer ignore checks. */
+export function disposeGitIgnore(): void {
+	gitIgnore.dispose();
 }

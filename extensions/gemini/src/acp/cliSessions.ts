@@ -40,6 +40,8 @@ export interface CliSession {
 	 * reads them, so the load fails and the session is lost.
 	 */
 	readonly index: number;
+	/** How many updates the CLI sends when it replays the session on `session/load` (see `replayUpdateCount`). */
+	readonly replayUpdates: number;
 }
 
 /** One session file's session, before the list is put together. */
@@ -53,6 +55,8 @@ export interface ParsedSession {
 	readonly updatedAt: number;
 	/** The token counts the CLI saved with its replies; unset when it saved none. */
 	readonly tokens?: SessionTokens;
+	/** How many updates the CLI sends when it replays the session (see `replayUpdateCount`). */
+	readonly replayUpdates: number;
 }
 
 /** What a session's model requests used, from the counts the CLI saves with each reply. */
@@ -97,6 +101,12 @@ interface CachedFile {
 	readonly mtime: number;
 	readonly size: number;
 	readonly session: ParsedSession | undefined;
+	/** For a .jsonl file: its records so far, to add only what the CLI appended. */
+	readonly records?: SessionRecords;
+	/** The bytes parsed: up to the end of the last whole line. */
+	readonly offset?: number;
+	/** The bytes just before `offset`, to tell an append from a rewrite. */
+	readonly tail?: Buffer;
 }
 
 /** Parsed files by path, so listing again reads only the files that changed. */
@@ -135,8 +145,12 @@ async function numberedSessions(cwd: string, home?: string): Promise<CliSession[
 			messages: session.prompts.length,
 			updatedAt: session.updatedAt,
 			index: i + 1,
+			replayUpdates: session.replayUpdates,
 		}));
 }
+
+/** Bytes compared to tell that a session file only grew. */
+const tailCheckBytes = 256;
 
 async function readSessionFile(file: string): Promise<ParsedSession | undefined> {
 	try {
@@ -145,15 +159,74 @@ async function readSessionFile(file: string): Promise<ParsedSession | undefined>
 		if (cached && cached.mtime === stat.mtimeMs && cached.size === stat.size) {
 			return cached.session;
 		}
-		const session = parseSessionFile(await fs.readFile(file, 'utf8'), file.endsWith('.json'), stat.mtimeMs);
+		// The CLI appends a record or two per message, so after the first read
+		// of a long session only the new lines are parsed, not the whole file.
+		const appended = cached?.records && stat.size > cached.size ? await readAppended(file, cached, stat.size) : undefined;
+		const entry = appended ?? parseWholeFile(await fs.readFile(file), file.endsWith('.json'));
+		let session: ParsedSession | undefined;
+		if (entry.records) {
+			// A last line without its line end may still be complete; it is read but not kept, since the next append may finish it.
+			const current = entry.rest?.trim() ? entry.records.clone() : entry.records;
+			if (current !== entry.records) {
+				current.addLines(entry.rest!);
+			}
+			session = sessionFrom(current.meta, current.messages(), stat.mtimeMs);
+		} else {
+			session = parseSessionFile(entry.text ?? '', true, stat.mtimeMs);
+		}
 		if (parsedFiles.size >= maxCachedFiles) {
 			parsedFiles.clear();
 		}
-		parsedFiles.set(file, { mtime: stat.mtimeMs, size: stat.size, session });
+		parsedFiles.set(file, { mtime: stat.mtimeMs, size: stat.size, session, ...(entry.records ? { records: entry.records, offset: entry.offset, tail: entry.tail } : {}) });
 		return session;
 	} catch {
 		return undefined;
 	}
+}
+
+interface ParsedFile {
+	readonly records?: SessionRecords;
+	readonly offset?: number;
+	readonly tail?: Buffer;
+	/** Text after the last line end. */
+	readonly rest?: string;
+	/** A whole-JSON file's text. */
+	readonly text?: string;
+}
+
+function parseWholeFile(data: Buffer, wholeJson: boolean): ParsedFile {
+	if (wholeJson) {
+		return { text: data.toString('utf8') };
+	}
+	const records = new SessionRecords();
+	const end = data.lastIndexOf(0x0a) + 1;
+	records.addLines(data.subarray(0, end).toString('utf8'));
+	return { records, offset: end, tail: Buffer.from(data.subarray(Math.max(0, end - tailCheckBytes), end)), rest: data.subarray(end).toString('utf8') };
+}
+
+/** The records appended since `cached` was parsed; undefined when the file was rewritten instead. */
+async function readAppended(file: string, cached: CachedFile, size: number): Promise<ParsedFile | undefined> {
+	const offset = cached.offset ?? 0;
+	const tail = cached.tail ?? Buffer.alloc(0);
+	const handle = await fs.open(file, 'r');
+	let data: Buffer;
+	try {
+		const start = offset - tail.length;
+		data = Buffer.alloc(size - start);
+		const { bytesRead } = await handle.read(data, 0, data.length, start);
+		data = data.subarray(0, bytesRead);
+	} finally {
+		await handle.close();
+	}
+	if (!data.subarray(0, tail.length).equals(tail)) {
+		return undefined;
+	}
+	const added = data.subarray(tail.length);
+	const end = added.lastIndexOf(0x0a) + 1;
+	const records = cached.records!.clone();
+	records.addLines(added.subarray(0, end).toString('utf8'));
+	const parsed = Buffer.concat([tail, added.subarray(0, end)]);
+	return { records, offset: offset + end, tail: Buffer.from(parsed.subarray(Math.max(0, parsed.length - tailCheckBytes))), rest: added.subarray(end).toString('utf8') };
 }
 
 /**
@@ -179,77 +252,15 @@ interface MessageRecord {
 
 /** One session file's session, or undefined when it has none worth reopening. */
 export function parseSessionFile(text: string, wholeJson: boolean, mtime = 0): ParsedSession | undefined {
-	let meta: Record<string, unknown> = {};
-	const messages = new Map<string, MessageRecord>();
-	const setMessages = (list: unknown) => {
-		messages.clear();
-		for (const message of Array.isArray(list) ? list : []) {
-			if (isMessage(message)) {
-				messages.set(message.id, message);
-			}
-		}
-	};
-	const record = (value: unknown) => {
-		if (!isObject(value)) {
-			return;
-		}
-		if (typeof value.$rewindTo === 'string') {
-			// Drops that message and everything after it.
-			let found = false;
-			for (const id of [...messages.keys()]) {
-				found ||= id === value.$rewindTo;
-				if (found) {
-					messages.delete(id);
-				}
-			}
-			if (!found) {
-				messages.clear();
-			}
-		} else if (isMessage(value)) {
-			messages.set(value.id, value);
-		} else if (isObject(value.$set)) {
-			if (Array.isArray(value.$set.messages)) {
-				setMessages(value.$set.messages);
-			}
-			meta = { ...meta, ...value.$set };
-		} else if (typeof value.sessionId === 'string') {
-			meta = { ...meta, ...value };
-			if (Array.isArray(value.messages)) {
-				for (const message of value.messages) {
-					if (isMessage(message)) {
-						messages.set(message.id, message);
-					}
-				}
-			}
-		}
-	};
-	let whole: unknown;
-	if (wholeJson) {
-		try {
-			whole = JSON.parse(text);
-		} catch {
-			// Not one object: read it as records.
-		}
-	}
-	if (isObject(whole)) {
-		meta = whole;
-		setMessages(whole.messages);
-	} else {
-		for (const line of text.split('\n')) {
-			if (line.trim()) {
-				try {
-					record(JSON.parse(line));
-				} catch {
-					// A line cut short by a crash; the CLI skips it too.
-				}
-			}
-		}
-	}
+	const { meta, all } = parseSessionRecords(text, wholeJson);
+	return sessionFrom(meta, all, mtime);
+}
+
+function sessionFrom(meta: Record<string, unknown>, all: readonly MessageRecord[], mtime: number): ParsedSession | undefined {
 	const id = meta.sessionId;
 	if (typeof id !== 'string' || !id || meta.kind === 'subagent') {
 		return undefined;
 	}
-	const all = [...messages.values()];
 	const prompts = all.filter(m => m.type === 'user').map(m => textOf(m.content).trim()).filter(isPrompt);
 	const resumable = prompts.length > 0 || all.some(isReply);
 	const summary = typeof meta.summary === 'string' ? meta.summary.trim() : '';
@@ -263,8 +274,142 @@ export function parseSessionFile(text: string, wholeJson: boolean, mtime = 0): P
 		resumable,
 		startedAt: Number.isFinite(started) ? started : Number.isFinite(updated) ? updated : mtime,
 		updatedAt: Number.isFinite(updated) ? updated : Number.isFinite(started) ? started : mtime,
+		replayUpdates: replayUpdateCount(all),
 		...withTokens(all),
 	};
+}
+
+/** A .jsonl session file's metadata and messages as they stand, after rewinds and rewrites, built up record by record. */
+class SessionRecords {
+	meta: Record<string, unknown> = {};
+	private readonly byId = new Map<string, MessageRecord>();
+
+	messages(): MessageRecord[] {
+		return [...this.byId.values()];
+	}
+
+	clone(): SessionRecords {
+		const copy = new SessionRecords();
+		copy.meta = this.meta;
+		for (const [id, message] of this.byId) {
+			copy.byId.set(id, message);
+		}
+		return copy;
+	}
+
+	/** Whole lines of the file; a line cut short by a crash is skipped, as the CLI does. */
+	addLines(text: string): void {
+		for (const line of text.split('\n')) {
+			if (line.trim()) {
+				try {
+					this.add(JSON.parse(line));
+				} catch {
+					// Skipped.
+				}
+			}
+		}
+	}
+
+	setMessages(list: unknown): void {
+		this.byId.clear();
+		for (const message of Array.isArray(list) ? list : []) {
+			if (isMessage(message)) {
+				this.byId.set(message.id, message);
+			}
+		}
+	}
+
+	private add(value: unknown): void {
+		if (!isObject(value)) {
+			return;
+		}
+		if (typeof value.$rewindTo === 'string') {
+			// Drops that message and everything after it.
+			let found = false;
+			for (const id of [...this.byId.keys()]) {
+				found ||= id === value.$rewindTo;
+				if (found) {
+					this.byId.delete(id);
+				}
+			}
+			if (!found) {
+				this.byId.clear();
+			}
+		} else if (isMessage(value)) {
+			this.byId.set(value.id, value);
+		} else if (isObject(value.$set)) {
+			if (Array.isArray(value.$set.messages)) {
+				this.setMessages(value.$set.messages);
+			}
+			this.meta = { ...this.meta, ...value.$set };
+		} else if (typeof value.sessionId === 'string') {
+			this.meta = { ...this.meta, ...value };
+			if (Array.isArray(value.messages)) {
+				for (const message of value.messages) {
+					if (isMessage(message)) {
+						this.byId.set(message.id, message);
+					}
+				}
+			}
+		}
+	}
+}
+
+/** A session file's metadata and its messages as they stand, after rewinds and rewrites. */
+function parseSessionRecords(text: string, wholeJson: boolean): { meta: Record<string, unknown>; all: MessageRecord[] } {
+	let whole: unknown;
+	if (wholeJson) {
+		try {
+			whole = JSON.parse(text);
+		} catch {
+			// Not one object: read it as records.
+		}
+	}
+	const records = new SessionRecords();
+	if (isObject(whole)) {
+		records.meta = whole;
+		records.setMessages(whole.messages);
+	} else {
+		records.addLines(text);
+	}
+	return { meta: records.meta, all: records.messages() };
+}
+
+/**
+ * How many updates gemini-cli 0.63 sends when it replays `messages` after a
+ * `session/load` (`streamHistory`): one per user message with any text or
+ * part, and for each model message one per thought, one for its text or
+ * parts, and one per tool call. The CLI answers `session/load` before the
+ * replay is over, so this is how GeminiCode knows when it is.
+ */
+export function replayUpdateCount(messages: readonly unknown[]): number {
+	let count = 0;
+	for (const message of messages) {
+		if (!isObject(message)) {
+			continue;
+		}
+		if (message.type === 'user') {
+			count += hasReplayText(message.content) ? 1 : 0;
+		} else if (message.type === 'gemini') {
+			count += (Array.isArray(message.thoughts) ? message.thoughts.length : 0)
+				+ (hasReplayText(message.content) ? 1 : 0)
+				+ (Array.isArray(message.toolCalls) ? message.toolCalls.length : 0);
+		}
+	}
+	return count;
+}
+
+/** Parts the CLI's verbose converter writes as a marker such as `[Function Call: replace]`, which is never empty. */
+const markerParts = ['videoMetadata', 'thought', 'codeExecutionResult', 'executableCode', 'fileData', 'functionCall', 'functionResponse', 'inlineData'];
+
+/** Whether the CLI's verbose text of `content` is more than white space. */
+function hasReplayText(content: unknown): boolean {
+	if (typeof content === 'string') {
+		return !!content.trim();
+	}
+	const parts = Array.isArray(content) ? content : [content];
+	return parts.some(part => typeof part === 'string' ? !!part.trim()
+		: isObject(part) && (markerParts.some(key => part[key] !== undefined) || (typeof part.text === 'string' && !!part.text.trim())));
 }
 
 /** The session's token counts from its replies' `tokens` (`input`, `cached`, ...), as gemini-cli 0.62 and 0.63 save them. */
@@ -287,11 +432,13 @@ function withTokens(messages: readonly MessageRecord[]): { tokens?: SessionToken
 	return latest ? { tokens: { context: Math.round(latest.input), ...(latest.model ? { model: latest.model } : {}), cached: Math.round(cached) } } : {};
 }
 
-/**
- * The token counts saved for session `id` in `cwd`, from its newest file;
- * undefined when the CLI saved none (chat recording off, or nothing sent yet).
- */
-export async function readSessionTokens(cwd: string, id: string, home?: string): Promise<SessionTokens | undefined> {
+/** Session `id` in `cwd` from its newest file, reading only that session's files; undefined when there is none. */
+async function readSessionById(cwd: string, id: string, home?: string): Promise<ParsedSession | undefined> {
+	return (await newestSessionFile(cwd, id, home))?.session;
+}
+
+/** The newest file of session `id` in `cwd`, and its session. */
+async function newestSessionFile(cwd: string, id: string, home?: string): Promise<{ readonly file: string; readonly session: ParsedSession } | undefined> {
 	const folder = await chatsFolder(cwd, home);
 	if (!folder || !id) {
 		return undefined;
@@ -304,8 +451,63 @@ export async function readSessionTokens(cwd: string, id: string, home?: string):
 	} catch {
 		return undefined;
 	}
-	const sessions = (await Promise.all(names.map(name => readSessionFile(path.join(folder, name))))).filter(session => session?.id === id);
-	return sessions.sort((a, b) => b!.updatedAt - a!.updatedAt)[0]?.tokens;
+	const files = await Promise.all(names.map(async name => ({ file: path.join(folder, name), session: await readSessionFile(path.join(folder, name)) })));
+	return files.filter((f): f is { file: string; session: ParsedSession } => f.session?.id === id).sort((a, b) => b.session.updatedAt - a.session.updatedAt)[0];
+}
+
+/** One message of a saved conversation, as text: the user's prompts and the model's replies. */
+export interface ConversationEntry {
+	readonly role: 'user' | 'model';
+	readonly text: string;
+}
+
+/**
+ * The conversation saved for session `id` in `cwd`, as the user saw it:
+ * prompts and the model's text, without the CLI's context, commands, thoughts
+ * and tool results. Undefined when there is no file.
+ */
+export async function readCliConversation(cwd: string, id: string, home?: string): Promise<ConversationEntry[] | undefined> {
+	const newest = await newestSessionFile(cwd, id, home);
+	if (!newest) {
+		return undefined;
+	}
+	const { all } = parseSessionRecords(await fs.readFile(newest.file, 'utf8'), newest.file.endsWith('.json'));
+	const entries: ConversationEntry[] = [];
+	for (const message of all) {
+		const text = textOf(message.content).trim();
+		if (message.type === 'user' && isPrompt(text)) {
+			entries.push({ role: 'user', text });
+		} else if (message.type === 'gemini' && text) {
+			entries.push({ role: 'model', text });
+		}
+	}
+	return entries;
+}
+
+/** How much of a carried conversation is given to the new session, in characters: the latest part when it is longer. */
+const carriedConversationLimit = 40_000;
+
+/** The note that gives a new session a conversation the agent could not reopen. */
+export function carriedConversationNote(title: string, conversation: readonly ConversationEntry[]): string {
+	let text = conversation.map(entry => `${entry.role === 'user' ? 'User' : 'You'}: ${entry.text}`).join('\n\n');
+	if (text.length > carriedConversationLimit) {
+		text = `…${text.slice(text.length - carriedConversationLimit)}`;
+	}
+	return `This continues an earlier conversation ("${title}") that could not be reopened. Here it is, for context; carry on from it.\n\n<earlier_conversation>\n${text}\n</earlier_conversation>`;
+}
+
+/**
+ * The token counts saved for session `id` in `cwd`, from its newest file;
+ * undefined when the CLI saved none (chat recording off, or nothing sent yet).
+ */
+export async function readSessionTokens(cwd: string, id: string, home?: string): Promise<SessionTokens | undefined> {
+	return (await readSessionById(cwd, id, home))?.tokens;
+}
+
+/** What reopening session `id` in `cwd` by its id needs: its replay length. Reads only that session's files. */
+export async function readCliSession(cwd: string, id: string, home?: string): Promise<{ readonly firstPrompt: string; readonly replayUpdates: number } | undefined> {
+	const session = await readSessionById(cwd, id, home);
+	return session && { firstPrompt: session.prompts[0] ?? '', replayUpdates: session.replayUpdates };
 }
 
 /** A model message the CLI would resume: one with text, tool calls or thoughts. */

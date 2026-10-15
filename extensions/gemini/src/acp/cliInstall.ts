@@ -102,18 +102,20 @@ export async function installCli(options: InstallOptions): Promise<string> {
 	return version;
 }
 
-/** Deletes managed versions other than `keep`, and anything left from an interrupted install. */
-export function pruneCliVersions(managedDir: string, keep: readonly string[]): string[] {
+/**
+ * Deletes managed versions other than `keep`, and anything left from an
+ * interrupted install. Asynchronous: a CLI copy is thousands of files, which a
+ * synchronous delete would remove with the extension host blocked.
+ */
+export async function pruneCliVersions(managedDir: string, keep: readonly string[]): Promise<string[]> {
 	let names: string[];
 	try {
-		names = fs.readdirSync(managedDir);
+		names = await fs.promises.readdir(managedDir);
 	} catch {
 		return [];
 	}
 	const removed = names.filter(name => name.startsWith('.tmp-') || (isVersion(name) && !keep.includes(name)));
-	for (const name of removed) {
-		fs.rmSync(path.join(managedDir, name), { recursive: true, force: true });
-	}
+	await Promise.all(removed.map(name => fs.promises.rm(path.join(managedDir, name), { recursive: true, force: true })));
 	return removed;
 }
 

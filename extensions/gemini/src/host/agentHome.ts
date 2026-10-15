@@ -5,13 +5,17 @@
 
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { onDidChangeSpellCheck, spellCheckOn } from './spellCheck';
 import { isModeAllowed } from '../acp/adminPolicy';
+import { errorMessage } from '../acp/errors';
 import { formatCounts } from '../acp/agentChanges';
 import { attachmentsForFiles } from './addToChat';
 import { AgentsView, AgentSummary, relativeTime } from './agentsView';
 import { tildify } from './displayText';
 import { configSection, getApprovalPolicy } from './configuration';
-import { FromHome, HomeAgent, HomeMode, HomeStrings, HomeView, ToHome } from './panelProtocol';
+import { FromHome, HomeAgent, HomeMode, HomeProject, HomeStrings, HomeView, ToHome } from './panelProtocol';
+import { projectsEnabled } from './projects';
+import { agentsColumn } from './editorPlacement';
 import { createNonce, escapeAttribute } from './webviewHtml';
 
 const homeViewType = 'gemini.agentHome';
@@ -41,6 +45,7 @@ export class AgentHome implements vscode.Disposable {
 	/** `onTyping` runs when the user starts typing a task, so the agent can start meanwhile. */
 	constructor(private readonly extensionUri: vscode.Uri, private readonly agents: AgentsView, private readonly onTyping: () => void = () => undefined) {
 		this.disposables.push(
+			onDidChangeSpellCheck(on => void this.panel?.webview.postMessage({ type: 'spellCheck', on } satisfies ToHome)),
 			vscode.commands.registerCommand('gemini.agentHome', () => this.show(false)),
 			// GeminiCode's workbench reports the window mode.
 			vscode.commands.registerCommand('_gemini.modeChanged', (mode: Mode) => this.setMode(mode)),
@@ -60,14 +65,28 @@ export class AgentHome implements vscode.Disposable {
 			this.panel.reveal(undefined, preserveFocus);
 			return;
 		}
+		if (this.opening) {
+			return;
+		}
+		// Beside the agents, never in one agent's side group.
+		this.opening = agentsColumn().then(viewColumn => this.create(viewColumn, preserveFocus)).finally(() => this.opening = undefined);
+	}
+
+	private opening: Promise<void> | undefined;
+
+	private create(viewColumn: vscode.ViewColumn, preserveFocus: boolean): void {
+		if (this.panel) {
+			this.panel.reveal(undefined, preserveFocus);
+			return;
+		}
 		const media = vscode.Uri.joinPath(this.extensionUri, 'media');
-		const panel = vscode.window.createWebviewPanel(homeViewType, vscode.l10n.t("Agent Home"), { viewColumn: vscode.ViewColumn.Active, preserveFocus }, {
+		const panel = vscode.window.createWebviewPanel(homeViewType, vscode.l10n.t("Agent Home"), { viewColumn, preserveFocus }, {
 			enableScripts: true,
 			localResourceRoots: [media],
 		});
 		panel.iconPath = vscode.Uri.joinPath(this.extensionUri, 'media', 'gemini.svg');
 		panel.webview.html = this.html(panel.webview, media);
-		panel.webview.onDidReceiveMessage((message: FromHome) => this.onMessage(message));
+		panel.webview.onDidReceiveMessage((message: FromHome) => this.onMessage(message).catch(err => void vscode.window.showErrorMessage(errorMessage(err))));
 		panel.onDidChangeViewState(e => e.webviewPanel.visible && this.schedule(0));
 		panel.onDidDispose(() => {
 			if (this.panel === panel) {
@@ -90,12 +109,20 @@ export class AgentHome implements vscode.Disposable {
 		}
 	}
 
+	/** At most one update per `updateDelayMs`, so steady agent activity can't hold the cards back; `0` updates now. */
 	private schedule(delay = updateDelayMs): void {
 		if (!this.panel?.visible) {
 			return;
 		}
-		clearTimeout(this.timer);
-		this.timer = setTimeout(() => void this.update(), delay);
+		if (delay === 0) {
+			clearTimeout(this.timer);
+		} else if (this.timer !== undefined) {
+			return;
+		}
+		this.timer = setTimeout(() => {
+			this.timer = undefined;
+			void this.update();
+		}, delay);
 	}
 
 	private async update(): Promise<void> {
@@ -116,7 +143,9 @@ export class AgentHome implements vscode.Disposable {
 	private async build(): Promise<HomeView> {
 		const now = Date.now();
 		const workspaces = (await this.agents.workspaces()).map(w => ({ folder: w.folder, name: path.basename(w.folder) || w.folder, description: tildify(path.dirname(w.folder)), git: w.git }));
-		const summaries = this.agents.summaries();
+		const all = this.agents.summaries();
+		// Projects and their threads have their own list.
+		const summaries = all.filter(a => !a.project);
 		const isActive = (a: AgentSummary) => a.state === 'working' || a.state === 'waiting' || a.state === 'done' || a.state === 'error' || !!a.changes?.files;
 		const toView = (a: AgentSummary): HomeAgent => ({
 			id: a.id, title: a.title, workspace: path.basename(a.folder), state: a.state, status: a.status,
@@ -128,6 +157,12 @@ export class AgentHome implements vscode.Disposable {
 			workspaces,
 			active: summaries.filter(isActive).map(toView),
 			earlier: summaries.filter(a => !isActive(a)).slice(0, maxEarlier).map(toView),
+			...(projectsEnabled() ? {
+				projects: all.flatMap((a): HomeProject[] => a.project?.role === 'coordinator' ? [{
+					id: a.id, title: a.title, workspace: path.basename(a.folder), state: a.state, updated: relativeTime(a.updatedAt, now),
+					threads: a.project.threads === 1 ? vscode.l10n.t("1 thread") : vscode.l10n.t("{0} threads", a.project.threads),
+				}] : []),
+			} : {}),
 			ownBranch: vscode.workspace.getConfiguration(configSection).get<boolean>('agents.ownBranch', false),
 			modes: startModes().filter(mode => isModeAllowed(getApprovalPolicy(), mode.id)),
 		};
@@ -152,6 +187,9 @@ export class AgentHome implements vscode.Disposable {
 				if (!message.ownBranch) {
 					this.agents.prepareStart(message.folder);
 				}
+				return;
+			case 'newProject':
+				await vscode.commands.executeCommand('gemini.projects.new');
 				return;
 			case 'addFolder':
 				await vscode.commands.executeCommand('workbench.action.addRootFolder');
@@ -191,6 +229,15 @@ export class AgentHome implements vscode.Disposable {
 		const nonce = createNonce();
 		const strings: HomeStrings = {
 			title: vscode.l10n.t("What should an agent do?"),
+			writeLabel: vscode.l10n.t("Write"),
+			previewLabel: vscode.l10n.t("Preview"),
+			previewMarkdown: vscode.l10n.t("Preview ({0})"),
+			previewEmpty: vscode.l10n.t("Nothing to preview yet."),
+			calloutNote: vscode.l10n.t("Note"),
+			calloutTip: vscode.l10n.t("Tip"),
+			calloutImportant: vscode.l10n.t("Important"),
+			calloutWarning: vscode.l10n.t("Warning"),
+			calloutCaution: vscode.l10n.t("Caution"),
 			subtitle: vscode.l10n.t("Describe the task. A new agent starts on it right away, and you can start more while it works."),
 			placeholder: vscode.l10n.t("Fix the rounding in the cart total and add a test"),
 			start: vscode.l10n.t("Start Agent"),
@@ -207,6 +254,9 @@ export class AgentHome implements vscode.Disposable {
 			remove: vscode.l10n.t("Remove"),
 			active: vscode.l10n.t("Agents"),
 			earlier: vscode.l10n.t("Earlier"),
+			projects: vscode.l10n.t("Projects"),
+			noProjects: vscode.l10n.t("No projects yet. A project's coordinator splits work into threads, each an agent on its own branch."),
+			newProject: vscode.l10n.t("New Project"),
 			open: vscode.l10n.t("Open"),
 			stop: vscode.l10n.t("Stop"),
 			review: vscode.l10n.t("Review"),
@@ -215,6 +265,8 @@ export class AgentHome implements vscode.Disposable {
 			noWorkspace: vscode.l10n.t("Add a workspace folder for agents to work in."),
 		};
 		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'home.js'));
+		// Preview's renderer, loaded at idle or on the first Preview so home.js stays small.
+		const draftMarkdown = webview.asWebviewUri(vscode.Uri.joinPath(media, 'draftMarkdown.js'));
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
 		const menuStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'menu.css'));
 		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'codicon.css'));
@@ -222,21 +274,23 @@ export class AgentHome implements vscode.Disposable {
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}' ${webview.cspSource};">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link href="${codicons}" rel="stylesheet">
 	<link href="${menuStyle}" rel="stylesheet">
 	<link href="${style}" rel="stylesheet">
 	<title>Agent Home</title>
 </head>
-<body class="agent-home">
+<body class="agent-home" spellcheck="false">
 	<main class="home">
 		<section class="home-start">
 			<h1 id="title"></h1>
 			<p id="subtitle" class="muted"></p>
 			<form id="composer" class="home-composer">
 				<div id="attachments" class="attachments" hidden></div>
-				<textarea id="prompt" rows="3"></textarea>
+				<div class="composer-tabs" role="tablist"><button type="button" id="tab-write" class="composer-tab" role="tab" aria-selected="true" aria-controls="prompt"></button><button type="button" id="tab-preview" class="composer-tab" role="tab" aria-selected="false" aria-controls="preview"></button></div>
+				<textarea id="prompt" rows="3" spellcheck="${spellCheckOn()}"></textarea>
+				<div id="preview" class="composer-preview markdown" role="tabpanel" tabindex="0" hidden></div>
 				<div class="home-composer-bar">
 					<span class="home-plus"><button type="button" id="plus" class="plus-button"><i class="codicon codicon-add" aria-hidden="true"></i></button><div id="plus-menu" class="home-menu" hidden></div></span>
 					<span class="spacer"></span>
@@ -251,9 +305,10 @@ export class AgentHome implements vscode.Disposable {
 			</div>
 		</section>
 		<section id="active" class="home-section"></section>
+		<section id="projects" class="home-section" hidden></section>
 		<section id="earlier" class="home-section"></section>
 	</main>
-	<script nonce="${nonce}" type="module" src="${script}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
+	<script nonce="${nonce}" type="module" src="${script}" data-draft-markdown="${draftMarkdown}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
 </html>`;
 	}

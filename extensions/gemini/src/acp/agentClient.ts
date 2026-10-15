@@ -8,7 +8,9 @@ import type { AgentConnection } from './agentConnection';
 import { AgentError, AgentErrorInfo, classifyAgentError } from './errors';
 import { Emitter } from './events';
 import { AgentRuntime, AgentRuntimeState, FileSystemHandlers } from './agentRuntime';
-import { findCliSession } from './cliSessions';
+import { findCliSession, readCliSession } from './cliSessions';
+import { isOlderThan } from './cliResolution';
+import { withoutReplayMarkers } from './replayText';
 import { PromptCapabilities, readPromptCapabilities } from './promptContent';
 import { filterModes, readSessionSettings, SessionChoice, SessionSettings } from './sessionSettings';
 import type { SlashCommand } from './slashCommands';
@@ -40,6 +42,33 @@ export interface TurnResult {
 	readonly usage?: readonly ModelTokens[];
 }
 
+/** What the client knows of a saved session before reopening it. */
+export interface SavedSession {
+	readonly index?: number;
+	readonly firstPrompt?: string;
+	/** How many updates the CLI replays on `session/load`; unknown when unset. */
+	readonly replayUpdates?: number;
+}
+
+/**
+ * gemini-cli before 0.63 loses a saved session loaded by its id (see
+ * cliSessions.ts), so those are loaded by their number in the CLI's list.
+ */
+const loadsByIdFrom = '0.63.0';
+
+/** After this long without a replayed update, a replay whose length is not known is taken as over. */
+const replayQuietMs = 250;
+
+/**
+ * gemini-cli 0.62 and 0.63 tell the client about a mode change they make
+ * themselves with message text such as `[MODE_UPDATE] autoEdit`, not with
+ * `current_mode_update`. Several can arrive in one chunk.
+ */
+const modeUpdateText = /^(?:\[MODE_UPDATE\] [\w-]+)+$/;
+
+/** Updates the CLI sends when it replays a saved session's history. */
+const replayKinds: ReadonlySet<string> = new Set(['user_message_chunk', 'agent_message_chunk', 'agent_thought_chunk', 'tool_call']);
+
 export interface AgentClientOptions {
 	readonly cwd: string;
 	/** Asked for every `session/request_permission`; must resolve, with `cancelled` if nothing else. */
@@ -61,16 +90,29 @@ export interface AgentClientOptions {
 	 * gemini-cli its routing call before every prompt.
 	 */
 	readonly preferredModel?: (available: readonly SessionChoice[]) => string | undefined;
+	/** Shapes the models the agent offers into the list the picker shows, such as the terminal's `/model` list. */
+	readonly modelList?: (available: readonly SessionChoice[]) => readonly SessionChoice[];
 	/** Which approval modes the picker may offer; all of them when unset. */
 	readonly isModeAllowed?: (modeId: string) => boolean;
-	/** Finds a saved session's number and first prompt; the CLI's own files when unset. */
-	readonly findSavedSession?: (cwd: string, id: string) => Promise<{ readonly index: number; readonly firstPrompt: string } | undefined>;
+	/**
+	 * Finds a saved session in the CLI's files: its number and first prompt
+	 * (for a CLI that must load it by number) and how many updates its replay
+	 * has. The CLI's own files when unset.
+	 */
+	readonly findSavedSession?: (cwd: string, id: string, byNumber: boolean) => Promise<SavedSession | undefined>;
 	/**
 	 * MCP servers GeminiCode itself serves to this session, such as the
 	 * browser; asked each time a session opens. Servers over a transport the
 	 * agent does not advertise (`mcpCapabilities`) are left out.
 	 */
 	readonly mcpServers?: () => readonly acp.McpServer[];
+	/**
+	 * The key of a spare session this client may take instead of opening one
+	 * (see `AgentRuntime.prepareSession`); by default, the folder and servers.
+	 */
+	readonly spareKey?: () => string | undefined;
+	/** Told the servers each session opened with, which differ from `mcpServers` when it took a spare. */
+	readonly onDidOpenSession?: (mcpServers: readonly acp.McpServer[]) => void;
 }
 
 /**
@@ -87,6 +129,25 @@ export class AgentClient {
 	private readonly onDidReceiveEventEmitter = new Emitter<ChatEvent>();
 	readonly onDidReceiveEvent = this.onDidReceiveEventEmitter.event;
 
+	private readonly onDidChangeModeByAgentEmitter = new Emitter<{ readonly from: string | undefined; readonly to: string }>();
+	/** The agent changed the session's mode itself, such as out of Plan once a plan is approved. */
+	readonly onDidChangeModeByAgent = this.onDidChangeModeByAgentEmitter.event;
+
+	private readonly onDidAllowInYoloEmitter = new Emitter<acp.RequestPermissionRequest>();
+	/** A permission request that came in YOLO mode, which the client allowed at once. */
+	readonly onDidAllowInYolo = this.onDidAllowInYoloEmitter.event;
+
+	private readonly onDidFailToReopenEmitter = new Emitter<{ readonly sessionId: string; readonly error: AgentErrorInfo }>();
+	/** A saved session could not be reopened, and why; a new session opens instead. */
+	readonly onDidFailToReopen = this.onDidFailToReopenEmitter.event;
+
+	private readonly onDidReplayEventEmitter = new Emitter<ChatEvent>();
+	/**
+	 * The history a reopened session replays, apart from new turns, with the
+	 * CLI's markers taken out. A chat that already shows its saved copy can ignore it.
+	 */
+	readonly onDidReplayEvent = this.onDidReplayEventEmitter.event;
+
 	private readonly onDidChangeSettingsEmitter = new Emitter<SessionSettings>();
 	/** The current session's mode and model choices changed. */
 	readonly onDidChangeSettings = this.onDidChangeSettingsEmitter.event;
@@ -99,6 +160,12 @@ export class AgentClient {
 	private _state: AgentClientState = { kind: 'idle' };
 	private _settings: SessionSettings = {};
 	private pendingMode: string | undefined;
+	/** The mode the user picked last, which a mode change the CLI makes on its own must not undo (see `onModeUpdate`). */
+	private chosenMode: string | undefined;
+	/** Prompts running in this session. */
+	private turns = 0;
+	/** YOLO picked during a turn on Auto, sent to the CLI when the turn ends (see `setMode`). */
+	private deferredMode: string | undefined;
 	private connection: AgentConnection | undefined;
 	private adapter = new SessionUpdateAdapter();
 	private registration: { dispose(): void } | undefined;
@@ -109,6 +176,8 @@ export class AgentClient {
 	private readonly runtimeListener: { dispose(): void };
 	/** Set until `open()` with `openLater`: the runtime may be ready, but no session is opened yet. */
 	private held: boolean;
+	/** While a reopened session replays its history: updates still to come (unknown when unset), and the end that prompts wait for. */
+	private replay: { remaining?: number; quiet?: ReturnType<typeof setTimeout>; readonly done: Promise<void>; readonly end: () => void } | undefined;
 
 	constructor(private readonly runtime: AgentRuntime, private readonly options: AgentClientOptions) {
 		this.resumeSessionId = options.resumeSessionId;
@@ -175,10 +244,30 @@ export class AgentClient {
 	/** Switches the next session this client opens, such as the one reopened after a restart, to `modeId`. */
 	setModeOnNextSession(modeId: string): void {
 		this.pendingMode = modeId;
+		this.chosenMode = modeId;
 	}
 
-	setMode(modeId: string): Promise<void> {
-		return this.changeSetting('mode', modeId, (connection, sessionId) => connection.setMode(sessionId, modeId));
+	async setMode(modeId: string): Promise<void> {
+		if (this._state.kind !== 'ready') {
+			// Picked while the agent starts: the session opens in it.
+			this.setModeOnNextSession(modeId);
+			return;
+		}
+		this.deferredMode = undefined;
+		const mode = this._settings.mode;
+		if (modeId === 'yolo' && this.turns > 0 && mode?.available.some(choice => choice.id === modeId) && /^auto/.test(this._settings.model?.currentId ?? '')) {
+			// Switching to or from YOLO makes gemini-cli 0.63 route Auto again in the middle of the
+			// turn (`clearCurrentSequenceModel`), which can move the task to another model. So the
+			// switch waits for the turn's end, and until then requests are allowed here, as in YOLO.
+			this.deferredMode = modeId;
+			this.chosenMode = modeId;
+			this.setSettings({ ...this._settings, mode: { ...mode, currentId: modeId } });
+			return;
+		}
+		await this.changeSetting('mode', modeId, (connection, sessionId) => connection.setMode(sessionId, modeId));
+		if (this._settings.mode?.currentId === modeId) {
+			this.chosenMode = modeId;
+		}
 	}
 
 	setModel(modelId: string): Promise<void> {
@@ -197,16 +286,28 @@ export class AgentClient {
 
 	/** Like `prompt`, and also resolves with the tokens the turn used, when the agent reports them. */
 	async promptTurn(content: string | acp.ContentBlock[]): Promise<TurnResult> {
+		if (this.replay) {
+			// The answer must not mix with the history still arriving.
+			await this.replay.done;
+		}
 		const state = this._state;
 		if (state.kind !== 'ready' || !this.connection) {
 			throw new Error('The agent is not ready.');
 		}
+		const connection = this.connection;
+		this.turns++;
 		try {
-			const response = await this.runtime.trackTurn(this.connection.prompt(state.sessionId, typeof content === 'string' ? [{ type: 'text', text: content }] : content));
+			const response = await this.runtime.trackTurn(connection.prompt(state.sessionId, typeof content === 'string' ? [{ type: 'text', text: content }] : content));
 			const usage = readTurnUsage(response._meta);
 			return { stopReason: response.stopReason, ...(usage ? { usage } : {}) };
 		} catch (err) {
 			throw new AgentError(classifyAgentError(err));
+		} finally {
+			const deferred = this.deferredMode;
+			if (--this.turns === 0 && deferred && this.connection === connection) {
+				this.deferredMode = undefined;
+				void connection.setMode(state.sessionId, deferred).catch(() => undefined);
+			}
 		}
 	}
 
@@ -222,6 +323,10 @@ export class AgentClient {
 		this.dropSession();
 		this.onDidChangeStateEmitter.dispose();
 		this.onDidReceiveEventEmitter.dispose();
+		this.onDidReplayEventEmitter.dispose();
+		this.onDidFailToReopenEmitter.dispose();
+		this.onDidChangeModeByAgentEmitter.dispose();
+		this.onDidAllowInYoloEmitter.dispose();
 		this.onDidChangeSettingsEmitter.dispose();
 		this.onDidChangeCommandsEmitter.dispose();
 	}
@@ -237,6 +342,7 @@ export class AgentClient {
 				}
 				break;
 			case 'connecting':
+				this.keepModeAcrossRestart();
 				this.dropSession();
 				this.setState({ kind: 'connecting' });
 				break;
@@ -251,52 +357,84 @@ export class AgentClient {
 		}
 	}
 
+	/** The session reopened after the agent restarts, such as to trust a folder, opens in the mode this one had. */
+	private keepModeAcrossRestart(): void {
+		const mode = this._settings.mode?.currentId;
+		if (mode && this._state.kind === 'ready') {
+			this.pendingMode ??= mode;
+		}
+	}
+
 	/** Opens a session: with `resume`, the last one is reopened if the agent can, else a new one. */
 	private async openSession(resume: boolean): Promise<void> {
 		this.dropSession();
 		const generation = ++this.generation;
 		this.setState({ kind: 'connecting' });
 		try {
-			const { connection, agent, session, savedSessionId } = await this.loadOrCreate(resume ? this.resumeSessionId : undefined);
+			const { connection, agent, session, savedSessionId, replayUpdates } = await this.loadOrCreate(resume ? this.resumeSessionId : undefined);
 			if (generation !== this.generation) {
 				return;
 			}
 			this.connection = connection;
 			this.adapter = new SessionUpdateAdapter();
+			if (replayUpdates !== null) {
+				// Before registering, which hands over the updates that came first.
+				this.beginReplay(replayUpdates);
+			}
 			this.registration = this.runtime.register(session.sessionId, {
 				sessionUpdate: update => this.onSessionUpdate(update),
-				requestPermission: params => this.options.requestPermission(params),
+				requestPermission: params => this.requestPermission(params),
 				fileSystem: this.options.fileSystem,
 			});
 			this.resumeSessionId = savedSessionId;
-			const preferred = await this.applyPreferredModel(connection, session.sessionId, filterModes(readSessionSettings(session), this.options.isModeAllowed));
-			const settings = await this.applyPendingMode(connection, session.sessionId, preferred);
+			// Model and mode together rather than one after the other: they are independent, and each is a round trip before the chat is ready.
+			const opened = withModelList(filterModes(readSessionSettings(session), this.options.isModeAllowed), this.options.modelList);
+			const [withModel, withMode] = await Promise.all([
+				this.applyPreferredModel(connection, session.sessionId, opened),
+				this.applyPendingMode(connection, session.sessionId, opened),
+			]);
+			const settings: SessionSettings = { ...opened, model: withModel.model, mode: withMode.mode };
 			if (generation !== this.generation) {
 				return;
 			}
 			this.setReady(agent, session, savedSessionId, settings);
 		} catch (err) {
 			// If the process died, the runtime reports why (and the sidecar may
-			// restart it); the closed-connection error says less.
-			if (generation === this.generation && await this.runtimeStaysReady(1_000) && generation === this.generation) {
-				this.setState({ kind: 'error', error: err instanceof AgentError ? err.info : classifyAgentError(err) });
+			// restart it); the closed-connection error says less. An error the
+			// agent explained, such as a sign-in one, shows at once.
+			const error = err instanceof AgentError ? err.info : classifyAgentError(err);
+			const explained = error.kind !== 'unknown' && error.kind !== 'agent-exited';
+			if (generation === this.generation && (explained || await this.runtimeStaysReady(1_000)) && generation === this.generation) {
+				this.setState({ kind: 'error', error });
 			}
 		}
 	}
 
-	private async loadOrCreate(resumeSessionId: string | undefined): Promise<Awaited<ReturnType<AgentRuntime['newSession']>> & { readonly savedSessionId: string }> {
+	/** `replayUpdates` is null for a new session, which replays nothing, and undefined for a reopened one whose replay length is unknown. */
+	private async loadOrCreate(resumeSessionId: string | undefined): Promise<Awaited<ReturnType<AgentRuntime['newSession']>> & { readonly savedSessionId: string; readonly replayUpdates: number | undefined | null }> {
 		if (resumeSessionId) {
 			try {
-				// By its number where the CLI lists it: gemini-cli 0.62 loses a saved session loaded by its id (see cliSessions.ts).
-				const saved = await (this.options.findSavedSession ?? findCliSession)(this.options.cwd, resumeSessionId).catch(() => undefined);
-				const loaded = await this.runtime.loadSession(this.options.cwd, saved ? String(saved.index) : resumeSessionId, saved?.firstPrompt, this.mcpServers());
-				return { ...loaded, savedSessionId: resumeSessionId };
-			} catch {
-				// Not supported, or the agent no longer has it: start afresh.
+				const version = this.runtime.state.kind === 'ready' ? this.runtime.state.agent.agentInfo?.version ?? '' : '';
+				const byNumber = isOlderThan(version, loadsByIdFrom);
+				const finding = (this.options.findSavedSession ?? findSavedCliSession)(this.options.cwd, resumeSessionId, byNumber).catch(() => undefined);
+				if (!byNumber) {
+					// Loaded by id: the session file is read for its replay length while the agent loads it.
+					const loaded = await this.runtime.loadSession(this.options.cwd, resumeSessionId, undefined, this.mcpServers());
+					return { ...loaded, savedSessionId: resumeSessionId, replayUpdates: (await finding)?.replayUpdates };
+				}
+				const saved = await finding;
+				const loadId = saved?.index !== undefined ? String(saved.index) : resumeSessionId;
+				// The first-prompt check is only for a load by number, where the number may have moved to another session.
+				const loaded = await this.runtime.loadSession(this.options.cwd, loadId, saved?.firstPrompt, this.mcpServers());
+				return { ...loaded, savedSessionId: resumeSessionId, replayUpdates: saved?.replayUpdates };
+			} catch (err) {
+				// Not supported, or the agent no longer has it: start afresh, and say why.
+				this.onDidFailToReopenEmitter.fire({ sessionId: resumeSessionId, error: err instanceof AgentError ? err.info : classifyAgentError(err) });
 			}
 		}
-		const created = await this.runtime.newSession(this.options.cwd, this.mcpServers());
-		return { ...created, savedSessionId: created.session.sessionId };
+		const created = await this.runtime.newSession(this.options.cwd, this.mcpServers(), this.options.spareKey?.());
+		this.options.onDidOpenSession?.(created.mcpServers);
+		return { ...created, savedSessionId: created.session.sessionId, replayUpdates: null };
 	}
 
 	/** The servers for a session the runtime opens now, as far as the agent can take them. */
@@ -324,6 +462,15 @@ export class AgentClient {
 	}
 
 	private onSessionUpdate(update: acp.SessionUpdate): void {
+		if (this.replay && replayKinds.has(update.sessionUpdate)) {
+			this.onReplayed(update);
+			return;
+		}
+		if (update.sessionUpdate === 'agent_message_chunk' && update.content.type === 'text' && modeUpdateText.test(update.content.text.trim())) {
+			const modes = update.content.text.trim().split('[MODE_UPDATE] ').filter(Boolean);
+			this.onModeUpdate(modes[modes.length - 1].trim());
+			return;
+		}
 		if (update.sessionUpdate === 'current_mode_update' && this._settings.mode) {
 			this.setSettings({ ...this._settings, mode: { ...this._settings.mode, currentId: update.currentModeId } });
 		}
@@ -336,8 +483,103 @@ export class AgentClient {
 		this.onDidReceiveEventEmitter.fire(this.adapter.adapt(update));
 	}
 
+	/**
+	 * A mode change the CLI made itself. Allowing an edit for the session
+	 * makes gemini-cli 0.63 switch to Auto Edit even from YOLO
+	 * (`isAutoEditTransition`), which would make YOLO ask again: the user's
+	 * YOLO is put back at once. Other changes, such as out of Plan once a plan
+	 * is approved, are the agent's to make and are kept.
+	 */
+	private onModeUpdate(modeId: string): void {
+		const mode = this._settings.mode;
+		const state = this._state;
+		if (!mode || !mode.available.some(choice => choice.id === modeId) || mode.currentId === modeId) {
+			return;
+		}
+		if (this.chosenMode === 'yolo' && modeId === 'autoEdit' && this.deferredMode === 'yolo') {
+			// YOLO is sent when the turn ends.
+			return;
+		}
+		if (this.chosenMode === 'yolo' && modeId === 'autoEdit' && state.kind === 'ready' && this.connection) {
+			void this.connection.setMode(state.sessionId, 'yolo').catch(() => this.setSettings({ ...this._settings, mode: { ...mode, currentId: modeId } }));
+			return;
+		}
+		const from = mode.currentId;
+		this.chosenMode = modeId;
+		this.setSettings({ ...this._settings, mode: { ...mode, currentId: modeId } });
+		this.onDidChangeModeByAgentEmitter.fire({ from, to: modeId });
+	}
+
+	/**
+	 * Asks the user, through the chat. In YOLO a request should not come; when
+	 * one does anyway, it is allowed at once, as the user chose (and as the
+	 * admin policy allows, else YOLO would not be offered).
+	 */
+	private requestPermission(params: acp.RequestPermissionRequest): Promise<acp.RequestPermissionResponse> {
+		const allow = params.options.find(option => option.kind === 'allow_once') ?? params.options.find(option => option.kind === 'allow_always');
+		if (this._settings.mode?.currentId === 'yolo' && allow && (this.options.isModeAllowed?.('yolo') ?? true)) {
+			this.onDidAllowInYoloEmitter.fire(params);
+			return Promise.resolve({ outcome: { outcome: 'selected', optionId: allow.optionId } });
+		}
+		return this.options.requestPermission(params);
+	}
+
+	/** Starts counting a reopened session's replay; `count` updates are coming, or an unknown number. */
+	private beginReplay(count: number | undefined): void {
+		this.endReplay();
+		let end!: () => void;
+		const done = new Promise<void>(resolve => end = resolve);
+		this.replay = { remaining: count, done, end };
+		if (count === 0) {
+			this.endReplay();
+		} else {
+			this.armReplayQuiet();
+		}
+	}
+
+	/** One replayed update: shown to whoever shows the replay (cleaned), never as part of a turn. */
+	private onReplayed(update: acp.SessionUpdate): void {
+		const replay = this.replay!;
+		const event = this.adapter.adapt(update);
+		if (event.kind === 'text') {
+			const text = withoutReplayMarkers(event.text);
+			if (text) {
+				this.onDidReplayEventEmitter.fire({ ...event, text });
+			}
+		} else {
+			this.onDidReplayEventEmitter.fire(event);
+		}
+		if (replay.remaining !== undefined && --replay.remaining <= 0) {
+			this.endReplay();
+		} else {
+			this.armReplayQuiet();
+		}
+	}
+
+	/**
+	 * Ends the replay when no update came for a while. With a known count it
+	 * is a fallback for a count that is off; prompts wait for nothing longer.
+	 */
+	private armReplayQuiet(): void {
+		const replay = this.replay;
+		if (replay) {
+			clearTimeout(replay.quiet);
+			replay.quiet = setTimeout(() => this.replay === replay && this.endReplay(), replayQuietMs);
+		}
+	}
+
+	private endReplay(): void {
+		const replay = this.replay;
+		this.replay = undefined;
+		if (replay) {
+			clearTimeout(replay.quiet);
+			replay.end();
+		}
+	}
+
 	/** Stops listening to the current session. The CLI has no way to close one, so it stays in the agent's memory. */
 	private dropSession(): void {
+		this.endReplay();
 		this.generation++;
 		this.registration?.dispose();
 		this.registration = undefined;
@@ -435,4 +677,25 @@ export function supportedMcpServers(agent: acp.InitializeResponse | undefined, s
 		const type = (server as { readonly type?: 'http' | 'sse' | 'acp' }).type;
 		return type === undefined || transports?.[type] === true;
 	});
+}
+
+/** The CLI's saved session `id` in `cwd`: from its own file, or numbered as the CLI lists it for a load by number. */
+async function findSavedCliSession(cwd: string, id: string, byNumber: boolean): Promise<SavedSession | undefined> {
+	return byNumber ? findCliSession(cwd, id) : readCliSession(cwd, id);
+}
+
+/** `settings` with its models shaped by `modelList`, keeping the current model listed even when the shaping would drop it. */
+function withModelList(settings: SessionSettings, modelList: AgentClientOptions['modelList']): SessionSettings {
+	const model = settings.model;
+	if (!model || !modelList) {
+		return settings;
+	}
+	const available = [...modelList(model.available)];
+	if (!available.some(choice => choice.id === model.currentId)) {
+		const current = model.available.find(choice => choice.id === model.currentId);
+		if (current) {
+			available.unshift(current);
+		}
+	}
+	return { ...settings, model: { ...model, available } };
 }

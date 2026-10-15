@@ -79,7 +79,7 @@ export class ReviewController implements vscode.CodeLensProvider, vscode.HoverPr
 			vscode.languages.registerHoverProvider(selector, this),
 			vscode.window.onDidChangeVisibleTextEditors(() => this.refresh()),
 			vscode.window.onDidChangeActiveTextEditor(() => this.updateContext()),
-			vscode.workspace.onDidChangeTextDocument(e => this.reviews.has(e.document.uri.fsPath) && this.schedule()),
+			vscode.workspace.onDidChangeTextDocument(e => this.reviews.has(e.document.uri.fsPath) && this.refreshSoon()),
 			vscode.commands.registerCommand('gemini.review.keepChange', (uri: string, index: number) => this.keepChange(uri, index)),
 			vscode.commands.registerCommand('gemini.review.undoChange', (uri: string, index: number) => this.undoChange(uri, index)),
 			vscode.commands.registerCommand('gemini.review.keepFile', (uri?: unknown) => this.keepFile(fileOf(uri))),
@@ -94,7 +94,7 @@ export class ReviewController implements vscode.CodeLensProvider, vscode.HoverPr
 	/** Reviews `source`'s changes too, such as inline edits, until disposed. */
 	addSource(source: ReviewSource): vscode.Disposable {
 		this.extraSources.push(source);
-		const listener = source.changes.onDidChange(() => this.refresh());
+		const listener = source.changes.onDidChange(() => this.refreshSoon());
 		return new vscode.Disposable(() => {
 			listener.dispose();
 			this.extraSources.splice(this.extraSources.indexOf(source), 1);
@@ -173,7 +173,8 @@ export class ReviewController implements vscode.CodeLensProvider, vscode.HoverPr
 		vscode.Disposable.from(...this.disposables).dispose();
 	}
 
-	private schedule(): void {
+	/** Refreshes once a burst of edits (typing, or an agent's tool calls) has settled. */
+	refreshSoon(): void {
 		clearTimeout(this.timer);
 		this.timer = setTimeout(() => this.refresh(), refreshDelayMs);
 	}

@@ -11,7 +11,7 @@
 // user put another view there; opening any other view
 // in the side bar switches to Editor mode with that view open.
 // The title bar carries the switch right after the window controls. In Agents
-// mode the editor tabs move into the title bar as one capsule (geminiTitleTabs.ts)
+// mode the agents' tabs move into the title bar as one capsule (geminiTitleTabs.ts)
 // and show each agent's state; in Editor mode the editors keep their own tab row
 // and the title bar shows a pill for each agent that is working or waiting.
 // Agent states come from the Gemini extension through `_gemini.setAgentStatus`.
@@ -45,6 +45,8 @@ import { ILifecycleService, LifecyclePhase } from '../../../services/lifecycle/c
 import { IPaneCompositePartService } from '../../../services/panecomposite/browser/panecomposite.js';
 import { TitleBarLeadingActionsGroup } from '../../../browser/parts/titlebar/titlebarActions.js';
 import { GeminiTitleTabs } from './geminiTitleTabs.js';
+import { holdsAgents } from './geminiAgentGroups.js';
+import { setGeminiTabRowPolicy } from '../../../browser/parts/editor/geminiTabRows.js';
 
 type Mode = 'agents' | 'editor';
 
@@ -262,12 +264,14 @@ class GeminiModes extends Disposable implements IWorkbenchContribution {
 		state.mode = mode;
 		this.context.set(mode);
 		// In memory only, so the user's own settings are untouched and come back in Editor mode.
-		// Agents mode has no activity bar and draws the editor tabs in the title bar. Its Command Center is
+		// Agents mode has no activity bar and draws the agents' tabs in the title bar; every other group
+		// keeps a normal tab row, so a file an agent opens has its name and × (geminiTabRows.ts). Its Command Center is
 		// hidden by geminiModes.css rather than by `window.commandCenter`, which the title bar cannot change
 		// this early in startup; a search button on the right of the title bar opens the same Quick Open.
 		const agents = mode === 'agents';
 		void this.configurationService.updateValue(activityBarLocation, agents ? 'hidden' : undefined, ConfigurationTarget.MEMORY);
-		void this.configurationService.updateValue(editorShowTabs, agents ? 'none' : undefined, ConfigurationTarget.MEMORY);
+		setGeminiTabRowPolicy(agents ? holdsAgents : undefined);
+		void this.configurationService.updateValue(editorShowTabs, agents ? 'multiple' : undefined, ConfigurationTarget.MEMORY);
 		for (const container of this.layoutService.containers) {
 			container.classList.toggle(agentsModeClass, agents);
 		}

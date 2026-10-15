@@ -9,7 +9,11 @@
 // the real Gemini CLI against a local stand-in for the Gemini API, so it needs
 // no account and no network, and each model call takes --latency ms.
 //
-//   node --experimental-transform-types --no-warnings extensions/gemini/scripts/perf-first-reply.mts --cli <gemini.js> [--runs 3] [--latency 300]
+//   node --experimental-transform-types --no-warnings extensions/gemini/scripts/perf-first-reply.mts --cli <gemini.js> [--runs 3] [--latency 300] [--repo <folder>]
+//
+// By default the agent works in an empty, untrusted folder, where the CLI loads
+// no context files, MCP servers or hooks. --repo runs it in a real repository,
+// trusted, as a user's agent does, which is the number the budgets go by.
 //
 // Starting early and the spare session take the first two off the first
 // prompt; picking a model takes off Auto's routing call (one more --latency).
@@ -29,6 +33,7 @@ const { values: args } = parseArgs({
 		cli: { type: 'string' },
 		runs: { type: 'string', default: '3' },
 		latency: { type: 'string', default: '300' },
+		repo: { type: 'string' },
 	},
 });
 if (!args.cli) {
@@ -37,6 +42,7 @@ if (!args.cli) {
 }
 const cli = path.resolve(args.cli);
 const latencyMs = Number(args.latency);
+const repo = args.repo ? path.resolve(args.repo) : undefined;
 
 const server = createServer((req, res) => {
 	req.resume().on('end', () => setTimeout(() => {
@@ -52,13 +58,18 @@ const server = createServer((req, res) => {
 });
 await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
 
-interface Run { readonly initialize: number; readonly sessionNew: number; readonly autoReply: number; readonly pickedReply: number }
+interface Run { readonly initialize: number; readonly sessionNew: number; readonly secondSessionNew: number; readonly autoReply: number; readonly pickedReply: number }
 
 async function run(): Promise<Run> {
 	const home = mkdtempSync(path.join(tmpdir(), 'perf-home-'));
-	const work = path.join(home, 'work');
-	mkdirSync(work);
+	const work = repo ?? path.join(home, 'work');
+	if (!repo) {
+		mkdirSync(work);
+	}
 	mkdirSync(path.join(home, '.gemini'));
+	if (repo) {
+		writeFileSync(path.join(home, '.gemini', 'trustedFolders.json'), JSON.stringify({ [repo]: 'TRUST_FOLDER' }));
+	}
 	writeFileSync(path.join(home, '.gemini', 'settings.json'), JSON.stringify({ security: { auth: { selectedType: 'gemini-api-key' } }, privacy: { usageStatisticsEnabled: false } }));
 	const env: NodeJS.ProcessEnv = {
 		...process.env,
@@ -66,7 +77,7 @@ async function run(): Promise<Run> {
 		USERPROFILE: home,
 		GEMINI_API_KEY: 'placeholder',
 		GEMINI_CLI_NO_RELAUNCH: 'true',
-		GEMINI_CLI_TRUST_WORKSPACE: 'true',
+		...(repo ? {} : { GEMINI_CLI_TRUST_WORKSPACE: 'true' }),
 		GOOGLE_GEMINI_BASE_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
 		NO_PROXY: '127.0.0.1',
 	};
@@ -93,7 +104,9 @@ async function run(): Promise<Run> {
 		const opening = performance.now();
 		const auto = await connection.agent.request('session/new', { cwd: work, mcpServers: [] });
 		const sessionNew = performance.now() - opening;
+		const reopening = performance.now();
 		const picked = await connection.agent.request('session/new', { cwd: work, mcpServers: [] });
+		const secondSessionNew = performance.now() - reopening;
 		const models = (picked as { models?: { availableModels?: { modelId: string }[] } }).models?.availableModels?.map(m => m.modelId) ?? [];
 		const flash = models.find(id => /flash/i.test(id) && !/lite/i.test(id));
 		if (flash) {
@@ -106,7 +119,7 @@ async function run(): Promise<Run> {
 			await connection.agent.request('session/prompt', { sessionId, prompt: [{ type: 'text', text: 'Say done.' }] });
 			return text;
 		};
-		return { initialize, sessionNew, autoReply: await firstReply(auto.sessionId), pickedReply: await firstReply(picked.sessionId) };
+		return { initialize, sessionNew, secondSessionNew, autoReply: await firstReply(auto.sessionId), pickedReply: await firstReply(picked.sessionId) };
 	} finally {
 		child.kill();
 		rmSync(home, { recursive: true, force: true, maxRetries: 3 });
@@ -121,8 +134,9 @@ server.close();
 
 const median = (values: number[]) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)];
 const row = (name: string, key: keyof Run) => console.log(`${name.padEnd(36)} ${median(runs.map(r => r[key])).toFixed(0).padStart(6)} ms`);
-console.log(`Median of ${runs.length} runs, each model call ${latencyMs} ms:`);
+console.log(`Median of ${runs.length} runs in ${repo ?? 'an empty untrusted folder'}, each model call ${latencyMs} ms:`);
 row('Agent start (initialize)', 'initialize');
 row('Session open (session/new)', 'sessionNew');
+row('Next session open (a spare)', 'secondSessionNew');
 row('First text, model on Auto', 'autoReply');
 row('First text, Flash picked', 'pickedReply');

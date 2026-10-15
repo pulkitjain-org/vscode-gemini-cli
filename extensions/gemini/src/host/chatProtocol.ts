@@ -19,7 +19,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 17;
+export const chatProtocolVersion = 21;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -33,9 +33,94 @@ export interface ViewStatus {
 	readonly actions?: readonly { readonly label: string; readonly command: StatusCommand }[];
 }
 
+/** What a project chat's thread card buttons do. */
+export type ThreadAction = 'open' | 'stop' | 'merge' | 'review' | 'undo' | 'approve' | 'retry';
+
+/** A thread the user starts from the project chat's New thread dialog. */
+export interface NewThread {
+	readonly title: string;
+	readonly brief: string;
+	/** The branch to create; a free name is picked from the title when empty or taken. */
+	readonly branch?: string;
+	/** The model the thread starts on; unset for the one new agents get. */
+	readonly model?: string;
+	readonly planFirst: boolean;
+}
+
+/** The project chat's side panel: what the threads are doing and what the coordinator reads. */
+export interface ProjectPanel {
+	/** The project's name, which the New thread dialog's title shows. */
+	readonly name: string;
+	/** How many threads are in each state; merged and undone threads are left out. */
+	readonly counts: { readonly working: number; readonly waiting: number; readonly planned: number; readonly done: number; readonly merged: number };
+	/** The repo's Conductor files, when it has a `conductor/` folder. */
+	readonly conductor?: { readonly openTracks: number };
+	/** The model the coordinator runs on, when known. */
+	readonly model?: string;
+	/** Every thread, oldest first, each opening its own chat. */
+	readonly threads: readonly { readonly id: string; readonly title: string; readonly state: 'working' | 'waiting' | 'planned' | 'done' | 'merged' }[];
+}
+
+/** A project thread's way back to its project chat. */
+export interface ParentProject {
+	/** "Thread in vca-qa-automation" */
+	readonly label: string;
+	/** "Open project chat" */
+	readonly action: string;
+}
+
+/** The strings only a project's chat shows (Projects preview). */
+export interface ProjectChatStrings {
+	readonly placeholder: string;
+	/** The "+" menu's item to start a thread directly. */
+	readonly newThread: string;
+	/** The New thread dialog; `{0}` in its title is the project's name. */
+	readonly dialog: {
+		readonly title: string;
+		readonly titleLabel: string;
+		readonly briefLabel: string;
+		readonly briefPlaceholder: string;
+		readonly branchLabel: string;
+		readonly modelLabel: string;
+		readonly defaultModel: string;
+		readonly worktreeHint: string;
+		readonly planFirst: string;
+		readonly planFirstHint: string;
+		readonly startsAtOnce: string;
+		readonly cancel: string;
+		readonly start: string;
+		readonly close: string;
+	};
+	/** The side panel; `{0}` is a count or a model's name. */
+	readonly panel: {
+		readonly title: string;
+		readonly noThreads: string;
+		readonly working: string;
+		readonly waiting: string;
+		readonly planned: string;
+		readonly done: string;
+		readonly merged: string;
+		readonly context: string;
+		readonly conductorTracks: string;
+		readonly noConductor: string;
+		readonly model: string;
+	};
+	readonly states: { readonly starting: string; readonly working: string; readonly waiting: string; readonly planned: string; readonly done: string; readonly error: string };
+	readonly actions: { readonly [action in ThreadAction]: string };
+	readonly openToAnswer: string;
+	readonly merged: string;
+	readonly undone: string;
+	/** `{0}` is a Conductor track's id. */
+	readonly track: string;
+}
+
 /** Localised strings the webview shows; it has no l10n of its own. Placeholders are `{0}`. */
 export interface ChatStrings {
 	readonly placeholder: string;
+	/** Set only in a project's chat. */
+	readonly project?: ProjectChatStrings;
+	/** The badge on a thread's brief and the notes its coordinator relays. */
+	readonly fromCoordinator: string;
 	readonly placeholderFollowUp: string;
 	readonly send: string;
 	readonly stop: string;
@@ -333,6 +418,11 @@ export type FromWebview =
 	/** Close the file Follow the agent opened last. */
 	| { readonly type: 'closeFollowed' }
 	| { readonly type: 'createBranchAndCommit' }
+	/** A project chat's thread card button. */
+	| { readonly type: 'threadAction'; readonly thread: string; readonly action: ThreadAction }
+	/** The New thread dialog: start a thread directly; the coordinator hears afterwards. */
+	| { readonly type: 'startThread'; readonly thread: NewThread }
+	| { readonly type: 'openParentProject' }
 	/** Put back the files the turn ending with turnEnd item `itemId` changed, and those of later turns. */
 	| { readonly type: 'undoTurn'; readonly itemId: string }
 	/** Send the prompt of the turn ending with `itemId` again; only the latest turn offers it. */
@@ -350,10 +440,14 @@ export type FromWebview =
 	| { readonly type: 'openUpgrade' };
 
 export type ToWebview =
+	/** `gemini.chat.spellCheck` changed. */
+	| { readonly type: 'spellCheck'; readonly on: boolean }
 	| { readonly type: 'reset'; readonly items: readonly TranscriptItem[]; readonly busy: boolean; readonly status: ViewStatus; readonly settings: SessionSettings }
 	/** Added or changed items, in the order they first changed; streaming updates are batched. */
 	| { readonly type: 'items'; readonly items: readonly ItemUpdate[] }
 	| { readonly type: 'busy'; readonly busy: boolean }
+	/** The view's tab or pane went out of sight, or came back: a hidden view keeps updates and renders them when shown. */
+	| { readonly type: 'visibility'; readonly hidden: boolean }
 	| { readonly type: 'status'; readonly status: ViewStatus }
 	| { readonly type: 'settings'; readonly settings: SessionSettings }
 	/** Whether the agent takes pasted images; sent with every session. */
@@ -387,4 +481,10 @@ export type ToWebview =
 	/** The context window's use; unset when unknown, such as before the first reply. */
 	| { readonly type: 'context'; readonly context: ViewContext | undefined }
 	/** Show Usage and Quota: open the usage popover, or close it if open. */
-	| { readonly type: 'toggleUsage' };
+	| { readonly type: 'toggleUsage' }
+	/** A project chat's side panel. */
+	| { readonly type: 'projectPanel'; readonly panel: ProjectPanel }
+	/** Open the New thread dialog, from the New Thread command. */
+	| { readonly type: 'openNewThread' }
+	/** A project thread's chat: the bar that leads back to its project chat. */
+	| { readonly type: 'parentProject'; readonly parent: ParentProject };

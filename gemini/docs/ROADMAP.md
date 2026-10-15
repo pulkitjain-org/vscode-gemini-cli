@@ -2,7 +2,7 @@
 
 What is left before and after the pilot. The design that is already built is described in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-Distribution is done: release builds for Mac (Apple silicon) with the bundled Gemini CLI, published to GitHub Releases, the download page, and the in-app update notice ([RELEASING.md](RELEASING.md)). Releases have shipped since `v0.1.0`; the current one is 0.4.0. What remains of distribution is listed below: signing before the pilot, and other platforms and auto-update after it.
+Distribution is done: release builds for Mac (Apple silicon) with the bundled Gemini CLI, published to GitHub Releases, the download page, and the in-app update notice ([RELEASING.md](RELEASING.md)). Releases have shipped since `v0.1.0`; the current one is 1.0.0. What remains of distribution is listed below: signing before the pilot, and other platforms and auto-update after it.
 
 ## Before the pilot
 
@@ -27,6 +27,7 @@ Distribution is done: release builds for Mac (Apple silicon) with the bundled Ge
 - **Containment.** Evaluate the CLI's `--sandbox` mode as an admin option.
 - **Idle processes.** gemini-cli cannot close a session, so a long-lived process keeps every session it opened (about 2.5 MB each). Restart idle processes to free them, and show in the pane when an agent's process was stopped.
 - **Per-project processes.** Agents in other folders share this window's project ID today. Add a process per project ID when someone needs it.
+- **Projects out of preview.** Check that thread worktrees load the linked rules in a signed-in session, and then turn `gemini.projects.enabled` on by default.
 - **Upstream Agents window.** At each upstream merge, check whether `src/vs/sessions` gained an extension API for agent providers. If it has, move the Agents pane onto it.
 
 ## Risks

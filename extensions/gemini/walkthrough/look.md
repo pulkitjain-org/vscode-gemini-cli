@@ -1,6 +1,6 @@
 ## Make it yours
 
-- **Themes:** GeminiCode Dark and Light, soft greys with Graphite as the one accent.
+- **Themes:** GeminiCode Dark and Light, soft greys with one blue accent and graphite selections.
 - **Code font:** JetBrains Mono and Geist Mono come with GeminiCode; SF Mono and Menlo are the Mac's own.
 - **File icons:** GeminiCode's own, tinted by language.
 

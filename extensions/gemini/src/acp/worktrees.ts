@@ -68,6 +68,19 @@ export function worktreesHome(repository: string, home: string = os.homedir()): 
 	return path.join(home, '.geminicode', 'worktrees', path.basename(repository) || 'repository');
 }
 
+/**
+ * Where a project's coordinator runs: an empty folder of its own, so it has
+ * no code to read and hands the work to threads, which run in worktrees.
+ */
+export function coordinatorHome(project: string, home: string = os.homedir()): string {
+	return path.join(projectsHome(home), project.replace(/[^\w.-]+/g, '-'));
+}
+
+/** The folder that holds every coordinator's own folder. */
+export function projectsHome(home: string = os.homedir()): string {
+	return path.join(home, '.geminicode', 'projects');
+}
+
 /** A free folder name in `parent` for `branch`: its last part, with -2, -3... if taken. */
 export async function freeFolder(parent: string, branch: string): Promise<string> {
 	const name = branch.split('/').pop()?.replace(/[^\w.-]+/g, '-') || 'agent';

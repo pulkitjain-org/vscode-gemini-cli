@@ -6,14 +6,14 @@
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
 import { isModeAllowed } from '../acp/adminPolicy';
-import { AgentClient } from '../acp/agentClient';
+import { AgentClient, type AgentClientOptions } from '../acp/agentClient';
 import { createFileHandlers, isInside } from '../acp/fileAccess';
 import { PermissionBroker } from '../acp/permissions';
 import { AgentStatus } from '../acp/status';
 import { AgentService } from './agentService';
 import { ChatHost } from './chatController';
 import { getApprovalPolicy } from './configuration';
-import { sessionModel } from './modelPreference';
+import { sessionModel, sessionModelList } from './modelPreference';
 import { getFileAccessPolicy, isIgnoredByGitCached, WorkspaceFileSystem } from './workspaceFileSystem';
 
 /**
@@ -31,13 +31,25 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 
 	/** `mcpServers` are the servers GeminiCode serves this agent, such as its browser. */
 	/** With `openLater`, the session opens on `open()` (see `AgentClientOptions.openLater`). */
-	constructor(private readonly service: AgentService, readonly folder: string, resumeSessionId?: string, mcpServers?: () => readonly acp.McpServer[], openLater = false) {
+	/** `spare` lets a new session take the spare one (see `AgentClientOptions.spareKey`). */
+	constructor(
+		private readonly service: AgentService,
+		readonly folder: string,
+		resumeSessionId?: string,
+		mcpServers?: () => readonly acp.McpServer[],
+		openLater = false,
+		spare?: Pick<AgentClientOptions, 'spareKey' | 'onDidOpenSession'>,
+		/** Overrides the model each session switches to, such as a project coordinator's Flash model. */
+		preferredModel?: AgentClientOptions['preferredModel'],
+	) {
 		this.client = new AgentClient(service.runtime, {
 			cwd: folder,
 			resumeSessionId,
 			openLater,
 			mcpServers,
-			preferredModel: sessionModel,
+			...spare,
+			preferredModel: preferredModel ?? sessionModel,
+			modelList: sessionModelList,
 			isModeAllowed: modeId => isModeAllowed(getApprovalPolicy(), modeId),
 			requestPermission: params => this.permissions.request(params),
 			// A folder outside this window's workspace is the agent's only root.
@@ -51,6 +63,8 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 				// A request from a session that is gone can no longer be answered.
 				if (state.kind !== 'ready') {
 					this.permissions.cancelAll();
+					// Session approvals end with the session.
+					this.permissions.approvals.clear();
 				}
 				fire();
 			}),
@@ -67,6 +81,10 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 
 	ensureReady(): Promise<unknown> {
 		return this.service.ensureReady(this.client);
+	}
+
+	writeLog(message: string): void {
+		this.service.writeLog(message);
 	}
 
 	trustFolder(folder: string): boolean {
