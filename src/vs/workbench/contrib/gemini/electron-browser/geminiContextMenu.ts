@@ -39,7 +39,7 @@ class GeminiContextMenus extends Disposable implements IWorkbenchContribution {
 		@IKeybindingService private readonly keybindingService: IKeybindingService,
 	) {
 		super();
-		const onShow = (_event: unknown, request: IGeminiContextMenuRequest) => this.show(request);
+		const onShow = (_event: unknown, ...args: unknown[]) => this.show(args[0] as IGeminiContextMenuRequest);
 		ipcRenderer.on(GeminiShowContextMenuChannel, onShow);
 		this._register(toDisposable(() => ipcRenderer.removeListener(GeminiShowContextMenuChannel, onShow)));
 	}
