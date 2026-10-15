@@ -88,6 +88,7 @@ export function activate(context: vscode.ExtensionContext): void {
 			await agentsView.open(agent);
 			await agentsView.controllerOf(agent)?.addAttachments(attachments);
 		},
+		attachToFront: attachments => chatInFront().addAttachments(attachments),
 		model: agent => agentsView.controllerOf(agent)?.model,
 	});
 	agentsView.browser = browserTools;

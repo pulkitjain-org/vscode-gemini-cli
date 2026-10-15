@@ -367,6 +367,17 @@
 					"value": "Whether Gemini agents may open sites other than localhost in the integrated browser, after asking the user. When off, they can only open local pages."
 				}
 			}
+		},
+		"gemini.browser.allowedOrigins": {
+			"name": "GeminiBrowserAllowedOrigins",
+			"category": "Extensions",
+			"minimumVersion": "1.141",
+			"localization": {
+				"description": {
+					"key": "gemini.browser.allowedOrigins.policy",
+					"value": "The only sites Gemini agents may open in the integrated browser, as a list of origins such as https://qa.example.com or https://*.example.com; * allows all. Empty allows every site."
+				}
+			}
 		}
 	}
 }
