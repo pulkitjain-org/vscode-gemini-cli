@@ -35,7 +35,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// Loaded only when a reply has math.
 	'media/katex.js': 290_000,
 	'media/draftMarkdown.js': 140_000,
-	'dist/extension.js': 900_000,
+	// Projects' settings, memory and threads across repositories took it from 887 KB to 913 KB, all GeminiCode's own code.
+	'dist/extension.js': 940_000,
 };
 
 /** Median time of `run` over `rounds` runs, in ms. */
