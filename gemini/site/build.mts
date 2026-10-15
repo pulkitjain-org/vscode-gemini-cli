@@ -9,14 +9,15 @@
 // app's update notice reads. Run on every release and on changes to this
 // folder (.github/workflows/gemini-pages.yml).
 //
-// The landing page's feature sections are fixed in `renderPage`; edit them by
-// hand when they change. Their screenshots and clips live in
-// `gemini/site/media/`, each in a -dark and a -light copy (see `mediaFiles`);
-// a missing one is left out. The showcase plays clips of the app with
-// `showcase.mts` and `showcase.css`, and `page.mts` runs the theme switch, the
-// particles and the pointer's light; the .mts files are served as plain
-// JavaScript. The
-// Geist fonts in `gemini/site/fonts/` are served with the page.
+// The landing page's sections are fixed in `renderPage` and the lists above
+// it (`projectSteps`, `browserSteps`, `newCards`, `clips`, `featureGroups`);
+// edit them by hand when they change. Their screenshots and clips live in
+// `gemini/site/media/`, each in a -dark and a -light copy (see `mediaFiles`
+// and `clips`); a missing one is left out. `landing.mts` and `landing.css`
+// run the hero clip, the chapters, the clip rail and its player and the
+// feature filter, and `page.mts` runs the theme switch, the particles and the
+// pointer's light; the .mts files are served as plain JavaScript. The Geist
+// fonts in `gemini/site/fonts/` are served with the page.
 //
 //   node gemini/site/build.mts <out-dir>            # needs GITHUB_REPOSITORY, uses GITHUB_TOKEN if set
 //   node gemini/site/build.mts <out-dir> --sample   # a made-up release, to preview the page
@@ -59,18 +60,22 @@ interface GitHubRelease {
 const siteDir = import.meta.dirname;
 const dmgPattern = /^GeminiCode-.+-arm64(-unsigned)?\.dmg$/;
 /**
- * The feature screenshots in `media/`, taken from the app at 1440 × 900
- * points: `<name>-dark.webp` and `<name>-light.webp`. The showcase's clips sit
- * beside them as `showcase-<view>-<theme>.mp4`, each with its last frame as a
- * .webp (see `showcaseViews`).
+ * The screenshots in `media/`, taken from the app at 1440 × 900 points:
+ * `<name>-dark.webp` and `<name>-light.webp`. The chapters' are 1600 × 1000,
+ * the new-in-this-release cards' 1400 × 1000. The clips sit beside them as
+ * `showcase-<id>-<theme>.mp4`, each with its last frame as a .webp (see
+ * `clips`).
  */
 const mediaFiles = {
-	look: { name: 'look', width: 1400, height: 1000 },
-	plus: { name: 'plus', width: 1400, height: 1000 },
-	plan: { name: 'plan', width: 1400, height: 1000 },
-	review: { name: 'review', width: 1600, height: 1000 },
-	branch: { name: 'branch', width: 1600, height: 1000 },
-	helpers: { name: 'helpers', width: 1600, height: 1000 },
+	'project-chat': { width: 1600, height: 1000 },
+	'project-threads': { width: 1600, height: 1000 },
+	'project-new-thread': { width: 1600, height: 1000 },
+	'project-merge': { width: 1600, height: 1000 },
+	'browser-page': { width: 1600, height: 1000 },
+	'browser-notes': { width: 1600, height: 1000 },
+	'browser-check': { width: 1600, height: 1000 },
+	files: { width: 1400, height: 1000 },
+	replies: { width: 1400, height: 1000 },
 } as const;
 type Media = keyof typeof mediaFiles;
 
@@ -94,10 +99,10 @@ async function main(outDir: string | undefined, mode: string | undefined): Promi
 	fs.writeFileSync(path.join(outDir, 'latest.json'), JSON.stringify(latest, null, '\t') + '\n');
 	fs.writeFileSync(path.join(outDir, 'index.html'), renderPage(latest, repo, available));
 	fs.writeFileSync(path.join(outDir, 'notes.html'), renderNotesPage(latest, notesHtml, repo));
-	for (const file of ['site.css', 'showcase.css']) {
+	for (const file of ['site.css', 'landing.css']) {
 		fs.copyFileSync(path.join(siteDir, file), path.join(outDir, file));
 	}
-	for (const script of ['page', 'showcase']) {
+	for (const script of ['page', 'landing']) {
 		fs.writeFileSync(path.join(outDir, `${script}.js`), toJavaScript(fs.readFileSync(path.join(siteDir, `${script}.mts`), 'utf8')));
 	}
 	fs.cpSync(path.join(siteDir, 'fonts'), path.join(outDir, 'fonts'), { recursive: true });
@@ -267,7 +272,25 @@ const icons: Record<string, string> = {
 	'scan-search': '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/><path d="m16 16-1.9-1.9"/>',
 	'bell': '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
 	'layout-grid': '<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>',
-	'square-pen': '<path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/>',
+	'network': '<rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/>',
+	'columns-2': '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 3v18"/>',
+	'shield-check': '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+	'sigma': '<path d="M18 7V5a1 1 0 0 0-1-1H6.5a.5.5 0 0 0-.4.8l4.5 6a2 2 0 0 1 0 2.4l-4.5 6a.5.5 0 0 0 .4.8H17a1 1 0 0 0 1-1v-2"/>',
+	'folder': '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+	'play': '<polygon points="6 3 20 12 6 21 6 3"/>',
+	'x': '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+	'chevron-left': '<path d="m15 18-6-6 6-6"/>',
+	'chevron-right': '<path d="m9 18 6-6-6-6"/>',
+	'mouse-pointer': '<path d="M4.04 4.04 10.3 20l2.25-6.45L19 11.3z"/>',
+	'sticky-note': '<path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"/><path d="M15 3v4a2 2 0 0 0 2 2h4"/>',
+	'activity': '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+	'lock': '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+	'undo': '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>',
+	'at-sign': '<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>',
+	'cookie': '<path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"/><path d="M8.5 8.5v.01M16 15.5v.01M12 12v.01M11 17v.01M7 14v.01"/>',
+	'git-merge': '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/>',
+	'list-tree': '<path d="M21 12h-8M21 6H8M21 18h-8M3 6v4c0 1.1.9 2 2 2h3M3 10v6c0 1.1.9 2 2 2h3"/>',
+	'spell-check': '<path d="m6 16 6-12 6 12"/><path d="M8 12h8"/><path d="m16 20 2 2 4-4"/>',
 };
 
 function sprite(): string {
@@ -292,9 +315,9 @@ function layout(title: string, body: string, c: Context, current: 'home' | 'note
 	<meta name="description" content="GeminiCode is a code editor with the Gemini CLI built in. Start Gemini agents side by side and review every change they make. Download it for Mac.">
 	<link rel="icon" href="icon.svg" type="image/svg+xml">
 	<link rel="preload" href="fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-	<link rel="stylesheet" href="site.css">${current === 'home' ? '\n\t<link rel="stylesheet" href="showcase.css">' : ''}
+	<link rel="stylesheet" href="site.css">${current === 'home' ? '\n\t<link rel="stylesheet" href="landing.css">' : ''}
 	<script>try { const t = localStorage.getItem('theme'); if (t === 'dark' || t === 'light') { document.documentElement.dataset.theme = t; } } catch {}</script>
-	<script src="page.js" defer></script>${current === 'home' ? '\n\t<script src="showcase.js" defer></script>' : ''}
+	<script src="page.js" defer></script>${current === 'home' ? '\n\t<script src="landing.js" defer></script>' : ''}
 </head>
 <body>
 	${sprite()}
@@ -305,8 +328,10 @@ function layout(title: string, body: string, c: Context, current: 'home' | 'note
 		<div class="wrap">
 			<a class="brand" href="./"><img src="icon.svg" alt=""><span>GeminiCode</span>${c.version ? `<span class="chip">v${text(c.version)}</span>` : ''}</a>
 			<nav aria-label="Page">
+				<a href="${home}#projects">Projects</a>
+				<a href="${home}#browser">Browser</a>
+				<a href="${home}#watch">Watch</a>
 				<a href="${home}#features">Features</a>
-				<a href="${home}#showcase">Showcase</a>
 				<a href="${home}#install">Install</a>
 				<a href="notes.html"${current === 'notes' ? ' aria-current="page"' : ''}>Release notes</a>
 				<a href="${attr(c.repoUrl)}/blob/main/gemini/docs/USING.md">Guide ${icon('arrow-up-right')}</a>
@@ -349,48 +374,211 @@ function unsignedNote(latest: LatestRelease): string {
  * light one on a light page. Empty when either copy is missing.
  */
 function themed(media: Media, available: ReadonlySet<string>, alt: string): string {
-	const { name, width, height } = mediaFiles[media];
-	if (!available.has(`${name}-dark.webp`) || !available.has(`${name}-light.webp`)) {
+	if (!hasMedia(media, available)) {
 		return '';
 	}
-	return ['dark', 'light'].map(theme => `<img class="on-${theme}" src="media/${name}-${theme}.webp" width="${width}" height="${height}" alt="${attr(alt)}" loading="lazy" decoding="async">`).join('');
+	const { width, height } = mediaFiles[media];
+	return ['dark', 'light'].map(theme => `<img class="on-${theme}" src="media/${media}-${theme}.webp" width="${width}" height="${height}" alt="${attr(alt)}" loading="lazy" decoding="async">`).join('');
+}
+
+function hasMedia(media: Media, available: ReadonlySet<string>): boolean {
+	return available.has(`${media}-dark.webp`) && available.has(`${media}-light.webp`);
 }
 
 // ---- Landing page ----
 
-const showcaseViews = [
-	{ id: 'work', icon: 'bot', label: 'Agents at work', caption: 'Describe a task in Agent Home and press Return. The agent reads, edits and shows each change on the right while the other agents finish or wait for you in the list.', alt: 'An agent starting on a task in Agents mode, with three other agents in the list and its changes in the Changes panel' },
-	{ id: 'wait', icon: 'bell', label: 'Waiting on you', caption: 'An agent asks before it runs a command. Allow it once and watch the tests run, or reject it and the agent works around it.', alt: 'An agent asking to run npm test, the test run after Allow once, and its summary of the fix' },
-	{ id: 'review', icon: 'git-compare', label: 'Review the diff', caption: 'Open a changed file to keep or undo each edit in place, or keep and undo them all from the Changes panel.', alt: 'Keeping an agent\'s edits one by one in total.ts, with Keep and Undo above each change' },
-	{ id: 'enhance', icon: 'wand-sparkles', label: 'Enhance prompt', caption: 'Write what you want in plain words. Enhance rewrites it as a precise prompt, and Revert brings your words back.', alt: 'A short request in the composer rewritten by Enhance into a precise prompt' },
-	{ id: 'plan', icon: 'list-checks', label: 'Plan first', caption: 'In Plan mode the agent reads and plans without changing anything. Build This Plan starts the work when you are happy with it.', alt: 'An agent in Plan mode writing a numbered plan that ends with Build This Plan' },
+/** A step of a chapter: the text on one side and its screenshot on the other. */
+interface Step { readonly title: string; readonly body: string; readonly media: Media; readonly alt: string }
+
+const projectSteps: readonly Step[] = [
+	{ title: 'Describe the work', body: 'Ask for a bigger change in the project chat. The coordinator plans it and never edits files itself.', media: 'project-chat', alt: 'A project chat where the coordinator answers a request with a plan of two threads' },
+	{ title: 'Threads start on their own branches', body: 'Each thread is an agent in its own worktree. Its card shows the state, branch, lines changed and time, and updates as it works.', media: 'project-threads', alt: 'Thread cards in the project chat, with the side panel counting threads by state' },
+	{ title: 'Start one yourself', body: 'New thread takes a title, a brief, a branch and a model. Tick Plan first and it waits for your OK.', media: 'project-new-thread', alt: 'The New thread dialog with a title, a brief, a branch and Plan first' },
+	{ title: 'Merge back when it\'s right', body: 'A finished thread offers Merge back, Review changes and Undo thread. Your follow-ups go to the thread that owns the work.', media: 'project-merge', alt: 'A finished thread card with Merge back, Review changes and Undo thread' },
+];
+
+const browserSteps: readonly Step[] = [
+	{ title: 'Open the page you\'re working on', body: 'Localhost, a QA site, an intranet or a page you\'re signed in to. Gemini uses GeminiCode\'s browser where web fetch can\'t reach.', media: 'browser-page', alt: 'A cart page open in GeminiCode\'s browser beside the chat, with Add to Gemini in the toolbar' },
+	{ title: 'Point at what to change', body: 'Add to Gemini puts an element, a screenshot or the console in your prompt. Or pin a note on each element and send them as one list.', media: 'browser-notes', alt: 'Notes pinned on the cart page, with Send to Gemini and Discard at the bottom' },
+	{ title: 'Let the agent check its work', body: 'Agents read the console and failed requests, click, answer dialogs and reload until the page is right.', media: 'browser-check', alt: 'An agent reading the page\'s console and network requests while it fixes the cart' },
+];
+
+/**
+ * The clips in the "Watch it work" rail, in order. Each is
+ * `media/showcase-<id>-<theme>.mp4` with its last frame as a .webp; a clip
+ * missing either theme is left out, so a new one joins the rail once its
+ * files are in `media/`. The first one also plays in the hero.
+ */
+const clips = [
+	{ id: 'work', category: 'Agents', title: 'Agents at work', caption: 'Describe a task in Agent Home and press Return. The agent reads, edits and shows each change on the right.', alt: 'An agent starting on a task in Agents mode, with three other agents in the list and its changes in the Changes panel' },
+	{ id: 'projects', category: 'Projects', title: 'A project splits the work', caption: 'The coordinator starts threads on their own branches, and each card updates as its agent works.', alt: 'A project chat where the coordinator starts two threads and their cards update as they work' },
+	{ id: 'notes', category: 'Browser', title: 'Leave notes on the page', caption: 'Pin a change on each element of your page, then send them to Gemini as one list.', alt: 'Notes pinned on elements of a page in GeminiCode\'s browser and sent to Gemini' },
+	{ id: 'wait', category: 'Review', title: 'Waiting on you', caption: 'The agent asks before it runs a command. Allow it once and watch the tests run, or reject it.', alt: 'An agent asking to run npm test, the test run after Allow once, and its summary of the fix' },
+	{ id: 'review', category: 'Review', title: 'Review the diff', caption: 'Open a changed file and keep or undo each edit in place, or all of them from the Changes panel.', alt: 'Keeping an agent\'s edits one by one in total.ts, with Keep and Undo above each change' },
+	{ id: 'thread', category: 'Projects', title: 'Start a thread yourself', caption: 'Give it a title, a brief and a branch. With Plan first it waits for your OK before it changes files.', alt: 'Starting a thread from the New thread dialog and approving its plan' },
+	{ id: 'console', category: 'Browser', title: 'Agents check the console', caption: 'An agent opens your page, reads the console and the failed requests, and fixes the cause.', alt: 'An agent reading a page\'s console errors in GeminiCode\'s browser and fixing the code' },
+	{ id: 'plan', category: 'Prompting', title: 'Plan first', caption: 'In Plan mode the agent reads and plans without changing anything. Build This Plan starts the work.', alt: 'An agent in Plan mode writing a numbered plan that ends with Build This Plan' },
+	{ id: 'enhance', category: 'Prompting', title: 'Enhance your prompt', caption: 'Write what you want in plain words. Enhance rewrites it as a precise prompt, and Revert brings yours back.', alt: 'A short request in the composer rewritten by Enhance into a precise prompt' },
 ] as const;
 
-/** The showcase's clips and their last frames, in both themes; all of them or no showcase. */
-function hasShowcase(available: ReadonlySet<string>): boolean {
-	return showcaseViews.every(view => ['dark', 'light'].every(theme => available.has(`showcase-${view.id}-${theme}.mp4`) && available.has(`showcase-${view.id}-${theme}.webp`)));
+type Clip = typeof clips[number];
+
+/** Each clip's video and last frame, in both themes. */
+function hasClip(clip: Clip, available: ReadonlySet<string>): boolean {
+	return ['dark', 'light'].every(theme => available.has(`showcase-${clip.id}-${theme}.mp4`) && available.has(`showcase-${clip.id}-${theme}.webp`));
 }
 
-function renderShowcase(available: ReadonlySet<string>): string {
-	if (!hasShowcase(available)) {
+/** What is new in this release, under the chapters. A card with a screenshot spans two columns. */
+const newCards: readonly { icon: keyof typeof icons; title: string; body: string; media?: Media; alt?: string }[] = [
+	{ icon: 'columns-2', title: 'Files beside each agent', body: 'What an agent opens goes in a group of its own beside its chat, with a tab row. Switch agents and each one\'s files are just as you left them.', media: 'files', alt: 'An agent\'s chat with the files it opened in a group beside it' },
+	{ icon: 'zap', title: 'Ready when you are', body: 'A session is already open, so a new agent starts on your task the moment you press Return. A project\'s threads start while their branch is set up.' },
+	{ icon: 'shield-check', title: 'Safer to say yes', body: 'Allow for this session covers the programs you approved and nothing they hand work to, such as <code>env</code> or <code>python -c</code>. A link can\'t lead the agent to a secret file.' },
+	{ icon: 'sigma', title: 'Replies that read well', body: 'Math is typeset and code is coloured like the editor. The composers check your spelling, with suggestions on right-click, and Agent Home has Write and Preview too.', media: 'replies', alt: 'A reply with typeset math and coloured code, and a misspelt word underlined in the composer' },
+];
+
+/** Everything in GeminiCode, by group. `isNew` marks what this release added; clear it on the next one. */
+const featureGroups: readonly { id: string; name: string; items: readonly { icon: keyof typeof icons; title: string; body: string; isNew?: true }[] }[] = [
+	{
+		id: 'agents', name: 'Agents', items: [
+			{ icon: 'layout-grid', title: 'Agents and Editor modes', body: 'Agents on the left, the chat in the middle, its changes on the right. <kbd>⌥⌘M</kbd> switches to the classic layout.' },
+			{ icon: 'sparkles', title: 'Agent Home', body: 'Describe a task and press Return. Every agent gets a card with its status, changes and next step.' },
+			{ icon: 'bot', title: 'Agents side by side', body: 'Each agent has its own tab and chat, with a status dot: working, waiting on you, or done.' },
+			{ icon: 'columns-2', title: 'Files beside each agent', body: 'What an agent opens goes in a group of its own beside its chat, just as you left it.', isNew: true },
+			{ icon: 'git-branch', title: 'Agents on their own branch', body: 'A copy of the repository on a new branch, ready to run with a setup script. Merge Back when done.' },
+			{ icon: 'zap', title: 'Ready when you are', body: 'A session is already open, so a new agent starts on your task the moment you press Return.', isNew: true },
+			{ icon: 'bell', title: 'Know when it\'s done', body: 'A Mac notification and a Dock badge when an agent finishes or needs you.' },
+			{ icon: 'blocks', title: 'Project Helpers', body: 'MCP servers, skills, hooks, extensions and memory on one page, with a switch for each.' },
+			{ icon: 'terminal', title: 'Gemini CLI inside', body: 'Nothing to install. Your terminal\'s gemini and GeminiCode share settings and saved chats.' },
+		],
+	},
+	{
+		id: 'projects', name: 'Projects', items: [
+			{ icon: 'network', title: 'A project chat', body: 'Describe bigger work. The coordinator splits it into threads and passes your follow-ups on.', isNew: true },
+			{ icon: 'git-merge', title: 'Threads you can merge', body: 'Each thread is an agent on its own branch, shown as a card with Merge back, Review and Undo.', isNew: true },
+			{ icon: 'list-checks', title: 'Plan first', body: 'Start a thread yourself and have it wait for Approve plan before it changes files.', isNew: true },
+			{ icon: 'list-tree', title: 'The project at a glance', body: 'A side panel counts threads by state and shows Conductor tracks and the coordinator\'s model.', isNew: true },
+		],
+	},
+	{
+		id: 'browser', name: 'Browser', items: [
+			{ icon: 'globe', title: 'A browser your agents use', body: 'Agents open the app they\'re building, then click, type and take screenshots to check their work.' },
+			{ icon: 'mouse-pointer', title: 'Add to Gemini', body: 'Put an element, a screenshot or the console of a page into your prompt.', isNew: true },
+			{ icon: 'sticky-note', title: 'Notes on the page', body: 'Pin a change on each element, such as "make this button primary", and send them as one list.', isNew: true },
+			{ icon: 'lock', title: 'QA and intranet pages', body: 'Gemini opens private and signed-in pages in the browser, where web fetch can\'t reach.', isNew: true },
+			{ icon: 'activity', title: 'Console and network', body: 'Agents read the console and failed requests, answer dialogs and find your running dev server.', isNew: true },
+			{ icon: 'cookie', title: 'Sign in once', body: 'Agents can keep their sign-ins per workspace. Admins can limit them to a list of sites.', isNew: true },
+		],
+	},
+	{
+		id: 'review', name: 'Review and safety', items: [
+			{ icon: 'shield-check', title: 'Ask before acting', body: 'Every command and edit asks first. Allow once, for the session, or reject.' },
+			{ icon: 'shield-check', title: 'Safer session approvals', body: 'Allow for this session covers the programs you approved, never ones like <code>env</code> or <code>python -c</code>.', isNew: true },
+			{ icon: 'git-compare', title: 'Review in place', body: 'Keep or Undo above each change in the file, or all at once from the Changes panel.' },
+			{ icon: 'undo', title: 'Undo a reply', body: 'Each reply that changed files can be undone in one click.' },
+			{ icon: 'scan-search', title: 'Review My Changes', body: 'An agent in Plan mode reads your uncommitted diff and reports findings.' },
+			{ icon: 'lock', title: 'Secrets stay out', body: 'The agent can\'t read .env, private keys or git-ignored files, even through a link.' },
+			{ icon: 'folder', title: 'Agents keep to their folder', body: 'In a window with several folders, each agent stays in its own folder unless you allow all.', isNew: true },
+		],
+	},
+	{
+		id: 'prompting', name: 'Prompting and chat', items: [
+			{ icon: 'wand-sparkles', title: 'Enhance prompt', body: 'Plain words in, a precise prompt out. <kbd>⌥⌘E</kbd>, and nothing is sent until you press Send.' },
+			{ icon: 'plus', title: 'One + menu', body: 'Mode, files, @ context, skills, Follow the agent, the model and usage, in one place.' },
+			{ icon: 'at-sign', title: 'Context', body: 'Type @ for files, <kbd>⌘L</kbd> for the selection, or drop in files and images.' },
+			{ icon: 'list-checks', title: 'Plan, then build', body: 'A plan ends with Build This Plan. On Auto, Gemini plans with Pro and builds with Flash.' },
+			{ icon: 'eye', title: 'Follow the agent', body: 'Each file the agent reads or edits opens at its line as it works.' },
+			{ icon: 'text-cursor-input', title: 'Inline edit', body: 'Select code, press <kbd>⌘I</kbd> and say what to change.' },
+			{ icon: 'history', title: 'Pick up a CLI session', body: 'A new agent lists the Gemini CLI sessions saved for its folder, terminal ones too.' },
+			{ icon: 'sigma', title: 'Math and code', body: 'Math is typeset and code is coloured like the editor. File names open the file.', isNew: true },
+			{ icon: 'spell-check', title: 'Spell check', body: 'The composers underline misspelt words, with suggestions on right-click.', isNew: true },
+			{ icon: 'gauge', title: 'Usage at a glance', body: 'A ring shows how full the chat is. Click it for today\'s quota for each model.' },
+		],
+	},
+];
+
+/**
+ * A chapter: numbered steps beside a stage that shows each step's screenshot.
+ * landing.mts moves through the steps while the chapter is on screen. Without
+ * every step's screenshot, the steps are a plain list beside no stage.
+ */
+function chapter(id: string, steps: readonly Step[], available: ReadonlySet<string>, flip: boolean, intro: string): string {
+	const staged = steps.every(step => hasMedia(step.media, available));
+	const list = steps.map((step, i) => staged
+		? `<li><button type="button" class="step" role="tab" id="${id}-step-${i}" aria-controls="${id}-stage" aria-selected="${i === 0}" tabindex="${i === 0 ? 0 : -1}"><span class="step-n">${i + 1}</span><span class="step-t"><b>${text(step.title)}</b><span>${text(step.body)}</span></span><span class="step-bar" aria-hidden="true"></span></button></li>`
+		: `<li class="step"><span class="step-n">${i + 1}</span><span class="step-t"><b>${text(step.title)}</b><span>${text(step.body)}</span></span></li>`).join('\n\t\t\t\t\t\t');
+	const stage = staged ? `
+				<div class="stage panel" id="${id}-stage" role="tabpanel" aria-labelledby="${id}-step-0">${steps.map((step, i) => `<div class="frame${i === 0 ? ' on' : ''}">${themed(step.media, available, step.alt)}</div>`).join('')}</div>` : '';
+	return `
+		<div class="chapter${flip ? ' flip' : ''}${staged ? '' : ' plain'}">
+				<div class="ch-text">${intro}
+					<ol class="ch-steps"${staged ? ` role="tablist" aria-label="Steps"` : ''}>
+						${list}
+					</ol>
+				</div>${stage}
+			</div>`;
+}
+
+function renderClips(shown: readonly Clip[]): string {
+	if (!shown.length) {
 		return '';
 	}
-	const first = showcaseViews[0];
-	// Without JavaScript the stage shows the first clip's last frame; showcase.js plays the clips.
-	const still = ['dark', 'light'].map(theme => `<img class="on-${theme}" src="media/showcase-${first.id}-${theme}.webp" width="2000" height="1250" alt="${attr(first.alt)}" fetchpriority="high" decoding="async">`).join('');
+	const categories = [...new Set(shown.map(clip => clip.category))];
+	const chips = categories.length > 1 ? `
+				<div class="chips" role="group" aria-label="Show clips about">
+					<button type="button" class="chip-btn" aria-pressed="true" data-filter="">All</button>${categories.map(category => `<button type="button" class="chip-btn" aria-pressed="false" data-filter="${attr(category)}">${text(category)}</button>`).join('')}
+				</div>` : '<div></div>';
+	const cards = shown.map(clip => `
+				<button type="button" class="clip panel lift" data-clip="${clip.id}" data-category="${attr(clip.category)}" data-title="${attr(clip.title)}" data-caption="${attr(clip.caption)}" data-alt="${attr(clip.alt)}">
+					<span class="clip-media">${['dark', 'light'].map(theme => `<img class="on-${theme}" src="media/showcase-${clip.id}-${theme}.webp" width="2000" height="1250" alt="" loading="lazy" decoding="async">`).join('')}<video muted playsinline loop preload="none" aria-hidden="true"></video><span class="clip-play">${icon('play')}</span></span>
+					<span class="clip-text"><span class="clip-cat">${text(clip.category)}</span><b>${text(clip.title)}</b><span class="clip-cap">${text(clip.caption)}</span></span>
+				</button>`).join('');
 	return `
-	<section id="showcase" class="wrap">
-		<div class="showcase panel">
-			<div class="sc-bar">
-				<div class="sc-tabs" role="tablist" aria-label="What the showcase shows">
-					${showcaseViews.map((view, i) => `<button type="button" role="tab" id="sc-tab-${view.id}" aria-controls="sc-stage" aria-selected="${i === 0}" tabindex="${i === 0 ? 0 : -1}" data-view="${view.id}" data-caption="${attr(view.caption)}" data-alt="${attr(view.alt)}">${icon(view.icon)}<span>${text(view.label)}</span></button>`).join('\n\t\t\t\t\t')}
-				</div>
-				<div class="sc-theme" role="group" aria-label="App theme">
-					<button type="button" data-theme="dark" aria-pressed="true">Dark</button><button type="button" data-theme="light" aria-pressed="false">Light</button>
-				</div>
+	<section id="watch" class="block">
+		<div class="wrap">
+			<div class="head">
+				<p class="eyebrow">Watch it work</p>
+				<h2 class="h2">Short clips, straight from the app</h2>
+				<p>Point at a clip to preview it, or open it to watch in Dark or Light.</p>
 			</div>
-			<div class="sc-stage" id="sc-stage" role="tabpanel" aria-labelledby="sc-tab-${first.id}">${still}</div>
-			<p class="sc-caption"><span class="sc-dot" aria-hidden="true"></span><span class="sc-text" aria-live="polite">${text(first.caption)}</span></p>
+			<div class="rail-bar">${chips}
+				<div class="rail-nav"><button type="button" class="icon-btn" data-scroll="-1" aria-label="Earlier clips">${icon('chevron-left')}</button><button type="button" class="icon-btn" data-scroll="1" aria-label="More clips">${icon('chevron-right')}</button></div>
+			</div>
+			<div class="rail">${cards}
+			</div>
+		</div>
+		<dialog class="player panel" aria-labelledby="player-title">
+			<div class="player-stage"></div>
+			<div class="player-foot">
+				<div class="player-text"><b id="player-title"></b><span class="player-cap"></span></div>
+				<div class="seg" role="group" aria-label="App theme"><button type="button" data-theme="dark" aria-pressed="true">Dark</button><button type="button" data-theme="light" aria-pressed="false">Light</button></div>
+				<button type="button" class="icon-btn" data-step="-1" aria-label="Previous clip">${icon('chevron-left')}</button>
+				<button type="button" class="icon-btn" data-step="1" aria-label="Next clip">${icon('chevron-right')}</button>
+				<button type="button" class="icon-btn" data-close aria-label="Close">${icon('x')}</button>
+			</div>
+		</dialog>
+	</section>`;
+}
+
+function renderFeatures(): string {
+	const total = featureGroups.reduce((sum, group) => sum + group.items.length, 0);
+	return `
+	<section id="features" class="block">
+		<div class="wrap">
+			<div class="head">
+				<p class="eyebrow">Everything in GeminiCode</p>
+				<h2 class="h2">From prompt to merge</h2>
+				<p>Every feature in one place. Pick a group to narrow it down.</p>
+			</div>
+			<div class="chips center" role="group" aria-label="Show features about">
+				<button type="button" class="chip-btn" aria-pressed="true" data-filter="">Everything</button>${featureGroups.map(group => `<button type="button" class="chip-btn" aria-pressed="false" data-filter="${group.id}">${text(group.name)}</button>`).join('')}
+			</div>
+			<p class="fcount" aria-live="polite"><span>${total}</span> features</p>
+			${featureGroups.map(group => `<div class="fgroup" data-group="${group.id}">
+				<h3>${text(group.name)} <span>${group.items.length}</span></h3>
+				<div class="fgrid">${group.items.map(item => `
+					<article class="feat panel lift"><div class="feat-h"><span class="ico">${icon(item.icon)}</span><h4>${text(item.title)}</h4>${item.isNew ? '<span class="new">New</span>' : ''}</div><p>${item.body}</p></article>`).join('')}
+				</div>
+			</div>`).join('\n\t\t\t')}
 		</div>
 	</section>`;
 }
@@ -398,7 +586,7 @@ function renderShowcase(available: ReadonlySet<string>): string {
 export function renderPage(latest: LatestRelease, repo: string, available: ReadonlySet<string> = new Set()): string {
 	const c = context(latest, repo);
 	const pill = c.version
-		? `<a class="pill" href="notes.html"><i class="dot"></i><span>New in ${text(c.version)}: a calmer look, a simpler composer and faster replies</span>${icon('arrow-right')}</a>` : '';
+		? `<a class="pill" href="notes.html"><i class="dot"></i><span>New in ${text(c.version)}: Projects, and a browser you can point at</span>${icon('arrow-right')}</a>` : '';
 	const download = (small: string, big: string) => c.dmg ? `
 					<a class="dl" href="${attr(c.dmg.url)}">
 						${icon('apple')}
@@ -410,114 +598,70 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 	const meta = c.version
 		? `v${text(c.version)}${c.releasedShort ? ` · ${text(c.releasedShort)}` : ''} · macOS 12+ · Apple silicon · Gemini CLI built in`
 		: `<a href="${attr(c.repoUrl)}/releases">Check GitHub Releases</a> · Mac with Apple silicon`;
-	const crop = (media: Media, alt: string) => {
-		const shot = themed(media, available, alt);
+	const shownClips = clips.filter(clip => hasClip(clip, available));
+	const hero = shownClips[0];
+	// Without JavaScript the hero shows the first clip's last frame; landing.js plays it while it is on screen.
+	const heroShot = hero ? `
+			<div class="hero-shot panel">
+				${['dark', 'light'].map(theme => `<img class="on-${theme}" src="media/showcase-${hero.id}-${theme}.webp" width="2000" height="1250" alt="${attr(hero.alt)}" fetchpriority="high" decoding="async">`).join('')}
+				<video muted playsinline loop preload="none" aria-hidden="true" data-clip="${hero.id}"></video>
+				<button type="button" class="play-all" data-open="${hero.id}">${icon('play')}Watch ${text(hero.title.toLowerCase())}</button>
+			</div>` : '';
+	const crop = (media: Media | undefined, alt = '') => {
+		const shot = media ? themed(media, available, alt) : '';
 		return shot ? `<div class="crop">${shot}</div>` : '';
 	};
-	const row = (media: Media, alt: string, eyebrow: string, title: string, body: string, points: readonly string[], flip: boolean) => {
-		const shot = themed(media, available, alt);
-		return `
-				<article class="feature${flip ? ' flip' : ''}">
-					<div>
-						<p class="eyebrow">${eyebrow}</p>
-						<h3>${title}</h3>
-						<p>${body}</p>
-						<ul>${points.map(point => `<li>${point}</li>`).join('')}</ul>
-					</div>
-					${shot ? `<div class="media panel">${shot}</div>` : ''}
-				</article>`;
-	};
-	const mini = (name: keyof typeof icons, title: string, body: string) =>
-		`<article class="card panel lift"><div class="ico">${icon(name)}</div><h3>${title}</h3><p>${body}</p></article>`;
+	const cards = newCards.map(card => {
+		const shot = crop(card.media, card.alt);
+		const words = `<div class="ico">${icon(card.icon)}</div><h3>${text(card.title)}</h3><p>${card.body}</p>`;
+		return shot
+			? `<article class="card wide panel lift"><div>${words}</div>${shot}</article>`
+			: `<article class="card panel lift">${words}</article>`;
+	}).join('\n\t\t\t\t');
 
 	const body = `
 	<section class="hero">
 		<div class="wrap">
 			${pill}
 			<h1>Code with Gemini agents.<br><span class="grad">Review every change they make.</span></h1>
-			<p class="sub">GeminiCode is a full code editor, built on the open-source core of VS&nbsp;Code, with the Gemini CLI inside. Start agents side by side, watch what each one is doing as it works, and keep or undo every edit they make.</p>
+			<p class="sub">GeminiCode is a full code editor, built on the open-source core of VS&nbsp;Code, with the Gemini CLI inside. Hand a project to a team of agents, show them the page you mean, and keep or undo every edit they make.</p>
 			<div class="actions">${download('Download for Mac', c.dmg ? `Apple silicon · ${c.sizeMb} MB` : '')}
-				<a class="ghost" href="#install">${icon('terminal')}How to install</a>
+				<a class="ghost" href="#watch">${icon('play')}Watch it work</a>
 			</div>
-			<p class="meta">${meta}</p>
+			<p class="meta">${meta}</p>${heroShot}
 		</div>
 	</section>
-${renderShowcase(available)}
 
-	<section id="features" class="block">
+	<section id="projects" class="block">
+		<div class="wrap">${chapter('projects', projectSteps, available, false, `
+					<p class="ch-badge"><span class="ico">${icon('network')}</span>Projects<span class="tag">Preview</span></p>
+					<h2>Hand a project to a team of agents.</h2>
+					<p>A project chat takes the bigger jobs. Its coordinator splits the work into threads, each an agent on its own branch, and keeps track of them so you don't have to.</p>`)}
+		</div>
+	</section>
+
+	<section id="browser" class="block">
+		<div class="wrap">${chapter('browser', browserSteps, available, true, `
+					<p class="ch-badge"><span class="ico">${icon('globe')}</span>Browser</p>
+					<h2>Show Gemini the page you mean.</h2>
+					<p>GeminiCode's browser is shared with your agents. Point at an element, pin notes where things should change, and let the agent check its own work in the console and network.</p>`)}
+		</div>
+	</section>
+
+	<section id="new" class="block">
 		<div class="wrap">
 			<div class="head">
-				<p class="eyebrow">${c.version ? `New in ${text(c.version)}` : 'New'}</p>
-				<h2 class="h2">Calmer, simpler, faster</h2>
+				<p class="eyebrow">${c.version ? `Also new in ${text(c.version)}` : 'Also new'}</p>
+				<h2 class="h2">Faster to start, safer to say yes</h2>
 				<a class="more" href="notes.html">Read the release notes ${icon('arrow-right')}</a>
 			</div>
 			<div class="bento">
-				<article class="card wide panel">
-					<div>
-						<div class="ico">${icon('sparkles')}</div>
-						<h3>A calmer look</h3>
-						<p>GeminiCode Dark and Light share one quiet look: soft greys, panels as cards with a hairline edge, one blue accent and graphite selections. The Gemini colours are kept for the moments that matter, such as the bar that runs while an agent works.</p>
-					</div>
-					${crop('look', 'An agent at work in GeminiCode: the chat, the working strip and the Changes panel')}
-				</article>
-				<article class="card panel lift">
-					<div class="ico">${icon('zap')}</div>
-					<h3>Answers sooner</h3>
-					<p>Agents start on Flash, and the agent gets ready in the background after launch and while you type on Agent Home. Enhance prompt and inline edit appear as Gemini writes them, and long chats open on their latest messages.</p>
-				</article>
-				<article class="card panel lift">
-					<div class="ico">${icon('gauge')}</div>
-					<h3>Usage at a glance</h3>
-					<p>The ring under the composer shows how full the chat's context is. Click it for today's quota for each model and the tokens this chat used.</p>
-				</article>
-				<article class="card wide panel">
-					<div>
-						<div class="ico">${icon('plus')}</div>
-						<h3>Everything in one + menu</h3>
-						<p>The composer is just your words, the model and Send. Mode, files, @&nbsp;context, skills, Follow the agent and usage sit in the + menu, and a mode other than Default shows as a chip you can clear.</p>
-					</div>
-					${crop('plus', 'The composer\'s + menu: mode, files, context, skills, Follow the agent and usage')}
-				</article>
-				<article class="card wide panel">
-					<div>
-						<div class="ico">${icon('list-checks')}</div>
-						<h3>Plan, then build</h3>
-						<p>A reply in Plan mode ends with Build This Plan. With the model on Auto, Gemini plans with Pro and builds with Flash.</p>
-					</div>
-					${crop('plan', 'An agent\'s plan in Plan mode, ending with Build This Plan')}
-				</article>
-				<article class="card panel lift">
-					<div class="ico">${icon('git-branch')}</div>
-					<h3>Pickers in the chat</h3>
-					<p>The model, branch and folder menus open right where you click, and the branch menu can create a branch.</p>
-				</article>
+				${cards}
 			</div>
 		</div>
 	</section>
-
-	<section class="block">
-		<div class="wrap rows">${row('review', 'Reviewing an agent\'s edits in total.ts, with Keep and Undo above each change', 'Review', 'Review every change in place.', 'Open a file an agent changed: added lines are tinted, removed lines are marked, and Keep and Undo sit above each change. The Changes panel lists every file, with Keep All, Undo All and Commit.', ['Each reply that changed files can be undone in one click', 'The sparkle in Source Control writes the commit message'], false)}${row('branch', 'An agent on its own branch, with Merge Back in the Agents list', 'Worktrees', 'Agents on their own branch.', 'Give an agent its own copy of the repository on a new branch, so your folder and other agents are untouched. Merge Back when it is done.', ['A setup command or <code>.gemini/worktree-setup.sh</code> makes the branch ready to run', 'Each agent\'s row shows its branch and its changes'], true)}${row('helpers', 'Project Helpers: MCP servers, skills, hooks, extensions, memory and Gemini CLI settings', 'Project Helpers', 'Everything an agent loads, on one page.', 'Project Helpers lists MCP servers, skills, hooks, Gemini CLI extensions and memory, with a switch for each. Remote MCP servers can sign in.', ['Four Gemini CLI settings, such as Plan with Pro, build with Flash', 'Skills show in the / menu too'], false)}
-		</div>
-	</section>
-
-	<section class="block">
-		<div class="wrap">
-			<div class="head">
-				<p class="eyebrow">Also in GeminiCode</p>
-				<h2 class="h2">From prompt to commit</h2>
-			</div>
-			<div class="mini">
-				${mini('layout-grid', 'Agents mode', 'Describe a task in Agent Home and press Return. Each agent gets a card with its status, changes and next step. <kbd>⌥⌘M</kbd> switches to the classic editor layout.')}
-				${mini('wand-sparkles', 'Enhance your prompt', 'Write what you want in plain words and press Enhance, or <kbd>⌥⌘E</kbd>. The rewrite streams in, and nothing is sent until you press Send.')}
-				${mini('history', 'Pick up a CLI session', 'A new agent lists the Gemini CLI sessions saved for its folder, including ones you started in the terminal. Click Restore to carry on.')}
-				${mini('globe', 'A browser your agents can use', 'Agents open the app they\'re building in the built-in browser, then read, click, type and take screenshots to check their work.')}
-				${mini('eye', 'Follow the agent', 'Turn it on in the + menu and each file the agent reads or edits opens at the line it\'s on. Focus stays in the chat.')}
-				${mini('text-cursor-input', 'Inline edit', 'Select code, press <kbd>⌘I</kbd> and say what to change. The new lines stream in for you to keep or undo.')}
-				${mini('scan-search', 'Review My Changes', 'An agent in Plan mode reads your uncommitted diff and reports findings without editing anything.')}
-				${mini('bell', 'Know when it\'s done', 'A Mac notification and a Dock badge when an agent finishes or needs you, so you can work on something else.')}
-			</div>
-		</div>
-	</section>
+${renderClips(shownClips)}
+${renderFeatures()}
 
 	<section id="install" class="block">
 		<div class="wrap">
@@ -634,14 +778,14 @@ function attr(value: string): string {
 
 function sampleRelease(repo: string): GitHubRelease {
 	return {
-		tag_name: 'v0.4.0',
-		name: 'GeminiCode 0.4.0',
-		html_url: `https://github.com/${repo}/releases/tag/v0.4.0`,
-		published_at: '2026-10-08T12:00:00Z',
-		body_html: '<p>GeminiCode 0.4.0 for Mac with Apple silicon, built on Code - OSS 1.141.0 with Gemini CLI 0.62.0.</p><h2>What\'s Changed</h2><ul><li>Glass Light and Glass Dark, styled after macOS Liquid Glass</li><li>A browser your agents can use</li><li>Keep the Mac awake while agents work</li></ul><h3>Shortcuts</h3><table><thead><tr><th>Keys</th><th>What it does</th></tr></thead><tbody><tr><td><kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>Up</kbd></td><td>Jump to your previous prompt</td></tr><tr><td><kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>M</kbd></td><td>Switch between Agents and Editor modes</td></tr></tbody></table><h3>Known limitations</h3><ul><li>No autocomplete.</li></ul>',
+		tag_name: 'v1.0.0',
+		name: 'GeminiCode 1.0.0',
+		html_url: `https://github.com/${repo}/releases/tag/v1.0.0`,
+		published_at: '2026-10-16T12:00:00Z',
+		body_html: '<p>GeminiCode 1.0.0 for Mac with Apple silicon, built on Code - OSS 1.141.0 with Gemini CLI 0.64.0.</p><h2>What\'s Changed</h2><ul><li>Projects (preview): a coordinator that splits bigger work into threads</li><li>Add to Gemini and notes in the browser</li><li>Safer session approvals</li></ul><h3>Shortcuts</h3><table><thead><tr><th>Keys</th><th>What it does</th></tr></thead><tbody><tr><td><kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>Up</kbd></td><td>Jump to your previous prompt</td></tr><tr><td><kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>M</kbd></td><td>Switch between Agents and Editor modes</td></tr></tbody></table><h3>Known limitations</h3><ul><li>No autocomplete.</li></ul>',
 		assets: [
-			{ name: 'GeminiCode-0.4.0-arm64.dmg', browser_download_url: `https://github.com/${repo}/releases/download/v0.4.0/GeminiCode-0.4.0-arm64.dmg`, size: 212_000_000 },
-			{ name: 'GeminiCode-0.4.0-arm64.dmg.sha256', browser_download_url: `sample:${'0123456789abcdef'.repeat(4)}`, size: 100 },
+			{ name: 'GeminiCode-1.0.0-arm64.dmg', browser_download_url: `https://github.com/${repo}/releases/download/v1.0.0/GeminiCode-1.0.0-arm64.dmg`, size: 212_000_000 },
+			{ name: 'GeminiCode-1.0.0-arm64.dmg.sha256', browser_download_url: `sample:${'0123456789abcdef'.repeat(4)}`, size: 100 },
 		],
 	};
 }
