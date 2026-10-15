@@ -6,8 +6,10 @@
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
 import type { Attachment } from '../acp/attachments';
-import { BrowserAction, BrowserBackend, BrowserGate, BrowserMcpServer, BrowserToolHost, PageState, sharedPageText } from '../acp/browserMcp';
+import { BrowserAction, BrowserBackend, BrowserGate, BrowserMcpServer, BrowserToolHost, NetworkRequest, PageState, sharedPageText } from '../acp/browserMcp';
+import { describeDevServer, findDevServers } from '../acp/devServers';
 import { FileAccessPolicyOptions, isInside } from '../acp/fileAccess';
+import { PageContext, pageContextAttachments } from '../acp/pageContext';
 import { configSection } from './configuration';
 import { getFileAccessPolicy, isIgnoredByGitCached } from './workspaceFileSystem';
 
@@ -46,12 +48,16 @@ export class BrowserTools implements vscode.Disposable {
 			otherSites,
 			grant: (agent, url) => this.grant(agent, url),
 			model: agent => this.agents.model?.(agent),
+			allowedOrigins,
+			devServers: async () => (await findDevServers()).map(describeDevServer),
 		} satisfies BrowserGate);
 		this.server = new BrowserMcpServer(this.host, version);
 		this.disposables.push(
 			vscode.commands.registerCommand('gemini.browser.stop', (agent: unknown) => typeof agent === 'string' && this.agents.stop(agent)),
 			vscode.commands.registerCommand('_gemini.browser.handOver', (pageId: unknown, url: unknown, title: unknown) =>
 				typeof pageId === 'string' && typeof url === 'string' ? this.handOver(pageId, url, typeof title === 'string' ? title : '') : undefined),
+			vscode.commands.registerCommand('_gemini.browser.addToPrompt', (context: unknown, agent: unknown) =>
+				this.addToPrompt(context as PageContext, typeof agent === 'string' ? agent : undefined)),
 			vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.browser.enabled`) && this.applyEnabled()),
 		);
 		this.applyEnabled();
@@ -131,6 +137,24 @@ export class BrowserTools implements vscode.Disposable {
 		this.log.info(`Handed a page to agent ${agent.id}`);
 		await this.agents.attach(agent.id, [sharedPageNote(shared.title, shared.url)]);
 		return agent.id;
+	}
+
+	/**
+	 * Adds what the user took from a page ("Add to Gemini": an element, notes,
+	 * a screenshot or the console) to a Gemini composer: the agent's whose
+	 * page it is, else the chat in front. Resolves with whether it was added.
+	 */
+	async addToPrompt(context: PageContext, agent: string | undefined): Promise<boolean> {
+		const attachments = pageContextAttachments(context);
+		if (!attachments?.length) {
+			return false;
+		}
+		if (agent && this.agents.open().some(open => open.id === agent)) {
+			await this.agents.attach(agent, attachments);
+		} else {
+			await this.agents.attachToFront(attachments);
+		}
+		return true;
 	}
 
 	/** Closes an agent's pages, for an agent that was removed; pages the user handed it go back to the user, open. */
@@ -227,6 +251,8 @@ export interface BrowserAgents {
 	open(): readonly { readonly id: string; readonly title: string }[];
 	/** Shows the agent's chat and adds `attachments` to its composer. */
 	attach(agent: string, attachments: readonly Attachment[]): Promise<void>;
+	/** Adds `attachments` to the composer of the chat in front: the agent shown, else the Gemini chat. */
+	attachToFront(attachments: readonly Attachment[]): Promise<void>;
 	/** The model the agent's session is on, when known. */
 	model?(agent: string): string | undefined;
 }
@@ -237,6 +263,11 @@ function enabled(): boolean {
 
 function otherSites(): boolean {
 	return vscode.workspace.getConfiguration(configSection).get<boolean>('browser.allowOtherSites', true);
+}
+
+function allowedOrigins(): readonly string[] {
+	const origins = vscode.workspace.getConfiguration(configSection).get<unknown>('browser.allowedOrigins', []);
+	return Array.isArray(origins) ? origins.filter((o): o is string => typeof o === 'string' && !!o.trim()) : [];
 }
 
 function truncate(text: string, max: number): string {
@@ -256,6 +287,9 @@ const commandBackend: BrowserBackend = {
 	snapshot: (agent, pageId) => run<{ summary: string; url: string }>('_gemini.browser.snapshot', agent, pageId),
 	act: (agent, pageId, action: BrowserAction, args) => run<PageState>('_gemini.browser.act', agent, pageId, action, args),
 	screenshot: (agent, pageId) => run<{ data: string; url: string }>('_gemini.browser.screenshot', agent, pageId),
+	console: (agent, pageId) => run<{ text: string; url: string }>('_gemini.browser.console', agent, pageId),
+	network: (agent, pageId) => run<{ requests: NetworkRequest[]; url: string }>('_gemini.browser.network', agent, pageId),
+	dialog: (agent, pageId, accept, text) => run<PageState>('_gemini.browser.dialog', agent, pageId, accept, text),
 };
 
 async function run<T>(command: string, ...args: unknown[]): Promise<T> {

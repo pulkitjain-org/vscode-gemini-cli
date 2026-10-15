@@ -834,6 +834,21 @@
           "scope": "machine",
           "markdownDescription": "%configuration.browser.allowOtherSites%"
         },
+        "gemini.browser.allowedOrigins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "machine",
+          "markdownDescription": "%configuration.browser.allowedOrigins%"
+        },
+        "gemini.browser.keepSignIns": {
+          "type": "boolean",
+          "default": false,
+          "scope": "machine",
+          "markdownDescription": "%configuration.browser.keepSignIns%"
+        },
         "gemini.agent.startEarly": {
           "type": "boolean",
           "default": true,

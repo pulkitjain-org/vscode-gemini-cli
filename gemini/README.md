@@ -77,6 +77,8 @@ The **Gemini** status bar item shows the agent's state. Hover over it to see the
 | `gemini.tools.allowShell` | Let the agent run shell commands. Each command still asks first. |
 | `gemini.browser.enabled` | Let agents open and use a page in the GeminiCode browser. On by default. |
 | `gemini.browser.allowOtherSites` | Let agents open sites other than local ones, after asking. On by default. |
+| `gemini.browser.allowedOrigins` | The only sites agents may open, such as `https://*.example.com`. Empty allows every site. |
+| `gemini.browser.keepSignIns` | Keep agents' browser cookies and storage between sessions, per workspace, so they stay signed in. Off by default. |
 | `gemini.usageMeter.enabled` | Show today's quota in the Gemini status bar item and the chat's Usage and quota popover. On by default. |
 | `gemini.agent.startEarly` | Start the agent a few seconds after the window opens, so the first chat doesn't wait for it. Only when GeminiCode was set up before and the sign-in is saved. On by default. |
 | `gemini.keepAwake` | Keep the Mac awake while any agent works. On by default. |

@@ -28,6 +28,7 @@ import { AgentStatus } from '../acp/status';
 import { TextDeltas } from '../acp/textDeltas';
 import type { ModelTokens } from '../acp/turnUsage';
 import { UpdateBatcher } from '../acp/updateBatcher';
+import { isBlockedWebFetch } from '../acp/webFetchHint';
 import type { AgentClient } from '../acp/agentClient';
 import { AgentError, AgentErrorInfo, errorMessage } from '../acp/errors';
 import { readGitHead } from '../acp/gitHead';
@@ -232,6 +233,8 @@ export class ChatController implements vscode.Disposable {
 	private readonly completedToolCalls = new Set<string>();
 	/** A project chat's calls of the project's own tools, which it leaves out. */
 	private readonly hiddenToolCalls = new Set<string>();
+	/** Web fetch calls already followed by the hint about private hosts. */
+	private readonly hintedToolCalls = new Set<string>();
 
 	private readonly onDidRestoreSessionEmitter = new vscode.EventEmitter<string>();
 	/** A saved session was reopened here; fires with its title. */
@@ -308,6 +311,11 @@ export class ChatController implements vscode.Disposable {
 						}
 					}
 					this.transcript.apply(event);
+					if (event.kind === 'toolCall' && !this.hintedToolCalls.has(event.call.id) && isBlockedWebFetch(event.call)) {
+						this.hintedToolCalls.add(event.call.id);
+						dropOldest(this.hintedToolCalls);
+						this.transcript.addNotice(vscode.l10n.t("Gemini's web fetch can't open pages on your machine or private network, such as a QA or intranet site. Open the page in the GeminiCode browser and use Let Gemini Use This Page, or ask Gemini to open it with its browser."));
+					}
 					if (event.kind === 'toolCall' && this.following) {
 						this.scheduleFollow(this.follow.next(event.call));
 					}
