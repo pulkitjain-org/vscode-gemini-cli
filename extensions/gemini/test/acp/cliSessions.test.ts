@@ -43,6 +43,20 @@ describe('parseSessionFile', () => {
 		expect(parseSessionFile(text, false)).toMatchObject({ id: 's1', title: 'Tidy the tests', prompts: ['first'], updatedAt: Date.parse('2026-10-01T10:00:00.000Z') });
 	});
 
+	it('applies the patches gemini-cli 0.64 writes: new content, removed messages and a new order', () => {
+		const text = [
+			line({ sessionId: 's9', projectHash: 'h' }),
+			line({ id: 'u1', type: 'user', content: 'first' }),
+			line({ id: 'g1', type: 'gemini', content: 'one' }),
+			line({ id: 'u2', type: 'user', content: 'second' }),
+			line({ id: 'g2', type: 'gemini', content: '', toolCalls: [{ id: 't1' }] }),
+			line({ $patch: { updates: [{ id: 'g2', toolCalls: [{ id: 't1', result: [] }] }, { id: 'u2', content: [{ text: 'second, edited' }] }] } }),
+			line({ $patch: { id: 'g1', content: 'one, edited' } }),
+			line({ $patch: { removeIds: ['u1', 'missing'], orderIds: ['g2', 'u2'] } }),
+		].join('\n');
+		expect(parseSessionFile(text, false)).toMatchObject({ prompts: ['second, edited'], title: 'second, edited', replayUpdates: 3 });
+	});
+
 	it('reads the older one-object files', () => {
 		const text = JSON.stringify({ sessionId: 's2', projectHash: 'h', lastUpdated: '2026-09-01T00:00:00.000Z', messages: [{ id: 'a', type: 'user', content: 'Add a test\nfor the cart' }] }, null, 2);
 		expect(parseSessionFile(text, true)).toMatchObject({ id: 's2', title: 'Add a test', prompts: ['Add a test\nfor the cart'] });
