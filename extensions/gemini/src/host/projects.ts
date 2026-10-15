@@ -14,17 +14,38 @@
 // Nothing here runs until a project's coordinator starts.
 
 import type * as acp from '@agentclientprotocol/sdk';
+import { promises as fs } from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
+import type { EditedFile } from '../acp/agentChanges';
 import type { AgentProjectRole, AgentRecord } from '../acp/agents';
+import type { ThreadCard } from '../acp/chatTranscript';
 import { attachmentLabel, type Attachment } from '../acp/attachments';
 import { ConductorReader } from '../acp/conductor';
 import type { InstantAnswer } from '../acp/permissions';
 import { ProjectHub, panelState, threadCounts, type ThreadRequest } from '../acp/projectHub';
 import { coordinatorTools, isProjectToolCall, isProjectToolTitle, ProjectMcpServer, threadTools, type ProjectCaller } from '../acp/projectMcp';
 import type { McpToolResult } from '../acp/browserMcp';
+import { errorMessage } from '../acp/errors';
+import { cleanDraft, draftRequest, repoFacts } from '../acp/projectDraft';
+import { ruleEntries, ruleFolders } from '../acp/projectRules';
+import { addMemoryFiles, configFile, maxInstructionsChars, memoryFolder, newMemoryFile, projectMemory, readProjectConfig, removeMemoryFile, repoKey, writeProjectConfig, type ProjectConfig, type ProjectDefaults, type ProjectRepo } from '../acp/projectStore';
+import { coordinatorHome, repositoryRoot } from '../acp/worktrees';
 import type { ChatActivity, ChatController, ChatProject } from './chatController';
-import type { NewThread, ThreadAction } from './chatProtocol';
+import type { NewThread, ProjectDefaultsView, ProjectSettingsSave, ProjectSettingsView, ThreadAction } from './chatProtocol';
 import { configSection } from './configuration';
+import { tildify } from './displayText';
+
+/** What a new thread gets from its project besides its request. */
+export interface ThreadSetup {
+	/** The repositories it works in, when the project has several. */
+	readonly repos?: readonly ProjectRepo[];
+	/** The project's memory for threads, if any. */
+	readonly memory?: string;
+	/** Put before a branch name made from the title; unset for "gemini/". */
+	readonly branchPrefix?: string;
+}
 
 /** What Projects needs from the Agents pane. */
 export interface ProjectAgents {
@@ -35,10 +56,20 @@ export interface ProjectAgents {
 	/** The agent's chat, starting its session (without a tab) if it has none. */
 	controller(id: string): ChatController | undefined;
 	activity(id: string): ChatActivity | undefined;
-	startThread(coordinatorId: string, request: ThreadRequest): Promise<string>;
+	startThread(coordinatorId: string, request: ThreadRequest, setup: ThreadSetup): Promise<string>;
+	/** Adds a repository to a thread in several; resolves with what to tell the thread. */
+	addRepo(thread: string, repo: ProjectRepo, memory: string | undefined): Promise<string>;
 	open(id: string): Promise<void>;
 	stopTurn(id: string): void;
-	mergeBack(id: string): Promise<boolean>;
+	/** Merges a thread back (for one in several repositories, `repo`'s worktree); returns whether all of its work is now merged. */
+	mergeBack(id: string, repo?: string): Promise<boolean>;
+	/** The files a running agent changed. */
+	changedFiles(id: string): readonly EditedFile[] | undefined;
+	rename(id: string, title: string): void;
+	/** Asks the Gemini CLI to trust the folder multi-repository threads work in; false when the user declines. */
+	trustThreads(coordinatorId: string): Promise<boolean>;
+	/** One direct request to the quick model; undefined when there is no way to make one. */
+	direct(request: { readonly system: string; readonly prompt: string }): Promise<string | undefined>;
 	openChanges(id: string): Promise<void>;
 	/** Asks, then removes the thread with its folder and branch; returns whether it did. */
 	undoThread(id: string): Promise<boolean>;
@@ -71,6 +102,14 @@ interface LiveProject {
 	readonly merged: Set<string>;
 	readonly removed: Set<string>;
 	readonly disposables: vscode.Disposable[];
+	/** The project's own folder: its settings and memory (projectStore.ts). */
+	readonly home: string;
+	/** Its settings, once read; `loading` resolves with the latest. */
+	config?: ProjectConfig;
+	loading: Promise<ProjectConfig>;
+	/** Gemini is drafting the Memory text, and why the last draft failed. */
+	drafting?: boolean;
+	draftError?: string;
 }
 
 export class Projects implements vscode.Disposable {
@@ -82,7 +121,10 @@ export class Projects implements vscode.Disposable {
 
 	/** Starts the MCP server; a project agent's session must not open before it listens. */
 	async ready(): Promise<void> {
-		this.server ??= new ProjectMcpServer({ call: (caller, name, args) => this.call(caller, name, args) }, this.version);
+		this.server ??= new ProjectMcpServer({
+			call: (caller, name, args) => this.call(caller, name, args),
+			multiRepo: caller => caller.role === 'thread' && !!this.agents.record(caller.thread)?.repos?.length,
+		}, this.version);
 		await this.server.start();
 	}
 
@@ -118,8 +160,11 @@ export class Projects implements vscode.Disposable {
 		return {
 			post: (text, attachments) => this.projects.get(coordinatorId)?.hub.post(withAttachments(text, attachments)),
 			hidesToolCall: title => isProjectToolTitle(title, coordinatorTools),
-			threadAction: (thread, action) => void this.threadAction(coordinatorId, thread, action),
+			threadAction: (thread, action, repo) => void this.threadAction(coordinatorId, thread, action, repo),
 			startThread: thread => void this.startThread(coordinatorId, thread),
+			openSettings: () => void this.openSettings(coordinatorId),
+			saveSettings: settings => void this.saveSettings(coordinatorId, settings),
+			settingsAction: (action, name) => void this.settingsAction(coordinatorId, action, name),
 		};
 	}
 
@@ -128,6 +173,12 @@ export class Projects implements vscode.Disposable {
 		if (record.project?.role === 'coordinator') {
 			this.openProject(record);
 		}
+	}
+
+	/** The Project Settings command: opens the project chat with its settings. */
+	async openSettingsOf(coordinatorId: string): Promise<void> {
+		await this.agents.open(coordinatorId);
+		await this.openSettings(coordinatorId);
 	}
 
 	/** The New Thread command: opens the project chat with its dialog. */
@@ -214,11 +265,25 @@ export class Projects implements vscode.Disposable {
 			return;
 		}
 		const conductor = new ConductorReader(folder);
+		const home = coordinatorHome(record.id);
 		const hub = new ProjectHub(record.id, { prompt: text => coordinator.sendUnseen(text) }, {
-			start: request => this.agents.startThread(record.id, request),
+			start: request => this.startRequested(project, request),
 			message: (thread, text) => this.message(record.id, thread, text),
 			read: (thread, last) => this.read(thread, last),
+			addRepo: async (thread, key) => {
+				const config = await project.loading;
+				const repo = config.repos.find(each => each.key === key);
+				if (!repo) {
+					throw new Error(`No repository ${key}.`);
+				}
+				const said = await this.agents.addRepo(thread, repo, await projectMemory(home, config, 'threads'));
+				this.showCard(project, thread);
+				return said;
+			},
 		}, {
+			// The memory is read first in each wake, so the repositories are known by the time they are asked for.
+			memory: async () => projectMemory(home, await project.loading, 'coordinator'),
+			repos: () => repoKeys(project.config),
 			conductor: () => conductor.read(),
 			trackBrief: track => conductor.trackBrief(track),
 		});
@@ -227,8 +292,9 @@ export class Projects implements vscode.Disposable {
 		const project: LiveProject = {
 			id: record.id, hub, coordinator, conductor,
 			reported: new Set(), queued: new Map(), planning: new Set(), merged: new Set(), removed: new Set(),
-			disposables: [],
+			disposables: [], home, loading: Promise.resolve({ repos: [], instructions: '', files: [], defaults: {} }),
 		};
+		project.loading = this.loadConfig(project, folder);
 		const open: string[] = [];
 		for (const thread of this.agents.threadsOf(record.id)) {
 			if (thread.project?.role === 'thread') {
@@ -253,6 +319,12 @@ export class Projects implements vscode.Disposable {
 		);
 		this.projects.set(record.id, project);
 		this.schedulePanel(project);
+		// A new project's Memory text starts as Gemini's draft, made in the background for the user to review.
+		void project.loading.then(async config => {
+			if (!config.instructions.trim() && !await fs.access(path.join(home, configFile)).then(() => true, () => false)) {
+				await this.draft(project);
+			}
+		});
 		// The project's unresolved threads start with it, so their chats are live and the
 		// coordinator can reach them; a resolved one starts only when it is opened.
 		// One at a time, a moment apart: each is a Gemini CLI process, and starting them all at once
@@ -340,6 +412,232 @@ export class Projects implements vscode.Disposable {
 			.join('\n\n');
 	}
 
+	/** A thread the coordinator or the dialog asked for, with what the project's settings add. */
+	private async startRequested(project: LiveProject, request: ThreadRequest): Promise<string> {
+		const config = await project.loading;
+		const repos = config.repos.length > 1 ? config.repos.filter(repo => request.repos?.includes(repo.key)) : [];
+		const memory = await projectMemory(project.home, config, 'threads');
+		const model = request.model ?? config.defaults.threadModel;
+		return this.agents.startThread(project.id, {
+			...request,
+			// The dialog shows the default already; the coordinator plans first when the user asked, or by default.
+			planFirst: request.planFirst || (request.byCoordinator && !!config.defaults.planFirst),
+			...(model ? { model } : {}),
+		}, {
+			...(repos.length ? { repos } : {}),
+			...(memory ? { memory } : {}),
+			...(config.defaults.branchPrefix !== undefined ? { branchPrefix: config.defaults.branchPrefix } : {}),
+		});
+	}
+
+	private async loadConfig(project: LiveProject, folder: string): Promise<ProjectConfig> {
+		const repository = await repositoryRoot(folder) ?? folder;
+		const config = await readProjectConfig(project.home, repository);
+		project.config = config;
+		return config;
+	}
+
+	private setConfig(project: LiveProject, config: ProjectConfig): void {
+		project.config = config;
+		project.loading = Promise.resolve(config);
+		project.hub.memoryChanged();
+		this.schedulePanel(project);
+	}
+
+	private async openSettings(coordinatorId: string): Promise<void> {
+		const project = this.projects.get(coordinatorId);
+		if (!project) {
+			return;
+		}
+		const config = await project.loading;
+		project.coordinator.showProjectSettings(await this.settingsView(project), true);
+		if (!config.instructions.trim() && !config.draftedAt && !project.drafting) {
+			void this.draft(project);
+		}
+	}
+
+	private async refreshSettings(project: LiveProject): Promise<void> {
+		const view = await this.settingsView(project);
+		if (this.projects.get(project.id) === project) {
+			project.coordinator.showProjectSettings(view, false);
+		}
+	}
+
+	private async settingsView(project: LiveProject): Promise<ProjectSettingsView> {
+		const config = await project.loading;
+		const threads = this.agents.threadsOf(project.id).filter(thread => thread.project?.role === 'thread');
+		const userSettings = path.join(process.env.GEMINI_CLI_HOME || os.homedir(), '.gemini', 'settings.json');
+		const repoRules = await Promise.all(config.repos.map(async repo => {
+			const names = (await ruleEntries(repo.folder, userSettings).catch(() => [])).filter(name => !ruleFolders.includes(name));
+			const present = await Promise.all(names.map(name => fs.access(path.join(repo.folder, name)).then(() => true, () => false)));
+			return { key: repo.key, files: names.filter((_, i) => present[i]) };
+		}));
+		const resolved = (thread: AgentRecord) => thread.project?.role === 'thread' && !!thread.project.resolved;
+		return {
+			name: this.agents.record(project.id)?.title ?? '',
+			repos: config.repos.map(repo => ({ key: repo.key, folder: repo.folder, label: tildify(repo.folder) })),
+			defaults: defaultsView(config.defaults),
+			instructions: config.instructions,
+			maxChars: maxInstructionsChars,
+			...(config.draftedAt ? { draftedAt: config.draftedAt } : {}),
+			...(project.drafting ? { drafting: true } : {}),
+			...(project.draftError ? { draftError: project.draftError } : {}),
+			files: await Promise.all(config.files.map(async file => {
+				const size = await fs.stat(path.join(project.home, memoryFolder, file.name)).then(stat => stat.size, () => undefined);
+				return { ...file, ...(size !== undefined ? { chars: size } : {}) };
+			})),
+			memoryFolder: tildify(path.join(project.home, memoryFolder)),
+			repoRules,
+			stats: {
+				open: threads.filter(thread => !resolved(thread)).length,
+				merged: threads.filter(resolved).length,
+				added: threads.reduce((sum, thread) => sum + (thread.changes?.added ?? 0), 0),
+				removed: threads.reduce((sum, thread) => sum + (thread.changes?.removed ?? 0), 0),
+			},
+		};
+	}
+
+	private async saveSettings(coordinatorId: string, save: ProjectSettingsSave): Promise<void> {
+		const project = this.projects.get(coordinatorId);
+		if (!project) {
+			return;
+		}
+		try {
+			const before = await project.loading;
+			const name = save.name.trim();
+			if (name && name !== this.agents.record(coordinatorId)?.title) {
+				this.agents.rename(coordinatorId, name);
+			}
+			// The project's own repository stays first; the others are kept as the popup listed them, once each.
+			const repos: ProjectRepo[] = before.repos.slice(0, 1);
+			for (const repo of save.repos) {
+				if (path.isAbsolute(repo.folder) && !repos.some(each => each.folder === repo.folder)) {
+					const taken = repos.map(each => each.key);
+					repos.push({ key: /^[\w.-]{1,80}$/.test(repo.key) && !taken.includes(repo.key) ? repo.key : repoKey(repo.folder, taken), folder: repo.folder });
+				}
+			}
+			await Promise.all(save.removedFiles.map(file => removeMemoryFile(project.home, file)));
+			const instructions = save.instructions.slice(0, maxInstructionsChars);
+			const keepDraft = before.draftedAt && instructions === before.instructions && !save.reviewedDraft;
+			const config: ProjectConfig = {
+				repos,
+				instructions,
+				files: save.files.filter(file => !save.removedFiles.includes(file.name)).map(file => ({ name: file.name, coordinator: !!file.coordinator, threads: !!file.threads })),
+				defaults: {
+					...(save.defaults.threadModel ? { threadModel: save.defaults.threadModel } : {}),
+					planFirst: !!save.defaults.planFirst,
+					...(save.defaults.branchPrefix.trim() !== 'gemini/' ? { branchPrefix: save.defaults.branchPrefix.trim() } : {}),
+				},
+				...(keepDraft ? { draftedAt: before.draftedAt } : {}),
+			};
+			await writeProjectConfig(project.home, config);
+			// Read back, so the file list matches the memory folder.
+			this.setConfig(project, await readProjectConfig(project.home, repos[0].folder));
+			if (repos.length > 1 && before.repos.length < 2) {
+				await this.agents.trustThreads(coordinatorId);
+			}
+			const added = repos.some(repo => !before.repos.some(each => each.folder === repo.folder));
+			if (added && (!instructions.trim() || keepDraft)) {
+				void this.draft(project);
+			}
+		} catch (err) {
+			void vscode.window.showErrorMessage(vscode.l10n.t("Could not save the project's settings: {0}", errorMessage(err)));
+		}
+		void this.refreshSettings(project);
+	}
+
+	private async settingsAction(coordinatorId: string, action: 'pickRepository' | 'addFiles' | 'newFile' | 'openFile' | 'draft', name?: string): Promise<void> {
+		const project = this.projects.get(coordinatorId);
+		if (!project) {
+			return;
+		}
+		const memory = path.join(project.home, memoryFolder);
+		try {
+			switch (action) {
+				case 'pickRepository': {
+					const picked = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false, canSelectMany: false, openLabel: vscode.l10n.t("Add Repository"), title: vscode.l10n.t("Add a Repository to the Project") });
+					if (!picked?.[0]) {
+						return;
+					}
+					const root = await repositoryRoot(picked[0].fsPath);
+					if (!root) {
+						void vscode.window.showErrorMessage(vscode.l10n.t("{0} is not in a Git repository. A project's threads each work on their own branch, so each repository needs Git.", path.basename(picked[0].fsPath)));
+						return;
+					}
+					const config = await project.loading;
+					project.coordinator.pickedRepository({ key: repoKey(root, config.repos.map(repo => repo.key)), folder: root, label: tildify(root) });
+					return;
+				}
+				case 'addFiles': {
+					const picked = await vscode.window.showOpenDialog({ canSelectMany: true, openLabel: vscode.l10n.t("Add"), title: vscode.l10n.t("Add Context Files"), filters: { [vscode.l10n.t("Markdown")]: ['md', 'markdown', 'txt'] } });
+					if (picked?.length) {
+						await addMemoryFiles(project.home, picked.map(uri => uri.fsPath));
+						await this.rereadConfig(project);
+					}
+					return;
+				}
+				case 'newFile': {
+					const title = await vscode.window.showInputBox({ title: vscode.l10n.t("New Context File"), prompt: vscode.l10n.t("The file's name, such as \"release process\""), validateInput: value => value.trim() ? undefined : vscode.l10n.t("Enter a name.") });
+					if (title?.trim()) {
+						const file = await newMemoryFile(project.home, title);
+						await this.rereadConfig(project);
+						await vscode.window.showTextDocument(vscode.Uri.file(file), { preview: false });
+					}
+					return;
+				}
+				case 'openFile':
+					if (name && path.basename(name) === name) {
+						await vscode.window.showTextDocument(vscode.Uri.file(path.join(memory, name)), { preview: false });
+					}
+					return;
+				case 'draft':
+					return this.draft(project);
+			}
+		} catch (err) {
+			void vscode.window.showErrorMessage(errorMessage(err));
+		}
+	}
+
+	/** The memory folder changed: the popup's file list follows it. */
+	private async rereadConfig(project: LiveProject): Promise<void> {
+		const config = await project.loading;
+		this.setConfig(project, await readProjectConfig(project.home, config.repos[0]?.folder ?? project.home));
+		await this.refreshSettings(project);
+	}
+
+	/**
+	 * Gemini drafts the Memory text from the repositories in one direct
+	 * request, saved with the time it was drafted so the popup asks the user
+	 * to review it. A save of the user's own text meanwhile wins.
+	 */
+	private async draft(project: LiveProject): Promise<void> {
+		if (project.drafting) {
+			return;
+		}
+		project.drafting = true;
+		project.draftError = undefined;
+		void this.refreshSettings(project);
+		try {
+			const before = await project.loading;
+			const facts = await Promise.all(before.repos.map(repoFacts));
+			const text = cleanDraft(await this.agents.direct(draftRequest(facts)) ?? '');
+			if (!text) {
+				throw new Error(vscode.l10n.t("Gemini's quick requests are off or not available with this sign-in."));
+			}
+			const current = await project.loading;
+			if (current.instructions === before.instructions) {
+				const next: ProjectConfig = { ...current, instructions: text.slice(0, maxInstructionsChars), draftedAt: Date.now() };
+				await writeProjectConfig(project.home, next);
+				this.setConfig(project, next);
+			}
+		} catch (err) {
+			project.draftError = errorMessage(err);
+		} finally {
+			project.drafting = false;
+			void this.refreshSettings(project);
+		}
+	}
+
 	private async call(caller: ProjectCaller, name: string, args: Record<string, unknown>): Promise<McpToolResult> {
 		const project = this.projects.get(caller.project);
 		if (!project) {
@@ -369,6 +667,7 @@ export class Projects implements vscode.Disposable {
 			...(role?.track ? { track: role.track } : {}),
 			...(project.merged.has(thread) ? { merged: true } : {}),
 			...(project.removed.has(thread) ? { removed: true } : {}),
+			...(record.repos?.length ? { repos: repoCards(record, this.agents.changedFiles(thread)) } : {}),
 		});
 		this.schedulePanel(project);
 	}
@@ -386,7 +685,7 @@ export class Projects implements vscode.Disposable {
 
 	private async showPanel(project: LiveProject): Promise<void> {
 		// Three stats at most: the reader keeps the files until they change.
-		const conductor = await project.conductor.read().catch(() => undefined);
+		const [conductor, config] = await Promise.all([project.conductor.read().catch(() => undefined), project.loading]);
 		if (this.projects.get(project.id) !== project) {
 			return;
 		}
@@ -400,10 +699,12 @@ export class Projects implements vscode.Disposable {
 			}),
 			...(conductor ? { conductor: { openTracks: conductor.tracks.filter(track => track.state !== 'done').length } } : {}),
 			...(model ? { model } : {}),
+			...(config.repos.length > 1 ? { repos: repoKeys(config) } : {}),
+			defaults: defaultsView(config.defaults),
 		});
 	}
 
-	private async threadAction(coordinatorId: string, thread: string, action: ThreadAction): Promise<void> {
+	private async threadAction(coordinatorId: string, thread: string, action: ThreadAction, repo?: string): Promise<void> {
 		const project = this.projects.get(coordinatorId);
 		switch (action) {
 			case 'open':
@@ -413,10 +714,12 @@ export class Projects implements vscode.Disposable {
 			case 'review':
 				return this.agents.openChanges(thread);
 			case 'merge':
-				if (await this.agents.mergeBack(thread) && project) {
+				if (await this.agents.mergeBack(thread, repo) && project) {
 					project.merged.add(thread);
 					this.agents.setResolved(thread, true);
 					project.hub.updateThread(thread, { resolved: true });
+				}
+				if (project) {
 					this.showCard(project, thread);
 				}
 				return;
@@ -450,10 +753,17 @@ export class Projects implements vscode.Disposable {
 		if (!project || !title || !brief) {
 			return;
 		}
+		const config = await project.loading;
+		const repos = config.repos.length > 1 ? repoKeys(config).filter(key => thread.repos?.includes(key)) : [];
+		if (config.repos.length > 1 && !repos.length) {
+			void vscode.window.showErrorMessage(vscode.l10n.t("Choose at least one repository for the thread."));
+			return;
+		}
 		try {
 			await project.hub.startThread(title, brief, thread.planFirst, {
 				...(thread.branch?.trim() ? { branch: thread.branch.trim() } : {}),
 				...(thread.model ? { model: thread.model } : {}),
+				...(repos.length ? { repos } : {}),
 			});
 		} catch (err) {
 			void vscode.window.showErrorMessage(vscode.l10n.t("Could not start the thread: {0}", err instanceof Error ? err.message : String(err)));
@@ -465,6 +775,29 @@ export class Projects implements vscode.Disposable {
 const panelDelayMs = 100;
 /** The gap between starting one of an opened project's threads and the next. */
 const threadStartGapMs = 1_500;
+
+/** The project's repositories by key, when it has several; none for a project with one. */
+function repoKeys(config: ProjectConfig | undefined): string[] {
+	return config && config.repos.length > 1 ? config.repos.map(repo => repo.key) : [];
+}
+
+function defaultsView(defaults: ProjectDefaults): ProjectDefaultsView {
+	return { ...(defaults.threadModel ? { threadModel: defaults.threadModel } : {}), planFirst: !!defaults.planFirst, branchPrefix: defaults.branchPrefix ?? 'gemini/' };
+}
+
+/** A multi-repository thread's card rows: each repository's changed files, from the edits its agent made there. */
+function repoCards(record: AgentRecord, files: readonly EditedFile[] | undefined): NonNullable<ThreadCard['repos']> {
+	return (record.repos ?? []).map(repo => {
+		const inside = (files ?? []).filter(file => file.path === repo.folder || file.path.startsWith(repo.folder + path.sep));
+		return {
+			key: repo.key,
+			files: inside.length,
+			added: inside.reduce((sum, file) => sum + file.added, 0),
+			removed: inside.reduce((sum, file) => sum + file.removed, 0),
+			...(repo.merged ? { merged: true } : {}),
+		};
+	});
+}
 
 function callerOf(record: AgentRecord): ProjectCaller | undefined {
 	const role: AgentProjectRole | undefined = record.project;

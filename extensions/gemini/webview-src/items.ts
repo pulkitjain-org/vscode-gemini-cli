@@ -62,12 +62,15 @@ export function render(item: TranscriptItem, toggleToolCall: ToggleToolCall): HT
 function renderThreadCard(item: ItemOf<'thread'>): HTMLElement {
 	const project = strings.project;
 	const card = el('div', `thread-card state-${item.state}${item.removed ? ' removed' : ''}`);
-	const send = (action: ThreadAction) => vscode.postMessage({ type: 'threadAction', thread: item.thread, action });
+	const send = (action: ThreadAction, repo?: string) => vscode.postMessage({ type: 'threadAction', thread: item.thread, action, ...(repo ? { repo } : {}) });
 	const title = button('thread-title', item.title, () => send('open'));
 	title.prepend(el('span', 'thread-dot'));
 	card.append(title);
 	const state = project?.states[item.state] ?? item.state;
-	const line = item.removed ? project?.undone : item.merged ? project?.merged : item.detail ? `${state} \u00b7 ${item.detail}` : state;
+	const repos = item.repos ?? [];
+	const mergedRepos = repos.filter(repo => repo.merged).length;
+	const partly = !item.merged && mergedRepos > 0 && project ? format(project.mergedCount, mergedRepos).replace('{1}', String(repos.length)) : undefined;
+	const line = item.removed ? project?.undone : item.merged ? project?.merged : partly ?? (item.detail ? `${state} \u00b7 ${item.detail}` : state);
 	card.append(el('div', 'thread-line', line ?? state));
 	const meta = [
 		item.branch,
@@ -79,6 +82,21 @@ function renderThreadCard(item: ItemOf<'thread'>): HTMLElement {
 	if (item.removed || !project) {
 		return card;
 	}
+	// A thread in several repositories: a row for each, merged back one at a time.
+	if (repos.length) {
+		const list = el('div', 'thread-repos');
+		for (const repo of repos) {
+			const row = el('div', `thread-repo${repo.merged ? ' merged' : ''}`);
+			row.append(el('span', 'repo-pill', repo.key), el('span', 'thread-repo-counts', repo.files ? `+${repo.added} \u2212${repo.removed}` : '\u2014'));
+			if (repo.merged) {
+				row.append(el('span', 'thread-repo-state', project.repoMerged));
+			} else if (item.state === 'done' && !item.merged) {
+				row.append(button('secondary thread-repo-merge', project.actions.merge, () => send('merge', repo.key)));
+			}
+			list.append(row);
+		}
+		card.append(list);
+	}
 	const actions: [ThreadAction, boolean][] = item.state === 'waiting'
 		? [['open', true]]
 		: item.state === 'planned'
@@ -86,7 +104,7 @@ function renderThreadCard(item: ItemOf<'thread'>): HTMLElement {
 			: item.state === 'error'
 				? [['retry', true], ['open', false]]
 				: item.state === 'done' && !item.merged && item.changes?.files
-					? [['merge', true], ['review', false], ['undo', false]]
+					? repos.length ? [['review', true], ['undo', false]] : [['merge', true], ['review', false], ['undo', false]]
 					// Done with nothing to merge, such as an assessment: its answer is in the thread.
 					: item.state === 'done' && !item.merged
 						? [['open', true], ['undo', false]]

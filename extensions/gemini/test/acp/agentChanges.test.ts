@@ -63,6 +63,13 @@ describe('AgentChanges', () => {
 		changes.clear();
 		expect(changes.totals).toEqual({ files: 0, added: 0, removed: 0 });
 	});
+
+	it('clears one folder\'s changes, such as one repository of a thread in several', () => {
+		const changes = new AgentChanges(root);
+		changes.record([{ path: file('shop/a.ts'), oldText: 'x', newText: 'y' }, { path: file('shopping/b.ts'), oldText: 'x', newText: 'y' }]);
+		changes.clear(file('shop'));
+		expect(changes.files.map(f => f.path)).toEqual([file('shopping/b.ts')]);
+	});
 });
 
 describe('AgentChanges.keep', () => {

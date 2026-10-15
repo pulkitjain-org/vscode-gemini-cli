@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
 import type { ChangeTotals } from './agentChanges';
 import { Emitter } from './events';
-import type { AgentWorktree } from './worktrees';
+import type { AgentWorktree, RepoWorktree } from './worktrees';
 
 export interface WorkspaceRecord {
 	readonly id: string;
@@ -32,10 +32,21 @@ export interface AgentRecord {
 	readonly sessionId?: string;
 	/** What the agent's edits add up to, for its row before it is opened. */
 	readonly changes?: ChangeTotals;
-	/** The agent's own branch and folder, when it works in a worktree instead of the workspace folder. */
+	/**
+	 * The agent's own branch and folder, when it works in a worktree instead of the workspace folder.
+	 * For a thread in several repositories, the thread's own folder (not a repository), which holds `repos`.
+	 */
 	readonly worktree?: AgentWorktree;
+	/** A project thread in several repositories: each one's worktree, inside `worktree.folder`. */
+	readonly repos?: readonly ThreadRepo[];
 	/** Its part in a project (Projects preview): the project's coordinator, or one of its threads. */
 	readonly project?: AgentProjectRole;
+}
+
+/** One repository's worktree in a thread that works in several. */
+export interface ThreadRepo extends RepoWorktree {
+	/** Merged back into its repository: done, and its worktree removed. */
+	readonly merged?: boolean;
 }
 
 export type AgentProjectRole =
@@ -184,6 +195,11 @@ export class AgentsModel {
 		}
 	}
 
+	/** A multi-repository thread's repositories changed: one was added or merged. */
+	setRepos(id: string, repos: readonly ThreadRepo[]): void {
+		this.update(id, a => ({ ...a, repos }));
+	}
+
 	/** Marks a project's thread resolved (merged back) or open again. */
 	setThreadResolved(id: string, resolved: boolean): void {
 		const project = this.agent(id)?.project;
@@ -248,5 +264,6 @@ function isAgentRecord(value: unknown): value is AgentRecord {
 	return typeof a?.id === 'string' && typeof a.workspaceId === 'string' && typeof a.title === 'string'
 		&& typeof a.createdAt === 'number' && typeof a.updatedAt === 'number'
 		&& (a.worktree === undefined || (typeof a.worktree.folder === 'string' && typeof a.worktree.cwd === 'string' && typeof a.worktree.branch === 'string' && typeof a.worktree.base === 'string'))
+		&& (a.repos === undefined || (Array.isArray(a.repos) && a.repos.every(r => typeof r?.key === 'string' && typeof r.folder === 'string' && typeof r.repository === 'string' && typeof r.branch === 'string')))
 		&& (a.project === undefined || a.project.role === 'coordinator' || (a.project.role === 'thread' && typeof a.project.coordinator === 'string'));
 }

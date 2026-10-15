@@ -34,6 +34,16 @@ describe('ProjectMcpServer', () => {
 		expect((await rpc(thread, 'tools/list')).body!.result.tools!.map(t => t.name)).toEqual(['report']);
 	});
 
+	it('gives add_repo to a thread in several repositories only', async () => {
+		server = new ProjectMcpServer({ call: async () => ({ content: [] }), multiRepo: caller => caller.role === 'thread' && caller.thread === 'many' }, '1.0.0');
+		await server.start();
+		const many = server.configFor({ role: 'thread', project: 'p1', thread: 'many' })!;
+		const one = server.configFor({ role: 'thread', project: 'p1', thread: 'one' })!;
+		expect((await rpc(many, 'tools/list')).body!.result.tools!.map(t => t.name)).toEqual(['add_repo', 'report']);
+		expect((await rpc(one, 'tools/list')).body!.result.tools!.map(t => t.name)).toEqual(['report']);
+		expect((await rpc(one, 'tools/call', { name: 'add_repo', arguments: { repo: 'cms', reason: 'x' } })).body!.result.isError).toBe(true);
+	});
+
 	it('passes calls to the host with the caller', async () => {
 		const { server, calls } = await setup();
 		const thread = server.configFor({ role: 'thread', project: 'p1', thread: 't1' })!;

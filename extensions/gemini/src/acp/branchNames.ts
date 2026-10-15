@@ -5,10 +5,10 @@
 
 // Branch names for Create Branch & Commit.
 
-/** A branch name such as "gemini/fix-login-redirect" from an agent's title. */
-export function branchNameFrom(title: string): string {
+/** A branch name such as "gemini/fix-login-redirect" from an agent's title; `prefix` replaces "gemini/". */
+export function branchNameFrom(title: string, prefix = 'gemini/'): string {
 	const slug = title.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '');
-	return `gemini/${slug || 'changes'}`;
+	return `${prefix}${slug || 'changes'}`;
 }
 
 /** The common rules of `git check-ref-format --branch`. */

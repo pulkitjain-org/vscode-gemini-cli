@@ -44,6 +44,18 @@ describe('AgentsModel', () => {
 		expect(() => model.addAgent(workspace, 'Again', undefined, 'given')).toThrow();
 	});
 
+	it('keeps a multi-repository thread\'s repositories across reloads', () => {
+		const model = new AgentsModel();
+		const workspace = model.addWorkspace('/work/shop').id;
+		const worktree = { folder: '/t/fix', cwd: '/t/fix', branch: 'gemini/fix', base: 'main' };
+		model.addAgent(workspace, 'Thread', worktree, 't', { role: 'thread', coordinator: 'c', byCoordinator: true });
+		const repos = [{ key: 'shop', repository: '/work/shop', folder: '/t/fix/shop', cwd: '/t/fix/shop', branch: 'gemini/fix', base: 'main' }, { key: 'cms', repository: '/work/cms', folder: '/t/fix/cms', cwd: '/t/fix/cms', branch: 'gemini/fix', base: 'main', merged: true }];
+		model.setRepos('t', repos);
+		const reloaded = new AgentsModel(model.snapshot());
+		expect(reloaded.agent('t')?.repos).toEqual(repos);
+		expect(reloaded.folderOf(reloaded.agent('t')!)).toBe('/t/fix');
+	});
+
 	it('keeps a thread resolved until it is reopened, and only for threads', () => {
 		const model = new AgentsModel();
 		const workspace = model.addWorkspace('/work/api').id;

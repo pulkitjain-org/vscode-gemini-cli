@@ -2705,6 +2705,459 @@ textarea.new-thread-input {
 	}
 }
 
+/* A repository's name, in the New thread dialog, on thread cards and in Project settings. */
+.repo-pill {
+	display: inline-block;
+	padding: 0 8px;
+	border-radius: 999px;
+	font-family: var(--vscode-editor-font-family, monospace);
+	font-size: 0.9em;
+	line-height: 1.7;
+	color: var(--vscode-foreground);
+	background: color-mix(in srgb, var(--gemini-accent) 22%, transparent);
+	white-space: nowrap;
+}
+
+.new-thread-repos {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 16px;
+	margin: 0;
+	padding: 0;
+	border: none;
+}
+
+.new-thread-repos legend {
+	padding: 0;
+	margin-bottom: 6px;
+	font-size: 0.9em;
+	font-weight: 600;
+	color: var(--gemini-muted);
+}
+
+.new-thread-repos .new-thread-hint {
+	flex-basis: 100%;
+}
+
+.new-thread-repo {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	cursor: pointer;
+}
+
+/* A thread in several repositories: a row for each on its card. */
+.thread-repos {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin-top: 8px;
+}
+
+.thread-repo {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-height: 26px;
+}
+
+.thread-repo-counts,
+.thread-repo-state {
+	font-size: 0.9em;
+	color: var(--gemini-muted);
+}
+
+.thread-repo .thread-repo-merge {
+	margin-left: auto;
+	padding: 2px 12px;
+	border-radius: var(--gemini-radius-small);
+	border: 1px solid var(--vscode-button-secondaryBorder, var(--vscode-button-border, var(--gemini-border)));
+	background: var(--vscode-button-secondaryBackground, transparent);
+	color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+	cursor: pointer;
+}
+
+.thread-repo .thread-repo-merge:hover {
+	background: var(--vscode-button-secondaryHoverBackground, var(--gemini-hover));
+}
+
+.thread-repo.merged .repo-pill {
+	opacity: 0.7;
+}
+
+/* Project settings (projectSettings.ts): a popup with General and Memory tabs, and Save and Cancel. */
+.project-settings {
+	display: flex;
+	flex-direction: column;
+	width: min(860px, calc(100vw - 32px));
+	height: min(720px, calc(100vh - 48px));
+	box-sizing: border-box;
+	padding: 0;
+	border-radius: var(--gemini-radius-large);
+	border: 1px solid var(--gemini-border-strong);
+	background: var(--gemini-popover);
+	color: var(--vscode-foreground);
+	box-shadow: 0 20px 60px var(--gemini-shadow);
+	overflow: hidden;
+}
+
+.project-settings:not([open]) {
+	display: none;
+}
+
+.project-settings::backdrop {
+	background: color-mix(in srgb, var(--vscode-editor-background, #000) 55%, transparent);
+}
+
+.project-settings-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 16px 20px 12px;
+}
+
+.project-settings-head h2 {
+	margin: 0;
+	font-size: 1.15em;
+	font-weight: 600;
+}
+
+.project-settings-main {
+	display: flex;
+	flex: 1;
+	min-height: 0;
+	border-top: 1px solid var(--gemini-border);
+}
+
+.project-settings-nav {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	flex: 0 0 160px;
+	padding: 12px 8px;
+	border-right: 1px solid var(--gemini-border);
+}
+
+.project-settings-tab {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 10px;
+	border: none;
+	border-radius: var(--gemini-radius-small);
+	background: transparent;
+	color: var(--vscode-foreground);
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.project-settings-tab:hover {
+	background: var(--gemini-hover);
+}
+
+.project-settings-tab.selected {
+	background: var(--gemini-selected);
+	color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground));
+}
+
+.project-settings-body {
+	flex: 1;
+	min-width: 0;
+	overflow-y: auto;
+	padding: 16px 22px 20px;
+}
+
+.project-settings-foot {
+	margin-top: 0;
+	padding: 12px 20px;
+	border-top: 1px solid var(--gemini-border);
+}
+
+.project-settings-note {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-right: auto;
+	font-size: 0.9em;
+	color: var(--gemini-muted);
+}
+
+.project-settings-note.confirming {
+	color: var(--vscode-foreground);
+	font-weight: 600;
+}
+
+.project-settings-dot {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--gemini-warn);
+}
+
+.permission-actions button.danger {
+	background: var(--vscode-inputValidation-errorBackground, var(--gemini-error));
+	border-color: var(--gemini-error);
+	color: var(--vscode-foreground);
+}
+
+.link-button {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	padding: 0;
+	border: none;
+	background: none;
+	color: var(--vscode-textLink-foreground);
+	font: inherit;
+	cursor: pointer;
+}
+
+.link-button:hover:not(:disabled) {
+	text-decoration: underline;
+}
+
+.link-button:disabled {
+	color: var(--gemini-faint);
+	cursor: default;
+}
+
+.settings-section + .settings-section,
+.settings-stats + .settings-section {
+	margin-top: 20px;
+}
+
+.settings-section h3 {
+	margin: 0 0 2px;
+	font-size: 1em;
+	font-weight: 600;
+}
+
+.settings-section > .settings-small {
+	margin: 0 0 8px;
+}
+
+.settings-muted {
+	color: var(--gemini-muted);
+}
+
+.settings-small {
+	font-size: 0.9em;
+}
+
+.settings-stats {
+	display: flex;
+	gap: 8px;
+}
+
+.settings-stat {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	min-width: 0;
+	padding: 8px 11px;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius-small);
+}
+
+.settings-stat strong {
+	font-size: 1.15em;
+}
+
+.settings-stat span {
+	font-size: 0.85em;
+	color: var(--gemini-muted);
+}
+
+#project-settings-name {
+	max-width: 360px;
+}
+
+.settings-list {
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius-small);
+	overflow: hidden;
+}
+
+.settings-list-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-height: 22px;
+	padding: 7px 12px;
+}
+
+.settings-list-row + .settings-list-row {
+	border-top: 1px solid var(--gemini-border);
+}
+
+.settings-list-actions {
+	gap: 18px;
+}
+
+.settings-repo {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.settings-path {
+	margin-left: auto;
+	font-family: var(--vscode-editor-font-family, monospace);
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.settings-rows {
+	display: flex;
+	flex-direction: column;
+}
+
+.settings-row {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	padding: 8px 0;
+	border-top: 1px solid var(--gemini-border);
+}
+
+.settings-row label {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.settings-row .new-thread-input {
+	width: 220px;
+}
+
+.settings-draft {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	margin-bottom: 8px;
+	font-size: 0.9em;
+	line-height: 1.4;
+	color: var(--gemini-muted);
+}
+
+/* Gemini's draft, waiting for review: a note the user can't miss. */
+.settings-draft.note {
+	padding: 8px 10px;
+	border-radius: var(--gemini-radius-small);
+	color: var(--vscode-foreground);
+	background: color-mix(in srgb, var(--gemini-accent) 12%, transparent);
+}
+
+.settings-draft.error {
+	color: var(--gemini-error);
+	background: color-mix(in srgb, var(--gemini-error) 10%, transparent);
+}
+
+.settings-draft > .codicon {
+	margin-top: 1px;
+}
+
+.settings-draft > span {
+	flex: 1;
+}
+
+.settings-draft .link-button {
+	flex: none;
+	margin-left: auto;
+	white-space: nowrap;
+}
+
+#project-settings-instructions {
+	min-height: 10em;
+	line-height: 1.5;
+}
+
+.settings-counter {
+	margin-top: 3px;
+	text-align: right;
+	font-size: 0.85em;
+	color: var(--gemini-faint);
+}
+
+.settings-files-head {
+	font-size: 0.85em;
+	color: var(--gemini-faint);
+}
+
+.settings-files .settings-list-row:not(.settings-list-actions) > :first-child {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	text-align: left;
+}
+
+.settings-files-head > span:nth-child(2),
+.settings-file-toggle:nth-child(2) {
+	flex: 0 0 96px;
+	text-align: center;
+}
+
+.settings-files-head > span:nth-child(3),
+.settings-file-toggle:nth-child(3) {
+	flex: 0 0 76px;
+	text-align: center;
+}
+
+.settings-files-head > span:nth-child(4) {
+	flex: 0 0 22px;
+}
+
+.settings-rules {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.settings-rules > div {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.settings-tokens {
+	margin-top: 14px;
+}
+
+@media (max-width: 620px) {
+	.project-settings-main {
+		flex-direction: column;
+	}
+
+	.project-settings-nav {
+		flex-direction: row;
+		flex-basis: auto;
+		border-right: none;
+		border-bottom: 1px solid var(--gemini-border);
+	}
+
+	.settings-stats {
+		flex-wrap: wrap;
+	}
+}
+
+.panel-heading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
 /*
  * The project chat's side panel (project.ts): shown beside the chat only
  * when the view is wide enough for both; the chat column narrows to make room.

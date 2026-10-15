@@ -106,8 +106,10 @@ export interface ThreadCard {
 	readonly startedAt: number;
 	/** The Conductor track its brief came from. */
 	readonly track?: string;
-	/** Merged back into the project's branch. */
+	/** Merged back into the project's branch; for a thread in several repositories, into every one it changed. */
 	readonly merged?: boolean;
+	/** A thread in several repositories: each one's changes, and whether they are merged back. */
+	readonly repos?: readonly { readonly key: string; readonly files: number; readonly added: number; readonly removed: number; readonly merged?: boolean }[];
 	/** Undone: its branch and folder are gone. */
 	readonly removed?: boolean;
 }

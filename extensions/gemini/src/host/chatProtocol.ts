@@ -19,7 +19,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 21;
+export const chatProtocolVersion = 22;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -45,6 +45,60 @@ export interface NewThread {
 	/** The model the thread starts on; unset for the one new agents get. */
 	readonly model?: string;
 	readonly planFirst: boolean;
+	/** In a project with several repositories, the ones the thread works in. */
+	readonly repos?: readonly string[];
+}
+
+/** A project's defaults for new threads, as Project settings shows them. */
+export interface ProjectDefaultsView {
+	readonly threadModel?: string;
+	readonly planFirst: boolean;
+	readonly branchPrefix: string;
+}
+
+/** One of a project's repositories in Project settings. */
+export interface ProjectRepoView {
+	readonly key: string;
+	/** Its top folder, which Save sends back. */
+	readonly folder: string;
+	/** The folder for display, with ~ for the home folder. */
+	readonly label: string;
+}
+
+/** The Project settings popup's contents. */
+export interface ProjectSettingsView {
+	readonly name: string;
+	readonly repos: readonly ProjectRepoView[];
+	readonly defaults: ProjectDefaultsView;
+	/** The Memory text. */
+	readonly instructions: string;
+	readonly maxChars: number;
+	/** When Gemini drafted the Memory text, until the user saves their own. */
+	readonly draftedAt?: number;
+	/** Gemini is drafting the Memory text now. */
+	readonly drafting?: boolean;
+	/** Why the last draft failed. */
+	readonly draftError?: string;
+	/** Context files, with each one's length for the token estimate. */
+	readonly files: readonly { readonly name: string; readonly coordinator: boolean; readonly threads: boolean; readonly chars?: number }[];
+	/** The memory folder for display. */
+	readonly memoryFolder: string;
+	/** Each repository's own rules files, which every agent reads as well. */
+	readonly repoRules: readonly { readonly key: string; readonly files: readonly string[] }[];
+	readonly stats: { readonly open: number; readonly merged: number; readonly added: number; readonly removed: number };
+}
+
+/** What Save in Project settings sends. */
+export interface ProjectSettingsSave {
+	readonly name: string;
+	readonly repos: readonly { readonly key: string; readonly folder: string }[];
+	readonly defaults: ProjectDefaultsView;
+	readonly instructions: string;
+	readonly files: readonly { readonly name: string; readonly coordinator: boolean; readonly threads: boolean }[];
+	/** Context files to delete. */
+	readonly removedFiles: readonly string[];
+	/** The Memory tab was shown, so a draft of Gemini's counts as reviewed once saved. */
+	readonly reviewedDraft?: boolean;
 }
 
 /** The project chat's side panel: what the threads are doing and what the coordinator reads. */
@@ -59,6 +113,10 @@ export interface ProjectPanel {
 	readonly model?: string;
 	/** Every thread, oldest first, each opening its own chat. */
 	readonly threads: readonly { readonly id: string; readonly title: string; readonly state: 'working' | 'waiting' | 'planned' | 'done' | 'merged' }[];
+	/** The project's repositories by key, when it has more than one; the New thread dialog offers them. */
+	readonly repos?: readonly string[];
+	/** What the New thread dialog starts with. */
+	readonly defaults?: ProjectDefaultsView;
 }
 
 /** A project thread's way back to its project chat. */
@@ -90,6 +148,65 @@ export interface ProjectChatStrings {
 		readonly cancel: string;
 		readonly start: string;
 		readonly close: string;
+		/** A project with several repositories: the repository checkboxes. */
+		readonly reposLabel: string;
+		readonly reposHint: string;
+		readonly branchLabelShared: string;
+	};
+	/** Project settings; `{0}` is a name, count or date. */
+	readonly settings: {
+		readonly open: string;
+		readonly title: string;
+		readonly general: string;
+		readonly memory: string;
+		readonly nameLabel: string;
+		readonly nameHint: string;
+		readonly reposLabel: string;
+		readonly reposHint: string;
+		readonly addRepo: string;
+		readonly removeRepo: string;
+		readonly mainRepo: string;
+		readonly defaultsLabel: string;
+		readonly threadModel: string;
+		readonly planFirst: string;
+		readonly planFirstHint: string;
+		readonly branchPrefix: string;
+		readonly branchPrefixHint: string;
+		readonly statOpen: string;
+		readonly statMerged: string;
+		readonly statLines: string;
+		readonly statRepos: string;
+		readonly connectLabel: string;
+		readonly connectHint: string;
+		readonly instructionsLabel: string;
+		readonly instructionsHint: string;
+		readonly drafted: string;
+		readonly drafting: string;
+		readonly draft: string;
+		readonly redraft: string;
+		readonly draftFailed: string;
+		readonly filesLabel: string;
+		readonly filesHint: string;
+		readonly fileColumn: string;
+		readonly coordinatorColumn: string;
+		readonly threadsColumn: string;
+		readonly noFiles: string;
+		readonly addFiles: string;
+		readonly newFile: string;
+		readonly newFilePrompt: string;
+		readonly removeFile: string;
+		readonly alsoRead: string;
+		readonly alsoReadHint: string;
+		readonly noRules: string;
+		readonly tokens: string;
+		readonly unsaved: string;
+		readonly unsavedOne: string;
+		readonly appliesWhen: string;
+		readonly discard: string;
+		readonly discardConfirm: string;
+		readonly keepEditing: string;
+		readonly cancel: string;
+		readonly save: string;
 	};
 	/** The side panel; `{0}` is a count or a model's name. */
 	readonly panel: {
@@ -104,11 +221,15 @@ export interface ProjectChatStrings {
 		readonly conductorTracks: string;
 		readonly noConductor: string;
 		readonly model: string;
+		readonly repos: string;
 	};
 	readonly states: { readonly starting: string; readonly working: string; readonly waiting: string; readonly planned: string; readonly done: string; readonly error: string };
 	readonly actions: { readonly [action in ThreadAction]: string };
 	readonly openToAnswer: string;
 	readonly merged: string;
+	/** A thread in several repositories: one repository merged, and how many of how many are. */
+	readonly repoMerged: string;
+	readonly mergedCount: string;
 	readonly undone: string;
 	/** `{0}` is a Conductor track's id. */
 	readonly track: string;
@@ -419,10 +540,15 @@ export type FromWebview =
 	| { readonly type: 'closeFollowed' }
 	| { readonly type: 'createBranchAndCommit' }
 	/** A project chat's thread card button. */
-	| { readonly type: 'threadAction'; readonly thread: string; readonly action: ThreadAction }
+	| { readonly type: 'threadAction'; readonly thread: string; readonly action: ThreadAction; readonly repo?: string }
 	/** The New thread dialog: start a thread directly; the coordinator hears afterwards. */
 	| { readonly type: 'startThread'; readonly thread: NewThread }
 	| { readonly type: 'openParentProject' }
+	/** Open Project settings. */
+	| { readonly type: 'openProjectSettings' }
+	| { readonly type: 'saveProjectSettings'; readonly settings: ProjectSettingsSave }
+	/** Project settings' buttons that need the extension: pick a repository folder, add or make a context file, open one, or draft the Memory text. */
+	| { readonly type: 'projectSettingsAction'; readonly action: 'pickRepository' | 'addFiles' | 'newFile' | 'openFile' | 'draft'; readonly name?: string }
 	/** Put back the files the turn ending with turnEnd item `itemId` changed, and those of later turns. */
 	| { readonly type: 'undoTurn'; readonly itemId: string }
 	/** Send the prompt of the turn ending with `itemId` again; only the latest turn offers it. */
@@ -486,5 +612,9 @@ export type ToWebview =
 	| { readonly type: 'projectPanel'; readonly panel: ProjectPanel }
 	/** Open the New thread dialog, from the New Thread command. */
 	| { readonly type: 'openNewThread' }
+	/** Open Project settings, or refresh it while open. */
+	| { readonly type: 'projectSettings'; readonly settings: ProjectSettingsView; readonly open: boolean }
+	/** The folder picked for Project settings' Add repository. */
+	| { readonly type: 'pickedRepository'; readonly repo: ProjectRepoView }
 	/** A project thread's chat: the bar that leads back to its project chat. */
 	| { readonly type: 'parentProject'; readonly parent: ParentProject };

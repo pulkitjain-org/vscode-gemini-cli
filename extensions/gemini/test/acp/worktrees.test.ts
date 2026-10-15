@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { branchExists, commitAll, createWorktree, currentBranch, folderInRepository, freeFolder, git, mergeBranch, removeWorktree, repositoryRoot, runWorktreeSetup, worktreeSetupCommand, worktreesHome, worktreeStatus } from '../../src/acp/worktrees';
+import { allThreadsHome, branchExists, commitAll, createWorktree, createWorktreeAt, currentBranch, folderInRepository, freeFolder, git, mergeBranch, removeWorktree, repositoryRoot, runWorktreeSetup, threadGuide, threadsHome, worktreeSetupCommand, worktreesHome, worktreeStatus, writeThreadGuide } from '../../src/acp/worktrees';
 
 let root: string;
 let repo: string;
@@ -92,6 +92,36 @@ describe('worktrees', () => {
 		await removeWorktree(repo, second, true);
 		expect(await branchExists(repo, 'gemini/second')).toBe(false);
 		expect(await git(repo, ['worktree', 'list'])).not.toContain('second');
+	});
+});
+
+describe('threads in several repositories', () => {
+	it('puts a worktree of each repository side by side in the thread\'s folder', async () => {
+		const cms = path.join(root, 'cms');
+		await fs.mkdir(cms);
+		await git(cms, ['init', '--quiet', '--initial-branch=trunk']);
+		await fs.writeFile(path.join(cms, 'labels.json'), '{}\n');
+		await commitAll(cms, 'Initial');
+		const folder = path.join(threadsHome('p1', home), 'gift');
+		expect(threadsHome('p/1', home)).toBe(path.join(allThreadsHome(home), 'p-1'));
+		const shop = await createWorktreeAt(repo, 'gemini/gift', path.join(folder, 'shop'));
+		const content = await createWorktreeAt(cms, 'gemini/gift', path.join(folder, 'cms'));
+		expect(shop).toEqual({ folder: path.join(folder, 'shop'), cwd: path.join(folder, 'shop'), branch: 'gemini/gift', base: 'main' });
+		expect(content.base).toBe('trunk');
+		expect(await currentBranch(content.folder)).toBe('gemini/gift');
+		await writeThreadGuide(folder, threadGuide([{ key: 'shop' }, { key: 'cms', about: 'the content' }], 'gemini/gift', 'shop reads cms labels.'));
+		const guide = await fs.readFile(path.join(folder, 'GEMINI.md'), 'utf8');
+		expect(guide).toContain('- `shop/`\n- `cms/`: the content');
+		expect(guide).toContain('all on the branch `gemini/gift`');
+		expect(guide).toContain('# Project memory');
+		expect(guide).toContain('shop reads cms labels.');
+		expect(await fs.readFile(path.join(folder, '.geminiignore'), 'utf8')).toContain('node_modules/');
+		// The thread's folder is not a repository of its own.
+		expect(await repositoryRoot(folder)).toBeUndefined();
+	});
+
+	it('leaves the memory out of the guide when there is none', () => {
+		expect(threadGuide([{ key: 'shop' }], 'b')).not.toContain('# Project memory');
 	});
 });
 

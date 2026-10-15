@@ -20,6 +20,8 @@ export type ProjectCaller = { readonly role: 'coordinator'; readonly project: st
 
 export interface ProjectToolHost {
 	call(caller: ProjectCaller, name: string, args: Record<string, unknown>): Promise<McpToolResult>;
+	/** Whether a thread works in several repositories, which gives it add_repo. */
+	multiRepo?(caller: ProjectCaller): boolean;
 }
 
 const text = { type: 'string' } as const;
@@ -35,6 +37,7 @@ export const coordinatorTools: readonly McpTool[] = [
 				brief: { ...text, description: 'Everything the thread needs, in plain language.' },
 				planFirst: { type: 'boolean', description: 'Write a plan and wait for the user\'s OK before changing anything. Only when the user asked for it.' },
 				track: { ...text, description: 'A Conductor track id to take the brief from (its spec.md and plan.md).' },
+				repos: { type: 'array', items: text, description: 'In a project with several repositories: the ones the thread works in, by name, as <repositories> lists them. Ignored in a project with one.' },
 			},
 			required: ['title', 'brief'],
 		},
@@ -62,6 +65,15 @@ export const coordinatorTools: readonly McpTool[] = [
 ];
 
 export const threadTools: readonly McpTool[] = [
+	{
+		name: 'add_repo',
+		description: 'Adds another of the project\'s repositories to this thread: a worktree of it on this thread\'s branch, as a new folder beside the others in your folder. Use it when the work turns out to need that repository. Returns once the folder is ready.',
+		inputSchema: {
+			type: 'object',
+			properties: { repo: { ...text, description: 'The repository\'s name, as its folder in your folder would be named.' }, reason: { ...text, description: 'Why the work needs it, in a few words; the user sees this.' } },
+			required: ['repo', 'reason'],
+		},
+	},
 	{
 		name: 'report',
 		description: 'Tells the project\'s coordinator about a result, a blocker, or a question only the user can answer. Call it once when your work is done.',
@@ -187,7 +199,8 @@ export class ProjectMcpServer {
 			return undefined;
 		}
 		const ok = (result: unknown) => ({ jsonrpc: '2.0', id: message.id, result });
-		const tools = caller.role === 'coordinator' ? coordinatorTools : threadTools;
+		const tools = caller.role === 'coordinator' ? coordinatorTools
+			: this.host.multiRepo?.(caller) ? threadTools : threadTools.filter(tool => tool.name !== 'add_repo');
 		switch (message.method) {
 			case 'initialize':
 				return ok({

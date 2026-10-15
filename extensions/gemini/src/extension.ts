@@ -71,6 +71,8 @@ export function activate(context: vscode.ExtensionContext): void {
 	const usageMeter = new UsageMeter(quickEdits.client, log);
 	chatView.usage = usageMeter;
 	agentsView.usage = usageMeter;
+	// Drafts a project's Memory text with the same direct request quick edits use.
+	agentsView.direct = request => quickEdits.enhancePrompt(request);
 	initModelList({
 		quotaModels: () => {
 			const reading = usageMeter.reading;

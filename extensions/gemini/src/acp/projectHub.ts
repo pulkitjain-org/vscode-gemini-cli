@@ -35,6 +35,8 @@ export interface ThreadInfo {
 	readonly byCoordinator: boolean;
 	/** Merged back: the thread's work is resolved, and it takes no more unless the user asks to reopen it. */
 	readonly resolved?: boolean;
+	/** In a project with several repositories, the keys of those the thread works in. */
+	readonly repos?: readonly string[];
 }
 
 export interface ThreadRequest {
@@ -48,6 +50,8 @@ export interface ThreadRequest {
 	readonly branch?: string;
 	/** The model the user picked in the New thread dialog. */
 	readonly model?: string;
+	/** In a project with several repositories, the keys of those the thread works in. */
+	readonly repos?: readonly string[];
 }
 
 /** Makes and drives threads: agents in the extension, or plain sessions in the spike. */
@@ -61,6 +65,8 @@ export interface ThreadDriver {
 	message(thread: string, text: string): boolean | void;
 	/** The thread's latest messages as text, newest last. */
 	read(thread: string, last: number): string | undefined;
+	/** Adds one of the project's repositories to a thread's folder; resolves with what to tell the thread. */
+	addRepo?(thread: string, repo: string): Promise<string>;
 }
 
 /** The coordinator's agent session. */
@@ -85,8 +91,10 @@ export type FeedEntry =
 	| { readonly kind: 'thread'; readonly thread: string; readonly at: number };
 
 export interface ProjectContext {
-	/** The project's memory notes, if any. */
+	/** The project's memory for the coordinator, if any: sent with the first wake and again when it changes. */
 	memory?(): Promise<string | undefined>;
+	/** The project's repositories by key, when it has more than one. */
+	repos?(): readonly string[];
 	conductor?(): Promise<ConductorContext | undefined>;
 	trackBrief?(track: string): Promise<string | undefined>;
 }
@@ -105,6 +113,13 @@ export const coordinatorBrief = [
 	'Anything that continues or extends an existing thread\'s work goes to that thread with message_thread, whether it is working, waiting, planned or done: it resumes on the same branch with all it already knows. Start a new thread only for separate work, or when the related thread is resolved (merged). Never reopen a resolved thread unless the user asks to reopen it. Approvals are answered by the user in the thread that asked, never by you.',
 	'The user finishes a thread\'s work in that thread: its results, questions and failures reach you only as context with the user\'s next message, and need no post of their own.',
 	'Each wake arrives as <wake> with the threads, the project notes, open Conductor tracks if any, and the events. Act on the events in one turn: call the tools you need, then stop. Keep posts to a line or two.',
+].join('\n');
+
+/** What the brief adds when a project has several repositories. */
+export const multiRepoBrief = [
+	'This project has several repositories, listed in each wake as <repositories>, and the project memory says what each owns and how they connect.',
+	'Name the repositories a thread works in with start_thread\'s repos: one thread for the whole task, with every repository it touches. A thread can add another repository itself later if it finds it needs it.',
+	'When the request does not make clear which repositories it touches, do not guess: post one short question asking which, naming each repository and "both" (or "all") as the choices, and start the thread once the user answers.',
 ].join('\n');
 
 /**
@@ -159,6 +174,11 @@ export function coordinatorModel(ids: readonly string[]): string | undefined {
 }
 
 /** A thread's first prompt: its brief, then how it reports back. */
+/** A single-repository thread's project memory, sent unseen ahead of its brief; a thread in several reads it in its folder's GEMINI.md. */
+export function threadMemoryContext(memory: string): string {
+	return `<project-memory>\nThe project's shared notes, written or approved by the user. Follow them in this work.\n\n${memory.trim()}\n</project-memory>`;
+}
+
 export function threadPrompt(brief: string, planFirst: boolean): string {
 	return [
 		brief.trim(),
@@ -177,6 +197,8 @@ export class ProjectHub implements ProjectToolHost {
 	private briefed = false;
 	private disposed = false;
 	private turn: Promise<void> | undefined;
+	/** The memory the coordinator's session last got; it is sent again only when it changes. */
+	private sentMemory: string | undefined;
 
 	private readonly onDidPostEmitter = new Emitter<FeedEntry>();
 	/** Entries for the project chat. */
@@ -210,9 +232,9 @@ export class ProjectHub implements ProjectToolHost {
 	}
 
 	/** A thread the user starts directly: it begins at once, and the coordinator hears with the next wake. */
-	async startThread(title: string, brief: string, planFirst = false, options: Pick<ThreadRequest, 'branch' | 'model'> = {}): Promise<string> {
+	async startThread(title: string, brief: string, planFirst = false, options: Pick<ThreadRequest, 'branch' | 'model' | 'repos'> = {}): Promise<string> {
 		const id = await this.driver.start({ title, brief, planFirst, byCoordinator: false, ...options });
-		this.setThread({ id, title, state: 'starting', byCoordinator: false });
+		this.setThread({ id, title, state: 'starting', byCoordinator: false, ...(options.repos?.length ? { repos: options.repos } : {}) });
 		this.onDidPostEmitter.fire({ kind: 'thread', thread: id, at: Date.now() });
 		this.notify({ kind: 'started', thread: id });
 		return id;
@@ -225,6 +247,11 @@ export class ProjectHub implements ProjectToolHost {
 	 */
 	setBriefed(briefed: boolean): void {
 		this.briefed = briefed;
+	}
+
+	/** The project's memory changed: the next wake sends it again. */
+	memoryChanged(): void {
+		this.sentMemory = undefined;
 	}
 
 	/** A thread from before a reload; tells nobody. */
@@ -311,16 +338,27 @@ export class ProjectHub implements ProjectToolHost {
 			this.context.memory?.().catch(() => undefined),
 			this.context.conductor?.().catch(() => undefined),
 		]);
+		const repos = this.context.repos?.() ?? [];
 		const parts: string[] = [];
 		if (!this.briefed) {
 			this.briefed = true;
+			this.sentMemory = undefined;
 			parts.push(coordinatorBrief);
+			if (repos.length > 1) {
+				parts.push(multiRepoBrief);
+			}
 		}
 		parts.push('<wake>');
-		parts.push(`<threads>\n${this.threads.size ? this.threadList.map(threadLine).join('\n') : 'none yet'}\n</threads>`);
-		if (memory?.trim()) {
-			parts.push(`<notes>\n${memory.trim()}\n</notes>`);
+		if (repos.length > 1) {
+			parts.push(`<repositories>\n${repos.map(key => `- ${key}`).join('\n')}\n</repositories>`);
 		}
+		parts.push(`<threads>\n${this.threads.size ? this.threadList.map(threadLine).join('\n') : 'none yet'}\n</threads>`);
+		// The session keeps what it was sent, so the memory goes again only when it changed.
+		const notes = memory?.trim() ?? '';
+		if (notes && notes !== this.sentMemory) {
+			parts.push(`<notes>\n${notes}\n</notes>`);
+		}
+		this.sentMemory = notes;
 		if (conductor) {
 			parts.push(`<conductor>\n${conductorSummary(conductor)}\n</conductor>`);
 		}
@@ -337,6 +375,26 @@ export class ProjectHub implements ProjectToolHost {
 		}
 		this.stats.tools[name] = (this.stats.tools[name] ?? 0) + 1;
 		if (caller.role === 'thread') {
+			if (name === 'add_repo') {
+				const repo = str(args.repo);
+				const known = this.context.repos?.() ?? [];
+				if (!known.includes(repo)) {
+					return error(known.length > 1 ? `No repository "${repo}". The project's repositories: ${known.join(', ')}.` : 'This project has only one repository.');
+				}
+				if (!this.driver.addRepo) {
+					return error('Repositories cannot be added here.');
+				}
+				try {
+					const text = await this.driver.addRepo(caller.thread, repo);
+					const thread = this.threads.get(caller.thread);
+					if (thread && !thread.repos?.includes(repo)) {
+						this.setThread({ ...thread, repos: [...thread.repos ?? [], repo] });
+					}
+					return ok(text);
+				} catch (err) {
+					return error(`Could not add ${repo}: ${err instanceof Error ? err.message : String(err)}`);
+				}
+			}
 			if (name !== 'report') {
 				return error(`No tool named ${name}.`);
 			}
@@ -365,8 +423,20 @@ export class ProjectHub implements ProjectToolHost {
 					return error('A thread needs a title and a brief.');
 				}
 				const planFirst = args.planFirst === true;
-				const id = await this.driver.start({ title, brief, planFirst, byCoordinator: true, ...(track ? { track } : {}) });
-				this.setThread({ id, title, state: 'starting', byCoordinator: true });
+				const known = this.context.repos?.() ?? [];
+				const repos = Array.isArray(args.repos) ? [...new Set(args.repos.filter((repo): repo is string => typeof repo === 'string').map(repo => repo.trim()))] : [];
+				if (known.length > 1) {
+					const unknown = repos.filter(repo => !known.includes(repo));
+					if (unknown.length) {
+						return error(`No repository ${unknown.map(repo => `"${repo}"`).join(', ')}. The project's repositories: ${known.join(', ')}.`);
+					}
+					if (!repos.length) {
+						return error(`Name the repositories the thread works in with repos (${known.join(', ')}). If the user's request doesn't make it clear, post a question asking which, and start the thread when they answer.`);
+					}
+				}
+				const chosen = known.length > 1 ? known.filter(repo => repos.includes(repo)) : [];
+				const id = await this.driver.start({ title, brief, planFirst, byCoordinator: true, ...(track ? { track } : {}), ...(chosen.length ? { repos: chosen } : {}) });
+				this.setThread({ id, title, state: 'starting', byCoordinator: true, ...(chosen.length ? { repos: chosen } : {}) });
 				this.onDidPostEmitter.fire({ kind: 'thread', thread: id, at: Date.now() });
 				return ok(`Started thread ${id}.`);
 			}
@@ -422,7 +492,7 @@ function wakes(event: ProjectEvent): boolean {
 }
 
 function threadLine(thread: ThreadInfo): string {
-	return `- ${thread.id} "${thread.title}": ${thread.resolved ? 'resolved (merged)' : thread.state}${thread.detail ? `, ${oneLine(thread.detail)}` : ''}${thread.byCoordinator ? '' : ' (started by the user)'}`;
+	return `- ${thread.id} "${thread.title}": ${thread.resolved ? 'resolved (merged)' : thread.state}${thread.repos?.length ? ` [${thread.repos.join(', ')}]` : ''}${thread.detail ? `, ${oneLine(thread.detail)}` : ''}${thread.byCoordinator ? '' : ' (started by the user)'}`;
 }
 
 function eventText(event: ProjectEvent): string {

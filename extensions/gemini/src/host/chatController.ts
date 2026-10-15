@@ -35,7 +35,7 @@ import { readGitHead } from '../acp/gitHead';
 import { upgradeUrl } from '../acp/helpLinks';
 import { EnhanceCancelledError, enhanceHistory } from '../acp/promptEnhancer';
 import type { EnhancePromptInput } from '../acp/quickPrompts';
-import { ChatStrings, chatProtocolVersion, FromWebview, NewThread, ProjectChatStrings, ProjectPanel, statusCommands, ThreadAction, ToWebview } from './chatProtocol';
+import { ChatStrings, chatProtocolVersion, FromWebview, NewThread, ProjectChatStrings, ProjectPanel, ProjectRepoView, ProjectSettingsSave, ProjectSettingsView, statusCommands, ThreadAction, ToWebview } from './chatProtocol';
 import { stopReasonNotice, toViewStatus } from './chatStatus';
 import { DiffPreview } from './diffPreview';
 import { relativeTime, tildify } from './displayText';
@@ -117,9 +117,14 @@ export interface ChatProject {
 	post(text: string, attachments: readonly Attachment[]): void;
 	/** Tool calls the chat leaves out: the project's own tools, which show as posts and thread cards. */
 	hidesToolCall(title: string): boolean;
-	threadAction(thread: string, action: ThreadAction): void;
+	/** `repo` names one repository of a thread in several, for Merge back. */
+	threadAction(thread: string, action: ThreadAction, repo?: string): void;
 	/** The New thread dialog's Start thread. */
 	startThread(thread: NewThread): void;
+	/** Project settings: open it, save it, or one of its buttons that needs the extension. */
+	openSettings(): void;
+	saveSettings(settings: ProjectSettingsSave): void;
+	settingsAction(action: 'pickRepository' | 'addFiles' | 'newFile' | 'openFile' | 'draft', name?: string): void;
 }
 
 export interface ChatWorkspace {
@@ -201,6 +206,10 @@ export class ChatController implements vscode.Disposable {
 	private retryItemId: string | undefined;
 	/** A project chat's side panel, as last shown. */
 	private projectPanel: ProjectPanel | undefined;
+	/** Context sent ahead of the next prompt without showing in the chat, such as a project's memory for a thread. */
+	private pendingContext: string | undefined;
+	/** Project settings to open once the view has loaded. */
+	private settingsPending: ProjectSettingsView | undefined;
 	/** Whether the view's script has said it is ready since the view was attached. */
 	private viewReady = false;
 	/** New Thread was asked for before the view was ready. */
@@ -464,6 +473,20 @@ export class ChatController implements vscode.Disposable {
 		this.post({ type: 'projectPanel', panel });
 	}
 
+	/** Opens Project settings with `settings`, or refreshes it if it is open; `open` false only refreshes. */
+	showProjectSettings(settings: ProjectSettingsView, open: boolean): void {
+		if (this.viewReady || !open) {
+			this.post({ type: 'projectSettings', settings, open });
+		} else {
+			this.settingsPending = settings;
+		}
+	}
+
+	/** The folder Project settings' Add repository picked. */
+	pickedRepository(repo: ProjectRepoView): void {
+		this.post({ type: 'pickedRepository', repo });
+	}
+
 	/** Opens the New thread dialog in a project chat, once its view has loaded if it is still loading. */
 	openNewThread(): void {
 		if (this.viewReady) {
@@ -515,6 +538,11 @@ export class ChatController implements vscode.Disposable {
 	 * Sends `text` as a turn with no message of its own in the chat, such as a
 	 * project's wake for its coordinator; resolves when the turn ends.
 	 */
+	/** Sends `text` to the agent ahead of the next prompt, without showing it in the chat. */
+	addContext(text: string): void {
+		this.pendingContext = this.pendingContext ? `${this.pendingContext}\n\n${text}` : text;
+	}
+
 	async sendUnseen(text: string): Promise<void> {
 		if (this.busy) {
 			throw new Error('A turn is already running.');
@@ -543,8 +571,15 @@ export class ChatController implements vscode.Disposable {
 			if (carried) {
 				content.unshift({ type: 'text', text: carried });
 			}
+			const context = this.pendingContext;
+			if (context) {
+				content.unshift({ type: 'text', text: context });
+			}
 			const { stopReason, usage } = await this.promptRecovering(content);
 			this.undoNote = undefined;
+			if (context === this.pendingContext) {
+				this.pendingContext = undefined;
+			}
 			if (carried === this.carriedConversation) {
 				this.carriedConversation = undefined;
 			}
@@ -1085,7 +1120,16 @@ export class ChatController implements vscode.Disposable {
 				void this.undoTurn(message.itemId);
 				break;
 			case 'threadAction':
-				this.options.project?.threadAction(message.thread, message.action);
+				this.options.project?.threadAction(message.thread, message.action, message.repo);
+				break;
+			case 'openProjectSettings':
+				this.options.project?.openSettings();
+				break;
+			case 'saveProjectSettings':
+				this.options.project?.saveSettings(message.settings);
+				break;
+			case 'projectSettingsAction':
+				this.options.project?.settingsAction(message.action, message.name);
 				break;
 			case 'startThread':
 				this.options.project?.startThread(message.thread);
@@ -1468,6 +1512,10 @@ export class ChatController implements vscode.Disposable {
 		if (this.newThreadPending) {
 			this.newThreadPending = false;
 			this.post({ type: 'openNewThread' });
+		}
+		if (this.settingsPending) {
+			this.post({ type: 'projectSettings', settings: this.settingsPending, open: true });
+			this.settingsPending = undefined;
 		}
 		if (this.options.parentProject) {
 			this.post({ type: 'parentProject', parent: { label: vscode.l10n.t("Thread in {0}", this.options.parentProject.name()), action: vscode.l10n.t("Open Project Chat") } });
@@ -1868,6 +1916,63 @@ function projectStrings(): ProjectChatStrings {
 			cancel: vscode.l10n.t("Cancel"),
 			start: vscode.l10n.t("Start thread"),
 			close: vscode.l10n.t("Close"),
+			reposLabel: vscode.l10n.t("Repositories"),
+			reposHint: vscode.l10n.t("Each one gets its own worktree, side by side in the thread's folder."),
+			branchLabelShared: vscode.l10n.t("Branch, the same in every repository"),
+		},
+		settings: {
+			open: vscode.l10n.t("Project settings"),
+			title: vscode.l10n.t("{0} settings"),
+			general: vscode.l10n.t("General"),
+			memory: vscode.l10n.t("Memory"),
+			nameLabel: vscode.l10n.t("Name"),
+			nameHint: vscode.l10n.t("Shown in the Projects list and the project chat's tab."),
+			reposLabel: vscode.l10n.t("Repositories"),
+			reposHint: vscode.l10n.t("With more than one, each thread gets a worktree of the ones it needs, in a folder named after the repository."),
+			addRepo: vscode.l10n.t("Add repository"),
+			removeRepo: vscode.l10n.t("Remove {0} from the project"),
+			mainRepo: vscode.l10n.t("The project's own repository"),
+			defaultsLabel: vscode.l10n.t("Defaults for new threads"),
+			threadModel: vscode.l10n.t("Thread model"),
+			planFirst: vscode.l10n.t("Plan first"),
+			planFirstHint: vscode.l10n.t("Threads write a short plan and wait for your OK before changing files."),
+			branchPrefix: vscode.l10n.t("Branch prefix"),
+			branchPrefixHint: vscode.l10n.t("Put before each thread's branch name."),
+			statOpen: vscode.l10n.t("open threads"),
+			statMerged: vscode.l10n.t("merged"),
+			statLines: vscode.l10n.t("lines changed"),
+			statRepos: vscode.l10n.t("repositories"),
+			connectLabel: vscode.l10n.t("How the repositories connect"),
+			connectHint: vscode.l10n.t("Every thread and the coordinator read this. Say what each repository owns and where they meet: APIs, queries, data models, URLs, release order."),
+			instructionsLabel: vscode.l10n.t("Project instructions"),
+			instructionsHint: vscode.l10n.t("Every thread and the coordinator read this. Use it for conventions and anything you'd otherwise repeat."),
+			drafted: vscode.l10n.t("Gemini drafted this on {0} from the repositories. Review it and change anything that's wrong or missing, then save."),
+			drafting: vscode.l10n.t("Gemini is drafting this from the repositories..."),
+			draft: vscode.l10n.t("Draft with Gemini"),
+			redraft: vscode.l10n.t("Draft again"),
+			draftFailed: vscode.l10n.t("Could not draft it: {0}"),
+			filesLabel: vscode.l10n.t("Context files"),
+			filesHint: vscode.l10n.t("Markdown files kept in the project's folder. Choose who reads each one."),
+			fileColumn: vscode.l10n.t("File"),
+			coordinatorColumn: vscode.l10n.t("Coordinator"),
+			threadsColumn: vscode.l10n.t("Threads"),
+			noFiles: vscode.l10n.t("No context files yet."),
+			addFiles: vscode.l10n.t("Add files..."),
+			newFile: vscode.l10n.t("New file"),
+			newFilePrompt: vscode.l10n.t("The new file's name"),
+			removeFile: vscode.l10n.t("Remove {0}"),
+			alsoRead: vscode.l10n.t("Also read"),
+			alsoReadHint: vscode.l10n.t("Each repository's own rules files, which its threads read as they are."),
+			noRules: vscode.l10n.t("none"),
+			tokens: vscode.l10n.t("About {0} tokens added to each thread's first request"),
+			unsaved: vscode.l10n.t("{0} unsaved changes"),
+			unsavedOne: vscode.l10n.t("1 unsaved change"),
+			appliesWhen: vscode.l10n.t("Saved changes apply to new threads and the coordinator's next turn."),
+			discard: vscode.l10n.t("Discard your changes?"),
+			discardConfirm: vscode.l10n.t("Discard"),
+			keepEditing: vscode.l10n.t("Keep Editing"),
+			cancel: vscode.l10n.t("Cancel"),
+			save: vscode.l10n.t("Save"),
 		},
 		panel: {
 			title: vscode.l10n.t("Project"),
@@ -1881,6 +1986,7 @@ function projectStrings(): ProjectChatStrings {
 			conductorTracks: vscode.l10n.t("Conductor: {0} open tracks"),
 			noConductor: vscode.l10n.t("No conductor/ folder"),
 			model: vscode.l10n.t("Coordinator model: {0}"),
+			repos: vscode.l10n.t("Repositories: {0}"),
 		},
 		states: {
 			starting: vscode.l10n.t("Starting"),
@@ -1901,6 +2007,8 @@ function projectStrings(): ProjectChatStrings {
 		},
 		openToAnswer: vscode.l10n.t("Open to answer"),
 		merged: vscode.l10n.t("Merged back"),
+		repoMerged: vscode.l10n.t("Merged"),
+		mergedCount: vscode.l10n.t("{0} of {1} merged"),
 		undone: vscode.l10n.t("Undone: its branch and folder were removed"),
 		track: vscode.l10n.t("From Conductor track {0}"),
 	};

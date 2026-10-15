@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { coordinatorBrief, ProjectHub, type CoordinatorSession, type FeedEntry, type ThreadDriver } from '../../src/acp/projectHub';
+import { coordinatorBrief, multiRepoBrief, ProjectHub, threadMemoryContext, type CoordinatorSession, type FeedEntry, type ThreadDriver } from '../../src/acp/projectHub';
 
 function setup(turn: (prompt: string, hub: ProjectHub) => Promise<void> = async () => { }) {
 	const prompts: string[] = [];
@@ -166,5 +166,80 @@ describe('ProjectHub', () => {
 		hub.post('again');
 		await hub.idle();
 		expect(prompts).toHaveLength(2);
+	});
+
+	it('sends the notes again only when they change', async () => {
+		let memory = 'Use pnpm.';
+		const prompts: string[] = [];
+		const hub = new ProjectHub('p1', { prompt: async text => { prompts.push(text); } }, { start: async () => 't1', message: () => undefined, read: () => '' }, { memory: async () => memory });
+		hub.post('one');
+		await hub.idle();
+		hub.post('two');
+		await hub.idle();
+		memory = 'Use npm.';
+		hub.memoryChanged();
+		hub.post('three');
+		await hub.idle();
+		expect(prompts[0]).toContain('<notes>\nUse pnpm.\n</notes>');
+		expect(prompts[1]).not.toContain('<notes>');
+		expect(prompts[2]).toContain('<notes>\nUse npm.\n</notes>');
+	});
+});
+
+describe('ProjectHub with several repositories', () => {
+	function multi() {
+		const prompts: string[] = [];
+		const started: { repos?: readonly string[] }[] = [];
+		const added: [string, string][] = [];
+		const driver: ThreadDriver = {
+			start: async request => {
+				started.push(request);
+				return 't1';
+			},
+			message: () => undefined,
+			read: () => '',
+			addRepo: async (thread, repo) => {
+				added.push([thread, repo]);
+				return `Added ${repo}/.`;
+			},
+		};
+		const hub = new ProjectHub('p1', { prompt: async text => { prompts.push(text); } }, driver, { repos: () => ['shop', 'cms'] });
+		return { hub, prompts, started, added };
+	}
+
+	it('lists the repositories in each wake, and says how to choose them once', async () => {
+		const { hub, prompts } = multi();
+		hub.post('Add a gift message');
+		await hub.idle();
+		hub.post('And a promo');
+		await hub.idle();
+		expect(prompts[0]).toContain(multiRepoBrief);
+		expect(prompts[0]).toContain('<repositories>\n- shop\n- cms\n</repositories>');
+		expect(prompts[1]).not.toContain(multiRepoBrief);
+		expect(prompts[1]).toContain('<repositories>');
+	});
+
+	it('starts a thread only in repositories it names, in the project\'s order', async () => {
+		const { hub, started } = multi();
+		expect((await hub.call(coordinator, 'start_thread', { title: 'Gift', brief: 'Add it' })).isError).toBe(true);
+		expect((await hub.call(coordinator, 'start_thread', { title: 'Gift', brief: 'Add it', repos: ['web'] })).isError).toBe(true);
+		expect((await hub.call(coordinator, 'start_thread', { title: 'Gift', brief: 'Add it', repos: ['cms', 'shop', 'cms'] })).isError).toBeFalsy();
+		expect(started.map(request => request.repos)).toEqual([['shop', 'cms']]);
+		expect((await hub.call(coordinator, 'list_threads', {})).content[0]).toMatchObject({ text: expect.stringContaining('[shop, cms]') });
+	});
+
+	it('adds a repository to a thread that asks', async () => {
+		const { hub, added } = multi();
+		await hub.call(coordinator, 'start_thread', { title: 'Promo', brief: 'End date', repos: ['cms'] });
+		const thread = { role: 'thread', project: 'p1', thread: 't1' } as const;
+		expect((await hub.call(thread, 'add_repo', { repo: 'web', reason: 'x' })).isError).toBe(true);
+		expect(await hub.call(thread, 'add_repo', { repo: 'shop', reason: 'reads the end date' })).toMatchObject({ content: [{ text: 'Added shop/.' }] });
+		expect(added).toEqual([['t1', 'shop']]);
+		expect(hub.threadList[0].repos).toEqual(['cms', 'shop']);
+	});
+
+	it('gives a single-repository thread its memory as context', () => {
+		expect(threadMemoryContext(' Use pnpm. ')).toContain('<project-memory>\nThe project\'s shared notes');
+		expect(threadMemoryContext(' Use pnpm. ')).toMatch(/Use pnpm\.\n<\/project-memory>$/);
 	});
 });
