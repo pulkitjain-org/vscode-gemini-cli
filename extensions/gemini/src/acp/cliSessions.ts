@@ -13,7 +13,8 @@
 //   ~/.gemini/tmp/<project id>/chats/   session-<time>-<id>.jsonl (or .json, older)
 //
 // A .jsonl file is a list of records: the session's metadata, messages (with
-// an `id`), metadata updates (`$set`) and rewinds (`$rewindTo`). An older
+// an `id`), metadata updates (`$set`), rewinds (`$rewindTo`) and, from 0.64,
+// patches (`$patch`) that change, remove or reorder messages. An older
 // .json file is one object with a `messages` array. Anything unexpected makes
 // a file count as having no session; a changed layout gives an empty list,
 // never an error.
@@ -335,6 +336,8 @@ class SessionRecords {
 			if (!found) {
 				this.byId.clear();
 			}
+		} else if (isObject(value.$patch)) {
+			this.patch(value.$patch);
 		} else if (isMessage(value)) {
 			this.byId.set(value.id, value);
 		} else if (isObject(value.$set)) {
@@ -350,6 +353,42 @@ class SessionRecords {
 						this.byId.set(message.id, message);
 					}
 				}
+			}
+		}
+	}
+
+	/**
+	 * A `$patch` record, which gemini-cli 0.64 writes when the conversation
+	 * changes in place: new content for messages (`id` and `content`, alone or
+	 * in `updates`), `removeIds`, and `orderIds`, the new order of the
+	 * messages it names, after any it does not. Tool results it patches are
+	 * not read here.
+	 */
+	private patch(patch: Record<string, unknown>): void {
+		for (const update of [patch, ...(Array.isArray(patch.updates) ? patch.updates : [])]) {
+			const message = isObject(update) && typeof update.id === 'string' ? this.byId.get(update.id) : undefined;
+			if (message && update.content !== undefined) {
+				// Records are shared with earlier parses of the file, so replace rather than change one.
+				this.byId.set(message.id, { ...message, content: update.content });
+			}
+		}
+		if (Array.isArray(patch.removeIds)) {
+			for (const id of patch.removeIds) {
+				if (typeof id === 'string') {
+					this.byId.delete(id);
+				}
+			}
+		}
+		if (Array.isArray(patch.orderIds)) {
+			const ordered = patch.orderIds.flatMap(id => {
+				const message = typeof id === 'string' ? this.byId.get(id) : undefined;
+				return message ? [message] : [];
+			});
+			const named = new Set(ordered.map(message => message.id));
+			const rest = [...this.byId.values()].filter(message => !named.has(message.id));
+			this.byId.clear();
+			for (const message of [...rest, ...ordered]) {
+				this.byId.set(message.id, message);
 			}
 		}
 	}
@@ -376,7 +415,7 @@ function parseSessionRecords(text: string, wholeJson: boolean): { meta: Record<s
 }
 
 /**
- * How many updates gemini-cli 0.63 sends when it replays `messages` after a
+ * How many updates gemini-cli 0.63 and 0.64 send when they replay `messages` after a
  * `session/load` (`streamHistory`): one per user message with any text or
  * part, and for each model message one per thought, one for its text or
  * parts, and one per tool call. The CLI answers `session/load` before the
@@ -412,7 +451,7 @@ function hasReplayText(content: unknown): boolean {
 		: isObject(part) && (markerParts.some(key => part[key] !== undefined) || (typeof part.text === 'string' && !!part.text.trim())));
 }
 
-/** The session's token counts from its replies' `tokens` (`input`, `cached`, ...), as gemini-cli 0.62 and 0.63 save them. */
+/** The session's token counts from its replies' `tokens` (`input`, `cached`, ...), as gemini-cli 0.62 to 0.64 save them. */
 function withTokens(messages: readonly MessageRecord[]): { tokens?: SessionTokens } {
 	let latest: { readonly input: number; readonly model?: string } | undefined;
 	let cached = 0;

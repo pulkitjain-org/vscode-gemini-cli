@@ -972,8 +972,8 @@
     "test": "vitest run"
   },
   "bundledCli": {
-    "version": "0.63.0",
-    "integrity": "sha512-mmhqMmAdsoplCzrLQQC4yJBqr4uSKXghnrLspgUU6N9drmsaq7pi7oF09skRYzEq2dYK6eMT4UpFQP6rG2o/ew=="
+    "version": "0.64.0",
+    "integrity": "sha512-FHrZ1NPf9QszyVMaa/BP3SsPy40ogBLnbZNWkv/PMi1Uz2zoDNMLGiBzBGmx4Bl7iLRq01K9PY/5kmloXFTpsA=="
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.6.0",
