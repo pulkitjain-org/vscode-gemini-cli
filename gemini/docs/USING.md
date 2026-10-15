@@ -53,7 +53,7 @@ Run **Make It Yours** from the Command Palette, or open the step of the same nam
 
 Each choice applies at once, and the page marks what the window shows now. When the window follows your system's light or dark appearance, it marks the theme in use, and picking a theme on the page stops following the system so your pick holds.
 
-GeminiCode Dark and Light share one calm look: soft greys with a faint tint at the top of the window, panels as cards with a hairline border, and solid menus and pop-ups. Blue is the one accent (Send, primary buttons, links and the context ring). Selected rows, menu highlights and your own messages in the chat are graphite greys, not blue. The Gemini colours are kept for the sparkle, the bar that runs along the chat input while an agent works, the active tab's underline and the focused chat input. Chat text is 14 px. To change the file icons, edit the sources and rerun `python3 extensions/gemini/scripts/build-file-icons.py`.
+GeminiCode Dark and Light share one calm look: soft greys with a faint graphite tint at the top of the window, panels as cards with a hairline border, and solid menus and pop-ups. Blue is the one accent (Send, primary buttons, links and the context ring). Selected rows, menu highlights and your own messages in the chat are graphite greys, not blue. The Gemini colours are kept for the sparkle, the bar that runs along the chat input while an agent works, the active tab's underline and the focused chat input. Chat text is 14 px. To change the file icons, edit the sources and rerun `python3 extensions/gemini/scripts/build-file-icons.py`.
 
 ## Enhance prompt
 

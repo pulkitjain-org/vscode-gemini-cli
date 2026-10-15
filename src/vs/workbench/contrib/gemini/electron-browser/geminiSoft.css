@@ -7,7 +7,7 @@
  * GEMINI-FORK: the Soft look of GeminiCode Dark and Light. A theme can only set flat colours, so
  * the rest is here, keyed to the gemini-soft class gemini.contribution.ts puts on the workbench:
  *
- * - one static tint at the top of the window, from the accent, behind upstream's floating cards;
+ * - one static graphite tint at the top of the window, from the foreground (no hue), behind upstream's floating cards;
  * - cards with 8px corners and a hairline;
  * - the active title bar tab underlined in the Gemini colours;
  * - solid pop-ups with one shadow and no blur.
@@ -17,7 +17,7 @@
 
 .monaco-workbench.gemini-soft {
 	--vscode-cornerRadius-large: 8px;
-	--gemini-soft-tint: linear-gradient(180deg, color-mix(in srgb, var(--vscode-button-background) 9%, var(--vscode-titleBar-activeBackground)) 0, var(--vscode-titleBar-activeBackground) 260px);
+	--gemini-soft-tint: linear-gradient(180deg, color-mix(in srgb, var(--vscode-foreground) 4%, var(--vscode-titleBar-activeBackground)) 0, var(--vscode-titleBar-activeBackground) 260px);
 	--gemini-gradient: linear-gradient(90deg, #4f8df7, #9b72cb 55%, #d96570);
 }
 

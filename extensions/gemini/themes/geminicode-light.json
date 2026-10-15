@@ -32,7 +32,7 @@
 		"agentsChatInput.focusBorder": "#005FB8",
 		"agentsChatInput.foreground": "#1F1F1F",
 		"agentsChatInput.placeholderForeground": "#8B8B8B",
-		"agentsGradient.tintColor": "#005FB8",
+		"agentsGradient.tintColor": "#808080",
 		"agentsNewSessionButton.background": "#00000000",
 		"agentsNewSessionButton.border": "#CECECE",
 		"agentsNewSessionButton.foreground": "#1F1F1F",
