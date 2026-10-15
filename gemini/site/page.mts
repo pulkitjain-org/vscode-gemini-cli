@@ -4,8 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 // The page's own behaviour: the light/dark switch, the particles that drift
-// away from the pointer and the pointer's soft light. Served as plain
-// JavaScript (build.mts strips the types).
+// away from the pointer, the pointer's soft light and the edge of each panel
+// near it. Served as plain JavaScript (build.mts strips the types).
 
 const root = document.documentElement;
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -117,13 +117,40 @@ if (canvas && ctx) {
 	root.addEventListener('themechange', () => { readColors(); draw(); });
 	reduceMotion.addEventListener('change', update);
 	document.addEventListener('visibilitychange', update);
+	// Panels within reach of the pointer light up along their edge, where the pointer is.
+	const panels = [...document.querySelectorAll<HTMLElement>('.panel')];
+	const reach = 160;
+	let lightQueued = false;
+	const light = () => {
+		lightQueued = false;
+		root.style.setProperty('--mx', `${mouseX}px`);
+		root.style.setProperty('--my', `${mouseY}px`);
+		for (const panel of panels) {
+			const box = panel.getBoundingClientRect();
+			const near = mouseX > box.left - reach && mouseX < box.right + reach && mouseY > box.top - reach && mouseY < box.bottom + reach;
+			if (near) {
+				panel.style.setProperty('--cx', `${mouseX - box.left}px`);
+				panel.style.setProperty('--cy', `${mouseY - box.top}px`);
+			}
+			panel.classList.toggle('near', near);
+		}
+	};
 	addEventListener('pointermove', event => {
 		if (event.pointerType !== 'mouse') { return; }
 		mouseX = event.clientX;
 		mouseY = event.clientY;
-		root.style.setProperty('--mx', `${mouseX}px`);
-		root.style.setProperty('--my', `${mouseY}px`);
 		root.classList.add('pointer');
+		if (!lightQueued) {
+			lightQueued = true;
+			requestAnimationFrame(light);
+		}
+	}, { passive: true });
+	// Scrolling moves the panels under a still pointer.
+	addEventListener('scroll', () => {
+		if (root.classList.contains('pointer') && !lightQueued) {
+			lightQueued = true;
+			requestAnimationFrame(light);
+		}
 	}, { passive: true });
 	document.addEventListener('pointerleave', () => {
 		mouseX = mouseY = -999;
