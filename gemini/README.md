@@ -6,6 +6,7 @@ The repository's top-level README, SECURITY and AGENTS files point here. CONTRIB
 
 - [docs/USING.md](docs/USING.md): Agents and Editor modes, shortcuts, themes, Enhance prompt, inline edit, approvals, branches, Projects, the browser, long chats and troubleshooting.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how GeminiCode works and why, including the security model and admin policies.
+- [docs/PROJECTS.md](docs/PROJECTS.md): how Projects work: the coordinator and its threads, how prompts move between them, and what drives the coordinator's decisions.
 - [docs/FINDINGS.md](docs/FINDINGS.md): Gemini CLI behaviour and measurements the design relies on.
 - [docs/RELEASING.md](docs/RELEASING.md): versions, cutting a release, the download page, and the Apple signing setup.
 - [docs/ROADMAP.md](docs/ROADMAP.md): open work and risks.
