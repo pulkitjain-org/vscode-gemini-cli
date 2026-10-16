@@ -80,6 +80,10 @@ export interface ProjectAgents {
 	log(message: string): void;
 	/** What the Gemini CLI's log says went wrong with the MCP server `name` in the running agent, if anything. */
 	mcpProblem(name: string): string | undefined;
+	/** The names of the MCP servers a live agent's session opened with; undefined when it has none open. */
+	sessionServers(id: string): readonly string[] | undefined;
+	/** Opens a live agent's session again with the servers as they are now. */
+	reopenSession(id: string): Promise<void>;
 	/** One direct request to the quick model; undefined when there is no way to make one. */
 	direct(request: { readonly system: string; readonly prompt: string }): Promise<string | undefined>;
 	openChanges(id: string): Promise<void>;
@@ -298,9 +302,18 @@ export class Projects implements vscode.Disposable {
 		if (await server.whenListed(caller, toolsListedMs)) {
 			return;
 		}
+		// A session that opened before the server listened was never given it: opening it again gives it.
+		const opened = this.agents.sessionServers(record.id);
+		if (opened && !opened.includes(projectServerName) && this.mcpServersFor(record).length) {
+			this.agents.log(`The coordinator of ${record.title} opened without the project's tools (servers: ${opened.join(', ') || 'none'}); opening its session again`);
+			await this.agents.reopenSession(record.id);
+			if (await server.whenListed(caller, toolsListedMs)) {
+				return;
+			}
+		}
 		const folder = coordinatorHome(record.id);
 		const block = await projectToolsBlock({ folder, server: projectServerName });
-		this.agents.log(`The coordinator of ${record.title} has no project tools (passed: ${this.mcpServersFor(record).length > 0}, contacted: ${server.wasContacted(caller)}, block: ${block ? JSON.stringify(block) : 'none found'})`);
+		this.agents.log(`The coordinator of ${record.title} has no project tools (opened with: ${this.agents.sessionServers(record.id)?.join(', ') || 'none'}, contacted: ${server.wasContacted(caller)}, block: ${block ? JSON.stringify(block) : 'none found'})`);
 		// Only an untrusted folder, or one trusted after the agent started, is GeminiCode's to put right.
 		if (block && block.kind !== 'untrusted') {
 			throw new Error(blockMessage(block));

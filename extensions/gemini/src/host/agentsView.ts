@@ -243,6 +243,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			},
 			reloadProjectTools: id => this.reloadProjectTools(id),
 			log: message => this.service.writeLog(message),
+			sessionServers: id => this.live.get(id)?.session.client.openedMcpServers,
+			reopenSession: async id => this.live.get(id)?.session.client.reopen(),
 			mcpProblem: name => this.service.mcpProblems.find(problem => problem.server === name && problem.severity === 'error')?.message,
 			direct: request => this.direct?.(request) ?? Promise.resolve(undefined),
 			openChanges: id => this.openChanges(id),
@@ -1878,8 +1880,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			fs.mkdirSync(cwd, { recursive: true });
 		}
 		const session = new AgentSession(this.service, cwd, record.sessionId, servers, openLater, {
-			// A project agent's session needs the project's server, which a spare never has.
-			...(project ? {} : { spareKey: () => this.spareKey(folder) }),
+			// A project agent's session needs the project's server, which a spare never has, listening before it opens:
+			// a session opened without it, as from a restored tab or a thread warmed at project open, never gets the tools.
+			...(project ? { beforeOpen: () => this.projects.ready() } : { spareKey: () => this.spareKey(folder) }),
 			onDidOpenSession: servers => {
 				this.browser?.bindSession(record.id, folder, servers);
 				// Refill, for the next agent, which most likely starts in the same folder; not in an agent's own worktree.
