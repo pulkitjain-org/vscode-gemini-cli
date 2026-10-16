@@ -96,4 +96,16 @@ describe('Checkpoints', () => {
 		expect(again.turnIds).toEqual(['t1']);
 		expect(again.plan('t1')).toEqual(checkpoints.plan('t1'));
 	});
+
+	it('forgets turns from one on without putting files back, for a chat rewound without its code', () => {
+		const checkpoints = new Checkpoints(root);
+		for (const id of ['t1', 't2']) {
+			checkpoints.beginTurn();
+			checkpoints.record([{ path: `${id}.ts`, oldText: 'x', newText: 'y' }]);
+			checkpoints.endTurn(id);
+		}
+		checkpoints.forgetFrom('t2');
+		expect(checkpoints.turnIds).toEqual(['t1']);
+		expect(checkpoints.plan('t1')?.restores).toEqual([{ path: file('t1.ts'), text: 'x', agentText: 'y' }]);
+	});
 });

@@ -19,7 +19,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 26;
+export const chatProtocolVersion = 27;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -320,6 +320,8 @@ export interface ChatStrings {
 	readonly copyMessage: string;
 	readonly undoTurn: string;
 	readonly undoTurnTooltip: string;
+	/** Tooltip of a prompt's Rewind button. */
+	readonly rewindPrompt: string;
 	/** `{0}` is a number of files. */
 	readonly undoTurnFiles: string;
 	readonly turnUndone: string;
@@ -588,6 +590,10 @@ export type FromWebview =
 	| { readonly type: 'prepareThread'; readonly thread: string }
 	/** Put back the files the turn ending with turnEnd item `itemId` changed, and those of later turns. */
 	| { readonly type: 'undoTurn'; readonly itemId: string }
+	/** Rewind to before the user's prompt `itemId`: the chat, the code since, or both, as the user picks. */
+	| { readonly type: 'rewind'; readonly itemId: string }
+	/** Esc twice in an empty message box: pick a prompt to rewind to. */
+	| { readonly type: 'pickRewind' }
 	/** Send the prompt of the turn ending with `itemId` again; only the latest turn offers it. */
 	| { readonly type: 'retry'; readonly itemId: string }
 	/** Leave Plan mode and carry out the plan; only the latest turn offers it, when it ended in Plan mode. */
@@ -640,6 +646,8 @@ export type ToWebview =
 	/** The rewrite so far, while it arrives; `enhanced` follows with the whole of it. */
 	| { readonly type: 'enhanceProgress'; readonly requestId: number; readonly text: string }
 	| { readonly type: 'enhanced'; readonly requestId: number; readonly text: string }
+	/** Puts `text` in the message box, such as a prompt the chat was rewound to. */
+	| { readonly type: 'draft'; readonly text: string }
 	| { readonly type: 'enhanceFailed'; readonly requestId: number; readonly message: string }
 	/** The newest saved sessions the empty chat offers to reopen, of `total`. */
 	/** `retention` says how long the CLI keeps saved chats. */

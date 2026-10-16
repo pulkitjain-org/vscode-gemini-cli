@@ -284,6 +284,19 @@ export class ChatTranscript {
 		this.onDidResetEmitter.fire();
 	}
 
+	/** Takes item `id` and everything after it out of the conversation, for Rewind. */
+	cutAt(id: string): void {
+		const index = this._items.findIndex(item => item.id === id);
+		if (index === -1) {
+			return;
+		}
+		this.settleEcho();
+		this._items = this._items.slice(0, index);
+		this.turnStart = this._items.length;
+		this.lastMessageId = undefined;
+		this.onDidResetEmitter.fire();
+	}
+
 	clear(): void {
 		this._items = [];
 		this.turnStart = 0;

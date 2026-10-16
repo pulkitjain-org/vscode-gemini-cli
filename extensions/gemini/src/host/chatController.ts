@@ -22,7 +22,7 @@ import { buildPromptContent } from '../acp/promptContent';
 import { skillPrompt } from '../acp/skills';
 import { mergeCommands, parseInvocation, SlashCommand } from '../acp/slashCommands';
 import { expandTeamCommandWithInjections, TeamCommandCancelled } from '../acp/teamCommandExpansion';
-import { carriedConversationNote, CliSession, isPrompt, listCliSessions, readCliConversation, readSessionTokens } from '../acp/cliSessions';
+import { carriedConversationNote, CliSession, isPrompt, listCliSessions, readCliConversation, readSessionTokens, rewindCliSession } from '../acp/cliSessions';
 import type { ChatEvent } from '../acp/sessionUpdates';
 import { AgentStatus } from '../acp/status';
 import { TextDeltas } from '../acp/textDeltas';
@@ -748,24 +748,25 @@ export class ChatController implements vscode.Disposable {
 	/**
 	 * Puts back every file turn `id` changed, and the changes of the turns
 	 * after it. Asks first when that reaches further than the turn, or when a
-	 * file was changed after the agent wrote it.
+	 * file was changed after the agent wrote it. `rewinding` is set when Rewind
+	 * already said later replies go too. Resolves with whether it went ahead.
 	 */
-	private async undoTurn(id: string): Promise<void> {
+	private async undoTurn(id: string, rewinding = false): Promise<boolean> {
 		const plan = this.checkpoints.plan(id);
-		if (this.busy || !plan) {
-			return;
+		if ((this.busy && !rewinding) || !plan) {
+			return false;
 		}
 		const files = new WorkspaceFileSystem();
 		const current = await Promise.all(plan.restores.map(r => files.readTextFile(r.path).catch(() => undefined)));
 		const changedSince = plan.restores.filter((r, i) => (current[i] ?? '') !== r.agentText);
-		if (plan.laterTurns || changedSince.length) {
+		if ((plan.laterTurns && !rewinding) || changedSince.length) {
 			const undo = vscode.l10n.t("Undo Changes");
 			const detail = [
 				plan.laterTurns === 1 ? vscode.l10n.t("This also undoes the changes from the reply after it.") : plan.laterTurns ? vscode.l10n.t("This also undoes the changes from the {0} replies after it.", plan.laterTurns) : '',
 				changedSince.length ? vscode.l10n.t("These files changed after Gemini edited them, and those changes will be lost: {0}", changedSince.map(r => path.basename(r.path)).join(', ')) : '',
 			].filter(Boolean).join('\n\n');
 			if (await vscode.window.showWarningMessage(vscode.l10n.t("Undo the changes to {0} files?", plan.restores.length), { modal: true, detail }, undo) !== undo) {
-				return;
+				return false;
 			}
 		}
 		const restored: acp.Diff[] = [];
@@ -796,6 +797,112 @@ export class ChatController implements vscode.Disposable {
 		}
 		if (failed.length) {
 			this.transcript.addNotice(vscode.l10n.t("Some files could not be put back: {0}", failed.join('; ')), 'error');
+		}
+		return true;
+	}
+
+	/** Esc twice in an empty message box, as in the CLI: picks one of the user's prompts to rewind to. */
+	private async pickRewind(): Promise<void> {
+		if (this.busy || this.options.project) {
+			return;
+		}
+		const prompts = this.transcript.items.flatMap(item => item.kind === 'user' && item.text.trim() ? [item] : []).reverse();
+		if (!prompts.length) {
+			return;
+		}
+		const pick = await vscode.window.showQuickPick(prompts.map(item => ({
+			label: item.text.replace(/\s+/g, ' ').trim(),
+			...(item.at ? { description: new Date(item.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) } : {}),
+			id: item.id,
+		})), {
+			title: vscode.l10n.t("Rewind"),
+			placeHolder: vscode.l10n.t("Pick a message to rewind to, newest first. The conversation goes back to before it."),
+			matchOnDescription: true,
+		});
+		if (pick) {
+			await this.rewind(pick.id);
+		}
+	}
+
+	/**
+	 * Rewinds to before the user's prompt `itemId`, as the CLI's /rewind does:
+	 * the conversation, the files the agent changed since, or both, as the
+	 * user picks. ACP has no rewind, so the CLI's saved session gets the
+	 * record its /rewind writes and is loaded again. The prompt's text goes
+	 * back in the message box.
+	 */
+	private async rewind(itemId: string): Promise<void> {
+		const items = this.transcript.items;
+		const index = items.findIndex(item => item.id === itemId);
+		const prompt = items[index];
+		if (this.busy || this.options.project || prompt?.kind !== 'user' || !prompt.text.trim()) {
+			return;
+		}
+		// Code: the first kept turn after the prompt, which undoes the later ones with it.
+		const after = new Set(items.slice(index).map(item => item.id));
+		const firstTurn = this.checkpoints.turnIds.find(id => after.has(id));
+		const plan = firstTurn ? this.checkpoints.plan(firstTurn) : undefined;
+		const both = vscode.l10n.t("Rewind Chat and Undo Code");
+		const chatOnly = vscode.l10n.t("Rewind Chat Only");
+		const codeOnly = vscode.l10n.t("Undo Code Only");
+		const files = plan?.restores.length ?? 0;
+		const detail = [
+			vscode.l10n.t("The conversation from this message on is removed, from the chat and from what Gemini remembers. The message goes back in the message box, to edit and send again."),
+			files === 1 ? vscode.l10n.t("Gemini changed 1 file since: Undo Code puts it back.") : files ? vscode.l10n.t("Gemini changed {0} files since: Undo Code puts them back.", files) : '',
+		].filter(Boolean).join('\n\n');
+		const answer = await vscode.window.showWarningMessage(vscode.l10n.t("Rewind to before this message?"), { modal: true, detail }, ...(plan ? [both, chatOnly, codeOnly] : [chatOnly]));
+		if (!answer || this.busy || this.transcript.items[index]?.id !== itemId) {
+			return;
+		}
+		if ((answer === both || answer === codeOnly) && firstTurn && !await this.undoTurn(firstTurn, true)) {
+			return;
+		}
+		if (answer === codeOnly) {
+			return;
+		}
+		await this.rewindChat(itemId, prompt.text);
+	}
+
+	private async rewindChat(itemId: string, text: string): Promise<void> {
+		const items = this.transcript.items;
+		const index = items.findIndex(item => item.id === itemId);
+		const squash = (t: string) => t.replace(/\s+/g, ' ').trim();
+		// The CLI's messages are found by text: count the later prompts that say the same.
+		const fromEnd = items.slice(index + 1).filter(item => item.kind === 'user' && squash(item.text) === squash(text)).length;
+		this.setBusy(true);
+		let reason: string | undefined;
+		try {
+			await this.service.ensureReady();
+			const state = this.service.client.state;
+			const sessionId = state.kind === 'ready' ? state.savedSessionId : this.lastSessionId;
+			if (!sessionId || !await rewindCliSession(this.service.client.cwd, sessionId, text, fromEnd).catch(() => false)) {
+				reason = vscode.l10n.t("The message is not in the Gemini CLI's saved session, for example because it ran a command. The chat and Gemini's memory are unchanged.");
+				return;
+			}
+			this.lastSessionId = sessionId;
+			if (!await this.service.client.loadSession(sessionId).catch(() => false)) {
+				// The session file is rewound but the CLI did not take it up: carry what is left into a new session.
+				const conversation = await readCliConversation(this.service.client.cwd, sessionId).catch(() => undefined);
+				this.carriedConversation = conversation?.length ? carriedConversationNote('this chat', conversation) : undefined;
+			}
+			const cut = new Set(items.slice(index).map(item => item.id));
+			const firstTurn = this.checkpoints.turnIds.find(id => cut.has(id));
+			if (firstTurn) {
+				// The code stays as it is, so those replies can no longer be undone.
+				this.checkpoints.forgetFrom(firstTurn);
+				this.saveCheckpoints();
+			}
+			this.transcript.cutAt(itemId);
+			this.lastPrompt = undefined;
+			this.retryItemId = undefined;
+			this.post({ type: 'draft', text });
+		} catch (err) {
+			reason = errorMessage(err);
+		} finally {
+			this.setBusy(false);
+		}
+		if (reason) {
+			this.transcript.addNotice(vscode.l10n.t("Could not rewind the conversation: {0}", reason), 'error');
 		}
 	}
 
@@ -1226,6 +1333,12 @@ export class ChatController implements vscode.Disposable {
 				break;
 			case 'undoTurn':
 				void this.undoTurn(message.itemId);
+				break;
+			case 'rewind':
+				void this.rewind(message.itemId);
+				break;
+			case 'pickRewind':
+				void this.pickRewind();
 				break;
 			case 'threadAction':
 				this.options.project?.threadAction(message.thread, message.action, message.repo);
@@ -1734,6 +1847,7 @@ export class ChatController implements vscode.Disposable {
 			copyMessage: vscode.l10n.t("Copy message"),
 			undoTurn: vscode.l10n.t("Undo"),
 			undoTurnTooltip: vscode.l10n.t("Put back the files this reply changed"),
+			rewindPrompt: vscode.l10n.t("Rewind to here"),
 			undoTurnFiles: vscode.l10n.t("Put back the {0} files this reply changed"),
 			turnUndone: vscode.l10n.t("Changes undone"),
 			retry: vscode.l10n.t("Retry"),

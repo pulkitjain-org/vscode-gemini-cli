@@ -37,7 +37,7 @@ export type ToggleToolCall = (item: ItemOf<'toolCall'>) => void;
 export function render(item: TranscriptItem, toggleToolCall: ToggleToolCall): HTMLElement {
 	switch (item.kind) {
 		case 'user':
-			return renderUserMessage(item);
+			return renderUserMessage(item, item.id);
 		case 'agent':
 			return renderMarkdown(item.text);
 		case 'thought':
@@ -177,7 +177,7 @@ function sentAt(at: number): HTMLElement {
 }
 
 /** The user's message, with its time and Copy under it, shown on hover. */
-function renderUserMessage(item: { readonly text: string; readonly attachments?: readonly PromptAttachmentLabel[]; readonly at?: number; readonly from?: 'coordinator' }): HTMLElement {
+function renderUserMessage(item: { readonly text: string; readonly attachments?: readonly PromptAttachmentLabel[]; readonly at?: number; readonly from?: 'coordinator' }, id?: string): HTMLElement {
 	const turn = el('div', `user-turn${item.from ? ' from-coordinator' : ''}`);
 	const node = el('div', 'message user');
 	if (item.from) {
@@ -207,6 +207,11 @@ function renderUserMessage(item: { readonly text: string; readonly attachments?:
 	const meta = el('div', 'user-meta');
 	if (item.at) {
 		meta.append(sentAt(item.at));
+	}
+	if (item.text && id && !strings.project) {
+		const rewind = button('icon-button copy-message rewind-prompt', '', () => vscode.postMessage({ type: 'rewind', itemId: id }), 'history');
+		setLabel(rewind, strings.rewindPrompt);
+		meta.append(rewind);
 	}
 	if (item.text) {
 		meta.append(copyButton('copy-message', strings.copyMessage, () => item.text));

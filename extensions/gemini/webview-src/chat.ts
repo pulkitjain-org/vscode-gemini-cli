@@ -27,7 +27,7 @@ import { coalesceUpdates } from './chatLogic';
 import { addAttachments, setSharedPage } from './attachmentChips';
 import { setBusy, setFollow, setFollowed, setGit, setSettings, setStatus } from './composer';
 import { applyTokenColors } from './codeHighlight';
-import { onEnhanced, onEnhanceFailed, onEnhanceProgress, toggleEnhance } from './enhance';
+import { onEnhanced, onEnhanceFailed, onEnhanceProgress, replaceInput, toggleEnhance } from './enhance';
 import { setLabel } from './dom';
 import { restoreComposerHeight, updatePlaceholder, updateSendState } from './inputBox';
 import { showSavedSessions } from './items';
@@ -178,6 +178,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'enhanced':
 			onEnhanced(message.requestId, message.text);
+			break;
+		case 'draft':
+			replaceInput(message.text);
 			break;
 		case 'enhanceFailed':
 			onEnhanceFailed(message.requestId, message.message);

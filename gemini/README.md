@@ -70,7 +70,7 @@ The **Gemini** status bar item shows the agent's state. Hover over it to see the
 | `gemini.cliPath` | Path to a `gemini` executable or `bundle/gemini.js`. Overrides GeminiCode's own copies. |
 | `gemini.cli.version` | Which of GeminiCode's own CLI copies to run. Empty means the newest. |
 | `gemini.cli.checkForUpdates` | Offer newer CLI releases, at most once a day. |
-| `gemini.app.checkForUpdates` | Say when a newer GeminiCode is out, at most once a day. |
+| `gemini.app.checkForUpdates` | Say when a newer GeminiCode is out, checking every few hours. **Check for Updates…** checks now. |
 | `gemini.approval.allowAutoEdit` | Offer the Auto Edit mode. |
 | `gemini.approval.allowYolo` | Offer the YOLO mode, which runs everything without asking. Off by default. |
 | `gemini.tools.allowShell` | Let the agent run shell commands. Each command still asks first. |

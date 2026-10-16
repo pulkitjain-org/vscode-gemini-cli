@@ -178,6 +178,15 @@ export class Checkpoints {
 		return removed.map(t => t.id);
 	}
 
+	/** Forgets turn `id` and the turns after it without putting anything back, once the chat no longer shows them. */
+	forgetFrom(id: string): void {
+		const index = this.turns.findIndex(t => t.id === id);
+		if (index !== -1) {
+			this.turns.splice(index);
+			this.forgetUnusedFiles();
+		}
+	}
+
 	/** The ids of the turns kept, oldest first. */
 	get turnIds(): readonly string[] {
 		return this.turns.map(t => t.id);

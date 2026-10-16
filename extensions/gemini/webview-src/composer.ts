@@ -220,6 +220,10 @@ form.addEventListener('click', event => {
 });
 letSpellingMenuThrough(input);
 
+/** When Esc was last pressed in an empty box, for Esc twice. */
+let lastEscape = 0;
+const doubleEscapeMs = 500;
+
 input.addEventListener('keydown', event => {
 	if (!event.isComposing && onPickerKey(event)) {
 		event.preventDefault();
@@ -235,6 +239,17 @@ input.addEventListener('keydown', event => {
 		event.preventDefault();
 		vscode.postMessage({ type: 'stop' });
 		return;
+	}
+	if (event.key === 'Escape' && !event.isComposing && !input.value.trim()) {
+		// Esc twice in an empty box rewinds, as in the CLI.
+		const now = Date.now();
+		if (now - lastEscape < doubleEscapeMs) {
+			lastEscape = 0;
+			event.preventDefault();
+			vscode.postMessage({ type: 'pickRewind' });
+			return;
+		}
+		lastEscape = now;
 	}
 	if (!event.isComposing && isPreviewShortcut(event)) {
 		event.preventDefault();

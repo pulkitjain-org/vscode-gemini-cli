@@ -58,6 +58,23 @@ describe('ChatTranscript', () => {
 		expect(summary(transcript.items)).toEqual(['user:hi', 'thought:let me think', 'agent:Hello']);
 	});
 
+	it('cuts the conversation at a prompt for Rewind, and numbers new items after the old ones', () => {
+		const transcript = new ChatTranscript();
+		transcript.addPrompt('one');
+		transcript.apply({ kind: 'text', role: 'agent', text: 'first' });
+		transcript.addTurnEnd(10);
+		transcript.addPrompt('two');
+		transcript.apply({ kind: 'text', role: 'agent', text: 'second' });
+		const second = transcript.items.find(item => item.kind === 'user' && item.text === 'two')!;
+		let resets = 0;
+		transcript.onDidReset(() => resets++);
+		transcript.cutAt(second.id);
+		expect(summary(transcript.items)).toEqual(['user:one', 'agent:first', 'turnEnd']);
+		expect(resets).toBe(1);
+		transcript.addPrompt('three');
+		expect(transcript.items.at(-1)!.id).not.toBe(second.id);
+	});
+
 	it('starts a new message when the agent sends a new message id', () => {
 		const transcript = new ChatTranscript();
 		transcript.apply({ kind: 'text', role: 'agent', text: 'one', messageId: 'm1' });
