@@ -4,11 +4,14 @@
  *--------------------------------------------------------------------------------------------*/
 
 // When to tell the user about a newer GeminiCode. The download page publishes
-// `latest.json` next to itself (gemini/site/build.mts); GeminiCode reads it at
-// most once a day and only links to the page. It downloads nothing itself.
+// `latest.json` next to itself (gemini/site/build.mts); GeminiCode reads it
+// every few hours, or when the user asks, and only links to the page. It
+// downloads nothing itself.
 
 import { compareVersions, isVersion } from './cliResolution';
-import { updateCheckInterval } from './cliUpdates';
+
+/** How long after a successful read `latest.json` is read again. */
+export const appUpdateCheckInterval = 6 * 60 * 60 * 1000;
 
 export interface AppUpdateCheckState {
 	/** The `gemini.app.checkForUpdates` setting, which an admin can lock. */
@@ -17,7 +20,7 @@ export interface AppUpdateCheckState {
 	readonly currentVersion: string | undefined;
 	/** Where the download page lives, from product.json. */
 	readonly downloadPageUrl: string | undefined;
-	/** When `latest.json` was last read, in ms since the epoch. */
+	/** When `latest.json` was last read successfully, in ms since the epoch. */
 	readonly lastCheck: number | undefined;
 	readonly now: number;
 }
@@ -28,7 +31,7 @@ export function shouldCheckForAppUpdate(state: AppUpdateCheckState): boolean {
 		return false;
 	}
 	// A clock set back counts as due, so a bad timestamp cannot stop checks for good.
-	return state.lastCheck === undefined || state.now - state.lastCheck >= updateCheckInterval || state.now < state.lastCheck;
+	return state.lastCheck === undefined || state.now - state.lastCheck >= appUpdateCheckInterval || state.now < state.lastCheck;
 }
 
 /** Where `latest.json` is, next to the download page. */

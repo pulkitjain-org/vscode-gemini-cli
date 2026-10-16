@@ -113,6 +113,7 @@ jobs:
             const fs = require("fs");
             const product = JSON.parse(fs.readFileSync("product.json", "utf8"));
             product.geminiCodeVersion = process.env.VERSION;
+            product.geminiCliVersion = require("./extensions/gemini/package.json").bundledCli.version;
             fs.writeFileSync("product.json", JSON.stringify(product, null, "\t") + "\n");
           '
 
