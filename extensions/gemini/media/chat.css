@@ -1884,6 +1884,37 @@ body.vscode-high-contrast-light #send {
 	flex-shrink: 1;
 }
 
+/* A project's repositories, one pill each with its branch, in place of the folder and branch. */
+.foot-repos {
+	display: inline-flex;
+	flex-shrink: 1;
+	align-items: center;
+	gap: 2px;
+	min-width: 0;
+	overflow: hidden;
+}
+
+.foot-repos[hidden] {
+	display: none;
+}
+
+.foot-button.repo {
+	flex-shrink: 1;
+	max-width: none;
+}
+
+.foot-button.repo .repo-name {
+	color: var(--vscode-foreground);
+}
+
+.foot-button.repo .codicon-git-branch {
+	margin-left: 3px;
+}
+
+#repos-menu {
+	width: min(340px, 100%);
+}
+
 /* The file Follow the agent opened last: its name shows it, the × closes it. */
 .foot-followed {
 	display: inline-flex;

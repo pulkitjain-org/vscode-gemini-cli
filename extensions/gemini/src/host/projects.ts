@@ -68,6 +68,15 @@ export interface ProjectAgents {
 	rename(id: string, title: string): void;
 	/** Asks the Gemini CLI to trust the folder multi-repository threads work in; false when the user declines. */
 	trustThreads(coordinatorId: string): Promise<boolean>;
+	/**
+	 * Gets a coordinator whose session opened without the project's tools a
+	 * session with them: asks to trust the project's folders when they aren't,
+	 * else restarts the agent once no agent is working, since the CLI reads
+	 * trust only as it starts. False when the user declines.
+	 */
+	reloadProjectTools(coordinatorId: string): Promise<boolean>;
+	/** Writes to the Gemini log. */
+	log(message: string): void;
 	/** One direct request to the quick model; undefined when there is no way to make one. */
 	direct(request: { readonly system: string; readonly prompt: string }): Promise<string | undefined>;
 	openChanges(id: string): Promise<void>;
@@ -255,12 +264,47 @@ export class Projects implements vscode.Disposable {
 		this.schedulePanel(project);
 	}
 
+	/** A project's repositories when it has several, for the coordinator's footer; undefined with one. */
+	repoFolders(coordinatorId: string): readonly { readonly name: string; readonly folder: string }[] | undefined {
+		const repos = this.projects.get(coordinatorId)?.config?.repos;
+		return repos && repos.length > 1 ? repos.map(repo => ({ name: repo.key, folder: repo.folder })) : undefined;
+	}
+
 	/** A thread's files changed: its card shows the new counts. */
 	threadChanged(record: AgentRecord): void {
 		const project = record.project?.role === 'thread' ? this.projects.get(record.project.coordinator) : undefined;
 		if (project) {
 			this.showCard(project, record.id);
 		}
+	}
+
+	/**
+	 * A coordinator without its tools can't start a thread, and says so after
+	 * a wasted turn; that happens when its session opened before the CLI
+	 * trusted the project's folders. So the first wake checks the CLI listed
+	 * the tools, and if not gets them loaded before sending anything.
+	 */
+	private async ensureTools(record: AgentRecord, coordinator: ChatController): Promise<void> {
+		const caller = callerOf(record);
+		const server = this.server;
+		if (!caller || !server) {
+			return;
+		}
+		// The CLI lists a server's tools as the session opens, which may not have happened yet.
+		await coordinator.openSession();
+		if (await server.whenListed(caller, toolsListedMs)) {
+			return;
+		}
+		this.agents.log(`The coordinator of ${record.title} has no project tools; getting them loaded`);
+		coordinator.addNotice(vscode.l10n.t("The project's tools didn't load in the coordinator's session, so it couldn't start threads. Restarting Gemini to load them, once no agent is working; your message waits until then."));
+		server.forgetListed(caller);
+		if (!await this.agents.reloadProjectTools(record.id)) {
+			throw new Error(vscode.l10n.t("The project's folders aren't trusted, so the Gemini CLI loads no project tools there. Trust them to start threads."));
+		}
+		if (!await server.whenListed(caller, toolsReloadMs)) {
+			throw new Error(vscode.l10n.t("The project's tools still didn't load. The Gemini log (Output, Gemini) says why; your Gemini settings may exclude MCP servers."));
+		}
+		coordinator.addNotice(vscode.l10n.t("The project's tools loaded."));
 	}
 
 	dispose(): void {
@@ -279,7 +323,12 @@ export class Projects implements vscode.Disposable {
 		}
 		const conductor = new ConductorReader(folder);
 		const home = coordinatorHome(record.id);
-		const hub = new ProjectHub(record.id, { prompt: text => coordinator.sendUnseen(text) }, {
+		const hub = new ProjectHub(record.id, {
+			prompt: async text => {
+				await this.ensureTools(record, coordinator);
+				return coordinator.sendUnseen(text);
+			},
+		}, {
 			start: request => this.startRequested(project, request),
 			message: (thread, text) => this.message(record.id, thread, text),
 			read: (thread, last) => this.read(thread, last),
@@ -458,11 +507,13 @@ export class Projects implements vscode.Disposable {
 		const repository = await repositoryRoot(folder) ?? folder;
 		const config = await readProjectConfig(project.home, repository);
 		project.config = config;
+		project.coordinator.refreshGit();
 		return config;
 	}
 
 	private setConfig(project: LiveProject, config: ProjectConfig): void {
 		project.config = config;
+		project.coordinator.refreshGit();
 		project.loading = Promise.resolve(config);
 		project.hub.memoryChanged();
 		this.schedulePanel(project);
@@ -828,6 +879,11 @@ function repoCards(record: AgentRecord, files: readonly EditedFile[] | undefined
 		};
 	});
 }
+
+/** How long the first wake waits for the CLI to list the coordinator's tools as its session opens. */
+const toolsListedMs = 10_000;
+/** How long it then waits for a restart to bring them, which waits for working agents to finish. */
+const toolsReloadMs = 10 * 60_000;
 
 function callerOf(record: AgentRecord): ProjectCaller | undefined {
 	const role: AgentProjectRole | undefined = record.project;

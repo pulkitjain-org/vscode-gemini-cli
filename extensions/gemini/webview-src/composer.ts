@@ -17,7 +17,7 @@ import { continueList, formatShortcut, toggleWrap, type TextEdit } from './markd
 import { createPreviewTabs, isPreviewShortcut } from './markdownPreview';
 import { renderUserMarkdown } from './items';
 import { closePicker, onPickerKey, updatePicker } from './picker';
-import { setWorkspace, updateModel } from './pickers';
+import { setRepos, setWorkspace, updateModel } from './pickers';
 import { modeIcon } from './modeIcon';
 import { openPlusMenu, updatePlusMenu } from './plusMenu';
 import { setTranscriptBusy } from './transcript';
@@ -97,6 +97,7 @@ export function setGit(git: ViewGit): void {
 	commitButton.hidden = !git.canCommit || !git.branch;
 	const workspace = git.workspace;
 	setWorkspace(workspace);
+	setRepos(git.repos ?? []);
 	ui.workspaceButton.hidden = !workspace;
 	if (workspace) {
 		ui.workspaceLabel.textContent = workspace.worktree ? `${workspace.name} \u00b7 ${strings.worktree}` : workspace.name;

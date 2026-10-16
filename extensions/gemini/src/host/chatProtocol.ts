@@ -19,7 +19,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 24;
+export const chatProtocolVersion = 25;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -354,6 +354,9 @@ export interface ChatStrings {
 	readonly revertTooltip: string;
 	/** `{0}` is the folder's path; the workspace pill's tooltip. */
 	readonly workspaceTooltip: string;
+	/** "Repository {0} on {1}, at {2}", for a project's repositories in the footer. */
+	readonly repoTooltip: string;
+	readonly repositories: string;
 	/** After the workspace's name when the agent works in its own copy of it. */
 	readonly worktree: string;
 	/** The saved sessions card in an empty agent chat. */
@@ -485,6 +488,16 @@ export interface ViewGit {
 	readonly canCommit: boolean;
 	/** The workspace the chat's agent works in, for the workspace pill. */
 	readonly workspace?: ViewWorkspace;
+	/** A project's several repositories, each with its branch, in place of the branch and workspace pills. */
+	readonly repos?: readonly ViewRepo[];
+}
+
+export interface ViewRepo {
+	readonly name: string;
+	/** Where the agent sees it, with the home folder as ~. */
+	readonly path: string;
+	/** Unset when its branch can't be read. */
+	readonly branch?: string;
 }
 
 export interface ViewBranch {
@@ -527,7 +540,8 @@ export type FromWebview =
 	/** Switch to branch `name`, or create it from the current one. */
 	| { readonly type: 'switchBranch'; readonly name: string; readonly create: boolean }
 	/** The folder menu: copy the folder's path, reveal it, or show the Agents list. */
-	| { readonly type: 'workspaceAction'; readonly action: 'copyPath' | 'reveal' | 'showAgents' | 'addFolder' }
+	/** `repo` names one of a project's several repositories (ViewGit.repos) to act on instead of the workspace. */
+	| { readonly type: 'workspaceAction'; readonly action: 'copyPath' | 'reveal' | 'showAgents' | 'addFolder'; readonly repo?: string }
 	/** Reopen saved session `id` in this chat. */
 	| { readonly type: 'restoreSession'; readonly id: string }
 	/** Pick from every saved session for the folder. */

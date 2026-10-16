@@ -135,6 +135,8 @@ export interface ChatWorkspace {
 	/** Where the agent runs: the folder, or its place in the agent's own worktree. */
 	readonly cwd: string;
 	readonly worktree: boolean;
+	/** A project's several repositories, each named and where this agent sees it; they take the folder and branch pills' place. */
+	readonly repos?: readonly { readonly name: string; readonly folder: string }[];
 }
 
 /** Rewrites drafts as precise prompts; one, shared by every chat. */
@@ -570,6 +572,15 @@ export class ChatController implements vscode.Disposable {
 	/** Sends `text` to the agent ahead of the next prompt, without showing it in the chat. */
 	addContext(text: string): void {
 		this.pendingContext = this.pendingContext ? `${this.pendingContext}\n\n${text}` : text;
+	}
+
+	/** Opens the agent's session, as a prompt would, without sending one. */
+	async openSession(): Promise<void> {
+		if (this.restoring) {
+			await this.restoring;
+		}
+		this.service.open?.();
+		await this.service.ensureReady();
 	}
 
 	async sendUnseen(text: string): Promise<void> {
@@ -1138,7 +1149,7 @@ export class ChatController implements vscode.Disposable {
 				void this.commit();
 				break;
 			case 'workspaceAction':
-				void this.workspaceAction(message.action);
+				void this.workspaceAction(message.action, typeof message.repo === 'string' ? message.repo : undefined);
 				break;
 			case 'restoreSession':
 				if (typeof message.id === 'string') {
@@ -1356,6 +1367,11 @@ export class ChatController implements vscode.Disposable {
 		this.postGit();
 	}
 
+	/** Shows the branch and folder again, as after a project's repositories changed. */
+	refreshGit(): void {
+		this.postGit();
+	}
+
 	/** Sends the branch and whether there is anything to commit; the branch is read from `.git/HEAD`, which is cheap. */
 	private postGit(): void {
 		const git = this.options.git;
@@ -1366,6 +1382,12 @@ export class ChatController implements vscode.Disposable {
 		const canCommit = !this.busy && !!git.commit?.files().length;
 		const ws = this.options.workspace?.();
 		const workspace = ws && { name: path.basename(ws.folder) || ws.folder, path: tildify(ws.cwd), worktree: ws.worktree };
+		// Several repositories: each with its own branch, in place of one folder and branch.
+		if (ws?.repos && ws.repos.length > 1) {
+			void Promise.all(ws.repos.map(async repo => ({ name: repo.name, path: tildify(repo.folder), branch: await readGitHead(repo.folder).catch(() => undefined) })))
+				.then(repos => this.post({ type: 'git', git: { canCommit: false, repos } }));
+			return;
+		}
 		void (folder ? readGitHead(folder).catch(() => undefined) : Promise.resolve(undefined))
 			.then(branch => this.post({ type: 'git', git: { branch, canCommit, ...(workspace ? { workspace } : {}) } }));
 	}
@@ -1391,19 +1413,20 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	/** What the folder menu offers. */
-	private async workspaceAction(action: 'copyPath' | 'reveal' | 'showAgents' | 'addFolder'): Promise<void> {
+	private async workspaceAction(action: 'copyPath' | 'reveal' | 'showAgents' | 'addFolder', repo?: string): Promise<void> {
 		if (action === 'addFolder') {
 			return vscode.commands.executeCommand('workbench.action.addRootFolder');
 		}
 		const workspace = this.options.workspace?.();
-		if (!workspace) {
+		const folder = repo !== undefined ? workspace?.repos?.find(each => each.name === repo)?.folder : workspace?.cwd;
+		if (!folder) {
 			return;
 		}
 		switch (action) {
 			case 'copyPath':
-				return vscode.env.clipboard.writeText(workspace.cwd);
+				return vscode.env.clipboard.writeText(folder);
 			case 'reveal':
-				return vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(workspace.cwd));
+				return vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(folder));
 			case 'showAgents':
 				return vscode.commands.executeCommand('gemini.agents.focus');
 		}
@@ -1670,6 +1693,8 @@ export class ChatController implements vscode.Disposable {
 			revert: vscode.l10n.t("Revert"),
 			revertTooltip: vscode.l10n.t("Put back what you wrote"),
 			workspaceTooltip: vscode.l10n.t("Workspace {0}"),
+			repoTooltip: vscode.l10n.t("Repository {0} on {1}, at {2}"),
+			repositories: vscode.l10n.t("Repositories"),
 			worktree: vscode.l10n.t("worktree"),
 			restoreTitle: vscode.l10n.t("Restore a session"),
 			restoreHint: vscode.l10n.t("Saved by the Gemini CLI for this folder"),
@@ -1808,12 +1833,14 @@ export class ChatController implements vscode.Disposable {
 		<div class="composer-foot">
 			<button type="button" id="branch" class="foot-button branch" hidden><i class="codicon codicon-git-branch" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button>
 			<button type="button" id="workspace" class="foot-button workspace" hidden><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button>
+			<span id="repos" class="foot-repos" hidden></span>
 			<button type="button" id="commit" class="foot-button commit" hidden><i class="codicon codicon-git-commit" aria-hidden="true"></i><span></span></button>
 			<span id="followed" class="foot-followed" hidden><button type="button" class="foot-button followed-name"><i class="codicon codicon-eye" aria-hidden="true"></i><span></span></button><button type="button" class="followed-close"><i class="codicon codicon-close" aria-hidden="true"></i></button></span>
 			<span class="spacer"></span>
 			<button type="button" id="usage-ring" class="foot-button usage-ring" aria-expanded="false" aria-controls="usage-popover"><svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="ring-track" cx="8" cy="8" r="6"/><circle class="ring-fill" cx="8" cy="8" r="6" pathLength="100" stroke-dasharray="0 100" transform="rotate(-90 8 8)"/></svg><span></span></button>
 			<div id="branch-menu" class="foot-menu" hidden></div>
 			<div id="workspace-menu" class="foot-menu" hidden></div>
+			<div id="repos-menu" class="foot-menu" hidden></div>
 		</div>
 	</div>
 	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>

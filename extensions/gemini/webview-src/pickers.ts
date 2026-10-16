@@ -7,9 +7,9 @@
 // composer, as pop-ups in the chat rather than system menus or quick picks.
 
 import { isValidBranchName } from '../src/acp/branchNames';
-import type { ViewBranch, ViewWorkspace } from '../src/host/chatProtocol';
+import type { ViewBranch, ViewRepo, ViewWorkspace } from '../src/host/chatProtocol';
 import { format } from './chatLogic';
-import { setLabel } from './dom';
+import { el, icon, setLabel } from './dom';
 import { Menu, type MenuRow } from './menu';
 import { state, strings, ui, vscode } from './view';
 
@@ -159,6 +159,67 @@ function folderRows(rows: readonly (readonly [string, string, 'copyPath' | 'reve
 			folderMenu.close();
 		},
 	}));
+}
+
+// ---- A project's repositories ----
+
+// A project with several repositories shows one pill per repository, with
+// its branch, where one folder and branch would go; each opens the folder
+// menu's actions for that repository.
+
+let repos: readonly ViewRepo[] = [];
+let menuRepo: ViewRepo | undefined;
+
+const reposMenu = new Menu({
+	element: ui.reposMenu,
+	anchor: ui.repos,
+	label: strings.repositories,
+	title: () => menuRepo && { name: menuRepo.branch ? `${menuRepo.name} \u00b7 ${menuRepo.branch}` : menuRepo.name, detail: menuRepo.path },
+	sections: () => menuRepo ? [{
+		rows: ([['copy', strings.copyPath, 'copyPath'], ['folder-opened', strings.revealFolder, 'reveal']] as const).map(([iconName, name, action]): MenuRow => ({
+			icon: iconName,
+			name,
+			run: () => {
+				vscode.postMessage({ type: 'workspaceAction', action, repo: menuRepo!.name });
+				reposMenu.close();
+			},
+		})),
+	}] : [],
+	empty: () => '',
+	// Back to the pill that opened it.
+	returnFocus: () => [...ui.repos.children].find(node => (node as HTMLElement).dataset.repo === menuRepo?.name) as HTMLElement ?? ui.repos,
+});
+
+/** Shows a project's repositories, or hides them with none. */
+export function setRepos(list: readonly ViewRepo[]): void {
+	repos = list;
+	ui.repos.hidden = !list.length;
+	ui.repos.replaceChildren(...list.map(repo => {
+		const pill = el('button', 'foot-button repo');
+		pill.type = 'button';
+		pill.dataset.repo = repo.name;
+		pill.append(icon('repo'), el('span', 'repo-name', repo.name));
+		if (repo.branch) {
+			pill.append(icon('git-branch'), el('span', 'repo-branch', repo.branch));
+		}
+		setLabel(pill, strings.repoTooltip.replace('{0}', repo.name).replace('{1}', repo.branch ?? '?').replace('{2}', repo.path));
+		// The pills share one menu: a click on another pill while it is open moves it there.
+		pill.addEventListener('click', () => {
+			const moving = reposMenu.isOpen && menuRepo?.name !== repo.name;
+			menuRepo = repo;
+			if (moving) {
+				queueMicrotask(() => reposMenu.open());
+			}
+		});
+		return pill;
+	}));
+	if (menuRepo) {
+		menuRepo = repos.find(repo => repo.name === menuRepo!.name);
+		if (!menuRepo) {
+			reposMenu.close(false);
+		}
+	}
+	reposMenu.render();
 }
 
 /** The folder the folder menu is about. */

@@ -241,6 +241,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				const folder = record && this.model.workspace(record.workspaceId)?.folder;
 				return !!folder && this.ensureProjectTrust(folder, true);
 			},
+			reloadProjectTools: id => this.reloadProjectTools(id),
+			log: message => this.service.writeLog(message),
 			direct: request => this.direct?.(request) ?? Promise.resolve(undefined),
 			openChanges: id => this.openChanges(id),
 			undoThread: id => this.undoThread(id),
@@ -1742,6 +1744,28 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	}
 
 	/**
+	 * A coordinator whose session has no project tools (Projects.ensureTools):
+	 * asks to trust the project's folders when they aren't, which restarts the
+	 * agent; when they are, the agent started before they were, so it restarts
+	 * once no agent is working. The coordinator's session reopens with the
+	 * tools either way. False when the user declines.
+	 */
+	private async reloadProjectTools(coordinatorId: string): Promise<boolean> {
+		const record = this.model.agent(coordinatorId);
+		const folder = record && this.model.workspace(record.workspaceId)?.folder;
+		if (!folder) {
+			return false;
+		}
+		const repository = await repositoryRoot(folder) ?? folder;
+		const threads = await savedRepoCount(coordinatorHome(coordinatorId)) > 1;
+		if (projectFoldersTrusted(projectFolders(repository, threads))) {
+			this.service.restartWhenIdle('restarting so the coordinator gets the project\'s tools');
+			return true;
+		}
+		return this.ensureProjectTrust(folder, threads);
+	}
+
+	/**
 	 * A project works through its own MCP server, and the Gemini CLI loads MCP
 	 * servers only in folders it trusts, so a project needs its repository and
 	 * its threads' worktrees trusted. Asks when either isn't, and once trusted,
@@ -1750,11 +1774,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	 */
 	private async ensureProjectTrust(folder: string, threads = false): Promise<boolean> {
 		const repository = await repositoryRoot(folder) ?? folder;
-		// The coordinators' own folders hold nothing; the threads' worktrees hold the repository,
-		// and with several repositories each thread's folder holds a worktree of each.
-		const folders = [projectsHome(), worktreesHome(repository), ...threads ? [allThreadsHome()] : []];
-		const file = trustedFoldersPath(process.env);
-		if (!folderTrustApplies(process.env) || folders.every(each => isFolderTrusted(file, each))) {
+		const folders = projectFolders(repository, threads);
+		if (projectFoldersTrusted(folders)) {
 			return true;
 		}
 		const trust = vscode.l10n.t("Trust Folder");
@@ -1891,7 +1912,11 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				},
 				workspace: () => {
 					const workspace = this.model.workspace(record.workspaceId);
-					return workspace && { folder: workspace.folder, cwd: folder, worktree: !!this.model.agent(record.id)?.worktree };
+					const current = this.model.agent(record.id) ?? record;
+					// A coordinator of a project with several repositories shows each; a thread across them, its worktree of each.
+					const threadRepos = current.repos?.filter(repo => !repo.merged).map(repo => ({ name: repo.key, folder: repo.cwd }));
+					const repos = current.project?.role === 'coordinator' && projectsEnabled() ? this.projects.repoFolders(current.id) : threadRepos && threadRepos.length > 1 ? threadRepos : undefined;
+					return workspace && { folder: workspace.folder, cwd: folder, worktree: !!current.worktree, ...(repos ? { repos } : {}) };
 				},
 				git: {
 					folder: () => folder,
@@ -2203,4 +2228,19 @@ async function removeThreadFolder(repos: readonly ThreadRepo[], folder: string, 
 	if (failed) {
 		throw failed.reason;
 	}
+}
+
+/**
+ * The folders a project needs trusted: the coordinators' own, which hold
+ * nothing; the repository's threads' worktrees; and with several
+ * repositories, the folders that hold a worktree of each.
+ */
+function projectFolders(repository: string, threads: boolean): string[] {
+	return [projectsHome(), worktreesHome(repository), ...threads ? [allThreadsHome()] : []];
+}
+
+/** Whether the Gemini CLI trusts all of `folders`, or checks no folder's trust. */
+function projectFoldersTrusted(folders: readonly string[]): boolean {
+	const file = trustedFoldersPath(process.env);
+	return !folderTrustApplies(process.env) || folders.every(each => isFolderTrusted(file, each));
 }

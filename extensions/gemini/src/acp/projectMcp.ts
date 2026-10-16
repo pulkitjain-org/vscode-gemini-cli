@@ -119,6 +119,9 @@ export class ProjectMcpServer {
 	private server: http.Server | undefined;
 	private port: number | undefined;
 	private starting: Promise<number> | undefined;
+	/** The routes whose tools the CLI has listed since the server started, and who waits on one. */
+	private readonly listed = new Set<string>();
+	private readonly listeners = new Map<string, Set<() => void>>();
 
 	constructor(private readonly host: ProjectToolHost, private readonly version: string) { }
 
@@ -149,6 +152,38 @@ export class ProjectMcpServer {
 			return undefined;
 		}
 		return { type: 'http', name: 'geminicode-project', url: `http://127.0.0.1:${this.port}/mcp/${route}`, headers: [{ name: 'Authorization', value: `Bearer ${this.tokenFor(route)}` }] };
+	}
+
+	/**
+	 * Whether `caller`'s session loaded the tools: the CLI lists them when a
+	 * session opens with the server, and never in a folder it doesn't trust.
+	 * Waits up to `ms` for that; at once when it happened already.
+	 */
+	whenListed(caller: ProjectCaller, ms: number): Promise<boolean> {
+		const route = routeOf(caller);
+		if (!route || this.listed.has(route)) {
+			return Promise.resolve(!!route);
+		}
+		return new Promise(resolve => {
+			const waiting = this.listeners.get(route) ?? new Set();
+			this.listeners.set(route, waiting);
+			const done = (listed: boolean) => {
+				clearTimeout(timer);
+				waiting.delete(onListed);
+				resolve(listed);
+			};
+			const onListed = () => done(true);
+			const timer = setTimeout(() => done(false), ms);
+			waiting.add(onListed);
+		});
+	}
+
+	/** Forgets that `caller`'s tools were listed, as before its session opens again in a new agent process. */
+	forgetListed(caller: ProjectCaller): void {
+		const route = routeOf(caller);
+		if (route) {
+			this.listed.delete(route);
+		}
 	}
 
 	dispose(): void {
@@ -187,6 +222,10 @@ export class ProjectMcpServer {
 			return void reply(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
 		}
 		const messages = (Array.isArray(body) ? body : [body]) as JsonRpcRequest[];
+		if (messages.some(m => m?.method === 'tools/list')) {
+			this.listed.add(route);
+			this.listeners.get(route)?.forEach(listener => listener());
+		}
 		const answers = (await Promise.all(messages.map(m => this.answer(caller, m)))).filter(a => a !== undefined);
 		if (!answers.length) {
 			return void res.writeHead(202).end();
