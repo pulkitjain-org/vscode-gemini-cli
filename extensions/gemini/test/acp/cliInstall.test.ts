@@ -9,7 +9,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { checkIntegrity, Fetch, fetchCliVersions, installCli, pruneCliVersions, readTar } from '../../src/acp/cliInstall';
+import { checkIntegrity, cliCopiesToKeep, Fetch, fetchCliVersions, installCli, pruneCliVersions, readTar } from '../../src/acp/cliInstall';
 import { listManagedVersions, resolveCli } from '../../src/acp/cliResolution';
 
 let dir: string;
@@ -134,5 +134,24 @@ describe('pruneCliVersions', () => {
 		expect((await pruneCliVersions(dir, ['0.62.0', '0.61.0'])).sort()).toEqual(['.tmp-0.63.0-abc', '0.60.0']);
 		expect(listManagedVersions(dir).sort()).toEqual(['0.61.0', '0.62.0']);
 		expect(fs.existsSync(path.join(dir, 'notes'))).toBe(true);
+	});
+});
+
+describe('cliCopiesToKeep', () => {
+	const installed = ['0.62.0', '0.63.0', '0.64.0'];
+
+	it('keeps only the installed copy in use', () => {
+		expect(cliCopiesToKeep(installed, { source: 'managed', version: '0.64.0' })).toEqual(['0.64.0']);
+	});
+
+	it('keeps none when the bundled CLI runs, except a pinned version', () => {
+		expect(cliCopiesToKeep(installed, { source: 'bundled', version: '0.64.0' })).toEqual([]);
+		expect(cliCopiesToKeep(installed, { source: 'bundled', version: '0.64.0' }, '0.63.0')).toEqual(['0.63.0']);
+		expect(cliCopiesToKeep(installed, { source: 'path' }, '0.70.0')).toEqual([]);
+	});
+
+	it('keeps the newest when it is not known which CLI runs', () => {
+		expect(cliCopiesToKeep(installed, undefined)).toEqual(['0.64.0']);
+		expect(cliCopiesToKeep([], undefined)).toEqual([]);
 	});
 });

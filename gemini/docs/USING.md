@@ -30,7 +30,7 @@ An agent on its own branch can get a ready folder: set **Gemini › Agents: Work
 | Keys | What it does |
 | --- | --- |
 | ⌥⌘M | Switch between Agents and Editor mode |
-| ⌘L | Open the chat; with a selection, add it to the chat |
+| ⌘L | Add the selection to the agent in front, or to a new agent |
 | ⌥⌘N | New agent |
 | ⌘N (in the chat) | New chat |
 | ↩ / ⇧↩ (in the chat input) | Send, or start a new line |
@@ -106,7 +106,9 @@ The **Changes** panel (on the right in Agents mode, below the Agents pane in Edi
 
 Open a file an agent changed and its changes show in place: added lines are tinted, a rule marks removed lines (hover to see them), and **Keep** and **Undo** sit above each change. The line at the top of the file keeps or undoes them all and moves to the agent's next file, and the arrows in the editor's title bar step through the changes. Keeping a change takes it off the Changes list; undoing one puts the old lines back and saves the file.
 
-Each reply that changed files ends with **Undo**, which puts back every file it changed. Undoing an earlier reply also undoes the replies after it, and GeminiCode asks first when that happens or when a file changed after Gemini wrote it. The next message tells Gemini which files went back, so it reads them again. The last 20 replies of each chat can be undone, until the window closes. **Retry** under the latest reply sends the same message again.
+Each reply that changed files ends with **Undo**, which puts back every file it changed. Undoing an earlier reply also undoes the replies after it, and GeminiCode asks first when that happens or when a file changed after Gemini wrote it. The next message tells Gemini which files went back, so it reads them again. The last 100 replies of each agent can be undone (up to 20 MB of file text), and they stay undoable after the window reloads or the agent sleeps; they are deleted with the agent. **Retry** under the latest reply sends the same message again.
+
+**Rewind** goes back to before one of your messages, as the CLI's `/rewind` does: click the clock icon under the message, or press Esc twice in an empty message box and pick one. That message and everything after it go from the chat and from Gemini's context, so Gemini forgets them, and the files Gemini changed since go back to how they were. The message goes back in the message box, to edit and send again. A message that ran a team command or skill can't be found in the CLI's session, so for it Rewind offers to undo the code only.
 
 The branch under a chat's composer switches to another branch or creates one. In an agent's chat, **Create Branch & Commit** creates a branch, stages only the files that agent changed, and commits them. If other files are already staged it warns first, because they would be committed too. After the commit the agent's Changes list is cleared.
 
@@ -155,11 +157,13 @@ Messages you send show Markdown the way replies do: bold, lists, `code`, code bl
 
 The chat and Agent Home composers underline misspelt words with your system's spell checker; right-click a word for suggestions or **Add to Dictionary**. Turn it off with `gemini.chat.spellCheck`.
 
-Each message you send shows the time you sent it and a **Copy** button when you point at it. Under each reply, next to how long the agent worked, is the time it finished, with the same **Copy** button. The folder next to the branch under the composer names the agent's workspace (and its worktree, when it has one); click it to copy the path, reveal the folder in Finder or show the Agents pane.
+When the agent hands part of the work to one of the Gemini CLI's subagents (such as the Codebase Investigator, or your own in `.gemini/agents/`), the chat shows a **Subagent** row with its name and how long it has been working, then its time or **Failed**. Click it to read the subagent's report. The CLI doesn't send the subagent's own steps, so only the report shows.
+
+Each message you send shows the time you sent it, **Rewind** and **Copy**. Under each reply, next to how long the agent worked, is the time it finished, with the same **Copy** button. The folder next to the branch under the composer names the agent's workspace (and its worktree, when it has one); click it to copy the path, reveal the folder in Finder or show the Agents pane.
 
 ## Restoring a Gemini CLI session
 
-A new, empty agent lists the three sessions the Gemini CLI saved most recently for its folder, including ones started with `gemini` in the terminal, with a link to show them all. Pick one to continue it in that agent: its conversation appears in the chat, and the agent takes the session's title. `/resume` in the composer opens the same list at any time. Sessions open in another agent are left out. GeminiCode reads the list from the CLI's own files in `~/.gemini/tmp` and never changes them. The CLI deletes saved sessions after 30 days; the list says when, and **Keep saved chats for** in Project Helpers changes it.
+A new, empty agent lists the three sessions the Gemini CLI saved most recently for its folder, including ones started with `gemini` in the terminal, with a link to show them all. Pick one to continue it in that agent: its conversation appears in the chat, and the agent takes the session's title. `/resume` in the composer opens the same list at any time. Sessions open in another agent are left out. GeminiCode reads the list from the CLI's own files in `~/.gemini/tmp`, and changes them only to rewind a session, with the same record the CLI's `/rewind` writes. The CLI deletes saved sessions after 30 days; the list says when, and **Keep saved chats for** in Project Helpers changes it.
 
 ## Slash commands
 
@@ -175,6 +179,10 @@ prompt = "Review {{args}} for bugs and suggest fixes."
 ```
 
 `@{path}` reads a file in the workspace, following the same rules as the agent's file tools (no secrets, nothing git ignores, no folders), and leaves the placeholder with a note in the chat when it cannot. Before any `!{command}` runs, GeminiCode shows every command the team command will run and asks; inside `!{...}`, `{{args}}` is quoted for the shell. Commands need shell access (`gemini.tools.allowShell`), stop after a minute, and their output is cut at 100,000 characters. A file's text or a command's output is never searched for more commands.
+
+## Updates
+
+**GeminiCode: Check for Updates…** (also in the GeminiCode menu, under About GeminiCode) checks for a newer GeminiCode now and says whether you are up to date. GeminiCode also checks by itself every few hours and offers the download; turn that off with `gemini.app.checkForUpdates`.
 
 ## Notifications
 
@@ -200,7 +208,7 @@ When an MCP server cannot start, GeminiCode shows a warning naming the server an
 
 Agents can open the web app they are working on in GeminiCode's browser and check their own work: read the page, click, type, press keys and take screenshots, while you watch. Ask, for example, "open http://localhost:5173 and check the cart total". Each agent gets its own tab beside its chat, with a **Gemini is using this page** bar; **Stop** on it stops the agent's turn. Pages on this machine (`localhost`, `127.0.0.1`) open freely, and local files follow the same rules as the agent's file tools. Any other site asks you first, once per agent and site, because a page can contain instructions aimed at the agent. That check uses the page's real address after every step, so a redirect or a link the agent clicks can't skip it. The tab opens beside the chat without taking focus. Default mode still asks before each browser action, like any other tool.
 
-To let an agent use a page you opened yourself (a page you are signed in to, say), click the sparkle **Let Gemini Use This Page** in the page's toolbar, or run **Browser: Let Gemini Use This Page** from the Command Palette. Pick the agent (the open agents in this window, most recent first; with just one, it is used; with none, open an agent first). The page gets the **Gemini is using this page** bar, and the agent's chat comes to the front with the page attached, so you can say what to do with it; its browser tools then act on that page. The agent can read and use the page as you, signed in, so share only pages you trust it with. Your choice counts as allowing that site for that agent, files still follow its file rules, and the `gemini.browser.allowOtherSites` policy still applies. A page belongs to one agent at a time. **Stop Sharing** on the bar (or **Browser: Stop Sharing This Page with Gemini**) gives it back to you, and removing the agent does too; the page stays open. Pages are never shared any other way.
+To let an agent use a page you opened yourself (a page you are signed in to, say), click the sparkle **Let Gemini Use This Page** in the page's toolbar, or run **Browser: Let Gemini Use This Page** from the Command Palette. Pick the agent (the open agents in this window, most recent first; with just one, it is used; with none, open an agent first). The page gets the **Gemini is using this page** bar, and the agent's chat comes to the front with the page attached, so you can say what to do with it; its browser tools then act on that page. The agent can read and use the page as you, signed in, so share only pages you trust it with. Your choice counts as allowing that site for that agent, files still follow its file rules, and the `gemini.browser.allowOtherSites` policy still applies. A page belongs to one agent at a time. While a page is shared, the agent's composer shows a **Shared page** chip, each message you send shows it too, and every message reminds the agent which page it is, so it checks its work there. Click the chip to go to the page's tab. The share lasts until you end it: the chip's ×, **Stop Sharing** on the bar (or **Browser: Stop Sharing This Page with Gemini**), closing the page or removing the agent gives it back to you; the page stays open. It survives the agent sleeping and the window reloading. Pages are never shared any other way.
 
 Agents also read the page's console (`browser_console`, every level, filtered by text or level) and its requests (`browser_network`: method, URL, status and time, or just the failed ones), go forward and reload, right-click, answer a page's alert, confirm or prompt dialog, and list the web servers already running on this machine (`browser_dev_servers`), so they open yours instead of starting another. For a page on your network or behind your sign-in, such as a QA or intranet site, ask Gemini to open it in the browser or share it with **Let Gemini Use This Page**: the CLI's own web fetch can't reach private addresses, and when it refuses one the chat says so.
 
@@ -234,9 +242,9 @@ GeminiCode keeps its own share small:
 
 When you scroll up in a chat, **Latest** above the input takes you back to the newest message.
 
-To find your way round a long chat, use the thin outline of your prompts down the chat's right edge: point at a tick to see the prompt, click it to jump there. ⌥⌘↑ and ⌥⌘↓ jump to your previous and next prompt. **Open Chat as Markdown** (in Quick Chat's **...** menu, an agent's right-click menu in the Agents pane, or the Command Palette for the chat in front) opens the whole conversation as a Markdown document you can search, save or share. For an agent that is not running, it opens the saved copy, which keeps the last 300 messages.
+To find your way round a long chat, use the thin outline of your prompts down the chat's right edge: point at a tick to see the prompt, click it to jump there. ⌥⌘↑ and ⌥⌘↓ jump to your previous and next prompt. **Open Chat as Markdown** (in an agent's right-click menu in the Agents pane, or the Command Palette for the chat in front) opens the whole conversation as a Markdown document you can search, save or share. For an agent that is not running, it opens the saved copy, which keeps the last 300 messages.
 
-Every agent in a window shares one Gemini CLI process, and that process keeps each session's history until it restarts. In Quick Chat, **New Chat** starts a fresh session; for agents, start a new agent. If an old agent is no longer needed, remove it from the Agents pane, which also deletes its saved conversation.
+Every agent in a window shares one Gemini CLI process, and that process keeps each session's history until it restarts. For a fresh session, start a new agent. If an old agent is no longer needed, remove it from the Agents pane, which also deletes its saved conversation.
 
 ## Troubleshooting
 
@@ -245,7 +253,7 @@ Every agent in a window shares one Gemini CLI process, and that process keeps ea
 | The status bar says sign-in is needed | Run **Gemini: Sign In with Google**. If it needs a step the editor cannot show, run **Gemini: Complete Setup in Terminal**, finish it, and exit with `/quit`. |
 | "is a project number" | Set the project ID, such as `my-project-123`, with **Gemini: Set Google Cloud Project ID**. |
 | No Gemini CLI found | Only in a build without the bundled CLI. Run **Gemini: Install Latest Gemini CLI**, or set `gemini.cliPath`. |
-| "older than 0.61.0" | The CLI in use is too old. Choose **Install Latest**, or run **Gemini: Install or Change Gemini CLI Version...**. |
+| "older than 0.64.0" | The CLI in use is too old. Choose **Install Latest**, or run **Gemini: Install or Change Gemini CLI Version...**. |
 | Not sure the CLI starts at all | Run **Gemini: Check Agent Connection**. It starts the CLI on its own and reports its version and protocol, or the error. |
 | The agent stops or misbehaves | Click the **Gemini** status bar item and choose **Restart Agent**. Open agents resume their sessions. |
 | Something else | Click the **Gemini** status bar item and choose **Report an Issue...**, which opens a new issue with the GeminiCode, VS Code, Gemini CLI and OS versions filled in. Run **Gemini: Show Log** and include the relevant lines, with account names and project IDs removed. **Gemini CLI Docs** in the same menu opens the CLI's documentation. |

@@ -8,7 +8,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSyn
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { carriedConversationNote, chatsFolder, findCliSession, listCliSessions, parseSessionFile, readCliConversation, readCliSession, readSessionTokens, replayUpdateCount } from '../../src/acp/cliSessions';
+import { carriedConversationNote, chatsFolder, findCliSession, listCliSessions, parseSessionFile, readCliConversation, readCliSession, readSessionTokens, replayUpdateCount, rewindCliSession } from '../../src/acp/cliSessions';
 
 /** Written by gemini-cli 0.62 for `gemini -p "Fix the rounding in the cart total"`, paths changed. */
 const terminalSession = readFileSync(path.join(__dirname, '..', 'fixtures', 'cli-sessions', 'session-terminal.jsonl'), 'utf8');
@@ -154,6 +154,27 @@ describe('listCliSessions', () => {
 		const conversation = await readCliConversation(work, 'abcdef12-0000', home);
 		expect(conversation).toEqual([{ role: 'user', text: 'Fix the cart' }, { role: 'model', text: 'Done.' }]);
 		expect(carriedConversationNote('Cart', conversation!)).toContain('User: Fix the cart\n\nYou: Done.');
+	});
+
+	it('rewinds a session to before a prompt with the record /rewind writes, counting repeats from the end', async () => {
+		home = mkdtempSync(path.join(tmpdir(), 'cli-home-'));
+		const work = path.join(home, 'shop');
+		writeFileSync(path.join(home, 'projects.json'), JSON.stringify({ projects: { [work]: 'shop' } }));
+		const chats = path.join(home, 'tmp', 'shop', 'chats');
+		mkdirSync(chats, { recursive: true });
+		const file = path.join(chats, 'session-2026-10-01T09-00-abcdef12.jsonl');
+		writeFileSync(file, [
+			line({ sessionId: 'abcdef12-0000', projectHash: 'h', startTime: '2026-10-01T09:00:00.000Z' }),
+			line({ id: 'u1', type: 'user', content: [{ text: 'Try again' }] }),
+			line({ id: 'g1', type: 'gemini', content: [{ text: 'Done.' }] }),
+			line({ id: 'u2', type: 'user', content: [{ text: '[Shared page: Cart]\n\nTry   again' }] }),
+			line({ id: 'g2', type: 'gemini', content: [{ text: 'Done again.' }] }),
+		].join('\n') + '\n');
+		expect(await rewindCliSession(work, 'abcdef12-0000', 'Try again', 1, home)).toBe(true);
+		expect(readFileSync(file, 'utf8').trim().split('\n').at(-1)).toBe(JSON.stringify({ $rewindTo: 'u1' }));
+		expect(await readCliConversation(work, 'abcdef12-0000', home)).toEqual([]);
+		expect(await rewindCliSession(work, 'abcdef12-0000', 'Not said', 0, home)).toBe(false);
+		expect(await rewindCliSession(work, 'other', 'Try again', 0, home)).toBe(false);
 	});
 
 	it('falls back to the older hashed folder, and is empty when the CLI never ran there', async () => {

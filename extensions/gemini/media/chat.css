@@ -360,7 +360,7 @@ kbd {
 	border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground) 15%, var(--gemini-surface));
 }
 
-/* The time stays, quiet; Copy shows on hover and keyboard focus. */
+/* The time, Rewind and Copy always show, quiet; the buttons brighten on hover and keyboard focus, so they are never missed. */
 .user-meta {
 	display: flex;
 	justify-content: flex-end;
@@ -373,7 +373,7 @@ kbd {
 }
 
 .user-meta .copy-message {
-	opacity: 0;
+	opacity: 0.7;
 	transition: opacity 0.12s ease;
 }
 
@@ -1100,7 +1100,7 @@ body.vscode-high-contrast-light {
 }
 
 .turn-end .copy-reply {
-	opacity: 0;
+	opacity: 0.7;
 }
 
 .turn-end:hover .copy-reply,
@@ -2222,6 +2222,50 @@ body.vscode-high-contrast-light #send {
 	background: transparent;
 	color: var(--gemini-muted);
 	cursor: pointer;
+}
+
+/* Themed tooltips for controls (dom.ts setTip), in place of the system's. */
+.gemini-tooltip {
+	position: fixed;
+	z-index: 1000;
+	max-width: min(320px, calc(100vw - 8px));
+	padding: 3px 8px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: 6px;
+	background: var(--gemini-popover);
+	box-shadow: 0 4px 14px var(--gemini-shadow);
+	color: var(--vscode-foreground);
+	font-size: 12px;
+	line-height: 1.45;
+	pointer-events: none;
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+
+.gemini-tooltip[hidden] {
+	display: none;
+}
+
+/* The Shared page chip's name: goes to the page's tab. */
+.shared-page-open {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	min-width: 0;
+	padding: 0;
+	border: none;
+	background: transparent;
+	cursor: pointer;
+}
+
+.shared-page-open span:last-child {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.shared-page-open:hover {
+	text-decoration: underline;
 }
 
 .chip-remove:hover {
@@ -3479,4 +3523,15 @@ textarea.new-thread-input {
 
 body.has-parent-project .prompt-outline {
 	top: 52px;
+}
+
+/* ---- Subagent calls: the agent handed work to one of the CLI's subagents ---- */
+
+.tool-call.subagent .kind-icon {
+	color: var(--vscode-textLink-foreground);
+}
+
+.subagent-status {
+	flex: none;
+	color: var(--gemini-faint);
 }

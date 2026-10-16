@@ -20,7 +20,8 @@ export type ToolCallDetail =
 	| { readonly type: 'terminal'; readonly terminalId: string };
 
 export interface PromptAttachmentLabel {
-	readonly kind: Attachment['kind'];
+	/** `page`: the page shared with the agent when the message was sent; its `path` is the page's address. */
+	readonly kind: Attachment['kind'] | 'page';
 	readonly label: string;
 	/** For files and selections, so the view can open them. */
 	readonly path?: string;
@@ -169,6 +170,16 @@ export class ChatTranscript {
 		});
 	}
 
+	/** Adds the page shared with the agent to the prompt just sent, as one of its attachments. */
+	addPromptPage(title: string, url: string): void {
+		const index = this._items.findLastIndex(item => item.kind === 'user');
+		const item = this._items[index];
+		if (item?.kind !== 'user' || index < this.turnStart) {
+			return;
+		}
+		this.upsert({ ...item, attachments: [{ kind: 'page', label: title || url, path: url }, ...item.attachments ?? []] });
+	}
+
 	/** A user message replayed from a saved session: its own bubble, with no time, since the replay does not carry one. */
 	addReplayedPrompt(text: string): void {
 		this.settleEcho();
@@ -279,6 +290,19 @@ export class ChatTranscript {
 	restore(items: readonly TranscriptItem[]): void {
 		this._items = [...items];
 		this.nextId = Math.max(this.nextId, ...items.map(i => /^item-(\d+)$/.exec(i.id)).map(m => m ? Number(m[1]) + 1 : 0));
+		this.turnStart = this._items.length;
+		this.lastMessageId = undefined;
+		this.onDidResetEmitter.fire();
+	}
+
+	/** Takes item `id` and everything after it out of the conversation, for Rewind. */
+	cutAt(id: string): void {
+		const index = this._items.findIndex(item => item.id === id);
+		if (index === -1) {
+			return;
+		}
+		this.settleEcho();
+		this._items = this._items.slice(0, index);
 		this.turnStart = this._items.length;
 		this.lastMessageId = undefined;
 		this.onDidResetEmitter.fire();

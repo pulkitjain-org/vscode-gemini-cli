@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Messages between the chat view (chatView.ts) and its webview
+// Messages between an agent's chat (chatController.ts) and its webview
 // (webview-src/chat.ts). Types only, so the webview bundle can import them.
 
 import type { Attachment } from '../acp/attachments';
@@ -19,7 +19,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 25;
+export const chatProtocolVersion = 28;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -276,6 +276,11 @@ export interface ChatStrings {
 	/** A thought whose duration is not known (the view reloaded). */
 	readonly thought: string;
 	readonly plan: string;
+	/** A subagent's row: `{0}` is its name; then how long it took, `{0}` a duration. */
+	readonly subagent: string;
+	readonly subagentWorking: string;
+	readonly subagentFinished: string;
+	readonly subagentFailed: string;
 	/** `{0}` is the update kind. */
 	readonly unknownUpdate: string;
 	readonly terminal: string;
@@ -291,6 +296,9 @@ export interface ChatStrings {
 	readonly commandFromTeam: string;
 	readonly commandFromSkill: string;
 	readonly remove: string;
+	/** `{0}` is the shared page's title. */
+	readonly sharedPage: string;
+	readonly stopSharing: string;
 	/** `{0}` is the file's name. */
 	readonly fileTooLarge: string;
 	readonly attachFiles: string;
@@ -312,6 +320,10 @@ export interface ChatStrings {
 	readonly copyMessage: string;
 	readonly undoTurn: string;
 	readonly undoTurnTooltip: string;
+	/** Tooltip of the Shared page chip; `{0}` is the page's address. */
+	readonly showSharedPage: string;
+	/** Tooltip of a prompt's Rewind button. */
+	readonly rewindPrompt: string;
 	/** `{0}` is a number of files. */
 	readonly undoTurnFiles: string;
 	readonly turnUndone: string;
@@ -452,6 +464,11 @@ export interface ChatStrings {
 }
 
 /** How full the session's context window is, from the counts the CLI saved with its replies. */
+export interface SharedPageView {
+	readonly title: string;
+	readonly url: string;
+}
+
 export interface ViewContext {
 	/** The latest request's input tokens. */
 	readonly used: number;
@@ -550,6 +567,8 @@ export type FromWebview =
 	| { readonly type: 'pickFiles' }
 	/** Files dropped with paths (file: URIs), such as from the Explorer. */
 	| { readonly type: 'attachUris'; readonly uris: readonly string[] }
+	/** The × on the shared page's chip: give the page back to the user. */
+	| { readonly type: 'stopSharing' }
 	/** The user dragged the input to `height` pixels, or reset it (0). */
 	| { readonly type: 'composerHeight'; readonly height: number }
 	/** The eye toggle: open each file the agent reads or edits. */
@@ -573,6 +592,12 @@ export type FromWebview =
 	| { readonly type: 'prepareThread'; readonly thread: string }
 	/** Put back the files the turn ending with turnEnd item `itemId` changed, and those of later turns. */
 	| { readonly type: 'undoTurn'; readonly itemId: string }
+	/** Rewind to before the user's prompt `itemId`: the chat, the code since, or both, as the user picks. */
+	| { readonly type: 'rewind'; readonly itemId: string }
+	/** A Shared page chip was clicked: show the page's tab. */
+	| { readonly type: 'openSharedPage' }
+	/** Esc twice in an empty message box: pick a prompt to rewind to. */
+	| { readonly type: 'pickRewind' }
 	/** Send the prompt of the turn ending with `itemId` again; only the latest turn offers it. */
 	| { readonly type: 'retry'; readonly itemId: string }
 	/** Leave Plan mode and carry out the plan; only the latest turn offers it, when it ended in Plan mode. */
@@ -613,6 +638,8 @@ export type ToWebview =
 	| { readonly type: 'commands'; readonly commands: readonly SlashCommand[] }
 	/** Context to add to the composer, from the Add to Chat commands. */
 	| { readonly type: 'attach'; readonly attachments: readonly Attachment[] }
+	/** The page the user shared with this agent in the GeminiCode browser, pinned to the composer until they stop sharing it. */
+	| { readonly type: 'sharedPage'; readonly page: SharedPageView | undefined }
 	| { readonly type: 'git'; readonly git: ViewGit }
 	/** The folder's local branches for the branch menu, or why it cannot switch (`notice`). */
 	| { readonly type: 'branches'; readonly branches: readonly ViewBranch[]; readonly notice?: string }
@@ -623,6 +650,8 @@ export type ToWebview =
 	/** The rewrite so far, while it arrives; `enhanced` follows with the whole of it. */
 	| { readonly type: 'enhanceProgress'; readonly requestId: number; readonly text: string }
 	| { readonly type: 'enhanced'; readonly requestId: number; readonly text: string }
+	/** Puts `text` in the message box, such as a prompt the chat was rewound to. */
+	| { readonly type: 'draft'; readonly text: string }
 	| { readonly type: 'enhanceFailed'; readonly requestId: number; readonly message: string }
 	/** The newest saved sessions the empty chat offers to reopen, of `total`. */
 	/** `retention` says how long the CLI keeps saved chats. */

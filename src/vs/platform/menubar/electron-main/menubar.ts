@@ -410,6 +410,10 @@ export class Menubar extends Disposable {
 	private setMacApplicationMenu(macApplicationMenu: Menu): void {
 		const about = this.createMenuItem(nls.localize('mAbout', "About {0}", this.productService.nameLong), 'workbench.action.showAboutDialog');
 		const checkForUpdates = this.getUpdateMenuItems();
+		// GEMINI-FORK: GeminiCode has no updateUrl, so upstream's item never shows; the Gemini extension's check takes its place.
+		if (!checkForUpdates.length) {
+			checkForUpdates.push(this.createMenuItem(nls.localize('geminiCheckForUpdates', "Check for Updates..."), 'gemini.app.checkForUpdates'));
+		}
 
 		let preferences;
 		if (this.shouldDrawMenu('Preferences')) {

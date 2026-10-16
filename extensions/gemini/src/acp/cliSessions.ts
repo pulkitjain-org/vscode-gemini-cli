@@ -7,7 +7,8 @@
 // that started in the terminal. gemini-cli 0.62 has no `session/list` over
 // ACP, but its `session/load` takes any session id saved for the folder, the
 // way `gemini --resume` does. So GeminiCode reads the CLI's session files
-// itself, read-only, as the CLI lays them out:
+// itself, as the CLI lays them out, and writes to them only to rewind one
+// (`rewindCliSession`), with the record the CLI's own /rewind writes:
 //
 //   ~/.gemini/projects.json             { "projects": { "<folder>": "<project id>" } }
 //   ~/.gemini/tmp/<project id>/chats/   session-<time>-<id>.jsonl (or .json, older)
@@ -492,6 +493,45 @@ async function newestSessionFile(cwd: string, id: string, home?: string): Promis
 	}
 	const files = await Promise.all(names.map(async name => ({ file: path.join(folder, name), session: await readSessionFile(path.join(folder, name)) })));
 	return files.filter((f): f is { file: string; session: ParsedSession } => f.session?.id === id).sort((a, b) => b.session.updatedAt - a.session.updatedAt)[0];
+}
+
+/**
+ * Rewinds saved session `id` to just before one of the user's prompts, as the
+ * CLI's /rewind does (which ACP doesn't offer): appends the CLI's own
+ * `{"$rewindTo": <message id>}` record, which drops that message and
+ * everything after it when the session is next loaded. The prompt is found by
+ * its text: `fromEnd` is how many later prompts have the same text. Resolves
+ * with whether it found the prompt; the session must be loaded again after.
+ */
+export async function rewindCliSession(cwd: string, id: string, prompt: string, fromEnd: number, home?: string): Promise<boolean> {
+	const target = await rewindTarget(cwd, id, prompt, fromEnd, home);
+	if (!target) {
+		return false;
+	}
+	await fs.appendFile(target.file, `${JSON.stringify({ $rewindTo: target.messageId })}\n`);
+	return true;
+}
+
+/** Whether {@link rewindCliSession} would find the prompt, without changing anything. */
+export async function canRewindCliSession(cwd: string, id: string, prompt: string, fromEnd: number, home?: string): Promise<boolean> {
+	return !!await rewindTarget(cwd, id, prompt, fromEnd, home).catch(() => undefined);
+}
+
+async function rewindTarget(cwd: string, id: string, prompt: string, fromEnd: number, home?: string): Promise<{ readonly file: string; readonly messageId: string } | undefined> {
+	const newest = await newestSessionFile(cwd, id, home);
+	const wanted = squashSpaces(prompt);
+	if (!newest || !newest.file.endsWith('.jsonl') || !wanted) {
+		return undefined;
+	}
+	const { all } = parseSessionRecords(await fs.readFile(newest.file, 'utf8'), false);
+	// The CLI's message also carries what GeminiCode added to the prompt, such as context or a note about a shared page.
+	const matches = all.filter(message => message.type === 'user' && squashSpaces(textOf(message.content)).includes(wanted));
+	const target = matches[matches.length - 1 - fromEnd];
+	return target ? { file: newest.file, messageId: target.id } : undefined;
+}
+
+function squashSpaces(text: string): string {
+	return text.replace(/\s+/g, ' ').trim();
 }
 
 /** One message of a saved conversation, as text: the user's prompts and the model's replies. */

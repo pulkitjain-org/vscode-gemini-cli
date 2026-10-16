@@ -59,7 +59,7 @@ describe('Checkpoints', () => {
 	});
 
 	it('drops the oldest turns and turns too large to keep', () => {
-		const checkpoints = new Checkpoints(root, { maxTurns: 2, maxTurnBytes: 10 });
+		const checkpoints = new Checkpoints(root, { maxTurns: 2, maxTurnBytes: 10, maxTotalBytes: 1_000_000 });
 		for (const id of ['t1', 't2', 't3']) {
 			checkpoints.beginTurn();
 			checkpoints.record([{ path: `${id}.ts`, oldText: 'x', newText: 'y' }]);
@@ -73,5 +73,39 @@ describe('Checkpoints', () => {
 		expect(checkpoints.endTurn('t4').undoable).toBe(false);
 		// An earlier turn cannot be undone past one that was not kept in full.
 		expect(checkpoints.canUndo('t3')).toBe(false);
+	});
+
+	it('keeps the oldest turns out past the total size', () => {
+		const checkpoints = new Checkpoints(root, { maxTurns: 10, maxTurnBytes: 100, maxTotalBytes: 10 });
+		for (const id of ['t1', 't2', 't3']) {
+			checkpoints.beginTurn();
+			checkpoints.record([{ path: `${id}.ts`, oldText: 'xxxx', newText: 'y' }]);
+			checkpoints.endTurn(id);
+		}
+		expect(checkpoints.turnIds).toEqual(['t2', 't3']);
+	});
+
+	it('gives back saved turns, and leaves out malformed ones', () => {
+		const checkpoints = new Checkpoints(root);
+		checkpoints.beginTurn();
+		checkpoints.record([{ path: 'a.ts', oldText: 'v0', newText: 'v1' }, { path: 'new.ts', oldText: null, newText: 'n' }]);
+		checkpoints.endTurn('t1');
+		const stored = JSON.parse(JSON.stringify(checkpoints.toStored()));
+		const again = new Checkpoints(root);
+		again.restore({ ...stored, turns: [...stored.turns, { id: 7, before: 'bad' }] });
+		expect(again.turnIds).toEqual(['t1']);
+		expect(again.plan('t1')).toEqual(checkpoints.plan('t1'));
+	});
+
+	it('forgets turns from one on without putting files back, for a chat rewound without its code', () => {
+		const checkpoints = new Checkpoints(root);
+		for (const id of ['t1', 't2']) {
+			checkpoints.beginTurn();
+			checkpoints.record([{ path: `${id}.ts`, oldText: 'x', newText: 'y' }]);
+			checkpoints.endTurn(id);
+		}
+		checkpoints.forgetFrom('t2');
+		expect(checkpoints.turnIds).toEqual(['t1']);
+		expect(checkpoints.plan('t1')?.restores).toEqual([{ path: file('t1.ts'), text: 'x', agentText: 'y' }]);
 	});
 });

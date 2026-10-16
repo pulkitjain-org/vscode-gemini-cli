@@ -23,6 +23,7 @@ import { memoizeAsync } from '../acp/memoize';
 import { reviewRequest, workingChanges } from '../acp/reviewPrompt';
 import type { SessionChoice } from '../acp/sessionSettings';
 import { TranscriptStore } from '../acp/transcriptStore';
+import { CheckpointStore } from '../acp/checkpointStore';
 import { folderTrustApplies, isFolderTrusted, trustedFoldersPath } from '../acp/trustedFolders';
 import { AgentWorktree, allThreadsHome, branchExists, commitAll, coordinatorHome, createWorktree, createWorktreeAt, currentBranch, folderInRepository, folderSize, freeFolder, mergeBranch, removeWorktree, repositoryRoot, restoreWorktree, runWorktreeSetup, threadGuide, threadsHome, worktreeSetupCommand, projectsHome, worktreesHome, worktreeStatus, writeThreadGuide } from '../acp/worktrees';
 import { supportedMcpServers } from '../acp/agentClient';
@@ -151,6 +152,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	private readonly model: AgentsModel;
 	/** Each agent's conversation as shown, so its tab looks the same after a reload. */
 	private readonly transcripts: TranscriptStore;
+	/** Each agent's checkpoints, for Undo and Rewind after a reload. */
+	private readonly checkpointFiles: CheckpointStore;
 	private readonly live = new Map<string, LiveAgent>();
 	/** Agents being merged back, so a second Merge waits for the first. */
 	private readonly merging = new Set<string>();
@@ -218,6 +221,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	) {
 		this.model = new AgentsModel(context.globalState.get<AgentsSnapshot>(storageKey));
 		this.transcripts = new TranscriptStore(vscode.Uri.joinPath(context.globalStorageUri, 'agents').fsPath);
+		this.checkpointFiles = new CheckpointStore(vscode.Uri.joinPath(context.globalStorageUri, 'checkpoints').fsPath);
 		this.tree = vscode.window.createTreeView(agentsViewId, { treeDataProvider: this, showCollapseAll: false });
 		this.changesView = new ChangesView(id => this.live.get(id)?.changes);
 		this.projects = new Projects({
@@ -339,6 +343,29 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	/** Agent `id`'s chat, when the agent runs in this window. */
 	controllerOf(id: string): ChatController | undefined {
 		return this.live.get(id)?.controller;
+	}
+
+	/**
+	 * The chat that Add to Chat and the chat commands act on: the agent tab in
+	 * front, else the running agent used last (shown), else, with `orNew`, a
+	 * new agent the user starts. Undefined when there is none.
+	 */
+	async chatFor(orNew: boolean): Promise<ChatController | undefined> {
+		const front = this.activeController();
+		if (front) {
+			return front;
+		}
+		const running = this.summaries().find(agent => agent.state !== 'stopped' && agent.project?.role !== 'coordinator');
+		if (running) {
+			await this.open(running.id);
+			return this.controllerOf(running.id);
+		}
+		if (!orNew) {
+			void vscode.window.showInformationMessage(vscode.l10n.t("Open an agent first."));
+			return undefined;
+		}
+		const started = await this.newAgent(undefined);
+		return started ? this.controllerOf(started) : undefined;
 	}
 
 	/** The chat in the agent tab that is in front, if any. */
@@ -931,10 +958,10 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	 * works on a new branch in its own worktree; unset falls back to the
 	 * workspace folder outside a Git repository.
 	 */
-	private async newAgent(node: Node | undefined, ownBranch?: boolean): Promise<void> {
+	private async newAgent(node: Node | undefined, ownBranch?: boolean): Promise<string | undefined> {
 		const folder = node?.kind === 'workspace' ? node.folder : node?.kind === 'agent' ? this.model.workspace(node.record.workspaceId)?.folder : await this.pickFolder();
 		if (!folder) {
-			return;
+			return undefined;
 		}
 		let worktree: AgentWorktree | undefined;
 		if (ownBranch ?? vscode.workspace.getConfiguration(configSection).get<boolean>('agents.ownBranch', false)) {
@@ -942,16 +969,17 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			if (repository) {
 				worktree = await this.createWorktree(repository, folder);
 				if (!worktree) {
-					return;
+					return undefined;
 				}
 			} else if (ownBranch) {
 				void vscode.window.showErrorMessage(vscode.l10n.t("{0} is not in a Git repository, so the agent can't have its own branch.", path.basename(folder)));
-				return;
+				return undefined;
 			}
 		}
 		const workspace = this.model.addWorkspace(folder);
 		const agent = this.model.addAgent(workspace.id, vscode.l10n.t("New agent"), worktree);
 		await this.open(agent.id);
+		return agent.id;
 	}
 
 	/** Asks for a branch name and makes the agent's worktree; undefined when dismissed or failed (the failure is shown). */
@@ -1202,6 +1230,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		}
 		this.model.removeAgent(id);
 		void this.transcripts.delete(id);
+		void this.checkpointFiles.delete(id);
 		this.browser?.closeAgent(id);
 		if (record?.worktree && record.repos?.length) {
 			await removeThreadFolder(record.repos, record.worktree.folder, deleteBranch).catch(err =>
@@ -1347,12 +1376,13 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const live = this.start(record, folder, saved && !!record.sessionId);
 		if (saved) {
 			// Read while the tab opens; the agent reopens its session meanwhile.
-			const restored = this.transcripts.load(record.id).then(stored => {
+			const restored = Promise.all([this.transcripts.load(record.id), this.checkpointFiles.load(record.id)]).then(([stored, checkpoints]) => {
 				// The agent may have been stopped while the file was read.
 				if (this.live.get(record.id) !== live) {
 					return;
 				}
 				live.controller.restore(stored.items, record.sessionId);
+				live.controller.restoreCheckpoints(checkpoints);
 				live.changes.restore(stored.changes);
 			});
 			// A prompt sent meanwhile, such as a note from the coordinator, waits: sent first, it would keep the saved chat from showing, and the next save would drop it.
@@ -1914,6 +1944,12 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				savedSessions: {
 					inUse: () => new Set(this.model.snapshot().agents.flatMap(a => a.id !== record.id && a.sessionId ? [a.sessionId] : [])),
 				},
+				saveCheckpoints: stored => void this.checkpointFiles.save(record.id, stored),
+				sharedPage: {
+					current: () => this.browser?.sharedPage(record.id) ?? Promise.resolve(undefined),
+					stop: () => this.browser?.stopSharing(record.id) ?? Promise.resolve(),
+					reveal: () => this.browser?.revealSharedPage(record.id) ?? Promise.resolve(false),
+				},
 				workspace: () => {
 					const workspace = this.model.workspace(record.workspaceId);
 					const current = this.model.agent(record.id) ?? record;
@@ -2057,6 +2093,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			this.projects.threadRemoved(node.record);
 			this.model.removeAgent(node.record.id);
 			void this.transcripts.delete(node.record.id);
+			void this.checkpointFiles.delete(node.record.id);
 			this.browser?.closeAgent(node.record.id);
 		}
 	}
@@ -2101,6 +2138,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			for (const agent of this.model.removeWorkspace(node.record.id)) {
 				this.stop(agent.id, false);
 				void this.transcripts.delete(agent.id);
+				void this.checkpointFiles.delete(agent.id);
 				this.browser?.closeAgent(agent.id);
 			}
 		}

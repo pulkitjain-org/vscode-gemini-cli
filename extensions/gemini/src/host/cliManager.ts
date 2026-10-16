@@ -9,10 +9,11 @@
 // exists. Installing always waits for the user.
 
 import * as vscode from 'vscode';
-import { fetchCliVersions, Fetch, installCli, pruneCliVersions } from '../acp/cliInstall';
-import { compareVersions, listManagedVersions } from '../acp/cliResolution';
+import { cliCopiesToKeep, fetchCliVersions, Fetch, installCli, pruneCliVersions } from '../acp/cliInstall';
+import { isOlderThan, listManagedVersions } from '../acp/cliResolution';
 import { shouldCheckForUpdate, updateToOffer } from '../acp/cliUpdates';
 import { errorMessage } from '../acp/errors';
+import { MIN_CLI_VERSION } from '../acp/protocol';
 import { AgentService } from './agentService';
 import { configSection, getCliResolution, getManagedCliDir } from './configuration';
 
@@ -68,7 +69,8 @@ export class CliManager implements vscode.Disposable {
 		const running = this.service.cli?.version;
 		const picked = await vscode.window.showQuickPick((async () => {
 			const { versions, latest } = await fetchCliVersions({ fetch: fetch as Fetch });
-			return versions.slice(0, 30).map(version => ({
+			// Releases older than the oldest GeminiCode supports aren't offered.
+			return versions.filter(version => !isOlderThan(version, MIN_CLI_VERSION)).slice(0, 30).map(version => ({
 				label: version,
 				description: [
 					version === latest ? vscode.l10n.t("latest") : undefined,
@@ -185,15 +187,18 @@ export class CliManager implements vscode.Disposable {
 		}
 	}
 
-	/** Keeps the CLI in use and the newest other copy, so going back stays one step. */
+	/**
+	 * Keeps only the installed copy in use: older ones, and any older than
+	 * the CLI bundled with the app, take space for nothing. Another version
+	 * is one Install or Change Gemini CLI Version... away.
+	 */
 	private async prune(): Promise<void> {
 		const managedDir = getManagedCliDir();
 		if (!managedDir) {
 			return;
 		}
-		const versions = listManagedVersions(managedDir).sort(compareVersions).reverse();
-		const current = this.service.cli?.source === 'managed' ? this.service.cli.version : undefined;
-		const keep = current ? [current, ...versions.filter(v => v !== current).slice(0, 1)] : versions.slice(0, 2);
+		const pinned = vscode.workspace.getConfiguration(configSection).get<string>('cli.version')?.trim() || undefined;
+		const keep = cliCopiesToKeep(listManagedVersions(managedDir), this.service.cli, pinned);
 		try {
 			const removed = await pruneCliVersions(managedDir, keep);
 			if (removed.length) {

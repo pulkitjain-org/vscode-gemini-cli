@@ -4,18 +4,18 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { appUpdateToOffer, latestReleaseUrl, shouldCheckForAppUpdate } from '../../src/acp/appUpdates';
-import { updateCheckInterval } from '../../src/acp/cliUpdates';
+import { appUpdateCheckInterval, appUpdateToOffer, latestReleaseUrl, shouldCheckForAppUpdate } from '../../src/acp/appUpdates';
 
 const page = 'https://pulkitjain-org.github.io/vscode-gemini-cli/';
 const now = 1_800_000_000_000;
 const base = { enabled: true, currentVersion: '0.1.0', downloadPageUrl: page, lastCheck: undefined, now } as const;
 
 describe('shouldCheckForAppUpdate', () => {
-	it('checks once a day', () => {
+	it('checks every few hours', () => {
 		expect(shouldCheckForAppUpdate(base)).toBe(true);
-		expect(shouldCheckForAppUpdate({ ...base, lastCheck: now - updateCheckInterval + 1 })).toBe(false);
-		expect(shouldCheckForAppUpdate({ ...base, lastCheck: now - updateCheckInterval })).toBe(true);
+		expect(appUpdateCheckInterval).toBeLessThan(24 * 60 * 60 * 1000);
+		expect(shouldCheckForAppUpdate({ ...base, lastCheck: now - appUpdateCheckInterval + 1 })).toBe(false);
+		expect(shouldCheckForAppUpdate({ ...base, lastCheck: now - appUpdateCheckInterval })).toBe(true);
 		expect(shouldCheckForAppUpdate({ ...base, lastCheck: now + 1000 })).toBe(true);
 	});
 

@@ -6,9 +6,10 @@
 // What the next prompt sends along, shown as chips above the input, and the
 // files pasted or dropped into the view.
 
+import type { SharedPageView } from '../src/host/chatProtocol';
 import { type Attachment, attachmentLabel, classifyFile, maxImageBase64Length, supportedImageTypes } from '../src/acp/attachments';
 import { attachmentIcon, carriesFiles, fileUris, format, imageName, sameAttachment } from './chatLogic';
-import { button, el, icon } from './dom';
+import { button, el, icon, setLabel, setTip } from './dom';
 import { updateSendState } from './inputBox';
 import { setTransientNotice } from './transcript';
 import { state, strings, ui, vscode } from './view';
@@ -25,8 +26,25 @@ export function addAttachments(added: readonly Attachment[]): void {
 	input.focus();
 }
 
+/** Pins the shared page's chip to the composer, or takes it away. */
+export function setSharedPage(page: SharedPageView | undefined): void {
+	state.sharedPage = page;
+	renderAttachments();
+}
+
+function sharedPageChip(page: SharedPageView): HTMLElement {
+	const chip = el('span', 'chip attachment shared-page');
+	const open = button('shared-page-open', format(strings.sharedPage, page.title), () => vscode.postMessage({ type: 'openSharedPage' }), 'globe');
+	setTip(open, format(strings.showSharedPage, page.url));
+	chip.append(open);
+	const stop = button('chip-remove', '', () => vscode.postMessage({ type: 'stopSharing' }), 'close');
+	setLabel(stop, strings.stopSharing);
+	chip.append(stop);
+	return chip;
+}
+
 export function renderAttachments(): void {
-	attachmentList.replaceChildren(...state.attachments.map(attachment => {
+	attachmentList.replaceChildren(...state.sharedPage ? [sharedPageChip(state.sharedPage)] : [], ...state.attachments.map(attachment => {
 		const chip = el('span', 'chip attachment');
 		if (attachment.kind === 'image') {
 			const thumbnail = el('img', 'thumbnail');
@@ -52,7 +70,7 @@ export function renderAttachments(): void {
 		chip.append(remove);
 		return chip;
 	}));
-	attachmentList.hidden = !state.attachments.length;
+	attachmentList.hidden = !state.attachments.length && !state.sharedPage;
 	updateSendState();
 }
 

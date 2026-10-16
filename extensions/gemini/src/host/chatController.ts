@@ -11,7 +11,7 @@ import { Attachment, attachmentLabel } from '../acp/attachments';
 import { isValidAttachment } from '../acp/attachmentValidation';
 import { chatToMarkdown } from '../acp/chatMarkdown';
 import { ChatTranscript, ThreadCard, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
-import { Checkpoints } from '../acp/checkpoints';
+import { Checkpoints, type StoredCheckpoints } from '../acp/checkpoints';
 import { keepChatsForever, readCliPreferences } from '../acp/cliPreferences';
 import { geminiDir } from '../acp/directRequest';
 import { isInside, secretPathReason } from '../acp/fileAccess';
@@ -22,7 +22,7 @@ import { buildPromptContent } from '../acp/promptContent';
 import { skillPrompt } from '../acp/skills';
 import { mergeCommands, parseInvocation, SlashCommand } from '../acp/slashCommands';
 import { expandTeamCommandWithInjections, TeamCommandCancelled } from '../acp/teamCommandExpansion';
-import { carriedConversationNote, CliSession, isPrompt, listCliSessions, readCliConversation, readSessionTokens } from '../acp/cliSessions';
+import { carriedConversationNote, CliSession, isPrompt, listCliSessions, readCliConversation, readSessionTokens, canRewindCliSession, rewindCliSession } from '../acp/cliSessions';
 import type { ChatEvent } from '../acp/sessionUpdates';
 import { AgentStatus } from '../acp/status';
 import { TextDeltas } from '../acp/textDeltas';
@@ -30,7 +30,7 @@ import type { ModelTokens } from '../acp/turnUsage';
 import { UpdateBatcher } from '../acp/updateBatcher';
 import { isBlockedWebFetch } from '../acp/webFetchHint';
 import type { AgentClient } from '../acp/agentClient';
-import { AgentError, AgentErrorInfo, errorMessage } from '../acp/errors';
+import { AgentError, AgentErrorInfo, errorMessage, isModelTurnRefusal } from '../acp/errors';
 import { readGitHead } from '../acp/gitHead';
 import { upgradeUrl } from '../acp/helpLinks';
 import { EnhanceCancelledError, enhanceHistory } from '../acp/promptEnhancer';
@@ -104,11 +104,25 @@ export interface ChatControllerOptions {
 	readonly project?: ChatProject;
 	/** A project thread's chat: names its project, and opens the project chat. */
 	readonly parentProject?: { name(): string; open(): void };
+	/** The page the user shared with this agent in the GeminiCode browser; unset in chats that never have one. */
+	readonly sharedPage?: ChatSharedPage;
+	/** Saves the chat's checkpoints after each change, so Undo and Rewind outlast a reload; unset keeps them in memory only. */
+	saveCheckpoints?(stored: StoredCheckpoints): void;
 	/** Offers to reopen the CLI's saved sessions for the folder (and /resume); unset in chats that do not. */
 	readonly savedSessions?: {
 		/** Sessions other chats have open, which this one must not take. */
 		inUse(): ReadonlySet<string>;
 	};
+}
+
+/** A page shared with the agent: pinned to the composer, and named in every prompt until the user stops sharing it. */
+export interface ChatSharedPage {
+	/** The page shared now, checked against the browser, with the note a prompt carries about it. */
+	current(): Promise<{ readonly title: string; readonly url: string; readonly note: string } | undefined>;
+	/** Gives the page back to the user. */
+	stop(): Promise<void>;
+	/** Brings the page's tab to the front; false when the page is no longer shared. */
+	reveal(): Promise<boolean>;
 }
 
 /** Makes a chat a project's chat (Projects preview): the coordinator's, fed through the project's hub. */
@@ -432,6 +446,28 @@ export class ChatController implements vscode.Disposable {
 		this.lastSessionId = state.kind === 'ready' ? state.savedSessionId : sessionId;
 	}
 
+	/**
+	 * Takes back the checkpoints saved with the chat, after {@link restore}:
+	 * the turns they cover offer Undo again.
+	 */
+	restoreCheckpoints(stored: StoredCheckpoints | undefined): void {
+		const shown = new Set(this.transcript.items.flatMap(item => item.kind === 'turnEnd' ? [item.id] : []));
+		// Checkpoints of turns the chat does not show (it was not restored, or started over) would undo the wrong turns.
+		if (this.busy || !stored?.turns?.length || !stored.turns.every(turn => shown.has(turn?.id))) {
+			return;
+		}
+		this.checkpoints.restore(stored);
+		for (const id of this.checkpoints.turnIds) {
+			if (this.checkpoints.canUndo(id)) {
+				this.transcript.updateTurnEnd(id, { files: this.checkpoints.fileCount(id), undo: 'available' });
+			}
+		}
+	}
+
+	private saveCheckpoints(): void {
+		this.options.saveCheckpoints?.(this.checkpoints.toStored());
+	}
+
 	/** Whether a webview shows this chat. */
 	get attached(): boolean {
 		return !!this.webview;
@@ -607,6 +643,13 @@ export class ChatController implements vscode.Disposable {
 			if (!content.length) {
 				throw new Error(vscode.l10n.t("The agent cannot take images, so there was nothing to send."));
 			}
+			const page = await this.refreshSharedPage();
+			if (page) {
+				content.push({ type: 'text', text: page.note });
+				if (!this.options.project) {
+					this.transcript.addPromptPage(page.title, page.url);
+				}
+			}
 			if (this.undoNote) {
 				content.unshift({ type: 'text', text: this.undoNote });
 			}
@@ -648,19 +691,29 @@ export class ChatController implements vscode.Disposable {
 	 * Sends a prompt; when Gemini refuses the request after a tool result with
 	 * "Requests ending with a model turn are not supported", logs the shape of
 	 * the turn (no contents) and asks the agent once to carry on from the last
-	 * tool result, as typing "continue" does.
+	 * tool result, as typing "continue" does. When that is refused too, says so
+	 * in plain words rather than with the API's JSON.
 	 */
 	private async promptRecovering(content: acp.ContentBlock[]): ReturnType<AgentClient['promptTurn']> {
 		const turnStart = this.transcript.items.length;
 		try {
 			return await this.service.client.promptTurn(content);
 		} catch (err) {
-			if (!/ending with a model turn/i.test(errorMessage(err))) {
+			if (!isModelTurnRefusal(errorMessage(err))) {
 				throw err;
 			}
 			this.service.writeLog?.(`Gemini refused the turn's request (${errorMessage(err)}). Mode ${this.service.client.settings.mode?.currentId ?? '?'}, model ${this.service.client.settings.model?.currentId ?? '?'}. Turn so far: ${turnShape(this.transcript.items.slice(turnStart))}`);
-			this.transcript.addNotice(vscode.l10n.t("Recovered after an API error: the agent carries on from the last tool result."));
-			return this.service.client.promptTurn([{ type: 'text', text: 'Continue from the last tool result.' }]);
+		}
+		try {
+			const result = await this.service.client.promptTurn([{ type: 'text', text: 'Continue from the last tool result.' }]);
+			this.transcript.addNotice(vscode.l10n.t("Recovered after an API error: the agent carried on from the last tool result."));
+			return result;
+		} catch (err) {
+			this.service.writeLog?.(`Gemini refused the retry too (${errorMessage(err)}).`);
+			if (!isModelTurnRefusal(errorMessage(err))) {
+				throw err;
+			}
+			throw new Error(vscode.l10n.t("Gemini refused the request after a tool result, and again when asked to carry on. This is a known Gemini CLI problem after screenshots. The work so far is kept: send your message again, or switch the model and retry."));
 		}
 	}
 
@@ -674,6 +727,9 @@ export class ChatController implements vscode.Disposable {
 		const files = this.checkpoints.fileCount(id);
 		this.transcript.updateTurnEnd(id, { retry: !this.options.project, ...(files ? { files } : {}), ...(undoable ? { undo: 'available' } : {}), ...(this.buildModeAfterPlan() ? { buildPlan: true } : {}) });
 		this.retryItemId = id;
+		if (files || dropped.length) {
+			this.saveCheckpoints();
+		}
 	}
 
 	/** The mode Build This Plan switches to: Default, when the chat is in Plan mode and the agent offers both. */
@@ -697,24 +753,25 @@ export class ChatController implements vscode.Disposable {
 	/**
 	 * Puts back every file turn `id` changed, and the changes of the turns
 	 * after it. Asks first when that reaches further than the turn, or when a
-	 * file was changed after the agent wrote it.
+	 * file was changed after the agent wrote it. `rewinding` is set when Rewind
+	 * already said later replies go too. Resolves with whether it went ahead.
 	 */
-	private async undoTurn(id: string): Promise<void> {
+	private async undoTurn(id: string, rewinding = false): Promise<boolean> {
 		const plan = this.checkpoints.plan(id);
-		if (this.busy || !plan) {
-			return;
+		if ((this.busy && !rewinding) || !plan) {
+			return false;
 		}
 		const files = new WorkspaceFileSystem();
 		const current = await Promise.all(plan.restores.map(r => files.readTextFile(r.path).catch(() => undefined)));
 		const changedSince = plan.restores.filter((r, i) => (current[i] ?? '') !== r.agentText);
-		if (plan.laterTurns || changedSince.length) {
+		if ((plan.laterTurns && !rewinding) || changedSince.length) {
 			const undo = vscode.l10n.t("Undo Changes");
 			const detail = [
 				plan.laterTurns === 1 ? vscode.l10n.t("This also undoes the changes from the reply after it.") : plan.laterTurns ? vscode.l10n.t("This also undoes the changes from the {0} replies after it.", plan.laterTurns) : '',
 				changedSince.length ? vscode.l10n.t("These files changed after Gemini edited them, and those changes will be lost: {0}", changedSince.map(r => path.basename(r.path)).join(', ')) : '',
 			].filter(Boolean).join('\n\n');
 			if (await vscode.window.showWarningMessage(vscode.l10n.t("Undo the changes to {0} files?", plan.restores.length), { modal: true, detail }, undo) !== undo) {
-				return;
+				return false;
 			}
 		}
 		const restored: acp.Diff[] = [];
@@ -734,6 +791,7 @@ export class ChatController implements vscode.Disposable {
 		for (const undone of this.checkpoints.undone(id)) {
 			this.transcript.updateTurnEnd(undone, { undo: 'undone' });
 		}
+		this.saveCheckpoints();
 		if (restored.length) {
 			this.onDidEditFilesEmitter.fire(restored);
 			const names = restored.map(r => path.relative(this.service.client.cwd, r.path) || r.path);
@@ -744,6 +802,137 @@ export class ChatController implements vscode.Disposable {
 		}
 		if (failed.length) {
 			this.transcript.addNotice(vscode.l10n.t("Some files could not be put back: {0}", failed.join('; ')), 'error');
+		}
+		return true;
+	}
+
+	/** Shows the shared page's tab, from a Shared page chip. */
+	private async openSharedPage(): Promise<void> {
+		if (!await this.options.sharedPage?.reveal().catch(() => false)) {
+			void vscode.window.showInformationMessage(vscode.l10n.t("The page is no longer shared with this agent. Share it again with Let Gemini Use This Page in the page's toolbar."));
+			void this.refreshSharedPage();
+		}
+	}
+
+	/** Esc twice in an empty message box, as in the CLI: picks one of the user's prompts to rewind to. */
+	private async pickRewind(): Promise<void> {
+		if (this.busy || this.options.project) {
+			return;
+		}
+		const prompts = this.transcript.items.flatMap(item => item.kind === 'user' && item.text.trim() ? [item] : []).reverse();
+		if (!prompts.length) {
+			return;
+		}
+		const pick = await vscode.window.showQuickPick(prompts.map(item => ({
+			label: item.text.replace(/\s+/g, ' ').trim(),
+			...(item.at ? { description: new Date(item.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) } : {}),
+			id: item.id,
+		})), {
+			title: vscode.l10n.t("Rewind"),
+			placeHolder: vscode.l10n.t("Pick a message to rewind to, newest first. The conversation goes back to before it."),
+			matchOnDescription: true,
+		});
+		if (pick) {
+			await this.rewind(pick.id);
+		}
+	}
+
+	/**
+	 * Rewinds to before the user's prompt `itemId`, as the CLI's /rewind does:
+	 * the conversation goes from the chat and from Gemini's context, and the
+	 * files Gemini changed since go back. ACP has no rewind, so the CLI's saved
+	 * session gets the record its /rewind writes and is loaded again. The
+	 * prompt's text goes back in the message box.
+	 */
+	private async rewind(itemId: string): Promise<void> {
+		const items = this.transcript.items;
+		const index = items.findIndex(item => item.id === itemId);
+		const prompt = items[index];
+		if (this.busy || this.options.project || prompt?.kind !== 'user' || !prompt.text.trim()) {
+			return;
+		}
+		// Code: the first kept turn after the prompt, which undoes the later ones with it.
+		const after = new Set(items.slice(index).map(item => item.id));
+		const firstTurn = this.checkpoints.turnIds.find(id => after.has(id));
+		const plan = firstTurn ? this.checkpoints.plan(firstTurn) : undefined;
+		const files = plan?.restores.length ?? 0;
+		const filesNote = files === 1 ? vscode.l10n.t("The 1 file Gemini changed since goes back to how it was.") : files ? vscode.l10n.t("The {0} files Gemini changed since go back to how they were.", files) : '';
+		await this.service.ensureReady().catch(() => undefined);
+		const state = this.service.client.state;
+		const sessionId = state.kind === 'ready' ? state.savedSessionId : this.lastSessionId;
+		const found = !!sessionId && await canRewindCliSession(this.service.client.cwd, sessionId, prompt.text, this.laterRepeats(index));
+		if (!found && !plan) {
+			void vscode.window.showWarningMessage(vscode.l10n.t("This message can't be rewound: it is not in the Gemini CLI's saved session, for example because it ran a team command or skill."));
+			return;
+		}
+		const rewind = vscode.l10n.t("Rewind");
+		const undoCode = vscode.l10n.t("Undo Code");
+		const answer = found
+			? await vscode.window.showWarningMessage(vscode.l10n.t("Rewind to before this message?"), {
+				modal: true,
+				detail: [vscode.l10n.t("This message and everything after it are removed from the chat and from Gemini's context, so Gemini forgets them. The message goes back in the message box, to edit and send again."), filesNote].filter(Boolean).join('\n\n'),
+			}, rewind)
+			: await vscode.window.showWarningMessage(vscode.l10n.t("Undo the code changes since this message?"), {
+				modal: true,
+				detail: [vscode.l10n.t("The conversation can't be rewound: this message is not in the Gemini CLI's saved session, for example because it ran a team command or skill."), filesNote].join('\n\n'),
+			}, undoCode);
+		if (!answer || this.busy || this.transcript.items[index]?.id !== itemId) {
+			return;
+		}
+		if (firstTurn && plan && !await this.undoTurn(firstTurn, true)) {
+			return;
+		}
+		if (found) {
+			await this.rewindChat(itemId, prompt.text);
+		}
+	}
+
+	/** How many of the user's prompts after the one at `index` say the same: the CLI's messages are found by text. */
+	private laterRepeats(index: number): number {
+		const squash = (t: string) => t.replace(/\s+/g, ' ').trim();
+		const items = this.transcript.items;
+		const text = items[index]?.kind === 'user' ? squash(items[index].text) : '';
+		return items.slice(index + 1).filter(item => item.kind === 'user' && squash(item.text) === text).length;
+	}
+
+	private async rewindChat(itemId: string, text: string): Promise<void> {
+		const items = this.transcript.items;
+		const index = items.findIndex(item => item.id === itemId);
+		const fromEnd = this.laterRepeats(index);
+		this.setBusy(true);
+		let reason: string | undefined;
+		try {
+			await this.service.ensureReady();
+			const state = this.service.client.state;
+			const sessionId = state.kind === 'ready' ? state.savedSessionId : this.lastSessionId;
+			if (!sessionId || !await rewindCliSession(this.service.client.cwd, sessionId, text, fromEnd).catch(() => false)) {
+				reason = vscode.l10n.t("The message is not in the Gemini CLI's saved session any more. The chat and Gemini's context are unchanged.");
+				return;
+			}
+			this.lastSessionId = sessionId;
+			if (!await this.service.client.loadSession(sessionId).catch(() => false)) {
+				// The session file is rewound but the CLI did not take it up: carry what is left into a new session.
+				const conversation = await readCliConversation(this.service.client.cwd, sessionId).catch(() => undefined);
+				this.carriedConversation = conversation?.length ? carriedConversationNote('this chat', conversation) : undefined;
+			}
+			const cut = new Set(items.slice(index).map(item => item.id));
+			const firstTurn = this.checkpoints.turnIds.find(id => cut.has(id));
+			if (firstTurn) {
+				// Replies whose changes could not be kept to undo go with the conversation.
+				this.checkpoints.forgetFrom(firstTurn);
+				this.saveCheckpoints();
+			}
+			this.transcript.cutAt(itemId);
+			this.lastPrompt = undefined;
+			this.retryItemId = undefined;
+			this.post({ type: 'draft', text });
+		} catch (err) {
+			reason = errorMessage(err);
+		} finally {
+			this.setBusy(false);
+		}
+		if (reason) {
+			this.transcript.addNotice(vscode.l10n.t("Could not rewind the conversation: {0}", reason), 'error');
 		}
 	}
 
@@ -845,6 +1034,7 @@ export class ChatController implements vscode.Disposable {
 			this.diffs.clear();
 			this.completedToolCalls.clear();
 			this.checkpoints.clear();
+			this.saveCheckpoints();
 			this.lastPrompt = undefined;
 			this.retryItemId = undefined;
 			this.undoNote = undefined;
@@ -919,6 +1109,13 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	/** Adds context to the composer (Add File / Add Selection to Chat), showing the chat first. */
+	/** Shows the shared page's chip as the browser has it now; resolves with the page, if one is shared. */
+	async refreshSharedPage(): Promise<{ readonly title: string; readonly url: string; readonly note: string } | undefined> {
+		const page = await this.options.sharedPage?.current().catch(() => undefined);
+		this.post({ type: 'sharedPage', page: page && { title: page.title, url: page.url } });
+		return page;
+	}
+
 	async addAttachments(attachments: readonly Attachment[]): Promise<void> {
 		if (!attachments.length) {
 			return;
@@ -1003,6 +1200,7 @@ export class ChatController implements vscode.Disposable {
 		this.diffs.clear();
 		this.completedToolCalls.clear();
 		this.checkpoints.clear();
+		this.saveCheckpoints();
 		this.lastPrompt = undefined;
 		this.retryItemId = undefined;
 		this.undoNote = undefined;
@@ -1065,6 +1263,7 @@ export class ChatController implements vscode.Disposable {
 					this.post({ type: 'toggleUsage' });
 				}
 				this.postGit();
+				void this.refreshSharedPage();
 				// The agent was started with the view (see attach); this retries one that has since stopped.
 				this.service.ensureReady().catch(() => undefined);
 				// After starting the agent: finding the theme's file scans every extension the first time.
@@ -1090,6 +1289,12 @@ export class ChatController implements vscode.Disposable {
 				break;
 			case 'pickFiles':
 				void this.pickFiles();
+				break;
+			case 'stopSharing':
+				void this.options.sharedPage?.stop().then(() => this.refreshSharedPage());
+				break;
+			case 'openSharedPage':
+				void this.openSharedPage();
 				break;
 			case 'attachUris': {
 				const uris = message.uris.map(uri => vscode.Uri.parse(uri)).filter(uri => uri.scheme === 'file');
@@ -1161,6 +1366,12 @@ export class ChatController implements vscode.Disposable {
 				break;
 			case 'undoTurn':
 				void this.undoTurn(message.itemId);
+				break;
+			case 'rewind':
+				void this.rewind(message.itemId);
+				break;
+			case 'pickRewind':
+				void this.pickRewind();
 				break;
 			case 'threadAction':
 				this.options.project?.threadAction(message.thread, message.action, message.repo);
@@ -1650,6 +1861,10 @@ export class ChatController implements vscode.Disposable {
 			thought: vscode.l10n.t("Thought"),
 			thoughtFor: vscode.l10n.t("Thought for {0}s"),
 			plan: vscode.l10n.t("Plan"),
+			subagent: vscode.l10n.t("Subagent: {0}"),
+			subagentWorking: vscode.l10n.t("working"),
+			subagentFinished: vscode.l10n.t("finished in {0}"),
+			subagentFailed: vscode.l10n.t("failed"),
 			unknownUpdate: vscode.l10n.t("Update not shown in this version: {0}"),
 			terminal: vscode.l10n.t("Terminal output"),
 			openDiff: vscode.l10n.t("Open diff"),
@@ -1665,6 +1880,7 @@ export class ChatController implements vscode.Disposable {
 			copyMessage: vscode.l10n.t("Copy message"),
 			undoTurn: vscode.l10n.t("Undo"),
 			undoTurnTooltip: vscode.l10n.t("Put back the files this reply changed"),
+			rewindPrompt: vscode.l10n.t("Rewind to here"),
 			undoTurnFiles: vscode.l10n.t("Put back the {0} files this reply changed"),
 			turnUndone: vscode.l10n.t("Changes undone"),
 			retry: vscode.l10n.t("Retry"),
@@ -1771,6 +1987,9 @@ export class ChatController implements vscode.Disposable {
 			commandFromTeam: vscode.l10n.t("Team"),
 			commandFromSkill: vscode.l10n.t("Skill"),
 			remove: vscode.l10n.t("Remove"),
+			sharedPage: vscode.l10n.t("Shared page: {0}"),
+			showSharedPage: vscode.l10n.t("Show the page ({0})"),
+			stopSharing: vscode.l10n.t("Stop sharing this page"),
 			fileTooLarge: vscode.l10n.t("{0} is too large to send."),
 			attachFiles: vscode.l10n.t("Attach files. You can also drop files here; hold Shift when dragging from the Explorer."),
 			dropFiles: vscode.l10n.t("Drop files to attach"),

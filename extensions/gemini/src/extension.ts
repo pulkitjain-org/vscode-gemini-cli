@@ -15,7 +15,6 @@ import { AgentsView } from './host/agentsView';
 import { tildify } from './host/displayText';
 import { ChangesPanel } from './host/changesPanel';
 import { applyLayoutDefaults } from './host/layoutDefaults';
-import { ChatViewProvider, chatViewId } from './host/chatView';
 import { checkAgent } from './host/checkAgent';
 import { CliManager } from './host/cliManager';
 import { DiffPreview } from './host/diffPreview';
@@ -58,19 +57,17 @@ export function activate(context: vscode.ExtensionContext): void {
 		onDirectFailed: err => log.info(`Prompt enhancement's direct request failed (${errorMessage(err)}); asking the CLI`),
 		onDidEnhance: ({ ms, model }) => log.info(`Prompt enhanced in ${ms} ms with ${model ?? 'the default model'}`),
 	});
-	const chatView = new ChatViewProvider(context.extensionUri, service, diffPreview, fileIndex, enhancer);
 	const agentsView = new AgentsView(context, service, diffPreview, fileIndex, enhancer);
 	saveBeforeExit = () => agentsView.saveAll();
 	// Agents mode's Changes panel follows the agent in front, as the Changes view does.
 	const changesPanel = new ChangesPanel(context.extensionUri);
 	changesPanel.show(agentsView.focusedSource);
 	void applyLayoutDefaults(context);
-	// Add to Chat goes to the agent tab in front, else to the quick chat.
-	const chatInFront = () => agentsView.activeController() ?? chatView.controller;
+	// Add to Chat goes to the agent tab in front, else the running agent used last, else a new agent.
+	const chatInFront = (orNew = false) => agentsView.chatFor(orNew);
 	const quickEdits = new QuickEdits(agentsView.review, log);
 	const statusBar = new GeminiStatusBar(service);
 	const usageMeter = new UsageMeter(quickEdits.client, log);
-	chatView.usage = usageMeter;
 	agentsView.usage = usageMeter;
 	// Drafts a project's Memory text with the same direct request quick edits use.
 	agentsView.direct = request => quickEdits.enhancePrompt(request);
@@ -91,7 +88,12 @@ export function activate(context: vscode.ExtensionContext): void {
 			await agentsView.open(agent);
 			await agentsView.controllerOf(agent)?.addAttachments(attachments);
 		},
-		attachToFront: attachments => chatInFront().addAttachments(attachments),
+		showSharedPage: async agent => {
+			await agentsView.open(agent);
+			await agentsView.controllerOf(agent)?.refreshSharedPage();
+		},
+		sharedPageChanged: agent => void agentsView.controllerOf(agent)?.refreshSharedPage(),
+		attachToFront: async attachments => (await chatInFront(true))?.addAttachments(attachments),
 		model: agent => agentsView.controllerOf(agent)?.model,
 		newAgent: page => agentsView.newAgentFor(page),
 		recent: () => agentsView.summaries().filter(agent => agent.state === 'stopped' && agent.project?.role !== 'coordinator').slice(0, 10)
@@ -113,7 +115,6 @@ export function activate(context: vscode.ExtensionContext): void {
 		service,
 		diffPreview,
 		fileIndex,
-		chatView,
 		agentsView,
 		changesPanel,
 		agentsView.onDidFocus(source => changesPanel.show(source)),
@@ -133,20 +134,23 @@ export function activate(context: vscode.ExtensionContext): void {
 		service.runtime.onDidBecomeBusy(() => keepAwake.setBusy(true)),
 		service.runtime.onDidBecomeIdle(() => keepAwake.setBusy(false)),
 		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.keepAwake`) && readKeepAwake()),
-		// Kept alive while hidden, so switching back to the chat is instant instead of reloading it.
-		vscode.window.registerWebviewViewProvider(chatViewId, chatView, { webviewOptions: { retainContextWhenHidden: true } }),
-		vscode.commands.registerCommand('gemini.openChat', () => vscode.commands.executeCommand(`${chatViewId}.focus`)),
-		vscode.commands.registerCommand('gemini.newChat', () => chatView.newChat()),
-		vscode.commands.registerCommand('gemini.enhancePrompt', () => chatInFront().requestEnhance()),
-		vscode.commands.registerCommand('gemini.toggleFollowAgent', () => chatInFront().toggleFollowing()),
-		vscode.commands.registerCommand('gemini.openChatAsMarkdown', () => {
-			const agent = agentsView.activeAgentId();
-			return agent ? agentsView.openAsMarkdown(agent) : chatView.controller.openAsMarkdown(vscode.l10n.t("Quick Chat"));
+		vscode.commands.registerCommand('gemini.enhancePrompt', async () => (await chatInFront())?.requestEnhance()),
+		vscode.commands.registerCommand('gemini.toggleFollowAgent', async () => (await chatInFront())?.toggleFollowing()),
+		vscode.commands.registerCommand('gemini.openChatAsMarkdown', async () => {
+			const agent = agentsView.activeAgentId() ?? agentsView.summaries().find(each => each.state !== 'stopped')?.id;
+			return agent ? agentsView.openAsMarkdown(agent) : vscode.window.showInformationMessage(vscode.l10n.t("Open an agent first."));
 		}),
-		vscode.commands.registerCommand('gemini.showUsage', () => chatInFront().showUsage()),
-		vscode.commands.registerCommand('gemini.sessionApprovals', () => chatInFront().manageApprovals()),
-		vscode.commands.registerCommand('gemini.addFileToChat', async (uri: unknown, uris: unknown) => chatInFront().addAttachments(await filesToAttach(uri, uris))),
-		vscode.commands.registerCommand('gemini.addSelectionToChat', () => chatInFront().addAttachments(selectionsToAttach())),
+		vscode.commands.registerCommand('gemini.showUsage', async () => (await chatInFront())?.showUsage()),
+		vscode.commands.registerCommand('gemini.sessionApprovals', async () => (await chatInFront())?.manageApprovals()),
+		vscode.commands.registerCommand('gemini.addFileToChat', async (uri: unknown, uris: unknown) => {
+			const attachments = await filesToAttach(uri, uris);
+			return (await chatInFront(true))?.addAttachments(attachments);
+		}),
+		vscode.commands.registerCommand('gemini.addSelectionToChat', async () => {
+			// Read before a new agent's tab takes the editor's place.
+			const attachments = selectionsToAttach();
+			return (await chatInFront(true))?.addAttachments(attachments);
+		}),
 		vscode.commands.registerCommand('gemini.showLog', () => log.show()),
 		vscode.commands.registerCommand('gemini.checkAgent', () => checkAgent(log)),
 		vscode.commands.registerCommand('gemini.restartAgent', () => service.restart()),

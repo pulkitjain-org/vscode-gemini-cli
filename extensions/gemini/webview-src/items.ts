@@ -11,16 +11,16 @@ import MarkdownIt from 'markdown-it';
 import { basename } from '../src/acp/attachments';
 import type { PromptAttachmentLabel, TranscriptItem } from '../src/acp/chatTranscript';
 import type { ThreadAction, ViewSession } from '../src/host/chatProtocol';
-import { attachmentIcon, codeLanguage, format, formatDuration, formatSentAt, permissionDefaults, planIcon, replyBefore, thoughtSeconds, toolKindIcon, type ItemOf } from './chatLogic';
+import { attachmentIcon, codeLanguage, format, formatDuration, formatSentAt, permissionDefaults, planIcon, replyBefore, subagentName, thoughtSeconds, toolKindIcon, type ItemOf } from './chatLogic';
 import { highlightCode } from './codeHighlight';
 import { applyInlineStyles } from './inlineStyles';
 import { renderMath } from './math';
 import { mathPlugin } from './mathRule';
 import { enhanceMarkdown } from './markdownExtras';
-import { button, copyButton, el, icon, onIntent, setLabel } from './dom';
+import { button, copyButton, el, icon, onIntent, setLabel, setTip } from './dom';
 import { toneOf } from './repoTones';
 import { thoughtPreview } from './streaming';
-import { expanded, state, strings, thoughtTimes, ui, vscode } from './view';
+import { expanded, state, strings, subagentTimes, thoughtTimes, ui, vscode } from './view';
 
 const mac = /Mac/.test(navigator.platform);
 
@@ -37,7 +37,7 @@ export type ToggleToolCall = (item: ItemOf<'toolCall'>) => void;
 export function render(item: TranscriptItem, toggleToolCall: ToggleToolCall): HTMLElement {
 	switch (item.kind) {
 		case 'user':
-			return renderUserMessage(item);
+			return renderUserMessage(item, item.id);
 		case 'agent':
 			return renderMarkdown(item.text);
 		case 'thought':
@@ -172,12 +172,12 @@ function renderTurnEnd(item: ItemOf<'turnEnd'>): HTMLElement {
 function sentAt(at: number): HTMLElement {
 	const time = el('time', 'sent-at', formatSentAt(at, Date.now()));
 	time.dateTime = new Date(at).toISOString();
-	time.title = new Date(at).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'medium' });
+	setTip(time, new Date(at).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'medium' }));
 	return time;
 }
 
 /** The user's message, with its time and Copy under it, shown on hover. */
-function renderUserMessage(item: { readonly text: string; readonly attachments?: readonly PromptAttachmentLabel[]; readonly at?: number; readonly from?: 'coordinator' }): HTMLElement {
+function renderUserMessage(item: { readonly text: string; readonly attachments?: readonly PromptAttachmentLabel[]; readonly at?: number; readonly from?: 'coordinator' }, id?: string): HTMLElement {
 	const turn = el('div', `user-turn${item.from ? ' from-coordinator' : ''}`);
 	const node = el('div', 'message user');
 	if (item.from) {
@@ -193,6 +193,13 @@ function renderUserMessage(item: { readonly text: string; readonly attachments?:
 		const chips = el('div', 'attachment-chips');
 		for (const attachment of item.attachments) {
 			const { path, line } = attachment;
+			if (attachment.kind === 'page') {
+				// The page shared with the agent then; it opens the page shared now.
+				const page = button('chip shared-page', format(strings.sharedPage, attachment.label), () => vscode.postMessage({ type: 'openSharedPage' }), 'globe');
+				setTip(page, format(strings.showSharedPage, path ?? attachment.label));
+				chips.append(page);
+				continue;
+			}
 			const chip = path
 				? button('chip', attachment.label, () => vscode.postMessage({ type: 'openLocation', path, line }), attachmentIcon(attachment.kind, attachment.label))
 				: el('span', 'chip static');
@@ -207,6 +214,11 @@ function renderUserMessage(item: { readonly text: string; readonly attachments?:
 	const meta = el('div', 'user-meta');
 	if (item.at) {
 		meta.append(sentAt(item.at));
+	}
+	if (item.text && id && !strings.project) {
+		const rewind = button('icon-button copy-message rewind-prompt', '', () => vscode.postMessage({ type: 'rewind', itemId: id }), 'history');
+		setLabel(rewind, strings.rewindPrompt);
+		meta.append(rewind);
 	}
 	if (item.text) {
 		meta.append(copyButton('copy-message', strings.copyMessage, () => item.text));
@@ -288,9 +300,40 @@ function statusIcon(value: ItemOf<'toolCall'>['status']): HTMLElement {
 	}
 }
 
+/** "working", "finished in 42s" or "failed", from when this view first saw the call working. */
+function subagentStatus(item: ItemOf<'toolCall'>): string {
+	let times = subagentTimes.get(item.id);
+	if (!times && (item.status === 'pending' || item.status === 'in_progress')) {
+		times = { start: Date.now() };
+		subagentTimes.set(item.id, times);
+	}
+	if (item.status === 'failed') {
+		return strings.subagentFailed;
+	}
+	if (item.status !== 'completed') {
+		return strings.subagentWorking;
+	}
+	if (times && times.end === undefined) {
+		times.end = Date.now();
+	}
+	return times?.end !== undefined ? format(strings.subagentFinished, formatDuration(times.end - times.start)) : '';
+}
+
 function renderToolCall(item: ItemOf<'toolCall'>, toggleToolCall: ToggleToolCall): HTMLElement {
-	const card = el('div', `tool-call status-${item.status}`);
+	const subagent = subagentName(item.title);
+	const card = el('div', `tool-call status-${item.status}${subagent ? ' subagent' : ''}`);
 	const row = el('div', 'tool-row');
+	if (subagent) {
+		// A subagent works in its own context; the CLI sends only its start and its report.
+		const label = el('span', 'tool-title');
+		label.append(el('span', 'tool-verb', format(strings.subagent, subagent)));
+		const status = subagentStatus(item);
+		row.append(icon('hubot', 'kind-icon'), label, ...status ? [el('span', 'subagent-status', status)] : [], statusIcon(item.status));
+		row.title = item.title;
+		card.append(row);
+		appendToolBody(card, row, item, toggleToolCall);
+		return card;
+	}
 	// "Read src/cart/total.ts": the verb in the text colour, what it acted on quieter.
 	const [verb, target] = splitToolTitle(item.title);
 	const title = el('span', 'tool-title');
@@ -326,7 +369,12 @@ function renderToolCall(item: ItemOf<'toolCall'>, toggleToolCall: ToggleToolCall
 	}
 	row.append(statusIcon(item.status));
 	card.append(row);
+	appendToolBody(card, row, item, toggleToolCall);
+	return card;
+}
 
+/** The tool call's output, folded under its row until the row is clicked. */
+function appendToolBody(card: HTMLElement, row: HTMLElement, item: ItemOf<'toolCall'>, toggleToolCall: ToggleToolCall): void {
 	const body = el('div', 'tool-body');
 	for (const detail of item.details) {
 		if (detail.type === 'text' && detail.text.trim()) {
@@ -352,7 +400,6 @@ function renderToolCall(item: ItemOf<'toolCall'>, toggleToolCall: ToggleToolCall
 		});
 		card.append(body);
 	}
-	return card;
 }
 
 /** A tool call's title as its first word and the rest. */

@@ -39,6 +39,7 @@ import { IStorageService, StorageScope, StorageTarget } from '../../../../platfo
 import { IWorkspaceContextService, WorkbenchState } from '../../../../platform/workspace/common/workspace.js';
 import { IWorkspaceTrustManagementService } from '../../../../platform/workspace/common/workspaceTrust.js';
 import { EditorsOrder } from '../../../common/editor.js';
+import { IEditorGroupsService } from '../../../services/editor/common/editorGroupsService.js';
 import { IEditorService, SIDE_GROUP } from '../../../services/editor/common/editorService.js';
 import { IWorkbenchEnvironmentService } from '../../../services/environment/common/environmentService.js';
 import { BrowserEditorInput } from '../../browserView/common/browserEditorInput.js';
@@ -234,6 +235,35 @@ CommandsRegistry.registerCommand('_gemini.browser.release', async (accessor, key
 	}
 });
 
+/**
+ * The page the user handed to the agent, if it still has one: the extension
+ * asks after a window reload, when it no longer remembers the hand-over.
+ */
+CommandsRegistry.registerCommand('_gemini.browser.sharedPage', (accessor, key: string) => {
+	const browserViews = accessor.get(IBrowserViewWorkbenchService);
+	const storageService = accessor.get(IStorageService);
+	for (const id of pagesOf(browserViews, sessionOf(key))) {
+		const model = browserViews.getKnownBrowserViews().get(id)?.model;
+		if (model && isHandedOver(model, storageService)) {
+			return { pageId: model.id, url: model.url, title: model.title };
+		}
+	}
+	return undefined;
+});
+
+/** Brings one of the agent's pages to the front in the editor group it is in. Resolves with whether it was found. */
+CommandsRegistry.registerCommand('_gemini.browser.reveal', async (accessor, key: string, pageId: string) => {
+	const browserViews = accessor.get(IBrowserViewWorkbenchService);
+	const editorService = accessor.get(IEditorService);
+	const input = pagesOf(browserViews, sessionOf(key)).includes(pageId) ? browserViews.getKnownBrowserViews().get(pageId) : undefined;
+	if (!input) {
+		return false;
+	}
+	const group = accessor.get(IEditorGroupsService).groups.find(g => g.contains(input));
+	await editorService.openEditor(input, { pinned: true }, group?.id ?? SIDE_GROUP);
+	return true;
+});
+
 /** The agent's open pages. */
 CommandsRegistry.registerCommand('_gemini.browser.pages', (accessor, key: string) => pagesOf(accessor.get(IBrowserViewWorkbenchService), sessionOf(key)));
 
@@ -422,9 +452,12 @@ class StopSharingPageAction extends Action2 {
 	async run(accessor: ServicesAccessor, editor?: unknown): Promise<void> {
 		const model = browserEditorOf(accessor, editor)?.model;
 		const views = browserViewServiceOf(accessor);
+		const commandService = accessor.get(ICommandService);
 		const key = model && keyOf(model);
 		if (model && key && isHandedOver(model, accessor.get(IStorageService))) {
 			await release(views, model, sessionOf(key));
+			// The agent's composer drops its Shared page chip.
+			commandService.executeCommand('_gemini.browser.released', key, model.id).catch(() => undefined);
 		}
 	}
 }

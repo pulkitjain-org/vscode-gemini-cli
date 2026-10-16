@@ -81,8 +81,8 @@ export function sameAttachment(a: Attachment, b: Attachment): boolean {
 }
 
 /** The codicon for an attachment chip. */
-export function attachmentIcon(kind: Attachment['kind'], label: string): string {
-	return kind === 'image' ? 'file-media' : kind === 'selection' ? 'list-selection' : /\.pdf$/i.test(label) ? 'file-pdf' : 'file';
+export function attachmentIcon(kind: Attachment['kind'] | 'page', label: string): string {
+	return kind === 'page' ? 'globe' : kind === 'image' ? 'file-media' : kind === 'selection' ? 'list-selection' : /\.pdf$/i.test(label) ? 'file-pdf' : 'file';
 }
 
 /** The name for a pasted or dropped image, which may have none. */
@@ -186,6 +186,17 @@ const toolKindIcons: Record<string, string> = {
 	fetch: 'globe',
 	switch_mode: 'arrow-swap',
 };
+
+/**
+ * The subagent a tool call hands work to, as a name to show, or undefined for
+ * other tool calls. Over ACP the CLI sends a subagent call (its `invoke_agent`
+ * tool, kind `agent` sent as `think`) titled "Delegating to agent '<name>'";
+ * a title worded otherwise falls back to a plain tool row.
+ */
+export function subagentName(title: string): string | undefined {
+	const name = /^Delegating to agent '([\w-]{1,64})'$/.exec(title.trim())?.[1];
+	return name?.split(/[_-]+/).filter(Boolean).map(word => word[0].toUpperCase() + word.slice(1)).join(' ');
+}
 
 /** The codicon for a kind of tool call. */
 export function toolKindIcon(kind: string | undefined): string {

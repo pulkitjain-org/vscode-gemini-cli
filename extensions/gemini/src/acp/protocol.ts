@@ -12,7 +12,7 @@ import * as acp from '@agentclientprotocol/sdk';
 export const SUPPORTED_PROTOCOL_VERSION = acp.PROTOCOL_VERSION;
 
 /** Oldest Gemini CLI release this client is tested against. */
-export const MIN_CLI_VERSION = '0.61.0';
+export const MIN_CLI_VERSION = '0.64.0';
 
 export const CLIENT_INFO: acp.Implementation = {
 	name: 'geminicode',

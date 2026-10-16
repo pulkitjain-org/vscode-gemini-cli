@@ -115,7 +115,7 @@ function placeButton(): void {
 }
 
 /** Puts `text` in the input as one edit the user can undo. */
-function replaceInput(text: string): void {
+export function replaceInput(text: string): void {
 	input.readOnly = false;
 	input.focus();
 	input.select();

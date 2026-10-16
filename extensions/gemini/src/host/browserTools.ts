@@ -25,8 +25,10 @@ import { getFileAccessPolicy, isIgnoredByGitCached } from './workspaceFileSystem
  * "Let Gemini Use This Page" (a workbench action on pages the user opened)
  * calls `_gemini.browser.handOver` here: the user picks one of the agents
  * open in this window, the page is checked as the agent's own pages are, and
- * the workbench makes it that agent's page; the agent's composer gets a note
- * naming it. Only that user action hands a page over.
+ * the workbench makes it that agent's page. The page stays shared until the
+ * user stops sharing it (the chip's × in the agent's composer, or Stop
+ * Sharing on the page) or closes it: the composer shows it, and every prompt
+ * tells the agent about it. Only that user action hands a page over.
  */
 export class BrowserTools implements vscode.Disposable {
 
@@ -36,6 +38,10 @@ export class BrowserTools implements vscode.Disposable {
 	private readonly allowed = new Map<string, Set<string>>();
 	/** Each agent's folder, when it was given; its `file:` pages must be inside. */
 	private readonly folders = new Map<string, string>();
+	/** The page the user handed each agent, while it has it. */
+	private readonly shared = new Map<string, { readonly pageId: string; readonly url: string; readonly title: string }>();
+	/** Agents whose hand-over this window asked the workbench about, after a reload. */
+	private readonly lookedUp = new Set<string>();
 	/** One question at a time, so a burst of tool calls does not stack dialogs. */
 	private asking: Promise<unknown> = Promise.resolve();
 	private readonly disposables: vscode.Disposable[] = [];
@@ -56,6 +62,12 @@ export class BrowserTools implements vscode.Disposable {
 			vscode.commands.registerCommand('gemini.browser.stop', (agent: unknown) => typeof agent === 'string' && this.agents.stop(agent)),
 			vscode.commands.registerCommand('_gemini.browser.handOver', (pageId: unknown, url: unknown, title: unknown) =>
 				typeof pageId === 'string' && typeof url === 'string' ? this.handOver(pageId, url, typeof title === 'string' ? title : '') : undefined),
+			vscode.commands.registerCommand('_gemini.browser.released', (agent: unknown, pageId: unknown) => {
+				if (typeof agent === 'string' && this.shared.get(agent)?.pageId === pageId) {
+					this.shared.delete(agent);
+					this.agents.sharedPageChanged?.(agent);
+				}
+			}),
 			vscode.commands.registerCommand('_gemini.browser.addToPrompt', (context: unknown, agent: unknown) =>
 				this.addToPrompt(context as PageContext, typeof agent === 'string' ? agent : undefined)),
 			vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.browser.enabled`) && this.applyEnabled()),
@@ -134,15 +146,64 @@ export class BrowserTools implements vscode.Disposable {
 			return undefined;
 		}
 		this.host.adopt(agent.id, pageId, shared.url);
+		this.shared.set(agent.id, { pageId, url: shared.url, title: shared.title });
 		this.log.info(`Handed a page to agent ${agent.id}`);
-		const note = sharedPageNote(shared.title, shared.url);
-		// A new agent given a task starts on it with the page; otherwise the page waits in the message box.
+		// Every prompt from now on tells the agent about the page (see sharedPage), so a task goes as it is.
 		if (agent.task && this.agents.send) {
-			this.agents.send(agent.id, agent.task, [note]);
+			this.agents.send(agent.id, agent.task, []);
 		} else {
-			await this.agents.attach(agent.id, [note]);
+			await this.agents.showSharedPage(agent.id);
 		}
 		return agent.id;
+	}
+
+	/**
+	 * The page shared with `agent`, while it still is, with the note each
+	 * prompt carries about it. After a window reload the workbench still knows
+	 * the page, so it is picked up again rather than lost.
+	 */
+	async sharedPage(agent: string): Promise<{ readonly title: string; readonly url: string; readonly note: string } | undefined> {
+		if (!enabled()) {
+			return undefined;
+		}
+		let page = this.shared.get(agent);
+		if (page && !(await commandBackend.pages(agent).catch((): readonly string[] => [])).includes(page.pageId)) {
+			// Closed, or given back from the page.
+			this.shared.delete(agent);
+			page = undefined;
+		}
+		if (!page && !this.lookedUp.has(agent)) {
+			// Once per agent: only a window reload makes this window forget a hand-over.
+			this.lookedUp.add(agent);
+			const found = await run<{ pageId: string; url: string; title: string } | undefined>('_gemini.browser.sharedPage', agent).catch(() => undefined);
+			if (!found || typeof found.pageId !== 'string' || await this.host.handOverRefusal(agent, found.url)) {
+				return undefined;
+			}
+			this.host.adopt(agent, found.pageId, found.url);
+			this.shared.set(agent, found);
+			page = found;
+		}
+		if (!page) {
+			return undefined;
+		}
+		const text = sharedPageText(page.title, page.url);
+		return { title: text.title, url: page.url, note: text.text };
+	}
+
+	/** Brings the tab of the page shared with `agent` to the front: a click on its chip. False when none is shared. */
+	async revealSharedPage(agent: string): Promise<boolean> {
+		await this.sharedPage(agent);
+		const page = this.shared.get(agent);
+		return !!page && await run<boolean>('_gemini.browser.reveal', agent, page.pageId).catch(() => false) === true;
+	}
+
+	/** Gives the page shared with `agent` back to the user, still open: the × on its chip. */
+	async stopSharing(agent: string): Promise<void> {
+		const page = this.shared.get(agent);
+		this.shared.delete(agent);
+		if (page) {
+			await run('_gemini.browser.release', agent, page.pageId).catch(err => this.log.warn(`Could not stop sharing a page: ${err}`));
+		}
 	}
 
 	/**
@@ -166,6 +227,7 @@ export class BrowserTools implements vscode.Disposable {
 	/** Closes an agent's pages, for an agent that was removed; pages the user handed it go back to the user, open. */
 	closeAgent(agent: string): void {
 		this.host.forget(agent);
+		this.shared.delete(agent);
 		this.server.unbind(agent);
 		this.allowed.delete(agent);
 		this.folders.delete(agent);
@@ -283,6 +345,10 @@ export interface BrowserAgents {
 	open(): readonly { readonly id: string; readonly title: string }[];
 	/** Shows the agent's chat and adds `attachments` to its composer. */
 	attach(agent: string, attachments: readonly Attachment[]): Promise<void>;
+	/** Shows the agent's chat, whose composer then shows the page it was handed (see `sharedPage`). */
+	showSharedPage(agent: string): Promise<void>;
+	/** The page shared with the agent changed outside its chat, such as Stop Sharing on the page. */
+	sharedPageChanged?(agent: string): void;
 	/** Adds `attachments` to the composer of the chat in front: the agent shown, else the Gemini chat. */
 	attachToFront(attachments: readonly Attachment[]): Promise<void>;
 	/** The model the agent's session is on, when known. */
@@ -312,12 +378,6 @@ function allowedOrigins(): readonly string[] {
 
 function truncate(text: string, max: number): string {
 	return text.length > max ? `${text.slice(0, max - 1)}\u2026` : text;
-}
-
-/** The note an agent's composer gets with a page the user handed it. */
-function sharedPageNote(title: string, url: string): Attachment {
-	const note = sharedPageText(title, url);
-	return { kind: 'document', name: vscode.l10n.t("Shared page: {0}", note.title), mimeType: 'text/plain', text: note.text };
 }
 
 /** The workbench's browser commands, as a backend. */

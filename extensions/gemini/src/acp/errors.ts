@@ -76,6 +76,15 @@ export function classifyAgentError(error: unknown): AgentErrorInfo {
 	return { kind: 'unknown', message, code };
 }
 
+/**
+ * Whether Gemini refused a request because it ends with a model turn: a CLI
+ * bug after some tool results (an image, in practice), which a new user turn
+ * gets past. The message can come as plain text or as the API's JSON body.
+ */
+export function isModelTurnRefusal(message: string): boolean {
+	return /ending with a model turn|end with a user role|ends? with a model (role|turn)/i.test(message);
+}
+
 /** The message of an error of any shape, for showing to the user. */
 export function errorMessage(err: unknown): string {
 	return err instanceof Error ? err.message : String(err);
