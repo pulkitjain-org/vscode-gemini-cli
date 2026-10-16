@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { coordinatorBrief, multiRepoBrief, ProjectHub, threadMemoryContext, type CoordinatorSession, type FeedEntry, type ThreadDriver } from '../../src/acp/projectHub';
+import { coordinatorBrief, listedMergedThreads, multiRepoBrief, ProjectHub, threadMemoryContext, wakeThreadLines, type CoordinatorSession, type FeedEntry, type ThreadDriver, type ThreadInfo } from '../../src/acp/projectHub';
 
 function setup(turn: (prompt: string, hub: ProjectHub) => Promise<void> = async () => { }) {
 	const prompts: string[] = [];
@@ -183,6 +183,54 @@ describe('ProjectHub', () => {
 		expect(prompts[0]).toContain('<notes>\nUse pnpm.\n</notes>');
 		expect(prompts[1]).not.toContain('<notes>');
 		expect(prompts[2]).toContain('<notes>\nUse npm.\n</notes>');
+	});
+});
+
+describe('a project with many threads', () => {
+	const many = (open: number, merged: number): ThreadInfo[] => [
+		...Array.from({ length: merged }, (_, i) => ({ id: `m${i}`, title: `Merged ${i}`, state: 'done' as const, byCoordinator: true, resolved: true })),
+		...Array.from({ length: open }, (_, i) => ({ id: `o${i}`, title: `Open ${i}`, state: 'done' as const, byCoordinator: true })),
+	];
+
+	it('lists every open thread and only the latest merged ones in each wake', () => {
+		const lines = wakeThreadLines(many(3, 25));
+		expect(lines).toHaveLength(3 + listedMergedThreads + 1);
+		expect(lines.filter(line => line.includes('Open'))).toHaveLength(3);
+		expect(lines).toContain('- m24 "Merged 24": resolved (merged)');
+		expect(lines.some(line => line.includes('"Merged 14"'))).toBe(false);
+		expect(lines.at(-1)).toBe('- 15 older merged threads not listed; list_threads with all: true lists them.');
+		expect(wakeThreadLines(many(2, listedMergedThreads))).toHaveLength(2 + listedMergedThreads);
+	});
+
+	it('keeps the wake the same size however many threads were merged', async () => {
+		const { hub, prompts } = setup();
+		for (const thread of many(4, 500)) {
+			hub.restoreThread(thread);
+		}
+		hub.post('What is open?');
+		await hub.idle();
+		const threads = prompts[0].slice(prompts[0].indexOf('<threads>'), prompts[0].indexOf('</threads>'));
+		expect(threads.split('\n').filter(line => line.startsWith('- '))).toHaveLength(4 + listedMergedThreads + 1);
+		const all = (await hub.call(coordinator, 'list_threads', { all: true })).content[0];
+		expect(all).toMatchObject({ text: expect.stringContaining('"Merged 0"') });
+		expect((await hub.call(coordinator, 'list_threads', {})).content[0]).toMatchObject({ text: expect.not.stringContaining('"Merged 0"') });
+	});
+
+	it('waits for a thread read from its saved chat, and for a note to a thread that has to start first', async () => {
+		const sent: string[] = [];
+		const hub = new ProjectHub('p1', { prompt: async () => { } }, {
+			start: async () => 't1',
+			message: async (_thread, text) => {
+				await new Promise(resolve => setTimeout(resolve, 5));
+				sent.push(text);
+				return true;
+			},
+			read: async thread => `saved chat of ${thread}`,
+		});
+		hub.restoreThread({ id: 't1', title: 'A', state: 'done', byCoordinator: true });
+		expect((await hub.call(coordinator, 'read_thread', { thread: 't1' })).content[0]).toMatchObject({ text: 'saved chat of t1' });
+		expect((await hub.call(coordinator, 'message_thread', { thread: 't1', text: 'Also the footer' })).isError).toBeFalsy();
+		expect(sent).toEqual(['Also the footer']);
 	});
 });
 

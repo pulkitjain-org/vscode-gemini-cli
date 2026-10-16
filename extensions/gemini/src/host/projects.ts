@@ -19,8 +19,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { EditedFile } from '../acp/agentChanges';
-import type { AgentProjectRole, AgentRecord } from '../acp/agents';
-import type { ThreadCard } from '../acp/chatTranscript';
+import { isArchived, warmThreads, type AgentProjectRole, type AgentRecord } from '../acp/agents';
+import type { ThreadCard, TranscriptItem } from '../acp/chatTranscript';
 import { attachmentLabel, type Attachment } from '../acp/attachments';
 import { ConductorReader } from '../acp/conductor';
 import type { InstantAnswer } from '../acp/permissions';
@@ -33,7 +33,7 @@ import { ruleEntries, ruleFolders } from '../acp/projectRules';
 import { addMemoryFiles, configFile, maxInstructionsChars, memoryFolder, newMemoryFile, projectMemory, readProjectConfig, removeMemoryFile, repoKey, writeProjectConfig, type ProjectConfig, type ProjectDefaults, type ProjectRepo } from '../acp/projectStore';
 import { coordinatorHome, repositoryRoot } from '../acp/worktrees';
 import type { ChatActivity, ChatController, ChatProject } from './chatController';
-import type { NewThread, ProjectDefaultsView, ProjectSettingsSave, ProjectSettingsView, ThreadAction } from './chatProtocol';
+import type { NewThread, ProjectDefaultsView, ProjectSettingsAction, ProjectSettingsSave, ProjectSettingsView, ThreadAction } from './chatProtocol';
 import { configSection } from './configuration';
 import { tildify } from './displayText';
 
@@ -75,6 +75,14 @@ export interface ProjectAgents {
 	undoThread(id: string): Promise<boolean>;
 	/** Starts a thread's agent without a tab, when it isn't running and its folder still exists. */
 	resume(id: string): Promise<void>;
+	/** The user is about to open the thread: start it now if it isn't running. */
+	prepare(id: string): void;
+	/** Puts back a merged thread's folder that Clean Up removed; resolves whether it has a folder. */
+	restoreFolder(id: string): Promise<boolean>;
+	/** The thread's chat: live, else as saved, without starting its agent. */
+	savedConversation(id: string): Promise<readonly TranscriptItem[]>;
+	/** Project Settings' Clean Up: asks, then removes merged threads' folders that hold nothing unmerged. */
+	cleanUpMerged(coordinatorId: string): Promise<void>;
 	/** Whether a new thread's worktree setup still runs: it gets its brief, and then any notes, when setup ends. */
 	settingUp(id: string): boolean;
 	/** Keeps a thread's resolved state across reloads. */
@@ -161,6 +169,11 @@ export class Projects implements vscode.Disposable {
 			post: (text, attachments) => this.projects.get(coordinatorId)?.hub.post(withAttachments(text, attachments)),
 			hidesToolCall: title => isProjectToolTitle(title, coordinatorTools),
 			threadAction: (thread, action, repo) => void this.threadAction(coordinatorId, thread, action, repo),
+			prepareThread: thread => {
+				if (this.agents.record(thread)?.project?.role === 'thread') {
+					this.agents.prepare(thread);
+				}
+			},
 			startThread: thread => void this.startThread(coordinatorId, thread),
 			openSettings: () => void this.openSettings(coordinatorId),
 			saveSettings: settings => void this.saveSettings(coordinatorId, settings),
@@ -295,15 +308,13 @@ export class Projects implements vscode.Disposable {
 			disposables: [], home, loading: Promise.resolve({ repos: [], instructions: '', files: [], defaults: {} }),
 		};
 		project.loading = this.loadConfig(project, folder);
-		const open: string[] = [];
-		for (const thread of this.agents.threadsOf(record.id)) {
+		const threads = this.agents.threadsOf(record.id);
+		for (const thread of threads) {
 			if (thread.project?.role === 'thread') {
 				const resolved = !!thread.project.resolved;
 				hub.restoreThread({ id: thread.id, title: thread.title, state: 'done', byCoordinator: thread.project.byCoordinator, ...(resolved ? { resolved } : {}) });
 				if (resolved) {
 					project.merged.add(thread.id);
-				} else {
-					open.push(thread.id);
 				}
 			}
 		}
@@ -325,12 +336,14 @@ export class Projects implements vscode.Disposable {
 				await this.draft(project);
 			}
 		});
-		// The project's unresolved threads start with it, so their chats are live and the
-		// coordinator can reach them; a resolved one starts only when it is opened.
-		// One at a time, a moment apart: each is a Gemini CLI process, and starting them all at once
-		// would compete with the window's own start. A thread the coordinator reaches first starts then.
+		// The most recently used open threads start with it, so the ones a developer goes back to
+		// are live; however many threads the project has, opening it costs the same. Any other
+		// thread starts when it is needed: the pointer on its card or row, opening it, or a note
+		// from the coordinator. A merged one starts only when it is opened.
+		// One at a time, a moment apart: starting them all at once would compete with the window's own start.
+		const warm = warmThreads(threads);
 		void (async () => {
-			for (const thread of open) {
+			for (const thread of warm) {
 				await new Promise(resolve => setTimeout(resolve, threadStartGapMs));
 				if (this.projects.get(record.id) !== project) {
 					return;
@@ -362,10 +375,14 @@ export class Projects implements vscode.Disposable {
 		}
 	}
 
-	private message(coordinatorId: string, thread: string, text: string): boolean {
+	private async message(coordinatorId: string, thread: string, text: string): Promise<boolean> {
 		const project = this.projects.get(coordinatorId);
+		// A merged thread whose folder was cleaned up gets it back from its branch first.
+		if (!project || !this.agents.record(thread) || !await this.agents.restoreFolder(thread)) {
+			return false;
+		}
 		const controller = this.agents.controller(thread);
-		if (!project || !controller) {
+		if (!controller) {
 			return false;
 		}
 		// Reopened: the hub only sends to a resolved thread when the user asked to reopen it.
@@ -393,6 +410,12 @@ export class Projects implements vscode.Disposable {
 	}
 
 	private deliver(project: LiveProject, thread: string, controller: ChatController, text: string, from: 'coordinator' | undefined): void {
+		// A thread just started shows its saved chat first; the note follows it, in the order notes came.
+		const restoring = controller.whenRestored;
+		if (restoring) {
+			void restoring.then(() => this.deliver(project, thread, controller, text, from));
+			return;
+		}
 		// The pane's activity can lag the controller by a tick, so both are asked: a note sent to a busy chat would be dropped.
 		if (this.agents.settingUp(thread) || this.agents.activity(thread)?.busy || controller.running) {
 			project.queued.set(thread, [...project.queued.get(thread) ?? [], text]);
@@ -401,12 +424,13 @@ export class Projects implements vscode.Disposable {
 		}
 	}
 
-	private read(thread: string, last: number): string | undefined {
-		const controller = this.agents.controller(thread);
-		if (!controller) {
+	/** Reads a thread's chat without starting it: the coordinator may read many threads it never messages. */
+	private async read(thread: string, last: number): Promise<string | undefined> {
+		if (!this.agents.record(thread)) {
 			return undefined;
 		}
-		return controller.conversation
+		const items = await this.agents.savedConversation(thread).catch(() => []);
+		return items
 			.flatMap(item => item.kind === 'user' ? [`User: ${item.text}`] : item.kind === 'agent' ? [`Thread: ${item.text}`] : [])
 			.slice(-last)
 			.join('\n\n');
@@ -546,7 +570,7 @@ export class Projects implements vscode.Disposable {
 		void this.refreshSettings(project);
 	}
 
-	private async settingsAction(coordinatorId: string, action: 'pickRepository' | 'addFiles' | 'newFile' | 'openFile' | 'draft', name?: string): Promise<void> {
+	private async settingsAction(coordinatorId: string, action: ProjectSettingsAction, name?: string): Promise<void> {
 		const project = this.projects.get(coordinatorId);
 		if (!project) {
 			return;
@@ -592,6 +616,9 @@ export class Projects implements vscode.Disposable {
 					return;
 				case 'draft':
 					return this.draft(project);
+				case 'cleanUp':
+					await this.agents.cleanUpMerged(coordinatorId);
+					return this.refreshSettings(project);
 			}
 		} catch (err) {
 			void vscode.window.showErrorMessage(errorMessage(err));
@@ -690,12 +717,15 @@ export class Projects implements vscode.Disposable {
 			return;
 		}
 		const model = project.coordinator.model;
+		const now = Date.now();
 		project.coordinator.showProjectPanel({
 			name: this.agents.record(project.id)?.title ?? '',
 			counts: threadCounts(project.hub.threadList, project.merged, project.removed),
+			// Archived threads leave the list (the Agents pane has them under Archived); the merged count still counts them.
 			threads: project.hub.threadList.flatMap(thread => {
 				const state = panelState(thread, project.merged, project.removed);
-				return state ? [{ id: thread.id, title: this.agents.record(thread.id)?.title ?? thread.title, state }] : [];
+				const record = this.agents.record(thread.id);
+				return state && !(record && isArchived(record, now)) ? [{ id: thread.id, title: record?.title ?? thread.title, state }] : [];
 			}),
 			...(conductor ? { conductor: { openTracks: conductor.tracks.filter(track => track.state !== 'done').length } } : {}),
 			...(model ? { model } : {}),

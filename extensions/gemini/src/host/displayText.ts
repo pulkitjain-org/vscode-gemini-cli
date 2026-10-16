@@ -29,3 +29,15 @@ export function relativeTime(then: number, now: number): string {
 	const days = Math.floor(hours / 24);
 	return days < 7 ? vscode.l10n.t("{0}d", days) : vscode.l10n.t("{0}w", Math.floor(days / 7));
 }
+
+/** A size as people read it: "820 KB", "1.4 GB". */
+export function formatBytes(bytes: number): string {
+	const units = [vscode.l10n.t("bytes"), vscode.l10n.t("KB"), vscode.l10n.t("MB"), vscode.l10n.t("GB"), vscode.l10n.t("TB")];
+	let value = bytes;
+	let unit = 0;
+	while (value >= 1024 && unit < units.length - 1) {
+		value /= 1024;
+		unit++;
+	}
+	return `${unit && value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
+}

@@ -62,9 +62,9 @@ export interface ThreadDriver {
 	 */
 	start(request: ThreadRequest): Promise<string>;
 	/** Adds `text` to the thread's next turn; false when the thread's agent is gone, such as removed after its merge. */
-	message(thread: string, text: string): boolean | void;
-	/** The thread's latest messages as text, newest last. */
-	read(thread: string, last: number): string | undefined;
+	message(thread: string, text: string): boolean | void | Promise<boolean | void>;
+	/** The thread's latest messages as text, newest last; a thread that is not running is read from its saved chat. */
+	read(thread: string, last: number): string | undefined | Promise<string | undefined>;
 	/** Adds one of the project's repositories to a thread's folder; resolves with what to tell the thread. */
 	addRepo?(thread: string, repo: string): Promise<string>;
 }
@@ -352,7 +352,7 @@ export class ProjectHub implements ProjectToolHost {
 		if (repos.length > 1) {
 			parts.push(`<repositories>\n${repos.map(key => `- ${key}`).join('\n')}\n</repositories>`);
 		}
-		parts.push(`<threads>\n${this.threads.size ? this.threadList.map(threadLine).join('\n') : 'none yet'}\n</threads>`);
+		parts.push(`<threads>\n${this.threads.size ? wakeThreadLines(this.threadList).join('\n') : 'none yet'}\n</threads>`);
 		// The session keeps what it was sent, so the memory goes again only when it changed.
 		const notes = memory?.trim() ?? '';
 		if (notes && notes !== this.sentMemory) {
@@ -452,7 +452,7 @@ export class ProjectHub implements ProjectToolHost {
 				if (this.threads.get(thread)?.resolved && args.reopen !== true) {
 					return error(`Thread ${thread} is resolved (merged). Start a new thread for this work. Only if the user asked to reopen ${thread}, call message_thread again with reopen: true.`);
 				}
-				if (this.driver.message(thread, text) === false) {
+				if (await this.driver.message(thread, text) === false) {
 					return error(`Thread ${thread} is gone, removed after its merge. Start a new thread for this work.`);
 				}
 				if (args.reopen === true) {
@@ -461,11 +461,11 @@ export class ProjectHub implements ProjectToolHost {
 				return ok('Sent: the thread takes it up now, or after its current turn.');
 			}
 			case 'list_threads':
-				return ok(this.threads.size ? this.threadList.map(threadLine).join('\n') : 'No threads yet.');
+				return ok(this.threads.size ? (args.all === true ? this.threadList.map(threadLine) : wakeThreadLines(this.threadList)).join('\n') : 'No threads yet.');
 			case 'read_thread': {
 				const thread = str(args.thread);
 				const last = typeof args.last === 'number' && args.last > 0 ? Math.min(Math.floor(args.last), 50) : 10;
-				const text = this.threads.has(thread) ? this.driver.read(thread, last) : undefined;
+				const text = this.threads.has(thread) ? await this.driver.read(thread, last) : undefined;
 				return text === undefined ? error(`No thread ${thread}.`) : ok(text || '(no messages yet)');
 			}
 			case 'post': {
@@ -489,6 +489,23 @@ export class ProjectHub implements ProjectToolHost {
  */
 function wakes(event: ProjectEvent): boolean {
 	return event.kind === 'user';
+}
+
+/** How many merged threads each wake lists, the most recent; list_threads with all: true lists every one. */
+export const listedMergedThreads = 10;
+
+/**
+ * The wake's thread list: every open thread, and the latest merged ones, so
+ * the wake stays the same size however long the project has run.
+ */
+export function wakeThreadLines(threads: readonly ThreadInfo[]): string[] {
+	const merged = threads.filter(thread => thread.resolved);
+	const hidden = new Set(merged.slice(0, Math.max(0, merged.length - listedMergedThreads)));
+	const lines = threads.filter(thread => !hidden.has(thread)).map(threadLine);
+	if (hidden.size) {
+		lines.push(`- ${hidden.size === 1 ? '1 older merged thread' : `${hidden.size} older merged threads`} not listed; list_threads with all: true lists them.`);
+	}
+	return lines;
 }
 
 function threadLine(thread: ThreadInfo): string {

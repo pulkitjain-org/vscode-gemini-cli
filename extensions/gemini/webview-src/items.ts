@@ -17,7 +17,7 @@ import { applyInlineStyles } from './inlineStyles';
 import { renderMath } from './math';
 import { mathPlugin } from './mathRule';
 import { enhanceMarkdown } from './markdownExtras';
-import { button, copyButton, el, icon, setLabel } from './dom';
+import { button, copyButton, el, icon, onIntent, setLabel } from './dom';
 import { thoughtPreview } from './streaming';
 import { expanded, state, strings, thoughtTimes, ui, vscode } from './view';
 
@@ -65,6 +65,10 @@ function renderThreadCard(item: ItemOf<'thread'>): HTMLElement {
 	const send = (action: ThreadAction, repo?: string) => vscode.postMessage({ type: 'threadAction', thread: item.thread, action, ...(repo ? { repo } : {}) });
 	const title = button('thread-title', item.title, () => send('open'));
 	title.prepend(el('span', 'thread-dot'));
+	// A thread that isn't running starts as the pointer reaches its title, so its chat is ready by the click.
+	if (!item.removed) {
+		onIntent(title, () => vscode.postMessage({ type: 'prepareThread', thread: item.thread }));
+	}
 	card.append(title);
 	const state = project?.states[item.state] ?? item.state;
 	const repos = item.repos ?? [];

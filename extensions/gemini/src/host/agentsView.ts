@@ -11,7 +11,7 @@ import { AgentChanges, ChangeTotals, formatCounts } from '../acp/agentChanges';
 import { agentRowMeta } from '../acp/agentRow';
 import { attentionChange, waitingCount } from '../acp/attention';
 import { branchNameFrom, isValidBranchName } from '../acp/branchNames';
-import { AgentRecord, AgentsModel, AgentsSnapshot, ThreadRepo, WorkspaceRecord } from '../acp/agents';
+import { AgentRecord, AgentsModel, AgentsSnapshot, isArchived, ThreadRepo, WorkspaceRecord } from '../acp/agents';
 import { coordinatorModel, threadMemoryContext, threadPrompt, type ThreadRequest } from '../acp/projectHub';
 import { savedRepoCount, type ProjectRepo } from '../acp/projectStore';
 import { linkCoordinatorRules, linkThreadRules, ruleEntries, ruleFolders } from '../acp/projectRules';
@@ -24,7 +24,7 @@ import { reviewRequest, workingChanges } from '../acp/reviewPrompt';
 import type { SessionChoice } from '../acp/sessionSettings';
 import { TranscriptStore } from '../acp/transcriptStore';
 import { folderTrustApplies, isFolderTrusted, trustedFoldersPath } from '../acp/trustedFolders';
-import { AgentWorktree, allThreadsHome, branchExists, commitAll, coordinatorHome, createWorktree, createWorktreeAt, currentBranch, folderInRepository, freeFolder, mergeBranch, removeWorktree, repositoryRoot, runWorktreeSetup, threadGuide, threadsHome, worktreeSetupCommand, projectsHome, worktreesHome, worktreeStatus, writeThreadGuide } from '../acp/worktrees';
+import { AgentWorktree, allThreadsHome, branchExists, commitAll, coordinatorHome, createWorktree, createWorktreeAt, currentBranch, folderInRepository, folderSize, freeFolder, mergeBranch, removeWorktree, repositoryRoot, restoreWorktree, runWorktreeSetup, threadGuide, threadsHome, worktreeSetupCommand, projectsHome, worktreesHome, worktreeStatus, writeThreadGuide } from '../acp/worktrees';
 import { supportedMcpServers } from '../acp/agentClient';
 import { AgentNotifier } from './agentNotifier';
 import { AgentService } from './agentService';
@@ -35,7 +35,7 @@ import { ReviewController } from './reviewController';
 import type { BrowserTools } from './browserTools';
 import { ChatActivity, ChatController, ChatEnhancer, FileSearch, openChatAsMarkdown } from './chatController';
 import { configSection } from './configuration';
-import { relativeTime, tildify } from './displayText';
+import { formatBytes, relativeTime, tildify } from './displayText';
 import { Projects, projectsEnabled, type ThreadSetup } from './projects';
 export { relativeTime } from './displayText';
 import { DiffPreview } from './diffPreview';
@@ -85,7 +85,15 @@ interface GapNode {
 	readonly kind: 'gap';
 }
 
-type Node = SectionNode | MessageNode | GapNode | WorkspaceNode | AgentNode;
+/** A project's threads merged over a week ago, collapsed under one row so a long-running project's list stays short. */
+interface ArchiveNode {
+	readonly kind: 'archive';
+	readonly coordinator: AgentRecord;
+	readonly folder: string;
+	readonly count: number;
+}
+
+type Node = SectionNode | MessageNode | GapNode | WorkspaceNode | AgentNode | ArchiveNode;
 
 /** One agent, as Agent Home and the title bar show it. */
 export interface AgentSummary {
@@ -147,6 +155,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	private readonly merging = new Set<string>();
 	/** Threads whose worktree setup still runs; they get their brief when it ends. */
 	private readonly settingUp = new Set<string>();
+	/** Threads whose cleaned-up folders are being put back, so two callers share one `git worktree add`. */
+	private readonly restoringFolders = new Map<string, Promise<boolean>>();
 	/** The last worktree being added in each repository, so threads started together take turns. */
 	private readonly worktreeQueue = new Map<string, Promise<void>>();
 	/** The model a thread's first session starts on, picked in the New thread dialog. */
@@ -234,6 +244,10 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			openChanges: id => this.openChanges(id),
 			undoThread: id => this.undoThread(id),
 			resume: id => this.resumeThread(id),
+			prepare: id => this.prepareThread(id),
+			restoreFolder: id => this.restoreFolder(id),
+			savedConversation: async id => this.live.get(id)?.controller.conversation ?? (await this.transcripts.load(id)).items,
+			cleanUpMerged: id => this.cleanUpMerged(id),
 			settingUp: id => this.settingUp.has(id),
 			setResolved: (id, resolved) => this.model.setThreadResolved(id, resolved),
 		}, String(context.extension.packageJSON.version ?? '0'));
@@ -254,6 +268,13 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			vscode.workspace.onDidChangeConfiguration(e => (e.affectsConfiguration(`${configSection}.notifications`) || e.affectsConfiguration(`${configSection}.projects.enabled`)) && this.refresh()),
 			// Relative times go stale; refresh them only while the pane is visible.
 			this.tree.onDidChangeVisibility(e => this.setRefreshing(e.visible)),
+			// A thread picked with the keyboard is likely opened next: its session starts now, so the chat is ready by then.
+			this.tree.onDidChangeSelection(e => {
+				const node = e.selection[0];
+				if (node?.kind === 'agent' && node.record.project?.role === 'thread') {
+					this.prepareThread(node.record.id);
+				}
+			}),
 			vscode.commands.registerCommand('gemini.agents.newAgent', (node?: Node) => this.newAgent(node)),
 			vscode.commands.registerCommand('gemini.agents.newAgentOnBranch', (node?: Node) => this.newAgent(node, true)),
 			vscode.commands.registerCommand('gemini.agents.mergeBack', (node?: Node) => node?.kind === 'agent' && this.mergeBack(node.record.id)),
@@ -338,6 +359,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				return this.workspaceItem(node);
 			case 'agent':
 				return this.agentItem(node);
+			case 'archive':
+				return this.archiveItem(node);
 		}
 	}
 
@@ -358,13 +381,41 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			});
 		}
 		if (node.kind === 'agent' && node.record.project?.role === 'coordinator') {
-			return this.model.threadsOf(node.record.id).map(record => {
-				const agent: AgentNode = { kind: 'agent', record, folder: record.worktree?.cwd ?? node.folder };
-				this.agentNodes.set(record.id, agent);
-				return agent;
-			});
+			const now = Date.now();
+			const threads = this.model.threadsOf(node.record.id);
+			// A thread running in this window stays in the list, even if it was merged long ago.
+			const archived = threads.filter(record => isArchived(record, now) && !this.live.has(record.id));
+			const rows: Node[] = threads.filter(record => !archived.includes(record)).map(record => this.threadNode(record, node.folder));
+			if (archived.length) {
+				rows.push({ kind: 'archive', coordinator: node.record, folder: node.folder, count: archived.length });
+			}
+			return rows;
+		}
+		if (node.kind === 'archive') {
+			const now = Date.now();
+			// Most recently merged first: the one most likely looked for.
+			return this.model.threadsOf(node.coordinator.id)
+				.filter(record => isArchived(record, now) && !this.live.has(record.id))
+				.sort((a, b) => resolvedAt(b) - resolvedAt(a))
+				.map(record => this.threadNode(record, node.folder));
 		}
 		return [];
+	}
+
+	private threadNode(record: AgentRecord, folder: string): AgentNode {
+		const agent: AgentNode = { kind: 'agent', record, folder: record.worktree?.cwd ?? folder };
+		this.agentNodes.set(record.id, agent);
+		return agent;
+	}
+
+	private archiveItem(node: ArchiveNode): vscode.TreeItem {
+		const item = new vscode.TreeItem(vscode.l10n.t("Archived"), vscode.TreeItemCollapsibleState.Collapsed);
+		item.id = `archive:${node.coordinator.id}`;
+		item.description = String(node.count);
+		item.iconPath = new vscode.ThemeIcon('archive');
+		item.tooltip = vscode.l10n.t("Threads merged over a week ago. Each keeps its chat and branch: open one to pick it up again.");
+		item.contextValue = 'archive';
+		return item;
 	}
 
 	/** A workspace's own agents; projects and their threads are in the Projects section while it shows. */
@@ -1165,7 +1216,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		let live = this.live.get(id);
 		if (!live) {
 			const folder = record.worktree?.cwd ?? workspace.folder;
-			if (record.worktree && !await exists(folder)) {
+			// A merged thread's folder may have been cleaned up: it comes back from its branch.
+			if (record.worktree && !await this.restoreFolder(id)) {
 				void vscode.window.showErrorMessage(vscode.l10n.t("The folder of \"{0}\"'s branch, {1}, no longer exists.", record.title, tildify(record.worktree.folder)));
 				return;
 			}
@@ -1236,7 +1288,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const live = this.start(record, folder, saved && !!record.sessionId);
 		if (saved) {
 			// Read while the tab opens; the agent reopens its session meanwhile.
-			void this.transcripts.load(record.id).then(stored => {
+			const restored = this.transcripts.load(record.id).then(stored => {
 				// The agent may have been stopped while the file was read.
 				if (this.live.get(record.id) !== live) {
 					return;
@@ -1244,6 +1296,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				live.controller.restore(stored.items, record.sessionId);
 				live.changes.restore(stored.changes);
 			});
+			// A prompt sent meanwhile, such as a note from the coordinator, waits: sent first, it would keep the saved chat from showing, and the next save would drop it.
+			live.controller.holdPrompts(restored);
 		}
 		return live;
 	}
@@ -1260,6 +1314,124 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		// Reopened without a tab, its session opens now rather than when shown.
 		started.session.open();
 		return started;
+	}
+
+	/**
+	 * The user is about to open a thread (the pointer is on its card or row, or
+	 * the keyboard picked it): its session starts now, so its chat is ready
+	 * when it opens. A thread already running, or whose folder was cleaned up, waits.
+	 */
+	private prepareThread(id: string): void {
+		if (!this.live.has(id)) {
+			void this.resumeThread(id);
+		}
+	}
+
+	/**
+	 * Puts back the worktree folders Clean Up removed from a merged thread,
+	 * from its branches; resolves whether the thread has a folder to run in.
+	 */
+	private restoreFolder(id: string): Promise<boolean> {
+		const pending = this.restoringFolders.get(id);
+		if (pending) {
+			return pending;
+		}
+		const restoring = (async () => {
+			const record = this.model.agent(id);
+			const workspace = record && this.model.workspace(record.workspaceId);
+			if (!record || !workspace) {
+				return false;
+			}
+			if (!record.worktree) {
+				return true;
+			}
+			const trees = await this.threadWorktrees(record);
+			const back = await Promise.all(trees.map(({ repository, worktree }) => restoreWorktree(repository, worktree).catch(() => false)));
+			// A thread in several repositories runs in its own folder, which Clean Up keeps; any repository that came back is enough to work in.
+			return record.repos?.length ? back.some(Boolean) && await exists(record.worktree.folder) : back.every(Boolean);
+		})().finally(() => this.restoringFolders.delete(id));
+		this.restoringFolders.set(id, restoring);
+		return restoring;
+	}
+
+	/** Each Git worktree an agent works in, with the repository it belongs to. */
+	private async threadWorktrees(record: AgentRecord): Promise<{ readonly repository: string; readonly worktree: AgentWorktree }[]> {
+		if (record.repos?.length) {
+			return record.repos.map(repo => ({ repository: repo.repository, worktree: repo }));
+		}
+		const workspace = this.model.workspace(record.workspaceId);
+		if (!record.worktree || !workspace) {
+			return [];
+		}
+		return [{ repository: await repositoryRoot(workspace.folder) ?? workspace.folder, worktree: record.worktree }];
+	}
+
+	/**
+	 * Project Settings' Clean Up: removes merged threads' worktree folders
+	 * (with their node_modules and builds) that hold nothing unmerged. Their
+	 * branches, chats and records stay, so each thread can still be opened,
+	 * and its folder comes back from its branch when it is.
+	 */
+	private async cleanUpMerged(coordinatorId: string): Promise<void> {
+		const threads = this.model.threadsOf(coordinatorId).filter(thread => thread.project?.role === 'thread' && thread.project.resolved && thread.worktree
+			&& !this.live.get(thread.id)?.activity.busy && !this.merging.has(thread.id) && !this.settingUp.has(thread.id));
+		type Folder = { readonly thread: AgentRecord; readonly repository: string; readonly worktree: AgentWorktree; readonly size: number };
+		const { found, kept } = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Looking at merged threads' folders...") }, async () => {
+			const found: Folder[] = [];
+			let kept = 0;
+			for (const thread of threads) {
+				for (const { repository, worktree } of await this.threadWorktrees(thread)) {
+					if (!await exists(worktree.folder)) {
+						continue;
+					}
+					// Only a folder whose every change is merged into what its repository has checked out.
+					const into = await currentBranch(repository).catch(() => undefined);
+					const status = into ? await worktreeStatus(worktree, into).catch(() => undefined) : undefined;
+					if (status && !status.uncommitted && !status.commits) {
+						found.push({ thread, repository, worktree, size: await folderSize(worktree.folder) });
+					} else {
+						kept++;
+					}
+				}
+			}
+			return { found, kept };
+		});
+		const keptNote = kept === 1 ? vscode.l10n.t("1 folder has work that isn't merged yet, so it stays.") : kept ? vscode.l10n.t("{0} folders have work that isn't merged yet, so they stay.", kept) : '';
+		if (!found.length) {
+			void vscode.window.showInformationMessage([vscode.l10n.t("No merged thread's folder to clean up."), keptNote].filter(Boolean).join(' '));
+			return;
+		}
+		const size = formatBytes(found.reduce((sum, folder) => sum + folder.size, 0));
+		const remove = vscode.l10n.t("Remove Folders");
+		const detail = [vscode.l10n.t("Each thread keeps its branch and chat. Its folder comes back from the branch when you open the thread again."), keptNote].filter(Boolean).join('\n\n');
+		const question = found.length === 1 ? vscode.l10n.t("Remove 1 merged thread's folder, freeing {0}?", size) : vscode.l10n.t("Remove {0} merged threads' folders, freeing {1}?", found.length, size);
+		if (await vscode.window.showWarningMessage(question, { modal: true, detail }, remove) !== remove) {
+			return;
+		}
+		let removed = 0;
+		let freed = 0;
+		const failed: string[] = [];
+		for (const folder of found) {
+			// A turn may have started while the question was open.
+			if (this.live.get(folder.thread.id)?.activity.busy) {
+				continue;
+			}
+			// An idle thread's session runs in the folder: it ends, with its chat saved, and reopens with the folder.
+			this.stop(folder.thread.id, true);
+			try {
+				await removeWorktree(folder.repository, folder.worktree, false);
+				removed++;
+				freed += folder.size;
+			} catch (err) {
+				failed.push(`${tildify(folder.worktree.folder)}: ${errorMessage(err)}`);
+			}
+		}
+		this.refresh();
+		if (failed.length) {
+			void vscode.window.showWarningMessage(vscode.l10n.t("Removed {0} folders. Could not remove {1}", removed, failed.join('; ')));
+		} else {
+			void vscode.window.showInformationMessage(removed === 1 ? vscode.l10n.t("Removed 1 folder, freeing {0}.", formatBytes(freed)) : vscode.l10n.t("Removed {0} folders, freeing {1}.", removed, formatBytes(freed)));
+		}
 	}
 
 	/** Starts a project thread's agent without a tab, as its project opens; skipped when it runs or its worktree is gone. */
@@ -1954,6 +2126,11 @@ async function freeBranchName(repositories: readonly string[], branch: string): 
 			return candidate;
 		}
 	}
+}
+
+/** When a thread was merged back: kept since this version, else its last use. */
+function resolvedAt(record: AgentRecord): number {
+	return record.project?.role === 'thread' ? record.project.resolvedAt ?? record.updatedAt : record.updatedAt;
 }
 
 /** Removes a multi-repository thread's worktrees, then its folder, which GeminiCode made and holds nothing else of the user's. */

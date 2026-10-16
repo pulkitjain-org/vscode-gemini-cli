@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { allThreadsHome, branchExists, commitAll, createWorktree, createWorktreeAt, currentBranch, folderInRepository, freeFolder, git, mergeBranch, removeWorktree, repositoryRoot, runWorktreeSetup, threadGuide, threadsHome, worktreeSetupCommand, worktreesHome, worktreeStatus, writeThreadGuide } from '../../src/acp/worktrees';
+import { allThreadsHome, branchExists, commitAll, createWorktree, createWorktreeAt, currentBranch, folderInRepository, folderSize, freeFolder, git, mergeBranch, removeWorktree, repositoryRoot, restoreWorktree, runWorktreeSetup, threadGuide, threadsHome, worktreeSetupCommand, worktreesHome, worktreeStatus, writeThreadGuide } from '../../src/acp/worktrees';
 
 let root: string;
 let repo: string;
@@ -92,6 +92,31 @@ describe('worktrees', () => {
 		await removeWorktree(repo, second, true);
 		expect(await branchExists(repo, 'gemini/second')).toBe(false);
 		expect(await git(repo, ['worktree', 'list'])).not.toContain('second');
+	});
+});
+
+describe('cleaning up a merged worktree', () => {
+	it('puts the folder back on its branch, with the work it had', async () => {
+		const worktree = await createWorktree(repo, 'gemini/fix', '', home);
+		await fs.writeFile(path.join(worktree.folder, 'src', 'cart.ts'), 'export const total = 2;\n');
+		await commitAll(worktree.folder, 'Fix');
+		await fs.mkdir(path.join(worktree.folder, 'node_modules', 'pkg'), { recursive: true });
+		await fs.writeFile(path.join(worktree.folder, 'node_modules', 'pkg', 'index.js'), 'x'.repeat(1000));
+		expect(await folderSize(worktree.folder)).toBeGreaterThanOrEqual(1000);
+		await removeWorktree(repo, worktree, false);
+		expect(await folderSize(worktree.folder)).toBe(0);
+		expect(await restoreWorktree(repo, worktree)).toBe(true);
+		expect(await fs.readFile(path.join(worktree.folder, 'src', 'cart.ts'), 'utf8')).toBe('export const total = 2;\n');
+		expect(await currentBranch(worktree.folder)).toBe('gemini/fix');
+		expect(await worktreeStatus(worktree, 'main')).toEqual({ uncommitted: 0, commits: 1 });
+		// There already: nothing to do.
+		expect(await restoreWorktree(repo, worktree)).toBe(true);
+	});
+
+	it('cannot put a folder back once its branch is gone', async () => {
+		const worktree = await createWorktree(repo, 'gemini/gone', '', home);
+		await removeWorktree(repo, worktree, true);
+		expect(await restoreWorktree(repo, worktree)).toBe(false);
 	});
 });
 

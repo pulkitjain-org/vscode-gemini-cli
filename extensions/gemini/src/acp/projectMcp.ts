@@ -49,8 +49,8 @@ export const coordinatorTools: readonly McpTool[] = [
 	},
 	{
 		name: 'list_threads',
-		description: 'The project\'s threads with their state and last line. The same list is already in each wake; call this only for a fresh look.',
-		inputSchema: { type: 'object', properties: {} },
+		description: 'The project\'s threads with their state and last line. The same list is already in each wake; call this only for a fresh look, or with all: true for the older merged threads the wake leaves out.',
+		inputSchema: { type: 'object', properties: { all: { type: 'boolean', description: 'Also list every older merged thread.' } } },
 	},
 	{
 		name: 'read_thread',

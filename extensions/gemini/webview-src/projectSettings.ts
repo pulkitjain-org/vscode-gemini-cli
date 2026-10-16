@@ -274,12 +274,19 @@ function general(current: Open): HTMLElement[] {
 		settingRow(text.planFirst, text.planFirstHint, plan),
 		settingRow(text.branchPrefix, text.branchPrefixHint, prefix),
 	);
-	return [
+	const sections = [
 		stats,
 		section(text.nameLabel, text.nameHint, name),
 		section(text.reposLabel, text.reposHint, repos),
 		section(text.defaultsLabel, undefined, defaults),
 	];
+	if (view.stats.merged) {
+		// The extension asks first, with what it would remove and the space it frees.
+		const cleanUp = el('div');
+		cleanUp.append(button('link-button', text.cleanUp, () => vscode.postMessage({ type: 'projectSettingsAction', action: 'cleanUp' }), 'trash'));
+		sections.push(section(text.cleanUpLabel, text.cleanUpHint, cleanUp));
+	}
+	return sections;
 }
 
 function memory(current: Open): HTMLElement[] {

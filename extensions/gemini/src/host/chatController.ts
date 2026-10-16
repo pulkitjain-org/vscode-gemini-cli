@@ -35,7 +35,7 @@ import { readGitHead } from '../acp/gitHead';
 import { upgradeUrl } from '../acp/helpLinks';
 import { EnhanceCancelledError, enhanceHistory } from '../acp/promptEnhancer';
 import type { EnhancePromptInput } from '../acp/quickPrompts';
-import { ChatStrings, chatProtocolVersion, FromWebview, NewThread, ProjectChatStrings, ProjectPanel, ProjectRepoView, ProjectSettingsSave, ProjectSettingsView, statusCommands, ThreadAction, ToWebview } from './chatProtocol';
+import { ChatStrings, chatProtocolVersion, FromWebview, NewThread, ProjectChatStrings, ProjectPanel, ProjectRepoView, ProjectSettingsAction, ProjectSettingsSave, ProjectSettingsView, statusCommands, ThreadAction, ToWebview } from './chatProtocol';
 import { stopReasonNotice, toViewStatus } from './chatStatus';
 import { DiffPreview } from './diffPreview';
 import { relativeTime, tildify } from './displayText';
@@ -124,7 +124,9 @@ export interface ChatProject {
 	/** Project settings: open it, save it, or one of its buttons that needs the extension. */
 	openSettings(): void;
 	saveSettings(settings: ProjectSettingsSave): void;
-	settingsAction(action: 'pickRepository' | 'addFiles' | 'newFile' | 'openFile' | 'draft', name?: string): void;
+	settingsAction(action: ProjectSettingsAction, name?: string): void;
+	/** The pointer is on a thread's card or panel row: start its agent ahead of the click. */
+	prepareThread(thread: string): void;
 }
 
 export interface ChatWorkspace {
@@ -208,6 +210,8 @@ export class ChatController implements vscode.Disposable {
 	private projectPanel: ProjectPanel | undefined;
 	/** Context sent ahead of the next prompt without showing in the chat, such as a project's memory for a thread. */
 	private pendingContext: string | undefined;
+	/** The saved chat being read in, while it is: prompts wait for it, so neither replaces the other. */
+	private restoring: Promise<void> | undefined;
 	/** Project settings to open once the view has loaded. */
 	private settingsPending: ProjectSettingsView | undefined;
 	/** Whether the view's script has said it is ready since the view was attached. */
@@ -394,6 +398,21 @@ export class ChatController implements vscode.Disposable {
 		return this.transcript.items;
 	}
 
+	/** Holds prompts until `loading` (reading this chat's saved conversation) settles. */
+	holdPrompts(loading: Promise<unknown>): void {
+		const held: Promise<void> = loading.then(() => undefined, () => undefined).finally(() => {
+			if (this.restoring === held) {
+				this.restoring = undefined;
+			}
+		});
+		this.restoring = held;
+	}
+
+	/** Settles once the saved conversation is in; undefined when nothing is being read. */
+	get whenRestored(): Promise<void> | undefined {
+		return this.restoring;
+	}
+
 	/**
 	 * Shows a saved conversation, unless one has started here. `sessionId` is
 	 * the session it belongs to: if the agent opens another, the chat says the
@@ -507,6 +526,9 @@ export class ChatController implements vscode.Disposable {
 		if (!text.trim() && !attachments.length) {
 			return;
 		}
+		if (this.restoring) {
+			await this.restoring;
+		}
 		const project = this.options.project;
 		if (project) {
 			// A project's chat: the message goes to the hub, which wakes the coordinator with it.
@@ -544,6 +566,9 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	async sendUnseen(text: string): Promise<void> {
+		if (this.restoring) {
+			await this.restoring;
+		}
 		if (this.busy) {
 			throw new Error('A turn is already running.');
 		}
@@ -1121,6 +1146,9 @@ export class ChatController implements vscode.Disposable {
 				break;
 			case 'threadAction':
 				this.options.project?.threadAction(message.thread, message.action, message.repo);
+				break;
+			case 'prepareThread':
+				this.options.project?.prepareThread(message.thread);
 				break;
 			case 'openProjectSettings':
 				this.options.project?.openSettings();
@@ -1942,6 +1970,9 @@ function projectStrings(): ProjectChatStrings {
 			statMerged: vscode.l10n.t("merged"),
 			statLines: vscode.l10n.t("lines changed"),
 			statRepos: vscode.l10n.t("repositories"),
+			cleanUpLabel: vscode.l10n.t("Merged threads' folders"),
+			cleanUpHint: vscode.l10n.t("A merged thread keeps its folder, with its dependencies and builds, so it can carry on. Clean up removes the folders whose work is all merged. Each thread keeps its branch and chat, and its folder comes back when you open it."),
+			cleanUp: vscode.l10n.t("Clean Up Folders..."),
 			connectLabel: vscode.l10n.t("How the repositories connect"),
 			connectHint: vscode.l10n.t("Every thread and the coordinator read this. Say what each repository owns and where they meet: APIs, queries, data models, URLs, release order."),
 			instructionsLabel: vscode.l10n.t("Project instructions"),

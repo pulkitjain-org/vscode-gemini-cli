@@ -62,6 +62,8 @@ export type AgentProjectRole =
 		readonly track?: string;
 		/** Merged back: the thread's work is done, and it takes no more unless the user reopens it. */
 		readonly resolved?: boolean;
+		/** When it was merged back, in ms since the epoch; a week on, it is archived (`isArchived`). */
+		readonly resolvedAt?: number;
 	};
 
 export interface AgentsSnapshot {
@@ -70,6 +72,29 @@ export interface AgentsSnapshot {
 }
 
 const maxTitleLength = 48;
+
+/** How many of a project's open threads start with it: the most recently used. The rest start when needed. */
+export const warmThreadCount = 6;
+/** How long a merged thread stays in the project's list before it moves under Archived. */
+export const archiveAfterMs = 7 * 24 * 60 * 60 * 1000;
+
+/** The threads to start as their project opens: open ones, most recently used first, `limit` at most. */
+export function warmThreads(threads: readonly AgentRecord[], limit = warmThreadCount): string[] {
+	return threads
+		.filter(thread => thread.project?.role === 'thread' && !thread.project.resolved)
+		.sort((a, b) => b.updatedAt - a.updatedAt)
+		.slice(0, limit)
+		.map(thread => thread.id);
+}
+
+/**
+ * A thread merged back over a week ago: listed under Archived, and never
+ * started until the user opens it. Its chat, branch and record all stay.
+ */
+export function isArchived(record: AgentRecord, now: number): boolean {
+	const project = record.project;
+	return project?.role === 'thread' && !!project.resolved && (project.resolvedAt ?? record.updatedAt) <= now - archiveAfterMs;
+}
 
 /** A short title from a prompt's first line. */
 export function titleFromPrompt(text: string): string | undefined {
@@ -206,8 +231,8 @@ export class AgentsModel {
 		if (project?.role !== 'thread' || !!project.resolved === resolved) {
 			return;
 		}
-		const { resolved: _, ...rest } = project;
-		this.update(id, a => ({ ...a, project: resolved ? { ...rest, resolved: true } : rest }));
+		const { resolved: _, resolvedAt: __, ...rest } = project;
+		this.update(id, a => ({ ...a, project: resolved ? { ...rest, resolved: true, resolvedAt: this.now() } : rest }));
 	}
 
 	/** A project's threads, oldest first. */

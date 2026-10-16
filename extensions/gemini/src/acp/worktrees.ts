@@ -237,6 +237,47 @@ export async function removeWorktree(repository: string, worktree: AgentWorktree
 	}
 }
 
+/**
+ * Puts back a worktree whose folder was removed (Clean Up Merged Folders),
+ * at the same place and on its branch as the branch now stands. Resolves
+ * false when the branch is gone too; does nothing when the folder is there.
+ */
+export async function restoreWorktree(repository: string, worktree: AgentWorktree): Promise<boolean> {
+	if (await fs.access(worktree.folder).then(() => true, () => false)) {
+		return true;
+	}
+	if (!await branchExists(repository, worktree.branch)) {
+		return false;
+	}
+	// Git still lists the removed folder until it is pruned, and refuses to add it again meanwhile.
+	await git(repository, ['worktree', 'prune']);
+	await fs.mkdir(path.dirname(worktree.folder), { recursive: true });
+	await git(repository, ['worktree', 'add', '--quiet', worktree.folder, worktree.branch]);
+	return true;
+}
+
+/** The bytes the files under `folder` take, symbolic links not followed; 0 when it is gone. */
+export async function folderSize(folder: string): Promise<number> {
+	let total = 0;
+	const folders = [folder];
+	// A few folders at a time: a worktree's node_modules can hold a hundred thousand files.
+	while (folders.length) {
+		const batch = folders.splice(0, 16);
+		await Promise.all(batch.map(async each => {
+			const entries = await fs.readdir(each, { withFileTypes: true }).catch(() => []);
+			for (const entry of entries) {
+				const full = path.join(each, entry.name);
+				if (entry.isDirectory()) {
+					folders.push(full);
+				} else if (entry.isFile()) {
+					total += await fs.lstat(full).then(stat => stat.size, () => 0);
+				}
+			}
+		}));
+	}
+	return total;
+}
+
 /** The script a repository keeps for setting up a new agent worktree, relative to its top folder. */
 export const setupScriptFile = path.join('.gemini', 'worktree-setup.sh');
 

@@ -5,7 +5,7 @@
 
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { AgentsModel, titleFromPrompt } from '../../src/acp/agents';
+import { AgentsModel, archiveAfterMs, isArchived, titleFromPrompt, warmThreads } from '../../src/acp/agents';
 
 function clock(start = 1_000) {
 	let time = start;
@@ -57,7 +57,7 @@ describe('AgentsModel', () => {
 	});
 
 	it('keeps a thread resolved until it is reopened, and only for threads', () => {
-		const model = new AgentsModel();
+		const model = new AgentsModel(undefined, () => 5_000);
 		const workspace = model.addWorkspace('/work/api').id;
 		const coordinator = model.addAgent(workspace, 'Project', undefined, 'c', { role: 'coordinator' });
 		const thread = model.addAgent(workspace, 'Thread', undefined, 't', { role: 'thread', coordinator: 'c', byCoordinator: true });
@@ -66,7 +66,7 @@ describe('AgentsModel', () => {
 		model.setThreadResolved(thread.id, true);
 		model.setThreadResolved(thread.id, true);
 		model.setThreadResolved(coordinator.id, true);
-		expect(model.agent('t')?.project).toEqual({ role: 'thread', coordinator: 'c', byCoordinator: true, resolved: true });
+		expect(model.agent('t')?.project).toEqual({ role: 'thread', coordinator: 'c', byCoordinator: true, resolved: true, resolvedAt: 5_000 });
 		expect(model.agent('c')?.project).toEqual({ role: 'coordinator' });
 		model.setThreadResolved(thread.id, false);
 		expect(model.agent('t')?.project).toEqual({ role: 'thread', coordinator: 'c', byCoordinator: true });
@@ -175,5 +175,49 @@ describe('AgentsModel', () => {
 		expect(reloaded.agent(plain.id)?.worktree).toBeUndefined();
 		const broken = { ...model.snapshot(), agents: [{ ...agent, worktree: { folder: 1 } }] };
 		expect(new AgentsModel(broken as never).agent(agent.id)).toBeUndefined();
+	});
+});
+
+describe('many threads', () => {
+	function project(count: number, time: ReturnType<typeof clock>) {
+		const model = new AgentsModel(undefined, time.now);
+		const workspace = model.addWorkspace('/work/api').id;
+		model.addAgent(workspace, 'Project', undefined, 'c', { role: 'coordinator' });
+		// Each thread a moment after the last.
+		const ids = Array.from({ length: count }, (_, i) => {
+			time.advance(1);
+			return model.addAgent(workspace, `Thread ${i}`, undefined, `t${i}`, { role: 'thread', coordinator: 'c', byCoordinator: true }).id;
+		});
+		return { model, ids };
+	}
+
+	it('starts only the most recently used open threads with their project', () => {
+		const time = clock();
+		const { model, ids } = project(10, time);
+		time.advance(1);
+		model.recordPrompt('t2', 'Fix it');
+		time.advance(1);
+		model.setThreadResolved('t9', true);
+		expect(warmThreads(model.threadsOf('c'), 3)).toEqual(['t2', 't8', 't7']);
+		expect(warmThreads(model.threadsOf('c'))).toHaveLength(6);
+		expect(warmThreads(model.threadsOf('c'), 100)).toHaveLength(ids.length - 1);
+	});
+
+	it('archives a thread a week after its merge, and never an open one', () => {
+		const time = clock();
+		const { model } = project(2, time);
+		model.setThreadResolved('t0', true);
+		time.advance(archiveAfterMs - 1);
+		expect(isArchived(model.agent('t0')!, time.now())).toBe(false);
+		time.advance(1);
+		expect(isArchived(model.agent('t0')!, time.now())).toBe(true);
+		expect(isArchived(model.agent('t1')!, time.now())).toBe(false);
+		expect(isArchived(model.agent('c')!, time.now())).toBe(false);
+		// Reopened, it is back in the list.
+		model.setThreadResolved('t0', false);
+		expect(isArchived(model.agent('t0')!, time.now())).toBe(false);
+		// Merged before the time was kept: its last use counts.
+		const old = { ...model.agent('t1')!, project: { role: 'thread' as const, coordinator: 'c', byCoordinator: true, resolved: true } };
+		expect(isArchived(old, time.now())).toBe(true);
 	});
 });

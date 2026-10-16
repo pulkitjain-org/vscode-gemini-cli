@@ -19,7 +19,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 22;
+export const chatProtocolVersion = 23;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -34,6 +34,9 @@ export interface ViewStatus {
 }
 
 /** What a project chat's thread card buttons do. */
+/** Project settings' buttons that need the extension: pick a repository folder, add or make a context file, open one, draft the Memory text, or clean up merged threads' folders. */
+export type ProjectSettingsAction = 'pickRepository' | 'addFiles' | 'newFile' | 'openFile' | 'draft' | 'cleanUp';
+
 export type ThreadAction = 'open' | 'stop' | 'merge' | 'review' | 'undo' | 'approve' | 'retry';
 
 /** A thread the user starts from the project chat's New thread dialog. */
@@ -176,6 +179,9 @@ export interface ProjectChatStrings {
 		readonly statMerged: string;
 		readonly statLines: string;
 		readonly statRepos: string;
+		readonly cleanUpLabel: string;
+		readonly cleanUpHint: string;
+		readonly cleanUp: string;
 		readonly connectLabel: string;
 		readonly connectHint: string;
 		readonly instructionsLabel: string;
@@ -547,8 +553,10 @@ export type FromWebview =
 	/** Open Project settings. */
 	| { readonly type: 'openProjectSettings' }
 	| { readonly type: 'saveProjectSettings'; readonly settings: ProjectSettingsSave }
-	/** Project settings' buttons that need the extension: pick a repository folder, add or make a context file, open one, or draft the Memory text. */
-	| { readonly type: 'projectSettingsAction'; readonly action: 'pickRepository' | 'addFiles' | 'newFile' | 'openFile' | 'draft'; readonly name?: string }
+	/** One of Project settings' buttons that need the extension. */
+	| { readonly type: 'projectSettingsAction'; readonly action: ProjectSettingsAction; readonly name?: string }
+	/** The pointer is on a thread's card or panel row: it is likely opened next, so its agent can start now. */
+	| { readonly type: 'prepareThread'; readonly thread: string }
 	/** Put back the files the turn ending with turnEnd item `itemId` changed, and those of later turns. */
 	| { readonly type: 'undoTurn'; readonly itemId: string }
 	/** Send the prompt of the turn ending with `itemId` again; only the latest turn offers it. */

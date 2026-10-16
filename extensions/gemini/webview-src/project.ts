@@ -11,7 +11,7 @@
 import { branchNameFrom } from '../src/acp/branchNames';
 import type { ParentProject, ProjectPanel } from '../src/host/chatProtocol';
 import { format } from './chatLogic';
-import { button, el, icon, setLabel } from './dom';
+import { button, el, icon, onIntent, setLabel } from './dom';
 import { state, strings, vscode } from './view';
 
 let panel: ProjectPanel | undefined;
@@ -206,6 +206,7 @@ export function showProjectPanel(next: ProjectPanel): void {
 			row.title = thread.title;
 			row.append(el('span', `panel-dot state-${thread.state}`), el('span', 'panel-thread-title', thread.title));
 			row.addEventListener('click', () => vscode.postMessage({ type: 'threadAction', thread: thread.id, action: 'open' }));
+			onIntent(row, () => vscode.postMessage({ type: 'prepareThread', thread: thread.id }));
 			list.append(row);
 		}
 		threads.append(list);
