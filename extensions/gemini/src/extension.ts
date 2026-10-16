@@ -93,6 +93,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		attachToFront: attachments => chatInFront().addAttachments(attachments),
 		model: agent => agentsView.controllerOf(agent)?.model,
 		newAgent: page => agentsView.newAgentFor(page),
+		send: (agent, text, attachments) => void agentsView.controllerOf(agent)?.send(text, attachments),
 	});
 	agentsView.browser = browserTools;
 	// caffeinate watches this process, so it ends with GeminiCode even if GeminiCode crashes.

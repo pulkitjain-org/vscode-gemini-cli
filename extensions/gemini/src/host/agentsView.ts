@@ -665,64 +665,40 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	}
 
 	/**
-	 * The browser's New Agent: asks where the agent works (a folder, on its own
-	 * branch or not), its model and its mode, one short pick at a time, then
-	 * starts it with its tab open and nothing sent, for the page to be handed
-	 * to it. `page` names the branch. Resolves with the agent, or undefined
-	 * when the user cancels.
+	 * The browser's New Agent: one popup (`_gemini.newAgentDialog`, drawn by
+	 * GeminiCode's workbench) asks where the agent works, on its own branch or
+	 * not, its model and mode, and optionally what it should do. Then the agent
+	 * starts with its tab open. `page` names the branch by default. Resolves
+	 * with the agent and its task, or undefined when the user cancels.
 	 */
-	async newAgentFor(page: string): Promise<{ readonly id: string; readonly title: string } | undefined> {
-		const title = vscode.l10n.t("New Agent");
-		const choose = vscode.l10n.t("Choose Folder...");
-		const places = await this.workspaces();
-		const where = await vscode.window.showQuickPick([
-			...places.map(place => ({ label: path.basename(place.folder) || place.folder, description: tildify(place.folder), folder: place.folder as string | undefined, git: place.git })),
-			{ label: `$(folder-opened) ${choose}`, description: '', folder: undefined, git: false },
-		], { title, placeHolder: vscode.l10n.t("Where the agent works") });
-		if (!where) {
-			return undefined;
-		}
-		const folder = where.folder ?? await this.chooseFolder();
-		if (!folder) {
-			return undefined;
-		}
-		let ownBranch = false;
-		if (where.folder ? where.git : !!await repositoryRoot(folder)) {
-			const branch = await vscode.window.showQuickPick([
-				{ label: vscode.l10n.t("On the current branch"), description: vscode.l10n.t("Edits the folder's files"), own: false },
-				{ label: vscode.l10n.t("On its own branch"), description: vscode.l10n.t("A new branch in a folder of its own, merged back when done"), own: true },
-			], { title, placeHolder: vscode.l10n.t("Which branch it works on") });
-			if (!branch) {
-				return undefined;
-			}
-			ownBranch = branch.own;
-		}
+	async newAgentFor(page: string): Promise<{ readonly id: string; readonly title: string; readonly task?: string } | undefined> {
 		// The models the agent offers come with a session; any running agent's list will do. Without one, it starts on the usual model.
 		const offered = [...this.live.values()].find(live => live.session.client.settings.model?.available.length)?.session.client.settings.model?.available;
-		let model: string | undefined;
-		if (offered) {
-			const available = sessionModelList(offered);
-			const usual = sessionModel(available);
-			const picked = await vscode.window.showQuickPick(available.map(choice => ({ label: choice.name, description: choice.id === usual ? vscode.l10n.t("Default") : choice.description, id: choice.id })).sort((a, b) => Number(b.id === usual) - Number(a.id === usual)), { title, placeHolder: vscode.l10n.t("The model it uses") });
-			if (!picked) {
-				return undefined;
-			}
-			model = picked.id === usual ? undefined : picked.id;
+		const models = offered ? sessionModelList(offered) : [];
+		const places = await this.workspaces();
+		const choice = await vscode.commands.executeCommand<{ folder: string; ownBranch: boolean; branch?: string; model?: string; mode: string; task?: string } | undefined>('_gemini.newAgentDialog', {
+			page,
+			folders: places.map(place => ({ folder: place.folder, label: path.basename(place.folder) || place.folder, description: tildify(place.folder), git: place.git })),
+			models: models.map(model => ({ id: model.id, name: model.name })),
+			...(models.length ? { defaultModel: sessionModel(models) } : {}),
+			modes: startModes().filter(mode => isModeAllowed(getApprovalPolicy(), mode.id)),
+			branchPlaceholder: branchNameFrom(page),
+		});
+		if (!choice || typeof choice.folder !== 'string' || !path.isAbsolute(choice.folder)) {
+			return undefined;
 		}
-		const modes = startModes().filter(mode => isModeAllowed(getApprovalPolicy(), mode.id));
-		let mode = modes[0]?.id ?? 'default';
-		if (modes.length > 1) {
-			const picked = await vscode.window.showQuickPick(modes.map(choice => ({ label: choice.name, description: choice.description, id: choice.id })), { title, placeHolder: vscode.l10n.t("How it asks before changing files") });
-			if (!picked) {
-				return undefined;
-			}
-			mode = picked.id;
-		}
+		const { folder, ownBranch, model } = choice;
+		const mode = typeof choice.mode === 'string' ? choice.mode : 'default';
 		let worktree: AgentWorktree | undefined;
 		if (ownBranch) {
 			const repository = await repositoryRoot(folder);
 			try {
-				worktree = repository ? await this.makeWorktree(repository, await freeBranchName([repository], branchNameFrom(page)), folder) : undefined;
+				if (!repository) {
+					void vscode.window.showErrorMessage(vscode.l10n.t("{0} is not in a Git repository, so the agent can't have its own branch.", path.basename(folder)));
+					return undefined;
+				}
+				const named = choice.branch && isValidBranchName(choice.branch) ? choice.branch : branchNameFrom(page);
+				worktree = await this.makeWorktree(repository, await freeBranchName([repository], named), folder);
 			} catch (err) {
 				void vscode.window.showErrorMessage(vscode.l10n.t("Could not create the agent's branch: {0}", errorMessage(err)));
 				return undefined;
@@ -738,7 +714,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			live.session.client.setModeOnNextSession(mode);
 		}
 		await this.open(agent.id);
-		return { id: agent.id, title: agent.title };
+		return { id: agent.id, title: agent.title, ...(choice.task ? { task: choice.task } : {}) };
 	}
 
 	/**

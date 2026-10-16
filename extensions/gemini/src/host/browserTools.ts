@@ -135,7 +135,13 @@ export class BrowserTools implements vscode.Disposable {
 		}
 		this.host.adopt(agent.id, pageId, shared.url);
 		this.log.info(`Handed a page to agent ${agent.id}`);
-		await this.agents.attach(agent.id, [sharedPageNote(shared.title, shared.url)]);
+		const note = sharedPageNote(shared.title, shared.url);
+		// A new agent given a task starts on it with the page; otherwise the page waits in the message box.
+		if (agent.task && this.agents.send) {
+			this.agents.send(agent.id, agent.task, [note]);
+		} else {
+			await this.agents.attach(agent.id, [note]);
+		}
 		return agent.id;
 	}
 
@@ -187,14 +193,14 @@ export class BrowserTools implements vscode.Disposable {
 	}
 
 	/** The agent to hand a page to: one the user picks from the open agents, most recent first, or a new one. */
-	private async pickAgent(page: string): Promise<{ readonly id: string; readonly title: string } | undefined> {
+	private async pickAgent(page: string): Promise<{ readonly id: string; readonly title: string; readonly task?: string } | undefined> {
 		const open = this.agents.open();
 		const newAgent = this.agents.newAgent;
 		if (newAgent) {
 			if (!open.length) {
 				return newAgent(page);
 			}
-			const fresh = { label: `$(add) ${vscode.l10n.t("New Agent...")}`, description: vscode.l10n.t("Choose its folder, model and mode"), agent: undefined };
+			const fresh = { label: `$(add) ${vscode.l10n.t("New Agent...")}`, description: vscode.l10n.t("Pick its folder, branch, model and mode"), agent: undefined };
 			const picked = await vscode.window.showQuickPick([
 				fresh,
 				{ label: '', kind: vscode.QuickPickItemKind.Separator, agent: undefined },
@@ -271,8 +277,10 @@ export interface BrowserAgents {
 	attachToFront(attachments: readonly Attachment[]): Promise<void>;
 	/** The model the agent's session is on, when known. */
 	model?(agent: string): string | undefined;
-	/** Asks where, on which model and in which mode, then starts a new agent with its tab open; undefined when cancelled. */
-	newAgent?(page: string): Promise<{ readonly id: string; readonly title: string } | undefined>;
+	/** Asks in one popup where, on which model and in which mode, then starts a new agent with its tab open; undefined when cancelled. `task` is what the user asked it to do, if anything. */
+	newAgent?(page: string): Promise<{ readonly id: string; readonly title: string; readonly task?: string } | undefined>;
+	/** Sends the agent a prompt with `attachments`, as if typed in its chat. */
+	send?(agent: string, text: string, attachments: readonly Attachment[]): void;
 }
 
 function enabled(): boolean {
