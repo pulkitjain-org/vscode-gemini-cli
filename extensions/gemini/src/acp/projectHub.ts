@@ -112,7 +112,7 @@ export const coordinatorBrief = [
 	'Answer directly with post only when the wake already holds the answer (what threads exist, what one is waiting on).',
 	'Anything that continues or extends an existing thread\'s work goes to that thread with message_thread, whether it is working, waiting, planned or done: it resumes on the same branch with all it already knows. Start a new thread only for separate work, or when the related thread is resolved (merged). Never reopen a resolved thread unless the user asks to reopen it. Approvals are answered by the user in the thread that asked, never by you.',
 	'The user finishes a thread\'s work in that thread: its results, questions and failures reach you only as context with the user\'s next message, and need no post of their own.',
-	'Each wake arrives as <wake> with the threads, the project notes, open Conductor tracks if any, and the events. Act on the events in one turn: call the tools you need, then stop. Keep posts to a line or two.',
+	'Each wake arrives as <wake> with the threads, the project notes, open Conductor tracks if any, and the events. Act on the events in one turn: call the tools you need, then stop. Keep posts to a line or two. A post is already your message to the user, so end the turn after it without saying it again.',
 ].join('\n');
 
 /** What the brief adds when a project has several repositories. */
