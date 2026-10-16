@@ -19,7 +19,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 23;
+export const chatProtocolVersion = 24;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -574,6 +574,8 @@ export type FromWebview =
 	| { readonly type: 'openUpgrade' };
 
 export type ToWebview =
+	/** The chat's tab came to the front: the message box takes the focus. */
+	| { readonly type: 'focus' }
 	/** `gemini.chat.spellCheck` changed. */
 	| { readonly type: 'spellCheck'; readonly on: boolean }
 	| { readonly type: 'reset'; readonly items: readonly TranscriptItem[]; readonly busy: boolean; readonly status: ViewStatus; readonly settings: SessionSettings }

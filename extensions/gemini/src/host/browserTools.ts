@@ -186,9 +186,25 @@ export class BrowserTools implements vscode.Disposable {
 		return folder && !workspace.roots.some(root => isInside(root, folder)) ? { roots: [folder], isIgnored: isIgnoredByGitCached } : workspace;
 	}
 
-	/** The open agent to hand a page to: the only one, or the one the user picks, most recent first. */
+	/** The agent to hand a page to: one the user picks from the open agents, most recent first, or a new one. */
 	private async pickAgent(page: string): Promise<{ readonly id: string; readonly title: string } | undefined> {
 		const open = this.agents.open();
+		const newAgent = this.agents.newAgent;
+		if (newAgent) {
+			if (!open.length) {
+				return newAgent(page);
+			}
+			const fresh = { label: `$(add) ${vscode.l10n.t("New Agent...")}`, description: vscode.l10n.t("Choose its folder, model and mode"), agent: undefined };
+			const picked = await vscode.window.showQuickPick([
+				fresh,
+				{ label: '', kind: vscode.QuickPickItemKind.Separator, agent: undefined },
+				...open.map(agent => ({ label: agent.title, agent: agent as { readonly id: string; readonly title: string } | undefined })),
+			], {
+				title: vscode.l10n.t("Let Gemini Use {0}", truncate(page, 60)),
+				placeHolder: vscode.l10n.t("Choose the agent. It can read the page and click and type on it, as you."),
+			});
+			return picked === fresh ? newAgent(page) : picked?.agent;
+		}
 		if (!open.length) {
 			const show = vscode.l10n.t("Show Agents");
 			const choice = await vscode.window.showInformationMessage(vscode.l10n.t("Open an agent first, then let it use this page."), show);
@@ -255,6 +271,8 @@ export interface BrowserAgents {
 	attachToFront(attachments: readonly Attachment[]): Promise<void>;
 	/** The model the agent's session is on, when known. */
 	model?(agent: string): string | undefined;
+	/** Asks where, on which model and in which mode, then starts a new agent with its tab open; undefined when cancelled. */
+	newAgent?(page: string): Promise<{ readonly id: string; readonly title: string } | undefined>;
 }
 
 function enabled(): boolean {

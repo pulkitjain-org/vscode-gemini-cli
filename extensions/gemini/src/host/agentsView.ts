@@ -30,18 +30,19 @@ import { AgentNotifier } from './agentNotifier';
 import { AgentService } from './agentService';
 import { AgentSession } from './agentSession';
 import { ChangesSource, ChangesView } from './changesView';
-import type { AgentStateKind } from './panelProtocol';
+import type { AgentStateKind, HomeMode } from './panelProtocol';
 import { ReviewController } from './reviewController';
 import type { BrowserTools } from './browserTools';
 import { ChatActivity, ChatController, ChatEnhancer, FileSearch, openChatAsMarkdown } from './chatController';
-import { configSection } from './configuration';
+import { configSection, getApprovalPolicy } from './configuration';
 import { formatBytes, relativeTime, tildify } from './displayText';
 import { Projects, projectsEnabled, type ThreadSetup } from './projects';
 export { relativeTime } from './displayText';
 import { DiffPreview } from './diffPreview';
 import { agentColumn, agentsColumn, closeAgentFiles } from './editorPlacement';
 import { escapeMarkdown } from './markdown';
-import { sessionModel } from './modelPreference';
+import { isModeAllowed } from '../acp/adminPolicy';
+import { sessionModel, sessionModelList } from './modelPreference';
 import type { UsageMeter } from './usageMeter';
 import { WorkspaceFileIndex } from './workspaceFiles';
 
@@ -159,7 +160,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	private readonly restoringFolders = new Map<string, Promise<boolean>>();
 	/** The last worktree being added in each repository, so threads started together take turns. */
 	private readonly worktreeQueue = new Map<string, Promise<void>>();
-	/** The model a thread's first session starts on, picked in the New thread dialog. */
+	/** The model an agent's first session starts on, picked in the New thread dialog or the browser's New Agent. */
 	private readonly threadModels = new Map<string, string>();
 	private readonly changesView: ChangesView;
 	/** Keep and Undo on each agent change, in the files themselves. */
@@ -661,6 +662,83 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		// Not awaited: send resolves when the whole turn ends, and the agent has started now.
 		void live.controller.send(text, attachments);
 		return true;
+	}
+
+	/**
+	 * The browser's New Agent: asks where the agent works (a folder, on its own
+	 * branch or not), its model and its mode, one short pick at a time, then
+	 * starts it with its tab open and nothing sent, for the page to be handed
+	 * to it. `page` names the branch. Resolves with the agent, or undefined
+	 * when the user cancels.
+	 */
+	async newAgentFor(page: string): Promise<{ readonly id: string; readonly title: string } | undefined> {
+		const title = vscode.l10n.t("New Agent");
+		const choose = vscode.l10n.t("Choose Folder...");
+		const places = await this.workspaces();
+		const where = await vscode.window.showQuickPick([
+			...places.map(place => ({ label: path.basename(place.folder) || place.folder, description: tildify(place.folder), folder: place.folder as string | undefined, git: place.git })),
+			{ label: `$(folder-opened) ${choose}`, description: '', folder: undefined, git: false },
+		], { title, placeHolder: vscode.l10n.t("Where the agent works") });
+		if (!where) {
+			return undefined;
+		}
+		const folder = where.folder ?? await this.chooseFolder();
+		if (!folder) {
+			return undefined;
+		}
+		let ownBranch = false;
+		if (where.folder ? where.git : !!await repositoryRoot(folder)) {
+			const branch = await vscode.window.showQuickPick([
+				{ label: vscode.l10n.t("On the current branch"), description: vscode.l10n.t("Edits the folder's files"), own: false },
+				{ label: vscode.l10n.t("On its own branch"), description: vscode.l10n.t("A new branch in a folder of its own, merged back when done"), own: true },
+			], { title, placeHolder: vscode.l10n.t("Which branch it works on") });
+			if (!branch) {
+				return undefined;
+			}
+			ownBranch = branch.own;
+		}
+		// The models the agent offers come with a session; any running agent's list will do. Without one, it starts on the usual model.
+		const offered = [...this.live.values()].find(live => live.session.client.settings.model?.available.length)?.session.client.settings.model?.available;
+		let model: string | undefined;
+		if (offered) {
+			const available = sessionModelList(offered);
+			const usual = sessionModel(available);
+			const picked = await vscode.window.showQuickPick(available.map(choice => ({ label: choice.name, description: choice.id === usual ? vscode.l10n.t("Default") : choice.description, id: choice.id })).sort((a, b) => Number(b.id === usual) - Number(a.id === usual)), { title, placeHolder: vscode.l10n.t("The model it uses") });
+			if (!picked) {
+				return undefined;
+			}
+			model = picked.id === usual ? undefined : picked.id;
+		}
+		const modes = startModes().filter(mode => isModeAllowed(getApprovalPolicy(), mode.id));
+		let mode = modes[0]?.id ?? 'default';
+		if (modes.length > 1) {
+			const picked = await vscode.window.showQuickPick(modes.map(choice => ({ label: choice.name, description: choice.description, id: choice.id })), { title, placeHolder: vscode.l10n.t("How it asks before changing files") });
+			if (!picked) {
+				return undefined;
+			}
+			mode = picked.id;
+		}
+		let worktree: AgentWorktree | undefined;
+		if (ownBranch) {
+			const repository = await repositoryRoot(folder);
+			try {
+				worktree = repository ? await this.makeWorktree(repository, await freeBranchName([repository], branchNameFrom(page)), folder) : undefined;
+			} catch (err) {
+				void vscode.window.showErrorMessage(vscode.l10n.t("Could not create the agent's branch: {0}", errorMessage(err)));
+				return undefined;
+			}
+		}
+		const workspace = this.model.addWorkspace(folder);
+		const agent = this.model.addAgent(workspace.id, vscode.l10n.t("New agent"), worktree);
+		if (model) {
+			this.threadModels.set(agent.id, model);
+		}
+		const live = this.start(agent, worktree?.cwd ?? folder);
+		if (mode !== 'default') {
+			live.session.client.setModeOnNextSession(mode);
+		}
+		await this.open(agent.id);
+		return { id: agent.id, title: agent.title };
 	}
 
 	/**
@@ -1254,9 +1332,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				live.controller.setHidden(!e.webviewPanel.visible);
 				if (e.webviewPanel.active) {
 					this.focus(id);
-				}
-				if (e.webviewPanel.active) {
 					this.notifier.clear(id);
+					// Switching to an agent or thread puts the cursor where the user types.
+					live.controller.focusComposer();
 				}
 				if (e.webviewPanel.active && live.unread) {
 					live.unread = false;
@@ -1782,18 +1860,15 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 
 	/** A coordinator runs on Flash; a thread on the model picked for it, once; others on the user's choice. */
 	private preferredModel(record: AgentRecord): ((available: readonly SessionChoice[]) => string | undefined) | undefined {
-		if (!projectsEnabled()) {
-			return undefined;
+		const picked = this.threadModels.get(record.id);
+		if (picked) {
+			this.threadModels.delete(record.id);
+			return available => available.some(choice => choice.id === picked) ? picked : sessionModel(available);
 		}
-		if (record.project?.role === 'coordinator') {
+		if (projectsEnabled() && record.project?.role === 'coordinator') {
 			return available => coordinatorModel(available.map(choice => choice.id));
 		}
-		const picked = this.threadModels.get(record.id);
-		if (!picked) {
-			return undefined;
-		}
-		this.threadModels.delete(record.id);
-		return available => available.some(choice => choice.id === picked) ? picked : sessionModel(available);
+		return undefined;
 	}
 
 	private start(record: AgentRecord, folder: string, openLater = false): LiveAgent {
@@ -2126,6 +2201,15 @@ async function freeBranchName(repositories: readonly string[], branch: string): 
 			return candidate;
 		}
 	}
+}
+
+/** The approval modes a new agent can start in, in the order the chat lists them. */
+export function startModes(): HomeMode[] {
+	return [
+		{ id: 'default', name: vscode.l10n.t("Default"), description: vscode.l10n.t("Asks before changes") },
+		{ id: 'autoEdit', name: vscode.l10n.t("Auto Edit"), description: vscode.l10n.t("Edits without asking") },
+		{ id: 'plan', name: vscode.l10n.t("Plan"), description: vscode.l10n.t("Read-only") },
+	];
 }
 
 /** When a thread was merged back: kept since this version, else its last use. */

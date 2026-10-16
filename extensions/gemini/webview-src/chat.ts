@@ -203,6 +203,12 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 		case 'parentProject':
 			showParentProject(message.parent);
 			break;
+		case 'focus':
+			// Not from under an open popup, such as Project settings or New thread.
+			if (!document.querySelector('dialog[open]')) {
+				ui.input.focus();
+			}
+			break;
 	}
 });
 

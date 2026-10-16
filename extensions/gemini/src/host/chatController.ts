@@ -449,6 +449,13 @@ export class ChatController implements vscode.Disposable {
 		this.webviewListener = webview.onDidReceiveMessage((message: FromWebview) => this.onMessage(message));
 	}
 
+	/** The chat's tab came to the front: puts the cursor in the message box, so the user can type at once. */
+	focusComposer(): void {
+		if (this.viewReady) {
+			this.post({ type: 'focus' });
+		}
+	}
+
 	/** Forgets the webview, when it is disposed. The conversation carries on. */
 	/** The view went out of sight or came back (its tab or pane); a hidden view defers rendering. */
 	setHidden(hidden: boolean): void {
