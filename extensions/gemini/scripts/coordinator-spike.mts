@@ -26,7 +26,7 @@
 // The temp folder is deleted at the end unless --keep is given.
 
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { register } from 'node:module';
 import type { AddressInfo } from 'node:net';
@@ -70,7 +70,8 @@ const { values: args } = parseArgs({
 });
 
 const extensionDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const bundled = path.join(extensionDir, 'cli', '0.63.0', 'bundle', 'gemini.js');
+const bundledVersion = (JSON.parse(readFileSync(path.join(extensionDir, 'package.json'), 'utf8')) as { bundledCli: { version: string } }).bundledCli.version;
+const bundled = path.join(extensionDir, 'cli', bundledVersion, 'bundle', 'gemini.js');
 const cli = args.cli ? path.resolve(args.cli) : existsSync(bundled) ? bundled : undefined;
 if (!cli) {
 	console.log('No Gemini CLI found. Run `npm run bundle-cli` first, or pass --cli <path to gemini.js>.');

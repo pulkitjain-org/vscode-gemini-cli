@@ -103,6 +103,28 @@ export async function installCli(options: InstallOptions): Promise<string> {
 }
 
 /**
+ * The installed versions to keep: the copy in use, and a version pinned in
+ * `gemini.cli.version`. With the bundled CLI or another in use, none: those
+ * copies would only ever be older than what runs. When it is not known which
+ * CLI runs, the newest is kept, to be safe.
+ */
+export function cliCopiesToKeep(installed: readonly string[], inUse: { readonly source: string; readonly version?: string } | undefined, pinned?: string): string[] {
+	const keep = new Set<string>();
+	if (!inUse) {
+		const newest = [...installed].sort(compareVersions).at(-1);
+		if (newest) {
+			keep.add(newest);
+		}
+	} else if (inUse.source === 'managed' && inUse.version) {
+		keep.add(inUse.version);
+	}
+	if (pinned && installed.includes(pinned)) {
+		keep.add(pinned);
+	}
+	return [...keep];
+}
+
+/**
  * Deletes managed versions other than `keep`, and anything left from an
  * interrupted install. Asynchronous: a CLI copy is thousands of files, which a
  * synchronous delete would remove with the extension host blocked.

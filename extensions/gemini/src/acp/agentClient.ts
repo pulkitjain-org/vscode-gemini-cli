@@ -8,8 +8,7 @@ import type { AgentConnection } from './agentConnection';
 import { AgentError, AgentErrorInfo, classifyAgentError } from './errors';
 import { Emitter } from './events';
 import { AgentRuntime, AgentRuntimeState, FileSystemHandlers } from './agentRuntime';
-import { findCliSession, readCliSession } from './cliSessions';
-import { isOlderThan } from './cliResolution';
+import { readCliSession } from './cliSessions';
 import { withoutReplayMarkers } from './replayText';
 import { PromptCapabilities, readPromptCapabilities } from './promptContent';
 import { filterModes, readSessionSettings, SessionChoice, SessionSettings } from './sessionSettings';
@@ -44,17 +43,9 @@ export interface TurnResult {
 
 /** What the client knows of a saved session before reopening it. */
 export interface SavedSession {
-	readonly index?: number;
-	readonly firstPrompt?: string;
 	/** How many updates the CLI replays on `session/load`; unknown when unset. */
 	readonly replayUpdates?: number;
 }
-
-/**
- * gemini-cli before 0.63 loses a saved session loaded by its id (see
- * cliSessions.ts), so those are loaded by their number in the CLI's list.
- */
-const loadsByIdFrom = '0.63.0';
 
 /** After this long without a replayed update, a replay whose length is not known is taken as over. */
 const replayQuietMs = 250;
@@ -95,11 +86,10 @@ export interface AgentClientOptions {
 	/** Which approval modes the picker may offer; all of them when unset. */
 	readonly isModeAllowed?: (modeId: string) => boolean;
 	/**
-	 * Finds a saved session in the CLI's files: its number and first prompt
-	 * (for a CLI that must load it by number) and how many updates its replay
+	 * Finds a saved session in the CLI's files: how many updates its replay
 	 * has. The CLI's own files when unset.
 	 */
-	readonly findSavedSession?: (cwd: string, id: string, byNumber: boolean) => Promise<SavedSession | undefined>;
+	readonly findSavedSession?: (cwd: string, id: string) => Promise<SavedSession | undefined>;
 	/**
 	 * MCP servers GeminiCode itself serves to this session, such as the
 	 * browser; asked each time a session opens. Servers over a transport the
@@ -441,23 +431,12 @@ export class AgentClient {
 	private async loadOrCreate(resumeSessionId: string | undefined): Promise<Awaited<ReturnType<AgentRuntime['newSession']>> & { readonly savedSessionId: string; readonly replayUpdates: number | undefined | null }> {
 		if (resumeSessionId) {
 			try {
-				const version = this.runtime.state.kind === 'ready' ? this.runtime.state.agent.agentInfo?.version ?? '' : '';
-				const byNumber = isOlderThan(version, loadsByIdFrom);
-				const finding = (this.options.findSavedSession ?? findSavedCliSession)(this.options.cwd, resumeSessionId, byNumber).catch(() => undefined);
-				if (!byNumber) {
-					// Loaded by id: the session file is read for its replay length while the agent loads it.
-					const servers = this.mcpServers();
-					const loaded = await this.runtime.loadSession(this.options.cwd, resumeSessionId, undefined, servers);
-					this._openedMcpServers = servers;
-					return { ...loaded, savedSessionId: resumeSessionId, replayUpdates: (await finding)?.replayUpdates };
-				}
-				const saved = await finding;
-				const loadId = saved?.index !== undefined ? String(saved.index) : resumeSessionId;
-				// The first-prompt check is only for a load by number, where the number may have moved to another session.
+				// The session file is read for its replay length while the agent loads the session by its id.
+				const finding = (this.options.findSavedSession ?? readCliSession)(this.options.cwd, resumeSessionId).catch(() => undefined);
 				const servers = this.mcpServers();
-				const loaded = await this.runtime.loadSession(this.options.cwd, loadId, saved?.firstPrompt, servers);
+				const loaded = await this.runtime.loadSession(this.options.cwd, resumeSessionId, undefined, servers);
 				this._openedMcpServers = servers;
-				return { ...loaded, savedSessionId: resumeSessionId, replayUpdates: saved?.replayUpdates };
+				return { ...loaded, savedSessionId: resumeSessionId, replayUpdates: (await finding)?.replayUpdates };
 			} catch (err) {
 				// Not supported, or the agent no longer has it: start afresh, and say why.
 				this.onDidFailToReopenEmitter.fire({ sessionId: resumeSessionId, error: err instanceof AgentError ? err.info : classifyAgentError(err) });
@@ -709,11 +688,6 @@ export function supportedMcpServers(agent: acp.InitializeResponse | undefined, s
 		const type = (server as { readonly type?: 'http' | 'sse' | 'acp' }).type;
 		return type === undefined || transports?.[type] === true;
 	});
-}
-
-/** The CLI's saved session `id` in `cwd`: from its own file, or numbered as the CLI lists it for a load by number. */
-async function findSavedCliSession(cwd: string, id: string, byNumber: boolean): Promise<SavedSession | undefined> {
-	return byNumber ? findCliSession(cwd, id) : readCliSession(cwd, id);
 }
 
 /** `settings` with its models shaped by `modelList`, keeping the current model listed even when the shaping would drop it. */
