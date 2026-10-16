@@ -12,6 +12,7 @@ import { AgentService } from './host/agentService';
 import { AgentHome } from './host/agentHome';
 import { AgentWarmup } from './host/agentWarmup';
 import { AgentsView } from './host/agentsView';
+import { tildify } from './host/displayText';
 import { ChangesPanel } from './host/changesPanel';
 import { applyLayoutDefaults } from './host/layoutDefaults';
 import { ChatViewProvider, chatViewId } from './host/chatView';
@@ -93,6 +94,9 @@ export function activate(context: vscode.ExtensionContext): void {
 		attachToFront: attachments => chatInFront().addAttachments(attachments),
 		model: agent => agentsView.controllerOf(agent)?.model,
 		newAgent: page => agentsView.newAgentFor(page),
+		recent: () => agentsView.summaries().filter(agent => agent.state === 'stopped' && agent.project?.role !== 'coordinator').slice(0, 10)
+			.map(agent => ({ id: agent.id, title: agent.title, detail: tildify(agent.worktree?.folder ?? agent.folder) })),
+		wake: agent => agentsView.open(agent),
 		send: (agent, text, attachments) => void agentsView.controllerOf(agent)?.send(text, attachments),
 	});
 	agentsView.browser = browserTools;

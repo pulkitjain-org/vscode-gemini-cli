@@ -197,19 +197,29 @@ export class BrowserTools implements vscode.Disposable {
 		const open = this.agents.open();
 		const newAgent = this.agents.newAgent;
 		if (newAgent) {
-			if (!open.length) {
+			// Always the list first: the running agents, the ones used lately, and New Agent... for the popup.
+			const recent = this.agents.recent?.().filter(agent => !open.some(each => each.id === agent.id)) ?? [];
+			type Item = vscode.QuickPickItem & { readonly agent?: { readonly id: string; readonly title: string }; readonly asleep?: boolean };
+			const fresh: Item = { label: `$(add) ${vscode.l10n.t("New Agent...")}`, description: vscode.l10n.t("Pick its folder, branch, model and mode") };
+			const items: Item[] = [fresh];
+			if (open.length) {
+				items.push({ label: vscode.l10n.t("Running"), kind: vscode.QuickPickItemKind.Separator }, ...open.map(agent => ({ label: agent.title, agent })));
+			}
+			if (recent.length) {
+				items.push({ label: vscode.l10n.t("Recent"), kind: vscode.QuickPickItemKind.Separator }, ...recent.map(agent => ({ label: agent.title, description: agent.detail, agent, asleep: true })));
+			}
+			const picked = await vscode.window.showQuickPick(items, {
+				title: vscode.l10n.t("Let Gemini Use {0}", truncate(page, 60)),
+				placeHolder: vscode.l10n.t("Choose the agent, or start a new one. It can read the page and click and type on it, as you."),
+			});
+			if (picked === fresh) {
 				return newAgent(page);
 			}
-			const fresh = { label: `$(add) ${vscode.l10n.t("New Agent...")}`, description: vscode.l10n.t("Pick its folder, branch, model and mode"), agent: undefined };
-			const picked = await vscode.window.showQuickPick([
-				fresh,
-				{ label: '', kind: vscode.QuickPickItemKind.Separator, agent: undefined },
-				...open.map(agent => ({ label: agent.title, agent: agent as { readonly id: string; readonly title: string } | undefined })),
-			], {
-				title: vscode.l10n.t("Let Gemini Use {0}", truncate(page, 60)),
-				placeHolder: vscode.l10n.t("Choose the agent. It can read the page and click and type on it, as you."),
-			});
-			return picked === fresh ? newAgent(page) : picked?.agent;
+			if (picked?.agent && picked.asleep) {
+				// It starts before it gets the page, as when opened from the agent list.
+				await this.agents.wake?.(picked.agent.id);
+			}
+			return picked?.agent;
 		}
 		if (!open.length) {
 			const show = vscode.l10n.t("Show Agents");
@@ -279,6 +289,10 @@ export interface BrowserAgents {
 	model?(agent: string): string | undefined;
 	/** Asks in one popup where, on which model and in which mode, then starts a new agent with its tab open; undefined when cancelled. `task` is what the user asked it to do, if anything. */
 	newAgent?(page: string): Promise<{ readonly id: string; readonly title: string; readonly task?: string } | undefined>;
+	/** Agents used lately that aren't running in this window, most recent first, with where each works. */
+	recent?(): readonly { readonly id: string; readonly title: string; readonly detail?: string }[];
+	/** Starts an agent from `recent`, with its tab open. */
+	wake?(agent: string): Promise<void>;
 	/** Sends the agent a prompt with `attachments`, as if typed in its chat. */
 	send?(agent: string, text: string, attachments: readonly Attachment[]): void;
 }
