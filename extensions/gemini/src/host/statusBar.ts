@@ -117,7 +117,7 @@ export class GeminiStatusBar implements vscode.Disposable {
 			{ label: vscode.l10n.t("$(project) Change Project ID"), description: getProjectSettings().resolved?.projectId, command: 'gemini.setProjectId' },
 			{ label: vscode.l10n.t("$(versions) Install or Change Gemini CLI Version..."), description: this.cli, command: 'gemini.installCliVersion' },
 			{ label: vscode.l10n.t("$(account) Sign In or Finish Setup in Terminal"), description: this.account, command: 'gemini.completeSetupInTerminal' },
-			{ label: vscode.l10n.t("$(comment-discussion) Open Chat"), command: 'gemini.openChat' },
+			{ label: vscode.l10n.t("$(add) New Agent"), command: 'gemini.agents.newAgent' },
 			{ label: vscode.l10n.t("$(output) Show Log"), command: 'gemini.showLog' },
 			{ label: '', kind: vscode.QuickPickItemKind.Separator },
 			{ label: vscode.l10n.t("$(book) Gemini CLI Docs"), run: () => void vscode.env.openExternal(vscode.Uri.parse(cliDocsUrl)) },

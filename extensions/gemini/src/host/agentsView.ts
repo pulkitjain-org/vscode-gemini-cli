@@ -341,6 +341,29 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		return this.live.get(id)?.controller;
 	}
 
+	/**
+	 * The chat that Add to Chat and the chat commands act on: the agent tab in
+	 * front, else the running agent used last (shown), else, with `orNew`, a
+	 * new agent the user starts. Undefined when there is none.
+	 */
+	async chatFor(orNew: boolean): Promise<ChatController | undefined> {
+		const front = this.activeController();
+		if (front) {
+			return front;
+		}
+		const running = this.summaries().find(agent => agent.state !== 'stopped' && agent.project?.role !== 'coordinator');
+		if (running) {
+			await this.open(running.id);
+			return this.controllerOf(running.id);
+		}
+		if (!orNew) {
+			void vscode.window.showInformationMessage(vscode.l10n.t("Open an agent first."));
+			return undefined;
+		}
+		const started = await this.newAgent(undefined);
+		return started ? this.controllerOf(started) : undefined;
+	}
+
 	/** The chat in the agent tab that is in front, if any. */
 	activeController(): ChatController | undefined {
 		for (const agent of this.live.values()) {
@@ -931,10 +954,10 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	 * works on a new branch in its own worktree; unset falls back to the
 	 * workspace folder outside a Git repository.
 	 */
-	private async newAgent(node: Node | undefined, ownBranch?: boolean): Promise<void> {
+	private async newAgent(node: Node | undefined, ownBranch?: boolean): Promise<string | undefined> {
 		const folder = node?.kind === 'workspace' ? node.folder : node?.kind === 'agent' ? this.model.workspace(node.record.workspaceId)?.folder : await this.pickFolder();
 		if (!folder) {
-			return;
+			return undefined;
 		}
 		let worktree: AgentWorktree | undefined;
 		if (ownBranch ?? vscode.workspace.getConfiguration(configSection).get<boolean>('agents.ownBranch', false)) {
@@ -942,16 +965,17 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			if (repository) {
 				worktree = await this.createWorktree(repository, folder);
 				if (!worktree) {
-					return;
+					return undefined;
 				}
 			} else if (ownBranch) {
 				void vscode.window.showErrorMessage(vscode.l10n.t("{0} is not in a Git repository, so the agent can't have its own branch.", path.basename(folder)));
-				return;
+				return undefined;
 			}
 		}
 		const workspace = this.model.addWorkspace(folder);
 		const agent = this.model.addAgent(workspace.id, vscode.l10n.t("New agent"), worktree);
 		await this.open(agent.id);
+		return agent.id;
 	}
 
 	/** Asks for a branch name and makes the agent's worktree; undefined when dismissed or failed (the failure is shown). */

@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Messages between the chat view (chatView.ts) and its webview
+// Messages between an agent's chat (chatController.ts) and its webview
 // (webview-src/chat.ts). Types only, so the webview bundle can import them.
 
 import type { Attachment } from '../acp/attachments';

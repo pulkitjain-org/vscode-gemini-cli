@@ -61,11 +61,6 @@
         "category": "%category%"
       },
       {
-        "command": "gemini.openChat",
-        "title": "%command.openChat%",
-        "category": "%category%"
-      },
-      {
         "command": "gemini.restartAgent",
         "title": "%command.restartAgent%",
         "category": "%category%"
@@ -120,13 +115,6 @@
         "title": "%command.showUsage%",
         "category": "%category%",
         "icon": "$(graph)"
-      },
-      {
-        "command": "gemini.newChat",
-        "title": "%command.newChat%",
-        "category": "%category%",
-        "icon": "$(add)",
-        "enablement": "!gemini.chatBusy"
       },
       {
         "command": "gemini.addFileToChat",
@@ -377,12 +365,6 @@
         "when": "editorTextFocus && !editorReadonly && resourceScheme == file && config.gemini.inlineEdit.enabled"
       },
       {
-        "command": "gemini.openChat",
-        "key": "ctrl+l",
-        "mac": "cmd+l",
-        "when": "editorTextFocus && !editorHasSelection"
-      },
-      {
         "command": "gemini.enhancePrompt",
         "key": "ctrl+alt+e",
         "mac": "cmd+alt+e",
@@ -392,12 +374,6 @@
         "command": "gemini.agents.newAgent",
         "key": "ctrl+alt+n",
         "mac": "cmd+alt+n"
-      },
-      {
-        "command": "gemini.newChat",
-        "key": "ctrl+n",
-        "mac": "cmd+n",
-        "when": "focusedView == gemini.chat"
       },
       {
         "command": "gemini.review.keepFile",
@@ -467,13 +443,6 @@
           "name": "%view.agentChanges%",
           "initialSize": 1,
           "when": "gemini.mode != agents"
-        },
-        {
-          "type": "webview",
-          "id": "gemini.chat",
-          "name": "%view.chat%",
-          "initialSize": 3,
-          "visibility": "collapsed"
         }
       ],
       "geminiChanges": [
@@ -552,26 +521,6 @@
         }
       ],
       "view/title": [
-        {
-          "command": "gemini.newChat",
-          "when": "view == gemini.chat",
-          "group": "navigation"
-        },
-        {
-          "command": "gemini.restartAgent",
-          "when": "view == gemini.chat",
-          "group": "agent@1"
-        },
-        {
-          "command": "gemini.showLog",
-          "when": "view == gemini.chat",
-          "group": "agent@2"
-        },
-        {
-          "command": "gemini.openChatAsMarkdown",
-          "when": "view == gemini.chat",
-          "group": "chat@1"
-        },
         {
           "command": "gemini.agents.newAgent",
           "when": "view == gemini.agents",

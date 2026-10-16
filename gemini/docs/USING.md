@@ -30,7 +30,7 @@ An agent on its own branch can get a ready folder: set **Gemini › Agents: Work
 | Keys | What it does |
 | --- | --- |
 | ⌥⌘M | Switch between Agents and Editor mode |
-| ⌘L | Open the chat; with a selection, add it to the chat |
+| ⌘L | Add the selection to the agent in front, or to a new agent |
 | ⌥⌘N | New agent |
 | ⌘N (in the chat) | New chat |
 | ↩ / ⇧↩ (in the chat input) | Send, or start a new line |
@@ -234,9 +234,9 @@ GeminiCode keeps its own share small:
 
 When you scroll up in a chat, **Latest** above the input takes you back to the newest message.
 
-To find your way round a long chat, use the thin outline of your prompts down the chat's right edge: point at a tick to see the prompt, click it to jump there. ⌥⌘↑ and ⌥⌘↓ jump to your previous and next prompt. **Open Chat as Markdown** (in Quick Chat's **...** menu, an agent's right-click menu in the Agents pane, or the Command Palette for the chat in front) opens the whole conversation as a Markdown document you can search, save or share. For an agent that is not running, it opens the saved copy, which keeps the last 300 messages.
+To find your way round a long chat, use the thin outline of your prompts down the chat's right edge: point at a tick to see the prompt, click it to jump there. ⌥⌘↑ and ⌥⌘↓ jump to your previous and next prompt. **Open Chat as Markdown** (in an agent's right-click menu in the Agents pane, or the Command Palette for the chat in front) opens the whole conversation as a Markdown document you can search, save or share. For an agent that is not running, it opens the saved copy, which keeps the last 300 messages.
 
-Every agent in a window shares one Gemini CLI process, and that process keeps each session's history until it restarts. In Quick Chat, **New Chat** starts a fresh session; for agents, start a new agent. If an old agent is no longer needed, remove it from the Agents pane, which also deletes its saved conversation.
+Every agent in a window shares one Gemini CLI process, and that process keeps each session's history until it restarts. For a fresh session, start a new agent. If an old agent is no longer needed, remove it from the Agents pane, which also deletes its saved conversation.
 
 ## Troubleshooting
 
