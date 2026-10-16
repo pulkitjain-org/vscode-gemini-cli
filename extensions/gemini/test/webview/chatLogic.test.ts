@@ -464,13 +464,13 @@ describe('coalesceUpdates', () => {
 
 describe('subagentName', () => {
 	it('names the subagent the CLI hands work to', () => {
-		expect(subagentName("Delegating to agent 'codebase_investigator'")).toBe('Codebase Investigator');
-		expect(subagentName("Delegating to agent 'security-auditor'")).toBe('Security Auditor');
-		expect(subagentName("Delegating to agent 'generalist'")).toBe('Generalist');
+		expect(subagentName('Delegating to agent \'codebase_investigator\'')).toBe('Codebase Investigator');
+		expect(subagentName('Delegating to agent \'security-auditor\'')).toBe('Security Auditor');
+		expect(subagentName('Delegating to agent \'generalist\'')).toBe('Generalist');
 	});
 
 	it('leaves other tool calls alone', () => {
 		expect(subagentName('ReadFile src/cart.ts')).toBeUndefined();
-		expect(subagentName("Delegating to agent 'bad name'")).toBeUndefined();
+		expect(subagentName('Delegating to agent \'bad name\'')).toBeUndefined();
 	});
 });
