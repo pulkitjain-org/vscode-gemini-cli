@@ -3480,3 +3480,14 @@ textarea.new-thread-input {
 body.has-parent-project .prompt-outline {
 	top: 52px;
 }
+
+/* ---- Subagent calls: the agent handed work to one of the CLI's subagents ---- */
+
+.tool-call.subagent .kind-icon {
+	color: var(--vscode-textLink-foreground);
+}
+
+.subagent-status {
+	flex: none;
+	color: var(--gemini-faint);
+}

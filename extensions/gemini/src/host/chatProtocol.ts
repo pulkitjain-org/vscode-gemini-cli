@@ -276,6 +276,11 @@ export interface ChatStrings {
 	/** A thought whose duration is not known (the view reloaded). */
 	readonly thought: string;
 	readonly plan: string;
+	/** A subagent's row: `{0}` is its name; then how long it took, `{0}` a duration. */
+	readonly subagent: string;
+	readonly subagentWorking: string;
+	readonly subagentFinished: string;
+	readonly subagentFailed: string;
 	/** `{0}` is the update kind. */
 	readonly unknownUpdate: string;
 	readonly terminal: string;

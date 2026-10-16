@@ -125,5 +125,7 @@ export const state = {
 export const elements = new Map<string, HTMLElement>();
 /** When each thought started and, once something followed it, ended. Lost when the view reloads. */
 export const thoughtTimes = new Map<string, { start: number; end?: number }>();
+/** When each subagent call was first seen working and when it finished, for its duration. Lost when the view reloads. */
+export const subagentTimes = new Map<string, { start: number; end?: number }>();
 /** Tool calls the user expanded, kept across re-renders. */
 export const expanded = new Set<string>();

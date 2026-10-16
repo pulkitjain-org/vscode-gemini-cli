@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TranscriptItem } from '../../src/acp/chatTranscript';
 import {
+	subagentName,
 	acceptsEnhanceReply, coalesceUpdates, attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, currentActivity, currentPrompt, promptStep, formatClock, turnStart, draggedHeight, emptyFence, enhanceButtonPlacement, enhanceOriginal, type EnhancePhase, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, fileReference, fileUris, folderOf, format, formatDuration, formatSentAt, isEnhanceShortcut,
 	imageName, indexOfItem, isNearBottom, matchCommands, mentionAt, mentionInsertion, permissionDefaults, planIcon, replyBefore, restoredHeight,
 	formatTokens, resetsIn, sameAttachment, slashQuery, thoughtSeconds, toolKindIcon, withAppended, withoutMention, wrapIndex,
@@ -458,5 +459,18 @@ describe('coalesceUpdates', () => {
 	it('lets a whole item replace what came before it, and keeps appends after it', () => {
 		expect(coalesceUpdates([agent('a', 'one'), append('a', ' two'), agent('b', 'x'), agent('a', 'three'), append('a', ' four')]))
 			.toEqual([agent('a', 'three'), agent('b', 'x'), append('a', ' four')]);
+	});
+});
+
+describe('subagentName', () => {
+	it('names the subagent the CLI hands work to', () => {
+		expect(subagentName("Delegating to agent 'codebase_investigator'")).toBe('Codebase Investigator');
+		expect(subagentName("Delegating to agent 'security-auditor'")).toBe('Security Auditor');
+		expect(subagentName("Delegating to agent 'generalist'")).toBe('Generalist');
+	});
+
+	it('leaves other tool calls alone', () => {
+		expect(subagentName('ReadFile src/cart.ts')).toBeUndefined();
+		expect(subagentName("Delegating to agent 'bad name'")).toBeUndefined();
 	});
 });
