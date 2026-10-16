@@ -11,6 +11,7 @@
 import type { ProjectRepoView, ProjectSettingsView } from '../src/host/chatProtocol';
 import { format } from './chatLogic';
 import { button, el, icon, setLabel } from './dom';
+import { toneOf } from './repoTones';
 import { selectMenu, type SelectMenu } from './selectMenu';
 import { draftOf, mergeRefresh, saveOf, threadTokens, unsavedChanges, withRepo, type SettingsDraft } from './settingsLogic';
 import { state, strings, vscode } from './view';
@@ -240,7 +241,7 @@ function general(current: Open): HTMLElement[] {
 	draft.repos.forEach((repo, i) => {
 		const row = el('div', 'settings-list-row');
 		const label = el('span', 'settings-repo');
-		label.append(el('span', 'repo-pill', repo.key), el('span', 'settings-muted', repo.label));
+		label.append(toneOf(el('span', 'repo-pill', repo.key), repo.key), el('span', 'settings-muted', repo.label));
 		row.append(label);
 		if (i === 0) {
 			row.append(el('span', 'settings-muted settings-small', text.mainRepo));
@@ -363,7 +364,7 @@ function memory(current: Open): HTMLElement[] {
 	const rules = el('div', 'settings-rules');
 	for (const repo of view.repoRules) {
 		const line = el('div');
-		line.append(el('span', 'repo-pill', repo.key), el('span', 'settings-muted', repo.files.length ? repo.files.join(' · ') : text.noRules));
+		line.append(toneOf(el('span', 'repo-pill', repo.key), repo.key), el('span', 'settings-muted', repo.files.length ? repo.files.join(' · ') : text.noRules));
 		rules.append(line);
 	}
 	const tokens = el('div', 'settings-muted settings-small settings-tokens');

@@ -12,6 +12,7 @@ import { branchNameFrom } from '../src/acp/branchNames';
 import type { ParentProject, ProjectPanel } from '../src/host/chatProtocol';
 import { format } from './chatLogic';
 import { button, el, icon, onIntent, setLabel } from './dom';
+import { setRepoOrder, toneOf } from './repoTones';
 import { selectMenu } from './selectMenu';
 import { state, strings, vscode } from './view';
 
@@ -88,7 +89,7 @@ export function openNewThread(): void {
 		for (const box of repoBoxes) {
 			const row = el('label', 'new-thread-repo');
 			row.htmlFor = box.id;
-			row.append(box, el('span', 'repo-pill', box.value));
+			row.append(box, toneOf(el('span', 'repo-pill', box.value), box.value));
 			repos.append(row);
 		}
 		repos.append(el('p', 'new-thread-hint', text.reposHint));
@@ -171,6 +172,7 @@ export function showProjectPanel(next: ProjectPanel): void {
 		return;
 	}
 	panel = next;
+	setRepoOrder(next.repos ?? []);
 	let aside = document.getElementById('project-panel');
 	if (!aside) {
 		aside = el('aside', 'project-panel');

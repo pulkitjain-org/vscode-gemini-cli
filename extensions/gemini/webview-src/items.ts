@@ -18,6 +18,7 @@ import { renderMath } from './math';
 import { mathPlugin } from './mathRule';
 import { enhanceMarkdown } from './markdownExtras';
 import { button, copyButton, el, icon, onIntent, setLabel } from './dom';
+import { toneOf } from './repoTones';
 import { thoughtPreview } from './streaming';
 import { expanded, state, strings, thoughtTimes, ui, vscode } from './view';
 
@@ -58,6 +59,13 @@ export function render(item: TranscriptItem, toggleToolCall: ToggleToolCall): HT
 	}
 }
 
+/** Lines added and removed, in green and red. */
+function counts(added: number, removed: number): HTMLElement {
+	const node = el('span', 'thread-counts');
+	node.append(el('span', 'added', `+${added}`), el('span', 'removed', `\u2212${removed}`));
+	return node;
+}
+
 /** A project's thread: its state, what it is doing, its branch and changes, and what can be done with it. */
 function renderThreadCard(item: ItemOf<'thread'>): HTMLElement {
 	const project = strings.project;
@@ -75,23 +83,29 @@ function renderThreadCard(item: ItemOf<'thread'>): HTMLElement {
 	const mergedRepos = repos.filter(repo => repo.merged).length;
 	const partly = !item.merged && mergedRepos > 0 && project ? format(project.mergedCount, mergedRepos).replace('{1}', String(repos.length)) : undefined;
 	const line = item.removed ? project?.undone : item.merged ? project?.merged : partly ?? (item.detail ? `${state} \u00b7 ${item.detail}` : state);
-	card.append(el('div', 'thread-line', line ?? state));
-	const meta = [
-		item.branch,
-		item.changes?.files ? `+${item.changes.added} \u2212${item.changes.removed}` : undefined,
-		item.track && project ? format(project.track, item.track) : undefined,
-		formatDuration(Date.now() - item.startedAt),
-	].filter(Boolean).join(' \u00b7 ');
-	card.append(el('div', 'thread-meta', meta));
-	if (item.removed || !project) {
-		return card;
+	// Under the title: the branch, then each repository it works in, then how long it has run.
+	const meta = el('div', 'thread-meta');
+	if (item.branch) {
+		const branch = el('span', 'thread-branch');
+		branch.append(icon('git-branch'), el('span', undefined, item.branch));
+		meta.append(branch);
 	}
+	for (const repo of repos) {
+		meta.append(toneOf(el('span', 'repo-pill', repo.key), repo.key));
+	}
+	if (!repos.length && item.changes?.files) {
+		meta.append(counts(item.changes.added, item.changes.removed));
+	}
+	const extra = [item.track && project ? format(project.track, item.track) : undefined, formatDuration(Date.now() - item.startedAt)].filter(Boolean).join(' \u00b7 ');
+	meta.append(el('span', 'thread-meta-end', extra));
+	card.append(meta);
 	// A thread in several repositories: a row for each, merged back one at a time.
-	if (repos.length) {
+	if (repos.length && !item.removed && project) {
 		const list = el('div', 'thread-repos');
 		for (const repo of repos) {
 			const row = el('div', `thread-repo${repo.merged ? ' merged' : ''}`);
-			row.append(el('span', 'repo-pill', repo.key), el('span', 'thread-repo-counts', repo.files ? `+${repo.added} \u2212${repo.removed}` : '\u2014'));
+			row.append(toneOf(el('span', 'thread-repo-dot'), repo.key), el('span', 'thread-repo-name', repo.key));
+			row.append(repo.files ? counts(repo.added, repo.removed) : el('span', 'thread-repo-state', '\u2014'));
 			if (repo.merged) {
 				row.append(el('span', 'thread-repo-state', project.repoMerged));
 			} else if (item.state === 'done' && !item.merged) {
@@ -100,6 +114,10 @@ function renderThreadCard(item: ItemOf<'thread'>): HTMLElement {
 			list.append(row);
 		}
 		card.append(list);
+	}
+	card.append(el('div', 'thread-line', line ?? state));
+	if (item.removed || !project) {
+		return card;
 	}
 	const actions: [ThreadAction, boolean][] = item.state === 'waiting'
 		? [['open', true]]

@@ -11,6 +11,7 @@ import type { ViewBranch, ViewRepo, ViewWorkspace } from '../src/host/chatProtoc
 import { format } from './chatLogic';
 import { el, icon, setLabel } from './dom';
 import { Menu, type MenuRow } from './menu';
+import { toneOf } from './repoTones';
 import { state, strings, ui, vscode } from './view';
 
 // ---- Model ----
@@ -195,7 +196,7 @@ export function setRepos(list: readonly ViewRepo[]): void {
 	repos = list;
 	ui.repos.hidden = !list.length;
 	ui.repos.replaceChildren(...list.map(repo => {
-		const pill = el('button', 'foot-button repo');
+		const pill = toneOf(el('button', 'foot-button repo'), repo.name);
 		pill.type = 'button';
 		pill.dataset.repo = repo.name;
 		pill.append(icon('repo'), el('span', 'repo-name', repo.name));

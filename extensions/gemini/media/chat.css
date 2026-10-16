@@ -2588,11 +2588,60 @@ body.vscode-high-contrast-light #send {
 
 .thread-line {
 	overflow-wrap: anywhere;
+	color: var(--gemini-muted);
 }
 
+/* Under the title: the branch, the repositories as coloured pills, and how long it has run. */
 .thread-meta {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 8px;
 	font-size: 0.9em;
 	color: var(--gemini-muted);
+}
+
+.thread-branch {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	min-width: 0;
+	font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.thread-branch span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.thread-branch .codicon {
+	font-size: 13px;
+}
+
+.thread-meta-end::before {
+	content: "\00b7";
+	margin-right: 8px;
+}
+
+.thread-meta-end:first-child::before {
+	content: none;
+}
+
+/* Lines added and removed. */
+.thread-counts {
+	display: inline-flex;
+	gap: 6px;
+	font-family: var(--vscode-editor-font-family, monospace);
+	font-size: 0.9em;
+}
+
+.thread-counts .added {
+	color: var(--vscode-gitDecoration-addedResourceForeground, var(--gemini-ok));
+}
+
+.thread-counts .removed {
+	color: var(--vscode-gitDecoration-deletedResourceForeground, var(--gemini-error));
 }
 
 .thread-card .permission-actions {
@@ -2736,17 +2785,50 @@ textarea.new-thread-input {
 	}
 }
 
+/*
+ * A repository's colour (repoTones.ts), the same wherever it shows: one of six chart colours,
+ * picked by the repository's place in its project.
+ */
+[data-tone] {
+	--repo-tone: var(--vscode-charts-blue, #3794ff);
+}
+
+[data-tone="1"] {
+	--repo-tone: var(--vscode-charts-purple, #b180d7);
+}
+
+[data-tone="2"] {
+	--repo-tone: var(--vscode-charts-orange, #d18616);
+}
+
+[data-tone="3"] {
+	--repo-tone: var(--vscode-charts-green, #89d185);
+}
+
+[data-tone="4"] {
+	--repo-tone: var(--vscode-charts-red, #f14c4c);
+}
+
+[data-tone="5"] {
+	--repo-tone: var(--vscode-charts-yellow, #cca700);
+}
+
 /* A repository's name, in the New thread dialog, on thread cards and in Project settings. */
 .repo-pill {
 	display: inline-block;
-	padding: 0 8px;
-	border-radius: 999px;
+	padding: 0 7px;
+	border-radius: var(--gemini-radius-small);
 	font-family: var(--vscode-editor-font-family, monospace);
 	font-size: 0.9em;
 	line-height: 1.7;
-	color: var(--vscode-foreground);
-	background: color-mix(in srgb, var(--gemini-accent) 22%, transparent);
+	color: color-mix(in srgb, var(--repo-tone, var(--gemini-accent)) 75%, var(--vscode-foreground));
+	background: color-mix(in srgb, var(--repo-tone, var(--gemini-accent)) 18%, transparent);
 	white-space: nowrap;
+}
+
+/* The footer's repositories carry their colour on the icon. */
+.foot-button.repo .codicon-repo {
+	color: var(--repo-tone);
 }
 
 .new-thread-repos {
@@ -2778,19 +2860,36 @@ textarea.new-thread-input {
 	cursor: pointer;
 }
 
-/* A thread in several repositories: a row for each on its card. */
+/* A thread in several repositories: a row for each on its card, between dividers. */
 .thread-repos {
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
-	margin-top: 8px;
+	margin: 8px 0 2px;
+	border-top: 1px solid var(--gemini-border);
 }
 
 .thread-repo {
 	display: flex;
 	align-items: center;
 	gap: 10px;
-	min-height: 26px;
+	min-height: 34px;
+	border-bottom: 1px solid var(--gemini-border);
+}
+
+.thread-repo-dot {
+	width: 8px;
+	height: 8px;
+	flex: none;
+	border-radius: 50%;
+	background: var(--repo-tone);
+}
+
+.thread-repo-name {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .thread-repo-counts,
@@ -2813,7 +2912,8 @@ textarea.new-thread-input {
 	background: var(--vscode-button-secondaryHoverBackground, var(--gemini-hover));
 }
 
-.thread-repo.merged .repo-pill {
+.thread-repo.merged .thread-repo-name,
+.thread-repo.merged .thread-counts {
 	opacity: 0.7;
 }
 
