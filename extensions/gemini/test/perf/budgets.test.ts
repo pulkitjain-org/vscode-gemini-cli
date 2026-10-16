@@ -28,7 +28,8 @@ import { fakeAgentCommand, waitFor } from '../helpers';
 
 /** Bundle size budgets in bytes, minified. KaTeX and the highlighter load on demand and are not part of the chat view's first paint. */
 export const bundleBudgets: Readonly<Record<string, number>> = {
-	'media/chat.js': 215_000,
+	// 1.1.0's Rewind, Subagent rows and the Shared page chip took it just past 215 KB, all GeminiCode's own code.
+	'media/chat.js': 220_000,
 	// Agent Home's startup script: Preview's renderer is its own file.
 	'media/home.js': 16_000,
 	'media/changes.js': 16_000,
@@ -38,7 +39,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	'media/katex.js': 290_000,
 	'media/draftMarkdown.js': 140_000,
 	// Projects' settings, memory and threads across repositories took it from 887 KB to 913 KB, all GeminiCode's own code.
-	'dist/extension.js': 940_000,
+	// 1.1.0's saved checkpoints, Rewind, Check for Updates and browser fixes took it to 941 KB, all its own code too.
+	'dist/extension.js': 950_000,
 };
 
 /** Median time of `run` over `rounds` runs, in ms. */
