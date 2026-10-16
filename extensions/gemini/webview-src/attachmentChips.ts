@@ -35,7 +35,9 @@ export function setSharedPage(page: SharedPageView | undefined): void {
 function sharedPageChip(page: SharedPageView): HTMLElement {
 	const chip = el('span', 'chip attachment shared-page');
 	chip.title = page.url;
-	chip.append(icon('globe'), el('span', undefined, format(strings.sharedPage, page.title)));
+	const open = button('shared-page-open', format(strings.sharedPage, page.title), () => vscode.postMessage({ type: 'openSharedPage' }), 'globe');
+	open.title = format(strings.showSharedPage, page.url);
+	chip.append(open);
 	const stop = button('chip-remove', '', () => vscode.postMessage({ type: 'stopSharing' }), 'close');
 	stop.title = strings.stopSharing;
 	stop.setAttribute('aria-label', strings.stopSharing);

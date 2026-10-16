@@ -190,6 +190,13 @@ export class BrowserTools implements vscode.Disposable {
 		return { title: text.title, url: page.url, note: text.text };
 	}
 
+	/** Brings the tab of the page shared with `agent` to the front: a click on its chip. False when none is shared. */
+	async revealSharedPage(agent: string): Promise<boolean> {
+		await this.sharedPage(agent);
+		const page = this.shared.get(agent);
+		return !!page && await run<boolean>('_gemini.browser.reveal', agent, page.pageId).catch(() => false) === true;
+	}
+
 	/** Gives the page shared with `agent` back to the user, still open: the × on its chip. */
 	async stopSharing(agent: string): Promise<void> {
 		const page = this.shared.get(agent);

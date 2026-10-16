@@ -193,6 +193,13 @@ function renderUserMessage(item: { readonly text: string; readonly attachments?:
 		const chips = el('div', 'attachment-chips');
 		for (const attachment of item.attachments) {
 			const { path, line } = attachment;
+			if (attachment.kind === 'page') {
+				// The page shared with the agent then; it opens the page shared now.
+				const page = button('chip shared-page', format(strings.sharedPage, attachment.label), () => vscode.postMessage({ type: 'openSharedPage' }), 'globe');
+				page.title = format(strings.showSharedPage, path ?? attachment.label);
+				chips.append(page);
+				continue;
+			}
 			const chip = path
 				? button('chip', attachment.label, () => vscode.postMessage({ type: 'openLocation', path, line }), attachmentIcon(attachment.kind, attachment.label))
 				: el('span', 'chip static');

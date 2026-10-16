@@ -19,7 +19,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 27;
+export const chatProtocolVersion = 28;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -320,6 +320,8 @@ export interface ChatStrings {
 	readonly copyMessage: string;
 	readonly undoTurn: string;
 	readonly undoTurnTooltip: string;
+	/** Tooltip of the Shared page chip; `{0}` is the page's address. */
+	readonly showSharedPage: string;
 	/** Tooltip of a prompt's Rewind button. */
 	readonly rewindPrompt: string;
 	/** `{0}` is a number of files. */
@@ -592,6 +594,8 @@ export type FromWebview =
 	| { readonly type: 'undoTurn'; readonly itemId: string }
 	/** Rewind to before the user's prompt `itemId`: the chat, the code since, or both, as the user picks. */
 	| { readonly type: 'rewind'; readonly itemId: string }
+	/** A Shared page chip was clicked: show the page's tab. */
+	| { readonly type: 'openSharedPage' }
 	/** Esc twice in an empty message box: pick a prompt to rewind to. */
 	| { readonly type: 'pickRewind' }
 	/** Send the prompt of the turn ending with `itemId` again; only the latest turn offers it. */

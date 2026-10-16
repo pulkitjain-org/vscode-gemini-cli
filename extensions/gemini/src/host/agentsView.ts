@@ -1948,6 +1948,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				sharedPage: {
 					current: () => this.browser?.sharedPage(record.id) ?? Promise.resolve(undefined),
 					stop: () => this.browser?.stopSharing(record.id) ?? Promise.resolve(),
+					reveal: () => this.browser?.revealSharedPage(record.id) ?? Promise.resolve(false),
 				},
 				workspace: () => {
 					const workspace = this.model.workspace(record.workspaceId);

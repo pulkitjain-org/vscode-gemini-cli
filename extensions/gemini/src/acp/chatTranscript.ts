@@ -20,7 +20,8 @@ export type ToolCallDetail =
 	| { readonly type: 'terminal'; readonly terminalId: string };
 
 export interface PromptAttachmentLabel {
-	readonly kind: Attachment['kind'];
+	/** `page`: the page shared with the agent when the message was sent; its `path` is the page's address. */
+	readonly kind: Attachment['kind'] | 'page';
 	readonly label: string;
 	/** For files and selections, so the view can open them. */
 	readonly path?: string;
@@ -167,6 +168,16 @@ export class ChatTranscript {
 				})),
 			} : {}),
 		});
+	}
+
+	/** Adds the page shared with the agent to the prompt just sent, as one of its attachments. */
+	addPromptPage(title: string, url: string): void {
+		const index = this._items.findLastIndex(item => item.kind === 'user');
+		const item = this._items[index];
+		if (item?.kind !== 'user' || index < this.turnStart) {
+			return;
+		}
+		this.upsert({ ...item, attachments: [{ kind: 'page', label: title || url, path: url }, ...item.attachments ?? []] });
 	}
 
 	/** A user message replayed from a saved session: its own bubble, with no time, since the replay does not carry one. */

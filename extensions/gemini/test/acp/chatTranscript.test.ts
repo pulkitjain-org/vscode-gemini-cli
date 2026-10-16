@@ -75,6 +75,20 @@ describe('ChatTranscript', () => {
 		expect(transcript.items.at(-1)!.id).not.toBe(second.id);
 	});
 
+	it('adds the shared page to the prompt just sent, and nothing without one', () => {
+		const transcript = new ChatTranscript();
+		transcript.addPrompt('check the cart', [{ kind: 'file', path: '/a.ts' }]);
+		transcript.addPromptPage('Cart', 'http://localhost:5173/cart');
+		const prompt = transcript.items[0];
+		expect(prompt.kind === 'user' && prompt.attachments).toEqual([
+			{ kind: 'page', label: 'Cart', path: 'http://localhost:5173/cart' },
+			{ kind: 'file', label: 'a.ts', path: '/a.ts' },
+		]);
+		const empty = new ChatTranscript();
+		empty.addPromptPage('Cart', 'http://localhost:5173/cart');
+		expect(empty.items).toEqual([]);
+	});
+
 	it('starts a new message when the agent sends a new message id', () => {
 		const transcript = new ChatTranscript();
 		transcript.apply({ kind: 'text', role: 'agent', text: 'one', messageId: 'm1' });

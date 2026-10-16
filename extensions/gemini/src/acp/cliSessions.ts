@@ -504,23 +504,30 @@ async function newestSessionFile(cwd: string, id: string, home?: string): Promis
  * with whether it found the prompt; the session must be loaded again after.
  */
 export async function rewindCliSession(cwd: string, id: string, prompt: string, fromEnd: number, home?: string): Promise<boolean> {
-	const newest = await newestSessionFile(cwd, id, home);
-	if (!newest || !newest.file.endsWith('.jsonl')) {
-		return false;
-	}
-	const { all } = parseSessionRecords(await fs.readFile(newest.file, 'utf8'), false);
-	const wanted = squashSpaces(prompt);
-	if (!wanted) {
-		return false;
-	}
-	// The CLI's message also carries what GeminiCode added to the prompt, such as context or a note about a shared page.
-	const matches = all.filter(message => message.type === 'user' && squashSpaces(textOf(message.content)).includes(wanted));
-	const target = matches[matches.length - 1 - fromEnd];
+	const target = await rewindTarget(cwd, id, prompt, fromEnd, home);
 	if (!target) {
 		return false;
 	}
-	await fs.appendFile(newest.file, `${JSON.stringify({ $rewindTo: target.id })}\n`);
+	await fs.appendFile(target.file, `${JSON.stringify({ $rewindTo: target.messageId })}\n`);
 	return true;
+}
+
+/** Whether {@link rewindCliSession} would find the prompt, without changing anything. */
+export async function canRewindCliSession(cwd: string, id: string, prompt: string, fromEnd: number, home?: string): Promise<boolean> {
+	return !!await rewindTarget(cwd, id, prompt, fromEnd, home).catch(() => undefined);
+}
+
+async function rewindTarget(cwd: string, id: string, prompt: string, fromEnd: number, home?: string): Promise<{ readonly file: string; readonly messageId: string } | undefined> {
+	const newest = await newestSessionFile(cwd, id, home);
+	const wanted = squashSpaces(prompt);
+	if (!newest || !newest.file.endsWith('.jsonl') || !wanted) {
+		return undefined;
+	}
+	const { all } = parseSessionRecords(await fs.readFile(newest.file, 'utf8'), false);
+	// The CLI's message also carries what GeminiCode added to the prompt, such as context or a note about a shared page.
+	const matches = all.filter(message => message.type === 'user' && squashSpaces(textOf(message.content)).includes(wanted));
+	const target = matches[matches.length - 1 - fromEnd];
+	return target ? { file: newest.file, messageId: target.id } : undefined;
 }
 
 function squashSpaces(text: string): string {

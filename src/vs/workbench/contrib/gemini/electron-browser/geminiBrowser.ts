@@ -39,6 +39,7 @@ import { IStorageService, StorageScope, StorageTarget } from '../../../../platfo
 import { IWorkspaceContextService, WorkbenchState } from '../../../../platform/workspace/common/workspace.js';
 import { IWorkspaceTrustManagementService } from '../../../../platform/workspace/common/workspaceTrust.js';
 import { EditorsOrder } from '../../../common/editor.js';
+import { IEditorGroupsService } from '../../../services/editor/common/editorGroupsService.js';
 import { IEditorService, SIDE_GROUP } from '../../../services/editor/common/editorService.js';
 import { IWorkbenchEnvironmentService } from '../../../services/environment/common/environmentService.js';
 import { BrowserEditorInput } from '../../browserView/common/browserEditorInput.js';
@@ -248,6 +249,19 @@ CommandsRegistry.registerCommand('_gemini.browser.sharedPage', (accessor, key: s
 		}
 	}
 	return undefined;
+});
+
+/** Brings one of the agent's pages to the front in the editor group it is in. Resolves with whether it was found. */
+CommandsRegistry.registerCommand('_gemini.browser.reveal', async (accessor, key: string, pageId: string) => {
+	const browserViews = accessor.get(IBrowserViewWorkbenchService);
+	const editorService = accessor.get(IEditorService);
+	const input = pagesOf(browserViews, sessionOf(key)).includes(pageId) ? browserViews.getKnownBrowserViews().get(pageId) : undefined;
+	if (!input) {
+		return false;
+	}
+	const group = accessor.get(IEditorGroupsService).groups.find(g => g.contains(input));
+	await editorService.openEditor(input, { pinned: true }, group?.id ?? SIDE_GROUP);
+	return true;
 });
 
 /** The agent's open pages. */
