@@ -36,14 +36,20 @@ class FakeBrowser implements BrowserBackend {
 	async pages(agent: string) {
 		return this.open_.get(agent) ?? [];
 	}
+	/** What a full snapshot shows, when a test sets it. */
+	fullSnapshot: string | undefined;
+	/** The error the next action fails with, as Playwright words it. */
+	actError: string | undefined;
 	async snapshot(_agent: string, pageId: string) {
-		return { summary: `snapshot ${pageId}`, url: this.at.get(pageId) ?? 'about:blank' };
+		return { summary: this.fullSnapshot ?? `snapshot ${pageId}`, url: this.at.get(pageId) ?? 'about:blank' };
 	}
 	async act(agent: string, pageId: string, action: BrowserAction, args: readonly unknown[]): Promise<PageState> {
 		this.calls.push(`${action} ${agent} ${pageId} ${JSON.stringify(args)}`);
 		const url = this.leadsTo.get(action) ?? (action === 'goto' ? String(args[0]) : 'http://localhost:5173/');
 		this.at.set(pageId, url);
-		return { summary: `after ${action}`, url };
+		const error = this.actError;
+		this.actError = undefined;
+		return { summary: `after ${action}`, url, ...error ? { error } : {} };
 	}
 	async screenshot(_agent: string, pageId: string) {
 		return { data: 'aGk=', url: this.at.get(pageId) ?? 'about:blank' };
@@ -107,15 +113,43 @@ describe('BrowserToolHost', () => {
 		expect(asked).toEqual([]);
 	});
 
-	it('adds the page\'s text to a screenshot for a model that may not see the image', async () => {
-		for (const [model, note] of [['gemini-3-flash-preview', 'can\'t see screenshots'], ['auto-gemini-3', 'In case the image does not reach you']]) {
+	it('sends the page as text, without the image, to a model that may not see a screenshot', async () => {
+		for (const [model, note] of [['gemini-3-flash-preview', 'can\'t see screenshots'], ['auto-gemini-3', 'Under Auto']]) {
 			const { host } = setup(false, true, model);
 			await host.call('a1', 'browser_navigate', { url: 'http://localhost' });
 			const shot = await host.call('a1', 'browser_screenshot', {});
-			expect(shot.content[0]).toMatchObject({ type: 'image' });
-			expect(shot.content[1]).toMatchObject({ type: 'text', text: expect.stringContaining(note) });
-			expect((shot.content[1] as { text: string }).text).toContain('snapshot p1');
+			expect(shot.content).toHaveLength(1);
+			expect(shot.content[0]).toMatchObject({ type: 'text', text: expect.stringContaining(note) });
+			expect((shot.content[0] as { text: string }).text).toContain('snapshot p1');
 		}
+	});
+
+	it('says a ref is gone only when a full snapshot no longer has it', async () => {
+		const { browser, host } = setup();
+		await host.call('a1', 'browser_navigate', { url: 'http://localhost' });
+		browser.fullSnapshot = '- button "Buy" [ref=e7]';
+		browser.actError = 'locator.hover: Timeout 10000ms exceeded.';
+		const gone = await host.call('a1', 'browser_hover', { ref: 'e134' });
+		expect(gone.isError).toBe(true);
+		expect((gone.content[0] as { text: string }).text).toContain('Element e134 is not on the page any more');
+		expect((gone.content[0] as { text: string }).text).toContain('[ref=e7]');
+	});
+
+	it('passes on why an action on an element still on the page failed, with what to try', async () => {
+		const { browser, host } = setup();
+		await host.call('a1', 'browser_navigate', { url: 'http://localhost' });
+		browser.fullSnapshot = '- link "Explore" [ref=e134]';
+		browser.actError = 'locator.hover: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\'aria-ref=e134\')\n  - <div class="cookie-banner">…</div> intercepts pointer events\n  - retrying hover action';
+		const covered = (await host.call('a1', 'browser_hover', { ref: 'e134' })).content[0] as { text: string };
+		expect(covered.text).toContain('Element e134 is on the page, but the hover did not work: another element covers it: <div class="cookie-banner">');
+		expect(covered.text).toContain('Escape');
+		expect(covered.text).toContain('clicking the element may work instead');
+		expect(covered.text).not.toContain('not on the page any more');
+
+		browser.actError = 'locator.click: Timeout 10000ms exceeded.\n  - element is not visible';
+		const hidden = (await host.call('a1', 'browser_click', { ref: 'e134' })).content[0] as { text: string };
+		expect(hidden.text).toContain('it is hidden');
+		expect(hidden.text).not.toContain('clicking the element');
 	});
 
 	it('asks before other sites, and goes back when an action leads to one not allowed', async () => {

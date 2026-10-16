@@ -30,7 +30,7 @@ import type { ModelTokens } from '../acp/turnUsage';
 import { UpdateBatcher } from '../acp/updateBatcher';
 import { isBlockedWebFetch } from '../acp/webFetchHint';
 import type { AgentClient } from '../acp/agentClient';
-import { AgentError, AgentErrorInfo, errorMessage } from '../acp/errors';
+import { AgentError, AgentErrorInfo, errorMessage, isModelTurnRefusal } from '../acp/errors';
 import { readGitHead } from '../acp/gitHead';
 import { upgradeUrl } from '../acp/helpLinks';
 import { EnhanceCancelledError, enhanceHistory } from '../acp/promptEnhancer';
@@ -662,19 +662,29 @@ export class ChatController implements vscode.Disposable {
 	 * Sends a prompt; when Gemini refuses the request after a tool result with
 	 * "Requests ending with a model turn are not supported", logs the shape of
 	 * the turn (no contents) and asks the agent once to carry on from the last
-	 * tool result, as typing "continue" does.
+	 * tool result, as typing "continue" does. When that is refused too, says so
+	 * in plain words rather than with the API's JSON.
 	 */
 	private async promptRecovering(content: acp.ContentBlock[]): ReturnType<AgentClient['promptTurn']> {
 		const turnStart = this.transcript.items.length;
 		try {
 			return await this.service.client.promptTurn(content);
 		} catch (err) {
-			if (!/ending with a model turn/i.test(errorMessage(err))) {
+			if (!isModelTurnRefusal(errorMessage(err))) {
 				throw err;
 			}
 			this.service.writeLog?.(`Gemini refused the turn's request (${errorMessage(err)}). Mode ${this.service.client.settings.mode?.currentId ?? '?'}, model ${this.service.client.settings.model?.currentId ?? '?'}. Turn so far: ${turnShape(this.transcript.items.slice(turnStart))}`);
-			this.transcript.addNotice(vscode.l10n.t("Recovered after an API error: the agent carries on from the last tool result."));
-			return this.service.client.promptTurn([{ type: 'text', text: 'Continue from the last tool result.' }]);
+		}
+		try {
+			const result = await this.service.client.promptTurn([{ type: 'text', text: 'Continue from the last tool result.' }]);
+			this.transcript.addNotice(vscode.l10n.t("Recovered after an API error: the agent carried on from the last tool result."));
+			return result;
+		} catch (err) {
+			this.service.writeLog?.(`Gemini refused the retry too (${errorMessage(err)}).`);
+			if (!isModelTurnRefusal(errorMessage(err))) {
+				throw err;
+			}
+			throw new Error(vscode.l10n.t("Gemini refused the request after a tool result, and again when asked to carry on. This is a known Gemini CLI problem after screenshots. The work so far is kept: send your message again, or switch the model and retry."));
 		}
 	}
 
