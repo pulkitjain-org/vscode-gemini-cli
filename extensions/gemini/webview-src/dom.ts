@@ -42,9 +42,80 @@ export function button(className: string, label: string, onClick: () => void, ic
 
 /** Sets the tooltip and the accessible name together, as icon-only controls need both. */
 export function setLabel(node: HTMLElement, label: string): void {
-	node.title = label;
+	setTip(node, label);
 	node.setAttribute('aria-label', label);
 }
+
+/**
+ * Gives `node` a themed tooltip, shown on hover and keyboard focus. The
+ * webview's native `title` tooltips are the system's, slow to appear and
+ * unthemed, against the rule that every popup uses the app's own look.
+ */
+export function setTip(node: HTMLElement, tip: string): void {
+	node.removeAttribute('title');
+	node.dataset.tip = tip;
+	if (shownFor === node && tooltip && !tooltip.hidden) {
+		tooltip.textContent = tip;
+	}
+}
+
+const tipDelayMs = 350;
+let tooltip: HTMLElement | undefined;
+/** The control whose tooltip shows, or is about to. */
+let shownFor: HTMLElement | undefined;
+let tipTimer: ReturnType<typeof setTimeout> | undefined;
+
+function showTip(target: HTMLElement): void {
+	const tip = target.dataset.tip;
+	if (!tip || !target.isConnected) {
+		return;
+	}
+	tooltip ??= document.body.appendChild(el('div', 'gemini-tooltip'));
+	tooltip.setAttribute('role', 'tooltip');
+	tooltip.textContent = tip;
+	tooltip.hidden = false;
+	// Above the control, or below it at the top of the view; kept inside the view.
+	const box = target.getBoundingClientRect();
+	const size = tooltip.getBoundingClientRect();
+	const left = Math.min(Math.max(4, box.left + box.width / 2 - size.width / 2), window.innerWidth - size.width - 4);
+	const top = box.top - size.height - 6 >= 4 ? box.top - size.height - 6 : box.bottom + 6;
+	tooltip.style.left = `${Math.round(left)}px`;
+	tooltip.style.top = `${Math.round(top)}px`;
+}
+
+function hideTip(): void {
+	clearTimeout(tipTimer);
+	tipTimer = undefined;
+	shownFor = undefined;
+	if (tooltip) {
+		tooltip.hidden = true;
+	}
+}
+
+function tipTarget(event: Event): HTMLElement | undefined {
+	return event.target instanceof Element ? event.target.closest<HTMLElement>('[data-tip]') ?? undefined : undefined;
+}
+
+function scheduleTip(target: HTMLElement | undefined): void {
+	if (target === shownFor) {
+		return;
+	}
+	hideTip();
+	if (target) {
+		shownFor = target;
+		tipTimer = setTimeout(() => showTip(target), tipDelayMs);
+	}
+}
+
+// Moving the pointer, not just entering, so a tooltip hidden by scrolling or a click comes back.
+document.addEventListener('pointermove', event => scheduleTip(tipTarget(event)), { passive: true });
+document.documentElement.addEventListener('pointerleave', hideTip);
+document.addEventListener('focusin', event => scheduleTip(event.target instanceof HTMLElement && event.target.matches(':focus-visible') ? tipTarget(event) : undefined));
+document.addEventListener('focusout', hideTip);
+document.addEventListener('pointerdown', hideTip, true);
+document.addEventListener('keydown', hideTip, true);
+document.addEventListener('wheel', hideTip, { capture: true, passive: true });
+window.addEventListener('blur', hideTip);
 
 /** A button that copies `text()` and briefly shows a check mark. */
 export function copyButton(className: string, label: string, text: () => string): HTMLButtonElement {

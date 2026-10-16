@@ -17,7 +17,7 @@ import { applyInlineStyles } from './inlineStyles';
 import { renderMath } from './math';
 import { mathPlugin } from './mathRule';
 import { enhanceMarkdown } from './markdownExtras';
-import { button, copyButton, el, icon, onIntent, setLabel } from './dom';
+import { button, copyButton, el, icon, onIntent, setLabel, setTip } from './dom';
 import { toneOf } from './repoTones';
 import { thoughtPreview } from './streaming';
 import { expanded, state, strings, subagentTimes, thoughtTimes, ui, vscode } from './view';
@@ -172,7 +172,7 @@ function renderTurnEnd(item: ItemOf<'turnEnd'>): HTMLElement {
 function sentAt(at: number): HTMLElement {
 	const time = el('time', 'sent-at', formatSentAt(at, Date.now()));
 	time.dateTime = new Date(at).toISOString();
-	time.title = new Date(at).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'medium' });
+	setTip(time, new Date(at).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'medium' }));
 	return time;
 }
 
@@ -196,7 +196,7 @@ function renderUserMessage(item: { readonly text: string; readonly attachments?:
 			if (attachment.kind === 'page') {
 				// The page shared with the agent then; it opens the page shared now.
 				const page = button('chip shared-page', format(strings.sharedPage, attachment.label), () => vscode.postMessage({ type: 'openSharedPage' }), 'globe');
-				page.title = format(strings.showSharedPage, path ?? attachment.label);
+				setTip(page, format(strings.showSharedPage, path ?? attachment.label));
 				chips.append(page);
 				continue;
 			}

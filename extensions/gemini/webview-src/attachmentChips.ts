@@ -9,7 +9,7 @@
 import type { SharedPageView } from '../src/host/chatProtocol';
 import { type Attachment, attachmentLabel, classifyFile, maxImageBase64Length, supportedImageTypes } from '../src/acp/attachments';
 import { attachmentIcon, carriesFiles, fileUris, format, imageName, sameAttachment } from './chatLogic';
-import { button, el, icon } from './dom';
+import { button, el, icon, setLabel, setTip } from './dom';
 import { updateSendState } from './inputBox';
 import { setTransientNotice } from './transcript';
 import { state, strings, ui, vscode } from './view';
@@ -34,13 +34,11 @@ export function setSharedPage(page: SharedPageView | undefined): void {
 
 function sharedPageChip(page: SharedPageView): HTMLElement {
 	const chip = el('span', 'chip attachment shared-page');
-	chip.title = page.url;
 	const open = button('shared-page-open', format(strings.sharedPage, page.title), () => vscode.postMessage({ type: 'openSharedPage' }), 'globe');
-	open.title = format(strings.showSharedPage, page.url);
+	setTip(open, format(strings.showSharedPage, page.url));
 	chip.append(open);
 	const stop = button('chip-remove', '', () => vscode.postMessage({ type: 'stopSharing' }), 'close');
-	stop.title = strings.stopSharing;
-	stop.setAttribute('aria-label', strings.stopSharing);
+	setLabel(stop, strings.stopSharing);
 	chip.append(stop);
 	return chip;
 }
