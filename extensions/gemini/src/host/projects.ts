@@ -25,7 +25,8 @@ import { attachmentLabel, type Attachment } from '../acp/attachments';
 import { ConductorReader } from '../acp/conductor';
 import type { InstantAnswer } from '../acp/permissions';
 import { ProjectHub, panelState, threadCounts, type ThreadRequest } from '../acp/projectHub';
-import { coordinatorTools, isProjectToolCall, isProjectToolTitle, ProjectMcpServer, threadTools, type ProjectCaller } from '../acp/projectMcp';
+import { coordinatorTools, isProjectToolCall, isProjectToolTitle, ProjectMcpServer, projectServerName, threadTools, type ProjectCaller } from '../acp/projectMcp';
+import { projectToolsBlock, type ProjectToolsBlock } from '../acp/projectToolsCheck';
 import type { McpToolResult } from '../acp/browserMcp';
 import { errorMessage } from '../acp/errors';
 import { cleanDraft, draftRequest, repoFacts } from '../acp/projectDraft';
@@ -77,6 +78,8 @@ export interface ProjectAgents {
 	reloadProjectTools(coordinatorId: string): Promise<boolean>;
 	/** Writes to the Gemini log. */
 	log(message: string): void;
+	/** What the Gemini CLI's log says went wrong with the MCP server `name` in the running agent, if anything. */
+	mcpProblem(name: string): string | undefined;
 	/** One direct request to the quick model; undefined when there is no way to make one. */
 	direct(request: { readonly system: string; readonly prompt: string }): Promise<string | undefined>;
 	openChanges(id: string): Promise<void>;
@@ -295,14 +298,29 @@ export class Projects implements vscode.Disposable {
 		if (await server.whenListed(caller, toolsListedMs)) {
 			return;
 		}
-		this.agents.log(`The coordinator of ${record.title} has no project tools; getting them loaded`);
-		coordinator.addNotice(vscode.l10n.t("The project's tools didn't load in the coordinator's session, so it couldn't start threads. Restarting Gemini to load them, once no agent is working; your message waits until then."));
+		const folder = coordinatorHome(record.id);
+		const block = await projectToolsBlock({ folder, server: projectServerName });
+		this.agents.log(`The coordinator of ${record.title} has no project tools (passed: ${this.mcpServersFor(record).length > 0}, contacted: ${server.wasContacted(caller)}, block: ${block ? JSON.stringify(block) : 'none found'})`);
+		// Only an untrusted folder, or one trusted after the agent started, is GeminiCode's to put right.
+		if (block && block.kind !== 'untrusted') {
+			throw new Error(blockMessage(block));
+		}
+		const problem = this.agents.mcpProblem(projectServerName);
+		if (!block && problem) {
+			throw new Error(vscode.l10n.t("The Gemini CLI couldn't connect to the project's tools: {0}", problem));
+		}
+		coordinator.addNotice(block
+			? vscode.l10n.t("The Gemini CLI doesn't trust the coordinator's folder, so it loaded none of the project's tools and can't start threads. Trust the project's folders to go on; your message waits.")
+			: vscode.l10n.t("The project's tools didn't load because Gemini started before their folders were trusted. Restarting Gemini once no agent is working; your message waits until then."));
 		server.forgetListed(caller);
 		if (!await this.agents.reloadProjectTools(record.id)) {
 			throw new Error(vscode.l10n.t("The project's folders aren't trusted, so the Gemini CLI loads no project tools there. Trust them to start threads."));
 		}
 		if (!await server.whenListed(caller, toolsReloadMs)) {
-			throw new Error(vscode.l10n.t("The project's tools still didn't load. The Gemini log (Output, Gemini) says why; your Gemini settings may exclude MCP servers."));
+			const after = await projectToolsBlock({ folder, server: projectServerName });
+			const failed = this.agents.mcpProblem(projectServerName);
+			this.agents.log(`The coordinator of ${record.title} still has no project tools after a restart (contacted: ${server.wasContacted(caller)}, block: ${after ? JSON.stringify(after) : 'none found'}, MCP problem: ${failed ?? 'none'})`);
+			throw new Error(after ? blockMessage(after) : failed ? vscode.l10n.t("The Gemini CLI couldn't connect to the project's tools: {0}", failed) : vscode.l10n.t("The project's tools still didn't load, and nothing in the Gemini CLI's settings explains why. The Gemini log (Output, Gemini) has the details."));
 		}
 		coordinator.addNotice(vscode.l10n.t("The project's tools loaded."));
 	}
@@ -884,6 +902,24 @@ function repoCards(record: AgentRecord, files: readonly EditedFile[] | undefined
 const toolsListedMs = 10_000;
 /** How long it then waits for a restart to bring them, which waits for working agents to finish. */
 const toolsReloadMs = 10 * 60_000;
+
+/** What a block on the project's tools means, and what to do about it. */
+function blockMessage(block: ProjectToolsBlock): string {
+	switch (block.kind) {
+		case 'untrusted':
+			return vscode.l10n.t("The Gemini CLI doesn't trust {0}, so it loads no project tools there. Trust the project's folders to start threads.", tildify(block.folder));
+		case 'notAllowed':
+			return vscode.l10n.t("Your Gemini settings ({0}) allow only the MCP servers in mcp.allowed, and {1} isn't one. Add it there to start threads.", tildify(block.file), projectServerName);
+		case 'excluded':
+			return vscode.l10n.t("Your Gemini settings ({0}) leave out {1} in mcp.excluded. Remove it there to start threads.", tildify(block.file), projectServerName);
+		case 'adminOff':
+			return vscode.l10n.t("MCP servers are turned off in {0}, so the project's tools can't load.", tildify(block.file));
+		case 'disabled':
+			return vscode.l10n.t("{0} is turned off for the Gemini CLI. Run \"gemini mcp enable {0}\" in a terminal, then send your message again.", projectServerName);
+		case 'enablementUnreadable':
+			return vscode.l10n.t("The Gemini CLI can't read {0}, so it loads no MCP servers at all. Fix or delete that file, then send your message again.", tildify(block.file));
+	}
+}
 
 function callerOf(record: AgentRecord): ProjectCaller | undefined {
 	const role: AgentProjectRole | undefined = record.project;

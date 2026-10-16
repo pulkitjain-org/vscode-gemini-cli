@@ -243,6 +243,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			},
 			reloadProjectTools: id => this.reloadProjectTools(id),
 			log: message => this.service.writeLog(message),
+			mcpProblem: name => this.service.mcpProblems.find(problem => problem.server === name && problem.severity === 'error')?.message,
 			direct: request => this.direct?.(request) ?? Promise.resolve(undefined),
 			openChanges: id => this.openChanges(id),
 			undoThread: id => this.undoThread(id),

@@ -24,6 +24,9 @@ export interface ProjectToolHost {
 	multiRepo?(caller: ProjectCaller): boolean;
 }
 
+/** The server's name in a session's MCP servers. */
+export const projectServerName = 'geminicode-project';
+
 const text = { type: 'string' } as const;
 
 export const coordinatorTools: readonly McpTool[] = [
@@ -122,6 +125,8 @@ export class ProjectMcpServer {
 	/** The routes whose tools the CLI has listed since the server started, and who waits on one. */
 	private readonly listed = new Set<string>();
 	private readonly listeners = new Map<string, Set<() => void>>();
+	/** The routes the CLI has sent anything to, for telling a session that never connected from one that connected and stopped. */
+	private readonly contacted = new Set<string>();
 
 	constructor(private readonly host: ProjectToolHost, private readonly version: string) { }
 
@@ -151,7 +156,7 @@ export class ProjectMcpServer {
 		if (!this.port || !route) {
 			return undefined;
 		}
-		return { type: 'http', name: 'geminicode-project', url: `http://127.0.0.1:${this.port}/mcp/${route}`, headers: [{ name: 'Authorization', value: `Bearer ${this.tokenFor(route)}` }] };
+		return { type: 'http', name: projectServerName, url: `http://127.0.0.1:${this.port}/mcp/${route}`, headers: [{ name: 'Authorization', value: `Bearer ${this.tokenFor(route)}` }] };
 	}
 
 	/**
@@ -176,6 +181,12 @@ export class ProjectMcpServer {
 			const timer = setTimeout(() => done(false), ms);
 			waiting.add(onListed);
 		});
+	}
+
+	/** Whether the CLI has sent `caller`'s route anything since the server started. */
+	wasContacted(caller: ProjectCaller): boolean {
+		const route = routeOf(caller);
+		return !!route && this.contacted.has(route);
 	}
 
 	/** Forgets that `caller`'s tools were listed, as before its session opens again in a new agent process. */
@@ -209,6 +220,7 @@ export class ProjectMcpServer {
 		if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
 			return void res.writeHead(401).end();
 		}
+		this.contacted.add(route);
 		if (req.method === 'DELETE') {
 			return void res.writeHead(200).end();
 		}
@@ -245,7 +257,7 @@ export class ProjectMcpServer {
 				return ok({
 					protocolVersion: typeof message.params?.protocolVersion === 'string' ? message.params.protocolVersion : '2025-06-18',
 					capabilities: { tools: {} },
-					serverInfo: { name: 'geminicode-project', version: this.version },
+					serverInfo: { name: projectServerName, version: this.version },
 					instructions: caller.role === 'coordinator'
 						? 'Tools to start and steer the threads of a GeminiCode project.'
 						: 'Tools to report back to the coordinator of your GeminiCode project.',
