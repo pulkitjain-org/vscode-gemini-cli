@@ -11,7 +11,7 @@ import { Attachment, attachmentLabel } from '../acp/attachments';
 import { isValidAttachment } from '../acp/attachmentValidation';
 import { chatToMarkdown } from '../acp/chatMarkdown';
 import { ChatTranscript, ThreadCard, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
-import { Checkpoints } from '../acp/checkpoints';
+import { Checkpoints, type StoredCheckpoints } from '../acp/checkpoints';
 import { keepChatsForever, readCliPreferences } from '../acp/cliPreferences';
 import { geminiDir } from '../acp/directRequest';
 import { isInside, secretPathReason } from '../acp/fileAccess';
@@ -106,6 +106,8 @@ export interface ChatControllerOptions {
 	readonly parentProject?: { name(): string; open(): void };
 	/** The page the user shared with this agent in the GeminiCode browser; unset in chats that never have one. */
 	readonly sharedPage?: ChatSharedPage;
+	/** Saves the chat's checkpoints after each change, so Undo and Rewind outlast a reload; unset keeps them in memory only. */
+	saveCheckpoints?(stored: StoredCheckpoints): void;
 	/** Offers to reopen the CLI's saved sessions for the folder (and /resume); unset in chats that do not. */
 	readonly savedSessions?: {
 		/** Sessions other chats have open, which this one must not take. */
@@ -442,6 +444,28 @@ export class ChatController implements vscode.Disposable {
 		this.lastSessionId = state.kind === 'ready' ? state.savedSessionId : sessionId;
 	}
 
+	/**
+	 * Takes back the checkpoints saved with the chat, after {@link restore}:
+	 * the turns they cover offer Undo again.
+	 */
+	restoreCheckpoints(stored: StoredCheckpoints | undefined): void {
+		const shown = new Set(this.transcript.items.flatMap(item => item.kind === 'turnEnd' ? [item.id] : []));
+		// Checkpoints of turns the chat does not show (it was not restored, or started over) would undo the wrong turns.
+		if (this.busy || !stored?.turns?.length || !stored.turns.every(turn => shown.has(turn?.id))) {
+			return;
+		}
+		this.checkpoints.restore(stored);
+		for (const id of this.checkpoints.turnIds) {
+			if (this.checkpoints.canUndo(id)) {
+				this.transcript.updateTurnEnd(id, { files: this.checkpoints.fileCount(id), undo: 'available' });
+			}
+		}
+	}
+
+	private saveCheckpoints(): void {
+		this.options.saveCheckpoints?.(this.checkpoints.toStored());
+	}
+
 	/** Whether a webview shows this chat. */
 	get attached(): boolean {
 		return !!this.webview;
@@ -698,6 +722,9 @@ export class ChatController implements vscode.Disposable {
 		const files = this.checkpoints.fileCount(id);
 		this.transcript.updateTurnEnd(id, { retry: !this.options.project, ...(files ? { files } : {}), ...(undoable ? { undo: 'available' } : {}), ...(this.buildModeAfterPlan() ? { buildPlan: true } : {}) });
 		this.retryItemId = id;
+		if (files || dropped.length) {
+			this.saveCheckpoints();
+		}
 	}
 
 	/** The mode Build This Plan switches to: Default, when the chat is in Plan mode and the agent offers both. */
@@ -758,6 +785,7 @@ export class ChatController implements vscode.Disposable {
 		for (const undone of this.checkpoints.undone(id)) {
 			this.transcript.updateTurnEnd(undone, { undo: 'undone' });
 		}
+		this.saveCheckpoints();
 		if (restored.length) {
 			this.onDidEditFilesEmitter.fire(restored);
 			const names = restored.map(r => path.relative(this.service.client.cwd, r.path) || r.path);
@@ -869,6 +897,7 @@ export class ChatController implements vscode.Disposable {
 			this.diffs.clear();
 			this.completedToolCalls.clear();
 			this.checkpoints.clear();
+			this.saveCheckpoints();
 			this.lastPrompt = undefined;
 			this.retryItemId = undefined;
 			this.undoNote = undefined;
@@ -1034,6 +1063,7 @@ export class ChatController implements vscode.Disposable {
 		this.diffs.clear();
 		this.completedToolCalls.clear();
 		this.checkpoints.clear();
+		this.saveCheckpoints();
 		this.lastPrompt = undefined;
 		this.retryItemId = undefined;
 		this.undoNote = undefined;

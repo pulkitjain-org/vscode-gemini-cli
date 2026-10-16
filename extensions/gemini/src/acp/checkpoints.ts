@@ -3,9 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Checkpoints: for each of a chat's recent turns, the text every file had
-// before the agent first edited it in that turn, so the turn can be undone.
-// Kept in memory only, for the last few turns, and capped in size.
+// Checkpoints: for each of a chat's turns, the text every file had before
+// the agent first edited it in that turn, so the turn can be undone, or the
+// chat rewound to before it. Capped in turns and size; an agent's are saved
+// with it (`toStored`, `restore`), so they outlast a window reload.
 
 import * as path from 'node:path';
 import type { CompletedEdit } from './agentChanges';
@@ -38,9 +39,22 @@ export interface CheckpointLimits {
 	readonly maxTurns: number;
 	/** Text kept per turn; a turn past it cannot be undone. */
 	readonly maxTurnBytes: number;
+	/** Text kept for all turns; the oldest go first past it. */
+	readonly maxTotalBytes: number;
 }
 
-const defaultLimits: CheckpointLimits = { maxTurns: 20, maxTurnBytes: 1_000_000 };
+const defaultLimits: CheckpointLimits = { maxTurns: 100, maxTurnBytes: 1_000_000, maxTotalBytes: 20_000_000 };
+
+/** The checkpoints as saved: the turns oldest first, and what the agent last wrote to each file. */
+export interface StoredCheckpoints {
+	readonly turns: readonly {
+		readonly id: string;
+		/** Path and its text before the turn; null when the turn created it. */
+		readonly before: readonly (readonly [string, string | null])[];
+		readonly undoable: boolean;
+	}[];
+	readonly agentText: readonly (readonly [string, string])[];
+}
 
 export class Checkpoints {
 
@@ -102,6 +116,12 @@ export class Checkpoints {
 		// Undo goes back through every later turn, so nothing before a turn that can't be undone can be either.
 		const keep = turn.undoable ? this.limits.maxTurns : 1;
 		const dropped = this.turns.splice(0, Math.max(0, this.turns.length - keep)).map(t => t.id);
+		let total = this.turns.reduce((sum, t) => sum + t.bytes, 0);
+		while (this.turns.length > 1 && total > this.limits.maxTotalBytes) {
+			const oldest = this.turns.shift()!;
+			total -= oldest.bytes;
+			dropped.push(oldest.id);
+		}
 		this.forgetUnusedFiles();
 		return { undoable: turn.undoable, dropped };
 	}
@@ -156,6 +176,47 @@ export class Checkpoints {
 		}
 		this.forgetUnusedFiles();
 		return removed.map(t => t.id);
+	}
+
+	/** The ids of the turns kept, oldest first. */
+	get turnIds(): readonly string[] {
+		return this.turns.map(t => t.id);
+	}
+
+	/** The kept turns, to save with the agent. */
+	toStored(): StoredCheckpoints {
+		return {
+			turns: this.turns.map(t => ({ id: t.id, before: [...t.before].map(([file, text]) => [file, text ?? null] as const), undoable: t.undoable })),
+			agentText: [...this.agentText],
+		};
+	}
+
+	/** Takes back saved turns, for an agent from an earlier window; anything malformed is left out. */
+	restore(stored: StoredCheckpoints | undefined): void {
+		this.clear();
+		if (!stored || !Array.isArray(stored.turns) || !Array.isArray(stored.agentText)) {
+			return;
+		}
+		for (const turn of stored.turns) {
+			if (typeof turn?.id !== 'string' || !Array.isArray(turn.before)) {
+				continue;
+			}
+			const before = new Map<string, string | undefined>();
+			let bytes = 0;
+			for (const entry of turn.before) {
+				if (Array.isArray(entry) && typeof entry[0] === 'string' && (typeof entry[1] === 'string' || entry[1] === null)) {
+					before.set(entry[0], entry[1] ?? undefined);
+					bytes += entry[1]?.length ?? 0;
+				}
+			}
+			this.turns.push({ id: turn.id, before, bytes, undoable: turn.undoable === true });
+		}
+		for (const entry of stored.agentText) {
+			if (Array.isArray(entry) && typeof entry[0] === 'string' && typeof entry[1] === 'string') {
+				this.agentText.set(entry[0], entry[1]);
+			}
+		}
+		this.forgetUnusedFiles();
 	}
 
 	/** Forgets every turn, for example when the conversation is cleared. */
