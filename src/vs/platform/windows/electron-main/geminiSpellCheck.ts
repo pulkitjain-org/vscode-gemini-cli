@@ -10,11 +10,13 @@
 // the page's script, so typing costs nothing. A composer lets a right-click
 // through to here (the workbench's own menus take every other one); in a
 // misspelled word this shows the system's suggestions and "Add to Dictionary",
-// and anywhere else in the field Cut, Copy and Paste.
+// and anywhere else in the field Cut, Copy and Paste, in a menu the workbench
+// draws (geminiContextMenu.ts).
 
 import electron from 'electron';
 import { IDisposable, toDisposable } from '../../../base/common/lifecycle.js';
 import { localize } from '../../../nls.js';
+import { IGeminiContextMenuEntry, showGeminiContextMenu } from './geminiContextMenu.js';
 
 /** Shows spelling suggestions when a misspelled word is right-clicked in `webContents`. */
 export function registerGeminiSpellCheckMenu(webContents: electron.WebContents): IDisposable {
@@ -23,28 +25,31 @@ export function registerGeminiSpellCheckMenu(webContents: electron.WebContents):
 			return;
 		}
 		const word = params.misspelledWord;
-		const template: electron.MenuItemConstructorOptions[] = [];
+		const entries: IGeminiContextMenuEntry[] = [];
 		if (word) {
-			template.push(...params.dictionarySuggestions.slice(0, 6).map((suggestion: string) => ({
+			entries.push(...params.dictionarySuggestions.slice(0, 6).map((suggestion: string) => ({
 				label: suggestion,
-				click: () => webContents.replaceMisspelling(suggestion),
+				run: () => webContents.replaceMisspelling(suggestion),
 			})));
-			if (!template.length) {
-				template.push({ label: localize('gemini.spell.none', "No Suggestions"), enabled: false });
+			if (!entries.length) {
+				entries.push({ label: localize('gemini.spell.none', "No Suggestions"), enabled: false });
 			}
-			template.push(
-				{ type: 'separator' },
-				{ label: localize('gemini.spell.add', "Add to Dictionary"), click: () => webContents.session.addWordToSpellCheckerDictionary(word) },
-				{ type: 'separator' },
+			entries.push(
+				{ separator: true },
+				{ label: localize('gemini.spell.add', "Add to Dictionary"), run: () => webContents.session.addWordToSpellCheckerDictionary(word) },
+				{ separator: true },
 			);
 		}
-		template.push(
-			{ role: 'cut', label: localize('gemini.spell.cut', "Cut") },
-			{ role: 'copy', label: localize('gemini.spell.copy', "Copy") },
-			{ role: 'paste', label: localize('gemini.spell.paste', "Paste") },
-			{ role: 'selectAll', label: localize('gemini.spell.selectAll', "Select All") },
+		entries.push(
+			{ role: 'cut', label: localize('gemini.spell.cut', "Cut"), commandId: 'editor.action.clipboardCutAction', run: () => webContents.cut() },
+			{ role: 'copy', label: localize('gemini.spell.copy', "Copy"), commandId: 'editor.action.clipboardCopyAction', run: () => webContents.copy() },
+			{ role: 'paste', label: localize('gemini.spell.paste', "Paste"), commandId: 'editor.action.clipboardPasteAction', run: () => webContents.paste() },
+			{ role: 'selectAll', label: localize('gemini.spell.selectAll', "Select All"), commandId: 'editor.action.selectAll', run: () => webContents.selectAll() },
 		);
-		electron.Menu.buildFromTemplate(template).popup({ window: electron.BrowserWindow.fromWebContents(webContents) ?? undefined, frame: params.frame ?? undefined });
+		const win = electron.BrowserWindow.fromWebContents(webContents);
+		if (win) {
+			showGeminiContextMenu(win, webContents, params.x, params.y, entries);
+		}
 	};
 	webContents.on('context-menu', onContextMenu);
 	return toDisposable(() => {
