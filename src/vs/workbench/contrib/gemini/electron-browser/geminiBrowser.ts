@@ -234,6 +234,22 @@ CommandsRegistry.registerCommand('_gemini.browser.release', async (accessor, key
 	}
 });
 
+/**
+ * The page the user handed to the agent, if it still has one: the extension
+ * asks after a window reload, when it no longer remembers the hand-over.
+ */
+CommandsRegistry.registerCommand('_gemini.browser.sharedPage', (accessor, key: string) => {
+	const browserViews = accessor.get(IBrowserViewWorkbenchService);
+	const storageService = accessor.get(IStorageService);
+	for (const id of pagesOf(browserViews, sessionOf(key))) {
+		const model = browserViews.getKnownBrowserViews().get(id)?.model;
+		if (model && isHandedOver(model, storageService)) {
+			return { pageId: model.id, url: model.url, title: model.title };
+		}
+	}
+	return undefined;
+});
+
 /** The agent's open pages. */
 CommandsRegistry.registerCommand('_gemini.browser.pages', (accessor, key: string) => pagesOf(accessor.get(IBrowserViewWorkbenchService), sessionOf(key)));
 
@@ -422,9 +438,12 @@ class StopSharingPageAction extends Action2 {
 	async run(accessor: ServicesAccessor, editor?: unknown): Promise<void> {
 		const model = browserEditorOf(accessor, editor)?.model;
 		const views = browserViewServiceOf(accessor);
+		const commandService = accessor.get(ICommandService);
 		const key = model && keyOf(model);
 		if (model && key && isHandedOver(model, accessor.get(IStorageService))) {
 			await release(views, model, sessionOf(key));
+			// The agent's composer drops its Shared page chip.
+			commandService.executeCommand('_gemini.browser.released', key, model.id).catch(() => undefined);
 		}
 	}
 }

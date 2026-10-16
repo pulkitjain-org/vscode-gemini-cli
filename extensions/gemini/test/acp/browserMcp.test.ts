@@ -281,6 +281,12 @@ describe('BrowserToolHost', () => {
 		expect(sharedPageText('  ', 'http://localhost/').title).toBe('http://localhost/');
 	});
 
+	it('asks the agent to check a code change on the shared page', () => {
+		const { text } = sharedPageText('Cart', 'http://localhost:3000/cart');
+		expect(text).toContain('browser_reload');
+		expect(text).toContain('browser_screenshot');
+	});
+
 	it('steers the model to the browser, not web fetch, for private and signed-in pages', () => {
 		for (const name of ['browser_navigate', 'browser_snapshot']) {
 			expect(browserTools.find(t => t.name === name)?.description).toContain('not web_fetch');

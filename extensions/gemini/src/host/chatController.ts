@@ -104,11 +104,21 @@ export interface ChatControllerOptions {
 	readonly project?: ChatProject;
 	/** A project thread's chat: names its project, and opens the project chat. */
 	readonly parentProject?: { name(): string; open(): void };
+	/** The page the user shared with this agent in the GeminiCode browser; unset in chats that never have one. */
+	readonly sharedPage?: ChatSharedPage;
 	/** Offers to reopen the CLI's saved sessions for the folder (and /resume); unset in chats that do not. */
 	readonly savedSessions?: {
 		/** Sessions other chats have open, which this one must not take. */
 		inUse(): ReadonlySet<string>;
 	};
+}
+
+/** A page shared with the agent: pinned to the composer, and named in every prompt until the user stops sharing it. */
+export interface ChatSharedPage {
+	/** The page shared now, checked against the browser, with the note a prompt carries about it. */
+	current(): Promise<{ readonly title: string; readonly url: string; readonly note: string } | undefined>;
+	/** Gives the page back to the user. */
+	stop(): Promise<void>;
 }
 
 /** Makes a chat a project's chat (Projects preview): the coordinator's, fed through the project's hub. */
@@ -607,6 +617,10 @@ export class ChatController implements vscode.Disposable {
 			if (!content.length) {
 				throw new Error(vscode.l10n.t("The agent cannot take images, so there was nothing to send."));
 			}
+			const page = await this.refreshSharedPage();
+			if (page) {
+				content.push({ type: 'text', text: page.note });
+			}
 			if (this.undoNote) {
 				content.unshift({ type: 'text', text: this.undoNote });
 			}
@@ -919,6 +933,13 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	/** Adds context to the composer (Add File / Add Selection to Chat), showing the chat first. */
+	/** Shows the shared page's chip as the browser has it now; resolves with the page, if one is shared. */
+	async refreshSharedPage(): Promise<{ readonly title: string; readonly url: string; readonly note: string } | undefined> {
+		const page = await this.options.sharedPage?.current().catch(() => undefined);
+		this.post({ type: 'sharedPage', page: page && { title: page.title, url: page.url } });
+		return page;
+	}
+
 	async addAttachments(attachments: readonly Attachment[]): Promise<void> {
 		if (!attachments.length) {
 			return;
@@ -1065,6 +1086,7 @@ export class ChatController implements vscode.Disposable {
 					this.post({ type: 'toggleUsage' });
 				}
 				this.postGit();
+				void this.refreshSharedPage();
 				// The agent was started with the view (see attach); this retries one that has since stopped.
 				this.service.ensureReady().catch(() => undefined);
 				// After starting the agent: finding the theme's file scans every extension the first time.
@@ -1090,6 +1112,9 @@ export class ChatController implements vscode.Disposable {
 				break;
 			case 'pickFiles':
 				void this.pickFiles();
+				break;
+			case 'stopSharing':
+				void this.options.sharedPage?.stop().then(() => this.refreshSharedPage());
 				break;
 			case 'attachUris': {
 				const uris = message.uris.map(uri => vscode.Uri.parse(uri)).filter(uri => uri.scheme === 'file');
@@ -1771,6 +1796,8 @@ export class ChatController implements vscode.Disposable {
 			commandFromTeam: vscode.l10n.t("Team"),
 			commandFromSkill: vscode.l10n.t("Skill"),
 			remove: vscode.l10n.t("Remove"),
+			sharedPage: vscode.l10n.t("Shared page: {0}"),
+			stopSharing: vscode.l10n.t("Stop sharing this page"),
 			fileTooLarge: vscode.l10n.t("{0} is too large to send."),
 			attachFiles: vscode.l10n.t("Attach files. You can also drop files here; hold Shift when dragging from the Explorer."),
 			dropFiles: vscode.l10n.t("Drop files to attach"),

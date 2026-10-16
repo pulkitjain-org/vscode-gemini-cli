@@ -19,7 +19,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 25;
+export const chatProtocolVersion = 26;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -291,6 +291,9 @@ export interface ChatStrings {
 	readonly commandFromTeam: string;
 	readonly commandFromSkill: string;
 	readonly remove: string;
+	/** `{0}` is the shared page's title. */
+	readonly sharedPage: string;
+	readonly stopSharing: string;
 	/** `{0}` is the file's name. */
 	readonly fileTooLarge: string;
 	readonly attachFiles: string;
@@ -452,6 +455,11 @@ export interface ChatStrings {
 }
 
 /** How full the session's context window is, from the counts the CLI saved with its replies. */
+export interface SharedPageView {
+	readonly title: string;
+	readonly url: string;
+}
+
 export interface ViewContext {
 	/** The latest request's input tokens. */
 	readonly used: number;
@@ -550,6 +558,8 @@ export type FromWebview =
 	| { readonly type: 'pickFiles' }
 	/** Files dropped with paths (file: URIs), such as from the Explorer. */
 	| { readonly type: 'attachUris'; readonly uris: readonly string[] }
+	/** The × on the shared page's chip: give the page back to the user. */
+	| { readonly type: 'stopSharing' }
 	/** The user dragged the input to `height` pixels, or reset it (0). */
 	| { readonly type: 'composerHeight'; readonly height: number }
 	/** The eye toggle: open each file the agent reads or edits. */
@@ -613,6 +623,8 @@ export type ToWebview =
 	| { readonly type: 'commands'; readonly commands: readonly SlashCommand[] }
 	/** Context to add to the composer, from the Add to Chat commands. */
 	| { readonly type: 'attach'; readonly attachments: readonly Attachment[] }
+	/** The page the user shared with this agent in the GeminiCode browser, pinned to the composer until they stop sharing it. */
+	| { readonly type: 'sharedPage'; readonly page: SharedPageView | undefined }
 	| { readonly type: 'git'; readonly git: ViewGit }
 	/** The folder's local branches for the branch menu, or why it cannot switch (`notice`). */
 	| { readonly type: 'branches'; readonly branches: readonly ViewBranch[]; readonly notice?: string }

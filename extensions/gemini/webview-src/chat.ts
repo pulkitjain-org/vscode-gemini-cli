@@ -24,7 +24,7 @@
 import type { ItemUpdate } from '../src/acp/textDeltas';
 import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
 import { coalesceUpdates } from './chatLogic';
-import { addAttachments } from './attachmentChips';
+import { addAttachments, setSharedPage } from './attachmentChips';
 import { setBusy, setFollow, setFollowed, setGit, setSettings, setStatus } from './composer';
 import { applyTokenColors } from './codeHighlight';
 import { onEnhanced, onEnhanceFailed, onEnhanceProgress, toggleEnhance } from './enhance';
@@ -158,6 +158,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'attach':
 			addAttachments(message.attachments);
+			break;
+		case 'sharedPage':
+			setSharedPage(message.page);
 			break;
 		case 'git':
 			setGit(message.git);

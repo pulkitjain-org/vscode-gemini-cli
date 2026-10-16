@@ -6,6 +6,7 @@
 // What the next prompt sends along, shown as chips above the input, and the
 // files pasted or dropped into the view.
 
+import type { SharedPageView } from '../src/host/chatProtocol';
 import { type Attachment, attachmentLabel, classifyFile, maxImageBase64Length, supportedImageTypes } from '../src/acp/attachments';
 import { attachmentIcon, carriesFiles, fileUris, format, imageName, sameAttachment } from './chatLogic';
 import { button, el, icon } from './dom';
@@ -25,8 +26,25 @@ export function addAttachments(added: readonly Attachment[]): void {
 	input.focus();
 }
 
+/** Pins the shared page's chip to the composer, or takes it away. */
+export function setSharedPage(page: SharedPageView | undefined): void {
+	state.sharedPage = page;
+	renderAttachments();
+}
+
+function sharedPageChip(page: SharedPageView): HTMLElement {
+	const chip = el('span', 'chip attachment shared-page');
+	chip.title = page.url;
+	chip.append(icon('globe'), el('span', undefined, format(strings.sharedPage, page.title)));
+	const stop = button('chip-remove', '', () => vscode.postMessage({ type: 'stopSharing' }), 'close');
+	stop.title = strings.stopSharing;
+	stop.setAttribute('aria-label', strings.stopSharing);
+	chip.append(stop);
+	return chip;
+}
+
 export function renderAttachments(): void {
-	attachmentList.replaceChildren(...state.attachments.map(attachment => {
+	attachmentList.replaceChildren(...state.sharedPage ? [sharedPageChip(state.sharedPage)] : [], ...state.attachments.map(attachment => {
 		const chip = el('span', 'chip attachment');
 		if (attachment.kind === 'image') {
 			const thumbnail = el('img', 'thumbnail');
@@ -52,7 +70,7 @@ export function renderAttachments(): void {
 		chip.append(remove);
 		return chip;
 	}));
-	attachmentList.hidden = !state.attachments.length;
+	attachmentList.hidden = !state.attachments.length && !state.sharedPage;
 	updateSendState();
 }
 

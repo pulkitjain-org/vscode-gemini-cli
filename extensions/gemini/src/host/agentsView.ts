@@ -1914,6 +1914,10 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				savedSessions: {
 					inUse: () => new Set(this.model.snapshot().agents.flatMap(a => a.id !== record.id && a.sessionId ? [a.sessionId] : [])),
 				},
+				sharedPage: {
+					current: () => this.browser?.sharedPage(record.id) ?? Promise.resolve(undefined),
+					stop: () => this.browser?.stopSharing(record.id) ?? Promise.resolve(),
+				},
 				workspace: () => {
 					const workspace = this.model.workspace(record.workspaceId);
 					const current = this.model.agent(record.id) ?? record;

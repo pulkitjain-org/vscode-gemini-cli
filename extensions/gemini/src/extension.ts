@@ -91,6 +91,11 @@ export function activate(context: vscode.ExtensionContext): void {
 			await agentsView.open(agent);
 			await agentsView.controllerOf(agent)?.addAttachments(attachments);
 		},
+		showSharedPage: async agent => {
+			await agentsView.open(agent);
+			await agentsView.controllerOf(agent)?.refreshSharedPage();
+		},
+		sharedPageChanged: agent => void agentsView.controllerOf(agent)?.refreshSharedPage(),
 		attachToFront: attachments => chatInFront().addAttachments(attachments),
 		model: agent => agentsView.controllerOf(agent)?.model,
 		newAgent: page => agentsView.newAgentFor(page),

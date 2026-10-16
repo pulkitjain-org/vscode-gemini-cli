@@ -9,7 +9,7 @@
 import type { Attachment } from '../src/acp/attachments';
 import type { TranscriptItem } from '../src/acp/chatTranscript';
 import type { SessionSettings } from '../src/acp/sessionSettings';
-import type { ChatStrings, FromWebview } from '../src/host/chatProtocol';
+import type { ChatStrings, FromWebview, SharedPageView } from '../src/host/chatProtocol';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromWebview): void };
 
@@ -109,6 +109,8 @@ export const state = {
 	busy: false,
 	/** What the next prompt sends along. */
 	attachments: [] as Attachment[],
+	/** The page shared with the agent, pinned to the composer; every prompt tells the agent about it. */
+	sharedPage: undefined as SharedPageView | undefined,
 	/** Whether the agent takes images, so pasted ones are sent as images. */
 	imageInput: false,
 	/** Whether a rewrite of the draft is running; the draft cannot be sent meanwhile. */
