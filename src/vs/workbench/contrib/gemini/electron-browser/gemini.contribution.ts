@@ -12,6 +12,7 @@ import './geminiFonts.css';
 import './geminiSoft.css';
 import './geminiModes.js';
 import './geminiBrowser.js';
+import './geminiNewAgentDialog.js';
 import './geminiAgentGroups.js';
 import './geminiContextMenu.js';
 import { mainWindow } from '../../../../base/browser/window.js';

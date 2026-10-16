@@ -63,3 +63,21 @@ export function copyButton(className: string, label: string, text: () => string)
 }
 
 /** Sizes the view's text, which everything else is sized from; anything but a number keeps the app's UI size. */
+
+/** How long the pointer rests on something before `onIntent` takes it as a step toward clicking it. */
+const intentDelayMs = 150;
+
+/**
+ * Calls `callback` once the pointer has rested on `node` for a moment, or
+ * the keyboard focuses it: the user is likely to click it next. A pointer
+ * that only passes over does nothing.
+ */
+export function onIntent(node: HTMLElement, callback: () => void): void {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	node.addEventListener('pointerenter', () => {
+		clearTimeout(timer);
+		timer = setTimeout(callback, intentDelayMs);
+	});
+	node.addEventListener('pointerleave', () => clearTimeout(timer));
+	node.addEventListener('focus', callback);
+}

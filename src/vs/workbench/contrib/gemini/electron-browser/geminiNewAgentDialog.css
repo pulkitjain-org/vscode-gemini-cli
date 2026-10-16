@@ -1,0 +1,182 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/* GEMINI-FORK: the New agent popup (geminiNewAgentDialog.ts), drawn like the project chat's New thread dialog. */
+
+.monaco-workbench .gemini-new-agent-block {
+	position: fixed;
+	inset: 0;
+	z-index: 2575;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	background: rgba(0, 0, 0, 0.5);
+}
+
+.monaco-workbench .gemini-new-agent {
+	box-sizing: border-box;
+	width: min(560px, calc(100vw - 32px));
+	max-height: calc(100vh - 64px);
+	overflow-y: auto;
+	padding: 20px 24px;
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	color: var(--vscode-foreground);
+	background: var(--vscode-editorWidget-background);
+	border: 1px solid var(--vscode-widget-border, var(--vscode-contrastBorder, transparent));
+	border-radius: 10px;
+	box-shadow: 0 8px 32px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+	font-size: 13px;
+}
+
+.monaco-workbench .gemini-new-agent .header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.monaco-workbench .gemini-new-agent h2 {
+	margin: 0;
+	font-size: 16px;
+	font-weight: 600;
+}
+
+.monaco-workbench .gemini-new-agent .subtitle {
+	margin: -8px 0 0;
+	color: var(--vscode-descriptionForeground);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.monaco-workbench .gemini-new-agent .close {
+	border: none;
+	background: transparent;
+	color: var(--vscode-icon-foreground);
+	cursor: pointer;
+	padding: 4px;
+	border-radius: 4px;
+}
+
+.monaco-workbench .gemini-new-agent .close:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.monaco-workbench .gemini-new-agent .field {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+}
+
+.monaco-workbench .gemini-new-agent label {
+	font-weight: 600;
+}
+
+.monaco-workbench .gemini-new-agent .row {
+	display: grid;
+	grid-template-columns: 3fr 2fr;
+	gap: 12px;
+	align-items: end;
+}
+
+.monaco-workbench .gemini-new-agent textarea,
+.monaco-workbench .gemini-new-agent input[type="text"] {
+	box-sizing: border-box;
+	width: 100%;
+	padding: 6px 8px;
+	font: inherit;
+	color: var(--vscode-input-foreground);
+	background: var(--vscode-input-background);
+	border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent));
+	border-radius: 6px;
+}
+
+/* The workbench's select boxes, sized like the fields. */
+.monaco-workbench .gemini-new-agent .gemini-new-agent-select .monaco-select-box {
+	box-sizing: border-box;
+	width: 100%;
+	height: auto;
+	padding: 6px 22px 6px 8px;
+	font: inherit;
+	border-radius: 6px;
+}
+
+.monaco-workbench .gemini-new-agent textarea {
+	resize: vertical;
+	min-height: 72px;
+}
+
+.monaco-workbench .gemini-new-agent textarea:focus,
+.monaco-workbench .gemini-new-agent input:focus,
+.monaco-workbench .gemini-new-agent button:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.monaco-workbench .gemini-new-agent input:disabled,
+.monaco-workbench .gemini-new-agent .monaco-select-box:disabled {
+	opacity: 0.5;
+}
+
+.monaco-workbench .gemini-new-agent label.check {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.monaco-workbench .gemini-new-agent label.check.disabled {
+	opacity: 0.5;
+}
+
+.monaco-workbench .gemini-new-agent .hint {
+	margin: -4px 0 0;
+	color: var(--vscode-descriptionForeground);
+}
+
+.monaco-workbench .gemini-new-agent .footer {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding-top: 12px;
+	border-top: 1px solid var(--vscode-widget-border, transparent);
+}
+
+.monaco-workbench .gemini-new-agent .footer .note {
+	flex: 1;
+	color: var(--vscode-descriptionForeground);
+}
+
+.monaco-workbench .gemini-new-agent .footer button {
+	padding: 6px 14px;
+	font: inherit;
+	border: none;
+	border-radius: 6px;
+	cursor: pointer;
+}
+
+.monaco-workbench .gemini-new-agent .footer .primary {
+	color: var(--vscode-button-foreground);
+	background: var(--vscode-button-background);
+}
+
+.monaco-workbench .gemini-new-agent .footer .primary:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
+.monaco-workbench .gemini-new-agent .footer .primary:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.monaco-workbench .gemini-new-agent .footer .secondary {
+	color: var(--vscode-button-secondaryForeground);
+	background: var(--vscode-button-secondaryBackground);
+}
+
+.monaco-workbench .gemini-new-agent .footer .secondary:hover {
+	background: var(--vscode-button-secondaryHoverBackground);
+}

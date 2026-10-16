@@ -11,7 +11,9 @@
 import { branchNameFrom } from '../src/acp/branchNames';
 import type { ParentProject, ProjectPanel } from '../src/host/chatProtocol';
 import { format } from './chatLogic';
-import { el, icon, setLabel } from './dom';
+import { button, el, icon, onIntent, setLabel } from './dom';
+import { setRepoOrder, toneOf } from './repoTones';
+import { selectMenu } from './selectMenu';
 import { state, strings, vscode } from './view';
 
 let panel: ProjectPanel | undefined;
@@ -45,13 +47,15 @@ export function openNewThread(): void {
 	brief.rows = 5;
 	brief.placeholder = text.briefPlaceholder;
 	const branch = input('new-thread-branch', 'input');
-	branch.placeholder = branchNameFrom('');
+	const prefix = panel?.defaults?.branchPrefix;
+	const branchFrom = (value: string) => prefix !== undefined ? branchNameFrom(value, prefix) : branchNameFrom(value);
+	branch.placeholder = branchFrom('');
 	branch.spellcheck = false;
 	// The branch follows the title until the user types one of their own.
 	let branchEdited = false;
 	title.addEventListener('input', () => {
 		if (!branchEdited) {
-			branch.value = title.value.trim() ? branchNameFrom(title.value) : '';
+			branch.value = title.value.trim() ? branchFrom(title.value) : '';
 		}
 	});
 	branch.addEventListener('input', () => branchEdited = !!branch.value.trim());
@@ -60,12 +64,40 @@ export function openNewThread(): void {
 	for (const choice of state.settings.model?.available ?? []) {
 		model.append(new Option(choice.name, choice.id));
 	}
+	// The project's defaults, from its settings.
+	const threadModel = panel?.defaults?.threadModel;
+	if (threadModel && [...model.options].some(option => option.value === threadModel)) {
+		model.value = threadModel;
+	}
 	const plan = el('input');
 	plan.id = 'new-thread-plan';
 	plan.type = 'checkbox';
+	plan.checked = !!panel?.defaults?.planFirst;
+
+	// A project with several repositories: the ones the thread works in, all by default.
+	const repoBoxes = (panel?.repos ?? []).map(key => {
+		const box = el('input');
+		box.type = 'checkbox';
+		box.checked = true;
+		box.value = key;
+		box.id = `new-thread-repo-${key}`;
+		return box;
+	});
+	const repos = el('fieldset', 'new-thread-repos');
+	if (repoBoxes.length) {
+		repos.append(el('legend', undefined, text.reposLabel));
+		for (const box of repoBoxes) {
+			const row = el('label', 'new-thread-repo');
+			row.htmlFor = box.id;
+			row.append(box, toneOf(el('span', 'repo-pill', box.value), box.value));
+			repos.append(row);
+		}
+		repos.append(el('p', 'new-thread-hint', text.reposHint));
+	}
 
 	const pair = el('div', 'new-thread-pair');
-	pair.append(field(text.branchLabel, branch), field(text.modelLabel, model, 'new-thread-model-field'));
+	const modelMenu = selectMenu(model, text.modelLabel);
+	pair.append(field(repoBoxes.length ? text.branchLabelShared : text.branchLabel, branch), field(text.modelLabel, modelMenu.element, 'new-thread-model-field', 'new-thread-model'));
 	const planRow = el('div', 'new-thread-plan');
 	const planLabel = el('label');
 	planLabel.htmlFor = plan.id;
@@ -80,10 +112,13 @@ export function openNewThread(): void {
 	start.type = 'submit';
 	foot.append(el('span', 'new-thread-hint', text.startsAtOnce), cancel, start);
 
-	form.append(head, field(text.titleLabel, title), field(text.briefLabel, brief), pair, el('p', 'new-thread-hint', text.worktreeHint), planRow, foot);
+	form.append(head, field(text.titleLabel, title), field(text.briefLabel, brief), ...repoBoxes.length ? [repos] : [], pair, el('p', 'new-thread-hint', text.worktreeHint), planRow, foot);
+	const chosen = () => repoBoxes.filter(box => box.checked).map(box => box.value);
+	const updateStart = () => start.disabled = !!repoBoxes.length && !chosen().length;
+	repoBoxes.forEach(box => box.addEventListener('change', updateStart));
 	form.addEventListener('submit', event => {
 		event.preventDefault();
-		if (!title.value.trim() || !brief.value.trim()) {
+		if (!title.value.trim() || !brief.value.trim() || (repoBoxes.length && !chosen().length)) {
 			return;
 		}
 		vscode.postMessage({
@@ -94,6 +129,7 @@ export function openNewThread(): void {
 				...(branch.value.trim() ? { branch: branch.value.trim() } : {}),
 				...(model.value ? { model: model.value } : {}),
 				planFirst: plan.checked,
+				...(repoBoxes.length ? { repos: chosen() } : {}),
 			},
 		});
 		dialog.close();
@@ -105,7 +141,10 @@ export function openNewThread(): void {
 			form.requestSubmit();
 		}
 	});
-	dialog.addEventListener('close', () => dialog.remove());
+	dialog.addEventListener('close', () => {
+		modelMenu.dispose();
+		dialog.remove();
+	});
 	dialog.append(form);
 	document.body.append(dialog);
 	dialog.showModal();
@@ -118,10 +157,10 @@ function input<K extends 'input' | 'textarea' | 'select'>(id: string, tag: K): H
 	return node;
 }
 
-function field(label: string, control: HTMLElement, className = ''): HTMLElement {
+function field(label: string, control: HTMLElement, className = '', forId = control.id): HTMLElement {
 	const wrap = el('div', `new-thread-field ${className}`.trim());
 	const name = el('label', undefined, label);
-	name.htmlFor = control.id;
+	name.htmlFor = forId;
 	wrap.append(name, control);
 	return wrap;
 }
@@ -133,6 +172,7 @@ export function showProjectPanel(next: ProjectPanel): void {
 		return;
 	}
 	panel = next;
+	setRepoOrder(next.repos ?? []);
 	let aside = document.getElementById('project-panel');
 	if (!aside) {
 		aside = el('aside', 'project-panel');
@@ -150,7 +190,11 @@ export function showProjectPanel(next: ProjectPanel): void {
 		[counts.merged, 'merged', text.merged],
 	];
 	const threads = el('section', 'panel-section');
-	threads.append(el('h3', undefined, text.title));
+	const heading = el('div', 'panel-heading');
+	const gear = button('icon-button', '', () => vscode.postMessage({ type: 'openProjectSettings' }), 'settings-gear');
+	setLabel(gear, strings.project?.settings.open ?? '');
+	heading.append(el('h3', undefined, text.title), gear);
+	threads.append(heading);
 	const shown = rows.filter(([count]) => count > 0);
 	if (!shown.length) {
 		threads.append(el('p', 'panel-row panel-empty', text.noThreads));
@@ -169,6 +213,7 @@ export function showProjectPanel(next: ProjectPanel): void {
 			row.title = thread.title;
 			row.append(el('span', `panel-dot state-${thread.state}`), el('span', 'panel-thread-title', thread.title));
 			row.addEventListener('click', () => vscode.postMessage({ type: 'threadAction', thread: thread.id, action: 'open' }));
+			onIntent(row, () => vscode.postMessage({ type: 'prepareThread', thread: thread.id }));
 			list.append(row);
 		}
 		threads.append(list);
@@ -176,6 +221,9 @@ export function showProjectPanel(next: ProjectPanel): void {
 	const context = el('section', 'panel-section');
 	context.append(el('h3', undefined, text.context));
 	context.append(el('p', 'panel-row', next.conductor ? format(text.conductorTracks, String(next.conductor.openTracks)) : text.noConductor));
+	if (next.repos?.length) {
+		context.append(el('p', 'panel-row', format(text.repos, next.repos.join(', '))));
+	}
 	if (next.model) {
 		const name = state.settings.model?.available.find(choice => choice.id === next.model)?.name ?? next.model;
 		context.append(el('p', 'panel-row', format(text.model, name)));

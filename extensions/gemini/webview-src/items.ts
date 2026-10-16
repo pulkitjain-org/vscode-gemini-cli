@@ -17,7 +17,8 @@ import { applyInlineStyles } from './inlineStyles';
 import { renderMath } from './math';
 import { mathPlugin } from './mathRule';
 import { enhanceMarkdown } from './markdownExtras';
-import { button, copyButton, el, icon, setLabel } from './dom';
+import { button, copyButton, el, icon, onIntent, setLabel } from './dom';
+import { toneOf } from './repoTones';
 import { thoughtPreview } from './streaming';
 import { expanded, state, strings, thoughtTimes, ui, vscode } from './view';
 
@@ -58,24 +59,63 @@ export function render(item: TranscriptItem, toggleToolCall: ToggleToolCall): HT
 	}
 }
 
+/** Lines added and removed, in green and red. */
+function counts(added: number, removed: number): HTMLElement {
+	const node = el('span', 'thread-counts');
+	node.append(el('span', 'added', `+${added}`), el('span', 'removed', `\u2212${removed}`));
+	return node;
+}
+
 /** A project's thread: its state, what it is doing, its branch and changes, and what can be done with it. */
 function renderThreadCard(item: ItemOf<'thread'>): HTMLElement {
 	const project = strings.project;
 	const card = el('div', `thread-card state-${item.state}${item.removed ? ' removed' : ''}`);
-	const send = (action: ThreadAction) => vscode.postMessage({ type: 'threadAction', thread: item.thread, action });
+	const send = (action: ThreadAction, repo?: string) => vscode.postMessage({ type: 'threadAction', thread: item.thread, action, ...(repo ? { repo } : {}) });
 	const title = button('thread-title', item.title, () => send('open'));
 	title.prepend(el('span', 'thread-dot'));
+	// A thread that isn't running starts as the pointer reaches its title, so its chat is ready by the click.
+	if (!item.removed) {
+		onIntent(title, () => vscode.postMessage({ type: 'prepareThread', thread: item.thread }));
+	}
 	card.append(title);
 	const state = project?.states[item.state] ?? item.state;
-	const line = item.removed ? project?.undone : item.merged ? project?.merged : item.detail ? `${state} \u00b7 ${item.detail}` : state;
+	const repos = item.repos ?? [];
+	const mergedRepos = repos.filter(repo => repo.merged).length;
+	const partly = !item.merged && mergedRepos > 0 && project ? format(project.mergedCount, mergedRepos).replace('{1}', String(repos.length)) : undefined;
+	const line = item.removed ? project?.undone : item.merged ? project?.merged : partly ?? (item.detail ? `${state} \u00b7 ${item.detail}` : state);
+	// Under the title: the branch, then each repository it works in, then how long it has run.
+	const meta = el('div', 'thread-meta');
+	if (item.branch) {
+		const branch = el('span', 'thread-branch');
+		branch.append(icon('git-branch'), el('span', undefined, item.branch));
+		meta.append(branch);
+	}
+	for (const repo of repos) {
+		meta.append(toneOf(el('span', 'repo-pill', repo.key), repo.key));
+	}
+	if (!repos.length && item.changes?.files) {
+		meta.append(counts(item.changes.added, item.changes.removed));
+	}
+	const extra = [item.track && project ? format(project.track, item.track) : undefined, formatDuration(Date.now() - item.startedAt)].filter(Boolean).join(' \u00b7 ');
+	meta.append(el('span', 'thread-meta-end', extra));
+	card.append(meta);
+	// A thread in several repositories: a row for each, merged back one at a time.
+	if (repos.length && !item.removed && project) {
+		const list = el('div', 'thread-repos');
+		for (const repo of repos) {
+			const row = el('div', `thread-repo${repo.merged ? ' merged' : ''}`);
+			row.append(toneOf(el('span', 'thread-repo-dot'), repo.key), el('span', 'thread-repo-name', repo.key));
+			row.append(repo.files ? counts(repo.added, repo.removed) : el('span', 'thread-repo-state', '\u2014'));
+			if (repo.merged) {
+				row.append(el('span', 'thread-repo-state', project.repoMerged));
+			} else if (item.state === 'done' && !item.merged) {
+				row.append(button('secondary thread-repo-merge', project.actions.merge, () => send('merge', repo.key)));
+			}
+			list.append(row);
+		}
+		card.append(list);
+	}
 	card.append(el('div', 'thread-line', line ?? state));
-	const meta = [
-		item.branch,
-		item.changes?.files ? `+${item.changes.added} \u2212${item.changes.removed}` : undefined,
-		item.track && project ? format(project.track, item.track) : undefined,
-		formatDuration(Date.now() - item.startedAt),
-	].filter(Boolean).join(' \u00b7 ');
-	card.append(el('div', 'thread-meta', meta));
 	if (item.removed || !project) {
 		return card;
 	}
@@ -86,7 +126,7 @@ function renderThreadCard(item: ItemOf<'thread'>): HTMLElement {
 			: item.state === 'error'
 				? [['retry', true], ['open', false]]
 				: item.state === 'done' && !item.merged && item.changes?.files
-					? [['merge', true], ['review', false], ['undo', false]]
+					? repos.length ? [['review', true], ['undo', false]] : [['merge', true], ['review', false], ['undo', false]]
 					// Done with nothing to merge, such as an assessment: its answer is in the thread.
 					: item.state === 'done' && !item.merged
 						? [['open', true], ['undo', false]]

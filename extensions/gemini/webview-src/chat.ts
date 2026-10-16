@@ -19,6 +19,7 @@
 //   pickers.ts         the model, branch and folder menus
 //   usage.ts           the context ring and usage popover: context, quota and tokens
 //   project.ts         a project chat's New thread dialog and side panel
+//   projectSettings.ts a project chat's settings popup (settingsLogic.ts holds its state)
 
 import type { ItemUpdate } from '../src/acp/textDeltas';
 import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
@@ -33,6 +34,7 @@ import { showSavedSessions } from './items';
 import { setBranches } from './pickers';
 import { showCommands, showFiles } from './picker';
 import { openNewThread, showParentProject, showProjectPanel } from './project';
+import { pickedRepository, showProjectSettings } from './projectSettings';
 import { updateOutline } from './promptNav';
 import { appended, applyItem, isNearBottom, reset, settleScroll, updateWorking } from './transcript';
 import { showContext, showQuota, toggleUsage, updateUsage } from './usage';
@@ -192,8 +194,20 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 		case 'openNewThread':
 			openNewThread();
 			break;
+		case 'projectSettings':
+			showProjectSettings(message.settings, message.open);
+			break;
+		case 'pickedRepository':
+			pickedRepository(message.repo);
+			break;
 		case 'parentProject':
 			showParentProject(message.parent);
+			break;
+		case 'focus':
+			// Not from under an open popup, such as Project settings or New thread.
+			if (!document.querySelector('dialog[open]')) {
+				ui.input.focus();
+			}
 			break;
 	}
 });

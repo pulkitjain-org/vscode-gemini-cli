@@ -135,7 +135,13 @@ export class BrowserTools implements vscode.Disposable {
 		}
 		this.host.adopt(agent.id, pageId, shared.url);
 		this.log.info(`Handed a page to agent ${agent.id}`);
-		await this.agents.attach(agent.id, [sharedPageNote(shared.title, shared.url)]);
+		const note = sharedPageNote(shared.title, shared.url);
+		// A new agent given a task starts on it with the page; otherwise the page waits in the message box.
+		if (agent.task && this.agents.send) {
+			this.agents.send(agent.id, agent.task, [note]);
+		} else {
+			await this.agents.attach(agent.id, [note]);
+		}
 		return agent.id;
 	}
 
@@ -186,9 +192,35 @@ export class BrowserTools implements vscode.Disposable {
 		return folder && !workspace.roots.some(root => isInside(root, folder)) ? { roots: [folder], isIgnored: isIgnoredByGitCached } : workspace;
 	}
 
-	/** The open agent to hand a page to: the only one, or the one the user picks, most recent first. */
-	private async pickAgent(page: string): Promise<{ readonly id: string; readonly title: string } | undefined> {
+	/** The agent to hand a page to: one the user picks from the open agents, most recent first, or a new one. */
+	private async pickAgent(page: string): Promise<{ readonly id: string; readonly title: string; readonly task?: string } | undefined> {
 		const open = this.agents.open();
+		const newAgent = this.agents.newAgent;
+		if (newAgent) {
+			// Always the list first: the running agents, the ones used lately, and New Agent... for the popup.
+			const recent = this.agents.recent?.().filter(agent => !open.some(each => each.id === agent.id)) ?? [];
+			type Item = vscode.QuickPickItem & { readonly agent?: { readonly id: string; readonly title: string }; readonly asleep?: boolean };
+			const fresh: Item = { label: `$(add) ${vscode.l10n.t("New Agent...")}`, description: vscode.l10n.t("Pick its folder, branch, model and mode") };
+			const items: Item[] = [fresh];
+			if (open.length) {
+				items.push({ label: vscode.l10n.t("Running"), kind: vscode.QuickPickItemKind.Separator }, ...open.map(agent => ({ label: agent.title, agent })));
+			}
+			if (recent.length) {
+				items.push({ label: vscode.l10n.t("Recent"), kind: vscode.QuickPickItemKind.Separator }, ...recent.map(agent => ({ label: agent.title, description: agent.detail, agent, asleep: true })));
+			}
+			const picked = await vscode.window.showQuickPick(items, {
+				title: vscode.l10n.t("Let Gemini Use {0}", truncate(page, 60)),
+				placeHolder: vscode.l10n.t("Choose the agent, or start a new one. It can read the page and click and type on it, as you."),
+			});
+			if (picked === fresh) {
+				return newAgent(page);
+			}
+			if (picked?.agent && picked.asleep) {
+				// It starts before it gets the page, as when opened from the agent list.
+				await this.agents.wake?.(picked.agent.id);
+			}
+			return picked?.agent;
+		}
 		if (!open.length) {
 			const show = vscode.l10n.t("Show Agents");
 			const choice = await vscode.window.showInformationMessage(vscode.l10n.t("Open an agent first, then let it use this page."), show);
@@ -255,6 +287,14 @@ export interface BrowserAgents {
 	attachToFront(attachments: readonly Attachment[]): Promise<void>;
 	/** The model the agent's session is on, when known. */
 	model?(agent: string): string | undefined;
+	/** Asks in one popup where, on which model and in which mode, then starts a new agent with its tab open; undefined when cancelled. `task` is what the user asked it to do, if anything. */
+	newAgent?(page: string): Promise<{ readonly id: string; readonly title: string; readonly task?: string } | undefined>;
+	/** Agents used lately that aren't running in this window, most recent first, with where each works. */
+	recent?(): readonly { readonly id: string; readonly title: string; readonly detail?: string }[];
+	/** Starts an agent from `recent`, with its tab open. */
+	wake?(agent: string): Promise<void>;
+	/** Sends the agent a prompt with `attachments`, as if typed in its chat. */
+	send?(agent: string, text: string, attachments: readonly Attachment[]): void;
 }
 
 function enabled(): boolean {

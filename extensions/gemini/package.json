@@ -170,6 +170,12 @@
         "icon": "$(add)"
       },
       {
+        "command": "gemini.projects.settings",
+        "title": "%command.projects.settings%",
+        "category": "%category%",
+        "icon": "$(gear)"
+      },
+      {
         "command": "gemini.agentHome",
         "title": "%command.agentHome%",
         "category": "%category%",
@@ -664,6 +670,11 @@
           "group": "1_agent@0"
         },
         {
+          "command": "gemini.projects.settings",
+          "when": "view == gemini.agents && viewItem =~ /\\.project$/ && config.gemini.projects.enabled",
+          "group": "1_agent@1"
+        },
+        {
           "command": "gemini.agents.removeWorkspace",
           "when": "view == gemini.agents && viewItem =~ /^workspace(\\.git)?$/",
           "group": "2_remove@1"
@@ -706,6 +717,10 @@
         },
         {
           "command": "gemini.projects.newThread",
+          "when": "false"
+        },
+        {
+          "command": "gemini.projects.settings",
           "when": "false"
         },
         {

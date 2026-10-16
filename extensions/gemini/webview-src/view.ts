@@ -83,6 +83,8 @@ export const ui = {
 	workspaceLabel: within(workspaceButton, 'span', HTMLSpanElement),
 	branchMenu: byId('branch-menu', HTMLElement),
 	workspaceMenu: byId('workspace-menu', HTMLElement),
+	repos: byId('repos', HTMLElement),
+	reposMenu: byId('repos-menu', HTMLElement),
 	scrollButton: byId('scroll-down', HTMLButtonElement),
 	scrollLabel: within(byId('scroll-down', HTMLButtonElement), '.scroll-down-label', HTMLSpanElement),
 	/** The working strip, status and composer, under the transcript. */

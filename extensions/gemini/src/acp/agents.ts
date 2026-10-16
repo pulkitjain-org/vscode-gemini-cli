@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
 import type { ChangeTotals } from './agentChanges';
 import { Emitter } from './events';
-import type { AgentWorktree } from './worktrees';
+import type { AgentWorktree, RepoWorktree } from './worktrees';
 
 export interface WorkspaceRecord {
 	readonly id: string;
@@ -32,10 +32,21 @@ export interface AgentRecord {
 	readonly sessionId?: string;
 	/** What the agent's edits add up to, for its row before it is opened. */
 	readonly changes?: ChangeTotals;
-	/** The agent's own branch and folder, when it works in a worktree instead of the workspace folder. */
+	/**
+	 * The agent's own branch and folder, when it works in a worktree instead of the workspace folder.
+	 * For a thread in several repositories, the thread's own folder (not a repository), which holds `repos`.
+	 */
 	readonly worktree?: AgentWorktree;
+	/** A project thread in several repositories: each one's worktree, inside `worktree.folder`. */
+	readonly repos?: readonly ThreadRepo[];
 	/** Its part in a project (Projects preview): the project's coordinator, or one of its threads. */
 	readonly project?: AgentProjectRole;
+}
+
+/** One repository's worktree in a thread that works in several. */
+export interface ThreadRepo extends RepoWorktree {
+	/** Merged back into its repository: done, and its worktree removed. */
+	readonly merged?: boolean;
 }
 
 export type AgentProjectRole =
@@ -51,6 +62,8 @@ export type AgentProjectRole =
 		readonly track?: string;
 		/** Merged back: the thread's work is done, and it takes no more unless the user reopens it. */
 		readonly resolved?: boolean;
+		/** When it was merged back, in ms since the epoch; a week on, it is archived (`isArchived`). */
+		readonly resolvedAt?: number;
 	};
 
 export interface AgentsSnapshot {
@@ -59,6 +72,29 @@ export interface AgentsSnapshot {
 }
 
 const maxTitleLength = 48;
+
+/** How many of a project's open threads start with it: the most recently used. The rest start when needed. */
+export const warmThreadCount = 6;
+/** How long a merged thread stays in the project's list before it moves under Archived. */
+export const archiveAfterMs = 7 * 24 * 60 * 60 * 1000;
+
+/** The threads to start as their project opens: open ones, most recently used first, `limit` at most. */
+export function warmThreads(threads: readonly AgentRecord[], limit = warmThreadCount): string[] {
+	return threads
+		.filter(thread => thread.project?.role === 'thread' && !thread.project.resolved)
+		.sort((a, b) => b.updatedAt - a.updatedAt)
+		.slice(0, limit)
+		.map(thread => thread.id);
+}
+
+/**
+ * A thread merged back over a week ago: listed under Archived, and never
+ * started until the user opens it. Its chat, branch and record all stay.
+ */
+export function isArchived(record: AgentRecord, now: number): boolean {
+	const project = record.project;
+	return project?.role === 'thread' && !!project.resolved && (project.resolvedAt ?? record.updatedAt) <= now - archiveAfterMs;
+}
 
 /** A short title from a prompt's first line. */
 export function titleFromPrompt(text: string): string | undefined {
@@ -184,14 +220,19 @@ export class AgentsModel {
 		}
 	}
 
+	/** A multi-repository thread's repositories changed: one was added or merged. */
+	setRepos(id: string, repos: readonly ThreadRepo[]): void {
+		this.update(id, a => ({ ...a, repos }));
+	}
+
 	/** Marks a project's thread resolved (merged back) or open again. */
 	setThreadResolved(id: string, resolved: boolean): void {
 		const project = this.agent(id)?.project;
 		if (project?.role !== 'thread' || !!project.resolved === resolved) {
 			return;
 		}
-		const { resolved: _, ...rest } = project;
-		this.update(id, a => ({ ...a, project: resolved ? { ...rest, resolved: true } : rest }));
+		const { resolved: _, resolvedAt: __, ...rest } = project;
+		this.update(id, a => ({ ...a, project: resolved ? { ...rest, resolved: true, resolvedAt: this.now() } : rest }));
 	}
 
 	/** A project's threads, oldest first. */
@@ -248,5 +289,6 @@ function isAgentRecord(value: unknown): value is AgentRecord {
 	return typeof a?.id === 'string' && typeof a.workspaceId === 'string' && typeof a.title === 'string'
 		&& typeof a.createdAt === 'number' && typeof a.updatedAt === 'number'
 		&& (a.worktree === undefined || (typeof a.worktree.folder === 'string' && typeof a.worktree.cwd === 'string' && typeof a.worktree.branch === 'string' && typeof a.worktree.base === 'string'))
+		&& (a.repos === undefined || (Array.isArray(a.repos) && a.repos.every(r => typeof r?.key === 'string' && typeof r.folder === 'string' && typeof r.repository === 'string' && typeof r.branch === 'string')))
 		&& (a.project === undefined || a.project.role === 'coordinator' || (a.project.role === 'thread' && typeof a.project.coordinator === 'string'));
 }

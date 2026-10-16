@@ -69,6 +69,7 @@ export class Menu {
 	private active = 0;
 	private rows: MenuRow[] = [];
 	private readonly field?: HTMLInputElement;
+	private readonly onDocumentDown: (event: MouseEvent) => void;
 
 	constructor(private readonly options: MenuOptions) {
 		menus.push(this);
@@ -92,12 +93,20 @@ export class Menu {
 			element.addEventListener('keydown', event => this.onKey(event));
 		}
 		anchor.addEventListener('click', () => this.isOpen ? this.close() : this.open());
-		document.addEventListener('mousedown', event => {
+		this.onDocumentDown = event => {
 			const target = event.target as Node | null;
 			if (this.isOpen && target && !element.contains(target) && !anchor.contains(target) && !options.inside?.some(node => node.contains(target))) {
 				this.close(false);
 			}
-		});
+		};
+		document.addEventListener('mousedown', this.onDocumentDown);
+	}
+
+	/** Forgets the menu, as when the popup holding it closes for good. */
+	dispose(): void {
+		this.close(false);
+		document.removeEventListener('mousedown', this.onDocumentDown);
+		menus.splice(menus.indexOf(this), 1);
 	}
 
 	get isOpen(): boolean {

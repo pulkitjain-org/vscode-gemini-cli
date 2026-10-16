@@ -10,10 +10,10 @@ import { isModeAllowed } from '../acp/adminPolicy';
 import { errorMessage } from '../acp/errors';
 import { formatCounts } from '../acp/agentChanges';
 import { attachmentsForFiles } from './addToChat';
-import { AgentsView, AgentSummary, relativeTime } from './agentsView';
+import { AgentsView, AgentSummary, relativeTime, startModes } from './agentsView';
 import { tildify } from './displayText';
 import { configSection, getApprovalPolicy } from './configuration';
-import { FromHome, HomeAgent, HomeMode, HomeProject, HomeStrings, HomeView, ToHome } from './panelProtocol';
+import { FromHome, HomeAgent, HomeProject, HomeStrings, HomeView, ToHome } from './panelProtocol';
 import { projectsEnabled } from './projects';
 import { agentsColumn } from './editorPlacement';
 import { createNonce, escapeAttribute } from './webviewHtml';
@@ -87,7 +87,15 @@ export class AgentHome implements vscode.Disposable {
 		panel.iconPath = vscode.Uri.joinPath(this.extensionUri, 'media', 'gemini.svg');
 		panel.webview.html = this.html(panel.webview, media);
 		panel.webview.onDidReceiveMessage((message: FromHome) => this.onMessage(message).catch(err => void vscode.window.showErrorMessage(errorMessage(err))));
-		panel.onDidChangeViewState(e => e.webviewPanel.visible && this.schedule(0));
+		panel.onDidChangeViewState(e => {
+			if (e.webviewPanel.visible) {
+				this.schedule(0);
+			}
+			// Switching to Agent Home puts the cursor in its prompt.
+			if (e.webviewPanel.active) {
+				void panel.webview.postMessage({ type: 'focus' } satisfies ToHome);
+			}
+		});
 		panel.onDidDispose(() => {
 			if (this.panel === panel) {
 				this.panel = undefined;
@@ -312,15 +320,6 @@ export class AgentHome implements vscode.Disposable {
 </body>
 </html>`;
 	}
-}
-
-/** The approval modes Agent Home offers, in the order the chat lists them. */
-function startModes(): HomeMode[] {
-	return [
-		{ id: 'default', name: vscode.l10n.t("Default"), description: vscode.l10n.t("Asks before changes") },
-		{ id: 'autoEdit', name: vscode.l10n.t("Auto Edit"), description: vscode.l10n.t("Edits without asking") },
-		{ id: 'plan', name: vscode.l10n.t("Plan"), description: vscode.l10n.t("Read-only") },
-	];
 }
 
 function openTabs(): number {

@@ -35,7 +35,7 @@ import { readGitHead } from '../acp/gitHead';
 import { upgradeUrl } from '../acp/helpLinks';
 import { EnhanceCancelledError, enhanceHistory } from '../acp/promptEnhancer';
 import type { EnhancePromptInput } from '../acp/quickPrompts';
-import { ChatStrings, chatProtocolVersion, FromWebview, NewThread, ProjectChatStrings, ProjectPanel, statusCommands, ThreadAction, ToWebview } from './chatProtocol';
+import { ChatStrings, chatProtocolVersion, FromWebview, NewThread, ProjectChatStrings, ProjectPanel, ProjectRepoView, ProjectSettingsAction, ProjectSettingsSave, ProjectSettingsView, statusCommands, ThreadAction, ToWebview } from './chatProtocol';
 import { stopReasonNotice, toViewStatus } from './chatStatus';
 import { DiffPreview } from './diffPreview';
 import { relativeTime, tildify } from './displayText';
@@ -117,9 +117,16 @@ export interface ChatProject {
 	post(text: string, attachments: readonly Attachment[]): void;
 	/** Tool calls the chat leaves out: the project's own tools, which show as posts and thread cards. */
 	hidesToolCall(title: string): boolean;
-	threadAction(thread: string, action: ThreadAction): void;
+	/** `repo` names one repository of a thread in several, for Merge back. */
+	threadAction(thread: string, action: ThreadAction, repo?: string): void;
 	/** The New thread dialog's Start thread. */
 	startThread(thread: NewThread): void;
+	/** Project settings: open it, save it, or one of its buttons that needs the extension. */
+	openSettings(): void;
+	saveSettings(settings: ProjectSettingsSave): void;
+	settingsAction(action: ProjectSettingsAction, name?: string): void;
+	/** The pointer is on a thread's card or panel row: start its agent ahead of the click. */
+	prepareThread(thread: string): void;
 }
 
 export interface ChatWorkspace {
@@ -128,6 +135,8 @@ export interface ChatWorkspace {
 	/** Where the agent runs: the folder, or its place in the agent's own worktree. */
 	readonly cwd: string;
 	readonly worktree: boolean;
+	/** A project's several repositories, each named and where this agent sees it; they take the folder and branch pills' place. */
+	readonly repos?: readonly { readonly name: string; readonly folder: string }[];
 }
 
 /** Rewrites drafts as precise prompts; one, shared by every chat. */
@@ -201,6 +210,12 @@ export class ChatController implements vscode.Disposable {
 	private retryItemId: string | undefined;
 	/** A project chat's side panel, as last shown. */
 	private projectPanel: ProjectPanel | undefined;
+	/** Context sent ahead of the next prompt without showing in the chat, such as a project's memory for a thread. */
+	private pendingContext: string | undefined;
+	/** The saved chat being read in, while it is: prompts wait for it, so neither replaces the other. */
+	private restoring: Promise<void> | undefined;
+	/** Project settings to open once the view has loaded. */
+	private settingsPending: ProjectSettingsView | undefined;
 	/** Whether the view's script has said it is ready since the view was attached. */
 	private viewReady = false;
 	/** New Thread was asked for before the view was ready. */
@@ -385,6 +400,21 @@ export class ChatController implements vscode.Disposable {
 		return this.transcript.items;
 	}
 
+	/** Holds prompts until `loading` (reading this chat's saved conversation) settles. */
+	holdPrompts(loading: Promise<unknown>): void {
+		const held: Promise<void> = loading.then(() => undefined, () => undefined).finally(() => {
+			if (this.restoring === held) {
+				this.restoring = undefined;
+			}
+		});
+		this.restoring = held;
+	}
+
+	/** Settles once the saved conversation is in; undefined when nothing is being read. */
+	get whenRestored(): Promise<void> | undefined {
+		return this.restoring;
+	}
+
 	/**
 	 * Shows a saved conversation, unless one has started here. `sessionId` is
 	 * the session it belongs to: if the agent opens another, the chat says the
@@ -419,6 +449,13 @@ export class ChatController implements vscode.Disposable {
 		webview.options = { enableScripts: true, localResourceRoots: [mediaUri] };
 		webview.html = this.getHtml(webview, mediaUri);
 		this.webviewListener = webview.onDidReceiveMessage((message: FromWebview) => this.onMessage(message));
+	}
+
+	/** The chat's tab came to the front: puts the cursor in the message box, so the user can type at once. */
+	focusComposer(): void {
+		if (this.viewReady) {
+			this.post({ type: 'focus' });
+		}
 	}
 
 	/** Forgets the webview, when it is disposed. The conversation carries on. */
@@ -464,6 +501,20 @@ export class ChatController implements vscode.Disposable {
 		this.post({ type: 'projectPanel', panel });
 	}
 
+	/** Opens Project settings with `settings`, or refreshes it if it is open; `open` false only refreshes. */
+	showProjectSettings(settings: ProjectSettingsView, open: boolean): void {
+		if (this.viewReady || !open) {
+			this.post({ type: 'projectSettings', settings, open });
+		} else {
+			this.settingsPending = settings;
+		}
+	}
+
+	/** The folder Project settings' Add repository picked. */
+	pickedRepository(repo: ProjectRepoView): void {
+		this.post({ type: 'pickedRepository', repo });
+	}
+
 	/** Opens the New thread dialog in a project chat, once its view has loaded if it is still loading. */
 	openNewThread(): void {
 		if (this.viewReady) {
@@ -483,6 +534,9 @@ export class ChatController implements vscode.Disposable {
 		attachments = attachments.filter(isValidAttachment);
 		if (!text.trim() && !attachments.length) {
 			return;
+		}
+		if (this.restoring) {
+			await this.restoring;
 		}
 		const project = this.options.project;
 		if (project) {
@@ -515,7 +569,24 @@ export class ChatController implements vscode.Disposable {
 	 * Sends `text` as a turn with no message of its own in the chat, such as a
 	 * project's wake for its coordinator; resolves when the turn ends.
 	 */
+	/** Sends `text` to the agent ahead of the next prompt, without showing it in the chat. */
+	addContext(text: string): void {
+		this.pendingContext = this.pendingContext ? `${this.pendingContext}\n\n${text}` : text;
+	}
+
+	/** Opens the agent's session, as a prompt would, without sending one. */
+	async openSession(): Promise<void> {
+		if (this.restoring) {
+			await this.restoring;
+		}
+		this.service.open?.();
+		await this.service.ensureReady();
+	}
+
 	async sendUnseen(text: string): Promise<void> {
+		if (this.restoring) {
+			await this.restoring;
+		}
 		if (this.busy) {
 			throw new Error('A turn is already running.');
 		}
@@ -543,8 +614,15 @@ export class ChatController implements vscode.Disposable {
 			if (carried) {
 				content.unshift({ type: 'text', text: carried });
 			}
+			const context = this.pendingContext;
+			if (context) {
+				content.unshift({ type: 'text', text: context });
+			}
 			const { stopReason, usage } = await this.promptRecovering(content);
 			this.undoNote = undefined;
+			if (context === this.pendingContext) {
+				this.pendingContext = undefined;
+			}
 			if (carried === this.carriedConversation) {
 				this.carriedConversation = undefined;
 			}
@@ -1071,7 +1149,7 @@ export class ChatController implements vscode.Disposable {
 				void this.commit();
 				break;
 			case 'workspaceAction':
-				void this.workspaceAction(message.action);
+				void this.workspaceAction(message.action, typeof message.repo === 'string' ? message.repo : undefined);
 				break;
 			case 'restoreSession':
 				if (typeof message.id === 'string') {
@@ -1085,7 +1163,19 @@ export class ChatController implements vscode.Disposable {
 				void this.undoTurn(message.itemId);
 				break;
 			case 'threadAction':
-				this.options.project?.threadAction(message.thread, message.action);
+				this.options.project?.threadAction(message.thread, message.action, message.repo);
+				break;
+			case 'prepareThread':
+				this.options.project?.prepareThread(message.thread);
+				break;
+			case 'openProjectSettings':
+				this.options.project?.openSettings();
+				break;
+			case 'saveProjectSettings':
+				this.options.project?.saveSettings(message.settings);
+				break;
+			case 'projectSettingsAction':
+				this.options.project?.settingsAction(message.action, message.name);
 				break;
 			case 'startThread':
 				this.options.project?.startThread(message.thread);
@@ -1277,6 +1367,11 @@ export class ChatController implements vscode.Disposable {
 		this.postGit();
 	}
 
+	/** Shows the branch and folder again, as after a project's repositories changed. */
+	refreshGit(): void {
+		this.postGit();
+	}
+
 	/** Sends the branch and whether there is anything to commit; the branch is read from `.git/HEAD`, which is cheap. */
 	private postGit(): void {
 		const git = this.options.git;
@@ -1287,6 +1382,12 @@ export class ChatController implements vscode.Disposable {
 		const canCommit = !this.busy && !!git.commit?.files().length;
 		const ws = this.options.workspace?.();
 		const workspace = ws && { name: path.basename(ws.folder) || ws.folder, path: tildify(ws.cwd), worktree: ws.worktree };
+		// Several repositories: each with its own branch, in place of one folder and branch.
+		if (ws?.repos && ws.repos.length > 1) {
+			void Promise.all(ws.repos.map(async repo => ({ name: repo.name, path: tildify(repo.folder), branch: await readGitHead(repo.folder).catch(() => undefined) })))
+				.then(repos => this.post({ type: 'git', git: { canCommit: false, repos } }));
+			return;
+		}
 		void (folder ? readGitHead(folder).catch(() => undefined) : Promise.resolve(undefined))
 			.then(branch => this.post({ type: 'git', git: { branch, canCommit, ...(workspace ? { workspace } : {}) } }));
 	}
@@ -1312,19 +1413,20 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	/** What the folder menu offers. */
-	private async workspaceAction(action: 'copyPath' | 'reveal' | 'showAgents' | 'addFolder'): Promise<void> {
+	private async workspaceAction(action: 'copyPath' | 'reveal' | 'showAgents' | 'addFolder', repo?: string): Promise<void> {
 		if (action === 'addFolder') {
 			return vscode.commands.executeCommand('workbench.action.addRootFolder');
 		}
 		const workspace = this.options.workspace?.();
-		if (!workspace) {
+		const folder = repo !== undefined ? workspace?.repos?.find(each => each.name === repo)?.folder : workspace?.cwd;
+		if (!folder) {
 			return;
 		}
 		switch (action) {
 			case 'copyPath':
-				return vscode.env.clipboard.writeText(workspace.cwd);
+				return vscode.env.clipboard.writeText(folder);
 			case 'reveal':
-				return vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(workspace.cwd));
+				return vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(folder));
 			case 'showAgents':
 				return vscode.commands.executeCommand('gemini.agents.focus');
 		}
@@ -1469,6 +1571,10 @@ export class ChatController implements vscode.Disposable {
 			this.newThreadPending = false;
 			this.post({ type: 'openNewThread' });
 		}
+		if (this.settingsPending) {
+			this.post({ type: 'projectSettings', settings: this.settingsPending, open: true });
+			this.settingsPending = undefined;
+		}
 		if (this.options.parentProject) {
 			this.post({ type: 'parentProject', parent: { label: vscode.l10n.t("Thread in {0}", this.options.parentProject.name()), action: vscode.l10n.t("Open Project Chat") } });
 		}
@@ -1587,6 +1693,8 @@ export class ChatController implements vscode.Disposable {
 			revert: vscode.l10n.t("Revert"),
 			revertTooltip: vscode.l10n.t("Put back what you wrote"),
 			workspaceTooltip: vscode.l10n.t("Workspace {0}"),
+			repoTooltip: vscode.l10n.t("Repository {0} on {1}, at {2}"),
+			repositories: vscode.l10n.t("Repositories"),
 			worktree: vscode.l10n.t("worktree"),
 			restoreTitle: vscode.l10n.t("Restore a session"),
 			restoreHint: vscode.l10n.t("Saved by the Gemini CLI for this folder"),
@@ -1725,12 +1833,14 @@ export class ChatController implements vscode.Disposable {
 		<div class="composer-foot">
 			<button type="button" id="branch" class="foot-button branch" hidden><i class="codicon codicon-git-branch" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button>
 			<button type="button" id="workspace" class="foot-button workspace" hidden><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button>
+			<span id="repos" class="foot-repos" hidden></span>
 			<button type="button" id="commit" class="foot-button commit" hidden><i class="codicon codicon-git-commit" aria-hidden="true"></i><span></span></button>
 			<span id="followed" class="foot-followed" hidden><button type="button" class="foot-button followed-name"><i class="codicon codicon-eye" aria-hidden="true"></i><span></span></button><button type="button" class="followed-close"><i class="codicon codicon-close" aria-hidden="true"></i></button></span>
 			<span class="spacer"></span>
 			<button type="button" id="usage-ring" class="foot-button usage-ring" aria-expanded="false" aria-controls="usage-popover"><svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="ring-track" cx="8" cy="8" r="6"/><circle class="ring-fill" cx="8" cy="8" r="6" pathLength="100" stroke-dasharray="0 100" transform="rotate(-90 8 8)"/></svg><span></span></button>
 			<div id="branch-menu" class="foot-menu" hidden></div>
 			<div id="workspace-menu" class="foot-menu" hidden></div>
+			<div id="repos-menu" class="foot-menu" hidden></div>
 		</div>
 	</div>
 	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
@@ -1868,6 +1978,66 @@ function projectStrings(): ProjectChatStrings {
 			cancel: vscode.l10n.t("Cancel"),
 			start: vscode.l10n.t("Start thread"),
 			close: vscode.l10n.t("Close"),
+			reposLabel: vscode.l10n.t("Repositories"),
+			reposHint: vscode.l10n.t("Each one gets its own worktree, side by side in the thread's folder."),
+			branchLabelShared: vscode.l10n.t("Branch, the same in every repository"),
+		},
+		settings: {
+			open: vscode.l10n.t("Project settings"),
+			title: vscode.l10n.t("{0} settings"),
+			general: vscode.l10n.t("General"),
+			memory: vscode.l10n.t("Memory"),
+			nameLabel: vscode.l10n.t("Name"),
+			nameHint: vscode.l10n.t("Shown in the Projects list and the project chat's tab."),
+			reposLabel: vscode.l10n.t("Repositories"),
+			reposHint: vscode.l10n.t("With more than one, each thread gets a worktree of the ones it needs, in a folder named after the repository."),
+			addRepo: vscode.l10n.t("Add repository"),
+			removeRepo: vscode.l10n.t("Remove {0} from the project"),
+			mainRepo: vscode.l10n.t("The project's own repository"),
+			defaultsLabel: vscode.l10n.t("Defaults for new threads"),
+			threadModel: vscode.l10n.t("Thread model"),
+			planFirst: vscode.l10n.t("Plan first"),
+			planFirstHint: vscode.l10n.t("Threads write a short plan and wait for your OK before changing files."),
+			branchPrefix: vscode.l10n.t("Branch prefix"),
+			branchPrefixHint: vscode.l10n.t("Put before each thread's branch name."),
+			statOpen: vscode.l10n.t("open threads"),
+			statMerged: vscode.l10n.t("merged"),
+			statLines: vscode.l10n.t("lines changed"),
+			statRepos: vscode.l10n.t("repositories"),
+			cleanUpLabel: vscode.l10n.t("Merged threads' folders"),
+			cleanUpHint: vscode.l10n.t("A merged thread keeps its folder, with its dependencies and builds, so it can carry on. Clean up removes the folders whose work is all merged. Each thread keeps its branch and chat, and its folder comes back when you open it."),
+			cleanUp: vscode.l10n.t("Clean Up Folders..."),
+			connectLabel: vscode.l10n.t("How the repositories connect"),
+			connectHint: vscode.l10n.t("Every thread and the coordinator read this. Say what each repository owns and where they meet: APIs, queries, data models, URLs, release order."),
+			instructionsLabel: vscode.l10n.t("Project instructions"),
+			instructionsHint: vscode.l10n.t("Every thread and the coordinator read this. Use it for conventions and anything you'd otherwise repeat."),
+			drafted: vscode.l10n.t("Gemini drafted this on {0} from the repositories. Review it and change anything that's wrong or missing, then save."),
+			drafting: vscode.l10n.t("Gemini is drafting this from the repositories..."),
+			draft: vscode.l10n.t("Draft with Gemini"),
+			redraft: vscode.l10n.t("Draft again"),
+			draftFailed: vscode.l10n.t("Could not draft it: {0}"),
+			filesLabel: vscode.l10n.t("Context files"),
+			filesHint: vscode.l10n.t("Markdown files kept in the project's folder. Choose who reads each one."),
+			fileColumn: vscode.l10n.t("File"),
+			coordinatorColumn: vscode.l10n.t("Coordinator"),
+			threadsColumn: vscode.l10n.t("Threads"),
+			noFiles: vscode.l10n.t("No context files yet."),
+			addFiles: vscode.l10n.t("Add files..."),
+			newFile: vscode.l10n.t("New file"),
+			newFilePrompt: vscode.l10n.t("The new file's name"),
+			removeFile: vscode.l10n.t("Remove {0}"),
+			alsoRead: vscode.l10n.t("Also read"),
+			alsoReadHint: vscode.l10n.t("Each repository's own rules files, which its threads read as they are."),
+			noRules: vscode.l10n.t("none"),
+			tokens: vscode.l10n.t("About {0} tokens added to each thread's first request"),
+			unsaved: vscode.l10n.t("{0} unsaved changes"),
+			unsavedOne: vscode.l10n.t("1 unsaved change"),
+			appliesWhen: vscode.l10n.t("Saved changes apply to new threads and the coordinator's next turn."),
+			discard: vscode.l10n.t("Discard your changes?"),
+			discardConfirm: vscode.l10n.t("Discard"),
+			keepEditing: vscode.l10n.t("Keep Editing"),
+			cancel: vscode.l10n.t("Cancel"),
+			save: vscode.l10n.t("Save"),
 		},
 		panel: {
 			title: vscode.l10n.t("Project"),
@@ -1881,6 +2051,7 @@ function projectStrings(): ProjectChatStrings {
 			conductorTracks: vscode.l10n.t("Conductor: {0} open tracks"),
 			noConductor: vscode.l10n.t("No conductor/ folder"),
 			model: vscode.l10n.t("Coordinator model: {0}"),
+			repos: vscode.l10n.t("Repositories: {0}"),
 		},
 		states: {
 			starting: vscode.l10n.t("Starting"),
@@ -1901,6 +2072,8 @@ function projectStrings(): ProjectChatStrings {
 		},
 		openToAnswer: vscode.l10n.t("Open to answer"),
 		merged: vscode.l10n.t("Merged back"),
+		repoMerged: vscode.l10n.t("Merged"),
+		mergedCount: vscode.l10n.t("{0} of {1} merged"),
 		undone: vscode.l10n.t("Undone: its branch and folder were removed"),
 		track: vscode.l10n.t("From Conductor track {0}"),
 	};

@@ -38,7 +38,7 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 		resumeSessionId?: string,
 		mcpServers?: () => readonly acp.McpServer[],
 		openLater = false,
-		spare?: Pick<AgentClientOptions, 'spareKey' | 'onDidOpenSession'>,
+		spare?: Pick<AgentClientOptions, 'spareKey' | 'onDidOpenSession' | 'beforeOpen'>,
 		/** Overrides the model each session switches to, such as a project coordinator's Flash model. */
 		preferredModel?: AgentClientOptions['preferredModel'],
 	) {

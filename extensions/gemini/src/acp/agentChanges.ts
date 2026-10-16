@@ -131,10 +131,19 @@ export class AgentChanges {
 		}
 	}
 
-	/** Forgets every change, for example after the user committed or reverted them. */
-	clear(): void {
-		if (this.byPath.size) {
+	/** Forgets every change, or every one inside `folder`, for example after the user committed or reverted them. */
+	clear(folder?: string): void {
+		const before = this.byPath.size;
+		if (folder === undefined) {
 			this.byPath.clear();
+		} else {
+			for (const file of [...this.byPath.keys()]) {
+				if (file === folder || file.startsWith(folder + path.sep)) {
+					this.byPath.delete(file);
+				}
+			}
+		}
+		if (this.byPath.size !== before) {
 			this.onDidChangeEmitter.fire();
 		}
 	}

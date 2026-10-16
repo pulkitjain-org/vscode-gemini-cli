@@ -7,6 +7,7 @@
 
 import type { CliReport, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage } from '../src/host/panelProtocol';
 import { button, el, format, icon, pageStrings } from './panelDom';
+import { selectMenu, type SelectMenu } from './selectMenu';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromSettingsPage): void };
 
@@ -90,6 +91,9 @@ function preferenceRow(label: string, hint: string, on: boolean, onChange: (on: 
 	return row;
 }
 
+/** The Keep saved chats menu, drawn again with the page. */
+let keepChatsMenu: SelectMenu | undefined;
+
 function preferencesSection(preferences: PreferencesView): HTMLElement {
 	const node = section(strings.preferences, format(strings.preferencesHint, preferences.display));
 	const list = el('div', 'rows');
@@ -115,7 +119,9 @@ function preferencesSection(preferences: PreferencesView): HTMLElement {
 		select.append(option);
 	}
 	select.addEventListener('change', () => post({ type: 'setPreference', key: 'keepChats', value: select.value }));
-	row.append(main, select);
+	keepChatsMenu?.dispose();
+	keepChatsMenu = selectMenu(select, strings.keepChats);
+	row.append(main, keepChatsMenu.element);
 	list.append(row);
 	node.append(list);
 	return node;

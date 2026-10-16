@@ -113,6 +113,8 @@ export interface AgentClientOptions {
 	readonly spareKey?: () => string | undefined;
 	/** Told the servers each session opened with, which differ from `mcpServers` when it took a spare. */
 	readonly onDidOpenSession?: (mcpServers: readonly acp.McpServer[]) => void;
+	/** Awaited before each session opens, such as for a server in `mcpServers` to listen; `mcpServers` is asked after it. */
+	readonly beforeOpen?: () => Promise<void>;
 }
 
 /**
@@ -171,6 +173,8 @@ export class AgentClient {
 	private registration: { dispose(): void } | undefined;
 	/** Bumped on every reconnect, so a slow `session/new` for an old process is ignored. */
 	private generation = 0;
+	/** The MCP servers the current session opened with, as passed to the agent. */
+	private _openedMcpServers: readonly acp.McpServer[] = [];
 	/** The session to reopen when the agent (re)starts, so a restart keeps the conversation. */
 	private resumeSessionId: string | undefined;
 	private readonly runtimeListener: { dispose(): void };
@@ -201,6 +205,23 @@ export class AgentClient {
 	/** The slash commands the agent runs itself, from its latest `available_commands_update`. */
 	get commands(): readonly SlashCommand[] {
 		return this._commands;
+	}
+
+	/** The names of the MCP servers the current session opened with. */
+	get openedMcpServers(): readonly string[] {
+		return this._openedMcpServers.map(server => server.name);
+	}
+
+	/**
+	 * Opens the current session again, by id, with the servers as they are
+	 * now, such as one that opened before a server it needs listened. Resolves
+	 * once it is open; does nothing while the agent isn't ready.
+	 */
+	async reopen(): Promise<void> {
+		if (this._state.kind !== 'ready' || this.runtime.state.kind !== 'ready') {
+			return;
+		}
+		await this.openSession(true);
 	}
 
 	/** Opens the session a client made with `openLater` waits to open; does nothing otherwise. */
@@ -371,6 +392,12 @@ export class AgentClient {
 		const generation = ++this.generation;
 		this.setState({ kind: 'connecting' });
 		try {
+			if (this.options.beforeOpen) {
+				await this.options.beforeOpen();
+				if (generation !== this.generation) {
+					return;
+				}
+			}
 			const { connection, agent, session, savedSessionId, replayUpdates } = await this.loadOrCreate(resume ? this.resumeSessionId : undefined);
 			if (generation !== this.generation) {
 				return;
@@ -419,13 +446,17 @@ export class AgentClient {
 				const finding = (this.options.findSavedSession ?? findSavedCliSession)(this.options.cwd, resumeSessionId, byNumber).catch(() => undefined);
 				if (!byNumber) {
 					// Loaded by id: the session file is read for its replay length while the agent loads it.
-					const loaded = await this.runtime.loadSession(this.options.cwd, resumeSessionId, undefined, this.mcpServers());
+					const servers = this.mcpServers();
+					const loaded = await this.runtime.loadSession(this.options.cwd, resumeSessionId, undefined, servers);
+					this._openedMcpServers = servers;
 					return { ...loaded, savedSessionId: resumeSessionId, replayUpdates: (await finding)?.replayUpdates };
 				}
 				const saved = await finding;
 				const loadId = saved?.index !== undefined ? String(saved.index) : resumeSessionId;
 				// The first-prompt check is only for a load by number, where the number may have moved to another session.
-				const loaded = await this.runtime.loadSession(this.options.cwd, loadId, saved?.firstPrompt, this.mcpServers());
+				const servers = this.mcpServers();
+				const loaded = await this.runtime.loadSession(this.options.cwd, loadId, saved?.firstPrompt, servers);
+				this._openedMcpServers = servers;
 				return { ...loaded, savedSessionId: resumeSessionId, replayUpdates: saved?.replayUpdates };
 			} catch (err) {
 				// Not supported, or the agent no longer has it: start afresh, and say why.
@@ -433,6 +464,7 @@ export class AgentClient {
 			}
 		}
 		const created = await this.runtime.newSession(this.options.cwd, this.mcpServers(), this.options.spareKey?.());
+		this._openedMcpServers = created.mcpServers;
 		this.options.onDidOpenSession?.(created.mcpServers);
 		return { ...created, savedSessionId: created.session.sessionId, replayUpdates: null };
 	}

@@ -15,6 +15,8 @@ import { existsSync, statSync } from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AgentClient, type AgentClientState } from '../../src/acp/agentClient';
+import { AgentsModel, archiveAfterMs, isArchived, warmThreads } from '../../src/acp/agents';
+import { wakeThreadLines, type ThreadInfo } from '../../src/acp/projectHub';
 import { AgentRuntime } from '../../src/acp/agentRuntime';
 import { AgentSidecar } from '../../src/acp/sidecar';
 import { ChatTranscript, type TranscriptItem } from '../../src/acp/chatTranscript';
@@ -35,7 +37,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// Loaded only when a reply has math.
 	'media/katex.js': 290_000,
 	'media/draftMarkdown.js': 140_000,
-	'dist/extension.js': 900_000,
+	// Projects' settings, memory and threads across repositories took it from 887 KB to 913 KB, all GeminiCode's own code.
+	'dist/extension.js': 940_000,
 };
 
 /** Median time of `run` over `rounds` runs, in ms. */
@@ -57,6 +60,51 @@ describe('bundle size', () => {
 			expect(statSync(full).size).toBeLessThanOrEqual(budget);
 		});
 	}
+});
+
+describe('a project with 500 threads', () => {
+	// A project used for a long time: 500 threads, all but 20 merged, most of those long ago.
+	let now = 1_000;
+	const model = new AgentsModel(undefined, () => now);
+	const workspace = model.addWorkspace('/work/shop').id;
+	model.addAgent(workspace, 'Shop', undefined, 'c', { role: 'coordinator' });
+	const threads: ThreadInfo[] = [];
+	for (let i = 0; i < 500; i++) {
+		now += 60 * 60 * 1000;
+		const id = model.addAgent(workspace, `Thread ${i} with a title of usual length`, { folder: `/w/t${i}`, cwd: `/w/t${i}`, branch: `gemini/thread-${i}`, base: 'main' }, `t${i}`, { role: 'thread', coordinator: 'c', byCoordinator: true }).id;
+		model.recordPrompt(id, 'Do the work');
+		model.setChanges(id, { files: 3, added: 40, removed: 12 });
+		if (i < 480) {
+			model.setThreadResolved(id, true);
+		}
+		threads.push({ id, title: `Thread ${i}`, state: 'done', byCoordinator: true, ...(i < 480 ? { resolved: true } : {}) });
+	}
+	now += archiveAfterMs;
+
+	it('opens it starting only a few threads, and lists the rest quickly', () => {
+		expect(warmThreads(model.threadsOf('c'))).toHaveLength(6);
+		const ms = median(51, () => {
+			const all = model.threadsOf('c');
+			warmThreads(all);
+			all.filter(record => !isArchived(record, now));
+		});
+		expect(ms).toBeLessThan(5);
+	});
+
+	it('keeps the coordinator\'s wake short', () => {
+		const lines = wakeThreadLines(threads);
+		expect(lines.length).toBeLessThanOrEqual(20 + 10 + 1);
+		expect(median(51, () => wakeThreadLines(threads))).toBeLessThan(2);
+	});
+
+	it('saves the agent list quickly', () => {
+		const json = JSON.stringify(model.snapshot());
+		expect(json.length).toBeLessThan(250_000);
+		expect(median(21, () => {
+			model.recordPrompt('t499', 'One more note');
+			JSON.stringify(model.snapshot());
+		})).toBeLessThan(10);
+	});
 });
 
 describe('keystroke', () => {

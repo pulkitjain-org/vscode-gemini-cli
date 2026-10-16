@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { branchExists, commitAll, createWorktree, currentBranch, folderInRepository, freeFolder, git, mergeBranch, removeWorktree, repositoryRoot, runWorktreeSetup, worktreeSetupCommand, worktreesHome, worktreeStatus } from '../../src/acp/worktrees';
+import { allThreadsHome, branchExists, commitAll, createWorktree, createWorktreeAt, currentBranch, folderInRepository, folderSize, freeFolder, git, mergeBranch, removeWorktree, repositoryRoot, restoreWorktree, runWorktreeSetup, threadGuide, threadsHome, worktreeSetupCommand, worktreesHome, worktreeStatus, writeThreadGuide } from '../../src/acp/worktrees';
 
 let root: string;
 let repo: string;
@@ -92,6 +92,61 @@ describe('worktrees', () => {
 		await removeWorktree(repo, second, true);
 		expect(await branchExists(repo, 'gemini/second')).toBe(false);
 		expect(await git(repo, ['worktree', 'list'])).not.toContain('second');
+	});
+});
+
+describe('cleaning up a merged worktree', () => {
+	it('puts the folder back on its branch, with the work it had', async () => {
+		const worktree = await createWorktree(repo, 'gemini/fix', '', home);
+		await fs.writeFile(path.join(worktree.folder, 'src', 'cart.ts'), 'export const total = 2;\n');
+		await commitAll(worktree.folder, 'Fix');
+		await fs.mkdir(path.join(worktree.folder, 'node_modules', 'pkg'), { recursive: true });
+		await fs.writeFile(path.join(worktree.folder, 'node_modules', 'pkg', 'index.js'), 'x'.repeat(1000));
+		expect(await folderSize(worktree.folder)).toBeGreaterThanOrEqual(1000);
+		await removeWorktree(repo, worktree, false);
+		expect(await folderSize(worktree.folder)).toBe(0);
+		expect(await restoreWorktree(repo, worktree)).toBe(true);
+		expect(await fs.readFile(path.join(worktree.folder, 'src', 'cart.ts'), 'utf8')).toBe('export const total = 2;\n');
+		expect(await currentBranch(worktree.folder)).toBe('gemini/fix');
+		expect(await worktreeStatus(worktree, 'main')).toEqual({ uncommitted: 0, commits: 1 });
+		// There already: nothing to do.
+		expect(await restoreWorktree(repo, worktree)).toBe(true);
+	});
+
+	it('cannot put a folder back once its branch is gone', async () => {
+		const worktree = await createWorktree(repo, 'gemini/gone', '', home);
+		await removeWorktree(repo, worktree, true);
+		expect(await restoreWorktree(repo, worktree)).toBe(false);
+	});
+});
+
+describe('threads in several repositories', () => {
+	it('puts a worktree of each repository side by side in the thread\'s folder', async () => {
+		const cms = path.join(root, 'cms');
+		await fs.mkdir(cms);
+		await git(cms, ['init', '--quiet', '--initial-branch=trunk']);
+		await fs.writeFile(path.join(cms, 'labels.json'), '{}\n');
+		await commitAll(cms, 'Initial');
+		const folder = path.join(threadsHome('p1', home), 'gift');
+		expect(threadsHome('p/1', home)).toBe(path.join(allThreadsHome(home), 'p-1'));
+		const shop = await createWorktreeAt(repo, 'gemini/gift', path.join(folder, 'shop'));
+		const content = await createWorktreeAt(cms, 'gemini/gift', path.join(folder, 'cms'));
+		expect(shop).toEqual({ folder: path.join(folder, 'shop'), cwd: path.join(folder, 'shop'), branch: 'gemini/gift', base: 'main' });
+		expect(content.base).toBe('trunk');
+		expect(await currentBranch(content.folder)).toBe('gemini/gift');
+		await writeThreadGuide(folder, threadGuide([{ key: 'shop' }, { key: 'cms', about: 'the content' }], 'gemini/gift', 'shop reads cms labels.'));
+		const guide = await fs.readFile(path.join(folder, 'GEMINI.md'), 'utf8');
+		expect(guide).toContain('- `shop/`\n- `cms/`: the content');
+		expect(guide).toContain('all on the branch `gemini/gift`');
+		expect(guide).toContain('# Project memory');
+		expect(guide).toContain('shop reads cms labels.');
+		expect(await fs.readFile(path.join(folder, '.geminiignore'), 'utf8')).toContain('node_modules/');
+		// The thread's folder is not a repository of its own.
+		expect(await repositoryRoot(folder)).toBeUndefined();
+	});
+
+	it('leaves the memory out of the guide when there is none', () => {
+		expect(threadGuide([{ key: 'shop' }], 'b')).not.toContain('# Project memory');
 	});
 });
 

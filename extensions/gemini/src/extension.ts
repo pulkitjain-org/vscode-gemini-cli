@@ -12,6 +12,7 @@ import { AgentService } from './host/agentService';
 import { AgentHome } from './host/agentHome';
 import { AgentWarmup } from './host/agentWarmup';
 import { AgentsView } from './host/agentsView';
+import { tildify } from './host/displayText';
 import { ChangesPanel } from './host/changesPanel';
 import { applyLayoutDefaults } from './host/layoutDefaults';
 import { ChatViewProvider, chatViewId } from './host/chatView';
@@ -71,6 +72,8 @@ export function activate(context: vscode.ExtensionContext): void {
 	const usageMeter = new UsageMeter(quickEdits.client, log);
 	chatView.usage = usageMeter;
 	agentsView.usage = usageMeter;
+	// Drafts a project's Memory text with the same direct request quick edits use.
+	agentsView.direct = request => quickEdits.enhancePrompt(request);
 	initModelList({
 		quotaModels: () => {
 			const reading = usageMeter.reading;
@@ -90,6 +93,11 @@ export function activate(context: vscode.ExtensionContext): void {
 		},
 		attachToFront: attachments => chatInFront().addAttachments(attachments),
 		model: agent => agentsView.controllerOf(agent)?.model,
+		newAgent: page => agentsView.newAgentFor(page),
+		recent: () => agentsView.summaries().filter(agent => agent.state === 'stopped' && agent.project?.role !== 'coordinator').slice(0, 10)
+			.map(agent => ({ id: agent.id, title: agent.title, detail: tildify(agent.worktree?.folder ?? agent.folder) })),
+		wake: agent => agentsView.open(agent),
+		send: (agent, text, attachments) => void agentsView.controllerOf(agent)?.send(text, attachments),
 	});
 	agentsView.browser = browserTools;
 	// caffeinate watches this process, so it ends with GeminiCode even if GeminiCode crashes.

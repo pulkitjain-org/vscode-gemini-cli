@@ -67,6 +67,33 @@ describe('thread cards and coordinator posts', () => {
 		expect(transcript.items.map(item => item.kind === 'agent' ? item.text : item.kind)).toEqual(['Starting two threads.', 'Done.']);
 	});
 
+	it('drops a reply that only repeats the post', () => {
+		const transcript = new ChatTranscript();
+		const texts = () => transcript.items.map(item => item.kind === 'agent' ? item.text : item.kind);
+		transcript.addCoordinatorPost('Which repositories?\nacme-content, acme-checkout or both.');
+		transcript.apply({ kind: 'text', role: 'agent', text: 'Which repositories? ' });
+		transcript.apply({ kind: 'text', role: 'agent', text: 'acme-content,  acme-checkout or both.' });
+		expect(texts()).toEqual(['Which repositories?\nacme-content, acme-checkout or both.']);
+		transcript.addTurnEnd(10);
+		expect(texts()).toEqual(['Which repositories?\nacme-content, acme-checkout or both.', 'turnEnd']);
+	});
+
+	it('keeps what a reply adds after repeating the post', () => {
+		const transcript = new ChatTranscript();
+		transcript.addCoordinatorPost('Which repositories?');
+		transcript.apply({ kind: 'text', role: 'agent', text: 'Which repositories?' });
+		transcript.apply({ kind: 'text', role: 'agent', text: ' I will start once you say.' });
+		expect(transcript.items.map(item => item.kind === 'agent' ? item.text : item.kind)).toEqual(['Which repositories?', 'I will start once you say.']);
+	});
+
+	it('shows a reply that stops partway through the post', () => {
+		const transcript = new ChatTranscript();
+		transcript.addCoordinatorPost('Which repositories?');
+		transcript.apply({ kind: 'text', role: 'agent', text: 'Which' });
+		transcript.addTurnEnd(10);
+		expect(transcript.items.map(item => item.kind === 'agent' ? item.text : item.kind)).toEqual(['Which repositories?', 'Which', 'turnEnd']);
+	});
+
 	it('marks a prompt the coordinator sent', () => {
 		const transcript = new ChatTranscript(() => 5);
 		transcript.addPrompt('Keep the 300 ms fade.', [], 'coordinator');

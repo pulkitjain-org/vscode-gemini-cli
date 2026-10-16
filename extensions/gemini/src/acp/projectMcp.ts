@@ -20,7 +20,12 @@ export type ProjectCaller = { readonly role: 'coordinator'; readonly project: st
 
 export interface ProjectToolHost {
 	call(caller: ProjectCaller, name: string, args: Record<string, unknown>): Promise<McpToolResult>;
+	/** Whether a thread works in several repositories, which gives it add_repo. */
+	multiRepo?(caller: ProjectCaller): boolean;
 }
+
+/** The server's name in a session's MCP servers. */
+export const projectServerName = 'geminicode-project';
 
 const text = { type: 'string' } as const;
 
@@ -35,6 +40,7 @@ export const coordinatorTools: readonly McpTool[] = [
 				brief: { ...text, description: 'Everything the thread needs, in plain language.' },
 				planFirst: { type: 'boolean', description: 'Write a plan and wait for the user\'s OK before changing anything. Only when the user asked for it.' },
 				track: { ...text, description: 'A Conductor track id to take the brief from (its spec.md and plan.md).' },
+				repos: { type: 'array', items: text, description: 'In a project with several repositories: the ones the thread works in, by name, as <repositories> lists them. Ignored in a project with one.' },
 			},
 			required: ['title', 'brief'],
 		},
@@ -46,8 +52,8 @@ export const coordinatorTools: readonly McpTool[] = [
 	},
 	{
 		name: 'list_threads',
-		description: 'The project\'s threads with their state and last line. The same list is already in each wake; call this only for a fresh look.',
-		inputSchema: { type: 'object', properties: {} },
+		description: 'The project\'s threads with their state and last line. The same list is already in each wake; call this only for a fresh look, or with all: true for the older merged threads the wake leaves out.',
+		inputSchema: { type: 'object', properties: { all: { type: 'boolean', description: 'Also list every older merged thread.' } } },
 	},
 	{
 		name: 'read_thread',
@@ -62,6 +68,15 @@ export const coordinatorTools: readonly McpTool[] = [
 ];
 
 export const threadTools: readonly McpTool[] = [
+	{
+		name: 'add_repo',
+		description: 'Adds another of the project\'s repositories to this thread: a worktree of it on this thread\'s branch, as a new folder beside the others in your folder. Use it when the work turns out to need that repository. Returns once the folder is ready.',
+		inputSchema: {
+			type: 'object',
+			properties: { repo: { ...text, description: 'The repository\'s name, as its folder in your folder would be named.' }, reason: { ...text, description: 'Why the work needs it, in a few words; the user sees this.' } },
+			required: ['repo', 'reason'],
+		},
+	},
 	{
 		name: 'report',
 		description: 'Tells the project\'s coordinator about a result, a blocker, or a question only the user can answer. Call it once when your work is done.',
@@ -107,6 +122,11 @@ export class ProjectMcpServer {
 	private server: http.Server | undefined;
 	private port: number | undefined;
 	private starting: Promise<number> | undefined;
+	/** The routes whose tools the CLI has listed since the server started, and who waits on one. */
+	private readonly listed = new Set<string>();
+	private readonly listeners = new Map<string, Set<() => void>>();
+	/** The routes the CLI has sent anything to, for telling a session that never connected from one that connected and stopped. */
+	private readonly contacted = new Set<string>();
 
 	constructor(private readonly host: ProjectToolHost, private readonly version: string) { }
 
@@ -136,7 +156,45 @@ export class ProjectMcpServer {
 		if (!this.port || !route) {
 			return undefined;
 		}
-		return { type: 'http', name: 'geminicode-project', url: `http://127.0.0.1:${this.port}/mcp/${route}`, headers: [{ name: 'Authorization', value: `Bearer ${this.tokenFor(route)}` }] };
+		return { type: 'http', name: projectServerName, url: `http://127.0.0.1:${this.port}/mcp/${route}`, headers: [{ name: 'Authorization', value: `Bearer ${this.tokenFor(route)}` }] };
+	}
+
+	/**
+	 * Whether `caller`'s session loaded the tools: the CLI lists them when a
+	 * session opens with the server, and never in a folder it doesn't trust.
+	 * Waits up to `ms` for that; at once when it happened already.
+	 */
+	whenListed(caller: ProjectCaller, ms: number): Promise<boolean> {
+		const route = routeOf(caller);
+		if (!route || this.listed.has(route)) {
+			return Promise.resolve(!!route);
+		}
+		return new Promise(resolve => {
+			const waiting = this.listeners.get(route) ?? new Set();
+			this.listeners.set(route, waiting);
+			const done = (listed: boolean) => {
+				clearTimeout(timer);
+				waiting.delete(onListed);
+				resolve(listed);
+			};
+			const onListed = () => done(true);
+			const timer = setTimeout(() => done(false), ms);
+			waiting.add(onListed);
+		});
+	}
+
+	/** Whether the CLI has sent `caller`'s route anything since the server started. */
+	wasContacted(caller: ProjectCaller): boolean {
+		const route = routeOf(caller);
+		return !!route && this.contacted.has(route);
+	}
+
+	/** Forgets that `caller`'s tools were listed, as before its session opens again in a new agent process. */
+	forgetListed(caller: ProjectCaller): void {
+		const route = routeOf(caller);
+		if (route) {
+			this.listed.delete(route);
+		}
 	}
 
 	dispose(): void {
@@ -162,6 +220,7 @@ export class ProjectMcpServer {
 		if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
 			return void res.writeHead(401).end();
 		}
+		this.contacted.add(route);
 		if (req.method === 'DELETE') {
 			return void res.writeHead(200).end();
 		}
@@ -175,6 +234,10 @@ export class ProjectMcpServer {
 			return void reply(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
 		}
 		const messages = (Array.isArray(body) ? body : [body]) as JsonRpcRequest[];
+		if (messages.some(m => m?.method === 'tools/list')) {
+			this.listed.add(route);
+			this.listeners.get(route)?.forEach(listener => listener());
+		}
 		const answers = (await Promise.all(messages.map(m => this.answer(caller, m)))).filter(a => a !== undefined);
 		if (!answers.length) {
 			return void res.writeHead(202).end();
@@ -187,13 +250,14 @@ export class ProjectMcpServer {
 			return undefined;
 		}
 		const ok = (result: unknown) => ({ jsonrpc: '2.0', id: message.id, result });
-		const tools = caller.role === 'coordinator' ? coordinatorTools : threadTools;
+		const tools = caller.role === 'coordinator' ? coordinatorTools
+			: this.host.multiRepo?.(caller) ? threadTools : threadTools.filter(tool => tool.name !== 'add_repo');
 		switch (message.method) {
 			case 'initialize':
 				return ok({
 					protocolVersion: typeof message.params?.protocolVersion === 'string' ? message.params.protocolVersion : '2025-06-18',
 					capabilities: { tools: {} },
-					serverInfo: { name: 'geminicode-project', version: this.version },
+					serverInfo: { name: projectServerName, version: this.version },
 					instructions: caller.role === 'coordinator'
 						? 'Tools to start and steer the threads of a GeminiCode project.'
 						: 'Tools to report back to the coordinator of your GeminiCode project.',

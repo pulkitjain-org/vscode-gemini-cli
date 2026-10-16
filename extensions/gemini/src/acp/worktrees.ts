@@ -117,6 +117,64 @@ export async function createWorktree(repository: string, branch: string, subfold
 	return { folder, cwd: path.join(folder, subfolder), branch, base };
 }
 
+/** One repository's worktree in a thread that works in several, side by side in the thread's own folder. */
+export interface RepoWorktree extends AgentWorktree {
+	/** The repository's key in its project, which is also its folder's name in the thread's folder. */
+	readonly key: string;
+	/** The repository it was made from. */
+	readonly repository: string;
+}
+
+/** Where a project's multi-repository threads keep their folders: ~/.geminicode/threads/<project>. */
+export function threadsHome(project: string, home: string = os.homedir()): string {
+	return path.join(allThreadsHome(home), project.replace(/[^\w.-]+/g, '-'));
+}
+
+/** The folder that holds every project's multi-repository thread folders. */
+export function allThreadsHome(home: string = os.homedir()): string {
+	return path.join(home, '.geminicode', 'threads');
+}
+
+/** Makes a new branch from what `repository` has checked out, at `folder` exactly, which must not exist yet. */
+export async function createWorktreeAt(repository: string, branch: string, folder: string): Promise<AgentWorktree> {
+	const base = await currentBranch(repository);
+	await fs.mkdir(path.dirname(folder), { recursive: true });
+	await git(repository, ['worktree', 'add', '--quiet', '-b', branch, folder, 'HEAD']);
+	return { folder, cwd: folder, branch, base };
+}
+
+/** Folders a thread's agent never needs to search, whatever each repository's own ignore files say. */
+const threadIgnores = ['node_modules/', 'dist/', 'build/', 'out/', 'target/', '.next/', '.nuxt/', '.output/', 'coverage/', '.turbo/', '.cache/', '.gradle/', '__pycache__/', '.venv/', 'vendor/'];
+
+/**
+ * The rules file a multi-repository thread's folder gets: which folder is
+ * which repository, that they share one branch, and the project's memory.
+ * The folder itself is not a repository, so this is GeminiCode's to write.
+ */
+export function threadGuide(repos: readonly { readonly key: string; readonly about?: string }[], branch: string, memory?: string): string {
+	const lines = [
+		'# This thread\'s repositories',
+		'',
+		`This folder holds one Git worktree for each repository this thread works in, all on the branch \`${branch}\`:`,
+		'',
+		...repos.map(repo => `- \`${repo.key}/\`${repo.about ? `: ${repo.about}` : ''}`),
+		'',
+		'This folder is not a repository itself. Run git, builds and tests inside a repository\'s folder (for example `cd ' + (repos[0]?.key ?? 'repo') + '` or `git -C ' + (repos[0]?.key ?? 'repo') + ' status`), and say which repository each change is in.',
+		'If the work needs another of the project\'s repositories, call the add_repo tool rather than looking for it elsewhere on disk.',
+	];
+	if (memory?.trim()) {
+		lines.push('', '# Project memory', '', 'From the project\'s settings, written or approved by the user:', '', memory.trim());
+	}
+	return `${lines.join('\n')}\n`;
+}
+
+/** Writes a multi-repository thread's GEMINI.md and .geminiignore into its folder. */
+export async function writeThreadGuide(folder: string, guide: string): Promise<void> {
+	await fs.mkdir(folder, { recursive: true });
+	await fs.writeFile(path.join(folder, 'GEMINI.md'), guide);
+	await fs.writeFile(path.join(folder, '.geminiignore'), `${threadIgnores.join('\n')}\n`);
+}
+
 export interface WorktreeStatus {
 	/** Files changed in the worktree and not committed. */
 	readonly uncommitted: number;
@@ -177,6 +235,47 @@ export async function removeWorktree(repository: string, worktree: AgentWorktree
 	if (deleteBranch && await branchExists(repository, worktree.branch)) {
 		await git(repository, ['branch', '-D', worktree.branch]);
 	}
+}
+
+/**
+ * Puts back a worktree whose folder was removed (Clean Up Merged Folders),
+ * at the same place and on its branch as the branch now stands. Resolves
+ * false when the branch is gone too; does nothing when the folder is there.
+ */
+export async function restoreWorktree(repository: string, worktree: AgentWorktree): Promise<boolean> {
+	if (await fs.access(worktree.folder).then(() => true, () => false)) {
+		return true;
+	}
+	if (!await branchExists(repository, worktree.branch)) {
+		return false;
+	}
+	// Git still lists the removed folder until it is pruned, and refuses to add it again meanwhile.
+	await git(repository, ['worktree', 'prune']);
+	await fs.mkdir(path.dirname(worktree.folder), { recursive: true });
+	await git(repository, ['worktree', 'add', '--quiet', worktree.folder, worktree.branch]);
+	return true;
+}
+
+/** The bytes the files under `folder` take, symbolic links not followed; 0 when it is gone. */
+export async function folderSize(folder: string): Promise<number> {
+	let total = 0;
+	const folders = [folder];
+	// A few folders at a time: a worktree's node_modules can hold a hundred thousand files.
+	while (folders.length) {
+		const batch = folders.splice(0, 16);
+		await Promise.all(batch.map(async each => {
+			const entries = await fs.readdir(each, { withFileTypes: true }).catch(() => []);
+			for (const entry of entries) {
+				const full = path.join(each, entry.name);
+				if (entry.isDirectory()) {
+					folders.push(full);
+				} else if (entry.isFile()) {
+					total += await fs.lstat(full).then(stat => stat.size, () => 0);
+				}
+			}
+		}));
+	}
+	return total;
 }
 
 /** The script a repository keeps for setting up a new agent worktree, relative to its top folder. */

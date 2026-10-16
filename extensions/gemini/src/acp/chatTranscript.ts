@@ -106,8 +106,10 @@ export interface ThreadCard {
 	readonly startedAt: number;
 	/** The Conductor track its brief came from. */
 	readonly track?: string;
-	/** Merged back into the project's branch. */
+	/** Merged back into the project's branch; for a thread in several repositories, into every one it changed. */
 	readonly merged?: boolean;
+	/** A thread in several repositories: each one's changes, and whether they are merged back. */
+	readonly repos?: readonly { readonly key: string; readonly files: number; readonly added: number; readonly removed: number; readonly merged?: boolean }[];
 	/** Undone: its branch and folder are gone. */
 	readonly removed?: boolean;
 }
@@ -136,6 +138,13 @@ export class ChatTranscript {
 	private lastMessageId: string | null | undefined;
 	/** The next text starts a new item even when it continues the last message. */
 	private breakText = false;
+	/**
+	 * A coordinator's last post. Models often end the turn by saying the post
+	 * again as their reply, so reply text is held while it repeats the post and
+	 * dropped if that is all it was.
+	 */
+	private echo: string | undefined;
+	private held = '';
 
 	constructor(private readonly now: () => number = Date.now) { }
 
@@ -144,6 +153,7 @@ export class ChatTranscript {
 	}
 
 	addPrompt(text: string, attachments: readonly Attachment[] = [], from?: 'coordinator'): void {
+		this.settleEcho();
 		this.turnStart = this._items.length;
 		this.lastMessageId = undefined;
 		this.push({
@@ -161,12 +171,16 @@ export class ChatTranscript {
 
 	/** A user message replayed from a saved session: its own bubble, with no time, since the replay does not carry one. */
 	addReplayedPrompt(text: string): void {
+		this.settleEcho();
 		this.turnStart = this._items.length;
 		this.lastMessageId = undefined;
 		this.push({ id: this.newId(), kind: 'user', text });
 	}
 
 	apply(event: ChatEvent): void {
+		if (event.kind !== 'text') {
+			this.settleEcho();
+		}
 		switch (event.kind) {
 			case 'text':
 				this.appendText(event.role, event.text, event.messageId);
@@ -217,6 +231,7 @@ export class ChatTranscript {
 
 	/** Ends the turn; returns the item's id. */
 	addTurnEnd(durationMs: number, usage?: readonly ModelTokens[]): string {
+		this.settleEcho();
 		const id = this.newId();
 		this.push({ id, kind: 'turnEnd', durationMs: Math.max(0, Math.round(durationMs)), at: this.now(), ...(usage?.length ? { usage } : {}) });
 		return id;
@@ -249,9 +264,11 @@ export class ChatTranscript {
 
 	/** A message from a project's coordinator, as its own paragraph of the reply. */
 	addCoordinatorPost(text: string): void {
+		this.settleEcho();
 		this.push({ id: this.newId(), kind: 'agent', text });
 		// Whatever it says next starts a new message.
 		this.breakText = true;
+		this.echo = squash(text) || undefined;
 	}
 
 	addNotice(text: string, severity: 'info' | 'error' = 'info'): void {
@@ -280,6 +297,21 @@ export class ChatTranscript {
 	}
 
 	private appendText(role: TextItem['kind'], text: string, messageId: string | null | undefined): void {
+		if (role === 'agent' && this.echo !== undefined) {
+			this.held += text;
+			const said = squash(this.held);
+			if (this.echo.startsWith(said)) {
+				return;
+			}
+			// It said more than the post: show only what is new.
+			const rest = said.startsWith(this.echo) ? afterEcho(this.held, this.echo) : this.held;
+			this.echo = undefined;
+			this.held = '';
+			if (rest) {
+				this.appendText(role, rest, messageId);
+			}
+			return;
+		}
 		const last = this._items.at(-1);
 		const sameMessage = !messageId || !this.lastMessageId || messageId === this.lastMessageId;
 		if (last && last.kind === role && sameMessage && !this.breakText) {
@@ -290,6 +322,17 @@ export class ChatTranscript {
 		this.breakText = false;
 		if (messageId) {
 			this.lastMessageId = messageId;
+		}
+	}
+
+	/** Something other than reply text came: held text that only partly repeated the post is shown after all. */
+	private settleEcho(): void {
+		const held = this.held;
+		const repeated = this.echo !== undefined && squash(held) === this.echo;
+		this.echo = undefined;
+		this.held = '';
+		if (held && !repeated) {
+			this.appendText('agent', held, undefined);
 		}
 	}
 
@@ -365,4 +408,27 @@ export function countChangedLines(oldText: string, newText: string): { added: nu
 		}
 	}
 	return { added, removed: oldLines.length - kept };
+}
+
+/** Text with its spacing evened out, to compare a reply with a post. */
+function squash(text: string): string {
+	return text.replace(/\s+/g, ' ').trim();
+}
+
+/** What `text` says after repeating `echo`, which squash(text) starts with. */
+function afterEcho(text: string, echo: string): string {
+	let seen = 0;
+	let index = 0;
+	const squashed = text.replace(/^\s+/, '');
+	const start = text.length - squashed.length;
+	for (index = start; index < text.length && seen < echo.length; index++) {
+		if (/\s/.test(text[index])) {
+			if (!/\s/.test(text[index - 1] ?? '')) {
+				seen++;
+			}
+		} else {
+			seen++;
+		}
+	}
+	return text.slice(index).replace(/^\s+/, '');
 }
