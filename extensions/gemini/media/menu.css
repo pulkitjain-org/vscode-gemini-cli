@@ -202,3 +202,40 @@
 		transform: translateY(4px);
 	}
 }
+
+/* A <select> drawn as a button and a menu (webview-src/selectMenu.ts); the button takes the select's own class for its look. */
+.select-menu {
+	min-width: 0;
+}
+
+.select-menu-button {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px;
+	width: 100%;
+	text-align: start;
+	cursor: pointer;
+}
+
+.select-menu-button:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.select-menu-text {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.select-menu-button .codicon {
+	flex: none;
+	color: var(--gemini-muted);
+}
+
+.menu.select-menu-list {
+	position: fixed;
+	bottom: auto;
+	z-index: 1000;
+}

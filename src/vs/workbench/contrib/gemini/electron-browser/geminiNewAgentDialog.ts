@@ -9,16 +9,23 @@
 // browser's page, so the form is drawn here. It only collects the choices: the
 // extension passes what to offer and starts the agent with what comes back.
 // The block carries `monaco-dialog-modal-block`, so the browser's overlay
-// manager hides the page under it as it does for other dialogs.
+// manager hides the page under it as it does for other dialogs. Its lists are
+// the workbench's select boxes, drawn in the theme unless `window.menuStyle`
+// asks for the system's menus: an HTML <select> would open the system's.
 
 import { $, addDisposableListener, append, EventType } from '../../../../base/browser/dom.js';
 import { StandardKeyboardEvent } from '../../../../base/browser/keyboardEvent.js';
 import { KeyCode, KeyMod } from '../../../../base/common/keyCodes.js';
+import { ISelectOptionItem, SelectBox } from '../../../../base/browser/ui/selectBox/selectBox.js';
 import { DisposableStore } from '../../../../base/common/lifecycle.js';
 import { localize } from '../../../../nls.js';
 import { CommandsRegistry } from '../../../../platform/commands/common/commands.js';
+import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
+import { IContextViewService } from '../../../../platform/contextview/browser/contextView.js';
 import { IFileDialogService } from '../../../../platform/dialogs/common/dialogs.js';
 import { ILayoutService } from '../../../../platform/layout/browser/layoutService.js';
+import { defaultSelectBoxStyles } from '../../../../platform/theme/browser/defaultStyles.js';
+import { hasNativeContextMenu } from '../../../../platform/window/common/window.js';
 import './geminiNewAgentDialog.css';
 
 /** What the extension offers. */
@@ -48,16 +55,33 @@ export interface NewAgentDialogResult {
 CommandsRegistry.registerCommand('_gemini.newAgentDialog', (accessor, input: NewAgentDialogInput) => {
 	const layoutService = accessor.get(ILayoutService);
 	const fileDialogService = accessor.get(IFileDialogService);
-	return showNewAgentDialog(layoutService.activeContainer, input, () => fileDialogService.showOpenDialog({
+	const contextViewService = accessor.get(IContextViewService);
+	const useCustomDrawn = !hasNativeContextMenu(accessor.get(IConfigurationService));
+	// A list in a box of its own, so the popup can reach its element; one layer up, so it opens over the popup.
+	const selectBox = (options: ISelectOptionItem[], selected: number, ariaLabel: string): Select => {
+		const box = new SelectBox(options, selected, contextViewService, defaultSelectBoxStyles, { useCustomDrawn, ariaLabel, contextViewLayer: 1 });
+		const element = $('.gemini-new-agent-select');
+		box.render(element);
+		return { box, element, control: element.firstElementChild as HTMLElement };
+	};
+	return showNewAgentDialog(layoutService.activeContainer, input, selectBox, () => fileDialogService.showOpenDialog({
 		canSelectFolders: true, canSelectFiles: false, canSelectMany: false,
 		title: localize('gemini.newAgent.chooseFolderTitle', "Where the Agent Works"),
 		openLabel: localize('gemini.newAgent.chooseFolderOpen', "Choose"),
 	}).then(uris => uris?.[0]?.fsPath));
 });
 
+interface Select {
+	readonly box: SelectBox;
+	/** The box it is drawn in. */
+	readonly element: HTMLElement;
+	/** What takes the focus. */
+	readonly control: HTMLElement;
+}
+
 let open: Promise<NewAgentDialogResult | undefined> | undefined;
 
-function showNewAgentDialog(container: HTMLElement, input: NewAgentDialogInput, chooseFolder: () => Promise<string | undefined>): Promise<NewAgentDialogResult | undefined> {
+function showNewAgentDialog(container: HTMLElement, input: NewAgentDialogInput, selectBox: (options: ISelectOptionItem[], selected: number, ariaLabel: string) => Select, chooseFolder: () => Promise<string | undefined>): Promise<NewAgentDialogResult | undefined> {
 	// One at a time: a second request waits on the open one.
 	if (open) {
 		return open;
@@ -75,25 +99,33 @@ function showNewAgentDialog(container: HTMLElement, input: NewAgentDialogInput, 
 			append(dialog, $('p.subtitle', undefined, localize('gemini.newAgent.page', "It gets the page \"{0}\" to read and use.", input.page)));
 		}
 
-		const field = (label: string, control: HTMLElement, id: string) => {
+		const field = (label: string, control: HTMLElement, id: string, wrapper = control) => {
 			const wrap = append(dialog, $('.field'));
 			const labelElement = append(wrap, $('label', undefined, label)) as HTMLLabelElement;
 			labelElement.htmlFor = id;
 			control.id = id;
-			wrap.append(control);
+			wrap.append(wrapper);
 			return wrap;
 		};
+		const select = (options: ISelectOptionItem[], selected: number, label: string) => {
+			const made = selectBox(options, selected, label);
+			disposables.add(made.box);
+			return made;
+		};
 
-		// Where: the workspaces, then any folder.
-		const folder = $('select') as HTMLSelectElement;
+		// Where: the workspaces, then any folder, which joins them once picked.
 		const git = new Map<string, boolean>();
-		for (const each of input.folders) {
-			folder.append(new Option(`${each.label}  —  ${each.description}`, each.folder));
+		const folders: { readonly folder: string; readonly text: string }[] = input.folders.map(each => {
 			git.set(each.folder, each.git);
-		}
-		const chooseValue = '\u0000choose';
-		folder.append(new Option(localize('gemini.newAgent.chooseFolder', "Choose folder..."), chooseValue));
-		field(localize('gemini.newAgent.folder', "Folder"), folder, 'gemini-new-agent-folder');
+			return { folder: each.folder, text: `${each.label}  \u2014  ${each.description}` };
+		});
+		const chooseText = localize('gemini.newAgent.chooseFolder', "Choose folder...");
+		const folderOptions = () => [...folders.map(each => ({ text: each.text })), { text: chooseText }];
+		const folderLabel = localize('gemini.newAgent.folder', "Folder");
+		const folder = select(folderOptions(), 0, folderLabel);
+		let folderIndex = 0;
+		const folderValue = () => folders[folderIndex]?.folder;
+		field(folderLabel, folder.control, 'gemini-new-agent-folder', folder.element);
 
 		const task = $('textarea', { rows: '4', placeholder: localize('gemini.newAgent.taskPlaceholder', "Optional. What to do with the page; leave it empty to write it in the agent's chat.") }) as HTMLTextAreaElement;
 		field(localize('gemini.newAgent.task', "What should it do?"), task, 'gemini-new-agent-task');
@@ -106,23 +138,25 @@ function showNewAgentDialog(container: HTMLElement, input: NewAgentDialogInput, 
 		append(ownBranchLabel, $('span', undefined, localize('gemini.newAgent.ownBranch', "On its own branch")));
 		const branch = append(branchField, $('input', { type: 'text', placeholder: input.branchPlaceholder, spellcheck: 'false', 'aria-label': localize('gemini.newAgent.branch', "Branch") })) as HTMLInputElement;
 		const modelField = append(row, $('.field'));
-		const modelLabel = append(modelField, $('label', undefined, localize('gemini.newAgent.model', "Model"))) as HTMLLabelElement;
-		const model = append(modelField, $('select#gemini-new-agent-model')) as HTMLSelectElement;
-		modelLabel.htmlFor = model.id;
-		model.append(new Option(localize('gemini.newAgent.defaultModel', "Default"), ''));
-		for (const each of input.models) {
-			if (each.id !== input.defaultModel) {
-				model.append(new Option(each.name, each.id));
-			}
-		}
-		model.disabled = !input.models.length;
+		const modelText = localize('gemini.newAgent.model', "Model");
+		const modelLabel = append(modelField, $('label', undefined, modelText)) as HTMLLabelElement;
+		// Default first, named after the model it is; then the others.
+		const defaultName = input.models.find(each => each.id === input.defaultModel)?.name;
+		const models = [{ id: '', name: defaultName ? localize('gemini.newAgent.defaultNamed', "Default ({0})", defaultName) : localize('gemini.newAgent.defaultModel', "Default") }, ...input.models.filter(each => each.id !== input.defaultModel)];
+		const model = select(models.map(each => ({ text: each.name })), 0, modelText);
+		let modelIndex = 0;
+		disposables.add(model.box.onDidSelect(e => modelIndex = e.index));
+		model.control.id = 'gemini-new-agent-model';
+		modelLabel.htmlFor = model.control.id;
+		modelField.append(model.element);
+		model.box.setEnabled(models.length > 1);
 
-		const mode = $('select') as HTMLSelectElement;
-		for (const each of input.modes) {
-			const option = new Option(each.description ? `${each.name}  —  ${each.description}` : each.name, each.id);
-			mode.append(option);
-		}
-		field(localize('gemini.newAgent.mode', "Mode"), mode, 'gemini-new-agent-mode');
+		const modeText = localize('gemini.newAgent.mode', "Mode");
+		const modes = input.modes.length ? input.modes : [{ id: 'default', name: 'Default' }];
+		const mode = select(modes.map(each => ({ text: each.description ? `${each.name}  \u2014  ${each.description}` : each.name })), 0, modeText);
+		let modeIndex = 0;
+		disposables.add(mode.box.onDidSelect(e => modeIndex = e.index));
+		field(modeText, mode.control, 'gemini-new-agent-mode', mode.element);
 
 		const hint = append(dialog, $('p.hint'));
 		const footer = append(dialog, $('.footer'));
@@ -131,7 +165,7 @@ function showNewAgentDialog(container: HTMLElement, input: NewAgentDialogInput, 
 		const start = append(footer, $('button.primary', { type: 'button' }, localize('gemini.newAgent.start', "Start agent")));
 
 		const update = () => {
-			const inGit = git.get(folder.value) ?? true;
+			const inGit = git.get(folderValue() ?? '') ?? true;
 			ownBranchLabel.classList.toggle('disabled', !inGit);
 			ownBranch.disabled = !inGit;
 			if (!inGit) {
@@ -142,10 +176,9 @@ function showNewAgentDialog(container: HTMLElement, input: NewAgentDialogInput, 
 				? localize('gemini.newAgent.ownBranchHint', "It works on a new branch in a folder of its own. Merge Back brings its work into yours.")
 				: inGit ? localize('gemini.newAgent.sameBranchHint', "It edits the folder's files on the branch checked out now.")
 					: localize('gemini.newAgent.noGitHint', "The folder isn't in a Git repository, so the agent edits its files directly.");
-			start.toggleAttribute('disabled', folder.value === chooseValue);
+			start.toggleAttribute('disabled', !folderValue());
 		};
 
-		let lastFolder = folder.value;
 		const finish = (result: NewAgentDialogResult | undefined) => {
 			disposables.dispose();
 			block.remove();
@@ -154,34 +187,39 @@ function showNewAgentDialog(container: HTMLElement, input: NewAgentDialogInput, 
 			resolve(result);
 		};
 		const submit = () => {
-			if (folder.value === chooseValue) {
+			const chosen = folderValue();
+			if (!chosen) {
 				return;
 			}
+			const modelId = models[modelIndex]?.id;
 			finish({
-				folder: folder.value,
+				folder: chosen,
 				ownBranch: ownBranch.checked,
 				...(ownBranch.checked && branch.value.trim() ? { branch: branch.value.trim() } : {}),
-				...(model.value ? { model: model.value } : {}),
-				mode: mode.value || 'default',
+				...(modelId ? { model: modelId } : {}),
+				mode: modes[modeIndex]?.id ?? 'default',
 				...(task.value.trim() ? { task: task.value.trim() } : {}),
 			});
 		};
 
-		disposables.add(addDisposableListener(folder, EventType.CHANGE, async () => {
-			if (folder.value !== chooseValue) {
-				lastFolder = folder.value;
+		disposables.add(folder.box.onDidSelect(async e => {
+			if (e.index < folders.length) {
+				folderIndex = e.index;
 				update();
 				return;
 			}
 			const picked = await chooseFolder();
 			if (picked) {
-				if (![...folder.options].some(option => option.value === picked)) {
-					folder.insertBefore(new Option(picked, picked), folder.options[folder.options.length - 1]);
+				const known = folders.findIndex(each => each.folder === picked);
+				if (known >= 0) {
+					folderIndex = known;
+				} else {
+					folders.push({ folder: picked, text: picked });
+					folderIndex = folders.length - 1;
 				}
-				folder.value = picked;
-				lastFolder = picked;
+				folder.box.setOptions(folderOptions(), folderIndex);
 			} else {
-				folder.value = lastFolder;
+				folder.box.select(folderIndex);
 			}
 			update();
 		}));
@@ -210,7 +248,7 @@ function showNewAgentDialog(container: HTMLElement, input: NewAgentDialogInput, 
 				submit();
 			} else if (event.equals(KeyCode.Tab) || event.equals(KeyMod.Shift | KeyCode.Tab)) {
 				// Keep the focus inside the popup.
-				const focusable = [close, folder, task, ownBranch, branch, model, mode, cancel, start].filter(each => !(each as HTMLInputElement).disabled);
+				const focusable = [close, folder.control, task, ownBranch, branch, model.control, mode.control, cancel, start].filter(each => !(each as HTMLInputElement).disabled);
 				const index = focusable.indexOf(container.ownerDocument.activeElement as HTMLElement);
 				const next = event.shiftKey ? (index <= 0 ? focusable.length - 1 : index - 1) : (index + 1) % focusable.length;
 				e.preventDefault();

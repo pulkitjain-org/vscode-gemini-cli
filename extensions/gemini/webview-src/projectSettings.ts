@@ -11,6 +11,7 @@
 import type { ProjectRepoView, ProjectSettingsView } from '../src/host/chatProtocol';
 import { format } from './chatLogic';
 import { button, el, icon, setLabel } from './dom';
+import { selectMenu, type SelectMenu } from './selectMenu';
 import { draftOf, mergeRefresh, saveOf, threadTokens, unsavedChanges, withRepo, type SettingsDraft } from './settingsLogic';
 import { state, strings, vscode } from './view';
 
@@ -37,6 +38,8 @@ interface Open {
 }
 
 let open: Open | undefined;
+/** The General tab's model menu, redrawn with the tab. */
+let modelMenu: SelectMenu | undefined;
 
 /** Opens Project settings with `view`, or, while open, takes in what changed. */
 export function showProjectSettings(view: ProjectSettingsView, show: boolean): void {
@@ -110,6 +113,8 @@ function build(view: ProjectSettingsView): void {
 		tryClose();
 	});
 	dialog.addEventListener('close', () => {
+		modelMenu?.dispose();
+		modelMenu = undefined;
 		dialog.remove();
 		open = undefined;
 	});
@@ -152,6 +157,8 @@ function render(): void {
 		open.sawMemory = true;
 	}
 	open.counter = open.tokens = open.redraft = undefined;
+	modelMenu?.dispose();
+	modelMenu = undefined;
 	open.body.replaceChildren(...open.tab === 'general' ? general(open) : memory(open));
 	updateFoot();
 }
@@ -270,7 +277,7 @@ function general(current: Open): HTMLElement[] {
 
 	const defaults = el('div', 'settings-rows');
 	defaults.append(
-		settingRow(text.threadModel, undefined, model),
+		settingRow(text.threadModel, undefined, (modelMenu = selectMenu(model, text.threadModel)).element, 'project-settings-model'),
 		settingRow(text.planFirst, text.planFirstHint, plan),
 		settingRow(text.branchPrefix, text.branchPrefixHint, prefix),
 	);
@@ -400,10 +407,10 @@ function section(title: string, hint: string | undefined, content: HTMLElement):
 	return wrap;
 }
 
-function settingRow(title: string, hint: string | undefined, control: HTMLElement): HTMLElement {
+function settingRow(title: string, hint: string | undefined, control: HTMLElement, forId = control.id): HTMLElement {
 	const row = el('div', 'settings-row');
 	const label = el('label');
-	label.htmlFor = control.id;
+	label.htmlFor = forId;
 	label.append(el('span', undefined, title));
 	if (hint) {
 		label.append(el('span', 'settings-muted settings-small', hint));

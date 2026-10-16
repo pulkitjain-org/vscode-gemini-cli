@@ -853,7 +853,11 @@ button.option-button .codicon-chevron-down {
 	opacity: 1;
 }
 
-.settings select.select {
+.settings .select-menu {
+	flex: none;
+}
+
+.settings .select-menu-button.select {
 	flex: none;
 	max-width: 200px;
 	padding: 3px 6px;

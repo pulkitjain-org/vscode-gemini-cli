@@ -17,6 +17,7 @@ import { defaultModel, SessionChoice } from '../acp/sessionSettings';
 
 const lastModelKey = 'gemini.lastModel';
 const composerHeightKey = 'gemini.composerHeight';
+const knownModelsKey = 'gemini.knownModels';
 let storage: vscode.Memento | undefined;
 
 export function initModelPreference(globalState: vscode.Memento): void {
@@ -72,8 +73,26 @@ async function refreshGemma(): Promise<void> {
 
 /** The models the picker lists: the terminal's `/model` list (see modelList.ts). */
 export function sessionModelList(available: readonly SessionChoice[]): SessionChoice[] {
+	rememberModels(available);
 	const context: ModelListContext = { gemma, proAccess: proAccessFromQuota(quotaModels()) };
 	// For the next session; this one uses what was read before, so opening it reads no file.
 	void refreshGemma();
 	return terminalModelList(available, context);
+}
+
+/** Keeps the CLI's last model list, so a popup can offer models while no agent runs; written only when it changes. */
+function rememberModels(available: readonly SessionChoice[]): void {
+	if (!available.length) {
+		return;
+	}
+	const list = available.map(({ id, name, description, tier }) => ({ id, name, ...(description ? { description } : {}), ...(tier !== undefined ? { tier } : {}) }));
+	if (JSON.stringify(list) !== JSON.stringify(storage?.get(knownModelsKey))) {
+		void storage?.update(knownModelsKey, list);
+	}
+}
+
+/** The models the picker would list, from the last list any session sent; empty before the first session. */
+export function knownModelList(): SessionChoice[] {
+	const saved = storage?.get<SessionChoice[]>(knownModelsKey);
+	return Array.isArray(saved) && saved.length ? terminalModelList(saved, { gemma, proAccess: proAccessFromQuota(quotaModels()) }) : [];
 }

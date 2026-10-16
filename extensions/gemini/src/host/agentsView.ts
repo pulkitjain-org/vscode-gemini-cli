@@ -42,7 +42,7 @@ import { DiffPreview } from './diffPreview';
 import { agentColumn, agentsColumn, closeAgentFiles } from './editorPlacement';
 import { escapeMarkdown } from './markdown';
 import { isModeAllowed } from '../acp/adminPolicy';
-import { sessionModel, sessionModelList } from './modelPreference';
+import { knownModelList, sessionModel, sessionModelList } from './modelPreference';
 import type { UsageMeter } from './usageMeter';
 import { WorkspaceFileIndex } from './workspaceFiles';
 
@@ -672,9 +672,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	 * with the agent and its task, or undefined when the user cancels.
 	 */
 	async newAgentFor(page: string): Promise<{ readonly id: string; readonly title: string; readonly task?: string } | undefined> {
-		// The models the agent offers come with a session; any running agent's list will do. Without one, it starts on the usual model.
+		// The models the agent offers come with a session; any running agent's list will do, else the last list any session sent.
 		const offered = [...this.live.values()].find(live => live.session.client.settings.model?.available.length)?.session.client.settings.model?.available;
-		const models = offered ? sessionModelList(offered) : [];
+		const models = offered ? sessionModelList(offered) : knownModelList();
 		const places = await this.workspaces();
 		const choice = await vscode.commands.executeCommand<{ folder: string; ownBranch: boolean; branch?: string; model?: string; mode: string; task?: string } | undefined>('_gemini.newAgentDialog', {
 			page,

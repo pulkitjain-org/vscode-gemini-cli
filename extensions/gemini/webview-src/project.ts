@@ -12,6 +12,7 @@ import { branchNameFrom } from '../src/acp/branchNames';
 import type { ParentProject, ProjectPanel } from '../src/host/chatProtocol';
 import { format } from './chatLogic';
 import { button, el, icon, onIntent, setLabel } from './dom';
+import { selectMenu } from './selectMenu';
 import { state, strings, vscode } from './view';
 
 let panel: ProjectPanel | undefined;
@@ -94,7 +95,8 @@ export function openNewThread(): void {
 	}
 
 	const pair = el('div', 'new-thread-pair');
-	pair.append(field(repoBoxes.length ? text.branchLabelShared : text.branchLabel, branch), field(text.modelLabel, model, 'new-thread-model-field'));
+	const modelMenu = selectMenu(model, text.modelLabel);
+	pair.append(field(repoBoxes.length ? text.branchLabelShared : text.branchLabel, branch), field(text.modelLabel, modelMenu.element, 'new-thread-model-field', 'new-thread-model'));
 	const planRow = el('div', 'new-thread-plan');
 	const planLabel = el('label');
 	planLabel.htmlFor = plan.id;
@@ -138,7 +140,10 @@ export function openNewThread(): void {
 			form.requestSubmit();
 		}
 	});
-	dialog.addEventListener('close', () => dialog.remove());
+	dialog.addEventListener('close', () => {
+		modelMenu.dispose();
+		dialog.remove();
+	});
 	dialog.append(form);
 	document.body.append(dialog);
 	dialog.showModal();
@@ -151,10 +156,10 @@ function input<K extends 'input' | 'textarea' | 'select'>(id: string, tag: K): H
 	return node;
 }
 
-function field(label: string, control: HTMLElement, className = ''): HTMLElement {
+function field(label: string, control: HTMLElement, className = '', forId = control.id): HTMLElement {
 	const wrap = el('div', `new-thread-field ${className}`.trim());
 	const name = el('label', undefined, label);
-	name.htmlFor = control.id;
+	name.htmlFor = forId;
 	wrap.append(name, control);
 	return wrap;
 }

@@ -83,7 +83,6 @@
 	align-items: end;
 }
 
-.monaco-workbench .gemini-new-agent select,
 .monaco-workbench .gemini-new-agent textarea,
 .monaco-workbench .gemini-new-agent input[type="text"] {
 	box-sizing: border-box;
@@ -96,9 +95,14 @@
 	border-radius: 6px;
 }
 
-.monaco-workbench .gemini-new-agent select {
-	color: var(--vscode-dropdown-foreground);
-	background: var(--vscode-dropdown-background);
+/* The workbench's select boxes, sized like the fields. */
+.monaco-workbench .gemini-new-agent .gemini-new-agent-select .monaco-select-box {
+	box-sizing: border-box;
+	width: 100%;
+	height: auto;
+	padding: 6px 22px 6px 8px;
+	font: inherit;
+	border-radius: 6px;
 }
 
 .monaco-workbench .gemini-new-agent textarea {
@@ -106,7 +110,6 @@
 	min-height: 72px;
 }
 
-.monaco-workbench .gemini-new-agent select:focus,
 .monaco-workbench .gemini-new-agent textarea:focus,
 .monaco-workbench .gemini-new-agent input:focus,
 .monaco-workbench .gemini-new-agent button:focus-visible {
@@ -115,7 +118,7 @@
 }
 
 .monaco-workbench .gemini-new-agent input:disabled,
-.monaco-workbench .gemini-new-agent select:disabled {
+.monaco-workbench .gemini-new-agent .monaco-select-box:disabled {
 	opacity: 0.5;
 }
 

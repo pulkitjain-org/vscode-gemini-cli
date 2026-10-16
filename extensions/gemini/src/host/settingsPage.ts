@@ -667,6 +667,7 @@ export class SettingsPage implements vscode.Disposable {
 		};
 		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'settings.js'));
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
+		const menuStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'menu.css'));
 		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'codicon.css'));
 		return `<!DOCTYPE html>
 <html lang="en">
@@ -675,6 +676,7 @@ export class SettingsPage implements vscode.Disposable {
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link href="${codicons}" rel="stylesheet">
+	<link href="${menuStyle}" rel="stylesheet">
 	<link href="${style}" rel="stylesheet">
 	<title>${strings.title}</title>
 </head>
