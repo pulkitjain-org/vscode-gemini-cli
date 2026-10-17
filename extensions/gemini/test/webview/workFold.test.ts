@@ -27,7 +27,7 @@ const ids = (items: readonly TranscriptItem[]) => items.map(item => item.id);
 describe('turnLayout', () => {
 	it('folds the steps and what was said between them, and keeps the answer after the fold', () => {
 		const thought = text('thought', '**Looking**');
-		const search = call('search', "'cart-empty'");
+		const search = call('search', '\'cart-empty\'');
 		const remark = text('agent', 'The button uses the outline variant.');
 		const edit = call('edit', 'Edit empty.tsx');
 		const answer = text('agent', 'Done.');
@@ -55,7 +55,7 @@ describe('turnLayout', () => {
 	});
 
 	it('moves a remark into the fold once a step follows it', () => {
-		const remark = text('agent', "I'll look.");
+		const remark = text('agent', 'I\'ll look.');
 		expect(ids(turnLayout([remark]).after)).toEqual(ids([remark]));
 		expect(ids(turnLayout([remark, call('read', 'Read a.ts')]).folded)).toEqual([remark.id, expect.any(String)]);
 	});
@@ -73,7 +73,7 @@ describe('foldGroups', () => {
 
 	it('keeps a failed call and a subagent on their own, so they stay in sight', () => {
 		const failed = call('execute', 'npm test', { status: 'failed' });
-		const subagent = call('think', "Delegating to agent 'codebase_investigator'");
+		const subagent = call('think', 'Delegating to agent \'codebase_investigator\'');
 		const groups = foldGroups([call('execute', 'ls'), failed, call('execute', 'ls'), subagent, call('think', 'x'), call('think', 'y')]);
 		expect(groups.map(group => group.kind)).toEqual(['item', 'item', 'item', 'item', 'run']);
 		expect(groups[1]).toEqual({ kind: 'item', item: failed });
@@ -124,7 +124,7 @@ describe('workSummary', () => {
 describe('runPeek', () => {
 	it('names files, patterns and commands, once each', () => {
 		expect(runPeek([call('read', 'Read a.ts', { paths: ['/w/src/a.ts'] }), call('read', 'Read b.ts', { paths: ['/w/b.ts'] }), call('read', 'Read a.ts', { paths: ['/w/src/a.ts'] })])).toEqual(['a.ts', 'b.ts']);
-		expect(runPeek([call('search', "'cart-empty' in *.tsx"), call('search', 'apps/**/*Cart*')])).toEqual(["'cart-empty' in *.tsx", 'apps/**/*Cart*']);
+		expect(runPeek([call('search', '\'cart-empty\' in *.tsx'), call('search', 'apps/**/*Cart*')])).toEqual(['\'cart-empty\' in *.tsx', 'apps/**/*Cart*']);
 		expect(runPeek([call('execute', 'grep -r x src'), call('execute', 'ls -la'), call('execute', 'grep y')])).toEqual(['grep', 'ls']);
 	});
 
