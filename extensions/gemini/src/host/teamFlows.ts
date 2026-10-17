@@ -23,6 +23,7 @@ import type { AgentsView } from './agentsView';
 import type { TeamConnections } from './teamConnections';
 import { TeamFlowPanel } from './teamFlowPanel';
 import { ChecksView, FlowAttachment, FlowPerson, MoveTicketView, OpenMrView, ReleaseView, ReviewView, Tone, TransitionView } from './teamFlowProtocol';
+import { openTeamLink } from './teamLinks';
 
 /** Where an agent works and the GitLab project and branch there. */
 interface GitPlace {
@@ -259,7 +260,7 @@ export class TeamFlows implements vscode.Disposable {
 						flow.update({ done: done.join(' ') });
 					});
 				case 'open':
-					return void vscode.env.openExternal(vscode.Uri.parse(view.url));
+					return void openTeamLink(view.url);
 			}
 		});
 		try {
@@ -387,7 +388,7 @@ export class TeamFlows implements vscode.Disposable {
 				flow.update({ reviewers: view.members.filter(m => Array.isArray(value) && value.includes(m.id)) });
 				return;
 			case 'openExisting':
-				return void vscode.env.openExternal(vscode.Uri.parse(view.existing?.url ?? ''));
+				return void openTeamLink(view.existing?.url ?? '');
 			case 'submit':
 				this.keepTyped(flow);
 				return flow.busy(vscode.l10n.t("Pushing {0}...", gp.branch), async () => {
@@ -422,7 +423,7 @@ export class TeamFlows implements vscode.Disposable {
 					});
 					flow.dispose();
 					const open = vscode.l10n.t("Open in GitLab");
-					void vscode.window.showInformationMessage(vscode.l10n.t("Opened merge request !{0}.", mr.iid), open).then(choice => choice === open && vscode.env.openExternal(vscode.Uri.parse(mr.url)));
+					void vscode.window.showInformationMessage(vscode.l10n.t("Opened merge request !{0}.", mr.iid), open).then(choice => choice === open ? openTeamLink(mr.url) : undefined);
 					if (current.ticket && flow.field('updateJira', current.updateJira)) {
 						await this.moveTicket(current.ticket.key, agentId, 'In Review');
 					}
@@ -485,7 +486,7 @@ export class TeamFlows implements vscode.Disposable {
 				case 'openAgent':
 					return agentId ? this.agents.open(agentId) : undefined;
 				case 'openGitLab':
-					return void vscode.env.openExternal(vscode.Uri.parse(view.mr.url));
+					return void openTeamLink(view.mr.url);
 				case 'readAgain':
 					return this.readReview(flow, agentId);
 				case 'openDiff': {
@@ -643,7 +644,7 @@ export class TeamFlows implements vscode.Disposable {
 				case 'openAgent':
 					return this.agents.open(str(value)!);
 				case 'openUrl':
-					return void vscode.env.openExternal(vscode.Uri.parse(str(value)!));
+					return void openTeamLink(str(value)!);
 				case 'push':
 					return flow.busy(vscode.l10n.t("Pushing..."), () => this.pushRelease(flow, repo!, str(value)!));
 				case 'submit':
@@ -766,7 +767,7 @@ export class TeamFlows implements vscode.Disposable {
 				case 'again':
 					return this.check(flow, agentId);
 				case 'open':
-					return void vscode.env.openExternal(vscode.Uri.parse(str(value)!));
+					return void openTeamLink(str(value)!);
 				case 'fix':
 				case 'fixAll': {
 					const chosen = action === 'fix' ? view.findings.filter(f => f.id === value)

@@ -15,6 +15,7 @@ import type { ChangesSource } from './changesView';
 import type { TeamConnections } from './teamConnections';
 import { pipelineTone } from './teamFlows';
 import { ChangesTeamView, FromChangesTeam } from './teamFlowProtocol';
+import { openTeamLink } from './teamLinks';
 
 /** How long an agent's merge request status is reused before it is read again. */
 const freshMs = 60_000;
@@ -124,7 +125,7 @@ export class MrPanel implements vscode.Disposable {
 			case 'openUrl': {
 				const url = this.states.get(source.agentId)?.mr?.url;
 				if (url) {
-					await vscode.env.openExternal(vscode.Uri.parse(url));
+					await openTeamLink(url);
 				}
 				return;
 			}

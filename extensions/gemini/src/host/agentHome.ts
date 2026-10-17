@@ -20,6 +20,7 @@ import { TeamData } from './teamData';
 import { projectsEnabled } from './projects';
 import { agentsColumn } from './editorPlacement';
 import { createNonce, escapeAttribute } from './webviewHtml';
+import { openTeamLink } from './teamLinks';
 
 const homeViewType = 'gemini.agentHome';
 const layoutKey = 'gemini.home.layout';
@@ -278,7 +279,7 @@ export class AgentHome implements vscode.Disposable {
 		switch (action.kind) {
 			case 'link':
 				if (/^https?:\/\//i.test(action.url)) {
-					await vscode.env.openExternal(vscode.Uri.parse(action.url));
+					await openTeamLink(action.url);
 				}
 				return;
 			case 'agent':

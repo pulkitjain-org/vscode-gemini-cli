@@ -914,6 +914,21 @@
           "default": true,
           "markdownDescription": "%configuration.home.openOnStartup%"
         },
+        "gemini.team.openMergeRequestsIn": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "geminicode",
+            "browser"
+          ],
+          "enumDescriptions": [
+            "%configuration.team.openMergeRequestsIn.ask%",
+            "%configuration.team.openMergeRequestsIn.geminicode%",
+            "%configuration.team.openMergeRequestsIn.browser%"
+          ],
+          "default": "ask",
+          "markdownDescription": "%configuration.team.openMergeRequestsIn%"
+        },
         "gemini.keepAwake": {
           "type": "boolean",
           "default": true,

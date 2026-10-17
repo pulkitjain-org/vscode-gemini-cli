@@ -263,6 +263,8 @@ Tokens go to the macOS keychain only, never to settings files or an agent's envi
 - **Review** a merge request waiting for you: it is checked out in its own worktree and Gemini reviews it against the ticket, listing findings with a draft comment each. Tick and edit them, then **Post Comments and Request Changes**, **Post Comments** or **Approve**.
 - **Merge Release Branch Forward**: pick a release branch and the later ones to merge it into. Each shows whether it merges cleanly; GeminiCode makes a merge branch and a merge request for each, and where files conflict an agent resolves them in its own worktree and shows you the result before anything is pushed.
 
+Clicking a merge request asks whether to open it in GeminiCode's browser or your default browser; pick **Always Use…** to stop asking, or change `gemini.team.openMergeRequestsIn` later.
+
 Nothing is written to Jira or GitLab without your click or your approval on a permission card.
 
 **Config to change.** If your team's `.gemini/settings.json` has an `mcp.allowed` list, add `geminicode-tools` to it (Connections offers to). Remove the old `jira` and `gitlab` entries from `mcp.allowed` and `mcpServers` yourself once you've connected; until then agents see two sets of Jira and GitLab tools. The terminal `gemini` doesn't get the new tools.
