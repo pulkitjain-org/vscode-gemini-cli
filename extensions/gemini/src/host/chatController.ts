@@ -6,6 +6,7 @@
 import * as path from 'node:path';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
+import { foldWorkOn, onDidChangeFoldWork } from './foldWork';
 import { onDidChangeSpellCheck, spellCheckOn } from './spellCheck';
 import { Attachment, attachmentLabel } from '../acp/attachments';
 import { isValidAttachment } from '../acp/attachmentValidation';
@@ -283,6 +284,7 @@ export class ChatController implements vscode.Disposable {
 		this.checkpoints = new Checkpoints(service.client.cwd);
 		this.disposables.push(
 			onDidChangeSpellCheck(on => this.post({ type: 'spellCheck', on })),
+			onDidChangeFoldWork(on => this.post({ type: 'foldWork', on })),
 			this.onDidChangeActivityEmitter,
 			this.onDidEditFilesEmitter,
 			this.onDidSendPromptEmitter,
@@ -1876,6 +1878,33 @@ export class ChatController implements vscode.Disposable {
 			permissionCancelled: vscode.l10n.t("Not answered; the request was cancelled."),
 			permissionHint: vscode.l10n.t("Esc rejects"),
 			workedFor: vscode.l10n.t("Worked for {0}"),
+			work: {
+				stoppedAfter: vscode.l10n.t("Stopped after {0}"),
+				stopped: vscode.l10n.t("Stopped"),
+				steps: vscode.l10n.t("{0} steps"),
+				oneStep: vscode.l10n.t("1 step"),
+				counts: {
+					read: [vscode.l10n.t("read 1 file"), vscode.l10n.t("read {0} files")],
+					search: [vscode.l10n.t("searched 1 pattern"), vscode.l10n.t("searched {0} patterns")],
+					execute: [vscode.l10n.t("ran 1 command"), vscode.l10n.t("ran {0} commands")],
+					edit: [vscode.l10n.t("edited 1 file"), vscode.l10n.t("edited {0} files")],
+					fetch: [vscode.l10n.t("fetched 1 page"), vscode.l10n.t("fetched {0} pages")],
+					other: [vscode.l10n.t("used 1 tool"), vscode.l10n.t("used {0} tools")],
+				},
+				runs: {
+					read: vscode.l10n.t("Read {0} files"),
+					search: vscode.l10n.t("Searched {0} patterns"),
+					execute: vscode.l10n.t("Ran {0} commands"),
+					edit: vscode.l10n.t("Edited {0} files"),
+					fetch: vscode.l10n.t("Fetched {0} pages"),
+					other: vscode.l10n.t("Used {0} tools"),
+				},
+				failed: vscode.l10n.t("{0} failed"),
+				failedFixed: vscode.l10n.t("{0} failed, fixed"),
+				fixedLater: vscode.l10n.t("got through when run again"),
+				changed: vscode.l10n.t("Changed"),
+				showOutput: vscode.l10n.t("Show output"),
+			},
 			copyReply: vscode.l10n.t("Copy reply"),
 			copyMessage: vscode.l10n.t("Copy message"),
 			undoTurn: vscode.l10n.t("Undo"),
@@ -2062,7 +2091,7 @@ export class ChatController implements vscode.Disposable {
 			<div id="repos-menu" class="foot-menu" hidden></div>
 		</div>
 	</div>
-	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
+	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-fold-work="${foldWorkOn()}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
 </html>`;
 	}

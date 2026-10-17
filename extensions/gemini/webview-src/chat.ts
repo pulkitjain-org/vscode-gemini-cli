@@ -8,6 +8,7 @@
 // the view and handles the extension's messages; the others do the work:
 //   transcript.ts      the items shown and the scroll position
 //   items.ts           rendering each kind of item
+//   work.ts            a turn's fold: its steps under one line (workFold.ts decides what folds)
 //   streamingReply.ts  updating a reply while it streams
 //   composer.ts        sending, the mode chip, the foot buttons and status line
 //   inputBox.ts        the input's height, placeholder and send button
@@ -36,7 +37,7 @@ import { showCommands, showFiles } from './picker';
 import { openNewThread, showParentProject, showProjectPanel } from './project';
 import { pickedRepository, showProjectSettings } from './projectSettings';
 import { updateOutline } from './promptNav';
-import { appended, applyItem, isNearBottom, reset, settleScroll, updateWorking } from './transcript';
+import { appended, applyItem, isNearBottom, reset, setFoldWork, settleScroll, updateWorking } from './transcript';
 import { showContext, showQuota, toggleUsage, updateUsage } from './usage';
 import { state, strings, ui, vscode } from './view';
 
@@ -97,6 +98,10 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 	switch (message.type) {
 		case 'spellCheck':
 			ui.input.spellcheck = message.on;
+			break;
+		case 'foldWork':
+			setFoldWork(message.on);
+			updateOutline();
 			break;
 		case 'reset':
 			// The reset carries every item as it is now.

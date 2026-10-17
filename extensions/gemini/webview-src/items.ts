@@ -20,6 +20,7 @@ import { enhanceMarkdown } from './markdownExtras';
 import { button, copyButton, el, icon, onIntent, setLabel, setTip } from './dom';
 import { toneOf } from './repoTones';
 import { thoughtPreview } from './streaming';
+import { thoughtSummary } from './workFold';
 import { expanded, state, strings, subagentTimes, thoughtTimes, ui, vscode } from './view';
 
 const mac = /Mac/.test(navigator.platform);
@@ -143,7 +144,8 @@ function renderThreadCard(item: ItemOf<'thread'>): HTMLElement {
 
 function renderTurnEnd(item: ItemOf<'turnEnd'>): HTMLElement {
 	const node = el('div', 'turn-end');
-	node.append(el('span', undefined, format(strings.workedFor, formatDuration(item.durationMs))));
+	// Hidden when the turn's fold says it (transcript.ts, `has-fold`).
+	node.append(el('span', 'worked-for', format(strings.workedFor, formatDuration(item.durationMs))));
 	if (item.at) {
 		node.append(el('span', 'turn-dot', '\u00b7'), sentAt(item.at));
 	}
@@ -279,8 +281,8 @@ function renderThought(item: { readonly id: string; readonly text: string }): HT
 	const summary = el('summary');
 	const thinking = state.busy && state.items.at(-1)?.id === item.id;
 	summary.append(icon('chevron-right', 'chevron'), el('span', thinking ? 'shimmer' : undefined, thoughtLabel(item, thinking)));
-	// While it thinks, show what about, so a long think does not look idle.
-	const preview = thinking ? thoughtPreview(item.text) : '';
+	// While it thinks, show what about, so a long think does not look idle; after, what it was about.
+	const preview = thinking ? thoughtPreview(item.text) : thoughtSummary(item.text);
 	if (preview) {
 		summary.append(el('span', 'thought-preview', preview));
 	}

@@ -19,7 +19,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 28;
+export const chatProtocolVersion = 29;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -316,6 +316,26 @@ export interface ChatStrings {
 	readonly permissionHint: string;
 	/** `{0}` is a duration such as "12s" or "2m 5s". */
 	readonly workedFor: string;
+	/** A turn's fold: its steps under one line once the turn is done (webview-src/work.ts). */
+	readonly work: {
+		/** The line of a turn that ended in an error, with and without its duration (`{0}`). */
+		readonly stoppedAfter: string;
+		readonly stopped: string;
+		/** The line of a turn whose duration is not known: `{0}` is a number of steps. */
+		readonly steps: string;
+		readonly oneStep: string;
+		/** What the turn did, as "read 1 file" and "read {0} files" for each kind of step. */
+		readonly counts: Readonly<Record<'read' | 'search' | 'execute' | 'edit' | 'fetch' | 'other', readonly [one: string, many: string]>>;
+		/** A run of steps of one kind: `{0}` is how many. */
+		readonly runs: Readonly<Record<'read' | 'search' | 'execute' | 'edit' | 'fetch' | 'other', string>>;
+		/** `{0}` is a number of failed steps; `failedFixed` when each was run again and got through. */
+		readonly failed: string;
+		readonly failedFixed: string;
+		/** After a failed step's title, when the same step got through later. */
+		readonly fixedLater: string;
+		readonly changed: string;
+		readonly showOutput: string;
+	};
 	readonly copyReply: string;
 	readonly copyMessage: string;
 	readonly undoTurn: string;
@@ -617,6 +637,8 @@ export type ToWebview =
 	| { readonly type: 'focus' }
 	/** `gemini.chat.spellCheck` changed. */
 	| { readonly type: 'spellCheck'; readonly on: boolean }
+	/** `gemini.chat.foldFinishedWork` changed. */
+	| { readonly type: 'foldWork'; readonly on: boolean }
 	| { readonly type: 'reset'; readonly items: readonly TranscriptItem[]; readonly busy: boolean; readonly status: ViewStatus; readonly settings: SessionSettings }
 	/** Added or changed items, in the order they first changed; streaming updates are batched. */
 	| { readonly type: 'items'; readonly items: readonly ItemUpdate[] }
