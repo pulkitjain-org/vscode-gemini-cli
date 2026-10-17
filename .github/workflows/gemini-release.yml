@@ -5,9 +5,9 @@
 # secrets the app is only ad-hoc signed and the release is marked unsigned.
 # If the release already exists (made in GitHub's UI, say), the .dmg is
 # added to it and its title and notes are kept. Every run also keeps the
-# .dmg as a workflow artifact. Running the workflow by hand builds a dev .dmg
-# and publishes nothing, unless a tag is given: then it builds that tag and
-# publishes it, as a tag push would.
+# .dmg and its checksum as unzipped workflow artifacts. Running the workflow
+# by hand builds a dev .dmg and publishes nothing, unless a tag is given:
+# then it builds that tag and publishes it, as a tag push would.
 name: Gemini Release
 
 on:
@@ -281,13 +281,20 @@ jobs:
           cat "${{ steps.dmg.outputs.name }}.sha256"
           echo "path=$PWD/${{ steps.dmg.outputs.name }}.sha256" >> "$GITHUB_OUTPUT"
 
+      # Uploaded as is, not zipped: Chrome can block a .dmg inside a .zip as a dangerous
+      # download, while a plain .dmg carries its Apple signature for the browser to check.
       - name: Upload the .dmg as a workflow artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ steps.dmg.outputs.name }}
-          path: |
-            ${{ steps.dmg.outputs.path }}
-            ${{ steps.checksum.outputs.path }}
+          path: ${{ steps.dmg.outputs.path }}
+          archive: false
+          retention-days: 14
+
+      - name: Upload the checksum as a workflow artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          path: ${{ steps.checksum.outputs.path }}
+          archive: false
           retention-days: 14
 
       - name: Publish the GitHub Release

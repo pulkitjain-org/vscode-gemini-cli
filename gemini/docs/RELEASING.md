@@ -21,7 +21,7 @@ There is one stable channel. A tag with a suffix, such as `v0.2.0-rc.1`, publish
 3. [`gemini-release.yml`](../../.github/workflows/gemini-release.yml) runs on a GitHub-hosted Apple silicon runner (`macos-15`). It takes about 40 to 60 minutes, and is free on a public repository.
 4. When it finishes, the release holds `GeminiCode-<version>-arm64.dmg` and its SHA-256 checksum.
 
-To try the pipeline without publishing, run **Gemini Release** by hand from the Actions tab with no tag. It builds `GeminiCode-0.0.0-dev.<run>-arm64.dmg` as a workflow artifact, kept for 14 days. Running it by hand with an existing tag, such as `v0.1.0`, builds and publishes that tag as a tag push would, for example to retry a failed release. Every run keeps the `.dmg` as an artifact.
+To try the pipeline without publishing, run **Gemini Release** by hand from the Actions tab with no tag. It builds `GeminiCode-0.0.0-dev.<run>-arm64.dmg` and its `.sha256` as workflow artifacts, kept for 14 days. They are uploaded unzipped, so the `.dmg` downloads as is: Chrome can block a `.dmg` inside a `.zip` as a dangerous download. Running it by hand with an existing tag, such as `v0.1.0`, builds and publishes that tag as a tag push would, for example to retry a failed release. Every run keeps the `.dmg` as an artifact.
 
 If the release already exists, for example because it was made in GitHub's UI, the workflow uploads the `.dmg` and checksum to it (replacing any with the same name) and keeps its title and notes.
 
