@@ -74,7 +74,15 @@ export class AgentHome implements vscode.Disposable {
 				this.schedule();
 			}));
 		}
+		// One click back to Home from anywhere, once its tab is closed.
+		const homeButton = vscode.window.createStatusBarItem('gemini.home', vscode.StatusBarAlignment.Left, 1000);
+		homeButton.name = vscode.l10n.t("Gemini Home");
+		homeButton.text = '$(home)';
+		homeButton.tooltip = vscode.l10n.t("Open Home ({0})", process.platform === 'darwin' ? '⌘⇧H' : 'Ctrl+Shift+H');
+		homeButton.command = 'gemini.home';
+		homeButton.show();
 		this.disposables.push(
+			homeButton,
 			onDidChangeSpellCheck(on => void this.panel?.webview.postMessage({ type: 'spellCheck', on } satisfies ToHome)),
 			vscode.commands.registerCommand('gemini.agentHome', () => this.show(false)),
 			vscode.commands.registerCommand('gemini.home', () => this.show(false)),

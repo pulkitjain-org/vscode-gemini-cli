@@ -198,7 +198,7 @@ function agentsCard(input: DashboardInput, title: string): HomeCard {
 	}
 	return {
 		id: 'agents', title, tool: 'gemini', rows,
-		link: { label: vscode.l10n.t("All agents"), action: command('workbench.view.extension.gemini-agents') },
+		link: { label: vscode.l10n.t("All agents"), action: command('gemini.agents.focus') },
 		...rows.length ? {} : { note: vscode.l10n.t("No agents at work. Describe a task above to start one.") },
 	};
 }

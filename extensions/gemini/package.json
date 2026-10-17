@@ -530,6 +530,11 @@
       ],
       "editor/title": [
         {
+          "command": "gemini.home",
+          "when": "activeWebviewPanelId =~ /^gemini\\./ && activeWebviewPanelId != 'gemini.agentHome'",
+          "group": "navigation@100"
+        },
+        {
           "command": "gemini.review.previousChange",
           "when": "gemini.review.active && resourceScheme == file",
           "group": "navigation@1"
