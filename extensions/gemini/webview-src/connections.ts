@@ -58,8 +58,21 @@ function toolRow(row: ConnectionRowView): HTMLElement {
 		main.append(el('div', 'row-detail', row.detail));
 	}
 	const actions = el('div', 'row-actions');
-	if (!row.saved) {
-		actions.append(button('', strings.connect, () => connect(row)));
+	if (!row.saved && row.kind === 'checking') {
+		// Connecting Snyk or Figma: the check runs; the row shows its answer.
+		const busy = button('', strings.checking, () => undefined);
+		busy.prepend(spinner());
+		busy.disabled = true;
+		actions.append(busy);
+	} else if (!row.saved) {
+		const connectButton = button('', strings.connect, () => {
+			if (!row.needsToken) {
+				connectButton.disabled = true;
+				connectButton.replaceChildren(spinner(), el('span', undefined, strings.checking));
+			}
+			connect(row);
+		});
+		actions.append(connectButton);
 	} else {
 		if (row.kind === 'unreachable' && row.tool === 'figma') {
 			actions.append(button('', strings.openFigma, () => post({ type: 'openFigma' })));
@@ -279,6 +292,24 @@ function closeDialog(): void {
 	returnFocus?.focus();
 }
 
+function spinner(): HTMLElement {
+	const node = icon('loading');
+	node.classList.add('codicon-modifier-spin');
+	return node;
+}
+
+function showRowError(tool: TeamToolId, text: string): void {
+	const row = page.querySelector<HTMLElement>(`.tool-row[data-tool="${tool}"]`);
+	if (!row) {
+		return;
+	}
+	row.querySelector('.row-error')?.remove();
+	const error = el('div', 'row-detail row-error');
+	error.append(icon('error'), el('span', undefined, text));
+	row.querySelector('.row-main')?.append(error);
+	row.querySelectorAll<HTMLButtonElement>('.row-actions button').forEach(b => b.disabled = false);
+}
+
 window.addEventListener('message', (event: MessageEvent<ToConnections>) => {
 	const message = event.data;
 	switch (message.type) {
@@ -288,6 +319,10 @@ window.addEventListener('message', (event: MessageEvent<ToConnections>) => {
 			return;
 		case 'connectResult':
 			if (dialog?.tool !== message.tool) {
+				if (!message.ok) {
+					// Snyk and Figma have no dialog: the row says what went wrong.
+					showRowError(message.tool, message.message ?? '');
+				}
 				return;
 			}
 			if (message.ok) {

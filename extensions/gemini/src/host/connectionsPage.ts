@@ -193,7 +193,7 @@ export class ConnectionsPage implements vscode.Disposable {
 
 	private row(tool: TeamToolId): ConnectionRowView {
 		const saved = this.connections.connected.has(tool);
-		const state = saved ? this.connections.state(tool) : { kind: 'off' as const };
+		const state = saved || this.connections.isConnecting(tool) ? this.connections.state(tool) : { kind: 'off' as const };
 		const { url, fromDefaults } = this.urlOf(tool);
 		const needsToken = tool === 'jira' || tool === 'gitlab' || tool === 'sonar';
 		return {

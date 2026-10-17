@@ -41,6 +41,8 @@ export class TeamConnections implements vscode.Disposable {
 	private readonly folders = new Map<string, string>();
 	private readonly defaultsCache = new Map<string, { at: number; value: Promise<TeamDefaults> }>();
 	private checking: Promise<void> | undefined;
+	/** Tools being connected now, which pages show as checking. */
+	private readonly connecting = new Set<TeamToolId>();
 	private readonly disposables: vscode.Disposable[] = [];
 
 	constructor(private readonly context: vscode.ExtensionContext, version: string, private readonly log: vscode.LogOutputChannel) {
@@ -85,6 +87,10 @@ export class TeamConnections implements vscode.Disposable {
 	/** Each tool's last known state; `stale` until checked in this window. */
 	state(tool: TeamToolId): ConnectionState {
 		return this.states.get(tool) ?? { kind: this.connectedSet.has(tool) ? 'checking' : 'off' };
+	}
+
+	isConnecting(tool: TeamToolId): boolean {
+		return this.connecting.has(tool);
 	}
 
 	accountOf(tool: TeamToolId): StoredAccount | undefined {
@@ -146,11 +152,19 @@ export class TeamConnections implements vscode.Disposable {
 		}
 		const clients = clientsFor(tool, account, token);
 		const needsToken = tool === 'jira' || tool === 'gitlab' || tool === 'sonar';
-		if (!needsToken) {
-			// Turned on at once: the row shows the check, then what's missing (snyk auth, Figma not open).
-			this.setState(tool, { kind: 'checking' });
+		this.log.info(`Connecting ${teamToolNames[tool]}${url ? ` at ${url}` : ''}`);
+		this.connecting.add(tool);
+		let state: ConnectionState;
+		try {
+			if (!needsToken) {
+				// Turned on at once: the row shows the check, then what's missing (snyk auth, Figma not open).
+				this.setState(tool, { kind: 'checking' });
+			}
+			state = await withTimeout(probe(tool, clients), connectTimeoutMs, { kind: 'failed', detail: vscode.l10n.t("{0} didn't answer within {1} seconds.", teamToolNames[tool], connectTimeoutMs / 1000) });
+		} finally {
+			this.connecting.delete(tool);
 		}
-		const state = await probe(tool, clients);
+		this.log.info(`${teamToolNames[tool]}: ${state.kind}${state.detail ? ` (${state.detail})` : ''}`);
 		if (needsToken && (state.kind === 'auth' || state.kind === 'failed')) {
 			throw new TeamToolError(state.kind === 'auth' ? 'auth' : 'failed', state.detail ?? vscode.l10n.t("{0} refused the token.", teamToolNames[tool]));
 		}
@@ -276,6 +290,14 @@ export interface ConnectionState {
 }
 
 const secretPrefix = 'geminicode-tools.';
+
+/** The longest a Connect check may take: the Snyk CLI can be slow to start. */
+const connectTimeoutMs = 45_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	return Promise.race([promise, new Promise<T>(resolve => timer = setTimeout(() => resolve(fallback), ms))]).finally(() => clearTimeout(timer));
+}
 
 function secretKey(tool: TeamToolId): string {
 	return `${secretPrefix}${tool}`;
