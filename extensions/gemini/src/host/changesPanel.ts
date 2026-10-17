@@ -12,6 +12,8 @@ import { ChangesSource } from './changesView';
 import { createNonce, escapeAttribute } from './webviewHtml';
 import { ChangedFileView, ChangesPanelStrings, ChangesPanelView, FromChangesPanel, ToChangesPanel } from './panelProtocol';
 import { deleteFile, replaceFileText } from './workspaceFileSystem';
+import type { MrPanel } from './mrPanel';
+import type { FromChangesTeam } from './teamFlowProtocol';
 
 export const changesPanelId = 'gemini.changesPanel';
 
@@ -40,12 +42,21 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 	/** The last view posted, to skip posting the same one again. */
 	private lastView: string | undefined;
 	private readonly disposables: vscode.Disposable[] = [];
+	/** The team tools' part: Open Merge Request, Run Checks and the agent's merge request; set by activate. */
+	private mrPanel: MrPanel | undefined;
 
 	constructor(private readonly extensionUri: vscode.Uri) {
 		this.disposables.push(
 			vscode.window.registerWebviewViewProvider(changesPanelId, this),
 			vscode.workspace.onDidChangeTextDocument(e => this.source?.changes.file(e.document.uri.fsPath) && this.schedule()),
 		);
+	}
+
+	set team(panel: MrPanel | undefined) {
+		this.mrPanel = panel;
+		if (panel) {
+			this.disposables.push(panel.onDidChange(() => this.schedule(0)));
+		}
 	}
 
 	show(source: ChangesSource | undefined): void {
@@ -136,10 +147,12 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 			}
 		}
 		const busy = source.busy();
+		const team = this.mrPanel?.view(source);
 		return {
 			agent: { title: source.title, busy, ...(source.branch ? { branch: source.branch } : {}), canCommit: !!source.commit && !busy && files.length > 0 },
 			totals: source.changes.totals,
 			files,
+			...team ? { team } : {},
 		};
 	}
 
@@ -150,6 +163,8 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 				this.lastView = undefined;
 				this.schedule(0);
 				return;
+			case 'team':
+				return source && this.mrPanel?.act(source, message as FromChangesTeam);
 		}
 		const filePath = message.type === 'keep' || message.type === 'undo' || message.type === 'keepFile' || message.type === 'undoFile' || message.type === 'openFile' ? message.path : undefined;
 		// Only files the agent changed.
@@ -248,15 +263,17 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		};
 		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'changes.js'));
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
+		const teamStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'teamFlow.css'));
 		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'codicon.css'));
 		return `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data: ${webview.cspSource}; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link href="${codicons}" rel="stylesheet">
 	<link href="${style}" rel="stylesheet">
+	<link href="${teamStyle}" rel="stylesheet">
 	<title>Changes</title>
 </head>
 <body class="changes-panel">

@@ -13,12 +13,27 @@ import { attachmentsForFiles } from './addToChat';
 import { AgentsView, AgentSummary, relativeTime, startModes } from './agentsView';
 import { tildify } from './displayText';
 import { configSection, getApprovalPolicy } from './configuration';
-import { FromHome, HomeAgent, HomeProject, HomeStrings, HomeView, ToHome } from './panelProtocol';
+import { moveCard, toggleCard, type DashboardLayout } from '../acp/dashboard';
+import { buildDashboard } from './homeDashboard';
+import { FromHome, HomeAction, HomeAgent, HomeProject, HomeStrings, HomeView, ToHome } from './panelProtocol';
+import { TeamData } from './teamData';
 import { projectsEnabled } from './projects';
 import { agentsColumn } from './editorPlacement';
 import { createNonce, escapeAttribute } from './webviewHtml';
 
 const homeViewType = 'gemini.agentHome';
+const layoutKey = 'gemini.home.layout';
+const firstConnectedKey = 'gemini.home.firstConnectedAt';
+/** How fresh the tools' data must be when Home shows or the window gets focus. */
+const showRefreshMs = 60_000;
+/** How often the tools' data is refreshed while Home is visible. */
+const visibleRefreshMs = 5 * 60_000;
+const weekMs = 7 * 24 * 60 * 60_000;
+
+export interface HomeOptions {
+	readonly state: vscode.Memento;
+	readonly version: string;
+}
 /** Earlier agents listed; the Agents pane has them all. */
 const maxEarlier = 8;
 /** How often agent updates reach the page at most. */
@@ -27,11 +42,13 @@ const updateDelayMs = 200;
 type Mode = 'agents' | 'editor';
 
 /**
- * Agent Home: where Agents mode starts. A composer starts a new agent in one
- * step, cards show the agents that are working, waiting or have changes to
- * review, and earlier agents can be resumed. It opens whenever the editor
- * area is empty in Agents mode, and from the Agents pane. The page loads only
- * when first shown.
+ * Home: the dashboard GeminiCode opens with. A composer starts a new agent in
+ * one step; around it the team tools' state, what needs the user ("Needs
+ * you") and cards for agents, Jira tickets, merge requests, quality, releases
+ * and Gemini. It opens in front at every launch (`gemini.home.openOnStartup`),
+ * whenever the editor area is empty in Agents mode, and from the Agents pane.
+ * The tools' data shows at once from the last answers and refreshes in the
+ * background while the page is visible; nothing here starts the Gemini CLI.
  */
 export class AgentHome implements vscode.Disposable {
 
@@ -41,12 +58,27 @@ export class AgentHome implements vscode.Disposable {
 	/** The last view posted, to skip posting the same one again. */
 	private lastView: string | undefined;
 	private readonly disposables: vscode.Disposable[] = [];
+	private readonly teamData: TeamData | undefined;
+	private refreshTimer: ReturnType<typeof setInterval> | undefined;
 
 	/** `onTyping` runs when the user starts typing a task, so the agent can start meanwhile. */
-	constructor(private readonly extensionUri: vscode.Uri, private readonly agents: AgentsView, private readonly onTyping: () => void = () => undefined) {
+	constructor(private readonly extensionUri: vscode.Uri, private readonly agents: AgentsView, private readonly onTyping: () => void = () => undefined, private readonly options?: HomeOptions) {
+		const team = agents.teamTools;
+		if (team && options) {
+			this.teamData = new TeamData(options.state, team);
+			this.disposables.push(this.teamData, this.teamData.onDidChange(() => this.schedule()), team.onDidChange(() => {
+				if (team.connected.size && !options.state.get<number>(firstConnectedKey)) {
+					void options.state.update(firstConnectedKey, Date.now());
+				}
+				this.schedule();
+			}));
+		}
 		this.disposables.push(
 			onDidChangeSpellCheck(on => void this.panel?.webview.postMessage({ type: 'spellCheck', on } satisfies ToHome)),
 			vscode.commands.registerCommand('gemini.agentHome', () => this.show(false)),
+			vscode.commands.registerCommand('gemini.home', () => this.show(false)),
+			vscode.window.onDidChangeWindowState(state => state.focused && this.panel?.visible && this.refreshTools(showRefreshMs)),
+			agents.usage?.onDidChange(() => this.schedule()) ?? { dispose: () => undefined },
 			// GeminiCode's workbench reports the window mode.
 			vscode.commands.registerCommand('_gemini.modeChanged', (mode: Mode) => this.setMode(mode)),
 			vscode.window.tabGroups.onDidChangeTabs(e => {
@@ -58,6 +90,10 @@ export class AgentHome implements vscode.Disposable {
 			agents.onDidChangeAgents(() => this.schedule()),
 		);
 		void Promise.resolve(vscode.commands.executeCommand<Mode>('_gemini.getMode')).then(mode => this.setMode(mode), () => undefined);
+		// In front of the restored tabs, in either mode; off, Home opens as Agent Home did.
+		if (vscode.workspace.getConfiguration(configSection).get<boolean>('home.openOnStartup', true)) {
+			this.show(false);
+		}
 	}
 
 	show(preserveFocus: boolean): void {
@@ -80,7 +116,7 @@ export class AgentHome implements vscode.Disposable {
 			return;
 		}
 		const media = vscode.Uri.joinPath(this.extensionUri, 'media');
-		const panel = vscode.window.createWebviewPanel(homeViewType, vscode.l10n.t("Agent Home"), { viewColumn, preserveFocus }, {
+		const panel = vscode.window.createWebviewPanel(homeViewType, vscode.l10n.t("Home"), { viewColumn, preserveFocus }, {
 			enableScripts: true,
 			localResourceRoots: [media],
 		});
@@ -90,7 +126,9 @@ export class AgentHome implements vscode.Disposable {
 		panel.onDidChangeViewState(e => {
 			if (e.webviewPanel.visible) {
 				this.schedule(0);
+				this.refreshTools(showRefreshMs);
 			}
+			this.setRefreshTimer(e.webviewPanel.visible);
 			// Switching to Agent Home puts the cursor in its prompt.
 			if (e.webviewPanel.active) {
 				void panel.webview.postMessage({ type: 'focus' } satisfies ToHome);
@@ -99,13 +137,50 @@ export class AgentHome implements vscode.Disposable {
 		panel.onDidDispose(() => {
 			if (this.panel === panel) {
 				this.panel = undefined;
+				this.setRefreshTimer(false);
 			}
 		});
 		this.panel = panel;
+		this.setRefreshTimer(true);
+	}
+
+	private setRefreshTimer(on: boolean): void {
+		if (on && !this.refreshTimer) {
+			this.refreshTimer = setInterval(() => this.refreshTools(visibleRefreshMs), visibleRefreshMs);
+		} else if (!on && this.refreshTimer) {
+			clearInterval(this.refreshTimer);
+			this.refreshTimer = undefined;
+		}
+	}
+
+	/** Refreshes the tools' state and data in the background unless they're fresher than `maxAgeMs`. */
+	private refreshTools(maxAgeMs: number, force = false): void {
+		const team = this.agents.teamTools;
+		if (!team?.connected.size || !this.teamData) {
+			return;
+		}
+		const data = this.teamData;
+		void (force ? team.refresh() : team.refreshIfOlder(maxAgeMs));
+		void this.agents.workspaces().then(workspaces => {
+			const folder = workspaces[0]?.folder;
+			const branch = this.layout().qualityBranch;
+			return force ? data.refresh(folder, branch) : data.refreshIfOlder(maxAgeMs, folder, branch);
+		}).finally(() => this.schedule());
+		this.schedule();
+	}
+
+	private layout(): DashboardLayout {
+		return this.options?.state.get<DashboardLayout>(layoutKey) ?? {};
+	}
+
+	private async setLayout(layout: DashboardLayout): Promise<void> {
+		await this.options?.state.update(layoutKey, layout);
+		this.schedule(0);
 	}
 
 	dispose(): void {
 		clearTimeout(this.timer);
+		this.setRefreshTimer(false);
 		this.panel?.dispose();
 		vscode.Disposable.from(...this.disposables).dispose();
 	}
@@ -173,7 +248,48 @@ export class AgentHome implements vscode.Disposable {
 			} : {}),
 			ownBranch: vscode.workspace.getConfiguration(configSection).get<boolean>('agents.ownBranch', false),
 			modes: startModes().filter(mode => isModeAllowed(getApprovalPolicy(), mode.id)),
+			dashboard: this.dashboard(all, workspaces[0]?.name),
 		};
+	}
+
+	private dashboard(agents: readonly AgentSummary[], repository: string | undefined): HomeView['dashboard'] {
+		const team = this.agents.teamTools;
+		const firstConnected = this.options?.state.get<number>(firstConnectedKey);
+		const reading = this.agents.usage?.reading;
+		return buildDashboard({
+			now: new Date(),
+			connected: team?.connected ?? new Set(),
+			state: tool => team?.state(tool) ?? { kind: 'off' },
+			data: this.teamData?.snapshot ?? {},
+			agents,
+			repository,
+			layout: this.layout(),
+			usage: reading?.kind === 'ok' ? reading.quota : undefined,
+			versions: { app: this.options?.version ?? '' },
+			projectsOn: projectsEnabled(),
+			refreshing: !!this.teamData && Date.now() - this.teamData.refreshedAt < 3000,
+			hideUnconnected: !!firstConnected && Date.now() - firstConnected > weekMs,
+			gitlabUrl: team?.connectors.gitlab?.url,
+			jiraUrl: team?.connectors.jira?.site,
+		});
+	}
+
+	private async runAction(action: HomeAction): Promise<void> {
+		switch (action.kind) {
+			case 'link':
+				if (/^https?:\/\//i.test(action.url)) {
+					await vscode.env.openExternal(vscode.Uri.parse(action.url));
+				}
+				return;
+			case 'agent':
+				return this.onMessage({ type: action.do, id: action.id });
+			case 'command':
+				// Only GeminiCode's own commands and opening a folder: the page can't run anything else.
+				if (/^gemini\.|^workbench\.action\.files\.openFolder$|^workbench\.view\.extension\.gemini/.test(action.command)) {
+					await vscode.commands.executeCommand(action.command, ...action.args ?? []);
+				}
+				return;
+		}
 	}
 
 	private async onMessage(message: FromHome): Promise<void> {
@@ -182,6 +298,7 @@ export class AgentHome implements vscode.Disposable {
 				this.lastView = undefined;
 				await this.update();
 				void this.panel?.webview.postMessage({ type: 'focus' } satisfies ToHome);
+				this.refreshTools(showRefreshMs);
 				return;
 			case 'start':
 				if (message.text.trim()) {
@@ -230,6 +347,27 @@ export class AgentHome implements vscode.Disposable {
 			case 'mergeBack':
 				await this.agents.mergeBack(message.id);
 				return;
+			case 'action':
+				await this.runAction(message.action);
+				return;
+			case 'refresh':
+				this.refreshTools(0, true);
+				return;
+			case 'layout': {
+				let layout = this.layout();
+				if (message.visible !== undefined) {
+					layout = toggleCard(layout, message.card, message.visible);
+				}
+				if (message.move) {
+					layout = moveCard(layout, message.card, message.move);
+				}
+				await this.setLayout(layout);
+				return;
+			}
+			case 'qualityBranch':
+				await this.setLayout({ ...this.layout(), qualityBranch: message.branch });
+				this.refreshTools(0, true);
+				return;
 		}
 	}
 
@@ -271,12 +409,24 @@ export class AgentHome implements vscode.Disposable {
 			mergeBack: vscode.l10n.t("Merge Back"),
 			noAgents: vscode.l10n.t("No agents are running. Start one above."),
 			noWorkspace: vscode.l10n.t("Add a workspace folder for agents to work in."),
+			customize: vscode.l10n.t("Customize"),
+			refresh: vscode.l10n.t("Refresh"),
+			needsYou: vscode.l10n.t("Needs you"),
+			showCard: vscode.l10n.t("Show"),
+			moveUp: vscode.l10n.t("Move Up"),
+			moveDown: vscode.l10n.t("Move Down"),
+			cards: vscode.l10n.t("Cards"),
+			qualityBranch: vscode.l10n.t("Release branch for Quality"),
+			getStarted: vscode.l10n.t("Get started"),
+			composerPlaceholder: vscode.l10n.t("Describe a task, or paste a Jira, GitLab or Figma link..."),
+			moreActions: vscode.l10n.t("More Actions"),
 		};
 		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'home.js'));
 		// Preview's renderer, loaded at idle or on the first Preview so home.js stays small.
 		const draftMarkdown = webview.asWebviewUri(vscode.Uri.joinPath(media, 'draftMarkdown.js'));
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
 		const menuStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'menu.css'));
+		const homeStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'home.css'));
 		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'codicon.css'));
 		return `<!DOCTYPE html>
 <html lang="en">
@@ -287,13 +437,17 @@ export class AgentHome implements vscode.Disposable {
 	<link href="${codicons}" rel="stylesheet">
 	<link href="${menuStyle}" rel="stylesheet">
 	<link href="${style}" rel="stylesheet">
-	<title>Agent Home</title>
+	<link href="${homeStyle}" rel="stylesheet">
+	<title>Home</title>
 </head>
 <body class="agent-home" spellcheck="false">
-	<main class="home">
+	<main class="home dash">
+		<header class="dash-head">
+			<div class="dash-greeting"><h1 id="title"></h1><p id="subtitle" class="muted"></p></div>
+			<div class="dash-tools"><span id="tools" class="dash-tool-logos"></span><button type="button" id="refresh" class="icon-button"><i class="codicon codicon-refresh" aria-hidden="true"></i></button><span class="dash-customize"><button type="button" id="customize" class="link-button"><i class="codicon codicon-settings-gear" aria-hidden="true"></i><span></span></button><div id="customize-menu" class="home-menu" hidden></div></span></div>
+		</header>
+		<div id="banner" class="dash-banner" hidden></div>
 		<section class="home-start">
-			<h1 id="title"></h1>
-			<p id="subtitle" class="muted"></p>
 			<form id="composer" class="home-composer">
 				<div id="attachments" class="attachments" hidden></div>
 				<div class="composer-tabs" role="tablist"><button type="button" id="tab-write" class="composer-tab" role="tab" aria-selected="true" aria-controls="prompt"></button><button type="button" id="tab-preview" class="composer-tab" role="tab" aria-selected="false" aria-controls="preview"></button></div>
@@ -311,7 +465,12 @@ export class AgentHome implements vscode.Disposable {
 				<span class="home-mode"><button type="button" id="mode" class="option-button"><i class="codicon" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="mode-menu" class="home-menu" hidden></div></span>
 				<button type="button" id="helpers" class="option-button helpers-button"><i class="codicon codicon-tools" aria-hidden="true"></i><span></span></button>
 			</div>
+			<div id="quick" class="dash-quick"></div>
 		</section>
+		<section id="setup" class="dash-setup" hidden></section>
+		<section id="needs" class="dash-needs" hidden></section>
+		<section id="cards" class="dash-cards"></section>
+		<div id="row-menu" class="home-menu" hidden></div>
 		<section id="active" class="home-section"></section>
 		<section id="projects" class="home-section" hidden></section>
 		<section id="earlier" class="home-section"></section>

@@ -9,7 +9,9 @@
 // with the items' own elements; workFold.ts decides what goes where.
 
 import { basename } from '../src/acp/attachments';
+import { teamToolTitle } from '../src/acp/toolLinks';
 import { format, formatDuration, toolKindIcon, type ItemOf } from './chatLogic';
+import { toolLogo } from './toolLogos';
 import { button, el, icon, setTip } from './dom';
 import { strings, vscode } from './view';
 import { runPeek, type FoldGroup, type StepKind, type WorkSummary } from './workFold';
@@ -118,7 +120,10 @@ export function renderRunRow(group: Extract<FoldGroup, { kind: 'run' }>, open: b
 	const more = peek.length === peekLimit ? calls.length - peekLimit : 0;
 	const label = el('span', 'tool-title');
 	label.append(el('span', 'tool-verb', format(strings.work.runs[group.step], calls.length)));
-	row.append(icon('chevron-right', 'chevron'), icon(toolKindIcon(calls[0].toolKind), 'kind-icon'), label);
+	const team = teamToolTitle(calls[0].title, strings.teamToolVerbs);
+	const kindIcon = team ? toolLogo(team.tool, 14) : icon(toolKindIcon(calls[0].toolKind));
+	kindIcon.classList.add('kind-icon');
+	row.append(icon('chevron-right', 'chevron'), kindIcon, label);
 	row.append(el('span', 'work-peek', peek.join(', ') + (more > 0 ? `, +${more}` : '')));
 	const running = calls.some(call => call.status === 'pending' || call.status === 'in_progress');
 	row.append(running ? icon('loading', 'status-icon codicon-modifier-spin') : icon('check', 'status-icon completed'));

@@ -40,7 +40,7 @@ afterEach(() => {
 
 describe('teamRequest', () => {
 	it('says to check the VPN when a VPN-only host does not answer', async () => {
-		const err = await teamRequest('gitlab', 'http://127.0.0.1:1/api/v4/user', { timeoutMs: 2000 }).catch(e => e);
+		const err = await teamRequest<never>('gitlab', 'http://127.0.0.1:1/api/v4/user', { timeoutMs: 2000 }).catch((e: unknown) => e as TeamToolError);
 		expect(err).toBeInstanceOf(TeamToolError);
 		expect(err.kind).toBe('unreachable');
 		expect(err.message).toMatch(/Can't reach GitLab at 127\.0\.0\.1:1\. Check that your VPN is on\./);
@@ -48,7 +48,7 @@ describe('teamRequest', () => {
 
 	it('names an expired or revoked token', async () => {
 		const { url } = await serve(() => ({ status: 401, body: { message: '401 Unauthorized' } }));
-		const err = await teamRequest('sonar', `${url}/api/x`).catch(e => e);
+		const err = await teamRequest<never>('sonar', `${url}/api/x`).catch((e: unknown) => e as TeamToolError);
 		expect(err.kind).toBe('auth');
 		expect(err.message).toMatch(/replace it in Connections/);
 	});

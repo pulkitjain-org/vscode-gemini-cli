@@ -3776,3 +3776,37 @@ body.has-parent-project .prompt-outline {
 	flex: none;
 	color: var(--gemini-faint);
 }
+
+/* Team tool chips in the composer: the tool's logo, the key in bold, then the title. */
+.chip.attachment.tool-chip {
+	max-width: 300px;
+	gap: 5px;
+}
+
+.tool-chip-key {
+	flex: none;
+	font-weight: 600;
+}
+
+.tool-chip-title {
+	min-width: 0;
+	color: var(--gemini-muted);
+}
+
+/* A geminicode-tools call shows its tool's logo where other calls show a codicon. */
+.tool-row .tool-logo.kind-icon,
+.menu-row .tool-logo.menu-icon {
+	width: 14px;
+	height: 14px;
+}
+
+.permission-quote {
+	margin: 6px 0 2px;
+	padding: 6px 10px;
+	border-left: 2px solid var(--gemini-border-strong);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	max-height: 240px;
+	overflow: auto;
+	color: var(--vscode-foreground);
+}

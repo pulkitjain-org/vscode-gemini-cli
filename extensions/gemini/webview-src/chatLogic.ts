@@ -75,9 +75,21 @@ export function sameAttachment(a: Attachment, b: Attachment): boolean {
 		return a.path === b.path && a.startLine === b.startLine && a.endLine === b.endLine;
 	}
 	if (a.kind === 'document' && b.kind === 'document') {
+		if (a.ref !== undefined || b.ref !== undefined) {
+			return a.ref === b.ref;
+		}
 		return a.path !== undefined ? a.path === b.path : a.name === b.name && a.text === b.text && a.data === b.data;
 	}
 	return a.kind === 'image' && b.kind === 'image' && a.data === b.data;
+}
+
+/** A team tool chip's key and title, such as ["ACME-412", "Gift message at checkout"]. */
+export function toolChipParts(attachment: Attachment): readonly [string, string] {
+	if (attachment.kind !== 'document' || !attachment.tool || attachment.tool === 'figma') {
+		return [attachment.kind === 'document' ? attachment.name : '', ''];
+	}
+	const space = attachment.name.indexOf(' ');
+	return space === -1 ? [attachment.name, ''] : [attachment.name.slice(0, space), attachment.name.slice(space + 1)];
 }
 
 /** The codicon for an attachment chip. */

@@ -3,17 +3,20 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Agent Home (src/host/agentHome.ts): a composer that starts a new agent,
-// cards for the agents at work, and earlier agents to resume.
+// Home (src/host/agentHome.ts): the dashboard GeminiCode opens with. A
+// composer that starts a new agent, the team tools' state, what needs the
+// user, cards for agents, tickets, merge requests, quality, releases and
+// Gemini, and earlier agents to resume.
 
 import { type Attachment, attachmentLabel } from '../src/acp/attachments';
-import type { FromHome, HomeAgent, HomeStrings, HomeView, ToHome } from '../src/host/panelProtocol';
+import type { FromHome, HomeAction, HomeAgent, HomeButton, HomeCard, HomeDashboard, HomeRow, HomeStrings, HomeView, ToHome } from '../src/host/panelProtocol';
 import { attachmentIcon, sameAttachment } from './chatLogic';
 import { Menu, type MenuRow } from './menu';
 import { modeIcon } from './modeIcon';
 import { button, el, icon, pageStrings } from './panelDom';
 import { letSpellingMenuThrough } from './spellCheck';
 import { createPreviewTabs, isPreviewShortcut } from './markdownPreview';
+import { toolLogo } from './toolLogos';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromHome): void; getState(): unknown; setState(state: unknown): void };
 
@@ -43,9 +46,11 @@ const active = document.getElementById('active')!;
 const earlier = document.getElementById('earlier')!;
 const projects = document.getElementById('projects')!;
 
-document.getElementById('title')!.textContent = strings.title;
-document.getElementById('subtitle')!.textContent = strings.subtitle;
-prompt.placeholder = strings.placeholder;
+const title = document.getElementById('title')!;
+const subtitle = document.getElementById('subtitle')!;
+title.textContent = strings.title;
+subtitle.textContent = strings.subtitle;
+prompt.placeholder = strings.composerPlaceholder;
 prompt.value = saved.draft ?? '';
 prompt.setAttribute('aria-label', strings.title);
 ownBranchLabel.querySelector('.switch-label')!.textContent = strings.ownBranch;
@@ -217,6 +222,9 @@ function render(next: HomeView): void {
 	active.append(cards);
 
 	renderProjects(next);
+	renderDashboard(next.dashboard);
+	// The Agents card lists them; the big cards show only while it's hidden.
+	active.hidden = next.dashboard.cards.some(c => c.id === 'agents');
 
 	earlier.replaceChildren();
 	earlier.hidden = !next.earlier.length;
@@ -384,6 +392,236 @@ ownBranch.addEventListener('change', () => {
 	ownBranchTouched = true;
 	reportTyping();
 });
+
+// --- The dashboard
+
+const tools = document.getElementById('tools')!;
+const refreshButton = document.getElementById('refresh') as HTMLButtonElement;
+const customizeButton = document.getElementById('customize') as HTMLButtonElement;
+const banner = document.getElementById('banner')!;
+const quick = document.getElementById('quick')!;
+const setup = document.getElementById('setup')!;
+const needs = document.getElementById('needs')!;
+const cardsSection = document.getElementById('cards')!;
+const rowMenuElement = document.getElementById('row-menu')!;
+
+customizeButton.querySelector('span')!.textContent = strings.customize;
+refreshButton.title = strings.refresh;
+refreshButton.setAttribute('aria-label', strings.refresh);
+refreshButton.addEventListener('click', () => vscode.postMessage({ type: 'refresh' }));
+
+function run(action: HomeAction): void {
+	vscode.postMessage({ type: 'action', action });
+}
+
+function actionButton(spec: HomeButton, className = 'secondary'): HTMLButtonElement {
+	const node = button(spec.primary ? 'primary' : className, spec.label, () => run(spec.action), undefined, spec.title);
+	return node;
+}
+
+function logo(tool: HomeRow['tool'], size: number): Element {
+	if (!tool) {
+		return el('span');
+	}
+	return tool === 'gemini' ? icon('sparkle') : toolLogo(tool, size);
+}
+
+const customizeMenu: Menu = new Menu({
+	element: document.getElementById('customize-menu')!,
+	anchor: customizeButton,
+	label: strings.customize,
+	sections: () => {
+		const dash = view?.dashboard;
+		if (!dash) {
+			return [];
+		}
+		return [
+			{
+				heading: strings.cards,
+				rows: dash.layout.flatMap((card, i) => [{
+					name: card.title,
+					switchOn: card.visible,
+					run: () => vscode.postMessage({ type: 'layout', card: card.id, visible: !card.visible }),
+				}, ...i > 0 ? [{
+					icon: 'arrow-up',
+					name: `${strings.moveUp}: ${card.title}`,
+					run: () => vscode.postMessage({ type: 'layout', card: card.id, move: -1 }),
+				}] : []]),
+			},
+			...dash.releaseBranches.length ? [{
+				heading: strings.qualityBranch,
+				rows: [...dash.releaseBranches].reverse().slice(0, 6).map(branch => ({
+					icon: 'git-branch',
+					name: branch,
+					checked: branch === (dash.qualityBranch ?? dash.releaseBranches[dash.releaseBranches.length - 1]),
+					run: () => {
+						vscode.postMessage({ type: 'qualityBranch', branch });
+						customizeMenu.close();
+					},
+				})),
+			}] : [],
+		];
+	},
+	empty: () => '',
+});
+
+/** The "..." menu of a row; moved into the row it opens for. */
+let rowMenuItems: readonly HomeButton[] = [];
+let rowMenuReturn: HTMLElement | undefined;
+const rowMenuAnchor = el('button');
+const rowMenu: Menu = new Menu({
+	element: rowMenuElement,
+	anchor: rowMenuAnchor,
+	label: strings.moreActions,
+	sections: () => [{ rows: rowMenuItems.map(item => ({ name: item.label, run: () => { rowMenu.close(); run(item.action); } })) }],
+	empty: () => '',
+	returnFocus: () => rowMenuReturn ?? prompt,
+});
+
+function openRowMenu(anchor: HTMLElement, items: readonly HomeButton[]): void {
+	if (rowMenu.isOpen && rowMenuReturn === anchor) {
+		rowMenu.close();
+		return;
+	}
+	rowMenuItems = items;
+	rowMenuReturn = anchor;
+	anchor.parentElement!.append(rowMenuElement);
+	rowMenu.open();
+}
+
+function renderDashboard(dash: HomeDashboard): void {
+	title.textContent = dash.greeting;
+	subtitle.textContent = dash.context;
+	tools.replaceChildren(...dash.tools.map(tool => {
+		const node = el('span', `dash-tool ${tool.tone}`);
+		node.title = tool.label;
+		node.setAttribute('role', 'img');
+		node.setAttribute('aria-label', tool.label);
+		node.append(toolLogo(tool.id, 14));
+		node.addEventListener('click', () => run({ kind: 'command', command: 'gemini.connections' }));
+		return node;
+	}));
+	refreshButton.classList.toggle('spinning', dash.refreshing);
+	banner.hidden = !dash.banner;
+	banner.replaceChildren(...dash.banner ? [icon('warning'), el('span', undefined, dash.banner)] : []);
+
+	quick.replaceChildren(...dash.quickActions.map(action => {
+		const node = button('dash-quick-action', '', () => run(action.action));
+		node.append(action.tool ? toolLogo(action.tool, 14) : icon(action.icon ?? 'play'), el('span', undefined, action.label));
+		return node;
+	}));
+
+	setup.hidden = !dash.setup;
+	setup.replaceChildren();
+	if (dash.setup) {
+		setup.append(el('h2', undefined, strings.getStarted));
+		const steps = el('ol', 'dash-steps');
+		dash.setup.forEach((step, i) => {
+			const item = el('li', `dash-step${step.done ? ' done' : ''}`);
+			const mark = el('span', 'dash-step-mark', step.done ? '' : String(i + 1));
+			if (step.done) {
+				mark.append(icon('check'));
+			}
+			const text = el('div', 'dash-step-text');
+			text.append(el('strong', undefined, step.title), el('span', 'muted', step.detail));
+			item.append(mark, text);
+			if (step.button && !step.done) {
+				item.append(actionButton(step.button));
+			}
+			steps.append(item);
+		});
+		setup.append(steps);
+	}
+
+	needs.hidden = !dash.needs.length;
+	needs.replaceChildren();
+	if (dash.needs.length) {
+		const heading = el('h2', 'dash-needs-heading');
+		heading.append(el('span', 'dot warn'), el('span', undefined, strings.needsYou), el('span', 'muted', `· ${dash.needs.length}`));
+		const list = el('div', 'dash-needs-list');
+		for (const need of dash.needs) {
+			const item = el('div', 'dash-need');
+			const text = el('div', 'dash-need-text');
+			text.append(el('strong', undefined, need.title), el('span', 'muted', need.detail));
+			text.title = `${need.title}
+${need.detail}`;
+			item.append(logo(need.tool, 16), text, actionButton(need.button));
+			list.append(item);
+		}
+		needs.append(heading, list);
+	}
+
+	cardsSection.replaceChildren(...dash.cards.map(dashCard));
+}
+
+function dashCard(card: HomeCard): HTMLElement {
+	const node = el('article', `dash-card${card.stale ? ' stale' : ''}`);
+	node.dataset.card = card.id;
+	const head = el('div', 'dash-card-head');
+	head.append(card.tool ? logo(card.tool, 16) : icon(card.icon ?? 'circle'), el('h3', undefined, card.title));
+	if (card.link) {
+		const link = button('link-button', card.link.label, () => run(card.link!.action));
+		head.append(link);
+	}
+	node.append(head);
+	if (card.connect) {
+		node.classList.add('unconnected');
+		node.append(el('p', 'muted', card.connect.text), actionButton(card.connect.button));
+		return node;
+	}
+	if (card.progress) {
+		const bar = el('div', 'dash-progress');
+		const track = el('div', 'dash-progress-track');
+		const fill = el('div', 'dash-progress-fill');
+		fill.style.width = `${Math.round(Math.min(1, Math.max(0, card.progress.value)) * 100)}%`;
+		track.append(fill);
+		bar.append(track, el('span', undefined, card.progress.label));
+		node.append(bar);
+	}
+	const rows = el('div', 'dash-rows');
+	for (const row of card.rows) {
+		if (row.group) {
+			rows.append(el('div', 'dash-group', row.group));
+		}
+		rows.append(dashRow(row));
+	}
+	node.append(rows);
+	if (card.note) {
+		node.append(el('p', 'dash-note muted', card.note));
+	}
+	return node;
+}
+
+function dashRow(row: HomeRow): HTMLElement {
+	const node = el('div', 'dash-row');
+	if (row.tool) {
+		node.append(logo(row.tool, 14));
+	} else if (row.icon) {
+		node.append(icon(row.icon));
+	}
+	if (row.key) {
+		node.append(el('span', 'dash-key', row.key));
+	}
+	const name = row.open ? button('dash-row-title', row.title, () => run(row.open!)) : el('span', 'dash-row-title', row.title);
+	name.title = row.title;
+	node.append(name);
+	if (row.detail) {
+		node.append(el('span', 'dash-row-detail muted', row.detail));
+	}
+	if (row.pill) {
+		node.append(el('span', `dash-pill ${row.pill.tone}`, row.pill.text));
+	}
+	if (row.button) {
+		node.append(actionButton(row.button));
+	}
+	if (row.menu?.length) {
+		const wrap = el('span', 'dash-row-more');
+		const more = button('icon-button', '', () => openRowMenu(more, row.menu!), 'ellipsis', strings.moreActions);
+		wrap.append(more);
+		node.append(wrap);
+	}
+	return node;
+}
 
 window.addEventListener('message', (event: MessageEvent<ToHome>) => {
 	const message = event.data;

@@ -14,7 +14,7 @@
 import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { readSettingsFile } from './projectSettings';
+import { isRecord, readSettingsFile, updateSettingsFile } from './projectSettings';
 import { folderTrustApplies, isFolderTrusted, trustedFoldersPath } from './trustedFolders';
 
 export type ProjectToolsBlock =
@@ -33,6 +33,8 @@ export interface ProjectToolsCheckOptions {
 	readonly env?: NodeJS.ProcessEnv;
 	readonly homedir?: string;
 	readonly platform?: NodeJS.Platform;
+	/** A workspace folder whose .gemini/settings.json the CLI also merges, such as the team's checked-in allowlist. */
+	readonly workspace?: string;
 }
 
 /** The first thing that keeps the CLI from loading `server` in `folder`, or undefined when nothing in its files does. */
@@ -43,20 +45,9 @@ export async function projectToolsBlock(options: ProjectToolsCheckOptions): Prom
 		return { kind: 'untrusted', folder: options.folder };
 	}
 	const geminiDir = path.join(env.GEMINI_CLI_HOME || homedir, '.gemini');
-	// System settings override the user's, as the CLI merges them.
-	for (const file of [systemSettingsPath(env, options.platform ?? process.platform), path.join(geminiDir, 'settings.json')]) {
-		const settings = await readSettingsFile(file);
-		const mcp = settings.mcp as { allowed?: unknown; excluded?: unknown } | undefined;
-		const admin = (settings.admin as { mcp?: { enabled?: unknown } } | undefined)?.mcp;
-		if (admin?.enabled === false) {
-			return { kind: 'adminOff', file };
-		}
-		if (Array.isArray(mcp?.allowed) && mcp.allowed.length && !mcp.allowed.includes(options.server)) {
-			return { kind: 'notAllowed', file };
-		}
-		if (Array.isArray(mcp?.excluded) && mcp.excluded.includes(options.server)) {
-			return { kind: 'excluded', file };
-		}
+	const settingsBlock = await allowlistBlock(options.server, settingsFiles({ ...options, env, homedir }));
+	if (settingsBlock) {
+		return settingsBlock;
 	}
 	const enablement = path.join(geminiDir, 'mcp-server-enablement.json');
 	let text: string | undefined;
@@ -82,6 +73,53 @@ export async function projectToolsBlock(options: ProjectToolsCheckOptions): Prom
 		}
 	}
 	return undefined;
+}
+
+/** The settings files that can leave a server out, highest precedence first: system, the workspace's, then the user's. */
+export function settingsFiles(options: Omit<ProjectToolsCheckOptions, 'folder' | 'server'>): string[] {
+	const env = options.env ?? process.env;
+	const homedir = options.homedir ?? os.homedir();
+	return [
+		systemSettingsPath(env, options.platform ?? process.platform),
+		...options.workspace ? [path.join(options.workspace, '.gemini', 'settings.json')] : [],
+		path.join(env.GEMINI_CLI_HOME || homedir, '.gemini', 'settings.json'),
+	];
+}
+
+/** The first of `files` that turns MCP off, or leaves `server` out of `mcp.allowed` or puts it in `mcp.excluded`. */
+export async function allowlistBlock(server: string, files: readonly string[]): Promise<Extract<ProjectToolsBlock, { kind: 'notAllowed' | 'excluded' | 'adminOff' }> | undefined> {
+	for (const file of files) {
+		const settings = await readSettingsFile(file);
+		const mcp = settings.mcp as { allowed?: unknown; excluded?: unknown } | undefined;
+		const admin = (settings.admin as { mcp?: { enabled?: unknown } } | undefined)?.mcp;
+		if (admin?.enabled === false) {
+			return { kind: 'adminOff', file };
+		}
+		if (Array.isArray(mcp?.allowed) && mcp.allowed.length && !mcp.allowed.includes(server)) {
+			return { kind: 'notAllowed', file };
+		}
+		if (Array.isArray(mcp?.excluded) && mcp.excluded.includes(server)) {
+			return { kind: 'excluded', file };
+		}
+	}
+	return undefined;
+}
+
+/**
+ * Lets `server` load per `file`: adds it to `mcp.allowed` and takes it out of
+ * `mcp.excluded`. Returns false, leaving the file alone, when it has comments.
+ */
+export function allowServer(file: string, server: string): Promise<boolean> {
+	return updateSettingsFile(file, settings => {
+		const mcp = isRecord(settings.mcp) ? settings.mcp : {};
+		if (Array.isArray(mcp.allowed) && mcp.allowed.length && !mcp.allowed.includes(server)) {
+			mcp.allowed = [...mcp.allowed, server];
+		}
+		if (Array.isArray(mcp.excluded)) {
+			mcp.excluded = mcp.excluded.filter(name => name !== server);
+		}
+		settings.mcp = mcp;
+	});
 }
 
 /** Mirrors gemini-cli's `getSystemSettingsPath`. */

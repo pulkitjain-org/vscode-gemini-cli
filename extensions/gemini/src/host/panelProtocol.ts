@@ -9,6 +9,7 @@
 
 import type { ChangeTotals } from '../acp/agentChanges';
 import type { Attachment } from '../acp/attachments';
+import type { ChangesTeamView, FromChangesTeam } from './teamFlowProtocol';
 
 /** Where an agent is at, for the title bar, Agent Home and the Changes panel. */
 export type AgentStateKind = 'working' | 'waiting' | 'done' | 'error' | 'idle' | 'stopped';
@@ -50,6 +51,8 @@ export interface ChangesPanelView {
 	};
 	readonly totals: ChangeTotals;
 	readonly files: readonly ChangedFileView[];
+	/** The team tools' part (src/host/mrPanel.ts), when GitLab, Snyk or SonarQube is connected. */
+	readonly team?: ChangesTeamView;
 }
 
 export interface ChangesPanelStrings {
@@ -79,7 +82,8 @@ export type FromChangesPanel =
 	| { readonly type: 'ready' }
 	| { readonly type: 'keep' | 'undo'; readonly path: string; readonly index: number }
 	| { readonly type: 'keepFile' | 'undoFile' | 'openFile'; readonly path: string }
-	| { readonly type: 'keepAll' | 'undoAll' | 'openAll' | 'commit' | 'mergeBack' };
+	| { readonly type: 'keepAll' | 'undoAll' | 'openAll' | 'commit' | 'mergeBack' }
+	| FromChangesTeam;
 
 // --- Agent Home
 
@@ -125,6 +129,107 @@ export interface HomeView {
 	readonly ownBranch: boolean;
 	/** The approval modes a new agent can start in, as policy allows. */
 	readonly modes: readonly HomeMode[];
+	/** The dashboard around the composer: the team tools, what needs the user, the cards. */
+	readonly dashboard: HomeDashboard;
+}
+
+export type HomeToolId = 'jira' | 'gitlab' | 'sonar' | 'snyk' | 'figma';
+export type HomeCardId = 'agents' | 'tickets' | 'mergeRequests' | 'quality' | 'releases' | 'gemini';
+
+/** What a button on the dashboard does. */
+export type HomeAction =
+	| { readonly kind: 'command'; readonly command: string; readonly args?: readonly unknown[] }
+	| { readonly kind: 'link'; readonly url: string }
+	| { readonly kind: 'agent'; readonly id: string; readonly do: 'open' | 'stop' | 'review' | 'mergeBack' };
+
+export interface HomeButton {
+	readonly label: string;
+	readonly action: HomeAction;
+	readonly primary?: boolean;
+	readonly title?: string;
+}
+
+/** A tool's connection, as a logo with a state. */
+export interface HomeTool {
+	readonly id: HomeToolId;
+	readonly name: string;
+	/** ok: connected; warn: can't reach it (VPN off); off: not connected; error: its token was refused. */
+	readonly tone: 'ok' | 'warn' | 'off' | 'error' | 'checking';
+	/** "Connected as pulkit.jain", "VPN off". */
+	readonly label: string;
+}
+
+/** A tone for a short status word: a dot plus one coloured word. */
+export type HomeTone = 'ok' | 'warn' | 'error' | 'info' | 'muted';
+
+export interface HomeRow {
+	readonly tool?: HomeToolId | 'gemini';
+	/** A codicon when there is no tool logo. */
+	readonly icon?: string;
+	/** A monospace lead, such as ACME-415 or !322. */
+	readonly key?: string;
+	readonly title: string;
+	readonly detail?: string;
+	readonly pill?: { readonly text: string; readonly tone: HomeTone };
+	readonly button?: HomeButton;
+	/** More actions, in the row's themed "..." menu (Log Time, Move, Open in Jira). */
+	readonly menu?: readonly HomeButton[];
+	/** What clicking the row's title does. */
+	readonly open?: HomeAction;
+	/** A small heading above this row, such as "Waiting for my review". */
+	readonly group?: string;
+}
+
+export interface HomeCard {
+	readonly id: HomeCardId;
+	readonly title: string;
+	readonly tool?: HomeToolId | 'gemini';
+	readonly icon?: string;
+	/** A link at the right of the heading. */
+	readonly link?: HomeButton;
+	/** A progress bar, 0 to 1, with its label. */
+	readonly progress?: { readonly value: number; readonly label: string };
+	readonly rows: readonly HomeRow[];
+	/** Shown when there are no rows, or under them for a state such as VPN off. */
+	readonly note?: string;
+	/** The last data, shown dimmed with its time, while the tool can't answer. */
+	readonly stale?: boolean;
+	/** For a tool that isn't connected: what the card will show, and a Connect button. */
+	readonly connect?: { readonly text: string; readonly button: HomeButton };
+}
+
+export interface HomeNeed {
+	readonly tool: HomeToolId | 'gemini';
+	readonly title: string;
+	readonly detail: string;
+	readonly button: HomeButton;
+}
+
+export interface HomeSetupStep {
+	readonly title: string;
+	readonly detail: string;
+	readonly done: boolean;
+	readonly button?: HomeButton;
+}
+
+export interface HomeDashboard {
+	/** "Good morning, Pulkit" */
+	readonly greeting: string;
+	/** "Friday 17 October · acme-checkout · Sprint 42, 6 days left" */
+	readonly context: string;
+	readonly tools: readonly HomeTool[];
+	readonly quickActions: readonly (HomeButton & { readonly tool?: HomeToolId; readonly icon?: string })[];
+	readonly needs: readonly HomeNeed[];
+	readonly cards: readonly HomeCard[];
+	/** First run: nothing connected yet. */
+	readonly setup?: readonly HomeSetupStep[];
+	/** "GitLab, SonarQube and Snyk can't be reached. Turn on your VPN to refresh them." */
+	readonly banner?: string;
+	/** For Customize: every card with whether it shows, in the user's order. */
+	readonly layout: readonly { readonly id: HomeCardId; readonly title: string; readonly visible: boolean }[];
+	readonly releaseBranches: readonly string[];
+	readonly qualityBranch?: string;
+	readonly refreshing: boolean;
 }
 
 export interface HomeMode {
@@ -170,6 +275,17 @@ export interface HomeStrings {
 	readonly mergeBack: string;
 	readonly noAgents: string;
 	readonly noWorkspace: string;
+	readonly customize: string;
+	readonly refresh: string;
+	readonly needsYou: string;
+	readonly showCard: string;
+	readonly moveUp: string;
+	readonly moveDown: string;
+	readonly cards: string;
+	readonly qualityBranch: string;
+	readonly getStarted: string;
+	readonly composerPlaceholder: string;
+	readonly moreActions: string;
 }
 
 export type ToHome =
@@ -192,7 +308,11 @@ export type FromHome =
 	/** The user is typing a task, so the agent and a session for it can get ready. */
 	| { readonly type: 'typing'; readonly folder: string; readonly ownBranch: boolean }
 	| { readonly type: 'addFolder' | 'projectHelpers' | 'pickFiles' | 'newProject' }
-	| { readonly type: 'open' | 'stop' | 'review' | 'mergeBack'; readonly id: string };
+	| { readonly type: 'open' | 'stop' | 'review' | 'mergeBack'; readonly id: string }
+	| { readonly type: 'action'; readonly action: HomeAction }
+	| { readonly type: 'refresh' }
+	| { readonly type: 'layout'; readonly card: HomeCardId; readonly visible?: boolean; readonly move?: number }
+	| { readonly type: 'qualityBranch'; readonly branch: string };
 
 // --- Project Helpers
 
@@ -292,6 +412,8 @@ export interface SettingsPageStrings {
 	readonly servers: string;
 	readonly serversHint: string;
 	readonly addServer: string;
+	/** Opens the team tools' Connections page. */
+	readonly connections: string;
 	readonly noServers: string;
 	readonly edit: string;
 	readonly enable: string;
@@ -343,7 +465,7 @@ export interface SettingsPageStrings {
 export type ToSettingsPage = { readonly type: 'view'; readonly view: SettingsPageView };
 
 export type FromSettingsPage =
-	| { readonly type: 'ready' | 'restart' | 'addServer' | 'newSkill' | 'addHook' | 'installExtension' | 'addMemory' | 'refreshMemory' }
+	| { readonly type: 'ready' | 'restart' | 'addServer' | 'connections' | 'newSkill' | 'addHook' | 'installExtension' | 'addMemory' | 'refreshMemory' }
 	| { readonly type: 'toggle'; readonly name: string; readonly enabled: boolean }
 	| { readonly type: 'toggleHook'; readonly file: string; readonly name: string; readonly enabled: boolean }
 	| { readonly type: 'toggleSkill'; readonly file: string; readonly name: string; readonly enabled: boolean }

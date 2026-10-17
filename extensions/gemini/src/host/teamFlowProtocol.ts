@@ -1,0 +1,285 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) pulkitjain-org and contributors. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+// Messages between the team flows' pages (src/host/teamFlows.ts) and their
+// webview (webview-src/teamFlow.ts): Open Merge Request, Move Ticket and Log
+// Time, Review a merge request, Merge Release Branch Forward, and Checks.
+// The host holds each page's state; the page sends what the user types with
+// `set` (no re-render) and what they press with `act`.
+
+import type { CheckFinding, ReviewFinding, TargetChoice } from '../acp/teamFlowLogic';
+
+export type FlowTool = 'jira' | 'gitlab' | 'sonar' | 'snyk' | 'figma';
+
+export type Tone = 'ok' | 'warn' | 'error' | 'info' | 'muted';
+
+export interface FlowPill {
+	readonly text: string;
+	readonly tone: Tone;
+}
+
+export interface FlowPerson {
+	readonly id: number;
+	readonly username: string;
+	readonly name: string;
+}
+
+export interface FlowAttachment {
+	readonly id: string;
+	readonly name: string;
+	readonly detail: string;
+	readonly icon: string;
+	readonly tools?: readonly FlowTool[];
+	readonly checked: boolean;
+}
+
+export interface OpenMrView {
+	readonly kind: 'openMr';
+	readonly step: 'target' | 'details';
+	readonly project: string;
+	readonly source: string;
+	readonly host: string;
+	readonly account: string;
+	readonly targets: readonly (TargetChoice & { readonly behind?: number })[];
+	readonly target?: string;
+	readonly ticket?: { readonly key: string; readonly summary: string; readonly url: string; readonly fixVersions: readonly string[] };
+	readonly title: string;
+	readonly description: string;
+	/** Bumped when the host replaces the description (generated), so the page takes it over the user's text. */
+	readonly descriptionRev: number;
+	readonly generating: boolean;
+	readonly attachments: readonly FlowAttachment[];
+	readonly reviewers: readonly FlowPerson[];
+	readonly members: readonly FlowPerson[];
+	readonly updateJira: boolean;
+	readonly deleteBranch: boolean;
+	readonly draft: boolean;
+	readonly existing?: { readonly iid: number; readonly url: string };
+}
+
+export interface TransitionView {
+	readonly id: string;
+	readonly name: string;
+	readonly to: string;
+	readonly tone: Tone;
+	readonly fields: readonly { readonly id: string; readonly name: string; readonly required: boolean; readonly multiple: boolean; readonly allowed?: readonly { readonly id: string; readonly name: string }[] }[];
+}
+
+export interface MoveTicketView {
+	readonly kind: 'moveTicket';
+	/** `log` shows Log Time only. */
+	readonly mode: 'move' | 'log';
+	readonly key: string;
+	readonly summary: string;
+	readonly url: string;
+	readonly status: string;
+	readonly statusTone: Tone;
+	readonly transitions: readonly TransitionView[];
+	readonly selected?: string;
+	readonly fieldValues: Readonly<Record<string, string>>;
+	readonly comment: string;
+	readonly commentRev: number;
+	readonly generating: boolean;
+	readonly visibility?: string;
+	readonly addComment: boolean;
+	readonly logTime: boolean;
+	readonly spent: string;
+	/** YYYY-MM-DD */
+	readonly date: string;
+	readonly workComment: string;
+	/** "3h logged, 1h 30m by you" */
+	readonly logged?: string;
+	readonly done?: string;
+}
+
+export interface ReviewView {
+	readonly kind: 'review';
+	readonly project: string;
+	readonly mr: { readonly iid: number; readonly title: string; readonly url: string; readonly author: string; readonly source: string; readonly target: string; readonly files: number };
+	readonly state: 'preparing' | 'reviewing' | 'ready' | 'unparsed';
+	readonly summary: string;
+	readonly findings: readonly (ReviewFinding & { readonly id: string; readonly checked: boolean })[];
+	readonly findingsRev: number;
+	readonly side: readonly { readonly tool: FlowTool | 'people'; readonly label: string; readonly detail?: string; readonly pill?: FlowPill }[];
+	readonly files: readonly { readonly path: string; readonly added: number; readonly removed: number }[];
+	readonly agentId?: string;
+	readonly approvedByMe: boolean;
+	readonly done?: string;
+}
+
+export interface ReleaseTargetView {
+	readonly branch: string;
+	readonly ticked: boolean;
+	readonly behind?: number;
+	readonly checking: boolean;
+	readonly clean?: boolean;
+	readonly conflicts: readonly string[];
+	readonly result?: { readonly text: string; readonly tone: Tone; readonly url?: string; readonly agentId?: string; readonly canPush?: boolean };
+}
+
+export interface ReleaseView {
+	readonly kind: 'release';
+	readonly sources: readonly string[];
+	readonly source?: string;
+	readonly targets: readonly ReleaseTargetView[];
+	readonly tickets: readonly string[];
+	readonly addTickets: boolean;
+	readonly reviewers: readonly FlowPerson[];
+	readonly members: readonly FlowPerson[];
+	readonly fetching: boolean;
+	readonly started: boolean;
+}
+
+export interface ChecksView {
+	readonly kind: 'checks';
+	readonly agentTitle: string;
+	readonly agentId?: string;
+	readonly branch?: string;
+	readonly rows: readonly { readonly tool: FlowTool; readonly name: string; readonly state: 'running' | 'done' | 'problem' | 'off'; readonly detail: string; readonly pill?: FlowPill }[];
+	readonly findings: readonly (CheckFinding & { readonly checked: boolean })[];
+	readonly sent?: string;
+}
+
+export type TeamFlowView = OpenMrView | MoveTicketView | ReviewView | ReleaseView | ChecksView;
+
+export interface TeamFlowState {
+	readonly view?: TeamFlowView;
+	/** Shown instead of the view while it loads. */
+	readonly loading?: string;
+	/** A button's work in progress, such as "Pushing the branch…"; disables the actions. */
+	readonly busy?: string;
+	readonly error?: string;
+}
+
+export type ToTeamFlow = { readonly type: 'state'; readonly state: TeamFlowState };
+
+export type FromTeamFlow =
+	| { readonly type: 'ready' }
+	/** A field the user typed in or ticked; the host keeps it and doesn't re-render. */
+	| { readonly type: 'set'; readonly field: string; readonly value: unknown }
+	| { readonly type: 'act'; readonly action: string; readonly value?: unknown };
+
+export interface TeamFlowStrings {
+	readonly close: string;
+	readonly cancel: string;
+	readonly back: string;
+	readonly next: string;
+	readonly change: string;
+	readonly openIn: string;
+	readonly openMr: string;
+	readonly targetHeading: string;
+	readonly targetHint: string;
+	readonly suggested: string;
+	readonly release: string;
+	readonly behind: string;
+	readonly title: string;
+	readonly description: string;
+	readonly regenerate: string;
+	readonly generating: string;
+	readonly descriptionHint: string;
+	readonly attachments: string;
+	readonly attachmentsHint: string;
+	readonly addFile: string;
+	readonly updateJira: string;
+	readonly updateJiraHint: string;
+	readonly deleteBranch: string;
+	readonly draft: string;
+	readonly reviewers: string;
+	readonly addReviewer: string;
+	readonly searchPeople: string;
+	readonly noPeople: string;
+	readonly pushesAs: string;
+	readonly existingMr: string;
+	readonly moveTicket: string;
+	readonly moveTo: string;
+	readonly noMoves: string;
+	readonly fieldNeeded: string;
+	readonly choose: string;
+	readonly comment: string;
+	readonly addComment: string;
+	readonly commentHint: string;
+	readonly visibleTo: string;
+	readonly everyone: string;
+	readonly move: string;
+	readonly moveAndLog: string;
+	readonly logTime: string;
+	readonly logTimeHint: string;
+	readonly timeSpent: string;
+	readonly timeSpentPlaceholder: string;
+	readonly badTime: string;
+	readonly date: string;
+	readonly workComment: string;
+	readonly logIt: string;
+	readonly reviewTitle: string;
+	readonly reviewing: string;
+	readonly preparing: string;
+	readonly unparsed: string;
+	readonly readAgain: string;
+	readonly geminiReview: string;
+	readonly openDiff: string;
+	readonly yourReview: string;
+	readonly yourReviewHint: string;
+	readonly postAndRequest: string;
+	readonly post: string;
+	readonly approve: string;
+	readonly approved: string;
+	readonly files: string;
+	readonly noFindings: string;
+	readonly kindBug: string;
+	readonly kindShouldFix: string;
+	readonly kindNit: string;
+	readonly kindQuestion: string;
+	readonly openAgent: string;
+	readonly releaseTitle: string;
+	readonly from: string;
+	readonly into: string;
+	readonly intoHint: string;
+	readonly mergesCleanly: string;
+	readonly conflicts: string;
+	readonly checking: string;
+	readonly upToDate: string;
+	readonly whatHappens: string;
+	readonly whatHappensText: string;
+	readonly addTickets: string;
+	readonly openMrs: string;
+	readonly pushResolution: string;
+	readonly checksTitle: string;
+	readonly fix: string;
+	readonly fixAll: string;
+	readonly fixChosen: string;
+	readonly runAgain: string;
+	readonly noIssues: string;
+}
+
+/** The team part of the Changes panel (src/host/mrPanel.ts): Open Merge Request and Run Checks, then the agent's open merge request. */
+export interface ChangesTeamView {
+	readonly openMr?: string;
+	readonly runChecks?: string;
+	readonly mr?: {
+		readonly iid: number;
+		readonly heading: string;
+		readonly subtitle: string;
+		readonly url: string;
+		readonly openIn: string;
+		readonly rows: readonly {
+			readonly tool: FlowTool | 'review';
+			readonly label: string;
+			readonly detail?: string;
+			readonly pill?: FlowPill;
+			/** Failed jobs, each with Fix. */
+			readonly jobs?: readonly { readonly id: number; readonly name: string; readonly fix: string }[];
+			/** Open review threads, each ticked to send. */
+			readonly threads?: readonly { readonly id: string; readonly author: string; readonly text: string }[];
+			readonly note?: string;
+		}[];
+		/** "Fix Pipeline and 2 Comments" */
+		readonly fixAll?: { readonly label: string; readonly one: string; readonly pipelineOnly: string; readonly commentsOnly: string };
+	};
+}
+
+export type FromChangesTeam =
+	| { readonly type: 'team'; readonly action: 'openMr' | 'runChecks' | 'openUrl' }
+	| { readonly type: 'team'; readonly action: 'fixJob'; readonly job: number }
+	| { readonly type: 'team'; readonly action: 'fixMr'; readonly jobs: boolean; readonly threads: readonly string[] };

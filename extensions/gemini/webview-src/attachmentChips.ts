@@ -8,7 +8,8 @@
 
 import type { SharedPageView } from '../src/host/chatProtocol';
 import { type Attachment, attachmentLabel, classifyFile, maxImageBase64Length, supportedImageTypes } from '../src/acp/attachments';
-import { attachmentIcon, carriesFiles, fileUris, format, imageName, sameAttachment } from './chatLogic';
+import { attachmentIcon, carriesFiles, fileUris, format, imageName, sameAttachment, toolChipParts } from './chatLogic';
+import { toolLogo } from './toolLogos';
 import { button, el, icon, setLabel, setTip } from './dom';
 import { updateSendState } from './inputBox';
 import { setTransientNotice } from './transcript';
@@ -51,17 +52,28 @@ export function renderAttachments(): void {
 			thumbnail.src = `data:${attachment.mimeType};base64,${attachment.data}`;
 			thumbnail.alt = '';
 			chip.append(thumbnail);
+		} else if (attachment.kind === 'document' && attachment.tool) {
+			// A Jira ticket, GitLab item or Figma frame: the tool's logo, its key in bold, then its title.
+			const [key, title] = toolChipParts(attachment);
+			chip.classList.add('tool-chip');
+			chip.append(toolLogo(attachment.tool, 14), el('span', 'tool-chip-key', key), ...title ? [el('span', 'tool-chip-title', title)] : []);
+			chip.title = title ? attachment.name : strings.toolChipLoading;
 		} else {
 			chip.append(icon(attachmentIcon(attachment.kind, attachmentLabel(attachment))));
 			chip.title = attachment.path ?? attachmentLabel(attachment);
 		}
-		chip.append(el('span', undefined, attachmentLabel(attachment)));
+		if (!chip.classList.contains('tool-chip')) {
+			chip.append(el('span', undefined, attachmentLabel(attachment)));
+		}
 		const remove = button('chip-remove', '', () => {
 			// The rewrite running may name it; it can go once the rewrite is back.
 			if (state.enhancing) {
 				return;
 			}
 			state.attachments = state.attachments.filter(a => a !== attachment);
+			if (attachment.kind === 'document' && attachment.ref) {
+				state.dismissedToolRefs.add(attachment.ref);
+			}
 			renderAttachments();
 			input.focus();
 		}, 'close');
