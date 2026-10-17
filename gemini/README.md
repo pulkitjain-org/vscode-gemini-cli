@@ -89,6 +89,7 @@ The **Gemini** status bar item shows the agent's state. Hover over it to see the
 | `gemini.inlineEdit.enabled` | Inline edit, Enhance prompt's quick rewrite and commit messages, which send the code or diff straight to a fast Gemini model. On by default. |
 | `gemini.inlineEdit.model` | The model those use: the newest Flash (the default), the chat's model, or one you name. |
 | `gemini.chat.spellCheck` | Check spelling in the chat and Agent Home composers. On by default. |
+| `gemini.chat.foldFinishedWork` | Fold each finished turn's thoughts and steps under one "Worked for" line in the chat. On by default; off shows every step as its own row. |
 | `gemini.notifications.enabled` | Notify you, and badge the Dock, when an agent finishes or needs you while GeminiCode is in the background. On by default. |
 | `gemini.layout.showAgentsInNewWorkspaces` | Show the Gemini side bar rather than Explorer the first time a workspace opens in Editor mode. |
 

@@ -14,7 +14,9 @@ import { el } from './dom';
 import { render, renderEmpty, renderNotice } from './items';
 import { updateOutline } from './promptNav';
 import { renderStreamingReply, streamingReplies, updateStreamingReply } from './streamingReply';
-import { elements, expanded, state, thoughtTimes, ui } from './view';
+import { autoOpened, elements, expanded, foldOpen, runOpen, state, thoughtTimes, ui } from './view';
+import { renderFoldHead, renderPinned, renderRunRow, type FoldState } from './work';
+import { foldGroups, runId, turnLayout, turnOf, turnStarts, workSummary, type FoldGroup } from './workFold';
 
 const { transcript, scrollButton, dock } = ui;
 
@@ -124,6 +126,9 @@ export function applyItem(item: TranscriptItem, live: boolean): boolean {
 			trackThoughts(previous, item);
 		}
 		items.push(item);
+		if (item.kind === 'user') {
+			starts.push(items.length - 1);
+		}
 	} else {
 		items[index] = item;
 	}
@@ -132,24 +137,42 @@ export function applyItem(item: TranscriptItem, live: boolean): boolean {
 		// Not shown yet: it is added, as it is now, with the other older items.
 		return false;
 	}
+	if (live && item.kind === 'toolCall' && item.status === 'failed' && !autoOpened.has(item.id)) {
+		// A step that fails while the agent works shows its output without a click, once.
+		autoOpened.add(item.id);
+		expanded.add(item.id);
+	}
 	const reply = item.kind === 'agent' && live && state.busy ? streamingReplies.get(item.id) : undefined;
 	if (reply && item.kind === 'agent' && existing === reply.node && updateStreamingReply(reply, item.text)) {
 		return false;
 	}
 	streamingReplies.delete(item.id);
-	const node = item.kind === 'agent' && live && state.busy ? renderStreamingReply(item) : renderItem(item);
-	if (existing) {
-		replaceNode(existing, node);
-	} else {
-		transcript.querySelector('.empty')?.remove();
-		if (live) {
-			// Only new items animate in, not ones shown again or restored.
-			node.classList.add('enter');
+	const turn = foldingTurn(index === -1 ? items.length - 1 : index);
+	if (turn !== -1) {
+		// In a turn that folds: where it goes is the turn's layout, which only a new item or a step's change can alter.
+		if (existing) {
+			const node = item.kind === 'agent' && live && state.busy ? renderStreamingReply(item) : renderItem(item);
+			replaceNode(existing, node);
+			elements.set(item.id, node);
 		}
-		transcript.append(node);
-		markSettled(false);
+		if (!resetting && (index === -1 || (item.kind !== 'agent' && item.kind !== 'thought'))) {
+			layoutTurn(turn, live);
+		}
+	} else {
+		const node = item.kind === 'agent' && live && state.busy ? renderStreamingReply(item) : renderItem(item);
+		if (existing) {
+			replaceNode(existing, node);
+		} else {
+			transcript.querySelector('.empty')?.remove();
+			if (live) {
+				// Only new items animate in, not ones shown again or restored.
+				node.classList.add('enter');
+			}
+			transcript.append(node);
+			markSettled(false);
+		}
+		elements.set(item.id, node);
 	}
-	elements.set(item.id, node);
 	if (previous?.kind === 'agent' && streamingReplies.has(previous.id)) {
 		// Something came after the reply, so it is done.
 		streamingReplies.delete(previous.id);
@@ -161,9 +184,229 @@ export function applyItem(item: TranscriptItem, live: boolean): boolean {
 	}
 	if (item.kind === 'permission' && !item.answer && live && !isEditing()) {
 		// Never while the user types: a Space or Return meant for the composer would answer it unseen.
-		node.querySelector<HTMLButtonElement>('button.primary')?.focus();
+		elements.get(item.id)?.querySelector<HTMLButtonElement>('button.primary')?.focus();
 	}
 	return item.kind === 'user';
+}
+
+/** Indexes of the prompts in `state.items`; each starts a turn. */
+let starts: number[] = [];
+/** While a reset adds items: each turn is laid out once, after them all. */
+let resetting = false;
+/** Each turn's fold, by its prompt's id. */
+const folds = new Map<string, HTMLElement>();
+/** Each run's element in an opened fold, by its id (workFold.ts `runId`). */
+const runElements = new Map<string, HTMLElement>();
+/** What a fold's line or a run's line was drawn from, so an unchanged one is kept. */
+const drawn = new WeakMap<HTMLElement, string>();
+
+/** The index of the prompt whose turn folds the item at `index`; -1 for a prompt, anything before the first, or with folding off. */
+function foldingTurn(index: number): number {
+	if (!state.foldWork || state.items[index]?.kind === 'user') {
+		return -1;
+	}
+	return turnOf(starts, index);
+}
+
+/** The element for `item`, rendered if it has none yet. */
+function elementFor(item: TranscriptItem, live: boolean): HTMLElement {
+	let node = elements.get(item.id);
+	if (!node) {
+		node = item.kind === 'agent' && live && state.busy ? renderStreamingReply(item) : renderItem(item);
+		if (live) {
+			node.classList.add('enter');
+		}
+		elements.set(item.id, node);
+	}
+	return node;
+}
+
+/** Forgets the element of an item that is no longer shown, so it is rendered afresh when it is. */
+function forget(id: string): void {
+	elements.get(id)?.remove();
+	elements.delete(id);
+	streamingReplies.delete(id);
+}
+
+/** Makes `parent`'s children `wanted`, in order, moving rather than re-creating them. */
+function reconcile(parent: HTMLElement, wanted: readonly HTMLElement[]): void {
+	let cursor: ChildNode | null = parent.firstChild;
+	for (const node of wanted) {
+		if (node === cursor) {
+			cursor = cursor.nextSibling;
+		} else {
+			parent.insertBefore(node, cursor);
+		}
+	}
+	while (cursor) {
+		const next: ChildNode | null = cursor.nextSibling;
+		cursor.remove();
+		cursor = next;
+	}
+}
+
+/**
+ * Lays out the turn of the prompt at `start`: the prompt, then its fold (the
+ * steps, under one line), then what shows after it (the answer, the plan,
+ * notices, a waiting question, the turn's end). Elements are moved, not
+ * rebuilt; a folded fold has no elements for its steps at all.
+ */
+function layoutTurn(start: number, live: boolean): void {
+	if (!state.foldWork) {
+		return;
+	}
+	const { items } = state;
+	const prompt = items[start];
+	const promptNode = prompt && elements.get(prompt.id);
+	if (!promptNode) {
+		// Not shown yet: the older items add it, laid out, when they come.
+		return;
+	}
+	const following = starts.find(index => index > start);
+	const end = following ?? items.length;
+	const { folded, after } = turnLayout(items.slice(start + 1, end));
+	const running = state.busy && following === undefined;
+	let fold = folds.get(prompt.id);
+	if (folded.length) {
+		fold ??= el('div', 'work-fold');
+		folds.set(prompt.id, fold);
+		fillFold(fold, prompt.id, folded, after, running, live);
+	} else if (fold) {
+		fold.remove();
+		folds.delete(prompt.id);
+		fold = undefined;
+	}
+	let cursor: HTMLElement = promptNode;
+	const place = (node: HTMLElement) => {
+		if (cursor.nextElementSibling !== node) {
+			cursor.after(node);
+		}
+		cursor = node;
+	};
+	if (fold) {
+		place(fold);
+	}
+	for (const item of after) {
+		const node = elementFor(item, live);
+		place(node);
+		if (item.kind === 'turnEnd') {
+			// The fold's line says how long it worked, so the turn's end does not say it again.
+			node.classList.toggle('has-fold', !!fold);
+		}
+	}
+	markSettled(false);
+}
+
+/** How the turn went, for its fold's line. */
+function foldState(after: readonly TranscriptItem[], running: boolean): FoldState {
+	if (running) {
+		return { kind: 'working' };
+	}
+	const end = after.find((item): item is ItemOf<'turnEnd'> => item.kind === 'turnEnd');
+	const failed = after.some(item => item.kind === 'notice' && item.severity === 'error');
+	return { kind: failed ? 'stopped' : 'done', durationMs: end?.durationMs };
+}
+
+function fillFold(fold: HTMLElement, key: string, folded: readonly TranscriptItem[], after: readonly TranscriptItem[], running: boolean, live: boolean): void {
+	// Open while the agent works, folded once it is done, unless the user said otherwise.
+	const open = foldOpen.get(key) ?? running;
+	const summary = workSummary(folded);
+	const how = foldState(after, running);
+	const steps = folded.filter(item => item.kind === 'thought' || item.kind === 'toolCall').length;
+	fold.className = `work-fold${open ? ' open' : ''}${how.kind === 'stopped' ? ' stopped' : ''}`;
+	// Each new step lays the turn out again; its line is rebuilt only when what it says changes.
+	const headKey = JSON.stringify([how, steps, summary.counts, summary.failed.length, summary.recovered.size, open]);
+	let head = fold.firstElementChild as HTMLElement | null;
+	if (!head || drawn.get(head) !== headKey) {
+		head = renderFoldHead(how, steps, summary, open, () => toggleFold(key, !open));
+		drawn.set(head, headKey);
+	}
+	const parts: HTMLElement[] = [head];
+	if (!open) {
+		const pinned = renderPinned(summary, call => showOutput(key, call));
+		if (pinned) {
+			parts.push(pinned);
+		}
+		reconcile(fold, parts);
+		for (const item of folded) {
+			forget(item.id);
+		}
+		for (const [id, node] of runElements) {
+			if (!node.isConnected) {
+				runElements.delete(id);
+			}
+		}
+		return;
+	}
+	const body = fold.querySelector<HTMLElement>(':scope > .work-body') ?? el('div', 'work-body');
+	parts.push(body);
+	reconcile(fold, parts);
+	const groups = foldGroups(folded);
+	reconcile(body, groups.map((group, i) => group.kind === 'item'
+		? elementFor(group.item, live)
+		: runElement(key, group, running && i === groups.length - 1, live)));
+}
+
+/** A run of steps: its line and, when open, each step. The run still growing is open while the agent works. */
+function runElement(key: string, group: Extract<FoldGroup, { kind: 'run' }>, current: boolean, live: boolean): HTMLElement {
+	const id = runId(group);
+	const open = runOpen.get(id) ?? current;
+	let node = runElements.get(id);
+	if (!node) {
+		node = el('div', 'work-run');
+		runElements.set(id, node);
+	}
+	node.classList.toggle('open', open);
+	const rowKey = `${open}|${group.calls.map(call => `${call.status} ${call.title} ${call.locations.map(location => location.path).join()}`).join('\n')}`;
+	let row = node.firstElementChild as HTMLElement | null;
+	if (!row || drawn.get(row) !== rowKey) {
+		row = renderRunRow(group, open, () => {
+			runOpen.set(id, !open);
+			relayout(key);
+		});
+		drawn.set(row, rowKey);
+	}
+	if (!open) {
+		reconcile(node, [row]);
+		for (const call of group.calls) {
+			forget(call.id);
+		}
+		return node;
+	}
+	const calls = node.querySelector<HTMLElement>(':scope > .work-run-calls') ?? el('div', 'work-run-calls');
+	reconcile(node, [row, calls]);
+	reconcile(calls, group.calls.map(call => elementFor(call, live)));
+	return node;
+}
+
+/** Lays out again the turn of the prompt `key`, after the user opened or closed part of it. */
+function relayout(key: string): void {
+	const start = indexOfItem(state.items, key);
+	if (start !== -1) {
+		layoutTurn(start, false);
+		updateScrollButton();
+	}
+}
+
+function toggleFold(key: string, open: boolean): void {
+	foldOpen.set(key, open);
+	relayout(key);
+}
+
+/** Opens the fold at a failed step, with its output showing. */
+function showOutput(key: string, call: ItemOf<'toolCall'>): void {
+	foldOpen.set(key, true);
+	expanded.add(call.id);
+	relayout(key);
+	elements.get(call.id)?.scrollIntoView({ block: 'nearest' });
+}
+
+/** Turns folding on or off, and shows the transcript again that way. */
+export function setFoldWork(on: boolean): void {
+	if (state.foldWork !== on) {
+		state.foldWork = on;
+		reset(state.items.slice());
+	}
 }
 
 /** Whether focus is in something the user types into. */
@@ -225,13 +468,31 @@ export function reset(newItems: readonly TranscriptItem[]): void {
 	streamingReplies.clear();
 	transcript.replaceChildren();
 	elements.clear();
+	folds.clear();
+	runElements.clear();
 	cancelBackfill();
-	const split = Math.max(0, newItems.length - firstItems);
+	let split = Math.max(0, newItems.length - firstItems);
+	const turn = state.foldWork ? turnOf(turnStarts(newItems), split) : -1;
+	if (turn !== -1) {
+		// Whole turns, so each fold is laid out with all its steps.
+		split = turn;
+	}
 	state.items = newItems.slice(0, split);
+	starts = turnStarts(state.items);
 	backfill = state.items.map(item => item.id);
 	// No layout reads while adding, so the shown part is laid out once.
-	for (const item of newItems.slice(split)) {
-		applyItem(item, false);
+	resetting = true;
+	try {
+		for (const item of newItems.slice(split)) {
+			applyItem(item, false);
+		}
+	} finally {
+		resetting = false;
+	}
+	for (const start of starts) {
+		if (start >= split) {
+			layoutTurn(start, false);
+		}
 	}
 	markSettled(true);
 	settleScroll(true);
@@ -239,6 +500,9 @@ export function reset(newItems: readonly TranscriptItem[]): void {
 		transcript.append(renderEmpty());
 		expanded.clear();
 		thoughtTimes.clear();
+		foldOpen.clear();
+		runOpen.clear();
+		autoOpened.clear();
 	}
 	if (backfill.length) {
 		backfillHandle = requestIdleCallback(addOlder, { timeout: 500 });
@@ -258,10 +522,19 @@ function addOlder(deadline: IdleDeadline): void {
 	backfillHandle = undefined;
 	const stick = isNearBottom();
 	while (backfill.length && (deadline.timeRemaining() > 4 || deadline.didTimeout)) {
-		const ids = backfill.splice(-backfillChunk);
-		const nodes = ids.flatMap(id => {
-			const item = state.items[indexOfItem(state.items, id)];
-			if (!item) {
+		// The backfill is the first items, in order, so an id's place in it is its index.
+		let cut = Math.max(0, backfill.length - backfillChunk);
+		const turn = state.foldWork ? turnOf(starts, cut) : -1;
+		if (turn !== -1) {
+			// Whole turns: a fold is laid out with all its steps.
+			cut = turn;
+		}
+		const from = cut;
+		const ids = backfill.splice(cut);
+		const nodes = ids.flatMap((id, i) => {
+			const item = state.items[from + i];
+			if (!item || foldingTurn(from + i) !== -1) {
+				// A turn's steps and answer go where its layout puts them, below.
 				return [];
 			}
 			const node = renderItem(item);
@@ -269,6 +542,11 @@ function addOlder(deadline: IdleDeadline): void {
 			return [node];
 		});
 		transcript.prepend(...nodes);
+		for (const start of starts) {
+			if (start >= from && start < from + ids.length) {
+				layoutTurn(start, false);
+			}
+		}
 		markSettled(true);
 		if (deadline.didTimeout) {
 			break;
@@ -339,6 +617,11 @@ export function setTranscriptBusy(value: boolean): void {
 	}
 	if (last?.kind === 'thought') {
 		rerender(last);
+	}
+	const lastTurn = starts.at(-1);
+	if (state.foldWork && lastTurn !== undefined) {
+		// A turn's fold opens while it works and folds when it is done.
+		layoutTurn(lastTurn, false);
 	}
 	updateWorking();
 }

@@ -172,6 +172,12 @@ button {
 	contain-intrinsic-size: auto 80px;
 }
 
+/* The same inside an open fold, which is one element however many steps it holds: all but its last few lines. */
+.work-body > :not(:nth-last-child(-n + 4)) {
+	content-visibility: auto;
+	contain-intrinsic-size: auto 28px;
+}
+
 .empty {
 	display: flex;
 	flex-direction: column;
@@ -926,6 +932,221 @@ body.vscode-high-contrast-light {
 
 .added { color: var(--gemini-ok); }
 .removed { color: var(--gemini-error); }
+
+/* ---- A turn's fold: its steps under one line (work.ts) ---- */
+
+.work-fold {
+	margin: 2px 0 8px;
+	font-size: 12.5px;
+}
+
+.work-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 26px;
+	margin: 0 -6px;
+	padding: 0 6px;
+	border-radius: 6px;
+	color: var(--gemini-muted);
+	cursor: pointer;
+	user-select: none;
+}
+
+.work-head:hover {
+	background: var(--gemini-hover);
+}
+
+.work-head:focus-visible,
+.work-run-row:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+}
+
+.work-lead {
+	flex: none;
+	color: var(--vscode-foreground);
+}
+
+.work-fold.stopped .work-lead {
+	color: var(--gemini-error);
+}
+
+.work-summary,
+.work-failed {
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	color: var(--gemini-faint);
+}
+
+.work-summary::before,
+.work-failed::before {
+	content: "\00b7";
+	margin-right: 6px;
+}
+
+.work-failed {
+	flex: none;
+	color: var(--gemini-error);
+}
+
+.work-failed.fixed {
+	color: var(--gemini-faint);
+}
+
+.work-spinner {
+	font-size: 12px !important;
+	color: var(--gemini-accent);
+}
+
+.work-fold.open > .work-head .chevron,
+.work-run.open > .work-run-row .chevron {
+	transform: rotate(90deg);
+}
+
+/* While folded: the files it changed and the steps that failed stay in sight. */
+.work-pinned {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin: 2px 0 0 21px;
+}
+
+.work-changes {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	min-height: 26px;
+	color: var(--gemini-muted);
+}
+
+.work-changes > .codicon {
+	font-size: 12px;
+}
+
+.work-changes .diff-chip {
+	gap: 6px;
+	max-width: 260px;
+	border-radius: var(--gemini-radius-small);
+}
+
+.work-changes .diff-chip .added,
+.work-changes .diff-chip .removed {
+	font-family: var(--vscode-editor-font-family);
+	font-size: 11px;
+}
+
+.work-failure {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 28px;
+	margin-left: -8px;
+	padding: 0 8px;
+	border-radius: 6px;
+	background: color-mix(in srgb, var(--gemini-error) 9%, transparent);
+	color: var(--vscode-foreground);
+}
+
+.work-failure > .codicon {
+	color: var(--gemini-error);
+	font-size: 13px;
+}
+
+.work-failure.fixed {
+	background: none;
+	color: var(--gemini-muted);
+}
+
+.work-failure.fixed > .codicon {
+	color: var(--gemini-faint);
+}
+
+.work-failure-title {
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.work-failure-note {
+	flex: none;
+	color: var(--gemini-faint);
+}
+
+.work-show {
+	flex: none;
+	margin-left: auto;
+	padding: 0 2px;
+	border: none;
+	background: none;
+	color: var(--vscode-textLink-foreground);
+	font: inherit;
+	cursor: pointer;
+}
+
+.work-show:hover {
+	text-decoration: underline;
+}
+
+.work-show:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+}
+
+/* Opened: every step, in order, on a quiet rail under the chevron. */
+.work-body {
+	display: flex;
+	flex-direction: column;
+	margin: 2px 0 6px 6px;
+	padding-left: 15px;
+	border-left: 1px solid var(--gemini-border);
+}
+
+.work-body > .message.agent {
+	margin: 4px 0 6px;
+	font-size: 13px;
+}
+
+.work-body > .permission {
+	margin: 4px 0;
+}
+
+.work-run-row {
+	cursor: pointer;
+}
+
+/* "Searched 9 patterns" always shows whole; what they were gives way. */
+.work-run-row .tool-title {
+	flex: none;
+}
+
+.work-run-row:hover {
+	background: var(--gemini-hover);
+}
+
+.work-peek {
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	color: var(--gemini-faint);
+	font-family: var(--vscode-editor-font-family);
+	font-size: 11.5px;
+}
+
+.work-run-calls {
+	display: flex;
+	flex-direction: column;
+	margin-left: 21px;
+}
+
+/* The turn's end does not repeat how long the fold says it worked. */
+.turn-end.has-fold > .worked-for,
+.turn-end.has-fold > .worked-for + .turn-dot {
+	display: none;
+}
 
 /* ---- Plan ---- */
 

@@ -119,6 +119,8 @@ export const state = {
 	settings: noSettings,
 	/** Whether the chat opens each file the agent reads or edits. */
 	following: false,
+	/** Whether each turn's steps fold under one line once it is done (`gemini.chat.foldFinishedWork`). */
+	foldWork: document.querySelector<HTMLScriptElement>('script[data-strings]')?.dataset.foldWork !== 'false',
 };
 
 /** Each item's element in the transcript. */
@@ -129,3 +131,9 @@ export const thoughtTimes = new Map<string, { start: number; end?: number }>();
 export const subagentTimes = new Map<string, { start: number; end?: number }>();
 /** Tool calls the user expanded, kept across re-renders. */
 export const expanded = new Set<string>();
+/** Turns' folds the user opened or closed, by their prompt's id; the rest follow the turn. Lost when the view reloads. */
+export const foldOpen = new Map<string, boolean>();
+/** Runs of steps the user opened or closed, by run id. Lost when the view reloads. */
+export const runOpen = new Map<string, boolean>();
+/** Failed tool calls whose output was opened for the user once, so closing it sticks. */
+export const autoOpened = new Set<string>();
