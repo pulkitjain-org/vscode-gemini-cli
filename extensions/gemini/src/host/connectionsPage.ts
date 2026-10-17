@@ -97,7 +97,12 @@ export class ConnectionsPage implements vscode.Disposable {
 					await this.connections.connect(message.tool, { url: message.url, email: message.email, token: message.token });
 					this.post({ type: 'connectResult', tool: message.tool, ok: true });
 				} catch (err) {
-					this.post({ type: 'connectResult', tool: message.tool, ok: false, message: err instanceof Error ? err.message : String(err) });
+					const text = err instanceof Error ? err.message : String(err);
+					this.post({ type: 'connectResult', tool: message.tool, ok: false, message: text });
+					if (message.tool === 'snyk' || message.tool === 'figma') {
+						// No dialog to show it in.
+						void vscode.window.showErrorMessage(text);
+					}
 				}
 				return;
 			case 'disconnect':

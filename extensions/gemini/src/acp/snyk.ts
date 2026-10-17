@@ -43,7 +43,7 @@ export type Run = (file: string, args: readonly string[], cwd: string | undefine
 
 /** Folders a GUI app's PATH lacks on macOS, where Homebrew and npm put the CLI. */
 function searchPath(): string {
-	const extra = ['/opt/homebrew/bin', '/usr/local/bin', path.join(os.homedir(), '.npm-global', 'bin'), path.join(os.homedir(), '.local', 'bin')];
+	const extra = ['/opt/homebrew/bin', '/usr/local/bin', path.join(os.homedir(), '.npm-global', 'bin'), path.join(os.homedir(), '.local', 'bin'), path.join(os.homedir(), '.volta', 'bin'), path.join(os.homedir(), '.asdf', 'shims')];
 	return [process.env.PATH ?? '', ...extra].filter(Boolean).join(path.delimiter);
 }
 
@@ -56,35 +56,66 @@ export const runProcess: Run = (file, args, cwd, timeoutMs) => new Promise(resol
 
 export class SnykCli {
 
-	constructor(private readonly command = 'snyk', private readonly run: Run = runProcess) { }
+	/** The CLI's path once found; `snyk` on the search path until then. */
+	private resolved: Promise<string> | undefined;
+
+	constructor(private readonly command = 'snyk', private readonly run: Run = runProcess, private readonly locate: (command: string) => Promise<string | undefined> = locateInLoginShell) { }
 
 	async status(): Promise<SnykStatus> {
-		const version = await this.run(this.command, ['--version'], undefined, 10_000);
+		const command = await this.cli();
+		const version = await this.run(command, ['--version'], undefined, 10_000);
 		if (version.code !== 0) {
-			return { installed: false, problem: 'The Snyk CLI isn\'t installed on this Mac. Install it with `brew install snyk-cli` or `npm install -g snyk`.' };
+			this.resolved = undefined;
+			return { installed: false, problem: 'GeminiCode can\'t find the Snyk CLI. Install it with `brew install snyk-cli` or `npm install -g snyk`, then try again.' };
 		}
 		const [endpoint, whoami] = await Promise.all([
-			this.run(this.command, ['config', 'get', 'endpoint'], undefined, 10_000),
-			this.run(this.command, ['whoami', '--experimental'], undefined, 15_000),
+			this.run(command, ['config', 'get', 'endpoint'], undefined, 10_000),
+			this.run(command, ['whoami', '--experimental'], undefined, 15_000),
 		]);
 		const host = endpoint.stdout.trim();
 		const result: SnykStatus = { installed: true, version: version.stdout.trim().split(/\s/)[0], ...host ? { endpoint: hostOnly(host) } : {} };
-		if (whoami.code !== 0) {
-			const text = `${whoami.stdout}\n${whoami.stderr}`;
-			return { ...result, problem: /auth|token|401/i.test(text) ? 'The Snyk CLI isn\'t signed in. Run `snyk auth` in a terminal.' : `Can't reach Snyk${host ? ` at ${hostOnly(host)}` : ''}. Check that your VPN is on.` };
+		if (whoami.code === 0) {
+			return { ...result, user: whoami.stdout.trim() };
 		}
-		return { ...result, user: whoami.stdout.trim() };
+		const text = `${whoami.stdout}\n${whoami.stderr}`;
+		if (/auth|token|401|unauthori[sz]ed|not logged/i.test(text)) {
+			return { ...result, problem: 'The Snyk CLI isn\'t signed in. Run `snyk auth` in a terminal.' };
+		}
+		if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ECONNRESET|network|timed? ?out|unable to connect/i.test(text)) {
+			return { ...result, problem: `Can't reach Snyk${host ? ` at ${hostOnly(host)}` : ''}. Check that your VPN is on.` };
+		}
+		// A CLI without `whoami`: installed, and tests will say if it can't sign in.
+		return result;
+	}
+
+	/** The CLI to run: `snyk` when the search path has it, else where the user's login shell finds it (nvm, Volta, asdf). */
+	private cli(): Promise<string> {
+		this.resolved ??= this.run(this.command, ['--version'], undefined, 10_000).then(async found => found.code === 0 ? this.command : await this.locate(this.command) ?? this.command);
+		return this.resolved;
 	}
 
 	async testDependencies(folder: string): Promise<SnykResult> {
-		const run = await this.run(this.command, ['test', '--json', '--all-projects'], folder, 5 * 60_000);
+		const run = await this.run(await this.cli(), ['test', '--json', '--all-projects'], folder, 5 * 60_000);
 		return parseSnykTest(run.stdout, run.code, run.stderr);
 	}
 
 	async testCode(folder: string): Promise<SnykResult> {
-		const run = await this.run(this.command, ['code', 'test', '--json'], folder, 10 * 60_000);
+		const run = await this.run(await this.cli(), ['code', 'test', '--json'], folder, 10 * 60_000);
 		return parseSnykCode(run.stdout, run.code, run.stderr, folder);
 	}
+}
+
+/**
+ * Where the user's login shell finds `command`: a GUI app's PATH lacks what
+ * .zshrc adds (nvm, Volta, asdf), so ask the shell once.
+ */
+export async function locateInLoginShell(command: string, run: Run = runProcess): Promise<string | undefined> {
+	if (process.platform === 'win32' || !/^[\w.-]+$/.test(command)) {
+		return undefined;
+	}
+	const shell = process.env.SHELL || '/bin/zsh';
+	const found = await run(shell, ['-ilc', `command -v ${command}`], undefined, 8_000);
+	return found.stdout.split('\n').map(line => line.trim()).reverse().find(line => path.isAbsolute(line));
 }
 
 function hostOnly(endpoint: string): string {

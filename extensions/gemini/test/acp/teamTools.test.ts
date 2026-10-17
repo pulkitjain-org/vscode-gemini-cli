@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { lastEvent, parseFigmaLink } from '../../src/acp/figma';
 import { GitLabClient, parseMrRef, projectPathFromRemote, stripAnsi } from '../../src/acp/gitlab';
 import { adfToText, formatDuration, JiraClient, jiraKeyIn, parseDuration, textToAdf } from '../../src/acp/jira';
-import { parseSnykCode, parseSnykTest } from '../../src/acp/snyk';
+import { locateInLoginShell, parseSnykCode, parseSnykTest, Run, SnykCli } from '../../src/acp/snyk';
 import { isReleaseBranch, releaseBranchForVersion, sortReleaseBranches } from '../../src/acp/teamDefaults';
 import { normalizeBaseUrl, teamRequest, TeamToolError } from '../../src/acp/teamHttp';
 import { teamReadTools, teamToolsFor, teamWriteTools } from '../../src/acp/teamTools';
@@ -163,6 +163,35 @@ describe('Snyk', () => {
 			['high', 'axios@1.6.0', 'fixed in axios 1.7.4'],
 			['medium', 'lodash@4.17.20', 'upgrade to lodash@4.17.21'],
 		]);
+	});
+
+	it('finds the CLI through the login shell when the app\'s PATH lacks it', async () => {
+		const calls: string[] = [];
+		const run: Run = async (file, args) => {
+			calls.push(`${file} ${args.join(' ')}`);
+			if (file === 'snyk') {
+				return { code: -1, stdout: '', stderr: 'spawn snyk ENOENT' };
+			}
+			if (file === '/Users/p/.nvm/versions/node/v22/bin/snyk') {
+				return args[0] === '--version' ? { code: 0, stdout: '1.1301.0\n', stderr: '' } : args[0] === 'config' ? { code: 0, stdout: 'https://snyk.acme.internal/api\n', stderr: '' } : { code: 0, stdout: 'pulkit\n', stderr: '' };
+			}
+			return { code: 1, stdout: '', stderr: '' };
+		};
+		const status = await new SnykCli('snyk', run, async () => '/Users/p/.nvm/versions/node/v22/bin/snyk').status();
+		expect(status).toEqual({ installed: true, version: '1.1301.0', endpoint: 'snyk.acme.internal', user: 'pulkit' });
+	});
+
+	it('tells signed-out from unreachable, and keeps a CLI without whoami', async () => {
+		const cli = (whoami: { code: number; stdout: string; stderr: string }) => new SnykCli('snyk', async (_f, args) => args[0] === 'whoami' ? whoami : { code: 0, stdout: args[0] === '--version' ? '1.1301.0' : '', stderr: '' }, async () => undefined);
+		expect((await cli({ code: 2, stdout: '', stderr: 'Authentication error (SNYK-0005) 401' }).status()).problem).toMatch(/snyk auth/);
+		expect((await cli({ code: 2, stdout: '', stderr: 'getaddrinfo ENOTFOUND snyk.acme.internal' }).status()).problem).toMatch(/VPN/);
+		expect((await cli({ code: 2, stdout: '', stderr: 'Unknown command "whoami"' }).status()).problem).toBeUndefined();
+	});
+
+	it('reads the login shell\'s answer', async () => {
+		const run: Run = async () => ({ code: 0, stdout: 'Welcome back\n/opt/tools/bin/snyk\n', stderr: '' });
+		expect(await locateInLoginShell('snyk', run)).toBe('/opt/tools/bin/snyk');
+		expect(await locateInLoginShell('snyk; rm -rf /', run)).toBeUndefined();
 	});
 
 	it('says plainly when it can\'t test', () => {

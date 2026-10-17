@@ -145,8 +145,13 @@ export class TeamConnections implements vscode.Disposable {
 			throw new TeamToolError('failed', tool === 'jira' ? vscode.l10n.t("Enter the Jira site, your email and an API token.") : vscode.l10n.t("Enter the server address and a token."));
 		}
 		const clients = clientsFor(tool, account, token);
+		const needsToken = tool === 'jira' || tool === 'gitlab' || tool === 'sonar';
+		if (!needsToken) {
+			// Turned on at once: the row shows the check, then what's missing (snyk auth, Figma not open).
+			this.setState(tool, { kind: 'checking' });
+		}
 		const state = await probe(tool, clients);
-		if (state.kind === 'auth' || state.kind === 'failed') {
+		if (needsToken && (state.kind === 'auth' || state.kind === 'failed')) {
 			throw new TeamToolError(state.kind === 'auth' ? 'auth' : 'failed', state.detail ?? vscode.l10n.t("{0} refused the token.", teamToolNames[tool]));
 		}
 		await this.context.globalState.update(accountKey(tool), account);
