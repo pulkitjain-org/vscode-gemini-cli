@@ -220,6 +220,38 @@ With `gemini.browser.keepSignIns` on, agents' pages keep cookies and storage bet
 
 Links to `localhost` from the terminal and chat also open in GeminiCode's browser. Turn the agent's browser off with `gemini.browser.enabled`; it stops at once for running agents, and turning it back on reaches each agent from its next new session; `gemini.browser.allowOtherSites` (also an admin policy) limits agents to local pages.
 
+## Team tools: Jira, GitLab, SonarQube, Snyk and Figma
+
+GeminiCode connects to your team's tools with your own account, so agents can read tickets, merge requests, CI logs, quality checks and designs, and you can run the whole cycle from a ticket to a merged merge request without leaving the app. Everything runs from your Mac, over your VPN; nothing goes through a GeminiCode or Google service except what an agent reads, which goes to Gemini as part of its prompt.
+
+**Connect.** Open **Connections** (Command Palette: **Gemini: Connections**, or the tools item in the status bar). Each tool shows who you're signed in as, the server and when the token expires.
+
+| Tool | How it connects | What you need |
+| --- | --- | --- |
+| Jira (Cloud) | REST API, your email and an API token | Create a token at id.atlassian.com (**Create Token** opens the page). |
+| GitLab | REST API v4, a personal access token | Scope `api` to open merge requests and comment (`read_api` can only read). **Create Token** opens GitLab's page with the name and scope filled in. VPN on. |
+| SonarQube | Web API, a user token | VPN on. |
+| Snyk | Your Snyk CLI | `snyk` installed, `snyk config set endpoint=<your Snyk>` and `snyk auth` once. VPN on. |
+| Figma | The Figma desktop app's Dev Mode MCP server | A Dev or Full seat; turn on the Dev Mode MCP server in Figma's preferences. |
+
+Tokens go to the macOS keychain only, never to settings files or an agent's environment, and each is checked as you paste it. When a VPN-only tool doesn't answer, GeminiCode says "Can't reach … Check that your VPN is on" instead of waiting; the rest keep working.
+
+**Team defaults.** A checked-in `.gemini/geminicode-tools.json` saves everyone typing addresses. It never holds tokens:
+
+```json
+{
+  "jira": { "site": "https://acme.atlassian.net", "projects": ["ACME"] },
+  "gitlab": { "url": "https://gitlab.acme.internal", "releaseBranches": "release/*", "defaultTarget": "develop" },
+  "sonar": { "url": "https://sonar.acme.internal", "projectKey": "acme-checkout" }
+}
+```
+
+`jira.projects` lets lower-case branch names such as `acme-412-gift` count as tickets; `gitlab.releaseBranches` is the pattern of your release branches; `sonar.projectKey` can also come from the repository's `sonar-project.properties`. `jira.commentVisibility` (a project role, such as `Developers`) limits who sees comments agents add.
+
+**What agents get.** Every agent session gets a `geminicode-tools` MCP server with tools only for the tools you connected: `jira_get_issue`, `jira_search`, `jira_comment`, `jira_transition`, `gitlab_get_mr`, `gitlab_list_mrs`, `gitlab_job_log`, `gitlab_get_issue`, `gitlab_create_mr`, `gitlab_reply`, `sonar_quality_gate`, `sonar_issues`, `snyk_test`, `snyk_code_test`, `figma_design` and `figma_screenshot`. Reading runs without asking. A Jira comment or status change, a new merge request and a comment on one always show you a permission card with the exact text first.
+
+**Config to change.** If your team's `.gemini/settings.json` has an `mcp.allowed` list, add `geminicode-tools` to it (Connections offers to). Remove the old `jira` and `gitlab` entries from `mcp.allowed` and `mcpServers` yourself once you've connected; until then agents see two sets of Jira and GitLab tools. The terminal `gemini` doesn't get the new tools.
+
 ## Review my changes
 
 **Review My Changes**, in the Source Control title bar and the Agents pane's **...** menu, starts an agent in Plan mode with your uncommitted diff attached and new files listed. It reads the code around the changes and replies with a summary and its findings, most serious first, without editing anything. Ask it to fix one when you agree.
