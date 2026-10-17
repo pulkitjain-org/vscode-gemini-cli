@@ -8,7 +8,7 @@ import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { lastEvent, parseFigmaLink } from '../../src/acp/figma';
 import { GitLabClient, parseMrRef, projectPathFromRemote, stripAnsi } from '../../src/acp/gitlab';
-import { adfToText, JiraClient, jiraKeyIn, textToAdf } from '../../src/acp/jira';
+import { adfToText, formatDuration, JiraClient, jiraKeyIn, parseDuration, textToAdf } from '../../src/acp/jira';
 import { parseSnykCode, parseSnykTest } from '../../src/acp/snyk';
 import { isReleaseBranch, releaseBranchForVersion, sortReleaseBranches } from '../../src/acp/teamDefaults';
 import { normalizeBaseUrl, teamRequest, TeamToolError } from '../../src/acp/teamHttp';
@@ -87,6 +87,21 @@ describe('Jira', () => {
 		expect(jiraKeyIn('feature/acme-412-gift', ['ACME'])).toBe('ACME-412');
 		expect(jiraKeyIn('release-2026')).toBeUndefined();
 		expect(jiraKeyIn('release/2026.11', ['ACME'])).toBeUndefined();
+	});
+
+	it('reads and writes Jira durations', () => {
+		expect(parseDuration('1h 30m')).toBe(5400);
+		expect(parseDuration('2d')).toBe(57600);
+		expect(parseDuration('1.5h')).toBe(5400);
+		expect(parseDuration('soon')).toBe(0);
+		expect(formatDuration(5400)).toBe('1h 30m');
+	});
+
+	it('logs time with a comment', async () => {
+		const { url, requests } = await serve(() => ({ status: 201, body: {} }));
+		await new JiraClient({ site: url, email: 'me@acme.com', token: 't' }).logWork('ACME-1', '1h 15m', 'Review fixes', new Date('2026-10-17T09:00:00Z'));
+		expect(requests[0].url).toBe('/rest/api/3/issue/ACME-1/worklog?adjustEstimate=auto');
+		expect(JSON.parse(requests[0].body)).toMatchObject({ timeSpentSeconds: 4500, started: '2026-10-17T09:00:00.000+0000', comment: { type: 'doc' } });
 	});
 
 	it('moves a ticket with the field and comment its transition asks for', async () => {
@@ -192,12 +207,12 @@ describe('geminicode-tools server', () => {
 		const config = server.configFor('a1')!;
 		const rpc = (token: string) => fetch(config.url, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: token }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
 		const listed = await (await rpc(config.headers[0].value)).json() as { result: { tools: { name: string }[] } };
-		expect(listed.result.tools.map(t => t.name)).toEqual(['jira_get_issue', 'jira_search', 'jira_comment', 'jira_transition']);
+		expect(listed.result.tools.map(t => t.name)).toEqual(['jira_get_issue', 'jira_search', 'jira_comment', 'jira_transition', 'jira_log_time']);
 		expect((await rpc(server.configFor('a2')!.headers[0].value)).status).toBe(401);
 	});
 
 	it('keeps writes apart from reads', () => {
-		expect(teamWriteTools.map(t => t.name)).toEqual(['jira_comment', 'jira_transition', 'gitlab_create_mr', 'gitlab_reply']);
+		expect(teamWriteTools.map(t => t.name)).toEqual(['jira_comment', 'jira_transition', 'jira_log_time', 'gitlab_create_mr', 'gitlab_reply']);
 		expect(teamReadTools).toHaveLength(12);
 		expect(teamToolsFor(new Set())).toEqual([]);
 	});

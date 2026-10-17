@@ -84,6 +84,15 @@ export const teamTools: readonly TeamTool[] = [
 		},
 	},
 	{
+		tool: 'jira', name: 'jira_log_time', write: true,
+		description: 'Logs time the user spent on a Jira ticket. Only when the user asks; they approve it first.',
+		inputSchema: {
+			type: 'object',
+			properties: { key: text, spent: { ...text, description: 'Time spent, such as 1h 30m or 45m.' }, comment: { ...text, description: 'What the time was spent on.' } },
+			required: ['key', 'spent'],
+		},
+	},
+	{
 		tool: 'gitlab', name: 'gitlab_get_mr',
 		description: 'Reads a GitLab merge request: state, pipeline with failed jobs, approvals, open review threads (with their discussion ids) and the diff.',
 		inputSchema: { type: 'object', properties: { mr: mrParam, diff: { type: 'boolean', description: 'Include the diff (default true).' } } },
@@ -257,6 +266,9 @@ async function jiraCall(jira: JiraClient, name: string, args: Record<string, unk
 		case 'jira_comment':
 			await jira.comment(key ?? '', arg(args, 'text') ?? '', defaults.jira?.commentVisibility);
 			return ok(`Commented on ${key}.`);
+		case 'jira_log_time':
+			await jira.logWork(key ?? '', arg(args, 'spent') ?? '', arg(args, 'comment'));
+			return ok(`Logged ${arg(args, 'spent')} on ${key}.`);
 		case 'jira_transition': {
 			const to = arg(args, 'to');
 			if (!to) {

@@ -217,6 +217,31 @@ export class JiraClient {
 		});
 	}
 
+	/**
+	 * Logs time on a ticket: `spent` in Jira's format ("1h 30m", "2d"),
+	 * `started` an ISO time (now by default), with an optional comment.
+	 */
+	async logWork(key: string, spent: string, comment?: string, started: Date = new Date()): Promise<void> {
+		const seconds = parseDuration(spent);
+		if (!seconds) {
+			throw new Error(`"${spent}" isn't a time Jira understands. Use hours and minutes, such as 1h 30m.`);
+		}
+		await this.request(`/rest/api/3/issue/${encodeURIComponent(key)}/worklog?adjustEstimate=auto`, {
+			method: 'POST',
+			body: { timeSpentSeconds: seconds, started: jiraTime(started), ...comment?.trim() ? { comment: textToAdf(comment) } : {} },
+		});
+	}
+
+	/** The time logged on a ticket in total, and by the user, in seconds. */
+	async worklogTotals(key: string, accountId?: string): Promise<{ total: number; mine: number }> {
+		const result = await this.request<{ worklogs?: { timeSpentSeconds?: number; author?: { accountId?: string } }[] }>(`/rest/api/3/issue/${encodeURIComponent(key)}/worklog?maxResults=1000`);
+		const logs = result?.worklogs ?? [];
+		return {
+			total: logs.reduce((sum, w) => sum + (w.timeSpentSeconds ?? 0), 0),
+			mine: logs.filter(w => accountId && w.author?.accountId === accountId).reduce((sum, w) => sum + (w.timeSpentSeconds ?? 0), 0),
+		};
+	}
+
 	private findSprintField(): Promise<string | undefined> {
 		this.sprintField ??= this.request<{ id: string; schema?: { custom?: string } }[]>('/rest/api/3/field').then(
 			fields => fields.find(f => f.schema?.custom === 'com.pyxis.greenhopper.jira:gh-sprint')?.id,
@@ -353,4 +378,30 @@ export function textToAdf(text: string): unknown {
 /** The http(s) links in `text`, once each. */
 export function linksIn(text: string): string[] {
 	return [...new Set(text.match(/https?:\/\/[^\s)<>"'\]]+/g) ?? [])];
+}
+
+/** Seconds in a Jira duration such as "1h 30m", "2d", "45m" or "1.5h"; 0 when it isn't one. Jira's day is 8h and week 5d. */
+export function parseDuration(text: string): number {
+	const units: Record<string, number> = { w: 5 * 8 * 3600, d: 8 * 3600, h: 3600, m: 60 };
+	const trimmed = text.trim().toLowerCase();
+	if (!/^(\d+(\.\d+)?\s*[wdhm]\s*)+$/.test(trimmed)) {
+		return 0;
+	}
+	let seconds = 0;
+	for (const match of trimmed.matchAll(/(\d+(?:\.\d+)?)\s*([wdhm])/g)) {
+		seconds += Number(match[1]) * units[match[2]];
+	}
+	return Math.round(seconds);
+}
+
+/** "1h 30m" from seconds, as Jira writes it. */
+export function formatDuration(seconds: number): string {
+	const h = Math.floor(seconds / 3600);
+	const m = Math.round((seconds % 3600) / 60);
+	return [h ? `${h}h` : '', m ? `${m}m` : ''].filter(Boolean).join(' ') || '0m';
+}
+
+/** Jira's time format: 2026-10-17T14:05:00.000+0000. */
+function jiraTime(date: Date): string {
+	return date.toISOString().replace('Z', '+0000');
 }
