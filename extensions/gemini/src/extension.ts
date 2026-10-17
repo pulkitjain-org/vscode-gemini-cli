@@ -30,6 +30,7 @@ import { UsageMeter } from './host/usageMeter';
 import { initTeamCommands } from './host/teamCommands';
 import { KeepAwake } from './acp/keepAwake';
 import { BrowserTools } from './host/browserTools';
+import { TeamConnections } from './host/teamConnections';
 import { WorkspaceFileIndex } from './host/workspaceFiles';
 import { disposeGitIgnore } from './host/workspaceFileSystem';
 
@@ -102,6 +103,8 @@ export function activate(context: vscode.ExtensionContext): void {
 		send: (agent, text, attachments) => void agentsView.controllerOf(agent)?.send(text, attachments),
 	});
 	agentsView.browser = browserTools;
+	const teamTools = new TeamConnections(context, String(context.extension.packageJSON.version ?? ''), log);
+	agentsView.teamTools = teamTools;
 	// caffeinate watches this process, so it ends with GeminiCode even if GeminiCode crashes.
 	const keepAwake = new KeepAwake({ platform: process.platform, pid: process.pid, log: message => log.info(message) });
 	const readKeepAwake = () => keepAwake.setEnabled(vscode.workspace.getConfiguration(configSection).get<boolean>('keepAwake', true));
@@ -131,6 +134,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		new AppUpdateNotice(context.globalState, log),
 		keepAwake,
 		browserTools,
+		teamTools,
 		service.runtime.onDidBecomeBusy(() => keepAwake.setBusy(true)),
 		service.runtime.onDidBecomeIdle(() => keepAwake.setBusy(false)),
 		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.keepAwake`) && readKeepAwake()),

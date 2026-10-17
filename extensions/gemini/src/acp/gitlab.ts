@@ -1,0 +1,499 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) pulkitjain-org and contributors. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+// GitLab (self-managed, over the VPN) through REST API v4 with the user's
+// personal access token (`api` scope). Answers are trimmed to what a panel or
+// the model needs: an MR's state, pipeline, approvals and open threads, a
+// failed job's log tail.
+
+import { clip, Fetch, normalizeBaseUrl, teamRequest } from './teamHttp';
+
+export interface GitLabAuth {
+	readonly url: string;
+	readonly token: string;
+}
+
+export interface GitLabUser {
+	readonly id: number;
+	readonly username: string;
+	readonly name: string;
+}
+
+export interface GitLabTokenInfo {
+	readonly name?: string;
+	readonly scopes: readonly string[];
+	readonly expiresAt?: string;
+}
+
+export type PipelineState = 'success' | 'failed' | 'running' | 'pending' | 'canceled' | 'skipped' | 'manual' | 'created' | 'none';
+
+export interface GitLabMrSummary {
+	readonly projectId: number;
+	/** `group/repo` */
+	readonly project: string;
+	readonly iid: number;
+	readonly title: string;
+	readonly author: string;
+	readonly sourceBranch: string;
+	readonly targetBranch: string;
+	readonly draft: boolean;
+	readonly url: string;
+	readonly updatedAt: string;
+	/** GitLab's `detailed_merge_status`, such as mergeable, ci_still_running, conflict. */
+	readonly mergeStatus?: string;
+	readonly reviewers: readonly string[];
+}
+
+export interface GitLabMr extends GitLabMrSummary {
+	readonly description: string;
+	readonly state: string;
+	readonly pipeline?: { readonly id: number; readonly status: PipelineState; readonly url?: string };
+	readonly approvals?: { readonly given: number; readonly required: number; readonly approvedByMe: boolean };
+	readonly diffRefs?: { readonly baseSha: string; readonly headSha: string; readonly startSha: string };
+	readonly changes?: string;
+}
+
+export interface GitLabNote {
+	readonly id: number;
+	readonly author: string;
+	readonly body: string;
+	readonly createdAt: string;
+	readonly path?: string;
+	readonly line?: number;
+}
+
+export interface GitLabDiscussion {
+	readonly id: string;
+	readonly resolved: boolean;
+	readonly notes: readonly GitLabNote[];
+}
+
+export interface GitLabJob {
+	readonly id: number;
+	readonly name: string;
+	readonly stage: string;
+	readonly status: string;
+	readonly url: string;
+}
+
+export interface GitLabDiffFile {
+	readonly oldPath: string;
+	readonly newPath: string;
+	readonly diff: string;
+	readonly newFile: boolean;
+	readonly deletedFile: boolean;
+}
+
+export interface GitLabBranch {
+	readonly name: string;
+	readonly commitDate?: string;
+	readonly protected: boolean;
+}
+
+export interface NewMergeRequest {
+	readonly sourceBranch: string;
+	readonly targetBranch: string;
+	readonly title: string;
+	readonly description: string;
+	readonly draft?: boolean;
+	readonly removeSourceBranch?: boolean;
+	readonly reviewerIds?: readonly number[];
+	readonly squash?: boolean;
+}
+
+/** A project's path from a git remote on the GitLab host: `git@host:group/repo.git`, `https://host/group/repo`. */
+export function projectPathFromRemote(remote: string, gitlabUrl: string): string | undefined {
+	const host = (() => {
+		try {
+			return new URL(normalizeBaseUrl(gitlabUrl)).hostname.toLowerCase();
+		} catch {
+			return '';
+		}
+	})();
+	const trimmed = remote.trim();
+	let remoteHost: string | undefined;
+	let path: string | undefined;
+	const scp = /^(?:[\w.-]+@)?([\w.-]+):(?!\/\/)(.+)$/.exec(trimmed);
+	if (scp && !/^[a-z]+:\/\//i.test(trimmed)) {
+		remoteHost = scp[1];
+		path = scp[2];
+	} else {
+		try {
+			const url = new URL(trimmed);
+			remoteHost = url.hostname;
+			path = url.pathname;
+		} catch {
+			return undefined;
+		}
+	}
+	if (!remoteHost || remoteHost.toLowerCase() !== host) {
+		return undefined;
+	}
+	const project = path.replace(/^\/+/, '').replace(/\.git$/, '').replace(/\/+$/, '');
+	return project.includes('/') ? project : undefined;
+}
+
+/** The project and iid of an MR link such as `https://host/group/repo/-/merge_requests/12`, or `!12` with a default project. */
+export function parseMrRef(ref: string): { readonly project?: string; readonly iid: number } | undefined {
+	const link = /\/(.+?)\/-\/merge_requests\/(\d+)/.exec(ref);
+	if (link) {
+		try {
+			return { project: decodeURIComponent(new URL(ref).pathname.replace(/\/-\/merge_requests\/.*$/, '').replace(/^\//, '')), iid: Number(link[2]) };
+		} catch {
+			return { project: link[1].replace(/^https?:\/\/[^/]+\//, ''), iid: Number(link[2]) };
+		}
+	}
+	const bang = /^\s*!?(\d+)\s*$/.exec(ref);
+	return bang ? { iid: Number(bang[1]) } : undefined;
+}
+
+export class GitLabClient {
+
+	readonly url: string;
+	private me: Promise<GitLabUser> | undefined;
+	private readonly projectIds = new Map<string, Promise<number>>();
+
+	constructor(private readonly auth: GitLabAuth, private readonly fetcher: Fetch = fetch) {
+		this.url = normalizeBaseUrl(auth.url);
+	}
+
+	private request<T>(path: string, init: Parameters<typeof teamRequest>[2] = {}): Promise<T> {
+		return teamRequest<T>('gitlab', `${this.url}/api/v4${path}`, { ...init, headers: { 'PRIVATE-TOKEN': this.auth.token, ...init.headers } }, this.fetcher);
+	}
+
+	user(): Promise<GitLabUser> {
+		this.me ??= this.request<GitLabUser>('/user').then(u => ({ id: u.id, username: u.username, name: u.name }), err => {
+			this.me = undefined;
+			throw err;
+		});
+		return this.me;
+	}
+
+	async version(): Promise<string | undefined> {
+		return (await this.request<{ version?: string }>('/version'))?.version;
+	}
+
+	async token(): Promise<GitLabTokenInfo | undefined> {
+		try {
+			const t = await this.request<{ name?: string; scopes?: string[]; expires_at?: string | null }>('/personal_access_tokens/self');
+			return { name: t.name, scopes: t.scopes ?? [], expiresAt: t.expires_at ?? undefined };
+		} catch {
+			return undefined;
+		}
+	}
+
+	/** The numeric id of `project` (`group/repo`, or an id). */
+	projectId(project: string | number): Promise<number> {
+		if (typeof project === 'number' || /^\d+$/.test(project)) {
+			return Promise.resolve(Number(project));
+		}
+		let id = this.projectIds.get(project);
+		if (!id) {
+			id = this.request<{ id: number }>(`/projects/${encodeURIComponent(project)}`).then(p => p.id);
+			id.catch(() => this.projectIds.delete(project));
+			this.projectIds.set(project, id);
+		}
+		return id;
+	}
+
+	mrUrl(project: string, iid: number): string {
+		return `${this.url}/${project}/-/merge_requests/${iid}`;
+	}
+
+	/** Open MRs where the user is a reviewer. */
+	async reviewRequests(): Promise<GitLabMrSummary[]> {
+		const me = await this.user();
+		const list = await this.request<RawMr[]>(`/merge_requests?scope=all&state=opened&reviewer_id=${me.id}&per_page=20&order_by=updated_at`);
+		return list.map(mrSummary);
+	}
+
+	/** The user's own open MRs. */
+	async myMergeRequests(): Promise<GitLabMrSummary[]> {
+		const list = await this.request<RawMr[]>('/merge_requests?scope=created_by_me&state=opened&per_page=20&order_by=updated_at');
+		return list.map(mrSummary);
+	}
+
+	/** The open MR from `branch` in `project`, if any. */
+	async mrForBranch(project: string | number, branch: string): Promise<GitLabMrSummary | undefined> {
+		const id = await this.projectId(project);
+		const list = await this.request<RawMr[]>(`/projects/${id}/merge_requests?state=opened&source_branch=${encodeURIComponent(branch)}&per_page=1`);
+		return list[0] && mrSummary(list[0]);
+	}
+
+	async mr(project: string | number, iid: number, withApprovals = true): Promise<GitLabMr> {
+		const id = await this.projectId(project);
+		const [raw, approvals, me] = await Promise.all([
+			this.request<RawMr>(`/projects/${id}/merge_requests/${iid}`),
+			withApprovals ? this.request<{ approved_by?: { user?: { id: number } }[]; approvals_required?: number; approvals_left?: number }>(`/projects/${id}/merge_requests/${iid}/approvals`).catch(() => undefined) : undefined,
+			this.user(),
+		]);
+		const given = approvals?.approved_by?.length ?? 0;
+		return {
+			...mrSummary(raw),
+			description: raw.description ?? '',
+			state: raw.state ?? 'opened',
+			...raw.head_pipeline ? { pipeline: { id: raw.head_pipeline.id, status: pipelineState(raw.head_pipeline.status), url: raw.head_pipeline.web_url } } : {},
+			...approvals ? { approvals: { given, required: approvals.approvals_required ?? given + (approvals.approvals_left ?? 0), approvedByMe: !!approvals.approved_by?.some(a => a.user?.id === me.id) } } : {},
+			...raw.diff_refs ? { diffRefs: { baseSha: raw.diff_refs.base_sha, headSha: raw.diff_refs.head_sha, startSha: raw.diff_refs.start_sha } } : {},
+			...raw.changes_count ? { changes: String(raw.changes_count) } : {},
+		};
+	}
+
+	async diffs(project: string | number, iid: number): Promise<GitLabDiffFile[]> {
+		const id = await this.projectId(project);
+		const files = await this.request<{ old_path: string; new_path: string; diff: string; new_file: boolean; deleted_file: boolean }[]>(`/projects/${id}/merge_requests/${iid}/diffs?per_page=100`);
+		return files.map(f => ({ oldPath: f.old_path, newPath: f.new_path, diff: f.diff, newFile: f.new_file, deletedFile: f.deleted_file }));
+	}
+
+	/** The MR's threads that people wrote (not system notes), oldest first. */
+	async discussions(project: string | number, iid: number): Promise<GitLabDiscussion[]> {
+		const id = await this.projectId(project);
+		const raw = await this.request<RawDiscussion[]>(`/projects/${id}/merge_requests/${iid}/discussions?per_page=100`);
+		return raw.flatMap(d => {
+			const notes = (d.notes ?? []).filter(n => !n.system);
+			if (!notes.length) {
+				return [];
+			}
+			return [{
+				id: d.id,
+				resolved: notes.every(n => !n.resolvable || n.resolved),
+				notes: notes.map(n => ({
+					id: n.id,
+					author: n.author?.username ?? '',
+					body: n.body ?? '',
+					createdAt: n.created_at ?? '',
+					...n.position?.new_path ? { path: n.position.new_path } : {},
+					...n.position?.new_line ? { line: n.position.new_line } : {},
+				})),
+			}];
+		});
+	}
+
+	async jobs(project: string | number, pipeline: number, failedOnly = false): Promise<GitLabJob[]> {
+		const id = await this.projectId(project);
+		const jobs = await this.request<{ id: number; name: string; stage: string; status: string; web_url: string }[]>(`/projects/${id}/pipelines/${pipeline}/jobs?per_page=100${failedOnly ? '&scope[]=failed' : ''}`);
+		return jobs.map(j => ({ id: j.id, name: j.name, stage: j.stage, status: j.status, url: j.web_url }));
+	}
+
+	/** The end of a job's log, where the failure usually is, without terminal colour codes. */
+	async jobLogTail(project: string | number, job: number, maxChars = 12_000): Promise<string> {
+		const id = await this.projectId(project);
+		const log = await this.request<string>(`/projects/${id}/jobs/${job}/trace`, { text: true, timeoutMs: 15_000 });
+		const clean = stripAnsi(log ?? '');
+		return clean.length > maxChars ? `… (${clean.length - maxChars} earlier characters cut)\n${clean.slice(-maxChars)}` : clean;
+	}
+
+	async issue(project: string | number, iid: number): Promise<{ title: string; description: string; state: string; url: string; labels: readonly string[] }> {
+		const id = await this.projectId(project);
+		const i = await this.request<{ title: string; description?: string; state: string; web_url: string; labels?: string[] }>(`/projects/${id}/issues/${iid}`);
+		return { title: i.title, description: i.description ?? '', state: i.state, url: i.web_url, labels: i.labels ?? [] };
+	}
+
+	async branches(project: string | number, search = ''): Promise<GitLabBranch[]> {
+		const id = await this.projectId(project);
+		const list = await this.request<{ name: string; protected?: boolean; commit?: { committed_date?: string } }[]>(`/projects/${id}/repository/branches?per_page=100${search ? `&search=${encodeURIComponent(search)}` : ''}`);
+		return list.map(b => ({ name: b.name, protected: !!b.protected, commitDate: b.commit?.committed_date }));
+	}
+
+	/** How many commits `from` has that `to` doesn't. */
+	async commitsAhead(project: string | number, from: string, to: string): Promise<number> {
+		const id = await this.projectId(project);
+		const compare = await this.request<{ commits?: unknown[] }>(`/projects/${id}/repository/compare?from=${encodeURIComponent(to)}&to=${encodeURIComponent(from)}&straight=false`);
+		return compare.commits?.length ?? 0;
+	}
+
+	async members(project: string | number, query = ''): Promise<GitLabUser[]> {
+		const id = await this.projectId(project);
+		const list = await this.request<{ id: number; username: string; name: string; state?: string }[]>(`/projects/${id}/members/all?per_page=50${query ? `&query=${encodeURIComponent(query)}` : ''}`);
+		const me = await this.user().catch(() => undefined);
+		return list.filter(u => u.state !== 'blocked' && u.id !== me?.id && !/bot$/i.test(u.username)).map(u => ({ id: u.id, username: u.username, name: u.name }));
+	}
+
+	async createMergeRequest(project: string | number, mr: NewMergeRequest): Promise<GitLabMrSummary> {
+		const id = await this.projectId(project);
+		const title = mr.draft && !/^draft:/i.test(mr.title) ? `Draft: ${mr.title}` : mr.title;
+		const raw = await this.request<RawMr>(`/projects/${id}/merge_requests`, {
+			method: 'POST',
+			body: {
+				source_branch: mr.sourceBranch,
+				target_branch: mr.targetBranch,
+				title,
+				description: mr.description,
+				remove_source_branch: mr.removeSourceBranch ?? true,
+				...mr.reviewerIds?.length ? { reviewer_ids: mr.reviewerIds } : {},
+				...mr.squash !== undefined ? { squash: mr.squash } : {},
+			},
+		});
+		return mrSummary(raw);
+	}
+
+	/** Uploads a file to the project and returns the Markdown that shows it. */
+	async upload(project: string | number, name: string, data: Uint8Array, type = 'application/octet-stream'): Promise<string> {
+		const id = await this.projectId(project);
+		const form = new FormData();
+		form.append('file', new Blob([data], { type }), name);
+		const result = await this.request<{ markdown: string }>(`/projects/${id}/uploads`, { method: 'POST', body: form, timeoutMs: 60_000 });
+		return result.markdown;
+	}
+
+	async comment(project: string | number, iid: number, body: string): Promise<void> {
+		const id = await this.projectId(project);
+		await this.request(`/projects/${id}/merge_requests/${iid}/notes`, { method: 'POST', body: { body } });
+	}
+
+	async replyToDiscussion(project: string | number, iid: number, discussion: string, body: string): Promise<void> {
+		const id = await this.projectId(project);
+		await this.request(`/projects/${id}/merge_requests/${iid}/discussions/${encodeURIComponent(discussion)}/notes`, { method: 'POST', body: { body } });
+	}
+
+	async resolveDiscussion(project: string | number, iid: number, discussion: string, resolved = true): Promise<void> {
+		const id = await this.projectId(project);
+		await this.request(`/projects/${id}/merge_requests/${iid}/discussions/${encodeURIComponent(discussion)}?resolved=${resolved}`, { method: 'PUT' });
+	}
+
+	/** A comment on a line of the MR's new version; a general comment when the line isn't in the diff. */
+	async commentOnLine(project: string | number, iid: number, path: string, line: number, body: string): Promise<'line' | 'general'> {
+		const id = await this.projectId(project);
+		const mr = await this.mr(id, iid, false);
+		if (mr.diffRefs) {
+			try {
+				await this.request(`/projects/${id}/merge_requests/${iid}/discussions`, {
+					method: 'POST',
+					body: {
+						body,
+						position: { position_type: 'text', base_sha: mr.diffRefs.baseSha, start_sha: mr.diffRefs.startSha, head_sha: mr.diffRefs.headSha, new_path: path, old_path: path, new_line: line },
+					},
+				});
+				return 'line';
+			} catch {
+				// The line isn't part of the diff; fall through to a general comment that names it.
+			}
+		}
+		await this.comment(id, iid, `**${path}:${line}**\n\n${body}`);
+		return 'general';
+	}
+
+	async approve(project: string | number, iid: number): Promise<void> {
+		const id = await this.projectId(project);
+		await this.request(`/projects/${id}/merge_requests/${iid}/approve`, { method: 'POST' });
+	}
+
+	/**
+	 * Requests changes: GitLab 17.2 and later record it as the reviewer's
+	 * state; older ones get the user's approval withdrawn and a note.
+	 */
+	async requestChanges(project: string | number, iid: number, summary: string): Promise<void> {
+		const id = await this.projectId(project);
+		const me = await this.user();
+		await this.request(`/projects/${id}/merge_requests/${iid}/unapprove`, { method: 'POST' }).catch(() => undefined);
+		try {
+			await this.request(`/projects/${id}/merge_requests/${iid}/reviewers/${me.id}`, { method: 'PUT', body: { state: 'requested_changes' } });
+		} catch {
+			// Not supported here; the note below says it.
+		}
+		await this.comment(id, iid, summary.trim() || 'Requesting changes, see the comments above.');
+	}
+}
+
+interface RawMr {
+	readonly iid: number;
+	readonly project_id: number;
+	readonly title: string;
+	readonly description?: string;
+	readonly state?: string;
+	readonly draft?: boolean;
+	readonly work_in_progress?: boolean;
+	readonly web_url: string;
+	readonly source_branch: string;
+	readonly target_branch: string;
+	readonly author?: { readonly username?: string };
+	readonly reviewers?: readonly { readonly username?: string }[];
+	readonly updated_at?: string;
+	readonly detailed_merge_status?: string;
+	readonly references?: { readonly full?: string };
+	readonly head_pipeline?: { readonly id: number; readonly status: string; readonly web_url?: string };
+	readonly diff_refs?: { readonly base_sha: string; readonly head_sha: string; readonly start_sha: string };
+	readonly changes_count?: string;
+}
+
+interface RawDiscussion {
+	readonly id: string;
+	readonly notes?: readonly {
+		readonly id: number;
+		readonly body?: string;
+		readonly system?: boolean;
+		readonly resolvable?: boolean;
+		readonly resolved?: boolean;
+		readonly created_at?: string;
+		readonly author?: { readonly username?: string };
+		readonly position?: { readonly new_path?: string; readonly new_line?: number };
+	}[];
+}
+
+function mrSummary(raw: RawMr): GitLabMrSummary {
+	const project = raw.references?.full?.replace(/!\d+$/, '') ?? raw.web_url.replace(/^https?:\/\/[^/]+\//, '').replace(/\/-\/merge_requests\/.*$/, '');
+	return {
+		projectId: raw.project_id,
+		project,
+		iid: raw.iid,
+		title: raw.title,
+		author: raw.author?.username ?? '',
+		sourceBranch: raw.source_branch,
+		targetBranch: raw.target_branch,
+		draft: !!(raw.draft ?? raw.work_in_progress),
+		url: raw.web_url,
+		updatedAt: raw.updated_at ?? '',
+		...raw.detailed_merge_status ? { mergeStatus: raw.detailed_merge_status } : {},
+		reviewers: (raw.reviewers ?? []).flatMap(r => r.username ? [r.username] : []),
+	};
+}
+
+function pipelineState(status: string): PipelineState {
+	return (['success', 'failed', 'running', 'pending', 'canceled', 'skipped', 'manual', 'created'] as const).find(s => s === status) ?? (status === 'waiting_for_resource' || status === 'preparing' || status === 'scheduled' ? 'pending' : 'none');
+}
+
+export function stripAnsi(text: string): string {
+	return text.replace(/\u001b\[[0-9;]*[A-Za-z]|\u001b\]8;;[^\u0007]*\u0007|section_(start|end):\d+:[\w.-]+\r?\u001b\[0K/g, '').replace(/\r(?!\n)/g, '\n');
+}
+
+/** An MR as text for the model: state, pipeline, approvals, open threads and the diff, cut to size. */
+export function describeMr(mr: GitLabMr, discussions: readonly GitLabDiscussion[], diffs: readonly GitLabDiffFile[], failedJobs: readonly GitLabJob[] = []): string {
+	const lines = [
+		`!${mr.iid} ${mr.title} (${mr.url})`,
+		`${mr.sourceBranch} → ${mr.targetBranch} · by ${mr.author}${mr.draft ? ' · draft' : ''} · ${mr.state}${mr.mergeStatus ? ` · ${mr.mergeStatus}` : ''}`,
+		mr.pipeline ? `Pipeline: ${mr.pipeline.status}${failedJobs.length ? ` (failed: ${failedJobs.map(j => `${j.name} [job ${j.id}]`).join(', ')})` : ''}` : 'Pipeline: none',
+		...mr.approvals ? [`Approvals: ${mr.approvals.given} of ${mr.approvals.required}`] : [],
+		...mr.reviewers.length ? [`Reviewers: ${mr.reviewers.join(', ')}`] : [],
+		'',
+		'Description:',
+		clip(mr.description.trim() || '(none)', 4000),
+	];
+	const open = discussions.filter(d => !d.resolved);
+	if (open.length) {
+		lines.push('', `Open threads (${open.length}):`);
+		for (const d of open.slice(0, 20)) {
+			const first = d.notes[0];
+			lines.push(`- [discussion ${d.id}]${first.path ? ` ${first.path}${first.line ? `:${first.line}` : ''}` : ''}`);
+			for (const note of d.notes) {
+				lines.push(`  ${note.author}: ${clip(note.body.trim(), 800).replace(/\n/g, '\n  ')}`);
+			}
+		}
+	}
+	if (diffs.length) {
+		lines.push('', `Changed files (${diffs.length}):`);
+		let budget = 30_000;
+		for (const file of diffs) {
+			const header = `--- ${file.newFile ? '(new) ' : file.deletedFile ? '(deleted) ' : ''}${file.newPath}`;
+			if (budget <= 0) {
+				lines.push(header);
+				continue;
+			}
+			const body = clip(file.diff, Math.min(budget, 6000));
+			budget -= body.length;
+			lines.push(header, body);
+		}
+	}
+	return lines.join('\n');
+}

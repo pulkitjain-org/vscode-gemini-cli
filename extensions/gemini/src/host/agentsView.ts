@@ -34,6 +34,7 @@ import { ChangesSource, ChangesView } from './changesView';
 import type { AgentStateKind, HomeMode } from './panelProtocol';
 import { ReviewController } from './reviewController';
 import type { BrowserTools } from './browserTools';
+import type { TeamConnections } from './teamConnections';
 import { ChatActivity, ChatController, ChatEnhancer, FileSearch, openChatAsMarkdown } from './chatController';
 import { configSection, getApprovalPolicy } from './configuration';
 import { formatBytes, relativeTime, tildify } from './displayText';
@@ -202,6 +203,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	private readonly refreshRows = new Set<string>();
 	/** Each agent's page in the GeminiCode browser; set once the extension has made it. */
 	browser: BrowserTools | undefined;
+	/** The team's tools (Jira, GitLab, SonarQube, Snyk, Figma), for every agent's session; set by activate. */
+	teamTools: TeamConnections | undefined;
 	/** Today's quota, for the chats' usage popover. */
 	usage: UsageMeter | undefined;
 	/** One direct request to the quick model, for drafting a project's memory; set once the extension has made it. */
@@ -632,7 +635,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			if (runtime.spareKey === key) {
 				return;
 			}
-			runtime.prepareSession(folder, supportedMcpServers(runtime.state.agent, this.browser?.spareServers() ?? []), key);
+			runtime.prepareSession(folder, supportedMcpServers(runtime.state.agent, [...this.browser?.spareServers() ?? [], ...this.teamTools?.spareServers() ?? []]), key);
 		};
 		if (runtime.state.kind === 'ready') {
 			clearTimeout(spare.timer);
@@ -649,7 +652,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 
 	/** Matches a spare session to the agents that can take it: same folder, and the browser the same way. */
 	private spareKey(folder: string): string {
-		return JSON.stringify(['agent', folder, !!this.browser?.serving]);
+		return JSON.stringify(['agent', folder, !!this.browser?.serving, !!this.teamTools?.serving]);
 	}
 
 	/** Where the next agent most likely starts: where the last one did, else the first open folder. */
@@ -1903,7 +1906,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 
 	private start(record: AgentRecord, folder: string, openLater = false): LiveAgent {
 		const project = projectsEnabled() ? record.project : undefined;
-		const servers = () => [...this.browser?.mcpServersFor(record.id, folder) ?? [], ...project ? this.projects.mcpServersFor(this.model.agent(record.id) ?? record) : []];
+		const servers = () => [...this.browser?.mcpServersFor(record.id, folder) ?? [], ...this.teamTools?.mcpServersFor(record.id, folder) ?? [], ...project ? this.projects.mcpServersFor(this.model.agent(record.id) ?? record) : []];
 		// A coordinator's session runs in its own empty folder (coordinatorHome); its chat still belongs to the workspace.
 		const cwd = project?.role === 'coordinator' ? coordinatorHome(record.id) : folder;
 		if (cwd !== folder) {
@@ -1915,15 +1918,15 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			...(project ? { beforeOpen: () => this.projects.ready() } : { spareKey: () => this.spareKey(folder) }),
 			onDidOpenSession: servers => {
 				this.browser?.bindSession(record.id, folder, servers);
+				this.teamTools?.bindSession(record.id, folder, servers);
 				// Refill, for the next agent, which most likely starts in the same folder; not in an agent's own worktree.
 				if (!this.model.agent(record.id)?.worktree) {
 					this.prepareStart(folder, spareDelayMs);
 				}
 			},
 		}, this.preferredModel(record));
-		if (project) {
-			session.permissions.answerAtOnce = request => this.projects.instantAnswer(this.model.agent(record.id) ?? record, request);
-		}
+		session.permissions.answerAtOnce = request => (project ? this.projects.instantAnswer(this.model.agent(record.id) ?? record, request) : undefined)
+			?? this.teamTools?.instantAnswer(request);
 		const files: FileSearch = isOpenFolder(folder) ? this.workspaceFiles : new FolderFileIndex(folder);
 		const changes = new AgentChanges(folder);
 		const live: LiveAgent = {

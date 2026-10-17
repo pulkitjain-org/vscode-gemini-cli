@@ -68,6 +68,26 @@
 }
 
 /* High contrast themes keep to their own colours. */
+
+/* The team tools' brand colours (webview-src/toolLogos.ts); lighter Jira and Snyk on dark themes. */
+:root {
+	--gemini-tool-jira: #0052cc;
+	--gemini-tool-gitlab: #fc6d26;
+	--gemini-tool-sonar: #4e9bcd;
+	--gemini-tool-snyk: #4c4a73;
+}
+
+body.vscode-dark,
+body.vscode-high-contrast {
+	--gemini-tool-jira: #2684ff;
+	--gemini-tool-snyk: #9a8fe0;
+}
+
+.tool-logo {
+	flex: none;
+	vertical-align: -0.15em;
+}
+
 body.vscode-high-contrast,
 body.vscode-high-contrast-light {
 	--gemini-gradient: linear-gradient(var(--vscode-foreground), var(--vscode-foreground));
