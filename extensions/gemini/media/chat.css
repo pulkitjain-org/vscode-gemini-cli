@@ -68,6 +68,26 @@
 }
 
 /* High contrast themes keep to their own colours. */
+
+/* The team tools' brand colours (webview-src/toolLogos.ts); lighter Jira and Snyk on dark themes. */
+:root {
+	--gemini-tool-jira: #0052cc;
+	--gemini-tool-gitlab: #fc6d26;
+	--gemini-tool-sonar: #4e9bcd;
+	--gemini-tool-snyk: #4c4a73;
+}
+
+body.vscode-dark,
+body.vscode-high-contrast {
+	--gemini-tool-jira: #2684ff;
+	--gemini-tool-snyk: #9a8fe0;
+}
+
+.tool-logo {
+	flex: none;
+	vertical-align: -0.15em;
+}
+
 body.vscode-high-contrast,
 body.vscode-high-contrast-light {
 	--gemini-gradient: linear-gradient(var(--vscode-foreground), var(--vscode-foreground));
@@ -3755,4 +3775,38 @@ body.has-parent-project .prompt-outline {
 .subagent-status {
 	flex: none;
 	color: var(--gemini-faint);
+}
+
+/* Team tool chips in the composer: the tool's logo, the key in bold, then the title. */
+.chip.attachment.tool-chip {
+	max-width: 300px;
+	gap: 5px;
+}
+
+.tool-chip-key {
+	flex: none;
+	font-weight: 600;
+}
+
+.tool-chip-title {
+	min-width: 0;
+	color: var(--gemini-muted);
+}
+
+/* A geminicode-tools call shows its tool's logo where other calls show a codicon. */
+.tool-row .tool-logo.kind-icon,
+.menu-row .tool-logo.menu-icon {
+	width: 14px;
+	height: 14px;
+}
+
+.permission-quote {
+	margin: 6px 0 2px;
+	padding: 6px 10px;
+	border-left: 2px solid var(--gemini-border-strong);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	max-height: 240px;
+	overflow: auto;
+	color: var(--vscode-foreground);
 }

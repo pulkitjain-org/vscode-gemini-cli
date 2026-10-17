@@ -3,11 +3,11 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { projectToolsBlock } from '../../src/acp/projectToolsCheck';
+import { allowServer, projectToolsBlock } from '../../src/acp/projectToolsCheck';
 
 describe('projectToolsBlock', () => {
 	let home: string;
@@ -57,5 +57,17 @@ describe('projectToolsBlock', () => {
 		expect(await check()).toBeUndefined();
 		write('mcp-server-enablement.json', '{ broken');
 		expect(await check()).toMatchObject({ kind: 'enablementUnreadable' });
+	});
+	it('names a workspace allowlist that leaves out geminicode-tools, and adds it there', async () => {
+		const workspace = path.join(home, 'repo');
+		mkdirSync(path.join(workspace, '.gemini'), { recursive: true });
+		const file = path.join(workspace, '.gemini', 'settings.json');
+		writeFileSync(file, JSON.stringify({ mcp: { allowed: ['geminicode-browser', 'geminicode-project'], excluded: ['geminicode-tools'] } }));
+		write('trustedFolders.json', { [workspace]: 'TRUST_FOLDER' });
+		const tools = () => projectToolsBlock({ folder: workspace, server: 'geminicode-tools', workspace, env, homedir: home, platform: 'linux' });
+		expect(await tools()).toEqual({ kind: 'notAllowed', file });
+		expect(await allowServer(file, 'geminicode-tools')).toBe(true);
+		expect(JSON.parse(readFileSync(file, 'utf8')).mcp).toEqual({ allowed: ['geminicode-browser', 'geminicode-project', 'geminicode-tools'], excluded: [] });
+		expect(await tools()).toBeUndefined();
 	});
 });

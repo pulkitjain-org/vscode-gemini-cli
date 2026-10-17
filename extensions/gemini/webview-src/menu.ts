@@ -12,6 +12,8 @@ import { el, icon } from './panelDom';
 
 export interface MenuRow {
 	readonly icon?: string;
+	/** An icon of its own instead of a codicon, such as a tool's logo. */
+	readonly iconElement?: () => Element;
 	readonly name: string;
 	readonly detail?: string;
 	/** Quiet text at the row's end, such as a time. */
@@ -209,7 +211,11 @@ export class Menu {
 		if (row.switchOn !== undefined || row.checked !== undefined) {
 			node.setAttribute('aria-checked', String(row.switchOn ?? row.checked));
 		}
-		if (row.icon) {
+		if (row.iconElement) {
+			const own = row.iconElement();
+			own.classList.add('menu-icon');
+			node.append(own);
+		} else if (row.icon) {
 			const rowIcon = icon(row.icon);
 			rowIcon.classList.add('menu-icon');
 			node.append(rowIcon);

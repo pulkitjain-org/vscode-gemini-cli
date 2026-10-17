@@ -262,6 +262,9 @@ export class SettingsPage implements vscode.Disposable {
 						? vscode.l10n.t("\"{0}\" is on for new agents.", message.name)
 						: vscode.l10n.t("\"{0}\" is off for new agents.", message.name));
 					break;
+				case 'connections':
+					await vscode.commands.executeCommand('gemini.connections');
+					return;
 				case 'addServer':
 					await this.addServer();
 					break;
@@ -620,6 +623,7 @@ export class SettingsPage implements vscode.Disposable {
 			servers: vscode.l10n.t("MCP servers"),
 			serversHint: vscode.l10n.t("Tools agents can use, such as GitHub, a database or your docs. A project's servers load once you trust its folder."),
 			addServer: vscode.l10n.t("Add Server"),
+			connections: vscode.l10n.t("Connections"),
 			noServers: vscode.l10n.t("No MCP servers yet."),
 			edit: vscode.l10n.t("Edit in settings"),
 			enable: vscode.l10n.t("Use this server"),

@@ -23,6 +23,11 @@ export type Attachment =
 	| {
 		readonly kind: 'document'; readonly name: string; readonly mimeType: string;
 		readonly path?: string; readonly text?: string; readonly data?: string;
+		/**
+		 * A Jira ticket, GitLab merge request or issue, or Figma frame (toolLinks.ts):
+		 * the chip shows the tool's logo, and `ref` (toolRefId) names the item.
+		 */
+		readonly tool?: 'jira' | 'gitlab' | 'figma'; readonly ref?: string;
 	};
 
 /** Image types Gemini accepts inline. */

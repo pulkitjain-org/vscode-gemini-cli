@@ -18,6 +18,8 @@ import { renderMath } from './math';
 import { mathPlugin } from './mathRule';
 import { enhanceMarkdown } from './markdownExtras';
 import { button, copyButton, el, icon, onIntent, setLabel, setTip } from './dom';
+import { teamToolTitle } from '../src/acp/toolLinks';
+import { toolLogo } from './toolLogos';
 import { toneOf } from './repoTones';
 import { thoughtPreview } from './streaming';
 import { thoughtSummary } from './workFold';
@@ -337,13 +339,17 @@ function renderToolCall(item: ItemOf<'toolCall'>, toggleToolCall: ToggleToolCall
 		return card;
 	}
 	// "Read src/cart/total.ts": the verb in the text colour, what it acted on quieter.
-	const [verb, target] = splitToolTitle(item.title);
+	// A team tool's call ("Read ACME-412") shows its tool's logo.
+	const team = teamToolTitle(item.title, strings.teamToolVerbs);
+	const [verb, target] = splitToolTitle(team?.title ?? item.title);
 	const title = el('span', 'tool-title');
 	title.append(el('span', 'tool-verb', verb));
 	if (target) {
 		title.append(` ${target}`);
 	}
-	row.append(icon(toolKindIcon(item.toolKind), 'kind-icon'), title);
+	const kindIcon = team ? toolLogo(team.tool, 14) : icon(toolKindIcon(item.toolKind));
+	kindIcon.classList.add('kind-icon');
+	row.append(kindIcon, title);
 	row.title = item.title;
 
 	for (const location of item.locations) {
@@ -426,8 +432,13 @@ function renderPlan(item: ItemOf<'plan'>): HTMLElement {
 function renderPermission(item: ItemOf<'permission'>): HTMLElement {
 	const card = el('div', `permission${item.answer ? ' answered' : ''}`);
 	const header = el('div', 'permission-title');
-	header.append(icon(item.answer ? 'shield' : 'question'), el('span', undefined, item.title));
+	// A team tool's change (a Jira comment, a merge request) shows as a friendly title and the exact text it would post.
+	const team = teamToolTitle(item.title, strings.teamToolVerbs);
+	header.append(team ? toolLogo(team.tool, 14) : icon(item.answer ? 'shield' : 'question'), el('span', undefined, team?.title ?? item.title));
 	card.append(header);
+	if (team?.text && !item.answer) {
+		card.append(el('div', 'permission-quote', team.text));
+	}
 	if (item.diffPaths.length) {
 		const files = el('div', 'permission-files');
 		for (const filePath of item.diffPaths) {

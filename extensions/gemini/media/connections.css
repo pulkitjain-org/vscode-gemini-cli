@@ -1,0 +1,249 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) pulkitjain-org and contributors. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/* The Connections page (webview-src/connections.ts), on top of panels.css's settings styles. */
+
+.connections {
+	max-width: 900px;
+}
+
+.tool-tile {
+	display: flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	width: 34px;
+	height: 34px;
+	border-radius: var(--gemini-radius-small);
+	background: var(--gemini-card);
+	border: 1px solid var(--gemini-border);
+}
+
+.connections .tool-row {
+	padding: 12px 14px;
+}
+
+.connections .tool-row.not-connected .tool-tile {
+	opacity: 0.75;
+}
+
+.connections .tool-row .row-detail {
+	white-space: normal;
+}
+
+.row-actions {
+	display: flex;
+	flex: none;
+	align-items: center;
+	gap: 6px;
+}
+
+button.quiet {
+	border-color: transparent;
+	background: none;
+	color: var(--gemini-muted);
+}
+
+button.quiet:hover:not(:disabled) {
+	color: var(--vscode-foreground);
+}
+
+.state-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	padding: 0 7px;
+	border-radius: 999px;
+	font-size: 11.5px;
+	line-height: 18px;
+	background: var(--gemini-hover);
+	color: var(--gemini-muted);
+}
+
+.state-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: currentColor;
+}
+
+.state-pill.ok {
+	color: var(--gemini-ok);
+}
+
+.state-pill.warn {
+	color: var(--gemini-warn);
+}
+
+.state-pill.error {
+	color: var(--gemini-error);
+}
+
+.permission-logos {
+	display: inline-flex;
+	gap: 4px;
+}
+
+.permission-row .tag {
+	flex: none;
+}
+
+.allowlist-note {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-top: 20px;
+	padding: 10px 12px;
+	border: 1px solid color-mix(in srgb, var(--gemini-warn) 45%, transparent);
+	border-radius: var(--gemini-radius);
+	background: color-mix(in srgb, var(--gemini-warn) 8%, transparent);
+}
+
+.allowlist-text {
+	display: flex;
+	flex: 1;
+	gap: 8px;
+	line-height: 1.45;
+}
+
+.allowlist-text .codicon {
+	margin-top: 2px;
+	color: var(--gemini-warn);
+}
+
+.settings .hint a {
+	color: var(--vscode-textLink-foreground);
+}
+
+/* The Connect dialog: part of the page, never a native one. */
+
+.dialog-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 10;
+	display: flex;
+	align-items: flex-start;
+	justify-content: center;
+	padding: 48px 16px;
+	background: color-mix(in srgb, var(--vscode-editor-background) 55%, transparent);
+}
+
+.dialog {
+	width: min(560px, 100%);
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-large);
+	background: var(--gemini-popover);
+	box-shadow: 0 12px 40px var(--gemini-shadow);
+}
+
+.dialog-head {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 18px 20px 6px;
+}
+
+.dialog-head h2 {
+	flex: 1;
+	margin: 0;
+	font-size: 16px;
+	font-weight: 600;
+}
+
+.dialog-body {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	padding: 10px 20px 18px;
+}
+
+.dialog-field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.field-label {
+	font-weight: 600;
+}
+
+.field-box {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 4px;
+	padding: 0 6px 0 10px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-small);
+	background: var(--vscode-input-background);
+}
+
+.field-box:focus-within {
+	border-color: var(--vscode-focusBorder);
+}
+
+.field-box input {
+	flex: 1;
+	min-width: 0;
+	padding: 7px 0;
+	border: none;
+	outline: none;
+	background: none;
+	color: var(--vscode-input-foreground);
+	font-family: inherit;
+	font-size: 13px;
+}
+
+button.link-button {
+	padding: 3px 4px;
+	border: none;
+	background: none;
+	color: var(--vscode-textLink-foreground);
+}
+
+.dialog-result {
+	display: flex;
+	gap: 6px;
+	min-height: 18px;
+	margin-top: -6px;
+}
+
+.dialog-result:empty {
+	display: none;
+}
+
+.dialog-result.checking {
+	color: var(--gemini-muted);
+}
+
+.dialog-result.error {
+	color: var(--gemini-error);
+}
+
+.keychain-note {
+	display: flex;
+	gap: 8px;
+	padding: 10px 12px;
+	border-radius: var(--gemini-radius-small);
+	background: var(--gemini-card);
+	color: var(--gemini-muted);
+	line-height: 1.45;
+}
+
+.keychain-note .codicon {
+	margin-top: 2px;
+}
+
+.dialog-foot {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 12px 20px;
+	border-top: 1px solid var(--gemini-border);
+}
+
+.dialog-foot .spacer {
+	flex: 1;
+}

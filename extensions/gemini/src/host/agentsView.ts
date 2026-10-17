@@ -34,6 +34,9 @@ import { ChangesSource, ChangesView } from './changesView';
 import type { AgentStateKind, HomeMode } from './panelProtocol';
 import { ReviewController } from './reviewController';
 import type { BrowserTools } from './browserTools';
+import type { TeamConnections } from './teamConnections';
+import { toolChipsFor } from './toolChips';
+import { jiraKeyIn } from '../acp/jira';
 import { ChatActivity, ChatController, ChatEnhancer, FileSearch, openChatAsMarkdown } from './chatController';
 import { configSection, getApprovalPolicy } from './configuration';
 import { formatBytes, relativeTime, tildify } from './displayText';
@@ -134,8 +137,8 @@ interface LiveAgent {
 	activity: ChatActivity;
 	/** A pending save of the conversation. */
 	saveTimer?: ReturnType<typeof setTimeout>;
-	/** The state its tab's icon shows; unset for the Gemini icon. */
-	tabIcon?: AgentStateKind;
+	/** The icon file its tab shows (its state, or Gemini's or Jira's at rest); unset until set. */
+	tabIcon?: string;
 	readonly disposables: vscode.Disposable[];
 }
 
@@ -202,6 +205,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	private readonly refreshRows = new Set<string>();
 	/** Each agent's page in the GeminiCode browser; set once the extension has made it. */
 	browser: BrowserTools | undefined;
+	/** The team's tools (Jira, GitLab, SonarQube, Snyk, Figma), for every agent's session; set by activate. */
+	teamTools: TeamConnections | undefined;
 	/** Today's quota, for the chats' usage popover. */
 	usage: UsageMeter | undefined;
 	/** One direct request to the quick model, for drafting a project's memory; set once the extension has made it. */
@@ -632,7 +637,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			if (runtime.spareKey === key) {
 				return;
 			}
-			runtime.prepareSession(folder, supportedMcpServers(runtime.state.agent, this.browser?.spareServers() ?? []), key);
+			runtime.prepareSession(folder, supportedMcpServers(runtime.state.agent, [...this.browser?.spareServers() ?? [], ...this.teamTools?.spareServers() ?? []]), key);
 		};
 		if (runtime.state.kind === 'ready') {
 			clearTimeout(spare.timer);
@@ -649,7 +654,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 
 	/** Matches a spare session to the agents that can take it: same folder, and the browser the same way. */
 	private spareKey(folder: string): string {
-		return JSON.stringify(['agent', folder, !!this.browser?.serving]);
+		return JSON.stringify(['agent', folder, !!this.browser?.serving, !!this.teamTools?.serving]);
 	}
 
 	/** Where the next agent most likely starts: where the last one did, else the first open folder. */
@@ -694,6 +699,50 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		// Not awaited: send resolves when the whole turn ends, and the agent has started now.
 		void live.controller.send(text, attachments);
 		return true;
+	}
+
+	/**
+	 * Starts an agent for the team flows (src/host/teamFlows.ts), named
+	 * `title`: in `worktree` when given (a review or a release merge), else on
+	 * a new branch `branch` from `folder`, else in `folder` itself. Sends
+	 * `text` unless it is empty. Resolves with its id; undefined when its
+	 * branch could not be made (the user has been told).
+	 */
+	async startTeamAgent(options: { readonly folder: string; readonly title: string; readonly text: string; readonly branch?: string; readonly worktree?: AgentWorktree; readonly mode?: string }): Promise<string | undefined> {
+		let worktree = options.worktree;
+		if (!worktree && options.branch) {
+			const repository = await repositoryRoot(options.folder);
+			if (!repository) {
+				void vscode.window.showErrorMessage(vscode.l10n.t("{0} is not in a Git repository, so the agent can't have its own branch.", path.basename(options.folder)));
+				return undefined;
+			}
+			try {
+				worktree = await this.makeWorktree(repository, await freeBranchName([repository], options.branch), options.folder);
+			} catch (err) {
+				void vscode.window.showErrorMessage(vscode.l10n.t("Could not create the agent's branch: {0}", errorMessage(err)));
+				return undefined;
+			}
+		}
+		const workspace = this.model.addWorkspace(options.folder);
+		const agent = this.model.addAgent(workspace.id, options.title, worktree);
+		// Named by the flow, so the first prompt doesn't rename it.
+		this.model.rename(agent.id, options.title);
+		const live = this.start(agent, worktree?.cwd ?? options.folder);
+		if (options.mode && options.mode !== 'default') {
+			live.session.client.setModeOnNextSession(options.mode);
+		}
+		await this.open(agent.id);
+		if (options.text.trim()) {
+			void live.controller.send(options.text);
+		}
+		return agent.id;
+	}
+
+	/** Where an agent works (its worktree's folder, or its workspace), and its own branch when it has one. */
+	agentPlace(id: string): { readonly folder: string; readonly cwd: string; readonly branch?: string; readonly title: string } | undefined {
+		const record = this.model.agent(id);
+		const workspace = record && this.model.workspace(record.workspaceId);
+		return record && workspace ? { folder: workspace.folder, cwd: record.worktree?.cwd ?? workspace.folder, title: record.title, ...(record.worktree ? { branch: record.worktree.branch } : {}) } : undefined;
 	}
 
 	/**
@@ -883,11 +932,11 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				continue;
 			}
 			const state = this.agentState(live);
-			const icon = state.kind === 'idle' || state.kind === 'stopped' ? undefined : state.kind;
+			const icon = state.kind === 'idle' || state.kind === 'stopped' ? this.restingTabIcon(id) : `tabs/${state.kind}.svg`;
 			if (icon !== live.tabIcon) {
 				live.tabIcon = icon;
 				// Tab icons draw a ThemeIcon without its colour or spin, so these are SVGs (the spinner is animated).
-				live.panel.iconPath = icon ? this.tabIcon(id, `tabs/${icon}.svg`) : this.tabIcon(id);
+				live.panel.iconPath = this.tabIcon(id, icon);
 			}
 			const totals = live.changes.totals;
 			tabs.push({ id, title: live.panel.title, description: totals.files ? `+${totals.added} \u2212${totals.removed}` : '' });
@@ -904,6 +953,12 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	 * An agent tab's icon. The fragment names the agent, so the workbench can
 	 * tell tabs apart when two agents have the same title (the browser ignores it).
 	 */
+	/** A resting agent's tab icon: the Jira logo for an agent on a ticket (its title or branch names one), else Gemini's. */
+	private restingTabIcon(agentId: string): string {
+		const record = this.model.agent(agentId);
+		return record && (jiraKeyIn(record.title) || (record.worktree && jiraKeyIn(record.worktree.branch))) ? 'tools/jira.svg' : 'gemini.svg';
+	}
+
 	private tabIcon(agentId: string, file = 'gemini.svg'): vscode.Uri {
 		return vscode.Uri.joinPath(this.context.extensionUri, 'media', file).with({ fragment: `${agentTabFragment}${agentId}` });
 	}
@@ -1333,7 +1388,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				retainContextWhenHidden: true,
 				localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'media')],
 			});
-			panel.iconPath = this.tabIcon(id);
+			panel.iconPath = this.tabIcon(id, this.restingTabIcon(id));
 			live.panel = panel;
 			// A disposed panel throws on `.webview`, so keep the webview for detaching.
 			const webview = panel.webview;
@@ -1903,7 +1958,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 
 	private start(record: AgentRecord, folder: string, openLater = false): LiveAgent {
 		const project = projectsEnabled() ? record.project : undefined;
-		const servers = () => [...this.browser?.mcpServersFor(record.id, folder) ?? [], ...project ? this.projects.mcpServersFor(this.model.agent(record.id) ?? record) : []];
+		const servers = () => [...this.browser?.mcpServersFor(record.id, folder) ?? [], ...this.teamTools?.mcpServersFor(record.id, folder) ?? [], ...project ? this.projects.mcpServersFor(this.model.agent(record.id) ?? record) : []];
 		// A coordinator's session runs in its own empty folder (coordinatorHome); its chat still belongs to the workspace.
 		const cwd = project?.role === 'coordinator' ? coordinatorHome(record.id) : folder;
 		if (cwd !== folder) {
@@ -1915,15 +1970,15 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			...(project ? { beforeOpen: () => this.projects.ready() } : { spareKey: () => this.spareKey(folder) }),
 			onDidOpenSession: servers => {
 				this.browser?.bindSession(record.id, folder, servers);
+				this.teamTools?.bindSession(record.id, folder, servers);
 				// Refill, for the next agent, which most likely starts in the same folder; not in an agent's own worktree.
 				if (!this.model.agent(record.id)?.worktree) {
 					this.prepareStart(folder, spareDelayMs);
 				}
 			},
 		}, this.preferredModel(record));
-		if (project) {
-			session.permissions.answerAtOnce = request => this.projects.instantAnswer(this.model.agent(record.id) ?? record, request);
-		}
+		session.permissions.answerAtOnce = request => (project ? this.projects.instantAnswer(this.model.agent(record.id) ?? record, request) : undefined)
+			?? this.teamTools?.instantAnswer(request);
 		const files: FileSearch = isOpenFolder(folder) ? this.workspaceFiles : new FolderFileIndex(folder);
 		const changes = new AgentChanges(folder);
 		const live: LiveAgent = {
@@ -1934,6 +1989,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				editorColumn: () => agentColumn(record.id, this.live.get(record.id)?.panel),
 				enhancer: this.enhancer,
 				usage: () => this.usage,
+				toolChips: () => this.teamTools && toolChipsFor(this.teamTools),
 				...(project?.role === 'coordinator' ? { project: this.projects.chatProject(record.id) } : {}),
 				...(project?.role === 'thread' ? {
 					parentProject: {

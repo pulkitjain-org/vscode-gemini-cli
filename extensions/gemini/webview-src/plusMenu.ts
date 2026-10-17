@@ -10,10 +10,12 @@
 
 import { format } from './chatLogic';
 import { setLabel } from './dom';
-import { Menu, type MenuSection } from './menu';
+import { Menu, type MenuRow, type MenuSection } from './menu';
 import { modeIcon } from './modeIcon';
 import { closePicker, startCommand, startMention } from './picker';
 import { openNewThread } from './project';
+import { toolRefContext } from './toolChips';
+import { toolLogo } from './toolLogos';
 import { contextPercent, toggleUsage } from './usage';
 import { state, strings, ui, vscode } from './view';
 
@@ -106,6 +108,10 @@ function sections(): MenuSection[] {
 			},
 		],
 	});
+	const tools = fromYourTools();
+	if (tools.length) {
+		result.push({ heading: strings.fromYourTools, rows: tools });
+	}
 	const percent = contextPercent();
 	result.push({
 		rows: [
@@ -115,6 +121,23 @@ function sections(): MenuSection[] {
 		],
 	});
 	return result;
+}
+
+/** Jira tickets, GitLab items and Figma frames, for the tools the user connected. */
+function fromYourTools(): MenuRow[] {
+	const connected = toolRefContext().connected;
+	const pick = (tool: 'jira' | 'gitlab' | 'figma') => () => {
+		closePlusMenu();
+		vscode.postMessage({ type: 'pickToolItem', tool });
+	};
+	const rows: { readonly tool: 'jira' | 'gitlab' | 'figma'; readonly name: string; readonly end: string }[] = [
+		{ tool: 'jira', name: strings.jiraTicket, end: '' },
+		{ tool: 'gitlab', name: strings.gitlabItem, end: '!… #…' },
+		{ tool: 'figma', name: strings.figmaFrame, end: strings.pasteLink },
+	];
+	return rows.filter(row => connected.includes(row.tool)).map(row => ({
+		iconElement: () => toolLogo(row.tool, 14), name: row.name, end: row.end || undefined, run: pick(row.tool),
+	}));
 }
 
 function show(next: 'main' | 'model'): void {

@@ -7,6 +7,7 @@
 // (webview-src/chat.ts). Types only, so the webview bundle can import them.
 
 import type { Attachment } from '../acp/attachments';
+import type { TeamToolVerbs, ToolRef, ToolRefContext } from '../acp/toolLinks';
 import type { ModelQuota } from '../acp/directRequest';
 import type { TranscriptItem } from '../acp/chatTranscript';
 import type { ItemUpdate } from '../acp/textDeltas';
@@ -443,6 +444,16 @@ export interface ChatStrings {
 	/** `{0}` is a percentage. */
 	readonly menuUsageDetail: string;
 	readonly menuCommands: string;
+	/** The + menu's team tools section, and its rows. */
+	readonly fromYourTools: string;
+	readonly jiraTicket: string;
+	readonly gitlabItem: string;
+	readonly figmaFrame: string;
+	readonly pasteLink: string;
+	/** Friendly titles for the geminicode-tools calls. */
+	readonly teamToolVerbs: TeamToolVerbs;
+	/** Chip tooltip while a ticket or merge request is being read. */
+	readonly toolChipLoading: string;
 	readonly back: string;
 	/** The model, branch and folder menus under and beside the composer. */
 	readonly branchSearch: string;
@@ -587,6 +598,10 @@ export type FromWebview =
 	| { readonly type: 'pickFiles' }
 	/** Files dropped with paths (file: URIs), such as from the Explorer. */
 	| { readonly type: 'attachUris'; readonly uris: readonly string[] }
+	/** A Jira ticket, GitLab item or Figma frame the user named: the extension answers with toolRefResolved. */
+	| { readonly type: 'resolveToolRef'; readonly ref: ToolRef }
+	/** The + menu's "From your tools": the extension asks which item, then sends attachToolRef. */
+	| { readonly type: 'pickToolItem'; readonly tool: 'jira' | 'gitlab' | 'figma' }
 	/** The × on the shared page's chip: give the page back to the user. */
 	| { readonly type: 'stopSharing' }
 	/** The user dragged the input to `height` pixels, or reset it (0). */
@@ -660,6 +675,12 @@ export type ToWebview =
 	| { readonly type: 'commands'; readonly commands: readonly SlashCommand[] }
 	/** Context to add to the composer, from the Add to Chat commands. */
 	| { readonly type: 'attach'; readonly attachments: readonly Attachment[] }
+	/** The connected team tools and Jira projects, for finding tickets and links in the composer. */
+	| { readonly type: 'toolRefs'; readonly context: ToolRefContext }
+	/** A tool chip's title and content; replaces the chip whose `ref` matches. */
+	| { readonly type: 'toolRefResolved'; readonly attachment: Attachment }
+	/** Adds a chip for an item the user picked from the + menu. */
+	| { readonly type: 'attachToolRef'; readonly ref: ToolRef }
 	/** The page the user shared with this agent in the GeminiCode browser, pinned to the composer until they stop sharing it. */
 	| { readonly type: 'sharedPage'; readonly page: SharedPageView | undefined }
 	| { readonly type: 'git'; readonly git: ViewGit }

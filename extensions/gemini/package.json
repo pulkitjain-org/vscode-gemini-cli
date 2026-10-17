@@ -175,6 +175,12 @@
         "icon": "$(home)"
       },
       {
+        "command": "gemini.home",
+        "title": "%command.home%",
+        "category": "%category%",
+        "icon": "$(home)"
+      },
+      {
         "command": "gemini.reviewChanges",
         "title": "%command.reviewChanges%",
         "category": "%category%",
@@ -185,6 +191,12 @@
         "title": "%command.projectSettings%",
         "category": "%category%",
         "icon": "$(server-environment)"
+      },
+      {
+        "command": "gemini.connections",
+        "title": "%command.connections%",
+        "category": "%category%",
+        "icon": "$(plug)"
       },
       {
         "command": "gemini.agents.addWorkspace",
@@ -305,6 +317,54 @@
         "command": "gemini.changes.openFile",
         "title": "%command.changes.openFile%",
         "category": "%category%"
+      },
+      {
+        "command": "gemini.team.startOnTicket",
+        "title": "%command.team.startOnTicket%",
+        "category": "%category%",
+        "icon": "$(play)"
+      },
+      {
+        "command": "gemini.team.openMergeRequest",
+        "title": "%command.team.openMergeRequest%",
+        "category": "%category%",
+        "icon": "$(git-pull-request-create)"
+      },
+      {
+        "command": "gemini.team.moveTicket",
+        "title": "%command.team.moveTicket%",
+        "category": "%category%",
+        "icon": "$(arrow-swap)"
+      },
+      {
+        "command": "gemini.team.logTime",
+        "title": "%command.team.logTime%",
+        "category": "%category%",
+        "icon": "$(watch)"
+      },
+      {
+        "command": "gemini.team.reviewMergeRequest",
+        "title": "%command.team.reviewMergeRequest%",
+        "category": "%category%",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "gemini.team.fixMergeRequest",
+        "title": "%command.team.fixMergeRequest%",
+        "category": "%category%",
+        "icon": "$(wrench)"
+      },
+      {
+        "command": "gemini.team.mergeReleaseForward",
+        "title": "%command.team.mergeReleaseForward%",
+        "category": "%category%",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "gemini.team.runChecks",
+        "title": "%command.team.runChecks%",
+        "category": "%category%",
+        "icon": "$(shield)"
       }
     ],
     "walkthroughs": [
@@ -352,6 +412,12 @@
       }
     ],
     "keybindings": [
+      {
+        "command": "gemini.home",
+        "key": "ctrl+shift+h",
+        "mac": "cmd+shift+h",
+        "when": "!editorTextFocus && !searchViewletFocus && !inSearchEditor"
+      },
       {
         "command": "gemini.addSelectionToChat",
         "key": "ctrl+l",
@@ -464,6 +530,11 @@
       ],
       "editor/title": [
         {
+          "command": "gemini.home",
+          "when": "activeWebviewPanelId =~ /^gemini\\./ && activeWebviewPanelId != 'gemini.agentHome'",
+          "group": "navigation@100"
+        },
+        {
           "command": "gemini.review.previousChange",
           "when": "gemini.review.active && resourceScheme == file",
           "group": "navigation@1"
@@ -537,7 +608,7 @@
           "group": "navigation@3"
         },
         {
-          "command": "gemini.agentHome",
+          "command": "gemini.home",
           "when": "view == gemini.agents",
           "group": "navigation@3"
         },
@@ -550,6 +621,11 @@
           "command": "gemini.projectSettings",
           "when": "view == gemini.agents",
           "group": "helpers@2"
+        },
+        {
+          "command": "gemini.connections",
+          "when": "view == gemini.agents",
+          "group": "helpers@3"
         },
         {
           "command": "gemini.changes.openAll",
@@ -666,6 +742,10 @@
       ],
       "commandPalette": [
         {
+          "command": "gemini.agentHome",
+          "when": "false"
+        },
+        {
           "command": "gemini.projects.add",
           "when": "false"
         },
@@ -723,6 +803,10 @@
         },
         {
           "command": "gemini.changes.openFile",
+          "when": "false"
+        },
+        {
+          "command": "gemini.team.fixMergeRequest",
           "when": "false"
         }
       ]
@@ -829,6 +913,26 @@
           "default": true,
           "scope": "machine",
           "markdownDescription": "%configuration.agent.startEarly%"
+        },
+        "gemini.home.openOnStartup": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "%configuration.home.openOnStartup%"
+        },
+        "gemini.team.openMergeRequestsIn": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "geminicode",
+            "browser"
+          ],
+          "enumDescriptions": [
+            "%configuration.team.openMergeRequestsIn.ask%",
+            "%configuration.team.openMergeRequestsIn.geminicode%",
+            "%configuration.team.openMergeRequestsIn.browser%"
+          ],
+          "default": "ask",
+          "markdownDescription": "%configuration.team.openMergeRequestsIn%"
         },
         "gemini.keepAwake": {
           "type": "boolean",

@@ -216,7 +216,10 @@ function render(view: SettingsPageView): void {
 	text.append(el('h1', undefined, strings.title), el('p', 'hint', strings.subtitle));
 	header.append(text, button('secondary', strings.restart, () => post({ type: 'restart' }), 'debug-restart'));
 
-	const servers = section(strings.servers, strings.serversHint, button('primary', strings.addServer, () => post({ type: 'addServer' }), 'add'));
+	// Jira, GitLab, SonarQube, Snyk and Figma are connected on their own page, not added as servers.
+	const serverActions = el('div', 'section-actions');
+	serverActions.append(button('secondary', strings.connections, () => post({ type: 'connections' }), 'plug'), button('primary', strings.addServer, () => post({ type: 'addServer' }), 'add'));
+	const servers = section(strings.servers, strings.serversHint, serverActions);
 	servers.append(listOf(view.servers, serverRow, strings.noServers));
 
 	const skills = section(strings.skills, strings.skillsHint, button('secondary', strings.newSkill, () => post({ type: 'newSkill' }), 'add'));

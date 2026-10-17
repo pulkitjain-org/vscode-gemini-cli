@@ -30,6 +30,11 @@ import { UsageMeter } from './host/usageMeter';
 import { initTeamCommands } from './host/teamCommands';
 import { KeepAwake } from './acp/keepAwake';
 import { BrowserTools } from './host/browserTools';
+import { TeamConnections } from './host/teamConnections';
+import { TeamFlows } from './host/teamFlows';
+import { MrPanel } from './host/mrPanel';
+import { ConnectionsPage } from './host/connectionsPage';
+import { TeamStatusBar } from './host/teamStatusBar';
 import { WorkspaceFileIndex } from './host/workspaceFiles';
 import { disposeGitIgnore } from './host/workspaceFileSystem';
 
@@ -102,6 +107,11 @@ export function activate(context: vscode.ExtensionContext): void {
 		send: (agent, text, attachments) => void agentsView.controllerOf(agent)?.send(text, attachments),
 	});
 	agentsView.browser = browserTools;
+	const teamTools = new TeamConnections(context, String(context.extension.packageJSON.version ?? ''), log);
+	agentsView.teamTools = teamTools;
+	const teamFlows = new TeamFlows(context.extensionUri, teamTools, agentsView);
+	const mrPanel = new MrPanel(teamTools, agentsView, agent => teamFlows.checksSummary(agent));
+	changesPanel.team = mrPanel;
 	// caffeinate watches this process, so it ends with GeminiCode even if GeminiCode crashes.
 	const keepAwake = new KeepAwake({ platform: process.platform, pid: process.pid, log: message => log.info(message) });
 	const readKeepAwake = () => keepAwake.setEnabled(vscode.workspace.getConfiguration(configSection).get<boolean>('keepAwake', true));
@@ -118,7 +128,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		agentsView,
 		changesPanel,
 		agentsView.onDidFocus(source => changesPanel.show(source)),
-		new AgentHome(context.extensionUri, agentsView, () => warmup.startSoon()),
+		new AgentHome(context.extensionUri, agentsView, () => warmup.startSoon(), { state: context.globalState, version: String(context.extension.packageJSON.version ?? '') }),
 		new SettingsPage(context.extensionUri, service),
 		quickEdits,
 		statusBar,
@@ -131,6 +141,11 @@ export function activate(context: vscode.ExtensionContext): void {
 		new AppUpdateNotice(context.globalState, log),
 		keepAwake,
 		browserTools,
+		teamTools,
+		teamFlows,
+		mrPanel,
+		new ConnectionsPage(context.extensionUri, teamTools),
+		new TeamStatusBar(context.extensionUri, teamTools),
 		service.runtime.onDidBecomeBusy(() => keepAwake.setBusy(true)),
 		service.runtime.onDidBecomeIdle(() => keepAwake.setBusy(false)),
 		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.keepAwake`) && readKeepAwake()),

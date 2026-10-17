@@ -26,6 +26,7 @@ import type { ItemUpdate } from '../src/acp/textDeltas';
 import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
 import { coalesceUpdates } from './chatLogic';
 import { addAttachments, setSharedPage } from './attachmentChips';
+import { attachToolRef, setToolRefContext, toolRefResolved, watchToolRefs } from './toolChips';
 import { setBusy, setFollow, setFollowed, setGit, setSettings, setStatus } from './composer';
 import { applyTokenColors } from './codeHighlight';
 import { onEnhanced, onEnhanceFailed, onEnhanceProgress, replaceInput, toggleEnhance } from './enhance';
@@ -164,6 +165,15 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 		case 'attach':
 			addAttachments(message.attachments);
 			break;
+		case 'toolRefs':
+			setToolRefContext(message.context);
+			break;
+		case 'toolRefResolved':
+			toolRefResolved(message.attachment);
+			break;
+		case 'attachToolRef':
+			attachToolRef(message.ref);
+			break;
 		case 'sharedPage':
 			setSharedPage(message.page);
 			break;
@@ -223,6 +233,7 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 	}
 });
 
+watchToolRefs(ui.input);
 vscode.postMessage({ type: 'ready', protocol: chatProtocolVersion });
 updateSendState();
 ui.input.focus();

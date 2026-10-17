@@ -8,6 +8,7 @@
 
 import type { ChangedFileView, ChangesPanelStrings, ChangesPanelView, FromChangesPanel, ToChangesPanel } from '../src/host/panelProtocol';
 import { button, el, format, icon, pageStrings } from './panelDom';
+import { renderTeam } from './mrPanel';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromChangesPanel): void; getState(): unknown; setState(state: unknown): void };
 
@@ -29,8 +30,14 @@ function render(view: ChangesPanelView): void {
 		list.append(el('p', 'empty', strings.noAgent));
 		return;
 	}
+	if (view.team) {
+		list.append(renderTeam(view.team, post));
+	}
 	if (!view.files.length) {
-		list.append(el('p', 'empty', strings.empty));
+		// Once a merge request is open, its panel takes the empty list's place.
+		if (!view.team?.mr) {
+			list.append(el('p', 'empty', strings.empty));
+		}
 		return;
 	}
 	const counts = el('span', 'counts');

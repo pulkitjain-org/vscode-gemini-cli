@@ -1,0 +1,123 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) pulkitjain-org and contributors. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+// What Home's dashboard shows, worked out from the team tools' last answers
+// and the agents: the "Needs you" strip, sprint progress, card order. Pure,
+// so the host only localizes it; nothing here calls a tool.
+
+import type { GitLabMr, GitLabMrSummary } from './gitlab';
+import type { JiraIssueSummary, JiraSprint } from './jira';
+
+export type DashboardCardId = 'agents' | 'tickets' | 'mergeRequests' | 'quality' | 'releases' | 'gemini';
+
+export const dashboardCards: readonly DashboardCardId[] = ['agents', 'tickets', 'mergeRequests', 'quality', 'releases', 'gemini'];
+
+/** The user's card layout: the order, and which are hidden. */
+export interface DashboardLayout {
+	readonly order?: readonly string[];
+	readonly hidden?: readonly string[];
+	/** The release branch Quality looks at; the newest release branch when unset. */
+	readonly qualityBranch?: string;
+}
+
+/** The cards to show, in the user's order; cards they never placed go at the end in the default order. */
+export function cardOrder(layout: DashboardLayout | undefined): DashboardCardId[] {
+	const known = (layout?.order ?? []).filter((id): id is DashboardCardId => dashboardCards.includes(id as DashboardCardId));
+	const order = [...new Set([...known, ...dashboardCards])];
+	return order.filter(id => !layout?.hidden?.includes(id));
+}
+
+/** `layout` with `card` moved by `delta` places among all cards (hidden ones keep their place). */
+export function moveCard(layout: DashboardLayout | undefined, card: DashboardCardId, delta: number): DashboardLayout {
+	const known = (layout?.order ?? []).filter((id): id is DashboardCardId => dashboardCards.includes(id as DashboardCardId));
+	const order = [...new Set([...known, ...dashboardCards])];
+	const from = order.indexOf(card);
+	const to = Math.max(0, Math.min(order.length - 1, from + delta));
+	order.splice(from, 1);
+	order.splice(to, 0, card);
+	return { ...layout, order };
+}
+
+export function toggleCard(layout: DashboardLayout | undefined, card: DashboardCardId, visible: boolean): DashboardLayout {
+	const hidden = new Set(layout?.hidden ?? []);
+	if (visible) {
+		hidden.delete(card);
+	} else {
+		hidden.add(card);
+	}
+	return { ...layout, hidden: [...hidden] };
+}
+
+export interface SprintProgress {
+	readonly done: number;
+	readonly total: number;
+	/** Whole days to the sprint's end, when Jira gives it; 0 on its last day. */
+	readonly daysLeft?: number;
+}
+
+export function sprintProgress(issues: readonly JiraIssueSummary[], sprint: JiraSprint | undefined, now: number): SprintProgress {
+	const end = sprint?.endDate ? Date.parse(sprint.endDate) : NaN;
+	return {
+		done: issues.filter(i => i.statusCategory === 'done').length,
+		total: issues.length,
+		...Number.isFinite(end) ? { daysLeft: Math.max(0, Math.ceil((end - now) / 86_400_000)) } : {},
+	};
+}
+
+/** Tickets still to do first (reopened, then to do, then in progress), done last. */
+export function ticketOrder(issues: readonly JiraIssueSummary[]): JiraIssueSummary[] {
+	const rank = (i: JiraIssueSummary) => isReopened(i) ? 0 : i.statusCategory === 'new' ? 1 : i.statusCategory === 'indeterminate' ? 2 : 3;
+	return [...issues].sort((a, b) => rank(a) - rank(b));
+}
+
+export function isReopened(issue: JiraIssueSummary): boolean {
+	return /reopen/i.test(issue.status);
+}
+
+/** A thing waiting on the user, with its one action. */
+export type NeedItem =
+	| { readonly kind: 'agentWaiting'; readonly agentId: string; readonly title: string; readonly status: string }
+	| { readonly kind: 'review'; readonly mr: GitLabMrSummary }
+	| { readonly kind: 'pipelineFailed'; readonly mr: GitLabMr }
+	| { readonly kind: 'reopened'; readonly issue: JiraIssueSummary };
+
+export interface NeedsInput {
+	readonly agents: readonly { readonly id: string; readonly title: string; readonly state: string; readonly status: string }[];
+	readonly reviews?: readonly GitLabMrSummary[];
+	readonly mine?: readonly GitLabMr[];
+	readonly tickets?: readonly JiraIssueSummary[];
+}
+
+/**
+ * The few things waiting on the user across agents and tools, most urgent
+ * first: agents asking, failed pipelines on their MRs, reviews asked of them
+ * (drafts left out), reopened tickets. At most `max`.
+ */
+export function needsYou(input: NeedsInput, max = 4): NeedItem[] {
+	const items: NeedItem[] = [
+		...input.agents.filter(a => a.state === 'waiting').map((a): NeedItem => ({ kind: 'agentWaiting', agentId: a.id, title: a.title, status: a.status })),
+		...(input.mine ?? []).filter(mr => mr.pipeline?.status === 'failed').map((mr): NeedItem => ({ kind: 'pipelineFailed', mr })),
+		...(input.reviews ?? []).filter(mr => !mr.draft).map((mr): NeedItem => ({ kind: 'review', mr })),
+		...(input.tickets ?? []).filter(isReopened).map((issue): NeedItem => ({ kind: 'reopened', issue })),
+	];
+	return items.slice(0, max);
+}
+
+/** "morning" before noon, "afternoon" before six, then "evening". */
+export function partOfDay(hour: number): 'morning' | 'afternoon' | 'evening' {
+	return hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
+}
+
+/** The first name in a display name or login: "Pulkit Jain" and "pulkit.jain" both give "Pulkit". */
+export function firstName(name: string | undefined): string | undefined {
+	const first = name?.trim().split(/[\s._-]+/)[0];
+	return first ? first[0].toUpperCase() + first.slice(1) : undefined;
+}
+
+/** Pairs of release branches to merge forward: each into the next newer one, oldest first, with commits waiting. */
+export function forwardPairs(sorted: readonly string[], max = 3): { readonly from: string; readonly to: string }[] {
+	const pairs = sorted.slice(0, -1).map((from, i) => ({ from, to: sorted[i + 1] }));
+	return pairs.slice(-max);
+}

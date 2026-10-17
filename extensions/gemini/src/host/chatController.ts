@@ -9,6 +9,7 @@ import * as vscode from 'vscode';
 import { foldWorkOn, onDidChangeFoldWork } from './foldWork';
 import { onDidChangeSpellCheck, spellCheckOn } from './spellCheck';
 import { Attachment, attachmentLabel } from '../acp/attachments';
+import type { ToolChips } from './toolChips';
 import { isValidAttachment } from '../acp/attachmentValidation';
 import { chatToMarkdown } from '../acp/chatMarkdown';
 import { ChatTranscript, ThreadCard, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
@@ -114,6 +115,8 @@ export interface ChatControllerOptions {
 		/** Sessions other chats have open, which this one must not take. */
 		inUse(): ReadonlySet<string>;
 	};
+	/** Chips for Jira tickets, GitLab items and Figma frames named in the composer; unset when the team tools aren't set up. */
+	toolChips?(): ToolChips | undefined;
 }
 
 /** A page shared with the agent: pinned to the composer, and named in every prompt until the user stops sharing it. */
@@ -282,6 +285,10 @@ export class ChatController implements vscode.Disposable {
 		private readonly options: ChatControllerOptions,
 	) {
 		this.checkpoints = new Checkpoints(service.client.cwd);
+		const toolChips = options.toolChips?.();
+		if (toolChips) {
+			this.disposables.push(toolChips.onDidChange(() => this.viewReady && void this.postToolRefs()));
+		}
 		this.disposables.push(
 			onDidChangeSpellCheck(on => this.post({ type: 'spellCheck', on })),
 			onDidChangeFoldWork(on => this.post({ type: 'foldWork', on })),
@@ -1118,6 +1125,13 @@ export class ChatController implements vscode.Disposable {
 		return page;
 	}
 
+	/** Tells the view which tools are connected, so it can turn tickets and links into chips. */
+	private async postToolRefs(): Promise<void> {
+		const chips = this.options.toolChips?.();
+		const context = chips ? await chips.context(this.options.workspace?.()?.cwd).catch(() => undefined) : undefined;
+		this.post({ type: 'toolRefs', context: context ?? { connected: [] } });
+	}
+
 	async addAttachments(attachments: readonly Attachment[]): Promise<void> {
 		if (!attachments.length) {
 			return;
@@ -1266,6 +1280,7 @@ export class ChatController implements vscode.Disposable {
 				}
 				this.postGit();
 				void this.refreshSharedPage();
+				void this.postToolRefs();
 				// The agent was started with the view (see attach); this retries one that has since stopped.
 				this.service.ensureReady().catch(() => undefined);
 				// After starting the agent: finding the theme's file scans every extension the first time.
@@ -1298,6 +1313,20 @@ export class ChatController implements vscode.Disposable {
 			case 'openSharedPage':
 				void this.openSharedPage();
 				break;
+			case 'resolveToolRef': {
+				const chips = this.options.toolChips?.();
+				void chips?.resolve(message.ref).then(attachment => this.post({ type: 'toolRefResolved', attachment }));
+				break;
+			}
+			case 'pickToolItem': {
+				const chips = this.options.toolChips?.();
+				void chips?.pick(message.tool).then(ref => {
+					if (ref) {
+						this.post({ type: 'attachToolRef', ref });
+					}
+				});
+				break;
+			}
 			case 'attachUris': {
 				const uris = message.uris.map(uri => vscode.Uri.parse(uri)).filter(uri => uri.scheme === 'file');
 				void attachmentsForFiles(uris).then(attachments => this.addAttachments(attachments));
@@ -1980,6 +2009,31 @@ export class ChatController implements vscode.Disposable {
 			followAgentOn: vscode.l10n.t("Following the agent: each file it reads or edits opens. Click to stop."),
 			menuUsageDetail: vscode.l10n.t("Context {0}%"),
 			menuCommands: vscode.l10n.t("Skills and commands"),
+			fromYourTools: vscode.l10n.t("From your tools"),
+			jiraTicket: vscode.l10n.t("Jira ticket"),
+			gitlabItem: vscode.l10n.t("GitLab merge request or issue"),
+			figmaFrame: vscode.l10n.t("Figma frame"),
+			pasteLink: vscode.l10n.t("paste link"),
+			toolChipLoading: vscode.l10n.t("Reading\u2026"),
+			teamToolVerbs: {
+				read: vscode.l10n.t("Read {0}"),
+				search: vscode.l10n.t("Search Jira for {0}"),
+				comment: vscode.l10n.t("Comment on {0}"),
+				move: vscode.l10n.t("Move {0}"),
+				logTime: vscode.l10n.t("Log {0} on {1}"),
+				openMr: vscode.l10n.t("Open merge request into {0}"),
+				reply: vscode.l10n.t("Reply on {0}"),
+				listReview: vscode.l10n.t("List merge requests waiting for my review"),
+				listMine: vscode.l10n.t("List my merge requests"),
+				jobLog: vscode.l10n.t("Read the CI log of {0}"),
+				qualityGate: vscode.l10n.t("Check the SonarQube quality gate"),
+				sonarIssues: vscode.l10n.t("Read SonarQube issues"),
+				snykTest: vscode.l10n.t("Run Snyk on the dependencies"),
+				snykCode: vscode.l10n.t("Run Snyk Code on the source"),
+				design: vscode.l10n.t("Read the Figma design"),
+				screenshot: vscode.l10n.t("Take a screenshot of the Figma frame"),
+				currentMr: vscode.l10n.t("this branch's merge request"),
+			},
 			back: vscode.l10n.t("Back"),
 			branchSearch: vscode.l10n.t("Switch branch"),
 			createBranch: vscode.l10n.t("Create branch\u2026"),

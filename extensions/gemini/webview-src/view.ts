@@ -109,6 +109,8 @@ export const state = {
 	busy: false,
 	/** What the next prompt sends along. */
 	attachments: [] as Attachment[],
+	/** Team tool items (toolRefId) whose chip the user removed, so typing on doesn't bring them back. */
+	dismissedToolRefs: new Set<string>(),
 	/** The page shared with the agent, pinned to the composer; every prompt tells the agent about it. */
 	sharedPage: undefined as SharedPageView | undefined,
 	/** Whether the agent takes images, so pasted ones are sent as images. */
