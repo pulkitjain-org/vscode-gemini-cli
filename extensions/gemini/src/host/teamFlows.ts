@@ -8,7 +8,8 @@ import { suggestedTransition } from '../acp/teamDefaults';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { tildify } from './displayText';
-import { branchChoices, checkoutForChecks, listBranches } from '../acp/checksBranch';
+import { branchChoices, changedFiles, checkoutForChecks, listBranches } from '../acp/checksBranch';
+import { analyzeFiles } from '../acp/teamContainers';
 import { errorMessage } from '../acp/errors';
 import { GitLabClient, GitLabMr } from '../acp/gitlab';
 import { formatDuration, JiraClient, JiraIssueSummary, jiraKeyIn, parseDuration } from '../acp/jira';
@@ -16,7 +17,7 @@ import { branchSummary, fetchBranches, pushBranch, reviewWorktree } from '../acp
 import { describeSnyk } from '../acp/snyk';
 import { sonarProjectKeyIn } from '../acp/sonar';
 import {
-	CheckFinding, checksFixPrompt, findingsFromSnyk, findingsFromSonar, jiraCommentRequest, mrDescriptionRequest, mrFixPrompt, parseReviewFindings,
+	CheckFinding, checksFixPrompt, findingsFromLocalSonar, findingsFromSnyk, findingsFromSonar, jiraCommentRequest, mrDescriptionRequest, mrFixPrompt, parseReviewFindings,
 	reviewPrompt, reviewSummary, targetChoices, ticketBranchName, ticketStartPrompt,
 } from '../acp/teamFlowLogic';
 import { gitlabProjectOf } from '../acp/teamTools';
@@ -866,6 +867,8 @@ export class TeamFlows implements vscode.Disposable {
 			snyk ? { tool: 'snyk', name: vscode.l10n.t("Snyk: dependencies"), state: 'running', detail: vscode.l10n.t("Running snyk test...") } : { tool: 'snyk', name: vscode.l10n.t("Snyk"), state: 'off', detail: vscode.l10n.t("Not connected") },
 			...snyk ? [{ tool: 'snyk' as const, name: vscode.l10n.t("Snyk Code: source"), state: 'running' as const, detail: vscode.l10n.t("Running snyk code test...") }] : [],
 			sonar ? { tool: 'sonar', name: vscode.l10n.t("SonarQube: new code"), state: 'running', detail: vscode.l10n.t("Reading the last analysis...") } : { tool: 'sonar', name: 'SonarQube', state: 'off', detail: vscode.l10n.t("Not connected") },
+			// SonarQube's own analysers on this Mac, before anything is pushed, when its server runs as a child.
+			...sonar && this.tools.sonarServerFor(place.cwd) ? [{ tool: 'sonar' as const, name: vscode.l10n.t("SonarQube: changed files, on this Mac"), state: 'running' as const, detail: vscode.l10n.t("Analysing the files this branch changed...") }] : [],
 		];
 		flow.setView({ kind: 'checks', agentTitle: place.title, ...place.agentId ? { agentId: place.agentId } : {}, ...branch ? { branch } : {}, where: tildify(place.cwd), ...place.setup ? { setup: place.setup } : {}, rows, findings: [] });
 		const results: string[] = [];
@@ -907,6 +910,30 @@ export class TeamFlows implements vscode.Disposable {
 					setRow(name, { state: 'done', detail: vscode.l10n.t("Quality gate {0}{1}", gate.status === 'OK' ? vscode.l10n.t("passed") : gate.status === 'ERROR' ? vscode.l10n.t("failed") : vscode.l10n.t("not computed"), gate.coverage ? vscode.l10n.t(" · coverage {0}%", gate.coverage) : ''), pill: { text: findings.length ? String(findings.length) : vscode.l10n.t("clean"), tone: gate.status === 'ERROR' ? 'error' : findings.length ? 'warn' : 'ok' } }, findings);
 				} catch (err) {
 					setRow(name, { state: 'problem', detail: /404|found nothing/.test(errorMessage(err)) ? vscode.l10n.t("{0} hasn't been analysed yet; SonarQube runs in the pipeline after you push.", branch ?? key) : errorMessage(err) });
+				}
+			})());
+		}
+		const local = sonar && this.tools.sonarServerFor(place.cwd);
+		if (local) {
+			const name = vscode.l10n.t("SonarQube: changed files, on this Mac");
+			tasks.push((async () => {
+				const defaults = await this.tools.defaults(place.cwd);
+				const key = defaults.sonar?.projectKey ?? await sonarProjectKeyIn(place.cwd);
+				if (!key) {
+					setRow(name, { state: 'off', detail: vscode.l10n.t("No SonarQube project key.") });
+					return;
+				}
+				try {
+					const files = await changedFiles(place.cwd, defaults.gitlab?.defaultTarget ?? 'main');
+					const found = await analyzeFiles(local, key, files);
+					const findings = findingsFromLocalSonar(found.issues);
+					const detail = !found.analysed.length && !found.failed.length
+						? vscode.l10n.t("No changed file in a language SonarQube analyses.")
+						: [vscode.l10n.t("{0} files analysed", found.analysed.length), found.skipped.length ? vscode.l10n.t("{0} skipped", found.skipped.length) : '', found.failed.length ? vscode.l10n.t("{0} failed: {1}", found.failed.length, found.failed[0].reason) : ''].filter(Boolean).join(' · ');
+					results.push(vscode.l10n.t("SonarQube on this Mac: {0} issues in {1} changed files", found.issues.length, found.analysed.length));
+					setRow(name, { state: found.failed.length && !found.analysed.length ? 'problem' : 'done', detail, pill: findings.length ? { text: String(findings.length), tone: findings.some(f => f.severity === 'blocker' || f.severity === 'critical' || f.severity === 'high') ? 'error' : 'warn' } : { text: vscode.l10n.t("clean"), tone: 'ok' } }, findings);
+				} catch (err) {
+					setRow(name, { state: 'problem', detail: errorMessage(err) });
 				}
 			})());
 		}

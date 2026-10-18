@@ -110,3 +110,37 @@ export async function checkoutForChecks(repository: string, remote: string, bran
 	const worktree = await reviewWorktree(repository, remote, branch, branch, '', home);
 	return { cwd: worktree.cwd, worktree, created: true };
 }
+
+/**
+ * The files a branch changed: what it committed since it left `target` (its remote copy, else the
+ * local branch), and what isn't committed yet. Paths are relative to `cwd`; deleted files are left out.
+ */
+export async function changedFiles(cwd: string, target: string, remote = 'origin'): Promise<string[]> {
+	const files = new Set<string>();
+	for (const base of [`${remote}/${target}`, target]) {
+		const mergeBase = (await git(cwd, ['merge-base', 'HEAD', base]).catch(() => '')).trim();
+		if (mergeBase) {
+			for (const file of (await git(cwd, ['diff', '--name-only', '--relative', '--diff-filter=ACMR', `${mergeBase}...HEAD`])).split('\n')) {
+				if (file.trim()) {
+					files.add(file.trim());
+				}
+			}
+			break;
+		}
+	}
+	// Git names the top folder by its real path (/private/var, not /var), so `cwd` is compared the same way.
+	const top = await repositoryTop(cwd);
+	const here = await fs.realpath(cwd).catch(() => cwd);
+	for (const line of (await git(cwd, ['status', '--porcelain', '--untracked-files=all', '--', '.'])).split('\n')) {
+		// "XY path" or "XY old -> new"; a deleted file has nothing left to analyse.
+		if (line.length > 3 && !line.startsWith(' D') && !line.startsWith('D ')) {
+			const file = line.slice(3).split(' -> ').pop()!.trim().replace(/^"(.*)"$/, '$1');
+			files.add(path.relative(here, path.join(top, file)));
+		}
+	}
+	return [...files].sort();
+}
+
+async function repositoryTop(cwd: string): Promise<string> {
+	return (await git(cwd, ['rev-parse', '--show-toplevel']).catch(() => cwd)).trim() || cwd;
+}

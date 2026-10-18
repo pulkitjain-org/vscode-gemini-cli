@@ -10,6 +10,9 @@
 // (Docker gets the variable's name, not its value), and each container lists only the tools the
 // adapter calls, so the agent still sees geminicode-tools' own curated tools and nothing else.
 //
+// SonarSource's SonarQube server (in Docker, the folder mounted read-only) and Snyk's own server
+// (`snyk mcp`, from the user's Snyk CLI) run the same way, one per folder.
+//
 // The adapter keeps its own logic (resolving a merge request, the merge readiness check, picking a
 // transition); the containers make the calls that map one to one. What has no counterpart stays
 // on the in-process connectors: a merge request's summary with its threads, diffs and failed jobs,
@@ -17,7 +20,7 @@
 // changes.
 
 import { existsSync } from 'node:fs';
-import { ChildServer, StdioServerSpec } from './mcpStdio';
+import { ChildServer, McpServerUnavailableError, StdioServerSpec } from './mcpStdio';
 
 /** An image the adapter runs, pinned by digest, with the tag it was read from. */
 export interface PinnedImage {
@@ -30,6 +33,8 @@ export interface PinnedImage {
 export const teamImages = {
 	jira: { image: 'ghcr.io/sooperset/mcp-atlassian', tag: '0.23.1', digest: 'sha256:5b7c9b64d4eb3210cab74be8bf3e6aeea9ed14f3042dc59ba5c5287bd4dbe466' },
 	gitlab: { image: 'zereight050/gitlab-mcp', tag: '2.3.3', digest: 'sha256:0b4acfbe69e5021833bc47a0dd24ba6280502f7ff200f52f3b45d18b06516cb2' },
+	/** SonarSource's own server, the newest release on 18 Oct 2026; it needs SonarQube Server 2025.1 or later. */
+	sonar: { image: 'sonarsource/sonarqube-mcp', tag: '2026.5.0', digest: 'sha256:21bb7bf785a8c9cbe19553f6957d83ef45138926bbb15ca9e1fc4895e5026b6f' },
 } as const satisfies Record<string, PinnedImage>;
 
 /** The containers' tools the adapter calls; each container is started with only these. */
@@ -50,10 +55,10 @@ export function findDocker(exists: (file: string) => boolean = existsSync): stri
  * `docker run` for `pin` with `env` in the child's environment only: the arguments name each
  * variable (`-e NAME`), so the values are in no process list.
  */
-export function containerSpec(docker: string, pin: PinnedImage, env: Readonly<Record<string, string>>, base: NodeJS.ProcessEnv = process.env): StdioServerSpec {
+export function containerSpec(docker: string, pin: PinnedImage, env: Readonly<Record<string, string>>, base: NodeJS.ProcessEnv = process.env, mounts: readonly string[] = []): StdioServerSpec {
 	return {
 		command: docker,
-		args: ['run', '-i', '--rm', ...Object.keys(env).flatMap(name => ['-e', name]), pinnedReference(pin)],
+		args: ['run', '-i', '--rm', ...mounts.flatMap(mount => ['-v', mount]), ...Object.keys(env).flatMap(name => ['-e', name]), pinnedReference(pin)],
 		env: { PATH: base.PATH, HOME: base.HOME, DOCKER_HOST: base.DOCKER_HOST, DOCKER_CONFIG: base.DOCKER_CONFIG, ...env },
 	};
 }
@@ -75,10 +80,57 @@ export function gitlabContainer(docker: string, account: { readonly url: string;
 	}));
 }
 
-/** The children running for the connected tools, when the user took the team's servers over. */
+/** The toolsets the SonarQube server lists; analysis reads the mounted folder, so no file's text passes through a message. */
+const sonarToolsets = 'analysis,issues,quality-gates,security-hotspots,projects';
+
+/** The folder a SonarQube server analyses is mounted read-only where the server looks for it. */
+export function sonarContainer(docker: string, account: { readonly url: string; readonly token: string }, folder: string): ChildServer {
+	return new ChildServer('sonar', containerSpec(docker, teamImages.sonar, {
+		SONARQUBE_URL: account.url,
+		SONARQUBE_TOKEN: account.token,
+		SONARQUBE_TOOLSETS: sonarToolsets,
+	}, process.env, [`${folder}:/app/mcp-workspace:ro`]));
+}
+
+/**
+ * Snyk's own server, `snyk mcp -t stdio`, from the user's Snyk CLI and with its sign-in. It runs
+ * one per folder and trusts only that folder (`TRUSTED_FOLDERS`), the folder the in-process CLI
+ * would test anyway; the user opened it in GeminiCode.
+ */
+export function snykServer(cli: string, folder: string, base: NodeJS.ProcessEnv = process.env): ChildServer {
+	return new ChildServer('snyk', { command: cli, args: ['mcp', '-t', 'stdio'], env: { ...base, TRUSTED_FOLDERS: folder } }, { callTimeoutMs: 10 * 60_000 });
+}
+
+/** One child per folder, set up on first use; `stop` ends them all. */
+export class FolderChildren {
+
+	private readonly byFolder = new Map<string, ChildServer>();
+
+	constructor(private readonly create: (folder: string) => ChildServer) { }
+
+	for(folder: string): ChildServer {
+		let server = this.byFolder.get(folder);
+		if (!server) {
+			server = this.create(folder);
+			this.byFolder.set(folder, server);
+		}
+		return server;
+	}
+
+	stop(): void {
+		for (const server of this.byFolder.values()) {
+			server.stop();
+		}
+		this.byFolder.clear();
+	}
+}
+
+/** The children running for the connected tools, when the user turned the tools' own servers on. */
 export interface TeamChildren {
 	readonly jira?: ChildServer;
 	readonly gitlab?: ChildServer;
+	readonly sonar?: FolderChildren;
+	readonly snyk?: FolderChildren;
 }
 
 /** Calls a container's tool and returns its text, or throws with the server's own message when it reports an error. */
@@ -157,3 +209,81 @@ export const gitlabVia = {
 		await callText(server, 'approve_merge_request', { project_id: project, merge_request_iid: String(iid) });
 	},
 };
+
+/** What SonarQube's checks of a branch or merge request ask for. */
+export interface SonarScope {
+	readonly project: string;
+	readonly branch?: string;
+	readonly mergeRequest?: string;
+}
+
+function sonarScope(scope: SonarScope): Record<string, string> {
+	return scope.mergeRequest ? { pullRequest: scope.mergeRequest } : scope.branch ? { branch: scope.branch } : {};
+}
+
+/** One issue SonarQube's analysers found in a file on this Mac. */
+export interface LocalSonarIssue {
+	readonly rule: string;
+	readonly message: string;
+	readonly severity: string;
+	readonly line?: number;
+}
+
+/** The SonarQube calls the adapter makes through SonarSource's server. */
+export const sonarVia = {
+	gate: (server: ChildServer, scope: SonarScope) => callText(server, 'get_project_quality_gate_status', { projectKey: scope.project, ...sonarScope(scope) }),
+	issues: (server: ChildServer, scope: SonarScope, max = 50) => callText(server, 'search_sonar_issues_in_projects', { projectKeys: [scope.project], ...sonarScope(scope), issueStatuses: ['OPEN', 'CONFIRMED'], pageSize: max }),
+	hotspots: (server: ChildServer, scope: SonarScope) => callText(server, 'search_security_hotspots', { projectKey: scope.project, ...sonarScope(scope), status: 'TO_REVIEW', pageSize: 50 }),
+	/** Analyses one file of the mounted folder, by its path in the folder; the file's text never leaves the container. */
+	async analyze(server: ChildServer, project: string, file: string): Promise<LocalSonarIssue[]> {
+		const found = await callJson(server, 'analyze_code_snippet', { projectKey: project, filePath: file, ...isTestFile(file) ? { scope: 'TEST' } : {} });
+		const issues = Array.isArray(found.issues) ? found.issues as { ruleKey?: unknown; primaryMessage?: unknown; severity?: unknown; textRange?: { startLine?: unknown } }[] : [];
+		return issues.map(issue => ({
+			rule: String(issue.ruleKey ?? ''),
+			message: String(issue.primaryMessage ?? ''),
+			severity: String(issue.severity ?? 'MINOR'),
+			...typeof issue.textRange?.startLine === 'number' ? { line: issue.textRange.startLine } : {},
+		}));
+	},
+};
+
+/** The files SonarQube's local analysers read, by extension (its server's list of languages). */
+export function isSonarAnalysable(file: string): boolean {
+	return /\.(java|kt|kts|py|rb|go|js|jsx|mjs|cjs|ts|tsx|mts|cts|php|jsp|html|css|scss|less|xml|tf|ya?ml|json)$|(^|\/)Dockerfile$/.test(file);
+}
+
+function isTestFile(file: string): boolean {
+	return /(^|\/)(test|tests|__tests__|spec)\/|\.(test|spec)\.[a-z]+$|Test\.(java|kt)$/.test(file);
+}
+
+/** The Snyk calls the adapter makes through Snyk's own server. */
+export const snykVia = {
+	code: (server: ChildServer, folder: string) => callText(server, 'snyk_code_scan', { path: folder }),
+	dependencies: (server: ChildServer, folder: string) => callText(server, 'snyk_sca_scan', { path: folder, all_projects: true }),
+};
+
+/** The most files one local analysis reads, so Checks finishes in a minute or two. */
+export const localAnalysisMaxFiles = 25;
+
+/**
+ * SonarQube's analysis of `files` (paths in the folder `server` has mounted), one file at a time:
+ * each file's issues, the files it skipped (a language the analysers don't read, or over the limit)
+ * and the files the server couldn't analyse, with why.
+ */
+export async function analyzeFiles(server: ChildServer, project: string, files: readonly string[]): Promise<{ issues: (LocalSonarIssue & { file: string })[]; analysed: string[]; skipped: string[]; failed: { file: string; reason: string }[] }> {
+	const wanted = files.filter(isSonarAnalysable);
+	const analysed = wanted.slice(0, localAnalysisMaxFiles);
+	const issues: (LocalSonarIssue & { file: string })[] = [];
+	const failed: { file: string; reason: string }[] = [];
+	for (const file of analysed) {
+		try {
+			issues.push(...(await sonarVia.analyze(server, project, file)).map(issue => ({ ...issue, file })));
+		} catch (err) {
+			if (err instanceof McpServerUnavailableError) {
+				throw err;
+			}
+			failed.push({ file, reason: err instanceof Error ? err.message : String(err) });
+		}
+	}
+	return { issues, analysed: analysed.filter(f => !failed.some(x => x.file === f)), skipped: [...files.filter(f => !isSonarAnalysable(f)), ...wanted.slice(localAnalysisMaxFiles)], failed };
+}

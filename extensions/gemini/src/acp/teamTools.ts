@@ -22,7 +22,7 @@ import { describeSonar, SonarClient, sonarProjectKeyIn, SonarTarget } from './so
 import type { TeamDefaults } from './teamDefaults';
 import { ChildServer, McpServerUnavailableError } from './mcpStdio';
 import { recordPilot } from './pilotLog';
-import { gitlabVia, jiraVia, TeamChildren } from './teamContainers';
+import { gitlabVia, jiraVia, snykVia, sonarVia, TeamChildren } from './teamContainers';
 import { clip, TeamToolError, TeamToolId } from './teamHttp';
 import { git } from './worktrees';
 
@@ -395,15 +395,20 @@ async function runTeamTool(context: TeamToolContext, folder: string | undefined,
 			case 'gitlab':
 				return connectors.gitlab ? await gitlabCall(connectors.gitlab, through(context, context.children?.().gitlab), name, args, folder, folder ? await context.defaults(folder) : {}) : notConnected('GitLab');
 			case 'sonar':
-				return connectors.sonar ? await sonarCall(connectors.sonar, name, args, folder, folder ? await context.defaults(folder) : {}) : notConnected('SonarQube');
-			case 'snyk':
-				if (!connectors.snyk) {
+				return connectors.sonar ? await sonarCall(connectors.sonar, readThrough(context, folder && context.children?.().sonar?.for(folder)), name, args, folder, folder ? await context.defaults(folder) : {}) : notConnected('SonarQube');
+			case 'snyk': {
+				const snyk = connectors.snyk;
+				if (!snyk) {
 					return notConnected('Snyk');
 				}
 				if (!folder) {
 					return fail('No folder to test.');
 				}
-				return ok(describeSnyk(name === 'snyk_code_test' ? await connectors.snyk.testCode(folder) : await connectors.snyk.testDependencies(folder)));
+				const code = name === 'snyk_code_test';
+				return await readThrough(context, context.children?.().snyk?.for(folder))(
+					async server => ok(external('snyk', folder, clip(code ? await snykVia.code(server, folder) : await snykVia.dependencies(server, folder), 20_000))),
+					async () => ok(describeSnyk(code ? await snyk.testCode(folder) : await snyk.testDependencies(folder))));
+			}
 			case 'figma':
 				return connectors.figma ? await figmaCall(connectors.figma, name, args) : notConnected('Figma');
 		}
@@ -428,6 +433,20 @@ function through(context: TeamToolContext, server: ChildServer | undefined): Thr
 					throw err;
 				}
 				context.childUnavailable?.(server.name, err.message);
+			}
+		}
+		return inProcess();
+	};
+}
+
+/** Like `through`, for calls that only read: any failure of the child, not only a start, falls back, since a read can run twice. */
+function readThrough(context: TeamToolContext, server: ChildServer | undefined | '' | false): Through {
+	return async (viaChild, inProcess) => {
+		if (server) {
+			try {
+				return await viaChild(server);
+			} catch (err) {
+				context.childUnavailable?.(server.name, err instanceof Error ? err.message : String(err));
 			}
 		}
 		return inProcess();
@@ -675,7 +694,7 @@ async function gitlabCall(gitlab: GitLabClient, via: Through, name: string, args
 	return fail(`No tool named ${name}.`);
 }
 
-async function sonarCall(sonar: SonarClient, name: string, args: Record<string, unknown>, folder: string | undefined, defaults: TeamDefaults): Promise<McpToolResult> {
+async function sonarCall(sonar: SonarClient, via: Through, name: string, args: Record<string, unknown>, folder: string | undefined, defaults: TeamDefaults): Promise<McpToolResult> {
 	const project = defaults.sonar?.projectKey ?? (folder ? await sonarProjectKeyIn(folder) : undefined);
 	if (!project) {
 		return fail('No SonarQube project key for this repository. Add `sonar.projectKey` to sonar-project.properties, or "sonar": { "projectKey": … } to .gemini/geminicode-tools.json.');
@@ -686,12 +705,23 @@ async function sonarCall(sonar: SonarClient, name: string, args: Record<string, 
 		branch = (await git(folder, ['rev-parse', '--abbrev-ref', 'HEAD']).catch(() => '')).trim() || undefined;
 	}
 	const target: SonarTarget = { project, ...mr ? { mergeRequest: mr } : branch ? { branch } : {} };
+	const ref = target.mergeRequest ? `!${target.mergeRequest}` : target.branch ?? project;
 	if (name === 'sonar_quality_gate') {
-		const [gate, issues] = await Promise.all([sonar.gate(target), sonar.issues(target, 20).catch(() => [])]);
-		return ok(describeSonar(target, gate, issues));
+		return via(async server => {
+			const [gate, issues] = await Promise.all([sonarVia.gate(server, target), sonarVia.issues(server, target, 20).catch(() => '')]);
+			return ok(external('sonar', ref, clip([`Quality gate:\n${gate}`, issues && `Open issues:\n${issues}`].filter(Boolean).join('\n\n'), 20_000)));
+		}, async () => {
+			const [gate, issues] = await Promise.all([sonar.gate(target), sonar.issues(target, 20).catch(() => [])]);
+			return ok(describeSonar(target, gate, issues));
+		});
 	}
-	const [issues, hotspots] = await Promise.all([sonar.issues(target), sonar.hotspots(target).catch(() => [])]);
-	return ok(describeSonar(target, undefined, [...issues, ...hotspots]));
+	return via(async server => {
+		const [issues, hotspots] = await Promise.all([sonarVia.issues(server, target), sonarVia.hotspots(server, target).catch(() => '')]);
+		return ok(external('sonar', ref, clip([`Open issues:\n${issues}`, hotspots && `Security hotspots to review:\n${hotspots}`].filter(Boolean).join('\n\n'), 20_000)));
+	}, async () => {
+		const [issues, hotspots] = await Promise.all([sonar.issues(target), sonar.hotspots(target).catch(() => [])]);
+		return ok(describeSonar(target, undefined, [...issues, ...hotspots]));
+	});
 }
 
 async function figmaCall(figma: FigmaDesktop, name: string, args: Record<string, unknown>): Promise<McpToolResult> {

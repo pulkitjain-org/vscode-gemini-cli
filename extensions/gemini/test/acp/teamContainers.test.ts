@@ -14,7 +14,9 @@ import { AuditLog } from '../../src/acp/auditLog';
 import { GitLabClient } from '../../src/acp/gitlab';
 import { JiraClient } from '../../src/acp/jira';
 import { ChildServer, McpServerUnavailableError } from '../../src/acp/mcpStdio';
-import { containerSpec, findDocker, pinnedReference, teamImages } from '../../src/acp/teamContainers';
+import { changedFiles } from '../../src/acp/checksBranch';
+import { SnykCli } from '../../src/acp/snyk';
+import { analyzeFiles, containerSpec, findDocker, FolderChildren, pinnedReference, teamImages } from '../../src/acp/teamContainers';
 import type { TeamDefaults } from '../../src/acp/teamDefaults';
 import { callTeamTool, TeamToolContext, teamWrite } from '../../src/acp/teamTools';
 import type { FakeMcpScript } from '../fake-mcp/fakeMcpServer';
@@ -156,4 +158,65 @@ describe('the team\'s servers as children', () => {
 		});
 		expect(pinnedReference(teamImages.gitlab)).toMatch(/^zereight050\/gitlab-mcp:2\.3\.3@sha256:[0-9a-f]{64}$/);
 	});
+
+	it('analyses a branch\'s changed files on this Mac, by path in the mounted folder, skipping what it can\'t read', async () => {
+		const repo = await tempDir();
+		const git = (...args: string[]) => execFileSync('git', ['-C', repo, '-c', 'user.name=T', '-c', 'user.email=t@e', ...args]);
+		git('init', '--quiet', '-b', 'main');
+		await fs.mkdir(path.join(repo, 'web', 'src'), { recursive: true });
+		await fs.writeFile(path.join(repo, 'web', 'src', 'old.ts'), 'export const a = 1;\n');
+		await fs.writeFile(path.join(repo, 'web', 'src', 'gone.ts'), 'export const b = 1;\n');
+		git('add', '.');
+		git('commit', '--quiet', '-m', 'base');
+		git('checkout', '--quiet', '-b', 'feature/cap');
+		await fs.writeFile(path.join(repo, 'web', 'src', 'cart.ts'), 'const unused = 1;\nexport const cap = 200;\n');
+		git('add', '.');
+		git('commit', '--quiet', '-m', 'cap');
+		await fs.writeFile(path.join(repo, 'web', 'src', 'old.ts'), 'export const a = 2;\n');
+		await fs.writeFile(path.join(repo, 'web', 'logo.png'), 'png');
+		await fs.rm(path.join(repo, 'web', 'src', 'gone.ts'));
+		// An agent working in the repository's web/ folder: paths are relative to it, as the mount is.
+		const files = await changedFiles(path.join(repo, 'web'), 'main');
+		const { server, calls } = await child('sonar', { tools: { analyze_code_snippet: { json: { issues: [{ ruleKey: 'typescript:S1481', primaryMessage: 'Remove the unused local variable "unused".', severity: 'MINOR', textRange: { startLine: 1, endLine: 1 } }], issueCount: 1 } } } });
+		const found = await analyzeFiles(server, 'shop-checkout', files);
+		expect({ files, found, calls: (await calls()).map(c => c.arguments) }).toEqual({
+			files: ['logo.png', 'src/cart.ts', 'src/old.ts'],
+			found: {
+				issues: [
+					{ rule: 'typescript:S1481', message: 'Remove the unused local variable "unused".', severity: 'MINOR', line: 1, file: 'src/cart.ts' },
+					{ rule: 'typescript:S1481', message: 'Remove the unused local variable "unused".', severity: 'MINOR', line: 1, file: 'src/old.ts' },
+				],
+				analysed: ['src/cart.ts', 'src/old.ts'],
+				skipped: ['logo.png'],
+				failed: [],
+			},
+			calls: [{ projectKey: 'shop-checkout', filePath: 'src/cart.ts' }, { projectKey: 'shop-checkout', filePath: 'src/old.ts' }],
+		});
+	});
+
+	it('tests code through Snyk\'s own server for the folder, and through the CLI when the server fails', async () => {
+		const folder = await tempDir();
+		const { server, calls } = await child('snyk', { tools: { snyk_code_scan: { text: 'Found 1 issue: Path Traversal in src/files.ts:12' } } });
+		const { server: broken } = await child('snyk', { exitCode: 1, tools: {} });
+		const cli = new SnykCli('snyk', async () => ({ code: 0, stdout: JSON.stringify({ runs: [{ results: [] }] }), stderr: '' }));
+		const ctx = (snyk: typeof server): TeamToolContext => ({
+			connected: () => new Set(['snyk']),
+			connectors: () => ({ snyk: cli }),
+			folder: () => folder,
+			defaults: async () => ({}),
+			children: () => ({ snyk: new FolderChildren(() => snyk) }),
+		});
+		const viaServer = await callTeamTool(ctx(server), 'agent-1', 'snyk_code_test', {});
+		const viaCli = await callTeamTool(ctx(broken), 'agent-1', 'snyk_code_test', {});
+		expect({
+			viaServer: viaServer.content,
+			calls: await calls(),
+			viaCli: viaCli.content.map(c => c.type === 'text' ? c.text.split('\n')[0] : ''),
+		}).toEqual({
+			viaServer: [{ type: 'text', text: `<external source="snyk" ref="${folder}">\nFound 1 issue: Path Traversal in src/files.ts:12\n</external>` }],
+			calls: [{ name: 'snyk_code_scan', arguments: { path: folder } }],
+			viaCli: ['Snyk Code (source): no issues found.'],
+		});
+	});
 });
+

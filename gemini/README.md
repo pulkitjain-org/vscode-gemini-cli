@@ -93,7 +93,7 @@ The **Gemini** status bar item shows the agent's state. Hover over it to see the
 | `gemini.chat.foldFinishedWork` | Fold each finished turn's thoughts and steps under one "Worked for" line in the chat. On by default; off shows every step as its own row. |
 | `gemini.notifications.enabled` | Notify you, and badge the Dock, when an agent finishes or needs you while GeminiCode is in the background. On by default. |
 | `gemini.layout.showAgentsInNewWorkspaces` | Show the Gemini side bar rather than Explorer the first time a workspace opens in Editor mode. |
-| `gemini.team.runTeamServers` | Run the team's own Jira and GitLab MCP servers in Docker, at pinned versions, for the team tools' calls. Off by default; **Take Over Both Servers** in Connections turns it on. |
+| `gemini.team.runTeamServers` | Run the tools' own MCP servers for the team tools' calls: the team's Jira and GitLab servers and SonarQube's in Docker at pinned versions, and Snyk's from the Snyk CLI. Checks then also analyses changed files with SonarQube on this Mac. Off by default; **Take Over Both Servers** in Connections turns it on. |
 | `gemini.pilot.record` | Count the pilot's measures (launches, waits, permission cards, Undo and Rewind, team tool errors), with times and no text, for **Gemini: Export Pilot Data**. Off by default. |
 
 Changing the CLI path or version, the project, or an approval or shell setting restarts the agent so the change applies. Admins can lock the CLI, update, approval, shell, inline edit, usage and browser settings through policy; see [Security model](docs/ARCHITECTURE.md#security-model).

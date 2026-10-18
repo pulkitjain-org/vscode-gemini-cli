@@ -382,8 +382,8 @@ function pillsOf(tool: TeamToolId, state: ConnectionState, url: string | undefin
 	const version = state.kind === 'connected' && state.version && tool !== 'snyk' ? (tool === 'gitlab' ? state.version.split('.').slice(0, 2).join('.') : state.version) : undefined;
 	const where = tool === 'snyk' ? [state.kind === 'connected' && state.server ? state.server : '', state.kind === 'connected' && state.version ? vscode.l10n.t("CLI {0}", state.version) : ''].filter(Boolean).join(' · ') : [host, version].filter(Boolean).join(' · ');
 	const how = tool === 'figma' ? vscode.l10n.t("Dev Mode MCP server, 127.0.0.1:3845")
-		: tool === 'snyk' ? vscode.l10n.t("Snyk CLI, this Mac")
-			: via ? vscode.l10n.t("{0} in Docker, this Mac", via) : vscode.l10n.t("REST from this Mac");
+		: tool === 'snyk' ? via ? vscode.l10n.t("{0}, this Mac", via) : vscode.l10n.t("Snyk CLI, this Mac")
+			: via ? vscode.l10n.t("{0}, this Mac", via) : vscode.l10n.t("REST from this Mac");
 	return [where, how].filter(Boolean);
 }
 

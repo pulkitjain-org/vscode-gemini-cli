@@ -56,6 +56,20 @@ export function findingsFromSnyk(findings: readonly SnykFinding[], code: boolean
 	}));
 }
 
+/** The issues SonarQube's analysers found on this Mac in the branch's changed files. */
+export function findingsFromLocalSonar(issues: readonly { readonly file: string; readonly line?: number; readonly rule: string; readonly message: string; readonly severity: string }[]): CheckFinding[] {
+	return issues.map((issue, i) => ({
+		id: `sonar-local-${i}`,
+		source: 'sonar',
+		severity: issue.severity.toLowerCase(),
+		title: issue.message,
+		where: `${issue.file}${issue.line ? `:${issue.line}` : ''}`,
+		file: issue.file,
+		...issue.line ? { line: issue.line } : {},
+		fix: issue.rule,
+	}));
+}
+
 export function findingsFromSonar(issues: readonly SonarIssue[]): CheckFinding[] {
 	return issues.map((issue, i) => ({
 		id: `sonar-${i}`,

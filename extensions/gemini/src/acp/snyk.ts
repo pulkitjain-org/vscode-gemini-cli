@@ -89,6 +89,10 @@ export class SnykCli {
 	}
 
 	/** The CLI to run: `snyk` when the search path has it, else where the user's login shell finds it (nvm, Volta, asdf). */
+	executable(): Promise<string> {
+		return this.cli();
+	}
+
 	private cli(): Promise<string> {
 		this.resolved ??= this.run(this.command, ['--version'], undefined, 10_000).then(async found => found.code === 0 ? this.command : await this.locate(this.command) ?? this.command);
 		return this.resolved;

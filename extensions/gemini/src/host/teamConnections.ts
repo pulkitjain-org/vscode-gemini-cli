@@ -14,7 +14,8 @@ import type { InstantAnswer } from '../acp/permissions';
 import { isProjectToolCall } from '../acp/projectMcp';
 import { SnykCli } from '../acp/snyk';
 import { SonarClient } from '../acp/sonar';
-import { findDocker, gitlabContainer, jiraContainer, TeamChildren, teamImages } from '../acp/teamContainers';
+import type { ChildServer } from '../acp/mcpStdio';
+import { findDocker, FolderChildren, gitlabContainer, jiraContainer, snykServer, sonarContainer, TeamChildren, teamImages } from '../acp/teamContainers';
 import { readTeamDefaults, TeamDefaults } from '../acp/teamDefaults';
 import { normalizeBaseUrl, TeamToolError, TeamToolId, teamToolIds, teamToolNames } from '../acp/teamHttp';
 import { isConfirmToolCall, TeamConnectors, teamReadTools, TeamToolContext, teamWrite, TeamWriteResult } from '../acp/teamTools';
@@ -22,8 +23,16 @@ import { TeamToolsMcpServer } from '../acp/teamToolsMcp';
 import { repositoryRoot } from '../acp/worktrees';
 import { configSection } from './configuration';
 
-/** Runs the team's own Jira and GitLab servers in Docker for the team tools' calls; set by Take Over Both Servers in Connections. */
+/** Runs the tools' own MCP servers as children of the team tools; set by Take Over Both Servers in Connections. */
 export const runTeamServersSetting = 'team.runTeamServers';
+
+/** The tools whose own servers can run as children. */
+const childTools = ['jira', 'gitlab', 'sonar', 'snyk'] as const;
+type ChildTool = typeof childTools[number];
+
+function isChildTool(tool: TeamToolId): tool is ChildTool {
+	return (childTools as readonly string[]).includes(tool);
+}
 
 /**
  * The user's connections to the team's tools (Jira, GitLab, SonarQube, Snyk,
@@ -59,7 +68,7 @@ export class TeamConnections implements vscode.Disposable {
 	private readonly disposables: vscode.Disposable[] = [];
 	/** The team's own servers, run as children once taken over, with what each was started for. */
 	private children: TeamChildren = {};
-	private childKeys: Partial<Record<'jira' | 'gitlab', string>> = {};
+	private childKeys: Partial<Record<ChildTool, string>> = {};
 	private readonly tokens = new Map<TeamToolId, string>();
 	private warnedNoDocker = false;
 
@@ -116,15 +125,16 @@ export class TeamConnections implements vscode.Disposable {
 	}
 
 	dispose(): void {
-		this.children.jira?.stop();
-		this.children.gitlab?.stop();
+		for (const tool of childTools) {
+			this.children[tool]?.stop();
+		}
 		this.server.dispose();
 		vscode.Disposable.from(...this.disposables).dispose();
 	}
 
-	/** For Jira and GitLab: the team's server that makes the calls, when it runs as a child, as `mcp-atlassian 0.23.1`. */
+	/** The server that makes a tool's calls when it runs as a child, as "mcp-atlassian 0.23.1 in Docker". */
 	childOf(tool: TeamToolId): string | undefined {
-		return (tool === 'jira' || tool === 'gitlab') && this.children[tool] ? this.childName(tool) : undefined;
+		return isChildTool(tool) && this.children[tool] ? this.childName(tool) : undefined;
 	}
 
 	/** The tools the user has connected (a token saved, or Snyk or Figma turned on), whether or not they answer now. */
@@ -306,45 +316,72 @@ export class TeamConnections implements vscode.Disposable {
 	}
 
 	/**
-	 * Starts nothing: sets up the team's own Jira and GitLab servers, which start on their first
-	 * call, for the connected accounts while `gemini.team.runTeamServers` is on and Docker is here.
-	 * A server whose account or token changed is stopped and set up again.
+	 * Starts nothing: sets up the tools' own servers, each started on its first call, while
+	 * `gemini.team.runTeamServers` is on: the team's Jira and GitLab servers and SonarSource's
+	 * SonarQube server in Docker, and Snyk's server from the Snyk CLI. A server whose account or
+	 * token changed is stopped and set up again.
 	 */
 	private updateChildren(): void {
 		const on = vscode.workspace.getConfiguration(configSection).get<boolean>(runTeamServersSetting, false);
 		const docker = on ? findDocker() : undefined;
-		const jira = this.accountOf('jira');
-		const gitlab = this.accountOf('gitlab');
-		const jiraToken = this.tokens.get('jira');
-		const gitlabToken = this.tokens.get('gitlab');
-		const wanted = {
-			jira: docker && jira?.url && jira.email && jiraToken ? JSON.stringify([docker, jira.url, jira.email, jiraToken]) : undefined,
-			gitlab: docker && gitlab?.url && gitlabToken ? JSON.stringify([docker, gitlab.url, gitlabToken]) : undefined,
+		const account = (tool: TeamToolId) => ({ ...this.accountOf(tool), token: this.tokens.get(tool) });
+		const jira = account('jira');
+		const gitlab = account('gitlab');
+		const sonar = account('sonar');
+		const wanted: Record<ChildTool, string | undefined> = {
+			jira: docker && jira.url && jira.email && jira.token ? JSON.stringify([docker, jira.url, jira.email, jira.token]) : undefined,
+			gitlab: docker && gitlab.url && gitlab.token ? JSON.stringify([docker, gitlab.url, gitlab.token]) : undefined,
+			sonar: docker && sonar.url && sonar.token ? JSON.stringify([docker, sonar.url, sonar.token]) : undefined,
+			snyk: on && this.clients.snyk ? 'on' : undefined,
 		};
-		const next: { jira?: TeamChildren['jira']; gitlab?: TeamChildren['gitlab'] } = {};
-		for (const tool of ['jira', 'gitlab'] as const) {
+		const next: { -readonly [K in ChildTool]?: TeamChildren[K] } = {};
+		for (const tool of childTools) {
 			if (wanted[tool] === this.childKeys[tool] && this.children[tool]) {
-				next[tool] = this.children[tool];
+				Object.assign(next, { [tool]: this.children[tool] });
 				continue;
 			}
 			this.children[tool]?.stop();
-			if (wanted[tool] && docker) {
-				next[tool] = tool === 'jira'
-					? jiraContainer(docker, { site: jira!.url!, email: jira!.email!, token: jiraToken! })
-					: gitlabContainer(docker, { url: gitlab!.url!, token: gitlabToken! });
-				this.log.info(`${tool === 'jira' ? 'Jira' : 'GitLab'} calls go through ${this.childName(tool)} in Docker, started on the first call`);
+			if (!wanted[tool]) {
+				continue;
 			}
+			if (tool === 'jira' && docker) {
+				next.jira = jiraContainer(docker, { site: jira.url!, email: jira.email!, token: jira.token! });
+			} else if (tool === 'gitlab' && docker) {
+				next.gitlab = gitlabContainer(docker, { url: gitlab.url!, token: gitlab.token! });
+			} else if (tool === 'sonar' && docker) {
+				next.sonar = new FolderChildren(folder => sonarContainer(docker, { url: sonar.url!, token: sonar.token! }, folder));
+			} else if (tool === 'snyk' && this.clients.snyk) {
+				// The CLI's path is found once, in the login shell; the servers start on their first call.
+				const snyk = this.clients.snyk;
+				void snyk.executable().then(cli => {
+					if (this.childKeys.snyk === wanted.snyk && !this.children.snyk) {
+						this.children = { ...this.children, snyk: new FolderChildren(folder => snykServer(cli, folder)) };
+					}
+				});
+				continue;
+			}
+			this.log.info(`${teamToolNames[tool]} calls go through ${this.childName(tool)}, started on the first call`);
 		}
 		if (on && !docker && !this.warnedNoDocker) {
 			this.warnedNoDocker = true;
-			this.log.warn('gemini.team.runTeamServers is on, but Docker isn\'t installed; Jira and GitLab are called directly.');
+			this.log.warn('gemini.team.runTeamServers is on, but Docker isn\'t installed; Jira, GitLab and SonarQube are called directly.');
 		}
 		this.children = next;
 		this.childKeys = wanted;
 	}
 
-	private childName(tool: 'jira' | 'gitlab'): string {
-		return tool === 'jira' ? `mcp-atlassian ${teamImages.jira.tag}` : `gitlab-mcp ${teamImages.gitlab.tag}`;
+	private childName(tool: ChildTool): string {
+		switch (tool) {
+			case 'jira': return vscode.l10n.t("mcp-atlassian {0} in Docker", teamImages.jira.tag);
+			case 'gitlab': return vscode.l10n.t("gitlab-mcp {0} in Docker", teamImages.gitlab.tag);
+			case 'sonar': return vscode.l10n.t("sonarqube-mcp {0} in Docker", teamImages.sonar.tag);
+			case 'snyk': return vscode.l10n.t("Snyk's MCP server");
+		}
+	}
+
+	/** SonarQube's server for `folder`, for the analysis Checks runs on this Mac, when it runs as a child. */
+	sonarServerFor(folder: string): ChildServer | undefined {
+		return this.children.sonar?.for(folder);
 	}
 
 	private async check(tool: TeamToolId): Promise<void> {
