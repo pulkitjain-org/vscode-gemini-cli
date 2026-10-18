@@ -10,7 +10,7 @@
 
 import type * as acp from '@agentclientprotocol/sdk';
 import { ChildProcessWithoutNullStreams, execFile } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, Server } from 'node:http';
 import { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -60,7 +60,8 @@ describe.skipIf(!cliPath)('reopening a saved session over ACP', () => {
 
 	async function setUp(): Promise<{ env: NodeJS.ProcessEnv; work: string; geminiHome: string }> {
 		server = await startFakeGemini();
-		home = mkdtempSync(path.join(tmpdir(), 'gemini-home-'));
+		// The terminal keys a folder's chats by its real path, so work in one: macOS's temp folder is a link.
+		home = realpathSync(mkdtempSync(path.join(tmpdir(), 'gemini-home-')));
 		const work = path.join(home, 'shop');
 		mkdirSync(work);
 		mkdirSync(path.join(home, '.gemini'));

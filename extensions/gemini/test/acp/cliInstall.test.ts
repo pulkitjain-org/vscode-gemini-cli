@@ -24,7 +24,8 @@ function packTarball(files: Record<string, string>): Buffer {
 		fs.writeFileSync(path.join(root, 'package', name), content);
 	}
 	const out = path.join(dir, 'package.tgz');
-	execFileSync('tar', ['czf', out, '-C', root, 'package']);
+	// macOS's tar adds AppleDouble `._` entries for files with extended attributes; npm's tarballs have none.
+	execFileSync('tar', ['czf', out, '-C', root, 'package'], { env: { ...process.env, COPYFILE_DISABLE: '1' } });
 	fs.rmSync(root, { recursive: true });
 	return fs.readFileSync(out);
 }

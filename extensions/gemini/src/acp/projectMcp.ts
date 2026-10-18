@@ -11,7 +11,7 @@
 // opens, and every call is answered from memory.
 
 import type { McpTool, McpToolResult } from './browserMcp';
-import { LocalMcpServer, McpHttpConfig } from './localMcpServer';
+import { LocalMcpServer, type McpHttpConfig } from './localMcpServer';
 
 /** Who is calling: a project's coordinator, or one of its threads. */
 export type ProjectCaller = { readonly role: 'coordinator'; readonly project: string } | { readonly role: 'thread'; readonly project: string; readonly thread: string };

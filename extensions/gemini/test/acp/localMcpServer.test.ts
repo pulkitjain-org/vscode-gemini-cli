@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { AgentMcpServer, LocalMcpServer, McpHttpConfig } from '../../src/acp/localMcpServer';
+import { AgentMcpServer, LocalMcpServer, type McpHttpConfig } from '../../src/acp/localMcpServer';
 
 const servers: { dispose(): void }[] = [];
 afterEach(() => servers.splice(0).forEach(s => s.dispose()));
