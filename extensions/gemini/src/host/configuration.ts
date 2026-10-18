@@ -12,6 +12,8 @@ import { AgentCommand, cliHeapSizeMb, includeDirectoryArgs, resolveAgentCommand 
 import { CliResolution, resolveCli } from '../acp/cliResolution';
 import { buildAgentEnv } from '../acp/env';
 import { ProjectIdProblem, ResolvedProjectId, resolveProjectId, validateProjectId } from '../acp/projectId';
+import { projectServerName } from '../acp/projectMcp';
+import { confirmToolGroups, teamToolsServerName } from '../acp/teamTools';
 
 export const configSection = 'gemini';
 
@@ -77,11 +79,26 @@ export function getApprovalPolicy(): ApprovalPolicy {
 		allowAutoEdit: config.get<boolean>('approval.allowAutoEdit', true),
 		allowYolo: config.get<boolean>('approval.allowYolo', false),
 		allowShell: config.get<boolean>('tools.allowShell', true),
+		denyEnvironmentCommands: config.get<boolean>('tools.denyEnvironmentCommands', true),
+		confirmTools: confirmToolGroups(),
 	};
 }
 
+/** GeminiCode's own MCP servers, which `gemini.mcp.allowedServers` always keeps. */
+const ownServers = [teamToolsServerName, projectServerName, 'geminicode-browser'];
+
+/**
+ * `--allowed-mcp-server-names` when `gemini.mcp.allowedServers` names any server: the CLI then
+ * loads only those and GeminiCode's own, whatever a repository's settings file adds. Empty, the
+ * CLI's own `mcp.allowed` applies.
+ */
+export function allowedMcpServerArgs(): string[] {
+	const listed = vscode.workspace.getConfiguration(configSection).get<string[]>('mcp.allowedServers', []).filter(name => typeof name === 'string' && name.trim()).map(name => name.trim());
+	return listed.length ? ['--allowed-mcp-server-names', [...new Set([...ownServers, ...listed])].join(',')] : [];
+}
+
 /** The settings that change how the agent process starts; a change restarts it. */
-export const agentLaunchSettings = ['cliPath', 'cli.version', 'projectId', 'approval.allowAutoEdit', 'approval.allowYolo', 'tools.allowShell', 'agents.allWorkspaceFolders'].map(key => `${configSection}.${key}`);
+export const agentLaunchSettings = ['cliPath', 'cli.version', 'projectId', 'approval.allowAutoEdit', 'approval.allowYolo', 'tools.allowShell', 'tools.denyEnvironmentCommands', 'mcp.allowedServers', 'agents.allWorkspaceFolders'].map(key => `${configSection}.${key}`);
 
 export function getManagedCliDir(): string | undefined {
 	return managedCliDir;
@@ -121,6 +138,7 @@ export function getAgentCommand(options: { interactive?: boolean; cli?: CliResol
 		heapSizeMb: options.interactive || options.subcommand ? undefined : cliHeapSizeMb(readCliSettings(), os.totalmem()),
 		extraArgs: options.subcommand ? [...options.subcommand] : [
 			...adminPolicyDir ? prepareAdminPolicy(adminPolicyDir, getApprovalPolicy()) : [],
+			...allowedMcpServerArgs(),
 			...includeDirectoryArgs(options.ownFolderOnly ? [] : includedFolderPaths()),
 		],
 	});

@@ -125,7 +125,7 @@ GeminiCode does not update itself. Upstream's updater needs a server that answer
 ACP does **not** sandbox the agent. The CLI routes only its `read_file`, `write_file` and `edit` tools through the client's file requests. Its shell, `grep`, `glob` and `ls` tools run inside the CLI process with the user's permissions. What keeps the user in control:
 
 1. **Approval modes.** In **Default** mode the CLI asks permission before every mutating tool. **Auto Edit** and **YOLO** skip some or all of those questions. Admins can remove either mode, and YOLO is off by default.
-2. **Admin policy passed to the CLI.** GeminiCode writes a policy file and passes it with `--admin-policy`. When a mode is turned off, the CLI itself keeps asking in that mode. When shell access is off, the CLI removes its shell tool. A system policy directory on the machine overrides this file.
+2. **Admin policy passed to the CLI.** GeminiCode writes a policy file and passes it with `--admin-policy`. When a mode is turned off, the CLI itself keeps asking in that mode. When shell access is off, the CLI removes its shell tool. The commands that print the environment (`env`, `printenv`, and `set` or `export` alone) are refused, even inside a longer command, unless `gemini.tools.denyEnvironmentCommands` is off. The confirm class (merge, open a merge request, move a ticket, log time, and the same actions in a team's `jira` and `gitlab` servers) asks in every mode, YOLO included; its rules name each tool as the model calls it (`mcp_<server>_<tool>`), because gemini-cli 0.63 gives the policy check no server name for servers a session brings. In YOLO the chat still answers other requests itself, never those. With `gemini.mcp.allowedServers` set, GeminiCode also passes `--allowed-mcp-server-names` with that list and its own three servers, which outranks `mcp.allowed` in any settings file. A system policy directory on the machine overrides this file. `test/acp/realAgentPolicy.test.ts` checks all of it against the bundled CLI.
 3. **Folder trust.** The CLI refuses Auto Edit and YOLO in a folder it does not trust. GeminiCode asks the user before adding the folder to the CLI's trusted list. A project needs its agents' folders trusted too, since the CLI loads no MCP servers in an untrusted folder; GeminiCode asks before trusting them, and never when `security.folderTrust.enabled` is off.
 4. **No silent changes.** The IDE never changes the approval mode on the user's behalf.
 5. **File requests stay in the folder.** The CLI's file tools go through the IDE, which refuses paths outside the agent's folder, secret files and git-ignored reads, following symbolic links to their real target. Session approvals of shell commands never cover a program that runs another program or code it is given (Permissions, above).
@@ -150,6 +150,11 @@ Each setting below can be locked through VS Code's policy system (Group Policy, 
 | `gemini.browser.enabled` | `GeminiBrowser` | on |
 | `gemini.browser.allowOtherSites` | `GeminiBrowserOtherSites` | on |
 | `gemini.browser.allowedOrigins` | `GeminiBrowserAllowedOrigins` | empty (every site) |
+| `gemini.tools.denyEnvironmentCommands` | `GeminiDenyEnvironmentCommands` | on |
+| `gemini.mcp.allowedServers` | `GeminiAllowedMcpServers` | empty (the CLI's `mcp.allowed`) |
+| `gemini.pilot.record` | `GeminiPilotRecord` | off |
+
+`gemini/pilot/GeminiCode-pilot.mobileconfig` sets the pilot's values as a macOS configuration profile for the app's preferences domain; an array setting's policy is a JSON string.
 
 To pin a CLI version for everyone, lock `GeminiCliPath` to an empty string and `GeminiCliVersion` to the version. An organisation's default Google Cloud project ID can ship in `product.json` as `geminiDefaultProjectId`. Nothing sets it today: the release workflow stamps only `geminiCodeVersion`, so an organisation that wants a default must add it to its own build.
 

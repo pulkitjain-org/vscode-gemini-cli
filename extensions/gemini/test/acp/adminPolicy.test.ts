@@ -33,6 +33,20 @@ describe('buildAdminPolicy', () => {
 		expect(buildAdminPolicy({ ...defaults, allowAutoEdit: false })).toContain('modes = ["autoEdit", "yolo"]');
 	});
 
+	it('refuses the commands that print the environment, and asks for the confirm class in every mode', () => {
+		const policy = buildAdminPolicy({ ...allowAll, denyEnvironmentCommands: true, confirmTools: [{ server: 'geminicode-tools', tools: ['jira_transition', 'gitlab_merge'] }] }) ?? '';
+		const rules = policy.split('\n\n').filter(block => block.includes('[[rule]]')).map(block => block.trim().split('\n').filter(line => !line.startsWith('#') && !line.startsWith('denyMessage')).join('\n'));
+		expect(rules).toEqual([
+			'[[rule]]\ntoolName = "run_shell_command"\ncommandPrefix = ["env", "printenv"]\ndecision = "deny"\npriority = 960',
+			'[[rule]]\ntoolName = "run_shell_command"\ncommandRegex = \'(?:set|export)\\s*"\'\ndecision = "deny"\npriority = 960',
+			'[[rule]]\ntoolName = ["mcp_geminicode-tools_jira_transition", "mcp_geminicode-tools_gitlab_merge"]\ndecision = "ask_user"\npriority = 990',
+		]);
+	});
+
+	it('leaves the environment rules out when the shell is off anyway', () => {
+		expect(buildAdminPolicy({ ...allowAll, allowShell: false, denyEnvironmentCommands: true })).not.toContain('commandPrefix');
+	});
+
 	it('denies the shell tool when shell is turned off', () => {
 		const policy = buildAdminPolicy({ ...allowAll, allowShell: false });
 		expect(policy).toContain('toolName = "run_shell_command"\ndecision = "deny"');

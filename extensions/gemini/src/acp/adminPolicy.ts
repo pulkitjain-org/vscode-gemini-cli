@@ -21,10 +21,22 @@ export interface ApprovalPolicy {
 	readonly allowYolo: boolean;
 	/** The shell tool, which runs commands outside any sandbox. */
 	readonly allowShell: boolean;
+	/** Refuse the shell commands that print the environment, where a token passed to a server could sit. */
+	readonly denyEnvironmentCommands?: boolean;
+	/** MCP tools that ask in every mode, YOLO included, whatever a user or workspace policy allows: the confirm class. */
+	readonly confirmTools?: readonly { readonly server: string; readonly tools: readonly string[] }[];
 }
+
+/**
+ * Commands that print the environment: `env` and `printenv` with anything after them, and `set` or
+ * `export` alone (with arguments they change the shell, as in `set -e`, and print nothing).
+ */
+export const environmentCommandPrefixes = ['env', 'printenv'] as const;
+export const environmentCommandRegex = '(?:set|export)\\s*"';
 
 export const shellToolName = 'run_shell_command';
 export const policyFileName = 'geminicode.toml';
+const environmentDenyMessage = 'Commands that print the environment are turned off in GeminiCode, because it can hold tokens. Read the one variable you need instead, such as `echo $PATH`.';
 
 /** Default and Plan are always allowed: Default asks first, and Plan cannot change anything. */
 export function isModeAllowed(policy: ApprovalPolicy, modeId: string): boolean {
@@ -47,6 +59,36 @@ export function buildAdminPolicy(policy: ApprovalPolicy): string | undefined {
 			`decision = "ask_user"`,
 			`priority = 900`,
 			`modes = [${askModes.map(m => `"${m}"`).join(', ')}]`,
+		].join('\n'));
+	}
+	if (policy.allowShell && policy.denyEnvironmentCommands) {
+		rules.push([
+			`# Commands that print the environment, turned off in GeminiCode (gemini.tools.denyEnvironmentCommands).`,
+			`[[rule]]`,
+			`toolName = "${shellToolName}"`,
+			`commandPrefix = [${environmentCommandPrefixes.map(c => `"${c}"`).join(', ')}]`,
+			`decision = "deny"`,
+			`priority = 960`,
+			`denyMessage = "${environmentDenyMessage}"`,
+			``,
+			`[[rule]]`,
+			`toolName = "${shellToolName}"`,
+			`commandRegex = '${environmentCommandRegex}'`,
+			`decision = "deny"`,
+			`priority = 960`,
+			`denyMessage = "${environmentDenyMessage}"`,
+		].join('\n'));
+	}
+	// By the names the model calls them (`mcp_<server>_<tool>`), not `mcpName`: gemini-cli 0.63 gives the
+	// policy check no server name for the servers a session brings, so a rule with `mcpName` never matches
+	// them (test/acp/realAgentPolicy.test.ts).
+	for (const group of policy.confirmTools ?? []) {
+		rules.push([
+			`# ${group.server}: hard to take back, so these ask every time, in every mode.`,
+			`[[rule]]`,
+			`toolName = [${group.tools.map(t => `"mcp_${group.server}_${t}"`).join(', ')}]`,
+			`decision = "ask_user"`,
+			`priority = 990`,
 		].join('\n'));
 	}
 	if (!policy.allowShell) {

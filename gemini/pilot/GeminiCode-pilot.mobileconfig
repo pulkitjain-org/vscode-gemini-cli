@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+	The pilot's admin policy for GeminiCode (gemini/docs/AGENTIC-PLAN.md, sections 4 and 5).
+	Replace the four example origins with the team's Jira, GitLab and SonarQube addresses before
+	deploying it with your device management. See README.md beside this file.
+-->
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadType</key>
+			<string>com.pulkitjainorg.geminicode</string>
+			<key>PayloadIdentifier</key>
+			<string>com.pulkitjainorg.geminicode.pilot.policy</string>
+			<key>PayloadUUID</key>
+			<string>6B1F5C9E-3D47-4E0A-9A57-2C1E8B4D7F10</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+			<key>PayloadDisplayName</key>
+			<string>GeminiCode pilot policy</string>
+
+			<!-- Agents may use only GeminiCode's own MCP servers (team tools, projects, browser). -->
+			<key>GeminiAllowedMcpServers</key>
+			<string>["geminicode-tools", "geminicode-project", "geminicode-browser"]</string>
+
+			<!-- No env, printenv, or set or export alone: they would print any token in the environment. -->
+			<key>GeminiDenyEnvironmentCommands</key>
+			<true/>
+
+			<!-- Pages agents may open: the team's tools and local dev servers. Replace the examples. -->
+			<key>GeminiBrowserAllowedOrigins</key>
+			<string>["https://acme.atlassian.net", "https://gitlab.acme.internal", "https://sonar.acme.internal", "http://localhost:*", "http://127.0.0.1:*"]</string>
+
+			<!-- YOLO stays off; Auto Edit stays on, as by default. -->
+			<key>GeminiAllowYolo</key>
+			<false/>
+
+			<!-- Count the pilot's measures on each Mac, for Gemini: Export Pilot Data. -->
+			<key>GeminiPilotRecord</key>
+			<true/>
+		</dict>
+	</array>
+	<key>PayloadDisplayName</key>
+	<string>GeminiCode pilot</string>
+	<key>PayloadIdentifier</key>
+	<string>com.pulkitjainorg.geminicode.pilot</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>0D2A6E84-58B1-4C3F-8E26-9F7A1B3C5D42</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>

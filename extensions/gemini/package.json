@@ -1050,6 +1050,21 @@
           "scope": "machine",
           "markdownDescription": "%configuration.tools.allowShell%"
         },
+        "gemini.tools.denyEnvironmentCommands": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "markdownDescription": "%configuration.tools.denyEnvironmentCommands%"
+        },
+        "gemini.mcp.allowedServers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "machine",
+          "markdownDescription": "%configuration.mcp.allowedServers%"
+        },
         "gemini.projectId": {
           "type": "string",
           "default": "",

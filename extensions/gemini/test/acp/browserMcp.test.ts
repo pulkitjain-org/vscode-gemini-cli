@@ -404,6 +404,11 @@ describe('BrowserToolHost', () => {
 		expect(isAllowedOrigin(url('https://anything/'), ['not a url'])).toBe(false);
 	});
 
+	it('matches a host on any port with :*, and nothing else', () => {
+		const allowed = ['http://localhost:*'];
+		expect(['http://localhost:3000/', 'http://localhost/', 'https://localhost:3000/', 'http://localhost.evil:3000/'].map(u => isAllowedOrigin(new URL(u), allowed))).toEqual([true, true, false, false]);
+	});
+
 	it('knows local pages', () => {
 		for (const url of ['http://localhost:3000', 'http://app.localhost', 'http://127.0.0.1', 'http://[::1]:8080', 'http://0.0.0.0:5173']) {
 			expect(isLocalUrl(new URL(url)), url).toBe(true);

@@ -368,6 +368,39 @@
 				}
 			}
 		},
+		"gemini.tools.denyEnvironmentCommands": {
+			"name": "GeminiDenyEnvironmentCommands",
+			"category": "Extensions",
+			"minimumVersion": "1.141",
+			"localization": {
+				"description": {
+					"key": "gemini.tools.denyEnvironmentCommands.policy",
+					"value": "Whether agents are refused the shell commands that print the environment (env, printenv, and set or export alone), where a token could be read."
+				}
+			}
+		},
+		"gemini.mcp.allowedServers": {
+			"name": "GeminiAllowedMcpServers",
+			"category": "Extensions",
+			"minimumVersion": "1.141",
+			"localization": {
+				"description": {
+					"key": "gemini.mcp.allowedServers.policy",
+					"value": "The only MCP servers agents may use, besides GeminiCode's own; it outranks any repository's settings file. Empty leaves it to the Gemini CLI's mcp.allowed setting."
+				}
+			}
+		},
+		"gemini.pilot.record": {
+			"name": "GeminiPilotRecord",
+			"category": "Extensions",
+			"minimumVersion": "1.141",
+			"localization": {
+				"description": {
+					"key": "gemini.pilot.record.policy",
+					"value": "Whether GeminiCode counts the pilot's measures (launches, waits, permission cards, Undo and Rewind, team tool errors), with times and no text, on the Mac, for Gemini: Export Pilot Data."
+				}
+			}
+		},
 		"gemini.browser.allowedOrigins": {
 			"name": "GeminiBrowserAllowedOrigins",
 			"category": "Extensions",

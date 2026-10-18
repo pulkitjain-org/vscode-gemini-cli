@@ -59,6 +59,8 @@ A project's `.gemini/settings.json` can still override them, as in the CLI. A se
 | `gemini.approval.allowAutoEdit` | Offer the Auto Edit mode. |
 | `gemini.approval.allowYolo` | Offer the YOLO mode. Off by default. |
 | `gemini.tools.allowShell` | Let the agent run shell commands. Each command still asks first. |
+| `gemini.tools.denyEnvironmentCommands` | Refuse the commands that print the environment (`env`, `printenv`, and `set` or `export` alone), where a token could be. On by default; an agent that needs one variable can `echo` it. |
+| `gemini.mcp.allowedServers` | The only MCP servers agents may use, besides GeminiCode's own. Usually set by your organisation. |
 | `gemini.agents.ownBranch` | Start every new agent on its own branch. Off by default. |
 | `gemini.agents.worktreeSetup` | A command run in each new agent branch's folder before the agent starts, such as `npm ci`. |
 | `gemini.agents.allWorkspaceFolders` | Let every agent use all folders of a multi-folder window. Off by default. |

@@ -215,6 +215,18 @@ export const confirmToolNames: readonly string[] = [
 	'jira_transition_issue', 'jira_add_worklog', 'create_merge_request', 'merge_merge_request',
 ];
 
+/**
+ * The confirm class by server, for the admin policy: GeminiCode's own tools, and the same actions in
+ * the servers a team names `jira` and `gitlab`, as their settings file does.
+ */
+export function confirmToolGroups(): { server: string; tools: string[] }[] {
+	return [
+		{ server: teamToolsServerName, tools: teamConfirmTools.map(tool => tool.name) },
+		{ server: 'jira', tools: ['jira_transition_issue', 'jira_add_worklog'] },
+		{ server: 'gitlab', tools: ['create_merge_request', 'merge_merge_request'] },
+	];
+}
+
 /** Whether a permission request is for a confirm-class tool, by the title the CLI gives MCP calls (`name(args)`). */
 export function isConfirmToolCall(request: { readonly toolCall: { readonly title?: string | null } }): boolean {
 	const title = request.toolCall.title ?? '';

@@ -17,6 +17,7 @@ import { MIN_CLI_VERSION } from '../acp/protocol';
 import { AgentSidecar } from '../acp/sidecar';
 import { trustedFoldersPath, trustFolder } from '../acp/trustedFolders';
 import { AgentStatus, describeAgentStatus } from '../acp/status';
+import { isConfirmToolCall } from '../acp/teamTools';
 import { agentLaunchSettings, configSection, getAgentCommand, getApprovalPolicy, getCliResolution, getProjectSettings, getWorkspaceCwd, includedFolderPaths } from './configuration';
 import { sessionModel, sessionModelList } from './modelPreference';
 import { getFileAccessPolicy, WorkspaceFileSystem } from './workspaceFileSystem';
@@ -71,6 +72,7 @@ export class AgentService implements vscode.Disposable {
 			preferredModel: sessionModel,
 			modelList: sessionModelList,
 			isModeAllowed: modeId => isModeAllowed(getApprovalPolicy(), modeId),
+			alwaysAsks: isConfirmToolCall,
 		});
 
 		this.disposables.push(

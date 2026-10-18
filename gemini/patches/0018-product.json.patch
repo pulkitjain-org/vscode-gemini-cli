@@ -1,5 +1,5 @@
 diff --git a/product.json b/product.json
-index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..319d7f9d17a998c66768fccb9a9d2374b44e309c 100644
+index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..dda810a1cb9358c536f46896ad81e0bc5ebbb707 100644
 --- a/product.json
 +++ b/product.json
 @@ -1,41 +1,49 @@
@@ -117,7 +117,7 @@ index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..319d7f9d17a998c66768fccb9a9d2374
  			"type": "light"
  		},
  		{
-@@ -242,9 +244,140 @@
+@@ -242,9 +244,173 @@
  			"type": "light"
  		}
  	],
@@ -246,6 +246,39 @@ index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..319d7f9d17a998c66768fccb9a9d2374
 +				"description": {
 +					"key": "gemini.browser.allowOtherSites.policy",
 +					"value": "Whether Gemini agents may open sites other than localhost in the integrated browser, after asking the user. When off, they can only open local pages."
++				}
++			}
++		},
++		"gemini.tools.denyEnvironmentCommands": {
++			"name": "GeminiDenyEnvironmentCommands",
++			"category": "Extensions",
++			"minimumVersion": "1.141",
++			"localization": {
++				"description": {
++					"key": "gemini.tools.denyEnvironmentCommands.policy",
++					"value": "Whether agents are refused the shell commands that print the environment (env, printenv, and set or export alone), where a token could be read."
++				}
++			}
++		},
++		"gemini.mcp.allowedServers": {
++			"name": "GeminiAllowedMcpServers",
++			"category": "Extensions",
++			"minimumVersion": "1.141",
++			"localization": {
++				"description": {
++					"key": "gemini.mcp.allowedServers.policy",
++					"value": "The only MCP servers agents may use, besides GeminiCode's own; it outranks any repository's settings file. Empty leaves it to the Gemini CLI's mcp.allowed setting."
++				}
++			}
++		},
++		"gemini.pilot.record": {
++			"name": "GeminiPilotRecord",
++			"category": "Extensions",
++			"minimumVersion": "1.141",
++			"localization": {
++				"description": {
++					"key": "gemini.pilot.record.policy",
++					"value": "Whether GeminiCode counts the pilot's measures (launches, waits, permission cards, Undo and Rewind, team tool errors), with times and no text, on the Mac, for Gemini: Export Pilot Data."
 +				}
 +			}
 +		},

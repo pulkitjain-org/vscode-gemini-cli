@@ -263,13 +263,18 @@ export function sharedPageText(title: string, url: string): { readonly title: st
 /**
  * Whether `url` is one of `origins`, the admin's list of sites agents may
  * open: `*` is every site, `https://*.example.com` is example.com and its
- * subdomains, and any other entry is an origin (scheme, host and port).
+ * subdomains, `http://localhost:*` is localhost on any port, and any other
+ * entry is an origin (scheme, host and port).
  */
 export function isAllowedOrigin(url: URL, origins: readonly string[]): boolean {
 	return origins.some(entry => {
 		const pattern = entry.trim().replace(/\/+$/, '');
 		if (pattern === '*') {
 			return true;
+		}
+		const anyPort = /^(https?):\/\/([^/:*]+):\*$/i.exec(pattern);
+		if (anyPort) {
+			return url.protocol === `${anyPort[1].toLowerCase()}:` && url.hostname.toLowerCase() === anyPort[2].toLowerCase();
 		}
 		const wildcard = /^(https?):\/\/\*\.([^/:]+)(:\d+)?$/i.exec(pattern);
 		if (wildcard) {
