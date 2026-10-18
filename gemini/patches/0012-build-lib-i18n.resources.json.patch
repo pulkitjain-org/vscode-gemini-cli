@@ -1,5 +1,5 @@
 diff --git a/build/lib/i18n.resources.json b/build/lib/i18n.resources.json
-index 3a76dae56869f46324b3e84babcf0253ce65ca0d..7a28d173ab17141967814eb786d071524726969d 100644
+index 8faccae8c295d4cf8adb6cc1febc35ba1cdfc96a..a55311b543a12b03e7d630fe1c97d0461b0743d4 100644
 --- a/build/lib/i18n.resources.json
 +++ b/build/lib/i18n.resources.json
 @@ -234,6 +234,10 @@

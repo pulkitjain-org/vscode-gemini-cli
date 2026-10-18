@@ -1,8 +1,8 @@
 diff --git a/eslint.config.js b/eslint.config.js
-index 7611f24039b626316bcefa97cc71f44f6a453a4a..b21341d081767f312548b5c4ce1b1fbdec397752 100644
+index 4397cebb83603ec3667d6788903a89ac529f9da6..bfd7a4572e999aa748aefb5def5cc194fcda0d29 100644
 --- a/eslint.config.js
 +++ b/eslint.config.js
-@@ -3025,4 +3025,42 @@ export default defineConfig(
+@@ -3098,4 +3098,42 @@ export default defineConfig(
  		rules: {
  			'local/code-no-new-javascript-files': 'error',
  		},

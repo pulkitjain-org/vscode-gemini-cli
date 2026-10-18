@@ -1,5 +1,5 @@
 diff --git a/src/vs/platform/windows/electron-main/windows.ts b/src/vs/platform/windows/electron-main/windows.ts
-index 51f24ccee2e777dc916501e43aa6258fa83cc11a..c5b06253c21bccc003d31fdb62ecea34b8d630f8 100644
+index fed0318cc1caa96f62ab96dab6ddb5a4a3a39cee..0a7982782812b214ab88f761df1d228380d12e70 100644
 --- a/src/vs/platform/windows/electron-main/windows.ts
 +++ b/src/vs/platform/windows/electron-main/windows.ts
 @@ -151,7 +151,7 @@ export function defaultBrowserWindowOptions(accessor: ServicesAccessor, windowSt

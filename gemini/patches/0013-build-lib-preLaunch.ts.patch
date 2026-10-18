@@ -1,5 +1,5 @@
 diff --git a/build/lib/preLaunch.ts b/build/lib/preLaunch.ts
-index 85006f801fca3ecda030bccad5327ad7163f020b..e57dca8002ae0cd80709cba66f6a0622d617d4d2 100644
+index 44d663b179a7c4ca93f7bac16eec625c9a6540e5..f8026346a5e8c4f6c3356f86146243adb0d2ca2a 100644
 --- a/build/lib/preLaunch.ts
 +++ b/build/lib/preLaunch.ts
 @@ -5,6 +5,7 @@
@@ -10,19 +10,18 @@ index 85006f801fca3ecda030bccad5327ad7163f020b..e57dca8002ae0cd80709cba66f6a0622
  
  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
  const rootDir = path.resolve(import.meta.dirname, '..', '..');
-@@ -40,10 +41,34 @@ async function getElectron() {
- 	// directory is being removed and re-extracted. Skip the refresh when the
- 	// already-present Electron matches the expected version; any detection
- 	// failure falls back to a (re)download to preserve the previous behavior.
--	if (!process.env['VSCODE_FORCE_PRELAUNCH'] && await isExpectedElectronInstalled()) {
-+	// GEMINI-FORK: the dev app also keeps the name and icons it was built with,
-+	// so a rebrand needs a fresh copy too.
+@@ -34,8 +35,32 @@ async function ensureNodeModules() {
+ 
+ async function getElectron() {
+ 	const { shouldDownloadElectron } = await import('./electronVersion.ts');
+-	if (shouldDownloadElectron(rootDir)) {
++	// GEMINI-FORK: the dev app also keeps the icons it was built with, so a rebrand needs a fresh copy too.
 +	const branding = await brandingStamp();
-+	if (!process.env['VSCODE_FORCE_PRELAUNCH'] && await isExpectedElectronInstalled() && await readBrandingStamp() === branding) {
- 		return;
- 	}
- 	await runProcess(npm, ['run', 'electron']);
-+	await fs.writeFile(path.join(rootDir, '.build', 'electron', brandingStampFile), branding);
++	const rebranded = process.env['VSCODE_SKIP_PRELAUNCH'] !== '1' && await readBrandingStamp() !== branding;
++	if (shouldDownloadElectron(rootDir) || rebranded) {
+ 		await runProcess(npm, ['run', 'electron']);
++		await fs.writeFile(path.join(rootDir, '.build', 'electron', brandingStampFile), branding);
++	}
 +}
 +
 +// GEMINI-FORK: what `npm run electron` copies into the dev app: names from product.json and the app icons.
@@ -42,7 +41,6 @@ index 85006f801fca3ecda030bccad5327ad7163f020b..e57dca8002ae0cd80709cba66f6a0622
 +		return (await fs.readFile(path.join(rootDir, '.build', 'electron', brandingStampFile), 'utf8')).trim();
 +	} catch {
 +		return undefined;
-+	}
+ 	}
  }
  
- async function isExpectedElectronInstalled(): Promise<boolean> {

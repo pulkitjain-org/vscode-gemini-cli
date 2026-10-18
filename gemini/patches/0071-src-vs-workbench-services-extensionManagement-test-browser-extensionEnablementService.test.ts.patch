@@ -1,5 +1,5 @@
 diff --git a/src/vs/workbench/services/extensionManagement/test/browser/extensionEnablementService.test.ts b/src/vs/workbench/services/extensionManagement/test/browser/extensionEnablementService.test.ts
-index 8bdae656e822e644bed90fef609faa3787c4bd37..365cb49a66c151bdacab7f0128e494e0f1a8e51d 100644
+index 9888d5ab51f43318c728d60236b2eef409c4d535..681fde2d499596e8cc20a38d3e0b835bf2174cdb 100644
 --- a/src/vs/workbench/services/extensionManagement/test/browser/extensionEnablementService.test.ts
 +++ b/src/vs/workbench/services/extensionManagement/test/browser/extensionEnablementService.test.ts
 @@ -6,7 +6,7 @@ import assert from 'assert';
@@ -11,7 +11,7 @@ index 8bdae656e822e644bed90fef609faa3787c4bd37..365cb49a66c151bdacab7f0128e494e0
  import { TestInstantiationService } from '../../../../../platform/instantiation/test/common/instantiationServiceMock.js';
  import { Emitter, Event } from '../../../../../base/common/event.js';
  import { IWorkspace, IWorkspaceContextService, WorkbenchState } from '../../../../../platform/workspace/common/workspace.js';
-@@ -505,6 +505,12 @@ suite('ExtensionEnablementService Test', () => {
+@@ -513,6 +513,12 @@ suite('ExtensionEnablementService Test', () => {
  		assert.strictEqual(testObject.canChangeEnablement(aLocalExtension('pub.a', { localizations: [{ languageId: 'gr', translations: [{ id: 'vscode', path: 'path' }] }] })), false);
  	});
  

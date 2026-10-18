@@ -1,5 +1,5 @@
 diff --git a/src/vs/workbench/browser/parts/paneCompositeBar.ts b/src/vs/workbench/browser/parts/paneCompositeBar.ts
-index 048de8a0c9f738c01ad9dd1177c6a6574bcdf7d6..699d99d2a063ccdee11ad7bd66590eee65f68778 100644
+index ee76b0ef3b4f24cf61f30c948d6614d287019a27..d3a03df01b35e9a0e9a376078190087f7c4899a3 100644
 --- a/src/vs/workbench/browser/parts/paneCompositeBar.ts
 +++ b/src/vs/workbench/browser/parts/paneCompositeBar.ts
 @@ -32,6 +32,9 @@ import { IPaneCompositePart } from './paneCompositePart.js';
@@ -12,7 +12,7 @@ index 048de8a0c9f738c01ad9dd1177c6a6574bcdf7d6..699d99d2a063ccdee11ad7bd66590eee
  interface IPlaceholderViewContainer {
  	readonly id: string;
  	readonly name?: string;
-@@ -636,6 +639,15 @@ export class PaneCompositeBar extends Disposable {
+@@ -640,6 +643,15 @@ export class PaneCompositeBar extends Disposable {
  					cachedViewContainer.visible = viewContainerWorkspaceState.visible ?? cachedViewContainer.visible;
  				}
  			}

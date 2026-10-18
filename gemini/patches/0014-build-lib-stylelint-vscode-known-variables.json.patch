@@ -1,10 +1,10 @@
 diff --git a/build/lib/stylelint/vscode-known-variables.json b/build/lib/stylelint/vscode-known-variables.json
-index 889fac3759b303ed5e086f0134eb151c17a1bcb3..ddb44a071ab5fa277f42d83ae4bd2b0798c1c3a4 100644
+index db5045d15043a2f0336be6a5813641dc7d3e7a51..f3366ce23e945fbf27bdd9301fdd3e16b5caf946 100644
 --- a/build/lib/stylelint/vscode-known-variables.json
 +++ b/build/lib/stylelint/vscode-known-variables.json
-@@ -1003,6 +1003,14 @@
- 		"--agents-part-corner-radius",
- 		"--agents-part-frame-border-width",
+@@ -1005,6 +1005,14 @@
+ 		"--agents-session-frame-inset",
+ 		"--agents-side-pane-frame-inset",
  		"--agents-window-corner-radius",
 +		"--gemini-gradient",
 +		"--gemini-soft-tint",

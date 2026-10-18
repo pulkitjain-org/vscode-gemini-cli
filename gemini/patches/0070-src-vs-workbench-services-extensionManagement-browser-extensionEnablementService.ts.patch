@@ -1,8 +1,8 @@
 diff --git a/src/vs/workbench/services/extensionManagement/browser/extensionEnablementService.ts b/src/vs/workbench/services/extensionManagement/browser/extensionEnablementService.ts
-index 141241fdb70cdc87e8ea49420a85b9a5b24dcef4..d421a429a4d40c10625e7e7a7dc98c59ec2c7d36 100644
+index d7672e8c7e94a2b78e9a4cd48c0c3ed43a021609..cdb1cff3ad8e6eb40e6108c535aa3e0a619a0eac 100644
 --- a/src/vs/workbench/services/extensionManagement/browser/extensionEnablementService.ts
 +++ b/src/vs/workbench/services/extensionManagement/browser/extensionEnablementService.ts
-@@ -44,6 +44,9 @@ type WorkspaceType = { readonly virtual: boolean; readonly trusted: boolean };
+@@ -45,6 +45,9 @@ type WorkspaceType = { readonly virtual: boolean; readonly trusted: boolean };
  const EXTENSION_UNIFICATION_SETTING = 'chat.extensionUnification.enabled';
  const MALICIOUS_EXTENSIONS_STORAGE_KEY = 'extensionsEnablement/malicious';
  
@@ -12,7 +12,7 @@ index 141241fdb70cdc87e8ea49420a85b9a5b24dcef4..d421a429a4d40c10625e7e7a7dc98c59
  export class ExtensionEnablementService extends Disposable implements IWorkbenchExtensionEnablementService {
  
  	declare readonly _serviceBrand: undefined;
-@@ -261,6 +264,11 @@ export class ExtensionEnablementService extends Disposable implements IWorkbench
+@@ -264,6 +267,11 @@ export class ExtensionEnablementService extends Disposable implements IWorkbench
  			throw new Error(localize('cannot disable settings sync auth extension', "Cannot change enablement of {0} extension because Settings Sync depends on it.", extension.manifest.displayName || extension.identifier.id));
  		}
  
