@@ -34,7 +34,7 @@ Every recommendation names the evidence that confirms it, with one of these tags
 
 ### Mockups
 
-Eight screens of the IDE as the plan describes it, drawn in the GeminiCode Dark look, are on a design canvas: <https://claude.ai/artifact/AhrcijLGwyyuG5kQJvQWUS> (private until shared from its Share menu). Each is tied to a section:
+Eight screens of the IDE as the plan describes it, drawn in the GeminiCode Dark look, are in [`mockups/`](mockups/README.md), one HTML page per screen, and on a design canvas: <https://claude.ai/artifact/AhrcijLGwyyuG5kQJvQWUS> (private until shared from its Share menu). Each is tied to a section:
 
 | Screen | Section | What it shows |
 | --- | --- | --- |

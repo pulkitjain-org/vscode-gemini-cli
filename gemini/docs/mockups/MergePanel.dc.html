@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Merge request panel with the merge checklist</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="./ide.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#1F1F1F}
+a{color:#3794FF}a:hover{color:#6fb0ff}
+</style>
+</helmet>
+<div class="ide" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; color: #CCCCCC">
+  <header class="titlebar">
+    <div class="lights" aria-hidden="true"><span></span><span></span><span></span></div>
+    <span class="title">GeminiCode · acme-checkout</span>
+    <div class="agent-tabs" role="tablist" aria-label="Agents">
+      <button class="tab" role="tab"><span class="dot" aria-hidden="true"></span>Home</button>
+      <button class="tab" role="tab" aria-current="page"><span class="dot ok" aria-hidden="true"></span>ACME-412 Gift message</button>
+      <button class="tab" role="tab"><span class="dot warn" aria-hidden="true"></span>Review !318</button>
+    </div>
+    <div class="mode-switch" role="group" aria-label="Layout"><button aria-pressed="true">Agents</button><button aria-pressed="false">Editor</button></div>
+    <button class="icon-btn" aria-label="Search"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg></button>
+  </header>
+
+  <div class="body">
+    <aside class="agents" aria-label="Agents pane">
+      <div class="section-label">Agents <button class="menu-btn plus" aria-label="New agent">+</button></div>
+      <button class="agent-row" aria-current="true"><span class="dot ok" aria-hidden="true"></span>ACME-412 Gift message<span class="note">+184 −12</span></button>
+      <button class="agent-row"><span class="dot warn" aria-hidden="true"></span>Review !318<span class="note">waiting</span></button>
+      <button class="agent-row"><span class="dot ok" aria-hidden="true"></span>ACME-398 Flaky cart test<span class="note">+41</span></button>
+      <div class="agents-foot">ACME-412-gift-message-at-checkout</div>
+    </aside>
+
+    <main class="main" aria-label="Chat with ACME-412 Gift message">
+      <div class="chat">
+        <div class="chat-scroll">
+          <div class="bubble-user">Address the two review threads on !321, run the tests, and push.</div>
+          <div class="reply">
+            <div class="step"><img class="tool-logo" src="./icons/gitlab.svg" alt=""><span class="what">Read !321</span><span>· 2 open threads, pipeline passed</span></div>
+            <div class="step"><span>✎</span><span class="what">Edited src/checkout/GiftMessage.tsx</span><span>· +6 −2</span></div>
+            <div class="step"><span>✎</span><span class="what">Edited src/checkout/__tests__/giftMessage.test.tsx</span><span>· +14</span></div>
+            <div class="step"><span>▶</span><span class="what">npm test -- giftMessage</span><span>· 12 passed</span></div>
+            <div class="step"><span>▶</span><span class="what">git commit -m "Trim gift message and cap at 200 characters" &amp;&amp; git push</span><span>· pushed 3f9e2c1</span></div>
+            <div class="step"><img class="tool-logo" src="./icons/gitlab.svg" alt=""><span class="what">Replied on 2 threads and resolved them</span><span>· you approved each reply</span></div>
+            <p>Both threads are addressed: the message is trimmed before validation and the 200-character cap has a test. The pipeline for 3f9e2c1 is running. The merge request panel on the right shows when it is mergeable.</p>
+          </div>
+        </div>
+        <div class="composer">
+          <label for="prompt" class="visually-hidden">Message the agent</label>
+          <textarea id="prompt" placeholder="Reply, or @ a file…"></textarea>
+          <div class="composer-bar"><button class="btn sm">+</button><span>Default</span><span>·</span><span>gemini-3.8-flash</span><span class="ring" aria-label="Context 23% full"></span><div class="right"><button class="btn primary">Send</button></div></div>
+        </div>
+      </div>
+    </main>
+
+    <aside class="side" aria-label="Changes">
+      <div style="padding: 10px 14px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px">
+        <strong>Changes</strong><span style="color: var(--faint)">3 files</span>
+        <span style="margin-left: auto; display: flex; gap: 6px"><button class="btn sm">Keep All</button><button class="btn sm">Undo All</button></span>
+      </div>
+      <div style="padding: 10px 14px; display: flex; flex-direction: column; gap: 12px; overflow: auto">
+        <section class="card" aria-labelledby="mr">
+          <div class="card-head"><img class="tool-logo" src="./icons/gitlab.svg" alt=""><h2 id="mr">!321 Gift message at checkout</h2><span class="query">→ release/2026.11</span></div>
+          <div class="row"><span class="t">Pipeline for 3f9e2c1</span><span class="pill info">running · 2 of 5 jobs</span></div>
+          <div class="row"><img class="tool-logo" src="./icons/sonar.svg" alt=""><span class="t">Quality gate on !321</span><span class="pill ok">passed</span></div>
+          <div class="row"><img class="tool-logo" src="./icons/snyk.svg" alt=""><span class="t">Snyk, last run 14:02</span><span class="pill ok">clean</span></div>
+          <div class="row"><span class="t">Review threads</span><span class="pill ok">0 unresolved</span></div>
+          <div class="row"><img class="tool-logo" src="./icons/jira.svg" alt=""><span class="t">ACME-412</span><span class="pill ok">In Review</span></div>
+        </section>
+
+        <section class="card" aria-labelledby="merge">
+          <div class="card-head"><h2 id="merge">Merge !321</h2><span class="query">read live 12 s ago</span></div>
+          <div class="check"><span class="mark wait" aria-hidden="true">…</span><div><div>Pipeline must succeed</div><div class="src">only_allow_merge_if_pipeline_succeeds · head_pipeline.status = running</div></div></div>
+          <div class="check"><span class="mark ok" aria-hidden="true">✓</span><div><div>Approvals: 2 of 2</div><div class="src">approval_state · rule "Checkout owners" 1/1 · rule "Any eligible" 1/1</div></div></div>
+          <div class="check"><span class="mark ok" aria-hidden="true">✓</span><div><div>Approvals still valid after the last push</div><div class="src">reset_approvals_on_push = false for this project</div></div></div>
+          <div class="check"><span class="mark ok" aria-hidden="true">✓</span><div><div>All threads resolved</div><div class="src">only_allow_merge_if_all_discussions_are_resolved · 0 unresolved</div></div></div>
+          <div class="check"><span class="mark ok" aria-hidden="true">✓</span><div><div>No conflicts with release/2026.11</div><div class="src">detailed_merge_status = ci_still_running (becomes mergeable when the pipeline passes)</div></div></div>
+          <div class="check"><span class="mark ok" aria-hidden="true">✓</span><div><div>You are not the author approving yourself</div><div class="src">prevent author approval · author = pulkit.jain, merger = pulkit.jain (merge allowed, approval not counted)</div></div></div>
+          <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 8px; border-top: 1px solid var(--line)">
+            <label style="display: flex; gap: 8px; align-items: center"><input type="checkbox" checked> Squash commits (project default)</label>
+            <label style="display: flex; gap: 8px; align-items: center"><input type="checkbox" checked> Delete source branch</label>
+            <label style="display: flex; gap: 8px; align-items: center"><input type="checkbox" checked> Move ACME-412 to Done with a comment</label>
+            <div class="effect" style="font-family: var(--mono); font-size: 11px; color: var(--muted); background: #1c1c1c; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px">PUT /merge_requests/321/merge  sha=3f9e2c1  squash=true<br>then POST /issue/ACME-412/transitions  id=41 (Done)</div>
+            <div style="display: flex; gap: 8px; align-items: center">
+              <button class="btn primary" disabled>Merge when the pipeline passes</button>
+              <span style="color: var(--faint); font-size: 12px">Enabled when every line above is green. You will confirm once more.</span>
+            </div>
+          </div>
+        </section>
+
+        <div style="display: flex; gap: 8px; flex-wrap: wrap"><button class="btn">Open in GitLab</button><button class="btn">Run Checks</button><button class="btn">Fix Pipeline and Comments</button></div>
+      </div>
+    </aside>
+  </div>
+
+  <footer class="statusbar">
+    <span>✦ Gemini: ready · ACME-412 · 23% context</span>
+    <span>Jira ✓ · GitLab ✓ · SonarQube ✓ · Snyk ✓</span>
+    <span class="spacer"></span>
+    <span>ACME-412-gift-message-at-checkout</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

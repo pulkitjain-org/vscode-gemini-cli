@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Checks on a branch before the merge request</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="./ide.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#1F1F1F}
+a{color:#3794FF}a:hover{color:#6fb0ff}
+</style>
+</helmet>
+<div class="ide" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; color: #CCCCCC">
+  <header class="titlebar">
+    <div class="lights" aria-hidden="true"><span></span><span></span><span></span></div>
+    <span class="title">GeminiCode · acme-checkout</span>
+    <div class="agent-tabs" role="tablist" aria-label="Agents">
+      <button class="tab" role="tab"><span class="dot" aria-hidden="true"></span>Home</button>
+      <button class="tab" role="tab"><span class="dot ok" aria-hidden="true"></span>ACME-412 Gift message</button>
+      <button class="tab" role="tab" aria-current="page"><img class="tool-logo" src="./icons/snyk.svg" alt="">Checks: ACME-421-promo-code</button>
+    </div>
+    <div class="mode-switch" role="group" aria-label="Layout"><button aria-pressed="true">Agents</button><button aria-pressed="false">Editor</button></div>
+  </header>
+
+  <div class="body">
+    <aside class="agents" aria-label="Agents pane">
+      <div class="section-label">Agents <button class="menu-btn plus" aria-label="New agent">+</button></div>
+      <button class="agent-row"><span class="dot ok" aria-hidden="true"></span>ACME-412 Gift message<span class="note">+184 −12</span></button>
+      <button class="agent-row"><span class="dot ok" aria-hidden="true"></span>ACME-398 Flaky cart test<span class="note">+41</span></button>
+      <div class="agents-foot">main · acme-checkout</div>
+    </aside>
+
+    <main class="main" aria-label="Checks">
+      <div style="padding: 20px 28px; display: flex; flex-direction: column; gap: 14px; max-width: 1180px; width: 100%; margin: 0 auto">
+        <section class="card" aria-labelledby="pick" style="max-width: 640px">
+          <div class="card-head"><h2 id="pick">Run Checks on a Branch</h2><span class="query">Gemini: Run Checks on a Branch… · Home → Run Checks…</span></div>
+          <label for="branch" class="visually-hidden">Branch</label>
+          <input id="branch" class="btn" style="text-align: left; width: 100%" value="ACME-421" placeholder="Type a branch name">
+          <div class="row"><span class="key">main</span><span class="t">checked out here</span></div>
+          <div class="row"><span class="key">ACME-412-gift-message-at-checkout</span><span class="t">agent: ACME-412 Gift message</span></div>
+          <div class="row" style="background: var(--selection); margin: 0 -14px; padding: 6px 14px"><span class="key">ACME-421-promo-code</span><span class="t">local branch</span><span class="d">gets a checkout of its own, reused next time</span></div>
+          <div class="row"><span class="key">release/2026.11</span><span class="t">on origin</span></div>
+          <div class="row"><span class="key">develop</span><span class="t">on origin</span></div>
+        </section>
+
+        <section class="card" aria-labelledby="checks">
+          <div class="card-head"><img class="tool-logo" src="./icons/snyk.svg" alt=""><h2 id="checks">Checks: ACME-421-promo-code</h2><span class="query">~/.geminicode/worktrees/acme-checkout/checks/ACME-421-promo-code · setup: npm ci (done, 41 s)</span></div>
+          <div class="row"><img class="tool-logo" src="./icons/snyk.svg" alt=""><strong>Snyk: dependencies</strong><span class="t" style="color: #9D9D9D">snyk test on the checkout</span><span class="pill ok">clean</span></div>
+          <div class="row"><img class="tool-logo" src="./icons/snyk.svg" alt=""><strong>Snyk Code: source</strong><span class="t" style="color: #9D9D9D">snyk code test</span><span class="pill warn">2</span></div>
+          <div class="row"><img class="tool-logo" src="./icons/sonar.svg" alt=""><strong>SonarQube: new code</strong><span class="t" style="color: #9D9D9D">ACME-421-promo-code hasn't been analysed yet; SonarQube runs in the pipeline after you push. Next: local analysis of the changed files through the official SonarQube MCP server (plan §5)</span><span class="pill">not analysed</span></div>
+
+          <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 8px">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap"><input type="checkbox" checked aria-label="Fix this finding"><img class="tool-logo" src="./icons/snyk.svg" alt=""><span class="pill warn">medium</span><span style="flex: 1 1 auto">Regular expression denial of service in the promo code pattern</span><button class="btn sm">Fix</button></div>
+            <div style="color: #8B8B8B; font-family: var(--mono); font-size: 11px; padding-left: 26px">src/checkout/promoCode.ts:18 · javascript/ReDoS</div>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap"><input type="checkbox" aria-label="Fix this finding"><img class="tool-logo" src="./icons/snyk.svg" alt=""><span class="pill">low</span><span style="flex: 1 1 auto">Hard-coded test secret in a fixture</span><button class="btn sm">Fix</button></div>
+            <div style="color: #8B8B8B; font-family: var(--mono); font-size: 11px; padding-left: 26px">test/fixtures/promo.json:3 · javascript/HardcodedSecret</div>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); flex-wrap: wrap">
+            <span style="color: #8B8B8B; font-size: 12px">No agent works on this branch yet. Fix starts one in this checkout with the findings as its first prompt.</span>
+            <span style="margin-left: auto; display: flex; gap: 8px"><button class="btn">Run Again</button><button class="btn primary">Fix 1 with a New Agent</button></span>
+          </div>
+        </section>
+
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px">
+          <section class="card"><div class="card-head"><h2>Before the merge request</h2></div><p style="color: #9D9D9D; font-size: 12px">Pick any branch: the one checked out here, an agent's, a local one or one on origin. Nothing is pushed, and the checkout you work in never moves.</p></section>
+          <section class="card"><div class="card-head"><h2>What runs where</h2></div><p style="color: #9D9D9D; font-size: 12px">Snyk runs locally on the checkout. SonarQube's gate comes from the server's last analysis of the branch, so it needs one push; local analysis of the changed files is the next step.</p></section>
+          <section class="card"><div class="card-head"><h2>Into the merge request</h2></div><p style="color: #9D9D9D; font-size: 12px">The last result for the branch is offered as the "Check results" attachment when Open Merge Request runs from the same agent.</p></section>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <footer class="statusbar">
+    <span>✦ Gemini: ready</span>
+    <span>Jira ✓ · GitLab ✓ · SonarQube ✓ · Snyk ✓</span>
+    <span class="spacer"></span>
+    <span>main</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

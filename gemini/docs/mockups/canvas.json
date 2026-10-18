@@ -1,0 +1,161 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-10-18T06:10:00Z"
+  },
+  "title": "GeminiCode agentic IDE mockups",
+  "launch": {
+    "view": "canvas"
+  },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Home: my work (plan \u00a73)",
+      "expand": "fill"
+    },
+    "MergePanel.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Merge request panel with the merge checklist (plan \u00a73)",
+      "expand": "fill"
+    },
+    "ConfirmCard.dc.html": {
+      "x": 3040,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Confirm-class permission card (plan \u00a74, ADR 0006)",
+      "expand": "fill"
+    },
+    "AuditLog.dc.html": {
+      "x": 0,
+      "y": 1260,
+      "w": 1440,
+      "h": 900,
+      "title": "Audit log (plan \u00a74, ADR 0007)",
+      "expand": "fill"
+    },
+    "Restart.dc.html": {
+      "x": 1520,
+      "y": 1260,
+      "w": 1440,
+      "h": 900,
+      "title": "After a restart: unfinished work (plan \u00a71 restart model, ADR 0009)",
+      "expand": "fill"
+    },
+    "Trace.dc.html": {
+      "x": 3040,
+      "y": 1260,
+      "w": 1440,
+      "h": 900,
+      "title": "Latency readout and Record Performance Trace (plan \u00a71)",
+      "expand": "fill"
+    },
+    "Connections.dc.html": {
+      "x": 4560,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Connections: the five tools and the team's MCP servers (plan \u00a73, \u00a74)",
+      "expand": "fill"
+    },
+    "Checks.dc.html": {
+      "x": 4560,
+      "y": 1260,
+      "w": 1440,
+      "h": 900,
+      "title": "Checks on any branch before the merge request (plan \u00a75)",
+      "expand": "fill"
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "MergePanel.dc.html",
+    "ConfirmCard.dc.html",
+    "AuditLog.dc.html",
+    "Restart.dc.html",
+    "Trace.dc.html",
+    "Connections.dc.html",
+    "Checks.dc.html"
+  ],
+  "notes": {
+    "row1": {
+      "x": 0,
+      "y": -300,
+      "text": "Work, approvals and connections: Home as my work, the merge checklist, the confirm-class card, and where each tool comes from",
+      "kind": "title1",
+      "maxW": 6000
+    },
+    "row2": {
+      "x": 0,
+      "y": 960,
+      "text": "Evidence, restarts and checks: the audit log, what a restart shows, the latency readout, and checks on any branch",
+      "kind": "title1",
+      "maxW": 6000
+    },
+    "n1": {
+      "x": 0,
+      "y": -140,
+      "w": 520,
+      "text": "Every control shown exists in the plan: cards are named by the Jira or GitLab query that fills them, and each write names the exact remote effect before the button.",
+      "fill": "blue"
+    },
+    "n2": {
+      "x": 1520,
+      "y": -140,
+      "w": 520,
+      "text": "Merge stays disabled until every precondition read live from GitLab is green. GitLab enforces the same rules server-side, so a stale view fails, never merges wrong.",
+      "fill": "blue"
+    },
+    "n3": {
+      "x": 3040,
+      "y": -140,
+      "w": 520,
+      "text": "Confirm class: jira_transition, jira_log_time, gitlab_create_mr, gitlab_merge. Only Allow once and Reject. Reads ran without a card, shown as plain rows.",
+      "fill": "blue"
+    },
+    "n4": {
+      "x": 0,
+      "y": 1120,
+      "w": 520,
+      "text": "Each row has an intent and a result; the remote id joins it to Jira's issue history or GitLab's MR activity, which stay the evidence of record.",
+      "fill": "blue"
+    },
+    "n5": {
+      "x": 1520,
+      "y": 1120,
+      "w": 520,
+      "text": "Desktop only: a reboot ends every process. Home lists intents without results and flows that stopped mid-way; the chat marks the interrupted turn. Nothing is replayed silently.",
+      "fill": "blue"
+    },
+    "n6": {
+      "x": 3040,
+      "y": 1120,
+      "w": 520,
+      "text": "The readout is the budget table of plan \u00a71, per turn, from the CLI's OpenTelemetry export to a local file. Record Performance Trace turns it on for one restart.",
+      "fill": "blue"
+    },
+    "n7": {
+      "x": 4560,
+      "y": -140,
+      "w": 520,
+      "text": "Jira and GitLab are the team's own MCP containers from .gemini/settings.json. Measured: 48 + 58 tools, about 29,000 tokens of schemas on every request. The adapter takes them over, keeps the tokens in the keychain, and re-exposes 17 tools (about 1,600 tokens).",
+      "fill": "blue"
+    },
+    "n8": {
+      "x": 4560,
+      "y": 1120,
+      "w": 520,
+      "text": "Pick any branch; a branch not checked out gets its own reusable checkout. Snyk runs locally; SonarQube's gate needs one push until local analysis through the official MCP server lands. Fix starts an agent on the branch.",
+      "fill": "blue"
+    }
+  },
+  "designSystems": []
+}

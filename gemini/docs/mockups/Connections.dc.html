@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Connections</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="./ide.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#1F1F1F}
+a{color:#3794FF}a:hover{color:#6fb0ff}
+</style>
+</helmet>
+<div class="ide" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; color: #CCCCCC">
+  <header class="titlebar">
+    <div class="lights" aria-hidden="true"><span></span><span></span><span></span></div>
+    <span class="title">GeminiCode · acme-checkout</span>
+    <div class="agent-tabs" role="tablist" aria-label="Agents">
+      <button class="tab" role="tab"><span class="dot" aria-hidden="true"></span>Home</button>
+      <button class="tab" role="tab"><span class="dot ok" aria-hidden="true"></span>ACME-412 Gift message</button>
+      <button class="tab" role="tab" aria-current="page"><span class="dot" aria-hidden="true"></span>Connections</button>
+    </div>
+    <div class="mode-switch" role="group" aria-label="Layout"><button aria-pressed="true">Agents</button><button aria-pressed="false">Editor</button></div>
+  </header>
+
+  <div class="body">
+    <aside class="agents" aria-label="Agents pane">
+      <div class="section-label">Agents <button class="menu-btn plus" aria-label="New agent">+</button></div>
+      <button class="agent-row"><span class="dot ok" aria-hidden="true"></span>ACME-412 Gift message<span class="note">+184 −12</span></button>
+      <button class="agent-row"><span class="dot ok" aria-hidden="true"></span>ACME-398 Flaky cart test<span class="note">+41</span></button>
+      <div class="agents-foot">main · acme-checkout</div>
+    </aside>
+
+    <main class="main" aria-label="Connections">
+      <div style="padding: 20px 28px; display: flex; flex-direction: column; gap: 14px; max-width: 1180px; width: 100%; margin: 0 auto">
+        <div style="display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap">
+          <h1 style="font-size: 20px; font-weight: 600">Connections</h1>
+          <span style="color: #9D9D9D">Each tool with your own account. Tokens live in the macOS keychain. Team defaults come from <code style="font-family: var(--mono); font-size: 12px">.gemini/geminicode-tools.json</code>.</span>
+          <button class="btn" style="margin-left: auto">Check All</button>
+        </div>
+
+        <section class="card" style="border-color: #5a4a14" aria-labelledby="takeover">
+          <div class="card-head"><h2 id="takeover">This repository's <code style="font-family: var(--mono); font-size: 12px">.gemini/settings.json</code> runs Jira and GitLab as MCP servers of the CLI</h2></div>
+          <p style="color: #9D9D9D; font-size: 12px">Agents see two sets of Jira and GitLab tools, and the servers' tokens come from your shell environment, which the agent's shell tool can read. GeminiCode can run the same two containers itself: tokens move to the keychain, the images are pinned, the agent sees one server with 17 tools instead of two with 106, and Home can use the same tools.</p>
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap"><button class="btn primary">Take over both servers…</button><button class="btn">Show what changes</button><span style="color: #8B8B8B; font-size: 12px">Nothing changes until you choose. The settings file is edited in place and can be reverted with git.</span></div>
+        </section>
+
+        <section class="card" style="padding: 0" aria-label="Connected tools">
+          <div class="row" style="padding: 14px 16px; align-items: flex-start">
+            <img class="tool-logo lg" src="./icons/jira.svg" alt="Jira">
+            <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+              <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap"><strong>Jira</strong><span class="pill ok">connected as Pulkit Jain</span><span class="pill">acme.atlassian.net</span><span class="pill warn">team MCP container</span></div>
+              <div style="color: #9D9D9D; font-size: 12px">Runs <code style="font-family: var(--mono)">ghcr.io/sooperset/mcp-atlassian</code> from the repository's settings · 48 of 63 tools listed (15 excluded by the file) · about 9,400 tokens of schemas per request</div>
+              <div style="color: #9D9D9D; font-size: 12px">Token: API token from <code style="font-family: var(--mono)">$JIRA_API_TOKEN</code> in your shell, not redacted from the agent's environment · unscoped</div>
+            </div>
+            <div style="display: flex; gap: 6px; flex: none"><button class="btn sm">Replace Token…</button><button class="btn sm">Disconnect</button></div>
+          </div>
+          <div class="row" style="padding: 14px 16px; align-items: flex-start">
+            <img class="tool-logo lg" src="./icons/gitlab.svg" alt="GitLab">
+            <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+              <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap"><strong>GitLab</strong><span class="pill ok">connected as pulkit.jain</span><span class="pill">gitlab.acme.internal · 18.3</span><span class="pill warn">team MCP container</span></div>
+              <div style="color: #9D9D9D; font-size: 12px">Runs <code style="font-family: var(--mono)">zereight050/gitlab-mcp</code> from the repository's settings · 58 of 124 tools listed (includeTools) · about 19,600 tokens of schemas per request · merge, approve and unapprove excluded by the file</div>
+              <div style="color: #9D9D9D; font-size: 12px">Token: personal access token <code style="font-family: var(--mono)">GeminiCode</code>, scope <code style="font-family: var(--mono)">api</code>, expires 12 Jan 2027 · also read from <code style="font-family: var(--mono)">$GITLAB_PERSONAL_ACCESS_TOKEN</code> by the container</div>
+            </div>
+            <div style="display: flex; gap: 6px; flex: none"><button class="btn sm">Replace Token…</button><button class="btn sm">Disconnect</button></div>
+          </div>
+          <div class="row" style="padding: 14px 16px; align-items: flex-start">
+            <img class="tool-logo lg" src="./icons/sonar.svg" alt="SonarQube">
+            <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+              <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap"><strong>SonarQube</strong><span class="pill ok">connected as pulkit.jain</span><span class="pill">sonar.acme.internal · 2025.3</span><span class="pill info">official MCP server, stdio</span></div>
+              <div style="color: #9D9D9D; font-size: 12px">Runs <code style="font-family: var(--mono)">sonarsource/sonarqube-mcp</code> as a child of GeminiCode, toolsets issues, quality gates, hotspots, branches · 9 tools exposed · user token in the keychain · project key from <code style="font-family: var(--mono)">sonar-project.properties</code></div>
+            </div>
+            <div style="display: flex; gap: 6px; flex: none"><button class="btn sm">Replace Token…</button><button class="btn sm">Disconnect</button></div>
+          </div>
+          <div class="row" style="padding: 14px 16px; align-items: flex-start">
+            <img class="tool-logo lg" src="./icons/snyk.svg" alt="Snyk">
+            <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+              <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap"><strong>Snyk</strong><span class="pill ok">connected as pulkit.jain</span><span class="pill">snyk.acme.internal · CLI 1.1300</span><span class="pill info">official MCP server, stdio</span></div>
+              <div style="color: #9D9D9D; font-size: 12px">Runs <code style="font-family: var(--mono)">snyk mcp -t stdio</code> with your signed-in Snyk CLI · dependency and code tests · no token held by GeminiCode</div>
+            </div>
+            <div style="display: flex; gap: 6px; flex: none"><button class="btn sm">Test</button><button class="btn sm">Disconnect</button></div>
+          </div>
+          <div class="row" style="padding: 14px 16px; align-items: flex-start">
+            <img class="tool-logo lg off" src="./icons/figma.svg" alt="Figma">
+            <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+              <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap"><strong>Figma</strong><span class="pill warn">Figma isn't open</span><span class="pill info">Dev Mode MCP server, 127.0.0.1:3845</span></div>
+              <div style="color: #9D9D9D; font-size: 12px">Through the Figma desktop app with your Dev seat · design context and screenshots by link · no token held by GeminiCode</div>
+            </div>
+            <div style="display: flex; gap: 6px; flex: none"><button class="btn sm">Check Again</button><button class="btn sm">Disconnect</button></div>
+          </div>
+        </section>
+
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px">
+          <section class="card"><div class="card-head"><h2>What every agent gets</h2></div><p style="color: #9D9D9D; font-size: 12px">One server, <code style="font-family: var(--mono)">geminicode-tools</code>, listing only connected tools: 17 tools, about 1,600 tokens of schemas per request. Reads run without a card; comments and replies ask; moves, time logs, new merge requests and merges ask every time.</p></section>
+          <section class="card"><div class="card-head"><h2>What the tokens can do</h2></div><p style="color: #9D9D9D; font-size: 12px">Jira: this token is unscoped; a scoped token with read and write on work items is offered when the site allows it. GitLab: <code style="font-family: var(--mono)">api</code> is the only scope that can open merge requests; approval rules on the server remain the floor.</p></section>
+          <section class="card"><div class="card-head"><h2>Where things live</h2></div><p style="color: #9D9D9D; font-size: 12px">Tokens: macOS keychain. Server addresses and the Jira email: GeminiCode's global state. Team defaults: the repository. Nothing leaves this Mac except the calls themselves, over your VPN.</p></section>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <footer class="statusbar">
+    <span>✦ Gemini: ready</span>
+    <span>Jira ✓ · GitLab ✓ · SonarQube ✓ · Snyk ✓ · Figma: not open</span>
+    <span class="spacer"></span>
+    <span>main</span>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
