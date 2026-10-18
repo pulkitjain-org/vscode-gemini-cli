@@ -18,6 +18,7 @@ The repository's top-level README, SECURITY and AGENTS files point here. CONTRIB
 - [scripts/upstream-series.sh](scripts/upstream-series.sh): lists, regenerates, applies and checks the patch series.
 - [scripts/list-fork-touches.sh](scripts/list-fork-touches.sh): lists every `GEMINI-FORK` marker in upstream files.
 - [scripts/notarize.sh](scripts/notarize.sh): sends a signed build to Apple's notary service, for the release workflow.
+- [scripts/make-icons.sh](scripts/make-icons.sh): builds the app icon from [branding/](branding/README.md): the layered macOS 26 icon catalog, the classic `.icns` and the workbench's `code-icon.svg`.
 
 The product code is in [`../extensions/gemini/`](../extensions/gemini/).
 

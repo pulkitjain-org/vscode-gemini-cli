@@ -1,3 +1,4 @@
+resources/darwin/Assets.car
 src/vs/platform/window/common/geminiContextMenu.ts
 src/vs/platform/windows/electron-main/geminiContextMenu.ts
 src/vs/platform/windows/electron-main/geminiSpellCheck.ts
