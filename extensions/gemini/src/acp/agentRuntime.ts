@@ -11,7 +11,7 @@
 
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import type * as acp from '@agentclientprotocol/sdk';
-import { AgentClientHandlers, AgentConnection } from './agentConnection';
+import type { AgentClientHandlers, AgentConnection } from './agentConnection';
 import { AgentError, AgentErrorInfo, classifyAgentError } from './errors';
 import { Emitter } from './events';
 import { isPrompt } from './cliSessions';
@@ -160,17 +160,23 @@ export class AgentRuntime {
 	 * the user types a task on Agent Home, so starting the agent waits for no
 	 * `session/new`. The next `newSession` with the same folder and servers on
 	 * this process takes it. Does nothing until the process is ready. One spare
-	 * at a time: gemini-cli cannot close a session, so one not taken stays in
-	 * the process (about 2.5 MB) until it exits.
+	 * at a time: a spare it replaces is closed when the agent can close
+	 * sessions (gemini-cli 0.64 advertises `sessionCapabilities.close`); an
+	 * older CLI keeps it (about 2.5 MB) until the process exits.
 	 */
 	prepareSession(cwd: string, mcpServers: readonly acp.McpServer[] = [], key = spareKey(cwd, mcpServers)): void {
 		const connection = this.connection;
-		if (this._state.kind !== 'ready' || !connection || (this.spare?.key === key && this.spare.connection === connection)) {
+		const state = this._state;
+		if (state.kind !== 'ready' || !connection || (this.spare?.key === key && this.spare.connection === connection)) {
 			return;
 		}
+		const replaced = this.spare?.connection === connection ? this.spare.session : undefined;
 		const session = this.openNewSession(cwd, mcpServers);
 		session.catch(() => undefined);
 		this.spare = { key, connection, session };
+		if (replaced && state.agent.agentCapabilities?.sessionCapabilities?.close) {
+			void replaced.then(old => connection.close(old.session.sessionId), () => undefined).catch(() => undefined);
+		}
 	}
 
 	/** The key of the spare session on the running process, if there is one. */
@@ -318,8 +324,17 @@ export class AgentRuntime {
 		}
 	}
 
+	/** The process `connect` is connecting to; a newer one makes an older connect stop. */
+	private connectingTo: ChildProcessWithoutNullStreams | undefined;
+
 	private async connect(agentProcess: ChildProcessWithoutNullStreams): Promise<void> {
 		this.dropConnection();
+		this.connectingTo = agentProcess;
+		// The ACP SDK (and zod, which it validates with) loads here, when the agent starts, not when the extension activates.
+		const { AgentConnection } = await import('./agentConnection');
+		if (this.connectingTo !== agentProcess) {
+			return;
+		}
 		const connection = new AgentConnection(agentProcess.stdin, agentProcess.stdout, {
 			sessionUpdate: params => this.routeUpdate(params),
 			requestPermission: async params => {

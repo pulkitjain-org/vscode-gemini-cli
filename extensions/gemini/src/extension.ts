@@ -120,6 +120,11 @@ export function activate(context: vscode.ExtensionContext): void {
 	agentsView.browser = browserTools;
 	const teamTools = new TeamConnections(context, String(context.extension.packageJSON.version ?? ''), log);
 	agentsView.teamTools = teamTools;
+	// A tool connecting, or the browser turned on or off, changes what a new session gets: the spare follows.
+	context.subscriptions.push(
+		teamTools.onDidChange(() => agentsView.refreshSpare()),
+		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.browser`) && agentsView.refreshSpare()),
+	);
 	const teamFlows = new TeamFlows(context.extensionUri, teamTools, agentsView);
 	const traceRecorder = new TraceRecorder(service, log);
 	const mrPanel = new MrPanel(teamTools, agentsView, agent => teamFlows.checksSummary(agent));

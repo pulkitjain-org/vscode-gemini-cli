@@ -10,7 +10,7 @@
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
-import * as acp from '@agentclientprotocol/sdk';
+import type * as acp from '@agentclientprotocol/sdk';
 import { AGENT_SETUP_ERROR_CODE } from './errors';
 
 /** The host's view of the workspace files. */
@@ -130,9 +130,16 @@ export function sliceLines(text: string, line?: number | null, limit?: number | 
 	return lines.slice(start, end).join('\n');
 }
 
-export class FileAccessDeniedError extends acp.RequestError {
+/**
+ * A refused `fs/*` request. AgentConnection answers the agent with it as a
+ * JSON-RPC error of this code; it is not the SDK's own error class, so that
+ * this module, which much of the extension imports, does not load the SDK.
+ */
+export class FileAccessDeniedError extends Error {
+	readonly code = AGENT_SETUP_ERROR_CODE;
 	constructor(filePath: string, reason: string) {
-		super(AGENT_SETUP_ERROR_CODE, `Access to ${filePath} was denied: ${reason}.`);
+		super(`Access to ${filePath} was denied: ${reason}.`);
+		this.name = 'FileAccessDeniedError';
 	}
 }
 

@@ -162,7 +162,7 @@ Measured on 14 Oct 2026 on a 4-core Linux machine, from the production builds (`
 | `media/draftMarkdown.js` | 150,178 bytes | 126,052 bytes |
 | `dist/extension.js` | 865,562 bytes | 874,835 bytes |
 
-The webview saving comes from bundling only the `entities` package's decoder, which markdown-it needs; its encoder tables were dead weight. `test/perf/budgets.test.ts` now holds `chat.js` to 215,000 bytes and `draftMarkdown.js` to 140,000. In `extension.js`, zod (pulled in by the ACP SDK's validation) is about 453 KB, and the SDK and zod take about 60 ms of the roughly 130 ms it takes to load the bundle; loading them lazily is the next saving there.
+The webview saving comes from bundling only the `entities` package's decoder, which markdown-it needs; its encoder tables were dead weight. `test/perf/budgets.test.ts` now holds `chat.js` to 215,000 bytes and `draftMarkdown.js` to 140,000. In `extension.js`, zod (pulled in by the ACP SDK's validation) is about 453 KB, and the SDK and zod take about 60 ms of the roughly 130 ms it takes to load the bundle; loading them lazily is the next saving there. Done on 18 Oct 2026: they now load when the first agent starts. Requiring the minified bundle, median of 15 on an Apple silicon Mac, went from 65.4 ms to 53.8 ms, less than the 60 ms the SDK takes when loaded on its own, because inside the bundle there is no module resolution to pay for. The wrappers that defer it add about 6 KB to the bundle.
 
 ## Token counts over ACP
 

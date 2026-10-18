@@ -5,6 +5,7 @@
 
 import { Readable, Writable } from 'node:stream';
 import * as acp from '@agentclientprotocol/sdk';
+import { FileAccessDeniedError } from './fileAccess';
 import { CLIENT_INFO, SUPPORTED_PROTOCOL_VERSION, UnsupportedProtocolVersionError } from './protocol';
 
 /**
@@ -38,10 +39,10 @@ export class AgentConnection {
 			.onNotification('session/update', ctx => handlers.sessionUpdate(ctx.params));
 		const { readTextFile, writeTextFile } = handlers;
 		if (readTextFile) {
-			builder = builder.onRequest('fs/read_text_file', ctx => readTextFile.call(handlers, ctx.params));
+			builder = builder.onRequest('fs/read_text_file', ctx => asRequestError(() => readTextFile.call(handlers, ctx.params)));
 		}
 		if (writeTextFile) {
-			builder = builder.onRequest('fs/write_text_file', ctx => writeTextFile.call(handlers, ctx.params));
+			builder = builder.onRequest('fs/write_text_file', ctx => asRequestError(() => writeTextFile.call(handlers, ctx.params)));
 		}
 		this.fs = { readTextFile: !!readTextFile, writeTextFile: !!writeTextFile };
 		this.connection = builder.connect(stream);
@@ -109,5 +110,17 @@ export class AgentConnection {
 
 	dispose(): void {
 		this.connection.close();
+	}
+}
+
+/** Runs a file handler; a refused access goes back to the agent as the JSON-RPC error its code names. */
+async function asRequestError<T>(run: () => Promise<T>): Promise<T> {
+	try {
+		return await run();
+	} catch (err) {
+		if (err instanceof FileAccessDeniedError) {
+			throw new acp.RequestError(err.code, err.message);
+		}
+		throw err;
 	}
 }

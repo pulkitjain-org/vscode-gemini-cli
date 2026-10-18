@@ -699,6 +699,18 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		});
 	}
 
+	/**
+	 * Opens the spare again when the servers a new session would get change (a
+	 * tool connected, the browser turned on or off), so the next agent in the
+	 * folder still finds one that matches; the runtime closes the old one.
+	 */
+	refreshSpare(): void {
+		const spare = this.spare;
+		if (spare && this.service.runtime.spareKey !== undefined && this.service.runtime.spareKey !== this.spareKey(spare.folder)) {
+			this.prepareStart(spare.folder, spareDelayMs);
+		}
+	}
+
 	/** Matches a spare session to the agents that can take it: same folder, and the browser the same way. */
 	private spareKey(folder: string): string {
 		return JSON.stringify(['agent', folder, !!this.browser?.serving, !!this.teamTools?.serving]);

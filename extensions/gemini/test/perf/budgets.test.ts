@@ -48,7 +48,10 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// 1.1.0's saved checkpoints, Rewind, Check for Updates and browser fixes took it to 941 KB, all its own code too.
 	// The team tools (five connectors, the geminicode-tools server, Connections, Home's dashboard and the
 	// merge request, review, release, Jira and checks flows) took it to about 1,090 KB, all its own code, no libraries.
-	'dist/extension.js': 1_100_000,
+	// The pages' writes through the agents' tools, the audit log page and keeping flows across a quit took it to
+	// about 1,137 KB; loading the ACP SDK only when an agent starts wraps its modules, about 6 KB more, and takes
+	// about 12 ms off the bundle's load time.
+	'dist/extension.js': 1_160_000,
 };
 
 /** Median time of `run` over `rounds` runs, in ms. */

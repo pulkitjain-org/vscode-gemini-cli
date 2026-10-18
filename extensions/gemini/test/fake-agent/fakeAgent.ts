@@ -36,7 +36,9 @@ export type ScriptedStep =
 	/** Echoes the session's id and the `cwd` it was opened with, as `session:<id>:<cwd>`. */
 	| { readonly step: 'session' }
 	/** Echoes how many times `authenticate` was called, as `auth:<count>`. */
-	| { readonly step: 'auth' };
+	| { readonly step: 'auth' }
+	/** Replies with the sessions closed so far, "closed:<ids>". */
+	| { readonly step: 'closed' };
 
 export interface FakeAgentScript {
 	/** Exit with this code before reading anything, like a CLI that dies on startup. */
@@ -96,6 +98,8 @@ if (script.exitCode !== undefined) {
 let authenticated = false;
 let authCount = 0;
 const sessionCwds = new Map<string, string>();
+/** Sessions `session/close` freed, in order. */
+const closedSessions: string[] = [];
 let clientCapabilities: acp.ClientCapabilities | undefined;
 /** The last model set through `session/set_model`; the `model` step echoes it. */
 let lastModel: string | undefined;
@@ -186,6 +190,9 @@ acp.agent({ name: 'fake-agent' })
 					case 'auth':
 						await ctx.client.notify('session/update', { sessionId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `auth:${authCount}` } } });
 						break;
+					case 'closed':
+						await ctx.client.notify('session/update', { sessionId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `closed:${closedSessions.join(',')}` } } });
+						break;
 					case 'readFile':
 					case 'writeFile':
 					case 'capabilities': {
@@ -210,6 +217,12 @@ acp.agent({ name: 'fake-agent' })
 	})
 	.onNotification('session/cancel', ctx => {
 		pendingTurns.get(ctx.params.sessionId)?.abort();
+	})
+	// Answered whether or not `initialize` advertises it; a test that wants the runtime to close sessions advertises `sessionCapabilities.close`.
+	.onRequest('session/close', (params: unknown) => params as { sessionId: string }, ctx => {
+		closedSessions.push(ctx.params.sessionId);
+		sessionCwds.delete(ctx.params.sessionId);
+		return {};
 	})
 	.onRequest('session/set_model', (params: unknown) => params as { sessionId: string; modelId: string }, ctx => {
 		if (!script.supportsSetModel) {
