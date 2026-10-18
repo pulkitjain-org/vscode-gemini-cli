@@ -10,6 +10,7 @@ The repository's top-level README, SECURITY and AGENTS files point here. CONTRIB
 - [docs/FINDINGS.md](docs/FINDINGS.md): Gemini CLI behaviour and measurements the design relies on.
 - [docs/RELEASING.md](docs/RELEASING.md): versions, cutting a release, the download page, and the Apple signing setup.
 - [docs/ROADMAP.md](docs/ROADMAP.md): open work and risks.
+- [docs/AGENTIC-PLAN.md](docs/AGENTIC-PLAN.md): the agentic development plan: latency budget, fork hygiene, the team-tools adapter, threat model, evaluation harness, pilot. Its decisions are in [docs/adr/](docs/adr/).
 - [branding/](branding/): icon sources.
 - [site/](site/): the generator (`build.mts`) for the download page and the docs, which the Pages workflow runs.
 - [scripts/list-fork-touches.sh](scripts/list-fork-touches.sh): lists every upstream file the fork changes.
