@@ -5,9 +5,8 @@
 
 // The team flows' pure parts (src/host/teamFlows.ts): the prompts GeminiCode
 // sends an agent (start on a ticket, fix checks, fix a merge request, review
-// one, resolve a release merge), parsing an agent's review back into draft
-// comments, the target branches Open Merge Request offers, and release merge
-// planning. Nothing here calls a tool or touches a file.
+// one), parsing an agent's review back into draft comments, and the target
+// branches Open Merge Request offers. Nothing here calls a tool or touches a file.
 
 import type { SnykFinding } from './snyk';
 import type { SonarIssue } from './sonar';
@@ -54,6 +53,20 @@ export function findingsFromSnyk(findings: readonly SnykFinding[], code: boolean
 		...f.file ? { file: f.file } : {},
 		...f.line ? { line: f.line } : {},
 		...f.fix ? { fix: f.fix } : {},
+	}));
+}
+
+/** The issues SonarQube's analysers found on this Mac in the branch's changed files. */
+export function findingsFromLocalSonar(issues: readonly { readonly file: string; readonly line?: number; readonly rule: string; readonly message: string; readonly severity: string }[]): CheckFinding[] {
+	return issues.map((issue, i) => ({
+		id: `sonar-local-${i}`,
+		source: 'sonar',
+		severity: issue.severity.toLowerCase(),
+		title: issue.message,
+		where: `${issue.file}${issue.line ? `:${issue.line}` : ''}`,
+		file: issue.file,
+		...issue.line ? { line: issue.line } : {},
+		fix: issue.rule,
 	}));
 }
 
@@ -236,64 +249,3 @@ export function jiraCommentRequest(input: { readonly key: string; readonly summa
 	};
 }
 
-/** The branch a release merge is made on: `merge/2026.10-into-2026.12`. */
-export function releaseMergeBranch(source: string, target: string): string {
-	const short = (branch: string) => branch.replace(/^.*\//, '');
-	return `merge/${short(source)}-into-${short(target)}`;
-}
-
-/**
- * The branches a release branch is merged forward into: the later release
- * branches (by version), then the default target such as develop. Each is
- * ticked by default, except the default target.
- */
-export function releaseTargets(source: string, branches: readonly string[], options: { readonly releasePattern?: string; readonly defaultTarget?: string } = {}): { readonly branch: string; readonly ticked: boolean }[] {
-	const releases = sortReleaseBranches(branches.filter(b => isReleaseBranch(b, options.releasePattern)));
-	const later = releases.slice(releases.indexOf(source) + 1);
-	const fallback = options.defaultTarget ?? (branches.includes('develop') ? 'develop' : branches.includes('main') ? 'main' : undefined);
-	return [...later.map(branch => ({ branch, ticked: true })), ...fallback && fallback !== source && branches.includes(fallback) ? [{ branch: fallback, ticked: false }] : []];
-}
-
-/**
- * The conflicted files in `git merge-tree --write-tree --name-only` output:
- * exit 0 means clean (just the tree id); 1 lists the tree, the conflicted
- * files, a blank line and messages.
- */
-export function parseMergeTree(output: string, exitCode: number): { readonly clean: boolean; readonly files: readonly string[] } {
-	if (exitCode === 0) {
-		return { clean: true, files: [] };
-	}
-	const lines = output.split('\n');
-	const files: string[] = [];
-	for (const line of lines.slice(1)) {
-		if (!line.trim()) {
-			break;
-		}
-		files.push(line.trim());
-	}
-	return { clean: false, files: [...new Set(files)] };
-}
-
-/** The prompt for the agent that resolves a release merge's conflicts. */
-export function releaseConflictPrompt(source: string, target: string, files: readonly string[]): string {
-	return [
-		`This folder is ${target} with ${source} being merged into it, stopped on conflicts in:`,
-		...files.map(f => `- ${f}`),
-		'',
-		`Resolve each conflict so both branches' changes survive: ${source} carries fixes already released, ${target} carries later work. Where they truly disagree, keep ${target}'s behaviour and say so.`,
-		'Then run the tests, and commit the merge with `git commit --no-edit`.',
-		'Don\'t push: I review the resolution first and push it from GeminiCode.',
-	].join('\n');
-}
-
-/** The title and description of a release merge's MR. */
-export function releaseMergeMr(source: string, target: string, tickets: readonly string[], resolvedByAgent: boolean): { readonly title: string; readonly description: string } {
-	const lines = [`Merges \`${source}\` into \`${target}\`, to carry its fixes forward.`];
-	if (resolvedByAgent) {
-		lines.push('', 'Conflicts were resolved in GeminiCode and checked by the author before pushing.');
-	}
-	if (tickets.length) {
-		lines.push('', `### Jira tickets fixed in ${source.replace(/^.*\//, '')}`, '', ...tickets.map(t => `- ${t}`));
-	}
-	return { title: `Merge ${source} into ${target}`, description: lines.join('\n') };
-}

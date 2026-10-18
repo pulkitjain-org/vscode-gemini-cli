@@ -20,7 +20,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 29;
+export const chatProtocolVersion = 31;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -315,6 +315,15 @@ export interface ChatStrings {
 	readonly permissionAnswered: string;
 	readonly permissionCancelled: string;
 	readonly permissionHint: string;
+	/** The pill on a confirm-class card, and the line under its effect; `{0}` is the tool's name. */
+	readonly confirmClass: string;
+	readonly confirmWhy: string;
+	/** `{0}` is the time to the agent's first reply text. */
+	readonly firstToken: string;
+	/** The card for a turn GeminiCode's quit cut off. */
+	readonly cutOff: { readonly title: string; readonly text: string; readonly retry: string; readonly keep: string };
+	/** The readout of where a turn's time went, while a trace is recording. */
+	readonly trace: { readonly title: string; readonly source: string; readonly hop: string; readonly share: string; readonly thisTurn: string; readonly budget: string; readonly tokens: string; readonly file: string; readonly open: string };
 	/** `{0}` is a duration such as "12s" or "2m 5s". */
 	readonly workedFor: string;
 	/** A turn's fold: its steps under one line once the turn is done (webview-src/work.ts). */
@@ -454,6 +463,8 @@ export interface ChatStrings {
 	readonly teamToolVerbs: TeamToolVerbs;
 	/** Chip tooltip while a ticket or merge request is being read. */
 	readonly toolChipLoading: string;
+	/** A tool chip's label for opening its item; {0} is the item, such as ACME-412. */
+	readonly openToolItem: string;
 	readonly back: string;
 	/** The model, branch and folder menus under and beside the composer. */
 	readonly branchSearch: string;
@@ -600,6 +611,8 @@ export type FromWebview =
 	| { readonly type: 'attachUris'; readonly uris: readonly string[] }
 	/** A Jira ticket, GitLab item or Figma frame the user named: the extension answers with toolRefResolved. */
 	| { readonly type: 'resolveToolRef'; readonly ref: ToolRef }
+	/** A click on a tool chip, in the composer or a sent message: open its item (`toolRefId`) in its tool. */
+	| { readonly type: 'openToolRef'; readonly ref: string }
 	/** The + menu's "From your tools": the extension asks which item, then sends attachToolRef. */
 	| { readonly type: 'pickToolItem'; readonly tool: 'jira' | 'gitlab' | 'figma' }
 	/** The × on the shared page's chip: give the page back to the user. */
@@ -635,6 +648,9 @@ export type FromWebview =
 	| { readonly type: 'pickRewind' }
 	/** Send the prompt of the turn ending with `itemId` again; only the latest turn offers it. */
 	| { readonly type: 'retry'; readonly itemId: string }
+	/** A cut-off turn's card: send its prompt again, or keep things as they are. */
+	| { readonly type: 'retryCutOff' | 'dismissCutOff'; readonly itemId: string }
+	| { readonly type: 'openTrace'; readonly file: string }
 	/** Leave Plan mode and carry out the plan; only the latest turn offers it, when it ended in Plan mode. */
 	| { readonly type: 'buildPlan'; readonly itemId: string }
 	/** The composer has text: get a rewrite session ready. */

@@ -15,11 +15,18 @@
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
+import { stripJsonComments } from './projectSettings';
 
 export const teamDefaultsFile = path.join('.gemini', 'geminicode-tools.json');
 
 export interface TeamDefaults {
-	readonly jira?: { readonly site?: string; readonly projects?: readonly string[]; readonly commentVisibility?: string };
+	readonly jira?: {
+		readonly site?: string;
+		readonly projects?: readonly string[];
+		readonly commentVisibility?: string;
+		/** The team's workflow's transition ids for the moves GeminiCode suggests; the moves are matched by status name when unset. */
+		readonly transitions?: JiraTransitionIds;
+	};
 	readonly gitlab?: { readonly url?: string; readonly releaseBranches?: string; readonly defaultTarget?: string; readonly project?: string };
 	readonly sonar?: { readonly url?: string; readonly projectKey?: string };
 	readonly snyk?: { readonly endpoint?: string };
@@ -27,7 +34,37 @@ export interface TeamDefaults {
 	readonly file?: string;
 }
 
-/** The defaults in `folder` (a repository root), or {} when it has none or they don't parse. */
+/** Which transition GeminiCode suggests when work starts on a ticket, when its merge request opens, and when it merges. */
+export interface JiraTransitionIds {
+	readonly start?: string;
+	readonly review?: string;
+	readonly done?: string;
+}
+
+export type SuggestedMove = keyof JiraTransitionIds;
+
+/** The status each suggested move goes to in a default Jira workflow, for teams that set no ids. */
+const suggestedStatus: Record<SuggestedMove, string> = { start: 'In Progress', review: 'In Review', done: 'Done' };
+
+/**
+ * The move to preselect for `suggest` among `moves`: by the team's transition
+ * id when it set one, else by the status name. `suggest` is a suggested move
+ * or a status name (older flow records name the status).
+ */
+export function suggestedTransition(moves: readonly { readonly id: string; readonly name: string; readonly to: string }[], suggest: string | undefined, ids: JiraTransitionIds | undefined): string | undefined {
+	if (!suggest) {
+		return undefined;
+	}
+	const kind = (Object.keys(suggestedStatus) as SuggestedMove[]).find(k => k === suggest);
+	const id = kind ? ids?.[kind] : undefined;
+	if (id && moves.some(m => m.id === id)) {
+		return id;
+	}
+	const wanted = (kind ? suggestedStatus[kind] : suggest).toLowerCase();
+	return moves.find(m => m.to.toLowerCase() === wanted || m.name.toLowerCase() === wanted)?.id;
+}
+
+/** The defaults in `folder` (a repository root), or {} when it has none or they don't parse; comments are allowed, as in the CLI's settings. */
 export async function readTeamDefaults(folder: string): Promise<TeamDefaults> {
 	const file = path.join(folder, teamDefaultsFile);
 	let text: string;
@@ -37,7 +74,7 @@ export async function readTeamDefaults(folder: string): Promise<TeamDefaults> {
 		return {};
 	}
 	try {
-		return { ...sanitize(JSON.parse(text)), file };
+		return { ...sanitize(JSON.parse(stripJsonComments(text))), file };
 	} catch {
 		return {};
 	}
@@ -54,11 +91,25 @@ function sanitize(raw: unknown): TeamDefaults {
 	const sonar = o.sonar ?? {};
 	const snyk = o.snyk ?? {};
 	return {
-		jira: { site: str(jira.site), projects: Array.isArray(jira.projects) ? jira.projects.flatMap(p => str(p) ? [String(p).trim().toUpperCase()] : []) : undefined, commentVisibility: str(jira.commentVisibility) },
+		jira: {
+			site: str(jira.site), projects: Array.isArray(jira.projects) ? jira.projects.flatMap(p => str(p) ? [String(p).trim().toUpperCase()] : []) : undefined, commentVisibility: str(jira.commentVisibility),
+			...transitionIds(jira.transitions) ? { transitions: transitionIds(jira.transitions) } : {},
+		},
 		gitlab: { url: str(gitlab.url), releaseBranches: str(gitlab.releaseBranches), defaultTarget: str(gitlab.defaultTarget), project: str(gitlab.project) },
 		sonar: { url: str(sonar.url), projectKey: str(sonar.projectKey) },
 		snyk: { endpoint: str(snyk.endpoint) },
 	};
+}
+
+function transitionIds(raw: unknown): JiraTransitionIds | undefined {
+	if (!raw || typeof raw !== 'object') {
+		return undefined;
+	}
+	const o = raw as Record<string, unknown>;
+	// Ids are numbers in Jira's own export; either is taken.
+	const id = (value: unknown) => typeof value === 'number' ? String(value) : str(value);
+	const ids = { ...id(o.start) ? { start: id(o.start) } : {}, ...id(o.review) ? { review: id(o.review) } : {}, ...id(o.done) ? { done: id(o.done) } : {} };
+	return Object.keys(ids).length ? ids : undefined;
 }
 
 /** Whether `branch` is a release branch by the team's pattern (default `release/*`); `*` matches anything. */

@@ -34,21 +34,14 @@ async function ensureNodeModules() {
 }
 
 async function getElectron() {
-	// `npm run electron` deletes and re-downloads `.build/electron` on every
-	// invocation. When preLaunch runs repeatedly (e.g. once per integration test
-	// section) this is both wasteful and a source of flaky failures on Windows,
-	// where the just-exited Electron process can still hold file locks while the
-	// directory is being removed and re-extracted. Skip the refresh when the
-	// already-present Electron matches the expected version; any detection
-	// failure falls back to a (re)download to preserve the previous behavior.
-	// GEMINI-FORK: the dev app also keeps the name and icons it was built with,
-	// so a rebrand needs a fresh copy too.
+	const { shouldDownloadElectron } = await import('./electronVersion.ts');
+	// GEMINI-FORK: the dev app also keeps the icons it was built with, so a rebrand needs a fresh copy too.
 	const branding = await brandingStamp();
-	if (!process.env['VSCODE_FORCE_PRELAUNCH'] && await isExpectedElectronInstalled() && await readBrandingStamp() === branding) {
-		return;
+	const rebranded = process.env['VSCODE_SKIP_PRELAUNCH'] !== '1' && await readBrandingStamp() !== branding;
+	if (shouldDownloadElectron(rootDir) || rebranded) {
+		await runProcess(npm, ['run', 'electron']);
+		await fs.writeFile(path.join(rootDir, '.build', 'electron', brandingStampFile), branding);
 	}
-	await runProcess(npm, ['run', 'electron']);
-	await fs.writeFile(path.join(rootDir, '.build', 'electron', brandingStampFile), branding);
 }
 
 // GEMINI-FORK: what `npm run electron` copies into the dev app: names from product.json and the app icons.
@@ -68,17 +61,6 @@ async function readBrandingStamp(): Promise<string | undefined> {
 		return (await fs.readFile(path.join(rootDir, '.build', 'electron', brandingStampFile), 'utf8')).trim();
 	} catch {
 		return undefined;
-	}
-}
-
-async function isExpectedElectronInstalled(): Promise<boolean> {
-	try {
-		const { getElectronVersion } = await import('./electronVersion.ts');
-		const { electronVersion } = getElectronVersion();
-		const installedVersion = (await fs.readFile(path.join(rootDir, '.build', 'electron', 'version'), 'utf8')).trim().replace(/^v/, '');
-		return installedVersion === electronVersion;
-	} catch {
-		return false;
 	}
 }
 

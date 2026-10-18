@@ -10,7 +10,7 @@
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
-import * as acp from '@agentclientprotocol/sdk';
+import type * as acp from '@agentclientprotocol/sdk';
 import { AGENT_SETUP_ERROR_CODE } from './errors';
 
 /** The host's view of the workspace files. */
@@ -38,10 +38,14 @@ const SECRET_FILE_PATTERNS: readonly RegExp[] = [
 	/^id_(rsa|dsa|ecdsa|ed25519)$/,
 	/^\.(npmrc|pypirc|netrc|git-credentials|htpasswd)$/,
 	/^credentials(\.json)?$/,
+	// Google Cloud keys and sign-ins, which a Gemini project's repository is likely to hold by mistake.
+	/^application_default_credentials\.json$/,
+	/service[-_]?account.*\.json$/,
+	/^(kubeconfig|\.dockercfg|\.vault-token)$/,
 ];
 
 /** Directories whose contents are secret or not the agent's to touch. */
-const SECRET_DIRECTORIES: ReadonlySet<string> = new Set(['.ssh', '.aws', '.gnupg', '.git']);
+const SECRET_DIRECTORIES: ReadonlySet<string> = new Set(['.ssh', '.aws', '.gnupg', '.git', '.kube', '.docker', 'gcloud']);
 
 /** Why a (workspace-relative) path is treated as a secret, or `undefined` if it is not. */
 export function secretPathReason(filePath: string): string | undefined {
@@ -130,9 +134,16 @@ export function sliceLines(text: string, line?: number | null, limit?: number | 
 	return lines.slice(start, end).join('\n');
 }
 
-export class FileAccessDeniedError extends acp.RequestError {
+/**
+ * A refused `fs/*` request. AgentConnection answers the agent with it as a
+ * JSON-RPC error of this code; it is not the SDK's own error class, so that
+ * this module, which much of the extension imports, does not load the SDK.
+ */
+export class FileAccessDeniedError extends Error {
+	readonly code = AGENT_SETUP_ERROR_CODE;
 	constructor(filePath: string, reason: string) {
-		super(AGENT_SETUP_ERROR_CODE, `Access to ${filePath} was denied: ${reason}.`);
+		super(`Access to ${filePath} was denied: ${reason}.`);
+		this.name = 'FileAccessDeniedError';
 	}
 }
 

@@ -8,7 +8,7 @@
 // debug log. GeminiCode points that log (GEMINI_DEBUG_LOG_FILE) at a file of
 // its own and reads the MCP lines from it.
 
-import { promises as fs, mkdirSync, watch, writeFileSync, FSWatcher } from 'node:fs';
+import { promises as fs, watch, FSWatcher } from 'node:fs';
 import * as path from 'node:path';
 import { Emitter } from './events';
 
@@ -69,14 +69,14 @@ export class McpDiagnostics {
 	 * Empties the log and forgets what was reported, just before a new agent
 	 * process starts; returns whether the log can be followed.
 	 */
-	reset(): boolean {
+	async reset(): Promise<boolean> {
 		this.stopWatching();
 		this.offset = 0;
 		this.partial = '';
 		this.reported.clear();
 		try {
-			mkdirSync(path.dirname(this.file), { recursive: true });
-			writeFileSync(this.file, '');
+			await fs.mkdir(path.dirname(this.file), { recursive: true });
+			await fs.writeFile(this.file, '');
 			this.watcher = watch(this.file, () => this.schedule());
 			this.watcher.on('error', () => this.stopWatching());
 			return true;

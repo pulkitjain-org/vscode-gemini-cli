@@ -265,6 +265,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
 		const teamStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'teamFlow.css'));
 		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'codicon.css'));
+		const glassStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'glass.css'));
 		return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -274,6 +275,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 	<link href="${codicons}" rel="stylesheet">
 	<link href="${style}" rel="stylesheet">
 	<link href="${teamStyle}" rel="stylesheet">
+	<link href="${glassStyle}" rel="stylesheet">
 	<title>Changes</title>
 </head>
 <body class="changes-panel">

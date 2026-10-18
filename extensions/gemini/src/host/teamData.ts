@@ -4,9 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
-import { forwardPairs } from '../acp/dashboard';
 import type { GitLabMr, GitLabMrSummary } from '../acp/gitlab';
-import type { JiraMySprint } from '../acp/jira';
+import type { JiraMyTickets } from '../acp/jira';
 import type { SnykFinding } from '../acp/snyk';
 import { sonarProjectKeyIn, type SonarGate } from '../acp/sonar';
 import { isReleaseBranch, sortReleaseBranches } from '../acp/teamDefaults';
@@ -39,21 +38,14 @@ export interface SnykData {
 	readonly findings: readonly SnykFinding[];
 }
 
-export interface ReleaseRow {
-	readonly from: string;
-	readonly to: string;
-	readonly ahead: number;
-}
-
 export interface ReleasesData {
 	readonly project: string;
 	/** Release branches, oldest first. */
 	readonly branches: readonly string[];
-	readonly forward: readonly ReleaseRow[];
 }
 
 export interface TeamSnapshot {
-	readonly sprint?: Fetched<JiraMySprint>;
+	readonly tickets?: Fetched<JiraMyTickets>;
 	readonly reviews?: Fetched<readonly GitLabMrSummary[]>;
 	readonly mine?: Fetched<readonly GitLabMr[]>;
 	readonly releases?: Fetched<ReleasesData>;
@@ -63,7 +55,7 @@ export interface TeamSnapshot {
 
 type Source = keyof TeamSnapshot;
 
-const sourceTool: Record<Source, TeamToolId> = { sprint: 'jira', reviews: 'gitlab', mine: 'gitlab', releases: 'gitlab', quality: 'sonar', snyk: 'snyk' };
+const sourceTool: Record<Source, TeamToolId> = { tickets: 'jira', reviews: 'gitlab', mine: 'gitlab', releases: 'gitlab', quality: 'sonar', snyk: 'snyk' };
 const storageKey = 'gemini.home.teamData';
 /** Snyk runs a full test, so it is refreshed at most this often. */
 const snykMaxAgeMs = 6 * 60 * 60_000;
@@ -71,7 +63,7 @@ const snykMaxAgeMs = 6 * 60 * 60_000;
 const sourceTimeoutMs = 15_000;
 
 /**
- * The team tools' data Home's dashboard shows: the user's sprint, merge
+ * The team tools' data Home's dashboard shows: the user's tickets, merge
  * requests, release branches and quality. Each source is fetched in
  * parallel with a timeout of its own, so a tool behind a VPN that is off
  * never holds the others; the last answers are kept in global state, so Home
@@ -87,12 +79,13 @@ export class TeamData implements vscode.Disposable {
 	private lastRefresh = 0;
 
 	constructor(private readonly state: vscode.Memento, private readonly connections: TeamConnections) {
-		this.snapshotValue = { ...state.get<TeamSnapshot>(storageKey) };
-		// A fetch that was running when the window closed isn't any more.
-		for (const key of Object.keys(this.snapshotValue) as Source[]) {
-			const value = this.snapshotValue[key];
-			if (value?.loading) {
-				this.snapshotValue[key] = { ...value, loading: false };
+		const saved: Record<string, Fetched<unknown> | undefined> = { ...state.get<Record<string, Fetched<unknown>>>(storageKey) };
+		this.snapshotValue = {};
+		// Sources an older version kept (such as `sprint`) are dropped; a fetch that was running when the window closed isn't any more.
+		for (const key of Object.keys(sourceTool) as Source[]) {
+			const value = saved[key];
+			if (value) {
+				this.snapshotValue[key] = value.loading ? { ...value, loading: false } : value;
 			}
 		}
 	}
@@ -131,17 +124,21 @@ export class TeamData implements vscode.Disposable {
 		const { jira, gitlab, sonar, snyk } = this.connections.connectors;
 		const defaults = folder ? await this.connections.defaults(folder).catch(() => ({})) : {};
 		const local = folder && gitlab ? await gitlabProjectOf(folder, gitlab.url, defaults).catch(() => ({ project: undefined, branch: undefined })) : {};
-		// Releases first, as Quality looks at the newest release branch.
+		// Release branches first, as Quality looks at the newest one.
 		const releases = gitlab && local.project ? this.fetch('releases', async () => {
 			const pattern = (defaults as { gitlab?: { releaseBranches?: string } }).gitlab?.releaseBranches ?? 'release/*';
 			const prefix = pattern.split('*')[0];
 			const branches = sortReleaseBranches((await gitlab.branches(local.project!, prefix)).map(b => b.name).filter(name => isReleaseBranch(name, pattern)));
-			const forward = await Promise.all(forwardPairs(branches).map(async pair => ({ ...pair, ahead: await gitlab.commitsAhead(local.project!, pair.from, pair.to).catch(() => 0) })));
-			return { project: local.project!, branches, forward };
+			return { project: local.project!, branches };
 		}) : this.clear('releases', !connected.has('gitlab'));
 		const tasks: Promise<unknown>[] = [
-			jira ? this.fetch('sprint', () => jira.mySprint()) : this.clear('sprint', true),
-			gitlab ? this.fetch('reviews', () => gitlab.reviewRequests()) : this.clear('reviews', true),
+			jira ? this.fetch('tickets', () => jira.myTickets()) : this.clear('tickets', true),
+			gitlab ? this.fetch('reviews', async () => {
+				// Pending on me: asked to review, or assigned to finish; once each.
+				const [reviews, assigned] = await Promise.all([gitlab.reviewRequests(), gitlab.assignedMergeRequests().catch(() => [])]);
+				const seen = new Set(reviews.map(mr => mr.url));
+				return [...reviews, ...assigned.filter(mr => !seen.has(mr.url))];
+			}) : this.clear('reviews', true),
 			gitlab ? this.fetch('mine', async () => {
 				const list = await gitlab.myMergeRequests();
 				return Promise.all(list.slice(0, 6).map(mr => gitlab.mr(mr.projectId, mr.iid)));

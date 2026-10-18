@@ -1,12 +1,12 @@
 # Releasing GeminiCode
 
-GeminiCode ships as a Mac app for Apple silicon, from this repository's [GitHub Releases](https://github.com/pulkitjain-org/vscode-gemini-cli/releases), with a download page at <https://pulkitjain-org.github.io/vscode-gemini-cli/>. Share the page, not the release: it always points at the newest build. The first release, `v0.1.0`, was published on 3 Oct 2026. Windows, Linux and Intel Macs are not built yet.
+GeminiCode ships as a Mac app for Apple silicon on macOS 26 or later, from this repository's [GitHub Releases](https://github.com/pulkitjain-org/vscode-gemini-cli/releases), with a download page at <https://pulkitjain-org.github.io/vscode-gemini-cli/>. Share the page, not the release: it always points at the newest build. Windows, Linux and Intel Macs are not built.
 
 ## Versions
 
-GeminiCode has its own version, starting at `0.1.0`, separate from upstream's `1.141` numbering. The release tag carries it (`v0.1.0`), and the build stamps it into `product.json` as `geminiCodeVersion`. **About** shows both, as `0.1.0 (Code - OSS 1.141.0)`. A build without a stamp, such as a dev build, shows only upstream's version.
+GeminiCode has its own version, separate from upstream's numbering. The release tag carries it (`v1.1.0`), and the build stamps it into `product.json` as `geminiCodeVersion`. **About** shows both, as `1.1.0 (Code - OSS 1.142.0)`. A build without a stamp, such as a dev build, shows only upstream's version.
 
-There is one stable channel. A tag with a suffix, such as `v0.2.0-rc.1`, publishes a prerelease, which the download page and the update notice ignore.
+There is one stable channel. A tag with a suffix, such as `v1.2.0-rc.1`, publishes a prerelease, which the download page and the update notice ignore.
 
 ## Cutting a release
 
@@ -14,14 +14,14 @@ There is one stable channel. A tag with a suffix, such as `v0.2.0-rc.1`, publish
 2. Tag it and push the tag:
 
    ```sh
-   git tag v0.1.0
-   git push origin v0.1.0
+   git tag v1.2.0
+   git push origin v1.2.0
    ```
 
 3. [`gemini-release.yml`](../../.github/workflows/gemini-release.yml) runs on a GitHub-hosted Apple silicon runner (`macos-15`). It takes about 40 to 60 minutes, and is free on a public repository.
 4. When it finishes, the release holds `GeminiCode-<version>-arm64.dmg` and its SHA-256 checksum.
 
-To try the pipeline without publishing, run **Gemini Release** by hand from the Actions tab with no tag. It builds `GeminiCode-0.0.0-dev.<run>-arm64.dmg` and its `.sha256` as workflow artifacts, kept for 14 days. They are uploaded unzipped, so the `.dmg` downloads as is: Chrome can block a `.dmg` inside a `.zip` as a dangerous download. Running it by hand with an existing tag, such as `v0.1.0`, builds and publishes that tag as a tag push would, for example to retry a failed release. Every run keeps the `.dmg` as an artifact.
+To try the pipeline without publishing, run **Gemini Release** by hand from the Actions tab with no tag. It builds `GeminiCode-0.0.0-dev.<run>-arm64.dmg` and its `.sha256` as workflow artifacts, kept for 14 days. They are uploaded unzipped, so the `.dmg` downloads as is: Chrome can block a `.dmg` inside a `.zip` as a dangerous download. Running it by hand with an existing tag, such as `v1.1.0`, builds and publishes that tag as a tag push would, for example to retry a failed release. Every run keeps the `.dmg` as an artifact.
 
 If the release already exists, for example because it was made in GitHub's UI, the workflow uploads the `.dmg` and checksum to it (replacing any with the same name) and keeps its title and notes.
 
@@ -30,13 +30,15 @@ If the release already exists, for example because it was made in GitHub's UI, t
 1. Stamps the version into `product.json`.
 2. Installs dependencies, leaves out upstream's Copilot extension, bundles the pinned Gemini CLI (`npm run bundle-cli` in `extensions/gemini`), and builds the app with `npm run gulp vscode-darwin-arm64-min`.
 3. Checks that the app holds the bundled CLI and the stamped version, and no Copilot extension.
-4. Signs the app with the Developer ID, using upstream's `build/darwin/sign.ts`: hardened runtime and upstream's entitlements for the app and each helper.
-5. Notarizes the app with `notarytool` and staples the ticket.
-6. Packs a `.dmg` with upstream's `build/darwin/create-dmg.ts` (drag to Applications), then signs, notarizes and staples the `.dmg` too.
-7. Publishes the GitHub Release with the `.dmg`, its checksum and release notes that name the upstream and bundled CLI versions, followed by GitHub's generated notes. A version with a suffix is marked as a prerelease.
-8. Starts the download page build. A release made by the workflow's own token fires no release event, so the workflow starts the page build itself.
+4. Sets the app's `LSMinimumSystemVersion` to macOS 26 (`GEMINI_MIN_MACOS`; Electron declares an older one, and its packager has no option for it) and checks that its executable is arm64 only. macOS then refuses to open it on an older release or an Intel Mac, and says why.
+5. Signs the app with the Developer ID, using upstream's `build/darwin/sign.ts`: hardened runtime and upstream's entitlements for the app and each helper.
+6. Notarizes the app with `notarytool` and staples the ticket.
+7. Packs a `.dmg` with upstream's `build/darwin/create-dmg.ts` (drag to Applications), then signs, notarizes and staples the `.dmg` too.
+8. Publishes the GitHub Release with the `.dmg`, its checksum and release notes that name the upstream and bundled CLI versions, followed by GitHub's generated notes. A version with a suffix is marked as a prerelease.
+9. Starts the download page build. A release made by the workflow's own token fires no release event, so the workflow starts the page build itself.
+10. For a release that is not a prerelease, opens a `Benchmark <version>` issue as the reminder to run the benchmark ([bench/README.md](../bench/README.md)).
 
-Without the Apple secrets, steps 4 to 6 are replaced by an ad hoc signature. The file is then named `GeminiCode-<version>-arm64-unsigned.dmg`, the release title ends in "(unsigned)", and the notes explain how to open it. Setting only some of the six secrets fails the build, so a typo cannot quietly produce an unsigned release.
+Without the Apple secrets, steps 5 to 7 are replaced by an ad hoc signature. The file is then named `GeminiCode-<version>-arm64-unsigned.dmg`, the release title ends in "(unsigned)", and the notes explain how to open it. Setting only some of the six secrets fails the build, so a typo cannot quietly produce an unsigned release.
 
 ## The download page
 
@@ -50,6 +52,8 @@ Without the Apple secrets, steps 4 to 6 are replaced by an ad hoc signature. The
 The Geist fonts in `gemini/site/fonts/` are served with the page, so it loads nothing from other sites.
 
 A release published by hand has no .dmg until the release workflow uploads it, so until then the page keeps offering the newest release that has one; the upload rebuilds the page.
+
+Before the upload, `gemini/site/check-a11y.mts` runs axe-core on every page and `gemini/site/check-lighthouse.mts` runs Lighthouse on the landing and docs pages; a violation or a score under its floor (accessibility 100, the rest 90) stops the deploy, and the same checks run in Gemini CI on the sample build so a pull request sees them first.
 
 It runs when a release is published, edited, unpublished or deleted, when `gemini/site/`, `gemini/docs/guide/` or `gemini/branding/icon.svg` changes on `main`, when the release workflow starts it, and by hand. It always deploys from `main`, because the `github-pages` environment accepts only the default branch. Turn Pages on once: **Settings → Pages → Source: GitHub Actions**.
 

@@ -24,6 +24,9 @@ export interface JiraUser {
 
 export type JiraStatusCategory = 'new' | 'indeterminate' | 'done';
 
+/** The tickets Home and the ticket pickers read: the user's open ones, wherever they are, and their open sprints' done ones, for the sprint's progress. */
+export const myTicketsJql = 'assignee = currentUser() AND (statusCategory != Done OR sprint in openSprints())';
+
 export interface JiraIssueSummary {
 	readonly key: string;
 	readonly summary: string;
@@ -77,13 +80,20 @@ export interface JiraSprint {
 	readonly endDate?: string;
 }
 
-/** The current sprint's tickets assigned to the user, and the sprint itself when Jira says. */
-export interface JiraMySprint {
+/** A ticket assigned to the user, and whether it is in the sprint running now. */
+export interface JiraMyTicket extends JiraIssueSummary {
+	readonly inSprint: boolean;
+}
+
+/** The tickets assigned to the user, and the sprint running now when Jira says. */
+export interface JiraMyTickets {
 	readonly sprint?: JiraSprint;
-	readonly issues: readonly JiraIssueSummary[];
+	readonly issues: readonly JiraMyTicket[];
 }
 
 const listFields = ['summary', 'status', 'issuetype', 'priority', 'fixVersions', 'updated'];
+/** How many of the user's tickets are read: more than any card or list shows. */
+const myTicketsMax = 100;
 
 export class JiraClient {
 
@@ -115,24 +125,25 @@ export class JiraClient {
 		return (result?.issues ?? []).map(issue => this.summaryOf(issue));
 	}
 
-	/** Tickets assigned to the user in open sprints, with the sprint's name and end. */
-	async mySprint(): Promise<JiraMySprint> {
+	/**
+	 * The tickets assigned to the user (myTicketsJql), newest first, each marked
+	 * with whether it is in a sprint running now, and that sprint's name and end.
+	 */
+	async myTickets(): Promise<JiraMyTickets> {
 		const sprintField = await this.findSprintField();
 		const result = await this.request<{ issues?: RawIssue[] }>('/rest/api/3/search/jql', {
 			method: 'POST',
-			body: { jql: 'assignee = currentUser() AND sprint in openSprints() ORDER BY status ASC, updated DESC', fields: [...listFields, ...sprintField ? [sprintField] : []], maxResults: 50 },
+			body: { jql: `${myTicketsJql} ORDER BY updated DESC`, fields: [...listFields, ...sprintField ? [sprintField] : []], maxResults: myTicketsMax },
 		});
-		const issues = result?.issues ?? [];
 		let sprint: JiraSprint | undefined;
-		for (const issue of issues) {
+		const issues = (result?.issues ?? []).map((issue): JiraMyTicket => {
 			const sprints = sprintField ? issue.fields?.[sprintField] : undefined;
 			const active = Array.isArray(sprints) ? (sprints as { id?: number; name?: string; state?: string; endDate?: string }[]).find(s => s.state === 'active') : undefined;
-			if (active?.id !== undefined && active.name) {
-				sprint = { id: active.id, name: active.name, endDate: active.endDate };
-				break;
-			}
-		}
-		return { sprint, issues: issues.map(issue => this.summaryOf(issue)) };
+			const running: JiraSprint | undefined = active?.id !== undefined && active.name ? { id: active.id, name: active.name, endDate: active.endDate } : undefined;
+			sprint ??= running;
+			return { ...this.summaryOf(issue), inSprint: !!running };
+		});
+		return { sprint, issues };
 	}
 
 	async issue(key: string): Promise<JiraIssue> {
@@ -210,26 +221,28 @@ export class JiraClient {
 	}
 
 	/** Adds a comment; `visibility` limits who can see it to a project role, such as Developers. */
-	async comment(key: string, text: string, visibility?: string): Promise<void> {
-		await this.request(`/rest/api/3/issue/${encodeURIComponent(key)}/comment`, {
+	async comment(key: string, text: string, visibility?: string): Promise<{ readonly id?: string }> {
+		const made = await this.request<{ id?: string }>(`/rest/api/3/issue/${encodeURIComponent(key)}/comment`, {
 			method: 'POST',
 			body: { body: textToAdf(text), ...visibility ? { visibility: { type: 'role', value: visibility } } : {} },
 		});
+		return { ...made?.id ? { id: String(made.id) } : {} };
 	}
 
 	/**
 	 * Logs time on a ticket: `spent` in Jira's format ("1h 30m", "2d"),
 	 * `started` an ISO time (now by default), with an optional comment.
 	 */
-	async logWork(key: string, spent: string, comment?: string, started: Date = new Date()): Promise<void> {
+	async logWork(key: string, spent: string, comment?: string, started: Date = new Date()): Promise<{ readonly id?: string }> {
 		const seconds = parseDuration(spent);
 		if (!seconds) {
 			throw new Error(`"${spent}" isn't a time Jira understands. Use hours and minutes, such as 1h 30m.`);
 		}
-		await this.request(`/rest/api/3/issue/${encodeURIComponent(key)}/worklog?adjustEstimate=auto`, {
+		const made = await this.request<{ id?: string }>(`/rest/api/3/issue/${encodeURIComponent(key)}/worklog?adjustEstimate=auto`, {
 			method: 'POST',
 			body: { timeSpentSeconds: seconds, started: jiraTime(started), ...comment?.trim() ? { comment: textToAdf(comment) } : {} },
 		});
+		return { ...made?.id ? { id: String(made.id) } : {} };
 	}
 
 	/** The time logged on a ticket in total, and by the user, in seconds. */
@@ -240,6 +253,17 @@ export class JiraClient {
 			total: logs.reduce((sum, w) => sum + (w.timeSpentSeconds ?? 0), 0),
 			mine: logs.filter(w => accountId && w.author?.accountId === accountId).reduce((sum, w) => sum + (w.timeSpentSeconds ?? 0), 0),
 		};
+	}
+
+	/** The people the project lets take `key`, matching `query` when given. */
+	async assignableUsers(key: string, query = ''): Promise<JiraUser[]> {
+		const users = await this.request<JiraUser[]>(`/rest/api/3/user/assignable/search?issueKey=${encodeURIComponent(key)}&maxResults=50${query ? `&query=${encodeURIComponent(query)}` : ''}`);
+		return (users ?? []).map(u => ({ accountId: u.accountId, displayName: u.displayName, ...u.emailAddress ? { emailAddress: u.emailAddress } : {} }));
+	}
+
+	/** Assigns `key` to `accountId`, or to nobody with null. */
+	async assign(key: string, accountId: string | null): Promise<void> {
+		await this.request(`/rest/api/3/issue/${encodeURIComponent(key)}/assignee`, { method: 'PUT', body: { accountId } });
 	}
 
 	private findSprintField(): Promise<string | undefined> {

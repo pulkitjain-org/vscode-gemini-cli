@@ -5,13 +5,13 @@
 
 // One running agent process shared by many chat sessions. gemini-cli serves any
 // number of ACP sessions from one process, each with its own `cwd`: a new
-// session takes about 30 ms and 2.5 MB, against about 1.2 s and 230 MB for a
-// new process (FINDINGS.md). The runtime runs `initialize` once per process and
+// session takes under a second and a few MB, against about 3 s and 280 MB for
+// a new process (FINDINGS.md). The runtime runs `initialize` once per process and
 // routes the agent's messages to the session they name.
 
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import type * as acp from '@agentclientprotocol/sdk';
-import { AgentClientHandlers, AgentConnection } from './agentConnection';
+import type { AgentClientHandlers, AgentConnection } from './agentConnection';
 import { AgentError, AgentErrorInfo, classifyAgentError } from './errors';
 import { Emitter } from './events';
 import { isPrompt } from './cliSessions';
@@ -35,6 +35,8 @@ export interface SessionHandlers {
 	requestPermission(params: acp.RequestPermissionRequest): Promise<acp.RequestPermissionResponse>;
 	/** Overrides the runtime's file handlers for this session, for example to give it other roots. */
 	readonly fileSystem?: FileSystemHandlers;
+	/** Told after the agent wrote a file through the client, such as to let shell approvals lapse. */
+	onDidWriteFile?(filePath: string): void;
 }
 
 export interface AgentRuntimeOptions {
@@ -160,17 +162,23 @@ export class AgentRuntime {
 	 * the user types a task on Agent Home, so starting the agent waits for no
 	 * `session/new`. The next `newSession` with the same folder and servers on
 	 * this process takes it. Does nothing until the process is ready. One spare
-	 * at a time: gemini-cli cannot close a session, so one not taken stays in
-	 * the process (about 2.5 MB) until it exits.
+	 * at a time: a spare it replaces is closed when the agent can close
+	 * sessions (gemini-cli 0.64 advertises `sessionCapabilities.close`); an
+	 * older CLI keeps it (about 2.5 MB) until the process exits.
 	 */
 	prepareSession(cwd: string, mcpServers: readonly acp.McpServer[] = [], key = spareKey(cwd, mcpServers)): void {
 		const connection = this.connection;
-		if (this._state.kind !== 'ready' || !connection || (this.spare?.key === key && this.spare.connection === connection)) {
+		const state = this._state;
+		if (state.kind !== 'ready' || !connection || (this.spare?.key === key && this.spare.connection === connection)) {
 			return;
 		}
+		const replaced = this.spare?.connection === connection ? this.spare.session : undefined;
 		const session = this.openNewSession(cwd, mcpServers);
 		session.catch(() => undefined);
 		this.spare = { key, connection, session };
+		if (replaced && state.agent.agentCapabilities?.sessionCapabilities?.close) {
+			void replaced.then(old => connection.close(old.session.sessionId), () => undefined).catch(() => undefined);
+		}
 	}
 
 	/** The key of the spare session on the running process, if there is one. */
@@ -318,8 +326,17 @@ export class AgentRuntime {
 		}
 	}
 
+	/** The process `connect` is connecting to; a newer one makes an older connect stop. */
+	private connectingTo: ChildProcessWithoutNullStreams | undefined;
+
 	private async connect(agentProcess: ChildProcessWithoutNullStreams): Promise<void> {
 		this.dropConnection();
+		this.connectingTo = agentProcess;
+		// The ACP SDK (and zod, which it validates with) loads here, when the agent starts, not when the extension activates.
+		const { AgentConnection } = await import('./agentConnection');
+		if (this.connectingTo !== agentProcess) {
+			return;
+		}
 		const connection = new AgentConnection(agentProcess.stdin, agentProcess.stdout, {
 			sessionUpdate: params => this.routeUpdate(params),
 			requestPermission: async params => {
@@ -357,9 +374,14 @@ export class AgentRuntime {
 				const read = handlersFor(params.sessionId).readTextFile;
 				return read ? read(params) : Promise.reject(unsupported('fs/read_text_file'));
 			},
-			writeTextFile: params => {
+			writeTextFile: async params => {
 				const write = handlersFor(params.sessionId).writeTextFile;
-				return write ? write(params) : Promise.reject(unsupported('fs/write_text_file'));
+				if (!write) {
+					throw unsupported('fs/write_text_file');
+				}
+				const written = await write(params);
+				this.sessions.get(params.sessionId)?.onDidWriteFile?.(params.path);
+				return written;
 			},
 		};
 	}

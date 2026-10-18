@@ -8,11 +8,11 @@
 // so the host only localizes it; nothing here calls a tool.
 
 import type { GitLabMr, GitLabMrSummary } from './gitlab';
-import type { JiraIssueSummary, JiraSprint } from './jira';
+import type { JiraIssueSummary, JiraMyTicket, JiraSprint } from './jira';
 
-export type DashboardCardId = 'agents' | 'tickets' | 'mergeRequests' | 'quality' | 'releases' | 'gemini';
+export type DashboardCardId = 'unfinished' | 'startup' | 'agents' | 'tickets' | 'mergeRequests' | 'quality' | 'gemini';
 
-export const dashboardCards: readonly DashboardCardId[] = ['agents', 'tickets', 'mergeRequests', 'quality', 'releases', 'gemini'];
+export const dashboardCards: readonly DashboardCardId[] = ['unfinished', 'startup', 'agents', 'tickets', 'mergeRequests', 'quality', 'gemini'];
 
 /** The user's card layout: the order, and which are hidden. */
 export interface DashboardLayout {
@@ -67,9 +67,23 @@ export function sprintProgress(issues: readonly JiraIssueSummary[], sprint: Jira
 }
 
 /** Tickets still to do first (reopened, then to do, then in progress), done last. */
-export function ticketOrder(issues: readonly JiraIssueSummary[]): JiraIssueSummary[] {
+export function ticketOrder<T extends JiraIssueSummary>(issues: readonly T[]): T[] {
 	const rank = (i: JiraIssueSummary) => isReopened(i) ? 0 : i.statusCategory === 'new' ? 1 : i.statusCategory === 'indeterminate' ? 2 : 3;
 	return [...issues].sort((a, b) => rank(a) - rank(b));
+}
+
+/** The user's tickets in the sprint running now, then the rest, each in `ticketOrder`. */
+export function ticketGroups(issues: readonly JiraMyTicket[]): { readonly sprint: JiraMyTicket[]; readonly other: JiraMyTicket[] } {
+	return { sprint: ticketOrder(issues.filter(i => i.inSprint)), other: ticketOrder(issues.filter(i => !i.inSprint)) };
+}
+
+/**
+ * Whether GitLab's own summary says the merge request can be merged now:
+ * mergeable, not a draft, every approval given, and no failed pipeline. The
+ * merge itself reads the full checks again (gitlab.ts, `mergeReadiness`).
+ */
+export function isReadyToMerge(mr: GitLabMr): boolean {
+	return mr.state === 'opened' && !mr.draft && mr.mergeStatus === 'mergeable' && (!mr.approvals || mr.approvals.given >= mr.approvals.required) && mr.pipeline?.status !== 'failed';
 }
 
 export function isReopened(issue: JiraIssueSummary): boolean {
@@ -81,6 +95,7 @@ export type NeedItem =
 	| { readonly kind: 'agentWaiting'; readonly agentId: string; readonly title: string; readonly status: string }
 	| { readonly kind: 'review'; readonly mr: GitLabMrSummary }
 	| { readonly kind: 'pipelineFailed'; readonly mr: GitLabMr }
+	| { readonly kind: 'readyToMerge'; readonly mr: GitLabMr }
 	| { readonly kind: 'reopened'; readonly issue: JiraIssueSummary };
 
 export interface NeedsInput {
@@ -99,6 +114,7 @@ export function needsYou(input: NeedsInput, max = 4): NeedItem[] {
 	const items: NeedItem[] = [
 		...input.agents.filter(a => a.state === 'waiting').map((a): NeedItem => ({ kind: 'agentWaiting', agentId: a.id, title: a.title, status: a.status })),
 		...(input.mine ?? []).filter(mr => mr.pipeline?.status === 'failed').map((mr): NeedItem => ({ kind: 'pipelineFailed', mr })),
+		...(input.mine ?? []).filter(isReadyToMerge).map((mr): NeedItem => ({ kind: 'readyToMerge', mr })),
 		...(input.reviews ?? []).filter(mr => !mr.draft).map((mr): NeedItem => ({ kind: 'review', mr })),
 		...(input.tickets ?? []).filter(isReopened).map((issue): NeedItem => ({ kind: 'reopened', issue })),
 	];
@@ -114,10 +130,4 @@ export function partOfDay(hour: number): 'morning' | 'afternoon' | 'evening' {
 export function firstName(name: string | undefined): string | undefined {
 	const first = name?.trim().split(/[\s._-]+/)[0];
 	return first ? first[0].toUpperCase() + first.slice(1) : undefined;
-}
-
-/** Pairs of release branches to merge forward: each into the next newer one, oldest first, with commits waiting. */
-export function forwardPairs(sorted: readonly string[], max = 3): { readonly from: string; readonly to: string }[] {
-	const pairs = sorted.slice(0, -1).map((from, i) => ({ from, to: sorted[i + 1] }));
-	return pairs.slice(-max);
 }

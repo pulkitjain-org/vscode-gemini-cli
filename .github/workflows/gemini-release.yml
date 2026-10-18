@@ -1,5 +1,6 @@
 # GeminiCode release build (see gemini/docs/RELEASING.md).
-# Pushing a tag like v0.1.0 builds the Mac app for Apple silicon, signs it
+# Pushing a tag like v1.2.0 builds the Mac app for Apple silicon on macOS 26
+# or later (an arm64-only binary that declares macOS 26 as its minimum), signs it
 # with the Developer ID in the repository secrets, notarizes and staples it,
 # packs a .dmg and publishes it to a GitHub Release. Without the Apple
 # secrets the app is only ad-hoc signed and the release is marked unsigned.
@@ -18,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Build and publish this existing tag, such as v0.1.0. Leave empty for a dev build that publishes nothing.'
+        description: 'Build and publish this existing tag, such as v1.1.0. Leave empty for a dev build that publishes nothing.'
         required: false
         default: ''
 
@@ -37,9 +38,12 @@ jobs:
     permissions:
       contents: write # create the GitHub Release
       actions: write # start the download page build
+      issues: write # open the benchmark reminder
     env:
       VSCODE_ARCH: arm64
       VSCODE_QUALITY: stable
+      # The oldest macOS the app opens on; older releases refuse it and name this one.
+      GEMINI_MIN_MACOS: '26.0'
       NPM_CONFIG_AUDIT: false
       NPM_CONFIG_FUND: false
     steps:
@@ -165,6 +169,38 @@ jobs:
           echo "build-dir=$BUILD_DIR" >> "$GITHUB_OUTPUT"
           echo "path=$APP" >> "$GITHUB_OUTPUT"
           du -sh "$APP"
+
+      - name: Require Apple silicon and macOS 26
+        # Electron declares an older minimum and its packager has no option for it, so the app's
+        # Info.plist is set here, before signing. macOS then refuses to open the app on an older
+        # release and says which it needs; an arm64-only executable does the same on an Intel Mac.
+        run: |
+          set -euo pipefail
+          APP="${{ steps.app.outputs.path }}"
+          PLIST="$APP/Contents/Info.plist"
+          plutil -replace LSMinimumSystemVersion -string "$GEMINI_MIN_MACOS" "$PLIST"
+          MIN="$(plutil -extract LSMinimumSystemVersion raw "$PLIST")"
+          test "$MIN" = "$GEMINI_MIN_MACOS" || { echo "::error::LSMinimumSystemVersion is $MIN, not $GEMINI_MIN_MACOS"; exit 1; }
+          EXE="$APP/Contents/MacOS/$(plutil -extract CFBundleExecutable raw "$PLIST")"
+          ARCHS="$(lipo -archs "$EXE")"
+          test "$ARCHS" = "arm64" || { echo "::error::$EXE is built for '$ARCHS', not arm64 only"; exit 1; }
+          echo "The app needs Apple silicon (arm64) and macOS $MIN or later."
+
+      - name: Install the layered app icon
+        # macOS 26 draws app icons from a compiled icon catalog, with Default, Dark, Clear and
+        # Tinted appearances; the packager only knows the classic .icns. gemini/scripts/make-icons.sh
+        # compiles gemini/branding/GeminiCode.icon into resources/darwin/Assets.car, and this step
+        # puts it in the app and names it, before signing, so the Dock and Finder use it.
+        run: |
+          set -euo pipefail
+          APP="${{ steps.app.outputs.path }}"
+          PLIST="$APP/Contents/Info.plist"
+          test -f resources/darwin/Assets.car || { echo "::error::resources/darwin/Assets.car is missing; run gemini/scripts/make-icons.sh"; exit 1; }
+          test ! -e "$APP/Contents/Resources/Assets.car" || { echo "::error::The app already has an Assets.car; merge the icon into it instead of copying over it"; exit 1; }
+          cp resources/darwin/Assets.car "$APP/Contents/Resources/Assets.car"
+          plutil -replace CFBundleIconName -string GeminiCode "$PLIST"
+          test "$(plutil -extract CFBundleIconName raw "$PLIST")" = "GeminiCode"
+          echo "Installed the layered icon as CFBundleIconName GeminiCode (classic icon: $(plutil -extract CFBundleIconFile raw "$PLIST"))."
 
       - name: Import the Developer ID certificate
         if: steps.signing.outputs.signed == 'true'
@@ -316,7 +352,7 @@ jobs:
           UPSTREAM_VERSION="$(node -p 'require("./package.json").version')"
           NOTES="$RUNNER_TEMP/notes.md"
           {
-            echo "GeminiCode $VERSION for Mac with Apple silicon, built on Code - OSS $UPSTREAM_VERSION with Gemini CLI $CLI_VERSION."
+            echo "GeminiCode $VERSION for Mac with Apple silicon on macOS ${GEMINI_MIN_MACOS%.0} or later, built on Code - OSS $UPSTREAM_VERSION with Gemini CLI $CLI_VERSION."
             echo
             if [[ "$SIGNED" != "true" ]]; then
               echo "> [!WARNING]"
@@ -339,6 +375,33 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         # A release made with this token fires no release event, so start the page build directly.
         run: gh workflow run gemini-pages.yml --repo "$GITHUB_REPOSITORY" --ref "${{ github.event.repository.default_branch }}"
+
+      - name: Open the benchmark reminder
+        # The benchmark runs on a developer's Mac under their own seat, since hosted runners cannot sign in to Code Assist
+        # (gemini/bench/README.md); this issue is the reminder to run it on release day and add the results by pull request.
+        if: steps.version.outputs.publish == 'true' && !contains(steps.version.outputs.version, '-')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          TITLE="Benchmark $VERSION"
+          if gh issue list --repo "$GITHUB_REPOSITORY" --state all --search "in:title \"$TITLE\"" --json title --jq '.[].title' | grep -qx "$TITLE"; then
+            echo "The issue \"$TITLE\" is already there."
+            exit 0
+          fi
+          CLI_VERSION="$(node -p 'require("./extensions/gemini/package.json").bundledCli.version')"
+          BODY="$RUNNER_TEMP/benchmark-issue.md"
+          {
+            echo "GeminiCode $VERSION is out with Gemini CLI $CLI_VERSION. Run the benchmark on it before the release is announced."
+            echo
+            echo "1. Install GeminiCode $VERSION from the release, open this repository in it, and sign in with your own seat."
+            echo "2. Run **Gemini: Run Benchmark...** from the Command Palette (or the Gemini status menu) once on Flash and once on Pro."
+            echo "3. Open a pull request that adds the two files it writes to \`gemini/bench/results/\` and closes this issue."
+            echo
+            echo "About 900 requests for 30 tasks on two models: keep a full day's work off that seat. The docs site shows the results once the pull request merges."
+          } > "$BODY"
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --body-file "$BODY"
 
       - name: Remove the keychain and API key
         if: always()

@@ -6,8 +6,11 @@
 import * as path from 'node:path';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
+import { promises as fs } from 'node:fs';
 import { foldWorkOn, onDidChangeFoldWork } from './foldWork';
 import { onDidChangeSpellCheck, spellCheckOn } from './spellCheck';
+import { currentTraceFile } from './traceCommand';
+import { parseTraceFile, summarizeTrace, turnReadout } from '../acp/traceRecording';
 import { Attachment, attachmentLabel } from '../acp/attachments';
 import type { ToolChips } from './toolChips';
 import { isValidAttachment } from '../acp/attachmentValidation';
@@ -34,6 +37,7 @@ import { isBlockedWebFetch } from '../acp/webFetchHint';
 import type { AgentClient } from '../acp/agentClient';
 import { AgentError, AgentErrorInfo, errorMessage, isModelTurnRefusal } from '../acp/errors';
 import { readGitHead } from '../acp/gitHead';
+import { recordPilot } from '../acp/pilotLog';
 import { upgradeUrl } from '../acp/helpLinks';
 import { EnhanceCancelledError, enhanceHistory } from '../acp/promptEnhancer';
 import type { EnhancePromptInput } from '../acp/quickPrompts';
@@ -76,7 +80,7 @@ export interface ChatHost {
 	/** Stops the current turn. */
 	cancel(): Promise<void>;
 	/** Trusts `folder` for the CLI and restarts the agent; returns whether the restart waits for running prompts. */
-	trustFolder(folder: string): boolean;
+	trustFolder(folder: string): Promise<boolean>;
 	/** Writes to the Gemini log. */
 	writeLog?(message: string): void;
 }
@@ -209,6 +213,8 @@ export class ChatController implements vscode.Disposable {
 	private busy = false;
 	/** When the running turn started, for the Agents side bar's clock. */
 	private turnStartedAt: number | undefined;
+	/** The running turn's timestamps, for the turn's end line and the trace readout. */
+	private timing: TurnTiming | undefined;
 	/** The step last reported, so tool call updates report only a new one. */
 	private lastStep: string | undefined;
 	private lastSessionId: string | undefined;
@@ -298,6 +304,9 @@ export class ChatController implements vscode.Disposable {
 			this.onDidRestoreSessionEmitter,
 			service.permissions.onDidChange(event => {
 				if (event.kind === 'requested') {
+					if (this.timing) {
+						this.timing.permissions++;
+					}
 					this.rememberDiffs(event.permission.id, diffsOf(event.permission.request.toolCall.content));
 					this.transcript.addPermission(event.permission);
 					void this.revealForPermission(event.permission);
@@ -347,6 +356,9 @@ export class ChatController implements vscode.Disposable {
 							this.checkpoints.record(diffs);
 							this.onDidEditFilesEmitter.fire(diffs);
 						}
+					}
+					if (event.kind === 'text' && event.role === 'agent' && this.timing && this.timing.firstText === undefined) {
+						this.timing.firstText = Date.now();
 					}
 					this.transcript.apply(event);
 					if (event.kind === 'toolCall' && !this.hintedToolCalls.has(event.call.id) && isBlockedWebFetch(event.call)) {
@@ -448,6 +460,10 @@ export class ChatController implements vscode.Disposable {
 			return;
 		}
 		this.transcript.restore(items);
+		if (wasCutOff(items)) {
+			// The last prompt never got its turn end: the app quit (or the window reloaded) while the agent worked.
+			this.transcript.addCutOff(this.transcript.lastUserPrompt ?? '');
+		}
 		const state = this.service.client.state;
 		if (state.kind === 'ready' && sessionId && state.savedSessionId !== sessionId) {
 			this.addSessionLostNotice();
@@ -645,8 +661,10 @@ export class ChatController implements vscode.Disposable {
 		this.setBusy(true);
 		const started = Date.now();
 		let ended = false;
+		this.timing = { started, permissions: 0 };
 		try {
 			await this.service.ensureReady();
+			this.timing.ready = Date.now();
 			// Built after the agent is ready, so it reflects what this agent accepts.
 			const content = buildPromptContent(expand ? await this.expandCommand(text) : text, attachments, this.service.client.promptCapabilities);
 			if (!content.length) {
@@ -670,6 +688,8 @@ export class ChatController implements vscode.Disposable {
 			if (context) {
 				content.unshift({ type: 'text', text: context });
 			}
+			this.timing.sent = Date.now();
+			recordPilot({ kind: 'prompt', waitedMs: this.timing.ready - started });
 			const { stopReason, usage } = await this.promptRecovering(content);
 			this.undoNote = undefined;
 			if (context === this.pendingContext) {
@@ -739,6 +759,35 @@ export class ChatController implements vscode.Disposable {
 		if (files || dropped.length) {
 			this.saveCheckpoints();
 		}
+		const timing = this.timing;
+		this.timing = undefined;
+		recordPilot({ kind: 'turn', permissions: timing?.permissions ?? 0, durationMs, ...timing?.sent && timing.firstText ? { firstTextMs: timing.firstText - timing.sent } : {} });
+		if (timing?.sent && timing.firstText) {
+			this.transcript.updateTurnEnd(id, { firstTokenMs: timing.firstText - timing.sent });
+		}
+		const file = currentTraceFile();
+		if (timing && file) {
+			void this.addTraceReadout(timing, durationMs, file);
+		}
+	}
+
+	/** While a trace is recording: the turn's readout from the CLI's file, once it has flushed, under the turn's end. */
+	private async addTraceReadout(timing: TurnTiming, durationMs: number, file: string): Promise<void> {
+		await new Promise(resolve => setTimeout(resolve, 1500));
+		let text = '';
+		try {
+			text = await fs.readFile(file, 'utf8');
+		} catch {
+			return;
+		}
+		const turns = summarizeTrace(parseTraceFile(text)).turns;
+		const turn = turns[turns.length - 1];
+		this.transcript.addTrace(turnReadout(turn, {
+			totalMs: durationMs,
+			...timing.ready ? { sessionMs: timing.ready - timing.started } : {},
+			...timing.sent && timing.ready ? { sendMs: timing.sent - timing.ready } : {},
+			...timing.sent && timing.firstText ? { firstTokenMs: timing.firstText - timing.sent } : {},
+		}), file);
 	}
 
 	/** The mode Build This Plan switches to: Default, when the chat is in Plan mode and the agent offers both. */
@@ -891,6 +940,7 @@ export class ChatController implements vscode.Disposable {
 		if (firstTurn && plan && !await this.undoTurn(firstTurn, true)) {
 			return;
 		}
+		recordPilot(found ? { kind: 'rewind' } : { kind: 'undo', scope: 'turn' });
 		if (found) {
 			await this.rewindChat(itemId, prompt.text);
 		}
@@ -1318,6 +1368,9 @@ export class ChatController implements vscode.Disposable {
 				void chips?.resolve(message.ref).then(attachment => this.post({ type: 'toolRefResolved', attachment }));
 				break;
 			}
+			case 'openToolRef':
+				void this.options.toolChips?.()?.open(message.ref);
+				break;
 			case 'pickToolItem': {
 				const chips = this.options.toolChips?.();
 				void chips?.pick(message.tool).then(ref => {
@@ -1396,7 +1449,7 @@ export class ChatController implements vscode.Disposable {
 				void this.pickSession();
 				break;
 			case 'undoTurn':
-				void this.undoTurn(message.itemId);
+				void this.undoTurn(message.itemId).then(done => done && recordPilot({ kind: 'undo', scope: 'turn' }));
 				break;
 			case 'rewind':
 				void this.rewind(message.itemId);
@@ -1429,6 +1482,20 @@ export class ChatController implements vscode.Disposable {
 				if (this.lastPrompt && message.itemId === this.retryItemId) {
 					void this.send(this.lastPrompt.text, this.lastPrompt.attachments);
 				}
+				break;
+			case 'retryCutOff': {
+				const item = this.transcript.items.find(i => i.id === message.itemId);
+				if (item?.kind === 'cutOff' && item.prompt) {
+					this.transcript.dismissCutOff(item.id);
+					void this.send(item.prompt);
+				}
+				break;
+			}
+			case 'dismissCutOff':
+				this.transcript.dismissCutOff(message.itemId);
+				break;
+			case 'openTrace':
+				void vscode.workspace.openTextDocument(message.file).then(doc => vscode.window.showTextDocument(doc, { preview: false }), () => undefined);
 				break;
 			case 'buildPlan':
 				void this.buildPlan(message.itemId);
@@ -1707,7 +1774,7 @@ export class ChatController implements vscode.Disposable {
 			return;
 		}
 		this.service.client.setModeOnNextSession(modeId);
-		const waits = this.service.trustFolder(folder);
+		const waits = await this.service.trustFolder(folder);
 		this.transcript.addNotice(waits
 			? vscode.l10n.t("Folder trusted. The agent restarts in {0} mode once no agent is working.", modeName)
 			: vscode.l10n.t("Folder trusted. Restarting the agent in {0} mode.", modeName), 'info');
@@ -1863,6 +1930,7 @@ export class ChatController implements vscode.Disposable {
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'chat.css'));
 		const menuStyle = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'menu.css'));
 		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'codicon.css'));
+		const glassStyle = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'glass.css'));
 		// Loaded by the view when it first shows code.
 		const highlighter = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'highlight.js'));
 		// Loaded by the view when a reply first has math.
@@ -1906,6 +1974,26 @@ export class ChatController implements vscode.Disposable {
 			permissionAnswered: vscode.l10n.t("You chose: {0}"),
 			permissionCancelled: vscode.l10n.t("Not answered; the request was cancelled."),
 			permissionHint: vscode.l10n.t("Esc rejects"),
+			confirmClass: vscode.l10n.t("confirm class"),
+			confirmWhy: vscode.l10n.t("Shown exactly as {0} will record it under your account. This card never offers \"Allow for this session\": it asks every time."),
+			firstToken: vscode.l10n.t("first token {0}"),
+			cutOff: {
+				title: vscode.l10n.t("This turn was interrupted when GeminiCode quit."),
+				text: vscode.l10n.t("Whatever the agent changed before that is in Changes and on disk; nothing else was done. The session is restored from the CLI's chat file, and nothing was sent to Gemini since. Session approvals ended with the process, so the next command asks again."),
+				retry: vscode.l10n.t("Retry the Turn"),
+				keep: vscode.l10n.t("Keep and Continue"),
+			},
+			trace: {
+				title: vscode.l10n.t("Where the time went: this turn"),
+				source: vscode.l10n.t("from the CLI's OpenTelemetry file · gemini_cli.* metrics"),
+				hop: vscode.l10n.t("Hop"),
+				share: vscode.l10n.t("Share of {0}"),
+				thisTurn: vscode.l10n.t("This turn"),
+				budget: vscode.l10n.t("Budget p50"),
+				tokens: vscode.l10n.t("Tokens: {0} in (cached {1}) · {2} out · {3} requests"),
+				file: vscode.l10n.t("Trace file: {0} · prompts not logged"),
+				open: vscode.l10n.t("Open"),
+			},
 			workedFor: vscode.l10n.t("Worked for {0}"),
 			work: {
 				stoppedAfter: vscode.l10n.t("Stopped after {0}"),
@@ -2015,6 +2103,7 @@ export class ChatController implements vscode.Disposable {
 			figmaFrame: vscode.l10n.t("Figma frame"),
 			pasteLink: vscode.l10n.t("paste link"),
 			toolChipLoading: vscode.l10n.t("Reading\u2026"),
+			openToolItem: vscode.l10n.t("Open {0}"),
 			teamToolVerbs: {
 				read: vscode.l10n.t("Read {0}"),
 				search: vscode.l10n.t("Search Jira for {0}"),
@@ -2022,6 +2111,7 @@ export class ChatController implements vscode.Disposable {
 				move: vscode.l10n.t("Move {0}"),
 				logTime: vscode.l10n.t("Log {0} on {1}"),
 				openMr: vscode.l10n.t("Open merge request into {0}"),
+				merge: vscode.l10n.t("Merge {0}"),
 				reply: vscode.l10n.t("Reply on {0}"),
 				listReview: vscode.l10n.t("List merge requests waiting for my review"),
 				listMine: vscode.l10n.t("List my merge requests"),
@@ -2033,6 +2123,14 @@ export class ChatController implements vscode.Disposable {
 				design: vscode.l10n.t("Read the Figma design"),
 				screenshot: vscode.l10n.t("Take a screenshot of the Figma frame"),
 				currentMr: vscode.l10n.t("this branch's merge request"),
+				effectComment: vscode.l10n.t("Comment"),
+				effectWork: vscode.l10n.t("Work description"),
+				effectTitle: vscode.l10n.t("Title"),
+				effectDescription: vscode.l10n.t("Description"),
+				effectDraft: vscode.l10n.t("Draft"),
+				effectSquash: vscode.l10n.t("Squash"),
+				effectDeleteBranch: vscode.l10n.t("Delete source branch"),
+				effectProjectDefault: vscode.l10n.t("project default"),
 			},
 			back: vscode.l10n.t("Back"),
 			branchSearch: vscode.l10n.t("Switch branch"),
@@ -2093,6 +2191,7 @@ export class ChatController implements vscode.Disposable {
 	<link href="${codicons}" rel="stylesheet">
 	<link href="${menuStyle}" rel="stylesheet">
 	<link href="${style}" rel="stylesheet">
+	<link href="${glassStyle}" rel="stylesheet">
 	<title>Gemini</title>
 </head>
 <body spellcheck="false">
@@ -2395,4 +2494,29 @@ function turnShape(items: readonly TranscriptItem[]): string {
 				return item.kind;
 		}
 	}).join(', ') || 'nothing';
+}
+
+/** When a turn's steps happened, in ms since the epoch. */
+interface TurnTiming {
+	readonly started: number;
+	/** Permission cards the turn showed, for the pilot's counters. */
+	permissions: number;
+	ready?: number;
+	sent?: number;
+	firstText?: number;
+}
+
+/** Whether the saved chat ends in a prompt that never got its turn end or an error. */
+export function wasCutOff(items: readonly TranscriptItem[]): boolean {
+	for (let i = items.length - 1; i >= 0; i--) {
+		const item = items[i];
+		if (item.kind === 'user') {
+			return true;
+		}
+		// A cut-off card already says so (and stays while the turn is unfinished); a second one would say it twice.
+		if (item.kind === 'turnEnd' || item.kind === 'cutOff' || (item.kind === 'notice' && item.severity === 'error')) {
+			return false;
+		}
+	}
+	return false;
 }

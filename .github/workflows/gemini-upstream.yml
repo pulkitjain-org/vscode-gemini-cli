@@ -1,0 +1,219 @@
+# Moves the fork to the next upstream VS Code release and the newest Gemini
+# CLI, as one pull request (see gemini/README.md, "Upstream releases", and
+# gemini/docs/adr/0003-patch-series-over-pinned-tag.md).
+#
+# Once a week, and by hand: fetch upstream's tags, take the newest release
+# above the pin in gemini/upstream.json, check it out, apply the fork's patch
+# series (gemini/patches) with a three-way merge, copy the fork's own files
+# over from main, move the pin, regenerate the series against the new tag,
+# bump the bundled Gemini CLI to the newest release with its checksum, and
+# open a pull request. Branch protection on main makes Gemini CI green on it
+# a condition to merge.
+#
+# Pushing an upstream move needs the GEMINI_UPSTREAM_TOKEN secret: a token
+# with contents, pull requests and workflows write access, since the workflow's
+# own token may not push commits that change .github/workflows, and upstream's
+# commits do. A pull request opened with that token starts Gemini CI as any
+# other. Without it, a CLI-only bump still works, and this workflow starts
+# Gemini CI on the branch itself, since a pull request opened with its own
+# token starts no workflows. A patch that
+# does not apply leaves its conflict markers in the branch and the pull
+# request says which, so a person finishes it. While that branch exists, later
+# runs leave it alone rather than rebuild it over the person's work.
+name: Gemini Upstream
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The upstream tag to move to (default: the newest release above the pin)'
+        required: false
+        type: string
+      cli:
+        description: 'The Gemini CLI version to pin (default: the newest on npm)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write # start Gemini CI on the pull request's branch
+
+concurrency:
+  group: gemini-upstream
+  cancel-in-progress: false
+
+jobs:
+  move:
+    name: Move the upstream tag and the CLI pin
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HAS_UPSTREAM_TOKEN: ${{ secrets.GEMINI_UPSTREAM_TOKEN != '' }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          # Pushes go out with this token too.
+          token: ${{ secrets.GEMINI_UPSTREAM_TOKEN || github.token }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Fetch upstream tags
+        run: |
+          git remote add upstream https://github.com/microsoft/vscode.git
+          git fetch --no-tags upstream 'refs/tags/1.*:refs/tags/1.*'
+
+      - name: Pick the tag and the CLI version
+        id: pick
+        env:
+          WANT_TAG: ${{ inputs.tag }}
+          WANT_CLI: ${{ inputs.cli }}
+        run: |
+          pin=$(node -p "require('./gemini/upstream.json').tag")
+          if [ -n "$WANT_TAG" ]; then
+            tag=$WANT_TAG
+          else
+            # Release tags only (1.N.x), the newest above the pin.
+            tag=$(git tag --list '1.*' | grep -E '^1\.[0-9]+\.[0-9]+$' | sort -V | awk -v pin="$pin" '{ if ($0 != pin) print }' | sort -V | tail -1)
+            if [ "$(printf '%s\n%s\n' "$pin" "$tag" | sort -V | tail -1)" = "$pin" ]; then tag=""; fi
+          fi
+          cli=${WANT_CLI:-$(npm view @google/gemini-cli version)}
+          current=$(node -p "require('./extensions/gemini/package.json').bundledCli.version")
+          branch=""
+          if [ -n "$tag" ]; then
+            branch="upstream/$tag"
+          elif [ "$cli" != "$current" ]; then
+            branch="gemini-cli/$cli"
+          fi
+          work=false
+          if [ -n "$branch" ]; then
+            if git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
+              echo "::notice::$branch is already there, with its pull request: finish or close that one first. It is left as it is."
+            else
+              work=true
+            fi
+          fi
+          {
+            echo "pin=$pin"
+            echo "tag=$tag"
+            echo "cli=$cli"
+            echo "cli_current=$current"
+            echo "branch=$branch"
+            echo "work=$work"
+          } >> "$GITHUB_OUTPUT"
+          echo "Pinned $pin, next tag '${tag:-none}'; CLI $current, newest $cli"
+
+      - name: Nothing to do
+        if: steps.pick.outputs.branch == ''
+        run: echo "The fork is on the newest upstream release and the newest Gemini CLI."
+
+      - name: Warn when there is no upstream token
+        if: steps.pick.outputs.work == 'true' && steps.pick.outputs.tag != '' && env.HAS_UPSTREAM_TOKEN != 'true'
+        run: echo "::warning::No GEMINI_UPSTREAM_TOKEN secret. GitHub refuses a push that changes .github/workflows from the workflow's own token, which an upstream move does; add the secret (contents, pull requests and workflows write)."
+
+      - name: Commit as the repository's git user
+        # AGENTS.md: every commit is the repository's git user's, never a tool's or a bot's.
+        if: steps.pick.outputs.work == 'true'
+        run: |
+          git config user.name "Pulkit Jain"
+          git config user.email "er.pulkit@gmail.com"
+
+      - name: Apply the series to the new tag
+        if: steps.pick.outputs.work == 'true' && steps.pick.outputs.tag != ''
+        id: apply
+        env:
+          TAG: ${{ steps.pick.outputs.tag }}
+          LOG: ${{ runner.temp }}/apply.log
+        run: |
+          git checkout -b "upstream/$TAG" "$TAG"
+          set +e
+          FROM=main gemini/scripts/upstream-series.sh apply "$TAG" > "$LOG" 2>&1
+          status=$?
+          set -e
+          cat "$LOG"
+          echo "conflicts=$([ $status -eq 0 ] && echo no || echo yes)" >> "$GITHUB_OUTPUT"
+          node -e '
+            const fs = require("fs");
+            const pin = JSON.parse(fs.readFileSync("gemini/upstream.json", "utf8"));
+            pin.tag = process.env.TAG;
+            pin.mergedOn = new Date().toISOString().slice(0, 10);
+            fs.writeFileSync("gemini/upstream.json", JSON.stringify(pin, null, "\t") + "\n");
+          '
+          git add -A
+          git commit -q -m "Move to upstream VS Code $TAG"
+          # The series is relative to the new tag from now on.
+          gemini/scripts/upstream-series.sh regenerate
+          git add -A gemini/patches
+          git commit -q -m "Regenerate the patch series against $TAG" || true
+
+      - name: Stay on main for a CLI-only bump
+        if: steps.pick.outputs.work == 'true' && steps.pick.outputs.tag == ''
+        run: git checkout -b "${{ steps.pick.outputs.branch }}"
+
+      - name: Bump the Gemini CLI pin
+        if: steps.pick.outputs.work == 'true' && steps.pick.outputs.cli != steps.pick.outputs.cli_current
+        env:
+          CLI: ${{ steps.pick.outputs.cli }}
+        run: |
+          INTEGRITY=$(npm view "@google/gemini-cli@$CLI" dist.integrity)
+          test -n "$INTEGRITY" || { echo "::error::npm has no integrity for @google/gemini-cli@$CLI"; exit 1; }
+          INTEGRITY="$INTEGRITY" node -e '
+            const fs = require("fs");
+            const file = "extensions/gemini/package.json";
+            const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
+            pkg.bundledCli = { version: process.env.CLI, integrity: process.env.INTEGRITY };
+            fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\n");
+          '
+          # The checksum must match the tarball, as the release build will check.
+          npm ci --ignore-scripts --prefix extensions/gemini
+          npm run bundle-cli --prefix extensions/gemini
+          git add extensions/gemini/package.json
+          git commit -q -m "Bump the bundled Gemini CLI to $CLI"
+
+      - name: Push, open the pull request and start Gemini CI
+        if: steps.pick.outputs.work == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GEMINI_UPSTREAM_TOKEN || github.token }}
+          TAG: ${{ steps.pick.outputs.tag }}
+          PIN: ${{ steps.pick.outputs.pin }}
+          CLI: ${{ steps.pick.outputs.cli }}
+          CLI_CURRENT: ${{ steps.pick.outputs.cli_current }}
+          CONFLICTS: ${{ steps.apply.outputs.conflicts }}
+          LOG: ${{ runner.temp }}/apply.log
+          BODY: ${{ runner.temp }}/pr-body.md
+        run: |
+          branch="${{ steps.pick.outputs.branch }}"
+          git push -u origin "$branch"
+          title=""
+          [ -n "$TAG" ] && title="Upstream VS Code $TAG"
+          [ "$CLI" != "$CLI_CURRENT" ] && title="${title:+$title + }Gemini CLI $CLI"
+          {
+            echo "Opened by the Gemini Upstream workflow."
+            echo
+            if [ -n "$TAG" ]; then
+              echo "- Upstream: $PIN → $TAG. The fork's patch series was applied with a three-way merge and regenerated against the new tag."
+              if [ "$CONFLICTS" = "yes" ]; then
+                echo "- **Some patches did not apply.** Their files carry conflict markers; the apply log is below. Resolve them on this branch, then run \`gemini/scripts/upstream-series.sh regenerate\` and push."
+              fi
+              echo "- Check whether \`src/vs/sessions\` gained an extension API for agent providers (gemini/docs/ROADMAP.md)."
+            fi
+            if [ "$CLI" != "$CLI_CURRENT" ]; then
+              echo "- Gemini CLI: $CLI_CURRENT → $CLI, checksum from npm. Re-check the items in gemini/docs/FINDINGS.md that name a CLI version; Gemini CI runs the real-CLI tests against the bundled version."
+            fi
+            echo
+            echo "Gemini CI must be green to merge."
+            if [ -f "$LOG" ]; then echo; echo '```'; cat "$LOG"; echo '```'; fi
+          } > "$BODY"
+          gh pr create --base main --head "$branch" --title "$title" --body-file "$BODY"
+          if [ "$HAS_UPSTREAM_TOKEN" != "true" ]; then
+            # A pull request opened with the workflow's own token starts no workflows; pushes a person makes to the branch do.
+            gh workflow run gemini-ci.yml --repo "$GITHUB_REPOSITORY" --ref "$branch"
+          fi

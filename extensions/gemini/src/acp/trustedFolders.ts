@@ -9,7 +9,7 @@
 // same question when the user picks such a mode, and records the answer in the
 // same file the CLI writes.
 
-import * as fs from 'node:fs';
+import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { stripJsonComments } from './projectSettings';
@@ -23,11 +23,11 @@ export function trustedFoldersPath(env: NodeJS.ProcessEnv, homedir: string = os.
  * Adds `folder` to the CLI's trusted folders, keeping every other entry.
  * Throws, and leaves the file alone, when it cannot be read as JSON.
  */
-export function trustFolder(file: string, folder: string): void {
+export async function trustFolder(file: string, folder: string): Promise<void> {
 	let config: Record<string, unknown> = {};
 	let text: string | undefined;
 	try {
-		text = fs.readFileSync(file, 'utf8');
+		text = await fs.readFile(file, 'utf8');
 	} catch (err) {
 		if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
 			throw err;
@@ -42,13 +42,13 @@ export function trustFolder(file: string, folder: string): void {
 	}
 	config[path.resolve(folder)] = 'TRUST_FOLDER';
 	// Written the way the CLI writes it: owner-only, replaced in one rename.
-	fs.mkdirSync(path.dirname(file), { recursive: true });
+	await fs.mkdir(path.dirname(file), { recursive: true });
 	const temp = `${file}.tmp.${process.pid}.${Date.now()}`;
 	try {
-		fs.writeFileSync(temp, JSON.stringify(config, undefined, 2), { encoding: 'utf8', mode: 0o600 });
-		fs.renameSync(temp, file);
+		await fs.writeFile(temp, JSON.stringify(config, undefined, 2), { encoding: 'utf8', mode: 0o600 });
+		await fs.rename(temp, file);
 	} catch (err) {
-		fs.rmSync(temp, { force: true });
+		await fs.rm(temp, { force: true });
 		throw err;
 	}
 }
@@ -59,10 +59,10 @@ export function trustFolder(file: string, folder: string): void {
  * TRUST_FOLDER covers its folder and TRUST_PARENT the folder's parent.
  * Undefined when no rule covers it, which the CLI treats as untrusted.
  */
-export function isFolderTrusted(file: string, folder: string): boolean | undefined {
+export async function isFolderTrusted(file: string, folder: string): Promise<boolean | undefined> {
 	let config: Record<string, unknown>;
 	try {
-		const parsed: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
+		const parsed: unknown = JSON.parse(await fs.readFile(file, 'utf8'));
 		if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
 			return undefined;
 		}
@@ -70,11 +70,13 @@ export function isFolderTrusted(file: string, folder: string): boolean | undefin
 	} catch {
 		return undefined;
 	}
-	const location = comparable(folder);
+	const location = await comparable(folder);
 	let longest = -1;
 	let level: unknown;
-	for (const [rule, value] of Object.entries(config)) {
-		const covered = comparable(value === 'TRUST_PARENT' ? path.dirname(rule) : rule);
+	const rules = Object.entries(config);
+	const covers = await Promise.all(rules.map(([rule, value]) => comparable(value === 'TRUST_PARENT' ? path.dirname(rule) : rule)));
+	for (const [i, [rule, value]] of rules.entries()) {
+		const covered = covers[i];
 		if ((location === covered || location.startsWith(covered.endsWith(path.sep) ? covered : covered + path.sep)) && rule.length > longest) {
 			longest = rule.length;
 			level = value;
@@ -87,12 +89,12 @@ export function isFolderTrusted(file: string, folder: string): boolean | undefin
  * Whether the CLI checks folder trust at all: not when the environment
  * decides it for every folder, or when the user's settings turn it off.
  */
-export function folderTrustApplies(env: NodeJS.ProcessEnv, homedir: string = os.homedir()): boolean {
+export async function folderTrustApplies(env: NodeJS.ProcessEnv, homedir: string = os.homedir()): Promise<boolean> {
 	if (env.GEMINI_CLI_TRUST_WORKSPACE === 'true') {
 		return false;
 	}
 	try {
-		const settings = JSON.parse(stripJsonComments(fs.readFileSync(path.join(env.GEMINI_CLI_HOME || homedir, '.gemini', 'settings.json'), 'utf8'))) as { security?: { folderTrust?: { enabled?: unknown } } };
+		const settings = JSON.parse(stripJsonComments(await fs.readFile(path.join(env.GEMINI_CLI_HOME || homedir, '.gemini', 'settings.json'), 'utf8'))) as { security?: { folderTrust?: { enabled?: unknown } } };
 		return settings.security?.folderTrust?.enabled !== false;
 	} catch {
 		return true;
@@ -100,10 +102,10 @@ export function folderTrustApplies(env: NodeJS.ProcessEnv, homedir: string = os.
 }
 
 /** `folder` resolved through links, in the case the file system compares in. */
-function comparable(folder: string): string {
+async function comparable(folder: string): Promise<string> {
 	let resolved = path.resolve(folder);
 	try {
-		resolved = fs.realpathSync.native(resolved);
+		resolved = await fs.realpath(resolved);
 	} catch {
 		// Not there yet, such as a worktrees folder no thread has made: compare as written.
 	}

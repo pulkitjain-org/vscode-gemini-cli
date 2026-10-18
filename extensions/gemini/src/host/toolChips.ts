@@ -5,11 +5,28 @@
 
 import * as vscode from 'vscode';
 import type { Attachment } from '../acp/attachments';
+import { ticketGroups } from '../acp/dashboard';
 import { describeMr } from '../acp/gitlab';
+import type { JiraMyTicket, JiraMyTickets } from '../acp/jira';
 import type { TeamDefaults } from '../acp/teamDefaults';
 import { TeamToolError } from '../acp/teamHttp';
-import { parseToolLink, ToolRef, ToolRefContext, toolRefId, toolRefLabel } from '../acp/toolLinks';
+import { parseToolLink, ToolRef, ToolRefContext, toolRefId, toolRefLabel, toolRefUrl } from '../acp/toolLinks';
 import type { TeamConnections } from './teamConnections';
+import { openTeamLink } from './teamLinks';
+
+/** A ticket in a quick pick, with its key to start on or attach. */
+export type TicketPickItem = vscode.QuickPickItem & { readonly key?: string };
+
+/** The user's tickets for a quick pick: the running sprint's under its name, then the rest under "Not in this sprint". */
+export function ticketPickItems(mine: JiraMyTickets): TicketPickItem[] {
+	const { sprint, other } = ticketGroups(mine.issues);
+	const item = (issue: JiraMyTicket): TicketPickItem => ({ label: issue.key, description: issue.summary, detail: issue.status, key: issue.key });
+	return [
+		...sprint.length ? [{ label: mine.sprint?.name ?? vscode.l10n.t("This sprint"), kind: vscode.QuickPickItemKind.Separator }, ...sprint.map(item)] : [],
+		...sprint.length && other.length ? [{ label: vscode.l10n.t("Not in this sprint"), kind: vscode.QuickPickItemKind.Separator }] : [],
+		...other.map(item),
+	];
+}
 
 /** A chip's attachment: a document the prompt carries, with the tool's logo and the item's id. */
 export type ToolAttachment = Extract<Attachment, { kind: 'document' }> & { readonly tool: 'jira' | 'gitlab' | 'figma'; readonly ref: string };
@@ -54,6 +71,20 @@ export class ToolChips {
 		return value;
 	}
 
+	/** Opens the item a chip names (its `toolRefId`) in its tool, as Home opens team links; says so when that tool isn't connected. */
+	async open(id: string): Promise<void> {
+		const { jira, gitlab } = this.connections.connectors;
+		const url = toolRefUrl(id, { jira: jira?.site, gitlab: gitlab?.url });
+		if (url) {
+			await openTeamLink(url);
+			return;
+		}
+		const tool = id.startsWith('jira:') ? 'Jira' : id.startsWith('gitlab:') ? 'GitLab' : undefined;
+		if (tool) {
+			void vscode.window.showInformationMessage(vscode.l10n.t("Connect {0} in Connections to open this item.", tool));
+		}
+	}
+
 	/** Asks the user for a ticket, merge request or frame for the + menu, in a quick pick. */
 	async pick(tool: 'jira' | 'gitlab' | 'figma'): Promise<ToolRef | undefined> {
 		switch (tool) {
@@ -78,26 +109,25 @@ export class ToolChips {
 		if (!jira) {
 			return undefined;
 		}
-		type Item = vscode.QuickPickItem & { key?: string };
-		const pick = vscode.window.createQuickPick<Item>();
+		const pick = vscode.window.createQuickPick<TicketPickItem>();
 		pick.title = vscode.l10n.t("Jira ticket");
-		pick.placeholder = vscode.l10n.t("Search your sprint's tickets, or type a key such as ACME-412");
+		pick.placeholder = vscode.l10n.t("Search your open tickets, or type a key such as ACME-412");
 		pick.matchOnDescription = true;
 		pick.busy = true;
-		let sprint: Item[] = [];
+		let listed: TicketPickItem[] = [];
 		const typed = () => {
 			const key = /^[A-Za-z][A-Za-z0-9_]{1,15}-\d+$/.test(pick.value.trim()) ? pick.value.trim().toUpperCase() : undefined;
-			pick.items = [...key && !sprint.some(item => item.key === key) ? [{ label: key, description: vscode.l10n.t("Use this ticket"), key }] : [], ...sprint];
+			pick.items = [...key && !listed.some(item => item.key === key) ? [{ label: key, description: vscode.l10n.t("Use this ticket"), key }] : [], ...listed];
 		};
 		pick.onDidChangeValue(typed);
 		pick.show();
-		void jira.mySprint().then(result => {
-			sprint = result.issues.map(issue => ({ label: issue.key, description: issue.summary, detail: issue.status, key: issue.key }));
+		void jira.myTickets().then(result => {
+			listed = ticketPickItems(result);
 			typed();
-		}, err => {
+		}, (err: unknown) => {
 			pick.placeholder = err instanceof Error ? err.message : String(err);
 		}).finally(() => pick.busy = false);
-		const chosen = await new Promise<Item | undefined>(resolve => {
+		const chosen = await new Promise<TicketPickItem | undefined>(resolve => {
 			pick.onDidAccept(() => resolve(pick.selectedItems[0]));
 			pick.onDidHide(() => resolve(undefined));
 		});

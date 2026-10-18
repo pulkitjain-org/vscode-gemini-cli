@@ -275,17 +275,17 @@ section.block { padding: 112px 0 0; }
 
 /* Release notes page */
 .release { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 56px; padding-top: 64px; align-items: start; }
-.release aside { position: sticky; top: 88px; display: grid; gap: 22px; }
+.release .aside { position: sticky; top: 88px; display: grid; gap: 22px; }
 .release .back { color: var(--muted); font-size: 14px; }
 .release h1 { margin: 6px 0 0; font-size: 34px; line-height: 1.1; letter-spacing: -0.03em; text-align: left; }
 .release .date { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
 .release .dl { padding: 10px 16px; border-radius: 12px; display: inline-flex; font-weight: 600; font-size: 15px; }
 .release .dl::before { display: none; }
-.release aside small { display: block; margin-top: 8px; color: var(--faint); font-size: 13px; }
+.release .aside small { display: block; margin-top: 8px; color: var(--faint); font-size: 13px; }
 .toc { display: grid; gap: 4px; font-size: 14px; border-left: 1px solid var(--line); padding-left: 14px; }
 .toc a { color: var(--muted); }
 .toc a.sub { padding-left: 12px; font-size: 13.5px; }
-.sha { font-size: 12px; color: var(--faint); word-break: break-all; }
+.sha { font-size: 12px; color: var(--muted); word-break: break-all; }
 .sha code { display: block; margin-top: 6px; font-size: 11px; padding: 6px 8px; }
 /* Release notes body (rendered from the release's markdown by GitHub) */
 .notes { min-width: 0; border-radius: 20px; padding: 36px 40px; font-size: 16px; color: var(--muted); }
@@ -322,7 +322,7 @@ section.block { padding: 112px 0 0; }
 	.card.wide { grid-template-columns: 1fr; padding-right: 30px; }
 	.crop { border-right: 1px solid var(--line); border-radius: 12px; aspect-ratio: 16 / 9; min-height: 0; }
 	.release { grid-template-columns: minmax(0, 1fr); gap: 28px; }
-	.release aside { position: static; }
+	.release .aside { position: static; }
 	.toc, .sha { display: none; }
 }
 @media (max-width: 640px) {

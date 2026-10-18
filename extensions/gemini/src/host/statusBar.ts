@@ -24,7 +24,7 @@ export const statusMenuCommand = 'gemini.showStatusMenu';
  */
 export class GeminiStatusBar implements vscode.Disposable {
 
-	private readonly item = vscode.window.createStatusBarItem('gemini.status', vscode.StatusBarAlignment.Right, 100);
+	private readonly item = vscode.window.createStatusBarItem('gemini.status', vscode.StatusBarAlignment.Right, 103);
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly accountsFile = googleAccountsPath(process.env, os.homedir());
 	private account: string | undefined;
@@ -91,7 +91,8 @@ export class GeminiStatusBar implements vscode.Disposable {
 		// Near a limit, the most used model's share shows in the bar itself.
 		const top = this.usage?.[0];
 		const nearLimit = status.phase === 'ready' && top && top.used >= nearLimitShare ? ` ${Math.round(top.used * 100)}%` : '';
-		this.item.text = `${icon} ${label}${nearLimit}`;
+		const cli = status.phase === 'ready' && status.agentVersion ? ` · ${vscode.l10n.t("CLI {0}", status.agentVersion)}` : '';
+		this.item.text = `${icon} ${label}${nearLimit}${cli}`;
 		this.item.backgroundColor = status.phase === 'error' ? new vscode.ThemeColor('statusBarItem.errorBackground') : nearLimit && top!.used >= 0.95 ? new vscode.ThemeColor('statusBarItem.warningBackground') : undefined;
 
 		const project = getProjectSettings().resolved;
@@ -119,6 +120,9 @@ export class GeminiStatusBar implements vscode.Disposable {
 			{ label: vscode.l10n.t("$(account) Sign In or Finish Setup in Terminal"), description: this.account, command: 'gemini.completeSetupInTerminal' },
 			{ label: vscode.l10n.t("$(add) New Agent"), command: 'gemini.agents.newAgent' },
 			{ label: vscode.l10n.t("$(output) Show Log"), command: 'gemini.showLog' },
+			{ label: vscode.l10n.t("$(list-unordered) Open Audit Log"), detail: vscode.l10n.t("Every write made to Jira or GitLab for you, with what the tool gave back"), command: 'gemini.openAuditLog' },
+			{ label: vscode.l10n.t("$(pulse) Record Performance Trace..."), detail: vscode.l10n.t("Restarts the agent with the CLI's telemetry going to a file in your home folder; stop it to see where each turn's time went"), command: 'gemini.recordTrace' },
+			{ label: vscode.l10n.t("$(beaker) Run Benchmark..."), detail: vscode.l10n.t("Runs the team's benchmark tasks on one model and writes a results file to add by pull request"), command: 'gemini.runBenchmark' },
 			{ label: '', kind: vscode.QuickPickItemKind.Separator },
 			{ label: vscode.l10n.t("$(book) Gemini CLI Docs"), run: () => void vscode.env.openExternal(vscode.Uri.parse(cliDocsUrl)) },
 			{ label: vscode.l10n.t("$(report) Report an Issue..."), detail: vscode.l10n.t("Opens a new issue with the GeminiCode, VS Code, Gemini CLI and OS versions filled in"), run: () => void this.reportIssue() },
@@ -161,7 +165,7 @@ function describePhase(status: AgentStatus): { icon: string; label: string } {
 		case 'stopped': return { icon: '$(circle-outline)', label: vscode.l10n.t("Gemini") };
 		case 'starting': return { icon: '$(loading~spin)', label: vscode.l10n.t("Gemini: starting") };
 		case 'restarting': return { icon: '$(loading~spin)', label: vscode.l10n.t("Gemini: restarting ({0})", status.restartAttempt ?? 1) };
-		case 'ready': return { icon: '$(sparkle)', label: vscode.l10n.t("Gemini") };
+		case 'ready': return { icon: '$(sparkle)', label: vscode.l10n.t("Gemini: ready") };
 		case 'error': return { icon: '$(error)', label: vscode.l10n.t("Gemini: needs attention") };
 	}
 }

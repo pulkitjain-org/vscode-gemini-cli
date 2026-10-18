@@ -3,14 +3,17 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { isRecord, readSettingsFile } from '../acp/projectSettings';
 import { allowlistBlock, allowServer, settingsFiles } from '../acp/projectToolsCheck';
 import type { TeamDefaults } from '../acp/teamDefaults';
 import { TeamToolId, teamToolIds, teamToolNames } from '../acp/teamHttp';
 import { teamToolsServerName } from '../acp/teamTools';
-import type { ConnectionRowView, ConnectionsStrings, ConnectionsView, FromConnections, ToConnections } from './connectionsProtocol';
+import type { ConnectionRowView, ConnectionsStrings, ConnectionsView, FromConnections, TeamServerView, ToConnections } from './connectionsProtocol';
 import { tildify } from './displayText';
 import { ConnectionState, createTokenUrl, TeamConnections } from './teamConnections';
+import { takeOverTeamServers } from './teamTakeover';
 import { createNonce, escapeAttribute } from './webviewHtml';
 
 const viewType = 'gemini.connections';
@@ -27,10 +30,11 @@ export class ConnectionsPage implements vscode.Disposable {
 	private panel: vscode.WebviewPanel | undefined;
 	private defaults: TeamDefaults = {};
 	private allowlist: ConnectionsView['allowlist'] & { readonly path: string } | undefined;
+	private teamServers: ConnectionsView['teamServers'] & { readonly path: string } | undefined;
 	private updating = false;
 	private readonly disposables: vscode.Disposable[] = [];
 
-	constructor(private readonly extensionUri: vscode.Uri, private readonly connections: TeamConnections) {
+	constructor(private readonly extensionUri: vscode.Uri, private readonly connections: TeamConnections, private readonly log: vscode.LogOutputChannel) {
 		this.disposables.push(
 			vscode.commands.registerCommand('gemini.connections', () => this.show()),
 			connections.onDidChange(() => this.scheduleUpdate()),
@@ -148,6 +152,20 @@ export class ConnectionsPage implements vscode.Disposable {
 					await this.openFile(this.defaults.file);
 				}
 				return;
+			case 'checkAll':
+				await this.connections.refresh();
+				return;
+			case 'openTeamServers':
+				if (this.teamServers) {
+					await this.openFile(this.teamServers.path, 'mcpServers');
+				}
+				return;
+			case 'takeOverTeamServers':
+				if (this.teamServers && await takeOverTeamServers(this.connections, this.teamServers.path, this.log)) {
+					await this.readFiles();
+					this.scheduleUpdate();
+				}
+				return;
 		}
 	}
 
@@ -162,9 +180,15 @@ export class ConnectionsPage implements vscode.Disposable {
 	private async readFiles(): Promise<void> {
 		this.defaults = await this.connections.workspaceDefaults();
 		this.allowlist = undefined;
+		this.teamServers = undefined;
 		for (const folder of vscode.workspace.workspaceFolders ?? []) {
 			if (folder.uri.scheme !== 'file') {
 				continue;
+			}
+			const settings = path.join(folder.uri.fsPath, '.gemini', 'settings.json');
+			const servers = teamServersIn(await readSettingsFile(settings));
+			if (servers.length && !this.teamServers) {
+				this.teamServers = { file: tildify(settings), path: settings, servers };
 			}
 			const block = await allowlistBlock(teamToolsServerName, settingsFiles({ workspace: folder.uri.fsPath }));
 			if (block) {
@@ -188,6 +212,7 @@ export class ConnectionsPage implements vscode.Disposable {
 			rows: teamToolIds.map(tool => this.row(tool)),
 			...this.defaults.file ? { defaultsFile: tildify(this.defaults.file) } : {},
 			...this.allowlist ? { allowlist: { kind: this.allowlist.kind, file: this.allowlist.file } } : {},
+			...this.teamServers ? { teamServers: { file: this.teamServers.file, servers: this.teamServers.servers } } : {},
 		};
 	}
 
@@ -202,6 +227,8 @@ export class ConnectionsPage implements vscode.Disposable {
 			kind: state.kind,
 			label: stateLabel(tool, state),
 			detail: stateDetail(tool, state, url),
+			pills: pillsOf(tool, state, url, this.connections.childOf(tool)),
+			...saved && state.kind === 'connected' ? { token: tokenLine(tool, state) } : {},
 			saved,
 			needsToken,
 			...url ? { url } : {},
@@ -215,9 +242,17 @@ export class ConnectionsPage implements vscode.Disposable {
 		const nonce = createNonce();
 		const strings: ConnectionsStrings = {
 			title: vscode.l10n.t("Connections"),
-			subtitle: vscode.l10n.t("Sign in to your team's tools with your own account. Agents can then read tickets, merge requests, designs and checks. Everything runs from this Mac over your VPN, and your tokens stay in the macOS keychain."),
+			subtitle: vscode.l10n.t("Each tool with your own account. Agents can then read tickets, merge requests, designs and checks. Everything runs from this Mac over your VPN, and your tokens stay in the macOS keychain."),
 			tools: vscode.l10n.t("Tools"),
 			toolsHint: vscode.l10n.t("Agents get tools only for what you connect."),
+			checkAll: vscode.l10n.t("Check All"),
+			teamServersTitle: vscode.l10n.t("This repository's {0} runs {1} as MCP servers of the CLI"),
+			teamServersText: vscode.l10n.t("Agents see two sets of Jira and GitLab tools, and the servers' tokens come from your shell environment, which the agent's shell tool can read. Take them over to keep the tokens in the keychain and run the same servers behind GeminiCode's team tools, which ask before every write."),
+			takeOverServers: vscode.l10n.t("Take Over Both Servers..."),
+			teamServerLine: vscode.l10n.t("{0} · token from {1} in your shell"),
+			teamServerIncluded: vscode.l10n.t("{0} tools kept by the file"),
+			teamServerExcluded: vscode.l10n.t("{0} tools left out by the file"),
+			openSettings: vscode.l10n.t("Open Settings File"),
 			defaultsHint: vscode.l10n.t("Defaults for the server addresses come from {0}."),
 			connect: vscode.l10n.t("Connect"),
 			replaceToken: vscode.l10n.t("Replace Token"),
@@ -243,14 +278,15 @@ export class ConnectionsPage implements vscode.Disposable {
 			snykConnectHint: vscode.l10n.t("Uses the Snyk CLI on this Mac, signed in with snyk auth and pointed at your team's Snyk. GeminiCode never sees a Snyk token."),
 			figmaConnectHint: vscode.l10n.t("Uses the Figma desktop app with your Dev seat. Turn on the Dev Mode MCP server in Figma's Preferences; no token needed."),
 			permissions: vscode.l10n.t("What agents may do"),
-			permissionsHint: vscode.l10n.t("Reading is always allowed. Changes ask you first, even in Auto Edit."),
-			jiraWrites: vscode.l10n.t("Move tickets, comment on them and log time"),
-			jiraWritesDetail: vscode.l10n.t("Jira status changes, comments and work logs"),
-			gitlabWrites: vscode.l10n.t("Open merge requests and reply to reviews"),
-			gitlabWritesDetail: vscode.l10n.t("GitLab"),
+			permissionsHint: vscode.l10n.t("Reading is always allowed. Changes ask you first, even in Auto Edit. Every answer goes to the audit log with the id Jira or GitLab returns."),
+			writes: vscode.l10n.t("Comment on tickets, reply to reviews, reassign"),
+			writesDetail: vscode.l10n.t("jira_comment · gitlab_reply · jira_assign: the exact text, with Allow for this session"),
+			confirmWrites: vscode.l10n.t("Move tickets, log time, open merge requests, merge"),
+			confirmWritesDetail: vscode.l10n.t("jira_transition · jira_log_time · gitlab_create_mr · gitlab_merge: hard to take back, so no session option"),
 			reads: vscode.l10n.t("Read tickets, merge requests, checks and designs"),
 			readsDetail: vscode.l10n.t("Jira, GitLab, SonarQube, Snyk and Figma"),
 			askEachTime: vscode.l10n.t("Ask each time"),
+			askOnceOnly: vscode.l10n.t("Ask every time, Allow once only"),
 			alwaysAllowed: vscode.l10n.t("Always allowed"),
 			allowlistNotAllowed: vscode.l10n.t("{0} allows only the MCP servers in mcp.allowed, and {1} isn't one, so agents won't get these tools."),
 			allowlistExcluded: vscode.l10n.t("{0} leaves out {1} in mcp.excluded, so agents won't get these tools."),
@@ -264,6 +300,7 @@ export class ConnectionsPage implements vscode.Disposable {
 		const pageStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'connections.css'));
 		const menuStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'menu.css'));
 		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'codicon.css'));
+		const glassStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'glass.css'));
 		return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -274,6 +311,7 @@ export class ConnectionsPage implements vscode.Disposable {
 	<link href="${menuStyle}" rel="stylesheet">
 	<link href="${style}" rel="stylesheet">
 	<link href="${pageStyle}" rel="stylesheet">
+	<link href="${glassStyle}" rel="stylesheet">
 	<title>${strings.title}</title>
 </head>
 <body class="settings-page connections-page">
@@ -333,15 +371,44 @@ function stateDetail(tool: TeamToolId, state: ConnectionState, url: string | und
 		return [vscode.l10n.t("Uses the Snyk CLI on this Mac."), [found, signedIn].filter(Boolean).join(', ')].filter(Boolean).join(' ');
 	}
 	if (tool === 'figma') {
-		return state.detail ?? vscode.l10n.t("Through the Figma desktop app.");
+		return state.detail ?? vscode.l10n.t("Through the Figma desktop app with your Dev seat: design context and screenshots by link.");
 	}
-	const parts = [
-		state.account ? vscode.l10n.t("Signed in as {0}", state.account) : undefined,
-		state.server,
-		state.version ? `${teamToolNames[tool]} ${tool === 'gitlab' ? state.version.split('.').slice(0, 2).join('.') : state.version}` : undefined,
-		state.expires ? vscode.l10n.t("token expires {0}", formatDate(state.expires)) : undefined,
-	].filter(Boolean);
-	return [parts.join(' · '), state.detail].filter(Boolean).join('. ');
+	return [state.account ? vscode.l10n.t("Signed in as {0}", state.account) : '', state.detail].filter(Boolean).join('. ');
+}
+
+/** The server and its version, then how GeminiCode reaches the tool. */
+function pillsOf(tool: TeamToolId, state: ConnectionState, url: string | undefined, via: string | undefined): string[] {
+	const host = state.kind === 'connected' && state.server && tool !== 'snyk' ? state.server : hostOf(url);
+	const version = state.kind === 'connected' && state.version && tool !== 'snyk' ? (tool === 'gitlab' ? state.version.split('.').slice(0, 2).join('.') : state.version) : undefined;
+	const where = tool === 'snyk' ? [state.kind === 'connected' && state.server ? state.server : '', state.kind === 'connected' && state.version ? vscode.l10n.t("CLI {0}", state.version) : ''].filter(Boolean).join(' · ') : [host, version].filter(Boolean).join(' · ');
+	const how = tool === 'figma' ? vscode.l10n.t("Dev Mode MCP server, 127.0.0.1:3845")
+		: tool === 'snyk' ? via ? vscode.l10n.t("{0}, this Mac", via) : vscode.l10n.t("Snyk CLI, this Mac")
+			: via ? vscode.l10n.t("{0}, this Mac", via) : vscode.l10n.t("REST from this Mac");
+	return [where, how].filter(Boolean);
+}
+
+/** Where the tool's token lives, and when it expires. */
+function tokenLine(tool: TeamToolId, state: ConnectionState): string {
+	if (tool === 'snyk' || tool === 'figma') {
+		return vscode.l10n.t("No token held by GeminiCode.");
+	}
+	return state.expires ? vscode.l10n.t("Token: in the macOS keychain · expires {0}", formatDate(state.expires)) : vscode.l10n.t("Token: in the macOS keychain");
+}
+
+/** The Jira and GitLab servers a repository's `.gemini/settings.json` makes the CLI run, with what the file says about each. */
+function teamServersIn(settings: Record<string, unknown>): TeamServerView[] {
+	const servers = isRecord(settings.mcpServers) ? settings.mcpServers : {};
+	return Object.entries(servers).flatMap(([name, entry]): TeamServerView[] => {
+		if (!/^(jira|gitlab)$/i.test(name) || !isRecord(entry)) {
+			return [];
+		}
+		const args = Array.isArray(entry.args) ? entry.args.filter((a): a is string => typeof a === 'string') : [];
+		const image = args.find(a => /^[\w.-]+(\/[\w.-]+)+(:[\w.-]+)?$/.test(a));
+		const env = isRecord(entry.env) ? Object.keys(entry.env) : [];
+		const included = Array.isArray(entry.includeTools) ? entry.includeTools.length : undefined;
+		const excluded = Array.isArray(entry.excludeTools) ? entry.excludeTools.length : undefined;
+		return [{ name, ...image ? { image } : {}, tokenEnv: env.filter(k => /TOKEN|SECRET|PASSWORD/i.test(k)), ...included ? { included } : {}, ...excluded ? { excluded } : {} }];
+	});
 }
 
 function formatDate(iso: string): string {

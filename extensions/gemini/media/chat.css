@@ -36,9 +36,9 @@
 	--gemini-radius: 10px;
 	--gemini-radius-small: 6px;
 	--gemini-radius-large: 12px;
-	/* Soft: the theme's own colours, named as the mockups name them. */
+	/* Soft: the theme's own colours, named by their role. */
 	--gemini-surface: var(--vscode-editor-background);
-	/* The approved mockups' cards and composer: a step above the page. */
+	/* Cards and the composer: a step above the page. */
 	--gemini-card: var(--vscode-editorWidget-background, var(--gemini-surface));
 	--gemini-composer: var(--vscode-input-background, var(--gemini-surface));
 	--gemini-raised: var(--vscode-editorWidget-background, var(--vscode-input-background));
@@ -360,7 +360,7 @@ kbd {
 	word-wrap: break-word;
 }
 
-/* The user's message, a graphite bubble on the right (the mockups' #2b2b2b on #1f1f1f, and the same step in light), and under it its time and Copy. */
+/* The user's message, a graphite bubble on the right (#2b2b2b on #1f1f1f, and the same step in light), and under it its time and Copy. */
 .user-turn {
 	margin: 18px 0 14px;
 }
@@ -899,7 +899,7 @@ body.vscode-high-contrast-light {
 	max-width: 180px;
 	padding: 0 9px;
 	height: 20px;
-	/* Pills, as in the approved mockups. */
+	/* Pills. */
 	border: 1px solid var(--gemini-border-strong);
 	border-radius: 999px;
 	background: var(--gemini-surface);
@@ -1238,6 +1238,50 @@ body.vscode-high-contrast-light {
 	color: var(--gemini-warn);
 }
 
+/* Confirm class: a warmer card, a pill saying so, the effect as the tool will record it, and why it asks every time. */
+.permission.confirm {
+	border-color: color-mix(in srgb, var(--gemini-warn) 45%, var(--gemini-border-strong));
+	background: color-mix(in srgb, var(--gemini-warn) 4%, var(--gemini-card));
+}
+
+.permission-pill {
+	flex: none;
+	padding: 0 8px;
+	border: 1px solid color-mix(in srgb, var(--gemini-warn) 40%, transparent);
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: normal;
+	color: var(--gemini-warn);
+	white-space: nowrap;
+}
+
+.permission-effect {
+	margin: 8px 0 0;
+	padding: 8px 10px;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius-small);
+	background: var(--gemini-surface);
+	font-family: var(--vscode-editor-font-family);
+	font-size: 12px;
+	line-height: 1.5;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	max-height: 240px;
+	overflow: auto;
+	color: var(--vscode-foreground);
+}
+
+.permission-why {
+	margin-top: 6px;
+	font-size: 12px;
+	color: var(--gemini-muted);
+}
+
+.permission-actions button.reject {
+	color: var(--gemini-error);
+	border-color: color-mix(in srgb, var(--gemini-error) 45%, transparent);
+}
+
 .permission.answered {
 	border-color: var(--gemini-border);
 	background: transparent;
@@ -1342,6 +1386,124 @@ body.vscode-high-contrast-light {
 
 .turn-end .copy-reply {
 	opacity: 0.7;
+}
+
+/* A turn GeminiCode's quit cut off: a warm card with what is on disk and what to do. */
+.cut-off {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	max-width: 720px;
+	margin: 12px 0;
+	padding: 10px 12px;
+	border: 1px solid color-mix(in srgb, var(--gemini-warn) 45%, var(--gemini-border-strong));
+	border-radius: 9px;
+	background: color-mix(in srgb, var(--gemini-warn) 4%, var(--gemini-card));
+}
+
+.cut-off.dismissed {
+	display: none;
+}
+
+.cut-off-text {
+	font-size: 0.92em;
+	color: var(--gemini-muted);
+}
+
+/* Where a turn's time went: hop, bar, this turn, budget. */
+.trace-card {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	max-width: 820px;
+	margin: 12px 0;
+	padding: 12px 14px;
+	border: 1px solid var(--gemini-border);
+	border-radius: 9px;
+	background: var(--gemini-card);
+}
+
+.trace-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+
+.trace-head h3 {
+	margin: 0;
+	font-size: 13px;
+	font-weight: 600;
+}
+
+.trace-source {
+	flex: 0 1 auto;
+	margin-left: auto;
+	overflow: hidden;
+	font-family: var(--vscode-editor-font-family);
+	font-size: 11px;
+	color: var(--gemini-faint);
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.trace-grid {
+	display: grid;
+	grid-template-columns: minmax(140px, 220px) minmax(0, 1fr) 90px 110px;
+	gap: 4px 12px;
+	align-items: center;
+	font-size: 12px;
+}
+
+.trace-col {
+	color: var(--gemini-faint);
+}
+
+.trace-value {
+	font-family: var(--vscode-editor-font-family);
+	font-size: 11px;
+	white-space: nowrap;
+}
+
+.trace-track {
+	display: block;
+	height: 10px;
+	overflow: hidden;
+	border-radius: 4px;
+	background: var(--gemini-hover);
+}
+
+.trace-bar {
+	display: block;
+	height: 100%;
+	border-radius: 4px;
+	background: var(--gemini-accent);
+}
+
+.trace-bar.fork {
+	background: var(--gemini-faint);
+}
+
+.trace-bar.tool {
+	background: var(--gemini-warn);
+}
+
+.trace-line {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding-top: 6px;
+	border-top: 1px solid var(--gemini-border);
+	font-size: 12px;
+	color: var(--gemini-muted);
+}
+
+.trace-file-name {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
 }
 
 .turn-end:hover .copy-reply,
@@ -2944,7 +3106,7 @@ body.vscode-high-contrast-light #send {
 	background: color-mix(in srgb, var(--vscode-charts-purple, #c586c0) 18%, transparent);
 }
 
-/* The New thread dialog (project.ts), as in the approved mockup. */
+/* The New thread dialog (project.ts). */
 .new-thread {
 	width: min(600px, calc(100vw - 32px));
 	max-height: calc(100vh - 48px);
@@ -3791,6 +3953,36 @@ body.has-parent-project .prompt-outline {
 .tool-chip-title {
 	min-width: 0;
 	color: var(--gemini-muted);
+}
+
+/* A tool chip opens its item: the logo, key and title are one button inside the pill, beside its ×. */
+.tool-chip-open {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	min-width: 0;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}
+
+.tool-chip-open .tool-chip-title {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.tool-chip-open:hover .tool-chip-key {
+	text-decoration: underline;
+}
+
+.tool-chip-open:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 1px;
+	border-radius: 999px;
 }
 
 /* A geminicode-tools call shows its tool's logo where other calls show a codicon. */

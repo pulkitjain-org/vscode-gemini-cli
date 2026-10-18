@@ -30,13 +30,14 @@ import { fakeAgentCommand, waitFor } from '../helpers';
 export const bundleBudgets: Readonly<Record<string, number>> = {
 	// 1.1.0's Rewind, Subagent rows and the Shared page chip took it just past 215 KB; folding finished work
 	// (work.ts, workFold.ts) took it to about 225 KB, all GeminiCode's own code. The team tools' chips,
-	// + menu section and tool rows with logos took it to about 237 KB.
-	'media/chat.js': 240_000,
+	// + menu section and tool rows with logos took it to about 237 KB; the confirm-class card's effect,
+	// the cut-off card and the turn's trace readout to about 241 KB.
+	'media/chat.js': 250_000,
 	// Home's startup script: Preview's renderer is its own file. The dashboard (cards, Needs you,
-	// Customize) and the tools' logos took it to about 25 KB.
-	'media/home.js': 28_000,
+	// Customize) and the tools' logos took it to about 25 KB, and Show All's popup to about 28 KB.
+	'media/home.js': 30_000,
 	'media/changes.js': 16_000,
-	// The team flows: Open Merge Request, Move Ticket and Log Time, Review, Merge Release Forward and Checks.
+	// The team flows: Open Merge Request, Move Ticket and Log Time, Review and Checks.
 	'media/teamFlow.js': 32_000,
 	'media/settings.js': 16_000,
 	'media/highlight.js': 180_000,
@@ -47,7 +48,11 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// 1.1.0's saved checkpoints, Rewind, Check for Updates and browser fixes took it to 941 KB, all its own code too.
 	// The team tools (five connectors, the geminicode-tools server, Connections, Home's dashboard and the
 	// merge request, review, release, Jira and checks flows) took it to about 1,090 KB, all its own code, no libraries.
-	'dist/extension.js': 1_100_000,
+	// The pages' writes through the agents' tools, the audit log page and keeping flows across a quit took it to
+	// about 1,137 KB; loading the ACP SDK only when an agent starts wraps its modules, about 6 KB more, and takes
+	// about 12 ms off the bundle's load time. Run Benchmark, the pilot's counters, and the team's own Jira and
+	// GitLab servers as children (the stdio MCP client, the take-over) took it to about 1,172 KB, its own code.
+	'dist/extension.js': 1_200_000,
 };
 
 /** Median time of `run` over `rounds` runs, in ms. */

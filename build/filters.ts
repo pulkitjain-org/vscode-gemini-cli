@@ -104,6 +104,7 @@ export const indentationFilter = Object.freeze<string[]>([
 	'!build/ext.js',
 	'!build/darwin/patch-dmg.py',
 	'!build/npm/gyp/patches/gyp_spectre_mitigation_support.patch',
+	'!gemini/patches/**', // GEMINI-FORK: the fork's edits to upstream files, as patches
 	'!product.overrides.json',
 	'!src/vs/platform/endpoint/common/licenseAgreement.ts',
 

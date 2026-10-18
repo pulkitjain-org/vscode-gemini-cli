@@ -5,7 +5,7 @@
 
 import * as vscode from 'vscode';
 import { errorMessage } from '../acp/errors';
-import { GitLabDiscussion, GitLabJob, GitLabMr } from '../acp/gitlab';
+import { GitLabDiscussion, GitLabJob, GitLabMr, MergeReadiness } from '../acp/gitlab';
 import { JiraIssue, jiraKeyIn } from '../acp/jira';
 import { SonarGate, sonarProjectKeyIn } from '../acp/sonar';
 import { mrFixPrompt } from '../acp/teamFlowLogic';
@@ -13,7 +13,8 @@ import { gitlabProjectOf } from '../acp/teamTools';
 import type { AgentsView } from './agentsView';
 import type { ChangesSource } from './changesView';
 import type { TeamConnections } from './teamConnections';
-import { pipelineTone } from './teamFlows';
+import { relativeTime } from './displayText';
+import { type MergeOptions, pipelineTone } from './teamFlows';
 import { ChangesTeamView, FromChangesTeam } from './teamFlowProtocol';
 import { openTeamLink } from './teamLinks';
 
@@ -27,9 +28,12 @@ interface MrState {
 	readonly mr?: GitLabMr;
 	readonly failed: readonly GitLabJob[];
 	readonly passedJobs: readonly string[];
+	/** How far the head pipeline is: jobs finished well, of all its jobs. */
+	readonly jobs?: { readonly done: number; readonly total: number };
 	readonly threads: readonly GitLabDiscussion[];
 	readonly gate?: SonarGate;
 	readonly ticket?: JiraIssue;
+	readonly readiness?: MergeReadiness;
 	readonly error?: string;
 }
 
@@ -71,9 +75,11 @@ export class MrPanel implements vscode.Disposable {
 		const mr = state?.mr;
 		if (mr) {
 			const rows: NonNullable<ChangesTeamView['mr']>['rows'][number][] = [];
+			const sha = (state.readiness?.sha || mr.diffRefs?.headSha || '').slice(0, 7);
 			if (mr.pipeline) {
 				rows.push({
-					tool: 'gitlab', label: vscode.l10n.t("Pipeline"), detail: `#${mr.pipeline.id}`, pill: { text: mr.pipeline.status, tone: pipelineTone(mr.pipeline.status) },
+					tool: 'gitlab', label: sha ? vscode.l10n.t("Pipeline for {0}", sha) : vscode.l10n.t("Pipeline"), detail: `#${mr.pipeline.id}`,
+					pill: { text: state.jobs?.total ? vscode.l10n.t("{0} · {1} of {2} jobs", mr.pipeline.status, state.jobs.done, state.jobs.total) : mr.pipeline.status, tone: pipelineTone(mr.pipeline.status) },
 					jobs: state.failed.map(j => ({ id: j.id, name: `${j.stage} · ${j.name}`, fix: vscode.l10n.t("Fix") })),
 					...state.passedJobs.length ? { note: state.passedJobs.join(', ') } : {},
 				});
@@ -87,17 +93,34 @@ export class MrPanel implements vscode.Disposable {
 			}
 			const open = state.threads.filter(d => !d.resolved);
 			rows.push({
-				tool: 'review', label: vscode.l10n.t("Review"),
-				pill: open.length ? { text: open.length === 1 ? vscode.l10n.t("1 open thread") : vscode.l10n.t("{0} open threads", open.length), tone: 'warn' } : { text: vscode.l10n.t("no open threads"), tone: 'muted' },
+				tool: 'review', label: vscode.l10n.t("Review threads"),
+				pill: open.length ? { text: vscode.l10n.t("{0} unresolved", open.length), tone: 'warn' } : { text: vscode.l10n.t("0 unresolved"), tone: 'ok' },
 				threads: open.map(d => ({ id: d.id, author: d.notes[0].author, text: d.notes[d.notes.length - 1].body.replace(/\s+/g, ' ').slice(0, 160) })),
 			});
 			if (state.ticket) {
 				rows.push({ tool: 'jira', label: state.ticket.key, detail: state.ticket.summary, pill: { text: state.ticket.status, tone: state.ticket.statusCategory === 'done' ? 'ok' : 'info' } });
 			}
+			const readiness = state.readiness;
+			const ticket = state.ticket?.key;
 			view.mr = {
 				iid: mr.iid,
-				heading: vscode.l10n.t("Merge request !{0}", mr.iid),
-				subtitle: vscode.l10n.t("{0} · into {1}", mr.title, mr.targetBranch),
+				...readiness ? {
+					merge: {
+						heading: vscode.l10n.t("Merge !{0}", mr.iid),
+						readAt: Date.now() - state.at < 60_000 ? vscode.l10n.t("read live {0} s ago", Math.round((Date.now() - state.at) / 1000)) : vscode.l10n.t("read live {0} ago", relativeTime(state.at, Date.now())),
+						checks: readiness.checks.map(c => ({ name: c.name, state: c.ok ? 'ok' : c.pending ? 'pending' : 'missing', detail: c.detail, source: c.source })),
+						ready: readiness.ready,
+						squash: { label: vscode.l10n.t("Squash commits (project default)"), on: readiness.squash },
+						removeSourceBranch: { label: vscode.l10n.t("Delete source branch"), on: readiness.removeSourceBranch },
+						...ticket ? { moveTicket: { label: vscode.l10n.t("Move {0} to Done with a comment", ticket), on: true, key: ticket } } : {},
+						request: { path: `/merge_requests/${mr.iid}/merge`, sha: readiness.sha.slice(0, 7) },
+						// Everything but a running pipeline in place: the button says what it waits for.
+						button: !readiness.ready && readiness.checks.every(c => c.ok || c.pending) ? vscode.l10n.t("Merge When the Pipeline Passes") : vscode.l10n.t("Merge..."),
+						note: readiness.ready ? vscode.l10n.t("Read from GitLab just now. You will confirm once more, and GitLab checks again.") : vscode.l10n.t("Enabled when every line above is green. You will confirm once more."),
+					},
+				} : {},
+				heading: `!${mr.iid} ${mr.title}`,
+				target: `→ ${mr.targetBranch}`,
 				url: mr.url,
 				openIn: vscode.l10n.t("Open in GitLab"),
 				rows,
@@ -122,6 +145,17 @@ export class MrPanel implements vscode.Disposable {
 			case 'runChecks':
 				await vscode.commands.executeCommand('gemini.team.runChecks', source.agentId);
 				return;
+			case 'merge': {
+				const state = this.states.get(source.agentId);
+				if (state?.project && state.mr) {
+					const options: MergeOptions = { squash: message.squash, removeSourceBranch: message.removeSourceBranch, ...message.moveTicket && state.ticket ? { moveTicket: state.ticket.key } : {} };
+					await vscode.commands.executeCommand('gemini.team.mergeMergeRequest', state.project, state.mr.iid, options);
+					// Read again: merged, or GitLab said no.
+					this.states.set(source.agentId, { ...state, at: 0 });
+					this.onDidChangeEmitter.fire();
+				}
+				return;
+			}
 			case 'openUrl': {
 				const url = this.states.get(source.agentId)?.mr?.url;
 				if (url) {
@@ -185,17 +219,19 @@ export class MrPanel implements vscode.Disposable {
 			const sonarKey = sonar ? defaults.sonar?.projectKey ?? await sonarProjectKeyIn(source.folder) : undefined;
 			const key = jiraKeyIn(`${local.branch} ${summary.title}`, defaults.jira?.projects);
 			const mr = await gitlab.mr(local.project, summary.iid);
-			const [jobs, threads, gate, ticket] = await Promise.all([
+			const [jobs, threads, gate, ticket, readiness] = await Promise.all([
 				mr.pipeline ? gitlab.jobs(local.project, mr.pipeline.id).catch(() => []) : Promise.resolve([]),
 				gitlab.discussions(local.project, mr.iid).catch(() => []),
 				sonar && sonarKey ? sonar.gate({ project: sonarKey, mergeRequest: String(mr.iid) }).catch(() => undefined) : Promise.resolve(undefined),
 				jira && key ? jira.issue(key).catch(() => undefined) : Promise.resolve(undefined),
+				mr.state === 'opened' ? gitlab.mergeReadiness(local.project, mr.iid).catch(() => undefined) : Promise.resolve(undefined),
 			]);
 			this.states.set(source.agentId, {
 				at: Date.now(), project: local.project, branch: local.branch, mr,
 				failed: jobs.filter(j => j.status === 'failed'),
 				passedJobs: jobs.filter(j => j.status === 'success').map(j => j.name).slice(0, 6),
-				threads, gate, ticket,
+				...jobs.length ? { jobs: { done: jobs.filter(j => j.status === 'success').length, total: jobs.length } } : {},
+				threads, gate, ticket, readiness,
 			});
 		} catch (err) {
 			this.states.set(source.agentId, { ...previous ?? { failed: [], passedJobs: [], threads: [] }, at: Date.now(), error: errorMessage(err) });

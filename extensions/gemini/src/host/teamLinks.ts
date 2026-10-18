@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
+import { recordPilot } from '../acp/pilotLog';
 import { configSection } from './configuration';
 
 /** Where merge request links open: `ask` each time, GeminiCode's browser, or the system's default browser. */
@@ -26,6 +27,7 @@ export async function openTeamLink(url: string): Promise<void> {
 	if (!/^https?:\/\//i.test(url)) {
 		return;
 	}
+	recordPilot({ kind: 'openedLink', mergeRequest: isMergeRequestUrl(url) });
 	if (!isMergeRequestUrl(url)) {
 		await vscode.env.openExternal(vscode.Uri.parse(url));
 		return;

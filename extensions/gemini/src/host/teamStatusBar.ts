@@ -5,7 +5,7 @@
 
 import * as vscode from 'vscode';
 import { TeamToolId, teamToolIds, teamToolNames } from '../acp/teamHttp';
-import { teamStatusSummary } from '../acp/teamStatus';
+import { teamStatusSummary, type TeamToolStateKind } from '../acp/teamStatus';
 import { escapeMarkdown } from './markdown';
 import type { TeamConnections } from './teamConnections';
 
@@ -14,12 +14,12 @@ const recheckMs = 5 * 60_000;
 
 /**
  * One status bar item for the team's tools: hidden until one is connected,
- * then one word for all of them ("Connected", "VPN off", "Needs attention"),
+ * then a word per connected tool ("Jira ✓ · GitLab ✓ · Figma: not open"),
  * with each tool's logo and state in the tooltip. Clicking opens Connections.
  */
 export class TeamStatusBar implements vscode.Disposable {
 
-	private readonly item = vscode.window.createStatusBarItem('gemini.teamTools', vscode.StatusBarAlignment.Right, 101);
+	private readonly item = vscode.window.createStatusBarItem('gemini.teamTools', vscode.StatusBarAlignment.Right, 102);
 	private readonly disposables: vscode.Disposable[] = [];
 
 	constructor(private readonly extensionUri: vscode.Uri, private readonly connections: TeamConnections) {
@@ -47,25 +47,9 @@ export class TeamStatusBar implements vscode.Disposable {
 			this.item.hide();
 			return;
 		}
-		const affected = summary.affected.map(tool => teamToolNames[tool]).join(', ');
-		switch (summary.word) {
-			case 'attention':
-				this.item.text = `$(warning) ${vscode.l10n.t("{0} needs attention", affected)}`;
-				this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-				break;
-			case 'vpnOff':
-				this.item.text = `$(debug-disconnect) ${vscode.l10n.t("VPN off")}`;
-				this.item.backgroundColor = undefined;
-				break;
-			case 'checking':
-				this.item.text = `$(sync~spin) ${vscode.l10n.t("Checking tools")}`;
-				this.item.backgroundColor = undefined;
-				break;
-			default:
-				this.item.text = `$(plug) ${vscode.l10n.t("Connected")}`;
-				this.item.backgroundColor = undefined;
-		}
-		this.item.accessibilityInformation = { label: vscode.l10n.t("Team tools: {0}", this.item.text.replace(/\$\([^)]*\)\s*/, '')) };
+		this.item.text = states.filter(s => s.kind !== 'off').map(s => word(s.tool, s.kind)).join(' · ');
+		this.item.backgroundColor = summary.word === 'attention' ? new vscode.ThemeColor('statusBarItem.warningBackground') : undefined;
+		this.item.accessibilityInformation = { label: vscode.l10n.t("Team tools: {0}", this.item.text) };
 		this.item.tooltip = this.tooltip(summary.connected);
 		this.item.show();
 	}
@@ -87,5 +71,18 @@ export class TeamStatusBar implements vscode.Disposable {
 		}
 		md.appendMarkdown(`\n${vscode.l10n.t("Click to open Connections.")}`);
 		return md;
+	}
+}
+
+/** A tool's state in a word or two, as the status bar shows it. */
+function word(tool: TeamToolId, kind: TeamToolStateKind): string {
+	const name = teamToolNames[tool];
+	switch (kind) {
+		case 'connected': return vscode.l10n.t("{0} ✓", name);
+		case 'checking': return vscode.l10n.t("{0}: checking", name);
+		case 'unreachable': return tool === 'figma' ? vscode.l10n.t("Figma: not open") : vscode.l10n.t("{0}: VPN off", name);
+		case 'auth': return tool === 'snyk' ? vscode.l10n.t("{0}: not signed in", name) : vscode.l10n.t("{0}: token refused", name);
+		case 'notInstalled': return vscode.l10n.t("{0}: not installed", name);
+		default: return vscode.l10n.t("{0}: not working", name);
 	}
 }

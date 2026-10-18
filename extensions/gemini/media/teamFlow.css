@@ -510,13 +510,13 @@ button.wide {
 	white-space: nowrap;
 }
 
-/* The team part of the Changes panel. */
+/* The team part of the Changes panel: the merge request and its merge checklist, each a card. */
 
 .team-changes {
 	display: flex;
 	flex-direction: column;
-	gap: 10px;
-	padding: 10px 12px;
+	gap: 12px;
+	padding: 10px 12px 12px;
 	border-bottom: 1px solid var(--gemini-border);
 }
 
@@ -533,33 +533,44 @@ button.wide {
 .mr-card {
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
+	gap: 2px;
+	padding: 12px 14px;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius);
+	background: var(--gemini-card);
 }
 
 .mr-head {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
 	gap: 8px;
+	min-width: 0;
+	margin-bottom: 4px;
 }
 
-.mr-heading {
-	display: inline-flex;
-	align-items: center;
-	gap: 7px;
+.mr-title {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
 }
 
-.mr-subtitle {
-	margin-top: -4px;
-	color: var(--gemini-muted);
-	font-size: 12px;
+.mr-target {
+	flex: none;
+	max-width: 50%;
+	overflow: hidden;
+	font-size: 11px;
+	color: var(--gemini-faint);
+	white-space: nowrap;
+	text-overflow: ellipsis;
 }
 
 .mr-row {
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
-	padding-top: 6px;
+	padding: 6px 0;
 	border-top: 1px solid var(--gemini-border);
 }
 
@@ -576,6 +587,22 @@ button.wide {
 	gap: 7px;
 	min-width: 0;
 }
+
+.mr-row-label .muted {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.mr-row-line .pill {
+	border: 1px solid var(--gemini-border);
+	background: none;
+}
+
+.mr-row-line .pill.ok { border-color: color-mix(in srgb, var(--gemini-ok) 40%, transparent); }
+.mr-row-line .pill.warn { border-color: color-mix(in srgb, var(--gemini-warn) 40%, transparent); }
+.mr-row-line .pill.error { border-color: color-mix(in srgb, var(--gemini-error) 40%, transparent); }
+.mr-row-line .pill.info { border-color: color-mix(in srgb, var(--vscode-textLink-foreground) 40%, transparent); }
 
 .mr-sub,
 .mr-thread {
@@ -602,4 +629,101 @@ button.wide {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+/* The merge checklist: a mark per check, its name, and where the rule comes from in small print. */
+.mr-check {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	padding: 5px 0;
+	border-top: 1px solid var(--gemini-border);
+}
+
+.mr-check-mark {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	margin-top: 2px;
+	border-radius: 50%;
+	background: var(--gemini-hover);
+	color: var(--gemini-muted);
+}
+
+.mr-check-mark .codicon {
+	font-size: 11px;
+}
+
+.mr-check.ok .mr-check-mark {
+	background: color-mix(in srgb, var(--gemini-ok) 18%, transparent);
+	color: var(--gemini-ok);
+}
+
+.mr-check.missing .mr-check-mark {
+	background: color-mix(in srgb, var(--gemini-error) 18%, transparent);
+	color: var(--gemini-error);
+}
+
+.mr-check.pending .mr-check-mark {
+	background: color-mix(in srgb, var(--gemini-warn) 18%, transparent);
+	color: var(--gemini-warn);
+}
+
+.mr-check-text {
+	min-width: 0;
+}
+
+.mr-check-source {
+	font-size: 11px;
+	color: var(--gemini-faint);
+	overflow-wrap: anywhere;
+}
+
+.mr-options {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding-top: 8px;
+	margin-top: 4px;
+	border-top: 1px solid var(--gemini-border);
+}
+
+.mr-option {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	cursor: pointer;
+}
+
+.mr-option input {
+	margin: 0;
+	accent-color: var(--gemini-accent);
+}
+
+.mr-request {
+	margin: 2px 0 0;
+	padding: 8px 10px;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius-small);
+	background: var(--gemini-surface);
+	font-size: 11px;
+	color: var(--gemini-muted);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.mr-merge-foot {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	padding-top: 8px;
+}
+
+.mr-merge-note {
+	font-size: 12px;
+	color: var(--gemini-faint);
 }

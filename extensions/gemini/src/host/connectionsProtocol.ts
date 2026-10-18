@@ -14,8 +14,12 @@ export interface ConnectionRowView {
 	readonly kind: TeamToolStateKind;
 	/** The state in a word or two: Connected, Can't reach, Token refused… */
 	readonly label: string;
-	/** The line under the name: who, where, version, expiry; or what's wrong and what to do. */
+	/** The line under the name: who is signed in, or what's wrong and what to do. */
 	readonly detail: string;
+	/** Beside the name: the server and its version, and how GeminiCode reaches the tool. */
+	readonly pills: readonly string[];
+	/** Under the detail: where the token lives and when it expires, when a token is saved. */
+	readonly token?: string;
 	/** Whether a token or account is saved (or Snyk or Figma turned on). */
 	readonly saved: boolean;
 	/** Whether connecting takes a server and token (Jira, GitLab, SonarQube). */
@@ -35,6 +39,18 @@ export interface ConnectionsView {
 	readonly defaultsFile?: string;
 	/** A settings file whose `mcp.allowed` leaves out geminicode-tools, as the page names it. */
 	readonly allowlist?: { readonly file: string; readonly kind: 'notAllowed' | 'excluded' | 'adminOff' };
+	/** Jira and GitLab run as MCP servers of the CLI from the repository's own settings: what the file says about each. */
+	readonly teamServers?: { readonly file: string; readonly servers: readonly TeamServerView[] };
+}
+
+export interface TeamServerView {
+	readonly name: string;
+	/** The container image or package the file runs, when one can be told. */
+	readonly image?: string;
+	/** Environment variables the file passes that look like tokens. */
+	readonly tokenEnv: readonly string[];
+	readonly included?: number;
+	readonly excluded?: number;
 }
 
 export interface ConnectionsStrings {
@@ -42,6 +58,17 @@ export interface ConnectionsStrings {
 	readonly subtitle: string;
 	readonly tools: string;
 	readonly toolsHint: string;
+	readonly checkAll: string;
+	/** `{0}` is the settings file, `{1}` the server names. */
+	readonly teamServersTitle: string;
+	readonly teamServersText: string;
+	/** `{0}` the image, `{1}` the token variables. */
+	readonly teamServerLine: string;
+	/** `{0}` how many tools the file keeps, or leaves out. */
+	readonly teamServerIncluded: string;
+	readonly teamServerExcluded: string;
+	readonly openSettings: string;
+	readonly takeOverServers: string;
 	readonly defaultsHint: string;
 	readonly connect: string;
 	readonly replaceToken: string;
@@ -68,13 +95,14 @@ export interface ConnectionsStrings {
 	readonly figmaConnectHint: string;
 	readonly permissions: string;
 	readonly permissionsHint: string;
-	readonly jiraWrites: string;
-	readonly jiraWritesDetail: string;
-	readonly gitlabWrites: string;
-	readonly gitlabWritesDetail: string;
+	readonly writes: string;
+	readonly writesDetail: string;
+	readonly confirmWrites: string;
+	readonly confirmWritesDetail: string;
 	readonly reads: string;
 	readonly readsDetail: string;
 	readonly askEachTime: string;
+	readonly askOnceOnly: string;
 	readonly alwaysAllowed: string;
 	readonly allowlistNotAllowed: string;
 	readonly allowlistExcluded: string;
@@ -94,4 +122,4 @@ export type FromConnections =
 	| { readonly type: 'connect'; readonly tool: TeamToolId; readonly url?: string; readonly email?: string; readonly token?: string }
 	| { readonly type: 'disconnect' | 'refresh'; readonly tool: TeamToolId }
 	| { readonly type: 'createToken'; readonly tool: TeamToolId; readonly url?: string }
-	| { readonly type: 'openFigma' | 'allowlist' | 'openAllowlistFile' | 'openDefaults' };
+	| { readonly type: 'openFigma' | 'allowlist' | 'openAllowlistFile' | 'openDefaults' | 'checkAll' | 'openTeamServers' | 'takeOverTeamServers' };

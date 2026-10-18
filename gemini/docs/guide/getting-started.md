@@ -6,7 +6,7 @@ Install GeminiCode, sign in with Google and start your first agent. The Gemini C
 
 ## What you need
 
-- A Mac with Apple silicon, on macOS 12 or later.
+- A Mac with Apple silicon, on macOS 26 or later. On an older macOS or an Intel Mac, macOS refuses to open GeminiCode.
 - A Google account with a **Gemini Code Assist** license.
 - A **Google Cloud project** to bill usage to. Your organisation may set it for you.
 
@@ -14,14 +14,14 @@ Install GeminiCode, sign in with Google and start your first agent. The Gemini C
 
 1. Download GeminiCode from the [download page](https://pulkitjain-org.github.io/vscode-gemini-cli/).
 2. Open the `.dmg` and drag GeminiCode to Applications.
-3. Open GeminiCode. The **Get Started with GeminiCode** walkthrough opens.
+3. Open GeminiCode. It opens on **Home**, whose **Get started** card lists what is left to set up.
 
 > [!NOTE]
 > If a build isn't signed by Apple yet, macOS blocks it the first time. Open it once and choose **Done**, then open **System Settings › Privacy & Security** and choose **Open Anyway** next to GeminiCode. Or run `xattr -dr com.apple.quarantine /Applications/GeminiCode.app` in Terminal.
 
-## Set up with Get Started
+## Set up
 
-The walkthrough opens on first launch, and again from **Gemini: Get Started**. It has five steps:
+Home's **Get started** card has a button for each step that is left: **Sign In**, **Set Project**, **Connect** for your team's tools, and **Open Folder**. The **Get Started with GeminiCode** walkthrough, from **Gemini: Get Started**, goes through the same setup in five steps:
 
 1. **Gemini CLI.** GeminiCode comes with a tested Gemini CLI. It uses `gemini.cliPath`, then a copy you installed from GeminiCode, then the bundled copy, then `gemini` on your `PATH`.
 2. **Sign in.** Run **Gemini: Sign In with Google**. If your account needs a one-time step the editor can't show, run **Gemini: Complete Setup in Terminal**.

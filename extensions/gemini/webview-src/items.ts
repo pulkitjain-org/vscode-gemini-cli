@@ -55,6 +55,10 @@ export function render(item: TranscriptItem, toggleToolCall: ToggleToolCall): HT
 			return renderNotice(format(strings.unknownUpdate, item.type), 'info');
 		case 'notice':
 			return renderNotice(item.text, item.severity);
+		case 'cutOff':
+			return renderCutOff(item);
+		case 'trace':
+			return renderTrace(item);
 		case 'turnEnd':
 			return renderTurnEnd(item);
 		case 'thread':
@@ -148,6 +152,9 @@ function renderTurnEnd(item: ItemOf<'turnEnd'>): HTMLElement {
 	const node = el('div', 'turn-end');
 	// Hidden when the turn's fold says it (transcript.ts, `has-fold`).
 	node.append(el('span', 'worked-for', format(strings.workedFor, formatDuration(item.durationMs))));
+	if (item.firstTokenMs !== undefined) {
+		node.append(el('span', 'turn-dot', '·'), el('span', 'first-token', format(strings.firstToken, shortMs(item.firstTokenMs))));
+	}
 	if (item.at) {
 		node.append(el('span', 'turn-dot', '\u00b7'), sentAt(item.at));
 	}
@@ -202,6 +209,15 @@ function renderUserMessage(item: { readonly text: string; readonly attachments?:
 				const page = button('chip shared-page', format(strings.sharedPage, attachment.label), () => vscode.postMessage({ type: 'openSharedPage' }), 'globe');
 				setTip(page, format(strings.showSharedPage, path ?? attachment.label));
 				chips.append(page);
+				continue;
+			}
+			const ref = attachment.ref;
+			if (attachment.tool && ref) {
+				// A Jira ticket, GitLab item or Figma frame the message carried: opens in its tool.
+				const tool = button('chip tool-chip', '', () => vscode.postMessage({ type: 'openToolRef', ref }));
+				tool.append(toolLogo(attachment.tool, 14), el('span', undefined, attachment.label));
+				setLabel(tool, format(strings.openToolItem, attachment.label));
+				chips.append(tool);
 				continue;
 			}
 			const chip = path
@@ -429,15 +445,29 @@ function renderPlan(item: ItemOf<'plan'>): HTMLElement {
 	return plan;
 }
 
+/** The tools' names for the confirm-class card's line; brand names, not translated. */
+const teamToolNames: Record<string, string> = { jira: 'Jira', gitlab: 'GitLab', sonar: 'SonarQube', snyk: 'Snyk', figma: 'Figma' };
+
 function renderPermission(item: ItemOf<'permission'>): HTMLElement {
-	const card = el('div', `permission${item.answer ? ' answered' : ''}`);
+	const card = el('div', `permission${item.answer ? ' answered' : ''}${item.confirm ? ' confirm' : ''}`);
 	const header = el('div', 'permission-title');
 	// A team tool's change (a Jira comment, a merge request) shows as a friendly title and the exact text it would post.
 	const team = teamToolTitle(item.title, strings.teamToolVerbs);
 	header.append(team ? toolLogo(team.tool, 14) : icon(item.answer ? 'shield' : 'question'), el('span', undefined, team?.title ?? item.title));
+	if (item.confirm && !item.answer) {
+		header.append(el('span', 'permission-pill', strings.confirmClass));
+	}
 	card.append(header);
-	if (team?.text && !item.answer) {
-		card.append(el('div', 'permission-quote', team.text));
+	if (!item.answer) {
+		// A confirm-class action shows its effect as the tool will record it; a comment or reply, the text it would post.
+		if (team?.effect) {
+			card.append(el('pre', 'permission-effect', team.effect));
+		} else if (team?.text) {
+			card.append(el('div', 'permission-quote', team.text));
+		}
+		if (item.confirm) {
+			card.append(el('div', 'permission-why', format(strings.confirmWhy, team ? teamToolNames[team.tool] : '')));
+		}
 	}
 	if (item.diffPaths.length) {
 		const files = el('div', 'permission-files');
@@ -457,7 +487,7 @@ function renderPermission(item: ItemOf<'permission'>): HTMLElement {
 	// "Allow" once is the primary action; other allows and rejections look secondary.
 	const { primary, reject } = permissionDefaults(item.options);
 	for (const option of item.options) {
-		actions.append(button(option === primary ? 'primary' : 'secondary', option.name, () => choose(option.optionId)));
+		actions.append(button(option === primary ? 'primary' : item.confirm && option.kind.startsWith('reject') ? 'secondary reject' : 'secondary', option.name, () => choose(option.optionId)));
 	}
 	if (reject) {
 		actions.append(el('span', 'hint', strings.permissionHint));
@@ -476,6 +506,54 @@ export function renderNotice(text: string, severity: 'info' | 'error'): HTMLElem
 	const node = el('div', `notice ${severity}`);
 	node.append(icon(severity === 'error' ? 'error' : 'info'), el('span', undefined, text));
 	return node;
+}
+
+/** "1.4 s" or "380 ms". */
+function shortMs(ms: number): string {
+	return ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`;
+}
+
+/** The turn GeminiCode's quit cut off: what is on disk, and Retry the Turn or Keep and Continue. */
+function renderCutOff(item: ItemOf<'cutOff'>): HTMLElement {
+	const card = el('div', `cut-off${item.dismissed ? ' dismissed' : ''}`);
+	if (item.dismissed) {
+		return card;
+	}
+	card.append(el('strong', undefined, strings.cutOff.title), el('span', 'cut-off-text', strings.cutOff.text));
+	const actions = el('div', 'permission-actions cut-off-actions');
+	if (item.prompt) {
+		actions.append(button('primary', strings.cutOff.retry, () => vscode.postMessage({ type: 'retryCutOff', itemId: item.id }), 'refresh'));
+	}
+	actions.append(button('secondary', strings.cutOff.keep, () => vscode.postMessage({ type: 'dismissCutOff', itemId: item.id })));
+	card.append(actions);
+	return card;
+}
+
+/** Where the turn's time went, hop by hop against the budget, with the tokens and the trace file. */
+function renderTrace(item: ItemOf<'trace'>): HTMLElement {
+	const { readout } = item;
+	const card = el('section', 'trace-card');
+	const head = el('div', 'trace-head');
+	head.append(el('h3', undefined, strings.trace.title), el('span', 'trace-source', strings.trace.source));
+	card.append(head);
+	const grid = el('div', 'trace-grid');
+	for (const heading of [strings.trace.hop, format(strings.trace.share, formatDuration(readout.totalMs)), strings.trace.thisTurn, strings.trace.budget]) {
+		grid.append(el('span', 'trace-col', heading));
+	}
+	for (const hop of readout.hops) {
+		const track = el('span', 'trace-track');
+		const bar = el('span', `trace-bar ${hop.tone}`);
+		bar.style.width = `${hop.share > 0 ? Math.max(1, Math.round(hop.share * 100)) : 0}%`;
+		track.append(bar);
+		grid.append(el('span', undefined, hop.name), track, el('span', 'trace-value', hop.value), el('span', 'trace-value', hop.budget));
+	}
+	card.append(grid);
+	const tokens = [readout.input.toLocaleString(), readout.cached.toLocaleString(), readout.output.toLocaleString(), String(readout.requests)].reduce((text, value, i) => text.replace(`{${i}}`, value), strings.trace.tokens);
+	card.append(el('div', 'trace-line', tokens));
+	const file = el('div', 'trace-line trace-file');
+	file.append(el('span', 'trace-file-name', format(strings.trace.file, item.file)), button('turn-action', strings.trace.open, () => vscode.postMessage({ type: 'openTrace', file: item.file }), 'go-to-file'));
+	card.append(file);
+	return card;
 }
 
 /** The saved sessions last sent, so the empty chat shows them again when it is drawn again. */

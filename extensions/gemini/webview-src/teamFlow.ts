@@ -4,11 +4,11 @@
  *--------------------------------------------------------------------------------------------*/
 
 // The team flows' page (src/host/teamFlows.ts): Open Merge Request, Move
-// Ticket and Log Time, Review, Merge Release Branch Forward, and Checks.
+// Ticket and Log Time, Review, and Checks.
 // The host holds the state and re-renders with `state`; what the user types
 // goes back with `set`, without a re-render, so typing is never interrupted.
 
-import type { ChecksView, FlowPerson, FlowPill, FlowTool, FromTeamFlow, MoveTicketView, OpenMrView, ReleaseView, ReviewView, TeamFlowState, TeamFlowStrings, ToTeamFlow } from '../src/host/teamFlowProtocol';
+import type { ChecksView, FlowPerson, FlowPill, FlowTool, FromTeamFlow, MoveTicketView, OpenMrView, ReviewView, TeamFlowState, TeamFlowStrings, ToTeamFlow } from '../src/host/teamFlowProtocol';
 import { Menu } from './menu';
 import { button, el, format, icon, pageStrings } from './panelDom';
 import { selectMenu } from './selectMenu';
@@ -176,8 +176,7 @@ function render(state: TeamFlowState): void {
 	const part = view.kind === 'openMr' ? openMr(view)
 		: view.kind === 'moveTicket' ? moveTicket(view)
 			: view.kind === 'review' ? review(view)
-				: view.kind === 'release' ? release(view)
-					: checks(view);
+				: checks(view);
 	if (state.error) {
 		part.body.prepend(el('div', 'flow-error', state.error));
 	}
@@ -463,87 +462,17 @@ function toolLogoSpark(): HTMLElement {
 	return spark;
 }
 
-// --- Merge Release Branch Forward
-
-function release(view: ReleaseView): ReturnType<typeof dialog> {
-	const d = dialog('gitlab', strings.releaseTitle);
-	d.body.append(heading(strings.from));
-	const from = choice(strings.from, view.source ?? '', view.sources.map(s => ({ value: s, text: s })), value => act('source', value));
-	from.classList.add('mono');
-	d.body.append(from);
-	d.body.append(heading(strings.into), el('p', 'hint', strings.intoHint));
-	const list = el('div', 'flow-list boxed');
-	let ticked = 0;
-	for (const t of view.targets) {
-		const row = el('div', 'flow-target');
-		const box = el('input');
-		box.type = 'checkbox';
-		box.checked = t.ticked;
-		box.disabled = view.started || t.behind === 0;
-		if (t.ticked) {
-			ticked++;
-		}
-		box.addEventListener('change', () => {
-			set(`tick:${t.branch}`, box.checked);
-			ticked += box.checked ? 1 : -1;
-			submit.replaceChildren(el('span', undefined, format(strings.openMrs, ticked)));
-			submit.disabled = !ticked;
-		});
-		const name = el('label', 'flow-target-name');
-		name.append(box, el('span', 'mono', t.branch));
-		if (t.behind !== undefined) {
-			name.append(el('span', 'muted', t.behind ? format(strings.behind, t.behind) : strings.upToDate));
-		}
-		row.append(name, el('span', 'grow'));
-		if (t.result) {
-			const result = el('span', `flow-result ${t.result.tone}`, t.result.text);
-			row.append(result);
-			if (t.result.url) {
-				row.append(button('link', format(strings.openIn, 'GitLab'), () => act('openUrl', t.result!.url), 'link-external'));
-			}
-			if (t.result.agentId) {
-				row.append(button('secondary small', strings.openAgent, () => act('openAgent', t.result!.agentId)));
-			}
-			if (t.result.canPush) {
-				row.append(button('primary small', strings.pushResolution, () => act('push', t.branch)));
-			}
-		} else if (t.checking) {
-			row.append(el('span', 'muted', strings.checking));
-		} else if (t.clean === false) {
-			const c = el('span', 'pill warn', format(strings.conflicts, t.conflicts.length));
-			c.title = t.conflicts.join('\n');
-			row.append(c);
-		} else if (t.clean && t.behind) {
-			const ok = el('span', 'pill ok');
-			ok.append(icon('check'), el('span', undefined, strings.mergesCleanly));
-			row.append(ok);
-		}
-		list.append(row);
-	}
-	d.body.append(list);
-	const what = el('div', 'flow-note');
-	what.append(el('strong', undefined, strings.whatHappens), el('p', undefined, strings.whatHappensText));
-	d.body.append(what);
-	if (view.tickets.length) {
-		const shownTickets = view.tickets.slice(0, 3).join(', ') + (view.tickets.length > 3 ? ` +${view.tickets.length - 3}` : '');
-		d.body.append(checkbox(format(strings.addTickets, (view.source ?? '').replace(/^.*\//, '')), view.addTickets, on => set('addTickets', on), shownTickets));
-	}
-	d.body.append(people(view.reviewers, view.members, ids => act('reviewers', ids)));
-	const submit = button('primary', format(strings.openMrs, ticked), () => act('submit'));
-	submit.disabled = !ticked || view.started || view.fetching;
-	d.foot.append(el('span', 'grow'), button('secondary', view.started ? strings.close : strings.cancel, () => act('close')), submit);
-	return d;
-}
-
 // --- Checks
 
 function checks(view: ChecksView): ReturnType<typeof dialog> {
+	// The title names the branch; the line under it says where the checks run and what the setup did.
 	const sub = el('span', 'flow-route');
-	sub.append(el('span', undefined, view.agentTitle));
-	if (view.branch) {
-		sub.append(el('span', 'mono muted', view.branch));
+	if (view.where) {
+		sub.append(el('span', 'mono muted', [view.where, view.setup].filter(Boolean).join(' · ')));
+	} else {
+		sub.append(el('span', undefined, view.agentTitle));
 	}
-	const d = dialog(view.rows.some(r => r.tool === 'snyk' && r.state !== 'off') ? 'snyk' : 'sonar', strings.checksTitle, sub);
+	const d = dialog(view.rows.some(r => r.tool === 'snyk' && r.state !== 'off') ? 'snyk' : 'sonar', `${strings.checksTitle}: ${view.branch ?? view.agentTitle}`, sub);
 	const rows = el('div', 'flow-list boxed');
 	for (const row of view.rows) {
 		const line = el('div', `flow-target ${row.state}`);
@@ -586,15 +515,21 @@ function checks(view: ChecksView): ReturnType<typeof dialog> {
 		card.append(meta);
 		d.body.append(card);
 	}
-	const fixAll = button('primary', strings.fixAll, () => act('fixAll'));
+	// Without an agent on the branch, Fix starts one there.
+	const allLabel = view.agentId ? strings.fixAll : strings.fixAllNew;
+	const chosenLabel = view.agentId ? strings.fixChosen : strings.fixChosenNew;
+	const fixAll = button('primary', allLabel, () => act('fixAll'));
 	const syncFix = () => {
 		const n = [...d.body.querySelectorAll<HTMLInputElement>('input[data-finding]')].filter(b => b.checked).length;
-		fixAll.replaceChildren(el('span', undefined, n === view.findings.length ? strings.fixAll : format(strings.fixChosen, n)));
+		fixAll.replaceChildren(el('span', undefined, n === view.findings.length ? allLabel : format(chosenLabel, n)));
 		fixAll.disabled = !n;
 	};
 	syncFix();
 	if (!view.findings.length && view.rows.every(r => r.state !== 'running')) {
 		d.body.append(el('p', 'hint', strings.noIssues));
+	}
+	if (!view.agentId && view.findings.length) {
+		d.foot.append(el('span', 'hint', strings.fixNote));
 	}
 	d.foot.append(el('span', 'grow'), button('secondary', strings.runAgain, () => act('again'), 'refresh'), fixAll);
 	return d;

@@ -1,6 +1,7 @@
 # Fork CI for GeminiCode (see gemini/README.md, "CI").
 # Compiles the fork, builds and tests extensions/gemini, runs hygiene, and
-# checks the unauthenticated `gemini --acp` initialize handshake. No packaged builds yet.
+# runs the real-CLI tests against the bundled, latest and preview Gemini CLI.
+# Packaged builds come from gemini-release.yml.
 # The full compile is skipped on pull requests that only touch GeminiCode's own
 # files (the extension job covers those), and node_modules is restored from a
 # cache keyed on the lockfiles, so most pull requests finish in a few minutes.
@@ -60,7 +61,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        gemini-cli: [latest, preview]
+        # bundled: the version the app ships (bundledCli in extensions/gemini/package.json).
+        gemini-cli: [bundled, latest, preview]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -80,17 +82,42 @@ jobs:
           npm ci --ignore-scripts --prefix extensions
           npm ci --prefix extensions/gemini
 
+      - name: Workflow files parse
+        # GitHub drops a workflow whose YAML does not parse without running any of its jobs.
+        run: |
+          node -e '
+            const yaml = require("js-yaml");
+            for (const file of process.argv.slice(1)) {
+              const flow = yaml.load(require("fs").readFileSync(file, "utf8"));
+              if (!flow || !flow.on || !flow.jobs) { throw new Error(`${file} has no "on" or "jobs"`); }
+            }
+          ' .github/workflows/gemini-*.yml
+
       - name: Lint fork files
-        run: npx eslint --max-warnings 0 extensions/gemini gemini/site build/hygiene.ts build/filters.ts build/npm/dirs.ts build/gulpfile.extensions.ts build/lib/extensions.ts
+        # The fork's own files beside upstream's (gemini/patches/ADDED) too, which the full compile does not lint.
+        run: npx eslint --max-warnings 0 extensions/gemini gemini/site build/hygiene.ts build/filters.ts build/npm/dirs.ts build/gulpfile.extensions.ts build/lib/extensions.ts $(grep '\.ts$' gemini/patches/ADDED)
 
       - name: Hygiene (fork files)
-        run: node build/hygiene.ts product.json .eslint-ignore build/lib/extensions.ts $(git ls-files extensions/gemini gemini .github/workflows/gemini-ci.yml)
+        run: node build/hygiene.ts product.json .eslint-ignore build/lib/extensions.ts $(git ls-files extensions/gemini gemini .github/workflows/gemini-*.yml) $(cat gemini/patches/ADDED)
+
+      - name: Patch series matches HEAD
+        # The fork's edits to upstream files, as patches over the pinned tag; an edit made without regenerating them, or an upstream code file edited without a GEMINI-FORK marker, fails here.
+        run: gemini/scripts/upstream-series.sh check
 
       - name: Compile extension
         run: npm run gulp compile-extension:gemini
 
       - name: Build the download page (sample release)
         run: node gemini/site/build.mts "$RUNNER_TEMP/site" --sample
+
+      - name: Accessibility and Lighthouse on the download page
+        # axe-core on every page (no violations), Lighthouse on the landing and docs pages (accessibility 100, the rest 90 or more).
+        run: |
+          npm install --no-save --no-audit --no-fund --prefix "$RUNNER_TEMP/site-checks" axe-core@4.10.3 playwright-core@1.49.1 lighthouse@12.6.1
+          export NODE_PATH="$RUNNER_TEMP/site-checks/node_modules"
+          export CHROME_PATH="$(which google-chrome || which chromium-browser)"
+          node gemini/site/check-a11y.mts "$RUNNER_TEMP/site"
+          node gemini/site/check-lighthouse.mts "$RUNNER_TEMP/site"
 
       - name: Type check tests and webview
         run: |
@@ -103,12 +130,51 @@ jobs:
           node extensions/gemini/esbuild.webview.mts
 
       - name: Install Gemini CLI (${{ matrix.gemini-cli }})
+        env:
+          CLI: ${{ matrix.gemini-cli }}
         run: |
-          npm install --prefix "$RUNNER_TEMP/gemini-cli" "@google/gemini-cli@${{ matrix.gemini-cli }}"
-          echo "GEMINI_CLI_PATH=$RUNNER_TEMP/gemini-cli/node_modules/@google/gemini-cli/bundle/gemini.js" >> "$GITHUB_ENV"
+          if [ "$CLI" = bundled ]; then
+            # The same download, checksum check and layout as a release build.
+            npm run bundle-cli --prefix extensions/gemini
+            VERSION="$(node -p "require('./extensions/gemini/package.json').bundledCli.version")"
+            echo "GEMINI_CLI_PATH=$GITHUB_WORKSPACE/extensions/gemini/cli/$VERSION/bundle/gemini.js" >> "$GITHUB_ENV"
+          else
+            npm install --prefix "$RUNNER_TEMP/gemini-cli" "@google/gemini-cli@$CLI"
+            echo "GEMINI_CLI_PATH=$RUNNER_TEMP/gemini-cli/node_modules/@google/gemini-cli/bundle/gemini.js" >> "$GITHUB_ENV"
+          fi
 
       - name: Unit tests and gemini --acp initialize
         run: npm test --prefix extensions/gemini
+
+  snyk:
+    name: Snyk on the fork's code
+    # The fork's own dependencies and source: extensions/gemini and the site. Upstream's tree has its own process.
+    # Needs the SNYK_TOKEN secret; without it the job says so and passes, so a fork without Snyk still builds.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Snyk
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          if [ -z "$SNYK_TOKEN" ]; then
+            echo "No SNYK_TOKEN secret: skipping. Add it under Settings → Secrets to gate on Snyk."
+            exit 0
+          fi
+          npm install -g snyk
+          npm ci --ignore-scripts --prefix extensions/gemini
+          snyk test --severity-threshold=high --file=extensions/gemini/package.json
+          # snyk code test takes one path.
+          snyk code test --severity-threshold=high extensions/gemini
+          snyk code test --severity-threshold=high gemini/site
 
   compile:
     name: Compile & hygiene

@@ -40,10 +40,10 @@ describe.skipIf(!cliPath)('gemini --acp with an MCP server that cannot start', (
 			mcpServers: { broken: { command: path.join(work, 'no-such-server') } },
 		}));
 		// The CLI starts MCP servers only in trusted folders.
-		trustFolder(path.join(home, '.gemini', 'trustedFolders.json'), work);
+		await trustFolder(path.join(home, '.gemini', 'trustedFolders.json'), work);
 		diagnostics = new McpDiagnostics(path.join(home, 'geminicode', 'cli-debug.log'));
 		const reported = waitFor<McpProblem>(diagnostics.onDidReport);
-		expect(diagnostics.reset()).toBe(true);
+		expect(await diagnostics.reset()).toBe(true);
 		const env: NodeJS.ProcessEnv = {
 			...process.env,
 			HOME: home,

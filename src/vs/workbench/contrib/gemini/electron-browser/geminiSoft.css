@@ -4,21 +4,40 @@
  *--------------------------------------------------------------------------------------------*/
 
 /*
- * GEMINI-FORK: the Soft look of GeminiCode Dark and Light. A theme can only set flat colours, so
- * the rest is here, keyed to the gemini-soft class gemini.contribution.ts puts on the workbench:
+ * GEMINI-FORK: the Soft look of GeminiCode Dark and Light, with glass. A theme can only set flat
+ * colours, so the rest is here, keyed to the gemini-soft class gemini.contribution.ts puts on the
+ * workbench (gemini/docs/ARCHITECTURE.md, "Look"):
  *
  * - one static graphite tint at the top of the window, from the foreground (no hue), behind upstream's floating cards;
- * - cards with 8px corners and a hairline;
- * - the active title bar tab underlined in the Gemini colours;
- * - solid pop-ups with one shadow and no blur.
+ * - cards with 8px corners, a hairline, and a brighter top edge (the rim);
+ * - the title bar's Home button, Agents | Editor switch and tabs as glass: a translucent fill and a rim, the switch's lens sliding;
+ * - pop-ups opaque, with a sheen across the top, the rim and one shadow.
  *
- * Performance: all of it is static paint. Nothing animates and nothing blurs.
+ * Performance: all of it is static paint, plus one transform transition on the switch. Nothing blurs
+ * (gemini/test/themes/noBlur.test.ts fails on a backdrop-filter or blur filter in the fork's styles).
  */
 
 .monaco-workbench.gemini-soft {
 	--vscode-cornerRadius-large: 8px;
 	--gemini-soft-tint: linear-gradient(180deg, color-mix(in srgb, var(--vscode-foreground) 4%, var(--vscode-titleBar-activeBackground)) 0, var(--vscode-titleBar-activeBackground) 260px);
 	--gemini-gradient: linear-gradient(90deg, #4f8df7, #9b72cb 55%, #d96570);
+	/* Glass, dark: white fills and a white rim. */
+	--gemini-glass-fill: rgba(255, 255, 255, 0.04);
+	--gemini-glass-fill-strong: rgba(255, 255, 255, 0.07);
+	--gemini-glass-rim-top: rgba(255, 255, 255, 0.14);
+	--gemini-glass-rim-side: rgba(255, 255, 255, 0.06);
+	--gemini-glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 48px);
+	--gemini-glass-shadow: rgba(0, 0, 0, 0.36);
+}
+
+/* Glass, light: dark fills, a white rim. */
+.monaco-workbench.gemini-soft.vs {
+	--gemini-glass-fill: rgba(0, 0, 0, 0.04);
+	--gemini-glass-fill-strong: rgba(0, 0, 0, 0.07);
+	--gemini-glass-rim-top: rgba(255, 255, 255, 0.8);
+	--gemini-glass-rim-side: rgba(0, 0, 0, 0.06);
+	--gemini-glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 48px);
+	--gemini-glass-shadow: rgba(0, 0, 0, 0.14);
 }
 
 /* The tint shows through the title bar, the status bar and the gaps between the cards. */
@@ -33,25 +52,64 @@
 	background-color: transparent !important;
 }
 
-/* The active tab in Agents mode's title bar: a raised card underlined in the Gemini colours. */
+/* The cards' rim: the hairline's top edge catches the light. A border colour, so no extra layer. */
+.monaco-workbench.floating-panels.gemini-soft .part:is(.sidebar, .auxiliarybar, .panel) {
+	border-top-color: color-mix(in srgb, var(--gemini-glass-rim-top) 60%, var(--vscode-widget-border)) !important;
+}
+
+/* ---- The title bar's glass: Home, the switch and its lens, the agent pills, the tabs. */
+
+/* The border stays, transparent, so the glass keeps the same box as the plain look and the words stay centred on the lens. */
+.monaco-workbench.gemini-soft :is(.gemini-home-button, .gemini-mode-toggle, .gemini-agent-pill) {
+	border-color: transparent;
+	background-color: var(--gemini-glass-fill) !important;
+	box-shadow: inset 0 1px 0 var(--gemini-glass-rim-top), inset 0 0 0 1px var(--gemini-glass-rim-side);
+}
+
+.monaco-workbench.gemini-soft :is(.gemini-home-button, .gemini-agent-pill):hover {
+	background-color: var(--gemini-glass-fill-strong) !important;
+}
+
+.monaco-workbench.gemini-soft .gemini-mode-toggle {
+	border-radius: 12px;
+}
+
+.monaco-workbench.gemini-soft .gemini-mode-toggle .gemini-mode-lens {
+	border-radius: 9px;
+	background-color: var(--gemini-glass-fill-strong);
+	box-shadow: inset 0 1px 0 var(--gemini-glass-rim-top), 0 1px 2px var(--gemini-glass-shadow);
+}
+
+.monaco-workbench.gemini-soft .gemini-mode-toggle .gemini-mode-button {
+	border-radius: 9px;
+}
+
+/* Agents mode's tabs: quiet glass pills, the active one raised with the lens fill. */
+.monaco-workbench.gemini-soft .gemini-title-tab {
+	border-radius: 12px;
+}
+
+.monaco-workbench.gemini-soft .gemini-title-tab:hover:not(.active) {
+	background-color: var(--gemini-glass-fill);
+}
+
 .monaco-workbench.gemini-soft .gemini-title-tab.active {
-	background-color: var(--vscode-editor-background);
-	box-shadow: inset 0 0 0 1px var(--vscode-widget-border);
+	background-color: var(--gemini-glass-fill-strong);
+	box-shadow: inset 0 1px 0 var(--gemini-glass-rim-top), inset 0 0 0 1px var(--gemini-glass-rim-side);
 }
 
-.monaco-workbench.gemini-soft .gemini-title-tab.active::after {
-	content: '';
-	position: absolute;
-	left: 10px;
-	right: 10px;
-	bottom: 0;
-	height: 2px;
-	border-radius: 2px;
-	background: var(--gemini-gradient);
-	pointer-events: none;
+/* The Agents list's selected row: the lens. */
+.monaco-workbench.gemini-soft.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row.selected {
+	box-shadow: inset 0 1px 0 var(--gemini-glass-rim-top);
 }
 
-/* Pop-ups are solid: upstream's frosted glass keeps its layer, without the blur or the see-through. */
+/* Status bar items: glass on hover. */
+.monaco-workbench.gemini-soft .part.statusbar .statusbar-item-label:hover {
+	background-color: var(--gemini-glass-fill) !important;
+}
+
+/* ---- Pop-ups: opaque, upstream's frosted layer kept without its blur or its see-through; a sheen, the rim and one shadow. */
+
 .monaco-workbench.modern-ui-frosted-glass.gemini-soft {
 	--modern-ui-glass-opacity: 100% !important;
 }
@@ -59,8 +117,72 @@
 /* Specific enough to win over upstream's layer (0,8,0) whatever order the two files load in. */
 .monaco-workbench.modern-ui-frosted-glass.gemini-soft:not(.hc-black):not(.hc-light) :is(.quick-input-widget.quick-input-widget:not(.quick-input-widget-overlay), .action-widget, .monaco-hover, .monaco-dialog-box, .notifications-center, .notification-toast)::before {
 	backdrop-filter: none;
+	background-image: var(--gemini-glass-sheen);
+	box-shadow: inset 0 1px 0 var(--gemini-glass-rim-top), inset 0 0 0 1px var(--gemini-glass-rim-side);
+}
+
+/* Without upstream's layer, the same on the pop-up itself. */
+.monaco-workbench.gemini-soft:not(.modern-ui-frosted-glass) :is(.quick-input-widget:not(.quick-input-widget-overlay), .monaco-dialog-box, .notification-toast) {
+	background-image: var(--gemini-glass-sheen);
 }
 
 .monaco-workbench.gemini-soft :is(.quick-input-widget:not(.quick-input-widget-overlay), .context-view .monaco-menu .monaco-action-bar.vertical, .action-widget, .notification-toast) {
-	box-shadow: 0 8px 28px var(--vscode-widget-shadow);
+	box-shadow: inset 0 1px 0 var(--gemini-glass-rim-top), inset 0 0 0 1px var(--gemini-glass-rim-side), 0 8px 28px var(--vscode-widget-shadow);
+}
+
+.monaco-workbench.gemini-soft .context-view .monaco-menu .monaco-action-bar.vertical {
+	background-image: var(--gemini-glass-sheen);
+}
+
+/* Dialogs: the same glass, rounder, with a deeper shadow over a plain scrim. */
+.monaco-workbench.gemini-soft .monaco-dialog-box {
+	border-radius: 14px;
+	box-shadow: inset 0 1px 0 var(--gemini-glass-rim-top), inset 0 0 0 1px var(--gemini-glass-rim-side), 0 24px 64px var(--gemini-glass-shadow);
+}
+
+.monaco-workbench.gemini-soft .monaco-dialog-modal-block.dimmed {
+	background: rgba(0, 0, 0, 0.38);
+}
+
+.monaco-workbench.gemini-soft.vs .monaco-dialog-modal-block.dimmed {
+	background: rgba(30, 30, 40, 0.18);
+}
+
+/* The New agent dialog (geminiNewAgentDialog.ts): the dialogs' glass, glass wells for its fields, glass buttons. */
+.monaco-workbench.gemini-soft .gemini-new-agent-block {
+	background: rgba(0, 0, 0, 0.38);
+}
+
+.monaco-workbench.gemini-soft.vs .gemini-new-agent-block {
+	background: rgba(30, 30, 40, 0.18);
+}
+
+.monaco-workbench.gemini-soft .gemini-new-agent {
+	border: none;
+	border-radius: 14px;
+	background: var(--gemini-glass-sheen), var(--vscode-quickInput-background);
+	box-shadow: inset 0 1px 0 var(--gemini-glass-rim-top), inset 0 0 0 1px var(--gemini-glass-rim-side), 0 24px 64px var(--gemini-glass-shadow);
+}
+
+.monaco-workbench.gemini-soft .gemini-new-agent :is(input[type="text"], textarea, .monaco-select-box) {
+	border-color: var(--gemini-glass-fill-strong);
+	background: var(--gemini-glass-fill);
+}
+
+.monaco-workbench.gemini-soft .gemini-new-agent :is(input[type="text"], textarea):focus {
+	border-color: var(--vscode-focusBorder);
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--vscode-focusBorder) 22%, transparent);
+}
+
+.monaco-workbench.gemini-soft .gemini-new-agent .footer .secondary {
+	background: var(--gemini-glass-fill);
+	box-shadow: inset 0 1px 0 var(--gemini-glass-rim-top), inset 0 0 0 1px var(--gemini-glass-rim-side);
+}
+
+.monaco-workbench.gemini-soft .gemini-new-agent .footer .secondary:hover {
+	background: var(--gemini-glass-fill-strong);
+}
+
+.monaco-workbench.gemini-soft .gemini-new-agent .footer .primary {
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }

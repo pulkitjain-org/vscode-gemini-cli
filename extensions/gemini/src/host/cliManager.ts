@@ -65,7 +65,7 @@ export class CliManager implements vscode.Disposable {
 		if (!managedDir) {
 			return;
 		}
-		const installed = new Set(listManagedVersions(managedDir));
+		const installed = new Set(await listManagedVersions(managedDir));
 		const running = this.service.cli?.version;
 		const picked = await vscode.window.showQuickPick((async () => {
 			const { versions, latest } = await fetchCliVersions({ fetch: fetch as Fetch });
@@ -120,12 +120,12 @@ export class CliManager implements vscode.Disposable {
 				return;
 			}
 		}
-		this.switchIfNeeded(installed);
+		await this.switchIfNeeded(installed);
 	}
 
 	/** Restarts the agent on the new CLI once no prompt runs, or now if the user asks. */
-	private switchIfNeeded(installed: string): void {
-		const next = getCliResolution();
+	private async switchIfNeeded(installed: string): Promise<void> {
+		const next = await getCliResolution();
 		if (next.cliPath === this.service.cli?.cliPath || !this.service.isStarted) {
 			return;
 		}
@@ -198,7 +198,7 @@ export class CliManager implements vscode.Disposable {
 			return;
 		}
 		const pinned = vscode.workspace.getConfiguration(configSection).get<string>('cli.version')?.trim() || undefined;
-		const keep = cliCopiesToKeep(listManagedVersions(managedDir), this.service.cli, pinned);
+		const keep = cliCopiesToKeep(await listManagedVersions(managedDir), this.service.cli, pinned);
 		try {
 			const removed = await pruneCliVersions(managedDir, keep);
 			if (removed.length) {

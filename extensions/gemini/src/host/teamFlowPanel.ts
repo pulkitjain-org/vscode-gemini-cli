@@ -5,17 +5,32 @@
 
 import * as vscode from 'vscode';
 import { errorMessage } from '../acp/errors';
+import type { FlowRecordStore } from '../acp/flowRecords';
 import { FromTeamFlow, TeamFlowState, TeamFlowStrings, TeamFlowView, ToTeamFlow } from './teamFlowProtocol';
 import { createNonce, escapeAttribute } from './webviewHtml';
 
 export const teamFlowViewType = 'gemini.teamFlow';
 
+/** How to start the flow again after a quit: the store, the command that opens it and its arguments. */
+export interface FlowRecording {
+	readonly store: FlowRecordStore;
+	readonly command: string;
+	readonly args: readonly unknown[];
+	readonly about?: string;
+	/** What the user had typed and ticked when the flow was cut off, to put back (a reopened flow). */
+	readonly restore?: Readonly<Record<string, string | number | boolean>>;
+}
+
+/** How long after the last keystroke the typed fields are saved to the flow's record. */
+const saveFieldsMs = 600;
+
 /**
- * One team flow (Open Merge Request, Move Ticket, Review, Merge Release
- * Forward, Checks) as an editor tab drawn by webview-src/teamFlow.ts. The
+ * One team flow (Open Merge Request, Move Ticket, Review, Checks) as an editor tab drawn by webview-src/teamFlow.ts. The
  * host holds the state: `update` re-renders the page, while what the user
  * types comes back with `set` and is kept in `fields` without a re-render.
  * An action runs one at a time, with `busy` shown, and its error on the page.
+ * With `recording`, a record of the flow sits on disk until it finishes or
+ * is closed, so a flow cut off by a quit shows on Home as unfinished.
  */
 export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable {
 
@@ -27,6 +42,12 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 	private readonly onDidDisposeEmitter = new vscode.EventEmitter<void>();
 	readonly onDidDispose = this.onDidDisposeEmitter.event;
 	private disposed = false;
+	private record: Promise<string> | undefined;
+	/** Saves the typed fields to the record, a moment after the last change. */
+	private saveFields: () => void = () => undefined;
+	private saveTimer: ReturnType<typeof setTimeout> | undefined;
+	/** Fields to put back into the first view, for a reopened flow. */
+	private restore: Readonly<Record<string, string | number | boolean>> | undefined;
 
 	constructor(
 		extensionUri: vscode.Uri,
@@ -35,6 +56,7 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 		loading: string,
 		private readonly onAction: (action: string, value: unknown) => Promise<void> | void,
 		column: vscode.ViewColumn = vscode.ViewColumn.Active,
+		recording?: FlowRecording,
 	) {
 		const media = vscode.Uri.joinPath(extensionUri, 'media');
 		this.panel = vscode.window.createWebviewPanel(teamFlowViewType, title, column, { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [media] });
@@ -44,10 +66,46 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 		this.panel.webview.onDidReceiveMessage((message: FromTeamFlow) => this.onMessage(message));
 		this.panel.onDidDispose(() => {
 			this.disposed = true;
+			clearTimeout(this.saveTimer);
+			void this.closeRecord();
 			this.onDidDisposeEmitter.fire();
 			this.onDidDisposeEmitter.dispose();
 		});
+		if (recording) {
+			this.record = recording.store.open({ command: recording.command, args: recording.args, title, ...recording.about ? { about: recording.about } : {} }).then(id => {
+				// Closed before the record was written: take it back.
+				if (this.disposed) {
+					void recording.store.close(id);
+				}
+				return id;
+			}, () => '');
+			this.closeRecord = async () => {
+				const id = await this.record;
+				if (id) {
+					await recording.store.close(id);
+				}
+			};
+			this.saveFields = () => {
+				clearTimeout(this.saveTimer);
+				this.saveTimer = setTimeout(async () => {
+					const id = await this.record;
+					if (id && !this.disposed) {
+						await recording.store.saveFields(id, plainFields(this.fields)).catch(() => undefined);
+					}
+				}, saveFieldsMs);
+			};
+			if (recording.restore) {
+				this.restore = recording.restore;
+				for (const [name, value] of Object.entries(recording.restore)) {
+					this.fields.set(name, value);
+				}
+				this.saveFields();
+			}
+		}
 	}
+
+	/** Removes the flow's record: it finished, or it was closed. */
+	private closeRecord: () => Promise<void> = async () => undefined;
 
 	get isDisposed(): boolean {
 		return this.disposed;
@@ -69,11 +127,20 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 			return;
 		}
 		this.state = state;
+		if ((state.view as { done?: unknown } | undefined)?.done) {
+			// The flow did what it was for; a quit now leaves nothing to pick up.
+			void this.closeRecord();
+		}
 		this.post();
 	}
 
 	setView(view: V): void {
-		this.replace({ view });
+		// A reopened flow: what the user had typed and ticked goes back into the fields the view shows under the same names.
+		const restore = this.restore;
+		this.restore = undefined;
+		const shown = view as unknown as Readonly<Record<string, unknown>>;
+		const restored = restore ? Object.fromEntries(Object.entries(restore).filter(([name, value]) => Object.keys(shown).includes(name) && typeof shown[name] === typeof value)) : {};
+		this.replace({ view: { ...view, ...restored } });
 	}
 
 	fail(error: unknown): void {
@@ -118,6 +185,7 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 				return;
 			case 'set':
 				this.fields.set(message.field, message.value);
+				this.saveFields();
 				return;
 			case 'act':
 				if (message.action === 'close') {
@@ -128,6 +196,11 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 				return;
 		}
 	}
+}
+
+/** The fields a record can hold: text, numbers and switches. */
+function plainFields(fields: ReadonlyMap<string, unknown>): Record<string, string | number | boolean> {
+	return Object.fromEntries([...fields].filter((entry): entry is [string, string | number | boolean] => ['string', 'number', 'boolean'].includes(typeof entry[1])));
 }
 
 function html(webview: vscode.Webview, media: vscode.Uri): string {
@@ -144,7 +217,6 @@ function html(webview: vscode.Webview, media: vscode.Uri): string {
 		targetHint: vscode.l10n.t("Pick the branch this merge request merges into. Release branches come first."),
 		suggested: vscode.l10n.t("from the ticket's fix version"),
 		release: vscode.l10n.t("release"),
-		behind: vscode.l10n.t("{0} commits to merge"),
 		title: vscode.l10n.t("Title"),
 		description: vscode.l10n.t("Description"),
 		regenerate: vscode.l10n.t("Regenerate"),
@@ -203,28 +275,18 @@ function html(webview: vscode.Webview, media: vscode.Uri): string {
 		kindNit: vscode.l10n.t("Nit"),
 		kindQuestion: vscode.l10n.t("Question"),
 		openAgent: vscode.l10n.t("Open the Agent"),
-		releaseTitle: vscode.l10n.t("Merge Release Branch Forward"),
-		from: vscode.l10n.t("From"),
-		into: vscode.l10n.t("Into"),
-		intoHint: vscode.l10n.t("Later release branches, newest last. Each gets its own merge request."),
-		mergesCleanly: vscode.l10n.t("merges cleanly"),
-		conflicts: vscode.l10n.t("{0} files conflict"),
-		checking: vscode.l10n.t("checking..."),
-		upToDate: vscode.l10n.t("nothing to merge"),
-		whatHappens: vscode.l10n.t("What happens"),
-		whatHappensText: vscode.l10n.t("For each branch, GeminiCode makes a merge branch, merges, pushes it and opens a merge request. Where files conflict, an agent resolves them in its own worktree and runs the tests; you look at the resolution and push it from here."),
-		addTickets: vscode.l10n.t("Add the Jira tickets fixed in {0} to each description"),
-		openMrs: vscode.l10n.t("Open {0} Merge Requests"),
-		pushResolution: vscode.l10n.t("Push and Open Merge Request"),
 		checksTitle: vscode.l10n.t("Checks"),
 		fix: vscode.l10n.t("Fix"),
 		fixAll: vscode.l10n.t("Fix All with This Agent"),
 		fixChosen: vscode.l10n.t("Fix {0} with This Agent"),
+		fixAllNew: vscode.l10n.t("Fix All with a New Agent"),
+		fixChosenNew: vscode.l10n.t("Fix {0} with a New Agent"),
 		runAgain: vscode.l10n.t("Run Again"),
 		noIssues: vscode.l10n.t("No issues found."),
+		fixNote: vscode.l10n.t("No agent works on this branch yet. Fix starts one in this checkout with the findings as its first prompt."),
 	};
 	const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'teamFlow.js'));
-	const styles = ['codicon.css', 'menu.css', 'panels.css', 'teamFlow.css'].map(file => `<link href="${webview.asWebviewUri(vscode.Uri.joinPath(media, file))}" rel="stylesheet">`).join('\n\t');
+	const styles = ['codicon.css', 'menu.css', 'panels.css', 'teamFlow.css', 'glass.css'].map(file => `<link href="${webview.asWebviewUri(vscode.Uri.joinPath(media, file))}" rel="stylesheet">`).join('\n\t');
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>

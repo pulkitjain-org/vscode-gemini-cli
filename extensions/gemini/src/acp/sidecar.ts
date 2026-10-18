@@ -20,8 +20,8 @@ export type SidecarState =
 	| { readonly kind: 'failed'; readonly reason: AgentErrorKind; readonly exitCode: number | null; readonly message: string };
 
 export interface SidecarOptions {
-	/** Re-read on every (re)start so setting changes apply. */
-	readonly command: () => AgentCommand;
+	/** Re-read on every (re)start so setting changes apply; it may read files, so it can be async. */
+	readonly command: () => AgentCommand | Promise<AgentCommand>;
 	readonly cwd: string | undefined;
 	/** Delays before successive automatic restarts; their count bounds the restarts. */
 	readonly restartDelaysMs?: readonly number[];
@@ -81,6 +81,8 @@ export class AgentSidecar {
 	private readonly restartDelaysMs: readonly number[];
 	private readonly healthyAfterMs: number;
 	private readonly spawn: typeof spawnAgent;
+	/** Bumped by every launch and stop, so a launch whose command arrives late does nothing. */
+	private launches = 0;
 
 	constructor(private readonly options: SidecarOptions) {
 		this.restartDelaysMs = options.restartDelaysMs ?? defaultRestartDelaysMs;
@@ -100,6 +102,7 @@ export class AgentSidecar {
 	}
 
 	stop(): void {
+		this.launches++;
 		this.clearTimers();
 		const current = this._state;
 		this.setState({ kind: 'stopped' });
@@ -123,10 +126,16 @@ export class AgentSidecar {
 			stopProcess(previous.process);
 		}
 		this.setState({ kind: 'starting' });
+		const launch = ++this.launches;
+		void (async () => this.options.command())().then(
+			command => launch === this.launches && this.run(command),
+			err => launch === this.launches && this.setState({ kind: 'failed', reason: 'agent-exited', exitCode: null, message: String(err) }));
+	}
 
+	private run(command: AgentCommand): void {
 		let child: ChildProcessWithoutNullStreams;
 		try {
-			child = this.spawn(this.options.command(), this.options.cwd);
+			child = this.spawn(command, this.options.cwd);
 		} catch (err) {
 			this.setState({ kind: 'failed', reason: 'agent-exited', exitCode: null, message: String(err) });
 			return;

@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { findToolRefs, parseTeamToolCall, parseToolLink, soleToolRef, teamToolTitle, toolRefId, toolRefLabel } from '../../src/acp/toolLinks';
+import { findToolRefs, parseTeamToolCall, parseToolLink, soleToolRef, teamToolTitle, toolRefId, toolRefLabel, toolRefUrl } from '../../src/acp/toolLinks';
 
 const all = { connected: ['jira', 'gitlab', 'figma'] };
 
@@ -42,6 +42,23 @@ describe('tool refs', () => {
 		expect(toolRefLabel({ tool: 'gitlab', kind: 'mr', project: 'a/b', iid: 3, url: '' })).toBe('!3');
 		expect(toolRefLabel({ tool: 'gitlab', kind: 'issue', project: 'a/b', iid: 3, url: '' })).toBe('#3');
 	});
+
+	it('finds a chip\'s page from its id again, and nothing for a tool whose site it doesn\'t know', () => {
+		const sites = { jira: 'https://acme.atlassian.net/', gitlab: 'https://gitlab.acme.internal' };
+		const links = [
+			'https://acme.atlassian.net/browse/ACME-412',
+			'https://gitlab.acme.internal/shop/web/-/merge_requests/318',
+			'https://gitlab.acme.internal/shop/web/-/issues/45',
+			'https://www.figma.com/design/AbC123/Checkout?node-id=12-34',
+		];
+		expect(links.map(link => toolRefUrl(toolRefId(parseToolLink(link)!), sites))).toEqual([
+			'https://acme.atlassian.net/browse/ACME-412',
+			'https://gitlab.acme.internal/shop/web/-/merge_requests/318',
+			'https://gitlab.acme.internal/shop/web/-/issues/45',
+			'https://www.figma.com/design/AbC123?node-id=12-34',
+		]);
+		expect([toolRefUrl('jira:ACME-1', {}), toolRefUrl('gitlab:mr:a/b:3', { jira: sites.jira }), toolRefUrl('jira:not a key', sites), toolRefUrl('other:x', sites)]).toEqual([undefined, undefined, undefined, undefined]);
+	});
 });
 
 describe('team tool titles', () => {
@@ -58,9 +75,18 @@ describe('team tool titles', () => {
 		expect(teamToolTitle('gitlab_get_mr({})')?.title).toBe('Read this branch\'s merge request');
 		expect(teamToolTitle('jira_comment({"key":"acme-412","text":"Ready for review"})')).toEqual({ tool: 'jira', title: 'Comment on ACME-412', text: 'Ready for review' });
 		expect(teamToolTitle('jira_transition({"key":"ACME-1","to":"In Review"})')?.title).toBe('Move ACME-1 → In Review');
-		expect(teamToolTitle('jira_log_time({"key":"ACME-412","spent":"1h 30m"})')).toEqual({ tool: 'jira', title: 'Log 1h 30m on ACME-412' });
-		expect(teamToolTitle('gitlab_create_mr({"target":"develop","title":"Gift message"})')).toEqual({ tool: 'gitlab', title: 'Open merge request into develop', text: 'Gift message' });
+		expect(teamToolTitle('jira_log_time({"key":"ACME-412","spent":"1h 30m"})')).toEqual({ tool: 'jira', title: 'Log 1h 30m on ACME-412', effect: '1h 30m  ACME-412' });
+		expect(teamToolTitle('gitlab_create_mr({"target":"develop","title":"Gift message"})')).toEqual({ tool: 'gitlab', title: 'Open merge request into develop', effect: '→ develop\nTitle: Gift message' });
 		expect(teamToolTitle('snyk_test')).toEqual({ tool: 'snyk', title: 'Run Snyk on the dependencies' });
 		expect(teamToolTitle('read_file(a.ts)')).toBeUndefined();
+	});
+
+	it('spells out a confirm-class action as the tool will record it', () => {
+		expect(teamToolTitle('jira_transition({"key":"ACME-412","to":"In Review","comment":"Look at the cap.\\nAnd the test.","fields":{"Fix version":"2026.11"}})')).toEqual({
+			tool: 'jira',
+			title: 'Move ACME-412 → In Review',
+			effect: 'ACME-412  → In Review\nFix version: 2026.11\nComment:\n  Look at the cap.\n  And the test.',
+		});
+		expect(teamToolTitle('gitlab_merge({"mr":"321","squash":true})')).toEqual({ tool: 'gitlab', title: 'Merge !321', effect: '!321\nSquash: true  Delete source branch: true' });
 	});
 });

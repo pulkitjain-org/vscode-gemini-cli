@@ -101,6 +101,29 @@
         "category": "%category%"
       },
       {
+        "command": "gemini.openAuditLog",
+        "title": "%command.openAuditLog%",
+        "category": "%category%",
+        "icon": "$(list-unordered)"
+      },
+      {
+        "command": "gemini.recordTrace",
+        "title": "%command.recordTrace%",
+        "category": "%category%",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "gemini.pilot.export",
+        "title": "%command.pilotExport%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.runBenchmark",
+        "title": "%command.runBenchmark%",
+        "category": "%category%",
+        "icon": "$(beaker)"
+      },
+      {
         "command": "gemini.showLog",
         "title": "%command.showLog%",
         "category": "%category%"
@@ -355,14 +378,41 @@
         "icon": "$(wrench)"
       },
       {
-        "command": "gemini.team.mergeReleaseForward",
-        "title": "%command.team.mergeReleaseForward%",
+        "command": "gemini.team.mergeMergeRequest",
+        "title": "%command.team.mergeMergeRequest%",
         "category": "%category%",
         "icon": "$(git-merge)"
       },
       {
+        "command": "gemini.team.reassignTicket",
+        "title": "%command.team.reassignTicket%",
+        "category": "%category%",
+        "icon": "$(account)"
+      },
+      {
+        "command": "gemini.team.reopenFlow",
+        "title": "%command.team.reopenFlow%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.team.discardFlow",
+        "title": "%command.team.discardFlow%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.team.settleIntent",
+        "title": "%command.team.settleIntent%",
+        "category": "%category%"
+      },
+      {
         "command": "gemini.team.runChecks",
         "title": "%command.team.runChecks%",
+        "category": "%category%",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "gemini.team.runChecksOnBranch",
+        "title": "%command.team.runChecksOnBranch%",
         "category": "%category%",
         "icon": "$(shield)"
       }
@@ -746,6 +796,18 @@
           "when": "false"
         },
         {
+          "command": "gemini.team.reopenFlow",
+          "when": "false"
+        },
+        {
+          "command": "gemini.team.discardFlow",
+          "when": "false"
+        },
+        {
+          "command": "gemini.team.settleIntent",
+          "when": "false"
+        },
+        {
           "command": "gemini.projects.add",
           "when": "false"
         },
@@ -946,6 +1008,18 @@
           "scope": "machine",
           "markdownDescription": "%configuration.inlineEdit.enabled%"
         },
+        "gemini.team.runTeamServers": {
+          "type": "boolean",
+          "default": false,
+          "scope": "machine",
+          "markdownDescription": "%configuration.team.runTeamServers%"
+        },
+        "gemini.pilot.record": {
+          "type": "boolean",
+          "default": false,
+          "scope": "machine",
+          "markdownDescription": "%configuration.pilot.record%"
+        },
         "gemini.usageMeter.enabled": {
           "type": "boolean",
           "default": true,
@@ -976,6 +1050,21 @@
           "scope": "machine",
           "markdownDescription": "%configuration.tools.allowShell%"
         },
+        "gemini.tools.denyEnvironmentCommands": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "markdownDescription": "%configuration.tools.denyEnvironmentCommands%"
+        },
+        "gemini.mcp.allowedServers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "machine",
+          "markdownDescription": "%configuration.mcp.allowedServers%"
+        },
         "gemini.projectId": {
           "type": "string",
           "default": "",
@@ -997,14 +1086,7 @@
       }
     },
     "configurationDefaults": {
-      "chat.disableAIFeatures": true,
       "workbench.browser.openLocalhostLinks": true,
-      "workbench.browser.showInTitleBar": true,
-      "workbench.activityBar.location": "top",
-      "workbench.secondarySideBar.defaultVisibility": "hidden",
-      "workbench.experimental.modernUIEditorTabStyle": "pill",
-      "workbench.startupEditor": "none",
-      "workbench.editor.empty.hint": "hidden",
       "breadcrumbs.enabled": false,
       "editor.minimap.enabled": false,
       "editor.lineHeight": 20,

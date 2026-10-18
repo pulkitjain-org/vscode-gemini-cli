@@ -3,26 +3,32 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-/* Home's dashboard (webview-src/home.ts), on top of panels.css's Agent Home styles. */
+/*
+ * Home's dashboard (webview-src/home.ts), on top of panels.css's Agent Home styles: the
+ * greeting line, the composer's bar, Needs you and the cards.
+ */
 
 .home.dash {
 	max-width: 1180px;
-	padding: 36px 28px 48px;
+	padding: 22px 28px 48px;
 }
 
+/* The greeting, the day and sprint beside it, the tools at the end of the line. */
 .dash-head {
 	display: flex;
-	align-items: flex-start;
-	gap: 16px;
-	margin-bottom: 16px;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 6px 14px;
+	margin-bottom: 14px;
 }
 
-.dash-greeting {
-	flex: 1;
-	min-width: 0;
+.dash-head h1 {
+	margin: 0;
+	font-size: 22px;
+	font-weight: 600;
 }
 
-.dash-greeting p {
+.dash-head p {
 	margin: 0;
 }
 
@@ -30,41 +36,42 @@
 	display: flex;
 	align-items: center;
 	gap: 8px;
+	margin-left: auto;
+	align-self: center;
 }
 
 .dash-tool-logos {
 	display: flex;
-	gap: 6px;
+	align-items: center;
+	gap: 7px;
 }
 
 .dash-tool {
 	position: relative;
 	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 26px;
-	height: 22px;
-	border-radius: var(--gemini-radius-small);
-	background: var(--gemini-card);
 	cursor: pointer;
 }
 
-.dash-tool::after {
-	content: "";
-	position: absolute;
-	right: 2px;
-	bottom: 2px;
-	width: 6px;
-	height: 6px;
-	border-radius: 50%;
-	background: var(--gemini-faint);
+.dash-tool.off,
+.dash-tool.warn {
+	opacity: 0.45;
+	filter: grayscale(1);
 }
 
-.dash-tool.ok::after { background: var(--gemini-ok); }
-.dash-tool.warn::after { background: var(--gemini-warn); }
-.dash-tool.error::after { background: var(--gemini-error); }
-.dash-tool.off { opacity: 0.45; }
-.dash-tool.off::after { display: none; }
+.dash-tool.checking {
+	opacity: 0.7;
+}
+
+.dash-tool.error::after {
+	content: "";
+	position: absolute;
+	right: -2px;
+	bottom: -2px;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--gemini-error);
+}
 
 .dash-customize {
 	position: relative;
@@ -113,11 +120,63 @@ button.link-button:hover {
 
 .dash-banner[hidden] { display: none; }
 
+/* The composer's bar: folder · own branch · mode · model, then From Your Tools and Start Agent. */
+.dash .home-composer-bar {
+	flex-wrap: wrap;
+	gap: 6px;
+	font-size: 12px;
+	color: var(--gemini-muted);
+}
+
+.home-composer-bar .sep {
+	color: var(--gemini-faint);
+}
+
+.home-folder,
+.home-mode,
+.home-model,
+.home-from-tools {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.home-from-tools {
+	position: relative;
+}
+
+.home-model[hidden] {
+	display: none;
+}
+
+.home-from-tools .home-menu {
+	left: auto;
+	right: 0;
+	width: 380px;
+}
+
+.home-composer-bar button.primary {
+	padding: 3px 10px;
+}
+
+/* The quick actions, and Project Helpers at the far right under the composer. */
+.dash-quick-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 12px;
+}
+
 .dash-quick {
 	display: flex;
+	flex: 1;
 	flex-wrap: wrap;
 	gap: 8px;
-	margin-top: 14px;
+}
+
+.dash-quick-row .helpers-button {
+	flex: none;
+	color: var(--gemini-muted);
 }
 
 button.dash-quick-action {
@@ -132,25 +191,30 @@ button.dash-quick-action:hover {
 	background: var(--gemini-hover);
 }
 
+/* Get started, Needs you and the cards: panels with a hairline, a step above the page. */
 .dash-setup,
-.dash-needs {
-	margin-top: 22px;
-	padding: 14px 16px;
+.dash-needs,
+.dash-card {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	padding: 12px 14px;
 	border: 1px solid var(--gemini-border);
 	border-radius: var(--gemini-radius-large);
 	background: var(--gemini-card);
 }
 
+.dash-setup,
+.dash-needs {
+	margin-top: 14px;
+}
+
 .dash-setup[hidden],
 .dash-needs[hidden] { display: none; }
 
-.dash-setup h2,
-.dash-needs h2 {
-	display: flex;
-	align-items: center;
-	gap: 6px;
+.dash-setup h2 {
 	margin: 0 0 10px;
-	font-size: 14px;
+	font-size: 13px;
 	font-weight: 600;
 }
 
@@ -197,80 +261,62 @@ button.dash-quick-action:hover {
 	min-width: 0;
 }
 
-.dash-needs-heading .dot.warn {
+.dash-cards {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 14px;
+	margin-top: 14px;
+}
+
+.dash-card.stale .dash-rows {
+	opacity: 0.55;
+}
+
+/* What a quit cut off: a warm hairline, as the confirm cards have. */
+.dash-card[data-card="unfinished"] {
+	border-color: color-mix(in srgb, var(--gemini-warn) 45%, var(--gemini-border));
+}
+
+.dash-head > .dash-pill {
+	align-self: center;
+}
+
+/* A card's title line: the tool's logo, the title, and the query that fills it at the end. */
+.dash-card-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	margin-bottom: 4px;
+}
+
+.dash-card-head h3 {
+	flex: none;
+	max-width: 55%;
+	margin: 0;
+	overflow: hidden;
+	font-size: 13px;
+	font-weight: 600;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.dash-card-head .dot.warn {
+	flex: none;
 	width: 8px;
 	height: 8px;
 	border-radius: 50%;
 	background: var(--gemini-warn);
 }
 
-.dash-needs-list {
-	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-	gap: 10px;
-}
-
-.dash-need {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	min-width: 0;
-	padding: 10px 12px;
-	border: 1px solid var(--gemini-border);
-	border-radius: var(--gemini-radius);
-	background: var(--gemini-surface);
-}
-
-.dash-need-text {
-	display: flex;
-	flex: 1;
-	flex-direction: column;
-	min-width: 0;
-}
-
-.dash-need-text > *,
-.dash-row-title,
-.dash-row-detail {
+.dash-query {
+	flex: 0 1 auto;
+	max-width: 60%;
+	margin-left: auto;
 	overflow: hidden;
-	white-space: nowrap;
-	text-overflow: ellipsis;
-}
-
-.dash-cards {
-	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-	gap: 16px;
-	margin-top: 18px;
-}
-
-.dash-card {
-	display: flex;
-	flex-direction: column;
-	min-width: 0;
-	padding: 14px 16px;
-	border: 1px solid var(--gemini-border);
-	border-radius: var(--gemini-radius-large);
-	background: var(--gemini-card);
-}
-
-.dash-card.stale .dash-rows,
-.dash-card.stale .dash-progress {
-	opacity: 0.55;
-}
-
-.dash-card-head {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	margin-bottom: 8px;
-}
-
-.dash-card-head h3 {
-	flex: 1;
-	margin: 0;
-	overflow: hidden;
-	font-size: 14px;
-	font-weight: 600;
+	font-family: var(--vscode-editor-font-family);
+	font-size: 11px;
+	color: var(--gemini-faint);
 	white-space: nowrap;
 	text-overflow: ellipsis;
 }
@@ -284,49 +330,29 @@ button.dash-quick-action:hover {
 	align-self: flex-start;
 }
 
-.dash-progress {
-	display: flex;
-	align-items: center;
-	gap: 12px;
-	margin-bottom: 8px;
-}
-
-.dash-progress-track {
-	flex: 1;
-	height: 6px;
-	overflow: hidden;
-	border-radius: 3px;
-	background: var(--gemini-hover);
-}
-
-.dash-progress-fill {
-	height: 100%;
-	border-radius: 3px;
-	background: var(--gemini-ok);
-}
-
-.dash-card[data-card="gemini"] .dash-progress-fill {
-	background: var(--gemini-gradient);
-}
-
 .dash-rows {
 	display: flex;
 	flex-direction: column;
 }
 
+/* A heading inside a card, such as Mine under Pending on me, with its own query. */
 .dash-group {
-	margin: 8px 0 2px;
-	font-size: 11px;
-	letter-spacing: 0.04em;
-	text-transform: uppercase;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 10px 0 2px;
+	font-size: 12px;
+	font-weight: 600;
 	color: var(--gemini-muted);
 }
 
 .dash-row {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 10px;
+	min-width: 0;
 	min-height: 30px;
+	padding: 3px 0;
 	border-top: 1px solid var(--gemini-border);
 }
 
@@ -347,6 +373,13 @@ button.dash-quick-action:hover {
 	min-width: 0;
 }
 
+.dash-row-title,
+.dash-row-detail {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
 button.dash-row-title {
 	display: block;
 	padding: 0;
@@ -360,25 +393,75 @@ button.dash-row-title:hover {
 }
 
 .dash-row-detail {
+	flex: none;
 	max-width: 40%;
 	font-size: 12px;
+	color: var(--gemini-faint);
 }
 
+/* Needs you reads as one line: the title, then what it is about, then the state and the action. */
+.dash-needs .dash-row-title {
+	flex: none;
+	max-width: 45%;
+}
+
+.dash-needs .dash-row-detail {
+	flex: 1;
+	max-width: none;
+}
+
+/* A bar in a row: the sprint's progress, today's quota. */
+.dash-row-bar {
+	flex: none;
+	width: 120px;
+	height: 8px;
+	overflow: hidden;
+	border-radius: 4px;
+	background: var(--gemini-hover);
+}
+
+.dash-row-bar-fill {
+	display: block;
+	height: 100%;
+	border-radius: 4px;
+	background: var(--gemini-accent);
+}
+
+.dash-card[data-card="tickets"] .dash-row-bar-fill {
+	background: var(--gemini-ok);
+}
+
+.dash-card[data-card="gemini"] .dash-row-bar-fill {
+	background: var(--gemini-gradient);
+}
+
+/* A state in a pill: a hairline in the state's colour. */
 .dash-pill {
 	flex: none;
-	font-size: 12px;
+	padding: 1px 8px;
+	border: 1px solid var(--gemini-border);
+	border-radius: 999px;
+	font-size: 11px;
+	color: var(--gemini-muted);
+	white-space: nowrap;
 }
 
-.dash-pill.ok { color: var(--gemini-ok); }
-.dash-pill.warn { color: var(--gemini-warn); }
-.dash-pill.error { color: var(--gemini-error); }
-.dash-pill.info { color: var(--vscode-textLink-foreground); }
-.dash-pill.muted { color: var(--gemini-muted); }
+.dash-pill.ok { color: var(--gemini-ok); border-color: color-mix(in srgb, var(--gemini-ok) 40%, transparent); }
+.dash-pill.warn { color: var(--gemini-warn); border-color: color-mix(in srgb, var(--gemini-warn) 40%, transparent); }
+.dash-pill.error { color: var(--gemini-error); border-color: color-mix(in srgb, var(--gemini-error) 40%, transparent); }
+.dash-pill.info { color: var(--vscode-textLink-foreground); border-color: color-mix(in srgb, var(--vscode-textLink-foreground) 40%, transparent); }
 
 .dash-row > button.secondary,
 .dash-row > button.primary {
 	flex: none;
 	padding: 1px 8px;
+	font-size: 11px;
+}
+
+.dash-row > button.link-button {
+	flex: none;
+	padding: 0 4px;
+	font-size: 12px;
 }
 
 .dash-row .codicon-circle-filled {
@@ -403,8 +486,97 @@ button.dash-row-title:hover {
 	line-height: 1.4;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 760px) {
+	.dash-cards {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
 	.dash-steps {
 		grid-template-columns: minmax(0, 1fr);
 	}
+}
+
+/* Show All: under a card whose list is longer than it shows. */
+.dash-show-all {
+	align-self: flex-start;
+	margin-top: 6px;
+	font-size: 12px;
+}
+
+/* A card's whole list, in a popup over the page, at the overlay tier (glass.css adds the glass). */
+.dash-list-dialog {
+	width: min(680px, calc(100vw - 32px));
+	max-height: calc(100vh - 64px);
+	box-sizing: border-box;
+	/* Near the top rather than centred, so it stays put while the filter shortens the list. */
+	margin: max(32px, 10vh) auto auto;
+	padding: 0;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-large);
+	background: var(--gemini-popover);
+	color: var(--vscode-foreground);
+	box-shadow: 0 20px 60px var(--gemini-shadow);
+	overflow: hidden;
+}
+
+.dash-list-dialog::backdrop {
+	background: color-mix(in srgb, var(--vscode-editor-background, #000) 55%, transparent);
+}
+
+.dash-list-body {
+	display: flex;
+	flex-direction: column;
+	max-height: calc(100vh - 66px);
+	box-sizing: border-box;
+	padding: 14px 18px 8px;
+}
+
+.dash-list-head h2 {
+	flex: none;
+	max-width: 50%;
+	margin: 0;
+	overflow: hidden;
+	font-size: 14px;
+	font-weight: 600;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.dash-list-count {
+	flex: none;
+	font-size: 12px;
+	font-variant-numeric: tabular-nums;
+	color: var(--gemini-muted);
+}
+
+.dash-list-close {
+	flex: none;
+	margin-left: auto;
+}
+
+.dash-list-head .dash-query + .dash-list-close {
+	margin-left: 0;
+}
+
+.dash-list-filter {
+	margin: 8px 0 6px;
+	padding: 5px 9px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-small);
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	font: inherit;
+}
+
+.dash-list-filter[hidden] {
+	display: none;
+}
+
+/* The list scrolls inside the popup, whose background is opaque, so it keeps the opaque-scroller fast path. */
+.dash-list-rows {
+	flex: 1;
+	min-height: 0;
+	margin: 0 -18px;
+	padding: 0 18px 8px;
+	overflow-y: auto;
 }

@@ -10,6 +10,7 @@ import { AgentClient, type AgentClientOptions } from '../acp/agentClient';
 import { createFileHandlers, isInside } from '../acp/fileAccess';
 import { PermissionBroker } from '../acp/permissions';
 import { AgentStatus } from '../acp/status';
+import { isConfirmToolCall } from '../acp/teamTools';
 import { AgentService } from './agentService';
 import { ChatHost } from './chatController';
 import { getApprovalPolicy } from './configuration';
@@ -51,6 +52,8 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 			preferredModel: preferredModel ?? sessionModel,
 			modelList: sessionModelList,
 			isModeAllowed: modeId => isModeAllowed(getApprovalPolicy(), modeId),
+			alwaysAsks: isConfirmToolCall,
+			onDidWriteFile: filePath => this.permissions.approvals.noteWrite(filePath),
 			requestPermission: params => this.permissions.request(params),
 			// A folder outside this window's workspace is the agent's only root.
 			fileSystem: isInWorkspace(folder) ? undefined : createFileHandlers(new WorkspaceFileSystem(), () => ({ roots: [folder], isIgnored: isIgnoredByGitCached })),
@@ -87,7 +90,7 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 		this.service.writeLog(message);
 	}
 
-	trustFolder(folder: string): boolean {
+	trustFolder(folder: string): Promise<boolean> {
 		return this.service.trustFolder(folder);
 	}
 

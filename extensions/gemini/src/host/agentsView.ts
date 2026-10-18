@@ -137,6 +137,8 @@ interface LiveAgent {
 	activity: ChatActivity;
 	/** A pending save of the conversation. */
 	saveTimer?: ReturnType<typeof setTimeout>;
+	/** When the oldest change not yet saved happened, so a long reply is saved while it streams. */
+	unsavedSince?: number;
 	/** The icon file its tab shows (its state, or Gemini's or Jira's at rest); unset until set. */
 	tabIcon?: string;
 	readonly disposables: vscode.Disposable[];
@@ -144,6 +146,8 @@ interface LiveAgent {
 
 /** How long after a turn ends its conversation is saved, so quick turns write once. */
 const saveDelayMs = 1_000;
+/** The longest a change waits to be saved while updates keep coming, so a crash mid-reply loses little. */
+const saveMaxWaitMs = 10_000;
 
 /**
  * The Agents pane: workspaces, the agents under each, and an editor tab per
@@ -335,6 +339,15 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		return this.model.agent(id)?.title;
 	}
 
+	/** The last checks run for agent `id`, in a line; saved with the agent, so they outlast a restart. */
+	checkResult(id: string): string | undefined {
+		return this.model.agent(id)?.checks?.summary;
+	}
+
+	setCheckResult(id: string, summary: string): void {
+		this.model.setChecks(id, summary);
+	}
+
 	/** The agent whose tab is in front, if any. */
 	activeAgentId(): string | undefined {
 		for (const [id, agent] of this.live) {
@@ -438,6 +451,44 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				.map(record => this.threadNode(record, node.folder));
 		}
 		return [];
+	}
+
+	/** A row's parent, so the list can reveal and highlight the agent, project or thread whose tab is in front. */
+	getParent(node: Node): Node | undefined {
+		const projects = projectsEnabled();
+		switch (node.kind) {
+			case 'workspace':
+				return { kind: 'section', section: 'agents' };
+			case 'archive':
+				return this.agentNodes.get(node.coordinator.id) ?? { kind: 'agent', record: node.coordinator, folder: node.folder };
+			case 'agent': {
+				const { record } = node;
+				if (projects && record.project?.role === 'coordinator') {
+					return { kind: 'section', section: 'projects' };
+				}
+				const coordinator = projects && record.project?.role === 'thread' ? this.model.coordinatorOf(record) : undefined;
+				if (coordinator) {
+					const folder = this.model.workspace(coordinator.workspaceId)?.folder ?? node.folder;
+					return this.agentNodes.get(coordinator.id) ?? { kind: 'agent', record: coordinator, folder };
+				}
+				const workspace = this.model.workspace(record.workspaceId);
+				if (!workspace) {
+					return undefined;
+				}
+				const current = (vscode.workspace.workspaceFolders ?? []).some(f => f.uri.scheme === 'file' && f.uri.fsPath === workspace.folder);
+				return { kind: 'workspace', folder: workspace.folder, record: workspace, current };
+			}
+			default:
+				return undefined;
+		}
+	}
+
+	/** Highlights the row of agent `id` (its tab came to the front), without taking focus from the chat. */
+	private revealInList(id: string): void {
+		const node = this.agentNodes.get(id);
+		if (node && this.tree.visible && this.tree.selection[0] !== node) {
+			void Promise.resolve(this.tree.reveal(node, { select: true, focus: false, expand: false })).catch(() => undefined);
+		}
 	}
 
 	private threadNode(record: AgentRecord, folder: string): AgentNode {
@@ -650,6 +701,18 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				spare.timer = setTimeout(open, spareDelayMs);
 			}
 		});
+	}
+
+	/**
+	 * Opens the spare again when the servers a new session would get change (a
+	 * tool connected, the browser turned on or off), so the next agent in the
+	 * folder still finds one that matches; the runtime closes the old one.
+	 */
+	refreshSpare(): void {
+		const spare = this.spare;
+		if (spare && this.service.runtime.spareKey !== undefined && this.service.runtime.spareKey !== this.spareKey(spare.folder)) {
+			this.prepareStart(spare.folder, spareDelayMs);
+		}
 	}
 
 	/** Matches a spare session to the agents that can take it: same folder, and the browser the same way. */
@@ -1287,6 +1350,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		void this.transcripts.delete(id);
 		void this.checkpointFiles.delete(id);
 		this.browser?.closeAgent(id);
+		this.teamTools?.forgetAgent(id);
 		if (record?.worktree && record.repos?.length) {
 			await removeThreadFolder(record.repos, record.worktree.folder, deleteBranch).catch(err =>
 				vscode.window.showWarningMessage(vscode.l10n.t("The agent was removed, but its folder {0} could not be: {1}", tildify(record.worktree!.folder), errorMessage(err))));
@@ -1397,6 +1461,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				live.controller.setHidden(!e.webviewPanel.visible);
 				if (e.webviewPanel.active) {
 					this.focus(id);
+					this.revealInList(id);
 					this.notifier.clear(id);
 					// Switching to an agent or thread puts the cursor where the user types.
 					live.controller.focusComposer();
@@ -1846,7 +1911,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		}
 		const repository = await repositoryRoot(folder) ?? folder;
 		const threads = await savedRepoCount(coordinatorHome(coordinatorId)) > 1;
-		if (projectFoldersTrusted(projectFolders(repository, threads))) {
+		if (await projectFoldersTrusted(projectFolders(repository, threads))) {
 			this.service.restartWhenIdle('restarting so the coordinator gets the project\'s tools');
 			return true;
 		}
@@ -1863,7 +1928,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	private async ensureProjectTrust(folder: string, threads = false): Promise<boolean> {
 		const repository = await repositoryRoot(folder) ?? folder;
 		const folders = projectFolders(repository, threads);
-		if (projectFoldersTrusted(folders)) {
+		if (await projectFoldersTrusted(folders)) {
 			return true;
 		}
 		const trust = vscode.l10n.t("Trust Folder");
@@ -1882,7 +1947,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const runtime = this.service.runtime;
 		let waits: boolean;
 		try {
-			waits = this.service.trustFolder(...folders);
+			waits = await this.service.trustFolder(...folders);
 		} catch (err) {
 			void vscode.window.showErrorMessage(vscode.l10n.t("Could not trust {0}: {1}", path.basename(repository), errorMessage(err)));
 			return false;
@@ -1961,13 +2026,11 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		const servers = () => [...this.browser?.mcpServersFor(record.id, folder) ?? [], ...this.teamTools?.mcpServersFor(record.id, folder) ?? [], ...project ? this.projects.mcpServersFor(this.model.agent(record.id) ?? record) : []];
 		// A coordinator's session runs in its own empty folder (coordinatorHome); its chat still belongs to the workspace.
 		const cwd = project?.role === 'coordinator' ? coordinatorHome(record.id) : folder;
-		if (cwd !== folder) {
-			fs.mkdirSync(cwd, { recursive: true });
-		}
 		const session = new AgentSession(this.service, cwd, record.sessionId, servers, openLater, {
 			// A project agent's session needs the project's server, which a spare never has, listening before it opens:
 			// a session opened without it, as from a restored tab or a thread warmed at project open, never gets the tools.
-			...(project ? { beforeOpen: () => this.projects.ready() } : { spareKey: () => this.spareKey(folder) }),
+			// A coordinator's own folder has to exist before its session opens there.
+			...(project ? { beforeOpen: async () => { if (cwd !== folder) { await fs.promises.mkdir(cwd, { recursive: true }); } await this.projects.ready(); } } : { spareKey: () => this.spareKey(folder) }),
 			onDidOpenSession: servers => {
 				this.browser?.bindSession(record.id, folder, servers);
 				this.teamTools?.bindSession(record.id, folder, servers);
@@ -1977,6 +2040,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				}
 			},
 		}, this.preferredModel(record));
+		session.permissions.confirmOnly = request => !!this.teamTools?.isConfirmCall(request);
 		session.permissions.answerAtOnce = request => (project ? this.projects.instantAnswer(this.model.agent(record.id) ?? record, request) : undefined)
 			?? this.teamTools?.instantAnswer(request);
 		const files: FileSearch = isOpenFolder(folder) ? this.workspaceFiles : new FolderFileIndex(folder);
@@ -2095,10 +2159,14 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 
 	private scheduleSave(id: string, live: LiveAgent): void {
 		clearTimeout(live.saveTimer);
+		const now = Date.now();
+		live.unsavedSince ??= now;
+		const delay = Math.max(0, Math.min(saveDelayMs, live.unsavedSince + saveMaxWaitMs - now));
 		live.saveTimer = setTimeout(() => {
 			live.saveTimer = undefined;
+			live.unsavedSince = undefined;
 			void this.transcripts.save(id, { items: live.controller.conversation, changes: live.changes.files });
-		}, saveDelayMs);
+		}, delay);
 	}
 
 	private async reveal(id: string, preserveFocus: boolean): Promise<void> {
@@ -2151,6 +2219,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			void this.transcripts.delete(node.record.id);
 			void this.checkpointFiles.delete(node.record.id);
 			this.browser?.closeAgent(node.record.id);
+			this.teamTools?.forgetAgent(node.record.id);
 		}
 	}
 
@@ -2196,6 +2265,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				void this.transcripts.delete(agent.id);
 				void this.checkpointFiles.delete(agent.id);
 				this.browser?.closeAgent(agent.id);
+				this.teamTools?.forgetAgent(agent.id);
 			}
 		}
 	}
@@ -2338,7 +2408,7 @@ function projectFolders(repository: string, threads: boolean): string[] {
 }
 
 /** Whether the Gemini CLI trusts all of `folders`, or checks no folder's trust. */
-function projectFoldersTrusted(folders: readonly string[]): boolean {
+async function projectFoldersTrusted(folders: readonly string[]): Promise<boolean> {
 	const file = trustedFoldersPath(process.env);
-	return !folderTrustApplies(process.env) || folders.every(each => isFolderTrusted(file, each));
+	return !await folderTrustApplies(process.env) || (await Promise.all(folders.map(each => isFolderTrusted(file, each)))).every(trusted => trusted === true);
 }

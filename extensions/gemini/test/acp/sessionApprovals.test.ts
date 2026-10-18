@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { parseCommand, SessionApprovals } from '../../src/acp/sessionApprovals';
+import { isBuildFile, parseCommand, SessionApprovals } from '../../src/acp/sessionApprovals';
 
 describe('parseCommand', () => {
 	it('finds each program of a pipeline or list, outside quotes', () => {
@@ -81,5 +81,26 @@ describe('SessionApprovals', () => {
 		expect(approvals.covers('grep x a')).toEqual({ kind: 'asks', reason: 'new-program' });
 		approvals.clear();
 		expect(approvals.approved).toEqual([]);
+	});
+
+	it('lets task runners ask again once the agent writes a file that defines what they run', () => {
+		const approvals = new SessionApprovals();
+		approvals.approve('npm test && make lint');
+		approvals.approve('git status');
+		expect({
+			afterSource: approvals.noteWrite('/work/src/cart.ts'),
+			afterScripts: approvals.noteWrite('/work/package.json'),
+			npm: approvals.covers('npm test').kind,
+			git: approvals.covers('git status').kind,
+			approved: approvals.approved,
+			buildFiles: ['/w/Makefile', '/w/build.gradle.kts', '/w/app/App.csproj', '/w/conftest.py', '/w/README.md', '/w/package-lock.json'].map(isBuildFile),
+		}).toEqual({
+			afterSource: [],
+			afterScripts: ['npm', 'make'],
+			npm: 'asks',
+			git: 'covered',
+			approved: ['git'],
+			buildFiles: [true, true, true, true, false, false],
+		});
 	});
 });

@@ -104,6 +104,39 @@ export function toolRefId(ref: ToolRef): string {
 	}
 }
 
+/** Where the user's Jira and GitLab are, to find an item's page from its id. */
+export interface ToolSites {
+	readonly jira?: string;
+	readonly gitlab?: string;
+}
+
+/** The page of the item a `toolRefId` names; undefined when its tool's site isn't known or the id isn't one. */
+export function toolRefUrl(id: string, sites: ToolSites): string | undefined {
+	const [tool, ...parts] = id.split(':');
+	const base = (site: string | undefined) => site?.replace(/\/+$/, '');
+	switch (tool) {
+		case 'jira': {
+			const key = parts.join(':');
+			return base(sites.jira) && /^[A-Z][A-Z0-9_]{1,15}-\d+$/.test(key) ? `${base(sites.jira)}/browse/${key}` : undefined;
+		}
+		case 'gitlab': {
+			const [kind, ...rest] = parts;
+			const iid = rest.pop() ?? '';
+			const project = rest.join(':');
+			return base(sites.gitlab) && project && /^\d+$/.test(iid) && (kind === 'mr' || kind === 'issue')
+				? `${base(sites.gitlab)}/${project}/-/${kind === 'mr' ? 'merge_requests' : 'issues'}/${iid}`
+				: undefined;
+		}
+		case 'figma': {
+			// A node id has a colon of its own (12:34); the link spells it with a dash.
+			const [fileKey, ...node] = parts;
+			const nodeId = node.join(':');
+			return /^[\w-]+$/.test(fileKey ?? '') ? `https://www.figma.com/design/${fileKey}${nodeId ? `?node-id=${encodeURIComponent(nodeId.replace(/:/g, '-'))}` : ''}` : undefined;
+		}
+	}
+	return undefined;
+}
+
 /** The short name of a ref: ACME-412, !318, #45, or "Figma frame". */
 export function toolRefLabel(ref: ToolRef): string {
 	switch (ref.tool) {
@@ -146,6 +179,8 @@ export interface TeamToolVerbs {
 	/** `{0}` is the time, `{1}` the ticket. */
 	readonly logTime: string;
 	readonly openMr: string;
+	/** "Merge {0}" */
+	readonly merge: string;
 	readonly reply: string;
 	readonly listReview: string;
 	readonly listMine: string;
@@ -158,6 +193,15 @@ export interface TeamToolVerbs {
 	readonly screenshot: string;
 	/** "this branch's merge request" */
 	readonly currentMr: string;
+	/** Labels in a confirm-class card's effect: what the tool will record, line by line. */
+	readonly effectComment: string;
+	readonly effectWork: string;
+	readonly effectTitle: string;
+	readonly effectDescription: string;
+	readonly effectDraft: string;
+	readonly effectSquash: string;
+	readonly effectDeleteBranch: string;
+	readonly effectProjectDefault: string;
 }
 
 export const englishTeamToolVerbs: TeamToolVerbs = {
@@ -167,6 +211,7 @@ export const englishTeamToolVerbs: TeamToolVerbs = {
 	move: 'Move {0}',
 	logTime: 'Log {0} on {1}',
 	openMr: 'Open merge request into {0}',
+	merge: 'Merge {0}',
 	reply: 'Reply on {0}',
 	listReview: 'List merge requests waiting for my review',
 	listMine: 'List my merge requests',
@@ -178,14 +223,27 @@ export const englishTeamToolVerbs: TeamToolVerbs = {
 	design: 'Read the Figma design',
 	screenshot: 'Take a screenshot of the Figma frame',
 	currentMr: 'this branch\'s merge request',
+	effectComment: 'Comment',
+	effectWork: 'Work description',
+	effectTitle: 'Title',
+	effectDescription: 'Description',
+	effectDraft: 'Draft',
+	effectSquash: 'Squash',
+	effectDeleteBranch: 'Delete source branch',
+	effectProjectDefault: 'project default',
 };
 
 function fill(template: string, value: string): string {
 	return template.replace('{0}', value);
 }
 
-/** "Read ACME-412", "Comment on !318": a friendly title for a geminicode-tools call, or undefined for other tools. */
-export function teamToolTitle(title: string, verbs: TeamToolVerbs = englishTeamToolVerbs): { readonly tool: 'jira' | 'gitlab' | 'sonar' | 'snyk' | 'figma'; readonly title: string; readonly text?: string } | undefined {
+/**
+ * "Read ACME-412", "Comment on !318": a friendly title for a geminicode-tools
+ * call, or undefined for other tools. `text` is what a comment or reply would
+ * post; `effect` is a confirm-class action as the tool will record it, line
+ * by line (the move, its fields and comment; the time; the merge request).
+ */
+export function teamToolTitle(title: string, verbs: TeamToolVerbs = englishTeamToolVerbs): { readonly tool: 'jira' | 'gitlab' | 'sonar' | 'snyk' | 'figma'; readonly title: string; readonly text?: string; readonly effect?: string } | undefined {
 	const call = parseTeamToolCall(title);
 	if (!call) {
 		return undefined;
@@ -201,12 +259,24 @@ export function teamToolTitle(title: string, verbs: TeamToolVerbs = englishTeamT
 	};
 	const text = s('text') || s('comment') || undefined;
 	const titled = (value: string) => ({ tool: call.tool, title: value, ...text ? { text } : {} });
+	const indented = (value: string) => value.split('\n').map(line => `  ${line}`).join('\n');
+	const effect = (value: string, lines: readonly string[]) => ({ tool: call.tool, title: value, effect: lines.filter(Boolean).join('\n') });
 	switch (call.name) {
 		case 'jira_get_issue': return titled(fill(verbs.read, key || 'Jira'));
 		case 'jira_search': return titled(fill(verbs.search, s('jql')));
 		case 'jira_comment': return titled(fill(verbs.comment, key));
-		case 'jira_log_time': return titled(fill(verbs.logTime, s('spent')).replace('{1}', key));
-		case 'jira_transition': return titled(fill(verbs.move, s('to') ? `${key} → ${s('to')}` : key));
+		case 'jira_log_time': return effect(fill(verbs.logTime, s('spent')).replace('{1}', key), [
+			`${s('spent')}  ${key}`,
+			text ? `${verbs.effectWork}: ${text}` : '',
+		]);
+		case 'jira_transition': {
+			const fields = call.args.fields && typeof call.args.fields === 'object' ? Object.entries(call.args.fields as Record<string, unknown>) : [];
+			return effect(fill(verbs.move, s('to') ? `${key} → ${s('to')}` : key), [
+				`${key}  → ${s('to')}`,
+				...fields.map(([name, value]) => `${name}: ${String(value)}`),
+				text ? `${verbs.effectComment}:\n${indented(text)}` : '',
+			]);
+		}
 		case 'gitlab_get_mr': return titled(fill(verbs.read, mrName(s('mr'))));
 		case 'gitlab_get_issue': {
 			const link = parseToolLink(s('issue'));
@@ -214,7 +284,15 @@ export function teamToolTitle(title: string, verbs: TeamToolVerbs = englishTeamT
 		}
 		case 'gitlab_list_mrs': return titled(s('which') === 'mine' ? verbs.listMine : verbs.listReview);
 		case 'gitlab_job_log': return titled(fill(verbs.jobLog, s('job') ? `job ${s('job').replace(/^.*\/jobs\//, '')}` : mrName(s('mr'))));
-		case 'gitlab_create_mr': return { tool: call.tool, title: fill(verbs.openMr, s('target')), ...s('title') ? { text: s('title') } : {} };
+		case 'gitlab_create_mr': return effect(fill(verbs.openMr, s('target')), [
+			`→ ${s('target')}${call.args.draft === true ? `  (${verbs.effectDraft})` : ''}`,
+			s('title') ? `${verbs.effectTitle}: ${s('title')}` : '',
+			s('description') ? `${verbs.effectDescription}:\n${indented(s('description'))}` : '',
+		]);
+		case 'gitlab_merge': return effect(fill(verbs.merge, mrName(s('mr'))), [
+			mrName(s('mr')),
+			`${verbs.effectSquash}: ${call.args.squash === undefined ? verbs.effectProjectDefault : String(call.args.squash)}  ${verbs.effectDeleteBranch}: ${call.args.deleteBranch === undefined ? 'true' : String(call.args.deleteBranch)}`,
+		]);
 		case 'gitlab_reply': return titled(fill(verbs.reply, mrName(s('mr'))));
 		case 'sonar_quality_gate': return titled(verbs.qualityGate);
 		case 'sonar_issues': return titled(verbs.sonarIssues);

@@ -404,6 +404,11 @@ describe('BrowserToolHost', () => {
 		expect(isAllowedOrigin(url('https://anything/'), ['not a url'])).toBe(false);
 	});
 
+	it('matches a host on any port with :*, and nothing else', () => {
+		const allowed = ['http://localhost:*'];
+		expect(['http://localhost:3000/', 'http://localhost/', 'https://localhost:3000/', 'http://localhost.evil:3000/'].map(u => isAllowedOrigin(new URL(u), allowed))).toEqual([true, true, false, false]);
+	});
+
 	it('knows local pages', () => {
 		for (const url of ['http://localhost:3000', 'http://app.localhost', 'http://127.0.0.1', 'http://[::1]:8080', 'http://0.0.0.0:5173']) {
 			expect(isLocalUrl(new URL(url)), url).toBe(true);
@@ -481,8 +486,9 @@ describe('BrowserMcpServer', () => {
 		await post(slot.url, auth, navigate);
 		expect(browser.calls).toEqual(['open a1 http://localhost:5173/']);
 
+		// A removed agent's slot is forgotten: it no longer answers.
 		server.unbind('a1');
-		expect((await post(slot.url, auth, navigate)).json).toMatchObject({ result: { isError: true } });
+		expect((await post(slot.url, auth, navigate)).status).toBe(404);
 		expect(browser.calls).toEqual(['open a1 http://localhost:5173/']);
 	});
 

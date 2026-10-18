@@ -20,7 +20,7 @@ import { CliManager } from './host/cliManager';
 import { DiffPreview } from './host/diffPreview';
 import { errorMessage } from './acp/errors';
 import { PromptEnhancer } from './acp/promptEnhancer';
-import { configSection, getWorkspaceCwd, setStorageDirs } from './host/configuration';
+import { configSection, getWorkspaceCwd, loadProductInfo, setStorageDirs } from './host/configuration';
 import { initModelList, initModelPreference } from './host/modelPreference';
 import { SetupWalkthrough, walkthroughId } from './host/setupWalkthrough';
 import { GeminiStatusBar } from './host/statusBar';
@@ -32,17 +32,23 @@ import { KeepAwake } from './acp/keepAwake';
 import { BrowserTools } from './host/browserTools';
 import { TeamConnections } from './host/teamConnections';
 import { TeamFlows } from './host/teamFlows';
+import { TraceRecorder } from './host/traceCommand';
+import { BenchmarkCommand } from './host/benchmarkCommand';
+import { Pilot } from './host/pilot';
 import { MrPanel } from './host/mrPanel';
 import { ConnectionsPage } from './host/connectionsPage';
 import { TeamStatusBar } from './host/teamStatusBar';
+import { AuditPage } from './host/auditPage';
+import { AuditStatusBar } from './host/auditStatusBar';
 import { WorkspaceFileIndex } from './host/workspaceFiles';
 import { disposeGitIgnore } from './host/workspaceFileSystem';
 
 /** Finishes the writes that must outlive the window; set by activate. */
 let saveBeforeExit: (() => Promise<void>) | undefined;
 
-export function activate(context: vscode.ExtensionContext): void {
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
 	const log = vscode.window.createOutputChannel('Gemini', { log: true });
+	await loadProductInfo();
 	initModelPreference(context.globalState);
 	setStorageDirs({
 		managedCli: vscode.Uri.joinPath(context.globalStorageUri, 'gemini-cli').fsPath,
@@ -72,6 +78,14 @@ export function activate(context: vscode.ExtensionContext): void {
 	const chatInFront = (orNew = false) => agentsView.chatFor(orNew);
 	const quickEdits = new QuickEdits(agentsView.review, log);
 	const statusBar = new GeminiStatusBar(service);
+	// For Home's card after a start: when the window opened and when the agent was first ready.
+	const activatedAt = Date.now();
+	let readyAt: number | undefined;
+	context.subscriptions.push(service.onDidChangeStatus(status => {
+		if (status.phase === 'ready' && readyAt === undefined) {
+			readyAt = Date.now();
+		}
+	}));
 	const usageMeter = new UsageMeter(quickEdits.client, log);
 	agentsView.usage = usageMeter;
 	// Drafts a project's Memory text with the same direct request quick edits use.
@@ -109,7 +123,13 @@ export function activate(context: vscode.ExtensionContext): void {
 	agentsView.browser = browserTools;
 	const teamTools = new TeamConnections(context, String(context.extension.packageJSON.version ?? ''), log);
 	agentsView.teamTools = teamTools;
+	// A tool connecting, or the browser turned on or off, changes what a new session gets: the spare follows.
+	context.subscriptions.push(
+		teamTools.onDidChange(() => agentsView.refreshSpare()),
+		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.browser`) && agentsView.refreshSpare()),
+	);
 	const teamFlows = new TeamFlows(context.extensionUri, teamTools, agentsView);
+	const traceRecorder = new TraceRecorder(service, log);
 	const mrPanel = new MrPanel(teamTools, agentsView, agent => teamFlows.checksSummary(agent));
 	changesPanel.team = mrPanel;
 	// caffeinate watches this process, so it ends with GeminiCode even if GeminiCode crashes.
@@ -128,7 +148,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		agentsView,
 		changesPanel,
 		agentsView.onDidFocus(source => changesPanel.show(source)),
-		new AgentHome(context.extensionUri, agentsView, () => warmup.startSoon(), { state: context.globalState, version: String(context.extension.packageJSON.version ?? '') }),
+		new AgentHome(context.extensionUri, agentsView, () => warmup.startSoon(), { state: context.globalState, version: String(context.extension.packageJSON.version ?? ''), cli: () => service.status.agentVersion, startup: () => ({ activatedAt, agent: agentPhase(service.status.phase), ...readyAt ? { readyAt } : {} }) }),
 		new SettingsPage(context.extensionUri, service),
 		quickEdits,
 		statusBar,
@@ -143,9 +163,13 @@ export function activate(context: vscode.ExtensionContext): void {
 		browserTools,
 		teamTools,
 		teamFlows,
+		traceRecorder,
+		new BenchmarkCommand(service, log),
+		new Pilot(context.globalStorageUri.fsPath, teamTools, usageMeter),
 		mrPanel,
-		new ConnectionsPage(context.extensionUri, teamTools),
+		new ConnectionsPage(context.extensionUri, teamTools, log),
 		new TeamStatusBar(context.extensionUri, teamTools),
+		new AuditStatusBar(teamTools.audit),
 		service.runtime.onDidBecomeBusy(() => keepAwake.setBusy(true)),
 		service.runtime.onDidBecomeIdle(() => keepAwake.setBusy(false)),
 		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.keepAwake`) && readKeepAwake()),
@@ -167,6 +191,7 @@ export function activate(context: vscode.ExtensionContext): void {
 			return (await chatInFront(true))?.addAttachments(attachments);
 		}),
 		vscode.commands.registerCommand('gemini.showLog', () => log.show()),
+		new AuditPage(context.extensionUri, teamTools.audit, id => agentsView.summaries().find(agent => agent.id === id)?.title),
 		vscode.commands.registerCommand('gemini.checkAgent', () => checkAgent(log)),
 		vscode.commands.registerCommand('gemini.restartAgent', () => service.restart()),
 		vscode.commands.registerCommand('gemini.completeSetupInTerminal', () => service.completeSetupInTerminal()),
@@ -200,4 +225,9 @@ async function setProjectId(): Promise<void> {
 	}
 	const target = vscode.workspace.workspaceFolders ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
 	await config.update('projectId', value.trim() || undefined, target);
+}
+
+/** The agent's phase as Home's startup card names it. */
+function agentPhase(phase: string): 'stopped' | 'starting' | 'ready' | 'error' {
+	return phase === 'ready' ? 'ready' : phase === 'error' ? 'error' : phase === 'starting' || phase === 'restarting' ? 'starting' : 'stopped';
 }

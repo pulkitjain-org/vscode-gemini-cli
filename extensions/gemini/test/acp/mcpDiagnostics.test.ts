@@ -58,7 +58,7 @@ describe('McpDiagnostics', () => {
 		const seen: McpProblem[] = [];
 		diagnostics.onDidReport(problem => seen.push(problem));
 
-		expect(diagnostics.reset()).toBe(true);
+		expect(await diagnostics.reset()).toBe(true);
 		const [head, tail] = [log.slice(0, 300), log.slice(300)];
 		await appendFile(file, head);
 		await diagnostics.read();
@@ -66,7 +66,7 @@ describe('McpDiagnostics', () => {
 		await diagnostics.read();
 		expect(seen.map(p => p.server)).toEqual(['broken', 'badhttp', 'jira']);
 
-		diagnostics.reset();
+		await diagnostics.reset();
 		expect(await readFile(file, 'utf8')).toBe('');
 		await appendFile(file, log);
 		await diagnostics.read();
@@ -78,7 +78,7 @@ describe('McpDiagnostics', () => {
 		const file = path.join(dir, 'cli-debug.log');
 		diagnostics = new McpDiagnostics(file);
 		const reported = waitFor(diagnostics.onDidReport);
-		diagnostics.reset();
+		await diagnostics.reset();
 		await appendFile(file, log);
 		expect(await reported).toMatchObject({ server: 'broken' });
 	});

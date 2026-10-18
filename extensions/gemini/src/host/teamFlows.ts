@@ -4,26 +4,44 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { promises as fs } from 'node:fs';
+import { suggestedTransition } from '../acp/teamDefaults';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { tildify } from './displayText';
+import { branchChoices, changedFiles, checkoutForChecks, listBranches } from '../acp/checksBranch';
+import { analyzeFiles } from '../acp/teamContainers';
 import { errorMessage } from '../acp/errors';
 import { GitLabClient, GitLabMr } from '../acp/gitlab';
-import { formatDuration, JiraClient, JiraIssueSummary, jiraKeyIn, parseDuration } from '../acp/jira';
-import { branchSummary, checkMerge, fetchBranches, mergeInWorktree, mergeUnfinished, pushBranch, reviewWorktree } from '../acp/releaseMerge';
+import { formatDuration, JiraClient, type JiraMyTickets, jiraKeyIn, parseDuration } from '../acp/jira';
+import { branchSummary, fetchBranches, pushBranch, reviewWorktree } from '../acp/releaseMerge';
 import { describeSnyk } from '../acp/snyk';
 import { sonarProjectKeyIn } from '../acp/sonar';
-import { isReleaseBranch, sortReleaseBranches, TeamDefaults } from '../acp/teamDefaults';
 import {
-	CheckFinding, checksFixPrompt, findingsFromSnyk, findingsFromSonar, jiraCommentRequest, mrDescriptionRequest, mrFixPrompt, parseReviewFindings, releaseConflictPrompt,
-	releaseMergeBranch, releaseMergeMr, releaseTargets, reviewPrompt, reviewSummary, targetChoices, ticketBranchName, ticketStartPrompt,
+	CheckFinding, checksFixPrompt, findingsFromLocalSonar, findingsFromSnyk, findingsFromSonar, jiraCommentRequest, mrDescriptionRequest, mrFixPrompt, parseReviewFindings,
+	reviewPrompt, reviewSummary, targetChoices, ticketBranchName, ticketStartPrompt,
 } from '../acp/teamFlowLogic';
 import { gitlabProjectOf } from '../acp/teamTools';
-import { commitAll, git } from '../acp/worktrees';
+import { AgentWorktree, commitAll, currentBranch, git, repositoryRoot, runWorktreeSetup, worktreeSetupCommand } from '../acp/worktrees';
 import type { AgentsView } from './agentsView';
+import { configSection } from './configuration';
 import type { TeamConnections } from './teamConnections';
-import { TeamFlowPanel } from './teamFlowPanel';
-import { ChecksView, FlowAttachment, FlowPerson, MoveTicketView, OpenMrView, ReleaseView, ReviewView, Tone, TransitionView } from './teamFlowProtocol';
+import type { FlowRecord } from '../acp/flowRecords';
+import { FlowRecording, TeamFlowPanel } from './teamFlowPanel';
+import { ChecksView, FlowAttachment, MoveTicketView, OpenMrView, ReviewView, Tone, TransitionView } from './teamFlowProtocol';
 import { openTeamLink } from './teamLinks';
+import { ticketPickItems } from './toolChips';
+
+/** Where checks run: a checkout on a branch, the repository it belongs to, and the agent working there when there is one. */
+interface ChecksPlace {
+	readonly cwd: string;
+	readonly title: string;
+	readonly repository: string;
+	readonly branch?: string;
+	readonly agentId?: string;
+	readonly worktree?: AgentWorktree;
+	/** What the checkout's setup did, for the page's subtitle: "setup: npm ci (done, 41 s)". */
+	readonly setup?: string;
+}
 
 /** Where an agent works and the GitLab project and branch there. */
 interface GitPlace {
@@ -36,15 +54,15 @@ interface GitPlace {
 /**
  * The team flows: start an agent on a Jira ticket, open a merge request,
  * move a ticket (with a comment) and log time, review someone else's merge
- * request, merge a release branch forward, and run the checks. Each opens
+ * request, and run the checks. Each opens
  * as a tab (TeamFlowPanel); nothing is written to Jira or GitLab until the
  * user presses the button that does it.
  */
 export class TeamFlows implements vscode.Disposable {
 
-	/** The last checks' one-line result per agent, offered as an attachment to its merge request. */
-	private readonly checkResults = new Map<string, string>();
 	private readonly disposables: vscode.Disposable[] = [];
+	/** A reopened flow's typed fields, for the flow its command opens next. */
+	private pendingRestore: { readonly command: string; readonly fields: NonNullable<FlowRecord['fields']> } | undefined;
 
 	constructor(private readonly extensionUri: vscode.Uri, private readonly tools: TeamConnections, private readonly agents: AgentsView) {
 		const run = <A extends unknown[]>(id: string, handler: (...args: A) => Promise<unknown>) => vscode.commands.registerCommand(id, (...args: A) => handler(...args).catch(err => void vscode.window.showErrorMessage(errorMessage(err))));
@@ -55,8 +73,13 @@ export class TeamFlows implements vscode.Disposable {
 			run('gemini.team.logTime', (key?: unknown) => this.moveTicket(str(key), undefined, undefined, 'log')),
 			run('gemini.team.reviewMergeRequest', (project?: unknown, iid?: unknown) => this.reviewMergeRequest(str(project), Number(iid) || undefined)),
 			run('gemini.team.fixMergeRequest', (project?: unknown, iid?: unknown) => this.fixMergeRequest(str(project), Number(iid) || undefined)),
-			run('gemini.team.mergeReleaseForward', (source?: unknown) => this.mergeReleaseForward(str(source))),
+			run('gemini.team.reopenFlow', (id?: unknown) => this.reopenFlow(str(id))),
+			run('gemini.team.discardFlow', async (id?: unknown) => str(id) ? this.tools.flows.close(str(id)!) : undefined),
+			run('gemini.team.settleIntent', (id?: unknown) => this.settleIntent(str(id))),
+			run('gemini.team.mergeMergeRequest', (project?: unknown, iid?: unknown, options?: unknown) => this.mergeMergeRequest(str(project), Number(iid) || undefined, isMergeOptions(options) ? options : {})),
+			run('gemini.team.reassignTicket', (key?: unknown) => this.reassignTicket(str(key))),
 			run('gemini.team.runChecks', (agent?: unknown) => this.runChecks(str(agent))),
+			run('gemini.team.runChecksOnBranch', (branch?: unknown) => this.runChecksOnBranch(str(branch))),
 		);
 	}
 
@@ -66,7 +89,40 @@ export class TeamFlows implements vscode.Disposable {
 
 	/** The last checks' result for an agent, in a line. */
 	checksSummary(agentId: string): string | undefined {
-		return this.checkResults.get(agentId);
+		return this.agents.checkResult(agentId);
+	}
+
+	// --- Unfinished after a quit
+
+	/** Starts a flow again from the inputs it was opened with; its old record goes, the new flow writes its own. */
+	private async reopenFlow(id: string | undefined): Promise<void> {
+		const record = id ? await this.tools.flows.get(id) : undefined;
+		if (!record) {
+			return;
+		}
+		await this.tools.flows.close(record.id);
+		// The flow the command opens takes back what the user had typed.
+		this.pendingRestore = record.fields && { command: record.command, fields: record.fields };
+		try {
+			await vscode.commands.executeCommand(record.command, ...record.args);
+		} finally {
+			this.pendingRestore = undefined;
+		}
+	}
+
+	/** A flow's recording, with what the user typed before a quit when it is the flow being reopened. */
+	private recording(command: string, args: readonly unknown[], about: string): FlowRecording {
+		const restore = this.pendingRestore?.command === command ? this.pendingRestore.fields : undefined;
+		this.pendingRestore = undefined;
+		return { store: this.tools.flows, command, args, about, ...restore ? { restore } : {} };
+	}
+
+	/** Marks an audit intent with no result as looked into: the user checked the tool. */
+	private async settleIntent(id: string | undefined): Promise<void> {
+		const entry = (await this.tools.audit.unfinished()).find(e => e.id === id);
+		if (entry) {
+			await this.tools.audit.settle(entry, 'checked by hand');
+		}
 	}
 
 	// --- Helpers
@@ -123,20 +179,6 @@ export class TeamFlows implements vscode.Disposable {
 		return undefined;
 	}
 
-	private async firstClone(gitlab: GitLabClient): Promise<{ folder: string; project: string; remote: string; defaults: TeamDefaults }> {
-		for (const f of vscode.workspace.workspaceFolders ?? []) {
-			if (f.uri.scheme !== 'file') {
-				continue;
-			}
-			const defaults = await this.tools.defaults(f.uri.fsPath);
-			const local = await gitlabProjectOf(f.uri.fsPath, gitlab.url, defaults).catch(() => undefined);
-			if (local?.project) {
-				return { folder: f.uri.fsPath, project: local.project, remote: local.remote ?? 'origin', defaults };
-			}
-		}
-		throw new Error(vscode.l10n.t("Open a clone of your GitLab project first."));
-	}
-
 	private async draft(request: { readonly system: string; readonly prompt: string }): Promise<string | undefined> {
 		try {
 			return (await this.agents.direct?.(request))?.trim() || undefined;
@@ -177,15 +219,14 @@ export class TeamFlows implements vscode.Disposable {
 			text: ticketStartPrompt(issue.key, issue.summary),
 		});
 		if (id && issue.statusCategory === 'new') {
-			await this.moveTicket(issue.key, id, 'In Progress');
+			await this.moveTicket(issue.key, id, 'start');
 		}
 	}
 
 	private async pickTicket(jira: JiraClient): Promise<string | undefined> {
-		const sprint = await jira.mySprint().catch(() => ({ issues: [] as JiraIssueSummary[] }));
-		const items = sprint.issues.map(issue => ({ label: issue.key, description: issue.summary, detail: issue.status }));
-		const picked = await vscode.window.showQuickPick(items, { title: vscode.l10n.t("Start Agent on a Jira Ticket"), placeHolder: vscode.l10n.t("Your tickets in the current sprint, or type a key such as ACME-412"), matchOnDescription: true });
-		return picked?.label;
+		const mine = await jira.myTickets().catch((): JiraMyTickets => ({ issues: [] }));
+		const picked = await vscode.window.showQuickPick(ticketPickItems(mine), { title: vscode.l10n.t("Start Agent on a Jira Ticket"), placeHolder: vscode.l10n.t("Your open tickets, this sprint's first"), matchOnDescription: true });
+		return picked?.key;
 	}
 
 	// --- Move a ticket, and log time
@@ -242,16 +283,15 @@ export class TeamFlows implements vscode.Disposable {
 								}
 							}
 							const comment = flow.field('addComment', current.addComment) ? flow.field('comment', current.comment).trim() : '';
-							await jira.transition(ticket, transition.id, current.visibility ? undefined : comment || undefined, fields);
-							if (comment && current.visibility) {
-								await jira.comment(ticket, comment, current.visibility);
-							}
+							// The agent's jira_transition, by transition id: the same checks, the comment's visibility and the audit record.
+							await this.tools.write('jira_transition', { key: ticket, to: transition.to, transition: transition.id, fields, ...comment ? { comment } : {} }, place?.cwd);
 							done.push(vscode.l10n.t("Moved {0} to {1}{2}.", ticket, transition.to, comment ? vscode.l10n.t(" with the comment") : ''));
 						}
 						if (logTime) {
 							const date = flow.field('date', current.date);
 							const started = /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T${new Date().toTimeString().slice(0, 8)}`) : new Date();
-							await jira.logWork(ticket, spent, flow.field('workComment', current.workComment) || undefined, started);
+							const workComment = flow.field('workComment', current.workComment);
+							await this.tools.write('jira_log_time', { key: ticket, spent, started: started.toISOString(), ...workComment ? { comment: workComment } : {} }, place?.cwd);
 							done.push(vscode.l10n.t("Logged {0} on {1}.", formatDuration(parseDuration(spent)), ticket));
 						}
 						if (!done.length) {
@@ -262,7 +302,7 @@ export class TeamFlows implements vscode.Disposable {
 				case 'open':
 					return void openTeamLink(view.url);
 			}
-		});
+		}, vscode.ViewColumn.Active, this.recording(mode === 'log' ? 'gemini.team.logTime' : 'gemini.team.moveTicket', mode === 'log' ? [ticket] : [ticket, agent, suggest], ticket));
 		try {
 			const [issue, transitions, me, place2] = await Promise.all([
 				jira.issue(ticket),
@@ -273,8 +313,8 @@ export class TeamFlows implements vscode.Disposable {
 			mrInfo = place2 && { iid: place2.iid, url: place2.url, target: place2.targetBranch };
 			const logged = await jira.worklogTotals(ticket, me?.accountId).catch(() => undefined);
 			const views: TransitionView[] = transitions.map(t => ({ id: t.id, name: t.name, to: t.to, tone: categoryTone(t.toCategory), fields: t.fields }));
-			const wanted = suggest?.toLowerCase();
-			const selected = wanted ? views.find(t => t.to.toLowerCase() === wanted || t.name.toLowerCase() === wanted)?.id : undefined;
+			// The team's transition ids from .gemini/geminicode-tools.json when set, else the default workflow's status names.
+			const selected = suggestedTransition(views, suggest, defaults.jira?.transitions);
 			flow.setView({
 				kind: 'moveTicket', mode, key: ticket, summary: issue.summary, url: issue.url, status: issue.status, statusTone: categoryTone(issue.statusCategory),
 				transitions: views, fieldValues: {}, comment: '', commentRev: 0, generating: false,
@@ -312,7 +352,7 @@ export class TeamFlows implements vscode.Disposable {
 		const gitlab = this.gitlab();
 		const agentId = this.agentId(agent);
 		const place = this.agents.agentPlace(agentId)!;
-		const flow: TeamFlowPanel<OpenMrView> = new TeamFlowPanel<OpenMrView>(this.extensionUri, vscode.l10n.t("Open Merge Request"), 'gitlab', vscode.l10n.t("Reading the branch..."), (action, value) => this.openMrAction(flow, agentId, gp!, action, value));
+		const flow: TeamFlowPanel<OpenMrView> = new TeamFlowPanel<OpenMrView>(this.extensionUri, vscode.l10n.t("Open Merge Request"), 'gitlab', vscode.l10n.t("Reading the branch..."), (action, value) => this.openMrAction(flow, agentId, gp!, action, value), vscode.ViewColumn.Active, this.recording('gemini.team.openMergeRequest', [agentId], place.title));
 		let gp: GitPlace | undefined;
 		try {
 			gp = await this.gitPlace(place.cwd, gitlab);
@@ -327,7 +367,7 @@ export class TeamFlows implements vscode.Disposable {
 				gitlab.members(gp.project).catch(() => []),
 			]);
 			const targets = targetChoices(branches.map(b => b.name), { releasePattern: defaults.gitlab?.releaseBranches, fixVersions: ticket?.fixVersions, defaultTarget: defaults.gitlab?.defaultTarget, source: gp.branch });
-			const checks = this.checkResults.get(agentId);
+			const checks = this.agents.checkResult(agentId);
 			flow.setView({
 				kind: 'openMr', step: 'target', project: gp.project, source: gp.branch, host: new URL(gitlab.url).host, account: me.username,
 				targets, target: targets.find(t => t.suggested)?.branch ?? targets[0]?.branch,
@@ -397,6 +437,7 @@ export class TeamFlows implements vscode.Disposable {
 					if (!title || !current.target) {
 						throw new Error(vscode.l10n.t("Enter a title."));
 					}
+					const target = current.target;
 					const dirty = (await git(gp.cwd, ['status', '--porcelain'])).trim();
 					if (dirty) {
 						await commitAll(gp.cwd, title);
@@ -416,16 +457,18 @@ export class TeamFlows implements vscode.Disposable {
 					if (extra.length) {
 						description = `${description.trim()}\n\n### Attachments\n\n${extra.join('\n\n')}`;
 					}
-					const mr = await gitlab.createMergeRequest(gp.project, {
-						sourceBranch: gp.branch, targetBranch: current.target, title, description,
-						draft: flow.field('draft', current.draft), removeSourceBranch: flow.field('deleteBranch', current.deleteBranch),
-						reviewerIds: current.reviewers.map(r => r.id),
-					});
+					// The agent's gitlab_create_mr, from the agent's folder: the same project and branch, and the audit record.
+					const made = await this.tools.write('gitlab_create_mr', {
+						target, title, description,
+						draft: flow.field('draft', current.draft), deleteBranch: flow.field('deleteBranch', current.deleteBranch),
+						reviewers: current.reviewers.map(r => r.id),
+					}, this.agents.agentPlace(agentId)?.cwd);
+					const mr = { iid: Number(made.data?.iid), url: String(made.data?.url ?? '') };
 					flow.dispose();
 					const open = vscode.l10n.t("Open in GitLab");
 					void vscode.window.showInformationMessage(vscode.l10n.t("Opened merge request !{0}.", mr.iid), open).then(choice => choice === open ? openTeamLink(mr.url) : undefined);
 					if (current.ticket && flow.field('updateJira', current.updateJira)) {
-						await this.moveTicket(current.ticket.key, agentId, 'In Review');
+						await this.moveTicket(current.ticket.key, agentId, 'review');
 					}
 				});
 		}
@@ -504,19 +547,17 @@ export class TeamFlows implements vscode.Disposable {
 						const current = flow.view!;
 						const ticked = current.findings.filter(f => flow.field(`check:${f.id}`, f.checked)).map(f => ({ ...f, comment: flow.field(`comment:${f.id}`, f.comment) }));
 						let posted = 0;
+						// The agent's gitlab_reply for each comment, and the page-only approve and request changes, on the same path.
+						const mr = { project: p, mr: String(n) };
 						for (const f of ticked) {
-							if (f.file && f.line) {
-								await gitlab.commentOnLine(p, n, f.file, f.line, f.comment);
-							} else {
-								await gitlab.comment(p, n, f.file ? `**${f.file}**\n\n${f.comment}` : f.comment);
-							}
+							await this.tools.write('gitlab_reply', { ...mr, ...f.file && f.line ? { path: f.file, line: f.line, text: f.comment } : { text: f.file ? `**${f.file}**\n\n${f.comment}` : f.comment } });
 							posted++;
 						}
 						const mode = str(value);
 						if (mode === 'request') {
-							await gitlab.requestChanges(p, n, vscode.l10n.t("Requesting changes: see the {0} comments above.", posted));
+							await this.tools.write('gitlab_request_changes', { ...mr, text: vscode.l10n.t("Requesting changes: see the {0} comments above.", posted) });
 						} else if (mode === 'approve') {
-							await gitlab.approve(p, n);
+							await this.tools.write('gitlab_approve', mr);
 						}
 						flow.update({
 							done: mode === 'approve' ? vscode.l10n.t("Approved !{0}{1}.", n, posted ? vscode.l10n.t(" and posted {0} comments", posted) : '')
@@ -526,7 +567,7 @@ export class TeamFlows implements vscode.Disposable {
 						});
 					});
 			}
-		}, vscode.ViewColumn.Beside);
+		}, vscode.ViewColumn.Beside, this.recording('gemini.team.reviewMergeRequest', [p, n], `!${n}`));
 		try {
 			const [m, diffs] = await Promise.all([gitlab.mr(p, n), gitlab.diffs(p, n)]);
 			const clone = await this.cloneOf(p, gitlab);
@@ -599,6 +640,95 @@ export class TeamFlows implements vscode.Disposable {
 		}
 	}
 
+	// --- Merge a merge request
+
+	/**
+	 * Merges a merge request once GitLab says it can be: the checks are read
+	 * live and shown in a dialog, the merge names the head they were read
+	 * for, and the audit log gets the record. With no merge request named,
+	 * the agent in front's is taken.
+	 */
+	private async mergeMergeRequest(project: string | undefined, iid: number | undefined, options: MergeOptions = {}): Promise<void> {
+		const gitlab = this.gitlab();
+		if (!project || !iid) {
+			const agentId = this.agentId(undefined);
+			const found = await this.mrOfAgent(agentId);
+			if (!found) {
+				throw new Error(vscode.l10n.t("The agent in front has no open merge request."));
+			}
+			const place = await this.gitPlace(this.agents.agentPlace(agentId)!.cwd, gitlab);
+			project = place.project;
+			iid = found.iid;
+		}
+		const p = project;
+		const n = iid;
+		const [mr, readiness] = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Reading !{0}...", n) }, () => Promise.all([gitlab.mr(p, n, false), gitlab.mergeReadiness(p, n)]));
+		// allow-any-unicode-next-line
+		const lines = readiness.checks.map(c => `${c.ok ? '✓' : '✗'} ${c.name}: ${c.detail}`);
+		if (!readiness.ready) {
+			await vscode.window.showWarningMessage(vscode.l10n.t("!{0} can't be merged yet.", n), { modal: true, detail: lines.join('\n') });
+			return;
+		}
+		const squash = options.squash ?? readiness.squash;
+		const removeSourceBranch = options.removeSourceBranch ?? readiness.removeSourceBranch;
+		const merge = vscode.l10n.t("Merge");
+		const choice = await vscode.window.showWarningMessage(
+			vscode.l10n.t("Merge !{0} \"{1}\" into {2}?", n, mr.title, mr.targetBranch),
+			{ modal: true, detail: [...lines, '', vscode.l10n.t("At commit {0}{1}{2}. GitLab refuses if the branch moved meanwhile.", readiness.sha.slice(0, 8), squash ? vscode.l10n.t(", squashed") : '', removeSourceBranch ? vscode.l10n.t(", deleting the source branch") : '')].join('\n') },
+			merge,
+		);
+		if (choice !== merge) {
+			return;
+		}
+		// The agent's gitlab_merge, at the head the user confirmed: it reads GitLab's checks again and refuses if the branch moved.
+		const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Merging !{0}...", n) }, () =>
+			this.tools.write('gitlab_merge', { project: p, mr: String(n), sha: readiness.sha, squash, deleteBranch: removeSourceBranch }));
+		const merged = { sha: typeof result.data?.sha === 'string' ? result.data.sha : undefined };
+		const defaults = await this.tools.workspaceDefaults();
+		const ticket = options.moveTicket ?? (this.tools.connectors.jira ? jiraKeyIn(`${mr.sourceBranch} ${mr.title}`, defaults.jira?.projects) : undefined);
+		if (options.moveTicket) {
+			// The panel's "Move … to Done" was ticked: the move opens at once, with its own confirmation.
+			void vscode.window.showInformationMessage(vscode.l10n.t("Merged !{0}{1}.", n, merged.sha ? ` (${merged.sha.slice(0, 8)})` : ''));
+			await this.moveTicket(ticket, undefined, 'done');
+			return;
+		}
+		const open = vscode.l10n.t("Open in GitLab");
+		const move = ticket ? vscode.l10n.t("Move {0}...", ticket) : undefined;
+		const next = await vscode.window.showInformationMessage(vscode.l10n.t("Merged !{0}{1}.", n, merged.sha ? ` (${merged.sha.slice(0, 8)})` : ''), ...move ? [move, open] : [open]);
+		if (next === open) {
+			await openTeamLink(mr.url);
+		} else if (move && next === move) {
+			await this.moveTicket(ticket, undefined, 'done');
+		}
+	}
+
+	// --- Reassign a ticket
+
+	/** Hands a ticket to someone the project allows, to the user, or to nobody. */
+	private async reassignTicket(key: string | undefined): Promise<void> {
+		const jira = this.jira();
+		key ??= await this.pickTicket(jira);
+		if (!key) {
+			return;
+		}
+		const ticket = key;
+		const [me, people] = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Reading who can take {0}...", ticket) }, () => Promise.all([jira.myself(), jira.assignableUsers(ticket)]));
+		type Pick = vscode.QuickPickItem & { readonly accountId: string | null };
+		const items: Pick[] = [
+			{ label: vscode.l10n.t("$(account) Me"), description: me.displayName, accountId: me.accountId },
+			{ label: vscode.l10n.t("$(circle-slash) Unassigned"), accountId: null },
+			{ label: '', kind: vscode.QuickPickItemKind.Separator, accountId: null },
+			...people.filter(u => u.accountId !== me.accountId).map((u): Pick => ({ label: u.displayName, description: u.emailAddress, accountId: u.accountId })),
+		];
+		const picked = await vscode.window.showQuickPick(items, { title: vscode.l10n.t("Reassign {0}", ticket), placeHolder: vscode.l10n.t("Who should have it? Jira lists the people the project allows."), matchOnDescription: true });
+		if (!picked || picked.kind === vscode.QuickPickItemKind.Separator) {
+			return;
+		}
+		const who = picked.accountId === null ? vscode.l10n.t("nobody") : picked.label.replace(/^\$\([^)]*\)\s*/, '');
+		await this.tools.write('jira_assign', { key: ticket, to: who, accountId: picked.accountId });
+		void vscode.window.showInformationMessage(picked.accountId === null ? vscode.l10n.t("{0} is now unassigned.", ticket) : vscode.l10n.t("Assigned {0} to {1}.", ticket, who));
+	}
+
 	// --- Fix a merge request's pipeline (from Home)
 
 	private async fixMergeRequest(project: string | undefined, iid: number | undefined): Promise<void> {
@@ -625,139 +755,73 @@ export class TeamFlows implements vscode.Disposable {
 		await this.agents.startTeamAgent({ folder: clone.folder, title: vscode.l10n.t("Fix !{0} {1}", iid, mr.title), worktree, text });
 	}
 
-	// --- Merge a release branch forward
-
-	private async mergeReleaseForward(source: string | undefined): Promise<void> {
-		const gitlab = this.gitlab();
-		let repo: { folder: string; project: string; remote: string; defaults: TeamDefaults } | undefined;
-		const flow: TeamFlowPanel<ReleaseView> = new TeamFlowPanel<ReleaseView>(this.extensionUri, vscode.l10n.t("Merge Release Branch Forward"), 'gitlab', vscode.l10n.t("Reading the release branches..."), async (action, value) => {
-			const view = flow.view;
-			if (!view || !repo) {
-				return;
-			}
-			switch (action) {
-				case 'source':
-					return this.checkRelease(flow, repo, str(value)!, branchNames);
-				case 'reviewers':
-					flow.update({ reviewers: view.members.filter(m => Array.isArray(value) && value.includes(m.id)) });
-					return;
-				case 'openAgent':
-					return this.agents.open(str(value)!);
-				case 'openUrl':
-					return void openTeamLink(str(value)!);
-				case 'push':
-					return flow.busy(vscode.l10n.t("Pushing..."), () => this.pushRelease(flow, repo!, str(value)!));
-				case 'submit':
-					return flow.busy(vscode.l10n.t("Merging..."), () => this.startRelease(flow, repo!));
-			}
-		});
-		let branchNames: string[] = [];
-		try {
-			repo = await this.firstClone(gitlab);
-			const [branches, members] = await Promise.all([gitlab.branches(repo.project), gitlab.members(repo.project).catch(() => [])]);
-			branchNames = branches.map(b => b.name);
-			const pattern = repo.defaults.gitlab?.releaseBranches;
-			const sources = sortReleaseBranches(branchNames.filter(b => isReleaseBranch(b, pattern)));
-			if (!sources.length) {
-				throw new Error(vscode.l10n.t("{0} has no release branches (named like {1}).", repo.project, pattern ?? 'release/*'));
-			}
-			flow.setView({ kind: 'release', sources, targets: [], tickets: [], addTickets: false, reviewers: [], members: members.map(m => ({ id: m.id, username: m.username, name: m.name })), fetching: true, started: false });
-			await this.checkRelease(flow, repo, source && sources.includes(source) ? source : sources[0], branchNames);
-		} catch (err) {
-			flow.fail(err);
-		}
-	}
-
-	private async checkRelease(flow: TeamFlowPanel<ReleaseView>, repo: { folder: string; project: string; remote: string; defaults: TeamDefaults }, source: string, branches: readonly string[]): Promise<void> {
-		const targets = releaseTargets(source, branches, { releasePattern: repo.defaults.gitlab?.releaseBranches, defaultTarget: repo.defaults.gitlab?.defaultTarget });
-		flow.update({ source, fetching: true, targets: targets.map(t => ({ ...t, checking: true, conflicts: [] })), tickets: [] });
-		const jira = this.tools.connectors.jira;
-		const version = source.replace(/^.*\//, '');
-		void (jira ? jira.search(`fixVersion = "${version.replace(/"/g, '')}" ORDER BY key`, 50).catch(() => []) : Promise.resolve([])).then(issues => {
-			if (flow.view?.source === source) {
-				flow.update({ tickets: issues.map(i => i.key), addTickets: issues.length > 0 });
-			}
-		});
-		await fetchBranches(repo.folder, repo.remote, [source, ...targets.map(t => t.branch)]);
-		flow.update({ fetching: false });
-		await Promise.all(targets.map(async target => {
-			const check = await checkMerge(repo.folder, repo.remote, source, target.branch).catch(() => undefined);
-			const view = flow.view;
-			if (!view || view.source !== source) {
-				return;
-			}
-			flow.update({
-				targets: view.targets.map(t => t.branch === target.branch ? { ...t, checking: false, ticked: flow.field(`tick:${t.branch}`, t.ticked) && (check?.behind ?? 1) > 0, ...check ? { behind: check.behind, clean: check.clean, conflicts: check.conflicts } : {} } : { ...t, ticked: flow.field(`tick:${t.branch}`, t.ticked) }),
-			});
-		}));
-	}
-
-	private async startRelease(flow: TeamFlowPanel<ReleaseView>, repo: { folder: string; project: string; remote: string }): Promise<void> {
-		const view = flow.view!;
-		const source = view.source!;
-		const ticked = view.targets.filter(t => flow.field(`tick:${t.branch}`, t.ticked) && (t.behind ?? 1) > 0);
-		if (!ticked.length) {
-			throw new Error(vscode.l10n.t("Tick the branches to merge into."));
-		}
-		flow.update({ started: true });
-		const tickets = flow.field('addTickets', view.addTickets) ? view.tickets : [];
-		for (const target of ticked) {
-			const branch = releaseMergeBranch(source, target.branch);
-			let result: NonNullable<ReleaseView['targets'][number]['result']>;
-			try {
-				const merged = await mergeInWorktree(repo.folder, repo.remote, source, target.branch, branch);
-				if (merged.kind === 'merged') {
-					await pushBranch(merged.worktree.folder, repo.remote, branch);
-					const mr = await this.openReleaseMr(repo.project, source, target.branch, branch, tickets, false, view.reviewers);
-					await git(repo.folder, ['worktree', 'remove', '--force', merged.worktree.folder]).catch(() => undefined);
-					result = { text: vscode.l10n.t("Opened !{0}", mr.iid), tone: 'ok', url: mr.url };
-				} else {
-					const agentId = await this.agents.startTeamAgent({
-						folder: repo.folder, title: vscode.l10n.t("Merge {0} into {1}", source, target.branch), worktree: merged.worktree,
-						text: releaseConflictPrompt(source, target.branch, merged.files),
-					});
-					this.releaseWork.set(`${source}→${target.branch}`, { folder: merged.worktree.folder, branch, agentId });
-					result = { text: vscode.l10n.t("An agent is resolving {0} conflicts. Check its work, then push.", merged.files.length), tone: 'warn', ...agentId ? { agentId } : {}, canPush: true };
-				}
-			} catch (err) {
-				result = { text: errorMessage(err), tone: 'error' };
-			}
-			const now = flow.view!;
-			flow.update({ targets: now.targets.map(t => t.branch === target.branch ? { ...t, result } : t) });
-		}
-		await this.agents.open(view.targets.map(t => t.result?.agentId).find(Boolean) ?? '').catch(() => undefined);
-	}
-
-	private readonly releaseWork = new Map<string, { folder: string; branch: string; agentId?: string }>();
-
-	private async pushRelease(flow: TeamFlowPanel<ReleaseView>, repo: { folder: string; project: string; remote: string }, target: string): Promise<void> {
-		const view = flow.view!;
-		const source = view.source!;
-		const work = this.releaseWork.get(`${source}→${target}`);
-		if (!work) {
-			throw new Error(vscode.l10n.t("Nothing to push for {0}.", target));
-		}
-		if (await mergeUnfinished(work.folder)) {
-			throw new Error(vscode.l10n.t("The merge into {0} isn't finished: files still conflict or it isn't committed.", target));
-		}
-		await pushBranch(work.folder, repo.remote, work.branch);
-		const tickets = flow.field('addTickets', view.addTickets) ? view.tickets : [];
-		const mr = await this.openReleaseMr(repo.project, source, target, work.branch, tickets, true, view.reviewers);
-		this.releaseWork.delete(`${source}→${target}`);
-		const now = flow.view!;
-		flow.update({ targets: now.targets.map(t => t.branch === target ? { ...t, result: { text: vscode.l10n.t("Opened !{0}", mr.iid), tone: 'ok', url: mr.url } } : t) });
-	}
-
-	private openReleaseMr(project: string, source: string, target: string, branch: string, tickets: readonly string[], resolved: boolean, reviewers: readonly FlowPerson[]) {
-		const { title, description } = releaseMergeMr(source, target, tickets, resolved);
-		return this.gitlab().createMergeRequest(project, { sourceBranch: branch, targetBranch: target, title, description, removeSourceBranch: true, reviewerIds: reviewers.map(r => r.id) });
-	}
-
 	// --- Checks
 
+	/** Checks for an agent's branch, in its folder; with no agent in front, for a branch the user picks. */
 	private async runChecks(agent: string | undefined): Promise<void> {
-		const agentId = this.agentId(agent);
-		const place = this.agents.agentPlace(agentId)!;
+		const id = agent ?? this.agents.activeAgentId();
+		const place = id ? this.agents.agentPlace(id) : undefined;
+		if (!id || !place) {
+			return this.runChecksOnBranch(undefined);
+		}
+		await this.openChecks({ cwd: place.cwd, title: place.title, repository: place.folder, agentId: id, ...place.branch ? { branch: place.branch } : {} });
+	}
+
+	/**
+	 * Checks on any branch before a merge request exists: the repository's own
+	 * branch, an agent's, a local or a remote one. A branch that isn't checked
+	 * out gets a worktree of its own (with the repository's setup run in it),
+	 * which later runs reuse. Fix starts an agent there when none works on it.
+	 */
+	private async runChecksOnBranch(branch: string | undefined): Promise<void> {
+		const repository = await this.checksRepository();
+		const gitlab = this.tools.connectors.gitlab;
+		const remote = (gitlab ? await gitlabProjectOf(repository, gitlab.url, await this.tools.defaults(repository)).catch(() => ({ remote: undefined })) : { remote: undefined }).remote ?? 'origin';
+		if (!branch) {
+			const [current, branches] = await Promise.all([currentBranch(repository).catch(() => undefined), listBranches(repository, remote)]);
+			const agents = this.agents.summaries().flatMap(a => a.worktree?.branch ? [{ branch: a.worktree.branch, title: a.title }] : []);
+			const kinds = { current: vscode.l10n.t("checked out here"), agent: vscode.l10n.t("agent"), local: vscode.l10n.t("local branch"), remote: vscode.l10n.t("on {0}", remote) };
+			const ownCheckout = vscode.l10n.t("gets a checkout of its own, reused next time");
+			const picked = await vscode.window.showQuickPick(
+				branchChoices(current, agents, branches.locals, branches.remotes).map(choice => ({ label: choice.branch, description: choice.kind === 'agent' ? `${kinds.agent}: ${choice.agent}` : kinds[choice.kind], ...choice.kind === 'local' || choice.kind === 'remote' ? { detail: ownCheckout } : {}, choice })),
+				{ title: vscode.l10n.t("Run Checks on a Branch"), placeHolder: vscode.l10n.t("A branch that isn't checked out gets a checkout of its own, which later runs reuse"), matchOnDescription: true },
+			);
+			if (!picked) {
+				return;
+			}
+			branch = picked.choice.branch;
+		}
+		const chosen = branch;
+		const checkout = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Checking out {0}...", chosen) }, () => checkoutForChecks(repository, remote, chosen));
+		let setup: string | undefined;
+		if (checkout.created && checkout.worktree) {
+			const worktree = checkout.worktree;
+			const command = await worktreeSetupCommand(repository, vscode.workspace.getConfiguration(configSection).get<string>('agents.worktreeSetup'));
+			if (command) {
+				const started = Date.now();
+				const code = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Setting up {0} for the checks...", chosen) }, () => runWorktreeSetup(command, worktree, repository, () => undefined));
+				setup = code === 0 ? vscode.l10n.t("setup: {0} (done, {1} s)", command, Math.round((Date.now() - started) / 1000)) : vscode.l10n.t("setup: {0} (ended with code {1})", command, code);
+				if (code !== 0) {
+					void vscode.window.showWarningMessage(vscode.l10n.t("The setup command for {0} ended with code {1}; the checks run on the checkout as it is.", chosen, code));
+				}
+			}
+		}
+		const agent = this.agents.summaries().find(a => a.worktree?.branch === chosen && a.state !== 'stopped');
+		await this.openChecks({ cwd: checkout.cwd, title: chosen, branch: chosen, repository, ...agent ? { agentId: agent.id } : {}, ...checkout.worktree ? { worktree: checkout.worktree } : {}, ...setup ? { setup } : {} });
+	}
+
+	/** The repository Run Checks works in: the open folder's, else the agent in front's. */
+	private async checksRepository(): Promise<string> {
+		const activeId = this.agents.activeAgentId();
+		const folder = vscode.workspace.workspaceFolders?.find(f => f.uri.scheme === 'file')?.uri.fsPath ?? (activeId ? this.agents.agentPlace(activeId)?.folder : undefined);
+		if (!folder) {
+			throw new Error(vscode.l10n.t("Open your repository's folder first."));
+		}
+		return await repositoryRoot(folder) ?? folder;
+	}
+
+	private async openChecks(start: ChecksPlace): Promise<void> {
+		let place = start;
 		const flow: TeamFlowPanel<ChecksView> = new TeamFlowPanel<ChecksView>(this.extensionUri, vscode.l10n.t("Checks: {0}", place.title), this.tools.connected.has('snyk') ? 'snyk' : 'sonar', vscode.l10n.t("Starting the checks..."), async (action, value) => {
 			const view = flow.view;
 			if (!view) {
@@ -765,7 +829,7 @@ export class TeamFlows implements vscode.Disposable {
 			}
 			switch (action) {
 				case 'again':
-					return this.check(flow, agentId);
+					return this.check(flow, place);
 				case 'open':
 					return void openTeamLink(str(value)!);
 				case 'fix':
@@ -775,25 +839,38 @@ export class TeamFlows implements vscode.Disposable {
 					if (!chosen.length) {
 						return;
 					}
-					await this.send(agentId, checksFixPrompt(chosen));
-					flow.update({ sent: vscode.l10n.t("Sent {0} to {1}.", chosen.length === 1 ? vscode.l10n.t("the finding") : vscode.l10n.t("{0} findings", chosen.length), place.title) });
+					const prompt = checksFixPrompt(chosen);
+					if (place.agentId) {
+						await this.send(place.agentId, prompt);
+					} else {
+						// No agent works on this branch yet: start one in its checkout, with the findings as its first prompt.
+						const id = await this.agents.startTeamAgent({ folder: place.repository, title: vscode.l10n.t("Fix checks on {0}", place.branch ?? place.title), text: prompt, ...place.worktree ? { worktree: place.worktree } : {} });
+						if (!id) {
+							throw new Error(vscode.l10n.t("The agent couldn't start."));
+						}
+						place = { ...place, agentId: id };
+						flow.update({ agentId: id });
+					}
+					const target = place.agentId ? this.agents.agentPlace(place.agentId)?.title ?? place.title : place.title;
+					flow.update({ sent: vscode.l10n.t("Sent {0} to {1}.", chosen.length === 1 ? vscode.l10n.t("the finding") : vscode.l10n.t("{0} findings", chosen.length), target) });
 					return;
 				}
 			}
 		}, vscode.ViewColumn.Beside);
-		await this.check(flow, agentId);
+		await this.check(flow, place);
 	}
 
-	private async check(flow: TeamFlowPanel<ChecksView>, agentId: string): Promise<void> {
-		const place = this.agents.agentPlace(agentId)!;
+	private async check(flow: TeamFlowPanel<ChecksView>, place: ChecksPlace): Promise<void> {
 		const { snyk, sonar } = this.tools.connectors;
-		const branch = (await git(place.cwd, ['rev-parse', '--abbrev-ref', 'HEAD']).catch(() => '')).trim() || undefined;
+		const branch = place.branch ?? ((await git(place.cwd, ['rev-parse', '--abbrev-ref', 'HEAD']).catch(() => '')).trim() || undefined);
 		const rows: ChecksView['rows'][number][] = [
 			snyk ? { tool: 'snyk', name: vscode.l10n.t("Snyk: dependencies"), state: 'running', detail: vscode.l10n.t("Running snyk test...") } : { tool: 'snyk', name: vscode.l10n.t("Snyk"), state: 'off', detail: vscode.l10n.t("Not connected") },
 			...snyk ? [{ tool: 'snyk' as const, name: vscode.l10n.t("Snyk Code: source"), state: 'running' as const, detail: vscode.l10n.t("Running snyk code test...") }] : [],
 			sonar ? { tool: 'sonar', name: vscode.l10n.t("SonarQube: new code"), state: 'running', detail: vscode.l10n.t("Reading the last analysis...") } : { tool: 'sonar', name: 'SonarQube', state: 'off', detail: vscode.l10n.t("Not connected") },
+			// SonarQube's own analysers on this Mac, before anything is pushed, when its server runs as a child.
+			...sonar && this.tools.sonarServerFor(place.cwd) ? [{ tool: 'sonar' as const, name: vscode.l10n.t("SonarQube: changed files, on this Mac"), state: 'running' as const, detail: vscode.l10n.t("Analysing the files this branch changed...") }] : [],
 		];
-		flow.setView({ kind: 'checks', agentTitle: place.title, agentId, ...branch ? { branch } : {}, rows, findings: [] });
+		flow.setView({ kind: 'checks', agentTitle: place.title, ...place.agentId ? { agentId: place.agentId } : {}, ...branch ? { branch } : {}, where: tildify(place.cwd), ...place.setup ? { setup: place.setup } : {}, rows, findings: [] });
 		const results: string[] = [];
 		const setRow = (name: string, row: Partial<ChecksView['rows'][number]>, findings: readonly CheckFinding[] = []) => {
 			const view = flow.view;
@@ -836,10 +913,34 @@ export class TeamFlows implements vscode.Disposable {
 				}
 			})());
 		}
+		const local = sonar && this.tools.sonarServerFor(place.cwd);
+		if (local) {
+			const name = vscode.l10n.t("SonarQube: changed files, on this Mac");
+			tasks.push((async () => {
+				const defaults = await this.tools.defaults(place.cwd);
+				const key = defaults.sonar?.projectKey ?? await sonarProjectKeyIn(place.cwd);
+				if (!key) {
+					setRow(name, { state: 'off', detail: vscode.l10n.t("No SonarQube project key.") });
+					return;
+				}
+				try {
+					const files = await changedFiles(place.cwd, defaults.gitlab?.defaultTarget ?? 'main');
+					const found = await analyzeFiles(local, key, files);
+					const findings = findingsFromLocalSonar(found.issues);
+					const detail = !found.analysed.length && !found.failed.length
+						? vscode.l10n.t("No changed file in a language SonarQube analyses.")
+						: [vscode.l10n.t("{0} files analysed", found.analysed.length), found.skipped.length ? vscode.l10n.t("{0} skipped", found.skipped.length) : '', found.failed.length ? vscode.l10n.t("{0} failed: {1}", found.failed.length, found.failed[0].reason) : ''].filter(Boolean).join(' · ');
+					results.push(vscode.l10n.t("SonarQube on this Mac: {0} issues in {1} changed files", found.issues.length, found.analysed.length));
+					setRow(name, { state: found.failed.length && !found.analysed.length ? 'problem' : 'done', detail, pill: findings.length ? { text: String(findings.length), tone: findings.some(f => f.severity === 'blocker' || f.severity === 'critical' || f.severity === 'high') ? 'error' : 'warn' } : { text: vscode.l10n.t("clean"), tone: 'ok' } }, findings);
+				} catch (err) {
+					setRow(name, { state: 'problem', detail: errorMessage(err) });
+				}
+			})());
+		}
 		await Promise.all(tasks);
 		const summary = results.filter(Boolean).join(' · ');
-		if (summary) {
-			this.checkResults.set(agentId, summary);
+		if (summary && place.agentId) {
+			this.agents.setCheckResult(place.agentId, summary);
 		}
 	}
 }
@@ -855,6 +956,18 @@ function today(): string {
 
 function categoryTone(category: string): Tone {
 	return category === 'done' ? 'ok' : category === 'indeterminate' ? 'info' : 'muted';
+}
+
+/** What the merge request panel asks the merge to do besides GitLab's defaults. */
+export interface MergeOptions {
+	readonly squash?: boolean;
+	readonly removeSourceBranch?: boolean;
+	/** The ticket to move to Done once merged. */
+	readonly moveTicket?: string;
+}
+
+function isMergeOptions(value: unknown): value is MergeOptions {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function pipelineTone(status: string): Tone {

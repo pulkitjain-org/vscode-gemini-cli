@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { cardOrder, firstName, forwardPairs, moveCard, needsYou, partOfDay, sprintProgress, ticketOrder, toggleCard } from '../../src/acp/dashboard';
+import { cardOrder, firstName, isReadyToMerge, moveCard, needsYou, partOfDay, sprintProgress, ticketGroups, ticketOrder, toggleCard } from '../../src/acp/dashboard';
 import type { GitLabMr, GitLabMrSummary } from '../../src/acp/gitlab';
 import type { JiraIssueSummary } from '../../src/acp/jira';
 
@@ -25,11 +25,21 @@ describe('dashboard', () => {
 		const items = needsYou({
 			agents: [{ id: 'a1', title: 'ACME-409', state: 'waiting', status: 'Wants to run npm install' }, { id: 'a2', title: 'x', state: 'working', status: '' }],
 			reviews,
-			mine: [mr(318, { pipeline: { id: 9, status: 'failed' } }), mr(301, { pipeline: { id: 8, status: 'success' } })],
+			mine: [mr(318, { pipeline: { id: 9, status: 'failed' } }), mr(301, { pipeline: { id: 8, status: 'success' }, mergeStatus: 'mergeable', approvals: { given: 2, required: 2, approvedByMe: false } })],
 			tickets: [ticket('ACME-377', 'Reopened', 'new'), ticket('ACME-415', 'To Do', 'new')],
-		});
-		expect(items.map(i => i.kind)).toEqual(['agentWaiting', 'pipelineFailed', 'review', 'reopened']);
+		}, 5);
+		expect(items.map(i => i.kind)).toEqual(['agentWaiting', 'pipelineFailed', 'readyToMerge', 'review', 'reopened']);
 		expect(needsYou({ agents: [], reviews }, 4)).toHaveLength(1);
+	});
+
+	it('says a merge request is ready only when GitLab, the approvals and the pipeline agree', () => {
+		const ready = mr(1, { mergeStatus: 'mergeable', approvals: { given: 1, required: 1, approvedByMe: true }, pipeline: { id: 1, status: 'success' } });
+		expect(isReadyToMerge(ready)).toBe(true);
+		expect(isReadyToMerge({ ...ready, approvals: { given: 0, required: 1, approvedByMe: false } })).toBe(false);
+		expect(isReadyToMerge({ ...ready, mergeStatus: 'ci_still_running' })).toBe(false);
+		expect(isReadyToMerge({ ...ready, draft: true })).toBe(false);
+		expect(isReadyToMerge({ ...ready, pipeline: { id: 1, status: 'failed' } })).toBe(false);
+		expect(isReadyToMerge({ ...ready, approvals: undefined })).toBe(true);
 	});
 
 	it('counts sprint progress and days left', () => {
@@ -44,14 +54,22 @@ describe('dashboard', () => {
 		expect(order.map(i => i.key)).toEqual(['A-4', 'A-3', 'A-2', 'A-1']);
 	});
 
+	it('lists the running sprint\'s tickets first, then the rest, each to do first', () => {
+		const mine = (key: string, status: string, category: JiraIssueSummary['statusCategory'], inSprint: boolean) => ({ ...ticket(key, status, category), inSprint });
+		const groups = ticketGroups([mine('A-1', 'Done', 'done', true), mine('A-2', 'In Progress', 'indeterminate', false), mine('A-3', 'To Do', 'new', true), mine('A-4', 'To Do', 'new', false)]);
+		expect({ sprint: groups.sprint.map(i => i.key), other: groups.other.map(i => i.key) }).toEqual({ sprint: ['A-3', 'A-1'], other: ['A-4', 'A-2'] });
+	});
+
 	it('keeps the user\'s card order, adding new cards at the end, and hides cards', () => {
-		expect(cardOrder(undefined)).toEqual(['agents', 'tickets', 'mergeRequests', 'quality', 'releases', 'gemini']);
+		expect(cardOrder(undefined)).toEqual(['unfinished', 'startup', 'agents', 'tickets', 'mergeRequests', 'quality', 'gemini']);
 		let layout = moveCard(undefined, 'quality', -2);
-		expect(cardOrder(layout)).toEqual(['agents', 'quality', 'tickets', 'mergeRequests', 'releases', 'gemini']);
+		expect(cardOrder(layout)).toEqual(['unfinished', 'startup', 'agents', 'quality', 'tickets', 'mergeRequests', 'gemini']);
 		layout = toggleCard(layout, 'gemini', false);
 		expect(cardOrder(layout)).not.toContain('gemini');
 		expect(cardOrder(toggleCard(layout, 'gemini', true))).toContain('gemini');
 		expect(cardOrder({ order: ['nonsense', 'gemini'] })[0]).toBe('gemini');
+		// A layout saved by a version that had a Releases card still loads.
+		expect(cardOrder({ order: ['releases', 'gemini'], hidden: ['releases'] })).toEqual(['gemini', 'unfinished', 'startup', 'agents', 'tickets', 'mergeRequests', 'quality']);
 	});
 
 	it('greets by first name and part of day', () => {
@@ -61,8 +79,4 @@ describe('dashboard', () => {
 		expect([partOfDay(8), partOfDay(13), partOfDay(20)]).toEqual(['morning', 'afternoon', 'evening']);
 	});
 
-	it('pairs each release branch with the next newer one', () => {
-		expect(forwardPairs(['release/1', 'release/2', 'release/3'])).toEqual([{ from: 'release/1', to: 'release/2' }, { from: 'release/2', to: 'release/3' }]);
-		expect(forwardPairs(['release/1'])).toEqual([]);
-	});
 });

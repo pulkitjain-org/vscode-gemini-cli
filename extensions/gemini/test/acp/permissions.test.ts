@@ -82,3 +82,33 @@ describe('PermissionBroker', () => {
 		expect(await answers).toEqual([{ outcome: { outcome: 'cancelled' } }, { outcome: { outcome: 'cancelled' } }]);
 	});
 });
+
+describe('the confirm class', () => {
+	const transition: acp.RequestPermissionRequest = {
+		...request,
+		toolCall: { toolCallId: 'm1', title: 'jira_transition(key=ACME-412, to=In Review)', kind: 'other' },
+		options: [
+			{ optionId: 'proceed_once', name: 'Allow', kind: 'allow_once' },
+			{ optionId: 'proceed_always', name: 'Allow all server tools for this session', kind: 'allow_always' },
+			{ optionId: 'cancel', name: 'Reject', kind: 'reject_once' },
+		],
+	};
+
+	it('shows a card with Allow once and Reject only, and never answers for the user', async () => {
+		const broker = new PermissionBroker();
+		broker.confirmOnly = r => r.toolCall.title?.startsWith('jira_transition') ?? false;
+		// Even an instant answer and a session approval leave the confirm class alone.
+		broker.answerAtOnce = () => ({ optionId: 'proceed_once', quiet: true });
+		const answer = broker.request(transition);
+		const [pending] = broker.pendingPermissions;
+		expect(pending.request.options.map(o => o.kind)).toEqual(['allow_once', 'reject_once']);
+		expect(broker.select(pending.id, 'proceed_always')).toBe(false);
+		expect(broker.select(pending.id, 'proceed_once')).toBe(true);
+		expect(await answer).toEqual({ outcome: { outcome: 'selected', optionId: 'proceed_once' } });
+		// A second request asks again.
+		void broker.request(transition);
+		expect(broker.pendingPermissions).toHaveLength(1);
+		// Other tools still get their instant answer.
+		expect(await broker.request({ ...transition, toolCall: { toolCallId: 'm2', title: 'jira_get_issue(key=ACME-412)', kind: 'other' } })).toEqual({ outcome: { outcome: 'selected', optionId: 'proceed_once' } });
+	});
+});

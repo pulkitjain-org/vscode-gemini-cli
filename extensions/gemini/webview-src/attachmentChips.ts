@@ -53,11 +53,15 @@ export function renderAttachments(): void {
 			thumbnail.alt = '';
 			chip.append(thumbnail);
 		} else if (attachment.kind === 'document' && attachment.tool) {
-			// A Jira ticket, GitLab item or Figma frame: the tool's logo, its key in bold, then its title.
+			// A Jira ticket, GitLab item or Figma frame: the tool's logo, its key in bold, then its title; a click opens it in its tool.
 			const [key, title] = toolChipParts(attachment);
+			const ref = attachment.ref;
 			chip.classList.add('tool-chip');
-			chip.append(toolLogo(attachment.tool, 14), el('span', 'tool-chip-key', key), ...title ? [el('span', 'tool-chip-title', title)] : []);
-			chip.title = title ? attachment.name : strings.toolChipLoading;
+			const open = button('tool-chip-open', '', () => ref && vscode.postMessage({ type: 'openToolRef', ref }));
+			open.append(toolLogo(attachment.tool, 14), el('span', 'tool-chip-key', key), ...title ? [el('span', 'tool-chip-title', title)] : []);
+			open.setAttribute('aria-label', format(strings.openToolItem, title ? attachment.name : key));
+			setTip(open, title ? format(strings.openToolItem, attachment.name) : strings.toolChipLoading);
+			chip.append(open);
 		} else {
 			chip.append(icon(attachmentIcon(attachment.kind, attachmentLabel(attachment))));
 			chip.title = attachment.path ?? attachmentLabel(attachment);

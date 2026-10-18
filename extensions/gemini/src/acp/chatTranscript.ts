@@ -12,6 +12,7 @@ import { Emitter } from './events';
 import type { PendingPermission } from './permissions';
 import { Attachment, attachmentLabel } from './attachments';
 import { ChatEvent, contentBlockToText, ToolCallModel } from './sessionUpdates';
+import type { TurnReadout } from './traceRecording';
 import type { ModelTokens } from './turnUsage';
 
 export type ToolCallDetail =
@@ -26,6 +27,9 @@ export interface PromptAttachmentLabel {
 	/** For files and selections, so the view can open them. */
 	readonly path?: string;
 	readonly line?: number;
+	/** For a Jira ticket, GitLab item or Figma frame: its tool and its `toolRefId`, so the view can open it there. */
+	readonly tool?: 'jira' | 'gitlab' | 'figma';
+	readonly ref?: string;
 }
 
 export interface ToolCallLocation {
@@ -54,6 +58,8 @@ export type TranscriptItem =
 		readonly options: readonly { readonly optionId: string; readonly name: string; readonly kind: acp.PermissionOptionKind }[];
 		/** Files the tool would change; the view can open a diff for each. */
 		readonly diffPaths: readonly string[];
+		/** Confirm class (gemini/docs/adr/0006-confirm-class.md): hard to take back, so it asks every time with Allow once and Reject only. */
+		readonly confirm?: boolean;
 		/** Unset while the agent waits for an answer. */
 		/** `automatic` when GeminiCode answered without asking, so the row doesn't say the user chose. */
 		readonly answer?: { readonly kind: 'selected'; readonly name: string; readonly automatic?: true } | { readonly kind: 'cancelled' };
@@ -63,11 +69,17 @@ export type TranscriptItem =
 	/** An update kind this version does not know (design rule 4 in gemini/docs/ARCHITECTURE.md). */
 	| { readonly id: string; readonly kind: 'other'; readonly type: string }
 	| { readonly id: string; readonly kind: 'notice'; readonly text: string; readonly severity: 'info' | 'error' }
+	/** The saved chat's last turn never ended: GeminiCode quit while the agent worked. Offers to send the message again. */
+	| { readonly id: string; readonly kind: 'cutOff'; readonly prompt: string; readonly dismissed?: boolean }
+	/** Where a turn's time went, from the fork's measurements and the CLI's trace (while a trace is recording). */
+	| { readonly id: string; readonly kind: 'trace'; readonly readout: TurnReadout; readonly file: string }
 	/** Ends a turn: how long the agent worked, with a way to copy its reply, retry it, or undo its file changes. */
 	| {
 		readonly id: string; readonly kind: 'turnEnd'; readonly durationMs: number;
 		/** When the turn ended, in ms since the epoch; unset in transcripts saved before it was recorded. */
 		readonly at?: number;
+		/** From the prompt's send to the agent's first reply text, in ms. */
+		readonly firstTokenMs?: number;
 		/** How many files the turn changed. */
 		readonly files?: number;
 		/** `available` while the turn's changes can be undone in this window; `undone` once they were. */
@@ -165,6 +177,7 @@ export class ChatTranscript {
 					label: attachmentLabel(a),
 					...(a.kind === 'image' || a.path === undefined ? {} : { path: a.path }),
 					...(a.kind === 'selection' ? { line: a.startLine } : {}),
+					...(a.kind === 'document' && a.tool && a.ref ? { tool: a.tool, ref: a.ref } : {}),
 				})),
 			} : {}),
 		});
@@ -227,6 +240,7 @@ export class ChatTranscript {
 			title: toolCall.title ?? toolCall.toolCallId,
 			options: options.map(o => ({ optionId: o.optionId, name: o.name, kind: o.kind })),
 			diffPaths: (toolCall.content ?? []).flatMap(c => c.type === 'diff' ? [c.path] : []),
+			...permission.confirm ? { confirm: true } : {},
 		});
 	}
 
@@ -249,7 +263,7 @@ export class ChatTranscript {
 	}
 
 	/** Changes what a turnEnd item offers. */
-	updateTurnEnd(id: string, patch: Pick<TurnEndItem, 'files' | 'undo' | 'retry' | 'buildPlan'>): void {
+	updateTurnEnd(id: string, patch: Pick<TurnEndItem, 'files' | 'undo' | 'retry' | 'buildPlan' | 'firstTokenMs'>): void {
 		const item = this._items.find(i => i.id === id);
 		if (item?.kind === 'turnEnd') {
 			const next: Record<string, unknown> = { ...item, ...patch };
@@ -284,6 +298,35 @@ export class ChatTranscript {
 
 	addNotice(text: string, severity: 'info' | 'error' = 'info'): void {
 		this.push({ id: this.newId(), kind: 'notice', text, severity });
+	}
+
+	/** Says the last turn was cut off by a quit, with its prompt to send again. */
+	addCutOff(prompt: string): void {
+		this.push({ id: this.newId(), kind: 'cutOff', prompt });
+	}
+
+	/** Keeps the cut-off turn as it is: the card goes. */
+	dismissCutOff(id: string): void {
+		const item = this._items.find(i => i.id === id);
+		if (item?.kind === 'cutOff') {
+			this.upsert({ ...item, dismissed: true });
+		}
+	}
+
+	/** The last turn's readout, after its end. */
+	addTrace(readout: TurnReadout, file: string): void {
+		this.push({ id: this.newId(), kind: 'trace', readout, file });
+	}
+
+	/** The last prompt the user sent, for a cut-off turn's Retry. */
+	get lastUserPrompt(): string | undefined {
+		for (let i = this._items.length - 1; i >= 0; i--) {
+			const item = this._items[i];
+			if (item.kind === 'user') {
+				return item.text;
+			}
+		}
+		return undefined;
 	}
 
 	/** Replaces the conversation with saved items, such as an agent's from an earlier window. */

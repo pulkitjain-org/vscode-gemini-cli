@@ -1,0 +1,26 @@
+diff --git a/src/vs/workbench/contrib/browserView/electron-browser/features/browserEditorChatFeatures.ts b/src/vs/workbench/contrib/browserView/electron-browser/features/browserEditorChatFeatures.ts
+index 079394d0068e9490b238dc808998480fa5ed234a..df45d3b91bc594a423cf7c137ad068a22952ba3c 100644
+--- a/src/vs/workbench/contrib/browserView/electron-browser/features/browserEditorChatFeatures.ts
++++ b/src/vs/workbench/contrib/browserView/electron-browser/features/browserEditorChatFeatures.ts
+@@ -171,7 +171,7 @@ export class BrowserEditorChatIntegration extends BrowserEditorContribution {
+ 
+ 	constructor(
+ 		editor: BrowserEditor,
+-		@IContextKeyService contextKeyService: IContextKeyService,
++		@IContextKeyService private readonly contextKeyService: IContextKeyService, // GEMINI-FORK: kept, for the check in onDidSelectElement
+ 		@IInstantiationService instantiationService: IInstantiationService,
+ 		@ITelemetryService private readonly telemetryService: ITelemetryService,
+ 		@ILogService private readonly logService: ILogService,
+@@ -246,6 +246,12 @@ export class BrowserEditorChatIntegration extends BrowserEditorContribution {
+ 			this._updateSharingState(false);
+ 		}));
+ 		store.add(model.onDidSelectElement(async data => {
++			// GEMINI-FORK: GeminiCode's "Add to Gemini" (contrib/gemini/electron-browser/geminiBrowser.ts)
++			// uses the same element selection for Gemini's composer; with Copilot's chat off, or while
++			// the selection is Gemini's, this chat has nothing to do with it.
++			if (!this.contextKeyService.contextMatchesRules(ChatContextKeys.enabled) || this.contextKeyService.getContextKeyValue<boolean>('geminiBrowserElementSelection')) {
++				return;
++			}
+ 			const tracksComment = data.comment !== undefined && data.elementId !== undefined;
+ 			if (tracksComment) {
+ 				this._ensureCommentModelListeners(model);

@@ -4,7 +4,6 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
-import { AgentConnection } from '../acp/agentConnection';
 import { spawnAgent } from '../acp/agentProcess';
 import { errorMessage } from '../acp/errors';
 import { getAgentCommand, getWorkspaceCwd } from './configuration';
@@ -16,7 +15,7 @@ const initializeTimeoutMs = 30_000;
  * reports what the agent advertises, and stops the process again.
  */
 export async function checkAgent(log: vscode.LogOutputChannel): Promise<void> {
-	const command = getAgentCommand();
+	const command = await getAgentCommand();
 	log.info(`Starting agent: ${command.command} ${command.args.join(' ')}`);
 
 	const child = spawnAgent(command, getWorkspaceCwd());
@@ -26,6 +25,7 @@ export async function checkAgent(log: vscode.LogOutputChannel): Promise<void> {
 		child.once('exit', code => reject(new Error(`Agent exited with code ${code}`)));
 	});
 
+	const { AgentConnection } = await import('../acp/agentConnection');
 	const connection = new AgentConnection(child.stdin, child.stdout, {
 		sessionUpdate: () => { },
 		requestPermission: async () => ({ outcome: { outcome: 'cancelled' } }),

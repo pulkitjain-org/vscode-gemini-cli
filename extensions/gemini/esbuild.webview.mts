@@ -15,6 +15,7 @@ run({
 		'changes': path.join(srcDir, 'changes.ts'),
 		'home': path.join(srcDir, 'home.ts'),
 		'connections': path.join(srcDir, 'connections.ts'),
+		'auditLog': path.join(srcDir, 'auditLog.ts'),
 		'settings': path.join(srcDir, 'settings.ts'),
 		'teamFlow': path.join(srcDir, 'teamFlow.ts'),
 		'highlight': path.join(srcDir, 'highlight.ts'),

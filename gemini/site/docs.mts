@@ -48,7 +48,16 @@ export const docGroups: readonly { readonly name: string; readonly pages: readon
 			{ slug: 'troubleshooting', title: 'Troubleshooting', icon: 'life-buoy', summary: 'What to do when something doesn\'t work.', topics: [] },
 		],
 	},
+	{
+		name: 'Releases', pages: [
+			// Written from gemini/bench/results/ at build time (bench.mts), not from a guide file.
+			{ slug: 'benchmark', title: 'Benchmark', icon: 'gauge', summary: 'How each release does on tasks from the team\'s own closed tickets.', topics: [] },
+		],
+	},
 ];
+
+/** Pages build.mts writes from data rather than from a Markdown file in gemini/docs/guide/. */
+export const generatedPages: ReadonlySet<string> = new Set(['benchmark']);
 
 export const docPages: readonly DocPage[] = docGroups.flatMap(group => group.pages);
 
@@ -186,7 +195,7 @@ export function renderMarkdown(source: string, options: RenderOptions): Rendered
 				body.push(lines[i]);
 			}
 			i++;
-			out.push(`<pre><code${fence[1] ? ` class="language-${fence[1]}"` : ''}>${escape(body.join('\n'))}</code></pre>`);
+			out.push(`<pre tabindex="0"><code${fence[1] ? ` class="language-${fence[1]}"` : ''}>${escape(body.join('\n'))}</code></pre>`);
 			continue;
 		}
 		const heading = /^(#{1,3})\s+(.*)$/.exec(line);

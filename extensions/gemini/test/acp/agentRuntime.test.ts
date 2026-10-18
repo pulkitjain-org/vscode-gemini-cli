@@ -237,6 +237,31 @@ describe('AgentRuntime', () => {
 		expect(a.texts).toEqual(['session:fake-session-1:/work/a']);
 	});
 
+	it('closes a spare it replaces when the agent can close sessions', async () => {
+		start({ initialize: { agentCapabilities: { sessionCapabilities: { close: {} } } }, turns: [[{ step: 'closed' }]] });
+		await ready(runtime!);
+		runtime!.prepareSession('/work/a', [], 'agent:/work/a:no-tools');
+		runtime!.prepareSession('/work/a', [], 'agent:/work/a:tools');
+		const a = await session('/work/a', { spareKey: () => 'agent:/work/a:tools' });
+		expect(a.state).toMatchObject({ kind: 'ready', sessionId: 'fake-session-2' });
+		// The old spare is closed once it has opened, which may be after the new chat started.
+		await new Promise(resolve => setTimeout(resolve, 150));
+		await a.client.prompt('which');
+		expect(a.texts).toEqual(['closed:fake-session-1']);
+	});
+
+	it('closes the sessions a chat leaves: the old one after a new session, and its own when it goes', async () => {
+		start({ initialize: { agentCapabilities: { sessionCapabilities: { close: {} } } }, turns: [[{ step: 'closed' }], [{ step: 'closed' }]] });
+		await ready(runtime!);
+		const a = await session('/work/a');
+		const b = await session('/work/b');
+		await a.client.newSession();
+		b.client.dispose();
+		await new Promise(resolve => setTimeout(resolve, 150));
+		await a.client.prompt('which');
+		expect(a.texts).toEqual(['closed:fake-session-1,fake-session-2']);
+	});
+
 	it('does not give a prepared session to a chat with other servers', async () => {
 		start({});
 		await ready(runtime!);

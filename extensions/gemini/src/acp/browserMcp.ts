@@ -14,11 +14,9 @@
 // page the user opened becomes an agent's only when the user hands it over
 // (`handOverRefusal`, `adopt`), and is then checked the same way.
 
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import * as http from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { checkFileAccess, FileAccessPolicyOptions } from './fileAccess';
+import { AgentMcpServer } from './localMcpServer';
 
 export interface PageState {
 	/** The page's accessibility snapshot, with refs such as e12 for elements. */
@@ -263,13 +261,18 @@ export function sharedPageText(title: string, url: string): { readonly title: st
 /**
  * Whether `url` is one of `origins`, the admin's list of sites agents may
  * open: `*` is every site, `https://*.example.com` is example.com and its
- * subdomains, and any other entry is an origin (scheme, host and port).
+ * subdomains, `http://localhost:*` is localhost on any port, and any other
+ * entry is an origin (scheme, host and port).
  */
 export function isAllowedOrigin(url: URL, origins: readonly string[]): boolean {
 	return origins.some(entry => {
 		const pattern = entry.trim().replace(/\/+$/, '');
 		if (pattern === '*') {
 			return true;
+		}
+		const anyPort = /^(https?):\/\/([^/:*]+):\*$/i.exec(pattern);
+		if (anyPort) {
+			return url.protocol === `${anyPort[1].toLowerCase()}:` && url.hostname.toLowerCase() === anyPort[2].toLowerCase();
 		}
 		const wildcard = /^(https?):\/\/\*\.([^/:]+)(:\d+)?$/i.exec(pattern);
 		if (wildcard) {
@@ -613,215 +616,20 @@ export class BrowserToolHost {
 	}
 }
 
-/** The largest request body read; tool calls are small. */
-const maxBodyBytes = 1024 * 1024;
-
-interface JsonRpcRequest {
-	readonly jsonrpc?: string;
-	readonly id?: string | number | null;
-	readonly method?: string;
-	readonly params?: Record<string, unknown>;
-}
-
 /**
- * The MCP endpoint, over Streamable HTTP with plain JSON replies (no event
- * stream, which the protocol allows): `initialize`, `ping`, `tools/list` and
- * `tools/call`. POST to `/mcp/<agent>` with `Authorization: Bearer <token>`,
- * where the token is the agent's own (an HMAC of its id), so one agent's
- * token does not reach another agent's page. A spare session, opened before
- * any agent takes it, gets a slot of its own instead (`/mcp/<slot>`), which
- * `bind` later points at the agent that took it.
+ * The browser's MCP endpoint (localMcpServer.ts): one route per agent, so one
+ * agent's token does not reach another agent's page, and slots for spare
+ * sessions until an agent takes them.
  */
-export class BrowserMcpServer {
-
-	private readonly secret = randomBytes(32);
-	private server: http.Server | undefined;
-	private port: number | undefined;
-	private starting: Promise<number> | undefined;
-	/** Spare sessions' slots, to the agent each is bound to; unbound slots serve no page. */
-	private readonly slots = new Map<string, string | undefined>();
-
-	constructor(private readonly tools: BrowserToolHost, private readonly version: string) { }
-
-	/** Starts listening, once (concurrent calls share it); resolves with the port. */
-	start(): Promise<number> {
-		if (!this.starting) {
-			const starting: Promise<number> = listen(http.createServer((req, res) => void this.handle(req, res))).then(server => {
-				if (this.starting !== starting) {
-					// Disposed while starting.
-					server.close();
-					throw new Error('The browser tools were stopped.');
-				}
-				this.server = server;
-				this.port = (server.address() as AddressInfo).port;
-				return this.port;
-			}, err => {
-				if (this.starting === starting) {
-					this.starting = undefined;
-				}
-				throw err;
-			});
-			this.starting = starting;
-		}
-		return this.starting;
-	}
-
-	/** Whether it is listening, so sessions can be given it. */
-	get listening(): boolean {
-		return !!this.port;
-	}
-
-	/** The ACP `mcpServers` entry for an agent; undefined until started. */
-	configFor(agent: string): { type: 'http'; name: string; url: string; headers: { name: string; value: string }[] } | undefined {
-		if (!this.port || !/^[\w-]{1,80}$/.test(agent)) {
-			return undefined;
-		}
-		return { type: 'http', name: 'geminicode-browser', url: `http://127.0.0.1:${this.port}/mcp/${agent}`, headers: [{ name: 'Authorization', value: `Bearer ${this.tokenFor(agent)}` }] };
-	}
-
-	/**
-	 * The `mcpServers` entry for a session not yet any agent's, such as a spare
-	 * one: it has a slot of its own until `bind` gives it to an agent.
-	 */
-	configForSlot(): { type: 'http'; name: string; url: string; headers: { name: string; value: string }[] } | undefined {
-		if (!this.port) {
-			return undefined;
-		}
-		const slot = `slot-${randomBytes(12).toString('hex')}`;
-		this.slots.set(slot, undefined);
-		return this.configFor(slot);
-	}
-
-	/** Gives a session opened with `configForSlot` (its server's `url`) to `agent`. Returns whether the url was a slot. */
-	bind(url: string, agent: string): boolean {
-		const slot = /\/mcp\/([\w-]+)$/.exec(url)?.[1];
-		if (!slot || !isSlot(slot) || !this.slots.has(slot)) {
-			return false;
-		}
-		this.slots.set(slot, agent);
-		return true;
-	}
-
-	/** Forgets the slots bound to `agent`, for an agent that was removed. */
-	unbind(agent: string): void {
-		for (const [slot, bound] of this.slots) {
-			if (bound === agent) {
-				this.slots.delete(slot);
-			}
-		}
-	}
-
-	/** Stops listening and drops open connections, so agents lose the tools at once. */
-	dispose(): void {
-		this.starting = undefined;
-		this.server?.close();
-		this.server?.closeAllConnections();
-		this.server = undefined;
-		this.port = undefined;
-	}
-
-	private tokenFor(agent: string): string {
-		return createHmac('sha256', this.secret).update(agent).digest('base64url');
-	}
-
-	private async handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-		const id = /^\/mcp\/([\w-]{1,80})$/.exec(req.url ?? '')?.[1];
-		if (!id) {
-			return void res.writeHead(404).end();
-		}
-		if (!this.authorized(id, req.headers.authorization)) {
-			return void res.writeHead(401).end();
-		}
-		// A slot acts for the agent it is bound to; one not bound (yet, or any more) lists the tools but has no page.
-		const agent = isSlot(id) ? this.slots.get(id) : id;
-		if (req.method === 'DELETE') {
-			return void res.writeHead(200).end();
-		}
-		if (req.method !== 'POST') {
-			// No server-to-client stream: everything is a reply to a request.
-			return void res.writeHead(405, { Allow: 'POST, DELETE' }).end();
-		}
-		let body: unknown;
-		try {
-			body = JSON.parse(await readBody(req));
-		} catch {
-			return void reply(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
-		}
-		const messages = (Array.isArray(body) ? body : [body]) as JsonRpcRequest[];
-		const answers = (await Promise.all(messages.map(m => this.answer(agent, m)))).filter(a => a !== undefined);
-		if (!answers.length) {
-			return void res.writeHead(202).end();
-		}
-		reply(res, 200, Array.isArray(body) ? answers : answers[0]);
-	}
-
-	/** The reply to one message; undefined for a notification. */
-	private async answer(agent: string | undefined, message: JsonRpcRequest): Promise<unknown> {
-		if (!message || typeof message !== 'object' || message.id === undefined || message.id === null) {
-			return undefined;
-		}
-		const ok = (result: unknown) => ({ jsonrpc: '2.0', id: message.id, result });
-		switch (message.method) {
-			case 'initialize':
-				return ok({
-					protocolVersion: typeof message.params?.protocolVersion === 'string' ? message.params.protocolVersion : '2025-06-18',
-					capabilities: { tools: {} },
-					serverInfo: { name: 'geminicode-browser', version: this.version },
-					instructions: 'Tools for a web page in the GeminiCode browser, which runs on the user\'s machine and which the user can see. Use them to check web apps you build, especially on localhost, and, instead of web_fetch, to read any page on the user\'s machine or network (staging, QA, intranet) or behind a sign-in, and any page the user shared with you.',
-				});
-			case 'ping':
-				return ok({});
-			case 'tools/list':
-				return ok({ tools: browserTools });
-			case 'tools/call': {
-				if (!agent) {
-					return ok({ content: [{ type: 'text', text: 'The browser is not ready for this session yet.' }], isError: true });
-				}
-				const name = typeof message.params?.name === 'string' ? message.params.name : '';
-				const args = message.params?.arguments;
-				return ok(await this.tools.call(agent, name, typeof args === 'object' && args !== null && !Array.isArray(args) ? args as Record<string, unknown> : {}));
-			}
-			default:
-				return { jsonrpc: '2.0', id: message.id, error: { code: -32601, message: `Method not found: ${message.method}` } };
-		}
-	}
-
-	private authorized(agent: string, header: string | undefined): boolean {
-		const expected = Buffer.from(`Bearer ${this.tokenFor(agent)}`);
-		const given = Buffer.from(header ?? '');
-		return given.length === expected.length && timingSafeEqual(given, expected);
-	}
-}
-
-function isSlot(id: string): boolean {
-	return id.startsWith('slot-');
-}
-
-function listen(server: http.Server): Promise<http.Server> {
-	return new Promise((resolve, reject) => {
-		server.once('error', reject);
-		server.listen(0, '127.0.0.1', () => resolve(server));
-	});
-}
-
-function readBody(req: http.IncomingMessage): Promise<string> {
-	return new Promise((resolve, reject) => {
-		const chunks: Buffer[] = [];
-		let size = 0;
-		req.on('data', (chunk: Buffer) => {
-			size += chunk.length;
-			if (size > maxBodyBytes) {
-				reject(new Error('Too large'));
-				req.destroy();
-				return;
-			}
-			chunks.push(chunk);
+export class BrowserMcpServer extends AgentMcpServer {
+	constructor(tools: BrowserToolHost, version: string) {
+		super({
+			name: 'geminicode-browser',
+			version,
+			instructions: 'Tools for a web page in the GeminiCode browser, which runs on the user\'s machine and which the user can see. Use them to check web apps you build, especially on localhost, and, instead of web_fetch, to read any page on the user\'s machine or network (staging, QA, intranet) or behind a sign-in, and any page the user shared with you.',
+			tools: () => browserTools,
+			call: (agent, name, args) => tools.call(agent, name, args),
+			notReady: 'The browser is not ready for this session yet.',
 		});
-		req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-		req.on('error', reject);
-	});
-}
-
-function reply(res: http.ServerResponse, status: number, body: unknown): void {
-	res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
+	}
 }

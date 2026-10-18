@@ -30,12 +30,14 @@ describe('secretPathReason', () => {
 	it.each([
 		'.env', '.env.local', '.env.production', 'config/server.pem', 'tls.key', 'id_rsa', 'id_ed25519',
 		'.npmrc', '.netrc', 'credentials.json', '.ssh/config', '.aws/config', '.git/config', 'certs/store.p12',
+		'deploy/my-project-service-account.json', 'keys/service_account_ci.json', 'application_default_credentials.json', '.kube/config', '.docker/config.json', 'kubeconfig', '.config/gcloud/credentials.db',
 	])('treats %s as secret', file => {
 		expect(secretPathReason(file)).toBeDefined();
 	});
 
 	it.each([
 		'.env.example', '.env.sample', 'src/env.ts', 'keys.ts', 'id_rsa.pub', 'docs/credentials.md', 'src/monkey.ts', '.gitignore', '.github/workflows/ci.yml',
+		'src/serviceAccounts.ts', 'docs/service-account.md', 'Dockerfile', 'k8s/deployment.yaml',
 	])('does not treat %s as secret', file => {
 		expect(secretPathReason(file)).toBeUndefined();
 	});

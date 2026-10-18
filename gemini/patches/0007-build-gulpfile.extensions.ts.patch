@@ -1,0 +1,12 @@
+diff --git a/build/gulpfile.extensions.ts b/build/gulpfile.extensions.ts
+index bc1f9fba71cbd9c954e8781190856261d9f3d687..58de143f9688bf4732e1ce8473f9ccf0234abe81 100644
+--- a/build/gulpfile.extensions.ts
++++ b/build/gulpfile.extensions.ts
+@@ -59,6 +59,7 @@ const compilations = [
+ 	'extensions/debug-server-ready/tsconfig.json',
+ 	'extensions/emmet/tsconfig.json',
+ 	'extensions/extension-editing/tsconfig.json',
++	'extensions/gemini/tsconfig.json', // GEMINI-FORK
+ 	'extensions/git/tsconfig.json',
+ 	'extensions/git-base/tsconfig.json',
+ 	'extensions/github/tsconfig.json',

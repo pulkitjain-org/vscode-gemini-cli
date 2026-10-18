@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { readFileSync } from 'node:fs';
+import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
@@ -12,6 +12,8 @@ import { AgentCommand, cliHeapSizeMb, includeDirectoryArgs, resolveAgentCommand 
 import { CliResolution, resolveCli } from '../acp/cliResolution';
 import { buildAgentEnv } from '../acp/env';
 import { ProjectIdProblem, ResolvedProjectId, resolveProjectId, validateProjectId } from '../acp/projectId';
+import { projectServerName } from '../acp/projectMcp';
+import { confirmToolGroups, teamToolsServerName } from '../acp/teamTools';
 
 export const configSection = 'gemini';
 
@@ -27,17 +29,18 @@ export interface GeminiProductInfo {
 	readonly reportIssueUrl?: string;
 }
 
-function readProductInfo(): GeminiProductInfo {
+/** GeminiCode's fields from product.json; empty until `loadProductInfo`, which activation awaits first. */
+export const productInfo: { -readonly [K in keyof GeminiProductInfo]: GeminiProductInfo[K] } = {};
+
+export async function loadProductInfo(): Promise<void> {
 	try {
-		const product = JSON.parse(readFileSync(path.join(vscode.env.appRoot, 'product.json'), 'utf8'));
+		const product = JSON.parse(await fs.readFile(path.join(vscode.env.appRoot, 'product.json'), 'utf8'));
 		const field = (name: string) => typeof product[name] === 'string' && product[name] ? product[name] as string : undefined;
-		return { defaultProjectId: field('geminiDefaultProjectId'), version: field('geminiCodeVersion'), downloadPageUrl: field('geminiCodeDownloadUrl'), reportIssueUrl: field('reportIssueUrl') };
+		Object.assign(productInfo, { defaultProjectId: field('geminiDefaultProjectId'), version: field('geminiCodeVersion'), downloadPageUrl: field('geminiCodeDownloadUrl'), reportIssueUrl: field('reportIssueUrl') });
 	} catch {
-		return {};
+		// A build without the file runs with no org defaults.
 	}
 }
-
-export const productInfo = readProductInfo();
 
 /** The project ID in effect; a problem is only possible when there is one. */
 export type ProjectSettings =
@@ -77,18 +80,33 @@ export function getApprovalPolicy(): ApprovalPolicy {
 		allowAutoEdit: config.get<boolean>('approval.allowAutoEdit', true),
 		allowYolo: config.get<boolean>('approval.allowYolo', false),
 		allowShell: config.get<boolean>('tools.allowShell', true),
+		denyEnvironmentCommands: config.get<boolean>('tools.denyEnvironmentCommands', true),
+		confirmTools: confirmToolGroups(),
 	};
 }
 
+/** GeminiCode's own MCP servers, which `gemini.mcp.allowedServers` always keeps. */
+const ownServers = [teamToolsServerName, projectServerName, 'geminicode-browser'];
+
+/**
+ * `--allowed-mcp-server-names` when `gemini.mcp.allowedServers` names any server: the CLI then
+ * loads only those and GeminiCode's own, whatever a repository's settings file adds. Empty, the
+ * CLI's own `mcp.allowed` applies.
+ */
+export function allowedMcpServerArgs(): string[] {
+	const listed = vscode.workspace.getConfiguration(configSection).get<string[]>('mcp.allowedServers', []).filter(name => typeof name === 'string' && name.trim()).map(name => name.trim());
+	return listed.length ? ['--allowed-mcp-server-names', [...new Set([...ownServers, ...listed])].join(',')] : [];
+}
+
 /** The settings that change how the agent process starts; a change restarts it. */
-export const agentLaunchSettings = ['cliPath', 'cli.version', 'projectId', 'approval.allowAutoEdit', 'approval.allowYolo', 'tools.allowShell', 'agents.allWorkspaceFolders'].map(key => `${configSection}.${key}`);
+export const agentLaunchSettings = ['cliPath', 'cli.version', 'projectId', 'approval.allowAutoEdit', 'approval.allowYolo', 'tools.allowShell', 'tools.denyEnvironmentCommands', 'mcp.allowedServers', 'agents.allWorkspaceFolders'].map(key => `${configSection}.${key}`);
 
 export function getManagedCliDir(): string | undefined {
 	return managedCliDir;
 }
 
 /** Which CLI the next agent process runs. */
-export function getCliResolution(): CliResolution {
+export function getCliResolution(): Promise<CliResolution> {
 	const config = vscode.workspace.getConfiguration(configSection);
 	return resolveCli({
 		cliPath: config.get<string>('cliPath'),
@@ -100,17 +118,34 @@ export function getCliResolution(): CliResolution {
 
 /** How to run the CLI, with the resolved project injected into its environment. */
 /** `subcommand` runs the interactive CLI with those arguments instead, such as `extensions install <source>`. */
-export function getAgentCommand(options: { interactive?: boolean; cli?: CliResolution; subcommand?: readonly string[] } = {}): AgentCommand {
+/** Variables added to the agent's environment until cleared, such as the telemetry switches while a trace records. */
+let agentEnvOverride: NodeJS.ProcessEnv = {};
+
+export function setAgentEnvOverride(env: NodeJS.ProcessEnv): void {
+	agentEnvOverride = { ...env };
+}
+
+/**
+ * The command that starts the CLI. `ownFolderOnly` leaves out the window's other folders even when
+ * `gemini.agents.allWorkspaceFolders` is on, for an agent that works somewhere else, as the benchmark's do.
+ */
+export async function getAgentCommand(options: { interactive?: boolean; cli?: CliResolution; subcommand?: readonly string[]; ownFolderOnly?: boolean } = {}): Promise<AgentCommand> {
+	const [cli, settings, policyArgs] = await Promise.all([
+		options.cli ?? getCliResolution(),
+		readCliSettings(),
+		adminPolicyDir && !options.subcommand ? prepareAdminPolicy(adminPolicyDir, getApprovalPolicy()) : [],
+	]);
 	return resolveAgentCommand({
-		cliPath: (options.cli ?? getCliResolution()).cliPath,
+		cliPath: cli.cliPath,
 		execPath: process.execPath,
-		env: buildAgentEnv(process.env, getProjectSettings().resolved?.projectId),
+		env: { ...buildAgentEnv(process.env, getProjectSettings().resolved?.projectId), ...options.interactive || options.subcommand ? {} : agentEnvOverride },
 		platform: process.platform,
 		interactive: options.interactive || !!options.subcommand,
-		heapSizeMb: options.interactive || options.subcommand ? undefined : cliHeapSizeMb(readCliSettings(), os.totalmem()),
+		heapSizeMb: options.interactive || options.subcommand ? undefined : cliHeapSizeMb(settings, os.totalmem()),
 		extraArgs: options.subcommand ? [...options.subcommand] : [
-			...adminPolicyDir ? prepareAdminPolicy(adminPolicyDir, getApprovalPolicy()) : [],
-			...includeDirectoryArgs(includedFolderPaths()),
+			...policyArgs,
+			...allowedMcpServerArgs(),
+			...includeDirectoryArgs(options.ownFolderOnly ? [] : includedFolderPaths()),
 		],
 	});
 }
@@ -129,13 +164,9 @@ export function workspaceFolderPaths(): string[] {
 	return (vscode.workspace.workspaceFolders ?? []).filter(f => f.uri.scheme === 'file').map(f => f.uri.fsPath);
 }
 
-function readCliSettings(): string | undefined {
+function readCliSettings(): Promise<string | undefined> {
 	// The CLI's launcher reads `$GEMINI_CLI_HOME/settings.json`, without the
 	// `.gemini` level its other files use, to decide on the heap flag; match it.
 	const home = process.env.GEMINI_CLI_HOME || path.join(os.homedir(), '.gemini');
-	try {
-		return readFileSync(path.join(home, 'settings.json'), 'utf8');
-	} catch {
-		return undefined;
-	}
+	return fs.readFile(path.join(home, 'settings.json'), 'utf8').catch(() => undefined);
 }

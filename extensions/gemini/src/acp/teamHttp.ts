@@ -8,6 +8,8 @@
 // and has a short timeout, so a tool behind a VPN that is off fails fast with
 // a reason the user can act on instead of hanging a page or a turn.
 
+import { recordPilot } from './pilotLog';
+
 /** The tools GeminiCode connects to. */
 export type TeamToolId = 'jira' | 'gitlab' | 'sonar' | 'snyk' | 'figma';
 
@@ -48,6 +50,17 @@ export type Fetch = typeof fetch;
  * message names `tool` and `host` and says what to do.
  */
 export async function teamRequest<T>(tool: TeamToolId, url: string, request: TeamRequest = {}, fetcher: Fetch = fetch): Promise<T> {
+	try {
+		return await send<T>(tool, url, request, fetcher);
+	} catch (err) {
+		if (err instanceof TeamToolError) {
+			recordPilot({ kind: 'teamToolError', tool, error: err.kind, ...err.status ? { status: err.status } : {} });
+		}
+		throw err;
+	}
+}
+
+async function send<T>(tool: TeamToolId, url: string, request: TeamRequest, fetcher: Fetch): Promise<T> {
 	const host = hostOf(url);
 	const name = teamToolNames[tool];
 	const controller = new AbortController();
