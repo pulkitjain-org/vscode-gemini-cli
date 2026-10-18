@@ -16,7 +16,7 @@ import { SnykCli } from '../acp/snyk';
 import { SonarClient } from '../acp/sonar';
 import { readTeamDefaults, TeamDefaults } from '../acp/teamDefaults';
 import { normalizeBaseUrl, TeamToolError, TeamToolId, teamToolIds, teamToolNames } from '../acp/teamHttp';
-import { isConfirmToolCall, TeamConnectors, teamReadTools } from '../acp/teamTools';
+import { isConfirmToolCall, TeamConnectors, teamReadTools, TeamToolContext, teamWrite, TeamWriteResult } from '../acp/teamTools';
 import { TeamToolsMcpServer } from '../acp/teamToolsMcp';
 import { repositoryRoot } from '../acp/worktrees';
 
@@ -39,6 +39,8 @@ export class TeamConnections implements vscode.Disposable {
 	private readonly server: TeamToolsMcpServer;
 	/** Every write to Jira or GitLab, by an agent or from a page, recorded before and after it happens. */
 	readonly audit: AuditLog;
+	/** What the team tools run against, for the agents' server and for the pages' writes alike. */
+	private readonly toolContext: TeamToolContext;
 	/** The flows open right now, on disk, so a quit leaves them listed on Home. */
 	readonly flows: FlowRecordStore;
 	private clients: TeamConnectors = {};
@@ -54,13 +56,14 @@ export class TeamConnections implements vscode.Disposable {
 	constructor(private readonly context: vscode.ExtensionContext, version: string, private readonly log: vscode.LogOutputChannel) {
 		this.audit = new AuditLog(vscode.Uri.joinPath(context.globalStorageUri, 'audit').fsPath);
 		this.flows = new FlowRecordStore(vscode.Uri.joinPath(context.globalStorageUri, 'flows').fsPath);
-		this.server = new TeamToolsMcpServer({
+		this.toolContext = {
 			audit: this.audit,
 			connected: () => this.connectedSet,
 			connectors: () => this.clients,
 			folder: agent => this.folders.get(agent),
 			defaults: folder => this.defaults(folder),
-		}, version);
+		};
+		this.server = new TeamToolsMcpServer(this.toolContext, version);
 		for (const tool of teamToolIds) {
 			const saved = context.globalState.get<ConnectionState>(stateKey(tool));
 			if (saved) {
@@ -77,6 +80,21 @@ export class TeamConnections implements vscode.Disposable {
 				void this.server.start().catch(err => this.log.warn(`The team tools server didn't start: ${err}`));
 			}
 		});
+	}
+
+	/**
+	 * A write from one of GeminiCode's pages, through the same code and audit
+	 * record as an agent's tool call (acp/teamTools.ts, `teamWrite`), in
+	 * `folder` (else the first workspace folder) for the team's defaults and
+	 * the GitLab project. Throws with the tool's own message when it fails.
+	 */
+	async write(name: string, args: Record<string, unknown>, folder?: string): Promise<TeamWriteResult> {
+		const where = folder ?? vscode.workspace.workspaceFolders?.find(f => f.uri.scheme === 'file')?.uri.fsPath;
+		const result = await teamWrite(this.toolContext, { caller: 'ui', ...where ? { folder: where } : {} }, name, args);
+		if (!result.ok) {
+			throw new Error(result.text);
+		}
+		return result;
 	}
 
 	dispose(): void {

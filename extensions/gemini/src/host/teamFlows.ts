@@ -267,19 +267,15 @@ export class TeamFlows implements vscode.Disposable {
 								}
 							}
 							const comment = flow.field('addComment', current.addComment) ? flow.field('comment', current.comment).trim() : '';
-							const audit = this.tools.audit;
-							await audit.record({ caller: 'ui', tool: 'jira_transition', ref: ticket, effect: `${ticket} ${current.status} → ${transition.to}${comment && !current.visibility ? ', with a comment' : ''}`, args: { transition: transition.id, fields, comment } },
-								() => jira.transition(ticket, transition.id, current.visibility ? undefined : comment || undefined, fields), moved => `transition ${moved.id} → ${moved.to}`);
-							if (comment && current.visibility) {
-								await audit.record({ caller: 'ui', tool: 'jira_comment', ref: ticket, effect: `Comment on ${ticket} (${current.visibility})`, args: { comment } }, () => jira.comment(ticket, comment, current.visibility), made => made.id ? `comment ${made.id}` : undefined);
-							}
+							// The agent's jira_transition, by transition id: the same checks, the comment's visibility and the audit record.
+							await this.tools.write('jira_transition', { key: ticket, to: transition.to, transition: transition.id, fields, ...comment ? { comment } : {} }, place?.cwd);
 							done.push(vscode.l10n.t("Moved {0} to {1}{2}.", ticket, transition.to, comment ? vscode.l10n.t(" with the comment") : ''));
 						}
 						if (logTime) {
 							const date = flow.field('date', current.date);
 							const started = /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T${new Date().toTimeString().slice(0, 8)}`) : new Date();
-							await this.tools.audit.record({ caller: 'ui', tool: 'jira_log_time', ref: ticket, effect: `${formatDuration(parseDuration(spent))} on ${ticket}`, args: { spent, started } },
-								() => jira.logWork(ticket, spent, flow.field('workComment', current.workComment) || undefined, started), made => made.id ? `worklog ${made.id}` : undefined);
+							const workComment = flow.field('workComment', current.workComment);
+							await this.tools.write('jira_log_time', { key: ticket, spent, started: started.toISOString(), ...workComment ? { comment: workComment } : {} }, place?.cwd);
 							done.push(vscode.l10n.t("Logged {0} on {1}.", formatDuration(parseDuration(spent)), ticket));
 						}
 						if (!done.length) {
@@ -445,11 +441,13 @@ export class TeamFlows implements vscode.Disposable {
 					if (extra.length) {
 						description = `${description.trim()}\n\n### Attachments\n\n${extra.join('\n\n')}`;
 					}
-					const mr = await this.tools.audit.record({ caller: 'ui', tool: 'gitlab_create_mr', ref: gp.branch, effect: `${gp.branch} → ${target}: ${title}`, args: { title, target, description } }, () => gitlab.createMergeRequest(gp.project, {
-						sourceBranch: gp.branch, targetBranch: target, title, description,
-						draft: flow.field('draft', current.draft), removeSourceBranch: flow.field('deleteBranch', current.deleteBranch),
-						reviewerIds: current.reviewers.map(r => r.id),
-					}), made => `!${made.iid}`);
+					// The agent's gitlab_create_mr, from the agent's folder: the same project and branch, and the audit record.
+					const made = await this.tools.write('gitlab_create_mr', {
+						target, title, description,
+						draft: flow.field('draft', current.draft), deleteBranch: flow.field('deleteBranch', current.deleteBranch),
+						reviewers: current.reviewers.map(r => r.id),
+					}, this.agents.agentPlace(agentId)?.cwd);
+					const mr = { iid: Number(made.data?.iid), url: String(made.data?.url ?? '') };
 					flow.dispose();
 					const open = vscode.l10n.t("Open in GitLab");
 					void vscode.window.showInformationMessage(vscode.l10n.t("Opened merge request !{0}.", mr.iid), open).then(choice => choice === open ? openTeamLink(mr.url) : undefined);
@@ -533,22 +531,17 @@ export class TeamFlows implements vscode.Disposable {
 						const current = flow.view!;
 						const ticked = current.findings.filter(f => flow.field(`check:${f.id}`, f.checked)).map(f => ({ ...f, comment: flow.field(`comment:${f.id}`, f.comment) }));
 						let posted = 0;
-						const audit = this.tools.audit;
+						// The agent's gitlab_reply for each comment, and the page-only approve and request changes, on the same path.
+						const mr = { project: p, mr: String(n) };
 						for (const f of ticked) {
-							await audit.record({ caller: 'ui', tool: 'gitlab_reply', ref: `!${n}`, effect: `Review comment on !${n}${f.file ? ` at ${f.file}${f.line ? `:${f.line}` : ''}` : ''}`, args: { comment: f.comment } }, async () => {
-								if (f.file && f.line) {
-									return gitlab.commentOnLine(p, n, f.file, f.line, f.comment);
-								}
-								await gitlab.comment(p, n, f.file ? `**${f.file}**\n\n${f.comment}` : f.comment);
-								return 'general' as const;
-							});
+							await this.tools.write('gitlab_reply', { ...mr, ...f.file && f.line ? { path: f.file, line: f.line, text: f.comment } : { text: f.file ? `**${f.file}**\n\n${f.comment}` : f.comment } });
 							posted++;
 						}
 						const mode = str(value);
 						if (mode === 'request') {
-							await audit.record({ caller: 'ui', tool: 'gitlab_request_changes', ref: `!${n}`, effect: `Requested changes on !${n} after ${posted} comments` }, () => gitlab.requestChanges(p, n, vscode.l10n.t("Requesting changes: see the {0} comments above.", posted)));
+							await this.tools.write('gitlab_request_changes', { ...mr, text: vscode.l10n.t("Requesting changes: see the {0} comments above.", posted) });
 						} else if (mode === 'approve') {
-							await audit.record({ caller: 'ui', tool: 'gitlab_approve', ref: `!${n}`, effect: `Approved !${n}` }, () => gitlab.approve(p, n));
+							await this.tools.write('gitlab_approve', mr);
 						}
 						flow.update({
 							done: mode === 'approve' ? vscode.l10n.t("Approved !{0}{1}.", n, posted ? vscode.l10n.t(" and posted {0} comments", posted) : '')
@@ -670,9 +663,10 @@ export class TeamFlows implements vscode.Disposable {
 		if (choice !== merge) {
 			return;
 		}
-		const merged = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Merging !{0}...", n) }, () =>
-			this.tools.audit.record({ caller: 'ui', tool: 'gitlab_merge', ref: `!${n}`, effect: `Merge !${n} "${mr.title}" into ${mr.targetBranch} at ${readiness.sha.slice(0, 8)}`, args: { sha: readiness.sha, squash } },
-				() => gitlab.merge(p, n, { sha: readiness.sha, squash, removeSourceBranch }), result => `!${n} merged at ${readiness.sha}${result.sha ? ` as ${result.sha}` : ''}`));
+		// The agent's gitlab_merge, at the head the user confirmed: it reads GitLab's checks again and refuses if the branch moved.
+		const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Merging !{0}...", n) }, () =>
+			this.tools.write('gitlab_merge', { project: p, mr: String(n), sha: readiness.sha, squash, deleteBranch: removeSourceBranch }));
+		const merged = { sha: typeof result.data?.sha === 'string' ? result.data.sha : undefined };
 		const defaults = await this.tools.workspaceDefaults();
 		const ticket = options.moveTicket ?? (this.tools.connectors.jira ? jiraKeyIn(`${mr.sourceBranch} ${mr.title}`, defaults.jira?.projects) : undefined);
 		if (options.moveTicket) {
@@ -714,7 +708,7 @@ export class TeamFlows implements vscode.Disposable {
 			return;
 		}
 		const who = picked.accountId === null ? vscode.l10n.t("nobody") : picked.label.replace(/^\$\([^)]*\)\s*/, '');
-		await this.tools.audit.record({ caller: 'ui', tool: 'jira_assign', ref: ticket, effect: `${ticket} → ${who}`, args: { accountId: picked.accountId } }, () => jira.assign(ticket, picked.accountId), () => picked.accountId ? `assignee ${picked.accountId}` : 'unassigned');
+		await this.tools.write('jira_assign', { key: ticket, to: who, accountId: picked.accountId });
 		void vscode.window.showInformationMessage(picked.accountId === null ? vscode.l10n.t("{0} is now unassigned.", ticket) : vscode.l10n.t("Assigned {0} to {1}.", ticket, who));
 	}
 

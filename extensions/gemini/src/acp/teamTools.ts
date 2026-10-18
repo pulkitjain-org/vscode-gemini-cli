@@ -12,7 +12,7 @@
 // text that came from a ticket, a merge request, a job log or a design is
 // marked as such, so the model reads it as data.
 
-import type { AuditLog } from './auditLog';
+import type { AuditCaller, AuditLog } from './auditLog';
 import type { McpContent, McpTool, McpToolResult } from './browserMcp';
 import { FigmaDesktop, parseFigmaLink } from './figma';
 import { describeMr, GitLabClient, parseMrRef, projectPathFromRemote } from './gitlab';
@@ -229,12 +229,44 @@ export function teamToolsFor(connected: ReadonlySet<TeamToolId>): McpTool[] {
 	return teamTools.filter(tool => connected.has(tool.tool)).map(({ name, description, inputSchema }) => ({ name, description, inputSchema }));
 }
 
-/** A tool's answer, with the id the remote gave back for a write, which the audit log keeps and the model never sees. */
-type TeamToolResult = McpToolResult & { readonly remote?: string };
+/**
+ * A tool's answer, with the id the remote gave back for a write, which the
+ * audit log keeps and the model never sees, and what a page needs next (a
+ * new merge request's link).
+ */
+type TeamToolResult = McpToolResult & { readonly remote?: string; readonly data?: TeamWriteData };
 
-function ok(content: string | McpContent[], remote?: string): TeamToolResult {
-	return { content: typeof content === 'string' ? [{ type: 'text', text: content }] : content, ...remote ? { remote } : {} };
+/** What a page needs after a write: a merge request's number and link, a merge commit. */
+export type TeamWriteData = Readonly<Record<string, string | number>>;
+
+function ok(content: string | McpContent[], remote?: string, data?: TeamWriteData): TeamToolResult {
+	return { content: typeof content === 'string' ? [{ type: 'text', text: content }] : content, ...remote ? { remote } : {}, ...data ? { data } : {} };
 }
+
+/** Who asks for a team tool: an agent, whose folder the context knows, or one of GeminiCode's pages, working in `folder`. */
+export interface TeamCaller {
+	readonly caller: AuditCaller;
+	readonly agent?: string;
+	readonly folder?: string;
+}
+
+/** A page's answer from a write: the text an agent would read, the id the tool gave back, and what the page shows next. */
+export interface TeamWriteResult {
+	readonly ok: boolean;
+	readonly text: string;
+	readonly remote?: string;
+	readonly data?: TeamWriteData;
+}
+
+/**
+ * Writes only GeminiCode's own pages make, on the same path as the agent's
+ * tools so they get the same checks and the same audit record; agents are
+ * never offered them.
+ */
+const pageTools: readonly TeamTool[] = [
+	{ tool: 'gitlab', name: 'gitlab_approve', write: true, description: 'Approves a merge request.', inputSchema: { type: 'object', properties: {} } },
+	{ tool: 'gitlab', name: 'gitlab_request_changes', write: true, description: 'Requests changes on a merge request with a summary note.', inputSchema: { type: 'object', properties: {} } },
+];
 
 function fail(message: string): McpToolResult {
 	return { content: [{ type: 'text', text: message }], isError: true };
@@ -270,21 +302,46 @@ export async function callTeamTool(context: TeamToolContext, agent: string, name
 	if (!tool) {
 		return fail(`No tool named ${name}.`);
 	}
-	const run = () => runTeamTool(context, agent, tool, args);
-	if (!tool.write || !context.audit || isListing(name, args)) {
-		const { remote: _remote, ...result } = await run();
-		return result;
+	const { remote: _remote, data: _data, ...result } = await runAudited(context, { caller: 'agent', agent }, tool, args);
+	return result;
+}
+
+/**
+ * A write from one of GeminiCode's pages (Home, the flows, the merge request
+ * panel), through the same code as an agent's tool call: the same checks
+ * before the call, the same request, and the same audit record but for the
+ * caller. Never throws: `ok` says whether it went through.
+ */
+export async function teamWrite(context: TeamToolContext, who: TeamCaller, name: string, args: Record<string, unknown>): Promise<TeamWriteResult> {
+	const tool = teamTools.find(t => t.name === name) ?? (who.caller === 'ui' ? pageTools.find(t => t.name === name) : undefined);
+	if (!tool) {
+		return { ok: false, text: `No tool named ${name}.` };
 	}
-	// A write: the audit log gets the intent first, then the result or the failure.
-	const intent = { caller: 'agent' as const, agent, tool: name, ...refOf(args) ? { ref: refOf(args) } : {}, effect: effectOf(name, args), args };
-	const { remote: _remote, ...result } = await context.audit.record(intent, async () => {
+	const result = await runAudited(context, who, tool, args);
+	return {
+		ok: !result.isError,
+		text: result.content.map(c => c.type === 'text' ? c.text : '').join('\n').trim(),
+		...result.remote ? { remote: result.remote } : {},
+		...result.data ? { data: result.data } : {},
+	};
+}
+
+/** Runs a tool; a write gets the audit log's intent first, then the result or the failure. */
+async function runAudited(context: TeamToolContext, who: TeamCaller, tool: TeamTool, args: Record<string, unknown>): Promise<TeamToolResult> {
+	const folder = who.folder ?? (who.agent ? context.folder(who.agent) : undefined);
+	const run = () => runTeamTool(context, folder, tool, args);
+	if (!tool.write || !context.audit || isListing(tool.name, args)) {
+		return run();
+	}
+	const ref = refOf(args);
+	const intent = { caller: who.caller, ...who.agent ? { agent: who.agent } : {}, tool: tool.name, ...ref ? { ref } : {}, effect: effectOf(tool.name, args), args };
+	return context.audit.record(intent, async () => {
 		const answer = await run();
 		if (answer.isError) {
 			throw new Error(answer.content.map(c => c.type === 'text' ? c.text : '').join(' ').trim() || 'failed');
 		}
 		return answer;
 	}, answer => answer.remote).catch(err => fail(err instanceof Error ? err.message : String(err)) as TeamToolResult);
-	return result;
 }
 
 /** A write tool called only to list choices (moves, people), which changes nothing. */
@@ -293,7 +350,8 @@ function isListing(name: string, args: Record<string, unknown>): boolean {
 }
 
 function refOf(args: Record<string, unknown>): string | undefined {
-	return arg(args, 'key')?.replace(/^.*\/browse\//, '').replace(/[?#].*$/, '').toUpperCase() ?? arg(args, 'mr');
+	const mr = arg(args, 'mr');
+	return arg(args, 'key')?.replace(/^.*\/browse\//, '').replace(/[?#].*$/, '').toUpperCase() ?? (mr && /^\d+$/.test(mr) ? `!${mr}` : mr);
 }
 
 /** One line a person reads in the audit log, from the tool and its arguments. */
@@ -307,14 +365,15 @@ export function effectOf(name: string, args: Record<string, unknown>): string {
 		case 'gitlab_create_mr': return `Merge request into ${arg(args, 'target') ?? 'the default branch'}: ${arg(args, 'title') ?? ''}`.trim();
 		case 'gitlab_reply': return `${arg(args, 'discussion') ? `Reply on thread ${arg(args, 'discussion')}` : arg(args, 'path') ? `Comment on ${arg(args, 'path')}:${arg(args, 'line') ?? ''}` : 'Comment'}${key ? ` on ${key}` : ''}${args.resolve === true ? ', resolving it' : ''}`;
 		case 'gitlab_merge': return `Merge ${key ?? 'the current branch\'s merge request'}`;
+		case 'gitlab_approve': return `Approve ${key}`;
+		case 'gitlab_request_changes': return `Request changes on ${key}`;
 		default: return name;
 	}
 }
 
-async function runTeamTool(context: TeamToolContext, agent: string, tool: TeamTool, args: Record<string, unknown>): Promise<TeamToolResult> {
+async function runTeamTool(context: TeamToolContext, folder: string | undefined, tool: TeamTool, args: Record<string, unknown>): Promise<TeamToolResult> {
 	const name = tool.name;
 	const connectors = context.connectors();
-	const folder = context.folder(agent);
 	try {
 		switch (tool.tool) {
 			case 'jira':
@@ -343,7 +402,7 @@ function notConnected(tool: string): McpToolResult {
 	return fail(`${tool} isn't connected. The user can connect it in GeminiCode's Connections page.`);
 }
 
-async function jiraCall(jira: JiraClient, name: string, args: Record<string, unknown>, defaults: TeamDefaults): Promise<McpToolResult> {
+async function jiraCall(jira: JiraClient, name: string, args: Record<string, unknown>, defaults: TeamDefaults): Promise<TeamToolResult> {
 	const key = arg(args, 'key')?.replace(/^.*\/browse\//, '').replace(/[?#].*$/, '').toUpperCase();
 	switch (name) {
 		case 'jira_get_issue': {
@@ -367,10 +426,17 @@ async function jiraCall(jira: JiraClient, name: string, args: Record<string, unk
 			return ok(`Commented on ${key}.`, made.id ? `comment ${made.id}` : undefined);
 		}
 		case 'jira_log_time': {
-			const made = await jira.logWork(key ?? '', arg(args, 'spent') ?? '', arg(args, 'comment'));
+			// A page gives the day the work was done; an agent logs it as now.
+			const started = arg(args, 'started');
+			const made = await jira.logWork(key ?? '', arg(args, 'spent') ?? '', arg(args, 'comment'), started ? new Date(started) : undefined);
 			return ok(`Logged ${arg(args, 'spent')} on ${key}.`, made.id ? `worklog ${made.id}` : undefined);
 		}
 		case 'jira_assign': {
+			// A page names the person exactly, by account id, or null for nobody.
+			if (args.accountId === null || typeof args.accountId === 'string') {
+				await jira.assign(key ?? '', args.accountId);
+				return ok(args.accountId === null ? `${key} is now unassigned.` : `Assigned ${key}.`, args.accountId === null ? 'unassigned' : `assignee ${args.accountId}`);
+			}
 			const to = arg(args, 'to');
 			if (!to) {
 				const people = await jira.assignableUsers(key ?? '');
@@ -394,14 +460,23 @@ async function jiraCall(jira: JiraClient, name: string, args: Record<string, unk
 				return ok(moves.length ? `${key} can move to:\n${moves.map(t => `- ${t.to}${t.fields.filter(f => f.required).length ? ` (needs ${t.fields.filter(f => f.required).map(f => f.name).join(', ')})` : ''}`).join('\n')}` : `${key} can't move from its current status.`);
 			}
 			const fields = typeof args.fields === 'object' && args.fields ? Object.fromEntries(Object.entries(args.fields as Record<string, unknown>).map(([k, v]) => [k, String(v)])) : {};
-			const moved = await jira.transition(key ?? '', to, arg(args, 'comment'), fields);
-			return ok(`Moved ${key} to ${moved.to}${arg(args, 'comment') ? ' with the comment' : ''}.`, `transition ${moved.id} → ${moved.to}`);
+			const comment = arg(args, 'comment');
+			// The team's comment visibility applies to a move's comment too: then the move goes alone and the comment after it, with its visibility.
+			const visibility = comment ? defaults.jira?.commentVisibility : undefined;
+			// A page names the transition by id; an agent by the status it moves to.
+			const moved = await jira.transition(key ?? '', arg(args, 'transition') ?? to, visibility ? undefined : comment, fields);
+			const made = comment && visibility ? await jira.comment(key ?? '', comment, visibility) : undefined;
+			return ok(`Moved ${key} to ${moved.to}${comment ? ' with the comment' : ''}.`, [`transition ${moved.id} → ${moved.to}`, made?.id ? `comment ${made.id}` : ''].filter(Boolean).join(' · '));
 		}
 	}
 	return fail(`No tool named ${name}.`);
 }
 
-async function resolveMr(gitlab: GitLabClient, ref: string | undefined, folder: string | undefined, defaults: TeamDefaults): Promise<{ project: string; iid: number }> {
+async function resolveMr(gitlab: GitLabClient, ref: string | undefined, folder: string | undefined, defaults: TeamDefaults, project?: string): Promise<{ project: string; iid: number }> {
+	// A page knows the project; a number is then that project's merge request.
+	if (project && ref && /^!?\d+$/.test(ref)) {
+		return { project, iid: Number(ref.replace(/^!/, '')) };
+	}
 	const local = folder ? await gitlabProjectOf(folder, gitlab.url, defaults) : {};
 	if (ref) {
 		const parsed = parseMrRef(ref);
@@ -421,7 +496,7 @@ async function resolveMr(gitlab: GitLabClient, ref: string | undefined, folder: 
 	return { project: local.project, iid: mr.iid };
 }
 
-async function gitlabCall(gitlab: GitLabClient, name: string, args: Record<string, unknown>, folder: string | undefined, defaults: TeamDefaults): Promise<McpToolResult> {
+async function gitlabCall(gitlab: GitLabClient, name: string, args: Record<string, unknown>, folder: string | undefined, defaults: TeamDefaults): Promise<TeamToolResult> {
 	switch (name) {
 		case 'gitlab_get_mr': {
 			const { project, iid } = await resolveMr(gitlab, arg(args, 'mr'), folder, defaults);
@@ -473,17 +548,30 @@ async function gitlabCall(gitlab: GitLabClient, name: string, args: Record<strin
 			if (!local.project || !local.branch) {
 				return fail('This folder isn\'t on a branch of a project on the connected GitLab.');
 			}
+			const reviewers = Array.isArray(args.reviewers) ? args.reviewers.filter((r): r is number => typeof r === 'number') : [];
 			const mr = await gitlab.createMergeRequest(local.project, {
 				sourceBranch: local.branch,
 				targetBranch: arg(args, 'target') ?? defaults.gitlab?.defaultTarget ?? 'main',
 				title: arg(args, 'title') ?? local.branch,
 				description: typeof args.description === 'string' ? args.description : '',
 				draft: args.draft === true,
+				...args.deleteBranch === false ? { removeSourceBranch: false } : {},
+				...reviewers.length ? { reviewerIds: reviewers } : {},
 			});
-			return ok(`Opened !${mr.iid}: ${mr.url}`, `!${mr.iid}`);
+			return ok(`Opened !${mr.iid}: ${mr.url}`, `!${mr.iid}`, { iid: mr.iid, url: mr.url });
+		}
+		case 'gitlab_approve': {
+			const { project, iid } = await resolveMr(gitlab, arg(args, 'mr'), folder, defaults, arg(args, 'project'));
+			await gitlab.approve(project, iid);
+			return ok(`Approved !${iid}.`, `approval on !${iid}`);
+		}
+		case 'gitlab_request_changes': {
+			const { project, iid } = await resolveMr(gitlab, arg(args, 'mr'), folder, defaults, arg(args, 'project'));
+			await gitlab.requestChanges(project, iid, typeof args.text === 'string' ? args.text : '');
+			return ok(`Requested changes on !${iid}.`, `requested_changes on !${iid}`);
 		}
 		case 'gitlab_reply': {
-			const { project, iid } = await resolveMr(gitlab, arg(args, 'mr'), folder, defaults);
+			const { project, iid } = await resolveMr(gitlab, arg(args, 'mr'), folder, defaults, arg(args, 'project'));
 			const body = typeof args.text === 'string' ? args.text : '';
 			const discussion = arg(args, 'discussion');
 			if (discussion) {
@@ -503,13 +591,18 @@ async function gitlabCall(gitlab: GitLabClient, name: string, args: Record<strin
 			return ok(`Commented on !${iid}.`, note.id ? `note ${note.id} on !${iid}` : `!${iid}`);
 		}
 		case 'gitlab_merge': {
-			const { project, iid } = await resolveMr(gitlab, arg(args, 'mr'), folder, defaults);
+			const { project, iid } = await resolveMr(gitlab, arg(args, 'mr'), folder, defaults, arg(args, 'project'));
 			const readiness = await gitlab.mergeReadiness(project, iid);
 			if (!readiness.ready) {
 				return fail(`!${iid} isn't ready to merge:\n${readiness.checks.filter(c => !c.ok).map(c => `- ${c.name}: ${c.detail}`).join('\n')}`);
 			}
+			// A page names the head the user saw; a push since then means they confirmed something else.
+			const seen = arg(args, 'sha');
+			if (seen && !readiness.sha.startsWith(seen)) {
+				return fail(`!${iid} moved since it was read: its head is now ${readiness.sha.slice(0, 8)}, not ${seen.slice(0, 8)}. Look at it again before merging.`);
+			}
 			const merged = await gitlab.merge(project, iid, { sha: readiness.sha, ...args.squash === undefined ? {} : { squash: args.squash === true }, removeSourceBranch: args.deleteBranch !== false });
-			return ok(`Merged !${iid} at ${readiness.sha.slice(0, 8)}${merged.sha ? ` as ${merged.sha.slice(0, 8)}` : ''}.`, `!${iid} merged at ${readiness.sha}${merged.sha ? ` as ${merged.sha}` : ''}`);
+			return ok(`Merged !${iid} at ${readiness.sha.slice(0, 8)}${merged.sha ? ` as ${merged.sha.slice(0, 8)}` : ''}.`, `!${iid} merged at ${readiness.sha}${merged.sha ? ` as ${merged.sha}` : ''}`, merged.sha ? { sha: merged.sha } : undefined);
 		}
 	}
 	return fail(`No tool named ${name}.`);
