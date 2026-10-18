@@ -14,11 +14,16 @@ import type { InstantAnswer } from '../acp/permissions';
 import { isProjectToolCall } from '../acp/projectMcp';
 import { SnykCli } from '../acp/snyk';
 import { SonarClient } from '../acp/sonar';
+import { findDocker, gitlabContainer, jiraContainer, TeamChildren, teamImages } from '../acp/teamContainers';
 import { readTeamDefaults, TeamDefaults } from '../acp/teamDefaults';
 import { normalizeBaseUrl, TeamToolError, TeamToolId, teamToolIds, teamToolNames } from '../acp/teamHttp';
 import { isConfirmToolCall, TeamConnectors, teamReadTools, TeamToolContext, teamWrite, TeamWriteResult } from '../acp/teamTools';
 import { TeamToolsMcpServer } from '../acp/teamToolsMcp';
 import { repositoryRoot } from '../acp/worktrees';
+import { configSection } from './configuration';
+
+/** Runs the team's own Jira and GitLab servers in Docker for the team tools' calls; set by Take Over Both Servers in Connections. */
+export const runTeamServersSetting = 'team.runTeamServers';
 
 /**
  * The user's connections to the team's tools (Jira, GitLab, SonarQube, Snyk,
@@ -52,6 +57,11 @@ export class TeamConnections implements vscode.Disposable {
 	/** Tools being connected now, which pages show as checking. */
 	private readonly connecting = new Set<TeamToolId>();
 	private readonly disposables: vscode.Disposable[] = [];
+	/** The team's own servers, run as children once taken over, with what each was started for. */
+	private children: TeamChildren = {};
+	private childKeys: Partial<Record<'jira' | 'gitlab', string>> = {};
+	private readonly tokens = new Map<TeamToolId, string>();
+	private warnedNoDocker = false;
 
 	constructor(private readonly context: vscode.ExtensionContext, version: string, private readonly log: vscode.LogOutputChannel) {
 		this.audit = new AuditLog(vscode.Uri.joinPath(context.globalStorageUri, 'audit').fsPath);
@@ -62,6 +72,8 @@ export class TeamConnections implements vscode.Disposable {
 			connectors: () => this.clients,
 			folder: agent => this.folders.get(agent),
 			defaults: folder => this.defaults(folder),
+			children: () => this.children,
+			childUnavailable: (server, reason) => this.log.warn(`The ${server} server didn't start, so the call went to ${server === 'jira' ? 'Jira' : 'GitLab'} directly: ${reason}`),
 		};
 		this.server = new TeamToolsMcpServer(this.toolContext, version);
 		for (const tool of teamToolIds) {
@@ -73,6 +85,12 @@ export class TeamConnections implements vscode.Disposable {
 		this.disposables.push(
 			this.onDidChangeEmitter,
 			context.secrets.onDidChange(e => e.key.startsWith(secretPrefix) && void this.load().then(() => this.onDidChangeEmitter.fire())),
+			vscode.workspace.onDidChangeConfiguration(e => {
+				if (e.affectsConfiguration(`${configSection}.${runTeamServersSetting}`)) {
+					this.updateChildren();
+					this.onDidChangeEmitter.fire();
+				}
+			}),
 		);
 		void this.load().then(() => {
 			this.onDidChangeEmitter.fire();
@@ -98,8 +116,15 @@ export class TeamConnections implements vscode.Disposable {
 	}
 
 	dispose(): void {
+		this.children.jira?.stop();
+		this.children.gitlab?.stop();
 		this.server.dispose();
 		vscode.Disposable.from(...this.disposables).dispose();
+	}
+
+	/** For Jira and GitLab: the team's server that makes the calls, when it runs as a child, as `mcp-atlassian 0.23.1`. */
+	childOf(tool: TeamToolId): string | undefined {
+		return (tool === 'jira' || tool === 'gitlab') && this.children[tool] ? this.childName(tool) : undefined;
 	}
 
 	/** The tools the user has connected (a token saved, or Snyk or Figma turned on), whether or not they answer now. */
@@ -270,9 +295,56 @@ export class TeamConnections implements vscode.Disposable {
 			const account = this.accountOf(tool) ?? {};
 			Object.assign(clients, clientsFor(tool, account, token));
 			connected.add(tool);
+			this.tokens.set(tool, token);
+		}
+		for (const tool of teamToolIds.filter(t => !connected.has(t))) {
+			this.tokens.delete(tool);
 		}
 		this.clients = clients;
 		this.connectedSet = connected;
+		this.updateChildren();
+	}
+
+	/**
+	 * Starts nothing: sets up the team's own Jira and GitLab servers, which start on their first
+	 * call, for the connected accounts while `gemini.team.runTeamServers` is on and Docker is here.
+	 * A server whose account or token changed is stopped and set up again.
+	 */
+	private updateChildren(): void {
+		const on = vscode.workspace.getConfiguration(configSection).get<boolean>(runTeamServersSetting, false);
+		const docker = on ? findDocker() : undefined;
+		const jira = this.accountOf('jira');
+		const gitlab = this.accountOf('gitlab');
+		const jiraToken = this.tokens.get('jira');
+		const gitlabToken = this.tokens.get('gitlab');
+		const wanted = {
+			jira: docker && jira?.url && jira.email && jiraToken ? JSON.stringify([docker, jira.url, jira.email, jiraToken]) : undefined,
+			gitlab: docker && gitlab?.url && gitlabToken ? JSON.stringify([docker, gitlab.url, gitlabToken]) : undefined,
+		};
+		const next: { jira?: TeamChildren['jira']; gitlab?: TeamChildren['gitlab'] } = {};
+		for (const tool of ['jira', 'gitlab'] as const) {
+			if (wanted[tool] === this.childKeys[tool] && this.children[tool]) {
+				next[tool] = this.children[tool];
+				continue;
+			}
+			this.children[tool]?.stop();
+			if (wanted[tool] && docker) {
+				next[tool] = tool === 'jira'
+					? jiraContainer(docker, { site: jira!.url!, email: jira!.email!, token: jiraToken! })
+					: gitlabContainer(docker, { url: gitlab!.url!, token: gitlabToken! });
+				this.log.info(`${tool === 'jira' ? 'Jira' : 'GitLab'} calls go through ${this.childName(tool)} in Docker, started on the first call`);
+			}
+		}
+		if (on && !docker && !this.warnedNoDocker) {
+			this.warnedNoDocker = true;
+			this.log.warn('gemini.team.runTeamServers is on, but Docker isn\'t installed; Jira and GitLab are called directly.');
+		}
+		this.children = next;
+		this.childKeys = wanted;
+	}
+
+	private childName(tool: 'jira' | 'gitlab'): string {
+		return tool === 'jira' ? `mcp-atlassian ${teamImages.jira.tag}` : `gitlab-mcp ${teamImages.gitlab.tag}`;
 	}
 
 	private async check(tool: TeamToolId): Promise<void> {

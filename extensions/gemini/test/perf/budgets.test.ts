@@ -50,8 +50,9 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// merge request, review, release, Jira and checks flows) took it to about 1,090 KB, all its own code, no libraries.
 	// The pages' writes through the agents' tools, the audit log page and keeping flows across a quit took it to
 	// about 1,137 KB; loading the ACP SDK only when an agent starts wraps its modules, about 6 KB more, and takes
-	// about 12 ms off the bundle's load time.
-	'dist/extension.js': 1_160_000,
+	// about 12 ms off the bundle's load time. Run Benchmark, the pilot's counters, and the team's own Jira and
+	// GitLab servers as children (the stdio MCP client, the take-over) took it to about 1,172 KB, its own code.
+	'dist/extension.js': 1_200_000,
 };
 
 /** Median time of `run` over `rounds` runs, in ms. */

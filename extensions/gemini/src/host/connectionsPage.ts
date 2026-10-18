@@ -13,6 +13,7 @@ import { teamToolsServerName } from '../acp/teamTools';
 import type { ConnectionRowView, ConnectionsStrings, ConnectionsView, FromConnections, TeamServerView, ToConnections } from './connectionsProtocol';
 import { tildify } from './displayText';
 import { ConnectionState, createTokenUrl, TeamConnections } from './teamConnections';
+import { takeOverTeamServers } from './teamTakeover';
 import { createNonce, escapeAttribute } from './webviewHtml';
 
 const viewType = 'gemini.connections';
@@ -33,7 +34,7 @@ export class ConnectionsPage implements vscode.Disposable {
 	private updating = false;
 	private readonly disposables: vscode.Disposable[] = [];
 
-	constructor(private readonly extensionUri: vscode.Uri, private readonly connections: TeamConnections) {
+	constructor(private readonly extensionUri: vscode.Uri, private readonly connections: TeamConnections, private readonly log: vscode.LogOutputChannel) {
 		this.disposables.push(
 			vscode.commands.registerCommand('gemini.connections', () => this.show()),
 			connections.onDidChange(() => this.scheduleUpdate()),
@@ -159,6 +160,12 @@ export class ConnectionsPage implements vscode.Disposable {
 					await this.openFile(this.teamServers.path, 'mcpServers');
 				}
 				return;
+			case 'takeOverTeamServers':
+				if (this.teamServers && await takeOverTeamServers(this.connections, this.teamServers.path, this.log)) {
+					await this.readFiles();
+					this.scheduleUpdate();
+				}
+				return;
 		}
 	}
 
@@ -220,7 +227,7 @@ export class ConnectionsPage implements vscode.Disposable {
 			kind: state.kind,
 			label: stateLabel(tool, state),
 			detail: stateDetail(tool, state, url),
-			pills: pillsOf(tool, state, url),
+			pills: pillsOf(tool, state, url, this.connections.childOf(tool)),
 			...saved && state.kind === 'connected' ? { token: tokenLine(tool, state) } : {},
 			saved,
 			needsToken,
@@ -240,9 +247,11 @@ export class ConnectionsPage implements vscode.Disposable {
 			toolsHint: vscode.l10n.t("Agents get tools only for what you connect."),
 			checkAll: vscode.l10n.t("Check All"),
 			teamServersTitle: vscode.l10n.t("This repository's {0} runs {1} as MCP servers of the CLI"),
-			teamServersText: vscode.l10n.t("Agents see two sets of Jira and GitLab tools, and the servers' tokens come from your shell environment, which the agent's shell tool can read. GeminiCode's own connectors keep tokens in the keychain and ask before every write; the plan moves these servers behind them."),
+			teamServersText: vscode.l10n.t("Agents see two sets of Jira and GitLab tools, and the servers' tokens come from your shell environment, which the agent's shell tool can read. Take them over to keep the tokens in the keychain and run the same servers behind GeminiCode's team tools, which ask before every write."),
+			takeOverServers: vscode.l10n.t("Take Over Both Servers..."),
 			teamServerLine: vscode.l10n.t("{0} · token from {1} in your shell"),
-			teamServerTools: vscode.l10n.t("{0} tools listed, {1} excluded by the file"),
+			teamServerIncluded: vscode.l10n.t("{0} tools kept by the file"),
+			teamServerExcluded: vscode.l10n.t("{0} tools left out by the file"),
 			openSettings: vscode.l10n.t("Open Settings File"),
 			defaultsHint: vscode.l10n.t("Defaults for the server addresses come from {0}."),
 			connect: vscode.l10n.t("Connect"),
@@ -368,13 +377,13 @@ function stateDetail(tool: TeamToolId, state: ConnectionState, url: string | und
 }
 
 /** The server and its version, then how GeminiCode reaches the tool. */
-function pillsOf(tool: TeamToolId, state: ConnectionState, url: string | undefined): string[] {
+function pillsOf(tool: TeamToolId, state: ConnectionState, url: string | undefined, via: string | undefined): string[] {
 	const host = state.kind === 'connected' && state.server && tool !== 'snyk' ? state.server : hostOf(url);
 	const version = state.kind === 'connected' && state.version && tool !== 'snyk' ? (tool === 'gitlab' ? state.version.split('.').slice(0, 2).join('.') : state.version) : undefined;
 	const where = tool === 'snyk' ? [state.kind === 'connected' && state.server ? state.server : '', state.kind === 'connected' && state.version ? vscode.l10n.t("CLI {0}", state.version) : ''].filter(Boolean).join(' · ') : [host, version].filter(Boolean).join(' · ');
 	const how = tool === 'figma' ? vscode.l10n.t("Dev Mode MCP server, 127.0.0.1:3845")
 		: tool === 'snyk' ? vscode.l10n.t("Snyk CLI, this Mac")
-			: vscode.l10n.t("REST from this Mac");
+			: via ? vscode.l10n.t("{0} in Docker, this Mac", via) : vscode.l10n.t("REST from this Mac");
 	return [where, how].filter(Boolean);
 }
 

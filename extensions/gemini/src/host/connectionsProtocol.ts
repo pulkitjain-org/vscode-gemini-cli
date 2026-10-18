@@ -62,10 +62,13 @@ export interface ConnectionsStrings {
 	/** `{0}` is the settings file, `{1}` the server names. */
 	readonly teamServersTitle: string;
 	readonly teamServersText: string;
-	/** `{0}` the image, `{1}` the token variables; `{2}` how many tools the file lists or leaves out. */
+	/** `{0}` the image, `{1}` the token variables. */
 	readonly teamServerLine: string;
-	readonly teamServerTools: string;
+	/** `{0}` how many tools the file keeps, or leaves out. */
+	readonly teamServerIncluded: string;
+	readonly teamServerExcluded: string;
 	readonly openSettings: string;
+	readonly takeOverServers: string;
 	readonly defaultsHint: string;
 	readonly connect: string;
 	readonly replaceToken: string;
@@ -119,4 +122,4 @@ export type FromConnections =
 	| { readonly type: 'connect'; readonly tool: TeamToolId; readonly url?: string; readonly email?: string; readonly token?: string }
 	| { readonly type: 'disconnect' | 'refresh'; readonly tool: TeamToolId }
 	| { readonly type: 'createToken'; readonly tool: TeamToolId; readonly url?: string }
-	| { readonly type: 'openFigma' | 'allowlist' | 'openAllowlistFile' | 'openDefaults' | 'checkAll' | 'openTeamServers' };
+	| { readonly type: 'openFigma' | 'allowlist' | 'openAllowlistFile' | 'openDefaults' | 'checkAll' | 'openTeamServers' | 'takeOverTeamServers' };

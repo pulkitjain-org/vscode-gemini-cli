@@ -20,7 +20,9 @@ import { JiraClient } from './jira';
 import { describeSnyk, SnykCli } from './snyk';
 import { describeSonar, SonarClient, sonarProjectKeyIn, SonarTarget } from './sonar';
 import type { TeamDefaults } from './teamDefaults';
+import { ChildServer, McpServerUnavailableError } from './mcpStdio';
 import { recordPilot } from './pilotLog';
+import { gitlabVia, jiraVia, TeamChildren } from './teamContainers';
 import { clip, TeamToolError, TeamToolId } from './teamHttp';
 import { git } from './worktrees';
 
@@ -42,6 +44,10 @@ export interface TeamToolContext {
 	/** The agent's working folder. */
 	folder(agent: string): string | undefined;
 	defaults(folder: string): Promise<TeamDefaults>;
+	/** The team's own Jira and GitLab servers, when the user took them over and they run as children. */
+	children?(): TeamChildren;
+	/** Told when a child server could not start and the call went through the in-process connector instead. */
+	childUnavailable?(server: string, reason: string): void;
 }
 
 /** The server's name in a session's MCP servers and in `mcp.allowed`. */
@@ -385,9 +391,9 @@ async function runTeamTool(context: TeamToolContext, folder: string | undefined,
 	try {
 		switch (tool.tool) {
 			case 'jira':
-				return connectors.jira ? await jiraCall(connectors.jira, name, args, folder ? await context.defaults(folder) : {}) : notConnected('Jira');
+				return connectors.jira ? await jiraCall(connectors.jira, through(context, context.children?.().jira), name, args, folder ? await context.defaults(folder) : {}) : notConnected('Jira');
 			case 'gitlab':
-				return connectors.gitlab ? await gitlabCall(connectors.gitlab, name, args, folder, folder ? await context.defaults(folder) : {}) : notConnected('GitLab');
+				return connectors.gitlab ? await gitlabCall(connectors.gitlab, through(context, context.children?.().gitlab), name, args, folder, folder ? await context.defaults(folder) : {}) : notConnected('GitLab');
 			case 'sonar':
 				return connectors.sonar ? await sonarCall(connectors.sonar, name, args, folder, folder ? await context.defaults(folder) : {}) : notConnected('SonarQube');
 			case 'snyk':
@@ -406,14 +412,44 @@ async function runTeamTool(context: TeamToolContext, folder: string | undefined,
 	}
 }
 
+/**
+ * Makes a call through the team's own server when it runs as a child, else, or when it could not
+ * start, through the in-process connector. A call the server already received never runs twice.
+ */
+type Through = <T>(viaChild: (server: ChildServer) => Promise<T>, inProcess: () => Promise<T>) => Promise<T>;
+
+function through(context: TeamToolContext, server: ChildServer | undefined): Through {
+	return async (viaChild, inProcess) => {
+		if (server) {
+			try {
+				return await viaChild(server);
+			} catch (err) {
+				if (!(err instanceof McpServerUnavailableError)) {
+					throw err;
+				}
+				context.childUnavailable?.(server.name, err.message);
+			}
+		}
+		return inProcess();
+	};
+}
+
+function idText(id: string | number | undefined): string | undefined {
+	return id === undefined ? undefined : String(id);
+}
+
 function notConnected(tool: string): McpToolResult {
 	return fail(`${tool} isn't connected. The user can connect it in GeminiCode's Connections page.`);
 }
 
-async function jiraCall(jira: JiraClient, name: string, args: Record<string, unknown>, defaults: TeamDefaults): Promise<TeamToolResult> {
+async function jiraCall(jira: JiraClient, via: Through, name: string, args: Record<string, unknown>, defaults: TeamDefaults): Promise<TeamToolResult> {
 	const key = arg(args, 'key')?.replace(/^.*\/browse\//, '').replace(/[?#].*$/, '').toUpperCase();
 	switch (name) {
 		case 'jira_get_issue': {
+			const fromServer = await via(async server => ok(external('jira', key ?? '', clip(await jiraVia.issue(server, key ?? ''), 16_000))), async () => undefined);
+			if (fromServer) {
+				return fromServer;
+			}
 			const issue = await jira.issue(key ?? '');
 			return ok(external('jira', issue.key, [
 				`${issue.key} ${issue.summary} (${issue.url})`,
@@ -426,23 +462,29 @@ async function jiraCall(jira: JiraClient, name: string, args: Record<string, unk
 			].join('\n')));
 		}
 		case 'jira_search': {
+			const fromServer = await via(async server => ok(external('jira', 'search', clip(await jiraVia.search(server, arg(args, 'jql') ?? '', Number(args.max) || 20), 16_000))), async () => undefined);
+			if (fromServer) {
+				return fromServer;
+			}
 			const issues = await jira.search(arg(args, 'jql') ?? '', Number(args.max) || 20);
 			return ok(issues.length ? external('jira', 'search', issues.map(i => `${i.key} [${i.status}] ${i.summary}`).join('\n')) : 'No tickets match.');
 		}
 		case 'jira_comment': {
-			const made = await jira.comment(key ?? '', arg(args, 'text') ?? '', defaults.jira?.commentVisibility);
-			return ok(`Commented on ${key}.`, made.id ? `comment ${made.id}` : undefined);
+			const id = await via(server => jiraVia.comment(server, key ?? '', arg(args, 'text') ?? '', defaults.jira?.commentVisibility), async () => (await jira.comment(key ?? '', arg(args, 'text') ?? '', defaults.jira?.commentVisibility)).id);
+			return ok(`Commented on ${key}.`, id ? `comment ${id}` : undefined);
 		}
 		case 'jira_log_time': {
 			// A page gives the day the work was done; an agent logs it as now.
 			const started = arg(args, 'started');
-			const made = await jira.logWork(key ?? '', arg(args, 'spent') ?? '', arg(args, 'comment'), started ? new Date(started) : undefined);
-			return ok(`Logged ${arg(args, 'spent')} on ${key}.`, made.id ? `worklog ${made.id}` : undefined);
+			const when = started ? new Date(started) : undefined;
+			const id = await via(server => jiraVia.logWork(server, key ?? '', arg(args, 'spent') ?? '', arg(args, 'comment'), when), async () => (await jira.logWork(key ?? '', arg(args, 'spent') ?? '', arg(args, 'comment'), when)).id);
+			return ok(`Logged ${arg(args, 'spent')} on ${key}.`, id ? `worklog ${id}` : undefined);
 		}
 		case 'jira_assign': {
 			// A page names the person exactly, by account id, or null for nobody.
 			if (args.accountId === null || typeof args.accountId === 'string') {
-				await jira.assign(key ?? '', args.accountId);
+				const accountId = args.accountId;
+				await via(server => jiraVia.assign(server, key ?? '', accountId), () => jira.assign(key ?? '', accountId));
 				return ok(args.accountId === null ? `${key} is now unassigned.` : `Assigned ${key}.`, args.accountId === null ? 'unassigned' : `assignee ${args.accountId}`);
 			}
 			const to = arg(args, 'to');
@@ -451,14 +493,14 @@ async function jiraCall(jira: JiraClient, name: string, args: Record<string, unk
 				return ok(people.length ? `${key} can be assigned to:\n${people.map(u => `- ${u.displayName}${u.emailAddress ? ` (${u.emailAddress})` : ''}`).join('\n')}` : `Nobody can be assigned ${key}.`);
 			}
 			if (/^unassigned$/i.test(to)) {
-				await jira.assign(key ?? '', null);
+				await via(server => jiraVia.assign(server, key ?? '', null), () => jira.assign(key ?? '', null));
 				return ok(`${key} is now unassigned.`);
 			}
 			const person = /^me$/i.test(to) ? await jira.myself() : (await jira.assignableUsers(key ?? '', to))[0];
 			if (!person) {
 				return fail(`Nobody matching "${to}" can be assigned ${key}. Call jira_assign without \`to\` to list who can.`);
 			}
-			await jira.assign(key ?? '', person.accountId);
+			await via(server => jiraVia.assign(server, key ?? '', person.accountId), () => jira.assign(key ?? '', person.accountId));
 			return ok(`Assigned ${key} to ${person.displayName}.`, `assignee ${person.accountId}`);
 		}
 		case 'jira_transition': {
@@ -472,9 +514,18 @@ async function jiraCall(jira: JiraClient, name: string, args: Record<string, unk
 			// The team's comment visibility applies to a move's comment too: then the move goes alone and the comment after it, with its visibility.
 			const visibility = comment ? defaults.jira?.commentVisibility : undefined;
 			// A page names the transition by id; an agent by the status it moves to.
-			const moved = await jira.transition(key ?? '', arg(args, 'transition') ?? to, visibility ? undefined : comment, fields);
-			const made = comment && visibility ? await jira.comment(key ?? '', comment, visibility) : undefined;
-			return ok(`Moved ${key} to ${moved.to}${comment ? ' with the comment' : ''}.`, [`transition ${moved.id} → ${moved.to}`, made?.id ? `comment ${made.id}` : ''].filter(Boolean).join(' · '));
+			const wanted = arg(args, 'transition') ?? to;
+			const moved = await via(async server => {
+				const moves = await jiraVia.transitions(server, key ?? '');
+				const move = moves.find(t => t.id === wanted) ?? moves.find(t => t.to.toLowerCase() === wanted.toLowerCase() || t.name.toLowerCase() === wanted.toLowerCase());
+				if (!move) {
+					throw new Error(`${key} can't move to "${wanted}" from its current status. It can move to: ${moves.map(t => t.to).join(', ') || 'nothing'}.`);
+				}
+				await jiraVia.transition(server, key ?? '', move.id, visibility ? undefined : comment, fields);
+				return { id: move.id, to: move.to };
+			}, () => jira.transition(key ?? '', wanted, visibility ? undefined : comment, fields));
+			const commentId = comment && visibility ? await via(server => jiraVia.comment(server, key ?? '', comment, visibility), async () => (await jira.comment(key ?? '', comment, visibility)).id) : undefined;
+			return ok(`Moved ${key} to ${moved.to}${comment ? ' with the comment' : ''}.`, [`transition ${moved.id} → ${moved.to}`, commentId ? `comment ${commentId}` : ''].filter(Boolean).join(' · '));
 		}
 	}
 	return fail(`No tool named ${name}.`);
@@ -504,7 +555,7 @@ async function resolveMr(gitlab: GitLabClient, ref: string | undefined, folder: 
 	return { project: local.project, iid: mr.iid };
 }
 
-async function gitlabCall(gitlab: GitLabClient, name: string, args: Record<string, unknown>, folder: string | undefined, defaults: TeamDefaults): Promise<TeamToolResult> {
+async function gitlabCall(gitlab: GitLabClient, via: Through, name: string, args: Record<string, unknown>, folder: string | undefined, defaults: TeamDefaults): Promise<TeamToolResult> {
 	switch (name) {
 		case 'gitlab_get_mr': {
 			const { project, iid } = await resolveMr(gitlab, arg(args, 'mr'), folder, defaults);
@@ -548,7 +599,12 @@ async function gitlabCall(gitlab: GitLabClient, name: string, args: Record<strin
 			if (!project) {
 				return fail('Give the issue\'s link.');
 			}
-			const issue = await gitlab.issue(project, Number(link?.[2] ?? ref.replace(/\D/g, '')));
+			const issueIid = Number(link?.[2] ?? ref.replace(/\D/g, ''));
+			const fromServer = await via(async server => ok(external('gitlab', ref, clip(await gitlabVia.issue(server, project, issueIid), 16_000))), async () => undefined);
+			if (fromServer) {
+				return fromServer;
+			}
+			const issue = await gitlab.issue(project, issueIid);
 			return ok(external('gitlab', issue.url, `${issue.title} (${issue.url}) · ${issue.state}${issue.labels.length ? ` · ${issue.labels.join(', ')}` : ''}\n\n${clip(issue.description, 12_000)}`));
 		}
 		case 'gitlab_create_mr': {
@@ -557,7 +613,7 @@ async function gitlabCall(gitlab: GitLabClient, name: string, args: Record<strin
 				return fail('This folder isn\'t on a branch of a project on the connected GitLab.');
 			}
 			const reviewers = Array.isArray(args.reviewers) ? args.reviewers.filter((r): r is number => typeof r === 'number') : [];
-			const mr = await gitlab.createMergeRequest(local.project, {
+			const request = {
 				sourceBranch: local.branch,
 				targetBranch: arg(args, 'target') ?? defaults.gitlab?.defaultTarget ?? 'main',
 				title: arg(args, 'title') ?? local.branch,
@@ -565,12 +621,14 @@ async function gitlabCall(gitlab: GitLabClient, name: string, args: Record<strin
 				draft: args.draft === true,
 				...args.deleteBranch === false ? { removeSourceBranch: false } : {},
 				...reviewers.length ? { reviewerIds: reviewers } : {},
-			});
+			};
+			const project = local.project;
+			const mr = await via(server => gitlabVia.createMergeRequest(server, project, request), () => gitlab.createMergeRequest(project, request));
 			return ok(`Opened !${mr.iid}: ${mr.url}`, `!${mr.iid}`, { iid: mr.iid, url: mr.url });
 		}
 		case 'gitlab_approve': {
 			const { project, iid } = await resolveMr(gitlab, arg(args, 'mr'), folder, defaults, arg(args, 'project'));
-			await gitlab.approve(project, iid);
+			await via(server => gitlabVia.approve(server, project, iid), () => gitlab.approve(project, iid));
 			return ok(`Approved !${iid}.`, `approval on !${iid}`);
 		}
 		case 'gitlab_request_changes': {
@@ -583,11 +641,11 @@ async function gitlabCall(gitlab: GitLabClient, name: string, args: Record<strin
 			const body = typeof args.text === 'string' ? args.text : '';
 			const discussion = arg(args, 'discussion');
 			if (discussion) {
-				const note = await gitlab.replyToDiscussion(project, iid, discussion, body);
+				const noteId = await via(server => gitlabVia.reply(server, project, iid, discussion, body), async () => idText((await gitlab.replyToDiscussion(project, iid, discussion, body)).id));
 				if (args.resolve === true) {
-					await gitlab.resolveDiscussion(project, iid, discussion);
+					await via(server => gitlabVia.resolve(server, project, iid, discussion), () => gitlab.resolveDiscussion(project, iid, discussion));
 				}
-				return ok(`Replied on !${iid}${args.resolve === true ? ' and resolved the thread' : ''}.`, note.id ? `note ${note.id} on !${iid}` : `!${iid}`);
+				return ok(`Replied on !${iid}${args.resolve === true ? ' and resolved the thread' : ''}.`, noteId ? `note ${noteId} on !${iid}` : `!${iid}`);
 			}
 			const path = arg(args, 'path');
 			const line = Number(args.line);
@@ -595,8 +653,8 @@ async function gitlabCall(gitlab: GitLabClient, name: string, args: Record<strin
 				const where = await gitlab.commentOnLine(project, iid, path, line, body);
 				return ok(where === 'line' ? `Commented on ${path}:${line} in !${iid}.` : `Commented on !${iid} (the line isn't in the diff, so as a general comment).`);
 			}
-			const note = await gitlab.comment(project, iid, body);
-			return ok(`Commented on !${iid}.`, note.id ? `note ${note.id} on !${iid}` : `!${iid}`);
+			const noteId = await via(server => gitlabVia.comment(server, project, iid, body), async () => idText((await gitlab.comment(project, iid, body)).id));
+			return ok(`Commented on !${iid}.`, noteId ? `note ${noteId} on !${iid}` : `!${iid}`);
 		}
 		case 'gitlab_merge': {
 			const { project, iid } = await resolveMr(gitlab, arg(args, 'mr'), folder, defaults, arg(args, 'project'));
@@ -609,7 +667,8 @@ async function gitlabCall(gitlab: GitLabClient, name: string, args: Record<strin
 			if (seen && !readiness.sha.startsWith(seen)) {
 				return fail(`!${iid} moved since it was read: its head is now ${readiness.sha.slice(0, 8)}, not ${seen.slice(0, 8)}. Look at it again before merging.`);
 			}
-			const merged = await gitlab.merge(project, iid, { sha: readiness.sha, ...args.squash === undefined ? {} : { squash: args.squash === true }, removeSourceBranch: args.deleteBranch !== false });
+			const options = { sha: readiness.sha, ...args.squash === undefined ? {} : { squash: args.squash === true }, removeSourceBranch: args.deleteBranch !== false };
+			const merged = await via(server => gitlabVia.merge(server, project, iid, options), () => gitlab.merge(project, iid, options));
 			return ok(`Merged !${iid} at ${readiness.sha.slice(0, 8)}${merged.sha ? ` as ${merged.sha.slice(0, 8)}` : ''}.`, `!${iid} merged at ${readiness.sha}${merged.sha ? ` as ${merged.sha}` : ''}`, merged.sha ? { sha: merged.sha } : undefined);
 		}
 	}

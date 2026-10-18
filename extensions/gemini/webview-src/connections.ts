@@ -136,12 +136,13 @@ function render(): void {
 		const list = el('ul', 'team-server-list');
 		for (const server of view.teamServers.servers) {
 			const item = el('li');
-			const tools = server.included || server.excluded ? format(strings.teamServerTools, String(server.included ?? ''), String(server.excluded ?? 0)) : '';
+			// The file either lists the tools it keeps or the ones it leaves out.
+			const tools = server.included ? format(strings.teamServerIncluded, String(server.included)) : server.excluded ? format(strings.teamServerExcluded, String(server.excluded)) : '';
 			item.append(el('strong', undefined, server.name), el('span', 'mono', ` · ${[format(strings.teamServerLine, server.image ?? '', server.tokenEnv.map(v => `$${v}`).join(', ')), tools].filter(Boolean).join(' · ')}`));
 			list.append(item);
 		}
 		const actions = el('div', 'row-actions');
-		actions.append(button('', strings.openSettings, () => post({ type: 'openTeamServers' })));
+		actions.append(button('primary', strings.takeOverServers, () => post({ type: 'takeOverTeamServers' })), button('', strings.openSettings, () => post({ type: 'openTeamServers' })));
 		card.append(list, actions);
 		page.append(card);
 	}

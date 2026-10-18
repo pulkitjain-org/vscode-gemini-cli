@@ -93,6 +93,8 @@ The **Gemini** status bar item shows the agent's state. Hover over it to see the
 | `gemini.chat.foldFinishedWork` | Fold each finished turn's thoughts and steps under one "Worked for" line in the chat. On by default; off shows every step as its own row. |
 | `gemini.notifications.enabled` | Notify you, and badge the Dock, when an agent finishes or needs you while GeminiCode is in the background. On by default. |
 | `gemini.layout.showAgentsInNewWorkspaces` | Show the Gemini side bar rather than Explorer the first time a workspace opens in Editor mode. |
+| `gemini.team.runTeamServers` | Run the team's own Jira and GitLab MCP servers in Docker, at pinned versions, for the team tools' calls. Off by default; **Take Over Both Servers** in Connections turns it on. |
+| `gemini.pilot.record` | Count the pilot's measures (launches, waits, permission cards, Undo and Rewind, team tool errors), with times and no text, for **Gemini: Export Pilot Data**. Off by default. |
 
 Changing the CLI path or version, the project, or an approval or shell setting restarts the agent so the change applies. Admins can lock the CLI, update, approval, shell, inline edit, usage and browser settings through policy; see [Security model](docs/ARCHITECTURE.md#security-model).
 
@@ -145,7 +147,7 @@ Keep fork code in `extensions/gemini/`. Edit an upstream file only to register t
 ```sh
 gemini/scripts/upstream-series.sh files        # the upstream files the fork modifies, and the files it adds beside them
 gemini/scripts/upstream-series.sh regenerate   # rewrite gemini/patches/ from HEAD against the pinned tag
-gemini/scripts/upstream-series.sh check        # what CI runs: every patch still matches HEAD
+gemini/scripts/upstream-series.sh check        # what CI runs: every patch still matches HEAD, and every upstream code file it edits has a GEMINI-FORK marker
 ```
 
 After editing an upstream file, run `regenerate` and commit `gemini/patches/` with the change; Gemini CI fails otherwise. `gemini/scripts/list-fork-touches.sh` still prints the markers.

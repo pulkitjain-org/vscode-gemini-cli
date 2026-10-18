@@ -166,7 +166,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		new BenchmarkCommand(service, log),
 		new Pilot(context.globalStorageUri.fsPath, teamTools, usageMeter),
 		mrPanel,
-		new ConnectionsPage(context.extensionUri, teamTools),
+		new ConnectionsPage(context.extensionUri, teamTools, log),
 		new TeamStatusBar(context.extensionUri, teamTools),
 		new AuditStatusBar(teamTools.audit),
 		service.runtime.onDidBecomeBusy(() => keepAwake.setBusy(true)),
