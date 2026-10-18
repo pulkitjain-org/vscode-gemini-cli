@@ -6,7 +6,7 @@ Install GeminiCode, sign in with Google and start your first agent. The Gemini C
 
 ## What you need
 
-- A Mac with Apple silicon, on macOS 12 or later.
+- A Mac with Apple silicon, on macOS 26 or later. On an older macOS or an Intel Mac, macOS refuses to open GeminiCode.
 - A Google account with a **Gemini Code Assist** license.
 - A **Google Cloud project** to bill usage to. Your organisation may set it for you.
 

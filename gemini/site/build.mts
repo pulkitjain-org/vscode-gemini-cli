@@ -493,8 +493,8 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 		: `
 					<span class="dl disabled"><span><small>No release yet</small><b>The first build is on its way</b></span></span>`;
 	const meta = c.version
-		? `v${text(c.version)}${c.releasedShort ? ` · ${text(c.releasedShort)}` : ''} · macOS 12+ · Apple silicon · Gemini CLI built in`
-		: `<a href="${attr(c.repoUrl)}/releases">Check GitHub Releases</a> · Mac with Apple silicon`;
+		? `v${text(c.version)}${c.releasedShort ? ` · ${text(c.releasedShort)}` : ''} · macOS 26+ · Apple silicon · Gemini CLI built in`
+		: `<a href="${attr(c.repoUrl)}/releases">Check GitHub Releases</a> · Mac with Apple silicon, macOS 26+`;
 	const shownClips = clips.filter(clip => hasClip(clip, available));
 	const hero = shownClips[0];
 	// Without JavaScript the hero shows the first clip's last frame; landing.js plays it while it is on screen.
@@ -630,7 +630,7 @@ export function renderNotesPage(latest: LatestRelease, notesHtml: string, repo: 
 			</div>
 			<div>
 				<a class="dl" href="${attr(c.dmg.url)}">${icon('download')}Download ${text(c.version)}</a>
-				<small>Apple silicon · ${c.sizeMb} MB · macOS 12 or later</small>
+				<small>Apple silicon · ${c.sizeMb} MB · macOS 26 or later</small>
 				${copyButton('notes.md')}
 			</div>${toc}${sha}
 		</div>

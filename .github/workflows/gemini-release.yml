@@ -1,5 +1,6 @@
 # GeminiCode release build (see gemini/docs/RELEASING.md).
-# Pushing a tag like v0.1.0 builds the Mac app for Apple silicon, signs it
+# Pushing a tag like v1.2.0 builds the Mac app for Apple silicon on macOS 26
+# or later (an arm64-only binary that declares macOS 26 as its minimum), signs it
 # with the Developer ID in the repository secrets, notarizes and staples it,
 # packs a .dmg and publishes it to a GitHub Release. Without the Apple
 # secrets the app is only ad-hoc signed and the release is marked unsigned.
@@ -18,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Build and publish this existing tag, such as v0.1.0. Leave empty for a dev build that publishes nothing.'
+        description: 'Build and publish this existing tag, such as v1.1.0. Leave empty for a dev build that publishes nothing.'
         required: false
         default: ''
 
@@ -41,6 +42,8 @@ jobs:
     env:
       VSCODE_ARCH: arm64
       VSCODE_QUALITY: stable
+      # The oldest macOS the app opens on; older releases refuse it and name this one.
+      GEMINI_MIN_MACOS: '26.0'
       NPM_CONFIG_AUDIT: false
       NPM_CONFIG_FUND: false
     steps:
@@ -166,6 +169,22 @@ jobs:
           echo "build-dir=$BUILD_DIR" >> "$GITHUB_OUTPUT"
           echo "path=$APP" >> "$GITHUB_OUTPUT"
           du -sh "$APP"
+
+      - name: Require Apple silicon and macOS 26
+        # Electron declares an older minimum and its packager has no option for it, so the app's
+        # Info.plist is set here, before signing. macOS then refuses to open the app on an older
+        # release and says which it needs; an arm64-only executable does the same on an Intel Mac.
+        run: |
+          set -euo pipefail
+          APP="${{ steps.app.outputs.path }}"
+          PLIST="$APP/Contents/Info.plist"
+          plutil -replace LSMinimumSystemVersion -string "$GEMINI_MIN_MACOS" "$PLIST"
+          MIN="$(plutil -extract LSMinimumSystemVersion raw "$PLIST")"
+          test "$MIN" = "$GEMINI_MIN_MACOS" || { echo "::error::LSMinimumSystemVersion is $MIN, not $GEMINI_MIN_MACOS"; exit 1; }
+          EXE="$APP/Contents/MacOS/$(plutil -extract CFBundleExecutable raw "$PLIST")"
+          ARCHS="$(lipo -archs "$EXE")"
+          test "$ARCHS" = "arm64" || { echo "::error::$EXE is built for '$ARCHS', not arm64 only"; exit 1; }
+          echo "The app needs Apple silicon (arm64) and macOS $MIN or later."
 
       - name: Import the Developer ID certificate
         if: steps.signing.outputs.signed == 'true'
@@ -317,7 +336,7 @@ jobs:
           UPSTREAM_VERSION="$(node -p 'require("./package.json").version')"
           NOTES="$RUNNER_TEMP/notes.md"
           {
-            echo "GeminiCode $VERSION for Mac with Apple silicon, built on Code - OSS $UPSTREAM_VERSION with Gemini CLI $CLI_VERSION."
+            echo "GeminiCode $VERSION for Mac with Apple silicon on macOS ${GEMINI_MIN_MACOS%.0} or later, built on Code - OSS $UPSTREAM_VERSION with Gemini CLI $CLI_VERSION."
             echo
             if [[ "$SIGNED" != "true" ]]; then
               echo "> [!WARNING]"

@@ -53,7 +53,7 @@ The product code is in [`../extensions/gemini/`](../extensions/gemini/).
 
 ## Getting started
 
-Download GeminiCode for Mac (Apple silicon) from the [download page](https://pulkitjain-org.github.io/vscode-gemini-cli/), open the `.dmg` and drag GeminiCode to Applications.
+Download GeminiCode for Mac (Apple silicon, macOS 26 or later) from the [download page](https://pulkitjain-org.github.io/vscode-gemini-cli/), open the `.dmg` and drag GeminiCode to Applications.
 
 You need a Google account with a **Gemini Code Assist** license and a **Google Cloud project** to bill usage to. Your organisation may set the project for you.
 

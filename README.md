@@ -10,7 +10,7 @@ GeminiCode is a code editor built on [VS Code (Code - OSS)](https://github.com/m
 
 ## Get GeminiCode
 
-Download GeminiCode for Mac (Apple silicon) from the [download page](https://pulkitjain-org.github.io/vscode-gemini-cli/), which always points at the newest build on this repository's [Releases](https://github.com/pulkitjain-org/vscode-gemini-cli/releases) page. Windows, Linux and Intel Mac builds are not published yet; on those, build it from source as described in [gemini/README.md](gemini/README.md#developing).
+Download GeminiCode for Mac (Apple silicon, macOS 26 or later) from the [download page](https://pulkitjain-org.github.io/vscode-gemini-cli/), which always points at the newest build on this repository's [Releases](https://github.com/pulkitjain-org/vscode-gemini-cli/releases) page. Windows, Linux and Intel Mac builds are not published yet; on those, build it from source as described in [gemini/README.md](gemini/README.md#developing).
 
 You need a Google account with a Gemini Code Assist license and a Google Cloud project.
 

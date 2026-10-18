@@ -1,5 +1,5 @@
 diff --git a/README.md b/README.md
-index b7770cecdd10433d6e7f072a3e2adf2f41bbedc2..ea3da85dc392fa16856a49fc52052f30bde4780e 100644
+index b7770cecdd10433d6e7f072a3e2adf2f41bbedc2..4bcc600fd5a775263e6165e5c2ef29ce9f2dcab0 100644
 --- a/README.md
 +++ b/README.md
 @@ -1,76 +1,27 @@
@@ -24,7 +24,7 @@ index b7770cecdd10433d6e7f072a3e2adf2f41bbedc2..ea3da85dc392fa16856a49fc52052f30
 -<p align="center">
 -  <img alt="VS Code in action" src="https://github.com/user-attachments/assets/56af271c-949d-454c-a3ea-16188c063414">
 -</p>
-+Download GeminiCode for Mac (Apple silicon) from the [download page](https://pulkitjain-org.github.io/vscode-gemini-cli/), which always points at the newest build on this repository's [Releases](https://github.com/pulkitjain-org/vscode-gemini-cli/releases) page. Windows, Linux and Intel Mac builds are not published yet; on those, build it from source as described in [gemini/README.md](gemini/README.md#developing).
++Download GeminiCode for Mac (Apple silicon, macOS 26 or later) from the [download page](https://pulkitjain-org.github.io/vscode-gemini-cli/), which always points at the newest build on this repository's [Releases](https://github.com/pulkitjain-org/vscode-gemini-cli/releases) page. Windows, Linux and Intel Mac builds are not published yet; on those, build it from source as described in [gemini/README.md](gemini/README.md#developing).
  
 -[Visual Studio Code](https://code.visualstudio.com) is a distribution of the `Code - OSS` repository with Microsoft-specific customizations released under a traditional [Microsoft product license](https://code.visualstudio.com/License/).
 +You need a Google account with a Gemini Code Assist license and a Google Cloud project.

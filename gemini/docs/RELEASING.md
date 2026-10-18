@@ -1,6 +1,6 @@
 # Releasing GeminiCode
 
-GeminiCode ships as a Mac app for Apple silicon, from this repository's [GitHub Releases](https://github.com/pulkitjain-org/vscode-gemini-cli/releases), with a download page at <https://pulkitjain-org.github.io/vscode-gemini-cli/>. Share the page, not the release: it always points at the newest build. Windows, Linux and Intel Macs are not built.
+GeminiCode ships as a Mac app for Apple silicon on macOS 26 or later, from this repository's [GitHub Releases](https://github.com/pulkitjain-org/vscode-gemini-cli/releases), with a download page at <https://pulkitjain-org.github.io/vscode-gemini-cli/>. Share the page, not the release: it always points at the newest build. Windows, Linux and Intel Macs are not built.
 
 ## Versions
 
@@ -30,13 +30,15 @@ If the release already exists, for example because it was made in GitHub's UI, t
 1. Stamps the version into `product.json`.
 2. Installs dependencies, leaves out upstream's Copilot extension, bundles the pinned Gemini CLI (`npm run bundle-cli` in `extensions/gemini`), and builds the app with `npm run gulp vscode-darwin-arm64-min`.
 3. Checks that the app holds the bundled CLI and the stamped version, and no Copilot extension.
-4. Signs the app with the Developer ID, using upstream's `build/darwin/sign.ts`: hardened runtime and upstream's entitlements for the app and each helper.
-5. Notarizes the app with `notarytool` and staples the ticket.
-6. Packs a `.dmg` with upstream's `build/darwin/create-dmg.ts` (drag to Applications), then signs, notarizes and staples the `.dmg` too.
-7. Publishes the GitHub Release with the `.dmg`, its checksum and release notes that name the upstream and bundled CLI versions, followed by GitHub's generated notes. A version with a suffix is marked as a prerelease.
-8. Starts the download page build. A release made by the workflow's own token fires no release event, so the workflow starts the page build itself.
+4. Sets the app's `LSMinimumSystemVersion` to macOS 26 (`GEMINI_MIN_MACOS`; Electron declares an older one, and its packager has no option for it) and checks that its executable is arm64 only. macOS then refuses to open it on an older release or an Intel Mac, and says why.
+5. Signs the app with the Developer ID, using upstream's `build/darwin/sign.ts`: hardened runtime and upstream's entitlements for the app and each helper.
+6. Notarizes the app with `notarytool` and staples the ticket.
+7. Packs a `.dmg` with upstream's `build/darwin/create-dmg.ts` (drag to Applications), then signs, notarizes and staples the `.dmg` too.
+8. Publishes the GitHub Release with the `.dmg`, its checksum and release notes that name the upstream and bundled CLI versions, followed by GitHub's generated notes. A version with a suffix is marked as a prerelease.
+9. Starts the download page build. A release made by the workflow's own token fires no release event, so the workflow starts the page build itself.
+10. For a release that is not a prerelease, opens a `Benchmark <version>` issue as the reminder to run the benchmark ([bench/README.md](../bench/README.md)).
 
-Without the Apple secrets, steps 4 to 6 are replaced by an ad hoc signature. The file is then named `GeminiCode-<version>-arm64-unsigned.dmg`, the release title ends in "(unsigned)", and the notes explain how to open it. Setting only some of the six secrets fails the build, so a typo cannot quietly produce an unsigned release.
+Without the Apple secrets, steps 5 to 7 are replaced by an ad hoc signature. The file is then named `GeminiCode-<version>-arm64-unsigned.dmg`, the release title ends in "(unsigned)", and the notes explain how to open it. Setting only some of the six secrets fails the build, so a typo cannot quietly produce an unsigned release.
 
 ## The download page
 
