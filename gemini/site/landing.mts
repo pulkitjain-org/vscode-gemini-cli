@@ -3,11 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The landing page's moving parts: the hero clip, the Projects and Browser
-// chapters, the "Watch it work" rail with its player, and the feature index's
-// filter. With Reduce Motion on, clips show their last frame and chapters stay
-// on the step the reader picks. Served as plain JavaScript (build.mts strips
-// the types).
+// The landing page's moving parts: the hero clip, and the "Watch it work" rail
+// with its player. With Reduce Motion on, clips show their last frame. Old
+// links to the feature index go to the docs. Served as plain JavaScript
+// (build.mts strips the types).
 
 const doc = document.documentElement;
 const noMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -60,101 +59,6 @@ if (heroVideo) {
 	document.addEventListener('visibilitychange', update);
 }
 
-// ---- Chapters: each step shows its screenshot; the steps move on by themselves until the reader picks one ----
-
-const dwell = 6000;
-for (const chapter of document.querySelectorAll<HTMLElement>('.chapter:not(.plain)')) {
-	const steps = [...chapter.querySelectorAll<HTMLButtonElement>('button.step')];
-	const frames = [...chapter.querySelectorAll<HTMLElement>('.frame')];
-	const stage = chapter.querySelector<HTMLElement>('.stage');
-	if (!stage || !steps.length) {
-		continue;
-	}
-	let current = 0;
-	let touring = true;
-	let visible = false;
-	let hovering = false;
-	let shownFor = 0; // ms the current step has been on screen before `since`
-	let since = 0;
-	let frame = 0;
-
-	const running = () => touring && visible && !hovering && !noMotion.matches && !document.hidden;
-	const show = (index: number, focus = false) => {
-		steps[current].style.removeProperty('--p');
-		current = index;
-		steps.forEach((step, i) => {
-			step.setAttribute('aria-selected', String(i === index));
-			step.tabIndex = i === index ? 0 : -1;
-		});
-		frames.forEach((f, i) => f.classList.toggle('on', i === index));
-		stage.setAttribute('aria-labelledby', steps[index].id);
-		if (focus) {
-			steps[index].focus();
-		}
-		shownFor = 0;
-		since = performance.now();
-	};
-	const tick = (now: number) => {
-		frame = 0;
-		if (!running()) {
-			return;
-		}
-		const progress = Math.min(1, (shownFor + now - since) / dwell);
-		steps[current].style.setProperty('--p', String(progress));
-		if (progress >= 1) {
-			show((current + 1) % steps.length);
-		}
-		frame = requestAnimationFrame(tick);
-	};
-	const update = () => {
-		if (running() && !frame) {
-			since = performance.now();
-			frame = requestAnimationFrame(tick);
-		} else if (!running() && frame) {
-			cancelAnimationFrame(frame);
-			frame = 0;
-			shownFor += performance.now() - since;
-		}
-	};
-	const stopTour = () => {
-		touring = false;
-		steps[current].style.removeProperty('--p');
-		update();
-	};
-
-	steps.forEach((step, i) => step.addEventListener('click', () => {
-		stopTour();
-		show(i);
-	}));
-	chapter.querySelector('.ch-steps')?.addEventListener('keydown', event => {
-		const key = (event as KeyboardEvent).key;
-		const next = key === 'ArrowDown' || key === 'ArrowRight' ? (current + 1) % steps.length
-			: key === 'ArrowUp' || key === 'ArrowLeft' ? (current - 1 + steps.length) % steps.length
-				: key === 'Home' ? 0 : key === 'End' ? steps.length - 1 : -1;
-		if (next >= 0) {
-			event.preventDefault();
-			stopTour();
-			show(next, true);
-		}
-	});
-	chapter.addEventListener('pointerenter', event => {
-		if (event.pointerType === 'mouse') {
-			hovering = true;
-			update();
-		}
-	});
-	chapter.addEventListener('pointerleave', () => {
-		hovering = false;
-		update();
-	});
-	new IntersectionObserver(entries => {
-		visible = entries.some(entry => entry.isIntersecting);
-		update();
-	}, { threshold: 0.4 }).observe(stage);
-	noMotion.addEventListener('change', update);
-	document.addEventListener('visibilitychange', update);
-}
-
 // ---- Watch it work: hover previews, categories, the arrows and the player ----
 
 const rail = document.querySelector<HTMLElement>('.rail');
@@ -189,13 +93,6 @@ if (rail) {
 	rail.addEventListener('scroll', syncArrows, { passive: true });
 	addEventListener('resize', syncArrows);
 
-	const chips = [...section.querySelectorAll<HTMLButtonElement>('.chip-btn')];
-	chips.forEach(chip => chip.addEventListener('click', () => {
-		chips.forEach(other => other.setAttribute('aria-pressed', String(other === chip)));
-		cards.forEach(card => card.hidden = !!chip.dataset.filter && card.dataset.category !== chip.dataset.filter);
-		rail.scrollTo({ left: 0 });
-		syncArrows();
-	}));
 	syncArrows();
 
 	// The player: one clip at a time, in the theme the reader picks.
@@ -245,9 +142,8 @@ if (rail) {
 		}
 	}));
 	player.querySelectorAll<HTMLButtonElement>('[data-step]').forEach(button => button.addEventListener('click', () => {
-		const shown = cards.filter(card => !card.hidden);
-		const index = shown.indexOf(open);
-		open = shown[(index + Number(button.dataset.step) + shown.length) % shown.length] ?? open;
+		const index = cards.indexOf(open);
+		open = cards[(index + Number(button.dataset.step) + cards.length) % cards.length] ?? open;
 		render();
 	}));
 	themeButtons.forEach(button => button.addEventListener('click', () => {
@@ -264,20 +160,9 @@ if (rail) {
 	player.addEventListener('close', () => stage.replaceChildren());
 }
 
-// ---- Everything in GeminiCode: pick a group ----
+// ---- Links to sections that moved to the docs ----
 
-const features = document.querySelector<HTMLElement>('#features');
-if (features) {
-	const chips = [...features.querySelectorAll<HTMLButtonElement>('.chip-btn')];
-	const groups = [...features.querySelectorAll<HTMLElement>('.fgroup')];
-	const count = features.querySelector<HTMLElement>('.fcount span')!;
-	chips.forEach(chip => chip.addEventListener('click', () => {
-		chips.forEach(other => other.setAttribute('aria-pressed', String(other === chip)));
-		let shown = 0;
-		for (const group of groups) {
-			group.hidden = !!chip.dataset.filter && group.dataset.group !== chip.dataset.filter;
-			shown += group.hidden ? 0 : group.querySelectorAll('.feat').length;
-		}
-		count.textContent = String(shown);
-	}));
+// The feature index is now the docs home's "All features".
+if (location.hash === '#features') {
+	location.replace('docs/#all-features');
 }

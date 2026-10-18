@@ -4,14 +4,14 @@ GeminiCode is a fork of VS Code (Code - OSS) with the [Gemini CLI](https://githu
 
 The repository's top-level README, SECURITY and AGENTS files point here. CONTRIBUTING.md and the `.github` agent instructions are upstream's and stay unchanged, so upstream merges stay clean. This folder is where the fork's own docs live:
 
-- [docs/USING.md](docs/USING.md): Agents and Editor modes, shortcuts, themes, Enhance prompt, inline edit, approvals, branches, Projects, the browser, long chats and troubleshooting.
+- [docs/guide/](docs/guide/): the user docs, published as the [GeminiCode docs](https://pulkitjain-org.github.io/vscode-gemini-cli/docs/). Every feature and how to use it: agents, chat, review, Projects, the browser, team tools, settings, shortcuts and troubleshooting.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how GeminiCode works and why, including the security model and admin policies.
 - [docs/PROJECTS.md](docs/PROJECTS.md): how Projects work: the coordinator and its threads, how prompts move between them, and what drives the coordinator's decisions.
 - [docs/FINDINGS.md](docs/FINDINGS.md): Gemini CLI behaviour and measurements the design relies on.
 - [docs/RELEASING.md](docs/RELEASING.md): versions, cutting a release, the download page, and the Apple signing setup.
 - [docs/ROADMAP.md](docs/ROADMAP.md): open work and risks.
 - [branding/](branding/): icon sources.
-- [site/](site/): the download page generator (`build.mts`), which the Pages workflow runs.
+- [site/](site/): the generator (`build.mts`) for the download page and the docs, which the Pages workflow runs.
 - [scripts/list-fork-touches.sh](scripts/list-fork-touches.sh): lists every upstream file the fork changes.
 - [scripts/notarize.sh](scripts/notarize.sh): sends a signed build to Apple's notary service, for the release workflow.
 
