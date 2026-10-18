@@ -71,6 +71,12 @@ Paste a Jira key or link, a GitLab merge request or issue link, or a Figma link 
 
 Clicking a merge request asks whether to open it in GeminiCode's browser or your default browser; **Always Use…** stops asking, and `gemini.team.openMergeRequestsIn` changes it later.
 
+## Audit log
+
+Every write GeminiCode makes to Jira or GitLab for you is recorded on your Mac, whether an agent asked for it or you pressed a button: a comment, a move, a time log, a reassignment, a merge request, a review comment, an approval, a merge. Each write gets two lines in a file per day under GeminiCode's storage, one before the call and one after, with what the tool gave back (a comment id, a worklog id, `!321`, the merge commit). The lines hold what changed and where, not the text; the text is in the chat.
+
+**Gemini: Open Audit Log** (also in the Gemini status bar menu) shows the last seven days. A line with no result is a write that was running when GeminiCode last quit; check the tool before doing it again.
+
 ## What agents get
 
 Every agent session gets a `geminicode-tools` MCP server with tools only for the tools you connected, such as `jira_get_issue`, `gitlab_get_mr`, `gitlab_job_log`, `sonar_quality_gate`, `snyk_test` and `figma_design`. Reading runs without asking. A Jira comment, a reassignment and a comment on a merge request show you a permission card with the exact text first, and you can allow the rest of the session.

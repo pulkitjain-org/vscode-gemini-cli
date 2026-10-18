@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
+import { renderAudit } from './acp/auditLog';
 import { validateProjectId } from './acp/projectId';
 import { filesToAttach, selectionsToAttach } from './host/addToChat';
 import { AppUpdateNotice } from './host/appUpdateNotice';
@@ -32,6 +33,7 @@ import { KeepAwake } from './acp/keepAwake';
 import { BrowserTools } from './host/browserTools';
 import { TeamConnections } from './host/teamConnections';
 import { TeamFlows } from './host/teamFlows';
+import { TraceRecorder } from './host/traceCommand';
 import { MrPanel } from './host/mrPanel';
 import { ConnectionsPage } from './host/connectionsPage';
 import { TeamStatusBar } from './host/teamStatusBar';
@@ -110,6 +112,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	const teamTools = new TeamConnections(context, String(context.extension.packageJSON.version ?? ''), log);
 	agentsView.teamTools = teamTools;
 	const teamFlows = new TeamFlows(context.extensionUri, teamTools, agentsView);
+	const traceRecorder = new TraceRecorder(service, log);
 	const mrPanel = new MrPanel(teamTools, agentsView, agent => teamFlows.checksSummary(agent));
 	changesPanel.team = mrPanel;
 	// caffeinate watches this process, so it ends with GeminiCode even if GeminiCode crashes.
@@ -143,6 +146,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		browserTools,
 		teamTools,
 		teamFlows,
+		traceRecorder,
 		mrPanel,
 		new ConnectionsPage(context.extensionUri, teamTools),
 		new TeamStatusBar(context.extensionUri, teamTools),
@@ -167,6 +171,14 @@ export function activate(context: vscode.ExtensionContext): void {
 			return (await chatInFront(true))?.addAttachments(attachments);
 		}),
 		vscode.commands.registerCommand('gemini.showLog', () => log.show()),
+		vscode.commands.registerCommand('gemini.openAuditLog', async () => {
+			const audit = teamTools.audit;
+			const days = (await audit.days()).slice(0, 7);
+			const content = renderAudit(await Promise.all(days.map(async day => ({ day, entries: await audit.read(new Date(`${day}T00:00:00Z`)) }))), await audit.unfinished());
+			const doc = await vscode.workspace.openTextDocument({ language: 'markdown', content });
+			await vscode.window.showTextDocument(doc, { preview: false });
+			void vscode.commands.executeCommand('markdown.showPreviewToSide', doc.uri);
+		}),
 		vscode.commands.registerCommand('gemini.checkAgent', () => checkAgent(log)),
 		vscode.commands.registerCommand('gemini.restartAgent', () => service.restart()),
 		vscode.commands.registerCommand('gemini.completeSetupInTerminal', () => service.completeSetupInTerminal()),

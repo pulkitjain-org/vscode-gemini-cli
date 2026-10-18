@@ -210,26 +210,28 @@ export class JiraClient {
 	}
 
 	/** Adds a comment; `visibility` limits who can see it to a project role, such as Developers. */
-	async comment(key: string, text: string, visibility?: string): Promise<void> {
-		await this.request(`/rest/api/3/issue/${encodeURIComponent(key)}/comment`, {
+	async comment(key: string, text: string, visibility?: string): Promise<{ readonly id?: string }> {
+		const made = await this.request<{ id?: string }>(`/rest/api/3/issue/${encodeURIComponent(key)}/comment`, {
 			method: 'POST',
 			body: { body: textToAdf(text), ...visibility ? { visibility: { type: 'role', value: visibility } } : {} },
 		});
+		return { ...made?.id ? { id: String(made.id) } : {} };
 	}
 
 	/**
 	 * Logs time on a ticket: `spent` in Jira's format ("1h 30m", "2d"),
 	 * `started` an ISO time (now by default), with an optional comment.
 	 */
-	async logWork(key: string, spent: string, comment?: string, started: Date = new Date()): Promise<void> {
+	async logWork(key: string, spent: string, comment?: string, started: Date = new Date()): Promise<{ readonly id?: string }> {
 		const seconds = parseDuration(spent);
 		if (!seconds) {
 			throw new Error(`"${spent}" isn't a time Jira understands. Use hours and minutes, such as 1h 30m.`);
 		}
-		await this.request(`/rest/api/3/issue/${encodeURIComponent(key)}/worklog?adjustEstimate=auto`, {
+		const made = await this.request<{ id?: string }>(`/rest/api/3/issue/${encodeURIComponent(key)}/worklog?adjustEstimate=auto`, {
 			method: 'POST',
 			body: { timeSpentSeconds: seconds, started: jiraTime(started), ...comment?.trim() ? { comment: textToAdf(comment) } : {} },
 		});
+		return { ...made?.id ? { id: String(made.id) } : {} };
 	}
 
 	/** The time logged on a ticket in total, and by the user, in seconds. */

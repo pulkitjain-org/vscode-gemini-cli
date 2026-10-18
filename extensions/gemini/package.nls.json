@@ -3,6 +3,8 @@
 	"description": "Gemini CLI agent integration, built in to the application.",
 	"category": "Gemini",
 	"command.showLog": "Show Log",
+	"command.openAuditLog": "Open Audit Log",
+	"command.recordTrace": "Record or Stop Performance Trace",
 	"command.checkAgent": "Check Agent Connection",
 	"configuration.title": "Gemini",
 	"configuration.approval.allowAutoEdit": "Offer the Auto Edit approval mode, which applies the agent's file edits without asking. When off, the mode is hidden and the Gemini CLI asks before every tool in it.",

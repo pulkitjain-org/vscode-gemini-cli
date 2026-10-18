@@ -5,6 +5,7 @@
 
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
+import { AuditLog } from '../acp/auditLog';
 import { FigmaDesktop } from '../acp/figma';
 import { GitLabClient } from '../acp/gitlab';
 import { JiraClient } from '../acp/jira';
@@ -35,6 +36,8 @@ export class TeamConnections implements vscode.Disposable {
 	readonly onDidChange = this.onDidChangeEmitter.event;
 
 	private readonly server: TeamToolsMcpServer;
+	/** Every write to Jira or GitLab, by an agent or from a page, recorded before and after it happens. */
+	readonly audit: AuditLog;
 	private clients: TeamConnectors = {};
 	private connectedSet = new Set<TeamToolId>();
 	private readonly states = new Map<TeamToolId, ConnectionState>();
@@ -46,7 +49,9 @@ export class TeamConnections implements vscode.Disposable {
 	private readonly disposables: vscode.Disposable[] = [];
 
 	constructor(private readonly context: vscode.ExtensionContext, version: string, private readonly log: vscode.LogOutputChannel) {
+		this.audit = new AuditLog(vscode.Uri.joinPath(context.globalStorageUri, 'audit').fsPath);
 		this.server = new TeamToolsMcpServer({
+			audit: this.audit,
 			connected: () => this.connectedSet,
 			connectors: () => this.clients,
 			folder: agent => this.folders.get(agent),

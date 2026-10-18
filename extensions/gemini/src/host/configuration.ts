@@ -100,11 +100,18 @@ export function getCliResolution(): CliResolution {
 
 /** How to run the CLI, with the resolved project injected into its environment. */
 /** `subcommand` runs the interactive CLI with those arguments instead, such as `extensions install <source>`. */
+/** Variables added to the agent's environment until cleared, such as the telemetry switches while a trace records. */
+let agentEnvOverride: NodeJS.ProcessEnv = {};
+
+export function setAgentEnvOverride(env: NodeJS.ProcessEnv): void {
+	agentEnvOverride = { ...env };
+}
+
 export function getAgentCommand(options: { interactive?: boolean; cli?: CliResolution; subcommand?: readonly string[] } = {}): AgentCommand {
 	return resolveAgentCommand({
 		cliPath: (options.cli ?? getCliResolution()).cliPath,
 		execPath: process.execPath,
-		env: buildAgentEnv(process.env, getProjectSettings().resolved?.projectId),
+		env: { ...buildAgentEnv(process.env, getProjectSettings().resolved?.projectId), ...options.interactive || options.subcommand ? {} : agentEnvOverride },
 		platform: process.platform,
 		interactive: options.interactive || !!options.subcommand,
 		heapSizeMb: options.interactive || options.subcommand ? undefined : cliHeapSizeMb(readCliSettings(), os.totalmem()),

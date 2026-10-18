@@ -239,16 +239,19 @@ export class TeamFlows implements vscode.Disposable {
 								}
 							}
 							const comment = flow.field('addComment', current.addComment) ? flow.field('comment', current.comment).trim() : '';
-							await jira.transition(ticket, transition.id, current.visibility ? undefined : comment || undefined, fields);
+							const audit = this.tools.audit;
+							await audit.record({ caller: 'ui', tool: 'jira_transition', ref: ticket, effect: `${ticket} ${current.status} → ${transition.to}${comment && !current.visibility ? ', with a comment' : ''}`, args: { transition: transition.id, fields, comment } },
+								() => jira.transition(ticket, transition.id, current.visibility ? undefined : comment || undefined, fields), moved => `transition ${moved.id} → ${moved.to}`);
 							if (comment && current.visibility) {
-								await jira.comment(ticket, comment, current.visibility);
+								await audit.record({ caller: 'ui', tool: 'jira_comment', ref: ticket, effect: `Comment on ${ticket} (${current.visibility})`, args: { comment } }, () => jira.comment(ticket, comment, current.visibility), made => made.id ? `comment ${made.id}` : undefined);
 							}
 							done.push(vscode.l10n.t("Moved {0} to {1}{2}.", ticket, transition.to, comment ? vscode.l10n.t(" with the comment") : ''));
 						}
 						if (logTime) {
 							const date = flow.field('date', current.date);
 							const started = /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T${new Date().toTimeString().slice(0, 8)}`) : new Date();
-							await jira.logWork(ticket, spent, flow.field('workComment', current.workComment) || undefined, started);
+							await this.tools.audit.record({ caller: 'ui', tool: 'jira_log_time', ref: ticket, effect: `${formatDuration(parseDuration(spent))} on ${ticket}`, args: { spent, started } },
+								() => jira.logWork(ticket, spent, flow.field('workComment', current.workComment) || undefined, started), made => made.id ? `worklog ${made.id}` : undefined);
 							done.push(vscode.l10n.t("Logged {0} on {1}.", formatDuration(parseDuration(spent)), ticket));
 						}
 						if (!done.length) {
@@ -394,6 +397,7 @@ export class TeamFlows implements vscode.Disposable {
 					if (!title || !current.target) {
 						throw new Error(vscode.l10n.t("Enter a title."));
 					}
+					const target = current.target;
 					const dirty = (await git(gp.cwd, ['status', '--porcelain'])).trim();
 					if (dirty) {
 						await commitAll(gp.cwd, title);
@@ -413,11 +417,11 @@ export class TeamFlows implements vscode.Disposable {
 					if (extra.length) {
 						description = `${description.trim()}\n\n### Attachments\n\n${extra.join('\n\n')}`;
 					}
-					const mr = await gitlab.createMergeRequest(gp.project, {
-						sourceBranch: gp.branch, targetBranch: current.target, title, description,
+					const mr = await this.tools.audit.record({ caller: 'ui', tool: 'gitlab_create_mr', ref: gp.branch, effect: `${gp.branch} → ${target}: ${title}`, args: { title, target, description } }, () => gitlab.createMergeRequest(gp.project, {
+						sourceBranch: gp.branch, targetBranch: target, title, description,
 						draft: flow.field('draft', current.draft), removeSourceBranch: flow.field('deleteBranch', current.deleteBranch),
 						reviewerIds: current.reviewers.map(r => r.id),
-					});
+					}), made => `!${made.iid}`);
 					flow.dispose();
 					const open = vscode.l10n.t("Open in GitLab");
 					void vscode.window.showInformationMessage(vscode.l10n.t("Opened merge request !{0}.", mr.iid), open).then(choice => choice === open ? openTeamLink(mr.url) : undefined);
@@ -501,19 +505,22 @@ export class TeamFlows implements vscode.Disposable {
 						const current = flow.view!;
 						const ticked = current.findings.filter(f => flow.field(`check:${f.id}`, f.checked)).map(f => ({ ...f, comment: flow.field(`comment:${f.id}`, f.comment) }));
 						let posted = 0;
+						const audit = this.tools.audit;
 						for (const f of ticked) {
-							if (f.file && f.line) {
-								await gitlab.commentOnLine(p, n, f.file, f.line, f.comment);
-							} else {
+							await audit.record({ caller: 'ui', tool: 'gitlab_reply', ref: `!${n}`, effect: `Review comment on !${n}${f.file ? ` at ${f.file}${f.line ? `:${f.line}` : ''}` : ''}`, args: { comment: f.comment } }, async () => {
+								if (f.file && f.line) {
+									return gitlab.commentOnLine(p, n, f.file, f.line, f.comment);
+								}
 								await gitlab.comment(p, n, f.file ? `**${f.file}**\n\n${f.comment}` : f.comment);
-							}
+								return 'general' as const;
+							});
 							posted++;
 						}
 						const mode = str(value);
 						if (mode === 'request') {
-							await gitlab.requestChanges(p, n, vscode.l10n.t("Requesting changes: see the {0} comments above.", posted));
+							await audit.record({ caller: 'ui', tool: 'gitlab_request_changes', ref: `!${n}`, effect: `Requested changes on !${n} after ${posted} comments` }, () => gitlab.requestChanges(p, n, vscode.l10n.t("Requesting changes: see the {0} comments above.", posted)));
 						} else if (mode === 'approve') {
-							await gitlab.approve(p, n);
+							await audit.record({ caller: 'ui', tool: 'gitlab_approve', ref: `!${n}`, effect: `Approved !${n}` }, () => gitlab.approve(p, n));
 						}
 						flow.update({
 							done: mode === 'approve' ? vscode.l10n.t("Approved !{0}{1}.", n, posted ? vscode.l10n.t(" and posted {0} comments", posted) : '')

@@ -122,7 +122,7 @@ Two rules follow from the table and go into ADR 0009: **every flow that spans a 
 
 ### What the traces must be taken with
 
-- CLI: `GEMINI_TELEMETRY_ENABLED=true`, `GEMINI_TELEMETRY_TARGET=local`, `GEMINI_TELEMETRY_OUTFILE=~/geminicode-trace.jsonl`, `GEMINI_TELEMETRY_LOG_PROMPTS=false`, `GEMINI_TELEMETRY_TRACES_ENABLED=true`. The metric and event names above are those documented at the `v0.64.0` tag (`docs/cli/telemetry.md`). The fork does not set any of these today; add a **Gemini: Record Performance Trace** command that sets them on the next agent restart and names the file.
+- CLI: **Gemini: Record or Stop Performance Trace** (shipped 18 Oct 2026) sets `GEMINI_TELEMETRY_ENABLED=true`, `GEMINI_TELEMETRY_TARGET=local`, `GEMINI_TELEMETRY_OUTFILE=~/geminicode-trace-<date>.jsonl`, `GEMINI_TELEMETRY_LOG_PROMPTS=false` and `GEMINI_TELEMETRY_TRACES_ENABLED=true` for one agent process and renders the summary on Stop. Checked against a file 0.64.0 wrote: the records are `gemini_cli.api_response` (model, `duration_ms`, `input_token_count`, `cached_content_token_count`, `output_token_count`, `thoughts_token_count`, `role` main or `utility_router`), `gemini_cli.model_routing` (`routing_latency_ms`, `decision_model`), `gemini_cli.tool_call` and `gemini_cli.startup_stats` (phases with `duration_ms`). With prompts off the file still carries the CLI's system prompt and tool declarations as span attributes, and no prompt or reply text.
 - Extension host: start with `--inspect-extensions=9333` and record a CPU profile over one turn; or **Developer: Start Extension Host Profile**.
 - Chromium: **Developer: Toggle Developer Tools → Performance**, record from Enter to the end of the reply.
 
@@ -343,7 +343,8 @@ Only after sections 1 to 6 are green. Each item names the evidence that motivate
 | --- | --- | --- |
 | Named Flash default saves one model call per prompt | T-01, T-02, F | T-12 with real Flash-Lite latency |
 | Spare session hides `session/new` | SRC, F | T-12 session span with Google sign-in; pilot counter |
-| Token volume per turn | F (real account) | T-12 cached share |
+| Token volume per turn | F (real account); the Record Performance Trace command (shipped 18 Oct 2026) reads `cached_content_token_count` per call from the CLI's file | T-12 cached share from a real session |
+| Audit log | Shipped 18 Oct 2026: `auditLog.ts`, intent and result records for every agent and page write, Open Audit Log | pilot join against Jira and GitLab history |
 | Fork confinement | SRC diff by area | CI hygiene check for stale patches |
 | CLI pin is what ships | checksum match, release notes | the upstream job's first green run |
 | Official MCP servers for Jira and GitLab unusable | web (secondary) | admin confirmation on both tenants |

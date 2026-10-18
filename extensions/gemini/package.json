@@ -101,6 +101,18 @@
         "category": "%category%"
       },
       {
+        "command": "gemini.openAuditLog",
+        "title": "%command.openAuditLog%",
+        "category": "%category%",
+        "icon": "$(list-unordered)"
+      },
+      {
+        "command": "gemini.recordTrace",
+        "title": "%command.recordTrace%",
+        "category": "%category%",
+        "icon": "$(pulse)"
+      },
+      {
         "command": "gemini.showLog",
         "title": "%command.showLog%",
         "category": "%category%"

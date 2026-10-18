@@ -331,14 +331,16 @@ export class GitLabClient {
 		return result.markdown;
 	}
 
-	async comment(project: string | number, iid: number, body: string): Promise<void> {
+	async comment(project: string | number, iid: number, body: string): Promise<{ readonly id?: number }> {
 		const id = await this.projectId(project);
-		await this.request(`/projects/${id}/merge_requests/${iid}/notes`, { method: 'POST', body: { body } });
+		const note = await this.request<{ id?: number }>(`/projects/${id}/merge_requests/${iid}/notes`, { method: 'POST', body: { body } });
+		return { ...note?.id ? { id: note.id } : {} };
 	}
 
-	async replyToDiscussion(project: string | number, iid: number, discussion: string, body: string): Promise<void> {
+	async replyToDiscussion(project: string | number, iid: number, discussion: string, body: string): Promise<{ readonly id?: number }> {
 		const id = await this.projectId(project);
-		await this.request(`/projects/${id}/merge_requests/${iid}/discussions/${encodeURIComponent(discussion)}/notes`, { method: 'POST', body: { body } });
+		const note = await this.request<{ id?: number }>(`/projects/${id}/merge_requests/${iid}/discussions/${encodeURIComponent(discussion)}/notes`, { method: 'POST', body: { body } });
+		return { ...note?.id ? { id: note.id } : {} };
 	}
 
 	async resolveDiscussion(project: string | number, iid: number, discussion: string, resolved = true): Promise<void> {
