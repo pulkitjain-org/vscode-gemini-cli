@@ -206,7 +206,7 @@ main, .top, .foot { position: relative; z-index: 1; }
 .pill .i { width: 14px; height: 14px; color: var(--muted); }
 h1 { text-wrap: balance; margin: 28px auto 0; max-width: 1120px; font-size: clamp(38px, 5.6vw, 72px); line-height: 1.04; letter-spacing: -0.045em; font-weight: 750; }
 .grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.sub { margin: 26px auto 0; max-width: 690px; font-size: clamp(17px, 1.6vw, 20px); line-height: 1.5; color: var(--muted); text-wrap: balance; }
+.hero .sub { margin: 26px auto 0; max-width: 690px; font-size: clamp(17px, 1.6vw, 20px); line-height: 1.5; color: var(--muted); text-wrap: balance; }
 .actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 14px; margin-top: 38px; }
 .dl { position: relative; display: flex; align-items: center; gap: 16px; padding: 14px 22px 14px 24px; border-radius: 16px; background: var(--accent); color: var(--on-accent); text-align: left; transition: transform 0.2s; }
 .dl::before { content: ""; position: absolute; inset: 6px 10px -8px; z-index: -1; border-radius: 20px; background: var(--grad); filter: blur(22px); opacity: 0.55; }
@@ -331,7 +331,7 @@ section.block { padding: 112px 0 0; }
 	.get { padding: 9px 12px; }
 	.hero { padding: 48px 0 36px; }
 	h1 { font-size: 38px; }
-	.sub { font-size: 17px; }
+	.hero .sub { font-size: 17px; }
 	.actions { flex-direction: column; align-items: stretch; }
 	.dl .arrow { margin-left: auto; }
 	.ghost { justify-content: center; }

@@ -17,7 +17,7 @@ You need a Google account with a Gemini Code Assist license and a Google Cloud p
 ## Documentation
 
 - [gemini/README.md](gemini/README.md): features, getting started, settings, building and contributing.
-- [gemini/docs/USING.md](gemini/docs/USING.md): approval modes, folder trust, attachments, long conversations and troubleshooting.
+- [GeminiCode docs](https://pulkitjain-org.github.io/vscode-gemini-cli/docs/) (source in [gemini/docs/guide/](gemini/docs/guide/)): every feature and how to use it, from approval modes and projects to troubleshooting.
 - [gemini/docs/ARCHITECTURE.md](gemini/docs/ARCHITECTURE.md): how GeminiCode works, its security model and admin policies.
 - [gemini/docs/RELEASING.md](gemini/docs/RELEASING.md): versions, releases and the download page.
 - [gemini/docs/ROADMAP.md](gemini/docs/ROADMAP.md): open work and risks.

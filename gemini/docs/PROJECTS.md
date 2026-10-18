@@ -1,6 +1,6 @@
 # Projects: a coordinator and its threads
 
-Projects (preview, `gemini.projects.enabled`) let one chat run a team of agents. You talk to a **coordinator**, which splits the work into **threads**: each thread is an ordinary GeminiCode agent on its own branch, in its own worktree. This page explains the idea, how the parts fit, how prompts move between them, and what drives the coordinator's decisions. How to use it is in [USING.md](USING.md#projects-preview); the short version for the code is in [ARCHITECTURE.md](ARCHITECTURE.md#the-agent-workspace); the measurements behind it are in [FINDINGS.md](FINDINGS.md#a-projects-coordinator-and-threads-in-one-process).
+Projects (preview, `gemini.projects.enabled`) let one chat run a team of agents. You talk to a **coordinator**, which splits the work into **threads**: each thread is an ordinary GeminiCode agent on its own branch, in its own worktree. This page explains the idea, how the parts fit, how prompts move between them, and what drives the coordinator's decisions. How to use it is in [the Projects guide](guide/projects.md); the short version for the code is in [ARCHITECTURE.md](ARCHITECTURE.md#the-agent-workspace); the measurements behind it are in [FINDINGS.md](FINDINGS.md#a-projects-coordinator-and-threads-in-one-process).
 
 ## The idea
 
