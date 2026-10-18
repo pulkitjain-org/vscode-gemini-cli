@@ -1,0 +1,177 @@
+# Moves the fork to the next upstream VS Code release and the newest Gemini
+# CLI, as one pull request (see gemini/docs/AGENTIC-PLAN.md, section 2, and
+# gemini/docs/adr/0003-patch-series-over-pinned-tag.md).
+#
+# Once a week, and by hand: fetch upstream's tags, take the newest release
+# above the pin in gemini/upstream.json, check it out, apply the fork's patch
+# series (gemini/patches) with a three-way merge, copy the fork's own files
+# over from main, move the pin, regenerate the series against the new tag,
+# bump the bundled Gemini CLI to the newest release with its checksum, and
+# open a pull request. Gemini CI then builds and tests that pull request as
+# any other; branch protection on main makes both green a condition to merge.
+# A patch that does not apply leaves its conflict markers in the branch and
+# the pull request says which, so a person finishes it.
+name: Gemini Upstream
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The upstream tag to move to (default: the newest release above the pin)
+        required: false
+        type: string
+      cli:
+        description: The Gemini CLI version to pin (default: the newest on npm)
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: gemini-upstream
+  cancel-in-progress: false
+
+jobs:
+  move:
+    name: Move the upstream tag and the CLI pin
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Fetch upstream tags
+        run: |
+          git remote add upstream https://github.com/microsoft/vscode.git
+          git fetch --no-tags upstream 'refs/tags/1.*:refs/tags/1.*'
+
+      - name: Pick the tag and the CLI version
+        id: pick
+        env:
+          WANT_TAG: ${{ inputs.tag }}
+          WANT_CLI: ${{ inputs.cli }}
+        run: |
+          pin=$(node -p "require('./gemini/upstream.json').tag")
+          if [ -n "$WANT_TAG" ]; then
+            tag=$WANT_TAG
+          else
+            # Release tags only (1.N.x), the newest above the pin.
+            tag=$(git tag --list '1.*' | grep -E '^1\.[0-9]+\.[0-9]+$' | sort -V | awk -v pin="$pin" '{ if ($0 != pin) print }' | sort -V | tail -1)
+            if [ "$(printf '%s\n%s\n' "$pin" "$tag" | sort -V | tail -1)" = "$pin" ]; then tag=""; fi
+          fi
+          cli=${WANT_CLI:-$(npm view @google/gemini-cli version)}
+          current=$(node -p "require('./extensions/gemini/package.json').bundledCli.version")
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "cli=$cli" >> "$GITHUB_OUTPUT"
+          echo "cli_current=$current" >> "$GITHUB_OUTPUT"
+          echo "Pinned $pin, next tag '${tag:-none}'; CLI $current, newest $cli"
+
+      - name: Nothing to do
+        if: steps.pick.outputs.tag == '' && steps.pick.outputs.cli == steps.pick.outputs.cli_current
+        run: echo "The fork is on the newest upstream release and the newest Gemini CLI."
+
+      - name: Apply the series to the new tag
+        if: steps.pick.outputs.tag != ''
+        id: apply
+        env:
+          TAG: ${{ steps.pick.outputs.tag }}
+        run: |
+          git config user.name "gemini-upstream"
+          git config user.email "gemini-upstream@users.noreply.github.com"
+          git checkout -b "upstream/$TAG" "$TAG"
+          set +e
+          FROM=main gemini/scripts/upstream-series.sh apply "$TAG" > apply.log 2>&1
+          status=$?
+          set -e
+          cat apply.log
+          echo "conflicts=$([ $status -eq 0 ] && echo no || echo yes)" >> "$GITHUB_OUTPUT"
+          node -e '
+            const fs = require("fs");
+            const pin = JSON.parse(fs.readFileSync("gemini/upstream.json", "utf8"));
+            pin.tag = process.env.TAG;
+            pin.mergedOn = new Date().toISOString().slice(0, 10);
+            fs.writeFileSync("gemini/upstream.json", JSON.stringify(pin, null, "\t") + "\n");
+          '
+          git add -A
+          git commit -q -m "Move to upstream VS Code $TAG"
+          # The series is relative to the new tag from now on.
+          gemini/scripts/upstream-series.sh regenerate
+          git add -A gemini/patches
+          git commit -q -m "Regenerate the patch series against $TAG" || true
+
+      - name: Stay on main for a CLI-only bump
+        if: steps.pick.outputs.tag == ''
+        run: |
+          git config user.name "gemini-upstream"
+          git config user.email "gemini-upstream@users.noreply.github.com"
+          git checkout -b "gemini-cli/${{ steps.pick.outputs.cli }}"
+
+      - name: Bump the Gemini CLI pin
+        if: steps.pick.outputs.cli != steps.pick.outputs.cli_current
+        env:
+          CLI: ${{ steps.pick.outputs.cli }}
+        run: |
+          integrity=$(npm view "@google/gemini-cli@$CLI" dist.integrity)
+          node -e '
+            const fs = require("fs");
+            const file = "extensions/gemini/package.json";
+            const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
+            pkg.bundledCli = { version: process.env.CLI, integrity: process.env.INTEGRITY };
+            fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\n");
+          ' INTEGRITY="$integrity"
+          # The checksum must match the tarball, as the release build will check.
+          npm ci --ignore-scripts --prefix extensions/gemini
+          npm run bundle-cli --prefix extensions/gemini
+          git add extensions/gemini/package.json
+          git commit -q -m "Bump the bundled Gemini CLI to $CLI"
+
+      - name: Push and open the pull request
+        if: steps.pick.outputs.tag != '' || steps.pick.outputs.cli != steps.pick.outputs.cli_current
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.pick.outputs.tag }}
+          PIN: ${{ steps.pick.outputs.pin }}
+          CLI: ${{ steps.pick.outputs.cli }}
+          CLI_CURRENT: ${{ steps.pick.outputs.cli_current }}
+          CONFLICTS: ${{ steps.apply.outputs.conflicts }}
+        run: |
+          branch=$(git rev-parse --abbrev-ref HEAD)
+          git push -u origin "$branch" --force-with-lease
+          title=""
+          [ -n "$TAG" ] && title="Upstream VS Code $TAG"
+          [ "$CLI" != "$CLI_CURRENT" ] && title="${title:+$title + }Gemini CLI $CLI"
+          {
+            echo "Opened by the Gemini Upstream workflow."
+            echo
+            if [ -n "$TAG" ]; then
+              echo "- Upstream: $PIN → $TAG. The fork's patch series was applied with a three-way merge and regenerated against the new tag."
+              if [ "$CONFLICTS" = "yes" ]; then
+                echo "- **Some patches did not apply.** Their files carry conflict markers; the apply log is below. Resolve them on this branch, then run \`gemini/scripts/upstream-series.sh regenerate\` and push."
+              fi
+              echo "- Check whether \`src/vs/sessions\` gained an extension API for agent providers (gemini/docs/ROADMAP.md)."
+            fi
+            if [ "$CLI" != "$CLI_CURRENT" ]; then
+              echo "- Gemini CLI: $CLI_CURRENT → $CLI, checksum from npm. Re-check the items in gemini/docs/FINDINGS.md that name a CLI version; the real-CLI tests in Gemini CI run against this version as \`latest\`."
+            fi
+            echo
+            echo "Both Gemini CI jobs must be green to merge."
+            if [ -f apply.log ]; then echo; echo '```'; cat apply.log; echo '```'; fi
+          } > pr-body.md
+          if gh pr view "$branch" --json number >/dev/null 2>&1; then
+            gh pr edit "$branch" --title "$title" --body-file pr-body.md
+          else
+            gh pr create --base main --head "$branch" --title "$title" --body-file pr-body.md
+          fi

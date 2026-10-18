@@ -1,0 +1,13 @@
+diff --git a/build/lib/stylelint/vscode-known-variables.json b/build/lib/stylelint/vscode-known-variables.json
+index 889fac37..398c401e 100644
+--- a/build/lib/stylelint/vscode-known-variables.json
++++ b/build/lib/stylelint/vscode-known-variables.json
+@@ -1003,6 +1003,8 @@
+ 		"--agents-part-corner-radius",
+ 		"--agents-part-frame-border-width",
+ 		"--agents-window-corner-radius",
++		"--gemini-gradient",
++		"--gemini-soft-tint",
+ 		"--session-chat-base-height",
+ 		"--editor-font-size",
+ 		"--background-dark",

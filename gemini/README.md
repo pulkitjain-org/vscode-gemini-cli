@@ -140,25 +140,35 @@ Packaged builds come from [`gemini-release.yml`](../.github/workflows/gemini-rel
 
 ## Touching upstream files
 
-Keep fork code in `extensions/gemini/`. Edit an upstream file only to register the extension, rebrand, or do something the extension API cannot, and mark the edit with a `GEMINI-FORK` comment. JSON files and icons cannot carry a marker, so the script also diffs against upstream:
+Keep fork code in `extensions/gemini/`. Edit an upstream file only to register the extension, rebrand, or do something the extension API cannot, and mark the edit with a `GEMINI-FORK` comment. JSON files and icons cannot carry a marker, so the fork also keeps every such edit as a patch:
 
 ```sh
-gemini/scripts/list-fork-touches.sh upstream/main
+gemini/scripts/upstream-series.sh files        # the upstream files the fork modifies, and the files it adds beside them
+gemini/scripts/upstream-series.sh regenerate   # rewrite gemini/patches/ from HEAD against the pinned tag
+gemini/scripts/upstream-series.sh check        # what CI runs: every patch still matches HEAD
 ```
 
-Its output is the checklist for each upstream merge.
+After editing an upstream file, run `regenerate` and commit `gemini/patches/` with the change; Gemini CI fails otherwise. `gemini/scripts/list-fork-touches.sh` still prints the markers.
 
-## Upstream merges
+## Upstream releases
 
-The fork branched from upstream `main` at 1.141.0-dev (1 Oct 2026) and merged the 1.141.0 release on 8 Oct 2026. Add the remote once:
+The fork is built on one upstream release tag, pinned in `gemini/upstream.json` (today `1.141.0`, merged 8 Oct 2026). Its edits to upstream files are the patch series in `gemini/patches/`, one patch per file, binaries included; everything else the fork owns lives in `extensions/gemini/`, `gemini/`, the `gemini-*.yml` workflows and the files listed in `gemini/patches/ADDED`, which apply to any base.
+
+[`gemini-upstream.yml`](../.github/workflows/gemini-upstream.yml) runs once a week and by hand. It fetches upstream's tags, takes the newest release above the pin, checks it out, applies the series with a three-way merge, copies the fork's own files over from `main`, moves the pin, regenerates the series against the new tag, bumps the bundled Gemini CLI to the newest release with its checksum from npm, and opens one pull request. Gemini CI builds and tests that pull request like any other, and `main` is protected so both have to be green before it merges. A patch that does not apply leaves conflict markers in the branch, and the pull request names it; finish it on that branch, run `regenerate`, and push.
+
+To do the same by hand:
 
 ```sh
 git remote add upstream https://github.com/microsoft/vscode.git
-git fetch upstream --tags
+git fetch upstream tag 1.142.0
+git checkout -b upstream/1.142.0 1.142.0
+FROM=main gemini/scripts/upstream-series.sh apply 1.142.0
+# resolve anything it names, then:
+gemini/scripts/upstream-series.sh regenerate
 ```
 
-Bring upstream in by merging a release tag (`git merge 1.141.0`), never by rebasing, so every merge stays three-way. After each merge:
+After each move:
 
-1. Re-check every file that `list-fork-touches.sh` lists.
+1. Re-check the items in [FINDINGS.md](docs/FINDINGS.md) that name a CLI version, and the fixtures in `extensions/gemini/test/fixtures/`.
 2. Check whether upstream's Agents window (`src/vs/sessions`) gained an extension API for agent providers ([ROADMAP.md](docs/ROADMAP.md)).
-3. Run the extension tests and the full compile.
+3. Let Gemini CI run the extension tests and the full compile on the pull request.

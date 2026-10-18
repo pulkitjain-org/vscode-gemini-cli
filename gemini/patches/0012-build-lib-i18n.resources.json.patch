@@ -1,0 +1,15 @@
+diff --git a/build/lib/i18n.resources.json b/build/lib/i18n.resources.json
+index 3a76dae5..7a28d173 100644
+--- a/build/lib/i18n.resources.json
++++ b/build/lib/i18n.resources.json
+@@ -234,6 +234,10 @@
+ 			"name": "vs/workbench/contrib/format",
+ 			"project": "vscode-workbench"
+ 		},
++		{
++			"name": "vs/workbench/contrib/gemini",
++			"project": "vscode-workbench"
++		},
+ 		{
+ 			"name": "vs/workbench/contrib/tags",
+ 			"project": "vscode-workbench"

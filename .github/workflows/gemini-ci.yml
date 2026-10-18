@@ -86,6 +86,10 @@ jobs:
       - name: Hygiene (fork files)
         run: node build/hygiene.ts product.json .eslint-ignore build/lib/extensions.ts $(git ls-files extensions/gemini gemini .github/workflows/gemini-ci.yml)
 
+      - name: Patch series matches HEAD
+        # The fork's edits to upstream files, as patches over the pinned tag; an edit made without regenerating them fails here.
+        run: gemini/scripts/upstream-series.sh check
+
       - name: Compile extension
         run: npm run gulp compile-extension:gemini
 

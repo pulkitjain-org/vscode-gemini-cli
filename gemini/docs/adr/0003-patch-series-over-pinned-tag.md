@@ -1,6 +1,6 @@
 # ADR 0003: Upstream edits are a patch series over a pinned release tag
 
-**Status:** proposed.
+**Status:** accepted 18 Oct 2026; `gemini/upstream.json`, `gemini/patches/`, `gemini/scripts/upstream-series.sh` and `gemini-upstream.yml` are in.
 
 ## Context
 

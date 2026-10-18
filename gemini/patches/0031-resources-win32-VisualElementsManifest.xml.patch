@@ -1,0 +1,11 @@
+diff --git a/resources/win32/VisualElementsManifest.xml b/resources/win32/VisualElementsManifest.xml
+index 5ad1283c..fe79db7f 100644
+--- a/resources/win32/VisualElementsManifest.xml
++++ b/resources/win32/VisualElementsManifest.xml
+@@ -5,5 +5,5 @@
+ 				Square150x150Logo="@@VERSIONFOLDER@@resources\app\resources\win32\code_150x150.png"
+ 				Square70x70Logo="@@VERSIONFOLDER@@resources\app\resources\win32\code_70x70.png"
+ 				ForegroundText="light"
+-				ShortDisplayName="Code - OSS" />
++				ShortDisplayName="GeminiCode" />
+ </Application>

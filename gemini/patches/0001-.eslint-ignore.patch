@@ -1,0 +1,18 @@
+diff --git a/.eslint-ignore b/.eslint-ignore
+index 925a969e..06018308 100644
+--- a/.eslint-ignore
++++ b/.eslint-ignore
+@@ -32,6 +32,8 @@
+ **/extensions/mermaid-markdown-features/notebook-out/**
+ **/extensions/notebook-renderers/renderer-out/index.js
+ **/extensions/simple-browser/media/index.js
++# GEMINI-FORK: built chat webview bundle
++**/extensions/gemini/media/*.js
+ **/extensions/terminal-suggest/src/completions/upstream/**
+ **/extensions/terminal-suggest/src/shell/zshBuiltinsCache.ts
+ **/extensions/terminal-suggest/src/shell/fishBuiltinsCache.ts
+@@ -61,3 +63,4 @@
+ # Vendored third-party libraries
+ src/vs/base/common/lit-html/**
+ src/vs/base/common/signals-core/**
++**/extensions/gemini/cli/**

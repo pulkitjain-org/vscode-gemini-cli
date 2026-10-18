@@ -148,6 +148,18 @@ Two rules follow from the table and go into ADR 0009: **every flow that spans a 
    - The PR title is `Upstream 1.N.0 + Gemini CLI x.y.z`. Branch protection on `main` requires **Gemini CI / Gemini extension (latest)**, **Gemini CI / Gemini extension (preview)**, **Gemini CI / Compile & hygiene** and **Gemini Upstream / rebase-and-pin** to be green. "Both green to merge" is then a repository setting, not a convention. Evidence: [CI] the four required checks on the merged PR.
 4. **Re-check list that the job prints** (from `FINDINGS.md`): error strings in `test/fixtures/agentErrors.json`, the model list shape (`realAgentModels.test.ts`), `session/load` replay count (`realAgentSessions.test.ts`), the admin policy (`realAgentPolicy.test.ts`), the `[MODE_UPDATE]` text, the `write_file` ENOENT bug (0.62 to 0.64). A changed CLI that moves any of these fails a test rather than a user.
 
+### Dry run against 1.142.0
+
+Done on 18 Oct 2026 with the series as committed: a checkout of upstream `1.142.0`, `FROM=main gemini/scripts/upstream-series.sh apply 1.142.0`.
+
+| Result | Count |
+| --- | --- |
+| Patches applied cleanly | 72 of 74 |
+| Patches with conflicts to finish by hand | 2 (`build/lib/preLaunch.ts`, `src/vs/platform/dialogs/electron-browser/dialog.ts`) |
+| Fork-only files copied over | 750 |
+
+So one month's upstream move is two small conflicts, both in files the fork edits at one point each. That is the shape the upstream job's pull request will have; the full compile and the extension tests on that pull request are the rest of the evidence [CI].
+
 ### Backward compatibility
 
 The settings keys (`gemini.*`), policy names, `chatProtocolVersion`, the transcript file format, agent records in global state and `.gemini/geminicode-tools.json` are the contract with existing users. Any rewrite in sections 3 and 4 keeps them, and the migration is a read of the old key with a write of the new one, tested in `test/acp`.
@@ -345,8 +357,8 @@ Only after sections 1 to 6 are green. Each item names the evidence that motivate
 | Spare session hides `session/new` | SRC, F | T-12 session span with Google sign-in; pilot counter |
 | Token volume per turn | F (real account); the Record Performance Trace command (shipped 18 Oct 2026) reads `cached_content_token_count` per call from the CLI's file | T-12 cached share from a real session |
 | Audit log | Shipped 18 Oct 2026: `auditLog.ts`, intent and result records for every agent and page write, Open Audit Log | pilot join against Jira and GitLab history |
-| Fork confinement | SRC diff by area | CI hygiene check for stale patches |
-| CLI pin is what ships | checksum match, release notes | the upstream job's first green run |
+| Fork confinement | SRC diff by area; the patch series (74 patches over 1.141.0, `gemini/patches/`) and its CI check shipped 18 Oct 2026 | the first green `Patch series matches HEAD` step on a pull request |
+| CLI pin is what ships | checksum match, release notes; `gemini-upstream.yml` written 18 Oct 2026 | the upstream job's first pull request, with the dry run below as the expected shape |
 | Official MCP servers for Jira and GitLab unusable | web (secondary) | admin confirmation on both tenants |
 | Merge, reassign | Shipped 18 Oct 2026 as `gitlab_merge` (reads `approval_state`, project merge settings, threads and GitLab's verdict first; merges at the head it read) and `jira_assign`; tests against a fake server | AUDIT entries from the pilot |
 | Auto-approval hole for confirm-class tools | Closed 18 Oct 2026: `PermissionBroker.confirmOnly`, `teamConfirmTools`, `test/acp/permissions.test.ts` | pilot audit records showing an outcome on every confirm-class action |
