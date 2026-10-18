@@ -1,5 +1,5 @@
 diff --git a/eslint.config.js b/eslint.config.js
-index 7611f240..b21341d0 100644
+index 7611f24039b626316bcefa97cc71f44f6a453a4a..b21341d081767f312548b5c4ce1b1fbdec397752 100644
 --- a/eslint.config.js
 +++ b/eslint.config.js
 @@ -3025,4 +3025,42 @@ export default defineConfig(

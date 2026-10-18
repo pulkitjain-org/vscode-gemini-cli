@@ -9,7 +9,7 @@ import type { AuditEntry } from '../acp/auditLog';
 import type { ModelQuota } from '../acp/directRequest';
 import type { FlowRecord } from '../acp/flowRecords';
 import type { GitLabMr, PipelineState } from '../acp/gitlab';
-import type { JiraIssueSummary } from '../acp/jira';
+import { type JiraIssueSummary, sprintJql } from '../acp/jira';
 import { TeamToolId, teamToolIds, teamToolNames } from '../acp/teamHttp';
 import type { AgentSummary } from './agentsView';
 import { relativeTime } from './displayText';
@@ -28,6 +28,8 @@ export interface DashboardInput {
 	readonly layout?: DashboardLayout;
 	readonly usage?: readonly ModelQuota[];
 	readonly versions: { readonly app: string; readonly cli?: string };
+	/** The Google Cloud project usage is billed to. */
+	readonly projectId?: string;
 	readonly projectsOn: boolean;
 	readonly refreshing: boolean;
 	/** A week after the first tool was connected: cards of tools still not connected stay out of the way. */
@@ -37,17 +39,33 @@ export interface DashboardInput {
 	readonly jiraUrl?: string;
 	/** Flows that were open, and writes that had no result, when the app last quit. */
 	readonly unfinished?: { readonly flows: readonly FlowRecord[]; readonly intents: readonly AuditEntry[] };
+	/** When the data on the cards was last read, in ms since the epoch; 0 or unset before the first read. */
+	readonly dataFrom?: number;
+	/** What came back since the window opened, for the card shown after a start. */
+	readonly startup?: StartupState;
 }
+
+export interface StartupState {
+	/** When the extension activated, in ms since the epoch. */
+	readonly activatedAt: number;
+	readonly agent: 'stopped' | 'starting' | 'ready' | 'error';
+	/** When the agent was first ready in this window. */
+	readonly readyAt?: number;
+}
+
+/** How long after the window opened the startup card stays. */
+const startupCardMs = 3 * 60_000;
 
 const connect: HomeAction = { kind: 'command', command: 'gemini.connections' };
 const command = (id: string, ...args: unknown[]): HomeAction => ({ kind: 'command', command: id, args });
 
 function cardTitles(): Record<HomeCardId, string> {
 	return {
-		unfinished: vscode.l10n.t("Unfinished"),
+		unfinished: vscode.l10n.t("Unfinished when GeminiCode last quit"),
+		startup: vscode.l10n.t("What came back, and when"),
 		agents: vscode.l10n.t("Agents"),
 		tickets: vscode.l10n.t("My tickets"),
-		mergeRequests: vscode.l10n.t("Merge requests"),
+		mergeRequests: vscode.l10n.t("Pending on me"),
 		quality: vscode.l10n.t("Quality"),
 		gemini: vscode.l10n.t("Gemini"),
 	};
@@ -72,6 +90,7 @@ export function buildDashboard(input: DashboardInput): HomeDashboard {
 	const titles = cardTitles();
 	const builders: Record<DashboardCardId, () => HomeCard | undefined> = {
 		unfinished: () => unfinishedCard(input, titles.unfinished),
+		startup: () => startupCard(input, titles.startup),
 		agents: () => agentsCard(input, titles.agents),
 		tickets: () => ticketsCard(input, titles.tickets, progress),
 		mergeRequests: () => mergeRequestsCard(input, titles.mergeRequests),
@@ -88,14 +107,15 @@ export function buildDashboard(input: DashboardInput): HomeDashboard {
 		quickActions: [
 			{ label: vscode.l10n.t("New Agent"), icon: 'sparkle', action: command('gemini.agents.newAgent') },
 			...input.projectsOn ? [{ label: vscode.l10n.t("New Project"), icon: 'project', action: command('gemini.projects.new') }] : [],
-			{ label: vscode.l10n.t("Open Folder"), icon: 'folder-opened', action: command('workbench.action.files.openFolder') },
 			{ label: vscode.l10n.t("Review My Changes"), icon: 'diff', action: command('gemini.reviewChanges') },
 			...input.connected.has('snyk') || input.connected.has('sonar') ? [{ label: vscode.l10n.t("Run Checks..."), tool: input.connected.has('snyk') ? 'snyk' as const : 'sonar' as const, action: command('gemini.team.runChecksOnBranch') }] : [],
 		],
 		needs: needs(input),
+		needsQuery: 'agent waiting · pipeline failed · mergeable & approved · reviewer_id=me · reopened',
 		cards,
 		...nothingConnected ? { setup: setupSteps(input) } : {},
 		...unreachable.length ? { banner: vscode.l10n.t("Can't reach {0}. Turn on your VPN to refresh; the cards show the last results.", listOf(unreachable)) } : {},
+		...input.refreshing && input.dataFrom ? { stale: vscode.l10n.t("Showing results from {0} · refreshing", new Date(input.dataFrom).toLocaleTimeString(vscode.env.language, { hour: '2-digit', minute: '2-digit' })) } : {},
 		layout: order.map(id => ({ id, title: titles[id], visible: !input.layout?.hidden?.includes(id) })),
 		releaseBranches: data.releases?.data?.branches ?? [],
 		...input.layout?.qualityBranch ? { qualityBranch: input.layout.qualityBranch } : {},
@@ -139,11 +159,19 @@ function needs(input: DashboardInput): HomeNeed[] {
 			case 'review':
 				return { tool: 'gitlab', title: vscode.l10n.t("Review !{0}", item.mr.iid), detail: [item.mr.author, item.mr.title].join(' · '), button: { label: vscode.l10n.t("Review"), action: command('gemini.team.reviewMergeRequest', item.mr.project, item.mr.iid) } };
 			case 'pipelineFailed':
-				return { tool: 'gitlab', title: vscode.l10n.t("Pipeline failed on !{0}", item.mr.iid), detail: item.mr.title, button: { label: vscode.l10n.t("Fix"), action: command('gemini.team.fixMergeRequest', item.mr.project, item.mr.iid) } };
+				return {
+					tool: 'gitlab', title: vscode.l10n.t("Pipeline failed on !{0}", item.mr.iid), detail: item.mr.title,
+					...item.mr.pipeline ? { pill: { text: `#${item.mr.pipeline.id}`, tone: 'error' } } : {},
+					button: { label: vscode.l10n.t("Fix"), action: command('gemini.team.fixMergeRequest', item.mr.project, item.mr.iid) },
+				};
 			case 'readyToMerge':
-				return { tool: 'gitlab', title: vscode.l10n.t("!{0} is ready to merge", item.mr.iid), detail: [item.mr.title, item.mr.approvals ? vscode.l10n.t("{0} of {1} approvals", item.mr.approvals.given, item.mr.approvals.required) : ''].filter(Boolean).join(' · '), button: { label: vscode.l10n.t("Merge..."), action: command('gemini.team.mergeMergeRequest', item.mr.project, item.mr.iid), primary: true } };
+				return {
+					tool: 'gitlab', title: vscode.l10n.t("!{0} is ready to merge", item.mr.iid), detail: item.mr.title,
+					pill: { text: [vscode.l10n.t("mergeable"), item.mr.approvals ? vscode.l10n.t("{0} of {1} approvals", item.mr.approvals.given, item.mr.approvals.required) : '', item.mr.pipeline?.status === 'success' ? vscode.l10n.t("pipeline passed") : ''].filter(Boolean).join(' · '), tone: 'ok' },
+					button: { label: vscode.l10n.t("Merge..."), action: command('gemini.team.mergeMergeRequest', item.mr.project, item.mr.iid), primary: true },
+				};
 			case 'reopened':
-				return { tool: 'jira', title: vscode.l10n.t("{0} reopened", item.issue.key), detail: item.issue.summary, button: { label: vscode.l10n.t("Start Agent"), action: command('gemini.team.startOnTicket', item.issue.key) } };
+				return { tool: 'jira', title: vscode.l10n.t("{0} reopened", item.issue.key), detail: item.issue.summary, pill: { text: item.issue.status, tone: 'error' }, button: { label: vscode.l10n.t("Start Agent"), action: command('gemini.team.startOnTicket', item.issue.key) } };
 		}
 	});
 }
@@ -199,12 +227,37 @@ function unfinishedCard(input: DashboardInput, title: string): HomeCard | undefi
 		})),
 		...intents.map((entry): HomeRow => ({
 			tool: entry.tool.startsWith('jira') ? 'jira' : 'gitlab', title: entry.effect, detail: vscode.l10n.t("{0} · started {1}, no result recorded", entry.tool, relativeTime(Date.parse(entry.time), now)),
-			pill: { text: vscode.l10n.t("check the tool"), tone: 'warn' },
+			pill: { text: vscode.l10n.t("intent only"), tone: 'warn' },
 			button: { label: vscode.l10n.t("Open Audit Log"), action: command('gemini.openAuditLog') },
 			menu: [{ label: vscode.l10n.t("Mark as Checked"), action: command('gemini.team.settleIntent', entry.id) }],
 		})),
 	];
-	return { id: 'unfinished', title, icon: 'debug-restart', rows, note: vscode.l10n.t("GeminiCode quit while these were running. Nothing was redone on its own: a write may have gone through, so look in the tool first.") };
+	return { id: 'unfinished', title, icon: 'debug-restart', query: 'flows/*.json · audit intents without a result', rows, note: vscode.l10n.t("GeminiCode quit while these were running. Nothing was redone on its own: a write may have gone through, so look in the tool first.") };
+}
+
+/**
+ * After a start: what is back and what is still coming (gemini/docs/AGENTIC-PLAN.md,
+ * the restart model), for a few minutes after the window opened.
+ */
+function startupCard(input: DashboardInput, title: string): HomeCard | undefined {
+	const startup = input.startup;
+	const now = input.now.getTime();
+	if (!startup || now - startup.activatedAt > startupCardMs) {
+		return undefined;
+	}
+	const seconds = (ms: number) => vscode.l10n.t("{0} s", (ms / 1000).toFixed(1));
+	const done = { text: vscode.l10n.t("done"), tone: 'ok' as const };
+	const rows: HomeRow[] = [
+		{ icon: 'check', title: vscode.l10n.t("Agent list, transcripts, Home's last data, tokens (keychain)"), detail: vscode.l10n.t("at start"), pill: done },
+		{
+			icon: 'sparkle', title: vscode.l10n.t("Gemini CLI started ahead of the first chat"),
+			detail: startup.readyAt ? seconds(startup.readyAt - startup.activatedAt) : startup.agent === 'starting' ? vscode.l10n.t("starting") : '',
+			pill: startup.agent === 'ready' ? done : startup.agent === 'starting' ? { text: vscode.l10n.t("starting"), tone: 'info' } : startup.agent === 'error' ? { text: vscode.l10n.t("needs attention"), tone: 'error' } : { text: vscode.l10n.t("not started"), tone: 'muted' },
+		},
+		{ icon: 'sync', title: vscode.l10n.t("Jira, GitLab, SonarQube and Snyk refreshed behind the cards"), detail: vscode.l10n.t("background"), pill: input.refreshing || !input.dataFrom ? { text: vscode.l10n.t("refreshing"), tone: 'info' } : done },
+		{ icon: 'debug-restart', title: vscode.l10n.t("Spare session, pending permission cards, session approvals"), detail: vscode.l10n.t("gone, by design"), pill: { text: vscode.l10n.t("reset"), tone: 'muted' } },
+	];
+	return { id: 'startup', title, icon: 'history', query: 'cold start · restart model', rows };
 }
 
 function agentsCard(input: DashboardInput, title: string): HomeCard {
@@ -266,10 +319,12 @@ function ticketsCard(input: DashboardInput, title: string, progress: { done: num
 			{ label: vscode.l10n.t("Open in Jira"), action: { kind: 'link', url: issue.url } },
 		],
 	}));
+	if (progress?.total) {
+		rows.push({ title: vscode.l10n.t("{0} of {1} done", progress.done, progress.total), bar: progress.done / progress.total });
+	}
 	return {
-		id: 'tickets', title, tool: 'jira', rows, stale,
-		...sprint?.sprint ? { link: { label: sprint.sprint.name, action: { kind: 'link', url: `${input.jiraUrl ?? ''}/issues/?jql=${encodeURIComponent('assignee = currentUser() AND sprint in openSprints()')}` } } } : {},
-		...progress?.total ? { progress: { value: progress.done / progress.total, label: vscode.l10n.t("{0} of {1} done", progress.done, progress.total) } } : {},
+		id: 'tickets', title, tool: 'jira', rows, stale, query: sprintJql,
+		...sprint?.sprint ? { link: { label: sprint.sprint.name, action: { kind: 'link', url: `${input.jiraUrl ?? ''}/issues/?jql=${encodeURIComponent(sprintJql)}` } } } : {},
 		...note ? { note } : !rows.length ? { note: fetched?.loading || !fetched ? vscode.l10n.t("Loading your tickets...") : vscode.l10n.t("No tickets assigned to you in an open sprint.") } : {},
 	};
 }
@@ -295,23 +350,22 @@ function mergeRequestsCard(input: DashboardInput, title: string): HomeCard | und
 	const reviews = input.data.reviews;
 	const mine = input.data.mine;
 	const { stale, note } = sourceState(input, 'gitlab', reviews?.error ? reviews : mine);
-	const reviewGroup = vscode.l10n.t("Pending on me");
 	const mineGroup = vscode.l10n.t("Mine");
 	const rows: HomeRow[] = [
-		...(reviews?.data ?? []).slice(0, 4).map((mr, i): HomeRow => ({
-			...i === 0 ? { group: reviewGroup } : {},
+		...(reviews?.data ?? []).slice(0, 4).map((mr): HomeRow => ({
 			key: `!${mr.iid}`, title: mr.title, detail: mr.author, open: { kind: 'link', url: mr.url },
+			...mr.draft ? { pill: { text: vscode.l10n.t("draft"), tone: 'muted' as const } } : {},
 			button: { label: vscode.l10n.t("Review"), action: command('gemini.team.reviewMergeRequest', mr.project, mr.iid) },
 		})),
 		...(mine?.data ?? []).slice(0, 4).map((mr, i): HomeRow => ({
-			...i === 0 ? { group: mineGroup } : {},
+			...i === 0 ? { group: mineGroup, groupQuery: 'author_id=me, state=opened' } : {},
 			key: `!${mr.iid}`, title: mr.title, open: { kind: 'link', url: mr.url },
 			...isReadyToMerge(mr) ? { pill: { text: vscode.l10n.t("ready to merge"), tone: 'ok' as const }, button: { label: vscode.l10n.t("Merge..."), action: command('gemini.team.mergeMergeRequest', mr.project, mr.iid), primary: true } }
 				: { ...pipelinePill(mr) ? { pill: pipelinePill(mr) } : {}, ...mr.pipeline?.status === 'failed' ? { button: { label: vscode.l10n.t("Fix"), action: command('gemini.team.fixMergeRequest', mr.project, mr.iid) } } : {} },
 		})),
 	];
 	return {
-		id: 'mergeRequests', title, tool: 'gitlab', rows, stale,
+		id: 'mergeRequests', title, tool: 'gitlab', rows, stale, query: 'reviewer_id=me OR assignee_id=me, state=opened',
 		...input.gitlabUrl ? { link: { label: vscode.l10n.t("Open in GitLab"), action: { kind: 'link', url: `${input.gitlabUrl}/dashboard/merge_requests?reviewer_username=${encodeURIComponent(input.state('gitlab').account ?? '')}` } } } : {},
 		...note ? { note } : !rows.length ? { note: !reviews || reviews.loading ? vscode.l10n.t("Loading merge requests...") : vscode.l10n.t("No open merge requests for you or waiting on you.") } : {},
 	};
@@ -362,6 +416,7 @@ function qualityCard(input: DashboardInput, title: string): HomeCard | undefined
 		id: 'quality',
 		title: branch ? vscode.l10n.t("Quality on {0}", branch) : title,
 		tool: sonar ? 'sonar' : 'snyk',
+		query: [sonar ? 'sonar gate' : '', snyk ? 'snyk test' : ''].filter(Boolean).join(' · '),
 		rows,
 		stale: sonarState.stale || snykState.stale,
 		...note ? { note } : !rows.length ? { note: vscode.l10n.t("Loading checks...") } : {},
@@ -370,16 +425,16 @@ function qualityCard(input: DashboardInput, title: string): HomeCard | undefined
 
 function geminiCard(input: DashboardInput, title: string): HomeCard {
 	const rows: HomeRow[] = [];
-	let progress: HomeCard['progress'];
 	const used = input.usage?.length ? Math.max(...input.usage.map(q => q.used)) : undefined;
 	if (used !== undefined) {
-		progress = { value: used, label: vscode.l10n.t("Today: {0}% of daily requests", Math.round(used * 100)) };
+		rows.push({ title: vscode.l10n.t("Today: {0}% of daily requests", Math.round(used * 100)), bar: used, link: { label: vscode.l10n.t("Usage details"), action: command('gemini.showUsage') } });
 	}
-	rows.push({ icon: 'versions', title: input.versions.cli ? vscode.l10n.t("GeminiCode {0} · CLI {1}", input.versions.app, input.versions.cli) : vscode.l10n.t("GeminiCode {0}", input.versions.app) });
-	return {
-		id: 'gemini', title, tool: 'gemini', rows,
-		link: { label: vscode.l10n.t("Usage details"), action: command('gemini.showUsage') },
-		...progress ? { progress } : {},
-	};
+	const about = [
+		vscode.l10n.t("GeminiCode {0}", input.versions.app),
+		input.versions.cli ? vscode.l10n.t("CLI {0}", input.versions.cli) : '',
+		input.projectId ? vscode.l10n.t("project {0}", input.projectId) : '',
+	].filter(Boolean).join(' · ');
+	rows.push({ icon: 'versions', title: about, link: { label: vscode.l10n.t("Audit log"), action: command('gemini.openAuditLog') } });
+	return { id: 'gemini', title, tool: 'gemini', rows, query: 'retrieveUserQuota · audit/*.jsonl' };
 }
 

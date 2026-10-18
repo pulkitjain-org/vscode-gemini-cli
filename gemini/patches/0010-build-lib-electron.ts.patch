@@ -1,5 +1,5 @@
 diff --git a/build/lib/electron.ts b/build/lib/electron.ts
-index 27151cc4..fc1ef511 100644
+index 27151cc45465dcf9f8297ac39c026db7169257fc..fc1ef511ee3a4f5a951282ca0b67f1580b255aa1 100644
 --- a/build/lib/electron.ts
 +++ b/build/lib/electron.ts
 @@ -143,14 +143,15 @@ const electronAssetResolver = electronFeed

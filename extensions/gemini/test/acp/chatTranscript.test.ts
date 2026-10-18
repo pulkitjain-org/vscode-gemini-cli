@@ -20,6 +20,8 @@ function summary(items: readonly TranscriptItem[]): string[] {
 			case 'other': return `other:${item.type}`;
 			case 'notice': return `notice:${item.severity}:${item.text}`;
 			case 'permission': return `permission:${item.title}:${item.answer ? (item.answer.kind === 'selected' ? item.answer.name : 'cancelled') : 'pending'}`;
+			case 'cutOff': return `cutOff:${item.prompt}`;
+			case 'trace': return `trace:${item.file}`;
 			case 'turnEnd': return 'turnEnd';
 			case 'thread': return `thread:${item.title}:${item.state}`;
 		}

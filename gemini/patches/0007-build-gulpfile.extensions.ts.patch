@@ -1,5 +1,5 @@
 diff --git a/build/gulpfile.extensions.ts b/build/gulpfile.extensions.ts
-index fdf68387..ef26caef 100644
+index fdf683873f1b60082e19ebe786bba3bfe34b4438..ef26caef22ae95bb3f5f1357d025a190dc7a2f21 100644
 --- a/build/gulpfile.extensions.ts
 +++ b/build/gulpfile.extensions.ts
 @@ -58,6 +58,7 @@ const compilations = [

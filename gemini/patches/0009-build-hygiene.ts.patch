@@ -1,5 +1,5 @@
 diff --git a/build/hygiene.ts b/build/hygiene.ts
-index 86cf3b17..1b40886f 100644
+index 86cf3b17346d901760a5861029cdba1bc6431233..1b40886f6697a358f222d3fee3e470341271a84c 100644
 --- a/build/hygiene.ts
 +++ b/build/hygiene.ts
 @@ -92,7 +92,8 @@ export function hygiene(some: NodeJS.ReadWriteStream | string[] | undefined, run

@@ -1,5 +1,5 @@
 diff --git a/build/gulpfile.vscode.ts b/build/gulpfile.vscode.ts
-index 34cc2f2f..0d65e455 100644
+index 34cc2f2f2f41a46e138cc0322d3d56276dc7f840..0d65e455cbf75105831ae7cd42ebb1fd385c983d 100644
 --- a/build/gulpfile.vscode.ts
 +++ b/build/gulpfile.vscode.ts
 @@ -546,6 +546,9 @@ function prepareCopilotRipgrepShimTask(platform: string, arch: string, destinati

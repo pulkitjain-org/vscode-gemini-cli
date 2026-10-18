@@ -1,5 +1,5 @@
 diff --git a/resources/linux/debian/control.template b/resources/linux/debian/control.template
-index 1a5981bb..6dff6d8b 100644
+index 1a5981bb2194756fae82a5f4c906989efad3f44a..6dff6d8b1a6b3cdb033803f4d9af46636aa94532 100644
 --- a/resources/linux/debian/control.template
 +++ b/resources/linux/debian/control.template
 @@ -5,14 +5,12 @@ Depends: @@DEPENDS@@

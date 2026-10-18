@@ -1,5 +1,5 @@
 diff --git a/src/vs/workbench/electron-browser/desktop.contribution.ts b/src/vs/workbench/electron-browser/desktop.contribution.ts
-index 41250d7b..636757ae 100644
+index 41250d7b714865f9584f22bf36ea78fcccb3a534..636757ae9b7288bfadfb29237be836dc10de355a 100644
 --- a/src/vs/workbench/electron-browser/desktop.contribution.ts
 +++ b/src/vs/workbench/electron-browser/desktop.contribution.ts
 @@ -291,7 +291,8 @@ import product from '../../platform/product/common/product.js';

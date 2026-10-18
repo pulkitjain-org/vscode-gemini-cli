@@ -1,5 +1,5 @@
 diff --git a/src/vs/workbench/browser/parts/editor/editorTitleControl.ts b/src/vs/workbench/browser/parts/editor/editorTitleControl.ts
-index 39a19387..a90d9b5b 100644
+index 39a193871d85f7caace0423ab7aacbd5792a11a0..a90d9b5bfee7f90395b432f0e35eea06fbe19f41 100644
 --- a/src/vs/workbench/browser/parts/editor/editorTitleControl.ts
 +++ b/src/vs/workbench/browser/parts/editor/editorTitleControl.ts
 @@ -11,13 +11,14 @@ import { IEditorGroupMenuIds, IEditorGroupsView, IEditorGroupTitleHeight, IEdito

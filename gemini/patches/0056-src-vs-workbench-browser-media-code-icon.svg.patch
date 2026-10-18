@@ -1,5 +1,5 @@
 diff --git a/src/vs/workbench/browser/media/code-icon.svg b/src/vs/workbench/browser/media/code-icon.svg
-index cc61f81e..8402e37a 100644
+index cc61f81ea5a24c9af2be69565c82da531788efd6..8402e37a74c05f2d60510f8a9bde0043dfc7e65b 100644
 --- a/src/vs/workbench/browser/media/code-icon.svg
 +++ b/src/vs/workbench/browser/media/code-icon.svg
 @@ -1 +1,9 @@

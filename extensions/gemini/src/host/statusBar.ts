@@ -24,7 +24,7 @@ export const statusMenuCommand = 'gemini.showStatusMenu';
  */
 export class GeminiStatusBar implements vscode.Disposable {
 
-	private readonly item = vscode.window.createStatusBarItem('gemini.status', vscode.StatusBarAlignment.Right, 100);
+	private readonly item = vscode.window.createStatusBarItem('gemini.status', vscode.StatusBarAlignment.Right, 103);
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly accountsFile = googleAccountsPath(process.env, os.homedir());
 	private account: string | undefined;
@@ -91,7 +91,8 @@ export class GeminiStatusBar implements vscode.Disposable {
 		// Near a limit, the most used model's share shows in the bar itself.
 		const top = this.usage?.[0];
 		const nearLimit = status.phase === 'ready' && top && top.used >= nearLimitShare ? ` ${Math.round(top.used * 100)}%` : '';
-		this.item.text = `${icon} ${label}${nearLimit}`;
+		const cli = status.phase === 'ready' && status.agentVersion ? ` · ${vscode.l10n.t("CLI {0}", status.agentVersion)}` : '';
+		this.item.text = `${icon} ${label}${nearLimit}${cli}`;
 		this.item.backgroundColor = status.phase === 'error' ? new vscode.ThemeColor('statusBarItem.errorBackground') : nearLimit && top!.used >= 0.95 ? new vscode.ThemeColor('statusBarItem.warningBackground') : undefined;
 
 		const project = getProjectSettings().resolved;
@@ -163,7 +164,7 @@ function describePhase(status: AgentStatus): { icon: string; label: string } {
 		case 'stopped': return { icon: '$(circle-outline)', label: vscode.l10n.t("Gemini") };
 		case 'starting': return { icon: '$(loading~spin)', label: vscode.l10n.t("Gemini: starting") };
 		case 'restarting': return { icon: '$(loading~spin)', label: vscode.l10n.t("Gemini: restarting ({0})", status.restartAttempt ?? 1) };
-		case 'ready': return { icon: '$(sparkle)', label: vscode.l10n.t("Gemini") };
+		case 'ready': return { icon: '$(sparkle)', label: vscode.l10n.t("Gemini: ready") };
 		case 'error': return { icon: '$(error)', label: vscode.l10n.t("Gemini: needs attention") };
 	}
 }

@@ -1,5 +1,5 @@
 diff --git a/.eslint-ignore b/.eslint-ignore
-index 925a969e..06018308 100644
+index 925a969ebc445ea20c542fd93f335b8390916668..060183089cca87276afd1de655e30a8a5b8740ac 100644
 --- a/.eslint-ignore
 +++ b/.eslint-ignore
 @@ -32,6 +32,8 @@

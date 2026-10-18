@@ -17,6 +17,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
+import { Emitter } from './events';
 
 export type AuditCaller = 'agent' | 'ui';
 export type AuditPhase = 'intent' | 'result' | 'failed';
@@ -64,6 +65,9 @@ export function auditFileName(time: Date): string {
 export class AuditLog {
 
 	private queue: Promise<void> = Promise.resolve();
+	private readonly onDidAppendEmitter = new Emitter<AuditEntry>();
+	/** Fires once a record is on disk. */
+	readonly onDidAppend = this.onDidAppendEmitter.event;
 
 	constructor(readonly dir: string, private readonly now: () => Date = () => new Date()) { }
 
@@ -146,6 +150,7 @@ export class AuditLog {
 		this.queue = this.queue.then(async () => {
 			await fs.mkdir(this.dir, { recursive: true });
 			await fs.appendFile(path.join(this.dir, auditFileName(new Date(entry.time))), `${JSON.stringify(entry)}\n`);
+			this.onDidAppendEmitter.fire(entry);
 		});
 		return this.queue;
 	}

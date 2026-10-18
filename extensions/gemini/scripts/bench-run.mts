@@ -21,8 +21,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { Readable, Writable } from 'node:stream';
-import { parseArgs } from 'node:util';
-import { promisify } from 'node:util';
+import { parseArgs, promisify } from 'node:util';
 import * as acp from '@agentclientprotocol/sdk';
 
 const run = promisify(execFile);

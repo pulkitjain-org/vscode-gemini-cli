@@ -17,7 +17,9 @@ In Agents mode the top of the window is one row: the **Agents | Editor** switch,
 
 **Home** opens when no tab is open in Agents mode, and in front of your restored tabs each time GeminiCode starts. Describe a task in **Start Agent** and press Return to start an agent on it; tick **On its own branch** to give it a branch of its own.
 
-Below the composer, **Needs you** lists what waits on you, such as an agent asking permission. Cards follow for your agents and, once you connect them, your tickets, merge requests, quality checks and releases (see [Team tools](team-tools.md#home)). **Customize** hides and reorders cards.
+The composer's bar shows the folder, the branch switch, the mode and the model the agent starts on; **From Your Tools…** lists your tickets and merge requests to start on one. Below it, **Needs you** lists what waits on you, such as an agent asking permission. Cards follow for your agents and, once you connect them, your tickets, the merge requests pending on you and yours, quality checks and Gemini's usage (see [Team tools](team-tools.md#home)). Each card names the query that fills it beside its title, so its numbers can be checked against the tool. **Customize** hides and reorders cards.
+
+After GeminiCode quits while something was running, two cards come first: **Unfinished when GeminiCode last quit**, with the flows to reopen and the writes whose result never came, and **What came back, and when**, which stays for a few minutes and says what is already back and what is still starting. In the chat, a turn that was cut off shows a card with **Retry the Turn**.
 
 The Home button at the left of the status bar, <kbd>⇧⌘H</kbd> or **Gemini: Home** brings it back. To stop it opening at start-up, turn off `gemini.home.openOnStartup`.
 

@@ -1,5 +1,5 @@
 diff --git a/src/vs/workbench/browser/parts/editor/media/letterpress-dark.svg b/src/vs/workbench/browser/parts/editor/media/letterpress-dark.svg
-index 90b799da..c01aa901 100644
+index 90b799da3b3f5c902c1b3ceb15020ce0d8b06082..c01aa9017c78497194e3c59031ce16690b043483 100644
 --- a/src/vs/workbench/browser/parts/editor/media/letterpress-dark.svg
 +++ b/src/vs/workbench/browser/parts/editor/media/letterpress-dark.svg
 @@ -1,3 +1,5 @@

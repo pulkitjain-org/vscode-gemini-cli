@@ -1,5 +1,5 @@
 diff --git a/src/vs/workbench/services/themes/common/workbenchThemeService.ts b/src/vs/workbench/services/themes/common/workbenchThemeService.ts
-index 35917200..565407f3 100644
+index 35917200da97a6b48ac28dc36d05d715e578a5db..565407f349afc3c5705bd45c65b93641f86990b6 100644
 --- a/src/vs/workbench/services/themes/common/workbenchThemeService.ts
 +++ b/src/vs/workbench/services/themes/common/workbenchThemeService.ts
 @@ -40,8 +40,11 @@ export enum ThemeSettings {

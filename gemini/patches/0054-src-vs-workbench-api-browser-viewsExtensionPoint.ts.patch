@@ -1,5 +1,5 @@
 diff --git a/src/vs/workbench/api/browser/viewsExtensionPoint.ts b/src/vs/workbench/api/browser/viewsExtensionPoint.ts
-index 83378707..a291d339 100644
+index 833787070f347cb64a12b781b6a27eb0f63da94c..a291d339a93ee955080912b6f4a515b0c559242b 100644
 --- a/src/vs/workbench/api/browser/viewsExtensionPoint.ts
 +++ b/src/vs/workbench/api/browser/viewsExtensionPoint.ts
 @@ -414,7 +414,8 @@ class ViewsExtensionHandler implements IWorkbenchContribution {

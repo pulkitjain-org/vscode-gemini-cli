@@ -1,5 +1,5 @@
 diff --git a/src/vs/workbench/browser/parts/paneCompositeBar.ts b/src/vs/workbench/browser/parts/paneCompositeBar.ts
-index 048de8a0..699d99d2 100644
+index 048de8a0c9f738c01ad9dd1177c6a6574bcdf7d6..699d99d2a063ccdee11ad7bd66590eee65f68778 100644
 --- a/src/vs/workbench/browser/parts/paneCompositeBar.ts
 +++ b/src/vs/workbench/browser/parts/paneCompositeBar.ts
 @@ -32,6 +32,9 @@ import { IPaneCompositePart } from './paneCompositePart.js';

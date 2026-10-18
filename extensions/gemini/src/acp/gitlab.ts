@@ -465,6 +465,8 @@ export interface MergeSettings {
 export interface MergeCheck {
 	readonly name: string;
 	readonly ok: boolean;
+	/** Not met yet because GitLab is still at it: a pipeline running, a merge status still being worked out. */
+	readonly pending?: boolean;
 	readonly detail: string;
 	/** Where the rule comes from, for the panel's small print. */
 	readonly source: string;
@@ -489,9 +491,11 @@ export function mergeReadiness(mr: Pick<RawMr, 'state' | 'detailed_merge_status'
 	const status = mr.detailed_merge_status ?? '';
 	checks.push({ name: 'Open and not a draft', ok: mr.state === 'opened' && !(mr.draft ?? mr.work_in_progress), detail: mr.state !== 'opened' ? `the merge request is ${mr.state}` : (mr.draft ?? mr.work_in_progress) ? 'still a draft' : 'open', source: 'state, draft' });
 	const pipeline = mr.head_pipeline?.status;
+	const pipelineRunning = pipeline === 'running' || pipeline === 'pending' || pipeline === 'created';
 	checks.push({
 		name: settings.pipelineMustSucceed ? 'Pipeline must succeed' : 'Pipeline',
 		ok: !settings.pipelineMustSucceed || pipeline === 'success' || pipeline === 'skipped',
+		...settings.pipelineMustSucceed && pipelineRunning ? { pending: true } : {},
 		detail: pipeline ? `head pipeline ${pipeline}` : 'no pipeline',
 		source: settings.pipelineMustSucceed ? 'only_allow_merge_if_pipeline_succeeds' : 'head_pipeline.status',
 	});
@@ -504,7 +508,7 @@ export function mergeReadiness(mr: Pick<RawMr, 'state' | 'detailed_merge_status'
 	checks.push({ name: settings.threadsMustBeResolved ? 'All threads resolved' : 'Review threads', ok: !settings.threadsMustBeResolved || unresolvedThreads === 0, detail: unresolvedThreads ? `${unresolvedThreads} unresolved` : 'none open', source: settings.threadsMustBeResolved ? 'only_allow_merge_if_all_discussions_are_resolved' : 'discussions' });
 	checks.push({ name: 'No conflicts with the target', ok: !mr.has_conflicts && status !== 'conflict', detail: mr.has_conflicts || status === 'conflict' ? 'conflicts' : 'clean', source: 'has_conflicts' });
 	const gitlabSaysNo = status && status !== 'mergeable' && status !== 'ci_still_running' && status !== 'ci_must_pass';
-	checks.push({ name: 'GitLab says mergeable', ok: status === 'mergeable', detail: status || 'unknown', source: 'detailed_merge_status' });
+	checks.push({ name: 'GitLab says mergeable', ok: status === 'mergeable', ...status === 'ci_still_running' || status === 'ci_must_pass' || status === 'checking' ? { pending: true } : {}, detail: status || 'unknown', source: 'detailed_merge_status' });
 	const sha = mr.sha ?? mr.diff_refs?.head_sha ?? '';
 	return {
 		ready: checks.every(c => c.ok) && !gitlabSaysNo && !!sha,

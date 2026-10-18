@@ -44,7 +44,8 @@ write_series() {
 	mkdir -p "$dir"
 	modified "$tag" | sort | while read -r file; do
 		n=$((n + 1))
-		git diff --binary "$tag" -- "$file" > "$dir/$(patch_name "$n" "$file")"
+		# Full blob hashes, so the series reads the same on every machine; abbreviated ones vary with the repository.
+		git diff --binary --full-index "$tag" -- "$file" > "$dir/$(patch_name "$n" "$file")"
 	done
 	added "$tag" | sort > "$dir/ADDED"
 	echo "$tag" > "$dir/TAG"

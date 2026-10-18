@@ -1,5 +1,5 @@
 diff --git a/resources/linux/snap/snapcraft.yaml b/resources/linux/snap/snapcraft.yaml
-index 6f4962af..45f44b20 100644
+index 6f4962af70ac943474fa30b76bdd60352f430232..45f44b206415c879a25ec3aaf4993084bc865c94 100644
 --- a/resources/linux/snap/snapcraft.yaml
 +++ b/resources/linux/snap/snapcraft.yaml
 @@ -1,10 +1,9 @@

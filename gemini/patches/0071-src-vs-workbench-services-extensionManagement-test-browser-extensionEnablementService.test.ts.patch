@@ -1,5 +1,5 @@
 diff --git a/src/vs/workbench/services/extensionManagement/test/browser/extensionEnablementService.test.ts b/src/vs/workbench/services/extensionManagement/test/browser/extensionEnablementService.test.ts
-index 8bdae656..365cb49a 100644
+index 8bdae656e822e644bed90fef609faa3787c4bd37..365cb49a66c151bdacab7f0128e494e0f1a8e51d 100644
 --- a/src/vs/workbench/services/extensionManagement/test/browser/extensionEnablementService.test.ts
 +++ b/src/vs/workbench/services/extensionManagement/test/browser/extensionEnablementService.test.ts
 @@ -6,7 +6,7 @@ import assert from 'assert';

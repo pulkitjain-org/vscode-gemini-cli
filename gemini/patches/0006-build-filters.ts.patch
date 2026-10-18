@@ -1,5 +1,5 @@
 diff --git a/build/filters.ts b/build/filters.ts
-index c62c8260..a4aa3947 100644
+index c62c8260e72e02c6ca6ed470929ed54a4926742b..a4aa3947c1fb7d80d1374ed8362aa225a668d90c 100644
 --- a/build/filters.ts
 +++ b/build/filters.ts
 @@ -42,6 +42,7 @@ export const unicodeFilter = Object.freeze<string[]>([

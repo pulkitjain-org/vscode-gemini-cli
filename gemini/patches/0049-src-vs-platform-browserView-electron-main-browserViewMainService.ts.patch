@@ -1,5 +1,5 @@
 diff --git a/src/vs/platform/browserView/electron-main/browserViewMainService.ts b/src/vs/platform/browserView/electron-main/browserViewMainService.ts
-index 6071bc72..8136d2b4 100644
+index 6071bc729a8cfced13b7ade8ce4ea21b52d588b3..8136d2b44d19e275190f94a3593055ebf2140785 100644
 --- a/src/vs/platform/browserView/electron-main/browserViewMainService.ts
 +++ b/src/vs/platform/browserView/electron-main/browserViewMainService.ts
 @@ -28,6 +28,7 @@ import { ILogService } from '../../log/common/log.js';

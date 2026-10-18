@@ -1,5 +1,5 @@
 diff --git a/resources/linux/debian/postinst.template b/resources/linux/debian/postinst.template
-index fbfd923f..26999697 100755
+index fbfd923f27cbc7de74eaca667bd9e24485054ae2..269996977ac2fd1a42429e504fc5dbfe197361d0 100755
 --- a/resources/linux/debian/postinst.template
 +++ b/resources/linux/debian/postinst.template
 @@ -22,7 +22,8 @@ if hash update-mime-database 2>/dev/null; then

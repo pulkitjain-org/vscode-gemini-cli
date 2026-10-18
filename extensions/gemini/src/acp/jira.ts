@@ -24,6 +24,9 @@ export interface JiraUser {
 
 export type JiraStatusCategory = 'new' | 'indeterminate' | 'done';
 
+/** The tickets Home and the agent's sprint search read: the user's, in an open sprint. */
+export const sprintJql = 'assignee = currentUser() AND sprint in openSprints()';
+
 export interface JiraIssueSummary {
 	readonly key: string;
 	readonly summary: string;
@@ -120,7 +123,7 @@ export class JiraClient {
 		const sprintField = await this.findSprintField();
 		const result = await this.request<{ issues?: RawIssue[] }>('/rest/api/3/search/jql', {
 			method: 'POST',
-			body: { jql: 'assignee = currentUser() AND sprint in openSprints() ORDER BY status ASC, updated DESC', fields: [...listFields, ...sprintField ? [sprintField] : []], maxResults: 50 },
+			body: { jql: `${sprintJql} ORDER BY status ASC, updated DESC`, fields: [...listFields, ...sprintField ? [sprintField] : []], maxResults: 50 },
 		});
 		const issues = result?.issues ?? [];
 		let sprint: JiraSprint | undefined;

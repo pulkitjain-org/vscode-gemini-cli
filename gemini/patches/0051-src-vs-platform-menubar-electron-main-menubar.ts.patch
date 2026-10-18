@@ -1,5 +1,5 @@
 diff --git a/src/vs/platform/menubar/electron-main/menubar.ts b/src/vs/platform/menubar/electron-main/menubar.ts
-index a3f53de0..871c424a 100644
+index a3f53de08e8958b82fbe300a1143746659d3211a..871c424ad49ee4f08174feb8e5b3c78d3d2e653e 100644
 --- a/src/vs/platform/menubar/electron-main/menubar.ts
 +++ b/src/vs/platform/menubar/electron-main/menubar.ts
 @@ -292,6 +292,8 @@ export class Menubar extends Disposable {

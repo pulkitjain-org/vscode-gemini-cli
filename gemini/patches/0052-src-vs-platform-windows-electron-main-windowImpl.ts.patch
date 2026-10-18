@@ -1,5 +1,5 @@
 diff --git a/src/vs/platform/windows/electron-main/windowImpl.ts b/src/vs/platform/windows/electron-main/windowImpl.ts
-index 307ac9e9..874f2707 100644
+index 307ac9e9d201083d66f3946b374035a8f0319a3a..874f2707a354f3f011135d7d14f152a91fccabef 100644
 --- a/src/vs/platform/windows/electron-main/windowImpl.ts
 +++ b/src/vs/platform/windows/electron-main/windowImpl.ts
 @@ -4,6 +4,7 @@

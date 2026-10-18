@@ -104,7 +104,7 @@ The app has no server, so the question for every piece of state is where it live
 | Agent list, workspaces, project and thread records | global state | yes | the same list and cards [SRC `agents.ts`] | none |
 | Each agent's conversation | one JSON per agent in global storage, plus the CLI's own chat file under `~/.gemini/tmp/<project>/chats/` | yes | shown at once; the CLI session resumes with `session/load` by id (0.63+) [SRC `cliSessions.ts`] | none |
 | Undo and Rewind checkpoints | `<globalStorage>/checkpoints/<agent>.json`, written when a turn ends | yes, up to the last finished turn | Undo works for finished turns | a turn that was running when the app quit is lost; say so in the chat (today only Projects' docs note it) |
-| A turn that was running | the sidecar process | **no** | the reply stops mid-way; the CLI's chat file keeps what was streamed | done 18 Oct 2026: the chat says the agent was cut off and that the message can be sent again (`wasCutOff` in `chatController.ts`) |
+| A turn that was running | the sidecar process | **no** | the reply stops mid-way; the CLI's chat file keeps what was streamed | done 18 Oct 2026: the chat shows a card saying the turn was interrupted when GeminiCode quit, with Retry the Turn and Keep and Continue (`wasCutOff` and the `cutOff` item in `chatController.ts`) |
 | Pending permission cards | memory | **no**: cancelled | the card is gone; the turn ended | correct as is: a restart must never auto-answer |
 | "Allow for this session" shell approvals | memory [SRC `sessionApprovals.ts`] | **no** | the next command asks again | correct as is |
 | Google sign-in | `~/.gemini/oauth_creds.json` | yes | `AgentWarmup` starts the agent 3 s after the window opens | measure the 3 s against T-11 and shorten it on a restored window |
@@ -116,7 +116,7 @@ The app has no server, so the question for every piece of state is where it live
 | A flow tab (Open Merge Request, Move Ticket, Review) | a webview panel with its fields in memory [SRC `teamFlowPanel.ts`] | **no** | the tab is gone, typed text with it | done 18 Oct 2026: each flow keeps a record in `<globalStorage>/flows/` while open (`flowRecords.ts`), Home's Unfinished card offers Reopen from the same inputs and Discard; typed text is still lost, and reopening at the exact step is a later refinement |
 | Last check results per agent | `checkResults`, memory | no | Open Merge Request no longer offers the checks attachment | keep in the agent's record |
 | A write that was in flight (branch pushed, MR not yet created; transition done, comment not yet posted) | nothing | **no** | possible double action on retry | done 18 Oct 2026: the audit log records the intent before the call and the result after; Home's Unfinished card lists intents without a result with Open Audit Log and Mark as Checked, and nothing is redone on its own |
-| The audit log (section 4) | append-only JSONL on disk | yes | | new |
+| The audit log (section 4) | append-only JSONL on disk | yes | **Open Audit Log** shows it as a page: one row per write with its intent and result, by day, the intents without a result highlighted; the status bar counts the day's actions | done 18 Oct 2026 (`auditPage.ts`, `auditStatusBar.ts`) |
 
 Two rules follow from the table and go into ADR 0009: **every flow that spans a model turn or a remote write is resumable from a record on disk**, and **a restart never answers a question the user did not answer**. Mid-turn loss is accepted; silent completion is not.
 

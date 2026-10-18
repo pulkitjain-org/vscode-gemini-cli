@@ -1,5 +1,5 @@
 diff --git a/SECURITY.md b/SECURITY.md
-index 656f7918..53c3c28f 100644
+index 656f79188d699a791511a7591ca22179d4f43c78..53c3c28fe10914ccf7ef4911e3c6fe8442ee6bfb 100644
 --- a/SECURITY.md
 +++ b/SECURITY.md
 @@ -1,14 +1,7 @@

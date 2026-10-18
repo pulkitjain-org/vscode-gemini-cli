@@ -11,7 +11,7 @@
 import { type Attachment, attachmentLabel } from '../src/acp/attachments';
 import type { FromHome, HomeAction, HomeAgent, HomeButton, HomeCard, HomeDashboard, HomeRow, HomeStrings, HomeView, ToHome } from '../src/host/panelProtocol';
 import { attachmentIcon, sameAttachment } from './chatLogic';
-import { Menu, type MenuRow } from './menu';
+import { Menu, type MenuRow, type MenuSection } from './menu';
 import { modeIcon } from './modeIcon';
 import { button, el, icon, pageStrings } from './panelDom';
 import { letSpellingMenuThrough } from './spellCheck';
@@ -38,9 +38,10 @@ const workspaceLabel = workspaceButton.querySelector('span')!;
 const ownBranch = document.getElementById('own-branch') as HTMLInputElement;
 const ownBranchLabel = document.getElementById('own-branch-label') as HTMLLabelElement;
 const start = document.getElementById('start') as HTMLButtonElement;
-const helpers = document.getElementById('helpers') as HTMLButtonElement;
 const plusButton = document.getElementById('plus') as HTMLButtonElement;
 const modeButton = document.getElementById('mode') as HTMLButtonElement;
+const modelLabel = document.getElementById('model')!;
+const fromToolsButton = document.getElementById('from-tools') as HTMLButtonElement;
 const attachmentList = document.getElementById('attachments')!;
 const active = document.getElementById('active')!;
 const earlier = document.getElementById('earlier')!;
@@ -56,10 +57,9 @@ prompt.setAttribute('aria-label', strings.title);
 ownBranchLabel.querySelector('.switch-label')!.textContent = strings.ownBranch;
 ownBranchLabel.title = strings.ownBranchHint;
 start.title = strings.start;
-helpers.querySelector('span')!.textContent = strings.projectHelpers;
-helpers.title = strings.projectHelpersHint;
-helpers.addEventListener('click', () => vscode.postMessage({ type: 'projectHelpers' }));
-start.setAttribute('aria-label', strings.start);
+start.querySelector('span')!.textContent = strings.start;
+fromToolsButton.querySelector('span')!.textContent = strings.fromTools;
+fromToolsButton.title = strings.fromTools;
 plusButton.title = strings.plusMenu;
 plusButton.setAttribute('aria-label', strings.plusMenu);
 
@@ -103,11 +103,51 @@ const plusMenu: Menu = new Menu({
 					plusMenu.close();
 					vscode.postMessage({ type: 'pickFiles' });
 				},
+			}, {
+				icon: 'tools',
+				name: strings.projectHelpers,
+				detail: strings.projectHelpersHint,
+				run: () => {
+					plusMenu.close();
+					vscode.postMessage({ type: 'projectHelpers' });
+				},
 			}],
 		},
 	],
 	empty: () => '',
 });
+
+/** "From Your Tools...": the tickets and merge requests on the cards, each starting an agent or a review on it. */
+const fromToolsMenu: Menu = new Menu({
+	element: document.getElementById('from-tools-menu')!,
+	anchor: fromToolsButton,
+	label: strings.fromTools,
+	sections: () => fromToolsSections(),
+	empty: () => strings.fromToolsEmpty,
+});
+
+function fromToolsSections(): MenuSection[] {
+	const cards = view?.dashboard.cards ?? [];
+	const rowsOf = (id: HomeCard['id'], tool: 'jira' | 'gitlab', actionOf: (row: HomeRow) => HomeAction | undefined): MenuRow[] =>
+		(cards.find(card => card.id === id)?.rows ?? []).flatMap(row => {
+			const action = actionOf(row);
+			return row.key && action ? [{
+				iconElement: () => toolLogo(tool, 14),
+				name: `${row.key} ${row.title}`,
+				detail: [row.detail, row.pill?.text].filter(Boolean).join(' · '),
+				run: () => {
+					fromToolsMenu.close();
+					run(action);
+				},
+			}] : [];
+		});
+	const tickets = rowsOf('tickets', 'jira', row => row.menu?.[0]?.action);
+	const mergeRequests = rowsOf('mergeRequests', 'gitlab', row => row.button?.action);
+	return [
+		...tickets.length ? [{ heading: strings.tickets, rows: tickets }] : [],
+		...mergeRequests.length ? [{ heading: strings.mergeRequests, rows: mergeRequests }] : [],
+	];
+}
 
 const modeMenu: Menu = new Menu({
 	element: document.getElementById('mode-menu')!,
@@ -176,9 +216,12 @@ function updateControls(): void {
 		modeButton.title = label;
 		modeButton.setAttribute('aria-label', label);
 	}
+	modelLabel.hidden = !view?.model;
+	modelLabel.lastElementChild!.textContent = view?.model ?? '';
 	folderMenu.render();
 	plusMenu.render();
 	modeMenu.render();
+	fromToolsMenu.render();
 }
 
 function renderAttachments(): void {
@@ -396,6 +439,7 @@ ownBranch.addEventListener('change', () => {
 // --- The dashboard
 
 const tools = document.getElementById('tools')!;
+const stale = document.getElementById('stale')!;
 const refreshButton = document.getElementById('refresh') as HTMLButtonElement;
 const customizeButton = document.getElementById('customize') as HTMLButtonElement;
 const banner = document.getElementById('banner')!;
@@ -405,7 +449,8 @@ const needs = document.getElementById('needs')!;
 const cardsSection = document.getElementById('cards')!;
 const rowMenuElement = document.getElementById('row-menu')!;
 
-customizeButton.querySelector('span')!.textContent = strings.customize;
+customizeButton.title = strings.customize;
+customizeButton.setAttribute('aria-label', strings.customize);
 refreshButton.title = strings.refresh;
 refreshButton.setAttribute('aria-label', strings.refresh);
 refreshButton.addEventListener('click', () => vscode.postMessage({ type: 'refresh' }));
@@ -492,12 +537,14 @@ function openRowMenu(anchor: HTMLElement, items: readonly HomeButton[]): void {
 function renderDashboard(dash: HomeDashboard): void {
 	title.textContent = dash.greeting;
 	subtitle.textContent = dash.context;
+	stale.hidden = !dash.stale;
+	stale.textContent = dash.stale ?? '';
 	tools.replaceChildren(...dash.tools.map(tool => {
 		const node = el('span', `dash-tool ${tool.tone}`);
 		node.title = tool.label;
 		node.setAttribute('role', 'img');
 		node.setAttribute('aria-label', tool.label);
-		node.append(toolLogo(tool.id, 14));
+		node.append(toolLogo(tool.id, 22));
 		node.addEventListener('click', () => run({ kind: 'command', command: 'gemini.connections' }));
 		return node;
 	}));
@@ -536,19 +583,15 @@ function renderDashboard(dash: HomeDashboard): void {
 	needs.hidden = !dash.needs.length;
 	needs.replaceChildren();
 	if (dash.needs.length) {
-		const heading = el('h2', 'dash-needs-heading');
-		heading.append(el('span', 'dot warn'), el('span', undefined, strings.needsYou), el('span', 'muted', `· ${dash.needs.length}`));
-		const list = el('div', 'dash-needs-list');
+		const head = el('div', 'dash-card-head');
+		const query = el('span', 'dash-query', dash.needsQuery);
+		query.title = dash.needsQuery;
+		head.append(el('span', 'dot warn'), el('h3', undefined, strings.needsYou), query);
+		const rows = el('div', 'dash-rows');
 		for (const need of dash.needs) {
-			const item = el('div', 'dash-need');
-			const text = el('div', 'dash-need-text');
-			text.append(el('strong', undefined, need.title), el('span', 'muted', need.detail));
-			text.title = `${need.title}
-${need.detail}`;
-			item.append(logo(need.tool, 16), text, actionButton(need.button));
-			list.append(item);
+			rows.append(dashRow({ tool: need.tool, title: need.title, detail: need.detail, ...need.pill ? { pill: need.pill } : {}, button: need.button }));
 		}
-		needs.append(heading, list);
+		needs.append(head, rows);
 	}
 
 	cardsSection.replaceChildren(...dash.cards.map(dashCard));
@@ -560,8 +603,12 @@ function dashCard(card: HomeCard): HTMLElement {
 	const head = el('div', 'dash-card-head');
 	head.append(card.tool ? logo(card.tool, 16) : icon(card.icon ?? 'circle'), el('h3', undefined, card.title));
 	if (card.link) {
-		const link = button('link-button', card.link.label, () => run(card.link!.action));
-		head.append(link);
+		head.append(button('link-button', card.link.label, () => run(card.link!.action)));
+	}
+	if (card.query) {
+		const query = el('span', 'dash-query', card.query);
+		query.title = card.query;
+		head.append(query);
 	}
 	node.append(head);
 	if (card.connect) {
@@ -569,19 +616,15 @@ function dashCard(card: HomeCard): HTMLElement {
 		node.append(el('p', 'muted', card.connect.text), actionButton(card.connect.button));
 		return node;
 	}
-	if (card.progress) {
-		const bar = el('div', 'dash-progress');
-		const track = el('div', 'dash-progress-track');
-		const fill = el('div', 'dash-progress-fill');
-		fill.style.width = `${Math.round(Math.min(1, Math.max(0, card.progress.value)) * 100)}%`;
-		track.append(fill);
-		bar.append(track, el('span', undefined, card.progress.label));
-		node.append(bar);
-	}
 	const rows = el('div', 'dash-rows');
 	for (const row of card.rows) {
 		if (row.group) {
-			rows.append(el('div', 'dash-group', row.group));
+			const group = el('div', 'dash-group');
+			group.append(el('span', undefined, row.group));
+			if (row.groupQuery) {
+				group.append(el('span', 'dash-query', row.groupQuery));
+			}
+			rows.append(group);
 		}
 		rows.append(dashRow(row));
 	}
@@ -606,13 +649,23 @@ function dashRow(row: HomeRow): HTMLElement {
 	name.title = row.title;
 	node.append(name);
 	if (row.detail) {
-		node.append(el('span', 'dash-row-detail muted', row.detail));
+		node.append(el('span', 'dash-row-detail', row.detail));
+	}
+	if (row.bar !== undefined) {
+		const track = el('span', 'dash-row-bar');
+		const fill = el('span', 'dash-row-bar-fill');
+		fill.style.width = `${Math.round(Math.min(1, Math.max(0, row.bar)) * 100)}%`;
+		track.append(fill);
+		node.append(track);
 	}
 	if (row.pill) {
 		node.append(el('span', `dash-pill ${row.pill.tone}`, row.pill.text));
 	}
 	if (row.button) {
 		node.append(actionButton(row.button));
+	}
+	if (row.link) {
+		node.append(button('link-button', row.link.label, () => run(row.link!.action)));
 	}
 	if (row.menu?.length) {
 		const wrap = el('span', 'dash-row-more');

@@ -30,8 +30,9 @@ import { fakeAgentCommand, waitFor } from '../helpers';
 export const bundleBudgets: Readonly<Record<string, number>> = {
 	// 1.1.0's Rewind, Subagent rows and the Shared page chip took it just past 215 KB; folding finished work
 	// (work.ts, workFold.ts) took it to about 225 KB, all GeminiCode's own code. The team tools' chips,
-	// + menu section and tool rows with logos took it to about 237 KB.
-	'media/chat.js': 240_000,
+	// + menu section and tool rows with logos took it to about 237 KB; the confirm-class card's effect,
+	// the cut-off card and the turn's trace readout to about 241 KB.
+	'media/chat.js': 250_000,
 	// Home's startup script: Preview's renderer is its own file. The dashboard (cards, Needs you,
 	// Customize) and the tools' logos took it to about 25 KB.
 	'media/home.js': 28_000,

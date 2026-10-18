@@ -1,5 +1,5 @@
 diff --git a/build/darwin/create-dmg.ts b/build/darwin/create-dmg.ts
-index 595cba3f..44540db5 100644
+index 595cba3fe65f41268d9e0c1ace0676a0841fc0a5..44540db5e81c69a4e9e5b9b24a83985550896c28 100644
 --- a/build/darwin/create-dmg.ts
 +++ b/build/darwin/create-dmg.ts
 @@ -165,7 +165,7 @@ async function main(buildDir?: string, outDir?: string): Promise<void> {

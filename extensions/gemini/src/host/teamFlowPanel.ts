@@ -245,6 +245,7 @@ function html(webview: vscode.Webview, media: vscode.Uri): string {
 		fixChosenNew: vscode.l10n.t("Fix {0} with a New Agent"),
 		runAgain: vscode.l10n.t("Run Again"),
 		noIssues: vscode.l10n.t("No issues found."),
+		fixNote: vscode.l10n.t("No agent works on this branch yet. Fix starts one in this checkout with the findings as its first prompt."),
 	};
 	const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'teamFlow.js'));
 	const styles = ['codicon.css', 'menu.css', 'panels.css', 'teamFlow.css'].map(file => `<link href="${webview.asWebviewUri(vscode.Uri.joinPath(media, file))}" rel="stylesheet">`).join('\n\t');

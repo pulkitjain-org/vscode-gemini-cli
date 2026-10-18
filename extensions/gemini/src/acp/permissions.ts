@@ -22,6 +22,8 @@ import { parseCommand, SessionApprovals } from './sessionApprovals';
 export interface PendingPermission {
 	readonly id: string;
 	readonly request: acp.RequestPermissionRequest;
+	/** Confirm class: the card offers Allow once and Reject only, every time. */
+	readonly confirm?: boolean;
 }
 
 export type PermissionEvent =
@@ -61,7 +63,7 @@ export class PermissionBroker {
 	/** Waits for the user's answer. Never rejects. */
 	request(request: acp.RequestPermissionRequest): Promise<acp.RequestPermissionResponse> {
 		if (this.confirmOnly?.(request)) {
-			return this.ask(confirmOptions(request));
+			return this.ask(confirmOptions(request), true);
 		}
 		const instant = this.answerAtOnce?.(request);
 		if (instant && request.options.some(option => option.optionId === instant.optionId)) {
@@ -82,8 +84,8 @@ export class PermissionBroker {
 	}
 
 	/** Shows the card and waits. */
-	private ask(request: acp.RequestPermissionRequest): Promise<acp.RequestPermissionResponse> {
-		const permission: PendingPermission = { id: `permission-${this.nextId++}`, request };
+	private ask(request: acp.RequestPermissionRequest, confirm = false): Promise<acp.RequestPermissionResponse> {
+		const permission: PendingPermission = { id: `permission-${this.nextId++}`, request, ...confirm ? { confirm: true } : {} };
 		return new Promise(resolve => {
 			this.pending.set(permission.id, { permission, resolve });
 			this.onDidChangeEmitter.fire({ kind: 'requested', permission });

@@ -1,5 +1,5 @@
 diff --git a/src/vs/workbench/services/extensionManagement/browser/extensionEnablementService.ts b/src/vs/workbench/services/extensionManagement/browser/extensionEnablementService.ts
-index 141241fd..d421a429 100644
+index 141241fdb70cdc87e8ea49420a85b9a5b24dcef4..d421a429a4d40c10625e7e7a7dc98c59ec2c7d36 100644
 --- a/src/vs/workbench/services/extensionManagement/browser/extensionEnablementService.ts
 +++ b/src/vs/workbench/services/extensionManagement/browser/extensionEnablementService.ts
 @@ -44,6 +44,9 @@ type WorkspaceType = { readonly virtual: boolean; readonly trusted: boolean };

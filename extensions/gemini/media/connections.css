@@ -22,11 +22,69 @@
 }
 
 .connections .tool-row {
-	padding: 12px 14px;
+	align-items: flex-start;
+	padding: 14px 16px;
 }
 
-.connections .tool-row.not-connected .tool-tile {
-	opacity: 0.75;
+/* The tool's logo, bare, at the row's start. */
+.tool-mark {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	margin-top: -1px;
+}
+
+.connections .tool-row.not-connected .tool-mark {
+	opacity: 0.45;
+	filter: grayscale(1);
+}
+
+.connections .tool-row .row-title {
+	flex-wrap: wrap;
+	gap: 6px 8px;
+}
+
+.connections .tool-row .row-detail + .row-detail {
+	margin-top: 2px;
+}
+
+/* The repository's own Jira and GitLab servers: a card with a warm hairline, above the tools. */
+.team-servers {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 24px;
+	padding: 12px 14px;
+	border: 1px solid color-mix(in srgb, var(--gemini-warn) 45%, transparent);
+	border-radius: var(--gemini-radius);
+	background: var(--gemini-card);
+}
+
+.team-servers h2 {
+	font-size: 13px;
+}
+
+.team-servers .hint {
+	font-size: 12px;
+}
+
+.team-server-list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	font-size: 12px;
+	color: var(--gemini-muted);
+}
+
+.team-server-list strong {
+	color: var(--vscode-foreground);
+}
+
+.team-server-list .mono {
+	font-size: 11px;
 }
 
 .connections .tool-row .row-detail {

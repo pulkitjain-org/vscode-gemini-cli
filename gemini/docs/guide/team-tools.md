@@ -80,7 +80,7 @@ Clicking a merge request asks whether to open it in GeminiCode's browser or your
 
 Every write GeminiCode makes to Jira or GitLab for you is recorded on your Mac, whether an agent asked for it or you pressed a button: a comment, a move, a time log, a reassignment, a merge request, a review comment, an approval, a merge. Each write gets two lines in a file per day under GeminiCode's storage, one before the call and one after, with what the tool gave back (a comment id, a worklog id, `!321`, the merge commit). The lines hold what changed and where, not the text; the text is in the chat.
 
-**Gemini: Open Audit Log** (also in the Gemini status bar menu) shows the last seven days. A line with no result is a write that was running when GeminiCode last quit; check the tool before doing it again.
+**Gemini: Open Audit Log** (also in the Gemini status bar menu, and behind **Audit: 14 actions today** at the right of the status bar) shows the log as a page: one row per write with the time, who asked (an agent or a button of yours), the action, its effect, how you answered, the id the tool gave back and the state. Pick a day, a tool, or only the intents without a result. A row with no result is a write that was running when GeminiCode last quit; it is highlighted, and Home lists it under **Unfinished**. Check the tool before doing it again, then **Mark as Checked**. **Export the Day…** writes the day as Markdown to your home folder, and **Open Folder** shows the files.
 
 ## What agents get
 

@@ -11,6 +11,13 @@ import { parseTraceFile, renderTrace, summarizeTrace, traceEnv } from '../acp/tr
 import type { AgentService } from './agentService';
 import { setAgentEnvOverride } from './configuration';
 
+let recordingFile: string | undefined;
+
+/** The trace file the agent is writing to while a recording is on, for the chat's per-turn readout. */
+export function currentTraceFile(): string | undefined {
+	return recordingFile;
+}
+
 /**
  * Gemini: Record Performance Trace. Restarts the agent once with the CLI's
  * own telemetry writing to a file in the home folder, and on Stop restarts
@@ -33,6 +40,7 @@ export class TraceRecorder implements vscode.Disposable {
 
 	dispose(): void {
 		if (this.file) {
+			recordingFile = undefined;
 			setAgentEnvOverride({});
 		}
 		vscode.Disposable.from(...this.disposables).dispose();
@@ -42,6 +50,7 @@ export class TraceRecorder implements vscode.Disposable {
 		const stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
 		const file = path.join(os.homedir(), `geminicode-trace-${stamp}.jsonl`);
 		this.file = file;
+		recordingFile = file;
 		setAgentEnvOverride(traceEnv(file));
 		this.log.info(`Recording a performance trace to ${file}`);
 		this.service.restart();
@@ -58,6 +67,7 @@ export class TraceRecorder implements vscode.Disposable {
 			return;
 		}
 		this.file = undefined;
+		recordingFile = undefined;
 		setAgentEnvOverride({});
 		this.log.info('Stopping the performance trace; the agent restarts without telemetry once it is idle');
 		this.service.restartWhenIdle('restarting without telemetry');

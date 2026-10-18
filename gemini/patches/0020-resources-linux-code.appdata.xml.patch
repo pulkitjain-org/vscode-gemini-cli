@@ -1,5 +1,5 @@
 diff --git a/resources/linux/code.appdata.xml b/resources/linux/code.appdata.xml
-index ab9df8c2..e5661937 100644
+index ab9df8c25daaa8be70b421076b733f9fd84c9b31..e56619376c9c8ae2f5d8c7d14b5737ff516bdee9 100644
 --- a/resources/linux/code.appdata.xml
 +++ b/resources/linux/code.appdata.xml
 @@ -4,15 +4,9 @@

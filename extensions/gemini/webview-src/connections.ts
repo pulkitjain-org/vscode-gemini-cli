@@ -52,10 +52,13 @@ function toolRow(row: ConnectionRowView): HTMLElement {
 	const title = el('div', 'row-title');
 	const state = el('span', `state-pill ${stateClass(row)}`);
 	state.append(el('span', 'state-dot'), el('span', undefined, row.label));
-	title.append(el('span', 'name', row.name), state);
+	title.append(el('span', 'name', row.name), state, ...row.pills.map(pill => el('span', 'tag', pill)));
 	main.append(title);
 	if (row.detail) {
 		main.append(el('div', 'row-detail', row.detail));
+	}
+	if (row.token) {
+		main.append(el('div', 'row-detail', row.token));
 	}
 	const actions = el('div', 'row-actions');
 	if (!row.saved && row.kind === 'checking') {
@@ -84,7 +87,9 @@ function toolRow(row: ConnectionRowView): HTMLElement {
 		}
 		actions.append(button('quiet', strings.disconnect, () => post({ type: 'disconnect', tool: row.tool })));
 	}
-	node.append(logoTile(row.tool), main, actions);
+	const logo = el('span', 'tool-mark');
+	logo.append(toolLogo(row.tool, 22));
+	node.append(logo, main, actions);
 	return node;
 }
 
@@ -119,8 +124,27 @@ function render(): void {
 	const header = el('header', 'settings-header');
 	const intro = el('div');
 	intro.append(el('h1', undefined, strings.title), el('p', 'hint', strings.subtitle));
-	header.append(intro);
+	const headerActions = el('div', 'section-actions');
+	headerActions.append(button('', strings.checkAll, () => post({ type: 'checkAll' }), 'refresh'));
+	header.append(intro, headerActions);
 	page.append(header);
+
+	if (view.teamServers) {
+		// The repository runs its own Jira and GitLab servers in the CLI: say what that means, and open the file.
+		const card = el('section', 'team-servers');
+		card.append(el('h2', undefined, format(strings.teamServersTitle, view.teamServers.file, view.teamServers.servers.map(s => s.name).join(', '))), el('p', 'hint', strings.teamServersText));
+		const list = el('ul', 'team-server-list');
+		for (const server of view.teamServers.servers) {
+			const item = el('li');
+			const tools = server.included || server.excluded ? format(strings.teamServerTools, String(server.included ?? ''), String(server.excluded ?? 0)) : '';
+			item.append(el('strong', undefined, server.name), el('span', 'mono', ` · ${[format(strings.teamServerLine, server.image ?? '', server.tokenEnv.map(v => `$${v}`).join(', ')), tools].filter(Boolean).join(' · ')}`));
+			list.append(item);
+		}
+		const actions = el('div', 'row-actions');
+		actions.append(button('', strings.openSettings, () => post({ type: 'openTeamServers' })));
+		card.append(list, actions);
+		page.append(card);
+	}
 
 	if (view.allowlist) {
 		const note = el('div', 'allowlist-note');
@@ -169,8 +193,8 @@ function render(): void {
 	const permissionRows = el('div', 'rows');
 	permissionRows.append(
 		permissionRow(strings.reads, strings.readsDetail, strings.alwaysAllowed, ['jira', 'gitlab', 'sonar', 'snyk', 'figma']),
-		permissionRow(strings.jiraWrites, strings.jiraWritesDetail, strings.askEachTime, ['jira']),
-		permissionRow(strings.gitlabWrites, strings.gitlabWritesDetail, strings.askEachTime, ['gitlab']),
+		permissionRow(strings.writes, strings.writesDetail, strings.askEachTime, ['jira', 'gitlab']),
+		permissionRow(strings.confirmWrites, strings.confirmWritesDetail, strings.askOnceOnly, ['jira', 'gitlab']),
 	);
 	permissions.append(permissionsHeader, permissionRows);
 	page.append(permissions);

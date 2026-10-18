@@ -1,5 +1,5 @@
 diff --git a/src/vs/workbench/workbench.desktop.main.ts b/src/vs/workbench/workbench.desktop.main.ts
-index 74be4cac..5f69a608 100644
+index 74be4cacd51f672cd416bf0275b721fb69e14ae3..5f69a608460d227974f8ad7d9764d4324cc81e21 100644
 --- a/src/vs/workbench/workbench.desktop.main.ts
 +++ b/src/vs/workbench/workbench.desktop.main.ts
 @@ -195,6 +195,9 @@ import './contrib/remoteTunnel/electron-browser/remoteTunnel.contribution.js';

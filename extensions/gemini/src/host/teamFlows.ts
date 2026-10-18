@@ -6,6 +6,7 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { tildify } from './displayText';
 import { branchChoices, checkoutForChecks, listBranches } from '../acp/checksBranch';
 import { errorMessage } from '../acp/errors';
 import { GitLabClient, GitLabMr } from '../acp/gitlab';
@@ -34,6 +35,8 @@ interface ChecksPlace {
 	readonly branch?: string;
 	readonly agentId?: string;
 	readonly worktree?: AgentWorktree;
+	/** What the checkout's setup did, for the page's subtitle: "setup: npm ci (done, 41 s)". */
+	readonly setup?: string;
 }
 
 /** Where an agent works and the GitLab project and branch there. */
@@ -69,7 +72,7 @@ export class TeamFlows implements vscode.Disposable {
 			run('gemini.team.reopenFlow', (id?: unknown) => this.reopenFlow(str(id))),
 			run('gemini.team.discardFlow', async (id?: unknown) => str(id) ? this.tools.flows.close(str(id)!) : undefined),
 			run('gemini.team.settleIntent', (id?: unknown) => this.settleIntent(str(id))),
-			run('gemini.team.mergeMergeRequest', (project?: unknown, iid?: unknown) => this.mergeMergeRequest(str(project), Number(iid) || undefined)),
+			run('gemini.team.mergeMergeRequest', (project?: unknown, iid?: unknown, options?: unknown) => this.mergeMergeRequest(str(project), Number(iid) || undefined, isMergeOptions(options) ? options : {})),
 			run('gemini.team.reassignTicket', (key?: unknown) => this.reassignTicket(str(key))),
 			run('gemini.team.runChecks', (agent?: unknown) => this.runChecks(str(agent))),
 			run('gemini.team.runChecksOnBranch', (branch?: unknown) => this.runChecksOnBranch(str(branch))),
@@ -636,7 +639,7 @@ export class TeamFlows implements vscode.Disposable {
 	 * for, and the audit log gets the record. With no merge request named,
 	 * the agent in front's is taken.
 	 */
-	private async mergeMergeRequest(project: string | undefined, iid: number | undefined): Promise<void> {
+	private async mergeMergeRequest(project: string | undefined, iid: number | undefined, options: MergeOptions = {}): Promise<void> {
 		const gitlab = this.gitlab();
 		if (!project || !iid) {
 			const agentId = this.agentId(undefined);
@@ -656,20 +659,28 @@ export class TeamFlows implements vscode.Disposable {
 			await vscode.window.showWarningMessage(vscode.l10n.t("!{0} can't be merged yet.", n), { modal: true, detail: lines.join('\n') });
 			return;
 		}
+		const squash = options.squash ?? readiness.squash;
+		const removeSourceBranch = options.removeSourceBranch ?? readiness.removeSourceBranch;
 		const merge = vscode.l10n.t("Merge");
 		const choice = await vscode.window.showWarningMessage(
 			vscode.l10n.t("Merge !{0} \"{1}\" into {2}?", n, mr.title, mr.targetBranch),
-			{ modal: true, detail: [...lines, '', vscode.l10n.t("At commit {0}{1}{2}. GitLab refuses if the branch moved meanwhile.", readiness.sha.slice(0, 8), readiness.squash ? vscode.l10n.t(", squashed") : '', readiness.removeSourceBranch ? vscode.l10n.t(", deleting the source branch") : '')].join('\n') },
+			{ modal: true, detail: [...lines, '', vscode.l10n.t("At commit {0}{1}{2}. GitLab refuses if the branch moved meanwhile.", readiness.sha.slice(0, 8), squash ? vscode.l10n.t(", squashed") : '', removeSourceBranch ? vscode.l10n.t(", deleting the source branch") : '')].join('\n') },
 			merge,
 		);
 		if (choice !== merge) {
 			return;
 		}
 		const merged = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Merging !{0}...", n) }, () =>
-			this.tools.audit.record({ caller: 'ui', tool: 'gitlab_merge', ref: `!${n}`, effect: `Merge !${n} "${mr.title}" into ${mr.targetBranch} at ${readiness.sha.slice(0, 8)}`, args: { sha: readiness.sha, squash: readiness.squash } },
-				() => gitlab.merge(p, n, { sha: readiness.sha, squash: readiness.squash, removeSourceBranch: readiness.removeSourceBranch }), result => `!${n} merged at ${readiness.sha}${result.sha ? ` as ${result.sha}` : ''}`));
+			this.tools.audit.record({ caller: 'ui', tool: 'gitlab_merge', ref: `!${n}`, effect: `Merge !${n} "${mr.title}" into ${mr.targetBranch} at ${readiness.sha.slice(0, 8)}`, args: { sha: readiness.sha, squash } },
+				() => gitlab.merge(p, n, { sha: readiness.sha, squash, removeSourceBranch }), result => `!${n} merged at ${readiness.sha}${result.sha ? ` as ${result.sha}` : ''}`));
 		const defaults = await this.tools.workspaceDefaults();
-		const ticket = this.tools.connectors.jira ? jiraKeyIn(`${mr.sourceBranch} ${mr.title}`, defaults.jira?.projects) : undefined;
+		const ticket = options.moveTicket ?? (this.tools.connectors.jira ? jiraKeyIn(`${mr.sourceBranch} ${mr.title}`, defaults.jira?.projects) : undefined);
+		if (options.moveTicket) {
+			// The panel's "Move … to Done" was ticked: the move opens at once, with its own confirmation.
+			void vscode.window.showInformationMessage(vscode.l10n.t("Merged !{0}{1}.", n, merged.sha ? ` (${merged.sha.slice(0, 8)})` : ''));
+			await this.moveTicket(ticket, undefined, 'Done');
+			return;
+		}
 		const open = vscode.l10n.t("Open in GitLab");
 		const move = ticket ? vscode.l10n.t("Move {0}...", ticket) : undefined;
 		const next = await vscode.window.showInformationMessage(vscode.l10n.t("Merged !{0}{1}.", n, merged.sha ? ` (${merged.sha.slice(0, 8)})` : ''), ...move ? [move, open] : [open]);
@@ -759,8 +770,9 @@ export class TeamFlows implements vscode.Disposable {
 			const [current, branches] = await Promise.all([currentBranch(repository).catch(() => undefined), listBranches(repository, remote)]);
 			const agents = this.agents.summaries().flatMap(a => a.worktree?.branch ? [{ branch: a.worktree.branch, title: a.title }] : []);
 			const kinds = { current: vscode.l10n.t("checked out here"), agent: vscode.l10n.t("agent"), local: vscode.l10n.t("local branch"), remote: vscode.l10n.t("on {0}", remote) };
+			const ownCheckout = vscode.l10n.t("gets a checkout of its own, reused next time");
 			const picked = await vscode.window.showQuickPick(
-				branchChoices(current, agents, branches.locals, branches.remotes).map(choice => ({ label: choice.branch, description: choice.kind === 'agent' ? `${kinds.agent}: ${choice.agent}` : kinds[choice.kind], choice })),
+				branchChoices(current, agents, branches.locals, branches.remotes).map(choice => ({ label: choice.branch, description: choice.kind === 'agent' ? `${kinds.agent}: ${choice.agent}` : kinds[choice.kind], ...choice.kind === 'local' || choice.kind === 'remote' ? { detail: ownCheckout } : {}, choice })),
 				{ title: vscode.l10n.t("Run Checks on a Branch"), placeHolder: vscode.l10n.t("A branch that isn't checked out gets a checkout of its own, which later runs reuse"), matchOnDescription: true },
 			);
 			if (!picked) {
@@ -770,18 +782,21 @@ export class TeamFlows implements vscode.Disposable {
 		}
 		const chosen = branch;
 		const checkout = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Checking out {0}...", chosen) }, () => checkoutForChecks(repository, remote, chosen));
+		let setup: string | undefined;
 		if (checkout.created && checkout.worktree) {
 			const worktree = checkout.worktree;
 			const command = await worktreeSetupCommand(repository, vscode.workspace.getConfiguration(configSection).get<string>('agents.worktreeSetup'));
 			if (command) {
+				const started = Date.now();
 				const code = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Setting up {0} for the checks...", chosen) }, () => runWorktreeSetup(command, worktree, repository, () => undefined));
+				setup = code === 0 ? vscode.l10n.t("setup: {0} (done, {1} s)", command, Math.round((Date.now() - started) / 1000)) : vscode.l10n.t("setup: {0} (ended with code {1})", command, code);
 				if (code !== 0) {
 					void vscode.window.showWarningMessage(vscode.l10n.t("The setup command for {0} ended with code {1}; the checks run on the checkout as it is.", chosen, code));
 				}
 			}
 		}
 		const agent = this.agents.summaries().find(a => a.worktree?.branch === chosen && a.state !== 'stopped');
-		await this.openChecks({ cwd: checkout.cwd, title: chosen, branch: chosen, repository, ...agent ? { agentId: agent.id } : {}, ...checkout.worktree ? { worktree: checkout.worktree } : {} });
+		await this.openChecks({ cwd: checkout.cwd, title: chosen, branch: chosen, repository, ...agent ? { agentId: agent.id } : {}, ...checkout.worktree ? { worktree: checkout.worktree } : {}, ...setup ? { setup } : {} });
 	}
 
 	/** The repository Run Checks works in: the open folder's, else the agent in front's. */
@@ -842,7 +857,7 @@ export class TeamFlows implements vscode.Disposable {
 			...snyk ? [{ tool: 'snyk' as const, name: vscode.l10n.t("Snyk Code: source"), state: 'running' as const, detail: vscode.l10n.t("Running snyk code test...") }] : [],
 			sonar ? { tool: 'sonar', name: vscode.l10n.t("SonarQube: new code"), state: 'running', detail: vscode.l10n.t("Reading the last analysis...") } : { tool: 'sonar', name: 'SonarQube', state: 'off', detail: vscode.l10n.t("Not connected") },
 		];
-		flow.setView({ kind: 'checks', agentTitle: place.title, ...place.agentId ? { agentId: place.agentId } : {}, ...branch ? { branch } : {}, rows, findings: [] });
+		flow.setView({ kind: 'checks', agentTitle: place.title, ...place.agentId ? { agentId: place.agentId } : {}, ...branch ? { branch } : {}, where: tildify(place.cwd), ...place.setup ? { setup: place.setup } : {}, rows, findings: [] });
 		const results: string[] = [];
 		const setRow = (name: string, row: Partial<ChecksView['rows'][number]>, findings: readonly CheckFinding[] = []) => {
 			const view = flow.view;
@@ -904,6 +919,18 @@ function today(): string {
 
 function categoryTone(category: string): Tone {
 	return category === 'done' ? 'ok' : category === 'indeterminate' ? 'info' : 'muted';
+}
+
+/** What the merge request panel asks the merge to do besides GitLab's defaults. */
+export interface MergeOptions {
+	readonly squash?: boolean;
+	readonly removeSourceBranch?: boolean;
+	/** The ticket to move to Done once merged. */
+	readonly moveTicket?: string;
+}
+
+function isMergeOptions(value: unknown): value is MergeOptions {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function pipelineTone(status: string): Tone {

@@ -129,12 +129,14 @@ export interface HomeView {
 	readonly ownBranch: boolean;
 	/** The approval modes a new agent can start in, as policy allows. */
 	readonly modes: readonly HomeMode[];
+	/** The model a new agent starts on, when the user picked one. */
+	readonly model?: string;
 	/** The dashboard around the composer: the team tools, what needs the user, the cards. */
 	readonly dashboard: HomeDashboard;
 }
 
 export type HomeToolId = 'jira' | 'gitlab' | 'sonar' | 'snyk' | 'figma';
-export type HomeCardId = 'unfinished' | 'agents' | 'tickets' | 'mergeRequests' | 'quality' | 'gemini';
+export type HomeCardId = 'unfinished' | 'startup' | 'agents' | 'tickets' | 'mergeRequests' | 'quality' | 'gemini';
 
 /** What a button on the dashboard does. */
 export type HomeAction =
@@ -171,13 +173,19 @@ export interface HomeRow {
 	readonly title: string;
 	readonly detail?: string;
 	readonly pill?: { readonly text: string; readonly tone: HomeTone };
+	/** A bar after the title, 0 to 1: the sprint's progress, today's quota. */
+	readonly bar?: number;
 	readonly button?: HomeButton;
+	/** A link at the end of the row, such as "Usage details". */
+	readonly link?: HomeButton;
 	/** More actions, in the row's themed "..." menu (Log Time, Move, Open in Jira). */
 	readonly menu?: readonly HomeButton[];
 	/** What clicking the row's title does. */
 	readonly open?: HomeAction;
-	/** A small heading above this row, such as "Waiting for my review". */
+	/** A small heading above this row, such as "Mine". */
 	readonly group?: string;
+	/** The query behind that heading, faint beside it. */
+	readonly groupQuery?: string;
 }
 
 export interface HomeCard {
@@ -187,8 +195,8 @@ export interface HomeCard {
 	readonly icon?: string;
 	/** A link at the right of the heading. */
 	readonly link?: HomeButton;
-	/** A progress bar, 0 to 1, with its label. */
-	readonly progress?: { readonly value: number; readonly label: string };
+	/** The query that fills the card, faint beside the title, so its numbers can be checked against the tool. */
+	readonly query?: string;
 	readonly rows: readonly HomeRow[];
 	/** Shown when there are no rows, or under them for a state such as VPN off. */
 	readonly note?: string;
@@ -202,6 +210,7 @@ export interface HomeNeed {
 	readonly tool: HomeToolId | 'gemini';
 	readonly title: string;
 	readonly detail: string;
+	readonly pill?: { readonly text: string; readonly tone: HomeTone };
 	readonly button: HomeButton;
 }
 
@@ -220,11 +229,15 @@ export interface HomeDashboard {
 	readonly tools: readonly HomeTool[];
 	readonly quickActions: readonly (HomeButton & { readonly tool?: HomeToolId; readonly icon?: string })[];
 	readonly needs: readonly HomeNeed[];
+	/** What Needs you is made of, faint beside its title. */
+	readonly needsQuery: string;
 	readonly cards: readonly HomeCard[];
 	/** First run: nothing connected yet. */
 	readonly setup?: readonly HomeSetupStep[];
 	/** "GitLab, SonarQube and Snyk can't be reached. Turn on your VPN to refresh them." */
 	readonly banner?: string;
+	/** While the tools are being read again: "Showing results from 14:31 · refreshing". */
+	readonly stale?: string;
 	/** For Customize: every card with whether it shows, in the user's order. */
 	readonly layout: readonly { readonly id: HomeCardId; readonly title: string; readonly visible: boolean }[];
 	readonly releaseBranches: readonly string[];
@@ -286,6 +299,11 @@ export interface HomeStrings {
 	readonly getStarted: string;
 	readonly composerPlaceholder: string;
 	readonly moreActions: string;
+	/** "From Your Tools...": a ticket or merge request to start on. */
+	readonly fromTools: string;
+	readonly fromToolsEmpty: string;
+	readonly tickets: string;
+	readonly mergeRequests: string;
 }
 
 export type ToHome =

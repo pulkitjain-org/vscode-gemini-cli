@@ -1,5 +1,5 @@
 diff --git a/src/vs/workbench/browser/layout.ts b/src/vs/workbench/browser/layout.ts
-index 75f9238f..b51f38c4 100644
+index 75f9238fd751f183b9d3dfca93f7b42483f1f9aa..b51f38c49ba8b38e8b7a7e8b3aa48ca9c4e94894 100644
 --- a/src/vs/workbench/browser/layout.ts
 +++ b/src/vs/workbench/browser/layout.ts
 @@ -1893,7 +1893,10 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi

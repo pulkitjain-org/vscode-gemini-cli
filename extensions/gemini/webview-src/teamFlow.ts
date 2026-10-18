@@ -465,12 +465,14 @@ function toolLogoSpark(): HTMLElement {
 // --- Checks
 
 function checks(view: ChecksView): ReturnType<typeof dialog> {
+	// The title names the branch; the line under it says where the checks run and what the setup did.
 	const sub = el('span', 'flow-route');
-	sub.append(el('span', undefined, view.agentTitle));
-	if (view.branch) {
-		sub.append(el('span', 'mono muted', view.branch));
+	if (view.where) {
+		sub.append(el('span', 'mono muted', [view.where, view.setup].filter(Boolean).join(' · ')));
+	} else {
+		sub.append(el('span', undefined, view.agentTitle));
 	}
-	const d = dialog(view.rows.some(r => r.tool === 'snyk' && r.state !== 'off') ? 'snyk' : 'sonar', strings.checksTitle, sub);
+	const d = dialog(view.rows.some(r => r.tool === 'snyk' && r.state !== 'off') ? 'snyk' : 'sonar', `${strings.checksTitle}: ${view.branch ?? view.agentTitle}`, sub);
 	const rows = el('div', 'flow-list boxed');
 	for (const row of view.rows) {
 		const line = el('div', `flow-target ${row.state}`);
@@ -525,6 +527,9 @@ function checks(view: ChecksView): ReturnType<typeof dialog> {
 	syncFix();
 	if (!view.findings.length && view.rows.every(r => r.state !== 'running')) {
 		d.body.append(el('p', 'hint', strings.noIssues));
+	}
+	if (!view.agentId && view.findings.length) {
+		d.foot.append(el('span', 'hint', strings.fixNote));
 	}
 	d.foot.append(el('span', 'grow'), button('secondary', strings.runAgain, () => act('again'), 'refresh'), fixAll);
 	return d;

@@ -1,5 +1,5 @@
 diff --git a/src/vs/workbench/services/themes/browser/workbenchThemeService.ts b/src/vs/workbench/services/themes/browser/workbenchThemeService.ts
-index 28ab7564..1e572b72 100644
+index 28ab75641c8a060d4bddcab0a59514a77bb94728..1e572b722556b1d2fd24fbdc18f32d39b4a5044d 100644
 --- a/src/vs/workbench/services/themes/browser/workbenchThemeService.ts
 +++ b/src/vs/workbench/services/themes/browser/workbenchThemeService.ts
 @@ -213,7 +213,8 @@ export class WorkbenchThemeService extends Disposable implements IWorkbenchTheme

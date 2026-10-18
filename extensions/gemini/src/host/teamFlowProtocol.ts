@@ -114,6 +114,10 @@ export interface ChecksView {
 	readonly agentTitle: string;
 	readonly agentId?: string;
 	readonly branch?: string;
+	/** The checkout the checks run on, as the user names it (~/.geminicode/worktrees/…). */
+	readonly where?: string;
+	/** What the checkout's setup did: "setup: npm ci (done, 41 s)". */
+	readonly setup?: string;
 	readonly rows: readonly { readonly tool: FlowTool; readonly name: string; readonly state: 'running' | 'done' | 'problem' | 'off'; readonly detail: string; readonly pill?: FlowPill }[];
 	readonly findings: readonly (CheckFinding & { readonly checked: boolean })[];
 	readonly sent?: string;
@@ -209,6 +213,8 @@ export interface TeamFlowStrings {
 	readonly kindQuestion: string;
 	readonly openAgent: string;
 	readonly checksTitle: string;
+	/** Under the findings when no agent works on the branch: Fix starts one. */
+	readonly fixNote: string;
 	readonly fix: string;
 	readonly fixAll: string;
 	readonly fixChosen: string;
@@ -224,8 +230,10 @@ export interface ChangesTeamView {
 	readonly runChecks?: string;
 	readonly mr?: {
 		readonly iid: number;
+		/** "!321 Gift message at checkout" */
 		readonly heading: string;
-		readonly subtitle: string;
+		/** "→ release/2026.11" */
+		readonly target: string;
 		readonly url: string;
 		readonly openIn: string;
 		readonly rows: readonly {
@@ -241,12 +249,28 @@ export interface ChangesTeamView {
 		}[];
 		/** "Fix Pipeline and 2 Comments" */
 		readonly fixAll?: { readonly label: string; readonly one: string; readonly pipelineOnly: string; readonly commentsOnly: string };
-		/** The merge checks GitLab reports, read live, and the Merge button, on only when every check holds. */
-		readonly merge?: { readonly heading: string; readonly checks: readonly { readonly name: string; readonly ok: boolean; readonly detail: string }[]; readonly ready: boolean; readonly button: string; readonly note: string };
+		/** The merge checks GitLab reports, read live, the options, the request it will make, and the Merge button, on only when every check holds. */
+		readonly merge?: {
+			readonly heading: string;
+			/** "read live 12 s ago" */
+			readonly readAt: string;
+			/** pending: waiting on GitLab, such as a pipeline still running. */
+			readonly checks: readonly { readonly name: string; readonly state: 'ok' | 'missing' | 'pending'; readonly detail: string; readonly source: string }[];
+			readonly ready: boolean;
+			readonly squash: { readonly label: string; readonly on: boolean };
+			readonly removeSourceBranch: { readonly label: string; readonly on: boolean };
+			/** Offered when the merge request names a ticket. */
+			readonly moveTicket?: { readonly label: string; readonly on: boolean; readonly key: string };
+			/** What the merge sends: the path and the head it was read at. */
+			readonly request: { readonly path: string; readonly sha: string };
+			readonly button: string;
+			readonly note: string;
+		};
 	};
 }
 
 export type FromChangesTeam =
-	| { readonly type: 'team'; readonly action: 'openMr' | 'runChecks' | 'openUrl' | 'merge' }
+	| { readonly type: 'team'; readonly action: 'openMr' | 'runChecks' | 'openUrl' }
+	| { readonly type: 'team'; readonly action: 'merge'; readonly squash: boolean; readonly removeSourceBranch: boolean; readonly moveTicket: boolean }
 	| { readonly type: 'team'; readonly action: 'fixJob'; readonly job: number }
 	| { readonly type: 'team'; readonly action: 'fixMr'; readonly jobs: boolean; readonly threads: readonly string[] };

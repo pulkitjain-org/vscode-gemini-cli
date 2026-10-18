@@ -1,5 +1,5 @@
 diff --git a/resources/win32/VisualElementsManifest.xml b/resources/win32/VisualElementsManifest.xml
-index 5ad1283c..fe79db7f 100644
+index 5ad1283cd7e10b24237a667e1a62b602a82e51d3..fe79db7f64aa7d6a3411a680db095272f390d9b8 100644
 --- a/resources/win32/VisualElementsManifest.xml
 +++ b/resources/win32/VisualElementsManifest.xml
 @@ -5,5 +5,5 @@

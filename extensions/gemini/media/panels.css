@@ -513,16 +513,7 @@ button.send:disabled {
 	color: var(--gemini-faint);
 }
 
-/* The folder, the own-branch switch and the mode, under the composer. */
-.home-options {
-	display: flex;
-	align-items: center;
-	gap: 14px;
-	padding: 8px 2px 0;
-	font-size: 12px;
-	color: var(--gemini-muted);
-}
-
+/* The folder, the own-branch switch and the mode, in the composer's bar. */
 .home-folder,
 .home-mode,
 .home-plus {
@@ -558,11 +549,6 @@ button.option-button:hover,
 button.option-button[aria-expanded="true"] {
 	background: var(--gemini-hover);
 	color: var(--vscode-foreground);
-}
-
-/* Project Helpers, at the far end of the options. */
-button.helpers-button {
-	margin-left: auto;
 }
 
 button.option-button .codicon-chevron-down {

@@ -232,3 +232,76 @@ export function renderTrace(summary: TraceSummary, file: string): string {
 		'The cached share is the number the plan asks for first: a low share on a long conversation means the CLI\'s prefix is not being reused by the service.', '');
 	return lines.join('\n');
 }
+
+/** One hop of a turn's time, for the chat's readout: where the time went against the plan's budget. */
+export interface TraceHop {
+	readonly name: string;
+	/** This turn's time, or a word such as "skipped". */
+	readonly value: string;
+	/** Share of the turn, 0 to 1, for the bar. */
+	readonly share: number;
+	/** The plan's p50 budget for the hop, or whose time it is ("model", "your repo"). */
+	readonly budget: string;
+	/** What the bar says: the fork's own hop, the model's, or a tool's. */
+	readonly tone: 'fork' | 'model' | 'tool';
+}
+
+export interface TurnReadout {
+	readonly hops: readonly TraceHop[];
+	readonly totalMs: number;
+	readonly input: number;
+	readonly cached: number;
+	readonly output: number;
+	readonly requests: number;
+}
+
+/** What the fork measured around a turn, in ms: the session wait, the prompt's build, and the time to the first reply. */
+export interface MeasuredTurn {
+	readonly sessionMs?: number;
+	readonly sendMs?: number;
+	readonly firstTokenMs?: number;
+	readonly totalMs: number;
+}
+
+function hopMs(value: number): string {
+	return value >= 10_000 ? `${(value / 1000).toFixed(1)} s` : value >= 1000 ? `${(value / 1000).toFixed(2).replace(/0$/, '')} s` : `${Math.round(value)} ms`;
+}
+
+/**
+ * Where a turn's time went, hop by hop (gemini/docs/AGENTIC-PLAN.md, section
+ * 1): the fork's hops from what it measured, the model's and the tools' from
+ * the CLI's trace of the same turn.
+ */
+export function turnReadout(turn: TurnSummary | undefined, measured: MeasuredTurn): TurnReadout {
+	const total = Math.max(1, measured.totalMs);
+	const share = (ms: number) => Math.min(1, Math.max(0, ms / total));
+	const hops: TraceHop[] = [];
+	hops.push({ name: 'Enter → prompt sent', value: measured.sendMs === undefined ? '—' : hopMs(measured.sendMs), share: share(measured.sendMs ?? 0), budget: '30 ms', tone: 'fork' });
+	hops.push({ name: measured.sessionMs ? 'Session (started for this turn)' : 'Session (spare taken)', value: hopMs(measured.sessionMs ?? 0), share: share(measured.sessionMs ?? 0), budget: '0 ms', tone: 'fork' });
+	hops.push({ name: 'Routing call (Auto)', value: turn?.routing ? hopMs(turn.routing.ms) : 'skipped', share: share(turn?.routing?.ms ?? 0), budget: '0 ms', tone: 'model' });
+	hops.push({ name: 'Model, first token', value: measured.firstTokenMs === undefined ? '—' : hopMs(measured.firstTokenMs), share: share(measured.firstTokenMs ?? 0), budget: 'fill from T-12', tone: 'model' });
+	const calls = turn?.calls ?? [];
+	const modelMs = calls.reduce((n, c) => n + c.ms, 0);
+	hops.push({ name: calls.length === 1 ? 'Model, 1 call' : `Model, ${calls.length} calls in all`, value: hopMs(modelMs), share: share(modelMs), budget: 'model', tone: 'model' });
+	const tools = [...(turn?.tools ?? [])].sort((a, b) => b.ms - a.ms);
+	if (tools.length) {
+		const top = tools[0];
+		const shell = /shell|command/i.test(top.name);
+		hops.push({ name: `Tools: ${top.name}`, value: hopMs(top.ms), share: share(top.ms), budget: shell ? 'your repo' : '8 s timeout', tone: 'tool' });
+		const rest = tools.slice(1);
+		if (rest.length) {
+			const restMs = rest.reduce((n, t) => n + t.ms, 0);
+			hops.push({ name: rest.length === 1 ? `Tools: ${rest[0].name}` : `Tools: ${rest.length} others`, value: hopMs(restMs), share: share(restMs), budget: '8 s timeout', tone: 'tool' });
+		}
+	} else {
+		hops.push({ name: 'Tools', value: 'none', share: 0, budget: '—', tone: 'tool' });
+	}
+	return {
+		hops,
+		totalMs: measured.totalMs,
+		input: calls.reduce((n, c) => n + c.input, 0),
+		cached: calls.reduce((n, c) => n + c.cached, 0),
+		output: calls.reduce((n, c) => n + c.output, 0),
+		requests: calls.length + (turn?.routing ? 1 : 0),
+	};
+}

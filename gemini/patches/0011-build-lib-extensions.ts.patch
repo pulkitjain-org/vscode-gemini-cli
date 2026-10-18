@@ -1,5 +1,5 @@
 diff --git a/build/lib/extensions.ts b/build/lib/extensions.ts
-index 10bd9fbd..f505eafb 100644
+index 10bd9fbd693b764a952fb52d7d97c6a07a676f85..f505eafbe4923b0560725cc4cc3be5f408f3633f 100644
 --- a/build/lib/extensions.ts
 +++ b/build/lib/extensions.ts
 @@ -317,6 +317,8 @@ const nativeExtensions = [

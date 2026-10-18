@@ -12,9 +12,10 @@ import { formatCounts } from '../acp/agentChanges';
 import { attachmentsForFiles } from './addToChat';
 import { AgentsView, AgentSummary, relativeTime, startModes } from './agentsView';
 import { tildify } from './displayText';
-import { configSection, getApprovalPolicy } from './configuration';
+import { configSection, getApprovalPolicy, getProjectSettings } from './configuration';
+import { preferredModel } from './modelPreference';
 import { moveCard, toggleCard, type DashboardLayout } from '../acp/dashboard';
-import { buildDashboard, DashboardInput } from './homeDashboard';
+import { buildDashboard, DashboardInput, StartupState } from './homeDashboard';
 import { FromHome, HomeAction, HomeAgent, HomeProject, HomeStrings, HomeView, ToHome } from './panelProtocol';
 import { TeamData } from './teamData';
 import { projectsEnabled } from './projects';
@@ -34,6 +35,10 @@ const weekMs = 7 * 24 * 60 * 60_000;
 export interface HomeOptions {
 	readonly state: vscode.Memento;
 	readonly version: string;
+	/** The running Gemini CLI's version, for the Gemini card. */
+	readonly cli?: () => string | undefined;
+	/** What came back since the window opened, for the card shown after a start. */
+	readonly startup?: () => StartupState;
 }
 /** Earlier agents listed; the Agents pane has them all. */
 const maxEarlier = 8;
@@ -257,6 +262,7 @@ export class AgentHome implements vscode.Disposable {
 			} : {}),
 			ownBranch: vscode.workspace.getConfiguration(configSection).get<boolean>('agents.ownBranch', false),
 			modes: startModes().filter(mode => isModeAllowed(getApprovalPolicy(), mode.id)),
+			...preferredModel() ? { model: preferredModel() } : {},
 			dashboard: this.dashboard(all, workspaces[0]?.name, await this.unfinished()),
 		};
 	}
@@ -275,6 +281,8 @@ export class AgentHome implements vscode.Disposable {
 		const team = this.agents.teamTools;
 		const firstConnected = this.options?.state.get<number>(firstConnectedKey);
 		const reading = this.agents.usage?.reading;
+		const cli = this.options?.cli?.();
+		const projectId = getProjectSettings().resolved?.projectId;
 		return buildDashboard({
 			now: new Date(),
 			connected: team?.connected ?? new Set(),
@@ -284,7 +292,10 @@ export class AgentHome implements vscode.Disposable {
 			repository,
 			layout: this.layout(),
 			usage: reading?.kind === 'ok' ? reading.quota : undefined,
-			versions: { app: this.options?.version ?? '' },
+			versions: { app: this.options?.version ?? '', ...cli ? { cli } : {} },
+			...projectId ? { projectId } : {},
+			...this.teamData?.refreshedAt ? { dataFrom: this.teamData.refreshedAt } : {},
+			...this.options?.startup ? { startup: this.options.startup() } : {},
 			projectsOn: projectsEnabled(),
 			refreshing: !!this.teamData && Date.now() - this.teamData.refreshedAt < 3000,
 			hideUnconnected: !!firstConnected && Date.now() - firstConnected > weekMs,
@@ -440,6 +451,10 @@ export class AgentHome implements vscode.Disposable {
 			getStarted: vscode.l10n.t("Get started"),
 			composerPlaceholder: vscode.l10n.t("Describe a task, or paste a Jira, GitLab or Figma link..."),
 			moreActions: vscode.l10n.t("More Actions"),
+			fromTools: vscode.l10n.t("From Your Tools..."),
+			fromToolsEmpty: vscode.l10n.t("Connect Jira or GitLab in Connections to start from a ticket or a merge request."),
+			tickets: vscode.l10n.t("My tickets"),
+			mergeRequests: vscode.l10n.t("Merge requests"),
 		};
 		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'home.js'));
 		// Preview's renderer, loaded at idle or on the first Preview so home.js stays small.
@@ -463,8 +478,8 @@ export class AgentHome implements vscode.Disposable {
 <body class="agent-home" spellcheck="false">
 	<main class="home dash">
 		<header class="dash-head">
-			<div class="dash-greeting"><h1 id="title"></h1><p id="subtitle" class="muted"></p></div>
-			<div class="dash-tools"><span id="tools" class="dash-tool-logos"></span><button type="button" id="refresh" class="icon-button"><i class="codicon codicon-refresh" aria-hidden="true"></i></button><span class="dash-customize"><button type="button" id="customize" class="link-button"><i class="codicon codicon-settings-gear" aria-hidden="true"></i><span></span></button><div id="customize-menu" class="home-menu" hidden></div></span></div>
+			<h1 id="title"></h1><p id="subtitle" class="muted"></p><span id="stale" class="dash-pill" hidden></span>
+			<div class="dash-tools"><span id="tools" class="dash-tool-logos"></span><button type="button" id="refresh" class="icon-button"><i class="codicon codicon-refresh" aria-hidden="true"></i></button><span class="dash-customize"><button type="button" id="customize" class="icon-button"><i class="codicon codicon-settings-gear" aria-hidden="true"></i></button><div id="customize-menu" class="home-menu" hidden></div></span></div>
 		</header>
 		<div id="banner" class="dash-banner" hidden></div>
 		<section class="home-start">
@@ -475,16 +490,15 @@ export class AgentHome implements vscode.Disposable {
 				<div id="preview" class="composer-preview markdown" role="tabpanel" tabindex="0" hidden></div>
 				<div class="home-composer-bar">
 					<span class="home-plus"><button type="button" id="plus" class="plus-button"><i class="codicon codicon-add" aria-hidden="true"></i></button><div id="plus-menu" class="home-menu" hidden></div></span>
+					<span class="home-folder"><button type="button" id="workspace" class="option-button"><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="workspace-menu" class="home-menu" hidden></div></span>
+					<label id="own-branch-label" class="option-switch"><span class="sep" aria-hidden="true">·</span><input type="checkbox" id="own-branch"><span class="switch-track" aria-hidden="true"></span><span class="switch-label"></span></label>
+					<span class="home-mode"><span class="sep" aria-hidden="true">·</span><button type="button" id="mode" class="option-button"><i class="codicon" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="mode-menu" class="home-menu" hidden></div></span>
+					<span id="model" class="home-model" hidden><span class="sep" aria-hidden="true">·</span><span></span></span>
 					<span class="spacer"></span>
-					<button type="submit" id="start" class="send"><i class="codicon codicon-arrow-up" aria-hidden="true"></i></button>
+					<span class="home-from-tools"><button type="button" id="from-tools" class="option-button"><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="from-tools-menu" class="home-menu" hidden></div></span>
+					<button type="submit" id="start" class="primary"><span></span></button>
 				</div>
 			</form>
-			<div class="home-options">
-				<span class="home-folder"><button type="button" id="workspace" class="option-button"><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="workspace-menu" class="home-menu" hidden></div></span>
-				<label id="own-branch-label" class="option-switch"><input type="checkbox" id="own-branch"><span class="switch-track" aria-hidden="true"></span><span class="switch-label"></span></label>
-				<span class="home-mode"><button type="button" id="mode" class="option-button"><i class="codicon" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="mode-menu" class="home-menu" hidden></div></span>
-				<button type="button" id="helpers" class="option-button helpers-button"><i class="codicon codicon-tools" aria-hidden="true"></i><span></span></button>
-			</div>
 			<div id="quick" class="dash-quick"></div>
 		</section>
 		<section id="setup" class="dash-setup" hidden></section>
