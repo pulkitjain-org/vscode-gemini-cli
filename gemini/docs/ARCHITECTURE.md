@@ -4,7 +4,7 @@ GeminiCode is a hard fork of VS Code that ships the Gemini CLI as its built-in c
 
 ## Decisions
 
-- **Fork VS Code, don't extend it.** The product is a standalone, branded application, like Cursor. A fork owns the shell, branding, first-run experience and admin policy.
+- **Fork VS Code, don't extend it.** The product is a standalone, branded application. A fork owns the shell, branding, first-run experience and admin policy.
 - **Don't reimplement the agent.** GeminiCode runs the official `gemini --acp` as a child process ("sidecar") and implements only the client side of the [Agent Client Protocol](https://agentclientprotocol.com) (ACP). Sign-in, licensing and model calls stay in the CLI. The Gemini API SDK was ruled out because it cannot use a Gemini Code Assist license.
 - **Build it as a built-in extension.** Almost all fork code lives in `extensions/gemini/`. It ships inside the app, adds very little to upstream merges, and builds without recompiling the workbench. Code moves into the workbench only for things the extension API cannot do.
 

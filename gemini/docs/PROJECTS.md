@@ -4,7 +4,7 @@ Projects (preview, `gemini.projects.enabled`) let one chat run a team of agents.
 
 ## The idea
 
-A project follows the hub-and-spoke pattern used by multi-agent tools such as Claude Projects:
+A project follows the hub-and-spoke pattern used by multi-agent tools:
 
 - **The coordinator (hub)** is one long-lived agent session. It plans, starts threads, passes your follow-ups on, and answers questions about progress. It never reads or changes code.
 - **Threads (spokes)** do the work. Each starts with a brief, has its own context, branch and approvals, and knows nothing about the other threads.
