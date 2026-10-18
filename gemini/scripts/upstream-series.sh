@@ -8,11 +8,16 @@
 #   gemini/scripts/upstream-series.sh check              # fail if a patch no longer matches the working tree, or an edit has no marker (no tag needed)
 #   gemini/scripts/upstream-series.sh markers            # only the marker check: every upstream code file the series edits names GEMINI-FORK
 #   gemini/scripts/upstream-series.sh apply <tag>        # in a checkout of <tag>: apply the series and copy the fork's files from <from>
+#   gemini/scripts/upstream-series.sh prune              # remove upstream's GitHub automation (after merging a tag by hand)
 #   gemini/scripts/upstream-series.sh files              # list the upstream files the fork modifies
 #
 # `apply` takes the branch to copy fork-only files from in FROM (default: main).
 # Patches carry binary data (`git diff --binary`), so icons are part of the
 # series too; a binary that upstream also changed has to be redone by hand.
+# The fork runs only its own workflows (gemini-*.yml): upstream's workflows and
+# Dependabot config are removed, `apply` and `prune` remove them again, and
+# `check` fails while any is there. Their helper scripts stay, since the Gemini
+# workflows use some (node_modules_cache).
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -26,6 +31,20 @@ fork_owned=(':(exclude)extensions/gemini' ':(exclude)gemini' ':(exclude).github/
 # The working tree is compared, not HEAD, so an edit shows up before it is committed (stage a new file first).
 modified() { git diff --name-status "$1" -- . "${fork_owned[@]}" | awk '$1=="M"{print $2}'; }
 added() { git diff --name-status "$1" -- . "${fork_owned[@]}" | awk '$1=="A"{print $2}'; }
+
+# Upstream's GitHub automation, which would run in the fork: its workflows (any but gemini-*.yml) and Dependabot config.
+upstream_automation() {
+	git ls-files -- .github/workflows .github/dependabot.yml | awk '/^\.github\/workflows\/[^\/]+\.ya?ml$/ && !/^\.github\/workflows\/gemini-/ || $0 == ".github/dependabot.yml"'
+}
+
+prune_automation() {
+	local files
+	files=$(upstream_automation)
+	if [[ -n "$files" ]]; then
+		echo "$files" | xargs git rm -q --
+		echo "Removed upstream's GitHub automation: $(echo "$files" | wc -l | tr -d ' ') files."
+	fi
+}
 
 need_tag() {
 	if ! git rev-parse --verify --quiet "refs/tags/$1^{commit}" >/dev/null; then
@@ -119,10 +138,19 @@ case "${1:-}" in
 		if ! check_markers; then
 			status=1
 		fi
+		if [[ -n "$(upstream_automation)" ]]; then
+			echo "Upstream's GitHub automation is back, and would run in the fork:" >&2
+			upstream_automation | sed 's/^/  /' >&2
+			echo "GeminiCode runs only its own workflows. Run: gemini/scripts/upstream-series.sh prune" >&2
+			status=1
+		fi
 		if [[ $status -eq 0 ]]; then
 			echo "The patch series matches HEAD ($(ls "$patches"/*.patch | wc -l | tr -d ' ') patches against $pin)."
 		fi
 		exit $status
+		;;
+	prune)
+		prune_automation
 		;;
 	markers)
 		check_markers
@@ -148,6 +176,7 @@ case "${1:-}" in
 		while read -r file; do
 			[[ -n "$file" ]] && git checkout "$from" -- "$file"
 		done < "$patches/ADDED"
+		prune_automation
 		if [[ ${#failed[@]} -gt 0 ]]; then
 			echo "Applied the series to $tag with ${#failed[@]} patches to resolve by hand (conflict markers are in the files):" >&2
 			printf '  %s\n' "${failed[@]}" >&2
@@ -156,7 +185,7 @@ case "${1:-}" in
 		echo "Applied the series to $tag cleanly."
 		;;
 	*)
-		sed -n '2,15p' "$0"
+		sed -n '2,20p' "$0"
 		exit 2
 		;;
 esac

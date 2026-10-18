@@ -13,6 +13,7 @@ The fork merges upstream release tags three-way. The set of upstream files it ed
 - `gemini-upstream.yml` applies the series to the next `1.N.0` (and `1.N.x`) tag, copies the fork-only paths, runs the full compile, hygiene and extension tests, bumps `bundledCli` to the newest `@google/gemini-cli` with its integrity, runs the real-CLI tests against that exact version, and opens one PR.
 - Branch protection requires the Gemini CI jobs and the upstream job; nothing merges with either red.
 - History is not rewritten: existing clones keep working.
+- Upstream's GitHub automation (its workflows and Dependabot config) is not part of the fork: the repository never goes back upstream, so `apply` and `prune` remove it and `check` fails while any of it is there.
 
 ## Consequences
 

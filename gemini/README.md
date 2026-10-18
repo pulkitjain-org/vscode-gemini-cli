@@ -146,6 +146,8 @@ If the chat view warns that its script is out of date, the webview bundle in `me
 
 Packaged builds come from [`gemini-release.yml`](../.github/workflows/gemini-release.yml), which a version tag starts, and the download page from [`gemini-pages.yml`](../.github/workflows/gemini-pages.yml); see [RELEASING.md](docs/RELEASING.md).
 
+Gemini CI, Gemini Release and Gemini Pages, with [`gemini-upstream.yml`](../.github/workflows/gemini-upstream.yml) below, are the only workflows the repository runs. It never goes back to upstream, so upstream's workflows (its pull request tests, CodeQL, the component fixtures and the rest) and its Dependabot config are removed. Turning them off in the repository's settings would not last: a workflow a later upstream release adds would start out on. The helper scripts they share with the Gemini workflows, such as `.github/workflows/node_modules_cache/`, and upstream's `.github/actions/` stay.
+
 ## Touching upstream files
 
 Keep fork code in `extensions/gemini/`. Edit an upstream file only to register the extension, rebrand, or do something the extension API cannot, and mark the edit with a `GEMINI-FORK` comment. JSON files and icons cannot carry a marker, so the fork also keeps every such edit as a patch:
@@ -153,7 +155,8 @@ Keep fork code in `extensions/gemini/`. Edit an upstream file only to register t
 ```sh
 gemini/scripts/upstream-series.sh files        # the upstream files the fork modifies, and the files it adds beside them
 gemini/scripts/upstream-series.sh regenerate   # rewrite gemini/patches/ from HEAD against the pinned tag
-gemini/scripts/upstream-series.sh check        # what CI runs: every patch still matches HEAD, and every upstream code file it edits has a GEMINI-FORK marker
+gemini/scripts/upstream-series.sh check        # what CI runs: every patch still matches HEAD, every upstream code file it edits has a GEMINI-FORK marker, and none of upstream's workflows is back
+gemini/scripts/upstream-series.sh prune        # remove upstream's workflows and Dependabot config, after merging an upstream tag by hand
 ```
 
 After editing an upstream file, run `regenerate` and commit `gemini/patches/` with the change; Gemini CI fails otherwise. `gemini/scripts/list-fork-touches.sh` prints the markers.
@@ -176,6 +179,8 @@ FROM=main gemini/scripts/upstream-series.sh apply 1.143.0
 # resolve anything it names, then:
 gemini/scripts/upstream-series.sh regenerate
 ```
+
+`apply` also removes upstream's workflows again. Merging a tag into the branch instead (`git merge 1.143.0`) brings back any workflow upstream added or changed, and a changed one shows as a conflict: run `gemini/scripts/upstream-series.sh prune` before committing the merge.
 
 After each move:
 
