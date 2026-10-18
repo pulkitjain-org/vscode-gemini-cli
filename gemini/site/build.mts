@@ -3,23 +3,26 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Builds the download page for GitHub Pages from the latest GitHub Release:
+// Builds the GeminiCode site for GitHub Pages from the latest GitHub Release:
 // `index.html` (the landing page), `notes.html` (the release notes, rendered
 // from the markdown written in the release, with `notes.md` beside it),
 // `docs/` (the user docs, from gemini/docs/guide/, see docs.mts), and
 // `latest.json`, which the app's update notice reads. Run on every release and
 // on changes to this folder or the guide (.github/workflows/gemini-pages.yml).
 //
-// The landing page's sections are fixed in `renderPage` and the lists above
-// it (`tiles`, `clips`); edit them by hand when they change. Their screenshots
-// and clips live in `gemini/site/media/`, each in a -dark and a -light copy
-// (see `mediaFiles` and `clips`); a missing one is left out. `landing.mts` and
-// `landing.css` run the hero clip and the clip rail and its player,
-// `docs-page.mts` and `docs.css` the docs' search, Copy as Markdown and
-// "On this page", and `page.mts` the theme switch, the particles and the
-// pointer's light; the .mts files are served as plain JavaScript. The Geist
-// fonts in `gemini/site/fonts/` are served with the page. Each docs page and
-// the release notes are also written as Markdown, which Copy as Markdown copies.
+// The landing page's sections are written out in `renderPage`; edit them by
+// hand when the product changes, and keep every sentence true to
+// gemini/README.md and gemini/docs/guide/. Its screenshots live in
+// `gemini/site/media/`, each in a -dark and a -light copy (`mediaFiles`); a
+// missing one leaves a labelled placeholder frame (see MEDIA-TODO.md).
+// `site.css` holds the two palettes (Paper and Charcoal) as one token set,
+// `landing.css` and `docs.css` each page's own parts; `page.mts` runs the theme
+// switch and the reveals, `landing.mts` the hero and the showcase card,
+// `docs-page.mts` the docs' search, code copy and "On this page". The .mts
+// files are served as plain JavaScript modules. The Geist, Geist Mono and
+// Newsreader fonts in `gemini/site/fonts/` are served with the page. Each docs
+// page and the release notes are also written as Markdown, which Copy as
+// Markdown copies.
 //
 //   node gemini/site/build.mts <out-dir>            # needs GITHUB_REPOSITORY, uses GITHUB_TOKEN if set
 //   node gemini/site/build.mts <out-dir> --sample   # a made-up release, to preview the page
@@ -28,8 +31,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { stripTypeScriptTypes } from 'node:module';
-import { benchmarkMarkdown, readBenchRuns, sampleBenchRuns } from './bench.mts';
-import { docGroups, docPages, featureIndex, generatedPages, markdownForCopy, renderMarkdown, type DocPage, type RenderedDoc } from './docs.mts';
+import { docGroups, docPages, featureIndex, markdownForCopy, renderMarkdown, type DocPage, type RenderedDoc } from './docs.mts';
 
 /** What `latest.json` holds. The app reads `version`, `url` and `notesUrl`; keep those stable. */
 export interface LatestRelease {
@@ -64,18 +66,18 @@ interface GitHubRelease {
 
 const siteDir = import.meta.dirname;
 const guideDir = path.join(siteDir, '..', 'docs', 'guide');
-const benchResultsDir = path.join(siteDir, '..', 'bench', 'results');
 const dmgPattern = /^GeminiCode-.+-arm64(-unsigned)?\.dmg$/;
 /**
- * The landing page's screenshots in `media/`, taken from the app at 1440 × 900
- * points: `<name>-dark.webp` and `<name>-light.webp`. The clips sit beside them
- * as `showcase-<id>-<theme>.mp4`, each with its last frame as a .webp (see
- * `clips`). The docs' images are in `media/` and `media/docs/`, named by the
- * guide's Markdown.
+ * The landing page's screenshots in `media/`: `<name>-dark.webp` and
+ * `<name>-light.webp`, with their pixel size. The showcase clip sits beside
+ * them as `showcase-work-<theme>.mp4`. The docs' images are in `media/` and
+ * `media/docs/`, named by the guide's Markdown.
  */
 const mediaFiles = {
+	'showcase-work': { width: 2000, height: 1250 },
+	'showcase-review': { width: 2000, height: 1250 },
 	'project-threads': { width: 1600, height: 1000 },
-	'browser-notes': { width: 1600, height: 1000 },
+	'browser-page': { width: 1600, height: 1000 },
 	files: { width: 1400, height: 1000 },
 } as const;
 type Media = keyof typeof mediaFiles;
@@ -97,11 +99,14 @@ async function main(outDir: string | undefined, mode: string | undefined): Promi
 	if (available.size) {
 		fs.cpSync(mediaDir, path.join(outDir, 'media'), { recursive: true });
 	}
+	fs.mkdirSync(path.join(outDir, 'media'), { recursive: true });
+	// The clips have no speech; this empty captions track says so to assistive technology.
+	fs.writeFileSync(path.join(outDir, 'media', 'silent.vtt'), 'WEBVTT\n\nNOTE This clip has no speech.\n');
 	fs.writeFileSync(path.join(outDir, 'latest.json'), JSON.stringify(latest, null, '\t') + '\n');
 	fs.writeFileSync(path.join(outDir, 'index.html'), renderPage(latest, repo, available));
 	fs.writeFileSync(path.join(outDir, 'notes.html'), renderNotesPage(latest, notesHtml, repo));
 	fs.writeFileSync(path.join(outDir, 'notes.md'), notesMarkdown(latest, release?.body));
-	writeDocs(outDir, latest, repo, pageUrl, mediaDir, mode === '--sample');
+	writeDocs(outDir, latest, repo, pageUrl, mediaDir);
 	for (const file of ['site.css', 'landing.css', 'docs.css']) {
 		fs.copyFileSync(path.join(siteDir, file), path.join(outDir, file));
 	}
@@ -109,7 +114,7 @@ async function main(outDir: string | undefined, mode: string | undefined): Promi
 		fs.writeFileSync(path.join(outDir, `${script}.js`), toJavaScript(fs.readFileSync(path.join(siteDir, `${script}.mts`), 'utf8')));
 	}
 	fs.cpSync(path.join(siteDir, 'fonts'), path.join(outDir, 'fonts'), { recursive: true });
-	fs.copyFileSync(path.join(siteDir, '..', 'branding', 'icon.svg'), path.join(outDir, 'icon.svg'));
+	fs.writeFileSync(path.join(outDir, 'icon.svg'), favicon());
 	fs.writeFileSync(path.join(outDir, '.nojekyll'), '');
 	console.log(latest.version ? `Built the page for GeminiCode ${latest.version}.` : 'Built the page; there is no release yet.');
 }
@@ -249,63 +254,30 @@ function context(latest: LatestRelease, repo: string): Context {
 }
 
 // Icons from Lucide (lucide.dev, ISC License), drawn on a 24 × 24 grid.
-const icons: Record<string, string> = {
-	'apple': '<path d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 6-8 6-12.22A4.91 4.91 0 0 0 17 5c-2.22 0-4 1.44-5 2-1-.56-2.78-2-5-2a4.9 4.9 0 0 0-5 4.78C2 14 5 22 8 22c1.25 0 2.5-1.06 4-1.06Z"/><path d="M10 2c1 .5 2 2 2 5"/>',
+const icons = {
 	'download': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
-	'terminal': '<polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/>',
 	'github': '<path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/>',
 	'sun': '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
 	'moon': '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+	'monitor': '<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>',
 	'arrow-right': '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
-	'arrow-up-right': '<path d="M7 7h10v10"/><path d="M7 17 17 7"/>',
-	'sparkles': '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>',
-	'plus': '<path d="M5 12h14"/><path d="M12 5v14"/>',
-	'gauge': '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
-	'zap': '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>',
-	'list-checks': '<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>',
-	'hammer': '<path d="m15 12-8.373 8.373a1 1 0 1 1-3-3L12 9"/><path d="m18 15 4-4"/><path d="m21.5 11.5-1.914-1.914A2 2 0 0 1 19 8.172V7l-2.26-2.26a6 6 0 0 0-4.202-1.756L9 2.96l.92.82A6.18 6.18 0 0 1 12 8.4V10l2 2h1.172a2 2 0 0 1 1.414.586L18.5 14.5"/>',
-	'bot': '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
-	'git-compare': '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M11 18H8a2 2 0 0 1-2-2V9"/>',
-	'git-branch': '<line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>',
-	'blocks': '<rect width="7" height="7" x="14" y="3" rx="1"/><path d="M10 21V8a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1H3"/>',
-	'wand-sparkles': '<path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/>',
-	'history': '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
-	'globe': '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
-	'eye': '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
-	'text-cursor-input': '<path d="M5 4h1a3 3 0 0 1 3 3 3 3 0 0 1 3-3h1"/><path d="M13 20h-1a3 3 0 0 1-3-3 3 3 0 0 1-3 3H5"/><path d="M5 16H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h1"/><path d="M13 8h7a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-7"/><path d="M9 7v10"/>',
-	'scan-search': '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/><path d="m16 16-1.9-1.9"/>',
-	'bell': '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
-	'layout-grid': '<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>',
-	'network': '<rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/>',
-	'columns-2': '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 3v18"/>',
-	'shield-check': '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
-	'sigma': '<path d="M18 7V5a1 1 0 0 0-1-1H6.5a.5.5 0 0 0-.4.8l4.5 6a2 2 0 0 1 0 2.4l-4.5 6a.5.5 0 0 0 .4.8H17a1 1 0 0 0 1-1v-2"/>',
-	'folder': '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
-	'play': '<polygon points="6 3 20 12 6 21 6 3"/>',
-	'x': '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
-	'chevron-left': '<path d="m15 18-6-6 6-6"/>',
-	'chevron-right': '<path d="m9 18 6-6-6-6"/>',
-	'mouse-pointer': '<path d="M4.04 4.04 10.3 20l2.25-6.45L19 11.3z"/>',
-	'sticky-note': '<path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"/><path d="M15 3v4a2 2 0 0 0 2 2h4"/>',
-	'activity': '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
-	'lock': '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
-	'undo': '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>',
-	'at-sign': '<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>',
-	'cookie': '<path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"/><path d="M8.5 8.5v.01M16 15.5v.01M12 12v.01M11 17v.01M7 14v.01"/>',
-	'git-merge': '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/>',
-	'list-tree': '<path d="M21 12h-8M21 6H8M21 18h-8M3 6v4c0 1.1.9 2 2 2h3M3 10v6c0 1.1.9 2 2 2h3"/>',
-	'spell-check': '<path d="m6 16 6-12 6 12"/><path d="M8 12h8"/><path d="m16 20 2 2 4-4"/>',
+	'arrow-down': '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>',
+	'external': '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+	'book': '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>',
 	'search': '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
-	'book': '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/>',
-	'rocket': '<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>',
-	'message': '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
-	'plug': '<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>',
-	'life-buoy': '<circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/><circle cx="12" cy="12" r="4"/>',
-	'keyboard': '<path d="M10 8h.01"/><path d="M12 12h.01"/><path d="M14 8h.01"/><path d="M16 12h.01"/><path d="M18 8h.01"/><path d="M6 8h.01"/><path d="M7 16h10"/><path d="M8 12h.01"/><rect width="20" height="16" x="2" y="4" rx="2"/>',
-	'layout-dashboard': '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
-	'chevrons-up-down': '<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>',
 	'copy': '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
-};
+	'check': '<path d="M20 6 9 17l-5-5"/>',
+	'chevron-right': '<path d="m9 18 6-6-6-6"/>',
+	'chevrons-up-down': '<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>',
+	'menu': '<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>',
+	'x': '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+	'pointer': '<path d="M12.586 12.586 19 19"/><path d="M3.688 3.037a.497.497 0 0 0-.651.651l6.5 15.999a.501.501 0 0 0 .947-.062l1.569-6.083a2 2 0 0 1 1.448-1.479l6.124-1.579a.5.5 0 0 0 .063-.947z"/>',
+	'pencil': '<path d="M12 20h9"/><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/>',
+	'rocket': '<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>',
+	'bot': '<rect width="18" height="10" x="3" y="11" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" x2="8" y1="16" y2="16"/><line x1="16" x2="16" y1="16" y2="16"/>',
+	'shield-check': '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+	'plug': '<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>',
+} as const;
 
 function sprite(): string {
 	return `<svg width="0" height="0" style="position:absolute" aria-hidden="true">${Object.entries(icons).map(([name, body]) => `<symbol id="i-${name}" viewBox="0 0 24 24">${body}</symbol>`).join('')}</svg>`;
@@ -315,23 +287,60 @@ function icon(name: keyof typeof icons, cls = ''): string {
 	return `<svg class="i${cls ? ` ${cls}` : ''}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 }
 
+/**
+ * The Aperture mark: a rounded-square frame, a ring and a four-point star,
+ * monochrome. With the tile, the nav's inverse tile (ink on Paper, paper on
+ * Charcoal, from the --logo tokens); without it, the glyph alone in
+ * currentColor. Sizes of 32px and under take the thicker redraw.
+ */
+function logo(size: number, tile = true, cls = ''): string {
+	const small = size <= 32;
+	const glyph = small
+		? '<rect class="ring" x="50" y="50" width="156" height="156" rx="36" stroke-width="20"/><circle class="ring" cx="128" cy="128" r="54" stroke-width="14"/><path class="star" d="M128 92Q128 128 164 128Q128 128 128 164Q128 128 92 128Q128 128 128 92Z"/>'
+		: '<rect class="ring" x="52" y="52" width="152" height="152" rx="34" stroke-width="16"/><circle class="ring" cx="128" cy="128" r="54" stroke-width="12"/><path class="star" d="M128 94Q128 128 162 128Q128 128 128 162Q128 128 94 128Q128 128 128 94Z"/>';
+	return `<svg class="logo${tile ? '' : ' bare'}${cls ? ` ${cls}` : ''}" width="${size}" height="${size}" viewBox="0 0 256 256" aria-hidden="true">${tile ? '<rect class="tile" x="16" y="16" width="224" height="224" rx="54"/>' : ''}${glyph}</svg>`;
+}
+
+/** The favicon: the mark as ink on a paper tile, with the thin rim the branding uses. */
+function favicon(): string {
+	return `<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg"><rect x="16" y="16" width="224" height="224" rx="54" fill="#F4F2EC" stroke="rgba(22,21,15,.18)" stroke-width="6"/><rect x="50" y="50" width="156" height="156" rx="36" fill="none" stroke="#16150F" stroke-width="20"/><circle cx="128" cy="128" r="54" fill="none" stroke="#16150F" stroke-width="14"/><path d="M128 92Q128 128 164 128Q128 128 128 164Q128 128 92 128Q128 128 128 92Z" fill="#16150F"/></svg>\n`;
+}
+
 type PageKind = 'home' | 'notes' | 'docs';
+
+function themeSwitch(): string {
+	return `<div class="seg" role="group" aria-label="Site theme">
+					<button type="button" data-theme-set="dark" aria-label="Dark theme" aria-pressed="false">${icon('moon')}</button>
+					<button type="button" data-theme-set="light" aria-label="Light theme" aria-pressed="false">${icon('sun')}</button>
+					<button type="button" data-theme-set="system" aria-label="Follow the system theme" aria-pressed="true">${icon('monitor')}</button>
+				</div>`;
+}
 
 /**
  * The page around `body`. `root` leads from the page to the site's root,
- * `../` for the docs. The docs leave out the particles and the pointer's
- * light, which would only get in the way of reading.
+ * `../` for the docs. The docs take a white reading ground in Paper and the
+ * same Charcoal as the rest of the site when dark.
  */
-function layout(title: string, body: string, c: Context, current: PageKind, root = '', description = 'GeminiCode is a code editor with the Gemini CLI built in. Start Gemini agents side by side and review every change they make. Download it for Mac.'): string {
+function layout(title: string, body: string, c: Context, current: PageKind, root = '', description = 'GeminiCode is a VS Code fork with the Gemini CLI built in. Run Gemini agents side by side and review every change they make. Download it for Mac.'): string {
 	const home = current === 'home' ? '' : `${root}./`;
-	const get = c.dmg
-		? `<a class="get" href="${attr(c.dmg.url)}">${icon('download')}<span>Download<span class="long"> for Mac</span></span></a>`
-		: `<a class="get" href="${attr(c.repoUrl)}/releases">Releases</a>`;
 	const style = { home: 'landing.css', notes: 'docs.css', docs: 'docs.css' }[current];
-	const script = { home: 'landing.js', notes: 'docs-page.js', docs: 'docs-page.js' }[current];
-	const effects = current === 'docs' ? '' : `
-	<canvas class="particles" aria-hidden="true"></canvas>
-	<div class="spotlight" aria-hidden="true"></div>`;
+	const script = { home: 'landing.js', notes: 'page.js', docs: 'docs-page.js' }[current];
+	// The stylesheets go inline, so the first paint waits for nothing but the HTML; their font
+	// paths are relative to the site's root, so a page in docs/ gets them rewritten.
+	const css = ['site.css', style].map(file => fs.readFileSync(path.join(siteDir, file), 'utf8').replace(/^\/\*[\s\S]*?\*\/\n\n/, '').replace(/url\(fonts\//g, `url(${root}fonts/`)).join('\n');
+	const typing = current === 'home' ? 'try{if(!matchMedia(\'(prefers-reduced-motion: reduce)\').matches&&!sessionStorage.getItem(\'typed\')){document.documentElement.classList.add(\'typing\')}}catch{}' : '';
+	const download = c.dmg
+		? `<a class="btn primary small dl" href="${attr(c.dmg.url)}">${icon('download')}<span class="dl-label">Download<span class="long"> for Mac</span></span></a>`
+		: `<a class="btn primary small" href="${attr(c.repoUrl)}/releases">Releases</a>`;
+	const links = current === 'home'
+		? [['#agents', 'Agents'], ['#review', 'Review'], ['#projects', 'Projects'], ['docs/', 'Docs'], [c.repoUrl, 'GitHub']]
+		: [[`${root}docs/`, 'Docs', current === 'docs'], [`${root}notes.html`, 'Releases', current === 'notes'], [c.repoUrl, 'GitHub']];
+	const navLinks = links.map(([href, label, on]) => `<a href="${attr(String(href))}"${on ? ' aria-current="page"' : ''}>${text(String(label))}</a>`).join('\n\t\t\t\t');
+	const news = current === 'home' ? `
+		<div class="news"><div class="wrap"><span class="k">Preview</span><a href="#projects">Projects: one chat, many threads, each on its own branch →</a></div></div>` : '';
+	const search = current === 'docs' ? `
+				<button type="button" class="search-btn" aria-label="Search the docs">${icon('search')}<span>Search docs</span><kbd>⌘K</kbd></button>` : '';
+	const brandTail = current === 'docs' ? `<span class="sep">/</span><span class="sub">Docs</span>` : '';
 	return `<!doctype html>
 <html lang="en">
 <head>
@@ -339,50 +348,84 @@ function layout(title: string, body: string, c: Context, current: PageKind, root
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>${text(title)}</title>
 	<meta name="description" content="${attr(description)}">
+	<meta name="color-scheme" content="light dark">
 	<link rel="icon" href="${root}icon.svg" type="image/svg+xml">
 	<link rel="preload" href="${root}fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-	<link rel="stylesheet" href="${root}site.css">
-	<link rel="stylesheet" href="${root}${style}">
-	<script>try { const t = localStorage.getItem('theme'); if (t === 'dark' || t === 'light') { document.documentElement.dataset.theme = t; } } catch {}</script>
-	<script src="${root}page.js" defer></script>
-	<script src="${root}${script}" defer></script>
+	<style>
+${css}
+	</style>
+	<script>document.documentElement.classList.add('js');try{const t=localStorage.getItem('theme');if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t}}catch{}${typing}</script>${script === 'page.js' ? '' : `
+	<link rel="modulepreload" href="${root}page.js">`}
+	<script type="module" src="${root}${script}"></script>
 </head>
-<body>
+<body class="${current === 'docs' || current === 'notes' ? 'docs-ground' : 'home'}">
 	${sprite()}
-	<div class="backdrop" aria-hidden="true"></div>${effects}
-	<header class="top">
-		<div class="wrap">
-			<a class="brand" href="${root}./"><img src="${root}icon.svg" alt=""><span>GeminiCode</span>${c.version ? `<span class="chip">v${text(c.version)}</span>` : ''}</a>
-			<nav aria-label="Site">
-				<a href="${home}#tour">Features</a>
-				<a href="${home}#watch">Watch</a>
-				<a href="${home}#install">Install</a>
-				<a href="${root}docs/"${current === 'docs' ? ' aria-current="page"' : ''}>Docs</a>
-				<a href="${root}notes.html"${current === 'notes' ? ' aria-current="page"' : ''}>Release notes</a>
+	<div class="frame l" aria-hidden="true"></div>
+	<div class="frame r" aria-hidden="true"></div>
+	<header class="top">${news}
+		<div class="wrap nav">
+			<a class="brand" href="${root}./">${logo(26)}<span class="wm">GeminiCode</span>${brandTail}</a>
+			<nav class="links" aria-label="Site">
+				${navLinks}
 			</nav>
-			<div class="right">
-				<button class="icon-btn theme" type="button" aria-label="Switch between light and dark">${icon('sun', 'sun')}${icon('moon', 'moon')}</button>
-				<a class="icon-btn github" href="${attr(c.repoUrl)}" aria-label="GeminiCode on GitHub">${icon('github')}</a>
-				${get}
+			<div class="right">${search}
+				${themeSwitch()}
+				${download}
+				<button type="button" class="menu-btn" aria-label="Menu" aria-expanded="false" aria-controls="menu">${icon('menu', 'bars')}${icon('x', 'x')}</button>
 			</div>
 		</div>
+		<nav class="menu" id="menu" aria-label="Site, on phones">
+			<div class="wrap">
+				${navLinks}
+				${current === 'home' ? '' : `<a href="${home}">Home</a>`}
+				${c.dmg ? `<a class="dl" href="${attr(c.dmg.url)}">Download for Mac</a>` : ''}${current === 'docs' ? `
+				<button type="button" class="search-btn" aria-label="Search the docs">${icon('search')}<span>Search docs</span><kbd>/</kbd></button>` : ''}
+			</div>
+		</nav>${current === 'docs' ? `
+		<div class="progress" aria-hidden="true"></div>` : ''}
 	</header>
-	<main>
+	<main id="main">
 ${body}
 	</main>
-	<footer class="foot">
-		<div class="wrap">
-			<a class="brand" href="${root}./"><img src="${root}icon.svg" alt=""><span>GeminiCode</span></a>
-			<div class="spacer"></div>
-			<a href="${root}docs/">Docs</a>
-			<a href="${attr(c.repoUrl)}/releases">All releases</a>
-			<a href="${attr(c.repoUrl)}">Source</a>
-			<a href="${attr(c.repoUrl)}/issues">Report a problem</a>
-		</div>
-	</footer>
+${current === 'docs' ? docsFooter(c, root) : siteFooter(c, root)}
 </body>
 </html>
 `;
+}
+
+function siteFooter(c: Context, root: string): string {
+	const home = root ? `${root}./` : '';
+	return `	<footer class="foot" id="releases">
+		<div class="wrap cols">
+			<div class="about">
+				<a class="brand" href="${root}./">${logo(24)}<span class="wm">GeminiCode</span></a>
+				<p>A fork of Code - OSS with the Gemini CLI built in as its coding agent.</p>
+			</div>
+			<div class="col"><span class="label">Product</span><a href="${home}#install">Download</a><a href="${root}notes.html">Release notes</a><a href="${root}docs/#all-features">Features</a></div>
+			<div class="col"><span class="label">Docs</span><a href="${root}docs/getting-started.html">Getting started</a><a href="${root}docs/agents.html">Agents</a><a href="${root}docs/review.html">Review and safety</a><a href="${root}docs/shortcuts.html">Keyboard shortcuts</a></div>
+			<div class="col"><span class="label">Project</span><a href="${attr(c.repoUrl)}">GitHub</a><a href="${attr(c.repoUrl)}/issues">Issues</a><a href="${attr(c.repoUrl)}/security/advisories/new">Report a vulnerability</a><a href="${attr(c.repoUrl)}/blob/main/gemini/docs/ARCHITECTURE.md">Architecture</a></div>
+		</div>
+		<div class="wrap legal">
+			<span>Copyright © 2026 pulkitjain-org and contributors. Released under the MIT License.</span>
+			<span>Gemini is a trademark of Google LLC. GeminiCode is not affiliated with or endorsed by Google.</span>
+		</div>
+		<div class="wrap mark" data-reveal aria-hidden="true"><span>GeminiCode</span></div>
+	</footer>`;
+}
+
+function docsFooter(c: Context, root: string): string {
+	return `	<footer class="dfoot">
+		<div class="wrap cols">
+			<div class="about">
+				<a class="brand" href="${root}./">${logo(24)}<span class="wm">GeminiCode</span></a>
+				<p>Pages are plain Markdown in gemini/docs/guide/, so they read on GitHub too. Edit a page from its footer.</p>
+			</div>
+			<div class="col"><b>Guides</b><a href="getting-started.html">Getting started</a><a href="agents.html">Agents</a><a href="review.html">Review and safety</a><a href="projects.html">Projects</a></div>
+			<div class="col"><b>Reference</b><a href="shortcuts.html">Keyboard shortcuts</a><a href="helpers.html#geminicode-settings">Settings</a><a href="troubleshooting.html">Troubleshooting</a></div>
+			<div class="col"><b>Project</b><a href="${attr(c.repoUrl)}">GitHub</a><a href="${attr(c.repoUrl)}/issues">Issues</a><a href="${attr(c.repoUrl)}/blob/main/gemini/docs/ARCHITECTURE.md">Architecture</a><a href="${root}./#install">Download</a></div>
+		</div>
+		<div class="wrap legal"><span>© 2026 pulkitjain-org and contributors · MIT License</span><span>Not affiliated with or endorsed by Google.</span></div>
+	</footer>`;
 }
 
 function unsignedNote(latest: LatestRelease): string {
@@ -395,175 +438,307 @@ function unsignedNote(latest: LatestRelease): string {
 }
 
 /**
- * A screenshot in the page's theme: the dark copy on a dark page, the
- * light one on a light page. Empty when either copy is missing.
+ * A product screenshot in both themes: the page's theme shows one, a frame's
+ * Dark · Light pill can override it. The light copy loads eagerly when asked
+ * (the showcase, the page's largest paint); the dark one lazily, since it is
+ * hidden on a light page. A missing file leaves a labelled placeholder frame.
  */
-function themed(media: Media, available: ReadonlySet<string>, alt: string): string {
-	if (!hasMedia(media, available)) {
-		return '';
-	}
+function shot(media: Media, available: ReadonlySet<string>, alt: string, options: { eager?: boolean; cls?: string; sizes?: string } = {}): string {
 	const { width, height } = mediaFiles[media];
-	return ['dark', 'light'].map(theme => `<img class="on-${theme}" src="media/${media}-${theme}.webp" width="${width}" height="${height}" alt="${attr(alt)}" loading="lazy" decoding="async">`).join('');
-}
-
-function hasMedia(media: Media, available: ReadonlySet<string>): boolean {
-	return available.has(`${media}-dark.webp`) && available.has(`${media}-light.webp`);
+	// A 1000px-wide copy beside a shot (`<name>-<theme>-1000.webp`, see MEDIA-TODO.md) serves phones.
+	const srcset = (theme: 'light' | 'dark') => available.has(`${media}-${theme}-1000.webp`)
+		? ` srcset="media/${media}-${theme}-1000.webp 1000w, media/${media}-${theme}.webp ${width}w" sizes="${options.sizes ?? '(max-width: 1248px) calc(100vw - 32px), 1152px'}"` : '';
+	const image = (theme: 'light' | 'dark') => available.has(`${media}-${theme}.webp`)
+		? `<img class="on-${theme}" src="media/${media}-${theme}.webp"${srcset(theme)} width="${width}" height="${height}" alt="${attr(alt)}"${options.eager && theme === 'light' ? ' fetchpriority="high"' : ' loading="lazy"'} decoding="async">`
+		: `<span class="ph on-${theme}"><b>Screenshot still to come</b><span>media/${media}-${theme}.webp, ${width} × ${height}</span></span>`;
+	return `<span class="shot${options.cls ? ` ${options.cls}` : ''}" data-media="${media}" style="--ar: ${width} / ${height}">${image('light')}${image('dark')}</span>`;
 }
 
 // ---- Landing page ----
 
-/** The "What it does" tiles: each leads to its docs page. */
-const tiles: readonly { id: string; icon: keyof typeof icons; label: string; title: string; body: string; media: Media; alt: string; page: string }[] = [
-	{ id: 'agents', icon: 'bot', label: 'Agents', title: 'Agents side by side', body: 'Describe a task and press Return. Each agent has its own chat, files and changes, and every edit waits for your Keep or Undo.', media: 'files', alt: 'An agent\'s chat with the files it opened in a group beside it', page: 'agents' },
-	{ id: 'projects', icon: 'network', label: 'Projects', title: 'A team for the bigger jobs', body: 'A coordinator splits the work into threads, each on its own branch, across one or more repositories. Merge back when it\'s right.', media: 'project-threads', alt: 'Thread cards in a project chat, with the side panel counting threads by state', page: 'projects' },
-	{ id: 'browser', icon: 'globe', label: 'Browser', title: 'Show Gemini the page you mean', body: 'Point at an element, pin notes where things should change, and let the agent check the console until the page is right.', media: 'browser-notes', alt: 'Notes pinned on a cart page in GeminiCode\'s browser', page: 'browser' },
-];
-
-/**
- * The clips in the "Watch it work" rail, in order. Each is
- * `media/showcase-<id>-<theme>.mp4` with its last frame as a .webp; a clip
- * missing either theme is left out, so a new one joins the rail once its
- * files are in `media/`. The first one also plays in the hero.
- */
-const clips = [
-	{ id: 'work', category: 'Agents', title: 'Agents at work', caption: 'Describe a task and press Return. The agent reads, edits and shows each change on the right.', alt: 'An agent starting on a task in Agents mode, with three other agents in the list and its changes in the Changes panel' },
-	{ id: 'projects', category: 'Projects', title: 'A project splits the work', caption: 'The coordinator starts threads on their own branches, and each card updates as its agent works.', alt: 'A project chat where the coordinator starts two threads and their cards update as they work' },
-	{ id: 'notes', category: 'Browser', title: 'Leave notes on the page', caption: 'Pin a change on each element of your page, then send them to Gemini as one list.', alt: 'Notes pinned on elements of a page in GeminiCode\'s browser and sent to Gemini' },
-	{ id: 'wait', category: 'Review', title: 'Waiting on you', caption: 'The agent asks before it runs a command. Allow it once and watch the tests run, or reject it.', alt: 'An agent asking to run npm test, the test run after Allow once, and its summary of the fix' },
-	{ id: 'review', category: 'Review', title: 'Review the diff', caption: 'Open a changed file and keep or undo each edit in place, or all of them from the Changes panel.', alt: 'Keeping an agent\'s edits one by one in total.ts, with Keep and Undo above each change' },
-	{ id: 'thread', category: 'Projects', title: 'Start a thread yourself', caption: 'Give it a title, a brief and a branch. With Plan first it waits for your OK before it changes files.', alt: 'Starting a thread from the New thread dialog and approving its plan' },
-	{ id: 'console', category: 'Browser', title: 'Agents check the console', caption: 'An agent opens your page, reads the console and the failed requests, and fixes the cause.', alt: 'An agent reading a page\'s console errors in GeminiCode\'s browser and fixing the code' },
-	{ id: 'plan', category: 'Prompting', title: 'Plan first', caption: 'In Plan mode the agent reads and plans without changing anything. Build This Plan starts the work.', alt: 'An agent in Plan mode writing a numbered plan that ends with Build This Plan' },
-	{ id: 'enhance', category: 'Prompting', title: 'Enhance your prompt', caption: 'Write what you want in plain words. Enhance rewrites it as a precise prompt, and Revert brings yours back.', alt: 'A short request in the composer rewritten by Enhance into a precise prompt' },
-] as const;
-
-type Clip = typeof clips[number];
-
-/** Each clip's video and last frame, in both themes. */
-function hasClip(clip: Clip, available: ReadonlySet<string>): boolean {
-	return ['dark', 'light'].every(theme => available.has(`showcase-${clip.id}-${theme}.mp4`) && available.has(`showcase-${clip.id}-${theme}.webp`));
-}
-
-function renderClips(shown: readonly Clip[]): string {
-	if (!shown.length) {
-		return '';
-	}
-	const cards = shown.map(clip => `
-				<button type="button" class="clip panel lift" data-clip="${clip.id}" data-title="${attr(clip.title)}" data-caption="${attr(clip.caption)}" data-alt="${attr(clip.alt)}">
-					<span class="clip-media">${['dark', 'light'].map(theme => `<img class="on-${theme}" src="media/showcase-${clip.id}-${theme}.webp" width="2000" height="1250" alt="" loading="lazy" decoding="async">`).join('')}<video muted playsinline loop preload="none" aria-hidden="true"></video><span class="clip-play">${icon('play')}</span></span>
-					<span class="clip-text"><span class="clip-cat">${text(clip.category)}</span><b>${text(clip.title)}</b><span class="clip-cap">${text(clip.caption)}</span></span>
-				</button>`).join('');
+/** One of the eight capability cards around the headline. */
+function float(pos: string, depth: number, period: string, href: string, title: string, cap: string, thumb: string): string {
 	return `
-	<section id="watch" class="block">
-		<div class="wrap">
-			<div class="head">
-				<p class="eyebrow">Watch it work</p>
-				<h2 class="h2">Short clips, straight from the app</h2>
-				<p>Point at a clip to preview it, or open it to watch in Dark or Light.</p>
-			</div>
-			<div class="rail-bar"><div></div>
-				<div class="rail-nav"><button type="button" class="icon-btn" data-scroll="-1" aria-label="Earlier clips">${icon('chevron-left')}</button><button type="button" class="icon-btn" data-scroll="1" aria-label="More clips">${icon('chevron-right')}</button></div>
-			</div>
-			<div class="rail">${cards}
-			</div>
-		</div>
-		<dialog class="player panel" aria-labelledby="player-title">
-			<div class="player-stage"></div>
-			<div class="player-foot">
-				<div class="player-text"><b id="player-title"></b><span class="player-cap"></span></div>
-				<div class="seg" role="group" aria-label="App theme"><button type="button" data-theme="dark" aria-pressed="true">Dark</button><button type="button" data-theme="light" aria-pressed="false">Light</button></div>
-				<button type="button" class="icon-btn" data-step="-1" aria-label="Previous clip">${icon('chevron-left')}</button>
-				<button type="button" class="icon-btn" data-step="1" aria-label="Next clip">${icon('chevron-right')}</button>
-				<button type="button" class="icon-btn" data-close aria-label="Close">${icon('x')}</button>
-			</div>
-		</dialog>
-	</section>`;
+			<a class="float ${pos}" data-depth="${depth}" style="--period: ${period}" href="${attr(href)}">
+				<span class="box">
+					${thumb}
+					<span class="txt"><span class="ttl">${text(title)}</span><span class="cap">${text(cap)}</span></span>
+				</span>
+			</a>`;
 }
 
 export function renderPage(latest: LatestRelease, repo: string, available: ReadonlySet<string> = new Set()): string {
 	const c = context(latest, repo);
-	const pill = c.version
-		? `<a class="pill" href="notes.html"><i class="dot"></i><span>New in ${text(c.version)}: Team tools, and Projects across repositories</span>${icon('arrow-right')}</a>` : '';
-	const download = (small: string, big: string) => c.dmg ? `
-					<a class="dl" href="${attr(c.dmg.url)}">
-						${icon('apple')}
-						<span><small>${small}</small><b>${big}</b></span>
-						${icon('download', 'arrow')}
-					</a>`
-		: `
-					<span class="dl disabled"><span><small>No release yet</small><b>The first build is on its way</b></span></span>`;
-	const meta = c.version
-		? `v${text(c.version)}${c.releasedShort ? ` · ${text(c.releasedShort)}` : ''} · macOS 26+ · Apple silicon · Gemini CLI built in`
-		: `<a href="${attr(c.repoUrl)}/releases">Check GitHub Releases</a> · Mac with Apple silicon, macOS 26+`;
-	const shownClips = clips.filter(clip => hasClip(clip, available));
-	const hero = shownClips[0];
-	// Without JavaScript the hero shows the first clip's last frame; landing.js plays it while it is on screen.
-	const heroShot = hero ? `
-			<div class="hero-shot panel">
-				${['dark', 'light'].map(theme => `<img class="on-${theme}" src="media/showcase-${hero.id}-${theme}.webp" width="2000" height="1250" alt="${attr(hero.alt)}" fetchpriority="high" decoding="async">`).join('')}
-				<video muted playsinline loop preload="none" aria-hidden="true" data-clip="${hero.id}"></video>
-				<button type="button" class="play-all" data-open="${hero.id}">${icon('play')}Watch ${text(hero.title.toLowerCase())}</button>
-			</div>` : '';
-	// Each tile keeps the id of the section it replaced, so old links to #projects and #browser still land on it.
-	const tileCards = tiles.map(tile => `
-				<a class="tile panel lift" id="${tile.id}" href="docs/${tile.page}.html">
-					<span class="shot">${themed(tile.media, available, tile.alt)}</span>
-					<span class="txt"><span class="k"><span class="ico">${icon(tile.icon)}</span>${text(tile.label)}</span><h3>${text(tile.title)}</h3><p>${text(tile.body)}</p><span class="go">Read how it works ${icon('arrow-right')}</span></span>
-				</a>`).join('');
+	const primary = (label: string, cls = '') => c.dmg
+		? `<a class="btn primary dl${cls}" href="${attr(c.dmg.url)}">${icon('download')}<span class="dl-label">${text(label)}</span></a>`
+		: `<a class="btn primary${cls}" href="${attr(c.repoUrl)}/releases">${text('See the releases')}</a>`;
+	const heroMeta = c.version
+		? `GeminiCode ${text(c.version)} · macOS 26 or later · Apple silicon · ${c.sizeMb} MB · MIT`
+		: `No release yet · <a href="${attr(c.repoUrl)}/releases">Check GitHub Releases</a> · Mac with Apple silicon, macOS 26 or later`;
+	const thumbShot = (media: Media) => `<span class="thumb">${shot(media, available, '')}</span>`;
+	const floats = [
+		float('pos-tl', 12, '7s', '#agents', 'Agents side by side', 'Each in its own tab, with its own chat', thumbShot('files')),
+		float('pos-ml', 8, '8.5s', '#review', 'Review and safety', 'Keep, Undo, Rewind. Ask first', thumbShot('showcase-review')),
+		float('pos-bl', 4, '6.5s', '#agents', 'Home', 'Describe a task. Press Return', `<span class="thumb white" style="justify-content: space-between"><span style="color: var(--fg)">Make the upload client retry twice with backoff<span class="mini-caret"></span></span><span class="row-xs"><span class="mono" style="font-size: 10px; color: var(--muted)">☑ On its own branch</span><span class="mini-btn">Start ↩</span></span></span>`),
+		float('pos-tr', 12, '9s', '#projects', 'Projects', 'One chat, many threads', thumbShot('project-threads')),
+		float('pos-mr', 8, '7.5s', '#beyond', 'Agent browser', 'Agents open and use your app', thumbShot('browser-page')),
+		float('pos-br', 4, '6s', '#beyond', 'Team tools', 'Ticket to merge request', `<span class="thumb" style="justify-content: center; gap: 8px"><span style="display: flex; gap: 5px; flex-wrap: wrap"><span class="chip xs">Jira</span><span class="chip xs">GitLab</span><span class="chip xs">Sonar</span><span class="chip xs">Snyk</span><span class="chip xs">Figma</span></span><span class="mono" style="font-size: 10px; color: var(--accent)">ACME-412 → !412 · passed</span></span>`),
+		float('pos-bil', 8, '8s', '#agents', 'Enhance prompt', 'Plain words in, precise prompt out', `<span class="thumb white" style="justify-content: center; gap: 5px"><span class="draft">make uploads not fail so much</span><span class="mono" style="font-size: 10px; color: var(--accent); align-self: center">↓ ⌥⌘E</span><span class="better">Add backoff, 3 attempts, with a test</span></span>`),
+		float('pos-bir', 8, '7s', 'docs/helpers.html', 'Project Helpers', 'MCP, skills, hooks, memory', `<span class="thumb white" style="justify-content: center; gap: 6px"><span class="row-xs"><span>MCP servers</span><span class="toggle"></span></span><span class="row-xs"><span>Skills</span><span class="toggle"></span></span><span class="row-xs"><span>Hooks</span><span class="toggle off"></span></span><span class="row-xs"><span>Memory and rules</span><span class="toggle"></span></span></span>`),
+	].join('');
+	const strip = [
+		'<b>Plan mode</b> read first, then build',
+		'<b>@file</b> attach context',
+		'<b>Enhance</b> <kbd>⌥⌘E</kbd>',
+		'<b>Keep</b> · <b>Undo</b> in place',
+		'<b>Rewind</b> to any message',
+		'<b>Merge Back</b> a branch',
+		'<b>Add to Gemini</b> from the browser',
+		'<b>Review My Changes</b>',
+		'<b>Follow the agent</b>',
+		'<kbd>⌥⌘M</kbd> Agents ⇄ Editor',
+		'<b>Ticket → MR</b> Jira · GitLab',
+	].map(tick => `<span class="tick">${tick}</span>`).join('');
+	const steps = [
+		['Install', 'Open the .dmg and drag GeminiCode to Applications. The Gemini CLI comes with it.'],
+		['Sign in', 'Run <b>Gemini: Sign In with Google</b> and set your Google Cloud project ID. Home\'s Get started card has a button for each.'],
+		['Connect your tools', 'Open <b>Connections</b> and sign in to Jira, GitLab, SonarQube, Snyk or Figma with your own account. Optional; a checked-in team defaults file fills in the addresses.'],
+		['Start an agent', 'Describe a task on Home and press Return. The agent reads your code and asks before each edit and command.'],
+	].map(([title, body], i) => `
+				<div>
+					<span class="num" aria-hidden="true"><span style="--d: ${i * 100}ms"><b>0${i + 1}</b><b>00</b></span></span>
+					<h3>${title}</h3>
+					<p>${body}</p>
+				</div>`).join('');
+	const installMeta = c.dmg
+		? `${text(c.dmg.name)} · ${c.sizeMb} MB · macOS 26 or later${c.dmg.sha256 ? ` · <a class="sha-link" href="notes.html#sha">SHA-256</a>` : ''}`
+		: `The first build is on its way. <a href="${attr(c.repoUrl)}/releases">Check GitHub Releases</a>.`;
 
 	const body = `
-	<section class="hero">
-		<div class="wrap">
-			${pill}
-			<h1>Code with Gemini agents.<br><span class="grad">Review every change they make.</span></h1>
-			<p class="sub">GeminiCode is a full code editor, built on the open-source core of VS&nbsp;Code, with the Gemini CLI inside. Hand a project to a team of agents, show them the page you mean, and keep or undo every edit they make.</p>
-			<div class="actions">${download('Download for Mac', c.dmg ? `Apple silicon · ${c.sizeMb} MB` : '')}
-				<a class="ghost" href="#watch">${icon('play')}Watch it work</a>
-			</div>
-			<p class="meta">${meta}</p>${heroShot}
-		</div>
-	</section>
-
-	<section id="tour" class="block">
-		<div class="wrap">
-			<div class="head">
-				<p class="eyebrow">What it does</p>
-				<h2 class="h2">Agents that do the work, and you stay in charge</h2>
-			</div>
-			<div class="tiles">${tileCards}
-			</div>
-			<a class="tools panel lift" href="docs/team-tools.html">
-				<span class="ico">${icon('plug')}</span>
-				<span><b>Works with your team's tools</b><span class="d">Tickets, merge requests, CI, quality checks and designs, with your own account.</span></span>
-				<span class="names"><span>Jira</span><span>GitLab</span><span>SonarQube</span><span>Snyk</span><span>Figma</span></span>
-				<span class="go">Set up ${icon('arrow-right')}</span>
-			</a>
-			<p class="all-docs">Every feature, from Enhance prompt to Rewind, is explained in the <a href="docs/">docs</a>.</p>
-		</div>
-	</section>
-${renderClips(shownClips)}
-
-	<section id="install" class="block">
-		<div class="wrap">
-			<div class="install panel">
-				<div class="head">
-					<p class="eyebrow">Install</p>
-					<h2 class="h2">Up and running in three steps</h2>
-					<p>The Gemini CLI comes with the app. All you need is a Google account with a Gemini Code Assist license.</p>
-				</div>${unsignedNote(latest)}
-				<ol class="steps three">
-					<li><span class="n">01</span><div><b>Install</b><span>Open the .dmg and drag GeminiCode to Applications.</span></div></li>
-					<li><span class="n">02</span><div><b>Sign in with Google</b><span>The Get Started walkthrough takes you through it.</span></div></li>
-					<li><span class="n">03</span><div><b>Start an agent</b><span>Describe a task on Home and press Return.</span></div></li>
-				</ol>
-				<div class="actions">${download('Download for Mac', c.version ? `GeminiCode ${text(c.version)}` : '')}
-					<a class="ghost" href="docs/getting-started.html">Full setup guide ${icon('arrow-right')}</a>
+	<section class="hero" aria-labelledby="headline">
+		<canvas class="dots" aria-hidden="true"></canvas>
+		<div class="in">${floats}
+			<div class="centre">
+				${logo(56, true, 'mark')}
+				<h1 class="h1 serif" id="headline"><span class="sr">Code with Gemini agents. Review every change.</span><span class="tw" aria-hidden="true"><span data-t="Code with Gemini agents.">Code with Gemini agents.</span><br><em data-t="Review every change.">Review every change.</em></span><span class="caret" aria-hidden="true"></span></h1>
+				<p class="lead after">A VS Code fork with the official Gemini CLI built in. Run several agents side by side, give each its own branch, and approve every edit and command before it lands.</p>
+				<div class="actions after">
+					${primary('Download for Mac')}
+					<a class="btn ghost" href="docs/">${icon('book')}Read the docs</a>
 				</div>
-				<p class="fine">GeminiCode tells you when an update is out and links back here.</p>
+				<p class="meta mono after">${heroMeta}</p>
 			</div>
+		</div>
+	</section>
+
+	<section class="show show-anchor" id="tour" aria-label="GeminiCode in Agents mode" data-reveal>
+		<div class="block" aria-hidden="true"></div>
+		<div class="card" data-frame>
+			<div class="bar">
+				<span class="o"></span><span class="o"></span><span class="o"></span>
+				<span class="modes" aria-hidden="true"><span class="on">Agents</span><span>Editor</span></span>
+				<div class="pill" role="group" aria-label="Screenshot theme"><button type="button" data-shot-theme="dark" aria-pressed="false">Dark</button><button type="button" data-shot-theme="light" aria-pressed="true">Light</button></div>
+			</div>
+			<div class="stage">
+				${shot('showcase-work', available, 'GeminiCode in Agents mode: the agent list on the left, a chat in the middle and the Changes panel on the right', { eager: true })}${available.has('showcase-work-light.mp4') && available.has('showcase-work-dark.mp4') ? `
+				<button type="button" class="play" data-clip="work" aria-label="Play a short clip of an agent at work"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button>` : ''}
+			</div>
+		</div>
+	</section>
+
+	<section class="strip" aria-label="Things you can do">
+		<div class="rail"><div class="track"><span class="set">${strip}</span><span class="set dup" aria-hidden="true">${strip}</span></div></div>
+	</section>
+
+	<section class="wrap" aria-label="What GeminiCode is">
+		<div class="three" data-stagger>
+			<div class="reveal" data-reveal>
+				<span class="label">01</span>
+				<h2 class="serif">Agents that ask first.</h2>
+				<p>Default mode asks before every edit and command. Proposed changes open in a diff. Nothing runs or lands until you say so.</p>
+			</div>
+			<div class="reveal" data-reveal>
+				<span class="label">02</span>
+				<h2 class="serif">Several at once, each in its own tab.</h2>
+				<p>Every agent has its own chat, files and changes, and can work on a branch of its own. Status dots tell you which one needs you. Merge Back when it is done.</p>
+			</div>
+			<div class="reveal" data-reveal>
+				<span class="label">03</span>
+				<h2 class="serif">The editor you already know.</h2>
+				<p>Built on Code - OSS as a patch series over one pinned release, with the Gemini CLI running inside over the Agent Client Protocol.</p>
+			</div>
+		</div>
+	</section>
+
+	<section class="sec" id="agents" aria-labelledby="agents-h">
+		<div class="top-row">
+			<div class="head">
+				<span class="label reveal" data-reveal>Agents</span>
+				<h2 class="h2 serif reveal head" id="agents-h" data-reveal>Run agents side by side.<br><em class="m">Watch the one that needs you.</em></h2>
+			</div>
+			<p class="reveal" data-reveal>Each agent is a tab with its own chat, files and changes. Start one from Home, and see the status of all of them at a glance.</p>
+		</div>
+		<div class="bento" data-stagger>
+			<div class="tile s7 reveal" data-reveal style="gap: 24px; min-height: 420px">
+				<div style="display: flex; flex-direction: column; gap: 8px">
+					<h3 class="serif">Agents side by side</h3>
+					<p style="max-width: 480px">A status dot per agent: a spinner while it works, amber when it waits for you, green when done. One short note says how long it has worked or the lines it added.</p>
+				</div>
+				<div class="agents-mock">
+					<div class="mock list" aria-hidden="true">
+						<div class="r on"><span class="dot spin"></span><span class="n">Flaky upload test</span><span class="t">4m</span></div>
+						<div class="r"><span class="dot warn"></span><span class="n">Jira client retries</span><span class="t w">waiting</span></div>
+						<div class="r"><span class="dot ok"></span><span class="n">Rename settings</span><span class="t">+184</span></div>
+						<div class="r"><span class="dot ok"></span><span class="n">Release docs</span><span class="t">+62</span></div>
+						<div class="r"><span class="dot idle"></span><span class="n">Spike: ACP streaming</span><span class="t">2h ago</span></div>
+					</div>
+					<div class="mock reply" aria-hidden="true">
+						<div class="fold">${icon('chevron-right')}<span>Worked for 4m 12s · read 6 files, ran 3 commands</span></div>
+						<p>The test failed because the mock server closed the socket before the retry fired. I added a backoff of 200 ms and a third attempt, and the suite passes locally.</p>
+						<div class="files"><span>retry.ts</span><span>upload.test.ts</span></div>
+						<div class="bar"></div>
+					</div>
+				</div>
+			</div>
+			<div class="tile s5 reveal" data-reveal style="gap: 20px">
+				<div style="display: flex; flex-direction: column; gap: 8px">
+					<h3 class="serif">Home</h3>
+					<p>Describe a task and press Return. Home shows each agent's status, changes and next step as a card, and, once you connect them, your tickets and merge requests.</p>
+				</div>
+				<div class="mock home-mock" aria-hidden="true">
+					<p class="task">Make the upload client retry twice with backoff, and cover it with a test<span class="mini-caret"></span></p>
+					<div class="opts">
+						<span><span class="check">${icon('check')}</span>On its own branch</span>
+						<span class="m">Default · Auto</span>
+						<span class="start">Start <kbd>↩</kbd></span>
+					</div>
+				</div>
+			</div>
+			<div class="tile s4 reveal" data-reveal style="gap: 18px">
+				<svg class="branch-svg" viewBox="0 0 320 96" fill="none" aria-hidden="true">
+					<path class="rail" d="M16 48 H304" stroke-width="2"/>
+					<path class="lane" d="M96 48 C 130 48, 130 20, 164 20 H 230 C 264 20, 264 48, 298 48" stroke-width="2"/>
+					<circle class="g" cx="96" cy="48" r="5" stroke="var(--muted)" stroke-width="2"/>
+					<circle cx="200" cy="20" r="5" fill="var(--accent)"/>
+					<circle class="g" cx="298" cy="48" r="5" stroke="var(--ok)" stroke-width="2"/>
+					<text x="150" y="80">agent/upload-retries</text>
+					<text x="16" y="80">main</text>
+				</svg>
+				<h3 class="serif s">Agents on their own branch</h3>
+				<p>A worktree per agent, in its own branch. <b>Merge Back</b> when it is done.</p>
+			</div>
+			<div class="tile s4 reveal" data-reveal style="gap: 18px">
+				<div class="mock code" aria-hidden="true">
+					<div class="tabs"><span class="on">retry.ts</span><span>client.ts</span><span>upload.test.ts</span></div>
+					<div class="lines"><span><span class="ln">41</span>for (let i = 0; i &lt; 3; i++) {</span><span class="hl"><span class="ln">42</span>  await sleep(200 * 2 ** i);</span><span><span class="ln">43</span>  if (await tryUpload()) return;</span></div>
+				</div>
+				<h3 class="serif s">Follow the agent</h3>
+				<p>Every file the agent reads or edits opens at its line as it works.</p>
+			</div>
+			<div class="tile s4 reveal" data-reveal style="gap: 18px">
+				<div class="enh" aria-hidden="true">
+					<div class="draft">make uploads not fail so much</div>
+					<div class="arrow">${icon('arrow-down')}Enhance · ⌥⌘E</div>
+					<div class="better">In <code>src/upload</code>, add exponential backoff with up to 3 attempts, keep the public API unchanged, and add a test for the retry path.</div>
+				</div>
+				<h3 class="serif s">Enhance prompt</h3>
+				<p>Plain words in, a precise prompt out. Review it, or Revert.</p>
+			</div>
+		</div>
+	</section>
+
+	<section class="sec" id="review" aria-labelledby="review-h">
+		<div class="split">
+			<div class="sticky">
+				<span class="label reveal" data-reveal>Review and safety</span>
+				<h2 class="h2 serif reveal head" id="review-h" data-reveal>Nothing lands<br><em>without you.</em></h2>
+				<p class="reveal" data-reveal>Default mode asks before every edit and command. Proposed changes open in a diff first. Keep or undo each one in place, or rewind the whole conversation to before any message, files included.</p>
+				<a class="more reveal" data-reveal href="docs/review.html">How approvals work ${icon('arrow-right')}</a>
+			</div>
+			<div class="stack" data-stagger>
+				<div class="row reveal" data-reveal>
+					<span class="n">01</span>
+					<div><h3 class="serif">Approval modes</h3><p>Default asks every time. Auto Edit asks only before commands. Plan changes nothing. YOLO is off unless your admin enables it.</p></div>
+				</div>
+				<div class="row reveal" data-reveal>
+					<span class="n">02</span>
+					<div><h3 class="serif">Keep, Undo, Rewind</h3><p>Review each change in the file or all at once from Changes. Each reply that changed files undoes in one click.</p></div>
+				</div>
+				<div class="row reveal" data-reveal>
+					<span class="n">03</span>
+					<div><h3 class="serif">Secrets stay out</h3><p>Agents cannot read .env files, private keys, cloud credentials or git-ignored files, even through a symbolic link.</p></div>
+				</div>
+				<div class="pic reveal" data-reveal>
+					${shot('showcase-review', available, 'An agent\'s edits shown in the file, with Keep and Undo above each change')}
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<section class="sec" id="projects" aria-labelledby="projects-h">
+		<div class="proj reveal" data-reveal>
+			<div class="split">
+				<div class="copy">
+					<span class="label">Projects · preview</span>
+					<h2 class="h2 serif" id="projects-h">One chat for the <em>whole feature.</em></h2>
+					<p>Talk to a coordinator. It splits larger work into threads, each an agent on its own branch, and passes your follow-ups to the right one. Threads show as cards you can open, merge back, review or undo.</p>
+					<div class="threads" aria-hidden="true">
+						<div class="thread" style="--i: 0"><span class="dot ok"></span><span class="n">Thread · API retries</span><span class="mb">Merge back</span></div>
+						<div class="thread" style="--i: 1"><span class="dot warn"></span><span class="n">Thread · Settings UI</span><span class="m w">Approve plan</span></div>
+						<div class="thread" style="--i: 2"><span class="dot spin"></span><span class="n">Thread · Docs</span><span class="m">2 repositories</span></div>
+					</div>
+					<a class="more" href="docs/projects.html">How Projects work ${icon('arrow-right')}</a>
+				</div>
+				<div class="pic">
+					${shot('project-threads', available, 'Thread cards in a project chat, with the side panel counting threads by state')}
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<section class="sec beyond" id="beyond" aria-labelledby="beyond-h">
+		<div class="head">
+			<span class="label reveal" data-reveal>Beyond the editor</span>
+			<h2 class="h2 serif reveal head" id="beyond-h" data-reveal>The browser and <em>the team's tools.</em></h2>
+		</div>
+		<div class="bento" data-stagger>
+			<div class="tile s6 pic0 reveal" data-reveal>
+				<div class="txt">
+					<h3 class="serif">A browser your agents can use.</h3>
+					<p>Agents open your app, click, type and read the console. Point at an element and <b>Add to Gemini</b>, or pin notes on the page and send them as one list.</p>
+				</div>
+				<div class="frame-b">
+					<span class="add" aria-hidden="true">${icon('pointer')}Add to Gemini</span>
+					${shot('browser-page', available, 'A cart page open in GeminiCode\'s browser beside the chat, with Add to Gemini in the toolbar')}
+				</div>
+			</div>
+			<div class="tile s6 team reveal" data-reveal>
+				<h3 class="serif">From ticket to merge request.</h3>
+				<p>Sign in to your team's tools with your own account. Start an agent from a ticket, open the merge request, fix the pipeline and the comments, and let Gemini review the result against the ticket.</p>
+				<div class="chips"><span class="chip">Jira</span><span class="chip">GitLab</span><span class="chip">SonarQube</span><span class="chip">Snyk</span><span class="chip">Figma</span></div>
+				<div class="mock mr" aria-hidden="true">
+					<div class="r"><span class="k">ACME-412</span><span class="n">Upload retries</span><span class="s">!412 · passed</span></div>
+					<div class="r on"><span class="k">ACME-419</span><span class="n">Settings rename</span><span class="s w">2 comments</span></div>
+					<div class="r"><span class="k">SONAR</span><span class="n">New code</span><span class="s">0 new issues</span></div>
+				</div>
+				<a class="more" href="docs/team-tools.html">Set up your tools ${icon('arrow-right')}</a>
+			</div>
+		</div>
+	</section>
+
+	<section class="sec" id="install" aria-labelledby="install-h">
+		<div class="head">
+			<span class="label reveal" data-reveal>Install</span>
+			<h2 class="h2 serif reveal head" id="install-h" data-reveal>Four steps.<br><em class="m">Nothing else to install.</em></h2>
+		</div>${unsignedNote(latest)}
+		<div class="four" data-reveal>${steps}
+		</div>
+		<div class="get-row reveal" data-reveal>
+			${primary(c.version ? `Download GeminiCode ${c.version}` : 'Download for Mac', ' big')}
+			<span class="meta">${installMeta}</span>
 		</div>
 	</section>`;
-	return layout('GeminiCode: code with Gemini agents', body, c, 'home');
+	return layout('GeminiCode: code with Gemini agents, review every change', body, c, 'home');
 }
 
 // ---- Release notes page ----
@@ -603,9 +778,9 @@ export function renderNotesPage(latest: LatestRelease, notesHtml: string, repo: 
 	<section class="release wrap">
 		<div class="aside">
 			<a class="back" href="./">← Back</a>
-			<div><p class="eyebrow">Release notes</p><h1>No release yet</h1></div>
+			<div><span class="label">Release notes</span><h1>No release yet</h1></div>
 		</div>
-		<div class="notes panel"><p>The first build is on its way. <a href="${attr(c.repoUrl)}/releases">Check GitHub Releases</a>.</p></div>
+		<div class="notes"><p>The first build is on its way. <a href="${attr(c.repoUrl)}/releases">Check GitHub Releases</a>.</p></div>
 	</section>`;
 		return layout('Release notes · GeminiCode', empty, c, 'notes');
 	}
@@ -613,30 +788,30 @@ export function renderNotesPage(latest: LatestRelease, notesHtml: string, repo: 
 	const { html, headings } = addHeadingIds(notesHtml);
 	const top = Math.min(...headings.map(h => h.level));
 	const toc = headings.length >= 2 ? `
-			<nav class="toc">
+			<nav class="toc" aria-label="Sections of the notes">
 				${headings.map(h => `<a${h.level > top ? ' class="sub"' : ''} href="#${attr(h.id)}">${text(h.label)}</a>`).join('\n\t\t\t\t')}
 			</nav>` : '';
 	const sha = c.dmg.sha256 ? `
-			<div class="sha">SHA-256 of ${text(c.dmg.name)}<code>${text(c.dmg.sha256)}</code></div>` : '';
+			<div class="sha" id="sha">SHA-256 of ${text(c.dmg.name)}<code>${text(c.dmg.sha256)}</code></div>` : '';
 
 	const body = `
 	<section class="release wrap">
 		<div class="aside">
 			<a class="back" href="./">← Back</a>
 			<div>
-				<p class="eyebrow">Release notes</p>
+				<span class="label">Release notes</span>
 				<h1>GeminiCode ${text(c.version)}</h1>
 				${c.releasedLong ? `<p class="date">${text(c.releasedLong)}</p>` : ''}
 			</div>
 			<div>
-				<a class="dl" href="${attr(c.dmg.url)}">${icon('download')}Download ${text(c.version)}</a>
+				<a class="btn primary dl" href="${attr(c.dmg.url)}">${icon('download')}<span class="dl-label">Download ${text(c.version)}</span></a>
 				<small>Apple silicon · ${c.sizeMb} MB · macOS 26 or later</small>
-				${copyButton('notes.md')}
-			</div>${toc}${sha}
+			</div>
+			<div>${copyButton('notes.md')}</div>${toc}${sha}
 		</div>
 		<div>${unsignedNote(latest)}
-			<div class="notes panel">${html.trim() ? html : '<p>No notes for this release.</p>'}</div>
-			<a class="more" href="${attr(latest.notesUrl ?? `${c.repoUrl}/releases`)}">See this release on GitHub ↗</a>
+			<div class="notes">${html.trim() ? html : '<p>No notes for this release.</p>'}</div>
+			<a class="more" href="${attr(latest.notesUrl ?? `${c.repoUrl}/releases`)}">See this release on GitHub ${icon('external')}</a>
 		</div>
 	</section>`;
 	return layout(`GeminiCode ${c.version} release notes`, body, c, 'notes');
@@ -654,47 +829,65 @@ function filesUnder(dir: string): Set<string> {
 		.map(entry => path.relative(dir, path.join(entry.parentPath, entry.name)).split(path.sep).join('/')));
 }
 
-function copyButton(file: string, label = 'Copy as Markdown'): string {
-	return `<button type="button" class="copy-md" data-copy-md="${attr(file)}" title="Copy this page as Markdown, to paste into a chat or a document">${icon('copy')}<span class="copy-label">${text(label)}</span></button>`;
+function copyButton(file: string, label = 'Copy as Markdown', cls = 'copy-md'): string {
+	return `<button type="button" class="${cls}" data-copy-md="${attr(file)}" title="Copy this page as Markdown, to paste into a chat or a document">${icon('copy', 'cp')}${icon('check', 'ok')}<span class="copy-label">${text(label)}</span></button>`;
 }
 
-function searchBox(big = false): string {
-	const placeholder = big ? 'Search features, settings and shortcuts' : 'Search the docs';
-	return `<div class="search${big ? ' big' : ''}">${icon('search')}<input type="search" placeholder="${placeholder}" aria-label="Search the docs" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list"><kbd>/</kbd><div class="results" role="listbox" hidden></div></div>`;
+function searchDialog(): string {
+	return `
+	<dialog class="search" aria-label="Search the docs" data-docs-root="">
+		<form role="search">
+			${icon('search')}
+			<input type="search" placeholder="Search features, settings and shortcuts" aria-label="Search the docs" autocomplete="off" role="combobox" aria-expanded="true" aria-controls="search-results" aria-autocomplete="list">
+			<kbd>esc</kbd>
+		</form>
+		<div class="results" id="search-results" role="listbox" aria-label="Results"></div>
+	</dialog>`;
 }
 
 /** The list of pages: every group, with the current page's sections under it. */
-function docsSidebar(current: DocPage | undefined, rendered?: RenderedDoc): string {
+function docsSidebar(c: Context, current: DocPage | undefined, rendered?: RenderedDoc): string {
 	const subs = rendered?.headings.filter(h => h.level === 2) ?? [];
 	const groups = docGroups.map(group => `
-				<h2>${text(group.name)}</h2>
-				<ul>${group.pages.map(page => `
-					<li><a href="${page.slug}.html"${page === current ? ' aria-current="page"' : ''}>${icon(page.icon as keyof typeof icons)}${text(page.title)}</a>${page === current && subs.length ? `
-						<div class="subs">${subs.map(h => `<a href="#${attr(h.id)}">${text(h.text)}</a>`).join('')}</div>` : ''}</li>`).join('')}
-				</ul>`).join('');
+				<div>
+					<h2>${text(group.name)}</h2>
+					<ul>${group.pages.map(page => `
+						<li><a href="${page.slug}.html"${page === current ? ' aria-current="page"' : ''}>${text(page.title)}${page.slug === 'projects' ? ' <span class="badge">PREVIEW</span>' : ''}</a>${page === current && subs.length ? `
+							<div class="subs">${subs.map(h => `<a href="#${attr(h.id)}">${text(h.text)}</a>`).join('')}</div>` : ''}</li>`).join('')}
+					</ul>
+				</div>`).join('');
 	return `
-		<aside class="side" data-docs-root="" aria-label="Documentation pages">
+		<aside class="side" aria-label="Documentation pages">
 			<button type="button" class="picker" aria-expanded="false"><span><small>Docs</small>${text(current?.title ?? 'Overview')}</span>${icon('chevrons-up-down')}</button>
-			${searchBox()}
-			<div class="groups">
-				<ul><li><a href="./"${current ? '' : ' aria-current="page"'}>${icon('book')}Overview</a></li></ul>${groups}
+			<div class="group-list">
+				<div><ul><li><a href="./"${current ? '' : ' aria-current="page"'}>Overview</a></li></ul></div>${groups}
+				<div>
+					<h2>Releases</h2>
+					<ul><li><a href="../notes.html">Release notes</a></li></ul>
+				</div>
+			</div>
+			<div class="maint">
+				<b>For maintainers</b>
+				<a href="${attr(c.repoUrl)}/blob/main/gemini/docs/ARCHITECTURE.md">Architecture</a>
+				<a href="${attr(c.repoUrl)}/blob/main/gemini/docs/PROJECTS.md">How Projects work</a>
+				<a href="${attr(c.repoUrl)}/blob/main/gemini/docs/RELEASING.md">Releasing</a>
+				<a href="${attr(c.repoUrl)}/blob/main/gemini/docs/ROADMAP.md">Roadmap</a>
 			</div>
 		</aside>`;
 }
+
+const numberWords = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
 
 /**
  * Writes `docs/`: a page per guide file with its Markdown beside it, the docs
  * home, `all.md` (every page in one file) and `search.json`.
  */
-function writeDocs(outDir: string, latest: LatestRelease, repo: string, pageUrl: string, mediaDir: string, sample: boolean): void {
+function writeDocs(outDir: string, latest: LatestRelease, repo: string, pageUrl: string, mediaDir: string): void {
 	const c = context(latest, repo);
 	const docsDir = path.join(outDir, 'docs');
 	fs.mkdirSync(docsDir, { recursive: true });
 	const media = filesUnder(mediaDir);
-	// The sample build (CI's page checks) shows sample results when there are none yet, so the checks cover the tables.
-	const runs = readBenchRuns(benchResultsDir);
-	const generated = (slug: string) => slug === 'benchmark' ? benchmarkMarkdown(runs.length || !sample ? runs : sampleBenchRuns()) : '';
-	const sources = new Map(docPages.map(page => [page, generatedPages.has(page.slug) ? generated(page.slug) : fs.readFileSync(path.join(guideDir, `${page.slug}.md`), 'utf8')]));
+	const sources = new Map(docPages.map(page => [page, fs.readFileSync(path.join(guideDir, `${page.slug}.md`), 'utf8')]));
 	const search: { page: string; heading: string; text: string; url: string }[] = [];
 	const copies: string[] = [];
 
@@ -706,23 +899,30 @@ function writeDocs(outDir: string, latest: LatestRelease, repo: string, pageUrl:
 		const next = docPages[index + 1];
 		const onPage = doc.headings.filter(h => h.level === 2);
 		const body = `
-	<div class="wrap docs">${docsSidebar(page, doc)}
+	<div class="layout">${docsSidebar(c, page, doc)}
 		<article class="doc">
 			<div class="doc-top">
-				<p class="crumbs"><a href="./">Docs</a>${icon('chevron-right')}<span>${text(group.name)}</span></p>
-				${copyButton(`${page.slug}.md`)}
+				<nav class="crumbs" aria-label="Breadcrumb"><a href="./">Docs</a><span class="sep">/</span><span>${text(group.name)}</span><span class="sep">/</span><span class="here">${text(page.title)}</span></nav>
+				<div class="acts">
+					${copyButton(`${page.slug}.md`, 'Copy as Markdown', 'act')}
+					<a class="act" href="${attr(c.repoUrl)}/blob/main/gemini/docs/guide/${page.slug}.md" aria-label="Open the Markdown source on GitHub">${icon('external')}Open .md</a>
+				</div>
 			</div>
-			<h1>${text(doc.title)}</h1>
+			<h1 class="serif">${text(doc.title)}</h1>
 			${doc.lead ? `<p class="lead">${doc.lead}</p>` : ''}
 ${doc.html}
-			<nav class="pager" aria-label="Pages">${previous ? `<a href="${previous.slug}.html"><small>Previous</small><b>${text(previous.title)}</b></a>` : ''}${next ? `<a class="next" href="${next.slug}.html"><small>Next</small><b>${text(next.title)}</b></a>` : ''}</nav>
-			<p class="edit"><span>${c.version ? `Up to date with GeminiCode ${text(c.version)}` : ''}</span>${generatedPages.has(page.slug) ? `<a href="${attr(c.repoUrl)}/tree/main/gemini/bench/results">The results files on GitHub</a>` : `<a href="${attr(c.repoUrl)}/blob/main/gemini/docs/guide/${page.slug}.md">Edit this page on GitHub</a>`}</p>
+			<div class="edit-row">
+				<span>${c.version ? `Up to date with GeminiCode ${text(c.version)}.` : ''}</span>
+				<a href="${attr(c.repoUrl)}/edit/main/gemini/docs/guide/${page.slug}.md">${icon('pencil')}Edit this page on GitHub</a>
+			</div>
+			<nav class="pager" aria-label="Previous and next page">${previous ? `<a href="${previous.slug}.html"><small>Previous</small><b>${text(previous.title)}</b></a>` : `<a href="./"><small>Previous</small><b>Docs home</b></a>`}${next ? `<a class="next" href="${next.slug}.html"><small>Next</small><b>${text(next.title)} ${icon('arrow-right')}</b></a>` : ''}</nav>
 		</article>${onPage.length >= 2 ? `
-		<aside class="onpage" aria-label="On this page">
+		<aside class="toc" aria-label="On this page">
 			<h2>On this page</h2>
-			<nav>${onPage.map(h => `<a href="#${attr(h.id)}">${text(h.text)}</a>`).join('')}</nav>
+			<nav aria-label="Sections of this page"><span class="rule" aria-hidden="true"></span>${onPage.map(h => `<a href="#${attr(h.id)}">${text(h.text)}</a>`).join('')}</nav>
+			<div class="extra"><a href="${attr(c.repoUrl)}/issues">Report a problem</a><a href="shortcuts.html">Keyboard shortcuts</a></div>
 		</aside>` : ''}
-	</div>`;
+	</div>${searchDialog()}`;
 		fs.writeFileSync(path.join(docsDir, `${page.slug}.html`), layout(`${doc.title} · GeminiCode docs`, body, c, 'docs', '../', page.summary));
 		const markdown = markdownForCopy(source, pageUrl);
 		fs.writeFileSync(path.join(docsDir, `${page.slug}.md`), markdown);
@@ -733,38 +933,62 @@ ${doc.html}
 		}
 	});
 
-	const guides = docPages.filter(page => page.topics.length).map(page => `
-				<a class="guide panel lift" href="${page.slug}.html"><span class="ico">${icon(page.icon as keyof typeof icons)}</span><b>${text(page.title)}</b><p>${text(page.summary)}</p><span class="topics">${page.topics.map(topic => `<span>${text(topic)}</span>`).join('')}</span></a>`).join('');
-	const total = featureIndex.reduce((sum, group) => sum + group.items.length, 0);
+	let number = 0;
+	const groups = docGroups.map(group => `
+		<div class="group">
+			<div class="gh"><h2 class="serif">${text(group.name)}</h2><span>${group.pages.length} ${group.pages.length === 1 ? 'guide' : 'guides'}</span></div>
+			<div class="grid3">${group.pages.map(page => `
+				<a class="gcard" href="${page.slug}.html">
+					<span class="n">${String(++number).padStart(2, '0')}</span>
+					<b>${text(page.title)}${page.slug === 'projects' ? ' <span class="badge">PREVIEW</span>' : ''}</b>
+					<span>${text(page.summary)}</span>${page.topics.length ? `
+					<span class="topics">${page.topics.map(topic => `<span>${text(topic)}</span>`).join('')}</span>` : ''}
+					${icon('arrow-right', 'go')}
+				</a>`).join('')}
+			</div>
+		</div>`).join('');
 	const features = featureIndex.map(group => `
-				<div class="fg">
-					<h3>${text(group.name)} <span>${group.items.length}</span></h3>
-					<ul class="fl">${group.items.map(item => `
-						<li><a href="${attr(item.href)}">${icon(item.icon as keyof typeof icons)}<span><b>${text(item.title)}</b><span>${text(item.body)}</span></span>${icon('arrow-right', 'go')}</a></li>`).join('')}
-					</ul>
-				</div>`).join('');
+			<div class="fg">
+				<h3>${text(group.name)}</h3>${group.items.map(item => `
+				<a class="feat" href="${attr(item.href)}"><div><b>${text(item.title)}</b><span>${text(item.body)}</span></div></a>`).join('')}
+			</div>`).join('');
 	for (const group of featureIndex) {
 		for (const item of group.items.filter(item => !search.some(entry => entry.url === item.href))) {
 			search.push({ page: group.name, heading: item.title, text: item.body, url: item.href });
 		}
 	}
+	const count = numberWords[docPages.length] ?? String(docPages.length);
 	const home = `
-	<div class="wrap docs home">${docsSidebar(undefined)}
-		<div class="doc" style="max-width:none">
-			<div class="dhero">
-				<div class="doc-top"><p class="eyebrow">Documentation</p>${copyButton('all.md', 'Copy all as Markdown')}</div>
-				<h1>Everything GeminiCode does, and how to use it</h1>
-				<p>Start with <a href="getting-started.html">Getting started</a>, or jump to a feature below. Screenshots follow the theme you're reading in.</p>
-				${searchBox(true)}
+	<section class="dhero" aria-labelledby="docs-h">
+		<div class="wrap">
+			<span class="label">Documentation</span>
+			<h1 class="serif" id="docs-h">Everything GeminiCode does, <em>and how to use it.</em></h1>
+			<p>${count[0].toUpperCase()}${count.slice(1)} short guides, written to be read in the order below, or searched when something comes up. Each page ends with where to go next.</p>
+			<div class="row">
+				<a class="btn primary" href="getting-started.html">Open Getting started ${icon('arrow-right')}</a>
+				<a class="btn ghost" href="#all-features">Browse all features</a>
 			</div>
-			<div class="guides">${guides}
-			</div>
-			<section class="allf">
-				<h2 id="all-features">All features</h2>
-				<p>${total} features. Each one links to where it's explained, and <a href="shortcuts.html">Keyboard shortcuts</a> lists every key.</p>${features}
-			</section>
 		</div>
-	</div>`;
+	</section>
+	<section class="home-sec" aria-labelledby="want-h">
+		<h2 id="want-h">I want to…</h2>
+		<div class="grid4">
+			<a class="quick" href="getting-started.html">${icon('rocket')}<b>Install and sign in</b><span>The .dmg, Google sign-in and the project ID.</span></a>
+			<a class="quick" href="agents.html">${icon('bot')}<b>Run my first agent</b><span>Home, the Agents pane and what the status dots mean.</span></a>
+			<a class="quick" href="review.html">${icon('shield-check')}<b>Understand approvals</b><span>Default, Auto Edit, Plan and YOLO, and what agents can't reach.</span></a>
+			<a class="quick" href="team-tools.html">${icon('plug')}<b>Connect my team's tools</b><span>Jira, GitLab, SonarQube, Snyk and Figma, with your own account.</span></a>
+		</div>
+	</section>
+	<section class="groups" aria-label="Guides">${groups}
+	</section>
+	<section class="allf" aria-labelledby="all-features">
+		<div class="ah">
+			<h2 class="serif" id="all-features">All features</h2>
+			<p>Every feature, one line each, linking to the section that explains it. Scan this when you know what you are looking for.</p>
+		</div>
+		<div class="grid3">${features}
+		</div>
+	</section>${searchDialog()}`;
 	fs.writeFileSync(path.join(docsDir, 'index.html'), layout('GeminiCode docs', home, c, 'docs', '../', 'How to use GeminiCode: agents, chat, review, projects, the browser, team tools and settings.'));
 	fs.writeFileSync(path.join(docsDir, 'all.md'), `# GeminiCode docs\n\nFrom ${pageUrl}docs/\n\n` + copies.map(copy => copy.replace(/^(#+) /gm, '#$1 ')).join('\n'));
 	fs.writeFileSync(path.join(docsDir, 'search.json'), JSON.stringify(search));
@@ -784,9 +1008,12 @@ function notesMarkdown(latest: LatestRelease, body: string | undefined): string 
 	return lines.join('\n') + '\n';
 }
 
-/** Browser code is written in TypeScript for the linter; the page gets it with the types stripped. */
+/**
+ * Browser code is written in TypeScript for the linter; the page gets it with
+ * the types stripped, as ES modules that import each other by their .js names.
+ */
 function toJavaScript(source: string): string {
-	return stripTypeScriptTypes(source).replace(/[ \t]+$/gm, '');
+	return stripTypeScriptTypes(source).replace(/[ \t]+$/gm, '').replace(/(from\s+|import\s+)'\.\/([\w-]+)\.mts'/g, '$1\'./$2.js\'');
 }
 
 function text(value: string): string {
@@ -803,8 +1030,8 @@ function sampleRelease(repo: string): GitHubRelease {
 		name: 'GeminiCode 1.0.0',
 		html_url: `https://github.com/${repo}/releases/tag/v1.0.0`,
 		published_at: '2026-10-16T12:00:00Z',
-		body: 'GeminiCode 1.0.0 for Mac with Apple silicon, built on Code - OSS 1.141.0 with Gemini CLI 0.64.0.\n\n## What\'s Changed\n\n- Projects (preview): a coordinator that splits bigger work into threads\n- Add to Gemini and notes in the browser\n- Safer session approvals\n\n### Known limitations\n\n- No autocomplete.',
-		body_html: '<p>GeminiCode 1.0.0 for Mac with Apple silicon, built on Code - OSS 1.141.0 with Gemini CLI 0.64.0.</p><h2>What\'s Changed</h2><ul><li>Projects (preview): a coordinator that splits bigger work into threads</li><li>Add to Gemini and notes in the browser</li><li>Safer session approvals</li></ul><h3>Shortcuts</h3><table><thead><tr><th>Keys</th><th>What it does</th></tr></thead><tbody><tr><td><kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>Up</kbd></td><td>Jump to your previous prompt</td></tr><tr><td><kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>M</kbd></td><td>Switch between Agents and Editor modes</td></tr></tbody></table><h3>Known limitations</h3><ul><li>No autocomplete.</li></ul>',
+		body: 'GeminiCode 1.0.0 for Mac with Apple silicon, built on Code - OSS 1.142.0 with Gemini CLI 0.64.0.\n\n## What\'s Changed\n\n- Projects (preview): a coordinator that splits bigger work into threads\n- Add to Gemini and notes in the browser\n- Safer session approvals\n\n### Known limitations\n\n- No autocomplete.',
+		body_html: '<p>GeminiCode 1.0.0 for Mac with Apple silicon, built on Code - OSS 1.142.0 with Gemini CLI 0.64.0.</p><h2>What\'s Changed</h2><ul><li>Projects (preview): a coordinator that splits bigger work into threads</li><li>Add to Gemini and notes in the browser</li><li>Safer session approvals</li></ul><h3>Shortcuts</h3><table><thead><tr><th>Keys</th><th>What it does</th></tr></thead><tbody><tr><td><kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>Up</kbd></td><td>Jump to your previous prompt</td></tr><tr><td><kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>M</kbd></td><td>Switch between Agents and Editor modes</td></tr></tbody></table><h3>Known limitations</h3><ul><li>No autocomplete.</li></ul>',
 		assets: [
 			{ name: 'GeminiCode-1.0.0-arm64.dmg', browser_download_url: `https://github.com/${repo}/releases/download/v1.0.0/GeminiCode-1.0.0-arm64.dmg`, size: 212_000_000 },
 			{ name: 'GeminiCode-1.0.0-arm64.dmg.sha256', browser_download_url: `sample:${'0123456789abcdef'.repeat(4)}`, size: 100 },

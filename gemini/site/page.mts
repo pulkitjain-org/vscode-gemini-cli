@@ -3,159 +3,174 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The page's own behaviour: the light/dark switch, the particles that drift
-// away from the pointer, the pointer's soft light and the edge of each panel
-// near it. Served as plain JavaScript (build.mts strips the types).
+// What every page shares: the Dark · Light · System switch, the screenshot swap that goes with
+// it, the nav's scrolled state and phone menu, and the reveals that IntersectionObserver
+// triggers once. Served as plain JavaScript (build.mts strips the types).
+
+type Mode = 'dark' | 'light' | 'system';
 
 const root = document.documentElement;
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
-const prefersDark = matchMedia('(prefers-color-scheme: dark)');
+const systemDark = matchMedia('(prefers-color-scheme: dark)');
 
-/** Whether the page is dark now, from the switch or else the system. */
-function isDark(): boolean {
-	return root.dataset.theme ? root.dataset.theme === 'dark' : prefersDark.matches;
+/** The switch's position: the stored choice, else System. */
+function currentMode(): Mode {
+	return root.dataset.theme === 'dark' || root.dataset.theme === 'light' ? root.dataset.theme : 'system';
 }
 
-document.querySelector('.theme')?.addEventListener('click', () => {
-	root.dataset.theme = isDark() ? 'light' : 'dark';
+/** The theme the page shows now, after System is resolved. */
+function pageTheme(): 'dark' | 'light' {
+	const mode = currentMode();
+	return mode === 'system' ? (systemDark.matches ? 'dark' : 'light') : mode;
+}
+
+const switches = [...document.querySelectorAll<HTMLButtonElement>('[data-theme-set]')];
+
+function markSwitches(): void {
+	const mode = currentMode();
+	for (const button of switches) {
+		button.setAttribute('aria-pressed', String(button.dataset.themeSet === mode));
+	}
+}
+
+function announceTheme(): void {
+	root.dispatchEvent(new CustomEvent('themechange', { detail: pageTheme() }));
+}
+
+/** Applies a choice: page colours crossfade, every product shot swaps to its dark or light file. */
+function setMode(mode: Mode): void {
+	if (mode === currentMode()) {
+		return;
+	}
+	const apply = () => {
+		if (mode === 'system') {
+			delete root.dataset.theme;
+		} else {
+			root.dataset.theme = mode;
+		}
+		markSwitches();
+		announceTheme();
+	};
 	try {
-		localStorage.setItem('theme', root.dataset.theme);
+		localStorage.setItem('theme', mode);
 	} catch {
 		// Private windows can refuse storage; the switch still works for this visit.
 	}
-	root.dispatchEvent(new CustomEvent('themechange'));
+	if (reduceMotion.matches) {
+		apply();
+		return;
+	}
+	// Shots fade out, the colours and files change, then the shots fade back in.
+	root.classList.add('theming');
+	setTimeout(() => {
+		apply();
+		setTimeout(() => root.classList.remove('theming'), 60);
+	}, 200);
+}
+
+for (const button of switches) {
+	button.addEventListener('click', () => setMode(button.dataset.themeSet as Mode));
+}
+markSwitches();
+systemDark.addEventListener('change', () => {
+	if (currentMode() === 'system') {
+		announceTheme();
+	}
 });
-prefersDark.addEventListener('change', () => root.dispatchEvent(new CustomEvent('themechange')));
 
-// ---- Particles and the pointer's light (mouse only) ----
+// ---- Nav: scrolled state and the phone menu ----
 
-interface Particle { x: number; y: number; vx: number; vy: number; r: number }
-
-const canvas = document.querySelector<HTMLCanvasElement>('.particles');
-const ctx = canvas?.getContext('2d');
-if (canvas && ctx) {
-	let width = 0;
-	let height = 0;
-	let mouseX = -999;
-	let mouseY = -999;
-	let colors = ['', ''];
-	let running = false;
-	const readColors = () => {
-		const style = getComputedStyle(root);
-		colors = [style.getPropertyValue('--dot').trim(), style.getPropertyValue('--web').trim()];
-	};
-	const resize = () => {
-		const dpr = Math.min(devicePixelRatio, 2);
-		width = innerWidth;
-		height = innerHeight;
-		canvas.width = width * dpr;
-		canvas.height = height * dpr;
-		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-	};
-	resize();
-	readColors();
-	const particles: Particle[] = Array.from({ length: innerWidth < 640 ? 22 : 44 }, () => ({
-		x: Math.random() * width, y: Math.random() * height,
-		vx: (Math.random() - 0.5) * 0.45, vy: (Math.random() - 0.5) * 0.45,
-		r: Math.random() * 1.4 + 0.9,
-	}));
-	const draw = () => {
-		ctx.clearRect(0, 0, width, height);
-		const still = reduceMotion.matches;
-		for (const p of particles) {
-			if (!still) {
-				p.x += p.vx;
-				p.y += p.vy;
-				if (p.x < 0 || p.x > width) { p.vx *= -1; }
-				if (p.y < 0 || p.y > height) { p.vy *= -1; }
-				const dx = mouseX - p.x;
-				const dy = mouseY - p.y;
-				const distance = Math.hypot(dx, dy);
-				if (distance < 120 && distance > 0) {
-					p.x -= dx / distance * 0.8;
-					p.y -= dy / distance * 0.8;
-				}
-			}
-			ctx.beginPath();
-			ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-			ctx.fillStyle = colors[0];
-			ctx.fill();
-		}
-		ctx.lineWidth = 0.8;
-		ctx.strokeStyle = colors[1];
-		for (let i = 0; i < particles.length; i++) {
-			for (let j = i + 1; j < particles.length; j++) {
-				const distance = Math.hypot(particles[i].x - particles[j].x, particles[i].y - particles[j].y);
-				if (distance < 100) {
-					ctx.globalAlpha = 1 - distance / 100;
-					ctx.beginPath();
-					ctx.moveTo(particles[i].x, particles[i].y);
-					ctx.lineTo(particles[j].x, particles[j].y);
-					ctx.stroke();
-				}
-			}
-		}
-		ctx.globalAlpha = 1;
-	};
-	const loop = () => {
-		if (!running) { return; }
-		draw();
-		requestAnimationFrame(loop);
-	};
-	// Animate only while the tab is visible and motion is allowed; otherwise draw once.
+const top = document.querySelector<HTMLElement>('.top');
+if (top) {
+	let queued = false;
 	const update = () => {
-		const shouldRun = !reduceMotion.matches && !document.hidden;
-		if (shouldRun && !running) {
-			running = true;
-			requestAnimationFrame(loop);
-		} else if (!shouldRun) {
-			running = false;
-			draw();
-		}
+		queued = false;
+		top.classList.toggle('scrolled', scrollY > 40);
 	};
-	addEventListener('resize', () => { resize(); draw(); });
-	root.addEventListener('themechange', () => { readColors(); draw(); });
-	reduceMotion.addEventListener('change', update);
-	document.addEventListener('visibilitychange', update);
-	// Panels within reach of the pointer light up along their edge, where the pointer is.
-	const panels = [...document.querySelectorAll<HTMLElement>('.panel')];
-	const reach = 160;
-	let lightQueued = false;
-	const light = () => {
-		lightQueued = false;
-		root.style.setProperty('--mx', `${mouseX}px`);
-		root.style.setProperty('--my', `${mouseY}px`);
-		for (const panel of panels) {
-			const box = panel.getBoundingClientRect();
-			const near = mouseX > box.left - reach && mouseX < box.right + reach && mouseY > box.top - reach && mouseY < box.bottom + reach;
-			if (near) {
-				panel.style.setProperty('--cx', `${mouseX - box.left}px`);
-				panel.style.setProperty('--cy', `${mouseY - box.top}px`);
-			}
-			panel.classList.toggle('near', near);
-		}
-	};
-	addEventListener('pointermove', event => {
-		if (event.pointerType !== 'mouse') { return; }
-		mouseX = event.clientX;
-		mouseY = event.clientY;
-		root.classList.add('pointer');
-		if (!lightQueued) {
-			lightQueued = true;
-			requestAnimationFrame(light);
-		}
-	}, { passive: true });
-	// Scrolling moves the panels under a still pointer.
 	addEventListener('scroll', () => {
-		if (root.classList.contains('pointer') && !lightQueued) {
-			lightQueued = true;
-			requestAnimationFrame(light);
+		if (!queued) {
+			queued = true;
+			requestAnimationFrame(update);
 		}
 	}, { passive: true });
-	document.addEventListener('pointerleave', () => {
-		mouseX = mouseY = -999;
-		root.classList.remove('pointer');
-	});
 	update();
 }
 
+const menuButton = document.querySelector<HTMLButtonElement>('.menu-btn');
+const menu = document.querySelector<HTMLElement>('.menu');
+if (menuButton && menu) {
+	menu.querySelectorAll<HTMLElement>('a').forEach((link, i) => link.style.setProperty('--i', String(i)));
+	menuButton.addEventListener('click', () => {
+		const open = !menu.hasAttribute('data-open');
+		menu.toggleAttribute('data-open', open);
+		menuButton.setAttribute('aria-expanded', String(open));
+	});
+	menu.addEventListener('click', event => {
+		if ((event.target as HTMLElement).closest('a')) {
+			menu.removeAttribute('data-open');
+			menuButton.setAttribute('aria-expanded', 'false');
+		}
+	});
+}
+
+// ---- Reveals: each element enters once, siblings 60ms apart, capped at six ----
+
+const revealed = [...document.querySelectorAll<HTMLElement>('[data-reveal]')];
+for (const group of document.querySelectorAll<HTMLElement>('[data-stagger]')) {
+	[...group.children].forEach((child, i) => (child as HTMLElement).style.setProperty('--d', `${Math.min(i, 5) * 60}ms`));
+}
+if ('IntersectionObserver' in window && revealed.length) {
+	const observer = new IntersectionObserver(entries => {
+		for (const entry of entries) {
+			if (entry.isIntersecting) {
+				entry.target.classList.add('in');
+				observer.unobserve(entry.target);
+			}
+		}
+	}, { threshold: 0.15, rootMargin: '0px 0px -6% 0px' });
+	revealed.forEach(element => observer.observe(element));
+} else {
+	revealed.forEach(element => element.classList.add('in'));
+}
+
+// ---- Copy buttons: the icon becomes a tick and the label reads Copied for 1.5 seconds ----
+
+for (const button of document.querySelectorAll<HTMLButtonElement>('[data-copy-md]')) {
+	const label = button.querySelector<HTMLElement>('.copy-label');
+	const original = label?.textContent ?? '';
+	let reset = 0;
+	const say = (words: string, copied: boolean) => {
+		if (label) {
+			label.textContent = words;
+		}
+		button.classList.toggle('copied', copied);
+		clearTimeout(reset);
+		reset = setTimeout(() => {
+			if (label) {
+				label.textContent = original;
+			}
+			button.classList.remove('copied');
+		}, 1500);
+	};
+	const markdown = () => fetch(button.dataset.copyMd ?? '').then(response => {
+		if (!response.ok) {
+			throw new Error(`HTTP ${response.status}`);
+		}
+		return response.text();
+	});
+	button.addEventListener('click', async () => {
+		try {
+			// Safari only copies within the click, so hand it the text as a promise.
+			if (typeof ClipboardItem !== 'undefined' && ClipboardItem.supports?.('text/plain') !== false) {
+				await navigator.clipboard.write([new ClipboardItem({ 'text/plain': markdown().then(md => new Blob([md], { type: 'text/plain' })) })]);
+			} else {
+				await navigator.clipboard.writeText(await markdown());
+			}
+			say('Copied', true);
+		} catch {
+			say('Couldn\'t copy', false);
+		}
+	});
+}
+
+export { pageTheme };

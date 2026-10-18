@@ -15,7 +15,6 @@ on:
     paths:
       - gemini/site/**
       - gemini/docs/guide/**
-      - gemini/bench/results/**
       - gemini/branding/icon.svg
       - .github/workflows/gemini-pages.yml
   release:
