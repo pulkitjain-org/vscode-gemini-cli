@@ -66,6 +66,9 @@ export class TeamFlows implements vscode.Disposable {
 			run('gemini.team.logTime', (key?: unknown) => this.moveTicket(str(key), undefined, undefined, 'log')),
 			run('gemini.team.reviewMergeRequest', (project?: unknown, iid?: unknown) => this.reviewMergeRequest(str(project), Number(iid) || undefined)),
 			run('gemini.team.fixMergeRequest', (project?: unknown, iid?: unknown) => this.fixMergeRequest(str(project), Number(iid) || undefined)),
+			run('gemini.team.reopenFlow', (id?: unknown) => this.reopenFlow(str(id))),
+			run('gemini.team.discardFlow', async (id?: unknown) => str(id) ? this.tools.flows.close(str(id)!) : undefined),
+			run('gemini.team.settleIntent', (id?: unknown) => this.settleIntent(str(id))),
 			run('gemini.team.mergeMergeRequest', (project?: unknown, iid?: unknown) => this.mergeMergeRequest(str(project), Number(iid) || undefined)),
 			run('gemini.team.reassignTicket', (key?: unknown) => this.reassignTicket(str(key))),
 			run('gemini.team.runChecks', (agent?: unknown) => this.runChecks(str(agent))),
@@ -80,6 +83,26 @@ export class TeamFlows implements vscode.Disposable {
 	/** The last checks' result for an agent, in a line. */
 	checksSummary(agentId: string): string | undefined {
 		return this.checkResults.get(agentId);
+	}
+
+	// --- Unfinished after a quit
+
+	/** Starts a flow again from the inputs it was opened with; its old record goes, the new flow writes its own. */
+	private async reopenFlow(id: string | undefined): Promise<void> {
+		const record = id ? await this.tools.flows.get(id) : undefined;
+		if (!record) {
+			return;
+		}
+		await this.tools.flows.close(record.id);
+		await vscode.commands.executeCommand(record.command, ...record.args);
+	}
+
+	/** Marks an audit intent with no result as looked into: the user checked the tool. */
+	private async settleIntent(id: string | undefined): Promise<void> {
+		const entry = (await this.tools.audit.unfinished()).find(e => e.id === id);
+		if (entry) {
+			await this.tools.audit.settle(entry, 'checked by hand');
+		}
 	}
 
 	// --- Helpers
@@ -264,7 +287,7 @@ export class TeamFlows implements vscode.Disposable {
 				case 'open':
 					return void openTeamLink(view.url);
 			}
-		});
+		}, vscode.ViewColumn.Active, { store: this.tools.flows, command: mode === 'log' ? 'gemini.team.logTime' : 'gemini.team.moveTicket', args: mode === 'log' ? [ticket] : [ticket, agent, suggest], about: ticket });
 		try {
 			const [issue, transitions, me, place2] = await Promise.all([
 				jira.issue(ticket),
@@ -314,7 +337,7 @@ export class TeamFlows implements vscode.Disposable {
 		const gitlab = this.gitlab();
 		const agentId = this.agentId(agent);
 		const place = this.agents.agentPlace(agentId)!;
-		const flow: TeamFlowPanel<OpenMrView> = new TeamFlowPanel<OpenMrView>(this.extensionUri, vscode.l10n.t("Open Merge Request"), 'gitlab', vscode.l10n.t("Reading the branch..."), (action, value) => this.openMrAction(flow, agentId, gp!, action, value));
+		const flow: TeamFlowPanel<OpenMrView> = new TeamFlowPanel<OpenMrView>(this.extensionUri, vscode.l10n.t("Open Merge Request"), 'gitlab', vscode.l10n.t("Reading the branch..."), (action, value) => this.openMrAction(flow, agentId, gp!, action, value), vscode.ViewColumn.Active, { store: this.tools.flows, command: 'gemini.team.openMergeRequest', args: [agentId], about: place.title });
 		let gp: GitPlace | undefined;
 		try {
 			gp = await this.gitPlace(place.cwd, gitlab);
@@ -532,7 +555,7 @@ export class TeamFlows implements vscode.Disposable {
 						});
 					});
 			}
-		}, vscode.ViewColumn.Beside);
+		}, vscode.ViewColumn.Beside, { store: this.tools.flows, command: 'gemini.team.reviewMergeRequest', args: [p, n], about: `!${n}` });
 		try {
 			const [m, diffs] = await Promise.all([gitlab.mr(p, n), gitlab.diffs(p, n)]);
 			const clone = await this.cloneOf(p, gitlab);

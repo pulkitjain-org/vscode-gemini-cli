@@ -50,6 +50,8 @@ Cards follow:
 - **Quality** on the release branch: the SonarQube gate and Snyk, with **Fix**.
 - **Gemini.**
 
+**Unfinished** appears only after GeminiCode quit while something was running: a flow tab (Move, Open Merge Request, Review) to **Reopen** from the same inputs or **Discard**, and a write whose result never came back, to check in the tool before doing it again (**Mark as Checked** once you have). Nothing is redone on its own. A chat whose agent was working when the app quit says so under the last message.
+
 **Customize** hides and reorders cards and picks the release branch. Home shows the last data at once and refreshes each tool in the background; with the VPN off, VPN-only cards keep their last results, dimmed. Turn off opening it at start-up with `gemini.home.openOnStartup`; <kbd>⇧⌘H</kbd> or **Gemini: Home** brings it back.
 
 ## In chat

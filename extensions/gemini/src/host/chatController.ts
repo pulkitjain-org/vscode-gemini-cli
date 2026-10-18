@@ -448,6 +448,10 @@ export class ChatController implements vscode.Disposable {
 			return;
 		}
 		this.transcript.restore(items);
+		if (wasCutOff(items)) {
+			// The last prompt never got its turn end: the app quit (or the window reloaded) while the agent worked.
+			this.transcript.addNotice(vscode.l10n.t("GeminiCode quit while the agent was working on your last message. Whatever it changed before that is in Changes; nothing else was done. Send the message again to carry on."));
+		}
 		const state = this.service.client.state;
 		if (state.kind === 'ready' && sessionId && state.savedSessionId !== sessionId) {
 			this.addSessionLostNotice();
@@ -2395,4 +2399,18 @@ function turnShape(items: readonly TranscriptItem[]): string {
 				return item.kind;
 		}
 	}).join(', ') || 'nothing';
+}
+
+/** Whether the saved chat ends in a prompt that never got its turn end or an error. */
+export function wasCutOff(items: readonly TranscriptItem[]): boolean {
+	for (let i = items.length - 1; i >= 0; i--) {
+		const item = items[i];
+		if (item.kind === 'user') {
+			return true;
+		}
+		if (item.kind === 'turnEnd' || (item.kind === 'notice' && item.severity === 'error')) {
+			return false;
+		}
+	}
+	return false;
 }

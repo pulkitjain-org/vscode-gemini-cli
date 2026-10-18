@@ -14,7 +14,7 @@ import { AgentsView, AgentSummary, relativeTime, startModes } from './agentsView
 import { tildify } from './displayText';
 import { configSection, getApprovalPolicy } from './configuration';
 import { moveCard, toggleCard, type DashboardLayout } from '../acp/dashboard';
-import { buildDashboard } from './homeDashboard';
+import { buildDashboard, DashboardInput } from './homeDashboard';
 import { FromHome, HomeAction, HomeAgent, HomeProject, HomeStrings, HomeView, ToHome } from './panelProtocol';
 import { TeamData } from './teamData';
 import { projectsEnabled } from './projects';
@@ -257,11 +257,21 @@ export class AgentHome implements vscode.Disposable {
 			} : {}),
 			ownBranch: vscode.workspace.getConfiguration(configSection).get<boolean>('agents.ownBranch', false),
 			modes: startModes().filter(mode => isModeAllowed(getApprovalPolicy(), mode.id)),
-			dashboard: this.dashboard(all, workspaces[0]?.name),
+			dashboard: this.dashboard(all, workspaces[0]?.name, await this.unfinished()),
 		};
 	}
 
-	private dashboard(agents: readonly AgentSummary[], repository: string | undefined): HomeView['dashboard'] {
+	/** What a quit cut off, from the team tools' records on disk; nothing without them. */
+	private async unfinished(): Promise<DashboardInput['unfinished']> {
+		const team = this.agents.teamTools;
+		if (!team) {
+			return undefined;
+		}
+		const [flows, intents] = await Promise.all([team.flows.list().catch(() => []), team.audit.unfinished().catch(() => [])]);
+		return { flows, intents };
+	}
+
+	private dashboard(agents: readonly AgentSummary[], repository: string | undefined, unfinished: DashboardInput['unfinished']): HomeView['dashboard'] {
 		const team = this.agents.teamTools;
 		const firstConnected = this.options?.state.get<number>(firstConnectedKey);
 		const reading = this.agents.usage?.reading;
@@ -280,6 +290,7 @@ export class AgentHome implements vscode.Disposable {
 			hideUnconnected: !!firstConnected && Date.now() - firstConnected > weekMs,
 			gitlabUrl: team?.connectors.gitlab?.url,
 			jiraUrl: team?.connectors.jira?.site,
+			...unfinished ? { unfinished } : {},
 		});
 	}
 

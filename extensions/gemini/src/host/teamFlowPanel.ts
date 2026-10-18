@@ -5,16 +5,27 @@
 
 import * as vscode from 'vscode';
 import { errorMessage } from '../acp/errors';
+import type { FlowRecordStore } from '../acp/flowRecords';
 import { FromTeamFlow, TeamFlowState, TeamFlowStrings, TeamFlowView, ToTeamFlow } from './teamFlowProtocol';
 import { createNonce, escapeAttribute } from './webviewHtml';
 
 export const teamFlowViewType = 'gemini.teamFlow';
+
+/** How to start the flow again after a quit: the store, the command that opens it and its arguments. */
+export interface FlowRecording {
+	readonly store: FlowRecordStore;
+	readonly command: string;
+	readonly args: readonly unknown[];
+	readonly about?: string;
+}
 
 /**
  * One team flow (Open Merge Request, Move Ticket, Review, Checks) as an editor tab drawn by webview-src/teamFlow.ts. The
  * host holds the state: `update` re-renders the page, while what the user
  * types comes back with `set` and is kept in `fields` without a re-render.
  * An action runs one at a time, with `busy` shown, and its error on the page.
+ * With `recording`, a record of the flow sits on disk until it finishes or
+ * is closed, so a flow cut off by a quit shows on Home as unfinished.
  */
 export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable {
 
@@ -26,6 +37,7 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 	private readonly onDidDisposeEmitter = new vscode.EventEmitter<void>();
 	readonly onDidDispose = this.onDidDisposeEmitter.event;
 	private disposed = false;
+	private record: Promise<string> | undefined;
 
 	constructor(
 		extensionUri: vscode.Uri,
@@ -34,6 +46,7 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 		loading: string,
 		private readonly onAction: (action: string, value: unknown) => Promise<void> | void,
 		column: vscode.ViewColumn = vscode.ViewColumn.Active,
+		recording?: FlowRecording,
 	) {
 		const media = vscode.Uri.joinPath(extensionUri, 'media');
 		this.panel = vscode.window.createWebviewPanel(teamFlowViewType, title, column, { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [media] });
@@ -43,10 +56,29 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 		this.panel.webview.onDidReceiveMessage((message: FromTeamFlow) => this.onMessage(message));
 		this.panel.onDidDispose(() => {
 			this.disposed = true;
+			void this.closeRecord();
 			this.onDidDisposeEmitter.fire();
 			this.onDidDisposeEmitter.dispose();
 		});
+		if (recording) {
+			this.record = recording.store.open({ command: recording.command, args: recording.args, title, ...recording.about ? { about: recording.about } : {} }).then(id => {
+				// Closed before the record was written: take it back.
+				if (this.disposed) {
+					void recording.store.close(id);
+				}
+				return id;
+			}, () => '');
+			this.closeRecord = async () => {
+				const id = await this.record;
+				if (id) {
+					await recording.store.close(id);
+				}
+			};
+		}
 	}
+
+	/** Removes the flow's record: it finished, or it was closed. */
+	private closeRecord: () => Promise<void> = async () => undefined;
 
 	get isDisposed(): boolean {
 		return this.disposed;
@@ -68,6 +100,10 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 			return;
 		}
 		this.state = state;
+		if ((state.view as { done?: unknown } | undefined)?.done) {
+			// The flow did what it was for; a quit now leaves nothing to pick up.
+			void this.closeRecord();
+		}
 		this.post();
 	}
 

@@ -1,6 +1,6 @@
 # ADR 0009: Desktop only, no server component
 
-**Status:** accepted (a product constraint, recorded so designs stop assuming otherwise).
+**Status:** accepted (a product constraint, recorded so designs stop assuming otherwise). The flow records, the Unfinished card and the cut-off notice shipped on 18 Oct 2026.
 
 ## Context
 

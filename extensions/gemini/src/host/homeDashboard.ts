@@ -5,7 +5,9 @@
 
 import * as vscode from 'vscode';
 import { cardOrder, DashboardCardId, DashboardLayout, firstName, isReadyToMerge, needsYou, partOfDay, sprintProgress, ticketOrder } from '../acp/dashboard';
+import type { AuditEntry } from '../acp/auditLog';
 import type { ModelQuota } from '../acp/directRequest';
+import type { FlowRecord } from '../acp/flowRecords';
 import type { GitLabMr, PipelineState } from '../acp/gitlab';
 import type { JiraIssueSummary } from '../acp/jira';
 import { TeamToolId, teamToolIds, teamToolNames } from '../acp/teamHttp';
@@ -33,6 +35,8 @@ export interface DashboardInput {
 	/** The GitLab server, for "Open in GitLab". */
 	readonly gitlabUrl?: string;
 	readonly jiraUrl?: string;
+	/** Flows that were open, and writes that had no result, when the app last quit. */
+	readonly unfinished?: { readonly flows: readonly FlowRecord[]; readonly intents: readonly AuditEntry[] };
 }
 
 const connect: HomeAction = { kind: 'command', command: 'gemini.connections' };
@@ -40,6 +44,7 @@ const command = (id: string, ...args: unknown[]): HomeAction => ({ kind: 'comman
 
 function cardTitles(): Record<HomeCardId, string> {
 	return {
+		unfinished: vscode.l10n.t("Unfinished"),
 		agents: vscode.l10n.t("Agents"),
 		tickets: vscode.l10n.t("My tickets"),
 		mergeRequests: vscode.l10n.t("Merge requests"),
@@ -66,6 +71,7 @@ export function buildDashboard(input: DashboardInput): HomeDashboard {
 	const context = [now.toLocaleDateString(vscode.env.language, { weekday: 'long', day: 'numeric', month: 'long' }), input.repository, sprintLine].filter(Boolean).join(' · ');
 	const titles = cardTitles();
 	const builders: Record<DashboardCardId, () => HomeCard | undefined> = {
+		unfinished: () => unfinishedCard(input, titles.unfinished),
 		agents: () => agentsCard(input, titles.agents),
 		tickets: () => ticketsCard(input, titles.tickets, progress),
 		mergeRequests: () => mergeRequestsCard(input, titles.mergeRequests),
@@ -175,6 +181,30 @@ function sourceState(input: DashboardInput, tool: TeamToolId, fetched: Fetched<u
 
 function notConnected(id: HomeCardId, title: string, tool: TeamToolId, text: string): HomeCard {
 	return { id, title, tool, rows: [], connect: { text, button: { label: vscode.l10n.t("Connect {0}", teamToolNames[tool]), action: connect } } };
+}
+
+/** What a quit cut off: flows to reopen, and writes whose result never came, to check in the tool before doing them again. */
+function unfinishedCard(input: DashboardInput, title: string): HomeCard | undefined {
+	const flows = input.unfinished?.flows ?? [];
+	const intents = input.unfinished?.intents ?? [];
+	if (!flows.length && !intents.length) {
+		return undefined;
+	}
+	const now = input.now.getTime();
+	const rows: HomeRow[] = [
+		...flows.map((flow): HomeRow => ({
+			icon: 'window', title: flow.title, detail: [flow.about, relativeTime(Date.parse(flow.startedAt), now)].filter(Boolean).join(' · '),
+			button: { label: vscode.l10n.t("Reopen"), action: command('gemini.team.reopenFlow', flow.id) },
+			menu: [{ label: vscode.l10n.t("Discard"), action: command('gemini.team.discardFlow', flow.id) }],
+		})),
+		...intents.map((entry): HomeRow => ({
+			tool: entry.tool.startsWith('jira') ? 'jira' : 'gitlab', title: entry.effect, detail: vscode.l10n.t("{0} · started {1}, no result recorded", entry.tool, relativeTime(Date.parse(entry.time), now)),
+			pill: { text: vscode.l10n.t("check the tool"), tone: 'warn' },
+			button: { label: vscode.l10n.t("Open Audit Log"), action: command('gemini.openAuditLog') },
+			menu: [{ label: vscode.l10n.t("Mark as Checked"), action: command('gemini.team.settleIntent', entry.id) }],
+		})),
+	];
+	return { id: 'unfinished', title, icon: 'debug-restart', rows, note: vscode.l10n.t("GeminiCode quit while these were running. Nothing was redone on its own: a write may have gone through, so look in the tool first.") };
 }
 
 function agentsCard(input: DashboardInput, title: string): HomeCard {

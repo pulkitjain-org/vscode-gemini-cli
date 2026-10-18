@@ -10,9 +10,9 @@
 import type { GitLabMr, GitLabMrSummary } from './gitlab';
 import type { JiraIssueSummary, JiraSprint } from './jira';
 
-export type DashboardCardId = 'agents' | 'tickets' | 'mergeRequests' | 'quality' | 'gemini';
+export type DashboardCardId = 'unfinished' | 'agents' | 'tickets' | 'mergeRequests' | 'quality' | 'gemini';
 
-export const dashboardCards: readonly DashboardCardId[] = ['agents', 'tickets', 'mergeRequests', 'quality', 'gemini'];
+export const dashboardCards: readonly DashboardCardId[] = ['unfinished', 'agents', 'tickets', 'mergeRequests', 'quality', 'gemini'];
 
 /** The user's card layout: the order, and which are hidden. */
 export interface DashboardLayout {
