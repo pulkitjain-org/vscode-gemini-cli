@@ -379,6 +379,21 @@
         "icon": "$(account)"
       },
       {
+        "command": "gemini.team.reopenFlow",
+        "title": "%command.team.reopenFlow%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.team.discardFlow",
+        "title": "%command.team.discardFlow%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.team.settleIntent",
+        "title": "%command.team.settleIntent%",
+        "category": "%category%"
+      },
+      {
         "command": "gemini.team.runChecks",
         "title": "%command.team.runChecks%",
         "category": "%category%",
@@ -767,6 +782,18 @@
       "commandPalette": [
         {
           "command": "gemini.agentHome",
+          "when": "false"
+        },
+        {
+          "command": "gemini.team.reopenFlow",
+          "when": "false"
+        },
+        {
+          "command": "gemini.team.discardFlow",
+          "when": "false"
+        },
+        {
+          "command": "gemini.team.settleIntent",
           "when": "false"
         },
         {

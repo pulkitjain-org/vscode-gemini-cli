@@ -599,10 +599,10 @@ export function renderNotesPage(latest: LatestRelease, notesHtml: string, repo: 
 	if (!c.version || !c.dmg) {
 		const empty = `
 	<section class="release wrap">
-		<aside>
+		<div class="aside">
 			<a class="back" href="./">← Back</a>
 			<div><p class="eyebrow">Release notes</p><h1>No release yet</h1></div>
-		</aside>
+		</div>
 		<div class="notes panel"><p>The first build is on its way. <a href="${attr(c.repoUrl)}/releases">Check GitHub Releases</a>.</p></div>
 	</section>`;
 		return layout('Release notes · GeminiCode', empty, c, 'notes');
@@ -619,7 +619,7 @@ export function renderNotesPage(latest: LatestRelease, notesHtml: string, repo: 
 
 	const body = `
 	<section class="release wrap">
-		<aside>
+		<div class="aside">
 			<a class="back" href="./">← Back</a>
 			<div>
 				<p class="eyebrow">Release notes</p>
@@ -631,7 +631,7 @@ export function renderNotesPage(latest: LatestRelease, notesHtml: string, repo: 
 				<small>Apple silicon · ${c.sizeMb} MB · macOS 12 or later</small>
 				${copyButton('notes.md')}
 			</div>${toc}${sha}
-		</aside>
+		</div>
 		<div>${unsignedNote(latest)}
 			<div class="notes panel">${html.trim() ? html : '<p>No notes for this release.</p>'}</div>
 			<a class="more" href="${attr(latest.notesUrl ?? `${c.repoUrl}/releases`)}">See this release on GitHub ↗</a>
@@ -671,7 +671,7 @@ function docsSidebar(current: DocPage | undefined, rendered?: RenderedDoc): stri
 						<div class="subs">${subs.map(h => `<a href="#${attr(h.id)}">${text(h.text)}</a>`).join('')}</div>` : ''}</li>`).join('')}
 				</ul>`).join('');
 	return `
-		<aside class="side" data-docs-root="">
+		<aside class="side" data-docs-root="" aria-label="Documentation pages">
 			<button type="button" class="picker" aria-expanded="false"><span><small>Docs</small>${text(current?.title ?? 'Overview')}</span>${icon('chevrons-up-down')}</button>
 			${searchBox()}
 			<div class="groups">
@@ -713,7 +713,7 @@ ${doc.html}
 			<nav class="pager" aria-label="Pages">${previous ? `<a href="${previous.slug}.html"><small>Previous</small><b>${text(previous.title)}</b></a>` : ''}${next ? `<a class="next" href="${next.slug}.html"><small>Next</small><b>${text(next.title)}</b></a>` : ''}</nav>
 			<p class="edit"><span>${c.version ? `Up to date with GeminiCode ${text(c.version)}` : ''}</span><a href="${attr(c.repoUrl)}/blob/main/gemini/docs/guide/${page.slug}.md">Edit this page on GitHub</a></p>
 		</article>${onPage.length >= 2 ? `
-		<aside class="onpage">
+		<aside class="onpage" aria-label="On this page">
 			<h2>On this page</h2>
 			<nav>${onPage.map(h => `<a href="#${attr(h.id)}">${text(h.text)}</a>`).join('')}</nav>
 		</aside>` : ''}

@@ -61,6 +61,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
+      - name: Accessibility and Lighthouse
+        # Nothing goes live with an axe violation or a Lighthouse score under its floor (gemini/site/check-*.mjs).
+        run: |
+          npm install --no-save --no-audit --no-fund --prefix "$RUNNER_TEMP/site-checks" axe-core@4.10.3 playwright-core@1.49.1 lighthouse@12.6.1
+          export NODE_PATH="$RUNNER_TEMP/site-checks/node_modules"
+          export CHROME_PATH="$(which google-chrome || which chromium-browser)"
+          node gemini/site/check-a11y.mjs "$RUNNER_TEMP/site"
+          node gemini/site/check-lighthouse.mjs "$RUNNER_TEMP/site"
+          rm -f "$RUNNER_TEMP"/site/lighthouse-*.json
+
       - name: Upload
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:

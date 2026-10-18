@@ -21,7 +21,7 @@
 .side .subs { margin: 2px 0 6px 26px; border-left: 1px solid var(--line); padding-left: 6px; }
 .side .subs a { font-size: 13.5px; padding: 4px 10px; }
 .picker { display: none; width: 100%; align-items: center; justify-content: space-between; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font: 14.5px var(--sans); color: var(--fg); text-align: left; cursor: pointer; }
-.picker small { color: var(--faint); display: block; font-size: 12px; }
+.picker small { color: var(--muted); display: block; font-size: 12px; }
 .picker .i { width: 16px; height: 16px; color: var(--muted); }
 
 /* Search, in the sidebar and on the docs home */
@@ -70,6 +70,8 @@
 .doc kbd { color: var(--fg); border-bottom-width: 2px; white-space: nowrap; }
 .doc pre { margin: 16px 0 0; padding: 14px 16px; border-radius: 12px; background: var(--code); border: 1px solid var(--line); overflow-x: auto; font: 13.5px/1.6 var(--mono); }
 .doc pre code { background: none; padding: 0; font-size: inherit; }
+.doc pre:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+.doc p a, .doc li a, .doc td a { text-decoration: underline; text-underline-offset: 2px; }
 .doc figure { margin: 24px 0 0; }
 .doc .shot { border-radius: 14px; overflow: hidden; border: 1px solid var(--line); background: var(--raised); box-shadow: var(--shadow); }
 .doc .shot img, .doc .shot video { width: 100%; height: auto; }
@@ -77,11 +79,9 @@
 .doc figcaption { margin-top: 10px; font-size: 13.5px; color: var(--faint); text-align: center; text-wrap: balance; }
 .callout { margin: 20px 0 0; padding: 12px 18px 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--link); }
 .callout p { margin: 0; font-size: 15px; }
-.callout .callout-t { margin-bottom: 2px; font: 600 11.5px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--link); }
+.callout .callout-t { margin-bottom: 2px; font: 600 12px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .callout.warning, .callout.caution, .callout.important { border-left-color: var(--warn); }
-.callout.warning .callout-t, .callout.caution .callout-t, .callout.important .callout-t { color: var(--warn); }
 .callout.tip { border-left-color: var(--ok); }
-.callout.tip .callout-t { color: var(--ok); }
 .doc .table { margin: 16px 0 0; overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
 .doc table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
 .doc th, .doc td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--muted); line-height: 1.55; }
@@ -91,7 +91,7 @@
 .pager { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 56px; }
 .pager a { display: block; padding: 16px 18px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); }
 .pager a:hover { text-decoration: none; border-color: var(--line2); }
-.pager small { display: block; font-size: 12.5px; color: var(--faint); }
+.pager small { display: block; font-size: 12.5px; color: var(--muted); }
 .pager b { display: block; margin-top: 2px; color: var(--fg); font-weight: 600; }
 .pager .next { grid-column: 2; text-align: right; }
 .edit { margin: 22px 0 0; font-size: 13.5px; color: var(--faint); display: flex; justify-content: space-between; gap: 12px; }

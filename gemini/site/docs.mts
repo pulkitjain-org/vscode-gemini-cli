@@ -186,7 +186,7 @@ export function renderMarkdown(source: string, options: RenderOptions): Rendered
 				body.push(lines[i]);
 			}
 			i++;
-			out.push(`<pre><code${fence[1] ? ` class="language-${fence[1]}"` : ''}>${escape(body.join('\n'))}</code></pre>`);
+			out.push(`<pre tabindex="0"><code${fence[1] ? ` class="language-${fence[1]}"` : ''}>${escape(body.join('\n'))}</code></pre>`);
 			continue;
 		}
 		const heading = /^(#{1,3})\s+(.*)$/.exec(line);
