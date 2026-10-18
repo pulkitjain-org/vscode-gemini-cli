@@ -335,6 +335,15 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		return this.model.agent(id)?.title;
 	}
 
+	/** The last checks run for agent `id`, in a line; saved with the agent, so they outlast a restart. */
+	checkResult(id: string): string | undefined {
+		return this.model.agent(id)?.checks?.summary;
+	}
+
+	setCheckResult(id: string, summary: string): void {
+		this.model.setChecks(id, summary);
+	}
+
 	/** The agent whose tab is in front, if any. */
 	activeAgentId(): string | undefined {
 		for (const [id, agent] of this.live) {

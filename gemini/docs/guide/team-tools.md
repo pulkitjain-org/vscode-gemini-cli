@@ -31,7 +31,8 @@ A checked-in `.gemini/geminicode-tools.json` saves everyone typing addresses. It
 ```
 
 - `jira.projects` lets lower-case branch names such as `acme-412-gift` count as tickets.
-- `jira.commentVisibility` (a project role, such as `Developers`) limits who sees comments agents add.
+- `jira.commentVisibility` (a project role, such as `Developers`) limits who sees comments agents add, and the comment a move posts, whether you move the ticket or an agent does.
+- `jira.transitions` names your workflow's transition ids for the moves GeminiCode suggests: `{ "start": 21, "review": 31, "done": 41 }` for starting on a ticket, opening its merge request and merging it. Without them, GeminiCode looks for the In Progress, In Review and Done statuses by name. Jira lists a workflow's ids under its transitions in the workflow editor.
 - `gitlab.releaseBranches` is the pattern of your release branches.
 - `sonar.projectKey` can also come from the repository's `sonar-project.properties`.
 

@@ -17,7 +17,12 @@ export interface FlowRecording {
 	readonly command: string;
 	readonly args: readonly unknown[];
 	readonly about?: string;
+	/** What the user had typed and ticked when the flow was cut off, to put back (a reopened flow). */
+	readonly restore?: Readonly<Record<string, string | number | boolean>>;
 }
+
+/** How long after the last keystroke the typed fields are saved to the flow's record. */
+const saveFieldsMs = 600;
 
 /**
  * One team flow (Open Merge Request, Move Ticket, Review, Checks) as an editor tab drawn by webview-src/teamFlow.ts. The
@@ -38,6 +43,11 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 	readonly onDidDispose = this.onDidDisposeEmitter.event;
 	private disposed = false;
 	private record: Promise<string> | undefined;
+	/** Saves the typed fields to the record, a moment after the last change. */
+	private saveFields: () => void = () => undefined;
+	private saveTimer: ReturnType<typeof setTimeout> | undefined;
+	/** Fields to put back into the first view, for a reopened flow. */
+	private restore: Readonly<Record<string, string | number | boolean>> | undefined;
 
 	constructor(
 		extensionUri: vscode.Uri,
@@ -56,6 +66,7 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 		this.panel.webview.onDidReceiveMessage((message: FromTeamFlow) => this.onMessage(message));
 		this.panel.onDidDispose(() => {
 			this.disposed = true;
+			clearTimeout(this.saveTimer);
 			void this.closeRecord();
 			this.onDidDisposeEmitter.fire();
 			this.onDidDisposeEmitter.dispose();
@@ -74,6 +85,22 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 					await recording.store.close(id);
 				}
 			};
+			this.saveFields = () => {
+				clearTimeout(this.saveTimer);
+				this.saveTimer = setTimeout(async () => {
+					const id = await this.record;
+					if (id && !this.disposed) {
+						await recording.store.saveFields(id, plainFields(this.fields)).catch(() => undefined);
+					}
+				}, saveFieldsMs);
+			};
+			if (recording.restore) {
+				this.restore = recording.restore;
+				for (const [name, value] of Object.entries(recording.restore)) {
+					this.fields.set(name, value);
+				}
+				this.saveFields();
+			}
 		}
 	}
 
@@ -108,7 +135,12 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 	}
 
 	setView(view: V): void {
-		this.replace({ view });
+		// A reopened flow: what the user had typed and ticked goes back into the fields the view shows under the same names.
+		const restore = this.restore;
+		this.restore = undefined;
+		const shown = view as unknown as Readonly<Record<string, unknown>>;
+		const restored = restore ? Object.fromEntries(Object.entries(restore).filter(([name, value]) => Object.keys(shown).includes(name) && typeof shown[name] === typeof value)) : {};
+		this.replace({ view: { ...view, ...restored } });
 	}
 
 	fail(error: unknown): void {
@@ -153,6 +185,7 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 				return;
 			case 'set':
 				this.fields.set(message.field, message.value);
+				this.saveFields();
 				return;
 			case 'act':
 				if (message.action === 'close') {
@@ -163,6 +196,11 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 				return;
 		}
 	}
+}
+
+/** The fields a record can hold: text, numbers and switches. */
+function plainFields(fields: ReadonlyMap<string, unknown>): Record<string, string | number | boolean> {
+	return Object.fromEntries([...fields].filter((entry): entry is [string, string | number | boolean] => ['string', 'number', 'boolean'].includes(typeof entry[1])));
 }
 
 function html(webview: vscode.Webview, media: vscode.Uri): string {

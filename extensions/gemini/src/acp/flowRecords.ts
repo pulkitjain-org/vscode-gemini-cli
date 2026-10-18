@@ -8,8 +8,9 @@
 // goes with it. Each flow writes a small record here when it opens and
 // removes it when it finishes or is closed; a record still here when the app
 // starts again is a flow that was cut off, and Home lists it with Reopen and
-// Discard. The record holds what the flow was started with, not what the
-// user typed; reopening starts it again from the same inputs.
+// Discard. The record holds what the flow was started with and, as the user
+// types, what they typed and ticked; reopening starts the flow again from
+// the same inputs and puts those back.
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
@@ -24,6 +25,8 @@ export interface FlowRecord {
 	readonly startedAt: string;
 	/** What the flow was about, for the row on Home. */
 	readonly about?: string;
+	/** What the user typed and ticked, by field, so Reopen puts it back. */
+	readonly fields?: Readonly<Record<string, string | number | boolean>>;
 }
 
 export class FlowRecordStore {
@@ -41,6 +44,14 @@ export class FlowRecordStore {
 	/** Removes the record: the flow finished, or the user closed it. */
 	async close(id: string): Promise<void> {
 		await fs.rm(this.file(id), { force: true });
+	}
+
+	/** Keeps what the user typed and ticked on the flow's record; nothing when the record is gone. */
+	async saveFields(id: string, fields: Readonly<Record<string, string | number | boolean>>): Promise<void> {
+		const record = await this.get(id);
+		if (record) {
+			await fs.writeFile(this.file(id), JSON.stringify({ ...record, fields } satisfies FlowRecord, null, '\t'));
+		}
 	}
 
 	async get(id: string): Promise<FlowRecord | undefined> {

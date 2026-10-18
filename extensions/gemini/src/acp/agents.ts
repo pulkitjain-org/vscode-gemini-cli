@@ -41,6 +41,8 @@ export interface AgentRecord {
 	readonly repos?: readonly ThreadRepo[];
 	/** Its part in a project (Projects preview): the project's coordinator, or one of its threads. */
 	readonly project?: AgentProjectRole;
+	/** The last checks run on the agent's branch, in a line, for Open Merge Request's attachment; kept across restarts. */
+	readonly checks?: { readonly summary: string; readonly at: number };
 }
 
 /** One repository's worktree in a thread that works in several. */
@@ -223,6 +225,11 @@ export class AgentsModel {
 	/** A multi-repository thread's repositories changed: one was added or merged. */
 	setRepos(id: string, repos: readonly ThreadRepo[]): void {
 		this.update(id, a => ({ ...a, repos }));
+	}
+
+	/** Keeps the last checks' result on the agent's record. */
+	setChecks(id: string, summary: string): void {
+		this.update(id, a => ({ ...a, checks: { summary, at: this.now() } }));
 	}
 
 	/** Marks a project's thread resolved (merged back) or open again. */

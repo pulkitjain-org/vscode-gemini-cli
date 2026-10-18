@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { promises as fs } from 'node:fs';
+import { suggestedTransition } from '../acp/teamDefaults';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { tildify } from './displayText';
@@ -23,7 +24,8 @@ import { AgentWorktree, commitAll, currentBranch, git, repositoryRoot, runWorktr
 import type { AgentsView } from './agentsView';
 import { configSection } from './configuration';
 import type { TeamConnections } from './teamConnections';
-import { TeamFlowPanel } from './teamFlowPanel';
+import type { FlowRecord } from '../acp/flowRecords';
+import { FlowRecording, TeamFlowPanel } from './teamFlowPanel';
 import { ChecksView, FlowAttachment, MoveTicketView, OpenMrView, ReviewView, Tone, TransitionView } from './teamFlowProtocol';
 import { openTeamLink } from './teamLinks';
 
@@ -56,9 +58,9 @@ interface GitPlace {
  */
 export class TeamFlows implements vscode.Disposable {
 
-	/** The last checks' one-line result per agent, offered as an attachment to its merge request. */
-	private readonly checkResults = new Map<string, string>();
 	private readonly disposables: vscode.Disposable[] = [];
+	/** A reopened flow's typed fields, for the flow its command opens next. */
+	private pendingRestore: { readonly command: string; readonly fields: NonNullable<FlowRecord['fields']> } | undefined;
 
 	constructor(private readonly extensionUri: vscode.Uri, private readonly tools: TeamConnections, private readonly agents: AgentsView) {
 		const run = <A extends unknown[]>(id: string, handler: (...args: A) => Promise<unknown>) => vscode.commands.registerCommand(id, (...args: A) => handler(...args).catch(err => void vscode.window.showErrorMessage(errorMessage(err))));
@@ -85,7 +87,7 @@ export class TeamFlows implements vscode.Disposable {
 
 	/** The last checks' result for an agent, in a line. */
 	checksSummary(agentId: string): string | undefined {
-		return this.checkResults.get(agentId);
+		return this.agents.checkResult(agentId);
 	}
 
 	// --- Unfinished after a quit
@@ -97,7 +99,20 @@ export class TeamFlows implements vscode.Disposable {
 			return;
 		}
 		await this.tools.flows.close(record.id);
-		await vscode.commands.executeCommand(record.command, ...record.args);
+		// The flow the command opens takes back what the user had typed.
+		this.pendingRestore = record.fields && { command: record.command, fields: record.fields };
+		try {
+			await vscode.commands.executeCommand(record.command, ...record.args);
+		} finally {
+			this.pendingRestore = undefined;
+		}
+	}
+
+	/** A flow's recording, with what the user typed before a quit when it is the flow being reopened. */
+	private recording(command: string, args: readonly unknown[], about: string): FlowRecording {
+		const restore = this.pendingRestore?.command === command ? this.pendingRestore.fields : undefined;
+		this.pendingRestore = undefined;
+		return { store: this.tools.flows, command, args, about, ...restore ? { restore } : {} };
 	}
 
 	/** Marks an audit intent with no result as looked into: the user checked the tool. */
@@ -202,7 +217,7 @@ export class TeamFlows implements vscode.Disposable {
 			text: ticketStartPrompt(issue.key, issue.summary),
 		});
 		if (id && issue.statusCategory === 'new') {
-			await this.moveTicket(issue.key, id, 'In Progress');
+			await this.moveTicket(issue.key, id, 'start');
 		}
 	}
 
@@ -286,7 +301,7 @@ export class TeamFlows implements vscode.Disposable {
 				case 'open':
 					return void openTeamLink(view.url);
 			}
-		}, vscode.ViewColumn.Active, { store: this.tools.flows, command: mode === 'log' ? 'gemini.team.logTime' : 'gemini.team.moveTicket', args: mode === 'log' ? [ticket] : [ticket, agent, suggest], about: ticket });
+		}, vscode.ViewColumn.Active, this.recording(mode === 'log' ? 'gemini.team.logTime' : 'gemini.team.moveTicket', mode === 'log' ? [ticket] : [ticket, agent, suggest], ticket));
 		try {
 			const [issue, transitions, me, place2] = await Promise.all([
 				jira.issue(ticket),
@@ -297,8 +312,8 @@ export class TeamFlows implements vscode.Disposable {
 			mrInfo = place2 && { iid: place2.iid, url: place2.url, target: place2.targetBranch };
 			const logged = await jira.worklogTotals(ticket, me?.accountId).catch(() => undefined);
 			const views: TransitionView[] = transitions.map(t => ({ id: t.id, name: t.name, to: t.to, tone: categoryTone(t.toCategory), fields: t.fields }));
-			const wanted = suggest?.toLowerCase();
-			const selected = wanted ? views.find(t => t.to.toLowerCase() === wanted || t.name.toLowerCase() === wanted)?.id : undefined;
+			// The team's transition ids from .gemini/geminicode-tools.json when set, else the default workflow's status names.
+			const selected = suggestedTransition(views, suggest, defaults.jira?.transitions);
 			flow.setView({
 				kind: 'moveTicket', mode, key: ticket, summary: issue.summary, url: issue.url, status: issue.status, statusTone: categoryTone(issue.statusCategory),
 				transitions: views, fieldValues: {}, comment: '', commentRev: 0, generating: false,
@@ -336,7 +351,7 @@ export class TeamFlows implements vscode.Disposable {
 		const gitlab = this.gitlab();
 		const agentId = this.agentId(agent);
 		const place = this.agents.agentPlace(agentId)!;
-		const flow: TeamFlowPanel<OpenMrView> = new TeamFlowPanel<OpenMrView>(this.extensionUri, vscode.l10n.t("Open Merge Request"), 'gitlab', vscode.l10n.t("Reading the branch..."), (action, value) => this.openMrAction(flow, agentId, gp!, action, value), vscode.ViewColumn.Active, { store: this.tools.flows, command: 'gemini.team.openMergeRequest', args: [agentId], about: place.title });
+		const flow: TeamFlowPanel<OpenMrView> = new TeamFlowPanel<OpenMrView>(this.extensionUri, vscode.l10n.t("Open Merge Request"), 'gitlab', vscode.l10n.t("Reading the branch..."), (action, value) => this.openMrAction(flow, agentId, gp!, action, value), vscode.ViewColumn.Active, this.recording('gemini.team.openMergeRequest', [agentId], place.title));
 		let gp: GitPlace | undefined;
 		try {
 			gp = await this.gitPlace(place.cwd, gitlab);
@@ -351,7 +366,7 @@ export class TeamFlows implements vscode.Disposable {
 				gitlab.members(gp.project).catch(() => []),
 			]);
 			const targets = targetChoices(branches.map(b => b.name), { releasePattern: defaults.gitlab?.releaseBranches, fixVersions: ticket?.fixVersions, defaultTarget: defaults.gitlab?.defaultTarget, source: gp.branch });
-			const checks = this.checkResults.get(agentId);
+			const checks = this.agents.checkResult(agentId);
 			flow.setView({
 				kind: 'openMr', step: 'target', project: gp.project, source: gp.branch, host: new URL(gitlab.url).host, account: me.username,
 				targets, target: targets.find(t => t.suggested)?.branch ?? targets[0]?.branch,
@@ -452,7 +467,7 @@ export class TeamFlows implements vscode.Disposable {
 					const open = vscode.l10n.t("Open in GitLab");
 					void vscode.window.showInformationMessage(vscode.l10n.t("Opened merge request !{0}.", mr.iid), open).then(choice => choice === open ? openTeamLink(mr.url) : undefined);
 					if (current.ticket && flow.field('updateJira', current.updateJira)) {
-						await this.moveTicket(current.ticket.key, agentId, 'In Review');
+						await this.moveTicket(current.ticket.key, agentId, 'review');
 					}
 				});
 		}
@@ -551,7 +566,7 @@ export class TeamFlows implements vscode.Disposable {
 						});
 					});
 			}
-		}, vscode.ViewColumn.Beside, { store: this.tools.flows, command: 'gemini.team.reviewMergeRequest', args: [p, n], about: `!${n}` });
+		}, vscode.ViewColumn.Beside, this.recording('gemini.team.reviewMergeRequest', [p, n], `!${n}`));
 		try {
 			const [m, diffs] = await Promise.all([gitlab.mr(p, n), gitlab.diffs(p, n)]);
 			const clone = await this.cloneOf(p, gitlab);
@@ -672,7 +687,7 @@ export class TeamFlows implements vscode.Disposable {
 		if (options.moveTicket) {
 			// The panel's "Move … to Done" was ticked: the move opens at once, with its own confirmation.
 			void vscode.window.showInformationMessage(vscode.l10n.t("Merged !{0}{1}.", n, merged.sha ? ` (${merged.sha.slice(0, 8)})` : ''));
-			await this.moveTicket(ticket, undefined, 'Done');
+			await this.moveTicket(ticket, undefined, 'done');
 			return;
 		}
 		const open = vscode.l10n.t("Open in GitLab");
@@ -681,7 +696,7 @@ export class TeamFlows implements vscode.Disposable {
 		if (next === open) {
 			await openTeamLink(mr.url);
 		} else if (move && next === move) {
-			await this.moveTicket(ticket, undefined, 'Done');
+			await this.moveTicket(ticket, undefined, 'done');
 		}
 	}
 
@@ -897,7 +912,7 @@ export class TeamFlows implements vscode.Disposable {
 		await Promise.all(tasks);
 		const summary = results.filter(Boolean).join(' · ');
 		if (summary && place.agentId) {
-			this.checkResults.set(place.agentId, summary);
+			this.agents.setCheckResult(place.agentId, summary);
 		}
 	}
 }
