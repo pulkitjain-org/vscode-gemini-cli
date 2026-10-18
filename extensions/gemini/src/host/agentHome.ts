@@ -494,7 +494,7 @@ export class AgentHome implements vscode.Disposable {
 					<button type="submit" id="start" class="primary"><span></span></button>
 				</div>
 			</form>
-			<div id="quick" class="dash-quick"></div>
+			<div class="dash-quick-row"><div id="quick" class="dash-quick"></div><button type="button" id="helpers" class="option-button helpers-button"><i class="codicon codicon-tools" aria-hidden="true"></i><span></span></button></div>
 		</section>
 		<section id="setup" class="dash-setup" hidden></section>
 		<section id="needs" class="dash-needs" hidden></section>

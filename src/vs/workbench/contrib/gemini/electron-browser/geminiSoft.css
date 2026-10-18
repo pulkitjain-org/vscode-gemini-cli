@@ -59,8 +59,9 @@
 
 /* ---- The title bar's glass: Home, the switch and its lens, the agent pills, the tabs. */
 
+/* The border stays, transparent, so the glass keeps the same box as the plain look and the words stay centred on the lens. */
 .monaco-workbench.gemini-soft :is(.gemini-home-button, .gemini-mode-toggle, .gemini-agent-pill) {
-	border: none;
+	border-color: transparent;
 	background-color: var(--gemini-glass-fill) !important;
 	box-shadow: inset 0 1px 0 var(--gemini-glass-rim-top), inset 0 0 0 1px var(--gemini-glass-rim-side);
 }
@@ -74,13 +75,13 @@
 }
 
 .monaco-workbench.gemini-soft .gemini-mode-toggle .gemini-mode-lens {
-	border-radius: 10px;
+	border-radius: 9px;
 	background-color: var(--gemini-glass-fill-strong);
 	box-shadow: inset 0 1px 0 var(--gemini-glass-rim-top), 0 1px 2px var(--gemini-glass-shadow);
 }
 
 .monaco-workbench.gemini-soft .gemini-mode-toggle .gemini-mode-button {
-	border-radius: 10px;
+	border-radius: 9px;
 }
 
 /* Agents mode's tabs: quiet glass pills, the active one raised with the lens fill. */

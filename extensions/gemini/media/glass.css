@@ -96,7 +96,6 @@ button.primary,
 .status-action,
 .plus-button,
 .mode-chip,
-.scroll-down,
 .enhance-float {
 	border-color: var(--gemini-glass-edge);
 	border-top-color: var(--gemini-glass-edge-top);
@@ -111,9 +110,21 @@ button.primary,
 .permission-actions button.secondary:hover,
 .status-action:hover,
 .plus-button:hover,
-.plus-button[aria-expanded="true"],
-.scroll-down:hover {
+.plus-button[aria-expanded="true"] {
 	background: var(--gemini-glass-fill-strong);
+}
+
+/* Latest floats over the chat's text, so it is opaque glass, like a pop-up. */
+.scroll-down {
+	border-color: var(--gemini-glass-edge);
+	border-top-color: var(--gemini-glass-edge-top);
+	background: var(--gemini-glass-sheen), var(--gemini-popover);
+	color: var(--vscode-foreground);
+	box-shadow: 0 4px 14px var(--gemini-shadow);
+}
+
+.scroll-down:hover {
+	background: linear-gradient(var(--gemini-glass-fill-strong), var(--gemini-glass-fill-strong)), var(--gemini-popover);
 }
 
 /* The Enhance pill sits on the composer: its glass is the composer's colour with the fill on top. */

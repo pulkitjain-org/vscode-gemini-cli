@@ -440,6 +440,44 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		return [];
 	}
 
+	/** A row's parent, so the list can reveal and highlight the agent, project or thread whose tab is in front. */
+	getParent(node: Node): Node | undefined {
+		const projects = projectsEnabled();
+		switch (node.kind) {
+			case 'workspace':
+				return { kind: 'section', section: 'agents' };
+			case 'archive':
+				return this.agentNodes.get(node.coordinator.id) ?? { kind: 'agent', record: node.coordinator, folder: node.folder };
+			case 'agent': {
+				const { record } = node;
+				if (projects && record.project?.role === 'coordinator') {
+					return { kind: 'section', section: 'projects' };
+				}
+				const coordinator = projects && record.project?.role === 'thread' ? this.model.coordinatorOf(record) : undefined;
+				if (coordinator) {
+					const folder = this.model.workspace(coordinator.workspaceId)?.folder ?? node.folder;
+					return this.agentNodes.get(coordinator.id) ?? { kind: 'agent', record: coordinator, folder };
+				}
+				const workspace = this.model.workspace(record.workspaceId);
+				if (!workspace) {
+					return undefined;
+				}
+				const current = (vscode.workspace.workspaceFolders ?? []).some(f => f.uri.scheme === 'file' && f.uri.fsPath === workspace.folder);
+				return { kind: 'workspace', folder: workspace.folder, record: workspace, current };
+			}
+			default:
+				return undefined;
+		}
+	}
+
+	/** Highlights the row of agent `id` (its tab came to the front), without taking focus from the chat. */
+	private revealInList(id: string): void {
+		const node = this.agentNodes.get(id);
+		if (node && this.tree.visible && this.tree.selection[0] !== node) {
+			void Promise.resolve(this.tree.reveal(node, { select: true, focus: false, expand: false })).catch(() => undefined);
+		}
+	}
+
 	private threadNode(record: AgentRecord, folder: string): AgentNode {
 		const agent: AgentNode = { kind: 'agent', record, folder: record.worktree?.cwd ?? folder };
 		this.agentNodes.set(record.id, agent);
@@ -1397,6 +1435,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				live.controller.setHidden(!e.webviewPanel.visible);
 				if (e.webviewPanel.active) {
 					this.focus(id);
+					this.revealInList(id);
 					this.notifier.clear(id);
 					// Switching to an agent or thread puts the cursor where the user types.
 					live.controller.focusComposer();

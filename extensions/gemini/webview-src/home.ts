@@ -60,6 +60,10 @@ start.title = strings.start;
 start.querySelector('span')!.textContent = strings.start;
 fromToolsButton.querySelector('span')!.textContent = strings.fromTools;
 fromToolsButton.title = strings.fromTools;
+const helpers = document.getElementById('helpers') as HTMLButtonElement;
+helpers.querySelector('span')!.textContent = strings.projectHelpers;
+helpers.title = strings.projectHelpersHint;
+helpers.addEventListener('click', () => vscode.postMessage({ type: 'projectHelpers' }));
 plusButton.title = strings.plusMenu;
 plusButton.setAttribute('aria-label', strings.plusMenu);
 
@@ -102,14 +106,6 @@ const plusMenu: Menu = new Menu({
 				run: () => {
 					plusMenu.close();
 					vscode.postMessage({ type: 'pickFiles' });
-				},
-			}, {
-				icon: 'tools',
-				name: strings.projectHelpers,
-				detail: strings.projectHelpersHint,
-				run: () => {
-					plusMenu.close();
-					vscode.postMessage({ type: 'projectHelpers' });
 				},
 			}],
 		},
@@ -544,7 +540,7 @@ function renderDashboard(dash: HomeDashboard): void {
 		node.title = tool.label;
 		node.setAttribute('role', 'img');
 		node.setAttribute('aria-label', tool.label);
-		node.append(toolLogo(tool.id, 22));
+		node.append(toolLogo(tool.id, 18));
 		node.addEventListener('click', () => run({ kind: 'command', command: 'gemini.connections' }));
 		return node;
 	}));

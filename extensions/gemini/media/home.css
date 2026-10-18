@@ -41,7 +41,7 @@
 .dash-tool-logos {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 7px;
 }
 
 .dash-tool {
@@ -157,11 +157,24 @@ button.link-button:hover {
 	padding: 3px 10px;
 }
 
-.dash-quick {
+/* The quick actions, and Project Helpers at the far right under the composer. */
+.dash-quick-row {
 	display: flex;
-	flex-wrap: wrap;
+	align-items: center;
 	gap: 8px;
 	margin-top: 12px;
+}
+
+.dash-quick {
+	display: flex;
+	flex: 1;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.dash-quick-row .helpers-button {
+	flex: none;
+	color: var(--gemini-muted);
 }
 
 button.dash-quick-action {
