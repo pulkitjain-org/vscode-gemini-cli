@@ -1,12 +1,12 @@
 # Releasing GeminiCode
 
-GeminiCode ships as a Mac app for Apple silicon, from this repository's [GitHub Releases](https://github.com/pulkitjain-org/vscode-gemini-cli/releases), with a download page at <https://pulkitjain-org.github.io/vscode-gemini-cli/>. Share the page, not the release: it always points at the newest build. The first release, `v0.1.0`, was published on 3 Oct 2026. Windows, Linux and Intel Macs are not built yet.
+GeminiCode ships as a Mac app for Apple silicon, from this repository's [GitHub Releases](https://github.com/pulkitjain-org/vscode-gemini-cli/releases), with a download page at <https://pulkitjain-org.github.io/vscode-gemini-cli/>. Share the page, not the release: it always points at the newest build. Windows, Linux and Intel Macs are not built.
 
 ## Versions
 
-GeminiCode has its own version, starting at `0.1.0`, separate from upstream's `1.141` numbering. The release tag carries it (`v0.1.0`), and the build stamps it into `product.json` as `geminiCodeVersion`. **About** shows both, as `0.1.0 (Code - OSS 1.141.0)`. A build without a stamp, such as a dev build, shows only upstream's version.
+GeminiCode has its own version, separate from upstream's numbering. The release tag carries it (`v1.1.0`), and the build stamps it into `product.json` as `geminiCodeVersion`. **About** shows both, as `1.1.0 (Code - OSS 1.142.0)`. A build without a stamp, such as a dev build, shows only upstream's version.
 
-There is one stable channel. A tag with a suffix, such as `v0.2.0-rc.1`, publishes a prerelease, which the download page and the update notice ignore.
+There is one stable channel. A tag with a suffix, such as `v1.2.0-rc.1`, publishes a prerelease, which the download page and the update notice ignore.
 
 ## Cutting a release
 
@@ -14,14 +14,14 @@ There is one stable channel. A tag with a suffix, such as `v0.2.0-rc.1`, publish
 2. Tag it and push the tag:
 
    ```sh
-   git tag v0.1.0
-   git push origin v0.1.0
+   git tag v1.2.0
+   git push origin v1.2.0
    ```
 
 3. [`gemini-release.yml`](../../.github/workflows/gemini-release.yml) runs on a GitHub-hosted Apple silicon runner (`macos-15`). It takes about 40 to 60 minutes, and is free on a public repository.
 4. When it finishes, the release holds `GeminiCode-<version>-arm64.dmg` and its SHA-256 checksum.
 
-To try the pipeline without publishing, run **Gemini Release** by hand from the Actions tab with no tag. It builds `GeminiCode-0.0.0-dev.<run>-arm64.dmg` and its `.sha256` as workflow artifacts, kept for 14 days. They are uploaded unzipped, so the `.dmg` downloads as is: Chrome can block a `.dmg` inside a `.zip` as a dangerous download. Running it by hand with an existing tag, such as `v0.1.0`, builds and publishes that tag as a tag push would, for example to retry a failed release. Every run keeps the `.dmg` as an artifact.
+To try the pipeline without publishing, run **Gemini Release** by hand from the Actions tab with no tag. It builds `GeminiCode-0.0.0-dev.<run>-arm64.dmg` and its `.sha256` as workflow artifacts, kept for 14 days. They are uploaded unzipped, so the `.dmg` downloads as is: Chrome can block a `.dmg` inside a `.zip` as a dangerous download. Running it by hand with an existing tag, such as `v1.1.0`, builds and publishes that tag as a tag push would, for example to retry a failed release. Every run keeps the `.dmg` as an artifact.
 
 If the release already exists, for example because it was made in GitHub's UI, the workflow uploads the `.dmg` and checksum to it (replacing any with the same name) and keeps its title and notes.
 

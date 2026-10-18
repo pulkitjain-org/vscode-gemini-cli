@@ -19,7 +19,7 @@ const recordSetting = 'pilot.record';
 const unfinishedDelayMs = 10_000;
 
 /**
- * The pilot's counters (gemini/docs/AGENTIC-PLAN.md, section 5): recorded while `gemini.pilot.record`
+ * The pilot's counters (gemini/docs/AGENTIC-PLAN.md, section 6): recorded while `gemini.pilot.record`
  * is on, and written with the audit log to ~/geminicode-pilot/<date>.jsonl by Gemini: Export Pilot
  * Data, for the developer to hand over. Counts and timings only; nothing leaves the Mac on its own.
  */

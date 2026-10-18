@@ -22,7 +22,7 @@ Pick a mode from the composer's **+** menu. The list comes from the Gemini CLI, 
 
 A permission card shows the CLI's own choices, such as **Allow**, **Allow for this session** and **Reject**; <kbd>esc</kbd> rejects. When an agent asks, its tab comes to the front and the proposed edit opens as a diff; in the Agents pane its row shows an amber dot and "waiting".
 
-**Allow for this session** on a shell command covers the programs it runs for the rest of that chat's session. A command that reaches the network, writes through a redirection or runs code it builds still asks each time, and so does one that runs another program or code it's given, such as `env`, `xargs`, `sudo`, `python -c`, `npx`, `find -exec` or `git -c`.
+**Allow for this session** on a shell command covers the programs it runs for the rest of that chat's session. A command that reaches the network, writes through a redirection or runs code it builds still asks each time, and so does one that runs another program or code it's given, such as `env`, `xargs`, `sudo`, `python -c`, `npx`, `find -exec` or `git -c`. When the agent edits a build file, such as `package.json`, a `Makefile` or `build.gradle`, the task runners you allowed (`npm`, `make`, `gradle` and the like) ask again, since their next run would run what the agent wrote.
 
 **Gemini: Commands Allowed for This Session...** lists what the chat in front allowed, and lets you forget any of it. Turn on **Allow for all future sessions** in [Project Helpers](helpers.md#gemini-cli-settings) to also be offered a permanent allow.
 
@@ -73,6 +73,6 @@ Inline edit and commit messages use the newest Flash model for speed. `gemini.in
 
 ## What agents can't reach
 
-- Secret files such as `.env` and private keys, and git-ignored files, including through a link or a symbolic link.
+- Secret files, such as `.env`, private keys, cloud credentials (`gcloud`, service account keys) and cluster and registry configs (`.kube`, `.docker`), and git-ignored files, including through a link or a symbolic link.
 - Other folders in a multi-folder window, unless you turn on `gemini.agents.allWorkspaceFolders`.
 - Sites other than local ones in the browser, until you allow each one. See [Browser](browser.md#which-sites-agents-can-open).

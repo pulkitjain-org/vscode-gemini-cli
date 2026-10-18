@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The pilot's counters (gemini/docs/AGENTIC-PLAN.md, section 5, "Pilot"): counts and timings only,
+// The pilot's counters (gemini/docs/AGENTIC-PLAN.md, section 6, "Pilot"): counts and timings only,
 // never prompt, reply, file or ticket text. Recorded only while `gemini.pilot.record` is on, kept
 // in the extension's storage one file per day, and handed over only by Gemini: Export Pilot Data,
 // which writes them with the audit log to ~/geminicode-pilot/. Nothing leaves the Mac on its own.

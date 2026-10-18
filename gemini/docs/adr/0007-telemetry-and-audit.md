@@ -1,6 +1,6 @@
 # ADR 0007: Telemetry is the CLI's OpenTelemetry export; audit is an append-only local log
 
-**Status:** proposed.
+**Status:** accepted.
 
 ## Context
 
@@ -19,4 +19,4 @@ The pinned CLI emits OpenTelemetry metrics and events (`gemini_cli.api.request.l
 
 ## Evidence
 
-Telemetry names from `docs/cli/telemetry.md` at the `v0.64.0` tag; environment switches present in the 0.64.0 bundle.
+The events and metrics in a file gemini-cli 0.64.0 wrote ([FINDINGS.md](../FINDINGS.md#the-telemetry-file)), which `traceRecording.ts` reads; `auditLog.ts` and its tests.

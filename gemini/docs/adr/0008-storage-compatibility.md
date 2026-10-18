@@ -1,6 +1,6 @@
 # ADR 0008: Settings, policy names and storage formats are a versioned contract
 
-**Status:** proposed.
+**Status:** accepted.
 
 ## Context
 

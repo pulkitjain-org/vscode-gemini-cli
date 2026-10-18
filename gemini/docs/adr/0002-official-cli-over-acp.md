@@ -17,4 +17,4 @@ Run the pinned `gemini --acp` as a child process and implement only the ACP clie
 
 ## Evidence
 
-`extensions/gemini/package.json` `bundledCli` 0.64.0 with its SHA-512 matching the npm tarball; `FINDINGS.md` 5 Oct: direct requests answered 12 of 12 once they carry the CLI's headers.
+`extensions/gemini/package.json` pins `bundledCli` 0.64.0 with its npm SHA-512, and the real-CLI tests pass against it. [FINDINGS.md](../FINDINGS.md#prompt-enhancement-direct-requests-or-the-cli): direct requests carrying the CLI's headers answered 12 of 12 on a real account, in 2.8 s at the median against 4.8 s through the CLI.

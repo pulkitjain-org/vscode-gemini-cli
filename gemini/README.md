@@ -11,9 +11,13 @@ The repository's top-level README, SECURITY and AGENTS files point here. CONTRIB
 - [docs/RELEASING.md](docs/RELEASING.md): versions, cutting a release, the download page, and the Apple signing setup.
 - [docs/ROADMAP.md](docs/ROADMAP.md): open work and risks.
 - [docs/AGENTIC-PLAN.md](docs/AGENTIC-PLAN.md): the agentic development plan: latency budget, fork hygiene, the team-tools adapter, threat model, evaluation harness, pilot. Its decisions are in [docs/adr/](docs/adr/).
+- [docs/mockups/](docs/mockups/README.md): the plan's screens, and the glass look's before and after.
+- [bench/](bench/README.md): the benchmark's tasks and results. [pilot/](pilot/README.md): the pilot's admin profile.
 - [branding/](branding/): icon sources.
 - [site/](site/): the generator (`build.mts`) for the download page and the docs, which the Pages workflow runs.
-- [scripts/list-fork-touches.sh](scripts/list-fork-touches.sh): lists every upstream file the fork changes.
+- [patches/](patches/) and [upstream.json](upstream.json): the fork's edits to upstream files, as a patch series over the pinned upstream tag.
+- [scripts/upstream-series.sh](scripts/upstream-series.sh): lists, regenerates, applies and checks the patch series.
+- [scripts/list-fork-touches.sh](scripts/list-fork-touches.sh): lists every `GEMINI-FORK` marker in upstream files.
 - [scripts/notarize.sh](scripts/notarize.sh): sends a signed build to Apple's notary service, for the release workflow.
 
 The product code is in [`../extensions/gemini/`](../extensions/gemini/).
@@ -53,7 +57,7 @@ Download GeminiCode for Mac (Apple silicon) from the [download page](https://pul
 
 You need a Google account with a **Gemini Code Assist** license and a **Google Cloud project** to bill usage to. Your organisation may set the project for you.
 
-The **Get Started with GeminiCode** walkthrough opens on first launch, and again from **Gemini: Get Started**. It walks through five steps:
+GeminiCode opens on Agent Home. **Gemini: Get Started** opens the **Get Started with GeminiCode** walkthrough, which walks through five steps:
 
 1. **Gemini CLI.** GeminiCode comes with a tested Gemini CLI, so there is nothing to install. It uses `gemini.cliPath`, then a copy you installed from GeminiCode, then the bundled copy, then `gemini` on your `PATH`.
 2. **Sign in.** Run **Gemini: Sign In with Google**. If your account needs a one-time step that the editor cannot show, run **Gemini: Complete Setup in Terminal**.
@@ -134,10 +138,11 @@ If the chat view warns that its script is out of date, the webview bundle in `me
 
 ## CI
 
-[`gemini-ci.yml`](../.github/workflows/gemini-ci.yml) runs on pull requests and pushes to `main`, and can be run by hand. It does three things:
+[`gemini-ci.yml`](../.github/workflows/gemini-ci.yml) runs on pull requests and pushes to `main`, and can be run by hand. It does four things:
 
-- It lints and hygiene-checks the fork files.
+- It lints and hygiene-checks the fork files, and checks that the patch series matches `HEAD` and that every upstream code file it edits is marked.
 - It builds and type-checks the extension and webview, builds the download page from a sample release, then runs the unit tests and real-CLI tests against the `latest` and `preview` CLI.
+- It runs Snyk on the fork's own code when the repository has a `SNYK_TOKEN` secret, and passes with a note when it has none.
 - It compiles the whole fork and runs upstream's hygiene check. A pull request that only changes `extensions/gemini/`, `gemini/`, the Gemini workflows or top-level Markdown files skips this step, because the extension job already covers those files; a skipped job counts as passing. The step restores `node_modules` from a cache keyed on the lockfiles, so it reinstalls only when dependencies change.
 
 Packaged builds come from [`gemini-release.yml`](../.github/workflows/gemini-release.yml), which a version tag starts, and the download page from [`gemini-pages.yml`](../.github/workflows/gemini-pages.yml); see [RELEASING.md](docs/RELEASING.md).
@@ -152,11 +157,11 @@ gemini/scripts/upstream-series.sh regenerate   # rewrite gemini/patches/ from HE
 gemini/scripts/upstream-series.sh check        # what CI runs: every patch still matches HEAD, and every upstream code file it edits has a GEMINI-FORK marker
 ```
 
-After editing an upstream file, run `regenerate` and commit `gemini/patches/` with the change; Gemini CI fails otherwise. `gemini/scripts/list-fork-touches.sh` still prints the markers.
+After editing an upstream file, run `regenerate` and commit `gemini/patches/` with the change; Gemini CI fails otherwise. `gemini/scripts/list-fork-touches.sh` prints the markers.
 
 ## Upstream releases
 
-The fork is built on one upstream release tag, pinned in `gemini/upstream.json` (today `1.141.0`, merged 8 Oct 2026). Its edits to upstream files are the patch series in `gemini/patches/`, one patch per file, binaries included; everything else the fork owns lives in `extensions/gemini/`, `gemini/`, the `gemini-*.yml` workflows and the files listed in `gemini/patches/ADDED`, which apply to any base.
+The fork is built on one upstream release tag, pinned in `gemini/upstream.json` (`1.142.0`). Its edits to upstream files are the patch series in `gemini/patches/`, one patch per file, binaries included; everything else the fork owns lives in `extensions/gemini/`, `gemini/`, the `gemini-*.yml` workflows and the files listed in `gemini/patches/ADDED`, which apply to any base.
 
 [`gemini-upstream.yml`](../.github/workflows/gemini-upstream.yml) runs once a week and by hand. It fetches upstream's tags, takes the newest release above the pin, checks it out, applies the series with a three-way merge, copies the fork's own files over from `main`, moves the pin, regenerates the series against the new tag, bumps the bundled Gemini CLI to the newest release with its checksum from npm, and opens one pull request. Gemini CI builds and tests that pull request like any other, and `main` is protected so both have to be green before it merges. A patch that does not apply leaves conflict markers in the branch, and the pull request names it; finish it on that branch, run `regenerate`, and push.
 
@@ -164,9 +169,9 @@ To do the same by hand:
 
 ```sh
 git remote add upstream https://github.com/microsoft/vscode.git
-git fetch upstream tag 1.142.0
-git checkout -b upstream/1.142.0 1.142.0
-FROM=main gemini/scripts/upstream-series.sh apply 1.142.0
+git fetch upstream tag 1.143.0
+git checkout -b upstream/1.143.0 1.143.0
+FROM=main gemini/scripts/upstream-series.sh apply 1.143.0
 # resolve anything it names, then:
 gemini/scripts/upstream-series.sh regenerate
 ```

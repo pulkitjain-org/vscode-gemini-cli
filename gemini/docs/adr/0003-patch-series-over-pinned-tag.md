@@ -1,10 +1,10 @@
 # ADR 0003: Upstream edits are a patch series over a pinned release tag
 
-**Status:** accepted 18 Oct 2026; `gemini/upstream.json`, `gemini/patches/`, `gemini/scripts/upstream-series.sh` and `gemini-upstream.yml` are in.
+**Status:** accepted; `gemini/upstream.json`, `gemini/patches/`, `gemini/scripts/upstream-series.sh` and `gemini-upstream.yml` carry it out.
 
 ## Context
 
-The fork merges upstream release tags three-way. The set of upstream files it edits is small (about 35 code and config files plus icons) but it is not written down as a series, so each move is a manual checklist from `list-fork-touches.sh`. There is no job that moves the base or the Gemini CLI pin.
+The fork merges upstream release tags three-way. The set of upstream files it edits is small (about 40 code and config files plus icons). Without a written series, each move would be a manual checklist from the `GEMINI-FORK` markers, which JSON files and icons cannot carry, and nothing would move the base or the Gemini CLI pin.
 
 ## Decision
 
@@ -21,4 +21,4 @@ The fork merges upstream release tags three-way. The set of upstream files it ed
 
 ## Evidence
 
-Upstream tags 1.141.0 (6 Oct 2026) and 1.142.0 (14 Oct 2026); the fork merged 1.141.0 on 8 Oct (`df56848b`). The job's first green run is the evidence that the decision works.
+The move from 1.141.0 to 1.142.0: 72 of the 74 patches applied cleanly, two needed a hand merge in files the fork edits at one point each, and the series stayed at 74 patches. CI's `Patch series matches HEAD` step checks the series on every pull request.

@@ -13,8 +13,8 @@ Ship GeminiCode as a hard fork of Code - OSS. Keep fork code in `extensions/gemi
 ## Consequences
 
 - An upstream move every month, owned by the job in ADR 0003.
-- Mac-only signed builds for now; other platforms are a non-goal until after the pilot.
+- Mac builds only; other platforms are a non-goal until after the pilot.
 
 ## Evidence
 
-`git diff --stat 1.141.0 HEAD` on 18 Oct 2026: 65,300 of 74,458 added lines in `extensions/gemini`; 20 modified workbench files and 5 platform files, each marked.
+`git diff --shortstat 1.142.0 HEAD`: 71,947 of 100,364 added lines are in `extensions/gemini`; 21 modified workbench files and 5 platform files, each marked.

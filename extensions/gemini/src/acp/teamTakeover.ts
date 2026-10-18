@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 // Taking over the Jira and GitLab servers a repository's .gemini/settings.json runs in the CLI
-// (gemini/docs/AGENTIC-PLAN.md, section 3, "Migration"): what the file says about each server,
+// (gemini/docs/AGENTIC-PLAN.md, section 3, "The adapter"): what the file says about each server,
 // and the file without them. The connections then hold the address, the account and the token (in
 // the keychain), and the team tools run the same servers as their own children.
 

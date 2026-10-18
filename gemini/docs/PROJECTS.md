@@ -1,6 +1,6 @@
 # Projects: a coordinator and its threads
 
-Projects (preview, `gemini.projects.enabled`) let one chat run a team of agents. You talk to a **coordinator**, which splits the work into **threads**: each thread is an ordinary GeminiCode agent on its own branch, in its own worktree. This page explains the idea, how the parts fit, how prompts move between them, and what drives the coordinator's decisions. How to use it is in [the Projects guide](guide/projects.md); the short version for the code is in [ARCHITECTURE.md](ARCHITECTURE.md#the-agent-workspace); the measurements behind it are in [FINDINGS.md](FINDINGS.md#a-projects-coordinator-and-threads-in-one-process).
+Projects (preview, `gemini.projects.enabled`) let one chat run a team of agents. You talk to a **coordinator**, which splits the work into **threads**: each thread is an ordinary GeminiCode agent on its own branch, in its own worktree. This page explains the idea, how the parts fit, how prompts move between them, and what drives the coordinator's decisions. How to use it is in [the Projects guide](guide/projects.md); the short version for the code is in [ARCHITECTURE.md](ARCHITECTURE.md#the-agent-workspace); the measurements behind it are in [FINDINGS.md](FINDINGS.md#a-projects-coordinator-and-threads).
 
 ## The idea
 
@@ -55,7 +55,7 @@ All of a project's sessions run in the one `gemini --acp` process that serves ev
 
 **Why threads get links to ignored rules.** A worktree has only what Git tracks, so a local `.gemini` folder the repository ignores would be missing. A thread's worktree links whatever rules the repository has there, so threads load the same settings, skills and commands as the main checkout.
 
-**Why the folders must be trusted.** The CLI loads no MCP servers in a folder it does not trust, not even ones the client passes in `session/new`. Opening or starting a project asks once to trust `~/.geminicode/projects` and the repository's worktrees folder, then waits for the agent to restart, because the CLI reads its trust list once per process ([FINDINGS.md](FINDINGS.md#folder-trust-and-a-sessions-mcp-servers)).
+**Why the folders must be trusted.** The CLI loads no MCP servers in a folder it does not trust, not even ones the client passes in `session/new`. Opening or starting a project asks once to trust `~/.geminicode/projects` and the repository's worktrees folder, then waits for the agent to restart, because the CLI reads its trust list once per process ([FINDINGS.md](FINDINGS.md#mcp-servers-folder-trust-and-policies)).
 
 ## The tools
 
@@ -94,7 +94,7 @@ Only your messages in the project chat wake it. Everything else is queued as con
 | You start a thread yourself with New thread | No, context only | `ProjectHub.startThread` |
 | A thread works, waits for you or finishes | No; its card shows it | The thread's activity |
 
-This is deliberate. A thread's result, question or failure is yours to take up in that thread, where its card leads you. Waking the coordinator for each one cost a model turn that only restated what the card already showed: in the spike, half of the coordinator's turns answered reports ([FINDINGS.md](FINDINGS.md#a-projects-coordinator-and-threads-in-one-process)).
+This is deliberate. A thread's result, question or failure is yours to take up in that thread, where its card leads you. Waking the coordinator for each one would cost a model turn, a median of 43,174 input tokens on a real account, that only restated what the card already showed ([FINDINGS.md](FINDINGS.md#a-projects-coordinator-and-threads)).
 
 ### The wake loop
 
@@ -242,7 +242,7 @@ The diagram describes the brief's rules, not code: the model applies them. The c
 | Merging is yours | The coordinator merging or undoing work | Merge back, Review changes and Undo thread are buttons on the card, not tools |
 | A named Flash model | An extra routing call per wake, and a slower, costlier hub | `coordinatorModel` |
 
-The spike measured how well this holds on a real account: on `gemini-3.8-flash`, the coordinator did no edits or commands of its own and handled all five scripted asks as expected ([FINDINGS.md](FINDINGS.md#a-projects-coordinator-and-threads-in-one-process)).
+The spike measured how well this holds on a real account: on `gemini-3.8-flash`, the coordinator did no edits or commands of its own and handled all five scripted asks as expected ([FINDINGS.md](FINDINGS.md#a-projects-coordinator-and-threads)).
 
 ## A thread's life
 
@@ -281,17 +281,17 @@ GeminiCode runs on your machine, so nothing in a project runs while the app is c
 
 ## Measurements
 
-From [FINDINGS.md](FINDINGS.md#a-projects-coordinator-and-threads-in-one-process), gemini-cli 0.63.0, 14 Oct 2026:
+From [FINDINGS.md](FINDINGS.md#a-projects-coordinator-and-threads), with gemini-cli 0.64.0:
 
-- One process holds a project. With a coordinator and 10 threads streaming at once, a chunk arrived at most 7 ms later at p95 than with one session alone, against a 50 ms budget.
-- On `gemini-3.8-flash` the median coordinator turn took 9.4 s, all of it the model's time.
-- Each coordinator turn read a median of 28,807 input tokens for 58 output tokens. Most of that is the CLI's own system prompt and tool list, sent again every turn. That is why only your messages wake the coordinator.
+- One process holds a project. With a coordinator and five threads streaming at once, a chunk arrived 5 ms later at p95 than with one session alone, against a 50 ms budget.
+- On a real account with `gemini-3.8-flash`, the coordinator kept to its role on all five scripted asks, each thread started within the coordinator's first turn, and the median coordinator turn took 12.7 s, all of it the model's time.
+- Each coordinator turn read a median of 43,174 input tokens for 138 output tokens, because each of its model calls sends the CLI's system prompt, the tools and the conversation again. That is why only your messages wake the coordinator.
 
 ## Known limits
 
 - **Restored threads start as done.** On reopen, every thread that isn't resolved is listed as done until its session reports activity, including one that was mid-turn when the app quit. That turn is lost with the process and is not marked or resumed.
 - **A fresh coordinator session may miss its brief.** The hub decides whether to send the role brief from whether the coordinator had a saved session. If that session can't be loaded (the CLI deletes chats after 30 days without updates, by default), the agent opens a fresh one, but the hub still counts it as briefed. The tool guardrails still hold; the role rules would not be restated. Inferred from reading the code, not observed.
-- **Project notes are not wired yet.** The hub can put project memory in each wake (`ProjectContext.memory`), and has `failed` and `thread-user` events, but the extension does not supply them yet.
+- **Two thread events are never sent.** The hub can tell the coordinator that a thread failed (`failed`) or that you wrote to a thread yourself (`thread-user`), but the extension sends neither, so the coordinator learns of both only from the threads' state in its next wake.
 - **One project ID per window.** All sessions share the process's Google Cloud project.
 
 ## Code map

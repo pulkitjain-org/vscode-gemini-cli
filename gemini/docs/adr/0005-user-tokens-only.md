@@ -1,6 +1,6 @@
 # ADR 0005: Every action runs with the user's own tokens
 
-**Status:** proposed (current practice, made a rule).
+**Status:** accepted (current practice, made a rule).
 
 ## Context
 
@@ -8,7 +8,7 @@ Jira, GitLab and SonarQube actions must show in those tools' histories under the
 
 ## Decision
 
-Tokens are the user's own, stored in VS Code SecretStorage (the macOS keychain), never in settings, repositories or the agent's environment. The Jira token is scoped when the site allows it; the GitLab token is a named PAT with an expiry; Snyk and Figma use the user's signed-in CLI and desktop app. The IDE never holds a service account. The benchmark runner is the one exception and uses a dedicated seat on a self-hosted runner.
+Tokens are the user's own, stored in VS Code SecretStorage (the macOS keychain), never in settings, repositories or the agent's environment. The Jira token is scoped when the site allows it; the GitLab token is a named PAT with an expiry; Snyk and Figma use the user's signed-in CLI and desktop app. The IDE never holds a service account, and the benchmark runs on a developer's Mac under their own seat.
 
 ## Consequences
 

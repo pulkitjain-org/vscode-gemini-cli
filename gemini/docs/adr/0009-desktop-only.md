@@ -1,6 +1,6 @@
 # ADR 0009: Desktop only, no server component
 
-**Status:** accepted (a product constraint, recorded so designs stop assuming otherwise). The flow records, the Unfinished card and the cut-off notice shipped on 18 Oct 2026.
+**Status:** accepted: a product constraint, recorded so designs never assume otherwise.
 
 ## Context
 
@@ -19,8 +19,8 @@ GeminiCode is a Mac app. When the app quits or the laptop restarts, the extensio
 
 - Cold start after a reboot is a first-class row of the latency budget.
 - A resident per-user CLI process (section 7 of the plan) is bounded to one login; it is never a server.
-- The `checkResults` map and the flow panels' fields move from memory to disk.
+- The last check results and the flow panels' fields are kept on disk, so Home's Unfinished card can reopen a flow from the same inputs.
 
 ## Evidence
 
-The restart-model table in [AGENTIC-PLAN.md](../AGENTIC-PLAN.md#restart-model-what-a-quit-or-a-reboot-costs-and-what-survives), from `teamFlows.ts`, `teamFlowPanel.ts`, `sessionApprovals.ts`, `agentsView.ts` and the persistence notes in `ARCHITECTURE.md`, read on 18 Oct 2026.
+The restart-model table in [AGENTIC-PLAN.md](../AGENTIC-PLAN.md#restart-model-what-a-quit-or-a-reboot-costs-and-what-survives), from `teamFlows.ts`, `flowRecords.ts`, `sessionApprovals.ts`, `agentsView.ts` and the persistence notes in `ARCHITECTURE.md`.
