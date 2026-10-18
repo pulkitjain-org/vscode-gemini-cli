@@ -8,7 +8,7 @@
 // apart from its terminal dialog (`ModelDialog`), so the two differ: the app
 // list can name a model twice, has Flash and Flash-Lite the other way round
 // and has no Gemma models. These rules rebuild the terminal's list from what
-// the CLI sends (FINDINGS.md, "The model list in 0.63").
+// the CLI sends (FINDINGS.md, "The model list").
 
 import type { SessionChoice } from './sessionSettings';
 

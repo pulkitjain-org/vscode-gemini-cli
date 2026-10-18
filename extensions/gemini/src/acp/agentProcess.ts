@@ -69,7 +69,7 @@ export function resolveAgentCommand(options: ResolveAgentCommandOptions): AgentC
 	const modeArgs = [...options.interactive ? [] : ['--acp'], ...options.extraArgs ?? []];
 	const env: NodeJS.ProcessEnv = { ...options.env };
 	// By default the CLI starts a second Node process just to raise its heap
-	// limit, which costs about 0.6 s of the agent's startup (FINDINGS.md). For
+	// limit, which costs about 0.4 s of the agent's startup (FINDINGS.md). For
 	// the agent, set the heap ourselves and tell the CLI not to relaunch.
 	// The interactive terminal keeps the CLI's own behaviour.
 	const heapArg = !options.interactive && options.heapSizeMb ? `--max-old-space-size=${options.heapSizeMb}` : undefined;

@@ -186,9 +186,8 @@ export interface DirectClientOptions {
 	/** The CLI's OAuth client, for refreshing an expired sign-in. */
 	readonly oauthClient?: () => Promise<OAuthClient | undefined>;
 	/**
-	 * The version of the CLI whose sign-in the requests use. Code Assist allows
-	 * requests without the CLI's User-Agent, prompt id and session id only about
-	 * once a minute; with them, as many as the CLI's own (FINDINGS.md).
+	 * The version of the CLI whose sign-in the requests use. Requests carry the
+	 * CLI's User-Agent, prompt id and session id, as the CLI's own do (FINDINGS.md).
 	 */
 	readonly cliVersion?: () => Promise<string | undefined>;
 	readonly env?: NodeJS.ProcessEnv;

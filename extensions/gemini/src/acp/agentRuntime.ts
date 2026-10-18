@@ -5,8 +5,8 @@
 
 // One running agent process shared by many chat sessions. gemini-cli serves any
 // number of ACP sessions from one process, each with its own `cwd`: a new
-// session takes about 30 ms and 2.5 MB, against about 1.2 s and 230 MB for a
-// new process (FINDINGS.md). The runtime runs `initialize` once per process and
+// session takes under a second and a few MB, against about 3 s and 280 MB for
+// a new process (FINDINGS.md). The runtime runs `initialize` once per process and
 // routes the agent's messages to the session they name.
 
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';

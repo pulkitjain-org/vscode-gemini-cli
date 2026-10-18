@@ -5,13 +5,13 @@
 
 // Prompt enhancement: rewrites a chat draft into a precise prompt. It is one
 // direct request to a fast model, as inline edit makes, when those are on and
-// the sign-in allows them: about 1 KB, against the 47 KB of agent prompt and
-// tools a request through the CLI carries (FINDINGS.md). Otherwise, or when the
-// direct request fails, the Gemini CLI makes the call, in a session of its own
-// on the agent process every chat shares. Each such rewrite gets a fresh
-// session, so earlier rewrites never leak into it, in an empty folder, so the
-// CLI adds no folder context and the sessions stay out of the project's chat
-// history. Plan mode keeps the agent from changing anything.
+// the sign-in allows them: about 1 KB, against the 12,000 tokens of agent
+// prompt and tools a request through the CLI carries (FINDINGS.md). Otherwise,
+// or when the direct request fails, the Gemini CLI makes the call, in a session
+// of its own on the agent process every chat shares. Each such rewrite gets a
+// fresh session, so earlier rewrites never leak into it, in an empty folder, so
+// the CLI adds no folder context and the sessions stay out of the project's
+// chat history. Plan mode keeps the agent from changing anything.
 
 import { promises as fs } from 'node:fs';
 import type * as acp from '@agentclientprotocol/sdk';
@@ -76,7 +76,7 @@ interface ReadySession {
 }
 
 const defaultTimeoutMs = 60_000;
-/** Direct rewrites took 2.4 to 4.8 s, and up to 7.3 s in a burst of five (FINDINGS.md). */
+/** Direct rewrites took 2.5 to 4.7 s, and up to 6.2 s in a burst of five (FINDINGS.md). */
 const defaultDirectTimeoutMs = 15_000;
 /** After a direct request fails, how long rewrites skip it. */
 const directRetryAfterMs = 5 * 60_000;

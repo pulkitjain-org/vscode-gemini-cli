@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 // Starts the agent process before the first chat needs it. A cold start takes
-// about 1.2 s to `initialize` (FINDINGS.md), which the first prompt after
+// about 3 s to `initialize` (FINDINGS.md), which the first prompt after
 // launch would otherwise wait for. Only an agent that can start without
 // asking anything is started early: one set up before and still signed in,
 // since a CLI with no saved sign-in opens the sign-in flow as it starts.
