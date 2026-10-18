@@ -73,6 +73,7 @@ export class AgentService implements vscode.Disposable {
 			modelList: sessionModelList,
 			isModeAllowed: modeId => isModeAllowed(getApprovalPolicy(), modeId),
 			alwaysAsks: isConfirmToolCall,
+			onDidWriteFile: filePath => this.permissions.approvals.noteWrite(filePath),
 		});
 
 		this.disposables.push(
@@ -154,10 +155,10 @@ export class AgentService implements vscode.Disposable {
 	 * prompt runs, since the CLI reads that list once per process. Returns
 	 * whether the restart has to wait. Throws when the list cannot be updated.
 	 */
-	trustFolder(...folders: string[]): boolean {
+	async trustFolder(...folders: string[]): Promise<boolean> {
 		const file = trustedFoldersPath(process.env);
 		for (const folder of folders) {
-			trustFolder(file, folder);
+			await trustFolder(file, folder);
 			this.log.info(`Trusted ${folder} in ${file}`);
 		}
 		const waits = this.runtime.busy;
@@ -238,9 +239,9 @@ export class AgentService implements vscode.Disposable {
 	 * its own login and account-validation flows can run. The agent restarts
 	 * when the terminal closes.
 	 */
-	completeSetupInTerminal(): void {
+	async completeSetupInTerminal(): Promise<void> {
+		const command = await getAgentCommand({ interactive: true });
 		this.setupTerminal?.dispose();
-		const command = getAgentCommand({ interactive: true });
 		const useShell = command.shell;
 		this.setupTerminal = vscode.window.createTerminal({
 			name: vscode.l10n.t("Gemini setup"),
@@ -254,10 +255,10 @@ export class AgentService implements vscode.Disposable {
 	}
 
 	/** The agent's command, with its debug log pointed at a file GeminiCode reads, unless the user set one. */
-	private agentCommand(): AgentCommand {
+	private async agentCommand(): Promise<AgentCommand> {
 		this.includedFolders = includeDirectoryArgs(includedFolderPaths()).join('\n');
-		const command = getAgentCommand({ cli: this.resolveCli() });
-		if (!this.mcpDiagnostics || command.env.GEMINI_DEBUG_LOG_FILE || !this.mcpDiagnostics.reset()) {
+		const command = await getAgentCommand({ cli: await this.resolveCli() });
+		if (!this.mcpDiagnostics || command.env.GEMINI_DEBUG_LOG_FILE || !await this.mcpDiagnostics.reset()) {
 			return command;
 		}
 		if (this._mcpProblems.length) {
@@ -301,8 +302,8 @@ export class AgentService implements vscode.Disposable {
 	}
 
 	/** Picks the CLI for each process start; the sidecar asks again on every restart. */
-	private resolveCli(): CliResolution {
-		const cli = this._cli = getCliResolution();
+	private async resolveCli(): Promise<CliResolution> {
+		const cli = this._cli = await getCliResolution();
 		const where = cli.source === 'setting' ? `the ${configSection}.cliPath setting`
 			: cli.source === 'managed' ? `GeminiCode's copy ${cli.version}`
 				: cli.source === 'bundled' ? `the copy bundled with GeminiCode, ${cli.version}` : 'PATH';
@@ -391,7 +392,7 @@ export class AgentService implements vscode.Disposable {
 		}
 
 		switch (await vscode.window.showErrorMessage(message, ...actions)) {
-			case setUpInTerminal: this.completeSetupInTerminal(); break;
+			case setUpInTerminal: void this.completeSetupInTerminal(); break;
 			case setProject: await vscode.commands.executeCommand('gemini.setProjectId'); break;
 			case setCliPath: await vscode.commands.executeCommand('workbench.action.openSettings', `${configSection}.cliPath`); break;
 			case installCli: await vscode.commands.executeCommand('gemini.installCli'); break;

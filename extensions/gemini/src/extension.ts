@@ -20,7 +20,7 @@ import { CliManager } from './host/cliManager';
 import { DiffPreview } from './host/diffPreview';
 import { errorMessage } from './acp/errors';
 import { PromptEnhancer } from './acp/promptEnhancer';
-import { configSection, getWorkspaceCwd, setStorageDirs } from './host/configuration';
+import { configSection, getWorkspaceCwd, loadProductInfo, setStorageDirs } from './host/configuration';
 import { initModelList, initModelPreference } from './host/modelPreference';
 import { SetupWalkthrough, walkthroughId } from './host/setupWalkthrough';
 import { GeminiStatusBar } from './host/statusBar';
@@ -46,8 +46,9 @@ import { disposeGitIgnore } from './host/workspaceFileSystem';
 /** Finishes the writes that must outlive the window; set by activate. */
 let saveBeforeExit: (() => Promise<void>) | undefined;
 
-export function activate(context: vscode.ExtensionContext): void {
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
 	const log = vscode.window.createOutputChannel('Gemini', { log: true });
+	await loadProductInfo();
 	initModelPreference(context.globalState);
 	setStorageDirs({
 		managedCli: vscode.Uri.joinPath(context.globalStorageUri, 'gemini-cli').fsPath,

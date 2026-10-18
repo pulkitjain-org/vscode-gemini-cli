@@ -11,7 +11,7 @@
 // the agent. Checked against gemini-cli 0.62 in
 // test/acp/realAgentPolicy.test.ts.
 
-import * as fs from 'node:fs';
+import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 
 export interface ApprovalPolicy {
@@ -109,22 +109,17 @@ export function buildAdminPolicy(policy: ApprovalPolicy): string | undefined {
  * or removes it and returns none. Rewrites only when the content changed, so
  * a start costs one small read.
  */
-export function prepareAdminPolicy(dir: string, policy: ApprovalPolicy): string[] {
+export async function prepareAdminPolicy(dir: string, policy: ApprovalPolicy): Promise<string[]> {
 	const file = path.join(dir, policyFileName);
 	const content = buildAdminPolicy(policy);
 	if (!content) {
-		fs.rmSync(file, { force: true });
+		await fs.rm(file, { force: true });
 		return [];
 	}
-	let current: string | undefined;
-	try {
-		current = fs.readFileSync(file, 'utf8');
-	} catch {
-		// Not written yet.
-	}
+	const current = await fs.readFile(file, 'utf8').catch(() => undefined);
 	if (current !== content) {
-		fs.mkdirSync(dir, { recursive: true });
-		fs.writeFileSync(file, content);
+		await fs.mkdir(dir, { recursive: true });
+		await fs.writeFile(file, content);
 	}
 	// The CLI ranks a directory passed this way as admin policy.
 	return ['--admin-policy', dir];

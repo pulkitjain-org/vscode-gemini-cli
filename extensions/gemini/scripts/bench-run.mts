@@ -35,7 +35,7 @@ if (!args.cli || !args.model) {
 	process.exit(2);
 }
 const cli = path.resolve(args.cli);
-const tasks = readBenchTasks(args.tasks!, (args.only ?? '').split(',').map(s => s.trim()).filter(Boolean));
+const tasks = await readBenchTasks(args.tasks!, (args.only ?? '').split(',').map(s => s.trim()).filter(Boolean));
 if (!tasks.length) {
 	console.error(`No tasks in ${args.tasks}.`);
 	process.exit(2);

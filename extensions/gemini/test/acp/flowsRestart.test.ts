@@ -43,7 +43,8 @@ describe('suggested Jira moves', () => {
 	it('reads the ids from the team\'s defaults, numbers or strings', async () => {
 		const repo = await tempDir();
 		await fs.mkdir(path.join(repo, '.gemini'));
-		await fs.writeFile(path.join(repo, '.gemini', 'geminicode-tools.json'), JSON.stringify({ jira: { transitions: { start: 21, review: '31', done: '' } } }));
+		// With a comment, as the CLI's own settings files allow.
+		await fs.writeFile(path.join(repo, '.gemini', 'geminicode-tools.json'), `// The ACME board's transition ids.\n${JSON.stringify({ jira: { transitions: { start: 21, review: '31', done: '' } } })}`);
 		expect((await readTeamDefaults(repo)).jira?.transitions).toEqual({ start: '21', review: '31' });
 	});
 });

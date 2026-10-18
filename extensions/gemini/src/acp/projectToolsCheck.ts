@@ -41,7 +41,7 @@ export interface ProjectToolsCheckOptions {
 export async function projectToolsBlock(options: ProjectToolsCheckOptions): Promise<ProjectToolsBlock | undefined> {
 	const env = options.env ?? process.env;
 	const homedir = options.homedir ?? os.homedir();
-	if (folderTrustApplies(env, homedir) && isFolderTrusted(trustedFoldersPath(env, homedir), options.folder) !== true) {
+	if (await folderTrustApplies(env, homedir) && await isFolderTrusted(trustedFoldersPath(env, homedir), options.folder) !== true) {
 		return { kind: 'untrusted', folder: options.folder };
 	}
 	const geminiDir = path.join(env.GEMINI_CLI_HOME || homedir, '.gemini');

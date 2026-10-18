@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { AuditLog } from '../../src/acp/auditLog';
 import { GitLabClient } from '../../src/acp/gitlab';
 import { JiraClient } from '../../src/acp/jira';
-import { ChildServer, McpServerUnavailableError } from '../../src/acp/mcpStdio';
+import { ChildServer, ChildServerOptions, McpServerUnavailableError } from '../../src/acp/mcpStdio';
 import { changedFiles } from '../../src/acp/checksBranch';
 import { SnykCli } from '../../src/acp/snyk';
 import { analyzeFiles, containerSpec, findDocker, FolderChildren, pinnedReference, teamImages } from '../../src/acp/teamContainers';
@@ -38,12 +38,12 @@ async function tempDir(): Promise<string> {
 }
 
 /** A child server running the fake MCP server with `script`, and a reader for the calls it received. */
-async function child(name: string, script: FakeMcpScript) {
+async function child(name: string, script: FakeMcpScript, options: ChildServerOptions = {}) {
 	const dir = await tempDir();
 	const scriptPath = path.join(dir, 'script.json');
 	const callsPath = path.join(dir, 'calls.jsonl');
 	await fs.writeFile(scriptPath, JSON.stringify(script));
-	const server = new ChildServer(name, { command: process.execPath, args: [fakeServer, scriptPath, callsPath], env: process.env }, { startTimeoutMs: 10_000, callTimeoutMs: 10_000 });
+	const server = new ChildServer(name, { command: process.execPath, args: [fakeServer, scriptPath, callsPath], env: process.env }, { startTimeoutMs: 10_000, callTimeoutMs: 10_000, ...options });
 	children.push(server);
 	const calls = async () => (await fs.readFile(callsPath, 'utf8').catch(() => '')).split('\n').filter(Boolean).map(line => JSON.parse(line) as { name: string; arguments: Record<string, unknown> });
 	return { server, calls };
@@ -101,6 +101,13 @@ describe('the team\'s servers as children', () => {
 		});
 	});
 
+	it('waits for every call to end before stopping an idle server', async () => {
+		const { server } = await child('snyk', { tools: { snyk_sca_scan: { text: 'No vulnerable paths found.', delayMs: 300 }, snyk_version: { text: '1.1300.0' } } }, { idleMs: 50 });
+		const scan = server.call('snyk_sca_scan', { path: '/work' });
+		await server.call('snyk_version', {});
+		expect((await scan).content).toEqual([{ type: 'text', text: 'No vulnerable paths found.' }]);
+	});
+
 	it('moves a ticket through mcp-atlassian with the same audit record as the in-process connector', async () => {
 		const { server, calls } = await child('jira', {
 			tools: {
@@ -147,12 +154,13 @@ describe('the team\'s servers as children', () => {
 	});
 
 	it('runs the pinned image with the token only in the container\'s environment', () => {
-		const spec = containerSpec('/usr/local/bin/docker', teamImages.jira, { JIRA_URL: 'https://acme.atlassian.net', JIRA_API_TOKEN: 'secret-token' }, { PATH: '/usr/bin', HOME: '/Users/me' });
+		const spec = containerSpec('/opt/docker/bin/docker', teamImages.jira, { JIRA_URL: 'https://acme.atlassian.net', JIRA_API_TOKEN: 'secret-token' }, { PATH: '/usr/bin', HOME: '/Users/me' });
 		expect({ spec, docker: findDocker(file => file === '/opt/homebrew/bin/docker') }).toEqual({
 			spec: {
-				command: '/usr/local/bin/docker',
+				command: '/opt/docker/bin/docker',
 				args: ['run', '-i', '--rm', '-e', 'JIRA_URL', '-e', 'JIRA_API_TOKEN', pinnedReference(teamImages.jira)],
-				env: { PATH: '/usr/bin', HOME: '/Users/me', DOCKER_HOST: undefined, DOCKER_CONFIG: undefined, JIRA_URL: 'https://acme.atlassian.net', JIRA_API_TOKEN: 'secret-token' },
+				// Docker's folder leads the PATH, for its credential helper.
+				env: { PATH: '/opt/docker/bin:/Applications/Docker.app/Contents/Resources/bin:/usr/bin', HOME: '/Users/me', DOCKER_HOST: undefined, DOCKER_CONFIG: undefined, JIRA_URL: 'https://acme.atlassian.net', JIRA_API_TOKEN: 'secret-token' },
 			},
 			docker: '/opt/homebrew/bin/docker',
 		});

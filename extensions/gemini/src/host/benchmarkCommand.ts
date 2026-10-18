@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { existsSync, promises as fs } from 'node:fs';
+import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { BenchSummary } from '../acp/benchmark';
@@ -47,7 +47,7 @@ export class BenchmarkCommand implements vscode.Disposable {
 		const bench = await import('../acp/benchmark');
 		let tasks;
 		try {
-			tasks = bench.readBenchTasks(tasksDir);
+			tasks = await bench.readBenchTasks(tasksDir);
 		} catch (err) {
 			void vscode.window.showErrorMessage(vscode.l10n.t("Couldn't read the benchmark tasks in {0}: {1}", tasksDir, errorMessage(err)));
 			return;
@@ -78,7 +78,7 @@ export class BenchmarkCommand implements vscode.Disposable {
 				token.onCancellationRequested(() => controller.abort());
 				return bench.runBenchmark({
 					tasks,
-					agent: getAgentCommand({ ownFolderOnly: true }),
+					agent: await getAgentCommand({ ownFolderOnly: true }),
 					model,
 					geminiCodeVersion: productInfo.version,
 					cliVersion: this.service.cli?.version ?? this.service.status.agentVersion,
@@ -110,7 +110,9 @@ export class BenchmarkCommand implements vscode.Disposable {
 
 /** `gemini/bench/tasks` in the window's folder when there is exactly one, otherwise the folder the user picks. */
 async function pickTasksFolder(): Promise<string | undefined> {
-	const found = workspaceFolderPaths().map(folder => path.join(folder, 'gemini', 'bench', 'tasks')).filter(dir => existsSync(dir));
+	const candidates = workspaceFolderPaths().map(folder => path.join(folder, 'gemini', 'bench', 'tasks'));
+	const present = await Promise.all(candidates.map(dir => fs.access(dir).then(() => true, () => false)));
+	const found = candidates.filter((_, i) => present[i]);
 	if (found.length === 1) {
 		return found[0];
 	}

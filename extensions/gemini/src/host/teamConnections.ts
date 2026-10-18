@@ -261,6 +261,12 @@ export class TeamConnections implements vscode.Disposable {
 		return config ? [config] : [];
 	}
 
+	/** Forgets a removed agent: its folder and the spare session's slot bound to it. */
+	forgetAgent(agent: string): void {
+		this.folders.delete(agent);
+		this.server.unbind(agent);
+	}
+
 	get serving(): boolean {
 		return !!this.connectedSet.size && this.server.listening;
 	}

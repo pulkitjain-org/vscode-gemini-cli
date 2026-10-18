@@ -167,6 +167,8 @@ export class ChildServer {
 
 	private client: Promise<McpStdioClient> | undefined;
 	private idle: ReturnType<typeof setTimeout> | undefined;
+	/** Calls still running; the idle stop waits for none. */
+	private inFlight = 0;
 	private readonly startTimeoutMs: number;
 	private readonly callTimeoutMs: number;
 	private readonly idleMs: number;
@@ -184,6 +186,7 @@ export class ChildServer {
 	 */
 	async call(tool: string, args: Record<string, unknown>): Promise<McpCallResult> {
 		clearTimeout(this.idle);
+		this.inFlight++;
 		try {
 			const client = await this.running();
 			try {
@@ -192,7 +195,9 @@ export class ChildServer {
 				throw err instanceof McpServerUnavailableError ? new Error(`The ${this.name} server stopped during ${tool}: ${err.message} Check whether it went through before trying again.`) : err;
 			}
 		} finally {
-			this.idle = setTimeout(() => this.stop(), this.idleMs);
+			if (--this.inFlight === 0) {
+				this.idle = setTimeout(() => this.stop(), this.idleMs);
+			}
 		}
 	}
 

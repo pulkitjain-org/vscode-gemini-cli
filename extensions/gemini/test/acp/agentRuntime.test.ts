@@ -250,6 +250,18 @@ describe('AgentRuntime', () => {
 		expect(a.texts).toEqual(['closed:fake-session-1']);
 	});
 
+	it('closes the sessions a chat leaves: the old one after a new session, and its own when it goes', async () => {
+		start({ initialize: { agentCapabilities: { sessionCapabilities: { close: {} } } }, turns: [[{ step: 'closed' }], [{ step: 'closed' }]] });
+		await ready(runtime!);
+		const a = await session('/work/a');
+		const b = await session('/work/b');
+		await a.client.newSession();
+		b.client.dispose();
+		await new Promise(resolve => setTimeout(resolve, 150));
+		await a.client.prompt('which');
+		expect(a.texts).toEqual(['closed:fake-session-1,fake-session-2']);
+	});
+
 	it('does not give a prepared session to a chat with other servers', async () => {
 		start({});
 		await ready(runtime!);

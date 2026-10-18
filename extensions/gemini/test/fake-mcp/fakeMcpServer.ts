@@ -16,7 +16,7 @@ export interface FakeMcpScript {
 	/** Exit with this code before answering anything, like a container that can't start. */
 	readonly exitCode?: number;
 	/** Each tool's answer: text, or JSON sent as text as the real servers do, or an error. */
-	readonly tools: Readonly<Record<string, { readonly text?: string; readonly json?: unknown; readonly isError?: boolean }>>;
+	readonly tools: Readonly<Record<string, { readonly text?: string; readonly json?: unknown; readonly isError?: boolean; /** Answers after this long, like a scan. */ readonly delayMs?: number }>>;
 	/** Exit while answering this tool, after the call arrived. */
 	readonly exitDuring?: string;
 }
@@ -68,7 +68,8 @@ function handle(message: { id?: number; method: string; params?: { name?: string
 				return send({ jsonrpc: '2.0', id: message.id, error: { code: -32602, message: `Unknown tool: ${name}` } });
 			}
 			const text = answer.text ?? JSON.stringify(answer.json ?? {});
-			return send({ jsonrpc: '2.0', id: message.id, result: { content: [{ type: 'text', text }], ...answer.isError ? { isError: true } : {} } });
+			const result = { jsonrpc: '2.0', id: message.id, result: { content: [{ type: 'text', text }], ...answer.isError ? { isError: true } : {} } };
+			return void setTimeout(() => send(result), answer.delayMs ?? 0);
 		}
 		default:
 			return send({ jsonrpc: '2.0', id: message.id, error: { code: -32601, message: `No method ${message.method}` } });

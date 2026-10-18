@@ -15,7 +15,7 @@ const initializeTimeoutMs = 30_000;
  * reports what the agent advertises, and stops the process again.
  */
 export async function checkAgent(log: vscode.LogOutputChannel): Promise<void> {
-	const command = getAgentCommand();
+	const command = await getAgentCommand();
 	log.info(`Starting agent: ${command.command} ${command.args.join(' ')}`);
 
 	const child = spawnAgent(command, getWorkspaceCwd());

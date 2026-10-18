@@ -68,7 +68,7 @@ export async function installCli(options: InstallOptions): Promise<string> {
 	if (typeof version !== 'string' || !isVersion(version) || typeof tarball !== 'string' || typeof integrity !== 'string') {
 		throw new Error(`The registry has no usable ${cliPackageName} ${options.version}.`);
 	}
-	if (listManagedVersions(options.managedDir).includes(version)) {
+	if ((await listManagedVersions(options.managedDir)).includes(version)) {
 		return version;
 	}
 	const response = await options.fetch(tarball, { signal: options.signal });

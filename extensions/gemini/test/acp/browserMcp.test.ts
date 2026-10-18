@@ -486,8 +486,9 @@ describe('BrowserMcpServer', () => {
 		await post(slot.url, auth, navigate);
 		expect(browser.calls).toEqual(['open a1 http://localhost:5173/']);
 
+		// A removed agent's slot is forgotten: it no longer answers.
 		server.unbind('a1');
-		expect((await post(slot.url, auth, navigate)).json).toMatchObject({ result: { isError: true } });
+		expect((await post(slot.url, auth, navigate)).status).toBe(404);
 		expect(browser.calls).toEqual(['open a1 http://localhost:5173/']);
 	});
 

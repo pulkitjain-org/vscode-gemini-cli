@@ -12,7 +12,7 @@
 // it is loaded only when a benchmark starts, so the ACP SDK it needs stays out of activation.
 
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { Readable, Writable } from 'node:stream';
@@ -91,11 +91,11 @@ export interface BenchOptions {
 }
 
 /** Reads every task file in `dir`, or only the keys in `only` when it names any. */
-export function readBenchTasks(dir: string, only: readonly string[] = []): BenchTask[] {
+export async function readBenchTasks(dir: string, only: readonly string[] = []): Promise<BenchTask[]> {
 	const wanted = new Set(only);
-	return readdirSync(dir).filter(f => f.endsWith('.json')).sort()
-		.map(f => JSON.parse(readFileSync(path.join(dir, f), 'utf8')) as BenchTask)
-		.filter(t => !wanted.size || wanted.has(t.key));
+	const files = (await fs.readdir(dir)).filter(f => f.endsWith('.json')).sort();
+	const tasks = await Promise.all(files.map(async f => JSON.parse(await fs.readFile(path.join(dir, f), 'utf8')) as BenchTask));
+	return tasks.filter(t => !wanted.size || wanted.has(t.key));
 }
 
 /** The results file's name: `<GeminiCode version>-<CLI version>-<model>.json`, with `dev` for a build that has no version. */
@@ -107,7 +107,7 @@ export function benchResultsFileName(summary: Pick<BenchSummary, 'geminiCodeVers
 /** Runs every task in turn and sums them up. A cancelled run returns the tasks finished so far. */
 export async function runBenchmark(options: BenchOptions): Promise<BenchSummary> {
 	const log = options.log ?? (() => { });
-	const work = options.workDir ?? mkdtempSync(path.join(tmpdir(), 'geminicode-bench-'));
+	const work = options.workDir ?? await fs.mkdtemp(path.join(tmpdir(), 'geminicode-bench-'));
 	const results: BenchResult[] = [];
 	try {
 		for (const [index, task] of options.tasks.entries()) {
@@ -119,11 +119,11 @@ export async function runBenchmark(options: BenchOptions): Promise<BenchSummary>
 			const result = await runTask(task, path.join(work, task.key), options);
 			results.push(result);
 			log(`${task.key}: ${result.completed ? 'completed' : 'not completed'}, ${result.requests} requests, ${result.tokensIn} in / ${result.tokensOut} out, first text ${result.firstTextMs ?? '-'} ms, ${Math.round(result.wallMs / 1000)} s${result.error ? `, error: ${result.error}` : ''}`);
-			rmSync(path.join(work, task.key), { recursive: true, force: true });
+			await fs.rm(path.join(work, task.key), { recursive: true, force: true });
 		}
 	} finally {
 		if (!options.workDir) {
-			rmSync(work, { recursive: true, force: true });
+			await fs.rm(work, { recursive: true, force: true });
 		}
 	}
 	return summarize(results, options);

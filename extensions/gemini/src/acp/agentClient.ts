@@ -87,6 +87,8 @@ export interface AgentClientOptions {
 	readonly isModeAllowed?: (modeId: string) => boolean;
 	/** Requests the user answers even in YOLO: the confirm class, which the admin policy makes ask in every mode. */
 	readonly alwaysAsks?: (params: acp.RequestPermissionRequest) => boolean;
+	/** Told after the agent wrote a file through the client. */
+	readonly onDidWriteFile?: (filePath: string) => void;
 	/**
 	 * Finds a saved session in the CLI's files: how many updates its replay
 	 * has. The CLI's own files when unset.
@@ -229,10 +231,15 @@ export class AgentClient {
 
 	/** Starts a fresh session on the running agent; the old conversation is gone for the agent too. */
 	async newSession(): Promise<void> {
-		if (this._state.kind !== 'ready' || this.runtime.state.kind !== 'ready') {
+		const state = this._state;
+		if (state.kind !== 'ready' || this.runtime.state.kind !== 'ready') {
 			throw new Error('The agent is not ready.');
 		}
+		const old = this.connection;
 		await this.openSession(false);
+		if (old) {
+			closeSession(old, state.agent, state.sessionId);
+		}
 	}
 
 	/**
@@ -333,6 +340,11 @@ export class AgentClient {
 
 	dispose(): void {
 		this.runtimeListener.dispose();
+		// The agent keeps an open session in memory until it exits; the chat reopens it from the CLI's file when it comes back.
+		const state = this._state;
+		if (state.kind === 'ready' && this.connection) {
+			closeSession(this.connection, state.agent, state.sessionId);
+		}
 		this.dropSession();
 		this.onDidChangeStateEmitter.dispose();
 		this.onDidReceiveEventEmitter.dispose();
@@ -392,6 +404,11 @@ export class AgentClient {
 			}
 			const { connection, agent, session, savedSessionId, replayUpdates } = await this.loadOrCreate(resume ? this.resumeSessionId : undefined);
 			if (generation !== this.generation) {
+				// A newer open took over while this one waited: nobody will use a new session it opened.
+				// A reopened one keeps its saved id, which the newer open may be reopening too.
+				if (replayUpdates === null) {
+					closeSession(connection, agent, session.sessionId);
+				}
 				return;
 			}
 			this.connection = connection;
@@ -404,6 +421,7 @@ export class AgentClient {
 				sessionUpdate: update => this.onSessionUpdate(update),
 				requestPermission: params => this.requestPermission(params),
 				fileSystem: this.options.fileSystem,
+				onDidWriteFile: filePath => this.options.onDidWriteFile?.(filePath),
 			});
 			this.resumeSessionId = savedSessionId;
 			// Model and mode together rather than one after the other: they are independent, and each is a round trip before the chat is ready.
@@ -591,7 +609,7 @@ export class AgentClient {
 		}
 	}
 
-	/** Stops listening to the current session. The CLI has no way to close one, so it stays in the agent's memory. */
+	/** Stops listening to the current session; it stays in the agent's memory unless closed (`closeSession`). */
 	private dropSession(): void {
 		this.endReplay();
 		this.generation++;
@@ -680,6 +698,13 @@ export class AgentClient {
 		}
 		this._state = state;
 		this.onDidChangeStateEmitter.fire(state);
+	}
+}
+
+/** Frees a session the agent keeps in memory, when it can close sessions (gemini-cli 0.64 can); never throws. */
+function closeSession(connection: AgentConnection, agent: acp.InitializeResponse, sessionId: string): void {
+	if (agent.agentCapabilities?.sessionCapabilities?.close) {
+		void connection.close(sessionId).catch(() => undefined);
 	}
 }
 

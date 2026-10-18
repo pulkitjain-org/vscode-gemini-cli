@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { spawnAgent } from '../../src/acp/agentProcess';
 import { AgentSidecar, SidecarState } from '../../src/acp/sidecar';
 import { fakeAgentCommand, waitFor } from '../helpers';
 
@@ -59,13 +60,26 @@ describe('AgentSidecar', () => {
 
 	it('stops without treating the exit as a crash', async () => {
 		sidecar = new AgentSidecar({ command: () => fakeAgentCommand(), cwd: undefined, restartDelaysMs: [10] });
+		const started = waitFor(sidecar.onDidChangeState, state => state.kind === 'running');
 		sidecar.start();
-		const running = sidecar.state;
+		const running = await started;
 		expect(running.kind).toBe('running');
 		const exited = new Promise(resolve => running.kind === 'running' && running.process.once('exit', resolve));
 		sidecar.stop();
 		await exited;
 		expect(sidecar.state.kind).toBe('stopped');
+	});
+
+	it('starts nothing when stopped while its command was still being read', async () => {
+		let release!: () => void;
+		const read = new Promise<void>(resolve => release = resolve);
+		let spawned = 0;
+		sidecar = new AgentSidecar({ command: async () => { await read; return fakeAgentCommand(); }, cwd: undefined, spawn: (command, cwd) => { spawned++; return spawnAgent(command, cwd); } });
+		sidecar.start();
+		sidecar.stop();
+		release();
+		await new Promise(resolve => setTimeout(resolve, 20));
+		expect([spawned, sidecar.state.kind]).toEqual([0, 'stopped']);
 	});
 
 	it('forwards stderr line by line', async () => {

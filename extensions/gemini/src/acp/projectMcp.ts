@@ -10,10 +10,8 @@
 // thread's token can't act as the coordinator. Nothing runs until a project
 // opens, and every call is answered from memory.
 
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import * as http from 'node:http';
-import type { AddressInfo } from 'node:net';
 import type { McpTool, McpToolResult } from './browserMcp';
+import { LocalMcpServer, McpHttpConfig } from './localMcpServer';
 
 /** Who is calling: a project's coordinator, or one of its threads. */
 export type ProjectCaller = { readonly role: 'coordinator'; readonly project: string } | { readonly role: 'thread'; readonly project: string; readonly thread: string };
@@ -105,58 +103,52 @@ export function isProjectToolTitle(title: string, tools: readonly McpTool[]): bo
 	return tools.some(tool => title === tool.name || title.startsWith(`${tool.name}(`));
 }
 
-interface JsonRpcRequest {
-	readonly jsonrpc?: string;
-	readonly id?: string | number | null;
-	readonly method?: string;
-	readonly params?: Record<string, unknown>;
-}
-
-const maxBodyBytes = 1024 * 1024;
 const idPattern = /^[\w-]{1,80}$/;
 
 /** The MCP endpoint: POST `/mcp/<project>/coordinator` or `/mcp/<project>/thread/<id>` with `Authorization: Bearer <token>`. */
 export class ProjectMcpServer {
 
-	private readonly secret = randomBytes(32);
-	private server: http.Server | undefined;
-	private port: number | undefined;
-	private starting: Promise<number> | undefined;
+	private readonly server: LocalMcpServer<ProjectCaller>;
 	/** The routes whose tools the CLI has listed since the server started, and who waits on one. */
 	private readonly listed = new Set<string>();
 	private readonly listeners = new Map<string, Set<() => void>>();
 	/** The routes the CLI has sent anything to, for telling a session that never connected from one that connected and stopped. */
 	private readonly contacted = new Set<string>();
 
-	constructor(private readonly host: ProjectToolHost, private readonly version: string) { }
+	constructor(private readonly host: ProjectToolHost, version: string) {
+		this.server = new LocalMcpServer<ProjectCaller>({
+			name: projectServerName,
+			version,
+			callerOf,
+			instructions: caller => caller.role === 'coordinator'
+				? 'Tools to start and steer the threads of a GeminiCode project.'
+				: 'Tools to report back to the coordinator of your GeminiCode project.',
+			tools: caller => this.toolsFor(caller),
+			call: async (caller, name, args) => this.toolsFor(caller).some(tool => tool.name === name)
+				? this.host.call(caller, name, args)
+				: { content: [{ type: 'text', text: `No tool named ${name}.` }], isError: true },
+			onMessages: (route, messages) => {
+				this.contacted.add(route);
+				if (messages.some(m => m?.method === 'tools/list')) {
+					this.listed.add(route);
+					this.listeners.get(route)?.forEach(listener => listener());
+				}
+			},
+		});
+	}
 
 	start(): Promise<number> {
-		this.starting ??= new Promise<http.Server>((resolve, reject) => {
-			const server = http.createServer((req, res) => void this.handle(req, res));
-			server.once('error', reject);
-			server.listen(0, '127.0.0.1', () => resolve(server));
-		}).then(server => {
-			this.server = server;
-			this.port = (server.address() as AddressInfo).port;
-			return this.port;
-		}, err => {
-			this.starting = undefined;
-			throw err;
-		});
-		return this.starting;
+		return this.server.start();
 	}
 
 	get listening(): boolean {
-		return !!this.port;
+		return this.server.listening;
 	}
 
 	/** The ACP `mcpServers` entry for `caller`; undefined until started. */
-	configFor(caller: ProjectCaller): { type: 'http'; name: string; url: string; headers: { name: string; value: string }[] } | undefined {
+	configFor(caller: ProjectCaller): McpHttpConfig | undefined {
 		const route = routeOf(caller);
-		if (!this.port || !route) {
-			return undefined;
-		}
-		return { type: 'http', name: projectServerName, url: `http://127.0.0.1:${this.port}/mcp/${route}`, headers: [{ name: 'Authorization', value: `Bearer ${this.tokenFor(route)}` }] };
+		return route ? this.server.configFor(route) : undefined;
 	}
 
 	/**
@@ -198,89 +190,12 @@ export class ProjectMcpServer {
 	}
 
 	dispose(): void {
-		this.starting = undefined;
-		this.server?.close();
-		this.server?.closeAllConnections();
-		this.server = undefined;
-		this.port = undefined;
+		this.server.dispose();
 	}
 
-	private tokenFor(route: string): string {
-		return createHmac('sha256', this.secret).update(route).digest('base64url');
-	}
-
-	private async handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-		const route = /^\/mcp\/(.+)$/.exec(req.url ?? '')?.[1] ?? '';
-		const caller = callerOf(route);
-		if (!caller) {
-			return void res.writeHead(404).end();
-		}
-		const expected = Buffer.from(`Bearer ${this.tokenFor(route)}`);
-		const given = Buffer.from(req.headers.authorization ?? '');
-		if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
-			return void res.writeHead(401).end();
-		}
-		this.contacted.add(route);
-		if (req.method === 'DELETE') {
-			return void res.writeHead(200).end();
-		}
-		if (req.method !== 'POST') {
-			return void res.writeHead(405, { Allow: 'POST, DELETE' }).end();
-		}
-		let body: unknown;
-		try {
-			body = JSON.parse(await readBody(req));
-		} catch {
-			return void reply(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
-		}
-		const messages = (Array.isArray(body) ? body : [body]) as JsonRpcRequest[];
-		if (messages.some(m => m?.method === 'tools/list')) {
-			this.listed.add(route);
-			this.listeners.get(route)?.forEach(listener => listener());
-		}
-		const answers = (await Promise.all(messages.map(m => this.answer(caller, m)))).filter(a => a !== undefined);
-		if (!answers.length) {
-			return void res.writeHead(202).end();
-		}
-		reply(res, 200, Array.isArray(body) ? answers : answers[0]);
-	}
-
-	private async answer(caller: ProjectCaller, message: JsonRpcRequest): Promise<unknown> {
-		if (!message || typeof message !== 'object' || message.id === undefined || message.id === null) {
-			return undefined;
-		}
-		const ok = (result: unknown) => ({ jsonrpc: '2.0', id: message.id, result });
-		const tools = caller.role === 'coordinator' ? coordinatorTools
+	private toolsFor(caller: ProjectCaller): readonly McpTool[] {
+		return caller.role === 'coordinator' ? coordinatorTools
 			: this.host.multiRepo?.(caller) ? threadTools : threadTools.filter(tool => tool.name !== 'add_repo');
-		switch (message.method) {
-			case 'initialize':
-				return ok({
-					protocolVersion: typeof message.params?.protocolVersion === 'string' ? message.params.protocolVersion : '2025-06-18',
-					capabilities: { tools: {} },
-					serverInfo: { name: projectServerName, version: this.version },
-					instructions: caller.role === 'coordinator'
-						? 'Tools to start and steer the threads of a GeminiCode project.'
-						: 'Tools to report back to the coordinator of your GeminiCode project.',
-				});
-			case 'ping':
-				return ok({});
-			case 'tools/list':
-				return ok({ tools });
-			case 'tools/call': {
-				const name = typeof message.params?.name === 'string' ? message.params.name : '';
-				if (!tools.some(tool => tool.name === name)) {
-					return ok({ content: [{ type: 'text', text: `No tool named ${name}.` }], isError: true });
-				}
-				const args = message.params?.arguments;
-				try {
-					return ok(await this.host.call(caller, name, typeof args === 'object' && args !== null && !Array.isArray(args) ? args as Record<string, unknown> : {}));
-				} catch (err) {
-					return ok({ content: [{ type: 'text', text: err instanceof Error ? err.message : String(err) }], isError: true });
-				}
-			}
-			default:
-				return { jsonrpc: '2.0', id: message.id, error: { code: -32601, message: `Method not found: ${message.method}` } };
-		}
 	}
 }
 
@@ -298,26 +213,4 @@ function callerOf(route: string): ProjectCaller | undefined {
 	}
 	const thread = /^([\w-]{1,80})\/thread\/([\w-]{1,80})$/.exec(route);
 	return thread ? { role: 'thread', project: thread[1], thread: thread[2] } : undefined;
-}
-
-function readBody(req: http.IncomingMessage): Promise<string> {
-	return new Promise((resolve, reject) => {
-		const chunks: Buffer[] = [];
-		let size = 0;
-		req.on('data', (chunk: Buffer) => {
-			size += chunk.length;
-			if (size > maxBodyBytes) {
-				reject(new Error('Too large'));
-				req.destroy();
-				return;
-			}
-			chunks.push(chunk);
-		});
-		req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-		req.on('error', reject);
-	});
-}
-
-function reply(res: http.ServerResponse, status: number, body: unknown): void {
-	res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
 }

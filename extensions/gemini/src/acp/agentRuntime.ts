@@ -35,6 +35,8 @@ export interface SessionHandlers {
 	requestPermission(params: acp.RequestPermissionRequest): Promise<acp.RequestPermissionResponse>;
 	/** Overrides the runtime's file handlers for this session, for example to give it other roots. */
 	readonly fileSystem?: FileSystemHandlers;
+	/** Told after the agent wrote a file through the client, such as to let shell approvals lapse. */
+	onDidWriteFile?(filePath: string): void;
 }
 
 export interface AgentRuntimeOptions {
@@ -372,9 +374,14 @@ export class AgentRuntime {
 				const read = handlersFor(params.sessionId).readTextFile;
 				return read ? read(params) : Promise.reject(unsupported('fs/read_text_file'));
 			},
-			writeTextFile: params => {
+			writeTextFile: async params => {
 				const write = handlersFor(params.sessionId).writeTextFile;
-				return write ? write(params) : Promise.reject(unsupported('fs/write_text_file'));
+				if (!write) {
+					throw unsupported('fs/write_text_file');
+				}
+				const written = await write(params);
+				this.sessions.get(params.sessionId)?.onDidWriteFile?.(params.path);
+				return written;
 			},
 		};
 	}

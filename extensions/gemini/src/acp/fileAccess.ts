@@ -38,10 +38,14 @@ const SECRET_FILE_PATTERNS: readonly RegExp[] = [
 	/^id_(rsa|dsa|ecdsa|ed25519)$/,
 	/^\.(npmrc|pypirc|netrc|git-credentials|htpasswd)$/,
 	/^credentials(\.json)?$/,
+	// Google Cloud keys and sign-ins, which a Gemini project's repository is likely to hold by mistake.
+	/^application_default_credentials\.json$/,
+	/service[-_]?account.*\.json$/,
+	/^(kubeconfig|\.dockercfg|\.vault-token)$/,
 ];
 
 /** Directories whose contents are secret or not the agent's to touch. */
-const SECRET_DIRECTORIES: ReadonlySet<string> = new Set(['.ssh', '.aws', '.gnupg', '.git']);
+const SECRET_DIRECTORIES: ReadonlySet<string> = new Set(['.ssh', '.aws', '.gnupg', '.git', '.kube', '.docker', 'gcloud']);
 
 /** Why a (workspace-relative) path is treated as a secret, or `undefined` if it is not. */
 export function secretPathReason(filePath: string): string | undefined {

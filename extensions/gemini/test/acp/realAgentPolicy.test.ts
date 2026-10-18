@@ -96,7 +96,7 @@ describe.skipIf(!cliPath)('gemini --acp with a GeminiCode admin policy', () => {
 		for (const key of Object.keys(env).filter(k => k.startsWith('VITEST') || /^https?_proxy$/i.test(k))) {
 			delete env[key];
 		}
-		const extraArgs = prepareAdminPolicy(path.join(home, 'geminicode-policy'), policy);
+		const extraArgs = await prepareAdminPolicy(path.join(home, 'geminicode-policy'), policy);
 		child = spawnAgent(resolveAgentCommand({ cliPath, execPath: process.execPath, env, platform: process.platform, extraArgs }), work);
 		child.stderr.resume();
 		let permissions = 0;

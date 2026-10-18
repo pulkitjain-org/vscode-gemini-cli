@@ -20,6 +20,7 @@
 // changes.
 
 import { existsSync } from 'node:fs';
+import * as path from 'node:path';
 import { ChildServer, McpServerUnavailableError, StdioServerSpec } from './mcpStdio';
 
 /** An image the adapter runs, pinned by digest, with the tag it was read from. */
@@ -59,8 +60,18 @@ export function containerSpec(docker: string, pin: PinnedImage, env: Readonly<Re
 	return {
 		command: docker,
 		args: ['run', '-i', '--rm', ...mounts.flatMap(mount => ['-v', mount]), ...Object.keys(env).flatMap(name => ['-e', name]), pinnedReference(pin)],
-		env: { PATH: base.PATH, HOME: base.HOME, DOCKER_HOST: base.DOCKER_HOST, DOCKER_CONFIG: base.DOCKER_CONFIG, ...env },
+		// Docker's folders lead the PATH: it runs its credential helper (docker-credential-desktop) from
+		// there, even for a public image, and an app opened from the Dock has a short PATH.
+		env: { PATH: [...dockerFolders(docker), base.PATH].filter(Boolean).join(path.delimiter), HOME: base.HOME, DOCKER_HOST: base.DOCKER_HOST, DOCKER_CONFIG: base.DOCKER_CONFIG, ...env },
 	};
+}
+
+/** Docker Desktop's own bin folder, where /usr/local/bin/docker links to and its credential helper lives. */
+const dockerDesktopBin = '/Applications/Docker.app/Contents/Resources/bin';
+
+/** The folder of `docker`, and Docker Desktop's bin folder. */
+function dockerFolders(docker: string): string[] {
+	return [...new Set([path.dirname(docker), dockerDesktopBin])];
 }
 
 export function jiraContainer(docker: string, account: { readonly site: string; readonly email: string; readonly token: string }): ChildServer {

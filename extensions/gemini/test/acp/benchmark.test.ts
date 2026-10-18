@@ -75,6 +75,6 @@ describe('benchmark', () => {
 			await fs.writeFile(path.join(dir, `${key}.json`), JSON.stringify({ key, repo: 'r', baseSha: 's', prompt: 'p', grader: { command: 'true' } }));
 		}
 		await fs.writeFile(path.join(dir, 'README.txt'), 'not a task');
-		expect([readBenchTasks(dir).map(t => t.key), readBenchTasks(dir, ['ACME-2']).map(t => t.key)]).toEqual([['ACME-1', 'ACME-2'], ['ACME-2']]);
+		expect([(await readBenchTasks(dir)).map(t => t.key), (await readBenchTasks(dir, ['ACME-2'])).map(t => t.key)]).toEqual([['ACME-1', 'ACME-2'], ['ACME-2']]);
 	});
 });

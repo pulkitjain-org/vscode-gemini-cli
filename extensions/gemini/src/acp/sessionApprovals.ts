@@ -25,6 +25,25 @@ const wrapperPrograms = new Set([
 	'ruby', 'php', 'lua', 'npx', 'bunx', 'pnpx', 'osascript', 'watch', 'parallel', 'script', 'unbuffer', 'stdbuf', 'chroot',
 ]);
 
+/**
+ * Programs that run what a file in the workspace defines (a package.json
+ * script, a Makefile target, a Gradle task). An approval of one lapses when
+ * the agent writes such a file, as gemini-cli's own check asks again for a
+ * build command after build files changed.
+ */
+const taskRunners = new Set([
+	'npm', 'pnpm', 'yarn', 'make', 'gmake', 'gradle', 'mvn', 'cargo', 'go', 'rake', 'bundle', 'composer', 'dotnet',
+	'just', 'task', 'tox', 'nox', 'poetry', 'pipenv', 'uv', 'sbt', 'mix', 'pytest', 'swift', 'xcodebuild', 'ant',
+]);
+
+/** The files that define what a task runner runs, by name. */
+const buildFile = /^(package\.json|(gnu)?makefile|.+\.mk|(build|settings)\.gradle(\.kts)?|gradle\.properties|pom\.xml|cargo\.toml|build\.rs|go\.mod|rakefile|gemfile|composer\.json|.+\.(cs|fs|vb)proj|directory\.build\.(props|targets)|justfile|taskfile\.ya?ml|tox\.ini|noxfile\.py|pyproject\.toml|setup\.(py|cfg)|conftest\.py|pytest\.ini|pipfile|\.yarnrc\.yml|mix\.exs|build\.sbt|package\.swift|build\.xml)$/i;
+
+/** Whether `filePath` defines what a build or task runner runs. */
+export function isBuildFile(filePath: string): boolean {
+	return buildFile.test(filePath.split(/[\\/]/).pop() ?? '');
+}
+
 /** `NAME=value` prefixes that only change formatting; any other can make a program run code (`GIT_SSH_COMMAND`, `LD_PRELOAD`). */
 const harmlessVariable = /^(LC_\w+|LANG|LANGUAGE|TZ|NO_COLOR|FORCE_COLOR|CLICOLOR|CI|TERM|COLUMNS|LINES)$/;
 
@@ -208,6 +227,19 @@ export class SessionApprovals {
 
 	forget(program: string): void {
 		this.programs.delete(program);
+	}
+
+	/**
+	 * The agent wrote `filePath`. A build file changes what a task runner
+	 * runs, so the approved task runners ask again; returns the ones that lapsed.
+	 */
+	noteWrite(filePath: string): readonly string[] {
+		if (!isBuildFile(filePath)) {
+			return [];
+		}
+		const lapsed = [...this.programs].filter(program => taskRunners.has(program.split('/').pop()!));
+		lapsed.forEach(program => this.programs.delete(program));
+		return lapsed;
 	}
 
 	clear(): void {

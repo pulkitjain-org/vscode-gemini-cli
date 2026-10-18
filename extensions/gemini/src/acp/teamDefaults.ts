@@ -15,6 +15,7 @@
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
+import { stripJsonComments } from './projectSettings';
 
 export const teamDefaultsFile = path.join('.gemini', 'geminicode-tools.json');
 
@@ -63,7 +64,7 @@ export function suggestedTransition(moves: readonly { readonly id: string; reado
 	return moves.find(m => m.to.toLowerCase() === wanted || m.name.toLowerCase() === wanted)?.id;
 }
 
-/** The defaults in `folder` (a repository root), or {} when it has none or they don't parse. */
+/** The defaults in `folder` (a repository root), or {} when it has none or they don't parse; comments are allowed, as in the CLI's settings. */
 export async function readTeamDefaults(folder: string): Promise<TeamDefaults> {
 	const file = path.join(folder, teamDefaultsFile);
 	let text: string;
@@ -73,7 +74,7 @@ export async function readTeamDefaults(folder: string): Promise<TeamDefaults> {
 		return {};
 	}
 	try {
-		return { ...sanitize(JSON.parse(text)), file };
+		return { ...sanitize(JSON.parse(stripJsonComments(text))), file };
 	} catch {
 		return {};
 	}

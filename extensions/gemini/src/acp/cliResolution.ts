@@ -11,7 +11,7 @@
 // version by locking those settings through policy, which the workbench
 // applies before the extension reads them.
 
-import * as fs from 'node:fs';
+import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 
 export type CliSource = 'setting' | 'managed' | 'bundled' | 'path';
@@ -36,18 +36,17 @@ export interface ResolveCliOptions {
 	/** The folder holding the copy shipped with the app, laid out like `managedDir`. */
 	readonly bundledDir?: string;
 	/** Defaults to the file system; tests pass a fake. */
-	readonly listVersions?: (managedDir: string) => readonly string[];
+	readonly listVersions?: (managedDir: string) => Promise<readonly string[]> | readonly string[];
 }
 
-export function resolveCli(options: ResolveCliOptions): CliResolution {
+export async function resolveCli(options: ResolveCliOptions): Promise<CliResolution> {
 	const cliPath = options.cliPath?.trim();
 	if (cliPath) {
 		return { cliPath, source: 'setting' };
 	}
 	const wanted = options.version?.trim() || undefined;
 	const list = options.listVersions ?? listManagedVersions;
-	const installed = list(options.managedDir);
-	const bundled = options.bundledDir ? list(options.bundledDir) : [];
+	const [installed, bundled] = await Promise.all([list(options.managedDir), options.bundledDir ? list(options.bundledDir) : []]);
 	const managed = wanted ? installed.find(v => v === wanted) : newest(installed);
 	const shipped = wanted ? bundled.find(v => v === wanted) : newest(bundled);
 	const bundledIsNewer = !wanted && !!managed && !!shipped && compareVersions(shipped, managed) > 0;
@@ -68,14 +67,15 @@ export function managedEntryPoint(managedDir: string, version: string): string {
 }
 
 /** Installed versions: folders named like a version that hold an entry point. One directory read, plus a stat per folder. */
-export function listManagedVersions(managedDir: string): string[] {
+export async function listManagedVersions(managedDir: string): Promise<string[]> {
 	let names: string[];
 	try {
-		names = fs.readdirSync(managedDir);
+		names = await fs.readdir(managedDir);
 	} catch {
 		return [];
 	}
-	return names.filter(name => parseVersion(name) && fs.existsSync(managedEntryPoint(managedDir, name)));
+	const held = await Promise.all(names.map(async name => !!parseVersion(name) && await fs.access(managedEntryPoint(managedDir, name)).then(() => true, () => false)));
+	return names.filter((_, i) => held[i]);
 }
 
 function newest(versions: readonly string[]): string | undefined {

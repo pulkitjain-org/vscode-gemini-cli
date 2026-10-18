@@ -80,7 +80,7 @@ export interface ChatHost {
 	/** Stops the current turn. */
 	cancel(): Promise<void>;
 	/** Trusts `folder` for the CLI and restarts the agent; returns whether the restart waits for running prompts. */
-	trustFolder(folder: string): boolean;
+	trustFolder(folder: string): Promise<boolean>;
 	/** Writes to the Gemini log. */
 	writeLog?(message: string): void;
 }
@@ -1771,7 +1771,7 @@ export class ChatController implements vscode.Disposable {
 			return;
 		}
 		this.service.client.setModeOnNextSession(modeId);
-		const waits = this.service.trustFolder(folder);
+		const waits = await this.service.trustFolder(folder);
 		this.transcript.addNotice(waits
 			? vscode.l10n.t("Folder trusted. The agent restarts in {0} mode once no agent is working.", modeName)
 			: vscode.l10n.t("Folder trusted. Restarting the agent in {0} mode.", modeName), 'info');

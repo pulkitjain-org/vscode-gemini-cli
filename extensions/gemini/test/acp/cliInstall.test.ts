@@ -61,7 +61,7 @@ describe('installCli', () => {
 		expect(version).toBe('0.62.0');
 		expect(fs.readdirSync(path.join(managedDir, '0.62.0')).sort()).toEqual(['bundle', 'package.json']);
 		expect(fs.readFileSync(path.join(managedDir, '0.62.0', 'bundle', 'chunk.js'), 'utf8')).toBe('x');
-		expect(resolveCli({ cliPath: undefined, version: undefined, managedDir })).toMatchObject({ source: 'managed', version: '0.62.0' });
+		expect(await resolveCli({ cliPath: undefined, version: undefined, managedDir })).toMatchObject({ source: 'managed', version: '0.62.0' });
 	});
 
 	it('does not download a version that is already installed', async () => {
@@ -99,7 +99,7 @@ describe('fetchCliVersions', () => {
 });
 
 describe('readTar', () => {
-	it('reads long paths and strips the package folder', () => {
+	it('reads long paths and strips the package folder', async () => {
 		const long = `bundle/${'a'.repeat(120)}/file.js`;
 		const tarball = packTarball({ 'package.json': '{}', [long]: 'deep' });
 		const files = readTar(execFileSync('gzip', ['-dc', path.join(dir, 'package.tgz')]));
@@ -107,7 +107,7 @@ describe('readTar', () => {
 		expect(tarball.length).toBeGreaterThan(0);
 	});
 
-	it('rejects a path that leaves the package', () => {
+	it('rejects a path that leaves the package', async () => {
 		const header = Buffer.alloc(512);
 		header.write('package/../../evil.js', 0);
 		header.write('0000644\0', 100);
@@ -118,7 +118,7 @@ describe('readTar', () => {
 });
 
 describe('checkIntegrity', () => {
-	it('accepts a matching SHA-512 and rejects anything else', () => {
+	it('accepts a matching SHA-512 and rejects anything else', async () => {
 		const data = Buffer.from('hello');
 		expect(() => checkIntegrity(data, `sha1-abc ${integrityOf(data)}`)).not.toThrow();
 		expect(() => checkIntegrity(data, 'sha1-abc')).toThrow(/SHA-512/);
@@ -132,7 +132,7 @@ describe('pruneCliVersions', () => {
 			fs.writeFileSync(path.join(dir, name, 'bundle', 'gemini.js'), '');
 		}
 		expect((await pruneCliVersions(dir, ['0.62.0', '0.61.0'])).sort()).toEqual(['.tmp-0.63.0-abc', '0.60.0']);
-		expect(listManagedVersions(dir).sort()).toEqual(['0.61.0', '0.62.0']);
+		expect((await listManagedVersions(dir)).sort()).toEqual(['0.61.0', '0.62.0']);
 		expect(fs.existsSync(path.join(dir, 'notes'))).toBe(true);
 	});
 });
@@ -140,17 +140,17 @@ describe('pruneCliVersions', () => {
 describe('cliCopiesToKeep', () => {
 	const installed = ['0.62.0', '0.63.0', '0.64.0'];
 
-	it('keeps only the installed copy in use', () => {
+	it('keeps only the installed copy in use', async () => {
 		expect(cliCopiesToKeep(installed, { source: 'managed', version: '0.64.0' })).toEqual(['0.64.0']);
 	});
 
-	it('keeps none when the bundled CLI runs, except a pinned version', () => {
+	it('keeps none when the bundled CLI runs, except a pinned version', async () => {
 		expect(cliCopiesToKeep(installed, { source: 'bundled', version: '0.64.0' })).toEqual([]);
 		expect(cliCopiesToKeep(installed, { source: 'bundled', version: '0.64.0' }, '0.63.0')).toEqual(['0.63.0']);
 		expect(cliCopiesToKeep(installed, { source: 'path' }, '0.70.0')).toEqual([]);
 	});
 
-	it('keeps the newest when it is not known which CLI runs', () => {
+	it('keeps the newest when it is not known which CLI runs', async () => {
 		expect(cliCopiesToKeep(installed, undefined)).toEqual(['0.64.0']);
 		expect(cliCopiesToKeep([], undefined)).toEqual([]);
 	});

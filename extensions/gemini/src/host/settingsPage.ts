@@ -514,7 +514,7 @@ export class SettingsPage implements vscode.Disposable {
 		if (!server || server.transport === 'stdio' || !/^[\w.-]+$/.test(name)) {
 			return;
 		}
-		this.runInTerminal(vscode.l10n.t("Sign In to {0}", name), ['-i', `/mcp auth ${name}`],
+		void this.runInTerminal(vscode.l10n.t("Sign In to {0}", name), ['-i', `/mcp auth ${name}`],
 			vscode.l10n.t("Finish signing in to \"{0}\" in your browser, then type /quit here. Restart the agent to use the server.", name));
 	}
 
@@ -547,7 +547,7 @@ export class SettingsPage implements vscode.Disposable {
 			validateInput: value => isExtensionSource(value) ? undefined : vscode.l10n.t("Enter a URL or a path, without spaces or quotes."),
 		});
 		if (source) {
-			this.runInTerminal(vscode.l10n.t("Install Extension"), ['extensions', 'install', source.trim()]);
+			void this.runInTerminal(vscode.l10n.t("Install Extension"), ['extensions', 'install', source.trim()]);
 		}
 	}
 
@@ -557,7 +557,7 @@ export class SettingsPage implements vscode.Disposable {
 		}
 		if (action === 'update' || action === 'uninstall') {
 			// These can ask questions (consent, settings), which only a terminal can answer.
-			this.runInTerminal(action === 'update' ? vscode.l10n.t("Update Extension") : vscode.l10n.t("Uninstall Extension"), ['extensions', action, name]);
+			void this.runInTerminal(action === 'update' ? vscode.l10n.t("Update Extension") : vscode.l10n.t("Uninstall Extension"), ['extensions', action, name]);
 			return;
 		}
 		await this.service.ensureReady();
@@ -569,9 +569,9 @@ export class SettingsPage implements vscode.Disposable {
 		this.offerRestart(reply.trim() || name);
 	}
 
-	private runInTerminal(name: string, args: readonly string[], message = vscode.l10n.t("Answer the Gemini CLI's questions here. Project Helpers updates when it finishes; restart the agent to use the change.")): void {
+	private async runInTerminal(name: string, args: readonly string[], message = vscode.l10n.t("Answer the Gemini CLI's questions here. Project Helpers updates when it finishes; restart the agent to use the change.")): Promise<void> {
+		const command = await getAgentCommand({ subcommand: args });
 		this.terminal?.dispose();
-		const command = getAgentCommand({ subcommand: args });
 		this.terminal = vscode.window.createTerminal({
 			name: vscode.l10n.t("Gemini: {0}", name),
 			shellPath: command.shell ? 'cmd.exe' : command.command,
