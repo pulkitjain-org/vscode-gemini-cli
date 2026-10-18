@@ -1086,14 +1086,7 @@
       }
     },
     "configurationDefaults": {
-      "chat.disableAIFeatures": true,
       "workbench.browser.openLocalhostLinks": true,
-      "workbench.browser.showInTitleBar": true,
-      "workbench.activityBar.location": "top",
-      "workbench.secondarySideBar.defaultVisibility": "hidden",
-      "workbench.experimental.modernUIEditorTabStyle": "pill",
-      "workbench.startupEditor": "none",
-      "workbench.editor.empty.hint": "hidden",
       "breadcrumbs.enabled": false,
       "editor.minimap.enabled": false,
       "editor.lineHeight": 20,

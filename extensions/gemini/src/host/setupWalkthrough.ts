@@ -3,9 +3,11 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The Get Started walkthrough. It opens once, on the first start, and its steps
-// tick themselves off from the agent's status through the `gemini.setup.*`
-// context keys.
+// The Get Started walkthrough (Gemini: Get Started). Its steps tick themselves
+// off from the agent's status through the `gemini.setup.*` context keys. It
+// doesn't open on its own: Home opens on the first start with the same first
+// steps, and a walkthrough asked for during startup, before the workbench has
+// registered it, opens upstream's Setup walkthrough instead.
 
 import * as vscode from 'vscode';
 import { advanceSetupProgress, noSetupProgress, SetupProgress } from '../acp/setupProgress';
@@ -13,7 +15,6 @@ import { AgentService } from './agentService';
 
 export const walkthroughId = 'gemini-fork.gemini#gemini.getStarted';
 const progressKey = 'gemini.setup.progress';
-const shownKey = 'gemini.setup.walkthroughShown';
 
 export class SetupWalkthrough extends vscode.Disposable {
 	private readonly listener: vscode.Disposable;
@@ -25,10 +26,6 @@ export class SetupWalkthrough extends vscode.Disposable {
 		this.publish();
 		this.listener = service.onDidChangeStatus(status => this.update(advanceSetupProgress(this.progress, status)));
 		this.update(advanceSetupProgress(this.progress, service.status));
-		if (!globalState.get<boolean>(shownKey)) {
-			void globalState.update(shownKey, true);
-			void vscode.commands.executeCommand('workbench.action.openWalkthrough', walkthroughId, false);
-		}
 	}
 
 	/** Whether a session has opened before, so sign-in and the project were in order. */

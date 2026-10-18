@@ -22,6 +22,8 @@ import { ThemeIcon } from '../../../../base/common/themables.js';
 import { FontMeasurements } from '../../../../editor/browser/config/fontMeasurements.js';
 import { CommandsRegistry } from '../../../../platform/commands/common/commands.js';
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
+import { Extensions as ConfigurationExtensions, IConfigurationRegistry } from '../../../../platform/configuration/common/configurationRegistry.js';
+import { Registry } from '../../../../platform/registry/common/platform.js';
 import { FocusMode, INativeHostService } from '../../../../platform/native/common/native.js';
 import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
 import { IEditorService } from '../../../services/editor/common/editorService.js';
@@ -29,6 +31,27 @@ import { IHostService } from '../../../services/host/browser/host.js';
 import { ILayoutService } from '../../../../platform/layout/browser/layoutService.js';
 import { IWorkbenchColorTheme, IWorkbenchThemeService } from '../../../services/themes/common/workbenchThemeService.js';
 import { WebviewInput } from '../../webviewPanel/browser/webviewEditorInput.js';
+
+/**
+ * GeminiCode's window defaults, which must hold from the first frame: an
+ * extension's defaults arrive only once its host has started, after the layout
+ * is drawn and the startup page has decided what to open. Without these a
+ * first launch would show upstream's onboarding (which names VS Code and offers
+ * a GitHub Copilot sign-in) and its Setup walkthrough, then move the activity
+ * bar. The editor's defaults stay in the Gemini extension's package.json.
+ */
+Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).registerDefaultConfigurations([{
+	overrides: {
+		'chat.disableAIFeatures': true,
+		'workbench.welcomePage.experimentalOnboarding': false,
+		'workbench.startupEditor': 'none',
+		'workbench.editor.empty.hint': 'hidden',
+		'workbench.activityBar.location': 'top',
+		'workbench.secondarySideBar.defaultVisibility': 'hidden',
+		'workbench.experimental.modernUIEditorTabStyle': 'pill',
+		'workbench.browser.showInTitleBar': true,
+	},
+}]);
 
 /** The code fonts in geminiFonts.css. */
 const bundledFonts = ['JetBrains Mono', 'Geist Mono'];
