@@ -9,7 +9,7 @@
 // script or on NODE_PATH, and a Chromium: CHROMIUM names its executable, else
 // the usual names are tried.
 //
-//   node gemini/site/check-a11y.mjs <site folder> [page.html ...]
+//   node gemini/site/check-a11y.mts <site folder> [page.html ...]
 //
 // With no pages named, it checks the landing page, the docs home and every
 // docs page.

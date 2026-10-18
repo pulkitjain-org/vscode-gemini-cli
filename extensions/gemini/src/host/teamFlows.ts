@@ -662,6 +662,7 @@ export class TeamFlows implements vscode.Disposable {
 		const p = project;
 		const n = iid;
 		const [mr, readiness] = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Reading !{0}...", n) }, () => Promise.all([gitlab.mr(p, n, false), gitlab.mergeReadiness(p, n)]));
+		// allow-any-unicode-next-line
 		const lines = readiness.checks.map(c => `${c.ok ? '✓' : '✗'} ${c.name}: ${c.detail}`);
 		if (!readiness.ready) {
 			await vscode.window.showWarningMessage(vscode.l10n.t("!{0} can't be merged yet.", n), { modal: true, detail: lines.join('\n') });

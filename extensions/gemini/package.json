@@ -113,6 +113,17 @@
         "icon": "$(pulse)"
       },
       {
+        "command": "gemini.pilot.export",
+        "title": "%command.pilotExport%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.runBenchmark",
+        "title": "%command.runBenchmark%",
+        "category": "%category%",
+        "icon": "$(beaker)"
+      },
+      {
         "command": "gemini.showLog",
         "title": "%command.showLog%",
         "category": "%category%"
@@ -996,6 +1007,12 @@
           "default": true,
           "scope": "machine",
           "markdownDescription": "%configuration.inlineEdit.enabled%"
+        },
+        "gemini.pilot.record": {
+          "type": "boolean",
+          "default": false,
+          "scope": "machine",
+          "markdownDescription": "%configuration.pilot.record%"
         },
         "gemini.usageMeter.enabled": {
           "type": "boolean",

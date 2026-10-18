@@ -83,6 +83,8 @@ Every write GeminiCode makes to Jira or GitLab for you is recorded on your Mac, 
 
 **Gemini: Open Audit Log** (also in the Gemini status bar menu, and behind **Audit: 14 actions today** at the right of the status bar) shows the log as a page: one row per write with the time, who asked (an agent or a button of yours), the action, its effect, how you answered, the id the tool gave back and the state. Pick a day, a tool, or only the intents without a result. A row with no result is a write that was running when GeminiCode last quit; it is highlighted, and Home lists it under **Unfinished**. Check the tool before doing it again, then **Mark as Checked**. **Export the Day…** writes the day as Markdown to your home folder, and **Open Folder** shows the files.
 
+If you are in the pilot, turn on the **Gemini › Pilot: Record** setting. GeminiCode then counts launches, waits, permission cards, Undo and Rewind, team tool errors and links that leave the app, with times and no text, on your Mac only. At the end of the pilot, run **Gemini: Export Pilot Data** and hand over the `geminicode-pilot` folder in your home folder.
+
 ## What agents get
 
 Every agent session gets a `geminicode-tools` MCP server with tools only for the tools you connected, such as `jira_get_issue`, `gitlab_get_mr`, `gitlab_job_log`, `sonar_quality_gate`, `snyk_test` and `figma_design`. Reading runs without asking. A Jira comment, a reassignment and a comment on a merge request show you a permission card with the exact text first, and you can allow the rest of the session.

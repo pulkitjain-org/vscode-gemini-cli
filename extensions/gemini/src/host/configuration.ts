@@ -107,7 +107,11 @@ export function setAgentEnvOverride(env: NodeJS.ProcessEnv): void {
 	agentEnvOverride = { ...env };
 }
 
-export function getAgentCommand(options: { interactive?: boolean; cli?: CliResolution; subcommand?: readonly string[] } = {}): AgentCommand {
+/**
+ * The command that starts the CLI. `ownFolderOnly` leaves out the window's other folders even when
+ * `gemini.agents.allWorkspaceFolders` is on, for an agent that works somewhere else, as the benchmark's do.
+ */
+export function getAgentCommand(options: { interactive?: boolean; cli?: CliResolution; subcommand?: readonly string[]; ownFolderOnly?: boolean } = {}): AgentCommand {
 	return resolveAgentCommand({
 		cliPath: (options.cli ?? getCliResolution()).cliPath,
 		execPath: process.execPath,
@@ -117,7 +121,7 @@ export function getAgentCommand(options: { interactive?: boolean; cli?: CliResol
 		heapSizeMb: options.interactive || options.subcommand ? undefined : cliHeapSizeMb(readCliSettings(), os.totalmem()),
 		extraArgs: options.subcommand ? [...options.subcommand] : [
 			...adminPolicyDir ? prepareAdminPolicy(adminPolicyDir, getApprovalPolicy()) : [],
-			...includeDirectoryArgs(includedFolderPaths()),
+			...includeDirectoryArgs(options.ownFolderOnly ? [] : includedFolderPaths()),
 		],
 	});
 }

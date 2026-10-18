@@ -37,6 +37,7 @@ import { isBlockedWebFetch } from '../acp/webFetchHint';
 import type { AgentClient } from '../acp/agentClient';
 import { AgentError, AgentErrorInfo, errorMessage, isModelTurnRefusal } from '../acp/errors';
 import { readGitHead } from '../acp/gitHead';
+import { recordPilot } from '../acp/pilotLog';
 import { upgradeUrl } from '../acp/helpLinks';
 import { EnhanceCancelledError, enhanceHistory } from '../acp/promptEnhancer';
 import type { EnhancePromptInput } from '../acp/quickPrompts';
@@ -303,6 +304,9 @@ export class ChatController implements vscode.Disposable {
 			this.onDidRestoreSessionEmitter,
 			service.permissions.onDidChange(event => {
 				if (event.kind === 'requested') {
+					if (this.timing) {
+						this.timing.permissions++;
+					}
 					this.rememberDiffs(event.permission.id, diffsOf(event.permission.request.toolCall.content));
 					this.transcript.addPermission(event.permission);
 					void this.revealForPermission(event.permission);
@@ -657,7 +661,7 @@ export class ChatController implements vscode.Disposable {
 		this.setBusy(true);
 		const started = Date.now();
 		let ended = false;
-		this.timing = { started };
+		this.timing = { started, permissions: 0 };
 		try {
 			await this.service.ensureReady();
 			this.timing.ready = Date.now();
@@ -685,6 +689,7 @@ export class ChatController implements vscode.Disposable {
 				content.unshift({ type: 'text', text: context });
 			}
 			this.timing.sent = Date.now();
+			recordPilot({ kind: 'prompt', waitedMs: this.timing.ready - started });
 			const { stopReason, usage } = await this.promptRecovering(content);
 			this.undoNote = undefined;
 			if (context === this.pendingContext) {
@@ -756,6 +761,7 @@ export class ChatController implements vscode.Disposable {
 		}
 		const timing = this.timing;
 		this.timing = undefined;
+		recordPilot({ kind: 'turn', permissions: timing?.permissions ?? 0, durationMs, ...timing?.sent && timing.firstText ? { firstTextMs: timing.firstText - timing.sent } : {} });
 		if (timing?.sent && timing.firstText) {
 			this.transcript.updateTurnEnd(id, { firstTokenMs: timing.firstText - timing.sent });
 		}
@@ -934,6 +940,7 @@ export class ChatController implements vscode.Disposable {
 		if (firstTurn && plan && !await this.undoTurn(firstTurn, true)) {
 			return;
 		}
+		recordPilot(found ? { kind: 'rewind' } : { kind: 'undo', scope: 'turn' });
 		if (found) {
 			await this.rewindChat(itemId, prompt.text);
 		}
@@ -1439,7 +1446,7 @@ export class ChatController implements vscode.Disposable {
 				void this.pickSession();
 				break;
 			case 'undoTurn':
-				void this.undoTurn(message.itemId);
+				void this.undoTurn(message.itemId).then(done => done && recordPilot({ kind: 'undo', scope: 'turn' }));
 				break;
 			case 'rewind':
 				void this.rewind(message.itemId);
@@ -2488,6 +2495,8 @@ function turnShape(items: readonly TranscriptItem[]): string {
 /** When a turn's steps happened, in ms since the epoch. */
 interface TurnTiming {
 	readonly started: number;
+	/** Permission cards the turn showed, for the pilot's counters. */
+	permissions: number;
 	ready?: number;
 	sent?: number;
 	firstText?: number;

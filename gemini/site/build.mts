@@ -28,7 +28,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { stripTypeScriptTypes } from 'node:module';
-import { docGroups, docPages, featureIndex, markdownForCopy, renderMarkdown, type DocPage, type RenderedDoc } from './docs.mts';
+import { benchmarkMarkdown, readBenchRuns, sampleBenchRuns } from './bench.mts';
+import { docGroups, docPages, featureIndex, generatedPages, markdownForCopy, renderMarkdown, type DocPage, type RenderedDoc } from './docs.mts';
 
 /** What `latest.json` holds. The app reads `version`, `url` and `notesUrl`; keep those stable. */
 export interface LatestRelease {
@@ -63,6 +64,7 @@ interface GitHubRelease {
 
 const siteDir = import.meta.dirname;
 const guideDir = path.join(siteDir, '..', 'docs', 'guide');
+const benchResultsDir = path.join(siteDir, '..', 'bench', 'results');
 const dmgPattern = /^GeminiCode-.+-arm64(-unsigned)?\.dmg$/;
 /**
  * The landing page's screenshots in `media/`, taken from the app at 1440 × 900
@@ -99,7 +101,7 @@ async function main(outDir: string | undefined, mode: string | undefined): Promi
 	fs.writeFileSync(path.join(outDir, 'index.html'), renderPage(latest, repo, available));
 	fs.writeFileSync(path.join(outDir, 'notes.html'), renderNotesPage(latest, notesHtml, repo));
 	fs.writeFileSync(path.join(outDir, 'notes.md'), notesMarkdown(latest, release?.body));
-	writeDocs(outDir, latest, repo, pageUrl, mediaDir);
+	writeDocs(outDir, latest, repo, pageUrl, mediaDir, mode === '--sample');
 	for (const file of ['site.css', 'landing.css', 'docs.css']) {
 		fs.copyFileSync(path.join(siteDir, file), path.join(outDir, file));
 	}
@@ -684,12 +686,15 @@ function docsSidebar(current: DocPage | undefined, rendered?: RenderedDoc): stri
  * Writes `docs/`: a page per guide file with its Markdown beside it, the docs
  * home, `all.md` (every page in one file) and `search.json`.
  */
-function writeDocs(outDir: string, latest: LatestRelease, repo: string, pageUrl: string, mediaDir: string): void {
+function writeDocs(outDir: string, latest: LatestRelease, repo: string, pageUrl: string, mediaDir: string, sample: boolean): void {
 	const c = context(latest, repo);
 	const docsDir = path.join(outDir, 'docs');
 	fs.mkdirSync(docsDir, { recursive: true });
 	const media = filesUnder(mediaDir);
-	const sources = new Map(docPages.map(page => [page, fs.readFileSync(path.join(guideDir, `${page.slug}.md`), 'utf8')]));
+	// The sample build (CI's page checks) shows sample results when there are none yet, so the checks cover the tables.
+	const runs = readBenchRuns(benchResultsDir);
+	const generated = (slug: string) => slug === 'benchmark' ? benchmarkMarkdown(runs.length || !sample ? runs : sampleBenchRuns()) : '';
+	const sources = new Map(docPages.map(page => [page, generatedPages.has(page.slug) ? generated(page.slug) : fs.readFileSync(path.join(guideDir, `${page.slug}.md`), 'utf8')]));
 	const search: { page: string; heading: string; text: string; url: string }[] = [];
 	const copies: string[] = [];
 
@@ -711,7 +716,7 @@ function writeDocs(outDir: string, latest: LatestRelease, repo: string, pageUrl:
 			${doc.lead ? `<p class="lead">${doc.lead}</p>` : ''}
 ${doc.html}
 			<nav class="pager" aria-label="Pages">${previous ? `<a href="${previous.slug}.html"><small>Previous</small><b>${text(previous.title)}</b></a>` : ''}${next ? `<a class="next" href="${next.slug}.html"><small>Next</small><b>${text(next.title)}</b></a>` : ''}</nav>
-			<p class="edit"><span>${c.version ? `Up to date with GeminiCode ${text(c.version)}` : ''}</span><a href="${attr(c.repoUrl)}/blob/main/gemini/docs/guide/${page.slug}.md">Edit this page on GitHub</a></p>
+			<p class="edit"><span>${c.version ? `Up to date with GeminiCode ${text(c.version)}` : ''}</span>${generatedPages.has(page.slug) ? `<a href="${attr(c.repoUrl)}/tree/main/gemini/bench/results">The results files on GitHub</a>` : `<a href="${attr(c.repoUrl)}/blob/main/gemini/docs/guide/${page.slug}.md">Edit this page on GitHub</a>`}</p>
 		</article>${onPage.length >= 2 ? `
 		<aside class="onpage" aria-label="On this page">
 			<h2>On this page</h2>

@@ -5,7 +5,8 @@
 # resources) are not patches: they apply to any base and are copied as they are.
 #
 #   gemini/scripts/upstream-series.sh regenerate         # rewrite gemini/patches from the working tree against the pinned tag
-#   gemini/scripts/upstream-series.sh check              # fail if a patch no longer matches the working tree (no tag needed)
+#   gemini/scripts/upstream-series.sh check              # fail if a patch no longer matches the working tree, or an edit has no marker (no tag needed)
+#   gemini/scripts/upstream-series.sh markers            # only the marker check: every upstream code file the series edits names GEMINI-FORK
 #   gemini/scripts/upstream-series.sh apply <tag>        # in a checkout of <tag>: apply the series and copy the fork's files from <from>
 #   gemini/scripts/upstream-series.sh files              # list the upstream files the fork modifies
 #
@@ -31,6 +32,28 @@ need_tag() {
 		echo "Tag $1 is not here. Fetch it: git fetch upstream tag $1 (git remote add upstream https://github.com/microsoft/vscode.git first)." >&2
 		exit 2
 	fi
+}
+
+# Files that cannot carry a comment, or where one would ship to users as text (images, data, docs, packaging
+# metadata), need no GEMINI-FORK marker; every other file the series edits must name it at least once.
+no_marker='\.(json|svg|png|ico|icns|bmp|md|xml|ya?ml)$|/control\.template$|\.spec\.template$'
+
+# The upstream files the series edits, read from the patches themselves, so this needs no tag object.
+series_files() { sed -n 's|^diff --git a/\(.*\) b/.*|\1|p' "$patches"/*.patch | sort -u; }
+
+# Prints each upstream code file the series edits without a GEMINI-FORK marker; fails if there is one.
+check_markers() {
+	local missing=0 file
+	while read -r file; do
+		if [[ "$file" =~ $no_marker ]]; then
+			continue
+		fi
+		if ! grep -q 'GEMINI-FORK' "$file"; then
+			echo "No GEMINI-FORK marker: $file. Mark the fork's edit with a comment that says why." >&2
+			missing=1
+		fi
+	done < <(series_files)
+	return $missing
 }
 
 patch_name() {
@@ -93,10 +116,17 @@ case "${1:-}" in
 			fi
 			rm -rf "$tmp"
 		fi
+		if ! check_markers; then
+			status=1
+		fi
 		if [[ $status -eq 0 ]]; then
 			echo "The patch series matches HEAD ($(ls "$patches"/*.patch | wc -l | tr -d ' ') patches against $pin)."
 		fi
 		exit $status
+		;;
+	markers)
+		check_markers
+		echo "Every upstream code file the series edits carries a GEMINI-FORK marker."
 		;;
 	apply)
 		tag=${2:?the upstream tag to apply the series to}
@@ -126,7 +156,7 @@ case "${1:-}" in
 		echo "Applied the series to $tag cleanly."
 		;;
 	*)
-		sed -n '2,14p' "$0"
+		sed -n '2,15p' "$0"
 		exit 2
 		;;
 esac

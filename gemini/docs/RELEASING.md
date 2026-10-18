@@ -51,7 +51,7 @@ The Geist fonts in `gemini/site/fonts/` are served with the page, so it loads no
 
 A release published by hand has no .dmg until the release workflow uploads it, so until then the page keeps offering the newest release that has one; the upload rebuilds the page.
 
-Before the upload, `gemini/site/check-a11y.mjs` runs axe-core on every page and `gemini/site/check-lighthouse.mjs` runs Lighthouse on the landing and docs pages; a violation or a score under its floor (accessibility 100, the rest 90) stops the deploy, and the same checks run in Gemini CI on the sample build so a pull request sees them first.
+Before the upload, `gemini/site/check-a11y.mts` runs axe-core on every page and `gemini/site/check-lighthouse.mts` runs Lighthouse on the landing and docs pages; a violation or a score under its floor (accessibility 100, the rest 90) stops the deploy, and the same checks run in Gemini CI on the sample build so a pull request sees them first.
 
 It runs when a release is published, edited, unpublished or deleted, when `gemini/site/`, `gemini/docs/guide/` or `gemini/branding/icon.svg` changes on `main`, when the release workflow starts it, and by hand. It always deploys from `main`, because the `github-pages` environment accepts only the default branch. Turn Pages on once: **Settings → Pages → Source: GitHub Actions**.
 

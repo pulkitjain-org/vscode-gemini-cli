@@ -20,6 +20,7 @@ import { JiraClient } from './jira';
 import { describeSnyk, SnykCli } from './snyk';
 import { describeSonar, SonarClient, sonarProjectKeyIn, SonarTarget } from './sonar';
 import type { TeamDefaults } from './teamDefaults';
+import { recordPilot } from './pilotLog';
 import { clip, TeamToolError, TeamToolId } from './teamHttp';
 import { git } from './worktrees';
 
@@ -333,9 +334,16 @@ async function runAudited(context: TeamToolContext, who: TeamCaller, tool: TeamT
 	if (!tool.write || !context.audit || isListing(tool.name, args)) {
 		return run();
 	}
+	const result = await auditedWrite(context.audit, who, tool, args, run);
+	recordPilot({ kind: 'write', tool: tool.name, caller: who.caller, ok: !result.isError });
+	return result;
+}
+
+/** A write's intent, then its result or failure, in the audit log. */
+async function auditedWrite(audit: AuditLog, who: TeamCaller, tool: TeamTool, args: Record<string, unknown>, run: () => Promise<TeamToolResult>): Promise<TeamToolResult> {
 	const ref = refOf(args);
 	const intent = { caller: who.caller, ...who.agent ? { agent: who.agent } : {}, tool: tool.name, ...ref ? { ref } : {}, effect: effectOf(tool.name, args), args };
-	return context.audit.record(intent, async () => {
+	return audit.record(intent, async () => {
 		const answer = await run();
 		if (answer.isError) {
 			throw new Error(answer.content.map(c => c.type === 'text' ? c.text : '').join(' ').trim() || 'failed');

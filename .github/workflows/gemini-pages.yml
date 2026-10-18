@@ -15,6 +15,7 @@ on:
     paths:
       - gemini/site/**
       - gemini/docs/guide/**
+      - gemini/bench/results/**
       - gemini/branding/icon.svg
       - .github/workflows/gemini-pages.yml
   release:
@@ -62,13 +63,13 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
 
       - name: Accessibility and Lighthouse
-        # Nothing goes live with an axe violation or a Lighthouse score under its floor (gemini/site/check-*.mjs).
+        # Nothing goes live with an axe violation or a Lighthouse score under its floor (gemini/site/check-*.mts).
         run: |
           npm install --no-save --no-audit --no-fund --prefix "$RUNNER_TEMP/site-checks" axe-core@4.10.3 playwright-core@1.49.1 lighthouse@12.6.1
           export NODE_PATH="$RUNNER_TEMP/site-checks/node_modules"
           export CHROME_PATH="$(which google-chrome || which chromium-browser)"
-          node gemini/site/check-a11y.mjs "$RUNNER_TEMP/site"
-          node gemini/site/check-lighthouse.mjs "$RUNNER_TEMP/site"
+          node gemini/site/check-a11y.mts "$RUNNER_TEMP/site"
+          node gemini/site/check-lighthouse.mts "$RUNNER_TEMP/site"
           rm -f "$RUNNER_TEMP"/site/lighthouse-*.json
 
       - name: Upload

@@ -3,8 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-/* Home's dashboard (webview-src/home.ts), on top of panels.css's Agent Home styles: the
-   greeting line, the composer's bar, Needs you and the cards, as the mockups draw them. */
+/*
+ * Home's dashboard (webview-src/home.ts), on top of panels.css's Agent Home styles: the
+ * greeting line, the composer's bar, Needs you and the cards, as the mockups draw them.
+ */
 
 .home.dash {
 	max-width: 1180px;

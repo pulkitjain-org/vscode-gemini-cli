@@ -122,6 +122,7 @@ export class GeminiStatusBar implements vscode.Disposable {
 			{ label: vscode.l10n.t("$(output) Show Log"), command: 'gemini.showLog' },
 			{ label: vscode.l10n.t("$(list-unordered) Open Audit Log"), detail: vscode.l10n.t("Every write made to Jira or GitLab for you, with what the tool gave back"), command: 'gemini.openAuditLog' },
 			{ label: vscode.l10n.t("$(pulse) Record Performance Trace..."), detail: vscode.l10n.t("Restarts the agent with the CLI's telemetry going to a file in your home folder; stop it to see where each turn's time went"), command: 'gemini.recordTrace' },
+			{ label: vscode.l10n.t("$(beaker) Run Benchmark..."), detail: vscode.l10n.t("Runs the team's benchmark tasks on one model and writes a results file to add by pull request"), command: 'gemini.runBenchmark' },
 			{ label: '', kind: vscode.QuickPickItemKind.Separator },
 			{ label: vscode.l10n.t("$(book) Gemini CLI Docs"), run: () => void vscode.env.openExternal(vscode.Uri.parse(cliDocsUrl)) },
 			{ label: vscode.l10n.t("$(report) Report an Issue..."), detail: vscode.l10n.t("Opens a new issue with the GeminiCode, VS Code, Gemini CLI and OS versions filled in"), run: () => void this.reportIssue() },

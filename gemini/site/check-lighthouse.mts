@@ -11,7 +11,7 @@
 // NODE_PATH, and a Chrome or Chromium: CHROME_PATH names it, else Lighthouse
 // finds one.
 //
-//   node gemini/site/check-lighthouse.mjs <site folder> [page.html ...]
+//   node gemini/site/check-lighthouse.mts <site folder> [page.html ...]
 
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';

@@ -8,6 +8,7 @@ import * as vscode from 'vscode';
 import { AgentChanges, EditedFile } from '../acp/agentChanges';
 import { acceptHunk, diffLines, Hunk, revertHunk, splitLines } from '../acp/lineDiff';
 import { errorMessage } from '../acp/errors';
+import { recordPilot } from '../acp/pilotLog';
 import { deleteFile, replaceFileText } from './workspaceFileSystem';
 
 /** An agent whose changes can be reviewed in the editor. */
@@ -265,6 +266,7 @@ export class ReviewController implements vscode.CodeLensProvider, vscode.HoverPr
 		if (review.file.created && review.hunks.length === 1) {
 			return this.undoFile(document.uri.toString());
 		}
+		recordPilot({ kind: 'undo', scope: 'change' });
 		const text = document.getText();
 		const reverted = revertHunk(splitLines(review.file.original), splitLines(text), hunk).join('\n');
 		await this.write(review, text, reverted);
@@ -285,6 +287,7 @@ export class ReviewController implements vscode.CodeLensProvider, vscode.HoverPr
 		if (!document || !review) {
 			return;
 		}
+		recordPilot({ kind: 'undo', scope: 'file' });
 		if (review.file.created) {
 			const remove = vscode.l10n.t("Delete File");
 			const choice = await vscode.window.showWarningMessage(vscode.l10n.t("{0} was created by {1}. Delete it?", path.basename(review.file.path), review.source.title), { modal: true }, remove);

@@ -33,6 +33,8 @@ import { BrowserTools } from './host/browserTools';
 import { TeamConnections } from './host/teamConnections';
 import { TeamFlows } from './host/teamFlows';
 import { TraceRecorder } from './host/traceCommand';
+import { BenchmarkCommand } from './host/benchmarkCommand';
+import { Pilot } from './host/pilot';
 import { MrPanel } from './host/mrPanel';
 import { ConnectionsPage } from './host/connectionsPage';
 import { TeamStatusBar } from './host/teamStatusBar';
@@ -161,6 +163,8 @@ export function activate(context: vscode.ExtensionContext): void {
 		teamTools,
 		teamFlows,
 		traceRecorder,
+		new BenchmarkCommand(service, log),
+		new Pilot(context.globalStorageUri.fsPath, teamTools, usageMeter),
 		mrPanel,
 		new ConnectionsPage(context.extensionUri, teamTools),
 		new TeamStatusBar(context.extensionUri, teamTools),

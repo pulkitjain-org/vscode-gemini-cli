@@ -38,6 +38,10 @@ It keeps tickets whose merge request merged, changed between 20 and 400 lines, a
 
 ## Running
 
+From the release build: **Gemini: Run Benchmark...** in the Command Palette or the Gemini status menu. It uses `gemini/bench/tasks` when the window has this repository open, or asks for a tasks folder, then asks for the model and confirms the run. It starts the CLI the app runs, as the app starts it, and writes `<GeminiCode version>-<CLI version>-<model>.json` into `results/` beside the tasks folder. Cancel it from its notification; a cancelled run writes nothing.
+
+The same run as a script, for a CLI the app doesn't use:
+
 ```sh
 node --experimental-transform-types extensions/gemini/scripts/bench-run.mts --cli /Applications/GeminiCode.app/Contents/Resources/app/extensions/gemini/cli/0.64.0/bundle/gemini.js \
   --model gemini-3.8-flash --out gemini/bench/results/1.2.0-0.64.0.json
@@ -45,7 +49,7 @@ node --experimental-transform-types extensions/gemini/scripts/bench-run.mts --cl
 
 For each task it clones the repository at `baseSha` into a temporary worktree, starts `gemini --acp` with your saved sign-in and the project ID you use, opens a session there in Auto Edit mode on the named model, sends the prompt, allows the agent's tool calls, and when the turn ends runs the grader. It records the tokens the CLI reports for the turn, the number of model calls, the time to the first text and to the end, and the grader's result. One task at a time; about 15 requests per task, so 30 tasks on two models fit in a day's Enterprise quota with room to work.
 
-The results file is added to `results/` by pull request. A page on the docs site that reads those files is not built yet; until then, compare the files by hand.
+The results file is added to `results/` by pull request. On release day the release workflow opens an issue titled `Benchmark <version>` as the reminder. The docs site's **Benchmark** page shows every results file, newest release first, and is rebuilt when a results file is merged.
 
 ## Reading the results
 
