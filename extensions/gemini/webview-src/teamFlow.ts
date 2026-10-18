@@ -513,10 +513,13 @@ function checks(view: ChecksView): ReturnType<typeof dialog> {
 		card.append(meta);
 		d.body.append(card);
 	}
-	const fixAll = button('primary', strings.fixAll, () => act('fixAll'));
+	// Without an agent on the branch, Fix starts one there.
+	const allLabel = view.agentId ? strings.fixAll : strings.fixAllNew;
+	const chosenLabel = view.agentId ? strings.fixChosen : strings.fixChosenNew;
+	const fixAll = button('primary', allLabel, () => act('fixAll'));
 	const syncFix = () => {
 		const n = [...d.body.querySelectorAll<HTMLInputElement>('input[data-finding]')].filter(b => b.checked).length;
-		fixAll.replaceChildren(el('span', undefined, n === view.findings.length ? strings.fixAll : format(strings.fixChosen, n)));
+		fixAll.replaceChildren(el('span', undefined, n === view.findings.length ? allLabel : format(chosenLabel, n)));
 		fixAll.disabled = !n;
 	};
 	syncFix();

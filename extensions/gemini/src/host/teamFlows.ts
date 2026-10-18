@@ -6,6 +6,7 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { branchChoices, checkoutForChecks, listBranches } from '../acp/checksBranch';
 import { errorMessage } from '../acp/errors';
 import { GitLabClient, GitLabMr } from '../acp/gitlab';
 import { formatDuration, JiraClient, JiraIssueSummary, jiraKeyIn, parseDuration } from '../acp/jira';
@@ -17,12 +18,23 @@ import {
 	reviewPrompt, reviewSummary, targetChoices, ticketBranchName, ticketStartPrompt,
 } from '../acp/teamFlowLogic';
 import { gitlabProjectOf } from '../acp/teamTools';
-import { commitAll, git } from '../acp/worktrees';
+import { AgentWorktree, commitAll, currentBranch, git, repositoryRoot, runWorktreeSetup, worktreeSetupCommand } from '../acp/worktrees';
 import type { AgentsView } from './agentsView';
+import { configSection } from './configuration';
 import type { TeamConnections } from './teamConnections';
 import { TeamFlowPanel } from './teamFlowPanel';
 import { ChecksView, FlowAttachment, MoveTicketView, OpenMrView, ReviewView, Tone, TransitionView } from './teamFlowProtocol';
 import { openTeamLink } from './teamLinks';
+
+/** Where checks run: a checkout on a branch, the repository it belongs to, and the agent working there when there is one. */
+interface ChecksPlace {
+	readonly cwd: string;
+	readonly title: string;
+	readonly repository: string;
+	readonly branch?: string;
+	readonly agentId?: string;
+	readonly worktree?: AgentWorktree;
+}
 
 /** Where an agent works and the GitLab project and branch there. */
 interface GitPlace {
@@ -55,6 +67,7 @@ export class TeamFlows implements vscode.Disposable {
 			run('gemini.team.reviewMergeRequest', (project?: unknown, iid?: unknown) => this.reviewMergeRequest(str(project), Number(iid) || undefined)),
 			run('gemini.team.fixMergeRequest', (project?: unknown, iid?: unknown) => this.fixMergeRequest(str(project), Number(iid) || undefined)),
 			run('gemini.team.runChecks', (agent?: unknown) => this.runChecks(str(agent))),
+			run('gemini.team.runChecksOnBranch', (branch?: unknown) => this.runChecksOnBranch(str(branch))),
 		);
 	}
 
@@ -611,9 +624,67 @@ export class TeamFlows implements vscode.Disposable {
 
 	// --- Checks
 
+	/** Checks for an agent's branch, in its folder; with no agent in front, for a branch the user picks. */
 	private async runChecks(agent: string | undefined): Promise<void> {
-		const agentId = this.agentId(agent);
-		const place = this.agents.agentPlace(agentId)!;
+		const id = agent ?? this.agents.activeAgentId();
+		const place = id ? this.agents.agentPlace(id) : undefined;
+		if (!id || !place) {
+			return this.runChecksOnBranch(undefined);
+		}
+		await this.openChecks({ cwd: place.cwd, title: place.title, repository: place.folder, agentId: id, ...place.branch ? { branch: place.branch } : {} });
+	}
+
+	/**
+	 * Checks on any branch before a merge request exists: the repository's own
+	 * branch, an agent's, a local or a remote one. A branch that isn't checked
+	 * out gets a worktree of its own (with the repository's setup run in it),
+	 * which later runs reuse. Fix starts an agent there when none works on it.
+	 */
+	private async runChecksOnBranch(branch: string | undefined): Promise<void> {
+		const repository = await this.checksRepository();
+		const gitlab = this.tools.connectors.gitlab;
+		const remote = (gitlab ? await gitlabProjectOf(repository, gitlab.url, await this.tools.defaults(repository)).catch(() => ({ remote: undefined })) : { remote: undefined }).remote ?? 'origin';
+		if (!branch) {
+			const [current, branches] = await Promise.all([currentBranch(repository).catch(() => undefined), listBranches(repository, remote)]);
+			const agents = this.agents.summaries().flatMap(a => a.worktree?.branch ? [{ branch: a.worktree.branch, title: a.title }] : []);
+			const kinds = { current: vscode.l10n.t("checked out here"), agent: vscode.l10n.t("agent"), local: vscode.l10n.t("local branch"), remote: vscode.l10n.t("on {0}", remote) };
+			const picked = await vscode.window.showQuickPick(
+				branchChoices(current, agents, branches.locals, branches.remotes).map(choice => ({ label: choice.branch, description: choice.kind === 'agent' ? `${kinds.agent}: ${choice.agent}` : kinds[choice.kind], choice })),
+				{ title: vscode.l10n.t("Run Checks on a Branch"), placeHolder: vscode.l10n.t("A branch that isn't checked out gets a checkout of its own, which later runs reuse"), matchOnDescription: true },
+			);
+			if (!picked) {
+				return;
+			}
+			branch = picked.choice.branch;
+		}
+		const chosen = branch;
+		const checkout = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Checking out {0}...", chosen) }, () => checkoutForChecks(repository, remote, chosen));
+		if (checkout.created && checkout.worktree) {
+			const worktree = checkout.worktree;
+			const command = await worktreeSetupCommand(repository, vscode.workspace.getConfiguration(configSection).get<string>('agents.worktreeSetup'));
+			if (command) {
+				const code = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Setting up {0} for the checks...", chosen) }, () => runWorktreeSetup(command, worktree, repository, () => undefined));
+				if (code !== 0) {
+					void vscode.window.showWarningMessage(vscode.l10n.t("The setup command for {0} ended with code {1}; the checks run on the checkout as it is.", chosen, code));
+				}
+			}
+		}
+		const agent = this.agents.summaries().find(a => a.worktree?.branch === chosen && a.state !== 'stopped');
+		await this.openChecks({ cwd: checkout.cwd, title: chosen, branch: chosen, repository, ...agent ? { agentId: agent.id } : {}, ...checkout.worktree ? { worktree: checkout.worktree } : {} });
+	}
+
+	/** The repository Run Checks works in: the open folder's, else the agent in front's. */
+	private async checksRepository(): Promise<string> {
+		const activeId = this.agents.activeAgentId();
+		const folder = vscode.workspace.workspaceFolders?.find(f => f.uri.scheme === 'file')?.uri.fsPath ?? (activeId ? this.agents.agentPlace(activeId)?.folder : undefined);
+		if (!folder) {
+			throw new Error(vscode.l10n.t("Open your repository's folder first."));
+		}
+		return await repositoryRoot(folder) ?? folder;
+	}
+
+	private async openChecks(start: ChecksPlace): Promise<void> {
+		let place = start;
 		const flow: TeamFlowPanel<ChecksView> = new TeamFlowPanel<ChecksView>(this.extensionUri, vscode.l10n.t("Checks: {0}", place.title), this.tools.connected.has('snyk') ? 'snyk' : 'sonar', vscode.l10n.t("Starting the checks..."), async (action, value) => {
 			const view = flow.view;
 			if (!view) {
@@ -621,7 +692,7 @@ export class TeamFlows implements vscode.Disposable {
 			}
 			switch (action) {
 				case 'again':
-					return this.check(flow, agentId);
+					return this.check(flow, place);
 				case 'open':
 					return void openTeamLink(str(value)!);
 				case 'fix':
@@ -631,25 +702,36 @@ export class TeamFlows implements vscode.Disposable {
 					if (!chosen.length) {
 						return;
 					}
-					await this.send(agentId, checksFixPrompt(chosen));
-					flow.update({ sent: vscode.l10n.t("Sent {0} to {1}.", chosen.length === 1 ? vscode.l10n.t("the finding") : vscode.l10n.t("{0} findings", chosen.length), place.title) });
+					const prompt = checksFixPrompt(chosen);
+					if (place.agentId) {
+						await this.send(place.agentId, prompt);
+					} else {
+						// No agent works on this branch yet: start one in its checkout, with the findings as its first prompt.
+						const id = await this.agents.startTeamAgent({ folder: place.repository, title: vscode.l10n.t("Fix checks on {0}", place.branch ?? place.title), text: prompt, ...place.worktree ? { worktree: place.worktree } : {} });
+						if (!id) {
+							throw new Error(vscode.l10n.t("The agent couldn't start."));
+						}
+						place = { ...place, agentId: id };
+						flow.update({ agentId: id });
+					}
+					const target = place.agentId ? this.agents.agentPlace(place.agentId)?.title ?? place.title : place.title;
+					flow.update({ sent: vscode.l10n.t("Sent {0} to {1}.", chosen.length === 1 ? vscode.l10n.t("the finding") : vscode.l10n.t("{0} findings", chosen.length), target) });
 					return;
 				}
 			}
 		}, vscode.ViewColumn.Beside);
-		await this.check(flow, agentId);
+		await this.check(flow, place);
 	}
 
-	private async check(flow: TeamFlowPanel<ChecksView>, agentId: string): Promise<void> {
-		const place = this.agents.agentPlace(agentId)!;
+	private async check(flow: TeamFlowPanel<ChecksView>, place: ChecksPlace): Promise<void> {
 		const { snyk, sonar } = this.tools.connectors;
-		const branch = (await git(place.cwd, ['rev-parse', '--abbrev-ref', 'HEAD']).catch(() => '')).trim() || undefined;
+		const branch = place.branch ?? ((await git(place.cwd, ['rev-parse', '--abbrev-ref', 'HEAD']).catch(() => '')).trim() || undefined);
 		const rows: ChecksView['rows'][number][] = [
 			snyk ? { tool: 'snyk', name: vscode.l10n.t("Snyk: dependencies"), state: 'running', detail: vscode.l10n.t("Running snyk test...") } : { tool: 'snyk', name: vscode.l10n.t("Snyk"), state: 'off', detail: vscode.l10n.t("Not connected") },
 			...snyk ? [{ tool: 'snyk' as const, name: vscode.l10n.t("Snyk Code: source"), state: 'running' as const, detail: vscode.l10n.t("Running snyk code test...") }] : [],
 			sonar ? { tool: 'sonar', name: vscode.l10n.t("SonarQube: new code"), state: 'running', detail: vscode.l10n.t("Reading the last analysis...") } : { tool: 'sonar', name: 'SonarQube', state: 'off', detail: vscode.l10n.t("Not connected") },
 		];
-		flow.setView({ kind: 'checks', agentTitle: place.title, agentId, ...branch ? { branch } : {}, rows, findings: [] });
+		flow.setView({ kind: 'checks', agentTitle: place.title, ...place.agentId ? { agentId: place.agentId } : {}, ...branch ? { branch } : {}, rows, findings: [] });
 		const results: string[] = [];
 		const setRow = (name: string, row: Partial<ChecksView['rows'][number]>, findings: readonly CheckFinding[] = []) => {
 			const view = flow.view;
@@ -694,8 +776,8 @@ export class TeamFlows implements vscode.Disposable {
 		}
 		await Promise.all(tasks);
 		const summary = results.filter(Boolean).join(' · ');
-		if (summary) {
-			this.checkResults.set(agentId, summary);
+		if (summary && place.agentId) {
+			this.checkResults.set(place.agentId, summary);
 		}
 	}
 }

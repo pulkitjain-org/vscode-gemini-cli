@@ -205,6 +205,8 @@ function html(webview: vscode.Webview, media: vscode.Uri): string {
 		fix: vscode.l10n.t("Fix"),
 		fixAll: vscode.l10n.t("Fix All with This Agent"),
 		fixChosen: vscode.l10n.t("Fix {0} with This Agent"),
+		fixAllNew: vscode.l10n.t("Fix All with a New Agent"),
+		fixChosenNew: vscode.l10n.t("Fix {0} with a New Agent"),
 		runAgain: vscode.l10n.t("Run Again"),
 		noIssues: vscode.l10n.t("No issues found."),
 	};

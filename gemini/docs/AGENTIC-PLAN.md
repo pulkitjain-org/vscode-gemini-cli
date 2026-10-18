@@ -34,7 +34,7 @@ Every recommendation names the evidence that confirms it, with one of these tags
 
 ### Mockups
 
-Seven screens of the IDE as the plan describes it, drawn in the GeminiCode Dark look, are on a design canvas: <https://claude.ai/artifact/AhrcijLGwyyuG5kQJvQWUS> (private until shared from its Share menu). Each is tied to a section:
+Eight screens of the IDE as the plan describes it, drawn in the GeminiCode Dark look, are on a design canvas: <https://claude.ai/artifact/AhrcijLGwyyuG5kQJvQWUS> (private until shared from its Share menu). Each is tied to a section:
 
 | Screen | Section | What it shows |
 | --- | --- | --- |
@@ -44,6 +44,7 @@ Seven screens of the IDE as the plan describes it, drawn in the GeminiCode Dark 
 | Audit log | 4 | One row per write with caller, effect, who answered, the remote id, and an intent without a result highlighted |
 | After a restart | 1 | Home's Unfinished card (a pushed branch with no MR, a review with unposted comments, a move whose comment did not post, an interrupted turn), the chat's interrupted-turn notice with Retry and Undo, and the cold-start rows |
 | Connections | 3, 4 | The five tools with their logos, which of them run as the team's MCP containers, where each token lives, the measured tool-schema cost per turn, and the take-over offer |
+| Checks on a branch | 5 | The branch picker (checked out here, agents', local, on origin), the checks on a checkout of their own, and Fix starting an agent there |
 | Latency readout | 1 | Where this turn's time went, hop by hop against the budget, and the status menu's Record Performance Trace, Open Audit Log and Run Benchmark commands |
 
 ### Trace log
@@ -266,6 +267,16 @@ Today's Home shows **My tickets** (`assignee = currentUser() AND sprint in openS
 - **Runner**, `gemini/bench/run.mts`: drives the pinned CLI over ACP with the same `AgentClient` the app uses (so the IDE's prompt path, file handlers and admin policy are what is measured), in a fresh worktree at `base_sha`, approval mode `auto_edit`, shell on, a fixed Flash model and a fixed Pro model as two rows, 20-minute cap per task. Headless `gemini -p --output-format stream-json` is the fallback for a run outside the app, and its `result` event carries the stats.
 - **Metrics per task and per release:** completion (grader pass), tokens (the `_meta.quota.token_count` per turn that the CLI already returns and the fork already stores per turn [SRC `turnUsage.ts`]; cached tokens from telemetry), wall-clock latency to first token and to completion, number of permission cards, number of Undo actions. Report: `gemini/bench/results/<geminiCodeVersion>-<cliVersion>.json` and a page on the docs site.
 - **When and where:** there is no always-on machine owned by this project, and hosted runners cannot sign in to Code Assist [SRC `ROADMAP.md`]. So the benchmark runs **on a developer's Mac, from the release build, under their own seat**, started by **Gemini: Run Benchmark** on release day (the release workflow's last step opens an issue titled `Benchmark <version>` as the reminder). The command writes the results file and opens a PR adding it to `gemini/bench/results/`; `gemini-ci.yml` renders it to the docs site. The release is not announced on the download page until the results PR is merged, which is a branch-protection rule on `gemini-pages.yml`'s source, not a convention. Quota: 30 tasks × two models × roughly 15 requests per task is about 900 requests, under the 2,000 per user per day Enterprise limit, so the developer who runs it should not also plan a full day's work on that seat [LIC pending: confirm the seat's edition and that benchmark use is allowed]. Evidence that it ran: [BENCH] the results file for the version, signed by the commit that added it; [CI] the pages job that rendered it.
+
+### Checks on any branch, before the merge request
+
+Developers run the quality checks themselves before raising a merge request, on whatever branch they are about to raise it from. Shipped on 18 Oct 2026 [SRC `checksBranch.ts`, `teamFlows.ts`, `test/acp/checksBranch.test.ts`]:
+
+- **Run Checks on a Branch…** (Home's quick action, the Command Palette) lists the branch checked out here, agents' branches, local branches and the remote's, picks one, and runs Snyk (dependencies and code) on a checkout of it. A branch not checked out anywhere gets a worktree under `~/.geminicode/worktrees/<repository>/checks/`, the repository's `gemini.agents.worktreeSetup` command runs in it once, and later runs reuse it; the user's own checkout never moves (the test asserts both).
+- SonarQube's gate and new-code issues come from the server's last analysis of the branch, so they need one push; until then the row says so.
+- **Fix** sends the findings to the agent working on the branch, or starts one in that checkout with the findings as its first prompt.
+
+Next: local SonarQube analysis of the changed files, without a push, through the official SonarQube MCP server's `analyze_file_list` (connected to the server's quality profile; needs SonarQube Server 2025.1+ [A]), so the Sonar row is live for an unpushed branch too. Evidence that the feature matters: [PILOT] the share of merge requests whose first pipeline fails a quality job, before and after; [AUDIT] checks runs recorded per branch against the MR's creation time.
 
 ### Gates on the IDE repository
 

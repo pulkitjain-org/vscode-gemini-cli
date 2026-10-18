@@ -72,6 +72,7 @@
 	"command.team.reviewMergeRequest": "Review a Merge Request...",
 	"command.team.fixMergeRequest": "Fix Merge Request Pipeline and Comments",
 	"command.team.runChecks": "Run Checks",
+	"command.team.runChecksOnBranch": "Run Checks on a Branch...",
 	"command.newSkill": "New Skill",
 	"command.agentHome": "Agent Home",
 	"command.home": "Home",

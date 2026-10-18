@@ -359,6 +359,12 @@
         "title": "%command.team.runChecks%",
         "category": "%category%",
         "icon": "$(shield)"
+      },
+      {
+        "command": "gemini.team.runChecksOnBranch",
+        "title": "%command.team.runChecksOnBranch%",
+        "category": "%category%",
+        "icon": "$(shield)"
       }
     ],
     "walkthroughs": [

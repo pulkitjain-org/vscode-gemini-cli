@@ -212,6 +212,8 @@ export interface TeamFlowStrings {
 	readonly fix: string;
 	readonly fixAll: string;
 	readonly fixChosen: string;
+	readonly fixAllNew: string;
+	readonly fixChosenNew: string;
 	readonly runAgain: string;
 	readonly noIssues: string;
 }
