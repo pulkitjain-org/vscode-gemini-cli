@@ -28,6 +28,19 @@ Every recommendation names the evidence that confirms it, with one of these tags
 | Desktop only, no cloud infrastructure | **Taken as a hard constraint.** GeminiCode is a Mac app. When the app quits or the laptop restarts, every process (the extension host, the `gemini --acp` sidecar, the local MCP servers, the Snyk and SonarQube children) is gone and comes back only when a window opens. There is no relay, no server, no always-on runner owned by this project. Section 1 has the restart model: what survives on disk, what is lost, and what every flow must do about it. Sections 5 and 6 use only the team's existing CI (GitHub Actions for this repository, the team's GitLab CI) and developers' Macs. |
 | Rovo and Duo disabled | **Taken as a hard constraint.** Consequence in section 3: the Atlassian Remote MCP Server and the GitLab MCP server are both gated on those products, so there is no usable official MCP server for Jira or GitLab. | |
 
+### Mockups
+
+Six screens of the IDE as the plan describes it, drawn in the GeminiCode Dark look, are on a design canvas: <https://claude.ai/artifact/AhrcijLGwyyuG5kQJvQWUS> (private until shared from its Share menu). Each is tied to a section:
+
+| Screen | Section | What it shows |
+| --- | --- | --- |
+| Home: my work | 3 | Needs you with the ready-to-merge row, My tickets, Pending on me, Mine, Quality, Releases; every card named by the query that fills it; the row menu with Start Agent, Move, Log Time, Reassign |
+| Merge request panel | 3 | The merge checklist read live from GitLab (pipeline, approval rules by name, approvals valid after push, threads resolved, mergeable, author rule), the exact request it will make, and a Merge button that stays off until every line is green |
+| Confirm-class card | 4 | A `jira_transition` card with the transition id, the required Fix version and the comment, offering only Allow once and Reject; a queued `jira_log_time` card; the read rows that ran with no card |
+| Audit log | 4 | One row per write with caller, effect, who answered, the remote id, and an intent without a result highlighted |
+| After a restart | 1 | Home's Unfinished card (a release merge never pushed, a pushed branch with no MR, a move whose comment did not post, an interrupted turn), the chat's interrupted-turn notice with Retry and Undo, and the cold-start rows |
+| Latency readout | 1 | Where this turn's time went, hop by hop against the budget, and the status menu's Record Performance Trace, Open Audit Log and Run Benchmark commands |
+
 ### Trace log
 
 | Trace | Taken | Setup | Result |
