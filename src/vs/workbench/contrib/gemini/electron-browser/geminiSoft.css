@@ -6,7 +6,7 @@
 /*
  * GEMINI-FORK: the Soft look of GeminiCode Dark and Light, with glass. A theme can only set flat
  * colours, so the rest is here, keyed to the gemini-soft class gemini.contribution.ts puts on the
- * workbench (gemini/docs/mockups/glass/PLAN.md):
+ * workbench (gemini/docs/ARCHITECTURE.md, "Look"):
  *
  * - one static graphite tint at the top of the window, from the foreground (no hue), behind upstream's floating cards;
  * - cards with 8px corners, a hairline, and a brighter top edge (the rim);

@@ -229,18 +229,18 @@ export function renderTrace(summary: TraceSummary, file: string): string {
 	});
 	lines.push('', '## Totals', '', `- Turns: ${summary.turns.length}`, `- Model time: ${ms(modelMs)} over ${summary.turns.reduce((n, t) => n + t.calls.length, 0)} calls`, `- Tool time: ${ms(toolMs)}`,
 		`- Input tokens: ${input.toLocaleString('en-US')}, of which cached ${cached.toLocaleString('en-US')} (${input ? Math.round(cached / input * 100) : 0}%)`, `- Output tokens: ${output.toLocaleString('en-US')}`, '',
-		'The cached share is the number the plan asks for first: a low share on a long conversation means the CLI\'s prefix is not being reused by the service.', '');
+		'The cached share matters most: a low share on a long conversation means the service is not reusing the CLI\'s prefix.', '');
 	return lines.join('\n');
 }
 
-/** One hop of a turn's time, for the chat's readout: where the time went against the plan's budget. */
+/** One hop of a turn's time, for the chat's readout: where the time went against the hop's budget. */
 export interface TraceHop {
 	readonly name: string;
 	/** This turn's time, or a word such as "skipped". */
 	readonly value: string;
 	/** Share of the turn, 0 to 1, for the bar. */
 	readonly share: number;
-	/** The plan's p50 budget for the hop, or whose time it is ("model", "your repo"). */
+	/** The hop's p50 budget, or whose time it is ("model", "your repo"). */
 	readonly budget: string;
 	/** What the bar says: the fork's own hop, the model's, or a tool's. */
 	readonly tone: 'fork' | 'model' | 'tool';
@@ -268,9 +268,8 @@ function hopMs(value: number): string {
 }
 
 /**
- * Where a turn's time went, hop by hop (gemini/docs/AGENTIC-PLAN.md, section
- * 1): the fork's hops from what it measured, the model's and the tools' from
- * the CLI's trace of the same turn.
+ * Where a turn's time went, hop by hop: the fork's hops from what it measured,
+ * the model's and the tools' from the CLI's trace of the same turn.
  */
 export function turnReadout(turn: TurnSummary | undefined, measured: MeasuredTurn): TurnReadout {
 	const total = Math.max(1, measured.totalMs);

@@ -1,6 +1,6 @@
 # Pilot policy
 
-`GeminiCode-pilot.mobileconfig` is the admin policy for the pilot's Macs ([AGENTIC-PLAN.md](../docs/AGENTIC-PLAN.md), sections 4 and 6). Install it with your device management. It is a macOS configuration profile for the app's own preferences domain, `com.pulkitjainorg.geminicode`, which GeminiCode reads as VS Code reads its policies, so each setting it sets is locked in the app.
+`GeminiCode-pilot.mobileconfig` is the admin policy for the pilot's Macs ([Security model](../docs/ARCHITECTURE.md#security-model)). Install it with your device management. It is a macOS configuration profile for the app's own preferences domain, `com.pulkitjainorg.geminicode`, which GeminiCode reads as VS Code reads its policies, so each setting it sets is locked in the app.
 
 | Policy | Value | What it does |
 | --- | --- | --- |

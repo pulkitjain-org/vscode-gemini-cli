@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 /*
- * Glass for every webview page (gemini/docs/mockups/glass/PLAN.md), loaded after the page's own
+ * Glass for every webview page (gemini/docs/ARCHITECTURE.md, "Look"), loaded after the page's own
  * stylesheets so its rules win at equal specificity. The workbench's half is geminiSoft.css.
  *
  * - Cards, the composer, the user's message, permission cards: their top hairline catches the

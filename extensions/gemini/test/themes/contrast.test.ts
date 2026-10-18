@@ -36,7 +36,7 @@ function contrast(text: string, background: string): number {
 	return (a + 0.05) / (b + 0.05);
 }
 
-// Text and the surfaces it sits on, from the approved mockups' roles.
+// Text and the surfaces it sits on, by role.
 const pairs: readonly [text: string, background: string][] = [
 	['foreground', 'editor.background'],
 	['foreground', 'sideBar.background'],

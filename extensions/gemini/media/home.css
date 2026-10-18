@@ -5,7 +5,7 @@
 
 /*
  * Home's dashboard (webview-src/home.ts), on top of panels.css's Agent Home styles: the
- * greeting line, the composer's bar, Needs you and the cards, as the mockups draw them.
+ * greeting line, the composer's bar, Needs you and the cards.
  */
 
 .home.dash {
@@ -435,7 +435,7 @@ button.dash-row-title:hover {
 	background: var(--gemini-gradient);
 }
 
-/* A state in a pill: a hairline in the state's colour, as the mockups draw it. */
+/* A state in a pill: a hairline in the state's colour. */
 .dash-pill {
 	flex: none;
 	padding: 1px 8px;

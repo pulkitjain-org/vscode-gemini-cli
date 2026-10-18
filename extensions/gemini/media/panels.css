@@ -9,9 +9,9 @@
 	--gemini-radius: 10px;
 	--gemini-radius-small: 6px;
 	--gemini-radius-large: 12px;
-	/* Soft: the theme's own colours, named as the mockups name them (as in chat.css). */
+	/* Soft: the theme's own colours, named by their role (as in chat.css). */
 	--gemini-surface: var(--vscode-editor-background);
-	/* The approved mockups' cards and composer: a step above the page. */
+	/* Cards and the composer: a step above the page. */
 	--gemini-card: var(--vscode-editorWidget-background, var(--gemini-surface));
 	--gemini-composer: var(--vscode-input-background, var(--gemini-surface));
 	--gemini-raised: var(--vscode-editorWidget-background, var(--vscode-input-background));

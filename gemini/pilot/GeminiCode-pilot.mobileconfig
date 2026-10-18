@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-	The pilot's admin policy for GeminiCode (gemini/docs/AGENTIC-PLAN.md, sections 4 and 6).
+	The pilot's admin policy for GeminiCode (gemini/pilot/README.md).
 	Replace the four example origins with the team's Jira, GitLab and SonarQube addresses before
 	deploying it with your device management. See README.md beside this file.
 -->

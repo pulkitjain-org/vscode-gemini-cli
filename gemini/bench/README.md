@@ -1,6 +1,6 @@
 # Benchmark
 
-A set of tasks drawn from the team's own closed Jira tickets, run against a release build of GeminiCode's agent path on a developer's Mac, under that developer's seat. It reports, per task and per release, whether the agent completed the task, how many tokens and requests it took, and how long. The plan that asks for it is [docs/AGENTIC-PLAN.md](../docs/AGENTIC-PLAN.md), section 5.
+A set of tasks drawn from the team's own closed Jira tickets, run against a release build of GeminiCode's agent path on a developer's Mac, under that developer's seat. It reports, per task and per release, whether the agent completed the task, how many tokens and requests it took, and how long.
 
 Nothing here runs in hosted CI: hosted runners cannot sign in to Gemini Code Assist, and this project owns no always-on machine. Run it on release day, by hand, from the release build.
 

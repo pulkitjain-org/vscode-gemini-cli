@@ -5,8 +5,7 @@
 
 // The team's own Jira and GitLab MCP servers (mcp-atlassian and gitlab-mcp, which a repository's
 // .gemini/settings.json may run as servers of the CLI) run instead as children of geminicode-tools
-// once the user takes them over in Connections (gemini/docs/AGENTIC-PLAN.md, section 3, and
-// adr/0004). Each image is pinned by digest, the token reaches only the container's environment
+// once the user takes them over in Connections (gemini/docs/adr/0004-one-tool-adapter.md). Each image is pinned by digest, the token reaches only the container's environment
 // (Docker gets the variable's name, not its value), and each container lists only the tools the
 // adapter calls, so the agent still sees geminicode-tools' own curated tools and nothing else.
 //

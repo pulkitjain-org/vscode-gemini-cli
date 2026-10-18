@@ -17,7 +17,7 @@ const requestsPerTask = 15;
 
 /**
  * Gemini: Run Benchmark. Runs the benchmark's tasks (gemini/bench/tasks) on one model with the
- * CLI this app runs, the way the release-day run asks for (gemini/docs/AGENTIC-PLAN.md, section 5),
+ * CLI this app runs, as the release-day run asks for (gemini/bench/README.md),
  * and writes the results file into `results/` beside the tasks folder, to add by pull request.
  */
 export class BenchmarkCommand implements vscode.Disposable {

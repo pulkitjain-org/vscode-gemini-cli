@@ -239,8 +239,8 @@ function unfinishedCard(input: DashboardInput, title: string): HomeCard | undefi
 }
 
 /**
- * After a start: what is back and what is still coming (gemini/docs/AGENTIC-PLAN.md,
- * the restart model), for a few minutes after the window opened.
+ * After a start: what is back and what is still coming (gemini/docs/ARCHITECTURE.md,
+ * "Restarts"), for a few minutes after the window opened.
  */
 function startupCard(input: DashboardInput, title: string): HomeCard | undefined {
 	const startup = input.startup;

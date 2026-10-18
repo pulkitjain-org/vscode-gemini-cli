@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { readTeamServers, removeTeamServers } from '../../src/acp/teamTakeover';
 
-/** The shape of the team's settings file (gemini/docs/AGENTIC-PLAN.md, section 3), trimmed. */
+/** The shape of a team's settings file that runs its own Jira and GitLab servers, trimmed. */
 function teamSettings(): Record<string, unknown> {
 	return {
 		mcpServers: {

@@ -14,7 +14,7 @@ import { JiraClient } from '../../src/acp/jira';
 import type { TeamDefaults } from '../../src/acp/teamDefaults';
 import { callTeamTool, TeamToolContext, teamWrite } from '../../src/acp/teamTools';
 
-// One call path (gemini/docs/AGENTIC-PLAN.md, section 3): a page's write and an agent's tool call
+// One call path (gemini/docs/adr/0004-one-tool-adapter.md): a page's write and an agent's tool call
 // for the same action run the same code and leave the same audit record, but for who asked.
 
 const servers: http.Server[] = [];

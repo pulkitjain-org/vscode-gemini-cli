@@ -7,7 +7,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-// The glass look (gemini/docs/mockups/glass/PLAN.md) is static paint: no stylesheet of the fork may
+// The glass look (gemini/docs/ARCHITECTURE.md, "Look") is static paint: no stylesheet of the fork may
 // blur. A backdrop-filter or blur filter re-runs on every frame the content under it changes, such as
 // a streaming chat or an agent's spinner. `backdrop-filter: none`, which turns upstream's off, is allowed.
 

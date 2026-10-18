@@ -1,6 +1,6 @@
 # Roadmap
 
-What is still open, before and after the pilot. What is built is described in [ARCHITECTURE.md](ARCHITECTURE.md), and the plan the pilot follows in [AGENTIC-PLAN.md](AGENTIC-PLAN.md).
+What is still open, before and after the pilot. What is built is described in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 GeminiCode ships as a Mac app for Apple silicon with the Gemini CLI bundled, from GitHub Releases and its download page, with an in-app notice when a newer release is out ([RELEASING.md](RELEASING.md)).
 
@@ -15,7 +15,7 @@ GeminiCode ships as a Mac app for Apple silicon with the Gemini CLI bundled, fro
 - **Signed releases.** Add the six Apple secrets ([RELEASING.md](RELEASING.md#apple-setup)) so release builds are signed with the Developer ID and notarised, then cut a release. Until then each user approves the app in **Privacy & Security** on first launch, and managed Macs may block it. The workflow signs and notarises whenever the secrets are present.
 - **The browser sign-in in ACP mode.** Check on a desktop that the CLI's browser sign-in, run while the agent starts, writes nothing to standard output, which is the protocol stream.
 - **The team's servers, for real.** Run the Jira and GitLab containers, the SonarQube server and Snyk's server against the team's tenants. Their arguments and results were read from the servers' sources and are tested against scripted servers only.
-- **The three session traces.** A Chromium profile, an extension-host profile and a CLI telemetry file from real working sessions fill the latency budget's open rows ([AGENTIC-PLAN.md](AGENTIC-PLAN.md#1-latency-budget)).
+- **Real-session traces.** A Chromium profile, an extension-host profile and a CLI telemetry file (**Gemini: Record or Stop Performance Trace**) from real working sessions, to time the fork's own hops on a real account: Enter to send, rendering, the extension host's share of tool calls, and a cold start after a reboot. [FINDINGS.md](FINDINGS.md) has the agent's and the model's.
 - **Pilot build clean-up.**
   - Regenerate the policy templates (`policyData.jsonc`), which need a built app, so the templates admins deploy include the Gemini settings.
   - Release builds leave out upstream's `extensions/copilot`; leave it out of dev builds too.
@@ -23,7 +23,7 @@ GeminiCode ships as a Mac app for Apple silicon with the Gemini CLI bundled, fro
   - Hide upstream's **Welcome Onboarding 2026** developer command, which still opens upstream's onboarding.
 - **Organisation default project.** The app reads `geminiDefaultProjectId` from `product.json`, but no build sets it. Add it to the release workflow, for example from a repository variable, if the pilot organisation wants one.
 - **Repository settings.** Branch protection that requires Gemini CI on `main`, its three `Gemini extension` jobs included; the `GEMINI_UPSTREAM_TOKEN` secret, without which the upstream job cannot push an upstream move ([README](../README.md#upstream-releases)); the `SNYK_TOKEN` secret, which turns the Snyk job into a gate.
-- **Pilot.** Three developers for two weeks, with the pilot's admin profile and `gemini.pilot.record` on ([AGENTIC-PLAN.md](AGENTIC-PLAN.md#pilot-three-developers-two-weeks)).
+- **Pilot.** Three developers for two weeks, with the pilot's admin profile ([pilot/README.md](../pilot/README.md)) and `gemini.pilot.record` on, then **Gemini: Export Pilot Data** from each Mac.
 
 ## Known gaps
 

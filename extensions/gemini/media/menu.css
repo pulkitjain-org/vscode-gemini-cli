@@ -142,7 +142,7 @@
 	color: var(--gemini-faint);
 }
 
-/* Usage and quota: four plain bars, as the mockups draw it (the codicon has a frame). */
+/* Usage and quota: four plain bars (the codicon has a frame). */
 .codicon-gemini-usage::before {
 	content: "";
 	display: block;

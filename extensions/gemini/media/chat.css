@@ -36,9 +36,9 @@
 	--gemini-radius: 10px;
 	--gemini-radius-small: 6px;
 	--gemini-radius-large: 12px;
-	/* Soft: the theme's own colours, named as the mockups name them. */
+	/* Soft: the theme's own colours, named by their role. */
 	--gemini-surface: var(--vscode-editor-background);
-	/* The approved mockups' cards and composer: a step above the page. */
+	/* Cards and the composer: a step above the page. */
 	--gemini-card: var(--vscode-editorWidget-background, var(--gemini-surface));
 	--gemini-composer: var(--vscode-input-background, var(--gemini-surface));
 	--gemini-raised: var(--vscode-editorWidget-background, var(--vscode-input-background));
@@ -360,7 +360,7 @@ kbd {
 	word-wrap: break-word;
 }
 
-/* The user's message, a graphite bubble on the right (the mockups' #2b2b2b on #1f1f1f, and the same step in light), and under it its time and Copy. */
+/* The user's message, a graphite bubble on the right (#2b2b2b on #1f1f1f, and the same step in light), and under it its time and Copy. */
 .user-turn {
 	margin: 18px 0 14px;
 }
@@ -899,7 +899,7 @@ body.vscode-high-contrast-light {
 	max-width: 180px;
 	padding: 0 9px;
 	height: 20px;
-	/* Pills, as in the approved mockups. */
+	/* Pills. */
 	border: 1px solid var(--gemini-border-strong);
 	border-radius: 999px;
 	background: var(--gemini-surface);
@@ -3106,7 +3106,7 @@ body.vscode-high-contrast-light #send {
 	background: color-mix(in srgb, var(--vscode-charts-purple, #c586c0) 18%, transparent);
 }
 
-/* The New thread dialog (project.ts), as in the approved mockup. */
+/* The New thread dialog (project.ts). */
 .new-thread {
 	width: min(600px, calc(100vw - 32px));
 	max-height: calc(100vh - 48px);

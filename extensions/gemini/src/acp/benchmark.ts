@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The benchmark (gemini/bench/README.md, and gemini/docs/AGENTIC-PLAN.md section 5): each task's
+// The benchmark (gemini/bench/README.md): each task's
 // repository is cloned at its base commit, the CLI gets the ticket as its prompt in one session,
 // and the task's own test command grades the result. Gemini: Run Benchmark and
 // scripts/bench-run.mts both run it through here.
