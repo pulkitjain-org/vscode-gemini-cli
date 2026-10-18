@@ -71,7 +71,6 @@
 	"command.team.logTime": "Log Time on Jira Ticket...",
 	"command.team.reviewMergeRequest": "Review a Merge Request...",
 	"command.team.fixMergeRequest": "Fix Merge Request Pipeline and Comments",
-	"command.team.mergeReleaseForward": "Merge Release Branch Forward...",
 	"command.team.runChecks": "Run Checks",
 	"command.newSkill": "New Skill",
 	"command.agentHome": "Agent Home",

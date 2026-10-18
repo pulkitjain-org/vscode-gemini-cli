@@ -5,7 +5,7 @@
 
 // Messages between the team flows' pages (src/host/teamFlows.ts) and their
 // webview (webview-src/teamFlow.ts): Open Merge Request, Move Ticket and Log
-// Time, Review a merge request, Merge Release Branch Forward, and Checks.
+// Time, Review a merge request, and Checks.
 // The host holds each page's state; the page sends what the user types with
 // `set` (no re-render) and what they press with `act`.
 
@@ -109,29 +109,6 @@ export interface ReviewView {
 	readonly done?: string;
 }
 
-export interface ReleaseTargetView {
-	readonly branch: string;
-	readonly ticked: boolean;
-	readonly behind?: number;
-	readonly checking: boolean;
-	readonly clean?: boolean;
-	readonly conflicts: readonly string[];
-	readonly result?: { readonly text: string; readonly tone: Tone; readonly url?: string; readonly agentId?: string; readonly canPush?: boolean };
-}
-
-export interface ReleaseView {
-	readonly kind: 'release';
-	readonly sources: readonly string[];
-	readonly source?: string;
-	readonly targets: readonly ReleaseTargetView[];
-	readonly tickets: readonly string[];
-	readonly addTickets: boolean;
-	readonly reviewers: readonly FlowPerson[];
-	readonly members: readonly FlowPerson[];
-	readonly fetching: boolean;
-	readonly started: boolean;
-}
-
 export interface ChecksView {
 	readonly kind: 'checks';
 	readonly agentTitle: string;
@@ -142,7 +119,7 @@ export interface ChecksView {
 	readonly sent?: string;
 }
 
-export type TeamFlowView = OpenMrView | MoveTicketView | ReviewView | ReleaseView | ChecksView;
+export type TeamFlowView = OpenMrView | MoveTicketView | ReviewView | ChecksView;
 
 export interface TeamFlowState {
 	readonly view?: TeamFlowView;
@@ -173,7 +150,6 @@ export interface TeamFlowStrings {
 	readonly targetHint: string;
 	readonly suggested: string;
 	readonly release: string;
-	readonly behind: string;
 	readonly title: string;
 	readonly description: string;
 	readonly regenerate: string;
@@ -232,19 +208,6 @@ export interface TeamFlowStrings {
 	readonly kindNit: string;
 	readonly kindQuestion: string;
 	readonly openAgent: string;
-	readonly releaseTitle: string;
-	readonly from: string;
-	readonly into: string;
-	readonly intoHint: string;
-	readonly mergesCleanly: string;
-	readonly conflicts: string;
-	readonly checking: string;
-	readonly upToDate: string;
-	readonly whatHappens: string;
-	readonly whatHappensText: string;
-	readonly addTickets: string;
-	readonly openMrs: string;
-	readonly pushResolution: string;
 	readonly checksTitle: string;
 	readonly fix: string;
 	readonly fixAll: string;

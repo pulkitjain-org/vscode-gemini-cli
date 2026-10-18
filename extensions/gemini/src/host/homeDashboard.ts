@@ -44,7 +44,6 @@ function cardTitles(): Record<HomeCardId, string> {
 		tickets: vscode.l10n.t("My tickets"),
 		mergeRequests: vscode.l10n.t("Merge requests"),
 		quality: vscode.l10n.t("Quality"),
-		releases: vscode.l10n.t("Releases"),
 		gemini: vscode.l10n.t("Gemini"),
 	};
 }
@@ -71,7 +70,6 @@ export function buildDashboard(input: DashboardInput): HomeDashboard {
 		tickets: () => ticketsCard(input, titles.tickets, progress),
 		mergeRequests: () => mergeRequestsCard(input, titles.mergeRequests),
 		quality: () => qualityCard(input, titles.quality),
-		releases: () => releasesCard(input, titles.releases),
 		gemini: () => geminiCard(input, titles.gemini),
 	};
 	const cards = cardOrder(input.layout).flatMap(id => builders[id]() ?? []);
@@ -86,7 +84,6 @@ export function buildDashboard(input: DashboardInput): HomeDashboard {
 			...input.projectsOn ? [{ label: vscode.l10n.t("New Project"), icon: 'project', action: command('gemini.projects.new') }] : [],
 			{ label: vscode.l10n.t("Open Folder"), icon: 'folder-opened', action: command('workbench.action.files.openFolder') },
 			{ label: vscode.l10n.t("Review My Changes"), icon: 'diff', action: command('gemini.reviewChanges') },
-			...input.connected.has('gitlab') ? [{ label: vscode.l10n.t("Merge Release Forward..."), tool: 'gitlab' as const, action: command('gemini.team.mergeReleaseForward') }] : [],
 			...input.connected.has('snyk') || input.connected.has('sonar') ? [{ label: vscode.l10n.t("Run Checks"), tool: input.connected.has('snyk') ? 'snyk' as const : 'sonar' as const, action: command('gemini.team.runChecks') }] : [],
 		],
 		needs: needs(input),
@@ -335,27 +332,6 @@ function qualityCard(input: DashboardInput, title: string): HomeCard | undefined
 		rows,
 		stale: sonarState.stale || snykState.stale,
 		...note ? { note } : !rows.length ? { note: vscode.l10n.t("Loading checks...") } : {},
-	};
-}
-
-function releasesCard(input: DashboardInput, title: string): HomeCard | undefined {
-	if (!input.connected.has('gitlab')) {
-		return input.hideUnconnected ? undefined : notConnected('releases', title, 'gitlab', vscode.l10n.t("Release branches with commits to merge forward into later releases."));
-	}
-	const releases = input.data.releases;
-	const { stale, note } = sourceState(input, 'gitlab', releases);
-	const rows: HomeRow[] = (releases?.data?.forward ?? []).map(row => ({
-		key: row.from,
-		title: row.ahead ? row.ahead === 1 ? vscode.l10n.t("1 commit to merge into {0}", row.to) : vscode.l10n.t("{0} commits to merge into {1}", row.ahead, row.to) : vscode.l10n.t("{0} is up to date", row.to),
-		...row.ahead ? { button: { label: vscode.l10n.t("Merge Forward"), action: command('gemini.team.mergeReleaseForward', row.from) } } : { pill: { text: vscode.l10n.t("merged"), tone: 'ok' as const } },
-	}));
-	const branches = releases?.data?.branches ?? [];
-	if (branches.length && !rows.length) {
-		rows.push({ key: branches[branches.length - 1], title: vscode.l10n.t("The newest release branch") });
-	}
-	return {
-		id: 'releases', title, icon: 'git-branch', rows, stale,
-		...note ? { note } : !rows.length ? { note: !releases || releases.loading ? vscode.l10n.t("Loading release branches...") : vscode.l10n.t("No release branches in this repository's project.") } : {},
 	};
 }
 

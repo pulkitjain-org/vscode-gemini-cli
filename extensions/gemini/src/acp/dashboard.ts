@@ -10,9 +10,9 @@
 import type { GitLabMr, GitLabMrSummary } from './gitlab';
 import type { JiraIssueSummary, JiraSprint } from './jira';
 
-export type DashboardCardId = 'agents' | 'tickets' | 'mergeRequests' | 'quality' | 'releases' | 'gemini';
+export type DashboardCardId = 'agents' | 'tickets' | 'mergeRequests' | 'quality' | 'gemini';
 
-export const dashboardCards: readonly DashboardCardId[] = ['agents', 'tickets', 'mergeRequests', 'quality', 'releases', 'gemini'];
+export const dashboardCards: readonly DashboardCardId[] = ['agents', 'tickets', 'mergeRequests', 'quality', 'gemini'];
 
 /** The user's card layout: the order, and which are hidden. */
 export interface DashboardLayout {
@@ -114,10 +114,4 @@ export function partOfDay(hour: number): 'morning' | 'afternoon' | 'evening' {
 export function firstName(name: string | undefined): string | undefined {
 	const first = name?.trim().split(/[\s._-]+/)[0];
 	return first ? first[0].toUpperCase() + first.slice(1) : undefined;
-}
-
-/** Pairs of release branches to merge forward: each into the next newer one, oldest first, with commits waiting. */
-export function forwardPairs(sorted: readonly string[], max = 3): { readonly from: string; readonly to: string }[] {
-	const pairs = sorted.slice(0, -1).map((from, i) => ({ from, to: sorted[i + 1] }));
-	return pairs.slice(-max);
 }

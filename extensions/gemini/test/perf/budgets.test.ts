@@ -36,7 +36,7 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// Customize) and the tools' logos took it to about 25 KB.
 	'media/home.js': 28_000,
 	'media/changes.js': 16_000,
-	// The team flows: Open Merge Request, Move Ticket and Log Time, Review, Merge Release Forward and Checks.
+	// The team flows: Open Merge Request, Move Ticket and Log Time, Review and Checks.
 	'media/teamFlow.js': 32_000,
 	'media/settings.js': 16_000,
 	'media/highlight.js': 180_000,

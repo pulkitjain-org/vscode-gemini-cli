@@ -11,8 +11,7 @@ import { createNonce, escapeAttribute } from './webviewHtml';
 export const teamFlowViewType = 'gemini.teamFlow';
 
 /**
- * One team flow (Open Merge Request, Move Ticket, Review, Merge Release
- * Forward, Checks) as an editor tab drawn by webview-src/teamFlow.ts. The
+ * One team flow (Open Merge Request, Move Ticket, Review, Checks) as an editor tab drawn by webview-src/teamFlow.ts. The
  * host holds the state: `update` re-renders the page, while what the user
  * types comes back with `set` and is kept in `fields` without a re-render.
  * An action runs one at a time, with `busy` shown, and its error on the page.
@@ -144,7 +143,6 @@ function html(webview: vscode.Webview, media: vscode.Uri): string {
 		targetHint: vscode.l10n.t("Pick the branch this merge request merges into. Release branches come first."),
 		suggested: vscode.l10n.t("from the ticket's fix version"),
 		release: vscode.l10n.t("release"),
-		behind: vscode.l10n.t("{0} commits to merge"),
 		title: vscode.l10n.t("Title"),
 		description: vscode.l10n.t("Description"),
 		regenerate: vscode.l10n.t("Regenerate"),
@@ -203,19 +201,6 @@ function html(webview: vscode.Webview, media: vscode.Uri): string {
 		kindNit: vscode.l10n.t("Nit"),
 		kindQuestion: vscode.l10n.t("Question"),
 		openAgent: vscode.l10n.t("Open the Agent"),
-		releaseTitle: vscode.l10n.t("Merge Release Branch Forward"),
-		from: vscode.l10n.t("From"),
-		into: vscode.l10n.t("Into"),
-		intoHint: vscode.l10n.t("Later release branches, newest last. Each gets its own merge request."),
-		mergesCleanly: vscode.l10n.t("merges cleanly"),
-		conflicts: vscode.l10n.t("{0} files conflict"),
-		checking: vscode.l10n.t("checking..."),
-		upToDate: vscode.l10n.t("nothing to merge"),
-		whatHappens: vscode.l10n.t("What happens"),
-		whatHappensText: vscode.l10n.t("For each branch, GeminiCode makes a merge branch, merges, pushes it and opens a merge request. Where files conflict, an agent resolves them in its own worktree and runs the tests; you look at the resolution and push it from here."),
-		addTickets: vscode.l10n.t("Add the Jira tickets fixed in {0} to each description"),
-		openMrs: vscode.l10n.t("Open {0} Merge Requests"),
-		pushResolution: vscode.l10n.t("Push and Open Merge Request"),
 		checksTitle: vscode.l10n.t("Checks"),
 		fix: vscode.l10n.t("Fix"),
 		fixAll: vscode.l10n.t("Fix All with This Agent"),

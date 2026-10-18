@@ -19,7 +19,7 @@ GeminiCode is a Mac app. When the app quits or the laptop restarts, the extensio
 
 - Cold start after a reboot is a first-class row of the latency budget.
 - A resident per-user CLI process (section 7 of the plan) is bounded to one login; it is never a server.
-- The `releaseWork` and `checkResults` maps and the flow panels' fields move from memory to disk.
+- The `checkResults` map and the flow panels' fields move from memory to disk.
 
 ## Evidence
 

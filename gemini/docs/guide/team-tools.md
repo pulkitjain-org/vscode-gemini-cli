@@ -48,7 +48,6 @@ Cards follow:
 - **My tickets**: the current sprint's tickets assigned to you, with **Start**, **Move** and **Log Time**.
 - **Merge requests**: those waiting for your review, and yours with their pipeline and approvals.
 - **Quality** on the release branch: the SonarQube gate and Snyk, with **Fix**.
-- **Releases**: commits to merge forward.
 - **Gemini.**
 
 **Customize** hides and reorders cards and picks the release branch. Home shows the last data at once and refreshes each tool in the background; with the VPN off, VPN-only cards keep their last results, dimmed. Turn off opening it at start-up with `gemini.home.openOnStartup`; <kbd>⇧⌘H</kbd> or **Gemini: Home** brings it back.
@@ -71,10 +70,6 @@ Paste a Jira key or link, a GitLab merge request or issue link, or a Figma link 
 **Review** on a merge request waiting for you checks it out in its own worktree, and Gemini reviews it against the ticket, listing findings with a draft comment each. Tick and edit them, then **Post Comments and Request Changes**, **Post Comments** or **Approve**.
 
 Clicking a merge request asks whether to open it in GeminiCode's browser or your default browser; **Always Use…** stops asking, and `gemini.team.openMergeRequestsIn` changes it later.
-
-## Merge a release branch forward
-
-**Merge Release Branch Forward** picks a release branch and the later ones to merge it into. Each shows whether it merges cleanly. GeminiCode makes a merge branch and a merge request for each, and where files conflict an agent resolves them in its own worktree and shows you the result before anything is pushed.
 
 ## What agents get
 

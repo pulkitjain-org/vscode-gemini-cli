@@ -297,13 +297,6 @@ export class GitLabClient {
 		return list.map(b => ({ name: b.name, protected: !!b.protected, commitDate: b.commit?.committed_date }));
 	}
 
-	/** How many commits `from` has that `to` doesn't. */
-	async commitsAhead(project: string | number, from: string, to: string): Promise<number> {
-		const id = await this.projectId(project);
-		const compare = await this.request<{ commits?: unknown[] }>(`/projects/${id}/repository/compare?from=${encodeURIComponent(to)}&to=${encodeURIComponent(from)}&straight=false`);
-		return compare.commits?.length ?? 0;
-	}
-
 	async members(project: string | number, query = ''): Promise<GitLabUser[]> {
 		const id = await this.projectId(project);
 		const list = await this.request<{ id: number; username: string; name: string; state?: string }[]>(`/projects/${id}/members/all?per_page=50${query ? `&query=${encodeURIComponent(query)}` : ''}`);

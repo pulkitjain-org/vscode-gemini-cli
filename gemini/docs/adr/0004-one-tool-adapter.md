@@ -11,7 +11,7 @@ Atlassian Rovo and GitLab Duo are disabled, so the Atlassian Remote MCP Server a
 - One `TeamAdapter` in the extension host: a tool registry, a permission class per tool, an audit log, a rate limiter and a short read cache.
 - The agent reaches it through `geminicode-tools` over ACP `mcpServers`; the UI calls the same registry in-process. One call path, one audit record.
 - Official servers run as children of the adapter (stdio), never from the CLI's settings files, so tokens stay out of the agent's environment and the UI can call them. A curated subset of their tools is re-exposed to keep tool schemas, which every turn pays for, small.
-- Jira and GitLab stay as in-process REST connectors behind the same interface; the day an official server becomes usable without Rovo or Duo, it slots in as another child.
+- Jira and GitLab are the community containers the team already runs (`mcp-atlassian`, `gitlab-mcp`), started by the adapter with digests pinned and tokens injected from the keychain, re-exposed as a curated subset so the agent pays for 17 tool schemas per turn (6,559 bytes) rather than 106 (measured 18 Oct 2026: 37,550 + 78,544 bytes after the team's filters). The in-process REST connectors stay behind the same interface for the UI and as the fallback; the day an official server becomes usable without Rovo or Duo, it slots in as another child.
 - Tool names, `.gemini/geminicode-tools.json` and the SecretStorage keys do not change.
 
 ## Consequences

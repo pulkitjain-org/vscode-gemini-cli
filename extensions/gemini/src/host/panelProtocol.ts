@@ -134,7 +134,7 @@ export interface HomeView {
 }
 
 export type HomeToolId = 'jira' | 'gitlab' | 'sonar' | 'snyk' | 'figma';
-export type HomeCardId = 'agents' | 'tickets' | 'mergeRequests' | 'quality' | 'releases' | 'gemini';
+export type HomeCardId = 'agents' | 'tickets' | 'mergeRequests' | 'quality' | 'gemini';
 
 /** What a button on the dashboard does. */
 export type HomeAction =

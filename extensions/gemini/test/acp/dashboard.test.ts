@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { cardOrder, firstName, forwardPairs, moveCard, needsYou, partOfDay, sprintProgress, ticketOrder, toggleCard } from '../../src/acp/dashboard';
+import { cardOrder, firstName, moveCard, needsYou, partOfDay, sprintProgress, ticketOrder, toggleCard } from '../../src/acp/dashboard';
 import type { GitLabMr, GitLabMrSummary } from '../../src/acp/gitlab';
 import type { JiraIssueSummary } from '../../src/acp/jira';
 
@@ -45,13 +45,15 @@ describe('dashboard', () => {
 	});
 
 	it('keeps the user\'s card order, adding new cards at the end, and hides cards', () => {
-		expect(cardOrder(undefined)).toEqual(['agents', 'tickets', 'mergeRequests', 'quality', 'releases', 'gemini']);
+		expect(cardOrder(undefined)).toEqual(['agents', 'tickets', 'mergeRequests', 'quality', 'gemini']);
 		let layout = moveCard(undefined, 'quality', -2);
-		expect(cardOrder(layout)).toEqual(['agents', 'quality', 'tickets', 'mergeRequests', 'releases', 'gemini']);
+		expect(cardOrder(layout)).toEqual(['agents', 'quality', 'tickets', 'mergeRequests', 'gemini']);
 		layout = toggleCard(layout, 'gemini', false);
 		expect(cardOrder(layout)).not.toContain('gemini');
 		expect(cardOrder(toggleCard(layout, 'gemini', true))).toContain('gemini');
 		expect(cardOrder({ order: ['nonsense', 'gemini'] })[0]).toBe('gemini');
+		// A layout saved by a version that had a Releases card still loads.
+		expect(cardOrder({ order: ['releases', 'gemini'], hidden: ['releases'] })).toEqual(['gemini', 'agents', 'tickets', 'mergeRequests', 'quality']);
 	});
 
 	it('greets by first name and part of day', () => {
@@ -61,8 +63,4 @@ describe('dashboard', () => {
 		expect([partOfDay(8), partOfDay(13), partOfDay(20)]).toEqual(['morning', 'afternoon', 'evening']);
 	});
 
-	it('pairs each release branch with the next newer one', () => {
-		expect(forwardPairs(['release/1', 'release/2', 'release/3'])).toEqual([{ from: 'release/1', to: 'release/2' }, { from: 'release/2', to: 'release/3' }]);
-		expect(forwardPairs(['release/1'])).toEqual([]);
-	});
 });

@@ -355,12 +355,6 @@
         "icon": "$(wrench)"
       },
       {
-        "command": "gemini.team.mergeReleaseForward",
-        "title": "%command.team.mergeReleaseForward%",
-        "category": "%category%",
-        "icon": "$(git-merge)"
-      },
-      {
         "command": "gemini.team.runChecks",
         "title": "%command.team.runChecks%",
         "category": "%category%",

@@ -4,7 +4,6 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
-import { forwardPairs } from '../acp/dashboard';
 import type { GitLabMr, GitLabMrSummary } from '../acp/gitlab';
 import type { JiraMySprint } from '../acp/jira';
 import type { SnykFinding } from '../acp/snyk';
@@ -39,17 +38,10 @@ export interface SnykData {
 	readonly findings: readonly SnykFinding[];
 }
 
-export interface ReleaseRow {
-	readonly from: string;
-	readonly to: string;
-	readonly ahead: number;
-}
-
 export interface ReleasesData {
 	readonly project: string;
 	/** Release branches, oldest first. */
 	readonly branches: readonly string[];
-	readonly forward: readonly ReleaseRow[];
 }
 
 export interface TeamSnapshot {
@@ -131,13 +123,12 @@ export class TeamData implements vscode.Disposable {
 		const { jira, gitlab, sonar, snyk } = this.connections.connectors;
 		const defaults = folder ? await this.connections.defaults(folder).catch(() => ({})) : {};
 		const local = folder && gitlab ? await gitlabProjectOf(folder, gitlab.url, defaults).catch(() => ({ project: undefined, branch: undefined })) : {};
-		// Releases first, as Quality looks at the newest release branch.
+		// Release branches first, as Quality looks at the newest one.
 		const releases = gitlab && local.project ? this.fetch('releases', async () => {
 			const pattern = (defaults as { gitlab?: { releaseBranches?: string } }).gitlab?.releaseBranches ?? 'release/*';
 			const prefix = pattern.split('*')[0];
 			const branches = sortReleaseBranches((await gitlab.branches(local.project!, prefix)).map(b => b.name).filter(name => isReleaseBranch(name, pattern)));
-			const forward = await Promise.all(forwardPairs(branches).map(async pair => ({ ...pair, ahead: await gitlab.commitsAhead(local.project!, pair.from, pair.to).catch(() => 0) })));
-			return { project: local.project!, branches, forward };
+			return { project: local.project!, branches };
 		}) : this.clear('releases', !connected.has('gitlab'));
 		const tasks: Promise<unknown>[] = [
 			jira ? this.fetch('sprint', () => jira.mySprint()) : this.clear('sprint', true),
