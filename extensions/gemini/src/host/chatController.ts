@@ -1920,6 +1920,7 @@ export class ChatController implements vscode.Disposable {
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'chat.css'));
 		const menuStyle = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'menu.css'));
 		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'codicon.css'));
+		const glassStyle = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'glass.css'));
 		// Loaded by the view when it first shows code.
 		const highlighter = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'highlight.js'));
 		// Loaded by the view when a reply first has math.
@@ -2179,6 +2180,7 @@ export class ChatController implements vscode.Disposable {
 	<link href="${codicons}" rel="stylesheet">
 	<link href="${menuStyle}" rel="stylesheet">
 	<link href="${style}" rel="stylesheet">
+	<link href="${glassStyle}" rel="stylesheet">
 	<title>Gemini</title>
 </head>
 <body spellcheck="false">

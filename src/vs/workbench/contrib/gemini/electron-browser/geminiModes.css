@@ -179,9 +179,36 @@
 	animation: none;
 }
 
-/* The Agents | Editor switch: a hairline segment whose chosen side is a raised card. */
-.monaco-workbench .gemini-mode-toggle {
+/* Home: a round button before the switch. */
+.monaco-workbench .gemini-mode-switcher .gemini-home-button {
 	display: flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 24px;
+	padding: 0;
+	border-radius: 12px;
+	color: var(--vscode-foreground);
+}
+
+.monaco-workbench .gemini-mode-switcher .gemini-home-button .codicon {
+	font-size: 14px;
+}
+
+.monaco-workbench .gemini-mode-switcher .gemini-home-button:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+/*
+ * The Agents | Editor switch: two equal halves and a lens behind the chosen one, which slides
+ * across by transform (no layout, no repaint of the words). Outside the GeminiCode themes the
+ * lens is a raised card; geminiSoft.css draws it as glass.
+ */
+.monaco-workbench .gemini-mode-toggle {
+	position: relative;
+	display: grid;
+	grid-template-columns: 1fr 1fr;
 	align-items: center;
 	height: 24px;
 	padding: 2px;
@@ -191,21 +218,38 @@
 	background-color: var(--vscode-sideBar-background);
 }
 
+.monaco-workbench .gemini-mode-toggle .gemini-mode-lens {
+	position: absolute;
+	top: 2px;
+	bottom: 2px;
+	left: 2px;
+	width: calc(50% - 2px);
+	border-radius: 5px;
+	background-color: var(--vscode-editor-background);
+	box-shadow: 0 0 0 1px var(--vscode-widget-border);
+	pointer-events: none;
+	transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.monaco-workbench .gemini-mode-toggle.editor .gemini-mode-lens {
+	transform: translateX(100%);
+}
+
+.monaco-workbench.monaco-reduce-motion .gemini-mode-toggle .gemini-mode-lens {
+	transition: none;
+}
+
 .monaco-workbench .gemini-mode-toggle .gemini-mode-button {
+	position: relative;
 	height: 18px;
 	padding: 0 10px;
 	border-radius: 5px;
 	color: var(--vscode-descriptionForeground);
 }
 
-.monaco-workbench .gemini-mode-toggle .gemini-mode-button:hover {
-	color: var(--vscode-foreground);
-}
-
+.monaco-workbench .gemini-mode-toggle .gemini-mode-button:hover,
 .monaco-workbench .gemini-mode-toggle .gemini-mode-button.checked {
 	color: var(--vscode-foreground);
-	background-color: var(--vscode-editor-background);
-	box-shadow: 0 0 0 1px var(--vscode-widget-border);
 }
 
 /* Agents mode's editor tabs in the title bar (geminiTitleTabs.ts). */

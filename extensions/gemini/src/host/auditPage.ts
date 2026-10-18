@@ -148,6 +148,7 @@ export class AuditPage implements vscode.Disposable {
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
 		const pageStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'auditLog.css'));
 		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'codicon.css'));
+		const glassStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'glass.css'));
 		return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -157,6 +158,7 @@ export class AuditPage implements vscode.Disposable {
 	<link href="${codicons}" rel="stylesheet">
 	<link href="${style}" rel="stylesheet">
 	<link href="${pageStyle}" rel="stylesheet">
+	<link href="${glassStyle}" rel="stylesheet">
 	<title>${strings.title}</title>
 </head>
 <body class="settings-page audit-page">

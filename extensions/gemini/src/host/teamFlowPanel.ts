@@ -248,7 +248,7 @@ function html(webview: vscode.Webview, media: vscode.Uri): string {
 		fixNote: vscode.l10n.t("No agent works on this branch yet. Fix starts one in this checkout with the findings as its first prompt."),
 	};
 	const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'teamFlow.js'));
-	const styles = ['codicon.css', 'menu.css', 'panels.css', 'teamFlow.css'].map(file => `<link href="${webview.asWebviewUri(vscode.Uri.joinPath(media, file))}" rel="stylesheet">`).join('\n\t');
+	const styles = ['codicon.css', 'menu.css', 'panels.css', 'teamFlow.css', 'glass.css'].map(file => `<link href="${webview.asWebviewUri(vscode.Uri.joinPath(media, file))}" rel="stylesheet">`).join('\n\t');
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>

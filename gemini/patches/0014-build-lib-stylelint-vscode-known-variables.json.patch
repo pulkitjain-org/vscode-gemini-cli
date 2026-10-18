@@ -1,13 +1,19 @@
 diff --git a/build/lib/stylelint/vscode-known-variables.json b/build/lib/stylelint/vscode-known-variables.json
-index 889fac3759b303ed5e086f0134eb151c17a1bcb3..398c401edbdebab202b8c3db23f1d8c209a9be23 100644
+index 889fac3759b303ed5e086f0134eb151c17a1bcb3..ddb44a071ab5fa277f42d83ae4bd2b0798c1c3a4 100644
 --- a/build/lib/stylelint/vscode-known-variables.json
 +++ b/build/lib/stylelint/vscode-known-variables.json
-@@ -1003,6 +1003,8 @@
+@@ -1003,6 +1003,14 @@
  		"--agents-part-corner-radius",
  		"--agents-part-frame-border-width",
  		"--agents-window-corner-radius",
 +		"--gemini-gradient",
 +		"--gemini-soft-tint",
++		"--gemini-glass-fill",
++		"--gemini-glass-fill-strong",
++		"--gemini-glass-rim-side",
++		"--gemini-glass-rim-top",
++		"--gemini-glass-shadow",
++		"--gemini-glass-sheen",
  		"--session-chat-base-height",
  		"--editor-font-size",
  		"--background-dark",

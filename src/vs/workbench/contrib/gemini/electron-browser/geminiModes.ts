@@ -427,11 +427,12 @@ registerAction2(ModeSwitcherAction);
 /** How many agent pills fit before the rest fold into "+N". */
 const maxPills = 3;
 
-/** The title bar's agent pills and the Agents | Editor switch. */
+/** The title bar's Home button, the Agents | Editor switch and the agent pills. */
 class ModeSwitcher extends BaseActionViewItem {
 
 	private readonly renderStore = this._register(new DisposableStore());
 	private pills: HTMLElement | undefined;
+	private toggle: HTMLElement | undefined;
 	private agentsButton: HTMLElement | undefined;
 	private editorButton: HTMLElement | undefined;
 
@@ -449,9 +450,12 @@ class ModeSwitcher extends BaseActionViewItem {
 	override render(container: HTMLElement): void {
 		super.render(container);
 		container.classList.add('gemini-mode-switcher');
-		const toggle = append(container, $('.gemini-mode-toggle'));
+		this.homeButton(container);
+		const toggle = this.toggle = append(container, $('.gemini-mode-toggle'));
 		toggle.setAttribute('role', 'radiogroup');
 		toggle.setAttribute('aria-label', localize('gemini.mode.label', "Window mode"));
+		// The chosen side's highlight, one element that slides between the two (a transform, run by the compositor).
+		append(toggle, $('span.gemini-mode-lens', { 'aria-hidden': 'true' }));
 		this.agentsButton = this.modeButton(toggle, 'agents', localize('gemini.mode.agentsLabel', "Agents"));
 		this.editorButton = this.modeButton(toggle, 'editor', localize('gemini.mode.editorLabel', "Editor"));
 		this.pills = append(container, $('.gemini-agent-pills'));
@@ -460,6 +464,22 @@ class ModeSwitcher extends BaseActionViewItem {
 
 	// The buttons handle their own clicks.
 	override onClick(): void { }
+
+	/** Home, first in the title bar: the extension's Home page, from either mode. */
+	private homeButton(parent: HTMLElement): void {
+		const label = localize('gemini.home.label', "Home");
+		// The icon is a child: the switcher's buttons inherit the title bar's font, which would replace the icon font.
+		const button = append(parent, $('button.gemini-home-button', { type: 'button', 'aria-label': label }, $('span.codicon.codicon-home')));
+		this._register(addDisposableListener(button, EventType.CLICK, e => {
+			e.preventDefault();
+			e.stopPropagation();
+			void this.commandService.executeCommand('gemini.home');
+		}));
+		this._register(this.hoverService.setupManagedHover(getDefaultHoverDelegate('element'), button, () => {
+			const keys = this.keybindingService.lookupKeybinding('gemini.home')?.getLabel();
+			return keys ? localize('gemini.home.hoverKeys', "Open Home ({0})", keys) : localize('gemini.home.hover', "Open Home");
+		}));
+	}
 
 	private modeButton(parent: HTMLElement, mode: Mode, label: string): HTMLElement {
 		const button = append(parent, $('button.gemini-mode-button', { type: 'button', role: 'radio' }, label));
@@ -478,6 +498,7 @@ class ModeSwitcher extends BaseActionViewItem {
 	}
 
 	private update(): void {
+		this.toggle?.classList.toggle('editor', state.mode === 'editor');
 		for (const [button, mode] of [[this.agentsButton, 'agents'], [this.editorButton, 'editor']] as const) {
 			button?.classList.toggle('checked', state.mode === mode);
 			button?.setAttribute('aria-checked', String(state.mode === mode));

@@ -21,7 +21,7 @@ The composer's bar shows the folder, the branch switch, the mode and the model t
 
 After GeminiCode quits while something was running, two cards come first: **Unfinished when GeminiCode last quit**, with the flows to reopen and the writes whose result never came, and **What came back, and when**, which stays for a few minutes and says what is already back and what is still starting. In the chat, a turn that was cut off shows a card with **Retry the Turn**.
 
-The Home button at the left of the status bar, <kbd>⇧⌘H</kbd> or **Gemini: Home** brings it back. To stop it opening at start-up, turn off `gemini.home.openOnStartup`.
+The house at the start of the title bar, before the Agents | Editor switch, <kbd>⇧⌘H</kbd> or **Gemini: Home** brings it back. To stop it opening at start-up, turn off `gemini.home.openOnStartup`.
 
 ## Agents side by side
 

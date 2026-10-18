@@ -62,3 +62,27 @@ describe.each(['geminicode-dark.json', 'geminicode-light.json'])('%s', name => {
 		expect(contrast(colors[text], colors[background])).toBeGreaterThanOrEqual(4.5);
 	});
 });
+
+// Glass (media/glass.css, geminiSoft.css): text on the strongest glass fill, the lens and the chosen row,
+// laid over each surface it sits on. The fill is white 7% on GeminiCode Dark and black 7% on Light; at 10% on Dark, secondary text on a pop-up fell to 4.1:1.
+const glassFill: Record<string, string> = { 'geminicode-dark.json': '#FFFFFF12', 'geminicode-light.json': '#00000012' };
+const glassPairs: readonly [text: string, under: string][] = [
+	['foreground', 'editor.background'],
+	['foreground', 'sideBar.background'],
+	['foreground', 'quickInput.background'],
+	['descriptionForeground', 'editor.background'],
+	['descriptionForeground', 'sideBar.background'],
+	['descriptionForeground', 'quickInput.background'],
+];
+
+/** `color` with alpha laid over the opaque `under`, as a hex colour. */
+function over(color: string, under: string): string {
+	return `#${rgb(color, rgb(under)).map(c => Math.round(c).toString(16).padStart(2, '0')).join('')}`;
+}
+
+describe.each(Object.keys(glassFill))('%s glass', name => {
+	const colors = load(name);
+	it.each(glassPairs)('%s on the glass fill over %s reads at 4.5:1 or more', (text, under) => {
+		expect(contrast(colors[text], over(glassFill[name], colors[under]))).toBeGreaterThanOrEqual(4.5);
+	});
+});
