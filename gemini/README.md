@@ -140,8 +140,8 @@ If the chat view warns that its script is out of date, the webview bundle in `me
 
 [`gemini-ci.yml`](../.github/workflows/gemini-ci.yml) runs on pull requests and pushes to `main`, and can be run by hand. It does four things:
 
-- It lints and hygiene-checks the fork files, and checks that the patch series matches `HEAD` and that every upstream code file it edits is marked.
-- It builds and type-checks the extension and webview, builds the download page from a sample release, then runs the unit tests and real-CLI tests against the `latest` and `preview` CLI.
+- It checks that the Gemini workflow files parse, lints and hygiene-checks the fork files (the fork's own files beside upstream's, listed in `gemini/patches/ADDED`, included), and checks that the patch series matches `HEAD` and that every upstream code file it edits is marked.
+- It builds and type-checks the extension and webview, builds the download page from a sample release, then runs the unit tests and real-CLI tests against three CLIs: the version the app bundles (downloaded and checked as a release build does), and npm's `latest` and `preview`.
 - It runs Snyk on the fork's own code when the repository has a `SNYK_TOKEN` secret, and passes with a note when it has none.
 - It compiles the whole fork and runs upstream's hygiene check. A pull request that only changes `extensions/gemini/`, `gemini/`, the Gemini workflows or top-level Markdown files skips this step, because the extension job already covers those files; a skipped job counts as passing. The step restores `node_modules` from a cache keyed on the lockfiles, so it reinstalls only when dependencies change.
 
@@ -163,7 +163,9 @@ After editing an upstream file, run `regenerate` and commit `gemini/patches/` wi
 
 The fork is built on one upstream release tag, pinned in `gemini/upstream.json` (`1.142.0`). Its edits to upstream files are the patch series in `gemini/patches/`, one patch per file, binaries included; everything else the fork owns lives in `extensions/gemini/`, `gemini/`, the `gemini-*.yml` workflows and the files listed in `gemini/patches/ADDED`, which apply to any base.
 
-[`gemini-upstream.yml`](../.github/workflows/gemini-upstream.yml) runs once a week and by hand. It fetches upstream's tags, takes the newest release above the pin, checks it out, applies the series with a three-way merge, copies the fork's own files over from `main`, moves the pin, regenerates the series against the new tag, bumps the bundled Gemini CLI to the newest release with its checksum from npm, and opens one pull request. Gemini CI builds and tests that pull request like any other, and `main` is protected so both have to be green before it merges. A patch that does not apply leaves conflict markers in the branch, and the pull request names it; finish it on that branch, run `regenerate`, and push.
+[`gemini-upstream.yml`](../.github/workflows/gemini-upstream.yml) runs once a week and by hand. It fetches upstream's tags, takes the newest release above the pin, checks it out, applies the series with a three-way merge, copies the fork's own files over from `main`, moves the pin, regenerates the series against the new tag, bumps the bundled Gemini CLI to the newest release with its checksum from npm, and opens one pull request, committing as the repository's git user. Gemini CI builds and tests that pull request like any other, and `main` is protected so it has to be green before it merges. A patch that does not apply leaves conflict markers in the branch, and the pull request names it; finish it on that branch, run `regenerate`, and push. While that branch exists, later runs leave it alone.
+
+Pushing an upstream move needs the `GEMINI_UPSTREAM_TOKEN` repository secret: a fine-grained token for this repository with contents, pull requests and workflows write access. GitHub refuses a push that changes `.github/workflows` from a workflow's own token, and upstream's commits do. A pull request opened with that token starts Gemini CI by itself. Without the secret, a CLI-only bump still goes through, and the job starts Gemini CI on its branch, since a pull request opened with a workflow's own token starts no workflows.
 
 To do the same by hand:
 

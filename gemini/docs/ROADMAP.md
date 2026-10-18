@@ -22,7 +22,7 @@ GeminiCode ships as a Mac app for Apple silicon with the Gemini CLI bundled, fro
   - Trim `defaultChatAgent` in `product.json` to a stub. Removing it outright would touch about 45 upstream files.
   - Hide upstream's **Welcome Onboarding 2026** developer command, which still opens upstream's onboarding.
 - **Organisation default project.** The app reads `geminiDefaultProjectId` from `product.json`, but no build sets it. Add it to the release workflow, for example from a repository variable, if the pilot organisation wants one.
-- **Repository settings.** Branch protection that requires Gemini CI and the upstream job on `main`; the `SNYK_TOKEN` secret, which turns the Snyk job into a gate.
+- **Repository settings.** Branch protection that requires Gemini CI on `main`, its three `Gemini extension` jobs included; the `GEMINI_UPSTREAM_TOKEN` secret, without which the upstream job cannot push an upstream move ([README](../README.md#upstream-releases)); the `SNYK_TOKEN` secret, which turns the Snyk job into a gate.
 - **Pilot.** Three developers for two weeks, with the pilot's admin profile and `gemini.pilot.record` on ([AGENTIC-PLAN.md](AGENTIC-PLAN.md#pilot-three-developers-two-weeks)).
 
 ## Known gaps

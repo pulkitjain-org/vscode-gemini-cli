@@ -13,10 +13,15 @@ FILE="${1:?usage: notarize.sh <file>}"
 AUTH=(--key "${APPLE_API_KEY_PATH:?}" --key-id "${APPLE_API_KEY_ID:?}" --issuer "${APPLE_API_ISSUER_ID:?}")
 
 echo "Notarizing $(basename "$FILE")..."
-RESULT="$(xcrun notarytool submit "$FILE" "${AUTH[@]}" --wait --timeout 2h --output-format json)"
+# notarytool can exit non-zero for a rejection too; carry on so Apple's log is printed.
+RESULT="$(xcrun notarytool submit "$FILE" "${AUTH[@]}" --wait --timeout 2h --output-format json)" || true
 echo "$RESULT"
-ID="$(node -p 'JSON.parse(process.argv[1]).id ?? ""' "$RESULT")"
-STATUS="$(node -p 'JSON.parse(process.argv[1]).status ?? ""' "$RESULT")"
+# One field of the JSON answer, or nothing when there is no answer to read.
+field() {
+	node -e 'try { process.stdout.write(String(JSON.parse(process.argv[1])[process.argv[2]] ?? "")); } catch { }' "$RESULT" "$1"
+}
+ID="$(field id)"
+STATUS="$(field status)"
 
 if [[ "$STATUS" != "Accepted" ]]; then
 	echo "::error::Notarization of $(basename "$FILE") ended with status '$STATUS'"
