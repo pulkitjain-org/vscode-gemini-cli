@@ -5,7 +5,7 @@
 
 import * as vscode from 'vscode';
 import type { GitLabMr, GitLabMrSummary } from '../acp/gitlab';
-import type { JiraMySprint } from '../acp/jira';
+import type { JiraMyTickets } from '../acp/jira';
 import type { SnykFinding } from '../acp/snyk';
 import { sonarProjectKeyIn, type SonarGate } from '../acp/sonar';
 import { isReleaseBranch, sortReleaseBranches } from '../acp/teamDefaults';
@@ -45,7 +45,7 @@ export interface ReleasesData {
 }
 
 export interface TeamSnapshot {
-	readonly sprint?: Fetched<JiraMySprint>;
+	readonly tickets?: Fetched<JiraMyTickets>;
 	readonly reviews?: Fetched<readonly GitLabMrSummary[]>;
 	readonly mine?: Fetched<readonly GitLabMr[]>;
 	readonly releases?: Fetched<ReleasesData>;
@@ -55,7 +55,7 @@ export interface TeamSnapshot {
 
 type Source = keyof TeamSnapshot;
 
-const sourceTool: Record<Source, TeamToolId> = { sprint: 'jira', reviews: 'gitlab', mine: 'gitlab', releases: 'gitlab', quality: 'sonar', snyk: 'snyk' };
+const sourceTool: Record<Source, TeamToolId> = { tickets: 'jira', reviews: 'gitlab', mine: 'gitlab', releases: 'gitlab', quality: 'sonar', snyk: 'snyk' };
 const storageKey = 'gemini.home.teamData';
 /** Snyk runs a full test, so it is refreshed at most this often. */
 const snykMaxAgeMs = 6 * 60 * 60_000;
@@ -63,7 +63,7 @@ const snykMaxAgeMs = 6 * 60 * 60_000;
 const sourceTimeoutMs = 15_000;
 
 /**
- * The team tools' data Home's dashboard shows: the user's sprint, merge
+ * The team tools' data Home's dashboard shows: the user's tickets, merge
  * requests, release branches and quality. Each source is fetched in
  * parallel with a timeout of its own, so a tool behind a VPN that is off
  * never holds the others; the last answers are kept in global state, so Home
@@ -79,12 +79,13 @@ export class TeamData implements vscode.Disposable {
 	private lastRefresh = 0;
 
 	constructor(private readonly state: vscode.Memento, private readonly connections: TeamConnections) {
-		this.snapshotValue = { ...state.get<TeamSnapshot>(storageKey) };
-		// A fetch that was running when the window closed isn't any more.
-		for (const key of Object.keys(this.snapshotValue) as Source[]) {
-			const value = this.snapshotValue[key];
-			if (value?.loading) {
-				this.snapshotValue[key] = { ...value, loading: false };
+		const saved: Record<string, Fetched<unknown> | undefined> = { ...state.get<Record<string, Fetched<unknown>>>(storageKey) };
+		this.snapshotValue = {};
+		// Sources an older version kept (such as `sprint`) are dropped; a fetch that was running when the window closed isn't any more.
+		for (const key of Object.keys(sourceTool) as Source[]) {
+			const value = saved[key];
+			if (value) {
+				this.snapshotValue[key] = value.loading ? { ...value, loading: false } : value;
 			}
 		}
 	}
@@ -131,7 +132,7 @@ export class TeamData implements vscode.Disposable {
 			return { project: local.project!, branches };
 		}) : this.clear('releases', !connected.has('gitlab'));
 		const tasks: Promise<unknown>[] = [
-			jira ? this.fetch('sprint', () => jira.mySprint()) : this.clear('sprint', true),
+			jira ? this.fetch('tickets', () => jira.myTickets()) : this.clear('tickets', true),
 			gitlab ? this.fetch('reviews', async () => {
 				// Pending on me: asked to review, or assigned to finish; once each.
 				const [reviews, assigned] = await Promise.all([gitlab.reviewRequests(), gitlab.assignedMergeRequests().catch(() => [])]);

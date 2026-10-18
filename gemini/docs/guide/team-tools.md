@@ -46,12 +46,14 @@ A checked-in `.gemini/geminicode-tools.json` saves everyone typing addresses. It
 Cards follow:
 
 - **Agents.**
-- **My tickets**: the current sprint's tickets assigned to you, with **Start**, **Move**, **Log Time** and **Reassign**.
+- **My tickets**: every open ticket assigned to you. The current sprint's come first, under the sprint's name with how many are done, then the rest under **Not in this sprint**. Each has **Start**, **Move**, **Log Time** and **Reassign**.
 - **Merge requests**: **Pending on me** (asked to review, or assigned to finish) and **Mine**, each with its pipeline and approvals; one that can merge shows **Merge…**.
 - **Quality** on the release branch: the SonarQube gate and Snyk, with **Fix**.
 - **Gemini.**
 
 **Unfinished** appears only after GeminiCode quit while something was running: a flow tab (Move, Open Merge Request, Review) to **Reopen** from the same inputs or **Discard**, and a write whose result never came back, to check in the tool before doing it again (**Mark as Checked** once you have). Nothing is redone on its own. A chat whose agent was working when the app quit says so under the last message.
+
+A card shows its first few items. When it has more, **Show All** opens the whole list in a popup, with a filter for long lists: click an item to open it, as on the card. A ticket or merge request opens in your browser and leaves the list open; an agent opens in its tab.
 
 **Customize** hides and reorders cards and picks the release branch. Home shows the last data at once and refreshes each tool in the background; with the VPN off, VPN-only cards keep their last results, dimmed. Turn off opening it at start-up with `gemini.home.openOnStartup`; <kbd>⇧⌘H</kbd> or **Gemini: Home** brings it back.
 

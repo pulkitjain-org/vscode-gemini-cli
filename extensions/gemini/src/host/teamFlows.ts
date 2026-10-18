@@ -12,7 +12,7 @@ import { branchChoices, changedFiles, checkoutForChecks, listBranches } from '..
 import { analyzeFiles } from '../acp/teamContainers';
 import { errorMessage } from '../acp/errors';
 import { GitLabClient, GitLabMr } from '../acp/gitlab';
-import { formatDuration, JiraClient, JiraIssueSummary, jiraKeyIn, parseDuration } from '../acp/jira';
+import { formatDuration, JiraClient, type JiraMyTickets, jiraKeyIn, parseDuration } from '../acp/jira';
 import { branchSummary, fetchBranches, pushBranch, reviewWorktree } from '../acp/releaseMerge';
 import { describeSnyk } from '../acp/snyk';
 import { sonarProjectKeyIn } from '../acp/sonar';
@@ -29,6 +29,7 @@ import type { FlowRecord } from '../acp/flowRecords';
 import { FlowRecording, TeamFlowPanel } from './teamFlowPanel';
 import { ChecksView, FlowAttachment, MoveTicketView, OpenMrView, ReviewView, Tone, TransitionView } from './teamFlowProtocol';
 import { openTeamLink } from './teamLinks';
+import { ticketPickItems } from './toolChips';
 
 /** Where checks run: a checkout on a branch, the repository it belongs to, and the agent working there when there is one. */
 interface ChecksPlace {
@@ -223,10 +224,9 @@ export class TeamFlows implements vscode.Disposable {
 	}
 
 	private async pickTicket(jira: JiraClient): Promise<string | undefined> {
-		const sprint = await jira.mySprint().catch(() => ({ issues: [] as JiraIssueSummary[] }));
-		const items = sprint.issues.map(issue => ({ label: issue.key, description: issue.summary, detail: issue.status }));
-		const picked = await vscode.window.showQuickPick(items, { title: vscode.l10n.t("Start Agent on a Jira Ticket"), placeHolder: vscode.l10n.t("Your tickets in the current sprint, or type a key such as ACME-412"), matchOnDescription: true });
-		return picked?.label;
+		const mine = await jira.myTickets().catch((): JiraMyTickets => ({ issues: [] }));
+		const picked = await vscode.window.showQuickPick(ticketPickItems(mine), { title: vscode.l10n.t("Start Agent on a Jira Ticket"), placeHolder: vscode.l10n.t("Your open tickets, this sprint's first"), matchOnDescription: true });
+		return picked?.key;
 	}
 
 	// --- Move a ticket, and log time

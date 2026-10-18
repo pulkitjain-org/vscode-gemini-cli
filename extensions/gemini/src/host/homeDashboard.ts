@@ -4,16 +4,16 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
-import { cardOrder, DashboardCardId, DashboardLayout, firstName, isReadyToMerge, needsYou, partOfDay, sprintProgress, ticketOrder } from '../acp/dashboard';
+import { cardOrder, DashboardCardId, DashboardLayout, firstName, isReadyToMerge, needsYou, partOfDay, sprintProgress, ticketGroups } from '../acp/dashboard';
 import type { AuditEntry } from '../acp/auditLog';
 import type { ModelQuota } from '../acp/directRequest';
 import type { FlowRecord } from '../acp/flowRecords';
 import type { GitLabMr, PipelineState } from '../acp/gitlab';
-import { type JiraIssueSummary, sprintJql } from '../acp/jira';
+import { type JiraIssueSummary, type JiraMyTicket, type JiraSprint, myTicketsJql } from '../acp/jira';
 import { TeamToolId, teamToolIds, teamToolNames } from '../acp/teamHttp';
 import type { AgentSummary } from './agentsView';
 import { relativeTime } from './displayText';
-import type { HomeAction, HomeCard, HomeCardId, HomeDashboard, HomeNeed, HomeRow, HomeTool, HomeTone } from './panelProtocol';
+import type { HomeAction, HomeCard, HomeCardId, HomeDashboard, HomeList, HomeNeed, HomeRow, HomeTool, HomeTone } from './panelProtocol';
 import type { ConnectionState } from './teamConnections';
 import type { Fetched, TeamSnapshot } from './teamData';
 
@@ -45,6 +45,8 @@ export interface DashboardInput {
 	readonly dataFrom?: number;
 	/** What came back since the window opened, for the card shown after a start. */
 	readonly startup?: StartupState;
+	/** The card whose whole list is open in the page's popup. */
+	readonly list?: HomeCardId;
 }
 
 export interface StartupState {
@@ -57,6 +59,22 @@ export interface StartupState {
 
 /** How long after the window opened the startup card stays. */
 const startupCardMs = 3 * 60_000;
+
+/** A card, and the whole list its first rows come from, for the popup Show All opens. */
+interface ListedCard {
+	readonly card: HomeCard;
+	readonly all?: readonly HomeRow[];
+}
+
+/** The card showing `shown` of `all`, with the count Show All offers when that leaves rows out. */
+function listed(card: Omit<HomeCard, 'rows' | 'total'>, all: readonly HomeRow[], shown: readonly HomeRow[]): ListedCard {
+	return { card: { ...card, rows: shown, ...all.length > shown.length ? { total: all.length } : {} }, all };
+}
+
+/** A card with no list beyond what it shows. */
+function fixed(card: HomeCard | undefined): ListedCard | undefined {
+	return card ? { card } : undefined;
+}
 
 const connect: HomeAction = { kind: 'command', command: 'gemini.connections' };
 const command = (id: string, ...args: unknown[]): HomeAction => ({ kind: 'command', command: id, args });
@@ -77,29 +95,36 @@ export function buildDashboard(input: DashboardInput): HomeDashboard {
 	const { now, data } = input;
 	const tools = teamToolIds.map(id => toolView(id, input));
 	const unreachable = tools.filter(t => t.tone === 'warn' && t.id !== 'figma').map(t => t.name);
-	const sprint = data.sprint?.data;
-	const progress = sprint ? sprintProgress(sprint.issues, sprint.sprint, now.getTime()) : undefined;
+	const tickets = data.tickets?.data;
+	const groups = ticketGroups(tickets?.issues ?? []);
+	const progress = tickets ? sprintProgress(groups.sprint, tickets.sprint, now.getTime()) : undefined;
 	const name = firstName(input.connected.has('jira') ? input.state('jira').account : input.state('gitlab').account);
 	const greeting = {
 		morning: name ? vscode.l10n.t("Good morning, {0}", name) : vscode.l10n.t("Good morning"),
 		afternoon: name ? vscode.l10n.t("Good afternoon, {0}", name) : vscode.l10n.t("Good afternoon"),
 		evening: name ? vscode.l10n.t("Good evening, {0}", name) : vscode.l10n.t("Good evening"),
 	}[partOfDay(now.getHours())];
-	const sprintLine = sprint?.sprint ? progress?.daysLeft !== undefined
-		? progress.daysLeft === 1 ? vscode.l10n.t("{0}, 1 day left", sprint.sprint.name) : vscode.l10n.t("{0}, {1} days left", sprint.sprint.name, progress.daysLeft)
-		: sprint.sprint.name : undefined;
+	const sprintLine = tickets?.sprint ? progress?.daysLeft !== undefined
+		? progress.daysLeft === 1 ? vscode.l10n.t("{0}, 1 day left", tickets.sprint.name) : vscode.l10n.t("{0}, {1} days left", tickets.sprint.name, progress.daysLeft)
+		: tickets.sprint.name : undefined;
 	const context = [now.toLocaleDateString(vscode.env.language, { weekday: 'long', day: 'numeric', month: 'long' }), input.repository, sprintLine].filter(Boolean).join(' · ');
 	const titles = cardTitles();
-	const builders: Record<DashboardCardId, () => HomeCard | undefined> = {
+	const builders: Record<DashboardCardId, () => ListedCard | undefined> = {
 		unfinished: () => unfinishedCard(input, titles.unfinished),
-		startup: () => startupCard(input, titles.startup),
+		startup: () => fixed(startupCard(input, titles.startup)),
 		agents: () => agentsCard(input, titles.agents),
-		tickets: () => ticketsCard(input, titles.tickets, progress),
+		tickets: () => ticketsCard(input, titles.tickets, groups, tickets?.sprint, progress),
 		mergeRequests: () => mergeRequestsCard(input, titles.mergeRequests),
-		quality: () => qualityCard(input, titles.quality),
-		gemini: () => geminiCard(input, titles.gemini),
+		quality: () => fixed(qualityCard(input, titles.quality)),
+		gemini: () => fixed(geminiCard(input, titles.gemini)),
 	};
-	const cards = cardOrder(input.layout).flatMap(id => builders[id]() ?? []);
+	const built = new Map(cardOrder(input.layout).map(id => [id, builders[id]()] as const));
+	const cards = [...built.values()].flatMap(listedCard => listedCard ? [listedCard.card] : []);
+	const open = input.list ? built.get(input.list) ?? builders[input.list]() : undefined;
+	const list: HomeList | undefined = open?.all ? {
+		card: open.card.id, title: open.card.title, rows: open.all,
+		...open.card.tool ? { tool: open.card.tool } : {}, ...open.card.icon ? { icon: open.card.icon } : {}, ...open.card.query ? { query: open.card.query } : {},
+	} : undefined;
 	const order = cardOrder({ ...input.layout, hidden: [] });
 	const nothingConnected = !input.connected.size;
 	return {
@@ -122,6 +147,7 @@ export function buildDashboard(input: DashboardInput): HomeDashboard {
 		releaseBranches: data.releases?.data?.branches ?? [],
 		...input.layout?.qualityBranch ? { qualityBranch: input.layout.qualityBranch } : {},
 		refreshing: input.refreshing,
+		...list ? { list } : {},
 	};
 }
 
@@ -153,7 +179,7 @@ function needs(input: DashboardInput): HomeNeed[] {
 		agents: input.agents,
 		reviews: input.data.reviews?.data,
 		mine: input.data.mine?.data,
-		tickets: input.data.sprint?.data?.issues,
+		tickets: input.data.tickets?.data?.issues,
 	}).map((item): HomeNeed => {
 		switch (item.kind) {
 			case 'agentWaiting':
@@ -215,7 +241,7 @@ function notConnected(id: HomeCardId, title: string, tool: TeamToolId, text: str
 }
 
 /** What a quit cut off: flows to reopen, and writes whose result never came, to check in the tool before doing them again. */
-function unfinishedCard(input: DashboardInput, title: string): HomeCard | undefined {
+function unfinishedCard(input: DashboardInput, title: string): ListedCard | undefined {
 	const flows = input.unfinished?.flows ?? [];
 	const intents = input.unfinished?.intents ?? [];
 	if (!flows.length && !intents.length) {
@@ -235,7 +261,7 @@ function unfinishedCard(input: DashboardInput, title: string): HomeCard | undefi
 			menu: [{ label: vscode.l10n.t("Mark as Checked"), action: command('gemini.team.settleIntent', entry.id) }],
 		})),
 	];
-	return { id: 'unfinished', title, icon: 'debug-restart', query: 'flows/*.json · audit intents without a result', rows, note: vscode.l10n.t("GeminiCode quit while these were running. Nothing was redone on its own: a write may have gone through, so look in the tool first.") };
+	return listed({ id: 'unfinished', title, icon: 'debug-restart', query: 'flows/*.json · audit intents without a result', note: vscode.l10n.t("GeminiCode quit while these were running. Nothing was redone on its own: a write may have gone through, so look in the tool first.") }, rows, rows.slice(0, 5));
 }
 
 /**
@@ -263,29 +289,38 @@ function startupCard(input: DashboardInput, title: string): HomeCard | undefined
 	return { id: 'startup', title, icon: 'history', query: 'cold start · restart model', rows };
 }
 
-function agentsCard(input: DashboardInput, title: string): HomeCard {
-	const rows: HomeRow[] = [];
-	const live = input.agents.filter(a => !a.project && a.state !== 'stopped' && a.state !== 'idle' || (!a.project && !!a.changes?.files));
-	for (const agent of live.slice(0, 5)) {
+function agentsCard(input: DashboardInput, title: string): ListedCard {
+	const own = input.agents.filter(a => !a.project);
+	const isLive = (a: AgentSummary) => a.state !== 'stopped' && a.state !== 'idle' || !!a.changes?.files;
+	const live = own.filter(isLive).map((agent): HomeRow => {
 		const tone: HomeTone = agent.state === 'working' ? 'info' : agent.state === 'waiting' ? 'warn' : agent.state === 'error' ? 'error' : 'ok';
 		const label = agent.state === 'working' ? vscode.l10n.t("working") : agent.state === 'waiting' ? vscode.l10n.t("waiting") : agent.state === 'error' ? vscode.l10n.t("stopped with an error") : agent.changes?.files ? vscode.l10n.t("ready to review") : vscode.l10n.t("done");
-		rows.push({
+		return {
 			icon: 'circle-filled',
 			title: agent.title,
 			pill: { text: label, tone },
 			open: { kind: 'agent', id: agent.id, do: 'open' },
 			...agent.changes?.files && agent.state !== 'working' ? { button: { label: vscode.l10n.t("Review"), action: { kind: 'agent', id: agent.id, do: 'review' } } } : {},
-		});
-	}
-	for (const project of input.agents.filter(a => a.project?.role === 'coordinator').slice(0, 2)) {
+		};
+	});
+	const now = input.now.getTime();
+	const earlier = own.filter(a => !isLive(a)).sort((a, b) => b.updatedAt - a.updatedAt).map((agent, i): HomeRow => ({
+		...i === 0 ? { group: vscode.l10n.t("Earlier") } : {},
+		icon: 'circle-outline', title: agent.title, detail: relativeTime(agent.updatedAt, now), open: { kind: 'agent', id: agent.id, do: 'open' },
+	}));
+	const projects = input.agents.filter(a => a.project?.role === 'coordinator').map((project, i): HomeRow => {
 		const threads = project.project?.role === 'coordinator' ? project.project.threads : 0;
-		rows.push({ icon: 'project', title: project.title, detail: threads === 1 ? vscode.l10n.t("1 thread") : vscode.l10n.t("{0} threads", threads), open: { kind: 'agent', id: project.id, do: 'open' } });
-	}
-	return {
-		id: 'agents', title, tool: 'gemini', rows,
+		return {
+			...i === 0 ? { group: vscode.l10n.t("Projects") } : {},
+			icon: 'project', title: project.title, detail: threads === 1 ? vscode.l10n.t("1 thread") : vscode.l10n.t("{0} threads", threads), open: { kind: 'agent', id: project.id, do: 'open' },
+		};
+	});
+	const shown = [...live.slice(0, 5), ...projects.slice(0, 2)];
+	return listed({
+		id: 'agents', title, tool: 'gemini',
 		link: { label: vscode.l10n.t("All agents"), action: command('gemini.agents.focus') },
-		...rows.length ? {} : { note: vscode.l10n.t("No agents at work. Describe a task above to start one.") },
-	};
+		...shown.length ? {} : { note: vscode.l10n.t("No agents at work. Describe a task above to start one.") },
+	}, [...live, ...earlier, ...projects], shown);
 }
 
 function statusTone(issue: JiraIssueSummary): HomeTone {
@@ -301,14 +336,8 @@ function statusTone(issue: JiraIssueSummary): HomeTone {
 	return issue.statusCategory === 'indeterminate' ? 'warn' : 'info';
 }
 
-function ticketsCard(input: DashboardInput, title: string, progress: { done: number; total: number } | undefined): HomeCard | undefined {
-	if (!input.connected.has('jira')) {
-		return input.hideUnconnected ? undefined : notConnected('tickets', title, 'jira', vscode.l10n.t("Your tickets in the current sprint, with Start Agent on each."));
-	}
-	const fetched = input.data.sprint;
-	const { stale, note } = sourceState(input, 'jira', fetched);
-	const sprint = fetched?.data;
-	const rows: HomeRow[] = ticketOrder(sprint?.issues ?? []).slice(0, 6).map(issue => ({
+function ticketRow(issue: JiraMyTicket): HomeRow {
+	return {
 		key: issue.key,
 		title: issue.summary,
 		pill: { text: issue.status, tone: statusTone(issue) },
@@ -321,15 +350,33 @@ function ticketsCard(input: DashboardInput, title: string, progress: { done: num
 			{ label: vscode.l10n.t("Reassign..."), action: command('gemini.team.reassignTicket', issue.key) },
 			{ label: vscode.l10n.t("Open in Jira"), action: { kind: 'link', url: issue.url } },
 		],
-	}));
-	if (progress?.total) {
-		rows.push({ title: vscode.l10n.t("{0} of {1} done", progress.done, progress.total), bar: progress.done / progress.total });
-	}
-	return {
-		id: 'tickets', title, tool: 'jira', rows, stale, query: sprintJql,
-		...sprint?.sprint ? { link: { label: sprint.sprint.name, action: { kind: 'link', url: `${input.jiraUrl ?? ''}/issues/?jql=${encodeURIComponent(sprintJql)}` } } } : {},
-		...note ? { note } : !rows.length ? { note: fetched?.loading || !fetched ? vscode.l10n.t("Loading your tickets...") : vscode.l10n.t("No tickets assigned to you in an open sprint.") } : {},
 	};
+}
+
+/**
+ * Every open ticket assigned to the user: the running sprint's first, under
+ * the sprint's name with its progress, then the rest under "Not in this sprint".
+ */
+function ticketsCard(input: DashboardInput, title: string, groups: ReturnType<typeof ticketGroups>, sprint: JiraSprint | undefined, progress: { done: number; total: number } | undefined): ListedCard | undefined {
+	if (!input.connected.has('jira')) {
+		return input.hideUnconnected ? undefined : fixed(notConnected('tickets', title, 'jira', vscode.l10n.t("Your open tickets, this sprint's first, with Start Agent on each.")));
+	}
+	const fetched = input.data.tickets;
+	const { stale, note } = sourceState(input, 'jira', fetched);
+	const inSprint = groups.sprint.map((issue, i): HomeRow => ({
+		...ticketRow(issue),
+		...i === 0 ? { group: sprint?.name ?? vscode.l10n.t("This sprint"), ...progress?.total ? { groupQuery: vscode.l10n.t("{0} of {1} done", progress.done, progress.total) } : {} } : {},
+	}));
+	const other = groups.other.map((issue, i): HomeRow => ({
+		...ticketRow(issue),
+		...i === 0 && inSprint.length ? { group: vscode.l10n.t("Not in this sprint") } : {},
+	}));
+	const all = [...inSprint, ...other];
+	return listed({
+		id: 'tickets', title, tool: 'jira', stale, query: myTicketsJql,
+		...input.jiraUrl ? { link: { label: vscode.l10n.t("Open in Jira"), action: { kind: 'link', url: `${input.jiraUrl}/issues/?jql=${encodeURIComponent(myTicketsJql)}` } } } : {},
+		...note ? { note } : !all.length ? { note: fetched?.loading || !fetched ? vscode.l10n.t("Loading your tickets...") : vscode.l10n.t("No open tickets assigned to you.") } : {},
+	}, all, all.slice(0, 6));
 }
 
 function pipelinePill(mr: GitLabMr): HomeRow['pill'] {
@@ -346,32 +393,31 @@ function pipelinePill(mr: GitLabMr): HomeRow['pill'] {
 	return status === 'success' ? { text: vscode.l10n.t("pipeline passed"), tone: 'ok' } : undefined;
 }
 
-function mergeRequestsCard(input: DashboardInput, title: string): HomeCard | undefined {
+function mergeRequestsCard(input: DashboardInput, title: string): ListedCard | undefined {
 	if (!input.connected.has('gitlab')) {
-		return input.hideUnconnected ? undefined : notConnected('mergeRequests', title, 'gitlab', vscode.l10n.t("Merge requests waiting for your review or assigned to you, and yours with their pipeline, approvals and whether they can merge."));
+		return input.hideUnconnected ? undefined : fixed(notConnected('mergeRequests', title, 'gitlab', vscode.l10n.t("Merge requests waiting for your review or assigned to you, and yours with their pipeline, approvals and whether they can merge.")));
 	}
 	const reviews = input.data.reviews;
 	const mine = input.data.mine;
 	const { stale, note } = sourceState(input, 'gitlab', reviews?.error ? reviews : mine);
 	const mineGroup = vscode.l10n.t("Mine");
-	const rows: HomeRow[] = [
-		...(reviews?.data ?? []).slice(0, 4).map((mr): HomeRow => ({
+	const forMe = (reviews?.data ?? []).map((mr): HomeRow => ({
 			key: `!${mr.iid}`, title: mr.title, detail: mr.author, open: { kind: 'link', url: mr.url },
 			...mr.draft ? { pill: { text: vscode.l10n.t("draft"), tone: 'muted' as const } } : {},
 			button: { label: vscode.l10n.t("Review"), action: command('gemini.team.reviewMergeRequest', mr.project, mr.iid) },
-		})),
-		...(mine?.data ?? []).slice(0, 4).map((mr, i): HomeRow => ({
+	}));
+	const mineRows = (mine?.data ?? []).map((mr, i): HomeRow => ({
 			...i === 0 ? { group: mineGroup, groupQuery: 'author_id=me, state=opened' } : {},
 			key: `!${mr.iid}`, title: mr.title, open: { kind: 'link', url: mr.url },
 			...isReadyToMerge(mr) ? { pill: { text: vscode.l10n.t("ready to merge"), tone: 'ok' as const }, button: { label: vscode.l10n.t("Merge..."), action: command('gemini.team.mergeMergeRequest', mr.project, mr.iid), primary: true } }
 				: { ...pipelinePill(mr) ? { pill: pipelinePill(mr) } : {}, ...mr.pipeline?.status === 'failed' ? { button: { label: vscode.l10n.t("Fix"), action: command('gemini.team.fixMergeRequest', mr.project, mr.iid) } } : {} },
-		})),
-	];
-	return {
-		id: 'mergeRequests', title, tool: 'gitlab', rows, stale, query: 'reviewer_id=me OR assignee_id=me, state=opened',
+	}));
+	const all = [...forMe, ...mineRows];
+	return listed({
+		id: 'mergeRequests', title, tool: 'gitlab', stale, query: 'reviewer_id=me OR assignee_id=me, state=opened',
 		...input.gitlabUrl ? { link: { label: vscode.l10n.t("Open in GitLab"), action: { kind: 'link', url: `${input.gitlabUrl}/dashboard/merge_requests?reviewer_username=${encodeURIComponent(input.state('gitlab').account ?? '')}` } } } : {},
-		...note ? { note } : !rows.length ? { note: !reviews || reviews.loading ? vscode.l10n.t("Loading merge requests...") : vscode.l10n.t("No open merge requests for you or waiting on you.") } : {},
-	};
+		...note ? { note } : !all.length ? { note: !reviews || reviews.loading ? vscode.l10n.t("Loading merge requests...") : vscode.l10n.t("No open merge requests for you or waiting on you.") } : {},
+	}, all, [...forMe.slice(0, 4), ...mineRows.slice(0, 4)]);
 }
 
 function qualityCard(input: DashboardInput, title: string): HomeCard | undefined {

@@ -198,12 +198,24 @@ export interface HomeCard {
 	/** The query that fills the card, faint beside the title, so its numbers can be checked against the tool. */
 	readonly query?: string;
 	readonly rows: readonly HomeRow[];
+	/** How many rows the card's whole list has, when that is more than it shows: Show All opens them in a popup. */
+	readonly total?: number;
 	/** Shown when there are no rows, or under them for a state such as VPN off. */
 	readonly note?: string;
 	/** The last data, shown dimmed with its time, while the tool can't answer. */
 	readonly stale?: boolean;
 	/** For a tool that isn't connected: what the card will show, and a Connect button. */
 	readonly connect?: { readonly text: string; readonly button: HomeButton };
+}
+
+/** A card's whole list, in the popup Show All opens. */
+export interface HomeList {
+	readonly card: HomeCardId;
+	readonly title: string;
+	readonly tool?: HomeToolId | 'gemini';
+	readonly icon?: string;
+	readonly query?: string;
+	readonly rows: readonly HomeRow[];
 }
 
 export interface HomeNeed {
@@ -243,6 +255,8 @@ export interface HomeDashboard {
 	readonly releaseBranches: readonly string[];
 	readonly qualityBranch?: string;
 	readonly refreshing: boolean;
+	/** The card whose whole list is open in a popup, kept current while it is open. */
+	readonly list?: HomeList;
 }
 
 export interface HomeMode {
@@ -304,6 +318,12 @@ export interface HomeStrings {
 	readonly fromToolsEmpty: string;
 	readonly tickets: string;
 	readonly mergeRequests: string;
+	/** A card's Show All button; {0} is how many rows its list has. */
+	readonly showAll: string;
+	/** The popup's filter box. */
+	readonly filterList: string;
+	readonly noMatches: string;
+	readonly close: string;
 }
 
 export type ToHome =
@@ -330,7 +350,9 @@ export type FromHome =
 	| { readonly type: 'action'; readonly action: HomeAction }
 	| { readonly type: 'refresh' }
 	| { readonly type: 'layout'; readonly card: HomeCardId; readonly visible?: boolean; readonly move?: number }
-	| { readonly type: 'qualityBranch'; readonly branch: string };
+	| { readonly type: 'qualityBranch'; readonly branch: string }
+	/** Show All opened a card's list in its popup; no card when the popup closed. */
+	| { readonly type: 'showList'; readonly card?: HomeCardId };
 
 // --- Project Helpers
 

@@ -24,8 +24,8 @@ export interface JiraUser {
 
 export type JiraStatusCategory = 'new' | 'indeterminate' | 'done';
 
-/** The tickets Home and the agent's sprint search read: the user's, in an open sprint. */
-export const sprintJql = 'assignee = currentUser() AND sprint in openSprints()';
+/** The tickets Home and the ticket pickers read: the user's open ones, wherever they are, and their open sprints' done ones, for the sprint's progress. */
+export const myTicketsJql = 'assignee = currentUser() AND (statusCategory != Done OR sprint in openSprints())';
 
 export interface JiraIssueSummary {
 	readonly key: string;
@@ -80,13 +80,20 @@ export interface JiraSprint {
 	readonly endDate?: string;
 }
 
-/** The current sprint's tickets assigned to the user, and the sprint itself when Jira says. */
-export interface JiraMySprint {
+/** A ticket assigned to the user, and whether it is in the sprint running now. */
+export interface JiraMyTicket extends JiraIssueSummary {
+	readonly inSprint: boolean;
+}
+
+/** The tickets assigned to the user, and the sprint running now when Jira says. */
+export interface JiraMyTickets {
 	readonly sprint?: JiraSprint;
-	readonly issues: readonly JiraIssueSummary[];
+	readonly issues: readonly JiraMyTicket[];
 }
 
 const listFields = ['summary', 'status', 'issuetype', 'priority', 'fixVersions', 'updated'];
+/** How many of the user's tickets are read: more than any card or list shows. */
+const myTicketsMax = 100;
 
 export class JiraClient {
 
@@ -118,24 +125,25 @@ export class JiraClient {
 		return (result?.issues ?? []).map(issue => this.summaryOf(issue));
 	}
 
-	/** Tickets assigned to the user in open sprints, with the sprint's name and end. */
-	async mySprint(): Promise<JiraMySprint> {
+	/**
+	 * The tickets assigned to the user (myTicketsJql), newest first, each marked
+	 * with whether it is in a sprint running now, and that sprint's name and end.
+	 */
+	async myTickets(): Promise<JiraMyTickets> {
 		const sprintField = await this.findSprintField();
 		const result = await this.request<{ issues?: RawIssue[] }>('/rest/api/3/search/jql', {
 			method: 'POST',
-			body: { jql: `${sprintJql} ORDER BY status ASC, updated DESC`, fields: [...listFields, ...sprintField ? [sprintField] : []], maxResults: 50 },
+			body: { jql: `${myTicketsJql} ORDER BY updated DESC`, fields: [...listFields, ...sprintField ? [sprintField] : []], maxResults: myTicketsMax },
 		});
-		const issues = result?.issues ?? [];
 		let sprint: JiraSprint | undefined;
-		for (const issue of issues) {
+		const issues = (result?.issues ?? []).map((issue): JiraMyTicket => {
 			const sprints = sprintField ? issue.fields?.[sprintField] : undefined;
 			const active = Array.isArray(sprints) ? (sprints as { id?: number; name?: string; state?: string; endDate?: string }[]).find(s => s.state === 'active') : undefined;
-			if (active?.id !== undefined && active.name) {
-				sprint = { id: active.id, name: active.name, endDate: active.endDate };
-				break;
-			}
-		}
-		return { sprint, issues: issues.map(issue => this.summaryOf(issue)) };
+			const running: JiraSprint | undefined = active?.id !== undefined && active.name ? { id: active.id, name: active.name, endDate: active.endDate } : undefined;
+			sprint ??= running;
+			return { ...this.summaryOf(issue), inSprint: !!running };
+		});
+		return { sprint, issues };
 	}
 
 	async issue(key: string): Promise<JiraIssue> {

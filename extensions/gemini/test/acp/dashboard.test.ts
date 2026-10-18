@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { cardOrder, firstName, isReadyToMerge, moveCard, needsYou, partOfDay, sprintProgress, ticketOrder, toggleCard } from '../../src/acp/dashboard';
+import { cardOrder, firstName, isReadyToMerge, moveCard, needsYou, partOfDay, sprintProgress, ticketGroups, ticketOrder, toggleCard } from '../../src/acp/dashboard';
 import type { GitLabMr, GitLabMrSummary } from '../../src/acp/gitlab';
 import type { JiraIssueSummary } from '../../src/acp/jira';
 
@@ -52,6 +52,12 @@ describe('dashboard', () => {
 	it('lists reopened and to-do tickets before done ones', () => {
 		const order = ticketOrder([ticket('A-1', 'Done', 'done'), ticket('A-2', 'In Progress', 'indeterminate'), ticket('A-3', 'To Do', 'new'), ticket('A-4', 'Reopened', 'new')]);
 		expect(order.map(i => i.key)).toEqual(['A-4', 'A-3', 'A-2', 'A-1']);
+	});
+
+	it('lists the running sprint\'s tickets first, then the rest, each to do first', () => {
+		const mine = (key: string, status: string, category: JiraIssueSummary['statusCategory'], inSprint: boolean) => ({ ...ticket(key, status, category), inSprint });
+		const groups = ticketGroups([mine('A-1', 'Done', 'done', true), mine('A-2', 'In Progress', 'indeterminate', false), mine('A-3', 'To Do', 'new', true), mine('A-4', 'To Do', 'new', false)]);
+		expect({ sprint: groups.sprint.map(i => i.key), other: groups.other.map(i => i.key) }).toEqual({ sprint: ['A-3', 'A-1'], other: ['A-4', 'A-2'] });
 	});
 
 	it('keeps the user\'s card order, adding new cards at the end, and hides cards', () => {

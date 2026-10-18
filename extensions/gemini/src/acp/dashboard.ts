@@ -8,7 +8,7 @@
 // so the host only localizes it; nothing here calls a tool.
 
 import type { GitLabMr, GitLabMrSummary } from './gitlab';
-import type { JiraIssueSummary, JiraSprint } from './jira';
+import type { JiraIssueSummary, JiraMyTicket, JiraSprint } from './jira';
 
 export type DashboardCardId = 'unfinished' | 'startup' | 'agents' | 'tickets' | 'mergeRequests' | 'quality' | 'gemini';
 
@@ -67,9 +67,14 @@ export function sprintProgress(issues: readonly JiraIssueSummary[], sprint: Jira
 }
 
 /** Tickets still to do first (reopened, then to do, then in progress), done last. */
-export function ticketOrder(issues: readonly JiraIssueSummary[]): JiraIssueSummary[] {
+export function ticketOrder<T extends JiraIssueSummary>(issues: readonly T[]): T[] {
 	const rank = (i: JiraIssueSummary) => isReopened(i) ? 0 : i.statusCategory === 'new' ? 1 : i.statusCategory === 'indeterminate' ? 2 : 3;
 	return [...issues].sort((a, b) => rank(a) - rank(b));
+}
+
+/** The user's tickets in the sprint running now, then the rest, each in `ticketOrder`. */
+export function ticketGroups(issues: readonly JiraMyTicket[]): { readonly sprint: JiraMyTicket[]; readonly other: JiraMyTicket[] } {
+	return { sprint: ticketOrder(issues.filter(i => i.inSprint)), other: ticketOrder(issues.filter(i => !i.inSprint)) };
 }
 
 /**

@@ -34,8 +34,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// the cut-off card and the turn's trace readout to about 241 KB.
 	'media/chat.js': 250_000,
 	// Home's startup script: Preview's renderer is its own file. The dashboard (cards, Needs you,
-	// Customize) and the tools' logos took it to about 25 KB.
-	'media/home.js': 28_000,
+	// Customize) and the tools' logos took it to about 25 KB, and Show All's popup to about 28 KB.
+	'media/home.js': 30_000,
 	'media/changes.js': 16_000,
 	// The team flows: Open Merge Request, Move Ticket and Log Time, Review and Checks.
 	'media/teamFlow.js': 32_000,

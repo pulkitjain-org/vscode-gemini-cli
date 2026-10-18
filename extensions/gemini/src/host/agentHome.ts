@@ -18,7 +18,7 @@ import { configSection, getApprovalPolicy, getProjectSettings } from './configur
 import { preferredModel } from './modelPreference';
 import { moveCard, toggleCard, type DashboardLayout } from '../acp/dashboard';
 import { buildDashboard, DashboardInput, StartupState } from './homeDashboard';
-import { FromHome, HomeAction, HomeAgent, HomeProject, HomeStrings, HomeView, ToHome } from './panelProtocol';
+import { FromHome, HomeAction, HomeAgent, HomeCardId, HomeProject, HomeStrings, HomeView, ToHome } from './panelProtocol';
 import { TeamData } from './teamData';
 import { projectsEnabled } from './projects';
 import { agentsColumn } from './editorPlacement';
@@ -71,6 +71,8 @@ export class AgentHome implements vscode.Disposable {
 	private readonly teamData: TeamData | undefined;
 	private refreshTimer: ReturnType<typeof setInterval> | undefined;
 	private signIn: { readonly at: number; readonly quiet: Promise<boolean> } | undefined;
+	/** The card whose whole list the page has open in its popup. */
+	private listCard: HomeCardId | undefined;
 
 	/** `onTyping` runs when the user starts typing a task, so the agent can start meanwhile. */
 	constructor(private readonly extensionUri: vscode.Uri, private readonly agents: AgentsView, private readonly onTyping: () => void = () => undefined, private readonly options?: HomeOptions) {
@@ -149,6 +151,7 @@ export class AgentHome implements vscode.Disposable {
 		panel.onDidDispose(() => {
 			if (this.panel === panel) {
 				this.panel = undefined;
+				this.listCard = undefined;
 				this.setRefreshTimer(false);
 			}
 		});
@@ -309,6 +312,7 @@ export class AgentHome implements vscode.Disposable {
 			gitlabUrl: team?.connectors.gitlab?.url,
 			jiraUrl: team?.connectors.jira?.site,
 			...unfinished ? { unfinished } : {},
+			...this.listCard ? { list: this.listCard } : {},
 		});
 	}
 
@@ -333,6 +337,8 @@ export class AgentHome implements vscode.Disposable {
 	private async onMessage(message: FromHome): Promise<void> {
 		switch (message.type) {
 			case 'ready':
+				// A page loaded afresh has no list open.
+				this.listCard = undefined;
 				this.lastView = undefined;
 				await this.update();
 				void this.panel?.webview.postMessage({ type: 'focus' } satisfies ToHome);
@@ -406,6 +412,10 @@ export class AgentHome implements vscode.Disposable {
 				await this.setLayout({ ...this.layout(), qualityBranch: message.branch });
 				this.refreshTools(0, true);
 				return;
+			case 'showList':
+				this.listCard = message.card;
+				await this.update();
+				return;
 		}
 	}
 
@@ -462,6 +472,10 @@ export class AgentHome implements vscode.Disposable {
 			fromToolsEmpty: vscode.l10n.t("Connect Jira or GitLab in Connections to start from a ticket or a merge request."),
 			tickets: vscode.l10n.t("My tickets"),
 			mergeRequests: vscode.l10n.t("Merge requests"),
+			showAll: vscode.l10n.t("Show All ({0})"),
+			filterList: vscode.l10n.t("Filter"),
+			noMatches: vscode.l10n.t("Nothing matches."),
+			close: vscode.l10n.t("Close"),
 		};
 		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'home.js'));
 		// Preview's renderer, loaded at idle or on the first Preview so home.js stays small.

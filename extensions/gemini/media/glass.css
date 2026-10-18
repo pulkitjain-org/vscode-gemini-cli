@@ -166,7 +166,8 @@ button.primary,
 .new-thread,
 .project-settings,
 .dialog,
-.flow-dialog {
+.flow-dialog,
+.dash-list-dialog {
 	border-color: var(--gemini-glass-edge);
 	border-top-color: var(--gemini-glass-edge-top);
 	border-radius: 14px;
@@ -176,6 +177,7 @@ button.primary,
 
 .new-thread::backdrop,
 .project-settings::backdrop,
+.dash-list-dialog::backdrop,
 .dialog-backdrop {
 	background: var(--gemini-scrim);
 }
@@ -185,14 +187,16 @@ button.primary,
 .new-thread-input,
 .field-box,
 .flow-input,
-.audit-select {
+.audit-select,
+.dash-list-filter {
 	border-color: var(--gemini-glass-edge);
 	background: var(--gemini-glass-fill);
 }
 
 .new-thread-input:focus,
 .field-box:focus-within,
-.flow-input:focus {
+.flow-input:focus,
+.dash-list-filter:focus {
 	border-color: var(--vscode-focusBorder);
 	outline: none;
 	box-shadow: 0 0 0 3px color-mix(in srgb, var(--vscode-focusBorder) 22%, transparent);

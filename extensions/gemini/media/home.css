@@ -495,3 +495,88 @@ button.dash-row-title:hover {
 		grid-template-columns: minmax(0, 1fr);
 	}
 }
+
+/* Show All: under a card whose list is longer than it shows. */
+.dash-show-all {
+	align-self: flex-start;
+	margin-top: 6px;
+	font-size: 12px;
+}
+
+/* A card's whole list, in a popup over the page, at the overlay tier (glass.css adds the glass). */
+.dash-list-dialog {
+	width: min(680px, calc(100vw - 32px));
+	max-height: calc(100vh - 64px);
+	box-sizing: border-box;
+	/* Near the top rather than centred, so it stays put while the filter shortens the list. */
+	margin: max(32px, 10vh) auto auto;
+	padding: 0;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-large);
+	background: var(--gemini-popover);
+	color: var(--vscode-foreground);
+	box-shadow: 0 20px 60px var(--gemini-shadow);
+	overflow: hidden;
+}
+
+.dash-list-dialog::backdrop {
+	background: color-mix(in srgb, var(--vscode-editor-background, #000) 55%, transparent);
+}
+
+.dash-list-body {
+	display: flex;
+	flex-direction: column;
+	max-height: calc(100vh - 66px);
+	box-sizing: border-box;
+	padding: 14px 18px 8px;
+}
+
+.dash-list-head h2 {
+	flex: none;
+	max-width: 50%;
+	margin: 0;
+	overflow: hidden;
+	font-size: 14px;
+	font-weight: 600;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.dash-list-count {
+	flex: none;
+	font-size: 12px;
+	font-variant-numeric: tabular-nums;
+	color: var(--gemini-muted);
+}
+
+.dash-list-close {
+	flex: none;
+	margin-left: auto;
+}
+
+.dash-list-head .dash-query + .dash-list-close {
+	margin-left: 0;
+}
+
+.dash-list-filter {
+	margin: 8px 0 6px;
+	padding: 5px 9px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-small);
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	font: inherit;
+}
+
+.dash-list-filter[hidden] {
+	display: none;
+}
+
+/* The list scrolls inside the popup, whose background is opaque, so it keeps the opaque-scroller fast path. */
+.dash-list-rows {
+	flex: 1;
+	min-height: 0;
+	margin: 0 -18px;
+	padding: 0 18px 8px;
+	overflow-y: auto;
+}

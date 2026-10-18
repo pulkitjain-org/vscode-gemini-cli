@@ -9,11 +9,11 @@
 // Gemini, and earlier agents to resume.
 
 import { type Attachment, attachmentLabel } from '../src/acp/attachments';
-import type { FromHome, HomeAction, HomeAgent, HomeButton, HomeCard, HomeDashboard, HomeRow, HomeStrings, HomeView, ToHome } from '../src/host/panelProtocol';
+import type { FromHome, HomeAction, HomeAgent, HomeButton, HomeCard, HomeCardId, HomeDashboard, HomeList, HomeRow, HomeStrings, HomeView, ToHome } from '../src/host/panelProtocol';
 import { attachmentIcon, sameAttachment } from './chatLogic';
 import { Menu, type MenuRow, type MenuSection } from './menu';
 import { modeIcon } from './modeIcon';
-import { button, el, icon, pageStrings } from './panelDom';
+import { button, el, format, icon, pageStrings } from './panelDom';
 import { letSpellingMenuThrough } from './spellCheck';
 import { createPreviewTabs, isPreviewShortcut } from './markdownPreview';
 import { toolLogo } from './toolLogos';
@@ -451,8 +451,109 @@ refreshButton.title = strings.refresh;
 refreshButton.setAttribute('aria-label', strings.refresh);
 refreshButton.addEventListener('click', () => vscode.postMessage({ type: 'refresh' }));
 
+// A card's whole list, in a popup: Show All opens it, and the extension keeps it current while it is open.
+const listDialog = el('dialog', 'dash-list-dialog');
+const listBody = el('div', 'dash-list-body');
+const listHead = el('div', 'dash-card-head dash-list-head');
+const listTitle = el('h2');
+listTitle.id = 'dash-list-title';
+listDialog.setAttribute('aria-labelledby', listTitle.id);
+const listFilter = el('input', 'dash-list-filter') as HTMLInputElement;
+listFilter.type = 'search';
+listFilter.placeholder = strings.filterList;
+listFilter.setAttribute('aria-label', strings.filterList);
+const listRows = el('div', 'dash-rows dash-list-rows');
+listBody.append(listHead, listFilter, listRows);
+listDialog.append(listBody);
+document.body.append(listDialog);
+/** The list in the popup, and the card it is for. */
+let shownList: HomeList | undefined;
+let listCard: HomeCardId | undefined;
+
+/** Opens `card`'s whole list: its rows at once, then the rest when the extension sends them. */
+function showList(card: HomeCard): void {
+	listCard = card.id;
+	listFilter.value = '';
+	renderList({ card: card.id, title: card.title, rows: card.rows, ...card.tool ? { tool: card.tool } : {}, ...card.icon ? { icon: card.icon } : {}, ...card.query ? { query: card.query } : {} }, card.total);
+	listDialog.showModal();
+	(listFilter.hidden ? listDialog.querySelector<HTMLElement>('.dash-list-close') : listFilter)?.focus();
+	vscode.postMessage({ type: 'showList', card: card.id });
+}
+
+function renderList(list: HomeList, total = list.rows.length): void {
+	shownList = list;
+	const close = button('icon-button dash-list-close', '', () => listDialog.close(), 'close', strings.close);
+	listHead.replaceChildren(list.tool ? logo(list.tool, 16) : icon(list.icon ?? 'list-flat'), listTitle, el('span', 'dash-list-count'), ...list.query ? [queryText(list.query)] : [], close);
+	listTitle.textContent = list.title;
+	listHead.dataset.total = String(total);
+	listFilter.hidden = total <= 8;
+	renderListRows();
+}
+
+/** The rows that match the filter, under their groups' headings. */
+function renderListRows(): void {
+	const list = shownList;
+	if (!list) {
+		return;
+	}
+	const words = listFilter.value.trim().toLowerCase();
+	const nodes: HTMLElement[] = [];
+	let group: HomeRow | undefined;
+	let headed: HomeRow | undefined;
+	for (const row of list.rows) {
+		group = row.group ? row : group;
+		if (words && ![row.key, row.title, row.detail, row.pill?.text].some(text => text?.toLowerCase().includes(words))) {
+			continue;
+		}
+		if (group && group !== headed) {
+			nodes.push(groupHeading(group));
+			headed = group;
+		}
+		nodes.push(dashRow(row));
+	}
+	const shown = nodes.filter(node => node.classList.contains('dash-row')).length;
+	listRows.replaceChildren(...nodes.length ? nodes : [el('p', 'dash-note muted', strings.noMatches)]);
+	const count = listHead.querySelector('.dash-list-count');
+	if (count) {
+		count.textContent = words ? `${shown} / ${listHead.dataset.total}` : listHead.dataset.total ?? '';
+	}
+}
+
+listFilter.addEventListener('input', renderListRows);
+listDialog.addEventListener('close', () => {
+	listCard = undefined;
+	shownList = undefined;
+	vscode.postMessage({ type: 'showList' });
+});
+// A click on the scrim, outside the popup's body, closes it.
+listDialog.addEventListener('click', event => {
+	if (event.target === listDialog) {
+		listDialog.close();
+	}
+});
+
 function run(action: HomeAction): void {
+	// An item opened from the popup leaves it open when it opens elsewhere (a link), and closes it when it opens here.
+	if (listDialog.open && action.kind !== 'link') {
+		listDialog.close();
+	}
 	vscode.postMessage({ type: 'action', action });
+}
+
+function queryText(text: string): HTMLElement {
+	const query = el('span', 'dash-query', text);
+	query.title = text;
+	return query;
+}
+
+/** A heading inside a list, such as Mine or the sprint's name, from the row that starts its group. */
+function groupHeading(row: HomeRow): HTMLElement {
+	const heading = el('div', 'dash-group');
+	heading.append(el('span', undefined, row.group ?? ''));
+	if (row.groupQuery) {
+		heading.append(el('span', 'dash-query', row.groupQuery));
+	}
+	return heading;
 }
 
 function actionButton(spec: HomeButton, className = 'secondary'): HTMLButtonElement {
@@ -591,6 +692,9 @@ function renderDashboard(dash: HomeDashboard): void {
 	}
 
 	cardsSection.replaceChildren(...dash.cards.map(dashCard));
+	if (listDialog.open && dash.list && dash.list.card === listCard) {
+		renderList(dash.list);
+	}
 }
 
 function dashCard(card: HomeCard): HTMLElement {
@@ -615,18 +719,16 @@ function dashCard(card: HomeCard): HTMLElement {
 	const rows = el('div', 'dash-rows');
 	for (const row of card.rows) {
 		if (row.group) {
-			const group = el('div', 'dash-group');
-			group.append(el('span', undefined, row.group));
-			if (row.groupQuery) {
-				group.append(el('span', 'dash-query', row.groupQuery));
-			}
-			rows.append(group);
+			rows.append(groupHeading(row));
 		}
 		rows.append(dashRow(row));
 	}
 	node.append(rows);
 	if (card.note) {
 		node.append(el('p', 'dash-note muted', card.note));
+	}
+	if (card.total) {
+		node.append(button('link-button dash-show-all', format(strings.showAll, card.total), () => showList(card)));
 	}
 	return node;
 }
