@@ -104,6 +104,27 @@ export function renderTeam(view: ChangesTeamView, post: (message: FromChangesTea
 		card.append(fix);
 		syncFix();
 	}
+	if (mr.merge) {
+		// The merge checks as GitLab reports them; the button is on only when every one holds.
+		const block = el('div', 'mr-row mr-merge');
+		const line = el('div', 'mr-row-line');
+		const label = el('span', 'mr-row-label');
+		label.append(icon('git-merge'), el('strong', undefined, mr.merge.heading));
+		line.append(label, el('span', `pill ${mr.merge.ready ? 'ok' : 'muted'}`, `${mr.merge.checks.filter(c => c.ok).length}/${mr.merge.checks.length}`));
+		block.append(line);
+		for (const check of mr.merge.checks) {
+			const row = el('div', `mr-sub mr-check ${check.ok ? 'ok' : 'missing'}`);
+			const text = el('span', 'mr-sub-text');
+			text.append(icon(check.ok ? 'pass' : 'circle-large-outline'), el('span', undefined, check.name), el('span', 'muted', ` · ${check.detail}`));
+			text.title = check.detail;
+			row.append(text);
+			block.append(row);
+		}
+		const merge = button(mr.merge.ready ? 'primary wide' : 'secondary wide', mr.merge.button, () => post({ type: 'team', action: 'merge' }));
+		merge.disabled = !mr.merge.ready;
+		block.append(merge, el('div', 'mr-sub muted', mr.merge.note));
+		card.append(block);
+	}
 	section.append(card);
 	return section;
 }

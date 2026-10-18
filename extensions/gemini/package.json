@@ -367,6 +367,18 @@
         "icon": "$(wrench)"
       },
       {
+        "command": "gemini.team.mergeMergeRequest",
+        "title": "%command.team.mergeMergeRequest%",
+        "category": "%category%",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "gemini.team.reassignTicket",
+        "title": "%command.team.reassignTicket%",
+        "category": "%category%",
+        "icon": "$(account)"
+      },
+      {
         "command": "gemini.team.runChecks",
         "title": "%command.team.runChecks%",
         "category": "%category%",

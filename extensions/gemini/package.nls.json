@@ -74,6 +74,8 @@
 	"command.team.reviewMergeRequest": "Review a Merge Request...",
 	"command.team.fixMergeRequest": "Fix Merge Request Pipeline and Comments",
 	"command.team.runChecks": "Run Checks",
+	"command.team.mergeMergeRequest": "Merge Merge Request...",
+	"command.team.reassignTicket": "Reassign Jira Ticket...",
 	"command.team.runChecksOnBranch": "Run Checks on a Branch...",
 	"command.newSkill": "New Skill",
 	"command.agentHome": "Agent Home",

@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
-import { cardOrder, DashboardCardId, DashboardLayout, firstName, needsYou, partOfDay, sprintProgress, ticketOrder } from '../acp/dashboard';
+import { cardOrder, DashboardCardId, DashboardLayout, firstName, isReadyToMerge, needsYou, partOfDay, sprintProgress, ticketOrder } from '../acp/dashboard';
 import type { ModelQuota } from '../acp/directRequest';
 import type { GitLabMr, PipelineState } from '../acp/gitlab';
 import type { JiraIssueSummary } from '../acp/jira';
@@ -134,6 +134,8 @@ function needs(input: DashboardInput): HomeNeed[] {
 				return { tool: 'gitlab', title: vscode.l10n.t("Review !{0}", item.mr.iid), detail: [item.mr.author, item.mr.title].join(' · '), button: { label: vscode.l10n.t("Review"), action: command('gemini.team.reviewMergeRequest', item.mr.project, item.mr.iid) } };
 			case 'pipelineFailed':
 				return { tool: 'gitlab', title: vscode.l10n.t("Pipeline failed on !{0}", item.mr.iid), detail: item.mr.title, button: { label: vscode.l10n.t("Fix"), action: command('gemini.team.fixMergeRequest', item.mr.project, item.mr.iid) } };
+			case 'readyToMerge':
+				return { tool: 'gitlab', title: vscode.l10n.t("!{0} is ready to merge", item.mr.iid), detail: [item.mr.title, item.mr.approvals ? vscode.l10n.t("{0} of {1} approvals", item.mr.approvals.given, item.mr.approvals.required) : ''].filter(Boolean).join(' · '), button: { label: vscode.l10n.t("Merge..."), action: command('gemini.team.mergeMergeRequest', item.mr.project, item.mr.iid), primary: true } };
 			case 'reopened':
 				return { tool: 'jira', title: vscode.l10n.t("{0} reopened", item.issue.key), detail: item.issue.summary, button: { label: vscode.l10n.t("Start Agent"), action: command('gemini.team.startOnTicket', item.issue.key) } };
 		}
@@ -230,6 +232,7 @@ function ticketsCard(input: DashboardInput, title: string, progress: { done: num
 			{ label: vscode.l10n.t("Start Agent"), action: command('gemini.team.startOnTicket', issue.key) },
 			{ label: vscode.l10n.t("Log Time..."), action: command('gemini.team.logTime', issue.key) },
 			{ label: vscode.l10n.t("Move..."), action: command('gemini.team.moveTicket', issue.key) },
+			{ label: vscode.l10n.t("Reassign..."), action: command('gemini.team.reassignTicket', issue.key) },
 			{ label: vscode.l10n.t("Open in Jira"), action: { kind: 'link', url: issue.url } },
 		],
 	}));
@@ -257,12 +260,12 @@ function pipelinePill(mr: GitLabMr): HomeRow['pill'] {
 
 function mergeRequestsCard(input: DashboardInput, title: string): HomeCard | undefined {
 	if (!input.connected.has('gitlab')) {
-		return input.hideUnconnected ? undefined : notConnected('mergeRequests', title, 'gitlab', vscode.l10n.t("Merge requests waiting for your review, and yours with their pipeline and approvals."));
+		return input.hideUnconnected ? undefined : notConnected('mergeRequests', title, 'gitlab', vscode.l10n.t("Merge requests waiting for your review or assigned to you, and yours with their pipeline, approvals and whether they can merge."));
 	}
 	const reviews = input.data.reviews;
 	const mine = input.data.mine;
 	const { stale, note } = sourceState(input, 'gitlab', reviews?.error ? reviews : mine);
-	const reviewGroup = vscode.l10n.t("Waiting for my review");
+	const reviewGroup = vscode.l10n.t("Pending on me");
 	const mineGroup = vscode.l10n.t("Mine");
 	const rows: HomeRow[] = [
 		...(reviews?.data ?? []).slice(0, 4).map((mr, i): HomeRow => ({
@@ -273,8 +276,8 @@ function mergeRequestsCard(input: DashboardInput, title: string): HomeCard | und
 		...(mine?.data ?? []).slice(0, 4).map((mr, i): HomeRow => ({
 			...i === 0 ? { group: mineGroup } : {},
 			key: `!${mr.iid}`, title: mr.title, open: { kind: 'link', url: mr.url },
-			...pipelinePill(mr) ? { pill: pipelinePill(mr) } : {},
-			...mr.pipeline?.status === 'failed' ? { button: { label: vscode.l10n.t("Fix"), action: command('gemini.team.fixMergeRequest', mr.project, mr.iid) } } : {},
+			...isReadyToMerge(mr) ? { pill: { text: vscode.l10n.t("ready to merge"), tone: 'ok' as const }, button: { label: vscode.l10n.t("Merge..."), action: command('gemini.team.mergeMergeRequest', mr.project, mr.iid), primary: true } }
+				: { ...pipelinePill(mr) ? { pill: pipelinePill(mr) } : {}, ...mr.pipeline?.status === 'failed' ? { button: { label: vscode.l10n.t("Fix"), action: command('gemini.team.fixMergeRequest', mr.project, mr.iid) } } : {} },
 		})),
 	];
 	return {

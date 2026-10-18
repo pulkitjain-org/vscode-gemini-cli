@@ -5,7 +5,7 @@
 
 import * as vscode from 'vscode';
 import { errorMessage } from '../acp/errors';
-import { GitLabDiscussion, GitLabJob, GitLabMr } from '../acp/gitlab';
+import { GitLabDiscussion, GitLabJob, GitLabMr, MergeReadiness } from '../acp/gitlab';
 import { JiraIssue, jiraKeyIn } from '../acp/jira';
 import { SonarGate, sonarProjectKeyIn } from '../acp/sonar';
 import { mrFixPrompt } from '../acp/teamFlowLogic';
@@ -30,6 +30,7 @@ interface MrState {
 	readonly threads: readonly GitLabDiscussion[];
 	readonly gate?: SonarGate;
 	readonly ticket?: JiraIssue;
+	readonly readiness?: MergeReadiness;
 	readonly error?: string;
 }
 
@@ -94,8 +95,18 @@ export class MrPanel implements vscode.Disposable {
 			if (state.ticket) {
 				rows.push({ tool: 'jira', label: state.ticket.key, detail: state.ticket.summary, pill: { text: state.ticket.status, tone: state.ticket.statusCategory === 'done' ? 'ok' : 'info' } });
 			}
+			const readiness = state.readiness;
 			view.mr = {
 				iid: mr.iid,
+				...readiness ? {
+					merge: {
+						heading: vscode.l10n.t("Merge"),
+						checks: readiness.checks.map(c => ({ name: c.name, ok: c.ok, detail: c.detail })),
+						ready: readiness.ready,
+						button: vscode.l10n.t("Merge..."),
+						note: readiness.ready ? vscode.l10n.t("Read from GitLab just now. You confirm once more, and GitLab checks again.") : vscode.l10n.t("On once every line above holds."),
+					},
+				} : {},
 				heading: vscode.l10n.t("Merge request !{0}", mr.iid),
 				subtitle: vscode.l10n.t("{0} · into {1}", mr.title, mr.targetBranch),
 				url: mr.url,
@@ -122,6 +133,16 @@ export class MrPanel implements vscode.Disposable {
 			case 'runChecks':
 				await vscode.commands.executeCommand('gemini.team.runChecks', source.agentId);
 				return;
+			case 'merge': {
+				const state = this.states.get(source.agentId);
+				if (state?.project && state.mr) {
+					await vscode.commands.executeCommand('gemini.team.mergeMergeRequest', state.project, state.mr.iid);
+					// Read again: merged, or GitLab said no.
+					this.states.set(source.agentId, { ...state, at: 0 });
+					this.onDidChangeEmitter.fire();
+				}
+				return;
+			}
 			case 'openUrl': {
 				const url = this.states.get(source.agentId)?.mr?.url;
 				if (url) {
@@ -185,17 +206,18 @@ export class MrPanel implements vscode.Disposable {
 			const sonarKey = sonar ? defaults.sonar?.projectKey ?? await sonarProjectKeyIn(source.folder) : undefined;
 			const key = jiraKeyIn(`${local.branch} ${summary.title}`, defaults.jira?.projects);
 			const mr = await gitlab.mr(local.project, summary.iid);
-			const [jobs, threads, gate, ticket] = await Promise.all([
+			const [jobs, threads, gate, ticket, readiness] = await Promise.all([
 				mr.pipeline ? gitlab.jobs(local.project, mr.pipeline.id).catch(() => []) : Promise.resolve([]),
 				gitlab.discussions(local.project, mr.iid).catch(() => []),
 				sonar && sonarKey ? sonar.gate({ project: sonarKey, mergeRequest: String(mr.iid) }).catch(() => undefined) : Promise.resolve(undefined),
 				jira && key ? jira.issue(key).catch(() => undefined) : Promise.resolve(undefined),
+				mr.state === 'opened' ? gitlab.mergeReadiness(local.project, mr.iid).catch(() => undefined) : Promise.resolve(undefined),
 			]);
 			this.states.set(source.agentId, {
 				at: Date.now(), project: local.project, branch: local.branch, mr,
 				failed: jobs.filter(j => j.status === 'failed'),
 				passedJobs: jobs.filter(j => j.status === 'success').map(j => j.name).slice(0, 6),
-				threads, gate, ticket,
+				threads, gate, ticket, readiness,
 			});
 		} catch (err) {
 			this.states.set(source.agentId, { ...previous ?? { failed: [], passedJobs: [], threads: [] }, at: Date.now(), error: errorMessage(err) });

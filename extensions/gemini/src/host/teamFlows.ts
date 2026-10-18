@@ -66,6 +66,8 @@ export class TeamFlows implements vscode.Disposable {
 			run('gemini.team.logTime', (key?: unknown) => this.moveTicket(str(key), undefined, undefined, 'log')),
 			run('gemini.team.reviewMergeRequest', (project?: unknown, iid?: unknown) => this.reviewMergeRequest(str(project), Number(iid) || undefined)),
 			run('gemini.team.fixMergeRequest', (project?: unknown, iid?: unknown) => this.fixMergeRequest(str(project), Number(iid) || undefined)),
+			run('gemini.team.mergeMergeRequest', (project?: unknown, iid?: unknown) => this.mergeMergeRequest(str(project), Number(iid) || undefined)),
+			run('gemini.team.reassignTicket', (key?: unknown) => this.reassignTicket(str(key))),
 			run('gemini.team.runChecks', (agent?: unknown) => this.runChecks(str(agent))),
 			run('gemini.team.runChecksOnBranch', (branch?: unknown) => this.runChecksOnBranch(str(branch))),
 		);
@@ -601,6 +603,85 @@ export class TeamFlows implements vscode.Disposable {
 		if (!flow.isDisposed) {
 			flow.update({ side });
 		}
+	}
+
+	// --- Merge a merge request
+
+	/**
+	 * Merges a merge request once GitLab says it can be: the checks are read
+	 * live and shown in a dialog, the merge names the head they were read
+	 * for, and the audit log gets the record. With no merge request named,
+	 * the agent in front's is taken.
+	 */
+	private async mergeMergeRequest(project: string | undefined, iid: number | undefined): Promise<void> {
+		const gitlab = this.gitlab();
+		if (!project || !iid) {
+			const agentId = this.agentId(undefined);
+			const found = await this.mrOfAgent(agentId);
+			if (!found) {
+				throw new Error(vscode.l10n.t("The agent in front has no open merge request."));
+			}
+			const place = await this.gitPlace(this.agents.agentPlace(agentId)!.cwd, gitlab);
+			project = place.project;
+			iid = found.iid;
+		}
+		const p = project;
+		const n = iid;
+		const [mr, readiness] = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Reading !{0}...", n) }, () => Promise.all([gitlab.mr(p, n, false), gitlab.mergeReadiness(p, n)]));
+		const lines = readiness.checks.map(c => `${c.ok ? '✓' : '✗'} ${c.name}: ${c.detail}`);
+		if (!readiness.ready) {
+			await vscode.window.showWarningMessage(vscode.l10n.t("!{0} can't be merged yet.", n), { modal: true, detail: lines.join('\n') });
+			return;
+		}
+		const merge = vscode.l10n.t("Merge");
+		const choice = await vscode.window.showWarningMessage(
+			vscode.l10n.t("Merge !{0} \"{1}\" into {2}?", n, mr.title, mr.targetBranch),
+			{ modal: true, detail: [...lines, '', vscode.l10n.t("At commit {0}{1}{2}. GitLab refuses if the branch moved meanwhile.", readiness.sha.slice(0, 8), readiness.squash ? vscode.l10n.t(", squashed") : '', readiness.removeSourceBranch ? vscode.l10n.t(", deleting the source branch") : '')].join('\n') },
+			merge,
+		);
+		if (choice !== merge) {
+			return;
+		}
+		const merged = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Merging !{0}...", n) }, () =>
+			this.tools.audit.record({ caller: 'ui', tool: 'gitlab_merge', ref: `!${n}`, effect: `Merge !${n} "${mr.title}" into ${mr.targetBranch} at ${readiness.sha.slice(0, 8)}`, args: { sha: readiness.sha, squash: readiness.squash } },
+				() => gitlab.merge(p, n, { sha: readiness.sha, squash: readiness.squash, removeSourceBranch: readiness.removeSourceBranch }), result => `!${n} merged at ${readiness.sha}${result.sha ? ` as ${result.sha}` : ''}`));
+		const defaults = await this.tools.workspaceDefaults();
+		const ticket = this.tools.connectors.jira ? jiraKeyIn(`${mr.sourceBranch} ${mr.title}`, defaults.jira?.projects) : undefined;
+		const open = vscode.l10n.t("Open in GitLab");
+		const move = ticket ? vscode.l10n.t("Move {0}...", ticket) : undefined;
+		const next = await vscode.window.showInformationMessage(vscode.l10n.t("Merged !{0}{1}.", n, merged.sha ? ` (${merged.sha.slice(0, 8)})` : ''), ...move ? [move, open] : [open]);
+		if (next === open) {
+			await openTeamLink(mr.url);
+		} else if (move && next === move) {
+			await this.moveTicket(ticket, undefined, 'Done');
+		}
+	}
+
+	// --- Reassign a ticket
+
+	/** Hands a ticket to someone the project allows, to the user, or to nobody. */
+	private async reassignTicket(key: string | undefined): Promise<void> {
+		const jira = this.jira();
+		key ??= await this.pickTicket(jira);
+		if (!key) {
+			return;
+		}
+		const ticket = key;
+		const [me, people] = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Reading who can take {0}...", ticket) }, () => Promise.all([jira.myself(), jira.assignableUsers(ticket)]));
+		type Pick = vscode.QuickPickItem & { readonly accountId: string | null };
+		const items: Pick[] = [
+			{ label: vscode.l10n.t("$(account) Me"), description: me.displayName, accountId: me.accountId },
+			{ label: vscode.l10n.t("$(circle-slash) Unassigned"), accountId: null },
+			{ label: '', kind: vscode.QuickPickItemKind.Separator, accountId: null },
+			...people.filter(u => u.accountId !== me.accountId).map((u): Pick => ({ label: u.displayName, description: u.emailAddress, accountId: u.accountId })),
+		];
+		const picked = await vscode.window.showQuickPick(items, { title: vscode.l10n.t("Reassign {0}", ticket), placeHolder: vscode.l10n.t("Who should have it? Jira lists the people the project allows."), matchOnDescription: true });
+		if (!picked || picked.kind === vscode.QuickPickItemKind.Separator) {
+			return;
+		}
+		const who = picked.accountId === null ? vscode.l10n.t("nobody") : picked.label.replace(/^\$\([^)]*\)\s*/, '');
+		await this.tools.audit.record({ caller: 'ui', tool: 'jira_assign', ref: ticket, effect: `${ticket} → ${who}`, args: { accountId: picked.accountId } }, () => jira.assign(ticket, picked.accountId), () => picked.accountId ? `assignee ${picked.accountId}` : 'unassigned');
+		void vscode.window.showInformationMessage(picked.accountId === null ? vscode.l10n.t("{0} is now unassigned.", ticket) : vscode.l10n.t("Assigned {0} to {1}.", ticket, who));
 	}
 
 	// --- Fix a merge request's pipeline (from Home)

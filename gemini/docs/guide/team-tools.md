@@ -40,13 +40,13 @@ A checked-in `.gemini/geminicode-tools.json` saves everyone typing addresses. It
 
 ## Home
 
-**Home** opens in front of your restored tabs every time GeminiCode starts. Under the **Start Agent** composer and quick actions, **Needs you** lists what waits on you across the tools: an agent asking permission, a review request, a failed pipeline on your merge request, a reopened ticket.
+**Home** opens in front of your restored tabs every time GeminiCode starts. Under the **Start Agent** composer and quick actions, **Needs you** lists what waits on you across the tools: an agent asking permission, a failed pipeline on your merge request, a merge request of yours that GitLab says can merge, a review request, a reopened ticket.
 
 Cards follow:
 
 - **Agents.**
-- **My tickets**: the current sprint's tickets assigned to you, with **Start**, **Move** and **Log Time**.
-- **Merge requests**: those waiting for your review, and yours with their pipeline and approvals.
+- **My tickets**: the current sprint's tickets assigned to you, with **Start**, **Move**, **Log Time** and **Reassign**.
+- **Merge requests**: **Pending on me** (asked to review, or assigned to finish) and **Mine**, each with its pipeline and approvals; one that can merge shows **Merge…**.
 - **Quality** on the release branch: the SonarQube gate and Snyk, with **Fix**.
 - **Gemini.**
 
@@ -62,6 +62,9 @@ Paste a Jira key or link, a GitLab merge request or issue link, or a Figma link 
 2. **Run Checks** runs Snyk on dependencies and code, and SonarQube's new-code issues for the agent's branch, each finding with **Fix**, or **Fix All with This Agent**. **Run Checks on a Branch…** (on Home, or from the Command Palette) does the same for any branch before a merge request exists: the branch checked out here, an agent's, a local one or one on origin. A branch that isn't checked out gets a checkout of its own under `~/.geminicode/worktrees/<repository>/checks/`, with your `gemini.agents.worktreeSetup` command run in it once, and later runs reuse it; your own checkout never moves. SonarQube's gate comes from the server's last analysis of the branch, so it needs one push. With no agent on the branch, **Fix** starts one in that checkout with the findings as its first prompt.
 3. **Open Merge Request** (beside Merge back in Changes) asks for the target branch, with release branches first and the one matching the ticket's fix version suggested. Then the title, a description Gemini drafts that you edit, the files to attach, reviewers, and draft and delete-branch options. It pushes the branch, opens the merge request and offers to move the ticket.
 4. **The merge request panel** in Changes shows the pipeline (failed jobs with **Fix**), the SonarQube gate, Snyk and open review threads. **Fix Pipeline and N Comments** sends them to the agent.
+5. **Merge.** The same panel lists the checks GitLab applies to the merge request, read live: open and not a draft, the pipeline, each approval rule by name with who approved, threads resolved, no conflicts, and GitLab's own verdict. **Merge…** is on only when every line holds. It asks once more, naming the commit it read and whether the commits are squashed and the branch deleted (the project's settings), and GitLab checks again when it merges, so a push in between makes it refuse rather than merge something else. Afterwards it offers to move the ticket. **Gemini: Merge Merge Request…** does the same for the agent in front, and **Merge…** on Home for a merge request listed as ready.
+
+**Reassign…** on a ticket (on Home, or **Gemini: Reassign Jira Ticket…**) lists the people Jira lets take it, plus you and nobody.
 
 **Move Ticket** shows the moves your Jira workflow allows, any field a move needs, and a comment Gemini drafts that you edit. **Log Time** records time spent, such as "1h 30m", on its own or with a move.
 

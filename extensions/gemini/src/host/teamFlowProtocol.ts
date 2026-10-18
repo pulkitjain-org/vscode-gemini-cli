@@ -241,10 +241,12 @@ export interface ChangesTeamView {
 		}[];
 		/** "Fix Pipeline and 2 Comments" */
 		readonly fixAll?: { readonly label: string; readonly one: string; readonly pipelineOnly: string; readonly commentsOnly: string };
+		/** The merge checks GitLab reports, read live, and the Merge button, on only when every check holds. */
+		readonly merge?: { readonly heading: string; readonly checks: readonly { readonly name: string; readonly ok: boolean; readonly detail: string }[]; readonly ready: boolean; readonly button: string; readonly note: string };
 	};
 }
 
 export type FromChangesTeam =
-	| { readonly type: 'team'; readonly action: 'openMr' | 'runChecks' | 'openUrl' }
+	| { readonly type: 'team'; readonly action: 'openMr' | 'runChecks' | 'openUrl' | 'merge' }
 	| { readonly type: 'team'; readonly action: 'fixJob'; readonly job: number }
 	| { readonly type: 'team'; readonly action: 'fixMr'; readonly jobs: boolean; readonly threads: readonly string[] };

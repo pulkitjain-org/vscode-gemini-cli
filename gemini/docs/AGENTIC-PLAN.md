@@ -360,6 +360,7 @@ Only after sections 1 to 6 are green. Each item names the evidence that motivate
 | Fork confinement | SRC diff by area; the patch series (74 patches over 1.141.0, `gemini/patches/`) and its CI check shipped 18 Oct 2026 | the first green `Patch series matches HEAD` step on a pull request |
 | CLI pin is what ships | checksum match, release notes; `gemini-upstream.yml` written 18 Oct 2026 | the upstream job's first pull request, with the dry run below as the expected shape |
 | Official MCP servers for Jira and GitLab unusable | web (secondary) | admin confirmation on both tenants |
+| My work panel | Shipped 18 Oct 2026: Needs you lists a merge request of mine GitLab says can merge; Pending on me adds merge requests assigned to me; the merge request panel shows the live merge checks with Merge on only when all hold; Reassign on tickets | AUDIT entries from the pilot |
 | Merge, reassign | Shipped 18 Oct 2026 as `gitlab_merge` (reads `approval_state`, project merge settings, threads and GitLab's verdict first; merges at the head it read) and `jira_assign`; tests against a fake server | AUDIT entries from the pilot |
 | Auto-approval hole for confirm-class tools | Closed 18 Oct 2026: `PermissionBroker.confirmOnly`, `teamConfirmTools`, `test/acp/permissions.test.ts` | pilot audit records showing an outcome on every confirm-class action |
 | Quota headroom for the benchmark | public quota page via search | the license document |

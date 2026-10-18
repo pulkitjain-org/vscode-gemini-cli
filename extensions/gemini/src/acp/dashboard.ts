@@ -72,6 +72,15 @@ export function ticketOrder(issues: readonly JiraIssueSummary[]): JiraIssueSumma
 	return [...issues].sort((a, b) => rank(a) - rank(b));
 }
 
+/**
+ * Whether GitLab's own summary says the merge request can be merged now:
+ * mergeable, not a draft, every approval given, and no failed pipeline. The
+ * merge itself reads the full checks again (gitlab.ts, `mergeReadiness`).
+ */
+export function isReadyToMerge(mr: GitLabMr): boolean {
+	return mr.state === 'opened' && !mr.draft && mr.mergeStatus === 'mergeable' && (!mr.approvals || mr.approvals.given >= mr.approvals.required) && mr.pipeline?.status !== 'failed';
+}
+
 export function isReopened(issue: JiraIssueSummary): boolean {
 	return /reopen/i.test(issue.status);
 }
@@ -81,6 +90,7 @@ export type NeedItem =
 	| { readonly kind: 'agentWaiting'; readonly agentId: string; readonly title: string; readonly status: string }
 	| { readonly kind: 'review'; readonly mr: GitLabMrSummary }
 	| { readonly kind: 'pipelineFailed'; readonly mr: GitLabMr }
+	| { readonly kind: 'readyToMerge'; readonly mr: GitLabMr }
 	| { readonly kind: 'reopened'; readonly issue: JiraIssueSummary };
 
 export interface NeedsInput {
@@ -99,6 +109,7 @@ export function needsYou(input: NeedsInput, max = 4): NeedItem[] {
 	const items: NeedItem[] = [
 		...input.agents.filter(a => a.state === 'waiting').map((a): NeedItem => ({ kind: 'agentWaiting', agentId: a.id, title: a.title, status: a.status })),
 		...(input.mine ?? []).filter(mr => mr.pipeline?.status === 'failed').map((mr): NeedItem => ({ kind: 'pipelineFailed', mr })),
+		...(input.mine ?? []).filter(isReadyToMerge).map((mr): NeedItem => ({ kind: 'readyToMerge', mr })),
 		...(input.reviews ?? []).filter(mr => !mr.draft).map((mr): NeedItem => ({ kind: 'review', mr })),
 		...(input.tickets ?? []).filter(isReopened).map((issue): NeedItem => ({ kind: 'reopened', issue })),
 	];

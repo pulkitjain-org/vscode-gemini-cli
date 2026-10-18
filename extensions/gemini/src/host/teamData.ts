@@ -132,7 +132,12 @@ export class TeamData implements vscode.Disposable {
 		}) : this.clear('releases', !connected.has('gitlab'));
 		const tasks: Promise<unknown>[] = [
 			jira ? this.fetch('sprint', () => jira.mySprint()) : this.clear('sprint', true),
-			gitlab ? this.fetch('reviews', () => gitlab.reviewRequests()) : this.clear('reviews', true),
+			gitlab ? this.fetch('reviews', async () => {
+				// Pending on me: asked to review, or assigned to finish; once each.
+				const [reviews, assigned] = await Promise.all([gitlab.reviewRequests(), gitlab.assignedMergeRequests().catch(() => [])]);
+				const seen = new Set(reviews.map(mr => mr.url));
+				return [...reviews, ...assigned.filter(mr => !seen.has(mr.url))];
+			}) : this.clear('reviews', true),
 			gitlab ? this.fetch('mine', async () => {
 				const list = await gitlab.myMergeRequests();
 				return Promise.all(list.slice(0, 6).map(mr => gitlab.mr(mr.projectId, mr.iid)));

@@ -209,6 +209,13 @@ export class GitLabClient {
 		return list.map(mrSummary);
 	}
 
+	/** Open MRs assigned to the user (as the one to finish them), which may not be theirs. */
+	async assignedMergeRequests(): Promise<GitLabMrSummary[]> {
+		const me = await this.user();
+		const list = await this.request<RawMr[]>(`/merge_requests?scope=all&state=opened&assignee_id=${me.id}&per_page=20&order_by=updated_at`);
+		return list.map(mrSummary);
+	}
+
 	/** The user's own open MRs. */
 	async myMergeRequests(): Promise<GitLabMrSummary[]> {
 		const list = await this.request<RawMr[]>('/merge_requests?scope=created_by_me&state=opened&per_page=20&order_by=updated_at');

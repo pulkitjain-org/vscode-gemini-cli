@@ -603,3 +603,22 @@ button.wide {
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+
+/* The merge checks under the merge request: one line each, ticked or not, and the Merge button. */
+.mr-check .mr-sub-text {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.mr-check.ok .codicon {
+	color: var(--gemini-ok, var(--vscode-testing-iconPassed));
+}
+
+.mr-check.missing .codicon {
+	color: var(--vscode-descriptionForeground);
+}
+
+.mr-merge .wide {
+	margin-top: 6px;
+}
