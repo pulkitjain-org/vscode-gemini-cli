@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GeminiCode Glass: the agent pane and Enhance prompt</title>
+<link rel="stylesheet" href="../ide.css">
+<link rel="stylesheet" href="./glass.css">
+<style>
+body{margin:0;background:#151515} body.light{background:#e9e9eb}
+.page{display:flex;flex-direction:column;gap:28px;padding:0 0 32px}
+.strip{display:grid;gap:18px;padding:0 28px}
+.strip{grid-template-columns:repeat(3,minmax(0,1fr))} .strip .composer{margin:0}
+</style>
+</head>
+<body>
+<div class="page">
+<div class="ide" style="min-height:900px">
+  <header class="titlebar">
+    <div class="lights" aria-hidden="true"><span></span><span></span><span></span></div>
+    <button class="glass home-btn" aria-label="Open Home (⇧⌘H)"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 7.5 8 3l5.5 4.5V13a.5.5 0 0 1-.5.5H9.5V10h-3v3.5H3a.5.5 0 0 1-.5-.5z"/></svg></button>
+    <div class="glass mode-switch" role="group" aria-label="Layout"><span class="lens" aria-hidden="true"></span><button aria-pressed="true">Agents</button><button aria-pressed="false">Editor</button></div>
+    <div class="agent-tabs" role="tablist" aria-label="Agents">
+      <button class="glass tab" role="tab"><span class="dot" aria-hidden="true"></span>Home</button>
+      <button class="glass tab" role="tab" aria-current="page"><span class="dot ok" aria-hidden="true"></span>ACME-412 Gift message</button>
+      <button class="glass tab" role="tab"><span class="dot warn" aria-hidden="true"></span>Review !318</button>
+    </div>
+    <span style="flex:1"></span>
+    <button class="icon-btn" aria-label="Open the browser"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2.5 3 2.5 9 0 12M8 2c-2.5 3-2.5 9 0 12"/></svg></button>
+    <button class="icon-btn" aria-label="Search"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg></button>
+  </header>
+
+  <div class="body">
+    <aside class="agents" aria-label="Agents pane">
+      <div class="section-label">Projects <button class="menu-btn plus" aria-label="New project">+</button></div>
+      <button class="agent-row"><span class="dot" aria-hidden="true"></span>Release 2026.11<span class="note">3 threads</span></button>
+      <div class="section-label">Agents <button class="menu-btn plus" aria-label="New agent">+</button></div>
+      <button class="agent-row" aria-current="true"><span class="dot ok" aria-hidden="true"></span>ACME-412 Gift message<span class="note">+184 −12</span></button>
+      <button class="agent-row"><span class="dot warn" aria-hidden="true"></span>Review !318<span class="note">waiting</span></button>
+      <button class="agent-row"><span class="dot ok" aria-hidden="true"></span>ACME-398 Flaky cart test<span class="note">+41</span></button>
+      <div class="agents-foot">ACME-412-gift-message-at-checkout</div>
+    </aside>
+
+    <main class="main" aria-label="Chat with ACME-412 Gift message">
+      <div class="chat">
+        <div class="chat-scroll">
+          <div class="bubble-user">Read ACME-412 and tell me what's missing from the gift message field.</div>
+          <div class="reply">
+            <div class="step"><img class="tool-logo" src="../icons/jira.svg" alt=""><span class="what">Read ACME-412</span><span>· In Progress · fix version 2026.11</span></div>
+            <div class="step"><span>⌕</span><span class="what">Searched giftMessage</span><span>· 4 files</span></div>
+            <p>The field has no length limit and doesn't trim, so a message of spaces passes validation. The ticket asks for a 200-character cap with a counter, and acceptance criterion 3 asks for a test of the trimmed message.</p>
+            <div style="display:flex;gap:10px;align-items:center;color:var(--faint);font-size:12px"><span>Worked for 21 s · 2 steps</span><span>·</span><span>first token 1.1 s</span><span>·</span><span>14:02</span></div>
+          </div>
+        </div>
+        <div class="composer" style="margin-bottom:16px">
+          <span class="working-bar" style="opacity:0" aria-hidden="true"></span>
+          <div class="draft">In <code>src/checkout/GiftMessage.tsx</code>, limit the gift message to 200 characters. Trim whitespace before validating, and show the characters left under the field.
+Add tests in <code>src/checkout/__tests__/giftMessage.test.tsx</code> for a 201-character message, a message of only spaces, and one of exactly 200.
+Run <code>npm test -- giftMessage</code> and report the result.<span class="glass enhance-pill"><span class="spark">✦</span>Enhance<span class="key">⌥⌘E</span></span><span class="glass enhance-pill">↺ Revert</span></div>
+          <div class="composer-bar"><button class="glass plus" aria-label="Add files, context, modes and more">+</button><span class="glass chip">Auto Edit</span><span style="flex:1"></span><span>gemini-3.8-flash ▾</span><span class="ring" aria-label="Context 23% full"></span><button class="send" aria-label="Send"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5"/></svg></button></div>
+        </div>
+        <div class="enhance-note"><span>✦ Enhanced. Edit it, send it, or Revert to your words (⌘Z works too).</span></div>
+      </div>
+    </main>
+    <aside class="side" aria-label="Changes">
+      <div style="padding: 10px 14px; display: flex; align-items: center; gap: 8px"><strong>Changes</strong><span style="color: var(--faint)">2 files · +24 −6</span><span style="margin-left: auto; display: flex; gap: 6px"><button class="btn sm">Undo All</button><button class="btn sm">Keep All</button></span></div>
+      <div style="padding: 0 14px; display: flex; flex-direction: column; gap: 10px">
+        <section class="card"><div class="card-head"><h2 style="font-weight:500">GiftMessage.tsx</h2><span class="query">src/checkout · +10 −6</span></div>
+          <pre style="margin:0;font:11px/1.6 var(--mono);color:var(--muted);white-space:pre-wrap"><span style="color:var(--err)">− if (!message) return 'Required';</span>
+<span style="color:var(--ok)">+ const text = message.trim();</span>
+<span style="color:var(--ok)">+ if (!text) return 'Required';</span>
+<span style="color:var(--ok)">+ if (text.length > 200) return 'At most 200 characters';</span></pre></section>
+        <section class="card"><div class="card-head"><h2 style="font-weight:500">giftMessage.test.tsx</h2><span class="query">src/checkout/__tests__ · new · +14</span></div></section>
+      </div>
+    </aside>
+  </div>
+  <footer class="statusbar">
+    <span>⌥ acme-checkout</span><span>⎇ ACME-412-gift-message-at-checkout</span>
+    <span class="spacer"></span>
+    <span class="hover">✦ Gemini: ready · CLI 0.64.0</span><span>Jira ✓ · GitLab ✓ · Snyk ✓</span><span>Audit: 14 actions today</span>
+  </footer>
+</div>
+
+<div class="ide" style="min-height:0;background:transparent">
+  <div class="strip">
+    <div><p class="state-label">1 · A draft: Enhance floats after the last character</p>
+      <div class="composer"><div class="draft">add a cap to the gift msg + test<span class="caret"></span><span class="glass enhance-pill"><span class="spark">✦</span>Enhance<span class="key">⌥⌘E</span></span></div><div class="composer-bar"><button class="glass plus" aria-label="Add files, context, modes and more">+</button><span class="glass chip">Auto Edit</span><span style="flex:1"></span><span>gemini-3.8-flash ▾</span><span class="ring" aria-label="Context 23% full"></span><button class="send" aria-label="Send"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5"/></svg></button></div></div></div>
+    <div><p class="state-label">2 · Rewriting: the working bar, the rewrite streams in place</p>
+      <div class="composer"><span class="working-bar" aria-hidden="true"></span><div class="draft streaming">In src/checkout/GiftMessage.tsx, limit the gift message to 200 characters. Trim whitespace before validating, and<span class="caret"></span><span class="glass enhance-pill">✕ Cancel<span class="key">esc</span></span></div><div class="composer-bar"><button class="glass plus" aria-label="Add files, context, modes and more">+</button><span class="glass chip">Auto Edit</span><span style="flex:1"></span><span>gemini-3.8-flash ▾</span><span class="ring" aria-label="Context 23% full"></span><button class="send off" aria-label="Send" disabled><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5"/></svg></button></div></div>
+      <div class="enhance-note" style="margin:6px 4px 0"><span>Rewriting as a precise prompt · Esc to cancel</span></div></div>
+    <div><p class="state-label">3 · While the agent works: Stop, the bar on the composer's edge</p>
+      <div class="composer"><span class="working-bar" aria-hidden="true"></span><div class="draft"><span style="color:var(--faint)">Reply, or @ a file…</span></div><div class="composer-bar"><button class="glass plus" aria-label="Add files, context, modes and more">+</button><span class="glass chip">Auto Edit</span><span style="flex:1"></span><span>gemini-3.8-flash ▾</span><span class="ring" aria-label="Context 23% full"></span><button class="send" aria-label="Stop" style="background:var(--glass-fill-strong);color:var(--text)"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="2" fill="currentColor"/></svg></button></div></div>
+      <div class="enhance-note" style="margin:6px 4px 0"><span>Editing src/checkout/GiftMessage.tsx · 38 s</span></div></div>
+  </div>
+</div>
+</div>
+<script>
+// #light shows the same page in GeminiCode Light.
+if (location.hash === '#light') { document.body.classList.add('light'); document.querySelectorAll('.ide').forEach(n => n.classList.add('light')); }
+</script>
+</body>
+</html>
