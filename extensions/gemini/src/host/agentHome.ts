@@ -11,6 +11,8 @@ import { errorMessage } from '../acp/errors';
 import { formatCounts } from '../acp/agentChanges';
 import { attachmentsForFiles } from './addToChat';
 import { AgentsView, AgentSummary, relativeTime, startModes } from './agentsView';
+import { startsQuietly } from './agentWarmup';
+import { detectAuth } from '../acp/directRequest';
 import { tildify } from './displayText';
 import { configSection, getApprovalPolicy, getProjectSettings } from './configuration';
 import { preferredModel } from './modelPreference';
@@ -44,6 +46,8 @@ export interface HomeOptions {
 const maxEarlier = 8;
 /** How often agent updates reach the page at most. */
 const updateDelayMs = 200;
+/** How long Home trusts its last reading of the saved sign-in. */
+const signInCheckMs = 5_000;
 
 type Mode = 'agents' | 'editor';
 
@@ -66,6 +70,7 @@ export class AgentHome implements vscode.Disposable {
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly teamData: TeamData | undefined;
 	private refreshTimer: ReturnType<typeof setInterval> | undefined;
+	private signIn: { readonly at: number; readonly quiet: Promise<boolean> } | undefined;
 
 	/** `onTyping` runs when the user starts typing a task, so the agent can start meanwhile. */
 	constructor(private readonly extensionUri: vscode.Uri, private readonly agents: AgentsView, private readonly onTyping: () => void = () => undefined, private readonly options?: HomeOptions) {
@@ -256,8 +261,16 @@ export class AgentHome implements vscode.Disposable {
 			ownBranch: vscode.workspace.getConfiguration(configSection).get<boolean>('agents.ownBranch', false),
 			modes: startModes().filter(mode => isModeAllowed(getApprovalPolicy(), mode.id)),
 			...preferredModel() ? { model: preferredModel() } : {},
-			dashboard: this.dashboard(all, workspaces[0]?.name, await this.unfinished()),
+			dashboard: this.dashboard(all, workspaces[0]?.name, await this.unfinished(), await this.signedIn()),
 		};
+	}
+
+	/** Whether the CLI has a saved sign-in, read at most every few seconds since Home rebuilds often. */
+	private async signedIn(): Promise<boolean> {
+		if (!this.signIn || Date.now() - this.signIn.at > signInCheckMs) {
+			this.signIn = { at: Date.now(), quiet: detectAuth().then(auth => startsQuietly(auth), () => false) };
+		}
+		return this.signIn.quiet;
 	}
 
 	/** What a quit cut off, from the team tools' records on disk; nothing without them. */
@@ -270,7 +283,7 @@ export class AgentHome implements vscode.Disposable {
 		return { flows, intents };
 	}
 
-	private dashboard(agents: readonly AgentSummary[], repository: string | undefined, unfinished: DashboardInput['unfinished']): HomeView['dashboard'] {
+	private dashboard(agents: readonly AgentSummary[], repository: string | undefined, unfinished: DashboardInput['unfinished'], signedIn: boolean): HomeView['dashboard'] {
 		const team = this.agents.teamTools;
 		const firstConnected = this.options?.state.get<number>(firstConnectedKey);
 		const reading = this.agents.usage?.reading;
@@ -287,6 +300,7 @@ export class AgentHome implements vscode.Disposable {
 			usage: reading?.kind === 'ok' ? reading.quota : undefined,
 			versions: { app: this.options?.version ?? '', ...cli ? { cli } : {} },
 			...projectId ? { projectId } : {},
+			signedIn,
 			...this.teamData?.refreshedAt ? { dataFrom: this.teamData.refreshedAt } : {},
 			...this.options?.startup ? { startup: this.options.startup() } : {},
 			projectsOn: projectsEnabled(),

@@ -30,6 +30,8 @@ export interface DashboardInput {
 	readonly versions: { readonly app: string; readonly cli?: string };
 	/** The Google Cloud project usage is billed to. */
 	readonly projectId?: string;
+	/** Whether the CLI has a saved sign-in it can start with, as the warm-up decides. */
+	readonly signedIn: boolean;
 	readonly projectsOn: boolean;
 	readonly refreshing: boolean;
 	/** A week after the first tool was connected: cards of tools still not connected stay out of the way. */
@@ -179,8 +181,9 @@ function needs(input: DashboardInput): HomeNeed[] {
 function setupSteps(input: DashboardInput): HomeDashboard['setup'] {
 	const agentStarted = input.agents.length > 0;
 	return [
-		{ title: vscode.l10n.t("Sign in to Gemini"), detail: vscode.l10n.t("Gemini Code Assist, with your Google account."), done: true },
-		{ title: vscode.l10n.t("Connect your team's tools"), detail: vscode.l10n.t("Jira, GitLab, SonarQube, Snyk and Figma, each with your own account."), done: input.connected.size > 0, button: { label: vscode.l10n.t("Connect"), action: connect, primary: true } },
+		{ title: vscode.l10n.t("Sign in to Gemini"), detail: vscode.l10n.t("Gemini Code Assist, with your Google account."), done: input.signedIn, button: { label: vscode.l10n.t("Sign In"), action: command('gemini.signIn'), primary: true } },
+		{ title: vscode.l10n.t("Set your Google Cloud project"), detail: vscode.l10n.t("The project your usage is billed to. Your organisation may set it for you."), done: !!input.projectId, button: { label: vscode.l10n.t("Set Project"), action: command('gemini.setProjectId') } },
+		{ title: vscode.l10n.t("Connect your team's tools"), detail: vscode.l10n.t("Jira, GitLab, SonarQube, Snyk and Figma, each with your own account."), done: input.connected.size > 0, button: { label: vscode.l10n.t("Connect"), action: connect, primary: input.signedIn } },
 		{ title: vscode.l10n.t("Open a repository and start an agent"), detail: vscode.l10n.t("Describe a task above, or start from a Jira ticket."), done: agentStarted, button: { label: vscode.l10n.t("Open Folder"), action: command('workbench.action.files.openFolder') } },
 	];
 }
