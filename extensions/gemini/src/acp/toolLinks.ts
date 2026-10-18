@@ -104,6 +104,39 @@ export function toolRefId(ref: ToolRef): string {
 	}
 }
 
+/** Where the user's Jira and GitLab are, to find an item's page from its id. */
+export interface ToolSites {
+	readonly jira?: string;
+	readonly gitlab?: string;
+}
+
+/** The page of the item a `toolRefId` names; undefined when its tool's site isn't known or the id isn't one. */
+export function toolRefUrl(id: string, sites: ToolSites): string | undefined {
+	const [tool, ...parts] = id.split(':');
+	const base = (site: string | undefined) => site?.replace(/\/+$/, '');
+	switch (tool) {
+		case 'jira': {
+			const key = parts.join(':');
+			return base(sites.jira) && /^[A-Z][A-Z0-9_]{1,15}-\d+$/.test(key) ? `${base(sites.jira)}/browse/${key}` : undefined;
+		}
+		case 'gitlab': {
+			const [kind, ...rest] = parts;
+			const iid = rest.pop() ?? '';
+			const project = rest.join(':');
+			return base(sites.gitlab) && project && /^\d+$/.test(iid) && (kind === 'mr' || kind === 'issue')
+				? `${base(sites.gitlab)}/${project}/-/${kind === 'mr' ? 'merge_requests' : 'issues'}/${iid}`
+				: undefined;
+		}
+		case 'figma': {
+			// A node id has a colon of its own (12:34); the link spells it with a dash.
+			const [fileKey, ...node] = parts;
+			const nodeId = node.join(':');
+			return /^[\w-]+$/.test(fileKey ?? '') ? `https://www.figma.com/design/${fileKey}${nodeId ? `?node-id=${encodeURIComponent(nodeId.replace(/:/g, '-'))}` : ''}` : undefined;
+		}
+	}
+	return undefined;
+}
+
 /** The short name of a ref: ACME-412, !318, #45, or "Figma frame". */
 export function toolRefLabel(ref: ToolRef): string {
 	switch (ref.tool) {

@@ -3955,6 +3955,36 @@ body.has-parent-project .prompt-outline {
 	color: var(--gemini-muted);
 }
 
+/* A tool chip opens its item: the logo, key and title are one button inside the pill, beside its ×. */
+.tool-chip-open {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	min-width: 0;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}
+
+.tool-chip-open .tool-chip-title {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.tool-chip-open:hover .tool-chip-key {
+	text-decoration: underline;
+}
+
+.tool-chip-open:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 1px;
+	border-radius: 999px;
+}
+
 /* A geminicode-tools call shows its tool's logo where other calls show a codicon. */
 .tool-row .tool-logo.kind-icon,
 .menu-row .tool-logo.menu-icon {

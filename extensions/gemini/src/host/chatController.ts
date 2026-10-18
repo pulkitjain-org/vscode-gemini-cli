@@ -1368,6 +1368,9 @@ export class ChatController implements vscode.Disposable {
 				void chips?.resolve(message.ref).then(attachment => this.post({ type: 'toolRefResolved', attachment }));
 				break;
 			}
+			case 'openToolRef':
+				void this.options.toolChips?.()?.open(message.ref);
+				break;
 			case 'pickToolItem': {
 				const chips = this.options.toolChips?.();
 				void chips?.pick(message.tool).then(ref => {
@@ -2100,6 +2103,7 @@ export class ChatController implements vscode.Disposable {
 			figmaFrame: vscode.l10n.t("Figma frame"),
 			pasteLink: vscode.l10n.t("paste link"),
 			toolChipLoading: vscode.l10n.t("Reading\u2026"),
+			openToolItem: vscode.l10n.t("Open {0}"),
 			teamToolVerbs: {
 				read: vscode.l10n.t("Read {0}"),
 				search: vscode.l10n.t("Search Jira for {0}"),

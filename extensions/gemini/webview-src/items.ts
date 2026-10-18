@@ -211,6 +211,15 @@ function renderUserMessage(item: { readonly text: string; readonly attachments?:
 				chips.append(page);
 				continue;
 			}
+			const ref = attachment.ref;
+			if (attachment.tool && ref) {
+				// A Jira ticket, GitLab item or Figma frame the message carried: opens in its tool.
+				const tool = button('chip tool-chip', '', () => vscode.postMessage({ type: 'openToolRef', ref }));
+				tool.append(toolLogo(attachment.tool, 14), el('span', undefined, attachment.label));
+				setLabel(tool, format(strings.openToolItem, attachment.label));
+				chips.append(tool);
+				continue;
+			}
 			const chip = path
 				? button('chip', attachment.label, () => vscode.postMessage({ type: 'openLocation', path, line }), attachmentIcon(attachment.kind, attachment.label))
 				: el('span', 'chip static');

@@ -20,7 +20,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 30;
+export const chatProtocolVersion = 31;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -463,6 +463,8 @@ export interface ChatStrings {
 	readonly teamToolVerbs: TeamToolVerbs;
 	/** Chip tooltip while a ticket or merge request is being read. */
 	readonly toolChipLoading: string;
+	/** A tool chip's label for opening its item; {0} is the item, such as ACME-412. */
+	readonly openToolItem: string;
 	readonly back: string;
 	/** The model, branch and folder menus under and beside the composer. */
 	readonly branchSearch: string;
@@ -609,6 +611,8 @@ export type FromWebview =
 	| { readonly type: 'attachUris'; readonly uris: readonly string[] }
 	/** A Jira ticket, GitLab item or Figma frame the user named: the extension answers with toolRefResolved. */
 	| { readonly type: 'resolveToolRef'; readonly ref: ToolRef }
+	/** A click on a tool chip, in the composer or a sent message: open its item (`toolRefId`) in its tool. */
+	| { readonly type: 'openToolRef'; readonly ref: string }
 	/** The + menu's "From your tools": the extension asks which item, then sends attachToolRef. */
 	| { readonly type: 'pickToolItem'; readonly tool: 'jira' | 'gitlab' | 'figma' }
 	/** The × on the shared page's chip: give the page back to the user. */

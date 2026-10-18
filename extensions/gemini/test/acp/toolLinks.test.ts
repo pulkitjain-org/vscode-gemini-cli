@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { findToolRefs, parseTeamToolCall, parseToolLink, soleToolRef, teamToolTitle, toolRefId, toolRefLabel } from '../../src/acp/toolLinks';
+import { findToolRefs, parseTeamToolCall, parseToolLink, soleToolRef, teamToolTitle, toolRefId, toolRefLabel, toolRefUrl } from '../../src/acp/toolLinks';
 
 const all = { connected: ['jira', 'gitlab', 'figma'] };
 
@@ -41,6 +41,23 @@ describe('tool refs', () => {
 		expect(toolRefLabel({ tool: 'jira', key: 'ACME-1' })).toBe('ACME-1');
 		expect(toolRefLabel({ tool: 'gitlab', kind: 'mr', project: 'a/b', iid: 3, url: '' })).toBe('!3');
 		expect(toolRefLabel({ tool: 'gitlab', kind: 'issue', project: 'a/b', iid: 3, url: '' })).toBe('#3');
+	});
+
+	it('finds a chip\'s page from its id again, and nothing for a tool whose site it doesn\'t know', () => {
+		const sites = { jira: 'https://acme.atlassian.net/', gitlab: 'https://gitlab.acme.internal' };
+		const links = [
+			'https://acme.atlassian.net/browse/ACME-412',
+			'https://gitlab.acme.internal/shop/web/-/merge_requests/318',
+			'https://gitlab.acme.internal/shop/web/-/issues/45',
+			'https://www.figma.com/design/AbC123/Checkout?node-id=12-34',
+		];
+		expect(links.map(link => toolRefUrl(toolRefId(parseToolLink(link)!), sites))).toEqual([
+			'https://acme.atlassian.net/browse/ACME-412',
+			'https://gitlab.acme.internal/shop/web/-/merge_requests/318',
+			'https://gitlab.acme.internal/shop/web/-/issues/45',
+			'https://www.figma.com/design/AbC123?node-id=12-34',
+		]);
+		expect([toolRefUrl('jira:ACME-1', {}), toolRefUrl('gitlab:mr:a/b:3', { jira: sites.jira }), toolRefUrl('jira:not a key', sites), toolRefUrl('other:x', sites)]).toEqual([undefined, undefined, undefined, undefined]);
 	});
 });
 

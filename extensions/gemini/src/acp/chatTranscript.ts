@@ -27,6 +27,9 @@ export interface PromptAttachmentLabel {
 	/** For files and selections, so the view can open them. */
 	readonly path?: string;
 	readonly line?: number;
+	/** For a Jira ticket, GitLab item or Figma frame: its tool and its `toolRefId`, so the view can open it there. */
+	readonly tool?: 'jira' | 'gitlab' | 'figma';
+	readonly ref?: string;
 }
 
 export interface ToolCallLocation {
@@ -174,6 +177,7 @@ export class ChatTranscript {
 					label: attachmentLabel(a),
 					...(a.kind === 'image' || a.path === undefined ? {} : { path: a.path }),
 					...(a.kind === 'selection' ? { line: a.startLine } : {}),
+					...(a.kind === 'document' && a.tool && a.ref ? { tool: a.tool, ref: a.ref } : {}),
 				})),
 			} : {}),
 		});

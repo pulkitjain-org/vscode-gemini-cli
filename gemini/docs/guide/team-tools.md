@@ -59,7 +59,7 @@ A card shows its first few items. When it has more, **Show All** opens the whole
 
 ## In chat
 
-Paste a Jira key or link, a GitLab merge request or issue link, or a Figma link with a node, and it becomes a chip with the tool's logo; sending attaches the ticket, merge request or a hint to read the design. **From your tools** in the **+** menu picks a ticket, merge request or Figma frame. Tool calls show the tool's logo and what they did, such as "Read ACME-412".
+Paste a Jira key or link, a GitLab merge request or issue link, or a Figma link with a node, and it becomes a chip with the tool's logo; sending attaches the ticket, merge request or a hint to read the design. Click a chip, in the composer or in a message you sent, to open its ticket, merge request or frame. **From your tools** in the **+** menu picks a ticket, merge request or Figma frame. Tool calls show the tool's logo and what they did, such as "Read ACME-412".
 
 ## From ticket to merge request
 

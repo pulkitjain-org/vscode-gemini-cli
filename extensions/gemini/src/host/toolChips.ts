@@ -10,8 +10,9 @@ import { describeMr } from '../acp/gitlab';
 import type { JiraMyTicket, JiraMyTickets } from '../acp/jira';
 import type { TeamDefaults } from '../acp/teamDefaults';
 import { TeamToolError } from '../acp/teamHttp';
-import { parseToolLink, ToolRef, ToolRefContext, toolRefId, toolRefLabel } from '../acp/toolLinks';
+import { parseToolLink, ToolRef, ToolRefContext, toolRefId, toolRefLabel, toolRefUrl } from '../acp/toolLinks';
 import type { TeamConnections } from './teamConnections';
+import { openTeamLink } from './teamLinks';
 
 /** A ticket in a quick pick, with its key to start on or attach. */
 export type TicketPickItem = vscode.QuickPickItem & { readonly key?: string };
@@ -68,6 +69,20 @@ export class ToolChips {
 		});
 		this.cache.set(id, { at: Date.now(), value });
 		return value;
+	}
+
+	/** Opens the item a chip names (its `toolRefId`) in its tool, as Home opens team links; says so when that tool isn't connected. */
+	async open(id: string): Promise<void> {
+		const { jira, gitlab } = this.connections.connectors;
+		const url = toolRefUrl(id, { jira: jira?.site, gitlab: gitlab?.url });
+		if (url) {
+			await openTeamLink(url);
+			return;
+		}
+		const tool = id.startsWith('jira:') ? 'Jira' : id.startsWith('gitlab:') ? 'GitLab' : undefined;
+		if (tool) {
+			void vscode.window.showInformationMessage(vscode.l10n.t("Connect {0} in Connections to open this item.", tool));
+		}
 	}
 
 	/** Asks the user for a ticket, merge request or frame for the + menu, in a quick pick. */
