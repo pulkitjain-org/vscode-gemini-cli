@@ -1977,6 +1977,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				}
 			},
 		}, this.preferredModel(record));
+		session.permissions.confirmOnly = request => !!this.teamTools?.isConfirmCall(request);
 		session.permissions.answerAtOnce = request => (project ? this.projects.instantAnswer(this.model.agent(record.id) ?? record, request) : undefined)
 			?? this.teamTools?.instantAnswer(request);
 		const files: FileSearch = isOpenFolder(folder) ? this.workspaceFiles : new FolderFileIndex(folder);

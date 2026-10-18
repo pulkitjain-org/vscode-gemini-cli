@@ -368,6 +368,54 @@ export class GitLabClient {
 		return 'general';
 	}
 
+	/** The merge request's approval rules as GitLab applies them to it, with who approved each. */
+	async approvalState(project: string | number, iid: number): Promise<ApprovalRule[]> {
+		const id = await this.projectId(project);
+		const state = await this.request<{ rules?: { name?: string; rule_type?: string; approvals_required?: number; approved?: boolean; approved_by?: { username?: string }[]; eligible_approvers?: { username?: string }[] }[] }>(`/projects/${id}/merge_requests/${iid}/approval_state`);
+		return (state?.rules ?? []).map(rule => ({
+			name: rule.name || (rule.rule_type === 'code_owner' ? 'Code owners' : rule.rule_type === 'any_approver' ? 'Any eligible approver' : 'Approval rule'),
+			required: rule.approvals_required ?? 0,
+			approvedBy: (rule.approved_by ?? []).flatMap(u => u.username ? [u.username] : []),
+			eligible: (rule.eligible_approvers ?? []).flatMap(u => u.username ? [u.username] : []),
+			met: rule.approved ?? (rule.approved_by?.length ?? 0) >= (rule.approvals_required ?? 0),
+		}));
+	}
+
+	/** The project's merge settings that gate a merge. */
+	async mergeSettings(project: string | number): Promise<MergeSettings> {
+		const id = await this.projectId(project);
+		const p = await this.request<{ only_allow_merge_if_pipeline_succeeds?: boolean; only_allow_merge_if_all_discussions_are_resolved?: boolean; squash_option?: string; remove_source_branch_after_merge?: boolean }>(`/projects/${id}`);
+		return {
+			pipelineMustSucceed: !!p.only_allow_merge_if_pipeline_succeeds,
+			threadsMustBeResolved: !!p.only_allow_merge_if_all_discussions_are_resolved,
+			squash: p.squash_option === 'always' || p.squash_option === 'default_on',
+			removeSourceBranch: p.remove_source_branch_after_merge !== false,
+		};
+	}
+
+	/** Whether the merge request can be merged now, check by check, read live. */
+	async mergeReadiness(project: string | number, iid: number): Promise<MergeReadiness> {
+		const id = await this.projectId(project);
+		const [raw, rules, settings, discussions] = await Promise.all([
+			this.request<RawMr>(`/projects/${id}/merge_requests/${iid}`),
+			this.approvalState(id, iid).catch(() => []),
+			this.mergeSettings(id),
+			this.discussions(id, iid).catch(() => []),
+		]);
+		return mergeReadiness(raw, rules, settings, discussions.filter(d => !d.resolved).length);
+	}
+
+	/** Merges the merge request at `sha`, the head the user saw; GitLab refuses if it moved. */
+	async merge(project: string | number, iid: number, options: { readonly sha: string; readonly squash?: boolean; readonly removeSourceBranch?: boolean }): Promise<{ readonly sha?: string }> {
+		const id = await this.projectId(project);
+		const result = await this.request<{ merge_commit_sha?: string; sha?: string }>(`/projects/${id}/merge_requests/${iid}/merge`, {
+			method: 'PUT',
+			body: { sha: options.sha, ...options.squash === undefined ? {} : { squash: options.squash }, should_remove_source_branch: options.removeSourceBranch ?? true },
+			timeoutMs: 30_000,
+		});
+		return { sha: result?.merge_commit_sha ?? result?.sha };
+	}
+
 	async approve(project: string | number, iid: number): Promise<void> {
 		const id = await this.projectId(project);
 		await this.request(`/projects/${id}/merge_requests/${iid}/approve`, { method: 'POST' });
@@ -390,6 +438,74 @@ export class GitLabClient {
 	}
 }
 
+export interface ApprovalRule {
+	readonly name: string;
+	readonly required: number;
+	readonly approvedBy: readonly string[];
+	readonly eligible: readonly string[];
+	readonly met: boolean;
+}
+
+export interface MergeSettings {
+	readonly pipelineMustSucceed: boolean;
+	readonly threadsMustBeResolved: boolean;
+	readonly squash: boolean;
+	readonly removeSourceBranch: boolean;
+}
+
+export interface MergeCheck {
+	readonly name: string;
+	readonly ok: boolean;
+	readonly detail: string;
+	/** Where the rule comes from, for the panel's small print. */
+	readonly source: string;
+}
+
+export interface MergeReadiness {
+	readonly ready: boolean;
+	readonly checks: readonly MergeCheck[];
+	/** The head commit the checks were read for; the merge names it so a later push can't slip in. */
+	readonly sha: string;
+	readonly squash: boolean;
+	readonly removeSourceBranch: boolean;
+}
+
+/**
+ * The merge checks from what GitLab reports: its own verdict first, then
+ * each rule the project applies. GitLab enforces the same rules when the
+ * merge is requested, so this decides what the button says, not what is allowed.
+ */
+export function mergeReadiness(mr: Pick<RawMr, 'state' | 'detailed_merge_status' | 'has_conflicts' | 'draft' | 'work_in_progress' | 'head_pipeline' | 'sha' | 'diff_refs'>, rules: readonly ApprovalRule[], settings: MergeSettings, unresolvedThreads: number): MergeReadiness {
+	const checks: MergeCheck[] = [];
+	const status = mr.detailed_merge_status ?? '';
+	checks.push({ name: 'Open and not a draft', ok: mr.state === 'opened' && !(mr.draft ?? mr.work_in_progress), detail: mr.state !== 'opened' ? `the merge request is ${mr.state}` : (mr.draft ?? mr.work_in_progress) ? 'still a draft' : 'open', source: 'state, draft' });
+	const pipeline = mr.head_pipeline?.status;
+	checks.push({
+		name: settings.pipelineMustSucceed ? 'Pipeline must succeed' : 'Pipeline',
+		ok: !settings.pipelineMustSucceed || pipeline === 'success' || pipeline === 'skipped',
+		detail: pipeline ? `head pipeline ${pipeline}` : 'no pipeline',
+		source: settings.pipelineMustSucceed ? 'only_allow_merge_if_pipeline_succeeds' : 'head_pipeline.status',
+	});
+	for (const rule of rules) {
+		checks.push({ name: `Approvals: ${rule.name}`, ok: rule.met, detail: `${rule.approvedBy.length} of ${rule.required}${rule.approvedBy.length ? ` (${rule.approvedBy.join(', ')})` : ''}${!rule.met && rule.eligible.length ? `; eligible: ${rule.eligible.slice(0, 6).join(', ')}` : ''}`, source: 'approval_state' });
+	}
+	if (!rules.length) {
+		checks.push({ name: 'Approvals', ok: true, detail: 'no approval rules apply', source: 'approval_state' });
+	}
+	checks.push({ name: settings.threadsMustBeResolved ? 'All threads resolved' : 'Review threads', ok: !settings.threadsMustBeResolved || unresolvedThreads === 0, detail: unresolvedThreads ? `${unresolvedThreads} unresolved` : 'none open', source: settings.threadsMustBeResolved ? 'only_allow_merge_if_all_discussions_are_resolved' : 'discussions' });
+	checks.push({ name: 'No conflicts with the target', ok: !mr.has_conflicts && status !== 'conflict', detail: mr.has_conflicts || status === 'conflict' ? 'conflicts' : 'clean', source: 'has_conflicts' });
+	const gitlabSaysNo = status && status !== 'mergeable' && status !== 'ci_still_running' && status !== 'ci_must_pass';
+	checks.push({ name: 'GitLab says mergeable', ok: status === 'mergeable', detail: status || 'unknown', source: 'detailed_merge_status' });
+	const sha = mr.sha ?? mr.diff_refs?.head_sha ?? '';
+	return {
+		ready: checks.every(c => c.ok) && !gitlabSaysNo && !!sha,
+		checks,
+		sha,
+		squash: settings.squash,
+		removeSourceBranch: settings.removeSourceBranch,
+	};
+}
+
 interface RawMr {
 	readonly iid: number;
 	readonly project_id: number;
@@ -405,6 +521,8 @@ interface RawMr {
 	readonly reviewers?: readonly { readonly username?: string }[];
 	readonly updated_at?: string;
 	readonly detailed_merge_status?: string;
+	readonly has_conflicts?: boolean;
+	readonly sha?: string;
 	readonly references?: { readonly full?: string };
 	readonly head_pipeline?: { readonly id: number; readonly status: string; readonly web_url?: string };
 	readonly diff_refs?: { readonly base_sha: string; readonly head_sha: string; readonly start_sha: string };

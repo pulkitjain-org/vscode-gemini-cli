@@ -347,6 +347,6 @@ Only after sections 1 to 6 are green. Each item names the evidence that motivate
 | Fork confinement | SRC diff by area | CI hygiene check for stale patches |
 | CLI pin is what ships | checksum match, release notes | the upstream job's first green run |
 | Official MCP servers for Jira and GitLab unusable | web (secondary) | admin confirmation on both tenants |
-| Merge, reassign not yet possible | SRC grep | implementation + AUDIT entries |
-| Auto-approval hole for confirm-class tools | SRC `permissions.ts` + CLI `proceed_always` semantics (F) | the test that closes it |
+| Merge, reassign | Shipped 18 Oct 2026 as `gitlab_merge` (reads `approval_state`, project merge settings, threads and GitLab's verdict first; merges at the head it read) and `jira_assign`; tests against a fake server | AUDIT entries from the pilot |
+| Auto-approval hole for confirm-class tools | Closed 18 Oct 2026: `PermissionBroker.confirmOnly`, `teamConfirmTools`, `test/acp/permissions.test.ts` | pilot audit records showing an outcome on every confirm-class action |
 | Quota headroom for the benchmark | public quota page via search | the license document |

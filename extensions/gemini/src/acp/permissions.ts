@@ -8,6 +8,12 @@
 // list, and every request is answered: `cancelled` when the turn is stopped or
 // the agent goes away. Shell commands the session's approvals cover are
 // answered at once (see sessionApprovals.ts).
+//
+// Some tools change things that are hard to take back: a ticket's status, a
+// time log, a merge request, a merge. Those are the confirm class (`confirmOnly`):
+// their card never offers "Allow for this session", because the CLI would
+// apply that to every tool of the same server, and nothing answers them for
+// the user.
 
 import type * as acp from '@agentclientprotocol/sdk';
 import { Emitter } from './events';
@@ -45,6 +51,8 @@ export class PermissionBroker {
 	readonly approvals = new SessionApprovals();
 	/** Answers some requests at once, such as a project coordinator's (see projectMcp.ts). */
 	answerAtOnce: ((request: acp.RequestPermissionRequest) => InstantAnswer | undefined) | undefined;
+	/** Says which requests are in the confirm class: always a card, with Allow once and Reject only. */
+	confirmOnly: ((request: acp.RequestPermissionRequest) => boolean) | undefined;
 
 	get pendingPermissions(): readonly PendingPermission[] {
 		return [...this.pending.values()].map(entry => entry.permission);
@@ -52,6 +60,9 @@ export class PermissionBroker {
 
 	/** Waits for the user's answer. Never rejects. */
 	request(request: acp.RequestPermissionRequest): Promise<acp.RequestPermissionResponse> {
+		if (this.confirmOnly?.(request)) {
+			return this.ask(confirmOptions(request));
+		}
 		const instant = this.answerAtOnce?.(request);
 		if (instant && request.options.some(option => option.optionId === instant.optionId)) {
 			const outcome: acp.RequestPermissionOutcome = { outcome: 'selected', optionId: instant.optionId };
@@ -67,7 +78,11 @@ export class PermissionBroker {
 			this.onDidChangeEmitter.fire({ kind: 'allowed', permission: { id: `permission-${this.nextId++}`, request }, outcome });
 			return Promise.resolve({ outcome });
 		}
-		request = withApprovalLabels(request, command);
+		return this.ask(withApprovalLabels(request, command));
+	}
+
+	/** Shows the card and waits. */
+	private ask(request: acp.RequestPermissionRequest): Promise<acp.RequestPermissionResponse> {
 		const permission: PendingPermission = { id: `permission-${this.nextId++}`, request };
 		return new Promise(resolve => {
 			this.pending.set(permission.id, { permission, resolve });
@@ -131,6 +146,12 @@ function shellCommand(request: acp.RequestPermissionRequest): string | undefined
 		return input.command;
 	}
 	return typeof request.toolCall.title === 'string' ? request.toolCall.title : undefined;
+}
+
+/** The request with only its allow-once and reject options, for the confirm class. */
+function confirmOptions(request: acp.RequestPermissionRequest): acp.RequestPermissionRequest {
+	const options = request.options.filter(option => option.kind === 'allow_once' || option.kind === 'reject_once' || option.kind === 'reject_always');
+	return options.length ? { ...request, options } : request;
 }
 
 /** Says what "Allow for this session" covers for a shell command: "Allow grep, cut, head for this session". */

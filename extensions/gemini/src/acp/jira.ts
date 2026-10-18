@@ -242,6 +242,17 @@ export class JiraClient {
 		};
 	}
 
+	/** The people the project lets take `key`, matching `query` when given. */
+	async assignableUsers(key: string, query = ''): Promise<JiraUser[]> {
+		const users = await this.request<JiraUser[]>(`/rest/api/3/user/assignable/search?issueKey=${encodeURIComponent(key)}&maxResults=50${query ? `&query=${encodeURIComponent(query)}` : ''}`);
+		return (users ?? []).map(u => ({ accountId: u.accountId, displayName: u.displayName, ...u.emailAddress ? { emailAddress: u.emailAddress } : {} }));
+	}
+
+	/** Assigns `key` to `accountId`, or to nobody with null. */
+	async assign(key: string, accountId: string | null): Promise<void> {
+		await this.request(`/rest/api/3/issue/${encodeURIComponent(key)}/assignee`, { method: 'PUT', body: { accountId } });
+	}
+
 	private findSprintField(): Promise<string | undefined> {
 		this.sprintField ??= this.request<{ id: string; schema?: { custom?: string } }[]>('/rest/api/3/field').then(
 			fields => fields.find(f => f.schema?.custom === 'com.pyxis.greenhopper.jira:gh-sprint')?.id,

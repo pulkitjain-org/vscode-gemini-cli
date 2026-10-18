@@ -5,9 +5,12 @@
 
 // The tools of the `geminicode-tools` MCP server: a handful per connected
 // tool, so their schemas cost little in every prompt. Reading tools run
-// without a question; the four that change something (a Jira comment or
-// status, an MR or a comment on one) are answered by the user on the normal
-// permission card. Answers are trimmed text, never raw JSON.
+// without a question. The ones that change something are answered by the
+// user on the permission card, and the confirm class among them (a status
+// change, a time log, a new merge request, a merge) asks every time, with
+// no "Allow for this session". Answers are trimmed text, never raw JSON, and
+// text that came from a ticket, a merge request, a job log or a design is
+// marked as such, so the model reads it as data.
 
 import type { McpContent, McpTool, McpToolResult } from './browserMcp';
 import { FigmaDesktop, parseFigmaLink } from './figma';
@@ -51,6 +54,8 @@ interface TeamTool extends McpTool {
 	readonly tool: TeamToolId;
 	/** Changes something, so the user answers a permission card. */
 	readonly write?: boolean;
+	/** Hard to take back, so the card asks every time and offers no session approval. */
+	readonly confirm?: boolean;
 }
 
 export const teamTools: readonly TeamTool[] = [
@@ -70,7 +75,7 @@ export const teamTools: readonly TeamTool[] = [
 		inputSchema: { type: 'object', properties: { key: text, text: { ...text, description: 'Plain text; blank lines start paragraphs.' } }, required: ['key', 'text'] },
 	},
 	{
-		tool: 'jira', name: 'jira_transition', write: true,
+		tool: 'jira', name: 'jira_transition', write: true, confirm: true,
 		description: 'Moves a Jira ticket to another status its workflow allows, optionally with a comment and the fields that move asks for (such as Fix version). Call it without `to` to list the allowed moves; the user approves the move itself.',
 		inputSchema: {
 			type: 'object',
@@ -84,12 +89,21 @@ export const teamTools: readonly TeamTool[] = [
 		},
 	},
 	{
-		tool: 'jira', name: 'jira_log_time', write: true,
+		tool: 'jira', name: 'jira_log_time', write: true, confirm: true,
 		description: 'Logs time the user spent on a Jira ticket. Only when the user asks; they approve it first.',
 		inputSchema: {
 			type: 'object',
 			properties: { key: text, spent: { ...text, description: 'Time spent, such as 1h 30m or 45m.' }, comment: { ...text, description: 'What the time was spent on.' } },
 			required: ['key', 'spent'],
+		},
+	},
+	{
+		tool: 'jira', name: 'jira_assign', write: true,
+		description: 'Assigns a Jira ticket to someone the project allows (by name or email), to the user ("me"), or to nobody ("unassigned"). The user approves it first. Call it without `to` to list who can take the ticket.',
+		inputSchema: {
+			type: 'object',
+			properties: { key: text, to: { ...text, description: 'A name or email to search for, "me", or "unassigned". Leave out to list the people who can take the ticket.' } },
+			required: ['key'],
 		},
 	},
 	{
@@ -113,7 +127,7 @@ export const teamTools: readonly TeamTool[] = [
 		inputSchema: { type: 'object', properties: { issue: { ...text, description: 'An issue link, or its number in this repository\'s project.' } }, required: ['issue'] },
 	},
 	{
-		tool: 'gitlab', name: 'gitlab_create_mr', write: true,
+		tool: 'gitlab', name: 'gitlab_create_mr', write: true, confirm: true,
 		description: 'Opens a GitLab merge request from your current branch, which must be pushed first. Ask the user for the target branch if they haven\'t named it. The user approves it first.',
 		inputSchema: {
 			type: 'object',
@@ -133,6 +147,14 @@ export const teamTools: readonly TeamTool[] = [
 			type: 'object',
 			properties: { mr: mrParam, text, discussion: { ...text, description: 'The thread\'s discussion id, from gitlab_get_mr.' }, path: text, line: { type: 'number' }, resolve: { type: 'boolean', description: 'Resolve the thread after replying.' } },
 			required: ['text'],
+		},
+	},
+	{
+		tool: 'gitlab', name: 'gitlab_merge', write: true, confirm: true,
+		description: 'Merges a GitLab merge request, only when GitLab says it is ready: pipeline passed, every approval rule met, threads resolved, no conflicts. Reads the checks first and refuses otherwise, saying what is missing. The user approves the merge itself.',
+		inputSchema: {
+			type: 'object',
+			properties: { mr: mrParam, squash: { type: 'boolean', description: 'Squash the commits; the project\'s setting by default.' }, deleteBranch: { type: 'boolean', description: 'Delete the source branch after merging (default true).' } },
 		},
 	},
 	{
@@ -170,6 +192,34 @@ export const teamTools: readonly TeamTool[] = [
 /** The tools that only read, which run without asking. */
 export const teamReadTools: readonly McpTool[] = teamTools.filter(tool => !tool.write);
 export const teamWriteTools: readonly McpTool[] = teamTools.filter(tool => tool.write);
+/** The confirm class: a card every time, with Allow once and Reject only. */
+export const teamConfirmTools: readonly McpTool[] = teamTools.filter(tool => tool.confirm);
+
+/**
+ * The same actions in the MCP servers a team may run beside GeminiCode's
+ * (mcp-atlassian and gitlab-mcp, as in a repository's `.gemini/settings.json`),
+ * so they ask the same way.
+ */
+export const confirmToolNames: readonly string[] = [
+	...teamConfirmTools.map(tool => tool.name),
+	'jira_transition_issue', 'jira_add_worklog', 'create_merge_request', 'merge_merge_request',
+];
+
+/** Whether a permission request is for a confirm-class tool, by the title the CLI gives MCP calls (`name(args)`). */
+export function isConfirmToolCall(request: { readonly toolCall: { readonly title?: string | null } }): boolean {
+	const title = request.toolCall.title ?? '';
+	return confirmToolNames.some(name => title === name || title.startsWith(`${name}(`));
+}
+
+/**
+ * Text that came from outside (a ticket, a merge request, a job log, a
+ * design), marked so the model treats it as something to read, not as
+ * instructions. The frame is plain text; the server's instructions say what
+ * it means.
+ */
+export function external(source: TeamToolId, ref: string, text: string): string {
+	return `<external source="${source}" ref="${ref.replace(/"/g, '')}">\n${text}\n</external>`;
+}
 
 /** The tools for the connected tools. */
 export function teamToolsFor(connected: ReadonlySet<TeamToolId>): McpTool[] {
@@ -249,7 +299,7 @@ async function jiraCall(jira: JiraClient, name: string, args: Record<string, unk
 	switch (name) {
 		case 'jira_get_issue': {
 			const issue = await jira.issue(key ?? '');
-			return ok([
+			return ok(external('jira', issue.key, [
 				`${issue.key} ${issue.summary} (${issue.url})`,
 				`${issue.type ?? 'Ticket'} · ${issue.status}${issue.priority ? ` · ${issue.priority}` : ''}${issue.fixVersions.length ? ` · fix version ${issue.fixVersions.join(', ')}` : ''}${issue.assignee ? ` · assigned to ${issue.assignee}` : ''}${issue.parent ? ` · parent ${issue.parent}` : ''}`,
 				...issue.labels.length ? [`Labels: ${issue.labels.join(', ')}`] : [],
@@ -257,11 +307,11 @@ async function jiraCall(jira: JiraClient, name: string, args: Record<string, unk
 				clip(issue.description.trim() || '(no description)', 12_000),
 				...issue.comments.length ? ['', 'Latest comments:', ...issue.comments.map(c => `- ${c.author} (${c.created.slice(0, 10)}): ${clip(c.body.trim(), 1500)}`)] : [],
 				...issue.links.length ? ['', 'Links:', ...issue.links.map(l => `- ${l}`)] : [],
-			].join('\n'));
+			].join('\n')));
 		}
 		case 'jira_search': {
 			const issues = await jira.search(arg(args, 'jql') ?? '', Number(args.max) || 20);
-			return ok(issues.length ? issues.map(i => `${i.key} [${i.status}] ${i.summary}`).join('\n') : 'No tickets match.');
+			return ok(issues.length ? external('jira', 'search', issues.map(i => `${i.key} [${i.status}] ${i.summary}`).join('\n')) : 'No tickets match.');
 		}
 		case 'jira_comment':
 			await jira.comment(key ?? '', arg(args, 'text') ?? '', defaults.jira?.commentVisibility);
@@ -269,6 +319,23 @@ async function jiraCall(jira: JiraClient, name: string, args: Record<string, unk
 		case 'jira_log_time':
 			await jira.logWork(key ?? '', arg(args, 'spent') ?? '', arg(args, 'comment'));
 			return ok(`Logged ${arg(args, 'spent')} on ${key}.`);
+		case 'jira_assign': {
+			const to = arg(args, 'to');
+			if (!to) {
+				const people = await jira.assignableUsers(key ?? '');
+				return ok(people.length ? `${key} can be assigned to:\n${people.map(u => `- ${u.displayName}${u.emailAddress ? ` (${u.emailAddress})` : ''}`).join('\n')}` : `Nobody can be assigned ${key}.`);
+			}
+			if (/^unassigned$/i.test(to)) {
+				await jira.assign(key ?? '', null);
+				return ok(`${key} is now unassigned.`);
+			}
+			const person = /^me$/i.test(to) ? await jira.myself() : (await jira.assignableUsers(key ?? '', to))[0];
+			if (!person) {
+				return fail(`Nobody matching "${to}" can be assigned ${key}. Call jira_assign without \`to\` to list who can.`);
+			}
+			await jira.assign(key ?? '', person.accountId);
+			return ok(`Assigned ${key} to ${person.displayName}.`);
+		}
 		case 'jira_transition': {
 			const to = arg(args, 'to');
 			if (!to) {
@@ -309,7 +376,7 @@ async function gitlabCall(gitlab: GitLabClient, name: string, args: Record<strin
 			const { project, iid } = await resolveMr(gitlab, arg(args, 'mr'), folder, defaults);
 			const [mr, discussions, diffs] = await Promise.all([gitlab.mr(project, iid), gitlab.discussions(project, iid), args.diff === false ? [] : gitlab.diffs(project, iid)]);
 			const failed = mr.pipeline?.status === 'failed' ? await gitlab.jobs(project, mr.pipeline.id, true).catch(() => []) : [];
-			return ok(describeMr(mr, discussions, diffs, failed));
+			return ok(external('gitlab', `!${iid}`, describeMr(mr, discussions, diffs, failed)));
 		}
 		case 'gitlab_list_mrs': {
 			const list = arg(args, 'which') === 'mine' ? await gitlab.myMergeRequests() : await gitlab.reviewRequests();
@@ -324,7 +391,8 @@ async function gitlabCall(gitlab: GitLabClient, name: string, args: Record<strin
 				if (!project) {
 					return fail('Give the job\'s link.');
 				}
-				return ok(await gitlab.jobLogTail(project, Number(link?.[2] ?? job.replace(/\D/g, ''))));
+				const jobId = Number(link?.[2] ?? job.replace(/\D/g, ''));
+				return ok(external('gitlab', `job ${jobId}`, await gitlab.jobLogTail(project, jobId)));
 			}
 			const { project, iid } = await resolveMr(gitlab, arg(args, 'mr'), folder, defaults);
 			const mr = await gitlab.mr(project, iid, false);
@@ -336,7 +404,7 @@ async function gitlabCall(gitlab: GitLabClient, name: string, args: Record<strin
 				return ok(`The pipeline of !${iid} is ${mr.pipeline.status}; no job failed.`);
 			}
 			const logs = await Promise.all(failed.slice(0, 3).map(async j => `=== ${j.stage} / ${j.name} (job ${j.id}, ${j.url})\n${await gitlab.jobLogTail(project, j.id, 8000).catch(e => String(e))}`));
-			return ok(logs.join('\n\n'));
+			return ok(external('gitlab', `!${iid} jobs`, logs.join('\n\n')));
 		}
 		case 'gitlab_get_issue': {
 			const ref = arg(args, 'issue') ?? '';
@@ -347,7 +415,7 @@ async function gitlabCall(gitlab: GitLabClient, name: string, args: Record<strin
 				return fail('Give the issue\'s link.');
 			}
 			const issue = await gitlab.issue(project, Number(link?.[2] ?? ref.replace(/\D/g, '')));
-			return ok(`${issue.title} (${issue.url}) · ${issue.state}${issue.labels.length ? ` · ${issue.labels.join(', ')}` : ''}\n\n${clip(issue.description, 12_000)}`);
+			return ok(external('gitlab', issue.url, `${issue.title} (${issue.url}) · ${issue.state}${issue.labels.length ? ` · ${issue.labels.join(', ')}` : ''}\n\n${clip(issue.description, 12_000)}`));
 		}
 		case 'gitlab_create_mr': {
 			const local = folder ? await gitlabProjectOf(folder, gitlab.url, defaults) : {};
@@ -383,6 +451,15 @@ async function gitlabCall(gitlab: GitLabClient, name: string, args: Record<strin
 			await gitlab.comment(project, iid, body);
 			return ok(`Commented on !${iid}.`);
 		}
+		case 'gitlab_merge': {
+			const { project, iid } = await resolveMr(gitlab, arg(args, 'mr'), folder, defaults);
+			const readiness = await gitlab.mergeReadiness(project, iid);
+			if (!readiness.ready) {
+				return fail(`!${iid} isn't ready to merge:\n${readiness.checks.filter(c => !c.ok).map(c => `- ${c.name}: ${c.detail}`).join('\n')}`);
+			}
+			const merged = await gitlab.merge(project, iid, { sha: readiness.sha, ...args.squash === undefined ? {} : { squash: args.squash === true }, removeSourceBranch: args.deleteBranch !== false });
+			return ok(`Merged !${iid} at ${readiness.sha.slice(0, 8)}${merged.sha ? ` as ${merged.sha.slice(0, 8)}` : ''}.`);
+		}
 	}
 	return fail(`No tool named ${name}.`);
 }
@@ -412,5 +489,5 @@ async function figmaCall(figma: FigmaDesktop, name: string, args: Record<string,
 		return fail('That isn\'t a Figma link. Copy the frame\'s link in Figma (it has node-id=…).');
 	}
 	const content = name === 'figma_screenshot' ? await figma.screenshot(link) : await figma.designContext(link, arg(args, 'framework'));
-	return ok(content.map(c => c.type === 'text' ? { type: 'text' as const, text: clip(c.text, 40_000) } : c));
+	return ok(content.map(c => c.type === 'text' ? { type: 'text' as const, text: external('figma', link, clip(c.text, 40_000)) } : c));
 }

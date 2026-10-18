@@ -14,7 +14,7 @@ import { SnykCli } from '../acp/snyk';
 import { SonarClient } from '../acp/sonar';
 import { readTeamDefaults, TeamDefaults } from '../acp/teamDefaults';
 import { normalizeBaseUrl, TeamToolError, TeamToolId, teamToolIds, teamToolNames } from '../acp/teamHttp';
-import { TeamConnectors, teamReadTools } from '../acp/teamTools';
+import { isConfirmToolCall, TeamConnectors, teamReadTools } from '../acp/teamTools';
 import { TeamToolsMcpServer } from '../acp/teamToolsMcp';
 import { repositoryRoot } from '../acp/worktrees';
 
@@ -216,6 +216,11 @@ export class TeamConnections implements vscode.Disposable {
 				this.server.bind(url, agent);
 			}
 		}
+	}
+
+	/** Whether the request is for a confirm-class tool: a card every time, Allow once and Reject only. */
+	isConfirmCall(request: acp.RequestPermissionRequest): boolean {
+		return isConfirmToolCall(request);
 	}
 
 	/** Lets the reading tools run without a card; changes still ask. */
