@@ -747,16 +747,26 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
  * Gives each h2/h3 in the notes an id, and returns them for the side navigation.
  * A paragraph that is only bold text, such as `**Agents mode**` on a line of
  * its own, reads as a heading, so it becomes an h4 and is listed too.
+ *
+ * The page's title is the h1, so the notes' headings are renumbered to start
+ * at h2 and never skip a level (axe's heading-order rule): notes that open
+ * with `### What's new` get an h2. Each keeps the look of the level it was
+ * written at through `data-look`, which the page's styles go by.
  */
 export function addHeadingIds(notesHtml: string): { html: string; headings: { level: number; id: string; label: string }[] } {
 	const headings: { level: number; id: string; label: string }[] = [];
 	const used = new Set<string>();
 	const boldHeadings = notesHtml.replace(/<p>\s*<strong>([^<]+)<\/strong>\s*<\/p>/g, '<h4>$1</h4>');
-	const html = boldHeadings.replace(/<h([234])([^>]*)>([\s\S]*?)<\/h\1>/g, (match, level: string, attrs: string, inner: string) => {
+	const headingPattern = /<h(?<level>[234])(?<attrs>[^>]*)>(?<inner>[\s\S]*?)<\/h\k<level>>/g;
+	const shift = Math.min(4, ...Array.from(boldHeadings.matchAll(headingPattern), match => Number(match.groups!.level))) - 2;
+	let previous = 1;
+	const html = boldHeadings.replace(headingPattern, (match, written: string, attrs: string, inner: string) => {
 		const label = inner.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&#39;|&apos;/g, '\'').replace(/&quot;/g, '"').trim();
 		if (!label) {
 			return match;
 		}
+		const level = Math.min(Number(written) - shift, previous + 1);
+		previous = level;
 		const existing = /\sid="([^"]+)"/.exec(attrs)?.[1];
 		let id = existing ?? (label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'section');
 		if (!existing) {
@@ -765,8 +775,8 @@ export function addHeadingIds(notesHtml: string): { html: string; headings: { le
 			}
 		}
 		used.add(id);
-		headings.push({ level: Number(level), id, label });
-		return existing ? match : `<h${level}${attrs} id="${attr(id)}">${inner}</h${level}>`;
+		headings.push({ level, id, label });
+		return `<h${level}${attrs}${existing ? '' : ` id="${attr(id)}"`} data-look="${written}">${inner}</h${level}>`;
 	});
 	return { html, headings };
 }
