@@ -221,7 +221,7 @@ export function renderMarkdown(source: string, options: RenderOptions): Rendered
 			const body = (kind ? quoted.slice(1) : quoted).join(' ').trim();
 			note(plainText(body));
 			out.push(kind
-				? `<aside class="callout ${kind[1].toLowerCase()}">${calloutIcon(kind[1])}<div><p class="callout-t">${calloutKinds[kind[1]] ?? kind[1]}</p><p>${inline(body)}</p></div></aside>`
+				? `<div class="callout ${kind[1].toLowerCase()}" role="note">${calloutIcon(kind[1])}<div><p class="callout-t">${calloutKinds[kind[1]] ?? kind[1]}</p><p>${inline(body)}</p></div></div>`
 				: `<blockquote><p>${inline(body)}</p></blockquote>`);
 			continue;
 		}

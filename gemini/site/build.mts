@@ -430,11 +430,11 @@ function docsFooter(c: Context, root: string): string {
 
 function unsignedNote(latest: LatestRelease): string {
 	return latest.version && latest.signed === false ? `
-			<aside class="note">
+			<div class="note" role="note">
 				<h3>This build is not signed by Apple yet</h3>
 				<p>macOS blocks it the first time. After dragging GeminiCode to Applications, open it once and choose <b>Done</b>. Then open <b>System Settings → Privacy &amp; Security</b> and choose <b>Open Anyway</b> next to GeminiCode.</p>
 				<p>Or run this in Terminal: <code>xattr -dr com.apple.quarantine /Applications/GeminiCode.app</code></p>
-			</aside>` : '';
+			</div>` : '';
 }
 
 /**
