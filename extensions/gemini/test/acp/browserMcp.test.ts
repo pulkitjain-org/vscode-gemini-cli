@@ -62,6 +62,9 @@ class FakeBrowser implements BrowserBackend {
 	async network(_agent: string, pageId: string) {
 		return { requests: this.requests, url: this.at.get(pageId) ?? 'about:blank' };
 	}
+	async reveal(agent: string, pageId: string) {
+		this.calls.push(`reveal ${agent} ${pageId}`);
+	}
 	async dialog(agent: string, pageId: string, accept: boolean, text?: string): Promise<PageState> {
 		this.calls.push(`dialog ${agent} ${pageId} ${accept} ${text ?? ''}`.trim());
 		return { summary: 'after dialog', url: this.at.get(pageId) ?? 'about:blank' };
@@ -105,6 +108,7 @@ describe('BrowserToolHost', () => {
 		await host.call('a1', 'browser_type', { selector: '#q', text: 'shoes', submit: true });
 		expect(browser.calls).toEqual([
 			'open a1 http://localhost:5173/',
+			'reveal a1 p1',
 			'goto a1 p1 ["http://127.0.0.1:3000/cart"]',
 			`open a2 ${fileUrl(workspace, 'index.html')}`,
 			'click a1 p1 ["aria-ref=e12",true,"left"]',
@@ -229,7 +233,7 @@ describe('BrowserToolHost', () => {
 		browser.failNextOpen = true;
 		expect((await host.call('a1', 'browser_navigate', { url: 'http://localhost:5173' })).isError).toBe(true);
 		await host.call('a1', 'browser_navigate', { url: 'http://localhost:5173/again' });
-		expect(browser.calls).toEqual(['open a1 http://localhost:5173/', 'goto a1 p1 ["http://localhost:5173/again"]']);
+		expect(browser.calls).toEqual(['open a1 http://localhost:5173/', 'reveal a1 p1', 'goto a1 p1 ["http://localhost:5173/again"]']);
 	});
 
 	it('does nothing once the browser is turned off', async () => {

@@ -1594,6 +1594,10 @@ body.vscode-high-contrast-light {
 	color: var(--gemini-faint);
 }
 
+.activity-hint.armed {
+	color: var(--vscode-foreground);
+}
+
 /*
  * While the agent works, a short band in the Gemini colours runs along the composer's top edge.
  * It moves by transform only, so it never repaints the composer.

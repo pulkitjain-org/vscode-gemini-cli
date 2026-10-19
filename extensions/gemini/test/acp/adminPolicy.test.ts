@@ -7,7 +7,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildAdminPolicy, isModeAllowed, policyFileName, prepareAdminPolicy } from '../../src/acp/adminPolicy';
+import { buildAdminPolicy, isModeAllowed, policyFileName, prepareAdminPolicy, takesAway } from '../../src/acp/adminPolicy';
 import { filterModes } from '../../src/acp/sessionSettings';
 
 const allowAll = { allowAutoEdit: true, allowYolo: true, allowShell: true };
@@ -20,6 +20,18 @@ describe('isModeAllowed', () => {
 		expect(isModeAllowed(none, 'autoEdit')).toBe(false);
 		expect(isModeAllowed(defaults, 'autoEdit')).toBe(true);
 		expect(isModeAllowed(defaults, 'yolo')).toBe(false);
+	});
+});
+
+describe('takesAway', () => {
+	it('is true only for a change that allows less', () => {
+		expect([
+			takesAway(defaults, allowAll),
+			takesAway(allowAll, defaults),
+			takesAway(defaults, { ...defaults, allowShell: false }),
+			takesAway({ ...defaults, denyEnvironmentCommands: false }, { ...defaults, denyEnvironmentCommands: true }),
+			takesAway({ ...defaults, denyEnvironmentCommands: true }, { ...defaults, denyEnvironmentCommands: false }),
+		]).toEqual([false, true, true, true, false]);
 	});
 });
 

@@ -22,6 +22,30 @@ let wasBusy = false;
 
 hint.textContent = strings.activityStopHint;
 
+let stopArmed: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * Esc pressed once while the agent works: for `ms`, the hint says a second
+ * Esc stops it. Returns whether it was armed already, so this Esc stops.
+ */
+export function armStop(ms: number): boolean {
+	if (stopArmed !== undefined) {
+		disarmStop();
+		return true;
+	}
+	hint.textContent = strings.activityStopAgain;
+	hint.classList.add('armed');
+	stopArmed = setTimeout(disarmStop, ms);
+	return false;
+}
+
+function disarmStop(): void {
+	clearTimeout(stopArmed);
+	stopArmed = undefined;
+	hint.textContent = strings.activityStopHint;
+	hint.classList.remove('armed');
+}
+
 /** Brings the strip up to date; call when the turn starts or ends and when items change. */
 export function updateActivity(): void {
 	if (state.busy) {
@@ -37,6 +61,7 @@ export function updateActivity(): void {
 	}
 	if (wasBusy) {
 		wasBusy = false;
+		disarmStop();
 		clearInterval(ticker);
 		ticker = undefined;
 		showDone(Date.now() - (started ?? Date.now()));

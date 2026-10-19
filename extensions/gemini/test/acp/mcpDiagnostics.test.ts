@@ -23,6 +23,9 @@ const log = [
 	`[2026-10-04T10:36:52.082Z] [LOG] [MCP error] Error during discovery for MCP server 'badhttp': fetch failed TypeError: fetch failed`,
 	`    at node:internal/deps/undici/undici:14902:13`,
 	`[2026-10-04T10:36:52.082Z] [LOG] Scheduling MCP context refresh...`,
+	`[2026-10-18T09:12:40.511Z] [LOG] [MCP error] Error during discovery for MCP server 'docs': fetch failed [TypeError: fetch failed] {`,
+	`  [cause]: Error: connect ECONNREFUSED 127.0.0.1:8931`,
+	`}`,
 	`[2026-10-04T10:36:53.000Z] [LOG] [MCP warning] MCP server 'jira' requires authentication using: /mcp auth jira`,
 ].join('\n') + '\n';
 
@@ -30,7 +33,8 @@ describe('parseMcpProblems', () => {
 	it('finds each MCP problem, its server and the reason without the stack', () => {
 		expect(parseMcpProblems(log.split('\n'))).toEqual([
 			{ severity: 'error', server: 'broken', message: 'spawn /nonexistent/server ENOENT' },
-			{ severity: 'error', server: 'badhttp', message: 'fetch failed' },
+			{ severity: 'error', server: 'badhttp', message: 'fetch failed', unreachable: true },
+			{ severity: 'error', server: 'docs', message: 'fetch failed', unreachable: true },
 			{ severity: 'warning', server: 'jira', message: 'MCP server \'jira\' requires authentication using: /mcp auth jira' },
 		]);
 	});
@@ -64,13 +68,13 @@ describe('McpDiagnostics', () => {
 		await diagnostics.read();
 		await appendFile(file, tail + tail);
 		await diagnostics.read();
-		expect(seen.map(p => p.server)).toEqual(['broken', 'badhttp', 'jira']);
+		expect(seen.map(p => p.server)).toEqual(['broken', 'badhttp', 'docs', 'jira']);
 
 		await diagnostics.reset();
 		expect(await readFile(file, 'utf8')).toBe('');
 		await appendFile(file, log);
 		await diagnostics.read();
-		expect(seen).toHaveLength(6);
+		expect(seen).toHaveLength(8);
 	});
 
 	it('reads the log when the CLI writes to it', async () => {

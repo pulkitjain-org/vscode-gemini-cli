@@ -18,7 +18,11 @@ export interface McpProblem {
 	readonly server?: string;
 	/** What went wrong, without the stack trace. */
 	readonly message: string;
+	/** Nothing answered at the server's address: an HTTP server that isn't running, or a host that can't be found. */
+	readonly unreachable?: boolean;
 }
+
+const unreachable = /^fetch failed$|ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|ETIMEDOUT/;
 
 /** An entry's first line: "[2026-10-04T10:36:52.038Z] [LOG] ...". Lines after it, such as a stack trace, belong to it. */
 const entryStart = /^\[\d{4}-\d\d-\d\dT[^\]]*\] \[[A-Z]+\] /;
@@ -37,8 +41,9 @@ export function parseMcpProblems(lines: readonly string[]): McpProblem[] {
 		const server = /MCP server '([^']+)'/.exec(text)?.[1] ?? /\(([^()]+)\)\s*$/.exec(text)?.[1];
 		// "Error during discovery for MCP server 'x': spawn foo ENOENT Error: spawn foo ENOENT" -> "spawn foo ENOENT"
 		const reason = server && text.includes(`'${server}': `) ? text.slice(text.indexOf(`'${server}': `) + server.length + 4) : text;
-		const message = reason.replace(/\s+\w*Error: [\s\S]*$/, '').trim() || reason.trim();
-		problems.push({ severity: match[1] as McpProblem['severity'], server, message });
+		// gemini-cli 0.62 adds the error as "TypeError: fetch failed"; 0.64 inspects it, "[TypeError: fetch failed] {", with its cause on the lines after.
+		const message = reason.replace(/\s+\[?\w*Error: [\s\S]*$/, '').trim() || reason.trim();
+		problems.push({ severity: match[1] as McpProblem['severity'], server, message, ...unreachable.test(message) ? { unreachable: true } : {} });
 	}
 	return problems;
 }

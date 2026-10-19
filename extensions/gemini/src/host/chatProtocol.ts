@@ -272,6 +272,8 @@ export interface ChatStrings {
 	/** `{0}` is a clock such as "1:12". */
 	readonly activityDone: string;
 	readonly activityStopHint: string;
+	/** The strip's hint after one Esc: a second one stops the agent. */
+	readonly activityStopAgain: string;
 	/** `{0}` is a number of seconds. */
 	readonly thoughtFor: string;
 	/** A thought whose duration is not known (the view reloaded). */

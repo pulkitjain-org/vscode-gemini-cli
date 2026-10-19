@@ -251,8 +251,11 @@ CommandsRegistry.registerCommand('_gemini.browser.sharedPage', (accessor, key: s
 	return undefined;
 });
 
-/** Brings one of the agent's pages to the front in the editor group it is in. Resolves with whether it was found. */
-CommandsRegistry.registerCommand('_gemini.browser.reveal', async (accessor, key: string, pageId: string) => {
+/**
+ * Brings one of the agent's pages to the front in the editor group it is in;
+ * with `preserveFocus`, focus stays where it is. Resolves with whether it was found.
+ */
+CommandsRegistry.registerCommand('_gemini.browser.reveal', async (accessor, key: string, pageId: string, preserveFocus?: boolean) => {
 	const browserViews = accessor.get(IBrowserViewWorkbenchService);
 	const editorService = accessor.get(IEditorService);
 	const input = pagesOf(browserViews, sessionOf(key)).includes(pageId) ? browserViews.getKnownBrowserViews().get(pageId) : undefined;
@@ -260,7 +263,7 @@ CommandsRegistry.registerCommand('_gemini.browser.reveal', async (accessor, key:
 		return false;
 	}
 	const group = accessor.get(IEditorGroupsService).groups.find(g => g.contains(input));
-	await editorService.openEditor(input, { pinned: true }, group?.id ?? SIDE_GROUP);
+	await editorService.openEditor(input, { pinned: true, preserveFocus: preserveFocus === true }, group?.id ?? SIDE_GROUP);
 	return true;
 });
 
@@ -325,12 +328,14 @@ CommandsRegistry.registerCommand('_gemini.browser.screenshot', async (accessor, 
 CommandsRegistry.registerCommand('_gemini.browser.console', async (accessor, key: string, pageId: string) => {
 	const session = sessionOf(key);
 	const browserViews = accessor.get(IBrowserViewWorkbenchService);
+	// The accessor is only valid until the first await, so get every service first.
+	const playwright = accessor.get(IPlaywrightService);
 	const model = pagesOf(browserViews, session).includes(pageId) ? browserViews.getKnownBrowserViews().get(pageId)?.model : undefined;
 	if (!model) {
 		throw new Error('The page was closed.');
 	}
 	const text = await model.getConsoleLogs();
-	return { text, url: await accessor.get(IPlaywrightService).invokeFunctionRaw<string>(session, pageId, currentUrl) };
+	return { text, url: await playwright.invokeFunctionRaw<string>(session, pageId, currentUrl) };
 });
 
 /** The requests the agent's page made since it opened (see `recordNetwork`), and where the page is. */

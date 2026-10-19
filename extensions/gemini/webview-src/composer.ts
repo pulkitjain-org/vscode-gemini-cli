@@ -8,6 +8,7 @@
 
 import type { SessionSettings } from '../src/acp/sessionSettings';
 import type { ViewGit, ViewStatus } from '../src/host/chatProtocol';
+import { armStop } from './activity';
 import { renderAttachments } from './attachmentChips';
 import { format } from './chatLogic';
 import { button, el, icon, setLabel } from './dom';
@@ -223,6 +224,8 @@ letSpellingMenuThrough(input);
 /** When Esc was last pressed in an empty box, for Esc twice. */
 let lastEscape = 0;
 const doubleEscapeMs = 500;
+/** How long after one Esc a second one stops a working agent. */
+const stopAgainMs = 1500;
 
 input.addEventListener('keydown', event => {
 	if (!event.isComposing && onPickerKey(event)) {
@@ -236,8 +239,11 @@ input.addEventListener('keydown', event => {
 		return;
 	}
 	if (event.key === 'Escape' && state.busy) {
+		// Esc twice stops, so an Esc meant for a menu or a pop-up doesn't stop the agent.
 		event.preventDefault();
-		vscode.postMessage({ type: 'stop' });
+		if (armStop(stopAgainMs)) {
+			vscode.postMessage({ type: 'stop' });
+		}
 		return;
 	}
 	if (event.key === 'Escape' && !event.isComposing && !input.value.trim()) {

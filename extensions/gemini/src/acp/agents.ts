@@ -52,7 +52,11 @@ export interface ThreadRepo extends RepoWorktree {
 }
 
 export type AgentProjectRole =
-	| { readonly role: 'coordinator' }
+	| {
+		readonly role: 'coordinator';
+		/** The model the user picked in the project chat; unset, the coordinator runs on Flash (`coordinatorModel`). */
+		readonly model?: string;
+	}
 	| {
 		readonly role: 'thread';
 		/** The coordinator agent's id. */
@@ -232,6 +236,14 @@ export class AgentsModel {
 		this.update(id, a => ({ ...a, checks: { summary, at: this.now() } }));
 	}
 
+	/** Keeps the model the user picked in a project's chat, so the coordinator reopens on it. */
+	setCoordinatorModel(id: string, model: string): void {
+		const project = this.agent(id)?.project;
+		if (project?.role === 'coordinator' && project.model !== model) {
+			this.update(id, a => ({ ...a, project: { ...project, model } }));
+		}
+	}
+
 	/** Marks a project's thread resolved (merged back) or open again. */
 	setThreadResolved(id: string, resolved: boolean): void {
 		const project = this.agent(id)?.project;
@@ -297,5 +309,5 @@ function isAgentRecord(value: unknown): value is AgentRecord {
 		&& typeof a.createdAt === 'number' && typeof a.updatedAt === 'number'
 		&& (a.worktree === undefined || (typeof a.worktree.folder === 'string' && typeof a.worktree.cwd === 'string' && typeof a.worktree.branch === 'string' && typeof a.worktree.base === 'string'))
 		&& (a.repos === undefined || (Array.isArray(a.repos) && a.repos.every(r => typeof r?.key === 'string' && typeof r.folder === 'string' && typeof r.repository === 'string' && typeof r.branch === 'string')))
-		&& (a.project === undefined || a.project.role === 'coordinator' || (a.project.role === 'thread' && typeof a.project.coordinator === 'string'));
+		&& (a.project === undefined || (a.project.role === 'coordinator' && (a.project.model === undefined || typeof a.project.model === 'string')) || (a.project.role === 'thread' && typeof a.project.coordinator === 'string'));
 }

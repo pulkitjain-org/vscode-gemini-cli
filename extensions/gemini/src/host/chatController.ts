@@ -92,8 +92,12 @@ export interface FileSearch {
 }
 
 export interface ChatControllerOptions {
-	/** Brings the chat into view, for example when the agent asks for permission. */
+	/** Brings the chat into view, for example when the user adds files to it. */
 	reveal(preserveFocus: boolean): Promise<void>;
+	/** Whether the chat is in view now; unset counts as in view. */
+	isShown?(): boolean;
+	/** The user picked a model in this chat. */
+	onDidPickModel?(modelId: string): void;
 	/** A context key kept equal to whether a turn runs, for menus. */
 	readonly busyContextKey?: string;
 	/** The branch pill and Create Branch & Commit; without it the composer shows neither. */
@@ -1415,12 +1419,18 @@ export class ChatController implements vscode.Disposable {
 				void this.openPath(message.path, message.line);
 				break;
 			case 'setMode':
-				void this.changeSetting(() => this.service.client.setMode(message.id).catch(err => this.offerFolderTrust(err, message.id)));
+				void this.changeSetting(() => this.service.client.setMode(message.id).catch(err => this.offerFolderTrust(err, message.id))).then(() => {
+					// Requests that were already waiting are answered as YOLO answers the ones that come next. The picker offers YOLO only where policy allows it.
+					if (message.id === 'yolo' && this.service.client.settings.mode?.currentId === 'yolo') {
+						this.service.permissions.allowPending();
+					}
+				});
 				break;
 			case 'setModel':
 				void this.changeSetting(() => this.service.client.setModel(message.id)).then(() => {
 					if (this.service.client.settings.model?.currentId === message.id) {
 						rememberModel(message.id);
+						this.options.onDidPickModel?.(message.id);
 					}
 				});
 				break;
@@ -1784,9 +1794,16 @@ export class ChatController implements vscode.Disposable {
 		this.transcript.addNotice(vscode.l10n.t("The agent could not continue the earlier session, so it does not remember the messages above."));
 	}
 
-	/** Brings the chat into view so the request can be answered, and shows the first proposed edit. */
+	/**
+	 * Shows the request's first proposed edit when the chat is in view. A chat
+	 * out of view is not brought forward, so a waiting agent never takes over
+	 * the chat the user is typing in: its status dot, the Dock badge and the
+	 * notification say it waits.
+	 */
 	private async revealForPermission(permission: PendingPermission): Promise<void> {
-		await this.options.reveal(true);
+		if (this.options.isShown && !this.options.isShown()) {
+			return;
+		}
 		const firstDiff = permission.request.toolCall.content?.find(c => c.type === 'diff');
 		if (firstDiff) {
 			await this.openDiff(permission.id, firstDiff.path, true);
@@ -1942,7 +1959,7 @@ export class ChatController implements vscode.Disposable {
 			...(this.options.project ? { project: projectStrings() } : {}),
 			placeholderFollowUp: vscode.l10n.t("Ask a follow-up"),
 			send: process.platform === 'darwin' ? vscode.l10n.t("Send (Return)") : vscode.l10n.t("Send (Enter)"),
-			stop: vscode.l10n.t("Stop (Esc)"),
+			stop: vscode.l10n.t("Stop (Esc Esc)"),
 			replyFinished: vscode.l10n.t("Reply finished"),
 			welcomeTitle: vscode.l10n.t("What are we building?"),
 			welcome: vscode.l10n.t("Ask Gemini to explain, change or create code in this workspace. It asks before it edits files."),
@@ -1956,7 +1973,8 @@ export class ChatController implements vscode.Disposable {
 			activityWaiting: vscode.l10n.t("Waiting on you"),
 			activityWriting: vscode.l10n.t("Writing the reply"),
 			activityDone: vscode.l10n.t("Done in {0}"),
-			activityStopHint: vscode.l10n.t("Esc to stop"),
+			activityStopHint: vscode.l10n.t("Esc twice to stop"),
+			activityStopAgain: vscode.l10n.t("Press Esc again to stop"),
 			thought: vscode.l10n.t("Thought"),
 			thoughtFor: vscode.l10n.t("Thought for {0}s"),
 			plan: vscode.l10n.t("Plan"),

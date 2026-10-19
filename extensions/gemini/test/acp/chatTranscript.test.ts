@@ -172,6 +172,16 @@ describe('ChatTranscript permissions', () => {
 		expect(summary(transcript.items)).toEqual(['permission:Write a.ts:Reject', 'permission:Write a.ts:cancelled']);
 	});
 
+	it('restores a request that was still open as cancelled, since nothing can answer it', () => {
+		const saved = new ChatTranscript();
+		saved.addPermission({ id: 'permission-0', request });
+		saved.addPermission({ id: 'permission-1', request });
+		saved.resolvePermission('permission-0', { outcome: 'selected', optionId: 'proceed_once' });
+		const transcript = new ChatTranscript();
+		transcript.restore(saved.items);
+		expect(summary(transcript.items)).toEqual(['permission:Write a.ts:Allow', 'permission:Write a.ts:cancelled']);
+	});
+
 	it('marks an answer GeminiCode gave on its own as automatic, and the user\'s as not', () => {
 		const transcript = new ChatTranscript();
 		transcript.addPermission({ id: 'permission-0', request });

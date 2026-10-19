@@ -42,6 +42,8 @@ export interface BrowserBackend {
 	network(agent: string, pageId: string): Promise<{ readonly requests: readonly NetworkRequest[]; readonly url: string }>;
 	/** Accepts or dismisses the page's open alert, confirm or prompt; `text` answers a prompt. */
 	dialog(agent: string, pageId: string, accept: boolean, text?: string): Promise<PageState>;
+	/** Brings the page's tab to the front without taking focus, so the user sees where it goes. */
+	reveal?(agent: string, pageId: string): Promise<unknown>;
 }
 
 export interface NetworkRequest {
@@ -452,6 +454,8 @@ export class BrowserToolHost {
 				const opened = await this.open(agent, url);
 				return await this.leftFor(agent, opened.pageId, opened.url) ?? pageText(opened);
 			}
+			// A page opened earlier may be behind another tab by now; the user watches it go, as with a new one.
+			await this.backend.reveal?.(agent, page).catch(() => undefined);
 			return this.act(agent, page, 'goto', [url.href]);
 		}
 		const page = await this.livePage(agent);
