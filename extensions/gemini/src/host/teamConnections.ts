@@ -258,6 +258,11 @@ export class TeamConnections implements vscode.Disposable {
 			this.folders.set(agent, folder);
 		}
 		const config = this.connectedSet.size ? this.server.configFor(agent) : undefined;
+		if (config) {
+			// The team's Jira and GitLab servers start while the agent reads the prompt, not on its first call.
+			this.children.jira?.warm();
+			this.children.gitlab?.warm();
+		}
 		return config ? [config] : [];
 	}
 
@@ -322,7 +327,7 @@ export class TeamConnections implements vscode.Disposable {
 	}
 
 	/**
-	 * Starts nothing: sets up the tools' own servers, each started on its first call, while
+	 * Starts nothing: sets up the tools' own servers, started when a session opens (`mcpServersFor`) or on their first call, while
 	 * `gemini.team.runTeamServers` is on: the team's Jira and GitLab servers and SonarSource's
 	 * SonarQube server in Docker, and Snyk's server from the Snyk CLI. A server whose account or
 	 * token changed is stopped and set up again.
@@ -366,7 +371,7 @@ export class TeamConnections implements vscode.Disposable {
 				});
 				continue;
 			}
-			this.log.info(`${teamToolNames[tool]} calls go through ${this.childName(tool)}, started on the first call`);
+			this.log.info(`${teamToolNames[tool]} calls go through ${this.childName(tool)}, started when needed`);
 		}
 		if (on && !docker && !this.warnedNoDocker) {
 			this.warnedNoDocker = true;

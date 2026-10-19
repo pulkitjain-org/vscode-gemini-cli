@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -46,5 +46,18 @@ describe('the audit log', () => {
 		const md = renderAudit([{ day: '2026-10-18', entries: await log.read() }], []);
 		expect(md).toContain('| `jira_log_time` | 1h on ACME-1 | failed: 401 |');
 		expect(md).toContain('| `openMergeRequest` | ACME-398-flaky → release/2026.11 | result | !321 |');
+	});
+
+	it('keeps recording after an append fails', async () => {
+		dir = mkdtempSync(path.join(os.tmpdir(), 'audit-'));
+		const logDir = path.join(dir, 'audit');
+		// A file where the folder should be: the next append can't create it.
+		writeFileSync(logDir, '');
+		const log = new AuditLog(logDir, () => new Date('2026-10-18T14:31:02Z'));
+		const intent = { caller: 'ui' as const, tool: 'jira_comment', ref: 'ACME-1', effect: 'Comment on ACME-1' };
+		await expect(log.intent(intent)).rejects.toThrow();
+		rmSync(logDir);
+		await log.intent(intent);
+		expect((await log.read()).map(e => e.tool)).toEqual(['jira_comment']);
 	});
 });

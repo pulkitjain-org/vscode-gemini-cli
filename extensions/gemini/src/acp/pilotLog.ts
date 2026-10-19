@@ -16,8 +16,12 @@ export type PilotEvent =
 	| { readonly kind: 'launch' }
 	/** A prompt went to an agent, after `waitedMs` waiting for it to be ready (its process and `session/new`). */
 	| { readonly kind: 'prompt'; readonly waitedMs: number }
-	/** A turn ended: how many permission cards it showed, how long it took, and its first text. */
-	| { readonly kind: 'turn'; readonly permissions: number; readonly durationMs: number; readonly firstTextMs?: number }
+	/**
+	 * A turn ended: how many permission cards it showed and how long it took. `firstTokenMs` is from
+	 * the send to the model's first output (a thought, tool call, plan or text); `firstTextMs` to its
+	 * first reply text, which in an agentic turn often comes after every step.
+	 */
+	| { readonly kind: 'turn'; readonly permissions: number; readonly durationMs: number; readonly firstTokenMs?: number; readonly firstTextMs?: number }
 	/** The user undid an agent's change, file or whole turn. */
 	| { readonly kind: 'undo'; readonly scope: 'change' | 'file' | 'turn' }
 	/** The user rewound a conversation. */

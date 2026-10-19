@@ -15,6 +15,8 @@ import { appendFileSync, readFileSync } from 'node:fs';
 export interface FakeMcpScript {
 	/** Exit with this code before answering anything, like a container that can't start. */
 	readonly exitCode?: number;
+	/** Answers `initialize` after this long, like a container starting or an image downloading. */
+	readonly initializeDelayMs?: number;
 	/** Each tool's answer: text, or JSON sent as text as the real servers do, or an error. */
 	readonly tools: Readonly<Record<string, { readonly text?: string; readonly json?: unknown; readonly isError?: boolean; /** Answers after this long, like a scan. */ readonly delayMs?: number }>>;
 	/** Exit while answering this tool, after the call arrived. */
@@ -54,7 +56,7 @@ function handle(message: { id?: number; method: string; params?: { name?: string
 		case 'initialize':
 			// A stray log line on stdout, as some servers print; the client skips it.
 			process.stdout.write('starting fake server\n');
-			return send({ jsonrpc: '2.0', id: message.id, result: { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'fake', version: '1' } } });
+			return void setTimeout(() => send({ jsonrpc: '2.0', id: message.id, result: { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'fake', version: '1' } } }), script.initializeDelayMs ?? 0);
 		case 'tools/list':
 			return send({ jsonrpc: '2.0', id: message.id, result: { tools: Object.keys(script.tools).map(name => ({ name, inputSchema: { type: 'object' } })) } });
 		case 'tools/call': {

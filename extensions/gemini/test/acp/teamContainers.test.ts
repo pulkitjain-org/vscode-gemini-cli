@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { AuditLog } from '../../src/acp/auditLog';
 import { GitLabClient } from '../../src/acp/gitlab';
 import { JiraClient } from '../../src/acp/jira';
-import { ChildServer, ChildServerOptions, McpServerUnavailableError } from '../../src/acp/mcpStdio';
+import { ChildServer, ChildServerOptions, McpCallResult, McpServerUnavailableError } from '../../src/acp/mcpStdio';
 import { changedFiles } from '../../src/acp/checksBranch';
 import { SnykCli } from '../../src/acp/snyk';
 import { analyzeFiles, containerSpec, findDocker, FolderChildren, pinnedReference, teamImages } from '../../src/acp/teamContainers';
@@ -106,6 +106,44 @@ describe('the team\'s servers as children', () => {
 		const scan = server.call('snyk_sca_scan', { path: '/work' });
 		await server.call('snyk_version', {});
 		expect((await scan).content).toEqual([{ type: 'text', text: 'No vulnerable paths found.' }]);
+	});
+
+	it('gives up on a start still under way, so the call goes another way, and uses the server once it runs', async () => {
+		const { server, calls } = await child('jira', { initializeDelayMs: 600, tools: { jira_get_issue: { json: { key: 'ACME-412' } } } }, { startWaitMs: 50 });
+		const first = await server.call('jira_get_issue', { issue_key: 'ACME-412' }).catch((err: Error) => err);
+		let again: McpCallResult | Error = first instanceof Error ? first : new Error();
+		for (let tries = 0; again instanceof Error && tries < 100; tries++) {
+			await new Promise(resolve => setTimeout(resolve, 100));
+			again = await server.call('jira_get_issue', { issue_key: 'ACME-413' }).catch((err: Error) => err);
+		}
+		expect({
+			first: [first instanceof McpServerUnavailableError, String(first).includes('still starting')],
+			again: again instanceof Error ? String(again) : again.content,
+			// The start went on after the first call gave up; that call was never sent.
+			calls: (await calls()).map(c => `${c.name} ${c.arguments.issue_key}`),
+		}).toEqual({
+			first: [true, true],
+			again: [{ type: 'text', text: '{"key":"ACME-412"}' }],
+			calls: ['jira_get_issue ACME-413'],
+		});
+	});
+
+	it('starts ahead with warm, so the first call doesn\'t wait for the start', async () => {
+		const { server } = await child('jira', { initializeDelayMs: 300, tools: { jira_get_issue: { json: { key: 'ACME-412' } } } }, { startWaitMs: 50 });
+		server.warm();
+		await new Promise(resolve => setTimeout(resolve, 2000));
+		expect((await server.call('jira_get_issue', { issue_key: 'ACME-412' })).content).toEqual([{ type: 'text', text: '{"key":"ACME-412"}' }]);
+	});
+
+	it('gives up at once for a while after a start failed, then tries again', async () => {
+		let now = 1_000;
+		const { server } = await child('jira', { exitCode: 125, tools: {} }, { retryAfterMs: 60_000, now: () => now });
+		const reason = async () => String(await server.call('jira_get_issue', {}).catch((err: Error) => err));
+		const failed = await reason();
+		const remembered = await reason();
+		now += 60_001;
+		const retried = await reason();
+		expect([failed, remembered, retried].map(r => r.includes('a moment ago') ? 'remembered' : /exited with code 125/.test(r) ? 'started' : r)).toEqual(['started', 'remembered', 'started']);
 	});
 
 	it('moves a ticket through mcp-atlassian with the same audit record as the in-process connector', async () => {

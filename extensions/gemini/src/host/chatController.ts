@@ -28,7 +28,7 @@ import { skillPrompt } from '../acp/skills';
 import { mergeCommands, parseInvocation, SlashCommand } from '../acp/slashCommands';
 import { expandTeamCommandWithInjections, TeamCommandCancelled } from '../acp/teamCommandExpansion';
 import { carriedConversationNote, CliSession, isPrompt, listCliSessions, readCliConversation, readSessionTokens, canRewindCliSession, rewindCliSession } from '../acp/cliSessions';
-import type { ChatEvent } from '../acp/sessionUpdates';
+import { isModelOutput, type ChatEvent } from '../acp/sessionUpdates';
 import { AgentStatus } from '../acp/status';
 import { TextDeltas } from '../acp/textDeltas';
 import type { ModelTokens } from '../acp/turnUsage';
@@ -361,8 +361,13 @@ export class ChatController implements vscode.Disposable {
 							this.onDidEditFilesEmitter.fire(diffs);
 						}
 					}
-					if (event.kind === 'text' && event.role === 'agent' && this.timing && this.timing.firstText === undefined) {
-						this.timing.firstText = Date.now();
+					if (this.timing?.sent !== undefined) {
+						if (this.timing.firstToken === undefined && isModelOutput(event)) {
+							this.timing.firstToken = Date.now();
+						}
+						if (this.timing.firstText === undefined && event.kind === 'text' && event.role === 'agent') {
+							this.timing.firstText = Date.now();
+						}
 					}
 					this.transcript.apply(event);
 					if (event.kind === 'toolCall' && !this.hintedToolCalls.has(event.call.id) && isBlockedWebFetch(event.call)) {
@@ -765,9 +770,13 @@ export class ChatController implements vscode.Disposable {
 		}
 		const timing = this.timing;
 		this.timing = undefined;
-		recordPilot({ kind: 'turn', permissions: timing?.permissions ?? 0, durationMs, ...timing?.sent && timing.firstText ? { firstTextMs: timing.firstText - timing.sent } : {} });
-		if (timing?.sent && timing.firstText) {
-			this.transcript.updateTurnEnd(id, { firstTokenMs: timing.firstText - timing.sent });
+		recordPilot({
+			kind: 'turn', permissions: timing?.permissions ?? 0, durationMs,
+			...timing?.sent && timing.firstToken ? { firstTokenMs: timing.firstToken - timing.sent } : {},
+			...timing?.sent && timing.firstText ? { firstTextMs: timing.firstText - timing.sent } : {},
+		});
+		if (timing?.sent && timing.firstToken) {
+			this.transcript.updateTurnEnd(id, { firstTokenMs: timing.firstToken - timing.sent });
 		}
 		const file = currentTraceFile();
 		if (timing && file) {
@@ -790,7 +799,7 @@ export class ChatController implements vscode.Disposable {
 			totalMs: durationMs,
 			...timing.ready ? { sessionMs: timing.ready - timing.started } : {},
 			...timing.sent && timing.ready ? { sendMs: timing.sent - timing.ready } : {},
-			...timing.sent && timing.firstText ? { firstTokenMs: timing.firstText - timing.sent } : {},
+			...timing.sent && timing.firstToken ? { firstTokenMs: timing.firstToken - timing.sent } : {},
 		}), file);
 	}
 
@@ -2521,6 +2530,9 @@ interface TurnTiming {
 	permissions: number;
 	ready?: number;
 	sent?: number;
+	/** The model's first output after the prompt was sent: a thought, a tool call, a plan or reply text. */
+	firstToken?: number;
+	/** The first reply text, which in an agentic turn often comes after every step. */
 	firstText?: number;
 }
 

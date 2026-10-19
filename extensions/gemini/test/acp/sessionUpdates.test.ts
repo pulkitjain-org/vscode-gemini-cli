@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { SessionUpdateAdapter } from '../../src/acp/sessionUpdates';
+import { isModelOutput, SessionUpdateAdapter } from '../../src/acp/sessionUpdates';
 
 describe('SessionUpdateAdapter', () => {
 	it('maps message chunks to text events', () => {
@@ -25,5 +25,24 @@ describe('SessionUpdateAdapter', () => {
 	it('passes unknown update kinds through generically', () => {
 		const update = { sessionUpdate: 'something_new', value: 1 } as never;
 		expect(new SessionUpdateAdapter().adapt(update)).toEqual({ kind: 'other', type: 'something_new', update });
+	});
+});
+
+describe('isModelOutput', () => {
+	it('counts thoughts, tool calls, plans and reply text as the first token, but not echoed prompts or session state', () => {
+		const adapter = new SessionUpdateAdapter();
+		const updates = {
+			thought: { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'Hmm' } },
+			toolCall: { sessionUpdate: 'tool_call', toolCallId: 't1', title: 'Read file', kind: 'read', status: 'pending' },
+			plan: { sessionUpdate: 'plan', entries: [] },
+			reply: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'ok' } },
+			prompt: { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'hi' } },
+			state: { sessionUpdate: 'something_new' },
+		};
+		const counted = Object.entries(updates).filter(([, update]) => {
+			const event = adapter.adapt(update as never);
+			return !!event && isModelOutput(event);
+		}).map(([name]) => name);
+		expect(counted).toEqual(['thought', 'toolCall', 'plan', 'reply']);
 	});
 });

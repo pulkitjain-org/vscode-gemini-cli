@@ -26,6 +26,15 @@ export type ChatEvent =
 	| { readonly kind: 'plan'; readonly entries: readonly acp.PlanEntry[] }
 	| { readonly kind: 'other'; readonly type: string; readonly update: acp.SessionUpdate };
 
+/**
+ * Whether an event is the model's own output: its reply, a thought, a tool
+ * call or a plan. The first of these after a prompt is its first token; an
+ * agentic turn's reply text often comes last, after its thoughts and steps.
+ */
+export function isModelOutput(event: ChatEvent): boolean {
+	return (event.kind === 'text' && event.role !== 'user') || event.kind === 'toolCall' || event.kind === 'plan';
+}
+
 export function contentBlockToText(block: acp.ContentBlock): string {
 	switch (block.type) {
 		case 'text':

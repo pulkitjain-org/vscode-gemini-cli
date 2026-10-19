@@ -5,7 +5,7 @@
 
 // A small MCP client over stdio (newline-delimited JSON-RPC), for the servers the team tools
 // run as their own children (gemini/docs/adr/0004-one-tool-adapter.md), and a child server that
-// starts on its first call, starts again after it exits, and stops when it has been idle.
+// starts ahead of or on its first call, starts again after it exits, and stops when it has been idle.
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { McpContent } from './browserMcp';
@@ -153,36 +153,73 @@ export class McpStdioClient {
 export interface ChildServerOptions {
 	/** How long the start, image pull included, may take. */
 	readonly startTimeoutMs?: number;
+	/**
+	 * How long a call waits for a start already under way before it gives up, so its caller can
+	 * make the call another way; the start goes on, and later calls use the server once it runs.
+	 */
+	readonly startWaitMs?: number;
+	/** After a start fails, calls give up at once for this long instead of starting it again. */
+	readonly retryAfterMs?: number;
 	/** How long one call may take. */
 	readonly callTimeoutMs?: number;
 	/** Stops the process after this long without a call; it starts again on the next. */
 	readonly idleMs?: number;
+	readonly now?: () => number;
 }
 
 /**
- * A server the team tools run as their child: nothing runs until the first call, a server that
- * exited starts again on the next call, and an idle one is stopped to give its memory back.
+ * A server the team tools run as their child: nothing runs until the first call or `warm`, a
+ * server that exited starts again on the next call, and an idle one is stopped to give its memory
+ * back. A call never waits long for a start (a container starting, an image downloading): it
+ * gives up after `startWaitMs` so the caller can go another way, and a failed start is not tried
+ * again on every call.
  */
 export class ChildServer {
 
 	private client: Promise<McpStdioClient> | undefined;
+	/** The running client, once its start ended. */
+	private ready: McpStdioClient | undefined;
+	/** Until when calls give up at once, and why: the last start failed. */
+	private failed: { readonly until: number; readonly reason: string } | undefined;
 	private idle: ReturnType<typeof setTimeout> | undefined;
 	/** Calls still running; the idle stop waits for none. */
 	private inFlight = 0;
 	private readonly startTimeoutMs: number;
+	private readonly startWaitMs: number;
+	private readonly retryAfterMs: number;
 	private readonly callTimeoutMs: number;
 	private readonly idleMs: number;
+	private readonly now: () => number;
 
 	constructor(readonly name: string, private readonly spec: StdioServerSpec, options: ChildServerOptions = {}) {
 		this.startTimeoutMs = options.startTimeoutMs ?? 120_000;
+		this.startWaitMs = options.startWaitMs ?? 8_000;
+		this.retryAfterMs = options.retryAfterMs ?? 5 * 60_000;
 		this.callTimeoutMs = options.callTimeoutMs ?? 30_000;
 		this.idleMs = options.idleMs ?? 10 * 60_000;
+		this.now = options.now ?? Date.now;
+	}
+
+	/**
+	 * Starts the server ahead of its first call, such as when an agent's session opens, unless it
+	 * runs, is starting, or failed to start lately. Stops again when idle if no call comes.
+	 */
+	warm(): void {
+		if (this.ready?.alive || (this.client && !this.ready) || this.failing()) {
+			return;
+		}
+		this.restart().then(() => {
+			if (this.inFlight === 0) {
+				this.armIdle();
+			}
+		}, () => undefined);
 	}
 
 	/**
 	 * Calls one of the server's tools. Throws `McpServerUnavailableError` only when the server
-	 * could not be started, before the call was sent, so a caller may make the call another way;
-	 * a server that stops during the call throws a plain error, since the call may have happened.
+	 * could not be started, or is still starting after `startWaitMs`, before the call was sent, so
+	 * a caller may make the call another way; a server that stops during the call throws a plain
+	 * error, since the call may have happened.
 	 */
 	async call(tool: string, args: Record<string, unknown>): Promise<McpCallResult> {
 		clearTimeout(this.idle);
@@ -196,7 +233,7 @@ export class ChildServer {
 			}
 		} finally {
 			if (--this.inFlight === 0) {
-				this.idle = setTimeout(() => this.stop(), this.idleMs);
+				this.armIdle();
 			}
 		}
 	}
@@ -205,24 +242,47 @@ export class ChildServer {
 		clearTimeout(this.idle);
 		const client = this.client;
 		this.client = undefined;
+		this.ready = undefined;
 		void client?.then(c => c.close(), () => undefined);
 	}
 
+	private armIdle(): void {
+		clearTimeout(this.idle);
+		this.idle = setTimeout(() => this.stop(), this.idleMs);
+	}
+
+	private failing(): string | undefined {
+		return this.failed && this.now() < this.failed.until ? this.failed.reason : undefined;
+	}
+
 	private running(): Promise<McpStdioClient> {
-		const current = this.client;
-		if (current) {
-			return current.then(c => c.alive ? c : this.restart());
+		if (this.ready?.alive) {
+			return Promise.resolve(this.ready);
 		}
-		return this.restart();
+		const reason = this.failing();
+		if (reason) {
+			return Promise.reject(new McpServerUnavailableError(`The ${this.name} server failed to start a moment ago: ${reason}`));
+		}
+		const starting = this.client && !this.ready ? this.client : this.restart();
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const gaveUp = new Promise<never>((_, reject) => timer = setTimeout(() => reject(new McpServerUnavailableError(`The ${this.name} server is still starting.`)), this.startWaitMs));
+		return Promise.race([starting, gaveUp]).finally(() => clearTimeout(timer));
 	}
 
 	private restart(): Promise<McpStdioClient> {
+		this.ready = undefined;
 		const starting = McpStdioClient.start(this.spec, this.startTimeoutMs);
 		this.client = starting;
-		// A failed start is not kept: the next call tries again.
-		starting.catch(() => {
+		starting.then(client => {
+			if (this.client === starting) {
+				this.ready = client;
+				this.failed = undefined;
+			}
+		}, err => {
+			// A failed start is not kept, and calls go another way for a while rather than wait for it again.
 			if (this.client === starting) {
 				this.client = undefined;
+				this.failed = { until: this.now() + this.retryAfterMs, reason: err instanceof Error ? err.message : String(err) };
 			}
 		});
 		return starting;
