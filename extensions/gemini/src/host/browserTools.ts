@@ -390,6 +390,7 @@ const commandBackend: BrowserBackend = {
 	console: (agent, pageId) => run<{ text: string; url: string }>('_gemini.browser.console', agent, pageId),
 	network: (agent, pageId) => run<{ requests: NetworkRequest[]; url: string }>('_gemini.browser.network', agent, pageId),
 	dialog: (agent, pageId, accept, text) => run<PageState>('_gemini.browser.dialog', agent, pageId, accept, text),
+	reveal: (agent, pageId) => run<boolean>('_gemini.browser.reveal', agent, pageId, true),
 };
 
 async function run<T>(command: string, ...args: unknown[]): Promise<T> {

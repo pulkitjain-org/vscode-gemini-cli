@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
-import { isModeAllowed } from '../acp/adminPolicy';
+import { isModeAllowed, takesAway } from '../acp/adminPolicy';
 import { AgentClient, AgentClientState } from '../acp/agentClient';
 import { AgentCommand, includeDirectoryArgs } from '../acp/agentProcess';
 import { AgentRuntime } from '../acp/agentRuntime';
@@ -46,6 +46,8 @@ export class AgentService implements vscode.Disposable {
 	/** The missing pinned version last offered for install. */
 	private offeredVersion: string | undefined;
 	private idleRestart: { dispose(): void } | undefined;
+	/** The approval settings as last read, to tell a change that takes a permission away. */
+	private policy = getApprovalPolicy();
 	/** The --include-directories the running process was started with. */
 	private includedFolders = '';
 
@@ -98,9 +100,19 @@ export class AgentService implements vscode.Disposable {
 			}),
 			this.client.onDidChangeState(state => this.onClientState(state)),
 			vscode.workspace.onDidChangeConfiguration(e => {
-				if (this.started && agentLaunchSettings.some(key => e.affectsConfiguration(key))) {
+				const before = this.policy;
+				this.policy = getApprovalPolicy();
+				if (!this.started || !agentLaunchSettings.some(key => e.affectsConfiguration(key))) {
+					return;
+				}
+				// A setting that takes a permission away, or changes which MCP servers may load, applies at once;
+				// anything else waits for the running turns, so turning on YOLO doesn't cut off an agent mid-turn.
+				if (takesAway(before, this.policy) || e.affectsConfiguration(`${configSection}.mcp.allowedServers`)) {
 					log.info('Gemini settings changed; restarting the agent');
 					this.restart();
+				} else {
+					log.info('Gemini settings changed; restarting the agent once it is idle');
+					this.restartWhenIdle('restarting with the new Gemini settings');
 				}
 			}),
 			vscode.workspace.onDidChangeWorkspaceFolders(() => {
@@ -277,9 +289,11 @@ export class AgentService implements vscode.Disposable {
 		this._mcpProblems = [...this._mcpProblems, problem];
 		this.onDidChangeMcpProblemsEmitter.fire();
 		this.log.warn(`MCP server ${problem.server ?? '(unknown)'}: ${problem.message}`);
-		const text = problem.server
-			? vscode.l10n.t("Gemini could not start the MCP server \"{0}\": {1}. Its tools are not available.", problem.server, problem.message)
-			: vscode.l10n.t("An MCP server failed: {0}", problem.message);
+		const text = problem.server && problem.unreachable
+			? vscode.l10n.t("Gemini could not reach the MCP server \"{0}\", so its tools are not available. Check that it is running, or remove it from the Gemini settings.", problem.server)
+			: problem.server
+				? vscode.l10n.t("Gemini could not start the MCP server \"{0}\": {1}. Its tools are not available.", problem.server, problem.message)
+				: vscode.l10n.t("An MCP server failed: {0}", problem.message);
 		const manage = vscode.l10n.t("MCP Servers");
 		const showLog = vscode.l10n.t("Show Log");
 		void vscode.window.showWarningMessage(text, manage, showLog).then(choice => {

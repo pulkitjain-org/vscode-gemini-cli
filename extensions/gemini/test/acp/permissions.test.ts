@@ -75,6 +75,30 @@ describe('PermissionBroker', () => {
 		expect(await answer).toEqual({ outcome: { outcome: 'selected', optionId: 'cancel' } });
 	});
 
+	it('never gives two requests the same id, across sessions', async () => {
+		const first = new PermissionBroker();
+		const second = new PermissionBroker();
+		void first.request(request);
+		void second.request(request);
+		const ids = [...first.pendingPermissions, ...second.pendingPermissions].map(p => p.id);
+		expect(new Set(ids).size).toBe(2);
+		first.cancelAll();
+		second.cancelAll();
+	});
+
+	it('allows the open requests, but not the confirm class, on a switch to YOLO', async () => {
+		const broker = new PermissionBroker();
+		broker.confirmOnly = r => r.toolCall.toolCallId === 'merge';
+		const answers = Promise.all([broker.request(request), broker.request(shell('npm test'))]);
+		void broker.request({ ...request, toolCall: { toolCallId: 'merge', title: 'gitlab_merge' } });
+		broker.allowPending();
+		expect({ answers: await answers, left: broker.pendingPermissions.map(p => p.request.toolCall.toolCallId) }).toEqual({
+			answers: [{ outcome: { outcome: 'selected', optionId: 'proceed_once' } }, { outcome: { outcome: 'selected', optionId: 'proceed_once' } }],
+			left: ['merge'],
+		});
+		broker.cancelAll();
+	});
+
 	it('answers every open request with cancelled when the turn stops', async () => {
 		const broker = new PermissionBroker();
 		const answers = Promise.all([broker.request(request), broker.request(request)]);

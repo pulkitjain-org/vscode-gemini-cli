@@ -42,13 +42,24 @@ export interface InstantAnswer {
 	readonly label?: string;
 }
 
+/**
+ * Permission ids, unique across sessions and window reloads: a chat keeps its
+ * transcript when its agent restarts, and a new card that took an earlier
+ * card's id would show in that card's place and be answered there.
+ */
+const permissionIdPrefix = `permission-${Date.now().toString(36)}-`;
+let nextPermissionId = 0;
+
+function newPermissionId(): string {
+	return `${permissionIdPrefix}${nextPermissionId++}`;
+}
+
 export class PermissionBroker {
 
 	private readonly onDidChangeEmitter = new Emitter<PermissionEvent>();
 	readonly onDidChange = this.onDidChangeEmitter.event;
 
 	private readonly pending = new Map<string, { permission: PendingPermission; resolve: (response: acp.RequestPermissionResponse) => void }>();
-	private nextId = 0;
 	/** The shell programs allowed for this session. */
 	readonly approvals = new SessionApprovals();
 	/** Answers some requests at once, such as a project coordinator's (see projectMcp.ts). */
@@ -69,7 +80,7 @@ export class PermissionBroker {
 		if (instant && request.options.some(option => option.optionId === instant.optionId)) {
 			const outcome: acp.RequestPermissionOutcome = { outcome: 'selected', optionId: instant.optionId };
 			if (!instant.quiet) {
-				this.onDidChangeEmitter.fire({ kind: 'allowed', permission: { id: `permission-${this.nextId++}`, request }, outcome, label: instant.label });
+				this.onDidChangeEmitter.fire({ kind: 'allowed', permission: { id: newPermissionId(), request }, outcome, label: instant.label });
 			}
 			return Promise.resolve({ outcome });
 		}
@@ -77,7 +88,7 @@ export class PermissionBroker {
 		const once = request.options.find(option => option.kind === 'allow_once');
 		if (command !== undefined && once && this.approvals.covers(command).kind === 'covered') {
 			const outcome: acp.RequestPermissionOutcome = { outcome: 'selected', optionId: once.optionId };
-			this.onDidChangeEmitter.fire({ kind: 'allowed', permission: { id: `permission-${this.nextId++}`, request }, outcome });
+			this.onDidChangeEmitter.fire({ kind: 'allowed', permission: { id: newPermissionId(), request }, outcome });
 			return Promise.resolve({ outcome });
 		}
 		return this.ask(withApprovalLabels(request, command));
@@ -85,7 +96,7 @@ export class PermissionBroker {
 
 	/** Shows the card and waits. */
 	private ask(request: acp.RequestPermissionRequest, confirm = false): Promise<acp.RequestPermissionResponse> {
-		const permission: PendingPermission = { id: `permission-${this.nextId++}`, request, ...confirm ? { confirm: true } : {} };
+		const permission: PendingPermission = { id: newPermissionId(), request, ...confirm ? { confirm: true } : {} };
 		return new Promise(resolve => {
 			this.pending.set(permission.id, { permission, resolve });
 			this.onDidChangeEmitter.fire({ kind: 'requested', permission });
@@ -105,6 +116,20 @@ export class PermissionBroker {
 		}
 		this.resolve(id, { outcome: 'selected', optionId });
 		return true;
+	}
+
+	/**
+	 * Allows every open request but the confirm class, with each one's Allow
+	 * once: the user switched to YOLO while they waited. Requests that come
+	 * later are allowed by the client (see agentClient.ts).
+	 */
+	allowPending(): void {
+		for (const { permission } of [...this.pending.values()]) {
+			const allow = permission.request.options.find(option => option.kind === 'allow_once') ?? permission.request.options.find(option => option.kind === 'allow_always');
+			if (!permission.confirm && allow) {
+				this.resolve(permission.id, { outcome: 'selected', optionId: allow.optionId });
+			}
+		}
 	}
 
 	cancel(id: string): void {

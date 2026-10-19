@@ -331,7 +331,8 @@ export class ChatTranscript {
 
 	/** Replaces the conversation with saved items, such as an agent's from an earlier window. */
 	restore(items: readonly TranscriptItem[]): void {
-		this._items = [...items];
+		// A request still open when the chat was saved went with its session: nothing can answer its buttons now.
+		this._items = items.map(item => item.kind === 'permission' && !item.answer ? { ...item, answer: { kind: 'cancelled' as const } } : item);
 		this.nextId = Math.max(this.nextId, ...items.map(i => /^item-(\d+)$/.exec(i.id)).map(m => m ? Number(m[1]) + 1 : 0));
 		this.turnStart = this._items.length;
 		this.lastMessageId = undefined;

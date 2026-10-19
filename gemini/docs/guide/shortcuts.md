@@ -16,7 +16,8 @@ Every GeminiCode shortcut in one place. ⌘ is Command, ⌥ is Option, ⇧ is Sh
 | Keys | What it does |
 | --- | --- |
 | <kbd>↩</kbd> / <kbd>⇧↩</kbd> (chat input) | Send, or start a new line |
-| <kbd>esc</kbd> (chat input) | Stop the agent, or cancel Enhance prompt |
+| <kbd>esc</kbd> <kbd>esc</kbd> (chat input, agent working) | Stop the agent |
+| <kbd>esc</kbd> (chat input) | Cancel Enhance prompt |
 | <kbd>esc</kbd> <kbd>esc</kbd> (empty chat input) | Rewind to before one of your messages |
 | <kbd>⌘N</kbd> (chat) | New chat |
 | <kbd>⌘L</kbd> | Add the selection to the agent in front, or to a new agent |

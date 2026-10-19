@@ -38,6 +38,18 @@ export const shellToolName = 'run_shell_command';
 export const policyFileName = 'geminicode.toml';
 const environmentDenyMessage = 'Commands that print the environment are turned off in GeminiCode, because it can hold tokens. Read the one variable you need instead, such as `echo $PATH`.';
 
+/**
+ * Whether `after` takes away something `before` allowed: a mode, the shell, or
+ * commands that print the environment. Such a change has to reach the agent at
+ * once; one that only allows more can wait for the running turns to end.
+ */
+export function takesAway(before: ApprovalPolicy, after: ApprovalPolicy): boolean {
+	return (before.allowAutoEdit && !after.allowAutoEdit)
+		|| (before.allowYolo && !after.allowYolo)
+		|| (before.allowShell && !after.allowShell)
+		|| (!before.denyEnvironmentCommands && !!after.denyEnvironmentCommands);
+}
+
 /** Default and Plan are always allowed: Default asks first, and Plan cannot change anything. */
 export function isModeAllowed(policy: ApprovalPolicy, modeId: string): boolean {
 	switch (modeId) {

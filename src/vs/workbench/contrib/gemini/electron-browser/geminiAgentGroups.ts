@@ -112,6 +112,8 @@ class GeminiAgentGroups extends Disposable implements IWorkbenchContribution {
 			this._register(part.onDidRemoveGroup(group => this.forgetGroup(group.id)));
 			this._register(part.onDidChangeActiveGroup(group => this.onDidActivateGroup(group)));
 			this._register(part.onDidAddGroup(group => this.watch(group)));
+			// Visibility waits while a group is maximized (editorPart.ts); the agent in front may have changed meanwhile.
+			this._register(part.onDidChangeGroupMaximized(maximized => !maximized && this.apply()));
 			part.groups.forEach(group => this.watch(group));
 			this.apply();
 			refreshGeminiTabRows();

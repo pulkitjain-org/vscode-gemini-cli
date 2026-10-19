@@ -2008,7 +2008,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		} : undefined;
 	}
 
-	/** A coordinator runs on Flash; a thread on the model picked for it, once; others on the user's choice. */
+	/** A coordinator runs on the model picked in its chat, else Flash; a thread on the model picked for it, once; others on the user's choice. */
 	private preferredModel(record: AgentRecord): ((available: readonly SessionChoice[]) => string | undefined) | undefined {
 		const picked = this.threadModels.get(record.id);
 		if (picked) {
@@ -2016,7 +2016,11 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			return available => available.some(choice => choice.id === picked) ? picked : sessionModel(available);
 		}
 		if (projectsEnabled() && record.project?.role === 'coordinator') {
-			return available => coordinatorModel(available.map(choice => choice.id));
+			return available => {
+				const project = this.model.agent(record.id)?.project;
+				const picked = project?.role === 'coordinator' ? project.model : undefined;
+				return picked && available.some(choice => choice.id === picked) ? picked : coordinatorModel(available.map(choice => choice.id));
+			};
 		}
 		return undefined;
 	}
@@ -2050,6 +2054,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			changes,
 			controller: new ChatController(this.context.extensionUri, session, this.diffPreview, files, {
 				reveal: preserveFocus => this.reveal(record.id, preserveFocus),
+				isShown: () => this.live.get(record.id)?.panel?.visible === true,
+				onDidPickModel: modelId => this.model.setCoordinatorModel(record.id, modelId),
 				editorColumn: () => agentColumn(record.id, this.live.get(record.id)?.panel),
 				enhancer: this.enhancer,
 				usage: () => this.usage,
