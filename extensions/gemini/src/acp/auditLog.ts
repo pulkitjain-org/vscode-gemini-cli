@@ -146,13 +146,15 @@ export class AuditLog {
 		return this.result(entry.id, { caller: entry.caller, agent: entry.agent, tool: entry.tool, ref: entry.ref, effect: entry.effect }, remote);
 	}
 
+	/** Appends in order. A failed append rejects only for its caller; the next one still runs. */
 	private append(entry: AuditEntry): Promise<void> {
-		this.queue = this.queue.then(async () => {
+		const run = this.queue.then(async () => {
 			await fs.mkdir(this.dir, { recursive: true });
 			await fs.appendFile(path.join(this.dir, auditFileName(new Date(entry.time))), `${JSON.stringify(entry)}\n`);
 			this.onDidAppendEmitter.fire(entry);
 		});
-		return this.queue;
+		this.queue = run.catch(() => undefined);
+		return run;
 	}
 }
 
