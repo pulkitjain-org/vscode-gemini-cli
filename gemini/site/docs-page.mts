@@ -3,56 +3,25 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The docs pages' own behaviour: Copy as Markdown, the search box, the page
-// list on phones, and "On this page" following the scroll. The release notes
-// page uses Copy as Markdown too. Served as plain JavaScript (build.mts strips
-// the types).
+// The docs pages' own behaviour: the search dialog on ⌘K, the page list on phones, the copy
+// button on code blocks, "On this page" following the scroll with a sliding rule, the reading
+// progress bar, and images that fade in once loaded. Copy as Markdown is in page.mts, shared
+// with the release notes. Served as plain JavaScript (build.mts strips the types).
 
-// ---- Copy as Markdown: copies the .md file named by the button ----
+import './page.mts';
 
-for (const button of document.querySelectorAll<HTMLButtonElement>('[data-copy-md]')) {
-	const label = button.querySelector<HTMLElement>('.copy-label');
-	const original = label?.textContent ?? '';
-	let reset = 0;
-	const say = (words: string) => {
-		if (label) {
-			label.textContent = words;
-		}
-		clearTimeout(reset);
-		reset = setTimeout(() => label && (label.textContent = original), 2000);
-	};
-	const markdown = () => fetch(button.dataset.copyMd ?? '').then(response => {
-		if (!response.ok) {
-			throw new Error(`HTTP ${response.status}`);
-		}
-		return response.text();
-	});
-	button.addEventListener('click', async () => {
-		try {
-			// Safari only copies within the click, so hand it the text as a promise.
-			if (typeof ClipboardItem !== 'undefined' && ClipboardItem.supports?.('text/plain') !== false) {
-				await navigator.clipboard.write([new ClipboardItem({ 'text/plain': markdown().then(md => new Blob([md], { type: 'text/plain' })) })]);
-			} else {
-				await navigator.clipboard.writeText(await markdown());
-			}
-			say('Copied');
-		} catch {
-			say('Couldn\'t copy');
-		}
-	});
-}
-
-// ---- Search: page titles and headings, from search.json ----
+// ---- Search: page titles and headings from search.json, in a dialog ----
 
 interface Entry { readonly page: string; readonly heading: string; readonly text: string; readonly url: string }
 
-const searchBase = document.querySelector<HTMLElement>('[data-docs-root]')?.dataset.docsRoot ?? '';
+const dialog = document.querySelector<HTMLDialogElement>('dialog.search');
+const searchBase = dialog?.dataset.docsRoot ?? '';
 let entries: Promise<Entry[]> | undefined;
 const loadEntries = () => entries ??= fetch(`${searchBase}search.json`).then(response => response.json() as Promise<Entry[]>).catch(() => []);
 
-for (const box of document.querySelectorAll<HTMLElement>('.search')) {
-	const input = box.querySelector('input')!;
-	const list = box.querySelector<HTMLElement>('.results')!;
+if (dialog) {
+	const input = dialog.querySelector('input')!;
+	const list = dialog.querySelector<HTMLElement>('.results')!;
 	let active = -1;
 	const links = () => [...list.querySelectorAll<HTMLAnchorElement>('a')];
 	const highlight = (index: number) => {
@@ -61,14 +30,10 @@ for (const box of document.querySelectorAll<HTMLElement>('.search')) {
 		all.forEach((link, i) => link.setAttribute('aria-selected', String(i === active)));
 		all[active]?.scrollIntoView({ block: 'nearest' });
 	};
-	const close = () => {
-		list.hidden = true;
-		input.setAttribute('aria-expanded', 'false');
-	};
 	const update = async () => {
 		const words = input.value.toLowerCase().split(/\s+/).filter(Boolean);
 		if (!words.length) {
-			close();
+			list.replaceChildren();
 			return;
 		}
 		const found = (await loadEntries())
@@ -99,67 +64,124 @@ for (const box of document.querySelectorAll<HTMLElement>('.search')) {
 			none.textContent = 'Nothing found. Try other words.';
 			list.append(none);
 		}
-		list.hidden = false;
-		input.setAttribute('aria-expanded', 'true');
 		highlight(0);
 	};
-	input.addEventListener('focus', () => void loadEntries());
+	const open = () => {
+		if (!dialog.open) {
+			void loadEntries();
+			dialog.showModal();
+			input.select();
+		}
+	};
+	document.querySelectorAll<HTMLButtonElement>('.search-btn').forEach(button => button.addEventListener('click', open));
 	input.addEventListener('input', () => void update());
+	dialog.querySelector('form')!.addEventListener('submit', event => {
+		event.preventDefault();
+		links()[active]?.click();
+	});
 	input.addEventListener('keydown', event => {
 		if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
 			event.preventDefault();
 			highlight(active + (event.key === 'ArrowDown' ? 1 : -1));
-		} else if (event.key === 'Enter' && active >= 0) {
-			event.preventDefault();
-			links()[active]?.click();
-		} else if (event.key === 'Escape') {
-			input.value = '';
-			close();
 		}
 	});
-	document.addEventListener('click', event => {
-		if (!box.contains(event.target as Node)) {
-			close();
+	// A click on the dimmed page around the dialog closes it.
+	dialog.addEventListener('click', event => {
+		if (event.target === dialog) {
+			dialog.close();
+		}
+	});
+	document.addEventListener('keydown', event => {
+		const target = event.target as HTMLElement;
+		const typing = /^(INPUT|TEXTAREA)$/.test(target.tagName);
+		if ((event.key === 'k' && (event.metaKey || event.ctrlKey)) || (event.key === '/' && !typing && !event.metaKey && !event.ctrlKey)) {
+			event.preventDefault();
+			open();
 		}
 	});
 }
-
-// "/" goes to the search box, as on GitHub.
-document.addEventListener('keydown', event => {
-	const target = event.target as HTMLElement;
-	if (event.key === '/' && !event.metaKey && !event.ctrlKey && !/^(INPUT|TEXTAREA)$/.test(target.tagName)) {
-		const input = [...document.querySelectorAll<HTMLInputElement>('.search input')].find(box => box.offsetParent !== null);
-		if (input) {
-			event.preventDefault();
-			input.focus();
-		}
-	}
-});
 
 // ---- The page list on phones: one button opens it ----
 
 const picker = document.querySelector<HTMLButtonElement>('.picker');
 picker?.addEventListener('click', () => {
-	const side = picker.closest('.side')!;
-	const open = side.classList.toggle('open');
+	const side = picker.closest<HTMLElement>('.side')!;
+	const open = !side.hasAttribute('data-open');
+	side.toggleAttribute('data-open', open);
 	picker.setAttribute('aria-expanded', String(open));
 });
 
-// ---- On this page: mark the section being read ----
+// ---- Code blocks: a Copy button that fades in on hover ----
 
-const onPage = [...document.querySelectorAll<HTMLAnchorElement>('.onpage nav a')];
-if (onPage.length) {
-	const sections = onPage.map(link => document.getElementById(decodeURIComponent(link.hash.slice(1)))).filter(section => section !== null);
+for (const pre of document.querySelectorAll<HTMLElement>('.doc pre')) {
+	const button = document.createElement('button');
+	button.type = 'button';
+	button.className = 'copy-code';
+	button.textContent = 'Copy';
+	let reset = 0;
+	button.addEventListener('click', async () => {
+		try {
+			await navigator.clipboard.writeText(pre.querySelector('code')?.textContent ?? pre.textContent ?? '');
+			button.textContent = 'Copied';
+		} catch {
+			button.textContent = 'Couldn\'t copy';
+		}
+		clearTimeout(reset);
+		reset = setTimeout(() => (button.textContent = 'Copy'), 1500);
+	});
+	pre.append(button);
+}
+
+// ---- On this page: the rule slides to the section being read; a bar shows reading progress ----
+
+const toc = document.querySelector<HTMLElement>('.toc nav');
+const tocLinks = toc ? [...toc.querySelectorAll<HTMLAnchorElement>('a')] : [];
+const rule = toc?.querySelector<HTMLElement>('.rule');
+const progress = document.querySelector<HTMLElement>('.progress');
+if (tocLinks.length || progress) {
+	const sections = tocLinks.map(link => document.getElementById(decodeURIComponent(link.hash.slice(1)))).filter(section => section !== null);
+	let queued = false;
 	const mark = () => {
-		const line = 120;
+		queued = false;
+		if (progress) {
+			const total = document.documentElement.scrollHeight - innerHeight;
+			progress.style.transform = `scaleX(${total > 0 ? Math.min(1, scrollY / total) : 0})`;
+		}
+		if (!tocLinks.length) {
+			return;
+		}
 		let current = 0;
 		sections.forEach((section, i) => {
-			if (section.getBoundingClientRect().top <= line) {
+			if (section.getBoundingClientRect().top <= 120) {
 				current = i;
 			}
 		});
-		onPage.forEach((link, i) => link.classList.toggle('on', i === current));
+		tocLinks.forEach((link, i) => link.classList.toggle('on', i === current));
+		const link = tocLinks[current];
+		if (rule && link && toc) {
+			toc.classList.add('spy');
+			rule.style.setProperty('--y', `${link.offsetTop}px`);
+			rule.style.height = `${link.offsetHeight}px`;
+		}
 	};
-	addEventListener('scroll', mark, { passive: true });
+	addEventListener('scroll', () => {
+		if (!queued) {
+			queued = true;
+			requestAnimationFrame(mark);
+		}
+	}, { passive: true });
+	addEventListener('resize', mark);
 	mark();
 }
+
+// ---- Images fade in from a surface-coloured frame of the same aspect ratio ----
+
+for (const image of document.querySelectorAll<HTMLImageElement>('.doc figure img')) {
+	if (image.complete && image.naturalWidth) {
+		image.classList.add('loaded');
+	} else {
+		image.addEventListener('load', () => image.classList.add('loaded'), { once: true });
+		image.addEventListener('error', () => image.classList.add('loaded'), { once: true });
+	}
+}
+

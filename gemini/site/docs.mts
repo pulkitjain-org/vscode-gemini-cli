@@ -11,7 +11,7 @@
 //
 // Markdown the renderer understands: # to ### headings, paragraphs, - and 1.
 // lists (one level), | tables |, ``` code blocks, > [!NOTE] / [!TIP] /
-// [!IMPORTANT] / [!WARNING] callouts, a paragraph that is only an image, and
+// [!IMPORTANT] / [!WARNING] callouts (an icon and a title), a paragraph that is only an image, and
 // inline `code`, **bold**, [links](x.md#y) and <kbd>. An image ending in
 // -dark.webp shows its -light.webp copy on a light page; an image titled "clip"
 // whose name is showcase-<id>-dark.webp plays that clip.
@@ -38,26 +38,17 @@ export const docGroups: readonly { readonly name: string; readonly pages: readon
 			{ slug: 'review', title: 'Review and safety', icon: 'shield-check', summary: 'Approvals, Keep and Undo, Rewind, inline edit and Review My Changes.', topics: ['Approval modes', 'Keep and Undo', 'Rewind', 'Inline edit', 'Review My Changes'] },
 			{ slug: 'projects', title: 'Projects', icon: 'network', summary: 'A coordinator and its threads, across one or more repositories.', topics: ['Coordinator', 'Threads', 'Plan first', 'Repositories', 'Memory'] },
 			{ slug: 'browser', title: 'Browser', icon: 'globe', summary: 'Add to Gemini, notes on the page, console and network.', topics: ['Add to Gemini', 'Notes', 'Shared pages', 'Console'] },
-			{ slug: 'team-tools', title: 'Team tools', icon: 'plug', summary: 'Jira, GitLab, SonarQube, Snyk and Figma, and the Home dashboard.', topics: ['Connections', 'Home', 'Ticket to MR', 'Checks', 'Review'] },
+			{ slug: 'team-tools', title: 'Team tools', icon: 'plug', summary: 'Jira, GitLab, SonarQube, Snyk and Figma, and the Home dashboard.', topics: ['Connections', 'Home', 'Ticket to MR', 'Checks', 'Review', 'Audit log'] },
 		],
 	},
 	{
 		name: 'Set up and fix', pages: [
 			{ slug: 'helpers', title: 'Project Helpers and settings', icon: 'blocks', summary: 'MCP servers, skills, hooks, extensions, memory, rules and settings.', topics: ['MCP servers', 'Skills', 'Hooks', 'Memory', 'Settings'] },
-			{ slug: 'shortcuts', title: 'Keyboard shortcuts', icon: 'keyboard', summary: 'Every shortcut in one table.', topics: [] },
-			{ slug: 'troubleshooting', title: 'Troubleshooting', icon: 'life-buoy', summary: 'What to do when something doesn\'t work.', topics: [] },
-		],
-	},
-	{
-		name: 'Releases', pages: [
-			// Written from gemini/bench/results/ at build time (bench.mts), not from a guide file.
-			{ slug: 'benchmark', title: 'Benchmark', icon: 'gauge', summary: 'How each release does on tasks from the team\'s own closed tickets.', topics: [] },
+			{ slug: 'shortcuts', title: 'Keyboard shortcuts', icon: 'keyboard', summary: 'Every shortcut in one table, by area.', topics: ['Agents', 'Chat', 'Editor', 'Browser'] },
+			{ slug: 'troubleshooting', title: 'Troubleshooting', icon: 'life-buoy', summary: 'Common problems, a performance trace, and how to report a bug well.', topics: ['Common problems', 'Trace', 'Report'] },
 		],
 	},
 ];
-
-/** Pages build.mts writes from data rather than from a Markdown file in gemini/docs/guide/. */
-export const generatedPages: ReadonlySet<string> = new Set(['benchmark']);
 
 export const docPages: readonly DocPage[] = docGroups.flatMap(group => group.pages);
 
@@ -161,6 +152,15 @@ export interface RenderOptions {
 const mediaPrefix = '../../site/media/';
 const calloutKinds: Record<string, string> = { NOTE: 'Note', TIP: 'Tip', IMPORTANT: 'Important', WARNING: 'Warning', CAUTION: 'Caution' };
 
+/** The callout's icon (Lucide, ISC License): an i in a circle, or a triangle for anything to take care with. */
+function calloutIcon(kind: string): string {
+	const warn = /^(WARNING|CAUTION|IMPORTANT)$/.test(kind);
+	const body = warn
+		? '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>'
+		: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>';
+	return `<svg class="i co" viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
+}
+
 /** GitHub's heading anchors, so links work on the site and on GitHub alike. */
 export function slugify(heading: string): string {
 	return heading.toLowerCase().replace(/<[^>]+>/g, '').replace(/[^\p{L}\p{N}\s_-]/gu, '').trim().replace(/\s/g, '-');
@@ -221,7 +221,7 @@ export function renderMarkdown(source: string, options: RenderOptions): Rendered
 			const body = (kind ? quoted.slice(1) : quoted).join(' ').trim();
 			note(plainText(body));
 			out.push(kind
-				? `<div class="callout ${kind[1].toLowerCase()}"><p class="callout-t">${calloutKinds[kind[1]] ?? kind[1]}</p><p>${inline(body)}</p></div>`
+				? `<div class="callout ${kind[1].toLowerCase()}" role="note">${calloutIcon(kind[1])}<div><p class="callout-t">${calloutKinds[kind[1]] ?? kind[1]}</p><p>${inline(body)}</p></div></div>`
 				: `<blockquote><p>${inline(body)}</p></blockquote>`);
 			continue;
 		}
@@ -287,7 +287,8 @@ function renderFigure(alt: string, src: string, title: string | undefined, optio
 	const clip = title === 'clip' ? /^showcase-([\w-]+)-dark\.webp$/.exec(name) : null;
 	let shot: string;
 	if (clip && pair && options.media.has(`showcase-${clip[1]}-dark.mp4`) && options.media.has(`showcase-${clip[1]}-light.mp4`)) {
-		shot = ['dark', 'light'].map(theme => `<video class="on-${theme}" src="__ROOT__media/showcase-${clip[1]}-${theme}.mp4" poster="__ROOT__media/showcase-${clip[1]}-${theme}.webp" controls muted playsinline preload="none" aria-label="${escapeAttr(alt)}"></video>`).join('');
+		// The clips have no speech; the empty captions track says so (build.mts writes it).
+		shot = ['dark', 'light'].map(theme => `<video class="on-${theme}" src="__ROOT__media/showcase-${clip[1]}-${theme}.mp4" poster="__ROOT__media/showcase-${clip[1]}-${theme}.webp" controls muted playsinline preload="none" aria-label="${escapeAttr(alt)}"><track kind="captions" srclang="en" label="No speech" src="__ROOT__media/silent.vtt"></video>`).join('');
 	} else if (pair) {
 		shot = pair.map((file, n) => `<img class="on-${n ? 'light' : 'dark'}" src="__ROOT__media/${file}" alt="${escapeAttr(alt)}" loading="lazy" decoding="async">`).join('');
 	} else {
