@@ -66,6 +66,12 @@
 
 /* ---- Layout ---- */
 .layout { max-width: 1360px; margin: 0 auto; padding: 40px 24px 80px; display: grid; grid-template-columns: 240px minmax(0, 1fr) 200px; gap: 48px; align-items: start; }
+/* The three-column layout is wider than the page's container, so its frame lines move out to
+   the layout's edges, clear of the sidebar and the table of contents, and leave when the window
+   is too narrow to keep them clear. */
+body:has(.layout) .frame.l { left: calc(50% - 680px); }
+body:has(.layout) .frame.r { right: calc(50% - 680px); }
+@media (max-width: 1408px) { body:has(.layout) .frame { display: none; } }
 .side { position: sticky; top: 92px; max-height: calc(100vh - 108px); overflow-y: auto; display: flex; flex-direction: column; gap: 24px; padding-bottom: 8px; }
 .side h2 { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; padding: 0 12px 8px; }
 .side ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
