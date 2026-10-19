@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 // The landing page's moving parts, as the motion spec has them: the headline that types itself,
-// the dot field behind it, the eight capability cards' parallax and drift, the showcase card's
+// the dot field behind it, the capability tiles orbiting it, the showcase card's
 // Dark · Light pill and Play button, the command strip's speed, and the download button's
 // press. CSS transitions and IntersectionObserver do the rest. Everything stops, or falls back
 // to a fade, under Reduce Motion. Served as plain JavaScript (build.mts strips the types).
@@ -23,16 +23,12 @@ const caret = document.querySelector<HTMLElement>('.h1 .caret');
 // The page's first script sets html.typing when the headline is to type: motion allowed and
 // not seen this session. Until then the headline is hidden, so nothing flashes.
 const willType = html.classList.contains('typing');
-const floats = [...document.querySelectorAll<HTMLElement>('.float')];
-// Outside in: the corners first, then the middle pair, then the two near the headline.
-const order = ['pos-tl', 'pos-tr', 'pos-bl', 'pos-br', 'pos-ml', 'pos-mr', 'pos-bil', 'pos-bir'];
-floats.forEach(card => {
-	const index = order.findIndex(name => card.classList.contains(name));
-	card.style.setProperty('--d', `${400 + Math.max(index, 0) * 60}ms`);
-});
+// The orbit waits for the headline, then bursts out from behind it; landing.mts sets this below.
+let releaseOrbit = () => { };
 
 function finishHeadline(): void {
 	html.classList.remove('typing');
+	releaseOrbit();
 	if (caret) {
 		caret.classList.add('blink');
 		caret.addEventListener('animationend', () => caret.classList.add('done'), { once: true });
@@ -205,50 +201,134 @@ if (hero && canvas && context) {
 	}).observe(hero);
 }
 
-// ---- Capability cards: parallax with the pointer, and they drift away as the hero scrolls ----
+// ---- Capability tiles: two rings that turn in opposite directions around the headline ----
 
-if (hero && floats.length) {
-	let queued = false;
-	let nx = 0;
-	let ny = 0;
-	const place = () => {
-		queued = false;
-		for (const card of floats) {
-			const depth = Number(card.dataset.depth ?? 8);
-			card.style.setProperty('--px', `${(-nx * depth).toFixed(1)}px`);
-			card.style.setProperty('--py', `${(-ny * depth).toFixed(1)}px`);
-		}
+const orbit = document.querySelector<HTMLElement>('[data-orbit]');
+const centre = document.querySelector<HTMLElement>('.hero .centre');
+if (hero && orbit && centre) {
+	interface Ring { tiles: HTMLElement[]; reach: number; speed: number; turn: number }
+	// The outer ring runs through the hero's corners and turns anticlockwise once every 49
+	// seconds; the inner one is two thirds as wide and turns clockwise once a minute.
+	const rings: Ring[] = [
+		{ tiles: [...orbit.querySelectorAll<HTMLElement>('[data-ring="outer"] .float')], reach: 1, speed: -7.4, turn: 0 },
+		{ tiles: [...orbit.querySelectorAll<HTMLElement>('[data-ring="inner"] .float')], reach: 0.66, speed: 6.1, turn: 0.5 },
+	];
+	let originX = 0;
+	let originY = 0;
+	let radius = 0;
+	const measure = () => {
+		const box = hero.getBoundingClientRect();
+		const words = centre.getBoundingClientRect();
+		originX = words.left - box.left + words.width / 2;
+		originY = words.top - box.top + words.height / 2;
+		radius = Math.hypot(box.width, box.height) / 2;
 	};
-	hero.addEventListener('pointermove', event => {
-		if (event.pointerType !== 'mouse' || noMotion.matches) {
+	// Seconds since the orbit started; the burst out from the centre takes the first 1.4.
+	let clock = 0;
+	let released = false;
+	let burstAt = -1;
+	// Holding a tile under the pointer, or focusing one, eases its ring to a stop.
+	let held: Ring | undefined;
+	const pace = [1, 1];
+	let away = 0;
+	const ease = (t: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
+	const place = () => {
+		const still = noMotion.matches;
+		rings.forEach((ring, r) => {
+			const count = ring.tiles.length;
+			ring.tiles.forEach((tile, i) => {
+				// Each tile bursts out a little after the one before it, round the ring.
+				const grow = still ? 1 : ease((clock - burstAt - (r * 0.12 + i / count * 0.5)) / 0.9);
+				const angle = (ring.turn + i / count) * Math.PI * 2 + (1 - grow) * Math.sign(ring.speed) * -0.6;
+				const reach = radius * ring.reach * grow;
+				const size = tile.offsetWidth;
+				const x = originX + Math.cos(angle) * reach - size / 2;
+				const y = originY + Math.sin(angle) * reach - size / 2;
+				tile.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) rotate(${(away * 4 * Math.sign(ring.speed)).toFixed(2)}deg) scale(${(0.4 + grow * 0.6).toFixed(3)})`;
+				tile.style.opacity = (Math.min(1, grow * 1.5) * (1 - away)).toFixed(3);
+			});
+		});
+	};
+	let running = false;
+	let visible = true;
+	let last = 0;
+	const frame = (now: number) => {
+		if (!running) {
 			return;
 		}
-		const box = hero.getBoundingClientRect();
-		nx = (event.clientX - box.left) / box.width * 2 - 1;
-		ny = (event.clientY - box.top) / box.height * 2 - 1;
-		if (!queued) {
-			queued = true;
-			requestAnimationFrame(place);
+		const step = last ? Math.min(0.05, (now - last) / 1000) : 0;
+		last = now;
+		clock += step;
+		rings.forEach((ring, r) => {
+			// About half a second to stop under the pointer, and to get going again.
+			pace[r] += ((held === ring ? 0 : 1) - pace[r]) * Math.min(1, step * 6);
+			ring.turn += ring.speed * pace[r] * step / 360;
+		});
+		place();
+		requestAnimationFrame(frame);
+	};
+	const start = () => {
+		if (!running && released && visible && !document.hidden && !noMotion.matches) {
+			running = true;
+			last = 0;
+			requestAnimationFrame(frame);
 		}
-	}, { passive: true });
+	};
+	const stop = () => {
+		running = false;
+	};
+	releaseOrbit = () => {
+		if (released) {
+			return;
+		}
+		released = true;
+		burstAt = clock;
+		measure();
+		place();
+		orbit.classList.add('live');
+		start();
+	};
+	rings.forEach(ring => {
+		for (const tile of ring.tiles) {
+			tile.addEventListener('pointerenter', () => { held = ring; });
+			tile.addEventListener('pointerleave', () => { held = undefined; });
+			tile.addEventListener('focus', () => { held = ring; });
+			tile.addEventListener('blur', () => { held = undefined; });
+		}
+	});
+	addEventListener('resize', () => { measure(); place(); }, { passive: true });
+	noMotion.addEventListener('change', () => { place(); if (noMotion.matches) { stop(); } else { start(); } });
+	document.addEventListener('visibilitychange', () => { if (document.hidden) { stop(); } else { start(); } });
+	new IntersectionObserver(entries => {
+		visible = entries.some(entry => entry.isIntersecting);
+		if (visible) {
+			start();
+		} else {
+			stop();
+		}
+	}).observe(hero);
+	// The tiles and the dot field fade, and the tiles tilt a little, as the hero scrolls away.
 	let scrollQueued = false;
-	const away = () => {
+	const fade = () => {
 		scrollQueued = false;
-		const amount = Math.min(1, Math.max(0, scrollY / (hero.offsetHeight * 0.6)));
-		for (const card of floats) {
-			card.style.setProperty('--away', amount.toFixed(3));
-		}
+		away = Math.min(1, Math.max(0, scrollY / (hero.offsetHeight * 0.7)));
 		if (canvas) {
-			canvas.style.opacity = String(1 - amount);
+			canvas.style.opacity = String(1 - away);
+		}
+		if (!running) {
+			place();
 		}
 	};
 	addEventListener('scroll', () => {
 		if (!scrollQueued) {
 			scrollQueued = true;
-			requestAnimationFrame(away);
+			requestAnimationFrame(fade);
 		}
 	}, { passive: true });
-	away();
+	fade();
+	if (!willType) {
+		releaseOrbit();
+	}
 }
 
 // ---- Showcase card: the Dark · Light pill swaps just that frame; Play runs the clip ----

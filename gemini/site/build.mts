@@ -456,15 +456,35 @@ function shot(media: Media, available: ReadonlySet<string>, alt: string, options
 
 // ---- Landing page ----
 
-/** One of the eight capability cards around the headline. */
-function float(pos: string, depth: number, period: string, href: string, title: string, cap: string, thumb: string): string {
-	return `
-			<a class="float ${pos}" data-depth="${depth}" style="--period: ${period}" href="${attr(href)}">
-				<span class="box">
+/** One of the eight capabilities, as a tile with a caption on the orbit rings around the headline. */
+interface Capability { href: string; title: string; cap: string; thumb: string }
+
+/**
+ * Two rings of sixteen tiles each, the eight capabilities twice over, that turn in opposite
+ * directions around the headline (landing.mts moves them). Only the outer ring's first pass
+ * is in the tab order and the accessibility tree; the repeats are decoration.
+ */
+function orbit(capabilities: readonly Capability[]): string {
+	const sizes = [138, 152, 164, 152];
+	const ring = (order: readonly number[], listed: boolean) => order.map((which, i) => {
+		const { href, title, cap, thumb } = capabilities[which];
+		const quiet = !listed || i >= capabilities.length;
+		return `
+				<a class="float" style="--tsz: ${sizes[i % sizes.length]}" href="${attr(href)}"${quiet ? ' tabindex="-1" aria-hidden="true"' : ''}>
 					${thumb}
 					<span class="txt"><span class="ttl">${text(title)}</span><span class="cap">${text(cap)}</span></span>
-				</span>
-			</a>`;
+				</a>`;
+	}).join('');
+	const all = capabilities.map((_, i) => i);
+	// The inner ring starts half way round the list, so a capability never sits beside its twin.
+	const inner = all.map(i => (i + all.length / 2) % all.length);
+	return `
+		<div class="orbit" data-orbit>
+			<div class="ring" data-ring="outer">${ring([...all, ...all], true)}
+			</div>
+			<div class="ring" data-ring="inner">${ring([...inner, ...inner], false)}
+			</div>
+		</div>`;
 }
 
 export function renderPage(latest: LatestRelease, repo: string, available: ReadonlySet<string> = new Set()): string {
@@ -476,16 +496,16 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 		? `GeminiCode ${text(c.version)} · macOS 26 or later · Apple silicon · ${c.sizeMb} MB · MIT`
 		: `No release yet · <a href="${attr(c.repoUrl)}/releases">Check GitHub Releases</a> · Mac with Apple silicon, macOS 26 or later`;
 	const thumbShot = (media: Media) => `<span class="thumb">${shot(media, available, '')}</span>`;
-	const floats = [
-		float('pos-tl', 12, '7s', '#agents', 'Agents side by side', 'Each in its own tab, with its own chat', thumbShot('files')),
-		float('pos-ml', 8, '8.5s', '#review', 'Review and safety', 'Keep, Undo, Rewind. Ask first', thumbShot('showcase-review')),
-		float('pos-bl', 4, '6.5s', '#agents', 'Home', 'Describe a task. Press Return', `<span class="thumb white" style="justify-content: space-between"><span style="color: var(--fg)">Make the upload client retry twice with backoff<span class="mini-caret"></span></span><span class="row-xs"><span class="mono" style="font-size: 10px; color: var(--muted)">☑ On its own branch</span><span class="mini-btn">Start ↩</span></span></span>`),
-		float('pos-tr', 12, '9s', '#projects', 'Projects', 'One chat, many threads', thumbShot('project-threads')),
-		float('pos-mr', 8, '7.5s', '#beyond', 'Agent browser', 'Agents open and use your app', thumbShot('browser-page')),
-		float('pos-br', 4, '6s', '#beyond', 'Team tools', 'Ticket to merge request', `<span class="thumb" style="justify-content: center; gap: 8px"><span style="display: flex; gap: 5px; flex-wrap: wrap"><span class="chip xs">Jira</span><span class="chip xs">GitLab</span><span class="chip xs">Sonar</span><span class="chip xs">Snyk</span><span class="chip xs">Figma</span></span><span class="mono" style="font-size: 10px; color: var(--accent)">ACME-412 → !412 · passed</span></span>`),
-		float('pos-bil', 8, '8s', '#agents', 'Enhance prompt', 'Plain words in, precise prompt out', `<span class="thumb white" style="justify-content: center; gap: 5px"><span class="draft">make uploads not fail so much</span><span class="mono" style="font-size: 10px; color: var(--accent); align-self: center">↓ ⌥⌘E</span><span class="better">Add backoff, 3 attempts, with a test</span></span>`),
-		float('pos-bir', 8, '7s', 'docs/helpers.html', 'Project Helpers', 'MCP, skills, hooks, memory', `<span class="thumb white" style="justify-content: center; gap: 6px"><span class="row-xs"><span>MCP servers</span><span class="toggle"></span></span><span class="row-xs"><span>Skills</span><span class="toggle"></span></span><span class="row-xs"><span>Hooks</span><span class="toggle off"></span></span><span class="row-xs"><span>Memory and rules</span><span class="toggle"></span></span></span>`),
-	].join('');
+	const capabilities: Capability[] = [
+		{ href: '#agents', title: 'Agents side by side', cap: 'Each in its own tab, with its own chat', thumb: thumbShot('files') },
+		{ href: '#review', title: 'Review and safety', cap: 'Keep, Undo, Rewind. Ask first', thumb: thumbShot('showcase-review') },
+		{ href: '#agents', title: 'Home', cap: 'Describe a task. Press Return', thumb: `<span class="thumb white" style="justify-content: space-between"><span style="color: var(--fg)">Make the upload client retry twice with backoff<span class="mini-caret"></span></span><span class="row-xs"><span class="mono" style="font-size: 10px; color: var(--muted)">☑ Own branch</span><span class="mini-btn">Start ↩</span></span></span>` },
+		{ href: '#projects', title: 'Projects', cap: 'One chat, many threads', thumb: thumbShot('project-threads') },
+		{ href: '#beyond', title: 'Agent browser', cap: 'Agents open and use your app', thumb: thumbShot('browser-page') },
+		{ href: '#beyond', title: 'Team tools', cap: 'Ticket to merge request', thumb: `<span class="thumb" style="justify-content: center; gap: 8px"><span style="display: flex; gap: 5px; flex-wrap: wrap"><span class="chip xs">Jira</span><span class="chip xs">GitLab</span><span class="chip xs">Sonar</span><span class="chip xs">Snyk</span><span class="chip xs">Figma</span></span><span class="mono" style="font-size: 10px; color: var(--accent)">ACME-412 → !412</span></span>` },
+		{ href: '#agents', title: 'Enhance prompt', cap: 'Plain words in, precise prompt out', thumb: `<span class="thumb white" style="justify-content: center; gap: 5px"><span class="draft">make uploads not fail so much</span><span class="mono" style="font-size: 10px; color: var(--accent); align-self: center">↓ ⌥⌘E</span><span class="better">Add backoff, 3 attempts, with a test</span></span>` },
+		{ href: 'docs/helpers.html', title: 'Project Helpers', cap: 'MCP, skills, hooks, memory', thumb: `<span class="thumb white" style="justify-content: center; gap: 6px"><span class="row-xs"><span>MCP servers</span><span class="toggle"></span></span><span class="row-xs"><span>Skills</span><span class="toggle"></span></span><span class="row-xs"><span>Hooks</span><span class="toggle off"></span></span><span class="row-xs"><span>Memory and rules</span><span class="toggle"></span></span></span>` },
+	];
 	const strip = [
 		'<b>Plan mode</b> read first, then build',
 		'<b>@file</b> attach context',
@@ -516,8 +536,8 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 
 	const body = `
 	<section class="hero" aria-labelledby="headline">
-		<canvas class="dots" aria-hidden="true"></canvas>
-		<div class="in">${floats}
+		<canvas class="dots" aria-hidden="true"></canvas>${orbit(capabilities)}
+		<div class="in">
 			<div class="centre">
 				${logo(56, true, 'mark')}
 				<h1 class="h1 serif" id="headline"><span class="sr">Code with Gemini agents. Review every change.</span><span class="tw" aria-hidden="true"><span data-t="Code with Gemini agents.">Code with Gemini agents.</span><br><em data-t="Review every change.">Review every change.</em></span><span class="caret" aria-hidden="true"></span></h1>
