@@ -77,7 +77,7 @@ Open the project's settings with the gear at the top of the project chat.
 - **Defaults for new threads**: the thread model, **Plan first**, and a **Branch prefix** put before each thread's branch name.
 - **Clean Up Folders...**, which removes the folders of threads whose work is all merged. Each thread keeps its branch and chat, and its folder comes back when you open it.
 
-![Project settings, General, with two repositories and defaults for new threads](../../site/media/docs/project-settings.webp)
+![Project settings, General, with two repositories and defaults for new threads](../../site/media/docs/project-settings-dark.webp)
 
 **Memory** holds what every thread and the coordinator read:
 
@@ -87,7 +87,7 @@ Open the project's settings with the gear at the top of the project chat.
 
 For a new project, Gemini drafts this from the repositories for you to review; **Draft with Gemini** drafts it again. Saved changes apply to new threads and the coordinator's next turn.
 
-![Project settings, Memory, with project instructions and context files](../../site/media/docs/project-memory.webp)
+![Project settings, Memory, with project instructions and context files](../../site/media/docs/project-memory-dark.webp)
 
 ## The side panel
 

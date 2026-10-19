@@ -2,7 +2,7 @@
 
 Everything you need to talk to an agent sits in the composer's **+** menu. Attach the files that matter, turn a rough request into a precise prompt, and let the agent plan before it builds.
 
-![The composer's + menu with the mode, files, context, Follow the agent, the model, usage and skills](../../site/media/docs/plus-menu.webp)
+![The composer's + menu with the mode, files, context, Follow the agent, the model, usage and skills](../../site/media/docs/plus-menu-dark.webp)
 
 ## The + menu
 

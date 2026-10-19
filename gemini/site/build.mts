@@ -76,9 +76,9 @@ const dmgPattern = /^GeminiCode-.+-arm64(-unsigned)?\.dmg$/;
 const mediaFiles = {
 	'showcase-work': { width: 2000, height: 1250 },
 	'showcase-review': { width: 2000, height: 1250 },
-	'project-threads': { width: 1600, height: 1000 },
-	'browser-page': { width: 1600, height: 1000 },
-	files: { width: 1400, height: 1000 },
+	'project-threads': { width: 2000, height: 1250 },
+	'browser-page': { width: 2000, height: 1250 },
+	files: { width: 2000, height: 1250 },
 } as const;
 type Media = keyof typeof mediaFiles;
 
