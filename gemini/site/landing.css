@@ -3,16 +3,18 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-/* The landing page: a hero with a typewriter headline, a dot field and eight floating capability
-   cards; a showcase card on a flat offset block; a command strip; three pillars; the Agents bento;
+/* The landing page: a hero with a typewriter headline, a dot field and two rings of capability
+   tiles orbiting it; a showcase card on a flat offset block; a command strip; three pillars; the Agents bento;
    Review; Projects; the browser and team tools; the four install steps. landing.mts runs the
    moving parts; everything here animates opacity and transform only. */
 
 /* ---- Hero ---- */
 .hero { position: relative; min-height: 860px; padding: 112px 24px 48px; overflow: hidden; }
-.hero .in { position: relative; max-width: var(--wrap); margin: 0 auto; min-height: 820px; }
+.hero .in { position: relative; max-width: var(--wrap); margin: 0 auto; min-height: 820px; pointer-events: none; }
 .dots { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; -webkit-mask-image: radial-gradient(ellipse 70% 80% at 50% 40%, #000 50%, transparent 100%); mask-image: radial-gradient(ellipse 70% 80% at 50% 40%, #000 50%, transparent 100%); }
 .hero .centre { position: relative; max-width: 820px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 28px; padding-top: 56px; }
+/* The orbit passes under the headline's column, so only its contents take the pointer. */
+.hero .centre > * { pointer-events: auto; }
 .hero .mark { width: 56px; height: 56px; filter: drop-shadow(0 8px 20px rgb(22 21 15 / 0.25)); }
 .h1 { font: 300 92px/0.98 var(--serif); letter-spacing: -0.02em; color: var(--fg); text-wrap: balance; }
 .h1 em { font-style: italic; }
@@ -29,21 +31,30 @@
 html.typing .hero .after { opacity: 0; transform: translateY(12px); }
 .hero .after { transition: opacity 0.4s var(--ease-out), transform 0.4s var(--ease-out); }
 html.typing:not(.type-run) .h1 .tw { visibility: hidden; }
-html.typing .float .box { opacity: 0; }
 
-/* Eight capability cards float around the headline: parallax with the pointer at three depths,
-   a slow drift of their own, and they slide out and fade as the hero scrolls away. */
-.float { position: absolute; width: 190px; display: block; color: var(--fg); --px: 0px; --py: 0px; --away: 0; opacity: calc(1 - var(--away)); transform: translate(calc(var(--px) + var(--ox, 0px) * var(--away)), calc(var(--py) + var(--oy, 0px) * var(--away))); }
-.float .box { background: var(--surface); border: 1px solid var(--line-2); border-radius: 12px; padding: 8px; display: flex; flex-direction: column; gap: 8px; box-shadow: var(--shadow-card); animation: drift var(--period, 7s) ease-in-out infinite; transition: border-color 0.2s, transform 0.2s var(--ease-out), opacity 0.4s var(--ease-out) var(--d, 0ms); }
-.float:hover .box { border-color: var(--line-3); transform: translateY(-4px); animation-play-state: paused; }
-.float:hover .ttl { color: var(--accent); }
-@keyframes drift { 0%, 100% { translate: 0 0; } 50% { translate: 0 -3px; } }
-.float .thumb { height: 104px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); background: var(--surface-2); position: relative; display: flex; flex-direction: column; gap: 6px; padding: 10px; font-size: 10.5px; line-height: 1.4; }
-.float .thumb .shot { position: absolute; inset: 0; }
+/* Thirty-two capability tiles on two rings around the headline: the outer ring turns
+   anticlockwise, the inner one clockwise, and the tiles stay upright. landing.mts sets each
+   tile's transform every frame (its place on the ring, the burst out from the centre once the
+   headline has typed, and the fade as the hero scrolls away). Until it runs, the rings are hidden. */
+.orbit { position: absolute; inset: 0; pointer-events: none; visibility: hidden; -webkit-mask-image: linear-gradient(#000 70%, transparent 98%); mask-image: linear-gradient(#000 70%, transparent 98%); }
+.orbit.live { visibility: visible; }
+.ring { position: absolute; inset: 0; }
+.float { position: absolute; left: 0; top: 0; width: clamp(104px, calc(var(--tsz) / 1920 * 100vw), calc(var(--tsz) * 1px)); display: block; color: var(--fg); pointer-events: auto; will-change: transform, opacity; transform: scale(0); }
+.float:hover, .float:focus-visible { z-index: 1; }
+.float .thumb { aspect-ratio: 1; border-radius: 9%; overflow: hidden; border: 1px solid var(--line-2); background: var(--surface-2); position: relative; display: flex; flex-direction: column; gap: 5px; padding: 9px; font-size: 9.5px; line-height: 1.35; box-shadow: var(--shadow-card); transition: border-color 0.2s, transform 0.25s var(--ease-out); }
+.float:hover .thumb, .float:focus-visible .thumb { border-color: var(--line-3); transform: scale(1.04); }
+.float .thumb .shot { position: absolute; inset: 0; aspect-ratio: auto; }
 .float .thumb.white { background: var(--surface); }
-.float .ttl { font-size: 14px; font-weight: 500; line-height: 1.2; transition: color 0.2s; }
-.float .cap { font: 11px/1.4 var(--mono); color: var(--muted); }
-.float .txt { display: flex; flex-direction: column; gap: 3px; padding: 2px 4px 4px; }
+/* The small mock interfaces are drawn for a tile about 110px square. */
+.float .thumb .chip.xs { height: 18px; padding: 0 6px; font-size: 9px; }
+.float .thumb .row-xs { gap: 4px; white-space: nowrap; }
+.float .thumb .mini-btn { height: 17px; padding: 0 6px; font-size: 9px; flex: none; }
+.float .ttl { font-size: 12.5px; font-weight: 500; line-height: 1.3; color: var(--soft); transition: color 0.2s; }
+.float:hover .ttl, .float:focus-visible .ttl { color: var(--accent); }
+/* The caption under the title shows only while the tile is held under the pointer or focused. */
+.float .cap { font: 10.5px/1.4 var(--mono); color: var(--muted); opacity: 0; transform: translateY(-3px); transition: opacity 0.2s, transform 0.2s var(--ease-out); }
+.float:hover .cap, .float:focus-visible .cap { opacity: 1; transform: none; }
+.float .txt { position: absolute; top: 100%; left: 0; width: max(100%, 150px); display: flex; flex-direction: column; gap: 2px; padding-top: 8px; }
 .mini-caret { display: inline-block; width: 2px; height: 11px; background: var(--accent); vertical-align: -2px; margin-left: 2px; animation: caret 1s steps(1) infinite; }
 .mini-btn { height: 20px; padding: 0 8px; border-radius: 5px; background: var(--btn); color: var(--btn-fg); font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; }
 .chip { display: inline-flex; align-items: center; height: 30px; padding: 0 11px; border-radius: 6px; border: 1px solid var(--line-2); color: var(--soft); font: 12.5px var(--mono); background: var(--surface); transition: border-color 0.2s, color 0.2s; }
@@ -56,14 +67,6 @@ html.typing .float .box { opacity: 0; }
 .row-xs { display: flex; align-items: center; justify-content: space-between; color: var(--soft); }
 .draft { color: var(--muted); padding: 4px 6px; border: 1px dashed var(--line-3); border-radius: 5px; }
 .better { color: var(--fg); padding: 4px 6px; border: 1px solid var(--accent-line); background: var(--accent-tint); border-radius: 5px; }
-.pos-tl { left: 0; top: -30px; --ox: -24px; --oy: -12px; }
-.pos-ml { left: 0; top: 230px; --ox: -24px; --oy: 0px; }
-.pos-bl { left: 0; top: 490px; --ox: -24px; --oy: 12px; }
-.pos-tr { right: 0; top: -30px; --ox: 24px; --oy: -12px; }
-.pos-mr { right: 0; top: 230px; --ox: 24px; --oy: 0px; }
-.pos-br { right: 0; top: 490px; --ox: 24px; --oy: 12px; }
-.pos-bil { left: 250px; top: 650px; --ox: -12px; --oy: 24px; }
-.pos-bir { right: 250px; top: 650px; --ox: 12px; --oy: 24px; }
 
 /* ---- Showcase card on a flat offset block ---- */
 .show { position: relative; max-width: var(--wrap); margin: -24px auto 0; padding: 0 24px; }
@@ -255,7 +258,7 @@ html.typing .float .box { opacity: 0; }
 .no-release { font: 13px var(--mono); color: var(--muted); }
 .no-release a { text-decoration: underline; }
 
-@media (max-width: 1280px) { .float { display: none; } .hero { min-height: 0; } .hero .in { min-height: 0; } .hero .centre { padding-top: 0; } }
+@media (max-width: 1280px) { .orbit { display: none; } .hero { min-height: 0; } .hero .in { min-height: 0; } .hero .centre { padding-top: 0; } }
 @media (max-width: 1100px) {
 	.s7, .s5, .s4, .s6 { grid-column: span 6; }
 	.four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -302,11 +305,10 @@ html.typing .float .box { opacity: 0; }
 	.get-row .btn { width: 100%; }
 }
 @media (max-width: 480px) { .h1 { font-size: 44px; } }
-@media (hover: none) { .float:hover .box { transform: none; } .show:hover .block { transform: none; } }
+@media (hover: none) { .show:hover .block { transform: none; } }
 @media (prefers-reduced-motion: reduce) {
-	.float .box, .caret.blink, .mini-caret, .dot.spin, .dot.warn, .in .dot.spin, .in .dot.warn, .play, .show .card, .show .block { animation: none; }
-	.float { transform: none !important; }
-	.float:hover .box { transform: none; }
+	.caret.blink, .mini-caret, .dot.spin, .dot.warn, .in .dot.spin, .in .dot.warn, .play, .show .card, .show .block { animation: none; }
+	.float:hover .thumb, .float:focus-visible .thumb { transform: none; }
 	.strip .rail { -webkit-mask-image: none; mask-image: none; }
 	.strip .track { animation: none; width: auto; flex-wrap: wrap; }
 	.strip .track .dup { display: none; }
