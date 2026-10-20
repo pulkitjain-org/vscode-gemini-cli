@@ -23,8 +23,6 @@ export interface DashboardInput {
 	readonly state: (tool: TeamToolId) => ConnectionState;
 	readonly data: TeamSnapshot;
 	readonly agents: readonly AgentSummary[];
-	/** The repository Home starts agents in, by name. */
-	readonly repository?: string;
 	readonly layout?: DashboardLayout;
 	readonly usage?: readonly ModelQuota[];
 	readonly versions: { readonly app: string; readonly cli?: string };
@@ -109,7 +107,7 @@ export function buildDashboard(input: DashboardInput): HomeDashboard {
 	const sprintLine = tickets?.sprint ? progress?.daysLeft !== undefined
 		? progress.daysLeft === 1 ? vscode.l10n.t("{0}, 1 day left", tickets.sprint.name) : vscode.l10n.t("{0}, {1} days left", tickets.sprint.name, progress.daysLeft)
 		: tickets.sprint.name : undefined;
-	const context = [now.toLocaleDateString(vscode.env.language, { weekday: 'long', day: 'numeric', month: 'long' }), input.repository, sprintLine].filter(Boolean).join(' · ');
+	const context = [now.toLocaleDateString(vscode.env.language, { weekday: 'long', day: 'numeric', month: 'long' }), sprintLine].filter(Boolean).join(' · ');
 	const titles = cardTitles();
 	const builders: Record<DashboardCardId, () => ListedCard | undefined> = {
 		unfinished: () => unfinishedCard(input, titles.unfinished),

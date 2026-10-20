@@ -268,7 +268,7 @@ export class AgentHome implements vscode.Disposable {
 			ownBranch: vscode.workspace.getConfiguration(configSection).get<boolean>('agents.ownBranch', false),
 			modes: startModes().filter(mode => isModeAllowed(getApprovalPolicy(), mode.id)),
 			...preferredModel() ? { model: preferredModel() } : {},
-			dashboard: this.dashboard(all, workspaces[0]?.name, await this.unfinished(), await this.signedIn(), (await this.agents.teamTools?.workspaceDefaults().catch(() => undefined))?.jira?.commentVisibility),
+			dashboard: this.dashboard(all, await this.unfinished(), await this.signedIn(), (await this.agents.teamTools?.workspaceDefaults().catch(() => undefined))?.jira?.commentVisibility),
 		};
 	}
 
@@ -290,7 +290,7 @@ export class AgentHome implements vscode.Disposable {
 		return { flows, intents };
 	}
 
-	private dashboard(agents: readonly AgentSummary[], repository: string | undefined, unfinished: DashboardInput['unfinished'], signedIn: boolean, commentVisibility: string | undefined): HomeView['dashboard'] {
+	private dashboard(agents: readonly AgentSummary[], unfinished: DashboardInput['unfinished'], signedIn: boolean, commentVisibility: string | undefined): HomeView['dashboard'] {
 		const team = this.agents.teamTools;
 		const firstConnected = this.options?.state.get<number>(firstConnectedKey);
 		const reading = this.agents.usage?.reading;
@@ -302,7 +302,6 @@ export class AgentHome implements vscode.Disposable {
 			state: tool => team?.state(tool) ?? { kind: 'off' },
 			data: this.teamData?.snapshot ?? {},
 			agents,
-			repository,
 			layout: this.layout(),
 			usage: reading?.kind === 'ok' ? reading.quota : undefined,
 			versions: { app: this.options?.version ?? '', ...cli ? { cli } : {} },
