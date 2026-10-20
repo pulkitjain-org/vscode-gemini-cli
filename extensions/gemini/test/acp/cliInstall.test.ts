@@ -67,7 +67,7 @@ describe('installCli', () => {
 	});
 
 	it('caps tool output in ACP mode in the copy it installs', async () => {
-		const acp = fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'acp-run-tool.js'), 'utf8');
+		const acp = fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'acp-run-tool.txt'), 'utf8');
 		const tarball = packTarball({ 'package.json': '{}', 'bundle/gemini.js': '', 'bundle/gemini-ABC123.js': acp, 'bundle/chunk-ABC123.js': acp });
 		const managedDir = path.join(dir, 'managed');
 		await installCli({ ...fakeRegistry(tarball), managedDir, version: 'latest' });

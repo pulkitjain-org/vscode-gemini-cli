@@ -11,7 +11,7 @@ import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cliPatchMarker, patchAcpToolOutput, patchCliBundle } from '../../src/acp/cliPatches';
 
-const fixture = fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'acp-run-tool.js'), 'utf8');
+const fixture = fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'acp-run-tool.txt'), 'utf8');
 const bundledCli = path.join(__dirname, '..', '..', 'cli');
 
 let dir: string;
