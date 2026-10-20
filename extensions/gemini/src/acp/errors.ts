@@ -85,6 +85,17 @@ export function isModelTurnRefusal(message: string): boolean {
 	return /ending with a model turn|end with a user role|ends? with a model (role|turn)/i.test(message);
 }
 
+/**
+ * Whether Gemini refused a request because the session's history is over the
+ * model's context limit ("The input token count exceeds the maximum number of
+ * tokens allowed 1048576."), as plain text or inside the API's JSON body.
+ * Every later request in that session carries the same history, so it fails
+ * the same way: only a new session gets past it.
+ */
+export function isContextOverflow(message: string): boolean {
+	return /input token count (\(\d+\) )?exceeds the maximum number of tokens/i.test(message);
+}
+
 /** The message of an error of any shape, for showing to the user. */
 export function errorMessage(err: unknown): string {
 	return err instanceof Error ? err.message : String(err);

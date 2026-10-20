@@ -12,6 +12,7 @@ import { armStop } from './activity';
 import { renderAttachments } from './attachmentChips';
 import { format } from './chatLogic';
 import { button, el, icon, setLabel } from './dom';
+import { applyTextEdit } from './panelDom';
 import { autoGrow, updateSendState } from './inputBox';
 import { onEnhanceKey } from './enhance';
 import { continueList, formatShortcut, toggleWrap, type TextEdit } from './markdownEdit';
@@ -181,14 +182,7 @@ function onMarkdownKey(event: KeyboardEvent): boolean {
 
 /** Applies an edit as one step the user can undo. */
 function applyEdit(edit: TextEdit): void {
-	input.setSelectionRange(edit.start, edit.end);
-	// insertText keeps the textarea's undo history; setRangeText would not.
-	const done = edit.text ? document.execCommand('insertText', false, edit.text) : edit.start === edit.end || document.execCommand('delete');
-	if (!done) {
-		input.setRangeText(edit.text, edit.start, edit.end);
-		input.dispatchEvent(new Event('input'));
-	}
-	input.setSelectionRange(edit.selectionStart, edit.selectionEnd);
+	applyTextEdit(input, edit);
 }
 
 function submit(): void {

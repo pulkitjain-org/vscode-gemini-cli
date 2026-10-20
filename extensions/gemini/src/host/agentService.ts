@@ -3,12 +3,14 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { isModeAllowed, takesAway } from '../acp/adminPolicy';
 import { AgentClient, AgentClientState } from '../acp/agentClient';
 import { AgentCommand, includeDirectoryArgs } from '../acp/agentProcess';
 import { AgentRuntime } from '../acp/agentRuntime';
-import { AgentErrorInfo } from '../acp/errors';
+import { AgentErrorInfo, errorMessage } from '../acp/errors';
+import { patchCliBundle } from '../acp/cliPatches';
 import { createFileHandlers } from '../acp/fileAccess';
 import { PermissionBroker } from '../acp/permissions';
 import { CliResolution, isOlderThan } from '../acp/cliResolution';
@@ -322,6 +324,13 @@ export class AgentService implements vscode.Disposable {
 			: cli.source === 'managed' ? `GeminiCode's copy ${cli.version}`
 				: cli.source === 'bundled' ? `the copy bundled with GeminiCode, ${cli.version}` : 'PATH';
 		this.log.info(`Using the Gemini CLI from ${where}${cli.cliPath ? ` (${cli.cliPath})` : ''}`);
+		// A copy installed before GeminiCode patched installs gets the cap on tool output now (cliPatches.ts).
+		if (cli.source === 'managed' && cli.cliPath) {
+			const patched = await patchCliBundle(path.dirname(cli.cliPath)).catch(err => `failed: ${errorMessage(err)}`);
+			if (patched !== 'unchanged') {
+				this.log[patched === 'patched' ? 'info' : 'warn'](`Capping tool output in ACP mode for Gemini CLI ${cli.version}: ${patched}`);
+			}
+		}
 		if (cli.missingVersion) {
 			this.log.warn(`Gemini CLI ${cli.missingVersion} is set in ${configSection}.cli.version but not installed; using ${where}`);
 			if (cli.missingVersion !== this.offeredVersion) {

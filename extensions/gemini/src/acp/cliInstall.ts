@@ -13,6 +13,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
 import { gunzip } from 'node:zlib';
+import { patchCliFile } from './cliPatches';
 import { compareVersions, isVersion, listManagedVersions } from './cliResolution';
 
 export const cliPackageName = '@google/gemini-cli';
@@ -90,7 +91,8 @@ export async function installCli(options: InstallOptions): Promise<string> {
 		for (const file of files) {
 			const target = path.join(staging, file.path);
 			await fs.promises.mkdir(path.dirname(target), { recursive: true });
-			await fs.promises.writeFile(target, file.data, { mode: file.mode & 0o777 || 0o644 });
+			// GeminiCode's cap on tool output in ACP mode (cliPatches.ts) goes in as the file is written.
+			await fs.promises.writeFile(target, patchCliFile(file.path, file.data), { mode: file.mode & 0o777 || 0o644 });
 		}
 		const final = path.join(options.managedDir, version);
 		await fs.promises.rm(final, { recursive: true, force: true });

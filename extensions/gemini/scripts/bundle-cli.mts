@@ -6,17 +6,21 @@
 // Puts the Gemini CLI that ships inside GeminiCode in `cli/<version>/`, the
 // same layout as the copies installed from the app. The version and its
 // SHA-512 are pinned in package.json (`bundledCli`); a download that does not
-// match is refused. Run before packaging the app:
+// match is refused. The checked copy then gets GeminiCode's patch
+// (src/acp/cliPatches.ts), which caps tool output in ACP mode; a CLI the patch
+// doesn't recognize stops the script, so the app never ships it uncapped. Run
+// before packaging the app:
 //
 //   node extensions/gemini/scripts/bundle-cli.mts
 //
-// Nothing runs if the pinned version is already in place.
+// Nothing is downloaded if the pinned version is already in place.
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { patchCliBundle } from '../src/acp/cliPatches.ts';
 
 const extensionDir = path.dirname(import.meta.dirname);
 const cliDir = path.join(extensionDir, 'cli');
@@ -24,8 +28,18 @@ const { version, integrity } = JSON.parse(fs.readFileSync(path.join(extensionDir
 const target = path.join(cliDir, version);
 const marker = path.join(target, '.integrity');
 
+/** Patches the bundled copy, and stops the build when the patch no longer fits the CLI. */
+async function patch(): Promise<void> {
+	const result = await patchCliBundle(path.join(target, 'bundle'));
+	if (result === 'unrecognized') {
+		throw new Error(`Gemini CLI ${version} no longer has the code src/acp/cliPatches.ts patches: update the patch before bundling this version.`);
+	}
+	console.log(result === 'patched' ? `Capped tool output in ACP mode for Gemini CLI ${version}.` : `Gemini CLI ${version} is already patched.`);
+}
+
 if (fs.existsSync(path.join(target, 'bundle', 'gemini.js')) && fs.existsSync(marker) && fs.readFileSync(marker, 'utf8') === integrity) {
 	console.log(`Gemini CLI ${version} is already bundled.`);
+	await patch();
 	process.exit(0);
 }
 
@@ -63,3 +77,4 @@ try {
 } finally {
 	fs.rmSync(work, { recursive: true, force: true });
 }
+await patch();

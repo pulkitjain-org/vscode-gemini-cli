@@ -2631,28 +2631,6 @@ body.vscode-high-contrast-light #send {
 	cursor: pointer;
 }
 
-/* Themed tooltips for controls (dom.ts setTip), in place of the system's. */
-.gemini-tooltip {
-	position: fixed;
-	z-index: 1000;
-	max-width: min(320px, calc(100vw - 8px));
-	padding: 3px 8px;
-	border: 1px solid var(--gemini-border-strong);
-	border-radius: 6px;
-	background: var(--gemini-popover);
-	box-shadow: 0 4px 14px var(--gemini-shadow);
-	color: var(--vscode-foreground);
-	font-size: 12px;
-	line-height: 1.45;
-	pointer-events: none;
-	white-space: normal;
-	overflow-wrap: anywhere;
-}
-
-.gemini-tooltip[hidden] {
-	display: none;
-}
-
 /* The Shared page chip's name: goes to the page's tab. */
 .shared-page-open {
 	display: inline-flex;

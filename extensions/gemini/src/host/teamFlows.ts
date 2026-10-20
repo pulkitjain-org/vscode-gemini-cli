@@ -8,6 +8,7 @@ import { suggestedTransition } from '../acp/teamDefaults';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { tildify } from './displayText';
+import { agentColumn } from './editorPlacement';
 import { branchChoices, changedFiles, checkoutForChecks, listBranches } from '../acp/checksBranch';
 import { analyzeFiles } from '../acp/teamContainers';
 import { errorMessage } from '../acp/errors';
@@ -520,6 +521,7 @@ export class TeamFlows implements vscode.Disposable {
 		const p = project;
 		const n = iid;
 		let agentId: string | undefined;
+		// A tab in the active group (Home's), not a split beside Home; it moves beside its reviewer once that starts.
 		const flow: TeamFlowPanel<ReviewView> = new TeamFlowPanel<ReviewView>(this.extensionUri, vscode.l10n.t("Review !{0}", n), 'gitlab', vscode.l10n.t("Reading !{0}...", n), async (action, value) => {
 			const view = flow.view;
 			if (!view) {
@@ -567,7 +569,7 @@ export class TeamFlows implements vscode.Disposable {
 						});
 					});
 			}
-		}, vscode.ViewColumn.Beside, this.recording('gemini.team.reviewMergeRequest', [p, n], `!${n}`));
+		}, vscode.ViewColumn.Active, this.recording('gemini.team.reviewMergeRequest', [p, n], `!${n}`));
 		try {
 			const [m, diffs] = await Promise.all([gitlab.mr(p, n), gitlab.diffs(p, n)]);
 			const clone = await this.cloneOf(p, gitlab);
@@ -584,15 +586,18 @@ export class TeamFlows implements vscode.Disposable {
 				approvedByMe: !!m.approvals?.approvedByMe,
 			});
 			void this.reviewSide(flow, m, ticket, clone.folder);
+			// The target too, so the reviewer diffs against today's target: its shell can't sign in to fetch it.
+			await fetchBranches(clone.folder, clone.remote, [m.targetBranch]).catch(() => undefined);
 			const worktree = await reviewWorktree(clone.folder, clone.remote, m.sourceBranch, `review/${n}-${m.sourceBranch.replace(/[^\w.-]+/g, '-')}`.slice(0, 60));
 			agentId = await this.agents.startTeamAgent({ folder: clone.folder, title: vscode.l10n.t("Review !{0} {1}", n, m.title), worktree, text: '' });
 			if (!agentId) {
 				throw new Error(vscode.l10n.t("The reviewer couldn't start."));
 			}
 			flow.update({ agentId, state: 'reviewing' });
-			flow.panel.reveal(vscode.ViewColumn.Beside, true);
+			// Into the reviewer's own side group: in view with the reviewer, hidden with it, and never splitting Home.
+			flow.panel.reveal(await agentColumn(agentId, undefined), true);
 			const controller = this.agents.controllerOf(agentId);
-			await controller?.send(reviewPrompt({ iid: n, title: m.title, url: m.url, author: m.author, sourceBranch: m.sourceBranch, targetBranch: m.targetBranch }, ticket));
+			await controller?.send(reviewPrompt({ iid: n, title: m.title, url: m.url, author: m.author, sourceBranch: m.sourceBranch, targetBranch: m.targetBranch }, ticket, clone.remote, diffs.map(d => d.newPath)));
 			await this.readReview(flow, agentId);
 		} catch (err) {
 			flow.fail(err);
@@ -822,6 +827,7 @@ export class TeamFlows implements vscode.Disposable {
 
 	private async openChecks(start: ChecksPlace): Promise<void> {
 		let place = start;
+		// A tab in the active group (Home's, when Run Checks... starts it there), not a split beside Home.
 		const flow: TeamFlowPanel<ChecksView> = new TeamFlowPanel<ChecksView>(this.extensionUri, vscode.l10n.t("Checks: {0}", place.title), this.tools.connected.has('snyk') ? 'snyk' : 'sonar', vscode.l10n.t("Starting the checks..."), async (action, value) => {
 			const view = flow.view;
 			if (!view) {
@@ -856,7 +862,7 @@ export class TeamFlows implements vscode.Disposable {
 					return;
 				}
 			}
-		}, vscode.ViewColumn.Beside);
+		}, vscode.ViewColumn.Active);
 		await this.check(flow, place);
 	}
 

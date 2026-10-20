@@ -13,7 +13,7 @@ import { type JiraIssueSummary, type JiraMyTicket, type JiraSprint, myTicketsJql
 import { TeamToolId, teamToolIds, teamToolNames } from '../acp/teamHttp';
 import type { AgentSummary } from './agentsView';
 import { relativeTime } from './displayText';
-import type { HomeAction, HomeCard, HomeCardId, HomeDashboard, HomeList, HomeNeed, HomeRow, HomeTool, HomeTone } from './panelProtocol';
+import type { HomeAction, HomeCard, HomeCardId, HomeDashboard, HomeList, HomeNeed, HomeRow, HomeTool, HomeTone, HomeTypeColor } from './panelProtocol';
 import type { ConnectionState } from './teamConnections';
 import type { Fetched, TeamSnapshot } from './teamData';
 
@@ -39,6 +39,8 @@ export interface DashboardInput {
 	/** The GitLab server, for "Open in GitLab". */
 	readonly gitlabUrl?: string;
 	readonly jiraUrl?: string;
+	/** The project role the team's Jira comments are limited to (`.gemini/geminicode-tools.json`). */
+	readonly jiraCommentVisibility?: string;
 	/** Flows that were open, and writes that had no result, when the app last quit. */
 	readonly unfinished?: { readonly flows: readonly FlowRecord[]; readonly intents: readonly AuditEntry[] };
 	/** When the data on the cards was last read, in ms since the epoch; 0 or unset before the first read. */
@@ -336,8 +338,29 @@ function statusTone(issue: JiraIssueSummary): HomeTone {
 	return issue.statusCategory === 'indeterminate' ? 'warn' : 'info';
 }
 
-function ticketRow(issue: JiraMyTicket): HomeRow {
+/** Jira issue types by name, in Jira's own colours; sub-tasks come before tasks. */
+const issueTypes: readonly (readonly [RegExp, string, HomeTypeColor])[] = [
+	[/bug|defect/i, 'bug', 'red'],
+	[/epic/i, 'zap', 'purple'],
+	[/sub-?task/i, 'type-hierarchy-sub', 'blue'],
+	[/task/i, 'pass-filled', 'blue'],
+	[/story|feature|improvement/i, 'bookmark', 'green'],
+	[/spike|research/i, 'beaker', 'orange'],
+];
+
+/** The mark for a Jira issue type; a type it doesn't know shows as a plain issue. */
+function issueType(name: string | undefined): HomeRow['type'] {
+	if (!name) {
+		return undefined;
+	}
+	const [, icon, color] = issueTypes.find(([pattern]) => pattern.test(name)) ?? [undefined, 'issues', 'muted'];
+	return { name, icon, color };
+}
+
+function ticketRow(issue: JiraMyTicket, commentVisibility: string | undefined): HomeRow {
+	const type = issueType(issue.type);
 	return {
+		...type ? { type } : {},
 		key: issue.key,
 		title: issue.summary,
 		pill: { text: issue.status, tone: statusTone(issue) },
@@ -345,6 +368,7 @@ function ticketRow(issue: JiraMyTicket): HomeRow {
 		...issue.statusCategory === 'new' || /reopen/i.test(issue.status) ? { button: { label: vscode.l10n.t("Start"), action: command('gemini.team.startOnTicket', issue.key), title: vscode.l10n.t("Start an agent on {0}", issue.key) } } : {},
 		menu: [
 			{ label: vscode.l10n.t("Start Agent"), action: command('gemini.team.startOnTicket', issue.key) },
+			{ label: vscode.l10n.t("Add Comment..."), action: { kind: 'comment', key: issue.key, title: issue.summary, ...commentVisibility ? { visibility: commentVisibility } : {} } },
 			{ label: vscode.l10n.t("Log Time..."), action: command('gemini.team.logTime', issue.key) },
 			{ label: vscode.l10n.t("Move..."), action: command('gemini.team.moveTicket', issue.key) },
 			{ label: vscode.l10n.t("Reassign..."), action: command('gemini.team.reassignTicket', issue.key) },
@@ -364,11 +388,11 @@ function ticketsCard(input: DashboardInput, title: string, groups: ReturnType<ty
 	const fetched = input.data.tickets;
 	const { stale, note } = sourceState(input, 'jira', fetched);
 	const inSprint = groups.sprint.map((issue, i): HomeRow => ({
-		...ticketRow(issue),
+		...ticketRow(issue, input.jiraCommentVisibility),
 		...i === 0 ? { group: sprint?.name ?? vscode.l10n.t("This sprint"), ...progress?.total ? { groupQuery: vscode.l10n.t("{0} of {1} done", progress.done, progress.total) } : {} } : {},
 	}));
 	const other = groups.other.map((issue, i): HomeRow => ({
-		...ticketRow(issue),
+		...ticketRow(issue, input.jiraCommentVisibility),
 		...i === 0 && inSprint.length ? { group: vscode.l10n.t("Not in this sprint") } : {},
 	}));
 	const all = [...inSprint, ...other];

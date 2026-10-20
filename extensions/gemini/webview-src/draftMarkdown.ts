@@ -62,7 +62,28 @@ export function wrapTables(root: ParentNode): void {
 	}
 }
 
+// The comment box's Markdown-to-Jira conversion rides in this chunk with the same parser.
+export { markdownToAdf } from './commentAdf';
+
 let draftMarkdown: MarkdownIt | undefined;
+
+/** List items that start with `[ ]` or `[x]` as tasks with a box, as Jira shows a comment's task list. */
+function addTaskBoxes(root: HTMLElement): void {
+	for (const item of root.querySelectorAll('li')) {
+		const first = item.firstChild?.nodeType === Node.TEXT_NODE ? item.firstChild : item.firstElementChild?.tagName === 'P' ? item.firstElementChild.firstChild : null;
+		const box = first?.nodeType === Node.TEXT_NODE ? /^\[([ xX])\]\s+/.exec(first.textContent ?? '') : null;
+		if (!first || !box) {
+			continue;
+		}
+		first.textContent = (first.textContent ?? '').slice(box[0].length);
+		const check = document.createElement('input');
+		check.type = 'checkbox';
+		check.disabled = true;
+		check.checked = box[1] !== ' ';
+		first.parentNode!.insertBefore(check, first);
+		item.classList.add('task-item');
+	}
+}
 
 /** A draft as it will show once sent, for Agent Home's Preview. */
 export function renderDraft(text: string, calloutLabel: (kind: string) => string): Node[] {
@@ -71,6 +92,7 @@ export function renderDraft(text: string, calloutLabel: (kind: string) => string
 	node.innerHTML = draftMarkdown.render(text);
 	applyInlineStyles(node);
 	addCallouts(node, calloutLabel);
+	addTaskBoxes(node);
 	wrapTables(node);
 	return [...node.childNodes];
 }

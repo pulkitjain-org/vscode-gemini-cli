@@ -1,0 +1,27 @@
+#!/bin/sh
+# Keeps AI attribution out of commit messages, and commits under the
+# repository owner's identity (AGENTS.md, "Commits, branches and pull requests").
+# Installed by gemini/scripts/git-hooks/install.sh.
+
+owner='er.pulkit@gmail.com'
+message="$1"
+
+# A tool's trailers and footers go, wherever a tool added them.
+kept="$message.kept.$$"
+grep -viE '^[[:space:]]*(co-authored-by:.*(claude|anthropic|copilot|codex|openai)|claude-session:|.*generated (with|by) .*(claude|copilot|codex|chatgpt))' "$message" > "$kept"
+# Trailing blank lines left behind by a removed footer go too.
+sed -e :a -e '/^[[:space:]]*$/{$d;N;ba' -e '}' "$kept" > "$message"
+rm -f "$kept"
+
+email() {
+	git var "$1" | sed -n 's/^.*<\(.*\)>.*$/\1/p'
+}
+for who in GIT_AUTHOR_IDENT GIT_COMMITTER_IDENT; do
+	address=$(email "$who")
+	if [ "$address" != "$owner" ]; then
+		echo >&2 "commit-msg: commits here are made as $owner, not $address ($who)."
+		echo >&2 "Commit with the configured git user; never pass --author or set GIT_AUTHOR_*/GIT_COMMITTER_*."
+		exit 1
+	fi
+done
+exit 0

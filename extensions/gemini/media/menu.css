@@ -239,3 +239,28 @@
 	bottom: auto;
 	z-index: 1000;
 }
+
+/* Themed tooltips for controls (tooltip.ts setTip), in place of the system's, in the chat and Home. A popover in the top layer, so it shows over a modal dialog: the popover's own centring, border and padding are reset. */
+.gemini-tooltip {
+	position: fixed;
+	inset: auto;
+	z-index: 1000;
+	margin: 0;
+	overflow: visible;
+	max-width: min(320px, calc(100vw - 8px));
+	padding: 3px 8px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: 6px;
+	background: var(--gemini-popover);
+	box-shadow: 0 4px 14px var(--gemini-shadow);
+	color: var(--vscode-foreground);
+	font-size: 12px;
+	line-height: 1.45;
+	pointer-events: none;
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+
+.gemini-tooltip[hidden] {
+	display: none;
+}

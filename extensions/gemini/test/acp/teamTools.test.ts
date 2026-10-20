@@ -319,4 +319,20 @@ describe('merge readiness', () => {
 		await jira.assign('ACME-1', null);
 		expect(fake.requests.filter(r => r.method === 'PUT').map(r => JSON.parse(r.body))).toEqual([{ accountId: 'a1' }, { accountId: null }]);
 	});
+
+	it('finds people who can see a ticket for @, and who a comment can be limited to', async () => {
+		const fake = await serve(req => {
+			if (req.url === '/rest/api/3/user/viewissue/search?issueKey=ACME-1&query=ann%20l&maxResults=10') {
+				return { body: [{ accountId: 'a2', displayName: 'Ann Lee', accountType: 'atlassian' }, { accountId: 'bot', displayName: 'Automation', accountType: 'app' }, { accountId: 'a3', displayName: 'Ann Left', active: false }] };
+			}
+			if (req.url === '/rest/api/3/project/ACME/role') { return { body: { Developers: 'u1', 'atlassian-addons-project-access': 'u2', Administrators: 'u3' } }; }
+			if (req.url === '/rest/api/3/myself?expand=groups') { return { body: { accountId: 'me', groups: { items: [{ name: 'qa' }, { name: 'eng' }] } } }; }
+			return { status: 404, body: {} };
+		});
+		const jira = new JiraClient({ site: fake.url, email: 'e', token: 't' });
+		expect({ people: await jira.mentionableUsers('ACME-1', 'ann l'), visibilities: await jira.commentVisibilities('ACME-1') }).toEqual({
+			people: [{ accountId: 'a2', displayName: 'Ann Lee' }],
+			visibilities: { roles: ['Administrators', 'Developers'], groups: ['eng', 'qa'] },
+		});
+	});
 });

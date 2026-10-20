@@ -3,11 +3,14 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { promises as fs } from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { onDidChangeSpellCheck, spellCheckOn } from './spellCheck';
 import { isModeAllowed } from '../acp/adminPolicy';
 import { errorMessage } from '../acp/errors';
+import type { JiraClient } from '../acp/jira';
 import { formatCounts } from '../acp/agentChanges';
 import { attachmentsForFiles } from './addToChat';
 import { AgentsView, AgentSummary, relativeTime, startModes } from './agentsView';
@@ -20,6 +23,7 @@ import { moveCard, toggleCard, type DashboardLayout } from '../acp/dashboard';
 import { buildDashboard, DashboardInput, StartupState } from './homeDashboard';
 import { FromHome, HomeAction, HomeAgent, HomeCardId, HomeProject, HomeStrings, HomeView, ToHome } from './panelProtocol';
 import { TeamData } from './teamData';
+import type { TeamConnections } from './teamConnections';
 import { projectsEnabled } from './projects';
 import { agentsColumn } from './editorPlacement';
 import { createNonce, escapeAttribute } from './webviewHtml';
@@ -264,7 +268,7 @@ export class AgentHome implements vscode.Disposable {
 			ownBranch: vscode.workspace.getConfiguration(configSection).get<boolean>('agents.ownBranch', false),
 			modes: startModes().filter(mode => isModeAllowed(getApprovalPolicy(), mode.id)),
 			...preferredModel() ? { model: preferredModel() } : {},
-			dashboard: this.dashboard(all, workspaces[0]?.name, await this.unfinished(), await this.signedIn()),
+			dashboard: this.dashboard(all, workspaces[0]?.name, await this.unfinished(), await this.signedIn(), (await this.agents.teamTools?.workspaceDefaults().catch(() => undefined))?.jira?.commentVisibility),
 		};
 	}
 
@@ -286,7 +290,7 @@ export class AgentHome implements vscode.Disposable {
 		return { flows, intents };
 	}
 
-	private dashboard(agents: readonly AgentSummary[], repository: string | undefined, unfinished: DashboardInput['unfinished'], signedIn: boolean): HomeView['dashboard'] {
+	private dashboard(agents: readonly AgentSummary[], repository: string | undefined, unfinished: DashboardInput['unfinished'], signedIn: boolean, commentVisibility: string | undefined): HomeView['dashboard'] {
 		const team = this.agents.teamTools;
 		const firstConnected = this.options?.state.get<number>(firstConnectedKey);
 		const reading = this.agents.usage?.reading;
@@ -311,6 +315,7 @@ export class AgentHome implements vscode.Disposable {
 			hideUnconnected: !!firstConnected && Date.now() - firstConnected > weekMs,
 			gitlabUrl: team?.connectors.gitlab?.url,
 			jiraUrl: team?.connectors.jira?.site,
+			...commentVisibility ? { jiraCommentVisibility: commentVisibility } : {},
 			...unfinished ? { unfinished } : {},
 			...this.listCard ? { list: this.listCard } : {},
 		});
@@ -331,7 +336,85 @@ export class AgentHome implements vscode.Disposable {
 					await vscode.commands.executeCommand(action.command, ...action.args ?? []);
 				}
 				return;
+			case 'comment':
+				// The page opens its comment box itself; the comment comes back as a 'comment' message.
+				return;
 		}
+	}
+
+	/** The team tools and the Jira client for the comment box, which always goes to Jira's REST API (never mcp-atlassian in Docker). */
+	private jira(): { readonly team: TeamConnections; readonly client: JiraClient } {
+		const team = this.agents.teamTools;
+		const client = team?.connected.has('jira') ? team.connectors.jira : undefined;
+		if (!team || !client) {
+			throw new Error(vscode.l10n.t("Connect Jira in Connections to comment on tickets."));
+		}
+		return { team, client };
+	}
+
+	/**
+	 * Posts a comment from Home's comment box as Jira rich text, through the
+	 * same audited write as the other pages (teamTools.ts, jira_rich_comment).
+	 * Pasted files are written to a folder of their own first, and removed after.
+	 */
+	private async postComment(message: Extract<FromHome, { type: 'comment' }>): Promise<void> {
+		let error: string | undefined;
+		let pasted: string | undefined;
+		try {
+			const { team } = this.jira();
+			const files = [...message.files];
+			if (message.pasted.length) {
+				pasted = await fs.mkdtemp(path.join(os.tmpdir(), 'geminicode-comment-'));
+				for (const [i, file] of message.pasted.entries()) {
+					// Each in a folder of its own, so two pasted "image.png" keep their names.
+					const folder = path.join(pasted, String(i));
+					await fs.mkdir(folder);
+					const target = path.join(folder, path.basename(file.name) || 'file');
+					await fs.writeFile(target, Buffer.from(file.data, 'base64'));
+					files.push(target);
+				}
+			}
+			await team.write('jira_rich_comment', {
+				key: message.key, markdown: message.markdown, document: message.document, files,
+				...message.visibility ? { visibility: message.visibility } : {},
+			});
+		} catch (err) {
+			error = errorMessage(err);
+		} finally {
+			if (pasted) {
+				await fs.rm(pasted, { recursive: true, force: true }).catch(() => undefined);
+			}
+		}
+		void this.panel?.webview.postMessage({ type: 'commented', key: message.key, ...error ? { error } : {} } satisfies ToHome);
+	}
+
+	/** Who @ can mention in a comment on `key`: people who can see the ticket. */
+	private async commentPeople(key: string, query: string, id: number): Promise<void> {
+		let answer: ToHome;
+		try {
+			const users = await this.jira().client.mentionableUsers(key, query);
+			answer = { type: 'commentPeople', id, people: users.map(u => ({ accountId: u.accountId, name: u.displayName, ...u.emailAddress ? { email: u.emailAddress } : {} })) };
+		} catch (err) {
+			answer = { type: 'commentPeople', id, people: [], error: errorMessage(err) };
+		}
+		void this.panel?.webview.postMessage(answer);
+	}
+
+	private async commentOptions(key: string): Promise<void> {
+		const { roles, groups } = await Promise.resolve().then(() => this.jira().client.commentVisibilities(key)).catch(() => ({ roles: [], groups: [] }));
+		void this.panel?.webview.postMessage({ type: 'commentOptions', key, roles, groups } satisfies ToHome);
+	}
+
+	/** Files to attach: dropped ones by their URIs, or picked. */
+	private async commentFiles(uris: readonly string[] | undefined): Promise<void> {
+		const picked = uris
+			? uris.map(uri => vscode.Uri.parse(uri)).filter(uri => uri.scheme === 'file')
+			: await vscode.window.showOpenDialog({ canSelectMany: true, canSelectFiles: true, canSelectFolders: false, openLabel: vscode.l10n.t("Attach"), title: vscode.l10n.t("Attach Files to the Comment") }) ?? [];
+		const files = await Promise.all(picked.map(async uri => {
+			const stat = await fs.stat(uri.fsPath).catch(() => undefined);
+			return stat?.isFile() ? [{ path: uri.fsPath, name: path.basename(uri.fsPath), size: stat.size }] : [];
+		}));
+		void this.panel?.webview.postMessage({ type: 'commentFiles', files: files.flat() } satisfies ToHome);
 	}
 
 	private async onMessage(message: FromHome): Promise<void> {
@@ -416,6 +499,18 @@ export class AgentHome implements vscode.Disposable {
 				this.listCard = message.card;
 				await this.update();
 				return;
+			case 'comment':
+				await this.postComment(message);
+				return;
+			case 'commentPeople':
+				await this.commentPeople(message.key, message.query, message.id);
+				return;
+			case 'commentOptions':
+				await this.commentOptions(message.key);
+				return;
+			case 'commentFiles':
+				await this.commentFiles(message.uris);
+				return;
 		}
 	}
 
@@ -476,10 +571,58 @@ export class AgentHome implements vscode.Disposable {
 			filterList: vscode.l10n.t("Filter"),
 			noMatches: vscode.l10n.t("Nothing matches."),
 			close: vscode.l10n.t("Close"),
+			commentTitle: vscode.l10n.t("Comment on {0}"),
+			commentPlaceholder: vscode.l10n.t("Write a comment. Blank lines start paragraphs."),
+			commentHelp: vscode.l10n.t("Posted to Jira as you. Markdown works: **bold**, _italic_, `code`, lists, - [ ] tasks, > quotes, > [!NOTE] panels and tables. Type @ to mention someone, and paste or drop files to attach them."),
+			commentPost: vscode.l10n.t("Post Comment"),
+			commentPosting: vscode.l10n.t("Posting..."),
+			commentPosted: vscode.l10n.t("Commented on {0}."),
+			commentBold: vscode.l10n.t("Bold"),
+			commentItalic: vscode.l10n.t("Italic"),
+			commentStrike: vscode.l10n.t("Strikethrough"),
+			commentCode: vscode.l10n.t("Code"),
+			commentLink: vscode.l10n.t("Link"),
+			commentBullets: vscode.l10n.t("Bulleted List"),
+			commentNumbers: vscode.l10n.t("Numbered List"),
+			commentTasks: vscode.l10n.t("Task List"),
+			commentQuote: vscode.l10n.t("Quote"),
+			commentPanel: vscode.l10n.t("Info Panel"),
+			commentCodeBlock: vscode.l10n.t("Code Block"),
+			commentTable: vscode.l10n.t("Table"),
+			commentRule: vscode.l10n.t("Divider"),
+			commentMention: vscode.l10n.t("Mention Someone"),
+			commentAttach: vscode.l10n.t("Attach Files"),
+			commentFormatting: vscode.l10n.t("Formatting"),
+			commentDrop: vscode.l10n.t("Drop files to attach them"),
+			commentNoPeople: vscode.l10n.t("No one matches."),
+			commentSearching: vscode.l10n.t("Searching..."),
+			commentVisibleTo: vscode.l10n.t("Visible to"),
+			commentEveryone: vscode.l10n.t("Everyone who can see the ticket"),
+			commentRoles: vscode.l10n.t("Project roles"),
+			commentGroups: vscode.l10n.t("Groups"),
+			commentTooLarge: vscode.l10n.t("{0} is too large to attach from here. Attach it with the paperclip instead."),
+			commentShortcut: vscode.l10n.t("{0} ({1})"),
+			commentTipWrite: vscode.l10n.t("Write the comment in Markdown"),
+			commentTipBullets: vscode.l10n.t("Bulleted List: a - at the start of each line"),
+			commentTipNumbers: vscode.l10n.t("Numbered List: 1. 2. 3. at the start of each line"),
+			commentTipTasks: vscode.l10n.t("Task List: each line gets a checkbox in Jira"),
+			commentTipQuote: vscode.l10n.t("Quote: a > at the start of each line"),
+			commentTipPanel: vscode.l10n.t("Info Panel: a > [!NOTE] block, shown as a coloured panel in Jira. TIP, IMPORTANT, WARNING or CAUTION give the other colours."),
+			commentTipCodeBlock: vscode.l10n.t("Code Block: keeps spacing; add the language after the opening ``` to highlight it"),
+			commentTipTable: vscode.l10n.t("Table: a header row and a row to fill in"),
+			commentTipRule: vscode.l10n.t("Divider: a line across the comment"),
+			commentTipMention: vscode.l10n.t("Mention Someone: Jira notifies them. You can also type @"),
+			commentTipAttach: vscode.l10n.t("Attach Files: uploaded to the ticket and linked from the comment. You can also paste or drop them."),
+			commentTipVisibility: vscode.l10n.t("Who can see this comment in Jira"),
+			commentTipCancel: vscode.l10n.t("Close without posting. What you wrote is kept until Home closes."),
+			commentRemoveFile: vscode.l10n.t("Remove {0}"),
+			cancel: vscode.l10n.t("Cancel"),
 		};
 		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'home.js'));
 		// Preview's renderer, loaded at idle or on the first Preview so home.js stays small.
 		const draftMarkdown = webview.asWebviewUri(vscode.Uri.joinPath(media, 'draftMarkdown.js'));
+		// The comment box for Jira tickets, loaded the first time it opens.
+		const commentBox = webview.asWebviewUri(vscode.Uri.joinPath(media, 'commentBox.js'));
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
 		const menuStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'menu.css'));
 		const homeStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'home.css'));
@@ -532,7 +675,7 @@ export class AgentHome implements vscode.Disposable {
 		<section id="projects" class="home-section" hidden></section>
 		<section id="earlier" class="home-section"></section>
 	</main>
-	<script nonce="${nonce}" type="module" src="${script}" data-draft-markdown="${draftMarkdown}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
+	<script nonce="${nonce}" type="module" src="${script}" data-draft-markdown="${draftMarkdown}" data-comment-box="${commentBox}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
 </html>`;
 	}

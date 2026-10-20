@@ -24,6 +24,21 @@ export interface JiraUser {
 
 export type JiraStatusCategory = 'new' | 'indeterminate' | 'done';
 
+/** Who may see a comment: members of a project role, or of a group. */
+export interface JiraCommentVisibility {
+	readonly type: 'role' | 'group';
+	readonly value: string;
+}
+
+/** A file on a ticket. */
+export interface JiraAttachment {
+	readonly id: string;
+	readonly name: string;
+	/** Where Jira serves its content, to a signed-in browser. */
+	readonly url?: string;
+	readonly size?: number;
+}
+
 /** The tickets Home and the ticket pickers read: the user's open ones, wherever they are, and their open sprints' done ones, for the sprint's progress. */
 export const myTicketsJql = 'assignee = currentUser() AND (statusCategory != Done OR sprint in openSprints())';
 
@@ -221,12 +236,54 @@ export class JiraClient {
 	}
 
 	/** Adds a comment; `visibility` limits who can see it to a project role, such as Developers. */
-	async comment(key: string, text: string, visibility?: string): Promise<{ readonly id?: string }> {
+	comment(key: string, text: string, visibility?: string): Promise<{ readonly id?: string }> {
+		return this.commentDocument(key, textToAdf(text), visibility ? { type: 'role', value: visibility } : undefined);
+	}
+
+	/** Adds a comment already in Jira's rich text (ADF); `visibility` limits who can see it to a project role or a group. */
+	async commentDocument(key: string, body: unknown, visibility?: JiraCommentVisibility): Promise<{ readonly id?: string }> {
 		const made = await this.request<{ id?: string }>(`/rest/api/3/issue/${encodeURIComponent(key)}/comment`, {
 			method: 'POST',
-			body: { body: textToAdf(text), ...visibility ? { visibility: { type: 'role', value: visibility } } : {} },
+			body: { body, ...visibility ? { visibility } : {} },
 		});
 		return { ...made?.id ? { id: String(made.id) } : {} };
+	}
+
+	/** Uploads `files` to ticket `key`, as Jira's Attach does; Jira's own size limit applies. */
+	async attach(key: string, files: readonly { readonly name: string; readonly data: Uint8Array<ArrayBuffer>; readonly mimeType?: string }[]): Promise<JiraAttachment[]> {
+		const form = new FormData();
+		for (const file of files) {
+			form.append('file', new Blob([file.data], file.mimeType ? { type: file.mimeType } : {}), file.name);
+		}
+		const made = await this.request<{ id?: unknown; filename?: unknown; content?: unknown; size?: unknown }[]>(`/rest/api/3/issue/${encodeURIComponent(key)}/attachments`, {
+			method: 'POST',
+			// Jira refuses uploads without it, as a guard against forged forms.
+			headers: { 'X-Atlassian-Token': 'no-check' },
+			body: form,
+			timeoutMs: 120_000,
+		});
+		return (made ?? []).flatMap(a => a.id !== undefined && typeof a.filename === 'string' ? [{
+			id: String(a.id), name: a.filename, ...typeof a.content === 'string' ? { url: a.content } : {}, ...typeof a.size === 'number' ? { size: a.size } : {},
+		}] : []);
+	}
+
+	/** People who can see `key`, matching `query`, for @ in a comment: people only, not apps. */
+	async mentionableUsers(key: string, query: string): Promise<JiraUser[]> {
+		const users = await this.request<(JiraUser & { accountType?: string; active?: boolean })[]>(`/rest/api/3/user/viewissue/search?issueKey=${encodeURIComponent(key)}&query=${encodeURIComponent(query)}&maxResults=10`);
+		return (users ?? []).filter(u => u.accountType !== 'app' && u.active !== false).map(u => ({ accountId: u.accountId, displayName: u.displayName, ...u.emailAddress ? { emailAddress: u.emailAddress } : {} }));
+	}
+
+	/** Who a comment on `key` can be limited to, as Jira's comment box offers: the project's roles and the user's groups. */
+	async commentVisibilities(key: string): Promise<{ readonly roles: string[]; readonly groups: string[] }> {
+		const project = key.replace(/-\d+$/, '');
+		const [roles, me] = await Promise.all([
+			this.request<Record<string, string>>(`/rest/api/3/project/${encodeURIComponent(project)}/role`).catch(() => ({})),
+			this.request<{ groups?: { items?: { name?: string }[] } }>('/rest/api/3/myself?expand=groups').catch(() => undefined),
+		]);
+		return {
+			roles: Object.keys(roles ?? {}).filter(name => name !== 'atlassian-addons-project-access').sort(),
+			groups: (me?.groups?.items ?? []).flatMap(g => g.name ? [g.name] : []).sort(),
+		};
 	}
 
 	/**
