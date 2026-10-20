@@ -9,6 +9,8 @@
 
 import type { ChangeTotals } from '../acp/agentChanges';
 import type { Attachment } from '../acp/attachments';
+import type { JiraCommentVisibility } from '../acp/jira';
+import type { AdfDocument } from '../acp/jiraAdf';
 import type { ChangesTeamView, FromChangesTeam } from './teamFlowProtocol';
 
 /** Where an agent is at, for the title bar, Agent Home and the Changes panel. */
@@ -142,7 +144,9 @@ export type HomeCardId = 'unfinished' | 'startup' | 'agents' | 'tickets' | 'merg
 export type HomeAction =
 	| { readonly kind: 'command'; readonly command: string; readonly args?: readonly unknown[] }
 	| { readonly kind: 'link'; readonly url: string }
-	| { readonly kind: 'agent'; readonly id: string; readonly do: 'open' | 'stop' | 'review' | 'mergeBack' };
+	| { readonly kind: 'agent'; readonly id: string; readonly do: 'open' | 'stop' | 'review' | 'mergeBack' }
+	/** Opens Home's comment box for Jira ticket `key`; `visibility` is the project role the team's comments are limited to. */
+	| { readonly kind: 'comment'; readonly key: string; readonly title: string; readonly visibility?: string };
 
 export interface HomeButton {
 	readonly label: string;
@@ -164,10 +168,15 @@ export interface HomeTool {
 /** A tone for a short status word: a dot plus one coloured word. */
 export type HomeTone = 'ok' | 'warn' | 'error' | 'info' | 'muted';
 
+/** A ticket type's colour, after Jira's own: green stories, red bugs, blue tasks, purple epics. */
+export type HomeTypeColor = 'green' | 'red' | 'blue' | 'purple' | 'orange' | 'muted';
+
 export interface HomeRow {
 	readonly tool?: HomeToolId | 'gemini';
 	/** A codicon when there is no tool logo. */
 	readonly icon?: string;
+	/** The ticket's type before its key (Story, Bug, Task), as a codicon in the type's colour, named in its tooltip. */
+	readonly type?: { readonly name: string; readonly icon: string; readonly color: HomeTypeColor };
 	/** A monospace lead, such as ACME-415 or !322. */
 	readonly key?: string;
 	readonly title: string;
@@ -324,6 +333,52 @@ export interface HomeStrings {
 	readonly filterList: string;
 	readonly noMatches: string;
 	readonly close: string;
+	readonly commentTitle: string;
+	readonly commentPlaceholder: string;
+	readonly commentHelp: string;
+	readonly commentPost: string;
+	readonly commentPosting: string;
+	readonly commentPosted: string;
+	readonly commentBold: string;
+	readonly commentItalic: string;
+	readonly commentStrike: string;
+	readonly commentCode: string;
+	readonly commentLink: string;
+	readonly commentBullets: string;
+	readonly commentNumbers: string;
+	readonly commentTasks: string;
+	readonly commentQuote: string;
+	readonly commentPanel: string;
+	readonly commentCodeBlock: string;
+	readonly commentTable: string;
+	readonly commentRule: string;
+	readonly commentMention: string;
+	readonly commentAttach: string;
+	readonly commentFormatting: string;
+	readonly commentDrop: string;
+	readonly commentNoPeople: string;
+	readonly commentSearching: string;
+	readonly commentVisibleTo: string;
+	readonly commentEveryone: string;
+	readonly commentRoles: string;
+	readonly commentGroups: string;
+	readonly commentTooLarge: string;
+	readonly commentShortcut: string;
+	readonly commentTipWrite: string;
+	readonly commentTipBullets: string;
+	readonly commentTipNumbers: string;
+	readonly commentTipTasks: string;
+	readonly commentTipQuote: string;
+	readonly commentTipPanel: string;
+	readonly commentTipCodeBlock: string;
+	readonly commentTipTable: string;
+	readonly commentTipRule: string;
+	readonly commentTipMention: string;
+	readonly commentTipAttach: string;
+	readonly commentTipVisibility: string;
+	readonly commentTipCancel: string;
+	readonly commentRemoveFile: string;
+	readonly cancel: string;
 }
 
 export type ToHome =
@@ -338,7 +393,12 @@ export type ToHome =
 	 */
 	| { readonly type: 'startFailed'; readonly text: string }
 	/** Files the user picked to send with the task. */
-	| { readonly type: 'attached'; readonly attachments: readonly Attachment[] };
+	| { readonly type: 'attached'; readonly attachments: readonly Attachment[] }
+	/** The comment on `key` was posted, or why it wasn't, for the comment box. */
+	| { readonly type: 'commented'; readonly key: string; readonly error?: string }
+	| { readonly type: 'commentPeople'; readonly id: number; readonly people: readonly { readonly accountId: string; readonly name: string; readonly email?: string }[]; readonly error?: string }
+	| { readonly type: 'commentOptions'; readonly key: string; readonly roles: readonly string[]; readonly groups: readonly string[] }
+	| { readonly type: 'commentFiles'; readonly files: readonly HomeCommentFile[] };
 
 export type FromHome =
 	| { readonly type: 'ready' }
@@ -352,7 +412,34 @@ export type FromHome =
 	| { readonly type: 'layout'; readonly card: HomeCardId; readonly visible?: boolean; readonly move?: number }
 	| { readonly type: 'qualityBranch'; readonly branch: string }
 	/** Show All opened a card's list in its popup; no card when the popup closed. */
-	| { readonly type: 'showList'; readonly card?: HomeCardId };
+	| { readonly type: 'showList'; readonly card?: HomeCardId }
+	/**
+	 * Post a comment on Jira ticket `key` from Home's comment box: `document`,
+	 * the `markdown` as Jira rich text with the people picked with @, the
+	 * `files` (paths) and `pasted` files (base64) attached, and who may see it
+	 * (unset: the team's default).
+	 */
+	| { readonly type: 'comment'; readonly key: string; readonly markdown: string; readonly document: AdfDocument; readonly files: readonly string[]; readonly pasted: readonly HomePastedFile[]; readonly visibility?: JiraCommentVisibility | 'everyone' }
+	/** People who can see `key` matching `query`, for @ in the comment box; `id` pairs the answer with the question. */
+	| { readonly type: 'commentPeople'; readonly key: string; readonly query: string; readonly id: number }
+	/** The roles and groups a comment on `key` can be limited to. */
+	| { readonly type: 'commentOptions'; readonly key: string }
+	/** Files for the comment box: the dropped `uris`, or a file picker without them. */
+	| { readonly type: 'commentFiles'; readonly uris?: readonly string[] };
+
+/** A file pasted or dropped into the comment box without a path, sent with its contents. */
+export interface HomePastedFile {
+	readonly name: string;
+	/** Base64. */
+	readonly data: string;
+}
+
+/** A file on disk to attach to a comment. */
+export interface HomeCommentFile {
+	readonly path: string;
+	readonly name: string;
+	readonly size: number;
+}
 
 // --- Project Helpers
 

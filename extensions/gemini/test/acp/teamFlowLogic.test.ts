@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { checksFixPrompt, findingsFromSnyk, mrFixPrompt, parseReviewFindings, reviewSummary, targetChoices, ticketBranchName } from '../../src/acp/teamFlowLogic';
+import { checksFixPrompt, findingsFromSnyk, mrFixPrompt, parseReviewFindings, reviewPrompt, reviewSummary, targetChoices, ticketBranchName } from '../../src/acp/teamFlowLogic';
 
 describe('team flow logic', () => {
 	it('names a ticket\'s branch after its key and summary', () => {
@@ -28,6 +28,19 @@ describe('team flow logic', () => {
 		expect(reviewSummary(reply)).toBe('Looks mostly fine.');
 		expect(parseReviewFindings('No block here')).toBeUndefined();
 		expect(parseReviewFindings('```json\n[]\n```')).toEqual([]);
+	});
+
+	it('has a reviewer read the diff a few files at a time from the fetched target, never fetching itself', () => {
+		const mr = { iid: 706, title: 'Landing page', url: 'u', author: 'hh', sourceBranch: 'VCAN-1-landing', targetBranch: 'develop' };
+		const files = Array.from({ length: 62 }, (_, i) => `src/f${i}.ts`);
+		const prompt = reviewPrompt(mr, 'VCAN-1', 'upstream', files).split('\n');
+		expect(prompt.filter(line => /upstream\/develop|changed files|^- src\/f(0|59|60)\.ts$/.test(line))).toEqual([
+			'1. Read it with gitlab_get_mr. Its target, upstream/develop, is already fetched: don\'t run git fetch, which can\'t sign in from your shell.',
+			'2. Start from `git diff --stat upstream/develop...HEAD`, then read the diff a few files at a time with `git diff upstream/develop...HEAD -- <files>`. Never print the whole diff, or a log with patches, in one command: it can be bigger than you can read.',
+			'GitLab lists 62 changed files, the first 60 here:',
+			'- src/f0.ts',
+			'- src/f59.ts',
+		]);
 	});
 
 	it('writes fix prompts with the findings, logs and threads', () => {

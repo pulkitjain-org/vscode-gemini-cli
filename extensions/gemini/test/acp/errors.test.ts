@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { classifyAgentError, isModelTurnRefusal } from '../../src/acp/errors';
+import { classifyAgentError, isContextOverflow, isModelTurnRefusal } from '../../src/acp/errors';
 
 interface Fixture { kind: string; code?: number; message: string; details?: string }
 const fixtures: Record<string, Fixture[] | string> = JSON.parse(readFileSync(path.join(import.meta.dirname, '..', 'fixtures', 'agentErrors.json'), 'utf8'));
@@ -34,5 +34,16 @@ describe('isModelTurnRefusal', () => {
 		expect(isModelTurnRefusal('Requests ending with a model turn are not supported.')).toBe(true);
 		expect(isModelTurnRefusal('{"error":{"code":400,"message":"Please ensure that single turn requests end with a user role or the role field is empty."}}')).toBe(true);
 		expect(isModelTurnRefusal('Rate limit exceeded. Try again later.')).toBe(false);
+	});
+});
+
+describe('isContextOverflow', () => {
+	it('knows a history over the model\'s limit, in plain text and in the API JSON', () => {
+		expect([
+			'[{ "error": { "code": 400, "message": "The input token count exceeds the maximum number of tokens allowed 1048576.", "errors": [], "status": "INVALID_ARGUMENT" } }]',
+			'The input token count (1203411) exceeds the maximum number of tokens allowed (1048576).',
+			'Requests ending with a model turn are not supported.',
+			'Quota exceeded: maximum number of tokens per minute',
+		].map(isContextOverflow)).toEqual([true, true, false, false]);
 	});
 });

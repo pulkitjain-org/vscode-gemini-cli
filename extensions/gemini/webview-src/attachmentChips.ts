@@ -9,6 +9,7 @@
 import type { SharedPageView } from '../src/host/chatProtocol';
 import { type Attachment, attachmentLabel, classifyFile, maxImageBase64Length, supportedImageTypes } from '../src/acp/attachments';
 import { attachmentIcon, carriesFiles, fileUris, format, imageName, sameAttachment, toolChipParts } from './chatLogic';
+import { readFileBase64 } from './panelDom';
 import { toolLogo } from './toolLogos';
 import { button, el, icon, setLabel, setTip } from './dom';
 import { updateSendState } from './inputBox';
@@ -90,17 +91,9 @@ export function renderAttachments(): void {
 	updateSendState();
 }
 
-function readBase64(file: File): Promise<string> {
-	return new Promise((resolve, reject) => {
-		const reader = new FileReader();
-		reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''));
-		reader.onerror = () => reject(reader.error);
-		reader.readAsDataURL(file);
-	});
-}
 
 async function readImage(file: File): Promise<Attachment | undefined> {
-	const data = await readBase64(file);
+	const data = await readFileBase64(file);
 	if (data.length > maxImageBase64Length) {
 		setTransientNotice(format(strings.fileTooLarge, file.name || 'file'));
 		return undefined;
@@ -119,7 +112,7 @@ async function readDroppedFile(file: File): Promise<Attachment | undefined> {
 		case 'text':
 			return { kind: 'document', name, mimeType: 'text/plain', text: content.text };
 		case 'inline':
-			return { kind: 'document', name, mimeType: content.mimeType, data: await readBase64(file) };
+			return { kind: 'document', name, mimeType: content.mimeType, data: await readFileBase64(file) };
 		case 'tooLarge':
 			setTransientNotice(format(strings.fileTooLarge, name));
 			return undefined;

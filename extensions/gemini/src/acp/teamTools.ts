@@ -12,11 +12,14 @@
 // text that came from a ticket, a merge request, a job log or a design is
 // marked as such, so the model reads it as data.
 
+import { promises as fs } from 'node:fs';
+import * as path from 'node:path';
 import type { AuditCaller, AuditLog } from './auditLog';
 import type { McpContent, McpTool, McpToolResult } from './browserMcp';
 import { FigmaDesktop, parseFigmaLink } from './figma';
 import { describeMr, GitLabClient, parseMrRef, projectPathFromRemote } from './gitlab';
-import { JiraClient } from './jira';
+import { JiraClient, type JiraCommentVisibility } from './jira';
+import { appendAttachments, isAdfDocument } from './jiraAdf';
 import { describeSnyk, SnykCli } from './snyk';
 import { describeSonar, SonarClient, sonarProjectKeyIn, SonarTarget } from './sonar';
 import type { TeamDefaults } from './teamDefaults';
@@ -283,9 +286,54 @@ export interface TeamWriteResult {
  * never offered them.
  */
 const pageTools: readonly TeamTool[] = [
+	{ tool: 'jira', name: 'jira_rich_comment', write: true, description: 'Comments on a ticket from Home\'s comment box: Markdown as Jira rich text, with mentions, attached files and who may see it.', inputSchema: { type: 'object', properties: {} } },
 	{ tool: 'gitlab', name: 'gitlab_approve', write: true, description: 'Approves a merge request.', inputSchema: { type: 'object', properties: {} } },
 	{ tool: 'gitlab', name: 'gitlab_request_changes', write: true, description: 'Requests changes on a merge request with a summary note.', inputSchema: { type: 'object', properties: {} } },
 ];
+
+/** Files a page may attach, at most: well past Jira Cloud's own default limit, so Jira's message is the one people see. */
+const maxAttachmentBytes = 256 * 1024 * 1024;
+
+/**
+ * Home's comment box: `document`, the comment as Jira rich text the box made
+ * from its `markdown` (kept for the audit log), with the `files` (paths)
+ * uploaded to the ticket first and listed under it, and `visibility` a role
+ * or group, "everyone", or unset for the team's default.
+ */
+async function richComment(jira: JiraClient, key: string, args: Record<string, unknown>, defaults: TeamDefaults): Promise<TeamToolResult> {
+	const document = isAdfDocument(args.document) ? args.document : undefined;
+	const files = stringList(args.files);
+	if (!key || (!document?.content.length && !files.length)) {
+		return fail('Write a comment or attach a file.');
+	}
+	const loaded = await Promise.all(files.map(async file => {
+		const size = (await fs.stat(file)).size;
+		if (size > maxAttachmentBytes) {
+			throw new Error(`${path.basename(file)} is too large to attach.`);
+		}
+		return { name: path.basename(file), data: await fs.readFile(file) };
+	}));
+	const attached = loaded.length ? await jira.attach(key, loaded) : [];
+	const asked = args.visibility as { type?: unknown; value?: unknown } | string | undefined;
+	const visibility: JiraCommentVisibility | undefined = asked === 'everyone' ? undefined
+		: typeof asked === 'object' && (asked.type === 'role' || asked.type === 'group') && typeof asked.value === 'string' ? { type: asked.type, value: asked.value }
+			: defaults.jira?.commentVisibility ? { type: 'role', value: defaults.jira.commentVisibility } : undefined;
+	let made: { readonly id?: string };
+	try {
+		made = await jira.commentDocument(key, appendAttachments(document ?? { type: 'doc', version: 1, content: [] }, attached), visibility);
+	} catch (err) {
+		if (attached.length) {
+			throw new Error(`${err instanceof Error ? err.message : String(err)} The files were attached to ${key} before the comment failed.`);
+		}
+		throw err;
+	}
+	const remote = [made.id ? `comment ${made.id}` : '', ...attached.map(a => `attachment ${a.id}`)].filter(Boolean).join(' · ');
+	return ok(`Commented on ${key}${attached.length ? `, with ${attached.length === 1 ? '1 attached file' : `${attached.length} attached files`}` : ''}.`, remote || undefined);
+}
+
+function stringList(value: unknown): string[] {
+	return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && !!item) : [];
+}
 
 function fail(message: string): McpToolResult {
 	return { content: [{ type: 'text', text: message }], isError: true };
@@ -385,6 +433,10 @@ export function effectOf(name: string, args: Record<string, unknown>): string {
 	const key = refOf(args);
 	switch (name) {
 		case 'jira_comment': return `Comment on ${key}`;
+		case 'jira_rich_comment': {
+			const files = stringList(args.files).length;
+			return `Comment on ${key}${files ? `, with ${files === 1 ? '1 attached file' : `${files} attached files`}` : ''}`;
+		}
 		case 'jira_transition': return `${key} → ${arg(args, 'to')}${arg(args, 'comment') ? ', with a comment' : ''}`;
 		case 'jira_log_time': return `${arg(args, 'spent')} on ${key}`;
 		case 'jira_assign': return `${key} → ${arg(args, 'to')}`;
@@ -504,6 +556,9 @@ async function jiraCall(jira: JiraClient, via: Through, name: string, args: Reco
 			const id = await via(server => jiraVia.comment(server, key ?? '', arg(args, 'text') ?? '', defaults.jira?.commentVisibility), async () => (await jira.comment(key ?? '', arg(args, 'text') ?? '', defaults.jira?.commentVisibility)).id);
 			return ok(`Commented on ${key}.`, id ? `comment ${id}` : undefined);
 		}
+		case 'jira_rich_comment':
+			// Always the REST connector: mcp-atlassian has no mentions, no uploads and its own Markdown.
+			return richComment(jira, key ?? '', args, defaults);
 		case 'jira_log_time': {
 			// A page gives the day the work was done; an agent logs it as now.
 			const started = arg(args, 'started');

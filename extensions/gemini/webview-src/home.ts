@@ -14,6 +14,7 @@ import { attachmentIcon, sameAttachment } from './chatLogic';
 import { Menu, type MenuRow, type MenuSection } from './menu';
 import { modeIcon } from './modeIcon';
 import { button, el, format, icon, pageStrings } from './panelDom';
+import type { CommentBox } from './commentBox';
 import { letSpellingMenuThrough } from './spellCheck';
 import { createPreviewTabs, isPreviewShortcut } from './markdownPreview';
 import { toolLogo } from './toolLogos';
@@ -502,7 +503,7 @@ function renderListRows(): void {
 	let headed: HomeRow | undefined;
 	for (const row of list.rows) {
 		group = row.group ? row : group;
-		if (words && ![row.key, row.title, row.detail, row.pill?.text].some(text => text?.toLowerCase().includes(words))) {
+		if (words && ![row.type?.name, row.key, row.title, row.detail, row.pill?.text].some(text => text?.toLowerCase().includes(words))) {
 			continue;
 		}
 		if (group && group !== headed) {
@@ -533,11 +534,32 @@ listDialog.addEventListener('click', event => {
 });
 
 function run(action: HomeAction): void {
+	if (action.kind === 'comment') {
+		// Over the popup, if it is open: the list is still there after the comment.
+		void loadCommentBox().then(box => box.open(action));
+		return;
+	}
 	// An item opened from the popup leaves it open when it opens elsewhere (a link), and closes it when it opens here.
 	if (listDialog.open && action.kind !== 'link') {
 		listDialog.close();
 	}
 	vscode.postMessage({ type: 'action', action });
+}
+
+type CommentBoxModule = typeof import('./commentBox');
+const commentBoxUrl = document.querySelector<HTMLScriptElement>('script[data-comment-box]')?.dataset.commentBox;
+let commentBox: Promise<CommentBox> | undefined;
+
+/** The comment box for Jira tickets, a chunk of its own loaded the first time it opens. */
+function loadCommentBox(): Promise<CommentBox> {
+	// eslint-disable-next-line no-restricted-syntax
+	commentBox ??= (commentBoxUrl ? import(/* webpackIgnore: true */ commentBoxUrl) as Promise<CommentBoxModule> : Promise.reject(new Error('no comment box'))).then(module => module.createCommentBox({
+		strings,
+		post: message => vscode.postMessage(message),
+		renderMarkdown: text => loadDraftMarkdown().then(markdown => markdown.renderDraft(text, kind => calloutLabels[kind] ?? kind)),
+		toAdf: (text, mentions) => loadDraftMarkdown().then(markdown => markdown.markdownToAdf(text, mentions)),
+	}));
+	return commentBox;
 }
 
 function queryText(text: string): HTMLElement {
@@ -692,6 +714,8 @@ function renderDashboard(dash: HomeDashboard): void {
 	}
 
 	cardsSection.replaceChildren(...dash.cards.map(dashCard));
+	// An open Customize menu shows the switches and order just saved, so the next click reads the new state.
+	customizeMenu.render();
 	if (listDialog.open && dash.list && dash.list.card === listCard) {
 		renderList(dash.list);
 	}
@@ -740,6 +764,15 @@ function dashRow(row: HomeRow): HTMLElement {
 	} else if (row.icon) {
 		node.append(icon(row.icon));
 	}
+	if (row.type) {
+		const type = icon(row.type.icon);
+		type.classList.add('dash-type', row.type.color);
+		type.title = row.type.name;
+		type.removeAttribute('aria-hidden');
+		type.setAttribute('role', 'img');
+		type.setAttribute('aria-label', row.type.name);
+		node.append(type);
+	}
 	if (row.key) {
 		node.append(el('span', 'dash-key', row.key));
 	}
@@ -786,6 +819,8 @@ window.addEventListener('message', (event: MessageEvent<ToHome>) => {
 		attachments = [...attachments, ...message.attachments.filter(a => !attachments.some(b => sameAttachment(a, b)))];
 		renderAttachments();
 		prompt.focus();
+	} else if (message.type === 'commented' || message.type === 'commentPeople' || message.type === 'commentOptions' || message.type === 'commentFiles') {
+		void commentBox?.then(box => box.onMessage(message));
 	} else if (message.type === 'startFailed') {
 		prompt.value ||= message.text;
 		save();

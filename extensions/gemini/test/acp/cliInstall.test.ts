@@ -10,6 +10,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { checkIntegrity, cliCopiesToKeep, Fetch, fetchCliVersions, installCli, pruneCliVersions, readTar } from '../../src/acp/cliInstall';
+import { cliPatchMarker } from '../../src/acp/cliPatches';
 import { listManagedVersions, resolveCli } from '../../src/acp/cliResolution';
 
 let dir: string;
@@ -63,6 +64,15 @@ describe('installCli', () => {
 		expect(fs.readdirSync(path.join(managedDir, '0.62.0')).sort()).toEqual(['bundle', 'package.json']);
 		expect(fs.readFileSync(path.join(managedDir, '0.62.0', 'bundle', 'chunk.js'), 'utf8')).toBe('x');
 		expect(await resolveCli({ cliPath: undefined, version: undefined, managedDir })).toMatchObject({ source: 'managed', version: '0.62.0' });
+	});
+
+	it('caps tool output in ACP mode in the copy it installs', async () => {
+		const acp = fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'acp-run-tool.js'), 'utf8');
+		const tarball = packTarball({ 'package.json': '{}', 'bundle/gemini.js': '', 'bundle/gemini-ABC123.js': acp, 'bundle/chunk-ABC123.js': acp });
+		const managedDir = path.join(dir, 'managed');
+		await installCli({ ...fakeRegistry(tarball), managedDir, version: 'latest' });
+		const read = (name: string) => fs.readFileSync(path.join(managedDir, '0.62.0', 'bundle', name), 'utf8');
+		expect([read('gemini-ABC123.js').includes(cliPatchMarker), read('chunk-ABC123.js') === acp]).toEqual([true, true]);
 	});
 
 	it('does not download a version that is already installed', async () => {

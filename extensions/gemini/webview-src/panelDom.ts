@@ -4,7 +4,10 @@
  *--------------------------------------------------------------------------------------------*/
 
 // Element helpers for the page webviews (changes.ts, home.ts and settings.ts), which
-// don't load the chat view's modules.
+// don't load the chat view's modules, and two the chat's composer shares with
+// Home's comment box: applyTextEdit and readFileBase64. Nothing runs on import.
+
+import type { TextEdit } from './markdownEdit';
 
 export function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
 	const node = document.createElement(tag);
@@ -51,4 +54,26 @@ export function pageStrings<T>(): T {
 
 export function format(template: string, ...values: (string | number)[]): string {
 	return template.replace(/\{(\d+)\}/g, (match, i) => i < values.length ? String(values[Number(i)]) : match);
+}
+
+/** Applies `edit` to `input` as one step the user can undo. */
+export function applyTextEdit(input: HTMLTextAreaElement, edit: TextEdit): void {
+	input.setSelectionRange(edit.start, edit.end);
+	// insertText keeps the textarea's undo history; setRangeText would not.
+	const done = edit.text ? document.execCommand('insertText', false, edit.text) : edit.start === edit.end || document.execCommand('delete');
+	if (!done) {
+		input.setRangeText(edit.text, edit.start, edit.end);
+		input.dispatchEvent(new Event('input'));
+	}
+	input.setSelectionRange(edit.selectionStart, edit.selectionEnd);
+}
+
+/** A file's contents as base64, without the data URL's header. */
+export function readFileBase64(file: Blob): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''));
+		reader.onerror = () => reject(reader.error);
+		reader.readAsDataURL(file);
+	});
 }

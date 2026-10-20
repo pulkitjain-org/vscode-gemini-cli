@@ -35,7 +35,7 @@ import type { ModelTokens } from '../acp/turnUsage';
 import { UpdateBatcher } from '../acp/updateBatcher';
 import { isBlockedWebFetch } from '../acp/webFetchHint';
 import type { AgentClient } from '../acp/agentClient';
-import { AgentError, AgentErrorInfo, errorMessage, isModelTurnRefusal } from '../acp/errors';
+import { AgentError, AgentErrorInfo, errorMessage, isContextOverflow, isModelTurnRefusal } from '../acp/errors';
 import { readGitHead } from '../acp/gitHead';
 import { recordPilot } from '../acp/pilotLog';
 import { upgradeUrl } from '../acp/helpLinks';
@@ -670,6 +670,7 @@ export class ChatController implements vscode.Disposable {
 		this.setBusy(true);
 		const started = Date.now();
 		let ended = false;
+		let overflowed = false;
 		this.timing = { started, permissions: 0 };
 		try {
 			await this.service.ensureReady();
@@ -714,7 +715,11 @@ export class ChatController implements vscode.Disposable {
 			this.endTurn(Date.now() - started, usage);
 			ended = true;
 		} catch (err) {
-			this.transcript.addNotice(errorMessage(err), err instanceof TeamCommandCancelled ? 'info' : 'error');
+			if (isContextOverflow(errorMessage(err))) {
+				overflowed = true;
+			} else {
+				this.transcript.addNotice(errorMessage(err), err instanceof TeamCommandCancelled ? 'info' : 'error');
+			}
 		} finally {
 			if (!ended && this.checkpoints.running) {
 				// The turn failed after changing files; they can still be undone.
@@ -722,6 +727,41 @@ export class ChatController implements vscode.Disposable {
 			}
 			this.setBusy(false);
 			void this.postContext();
+		}
+		if (overflowed) {
+			await this.continueAfterOverflow(expand ? text : undefined);
+		}
+	}
+
+	/**
+	 * After Gemini refused a turn because the session's history is over the
+	 * model's context limit, which no later request in that session can get
+	 * past: moves the chat to a new session that is given the conversation so
+	 * far (prompts and replies, without the tool output that filled it), and
+	 * puts `prompt` back in the box. Nothing is sent again by itself, since the
+	 * turn may have changed files before it failed.
+	 */
+	private async continueAfterOverflow(prompt: string | undefined): Promise<void> {
+		const state = this.service.client.state;
+		const sessionId = state.kind === 'ready' ? state.savedSessionId : this.lastSessionId;
+		const conversation = sessionId ? await readCliConversation(this.service.client.cwd, sessionId).catch(() => undefined) : undefined;
+		this.setBusy(true);
+		try {
+			// Moving on on purpose: not the agent losing the session.
+			this.lastSessionId = undefined;
+			await this.service.client.newSession();
+		} catch (err) {
+			this.transcript.addNotice(vscode.l10n.t("Gemini's context for this chat is full, and a new session could not start: {0} Start a new chat to carry on.", errorMessage(err)), 'error');
+			return;
+		} finally {
+			this.setBusy(false);
+		}
+		this.carriedConversation = conversation?.length ? carriedConversationNote('this chat', conversation) : undefined;
+		this.transcript.addNotice(this.carriedConversation
+			? vscode.l10n.t("Gemini's context for this chat filled up, most likely with a large tool output, so Gemini could not answer. The chat continues in a new session that is given the conversation so far, without the tool outputs. Send your message again to carry on.")
+			: vscode.l10n.t("Gemini's context for this chat filled up, most likely with a large tool output, so Gemini could not answer. The chat continues in a new session that starts without the earlier conversation. Send your message again to carry on."), 'error');
+		if (prompt) {
+			this.post({ type: 'draft', text: prompt });
 		}
 	}
 

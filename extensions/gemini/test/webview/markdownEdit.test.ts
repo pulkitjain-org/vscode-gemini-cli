@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { continueList, formatShortcut, toggleWrap, type TextEdit } from '../../webview-src/markdownEdit';
+import { continueList, formatShortcut, insertBlock, insertLink, mentionAt, toggleLinePrefix, toggleWrap, type TextEdit } from '../../webview-src/markdownEdit';
 
 /** The text and selection after an edit, with the selection marked by [ and ]. */
 function apply(value: string, edit: TextEdit | undefined): string {
@@ -75,5 +75,51 @@ describe('formatShortcut', () => {
 		expect(formatShortcut(key('KeyE', { metaKey: true, altKey: true }), true)).toBeUndefined();
 		expect(formatShortcut(key('KeyI', { metaKey: true }), true)).toBeUndefined();
 		expect(formatShortcut(key('KeyB', { metaKey: true, shiftKey: true }), true)).toBeUndefined();
+	});
+});
+
+describe('the comment box\'s toolbar', () => {
+	it('makes the selected lines a list, a numbered list, tasks or a quote, and takes it off again', () => {
+		const value = 'Intro\nOpen the cart\nPay';
+		expect([
+			apply(value, toggleLinePrefix(value, 6, value.length, 'bullet')),
+			apply(value, toggleLinePrefix(value, 6, value.length, 'number')),
+			apply(value, toggleLinePrefix(value, 8, 8, 'task')),
+			apply('- a\n- b', toggleLinePrefix('- a\n- b', 0, 7, 'bullet')),
+			apply('- a\n- b', toggleLinePrefix('- a\n- b', 0, 7, 'quote')),
+		]).toEqual([
+			'Intro\n[- Open the cart\n- Pay]',
+			'Intro\n[1. Open the cart\n2. Pay]',
+			'Intro\n- [ ] Open the cart[]\nPay',
+			'[a\nb]',
+			'[> a\n> b]',
+		]);
+	});
+
+	it('links the selection with the address to type selected, and adds blocks on lines of their own', () => {
+		expect([
+			apply('see docs', insertLink('see docs', 4, 8)),
+			apply('see ', insertLink('see ', 4, 4)),
+			apply('Steps: run it', insertBlock('Steps: run it', 7, 13, 'code')),
+			apply('Note', insertBlock('Note', 4, 4, 'callout')),
+			apply('', insertBlock('', 0, 0, 'table')),
+		]).toEqual([
+			'see [docs]([url])',
+			'see [[text]](url)',
+			'Steps: \n\n```\n[run it]\n```',
+			'Note\n\n> [!NOTE]\n> []',
+			'| [Column] | Column |\n| --- | --- |\n|  |  |',
+		]);
+	});
+
+	it('finds the @mention being typed, up to a first and a last name, but not in an email address', () => {
+		expect(['Thanks @', 'Thanks @ann', 'cc (@ann le', 'mail ann@acme.com', 'Thanks @ann lee and', '@x\nnext'].map(text => mentionAt(text, text.length))).toEqual([
+			{ start: 7, query: '' },
+			{ start: 7, query: 'ann' },
+			{ start: 4, query: 'ann le' },
+			undefined,
+			undefined,
+			undefined,
+		]);
 	});
 });

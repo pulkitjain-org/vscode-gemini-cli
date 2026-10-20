@@ -1030,6 +1030,9 @@ button.option-button .codicon-chevron-down {
 .composer-preview > :last-child { margin-bottom: 0; }
 .composer-preview :is(p, ul, ol) { margin: 0.5em 0; }
 .composer-preview :is(ul, ol) { padding-left: 1.4em; }
+.composer-preview li.task-item { list-style: none; }
+.composer-preview li.task-item > input,
+.composer-preview li.task-item > p > input { margin: 0 6px 0 -1.3em; vertical-align: -1px; }
 .composer-preview :is(h1, h2, h3, h4) { margin: 0.9em 0 0.4em; line-height: 1.3; }
 .composer-preview h1 { font-size: 1.3em; }
 .composer-preview h2 { font-size: 1.18em; }

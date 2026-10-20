@@ -1974,9 +1974,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 
 	/** Opens the agent's changes in the multi-diff editor, starting it to read them if needed. */
 	async openChanges(id: string): Promise<void> {
-		if (!this.live.has(id)) {
-			await this.open(id);
-		}
+		// The agent's tab in front first: its changes go in its own side group, which shows only with it, so never beside Home.
+		await this.open(id);
 		const source = this.changesSource(id);
 		if (source) {
 			await this.changesView.openAll(source);

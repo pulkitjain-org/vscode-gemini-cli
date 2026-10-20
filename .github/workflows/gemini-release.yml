@@ -379,6 +379,7 @@ jobs:
       - name: Open the benchmark reminder
         # The benchmark runs on a developer's Mac under their own seat, since hosted runners cannot sign in to Code Assist
         # (gemini/bench/README.md); this issue is the reminder to run it on release day and add the results by pull request.
+        # The repository keeps Issues off, so then the step only leaves a warning on the run instead of failing a published release.
         if: steps.version.outputs.publish == 'true' && !contains(steps.version.outputs.version, '-')
         env:
           GH_TOKEN: ${{ github.token }}
@@ -386,6 +387,10 @@ jobs:
         run: |
           set -euo pipefail
           TITLE="Benchmark $VERSION"
+          if [ "$(gh repo view "$GITHUB_REPOSITORY" --json hasIssuesEnabled --jq '.hasIssuesEnabled')" != "true" ]; then
+            echo "::warning title=Benchmark reminder::Issues are off for this repository, so no \"$TITLE\" issue was opened. Run the benchmark on $VERSION (gemini/bench/README.md) and add the results by pull request."
+            exit 0
+          fi
           if gh issue list --repo "$GITHUB_REPOSITORY" --state all --search "in:title \"$TITLE\"" --json title --jq '.[].title' | grep -qx "$TITLE"; then
             echo "The issue \"$TITLE\" is already there."
             exit 0

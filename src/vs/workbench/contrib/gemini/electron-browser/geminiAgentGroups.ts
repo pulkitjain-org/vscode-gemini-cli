@@ -31,6 +31,8 @@ import { WebviewInput } from '../../webviewPanel/browser/webviewEditorInput.js';
 /** The workbench's names for the Gemini extension's webview tabs: agents, Agent Home and its pages. */
 const geminiViewTypePrefix = 'mainThreadWebview-gemini.';
 const agentViewType = 'mainThreadWebview-gemini.agent';
+/** A team flow's page (Review !706, Log Time): it opens beside its agent, in that agent's side group. */
+const flowViewType = 'mainThreadWebview-gemini.teamFlow';
 /** Agent tab icons end in #gemini-agent=<id> (the extension's agentsView.ts). */
 const agentFragment = 'gemini-agent=';
 const groupsKey = 'gemini.agentGroups';
@@ -49,9 +51,14 @@ function isGeminiTab(editor: EditorInput): boolean {
 	return editor instanceof WebviewInput && editor.viewType.startsWith(geminiViewTypePrefix);
 }
 
+/** A tab that makes its group the agents' group: an agent, Agent Home or one of its pages, but not a flow's page, which may sit in an agent's side group. */
+function isAgentsTab(editor: EditorInput): boolean {
+	return editor instanceof WebviewInput && editor.viewType.startsWith(geminiViewTypePrefix) && editor.viewType !== flowViewType;
+}
+
 /** Whether a group holds agents (or Agent Home), so its tabs are the title bar's in Agents mode. */
 export function holdsAgents(model: IReadonlyEditorGroupModel): boolean {
-	return model.getEditors(EditorsOrder.SEQUENTIAL).some(isGeminiTab);
+	return model.getEditors(EditorsOrder.SEQUENTIAL).some(isAgentsTab);
 }
 
 /**
@@ -63,7 +70,7 @@ export function agentsGroupOf(part: IEditorPart): IEditorGroup | undefined {
 	if (!active) {
 		return undefined;
 	}
-	return active.editors.some(isGeminiTab) ? active : part.getGroups(GroupsOrder.GRID_APPEARANCE).find(group => group.editors.some(isGeminiTab));
+	return active.editors.some(isAgentsTab) ? active : part.getGroups(GroupsOrder.GRID_APPEARANCE).find(group => group.editors.some(isAgentsTab));
 }
 
 /** The group visibility calls the fork adds to EditorPart (editorPart.ts). */
@@ -157,7 +164,7 @@ class GeminiAgentGroups extends Disposable implements IWorkbenchContribution {
 		}
 		const part = this.part as unknown as Partial<GroupVisibility>;
 		for (const [id, group] of [...this.groups]) {
-			if (this.part.getGroup(group)?.editors.some(isGeminiTab)) {
+			if (this.part.getGroup(group)?.editors.some(isAgentsTab)) {
 				// An agent or Agent Home opened in this group (it was the active
 				// one), so it holds agents now, not one agent's files: hiding it
 				// would leave the editor area blank with a stale webview over it.

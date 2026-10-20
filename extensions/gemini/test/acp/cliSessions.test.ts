@@ -156,6 +156,24 @@ describe('listCliSessions', () => {
 		expect(carriedConversationNote('Cart', conversation!)).toContain('User: Fix the cart\n\nYou: Done.');
 	});
 
+	it('carries a session whose tool output overflowed the context without that output', async () => {
+		home = mkdtempSync(path.join(tmpdir(), 'cli-home-'));
+		const work = path.join(home, 'shop');
+		writeFileSync(path.join(home, 'projects.json'), JSON.stringify({ projects: { [work]: 'shop' } }));
+		const chats = path.join(home, 'tmp', 'shop', 'chats');
+		mkdirSync(chats, { recursive: true });
+		// As gemini-cli 0.64 saved the review that failed: the diff is in the tool call's result and in the response.
+		const diff = `Output: ${'+ a changed line\n'.repeat(250_000)}`;
+		writeFileSync(path.join(chats, 'session-2026-10-20T05-35-abcdef12.jsonl'), [
+			line({ sessionId: 'abcdef12-0000', projectHash: 'h', startTime: '2026-10-20T05:35:00.000Z', kind: 'main' }),
+			line({ id: 'u1', type: 'user', content: [{ text: 'Review merge request !706' }] }),
+			line({ id: 'g1', type: 'gemini', content: '', toolCalls: [{ id: 't1', name: 'run_shell_command', result: [{ functionResponse: { name: 'run_shell_command', response: { output: diff } } }] }] }),
+			line({ id: 'u2', type: 'user', content: [{ functionResponse: { name: 'run_shell_command', response: { output: diff } } }] }),
+		].join('\n'));
+		const note = carriedConversationNote('this chat', (await readCliConversation(work, 'abcdef12-0000', home))!);
+		expect({ prompt: note.includes('User: Review merge request !706'), diff: note.includes('a changed line'), short: note.length < 1000 }).toEqual({ prompt: true, diff: false, short: true });
+	});
+
 	it('rewinds a session to before a prompt with the record /rewind writes, counting repeats from the end', async () => {
 		home = mkdtempSync(path.join(tmpdir(), 'cli-home-'));
 		const work = path.join(home, 'shop');

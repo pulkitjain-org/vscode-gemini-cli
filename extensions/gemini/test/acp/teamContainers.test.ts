@@ -19,6 +19,7 @@ import { SnykCli } from '../../src/acp/snyk';
 import { analyzeFiles, containerSpec, findDocker, FolderChildren, pinnedReference, teamImages } from '../../src/acp/teamContainers';
 import type { TeamDefaults } from '../../src/acp/teamDefaults';
 import { callTeamTool, TeamToolContext, teamWrite } from '../../src/acp/teamTools';
+import { markdownToAdf } from '../../webview-src/commentAdf';
 import type { FakeMcpScript } from '../fake-mcp/fakeMcpServer';
 
 const fakeServer = path.join(import.meta.dirname, '..', 'fake-mcp', 'fakeMcpServer.ts');
@@ -164,6 +165,64 @@ describe('the team\'s servers as children', () => {
 				{ name: 'jira_transition_issue', arguments: { issue_key: 'ACME-412', transition_id: '31' } },
 				{ name: 'jira_add_comment', arguments: { issue_key: 'ACME-412', body: 'Ready.', visibility: '{"type":"role","value":"Developers"}' } },
 			],
+		});
+	});
+
+	it('posts a comment from Home with the team\'s visibility, as an agent\'s jira_comment does', async () => {
+		const { server, calls } = await child('jira', { tools: { jira_add_comment: { json: { id: '77105' } } } });
+		const ctx = await context({ jira: server, defaults: { jira: { commentVisibility: 'Developers' } } });
+		const result = await teamWrite(ctx, { caller: 'ui', folder: '/work/acme-checkout' }, 'jira_comment', { key: 'ACME-412', text: 'Checked on staging.\n\nLooks good.' });
+		expect({ result, calls: await calls() }).toEqual({
+			result: { ok: true, text: 'Commented on ACME-412.', remote: 'comment 77105' },
+			calls: [{ name: 'jira_add_comment', arguments: { issue_key: 'ACME-412', body: 'Checked on staging.\n\nLooks good.', visibility: '{"type":"role","value":"Developers"}' } }],
+		});
+	});
+
+	it('posts a rich comment from Home through Jira\'s REST API, never the container: files first, then the comment with mentions', async () => {
+		const requests: { method?: string; url?: string; token?: string; body: string }[] = [];
+		const server = http.createServer((req, res) => {
+			const chunks: Buffer[] = [];
+			req.on('data', chunk => chunks.push(chunk));
+			req.on('end', () => {
+				requests.push({ method: req.method, url: req.url, token: req.headers['x-atlassian-token'] as string | undefined, body: Buffer.concat(chunks).toString('utf8') });
+				res.writeHead(200, { 'Content-Type': 'application/json' });
+				res.end(JSON.stringify(req.url?.endsWith('/attachments') ? [{ id: 10001, filename: 'cart.log', content: 'https://jira.example/rest/api/3/attachment/content/10001' }] : { id: '5151' }));
+			});
+		});
+		await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+		servers.push(server);
+		const { server: docker, calls } = await child('jira', { tools: { jira_add_comment: { json: { id: '1' } } } });
+		const folder = await tempDir();
+		const file = path.join(folder, 'cart.log');
+		await fs.writeFile(file, 'total: 12.30');
+		const ctx = await context({ jira: docker, jiraSite: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, defaults: { jira: { commentVisibility: 'Developers' } } });
+		const result = await teamWrite(ctx, { caller: 'ui', folder }, 'jira_rich_comment', {
+			key: 'ACME-412', markdown: '**Fails** for @Ann Lee', files: [file], visibility: { type: 'group', value: 'qa' },
+			// As the comment box makes it (webview-src/commentAdf.ts).
+			document: markdownToAdf('**Fails** for @Ann Lee', [{ accountId: 'a2', name: 'Ann Lee' }]),
+		});
+		const [upload, comment] = requests;
+		expect({
+			result,
+			docker: await calls(),
+			upload: { method: upload.method, url: upload.url, token: upload.token, file: /filename="cart\.log"[\s\S]*total: 12\.30/.test(upload.body) },
+			comment: { method: comment.method, url: comment.url, body: JSON.parse(comment.body) },
+		}).toEqual({
+			result: { ok: true, text: 'Commented on ACME-412, with 1 attached file.', remote: 'comment 5151 · attachment 10001' },
+			docker: [],
+			upload: { method: 'POST', url: '/rest/api/3/issue/ACME-412/attachments', token: 'no-check', file: true },
+			comment: {
+				method: 'POST', url: '/rest/api/3/issue/ACME-412/comment', body: {
+					body: {
+						type: 'doc', version: 1, content: [
+							{ type: 'paragraph', content: [{ type: 'text', text: 'Fails', marks: [{ type: 'strong' }] }, { type: 'text', text: ' for ' }, { type: 'mention', attrs: { id: 'a2', text: '@Ann Lee' } }] },
+							{ type: 'paragraph', content: [{ type: 'text', text: 'Attached: ' }, { type: 'text', text: 'cart.log', marks: [{ type: 'link', attrs: { href: 'https://jira.example/rest/api/3/attachment/content/10001' } }] }] },
+						],
+					},
+					// The group picked in the box, over the team's default role.
+					visibility: { type: 'group', value: 'qa' },
+				},
+			},
 		});
 	});
 

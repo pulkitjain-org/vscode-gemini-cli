@@ -1,0 +1,53 @@
+#!/bin/sh
+# Refuses to push commits that aren't the repository owner's or that carry an
+# AI tool's trailer, and new branches not named task/..., feature/... or
+# bugfix/... (AGENTS.md, "Commits, branches and pull requests"). Then runs Git
+# LFS's own pre-push step, which this replaces. Installed by
+# gemini/scripts/git-hooks/install.sh.
+
+owner='er.pulkit@gmail.com'
+zero='0000000000000000000000000000000000000000'
+refs=$(cat)
+failed=0
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+	[ -z "$local_sha" ] && continue
+	case "$local_sha" in "$zero") continue ;; esac
+	# A new branch starts with task/, feature/ or bugfix/; branches GitHub already has keep their names.
+	if [ "$remote_sha" = "$zero" ]; then
+		case "$remote_ref" in
+			refs/heads/task/?* | refs/heads/feature/?* | refs/heads/bugfix/?* | refs/tags/*) ;;
+			*)
+				echo >&2 "pre-push: new branch ${remote_ref#refs/heads/} must start with task/, feature/ or bugfix/. Rename it (git branch -m feature/<what-it-is>) and push again."
+				failed=1
+				;;
+		esac
+	fi
+	# Only commits the remote doesn't have yet: what is already there stays as it is.
+	case "$remote_sha" in
+		"$zero") range="$local_sha --not --remotes" ;;
+		*) range="$remote_sha..$local_sha" ;;
+	esac
+	for commit in $(git rev-list $range); do
+		emails=$(git log -1 --format='%ae %ce' "$commit")
+		for address in $emails; do
+			if [ "$address" != "$owner" ]; then
+				echo >&2 "pre-push: $(git log -1 --format='%h %s' "$commit") is by $address, not $owner. Fix it with: git commit --amend --reset-author (or a rebase for older commits)."
+				failed=1
+				break
+			fi
+		done
+		if git log -1 --format='%B' "$commit" | grep -qiE '^[[:space:]]*(co-authored-by:.*(claude|anthropic|copilot|codex|openai)|claude-session:|.*generated (with|by) .*(claude|copilot|codex|chatgpt))'; then
+			echo >&2 "pre-push: $(git log -1 --format='%h %s' "$commit") carries an AI tool's trailer or footer. Reword it without it."
+			failed=1
+		fi
+	done
+done <<REFS
+$refs
+REFS
+
+[ "$failed" = 0 ] || exit 1
+
+if command -v git-lfs >/dev/null 2>&1; then
+	printf '%s\n' "$refs" | git lfs pre-push "$@"
+fi

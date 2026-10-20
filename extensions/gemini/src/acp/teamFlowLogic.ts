@@ -131,14 +131,31 @@ export interface ReviewFinding {
 	readonly comment: string;
 }
 
-/** The prompt for reviewing merge request `mr`, checked out in the agent's worktree. */
-export function reviewPrompt(mr: { readonly iid: number; readonly title: string; readonly url: string; readonly author: string; readonly sourceBranch: string; readonly targetBranch: string }, ticket?: string): string {
+/** Changed files a review prompt names; GitLab's list and `git diff --stat` give the rest. */
+const maxReviewFiles = 60;
+
+/**
+ * The prompt for reviewing merge request `mr`, checked out in the agent's
+ * worktree with `remote`'s target branch fetched for it. The agent's shell
+ * can't sign in to fetch, and a whole diff can outgrow the model's context
+ * (the CLI caps no tool output in ACP mode), so it reads the diff a few files
+ * at a time from GitLab's list of `files`.
+ */
+export function reviewPrompt(mr: { readonly iid: number; readonly title: string; readonly url: string; readonly author: string; readonly sourceBranch: string; readonly targetBranch: string }, ticket?: string, remote = 'origin', files: readonly string[] = []): string {
+	const range = `${remote}/${mr.targetBranch}...HEAD`;
+	const shown = files.slice(0, maxReviewFiles);
 	return [
 		`Review merge request !${mr.iid} "${mr.title}" by ${mr.author} (${mr.url}). It is checked out in your folder on ${mr.sourceBranch}; it merges into ${mr.targetBranch}.`,
 		'',
-		`1. Read it with gitlab_get_mr, and the diff against the target with \`git diff origin/${mr.targetBranch}...HEAD\`.`,
-		ticket ? `2. Read the linked Jira ticket ${ticket} with jira_get_issue and check the change does what it asks.` : '2. If it links a Jira ticket, read it with jira_get_issue and check the change does what it asks.',
-		'3. Look for bugs, missing tests, security and performance problems. Don\'t edit any file, and don\'t post anything to GitLab: I choose what to post.',
+		`1. Read it with gitlab_get_mr. Its target, ${remote}/${mr.targetBranch}, is already fetched: don't run git fetch, which can't sign in from your shell.`,
+		`2. Start from \`git diff --stat ${range}\`, then read the diff a few files at a time with \`git diff ${range} -- <files>\`. Never print the whole diff, or a log with patches, in one command: it can be bigger than you can read.`,
+		ticket ? `3. Read the linked Jira ticket ${ticket} with jira_get_issue and check the change does what it asks.` : '3. If it links a Jira ticket, read it with jira_get_issue and check the change does what it asks.',
+		'4. Look for bugs, missing tests, security and performance problems. Don\'t edit any file, and don\'t post anything to GitLab: I choose what to post.',
+		...shown.length ? [
+			'',
+			`GitLab lists ${files.length === 1 ? '1 changed file' : `${files.length} changed files`}${files.length > shown.length ? `, the first ${shown.length} here` : ''}:`,
+			...shown.map(file => `- ${file}`),
+		] : [],
 		'',
 		'Start with two or three sentences on what the change does and whether it is ready. Then end your reply with the findings as a JSON block, worst first, like this:',
 		'```json',
