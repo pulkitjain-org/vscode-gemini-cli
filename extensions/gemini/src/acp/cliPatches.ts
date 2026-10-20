@@ -29,15 +29,19 @@ export const cliPatchMarker = '/* GeminiCode patch: acp-output-cap v1 */';
 const patchedFile = /^gemini-[A-Za-z0-9]+\.js$/;
 
 /** Where the ACP session runs a tool the model called (`runTool`), as esbuild writes it. */
-const toolCall = `      const toolResult = await invocation.execute({
-        abortSignal
-      });
-      const content = toToolCallContent(toolResult);`;
+const toolCall = [
+	'      const toolResult = await invocation.execute({',
+	'        abortSignal',
+	'      });',
+	'      const content = toToolCallContent(toolResult);',
+].join('\n');
 
-const cappedToolCall = `      const toolResult = __geminiCodeCapOutput(await invocation.execute({
-        abortSignal
-      }), this.context.config, fc.name, callId, this.id);
-      const content = toToolCallContent(toolResult);`;
+const cappedToolCall = [
+	'      const toolResult = __geminiCodeCapOutput(await invocation.execute({',
+	'        abortSignal',
+	'      }), this.context.config, fc.name, callId, this.id);',
+	'      const content = toToolCallContent(toolResult);',
+].join('\n');
 
 /**
  * The cap, as the CLI's own `truncateOutputIfNeeded` and
@@ -49,67 +53,67 @@ const cappedToolCall = `      const toolResult = __geminiCodeCapOutput(await inv
 const capFunction = `
 ${cliPatchMarker}
 function __geminiCodeCapOutput(result, config, toolName, callId, sessionId) {
-  try {
-    const limit = typeof config?.getTruncateToolOutputThreshold === "function" ? config.getTruncateToolOutputThreshold() : 4e4;
-    if (!result || !(limit > 0)) {
-      return result;
-    }
-    const safe = (value) => String(value).replace(/[^a-zA-Z0-9_.-]/g, "_").toLowerCase();
-    const cap = (text, index) => {
-      if (typeof text !== "string" || text.length <= limit) {
-        return text;
-      }
-      let saved;
-      try {
-        const fs = require("node:fs");
-        const path = require("node:path");
-        let dir = path.join(config.storage.getProjectTempDir(), "tool-outputs");
-        if (sessionId) {
-          dir = path.join(dir, "session-" + safe(sessionId));
-        }
-        fs.mkdirSync(dir, { recursive: true });
-        saved = path.join(dir, safe(toolName) + "_" + safe(callId) + (index ? "_" + index : "") + ".txt");
-        fs.writeFileSync(saved, text);
-      } catch {
-        saved = undefined;
-      }
-      const headChars = Math.floor(limit * 0.2);
-      const tailChars = limit - headChars;
-      const omitted = text.length - headChars - tailChars;
-      return "Output too large. Showing first " + headChars.toLocaleString() + " and last " + tailChars.toLocaleString() + " characters. " + (saved ? "For full output see: " + saved : "The full output could not be saved.") + "\\n" + text.slice(0, headChars) + "\\n\\n... [" + omitted.toLocaleString() + " characters omitted] ...\\n\\n" + text.slice(-tailChars);
-    };
-    const content = result.llmContent;
-    if (typeof content === "string") {
-      const capped = cap(content, 0);
-      return capped === content ? result : { ...result, llmContent: capped };
-    }
-    if (Array.isArray(content)) {
-      let changed = false;
-      const parts = content.map((part, index) => {
-        if (typeof part === "string") {
-          const capped = cap(part, index);
-          changed ||= capped !== part;
-          return capped;
-        }
-        if (part && typeof part.text === "string") {
-          const capped = cap(part.text, index);
-          if (capped !== part.text) {
-            changed = true;
-            return { ...part, text: capped };
-          }
-        }
-        return part;
-      });
-      return changed ? { ...result, llmContent: parts } : result;
-    }
-    if (content && typeof content.text === "string") {
-      const capped = cap(content.text, 0);
-      return capped === content.text ? result : { ...result, llmContent: { ...content, text: capped } };
-    }
-    return result;
-  } catch {
-    return result;
-  }
+	try {
+		const limit = typeof config?.getTruncateToolOutputThreshold === "function" ? config.getTruncateToolOutputThreshold() : 4e4;
+		if (!result || !(limit > 0)) {
+			return result;
+		}
+		const safe = (value) => String(value).replace(/[^a-zA-Z0-9_.-]/g, "_").toLowerCase();
+		const cap = (text, index) => {
+			if (typeof text !== "string" || text.length <= limit) {
+				return text;
+			}
+			let saved;
+			try {
+				const fs = require("node:fs");
+				const path = require("node:path");
+				let dir = path.join(config.storage.getProjectTempDir(), "tool-outputs");
+				if (sessionId) {
+					dir = path.join(dir, "session-" + safe(sessionId));
+				}
+				fs.mkdirSync(dir, { recursive: true });
+				saved = path.join(dir, safe(toolName) + "_" + safe(callId) + (index ? "_" + index : "") + ".txt");
+				fs.writeFileSync(saved, text);
+			} catch {
+				saved = undefined;
+			}
+			const headChars = Math.floor(limit * 0.2);
+			const tailChars = limit - headChars;
+			const omitted = text.length - headChars - tailChars;
+			return "Output too large. Showing first " + headChars.toLocaleString() + " and last " + tailChars.toLocaleString() + " characters. " + (saved ? "For full output see: " + saved : "The full output could not be saved.") + "\\n" + text.slice(0, headChars) + "\\n\\n... [" + omitted.toLocaleString() + " characters omitted] ...\\n\\n" + text.slice(-tailChars);
+		};
+		const content = result.llmContent;
+		if (typeof content === "string") {
+			const capped = cap(content, 0);
+			return capped === content ? result : { ...result, llmContent: capped };
+		}
+		if (Array.isArray(content)) {
+			let changed = false;
+			const parts = content.map((part, index) => {
+				if (typeof part === "string") {
+					const capped = cap(part, index);
+					changed ||= capped !== part;
+					return capped;
+				}
+				if (part && typeof part.text === "string") {
+					const capped = cap(part.text, index);
+					if (capped !== part.text) {
+						changed = true;
+						return { ...part, text: capped };
+					}
+				}
+				return part;
+			});
+			return changed ? { ...result, llmContent: parts } : result;
+		}
+		if (content && typeof content.text === "string") {
+			const capped = cap(content.text, 0);
+			return capped === content.text ? result : { ...result, llmContent: { ...content, text: capped } };
+		}
+		return result;
+	} catch {
+		return result;
+	}
 }
 `;
 
