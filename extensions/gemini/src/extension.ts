@@ -20,7 +20,7 @@ import { CliManager } from './host/cliManager';
 import { DiffPreview } from './host/diffPreview';
 import { errorMessage } from './acp/errors';
 import { PromptEnhancer } from './acp/promptEnhancer';
-import { configSection, getWorkspaceCwd, loadProductInfo, setStorageDirs } from './host/configuration';
+import { configSection, getWorkspaceCwd, loadProductInfo, productInfo, setStorageDirs } from './host/configuration';
 import { initModelList, initModelPreference } from './host/modelPreference';
 import { SetupWalkthrough, walkthroughId } from './host/setupWalkthrough';
 import { GeminiStatusBar } from './host/statusBar';
@@ -148,7 +148,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		agentsView,
 		changesPanel,
 		agentsView.onDidFocus(source => changesPanel.show(source)),
-		new AgentHome(context.extensionUri, agentsView, () => warmup.startSoon(), { state: context.globalState, version: String(context.extension.packageJSON.version ?? ''), cli: () => service.status.agentVersion, startup: () => ({ activatedAt, agent: agentPhase(service.status.phase), ...readyAt ? { readyAt } : {} }) }),
+		new AgentHome(context.extensionUri, agentsView, () => warmup.startSoon(), { state: context.globalState, version: productInfo.version ?? String(context.extension.packageJSON.version ?? ''), cli: () => service.status.agentVersion, startup: () => ({ activatedAt, agent: agentPhase(service.status.phase), ...readyAt ? { readyAt } : {} }) }),
 		new SettingsPage(context.extensionUri, service),
 		quickEdits,
 		statusBar,
