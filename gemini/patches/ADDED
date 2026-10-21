@@ -1,4 +1,5 @@
 resources/darwin/Assets.car
+resources/darwin/dmg-background.tiff
 src/vs/platform/window/common/geminiContextMenu.ts
 src/vs/platform/windows/electron-main/geminiContextMenu.ts
 src/vs/platform/windows/electron-main/geminiSpellCheck.ts

@@ -5,6 +5,7 @@
 #                                 gemini-release.yml copies it into the app and sets CFBundleIconName.
 #   resources/darwin/code.icns    the classic icon, rendered per size from icon-macos.svg, for
 #                                 CFBundleIconFile, the .dmg window and anything that reads .icns.
+#   resources/darwin/dmg-background.tiff   the .dmg window's background, from dmg-background.svg.
 #   src/vs/workbench/browser/media/code-icon.svg   the workbench's copy of icon.svg.
 # Needs macOS 26 with Xcode 26 (actool, swift). Run from the repository root.
 set -euo pipefail
@@ -34,6 +35,13 @@ iconutil -c icns "$SET" -o "$ROOT/resources/darwin/code.icns"
 
 cp "$BRANDING/icon.svg" "$ROOT/src/vs/workbench/browser/media/code-icon.svg"
 
+# The .dmg window's background: one TIFF holding the 1x and 2x renders, so Finder picks the sharp one on a Retina screen.
+echo "Rendering $BRANDING/dmg-background.svg"
+swift "$ROOT/gemini/scripts/render-svg.swift" "$BRANDING/dmg-background.svg" "$OUT/dmg.png" 480 320
+swift "$ROOT/gemini/scripts/render-svg.swift" "$BRANDING/dmg-background.svg" "$OUT/dmg@2x.png" 960 640
+sips -s dpiWidth 144 -s dpiHeight 144 "$OUT/dmg@2x.png" > /dev/null
+tiffutil -cathidpicheck "$OUT/dmg.png" "$OUT/dmg@2x.png" -out "$ROOT/resources/darwin/dmg-background.tiff" 2> /dev/null
+
 # Previews of every macOS appearance, for review in a pull request (Icon Composer's own renderer).
 ICTOOL="$(dirname "$(xcode-select -p)")/Applications/Icon Composer.app/Contents/Executables/ictool"
 if [[ -x "$ICTOOL" ]]; then
@@ -46,4 +54,4 @@ if [[ -x "$ICTOOL" ]]; then
 else
 	echo "Icon Composer's ictool not found; previews not rendered" >&2
 fi
-echo "Wrote resources/darwin/Assets.car, resources/darwin/code.icns, src/vs/workbench/browser/media/code-icon.svg and $BRANDING/preview/"
+echo "Wrote resources/darwin/Assets.car, resources/darwin/code.icns, resources/darwin/dmg-background.tiff, src/vs/workbench/browser/media/code-icon.svg and $BRANDING/preview/"
