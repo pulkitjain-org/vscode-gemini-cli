@@ -424,13 +424,13 @@ function mergeRequestsCard(input: DashboardInput, title: string): ListedCard | u
 	const { stale, note } = sourceState(input, 'gitlab', reviews?.error ? reviews : mine);
 	const mineGroup = vscode.l10n.t("Mine");
 	const forMe = (reviews?.data ?? []).map((mr): HomeRow => ({
-			key: `!${mr.iid}`, title: mr.title, detail: mr.author, open: { kind: 'link', url: mr.url },
+			key: `!${mr.iid}`, repo: mr.project, title: mr.title, detail: mr.author, open: { kind: 'link', url: mr.url },
 			...mr.draft ? { pill: { text: vscode.l10n.t("draft"), tone: 'muted' as const } } : {},
 			button: { label: vscode.l10n.t("Review"), action: command('gemini.team.reviewMergeRequest', mr.project, mr.iid) },
 	}));
 	const mineRows = (mine?.data ?? []).map((mr, i): HomeRow => ({
 			...i === 0 ? { group: mineGroup, groupQuery: 'author_id=me, state=opened' } : {},
-			key: `!${mr.iid}`, title: mr.title, open: { kind: 'link', url: mr.url },
+			key: `!${mr.iid}`, repo: mr.project, title: mr.title, open: { kind: 'link', url: mr.url },
 			...isReadyToMerge(mr) ? { pill: { text: vscode.l10n.t("ready to merge"), tone: 'ok' as const }, button: { label: vscode.l10n.t("Merge..."), action: command('gemini.team.mergeMergeRequest', mr.project, mr.iid), primary: true } }
 				: { ...pipelinePill(mr) ? { pill: pipelinePill(mr) } : {}, ...mr.pipeline?.status === 'failed' ? { button: { label: vscode.l10n.t("Fix"), action: command('gemini.team.fixMergeRequest', mr.project, mr.iid) } } : {} },
 	}));

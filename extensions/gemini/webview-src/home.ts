@@ -503,14 +503,14 @@ function renderListRows(): void {
 	let headed: HomeRow | undefined;
 	for (const row of list.rows) {
 		group = row.group ? row : group;
-		if (words && ![row.type?.name, row.key, row.title, row.detail, row.pill?.text].some(text => text?.toLowerCase().includes(words))) {
+		if (words && ![row.type?.name, row.key, row.repo, row.title, row.detail, row.pill?.text].some(text => text?.toLowerCase().includes(words))) {
 			continue;
 		}
 		if (group && group !== headed) {
 			nodes.push(groupHeading(group));
 			headed = group;
 		}
-		nodes.push(dashRow(row));
+		nodes.push(dashRow(row, true));
 	}
 	const shown = nodes.filter(node => node.classList.contains('dash-row')).length;
 	listRows.replaceChildren(...nodes.length ? nodes : [el('p', 'dash-note muted', strings.noMatches)]);
@@ -757,7 +757,8 @@ function dashCard(card: HomeCard): HTMLElement {
 	return node;
 }
 
-function dashRow(row: HomeRow): HTMLElement {
+/** A card's row; `inList` for Show All's popup, which has room for the repository. */
+function dashRow(row: HomeRow, inList = false): HTMLElement {
 	const node = el('div', 'dash-row');
 	if (row.tool) {
 		node.append(logo(row.tool, 14));
@@ -775,6 +776,11 @@ function dashRow(row: HomeRow): HTMLElement {
 	}
 	if (row.key) {
 		node.append(el('span', 'dash-key', row.key));
+	}
+	if (row.repo && inList) {
+		const repo = el('span', 'dash-repo', row.repo.slice(row.repo.lastIndexOf('/') + 1));
+		repo.title = row.repo;
+		node.append(repo);
 	}
 	const name = row.open ? button('dash-row-title', row.title, () => run(row.open!)) : el('span', 'dash-row-title', row.title);
 	name.title = row.title;
