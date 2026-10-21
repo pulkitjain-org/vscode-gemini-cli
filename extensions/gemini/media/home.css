@@ -399,6 +399,21 @@ button.dash-quick-action:hover {
 	color: var(--gemini-muted);
 }
 
+/* The repository of a merge request, in Show All's popup. */
+.dash-repo {
+	flex: none;
+	max-width: 20%;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	padding: 0 6px;
+	border-radius: 4px;
+	font-size: 11px;
+	line-height: 18px;
+	color: var(--gemini-muted);
+	background: color-mix(in srgb, var(--gemini-muted) 14%, transparent);
+}
+
 .dash-row-title {
 	flex: 1;
 	min-width: 0;

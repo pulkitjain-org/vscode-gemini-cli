@@ -179,6 +179,8 @@ export interface HomeRow {
 	readonly type?: { readonly name: string; readonly icon: string; readonly color: HomeTypeColor };
 	/** A monospace lead, such as ACME-415 or !322. */
 	readonly key?: string;
+	/** The merge request's repository, `group/repo`: its last part shows after the key in Show All's popup. */
+	readonly repo?: string;
 	readonly title: string;
 	readonly detail?: string;
 	readonly pill?: { readonly text: string; readonly tone: HomeTone };
