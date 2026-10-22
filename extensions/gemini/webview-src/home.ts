@@ -69,6 +69,8 @@ const indexButton = document.getElementById('index') as HTMLButtonElement;
 indexButton.querySelector('span')!.textContent = strings.index;
 indexButton.title = strings.indexHint;
 const indexState = document.getElementById('index-state') as HTMLButtonElement;
+// A database drum: its outline, and a fill the state's class shows full, half or not at all. Static markup, never page data.
+indexState.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path class="fill-full" d="M3 4v8.5c0 1.1 2.2 2 5 2s5-.9 5-2V4c0 1.1-2.2 2-5 2S3 5.1 3 4z"/><path class="fill-half" d="M3 8.5v4c0 1.1 2.2 2 5 2s5-.9 5-2v-4c0 1.1-2.2 2-5 2s-5-.9-5-2z"/><ellipse cx="8" cy="4" rx="5" ry="2"/><path d="M3 4v8.5c0 1.1 2.2 2 5 2s5-.9 5-2V4"/></svg>';
 for (const button of [indexButton, indexState]) {
 	button.addEventListener('click', () => vscode.postMessage({ type: 'openIndex' }));
 }
@@ -205,9 +207,13 @@ function pickFolder(next: string): void {
 function updateControls(): void {
 	const current = view?.workspaces.find(w => w.folder === folder);
 	workspaceLabel.textContent = current?.name ?? strings.addFolder;
-	indexState.hidden = !current?.index;
-	indexState.textContent = current?.index ?? '';
-	indexState.title = strings.indexHint;
+	const index = current?.index;
+	indexState.hidden = !index;
+	if (index) {
+		indexState.className = `index-state ${index.state}`;
+		indexState.title = index.label;
+		indexState.setAttribute('aria-label', index.label);
+	}
 	const label = current ? `${strings.workspace}: ${current.description}/${current.name}` : strings.workspace;
 	workspaceButton.title = label;
 	workspaceButton.setAttribute('aria-label', label);

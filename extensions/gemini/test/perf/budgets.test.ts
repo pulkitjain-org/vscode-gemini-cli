@@ -40,8 +40,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// The team flows: Open Merge Request, Move Ticket and Log Time, Review and Checks.
 	'media/teamFlow.js': 32_000,
 	'media/settings.js': 16_000,
-	// The Index page: workspaces' indexes, attached docs and the Add Docs popup, with the shared select menu and tooltips.
-	'media/indexPage.js': 18_000,
+	// The Index page: workspaces' indexes, attached docs, the Add Docs and Files Left Out popups, with the shared select menu and tooltips.
+	'media/indexPage.js': 22_000,
 	'media/highlight.js': 180_000,
 	// Loaded only when a reply has math.
 	'media/katex.js': 290_000,

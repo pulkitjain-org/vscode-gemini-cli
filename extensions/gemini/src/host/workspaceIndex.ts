@@ -12,6 +12,7 @@ import { appRipgrep } from '../acp/index/ripgrepPath';
 import { IndexClient } from '../acp/index/indexClient';
 import type { IndexerMethod, IndexerParams, IndexerResult, IndexSettings, IndexStatus } from '../acp/index/indexerProtocol';
 import { AttachedDocs, IndexMcpServer } from '../acp/indexMcp';
+import { hasIndex } from '../acp/index/indexPaths';
 import { configSection } from './configuration';
 import { IndexWatchers } from './indexWatchers';
 
@@ -60,7 +61,7 @@ export class WorkspaceIndex implements vscode.Disposable {
 				this.applyEnabled();
 			} else if (e.affectsConfiguration(`${configSection}.index`)) {
 				for (const folder of this.folders.keys()) {
-					this.client?.notify('ensure', { root: folder, settings: indexSettings(), build: false });
+					this.client?.notify('ensure', { root: folder, settings: indexSettings(folder), build: false });
 				}
 			}
 		}));
@@ -80,6 +81,18 @@ export class WorkspaceIndex implements vscode.Disposable {
 	/** The last state heard for `folder`'s index. */
 	status(folder: string): IndexStatus | undefined {
 		return this.statuses.get(folder);
+	}
+
+	/**
+	 * `folder`'s index as Home shows it: from what this window heard, else
+	 * whether an index file exists, so nothing starts the indexer.
+	 */
+	async summary(folder: string): Promise<'ready' | 'building' | 'paused' | 'failed' | 'none'> {
+		const state = this.statuses.get(folder)?.state;
+		if (state && state.kind !== 'none') {
+			return state.kind;
+		}
+		return !state && await hasIndex(this.baseDir, folder) ? 'ready' : 'none';
 	}
 
 	/** Asks the process for these folders' states, building none. */
@@ -151,9 +164,9 @@ export class WorkspaceIndex implements vscode.Disposable {
 		this.folders.set(folder, { seedFrom: seedFrom && seedFrom !== folder ? seedFrom : undefined });
 		const build = buildOn() !== 'manual';
 		if (seedFrom && seedFrom !== folder && build && !known) {
-			this.client.notify('seed', { from: seedFrom, to: folder, settings: indexSettings() });
+			this.client.notify('seed', { from: seedFrom, to: folder, settings: indexSettings(folder) });
 		} else {
-			this.client.notify('ensure', { root: folder, settings: indexSettings(), build });
+			this.client.notify('ensure', { root: folder, settings: indexSettings(folder), build });
 		}
 		void this.refreshOrientation(folder);
 	}
@@ -161,13 +174,13 @@ export class WorkspaceIndex implements vscode.Disposable {
 	/** Builds `folder`'s index now, whatever `gemini.index.buildOn` says. */
 	build(folder: string): Promise<IndexStatus | undefined> {
 		this.folders.set(folder, this.folders.get(folder) ?? {});
-		return this.client?.request('ensure', { root: folder, settings: indexSettings(), build: true }) ?? Promise.resolve(undefined);
+		return this.client?.request('ensure', { root: folder, settings: indexSettings(folder), build: true }) ?? Promise.resolve(undefined);
 	}
 
 	rebuild(folder: string): Promise<IndexStatus | undefined> {
 		this.folders.set(folder, this.folders.get(folder) ?? {});
 		this.orientations.delete(folder);
-		return this.client?.request('rebuild', { root: folder, settings: indexSettings() }) ?? Promise.resolve(undefined);
+		return this.client?.request('rebuild', { root: folder, settings: indexSettings(folder) }) ?? Promise.resolve(undefined);
 	}
 
 	pause(folder: string): Promise<IndexStatus | undefined> {
@@ -185,7 +198,7 @@ export class WorkspaceIndex implements vscode.Disposable {
 		await this.client?.request('remove', { root: folder });
 	}
 
-	skipped(folder: string): Promise<{ readonly path: string; readonly reason: string }[]> {
+	skipped(folder: string): Promise<{ readonly path: string; readonly reason: string; readonly includable: boolean }[]> {
 		return this.client?.request('skipped', { root: folder }) ?? Promise.resolve([]);
 	}
 
@@ -308,7 +321,7 @@ export class WorkspaceIndex implements vscode.Disposable {
 		client.onDidStart(() => {
 			// A new process knows no folders; the ones this window keeps current are opened again.
 			for (const folder of this.folders.keys()) {
-				client.notify('ensure', { root: folder, settings: indexSettings(), build: false });
+				client.notify('ensure', { root: folder, settings: indexSettings(folder), build: false });
 			}
 		});
 		const server = this.server = new IndexMcpServer({
@@ -366,12 +379,17 @@ function buildOn(): BuildOn {
 	return value === 'workspaceOpen' || value === 'manual' ? value : 'agentStart';
 }
 
-export function indexSettings(): IndexSettings {
-	const config = vscode.workspace.getConfiguration(configSection);
-	const exclude = config.get<unknown>('index.exclude', []);
+/** The index settings for `folder`: `exclude` and `include` can differ per workspace folder. */
+export function indexSettings(folder: string): IndexSettings {
+	const config = vscode.workspace.getConfiguration(configSection, vscode.Uri.file(folder));
+	const patterns = (key: string) => {
+		const value = config.get<unknown>(key, []);
+		return Array.isArray(value) ? value.filter((p): p is string => typeof p === 'string' && !!p.trim()) : [];
+	};
 	const maxKb = config.get<number>('index.maxFileSizeKb', 1024);
 	return {
-		exclude: Array.isArray(exclude) ? exclude.filter((p): p is string => typeof p === 'string' && !!p.trim()) : [],
+		exclude: patterns('index.exclude'),
+		include: patterns('index.include'),
 		maxFileBytes: Math.max(16, Math.min(Number.isFinite(maxKb) ? maxKb : 1024, 16 * 1024)) * 1024,
 	};
 }

@@ -22,11 +22,11 @@ import { findGitDir } from '../gitHead';
 import { GitIgnoreChecker } from '../gitIgnore';
 import { cochangePairs } from './cochange';
 import { fallbackRepoMap, ripgrepDefinitions, ripgrepSearch } from './fallbackSearch';
-import { IgnoreRules } from './ignore';
 import { IndexLock } from './indexLock';
+import { workspaceId } from './indexPaths';
 import { IndexStore, isCorruption, moveAside } from './indexStore';
 import type { Answer, IndexSettings, IndexState, IndexStatus } from './indexerProtocol';
-import { contentSkipReason, InventoryFile, pathSkipReason, readIgnoreFile, takeInventory } from './inventory';
+import { canInclude, InventoryFile, SkipRules, takeInventory } from './inventory';
 import { languageName } from './languages';
 import { parseFile } from './parse';
 import { filesNamed, findSymbol, hasFile, relatedFiles, RelatedResult, search, SearchQuery, SearchResult, SymbolResult } from './query';
@@ -72,7 +72,7 @@ interface Workspace {
 	running: Promise<void> | undefined;
 	opening: Promise<void> | undefined;
 	known: Known | undefined;
-	rules: IgnoreRules | undefined;
+	rules: SkipRules | undefined;
 	lastStatusAt: number;
 	skipped: { path: string; reason: string }[];
 }
@@ -118,11 +118,7 @@ class Known implements KnownFiles {
 	}
 }
 
-/** The id of a folder's index: a hash of its real path, so two spellings of one folder share it. */
-export async function workspaceId(root: string): Promise<string> {
-	const real = await fs.realpath(root).catch(() => root);
-	return createHash('sha256').update(real).digest('hex').slice(0, 24);
-}
+export { workspaceId };
 
 async function exists(file: string): Promise<boolean> {
 	return fs.access(file).then(() => true, () => false);
@@ -281,13 +277,13 @@ export class Indexer {
 		}));
 	}
 
-	async skipped({ root }: { root: string }): Promise<{ path: string; reason: string }[]> {
+	async skipped({ root }: { root: string }): Promise<{ path: string; reason: string; includable: boolean }[]> {
 		const workspace = await this.workspaces.get(root);
 		if (!workspace?.store) {
 			return [];
 		}
 		const fromContent = workspace.store.statement('SELECT path, skipped AS reason FROM files WHERE skipped IS NOT NULL ORDER BY path LIMIT 1000').all() as { path: string; reason: string }[];
-		return [...workspace.skipped, ...fromContent].sort((a, b) => a.path < b.path ? -1 : 1);
+		return [...workspace.skipped, ...fromContent].sort((a, b) => a.path < b.path ? -1 : 1).map(file => ({ ...file, includable: canInclude(file.path, file.reason) }));
 	}
 
 	/** Every indexed file, for the @-mention list of a folder outside the window. */
@@ -552,8 +548,8 @@ export class Indexer {
 		}
 	}
 
-	private async rules(workspace: Workspace): Promise<IgnoreRules> {
-		return workspace.rules ??= new IgnoreRules([...await readIgnoreFile(workspace.root), ...workspace.settings.exclude]);
+	private async rules(workspace: Workspace): Promise<SkipRules> {
+		return workspace.rules ??= await SkipRules.forFolder(workspace.root, workspace.settings);
 	}
 
 	private async runReconcile(workspace: Workspace): Promise<void> {
@@ -565,9 +561,11 @@ export class Indexer {
 		workspace.skipped = inventory.skipped.slice(0, maxSkippedKept).map(s => ({ path: s.path, reason: s.reason }));
 		const states = store.fileStates();
 		const listed = new Set(inventory.files.map(f => f.path));
+		const rules = await this.rules(workspace);
+		// A file left out for what it held is read again once the user includes it.
 		const changed = inventory.files.filter(file => {
 			const state = states.get(file.path);
-			return !state || state.size !== file.size || state.mtime !== file.mtime;
+			return !state || state.size !== file.size || state.mtime !== file.mtime || (!!state.skipped && rules.forced(file.path));
 		});
 		const removed = [...states.keys()].filter(p => !listed.has(p));
 		const known = workspace.known = new Known(listed);
@@ -580,7 +578,7 @@ export class Indexer {
 			}
 			const batch = changed.slice(at, at + readBatch);
 			const contents = await Promise.all(batch.map(file => fs.readFile(path.join(workspace.root, file.path)).catch(() => undefined)));
-			await this.writeSliced(store, batch.map((file, i) => ({ file, content: contents[i] })), states, known);
+			await this.writeSliced(store, batch.map((file, i) => ({ file, content: contents[i] })), states, known, rules);
 			done += batch.length;
 			this.setState(workspace, { kind: 'building', done, total: changed.length, first }, false);
 		}
@@ -626,7 +624,7 @@ export class Indexer {
 				workspace.needsReconcile = true;
 				return;
 			}
-			if (!stat || pathSkipReason(relative, rules) || stat.size > workspace.settings.maxFileBytes || await this.ignored.isIgnored(path.join(workspace.root, relative), workspace.root)) {
+			if (!stat || rules.pathReason(relative) || rules.sizeReason(relative, stat.size) || await this.ignored.isIgnored(path.join(workspace.root, relative), workspace.root)) {
 				if (states.has(relative)) {
 					toRemove.push(relative);
 				}
@@ -648,7 +646,7 @@ export class Indexer {
 				known.delete(relative);
 			}
 		});
-		await this.writeSliced(store, toWrite, states, known);
+		await this.writeSliced(store, toWrite, states, known, rules);
 		if (toWrite.length || toRemove.length) {
 			this.resolveImports(store, known);
 			this.setState(workspace, await readyState(store), true);
@@ -656,7 +654,7 @@ export class Indexer {
 	}
 
 	/** Writes files in transactions of about `sliceMs` each, yielding between them. */
-	private async writeSliced(store: IndexStore, items: readonly { file: InventoryFile; content: Buffer | undefined }[], states: ReadonlyMap<string, { hash: string }>, known: Known): Promise<void> {
+	private async writeSliced(store: IndexStore, items: readonly { file: InventoryFile; content: Buffer | undefined }[], states: ReadonlyMap<string, { hash: string; skipped?: string }>, known: Known, rules: SkipRules): Promise<void> {
 		let at = 0;
 		while (at < items.length) {
 			const started = this.now();
@@ -672,12 +670,13 @@ export class Indexer {
 					}
 					known.add(file.path);
 					const hash = createHash('sha1').update(content).digest('hex');
-					if (states.get(file.path)?.hash === hash) {
+					const state = states.get(file.path);
+					if (state?.hash === hash && !(state.skipped && rules.forced(file.path))) {
 						store.touchFile(file.path, file.size, file.mtime);
 						continue;
 					}
 					const text = content.toString('utf8');
-					const skipped = contentSkipReason(text);
+					const skipped = rules.contentReason(file.path, text);
 					const record = { path: file.path, lang: languageName(file.path), size: file.size, mtime: file.mtime, hash, skipped };
 					if (skipped) {
 						store.writeFile(record, undefined);

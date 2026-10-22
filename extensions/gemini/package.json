@@ -1040,6 +1040,15 @@
           "scope": "resource",
           "markdownDescription": "%configuration.index.exclude%"
         },
+        "gemini.index.include": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "resource",
+          "markdownDescription": "%configuration.index.include%"
+        },
         "gemini.index.maxFileSizeKb": {
           "type": "number",
           "default": 1024,

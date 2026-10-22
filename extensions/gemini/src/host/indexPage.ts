@@ -144,7 +144,16 @@ export class IndexPage implements vscode.Disposable {
 				break;
 			}
 			case 'skipped':
-				await this.showSkipped(message.folder);
+				await this.postSkipped(message.folder);
+				return;
+			case 'include':
+				await this.include(message.folder, message.paths);
+				return;
+			case 'openIgnoreFile':
+				await this.openIgnoreFile(message.folder);
+				return;
+			case 'editInclude':
+				await vscode.commands.executeCommand('workbench.action.openSettings', `${configSection}.index.include`);
 				return;
 			case 'trust':
 				await this.service.trustFolder(message.folder).catch(err => vscode.window.showErrorMessage(vscode.l10n.t("The folder could not be trusted: {0}", err instanceof Error ? err.message : String(err))));
@@ -238,17 +247,35 @@ export class IndexPage implements vscode.Disposable {
 		};
 	}
 
-	private async showSkipped(folder: string): Promise<void> {
-		const skipped = await this.index.skipped(folder);
-		if (!skipped.length) {
-			void vscode.window.showInformationMessage(vscode.l10n.t("No files in {0} are left out of its index.", path.basename(folder)));
-			return;
+	/** Sends the files left out of `folder`'s index to the page's popup. */
+	private async postSkipped(folder: string): Promise<void> {
+		const files = await this.index.skipped(folder).catch(() => []);
+		void this.panel?.webview.postMessage({ type: 'skippedList', folder, name: path.basename(folder) || folder, files } satisfies ToIndexPage);
+	}
+
+	/**
+	 * Adds `paths` to `gemini.index.include`, for the workspace folder when it
+	 * is one in this window, else for the user; the index then reads them.
+	 */
+	private async include(folder: string, paths: readonly string[]): Promise<void> {
+		const workspaceFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(folder));
+		const config = vscode.workspace.getConfiguration(configSection, vscode.Uri.file(folder));
+		const target = workspaceFolder?.uri.fsPath === folder ? vscode.ConfigurationTarget.WorkspaceFolder : vscode.ConfigurationTarget.Global;
+		const inspected = config.inspect<string[]>('index.include');
+		const current = (target === vscode.ConfigurationTarget.WorkspaceFolder ? inspected?.workspaceFolderValue : inspected?.globalValue) ?? [];
+		// An exact path, so a name with glob characters matches only itself.
+		const patterns = paths.map(file => `/${file.replace(/[*?[\]\\!#]/g, '\\$&')}`);
+		await config.update('index.include', [...new Set([...current, ...patterns])], target);
+	}
+
+	private async openIgnoreFile(folder: string): Promise<void> {
+		const file = vscode.Uri.file(path.join(folder, '.geminiignore'));
+		try {
+			await vscode.workspace.fs.stat(file);
+		} catch {
+			await vscode.workspace.fs.writeFile(file, new TextEncoder().encode(vscode.l10n.t("# Files Gemini agents and GeminiCode's index leave out, in .gitignore syntax.\n")));
 		}
-		await vscode.window.showQuickPick(skipped.slice(0, 2_000).map(file => ({ label: file.path, description: file.reason })), {
-			title: vscode.l10n.t("Files Left Out of the Index of {0}", path.basename(folder)),
-			placeHolder: vscode.l10n.t("Change what is left out with .geminiignore or gemini.index.exclude"),
-			matchOnDescription: true,
-		});
+		await vscode.window.showTextDocument(file, { viewColumn: vscode.ViewColumn.Active });
 	}
 
 	private async pickFolder(): Promise<string | undefined> {
@@ -322,6 +349,21 @@ export class IndexPage implements vscode.Disposable {
 			cancel: vscode.l10n.t("Cancel"),
 			addAndFetch: vscode.l10n.t("Add and Fetch"),
 			close: vscode.l10n.t("Close"),
+			skippedTitle: vscode.l10n.t("Files Left Out of {0}", '{0}'),
+			skippedCount: vscode.l10n.t("{0} files", '{0}'),
+			skippedHint: vscode.l10n.t("Index Anyway adds a file to gemini.index.include, and it is indexed in a moment. Secret files and binary content are never indexed."),
+			skippedFilter: vscode.l10n.t("Filter by path or reason"),
+			skippedNone: vscode.l10n.t("Nothing is left out of this index."),
+			skippedLoading: vscode.l10n.t("Reading the index\u2026"),
+			skippedGroup: vscode.l10n.t("{0} files", '{0}'),
+			indexAnyway: vscode.l10n.t("Index Anyway"),
+			indexAllAnyway: vscode.l10n.t("Index All Anyway"),
+			included: vscode.l10n.t("Included"),
+			neverIndexed: vscode.l10n.t("never indexed"),
+			skippedMore: vscode.l10n.t("{0} more; filter to find them", '{0}'),
+			tooManyForAll: vscode.l10n.t("Too many to include one by one; add a pattern to gemini.index.include instead."),
+			openIgnoreFile: vscode.l10n.t("Open .geminiignore"),
+			editInclude: vscode.l10n.t("Edit Included Files"),
 		};
 		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'indexPage.js'));
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));

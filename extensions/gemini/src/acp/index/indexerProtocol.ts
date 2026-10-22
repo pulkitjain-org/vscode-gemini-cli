@@ -11,6 +11,8 @@ import type { RelatedResult, SearchQuery, SearchResult, SymbolResult } from './q
 
 export interface IndexSettings {
 	readonly exclude: readonly string[];
+	/** Indexed whatever the rules say, except secrets and binary content. */
+	readonly include?: readonly string[];
 	readonly maxFileBytes: number;
 }
 
@@ -45,7 +47,7 @@ export interface IndexerMethods {
 	remove(params: { readonly root: string }): void;
 	seed(params: { readonly from: string; readonly to: string; readonly settings: IndexSettings }): IndexStatus;
 	status(params: { readonly roots: readonly string[] }): IndexStatus[];
-	skipped(params: { readonly root: string }): { readonly path: string; readonly reason: string }[];
+	skipped(params: { readonly root: string }): { readonly path: string; readonly reason: string; readonly includable: boolean }[];
 	files(params: { readonly root: string }): string[] | undefined;
 	search(params: { readonly root: string; readonly query: SearchQuery }): Answer<SearchResult>;
 	findSymbol(params: { readonly root: string; readonly name: string; readonly kind?: string; readonly references?: boolean }): Answer<SymbolResult>;

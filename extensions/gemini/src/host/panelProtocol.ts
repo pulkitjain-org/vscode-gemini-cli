@@ -118,8 +118,14 @@ export interface HomeWorkspace {
 	readonly name: string;
 	readonly description: string;
 	readonly git: boolean;
-	/** The folder's index, in a word or two: "Indexed", "Indexing 62%". */
-	readonly index?: string;
+	/** The folder's index, for the icon beside the workspace; unset while indexing is off. */
+	readonly index?: HomeIndex;
+}
+
+export interface HomeIndex {
+	readonly state: 'ready' | 'building' | 'none';
+	/** The tooltip: whether it is indexed, and what a click does. */
+	readonly label: string;
 }
 
 export interface HomeView {

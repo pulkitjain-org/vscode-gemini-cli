@@ -2,7 +2,7 @@
 
 Agents in GeminiCode keep an index of the code in each workspace, and of the documentation you attach, so they can find code in one step instead of searching file by file. The index stays on your Mac, in `~/.geminicode/index`, and is built in a separate process at low priority, so it never slows the editor.
 
-Open it from **Index** on Home, beside Project Helpers, or with **Gemini: Manage Index**.
+Open it from **Index** on Home, beside Project Helpers, or with **Gemini: Manage Index**. Beside the workspace in Home's composer, a drum icon shows the workspace's index: full when it is indexed, half full while indexing, empty when it isn't indexed yet. Point at it for which, and click it to open the Index page.
 
 ## What agents get
 
@@ -26,7 +26,9 @@ A workspace's index is built the first time an agent starts there. Until it is r
 
 After that the index keeps itself up to date: saved, added and deleted files a second after you change them, a checkout or pull when the branch moves, and an agent's edits in its worktree as it makes them.
 
-Left out of every index: files git ignores, entries in `.geminiignore`, secret files such as `.env` and keys, binaries, lock files, minified code and files over 1 MB. **Files Left Out** lists them, with the reason. Add your own exclusions with `gemini.index.exclude`, in `.gitignore` syntax.
+Left out of every index: files git ignores, entries in `.geminiignore`, secret files such as `.env` and keys, binaries, lock files, minified code and files over 1 MB. Add your own exclusions with `gemini.index.exclude`, in `.gitignore` syntax.
+
+**Files Left Out** opens a list of them, grouped by reason, with a filter. **Index Anyway** on a file adds it to `gemini.index.include`, and it is indexed a moment later without a rebuild; **Index All Anyway** does it for a whole group of up to 50 files. For more, add a pattern such as `src/generated/**` with **Edit Included Files**. Included files are indexed even if they are generated or minified, are lock files, are listed in `.geminiignore` or `gemini.index.exclude`, or are larger than the size limit (up to 16 MB). Secret files and files with binary content are never indexed. **Open .geminiignore** opens (or creates) the folder's ignore file, which the Gemini CLI reads too.
 
 For each workspace the page shows its state and size, with:
 
@@ -59,6 +61,7 @@ Each source refreshes daily by default (`gemini.docs.refresh`, or per source); a
 | `gemini.index.enabled` | on | Keep indexes and give agents the index tools. |
 | `gemini.index.buildOn` | `agentStart` | When a workspace's index is first built. |
 | `gemini.index.exclude` | empty | Extra files and folders to leave out, in `.gitignore` syntax. |
+| `gemini.index.include` | empty | Files to index even though they would be left out, in `.gitignore` syntax. |
 | `gemini.index.maxFileSizeKb` | 1024 | Larger files are left out. |
 | `gemini.docs.enabled` | on | Allow attaching documentation from the web. |
 | `gemini.docs.allowedDomains` | empty | The only sites docs may come from, such as `react.dev` or `*.example.com`. Empty allows any. |

@@ -70,6 +70,32 @@ export interface IndexPageStrings {
 	readonly cancel: string;
 	readonly addAndFetch: string;
 	readonly close: string;
+	// The Files Left Out popup.
+	/** `{0}` is the workspace. */
+	readonly skippedTitle: string;
+	/** `{0}` is how many files. */
+	readonly skippedCount: string;
+	readonly skippedHint: string;
+	readonly skippedFilter: string;
+	readonly skippedNone: string;
+	readonly skippedLoading: string;
+	/** `{0}` is how many files in the group. */
+	readonly skippedGroup: string;
+	readonly indexAnyway: string;
+	readonly indexAllAnyway: string;
+	readonly included: string;
+	readonly neverIndexed: string;
+	/** `{0}` is how many rows are not shown. */
+	readonly skippedMore: string;
+	readonly tooManyForAll: string;
+	readonly openIgnoreFile: string;
+	readonly editInclude: string;
+}
+
+export interface SkippedFileView {
+	readonly path: string;
+	readonly reason: string;
+	readonly includable: boolean;
 }
 
 export type IndexState = 'none' | 'building' | 'paused' | 'ready' | 'failed';
@@ -137,10 +163,14 @@ export type FromIndexPage =
 	| { readonly type: 'refreshSource' | 'removeSource'; readonly id: string }
 	| { readonly type: 'setRefresh'; readonly id: string; readonly refresh?: DocsRefresh }
 	| { readonly type: 'openUrl'; readonly url: string }
-	| { readonly type: 'dismissSuggestion'; readonly url: string };
+	| { readonly type: 'dismissSuggestion'; readonly url: string }
+	| { readonly type: 'include'; readonly folder: string; readonly paths: readonly string[] }
+	| { readonly type: 'openIgnoreFile'; readonly folder: string }
+	| { readonly type: 'editInclude' };
 
 export type ToIndexPage =
 	| { readonly type: 'view'; readonly view: IndexPageView }
 	| { readonly type: 'urlProblem'; readonly url: string; readonly problem?: string }
 	| { readonly type: 'added' }
-	| { readonly type: 'openAdd'; readonly url?: string };
+	| { readonly type: 'openAdd'; readonly url?: string }
+	| { readonly type: 'skippedList'; readonly folder: string; readonly name: string; readonly files: readonly SkippedFileView[] };

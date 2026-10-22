@@ -45,6 +45,8 @@ export interface FileState {
 	readonly size: number;
 	readonly mtime: number;
 	readonly hash: string;
+	/** Why it was read but left out, when it was. */
+	readonly skipped?: string;
 }
 
 export interface FileRecord extends FileState {
@@ -145,8 +147,8 @@ export class IndexStore {
 
 	fileStates(): Map<string, FileState> {
 		const states = new Map<string, FileState>();
-		for (const row of this.statement('SELECT path, size, mtime, hash FROM files').all() as { path: string; size: number; mtime: number; hash: string }[]) {
-			states.set(row.path, { size: row.size, mtime: row.mtime, hash: row.hash });
+		for (const row of this.statement('SELECT path, size, mtime, hash, skipped FROM files').all() as { path: string; size: number; mtime: number; hash: string; skipped: string | null }[]) {
+			states.set(row.path, { size: row.size, mtime: row.mtime, hash: row.hash, ...row.skipped ? { skipped: row.skipped } : {} });
 		}
 		return states;
 	}

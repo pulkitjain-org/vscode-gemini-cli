@@ -37,6 +37,7 @@
 	"configuration.index.buildOn.workspaceOpen": "When the window opens, for each folder in it.",
 	"configuration.index.buildOn.manual": "Only when you choose Index Now on the Index page.",
 	"configuration.index.exclude": "Files and folders to leave out of the index, in `.gitignore` syntax, such as `fixtures/` or `**/*.snap`. Files git ignores, `.geminiignore` entries, secret files such as `.env`, binaries and lock files are always left out.",
+	"configuration.index.include": "Files to index even though they would be left out, in `.gitignore` syntax, such as `src/generated/**` or `docs/large-spec.md`: generated or minified code, lock files, files larger than `gemini.index.maxFileSizeKb` (up to 16 MB), and `.geminiignore` or `gemini.index.exclude` entries. Secret files such as `.env` and files with binary content are never indexed. **Index Anyway** on the Index page adds entries here.",
 	"configuration.index.maxFileSizeKb": "Files larger than this, in KB, are left out of the index.",
 	"configuration.docs.enabled": "Let you attach documentation from the web to a folder's index, for agents to search with `docs_search`. Pages are fetched from this machine, through its network settings.",
 	"configuration.docs.allowedDomains": "The only sites documentation may be fetched from, such as `react.dev` or `*.example.com`. Empty allows every site.",

@@ -104,7 +104,7 @@ describe('Indexer', () => {
 		expect(skipped).toEqual(expect.arrayContaining([
 			'.env: .env may contain secrets',
 			'fixtures/big.ts: excluded by .geminiignore or gemini.index.exclude',
-			'logo.png: not a text file',
+			'logo.png: a binary file type',
 		]));
 		expect(await indexer.files({ root: repo })).toEqual(['.gitignore', 'README.md', 'src/cart/cart.ts', 'src/cart/discount.test.ts', 'src/cart/discount.ts']);
 		expect(existsSync(path.join(indexes, 'code', await workspaceId(repo), 'index.db'))).toBe(true);
@@ -167,6 +167,16 @@ describe('Indexer', () => {
 		const { result } = await indexer.findSymbol({ root: repo, name: 'redeemCoupon' });
 		expect(result.definitions.map(d => d.path)).toEqual(['src/cart/coupon.ts']);
 		expect(await indexer.files({ root: repo })).not.toContain('src/cart/discount.test.ts');
+	});
+
+	it('indexes a left-out file once it is included, without a rebuild', async () => {
+		const before = await indexer.skipped({ root: repo });
+		expect(before.find(s => s.path === 'fixtures/big.ts')).toEqual({ path: 'fixtures/big.ts', reason: 'excluded by .geminiignore or gemini.index.exclude', includable: true });
+		expect(before.find(s => s.path === '.env')?.includable).toBe(false);
+		await indexer.ensure({ root: repo, settings: { ...settings, include: ['/fixtures/big.ts'] }, build: false });
+		await eventually(async () => (await indexer.findSymbol({ root: repo, name: 'fixture' })).result.definitions.length === 1);
+		expect((await indexer.skipped({ root: repo })).some(s => s.path === 'fixtures/big.ts')).toBe(false);
+		await indexer.ensure({ root: repo, settings, build: false });
 	});
 
 	it('answers from live search while a folder has no index yet', async () => {

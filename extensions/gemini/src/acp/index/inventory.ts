@@ -8,7 +8,8 @@
 // (folderFiles.ts); then `.geminiignore`, the user's excludes, secret files,
 // binaries, lock files and anything too large are left out, each with the
 // reason the Index page shows. What a file holds (a NUL byte, minified
-// lines) is checked when it is read (`contentSkipReason`).
+// lines) is checked when it is read (`contentSkipReason`). The user can
+// force files back in with `gemini.index.include` (`SkipRules`).
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
@@ -19,6 +20,8 @@ import { IgnoreRules } from './ignore';
 export interface InventoryOptions {
 	/** Extra patterns in .gitignore syntax, from `gemini.index.exclude`. */
 	readonly exclude: readonly string[];
+	/** Files to index whatever the rules say, from `gemini.index.include`. */
+	readonly include?: readonly string[];
 	readonly maxFileBytes: number;
 }
 
@@ -51,13 +54,69 @@ const lockFiles = new Set(['package-lock.json', 'npm-shrinkwrap.json', 'yarn.loc
 /** Stat calls in flight at once. */
 const statConcurrency = 64;
 
+/** Even a file the user includes is left out above this size. */
+export const hardMaxFileBytes = 16 * 1024 * 1024;
+/** The reason for binary content: never indexed, whatever the user includes. */
+export const binaryContentReason = 'binary content';
+
+/**
+ * What is left out of a folder's index, and why: the folder's ignore rules
+ * and the user's excludes, secret files, binaries, lock files, generated
+ * code and large files. A file matching `gemini.index.include` is indexed
+ * anyway, unless it is a secret file or holds binary content.
+ */
+export class SkipRules {
+
+	private readonly ignore: IgnoreRules;
+	private readonly include: IgnoreRules;
+
+	constructor(ignorePatterns: readonly string[], include: readonly string[], private readonly maxFileBytes: number) {
+		this.ignore = new IgnoreRules(ignorePatterns);
+		this.include = new IgnoreRules(include);
+	}
+
+	/** The folder's `.geminiignore` with the user's settings. */
+	static async forFolder(root: string, options: InventoryOptions): Promise<SkipRules> {
+		return new SkipRules([...await readIgnoreFile(root), ...options.exclude], options.include ?? [], options.maxFileBytes);
+	}
+
+	/** Whether the user asked for `relative` to be indexed whatever the rules say. */
+	forced(relative: string): boolean {
+		return !this.include.empty && this.include.ignores(relative);
+	}
+
+	/** Why `relative` is left out by its path alone, or undefined. */
+	pathReason(relative: string): string | undefined {
+		const secret = secretPathReason(relative);
+		if (secret) {
+			return secret;
+		}
+		return this.forced(relative) ? undefined : pathSkipReason(relative, this.ignore);
+	}
+
+	sizeReason(relative: string, size: number): string | undefined {
+		const limit = this.forced(relative) ? hardMaxFileBytes : this.maxFileBytes;
+		return size > limit ? `larger than ${Math.round(limit / 1024)} KB` : undefined;
+	}
+
+	contentReason(relative: string, text: string): string | undefined {
+		const reason = contentSkipReason(text);
+		return reason === binaryContentReason || !this.forced(relative) ? reason : undefined;
+	}
+}
+
+/** Whether a file left out for `reason` can be indexed by including it: anything but secrets and binary content. */
+export function canInclude(relative: string, reason: string): boolean {
+	return !secretPathReason(relative) && reason !== binaryContentReason;
+}
+
 export async function takeInventory(root: string, options: InventoryOptions): Promise<Inventory> {
-	const rules = new IgnoreRules([...await readIgnoreFile(root), ...options.exclude]);
+	const rules = await SkipRules.forFolder(root, options);
 	const files: InventoryFile[] = [];
 	const skipped: SkippedFile[] = [];
 	const candidates: string[] = [];
 	for (const relative of await listFiles(root)) {
-		const reason = pathSkipReason(relative, rules);
+		const reason = rules.pathReason(relative);
 		if (reason) {
 			skipped.push({ path: relative, reason });
 		} else {
@@ -77,8 +136,9 @@ export async function takeInventory(root: string, options: InventoryOptions): Pr
 			if (!stat.isFile()) {
 				continue;
 			}
-			if (stat.size > options.maxFileBytes) {
-				skipped.push({ path: relative, reason: `larger than ${Math.round(options.maxFileBytes / 1024)} KB` });
+			const tooLarge = rules.sizeReason(relative, stat.size);
+			if (tooLarge) {
+				skipped.push({ path: relative, reason: tooLarge });
 			} else {
 				files.push({ path: relative, size: stat.size, mtime: Math.floor(stat.mtimeMs) });
 			}
@@ -89,7 +149,7 @@ export async function takeInventory(root: string, options: InventoryOptions): Pr
 	return { files, skipped };
 }
 
-/** Why `relative` is left out by its path alone, or undefined. */
+/** Why `relative` is left out by its path alone, or undefined; `SkipRules.pathReason` also honours includes. */
 export function pathSkipReason(relative: string, rules: IgnoreRules): string | undefined {
 	const secret = secretPathReason(relative);
 	if (secret) {
@@ -104,7 +164,7 @@ export function pathSkipReason(relative: string, rules: IgnoreRules): string | u
 	}
 	const dot = base.lastIndexOf('.');
 	if (dot > 0 && binaryExtensions.has(base.slice(dot + 1))) {
-		return 'not a text file';
+		return 'a binary file type';
 	}
 	if (/\.min\.(?:js|css)$|\.map$|\.bundle\.js$/.test(base)) {
 		return 'generated';
@@ -115,7 +175,7 @@ export function pathSkipReason(relative: string, rules: IgnoreRules): string | u
 /** Why a file is left out for what it holds: binary, or minified or generated. */
 export function contentSkipReason(text: string): string | undefined {
 	if (text.slice(0, 8192).includes('\0')) {
-		return 'not a text file';
+		return binaryContentReason;
 	}
 	const lines = text.length ? text.split('\n').length : 0;
 	if (lines && text.length / lines > 300) {

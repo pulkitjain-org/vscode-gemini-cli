@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { pairsFromLog } from '../../../src/acp/index/cochange';
 import { identifierWords, splitIdentifier } from '../../../src/acp/index/identifiers';
 import { IgnoreRules } from '../../../src/acp/index/ignore';
-import { contentSkipReason, pathSkipReason } from '../../../src/acp/index/inventory';
+import { canInclude, contentSkipReason, pathSkipReason, SkipRules } from '../../../src/acp/index/inventory';
 import { queryTerms } from '../../../src/acp/index/query';
 import { resolveImport } from '../../../src/acp/index/resolve';
 
@@ -24,14 +24,33 @@ describe('inventory filters', () => {
 	it('leaves out secrets, lock files, binaries and generated files by path', () => {
 		const rules = new IgnoreRules([]);
 		expect(['.env', 'config/.env.local', 'id_rsa', 'package-lock.json', 'icon.png', 'app.min.js', 'src/a.ts'].map(p => pathSkipReason(p, rules))).toEqual([
-			'.env may contain secrets', '.env.local may contain secrets', 'id_rsa may contain secrets', 'a lock file', 'not a text file', 'generated', undefined,
+			'.env may contain secrets', '.env.local may contain secrets', 'id_rsa may contain secrets', 'a lock file', 'a binary file type', 'generated', undefined,
 		]);
 	});
 
 	it('leaves out binary and minified content', () => {
-		expect(contentSkipReason('abc\0def')).toBe('not a text file');
+		expect(contentSkipReason('abc\0def')).toBe('binary content');
 		expect(contentSkipReason('x'.repeat(5000))).toBe('generated (very long lines)');
 		expect(contentSkipReason('const a = 1;\n')).toBeUndefined();
+	});
+});
+
+describe('SkipRules', () => {
+	it('indexes included files anyway, except secrets and binary content', () => {
+		const rules = new SkipRules(['fixtures/'], ['fixtures/keep.ts', 'package-lock.json', '/big.json', 'app.min.js', '.env', 'bin.dat'], 1024);
+		expect([
+			rules.pathReason('fixtures/keep.ts'), rules.pathReason('fixtures/other.ts'), rules.pathReason('package-lock.json'), rules.pathReason('.env'),
+			rules.sizeReason('big.json', 4096), rules.sizeReason('other.json', 4096), rules.sizeReason('big.json', 32 * 1024 * 1024),
+			rules.contentReason('app.min.js', 'x'.repeat(5000)), rules.contentReason('bin.dat', 'a\0b'), rules.contentReason('other.js', 'x'.repeat(5000)),
+		]).toEqual([
+			undefined, 'excluded by .geminiignore or gemini.index.exclude', undefined, '.env may contain secrets',
+			undefined, 'larger than 1 KB', 'larger than 16384 KB',
+			undefined, 'binary content', 'generated (very long lines)',
+		]);
+	});
+
+	it('says which left-out files can be included', () => {
+		expect([canInclude('src/big.json', 'larger than 1024 KB'), canInclude('.env', '.env may contain secrets'), canInclude('a.bin', 'binary content')]).toEqual([true, false, false]);
 	});
 });
 

@@ -22,7 +22,7 @@ import { configSection, getApprovalPolicy, getProjectSettings } from './configur
 import { preferredModel } from './modelPreference';
 import { moveCard, toggleCard, type DashboardLayout } from '../acp/dashboard';
 import { buildDashboard, DashboardInput, StartupState } from './homeDashboard';
-import { FromHome, HomeAction, HomeAgent, HomeCardId, HomeProject, HomeStrings, HomeView, ToHome } from './panelProtocol';
+import { FromHome, HomeAction, HomeAgent, HomeCardId, HomeIndex, HomeProject, HomeStrings, HomeView, ToHome } from './panelProtocol';
 import { TeamData } from './teamData';
 import type { TeamConnections } from './teamConnections';
 import { projectsEnabled } from './projects';
@@ -246,10 +246,11 @@ export class AgentHome implements vscode.Disposable {
 
 	private async build(): Promise<HomeView> {
 		const now = Date.now();
-		const workspaces = (await this.agents.workspaces()).map(w => {
-			const index = indexWord(this.agents.index?.enabled ? this.agents.index.status(w.folder) : undefined);
-			return { folder: w.folder, name: path.basename(w.folder) || w.folder, description: tildify(path.dirname(w.folder)), git: w.git, ...index ? { index } : {} };
-		});
+		const index = this.agents.index?.enabled ? this.agents.index : undefined;
+		const workspaces = await Promise.all((await this.agents.workspaces()).map(async w => {
+			const state = index ? homeIndex(await index.summary(w.folder), index.status(w.folder)) : undefined;
+			return { folder: w.folder, name: path.basename(w.folder) || w.folder, description: tildify(path.dirname(w.folder)), git: w.git, ...state ? { index: state } : {} };
+		}));
 		const all = this.agents.summaries();
 		// Projects and their threads have their own list.
 		const summaries = all.filter(a => !a.project);
@@ -698,17 +699,25 @@ function isHomeTab(tab: vscode.Tab): boolean {
 	return tab.input instanceof vscode.TabInputWebview && tab.input.viewType.endsWith(homeViewType);
 }
 
-/** A folder's index in a word or two for its pill on Home; nothing when it has none. */
-function indexWord(status: IndexStatus | undefined): string | undefined {
-	const state = status?.state;
-	switch (state?.kind) {
+/** A folder's index for the icon beside its pill on Home: full, filling or empty, and a tooltip saying which. */
+function homeIndex(summary: 'ready' | 'building' | 'paused' | 'failed' | 'none', status: IndexStatus | undefined): HomeIndex {
+	const open = vscode.l10n.t("Click to open the Index page.");
+	switch (summary) {
 		case 'ready':
-			return vscode.l10n.t("Indexed");
+			return { state: 'ready', label: `${vscode.l10n.t("Indexed: agents find code here in one step.")} ${open}` };
 		case 'building':
-			return state.total ? vscode.l10n.t("Indexing {0}%", Math.floor(state.done / state.total * 100)) : vscode.l10n.t("Indexing");
-		case 'paused':
-			return vscode.l10n.t("Indexing paused");
-		default:
-			return undefined;
+		case 'paused': {
+			const state = status?.state;
+			const share = state && (state.kind === 'building' || state.kind === 'paused') && state.total ? Math.floor(state.done / state.total * 100) : undefined;
+			const text = summary === 'paused' ? vscode.l10n.t("Indexing paused.") : share === undefined ? vscode.l10n.t("Indexing.") : vscode.l10n.t("Indexing: {0}% done.", share);
+			return { state: 'building', label: `${text} ${open}` };
+		}
+		case 'failed':
+			return { state: 'none', label: `${vscode.l10n.t("Not indexed: the last build failed.")} ${open}` };
+		default: {
+			const buildOn = vscode.workspace.getConfiguration(configSection).get<string>('index.buildOn', 'agentStart');
+			const when = buildOn === 'manual' ? vscode.l10n.t("Choose Index Now on the Index page to build one.") : buildOn === 'workspaceOpen' ? vscode.l10n.t("It is built when the window opens.") : vscode.l10n.t("It is built when an agent first starts here.");
+			return { state: 'none', label: `${vscode.l10n.t("Not indexed yet.")} ${when} ${open}` };
+		}
 	}
 }
