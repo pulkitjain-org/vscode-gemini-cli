@@ -5,7 +5,7 @@
 
 // The Project Helpers page (src/host/settingsPage.ts).
 
-import type { CliReport, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage } from '../src/host/panelProtocol';
+import type { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage } from '../src/host/panelProtocol';
 import { button, el, format, icon, pageStrings } from './panelDom';
 import { selectMenu, type SelectMenu } from './selectMenu';
 
@@ -54,6 +54,9 @@ function serverRow(server: McpServerView): HTMLElement {
 	const main = el('div', 'row-main');
 	const title = el('div', 'row-title');
 	title.append(el('span', 'name', server.name), el('span', 'tag', server.scope), el('span', 'tag subtle', server.transport));
+	if (server.tokens !== undefined) {
+		title.append(el('span', `tag tokens${server.tokens >= 5000 ? ' heavy' : ''}`, format(strings.tokensPerCall, server.tokens.toLocaleString())));
+	}
 	main.append(title, el('div', 'row-detail mono', server.target));
 	if (server.problem) {
 		const problem = el('div', 'row-problem');
@@ -162,6 +165,9 @@ function memoryRow(file: MemoryFileView): HTMLElement {
 	const main = el('div', 'row-main');
 	const title = el('div', 'row-title');
 	title.append(icon('book'), el('span', 'name mono', file.display));
+	if (file.tokens) {
+		title.append(el('span', `tag tokens${file.tokens >= 15000 ? ' heavy' : ''}`, format(strings.tokensPerCall, file.tokens.toLocaleString())));
+	}
 	main.append(title, el('div', 'row-detail', file.preview ?? ''));
 	row.append(main, button('icon-button', '', () => post({ type: 'openFile', path: file.path }), 'go-to-file', strings.open));
 	return row;
@@ -210,6 +216,56 @@ function rulesRow(rules: RulesFileView): HTMLElement {
 	return row;
 }
 
+/** Context per model call: the total, a bar of its parts, each part, and advice for the heavy ones. */
+function contextSection(cost: ContextCostView): HTMLElement {
+	const measuring = cost.state === 'measuring';
+	const action = button('secondary', measuring ? strings.measuring : cost.total === undefined ? strings.measure : strings.measureAgain, () => post({ type: 'measureContext' }), measuring ? 'loading' : 'pulse');
+	action.disabled = measuring;
+	if (measuring) {
+		action.querySelector('.codicon')?.classList.add('codicon-modifier-spin');
+	}
+	const node = section(strings.contextTitle, format(strings.contextHint, cost.folder), action);
+	const list = el('div', 'rows context-cost');
+	if (cost.total !== undefined) {
+		const head = el('div', 'row context-total');
+		const main = el('div', 'row-main');
+		main.append(el('div', 'row-title name', format(strings.contextTotal, cost.total.toLocaleString())));
+		const bar = el('div', 'context-bar');
+		for (const part of cost.parts) {
+			if (part.tokens > 0) {
+				const segment = el('i', `context-${part.kind}`);
+				segment.style.flexGrow = String(part.tokens);
+				bar.append(segment);
+			}
+		}
+		main.append(bar, el('div', 'row-detail', cost.measured ?? ''));
+		head.append(main);
+		list.append(head);
+		for (const part of cost.parts) {
+			const row = el('div', 'row context-part');
+			const swatch = el('i', `context-swatch context-${part.kind}`);
+			const main2 = el('div', 'row-main');
+			main2.append(el('div', 'row-title', part.label));
+			row.append(swatch, main2, el('span', 'mono', part.tokens.toLocaleString()));
+			list.append(row);
+		}
+		for (const tip of cost.tips) {
+			const row = el('div', 'row context-tip');
+			row.append(icon('lightbulb'), el('span', undefined, tip));
+			list.append(row);
+		}
+	} else {
+		list.append(el('p', 'empty', strings.contextNone));
+	}
+	if (cost.error) {
+		const problem = el('p', 'empty row-problem');
+		problem.append(icon('warning'), el('span', undefined, ` ${cost.error}`));
+		list.append(problem);
+	}
+	node.append(list, el('p', 'hint context-note', strings.contextNote));
+	return node;
+}
+
 function render(view: SettingsPageView): void {
 	const header = el('header', 'settings-header');
 	const text = el('div');
@@ -245,7 +301,7 @@ function render(view: SettingsPageView): void {
 
 	// Re-rendering replaces every element; keep keyboard focus on the same control.
 	const focused = document.activeElement instanceof HTMLElement && page.contains(document.activeElement) ? document.activeElement.getAttribute('aria-label') ?? document.activeElement.textContent : undefined;
-	page.replaceChildren(header, servers, skills, hooks, extensions, memory, rules, preferencesSection(view.preferences));
+	page.replaceChildren(header, contextSection(view.contextCost), servers, skills, hooks, extensions, memory, rules, preferencesSection(view.preferences));
 	if (focused) {
 		[...page.querySelectorAll<HTMLElement>('button')].find(b => (b.getAttribute('aria-label') ?? b.textContent) === focused)?.focus();
 	}

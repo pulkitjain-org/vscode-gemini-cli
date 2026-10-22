@@ -118,6 +118,14 @@ export interface HomeWorkspace {
 	readonly name: string;
 	readonly description: string;
 	readonly git: boolean;
+	/** The folder's index, for the icon beside the workspace; unset while indexing is off. */
+	readonly index?: HomeIndex;
+}
+
+export interface HomeIndex {
+	readonly state: 'ready' | 'building' | 'none';
+	/** The tooltip: whether it is indexed, and what a click does. */
+	readonly label: string;
 }
 
 export interface HomeView {
@@ -297,6 +305,8 @@ export interface HomeStrings {
 	readonly addFolder: string;
 	readonly projectHelpers: string;
 	readonly projectHelpersHint: string;
+	readonly index: string;
+	readonly indexHint: string;
 	readonly plusMenu: string;
 	readonly mode: string;
 	readonly files: string;
@@ -407,7 +417,7 @@ export type FromHome =
 	| { readonly type: 'start'; readonly folder: string; readonly text: string; readonly ownBranch: boolean; readonly mode: string; readonly attachments: readonly Attachment[] }
 	/** The user is typing a task, so the agent and a session for it can get ready. */
 	| { readonly type: 'typing'; readonly folder: string; readonly ownBranch: boolean }
-	| { readonly type: 'addFolder' | 'projectHelpers' | 'pickFiles' | 'newProject' }
+	| { readonly type: 'addFolder' | 'projectHelpers' | 'openIndex' | 'pickFiles' | 'newProject' }
 	| { readonly type: 'open' | 'stop' | 'review' | 'mergeBack'; readonly id: string }
 	| { readonly type: 'action'; readonly action: HomeAction }
 	| { readonly type: 'refresh' }
@@ -455,6 +465,8 @@ export interface McpServerView {
 	readonly enabled: boolean;
 	/** Why it failed to start in the running agent. */
 	readonly problem?: string;
+	/** Its tools' definitions in every model call, from the last measurement. */
+	readonly tokens?: number;
 }
 
 /** A Gemini CLI setting the page offers, from the user's own settings.json. */
@@ -516,6 +528,21 @@ export interface MemoryFileView {
 	/** Shown as `~/...`. */
 	readonly display: string;
 	readonly preview?: string;
+	/** About how many tokens it adds to every model call, with the files it imports. */
+	readonly tokens?: number;
+}
+
+/** What every model call carries before the prompt (contextCost.ts), for the page's Context cost section. */
+export interface ContextCostView {
+	readonly state: 'none' | 'measuring' | 'ready' | 'failed';
+	/** The folder measured, by name. */
+	readonly folder: string;
+	readonly total?: number;
+	readonly parts: readonly { readonly label: string; readonly tokens: number; readonly kind: 'cli' | 'context' | 'server' | 'geminicode' }[];
+	/** "2 hours ago, with gemini-3.1-flash-lite". */
+	readonly measured?: string;
+	readonly tips: readonly string[];
+	readonly error?: string;
 }
 
 /** What the running Gemini CLI reports; `loading` until it answers, `unavailable` when it cannot. */
@@ -532,9 +559,22 @@ export interface SettingsPageView {
 	readonly memory: CliReport<MemoryFileView>;
 	readonly rules: readonly RulesFileView[];
 	readonly preferences: PreferencesView;
+	readonly contextCost: ContextCostView;
 }
 
 export interface SettingsPageStrings {
+	readonly contextTitle: string;
+	/** `{0}` is the folder. */
+	readonly contextHint: string;
+	readonly measure: string;
+	readonly measureAgain: string;
+	readonly measuring: string;
+	readonly contextNote: string;
+	readonly contextNone: string;
+	/** `{0}` is the tokens. */
+	readonly contextTotal: string;
+	/** `{0}` is the tokens, beside a server or file. */
+	readonly tokensPerCall: string;
 	readonly title: string;
 	readonly subtitle: string;
 	readonly restart: string;
@@ -594,7 +634,7 @@ export interface SettingsPageStrings {
 export type ToSettingsPage = { readonly type: 'view'; readonly view: SettingsPageView };
 
 export type FromSettingsPage =
-	| { readonly type: 'ready' | 'restart' | 'addServer' | 'connections' | 'newSkill' | 'addHook' | 'installExtension' | 'addMemory' | 'refreshMemory' }
+	| { readonly type: 'ready' | 'restart' | 'addServer' | 'connections' | 'newSkill' | 'addHook' | 'installExtension' | 'addMemory' | 'refreshMemory' | 'measureContext' }
 	| { readonly type: 'toggle'; readonly name: string; readonly enabled: boolean }
 	| { readonly type: 'toggleHook'; readonly file: string; readonly name: string; readonly enabled: boolean }
 	| { readonly type: 'toggleSkill'; readonly file: string; readonly name: string; readonly enabled: boolean }

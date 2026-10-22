@@ -60,6 +60,8 @@ import { deleteFile, replaceFileText, WorkspaceFileSystem } from './workspaceFil
  * Every current Gemini model's context window, in tokens, as gemini-cli's
  * `tokenLimit` has it; the CLI's footer shows context use against it too.
  */
+/** How long Enhance prompt waits for the folder's index before rewriting without it. */
+const indexContextWaitMs = 400;
 const contextWindow = 1_048_576;
 /** How often a rewrite arriving is shown, at most. */
 const progressIntervalMs = 33;
@@ -106,6 +108,10 @@ export interface ChatControllerOptions {
 	editorColumn?(): Promise<vscode.ViewColumn>;
 	/** Rewrites the composer's draft for Enhance prompt. */
 	readonly enhancer: ChatEnhancer;
+	/** What the folder's index finds for a draft, for Enhance prompt; undefined without a built index. */
+	indexContext?(draft: string): Promise<string | undefined>;
+	/** A note telling the agent to use the index tools, when its folder's index is built; sent once per session. */
+	indexHint?(): string | undefined;
 	/** The workspace pill; without it the composer shows none. */
 	workspace?(): ChatWorkspace | undefined;
 	/** Today's quota, for the usage popover; unset shows it as off. */
@@ -222,6 +228,8 @@ export class ChatController implements vscode.Disposable {
 	/** The step last reported, so tool call updates report only a new one. */
 	private lastStep: string | undefined;
 	private lastSessionId: string | undefined;
+	/** Sessions told about the folder's index already. */
+	private readonly hintedSessions = new Set<string>();
 	/** Proposed edits by transcript item id (tool calls and permission requests), so their diffs can be opened later. */
 	private readonly diffs = new Map<string, readonly acp.Diff[]>();
 
@@ -679,6 +687,14 @@ export class ChatController implements vscode.Disposable {
 			const content = buildPromptContent(expand ? await this.expandCommand(text) : text, attachments, this.service.client.promptCapabilities);
 			if (!content.length) {
 				throw new Error(vscode.l10n.t("The agent cannot take images, so there was nothing to send."));
+			}
+			// Told once per session: without it the model reaches for grep_search first (FINDINGS.md, workspace index).
+			const state = this.service.client.state;
+			const session = state.kind === 'ready' ? state.savedSessionId : undefined;
+			const hint = session && !this.hintedSessions.has(session) ? this.options.indexHint?.() : undefined;
+			if (session && hint) {
+				this.hintedSessions.add(session);
+				content.push({ type: 'text', text: hint });
 			}
 			const page = await this.refreshSharedPage();
 			if (page) {
@@ -1709,8 +1725,14 @@ export class ChatController implements vscode.Disposable {
 		const relative = document?.uri.scheme === 'file' ? path.relative(client.cwd, document.uri.fsPath) : undefined;
 		const activeFile = relative && !relative.startsWith('..') && !path.isAbsolute(relative) ? `${relative.split(path.sep).join('/')} (${document!.languageId})` : undefined;
 		const mode = client.settings.mode;
+		// The index answers in milliseconds; a slow answer is left out rather than waited for.
+		const codeContext = await Promise.race([
+			this.options.indexContext?.(draft).catch(() => undefined) ?? Promise.resolve(undefined),
+			new Promise<undefined>(resolve => setTimeout(() => resolve(undefined), indexContextWaitMs)),
+		]);
 		return {
 			draft,
+			...codeContext ? { codeContext } : {},
 			attachments: attachments.map(attachmentLabel),
 			history: enhanceHistory(this.transcript.items),
 			folder: path.basename(client.cwd),
@@ -2171,6 +2193,14 @@ export class ChatController implements vscode.Disposable {
 			pasteLink: vscode.l10n.t("paste link"),
 			toolChipLoading: vscode.l10n.t("Reading\u2026"),
 			openToolItem: vscode.l10n.t("Open {0}"),
+			indexToolVerbs: {
+				searchCode: vscode.l10n.t("Search code for {0}"),
+				findSymbol: vscode.l10n.t("Look up {0}"),
+				related: vscode.l10n.t("Find files related to {0}"),
+				outline: vscode.l10n.t("Outline {0}"),
+				outlineFolder: vscode.l10n.t("Outline the folder"),
+				searchDocs: vscode.l10n.t("Search docs for {0}"),
+			},
 			teamToolVerbs: {
 				read: vscode.l10n.t("Read {0}"),
 				search: vscode.l10n.t("Search Jira for {0}"),

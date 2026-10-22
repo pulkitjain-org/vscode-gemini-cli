@@ -411,6 +411,39 @@
 					"value": "The only sites Gemini agents may open in the integrated browser, as a list of origins such as https://qa.example.com or https://*.example.com; * allows all. Empty allows every site."
 				}
 			}
+		},
+		"gemini.index.enabled": {
+			"name": "GeminiIndex",
+			"category": "Extensions",
+			"minimumVersion": "1.141",
+			"localization": {
+				"description": {
+					"key": "gemini.index.enabled.policy",
+					"value": "Whether GeminiCode keeps a local index of the code in the folders agents work in, and gives agents tools to search it. The index stays on the user's machine."
+				}
+			}
+		},
+		"gemini.docs.enabled": {
+			"name": "GeminiDocs",
+			"category": "Extensions",
+			"minimumVersion": "1.141",
+			"localization": {
+				"description": {
+					"key": "gemini.docs.enabled.policy",
+					"value": "Whether users can attach documentation from the web to a folder's index, fetched from their machine, for agents to search."
+				}
+			}
+		},
+		"gemini.docs.allowedDomains": {
+			"name": "GeminiDocsAllowedDomains",
+			"category": "Extensions",
+			"minimumVersion": "1.141",
+			"localization": {
+				"description": {
+					"key": "gemini.docs.allowedDomains.policy",
+					"value": "The only sites documentation may be fetched from, as a list such as react.dev or *.example.com. Empty allows every site."
+				}
+			}
 		}
 	}
 }

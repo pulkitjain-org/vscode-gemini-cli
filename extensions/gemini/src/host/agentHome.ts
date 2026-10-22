@@ -7,6 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import type { IndexStatus } from '../acp/index/indexerProtocol';
 import { onDidChangeSpellCheck, spellCheckOn } from './spellCheck';
 import { isModeAllowed } from '../acp/adminPolicy';
 import { errorMessage } from '../acp/errors';
@@ -21,7 +22,7 @@ import { configSection, getApprovalPolicy, getProjectSettings } from './configur
 import { preferredModel } from './modelPreference';
 import { moveCard, toggleCard, type DashboardLayout } from '../acp/dashboard';
 import { buildDashboard, DashboardInput, StartupState } from './homeDashboard';
-import { FromHome, HomeAction, HomeAgent, HomeCardId, HomeProject, HomeStrings, HomeView, ToHome } from './panelProtocol';
+import { FromHome, HomeAction, HomeAgent, HomeCardId, HomeIndex, HomeProject, HomeStrings, HomeView, ToHome } from './panelProtocol';
 import { TeamData } from './teamData';
 import type { TeamConnections } from './teamConnections';
 import { projectsEnabled } from './projects';
@@ -106,6 +107,7 @@ export class AgentHome implements vscode.Disposable {
 				}
 			}),
 			agents.onDidChangeAgents(() => this.schedule()),
+			agents.index?.onDidChangeStatus(() => this.schedule()) ?? { dispose: () => undefined },
 		);
 		void Promise.resolve(vscode.commands.executeCommand<Mode>('_gemini.getMode')).then(mode => this.setMode(mode), () => undefined);
 		// In front of the restored tabs, in either mode; off, Home opens as Agent Home did.
@@ -244,7 +246,11 @@ export class AgentHome implements vscode.Disposable {
 
 	private async build(): Promise<HomeView> {
 		const now = Date.now();
-		const workspaces = (await this.agents.workspaces()).map(w => ({ folder: w.folder, name: path.basename(w.folder) || w.folder, description: tildify(path.dirname(w.folder)), git: w.git }));
+		const index = this.agents.index?.enabled ? this.agents.index : undefined;
+		const workspaces = await Promise.all((await this.agents.workspaces()).map(async w => {
+			const state = index ? homeIndex(await index.summary(w.folder), index.status(w.folder)) : undefined;
+			return { folder: w.folder, name: path.basename(w.folder) || w.folder, description: tildify(path.dirname(w.folder)), git: w.git, ...state ? { index: state } : {} };
+		}));
 		const all = this.agents.summaries();
 		// Projects and their threads have their own list.
 		const summaries = all.filter(a => !a.project);
@@ -461,6 +467,9 @@ export class AgentHome implements vscode.Disposable {
 			case 'projectHelpers':
 				await vscode.commands.executeCommand('gemini.projectSettings');
 				return;
+			case 'openIndex':
+				await vscode.commands.executeCommand('gemini.index.open');
+				return;
 			case 'open':
 				await this.agents.open(message.id);
 				return;
@@ -535,6 +544,8 @@ export class AgentHome implements vscode.Disposable {
 			addFolder: vscode.l10n.t("Add Folder to Workspace..."),
 			projectHelpers: vscode.l10n.t("Project Helpers"),
 			projectHelpersHint: vscode.l10n.t("MCP servers, rules and hooks for your projects"),
+			index: vscode.l10n.t("Index"),
+			indexHint: vscode.l10n.t("What agents can look up without searching file by file: each workspace's index and the docs you attach"),
 			plusMenu: vscode.l10n.t("Add files and pick a mode"),
 			mode: vscode.l10n.t("Mode"),
 			files: vscode.l10n.t("Files"),
@@ -655,7 +666,7 @@ export class AgentHome implements vscode.Disposable {
 				<div id="preview" class="composer-preview markdown" role="tabpanel" tabindex="0" hidden></div>
 				<div class="home-composer-bar">
 					<span class="home-plus"><button type="button" id="plus" class="plus-button"><i class="codicon codicon-add" aria-hidden="true"></i></button><div id="plus-menu" class="home-menu" hidden></div></span>
-					<span class="home-folder"><button type="button" id="workspace" class="option-button"><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="workspace-menu" class="home-menu" hidden></div></span>
+					<span class="home-folder"><button type="button" id="workspace" class="option-button"><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="workspace-menu" class="home-menu" hidden></div></span><button type="button" id="index-state" class="index-state" hidden></button>
 					<label id="own-branch-label" class="option-switch"><span class="sep" aria-hidden="true">·</span><input type="checkbox" id="own-branch"><span class="switch-track" aria-hidden="true"></span><span class="switch-label"></span></label>
 					<span class="home-mode"><span class="sep" aria-hidden="true">·</span><button type="button" id="mode" class="option-button"><i class="codicon" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="mode-menu" class="home-menu" hidden></div></span>
 					<span id="model" class="home-model" hidden><span class="sep" aria-hidden="true">·</span><span></span></span>
@@ -664,7 +675,7 @@ export class AgentHome implements vscode.Disposable {
 					<button type="submit" id="start" class="primary"><span></span></button>
 				</div>
 			</form>
-			<div class="dash-quick-row"><div id="quick" class="dash-quick"></div><button type="button" id="helpers" class="option-button helpers-button"><i class="codicon codicon-tools" aria-hidden="true"></i><span></span></button></div>
+			<div class="dash-quick-row"><div id="quick" class="dash-quick"></div><button type="button" id="index" class="option-button helpers-button"><i class="codicon codicon-database" aria-hidden="true"></i><span></span></button><button type="button" id="helpers" class="option-button helpers-button"><i class="codicon codicon-tools" aria-hidden="true"></i><span></span></button></div>
 		</section>
 		<section id="setup" class="dash-setup" hidden></section>
 		<section id="needs" class="dash-needs" hidden></section>
@@ -686,4 +697,27 @@ function openTabs(): number {
 
 function isHomeTab(tab: vscode.Tab): boolean {
 	return tab.input instanceof vscode.TabInputWebview && tab.input.viewType.endsWith(homeViewType);
+}
+
+/** A folder's index for the icon beside its pill on Home: full, filling or empty, and a tooltip saying which. */
+function homeIndex(summary: 'ready' | 'building' | 'paused' | 'failed' | 'none', status: IndexStatus | undefined): HomeIndex {
+	const open = vscode.l10n.t("Click to open the Index page.");
+	switch (summary) {
+		case 'ready':
+			return { state: 'ready', label: `${vscode.l10n.t("Indexed: agents find code here in one step.")} ${open}` };
+		case 'building':
+		case 'paused': {
+			const state = status?.state;
+			const share = state && (state.kind === 'building' || state.kind === 'paused') && state.total ? Math.floor(state.done / state.total * 100) : undefined;
+			const text = summary === 'paused' ? vscode.l10n.t("Indexing paused.") : share === undefined ? vscode.l10n.t("Indexing.") : vscode.l10n.t("Indexing: {0}% done.", share);
+			return { state: 'building', label: `${text} ${open}` };
+		}
+		case 'failed':
+			return { state: 'none', label: `${vscode.l10n.t("Not indexed: the last build failed.")} ${open}` };
+		default: {
+			const buildOn = vscode.workspace.getConfiguration(configSection).get<string>('index.buildOn', 'agentStart');
+			const when = buildOn === 'manual' ? vscode.l10n.t("Choose Index Now on the Index page to build one.") : buildOn === 'workspaceOpen' ? vscode.l10n.t("It is built when the window opens.") : vscode.l10n.t("It is built when an agent first starts here.");
+			return { state: 'none', label: `${vscode.l10n.t("Not indexed yet.")} ${when} ${open}` };
+		}
+	}
 }

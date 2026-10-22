@@ -17,6 +17,7 @@ run({
 		'connections': path.join(srcDir, 'connections.ts'),
 		'auditLog': path.join(srcDir, 'auditLog.ts'),
 		'settings': path.join(srcDir, 'settings.ts'),
+		'indexPage': path.join(srcDir, 'indexPage.ts'),
 		'teamFlow': path.join(srcDir, 'teamFlow.ts'),
 		'highlight': path.join(srcDir, 'highlight.ts'),
 		'katex': path.join(srcDir, 'katex.ts'),

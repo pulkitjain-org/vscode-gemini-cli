@@ -148,7 +148,13 @@ export function toolRefLabel(ref: ToolRef): string {
 
 /** A geminicode-tools call as the CLI titles it: `jira_get_issue({"key":"ACME-1"})`, or the bare name. */
 export function parseTeamToolCall(title: string): { readonly tool: 'jira' | 'gitlab' | 'sonar' | 'snyk' | 'figma'; readonly name: string; readonly args: Record<string, unknown> } | undefined {
-	const match = /^(jira|gitlab|sonar|snyk|figma)_[a-z_]+/.exec(title.trim());
+	const call = parseToolCall(title, /^(jira|gitlab|sonar|snyk|figma)_[a-z_]+/);
+	return call && { tool: call.prefix as 'jira', name: call.name, args: call.args };
+}
+
+/** A tool call's name (matching `pattern`, whose first group is `prefix`) and arguments, from a title such as `name ({"a":1})`. */
+function parseToolCall(title: string, pattern: RegExp): { readonly prefix: string; readonly name: string; readonly args: Record<string, unknown> } | undefined {
+	const match = pattern.exec(title.trim());
 	if (!match) {
 		return undefined;
 	}
@@ -167,7 +173,44 @@ export function parseTeamToolCall(title: string): { readonly tool: 'jira' | 'git
 	} else if (rest && !rest.startsWith('(')) {
 		return undefined;
 	}
-	return { tool: match[1] as 'jira', name: match[0], args };
+	return { prefix: match[1], name: match[0], args };
+}
+
+/** Verbs for the index tools' friendly titles; `{0}` is what was looked up. */
+export interface IndexToolVerbs {
+	readonly searchCode: string;
+	readonly findSymbol: string;
+	readonly related: string;
+	readonly outline: string;
+	readonly outlineFolder: string;
+	readonly searchDocs: string;
+}
+
+export const englishIndexToolVerbs: IndexToolVerbs = {
+	searchCode: 'Search code for {0}',
+	findSymbol: 'Look up {0}',
+	related: 'Find files related to {0}',
+	outline: 'Outline {0}',
+	outlineFolder: 'Outline the folder',
+	searchDocs: 'Search docs for {0}',
+};
+
+/** "Search code for "discount code"": a friendly title for a geminicode-index call, or undefined for other tools. */
+export function indexToolTitle(title: string, verbs: IndexToolVerbs = englishIndexToolVerbs): string | undefined {
+	const call = parseToolCall(title, /^(code_search|find_symbol|related_files|repo_map|docs_search)\b/);
+	if (!call) {
+		return undefined;
+	}
+	const s = (key: string) => typeof call.args[key] === 'string' ? (call.args[key] as string).trim() : '';
+	const quoted = (value: string) => value ? `"${value.length > 60 ? `${value.slice(0, 60)}…` : value}"` : '';
+	switch (call.prefix) {
+		case 'code_search': return fill(verbs.searchCode, quoted(s('query')));
+		case 'find_symbol': return fill(verbs.findSymbol, s('name'));
+		case 'related_files': return fill(verbs.related, s('path'));
+		case 'repo_map': return s('path') ? fill(verbs.outline, s('path')) : verbs.outlineFolder;
+		case 'docs_search': return fill(verbs.searchDocs, quoted(s('query')));
+		default: return undefined;
+	}
 }
 
 /** Verbs for the friendly titles; `{0}` is what the tool acted on. */

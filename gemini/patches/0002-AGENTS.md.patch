@@ -1,14 +1,14 @@
 diff --git a/AGENTS.md b/AGENTS.md
-index d6abb76ab8384fb7b391b551b159002657c218c1..ab7e6c93e098f35610e50c6322fb99ff7b1b94fa 100644
+index d6abb76ab8384fb7b391b551b159002657c218c1..fcad2ad23afe10c380be0f95d47e608453d658d5 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -1,3 +1,66 @@
+@@ -1,3 +1,77 @@
 +# GeminiCode fork
 +
 +This repository is GeminiCode, a fork of VS Code with the Gemini CLI built in. Before changing anything, read [gemini/README.md](gemini/README.md) and the [design rules](gemini/docs/ARCHITECTURE.md#design-rules). In short:
 +
 +- Put new code in `extensions/gemini/`. Edit an upstream file only when the extension API cannot do the job, and mark the edit with a `GEMINI-FORK` comment.
-+- Never modify the Gemini CLI's source. The one change GeminiCode makes to the copies it runs is the patch in `extensions/gemini/src/acp/cliPatches.ts` (see below).
++- Never modify the Gemini CLI's source. The one change GeminiCode makes to the copies it runs is the patch in `extensions/gemini/src/acp/cliPatches.ts` (see below). It also adds the app's ripgrep where the CLI looks for its own (`cliRipgrep.ts`), changing no CLI file.
 +- Performance and response time come first.
 +- Before a pull request, run the checks in [gemini/README.md](gemini/README.md#developing).
 +
@@ -56,6 +56,17 @@ index d6abb76ab8384fb7b391b551b159002657c218c1..ab7e6c93e098f35610e50c6322fb99ff
 +
 +- A page writes through `teamWrite` (`src/acp/teamTools.ts`), as an agent's tool call does, so every write has the same checks and an audit log record. Page-only writes go in `pageTools` there.
 +- Rich Jira comments (Markdown, @mentions, attachments, visibility) always use Jira's REST API (`jira_rich_comment`), never the `mcp-atlassian` container: the container has no mentions and no uploads. The webview turns the Markdown into Jira's document format (`webview-src/commentAdf.ts`), so the extension host carries no Markdown parser. The audit log records file paths, never file contents.
++
++### The workspace index
++
++- Everything that reads, parses or writes an index runs in the indexer process (`src/indexer.ts`, `dist/indexer.js`), never in the extension host, whose bundle is near its budget. The host only forwards requests (`IndexClient`). Keep it that way.
++- Lint bans synchronous `fs` calls, in the indexer process too; `node:sqlite` itself is synchronous, so keep transactions short (`writeSliced` yields every 40 ms).
++- Never run `PRAGMA quick_check` or `integrity_check` when opening an index: it reads the whole file, seconds for a large repository. Damage shows up as a SQLite error; `isCorruption` turns it into a rebuild.
++- The release build ships only six tree-sitter grammars (`build/.moduleignore`); definitions come from the line patterns in `src/acp/index/languages.ts`. Add a language there, with a test in `test/acp/index/parse.test.ts`.
++- BM25 alone ranks a short mention above a long definition. Keep word positions in the full-text index and the definition-first step in `search` (`query.ts`); measure ranking on a large repository, not only the tests' small ones.
++- The docs fetcher runs in the extension host so the Mac's proxy applies; conversion and storage run in the indexer. Fetched pages are reference material: tool results say so.
++- Without a nudge the model reaches for `grep_search` even with the index tools listed. The chat sends `indexHint` (`workspaceIndex.ts`) with a session's first prompt once the folder's index is built, and results say they are complete. Measure a change here with real sessions on a large repository, with and without the index, and check the server got `tools/list`: a repository whose `mcp.allowed` leaves out `geminicode-index` hides the tools unless the CLI starts with `--allowed-mcp-server-names` as GeminiCode starts it.
++- The npm CLI ships no ripgrep, and without it `grep_search` falls back to `git grep`, three to four times slower on a large repository. `cliRipgrep.ts` copies the app's into `bundle/vendor/ripgrep/` of the bundled copy (`npm run bundle-cli`) and of installed copies at launch.
 +
 +### Validating
 +

@@ -7,7 +7,7 @@
 // (webview-src/chat.ts). Types only, so the webview bundle can import them.
 
 import type { Attachment } from '../acp/attachments';
-import type { TeamToolVerbs, ToolRef, ToolRefContext } from '../acp/toolLinks';
+import type { IndexToolVerbs, TeamToolVerbs, ToolRef, ToolRefContext } from '../acp/toolLinks';
 import type { ModelQuota } from '../acp/directRequest';
 import type { TranscriptItem } from '../acp/chatTranscript';
 import type { ItemUpdate } from '../acp/textDeltas';
@@ -463,6 +463,8 @@ export interface ChatStrings {
 	readonly pasteLink: string;
 	/** Friendly titles for the geminicode-tools calls. */
 	readonly teamToolVerbs: TeamToolVerbs;
+	/** Friendly titles for the geminicode-index calls. */
+	readonly indexToolVerbs: IndexToolVerbs;
 	/** Chip tooltip while a ticket or merge request is being read. */
 	readonly toolChipLoading: string;
 	/** A tool chip's label for opening its item; {0} is the item, such as ACME-412. */

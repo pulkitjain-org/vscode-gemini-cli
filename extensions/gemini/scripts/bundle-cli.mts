@@ -21,6 +21,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { patchCliBundle } from '../src/acp/cliPatches.ts';
+import { provideRipgrep } from '../src/acp/cliRipgrep.ts';
 
 const extensionDir = path.dirname(import.meta.dirname);
 const cliDir = path.join(extensionDir, 'cli');
@@ -35,6 +36,14 @@ async function patch(): Promise<void> {
 		throw new Error(`Gemini CLI ${version} no longer has the code src/acp/cliPatches.ts patches: update the patch before bundling this version.`);
 	}
 	console.log(result === 'patched' ? `Capped tool output in ACP mode for Gemini CLI ${version}.` : `Gemini CLI ${version} is already patched.`);
+	// The app's ripgrep, where the CLI looks for its own (src/acp/cliRipgrep.ts); both Mac architectures, since the app is universal.
+	const arches = process.platform === 'darwin' ? ['arm64', 'x64'] : [process.arch];
+	for (const arch of arches) {
+		const binary = process.platform === 'win32' ? 'rg.exe' : 'rg';
+		const source = path.join(extensionDir, '..', '..', 'node_modules', '@vscode', 'ripgrep-universal', 'bin', `${process.platform}-${arch}`, binary);
+		const placed = await provideRipgrep(path.join(target, 'bundle'), source, process.platform, arch);
+		console.log(placed === 'unavailable' ? `No ripgrep for ${process.platform}-${arch} in node_modules; the bundled CLI falls back to git grep there.` : `Ripgrep for ${process.platform}-${arch}: ${placed}.`);
+	}
 }
 
 if (fs.existsSync(path.join(target, 'bundle', 'gemini.js')) && fs.existsSync(marker) && fs.readFileSync(marker, 'utf8') === integrity) {

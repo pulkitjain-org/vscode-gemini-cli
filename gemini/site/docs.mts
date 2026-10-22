@@ -39,11 +39,12 @@ export const docGroups: readonly { readonly name: string; readonly pages: readon
 			{ slug: 'projects', title: 'Projects', icon: 'network', summary: 'A coordinator and its threads, across one or more repositories.', topics: ['Coordinator', 'Threads', 'Plan first', 'Repositories', 'Memory'] },
 			{ slug: 'browser', title: 'Browser', icon: 'globe', summary: 'Add to Gemini, notes on the page, console and network.', topics: ['Add to Gemini', 'Notes', 'Shared pages', 'Console'] },
 			{ slug: 'team-tools', title: 'Team tools', icon: 'plug', summary: 'Jira, GitLab, SonarQube, Snyk and Figma, and the Home dashboard.', topics: ['Connections', 'Home', 'Ticket to MR', 'Checks', 'Review', 'Audit log'] },
+			{ slug: 'workspace-index', title: 'Workspace index and docs', icon: 'scan-search', summary: 'What agents can look up in one step: each workspace\'s index and the docs you attach.', topics: ['Agent tools', 'Workspaces', 'Docs', 'Suggestions', 'Settings'] },
 		],
 	},
 	{
 		name: 'Set up and fix', pages: [
-			{ slug: 'helpers', title: 'Project Helpers and settings', icon: 'blocks', summary: 'MCP servers, skills, hooks, extensions, memory, rules and settings.', topics: ['MCP servers', 'Skills', 'Hooks', 'Memory', 'Settings'] },
+			{ slug: 'helpers', title: 'Project Helpers and settings', icon: 'blocks', summary: 'Context per model call, MCP servers, skills, hooks, extensions, memory, rules and settings.', topics: ['Context cost', 'MCP servers', 'Skills', 'Hooks', 'Memory', 'Settings'] },
 			{ slug: 'shortcuts', title: 'Keyboard shortcuts', icon: 'keyboard', summary: 'Every shortcut in one table, by area.', topics: ['Agents', 'Chat', 'Editor', 'Browser'] },
 			{ slug: 'troubleshooting', title: 'Troubleshooting', icon: 'life-buoy', summary: 'Common problems, a performance trace, and how to report a bug well.', topics: ['Common problems', 'Trace', 'Report'] },
 		],

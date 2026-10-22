@@ -35,6 +35,7 @@ import type { AgentStateKind, HomeMode } from './panelProtocol';
 import { ReviewController } from './reviewController';
 import type { BrowserTools } from './browserTools';
 import type { TeamConnections } from './teamConnections';
+import type { WorkspaceIndex } from './workspaceIndex';
 import { toolChipsFor } from './toolChips';
 import { jiraKeyIn } from '../acp/jira';
 import { ChatActivity, ChatController, ChatEnhancer, FileSearch, openChatAsMarkdown } from './chatController';
@@ -211,6 +212,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	browser: BrowserTools | undefined;
 	/** The team's tools (Jira, GitLab, SonarQube, Snyk, Figma), for every agent's session; set by activate. */
 	teamTools: TeamConnections | undefined;
+	/** The index of each agent's folder and its attached docs, for every agent's session; set by activate. */
+	index: WorkspaceIndex | undefined;
 	/** Today's quota, for the chats' usage popover. */
 	usage: UsageMeter | undefined;
 	/** One direct request to the quick model, for drafting a project's memory; set once the extension has made it. */
@@ -688,7 +691,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			if (runtime.spareKey === key) {
 				return;
 			}
-			runtime.prepareSession(folder, supportedMcpServers(runtime.state.agent, [...this.browser?.spareServers() ?? [], ...this.teamTools?.spareServers() ?? []]), key);
+			runtime.prepareSession(folder, supportedMcpServers(runtime.state.agent, [...this.browser?.spareServers() ?? [], ...this.teamTools?.spareServers() ?? [], ...this.index?.spareServers(folder) ?? []]), key);
 		};
 		if (runtime.state.kind === 'ready') {
 			clearTimeout(spare.timer);
@@ -717,7 +720,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 
 	/** Matches a spare session to the agents that can take it: same folder, and the browser the same way. */
 	private spareKey(folder: string): string {
-		return JSON.stringify(['agent', folder, !!this.browser?.serving, !!this.teamTools?.serving]);
+		return JSON.stringify(['agent', folder, !!this.browser?.serving, !!this.teamTools?.serving, !!this.index?.serving]);
 	}
 
 	/** Where the next agent most likely starts: where the last one did, else the first open folder. */
@@ -1351,6 +1354,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		void this.checkpointFiles.delete(id);
 		this.browser?.closeAgent(id);
 		this.teamTools?.forgetAgent(id);
+		this.index?.forgetAgent(id);
 		if (record?.worktree && record.repos?.length) {
 			await removeThreadFolder(record.repos, record.worktree.folder, deleteBranch).catch(err =>
 				vscode.window.showWarningMessage(vscode.l10n.t("The agent was removed, but its folder {0} could not be: {1}", tildify(record.worktree!.folder), errorMessage(err))));
@@ -1358,6 +1362,10 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			const repository = await repositoryRoot(workspace.folder) ?? workspace.folder;
 			await removeWorktree(repository, record.worktree, deleteBranch).catch(err =>
 				vscode.window.showWarningMessage(vscode.l10n.t("The agent was removed, but its folder {0} could not be: {1}", tildify(record.worktree!.folder), errorMessage(err))));
+		}
+		if (record?.worktree) {
+			// The worktree is gone, and its index with it.
+			void this.index?.remove(record.worktree.cwd).catch(() => undefined);
 		}
 	}
 
@@ -2026,9 +2034,11 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 
 	private start(record: AgentRecord, folder: string, openLater = false): LiveAgent {
 		const project = projectsEnabled() ? record.project : undefined;
-		const servers = () => [...this.browser?.mcpServersFor(record.id, folder) ?? [], ...this.teamTools?.mcpServersFor(record.id, folder) ?? [], ...project ? this.projects.mcpServersFor(this.model.agent(record.id) ?? record) : []];
 		// A coordinator's session runs in its own empty folder (coordinatorHome); its chat still belongs to the workspace.
 		const cwd = project?.role === 'coordinator' ? coordinatorHome(record.id) : folder;
+		// An agent's worktree starts from a copy of its workspace's index; a coordinator has no code to index.
+		const indexServers = () => cwd === folder ? this.index?.mcpServersFor(record.id, folder, record.worktree ? this.model.workspace(record.workspaceId)?.folder : undefined) ?? [] : [];
+		const servers = () => [...this.browser?.mcpServersFor(record.id, folder) ?? [], ...this.teamTools?.mcpServersFor(record.id, folder) ?? [], ...indexServers(), ...project ? this.projects.mcpServersFor(this.model.agent(record.id) ?? record) : []];
 		const session = new AgentSession(this.service, cwd, record.sessionId, servers, openLater, {
 			// A project agent's session needs the project's server, which a spare never has, listening before it opens:
 			// a session opened without it, as from a restored tab or a thread warmed at project open, never gets the tools.
@@ -2037,6 +2047,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			onDidOpenSession: servers => {
 				this.browser?.bindSession(record.id, folder, servers);
 				this.teamTools?.bindSession(record.id, folder, servers);
+				this.index?.bindSession(record.id, folder, servers);
 				// Refill, for the next agent, which most likely starts in the same folder; not in an agent's own worktree.
 				if (!this.model.agent(record.id)?.worktree) {
 					this.prepareStart(folder, spareDelayMs);
@@ -2046,7 +2057,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		session.permissions.confirmOnly = request => !!this.teamTools?.isConfirmCall(request);
 		session.permissions.answerAtOnce = request => (project ? this.projects.instantAnswer(this.model.agent(record.id) ?? record, request) : undefined)
 			?? this.teamTools?.instantAnswer(request);
-		const files: FileSearch = isOpenFolder(folder) ? this.workspaceFiles : new FolderFileIndex(folder);
+		// A folder outside the window lists its files from its index once that is built, else from git.
+		const files: FileSearch = isOpenFolder(folder) ? this.workspaceFiles : new FolderFileIndex(folder, undefined, () => this.index?.files(folder) ?? Promise.resolve(undefined));
 		const changes = new AgentChanges(folder);
 		const live: LiveAgent = {
 			session,
@@ -2057,6 +2069,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				onDidPickModel: modelId => this.model.setCoordinatorModel(record.id, modelId),
 				editorColumn: () => agentColumn(record.id, this.live.get(record.id)?.panel),
 				enhancer: this.enhancer,
+				indexContext: draft => this.index?.contextFor(folder, draft) ?? Promise.resolve(undefined),
+				// Not for a coordinator, which runs in an empty folder without the index.
+				indexHint: () => cwd === folder ? this.index?.hint(folder) : undefined,
 				usage: () => this.usage,
 				toolChips: () => this.teamTools && toolChipsFor(this.teamTools),
 				...(project?.role === 'coordinator' ? { project: this.projects.chatProject(record.id) } : {}),
@@ -2115,6 +2130,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				}
 				if (!activity.busy) {
 					this.scheduleSave(record.id, live);
+					if (live.activity.busy) {
+						this.index?.agentTurnEnded(folder);
+					}
 				}
 				const before = live.activity;
 				live.activity = activity;
@@ -2128,7 +2146,10 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 					this.model.setSessionId(record.id, state.savedSessionId);
 				}
 			}),
-			live.controller.onDidEditFiles(diffs => changes.record(diffs)),
+			live.controller.onDidEditFiles(diffs => {
+				changes.record(diffs);
+				this.index?.agentEdited(folder, diffs.map(diff => diff.path));
+			}),
 			changes.onDidChange(() => {
 				this.review.refreshSoon();
 				this.model.setChanges(record.id, changes.totals);
@@ -2225,6 +2246,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			void this.checkpointFiles.delete(node.record.id);
 			this.browser?.closeAgent(node.record.id);
 			this.teamTools?.forgetAgent(node.record.id);
+			this.index?.forgetAgent(node.record.id);
 		}
 	}
 
@@ -2271,6 +2293,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				void this.checkpointFiles.delete(agent.id);
 				this.browser?.closeAgent(agent.id);
 				this.teamTools?.forgetAgent(agent.id);
+				this.index?.forgetAgent(agent.id);
 			}
 		}
 	}

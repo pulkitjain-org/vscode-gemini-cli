@@ -30,7 +30,7 @@ export async function readGitHead(folder: string): Promise<string | undefined> {
 }
 
 /** The repository's git directory: `.git`, or where a worktree's `.git` file points. */
-async function findGitDir(folder: string): Promise<string | undefined> {
+export async function findGitDir(folder: string): Promise<string | undefined> {
 	for (let dir = path.resolve(folder); ; dir = path.dirname(dir)) {
 		const candidate = path.join(dir, '.git');
 		try {
