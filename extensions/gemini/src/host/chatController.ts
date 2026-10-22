@@ -60,6 +60,8 @@ import { deleteFile, replaceFileText, WorkspaceFileSystem } from './workspaceFil
  * Every current Gemini model's context window, in tokens, as gemini-cli's
  * `tokenLimit` has it; the CLI's footer shows context use against it too.
  */
+/** How long Enhance prompt waits for the folder's index before rewriting without it. */
+const indexContextWaitMs = 400;
 const contextWindow = 1_048_576;
 /** How often a rewrite arriving is shown, at most. */
 const progressIntervalMs = 33;
@@ -106,6 +108,8 @@ export interface ChatControllerOptions {
 	editorColumn?(): Promise<vscode.ViewColumn>;
 	/** Rewrites the composer's draft for Enhance prompt. */
 	readonly enhancer: ChatEnhancer;
+	/** What the folder's index finds for a draft, for Enhance prompt; undefined without a built index. */
+	indexContext?(draft: string): Promise<string | undefined>;
 	/** The workspace pill; without it the composer shows none. */
 	workspace?(): ChatWorkspace | undefined;
 	/** Today's quota, for the usage popover; unset shows it as off. */
@@ -1709,8 +1713,14 @@ export class ChatController implements vscode.Disposable {
 		const relative = document?.uri.scheme === 'file' ? path.relative(client.cwd, document.uri.fsPath) : undefined;
 		const activeFile = relative && !relative.startsWith('..') && !path.isAbsolute(relative) ? `${relative.split(path.sep).join('/')} (${document!.languageId})` : undefined;
 		const mode = client.settings.mode;
+		// The index answers in milliseconds; a slow answer is left out rather than waited for.
+		const codeContext = await Promise.race([
+			this.options.indexContext?.(draft).catch(() => undefined) ?? Promise.resolve(undefined),
+			new Promise<undefined>(resolve => setTimeout(() => resolve(undefined), indexContextWaitMs)),
+		]);
 		return {
 			draft,
+			...codeContext ? { codeContext } : {},
 			attachments: attachments.map(attachmentLabel),
 			history: enhanceHistory(this.transcript.items),
 			folder: path.basename(client.cwd),

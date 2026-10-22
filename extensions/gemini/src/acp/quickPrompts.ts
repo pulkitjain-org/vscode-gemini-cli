@@ -103,6 +103,8 @@ export function cleanCommitMessage(reply: string): string {
 
 /** The recent conversation shown to prompt enhancement is cut to this many characters, newest kept. */
 const maxHistoryLength = 4000;
+/** The index's outline and hits, kept short: the rewrite should stay fast. */
+const maxCodeContextLength = 2_000;
 /** And each message in it to this many. */
 const maxHistoryMessageLength = 1500;
 
@@ -119,6 +121,8 @@ export interface EnhancePromptInput {
 	readonly activeFile?: string;
 	/** The agent's approval mode, such as Plan. */
 	readonly mode?: string;
+	/** What the folder's index found for the draft: an outline and files that may be relevant. */
+	readonly codeContext?: string;
 }
 
 export function enhancePromptPrompt(input: EnhancePromptInput): { readonly system: string; readonly prompt: string } {
@@ -146,6 +150,7 @@ export function enhancePromptPrompt(input: EnhancePromptInput): { readonly syste
 	const history = recentHistory(input.history ?? []);
 	const prompt = [
 		context.length ? `Context:\n${context.join('\n')}\n` : '',
+		input.codeContext ? `From the folder's index (may help name the right files; mention only what fits the request):\n${input.codeContext.slice(0, maxCodeContextLength)}\n` : '',
 		history ? `Recent conversation:\n${history}\n` : '',
 		`Request to rewrite:\n<request>\n${input.draft}\n</request>`,
 	].filter(Boolean).join('\n');

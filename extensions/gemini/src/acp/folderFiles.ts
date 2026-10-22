@@ -30,7 +30,8 @@ export class FolderFileIndex {
 
 	private files: { readonly list: Promise<IndexedFile[]>; readonly builtAt: number } | undefined;
 
-	constructor(readonly folder: string, private readonly now: () => number = Date.now) { }
+	/** `indexed` lists the folder's files from its index, when it has one built, saving a git process. */
+	constructor(readonly folder: string, private readonly now: () => number = Date.now, private readonly indexed?: () => Promise<string[] | undefined>) { }
 
 	/** Starts building the list ahead of the first search. */
 	warm(): void {
@@ -41,9 +42,13 @@ export class FolderFileIndex {
 		return rankPaths(query, await this.load(), limit).map(f => ({ path: f.path, relative: f.relative }));
 	}
 
+	private async listing(): Promise<string[]> {
+		return await this.indexed?.().catch(() => undefined) ?? listFiles(this.folder);
+	}
+
 	private load(): Promise<IndexedFile[]> {
 		if (!this.files || this.now() - this.files.builtAt > maxAgeMs) {
-			const list = listFiles(this.folder).then(relatives => relatives.slice(0, maxFiles).map(relative => ({
+			const list = this.listing().then(relatives => relatives.slice(0, maxFiles).map(relative => ({
 				...indexPath(relative),
 				path: path.join(this.folder, relative),
 			})));

@@ -2057,7 +2057,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 		session.permissions.confirmOnly = request => !!this.teamTools?.isConfirmCall(request);
 		session.permissions.answerAtOnce = request => (project ? this.projects.instantAnswer(this.model.agent(record.id) ?? record, request) : undefined)
 			?? this.teamTools?.instantAnswer(request);
-		const files: FileSearch = isOpenFolder(folder) ? this.workspaceFiles : new FolderFileIndex(folder);
+		// A folder outside the window lists its files from its index once that is built, else from git.
+		const files: FileSearch = isOpenFolder(folder) ? this.workspaceFiles : new FolderFileIndex(folder, undefined, () => this.index?.files(folder) ?? Promise.resolve(undefined));
 		const changes = new AgentChanges(folder);
 		const live: LiveAgent = {
 			session,
@@ -2068,6 +2069,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				onDidPickModel: modelId => this.model.setCoordinatorModel(record.id, modelId),
 				editorColumn: () => agentColumn(record.id, this.live.get(record.id)?.panel),
 				enhancer: this.enhancer,
+				indexContext: draft => this.index?.contextFor(folder, draft) ?? Promise.resolve(undefined),
 				usage: () => this.usage,
 				toolChips: () => this.teamTools && toolChipsFor(this.teamTools),
 				...(project?.role === 'coordinator' ? { project: this.projects.chatProject(record.id) } : {}),

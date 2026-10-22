@@ -119,6 +119,10 @@ describe('enhancePromptPrompt', () => {
 		const { prompt } = enhancePromptPrompt({ draft: 'x', history: [{ role: 'agent', text: 'y'.repeat(3000) }] });
 		expect(prompt).toContain(`Agent: ${'y'.repeat(1500)}…`);
 	});
+	it('adds what the folder\'s index found, after the context', () => {
+		const { prompt } = enhancePromptPrompt({ draft: 'fix the discount', folder: 'app', codeContext: 'Code that may be relevant:\nsrc/cart/discount.ts:4-9 (applyDiscount)' });
+		expect(prompt).toBe('Context:\nFolder: app\n\nFrom the folder\'s index (may help name the right files; mention only what fits the request):\nCode that may be relevant:\nsrc/cart/discount.ts:4-9 (applyDiscount)\n\nRequest to rewrite:\n<request>\nfix the discount\n</request>');
+	});
 });
 
 describe('cleanEnhancedPrompt', () => {
