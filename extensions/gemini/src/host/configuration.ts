@@ -88,7 +88,7 @@ export function getApprovalPolicy(): ApprovalPolicy {
 }
 
 /** GeminiCode's own MCP servers, which the CLI always loads unless a settings file excludes them. */
-const ownServers = [teamToolsServerName, projectServerName, 'geminicode-browser', indexServerName];
+export const ownServers = [teamToolsServerName, projectServerName, 'geminicode-browser', indexServerName];
 
 /**
  * `--allowed-mcp-server-names` when `gemini.mcp.allowedServers` names any server: the CLI then
@@ -132,12 +132,13 @@ export function setAgentEnvOverride(env: NodeJS.ProcessEnv): void {
  * The command that starts the CLI. `ownFolderOnly` leaves out the window's other folders even when
  * `gemini.agents.allWorkspaceFolders` is on, for an agent that works somewhere else, as the benchmark's do.
  */
-export async function getAgentCommand(options: { interactive?: boolean; cli?: CliResolution; subcommand?: readonly string[]; ownFolderOnly?: boolean } = {}): Promise<AgentCommand> {
+export async function getAgentCommand(options: { interactive?: boolean; cli?: CliResolution; subcommand?: readonly string[]; ownFolderOnly?: boolean; allowedMcpServers?: readonly string[] } = {}): Promise<AgentCommand> {
 	const [cli, settings, policyArgs, mcpArgs] = await Promise.all([
 		options.cli ?? getCliResolution(),
 		readCliSettings(),
 		adminPolicyDir && !options.subcommand ? prepareAdminPolicy(adminPolicyDir, getApprovalPolicy()) : [],
-		options.subcommand ? [] : allowedMcpServerArgs(),
+		// `allowedMcpServers` replaces the usual list, for measuring what each server costs (contextCost.ts).
+		options.subcommand ? [] : options.allowedMcpServers ? ['--allowed-mcp-server-names', options.allowedMcpServers.join(',')] : allowedMcpServerArgs(),
 	]);
 	return resolveAgentCommand({
 		cliPath: cli.cliPath,

@@ -1378,3 +1378,70 @@ button.option-button .codicon-chevron-down {
 	font-size: 11.5px;
 	text-align: right;
 }
+
+/* Project Helpers' Context per model call: a bar of what every call carries, and its parts. */
+.settings .tag.tokens {
+	font-family: var(--vscode-editor-font-family);
+}
+
+.settings .tag.tokens.heavy {
+	color: var(--gemini-warn);
+	border-color: color-mix(in srgb, var(--gemini-warn) 45%, transparent);
+}
+
+.context-bar {
+	display: flex;
+	gap: 2px;
+	height: 8px;
+	margin-top: 8px;
+	border-radius: 4px;
+	overflow: hidden;
+}
+
+.context-bar > i {
+	display: block;
+	min-width: 2px;
+}
+
+.context-cli {
+	background: var(--gemini-switch-off);
+}
+
+.context-context {
+	background: var(--gemini-accent);
+}
+
+.context-server {
+	background: var(--gemini-warn);
+}
+
+.context-geminicode {
+	background: var(--gemini-ok);
+}
+
+.settings .context-part {
+	padding-top: 6px;
+	padding-bottom: 6px;
+}
+
+.context-swatch {
+	flex: none;
+	width: 10px;
+	height: 10px;
+	border-radius: 2px;
+}
+
+.settings .context-tip {
+	align-items: flex-start;
+	color: var(--vscode-foreground);
+}
+
+.settings .context-tip .codicon {
+	color: var(--gemini-warn);
+	margin-top: 2px;
+}
+
+.settings .context-note {
+	margin-top: 6px;
+	font-size: 11.5px;
+}

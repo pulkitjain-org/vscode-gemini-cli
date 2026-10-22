@@ -6,6 +6,17 @@
 
 Open it with **Gemini: Project Helpers**, or from the Agents pane's **...** menu. Changes apply to agents started afterwards; **Restart Agent** applies them now. Opening the page never starts the Gemini CLI.
 
+## Context per model call
+
+Every step an agent takes is a model call, and each call sends the same context before your prompt: the Gemini CLI's own instructions and tools, your project's `GEMINI.md` and the files it imports, the skills list, and the tool definitions of every MCP server. On a large team project this can be over 60,000 tokens, which makes each step slower and uses more of your quota.
+
+**Measure** shows how much each part costs: the total, a bar of the parts, and each MCP server's share beside its switch below. It sends one short prompt per part to the lightest Gemini model, so it runs only when you ask, and the result is kept until you measure again. Memory files show an estimate of their size, with the files they import.
+
+When a part is heavy, the page says what you can do:
+
+- **An MCP server with many tools.** Turn it off with its switch when agents don't need it, or list only the tools they use in its `includeTools`. A server's tools cost the same on every call, whether the agent uses them or not.
+- **Long context files.** Rules needed only for some tasks can move into skills, which load only when a task calls for them.
+
 ## MCP servers
 
 The page lists the MCP servers in your personal `~/.gemini/settings.json` and in each open folder's `.gemini/settings.json`. Each has a switch, the same as the CLI's `/mcp enable` and `/mcp disable`, so the terminal sees the change too.

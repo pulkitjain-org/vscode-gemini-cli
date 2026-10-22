@@ -46,6 +46,7 @@ import { WorkspaceIndex } from './host/workspaceIndex';
 import { DocsSources } from './host/docsSources';
 import { IndexPage } from './host/indexPage';
 import { IndexStatusBar } from './host/indexStatusBar';
+import { measureFolderContextCost } from './host/contextCostProbe';
 import { disposeGitIgnore } from './host/workspaceFileSystem';
 
 /** Finishes the writes that must outlive the window; set by activate. */
@@ -163,7 +164,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		changesPanel,
 		agentsView.onDidFocus(source => changesPanel.show(source)),
 		new AgentHome(context.extensionUri, agentsView, () => warmup.startSoon(), { state: context.globalState, version: productInfo.version ?? String(context.extension.packageJSON.version ?? ''), cli: () => service.status.agentVersion, startup: () => ({ activatedAt, agent: agentPhase(service.status.phase), ...readyAt ? { readyAt } : {} }) }),
-		new SettingsPage(context.extensionUri, service),
+		new SettingsPage(context.extensionUri, service, (folder, servers) => measureFolderContextCost({
+			folder,
+			servers,
+			// What a new agent's session gets from GeminiCode itself.
+			geminicodeServers: () => [...browserTools.spareServers(), ...teamTools.spareServers(), ...workspaceIndex.spareServers(folder)],
+			emptyFolder: vscode.Uri.joinPath(context.globalStorageUri, 'context-probe').fsPath,
+			log: message => log.info(message),
+		}), context.globalState),
 		quickEdits,
 		statusBar,
 		usageMeter,

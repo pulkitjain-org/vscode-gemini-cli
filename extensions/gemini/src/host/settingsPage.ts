@@ -17,9 +17,10 @@ import { disabledSkills, loadSkills, setSkillEnabled, skillFolders, skillSlug, s
 import { AgentService } from './agentService';
 import { getAgentCommand, getWorkspaceCwd } from './configuration';
 import { tildify } from './displayText';
-import { CliReport, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage } from './panelProtocol';
+import { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage } from './panelProtocol';
 import { forgetSkills } from './teamCommands';
 import { createNonce, escapeAttribute } from './webviewHtml';
+import { ContextCost, estimateTokens, heavyContextTokens, heavyServerTokens } from '../acp/contextCost';
 
 const viewType = 'gemini.projectSettings';
 
@@ -47,7 +48,12 @@ export class SettingsPage implements vscode.Disposable {
 	private cliStale = false;
 	private readonly disposables: vscode.Disposable[] = [];
 
-	constructor(private readonly extensionUri: vscode.Uri, private readonly service: AgentService) {
+	/** A context cost measurement under way, for the folder it measures. */
+	private measuring: string | undefined;
+	private measureError: string | undefined;
+
+	/** `measureContext` measures what every model call carries in a folder (contextCostProbe.ts); `state` keeps the last result. */
+	constructor(private readonly extensionUri: vscode.Uri, private readonly service: AgentService, private readonly measureContext?: (folder: string, servers: readonly string[]) => Promise<ContextCost>, private readonly state?: vscode.Memento) {
 		this.disposables.push(
 			vscode.commands.registerCommand('gemini.projectSettings', () => this.show()),
 			vscode.commands.registerCommand('gemini.newSkill', () => this.newSkill()),
@@ -223,7 +229,63 @@ export class SettingsPage implements vscode.Disposable {
 		}
 		const personalRules = path.join(dir, plainFileName(rulesFileNames(personal)[0]));
 		rules.push(await rulesView(vscode.l10n.t("Personal rules"), personalRules, tildify(personalRules)));
-		return { servers, skills, hooks, extensions: this.extensions, memory: this.memory, rules, preferences: this.preferencesView(personal) };
+		const folder = getWorkspaceCwd();
+		const cost = this.cachedCost(folder);
+		const measured = new Map(cost?.servers.map(s => [s.name, s.tokens]));
+		return {
+			servers: servers.map(server => measured.has(server.name) ? { ...server, tokens: measured.get(server.name) } : server),
+			skills, hooks, extensions: this.extensions, memory: this.memory, rules, preferences: this.preferencesView(personal),
+			contextCost: this.contextCostView(folder, cost),
+		};
+	}
+
+	private cachedCost(folder: string): ContextCost | undefined {
+		return this.state?.get<ContextCost>(`gemini.contextCost:${folder}`);
+	}
+
+	private contextCostView(folder: string, cost: ContextCost | undefined): ContextCostView {
+		const n = (tokens: number) => Math.round(tokens).toLocaleString();
+		const parts: ContextCostView['parts'] = cost ? [
+			{ label: vscode.l10n.t("Gemini CLI's own prompt and tools"), tokens: cost.cli, kind: 'cli' },
+			{ label: vscode.l10n.t("Context files and skills list"), tokens: cost.context, kind: 'context' },
+			...cost.servers.map(s => ({ label: vscode.l10n.t("MCP server {0}", s.name), tokens: s.tokens, kind: 'server' as const })),
+			{ label: vscode.l10n.t("GeminiCode's own tools"), tokens: cost.geminicode, kind: 'geminicode' },
+		] : [];
+		const tips = cost ? [
+			...cost.servers.filter(s => s.tokens >= heavyServerTokens).map(s => vscode.l10n.t("{0} adds about {1} tokens to every model call. Turn it off below when agents don't need it, or list only the tools they use in its includeTools.", s.name, n(s.tokens))),
+			...cost.context >= heavyContextTokens ? [vscode.l10n.t("The context files add about {0} tokens to every model call. Rules needed only for some tasks can move into skills, which load only when a task calls for them.", n(cost.context))] : [],
+		] : [];
+		const state = this.measuring === folder ? 'measuring' : this.measureError ? 'failed' : cost ? 'ready' : 'none';
+		return {
+			state,
+			folder: path.basename(folder) || folder,
+			...cost ? { total: cost.total, measured: cost.model ? vscode.l10n.t("{0}, counted with {1}", relativeAgo(cost.measuredAt), cost.model) : relativeAgo(cost.measuredAt) } : {},
+			parts,
+			tips,
+			...this.measureError ? { error: this.measureError } : {},
+		};
+	}
+
+	/** Measures the folder's context cost: one short prompt per part, so only when asked. */
+	private async measure(): Promise<void> {
+		if (!this.measureContext || this.measuring) {
+			return;
+		}
+		const folder = getWorkspaceCwd();
+		const view = await this.build();
+		const servers = view.servers.filter(s => s.enabled).map(s => s.name);
+		this.measuring = folder;
+		this.measureError = undefined;
+		await this.update();
+		try {
+			const cost = await this.measureContext(folder, [...new Set(servers)]);
+			await this.state?.update(`gemini.contextCost:${folder}`, cost);
+		} catch (err) {
+			this.measureError = vscode.l10n.t("Couldn't measure: {0}", errorMessage(err));
+		} finally {
+			this.measuring = undefined;
+			await this.update();
+		}
 	}
 
 	private preferencesView(personal: Record<string, unknown>): PreferencesView {
@@ -253,6 +315,9 @@ export class SettingsPage implements vscode.Disposable {
 			switch (message.type) {
 				case 'ready':
 					break;
+				case 'measureContext':
+					void this.measure();
+					return;
 				case 'restart':
 					this.service.restart();
 					return;
@@ -617,6 +682,15 @@ export class SettingsPage implements vscode.Disposable {
 	private html(webview: vscode.Webview, media: vscode.Uri): string {
 		const nonce = createNonce();
 		const strings: SettingsPageStrings = {
+			contextTitle: vscode.l10n.t("Context per model call"),
+			contextHint: vscode.l10n.t("What every model call sends before your prompt in {0}. A large context makes every step of an agent slower and uses more of your quota."),
+			measure: vscode.l10n.t("Measure"),
+			measureAgain: vscode.l10n.t("Measure Again"),
+			measuring: vscode.l10n.t("Measuring\u2026"),
+			contextNote: vscode.l10n.t("Measuring sends one short prompt for each part to the lightest Gemini model."),
+			contextNone: vscode.l10n.t("Not measured yet."),
+			contextTotal: vscode.l10n.t("{0} tokens in every model call"),
+			tokensPerCall: vscode.l10n.t("\u2248{0} tokens"),
 			title: vscode.l10n.t("Project Helpers"),
 			subtitle: vscode.l10n.t("What every Gemini agent loads when it starts, shared with the gemini command in your terminal. Changes apply to new agents."),
 			restart: vscode.l10n.t("Restart Agent"),
@@ -723,8 +797,44 @@ function extensionView(extension: CliExtension): ExtensionView {
 }
 
 async function memoryView(file: string): Promise<MemoryFileView> {
-	const preview = await fs.readFile(file, 'utf8').then(firstLine, () => undefined);
-	return { path: file, display: tildify(file), ...(preview ? { preview } : {}) };
+	const text = await fs.readFile(file, 'utf8').catch(() => undefined);
+	const preview = text === undefined ? undefined : firstLine(text);
+	const characters = text === undefined ? 0 : text.length + await importedCharacters(file, text, new Set([file]));
+	return { path: file, display: tildify(file), ...(preview ? { preview } : {}), ...characters ? { tokens: estimateTokens(characters) } : {} };
+}
+
+/** The size of the files a context file imports with `@path` lines, and theirs in turn, as the CLI expands them. */
+async function importedCharacters(file: string, text: string, seen: Set<string>): Promise<number> {
+	let total = 0;
+	for (const match of text.matchAll(/^@(\S+)\s*$/gm)) {
+		const imported = path.resolve(path.dirname(file), match[1]);
+		if (seen.has(imported) || seen.size > 50) {
+			continue;
+		}
+		seen.add(imported);
+		const content = await fs.readFile(imported, 'utf8').catch(() => undefined);
+		if (content !== undefined) {
+			total += content.length + await importedCharacters(imported, content, seen);
+		}
+	}
+	return total;
+}
+
+/** "2 hours ago", for when the context cost was measured. */
+function relativeAgo(at: number): string {
+	const minutes = Math.floor((Date.now() - at) / 60_000);
+	if (minutes < 1) {
+		return vscode.l10n.t("just now");
+	}
+	if (minutes < 60) {
+		return minutes === 1 ? vscode.l10n.t("1 minute ago") : vscode.l10n.t("{0} minutes ago", minutes);
+	}
+	const hours = Math.floor(minutes / 60);
+	if (hours < 24) {
+		return hours === 1 ? vscode.l10n.t("1 hour ago") : vscode.l10n.t("{0} hours ago", hours);
+	}
+	const days = Math.floor(hours / 24);
+	return days === 1 ? vscode.l10n.t("yesterday") : vscode.l10n.t("{0} days ago", days);
 }
 
 function firstLine(text: string): string | undefined {
