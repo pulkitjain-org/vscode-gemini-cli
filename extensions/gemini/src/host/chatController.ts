@@ -131,6 +131,9 @@ export interface ChatControllerOptions {
 	};
 	/** Chips for Jira tickets, GitLab items and Figma frames named in the composer; unset when the team tools aren't set up. */
 	toolChips?(): ToolChips | undefined;
+	/** The merge request review a reviewer agent works on, for the chip beside its branch. */
+	review?(): { readonly label: string; readonly tip: string } | undefined;
+	openReview?(): void;
 }
 
 /** A page shared with the agent: pinned to the composer, and named in every prompt until the user stops sharing it. */
@@ -1515,6 +1518,9 @@ export class ChatController implements vscode.Disposable {
 			case 'workspaceAction':
 				void this.workspaceAction(message.action, typeof message.repo === 'string' ? message.repo : undefined);
 				break;
+			case 'openReview':
+				this.options.openReview?.();
+				break;
 			case 'restoreSession':
 				if (typeof message.id === 'string') {
 					void this.restoreSession(message.id);
@@ -1772,6 +1778,7 @@ export class ChatController implements vscode.Disposable {
 		const canCommit = !this.busy && !!git.commit?.files().length;
 		const ws = this.options.workspace?.();
 		const workspace = ws && { name: path.basename(ws.folder) || ws.folder, path: tildify(ws.cwd), worktree: ws.worktree };
+		const review = this.options.review?.();
 		// Several repositories: each with its own branch, in place of one folder and branch.
 		if (ws?.repos && ws.repos.length > 1) {
 			void Promise.all(ws.repos.map(async repo => ({ name: repo.name, path: tildify(repo.folder), branch: await readGitHead(repo.folder).catch(() => undefined) })))
@@ -1779,7 +1786,7 @@ export class ChatController implements vscode.Disposable {
 			return;
 		}
 		void (folder ? readGitHead(folder).catch(() => undefined) : Promise.resolve(undefined))
-			.then(branch => this.post({ type: 'git', git: { branch, canCommit, ...(workspace ? { workspace } : {}) } }));
+			.then(branch => this.post({ type: 'git', git: { branch, canCommit, ...(workspace ? { workspace } : {}), ...(review ? { review } : {}) } }));
 	}
 
 	/** The branch menu's list: the folder's local branches, or why this agent cannot switch. */
@@ -2330,6 +2337,7 @@ export class ChatController implements vscode.Disposable {
 		</form>
 		<div class="composer-foot">
 			<button type="button" id="branch" class="foot-button branch" hidden><i class="codicon codicon-git-branch" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button>
+			<button type="button" id="review-chip" class="foot-button review-chip" hidden><i class="codicon codicon-comment-discussion" aria-hidden="true"></i><span></span></button>
 			<button type="button" id="workspace" class="foot-button workspace" hidden><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button>
 			<span id="repos" class="foot-repos" hidden></span>
 			<button type="button" id="commit" class="foot-button commit" hidden><i class="codicon codicon-git-commit" aria-hidden="true"></i><span></span></button>

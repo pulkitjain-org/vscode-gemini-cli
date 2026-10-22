@@ -41,6 +41,9 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 	private running = false;
 	private readonly onDidDisposeEmitter = new vscode.EventEmitter<void>();
 	readonly onDidDispose = this.onDidDisposeEmitter.event;
+	private readonly onDidSetFieldEmitter = new vscode.EventEmitter<string>();
+	/** A field the user typed in or ticked, by name; the page isn't re-rendered. */
+	readonly onDidSetField = this.onDidSetFieldEmitter.event;
 	private disposed = false;
 	private record: Promise<string> | undefined;
 	/** Saves the typed fields to the record, a moment after the last change. */
@@ -70,6 +73,7 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 			void this.closeRecord();
 			this.onDidDisposeEmitter.fire();
 			this.onDidDisposeEmitter.dispose();
+			this.onDidSetFieldEmitter.dispose();
 		});
 		if (recording) {
 			this.record = recording.store.open({ command: recording.command, args: recording.args, title, ...recording.about ? { about: recording.about } : {} }).then(id => {
@@ -178,6 +182,13 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 		void this.panel.webview.postMessage({ type: 'state', state: this.state } satisfies ToTeamFlow);
 	}
 
+	/** Sends the page something besides its state, which it takes without a re-render. */
+	send(message: Exclude<ToTeamFlow, { type: 'state' }>): void {
+		if (!this.disposed) {
+			void this.panel.webview.postMessage(message);
+		}
+	}
+
 	private onMessage(message: FromTeamFlow): void {
 		switch (message.type) {
 			case 'ready':
@@ -186,6 +197,7 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 			case 'set':
 				this.fields.set(message.field, message.value);
 				this.saveFields();
+				this.onDidSetFieldEmitter.fire(message.field);
 				return;
 			case 'act':
 				if (message.action === 'close') {
@@ -209,14 +221,8 @@ function html(webview: vscode.Webview, media: vscode.Uri): string {
 		close: vscode.l10n.t("Close"),
 		cancel: vscode.l10n.t("Cancel"),
 		back: vscode.l10n.t("Back"),
-		next: vscode.l10n.t("Next"),
-		change: vscode.l10n.t("Change"),
 		openIn: vscode.l10n.t("Open in {0}"),
 		openMr: vscode.l10n.t("Open Merge Request"),
-		targetHeading: vscode.l10n.t("Merge into"),
-		targetHint: vscode.l10n.t("Pick the branch this merge request merges into. Release branches come first."),
-		suggested: vscode.l10n.t("from the ticket's fix version"),
-		release: vscode.l10n.t("release"),
 		title: vscode.l10n.t("Title"),
 		description: vscode.l10n.t("Description"),
 		regenerate: vscode.l10n.t("Regenerate"),
@@ -263,11 +269,42 @@ function html(webview: vscode.Webview, media: vscode.Uri): string {
 		geminiReview: vscode.l10n.t("Gemini's review."),
 		openDiff: vscode.l10n.t("Open in Diff"),
 		yourReview: vscode.l10n.t("Your review"),
-		yourReviewHint: vscode.l10n.t("{0} comments ticked, posted as you on their lines. Edit any of them first."),
-		postAndRequest: vscode.l10n.t("Post {0} Comments and Request Changes"),
-		post: vscode.l10n.t("Post {0} Comments"),
+		yourReviewHint: vscode.l10n.t("Ticked: {0} from Gemini \u00b7 {1} from you \u00b7 {2} in threads. Posted as you, on their lines."),
+		postOne: vscode.l10n.t("Post 1 Comment"),
+		postMany: vscode.l10n.t("Post {0} Comments"),
+		postAndRequestOne: vscode.l10n.t("Post 1 Comment and Request Changes"),
+		postAndRequestMany: vscode.l10n.t("Post {0} Comments and Request Changes"),
+		postAndApproveOne: vscode.l10n.t("Post 1 Comment and Approve"),
+		postAndApproveMany: vscode.l10n.t("Post {0} Comments and Approve"),
 		approve: vscode.l10n.t("Approve"),
 		approved: vscode.l10n.t("You approved it"),
+		you: vscode.l10n.t("You"),
+		addReviewComment: vscode.l10n.t("Add Comment"),
+		deleteComment: vscode.l10n.t("Delete Comment"),
+		generalComment: vscode.l10n.t("General comment"),
+		lineChanged: vscode.l10n.t("Line changed"),
+		lineChangedHint: vscode.l10n.t("This line changed in a newer commit. Check the comment, then tick it to post it."),
+		addSuggestion: vscode.l10n.t("Add Suggestion"),
+		removeSuggestion: vscode.l10n.t("Remove Suggestion"),
+		askSuggestion: vscode.l10n.t("Ask Gemini to Suggest"),
+		askSuggestionAgain: vscode.l10n.t("Ask Gemini Again"),
+		suggesting: vscode.l10n.t("Gemini is suggesting a change..."),
+		includeSuggestion: vscode.l10n.t("Include suggestion"),
+		byGemini: vscode.l10n.t("by Gemini"),
+		suggestionHint: vscode.l10n.t("The author can apply it in GitLab with one click."),
+		threads: vscode.l10n.t("Threads"),
+		threadCounts: vscode.l10n.t("Open: {0} \u00b7 Resolved: {1}"),
+		outdated: vscode.l10n.t("Outdated"),
+		removedLine: vscode.l10n.t("On a removed line"),
+		reply: vscode.l10n.t("Reply"),
+		resolve: vscode.l10n.t("Resolve"),
+		resolveThread: vscode.l10n.t("Resolve thread"),
+		yourReply: vscode.l10n.t("Your reply"),
+		geminiReply: vscode.l10n.t("Gemini's reply"),
+		deleteReply: vscode.l10n.t("Delete Reply"),
+		refresh: vscode.l10n.t("Refresh"),
+		askGeminiAgain: vscode.l10n.t("Ask Gemini Again"),
+		moreFiles: vscode.l10n.t("{0} more files are listed in GitLab."),
 		files: vscode.l10n.t("Files"),
 		noFindings: vscode.l10n.t("Nothing to raise."),
 		kindBug: vscode.l10n.t("Bug"),
@@ -275,6 +312,19 @@ function html(webview: vscode.Webview, media: vscode.Uri): string {
 		kindNit: vscode.l10n.t("Nit"),
 		kindQuestion: vscode.l10n.t("Question"),
 		openAgent: vscode.l10n.t("Open the Agent"),
+		openReview: vscode.l10n.t("Open Review"),
+		fixMr: vscode.l10n.t("Fix !{0}"),
+		reviewerBranch: vscode.l10n.t("This agent reviews !{0}. Its branch is a local copy for the review, so it can't be opened as a new merge request."),
+		targetHeading: vscode.l10n.t("Merge into"),
+		searchBranches: vscode.l10n.t("Search branches"),
+		noBranches: vscode.l10n.t("No branch matches."),
+		targetSuggested: vscode.l10n.t("Suggested"),
+		targetRecent: vscode.l10n.t("Recently used here"),
+		targetRelease: vscode.l10n.t("Release branches"),
+		targetOther: vscode.l10n.t("Other branches"),
+		fixVersion: vscode.l10n.t("fix version {0}"),
+		projectDefault: vscode.l10n.t("project default"),
+		describedFor: vscode.l10n.t("Written for {0}. Regenerate to describe it against {1}."),
 		checksTitle: vscode.l10n.t("Checks"),
 		fix: vscode.l10n.t("Fix"),
 		fixAll: vscode.l10n.t("Fix All with This Agent"),

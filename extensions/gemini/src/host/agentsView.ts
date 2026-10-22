@@ -212,6 +212,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 	browser: BrowserTools | undefined;
 	/** The team's tools (Jira, GitLab, SonarQube, Snyk, Figma), for every agent's session; set by activate. */
 	teamTools: TeamConnections | undefined;
+	/** The merge request review a reviewer agent works on, for its chat's chip, and opening it; set by activate. */
+	reviewChip: ((agentId: string) => { readonly label: string; readonly tip: string } | undefined) | undefined;
+	openReview: ((agentId: string) => void) | undefined;
 	/** The index of each agent's folder and its attached docs, for every agent's session; set by activate. */
 	index: WorkspaceIndex | undefined;
 	/** Today's quota, for the chats' usage popover. */
@@ -359,6 +362,13 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 			}
 		}
 		return undefined;
+	}
+
+	/** Shows each running chat's branch and chips again, as after a review changed. */
+	refreshChats(): void {
+		for (const agent of this.live.values()) {
+			agent.controller.refreshGit();
+		}
 	}
 
 	/** Agent `id`'s chat, when the agent runs in this window. */
@@ -2074,6 +2084,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				indexHint: () => cwd === folder ? this.index?.hint(folder) : undefined,
 				usage: () => this.usage,
 				toolChips: () => this.teamTools && toolChipsFor(this.teamTools),
+				review: () => this.reviewChip?.(record.id),
+				openReview: () => this.openReview?.(record.id),
 				...(project?.role === 'coordinator' ? { project: this.projects.chatProject(record.id) } : {}),
 				...(project?.role === 'thread' ? {
 					parentProject: {

@@ -8,11 +8,13 @@
 // The host holds the state and re-renders with `state`; what the user types
 // goes back with `set`, without a re-render, so typing is never interrupted.
 
-import type { ChecksView, FlowPerson, FlowPill, FlowTool, FromTeamFlow, MoveTicketView, OpenMrView, ReviewView, TeamFlowState, TeamFlowStrings, ToTeamFlow } from '../src/host/teamFlowProtocol';
+import type { TargetChoice } from '../src/acp/teamFlowLogic';
+import type { ChecksView, FlowPerson, FlowPill, FlowTool, FromTeamFlow, MoveTicketView, OpenMrView, ReviewCommentView, ReviewThreadView, ReviewView, TeamFlowState, TeamFlowStrings, ToTeamFlow } from '../src/host/teamFlowProtocol';
 import { Menu } from './menu';
 import { button, el, format, icon, pageStrings } from './panelDom';
 import { selectMenu } from './selectMenu';
 import { toolLogo } from './toolLogos';
+import { setTip } from './tooltip';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromTeamFlow): void };
 
@@ -192,41 +194,89 @@ function render(state: TeamFlowState): void {
 
 // --- Open Merge Request
 
+/** Branches GitLab found for the target menu's search, beyond those the view lists. */
+let searchedBranches: TargetChoice[] = [];
+/** The target menu of the current render, redrawn when searched branches arrive. */
+let targetMenu: Menu | undefined;
+let searchTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** The target branch as a button that opens a themed menu with search: suggested, recent, release, then the rest. */
+function targetPicker(view: OpenMrView): HTMLElement {
+	const anchor = button('flow-target-button', '', () => undefined);
+	anchor.append(icon('git-merge'), el('span', 'mono', view.target ?? strings.searchBranches), icon('chevron-down'));
+	setTip(anchor, view.target ?? strings.searchBranches);
+	const list = el('div', 'flow-menu');
+	list.hidden = true;
+	const holder = el('span', 'flow-menu-holder');
+	holder.append(anchor, list);
+	let lastQuery = '';
+	const menu: Menu = new Menu({
+		element: list,
+		anchor,
+		label: strings.targetHeading,
+		search: () => strings.searchBranches,
+		sections: query => {
+			if (query !== lastQuery) {
+				lastQuery = query;
+				clearTimeout(searchTimer);
+				if (query.trim() && view.moreTargets) {
+					searchTimer = setTimeout(() => act('searchTargets', query.trim()), 300);
+				}
+			}
+			const row = (t: TargetChoice, detail?: string) => ({
+				name: t.branch,
+				...detail ? { detail } : {},
+				checked: t.branch === view.target,
+				run: () => {
+					menu.close();
+					act('target', t.branch);
+				},
+			});
+			const all = [...view.targets, ...searchedBranches.filter(b => !view.targets.some(t => t.branch === b.branch))];
+			const suggested = all.filter(t => t.suggested || t.projectDefault);
+			const recent = all.filter(t => t.recent && !suggested.includes(t));
+			const releases = all.filter(t => t.release && !suggested.includes(t) && !recent.includes(t));
+			const rest = all.filter(t => !suggested.includes(t) && !recent.includes(t) && !releases.includes(t));
+			return [
+				{ heading: strings.targetSuggested, rows: suggested.map(t => row(t, t.fixVersion ? format(strings.fixVersion, t.fixVersion) : t.projectDefault ? strings.projectDefault : undefined)) },
+				{ heading: strings.targetRecent, rows: recent.map(t => row(t)) },
+				{ heading: strings.targetRelease, rows: releases.map(t => row(t)) },
+				{ heading: strings.targetOther, rows: rest.map(t => row(t)) },
+			].filter(section => section.rows.length);
+		},
+		empty: () => strings.noBranches,
+	});
+	targetMenu = menu;
+	disposables.push(menu, { dispose: () => targetMenu === menu ? targetMenu = undefined : undefined });
+	return holder;
+}
+
 function openMr(view: OpenMrView): ReturnType<typeof dialog> {
 	const route = el('span', 'flow-route');
-	route.append(el('span', 'mono', view.source), icon('arrow-right'));
-	if (view.step === 'details' && view.target) {
-		route.append(el('span', 'mono accent', view.target), button('link', strings.change, () => act('back')));
+	route.append(el('span', 'mono', view.source));
+	if (!view.reviewOf) {
+		route.append(icon('arrow-right'), targetPicker(view));
 	}
 	route.append(el('span', 'muted end', view.project));
 	const d = dialog('gitlab', strings.openMr, route);
+	if (view.reviewOf) {
+		const reviewOf = view.reviewOf;
+		d.body.append(el('div', 'flow-note', format(strings.reviewerBranch, reviewOf.iid)));
+		d.foot.append(el('span', 'grow'),
+			button('secondary', format(strings.openIn, 'GitLab'), () => act('openReviewed'), 'link-external'),
+			button('secondary', format(strings.fixMr, reviewOf.iid), () => act('fixReviewed')),
+			button('primary', strings.openReview, () => act('openReview')));
+		return d;
+	}
+	if (view.unusualTarget) {
+		const warn = el('div', 'flow-banner warn');
+		warn.append(icon('warning'), el('span', undefined, view.unusualTarget));
+		d.body.append(warn);
+	}
 	if (view.existing) {
 		const note = el('div', 'flow-note');
 		note.append(el('span', undefined, format(strings.existingMr, view.existing.iid)), button('link', format(strings.openIn, 'GitLab'), () => act('openExisting'), 'link-external'));
 		d.body.append(note);
-	}
-	if (view.step === 'target') {
-		d.body.append(heading(strings.targetHeading), el('p', 'hint', strings.targetHint));
-		const list = el('div', 'flow-list');
-		for (const t of view.targets) {
-			const row = el('label', `flow-radio${t.branch === view.target ? ' on' : ''}`);
-			const radio = el('input');
-			radio.type = 'radio';
-			radio.name = 'target';
-			radio.checked = t.branch === view.target;
-			radio.addEventListener('change', () => act('target', t.branch));
-			row.append(radio, el('span', 'mono', t.branch));
-			if (t.suggested) {
-				row.append(el('span', 'pill info', view.ticket ? `${strings.suggested} ${view.ticket.fixVersions.join(', ')}`.trim() : strings.suggested));
-			} else if (t.release) {
-				row.append(el('span', 'pill muted', strings.release));
-			}
-			list.append(row);
-		}
-		d.body.append(list);
-		d.foot.append(el('span', 'hint', format(strings.pushesAs, view.host, view.account)), el('span', 'grow'),
-			button('secondary', strings.cancel, () => act('close')), button('primary', strings.next, () => act('next')));
-		return d;
 	}
 	d.body.append(heading(strings.title), textField('title', view.title));
 	const regenerate = button('link', strings.regenerate, () => act('regenerate'), 'sparkle');
@@ -238,7 +288,8 @@ function openMr(view: OpenMrView): ReturnType<typeof dialog> {
 	if (view.generating) {
 		description.placeholder = strings.generating;
 	}
-	d.body.append(description, el('p', 'hint', strings.descriptionHint));
+	d.body.append(description);
+	d.body.append(view.describedFor && view.target ? el('p', 'hint warn', format(strings.describedFor, view.describedFor, view.target)) : el('p', 'hint', strings.descriptionHint));
 	d.body.append(heading(strings.attachments), el('p', 'hint', strings.attachmentsHint));
 	for (const a of view.attachments) {
 		const label = el('span', 'flow-attachment');
@@ -254,8 +305,10 @@ function openMr(view: OpenMrView): ReturnType<typeof dialog> {
 	}
 	options.append(checkbox(strings.deleteBranch, view.deleteBranch, on => set('deleteBranch', on)), checkbox(strings.draft, view.draft, on => set('draft', on)));
 	d.body.append(options, people(view.reviewers, view.members, ids => act('reviewers', ids)));
+	const submit = button('primary', strings.openMr, () => act('submit'));
+	submit.disabled = !view.target;
 	d.foot.append(el('span', 'hint', format(strings.pushesAs, view.host, view.account)), el('span', 'grow'),
-		button('secondary', strings.back, () => act('back')), button('primary', strings.openMr, () => act('submit')));
+		button('secondary', strings.cancel, () => act('close')), submit);
 	return d;
 }
 
@@ -354,55 +407,210 @@ function moveTicket(view: MoveTicketView): ReturnType<typeof dialog> {
 const kindNames: Record<string, () => string> = { bug: () => strings.kindBug, shouldFix: () => strings.kindShouldFix, nit: () => strings.kindNit, question: () => strings.kindQuestion };
 const kindTones: Record<string, string> = { bug: 'error', shouldFix: 'warn', nit: 'muted', question: 'info' };
 
+function spinner(text: string): HTMLElement {
+	const row = el('span', 'flow-spinner');
+	row.append(icon('loading'), el('span', undefined, text));
+	row.querySelector('.codicon')?.classList.add('codicon-modifier-spin');
+	return row;
+}
+
+/** A file and line, shortened, with the full path in its tooltip. */
+function where(short: string, full: string | undefined): HTMLElement {
+	const node = el('span', 'mono muted flow-where', short);
+	if (full) {
+		setTip(node, full);
+	}
+	return node;
+}
+
+function commentCard(c: ReviewCommentView, view: ReviewView, sync: () => void): HTMLElement {
+	const card = el('div', `flow-finding${c.by === 'you' ? ' mine' : ''}`);
+	const top = el('div', 'flow-finding-top');
+	const box = el('input');
+	box.type = 'checkbox';
+	box.checked = c.checked;
+	box.dataset.finding = c.by;
+	box.addEventListener('change', () => {
+		set(`check:${c.id}`, box.checked);
+		sync();
+	});
+	top.append(box, c.by === 'you' ? el('span', 'pill info', strings.you) : el('span', `pill ${kindTones[c.kind ?? 'shouldFix']}`, kindNames[c.kind ?? 'shouldFix']()));
+	top.append(c.where ? where(c.where, c.path) : el('span', 'muted', strings.generalComment));
+	if (c.lineChanged) {
+		const changed = el('span', 'pill warn', strings.lineChanged);
+		setTip(changed, strings.lineChangedHint);
+		top.append(changed);
+	}
+	top.append(el('span', 'grow'));
+	if (c.where) {
+		top.append(button('link', strings.openDiff, () => act('openDiff', c.id)));
+	}
+	if (c.by === 'you') {
+		const remove = button('icon-button', '', () => act('deleteComment', c.id), 'trash');
+		setTip(remove, strings.deleteComment);
+		top.append(remove);
+	}
+	card.append(top);
+	if (c.title && c.by === 'gemini') {
+		card.append(el('div', 'flow-finding-title', c.title));
+	}
+	const comment = textField(`comment:${c.id}`, c.comment, { multiline: true, rev: view.rev }) as HTMLTextAreaElement;
+	comment.rows = Math.min(6, Math.max(2, Math.ceil(c.comment.length / 90)));
+	card.append(comment);
+	if (c.suggestion) {
+		const s = c.suggestion;
+		const block = el('div', 'flow-suggestion');
+		if (s.old) {
+			block.append(el('pre', 'flow-suggestion-old', s.old));
+		}
+		const text = textField(`suggestion:${c.id}`, s.text, { multiline: true, rev: view.rev, mono: true }) as HTMLTextAreaElement;
+		text.classList.add('flow-suggestion-new');
+		text.rows = Math.min(10, Math.max(1, s.text.split('\n').length));
+		block.append(text);
+		const row = el('div', 'flow-suggestion-row');
+		row.append(checkbox(strings.includeSuggestion, s.include, on => set(`include:${c.id}`, on)));
+		if (s.by === 'gemini') {
+			row.append(el('span', 'pill muted', strings.byGemini));
+		}
+		row.append(el('span', 'grow'), button('link', strings.removeSuggestion, () => act('removeSuggestion', c.id)));
+		block.append(row, el('p', 'hint', strings.suggestionHint));
+		card.append(block);
+	}
+	if (c.canSuggest || c.suggesting || c.suggestNote) {
+		const actions = el('div', 'flow-finding-actions');
+		if (c.suggesting) {
+			actions.append(spinner(strings.suggesting));
+		} else if (c.canSuggest) {
+			if (!c.suggestion) {
+				actions.append(button('link', strings.addSuggestion, () => act('addSuggestion', c.id), 'add'));
+			}
+			if (view.agentId) {
+				actions.append(button('link', c.suggestion?.by === 'gemini' ? strings.askSuggestionAgain : strings.askSuggestion, () => act('askSuggestion', c.id), 'sparkle'));
+			}
+		}
+		if (c.suggestNote) {
+			actions.append(el('span', 'hint', c.suggestNote));
+		}
+		card.append(actions);
+	}
+	return card;
+}
+
+function threadCard(t: ReviewThreadView, view: ReviewView, sync: () => void): HTMLElement {
+	const card = el('div', 'flow-thread');
+	const top = el('div', 'flow-finding-top');
+	top.append(el('strong', undefined, t.notes[0]?.author ?? ''), t.where ? where(t.where, t.path) : el('span', 'muted', strings.generalComment));
+	if (t.outdated) {
+		top.append(el('span', 'pill warn', strings.outdated));
+	} else if (t.removedLine) {
+		top.append(el('span', 'pill muted', strings.removedLine));
+	}
+	top.append(el('span', 'grow'), button('link', t.onLine ? strings.openDiff : format(strings.openIn, 'GitLab'), () => act('openThread', t.id), t.onLine ? undefined : 'link-external'));
+	card.append(top);
+	for (const note of t.notes.slice(-3)) {
+		const n = el('div', 'flow-thread-note');
+		n.append(el('span', 'muted', [note.author, note.when].filter(Boolean).join(' · ')), el('div', 'flow-thread-body', note.body));
+		card.append(n);
+	}
+	const reply = t.reply;
+	if (reply) {
+		const box = el('div', 'flow-finding mine');
+		const head = el('div', 'flow-finding-top');
+		const tick = el('input');
+		tick.type = 'checkbox';
+		tick.checked = reply.checked;
+		tick.dataset.reply = '1';
+		tick.addEventListener('change', () => {
+			set(`rcheck:${reply.id}`, tick.checked);
+			sync();
+		});
+		head.append(tick, el('span', `pill ${reply.by === 'you' ? 'info' : 'muted'}`, reply.by === 'you' ? strings.yourReply : strings.geminiReply), el('span', 'grow'));
+		if (t.resolvable) {
+			head.append(checkbox(strings.resolveThread, reply.resolve, on => set(`resolve:${reply.id}`, on)));
+		}
+		const remove = button('icon-button', '', () => act('deleteReply', reply.id), 'trash');
+		setTip(remove, strings.deleteReply);
+		head.append(remove);
+		const text = textField(`reply:${reply.id}`, reply.text, { multiline: true, rev: view.rev }) as HTMLTextAreaElement;
+		text.rows = 2;
+		box.append(head, text);
+		card.append(box);
+	} else {
+		const actions = el('div', 'flow-finding-actions');
+		actions.append(button('link', strings.reply, () => act('reply', t.id), 'reply'));
+		if (t.resolvable) {
+			actions.append(button('link', strings.resolve, () => act('resolve', t.id), 'check'));
+		}
+		card.append(actions);
+	}
+	return card;
+}
+
 function review(view: ReviewView): ReturnType<typeof dialog> {
 	const sub = el('span', 'flow-route');
-	sub.append(el('span', undefined, view.mr.author), el('span', 'mono', view.mr.source), icon('arrow-right'), el('span', 'mono', view.mr.target), button('link', format(strings.openIn, 'GitLab'), () => act('openGitLab'), 'link-external'));
+	sub.append(el('span', undefined, view.mr.author), el('span', 'mono', view.mr.source), icon('arrow-right'), el('span', 'mono', view.mr.target));
+	if (view.mr.head) {
+		sub.append(el('span', 'mono muted', view.mr.head));
+	}
+	sub.append(button('link', format(strings.openIn, 'GitLab'), () => act('openGitLab'), 'link-external'));
 	const d = dialog('gitlab', `!${view.mr.iid} ${view.mr.title}`, sub);
 	d.box.classList.add('wide');
+	if (view.moved) {
+		const banner = el('div', 'flow-banner warn');
+		banner.append(icon('git-commit'), el('span', 'grow', view.moved), button('secondary small', strings.refresh, () => act('refresh'), 'refresh'));
+		d.body.append(banner);
+	}
 	const columns = el('div', 'flow-columns');
 	const main = el('div', 'flow-main');
 	const side = el('aside', 'flow-side');
 	columns.append(main, side);
 	d.body.append(columns);
+	const actions = el('div', 'flow-actions');
+	const hint = el('p', 'hint');
+	const postRequest = button('primary wide', '', () => act('post', 'request'));
+	const postOnly = button('secondary wide', '', () => act('post', 'comments'));
+	const approve = button('secondary wide', '', () => act('post', 'approve'), 'check');
+	const syncPost = () => {
+		const ticked = [...d.box.querySelectorAll<HTMLInputElement>('input[data-finding], input[data-reply]')].filter(b => b.checked);
+		const gemini = ticked.filter(b => b.dataset.finding === 'gemini').length;
+		const you = ticked.filter(b => b.dataset.finding === 'you').length;
+		const replies = ticked.filter(b => b.dataset.reply).length;
+		const n = ticked.length;
+		hint.textContent = format(strings.yourReviewHint, gemini, you, replies);
+		postRequest.replaceChildren(el('span', undefined, n === 1 ? strings.postAndRequestOne : format(strings.postAndRequestMany, n)));
+		postOnly.replaceChildren(el('span', undefined, n === 1 ? strings.postOne : format(strings.postMany, n)));
+		approve.replaceChildren(icon('check'), el('span', undefined, view.approvedByMe && !n ? strings.approved : !n ? strings.approve : n === 1 ? strings.postAndApproveOne : format(strings.postAndApproveMany, n)));
+		postRequest.disabled = postOnly.disabled = !n || view.state === 'preparing';
+		approve.disabled = view.state === 'preparing' || (view.approvedByMe && !n);
+	};
 	if (view.state === 'preparing' || view.state === 'reviewing') {
-		const p = el('div', 'flow-loading');
-		p.append(icon('loading'), el('span', undefined, view.state === 'preparing' ? strings.preparing : strings.reviewing));
-		p.querySelector('.codicon')?.classList.add('codicon-modifier-spin');
-		main.append(p);
-	} else {
-		if (view.summary) {
-			const summary = el('p', 'flow-summary');
-			summary.append(toolLogoSpark(), el('strong', undefined, `${strings.geminiReview} `), document.createTextNode(view.summary));
-			main.append(summary);
+		const row = el('div', 'flow-finding-actions');
+		row.append(spinner(view.state === 'preparing' ? strings.preparing : strings.reviewing));
+		if (view.state === 'reviewing') {
+			row.append(el('span', 'grow'), button('link', strings.readAgain, () => act('readAgain'), 'refresh'));
 		}
-		if (view.state === 'unparsed') {
-			main.append(el('div', 'flow-note', strings.unparsed), button('secondary', strings.readAgain, () => act('readAgain'), 'refresh'));
-		} else if (!view.findings.length) {
-			main.append(el('p', 'hint', strings.noFindings));
-		}
-		for (const f of view.findings) {
-			const card = el('div', 'flow-finding');
-			const top = el('div', 'flow-finding-top');
-			const box = el('input');
-			box.type = 'checkbox';
-			box.checked = f.checked;
-			box.addEventListener('change', () => {
-				set(`check:${f.id}`, box.checked);
-				syncPost();
-			});
-			box.dataset.finding = f.id;
-			top.append(box, el('span', `pill ${kindTones[f.kind]}`, kindNames[f.kind]()));
-			if (f.file) {
-				top.append(el('span', 'mono muted', `${f.file}${f.line ? `:${f.line}` : ''}`));
-			}
-			top.append(el('span', 'grow'));
-			if (f.file) {
-				top.append(button('link', strings.openDiff, () => act('openDiff', f.id)));
-			}
-			const comment = textField(`comment:${f.id}`, f.comment, { multiline: true, rev: view.findingsRev }) as HTMLTextAreaElement;
-			comment.rows = Math.min(6, Math.max(2, Math.ceil(f.comment.length / 90)));
-			card.append(top, el('div', 'flow-finding-title', f.title), comment);
-			main.append(card);
+		main.append(row);
+	}
+	if (view.summary) {
+		const summary = el('p', 'flow-summary');
+		summary.append(toolLogoSpark(), el('strong', undefined, `${strings.geminiReview} `), document.createTextNode(view.summary));
+		main.append(summary);
+	}
+	if (view.state === 'unparsed') {
+		main.append(el('div', 'flow-note', strings.unparsed), button('secondary', strings.readAgain, () => act('readAgain'), 'refresh'));
+	} else if (view.state === 'ready' && !view.comments.length) {
+		main.append(el('p', 'hint', strings.noFindings));
+	}
+	for (const c of view.comments) {
+		main.append(commentCard(c, view, syncPost));
+	}
+	if (view.state !== 'preparing') {
+		main.append(button('flow-add', strings.addReviewComment, () => act('addComment'), 'add'));
+	}
+	if (view.threads.length || view.resolvedThreads) {
+		main.append(heading(strings.threads, el('span', 'hint', format(strings.threadCounts, view.threads.filter(t => !t.reply).length, view.resolvedThreads))));
+		for (const t of view.threads) {
+			main.append(threadCard(t, view, syncPost));
 		}
 	}
 	for (const row of view.side) {
@@ -419,20 +627,7 @@ function review(view: ReviewView): ReturnType<typeof dialog> {
 		}
 		side.append(line);
 	}
-	const actions = el('div', 'flow-actions');
 	side.append(el('h2', undefined, strings.yourReview));
-	const hint = el('p', 'hint');
-	const postRequest = button('primary wide', '', () => act('post', 'request'));
-	const postOnly = button('secondary wide', '', () => act('post', 'comments'));
-	const approve = button('secondary wide', view.approvedByMe ? strings.approved : strings.approve, () => act('post', 'approve'), 'check');
-	approve.disabled = view.approvedByMe;
-	const syncPost = () => {
-		const n = [...main.querySelectorAll<HTMLInputElement>('input[data-finding]')].filter(b => b.checked).length;
-		hint.textContent = format(strings.yourReviewHint, n);
-		postRequest.replaceChildren(el('span', undefined, format(strings.postAndRequest, n)));
-		postOnly.replaceChildren(el('span', undefined, format(strings.post, n)));
-		postRequest.disabled = postOnly.disabled = !n || view.state !== 'ready' && view.state !== 'unparsed';
-	};
 	actions.append(postRequest, postOnly, approve);
 	side.append(hint, actions);
 	if (view.done) {
@@ -443,13 +638,29 @@ function review(view: ReviewView): ReturnType<typeof dialog> {
 	if (view.files.length) {
 		side.append(el('h2', 'quiet', strings.files));
 		for (const file of view.files) {
-			const row = el('div', 'flow-file');
-			row.append(el('span', 'name', file.path.split('/').pop() ?? file.path), el('span', 'added', `+${file.added}`), el('span', 'removed', `\u2212${file.removed}`));
-			row.title = file.path;
+			const row = button('flow-file', '', () => act('openFile', file.path));
+			const name = el('span', 'name');
+			if (file.dir) {
+				name.append(el('span', 'dir', file.dir));
+			}
+			name.append(document.createTextNode(file.name));
+			row.append(name);
+			if (file.comments) {
+				const count = el('span', 'count');
+				count.append(icon('comment'), el('span', undefined, String(file.comments)));
+				row.append(count);
+			}
+			row.append(el('span', 'added', `+${file.added}`), el('span', 'removed', `\u2212${file.removed}`));
+			setTip(row, file.path);
 			side.append(row);
 		}
+		if (view.moreFiles) {
+			side.append(el('p', 'hint', format(strings.moreFiles, view.moreFiles)));
+		}
 	}
-	if (view.agentId) {
+	if (view.agentGone) {
+		d.foot.append(button('secondary', strings.askGeminiAgain, () => act('askAgain'), 'sparkle'));
+	} else if (view.agentId) {
 		d.foot.append(button('secondary', strings.openAgent, () => act('openAgent')));
 	}
 	syncPost();
@@ -538,6 +749,10 @@ function checks(view: ChecksView): ReturnType<typeof dialog> {
 window.addEventListener('message', (event: MessageEvent<ToTeamFlow>) => {
 	if (event.data.type === 'state') {
 		render(event.data.state);
+	} else if (event.data.type === 'branches') {
+		const known = new Set(searchedBranches.map(b => b.branch));
+		searchedBranches = [...searchedBranches, ...event.data.branches.filter(b => !known.has(b.branch))];
+		targetMenu?.render();
 	}
 });
 

@@ -51,7 +51,7 @@ export interface GitLabMr extends GitLabMrSummary {
 	readonly state: string;
 	readonly pipeline?: { readonly id: number; readonly status: PipelineState; readonly url?: string };
 	readonly approvals?: { readonly given: number; readonly required: number; readonly approvedByMe: boolean };
-	readonly diffRefs?: { readonly baseSha: string; readonly headSha: string; readonly startSha: string };
+	readonly diffRefs?: DiffRefs;
 	readonly changes?: string;
 }
 
@@ -62,13 +62,30 @@ export interface GitLabNote {
 	readonly createdAt: string;
 	readonly path?: string;
 	readonly line?: number;
+	/** The line in the old version, for a note on an unchanged or removed line. */
+	readonly oldLine?: number;
+	/** The merge request's head commit when the note was written on a line. */
+	readonly headSha?: string;
 }
 
 export interface GitLabDiscussion {
 	readonly id: string;
 	readonly resolved: boolean;
+	/** Whether it can be resolved: a thread, not a single general comment. */
+	readonly resolvable?: boolean;
+	readonly resolvedBy?: string;
 	readonly notes: readonly GitLabNote[];
 }
+
+/** The commits a merge request's version is diffed between, as GitLab names them. */
+export interface DiffRefs {
+	readonly baseSha: string;
+	readonly headSha: string;
+	readonly startSha: string;
+}
+
+/** Pages of a list GitLab reads, at most; 100 items a page. */
+const maxListPages = 10;
 
 export interface GitLabJob {
 	readonly id: number;
@@ -254,26 +271,43 @@ export class GitLabClient {
 		return files.map(f => ({ oldPath: f.old_path, newPath: f.new_path, diff: f.diff, newFile: f.new_file, deletedFile: f.deleted_file }));
 	}
 
-	/** The MR's threads that people wrote (not system notes), oldest first. */
+	/** The MR's threads that people wrote (not system notes), oldest first, read page by page. */
 	async discussions(project: string | number, iid: number): Promise<GitLabDiscussion[]> {
 		const id = await this.projectId(project);
-		const raw = await this.request<RawDiscussion[]>(`/projects/${id}/merge_requests/${iid}/discussions?per_page=100`);
+		const raw: RawDiscussion[] = [];
+		for (let page = 1; page <= maxListPages; page++) {
+			const list = await this.request<RawDiscussion[]>(`/projects/${id}/merge_requests/${iid}/discussions?per_page=100&page=${page}`);
+			raw.push(...list);
+			if (list.length < 100) {
+				break;
+			}
+		}
 		return raw.flatMap(d => {
 			const notes = (d.notes ?? []).filter(n => !n.system);
 			if (!notes.length) {
 				return [];
 			}
+			const resolvable = notes.some(n => n.resolvable);
+			const resolvedBy = notes.find(n => n.resolved_by?.username)?.resolved_by?.username;
 			return [{
 				id: d.id,
 				resolved: notes.every(n => !n.resolvable || n.resolved),
-				notes: notes.map(n => ({
-					id: n.id,
-					author: n.author?.username ?? '',
-					body: n.body ?? '',
-					createdAt: n.created_at ?? '',
-					...n.position?.new_path ? { path: n.position.new_path } : {},
-					...n.position?.new_line ? { line: n.position.new_line } : {},
-				})),
+				...resolvable ? { resolvable } : {},
+				...resolvedBy ? { resolvedBy } : {},
+				notes: notes.map(n => {
+					const at = n.position;
+					const path = at?.new_path ?? at?.old_path;
+					return {
+						id: n.id,
+						author: n.author?.username ?? '',
+						body: n.body ?? '',
+						createdAt: n.created_at ?? '',
+						...path ? { path } : {},
+						...at?.new_line ? { line: at.new_line } : {},
+						...at?.old_line ? { oldLine: at.old_line } : {},
+						...at?.head_sha ? { headSha: at.head_sha } : {},
+					};
+				}),
 			}];
 		});
 	}
@@ -355,17 +389,26 @@ export class GitLabClient {
 		await this.request(`/projects/${id}/merge_requests/${iid}/discussions/${encodeURIComponent(discussion)}?resolved=${resolved}`, { method: 'PUT' });
 	}
 
-	/** A comment on a line of the MR's new version; a general comment when the line isn't in the diff. */
-	async commentOnLine(project: string | number, iid: number, path: string, line: number, body: string): Promise<'line' | 'general'> {
+	/**
+	 * A comment on a line of the MR's new version; a general comment when the
+	 * line isn't in the diff. `options.oldLine` places it on an unchanged line,
+	 * `options.oldPath` names a renamed file's old path, and `options.refs` the
+	 * version the line was read in (else the latest).
+	 */
+	async commentOnLine(project: string | number, iid: number, path: string, line: number, body: string, options: { readonly oldLine?: number; readonly oldPath?: string; readonly refs?: DiffRefs } = {}): Promise<'line' | 'general'> {
 		const id = await this.projectId(project);
-		const mr = await this.mr(id, iid, false);
-		if (mr.diffRefs) {
+		const refs = options.refs ?? (await this.mr(id, iid, false)).diffRefs;
+		if (refs) {
 			try {
 				await this.request(`/projects/${id}/merge_requests/${iid}/discussions`, {
 					method: 'POST',
 					body: {
 						body,
-						position: { position_type: 'text', base_sha: mr.diffRefs.baseSha, start_sha: mr.diffRefs.startSha, head_sha: mr.diffRefs.headSha, new_path: path, old_path: path, new_line: line },
+						position: {
+							position_type: 'text', base_sha: refs.baseSha, start_sha: refs.startSha, head_sha: refs.headSha,
+							new_path: path, old_path: options.oldPath ?? path, new_line: line,
+							...options.oldLine ? { old_line: options.oldLine } : {},
+						},
 					},
 				});
 				return 'line';
@@ -550,9 +593,10 @@ interface RawDiscussion {
 		readonly system?: boolean;
 		readonly resolvable?: boolean;
 		readonly resolved?: boolean;
+		readonly resolved_by?: { readonly username?: string } | null;
 		readonly created_at?: string;
 		readonly author?: { readonly username?: string };
-		readonly position?: { readonly new_path?: string; readonly new_line?: number };
+		readonly position?: { readonly new_path?: string; readonly old_path?: string; readonly new_line?: number | null; readonly old_line?: number | null; readonly head_sha?: string };
 	}[];
 }
 

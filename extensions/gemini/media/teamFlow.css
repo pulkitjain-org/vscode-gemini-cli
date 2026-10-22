@@ -487,27 +487,202 @@ button.wide {
 	padding: 7px 10px;
 }
 
+.flow-finding.mine {
+	border-color: color-mix(in srgb, var(--vscode-textLink-foreground) 55%, var(--gemini-border));
+}
+
+/* Wraps inside the card, so a long path never runs into the side column. */
 .flow-finding-top {
 	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 8px;
+	min-width: 0;
+}
+
+.flow-where {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.flow-finding-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 14px;
+	font-size: 12px;
+}
+
+.flow-finding-actions button.link {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.flow-spinner {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--gemini-muted);
+}
+
+.flow-suggestion {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.flow-suggestion-old {
+	margin: 0;
+	padding: 6px 10px;
+	border-radius: var(--gemini-radius-small);
+	background: var(--vscode-diffEditor-removedLineBackground, color-mix(in srgb, var(--gemini-error) 14%, transparent));
+	font-family: var(--vscode-editor-font-family);
+	font-size: 12px;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+textarea.flow-suggestion-new {
+	background: var(--vscode-diffEditor-insertedLineBackground, color-mix(in srgb, var(--gemini-ok) 14%, var(--gemini-composer)));
+	font-family: var(--vscode-editor-font-family);
+	font-size: 12px;
+}
+
+.flow-suggestion-row {
+	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: 8px;
+	font-size: 12px;
+}
+
+.flow-suggestion-row .flow-check {
+	padding: 0;
+}
+
+button.flow-add {
+	justify-content: center;
+	gap: 6px;
+	padding: 7px;
+	border: 1px dashed var(--gemini-border-strong);
+	border-radius: var(--gemini-radius);
+	background: none;
+	color: var(--vscode-textLink-foreground);
+}
+
+button.flow-add:hover {
+	background: var(--gemini-hover);
+}
+
+.flow-thread {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 10px 12px;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius);
+}
+
+.flow-thread-note {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	font-size: 12.5px;
+}
+
+.flow-thread-body {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	max-height: 7.5em;
+	overflow: hidden;
+}
+
+.flow-thread .flow-finding-top .flow-check {
+	padding: 0;
+	font-size: 12px;
+}
+
+.flow-banner {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 8px 12px;
+	border-radius: var(--gemini-radius-small);
+	background: var(--gemini-hover);
+	font-size: 12.5px;
+}
+
+.flow-banner.warn {
+	background: color-mix(in srgb, var(--gemini-warn) 14%, transparent);
+	color: var(--gemini-warn);
+}
+
+.hint.warn {
+	color: var(--gemini-warn);
+}
+
+button.flow-target-button {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	max-width: 100%;
+	padding: 2px 8px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-small);
+	background: var(--gemini-composer);
+	color: var(--vscode-foreground);
+}
+
+button.flow-target-button .mono {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .flow-finding-title {
 	font-weight: 500;
 }
 
-.flow-file {
+button.flow-file {
 	display: flex;
+	align-items: center;
 	gap: 8px;
+	width: 100%;
+	padding: 3px 6px;
+	border: none;
+	border-radius: var(--gemini-radius-small);
+	background: none;
+	color: var(--vscode-foreground);
 	font-size: 12px;
+	text-align: left;
+}
+
+button.flow-file:hover {
+	background: var(--gemini-hover);
 }
 
 .flow-file .name {
 	flex: 1;
+	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.flow-file .dir,
+.flow-file .count {
+	color: var(--gemini-muted);
+}
+
+.flow-file .count {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+}
+
+.flow-file .count .codicon {
+	font-size: 12px;
 }
 
 /* The team part of the Changes panel: the merge request and its merge checklist, each a card. */

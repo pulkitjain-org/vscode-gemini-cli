@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { checksFixPrompt, findingsFromSnyk, mrFixPrompt, parseReviewFindings, reviewPrompt, reviewSummary, targetChoices, ticketBranchName } from '../../src/acp/teamFlowLogic';
+import { checksFixPrompt, findingsFromSnyk, mrFixPrompt, parseReviewFindings, parseSuggestion, reviewPrompt, reviewSummary, suggestPrompt, targetChoices, ticketBranchName } from '../../src/acp/teamFlowLogic';
 
 describe('team flow logic', () => {
 	it('names a ticket\'s branch after its key and summary', () => {
@@ -19,6 +19,15 @@ describe('team flow logic', () => {
 		expect(targetChoices(['main', 'develop'], { defaultTarget: 'develop' }).find(c => c.suggested)?.branch).toBe('develop');
 	});
 
+	it('marks the fix version, the project default, recent targets and the unusual ones', () => {
+		const choices = targetChoices(['develop', 'release/2026.11', 'VCAN-31542-revamp'], { fixVersions: ['2026.11'], defaultTarget: 'develop', recent: ['VCAN-31542-revamp', 'gone'] });
+		expect(choices).toEqual([
+			{ branch: 'release/2026.11', release: true, suggested: true, fixVersion: '2026.11', usual: true },
+			{ branch: 'develop', release: false, suggested: false, projectDefault: true, usual: true },
+			{ branch: 'VCAN-31542-revamp', release: false, suggested: false, recent: true, usual: false },
+		]);
+	});
+
 	it('reads the agent\'s review findings from its last JSON block', () => {
 		const reply = 'Looks mostly fine.\n\n```json\n[{"kind":"bug","file":"./wishlist/merge.ts","line":58,"title":"Duplicates","comment":"Compare on SKU?"},{"kind":"odd","comment":"Unused import."},{"kind":"nit"}]\n```';
 		expect(parseReviewFindings(reply)).toEqual([
@@ -28,6 +37,22 @@ describe('team flow logic', () => {
 		expect(reviewSummary(reply)).toBe('Looks mostly fine.');
 		expect(parseReviewFindings('No block here')).toBeUndefined();
 		expect(parseReviewFindings('```json\n[]\n```')).toEqual([]);
+	});
+
+	it('reads a finding\'s suggested change and range, and replies to threads', () => {
+		const reply = '```json\n[{"kind":"bug","file":"a.ts","line":4,"endLine":5,"title":"Secret","comment":"Use the env.","suggestion":"pw: env.PW,\\n"},{"kind":"question","discussion":"d7","comment":"Agreed.","file":"x.ts","line":1},{"kind":"nit","file":"b.ts","endLine":9,"comment":"No line, so no range or suggestion.","suggestion":"x"}]\n```';
+		expect(parseReviewFindings(reply)).toEqual([
+			{ kind: 'bug', file: 'a.ts', line: 4, endLine: 5, title: 'Secret', comment: 'Use the env.', suggestion: 'pw: env.PW,' },
+			{ kind: 'question', title: 'Agreed.', comment: 'Agreed.', discussion: 'd7' },
+			{ kind: 'nit', file: 'b.ts', title: 'No line, so no range or suggestion.', comment: 'No line, so no range or suggestion.' },
+		]);
+	});
+
+	it('asks for a suggestion on a few lines and reads the answer', () => {
+		const prompt = suggestPrompt('src/a.ts', 12, 13, 'Use the constant.');
+		expect(prompt.split('\n').slice(0, 3)).toEqual(['Suggest a change to lines 12 to 13 of src/a.ts (in your folder, the merge request\'s version) for this review comment:', '', '> Use the constant.']);
+		expect(prompt).toContain('sed -n \'7,18p\' src/a.ts');
+		expect([parseSuggestion('Here:\n```json\n{"suggestion": "const c = LIMIT;\\n"}\n```'), parseSuggestion('```json\n{"suggestion": null}\n```'), parseSuggestion('No block')]).toEqual(['const c = LIMIT;', null, undefined]);
 	});
 
 	it('has a reviewer read the diff a few files at a time from the fetched target, never fetching itself', () => {
@@ -41,6 +66,10 @@ describe('team flow logic', () => {
 			'- src/f0.ts',
 			'- src/f59.ts',
 		]);
+		const withThreads = reviewPrompt(mr, undefined, 'origin', [], [{ id: 'd1', author: 'tom.k', body: 'Why a\nfixed wait?', path: 'a.ts', line: 52 }]);
+		expect(withThreads).toContain('- [discussion d1] tom.k on a.ts:52: Why a fixed wait?');
+		expect(withThreads).toContain('give `"discussion"` (its id)');
+		expect(reviewPrompt(mr)).not.toContain('discussion');
 	});
 
 	it('writes fix prompts with the findings, logs and threads', () => {

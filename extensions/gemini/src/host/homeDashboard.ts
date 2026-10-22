@@ -13,7 +13,7 @@ import { type JiraIssueSummary, type JiraMyTicket, type JiraSprint, myTicketsJql
 import { TeamToolId, teamToolIds, teamToolNames } from '../acp/teamHttp';
 import type { AgentSummary } from './agentsView';
 import { relativeTime } from './displayText';
-import type { HomeAction, HomeCard, HomeCardId, HomeDashboard, HomeList, HomeNeed, HomeRow, HomeTool, HomeTone, HomeTypeColor } from './panelProtocol';
+import type { HomeAction, HomeButton, HomeCard, HomeCardId, HomeDashboard, HomeList, HomeNeed, HomeRow, HomeTool, HomeTone, HomeTypeColor } from './panelProtocol';
 import type { ConnectionState } from './teamConnections';
 import type { Fetched, TeamSnapshot } from './teamData';
 
@@ -41,6 +41,8 @@ export interface DashboardInput {
 	readonly jiraCommentVisibility?: string;
 	/** Flows that were open, and writes that had no result, when the app last quit. */
 	readonly unfinished?: { readonly flows: readonly FlowRecord[]; readonly intents: readonly AuditEntry[] };
+	/** Merge request reviews in progress: Continue Review instead of Review. */
+	readonly reviewsInProgress?: readonly { readonly project: string; readonly iid: number; readonly comments: number; readonly agentId?: string }[];
 	/** When the data on the cards was last read, in ms since the epoch; 0 or unset before the first read. */
 	readonly dataFrom?: number;
 	/** What came back since the window opened, for the card shown after a start. */
@@ -185,7 +187,7 @@ function needs(input: DashboardInput): HomeNeed[] {
 			case 'agentWaiting':
 				return { tool: 'gemini', title: vscode.l10n.t("{0} is waiting", item.title), detail: item.status, button: { label: vscode.l10n.t("Open"), action: { kind: 'agent', id: item.agentId, do: 'open' } } };
 			case 'review':
-				return { tool: 'gitlab', title: vscode.l10n.t("Review !{0}", item.mr.iid), detail: [item.mr.author, item.mr.title].join(' · '), button: { label: vscode.l10n.t("Review"), action: command('gemini.team.reviewMergeRequest', item.mr.project, item.mr.iid) } };
+				return { tool: 'gitlab', title: vscode.l10n.t("Review !{0}", item.mr.iid), detail: [item.mr.author, item.mr.title].join(' · '), button: reviewButton(input, item.mr) };
 			case 'pipelineFailed':
 				return {
 					tool: 'gitlab', title: vscode.l10n.t("Pipeline failed on !{0}", item.mr.iid), detail: item.mr.title,
@@ -401,6 +403,17 @@ function ticketsCard(input: DashboardInput, title: string, groups: ReturnType<ty
 	}, all, all.slice(0, 6));
 }
 
+function reviewInProgress(input: DashboardInput, mr: { readonly project: string; readonly iid: number }) {
+	return input.reviewsInProgress?.find(r => r.project === mr.project && r.iid === mr.iid);
+}
+
+/** Review, or Continue Review when the user's review of it is in progress. */
+function reviewButton(input: DashboardInput, mr: { readonly project: string; readonly iid: number }): HomeButton {
+	return reviewInProgress(input, mr)
+		? { label: vscode.l10n.t("Continue Review"), action: command('gemini.team.reviewMergeRequest', mr.project, mr.iid), primary: true }
+		: { label: vscode.l10n.t("Review"), action: command('gemini.team.reviewMergeRequest', mr.project, mr.iid) };
+}
+
 function pipelinePill(mr: GitLabMr): HomeRow['pill'] {
 	const status: PipelineState | undefined = mr.pipeline?.status;
 	if (status === 'failed') {
@@ -423,11 +436,21 @@ function mergeRequestsCard(input: DashboardInput, title: string): ListedCard | u
 	const mine = input.data.mine;
 	const { stale, note } = sourceState(input, 'gitlab', reviews?.error ? reviews : mine);
 	const mineGroup = vscode.l10n.t("Mine");
-	const forMe = (reviews?.data ?? []).map((mr): HomeRow => ({
+	const forMe = (reviews?.data ?? []).map((mr): HomeRow => {
+		const going = reviewInProgress(input, mr);
+		return {
 			key: `!${mr.iid}`, repo: mr.project, title: mr.title, detail: mr.author, open: { kind: 'link', url: mr.url },
-			...mr.draft ? { pill: { text: vscode.l10n.t("draft"), tone: 'muted' as const } } : {},
-			button: { label: vscode.l10n.t("Review"), action: command('gemini.team.reviewMergeRequest', mr.project, mr.iid) },
-	}));
+			...going ? { pill: { text: vscode.l10n.t("Your draft: {0}", going.comments), tone: 'info' as const } } : mr.draft ? { pill: { text: vscode.l10n.t("draft"), tone: 'muted' as const } } : {},
+			button: reviewButton(input, mr),
+			...going ? {
+				menu: [
+					...going.agentId ? [{ label: vscode.l10n.t("Open the Agent"), action: { kind: 'agent', id: going.agentId, do: 'open' } } as const] : [],
+					{ label: vscode.l10n.t("Start a New Review..."), action: command('gemini.team.startNewReview', mr.project, mr.iid) },
+					{ label: vscode.l10n.t("Discard Draft..."), action: command('gemini.team.discardReview', mr.project, mr.iid) },
+				],
+			} : {},
+		};
+	});
 	const mineRows = (mine?.data ?? []).map((mr, i): HomeRow => ({
 			...i === 0 ? { group: mineGroup, groupQuery: 'author_id=me, state=opened' } : {},
 			key: `!${mr.iid}`, repo: mr.project, title: mr.title, open: { kind: 'link', url: mr.url },

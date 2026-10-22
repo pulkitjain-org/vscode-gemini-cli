@@ -396,6 +396,88 @@
         "icon": "$(comment-discussion)"
       },
       {
+        "command": "gemini.team.openReview",
+        "title": "%command.team.openReview%",
+        "category": "%category%",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "gemini.team.startNewReview",
+        "title": "%command.team.startNewReview%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.team.discardReview",
+        "title": "%command.team.discardReview%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.team.openAgentReview",
+        "title": "%command.team.openAgentReview%",
+        "category": "%category%",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "gemini.mrReview.addComment",
+        "title": "%command.mrReview.addComment%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.mrReview.addSuggestion",
+        "title": "%command.mrReview.addSuggestion%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.mrReview.reply",
+        "title": "%command.mrReview.reply%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.mrReview.replyResolve",
+        "title": "%command.mrReview.replyResolve%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.mrReview.resolve",
+        "title": "%command.mrReview.resolve%",
+        "category": "%category%",
+        "icon": "$(check)"
+      },
+      {
+        "command": "gemini.mrReview.editComment",
+        "title": "%command.mrReview.editComment%",
+        "category": "%category%",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "gemini.mrReview.saveComment",
+        "title": "%command.mrReview.saveComment%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.mrReview.cancelEdit",
+        "title": "%command.mrReview.cancelEdit%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.mrReview.deleteComment",
+        "title": "%command.mrReview.deleteComment%",
+        "category": "%category%",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "gemini.mrReview.askSuggestion",
+        "title": "%command.mrReview.askSuggestion%",
+        "category": "%category%",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "gemini.mrReview.openPage",
+        "title": "%command.mrReview.openPage%",
+        "category": "%category%",
+        "icon": "$(preview)"
+      },
+      {
         "command": "gemini.team.fixMergeRequest",
         "title": "%command.team.fixMergeRequest%",
         "category": "%category%",
@@ -829,7 +911,126 @@
           "group": "2_remove@1"
         }
       ],
+      "comments/commentThread/context": [
+        {
+          "command": "gemini.mrReview.addComment",
+          "group": "inline@1",
+          "when": "commentController == gemini.review && commentThreadIsEmpty"
+        },
+        {
+          "command": "gemini.mrReview.addSuggestion",
+          "group": "inline@2",
+          "when": "commentController == gemini.review && commentThreadIsEmpty"
+        },
+        {
+          "command": "gemini.mrReview.reply",
+          "group": "inline@1",
+          "when": "commentController == gemini.review && commentThread == gitlab && !commentThreadIsEmpty"
+        },
+        {
+          "command": "gemini.mrReview.replyResolve",
+          "group": "inline@2",
+          "when": "commentController == gemini.review && commentThread == gitlab && !commentThreadIsEmpty"
+        }
+      ],
+      "comments/commentThread/title": [
+        {
+          "command": "gemini.mrReview.resolve",
+          "group": "navigation@1",
+          "when": "commentController == gemini.review && commentThread == gitlab"
+        },
+        {
+          "command": "gemini.mrReview.openPage",
+          "group": "navigation@2",
+          "when": "commentController == gemini.review && !commentThreadIsEmpty"
+        }
+      ],
+      "comments/comment/title": [
+        {
+          "command": "gemini.mrReview.askSuggestion",
+          "group": "inline@1",
+          "when": "commentController == gemini.review && comment =~ /askable/"
+        },
+        {
+          "command": "gemini.mrReview.editComment",
+          "group": "inline@2",
+          "when": "commentController == gemini.review && comment =~ /draft/"
+        },
+        {
+          "command": "gemini.mrReview.deleteComment",
+          "group": "inline@3",
+          "when": "commentController == gemini.review && comment =~ /draft/"
+        }
+      ],
+      "comments/comment/context": [
+        {
+          "command": "gemini.mrReview.cancelEdit",
+          "group": "inline@1",
+          "when": "commentController == gemini.review"
+        },
+        {
+          "command": "gemini.mrReview.saveComment",
+          "group": "inline@2",
+          "when": "commentController == gemini.review"
+        }
+      ],
       "commandPalette": [
+        {
+          "command": "gemini.team.startNewReview",
+          "when": "false"
+        },
+        {
+          "command": "gemini.team.discardReview",
+          "when": "false"
+        },
+        {
+          "command": "gemini.team.openAgentReview",
+          "when": "false"
+        },
+        {
+          "command": "gemini.mrReview.addComment",
+          "when": "false"
+        },
+        {
+          "command": "gemini.mrReview.addSuggestion",
+          "when": "false"
+        },
+        {
+          "command": "gemini.mrReview.reply",
+          "when": "false"
+        },
+        {
+          "command": "gemini.mrReview.replyResolve",
+          "when": "false"
+        },
+        {
+          "command": "gemini.mrReview.resolve",
+          "when": "false"
+        },
+        {
+          "command": "gemini.mrReview.editComment",
+          "when": "false"
+        },
+        {
+          "command": "gemini.mrReview.saveComment",
+          "when": "false"
+        },
+        {
+          "command": "gemini.mrReview.cancelEdit",
+          "when": "false"
+        },
+        {
+          "command": "gemini.mrReview.deleteComment",
+          "when": "false"
+        },
+        {
+          "command": "gemini.mrReview.askSuggestion",
+          "when": "false"
+        },
+        {
+          "command": "gemini.mrReview.openPage",
+          "when": "false"
+        },
         {
           "command": "gemini.agentHome",
           "when": "false"

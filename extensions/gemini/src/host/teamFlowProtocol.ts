@@ -37,13 +37,20 @@ export interface FlowAttachment {
 
 export interface OpenMrView {
 	readonly kind: 'openMr';
-	readonly step: 'target' | 'details';
 	readonly project: string;
 	readonly source: string;
 	readonly host: string;
 	readonly account: string;
-	readonly targets: readonly (TargetChoice & { readonly behind?: number })[];
+	readonly targets: readonly TargetChoice[];
 	readonly target?: string;
+	/** Branches GitLab has that weren't listed, found by searching. */
+	readonly moreTargets: boolean;
+	/** The target isn't develop, main or a release branch: how far ahead the source is. */
+	readonly unusualTarget?: string;
+	/** The target the description was written for, when it isn't the target now. */
+	readonly describedFor?: string;
+	/** On a reviewer agent: the merge request it reviews, instead of the form. */
+	readonly reviewOf?: { readonly iid: number; readonly url: string; readonly project: string };
 	readonly ticket?: { readonly key: string; readonly summary: string; readonly url: string; readonly fixVersions: readonly string[] };
 	readonly title: string;
 	readonly description: string;
@@ -94,17 +101,71 @@ export interface MoveTicketView {
 	readonly done?: string;
 }
 
+/** A comment in the review's draft, as the Review page shows it. */
+export interface ReviewCommentView {
+	readonly id: string;
+	readonly by: 'gemini' | 'you';
+	readonly kind?: ReviewFinding['kind'];
+	readonly title?: string;
+	readonly comment: string;
+	readonly checked: boolean;
+	/** The file and line, shortened: "…/fea/myaccount/en.xml:1". */
+	readonly where?: string;
+	/** The full path and line, for the tooltip. */
+	readonly path?: string;
+	readonly onLine: boolean;
+	readonly lineChanged?: boolean;
+	readonly suggestion?: {
+		readonly text: string;
+		readonly by: 'gemini' | 'you';
+		readonly include: boolean;
+		/** The lines it replaces, as they are now. */
+		readonly old: string;
+	};
+	/** Whether a suggestion can go on its lines: inside one hunk of the merge request's changes. */
+	readonly canSuggest: boolean;
+	/** Gemini is writing a suggestion for it. */
+	readonly suggesting?: boolean;
+	/** Why Gemini's last suggestion didn't come. */
+	readonly suggestNote?: string;
+}
+
+/** One of the merge request's threads, with the user's draft reply. */
+export interface ReviewThreadView {
+	readonly id: string;
+	readonly where?: string;
+	readonly path?: string;
+	/** Shown on its line in the diff. */
+	readonly onLine: boolean;
+	readonly outdated?: boolean;
+	readonly removedLine?: boolean;
+	readonly resolvable: boolean;
+	readonly notes: readonly { readonly author: string; readonly body: string; readonly when: string }[];
+	readonly url: string;
+	readonly reply?: { readonly id: string; readonly by: 'gemini' | 'you'; readonly text: string; readonly resolve: boolean; readonly checked: boolean };
+}
+
 export interface ReviewView {
 	readonly kind: 'review';
 	readonly project: string;
-	readonly mr: { readonly iid: number; readonly title: string; readonly url: string; readonly author: string; readonly source: string; readonly target: string; readonly files: number };
+	readonly mr: { readonly iid: number; readonly title: string; readonly url: string; readonly author: string; readonly source: string; readonly target: string; readonly files: number; readonly head?: string };
 	readonly state: 'preparing' | 'reviewing' | 'ready' | 'unparsed';
 	readonly summary: string;
-	readonly findings: readonly (ReviewFinding & { readonly id: string; readonly checked: boolean })[];
-	readonly findingsRev: number;
+	readonly comments: readonly ReviewCommentView[];
+	/** Open threads, and those Gemini or the user replied to. */
+	readonly threads: readonly ReviewThreadView[];
+	readonly resolvedThreads: number;
+	/** Bumped when the host replaces the draft, so the page takes its text over what the user typed. */
+	readonly rev: number;
 	readonly side: readonly { readonly tool: FlowTool | 'people'; readonly label: string; readonly detail?: string; readonly pill?: FlowPill }[];
-	readonly files: readonly { readonly path: string; readonly added: number; readonly removed: number }[];
+	readonly files: readonly { readonly path: string; readonly dir: string; readonly name: string; readonly added: number; readonly removed: number; readonly comments: number }[];
+	/** Changed files GitLab didn't list, beyond its first 100. */
+	readonly moreFiles?: number;
 	readonly agentId?: string;
+	/** The reviewer agent was removed; Ask Gemini Again starts another. */
+	readonly agentGone?: boolean;
+	/** New commits on the source branch since the diff's version, as a sentence. */
+	readonly moved?: string;
 	readonly approvedByMe: boolean;
 	readonly done?: string;
 }
@@ -134,7 +195,10 @@ export interface TeamFlowState {
 	readonly error?: string;
 }
 
-export type ToTeamFlow = { readonly type: 'state'; readonly state: TeamFlowState };
+export type ToTeamFlow =
+	| { readonly type: 'state'; readonly state: TeamFlowState }
+	/** Branches found by searching GitLab, for the open target menu; the page isn't re-rendered. */
+	| { readonly type: 'branches'; readonly branches: readonly TargetChoice[] };
 
 export type FromTeamFlow =
 	| { readonly type: 'ready' }
@@ -146,14 +210,8 @@ export interface TeamFlowStrings {
 	readonly close: string;
 	readonly cancel: string;
 	readonly back: string;
-	readonly next: string;
-	readonly change: string;
 	readonly openIn: string;
 	readonly openMr: string;
-	readonly targetHeading: string;
-	readonly targetHint: string;
-	readonly suggested: string;
-	readonly release: string;
 	readonly title: string;
 	readonly description: string;
 	readonly regenerate: string;
@@ -200,11 +258,44 @@ export interface TeamFlowStrings {
 	readonly geminiReview: string;
 	readonly openDiff: string;
 	readonly yourReview: string;
+	/** "Ticked: {0} from Gemini · {1} from you · {2} in threads" */
 	readonly yourReviewHint: string;
-	readonly postAndRequest: string;
-	readonly post: string;
+	readonly postOne: string;
+	readonly postMany: string;
+	readonly postAndRequestOne: string;
+	readonly postAndRequestMany: string;
+	readonly postAndApproveOne: string;
+	readonly postAndApproveMany: string;
 	readonly approve: string;
 	readonly approved: string;
+	readonly you: string;
+	readonly addReviewComment: string;
+	readonly deleteComment: string;
+	readonly generalComment: string;
+	readonly lineChanged: string;
+	readonly lineChangedHint: string;
+	readonly addSuggestion: string;
+	readonly removeSuggestion: string;
+	readonly askSuggestion: string;
+	readonly askSuggestionAgain: string;
+	readonly suggesting: string;
+	readonly includeSuggestion: string;
+	readonly byGemini: string;
+	readonly suggestionHint: string;
+	readonly threads: string;
+	/** "Open: {0} · Resolved: {1}" */
+	readonly threadCounts: string;
+	readonly outdated: string;
+	readonly removedLine: string;
+	readonly reply: string;
+	readonly resolve: string;
+	readonly resolveThread: string;
+	readonly yourReply: string;
+	readonly geminiReply: string;
+	readonly deleteReply: string;
+	readonly refresh: string;
+	readonly askGeminiAgain: string;
+	readonly moreFiles: string;
 	readonly files: string;
 	readonly noFindings: string;
 	readonly kindBug: string;
@@ -212,6 +303,20 @@ export interface TeamFlowStrings {
 	readonly kindNit: string;
 	readonly kindQuestion: string;
 	readonly openAgent: string;
+	readonly openReview: string;
+	readonly fixMr: string;
+	/** On a reviewer agent: "This agent reviews !{0}. …" */
+	readonly reviewerBranch: string;
+	readonly targetHeading: string;
+	readonly searchBranches: string;
+	readonly noBranches: string;
+	readonly targetSuggested: string;
+	readonly targetRecent: string;
+	readonly targetRelease: string;
+	readonly targetOther: string;
+	readonly fixVersion: string;
+	readonly projectDefault: string;
+	readonly describedFor: string;
 	readonly checksTitle: string;
 	/** Under the findings when no agent works on the branch: Fix starts one. */
 	readonly fixNote: string;

@@ -7,6 +7,7 @@ import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
 import { AuditLog } from '../acp/auditLog';
 import { FlowRecordStore } from '../acp/flowRecords';
+import { ReviewStore } from '../acp/reviewStore';
 import { FigmaDesktop } from '../acp/figma';
 import { GitLabClient } from '../acp/gitlab';
 import { JiraClient } from '../acp/jira';
@@ -57,6 +58,8 @@ export class TeamConnections implements vscode.Disposable {
 	private readonly toolContext: TeamToolContext;
 	/** The flows open right now, on disk, so a quit leaves them listed on Home. */
 	readonly flows: FlowRecordStore;
+	/** Merge request reviews in progress, kept until they are posted or discarded. */
+	readonly reviews: ReviewStore;
 	private clients: TeamConnectors = {};
 	private connectedSet = new Set<TeamToolId>();
 	private readonly states = new Map<TeamToolId, ConnectionState>();
@@ -75,6 +78,7 @@ export class TeamConnections implements vscode.Disposable {
 	constructor(private readonly context: vscode.ExtensionContext, version: string, private readonly log: vscode.LogOutputChannel) {
 		this.audit = new AuditLog(vscode.Uri.joinPath(context.globalStorageUri, 'audit').fsPath);
 		this.flows = new FlowRecordStore(vscode.Uri.joinPath(context.globalStorageUri, 'flows').fsPath);
+		this.reviews = new ReviewStore(vscode.Uri.joinPath(context.globalStorageUri, 'reviews').fsPath);
 		this.toolContext = {
 			audit: this.audit,
 			connected: () => this.connectedSet,

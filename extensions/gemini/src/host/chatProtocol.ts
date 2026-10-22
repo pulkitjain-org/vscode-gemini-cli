@@ -553,6 +553,8 @@ export interface ViewGit {
 	readonly workspace?: ViewWorkspace;
 	/** A project's several repositories, each with its branch, in place of the branch and workspace pills. */
 	readonly repos?: readonly ViewRepo[];
+	/** A reviewer agent's merge request review, which the chip opens. */
+	readonly review?: { readonly label: string; readonly tip: string };
 }
 
 export interface ViewRepo {
@@ -605,6 +607,8 @@ export type FromWebview =
 	/** The folder menu: copy the folder's path, reveal it, or show the Agents list. */
 	/** `repo` names one of a project's several repositories (ViewGit.repos) to act on instead of the workspace. */
 	| { readonly type: 'workspaceAction'; readonly action: 'copyPath' | 'reveal' | 'showAgents' | 'addFolder'; readonly repo?: string }
+	/** The review chip: open the merge request review this agent works on. */
+	| { readonly type: 'openReview' }
 	/** Reopen saved session `id` in this chat. */
 	| { readonly type: 'restoreSession'; readonly id: string }
 	/** Pick from every saved session for the folder. */

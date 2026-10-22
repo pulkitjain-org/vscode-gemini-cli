@@ -105,6 +105,11 @@ export function setGit(git: ViewGit): void {
 		ui.workspaceLabel.textContent = workspace.worktree ? `${workspace.name} \u00b7 ${strings.worktree}` : workspace.name;
 		setLabel(ui.workspaceButton, format(strings.workspaceTooltip, workspace.path));
 	}
+	ui.reviewChip.hidden = !git.review;
+	if (git.review) {
+		ui.reviewLabel.textContent = git.review.label;
+		setLabel(ui.reviewChip, git.review.tip);
+	}
 	ui.commitLabel.textContent = strings.commit;
 	commitButton.title = strings.createBranchAndCommit;
 	commitButton.setAttribute('aria-label', strings.createBranchAndCommit);
@@ -115,6 +120,8 @@ export function setFollow(on: boolean): void {
 	state.following = on;
 	updatePlusMenu();
 }
+
+ui.reviewChip.addEventListener('click', () => vscode.postMessage({ type: 'openReview' }));
 
 const followedName = ui.followed.querySelector<HTMLButtonElement>('.followed-name')!;
 const followedClose = ui.followed.querySelector<HTMLButtonElement>('.followed-close')!;

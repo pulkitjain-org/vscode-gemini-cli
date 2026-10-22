@@ -127,9 +127,28 @@ export interface ReviewFinding {
 	readonly kind: 'bug' | 'shouldFix' | 'nit' | 'question';
 	readonly file?: string;
 	readonly line?: number;
+	/** The last line the comment covers, when it covers more than `line`. */
+	readonly endLine?: number;
 	readonly title: string;
 	readonly comment: string;
+	/** Text that replaces lines `line` to `endLine`, posted as a GitLab suggestion. */
+	readonly suggestion?: string;
+	/** A reply to this thread of the merge request rather than a new comment. */
+	readonly discussion?: string;
 }
+
+/** One of the merge request's open threads, as a review prompt lists it. */
+export interface ReviewThread {
+	readonly id: string;
+	readonly author: string;
+	readonly body: string;
+	readonly path?: string;
+	readonly line?: number;
+}
+
+/** Open threads a review prompt lists, at most, and how much of each. */
+const maxPromptThreads = 30;
+const maxThreadText = 300;
 
 /** Changed files a review prompt names; GitLab's list and `git diff --stat` give the rest. */
 const maxReviewFiles = 60;
@@ -141,9 +160,10 @@ const maxReviewFiles = 60;
  * (the CLI caps no tool output in ACP mode), so it reads the diff a few files
  * at a time from GitLab's list of `files`.
  */
-export function reviewPrompt(mr: { readonly iid: number; readonly title: string; readonly url: string; readonly author: string; readonly sourceBranch: string; readonly targetBranch: string }, ticket?: string, remote = 'origin', files: readonly string[] = []): string {
+export function reviewPrompt(mr: { readonly iid: number; readonly title: string; readonly url: string; readonly author: string; readonly sourceBranch: string; readonly targetBranch: string }, ticket?: string, remote = 'origin', files: readonly string[] = [], threads: readonly ReviewThread[] = []): string {
 	const range = `${remote}/${mr.targetBranch}...HEAD`;
 	const shown = files.slice(0, maxReviewFiles);
+	const listed = threads.slice(0, maxPromptThreads);
 	return [
 		`Review merge request !${mr.iid} "${mr.title}" by ${mr.author} (${mr.url}). It is checked out in your folder on ${mr.sourceBranch}; it merges into ${mr.targetBranch}.`,
 		'',
@@ -156,13 +176,67 @@ export function reviewPrompt(mr: { readonly iid: number; readonly title: string;
 			`GitLab lists ${files.length === 1 ? '1 changed file' : `${files.length} changed files`}${files.length > shown.length ? `, the first ${shown.length} here` : ''}:`,
 			...shown.map(file => `- ${file}`),
 		] : [],
+		...listed.length ? [
+			'',
+			`Reviewers already opened ${threads.length === 1 ? 'this thread' : `these ${threads.length} threads`}${threads.length > listed.length ? `, the first ${listed.length} here` : ''}. Don't raise what they already raised:`,
+			...listed.map(t => `- [discussion ${t.id}] ${t.author}${t.path ? ` on ${t.path}${t.line ? `:${t.line}` : ''}` : ''}: ${oneLine(t.body, maxThreadText)}`),
+		] : [],
 		'',
 		'Start with two or three sentences on what the change does and whether it is ready. Then end your reply with the findings as a JSON block, worst first, like this:',
 		'```json',
 		'[{"kind": "bug", "file": "src/a.ts", "line": 58, "title": "Short title", "comment": "The comment to post, written to the author."}]',
 		'```',
 		'`kind` is one of bug, shouldFix, nit, question. `line` is a line in the new version of the file. Use [] when there is nothing to raise.',
+		'When the fix is small and certain, add `"suggestion"`: the exact text that replaces lines `line` to `endLine` (`endLine` defaults to `line`), indented as in the file. Only for lines the merge request changes.',
+		...listed.length ? ['To add to one of the threads above instead, give `"discussion"` (its id) and `"comment"`, the reply, without `file` or `line`. Only when you have something the thread lacks.'] : [],
 	].join('\n');
+}
+
+/** `text` on one line, cut to `max` characters. */
+function oneLine(text: string, max: number): string {
+	const flat = text.replace(/\s+/g, ' ').trim();
+	return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}
+
+/**
+ * The request for a suggested change to lines `line` to `endLine` of `file`,
+ * for one comment: the reviewer reads only those lines and answers with a
+ * JSON block (`parseSuggestion`).
+ */
+export function suggestPrompt(file: string, line: number, endLine: number, comment: string): string {
+	const range = endLine > line ? `lines ${line} to ${endLine}` : `line ${line}`;
+	return [
+		`Suggest a change to ${range} of ${file} (in your folder, the merge request's version) for this review comment:`,
+		'',
+		...comment.trim().split('\n').map(l => `> ${l}`),
+		'',
+		`Read only those lines and a few around them, for example with \`sed -n '${Math.max(1, line - 5)},${endLine + 5}p' ${file}\`. Don't edit any file, and don't post anything.`,
+		`Then end your reply with a JSON block holding the exact text that replaces ${range}, indented as in the file:`,
+		'```json',
+		'{"suggestion": "the new text"}',
+		'```',
+		'Use {"suggestion": null} when no small change does it.',
+	].join('\n');
+}
+
+/** The suggested text in an agent's answer to `suggestPrompt`: null when it has none, undefined when there is no block. */
+export function parseSuggestion(text: string): string | null | undefined {
+	const blocks = [...text.matchAll(/```(?:json)?\s*\n([\s\S]*?)```/g)].map(m => m[1]);
+	for (const block of blocks.reverse()) {
+		try {
+			const parsed = JSON.parse(block) as unknown;
+			const value = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as { suggestion?: unknown }).suggestion : undefined;
+			if (typeof value === 'string') {
+				return value.replace(/\n$/, '');
+			}
+			if (value === null) {
+				return null;
+			}
+		} catch {
+			// Not the answer's block.
+		}
+	}
+	return undefined;
 }
 
 /** The review findings in an agent's reply: the last ```json block that holds a list of findings. */
@@ -188,13 +262,21 @@ export function parseReviewFindings(text: string): ReviewFinding[] | undefined {
 				return [];
 			}
 			const kind = r.kind === 'bug' || r.kind === 'shouldFix' || r.kind === 'nit' || r.kind === 'question' ? r.kind : 'shouldFix';
+			const title = typeof r.title === 'string' && r.title.trim() ? r.title.trim() : comment.split('\n')[0].slice(0, 80);
+			if (typeof r.discussion === 'string' && r.discussion.trim()) {
+				return [{ kind, title, comment, discussion: r.discussion.trim() }];
+			}
 			const line = Number(r.line);
+			const endLine = Number(r.endLine);
+			const hasLine = Number.isInteger(line) && line > 0;
 			return [{
 				kind,
 				...typeof r.file === 'string' && r.file ? { file: r.file.replace(/^\.?\//, '') } : {},
-				...Number.isInteger(line) && line > 0 ? { line } : {},
-				title: typeof r.title === 'string' && r.title.trim() ? r.title.trim() : comment.split('\n')[0].slice(0, 80),
+				...hasLine ? { line } : {},
+				...hasLine && Number.isInteger(endLine) && endLine > line ? { endLine } : {},
+				title,
 				comment,
+				...hasLine && typeof r.suggestion === 'string' ? { suggestion: r.suggestion.replace(/\n$/, '') } : {},
 			}];
 		});
 	}
@@ -210,23 +292,50 @@ export function reviewSummary(text: string): string {
 export interface TargetChoice {
 	readonly branch: string;
 	readonly release: boolean;
-	/** The ticket's fix version names it. */
+	/** The ticket's fix version names it, or (without one) it is the team's default target. */
 	readonly suggested: boolean;
+	/** The fix version that names it. */
+	readonly fixVersion?: string;
+	/** The team's default target. */
+	readonly projectDefault?: boolean;
+	/** A target the user chose before in this project. */
+	readonly recent?: boolean;
+	/** A usual target: develop, main or a release branch. */
+	readonly usual: boolean;
+}
+
+const mainBranches = ['develop', 'development', 'main', 'master'];
+
+/** Whether `branch` is a usual merge target: develop, main or a release branch. */
+export function isUsualTarget(branch: string, releasePattern?: string): boolean {
+	return mainBranches.includes(branch) || isReleaseBranch(branch, releasePattern);
 }
 
 /**
  * The target branches, release branches first (newest first), then develop
  * and main, then the rest; the one the ticket's fix version names is
- * suggested, else the team's default target.
+ * suggested, else the team's default target. `recent` are the targets the
+ * user chose before in this project, the last first.
  */
-export function targetChoices(branches: readonly string[], options: { readonly releasePattern?: string; readonly fixVersions?: readonly string[]; readonly defaultTarget?: string; readonly source?: string } = {}): TargetChoice[] {
+export function targetChoices(branches: readonly string[], options: { readonly releasePattern?: string; readonly fixVersions?: readonly string[]; readonly defaultTarget?: string; readonly source?: string; readonly recent?: readonly string[] } = {}): TargetChoice[] {
 	const names = branches.filter(b => b !== options.source);
 	const releases = sortReleaseBranches(names.filter(b => isReleaseBranch(b, options.releasePattern))).reverse();
-	const suggestedRelease = (options.fixVersions ?? []).map(v => releaseBranchForVersion(v, releases)).find(Boolean);
-	const suggested = suggestedRelease ?? (options.defaultTarget && names.includes(options.defaultTarget) ? options.defaultTarget : undefined);
-	const main = ['develop', 'development', 'main', 'master'].filter(b => names.includes(b));
+	const fixVersion = (options.fixVersions ?? []).find(v => releaseBranchForVersion(v, releases));
+	const suggestedRelease = fixVersion ? releaseBranchForVersion(fixVersion, releases) : undefined;
+	const projectDefault = options.defaultTarget && names.includes(options.defaultTarget) ? options.defaultTarget : undefined;
+	const suggested = suggestedRelease ?? projectDefault;
+	const main = mainBranches.filter(b => names.includes(b));
 	const rest = names.filter(b => !releases.includes(b) && !main.includes(b)).sort();
-	return [...releases, ...main, ...rest].map(branch => ({ branch, release: releases.includes(branch), suggested: branch === suggested }));
+	const recent = (options.recent ?? []).filter(b => names.includes(b));
+	return [...releases, ...main, ...rest].map(branch => ({
+		branch,
+		release: releases.includes(branch),
+		suggested: branch === suggested,
+		...branch === suggestedRelease && fixVersion ? { fixVersion } : {},
+		...branch === projectDefault ? { projectDefault: true } : {},
+		...recent.includes(branch) ? { recent: true } : {},
+		usual: releases.includes(branch) || main.includes(branch),
+	}));
 }
 
 /** The direct request that drafts a merge request's description. */
