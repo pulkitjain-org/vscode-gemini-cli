@@ -9,7 +9,7 @@
 
 import { splitIdentifier } from './identifiers';
 import { IgnoreRules } from './ignore';
-import type { IndexStore } from './indexStore';
+import { IndexStore, unpackText } from './indexStore';
 
 export interface SearchQuery {
 	readonly query: string;
@@ -96,19 +96,26 @@ export function search(store: IndexStore, query: SearchQuery): SearchResult {
 		return { hits: [], total: 0, terms: [] };
 	}
 	const filter = query.path ? new IgnoreRules([query.path]) : undefined;
-	const wanted = (hit: SearchHit) => !filter || filter.ignores(hit.path);
+	const wanted = (hit: { readonly path: string }) => !filter || filter.ignores(hit.path);
 	const hits: SearchHit[] = [];
 	const seen = new Set<number>();
 	let total = 0;
+	// A name in the query (applyDiscount, CartService, DISCOUNT_RULES) puts the chunk that defines it first.
+	for (const row of definitionChunks(store, query.query, query.lang)) {
+		if (!seen.has(row.id) && wanted(row) && hits.length < limit) {
+			seen.add(row.id);
+			hits.push({ path: row.path, startLine: row.startLine, endLine: row.endLine, symbol: row.symbol ?? undefined, text: unpackText(row.body) });
+		}
+	}
 	// Every word first; then any of them, for what the strict search missed.
 	for (const expression of groups.length > 1 ? [groups.join(' AND '), groups.join(' OR ')] : [groups[0]]) {
-		const rows = runMatch(store, expression, query.lang, filter ? 400 : limit * 3 + 20);
+		const rows = rerank(runMatch(store, expression, query.lang, filter ? 400 : limit * 3 + 20), query.query, words);
 		const matching = rows.filter(row => !seen.has(row.id) && wanted(row));
 		total = Math.max(total, matching.length + hits.length);
 		for (const row of matching) {
 			seen.add(row.id);
 			if (hits.length < limit) {
-				hits.push({ path: row.path, startLine: row.startLine, endLine: row.endLine, symbol: row.symbol ?? undefined, text: row.text });
+				hits.push({ path: row.path, startLine: row.startLine, endLine: row.endLine, symbol: row.symbol ?? undefined, text: unpackText(row.body) });
 			}
 		}
 		if (hits.length >= limit) {
@@ -118,13 +125,61 @@ export function search(store: IndexStore, query: SearchQuery): SearchResult {
 	return { hits, total, terms: words };
 }
 
-interface ChunkRow extends SearchHit {
+interface ChunkRow {
 	readonly id: number;
+	readonly path: string;
+	readonly startLine: number;
+	readonly endLine: number;
 	readonly symbol?: string;
+	readonly body: Uint8Array;
+}
+
+/**
+ * The chunks defining the names in a query: identifiers written as code
+ * (camelCase, PascalCase, snake_case), or a single word on its own. Plain
+ * words in a sentence ("editor service open") name no definition.
+ */
+function definitionChunks(store: IndexStore, query: string, lang: string | undefined): ChunkRow[] {
+	const tokens = query.match(/[A-Za-z_$][\w$]*/g) ?? [];
+	const names = tokens.filter(token => token.length > 2 && (tokens.length === 1 || /[a-z][A-Z]|[A-Z]{2,}[a-z]|_/.test(token)));
+	if (!names.length) {
+		return [];
+	}
+	const rows: ChunkRow[] = [];
+	for (const name of names.slice(0, 4)) {
+		const definitions = store.statement(`SELECT s.path AS path, s.line AS line FROM symbols s${lang ? ' JOIN files f ON f.path = s.path AND f.lang = ?' : ''} WHERE s.name = ? COLLATE NOCASE ORDER BY s.exported DESC, s.container IS NOT NULL, length(s.path) LIMIT 3`)
+			.all(...lang ? [lang.toLowerCase(), name] : [name]) as { path: string; line: number }[];
+		for (const definition of definitions) {
+			const chunk = store.statement('SELECT id, path, start_line AS startLine, end_line AS endLine, symbol, body FROM chunks WHERE path = ? AND start_line <= ? AND end_line >= ? ORDER BY start_line DESC LIMIT 1')
+				.get(definition.path, definition.line, definition.line) as ChunkRow | undefined;
+			if (chunk) {
+				rows.push(chunk);
+			}
+		}
+	}
+	return rows;
+}
+
+/**
+ * Puts the chunk that defines what the query names first, then chunks whose
+ * definition or file name holds a query word, keeping BM25's order within
+ * each. BM25 alone can't tell a definition from a call when a name is common
+ * in the folder, or when the folder is small and every chunk shares the word.
+ */
+function rerank(rows: readonly ChunkRow[], query: string, words: readonly string[]): ChunkRow[] {
+	const names = new Set((query.match(/[A-Za-z_$][\w$]*/g) ?? []).map(name => name.toLowerCase()));
+	const useful = words.filter(word => word.length > 2);
+	const bonus = (row: ChunkRow) => {
+		const symbol = (row.symbol ?? '').toLowerCase();
+		const last = symbol.slice(symbol.lastIndexOf('.') + 1);
+		const base = row.path.slice(row.path.lastIndexOf('/') + 1).toLowerCase();
+		return (names.has(last) || names.has(symbol) ? 4 : useful.some(word => last.includes(word)) ? 2 : 0) + (useful.some(word => base.includes(word)) ? 1 : 0);
+	};
+	return rows.map((row, index) => ({ row, index, bonus: bonus(row) })).sort((a, b) => b.bonus - a.bonus || a.index - b.index).map(entry => entry.row);
 }
 
 function runMatch(store: IndexStore, expression: string, lang: string | undefined, limit: number): ChunkRow[] {
-	const sql = `SELECT c.id AS id, c.path AS path, c.start_line AS startLine, c.end_line AS endLine, c.symbol AS symbol, c.text AS text
+	const sql = `SELECT c.id AS id, c.path AS path, c.start_line AS startLine, c.end_line AS endLine, c.symbol AS symbol, c.body AS body
 		FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid
 		WHERE chunks_fts MATCH ?${lang ? ' AND c.path IN (SELECT path FROM files WHERE lang = ?)' : ''}
 		ORDER BY bm25(chunks_fts, 1.0, 3.0, 2.0, 6.0) LIMIT ?`;
@@ -155,8 +210,8 @@ export function findSymbol(store: IndexStore, name: string, options: { readonly 
 	const pattern = new RegExp(`\\b${base}\\b`);
 	const references: { path: string; line: number; text: string }[] = [];
 	let referenceTotal = 0;
-	const chunks = store.statement('SELECT c.path AS path, c.start_line AS startLine, c.text AS text FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid WHERE chunks_fts MATCH ? ORDER BY c.path, c.start_line LIMIT 500')
-		.all(`text:"${base.toLowerCase()}"`) as { path: string; startLine: number; text: string }[];
+	const chunks = (store.statement('SELECT c.path AS path, c.start_line AS startLine, c.body AS body FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid WHERE chunks_fts MATCH ? ORDER BY c.path, c.start_line LIMIT 500')
+		.all(`text:"${base.toLowerCase()}"`) as { path: string; startLine: number; body: Uint8Array }[]).map(row => ({ path: row.path, startLine: row.startLine, text: unpackText(row.body) }));
 	const seenLines = new Set<string>();
 	for (const chunk of chunks) {
 		chunk.text.split('\n').forEach((text, offset) => {
@@ -186,8 +241,8 @@ interface RawSymbol {
 }
 
 function withSignature(store: IndexStore, row: RawSymbol): SymbolHit {
-	const chunk = store.statement('SELECT start_line AS startLine, text FROM chunks WHERE path = ? AND start_line <= ? AND end_line >= ? LIMIT 1').get(row.path, row.line, row.line) as { startLine: number; text: string } | undefined;
-	const signature = chunk ? (chunk.text.split('\n')[row.line - chunk.startLine] ?? '').trim() : '';
+	const chunk = store.statement('SELECT start_line AS startLine, body FROM chunks WHERE path = ? AND start_line <= ? AND end_line >= ? LIMIT 1').get(row.path, row.line, row.line) as { startLine: number; body: Uint8Array } | undefined;
+	const signature = chunk ? (unpackText(chunk.body).split('\n')[row.line - chunk.startLine] ?? '').trim() : '';
 	return { name: row.name, kind: row.kind, path: row.path, line: row.line, endLine: row.endLine, container: row.container ?? undefined, exported: !!row.exported, signature };
 }
 

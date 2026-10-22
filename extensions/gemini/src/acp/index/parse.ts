@@ -63,7 +63,8 @@ export function parseFile(relative: string, text: string): ParsedFile {
 		lang: languageName(relative),
 		symbols,
 		chunks: makeChunks(lines, symbols, language),
-		imports: language?.imports ? findImports(text, language.imports) : [],
+		// A package import (`react`, `node:fs`) never names a file in the folder; only relative ones are kept.
+		imports: language?.imports ? findImports(text, language.imports).filter(spec => language.id !== 'typescript' || spec.startsWith('.')) : [],
 	};
 }
 

@@ -5,11 +5,19 @@
 
 // One folder's index: a SQLite file (node:sqlite, built into the app's Node,
 // so no native module) in WAL mode, written in transactions so a crash leaves
-// the last committed state. A file that fails its check, or was written with
-// another schema, is moved aside and started again: a broken index never
-// fails a prompt, it only costs a rebuild.
+// the last committed state. A file SQLite can't open or reports damaged, or
+// one written with another schema, is moved aside and started again: a broken
+// index never fails a prompt, it only costs a rebuild. Opening checks nothing
+// more than the schema, since a full check reads the whole file (seconds for
+// a large repository); damage found later is reported by `isCorruption`.
+//
+// Chunk text is stored compressed, about a third of its size for source
+// code: the index of a 20,000-file repository (this one) went from 537 MB to
+// about 310 MB. The full-text index keeps word positions, which cost a tenth
+// of that but give BM25 the term counts that rank a definition above a mention.
 
 import { promises as fs } from 'node:fs';
+import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import * as path from 'node:path';
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
 import { identifierWords, splitIdentifier } from './identifiers';
@@ -21,7 +29,7 @@ export const schemaVersion = 1;
 const schema = `
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS files(path TEXT PRIMARY KEY, lang TEXT NOT NULL, size INTEGER NOT NULL, mtime INTEGER NOT NULL, hash TEXT NOT NULL, skipped TEXT);
-CREATE TABLE IF NOT EXISTS chunks(id INTEGER PRIMARY KEY, path TEXT NOT NULL, start_line INTEGER NOT NULL, end_line INTEGER NOT NULL, symbol TEXT, text TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS chunks(id INTEGER PRIMARY KEY, path TEXT NOT NULL, start_line INTEGER NOT NULL, end_line INTEGER NOT NULL, symbol TEXT, body BLOB NOT NULL);
 CREATE INDEX IF NOT EXISTS chunks_path ON chunks(path);
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(text, idents, path, symbol, content='', contentless_delete=1, tokenize='unicode61 remove_diacritics 2');
 CREATE TABLE IF NOT EXISTS symbols(id INTEGER PRIMARY KEY, path TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, line INTEGER NOT NULL, end_line INTEGER NOT NULL, container TEXT, exported INTEGER NOT NULL);
@@ -90,10 +98,6 @@ export class IndexStore {
 		const db = new Database(file);
 		try {
 			db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 3000; PRAGMA temp_store = MEMORY; PRAGMA cache_size = -8000');
-			const check = db.prepare('PRAGMA quick_check').get() as { quick_check?: string } | undefined;
-			if (check?.quick_check !== 'ok') {
-				throw new Error('The index failed its check.');
-			}
 			const hasMeta = db.prepare('SELECT 1 FROM sqlite_master WHERE name = \'meta\'').get();
 			const version = hasMeta ? (db.prepare('SELECT value FROM meta WHERE key = \'schema_version\'').get() as { value?: string } | undefined)?.value : undefined;
 			if (hasMeta && version !== String(schemaVersion)) {
@@ -157,8 +161,8 @@ export class IndexStore {
 		}
 		const pathWords = splitIdentifier(record.path).join(' ');
 		for (const chunk of parsed.chunks) {
-			const id = this.statement('INSERT INTO chunks(path, start_line, end_line, symbol, text) VALUES (?, ?, ?, ?, ?)')
-				.run(record.path, chunk.startLine, chunk.endLine, chunk.symbol ?? null, chunk.text).lastInsertRowid;
+			const id = this.statement('INSERT INTO chunks(path, start_line, end_line, symbol, body) VALUES (?, ?, ?, ?, ?)')
+				.run(record.path, chunk.startLine, chunk.endLine, chunk.symbol ?? null, packText(chunk.text)).lastInsertRowid;
 			const symbolWords = chunk.symbol ? splitIdentifier(chunk.symbol).join(' ') : '';
 			this.statement('INSERT INTO chunks_fts(rowid, text, idents, path, symbol) VALUES (?, ?, ?, ?, ?)')
 				.run(id, chunk.text, `${identifierWords(chunk.text)} ${symbolWords}`, `${record.path} ${pathWords}`, chunk.symbol ? `${chunk.symbol} ${symbolWords}` : '');
@@ -225,8 +229,23 @@ export class IndexStore {
 	}
 }
 
+/** A chunk's text as stored: compressed. */
+function packText(text: string): Uint8Array {
+	return deflateRawSync(text, { level: 6 });
+}
+
+/** A chunk's text from its stored body. */
+export function unpackText(body: Uint8Array): string {
+	return inflateRawSync(body).toString('utf8');
+}
+
+/** Whether an error says the index file is damaged, so it should be rebuilt. */
+export function isCorruption(err: unknown): boolean {
+	return /malformed|corrupt|not a database|SQLITE_CORRUPT|SQLITE_NOTADB/i.test(err instanceof Error ? `${err.message} ${(err as { code?: string }).code ?? ''}` : String(err));
+}
+
 /** Moves a damaged index out of the way, keeping only the latest one for a look. */
-async function moveAside(file: string): Promise<void> {
+export async function moveAside(file: string): Promise<void> {
 	const dir = path.dirname(file);
 	const base = path.basename(file);
 	for (const name of await fs.readdir(dir).catch(() => [] as string[])) {

@@ -24,7 +24,7 @@ import { cochangePairs } from './cochange';
 import { fallbackRepoMap, ripgrepDefinitions, ripgrepSearch } from './fallbackSearch';
 import { IgnoreRules } from './ignore';
 import { IndexLock } from './indexLock';
-import { IndexStore } from './indexStore';
+import { IndexStore, isCorruption, moveAside } from './indexStore';
 import type { Answer, IndexSettings, IndexState, IndexStatus } from './indexerProtocol';
 import { contentSkipReason, InventoryFile, pathSkipReason, readIgnoreFile, takeInventory } from './inventory';
 import { languageName } from './languages';
@@ -301,42 +301,61 @@ export class Indexer {
 
 	// --- Queries
 
-	async search({ root, query }: { root: string; query: SearchQuery }): Promise<Answer<SearchResult>> {
-		const store = await this.queryable(root);
-		if (store) {
-			return { result: search(store, query) };
-		}
-		return { result: await ripgrepSearch(this.options.ripgrep, root, query.query, Math.min(query.limit ?? 8, 20), query.path), fallback: await this.progress(root) };
+	search({ root, query }: { root: string; query: SearchQuery }): Promise<Answer<SearchResult>> {
+		return this.answer(root, store => search(store, query), async () => ripgrepSearch(this.options.ripgrep, root, query.query, Math.min(query.limit ?? 8, 20), query.path));
 	}
 
-	async findSymbol({ root, name, kind, references }: { root: string; name: string; kind?: string; references?: boolean }): Promise<Answer<SymbolResult>> {
-		const store = await this.queryable(root);
-		if (store) {
-			return { result: findSymbol(store, name, { kind, references }) };
-		}
-		const found = await ripgrepDefinitions(this.options.ripgrep, root, name.slice(name.lastIndexOf('.') + 1));
-		return {
-			result: { definitions: found.map(f => ({ name, kind: 'definition', path: f.path, line: f.line, endLine: f.line, exported: true, signature: f.text })), similar: [], references: [], referenceTotal: 0 },
-			fallback: await this.progress(root),
-		};
+	findSymbol({ root, name, kind, references }: { root: string; name: string; kind?: string; references?: boolean }): Promise<Answer<SymbolResult>> {
+		return this.answer<SymbolResult>(root, store => findSymbol(store, name, { kind, references }), async () => {
+			const found = await ripgrepDefinitions(this.options.ripgrep, root, name.slice(name.lastIndexOf('.') + 1));
+			return { definitions: found.map(f => ({ name, kind: 'definition', path: f.path, line: f.line, endLine: f.line, exported: true, signature: f.text })), similar: [], references: [], referenceTotal: 0 };
+		});
 	}
 
-	async related({ root, path: file }: { root: string; path: string }): Promise<Answer<RelatedResult & { known: boolean; suggestions: readonly string[] }>> {
-		const store = await this.queryable(root);
+	related({ root, path: file }: { root: string; path: string }): Promise<Answer<RelatedResult & { known: boolean; suggestions: readonly string[] }>> {
 		const relative = relativeTo(root, file) ?? file;
-		if (!store) {
-			return { result: { imports: [], importedBy: [], tests: [], changedWith: [], known: false, suggestions: [] }, fallback: await this.progress(root) };
-		}
-		const known = hasFile(store, relative);
-		return { result: { ...relatedFiles(store, relative), known, suggestions: known ? [] : filesNamed(store, relative) } };
+		return this.answer(root, store => {
+			const known = hasFile(store, relative);
+			return { ...relatedFiles(store, relative), known, suggestions: known ? [] : filesNamed(store, relative) };
+		}, async () => ({ imports: [], importedBy: [], tests: [], changedWith: [], known: false, suggestions: [] }));
 	}
 
-	async repoMap({ root, path: subfolder, depth, maxChars }: { root: string; path?: string; depth?: number; maxChars?: number }): Promise<Answer<string>> {
+	repoMap({ root, path: subfolder, depth, maxChars }: { root: string; path?: string; depth?: number; maxChars?: number }): Promise<Answer<string>> {
+		return this.answer(root, store => repoMap(store, root, { path: subfolder, depth, maxChars }), () => fallbackRepoMap(root, maxChars));
+	}
+
+	/**
+	 * Answers from the folder's index when it is built, else from `fallback`
+	 * (live search) with how far the build is. A damaged index is rebuilt and
+	 * this answer comes from live search.
+	 */
+	private async answer<T>(root: string, query: (store: IndexStore) => T | Promise<T>, fallback: () => Promise<T>): Promise<Answer<T>> {
 		const store = await this.queryable(root);
 		if (store) {
-			return { result: await repoMap(store, root, { path: subfolder, depth, maxChars }) };
+			try {
+				return { result: await query(store) };
+			} catch (err) {
+				if (!isCorruption(err)) {
+					throw err;
+				}
+				await this.recover(root, err);
+			}
 		}
-		return { result: await fallbackRepoMap(root, maxChars), fallback: await this.progress(root) };
+		return { result: await fallback(), fallback: await this.progress(root) };
+	}
+
+	/** Moves a damaged index aside and builds a new one. */
+	private async recover(root: string, err: unknown): Promise<void> {
+		const workspace = await this.workspaces.get(root);
+		if (!workspace) {
+			return;
+		}
+		this.options.log?.(`The index of ${root} is damaged and is being rebuilt: ${err instanceof Error ? err.message : String(err)}`);
+		await this.closeStore(workspace);
+		await moveAside(workspace.file);
+		await this.open(workspace);
+		workspace.needsReconcile = true;
+		this.schedule(workspace);
 	}
 
 	/** Deletes indexes no window has used for 30 days, unless a live process holds them. */
@@ -510,7 +529,11 @@ export class Indexer {
 					await this.applyPaths(workspace, paths);
 				}
 			}
-		})().catch(err => {
+		})().catch(async err => {
+			if (isCorruption(err)) {
+				await this.recover(workspace.root, err);
+				return;
+			}
 			this.options.log?.(`Indexing ${workspace.root} failed: ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
 			this.setState(workspace, { kind: 'failed', message: err instanceof Error ? err.message : String(err) }, true);
 		}).finally(() => {
