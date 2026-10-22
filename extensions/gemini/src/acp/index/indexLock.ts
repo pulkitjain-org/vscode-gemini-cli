@@ -15,9 +15,9 @@ export class IndexLock {
 
 	private constructor(private readonly file: string) { }
 
-	/** Takes the lock in `dir`, or undefined when a live process holds it. */
-	static async acquire(dir: string, pid: number = process.pid): Promise<IndexLock | undefined> {
-		const file = path.join(dir, 'index.lock');
+	/** Takes the lock `name` in `dir`, or undefined when a live process holds it. */
+	static async acquire(dir: string, pid: number = process.pid, name = 'index.lock'): Promise<IndexLock | undefined> {
+		const file = path.join(dir, name);
 		for (let attempt = 0; attempt < 2; attempt++) {
 			try {
 				await fs.writeFile(file, JSON.stringify({ pid, at: Date.now() }), { flag: 'wx' });

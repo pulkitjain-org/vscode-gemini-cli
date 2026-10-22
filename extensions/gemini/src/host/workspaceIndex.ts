@@ -10,7 +10,7 @@ import * as vscode from 'vscode';
 import type { DocsSearchResult } from '../acp/docs/docsProtocol';
 import { appRipgrep } from '../acp/index/ripgrepPath';
 import { IndexClient } from '../acp/index/indexClient';
-import type { IndexSettings, IndexStatus } from '../acp/index/indexerProtocol';
+import type { IndexerMethod, IndexerParams, IndexerResult, IndexSettings, IndexStatus } from '../acp/index/indexerProtocol';
 import { AttachedDocs, IndexMcpServer } from '../acp/indexMcp';
 import { configSection } from './configuration';
 import { IndexWatchers } from './indexWatchers';
@@ -220,6 +220,26 @@ export class WorkspaceIndex implements vscode.Disposable {
 		}
 	}
 
+	/** A request to the indexer process, such as the docs store's; undefined while the index is off. */
+	async request<M extends IndexerMethod>(method: M, params: IndexerParams<M>): Promise<Awaited<IndexerResult<M>> | undefined> {
+		return this.client?.request(method, params);
+	}
+
+	/** The docs attached to `folder`, or to the workspace folder its worktree came from. */
+	private attachedDocs(folder: string): readonly AttachedDocs[] {
+		const docs = this.docs;
+		if (!docs) {
+			return [];
+		}
+		const own = docs.attachedTo(folder);
+		const from = this.folders.get(folder)?.seedFrom;
+		if (!from) {
+			return own;
+		}
+		const ids = new Set(own.map(d => d.id));
+		return [...own, ...docs.attachedTo(from).filter(d => !ids.has(d.id))];
+	}
+
 	/** Folders whose indexes this window keeps current. */
 	get openFolders(): string[] {
 		return [...this.folders.keys()];
@@ -291,7 +311,7 @@ export class WorkspaceIndex implements vscode.Disposable {
 			findSymbol: (folder, name, kind, references) => client.request('findSymbol', { root: folder, name, kind, references }),
 			related: (folder, file) => client.request('related', { root: folder, path: file }),
 			repoMap: (folder, subfolder, depth) => client.request('repoMap', { root: folder, path: subfolder, depth }),
-			docs: folder => this.docs?.attachedTo(folder) ?? [],
+			docs: folder => this.attachedDocs(folder),
 			searchDocs: (_folder, ids, query) => this.docs?.search(ids, query) ?? Promise.resolve({ hits: [], total: 0, terms: [] }),
 			orientation: folder => this.orientations.get(folder)?.text,
 		}, this.options.version);

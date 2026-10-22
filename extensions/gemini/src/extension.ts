@@ -43,6 +43,7 @@ import { AuditPage } from './host/auditPage';
 import { AuditStatusBar } from './host/auditStatusBar';
 import { WorkspaceFileIndex } from './host/workspaceFiles';
 import { WorkspaceIndex } from './host/workspaceIndex';
+import { DocsSources } from './host/docsSources';
 import { disposeGitIgnore } from './host/workspaceFileSystem';
 
 /** Finishes the writes that must outlive the window; set by activate. */
@@ -128,9 +129,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	// The indexer runs from indexer.js beside this file, in out/ or dist/.
 	const workspaceIndex = new WorkspaceIndex({ script: path.join(__dirname, 'indexer.js'), version: String(context.extension.packageJSON.version ?? ''), log });
 	agentsView.index = workspaceIndex;
+	const docsSources = workspaceIndex.docs = new DocsSources(workspaceIndex, log);
 	// A tool connecting, or the browser or the index turned on or off, changes what a new session gets: the spare follows.
 	context.subscriptions.push(
 		workspaceIndex,
+		docsSources,
 		workspaceIndex.onDidChangeEnabled(() => agentsView.refreshSpare()),
 		teamTools.onDidChange(() => agentsView.refreshSpare()),
 		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.browser`) && agentsView.refreshSpare()),
