@@ -650,7 +650,7 @@ function review(view: ReviewView): ReturnType<typeof dialog> {
 				count.append(icon('comment'), el('span', undefined, String(file.comments)));
 				row.append(count);
 			}
-			row.append(el('span', 'added', `+${file.added}`), el('span', 'removed', `−${file.removed}`));
+			row.append(el('span', 'added', `+${file.added}`), el('span', 'removed', `\u2212${file.removed}`));
 			setTip(row, file.path);
 			side.append(row);
 		}

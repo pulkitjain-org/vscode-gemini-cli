@@ -457,7 +457,7 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 			const onLine = !!(c.line && hunks && lineInDiff(hunks, c.line));
 			const canSuggest = !!(c.line && hunks && inOneHunk(hunks, c.line, end) && onLine);
 			const old = c.suggestion && c.file && c.line ? (await this.deps.diffs.lines(s.repository, this.head, c.file)).slice(c.line - 1, end).join('\n') : '';
-			const lineText = c.line ? `:${c.line}${c.endLine ? `–${c.endLine}` : ''}` : '';
+			const lineText = c.line ? `:${c.line}${c.endLine ? `\u2013${c.endLine}` : ''}` : '';
 			return {
 				id: c.id, by: c.by, comment: c.comment, checked: c.checked, onLine, canSuggest,
 				...c.kind ? { kind: c.kind } : {},
