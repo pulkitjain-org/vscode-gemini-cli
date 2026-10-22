@@ -1113,3 +1113,188 @@ button.option-button .codicon-chevron-down {
 	text-align: left;
 	vertical-align: top;
 }
+
+/* The Index page (indexPage.ts): each workspace's index and the docs attached to it. */
+.index-page .index-dot {
+	flex: none;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--gemini-switch-off);
+}
+
+.index-page .index-dot.ready {
+	background: var(--gemini-ok);
+}
+
+.index-page .index-dot.building,
+.index-page .index-dot.paused {
+	background: var(--gemini-accent);
+}
+
+.index-page .index-dot.failed {
+	background: var(--gemini-error);
+}
+
+.index-page .index-tag.ready {
+	color: var(--gemini-ok);
+}
+
+.index-page .index-tag.building {
+	color: var(--gemini-accent);
+}
+
+.index-page .index-tag.failed {
+	color: var(--gemini-error);
+}
+
+.index-page .index-bar {
+	max-width: 320px;
+	height: 4px;
+	margin-top: 6px;
+	border-radius: 2px;
+	background: var(--gemini-switch-off);
+	overflow: hidden;
+}
+
+.index-page .index-bar > i {
+	display: block;
+	height: 100%;
+	background: var(--gemini-accent);
+	transition: width 300ms ease;
+}
+
+.index-page .index-off {
+	margin-top: 24px;
+	padding: 0;
+}
+
+.index-page button.link-button {
+	padding: 2px 4px;
+	border: none;
+	background: none;
+	color: var(--vscode-textLink-foreground);
+	cursor: pointer;
+}
+
+.index-page .hint .select-menu {
+	display: inline-flex;
+	vertical-align: middle;
+	margin: 0 2px;
+}
+
+.index-dialog {
+	width: min(560px, calc(100vw - 48px));
+	padding: 18px 20px;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius-large);
+	color: var(--vscode-foreground);
+	background: var(--gemini-popover);
+	box-shadow: 0 16px 48px var(--gemini-shadow);
+}
+
+.index-dialog::backdrop {
+	background: rgba(0, 0, 0, 0.35);
+}
+
+.index-dialog h2 {
+	margin: 0 0 2px;
+	font-size: 15px;
+}
+
+.index-dialog .hint {
+	margin: 0;
+	color: var(--gemini-muted);
+}
+
+.index-dialog-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.index-field {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+	margin-top: 14px;
+}
+
+.index-field > label {
+	color: var(--gemini-muted);
+	font-size: 12px;
+}
+
+.index-input {
+	padding: 5px 8px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-small);
+	color: var(--vscode-input-foreground);
+	background: var(--vscode-input-background);
+	font: inherit;
+}
+
+.index-input:focus {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.index-inline {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.index-inline .index-input {
+	width: 90px;
+}
+
+.index-pair {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 12px;
+}
+
+.index-radios,
+.index-checks {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.index-radio,
+.index-check {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+}
+
+.index-radio small {
+	display: block;
+	color: var(--gemini-muted);
+}
+
+.index-problem {
+	display: flex;
+	gap: 6px;
+	color: var(--gemini-error);
+}
+
+.index-fine {
+	margin-top: 14px !important;
+	font-size: 11.5px;
+}
+
+.index-dialog-foot {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.index-page .index-bar > i {
+		transition: none;
+	}
+}

@@ -118,6 +118,8 @@ export interface HomeWorkspace {
 	readonly name: string;
 	readonly description: string;
 	readonly git: boolean;
+	/** The folder's index, in a word or two: "Indexed", "Indexing 62%". */
+	readonly index?: string;
 }
 
 export interface HomeView {
@@ -297,6 +299,8 @@ export interface HomeStrings {
 	readonly addFolder: string;
 	readonly projectHelpers: string;
 	readonly projectHelpersHint: string;
+	readonly index: string;
+	readonly indexHint: string;
 	readonly plusMenu: string;
 	readonly mode: string;
 	readonly files: string;
@@ -407,7 +411,7 @@ export type FromHome =
 	| { readonly type: 'start'; readonly folder: string; readonly text: string; readonly ownBranch: boolean; readonly mode: string; readonly attachments: readonly Attachment[] }
 	/** The user is typing a task, so the agent and a session for it can get ready. */
 	| { readonly type: 'typing'; readonly folder: string; readonly ownBranch: boolean }
-	| { readonly type: 'addFolder' | 'projectHelpers' | 'pickFiles' | 'newProject' }
+	| { readonly type: 'addFolder' | 'projectHelpers' | 'openIndex' | 'pickFiles' | 'newProject' }
 	| { readonly type: 'open' | 'stop' | 'review' | 'mergeBack'; readonly id: string }
 	| { readonly type: 'action'; readonly action: HomeAction }
 	| { readonly type: 'refresh' }

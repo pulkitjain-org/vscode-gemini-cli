@@ -65,6 +65,13 @@ const helpers = document.getElementById('helpers') as HTMLButtonElement;
 helpers.querySelector('span')!.textContent = strings.projectHelpers;
 helpers.title = strings.projectHelpersHint;
 helpers.addEventListener('click', () => vscode.postMessage({ type: 'projectHelpers' }));
+const indexButton = document.getElementById('index') as HTMLButtonElement;
+indexButton.querySelector('span')!.textContent = strings.index;
+indexButton.title = strings.indexHint;
+const indexState = document.getElementById('index-state') as HTMLButtonElement;
+for (const button of [indexButton, indexState]) {
+	button.addEventListener('click', () => vscode.postMessage({ type: 'openIndex' }));
+}
 plusButton.title = strings.plusMenu;
 plusButton.setAttribute('aria-label', strings.plusMenu);
 
@@ -198,6 +205,9 @@ function pickFolder(next: string): void {
 function updateControls(): void {
 	const current = view?.workspaces.find(w => w.folder === folder);
 	workspaceLabel.textContent = current?.name ?? strings.addFolder;
+	indexState.hidden = !current?.index;
+	indexState.textContent = current?.index ?? '';
+	indexState.title = strings.indexHint;
 	const label = current ? `${strings.workspace}: ${current.description}/${current.name}` : strings.workspace;
 	workspaceButton.title = label;
 	workspaceButton.setAttribute('aria-label', label);

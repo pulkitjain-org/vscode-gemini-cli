@@ -44,6 +44,8 @@ import { AuditStatusBar } from './host/auditStatusBar';
 import { WorkspaceFileIndex } from './host/workspaceFiles';
 import { WorkspaceIndex } from './host/workspaceIndex';
 import { DocsSources } from './host/docsSources';
+import { IndexPage } from './host/indexPage';
+import { IndexStatusBar } from './host/indexStatusBar';
 import { disposeGitIgnore } from './host/workspaceFileSystem';
 
 /** Finishes the writes that must outlive the window; set by activate. */
@@ -134,6 +136,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	context.subscriptions.push(
 		workspaceIndex,
 		docsSources,
+		new IndexPage(context.extensionUri, workspaceIndex, docsSources, agentsView, service, context.globalState),
+		new IndexStatusBar(workspaceIndex),
 		workspaceIndex.onDidChangeEnabled(() => agentsView.refreshSpare()),
 		teamTools.onDidChange(() => agentsView.refreshSpare()),
 		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.browser`) && agentsView.refreshSpare()),

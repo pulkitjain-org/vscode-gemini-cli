@@ -179,6 +179,31 @@ button.link-button:hover {
 	color: var(--gemini-muted);
 }
 
+/* The workspace's index beside its pill: a dot and a word, quiet until it is building. */
+button.index-state {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	padding: 0 4px;
+	border: none;
+	background: none;
+	color: var(--gemini-muted);
+	font-size: 0.92em;
+	cursor: pointer;
+}
+
+button.index-state::before {
+	content: '';
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--vscode-testing-iconPassed, #3fb86b);
+}
+
+button.index-state:hover {
+	color: var(--vscode-foreground);
+}
+
 button.dash-quick-action {
 	gap: 6px;
 	padding: 5px 12px;

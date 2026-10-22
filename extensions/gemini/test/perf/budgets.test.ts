@@ -40,6 +40,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// The team flows: Open Merge Request, Move Ticket and Log Time, Review and Checks.
 	'media/teamFlow.js': 32_000,
 	'media/settings.js': 16_000,
+	// The Index page: workspaces' indexes, attached docs and the Add Docs popup, with the shared select menu and tooltips.
+	'media/indexPage.js': 18_000,
 	'media/highlight.js': 180_000,
 	// Loaded only when a reply has math.
 	'media/katex.js': 290_000,
@@ -52,7 +54,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// about 1,137 KB; loading the ACP SDK only when an agent starts wraps its modules, about 6 KB more, and takes
 	// about 12 ms off the bundle's load time. Run Benchmark, the pilot's counters, and the team's own Jira and
 	// GitLab servers as children (the stdio MCP client, the take-over) took it to about 1,172 KB, its own code.
-	// The workspace index's host side (its client, the geminicode-index server and the result formats) added about 20 KB.
+	// The workspace index's host side (its client, the geminicode-index server, the docs fetcher, the Index page's host
+	// and the status bar) added about 56 KB, all its own code, no libraries.
 	'dist/extension.js': 1_200_000,
 	// The indexer process: parsing, SQLite queries and docs conversion, forked on first use, never loaded in the extension host.
 	'dist/indexer.js': 120_000,

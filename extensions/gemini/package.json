@@ -261,6 +261,30 @@
         "category": "%category%"
       },
       {
+        "command": "gemini.index.open",
+        "title": "%command.index.open%",
+        "category": "%category%",
+        "icon": "$(database)"
+      },
+      {
+        "command": "gemini.index.rebuild",
+        "title": "%command.index.rebuild%",
+        "category": "%category%",
+        "enablement": "config.gemini.index.enabled"
+      },
+      {
+        "command": "gemini.index.pause",
+        "title": "%command.index.pause%",
+        "category": "%category%",
+        "enablement": "config.gemini.index.enabled"
+      },
+      {
+        "command": "gemini.index.addDocs",
+        "title": "%command.index.addDocs%",
+        "category": "%category%",
+        "enablement": "config.gemini.docs.enabled"
+      },
+      {
         "command": "gemini.agents.removeWorkspace",
         "title": "%command.agents.removeWorkspace%",
         "category": "%category%"
@@ -753,6 +777,21 @@
           "command": "gemini.projects.settings",
           "when": "view == gemini.agents && viewItem =~ /\\.project$/ && config.gemini.projects.enabled",
           "group": "1_agent@1"
+        },
+        {
+          "command": "gemini.index.open",
+          "when": "view == gemini.agents && viewItem =~ /^workspace(\\.git)?$/",
+          "group": "1_index@1"
+        },
+        {
+          "command": "gemini.index.rebuild",
+          "when": "view == gemini.agents && viewItem =~ /^workspace(\\.git)?$/ && config.gemini.index.enabled",
+          "group": "1_index@2"
+        },
+        {
+          "command": "gemini.index.pause",
+          "when": "view == gemini.agents && viewItem =~ /^workspace(\\.git)?$/ && config.gemini.index.enabled",
+          "group": "1_index@3"
         },
         {
           "command": "gemini.agents.removeWorkspace",
