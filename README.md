@@ -2,10 +2,12 @@
 
 GeminiCode is a code editor built on [VS Code (Code - OSS)](https://github.com/microsoft/vscode) with the [Gemini CLI](https://github.com/google-gemini/gemini-cli) built in as its coding agent. It runs the official `gemini` CLI over the [Agent Client Protocol](https://agentclientprotocol.com), so you get the CLI's agent, sign-in and Gemini Code Assist license inside a full editor.
 
-- **Agents pane.** Run several agents side by side, each in its own editor tab, in the open folder or any folder you add.
-- **Chat that asks first.** Proposed edits open as diffs, and every command asks before it runs unless you pick a looser mode.
-- **Context.** `@` to mention files, <kbd>Cmd</kbd>+<kbd>L</kbd> to add the selection, and drag in files, images and PDFs from anywhere.
-- **Agent changes and commits.** See every file an agent changed as diffs, and commit just those files to a new branch from its chat.
+- **Agents side by side.** Run several agents at once, each in its own tab and folder, optionally on a branch of its own. Home shows each agent's status, changes and next step.
+- **Chat that asks first.** Every command and edit asks before it runs unless you pick a looser mode, and each change can be kept or undone in the file.
+- **Context.** `@` to mention files, <kbd>Cmd</kbd>+<kbd>L</kbd> to add the selection, and drag in files, images and PDFs from anywhere. A local workspace index lets agents find code in one step.
+- **Projects.** A coordinator splits larger work into threads, each an agent on its own branch, that you merge back, review or undo.
+- **A browser agents can use.** Agents open your app, click, type and read the console; point at an element to add it to a prompt.
+- **Team tools.** Jira, GitLab, SonarQube, Snyk and Figma with your own account: start from a ticket, open and fix the merge request, review others' merge requests with Gemini's draft and your own comments, and merge when GitLab's checks pass.
 - **Managed CLI and admin policy.** GeminiCode installs and updates its own Gemini CLI, and organisations can lock the CLI version, approval modes and shell access.
 
 ## Get GeminiCode

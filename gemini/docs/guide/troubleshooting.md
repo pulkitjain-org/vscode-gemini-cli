@@ -18,6 +18,8 @@ What to do when something doesn't work. Most fixes are one command away in the *
 | The workspace isn't indexed, or agents don't use the index | Open **Index** on Home. An untrusted folder gets no index tools: choose **Trust Folder**. Check that `gemini.index.enabled` is on. The `gemini` command in your terminal loads the index only if the project's `mcp.allowed` lists `geminicode-index`. |
 | A file is missing from the index | **Files Left Out** on the Index page says why; **Index Anyway** adds it, unless it is a secret file or binary. |
 | A docs source failed | The Index page names the reason. Pages behind a sign-in aren't supported yet; a site outside `gemini.docs.allowedDomains` can't be added. |
+| "Gemini's context for this chat filled up" | A turn sent more than the model can read, usually one very large tool output. The chat carries on in a new session that is given the conversation without the tool outputs: send your message again. Ask for big diffs or logs a few files at a time. |
+| "Open a clone of … first" when reviewing a merge request | Reviews read the merge request's commits from your own clone of the repository. Open a folder that is a clone of it, whose remote is on your GitLab server, then press **Review** again. |
 | "Can't reach … Check that your VPN is on" | A team tool behind your VPN didn't answer. Connect the VPN; the other tools keep working. |
 | The macOS build won't open | See the note under [Install](getting-started.md#install). |
 

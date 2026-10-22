@@ -664,6 +664,19 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 				<h3 class="serif s">Enhance prompt</h3>
 				<p>Plain words in, a precise prompt out. Review it, or Revert.</p>
 			</div>
+			<div class="tile s12 index-tile reveal" data-reveal>
+				<div class="txt">
+					<h3 class="serif">Finds the code in one step.</h3>
+					<p>Each workspace keeps a local index of its code, kept current as files and branches change. Agents ask it for code, symbols, related files and a map of the repository, and search the docs you attach, instead of reading file by file. Nothing leaves your Mac.</p>
+					<a class="more" href="docs/workspace-index.html">How the index works ${icon('arrow-right')}</a>
+				</div>
+				<div class="mock list" aria-hidden="true">
+					<div class="r on"><span class="n">code_search <span class="q">"retry upload backoff"</span></span><span class="t">3 results · 41 ms</span></div>
+					<div class="r"><span class="n">src/upload.ts:4</span><span class="t">uploadInvoice</span></div>
+					<div class="r"><span class="n">test/upload.test.ts:7</span><span class="t">retries a 503</span></div>
+					<div class="r"><span class="n">find_symbol <span class="q">uploadInvoice</span></span><span class="t">2 callers</span></div>
+				</div>
+			</div>
 		</div>
 	</section>
 
@@ -734,7 +747,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 			</div>
 			<div class="tile s6 team reveal" data-reveal>
 				<h3 class="serif">From ticket to merge request.</h3>
-				<p>Sign in to your team's tools with your own account. Start an agent from a ticket, open the merge request, fix the pipeline and the comments, and let Gemini review the result against the ticket.</p>
+				<p>Sign in to your team's tools with your own account. Start an agent from a ticket, open the merge request and fix the pipeline and the comments. Review a teammate's merge request with Gemini's draft, your own comments and suggested changes, then post it in one go.</p>
 				<div class="chips"><span class="chip">Jira</span><span class="chip">GitLab</span><span class="chip">SonarQube</span><span class="chip">Snyk</span><span class="chip">Figma</span></div>
 				<div class="mock mr" aria-hidden="true">
 					<div class="r"><span class="k">ACME-412</span><span class="n">Upload retries</span><span class="s">!412 · passed</span></div>
