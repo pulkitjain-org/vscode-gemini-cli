@@ -13,7 +13,7 @@ describe('htmlToMarkdown', () => {
 			<body><header><a href="/">React</a></header><nav class="sidebar"><a href="/learn">Learn</a></nav>
 			<main><h1>useEffect</h1><p>Lets you <strong>synchronize</strong> a component with an <a href="/learn/external">external system</a>.</p>
 			<pre><code class="language-js">useEffect(() =&gt; {
-  connect();
+\u0020\u0020connect();
 }, []);</code></pre>
 			<ul><li>Call it at the top level<ul><li>Not in loops</li></ul></li><li>Return a <code>cleanup</code></li></ul>
 			<table><tr><th>Param</th><th>Type</th></tr><tr><td>setup</td><td>function</td></tr></table>

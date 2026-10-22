@@ -249,7 +249,7 @@ export function sectionsOf(markdown: string): Section[] {
 		if (!text) {
 			return;
 		}
-		const heading = trail.filter(Boolean).join(' › ');
+		const heading = trail.filter(Boolean).join(' \u203a ');
 		let current = '';
 		for (const paragraph of text.split(/\n\s*\n/)) {
 			if (current && current.length + paragraph.length > maxSectionChars) {
@@ -284,8 +284,8 @@ function titleOfMarkdown(markdown: string): string | undefined {
 	return /^#\s+(.+)$/m.exec(markdown)?.[1].trim();
 }
 
-/** A page title's site part: "useEffect – React" → "React". */
+/** A page title's site part: "useEffect | React" → "React", also after a dash or a middle dot. */
 function siteTitle(title: string): string {
-	const parts = title.split(/\s+[|–—·-]\s+/);
+	const parts = title.split(/\s+[|\u2013\u2014\u00b7-]\s+/);
 	return (parts.length > 1 ? parts[parts.length - 1] : title).trim();
 }

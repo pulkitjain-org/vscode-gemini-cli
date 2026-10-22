@@ -32,7 +32,7 @@ export interface DocsHit {
 	readonly source: string;
 	readonly url: string;
 	readonly title: string;
-	/** The section's headings, outermost first, joined by ` › `. */
+	/** The section's headings, outermost first, joined by a single right-pointing angle quote (U+203A). */
 	readonly heading: string;
 	readonly text: string;
 }

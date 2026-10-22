@@ -64,7 +64,7 @@ export function isDue(source: DocsSource, fallback: DocsRefresh, now: number): b
 export function provisionalTitle(url: string): string {
 	const parsed = new URL(url);
 	const last = parsed.pathname.split('/').filter(Boolean).pop();
-	return last ? `${parsed.hostname} › ${last}` : parsed.hostname;
+	return last ? `${parsed.hostname} \u203a ${last}` : parsed.hostname;
 }
 
 export class DocsRegistry {
