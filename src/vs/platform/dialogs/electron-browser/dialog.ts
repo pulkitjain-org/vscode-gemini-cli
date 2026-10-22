@@ -10,7 +10,7 @@ import { IOSProperties } from '../../native/common/native.js';
 import { IProductService } from '../../product/common/productService.js';
 import { process } from '../../../base/parts/sandbox/electron-browser/globals.js';
 
-export function createNativeAboutDialogDetails(productService: IProductService, osProps: IOSProperties): { title: string; details: string; detailsToCopy: string } {
+export function createNativeAboutDialogDetails(productService: IProductService, osProps: IOSProperties, runningGeminiCliVersion?: string): { title: string; details: string; detailsToCopy: string } {
 	let version = productService.version;
 	if (productService.target) {
 		version = `${version} (${productService.target} setup)`;
@@ -23,8 +23,9 @@ export function createNativeAboutDialogDetails(productService: IProductService, 
 		version = `${geminiCodeVersion} (Code - OSS ${version})`;
 	}
 
-	// GEMINI-FORK: no ElectronBuildId (only Microsoft's Electron sets it) and no Copilot runtime lines; the bundled Gemini CLI instead.
-	const geminiCliVersion = (productService as { readonly geminiCliVersion?: string }).geminiCliVersion || 'Unknown';
+	// GEMINI-FORK: no ElectronBuildId (only Microsoft's Electron sets it) and no Copilot runtime lines; the Gemini CLI instead:
+	// the copy in use when the Gemini extension reports one, else the one bundled at build time.
+	const geminiCliVersion = runningGeminiCliVersion || (productService as { readonly geminiCliVersion?: string }).geminiCliVersion || 'Unknown';
 
 	const getDetails = (useAgo: boolean): string => {
 		return localize({ key: 'geminiAboutDetail', comment: ['Electron, Chromium, Node.js, V8 and Gemini CLI are product names that need no translation'] },

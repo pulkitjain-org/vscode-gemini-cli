@@ -1,8 +1,8 @@
 diff --git a/src/vs/platform/dialogs/electron-browser/dialog.ts b/src/vs/platform/dialogs/electron-browser/dialog.ts
-index 71d2a8a906a21b6a13cee416f4428fa11d9ec25a..be68ba5a405e82dc78eb0c8372b5e90ed6436b53 100644
+index 71d2a8a906a21b6a13cee416f4428fa11d9ec25a..f4868d915ce0e7170a0734ea90f3bc2d69dbb0db 100644
 --- a/src/vs/platform/dialogs/electron-browser/dialog.ts
 +++ b/src/vs/platform/dialogs/electron-browser/dialog.ts
-@@ -10,10 +10,6 @@ import { IOSProperties } from '../../native/common/native.js';
+@@ -10,34 +10,34 @@ import { IOSProperties } from '../../native/common/native.js';
  import { IProductService } from '../../product/common/productService.js';
  import { process } from '../../../base/parts/sandbox/electron-browser/globals.js';
  
@@ -10,10 +10,11 @@ index 71d2a8a906a21b6a13cee416f4428fa11d9ec25a..be68ba5a405e82dc78eb0c8372b5e90e
 -	return version?.replace(/^(?<core>\d+\.\d+\.\d+)-(?:canary|unstable)(?=[.+-]|$)/, '$<core>').replace(/\.unsigned$/, '') || 'Unknown';
 -}
 -
- export function createNativeAboutDialogDetails(productService: IProductService, osProps: IOSProperties): { title: string; details: string; detailsToCopy: string } {
+-export function createNativeAboutDialogDetails(productService: IProductService, osProps: IOSProperties): { title: string; details: string; detailsToCopy: string } {
++export function createNativeAboutDialogDetails(productService: IProductService, osProps: IOSProperties, runningGeminiCliVersion?: string): { title: string; details: string; detailsToCopy: string } {
  	let version = productService.version;
  	if (productService.target) {
-@@ -21,23 +17,26 @@ export function createNativeAboutDialogDetails(productService: IProductService,
+ 		version = `${version} (${productService.target} setup)`;
  	} else if (productService.darwinUniversalAssetId) {
  		version = `${version} (Universal)`;
  	}
@@ -25,8 +26,9 @@ index 71d2a8a906a21b6a13cee416f4428fa11d9ec25a..be68ba5a405e82dc78eb0c8372b5e90e
  
 -	const copilotRuntimeVersion = formatCopilotVersion(productService.copilotVersions?.runtime);
 -	const copilotSdkVersion = formatCopilotVersion(productService.copilotVersions?.sdk);
-+	// GEMINI-FORK: no ElectronBuildId (only Microsoft's Electron sets it) and no Copilot runtime lines; the bundled Gemini CLI instead.
-+	const geminiCliVersion = (productService as { readonly geminiCliVersion?: string }).geminiCliVersion || 'Unknown';
++	// GEMINI-FORK: no ElectronBuildId (only Microsoft's Electron sets it) and no Copilot runtime lines; the Gemini CLI instead:
++	// the copy in use when the Gemini extension reports one, else the one bundled at build time.
++	const geminiCliVersion = runningGeminiCliVersion || (productService as { readonly geminiCliVersion?: string }).geminiCliVersion || 'Unknown';
  
  	const getDetails = (useAgo: boolean): string => {
 -		return localize({ key: 'aboutDetail', comment: ['Electron, Chromium, Node.js, V8 and Copilot are product names that need no translation'] },

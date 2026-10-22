@@ -36,6 +36,8 @@ export class CliManager implements vscode.Disposable {
 		this.disposables.push(
 			vscode.commands.registerCommand(installCliCommand, (version?: string) => this.install(typeof version === 'string' ? version : 'latest')),
 			vscode.commands.registerCommand(installCliVersionCommand, () => this.pickVersion()),
+			// The workbench's About dialog shows the CLI in use, not the one the app was built with.
+			vscode.commands.registerCommand('_gemini.cliVersion', () => service.status.agentVersion ?? this.runningVersion ?? service.cli?.version),
 			service.onDidChangeStatus(status => {
 				if (status.phase !== 'ready') {
 					return;
