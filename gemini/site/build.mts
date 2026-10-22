@@ -32,6 +32,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { stripTypeScriptTypes } from 'node:module';
 import { docGroups, docPages, featureIndex, markdownForCopy, renderMarkdown, type DocPage, type RenderedDoc } from './docs.mts';
+import { featureMedia, featurePages, renderFeature } from './features.mts';
 
 /** What `latest.json` holds. The app reads `version`, `url` and `notesUrl`; keep those stable. */
 export interface LatestRelease {
@@ -107,7 +108,8 @@ async function main(outDir: string | undefined, mode: string | undefined): Promi
 	fs.writeFileSync(path.join(outDir, 'notes.html'), renderNotesPage(latest, notesHtml, repo));
 	fs.writeFileSync(path.join(outDir, 'notes.md'), notesMarkdown(latest, release?.body));
 	writeDocs(outDir, latest, repo, pageUrl, mediaDir);
-	for (const file of ['site.css', 'landing.css', 'docs.css']) {
+	writeFeatures(outDir, latest, repo, mediaDir);
+	for (const file of ['site.css', 'landing.css', 'docs.css', 'features.css']) {
 		fs.copyFileSync(path.join(siteDir, file), path.join(outDir, file));
 	}
 	for (const script of ['page', 'landing', 'docs-page']) {
@@ -267,6 +269,7 @@ const icons = {
 	'search': '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
 	'copy': '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
 	'check': '<path d="M20 6 9 17l-5-5"/>',
+	'chevron-down': '<path d="m6 9 6 6 6-6"/>',
 	'chevron-right': '<path d="m9 18 6-6-6-6"/>',
 	'chevrons-up-down': '<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>',
 	'menu': '<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>',
@@ -326,7 +329,7 @@ function favicon(): string {
 	return `<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg"><rect x="16" y="16" width="224" height="224" rx="54" fill="#F4F2EC" stroke="rgba(22,21,15,.18)" stroke-width="6"/><rect x="50" y="50" width="156" height="156" rx="36" fill="none" stroke="#16150F" stroke-width="20"/><circle cx="128" cy="128" r="54" fill="none" stroke="#16150F" stroke-width="14"/><path d="M128 92Q128 128 164 128Q128 128 128 164Q128 128 92 128Q128 128 128 92Z" fill="#16150F"/></svg>\n`;
 }
 
-type PageKind = 'home' | 'notes' | 'docs';
+type PageKind = 'home' | 'notes' | 'docs' | 'feature';
 
 function themeSwitch(): string {
 	return `<div class="seg" role="group" aria-label="Site theme">
@@ -343,8 +346,8 @@ function themeSwitch(): string {
  */
 function layout(title: string, body: string, c: Context, current: PageKind, root = '', description = 'GeminiCode is a VS Code fork with the Gemini CLI built in. Run Gemini agents side by side and review every change they make. Download it for Mac.'): string {
 	const home = current === 'home' ? '' : `${root}./`;
-	const style = { home: 'landing.css', notes: 'docs.css', docs: 'docs.css' }[current];
-	const script = { home: 'landing.js', notes: 'page.js', docs: 'docs-page.js' }[current];
+	const style = { home: 'landing.css', notes: 'docs.css', docs: 'docs.css', feature: 'features.css' }[current];
+	const script = { home: 'landing.js', notes: 'page.js', docs: 'docs-page.js', feature: 'page.js' }[current];
 	// The stylesheets go inline, so the first paint waits for nothing but the HTML; their font
 	// paths are relative to the site's root, so a page in docs/ gets them rewritten.
 	const css = ['site.css', style].map(file => fs.readFileSync(path.join(siteDir, file), 'utf8').replace(/^\/\*[\s\S]*?\*\/\n\n/, '').replace(/url\(fonts\//g, `url(${root}fonts/`)).join('\n');
@@ -353,9 +356,12 @@ function layout(title: string, body: string, c: Context, current: PageKind, root
 		? `<a class="btn primary small dl" href="${attr(c.dmg.url)}">${icon('download')}<span class="dl-label">Download<span class="long"> for Mac</span></span></a>`
 		: `<a class="btn primary small" href="${attr(c.repoUrl)}/releases">Releases</a>`;
 	const links = current === 'home'
-		? [['#agents', 'Agents'], ['#review', 'Review'], ['#projects', 'Projects'], ['docs/', 'Docs'], [c.repoUrl, 'GitHub']]
+		? [['docs/', 'Docs'], ['notes.html', 'Releases'], [c.repoUrl, 'GitHub']]
 		: [[`${root}docs/`, 'Docs', current === 'docs'], [`${root}notes.html`, 'Releases', current === 'notes'], [c.repoUrl, 'GitHub']];
 	const navLinks = links.map(([href, label, on]) => `<a href="${attr(String(href))}"${on ? ' aria-current="page"' : ''}>${text(String(label))}</a>`).join('\n\t\t\t\t');
+	const features = (cls: string) => featurePages.map(page => `<a class="${cls}" href="${root}features/${page.slug}.html"${current === 'feature' && title.startsWith(page.name) ? ' aria-current="page"' : ''}>${text(page.name)}${cls === 'fm-item' ? `<small>${text(page.summary)}</small>` : ''}</a>`).join('');
+	// The site's own drop-down, drawn in its theme: a disclosure button and a panel (page.mts opens it).
+	const featureMenu = `<div class="fmenu"><button type="button" class="fm-btn" aria-expanded="false" aria-controls="fm-panel"${current === 'feature' ? ' data-current' : ''}>Features${icon('chevron-down')}</button><div class="fm-panel" id="fm-panel" hidden>${features('fm-item')}</div></div>`;
 	const news = current === 'home' ? `
 		<div class="news"><div class="wrap"><span class="k">Preview</span><a href="#projects">Projects: one chat, many threads, each on its own branch →</a></div></div>` : '';
 	const search = current === 'docs' ? `
@@ -378,7 +384,7 @@ ${css}
 	<link rel="modulepreload" href="${root}page.js">`}
 	<script type="module" src="${root}${script}"></script>
 </head>
-<body class="${current === 'docs' || current === 'notes' ? 'docs-ground' : 'home'}">
+<body class="${current === 'docs' || current === 'notes' ? 'docs-ground' : current === 'feature' ? 'home feature-page' : 'home'}">
 	${sprite()}
 	<div class="frame l" aria-hidden="true"></div>
 	<div class="frame r" aria-hidden="true"></div>
@@ -386,6 +392,7 @@ ${css}
 		<div class="wrap nav">
 			<a class="brand" href="${root}./">${logo(26)}<span class="wm">GeminiCode</span>${brandTail}</a>
 			<nav class="links" aria-label="Site">
+				${featureMenu}
 				${navLinks}
 			</nav>
 			<div class="right">${search}
@@ -397,6 +404,7 @@ ${css}
 		<nav class="menu" id="menu" aria-label="Site, on phones">
 			<div class="wrap">
 				${navLinks}
+				${features('fm-phone')}
 				${current === 'home' ? '' : `<a href="${home}">Home</a>`}
 				${c.dmg ? `<a class="dl" href="${attr(c.dmg.url)}">Download for Mac</a>` : ''}${current === 'docs' ? `
 				<button type="button" class="search-btn" aria-label="Search the docs">${icon('search')}<span>Search docs</span><kbd>/</kbd></button>` : ''}
@@ -421,7 +429,7 @@ function siteFooter(c: Context, root: string): string {
 				<a class="brand" href="${root}./">${logo(24)}<span class="wm">GeminiCode</span></a>
 				<p>A fork of Code - OSS with the Gemini CLI built in as its coding agent.</p>
 			</div>
-			<div class="col"><span class="label">Product</span><a href="${home}#install">Download</a><a href="${root}notes.html">Release notes</a><a href="${root}docs/#all-features">Features</a></div>
+			<div class="col"><span class="label">Product</span><a href="${home}#install">Download</a><a href="${root}notes.html">Release notes</a>${featurePages.map(page => `<a href="${root}features/${page.slug}.html">${text(page.name)}</a>`).join('')}<a href="${root}docs/#all-features">Every feature</a></div>
 			<div class="col"><span class="label">Docs</span><a href="${root}docs/getting-started.html">Getting started</a><a href="${root}docs/agents.html">Agents</a><a href="${root}docs/review.html">Review and safety</a><a href="${root}docs/shortcuts.html">Keyboard shortcuts</a></div>
 			<div class="col"><span class="label">Project</span><a href="${attr(c.repoUrl)}">GitHub</a><a href="${attr(c.repoUrl)}/issues">Issues</a><a href="${attr(c.repoUrl)}/security/advisories/new">Report a vulnerability</a><a href="${attr(c.repoUrl)}/blob/main/gemini/docs/ARCHITECTURE.md">Architecture</a></div>
 		</div>
@@ -688,7 +696,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 				<div class="txt">
 					<h3 class="serif">Finds the code in one step.</h3>
 					<p>Each workspace keeps a local index of its code, kept current as files and branches change. Agents ask it for code, symbols, related files and a map of the repository, and search the docs you attach, instead of reading file by file. Nothing leaves your Mac.</p>
-					<a class="more" href="docs/agents.html#workspace-index-and-docs">How the index works ${icon('arrow-right')}</a>
+					<a class="more" href="features/agents.html">How agents find code ${icon('arrow-right')}</a>
 				</div>
 				<div class="mock list" aria-hidden="true">
 					<div class="r on"><span class="n">code_search <span class="q">"retry upload backoff"</span></span><span class="t">3 results · 41 ms</span></div>
@@ -706,7 +714,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 				<span class="label reveal" data-reveal>Review and safety</span>
 				<h2 class="h2 serif reveal head" id="review-h" data-reveal>Nothing lands<br><em>without you.</em></h2>
 				<p class="reveal" data-reveal>Default mode asks before every edit and command. Proposed changes open in a diff first. Keep or undo each one in place, or rewind the whole conversation to before any message, files included.</p>
-				<a class="more reveal" data-reveal href="docs/review.html">How approvals work ${icon('arrow-right')}</a>
+				<a class="more reveal" data-reveal href="features/chat-and-review.html">How chat and review work ${icon('arrow-right')}</a>
 			</div>
 			<div class="stack" data-stagger>
 				<div class="row reveal" data-reveal>
@@ -740,7 +748,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 						<div class="thread" style="--i: 1"><span class="dot warn"></span><span class="n">Thread · Settings UI</span><span class="m w">Approve plan</span></div>
 						<div class="thread" style="--i: 2"><span class="dot spin"></span><span class="n">Thread · Docs</span><span class="m">2 repositories</span></div>
 					</div>
-					<a class="more" href="docs/projects.html">How Projects work ${icon('arrow-right')}</a>
+					<a class="more" href="features/projects.html">How Projects work ${icon('arrow-right')}</a>
 				</div>
 				<div class="pic">
 					${shot('project-threads', available, 'Thread cards in a project chat, with the side panel counting threads by state')}
@@ -759,6 +767,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 				<div class="txt">
 					<h3 class="serif">A browser your agents can use.</h3>
 					<p>Agents open your app, click, type and read the console. Point at an element and <b>Add to Gemini</b>, or pin notes on the page and send them as one list.</p>
+					<a class="more" href="features/browser.html">The browser ${icon('arrow-right')}</a>
 				</div>
 				<div class="frame-b">
 					<span class="add" aria-hidden="true">${icon('pointer')}Add to Gemini</span>
@@ -774,7 +783,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 					<div class="r on"><span class="k">ACME-419</span><span class="n">Settings rename</span><span class="s w">2 comments</span></div>
 					<div class="r"><span class="k">SONAR</span><span class="n">New code</span><span class="s">0 new issues</span></div>
 				</div>
-				<a class="more" href="docs/team-tools.html">Set up your tools ${icon('arrow-right')}</a>
+				<a class="more" href="features/team-tools.html">From ticket to merge ${icon('arrow-right')}</a>
 			</div>
 		</div>
 	</section>
@@ -945,6 +954,24 @@ const numberWords = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven'
  * Writes `docs/`: a page per guide file with its Markdown beside it, the docs
  * home, `all.md` (every page in one file) and `search.json`.
  */
+// ---- Feature pages ----
+
+/** features/<slug>.html, one per large part of GeminiCode (features.mts holds what they say). */
+function writeFeatures(outDir: string, latest: LatestRelease, repo: string, mediaDir: string): void {
+	const c = context(latest, repo);
+	const dir = path.join(outDir, 'features');
+	fs.mkdirSync(dir, { recursive: true });
+	const media = filesUnder(mediaDir);
+	for (const page of featurePages) {
+		const description = `${page.headline[0]} ${page.headline[1]} ${page.lead}`;
+		fs.writeFileSync(path.join(dir, `${page.slug}.html`), layout(`${page.name} · GeminiCode`, renderFeature(page, '../', media, icon('arrow-right')), c, 'feature', '../', description));
+	}
+	const missing = featureMedia().filter(m => !media.has(`${m.name}-dark.webp`) || !media.has(`${m.name}-light.webp`)).map(m => m.name);
+	if (missing.length) {
+		console.log(`Feature pages still to get media: ${[...new Set(missing)].join(', ')}.`);
+	}
+}
+
 function writeDocs(outDir: string, latest: LatestRelease, repo: string, pageUrl: string, mediaDir: string): void {
 	const c = context(latest, repo);
 	const docsDir = path.join(outDir, 'docs');
