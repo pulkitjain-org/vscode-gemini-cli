@@ -89,7 +89,12 @@ export class WorkspaceIndex implements vscode.Disposable {
 		}
 		const statuses = await this.client.request('status', { roots: folders });
 		for (const status of statuses) {
+			const before = this.statuses.get(status.root);
 			this.statuses.set(status.root, status);
+			// Home's pill learns a folder's index from here after a restart, before any agent starts.
+			if (before?.state.kind !== status.state.kind) {
+				this.onDidChangeStatusEmitter.fire(status);
+			}
 		}
 		return statuses;
 	}

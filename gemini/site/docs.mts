@@ -39,6 +39,7 @@ export const docGroups: readonly { readonly name: string; readonly pages: readon
 			{ slug: 'projects', title: 'Projects', icon: 'network', summary: 'A coordinator and its threads, across one or more repositories.', topics: ['Coordinator', 'Threads', 'Plan first', 'Repositories', 'Memory'] },
 			{ slug: 'browser', title: 'Browser', icon: 'globe', summary: 'Add to Gemini, notes on the page, console and network.', topics: ['Add to Gemini', 'Notes', 'Shared pages', 'Console'] },
 			{ slug: 'team-tools', title: 'Team tools', icon: 'plug', summary: 'Jira, GitLab, SonarQube, Snyk and Figma, and the Home dashboard.', topics: ['Connections', 'Home', 'Ticket to MR', 'Checks', 'Review', 'Audit log'] },
+			{ slug: 'workspace-index', title: 'Workspace index and docs', icon: 'scan-search', summary: 'What agents can look up in one step: each workspace\'s index and the docs you attach.', topics: ['Agent tools', 'Workspaces', 'Docs', 'Suggestions', 'Settings'] },
 		],
 	},
 	{

@@ -1,8 +1,8 @@
 diff --git a/AGENTS.md b/AGENTS.md
-index d6abb76ab8384fb7b391b551b159002657c218c1..ab7e6c93e098f35610e50c6322fb99ff7b1b94fa 100644
+index d6abb76ab8384fb7b391b551b159002657c218c1..cfb03602300532416fc535f7e807fda9587f2dc8 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -1,3 +1,66 @@
+@@ -1,3 +1,75 @@
 +# GeminiCode fork
 +
 +This repository is GeminiCode, a fork of VS Code with the Gemini CLI built in. Before changing anything, read [gemini/README.md](gemini/README.md) and the [design rules](gemini/docs/ARCHITECTURE.md#design-rules). In short:
@@ -56,6 +56,15 @@ index d6abb76ab8384fb7b391b551b159002657c218c1..ab7e6c93e098f35610e50c6322fb99ff
 +
 +- A page writes through `teamWrite` (`src/acp/teamTools.ts`), as an agent's tool call does, so every write has the same checks and an audit log record. Page-only writes go in `pageTools` there.
 +- Rich Jira comments (Markdown, @mentions, attachments, visibility) always use Jira's REST API (`jira_rich_comment`), never the `mcp-atlassian` container: the container has no mentions and no uploads. The webview turns the Markdown into Jira's document format (`webview-src/commentAdf.ts`), so the extension host carries no Markdown parser. The audit log records file paths, never file contents.
++
++### The workspace index
++
++- Everything that reads, parses or writes an index runs in the indexer process (`src/indexer.ts`, `dist/indexer.js`), never in the extension host, whose bundle is near its budget. The host only forwards requests (`IndexClient`). Keep it that way.
++- Lint bans synchronous `fs` calls, in the indexer process too; `node:sqlite` itself is synchronous, so keep transactions short (`writeSliced` yields every 40 ms).
++- Never run `PRAGMA quick_check` or `integrity_check` when opening an index: it reads the whole file, seconds for a large repository. Damage shows up as a SQLite error; `isCorruption` turns it into a rebuild.
++- The release build ships only six tree-sitter grammars (`build/.moduleignore`); definitions come from the line patterns in `src/acp/index/languages.ts`. Add a language there, with a test in `test/acp/index/parse.test.ts`.
++- BM25 alone ranks a short mention above a long definition. Keep word positions in the full-text index and the definition-first step in `search` (`query.ts`); measure ranking on a large repository, not only the tests' small ones.
++- The docs fetcher runs in the extension host so the Mac's proxy applies; conversion and storage run in the indexer. Fetched pages are reference material: tool results say so.
 +
 +### Validating
 +

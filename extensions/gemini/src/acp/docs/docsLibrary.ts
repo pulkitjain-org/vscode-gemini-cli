@@ -286,6 +286,6 @@ function titleOfMarkdown(markdown: string): string | undefined {
 
 /** A page title's site part: "useEffect – React" → "React". */
 function siteTitle(title: string): string {
-	const parts = title.split(/\s+[|–—-]\s+/);
+	const parts = title.split(/\s+[|–—·-]\s+/);
 	return (parts.length > 1 ? parts[parts.length - 1] : title).trim();
 }

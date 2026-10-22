@@ -194,6 +194,16 @@ auto, gemini-3.1-pro-preview, gemini-3.8-flash, gemini-2.5-pro, gemini-3.8-flash
 - A policy rule with `mcpName` does not match a server the session brings in `mcpServers`, so rules for those servers name each tool as the model calls it, `mcp_<server>_<tool>`. `realAgentPolicy.test.ts` checks GeminiCode's admin policy against the CLI: modes turned off, shell off, the environment commands refused, and the confirm class asking in every mode.
 - `--allowed-mcp-server-names` outranks `mcp.allowed` in any settings file.
 
+## Workspace index
+
+The index (ADR 0010) relies on these, measured on 22 Oct 2026 on the development Mac with the indexer process GeminiCode ships (`dist/indexer.js`):
+
+- **Read from the build.** The app's runtime (Electron 43.7.7, Node 24.21.0) has `node:sqlite` with SQLite 3.53.4, FTS5, WAL, `VACUUM INTO` and `backup()`, so the index needs no native module. The release build keeps only six tree-sitter grammars (TypeScript, CSS, Bash, INI, PowerShell, regex; `build/.moduleignore`), which is why definitions come from line patterns. The app's ripgrep (`@vscode/ripgrep-universal`) is unpacked from the archive, so the indexer can run it while a build is under way.
+- **Measured, this repository** (20,227 indexed files, 181,000 definitions): a first build took 26 s in the background at nice 19 and wrote 314 MB; a reconcile with nothing changed took 0.85 s; warm searches answered in 1 to 30 ms and symbol lookups in under 10 ms; the process used about 330 MB. Before chunk text was compressed the file was 537 MB, and checking it with `PRAGMA quick_check` on open took 5 s, which is why opening checks only the schema.
+- **Measured, a typical folder** (`extensions/gemini`, 519 files): built in 0.6 s into 7 MB; searches answered in about 1 ms.
+- **Ranking.** Without word positions (`detail=column`) the file was 31 MB smaller here, but BM25 then counts a word only once per column and ranked short Markdown chunks above definitions, so positions stay, and the chunk that defines a queried name is put first.
+- **Read from the CLI.** In ACP mode the CLI finds code with `glob`, `grep_search` (ripgrep), `list_directory`, `read_file` and `read_many_files`, plus the `codebase_investigator` subagent, one model call each; nothing indexes the codebase. MCP tools from `mcpServers` reach the model as `mcp_<server>_<tool>` only in trusted folders (above).
+
 ## Attached context and tool images
 
 - A `resource_link` with a `file://` URI is read like an `@path` in the terminal: the CLI reads the file itself, skipping git-ignored files and asking before files outside the workspace, so attaching a file sends only its path. An embedded `resource` is added as context and shown to the model as `@<uri>`, so selections carry a `#L<start>-L<end>` fragment. `image` blocks become inline data.
