@@ -2126,6 +2126,9 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				}
 				if (!activity.busy) {
 					this.scheduleSave(record.id, live);
+					if (live.activity.busy) {
+						this.index?.agentTurnEnded(folder);
+					}
 				}
 				const before = live.activity;
 				live.activity = activity;
@@ -2139,7 +2142,10 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 					this.model.setSessionId(record.id, state.savedSessionId);
 				}
 			}),
-			live.controller.onDidEditFiles(diffs => changes.record(diffs)),
+			live.controller.onDidEditFiles(diffs => {
+				changes.record(diffs);
+				this.index?.agentEdited(folder, diffs.map(diff => diff.path));
+			}),
 			changes.onDidChange(() => {
 				this.review.refreshSoon();
 				this.model.setChanges(record.id, changes.totals);

@@ -13,6 +13,7 @@ import { IndexClient } from '../acp/index/indexClient';
 import type { IndexSettings, IndexStatus } from '../acp/index/indexerProtocol';
 import { AttachedDocs, IndexMcpServer } from '../acp/indexMcp';
 import { configSection } from './configuration';
+import { IndexWatchers } from './indexWatchers';
 
 /** Where the documentation attached to folders comes from (docsSources.ts). */
 export interface DocsProvider {
@@ -50,6 +51,7 @@ export class WorkspaceIndex implements vscode.Disposable {
 	private readonly statuses = new Map<string, IndexStatus>();
 	private readonly orientations = new Map<string, { readonly text: string; readonly at: number }>();
 	private readonly disposables: vscode.Disposable[] = [];
+	private readonly watchers = new IndexWatchers(this);
 	docs: DocsProvider | undefined;
 
 	constructor(private readonly options: { readonly script: string; readonly version: string; readonly log: vscode.LogOutputChannel; readonly baseDir?: string }) {
@@ -173,6 +175,7 @@ export class WorkspaceIndex implements vscode.Disposable {
 
 	async remove(folder: string): Promise<void> {
 		this.folders.delete(folder);
+		this.watchers.unwatch(folder);
 		this.orientations.delete(folder);
 		await this.client?.request('remove', { root: folder });
 	}
@@ -203,6 +206,20 @@ export class WorkspaceIndex implements vscode.Disposable {
 		}
 	}
 
+	/** An agent edited files in `folder`; only folders outside the window need telling, watchers see the rest. */
+	agentEdited(folder: string, paths: readonly string[]): void {
+		if (!IndexWatchers.inWindow(folder)) {
+			this.changed(folder, paths);
+		}
+	}
+
+	/** An agent's turn ended in `folder`: outside the window, where no watcher runs, look for what its commands changed. */
+	agentTurnEnded(folder: string): void {
+		if (!IndexWatchers.inWindow(folder)) {
+			this.moved(folder);
+		}
+	}
+
 	/** Folders whose indexes this window keeps current. */
 	get openFolders(): string[] {
 		return [...this.folders.keys()];
@@ -225,6 +242,7 @@ export class WorkspaceIndex implements vscode.Disposable {
 
 	dispose(): void {
 		this.stop();
+		this.watchers.dispose();
 		this.onDidChangeStatusEmitter.dispose();
 		this.onDidChangeEnabledEmitter.dispose();
 		vscode.Disposable.from(...this.disposables).dispose();
@@ -255,6 +273,11 @@ export class WorkspaceIndex implements vscode.Disposable {
 			if (status.state.kind === 'ready') {
 				void this.refreshOrientation(status.root, true);
 			}
+			if (status.state.kind === 'none') {
+				this.watchers.unwatch(status.root);
+			} else if (this.folders.has(status.root)) {
+				this.watchers.watch(status.root);
+			}
 			this.onDidChangeStatusEmitter.fire(status);
 		});
 		client.onDidStart(() => {
@@ -283,6 +306,9 @@ export class WorkspaceIndex implements vscode.Disposable {
 	}
 
 	private stop(): void {
+		for (const folder of this.folders.keys()) {
+			this.watchers.unwatch(folder);
+		}
 		this.server?.dispose();
 		this.server = undefined;
 		this.client?.dispose();
