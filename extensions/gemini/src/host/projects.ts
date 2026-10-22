@@ -921,8 +921,6 @@ function blockMessage(block: ProjectToolsBlock): string {
 	switch (block.kind) {
 		case 'untrusted':
 			return vscode.l10n.t("The Gemini CLI doesn't trust {0}, so it loads no project tools there. Trust the project's folders to start threads.", tildify(block.folder));
-		case 'notAllowed':
-			return vscode.l10n.t("Your Gemini settings ({0}) allow only the MCP servers in mcp.allowed, and {1} isn't one. Add it there to start threads.", tildify(block.file), projectServerName);
 		case 'excluded':
 			return vscode.l10n.t("Your Gemini settings ({0}) leave out {1} in mcp.excluded. Remove it there to start threads.", tildify(block.file), projectServerName);
 		case 'adminOff':

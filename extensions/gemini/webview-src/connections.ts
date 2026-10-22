@@ -149,14 +149,13 @@ function render(): void {
 
 	if (view.allowlist) {
 		const note = el('div', 'allowlist-note');
-		const text = view.allowlist.kind === 'notAllowed' ? format(strings.allowlistNotAllowed, view.allowlist.file, 'geminicode-tools')
-			: view.allowlist.kind === 'excluded' ? format(strings.allowlistExcluded, view.allowlist.file, 'geminicode-tools')
-				: format(strings.allowlistAdminOff, view.allowlist.file);
+		const text = view.allowlist.kind === 'excluded' ? format(strings.allowlistExcluded, view.allowlist.file, 'geminicode-tools')
+			: format(strings.allowlistAdminOff, view.allowlist.file);
 		const body = el('div', 'allowlist-text');
 		body.append(icon('warning'), el('span', undefined, text));
 		const actions = el('div', 'row-actions');
 		if (view.allowlist.kind !== 'adminOff') {
-			actions.append(button('primary', strings.addToAllowlist, () => post({ type: 'allowlist' })));
+			actions.append(button('primary', strings.removeExclusion, () => post({ type: 'allowlist' })));
 		}
 		actions.append(button('quiet', strings.openFile, () => post({ type: 'openAllowlistFile' })));
 		note.append(body, actions);

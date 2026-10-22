@@ -13,6 +13,7 @@ import { CliResolution, resolveCli } from '../acp/cliResolution';
 import { buildAgentEnv } from '../acp/env';
 import { ProjectIdProblem, ResolvedProjectId, resolveProjectId, validateProjectId } from '../acp/projectId';
 import { projectServerName } from '../acp/projectMcp';
+import { allowlistWith, settingsFiles } from '../acp/projectToolsCheck';
 import { confirmToolGroups, teamToolsServerName } from '../acp/teamTools';
 
 export const configSection = 'gemini';
@@ -85,17 +86,18 @@ export function getApprovalPolicy(): ApprovalPolicy {
 	};
 }
 
-/** GeminiCode's own MCP servers, which `gemini.mcp.allowedServers` always keeps. */
+/** GeminiCode's own MCP servers, which the CLI always loads unless a settings file excludes them. */
 const ownServers = [teamToolsServerName, projectServerName, 'geminicode-browser'];
 
 /**
  * `--allowed-mcp-server-names` when `gemini.mcp.allowedServers` names any server: the CLI then
  * loads only those and GeminiCode's own, whatever a repository's settings file adds. Empty, the
- * CLI's own `mcp.allowed` applies.
+ * CLI's own `mcp.allowed` applies, with GeminiCode's servers added when it leaves them out.
  */
-export function allowedMcpServerArgs(): string[] {
+async function allowedMcpServerArgs(): Promise<string[]> {
 	const listed = vscode.workspace.getConfiguration(configSection).get<string[]>('mcp.allowedServers', []).filter(name => typeof name === 'string' && name.trim()).map(name => name.trim());
-	return listed.length ? ['--allowed-mcp-server-names', [...new Set([...ownServers, ...listed])].join(',')] : [];
+	const names = listed.length ? [...new Set([...ownServers, ...listed])] : await allowlistWith(ownServers, settingsFiles({ workspace: getWorkspaceCwd() }));
+	return names ? ['--allowed-mcp-server-names', names.join(',')] : [];
 }
 
 /** The settings that change how the agent process starts; a change restarts it. */
@@ -130,10 +132,11 @@ export function setAgentEnvOverride(env: NodeJS.ProcessEnv): void {
  * `gemini.agents.allWorkspaceFolders` is on, for an agent that works somewhere else, as the benchmark's do.
  */
 export async function getAgentCommand(options: { interactive?: boolean; cli?: CliResolution; subcommand?: readonly string[]; ownFolderOnly?: boolean } = {}): Promise<AgentCommand> {
-	const [cli, settings, policyArgs] = await Promise.all([
+	const [cli, settings, policyArgs, mcpArgs] = await Promise.all([
 		options.cli ?? getCliResolution(),
 		readCliSettings(),
 		adminPolicyDir && !options.subcommand ? prepareAdminPolicy(adminPolicyDir, getApprovalPolicy()) : [],
+		options.subcommand ? [] : allowedMcpServerArgs(),
 	]);
 	return resolveAgentCommand({
 		cliPath: cli.cliPath,
@@ -144,7 +147,7 @@ export async function getAgentCommand(options: { interactive?: boolean; cli?: Cl
 		heapSizeMb: options.interactive || options.subcommand ? undefined : cliHeapSizeMb(settings, os.totalmem()),
 		extraArgs: options.subcommand ? [...options.subcommand] : [
 			...policyArgs,
-			...allowedMcpServerArgs(),
+			...mcpArgs,
 			...includeDirectoryArgs(options.ownFolderOnly ? [] : includedFolderPaths()),
 		],
 	});
