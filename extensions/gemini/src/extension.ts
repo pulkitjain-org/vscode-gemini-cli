@@ -143,7 +143,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		teamTools.onDidChange(() => agentsView.refreshSpare()),
 		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.browser`) && agentsView.refreshSpare()),
 	);
-	const teamFlows = new TeamFlows(context.extensionUri, teamTools, agentsView);
+	const teamFlows = new TeamFlows(context.extensionUri, teamTools, agentsView, context.globalState);
+	// A reviewer agent's chat has a chip that opens its review.
+	agentsView.reviewChip = agentId => {
+		const review = teamFlows.reviews.forAgent(agentId);
+		return review && { label: vscode.l10n.t("Review !{0}", review.iid), tip: vscode.l10n.t("Open the review of !{0}: {1}", review.iid, review.title) };
+	};
+	agentsView.openReview = agentId => void vscode.commands.executeCommand('gemini.team.openAgentReview', agentId);
+	context.subscriptions.push(teamFlows.reviews.onDidChange(() => agentsView.refreshChats()));
 	const traceRecorder = new TraceRecorder(service, log);
 	const mrPanel = new MrPanel(teamTools, agentsView, agent => teamFlows.checksSummary(agent));
 	changesPanel.team = mrPanel;
@@ -163,7 +170,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		agentsView,
 		changesPanel,
 		agentsView.onDidFocus(source => changesPanel.show(source)),
-		new AgentHome(context.extensionUri, agentsView, () => warmup.startSoon(), { state: context.globalState, version: productInfo.version ?? String(context.extension.packageJSON.version ?? ''), cli: () => service.status.agentVersion, startup: () => ({ activatedAt, agent: agentPhase(service.status.phase), ...readyAt ? { readyAt } : {} }) }),
+		new AgentHome(context.extensionUri, agentsView, () => warmup.startSoon(), { state: context.globalState, version: productInfo.version ?? String(context.extension.packageJSON.version ?? ''), cli: () => service.status.agentVersion, startup: () => ({ activatedAt, agent: agentPhase(service.status.phase), ...readyAt ? { readyAt } : {} }), reviews: { inProgress: () => teamFlows.reviews.inProgress, onDidChange: teamFlows.reviews.onDidChange } }),
 		new SettingsPage(context.extensionUri, service, (folder, servers) => measureFolderContextCost({
 			folder,
 			servers,

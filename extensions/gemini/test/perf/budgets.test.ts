@@ -37,8 +37,10 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// Customize) and the tools' logos took it to about 25 KB, and Show All's popup to about 28 KB.
 	'media/home.js': 30_000,
 	'media/changes.js': 16_000,
-	// The team flows: Open Merge Request, Move Ticket and Log Time, Review and Checks.
-	'media/teamFlow.js': 32_000,
+	// The team flows: Open Merge Request, Move Ticket and Log Time, Review and Checks. Loaded only with a flow's page.
+	// The review's own comments, threads and suggested changes and Open Merge Request's target menu took it from
+	// about 25 KB to 32 KB, all its own code.
+	'media/teamFlow.js': 36_000,
 	'media/settings.js': 16_000,
 	// The Index page: workspaces' indexes, attached docs, the Add Docs and Files Left Out popups, with the shared select menu and tooltips.
 	'media/indexPage.js': 22_000,

@@ -289,6 +289,7 @@ const pageTools: readonly TeamTool[] = [
 	{ tool: 'jira', name: 'jira_rich_comment', write: true, description: 'Comments on a ticket from Home\'s comment box: Markdown as Jira rich text, with mentions, attached files and who may see it.', inputSchema: { type: 'object', properties: {} } },
 	{ tool: 'gitlab', name: 'gitlab_approve', write: true, description: 'Approves a merge request.', inputSchema: { type: 'object', properties: {} } },
 	{ tool: 'gitlab', name: 'gitlab_request_changes', write: true, description: 'Requests changes on a merge request with a summary note.', inputSchema: { type: 'object', properties: {} } },
+	{ tool: 'gitlab', name: 'gitlab_resolve', write: true, description: 'Resolves a review thread without replying.', inputSchema: { type: 'object', properties: {} } },
 ];
 
 /** Files a page may attach, at most: well past Jira Cloud's own default limit, so Jira's message is the one people see. */
@@ -445,6 +446,7 @@ export function effectOf(name: string, args: Record<string, unknown>): string {
 		case 'gitlab_merge': return `Merge ${key ?? 'the current branch\'s merge request'}`;
 		case 'gitlab_approve': return `Approve ${key}`;
 		case 'gitlab_request_changes': return `Request changes on ${key}`;
+		case 'gitlab_resolve': return `Resolve thread ${arg(args, 'discussion') ?? ''} on ${key}`;
 		default: return name;
 	}
 }
@@ -736,11 +738,27 @@ async function gitlabCall(gitlab: GitLabClient, via: Through, name: string, args
 			const path = arg(args, 'path');
 			const line = Number(args.line);
 			if (path && line > 0) {
-				const where = await gitlab.commentOnLine(project, iid, path, line, body);
+				// A review page names the version the user saw and, on an unchanged line, its old line too.
+				const oldLine = Number(args.oldLine);
+				const [baseSha, startSha, headSha] = [arg(args, 'baseSha'), arg(args, 'startSha'), arg(args, 'headSha')];
+				const where = await gitlab.commentOnLine(project, iid, path, line, body, {
+					...oldLine > 0 ? { oldLine } : {},
+					...arg(args, 'oldPath') ? { oldPath: arg(args, 'oldPath') } : {},
+					...baseSha && startSha && headSha ? { refs: { baseSha, startSha, headSha } } : {},
+				});
 				return ok(where === 'line' ? `Commented on ${path}:${line} in !${iid}.` : `Commented on !${iid} (the line isn't in the diff, so as a general comment).`);
 			}
 			const noteId = await via(server => gitlabVia.comment(server, project, iid, body), async () => idText((await gitlab.comment(project, iid, body)).id));
 			return ok(`Commented on !${iid}.`, noteId ? `note ${noteId} on !${iid}` : `!${iid}`);
+		}
+		case 'gitlab_resolve': {
+			const { project, iid } = await resolveMr(gitlab, arg(args, 'mr'), folder, defaults, arg(args, 'project'));
+			const discussion = arg(args, 'discussion');
+			if (!discussion) {
+				return fail('Name the thread to resolve.');
+			}
+			await via(server => gitlabVia.resolve(server, project, iid, discussion), () => gitlab.resolveDiscussion(project, iid, discussion));
+			return ok(`Resolved the thread on !${iid}.`, `discussion ${discussion} on !${iid}`);
 		}
 		case 'gitlab_merge': {
 			const { project, iid } = await resolveMr(gitlab, arg(args, 'mr'), folder, defaults, arg(args, 'project'));

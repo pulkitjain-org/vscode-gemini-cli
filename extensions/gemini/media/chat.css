@@ -2287,6 +2287,11 @@ body.vscode-high-contrast-light #send {
 }
 
 /* The workspace's name can be long; it gives way before the branch does. */
+/* A reviewer agent's merge request review, one click away. */
+.foot-button.review-chip {
+	color: var(--vscode-textLink-foreground);
+}
+
 .foot-button.workspace {
 	flex-shrink: 1;
 }

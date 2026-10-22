@@ -43,6 +43,7 @@ const commitButton = byId('commit', HTMLButtonElement);
 const enhanceButton = byId('enhance', HTMLButtonElement);
 const revertButton = byId('revert', HTMLButtonElement);
 const workspaceButton = byId('workspace', HTMLButtonElement);
+const reviewChip = byId('review-chip', HTMLButtonElement);
 
 export const ui = {
 	transcript: byId('transcript', HTMLElement),
@@ -81,6 +82,8 @@ export const ui = {
 	commitLabel: within(commitButton, 'span', HTMLSpanElement),
 	workspaceButton,
 	workspaceLabel: within(workspaceButton, 'span', HTMLSpanElement),
+	reviewChip,
+	reviewLabel: within(reviewChip, 'span', HTMLSpanElement),
 	branchMenu: byId('branch-menu', HTMLElement),
 	workspaceMenu: byId('workspace-menu', HTMLElement),
 	repos: byId('repos', HTMLElement),

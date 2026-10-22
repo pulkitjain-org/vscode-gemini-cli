@@ -46,6 +46,8 @@ export interface HomeOptions {
 	readonly cli?: () => string | undefined;
 	/** What came back since the window opened, for the card shown after a start. */
 	readonly startup?: () => StartupState;
+	/** Merge request reviews in progress, and when they change. */
+	readonly reviews?: { readonly inProgress: () => DashboardInput['reviewsInProgress']; readonly onDidChange: vscode.Event<void> };
 }
 /** Earlier agents listed; the Agents pane has them all. */
 const maxEarlier = 8;
@@ -98,6 +100,7 @@ export class AgentHome implements vscode.Disposable {
 			vscode.commands.registerCommand('gemini.home', () => this.show(false)),
 			vscode.window.onDidChangeWindowState(state => state.focused && this.panel?.visible && this.refreshTools(showRefreshMs)),
 			agents.usage?.onDidChange(() => this.schedule()) ?? { dispose: () => undefined },
+			options?.reviews?.onDidChange(() => this.schedule()) ?? { dispose: () => undefined },
 			// GeminiCode's workbench reports the window mode.
 			vscode.commands.registerCommand('_gemini.modeChanged', (mode: Mode) => this.setMode(mode)),
 			vscode.window.tabGroups.onDidChangeTabs(e => {
@@ -323,6 +326,7 @@ export class AgentHome implements vscode.Disposable {
 			...commentVisibility ? { jiraCommentVisibility: commentVisibility } : {},
 			...unfinished ? { unfinished } : {},
 			...this.listCard ? { list: this.listCard } : {},
+			...this.options?.reviews ? { reviewsInProgress: this.options.reviews.inProgress() } : {},
 		});
 	}
 
