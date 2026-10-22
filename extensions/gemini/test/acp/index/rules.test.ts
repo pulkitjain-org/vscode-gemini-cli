@@ -1,0 +1,77 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) pulkitjain-org and contributors. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+import { describe, expect, it } from 'vitest';
+import { pairsFromLog } from '../../../src/acp/index/cochange';
+import { identifierWords, splitIdentifier } from '../../../src/acp/index/identifiers';
+import { IgnoreRules } from '../../../src/acp/index/ignore';
+import { contentSkipReason, pathSkipReason } from '../../../src/acp/index/inventory';
+import { queryTerms } from '../../../src/acp/index/query';
+import { resolveImport } from '../../../src/acp/index/resolve';
+
+describe('IgnoreRules', () => {
+	it('matches names at any depth, anchored paths, folders, ** and negation', () => {
+		const rules = new IgnoreRules(['# comment', '*.log', '/dist', 'tmp/', 'docs/**/draft-*.md', '!keep.log']);
+		const ignored = ['a.log', 'src/b.log', 'dist/x.js', 'tmp/a.txt', 'src/tmp/a.txt', 'docs/a/b/draft-1.md'].filter(p => rules.ignores(p));
+		expect(ignored).toEqual(['a.log', 'src/b.log', 'dist/x.js', 'tmp/a.txt', 'src/tmp/a.txt', 'docs/a/b/draft-1.md']);
+		expect(['keep.log', 'src/dist/x.js', 'tmpfile', 'docs/draft.md'].filter(p => rules.ignores(p))).toEqual([]);
+	});
+});
+
+describe('inventory filters', () => {
+	it('leaves out secrets, lock files, binaries and generated files by path', () => {
+		const rules = new IgnoreRules([]);
+		expect(['.env', 'config/.env.local', 'id_rsa', 'package-lock.json', 'icon.png', 'app.min.js', 'src/a.ts'].map(p => pathSkipReason(p, rules))).toEqual([
+			'.env may contain secrets', '.env.local may contain secrets', 'id_rsa may contain secrets', 'a lock file', 'not a text file', 'generated', undefined,
+		]);
+	});
+
+	it('leaves out binary and minified content', () => {
+		expect(contentSkipReason('abc\0def')).toBe('not a text file');
+		expect(contentSkipReason('x'.repeat(5000))).toBe('generated (very long lines)');
+		expect(contentSkipReason('const a = 1;\n')).toBeUndefined();
+	});
+});
+
+describe('identifiers and queries', () => {
+	it('splits camelCase and acronyms into words', () => {
+		expect(splitIdentifier('parseHTTPResponse2')).toEqual(['parse', 'http', 'response2']);
+		expect(identifierWords('const applyDiscount = getHTMLNode(x_y);')).toBe('apply discount get html node');
+	});
+
+	it('builds a full-text query that matches words, camelCase and snake_case names', () => {
+		expect(queryTerms('where is applyDiscount used for the cart_total?')).toEqual({
+			groups: ['("applydiscount"* OR (idents:"apply" AND idents:"discount"))', '"used"*', '("cart" AND "total")'],
+			words: ['applydiscount', 'apply', 'discount', 'used', 'cart_total', 'cart', 'total'],
+		});
+	});
+});
+
+describe('resolveImport', () => {
+	const files = ['src/cart/cart.ts', 'src/cart/index.ts', 'src/util.js', 'shop/models.py', 'shop/__init__.py', 'src/main/java/com/acme/Cart.java', 'src/lib/mod.rs', 'src/lib/parser.rs', 'include/acme.h'];
+	const known = { has: (p: string) => files.includes(p), named: (base: string) => files.filter(f => f.endsWith(`/${base}`) || f === base) };
+
+	it('resolves relative script imports, Python and Java modules, Rust mods and C includes', () => {
+		expect([
+			resolveImport('src/cart/discount.ts', './cart', 'typescript', known),
+			resolveImport('src/app.ts', './cart', 'typescript', known),
+			resolveImport('src/cart/x.ts', '../util.js', 'typescript', known),
+			resolveImport('src/app.ts', 'react', 'typescript', known),
+			resolveImport('shop/views.py', '.models', 'python', known),
+			resolveImport('app.py', 'shop.models', 'python', known),
+			resolveImport('x/App.java', 'com.acme.Cart', 'java', known),
+			resolveImport('src/lib/mod.rs', 'parser', 'rust', known),
+			resolveImport('src/main.c', 'acme.h', 'c', known),
+		]).toEqual(['src/cart/cart.ts', 'src/cart/index.ts', 'src/util.js', undefined, 'shop/models.py', 'shop/models.py', 'src/main/java/com/acme/Cart.java', 'src/lib/parser.rs', 'include/acme.h']);
+	});
+});
+
+describe('pairsFromLog', () => {
+	it('counts files changed together at least twice, ignoring huge commits', () => {
+		const big = Array.from({ length: 40 }, (_, i) => `f${i}.ts`).join('\n');
+		const log = `\0\na.ts\nb.ts\n\0\na.ts\nb.ts\nc.ts\n\0\n${big}\n\0\nc.ts\n`;
+		expect([...pairsFromLog(log)]).toEqual([['a.ts\0b.ts', 2]]);
+	});
+});
