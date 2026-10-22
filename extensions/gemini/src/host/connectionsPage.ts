@@ -135,8 +135,8 @@ export class ConnectionsPage implements vscode.Disposable {
 				if (this.allowlist) {
 					const done = await allowServer(this.allowlist.path, teamToolsServerName).catch(() => false);
 					if (!done) {
-						void vscode.window.showWarningMessage(vscode.l10n.t("GeminiCode can't rewrite {0} because it has comments. Add \"{1}\" to mcp.allowed there yourself.", this.allowlist.file, teamToolsServerName));
-						await this.openFile(this.allowlist.path, 'allowed');
+						void vscode.window.showWarningMessage(vscode.l10n.t("GeminiCode can't rewrite {0} because it has comments. Remove \"{1}\" from mcp.excluded there yourself.", this.allowlist.file, teamToolsServerName));
+						await this.openFile(this.allowlist.path, 'excluded');
 					}
 					await this.readFiles();
 					this.scheduleUpdate();
@@ -144,7 +144,7 @@ export class ConnectionsPage implements vscode.Disposable {
 				return;
 			case 'openAllowlistFile':
 				if (this.allowlist) {
-					await this.openFile(this.allowlist.path, 'allowed');
+					await this.openFile(this.allowlist.path, this.allowlist.kind === 'excluded' ? 'excluded' : 'admin');
 				}
 				return;
 			case 'openDefaults':
@@ -288,10 +288,9 @@ export class ConnectionsPage implements vscode.Disposable {
 			askEachTime: vscode.l10n.t("Ask each time"),
 			askOnceOnly: vscode.l10n.t("Ask every time, Allow once only"),
 			alwaysAllowed: vscode.l10n.t("Always allowed"),
-			allowlistNotAllowed: vscode.l10n.t("{0} allows only the MCP servers in mcp.allowed, and {1} isn't one, so agents won't get these tools."),
 			allowlistExcluded: vscode.l10n.t("{0} leaves out {1} in mcp.excluded, so agents won't get these tools."),
 			allowlistAdminOff: vscode.l10n.t("MCP servers are turned off in {0}, so agents won't get these tools."),
-			addToAllowlist: vscode.l10n.t("Add to Allowlist"),
+			removeExclusion: vscode.l10n.t("Remove Exclusion"),
 			openFile: vscode.l10n.t("Open File"),
 			close: vscode.l10n.t("Close"),
 		};

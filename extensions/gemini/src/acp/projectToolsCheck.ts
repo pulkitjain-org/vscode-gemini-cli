@@ -6,7 +6,8 @@
 // Why a project agent's session has no project tools. gemini-cli 0.63 loads a
 // session's MCP servers (`McpClientManager.maybeDiscoverMcpServer`) only when
 // the session's folder is trusted, the server isn't left out by `mcp.allowed`
-// or `mcp.excluded` or turned off by an admin, and `gemini mcp disable` hasn't
+// (which GeminiCode's launch flag makes list its own servers) or `mcp.excluded`
+// or turned off by an admin, and `gemini mcp disable` hasn't
 // turned it off in mcp-server-enablement.json, which, when unreadable, turns
 // every server off. It says none of this over ACP, so GeminiCode reads the
 // same files to name the cause.
@@ -19,7 +20,6 @@ import { folderTrustApplies, isFolderTrusted, trustedFoldersPath } from './trust
 
 export type ProjectToolsBlock =
 	| { readonly kind: 'untrusted'; readonly folder: string }
-	| { readonly kind: 'notAllowed'; readonly file: string }
 	| { readonly kind: 'excluded'; readonly file: string }
 	| { readonly kind: 'adminOff'; readonly file: string }
 	| { readonly kind: 'disabled'; readonly file: string }
@@ -75,34 +75,68 @@ export async function projectToolsBlock(options: ProjectToolsCheckOptions): Prom
 	return undefined;
 }
 
-/** The settings files that can leave a server out, highest precedence first: system, the workspace's, then the user's. */
+/** The settings files that can leave a server out, highest precedence first: system, the workspace's, the user's, then the system defaults. */
 export function settingsFiles(options: Omit<ProjectToolsCheckOptions, 'folder' | 'server'>): string[] {
 	const env = options.env ?? process.env;
 	const homedir = options.homedir ?? os.homedir();
+	const system = systemSettingsPath(env, options.platform ?? process.platform);
 	return [
-		systemSettingsPath(env, options.platform ?? process.platform),
+		system,
 		...options.workspace ? [path.join(options.workspace, '.gemini', 'settings.json')] : [],
 		path.join(env.GEMINI_CLI_HOME || homedir, '.gemini', 'settings.json'),
+		env.GEMINI_CLI_SYSTEM_DEFAULTS_PATH || path.join(path.dirname(system), 'system-defaults.json'),
 	];
 }
 
-/** The first of `files` that turns MCP off, or leaves `server` out of `mcp.allowed` or puts it in `mcp.excluded`. */
-export async function allowlistBlock(server: string, files: readonly string[]): Promise<Extract<ProjectToolsBlock, { kind: 'notAllowed' | 'excluded' | 'adminOff' }> | undefined> {
+/**
+ * The first of `files` that turns MCP off or puts `server` in `mcp.excluded`.
+ * `mcp.allowed` can't leave out GeminiCode's own servers: `allowlistWith` adds them.
+ */
+export async function allowlistBlock(server: string, files: readonly string[]): Promise<Extract<ProjectToolsBlock, { kind: 'excluded' | 'adminOff' }> | undefined> {
 	for (const file of files) {
 		const settings = await readSettingsFile(file);
-		const mcp = settings.mcp as { allowed?: unknown; excluded?: unknown } | undefined;
+		const mcp = settings.mcp as { excluded?: unknown } | undefined;
 		const admin = (settings.admin as { mcp?: { enabled?: unknown } } | undefined)?.mcp;
 		if (admin?.enabled === false) {
 			return { kind: 'adminOff', file };
-		}
-		if (Array.isArray(mcp?.allowed) && mcp.allowed.length && !mcp.allowed.includes(server)) {
-			return { kind: 'notAllowed', file };
 		}
 		if (Array.isArray(mcp?.excluded) && mcp.excluded.includes(server)) {
 			return { kind: 'excluded', file };
 		}
 	}
 	return undefined;
+}
+
+/**
+ * The `--allowed-mcp-server-names` list that keeps the allowlist `files` set and adds `servers`, or
+ * undefined when it already has them or none is set. As gemini-cli 0.64 reads them, the allowlist is the
+ * intersection of every file's `mcp.allowed`, and an empty one allows every server. The flag replaces
+ * both `mcp.allowed` and `mcp.excluded`, so the list leaves out the excluded servers itself.
+ */
+export async function allowlistWith(servers: readonly string[], files: readonly string[]): Promise<string[] | undefined> {
+	const key = (name: string) => name.toLowerCase().trim();
+	const names = (value: unknown) => Array.isArray(value) ? value.filter((name): name is string => typeof name === 'string') : undefined;
+	let allowed: string[] | undefined;
+	const excluded = new Set<string>();
+	for (const settings of await Promise.all(files.map(readSettingsFile))) {
+		const mcp = settings.mcp as { allowed?: unknown; excluded?: unknown } | undefined;
+		const fileAllowed = names(mcp?.allowed);
+		if (fileAllowed) {
+			const keys = new Set(fileAllowed.map(key));
+			allowed = (allowed ?? fileAllowed).filter(name => keys.has(key(name)));
+		}
+		for (const name of names(mcp?.excluded) ?? []) {
+			excluded.add(key(name));
+		}
+	}
+	if (!allowed?.length) {
+		return undefined;
+	}
+	const listed = new Set(allowed.map(key));
+	if (servers.every(server => listed.has(key(server)))) {
+		return undefined;
+	}
+	return [...new Set([...allowed, ...servers.filter(server => !listed.has(key(server)))])].filter(name => !excluded.has(key(name)));
 }
 
 /**

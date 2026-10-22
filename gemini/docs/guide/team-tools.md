@@ -37,7 +37,7 @@ A checked-in `.gemini/geminicode-tools.json` saves everyone typing addresses. It
 - `sonar.projectKey` can also come from the repository's `sonar-project.properties`.
 
 > [!IMPORTANT]
-> If your team's `.gemini/settings.json` has an `mcp.allowed` list, add `geminicode-tools` to it (Connections offers to). Once you've connected, remove any older `jira` and `gitlab` entries from `mcp.allowed` and `mcpServers` yourself; until then agents see two sets of Jira and GitLab tools. The terminal's `gemini` doesn't get these tools.
+> GeminiCode's own servers (`geminicode-tools`, `geminicode-project`, `geminicode-browser`) are always allowed, even when your Gemini settings have an `mcp.allowed` list without them; only `mcp.excluded` keeps them out. Once you've connected, remove any older `jira` and `gitlab` entries from `mcp.allowed` and `mcpServers` yourself; until then agents see two sets of Jira and GitLab tools. The terminal's `gemini` doesn't get these tools.
 
 ## Home
 
