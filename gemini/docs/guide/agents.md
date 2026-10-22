@@ -15,7 +15,7 @@ In Agents mode the top of the window is one row: the Home button, the **Agents |
 
 ## Home
 
-**Home** opens when no tab is open in Agents mode, and in front of your restored tabs each time GeminiCode starts. Describe a task in **Start Agent** and press Return to start an agent on it; tick **On its own branch** to give it a branch of its own.
+**Home** opens when no tab is open in Agents mode, and in front of your restored tabs each time GeminiCode starts. Describe a task in **Start Agent** and press Return to start an agent on it; tick **On its own branch** to give it a branch of its own. The drum icon beside the workspace shows its [index](workspace-index.md): full when indexed, half full while indexing, empty when not; click it to open the Index page.
 
 The composer's bar shows the folder, the branch switch, the mode and the model the agent starts on; **From Your Tools…** lists your tickets and merge requests to start on one. **Project Helpers**, at the right under the composer, opens the MCP servers, rules and hooks of your projects. Below it, **Needs you** lists what waits on you, such as an agent asking permission. Cards follow for your agents and, once you connect them, your tickets, the merge requests pending on you and yours, quality checks and Gemini's usage (see [Team tools](team-tools.md#home)). Each card names the query that fills it beside its title, so its numbers can be checked against the tool. **Customize** hides and reorders cards.
 

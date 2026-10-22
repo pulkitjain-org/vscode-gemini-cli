@@ -14,7 +14,9 @@ Every agent's session gets the `geminicode-index` tools for the folder it works 
 - **repo_map** outlines the folder or a subfolder: what the project says it is, its languages, its folders and the public definitions in each.
 - **docs_search** searches the documentation attached to the workspace, when it has some.
 
-Each session also starts with a short outline of the folder, so the agent knows its way around before its first search. In the chat the calls read as "Search code for …", "Look up …" and so on.
+Each session also starts with a short outline of the folder, so the agent knows its way around before its first search, and once the index is built the agent's first prompt asks it to use these tools before searching file by file. Results rank the code itself above its tests (unless you ask about tests) and say they are complete, so the agent reads only what they point to. In the chat the calls read as "Search code for …", "Look up …" and so on.
+
+GeminiCode also gives the Gemini CLI the app's own ripgrep, so the agent's text searches are fast too, with or without the index.
 
 An agent only uses the tools in a folder the Gemini CLI trusts. The Index page says when a workspace isn't trusted, with **Trust Folder**.
 

@@ -35,6 +35,10 @@ GeminiCode ships as a Mac app for Apple silicon with the Gemini CLI bundled, fro
 
 ## After the pilot
 
+- **Semantic search for the index.** Deferred by decision: the index is lexical (BM25), symbols and grep. The cheapest local route measured so far is re-ranking `code_search`'s candidates with a small local embedding model at query time, caching chunk embeddings as they come up, judged by the same real-session comparison as the index ([FINDINGS.md](FINDINGS.md#workspace-index)).
+- **Docs behind a sign-in.** Fetch them through the built-in browser's session, which already holds the user's sign-ins.
+- **Ripgrep in signed releases.** Check that the release's signing signs the `rg` binaries added to the bundled CLI (`bundle/vendor/ripgrep/`) before notarisation.
+
 - **More platforms.** Windows (one more runner in the release workflow and a code-signing certificate), then Intel Macs and Linux if pilot users ask. Bring this forward if the pilot includes Windows users.
 - **Auto-update.** The update notice links to the download page. Upstream's updater needs a server that answers per build, which a static GitHub Pages site cannot be, so full auto-update needs a small update server.
 - **Compat CI.** CI runs the real-CLI tests against the `latest` and `preview` CLI. Add `latest-1` and `nightly`, run it on a schedule, and diff the capabilities the CLI reports. A scheduled run on a machine with a seat should also make a signed-in smoke test of models and modes, which hosted CI cannot do.

@@ -43,7 +43,7 @@ In a team command, `{{args}}` is replaced by what you typed after the name, `@{p
 
 ## Enhance prompt
 
-Write what you want in plain words, then click **Enhance** at the end of your text, or press <kbd>⌥⌘E</kbd>. Gemini rewrites the draft as a clearer prompt: what to do, where, and how to tell it's done, with open questions where your draft leaves something out. It keeps your `@` mentions, a leading `/command`, file names and code as you wrote them.
+Write what you want in plain words, then click **Enhance** at the end of your text, or press <kbd>⌥⌘E</kbd>. Gemini rewrites the draft as a clearer prompt: what to do, where, and how to tell it's done, with open questions where your draft leaves something out. It keeps your `@` mentions, a leading `/command`, file names and code as you wrote them. In a workspace with an index, the rewrite also sees an outline of the project and the files most likely involved, so it can name the right ones.
 
 ![A short request rewritten by Enhance into a precise prompt](../../site/media/showcase-enhance-dark.webp "clip")
 

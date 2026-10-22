@@ -1,6 +1,6 @@
 # Project Helpers and settings
 
-**Project Helpers** shows what every agent loads when it starts: MCP servers, skills, hooks, extensions, memory and rules, each with a switch. It shares them with the `gemini` command in your terminal.
+**Project Helpers** shows what every agent loads when it starts: MCP servers, skills, hooks, extensions, memory and rules, each with a switch, and how many tokens they add to every model call. It shares them with the `gemini` command in your terminal.
 
 ![Project Helpers with MCP servers and skills, each with a switch](../../site/media/docs/project-helpers-dark.webp)
 
@@ -86,9 +86,10 @@ A project's `.gemini/settings.json` can still override them, as in the CLI. A se
 | `gemini.browser.allowOtherSites` | Let agents open sites other than local ones, after asking. On by default. |
 | `gemini.browser.allowedOrigins` | The only sites agents may open. Empty allows every site. |
 | `gemini.browser.keepSignIns` | Keep agents' browser sign-ins per workspace. Off by default. |
+| `gemini.index.enabled` | Keep an index of each workspace and give agents the index tools. On by default. See [Workspace index and docs](workspace-index.md#settings) for the other `gemini.index.*` and `gemini.docs.*` settings. |
 | `gemini.usageMeter.enabled` | Show today's quota. On by default. |
 | `gemini.notifications.enabled` | Notify you and badge the Dock when an agent finishes or needs you. On by default. |
 | `gemini.keepAwake` | Keep the Mac awake while any agent works. On by default. |
 | `gemini.team.openMergeRequestsIn` | Open merge requests in GeminiCode's browser or your default browser. |
 
-Changing the CLI path or version, the project, or an approval or shell setting restarts the agent so the change applies; open agents resume their sessions. Admins can lock the CLI, update, approval, shell, inline edit, usage and browser settings through policy.
+Changing the CLI path or version, the project, or an approval or shell setting restarts the agent so the change applies; open agents resume their sessions. Admins can lock the CLI, update, approval, shell, inline edit, usage, browser, index and docs settings through policy.
