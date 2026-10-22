@@ -86,7 +86,7 @@ A project's `.gemini/settings.json` can still override them, as in the CLI. A se
 | `gemini.browser.allowOtherSites` | Let agents open sites other than local ones, after asking. On by default. |
 | `gemini.browser.allowedOrigins` | The only sites agents may open. Empty allows every site. |
 | `gemini.browser.keepSignIns` | Keep agents' browser sign-ins per workspace. Off by default. |
-| `gemini.index.enabled` | Keep an index of each workspace and give agents the index tools. On by default. See [Workspace index and docs](workspace-index.md#settings) for the other `gemini.index.*` and `gemini.docs.*` settings. |
+| `gemini.index.enabled` | Keep an index of each workspace and give agents the index tools. On by default. See [Index settings](agents.md#index-settings) for the other `gemini.index.*` and `gemini.docs.*` settings. |
 | `gemini.usageMeter.enabled` | Show today's quota. On by default. |
 | `gemini.notifications.enabled` | Notify you and badge the Dock when an agent finishes or needs you. On by default. |
 | `gemini.keepAwake` | Keep the Mac awake while any agent works. On by default. |

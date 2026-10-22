@@ -120,7 +120,7 @@ A review (`src/host/reviewSession.ts`, one per merge request, listed by `src/hos
 
 ### Workspace index
 
-An index of each folder agents work in, and of documentation the user attaches, served to sessions by GeminiCode's fourth MCP server, `geminicode-index` (ADR 0010; the user's view is [the guide](guide/workspace-index.md)).
+An index of each folder agents work in, and of documentation the user attaches, served to sessions by GeminiCode's fourth MCP server, `geminicode-index` (ADR 0010; the user's view is [the guide](guide/agents.md#workspace-index-and-docs)).
 
 - **Where it runs.** `src/acp/index/indexer.ts` runs in its own process (`src/indexer.ts`, bundled to `dist/indexer.js`, never loaded in the extension host), forked by `IndexClient` with the app's own Node on the first request, at the lowest priority it sets itself, and stopped after ten idle minutes. A crash restarts it with a growing delay, three times at most. `WorkspaceIndex` (`src/host/workspaceIndex.ts`) owns the client and the server; on a restart it opens again the folders this window keeps current.
 - **Storage and isolation.** One SQLite file per folder (`node:sqlite`), `~/.geminicode/index/code/<sha256 of the real path>/index.db`, in WAL mode and written in short transactions (`indexStore.ts`). A lock file with its pid (`indexLock.ts`) lets one window write; others read and take over when it goes. A file SQLite can't open or reports damaged, or from another schema, is moved aside and rebuilt; queries meanwhile answer from live search. An agent's worktree gets its own file, copied from its workspace's with `VACUUM INTO` and then reconciled, and removed with the worktree. Indexes no window used for 30 days are deleted.

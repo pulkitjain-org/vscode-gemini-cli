@@ -11,8 +11,8 @@
 //
 //   node gemini/site/check-a11y.mts <site folder> [page.html ...]
 //
-// With no pages named, it checks the landing page, the docs home and every
-// docs page.
+// With no pages named, it checks the landing page, the feature pages, the docs
+// home and every docs page.
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -27,7 +27,10 @@ if (!site) {
 	console.error('Pass the built site folder.');
 	process.exit(2);
 }
-const pages = named.length ? named : ['index.html', 'notes.html', ...readdirSync(path.join(site, 'docs')).filter(name => name.endsWith('.html')).map(name => `docs/${name}`)].filter(page => existsSync(path.join(site, page)));
+const folder = (name: string) => existsSync(path.join(site, name)) ? readdirSync(path.join(site, name)).filter(file => file.endsWith('.html')).map(file => `${name}/${file}`) : [];
+// A moved page's stand-in only sends the visitor on, so it has nothing to check.
+const moved = (page: string) => readFileSync(path.join(site, page), 'utf8').includes('http-equiv="refresh"');
+const pages = named.length ? named : ['index.html', 'notes.html', ...folder('features'), ...folder('docs')].filter(page => existsSync(path.join(site, page)) && !moved(page));
 
 const candidates = [process.env.CHROMIUM, process.env.CHROME_PATH, '/opt/pw-browsers/chromium', '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'].filter(Boolean);
 const executablePath = candidates.find(p => existsSync(p));

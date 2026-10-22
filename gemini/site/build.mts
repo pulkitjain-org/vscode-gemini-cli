@@ -279,6 +279,26 @@ const icons = {
 	'plug': '<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>',
 } as const;
 
+/** Docs pages that became part of another, by old slug, with where they went. */
+const movedDocs: Readonly<Record<string, string>> = {
+	'workspace-index': 'agents.html#workspace-index-and-docs',
+};
+
+function redirect(to: string): string {
+	return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Moved</title>
+<meta name="robots" content="noindex">
+<link rel="canonical" href="${attr(to)}">
+<meta http-equiv="refresh" content="0; url=${attr(to)}">
+</head>
+<body><p>This page moved to <a href="${attr(to)}">${attr(to)}</a>.</p></body>
+</html>
+`;
+}
+
 function sprite(): string {
 	return `<svg width="0" height="0" style="position:absolute" aria-hidden="true">${Object.entries(icons).map(([name, body]) => `<symbol id="i-${name}" viewBox="0 0 24 24">${body}</symbol>`).join('')}</svg>`;
 }
@@ -668,7 +688,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 				<div class="txt">
 					<h3 class="serif">Finds the code in one step.</h3>
 					<p>Each workspace keeps a local index of its code, kept current as files and branches change. Agents ask it for code, symbols, related files and a map of the repository, and search the docs you attach, instead of reading file by file. Nothing leaves your Mac.</p>
-					<a class="more" href="docs/workspace-index.html">How the index works ${icon('arrow-right')}</a>
+					<a class="more" href="docs/agents.html#workspace-index-and-docs">How the index works ${icon('arrow-right')}</a>
 				</div>
 				<div class="mock list" aria-hidden="true">
 					<div class="r on"><span class="n">code_search <span class="q">"retry upload backoff"</span></span><span class="t">3 results · 41 ms</span></div>
@@ -1032,6 +1052,10 @@ ${doc.html}
 		<div class="grid3">${features}
 		</div>
 	</section>${searchDialog()}`;
+	// Pages folded into others keep their old address: a small page sends the visitor on.
+	for (const [slug, to] of Object.entries(movedDocs)) {
+		fs.writeFileSync(path.join(docsDir, `${slug}.html`), redirect(to));
+	}
 	fs.writeFileSync(path.join(docsDir, 'index.html'), layout('GeminiCode docs', home, c, 'docs', '../', 'How to use GeminiCode: agents, chat, review, projects, the browser, team tools and settings.'));
 	fs.writeFileSync(path.join(docsDir, 'all.md'), `# GeminiCode docs\n\nFrom ${pageUrl}docs/\n\n` + copies.map(copy => copy.replace(/^(#+) /gm, '#$1 ')).join('\n'));
 	fs.writeFileSync(path.join(docsDir, 'search.json'), JSON.stringify(search));
