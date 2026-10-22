@@ -66,6 +66,8 @@ export interface RelatedResult {
 const maxLimit = 20;
 const defaultLimit = 8;
 const maxReferences = 60;
+/** Chunks BM25 hands to re-ranking; their text is read only for the ones returned. */
+const candidatePool = 150;
 /** Words that only make a question a question. */
 const stopWords = new Set(['a', 'an', 'the', 'is', 'are', 'was', 'be', 'of', 'to', 'in', 'on', 'at', 'by', 'for', 'from', 'with', 'and', 'or', 'not', 'it', 'its', 'this', 'that', 'these', 'those', 'where', 'what', 'which', 'who', 'how', 'why', 'when', 'does', 'do', 'did', 'can', 'should', 'we', 'i', 'you', 'all', 'any', 'some', 'there', 'here', 'into', 'about', 'find', 'show', 'me', 'get']);
 
@@ -104,18 +106,19 @@ export function search(store: IndexStore, query: SearchQuery): SearchResult {
 	for (const row of definitionChunks(store, query.query, query.lang)) {
 		if (!seen.has(row.id) && wanted(row) && hits.length < limit) {
 			seen.add(row.id);
-			hits.push({ path: row.path, startLine: row.startLine, endLine: row.endLine, symbol: row.symbol ?? undefined, text: unpackText(row.body) });
+			hits.push({ path: row.path, startLine: row.startLine, endLine: row.endLine, symbol: row.symbol ?? undefined, text: chunkText(store, row.id) });
 		}
 	}
 	// Every word first; then any of them, for what the strict search missed.
 	for (const expression of groups.length > 1 ? [groups.join(' AND '), groups.join(' OR ')] : [groups[0]]) {
-		const rows = rerank(runMatch(store, expression, query.lang, filter ? 400 : limit * 3 + 20), query.query, words);
+		// A wide pool, so re-ranking can lift code above the tests that outrank it in BM25.
+		const rows = rerank(runMatch(store, expression, query.lang, filter ? 400 : candidatePool), query.query, words);
 		const matching = rows.filter(row => !seen.has(row.id) && wanted(row));
 		total = Math.max(total, matching.length + hits.length);
 		for (const row of matching) {
 			seen.add(row.id);
 			if (hits.length < limit) {
-				hits.push({ path: row.path, startLine: row.startLine, endLine: row.endLine, symbol: row.symbol ?? undefined, text: unpackText(row.body) });
+				hits.push({ path: row.path, startLine: row.startLine, endLine: row.endLine, symbol: row.symbol ?? undefined, text: chunkText(store, row.id) });
 			}
 		}
 		if (hits.length >= limit) {
@@ -131,7 +134,6 @@ interface ChunkRow {
 	readonly startLine: number;
 	readonly endLine: number;
 	readonly symbol?: string;
-	readonly body: Uint8Array;
 }
 
 /**
@@ -146,11 +148,15 @@ function definitionChunks(store: IndexStore, query: string, lang: string | undef
 		return [];
 	}
 	const rows: ChunkRow[] = [];
+	const wantsTests = asksForTests(query);
 	for (const name of names.slice(0, 4)) {
 		const definitions = store.statement(`SELECT s.path AS path, s.line AS line FROM symbols s${lang ? ' JOIN files f ON f.path = s.path AND f.lang = ?' : ''} WHERE s.name = ? COLLATE NOCASE ORDER BY s.exported DESC, s.container IS NOT NULL, length(s.path) LIMIT 3`)
 			.all(...lang ? [lang.toLowerCase(), name] : [name]) as { path: string; line: number }[];
 		for (const definition of definitions) {
-			const chunk = store.statement('SELECT id, path, start_line AS startLine, end_line AS endLine, symbol, body FROM chunks WHERE path = ? AND start_line <= ? AND end_line >= ? ORDER BY start_line DESC LIMIT 1')
+			if (!wantsTests && isTestPath(definition.path)) {
+				continue;
+			}
+			const chunk = store.statement('SELECT id, path, start_line AS startLine, end_line AS endLine, symbol FROM chunks WHERE path = ? AND start_line <= ? AND end_line >= ? ORDER BY start_line DESC LIMIT 1')
 				.get(definition.path, definition.line, definition.line) as ChunkRow | undefined;
 			if (chunk) {
 				rows.push(chunk);
@@ -169,17 +175,34 @@ function definitionChunks(store: IndexStore, query: string, lang: string | undef
 function rerank(rows: readonly ChunkRow[], query: string, words: readonly string[]): ChunkRow[] {
 	const names = new Set((query.match(/[A-Za-z_$][\w$]*/g) ?? []).map(name => name.toLowerCase()));
 	const useful = words.filter(word => word.length > 2);
+	const wantsTests = asksForTests(query);
 	const bonus = (row: ChunkRow) => {
 		const symbol = (row.symbol ?? '').toLowerCase();
 		const last = symbol.slice(symbol.lastIndexOf('.') + 1);
 		const base = row.path.slice(row.path.lastIndexOf('/') + 1).toLowerCase();
-		return (names.has(last) || names.has(symbol) ? 4 : useful.some(word => last.includes(word)) ? 2 : 0) + (useful.some(word => base.includes(word)) ? 1 : 0);
+		// Tests repeat the words of what they test, so they outrank it unless asked for.
+		const test = !wantsTests && isTestPath(row.path) ? -3 : 0;
+		return (names.has(last) || names.has(symbol) ? 4 : useful.some(word => last.includes(word)) ? 2 : 0) + (useful.some(word => base.includes(word)) ? 1 : 0) + test;
 	};
 	return rows.map((row, index) => ({ row, index, bonus: bonus(row) })).sort((a, b) => b.bonus - a.bonus || a.index - b.index).map(entry => entry.row);
 }
 
+/** Whether a path is a test: in a tests folder, or named as one (`*.test.ts`, `*Test.java`, `*_test.go`, `test_*.py`). */
+export function isTestPath(relative: string): boolean {
+	return /(?:^|\/)(?:tests?|__tests__|specs?|e2e)\/|\.(?:test|spec)\.[a-z]+$|Tests?\.(?:java|kt|cs|scala|groovy)$|_test\.(?:go|py|rb)$|(?:^|\/)test_[^/]*\.py$/.test(relative);
+}
+
+function asksForTests(query: string): boolean {
+	return /\b(?:tests?|specs?|testing|e2e|unit test|mocks?)\b/i.test(query);
+}
+
+function chunkText(store: IndexStore, id: number): string {
+	const row = store.statement('SELECT body FROM chunks WHERE id = ?').get(id) as { body: Uint8Array } | undefined;
+	return row ? unpackText(row.body) : '';
+}
+
 function runMatch(store: IndexStore, expression: string, lang: string | undefined, limit: number): ChunkRow[] {
-	const sql = `SELECT c.id AS id, c.path AS path, c.start_line AS startLine, c.end_line AS endLine, c.symbol AS symbol, c.body AS body
+	const sql = `SELECT c.id AS id, c.path AS path, c.start_line AS startLine, c.end_line AS endLine, c.symbol AS symbol
 		FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid
 		WHERE chunks_fts MATCH ?${lang ? ' AND c.path IN (SELECT path FROM files WHERE lang = ?)' : ''}
 		ORDER BY bm25(chunks_fts, 1.0, 3.0, 2.0, 6.0) LIMIT ?`;

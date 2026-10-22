@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { formatSearch, formatSymbol, snippet } from '../../src/acp/index/format';
+import { formatSearch, formatSymbol, searchFooter, snippet } from '../../src/acp/index/format';
 import { IndexMcpServer, IndexToolBackend } from '../../src/acp/indexMcp';
 import type { McpHttpConfig } from '../../src/acp/localMcpServer';
 import { indexToolTitle } from '../../src/acp/toolLinks';
@@ -99,7 +99,7 @@ describe('index tool results', () => {
 
 	it('says when results come from plain search while the index builds', () => {
 		const result = { hits: [{ path: 'a.ts', startLine: 1, endLine: 1, text: 'discount' }], total: 1, terms: ['discount'] };
-		expect(formatSearch('discount', result, { done: 31, total: 50 })).toBe('1 result for "discount"\n\n1. a.ts:1-1\n1  discount\n\nRead a result with read_file at the lines shown.\n\nThe index for this folder is still being built (62%); these results come from a plain text search.');
+		expect(formatSearch('discount', result, { done: 31, total: 50 })).toBe(`1 result for "discount"\n\n1. a.ts:1-1\n1  discount\n\n${searchFooter}\n\nThe index for this folder is still being built (62%); these results come from a plain text search.`);
 		expect(formatSymbol('applyDiscount', { definitions: [], similar: [], references: [], referenceTotal: 0 })).toBe('No definition named applyDiscount was found. Try code_search with words from what it does.');
 	});
 

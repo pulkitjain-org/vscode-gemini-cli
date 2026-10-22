@@ -2070,6 +2070,8 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				editorColumn: () => agentColumn(record.id, this.live.get(record.id)?.panel),
 				enhancer: this.enhancer,
 				indexContext: draft => this.index?.contextFor(folder, draft) ?? Promise.resolve(undefined),
+				// Not for a coordinator, which runs in an empty folder without the index.
+				indexHint: () => cwd === folder ? this.index?.hint(folder) : undefined,
 				usage: () => this.usage,
 				toolChips: () => this.teamTools && toolChipsFor(this.teamTools),
 				...(project?.role === 'coordinator' ? { project: this.projects.chatProject(record.id) } : {}),

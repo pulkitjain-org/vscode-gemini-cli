@@ -11,6 +11,8 @@ import { AgentCommand, includeDirectoryArgs } from '../acp/agentProcess';
 import { AgentRuntime } from '../acp/agentRuntime';
 import { AgentErrorInfo, errorMessage } from '../acp/errors';
 import { patchCliBundle } from '../acp/cliPatches';
+import { provideRipgrep } from '../acp/cliRipgrep';
+import { appRipgrep } from '../acp/index/ripgrepPath';
 import { createFileHandlers } from '../acp/fileAccess';
 import { PermissionBroker } from '../acp/permissions';
 import { CliResolution, isOlderThan } from '../acp/cliResolution';
@@ -329,6 +331,11 @@ export class AgentService implements vscode.Disposable {
 			const patched = await patchCliBundle(path.dirname(cli.cliPath)).catch(err => `failed: ${errorMessage(err)}`);
 			if (patched !== 'unchanged') {
 				this.log[patched === 'patched' ? 'info' : 'warn'](`Capping tool output in ACP mode for Gemini CLI ${cli.version}: ${patched}`);
+			}
+			// The CLI's grep_search falls back to git grep without ripgrep beside it (cliRipgrep.ts).
+			const ripgrep = await provideRipgrep(path.dirname(cli.cliPath), await appRipgrep(vscode.env.appRoot)).catch(err => `failed: ${errorMessage(err)}`);
+			if (ripgrep !== 'present') {
+				this.log[ripgrep === 'added' ? 'info' : 'warn'](`Ripgrep for Gemini CLI ${cli.version}: ${ripgrep}`);
 			}
 		}
 		if (cli.missingVersion) {

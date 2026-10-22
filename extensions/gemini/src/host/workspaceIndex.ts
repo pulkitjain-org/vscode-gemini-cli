@@ -25,6 +25,13 @@ export interface DocsProvider {
 /** When an index is first built. */
 export type BuildOn = 'agentStart' | 'workspaceOpen' | 'manual';
 
+/**
+ * Sent with an agent's first prompt in a folder whose index is built. On a
+ * large repository it took the median answer from 60 s to 36 s with Flash
+ * (FINDINGS.md): without it the model goes to grep_search first.
+ */
+export const indexHint = 'This workspace has a code index: use the geminicode-index tools (code_search, find_symbol, related_files, repo_map) before grep_search, glob or reading whole files. Their results are complete: read only the lines they point to, and don\'t search again for what they found.';
+
 /** An outline older than this is fetched again when the next session starts. */
 const orientationMaxAgeMs = 10 * 60 * 1000;
 const orientationChars = 4_000;
@@ -256,6 +263,11 @@ export class WorkspaceIndex implements vscode.Disposable {
 		}
 		const ids = new Set(own.map(d => d.id));
 		return [...own, ...docs.attachedTo(from).filter(d => !ids.has(d.id))];
+	}
+
+	/** The note for an agent's prompt in `folder` while its index is built and agents get the tools. */
+	hint(folder: string): string | undefined {
+		return this.enabled && this.statuses.get(folder)?.state.kind === 'ready' ? indexHint : undefined;
 	}
 
 	/** Folders whose indexes this window keeps current. */

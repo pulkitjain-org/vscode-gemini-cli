@@ -11,6 +11,13 @@
 import type { DocsSearchResult } from '../docs/docsProtocol';
 import type { RelatedResult, SearchResult, SymbolResult } from './query';
 
+/**
+ * After the results: they are ranked and complete, so the model reads the
+ * lines it needs instead of checking them with grep_search, which it did
+ * otherwise (FINDINGS.md, workspace index).
+ */
+export const searchFooter = 'These are the best matches in the whole folder, ranked. Read only the lines you need with read_file; you don\'t need to grep for what they show.';
+
 /** The most a tool result says, in characters. */
 export const maxResultChars = 8_000;
 const snippetLines = 14;
@@ -50,7 +57,7 @@ export function formatSearch(query: string, result: SearchResult, progress?: Pro
 		parts.push(block);
 		length += block.length;
 	});
-	parts.push('\nRead a result with read_file at the lines shown.');
+	parts.push(`\n${searchFooter}`);
 	return parts.join('\n') + fallbackNote(progress);
 }
 
@@ -92,6 +99,9 @@ export function formatSymbol(name: string, result: SymbolResult, progress?: Prog
 		for (const r of result.references) {
 			parts.push(`  ${r.path}:${r.line}  ${r.text}`);
 		}
+	}
+	if (result.definitions.length && !progress) {
+		parts.push('', 'These are every definition the index has, and every line that uses the name; no need to grep for them.');
 	}
 	return capped(parts.join('\n')) + fallbackNote(progress);
 }

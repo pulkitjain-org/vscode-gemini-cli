@@ -138,7 +138,7 @@ export class IndexMcpServer {
 			'- find_symbol: where a function, class or type is defined, and where it is used.',
 			'- related_files: a file\'s imports, importers, tests and the files usually changed with it.',
 			'- repo_map: an outline of the folder or a subfolder.',
-			'Results give paths with line ranges; read only those lines with read_file.',
+			'Results give paths with line ranges and are complete for the folder: read only those lines with read_file, and don\'t repeat the search with grep_search.',
 		];
 		const docs = folder ? this.backend.docs(folder) : [];
 		if (docs.length) {

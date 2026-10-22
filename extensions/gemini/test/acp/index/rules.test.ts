@@ -8,7 +8,7 @@ import { pairsFromLog } from '../../../src/acp/index/cochange';
 import { identifierWords, splitIdentifier } from '../../../src/acp/index/identifiers';
 import { IgnoreRules } from '../../../src/acp/index/ignore';
 import { canInclude, contentSkipReason, pathSkipReason, SkipRules } from '../../../src/acp/index/inventory';
-import { queryTerms } from '../../../src/acp/index/query';
+import { isTestPath, queryTerms } from '../../../src/acp/index/query';
 import { resolveImport } from '../../../src/acp/index/resolve';
 
 describe('IgnoreRules', () => {
@@ -65,6 +65,13 @@ describe('identifiers and queries', () => {
 			groups: ['("applydiscount"* OR (idents:"apply" AND idents:"discount"))', '"used"*', '("cart" AND "total")'],
 			words: ['applydiscount', 'apply', 'discount', 'used', 'cart_total', 'cart', 'total'],
 		});
+	});
+});
+
+describe('isTestPath', () => {
+	it('knows tests by folder and by name in common languages', () => {
+		const paths = ['src/test/java/com/acme/CartTest.java', 'src/cart.test.ts', 'src/__tests__/cart.ts', 'cart_test.go', 'tests/test_cart.py', 'e2e/checkout.spec.ts', 'src/main/java/com/acme/Cart.java', 'src/testing.ts', 'src/contest/entry.ts'];
+		expect(paths.filter(isTestPath)).toEqual(paths.slice(0, 6));
 	});
 });
 

@@ -110,6 +110,8 @@ export interface ChatControllerOptions {
 	readonly enhancer: ChatEnhancer;
 	/** What the folder's index finds for a draft, for Enhance prompt; undefined without a built index. */
 	indexContext?(draft: string): Promise<string | undefined>;
+	/** A note telling the agent to use the index tools, when its folder's index is built; sent once per session. */
+	indexHint?(): string | undefined;
 	/** The workspace pill; without it the composer shows none. */
 	workspace?(): ChatWorkspace | undefined;
 	/** Today's quota, for the usage popover; unset shows it as off. */
@@ -226,6 +228,8 @@ export class ChatController implements vscode.Disposable {
 	/** The step last reported, so tool call updates report only a new one. */
 	private lastStep: string | undefined;
 	private lastSessionId: string | undefined;
+	/** Sessions told about the folder's index already. */
+	private readonly hintedSessions = new Set<string>();
 	/** Proposed edits by transcript item id (tool calls and permission requests), so their diffs can be opened later. */
 	private readonly diffs = new Map<string, readonly acp.Diff[]>();
 
@@ -683,6 +687,14 @@ export class ChatController implements vscode.Disposable {
 			const content = buildPromptContent(expand ? await this.expandCommand(text) : text, attachments, this.service.client.promptCapabilities);
 			if (!content.length) {
 				throw new Error(vscode.l10n.t("The agent cannot take images, so there was nothing to send."));
+			}
+			// Told once per session: without it the model reaches for grep_search first (FINDINGS.md, workspace index).
+			const state = this.service.client.state;
+			const session = state.kind === 'ready' ? state.savedSessionId : undefined;
+			const hint = session && !this.hintedSessions.has(session) ? this.options.indexHint?.() : undefined;
+			if (session && hint) {
+				this.hintedSessions.add(session);
+				content.push({ type: 'text', text: hint });
 			}
 			const page = await this.refreshSharedPage();
 			if (page) {

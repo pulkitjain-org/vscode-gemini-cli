@@ -116,6 +116,9 @@ describe('Indexer', () => {
 			expect(fallback).toBeUndefined();
 			expect(result.hits[0]?.path, query).toBe('src/cart/discount.ts');
 		}
+		// Tests rank below the code they test, unless the query asks for tests.
+		expect((await indexer.search({ root: repo, query: { query: 'applies discount' } })).result.hits[0]?.path).toBe('src/cart/discount.ts');
+		expect((await indexer.search({ root: repo, query: { query: 'test that applies discount' } })).result.hits[0]?.path).toBe('src/cart/discount.test.ts');
 		const filtered = await indexer.search({ root: repo, query: { query: 'applyDiscount', path: '*.test.ts' } });
 		expect(filtered.result.hits.map(h => h.path)).toEqual(['src/cart/discount.test.ts']);
 	});
