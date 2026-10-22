@@ -20,7 +20,8 @@ export interface IndexClientOptions {
 	readonly execPath: string;
 	/** Where indexes live: ~/.geminicode/index. */
 	readonly baseDir: string;
-	readonly ripgrep?: string;
+	/** The app's ripgrep, for searching folders whose index isn't built yet. */
+	readonly ripgrep?: string | Promise<string | undefined>;
 	readonly log: (message: string) => void;
 	readonly idleStopMs?: number;
 	readonly restartDelaysMs?: readonly number[];
@@ -47,6 +48,7 @@ export class IndexClient {
 	readonly onDidStart = this.onDidStartEmitter.event;
 
 	private child: ChildProcess | undefined;
+	private starting: Promise<ChildProcess> | undefined;
 	private readonly pending = new Map<number, Pending>();
 	private nextId = 1;
 	private workerIdle = true;
@@ -83,7 +85,7 @@ export class IndexClient {
 		if (!this.child && wait > 0) {
 			await new Promise(resolve => setTimeout(resolve, wait));
 		}
-		const child = this.child ?? this.start();
+		const child = this.child ?? await (this.starting ??= this.start().finally(() => this.starting = undefined));
 		this.lastRequestAt = Date.now();
 		const id = this.nextId++;
 		return new Promise<Awaited<IndexerResult<M>>>((resolve, reject) => {
@@ -109,11 +111,12 @@ export class IndexClient {
 		this.onDidStartEmitter.dispose();
 	}
 
-	private start(): ChildProcess {
+	private async start(): Promise<ChildProcess> {
+		const ripgrep = await this.options.ripgrep;
 		const child = (this.options.fork ?? fork)(this.options.script, [], {
 			execPath: this.options.execPath,
 			execArgv: [`--max-old-space-size=${heapMb}`, '--disable-warning=ExperimentalWarning'],
-			env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', GEMINICODE_INDEX_DIR: this.options.baseDir, GEMINICODE_RIPGREP: this.options.ripgrep ?? '' },
+			env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', GEMINICODE_INDEX_DIR: this.options.baseDir, GEMINICODE_RIPGREP: ripgrep ?? '' },
 			stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
 			serialization: 'advanced',
 		});

@@ -18,7 +18,7 @@ import { renderMath } from './math';
 import { mathPlugin } from './mathRule';
 import { enhanceMarkdown } from './markdownExtras';
 import { button, copyButton, el, icon, onIntent, setLabel, setTip } from './dom';
-import { teamToolTitle } from '../src/acp/toolLinks';
+import { indexToolTitle, teamToolTitle } from '../src/acp/toolLinks';
 import { toolLogo } from './toolLogos';
 import { toneOf } from './repoTones';
 import { thoughtPreview } from './streaming';
@@ -356,14 +356,16 @@ function renderToolCall(item: ItemOf<'toolCall'>, toggleToolCall: ToggleToolCall
 	}
 	// "Read src/cart/total.ts": the verb in the text colour, what it acted on quieter.
 	// A team tool's call ("Read ACME-412") shows its tool's logo.
+	// An index call ("Search code for "discount code"") reads as a search.
 	const team = teamToolTitle(item.title, strings.teamToolVerbs);
-	const [verb, target] = splitToolTitle(team?.title ?? item.title);
+	const indexed = team ? undefined : indexToolTitle(item.title, strings.indexToolVerbs);
+	const [verb, target] = splitToolTitle(team?.title ?? indexed ?? item.title);
 	const title = el('span', 'tool-title');
 	title.append(el('span', 'tool-verb', verb));
 	if (target) {
 		title.append(` ${target}`);
 	}
-	const kindIcon = team ? toolLogo(team.tool, 14) : icon(toolKindIcon(item.toolKind));
+	const kindIcon = team ? toolLogo(team.tool, 14) : icon(indexed ? 'search' : toolKindIcon(item.toolKind));
 	kindIcon.classList.add('kind-icon');
 	row.append(kindIcon, title);
 	row.title = item.title;

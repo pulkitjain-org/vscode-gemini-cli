@@ -8,25 +8,11 @@
 // a session that starts before any index exists still gets answers.
 
 import { execFile } from 'node:child_process';
-import { promises as fs } from 'node:fs';
-import * as path from 'node:path';
 import { listFiles } from '../folderFiles';
 import { queryTerms, type SearchHit, type SearchResult } from './query';
 
 const timeoutMs = 5_000;
 const maxOutputBytes = 2 * 1024 * 1024;
-
-/** The ripgrep that ships with the app, under `appRoot`, unpacked from its archive in a release build. */
-export async function appRipgrep(appRoot: string, platform: string = process.platform, arch: string = process.arch): Promise<string | undefined> {
-	const binary = platform === 'win32' ? 'rg.exe' : 'rg';
-	for (const modules of ['node_modules.asar.unpacked', 'node_modules']) {
-		const candidate = path.join(appRoot, modules, '@vscode', 'ripgrep-universal', 'bin', `${platform}-${arch}`, binary);
-		if (await fs.access(candidate).then(() => true, () => false)) {
-			return candidate;
-		}
-	}
-	return undefined;
-}
 
 /** Lines matching any of the query's words, grouped into hits of nearby lines, best-covered files first. */
 export async function ripgrepSearch(rg: string | undefined, root: string, query: string, limit: number, glob?: string): Promise<SearchResult> {

@@ -3,6 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { validateProjectId } from './acp/projectId';
 import { filesToAttach, selectionsToAttach } from './host/addToChat';
@@ -41,6 +42,7 @@ import { TeamStatusBar } from './host/teamStatusBar';
 import { AuditPage } from './host/auditPage';
 import { AuditStatusBar } from './host/auditStatusBar';
 import { WorkspaceFileIndex } from './host/workspaceFiles';
+import { WorkspaceIndex } from './host/workspaceIndex';
 import { disposeGitIgnore } from './host/workspaceFileSystem';
 
 /** Finishes the writes that must outlive the window; set by activate. */
@@ -123,8 +125,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	agentsView.browser = browserTools;
 	const teamTools = new TeamConnections(context, String(context.extension.packageJSON.version ?? ''), log);
 	agentsView.teamTools = teamTools;
-	// A tool connecting, or the browser turned on or off, changes what a new session gets: the spare follows.
+	// The indexer runs from indexer.js beside this file, in out/ or dist/.
+	const workspaceIndex = new WorkspaceIndex({ script: path.join(__dirname, 'indexer.js'), version: String(context.extension.packageJSON.version ?? ''), log });
+	agentsView.index = workspaceIndex;
+	// A tool connecting, or the browser or the index turned on or off, changes what a new session gets: the spare follows.
 	context.subscriptions.push(
+		workspaceIndex,
+		workspaceIndex.onDidChangeEnabled(() => agentsView.refreshSpare()),
 		teamTools.onDidChange(() => agentsView.refreshSpare()),
 		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.browser`) && agentsView.refreshSpare()),
 	);

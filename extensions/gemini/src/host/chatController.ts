@@ -2171,6 +2171,14 @@ export class ChatController implements vscode.Disposable {
 			pasteLink: vscode.l10n.t("paste link"),
 			toolChipLoading: vscode.l10n.t("Reading\u2026"),
 			openToolItem: vscode.l10n.t("Open {0}"),
+			indexToolVerbs: {
+				searchCode: vscode.l10n.t("Search code for {0}"),
+				findSymbol: vscode.l10n.t("Look up {0}"),
+				related: vscode.l10n.t("Find files related to {0}"),
+				outline: vscode.l10n.t("Outline {0}"),
+				outlineFolder: vscode.l10n.t("Outline the folder"),
+				searchDocs: vscode.l10n.t("Search docs for {0}"),
+			},
 			teamToolVerbs: {
 				read: vscode.l10n.t("Read {0}"),
 				search: vscode.l10n.t("Search Jira for {0}"),

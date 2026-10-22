@@ -12,6 +12,8 @@ run({
 	platform: 'node',
 	entryPoints: {
 		'extension': path.join(srcDir, 'extension.ts'),
+		// The indexer process (src/acp/index), forked on first use; none of it loads in the extension host.
+		'indexer': path.join(srcDir, 'indexer.ts'),
 	},
 	srcDir,
 	outdir: outDir,

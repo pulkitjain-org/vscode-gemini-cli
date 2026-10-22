@@ -12,6 +12,7 @@ import { AgentCommand, cliHeapSizeMb, includeDirectoryArgs, resolveAgentCommand 
 import { CliResolution, resolveCli } from '../acp/cliResolution';
 import { buildAgentEnv } from '../acp/env';
 import { ProjectIdProblem, ResolvedProjectId, resolveProjectId, validateProjectId } from '../acp/projectId';
+import { indexServerName } from '../acp/indexMcp';
 import { projectServerName } from '../acp/projectMcp';
 import { allowlistWith, settingsFiles } from '../acp/projectToolsCheck';
 import { confirmToolGroups, teamToolsServerName } from '../acp/teamTools';
@@ -87,7 +88,7 @@ export function getApprovalPolicy(): ApprovalPolicy {
 }
 
 /** GeminiCode's own MCP servers, which the CLI always loads unless a settings file excludes them. */
-const ownServers = [teamToolsServerName, projectServerName, 'geminicode-browser'];
+const ownServers = [teamToolsServerName, projectServerName, 'geminicode-browser', indexServerName];
 
 /**
  * `--allowed-mcp-server-names` when `gemini.mcp.allowedServers` names any server: the CLI then

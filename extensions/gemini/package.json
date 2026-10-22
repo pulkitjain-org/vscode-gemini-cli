@@ -970,6 +970,76 @@
           "scope": "machine",
           "markdownDescription": "%configuration.browser.keepSignIns%"
         },
+        "gemini.index.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "markdownDescription": "%configuration.index.enabled%"
+        },
+        "gemini.index.buildOn": {
+          "type": "string",
+          "enum": [
+            "agentStart",
+            "workspaceOpen",
+            "manual"
+          ],
+          "enumDescriptions": [
+            "%configuration.index.buildOn.agentStart%",
+            "%configuration.index.buildOn.workspaceOpen%",
+            "%configuration.index.buildOn.manual%"
+          ],
+          "default": "agentStart",
+          "scope": "machine",
+          "markdownDescription": "%configuration.index.buildOn%"
+        },
+        "gemini.index.exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "resource",
+          "markdownDescription": "%configuration.index.exclude%"
+        },
+        "gemini.index.maxFileSizeKb": {
+          "type": "number",
+          "default": 1024,
+          "minimum": 16,
+          "maximum": 16384,
+          "scope": "machine",
+          "markdownDescription": "%configuration.index.maxFileSizeKb%"
+        },
+        "gemini.docs.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "markdownDescription": "%configuration.docs.enabled%"
+        },
+        "gemini.docs.allowedDomains": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "machine",
+          "markdownDescription": "%configuration.docs.allowedDomains%"
+        },
+        "gemini.docs.refresh": {
+          "type": "string",
+          "enum": [
+            "daily",
+            "weekly",
+            "manual"
+          ],
+          "enumDescriptions": [
+            "%configuration.docs.refresh.daily%",
+            "%configuration.docs.refresh.weekly%",
+            "%configuration.docs.refresh.manual%"
+          ],
+          "default": "daily",
+          "scope": "machine",
+          "markdownDescription": "%configuration.docs.refresh%"
+        },
         "gemini.agent.startEarly": {
           "type": "boolean",
           "default": true,
