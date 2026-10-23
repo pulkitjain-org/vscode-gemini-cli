@@ -32,6 +32,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { stripTypeScriptTypes } from 'node:module';
 import { docGroups, docPages, featureIndex, markdownForCopy, renderMarkdown, type DocPage, type RenderedDoc } from './docs.mts';
+import { featureMedia, featurePages, renderFeature } from './features.mts';
 
 /** What `latest.json` holds. The app reads `version`, `url` and `notesUrl`; keep those stable. */
 export interface LatestRelease {
@@ -107,7 +108,8 @@ async function main(outDir: string | undefined, mode: string | undefined): Promi
 	fs.writeFileSync(path.join(outDir, 'notes.html'), renderNotesPage(latest, notesHtml, repo));
 	fs.writeFileSync(path.join(outDir, 'notes.md'), notesMarkdown(latest, release?.body));
 	writeDocs(outDir, latest, repo, pageUrl, mediaDir);
-	for (const file of ['site.css', 'landing.css', 'docs.css']) {
+	writeFeatures(outDir, latest, repo, mediaDir);
+	for (const file of ['site.css', 'landing.css', 'docs.css', 'features.css']) {
 		fs.copyFileSync(path.join(siteDir, file), path.join(outDir, file));
 	}
 	for (const script of ['page', 'landing', 'docs-page']) {
@@ -267,6 +269,7 @@ const icons = {
 	'search': '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
 	'copy': '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
 	'check': '<path d="M20 6 9 17l-5-5"/>',
+	'chevron-down': '<path d="m6 9 6 6 6-6"/>',
 	'chevron-right': '<path d="m9 18 6-6-6-6"/>',
 	'chevrons-up-down': '<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>',
 	'menu': '<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>',
@@ -278,6 +281,26 @@ const icons = {
 	'shield-check': '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
 	'plug': '<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>',
 } as const;
+
+/** Docs pages that became part of another, by old slug, with where they went. */
+const movedDocs: Readonly<Record<string, string>> = {
+	'workspace-index': 'agents.html#workspace-index-and-docs',
+};
+
+function redirect(to: string): string {
+	return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Moved</title>
+<meta name="robots" content="noindex">
+<link rel="canonical" href="${attr(to)}">
+<meta http-equiv="refresh" content="0; url=${attr(to)}">
+</head>
+<body><p>This page moved to <a href="${attr(to)}">${attr(to)}</a>.</p></body>
+</html>
+`;
+}
 
 function sprite(): string {
 	return `<svg width="0" height="0" style="position:absolute" aria-hidden="true">${Object.entries(icons).map(([name, body]) => `<symbol id="i-${name}" viewBox="0 0 24 24">${body}</symbol>`).join('')}</svg>`;
@@ -306,7 +329,7 @@ function favicon(): string {
 	return `<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg"><rect x="16" y="16" width="224" height="224" rx="54" fill="#F4F2EC" stroke="rgba(22,21,15,.18)" stroke-width="6"/><rect x="50" y="50" width="156" height="156" rx="36" fill="none" stroke="#16150F" stroke-width="20"/><circle cx="128" cy="128" r="54" fill="none" stroke="#16150F" stroke-width="14"/><path d="M128 92Q128 128 164 128Q128 128 128 164Q128 128 92 128Q128 128 128 92Z" fill="#16150F"/></svg>\n`;
 }
 
-type PageKind = 'home' | 'notes' | 'docs';
+type PageKind = 'home' | 'notes' | 'docs' | 'feature';
 
 function themeSwitch(): string {
 	return `<div class="seg" role="group" aria-label="Site theme">
@@ -323,8 +346,8 @@ function themeSwitch(): string {
  */
 function layout(title: string, body: string, c: Context, current: PageKind, root = '', description = 'GeminiCode is a VS Code fork with the Gemini CLI built in. Run Gemini agents side by side and review every change they make. Download it for Mac.'): string {
 	const home = current === 'home' ? '' : `${root}./`;
-	const style = { home: 'landing.css', notes: 'docs.css', docs: 'docs.css' }[current];
-	const script = { home: 'landing.js', notes: 'page.js', docs: 'docs-page.js' }[current];
+	const style = { home: 'landing.css', notes: 'docs.css', docs: 'docs.css', feature: 'features.css' }[current];
+	const script = { home: 'landing.js', notes: 'page.js', docs: 'docs-page.js', feature: 'page.js' }[current];
 	// The stylesheets go inline, so the first paint waits for nothing but the HTML; their font
 	// paths are relative to the site's root, so a page in docs/ gets them rewritten.
 	const css = ['site.css', style].map(file => fs.readFileSync(path.join(siteDir, file), 'utf8').replace(/^\/\*[\s\S]*?\*\/\n\n/, '').replace(/url\(fonts\//g, `url(${root}fonts/`)).join('\n');
@@ -333,9 +356,12 @@ function layout(title: string, body: string, c: Context, current: PageKind, root
 		? `<a class="btn primary small dl" href="${attr(c.dmg.url)}">${icon('download')}<span class="dl-label">Download<span class="long"> for Mac</span></span></a>`
 		: `<a class="btn primary small" href="${attr(c.repoUrl)}/releases">Releases</a>`;
 	const links = current === 'home'
-		? [['#agents', 'Agents'], ['#review', 'Review'], ['#projects', 'Projects'], ['docs/', 'Docs'], [c.repoUrl, 'GitHub']]
+		? [['docs/', 'Docs'], ['notes.html', 'Releases'], [c.repoUrl, 'GitHub']]
 		: [[`${root}docs/`, 'Docs', current === 'docs'], [`${root}notes.html`, 'Releases', current === 'notes'], [c.repoUrl, 'GitHub']];
 	const navLinks = links.map(([href, label, on]) => `<a href="${attr(String(href))}"${on ? ' aria-current="page"' : ''}>${text(String(label))}</a>`).join('\n\t\t\t\t');
+	const features = (cls: string) => featurePages.map(page => `<a class="${cls}" href="${root}features/${page.slug}.html"${current === 'feature' && title.startsWith(page.name) ? ' aria-current="page"' : ''}>${text(page.name)}${cls === 'fm-item' ? `<small>${text(page.summary)}</small>` : ''}</a>`).join('');
+	// The site's own drop-down, drawn in its theme: a disclosure button and a panel (page.mts opens it).
+	const featureMenu = `<div class="fmenu"><button type="button" class="fm-btn" aria-expanded="false" aria-controls="fm-panel"${current === 'feature' ? ' data-current' : ''}>Features${icon('chevron-down')}</button><div class="fm-panel" id="fm-panel" hidden>${features('fm-item')}</div></div>`;
 	const news = current === 'home' ? `
 		<div class="news"><div class="wrap"><span class="k">Preview</span><a href="#projects">Projects: one chat, many threads, each on its own branch →</a></div></div>` : '';
 	const search = current === 'docs' ? `
@@ -358,7 +384,7 @@ ${css}
 	<link rel="modulepreload" href="${root}page.js">`}
 	<script type="module" src="${root}${script}"></script>
 </head>
-<body class="${current === 'docs' || current === 'notes' ? 'docs-ground' : 'home'}">
+<body class="${current === 'docs' || current === 'notes' ? 'docs-ground' : current === 'feature' ? 'home feature-page' : 'home'}">
 	${sprite()}
 	<div class="frame l" aria-hidden="true"></div>
 	<div class="frame r" aria-hidden="true"></div>
@@ -366,6 +392,7 @@ ${css}
 		<div class="wrap nav">
 			<a class="brand" href="${root}./">${logo(26)}<span class="wm">GeminiCode</span>${brandTail}</a>
 			<nav class="links" aria-label="Site">
+				${featureMenu}
 				${navLinks}
 			</nav>
 			<div class="right">${search}
@@ -377,6 +404,7 @@ ${css}
 		<nav class="menu" id="menu" aria-label="Site, on phones">
 			<div class="wrap">
 				${navLinks}
+				${features('fm-phone')}
 				${current === 'home' ? '' : `<a href="${home}">Home</a>`}
 				${c.dmg ? `<a class="dl" href="${attr(c.dmg.url)}">Download for Mac</a>` : ''}${current === 'docs' ? `
 				<button type="button" class="search-btn" aria-label="Search the docs">${icon('search')}<span>Search docs</span><kbd>/</kbd></button>` : ''}
@@ -401,7 +429,7 @@ function siteFooter(c: Context, root: string): string {
 				<a class="brand" href="${root}./">${logo(24)}<span class="wm">GeminiCode</span></a>
 				<p>A fork of Code - OSS with the Gemini CLI built in as its coding agent.</p>
 			</div>
-			<div class="col"><span class="label">Product</span><a href="${home}#install">Download</a><a href="${root}notes.html">Release notes</a><a href="${root}docs/#all-features">Features</a></div>
+			<div class="col"><span class="label">Product</span><a href="${home}#install">Download</a><a href="${root}notes.html">Release notes</a>${featurePages.map(page => `<a href="${root}features/${page.slug}.html">${text(page.name)}</a>`).join('')}<a href="${root}docs/#all-features">Every feature</a></div>
 			<div class="col"><span class="label">Docs</span><a href="${root}docs/getting-started.html">Getting started</a><a href="${root}docs/agents.html">Agents</a><a href="${root}docs/review.html">Review and safety</a><a href="${root}docs/shortcuts.html">Keyboard shortcuts</a></div>
 			<div class="col"><span class="label">Project</span><a href="${attr(c.repoUrl)}">GitHub</a><a href="${attr(c.repoUrl)}/issues">Issues</a><a href="${attr(c.repoUrl)}/security/advisories/new">Report a vulnerability</a><a href="${attr(c.repoUrl)}/blob/main/gemini/docs/ARCHITECTURE.md">Architecture</a></div>
 		</div>
@@ -664,6 +692,19 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 				<h3 class="serif s">Enhance prompt</h3>
 				<p>Plain words in, a precise prompt out. Review it, or Revert.</p>
 			</div>
+			<div class="tile s12 index-tile reveal" data-reveal>
+				<div class="txt">
+					<h3 class="serif">Finds the code in one step.</h3>
+					<p>Each workspace keeps a local index of its code, kept current as files and branches change. Agents ask it for code, symbols, related files and a map of the repository, and search the docs you attach, instead of reading file by file. Nothing leaves your Mac.</p>
+					<a class="more" href="features/agents.html">How agents find code ${icon('arrow-right')}</a>
+				</div>
+				<div class="mock list" aria-hidden="true">
+					<div class="r on"><span class="n">code_search <span class="q">"retry upload backoff"</span></span><span class="t">3 results · 41 ms</span></div>
+					<div class="r"><span class="n">src/upload.ts:4</span><span class="t">uploadInvoice</span></div>
+					<div class="r"><span class="n">test/upload.test.ts:7</span><span class="t">retries a 503</span></div>
+					<div class="r"><span class="n">find_symbol <span class="q">uploadInvoice</span></span><span class="t">2 callers</span></div>
+				</div>
+			</div>
 		</div>
 	</section>
 
@@ -673,7 +714,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 				<span class="label reveal" data-reveal>Review and safety</span>
 				<h2 class="h2 serif reveal head" id="review-h" data-reveal>Nothing lands<br><em>without you.</em></h2>
 				<p class="reveal" data-reveal>Default mode asks before every edit and command. Proposed changes open in a diff first. Keep or undo each one in place, or rewind the whole conversation to before any message, files included.</p>
-				<a class="more reveal" data-reveal href="docs/review.html">How approvals work ${icon('arrow-right')}</a>
+				<a class="more reveal" data-reveal href="features/chat-and-review.html">How chat and review work ${icon('arrow-right')}</a>
 			</div>
 			<div class="stack" data-stagger>
 				<div class="row reveal" data-reveal>
@@ -707,7 +748,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 						<div class="thread" style="--i: 1"><span class="dot warn"></span><span class="n">Thread · Settings UI</span><span class="m w">Approve plan</span></div>
 						<div class="thread" style="--i: 2"><span class="dot spin"></span><span class="n">Thread · Docs</span><span class="m">2 repositories</span></div>
 					</div>
-					<a class="more" href="docs/projects.html">How Projects work ${icon('arrow-right')}</a>
+					<a class="more" href="features/projects.html">How Projects work ${icon('arrow-right')}</a>
 				</div>
 				<div class="pic">
 					${shot('project-threads', available, 'Thread cards in a project chat, with the side panel counting threads by state')}
@@ -726,6 +767,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 				<div class="txt">
 					<h3 class="serif">A browser your agents can use.</h3>
 					<p>Agents open your app, click, type and read the console. Point at an element and <b>Add to Gemini</b>, or pin notes on the page and send them as one list.</p>
+					<a class="more" href="features/browser.html">The browser ${icon('arrow-right')}</a>
 				</div>
 				<div class="frame-b">
 					<span class="add" aria-hidden="true">${icon('pointer')}Add to Gemini</span>
@@ -734,14 +776,14 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 			</div>
 			<div class="tile s6 team reveal" data-reveal>
 				<h3 class="serif">From ticket to merge request.</h3>
-				<p>Sign in to your team's tools with your own account. Start an agent from a ticket, open the merge request, fix the pipeline and the comments, and let Gemini review the result against the ticket.</p>
+				<p>Sign in to your team's tools with your own account. Start an agent from a ticket, open the merge request and fix the pipeline and the comments. Review a teammate's merge request with Gemini's draft, your own comments and suggested changes, then post it in one go.</p>
 				<div class="chips"><span class="chip">Jira</span><span class="chip">GitLab</span><span class="chip">SonarQube</span><span class="chip">Snyk</span><span class="chip">Figma</span></div>
 				<div class="mock mr" aria-hidden="true">
 					<div class="r"><span class="k">ACME-412</span><span class="n">Upload retries</span><span class="s">!412 · passed</span></div>
 					<div class="r on"><span class="k">ACME-419</span><span class="n">Settings rename</span><span class="s w">2 comments</span></div>
 					<div class="r"><span class="k">SONAR</span><span class="n">New code</span><span class="s">0 new issues</span></div>
 				</div>
-				<a class="more" href="docs/team-tools.html">Set up your tools ${icon('arrow-right')}</a>
+				<a class="more" href="features/team-tools.html">From ticket to merge ${icon('arrow-right')}</a>
 			</div>
 		</div>
 	</section>
@@ -912,6 +954,24 @@ const numberWords = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven'
  * Writes `docs/`: a page per guide file with its Markdown beside it, the docs
  * home, `all.md` (every page in one file) and `search.json`.
  */
+// ---- Feature pages ----
+
+/** features/<slug>.html, one per large part of GeminiCode (features.mts holds what they say). */
+function writeFeatures(outDir: string, latest: LatestRelease, repo: string, mediaDir: string): void {
+	const c = context(latest, repo);
+	const dir = path.join(outDir, 'features');
+	fs.mkdirSync(dir, { recursive: true });
+	const media = filesUnder(mediaDir);
+	for (const page of featurePages) {
+		const description = `${page.headline[0]} ${page.headline[1]} ${page.lead}`;
+		fs.writeFileSync(path.join(dir, `${page.slug}.html`), layout(`${page.name} · GeminiCode`, renderFeature(page, '../', media, icon('arrow-right')), c, 'feature', '../', description));
+	}
+	const missing = featureMedia().filter(m => !media.has(`${m.name}-dark.webp`) || !media.has(`${m.name}-light.webp`)).map(m => m.name);
+	if (missing.length) {
+		console.log(`Feature pages still to get media: ${[...new Set(missing)].join(', ')}.`);
+	}
+}
+
 function writeDocs(outDir: string, latest: LatestRelease, repo: string, pageUrl: string, mediaDir: string): void {
 	const c = context(latest, repo);
 	const docsDir = path.join(outDir, 'docs');
@@ -1019,6 +1079,10 @@ ${doc.html}
 		<div class="grid3">${features}
 		</div>
 	</section>${searchDialog()}`;
+	// Pages folded into others keep their old address: a small page sends the visitor on.
+	for (const [slug, to] of Object.entries(movedDocs)) {
+		fs.writeFileSync(path.join(docsDir, `${slug}.html`), redirect(to));
+	}
 	fs.writeFileSync(path.join(docsDir, 'index.html'), layout('GeminiCode docs', home, c, 'docs', '../', 'How to use GeminiCode: agents, chat, review, projects, the browser, team tools and settings.'));
 	fs.writeFileSync(path.join(docsDir, 'all.md'), `# GeminiCode docs\n\nFrom ${pageUrl}docs/\n\n` + copies.map(copy => copy.replace(/^(#+) /gm, '#$1 ')).join('\n'));
 	fs.writeFileSync(path.join(docsDir, 'search.json'), JSON.stringify(search));

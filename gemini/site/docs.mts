@@ -33,13 +33,12 @@ export const docGroups: readonly { readonly name: string; readonly pages: readon
 	},
 	{
 		name: 'Using GeminiCode', pages: [
-			{ slug: 'agents', title: 'Agents', icon: 'bot', summary: 'Agents and Editor modes, Home, branches and files beside each agent.', topics: ['Home', 'Agents mode', 'Own branch', 'Follow the agent', 'Notifications'] },
+			{ slug: 'agents', title: 'Agents', icon: 'bot', summary: 'Agents and Editor modes, Home, branches, files beside each agent, and the workspace index and docs they search.', topics: ['Home', 'Agents mode', 'Own branch', 'Follow the agent', 'Workspace index', 'Docs'] },
 			{ slug: 'chat', title: 'Chat and prompting', icon: 'message', summary: 'The + menu, context, slash commands, Enhance, Plan mode and replies.', topics: ['+ menu', '@ context', 'Slash commands', 'Enhance', 'Plan mode', 'Usage'] },
 			{ slug: 'review', title: 'Review and safety', icon: 'shield-check', summary: 'Approvals, Keep and Undo, Rewind, inline edit and Review My Changes.', topics: ['Approval modes', 'Keep and Undo', 'Rewind', 'Inline edit', 'Review My Changes'] },
 			{ slug: 'projects', title: 'Projects', icon: 'network', summary: 'A coordinator and its threads, across one or more repositories.', topics: ['Coordinator', 'Threads', 'Plan first', 'Repositories', 'Memory'] },
 			{ slug: 'browser', title: 'Browser', icon: 'globe', summary: 'Add to Gemini, notes on the page, console and network.', topics: ['Add to Gemini', 'Notes', 'Shared pages', 'Console'] },
-			{ slug: 'team-tools', title: 'Team tools', icon: 'plug', summary: 'Jira, GitLab, SonarQube, Snyk and Figma, and the Home dashboard.', topics: ['Connections', 'Home', 'Ticket to MR', 'Checks', 'Review', 'Audit log'] },
-			{ slug: 'workspace-index', title: 'Workspace index and docs', icon: 'scan-search', summary: 'What agents can look up in one step: each workspace\'s index and the docs you attach.', topics: ['Agent tools', 'Workspaces', 'Docs', 'Suggestions', 'Settings'] },
+			{ slug: 'team-tools', title: 'Team tools', icon: 'plug', summary: 'Jira, GitLab, SonarQube, Snyk and Figma, and the Home dashboard.', topics: ['Connections', 'Home', 'Ticket to MR', 'Ticket comments', 'Review', 'Audit log'] },
 		],
 	},
 	{
@@ -65,6 +64,8 @@ export const featureIndex: readonly { readonly name: string; readonly items: rea
 			{ icon: 'columns-2', title: 'Files beside each agent', body: 'What an agent opens goes in a group of its own beside its chat.', href: 'agents.html#files-beside-each-agent' },
 			{ icon: 'git-branch', title: 'Agents on their own branch', body: 'A copy of the repository on a new branch. Merge Back when done.', href: 'agents.html#agents-on-their-own-branch' },
 			{ icon: 'eye', title: 'Follow the agent', body: 'Each file the agent reads or edits opens at its line.', href: 'agents.html#follow-the-agent' },
+			{ icon: 'scan-search', title: 'Workspace index', body: 'Agents find code, symbols and related files in one step, from a local index.', href: 'agents.html#workspace-index-and-docs' },
+			{ icon: 'book', title: 'Attach documentation', body: 'Agents search a library\'s docs you attach instead of the web.', href: 'agents.html#attach-documentation' },
 			{ icon: 'history', title: 'Pick up a CLI session', body: 'Continue a Gemini CLI session, terminal ones too.', href: 'agents.html#pick-up-a-gemini-cli-session' },
 			{ icon: 'bell', title: 'Notifications', body: 'A Mac notification and a Dock badge when an agent needs you.', href: 'agents.html#notifications-and-keeping-awake' },
 		],
@@ -115,7 +116,8 @@ export const featureIndex: readonly { readonly name: string; readonly items: rea
 			{ icon: 'plug', title: 'Connections', body: 'Sign in to Jira, GitLab, SonarQube, Snyk and Figma with your own account.', href: 'team-tools.html#connect-your-tools' },
 			{ icon: 'layout-dashboard', title: 'Home dashboard', body: 'Your tickets, merge requests and checks on one page.', href: 'team-tools.html#home' },
 			{ icon: 'git-merge', title: 'Ticket to merge request', body: 'Start from a ticket, open the merge request, fix CI and comments.', href: 'team-tools.html#from-ticket-to-merge-request' },
-			{ icon: 'scan-search', title: 'Review a merge request', body: 'Gemini reviews it against the ticket and drafts your comments.', href: 'team-tools.html#review-a-merge-request' },
+			{ icon: 'message-square', title: 'Comment on a ticket', body: 'Markdown, @mentions and attachments, posted to Jira as you.', href: 'team-tools.html#comment-on-a-ticket' },
+			{ icon: 'scan-search', title: 'Review a merge request', body: 'Gemini drafts the review; add your own comments, replies and suggestions, then post.', href: 'team-tools.html#review-a-merge-request' },
 		],
 	},
 	{

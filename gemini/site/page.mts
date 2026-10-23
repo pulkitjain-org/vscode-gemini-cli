@@ -113,6 +113,52 @@ if (menuButton && menu) {
 	});
 }
 
+// ---- The Features menu: opens on click, closes on Escape, a click outside or leaving it ----
+
+const featureButton = document.querySelector<HTMLButtonElement>('.fm-btn');
+const featurePanel = document.querySelector<HTMLElement>('.fm-panel');
+if (featureButton && featurePanel) {
+	const items = () => [...featurePanel.querySelectorAll<HTMLAnchorElement>('a')];
+	const show = (open: boolean, focus = false) => {
+		featurePanel.hidden = !open;
+		featureButton.setAttribute('aria-expanded', String(open));
+		if (open && focus) {
+			items()[0]?.focus();
+		}
+	};
+	featureButton.addEventListener('click', () => show(featurePanel.hidden));
+	featureButton.addEventListener('keydown', event => {
+		if (event.key === 'ArrowDown') {
+			event.preventDefault();
+			show(true, true);
+		}
+	});
+	featurePanel.addEventListener('keydown', event => {
+		const list = items();
+		const at = list.indexOf(document.activeElement as HTMLAnchorElement);
+		if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+			event.preventDefault();
+			list[(at + (event.key === 'ArrowDown' ? 1 : list.length - 1)) % list.length]?.focus();
+		}
+	});
+	document.addEventListener('keydown', event => {
+		if (event.key === 'Escape' && !featurePanel.hidden) {
+			show(false);
+			featureButton.focus();
+		}
+	});
+	document.addEventListener('click', event => {
+		if (!featurePanel.hidden && !(event.target as HTMLElement).closest('.fmenu')) {
+			show(false);
+		}
+	});
+	featurePanel.addEventListener('focusout', event => {
+		if (!(event.relatedTarget as HTMLElement | null)?.closest('.fmenu')) {
+			show(false);
+		}
+	});
+}
+
 // ---- Reveals: each element enters once, siblings 60ms apart, capped at six ----
 
 const revealed = [...document.querySelectorAll<HTMLElement>('[data-reveal]')];

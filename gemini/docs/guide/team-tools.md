@@ -46,14 +46,14 @@ A checked-in `.gemini/geminicode-tools.json` saves everyone typing addresses. It
 Cards follow:
 
 - **Agents.**
-- **My tickets**: every open ticket assigned to you. The current sprint's come first, under the sprint's name with how many are done, then the rest under **Not in this sprint**. Each has **Start**, **Move**, **Log Time** and **Reassign**.
+- **My tickets**: every open ticket assigned to you. The current sprint's come first, under the sprint's name with how many are done, then the rest under **Not in this sprint**. Each has **Start**, and in its menu **Add Comment…**, **Log Time…**, **Move…** and **Reassign…**.
 - **Merge requests**: **Pending on me** (asked to review, or assigned to finish) and **Mine**, each with its pipeline and approvals; one that can merge shows **Merge…**.
 - **Quality** on the release branch: the SonarQube gate and Snyk, with **Fix**.
 - **Gemini.**
 
 **Unfinished** appears only after GeminiCode quit while something was running: a flow tab (Move, Open Merge Request, Review) to **Reopen** from the same inputs or **Discard**, and a write whose result never came back, to check in the tool before doing it again (**Mark as Checked** once you have). Nothing is redone on its own. A chat whose agent was working when the app quit says so under the last message.
 
-A card shows its first few items. When it has more, **Show All** opens the whole list in a popup, with a filter for long lists: click an item to open it, as on the card. A ticket or merge request opens in your browser and leaves the list open; an agent opens in its tab.
+A card shows its first few items. When it has more, **Show All** opens the whole list in a popup, with a filter for long lists: click an item to open it, as on the card. In the merge requests' popup each row also names its repository after the `!number` (point at it for the full `group/repo` path), and the filter matches it, so merge requests with the same title in different repositories stay apart. A ticket or merge request opens in your browser and leaves the list open; an agent opens in its tab.
 
 **Customize** hides and reorders cards and picks the release branch. Home shows the last data at once and refreshes each tool in the background; with the VPN off, VPN-only cards keep their last results, dimmed. Turn off opening it at start-up with `gemini.home.openOnStartup`; <kbd>⇧⌘H</kbd> or **Gemini: Home** brings it back.
 
@@ -65,7 +65,7 @@ Paste a Jira key or link, a GitLab merge request or issue link, or a Figma link 
 
 1. **Start Agent on a ticket** (on Home, or **Gemini: Start Agent on Jira Ticket**) starts an agent on its own branch named after the ticket. It reads the ticket and plans first, and offers to move the ticket to In Progress.
 2. **Run Checks** runs Snyk on dependencies and code, and SonarQube's new-code issues for the agent's branch, each finding with **Fix**, or **Fix All with This Agent**. **Run Checks on a Branch…** (on Home, or from the Command Palette) does the same for any branch before a merge request exists: the branch checked out here, an agent's, a local one or one on origin. A branch that isn't checked out gets a checkout of its own under `~/.geminicode/worktrees/<repository>/checks/`, with your `gemini.agents.worktreeSetup` command run in it once, and later runs reuse it; your own checkout never moves. SonarQube's gate comes from the server's last analysis of the branch, so it needs one push. With no agent on the branch, **Fix** starts one in that checkout with the findings as its first prompt.
-3. **Open Merge Request** (beside Merge back in Changes) asks for the target branch, with release branches first and the one matching the ticket's fix version suggested. Then the title, a description Gemini drafts that you edit, the files to attach, reviewers, and draft and delete-branch options. It pushes the branch, opens the merge request and offers to move the ticket.
+3. **Open Merge Request** (beside Merge back in Changes) opens a page for the merge request. **Merge into** is a searchable menu of the repository's branches: **Suggested** (the release branch matching the ticket's fix version, or the project's default), **Recently used here**, **Release branches** and **Other branches**. A target that is a feature branch, not `main`, `develop` or a release, is flagged with how many commits and files it is behind. Then the title, a description Gemini drafts against that target that you edit (pick another target and it offers to write it again), the files to attach, reviewers, and draft and delete-branch options. It pushes the branch, opens the merge request and offers to move the ticket. On an agent that is reviewing someone else's merge request, the button points to that merge request instead, since the agent's branch is only a local copy for the review.
 4. **The merge request panel** in Changes shows the pipeline (failed jobs with **Fix**), the SonarQube gate, Snyk and open review threads. **Fix Pipeline and N Comments** sends them to the agent.
 5. **Merge.** The same panel lists the checks GitLab applies to the merge request, read live: open and not a draft, the pipeline, each approval rule by name with who approved, threads resolved, no conflicts, and GitLab's own verdict. **Merge…** is on only when every line holds. It asks once more, naming the commit it read and whether the commits are squashed and the branch deleted (the project's settings), and GitLab checks again when it merges, so a push in between makes it refuse rather than merge something else. Afterwards it offers to move the ticket. **Gemini: Merge Merge Request…** does the same for the agent in front, and **Merge…** on Home for a merge request listed as ready.
 
@@ -73,9 +73,35 @@ Paste a Jira key or link, a GitLab merge request or issue link, or a Figma link 
 
 **Move Ticket** shows the moves your Jira workflow allows, any field a move needs, and a comment Gemini drafts that you edit. **Log Time** records time spent, such as "1h 30m", on its own or with a move.
 
+## Comment on a ticket
+
+**Add Comment…** on a ticket (in its menu on Home) opens a comment box over Home, and the comment is posted to Jira as you, with Jira's own formatting:
+
+- Write in Markdown, or use the toolbar: bold, italic, strikethrough, code, links, bulleted, numbered and task lists, quotes, info panels (`> [!NOTE]`), code blocks, tables and dividers. **Preview** shows it as Jira will.
+- Type `@` to mention someone who can see the ticket; Jira notifies them.
+- Paste or drop files, or use **Attach Files**. They are uploaded to the ticket and linked from the comment.
+- **Who can see this comment in Jira** limits it to one of the project's roles or one of your groups. With `jira.commentVisibility` set in the team defaults, that role is picked for you.
+
+What you wrote stays in the box until Home closes, so closing it by mistake loses nothing. Agents' comments, and the comment a move posts, are plain text.
+
 ## Review a merge request
 
-**Review** on a merge request waiting for you checks it out in its own worktree, and Gemini reviews it against the ticket, listing findings with a draft comment each. Tick and edit them, then **Post Comments and Request Changes**, **Post Comments** or **Approve**.
+**Review** on a merge request waiting for you (on Home, or **Gemini: Review a Merge Request…**) starts a reviewer agent in a worktree of its own, which reads the merge request against its ticket. Its findings become the first comments of your review, each marked **Bug**, **Should fix**, **Question** or **Nit**. Your review is a draft: nothing reaches GitLab until you post it. Reviewing needs a clone of the repository open in GeminiCode, and your own checkout is never changed.
+
+The **Review** page lists the merge request's files, its threads and your draft.
+
+- **Your review.** Tick the comments to post, edit or delete any of them, and **Add Comment** for a general one. The page counts what is ticked: Gemini's, yours and replies in threads.
+- **Comments in the diff.** **Open in Diff** opens a file at the two commits GitLab compares, read from your clone. Gemini's comments sit on their lines, and the **+** in the gutter adds your own, on one line or on the lines you select. **Edit**, **Delete** and **Save** work in place. The page and the diff show the same draft, and the page can stay open beside the diff.
+- **Threads.** The merge request's GitLab threads show on their lines and under **Threads** on the page, open and resolved. **Reply**, **Resolve** and **Add Reply and Resolve** go into your draft and are posted with it. Gemini reads the open threads too, and can draft a reply for you to edit.
+- **Suggested changes.** Any line comment can carry a suggestion that the author applies in GitLab with one click. Write it with **Add Suggestion** (**Suggest Change** in the diff), keep the one Gemini wrote with its finding, or press **Ask Gemini to Suggest**.
+
+When you are done, **Post N Comments**, **Post N Comments and Approve** or **Post N Comments and Request Changes** posts the ticked comments as you, on their lines, against the version you reviewed. **Approve** on its own approves without comments.
+
+The draft is saved as it changes, so closing the page or quitting GeminiCode loses nothing. **Continue Review** on Home, the **Review !N** chip in the reviewer's chat and **Gemini: Open Merge Request Review** (reviews in progress, the last changed first) open it again where you left it. **Ask Gemini Again** reviews the merge request once more and replaces Gemini's comments you haven't touched; yours, and Gemini's that you edited, stay. **Start a New Review…** starts over without the draft, and **Discard Draft…** throws it away. A draft nobody opens for two weeks is removed.
+
+When the source branch gets new commits during a review, the page says so. **Refresh** reads the new version and moves each comment to its line there; a comment whose line changed is marked **Line changed** and unticked, so you check it before it is posted.
+
+The page shortens long paths and tells apart files with the same name, such as two `index.ts`.
 
 Clicking a merge request asks whether to open it in GeminiCode's browser or your default browser; **Always Use…** stops asking, and `gemini.team.openMergeRequestsIn` changes it later.
 

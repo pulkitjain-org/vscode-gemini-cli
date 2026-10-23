@@ -213,6 +213,19 @@ main { position: relative; z-index: 1; }
 .links { display: flex; gap: 2px; align-items: center; }
 .links a { font: 13px var(--mono); color: var(--muted); padding: 8px 12px; border-radius: 6px; transition: color 0.2s var(--ease-out), background-color 0.2s var(--ease-out); }
 .links a:hover, .links a[aria-current] { color: var(--fg); background: var(--line); }
+.fmenu { position: relative; }
+.fm-btn { display: inline-flex; align-items: center; gap: 6px; font: 13px var(--mono); color: var(--muted); padding: 8px 12px; border-radius: 6px; border: 0; background: transparent; cursor: pointer; transition: color 0.2s var(--ease-out), background-color 0.2s var(--ease-out); }
+.fm-btn .i { width: 14px; height: 14px; transition: transform 0.2s var(--ease-out); }
+.fm-btn:hover, .fm-btn[aria-expanded="true"], .fm-btn[data-current] { color: var(--fg); background: var(--line); }
+.fm-btn[aria-expanded="true"] .i { transform: rotate(180deg); }
+.docs-ground .fm-btn { font: 500 14px var(--sans); border-radius: 8px; padding: 8px 10px; }
+.fm-panel { position: absolute; top: calc(100% + 8px); left: -8px; z-index: 30; width: 340px; padding: 6px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--surface); box-shadow: var(--shadow-card); display: flex; flex-direction: column; gap: 2px; }
+.fm-panel[hidden] { display: none; }
+.links .fm-item { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 8px; font: 500 14px var(--sans); color: var(--fg); }
+.links .fm-item small { font: 12.5px/1.45 var(--sans); color: var(--muted); }
+.links .fm-item:hover, .links .fm-item:focus-visible, .links .fm-item[aria-current] { background: var(--line); }
+.menu .fm-phone { color: var(--muted); padding-left: 14px; }
+.menu .fm-phone[aria-current] { color: var(--fg); }
 .right { display: flex; align-items: center; gap: 10px; }
 .seg { display: inline-flex; align-items: center; gap: 2px; height: 36px; padding: 3px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--surface); }
 .seg button { width: 28px; height: 28px; border-radius: 6px; border: 0; background: transparent; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; transition: color 0.2s, background-color 0.25s var(--ease-out); }
