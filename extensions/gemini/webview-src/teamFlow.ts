@@ -253,7 +253,9 @@ function targetPicker(view: OpenMrView): HTMLElement {
 
 function openMr(view: OpenMrView): ReturnType<typeof dialog> {
 	const route = el('span', 'flow-route');
-	route.append(el('span', 'mono', view.source));
+	const source = el('span', 'mono flow-source', view.source);
+	setTip(source, view.source);
+	route.append(source);
 	if (!view.reviewOf) {
 		route.append(icon('arrow-right'), targetPicker(view));
 	}

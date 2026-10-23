@@ -461,6 +461,9 @@ export interface ChatStrings {
 	readonly gitlabItem: string;
 	readonly figmaFrame: string;
 	readonly pasteLink: string;
+	/** The + menu's row that opens the Open Merge Request page for the agent's branch, when GitLab is connected. */
+	readonly openMergeRequest: string;
+	readonly openMergeRequestTip: string;
 	/** Friendly titles for the geminicode-tools calls. */
 	readonly teamToolVerbs: TeamToolVerbs;
 	/** Friendly titles for the geminicode-index calls. */
@@ -609,6 +612,8 @@ export type FromWebview =
 	| { readonly type: 'workspaceAction'; readonly action: 'copyPath' | 'reveal' | 'showAgents' | 'addFolder'; readonly repo?: string }
 	/** The review chip: open the merge request review this agent works on. */
 	| { readonly type: 'openReview' }
+	/** The + menu: open the Open Merge Request page for this agent's branch. */
+	| { readonly type: 'openMergeRequest' }
 	/** Reopen saved session `id` in this chat. */
 	| { readonly type: 'restoreSession'; readonly id: string }
 	/** Pick from every saved session for the folder. */

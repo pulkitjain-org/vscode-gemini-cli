@@ -303,6 +303,18 @@ button.wide {
 
 .flow-menu-holder {
 	position: relative;
+	display: inline-flex;
+	min-width: 0;
+	max-width: 100%;
+}
+
+/* A long branch name ends in an ellipsis; its full name is in the tooltip. */
+.flow-source {
+	min-width: 0;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .flow-menu-holder .menu {
@@ -626,6 +638,7 @@ button.flow-target-button {
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
+	min-width: 0;
 	max-width: 100%;
 	padding: 2px 8px;
 	border: 1px solid var(--gemini-border-strong);
@@ -634,7 +647,12 @@ button.flow-target-button {
 	color: var(--vscode-foreground);
 }
 
+button.flow-target-button .codicon {
+	flex-shrink: 0;
+}
+
 button.flow-target-button .mono {
+	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
