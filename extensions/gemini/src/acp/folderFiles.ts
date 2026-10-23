@@ -18,6 +18,11 @@ const maxFiles = 50_000;
 const maxAgeMs = 30_000;
 const skippedDirectories = new Set(['.git', 'node_modules', 'out', 'dist', 'build', '.next', 'target', '__pycache__', '.venv', 'venv']);
 
+/** A glob for files named `name` anywhere in a folder, as a reply names a file: leading ./ and ../ go, and glob characters match any one character. */
+export function fileNamePattern(name: string): string {
+	return `**/${name.replace(/^(\.\.?\/)+/, '').replace(/[[\]{}*?!]/g, '?')}`;
+}
+
 export interface FileMatch {
 	readonly path: string;
 	/** Folder-relative, for display. */

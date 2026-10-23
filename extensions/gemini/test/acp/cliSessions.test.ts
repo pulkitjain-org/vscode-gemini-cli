@@ -8,7 +8,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSyn
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { carriedConversationNote, chatsFolder, findCliSession, listCliSessions, parseSessionFile, readCliConversation, readCliSession, readSessionTokens, replayUpdateCount, rewindCliSession } from '../../src/acp/cliSessions';
+import { carriedConversationNote, chatsFolder, findCliSession, isPassingFailure, listCliSessions, parseSessionFile, readCliConversation, readCliSession, readSessionTokens, reopenFailure, replayUpdateCount, rewindCliSession } from '../../src/acp/cliSessions';
 
 /** Written by gemini-cli 0.62 for `gemini -p "Fix the rounding in the cart total"`, paths changed. */
 const terminalSession = readFileSync(path.join(__dirname, '..', 'fixtures', 'cli-sessions', 'session-terminal.jsonl'), 'utf8');
@@ -257,5 +257,22 @@ describe('replayUpdateCount', () => {
 			{ type: 'gemini', content: [{ thought: true, text: 'x' }] },
 			{ type: 'info', content: 'not replayed' },
 		])).toBe(6);
+	});
+});
+
+describe('reopenFailure', () => {
+	it('tells why a saved session could not be reopened, and which failures pass', () => {
+		const failures = [
+			{ kind: 'auth-required' as const, message: 'Authentication required' },
+			{ kind: 'agent-exited' as const, message: 'The agent exited' },
+			{ kind: 'unknown' as const, message: 'Agent is not ready' },
+			{ kind: 'unknown' as const, message: 'Another chat has that session open.' },
+			{ kind: 'unknown' as const, message: 'ENOENT: no such file' },
+			{ kind: 'unknown' as const, message: 'The agent opened a different session' },
+			{ kind: 'unknown' as const, message: 'Something else' },
+		];
+		expect(failures.map(failure => [reopenFailure(failure), isPassingFailure(failure)])).toEqual([
+			['signedOut', false], ['restarted', true], ['restarted', true], ['inUse', false], ['gone', false], ['otherSession', false], ['other', false],
+		]);
 	});
 });

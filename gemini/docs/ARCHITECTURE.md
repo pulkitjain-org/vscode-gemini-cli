@@ -22,7 +22,13 @@ extensions/gemini/
                     audit log, the benchmark and the pilot's counters.
   src/host/         The VS Code side: the chat view and agent tabs, the Agents pane, Agent Home, the
                     Changes view, the status bar, the settings and team pages, commands, git actions,
-                    update notices and the Get Started walkthrough.
+                    update notices and the Get Started walkthrough. ChatController owns a chat's
+                    webview, transcript and turns; each of its features (git, follow, usage,
+                    attachments, permissions, Undo and Rewind, saved sessions, projects) keeps its
+                    messages and state in a module of its own in chat/. AgentsView owns the agents
+                    running in the window (sessions, chats, tabs) and their saved state; its list,
+                    the title bar and tab indicators, the spare session, worktrees, Merge Back,
+                    Projects and the ways of starting an agent are modules in agents/.
   webview-src/      The webviews' code, bundled to media/*.js.
   media/            Webview stylesheets and icons.
   themes/           The GeminiCode Dark and Light colour themes.

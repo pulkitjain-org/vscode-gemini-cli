@@ -102,6 +102,20 @@ export function isArchived(record: AgentRecord, now: number): boolean {
 	return project?.role === 'thread' && !!project.resolved && (project.resolvedAt ?? record.updatedAt) <= now - archiveAfterMs;
 }
 
+/** When a thread was merged back: kept since this version, else its last use. */
+export function resolvedAt(record: AgentRecord): number {
+	return record.project?.role === 'thread' ? record.project.resolvedAt ?? record.updatedAt : record.updatedAt;
+}
+
+/** `base`, or `base 2`, `base 3`... when `taken` has it, as a new project is named after its repository. */
+export function freeTitle(base: string, taken: ReadonlySet<string>): string {
+	let title = base;
+	for (let n = 2; taken.has(title); n++) {
+		title = `${base} ${n}`;
+	}
+	return title;
+}
+
 /** A short title from a prompt's first line. */
 export function titleFromPrompt(text: string): string | undefined {
 	const line = text.split('\n').map(l => l.trim()).find(Boolean)?.replace(/\s+/g, ' ');

@@ -31,7 +31,6 @@ GeminiCode ships as a Mac app for Apple silicon with the Gemini CLI bundled, fro
 - **Sessions are never closed.** gemini-cli 0.64.0 offers no `session/close`, so a long-lived agent process keeps every session it opened, a few MB each, including Enhance prompt's fallback sessions and hidden command sessions. GeminiCode closes sessions as soon as a CLI advertises `sessionCapabilities.close`. Until then, restart idle processes to free them, and show in the pane when an agent's process was stopped.
 - **Build files changed through the shell.** "Allow for this session" approvals of task runners (`npm`, `make`, `gradle` and the like) lapse when the agent writes a build file through the editor, but not when a shell command changes one.
 - **Team server names.** The confirm-class policy rules name the team's own servers as `jira` and `gitlab`; a team that names them otherwise needs its own rules.
-- **Two large files.** `chatController.ts` (about 2,500 lines) and `agentsView.ts` (about 2,400) each hold several jobs; split them along their seams (turns and restore, Projects, the spare session) before they grow further.
 
 ## After the pilot
 

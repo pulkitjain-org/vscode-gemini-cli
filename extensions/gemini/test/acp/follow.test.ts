@@ -4,7 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { FollowTracker } from '../../src/acp/follow';
+import * as path from 'node:path';
+import { followablePath, FollowTracker } from '../../src/acp/follow';
 import type { ToolCallModel } from '../../src/acp/sessionUpdates';
 
 function call(id: string, kind: ToolCallModel['kind'], status: ToolCallModel['status'], locations: ToolCallModel['locations'] = []): ToolCallModel {
@@ -34,5 +35,18 @@ describe('FollowTracker', () => {
 		expect(follow.next(call('s', 'search', 'completed', [{ path: '/w/src' }]))).toBeUndefined();
 		expect(follow.next(call('x', 'execute', 'completed', [{ path: '/w' }]))).toBeUndefined();
 		expect(follow.next(call('u', undefined, 'completed', [{ path: '/w/a.ts' }]))).toBeUndefined();
+	});
+});
+
+describe('followablePath', () => {
+	it('resolves a file in the agent\'s folder, and skips files outside it or that may hold secrets', () => {
+		const cwd = path.join(path.sep, 'w');
+		expect([
+			followablePath(cwd, { path: 'src/cart.ts' }),
+			followablePath(cwd, { path: path.join(cwd, 'src', 'cart.ts'), line: 3 }),
+			followablePath(cwd, { path: '../other/cart.ts' }),
+			followablePath(cwd, { path: path.join(path.sep, 'etc', 'hosts') }),
+			followablePath(cwd, { path: '.env' }),
+		]).toEqual([path.join(cwd, 'src', 'cart.ts'), path.join(cwd, 'src', 'cart.ts'), undefined, undefined, undefined]);
 	});
 });

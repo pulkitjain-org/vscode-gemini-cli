@@ -62,13 +62,19 @@ export function isKeepChats(value: string): boolean {
 	if (value === keepChatsForever) {
 		return true;
 	}
-	const match = /^(\d+)([hdwm])$/.exec(value);
-	if (!match) {
+	const period = keepChatsPeriod(value);
+	if (!period) {
 		return false;
 	}
-	const hours = Number(match[1]) * { h: 1, d: 24, w: 24 * 7, m: 24 * 30 }[match[2] as 'h' | 'd' | 'w' | 'm'];
+	const hours = period.count * { h: 1, d: 24, w: 24 * 7, m: 24 * 30 }[period.unit];
 	// The CLI turns cleanup off for a maxAge under its minRetention of one day.
 	return hours >= 24;
+}
+
+/** A retention as a number of hours, days, weeks or months; undefined for forever, or for anything but a number and a unit. */
+export function keepChatsPeriod(value: KeepChats): { readonly count: number; readonly unit: 'h' | 'd' | 'w' | 'm' } | undefined {
+	const match = /^(?<count>\d+)(?<unit>[hdwm])$/.exec(value);
+	return match?.groups ? { count: Number(match.groups.count), unit: match.groups.unit as 'h' | 'd' | 'w' | 'm' } : undefined;
 }
 
 /** Sets one preference in the settings object, leaving the keys around it alone. */

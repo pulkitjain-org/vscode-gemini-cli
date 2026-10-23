@@ -7,7 +7,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { folderTrustApplies, isFolderTrusted, trustedFoldersPath, trustFolder } from '../../src/acp/trustedFolders';
+import { foldersTrusted, folderTrustApplies, isFolderTrusted, trustedFoldersPath, trustFolder } from '../../src/acp/trustedFolders';
 
 describe('trustedFoldersPath', () => {
 	it('follows the CLI: its own variable, then GEMINI_CLI_HOME, then the home folder', async () => {
@@ -88,5 +88,21 @@ describe('folderTrustApplies', () => {
 		fs.mkdirSync(path.join(home, '.gemini'));
 		fs.writeFileSync(path.join(home, '.gemini', 'settings.json'), '{\n\t// off\n\t"security": { "folderTrust": { "enabled": false } }\n}');
 		expect(await folderTrustApplies({}, home)).toBe(false);
+	});
+});
+
+describe('foldersTrusted', () => {
+	let home: string;
+	beforeEach(() => { home = fs.mkdtempSync(path.join(os.tmpdir(), 'gemini-home-')); });
+	afterEach(() => fs.rmSync(home, { recursive: true, force: true }));
+
+	it('is true when every folder is trusted, or when the CLI checks no folder\'s trust', async () => {
+		const file = trustedFoldersPath({}, home);
+		await trustFolder(file, path.join(home, 'a'));
+		expect([
+			await foldersTrusted([path.join(home, 'a')], {}, home),
+			await foldersTrusted([path.join(home, 'a'), path.join(home, 'b')], {}, home),
+			await foldersTrusted([path.join(home, 'b')], { GEMINI_CLI_TRUST_WORKSPACE: 'true' }, home),
+		]).toEqual([true, false, true]);
 	});
 });

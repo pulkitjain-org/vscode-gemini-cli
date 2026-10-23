@@ -24,6 +24,7 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import type { AgentErrorInfo } from './errors';
 
 export interface CliSession {
 	readonly id: string;
@@ -632,4 +633,32 @@ async function isFolder(folder: string): Promise<boolean> {
 	} catch {
 		return false;
 	}
+}
+
+/** Why a saved session could not be reopened, for the chat to say in plain words. */
+export type ReopenFailure = 'signedOut' | 'restarted' | 'inUse' | 'gone' | 'otherSession' | 'other';
+
+/** Whether reopening a session failed for a reason that passes, such as the agent restarting, so trying once more can work. */
+export function isPassingFailure(error: AgentErrorInfo): boolean {
+	return error.kind === 'agent-exited' || /not ready|restart/i.test(error.message);
+}
+
+/** What kind of failure `error` is, when the agent could not reopen a saved session. */
+export function reopenFailure(error: AgentErrorInfo): ReopenFailure {
+	if (error.kind === 'auth-required' || error.kind === 'auth-failed') {
+		return 'signedOut';
+	}
+	if (isPassingFailure(error)) {
+		return 'restarted';
+	}
+	if (/another chat has that session open/i.test(error.message)) {
+		return 'inUse';
+	}
+	if (/not found|no previous sessions|ENOENT/i.test(error.message)) {
+		return 'gone';
+	}
+	if (/different session/i.test(error.message)) {
+		return 'otherSession';
+	}
+	return 'other';
 }

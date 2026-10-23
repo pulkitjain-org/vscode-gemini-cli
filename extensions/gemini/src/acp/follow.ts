@@ -5,6 +5,8 @@
 
 // Follow the agent: which file, and where, to show as the agent works.
 
+import * as path from 'node:path';
+import { isInside, secretPathReason } from './fileAccess';
 import type { ToolCallModel } from './sessionUpdates';
 
 export interface FollowTarget {
@@ -45,3 +47,13 @@ export class FollowTracker {
 }
 
 const maxRemembered = 500;
+
+/**
+ * The file to show for `target` in an agent working in `cwd`, resolved from
+ * there; undefined for a file outside the folder or one that may hold secrets.
+ */
+export function followablePath(cwd: string, target: FollowTarget): string | undefined {
+	const root = path.resolve(cwd);
+	const file = path.resolve(root, target.path);
+	return isInside(root, file) && !secretPathReason(path.relative(root, file)) ? file : undefined;
+}

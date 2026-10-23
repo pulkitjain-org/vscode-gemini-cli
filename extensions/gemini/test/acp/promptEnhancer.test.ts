@@ -9,7 +9,7 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AgentConnection } from '../../src/acp/agentConnection';
 import { AgentRuntime, AgentRuntimeState } from '../../src/acp/agentRuntime';
-import { EnhanceCancelledError, enhanceHistory, enhanceModel, PromptEnhancer, type PromptEnhancerOptions } from '../../src/acp/promptEnhancer';
+import { activeFileLabel, EnhanceCancelledError, enhanceHistory, enhanceModel, PromptEnhancer, type PromptEnhancerOptions } from '../../src/acp/promptEnhancer';
 import { AgentSidecar } from '../../src/acp/sidecar';
 import type { FakeAgentScript, ScriptedStep } from '../fake-agent/fakeAgent';
 import { fakeAgentCommand, waitFor } from '../helpers';
@@ -43,6 +43,17 @@ describe('enhanceHistory', () => {
 		];
 		expect(enhanceHistory(items)).toEqual(['m0', 'm1', 'm2', 'm3', 'm4', 'm5'].map((text, i) => ({ role: i % 2 ? 'agent' : 'user', text })));
 		expect(enhanceHistory(items.slice(0, 4))).toEqual([{ role: 'user', text: 'first' }, { role: 'agent', text: 'reply' }]);
+	});
+});
+
+describe('activeFileLabel', () => {
+	it('names the open file from the agent\'s folder, with its language, and nothing outside it', () => {
+		const cwd = path.join(path.sep, 'w');
+		expect([
+			activeFileLabel(cwd, path.join(cwd, 'src', 'cart.ts'), 'typescript'),
+			activeFileLabel(cwd, path.join(path.sep, 'other', 'cart.ts'), 'typescript'),
+			activeFileLabel(cwd, cwd, 'plaintext'),
+		]).toEqual(['src/cart.ts (typescript)', undefined, undefined]);
 	});
 });
 

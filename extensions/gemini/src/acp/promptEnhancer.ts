@@ -14,6 +14,7 @@
 // chat history. Plan mode keeps the agent from changing anything.
 
 import { promises as fs } from 'node:fs';
+import * as path from 'node:path';
 import type * as acp from '@agentclientprotocol/sdk';
 import type { AgentConnection } from './agentConnection';
 import type { AgentRuntime, AgentRuntimeState } from './agentRuntime';
@@ -93,6 +94,12 @@ export function enhanceHistory(items: readonly TranscriptItem[]): NonNullable<En
 		}
 	}
 	return messages;
+}
+
+/** The open file as a rewrite is told of it, `src/cart.ts (typescript)`; undefined outside the agent's folder `cwd`. */
+export function activeFileLabel(cwd: string, filePath: string, languageId: string): string | undefined {
+	const relative = path.relative(cwd, filePath);
+	return relative && !relative.startsWith('..') && !path.isAbsolute(relative) ? `${relative.split(path.sep).join('/')} (${languageId})` : undefined;
 }
 
 /**

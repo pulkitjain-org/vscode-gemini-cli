@@ -5,7 +5,7 @@
 
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { AgentsModel, archiveAfterMs, isArchived, titleFromPrompt, warmThreads } from '../../src/acp/agents';
+import { AgentsModel, archiveAfterMs, freeTitle, isArchived, resolvedAt, titleFromPrompt, warmThreads } from '../../src/acp/agents';
 
 function clock(start = 1_000) {
 	let time = start;
@@ -25,6 +25,12 @@ describe('titleFromPrompt', () => {
 
 	it('gives nothing for a blank prompt', () => {
 		expect(titleFromPrompt('  \n ')).toBeUndefined();
+	});
+});
+
+describe('freeTitle', () => {
+	it('numbers a title that is taken', () => {
+		expect([freeTitle('shop', new Set()), freeTitle('shop', new Set(['shop', 'shop 2', 'cms']))]).toEqual(['shop', 'shop 3']);
 	});
 });
 
@@ -219,5 +225,16 @@ describe('many threads', () => {
 		// Merged before the time was kept: its last use counts.
 		const old = { ...model.agent('t1')!, project: { role: 'thread' as const, coordinator: 'c', byCoordinator: true, resolved: true } };
 		expect(isArchived(old, time.now())).toBe(true);
+	});
+
+	it('dates a thread\'s merge from when it was resolved, else from its last use', () => {
+		const time = clock();
+		const { model } = project(2, time);
+		time.advance(5);
+		model.setThreadResolved('t0', true);
+		const merged = time.now();
+		time.advance(5);
+		const old = { ...model.agent('t1')!, project: { role: 'thread' as const, coordinator: 'c', byCoordinator: true, resolved: true } };
+		expect([resolvedAt(model.agent('t0')!), resolvedAt(old), resolvedAt(model.agent('c')!)]).toEqual([merged, old.updatedAt, model.agent('c')!.updatedAt]);
 	});
 });
