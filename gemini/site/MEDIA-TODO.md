@@ -11,3 +11,5 @@ Capture from the real app, against demo data so no real account, ticket, name or
 - The Agents pane with five agents in different states (Agents bento, "Agents side by side" tile).
 - Enhance prompt before and after as a still (the `showcase-enhance` clip shows it).
 - Sending while the agent works: the composer with a message **Sending after the current step** and another **Queued: goes after this turn** (Chat and review, "Steer it while it works").
+- The Fork dialog (Whole session, Compacted, Conversation only; new branch or same folder), and forks listed under their agent with the fork card in its chat (Agents, "Fork an agent").
+- The Compact line across a chat, with the tokens before and after, **View Summary** and **Undo** (Chat and review, "Compact long chats").

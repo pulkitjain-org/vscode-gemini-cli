@@ -72,6 +72,10 @@ export const featurePages: readonly FeaturePage[] = [
 				media: { name: 'index-page', alt: 'The Index page with two indexed workspaces and attached documentation' },
 			},
 			{
+				title: 'Fork an agent',
+				body: ['When an agent\'s work splits in two, fork it. The fork starts from the same conversation, so it already knows what was read, decided and planned, and works on its part while the agent carries on. Take the whole session, a compacted copy or just the conversation, on a new branch with the agent\'s uncommitted changes or in the same folder. **Fork** at the end of any reply forks from that point.'],
+			},
+			{
 				title: 'Pick up where the terminal left off',
 				body: ['A new agent lists the sessions the Gemini CLI saved for its folder, including ones started with `gemini` in the terminal. Pick one and the conversation carries on in the chat.'],
 			},
@@ -83,6 +87,7 @@ export const featurePages: readonly FeaturePage[] = [
 		],
 		docs: [
 			{ href: 'agents.html', label: 'Agents' },
+			{ href: 'agents.html#fork-an-agent', label: 'Fork an agent' },
 			{ href: 'agents.html#workspace-index-and-docs', label: 'Workspace index and docs' },
 			{ href: 'shortcuts.html', label: 'Keyboard shortcuts' },
 		],
@@ -114,6 +119,10 @@ export const featurePages: readonly FeaturePage[] = [
 			{
 				title: 'Steer it while it works',
 				body: ['Spot the agent heading the wrong way? Type while it works and press Return: the chat stops between steps, never mid-command, and the agent carries on with your message. ⌘Return queues a message for after the turn instead, and each waiting message can be sent now, edited or removed.'],
+			},
+			{
+				title: 'Compact long chats',
+				body: ['Type `/compact`, or choose **Compact** in the usage popover. Gemini summarizes the work so far and the chat moves to a session made of that summary and your latest messages, so each turn sends less. It stays compacted when the chat is reopened, and **Undo** goes back to the full session.'],
 			},
 			{
 				title: 'Plan mode',
