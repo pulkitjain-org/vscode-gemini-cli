@@ -80,6 +80,8 @@ export class AgentHome implements vscode.Disposable {
 	private signIn: { readonly at: number; readonly quiet: Promise<boolean> } | undefined;
 	/** The card whose whole list the page has open in its popup. */
 	private listCard: HomeCardId | undefined;
+	/** Files the user picked or dropped for the comment box: the only paths a comment may upload. */
+	private readonly commentFilePaths = new Set<string>();
 
 	/** `onTyping` runs when the user starts typing a task, so the agent can start meanwhile. */
 	constructor(private readonly extensionUri: vscode.Uri, private readonly agents: AgentsView, private readonly onTyping: () => void = () => undefined, private readonly options?: HomeOptions) {
@@ -371,7 +373,8 @@ export class AgentHome implements vscode.Disposable {
 		let pasted: string | undefined;
 		try {
 			const { team } = this.jira();
-			const files = [...message.files];
+			// Only files this page was given (picked or dropped), never another path the page names.
+			const files = message.files.filter(file => this.commentFilePaths.has(file));
 			if (message.pasted.length) {
 				pasted = await fs.mkdtemp(path.join(os.tmpdir(), 'geminicode-comment-'));
 				for (const [i, file] of message.pasted.entries()) {
@@ -419,11 +422,14 @@ export class AgentHome implements vscode.Disposable {
 		const picked = uris
 			? uris.map(uri => vscode.Uri.parse(uri)).filter(uri => uri.scheme === 'file')
 			: await vscode.window.showOpenDialog({ canSelectMany: true, canSelectFiles: true, canSelectFolders: false, openLabel: vscode.l10n.t("Attach"), title: vscode.l10n.t("Attach Files to the Comment") }) ?? [];
-		const files = await Promise.all(picked.map(async uri => {
+		const files = (await Promise.all(picked.map(async uri => {
 			const stat = await fs.stat(uri.fsPath).catch(() => undefined);
 			return stat?.isFile() ? [{ path: uri.fsPath, name: path.basename(uri.fsPath), size: stat.size }] : [];
-		}));
-		void this.panel?.webview.postMessage({ type: 'commentFiles', files: files.flat() } satisfies ToHome);
+		}))).flat();
+		for (const file of files) {
+			this.commentFilePaths.add(file.path);
+		}
+		void this.panel?.webview.postMessage({ type: 'commentFiles', files } satisfies ToHome);
 	}
 
 	private async onMessage(message: FromHome): Promise<void> {
