@@ -29,6 +29,7 @@ import { IAgentNetworkFilterService } from '../../networkFilter/common/networkFi
 import { formatBrowserViewAccessibility } from './browserViewAccessibility.js';
 import { ISandboxNetworkRestrictions } from '../../sandbox/common/sandboxSettingsResolutionHelper.js';
 import { geminiContextMenuEntries, showGeminiContextMenu } from '../../windows/electron-main/geminiContextMenu.js'; // GEMINI-FORK
+import { geminiAgentFiles } from './geminiAgentFiles.js'; // GEMINI-FORK
 
 export const IBrowserViewMainService = createDecorator<IBrowserViewMainService>('browserViewMainService');
 
@@ -444,6 +445,7 @@ export class BrowserViewMainService extends Disposable implements IBrowserViewMa
 			options
 		);
 		this.browserViews.set(id, view);
+		geminiAgentFiles.track(view); // GEMINI-FORK: before the page loads anything, so its files are checked when an agent owns it
 		view.presentation = presentation;
 		if (windowConfiguration?.theme) {
 			view.inspector.setTheme(windowConfiguration.theme);

@@ -9,7 +9,8 @@
 // agent at its own path, so an agent only ever reaches its own page. The page
 // itself is driven by a `BrowserBackend` (the workbench's `_gemini.browser.*`
 // commands in the app). Pages on this machine open freely; files follow the
-// agent's file access policy; other sites ask first. Where the page ends up
+// agent's file access policy, and so does every file a page loads, which the
+// workbench asks about (`fileAllowed`); other sites ask first. Where the page ends up
 // (after a redirect, a click, or on its own) is checked again each time. A
 // page the user opened becomes an agent's only when the user hands it over
 // (`handOverRefusal`, `adopt`), and is then checked the same way.
@@ -422,6 +423,20 @@ export class BrowserToolHost {
 			this.gate.grant(agent, parsed);
 		}
 		this.pageOf.set(agent, pageId);
+	}
+
+	/**
+	 * Whether the agent's page may load `url`, a file it shows in a frame,
+	 * runs or fetches. The workbench asks before every file such a page
+	 * loads: checking only the page's own URL would let a page the agent
+	 * wrote show it a file its policy refuses.
+	 */
+	async fileAllowed(agent: string, url: string): Promise<boolean> {
+		if (this.gate.enabled && !this.gate.enabled()) {
+			return false;
+		}
+		const parsed = URL.parse(url);
+		return parsed?.protocol === 'file:' && !await this.refusal(agent, parsed);
 	}
 
 	async call(agent: string, name: string, args: Record<string, unknown>): Promise<McpToolResult> {

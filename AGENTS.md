@@ -39,6 +39,11 @@ These rules have no exceptions. They override any tool's default attribution, tr
 - An agent's own files, diffs and pages go in that agent's side group (`agentColumn` in `src/host/editorPlacement.ts`), and only after the agent's tab is in front. The side group shows only with its agent, so it never sits beside Home.
 - In the workbench, team-flow pages do not make a group "the agents' group" (`isAgentsTab` in `src/vs/workbench/contrib/gemini/electron-browser/geminiAgentGroups.ts`). Without that, the next agent opens beside the flow page and Home ends up in three columns.
 
+### The agents' browser
+
+- Checking the URL an agent opens is not enough. Electron gives `file:` pages fetch, workers and access to `file:` frames, so a page the agent wrote can show it any file the browser serves. Every file a Gemini agent's page loads is checked against the agent's file policy in the main process (`src/vs/platform/browserView/electron-main/geminiAgentFiles.ts`), which asks the extension (`fileAllowed` in `src/acp/browserMcp.ts`).
+- Workers load `file:` URLs where neither `webRequest` nor the session's `file:` handler sees them, so agents' documents get `worker-src 'none'`. Test a change here with frames, fetch and workers in the real app, not only the snapshot.
+
 ### Webviews
 
 - Use themed tooltips (`setTip` from `webview-src/tooltip.ts`), not `title`. Native tooltips are slow to appear and unthemed. The themed one is a top-layer popover, so it also shows over a modal dialog.
