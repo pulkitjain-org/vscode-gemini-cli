@@ -3,202 +3,55 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import * as path from 'node:path';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
 import { promises as fs } from 'node:fs';
-import { foldWorkOn, onDidChangeFoldWork } from './foldWork';
-import { onDidChangeSpellCheck, spellCheckOn } from './spellCheck';
+import { onDidChangeFoldWork } from './foldWork';
+import { onDidChangeSpellCheck } from './spellCheck';
 import { currentTraceFile } from './traceCommand';
 import { parseTraceFile, summarizeTrace, turnReadout } from '../acp/traceRecording';
-import { Attachment, attachmentLabel } from '../acp/attachments';
-import type { ToolChips } from './toolChips';
+import type { Attachment } from '../acp/attachments';
 import { isValidAttachment } from '../acp/attachmentValidation';
 import { chatToMarkdown } from '../acp/chatMarkdown';
 import { ChatTranscript, ThreadCard, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
-import { Checkpoints, type StoredCheckpoints } from '../acp/checkpoints';
-import { keepChatsForever, readCliPreferences } from '../acp/cliPreferences';
-import { geminiDir } from '../acp/directRequest';
-import { isInside, secretPathReason } from '../acp/fileAccess';
-import { FollowTarget, FollowTracker } from '../acp/follow';
-import { PendingPermission, PermissionBroker } from '../acp/permissions';
-import { readSettingsFile } from '../acp/projectSettings';
+import { buildModeAfterPlan, diffsOf, dropOldest, lastPromptAt, runningStep, turnShape, wasCutOff } from '../acp/chatTurns';
+import type { StoredCheckpoints } from '../acp/checkpoints';
 import { buildPromptContent } from '../acp/promptContent';
-import { skillPrompt } from '../acp/skills';
-import { mergeCommands, parseInvocation, SlashCommand } from '../acp/slashCommands';
-import { expandTeamCommandWithInjections, TeamCommandCancelled } from '../acp/teamCommandExpansion';
-import { carriedConversationNote, CliSession, isPrompt, listCliSessions, readCliConversation, readSessionTokens, canRewindCliSession, rewindCliSession } from '../acp/cliSessions';
-import { isModelOutput, type ChatEvent } from '../acp/sessionUpdates';
-import { AgentStatus } from '../acp/status';
+import { TeamCommandCancelled } from '../acp/teamCommandExpansion';
+import { readCliConversation } from '../acp/cliSessions';
+import { isModelOutput } from '../acp/sessionUpdates';
 import { TextDeltas } from '../acp/textDeltas';
 import type { ModelTokens } from '../acp/turnUsage';
 import { UpdateBatcher } from '../acp/updateBatcher';
 import { isBlockedWebFetch } from '../acp/webFetchHint';
 import type { AgentClient } from '../acp/agentClient';
-import { AgentError, AgentErrorInfo, errorMessage, isContextOverflow, isModelTurnRefusal } from '../acp/errors';
-import { readGitHead } from '../acp/gitHead';
+import { errorMessage, isContextOverflow, isModelTurnRefusal } from '../acp/errors';
 import { recordPilot } from '../acp/pilotLog';
-import { upgradeUrl } from '../acp/helpLinks';
-import { EnhanceCancelledError, enhanceHistory } from '../acp/promptEnhancer';
-import type { EnhancePromptInput } from '../acp/quickPrompts';
-import { ChatStrings, chatProtocolVersion, FromWebview, NewThread, ProjectChatStrings, ProjectPanel, ProjectRepoView, ProjectSettingsAction, ProjectSettingsSave, ProjectSettingsView, statusCommands, ThreadAction, ToWebview } from './chatProtocol';
+import { chatProtocolVersion, FromWebview, ProjectPanel, ProjectRepoView, ProjectSettingsView, statusCommands, ToWebview } from './chatProtocol';
 import { stopReasonNotice, toViewStatus } from './chatStatus';
-import { DiffPreview } from './diffPreview';
-import { relativeTime, tildify } from './displayText';
-import { attachmentsForFiles } from './addToChat';
-import { createBranchAndCommit, localBranches, switchBranch } from './gitActions';
-import { preferredComposerHeight, rememberComposerHeight, rememberModel } from './modelPreference';
-import { teamCommandHost } from './teamCommandHost';
-import { skills, teamCommands } from './teamCommands';
+import type { DiffPreview } from './diffPreview';
+import { preferredComposerHeight, rememberComposerHeight } from './modelPreference';
 import { onDidChangeThemeTokens, themeTokenColors } from './themeTokens';
-import type { UsageMeter } from './usageMeter';
-import { createNonce, escapeAttribute } from './webviewHtml';
-import type { FileMatch } from './workspaceFiles';
-import { deleteFile, replaceFileText, WorkspaceFileSystem } from './workspaceFileSystem';
+import { ChatAttachments } from './chat/chatAttachments';
+import { ChatCheckpoints } from './chat/chatCheckpoints';
+import { ChatCommands } from './chat/chatCommands';
+import { ChatEnhance } from './chat/chatEnhance';
+import { ChatFileLinks } from './chat/chatFiles';
+import { ChatFollow } from './chat/chatFollow';
+import { ChatGitControls } from './chat/chatGit';
+import { chatHtml } from './chat/chatHtml';
+import type { ChatControllerOptions, ChatHost, FileSearch } from './chat/chatOptions';
+import { ChatPermissions } from './chat/chatPermissions';
+import { ChatProjectView } from './chat/chatProject';
+import { ChatSessions, resumeCommand } from './chat/chatSessions';
+import { ChatSettings } from './chat/chatSettings';
+import { SharedPageChip } from './chat/chatSharedPage';
+import { ChatUsage } from './chat/chatUsage';
 
-/**
- * Every current Gemini model's context window, in tokens, as gemini-cli's
- * `tokenLimit` has it; the CLI's footer shows context use against it too.
- */
-/** How long Enhance prompt waits for the folder's index before rewriting without it. */
-const indexContextWaitMs = 400;
-const contextWindow = 1_048_576;
-/** How often a rewrite arriving is shown, at most. */
-const progressIntervalMs = 33;
+export type { ChatControllerOptions, ChatEnhancer, ChatGit, ChatHost, ChatProject, ChatSharedPage, ChatWorkspace, FileSearch } from './chat/chatOptions';
+
 /** How long after the view loads a session waiting for it to show opens anyway. */
 const openFallbackMs = 2_000;
-
-/** The agent session a chat talks to: the sidebar's, or one agent's in the Agents pane. */
-export interface ChatHost {
-	readonly client: AgentClient;
-	/** This session's permission requests, answered in its chat. */
-	readonly permissions: PermissionBroker;
-	readonly status: AgentStatus;
-	readonly onDidChangeStatus: vscode.Event<AgentStatus>;
-	/** Starts the agent if needed and resolves once this session is ready. */
-	ensureReady(): Promise<unknown>;
-	/** Opens a session that waits to be opened until its chat is on screen; unset when sessions open at once. */
-	open?(): void;
-	/** Stops the current turn. */
-	cancel(): Promise<void>;
-	/** Trusts `folder` for the CLI and restarts the agent; returns whether the restart waits for running prompts. */
-	trustFolder(folder: string): Promise<boolean>;
-	/** Writes to the Gemini log. */
-	writeLog?(message: string): void;
-}
-
-/** The files the @-mention picker offers. */
-export interface FileSearch {
-	warm(): void;
-	search(query: string, limit: number): Promise<readonly FileMatch[]>;
-}
-
-export interface ChatControllerOptions {
-	/** Brings the chat into view, for example when the user adds files to it. */
-	reveal(preserveFocus: boolean): Promise<void>;
-	/** Whether the chat is in view now; unset counts as in view. */
-	isShown?(): boolean;
-	/** The user picked a model in this chat. */
-	onDidPickModel?(modelId: string): void;
-	/** A context key kept equal to whether a turn runs, for menus. */
-	readonly busyContextKey?: string;
-	/** The branch pill and Create Branch & Commit; without it the composer shows neither. */
-	readonly git?: ChatGit;
-	/** Where files and diffs open; unset opens them in the active editor group. */
-	editorColumn?(): Promise<vscode.ViewColumn>;
-	/** Rewrites the composer's draft for Enhance prompt. */
-	readonly enhancer: ChatEnhancer;
-	/** What the folder's index finds for a draft, for Enhance prompt; undefined without a built index. */
-	indexContext?(draft: string): Promise<string | undefined>;
-	/** A note telling the agent to use the index tools, when its folder's index is built; sent once per session. */
-	indexHint?(): string | undefined;
-	/** The workspace pill; without it the composer shows none. */
-	workspace?(): ChatWorkspace | undefined;
-	/** Today's quota, for the usage popover; unset shows it as off. */
-	usage?(): UsageMeter | undefined;
-	/** Set in a project's chat. */
-	readonly project?: ChatProject;
-	/** A project thread's chat: names its project, and opens the project chat. */
-	readonly parentProject?: { name(): string; open(): void };
-	/** The page the user shared with this agent in the GeminiCode browser; unset in chats that never have one. */
-	readonly sharedPage?: ChatSharedPage;
-	/** Saves the chat's checkpoints after each change, so Undo and Rewind outlast a reload; unset keeps them in memory only. */
-	saveCheckpoints?(stored: StoredCheckpoints): void;
-	/** Offers to reopen the CLI's saved sessions for the folder (and /resume); unset in chats that do not. */
-	readonly savedSessions?: {
-		/** Sessions other chats have open, which this one must not take. */
-		inUse(): ReadonlySet<string>;
-	};
-	/** Chips for Jira tickets, GitLab items and Figma frames named in the composer; unset when the team tools aren't set up. */
-	toolChips?(): ToolChips | undefined;
-	/** The merge request review a reviewer agent works on, for the chip beside its branch. */
-	review?(): { readonly label: string; readonly tip: string } | undefined;
-	openReview?(): void;
-	/** Opens the Open Merge Request page for the agent's branch; unset when the team tools aren't set up. */
-	openMergeRequest?(): void;
-}
-
-/** A page shared with the agent: pinned to the composer, and named in every prompt until the user stops sharing it. */
-export interface ChatSharedPage {
-	/** The page shared now, checked against the browser, with the note a prompt carries about it. */
-	current(): Promise<{ readonly title: string; readonly url: string; readonly note: string } | undefined>;
-	/** Gives the page back to the user. */
-	stop(): Promise<void>;
-	/** Brings the page's tab to the front; false when the page is no longer shared. */
-	reveal(): Promise<boolean>;
-}
-
-/** Makes a chat a project's chat (Projects preview): the coordinator's, fed through the project's hub. */
-export interface ChatProject {
-	/** What the user sends goes to the hub, which wakes the coordinator with it. */
-	post(text: string, attachments: readonly Attachment[]): void;
-	/** Tool calls the chat leaves out: the project's own tools, which show as posts and thread cards. */
-	hidesToolCall(title: string): boolean;
-	/** `repo` names one repository of a thread in several, for Merge back. */
-	threadAction(thread: string, action: ThreadAction, repo?: string): void;
-	/** The New thread dialog's Start thread. */
-	startThread(thread: NewThread): void;
-	/** Project settings: open it, save it, or one of its buttons that needs the extension. */
-	openSettings(): void;
-	saveSettings(settings: ProjectSettingsSave): void;
-	settingsAction(action: ProjectSettingsAction, name?: string): void;
-	/** The pointer is on a thread's card or panel row: start its agent ahead of the click. */
-	prepareThread(thread: string): void;
-}
-
-export interface ChatWorkspace {
-	/** The workspace folder, which names the pill. */
-	readonly folder: string;
-	/** Where the agent runs: the folder, or its place in the agent's own worktree. */
-	readonly cwd: string;
-	readonly worktree: boolean;
-	/** A project's several repositories, each named and where this agent sees it; they take the folder and branch pills' place. */
-	readonly repos?: readonly { readonly name: string; readonly folder: string }[];
-}
-
-/** Rewrites drafts as precise prompts; one, shared by every chat. */
-export interface ChatEnhancer {
-	/** Gets a rewrite ready, so the next one only waits for the model. */
-	prepare(): void;
-	/** `onText` is called with the rewrite so far as it arrives. */
-	enhance(input: EnhancePromptInput, signal: AbortSignal, onText?: (text: string) => void): Promise<string>;
-}
-
-export interface ChatGit {
-	/** The folder whose branch the chat shows; unset when there is none. */
-	folder(): string | undefined;
-	/** Create Branch & Commit, for chats that know which files their agent changed. */
-	readonly commit?: {
-		/** Absolute paths; empty hides the button. */
-		files(): readonly string[];
-		onDidChange(listener: () => void): { dispose(): void };
-		suggestion(): { readonly branch: string; readonly message: string };
-		/** The files were committed. */
-		committed(): void;
-	};
-	/** Set for an agent on its own branch: the chat must not switch it, or Merge Back would miss the work. */
-	readonly ownBranch?: string;
-}
 
 /** What the Agents pane shows about a chat. */
 export interface ChatActivity {
@@ -214,7 +67,8 @@ export interface ChatActivity {
  * One chat: sends prompts, streams agent messages and thoughts, shows
  * tool-call cards and stops a turn, in whichever webview it is attached to.
  * The transcript lives here, so it survives the webview being hidden, moved
- * or closed.
+ * or closed. Each of the chat's features keeps its own webview messages and
+ * state in `./chat/`; this class routes the view's messages to them.
  */
 export class ChatController implements vscode.Disposable {
 
@@ -232,53 +86,21 @@ export class ChatController implements vscode.Disposable {
 	private timing: TurnTiming | undefined;
 	/** The step last reported, so tool call updates report only a new one. */
 	private lastStep: string | undefined;
-	private lastSessionId: string | undefined;
 	/** Sessions told about the folder's index already. */
 	private readonly hintedSessions = new Set<string>();
-	/** Proposed edits by transcript item id (tool calls and permission requests), so their diffs can be opened later. */
-	private readonly diffs = new Map<string, readonly acp.Diff[]>();
 
-	/** Show Usage and Quota ran before the view was ready; the popover opens once it is. */
-	private usageRequested = false;
-	/** Attachments from the Add to Chat commands that arrived before the view was ready. */
-	private pendingAttachments: Attachment[] = [];
-
-	/** What each recent turn's edits replaced, so a turn can be undone. */
-	private readonly checkpoints: Checkpoints;
 	/** The last prompt, for Retry. */
 	private lastPrompt: { readonly text: string; readonly attachments: readonly Attachment[] } | undefined;
 	/** The turnEnd item that offers Retry. */
 	private retryItemId: string | undefined;
-	/** A project chat's side panel, as last shown. */
-	private projectPanel: ProjectPanel | undefined;
 	/** Context sent ahead of the next prompt without showing in the chat, such as a project's memory for a thread. */
 	private pendingContext: string | undefined;
 	/** The saved chat being read in, while it is: prompts wait for it, so neither replaces the other. */
 	private restoring: Promise<void> | undefined;
-	/** Project settings to open once the view has loaded. */
-	private settingsPending: ProjectSettingsView | undefined;
 	/** Whether the view's script has said it is ready since the view was attached. */
 	private viewReady = false;
-	/** New Thread was asked for before the view was ready. */
-	private newThreadPending = false;
-	/** Told to the agent with the next prompt: files the user put back, which it would otherwise think it changed. */
-	private undoNote: string | undefined;
-	/** A conversation the agent could not reopen, given to the new session with the next prompt. */
-	private carriedConversation: string | undefined;
-	/** The rewrite running for the composer, so it can be cancelled. */
-	private enhancing: { readonly requestId: number; readonly abort: AbortController } | undefined;
-	/** While a reopened session replays, its messages belong in the transcript. Ends with the next prompt. */
-	private replaying = false;
-	/** Follow the agent: open each file it reads or edits. Starts as the last chat left it. */
-	private following = vscode.workspace.getConfiguration('gemini').get<boolean>('chat.followAgent', false);
-	private readonly follow = new FollowTracker();
-	/** The file to show next; files are shown at most every {@link followIntervalMs}, the latest winning. */
-	private followTarget: FollowTarget | undefined;
-	private followTimer: ReturnType<typeof setTimeout> | undefined;
 	/** Opens a session waiting for the chat to show, if the view does not say it is shown. */
 	private openTimer: ReturnType<typeof setTimeout> | undefined;
-	/** The file Follow the agent opened last, until its tab closes. */
-	private followed: vscode.Uri | undefined;
 
 	private readonly onDidChangeActivityEmitter = new vscode.EventEmitter<ChatActivity>();
 	readonly onDidChangeActivity = this.onDidChangeActivityEmitter.event;
@@ -300,18 +122,61 @@ export class ChatController implements vscode.Disposable {
 	/** The text of each prompt sent. */
 	readonly onDidSendPrompt = this.onDidSendPromptEmitter.event;
 
+	// The chat's features, each with its own webview messages and state.
+	private readonly files: ChatFileLinks;
+	private readonly permissions: ChatPermissions;
+	private readonly follow: ChatFollow;
+	private readonly git: ChatGitControls;
+	private readonly usage: ChatUsage;
+	private readonly attachments: ChatAttachments;
+	private readonly sharedPage: SharedPageChip;
+	private readonly settings: ChatSettings;
+	private readonly enhance: ChatEnhance;
+	private readonly commands: ChatCommands;
+	private readonly sessions: ChatSessions;
+	private readonly checkpoints: ChatCheckpoints;
+	private readonly project: ChatProjectView;
+
 	constructor(
 		private readonly extensionUri: vscode.Uri,
 		private readonly service: ChatHost,
-		private readonly diffPreview: DiffPreview,
+		diffPreview: DiffPreview,
 		private readonly fileIndex: FileSearch,
 		private readonly options: ChatControllerOptions,
 	) {
-		this.checkpoints = new Checkpoints(service.client.cwd);
-		const toolChips = options.toolChips?.();
-		if (toolChips) {
-			this.disposables.push(toolChips.onDidChange(() => this.viewReady && void this.postToolRefs()));
-		}
+		const post = (message: ToWebview) => this.post(message);
+		const isAttached = () => !!this.webview;
+		const isViewReady = () => this.viewReady;
+		const isBusy = () => this.busy;
+		const setBusy = (busy: boolean) => this.setBusy(busy);
+		const client = service.client;
+		this.files = new ChatFileLinks(diffPreview, () => options.git?.folder() ?? client.cwd, options);
+		this.permissions = new ChatPermissions(service.permissions, this.transcript, this.files, options);
+		this.follow = new ChatFollow(client.cwd, options, post);
+		this.git = new ChatGitControls(options, isBusy, isAttached, post);
+		this.usage = new ChatUsage(client, options, () => this.transcript.items.length > 0, isAttached, post);
+		this.attachments = new ChatAttachments(fileIndex, options, isAttached, isViewReady, post);
+		this.sharedPage = new SharedPageChip(options, post);
+		this.settings = new ChatSettings(service, this.transcript, options, post);
+		this.enhance = new ChatEnhance(client, options, () => this.transcript.items, post);
+		this.commands = new ChatCommands(client, this.transcript, !!options.savedSessions, isAttached, post);
+		this.sessions = new ChatSessions(service, this.transcript, options, {
+			isBusy,
+			setBusy,
+			clearConversation: () => this.clearConversation(),
+			restored: title => this.onDidRestoreSessionEmitter.fire(title),
+		}, isAttached, post);
+		this.checkpoints = new ChatCheckpoints(service, this.transcript, this.sessions, options, {
+			isBusy,
+			setBusy,
+			restoredFiles: diffs => this.onDidEditFilesEmitter.fire(diffs),
+			rewound: text => {
+				this.lastPrompt = undefined;
+				this.retryItemId = undefined;
+				this.post({ type: 'draft', text });
+			},
+		});
+		this.project = new ChatProjectView(options, isViewReady, post);
 		this.disposables.push(
 			onDidChangeSpellCheck(on => this.post({ type: 'spellCheck', on })),
 			onDidChangeFoldWork(on => this.post({ type: 'foldWork', on })),
@@ -319,43 +184,26 @@ export class ChatController implements vscode.Disposable {
 			this.onDidEditFilesEmitter,
 			this.onDidSendPromptEmitter,
 			this.onDidRestoreSessionEmitter,
+			this.follow,
+			this.git,
+			this.attachments,
+			this.settings,
+			this.enhance,
+			this.commands,
+			this.sessions,
 			service.permissions.onDidChange(event => {
-				if (event.kind === 'requested') {
-					if (this.timing) {
-						this.timing.permissions++;
-					}
-					this.rememberDiffs(event.permission.id, diffsOf(event.permission.request.toolCall.content));
-					this.transcript.addPermission(event.permission);
-					void this.revealForPermission(event.permission);
-				} else if (event.kind === 'allowed') {
-					this.transcript.addPermission(event.permission);
-					this.transcript.resolvePermission(event.permission.id, event.outcome, event.label ?? vscode.l10n.t("Allowed for this session"));
-				} else {
-					this.transcript.resolvePermission(event.id, event.outcome);
+				if (event.kind === 'requested' && this.timing) {
+					this.timing.permissions++;
 				}
+				this.permissions.apply(event);
 				this.fireActivity();
 			}),
 			this.transcript,
 			this.transcript.onDidChangeItem(item => this.items.push(item)),
 			{ dispose: () => this.items.dispose() },
-			vscode.window.tabGroups.onDidChangeTabs(() => {
-				if (this.followed && !followedTabs(this.followed).length) {
-					this.followed = undefined;
-					this.postFollowed();
-				}
-			}),
 			this.transcript.onDidReset(() => this.postReset()),
-			// A reopened session's history shows only when it was restored on purpose; otherwise the saved copy shows.
-			service.client.onDidReplayEvent(event => this.replaying && this.applyReplayed(event)),
-			service.client.onDidFailToReopen(({ sessionId, error }) => service.writeLog?.(`Could not reopen session ${sessionId}: ${error.message}`)),
-			service.client.onDidChangeModeByAgent(({ from, to }) => {
-				const name = (id: string | undefined) => service.client.settings.mode?.available.find(choice => choice.id === id)?.name ?? id ?? '';
-				this.transcript.addNotice(from === 'plan'
-					? vscode.l10n.t("Plan approved, now in {0} mode.", name(to))
-					: vscode.l10n.t("The agent switched to {0} mode.", name(to)));
-			}),
-			service.client.onDidAllowInYolo(params => service.writeLog?.(`Allowed "${params.toolCall.title ?? params.toolCall.toolCallId}" at once: the chat is in YOLO mode`)),
-			service.client.onDidReceiveEvent(event => {
+			client.onDidAllowInYolo(params => service.writeLog?.(`Allowed "${params.toolCall.title ?? params.toolCall.toolCallId}" at once: the chat is in YOLO mode`)),
+			client.onDidReceiveEvent(event => {
 				// Only a turn's updates belong in the transcript.
 				if (this.busy) {
 					if (event.kind === 'toolCall' && this.options.project && (this.hiddenToolCalls.has(event.call.id) || this.options.project.hidesToolCall(event.call.title ?? ''))) {
@@ -366,7 +214,7 @@ export class ChatController implements vscode.Disposable {
 					}
 					if (event.kind === 'toolCall') {
 						const diffs = diffsOf(event.call.content);
-						this.rememberDiffs(toolCallItemId(event.call.id), diffs);
+						this.files.remember(toolCallItemId(event.call.id), diffs);
 						if (event.call.status === 'completed' && diffs.length && !this.completedToolCalls.has(event.call.id)) {
 							this.completedToolCalls.add(event.call.id);
 							dropOldest(this.completedToolCalls);
@@ -388,68 +236,31 @@ export class ChatController implements vscode.Disposable {
 						dropOldest(this.hintedToolCalls);
 						this.transcript.addNotice(vscode.l10n.t("Gemini's web fetch can't open pages on your machine or private network, such as a QA or intranet site. Open the page in the GeminiCode browser and use Let Gemini Use This Page, or ask Gemini to open it with its browser."));
 					}
-					if (event.kind === 'toolCall' && this.following) {
-						this.scheduleFollow(this.follow.next(event.call));
+					if (event.kind === 'toolCall') {
+						this.follow.onToolCall(event.call);
 					}
 					if (event.kind === 'toolCall' && this.activity.step !== this.lastStep) {
 						this.fireActivity();
 					}
 				}
 			}),
-			service.client.onDidChangeState(state => {
+			client.onDidChangeState(state => {
 				if (state.kind === 'ready') {
-					this.post({ type: 'capabilities', image: service.client.promptCapabilities.image });
-					if (this.lastSessionId && state.savedSessionId !== this.lastSessionId && this.transcript.items.length) {
-						this.addSessionLostNotice();
-					}
-					this.lastSessionId = state.savedSessionId;
-					void this.postContext();
+					this.post({ type: 'capabilities', image: client.promptCapabilities.image });
+					this.sessions.opened(state.savedSessionId);
+					void this.usage.postContext();
 				}
 			}),
 			service.onDidChangeStatus(status => this.post({ type: 'status', status: toViewStatus(status) })),
-			// The branch may have changed outside the editor.
-			vscode.window.onDidChangeWindowState(state => state.focused && this.webview && this.postGit()),
-			service.client.onDidChangeSettings(settings => this.post({ type: 'settings', settings })),
+			client.onDidChangeSettings(settings => this.post({ type: 'settings', settings })),
 			onDidChangeThemeTokens(() => this.webview && void this.postTokenColors()),
-			// Keeps an open "/" menu current; the agent lists its commands just after a session opens.
-			service.client.onDidChangeCommands(() => this.webview && void this.postCommands()),
 		);
-		if (options.git?.commit) {
-			this.disposables.push(options.git.commit.onDidChange(() => this.postGit()));
-		}
 	}
 
 	get activity(): ChatActivity {
 		const [permission] = this.service.permissions.pendingPermissions;
-		const step = permission ? permission.request.toolCall.title ?? undefined : this.busy ? this.runningStep() : undefined;
+		const step = permission ? permission.request.toolCall.title ?? undefined : this.busy ? runningStep(this.transcript.items) : undefined;
 		return { busy: this.busy, needsPermission: !!permission, ...(step ? { step } : {}), ...(this.busy && this.turnStartedAt !== undefined ? { startedAt: this.turnStartedAt } : {}) };
-	}
-
-	/** When the latest prompt was sent, as the working strip's clock counts from it. */
-	private lastPromptAt(): number | undefined {
-		const items = this.transcript.items;
-		for (let i = items.length - 1; i >= 0; i--) {
-			const item = items[i];
-			if (item.kind === 'user') {
-				return item.at;
-			}
-		}
-		return undefined;
-	}
-
-	/** The title of the tool call the turn is on, if any. */
-	private runningStep(): string | undefined {
-		const items = this.transcript.items;
-		for (let i = items.length - 1; i >= 0; i--) {
-			const item = items[i];
-			if (item.kind === 'user') {
-				return undefined;
-			}
-			if (item.kind === 'toolCall') {
-				return item.status === 'pending' || item.status === 'in_progress' ? item.title : undefined;
-			}
-		}
-		return undefined;
 	}
 
 	/** The conversation, as shown. */
@@ -486,11 +297,7 @@ export class ChatController implements vscode.Disposable {
 			// The last prompt never got its turn end: the app quit (or the window reloaded) while the agent worked.
 			this.transcript.addCutOff(this.transcript.lastUserPrompt ?? '');
 		}
-		const state = this.service.client.state;
-		if (state.kind === 'ready' && sessionId && state.savedSessionId !== sessionId) {
-			this.addSessionLostNotice();
-		}
-		this.lastSessionId = state.kind === 'ready' ? state.savedSessionId : sessionId;
+		this.sessions.shownConversation(sessionId);
 	}
 
 	/**
@@ -498,21 +305,7 @@ export class ChatController implements vscode.Disposable {
 	 * the turns they cover offer Undo again.
 	 */
 	restoreCheckpoints(stored: StoredCheckpoints | undefined): void {
-		const shown = new Set(this.transcript.items.flatMap(item => item.kind === 'turnEnd' ? [item.id] : []));
-		// Checkpoints of turns the chat does not show (it was not restored, or started over) would undo the wrong turns.
-		if (this.busy || !stored?.turns?.length || !stored.turns.every(turn => shown.has(turn?.id))) {
-			return;
-		}
 		this.checkpoints.restore(stored);
-		for (const id of this.checkpoints.turnIds) {
-			if (this.checkpoints.canUndo(id)) {
-				this.transcript.updateTurnEnd(id, { files: this.checkpoints.fileCount(id), undo: 'available' });
-			}
-		}
-	}
-
-	private saveCheckpoints(): void {
-		this.options.saveCheckpoints?.(this.checkpoints.toStored());
 	}
 
 	/** Whether a webview shows this chat. */
@@ -530,7 +323,7 @@ export class ChatController implements vscode.Disposable {
 		this.service.ensureReady().catch(() => undefined);
 		const mediaUri = vscode.Uri.joinPath(this.extensionUri, 'media');
 		webview.options = { enableScripts: true, localResourceRoots: [mediaUri] };
-		webview.html = this.getHtml(webview, mediaUri);
+		webview.html = chatHtml(webview, mediaUri, !!this.options.project);
 		this.webviewListener = webview.onDidReceiveMessage((message: FromWebview) => this.onMessage(message));
 	}
 
@@ -541,7 +334,6 @@ export class ChatController implements vscode.Disposable {
 		}
 	}
 
-	/** Forgets the webview, when it is disposed. The conversation carries on. */
 	/** The view went out of sight or came back (its tab or pane); a hidden view defers rendering. */
 	setHidden(hidden: boolean): void {
 		if (this.viewReady) {
@@ -549,6 +341,7 @@ export class ChatController implements vscode.Disposable {
 		}
 	}
 
+	/** Forgets the webview, when it is disposed. The conversation carries on. */
 	detach(webview?: vscode.Webview): void {
 		if (webview && webview !== this.webview) {
 			return;
@@ -561,7 +354,7 @@ export class ChatController implements vscode.Disposable {
 
 	/** Leaves Plan mode and carries out the plan, as the latest turn's Build button does; false when it offers none. */
 	async approvePlan(): Promise<boolean> {
-		if (!this.retryItemId || !this.buildModeAfterPlan()) {
+		if (!this.retryItemId || !buildModeAfterPlan(this.service.client.settings)) {
 			return false;
 		}
 		await this.buildPlan(this.retryItemId);
@@ -580,31 +373,22 @@ export class ChatController implements vscode.Disposable {
 
 	/** The project chat's side panel; kept to show again when the view reloads. */
 	showProjectPanel(panel: ProjectPanel): void {
-		this.projectPanel = panel;
-		this.post({ type: 'projectPanel', panel });
+		this.project.showPanel(panel);
 	}
 
 	/** Opens Project settings with `settings`, or refreshes it if it is open; `open` false only refreshes. */
 	showProjectSettings(settings: ProjectSettingsView, open: boolean): void {
-		if (this.viewReady || !open) {
-			this.post({ type: 'projectSettings', settings, open });
-		} else {
-			this.settingsPending = settings;
-		}
+		this.project.showSettings(settings, open);
 	}
 
 	/** The folder Project settings' Add repository picked. */
 	pickedRepository(repo: ProjectRepoView): void {
-		this.post({ type: 'pickedRepository', repo });
+		this.project.pickedRepository(repo);
 	}
 
 	/** Opens the New thread dialog in a project chat, once its view has loaded if it is still loading. */
 	openNewThread(): void {
-		if (this.viewReady) {
-			this.post({ type: 'openNewThread' });
-		} else {
-			this.newThreadPending = true;
-		}
+		this.project.openNewThread();
 	}
 
 	/** Whether a turn is running; `send` does nothing meanwhile. */
@@ -636,7 +420,7 @@ export class ChatController implements vscode.Disposable {
 			void this.pickSession();
 			return;
 		}
-		this.replaying = false;
+		this.sessions.stopReplay();
 		this.service.open?.();
 		if (this.retryItemId) {
 			this.transcript.updateTurnEnd(this.retryItemId, { retry: undefined, buildPlan: undefined });
@@ -648,10 +432,6 @@ export class ChatController implements vscode.Disposable {
 		await this.runTurn(text, attachments, true);
 	}
 
-	/**
-	 * Sends `text` as a turn with no message of its own in the chat, such as a
-	 * project's wake for its coordinator; resolves when the turn ends.
-	 */
 	/** Sends `text` to the agent ahead of the next prompt, without showing it in the chat. */
 	addContext(text: string): void {
 		this.pendingContext = this.pendingContext ? `${this.pendingContext}\n\n${text}` : text;
@@ -666,6 +446,10 @@ export class ChatController implements vscode.Disposable {
 		await this.service.ensureReady();
 	}
 
+	/**
+	 * Sends `text` as a turn with no message of its own in the chat, such as a
+	 * project's wake for its coordinator; resolves when the turn ends.
+	 */
 	async sendUnseen(text: string): Promise<void> {
 		if (this.restoring) {
 			await this.restoring;
@@ -673,7 +457,7 @@ export class ChatController implements vscode.Disposable {
 		if (this.busy) {
 			throw new Error('A turn is already running.');
 		}
-		this.replaying = false;
+		this.sessions.stopReplay();
 		this.service.open?.();
 		await this.runTurn(text, [], false);
 	}
@@ -689,7 +473,7 @@ export class ChatController implements vscode.Disposable {
 			await this.service.ensureReady();
 			this.timing.ready = Date.now();
 			// Built after the agent is ready, so it reflects what this agent accepts.
-			const content = buildPromptContent(expand ? await this.expandCommand(text) : text, attachments, this.service.client.promptCapabilities);
+			const content = buildPromptContent(expand ? await this.commands.expand(text) : text, attachments, this.service.client.promptCapabilities);
 			if (!content.length) {
 				throw new Error(vscode.l10n.t("The agent cannot take images, so there was nothing to send."));
 			}
@@ -701,17 +485,18 @@ export class ChatController implements vscode.Disposable {
 				this.hintedSessions.add(session);
 				content.push({ type: 'text', text: hint });
 			}
-			const page = await this.refreshSharedPage();
+			const page = await this.sharedPage.refresh();
 			if (page) {
 				content.push({ type: 'text', text: page.note });
 				if (!this.options.project) {
 					this.transcript.addPromptPage(page.title, page.url);
 				}
 			}
-			if (this.undoNote) {
-				content.unshift({ type: 'text', text: this.undoNote });
+			const undoNote = this.checkpoints.undoNote;
+			if (undoNote) {
+				content.unshift({ type: 'text', text: undoNote });
 			}
-			const carried = this.carriedConversation;
+			const carried = this.sessions.carriedConversation;
 			if (carried) {
 				content.unshift({ type: 'text', text: carried });
 			}
@@ -722,13 +507,11 @@ export class ChatController implements vscode.Disposable {
 			this.timing.sent = Date.now();
 			recordPilot({ kind: 'prompt', waitedMs: this.timing.ready - started });
 			const { stopReason, usage } = await this.promptRecovering(content);
-			this.undoNote = undefined;
+			this.checkpoints.noteDelivered();
 			if (context === this.pendingContext) {
 				this.pendingContext = undefined;
 			}
-			if (carried === this.carriedConversation) {
-				this.carriedConversation = undefined;
-			}
+			this.sessions.delivered(carried);
 			const notice = stopReasonNotice(stopReason);
 			if (notice) {
 				this.transcript.addNotice(notice, stopReason === 'refusal' ? 'error' : 'info');
@@ -742,12 +525,12 @@ export class ChatController implements vscode.Disposable {
 				this.transcript.addNotice(errorMessage(err), err instanceof TeamCommandCancelled ? 'info' : 'error');
 			}
 		} finally {
-			if (!ended && this.checkpoints.running) {
+			if (!ended && this.checkpoints.turnChangedFiles) {
 				// The turn failed after changing files; they can still be undone.
 				this.endTurn(Date.now() - started);
 			}
 			this.setBusy(false);
-			void this.postContext();
+			void this.usage.postContext();
 		}
 		if (overflowed) {
 			await this.continueAfterOverflow(expand ? text : undefined);
@@ -763,13 +546,12 @@ export class ChatController implements vscode.Disposable {
 	 * turn may have changed files before it failed.
 	 */
 	private async continueAfterOverflow(prompt: string | undefined): Promise<void> {
-		const state = this.service.client.state;
-		const sessionId = state.kind === 'ready' ? state.savedSessionId : this.lastSessionId;
+		const sessionId = this.sessions.current();
 		const conversation = sessionId ? await readCliConversation(this.service.client.cwd, sessionId).catch(() => undefined) : undefined;
 		this.setBusy(true);
 		try {
 			// Moving on on purpose: not the agent losing the session.
-			this.lastSessionId = undefined;
+			this.sessions.moveTo(undefined);
 			await this.service.client.newSession();
 		} catch (err) {
 			this.transcript.addNotice(vscode.l10n.t("Gemini's context for this chat is full, and a new session could not start: {0} Start a new chat to carry on.", errorMessage(err)), 'error');
@@ -777,8 +559,7 @@ export class ChatController implements vscode.Disposable {
 		} finally {
 			this.setBusy(false);
 		}
-		this.carriedConversation = conversation?.length ? carriedConversationNote('this chat', conversation) : undefined;
-		this.transcript.addNotice(this.carriedConversation
+		this.transcript.addNotice(this.sessions.carry('this chat', conversation)
 			? vscode.l10n.t("Gemini's context for this chat filled up, most likely with a large tool output, so Gemini could not answer. The chat continues in a new session that is given the conversation so far, without the tool outputs. Send your message again to carry on.")
 			: vscode.l10n.t("Gemini's context for this chat filled up, most likely with a large tool output, so Gemini could not answer. The chat continues in a new session that starts without the earlier conversation. Send your message again to carry on."), 'error');
 		if (prompt) {
@@ -819,16 +600,9 @@ export class ChatController implements vscode.Disposable {
 	/** Adds the turn's end, offering Retry and, when it changed files, Undo. */
 	private endTurn(durationMs: number, usage?: readonly ModelTokens[]): void {
 		const id = this.transcript.addTurnEnd(durationMs, usage);
-		const { undoable, dropped } = this.checkpoints.endTurn(id);
-		for (const old of dropped) {
-			this.transcript.updateTurnEnd(old, { undo: undefined });
-		}
-		const files = this.checkpoints.fileCount(id);
-		this.transcript.updateTurnEnd(id, { retry: !this.options.project, ...(files ? { files } : {}), ...(undoable ? { undo: 'available' } : {}), ...(this.buildModeAfterPlan() ? { buildPlan: true } : {}) });
+		const { files, undoable } = this.checkpoints.endTurn(id);
+		this.transcript.updateTurnEnd(id, { retry: !this.options.project, ...(files ? { files } : {}), ...(undoable ? { undo: 'available' } : {}), ...(buildModeAfterPlan(this.service.client.settings) ? { buildPlan: true } : {}) });
 		this.retryItemId = id;
-		if (files || dropped.length) {
-			this.saveCheckpoints();
-		}
 		const timing = this.timing;
 		this.timing = undefined;
 		recordPilot({
@@ -864,277 +638,21 @@ export class ChatController implements vscode.Disposable {
 		}), file);
 	}
 
-	/** The mode Build This Plan switches to: Default, when the chat is in Plan mode and the agent offers both. */
-	private buildModeAfterPlan(): string | undefined {
-		const mode = this.service.client.settings.mode;
-		return mode?.currentId === planModeId && mode.available.some(m => m.id === defaultModeId) ? defaultModeId : undefined;
-	}
-
 	/** Leaves Plan mode and asks the agent to carry out the plan it just wrote. */
 	private async buildPlan(itemId: string): Promise<void> {
-		const mode = this.buildModeAfterPlan();
+		const mode = buildModeAfterPlan(this.service.client.settings);
 		if (this.busy || itemId !== this.retryItemId || !mode) {
 			return;
 		}
-		await this.changeSetting(() => this.service.client.setMode(mode));
+		await this.settings.change(() => this.service.client.setMode(mode));
 		if (this.service.client.settings.mode?.currentId === mode) {
 			await this.send(vscode.l10n.t("Carry out the plan above."));
 		}
 	}
 
-	/**
-	 * Puts back every file turn `id` changed, and the changes of the turns
-	 * after it. Asks first when that reaches further than the turn, or when a
-	 * file was changed after the agent wrote it. `rewinding` is set when Rewind
-	 * already said later replies go too. Resolves with whether it went ahead.
-	 */
-	private async undoTurn(id: string, rewinding = false): Promise<boolean> {
-		const plan = this.checkpoints.plan(id);
-		if ((this.busy && !rewinding) || !plan) {
-			return false;
-		}
-		const files = new WorkspaceFileSystem();
-		const current = await Promise.all(plan.restores.map(r => files.readTextFile(r.path).catch(() => undefined)));
-		const changedSince = plan.restores.filter((r, i) => (current[i] ?? '') !== r.agentText);
-		if ((plan.laterTurns && !rewinding) || changedSince.length) {
-			const undo = vscode.l10n.t("Undo Changes");
-			const detail = [
-				plan.laterTurns === 1 ? vscode.l10n.t("This also undoes the changes from the reply after it.") : plan.laterTurns ? vscode.l10n.t("This also undoes the changes from the {0} replies after it.", plan.laterTurns) : '',
-				changedSince.length ? vscode.l10n.t("These files changed after Gemini edited them, and those changes will be lost: {0}", changedSince.map(r => path.basename(r.path)).join(', ')) : '',
-			].filter(Boolean).join('\n\n');
-			if (await vscode.window.showWarningMessage(vscode.l10n.t("Undo the changes to {0} files?", plan.restores.length), { modal: true, detail }, undo) !== undo) {
-				return false;
-			}
-		}
-		const restored: acp.Diff[] = [];
-		const failed: string[] = [];
-		for (const [i, restore] of plan.restores.entries()) {
-			try {
-				if (restore.text === undefined) {
-					await deleteFile(restore.path);
-				} else {
-					await replaceFileText(restore.path, restore.text);
-				}
-				restored.push({ path: restore.path, oldText: current[i] ?? '', newText: restore.text ?? '' });
-			} catch (err) {
-				failed.push(`${path.basename(restore.path)}: ${errorMessage(err)}`);
-			}
-		}
-		for (const undone of this.checkpoints.undone(id)) {
-			this.transcript.updateTurnEnd(undone, { undo: 'undone' });
-		}
-		this.saveCheckpoints();
-		if (restored.length) {
-			this.onDidEditFilesEmitter.fire(restored);
-			const names = restored.map(r => path.relative(this.service.client.cwd, r.path) || r.path);
-			this.undoNote = `[The user undid your file changes. These files are back to how they were before those replies, so read them again before editing them: ${names.join(', ')}]`;
-			this.transcript.addNotice(restored.length === 1
-				? vscode.l10n.t("Undid the changes to {0}. Gemini will be told with your next message.", path.basename(restored[0].path))
-				: vscode.l10n.t("Undid the changes to {0} files. Gemini will be told with your next message.", restored.length));
-		}
-		if (failed.length) {
-			this.transcript.addNotice(vscode.l10n.t("Some files could not be put back: {0}", failed.join('; ')), 'error');
-		}
-		return true;
-	}
-
-	/** Shows the shared page's tab, from a Shared page chip. */
-	private async openSharedPage(): Promise<void> {
-		if (!await this.options.sharedPage?.reveal().catch(() => false)) {
-			void vscode.window.showInformationMessage(vscode.l10n.t("The page is no longer shared with this agent. Share it again with Let Gemini Use This Page in the page's toolbar."));
-			void this.refreshSharedPage();
-		}
-	}
-
-	/** Esc twice in an empty message box, as in the CLI: picks one of the user's prompts to rewind to. */
-	private async pickRewind(): Promise<void> {
-		if (this.busy || this.options.project) {
-			return;
-		}
-		const prompts = this.transcript.items.flatMap(item => item.kind === 'user' && item.text.trim() ? [item] : []).reverse();
-		if (!prompts.length) {
-			return;
-		}
-		const pick = await vscode.window.showQuickPick(prompts.map(item => ({
-			label: item.text.replace(/\s+/g, ' ').trim(),
-			...(item.at ? { description: new Date(item.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) } : {}),
-			id: item.id,
-		})), {
-			title: vscode.l10n.t("Rewind"),
-			placeHolder: vscode.l10n.t("Pick a message to rewind to, newest first. The conversation goes back to before it."),
-			matchOnDescription: true,
-		});
-		if (pick) {
-			await this.rewind(pick.id);
-		}
-	}
-
-	/**
-	 * Rewinds to before the user's prompt `itemId`, as the CLI's /rewind does:
-	 * the conversation goes from the chat and from Gemini's context, and the
-	 * files Gemini changed since go back. ACP has no rewind, so the CLI's saved
-	 * session gets the record its /rewind writes and is loaded again. The
-	 * prompt's text goes back in the message box.
-	 */
-	private async rewind(itemId: string): Promise<void> {
-		const items = this.transcript.items;
-		const index = items.findIndex(item => item.id === itemId);
-		const prompt = items[index];
-		if (this.busy || this.options.project || prompt?.kind !== 'user' || !prompt.text.trim()) {
-			return;
-		}
-		// Code: the first kept turn after the prompt, which undoes the later ones with it.
-		const after = new Set(items.slice(index).map(item => item.id));
-		const firstTurn = this.checkpoints.turnIds.find(id => after.has(id));
-		const plan = firstTurn ? this.checkpoints.plan(firstTurn) : undefined;
-		const files = plan?.restores.length ?? 0;
-		const filesNote = files === 1 ? vscode.l10n.t("The 1 file Gemini changed since goes back to how it was.") : files ? vscode.l10n.t("The {0} files Gemini changed since go back to how they were.", files) : '';
-		await this.service.ensureReady().catch(() => undefined);
-		const state = this.service.client.state;
-		const sessionId = state.kind === 'ready' ? state.savedSessionId : this.lastSessionId;
-		const found = !!sessionId && await canRewindCliSession(this.service.client.cwd, sessionId, prompt.text, this.laterRepeats(index));
-		if (!found && !plan) {
-			void vscode.window.showWarningMessage(vscode.l10n.t("This message can't be rewound: it is not in the Gemini CLI's saved session, for example because it ran a team command or skill."));
-			return;
-		}
-		const rewind = vscode.l10n.t("Rewind");
-		const undoCode = vscode.l10n.t("Undo Code");
-		const answer = found
-			? await vscode.window.showWarningMessage(vscode.l10n.t("Rewind to before this message?"), {
-				modal: true,
-				detail: [vscode.l10n.t("This message and everything after it are removed from the chat and from Gemini's context, so Gemini forgets them. The message goes back in the message box, to edit and send again."), filesNote].filter(Boolean).join('\n\n'),
-			}, rewind)
-			: await vscode.window.showWarningMessage(vscode.l10n.t("Undo the code changes since this message?"), {
-				modal: true,
-				detail: [vscode.l10n.t("The conversation can't be rewound: this message is not in the Gemini CLI's saved session, for example because it ran a team command or skill."), filesNote].join('\n\n'),
-			}, undoCode);
-		if (!answer || this.busy || this.transcript.items[index]?.id !== itemId) {
-			return;
-		}
-		if (firstTurn && plan && !await this.undoTurn(firstTurn, true)) {
-			return;
-		}
-		recordPilot(found ? { kind: 'rewind' } : { kind: 'undo', scope: 'turn' });
-		if (found) {
-			await this.rewindChat(itemId, prompt.text);
-		}
-	}
-
-	/** How many of the user's prompts after the one at `index` say the same: the CLI's messages are found by text. */
-	private laterRepeats(index: number): number {
-		const squash = (t: string) => t.replace(/\s+/g, ' ').trim();
-		const items = this.transcript.items;
-		const text = items[index]?.kind === 'user' ? squash(items[index].text) : '';
-		return items.slice(index + 1).filter(item => item.kind === 'user' && squash(item.text) === text).length;
-	}
-
-	private async rewindChat(itemId: string, text: string): Promise<void> {
-		const items = this.transcript.items;
-		const index = items.findIndex(item => item.id === itemId);
-		const fromEnd = this.laterRepeats(index);
-		this.setBusy(true);
-		let reason: string | undefined;
-		try {
-			await this.service.ensureReady();
-			const state = this.service.client.state;
-			const sessionId = state.kind === 'ready' ? state.savedSessionId : this.lastSessionId;
-			if (!sessionId || !await rewindCliSession(this.service.client.cwd, sessionId, text, fromEnd).catch(() => false)) {
-				reason = vscode.l10n.t("The message is not in the Gemini CLI's saved session any more. The chat and Gemini's context are unchanged.");
-				return;
-			}
-			this.lastSessionId = sessionId;
-			if (!await this.service.client.loadSession(sessionId).catch(() => false)) {
-				// The session file is rewound but the CLI did not take it up: carry what is left into a new session.
-				const conversation = await readCliConversation(this.service.client.cwd, sessionId).catch(() => undefined);
-				this.carriedConversation = conversation?.length ? carriedConversationNote('this chat', conversation) : undefined;
-			}
-			const cut = new Set(items.slice(index).map(item => item.id));
-			const firstTurn = this.checkpoints.turnIds.find(id => cut.has(id));
-			if (firstTurn) {
-				// Replies whose changes could not be kept to undo go with the conversation.
-				this.checkpoints.forgetFrom(firstTurn);
-				this.saveCheckpoints();
-			}
-			this.transcript.cutAt(itemId);
-			this.lastPrompt = undefined;
-			this.retryItemId = undefined;
-			this.post({ type: 'draft', text });
-		} catch (err) {
-			reason = errorMessage(err);
-		} finally {
-			this.setBusy(false);
-		}
-		if (reason) {
-			this.transcript.addNotice(vscode.l10n.t("Could not rewind the conversation: {0}", reason), 'error');
-		}
-	}
-
-	/**
-	 * The text to send for `text`: a team command's prompt when it invokes
-	 * one, a request to load the skill when it names one, else `text` itself. The agent's own commands go as typed, and win
-	 * over a team command with the same name.
-	 */
-	private async expandCommand(text: string): Promise<string> {
-		const invocation = parseInvocation(text);
-		if (!invocation || this.service.client.commands.some(c => c.name === invocation.name)) {
-			return text;
-		}
-		const command = (await teamCommands(this.service.client.cwd)).find(c => c.name === invocation.name);
-		if (command) {
-			const { text: prompt, problems } = await expandTeamCommandWithInjections(command, text, teamCommandHost(command.name, this.service.client.cwd));
-			for (const problem of problems) {
-				this.transcript.addNotice(vscode.l10n.t("/{0} could not include {1}", command.name, problem), 'error');
-			}
-			return prompt;
-		}
-		const skill = (await skills(this.service.client.cwd)).find(s => s.name === invocation.name);
-		return skill ? skillPrompt(skill.name, invocation.args) : text;
-	}
-
-	private async postCommands(): Promise<void> {
-		const [team, skillList] = await Promise.all([teamCommands(this.service.client.cwd), skills(this.service.client.cwd)]);
-		// Team commands, then skills whose names they do not take.
-		const teamNames = new Set(team.map(c => c.name));
-		const local: SlashCommand[] = [...team, ...skillList.filter(s => !teamNames.has(s.name)).map(s => ({ name: s.name, description: s.description, source: 'skill' as const }))];
-		const commands = mergeCommands(this.service.client.commands, local);
-		this.post({ type: 'commands', commands: this.options.savedSessions && !commands.some(c => c.name === 'resume') ? [...commands, resumeCommand()] : commands });
-	}
-
-	/** The saved sessions this chat may reopen: not its own, nor one another chat has open. */
-	private async savedSessions(): Promise<CliSession[]> {
-		const exclude = new Set(this.options.savedSessions?.inUse());
-		const state = this.service.client.state;
-		if (state.kind === 'ready') {
-			exclude.add(state.savedSessionId);
-		}
-		return listCliSessions(this.service.client.cwd, { exclude }).catch(() => []);
-	}
-
-	/** Offers the newest saved sessions in an empty chat. Read after the view is up, so it never holds the chat back. */
-	private async postSessions(): Promise<void> {
-		if (!this.options.savedSessions || !this.webview || this.transcript.items.length) {
-			return;
-		}
-		const [sessions, retention] = await Promise.all([this.savedSessions(), retentionNote()]);
-		const now = Date.now();
-		this.post({ type: 'sessions', total: sessions.length, retention, sessions: sessions.slice(0, shownSessions).map(s => ({ id: s.id, title: s.title, detail: sessionDetail(s, now) })) });
-	}
-
 	/** Every saved session for the folder, in a quick pick; the one picked opens here. */
 	async pickSession(): Promise<void> {
-		if (!this.options.savedSessions || this.busy) {
-			return;
-		}
-		const now = Date.now();
-		const picks = this.savedSessions().then(sessions => sessions.map(s => ({ label: s.title, description: sessionDetail(s, now), session: s })));
-		const pick = await vscode.window.showQuickPick(picks, {
-			title: vscode.l10n.t("Restore a Gemini CLI Session"),
-			placeHolder: `${vscode.l10n.t("Sessions saved for {0}, newest first.", path.basename(this.service.client.cwd))} ${await retentionNote()}`,
-			matchOnDescription: true,
-		});
-		if (pick) {
-			await this.restoreSession(pick.session.id, pick.session.title);
-		}
+		return this.sessions.pick();
 	}
 
 	/**
@@ -1142,145 +660,18 @@ export class ChatController implements vscode.Disposable {
 	 * off and replays it into the chat. A conversation already here is
 	 * replaced, after asking; it stays saved by the CLI.
 	 */
-	async restoreSession(id: string, title?: string, again = false): Promise<void> {
-		if (this.busy) {
-			return;
-		}
-		title ??= (await this.savedSessions()).find(s => s.id === id)?.title ?? id;
-		if (this.transcript.items.length && !again) {
-			const restore = vscode.l10n.t("Restore");
-			const answer = await vscode.window.showWarningMessage(
-				vscode.l10n.t("Restore \"{0}\" in this chat?", title),
-				{ modal: true, detail: vscode.l10n.t("The conversation here is replaced. The Gemini CLI keeps it, so you can restore it again later.") },
-				restore);
-			if (answer !== restore) {
-				return;
-			}
-		}
-		this.setBusy(true);
-		let restored = false;
-		let reason: string | undefined;
-		try {
-			await this.service.ensureReady();
-			this.transcript.clear();
-			this.carriedConversation = undefined;
-			this.diffs.clear();
-			this.completedToolCalls.clear();
-			this.checkpoints.clear();
-			this.saveCheckpoints();
-			this.lastPrompt = undefined;
-			this.retryItemId = undefined;
-			this.undoNote = undefined;
-			this.transcript.addNotice(vscode.l10n.t("Restored \"{0}\" from the Gemini CLI.", title));
-			this.replaying = true;
-			// So the switch does not read as the agent losing the session.
-			this.lastSessionId = id;
-			let failure: AgentErrorInfo | undefined;
-			const failed = this.service.client.onDidFailToReopen(e => e.sessionId === id && (failure = e.error));
-			try {
-				restored = await this.service.client.loadSession(id);
-				if (!restored && failure && isPassingFailure(failure)) {
-					// Once more after a restart or a start: those pass.
-					failure = undefined;
-					await this.service.ensureReady();
-					restored = await this.service.client.loadSession(id);
-				}
-			} finally {
-				failed.dispose();
-			}
-			if (restored) {
-				this.onDidRestoreSessionEmitter.fire(title);
-			} else {
-				reason = failure && reopenFailureText(failure);
-			}
-		} catch (err) {
-			reason = errorMessage(err);
-		} finally {
-			this.setBusy(false);
-		}
-		if (!restored) {
-			this.replaying = false;
-			this.transcript.clear();
-			const conversation = await readCliConversation(this.service.client.cwd, id).catch(() => undefined);
-			if (conversation?.length) {
-				// The CLI can't take it up, but the conversation is still in its file: show it, and carry it into the new session.
-				for (const entry of conversation) {
-					if (entry.role === 'user') {
-						this.transcript.addReplayedPrompt(entry.text);
-					} else {
-						this.transcript.apply({ kind: 'text', role: 'agent', text: entry.text });
-					}
-				}
-				this.transcript.addNotice(reason
-					? vscode.l10n.t("The agent could not reopen \"{0}\": {1} It continues in a new session that is given this conversation.", title, reason)
-					: vscode.l10n.t("The agent could not reopen \"{0}\". It continues in a new session that is given this conversation.", title), 'error');
-				this.carriedConversation = carriedConversationNote(title, conversation);
-			} else {
-				this.transcript.addNotice(reason
-					? vscode.l10n.t("The agent could not reopen \"{0}\": {1}", title, reason)
-					: vscode.l10n.t("The agent could not reopen \"{0}\", so this chat starts afresh.", title), 'error');
-			}
-			const retry = vscode.l10n.t("Try Again");
-			void vscode.window.showErrorMessage(vscode.l10n.t("Could not restore \"{0}\".", title), retry).then(choice => {
-				if (choice === retry) {
-					void this.restoreSession(id, title, true);
-				}
-			});
-		}
+	async restoreSession(id: string, title?: string): Promise<void> {
+		return this.sessions.restore(id, title);
 	}
 
-	/** A message of a reopened session as it replays: the CLI's own context and commands are left out. */
-	private applyReplayed(event: ChatEvent): void {
-		if (event.kind === 'text' && event.role === 'user') {
-			const text = event.text.trim();
-			if (isPrompt(text)) {
-				this.transcript.addReplayedPrompt(text);
-			}
-			return;
-		}
-		this.transcript.apply(event);
+	/** Shows the shared page's chip as the browser has it now; resolves with the page, if one is shared. */
+	async refreshSharedPage(): Promise<{ readonly title: string; readonly url: string; readonly note: string } | undefined> {
+		return this.sharedPage.refresh();
 	}
 
 	/** Adds context to the composer (Add File / Add Selection to Chat), showing the chat first. */
-	/** Shows the shared page's chip as the browser has it now; resolves with the page, if one is shared. */
-	async refreshSharedPage(): Promise<{ readonly title: string; readonly url: string; readonly note: string } | undefined> {
-		const page = await this.options.sharedPage?.current().catch(() => undefined);
-		this.post({ type: 'sharedPage', page: page && { title: page.title, url: page.url } });
-		return page;
-	}
-
-	/** Tells the view which tools are connected, so it can turn tickets and links into chips. */
-	private async postToolRefs(): Promise<void> {
-		const chips = this.options.toolChips?.();
-		const context = chips ? await chips.context(this.options.workspace?.()?.cwd).catch(() => undefined) : undefined;
-		this.post({ type: 'toolRefs', context: context ?? { connected: [] } });
-	}
-
 	async addAttachments(attachments: readonly Attachment[]): Promise<void> {
-		if (!attachments.length) {
-			return;
-		}
-		if (this.webview) {
-			this.post({ type: 'attach', attachments });
-		} else {
-			this.pendingAttachments.push(...attachments);
-		}
-		// Focus the chat, so the user can type about what they just added.
-		await this.options.reveal(false);
-	}
-
-	/** Lets the user pick files from anywhere to attach. */
-	private async pickFiles(): Promise<void> {
-		const uris = await vscode.window.showOpenDialog({
-			canSelectMany: true,
-			canSelectFiles: true,
-			canSelectFolders: false,
-			openLabel: vscode.l10n.t("Attach"),
-			title: vscode.l10n.t("Attach Files to Chat"),
-		});
-		if (uris?.length) {
-			await this.addAttachments(await attachmentsForFiles(uris));
-		}
+		return this.attachments.add(attachments);
 	}
 
 	/** Shows an information line in the conversation. */
@@ -1295,40 +686,12 @@ export class ChatController implements vscode.Disposable {
 
 	/** Lists the shell programs allowed for this session, to forget some or all of them. */
 	async manageApprovals(): Promise<void> {
-		const approvals = this.service.permissions.approvals;
-		if (!approvals.approved.length) {
-			void vscode.window.showInformationMessage(vscode.l10n.t("No commands are allowed for this session. Choose \"Allow for this session\" on a shell command to stop being asked about its programs."));
-			return;
-		}
-		const forgetAll: vscode.QuickPickItem = { label: vscode.l10n.t("Forget All"), alwaysShow: true };
-		const picks = await vscode.window.showQuickPick<vscode.QuickPickItem>([
-			...approvals.approved.map(program => ({ label: program })),
-			{ label: '', kind: vscode.QuickPickItemKind.Separator },
-			forgetAll,
-		], {
-			canPickMany: true,
-			title: vscode.l10n.t("Allowed for This Session"),
-			placeHolder: vscode.l10n.t("Pick programs to forget; the agent asks before running them again"),
-		});
-		if (!picks?.length) {
-			return;
-		}
-		if (picks.includes(forgetAll)) {
-			approvals.clear();
-		} else {
-			picks.forEach(pick => approvals.forget(pick.label));
-		}
+		return this.permissions.manageApprovals();
 	}
 
 	/** Opens the usage popover, or closes it if open; the chat comes into view first. */
 	async showUsage(): Promise<void> {
-		if (!this.webview) {
-			this.usageRequested = true;
-		}
-		await this.options.reveal(false);
-		if (this.webview && !this.usageRequested) {
-			this.post({ type: 'toggleUsage' });
-		}
+		return this.usage.show();
 	}
 
 	/** Clears the conversation and, when the agent runs, starts a fresh session so it forgets it too. */
@@ -1336,16 +699,7 @@ export class ChatController implements vscode.Disposable {
 		if (this.busy) {
 			return;
 		}
-		this.transcript.clear();
-		this.diffs.clear();
-		this.completedToolCalls.clear();
-		this.checkpoints.clear();
-		this.saveCheckpoints();
-		this.lastPrompt = undefined;
-		this.retryItemId = undefined;
-		this.undoNote = undefined;
-		this.carriedConversation = undefined;
-		this.replaying = false;
+		this.clearConversation();
 		if (this.service.client.state.kind !== 'ready') {
 			// The next prompt starts the agent, and with it a new session.
 			this.service.client.forgetSession();
@@ -1362,9 +716,32 @@ export class ChatController implements vscode.Disposable {
 		}
 	}
 
+	/** Opens the conversation as a Markdown document, titled `title`. */
+	async openAsMarkdown(title: string): Promise<void> {
+		return openChatAsMarkdown(title, this.transcript.items, await this.options.editorColumn?.());
+	}
+
+	/** Turns Follow the agent on or off in this chat; new chats start the same way. */
+	toggleFollowing(): void {
+		this.follow.toggle();
+	}
+
+	/** The Enhance Prompt command: enhances what the composer holds, showing the chat first. */
+	async requestEnhance(): Promise<void> {
+		return this.enhance.request();
+	}
+
+	/** Commits the files the agent changed on a new branch, as the composer's Commit button does. */
+	async commit(): Promise<void> {
+		return this.git.commit();
+	}
+
+	/** Shows the branch and folder again, as after a project's repositories changed. */
+	refreshGit(): void {
+		this.git.refresh();
+	}
+
 	dispose(): void {
-		this.enhancing?.abort.abort();
-		clearTimeout(this.followTimer);
 		clearTimeout(this.openTimer);
 		this.detach();
 		vscode.Disposable.from(...this.disposables).dispose();
@@ -1392,19 +769,13 @@ export class ChatController implements vscode.Disposable {
 				this.openTimer = setTimeout(() => this.service.open?.(), openFallbackMs);
 				this.post({ type: 'capabilities', image: this.service.client.promptCapabilities.image });
 				this.post({ type: 'composerHeight', height: preferredComposerHeight() });
-				this.post({ type: 'follow', on: this.following });
-				this.postFollowed();
-				if (this.pendingAttachments.length) {
-					this.post({ type: 'attach', attachments: this.pendingAttachments });
-					this.pendingAttachments = [];
-				}
-				if (this.usageRequested) {
-					this.usageRequested = false;
-					this.post({ type: 'toggleUsage' });
-				}
-				this.postGit();
-				void this.refreshSharedPage();
-				void this.postToolRefs();
+				this.follow.postFollowing();
+				this.follow.postFollowed();
+				this.attachments.postPending();
+				this.usage.onReady();
+				this.git.refresh();
+				void this.sharedPage.refresh();
+				void this.attachments.postToolRefs();
 				// The agent was started with the view (see attach); this retries one that has since stopped.
 				this.service.ensureReady().catch(() => undefined);
 				// After starting the agent: finding the theme's file scans every extension the first time.
@@ -1416,58 +787,6 @@ export class ChatController implements vscode.Disposable {
 			case 'composerHeight':
 				rememberComposerHeight(message.height);
 				break;
-			case 'setFollow':
-				this.setFollowing(message.on);
-				break;
-			case 'showFollowed':
-				if (this.followed) {
-					const followed = this.followed;
-					void Promise.resolve(this.options.editorColumn?.()).then(viewColumn => vscode.window.showTextDocument(followed, { preview: true, viewColumn })).then(undefined, () => undefined);
-				}
-				break;
-			case 'closeFollowed':
-				void this.closeFollowed();
-				break;
-			case 'pickFiles':
-				void this.pickFiles();
-				break;
-			case 'stopSharing':
-				void this.options.sharedPage?.stop().then(() => this.refreshSharedPage());
-				break;
-			case 'openSharedPage':
-				void this.openSharedPage();
-				break;
-			case 'resolveToolRef': {
-				const chips = this.options.toolChips?.();
-				void chips?.resolve(message.ref).then(attachment => this.post({ type: 'toolRefResolved', attachment }));
-				break;
-			}
-			case 'openToolRef':
-				void this.options.toolChips?.()?.open(message.ref);
-				break;
-			case 'pickToolItem': {
-				const chips = this.options.toolChips?.();
-				void chips?.pick(message.tool).then(ref => {
-					if (ref) {
-						this.post({ type: 'attachToolRef', ref });
-					}
-				});
-				break;
-			}
-			case 'attachUris': {
-				const uris = message.uris.map(uri => vscode.Uri.parse(uri)).filter(uri => uri.scheme === 'file');
-				void attachmentsForFiles(uris).then(attachments => this.addAttachments(attachments));
-				break;
-			}
-			case 'searchFiles':
-				void this.fileIndex.search(message.query, 30).then(
-					files => this.post({ type: 'files', requestId: message.requestId, files }),
-					() => this.post({ type: 'files', requestId: message.requestId, files: [] }),
-				);
-				break;
-			case 'listCommands':
-				void this.postCommands();
-				break;
 			case 'stop':
 				void this.service.cancel();
 				break;
@@ -1475,94 +794,6 @@ export class ChatController implements vscode.Disposable {
 				if (statusCommands.includes(message.command)) {
 					void vscode.commands.executeCommand(message.command);
 				}
-				break;
-			case 'permission':
-				this.service.permissions.select(message.id, message.optionId);
-				break;
-			case 'openDiff':
-				void this.openDiff(message.itemId, message.path, false);
-				break;
-			case 'openLocation':
-				void this.openLocation(message.path, message.line);
-				break;
-			case 'openPath':
-				void this.openPath(message.path, message.line);
-				break;
-			case 'setMode':
-				void this.changeSetting(() => this.service.client.setMode(message.id).catch(err => this.offerFolderTrust(err, message.id))).then(() => {
-					// Requests that were already waiting are answered as YOLO answers the ones that come next. The picker offers YOLO only where policy allows it.
-					if (message.id === 'yolo' && this.service.client.settings.mode?.currentId === 'yolo') {
-						this.service.permissions.allowPending();
-					}
-				});
-				break;
-			case 'setModel':
-				void this.changeSetting(() => this.service.client.setModel(message.id)).then(() => {
-					if (this.service.client.settings.model?.currentId === message.id) {
-						rememberModel(message.id);
-						this.options.onDidPickModel?.(message.id);
-					}
-				});
-				break;
-			case 'listBranches':
-				void this.postBranches();
-				break;
-			case 'switchBranch': {
-				const folder = this.options.git?.folder();
-				if (folder && !this.options.git?.ownBranch && typeof message.name === 'string') {
-					void switchBranch(folder, message.name, !!message.create).finally(() => this.postGit());
-				}
-				break;
-			}
-			case 'createBranchAndCommit':
-				void this.commit();
-				break;
-			case 'workspaceAction':
-				void this.workspaceAction(message.action, typeof message.repo === 'string' ? message.repo : undefined);
-				break;
-			case 'openReview':
-				this.options.openReview?.();
-				break;
-			case 'openMergeRequest':
-				this.options.openMergeRequest?.();
-				break;
-			case 'restoreSession':
-				if (typeof message.id === 'string') {
-					void this.restoreSession(message.id);
-				}
-				break;
-			case 'pickSession':
-				void this.pickSession();
-				break;
-			case 'undoTurn':
-				void this.undoTurn(message.itemId).then(done => done && recordPilot({ kind: 'undo', scope: 'turn' }));
-				break;
-			case 'rewind':
-				void this.rewind(message.itemId);
-				break;
-			case 'pickRewind':
-				void this.pickRewind();
-				break;
-			case 'threadAction':
-				this.options.project?.threadAction(message.thread, message.action, message.repo);
-				break;
-			case 'prepareThread':
-				this.options.project?.prepareThread(message.thread);
-				break;
-			case 'openProjectSettings':
-				this.options.project?.openSettings();
-				break;
-			case 'saveProjectSettings':
-				this.options.project?.saveSettings(message.settings);
-				break;
-			case 'projectSettingsAction':
-				this.options.project?.settingsAction(message.action, message.name);
-				break;
-			case 'startThread':
-				this.options.project?.startThread(message.thread);
-				break;
-			case 'openParentProject':
-				this.options.parentProject?.open();
 				break;
 			case 'retry':
 				if (this.lastPrompt && message.itemId === this.retryItemId) {
@@ -1580,377 +811,94 @@ export class ChatController implements vscode.Disposable {
 			case 'dismissCutOff':
 				this.transcript.dismissCutOff(message.itemId);
 				break;
-			case 'openTrace':
-				void vscode.workspace.openTextDocument(message.file).then(doc => vscode.window.showTextDocument(doc, { preview: false }), () => undefined);
-				break;
 			case 'buildPlan':
 				void this.buildPlan(message.itemId);
 				break;
+			case 'listCommands':
+				void this.commands.postCommands();
+				break;
+			case 'permission':
+				this.permissions.onMessage(message);
+				break;
+			case 'setMode':
+			case 'setModel':
+				this.settings.onMessage(message);
+				break;
+			case 'openDiff':
+			case 'openLocation':
+			case 'openPath':
+			case 'openTrace':
+				this.files.onMessage(message);
+				break;
+			case 'pickFiles':
+			case 'attachUris':
+			case 'searchFiles':
+			case 'resolveToolRef':
+			case 'openToolRef':
+			case 'pickToolItem':
+				this.attachments.onMessage(message);
+				break;
+			case 'stopSharing':
+			case 'openSharedPage':
+				this.sharedPage.onMessage(message);
+				break;
+			case 'setFollow':
+			case 'showFollowed':
+			case 'closeFollowed':
+				this.follow.onMessage(message);
+				break;
+			case 'listBranches':
+			case 'switchBranch':
+			case 'createBranchAndCommit':
+			case 'workspaceAction':
+			case 'openReview':
+			case 'openMergeRequest':
+				this.git.onMessage(message);
+				break;
+			case 'restoreSession':
+			case 'pickSession':
+				this.sessions.onMessage(message);
+				break;
+			case 'undoTurn':
+			case 'rewind':
+			case 'pickRewind':
+				this.checkpoints.onMessage(message);
+				break;
+			case 'threadAction':
+			case 'prepareThread':
+			case 'openProjectSettings':
+			case 'saveProjectSettings':
+			case 'projectSettingsAction':
+			case 'startThread':
+			case 'openParentProject':
+				this.project.onMessage(message);
+				break;
 			case 'prepareEnhance':
-				// Only once the agent runs: a rewrite is no reason to start it.
-				this.options.enhancer.prepare();
-				break;
 			case 'enhancePrompt':
-				void this.enhance(message.requestId, message.text, message.attachments);
-				break;
-			case 'openUpgrade':
-				void vscode.env.openExternal(vscode.Uri.parse(upgradeUrl));
+			case 'cancelEnhance':
+				this.enhance.onMessage(message);
 				break;
 			case 'readQuota':
-				void this.postQuota();
-				break;
-			case 'cancelEnhance':
-				if (this.enhancing?.requestId === message.requestId) {
-					this.enhancing.abort.abort();
-				}
+			case 'openUpgrade':
+				this.usage.onMessage(message);
 				break;
 		}
 	}
 
-	/** Opens the conversation as a Markdown document, titled `title`. */
-	async openAsMarkdown(title: string): Promise<void> {
-		return openChatAsMarkdown(title, this.transcript.items, await this.options.editorColumn?.());
-	}
-
-	/** Turns Follow the agent on or off in this chat; new chats start the same way. */
-	toggleFollowing(): void {
-		this.setFollowing(!this.following);
-	}
-
-	private setFollowing(on: boolean): void {
-		this.following = on;
-		if (!on) {
-			clearTimeout(this.followTimer);
-			this.followTimer = undefined;
-			this.followTarget = undefined;
-		}
-		this.post({ type: 'follow', on });
-		void vscode.workspace.getConfiguration('gemini').update('chat.followAgent', on, vscode.ConfigurationTarget.Global);
-	}
-
-	private scheduleFollow(target: FollowTarget | undefined): void {
-		if (!target) {
-			return;
-		}
-		this.followTarget = target;
-		this.followTimer ??= setTimeout(() => {
-			this.followTimer = undefined;
-			const next = this.followTarget;
-			this.followTarget = undefined;
-			if (next && this.following) {
-				void this.showFollowed(next);
-			}
-		}, followIntervalMs);
-	}
-
-	/**
-	 * Shows a file the agent is on, leaving focus in the chat. Folders, missing
-	 * files, files outside the agent's folder and files that may hold secrets
-	 * are skipped.
-	 */
-	private async showFollowed(target: FollowTarget): Promise<void> {
-		const root = path.resolve(this.service.client.cwd);
-		const file = path.resolve(root, target.path);
-		if (!isInside(root, file) || secretPathReason(path.relative(root, file)) || !await isFile(file)) {
-			return;
-		}
-		const position = new vscode.Position(Math.max((target.line ?? 1) - 1, 0), 0);
-		const uri = vscode.Uri.file(file);
-		try {
-			await vscode.window.showTextDocument(uri, {
-				selection: new vscode.Range(position, position), preview: true, preserveFocus: true, viewColumn: await this.options.editorColumn?.(),
-			});
-		} catch {
-			// A file that cannot be shown, such as a binary one, is skipped.
-			return;
-		}
-		this.followed = uri;
-		this.postFollowed();
-	}
-
-	/** The chat names the followed file, with a close button, while its tab is open. */
-	private postFollowed(): void {
-		const uri = this.followed;
-		this.post({ type: 'followed', file: uri && { name: path.basename(uri.fsPath), path: vscode.workspace.asRelativePath(uri) } });
-	}
-
-	private async closeFollowed(): Promise<void> {
-		const uri = this.followed;
-		if (uri) {
-			await vscode.window.tabGroups.close(followedTabs(uri));
-		}
-	}
-
-	/** The Enhance Prompt command: enhances what the composer holds, showing the chat first. */
-	async requestEnhance(): Promise<void> {
-		await this.options.reveal(false);
-		this.post({ type: 'enhanceRequested' });
-	}
-
-	/** Rewrites the composer's draft as a precise prompt and sends it back for the user to review. */
-	private async enhance(requestId: number, draft: string, attachments: readonly Attachment[]): Promise<void> {
-		const enhancer = this.options.enhancer;
-		if (!draft.trim()) {
-			return;
-		}
-		this.enhancing?.abort.abort();
-		const abort = new AbortController();
-		this.enhancing = { requestId, abort };
-		try {
-			// The rewrite waits for the agent process itself, not for this chat's session.
-			// It shows as it arrives, at most about 30 times a second.
-			let progress: { text: string; timer?: ReturnType<typeof setTimeout> } | undefined;
-			const onText = (text: string) => {
-				progress ??= { text };
-				progress.text = text;
-				progress.timer ??= setTimeout(() => {
-					if (progress && !abort.signal.aborted) {
-						progress.timer = undefined;
-						this.post({ type: 'enhanceProgress', requestId, text: progress.text });
-					}
-				}, progressIntervalMs);
-			};
-			try {
-				const text = await enhancer.enhance(await this.enhanceInput(draft, attachments), abort.signal, onText);
-				this.post({ type: 'enhanced', requestId, text });
-			} finally {
-				clearTimeout(progress?.timer);
-			}
-		} catch (err) {
-			if (!(err instanceof EnhanceCancelledError)) {
-				this.post({ type: 'enhanceFailed', requestId, message: errorMessage(err) });
-			}
-		} finally {
-			if (this.enhancing?.abort === abort) {
-				this.enhancing = undefined;
-			}
-		}
-	}
-
-	/** The draft with what a rewrite may use: attachment names, the chat so far, the folder, branch, open file and mode. */
-	private async enhanceInput(draft: string, attachments: readonly Attachment[]): Promise<EnhancePromptInput> {
-		const client = this.service.client;
-		const folder = this.options.git?.folder() ?? client.cwd;
-		const branch = await readGitHead(folder).catch(() => undefined);
-		const document = vscode.window.activeTextEditor?.document;
-		const relative = document?.uri.scheme === 'file' ? path.relative(client.cwd, document.uri.fsPath) : undefined;
-		const activeFile = relative && !relative.startsWith('..') && !path.isAbsolute(relative) ? `${relative.split(path.sep).join('/')} (${document!.languageId})` : undefined;
-		const mode = client.settings.mode;
-		// The index answers in milliseconds; a slow answer is left out rather than waited for.
-		const codeContext = await Promise.race([
-			this.options.indexContext?.(draft).catch(() => undefined) ?? Promise.resolve(undefined),
-			new Promise<undefined>(resolve => setTimeout(() => resolve(undefined), indexContextWaitMs)),
-		]);
-		return {
-			draft,
-			...codeContext ? { codeContext } : {},
-			attachments: attachments.map(attachmentLabel),
-			history: enhanceHistory(this.transcript.items),
-			folder: path.basename(client.cwd),
-			branch,
-			activeFile,
-			mode: mode?.available.find(choice => choice.id === mode.currentId)?.name,
-		};
-	}
-
-	/** Commits the files the agent changed on a new branch, as the composer's Commit button does. */
-	async commit(): Promise<void> {
-		const folder = this.options.git?.folder();
-		const commit = this.options.git?.commit;
-		const files = commit?.files() ?? [];
-		if (!folder || !commit || !files.length || this.busy) {
-			return;
-		}
-		const suggestion = commit.suggestion();
-		if (await createBranchAndCommit({ folder, files, suggestedBranch: suggestion.branch, suggestedMessage: suggestion.message })) {
-			commit.committed();
-		}
-		this.postGit();
-	}
-
-	/** Shows the branch and folder again, as after a project's repositories changed. */
-	refreshGit(): void {
-		this.postGit();
-	}
-
-	/** Sends the branch and whether there is anything to commit; the branch is read from `.git/HEAD`, which is cheap. */
-	private postGit(): void {
-		const git = this.options.git;
-		const folder = git?.folder();
-		if (!git || !this.webview) {
-			return;
-		}
-		const canCommit = !this.busy && !!git.commit?.files().length;
-		const ws = this.options.workspace?.();
-		const workspace = ws && { name: path.basename(ws.folder) || ws.folder, path: tildify(ws.cwd), worktree: ws.worktree };
-		const review = this.options.review?.();
-		// Several repositories: each with its own branch, in place of one folder and branch.
-		if (ws?.repos && ws.repos.length > 1) {
-			void Promise.all(ws.repos.map(async repo => ({ name: repo.name, path: tildify(repo.folder), branch: await readGitHead(repo.folder).catch(() => undefined) })))
-				.then(repos => this.post({ type: 'git', git: { canCommit: false, repos } }));
-			return;
-		}
-		void (folder ? readGitHead(folder).catch(() => undefined) : Promise.resolve(undefined))
-			.then(branch => this.post({ type: 'git', git: { branch, canCommit, ...(workspace ? { workspace } : {}), ...(review ? { review } : {}) } }));
-	}
-
-	/** The branch menu's list: the folder's local branches, or why this agent cannot switch. */
-	private async postBranches(): Promise<void> {
-		const ownBranch = this.options.git?.ownBranch;
-		if (ownBranch) {
-			this.post({ type: 'branches', branches: [], notice: vscode.l10n.t("This agent works on its own branch, {0}. Use Merge Back to bring its work into your branch.", ownBranch) });
-			return;
-		}
-		const folder = this.options.git?.folder();
-		const result = folder ? await localBranches(folder).catch(() => undefined) : undefined;
-		const now = Date.now();
-		this.post({
-			type: 'branches',
-			branches: (result?.branches ?? []).map(branch => ({
-				name: branch.name,
-				current: branch.name === result?.current,
-				...(branch.committedAt ? { age: relativeTime(branch.committedAt, now) } : {}),
-			})),
-		});
-	}
-
-	/** What the folder menu offers. */
-	private async workspaceAction(action: 'copyPath' | 'reveal' | 'showAgents' | 'addFolder', repo?: string): Promise<void> {
-		if (action === 'addFolder') {
-			return vscode.commands.executeCommand('workbench.action.addRootFolder');
-		}
-		const workspace = this.options.workspace?.();
-		const folder = repo !== undefined ? workspace?.repos?.find(each => each.name === repo)?.folder : workspace?.cwd;
-		if (!folder) {
-			return;
-		}
-		switch (action) {
-			case 'copyPath':
-				return vscode.env.clipboard.writeText(folder);
-			case 'reveal':
-				return vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(folder));
-			case 'showAgents':
-				return vscode.commands.executeCommand('gemini.agents.focus');
-		}
-	}
-
-	private async changeSetting(change: () => Promise<void>): Promise<void> {
-		try {
-			await change();
-		} catch (err) {
-			this.transcript.addNotice(errorMessage(err), 'error');
-		}
-		// Resync the pickers: the change may have failed or been ignored.
-		this.post({ type: 'settings', settings: this.service.client.settings });
-	}
-
-	/**
-	 * When the CLI refused a mode because it does not trust the folder, asks
-	 * the user to trust it, as the CLI's own terminal does, and switches to the
-	 * mode once the agent restarts. Rethrows anything else.
-	 */
-	private async offerFolderTrust(err: unknown, modeId: string): Promise<void> {
-		if (!(err instanceof AgentError) || err.info.kind !== 'untrusted-folder') {
-			throw err;
-		}
-		const folder = this.service.client.cwd;
-		const modeName = this.service.client.settings.mode?.available.find(choice => choice.id === modeId)?.name ?? modeId;
-		const trust = vscode.l10n.t("Trust Folder");
-		const choice = await vscode.window.showWarningMessage(
-			vscode.l10n.t("Trust {0} for the Gemini agent?", path.basename(folder) || folder),
-			{
-				modal: true,
-				detail: vscode.l10n.t("{0} mode needs a trusted folder. Trusting it also lets the Gemini CLI load this folder's own Gemini settings and MCP servers, which can run programs. The Gemini CLI remembers the choice for this folder, including in the terminal.", modeName),
-			},
-			trust);
-		if (choice !== trust) {
-			return;
-		}
-		this.service.client.setModeOnNextSession(modeId);
-		const waits = await this.service.trustFolder(folder);
-		this.transcript.addNotice(waits
-			? vscode.l10n.t("Folder trusted. The agent restarts in {0} mode once no agent is working.", modeName)
-			: vscode.l10n.t("Folder trusted. Restarting the agent in {0} mode.", modeName), 'info');
-	}
-
-	private addSessionLostNotice(): void {
-		this.transcript.addNotice(vscode.l10n.t("The agent could not continue the earlier session, so it does not remember the messages above."));
-	}
-
-	/**
-	 * Shows the request's first proposed edit when the chat is in view. A chat
-	 * out of view is not brought forward, so a waiting agent never takes over
-	 * the chat the user is typing in: its status dot, the Dock badge and the
-	 * notification say it waits.
-	 */
-	private async revealForPermission(permission: PendingPermission): Promise<void> {
-		if (this.options.isShown && !this.options.isShown()) {
-			return;
-		}
-		const firstDiff = permission.request.toolCall.content?.find(c => c.type === 'diff');
-		if (firstDiff) {
-			await this.openDiff(permission.id, firstDiff.path, true);
-		}
-	}
-
-	private rememberDiffs(itemId: string, diffs: readonly acp.Diff[]): void {
-		if (diffs.length) {
-			// Re-inserting keeps the most recent edits when old ones are dropped.
-			this.diffs.delete(itemId);
-			this.diffs.set(itemId, diffs);
-			dropOldest(this.diffs);
-		}
-	}
-
-	private async openDiff(itemId: string, filePath: string, preserveFocus: boolean): Promise<void> {
-		const diff = this.diffs.get(itemId)?.find(d => d.path === filePath);
-		if (diff) {
-			await this.diffPreview.show(diff, { preserveFocus, viewColumn: await this.options.editorColumn?.() });
-			return;
-		}
-		// Proposed edits are kept in memory only, so a restored or old chat has
-		// none: show the file as it is now instead.
-		void vscode.window.showInformationMessage(vscode.l10n.t("The proposed change is no longer available, so the file is shown as it is now."));
-		await this.openLocation(filePath, undefined);
-	}
-
-	/** Opens a file the reply names: by its path from the agent's folder, else by its name anywhere in the workspace. */
-	private async openPath(name: string, line: number | undefined): Promise<void> {
-		if (typeof name !== 'string' || !name || name.length > 500) {
-			return;
-		}
-		const folder = this.options.git?.folder() ?? this.service.client.cwd;
-		const direct = path.resolve(folder, name);
-		if (await isFile(direct)) {
-			return this.openLocation(direct, line);
-		}
-		const pattern = `**/${name.replace(/^(\.\.?\/)+/, '').replace(/[[\]{}*?!]/g, '?')}`;
-		const matches = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, pattern), '**/{node_modules,.git}/**', 20);
-		if (matches.length === 1) {
-			return this.openLocation(matches[0].fsPath, line);
-		}
-		if (!matches.length) {
-			void vscode.window.setStatusBarMessage(vscode.l10n.t("No file named {0} in {1}", name, path.basename(folder)), 4000);
-			return;
-		}
-		const pick = await vscode.window.showQuickPick(matches.map(uri => ({ label: path.basename(uri.fsPath), description: vscode.workspace.asRelativePath(uri), uri })), { placeHolder: vscode.l10n.t("Which {0}?", name) });
-		if (pick) {
-			return this.openLocation(pick.uri.fsPath, line);
-		}
-	}
-
-	private async openLocation(filePath: string, line: number | undefined): Promise<void> {
-		const position = new vscode.Position(Math.max((line ?? 1) - 1, 0), 0);
-		try {
-			await vscode.window.showTextDocument(vscode.Uri.file(filePath), { selection: new vscode.Range(position, position), preview: true, viewColumn: await this.options.editorColumn?.() });
-		} catch (err) {
-			void vscode.window.showErrorMessage(errorMessage(err));
-		}
+	/** Clears the conversation and what the chat keeps about it: proposed edits, checkpoints, Retry, and what the next prompt would carry. */
+	private clearConversation(): void {
+		this.transcript.clear();
+		this.files.clear();
+		this.completedToolCalls.clear();
+		this.checkpoints.clear();
+		this.lastPrompt = undefined;
+		this.retryItemId = undefined;
+		this.sessions.forgetConversation();
 	}
 
 	private setBusy(busy: boolean): void {
 		if (busy && !this.busy) {
-			this.turnStartedAt = this.lastPromptAt() ?? Date.now();
+			this.turnStartedAt = lastPromptAt(this.transcript.items) ?? Date.now();
 		}
 		this.busy = busy;
 		if (this.options.busyContextKey) {
@@ -1959,7 +907,7 @@ export class ChatController implements vscode.Disposable {
 		this.post({ type: 'busy', busy });
 		this.fireActivity();
 		// A turn may have switched branches or changed files.
-		this.postGit();
+		this.git.refresh();
 	}
 
 	private fireActivity(): void {
@@ -1973,43 +921,11 @@ export class ChatController implements vscode.Disposable {
 		this.items.clear();
 		this.textDeltas.reset(this.transcript.items);
 		this.post({ type: 'reset', items: this.transcript.items, busy: this.busy, status: toViewStatus(this.service.status), settings: this.service.client.settings });
-		if (this.projectPanel) {
-			this.post({ type: 'projectPanel', panel: this.projectPanel });
-		}
-		if (this.newThreadPending) {
-			this.newThreadPending = false;
-			this.post({ type: 'openNewThread' });
-		}
-		if (this.settingsPending) {
-			this.post({ type: 'projectSettings', settings: this.settingsPending, open: true });
-			this.settingsPending = undefined;
-		}
-		if (this.options.parentProject) {
-			this.post({ type: 'parentProject', parent: { label: vscode.l10n.t("Thread in {0}", this.options.parentProject.name()), action: vscode.l10n.t("Open Project Chat") } });
-		}
+		this.project.postReset();
 		if (!this.busy) {
-			void this.postSessions();
+			void this.sessions.postSessions();
 		}
-		void this.postContext();
-	}
-
-	/** How full this session's context window is, from the counts the CLI saved; none until the agent has answered. */
-	private async postContext(): Promise<void> {
-		const state = this.service.client.state;
-		const tokens = state.kind === 'ready' && this.transcript.items.length ? await readSessionTokens(this.service.client.cwd, state.savedSessionId).catch(() => undefined) : undefined;
-		this.post({ type: 'context', context: tokens && { used: tokens.context, limit: contextWindow, cached: tokens.cached, ...(tokens.model ? { model: tokens.model } : {}) } });
-	}
-
-	/** Today's quota for the usage popover: what is known now, then a fresh read if that was not fresh. */
-	private async postQuota(): Promise<void> {
-		const meter = this.options.usage?.();
-		const current = meter?.reading ?? { kind: 'off' as const };
-		if (!meter || current.kind === 'off') {
-			this.post({ type: 'quota', quota: { kind: 'off' } });
-			return;
-		}
-		this.post({ type: 'quota', quota: current.kind === 'ok' ? { ...current, checking: true } : { kind: 'checking' } });
-		this.post({ type: 'quota', quota: await meter.refresh() });
+		void this.usage.postContext();
 	}
 
 	private post(message: ToWebview): void {
@@ -2022,343 +938,6 @@ export class ChatController implements vscode.Disposable {
 
 	private async postTokenColors(): Promise<void> {
 		this.post({ type: 'tokenColors', colors: await themeTokenColors() });
-	}
-
-	private getHtml(webview: vscode.Webview, mediaUri: vscode.Uri): string {
-		const nonce = createNonce();
-		const script = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'chat.js'));
-		const style = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'chat.css'));
-		const menuStyle = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'menu.css'));
-		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'codicon.css'));
-		const glassStyle = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'glass.css'));
-		// Loaded by the view when it first shows code.
-		const highlighter = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'highlight.js'));
-		// Loaded by the view when a reply first has math.
-		const katex = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'katex.js'));
-		const katexStyle = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'katex-style.css'));
-		const strings: ChatStrings = {
-			placeholder: vscode.l10n.t("Ask Gemini anything about this workspace"),
-			fromCoordinator: vscode.l10n.t("From coordinator"),
-			...(this.options.project ? { project: projectStrings() } : {}),
-			placeholderFollowUp: vscode.l10n.t("Ask a follow-up"),
-			send: process.platform === 'darwin' ? vscode.l10n.t("Send (Return)") : vscode.l10n.t("Send (Enter)"),
-			stop: vscode.l10n.t("Stop (Esc Esc)"),
-			replyFinished: vscode.l10n.t("Reply finished"),
-			welcomeTitle: vscode.l10n.t("What are we building?"),
-			welcome: vscode.l10n.t("Ask Gemini to explain, change or create code in this workspace. It asks before it edits files."),
-			hintMention: vscode.l10n.t("to add files as context"),
-			hintNewLine: vscode.l10n.t("for a new line"),
-			hintCommands: vscode.l10n.t("for commands"),
-			scrollToBottom: vscode.l10n.t("Jump to latest"),
-			latest: vscode.l10n.t("Latest"),
-			thinking: vscode.l10n.t("Thinking"),
-			activityWorking: vscode.l10n.t("Working"),
-			activityWaiting: vscode.l10n.t("Waiting on you"),
-			activityWriting: vscode.l10n.t("Writing the reply"),
-			activityDone: vscode.l10n.t("Done in {0}"),
-			activityStopHint: vscode.l10n.t("Esc twice to stop"),
-			activityStopAgain: vscode.l10n.t("Press Esc again to stop"),
-			thought: vscode.l10n.t("Thought"),
-			thoughtFor: vscode.l10n.t("Thought for {0}s"),
-			plan: vscode.l10n.t("Plan"),
-			subagent: vscode.l10n.t("Subagent: {0}"),
-			subagentWorking: vscode.l10n.t("working"),
-			subagentFinished: vscode.l10n.t("finished in {0}"),
-			subagentFailed: vscode.l10n.t("failed"),
-			unknownUpdate: vscode.l10n.t("Update not shown in this version: {0}"),
-			terminal: vscode.l10n.t("Terminal output"),
-			openDiff: vscode.l10n.t("Open diff"),
-			copy: vscode.l10n.t("Copy"),
-			copied: vscode.l10n.t("Copied"),
-			mode: vscode.l10n.t("Mode"),
-			model: vscode.l10n.t("Model"),
-			permissionAnswered: vscode.l10n.t("You chose: {0}"),
-			permissionCancelled: vscode.l10n.t("Not answered; the request was cancelled."),
-			permissionHint: vscode.l10n.t("Esc rejects"),
-			confirmClass: vscode.l10n.t("confirm class"),
-			confirmWhy: vscode.l10n.t("Shown exactly as {0} will record it under your account. This card never offers \"Allow for this session\": it asks every time."),
-			firstToken: vscode.l10n.t("first token {0}"),
-			cutOff: {
-				title: vscode.l10n.t("This turn was interrupted when GeminiCode quit."),
-				text: vscode.l10n.t("Whatever the agent changed before that is in Changes and on disk; nothing else was done. The session is restored from the CLI's chat file, and nothing was sent to Gemini since. Session approvals ended with the process, so the next command asks again."),
-				retry: vscode.l10n.t("Retry the Turn"),
-				keep: vscode.l10n.t("Keep and Continue"),
-			},
-			trace: {
-				title: vscode.l10n.t("Where the time went: this turn"),
-				source: vscode.l10n.t("from the CLI's OpenTelemetry file · gemini_cli.* metrics"),
-				hop: vscode.l10n.t("Hop"),
-				share: vscode.l10n.t("Share of {0}"),
-				thisTurn: vscode.l10n.t("This turn"),
-				budget: vscode.l10n.t("Budget p50"),
-				tokens: vscode.l10n.t("Tokens: {0} in (cached {1}) · {2} out · {3} requests"),
-				file: vscode.l10n.t("Trace file: {0} · prompts not logged"),
-				open: vscode.l10n.t("Open"),
-			},
-			workedFor: vscode.l10n.t("Worked for {0}"),
-			work: {
-				stoppedAfter: vscode.l10n.t("Stopped after {0}"),
-				stopped: vscode.l10n.t("Stopped"),
-				steps: vscode.l10n.t("{0} steps"),
-				oneStep: vscode.l10n.t("1 step"),
-				counts: {
-					read: [vscode.l10n.t("read 1 file"), vscode.l10n.t("read {0} files")],
-					search: [vscode.l10n.t("searched 1 pattern"), vscode.l10n.t("searched {0} patterns")],
-					execute: [vscode.l10n.t("ran 1 command"), vscode.l10n.t("ran {0} commands")],
-					edit: [vscode.l10n.t("edited 1 file"), vscode.l10n.t("edited {0} files")],
-					fetch: [vscode.l10n.t("fetched 1 page"), vscode.l10n.t("fetched {0} pages")],
-					other: [vscode.l10n.t("used 1 tool"), vscode.l10n.t("used {0} tools")],
-				},
-				runs: {
-					read: vscode.l10n.t("Read {0} files"),
-					search: vscode.l10n.t("Searched {0} patterns"),
-					execute: vscode.l10n.t("Ran {0} commands"),
-					edit: vscode.l10n.t("Edited {0} files"),
-					fetch: vscode.l10n.t("Fetched {0} pages"),
-					other: vscode.l10n.t("Used {0} tools"),
-				},
-				failed: vscode.l10n.t("{0} failed"),
-				failedFixed: vscode.l10n.t("{0} failed, fixed"),
-				fixedLater: vscode.l10n.t("got through when run again"),
-				changed: vscode.l10n.t("Changed"),
-				showOutput: vscode.l10n.t("Show output"),
-			},
-			copyReply: vscode.l10n.t("Copy reply"),
-			copyMessage: vscode.l10n.t("Copy message"),
-			undoTurn: vscode.l10n.t("Undo"),
-			undoTurnTooltip: vscode.l10n.t("Put back the files this reply changed"),
-			rewindPrompt: vscode.l10n.t("Rewind to here"),
-			undoTurnFiles: vscode.l10n.t("Put back the {0} files this reply changed"),
-			turnUndone: vscode.l10n.t("Changes undone"),
-			retry: vscode.l10n.t("Retry"),
-			retryTooltip: vscode.l10n.t("Send this message again"),
-			buildPlan: vscode.l10n.t("Build This Plan"),
-			buildPlanTooltip: vscode.l10n.t("Leave Plan mode and carry out this plan"),
-			switchBranch: vscode.l10n.t("Branch {0}: switch or create a branch"),
-			createBranchAndCommit: vscode.l10n.t("Create a branch and commit these changes"),
-			commit: vscode.l10n.t("Commit\u2026"),
-			enhance: vscode.l10n.t("Enhance prompt"),
-			enhanceShort: vscode.l10n.t("Enhance"),
-			previewMarkdown: vscode.l10n.t("Preview ({0})"),
-			previewLabel: vscode.l10n.t("Preview"),
-			writeLabel: vscode.l10n.t("Write"),
-			followAgent: vscode.l10n.t("Follow the agent: open each file it reads or edits"),
-			promptOutline: process.platform === 'darwin' ? vscode.l10n.t("Your prompts (⌥⌘↑ and ⌥⌘↓ to jump between them)") : vscode.l10n.t("Your prompts (Ctrl+Alt+Up and Ctrl+Alt+Down to jump between them)"),
-			previewEmpty: vscode.l10n.t("Nothing to preview yet."),
-			enhanceTooltip: vscode.l10n.t("Rewrite this as a clearer, more precise prompt ({0})"),
-			enhancing: vscode.l10n.t("Enhancing the prompt"),
-			enhanced: vscode.l10n.t("Prompt enhanced. Review it, then send."),
-			enhancingNote: vscode.l10n.t("Rewriting as a precise prompt \u00b7 Esc to cancel"),
-			enhancedNote: vscode.l10n.t("Enhanced. Edit it, send it, or Revert to your words ({0} works too)."),
-			stillEnhancing: vscode.l10n.t("Still working\u2026"),
-			enhanceWaiting: vscode.l10n.t("Gemini is busy or rate-limited and is retrying\u2026"),
-			cancel: vscode.l10n.t("Cancel"),
-			revert: vscode.l10n.t("Revert"),
-			revertTooltip: vscode.l10n.t("Put back what you wrote"),
-			workspaceTooltip: vscode.l10n.t("Workspace {0}"),
-			repoTooltip: vscode.l10n.t("Repository {0} on {1}, at {2}"),
-			repositories: vscode.l10n.t("Repositories"),
-			worktree: vscode.l10n.t("worktree"),
-			restoreTitle: vscode.l10n.t("Restore a session"),
-			restoreHint: vscode.l10n.t("Saved by the Gemini CLI for this folder"),
-			restore: vscode.l10n.t("Restore"),
-			showAllSessions: vscode.l10n.t("Show all {0} sessions\u2026"),
-			commandFromApp: vscode.l10n.t("GeminiCode"),
-			usage: vscode.l10n.t("Usage and quota"),
-			usageThisChat: vscode.l10n.t("This chat"),
-			usageTurns: vscode.l10n.t("{0} replies"),
-			usageOneTurn: vscode.l10n.t("1 reply"),
-			usageInput: vscode.l10n.t("Input"),
-			usageOutput: vscode.l10n.t("Output"),
-			usageModel: vscode.l10n.t("Model"),
-			usageTotal: vscode.l10n.t("Total"),
-			usageInputNote: vscode.l10n.t("Input counts the conversation again for each model call, as the CLI's /stats does."),
-			usageNoTurns: vscode.l10n.t("No replies yet."),
-			usageNoCounts: vscode.l10n.t("No token counts for these replies. Gemini reports them for new replies."),
-			usageSomeCounted: vscode.l10n.t("Counts for {0} of {1} replies."),
-			usageQuota: vscode.l10n.t("Today's quota"),
-			usageUsed: vscode.l10n.t("{0}% used"),
-			usageResetsHours: vscode.l10n.t("resets in {0}h"),
-			usageResetsMinutes: vscode.l10n.t("resets in {0}m"),
-			usageChecking: vscode.l10n.t("Checking\u2026"),
-			usageCheckedJustNow: vscode.l10n.t("Checked just now"),
-			usageUpgrade: vscode.l10n.t("Get higher limits"),
-			usageCheckedMinutes: vscode.l10n.t("Checked {0} min ago"),
-			usageQuotaOff: vscode.l10n.t("Turned off in Settings (Gemini \u203a Usage Meter)."),
-			usageQuotaNone: vscode.l10n.t("Shown when you sign in with Google. API keys have no daily quota to read."),
-			usageQuotaFailed: vscode.l10n.t("Couldn't read the quota. Try again in a moment."),
-			plusMenu: vscode.l10n.t("Add files, context, modes and more"),
-			menuSearch: vscode.l10n.t("Search modes, files, commands\u2026"),
-			menuFiles: vscode.l10n.t("Files"),
-			menuFilesDetail: vscode.l10n.t("Attach files or images"),
-			menuContext: vscode.l10n.t("Context"),
-			menuContextDetail: vscode.l10n.t("Add workspace files (@)"),
-			menuFollow: vscode.l10n.t("Follow the agent"),
-			menuFollowDetail: vscode.l10n.t("Open each file it reads or edits"),
-			followAgentOn: vscode.l10n.t("Following the agent: each file it reads or edits opens. Click to stop."),
-			menuUsageDetail: vscode.l10n.t("Context {0}%"),
-			menuCommands: vscode.l10n.t("Skills and commands"),
-			fromYourTools: vscode.l10n.t("From your tools"),
-			jiraTicket: vscode.l10n.t("Jira ticket"),
-			gitlabItem: vscode.l10n.t("GitLab merge request or issue"),
-			figmaFrame: vscode.l10n.t("Figma frame"),
-			pasteLink: vscode.l10n.t("paste link"),
-			openMergeRequest: vscode.l10n.t("Open Merge Request"),
-			openMergeRequestTip: vscode.l10n.t("Open a merge request on GitLab for this agent's branch"),
-			toolChipLoading: vscode.l10n.t("Reading\u2026"),
-			openToolItem: vscode.l10n.t("Open {0}"),
-			indexToolVerbs: {
-				searchCode: vscode.l10n.t("Search code for {0}"),
-				findSymbol: vscode.l10n.t("Look up {0}"),
-				related: vscode.l10n.t("Find files related to {0}"),
-				outline: vscode.l10n.t("Outline {0}"),
-				outlineFolder: vscode.l10n.t("Outline the folder"),
-				searchDocs: vscode.l10n.t("Search docs for {0}"),
-			},
-			teamToolVerbs: {
-				read: vscode.l10n.t("Read {0}"),
-				search: vscode.l10n.t("Search Jira for {0}"),
-				comment: vscode.l10n.t("Comment on {0}"),
-				move: vscode.l10n.t("Move {0}"),
-				logTime: vscode.l10n.t("Log {0} on {1}"),
-				openMr: vscode.l10n.t("Open merge request into {0}"),
-				merge: vscode.l10n.t("Merge {0}"),
-				reply: vscode.l10n.t("Reply on {0}"),
-				listReview: vscode.l10n.t("List merge requests waiting for my review"),
-				listMine: vscode.l10n.t("List my merge requests"),
-				jobLog: vscode.l10n.t("Read the CI log of {0}"),
-				qualityGate: vscode.l10n.t("Check the SonarQube quality gate"),
-				sonarIssues: vscode.l10n.t("Read SonarQube issues"),
-				snykTest: vscode.l10n.t("Run Snyk on the dependencies"),
-				snykCode: vscode.l10n.t("Run Snyk Code on the source"),
-				design: vscode.l10n.t("Read the Figma design"),
-				screenshot: vscode.l10n.t("Take a screenshot of the Figma frame"),
-				currentMr: vscode.l10n.t("this branch's merge request"),
-				effectComment: vscode.l10n.t("Comment"),
-				effectWork: vscode.l10n.t("Work description"),
-				effectTitle: vscode.l10n.t("Title"),
-				effectDescription: vscode.l10n.t("Description"),
-				effectDraft: vscode.l10n.t("Draft"),
-				effectSquash: vscode.l10n.t("Squash"),
-				effectDeleteBranch: vscode.l10n.t("Delete source branch"),
-				effectProjectDefault: vscode.l10n.t("project default"),
-			},
-			back: vscode.l10n.t("Back"),
-			branchSearch: vscode.l10n.t("Switch branch"),
-			createBranch: vscode.l10n.t("Create branch\u2026"),
-			newBranchName: vscode.l10n.t("New branch name"),
-			createBranchNamed: vscode.l10n.t("Create {0}"),
-			invalidBranchName: vscode.l10n.t("Enter a valid branch name."),
-			noBranches: vscode.l10n.t("No matching branches"),
-			loading: vscode.l10n.t("Loading\u2026"),
-			currentBranch: vscode.l10n.t("current"),
-			copyPath: vscode.l10n.t("Copy Path"),
-			revealFolder: process.platform === 'darwin' ? vscode.l10n.t("Reveal in Finder") : process.platform === 'win32' ? vscode.l10n.t("Reveal in File Explorer") : vscode.l10n.t("Open Containing Folder"),
-			showAgents: vscode.l10n.t("Show Agents"),
-			addFolder: vscode.l10n.t("Add Folder to Workspace..."),
-			modeChip: vscode.l10n.t("Mode: {0}. Click to change it."),
-			modeChipReset: vscode.l10n.t("Back to {0}"),
-			usageRing: vscode.l10n.t("Context {0}% used. Click for usage and quota."),
-			followedFile: vscode.l10n.t("{0}, the file the agent is on. Click to show it."),
-			closeFollowed: vscode.l10n.t("Close {0}"),
-			usageContext: vscode.l10n.t("Context window"),
-			usageThisChatScope: vscode.l10n.t("this chat"),
-			usageAccount: vscode.l10n.t("your account"),
-			usageContextNone: vscode.l10n.t("Shown after Gemini's first reply in this chat."),
-			usageContextOf: vscode.l10n.t("of {0} tokens"),
-			usageContextNote: vscode.l10n.t("Gemini summarises older messages at {0}%."),
-			usageCached: vscode.l10n.t("Cached"),
-			usageCachedNote: vscode.l10n.t("Cached: input served from Gemini's cache, from the CLI's session file."),
-			usageDetails: vscode.l10n.t("Details by model"),
-			usageHideDetails: vscode.l10n.t("Hide details"),
-			usageAllModels: vscode.l10n.t("All {0} models"),
-			usageFewerModels: vscode.l10n.t("Fewer models"),
-			noFiles: vscode.l10n.t("No matching files"),
-			noCommands: vscode.l10n.t("No matching commands"),
-			commandFromCli: vscode.l10n.t("Gemini CLI"),
-			commandFromTeam: vscode.l10n.t("Team"),
-			commandFromSkill: vscode.l10n.t("Skill"),
-			remove: vscode.l10n.t("Remove"),
-			sharedPage: vscode.l10n.t("Shared page: {0}"),
-			showSharedPage: vscode.l10n.t("Show the page ({0})"),
-			stopSharing: vscode.l10n.t("Stop sharing this page"),
-			fileTooLarge: vscode.l10n.t("{0} is too large to send."),
-			attachFiles: vscode.l10n.t("Attach files. You can also drop files here; hold Shift when dragging from the Explorer."),
-			dropFiles: vscode.l10n.t("Drop files to attach"),
-			calloutNote: vscode.l10n.t("Note"),
-			calloutTip: vscode.l10n.t("Tip"),
-			calloutImportant: vscode.l10n.t("Important"),
-			calloutWarning: vscode.l10n.t("Warning"),
-			calloutCaution: vscode.l10n.t("Caution"),
-			openFile: vscode.l10n.t("Open file"),
-			cannotAttach: vscode.l10n.t("{0} can't be attached: only text files, images and PDFs can be dropped here. Use the attach button to add other files."),
-		};
-		return `<!DOCTYPE html>
-<html lang="en">
-<head>
-	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}' ${webview.cspSource};">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<link href="${codicons}" rel="stylesheet">
-	<link href="${menuStyle}" rel="stylesheet">
-	<link href="${style}" rel="stylesheet">
-	<link href="${glassStyle}" rel="stylesheet">
-	<title>Gemini</title>
-</head>
-<body spellcheck="false">
-	<svg class="defs" aria-hidden="true"><linearGradient id="gemini-spark-gradient" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f8df7"/><stop offset=".55" stop-color="#9b72cb"/><stop offset="1" stop-color="#d96570"/></linearGradient></svg>
-	<main id="transcript" class="transcript"></main>
-	<nav id="outline" class="prompt-outline" hidden></nav>
-	<div id="announce" class="announce" aria-live="polite"></div>
-	<div id="dock" class="dock">
-		<button type="button" id="scroll-down" class="scroll-down" hidden><i class="codicon codicon-arrow-down" aria-hidden="true"></i><i class="codicon codicon-chevron-down" aria-hidden="true"></i><span class="scroll-down-label"></span></button>
-		<div id="activity" class="activity" hidden><span class="activity-icon" aria-hidden="true"><i class="codicon codicon-check"></i></span><span class="activity-label"></span><span class="activity-clock"></span><span class="activity-detail"></span><span class="activity-hint"></span></div>
-		<div id="status" class="status" role="status"></div>
-		<form id="composer" class="composer">
-			<div class="working-bar" aria-hidden="true"></div>
-			<div id="resize" class="composer-resize"></div>
-			<div class="drop-overlay" aria-hidden="true"><i class="codicon codicon-cloud-upload"></i><span id="drop-label"></span></div>
-			<div id="picker" class="picker" role="listbox" hidden></div>
-			<div id="usage-popover" class="usage-popover" role="dialog" hidden></div>
-			<div id="attachments" class="attachments" hidden></div>
-			<div class="composer-tabs" role="tablist"><button type="button" id="tab-write" class="composer-tab" role="tab" aria-selected="true" aria-controls="input"></button><button type="button" id="tab-preview" class="composer-tab" role="tab" aria-selected="false" aria-controls="preview"></button></div>
-			<div id="preview" class="composer-preview markdown" role="tabpanel" tabindex="0" hidden></div>
-			<div class="input-wrap">
-				<textarea id="input" rows="1" spellcheck="${spellCheckOn()}"></textarea>
-				<div class="input-mirror" aria-hidden="true"></div>
-				<span id="enhance-float" class="enhance-float" hidden><button type="button" id="revert" class="enhance-chip" hidden><i class="codicon codicon-discard" aria-hidden="true"></i><span></span></button><button type="button" id="enhance" class="enhance-chip"><svg class="enhance-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 3.5C6.88 7 9 9.12 12.5 9.5C9 9.88 6.88 12 6.5 15.5C6.12 12 4 9.88 0.5 9.5C4 9.12 6.12 7 6.5 3.5Z"/><path d="M12.75 0.5C12.92 2.1 13.9 3.08 15.5 3.25C13.9 3.42 12.92 4.4 12.75 6C12.58 4.4 11.6 3.42 10 3.25C11.6 3.08 12.58 2.1 12.75 0.5Z"/></svg><i class="codicon codicon-loading codicon-modifier-spin" aria-hidden="true"></i><span></span><span class="enhance-key"></span></button></span>
-			</div>
-			<div id="enhance-row" class="enhance-row" hidden>
-				<span id="enhance-note" class="enhance-note" role="status" hidden></span>
-			</div>
-			<div class="composer-bar">
-				<button type="button" id="plus" class="plus-button" aria-haspopup="menu" aria-expanded="false" aria-controls="plus-menu"><i class="codicon codicon-add" aria-hidden="true"></i></button>
-				<span id="mode-chip" class="mode-chip" hidden><button type="button" class="mode-chip-label"><i class="codicon" aria-hidden="true"></i><span></span></button><button type="button" class="mode-chip-reset"><i class="codicon codicon-close" aria-hidden="true"></i></button></span>
-				<span class="spacer"></span>
-				<button type="button" id="model" class="model-button" hidden><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button>
-				<button type="submit" id="send" class="round-button"><i class="codicon codicon-arrow-up" aria-hidden="true"></i></button>
-				<button type="button" id="stop" class="round-button stop" hidden><i class="codicon codicon-debug-stop" aria-hidden="true"></i></button>
-			</div>
-			<div id="plus-menu" class="plus-menu" hidden></div>
-			<div id="model-menu" class="model-menu" hidden></div>
-		</form>
-		<div class="composer-foot">
-			<button type="button" id="branch" class="foot-button branch" hidden><i class="codicon codicon-git-branch" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button>
-			<button type="button" id="review-chip" class="foot-button review-chip" hidden><i class="codicon codicon-comment-discussion" aria-hidden="true"></i><span></span></button>
-			<button type="button" id="workspace" class="foot-button workspace" hidden><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button>
-			<span id="repos" class="foot-repos" hidden></span>
-			<button type="button" id="commit" class="foot-button commit" hidden><i class="codicon codicon-git-commit" aria-hidden="true"></i><span></span></button>
-			<span id="followed" class="foot-followed" hidden><button type="button" class="foot-button followed-name"><i class="codicon codicon-eye" aria-hidden="true"></i><span></span></button><button type="button" class="followed-close"><i class="codicon codicon-close" aria-hidden="true"></i></button></span>
-			<span class="spacer"></span>
-			<button type="button" id="usage-ring" class="foot-button usage-ring" aria-expanded="false" aria-controls="usage-popover"><svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="ring-track" cx="8" cy="8" r="6"/><circle class="ring-fill" cx="8" cy="8" r="6" pathLength="100" stroke-dasharray="0 100" transform="rotate(-90 8 8)"/></svg><span></span></button>
-			<div id="branch-menu" class="foot-menu" hidden></div>
-			<div id="workspace-menu" class="foot-menu" hidden></div>
-			<div id="repos-menu" class="foot-menu" hidden></div>
-		</div>
-	</div>
-	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-fold-work="${foldWorkOn()}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
-</body>
-</html>`;
 	}
 }
 
@@ -2378,236 +957,6 @@ export async function openChatAsMarkdown(title: string, items: readonly Transcri
 	await vscode.window.showTextDocument(document, { preview: false, viewColumn: column });
 }
 
-/** At most one file is shown this often while following the agent, so a burst of reads does not flicker the editor. */
-const followIntervalMs = 250;
-
-/** How long the CLI keeps saved chats, from the user's own settings (Project Helpers changes it). */
-async function retentionNote(): Promise<string> {
-	const { keepChats } = readCliPreferences(await readSettingsFile(path.join(geminiDir(), 'settings.json')));
-	if (keepChats === keepChatsForever) {
-		return vscode.l10n.t("They are kept until you delete them.");
-	}
-	const match = /^(\d+)([hdwm])$/.exec(keepChats);
-	if (!match) {
-		return '';
-	}
-	const count = Number(match[1]);
-	const period = match[2] === 'h' ? vscode.l10n.t("{0} hours", count)
-		: match[2] === 'd' ? (count === 1 ? vscode.l10n.t("1 day") : vscode.l10n.t("{0} days", count))
-			: match[2] === 'w' ? (count === 1 ? vscode.l10n.t("1 week") : vscode.l10n.t("{0} weeks", count))
-				: count === 1 ? vscode.l10n.t("1 month") : vscode.l10n.t("{0} months", count);
-	return vscode.l10n.t("The Gemini CLI deletes them after {0}; Project Helpers can change that.", period);
-}
-
-/** How many saved sessions an empty chat lists before "Show all". */
-const shownSessions = 3;
-/** The CLI's Plan and Default mode IDs (gemini-cli 0.63 `ApprovalMode`); Build This Plan shows only when the agent offers both. */
-const planModeId = 'plan';
-const defaultModeId = 'default';
-
-function resumeCommand(): SlashCommand {
-	return { name: 'resume', description: vscode.l10n.t("Restore a saved Gemini CLI session for this folder"), source: 'app' };
-}
-
-/** "3 prompts · 2h" */
-function sessionDetail(session: CliSession, now: number): string {
-	const prompts = session.messages === 1 ? vscode.l10n.t("1 prompt") : vscode.l10n.t("{0} prompts", session.messages);
-	return `${prompts} \u00b7 ${relativeTime(session.updatedAt, now)}`;
-}
-
-/** The most proposed edits kept for opening their diffs later. */
-const maxRememberedDiffs = 200;
-
-/** Drops the oldest entries of a set or map beyond {@link maxRememberedDiffs}. */
-function dropOldest<K>(collection: Set<K> | Map<K, unknown>): void {
-	for (const key of collection.keys()) {
-		if (collection.size <= maxRememberedDiffs) {
-			return;
-		}
-		collection.delete(key);
-	}
-}
-
-function diffsOf(content: readonly acp.ToolCallContent[] | null | undefined): acp.Diff[] {
-	return (content ?? []).flatMap(c => c.type === 'diff' ? [c] : []);
-}
-
-
-/** The editor tabs showing `uri`. */
-function followedTabs(uri: vscode.Uri): vscode.Tab[] {
-	return vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => tab.input instanceof vscode.TabInputText && tab.input.uri.toString() === uri.toString());
-}
-
-async function isFile(filePath: string): Promise<boolean> {
-	try {
-		return (await vscode.workspace.fs.stat(vscode.Uri.file(filePath))).type === vscode.FileType.File;
-	} catch {
-		return false;
-	}
-}
-
-/** Whether reopening a session failed for a reason that passes, such as the agent restarting, so trying once more can work. */
-function isPassingFailure(error: AgentErrorInfo): boolean {
-	return error.kind === 'agent-exited' || /not ready|restart/i.test(error.message);
-}
-
-/** Why a saved session could not be reopened, in plain words, as a sentence. */
-function reopenFailureText(error: AgentErrorInfo): string {
-	if (error.kind === 'auth-required' || error.kind === 'auth-failed') {
-		return vscode.l10n.t("Sign-in expired. Sign in again, then try again.");
-	}
-	if (isPassingFailure(error)) {
-		return vscode.l10n.t("The agent restarted while reopening it.");
-	}
-	if (/another chat has that session open/i.test(error.message)) {
-		return vscode.l10n.t("Another chat has it open.");
-	}
-	if (/not found|no previous sessions|ENOENT/i.test(error.message)) {
-		return vscode.l10n.t("The Gemini CLI no longer has it; its cleanup may have removed it.");
-	}
-	if (/different session/i.test(error.message)) {
-		return vscode.l10n.t("The agent opened a different session.");
-	}
-	const message = error.message.trim();
-	return /[.!?]$/.test(message) ? message : `${message}.`;
-}
-
-function projectStrings(): ProjectChatStrings {
-	return {
-		placeholder: vscode.l10n.t("Message the coordinator, or describe work to split into threads"),
-		newThread: vscode.l10n.t("New thread"),
-		dialog: {
-			title: vscode.l10n.t("New thread in {0}"),
-			titleLabel: vscode.l10n.t("Title"),
-			briefLabel: vscode.l10n.t("What should it do?"),
-			briefPlaceholder: vscode.l10n.t("The whole task: what to do, which files, and how to check the work."),
-			branchLabel: vscode.l10n.t("Branch"),
-			modelLabel: vscode.l10n.t("Model"),
-			defaultModel: vscode.l10n.t("Default"),
-			worktreeHint: vscode.l10n.t("Every thread gets its own new branch and worktree. Its chat opens at once while the worktree is created."),
-			planFirst: vscode.l10n.t("Plan first"),
-			planFirstHint: vscode.l10n.t("The thread writes a short plan and waits for your OK before changing files."),
-			startsAtOnce: vscode.l10n.t("Starts right away. The coordinator is told afterwards."),
-			cancel: vscode.l10n.t("Cancel"),
-			start: vscode.l10n.t("Start thread"),
-			close: vscode.l10n.t("Close"),
-			reposLabel: vscode.l10n.t("Repositories"),
-			reposHint: vscode.l10n.t("Each one gets its own worktree, side by side in the thread's folder."),
-			branchLabelShared: vscode.l10n.t("Branch, the same in every repository"),
-		},
-		settings: {
-			open: vscode.l10n.t("Project settings"),
-			title: vscode.l10n.t("{0} settings"),
-			general: vscode.l10n.t("General"),
-			memory: vscode.l10n.t("Memory"),
-			nameLabel: vscode.l10n.t("Name"),
-			nameHint: vscode.l10n.t("Shown in the Projects list and the project chat's tab."),
-			reposLabel: vscode.l10n.t("Repositories"),
-			reposHint: vscode.l10n.t("With more than one, each thread gets a worktree of the ones it needs, in a folder named after the repository."),
-			addRepo: vscode.l10n.t("Add repository"),
-			removeRepo: vscode.l10n.t("Remove {0} from the project"),
-			mainRepo: vscode.l10n.t("The project's own repository"),
-			defaultsLabel: vscode.l10n.t("Defaults for new threads"),
-			threadModel: vscode.l10n.t("Thread model"),
-			planFirst: vscode.l10n.t("Plan first"),
-			planFirstHint: vscode.l10n.t("Threads write a short plan and wait for your OK before changing files."),
-			branchPrefix: vscode.l10n.t("Branch prefix"),
-			branchPrefixHint: vscode.l10n.t("Put before each thread's branch name."),
-			statOpen: vscode.l10n.t("open threads"),
-			statMerged: vscode.l10n.t("merged"),
-			statLines: vscode.l10n.t("lines changed"),
-			statRepos: vscode.l10n.t("repositories"),
-			cleanUpLabel: vscode.l10n.t("Merged threads' folders"),
-			cleanUpHint: vscode.l10n.t("A merged thread keeps its folder, with its dependencies and builds, so it can carry on. Clean up removes the folders whose work is all merged. Each thread keeps its branch and chat, and its folder comes back when you open it."),
-			cleanUp: vscode.l10n.t("Clean Up Folders..."),
-			connectLabel: vscode.l10n.t("How the repositories connect"),
-			connectHint: vscode.l10n.t("Every thread and the coordinator read this. Say what each repository owns and where they meet: APIs, queries, data models, URLs, release order."),
-			instructionsLabel: vscode.l10n.t("Project instructions"),
-			instructionsHint: vscode.l10n.t("Every thread and the coordinator read this. Use it for conventions and anything you'd otherwise repeat."),
-			drafted: vscode.l10n.t("Gemini drafted this on {0} from the repositories. Review it and change anything that's wrong or missing, then save."),
-			drafting: vscode.l10n.t("Gemini is drafting this from the repositories..."),
-			draft: vscode.l10n.t("Draft with Gemini"),
-			redraft: vscode.l10n.t("Draft again"),
-			draftFailed: vscode.l10n.t("Could not draft it: {0}"),
-			filesLabel: vscode.l10n.t("Context files"),
-			filesHint: vscode.l10n.t("Markdown files kept in the project's folder. Choose who reads each one."),
-			fileColumn: vscode.l10n.t("File"),
-			coordinatorColumn: vscode.l10n.t("Coordinator"),
-			threadsColumn: vscode.l10n.t("Threads"),
-			noFiles: vscode.l10n.t("No context files yet."),
-			addFiles: vscode.l10n.t("Add files..."),
-			newFile: vscode.l10n.t("New file"),
-			newFilePrompt: vscode.l10n.t("The new file's name"),
-			removeFile: vscode.l10n.t("Remove {0}"),
-			alsoRead: vscode.l10n.t("Also read"),
-			alsoReadHint: vscode.l10n.t("Each repository's own rules files, which its threads read as they are."),
-			noRules: vscode.l10n.t("none"),
-			tokens: vscode.l10n.t("About {0} tokens added to each thread's first request"),
-			unsaved: vscode.l10n.t("{0} unsaved changes"),
-			unsavedOne: vscode.l10n.t("1 unsaved change"),
-			appliesWhen: vscode.l10n.t("Saved changes apply to new threads and the coordinator's next turn."),
-			discard: vscode.l10n.t("Discard your changes?"),
-			discardConfirm: vscode.l10n.t("Discard"),
-			keepEditing: vscode.l10n.t("Keep Editing"),
-			cancel: vscode.l10n.t("Cancel"),
-			save: vscode.l10n.t("Save"),
-		},
-		panel: {
-			title: vscode.l10n.t("Project"),
-			noThreads: vscode.l10n.t("No threads yet"),
-			working: vscode.l10n.t("{0} working"),
-			waiting: vscode.l10n.t("{0} waiting on you"),
-			planned: vscode.l10n.t("{0} with a plan to approve"),
-			done: vscode.l10n.t("{0} done, ready to merge"),
-			merged: vscode.l10n.t("{0} merged back"),
-			context: vscode.l10n.t("Context the coordinator reads"),
-			conductorTracks: vscode.l10n.t("Conductor: {0} open tracks"),
-			noConductor: vscode.l10n.t("No conductor/ folder"),
-			model: vscode.l10n.t("Coordinator model: {0}"),
-			repos: vscode.l10n.t("Repositories: {0}"),
-		},
-		states: {
-			starting: vscode.l10n.t("Starting"),
-			working: vscode.l10n.t("Working"),
-			waiting: vscode.l10n.t("Waiting on you"),
-			planned: vscode.l10n.t("Plan ready, waiting for your OK"),
-			done: vscode.l10n.t("Done"),
-			error: vscode.l10n.t("Error"),
-		},
-		actions: {
-			open: vscode.l10n.t("Open"),
-			stop: vscode.l10n.t("Stop"),
-			merge: vscode.l10n.t("Merge back"),
-			review: vscode.l10n.t("Review changes"),
-			undo: vscode.l10n.t("Undo thread"),
-			approve: vscode.l10n.t("Approve plan"),
-			retry: vscode.l10n.t("Retry"),
-		},
-		openToAnswer: vscode.l10n.t("Open to answer"),
-		merged: vscode.l10n.t("Merged back"),
-		repoMerged: vscode.l10n.t("Merged"),
-		mergedCount: vscode.l10n.t("{0} of {1} merged"),
-		undone: vscode.l10n.t("Undone: its branch and folder were removed"),
-		track: vscode.l10n.t("From Conductor track {0}"),
-	};
-}
-
-/** A turn's steps for the log, without their contents: "user, thought, tool(browser_snapshot: completed), agent". */
-function turnShape(items: readonly TranscriptItem[]): string {
-	return items.map(item => {
-		switch (item.kind) {
-			case 'toolCall':
-				return `tool(${item.title.slice(0, 40)}: ${item.status}${item.details.length ? `, ${item.details.length} parts` : ''})`;
-			case 'permission':
-				return `permission(${item.answer?.kind ?? 'open'})`;
-			case 'notice':
-				return 'notice';
-			default:
-				return item.kind;
-		}
-	}).join(', ') || 'nothing';
-}
-
 /** When a turn's steps happened, in ms since the epoch. */
 interface TurnTiming {
 	readonly started: number;
@@ -2619,19 +968,4 @@ interface TurnTiming {
 	firstToken?: number;
 	/** The first reply text, which in an agentic turn often comes after every step. */
 	firstText?: number;
-}
-
-/** Whether the saved chat ends in a prompt that never got its turn end or an error. */
-export function wasCutOff(items: readonly TranscriptItem[]): boolean {
-	for (let i = items.length - 1; i >= 0; i--) {
-		const item = items[i];
-		if (item.kind === 'user') {
-			return true;
-		}
-		// A cut-off card already says so (and stays while the turn is unfinished); a second one would say it twice.
-		if (item.kind === 'turnEnd' || item.kind === 'cutOff' || (item.kind === 'notice' && item.severity === 'error')) {
-			return false;
-		}
-	}
-	return false;
 }
