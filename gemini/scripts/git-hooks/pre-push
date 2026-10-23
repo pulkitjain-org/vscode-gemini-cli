@@ -23,11 +23,14 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 				;;
 		esac
 	fi
-	# Only commits the remote doesn't have yet: what is already there stays as it is.
-	case "$remote_sha" in
-		"$zero") range="$local_sha --not --remotes" ;;
-		*) range="$remote_sha..$local_sha" ;;
-	esac
+	# Only commits no remote has yet: what is already there stays as it is. That
+	# leaves out main's commits that a merge of origin/main brings in, such as
+	# GitHub's merge commits. The branch's old tip and its history are left out
+	# too, for a remote this clone has no tracking refs for.
+	range="$local_sha --not --remotes"
+	if [ "$remote_sha" != "$zero" ] && git rev-parse --quiet --verify "$remote_sha^{commit}" >/dev/null; then
+		range="$range $remote_sha"
+	fi
 	for commit in $(git rev-list $range); do
 		emails=$(git log -1 --format='%ae %ce' "$commit")
 		for address in $emails; do
