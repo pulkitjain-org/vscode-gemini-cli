@@ -575,8 +575,8 @@ async function mrJson(mr: MergeRequest): Promise<unknown> {
 		source_project_id: mr.project.id,
 		target_project_id: mr.project.id,
 		author: gitlabUser(mr.author),
-		assignee: gitlabUser(mr.assignee ?? mr.author),
-		assignees: [gitlabUser(mr.assignee ?? mr.author)],
+		assignee: mr.assignee ? gitlabUser(mr.assignee) : null,
+		assignees: mr.assignee ? [gitlabUser(mr.assignee)] : [],
 		reviewers: mr.reviewers.map(gitlabUser),
 		created_at: new Date(mr.created).toISOString(),
 		updated_at: new Date(mr.updated).toISOString(),
@@ -849,7 +849,7 @@ serve('gitlab', ports.gitlab, async (req, url, body) => {
 		const list = mergeRequests.filter(mr => (!q.get('state') || mr.state === q.get('state'))
 			&& (scope !== 'created_by_me' || mr.author === me)
 			&& (!reviewer || mr.reviewers.some(r => String(r.id) === reviewer))
-			&& (!assignee || String((mr.assignee ?? mr.author).id) === assignee));
+			&& (!assignee || String(mr.assignee?.id) === assignee));
 		list.sort((a, b) => b.updated - a.updated);
 		return { json: await Promise.all(list.map(mrJson)) };
 	}
