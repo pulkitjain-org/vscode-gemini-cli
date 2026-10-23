@@ -212,6 +212,19 @@ The index (ADR 0010) relies on these, measured on 22 Oct 2026 on the development
 - A `resource_link` with a `file://` URI is read like an `@path` in the terminal: the CLI reads the file itself, skipping git-ignored files and asking before files outside the workspace, so attaching a file sends only its path. An embedded `resource` is added as context and shown to the model as `@<uri>`, so selections carry a `#L<start>-L<end>` fragment. `image` blocks become inline data.
 - For a model whose name starts with `gemini-3-` (`supportsMultimodalFunctionResponse`), the CLI puts a tool's image inside the function response rather than beside it. Whether those models see the image was not checked against the real service, so for them, and on Auto, `browser_screenshot` also returns the page's text snapshot.
 
+## Forking and compacting a session
+
+Read from gemini-cli 0.64.0's bundle and checked by `realSessionSnapshot.test.ts`:
+
+- **No fork over ACP.** The ACP library the CLI bundles routes `session/fork` to `agent.unstable_forkSession`, which the Gemini agent does not implement, so the call fails as an unknown method; `sessionCapabilities` advertises neither fork nor resume.
+- **ACP's commands.** ACP mode registers six commands: `memory`, `extensions`, `init`, `restore`, `about` and `help`. `/chat save` and `/chat resume` (chat checkpoints) and `/compress` exist only in the terminal UI.
+- **`/restore` over ACP** needs `general.checkpointing.enabled`, under which the CLI writes a checkpoint (a shadow Git commit plus the history) before each tool call that edits files. Restoring puts the files back but only reports "Loaded history with N messages": the history never reaches the session. Checkpoints are kept per folder, so a session in another folder can't see them.
+- **Compression** runs when a request would pass `model.compressionThreshold` of the model's limit (0.5 by default): it truncates large tool output, summarises the oldest 70% into a `<state_snapshot>` with the model, and keeps the newest 30%. The result replaces the history in memory only; no record of it is written to the chat file, so `session/load` rebuilds the whole history. Across 30 saved sessions over 50k tokens, the file's history was up to 7.6M tokens while the last request sent 60k: a session reopened, or copied whole, starts far larger than it last ran.
+- **A copied chat file loads.** A copy with a new `sessionId` (and the target folder's `projectHash`) in another registered folder's chats folder opens there with `session/load`, tool calls replayed, and the next request carries its history. A folder is registered in `projects.json` when the CLI first opens a session there.
+- **The session context is rebuilt.** On load the CLI drops saved user messages that start with `<session_context>` and puts a fresh one first, for the folder the session opens in, so a copy's workspace paths are the new folder's.
+- **Paths outside the folder are refused.** In the copy, a write to the parent's folder fails with "Path not in workspace ... resolves outside the allowed workspace directories".
+- A loaded session starts on Auto unless a model is set, so its first request routes through Flash-Lite first.
+
 ## Subagents
 
 The CLI's `invoke_agent` tool reaches ACP as one `think` tool call titled `Delegating to agent '<name>'` and its final report. The subagent's own steps are not sent.
