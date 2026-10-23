@@ -41,7 +41,17 @@ describe('parseCommand and programs that run other code', () => {
 		'grep -l x . | xargs sed -i s/a/b/', 'env curl x', 'bash -c "nc host 80"', 'timeout 5 rm -rf build', 'python -c "import os"',
 		'node -e 1', 'sudo ls', 'find . -name "*.tmp" -exec rm {} ;', 'find . -delete', 'awk \'BEGIN { system("id") }\'',
 		'git -c core.pager=less log', './build.sh', 'scripts/run.sh --fast', 'nohup make',
+		'$EDITOR notes.md', '/bin/*sh -c id', 'rg --pre ./x.sh TODO', 'rg --pre=cat x', 'tar --to-command=sh -xf a.tar', 'tar -I ./x -cf a.tar src',
+		'sort --compress-program=./x big.txt', 'git config core.fsmonitor ./x.sh', 'git config --global alias.st "!sh -c id"', 'git config --unset core.pager',
+		'git -C src rebase -x "make test" main', 'git submodule foreach make', 'git bisect run make test', 'git difftool -x ./x.sh',
 	])('asks for %s', command => {
+		expect(parseCommand(command)).toEqual({ kind: 'asks', reason: 'dynamic' });
+	});
+
+	it.each([
+		'echo \'{"scripts":{"test":"x"}}\' > package.json', 'cat x >> Makefile', 'echo x > "pyproject.toml"', 'echo id > .git/hooks/pre-commit',
+		'cp /tmp/x package.json', 'tee -a .git/config < x', 'dd if=x of=Makefile', 'sed -i "" s/a/b/ package.json', 'mv x.mk build.mk',
+	])('asks when %s writes what a later command runs', command => {
 		expect(parseCommand(command)).toEqual({ kind: 'asks', reason: 'dynamic' });
 	});
 
@@ -49,6 +59,8 @@ describe('parseCommand and programs that run other code', () => {
 		expect(parseCommand('LC_ALL=C sort a.txt | NO_COLOR=1 uniq -c')).toMatchObject({ kind: 'ok', programs: ['sort', 'uniq'] });
 		expect(parseCommand('find src -name "*.ts" | awk \'{ print $1 }\'')).toMatchObject({ kind: 'ok', programs: ['find', 'awk'] });
 		expect(parseCommand('/usr/bin/git status && git log -n 3')).toMatchObject({ kind: 'ok', programs: ['/usr/bin/git', 'git'] });
+		expect(parseCommand('git config user.email && git config --get remote.origin.url && git -C src log --oneline')).toMatchObject({ kind: 'ok', programs: ['git', 'git', 'git'] });
+		expect(parseCommand('rg --pre-glob "*.gz" TODO && tar -tf a.tar && sed -n 1,5p package.json && cp a.txt b.txt')).toMatchObject({ kind: 'ok', programs: ['rg', 'tar', 'sed', 'cp'] });
 	});
 });
 
