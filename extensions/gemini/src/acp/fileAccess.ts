@@ -83,7 +83,8 @@ export async function checkFileAccess(filePath: string, mode: FileAccessMode, op
 	// A symlink in the workspace can point anywhere, such as at ~/.aws/credentials:
 	// the file it reaches has to pass the same checks.
 	const real = await realPath(resolved);
-	if (real !== resolved) {
+	const linked = real !== resolved;
+	if (linked) {
 		const realRoots = await Promise.all(options.roots.map(r => realPath(path.resolve(r))));
 		const realRoot = realRoots.find(r => isInside(r, real));
 		if (!realRoot) {
@@ -94,7 +95,8 @@ export async function checkFileAccess(filePath: string, mode: FileAccessMode, op
 			return realSecret;
 		}
 	}
-	if (mode === 'read' && await options.isIgnored?.(resolved)) {
+	// A tracked link to an ignored file reads that file, so the target is checked too.
+	if (mode === 'read' && (await options.isIgnored?.(resolved) || (linked && await options.isIgnored?.(real)))) {
 		return 'the file is ignored by git';
 	}
 	return undefined;

@@ -109,6 +109,12 @@ describe('checkFileAccess with symlinks', () => {
 		expect(await checkFileAccess(path.join(workspace, 'alias.md'), 'read', policy)).toBeUndefined();
 		expect(await checkFileAccess(path.join(workspace, 'docs', 'new.md'), 'write', policy)).toBeUndefined();
 	});
+
+	it('denies reading a link whose target git ignores, as it denies the target', async () => {
+		const ignoringReal = { roots: [workspace], isIgnored: async (p: string) => p === path.join(workspace, 'real.md') };
+		expect(await checkFileAccess(path.join(workspace, 'alias.md'), 'read', ignoringReal)).toMatch(/ignored by git/);
+		expect(await checkFileAccess(path.join(workspace, 'alias.md'), 'write', ignoringReal)).toBeUndefined();
+	});
 });
 
 describe('sliceLines', () => {
