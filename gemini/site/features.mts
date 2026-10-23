@@ -74,6 +74,7 @@ export const featurePages: readonly FeaturePage[] = [
 			{
 				title: 'Fork an agent',
 				body: ['When an agent\'s work splits in two, fork it. The fork starts from the same conversation, so it already knows what was read, decided and planned, and works on its part while the agent carries on. Take the whole session, a compacted copy or just the conversation, on a new branch with the agent\'s uncommitted changes or in the same folder. **Fork** at the end of any reply forks from that point.'],
+				media: { name: 'fork-dialog', alt: 'The Fork dialog with Whole session, Compacted and Conversation only, and a new branch or the same folder' },
 			},
 			{
 				title: 'Pick up where the terminal left off',
@@ -119,10 +120,12 @@ export const featurePages: readonly FeaturePage[] = [
 			{
 				title: 'Steer it while it works',
 				body: ['Spot the agent heading the wrong way? Type while it works and press Return: the chat stops between steps, never mid-command, and the agent carries on with your message. ⌘Return queues a message for after the turn instead, and each waiting message can be sent now, edited or removed.'],
+				media: { name: 'queue', alt: 'The composer while an agent runs a command, with one message sending after the current step and another queued for after the turn' },
 			},
 			{
 				title: 'Compact long chats',
 				body: ['Type `/compact`, or choose **Compact** in the usage popover. Gemini summarizes the work so far and the chat moves to a session made of that summary and your latest messages, so each turn sends less. It stays compacted when the chat is reopened, and **Undo** goes back to the full session.'],
+				media: { name: 'compact-line', alt: 'A chat after /compact, with the Compacted line showing the tokens before and after, View Summary and Undo' },
 			},
 			{
 				title: 'Plan mode',
