@@ -117,6 +117,63 @@ export async function createWorktree(repository: string, branch: string, subfold
 	return { folder, cwd: path.join(folder, subfolder), branch, base };
 }
 
+/** The main checkout of the repository `folder` is in, when `folder` is in a worktree of it; `folder`'s own top otherwise. */
+export async function mainRepository(folder: string): Promise<string> {
+	const common = (await git(folder, ['rev-parse', '--path-format=absolute', '--git-common-dir'])).trim();
+	return path.basename(common) === '.git' ? path.dirname(common) : (await git(folder, ['rev-parse', '--show-toplevel'])).trim();
+}
+
+/** What `folder`'s repository is in the middle of, which a fork can't carry: a merge, rebase, cherry-pick or revert. */
+export async function unfinishedOperation(folder: string): Promise<'merge' | 'rebase' | 'cherry-pick' | 'revert' | undefined> {
+	const marks = [['MERGE_HEAD', 'merge'], ['rebase-merge', 'rebase'], ['rebase-apply', 'rebase'], ['CHERRY_PICK_HEAD', 'cherry-pick'], ['REVERT_HEAD', 'revert']] as const;
+	for (const [mark, operation] of marks) {
+		const file = (await git(folder, ['rev-parse', '--path-format=absolute', '--git-path', mark])).trim();
+		if (await pathExists(file)) {
+			return operation;
+		}
+	}
+	return undefined;
+}
+
+/**
+ * Makes a new branch from what `parent` (a workspace folder or another
+ * agent's worktree) has checked out, in a folder of its own, with `parent`'s
+ * uncommitted changes and untracked files copied in; `parent` itself is left
+ * as it is. `subfolder` is the agent's place inside the repository, for its
+ * `cwd`. Rejects, leaving nothing behind, when `parent` is in the middle of a
+ * merge or rebase, or when its changes can't be copied.
+ */
+export async function createWorktreeFrom(parent: string, branch: string, subfolder = '', home?: string): Promise<AgentWorktree> {
+	const top = (await git(parent, ['rev-parse', '--show-toplevel'])).trim();
+	const operation = await unfinishedOperation(top);
+	if (operation) {
+		throw new Error(`${path.basename(top)} is in the middle of a ${operation}; finish or abort it first.`);
+	}
+	const base = await currentBranch(top);
+	// A commit of the uncommitted changes, made without touching the folder or the stash list; empty when there are none.
+	const changes = (await git(top, ['stash', 'create'])).trim();
+	const untracked = (await git(top, ['ls-files', '--others', '--exclude-standard', '-z'])).split('\0').filter(Boolean);
+	const repository = await mainRepository(top);
+	const folders = worktreesHome(repository, home);
+	await fs.mkdir(folders, { recursive: true });
+	const folder = await freeFolder(folders, branch);
+	await git(top, ['worktree', 'add', '--quiet', '-b', branch, folder, 'HEAD']);
+	const worktree: AgentWorktree = { folder, cwd: path.join(folder, subfolder), branch, base };
+	try {
+		if (changes) {
+			await git(folder, ['stash', 'apply', '--quiet', changes]);
+		}
+		for (const file of untracked) {
+			await fs.mkdir(path.dirname(path.join(folder, file)), { recursive: true });
+			await fs.cp(path.join(top, file), path.join(folder, file), { recursive: true, verbatimSymlinks: true });
+		}
+	} catch (err) {
+		await removeWorktree(top, worktree, true).catch(() => undefined);
+		throw err;
+	}
+	return worktree;
+}
+
 /** One repository's worktree in a thread that works in several, side by side in the thread's own folder. */
 export interface RepoWorktree extends AgentWorktree {
 	/** The repository's key in its project, which is also its folder's name in the thread's folder. */

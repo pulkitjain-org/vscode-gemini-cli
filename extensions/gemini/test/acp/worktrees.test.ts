@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { allThreadsHome, branchExists, commitAll, createWorktree, createWorktreeAt, currentBranch, folderInRepository, folderSize, freeBranchName, freeFolder, git, mergeBranch, pathExists, projectFolders, projectsHome, removeThreadFolder, removeWorktree, repositoryRoot, restoreWorktree, runWorktreeSetup, threadGuide, threadsHome, TurnQueue, worktreeSetupCommand, worktreesHome, worktreeStatus, writeThreadGuide } from '../../src/acp/worktrees';
+import { allThreadsHome, branchExists, commitAll, createWorktree, createWorktreeAt, createWorktreeFrom, currentBranch, folderInRepository, folderSize, freeBranchName, freeFolder, git, mainRepository, mergeBranch, pathExists, projectFolders, projectsHome, removeThreadFolder, removeWorktree, repositoryRoot, restoreWorktree, runWorktreeSetup, threadGuide, threadsHome, TurnQueue, unfinishedOperation, worktreeSetupCommand, worktreesHome, worktreeStatus, writeThreadGuide } from '../../src/acp/worktrees';
 
 let root: string;
 let repo: string;
@@ -92,6 +92,49 @@ describe('worktrees', () => {
 		await removeWorktree(repo, second, true);
 		expect(await branchExists(repo, 'gemini/second')).toBe(false);
 		expect(await git(repo, ['worktree', 'list'])).not.toContain('second');
+	});
+});
+
+describe('forking a worktree', () => {
+	it('branches from the parent with its uncommitted and untracked changes, leaving the parent as it is', async () => {
+		const parent = await createWorktree(repo, 'gemini/refunds', 'src', home);
+		await fs.writeFile(path.join(parent.folder, 'src', 'cart.ts'), 'export const total = 2;\n');
+		await git(parent.folder, ['add', 'src/cart.ts']);
+		await fs.writeFile(path.join(parent.folder, 'src', 'cart.ts'), 'export const total = 3;\n');
+		await fs.mkdir(path.join(parent.folder, 'src', 'new'));
+		await fs.writeFile(path.join(parent.folder, 'src', 'new', 'refund.ts'), 'export const refund = 0;\n');
+		await fs.writeFile(path.join(parent.folder, '.gitignore'), 'build/\n');
+		await fs.mkdir(path.join(parent.folder, 'build'));
+		await fs.writeFile(path.join(parent.folder, 'build', 'out.js'), 'ignored');
+		const parentStatus = await git(parent.folder, ['status', '--porcelain']);
+
+		expect(await mainRepository(parent.folder)).toBe(repo);
+		const child = await createWorktreeFrom(parent.cwd, 'gemini/refunds-fork', 'src', home);
+		expect(child).toEqual({ folder: path.join(worktreesHome(repo, home), 'refunds-fork'), cwd: path.join(worktreesHome(repo, home), 'refunds-fork', 'src'), branch: 'gemini/refunds-fork', base: 'gemini/refunds' });
+		expect(await fs.readFile(path.join(child.cwd, 'cart.ts'), 'utf8')).toBe('export const total = 3;\n');
+		expect(await fs.readFile(path.join(child.cwd, 'new', 'refund.ts'), 'utf8')).toBe('export const refund = 0;\n');
+		expect(await pathExists(path.join(child.folder, 'build'))).toBe(false);
+		expect(await git(parent.folder, ['status', '--porcelain'])).toBe(parentStatus);
+		expect(await git(repo, ['stash', 'list'])).toBe('');
+		// The child's branch starts where the parent's is, so merging it back brings only its own work.
+		expect((await git(child.folder, ['rev-parse', 'HEAD'])).trim()).toBe((await git(parent.folder, ['rev-parse', 'HEAD'])).trim());
+	});
+
+	it('forks a clean workspace folder too, and refuses one in the middle of a merge, leaving nothing behind', async () => {
+		const child = await createWorktreeFrom(repo, 'gemini/clean', '', home);
+		expect(child.base).toBe('main');
+		expect(await git(child.folder, ['status', '--porcelain'])).toBe('');
+
+		await git(repo, ['checkout', '--quiet', '-b', 'other']);
+		await fs.writeFile(path.join(repo, 'src', 'cart.ts'), 'export const total = 5;\n');
+		await commitAll(repo, 'Other');
+		await git(repo, ['checkout', '--quiet', 'main']);
+		await fs.writeFile(path.join(repo, 'src', 'cart.ts'), 'export const total = 6;\n');
+		await commitAll(repo, 'Main');
+		await git(repo, ['merge', 'other']).catch(() => undefined);
+		expect(await unfinishedOperation(repo)).toBe('merge');
+		await expect(createWorktreeFrom(repo, 'gemini/mid-merge', '', home)).rejects.toThrow(/middle of a merge/);
+		expect(await branchExists(repo, 'gemini/mid-merge')).toBe(false);
 	});
 });
 
