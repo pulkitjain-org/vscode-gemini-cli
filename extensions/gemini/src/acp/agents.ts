@@ -43,6 +43,27 @@ export interface AgentRecord {
 	readonly project?: AgentProjectRole;
 	/** The last checks run on the agent's branch, in a line, for Open Merge Request's attachment; kept across restarts. */
 	readonly checks?: { readonly summary: string; readonly at: number };
+	/** The agent this one was forked from (Fork Agent), which it is listed under. */
+	readonly forkedFrom?: AgentFork;
+}
+
+/** Where a forked agent came from. */
+export interface AgentFork {
+	/** The parent agent's id; it may have been removed since. */
+	readonly agent: string;
+	/** When it was forked, in ms since the epoch. */
+	readonly at: number;
+	/**
+	 * The folder it shares with its parent, when it works there rather than
+	 * on a branch of its own: the parent's worktree, which it does not own,
+	 * so it never merges or removes it.
+	 */
+	readonly sharedFolder?: string;
+}
+
+/** Where an agent works: its worktree, the folder it shares with the agent it was forked from, else its workspace's folder. */
+export function agentFolder(record: AgentRecord, workspaceFolder: string): string {
+	return record.worktree?.cwd ?? record.forkedFrom?.sharedFolder ?? workspaceFolder;
 }
 
 /** One repository's worktree in a thread that works in several. */
@@ -204,6 +225,24 @@ export class AgentsModel {
 		return agent;
 	}
 
+	/** Adds an agent forked from `fork.agent`, in its parent's workspace, already on session `sessionId` when it has one. */
+	addFork(parent: AgentRecord, title: string, fork: Omit<AgentFork, 'agent' | 'at'>, worktree?: AgentWorktree, sessionId?: string): AgentRecord {
+		const agent = this.addAgent(parent.workspaceId, title, worktree);
+		// Named in the Fork dialog, so the first prompt doesn't rename it.
+		this.update(agent.id, a => ({ ...a, titleSetByUser: true, forkedFrom: { agent: parent.id, at: this.now(), ...fork }, ...(sessionId ? { sessionId } : {}) }));
+		return this.agent(agent.id)!;
+	}
+
+	/** The agents forked from `id` that are still here, oldest first. */
+	forksOf(id: string): readonly AgentRecord[] {
+		return this._agents.filter(a => a.forkedFrom?.agent === id).sort((a, b) => a.createdAt - b.createdAt);
+	}
+
+	/** The agent `record` was forked from, when it is still here. */
+	parentOf(record: AgentRecord): AgentRecord | undefined {
+		return record.forkedFrom ? this.agent(record.forkedFrom.agent) : undefined;
+	}
+
 	rename(id: string, title: string): void {
 		this.update(id, a => ({ ...a, title, titleSetByUser: true }));
 	}
@@ -282,7 +321,8 @@ export class AgentsModel {
 
 	/** Where the agent runs: its worktree, else its workspace's folder. */
 	folderOf(agent: AgentRecord): string | undefined {
-		return agent.worktree?.cwd ?? this.workspace(agent.workspaceId)?.folder;
+		const workspace = this.workspace(agent.workspaceId);
+		return workspace && agentFolder(agent, workspace.folder);
 	}
 
 	removeAgent(id: string): void {
@@ -323,5 +363,6 @@ function isAgentRecord(value: unknown): value is AgentRecord {
 		&& typeof a.createdAt === 'number' && typeof a.updatedAt === 'number'
 		&& (a.worktree === undefined || (typeof a.worktree.folder === 'string' && typeof a.worktree.cwd === 'string' && typeof a.worktree.branch === 'string' && typeof a.worktree.base === 'string'))
 		&& (a.repos === undefined || (Array.isArray(a.repos) && a.repos.every(r => typeof r?.key === 'string' && typeof r.folder === 'string' && typeof r.repository === 'string' && typeof r.branch === 'string')))
+		&& (a.forkedFrom === undefined || (typeof a.forkedFrom.agent === 'string' && typeof a.forkedFrom.at === 'number' && (a.forkedFrom.sharedFolder === undefined || (typeof a.forkedFrom.sharedFolder === 'string' && path.isAbsolute(a.forkedFrom.sharedFolder)))))
 		&& (a.project === undefined || (a.project.role === 'coordinator' && (a.project.model === undefined || typeof a.project.model === 'string')) || (a.project.role === 'thread' && typeof a.project.coordinator === 'string'));
 }

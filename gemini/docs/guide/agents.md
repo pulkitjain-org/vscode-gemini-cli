@@ -55,6 +55,21 @@ The new copy has no `node_modules` or build output. To get it ready before the a
 
 To start every new agent on its own branch, turn on `gemini.agents.ownBranch`.
 
+## Fork an agent
+
+When an agent's work splits in two, fork it: the fork is a new agent that starts from the same conversation, so it already knows what the agent read, decided and planned, and works on its part while the agent carries on with its own.
+
+- **Fork Agent** is the split-arrows icon on an agent's row (on hover), in its right-click menu, in the composer's **+** menu, and `/fork`.
+- **Fork**, beside Retry at the end of any reply, forks the conversation as it was at the end of that reply.
+
+The Fork dialog asks:
+
+- **Context.** **Whole session** is an exact copy of the agent's session, tool output included. **Compacted** has Gemini summarise the older work first and keeps the latest messages as they were, which is much smaller. **Conversation only** gives the fork your messages and the agent's replies, without tool output. Each choice shows about how many tokens it sends with every request. Large sessions start on Compacted; Compacted waits for the agent to finish its turn.
+- **Where it works.** A **new branch** off the agent's branch, in its own copy of the repository, with the agent's uncommitted changes copied in. The agent's own folder is left as it is. **Same folder** shares the agent's folder: fine for questions, reviews and plans, but both agents change the same files.
+- A **name**, a **model** (the agent's own by default) and an optional **first message**.
+
+A fork is listed under the agent it came from, and the agent's chat gets a card for it with **Open** and **Merge Back**. When the agent itself works on a branch of its own, Merge Back asks whether to merge the fork into the agent's branch or into what your folder has checked out. Removing an agent with forks asks whether to remove the forks too; kept forks stay as agents of their own.
+
 ## Workspace index and docs
 
 Agents in GeminiCode keep an index of the code in each workspace, and of the documentation you attach, so they can find code in one step instead of searching file by file. The index stays on your Mac, in `~/.geminicode/index`, and is built in a separate process at low priority, so it never slows the editor.

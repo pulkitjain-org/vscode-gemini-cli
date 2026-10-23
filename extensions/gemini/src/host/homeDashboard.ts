@@ -99,7 +99,8 @@ export function buildDashboard(input: DashboardInput): HomeDashboard {
 	const unreachable = tools.filter(t => t.tone === 'warn' && t.id !== 'figma').map(t => t.name);
 	const tickets = data.tickets?.data;
 	const groups = ticketGroups(tickets?.issues ?? []);
-	const progress = tickets ? sprintProgress(groups.sprint, tickets.sprint, now.getTime()) : undefined;
+	// Closed tickets leave the list but still count towards the sprint's progress.
+	const progress = tickets ? sprintProgress(tickets.issues.filter(i => i.inSprint), tickets.sprint, now.getTime()) : undefined;
 	const name = firstName(input.connected.has('jira') ? input.state('jira').account : input.state('gitlab').account);
 	const greeting = {
 		morning: name ? vscode.l10n.t("Good morning, {0}", name) : vscode.l10n.t("Good morning"),

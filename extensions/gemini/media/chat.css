@@ -1410,6 +1410,77 @@ body.vscode-high-contrast-light {
 	color: var(--gemini-muted);
 }
 
+/* Compact: a quiet card suggesting it while the context fills up, then a line across the chat where it happened. */
+.compact-card {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	max-width: 720px;
+	margin: 12px 0;
+	padding: 10px 12px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: 9px;
+	background: var(--gemini-card);
+}
+
+.compact-card.dismissed {
+	display: none;
+}
+
+.compact-text {
+	font-size: 0.92em;
+	color: var(--gemini-muted);
+}
+
+.compact-line {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin: 14px 0;
+	font-size: 0.85em;
+	color: var(--gemini-muted);
+}
+
+.compact-rule {
+	flex: 1;
+	min-width: 16px;
+	border-top: 1px solid var(--gemini-border);
+}
+
+.compact-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	white-space: nowrap;
+}
+
+.usage-compact {
+	align-items: center;
+	margin-top: 8px;
+}
+
+/* A quiet link, like the popover's other actions, not a button. */
+.usage-compact-link {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	gap: 4px;
+	white-space: nowrap;
+}
+
+.usage-compact-link .codicon {
+	font-size: 12px;
+}
+
+/* Only the label underlines: the icon's own box sits lower and would break the line. */
+.usage-compact-link:hover {
+	text-decoration: none;
+}
+
+.usage-compact-link:hover > span:last-child {
+	text-decoration: underline;
+}
+
 /* Where a turn's time went: hop, bar, this turn, budget. */
 .trace-card {
 	display: flex;
@@ -2522,7 +2593,7 @@ body.vscode-high-contrast-light #send {
 	padding: 0;
 	border: none;
 	background: none;
-	color: var(--gemini-accent);
+	color: var(--vscode-textLink-foreground, var(--gemini-accent));
 	font: inherit;
 	cursor: pointer;
 }
@@ -3207,6 +3278,111 @@ textarea.new-thread-input {
 
 .new-thread-foot .new-thread-hint {
 	margin-right: auto;
+}
+
+/* The Fork dialog's choices: a radio, its name and hint, and its token figure at the end. */
+.fork-choices {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin: 0;
+	padding: 0;
+	border: none;
+}
+
+.fork-choices legend {
+	margin-bottom: 6px;
+	padding: 0;
+	font-weight: 600;
+}
+
+.fork-choice {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 8px 10px;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius-small);
+	cursor: pointer;
+}
+
+.fork-choice:has(input:checked) {
+	border-color: var(--gemini-accent);
+}
+
+.fork-choice:has(input:disabled) {
+	cursor: default;
+	opacity: 0.6;
+}
+
+.fork-choice input {
+	margin: 3px 0 0;
+}
+
+.fork-choice-text {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	gap: 2px;
+	line-height: 1.4;
+}
+
+.fork-choice-end {
+	flex: none;
+	font-size: 0.9em;
+	color: var(--gemini-muted);
+	white-space: nowrap;
+}
+
+.fork-branch-field {
+	margin: 0 0 4px 28px;
+}
+
+.fork-branch-field input:disabled {
+	opacity: 0.6;
+}
+
+/* A fork's card in its parent's chat. */
+.fork-card {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	max-width: 720px;
+	margin: 12px 0;
+	padding: 10px 12px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: 9px;
+	background: var(--gemini-card);
+}
+
+.fork-card.removed {
+	opacity: 0.7;
+}
+
+.fork-card-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+}
+
+.fork-card-head strong {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fork-card-where {
+	overflow: hidden;
+	font-size: 0.9em;
+	color: var(--gemini-muted);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fork-card-actions {
+	display: flex;
+	gap: 4px;
 }
 
 @media (max-width: 520px) {

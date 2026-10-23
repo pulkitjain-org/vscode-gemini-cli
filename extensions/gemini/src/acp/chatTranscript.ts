@@ -71,6 +71,10 @@ export type TranscriptItem =
 	| { readonly id: string; readonly kind: 'notice'; readonly text: string; readonly severity: 'info' | 'error' }
 	/** The saved chat's last turn never ended: GeminiCode quit while the agent worked. Offers to send the message again. */
 	| { readonly id: string; readonly kind: 'cutOff'; readonly prompt: string; readonly dismissed?: boolean }
+	/** Compact: the suggestion to compact this chat's session, then the switch to the compacted one. */
+	| CompactItem
+	/** Fork Agent: in a fork, where it was forked from; in its parent, a card for the fork. */
+	| ForkItem
 	/** Where a turn's time went, from the fork's measurements and the CLI's trace (while a trace is recording). */
 	| { readonly id: string; readonly kind: 'trace'; readonly readout: TurnReadout; readonly file: string }
 	/** Ends a turn: how long the agent worked, with a way to copy its reply, retry it, or undo its file changes. */
@@ -130,6 +134,48 @@ export interface ThreadCard {
 /** A thread card's item id. */
 export function threadCardId(thread: string): string {
 	return `thread-${thread}`;
+}
+
+/** Where a compact stands: offered, under way, done (and maybe undone), refused or failed. */
+export type CompactState = 'suggested' | 'dismissed' | 'running' | 'done' | 'undone' | 'failed';
+
+/** The compact card and divider (`src/host/chat/chatCompact.ts`). */
+export interface CompactItem {
+	readonly id: string;
+	readonly kind: 'compact';
+	readonly state: CompactState;
+	/** How full the context was when compacting was suggested, in whole percent. */
+	readonly percent?: number;
+	/** About how many tokens the session sent with each request before and after. */
+	readonly before?: number;
+	readonly after?: number;
+	/** How many of the latest prompts were kept as they were. */
+	readonly kept?: number;
+	readonly summary?: string;
+	/** The session compacted, which Undo goes back to, and the compacted one. */
+	readonly from?: string;
+	readonly to?: string;
+	/** Why it failed, as a sentence. */
+	readonly error?: string;
+}
+
+/** What a fork starts with: its parent's whole session, a compacted copy, or the conversation without tool output. */
+export type ForkContext = 'whole' | 'compact' | 'conversation';
+
+/** A fork's line in its own chat (`from`), or its card in its parent's (`child`). */
+export interface ForkItem {
+	readonly id: string;
+	readonly kind: 'fork';
+	readonly role: 'from' | 'child';
+	/** The other agent: the parent, in a fork's chat; the fork, in its parent's. */
+	readonly agent: string;
+	/** Its title when forked. */
+	readonly title: string;
+	readonly context: ForkContext;
+	/** The fork's own branch; unset when it shares its parent's folder. */
+	readonly branch?: string;
+	/** The fork was removed since. */
+	readonly removed?: boolean;
 }
 
 type TextItem = Extract<TranscriptItem, { kind: 'user' | 'agent' | 'thought' }>;
@@ -310,6 +356,37 @@ export class ChatTranscript {
 		const item = this._items.find(i => i.id === id);
 		if (item?.kind === 'cutOff') {
 			this.upsert({ ...item, dismissed: true });
+		}
+	}
+
+	/** Adds a compact card; returns its id. */
+	addCompact(item: Omit<CompactItem, 'id' | 'kind'>): string {
+		const id = this.newId();
+		this.push({ ...item, id, kind: 'compact' });
+		return id;
+	}
+
+	/** Changes a compact card: its state, and what the compact did. */
+	updateCompact(id: string, patch: Partial<Omit<CompactItem, 'id' | 'kind'>>): void {
+		const item = this._items.find(i => i.id === id);
+		if (item?.kind === 'compact') {
+			this.upsert({ ...item, ...patch });
+		}
+	}
+
+	/** Adds a fork's line or card; returns its id. */
+	addFork(item: Omit<ForkItem, 'id' | 'kind'>): string {
+		const id = this.newId();
+		this.push({ ...item, id, kind: 'fork' });
+		return id;
+	}
+
+	/** Marks the cards of fork `agent` as removed. */
+	forkRemoved(agent: string): void {
+		for (const item of this._items) {
+			if (item.kind === 'fork' && item.role === 'child' && item.agent === agent && !item.removed) {
+				this.upsert({ ...item, removed: true });
+			}
 		}
 	}
 

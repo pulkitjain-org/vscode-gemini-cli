@@ -11,7 +11,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { ChangeTotals, formatCounts } from '../../acp/agentChanges';
 import { agentRowMeta } from '../../acp/agentRow';
-import { AgentRecord, AgentsModel, isArchived, resolvedAt, WorkspaceRecord } from '../../acp/agents';
+import { agentFolder, AgentRecord, AgentsModel, isArchived, resolvedAt, WorkspaceRecord } from '../../acp/agents';
 import { readGitHead } from '../../acp/gitHead';
 import { memoizeAsync } from '../../acp/memoize';
 import type { AgentStatus } from '../../acp/status';
@@ -132,7 +132,15 @@ export class AgentTree implements vscode.TreeDataProvider<AgentTreeNode>, vscode
 		}
 		if (node.kind === 'workspace' && node.record) {
 			return this.agentsOf(node.record.id).map(record => {
-				const agent: AgentNode = { kind: 'agent', record, folder: record.worktree?.cwd ?? node.folder };
+				const agent: AgentNode = { kind: 'agent', record, folder: agentFolder(record, node.folder) };
+				this.agentNodes.set(record.id, agent);
+				return agent;
+			});
+		}
+		if (node.kind === 'agent' && !node.record.project) {
+			// Its forks, under it.
+			return this.forksOf(node.record).map(record => {
+				const agent: AgentNode = { kind: 'agent', record, folder: agentFolder(record, this.model.workspace(record.workspaceId)?.folder ?? node.folder) };
 				this.agentNodes.set(record.id, agent);
 				return agent;
 			});
@@ -176,6 +184,11 @@ export class AgentTree implements vscode.TreeDataProvider<AgentTreeNode>, vscode
 				if (coordinator) {
 					const folder = this.model.workspace(coordinator.workspaceId)?.folder ?? node.folder;
 					return this.agentNodes.get(coordinator.id) ?? { kind: 'agent', record: coordinator, folder };
+				}
+				const parent = this.model.parentOf(record);
+				if (parent && !parent.project) {
+					const folder = this.model.workspace(parent.workspaceId)?.folder ?? node.folder;
+					return this.agentNodes.get(parent.id) ?? { kind: 'agent', record: parent, folder: agentFolder(parent, folder) };
 				}
 				const workspace = this.model.workspace(record.workspaceId);
 				if (!workspace) {
@@ -265,7 +278,7 @@ export class AgentTree implements vscode.TreeDataProvider<AgentTreeNode>, vscode
 	}
 
 	private threadNode(record: AgentRecord, folder: string): AgentNode {
-		const agent: AgentNode = { kind: 'agent', record, folder: record.worktree?.cwd ?? folder };
+		const agent: AgentNode = { kind: 'agent', record, folder: agentFolder(record, folder) };
 		this.agentNodes.set(record.id, agent);
 		return agent;
 	}
@@ -280,12 +293,26 @@ export class AgentTree implements vscode.TreeDataProvider<AgentTreeNode>, vscode
 		return item;
 	}
 
-	/** A workspace's own agents; projects and their threads are in the Projects section while it shows. */
+	/**
+	 * A workspace's own agents; projects and their threads are in the Projects
+	 * section while it shows, and forks under the agent they were forked from.
+	 */
 	private agentsOf(workspaceId: string): AgentRecord[] {
 		const projects = projectsEnabled();
 		return this.model.agentsIn(workspaceId).filter(record => record.project?.role === 'thread'
 			? !this.model.coordinatorOf(record) || !projects
-			: record.project?.role !== 'coordinator' || !projects);
+			: (record.project?.role !== 'coordinator' || !projects) && !this.listedUnderParent(record));
+	}
+
+	/** An agent's forks, most recently used first, as a workspace lists its agents. */
+	private forksOf(record: AgentRecord): AgentRecord[] {
+		return [...this.model.forksOf(record.id)].sort((a, b) => b.updatedAt - a.updatedAt);
+	}
+
+	/** Whether a fork shows under its parent: while the parent is here and an agent of its own, not a project's. */
+	private listedUnderParent(record: AgentRecord): boolean {
+		const parent = this.model.parentOf(record);
+		return !!parent && !parent.project;
 	}
 
 	/** Every project, newest first, whichever workspace it is in. */
@@ -346,21 +373,26 @@ export class AgentTree implements vscode.TreeDataProvider<AgentTreeNode>, vscode
 		const { record } = node;
 		const live = this.live.get(record.id);
 		const coordinator = record.project?.role === 'coordinator';
-		const threads = coordinator ? this.model.threadsOf(record.id).length : 0;
+		const threads = coordinator ? this.model.threadsOf(record.id).length : record.project ? 0 : this.model.forksOf(record.id).length;
 		const item = new vscode.TreeItem(record.title, threads ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
-		// The id changes with the expander, so a project that gets its first thread opens.
+		// The id changes with the expander, so a project that gets its first thread, or an agent its first fork, opens.
 		item.id = `agent:${record.id}${threads ? ':threads' : ''}`;
 		const branch = await this.branchOf(node.folder).catch(() => undefined);
 		const changes = live?.changes.totals ?? record.changes;
 		const state = agentState(live);
 		item.description = rowMeta(record, live, state.kind, changes);
 		item.iconPath = coordinator && (state.kind === 'idle' || state.kind === 'stopped') ? new vscode.ThemeIcon('comment-discussion') : state.icon;
+		const parent = this.model.parentOf(record);
 		const where = record.worktree
 			? vscode.l10n.t("On its own branch {0}, in {1}", escapeMarkdown(record.worktree.branch), escapeMarkdown(tildify(record.worktree.folder)))
-			: `${escapeMarkdown(tildify(node.folder))}${branch ? ` (${escapeMarkdown(branch)})` : ''}`;
+			: record.forkedFrom?.sharedFolder
+				? vscode.l10n.t("In the folder of the agent it was forked from, {0}", escapeMarkdown(tildify(record.forkedFrom.sharedFolder)))
+				: `${escapeMarkdown(tildify(node.folder))}${branch ? ` (${escapeMarkdown(branch)})` : ''}`;
+		const forked = parent ? `\n\n${vscode.l10n.t("Forked from \"{0}\"", escapeMarkdown(parent.title))}` : '';
 		const counts = changes?.files ? `\n\n${escapeMarkdown(formatCounts(changes))}` : '';
-		item.tooltip = new vscode.MarkdownString(`**${escapeMarkdown(record.title)}**\n\n${escapeMarkdown(state.status)}${counts}\n\n${where}`);
-		item.contextValue = `${live?.activity.busy ? 'agent.busy' : 'agent'}${record.worktree ? '.worktree' : ''}${changes?.files ? '.changes' : ''}${record.project?.role === 'coordinator' ? '.project' : ''}`;
+		item.tooltip = new vscode.MarkdownString(`**${escapeMarkdown(record.title)}**\n\n${escapeMarkdown(state.status)}${counts}\n\n${where}${forked}`);
+		// A project's agents fork as threads, through their coordinator, not with Fork Agent.
+		item.contextValue = `${live?.activity.busy ? 'agent.busy' : 'agent'}${record.worktree ? '.worktree' : ''}${record.project ? '' : '.forkable'}${changes?.files ? '.changes' : ''}${record.project?.role === 'coordinator' ? '.project' : ''}`;
 		item.command = { command: 'gemini.agents.open', title: vscode.l10n.t("Open Agent"), arguments: [record.id] };
 		item.accessibilityInformation = { label: `${record.title}, ${state.status}` };
 		return item;

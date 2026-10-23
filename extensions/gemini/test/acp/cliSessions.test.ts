@@ -8,7 +8,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSyn
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { carriedConversationNote, chatsFolder, findCliSession, isPassingFailure, listCliSessions, parseSessionFile, readCliConversation, readCliSession, readSessionTokens, reopenFailure, replayUpdateCount, rewindCliSession } from '../../src/acp/cliSessions';
+import { carriedConversationNote, chatsFolder, findCliSession, isPassingFailure, listCliSessions, parseSessionFile, readCliConversation, readCliSession, readSessionContext, readSessionTokens, reopenFailure, replayUpdateCount, rewindCliSession } from '../../src/acp/cliSessions';
 
 /** Written by gemini-cli 0.62 for `gemini -p "Fix the rounding in the cart total"`, paths changed. */
 const terminalSession = readFileSync(path.join(__dirname, '..', 'fixtures', 'cli-sessions', 'session-terminal.jsonl'), 'utf8');
@@ -220,6 +220,8 @@ describe('listCliSessions', () => {
 		expect(await readSessionTokens(work, id, home)).toEqual({ context: 124_300, model: 'gemini-3.8-flash', cached: 80_000 });
 		expect(await readSessionTokens(work, 'other000-0000', home)).toBeUndefined();
 		expect(await readSessionTokens(work, 'missing0-0000', home)).toBeUndefined();
+		expect(await readSessionContext(work, id, home)).toEqual({ tokens: { context: 124_300, model: 'gemini-3.8-flash', cached: 80_000 }, prompts: 1 });
+		expect(await readSessionContext(work, 'missing0-0000', home)).toBeUndefined();
 	});
 
 	it('reads only what the CLI appended to a session file, and the whole file again after a rewrite', async () => {

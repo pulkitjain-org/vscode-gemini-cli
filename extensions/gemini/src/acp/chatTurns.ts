@@ -5,7 +5,8 @@
 
 // What a chat (src/host/chatController.ts) reads off its transcript between
 // turns: whether a saved chat was cut off, the step a turn is on, which
-// prompts it can rewind to, and what to tell the agent after an undo.
+// prompts it can rewind to, what to tell the agent after an undo, when to
+// suggest compacting, and what a fork's chat starts with.
 
 import * as path from 'node:path';
 import type * as acp from '@agentclientprotocol/sdk';
@@ -120,4 +121,83 @@ export function dropOldest<K>(collection: Set<K> | Map<K, unknown>): void {
 		}
 		collection.delete(key);
 	}
+}
+
+/** How full the context is, as a share of the window, when the chat suggests compacting; the CLI compresses on its own at half. */
+export const suggestCompactAt = 0.4;
+
+/**
+ * Whether the chat should suggest compacting session `session`, now `used`
+ * of `limit` tokens full: past {@link suggestCompactAt}, once per session,
+ * never again after a suggestion or on a session a compact made or left.
+ */
+export function shouldSuggestCompact(items: readonly TranscriptItem[], session: string | undefined, used: number, limit: number): boolean {
+	return !!session && used >= limit * suggestCompactAt
+		&& !items.some(item => item.kind === 'compact' && (item.state === 'suggested' || item.state === 'dismissed' || item.to === session || item.from === session));
+}
+
+/**
+ * Fork from Here on the reply that ends at turn end `turnEnd`: the prompt
+ * after it, which the fork stops before (none for the last reply), and the
+ * prompt the reply answered. Undefined when the turn end is not there.
+ */
+export function forkPointAfter(items: readonly TranscriptItem[], turnEnd: string): { readonly before?: string; readonly answered?: string } | undefined {
+	const index = items.findIndex(item => item.id === turnEnd && item.kind === 'turnEnd');
+	if (index < 0) {
+		return undefined;
+	}
+	const next = items.slice(index + 1).find(item => item.kind === 'user');
+	const answered = items.slice(0, index).reverse().find(item => item.kind === 'user');
+	return { ...(next ? { before: next.id } : {}), ...(answered?.kind === 'user' ? { answered: answered.text } : {}) };
+}
+
+/**
+ * What a fork's chat shows of its parent's: the items before item `before`
+ * (a prompt, for Fork from Here or a turn still running), else all of them.
+ * Nothing in them can act on the parent: requests and tool calls still open
+ * are settled, turn ends offer no Undo or Retry (the checkpoints are the
+ * parent's), compacts keep no session to go back to, and suggestions,
+ * interruptions and the parent's own fork lines go. Undefined when `before`
+ * is not there.
+ */
+export function forkedItems(items: readonly TranscriptItem[], before?: string): TranscriptItem[] | undefined {
+	const end = before === undefined ? items.length : items.findIndex(item => item.id === before);
+	if (end < 0) {
+		return undefined;
+	}
+	return items.slice(0, end).flatMap((item): TranscriptItem[] => {
+		switch (item.kind) {
+			case 'cutOff':
+				return [];
+			case 'compact':
+				if (item.state !== 'done' && item.state !== 'undone') {
+					return [];
+				}
+				return [{ id: item.id, kind: 'compact', state: item.state, ...(item.before !== undefined ? { before: item.before } : {}), ...(item.after !== undefined ? { after: item.after } : {}), ...(item.kept !== undefined ? { kept: item.kept } : {}), ...(item.summary ? { summary: item.summary } : {}) }];
+			case 'fork':
+				return item.role === 'from' ? [item] : [];
+			case 'permission':
+				return [item.answer ? item : { ...item, answer: { kind: 'cancelled' } }];
+			case 'toolCall':
+				return [item.status === 'pending' || item.status === 'in_progress' ? { ...item, status: 'failed' } : item];
+			case 'turnEnd': {
+				const { undo: _undo, retry: _retry, buildPlan: _buildPlan, files: _files, ...rest } = item;
+				return [rest];
+			}
+			default:
+				return [item];
+		}
+	});
+}
+
+/**
+ * The note a fork's first prompt carries, which the chat does not show: whose
+ * fork it is, and where it works now. In a folder of its own, the paths the
+ * earlier messages name under the parent's folder are under its own.
+ */
+export function forkNote(parentTitle: string, parentFolder: string, folder: string, branch: string | undefined): string {
+	const where = branch && folder !== parentFolder
+		? `You now work in ${folder}, on the new branch ${branch}, a copy of ${parentFolder} with its uncommitted changes. Files the earlier messages name under ${parentFolder} are under ${folder} now: read and change them there, never in ${parentFolder}, which the other agent is still working in.`
+		: `You work in ${folder}, the same folder as the other agent, which may still be changing files there: read a file again before you change it.`;
+	return `This session was forked from the agent "${parentTitle}": the earlier conversation is that agent's, up to the fork, and you now carry on from it as a separate agent. ${where}`;
 }

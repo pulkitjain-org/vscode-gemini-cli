@@ -5,8 +5,11 @@
 
 // Merge Back: commits an agent's work on its own branch and merges the branch
 // into what its workspace has checked out, one repository at a time for a
-// thread in several, never while the agent works and never twice at once.
+// thread in several, never while the agent works and never twice at once. A
+// fork whose parent works on a branch of its own asks which to merge into:
+// the parent's branch, in the parent's folder, or what the workspace has.
 
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { AgentChanges } from '../../acp/agentChanges';
 import type { AgentRecord, AgentsModel } from '../../acp/agents';
@@ -68,9 +71,13 @@ export class AgentMerge {
 		}
 		this.merging.add(record.id);
 		try {
-			const repository = await repositoryRoot(workspace.folder);
-			if (!repository) {
+			const checkedOut = await repositoryRoot(workspace.folder);
+			if (!checkedOut) {
 				throw new Error(vscode.l10n.t("{0} is no longer a Git repository.", workspace.folder));
+			}
+			const repository = await this.mergeTarget(record, checkedOut);
+			if (!repository) {
+				return false;
 			}
 			const merged = await this.mergeWorktree(record, repository, worktree, live, stillWorking);
 			if (merged) {
@@ -88,6 +95,31 @@ export class AgentMerge {
 		} finally {
 			this.merging.delete(record.id);
 		}
+	}
+
+	/**
+	 * Where a fork's branch merges: what `checkedOut` (its workspace's
+	 * repository) has, or its parent's branch in the parent's own folder, as
+	 * the user picks when they differ. Undefined when dismissed, or when the
+	 * parent is working (its folder must not change under its turn).
+	 */
+	private async mergeTarget(record: AgentRecord, checkedOut: string): Promise<string | undefined> {
+		const parent = this.model.parentOf(record);
+		const parentFolder = parent && this.model.folderOf(parent);
+		const parentTop = parentFolder ? await repositoryRoot(parentFolder) : undefined;
+		if (!parent || !parentTop || path.resolve(parentTop) === path.resolve(checkedOut)) {
+			return checkedOut;
+		}
+		const [parentBranch, base] = await Promise.all([currentBranch(parentTop), currentBranch(checkedOut)]);
+		const picked = await vscode.window.showQuickPick([
+			{ label: vscode.l10n.t("Into {0}", parentBranch), description: vscode.l10n.t("the branch of \"{0}\", which it was forked from", parent.title), folder: parentTop },
+			{ label: vscode.l10n.t("Into {0}", base), description: vscode.l10n.t("what {0} has checked out", path.basename(checkedOut)), folder: checkedOut },
+		], { title: vscode.l10n.t("Merge Back \"{0}\"", record.title), placeHolder: vscode.l10n.t("Which branch to merge {0} into", record.worktree?.branch ?? '') });
+		if (picked?.folder === parentTop && this.live.get(parent.id)?.activity.busy) {
+			void vscode.window.showInformationMessage(vscode.l10n.t("\"{0}\" is working in that folder. Merge back once it finishes.", parent.title));
+			return undefined;
+		}
+		return picked?.folder;
 	}
 
 	/** Merges one repository of a thread in several; returns whether every repository's work is now merged. */

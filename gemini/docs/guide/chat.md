@@ -12,6 +12,7 @@ The **+** menu at the bottom left of the composer holds:
 - **Files** and **Context**: attach files from anywhere, or workspace files with `@`.
 - **Follow the agent**: open each file the agent reads or edits.
 - **Model**: the models the terminal's `/model` shows, in the same order. The model you pick is used for every new or reopened agent.
+- **Fork**: start a new agent from this conversation. See [Fork an agent](agents.md#fork-an-agent).
 - **Usage and quota**: how full the chat is and today's quota.
 - **Skills and commands**: the same list as typing `/`.
 
@@ -31,6 +32,7 @@ The agent can't read secret files such as `.env` and private keys, or git-ignore
 Type `/` at the start of the composer, or choose **Skills and commands** in the **+** menu, to list commands: team commands first, then skills, then the CLI's own. Keep typing to filter, then press <kbd>Tab</kbd> or <kbd>Enter</kbd> to complete the name and add arguments.
 
 - **Gemini CLI commands** such as `/init`, `/memory` and `/restore` run in the CLI.
+- **GeminiCode's own**: `/resume` reopens a saved session, `/compact` compacts the chat (below), and `/fork` forks the agent.
 - **Team commands** are TOML files in `.gemini/commands/` in the workspace, or in `~/.gemini/commands/` for your own. It's the Gemini CLI's own format, so the same files work in the terminal: `git/commit.toml` becomes `/git:commit`.
 - **Skills** are folders with a `SKILL.md`, in `.gemini/skills/` (or `.agents/skills/`) in the workspace, or in `~/.gemini/skills/` for your own. Picking one asks the agent to load it, with what you typed after the name as the task.
 
@@ -96,7 +98,9 @@ Hover the **Gemini** item in the status bar to see today's quota too; once a mod
 
 ## Long conversations
 
-When a session's history reaches half of the model's context window, the Gemini CLI summarises the older part and keeps the most recent 30% as it was.
+When a session's history reaches half of the model's context window, the Gemini CLI summarises the older part and keeps the most recent 30% as it was. It does that only in memory, though: when the session is reopened, after a restart for example, it comes back whole.
+
+**Compact** does the same on request, and keeps it. Type `/compact`, or choose **Compact** in the usage popover, which offers it once the agent has answered and is idle; once the context passes 40%, the chat also offers it once. Gemini writes a summary of the work so far (goal, decisions, files, current state, next steps), and the chat moves to a new session made of that summary and your latest messages, as they were. A line across the chat shows the tokens before and after, with **View Summary** and **Undo**, which goes back to the full session. The conversation above stays in the chat either way.
 
 - The thin outline of your prompts down the chat's right edge jumps to each one; <kbd>⌥⌘↑</kbd> and <kbd>⌥⌘↓</kbd> do the same.
 - **Latest** above the input takes you back to the newest message.

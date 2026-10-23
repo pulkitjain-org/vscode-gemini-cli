@@ -14,7 +14,9 @@ import type { StoredCheckpoints } from '../../acp/checkpoints';
 import type { PermissionBroker } from '../../acp/permissions';
 import type { EnhancePromptInput } from '../../acp/quickPrompts';
 import type { AgentStatus } from '../../acp/status';
-import type { NewThread, ProjectSettingsAction, ProjectSettingsSave, ThreadAction } from '../chatProtocol';
+import type { TranscriptItem } from '../../acp/chatTranscript';
+import type { ConversationEntry, MessageRecord } from '../../acp/cliSessions';
+import type { ForkAction, ForkRequest, NewThread, ProjectSettingsAction, ProjectSettingsSave, ThreadAction } from '../chatProtocol';
 import type { ToolChips } from '../toolChips';
 import type { UsageMeter } from '../usageMeter';
 import type { FileMatch } from '../workspaceFiles';
@@ -87,6 +89,33 @@ export interface ChatControllerOptions {
 	openReview?(): void;
 	/** Opens the Open Merge Request page for the agent's branch; unset when the team tools aren't set up. */
 	openMergeRequest?(): void;
+	/** The agent's name, for Fork Agent. */
+	title?(): string;
+	/** Fork Agent: makes forks of this chat's agent; unset in chats that can't fork, such as a project's. */
+	readonly fork?: ChatForker;
+}
+
+/** What Fork Agent asks of the Agents pane, which makes the fork. */
+export interface ChatForker {
+	/** Whether the agent's folder is in Git, the branch it has checked out, and a free name for a fork's own branch. */
+	place(): Promise<{ readonly git: boolean; readonly branch?: string; readonly forkBranch: string; readonly ownBranch: boolean }>;
+	/** Makes the fork, opens it and sends it its first message; rejects with a reason to show. */
+	start(start: ForkStart): Promise<void>;
+	/** A fork card's button. */
+	action(agent: string, action: ForkAction): void;
+}
+
+/** A fork to make, as the chat has prepared it. */
+export interface ForkStart {
+	readonly request: ForkRequest;
+	/** The session to copy (whole or compacted); unset for Conversation only. */
+	readonly messages?: readonly MessageRecord[];
+	/** The conversation a Conversation only fork is given with its first prompt. */
+	readonly conversation?: readonly ConversationEntry[];
+	/** What the fork's chat shows of its parent's. */
+	readonly items: readonly TranscriptItem[];
+	/** The fork's line in its parent's chat is added once it starts. */
+	readonly onStarted: (agent: string, branch: string | undefined) => void;
 }
 
 /** A page shared with the agent: pinned to the composer, and named in every prompt until the user stops sharing it. */

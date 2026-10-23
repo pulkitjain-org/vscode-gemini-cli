@@ -12,7 +12,7 @@ import * as vscode from 'vscode';
 import { AgentRecord, AgentsModel } from '../../acp/agents';
 import { isValidBranchName } from '../../acp/branchNames';
 import { errorMessage } from '../../acp/errors';
-import { AgentWorktree, branchExists, createWorktree, folderInRepository, freeBranchName, pathExists, repositoryRoot, restoreWorktree, runWorktreeSetup, TurnQueue, worktreeSetupCommand } from '../../acp/worktrees';
+import { AgentWorktree, branchExists, createWorktree, createWorktreeFrom, folderInRepository, freeBranchName, mainRepository, pathExists, repositoryRoot, restoreWorktree, runWorktreeSetup, TurnQueue, worktreeSetupCommand } from '../../acp/worktrees';
 import { configSection } from '../configuration';
 
 export class AgentWorktrees implements vscode.Disposable {
@@ -80,6 +80,26 @@ export class AgentWorktrees implements vscode.Disposable {
 	make(repository: string, branch: string, folder: string): Thenable<AgentWorktree> {
 		return vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Creating the agent's branch..."), cancellable: true }, async (progress, token) => {
 			const worktree = await createWorktree(repository, branch, await folderInRepository(folder));
+			const command = await this.setupCommand(repository);
+			if (!command || token.isCancellationRequested) {
+				return worktree;
+			}
+			progress.report({ message: vscode.l10n.t("Running the setup script...") });
+			await this.runSetup(command, worktree, repository, branch, token);
+			return worktree;
+		});
+	}
+
+	/**
+	 * Makes a fork's worktree on branch `branch` from what `parent` (its
+	 * parent's folder) has checked out, with the parent's uncommitted changes,
+	 * then runs the repository's setup in it, as {@link make} does. Rejects
+	 * when it can't be made; nothing is left behind then.
+	 */
+	makeFrom(parent: string, branch: string): Thenable<AgentWorktree> {
+		return vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Creating the fork's branch {0}...", branch), cancellable: true }, async (progress, token) => {
+			const repository = await mainRepository(parent);
+			const worktree = await this.inTurn(repository, async () => createWorktreeFrom(parent, branch, await folderInRepository(parent)));
 			const command = await this.setupCommand(repository);
 			if (!command || token.isCancellationRequested) {
 				return worktree;

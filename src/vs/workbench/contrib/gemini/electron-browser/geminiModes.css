@@ -433,9 +433,24 @@
 	visibility: hidden;
 }
 
-/* Threads and agents sit a step in from their project or workspace. */
+/*
+ * Threads and agents sit a step in from their project or workspace; an agent's forks and archived threads a
+ * step further, and forks of forks further still (deeper ones stay at the last step).
+ */
 .monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-level="3"] .monaco-tl-twistie {
 	padding-left: 20px !important;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-level="4"] .monaco-tl-twistie {
+	padding-left: 34px !important;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-level="5"] .monaco-tl-twistie {
+	padding-left: 48px !important;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row:is([aria-level="6"], [aria-level="7"], [aria-level="8"]) .monaco-tl-twistie {
+	padding-left: 62px !important;
 }
 
 /* Section headings: Projects and Agents. */

@@ -81,16 +81,11 @@ export function cliHome(env: NodeJS.ProcessEnv = process.env): string {
 export async function chatsFolder(cwd: string, home = cliHome()): Promise<string | undefined> {
 	const key = path.resolve(cwd);
 	const candidates: string[] = [];
-	try {
-		const registry = JSON.parse(await fs.readFile(path.join(home, 'projects.json'), 'utf8')) as { projects?: Record<string, unknown> };
-		const id = registry.projects?.[key];
-		if (typeof id === 'string' && id && !id.includes('/') && !id.includes('\\') && id !== '..') {
-			candidates.push(id);
-		}
-	} catch {
-		// No registry yet: CLIs before it named the folder by a hash of the path.
+	const registered = await registeredProject(key, home);
+	if (registered) {
+		candidates.push(registered);
 	}
-	candidates.push(createHash('sha256').update(key).digest('hex'));
+	candidates.push(projectHash(key));
 	for (const id of candidates) {
 		const folder = path.join(home, 'tmp', id, 'chats');
 		if (await isFolder(folder)) {
@@ -98,6 +93,33 @@ export async function chatsFolder(cwd: string, home = cliHome()): Promise<string
 		}
 	}
 	return undefined;
+}
+
+/**
+ * The folder the CLI would save a new session for `cwd` in, whether or not it
+ * exists yet: undefined until the CLI has registered the folder, which it
+ * does when it first opens a session there.
+ */
+export async function registeredChatsFolder(cwd: string, home = cliHome()): Promise<string | undefined> {
+	const id = await registeredProject(path.resolve(cwd), home);
+	return id && path.join(home, 'tmp', id, 'chats');
+}
+
+/** The CLI's id for folder `key` in its registry; undefined when it has none. */
+async function registeredProject(key: string, home: string): Promise<string | undefined> {
+	try {
+		const registry = JSON.parse(await fs.readFile(path.join(home, 'projects.json'), 'utf8')) as { projects?: Record<string, unknown> };
+		const id = registry.projects?.[key];
+		return typeof id === 'string' && id && !id.includes('/') && !id.includes('\\') && id !== '..' ? id : undefined;
+	} catch {
+		// No registry yet: CLIs before it named the folder by a hash of the path.
+		return undefined;
+	}
+}
+
+/** The hash the CLI keeps in a session's metadata for its folder, which older CLIs also named the folder by. */
+export function projectHash(cwd: string): string {
+	return createHash('sha256').update(path.resolve(cwd)).digest('hex');
 }
 
 interface CachedFile {
@@ -247,10 +269,12 @@ export async function findCliSession(cwd: string, id: string, home?: string): Pr
 	return (await numberedSessions(cwd, home)).find(session => session.id === id);
 }
 
-interface MessageRecord {
+/** One message of a session file, with whatever else the CLI saved in it (thoughts, tool calls, tokens). */
+export interface MessageRecord {
 	readonly id: string;
 	readonly type?: unknown;
 	readonly content?: unknown;
+	readonly [key: string]: unknown;
 }
 
 /** One session file's session, or undefined when it has none worth reopening. */
@@ -473,6 +497,19 @@ function withTokens(messages: readonly MessageRecord[]): { tokens?: SessionToken
 	return latest ? { tokens: { context: Math.round(latest.input), ...(latest.model ? { model: latest.model } : {}), cached: Math.round(cached) } } : {};
 }
 
+/**
+ * Session `id`'s metadata and messages as they stand in its newest file, after
+ * rewinds and rewrites; undefined when there is no file.
+ */
+export async function readSessionMessages(cwd: string, id: string, home?: string): Promise<{ readonly meta: Record<string, unknown>; readonly messages: MessageRecord[] } | undefined> {
+	const newest = await newestSessionFile(cwd, id, home);
+	if (!newest) {
+		return undefined;
+	}
+	const { meta, all } = parseSessionRecords(await fs.readFile(newest.file, 'utf8'), newest.file.endsWith('.json'));
+	return { meta, messages: all };
+}
+
 /** Session `id` in `cwd` from its newest file, reading only that session's files; undefined when there is none. */
 async function readSessionById(cwd: string, id: string, home?: string): Promise<ParsedSession | undefined> {
 	return (await newestSessionFile(cwd, id, home))?.session;
@@ -531,7 +568,8 @@ async function rewindTarget(cwd: string, id: string, prompt: string, fromEnd: nu
 	return target ? { file: newest.file, messageId: target.id } : undefined;
 }
 
-function squashSpaces(text: string): string {
+/** `text` on one line, its runs of white space as one space. */
+export function squashSpaces(text: string): string {
 	return text.replace(/\s+/g, ' ').trim();
 }
 
@@ -552,8 +590,13 @@ export async function readCliConversation(cwd: string, id: string, home?: string
 		return undefined;
 	}
 	const { all } = parseSessionRecords(await fs.readFile(newest.file, 'utf8'), newest.file.endsWith('.json'));
+	return conversationOf(all);
+}
+
+/** `messages` as the user saw them: prompts and the model's text, without the CLI's context, commands, thoughts and tool results. */
+export function conversationOf(messages: readonly MessageRecord[]): ConversationEntry[] {
 	const entries: ConversationEntry[] = [];
-	for (const message of all) {
+	for (const message of messages) {
 		const text = textOf(message.content).trim();
 		if (message.type === 'user' && isPrompt(text)) {
 			entries.push({ role: 'user', text });
@@ -584,6 +627,12 @@ export async function readSessionTokens(cwd: string, id: string, home?: string):
 	return (await readSessionById(cwd, id, home))?.tokens;
 }
 
+/** Session `id`'s token counts and how many prompts it holds, for the context meter and Compact; reads only that session's files. */
+export async function readSessionContext(cwd: string, id: string, home?: string): Promise<{ readonly tokens?: SessionTokens; readonly prompts: number } | undefined> {
+	const session = await readSessionById(cwd, id, home);
+	return session && { ...(session.tokens ? { tokens: session.tokens } : {}), prompts: session.prompts.length };
+}
+
 /** What reopening session `id` in `cwd` by its id needs: its replay length. Reads only that session's files. */
 export async function readCliSession(cwd: string, id: string, home?: string): Promise<{ readonly firstPrompt: string; readonly replayUpdates: number } | undefined> {
 	const session = await readSessionById(cwd, id, home);
@@ -609,7 +658,7 @@ function oneLine(text: string): string {
 }
 
 /** A message's text: a string, or the text parts of a part list. */
-function textOf(content: unknown): string {
+export function textOf(content: unknown): string {
 	if (typeof content === 'string') {
 		return content;
 	}

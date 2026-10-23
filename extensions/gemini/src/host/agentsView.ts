@@ -9,7 +9,7 @@ import * as vscode from 'vscode';
 import { AgentChanges, ChangeTotals } from '../acp/agentChanges';
 import { attentionChange } from '../acp/attention';
 import { branchNameFrom } from '../acp/branchNames';
-import { AgentRecord, AgentsModel, AgentsSnapshot } from '../acp/agents';
+import { agentFolder, AgentRecord, AgentsModel, AgentsSnapshot } from '../acp/agents';
 import { coordinatorModel } from '../acp/projectHub';
 import { savedRepoCount } from '../acp/projectStore';
 import type { Attachment } from '../acp/attachments';
@@ -42,6 +42,7 @@ import { WorkspaceFileIndex } from './workspaceFiles';
 import { AgentIndicators } from './agents/agentIndicators';
 import { AgentMerge } from './agents/agentMerge';
 import { AgentProjects } from './agents/agentProjects';
+import { AgentForks } from './agents/agentForks';
 import { AgentStarts } from './agents/agentStarts';
 import { agentState, AgentTree, AgentTreeNode, WorkspaceSummary } from './agents/agentTree';
 import { AgentWorktrees } from './agents/agentWorktrees';
@@ -125,6 +126,7 @@ export class AgentsView implements vscode.Disposable {
 	private readonly merge: AgentMerge;
 	private readonly projectAgents: AgentProjects;
 	private readonly starts: AgentStarts;
+	private readonly forks: AgentForks;
 	private refreshTimer: ReturnType<typeof setInterval> | undefined;
 	/** Set while the extension shuts down, when closing agent tabs must not close their files. */
 	private disposing = false;
@@ -219,6 +221,12 @@ export class AgentsView implements vscode.Disposable {
 		};
 		this.projectAgents = new AgentProjects(this.model, this.service, this.projects, this.worktrees, this.merge, this.live, this.tree, host);
 		this.starts = new AgentStarts(this.model, this.worktrees, this.tree, this.live, host);
+		this.forks = new AgentForks(this.model, this.service, this.worktrees, this.live, {
+			start: (record, folder) => this.start(record, folder),
+			open: id => this.open(id),
+			pickModel: (id, model) => void this.threadModels.set(id, model),
+			mergeBack: id => this.merge.mergeBack(id),
+		});
 		this.spare = new SpareSession(this.service, {
 			servers: folder => [...this.browser?.spareServers() ?? [], ...this.teamTools?.spareServers() ?? [], ...this.index?.spareServers(folder) ?? []],
 			serving: () => [!!this.browser?.serving, !!this.teamTools?.serving, !!this.index?.serving],
@@ -251,6 +259,7 @@ export class AgentsView implements vscode.Disposable {
 			vscode.commands.registerCommand('gemini.agents.newAgent', (node?: AgentTreeNode) => this.starts.newAgent(node)),
 			vscode.commands.registerCommand('gemini.agents.newAgentOnBranch', (node?: AgentTreeNode) => this.starts.newAgent(node, true)),
 			vscode.commands.registerCommand('gemini.agents.mergeBack', (node?: AgentTreeNode) => node?.kind === 'agent' && this.merge.mergeBack(node.record.id)),
+			vscode.commands.registerCommand('gemini.agents.fork', (node?: AgentTreeNode) => this.fork(node)),
 			vscode.commands.registerCommand('gemini.reviewChanges', (source?: { readonly rootUri?: vscode.Uri }) => this.starts.reviewChanges(source)),
 			vscode.commands.registerCommand('gemini.agents.addWorkspace', () => this.starts.addWorkspace()),
 			// From the keyboard (⌘↓ on a Mac, where Return renames as in Finder) it opens the selected agent.
@@ -407,7 +416,7 @@ export class AgentsView implements vscode.Disposable {
 	agentPlace(id: string): { readonly folder: string; readonly cwd: string; readonly branch?: string; readonly title: string } | undefined {
 		const record = this.model.agent(id);
 		const workspace = record && this.model.workspace(record.workspaceId);
-		return record && workspace ? { folder: workspace.folder, cwd: record.worktree?.cwd ?? workspace.folder, title: record.title, ...(record.worktree ? { branch: record.worktree.branch } : {}) } : undefined;
+		return record && workspace ? { folder: workspace.folder, cwd: agentFolder(record, workspace.folder), title: record.title, ...(record.worktree ? { branch: record.worktree.branch } : {}) } : undefined;
 	}
 
 	/** The browser's New Agent: asks where and how the agent works, then starts it with its tab open. */
@@ -493,6 +502,7 @@ export class AgentsView implements vscode.Disposable {
 		const workspace = record && this.model.workspace(record.workspaceId);
 		this.stop(id, false);
 		if (record) {
+			this.forkGone(record);
 			this.projects.threadRemoved(record);
 		}
 		this.model.removeAgent(id);
@@ -524,7 +534,7 @@ export class AgentsView implements vscode.Disposable {
 		}
 		let live = this.live.get(id);
 		if (!live) {
-			const folder = record.worktree?.cwd ?? workspace.folder;
+			const folder = agentFolder(record, workspace.folder);
 			// A merged thread's folder may have been cleaned up: it comes back from its branch.
 			if (record.worktree && !await this.worktrees.restoreFolder(id)) {
 				void vscode.window.showErrorMessage(vscode.l10n.t("The folder of \"{0}\"'s branch, {1}, no longer exists.", record.title, tildify(record.worktree.folder)));
@@ -654,7 +664,7 @@ export class AgentsView implements vscode.Disposable {
 		const record = this.model.agent(id);
 		const workspace = record && this.model.workspace(record.workspaceId);
 		return live && workspace ? {
-			agentId: id, title: record.title, folder: record.worktree?.cwd ?? workspace.folder, changes: live.changes,
+			agentId: id, title: record.title, folder: agentFolder(record, workspace.folder), changes: live.changes,
 			editorColumn: () => agentColumn(id, live.panel),
 			focusEditors: async () => { await agentColumn(id, live.panel, true); },
 			busy: () => live.activity.busy,
@@ -724,6 +734,9 @@ export class AgentsView implements vscode.Disposable {
 				review: () => this.reviewChip?.(record.id),
 				openReview: () => this.openReview?.(record.id),
 				openMergeRequest: () => void vscode.commands.executeCommand('gemini.team.openMergeRequest', record.id),
+				title: () => this.model.agent(record.id)?.title ?? record.title,
+				// A project's agents split work into threads through their coordinator instead.
+				...(record.project ? {} : { fork: this.forks.forkerFor(record.id) }),
 				...(project?.role === 'coordinator' ? { project: this.projects.chatProject(record.id) } : {}),
 				...(project?.role === 'thread' ? {
 					parentProject: {
@@ -876,10 +889,56 @@ export class AgentsView implements vscode.Disposable {
 		}
 	}
 
+	/** Fork Agent, from the agent's row or the Command Palette: the Fork dialog opens in the agent's chat. */
+	private async fork(node: AgentTreeNode | undefined): Promise<void> {
+		const selected = node ?? this.tree.view.selection[0];
+		const id = selected?.kind === 'agent' ? selected.record.id : this.activeAgentId();
+		const record = id ? this.model.agent(id) : undefined;
+		if (!id || !record) {
+			void vscode.window.showInformationMessage(vscode.l10n.t("Select an agent to fork."));
+			return;
+		}
+		if (record.project) {
+			void vscode.window.showInformationMessage(vscode.l10n.t("A project's agents can't be forked: start a thread from the project chat instead."));
+			return;
+		}
+		await this.open(id);
+		await this.live.get(id)?.controller.openFork();
+	}
+
+	/** The fork's card in its parent's chat says it was removed. */
+	private forkGone(record: AgentRecord): void {
+		const parent = this.model.parentOf(record);
+		if (parent) {
+			this.live.get(parent.id)?.controller.forkRemoved(record.id);
+		}
+	}
+
 	private async removeAgent(node: AgentTreeNode | undefined): Promise<void> {
 		node ??= this.tree.view.selection[0];
 		if (node?.kind !== 'agent') {
 			return;
+		}
+		// Its forks go too, or stay as agents of their own, as the user says.
+		const forks = this.model.forksOf(node.record.id);
+		if (forks.length) {
+			const keep = vscode.l10n.t("Keep the Forks");
+			const removeToo = vscode.l10n.t("Remove the Forks Too");
+			const choice = await vscode.window.showWarningMessage(
+				forks.length === 1 ? vscode.l10n.t("\"{0}\" has a fork, \"{1}\". Remove it too?", node.record.title, forks[0].title) : vscode.l10n.t("\"{0}\" has {1} forks. Remove them too?", node.record.title, forks.length),
+				{ modal: true, detail: vscode.l10n.t("Kept forks stay as agents of their own, with their branches and conversations. Each fork removed asks about its own branch.") },
+				keep, removeToo);
+			if (!choice) {
+				return;
+			}
+			if (choice === removeToo) {
+				for (const fork of forks) {
+					const folder = this.model.folderOf(fork);
+					if (folder) {
+						await this.removeAgent({ kind: 'agent', record: fork, folder });
+					}
+				}
+			}
 		}
 		const remove = vscode.l10n.t("Remove");
 		const worktree = this.model.agent(node.record.id)?.worktree;
@@ -890,6 +949,7 @@ export class AgentsView implements vscode.Disposable {
 		const answer = await vscode.window.showWarningMessage(vscode.l10n.t("Remove the agent \"{0}\"? Its conversation is closed.", node.record.title), { modal: true }, remove);
 		if (answer === remove) {
 			this.stop(node.record.id, false);
+			this.forkGone(node.record);
 			this.projects.threadRemoved(node.record);
 			this.model.removeAgent(node.record.id);
 			void this.transcripts.delete(node.record.id);
