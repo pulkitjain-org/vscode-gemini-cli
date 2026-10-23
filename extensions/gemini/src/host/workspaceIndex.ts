@@ -169,7 +169,7 @@ export class WorkspaceIndex implements vscode.Disposable {
 		}
 		const known = this.folders.has(folder);
 		this.folders.set(folder, { seedFrom: seedFrom && seedFrom !== folder ? seedFrom : undefined });
-		const build = buildOn() !== 'manual';
+		const build = indexBuildOn() !== 'manual';
 		if (seedFrom && seedFrom !== folder && build && !known) {
 			this.client.notify('seed', { from: seedFrom, to: folder, settings: indexSettings(folder) });
 		} else {
@@ -346,7 +346,7 @@ export class WorkspaceIndex implements vscode.Disposable {
 			orientation: folder => this.orientations.get(folder)?.text,
 		}, this.options.version);
 		server.start().catch(err => this.options.log.error(`The index server failed to start: ${err instanceof Error ? err.message : String(err)}`));
-		if (buildOn() === 'workspaceOpen') {
+		if (indexBuildOn() === 'workspaceOpen') {
 			for (const folder of vscode.workspace.workspaceFolders ?? []) {
 				if (folder.uri.scheme === 'file') {
 					this.prepare(folder.uri.fsPath);
@@ -386,7 +386,8 @@ export function indexEnabled(): boolean {
 	return vscode.workspace.getConfiguration(configSection).get<boolean>('index.enabled', true);
 }
 
-function buildOn(): BuildOn {
+/** When an index is built (`gemini.index.buildOn`); an unknown value counts as the default. */
+export function indexBuildOn(): BuildOn {
 	const value = vscode.workspace.getConfiguration(configSection).get<string>('index.buildOn', 'agentStart');
 	return value === 'workspaceOpen' || value === 'manual' ? value : 'agentStart';
 }

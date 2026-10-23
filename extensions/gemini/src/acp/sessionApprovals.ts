@@ -44,6 +44,57 @@ export function isBuildFile(filePath: string): boolean {
 	return buildFile.test(filePath.split(/[\\/]/).pop() ?? '');
 }
 
+/**
+ * Whether writing `filePath` changes what a later approved command runs: a
+ * build file (a task runner's scripts), or anything under `.git` (hooks,
+ * aliases, `core.fsmonitor`).
+ */
+function changesWhatRuns(filePath: string): boolean {
+	const unquoted = filePath.replace(/^of=/, '').replace(/['"]/g, '');
+	return isBuildFile(unquoted) || /(^|[\\/])\.git([\\/]|$)/.test(unquoted);
+}
+
+/** Programs that write the files their arguments name. */
+const fileWriters = new Set(['tee', 'cp', 'mv', 'ln', 'install', 'truncate', 'patch', 'dd']);
+
+/** Git commands that run a command they are given, or set one up for later commands to run. */
+function gitRunsCode(args: readonly string[]): boolean {
+	if (args.some(arg => arg === '-c' || arg.startsWith('--config-env') || arg.startsWith('--exec-path'))) {
+		return true;
+	}
+	// The first word that is not an option (or the value of `-C`, `--git-dir`, `--work-tree`) is the git command.
+	let at = 0;
+	while (at < args.length && args[at].startsWith('-')) {
+		at += /^(-C|--git-dir|--work-tree|--namespace)$/.test(args[at]) ? 2 : 1;
+	}
+	const [command, ...rest] = args.slice(at);
+	switch (command) {
+		case 'config': {
+			// Reading is fine; writing can set an alias, a pager, a hook path or `core.sshCommand`.
+			if (rest.some(arg => /^(--unset(-all)?|--add|--replace-all|--rename-section|--remove-section|-e|--edit|set|unset|rename-section|remove-section|edit)$/.test(arg))) {
+				return true;
+			}
+			const reads = rest.some(arg => /^(--get(-all|-regexp|-urlmatch)?|--list|-l|get|list)$/.test(arg));
+			// `git config <key>` reads; `git config <key> <value>` writes.
+			return !reads && rest.filter(arg => !arg.startsWith('-')).length > 1;
+		}
+		case 'rebase':
+			return rest.some(arg => arg === '-x' || arg.startsWith('--exec'));
+		case 'submodule':
+			return rest.includes('foreach');
+		case 'bisect':
+			return rest.includes('run');
+		case 'difftool':
+		case 'mergetool':
+			return rest.some(arg => arg === '-x' || arg.startsWith('--extcmd') || arg.startsWith('--tool'));
+		case 'filter-branch':
+		case 'filter-repo':
+			return true;
+		default:
+			return false;
+	}
+}
+
 /** `NAME=value` prefixes that only change formatting; any other can make a program run code (`GIT_SSH_COMMAND`, `LD_PRELOAD`). */
 const harmlessVariable = /^(LC_\w+|LANG|LANGUAGE|TZ|NO_COLOR|FORCE_COLOR|CLICOLOR|CI|TERM|COLUMNS|LINES)$/;
 
@@ -55,10 +106,19 @@ function runsCode(program: string, args: readonly string[]): boolean {
 		case 'awk': case 'gawk': case 'mawk': case 'nawk':
 			return args.some(arg => /\bsystem\s*\(|\|\s*getline|print[^;]*\|/.test(arg));
 		case 'git':
-			// `-c core.sshCommand=…`, `-c alias.x=!…` and friends run what they name.
-			return args.some(arg => arg === '-c' || arg.startsWith('--config-env') || arg.startsWith('--exec-path'));
+			return gitRunsCode(args);
+		case 'rg':
+			// `--pre` runs a command on every file searched.
+			return args.some(arg => arg.startsWith('--pre') && !arg.startsWith('--pre-glob'));
+		case 'tar': case 'gtar': case 'bsdtar':
+			return args.some(arg => arg === '-I' || arg === '-F' || /^--(to-command|use-compress-program|checkpoint-action|rsh-command|info-script|new-volume-script)/.test(arg));
+		case 'sort': case 'gsort':
+			return args.some(arg => arg.startsWith('--compress-program'));
+		case 'sed': case 'gsed':
+			// `sed -i` on a build file changes what a task runner runs.
+			return args.some(arg => /^(-i|--in-place)/.test(arg)) && args.some(changesWhatRuns);
 		default:
-			return false;
+			return fileWriters.has(program) && args.some(changesWhatRuns);
 	}
 }
 
@@ -139,6 +199,10 @@ export function parseCommand(command: string): ParsedCommand {
 			}
 			// The target is not a program. `2>&1` and `>/dev/null` write nothing.
 			const target = /^(&\d|[^\s|;&<>]+)/.exec(text.slice(j))?.[0] ?? '';
+			if (changesWhatRuns(target)) {
+				// Writing a build file or a git hook decides what a later approved command runs.
+				return { kind: 'asks', reason: 'dynamic' };
+			}
 			if (!/^(&\d|\/dev\/null)$/.test(target)) {
 				redirects = true;
 			}
@@ -175,7 +239,8 @@ export function parseCommand(command: string): ParsedCommand {
 			return { kind: 'asks', reason: 'network' };
 		}
 		// A script in the workspace can be rewritten by the agent after it was approved.
-		if (program.includes('/') && !program.startsWith('/')) {
+		// A program named by a variable or a glob (`$EDITOR`, `/bin/*sh`) can be anything when it runs.
+		if ((program.includes('/') && !program.startsWith('/')) || /[$*?[\]~]/.test(program)) {
 			return { kind: 'asks', reason: 'dynamic' };
 		}
 		if (wrapperPrograms.has(name) || runsCode(name, segment.slice(start + 1))) {

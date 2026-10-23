@@ -240,10 +240,11 @@ export function isConfirmToolCall(request: { readonly toolCall: { readonly title
  * Text that came from outside (a ticket, a merge request, a job log, a
  * design), marked so the model treats it as something to read, not as
  * instructions. The frame is plain text; the server's instructions say what
- * it means.
+ * it means. An `<external>` or `</external>` tag inside the text is escaped,
+ * so the text cannot close its frame early and go on as if it were outside it.
  */
 export function external(source: TeamToolId, ref: string, text: string): string {
-	return `<external source="${source}" ref="${ref.replace(/"/g, '')}">\n${text}\n</external>`;
+	return `<external source="${source}" ref="${ref.replace(/["<>\r\n]/g, '')}">\n${text.replace(/<(\/?external)\b/gi, '&lt;$1')}\n</external>`;
 }
 
 /** The tools for the connected tools. */

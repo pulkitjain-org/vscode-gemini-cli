@@ -614,7 +614,8 @@ export class Indexer {
 		const store = workspace.store!;
 		const rules = await this.rules(workspace);
 		const known = workspace.known ??= new Known((store.statement('SELECT path FROM files').all() as { path: string }[]).map(r => r.path));
-		const states = store.fileStates();
+		// Only the changed paths: a save in a large repository must not read the whole index.
+		const states = store.fileStates(paths);
 		const toWrite: { file: InventoryFile; content: Buffer | undefined }[] = [];
 		const toRemove: string[] = [];
 		for (const relative of paths) {

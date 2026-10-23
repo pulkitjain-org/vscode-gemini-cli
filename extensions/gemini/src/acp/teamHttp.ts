@@ -61,24 +61,69 @@ export async function teamRequest<T>(tool: TeamToolId, url: string, request: Tea
 }
 
 async function send<T>(tool: TeamToolId, url: string, request: TeamRequest, fetcher: Fetch): Promise<T> {
-	const host = hostOf(url);
-	const name = teamToolNames[tool];
 	const controller = new AbortController();
+	// The whole call, its body included, has to finish in time: a host that sends headers and then stalls fails too.
 	const timer = setTimeout(() => controller.abort(), request.timeoutMs ?? defaultTimeoutMs);
-	const form = typeof FormData !== 'undefined' && request.body instanceof FormData;
-	let response: Response;
 	try {
-		response = await fetcher(url, {
-			method: request.method ?? 'GET',
-			headers: { Accept: request.text ? 'text/plain, */*' : 'application/json', ...(request.body !== undefined && !form ? { 'Content-Type': 'application/json' } : {}), ...request.headers },
-			body: request.body === undefined ? undefined : form ? request.body as FormData : JSON.stringify(request.body),
-			signal: controller.signal,
-			redirect: 'follow',
-		});
-	} catch (err) {
-		throw new TeamToolError('unreachable', unreachableMessage(tool, host, err));
+		return await sendWithin<T>(tool, url, request, fetcher, controller.signal);
 	} finally {
 		clearTimeout(timer);
+	}
+}
+
+/** Redirects followed at most, as many as `fetch` itself follows by default. */
+const maxRedirects = 20;
+
+/**
+ * Calls `url`, following redirects here rather than in `fetch`: the headers
+ * the caller set, which carry the token, go only to the origin they were
+ * meant for. `fetch` drops only `Authorization` on a redirect to another
+ * origin, so GitLab's `PRIVATE-TOKEN` would go along to whatever host the
+ * redirect names, such as the object storage a job log is kept in.
+ */
+async function fetchFollowing(url: string, request: TeamRequest, fetcher: Fetch, signal: AbortSignal): Promise<Response> {
+	const origin = new URL(url).origin;
+	const form = typeof FormData !== 'undefined' && request.body instanceof FormData;
+	let method: string = request.method ?? 'GET';
+	let body: string | FormData | undefined = request.body === undefined ? undefined : form ? request.body as FormData : JSON.stringify(request.body);
+	let current = url;
+	for (let hops = 0; ; hops++) {
+		const response = await fetcher(current, {
+			method,
+			headers: {
+				Accept: request.text ? 'text/plain, */*' : 'application/json',
+				...(body !== undefined && !form ? { 'Content-Type': 'application/json' } : {}),
+				...new URL(current).origin === origin ? request.headers : {},
+			},
+			body,
+			signal,
+			redirect: 'manual',
+		});
+		const location = response.headers.get('location');
+		if (response.status < 300 || response.status > 399 || response.status === 304 || !location || hops >= maxRedirects) {
+			return response;
+		}
+		await response.body?.cancel().catch(() => undefined);
+		current = new URL(location, current).href;
+		if (response.status === 303 || ((response.status === 301 || response.status === 302) && method === 'POST')) {
+			// As `fetch` does: the next request is a GET, with no body.
+			method = 'GET';
+			body = undefined;
+		}
+	}
+}
+
+async function sendWithin<T>(tool: TeamToolId, url: string, request: TeamRequest, fetcher: Fetch, signal: AbortSignal): Promise<T> {
+	const host = hostOf(url);
+	const name = teamToolNames[tool];
+	let response: Response;
+	try {
+		response = await fetchFollowing(url, request, fetcher, signal);
+	} catch (err) {
+		throw new TeamToolError('unreachable', unreachableMessage(tool, host, err));
+	}
+	if (response.status >= 300 && response.status <= 399 && response.status !== 304) {
+		throw new TeamToolError('failed', `${name} at ${host} kept redirecting. Check the server address in Connections.`, response.status);
 	}
 	if (response.status === 401) {
 		throw new TeamToolError('auth', `${name} refused the token for ${host}. It may have expired or been revoked: replace it in Connections.`, 401);
@@ -92,13 +137,19 @@ async function send<T>(tool: TeamToolId, url: string, request: TeamRequest, fetc
 	if (!response.ok) {
 		throw new TeamToolError('failed', `${name} answered ${response.status}. ${await errorText(response)}`.trim(), response.status);
 	}
-	if (request.text) {
-		return await response.text() as T;
-	}
-	if (response.status === 204) {
+	if (response.status === 204 && !request.text) {
 		return undefined as T;
 	}
-	const body = await response.text();
+	let body: string;
+	try {
+		body = await response.text();
+	} catch (err) {
+		// The time ran out, or the connection dropped, while the answer came in.
+		throw new TeamToolError('unreachable', unreachableMessage(tool, host, err));
+	}
+	if (request.text) {
+		return body as T;
+	}
 	if (!body) {
 		return undefined as T;
 	}

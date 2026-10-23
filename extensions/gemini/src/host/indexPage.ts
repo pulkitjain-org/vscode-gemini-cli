@@ -16,7 +16,7 @@ import { DocsSources, defaultMaxPages, SourceView } from './docsSources';
 import { tildify } from './displayText';
 import type { DocsSourceView, FromIndexPage, IndexPageStrings, IndexPageView, IndexWorkspaceView, ToIndexPage } from './indexProtocol';
 import { createNonce, escapeAttribute } from './webviewHtml';
-import type { WorkspaceIndex } from './workspaceIndex';
+import { indexBuildOn, type WorkspaceIndex } from './workspaceIndex';
 
 const viewType = 'gemini.index';
 const dismissedKey = 'gemini.index.dismissedDocs';
@@ -419,7 +419,7 @@ function describe(status: IndexStatus | undefined): Pick<IndexWorkspaceView, 'st
 		case 'failed':
 			return { state: 'failed', detail: state.message, skipped: 0 };
 		default: {
-			const buildOn = vscode.workspace.getConfiguration(configSection).get<string>('index.buildOn', 'agentStart');
+			const buildOn = indexBuildOn();
 			const detail = buildOn === 'manual' ? vscode.l10n.t("Not indexed yet") : buildOn === 'workspaceOpen' ? vscode.l10n.t("Indexes when the window opens") : vscode.l10n.t("Indexes when an agent first starts here");
 			return { state: 'none', detail, skipped: 0 };
 		}
