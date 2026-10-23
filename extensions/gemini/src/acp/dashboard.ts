@@ -72,9 +72,10 @@ export function ticketOrder<T extends JiraIssueSummary>(issues: readonly T[]): T
 	return [...issues].sort((a, b) => rank(a) - rank(b));
 }
 
-/** The user's tickets in the sprint running now, then the rest, each in `ticketOrder`. */
+/** The user's tickets in the sprint running now, then the rest, each in `ticketOrder`. Closed tickets are left out: nothing is left to do on them. */
 export function ticketGroups(issues: readonly JiraMyTicket[]): { readonly sprint: JiraMyTicket[]; readonly other: JiraMyTicket[] } {
-	return { sprint: ticketOrder(issues.filter(i => i.inSprint)), other: ticketOrder(issues.filter(i => !i.inSprint)) };
+	const open = issues.filter(i => !isClosed(i));
+	return { sprint: ticketOrder(open.filter(i => i.inSprint)), other: ticketOrder(open.filter(i => !i.inSprint)) };
 }
 
 /**
@@ -88,6 +89,11 @@ export function isReadyToMerge(mr: GitLabMr): boolean {
 
 export function isReopened(issue: JiraIssueSummary): boolean {
 	return /reopen/i.test(issue.status);
+}
+
+/** A ticket in a done status named Closed, as against Done or Resolved, which the sprint's list still shows. */
+export function isClosed(issue: JiraIssueSummary): boolean {
+	return issue.statusCategory === 'done' && /^closed?$/i.test(issue.status.trim());
 }
 
 /** A thing waiting on the user, with its one action. */
