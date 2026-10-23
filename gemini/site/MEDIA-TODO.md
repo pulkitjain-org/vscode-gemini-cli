@@ -10,3 +10,4 @@ Capture from the real app, against demo data so no real account, ticket, name or
 
 - The Agents pane with five agents in different states (Agents bento, "Agents side by side" tile).
 - Enhance prompt before and after as a still (the `showcase-enhance` clip shows it).
+- Sending while the agent works: the composer with a message **Sending after the current step** and another **Queued: goes after this turn** (Chat and review, "Steer it while it works").

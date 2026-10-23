@@ -2686,6 +2686,87 @@ body.vscode-high-contrast-light #send {
 	background: var(--gemini-raised);
 }
 
+/* Messages sent while the agent works (webview-src/queueStrip.ts): one line each, above the input. */
+.queue {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	margin-bottom: 6px;
+}
+
+.queue[hidden] {
+	display: none;
+}
+
+.queue-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	height: 24px;
+	padding: 0 2px 0 8px;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius-small);
+	background: var(--gemini-raised);
+	font-size: 12px;
+}
+
+.queue-item > .codicon {
+	flex: none;
+	font-size: 13px;
+	color: var(--gemini-muted);
+}
+
+.queue-item.steer > .codicon {
+	color: var(--gemini-accent);
+}
+
+.queue-status {
+	flex: none;
+	color: var(--gemini-muted);
+}
+
+.queue-text {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.queue-attached {
+	flex: none;
+	color: var(--gemini-muted);
+}
+
+.queue-actions {
+	display: flex;
+	flex: none;
+}
+
+.queue-action {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	padding: 0;
+	border: none;
+	border-radius: 4px;
+	background: none;
+	color: var(--gemini-muted);
+	cursor: pointer;
+}
+
+.queue-action:hover {
+	background: var(--gemini-hover);
+	color: var(--vscode-foreground);
+}
+
+.queue-action:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+}
+
 .chip .thumbnail {
 	width: 14px;
 	height: 14px;

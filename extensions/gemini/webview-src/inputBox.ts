@@ -7,6 +7,7 @@
 // and whether it can be sent. The attachments and the picker use these too.
 
 import { draggedHeight, restoredHeight } from './chatLogic';
+import { setLabel } from './dom';
 import { state, strings, ui, vscode } from './view';
 
 const { input, resizeHandle, sendButton } = ui;
@@ -38,9 +39,24 @@ export function onComposerChange(listener: () => void): void {
 	changeListeners.push(listener);
 }
 
-/** Enables Send when there is something to send and nothing in the way. */
+/** Whether a message can be sent while the agent works: in an agent's chat, not a project's. */
+export function sendsWhileWorking(): boolean {
+	return !strings.project;
+}
+
+/**
+ * Enables Send when there is something to send and nothing in the way. While
+ * the agent works, Send shows beside Stop once there is text, and sends now.
+ */
 export function updateSendButton(): void {
-	sendButton.disabled = state.busy || state.enhancing || (!input.value.trim() && !state.attachments.length);
+	const empty = !input.value.trim() && !state.attachments.length;
+	const whileWorking = state.busy && sendsWhileWorking();
+	sendButton.disabled = (state.busy && !whileWorking) || state.enhancing || empty;
+	sendButton.hidden = state.busy && (!whileWorking || empty);
+	const label = whileWorking ? strings.sendNow : strings.send;
+	if (sendButton.getAttribute('aria-label') !== label) {
+		setLabel(sendButton, label);
+	}
 }
 
 /** Updates what depends on the composer's text: Send, and whatever listens (Enhance prompt). */
@@ -52,7 +68,8 @@ export function updateSendState(): void {
 }
 
 export function updatePlaceholder(): void {
-	input.placeholder = strings.project?.placeholder ?? (state.items.some(item => item.kind === 'user') ? strings.placeholderFollowUp : strings.placeholder);
+	input.placeholder = strings.project?.placeholder
+		?? (state.busy ? strings.placeholderWorking : state.items.some(item => item.kind === 'user') ? strings.placeholderFollowUp : strings.placeholder);
 }
 
 // Dragging the composer's top edge resizes the input; a double-click resets it.

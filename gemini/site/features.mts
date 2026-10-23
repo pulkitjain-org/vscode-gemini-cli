@@ -112,6 +112,10 @@ export const featurePages: readonly FeaturePage[] = [
 				media: { name: 'showcase-enhance', alt: 'A short request rewritten by Enhance into a precise prompt', clip: true },
 			},
 			{
+				title: 'Steer it while it works',
+				body: ['Spot the agent heading the wrong way? Type while it works and press Return: the chat stops between steps, never mid-command, and the agent carries on with your message. ⌘Return queues a message for after the turn instead, and each waiting message can be sent now, edited or removed.'],
+			},
+			{
 				title: 'Plan mode',
 				body: ['The agent reads the code and writes a plan that ends with **Build This Plan**. Nothing changes until you press it.'],
 				media: { name: 'showcase-plan', alt: 'An agent in Plan mode writing a plan that ends with Build This Plan', clip: true },

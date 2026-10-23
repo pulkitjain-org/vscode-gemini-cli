@@ -10,10 +10,11 @@ import type { SessionSettings } from '../src/acp/sessionSettings';
 import type { ViewGit, ViewStatus } from '../src/host/chatProtocol';
 import { armStop } from './activity';
 import { renderAttachments } from './attachmentChips';
-import { format } from './chatLogic';
+import { format, isQueueShortcut } from './chatLogic';
 import { button, el, icon, setLabel } from './dom';
 import { applyTextEdit } from './panelDom';
-import { autoGrow, updateSendState } from './inputBox';
+import { autoGrow, sendsWhileWorking, updatePlaceholder, updateSendState } from './inputBox';
+import { editLastQueued } from './queueStrip';
 import { onEnhanceKey } from './enhance';
 import { continueList, formatShortcut, toggleWrap, type TextEdit } from './markdownEdit';
 import { createPreviewTabs, isPreviewShortcut } from './markdownPreview';
@@ -36,7 +37,6 @@ const mac = /Mac/.test(navigator.platform);
 
 export function setBusy(value: boolean): void {
 	ui.stopButton.hidden = !value;
-	ui.sendButton.hidden = value;
 	form.classList.toggle('busy', value);
 	if (!value && document.activeElement === ui.stopButton) {
 		input.focus();
@@ -47,6 +47,7 @@ export function setBusy(value: boolean): void {
 		ui.announce.textContent = '';
 	}
 	setTranscriptBusy(value);
+	updatePlaceholder();
 	updateSendState();
 }
 
@@ -192,16 +193,21 @@ function applyEdit(edit: TextEdit): void {
 	applyTextEdit(input, edit);
 }
 
-function submit(): void {
+/**
+ * Sends what the composer holds. While the agent works, `when` says how:
+ * `now` (Return, or Send) steers the turn, `queue` (⌘Return) waits for it to
+ * end. A project's chat sends nothing while its coordinator works.
+ */
+function submit(when: 'now' | 'queue' = 'now'): void {
 	const text = input.value;
-	if (state.busy || state.enhancing || (!text.trim() && !state.attachments.length)) {
+	if ((state.busy && !sendsWhileWorking()) || state.enhancing || (!text.trim() && !state.attachments.length)) {
 		return;
 	}
 	if (text.trim() && sent[sent.length - 1] !== text) {
 		sent.push(text);
 	}
 	recalled = -1;
-	vscode.postMessage({ type: 'prompt', text, attachments: state.attachments });
+	vscode.postMessage({ type: 'prompt', text, attachments: state.attachments, ...(state.busy ? { when } : {}) });
 	state.attachments = [];
 	renderAttachments();
 	closePicker();
@@ -269,13 +275,23 @@ input.addEventListener('keydown', event => {
 		event.stopPropagation();
 		return;
 	}
+	if (!event.isComposing && event.key === 'ArrowUp' && !input.value && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey && editLastQueued()) {
+		// Up in an empty box takes the last queued message back to edit, before earlier prompts.
+		event.preventDefault();
+		return;
+	}
 	if (!event.isComposing && recall(event)) {
 		event.preventDefault();
 		return;
 	}
+	if (!event.isComposing && isQueueShortcut(event, mac)) {
+		event.preventDefault();
+		submit('queue');
+		return;
+	}
 	if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
 		event.preventDefault();
-		submit();
+		submit('now');
 	}
 });
 input.addEventListener('input', () => {

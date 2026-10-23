@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import type { TranscriptItem } from '../../src/acp/chatTranscript';
 import {
 	subagentName,
-	acceptsEnhanceReply, coalesceUpdates, attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, currentActivity, currentPrompt, promptStep, formatClock, turnStart, draggedHeight, emptyFence, enhanceButtonPlacement, enhanceOriginal, type EnhancePhase, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, fileReference, fileUris, folderOf, format, formatDuration, formatSentAt, isEnhanceShortcut,
+	acceptsEnhanceReply, coalesceUpdates, attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, currentActivity, currentPrompt, promptStep, formatClock, turnStart, draggedHeight, emptyFence, enhanceButtonPlacement, enhanceOriginal, type EnhancePhase, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, fileReference, fileUris, folderOf, format, formatDuration, formatSentAt, isEnhanceShortcut, isQueueShortcut,
 	imageName, indexOfItem, isNearBottom, matchCommands, mentionAt, mentionInsertion, permissionDefaults, planIcon, replyBefore, restoredHeight,
 	formatTokens, resetsIn, sameAttachment, slashQuery, thoughtSeconds, toolKindIcon, withAppended, withoutMention, wrapIndex,
 } from '../../webview-src/chatLogic';
@@ -472,5 +472,23 @@ describe('subagentName', () => {
 	it('leaves other tool calls alone', () => {
 		expect(subagentName('ReadFile src/cart.ts')).toBeUndefined();
 		expect(subagentName('Delegating to agent \'bad name\'')).toBeUndefined();
+	});
+});
+
+describe('isQueueShortcut', () => {
+	const key = (mods: { metaKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean; altKey?: boolean }, name = 'Enter') => ({ key: name, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...mods });
+
+	it('is ⌘Return on a Mac and Ctrl+Enter elsewhere', () => {
+		expect(isQueueShortcut(key({ metaKey: true }), true)).toBe(true);
+		expect(isQueueShortcut(key({ ctrlKey: true }), true)).toBe(false);
+		expect(isQueueShortcut(key({ ctrlKey: true }), false)).toBe(true);
+		expect(isQueueShortcut(key({ metaKey: true }), false)).toBe(false);
+	});
+
+	it('leaves plain Return (send now), Shift+Return (new line) and other keys alone', () => {
+		expect(isQueueShortcut(key({}), true)).toBe(false);
+		expect(isQueueShortcut(key({ metaKey: true, shiftKey: true }), true)).toBe(false);
+		expect(isQueueShortcut(key({ metaKey: true, altKey: true }), true)).toBe(false);
+		expect(isQueueShortcut(key({ metaKey: true }, 'b'), true)).toBe(false);
 	});
 });

@@ -7,6 +7,7 @@
 // the page's fixed elements (found once, at startup) and the view's state.
 
 import type { Attachment } from '../src/acp/attachments';
+import type { PendingPromptView } from '../src/acp/promptQueue';
 import type { TranscriptItem } from '../src/acp/chatTranscript';
 import type { SessionSettings } from '../src/acp/sessionSettings';
 import type { ChatStrings, FromWebview, SharedPageView } from '../src/host/chatProtocol';
@@ -76,6 +77,7 @@ export const ui = {
 	preview: byId('preview', HTMLElement),
 	picker: byId('picker', HTMLElement),
 	attachmentList: byId('attachments', HTMLElement),
+	queueList: byId('queue', HTMLElement),
 	branchButton,
 	branchLabel: within(branchButton, 'span', HTMLSpanElement),
 	commitButton,
@@ -112,6 +114,8 @@ export const state = {
 	busy: false,
 	/** What the next prompt sends along. */
 	attachments: [] as Attachment[],
+	/** Messages sent while the agent works that have not gone yet, oldest first. */
+	queue: [] as PendingPromptView[],
 	/** Team tool items (toolRefId) whose chip the user removed, so typing on doesn't bring them back. */
 	dismissedToolRefs: new Set<string>(),
 	/** The page shared with the agent, pinned to the composer; every prompt tells the agent about it. */

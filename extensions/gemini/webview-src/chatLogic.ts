@@ -442,3 +442,8 @@ export function coalesceUpdates(updates: readonly ItemUpdate[]): ItemUpdate[] {
 	}
 	return out.filter((update): update is ItemUpdate => update !== undefined);
 }
+
+/** ⌘Return on a Mac, Ctrl+Enter elsewhere: queues a message while the agent works, instead of sending it now. */
+export function isQueueShortcut(event: { readonly key: string; readonly altKey: boolean; readonly metaKey: boolean; readonly ctrlKey: boolean; readonly shiftKey: boolean }, mac: boolean): boolean {
+	return event.key === 'Enter' && !event.shiftKey && !event.altKey && (mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey);
+}
