@@ -34,6 +34,8 @@ export class ChatUsage {
 		/** Whether a webview shows the chat. */
 		private readonly isAttached: () => boolean,
 		private readonly post: (message: ToWebview) => void,
+		/** The context's use was read: `used` of `limit` tokens. */
+		private readonly onContext?: (used: number, limit: number) => void,
 	) { }
 
 	/** Opens the usage popover, or closes it if open; the chat comes into view first. */
@@ -71,6 +73,9 @@ export class ChatUsage {
 		const state = this.client.state;
 		const tokens = state.kind === 'ready' && this.hasConversation() ? await readSessionTokens(this.client.cwd, state.savedSessionId).catch(() => undefined) : undefined;
 		this.post({ type: 'context', context: tokens && { used: tokens.context, limit: contextWindow, cached: tokens.cached, ...(tokens.model ? { model: tokens.model } : {}) } });
+		if (tokens) {
+			this.onContext?.(tokens.context, contextWindow);
+		}
 	}
 
 	/** Today's quota for the usage popover: what is known now, then a fresh read if that was not fresh. */

@@ -41,11 +41,13 @@ describe('TranscriptStore', () => {
 			items: [
 				{ id: 'p1', kind: 'permission', title: 'Write', options: [], diffPaths: [] },
 				{ id: 'tool-1', kind: 'toolCall', title: 'Edit', toolKind: 'edit', status: 'in_progress', locations: [], details: [] },
+				{ id: 'c1', kind: 'compact', state: 'running' },
+				{ id: 'c2', kind: 'compact', state: 'done', from: 's1', to: 's2' },
 			],
 			changes: [],
 		});
-		// Loading waits for the save.
-		expect((await s.load('a1')).items).toMatchObject([{ answer: { kind: 'cancelled' } }, { status: 'failed' }]);
+		// Loading waits for the save. A compact the quit cut short left the chat on its session.
+		expect((await s.load('a1')).items).toMatchObject([{ answer: { kind: 'cancelled' } }, { status: 'failed' }, { state: 'failed' }, { state: 'done', from: 's1', to: 's2' }]);
 	});
 
 	it('keeps the last items and cuts long text', async () => {

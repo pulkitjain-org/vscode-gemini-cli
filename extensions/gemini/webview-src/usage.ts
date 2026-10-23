@@ -147,6 +147,15 @@ function renderContext(): HTMLElement {
 	used.title = context.used.toLocaleString();
 	row.append(used, el('span', 'usage-detail', `${percent}%`));
 	section.append(row, meter(percent, share >= 0.9 ? 'full' : share >= summariseAt ? 'high' : '', strings.usageContext), el('p', 'usage-note', format(strings.usageContextNote, Math.round(summariseAt * 100))));
+	// A project's chat goes to its hub, which has no session of its own to compact.
+	if (!strings.project) {
+		const compact = el('div', 'usage-row usage-compact');
+		compact.append(el('span', 'usage-note', strings.compact.popoverNote), button('secondary', strings.compact.popover, () => {
+			closeUsage();
+			vscode.postMessage({ type: 'compact' });
+		}, 'fold'));
+		section.append(compact);
+	}
 	return section;
 }
 

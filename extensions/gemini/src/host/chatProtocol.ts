@@ -20,7 +20,7 @@ import type { TokenColors } from '../acp/tokenColors';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 31;
+export const chatProtocolVersion = 32;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -322,6 +322,14 @@ export interface ChatStrings {
 	readonly confirmWhy: string;
 	/** `{0}` is the time to the agent's first reply text. */
 	readonly firstToken: string;
+	/** The compact card and divider (`webview-src/items.ts`). `suggested` takes the percent full; `done` takes the tokens before and after. */
+	readonly compact: {
+		readonly suggested: string; readonly suggestedText: string; readonly compact: string; readonly notNow: string;
+		readonly running: string; readonly done: string; readonly keptOne: string; readonly kept: string; readonly keptNone: string;
+		readonly undo: string; readonly viewSummary: string; readonly undone: string; readonly failed: string;
+		/** The usage popover's button, and its note. */
+		readonly popover: string; readonly popoverNote: string;
+	};
 	/** The card for a turn GeminiCode's quit cut off. */
 	readonly cutOff: { readonly title: string; readonly text: string; readonly retry: string; readonly keep: string };
 	/** The readout of where a turn's time went, while a trace is recording. */
@@ -663,6 +671,10 @@ export type FromWebview =
 	| { readonly type: 'retry'; readonly itemId: string }
 	/** A cut-off turn's card: send its prompt again, or keep things as they are. */
 	| { readonly type: 'retryCutOff' | 'dismissCutOff'; readonly itemId: string }
+	/** Compact the chat's session: from the usage popover, or answering the suggestion card `itemId`. */
+	| { readonly type: 'compact'; readonly itemId?: string }
+	/** A compact card's Undo, Not Now and View Summary. */
+	| { readonly type: 'undoCompact' | 'dismissCompact' | 'viewCompactSummary'; readonly itemId: string }
 	| { readonly type: 'openTrace'; readonly file: string }
 	/** Leave Plan mode and carry out the plan; only the latest turn offers it, when it ended in Plan mode. */
 	| { readonly type: 'buildPlan'; readonly itemId: string }

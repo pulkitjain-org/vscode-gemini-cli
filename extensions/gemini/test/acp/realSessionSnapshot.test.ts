@@ -21,8 +21,8 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AgentConnection } from '../../src/acp/agentConnection';
 import { resolveAgentCommand, spawnAgent } from '../../src/acp/agentProcess';
-import { isPrompt, readSessionMessages, registeredChatsFolder } from '../../src/acp/cliSessions';
-import { compactedMessages, compactSplit, messagesBefore, writeSessionCopy } from '../../src/acp/sessionSnapshot';
+import { isPrompt, readSessionMessages, registeredChatsFolder, rewindCliSession } from '../../src/acp/cliSessions';
+import { compactedMessages, compactSplit, messagesBefore, summaryMarker, summaryPrompt, writeSessionCopy } from '../../src/acp/sessionSnapshot';
 import { contentBlockToText } from '../../src/acp/sessionUpdates';
 
 const cliPath = process.env.GEMINI_CLI_PATH;
@@ -160,8 +160,23 @@ describe.skipIf(!cliPath)('session snapshots on the real CLI', () => {
 		await open(await writeSessionCopy(fork, parent!.messages, { home: geminiHome }), 'Write over the parent cart');
 		expect(requests.some(body => body.includes('Path not in workspace'))).toBe(true);
 
-		// The parent's session and files are untouched.
+		// The forks left the parent's session and files untouched.
 		expect(JSON.stringify(await readSessionMessages(work, sessionId, geminiHome))).toBe(parentFile);
 		expect(readFileSync(path.join(work, 'cart.txt'), 'utf8')).toBe('CART-TOTAL-42\n');
+		// Compact in place: the summary's turn goes again from the session it compacts, which then reads as before.
+		await connection.loadSession(sessionId, work);
+		await connection.setModel(sessionId, 'gemini-2.5-flash');
+		const ids = (await readSessionMessages(work, sessionId, geminiHome))!.messages.map(m => m.id);
+		await connection.prompt(sessionId, [{ type: 'text', text: summaryPrompt }]);
+		expect((await readSessionMessages(work, sessionId, geminiHome))!.messages.length).toBeGreaterThan(ids.length);
+		expect(await rewindCliSession(work, sessionId, summaryMarker, 0, geminiHome)).toBe(true);
+		expect((await readSessionMessages(work, sessionId, geminiHome))!.messages.map(m => m.id)).toEqual(ids);
+		const inPlace = await writeSessionCopy(work, compactedMessages(parent!.messages, 'SUMMARY-IN-PLACE', split), { home: geminiHome });
+		await connection.loadSession(inPlace, work);
+		await connection.setModel(inPlace, 'gemini-2.5-flash');
+		requests.length = 0;
+		await connection.prompt(inPlace, [{ type: 'text', text: 'After compacting' }]);
+		expect(requests.find(body => body.includes('After compacting'))).toContain('SUMMARY-IN-PLACE');
+
 	}, 120_000);
 });

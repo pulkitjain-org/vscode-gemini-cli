@@ -48,6 +48,8 @@ describe('compactedMessages', () => {
 		expect(compacted.map(m => [m.type, m.id.length === 36 ? 'new' : m.id])).toEqual([['user', 'new'], ['gemini', 'new'], ['user', 'u4'], ['gemini', 'g4']]);
 		expect(JSON.stringify(compacted[0].content)).toContain('<summary_of_earlier_work>\\nRefund API and tests done.\\n</summary_of_earlier_work>');
 		expect(compacted[0].timestamp).toBe('2026-10-23T10:00:00.000Z');
+		// The kept messages' token counts described the whole session, so they go.
+		expect(compactedMessages([...session.slice(0, 7), user('u4', 'Do the UI'), { ...reply('g4', 'Done.'), tokens: { input: 650_000 } }], 'S', 7).at(-1)).not.toHaveProperty('tokens');
 	});
 
 	it('is much smaller than the session it compacts', () => {

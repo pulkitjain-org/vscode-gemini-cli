@@ -24,6 +24,29 @@ export const compactKeepPrompts = 4;
 /** The share of a session's size the kept prompts may take, as the CLI's own compression keeps its newest 30%. */
 export const compactKeepShare = 0.3;
 
+/** The first line of the prompt that asks for the summary, which also finds that prompt again to rewind it. */
+export const summaryMarker = 'GeminiCode is compacting this session.';
+
+/** What the agent is asked for: a handoff summary, as text, with no tools. */
+export const summaryPrompt = `${summaryMarker} Write a summary of everything in this session so far that another session can carry on from without the earlier messages. Use Markdown with these headings:
+
+## Goal
+What the user wants, in their words where it matters.
+
+## Decisions and constraints
+What was agreed, ruled out or required, including the user's preferences.
+
+## Files
+Each file read or changed, by its path, with what was learned or changed in it.
+
+## Current state
+What is done, what is half done, and anything failing (commands, tests, errors) with the exact message.
+
+## Next steps
+What remains, in order.
+
+Be specific: keep paths, names, commands and error messages exactly. Leave out pleasantries and anything already superseded. Reply with the summary only, and do not call any tools.`;
+
 /** Rough characters per token, for estimates shown before anything is sent. */
 const charsPerToken = 4;
 
@@ -97,7 +120,8 @@ export function compactedNote(summary: string): string {
 
 /**
  * A compacted copy of `messages`: a user message with `summary`, the model's
- * acknowledgement, then the messages from `split` on, unchanged. The CLI's
+ * acknowledgement, then the messages from `split` on, without the token
+ * counts the CLI saved with them, which describe the whole session. The CLI's
  * session context is left out: on `session/load` it skips the saved one and
  * puts a fresh one first, for the folder the session opens in.
  */
@@ -106,8 +130,17 @@ export function compactedMessages(messages: readonly MessageRecord[], summary: s
 	return [
 		{ id: randomUUID(), timestamp, type: 'user', content: [{ text: compactedNote(summary) }] },
 		{ id: randomUUID(), timestamp, type: 'gemini', content: 'Understood. I have the summary of the earlier work and will carry on from it.' },
-		...messages.slice(split),
+		...messages.slice(split).map(withoutTokens),
 	];
+}
+
+/** A message without the token counts the CLI saved with it. */
+function withoutTokens(message: MessageRecord): MessageRecord {
+	if (message.tokens === undefined) {
+		return message;
+	}
+	const { tokens: _tokens, ...rest } = message;
+	return rest as MessageRecord;
 }
 
 /** The name the CLI gives a session's file: its start to the minute, then the first 8 characters of its id. */

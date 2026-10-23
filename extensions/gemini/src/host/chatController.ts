@@ -35,6 +35,7 @@ import { onDidChangeThemeTokens, themeTokenColors } from './themeTokens';
 import { ChatAttachments } from './chat/chatAttachments';
 import { ChatCheckpoints } from './chat/chatCheckpoints';
 import { ChatCommands } from './chat/chatCommands';
+import { ChatCompact, compactCommand } from './chat/chatCompact';
 import { ChatEnhance } from './chat/chatEnhance';
 import { ChatFileLinks } from './chat/chatFiles';
 import { ChatFollow } from './chat/chatFollow';
@@ -80,6 +81,8 @@ export class ChatController implements vscode.Disposable {
 	private webview: vscode.Webview | undefined;
 	private webviewListener: vscode.Disposable | undefined;
 	private busy = false;
+	/** While a turn runs whose updates stay out of the transcript, such as Compact's summary. */
+	private quiet = false;
 	/** When the running turn started, for the Agents side bar's clock. */
 	private turnStartedAt: number | undefined;
 	/** The running turn's timestamps, for the turn's end line and the trace readout. */
@@ -135,6 +138,7 @@ export class ChatController implements vscode.Disposable {
 	private readonly commands: ChatCommands;
 	private readonly sessions: ChatSessions;
 	private readonly checkpoints: ChatCheckpoints;
+	private readonly compacting: ChatCompact;
 	private readonly project: ChatProjectView;
 
 	constructor(
@@ -154,12 +158,13 @@ export class ChatController implements vscode.Disposable {
 		this.permissions = new ChatPermissions(service.permissions, this.transcript, this.files, options);
 		this.follow = new ChatFollow(client.cwd, options, post);
 		this.git = new ChatGitControls(options, isBusy, isAttached, post);
-		this.usage = new ChatUsage(client, options, () => this.transcript.items.length > 0, isAttached, post);
+		this.usage = new ChatUsage(client, options, () => this.transcript.items.length > 0, isAttached, post, (used, limit) => this.compacting.contextChanged(used, limit));
 		this.attachments = new ChatAttachments(fileIndex, options, isAttached, isViewReady, post);
 		this.sharedPage = new SharedPageChip(options, post);
 		this.settings = new ChatSettings(service, this.transcript, options, post);
 		this.enhance = new ChatEnhance(client, options, () => this.transcript.items, post);
-		this.commands = new ChatCommands(client, this.transcript, !!options.savedSessions, isAttached, post);
+		// A project's chat goes to its hub, so it has neither saved sessions to resume nor a session of its own to compact.
+		this.commands = new ChatCommands(client, this.transcript, [...options.savedSessions ? [resumeCommand()] : [], ...options.project ? [] : [compactCommand()]], isAttached, post);
 		this.sessions = new ChatSessions(service, this.transcript, options, {
 			isBusy,
 			setBusy,
@@ -175,6 +180,11 @@ export class ChatController implements vscode.Disposable {
 				this.retryItemId = undefined;
 				this.post({ type: 'draft', text });
 			},
+		});
+		this.compacting = new ChatCompact(service, this.transcript, this.sessions, options, {
+			isBusy,
+			quietly: work => this.quietly(work),
+			refreshContext: () => void this.usage.postContext(),
 		});
 		this.project = new ChatProjectView(options, isViewReady, post);
 		this.disposables.push(
@@ -204,8 +214,8 @@ export class ChatController implements vscode.Disposable {
 			this.transcript.onDidReset(() => this.postReset()),
 			client.onDidAllowInYolo(params => service.writeLog?.(`Allowed "${params.toolCall.title ?? params.toolCall.toolCallId}" at once: the chat is in YOLO mode`)),
 			client.onDidReceiveEvent(event => {
-				// Only a turn's updates belong in the transcript.
-				if (this.busy) {
+				// Only a turn's updates belong in the transcript, and not a quiet turn's.
+				if (this.busy && !this.quiet) {
 					if (event.kind === 'toolCall' && this.options.project && (this.hiddenToolCalls.has(event.call.id) || this.options.project.hidesToolCall(event.call.title ?? ''))) {
 						// The project's own tools show as posts and thread cards instead.
 						this.hiddenToolCalls.add(event.call.id);
@@ -418,6 +428,10 @@ export class ChatController implements vscode.Disposable {
 		}
 		if (this.options.savedSessions && text.trim() === `/${resumeCommand().name}` && !attachments.length) {
 			void this.pickSession();
+			return;
+		}
+		if (text.trim() === `/${compactCommand().name}` && !attachments.length) {
+			void this.compacting.compact();
 			return;
 		}
 		this.sessions.stopReplay();
@@ -864,6 +878,14 @@ export class ChatController implements vscode.Disposable {
 			case 'pickRewind':
 				this.checkpoints.onMessage(message);
 				break;
+			case 'compact':
+			case 'undoCompact':
+			case 'dismissCompact':
+			case 'viewCompactSummary':
+				if (!this.options.project) {
+					this.compacting.onMessage(message);
+				}
+				break;
 			case 'threadAction':
 			case 'prepareThread':
 			case 'openProjectSettings':
@@ -894,6 +916,18 @@ export class ChatController implements vscode.Disposable {
 		this.lastPrompt = undefined;
 		this.retryItemId = undefined;
 		this.sessions.forgetConversation();
+	}
+
+	/** Runs `work` with the chat busy and its turn's updates kept out of the transcript. */
+	private async quietly<T>(work: () => Promise<T>): Promise<T> {
+		this.quiet = true;
+		this.setBusy(true);
+		try {
+			return await work();
+		} finally {
+			this.quiet = false;
+			this.setBusy(false);
+		}
 	}
 
 	private setBusy(busy: boolean): void {

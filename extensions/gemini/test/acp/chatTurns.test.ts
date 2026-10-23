@@ -6,7 +6,7 @@
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { TranscriptItem } from '../../src/acp/chatTranscript';
-import { buildModeAfterPlan, checkpointsFit, diffsOf, dropOldest, lastPromptAt, laterRepeats, rewindPrompts, runningStep, turnShape, undoNote, wasCutOff } from '../../src/acp/chatTurns';
+import { buildModeAfterPlan, checkpointsFit, diffsOf, dropOldest, lastPromptAt, laterRepeats, rewindPrompts, runningStep, shouldSuggestCompact, turnShape, undoNote, wasCutOff } from '../../src/acp/chatTurns';
 
 const user = (id: string, text: string, at?: number): TranscriptItem => ({ id, kind: 'user', text, ...(at ? { at } : {}) });
 const agent = (id: string, text: string): TranscriptItem => ({ id, kind: 'agent', text });
@@ -114,5 +114,18 @@ describe('diffsOf and dropOldest', () => {
 			set: [set.size, Math.min(...set), Math.max(...set)],
 			map: [...map.keys()],
 		}).toEqual({ diffs: [diff], none: [[], []], set: [200, 5, 204], map: ['a', 'b'] });
+	});
+});
+
+describe('shouldSuggestCompact', () => {
+	it('suggests once per session past 40%, and never on a session a compact made or left', () => {
+		const limit = 1000;
+		expect(shouldSuggestCompact([], 's1', 399, limit)).toBe(false);
+		expect(shouldSuggestCompact([], 's1', 400, limit)).toBe(true);
+		expect(shouldSuggestCompact([], undefined, 900, limit)).toBe(false);
+		expect(shouldSuggestCompact([{ id: 'c', kind: 'compact', state: 'suggested', percent: 41 }], 's1', 500, limit)).toBe(false);
+		expect(shouldSuggestCompact([{ id: 'c', kind: 'compact', state: 'dismissed' }], 's1', 500, limit)).toBe(false);
+		const done: TranscriptItem = { id: 'c', kind: 'compact', state: 'done', from: 's1', to: 's2' };
+		expect([shouldSuggestCompact([done], 's2', 500, limit), shouldSuggestCompact([done], 's1', 500, limit), shouldSuggestCompact([done], 's3', 500, limit)]).toEqual([false, false, true]);
 	});
 });

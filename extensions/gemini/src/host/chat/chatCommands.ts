@@ -16,7 +16,6 @@ import { expandTeamCommandWithInjections } from '../../acp/teamCommandExpansion'
 import type { ToWebview } from '../chatProtocol';
 import { teamCommandHost } from '../teamCommandHost';
 import { skills, teamCommands } from '../teamCommands';
-import { resumeCommand } from './chatSessions';
 
 export class ChatCommands implements vscode.Disposable {
 
@@ -25,8 +24,8 @@ export class ChatCommands implements vscode.Disposable {
 	constructor(
 		private readonly client: AgentClient,
 		private readonly transcript: ChatTranscript,
-		/** Whether the chat offers /resume, to restore a saved session. */
-		private readonly offersResume: boolean,
+		/** GeminiCode's own commands this chat offers, such as /resume and /compact. */
+		private readonly appCommands: readonly SlashCommand[],
 		/** Whether a webview shows the chat. */
 		isAttached: () => boolean,
 		private readonly post: (message: ToWebview) => void,
@@ -68,6 +67,7 @@ export class ChatCommands implements vscode.Disposable {
 		const teamNames = new Set(team.map(c => c.name));
 		const local: SlashCommand[] = [...team, ...skillList.filter(s => !teamNames.has(s.name)).map(s => ({ name: s.name, description: s.description, source: 'skill' as const }))];
 		const commands = mergeCommands(this.client.commands, local);
-		this.post({ type: 'commands', commands: this.offersResume && !commands.some(c => c.name === 'resume') ? [...commands, resumeCommand()] : commands });
+		// The agent's own command wins over one of GeminiCode's with the same name.
+		this.post({ type: 'commands', commands: [...commands, ...this.appCommands.filter(app => !commands.some(c => c.name === app.name))] });
 	}
 }

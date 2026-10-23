@@ -5,7 +5,8 @@
 
 // What a chat (src/host/chatController.ts) reads off its transcript between
 // turns: whether a saved chat was cut off, the step a turn is on, which
-// prompts it can rewind to, and what to tell the agent after an undo.
+// prompts it can rewind to, what to tell the agent after an undo, and when to
+// suggest compacting.
 
 import * as path from 'node:path';
 import type * as acp from '@agentclientprotocol/sdk';
@@ -120,4 +121,17 @@ export function dropOldest<K>(collection: Set<K> | Map<K, unknown>): void {
 		}
 		collection.delete(key);
 	}
+}
+
+/** How full the context is, as a share of the window, when the chat suggests compacting; the CLI compresses on its own at half. */
+export const suggestCompactAt = 0.4;
+
+/**
+ * Whether the chat should suggest compacting session `session`, now `used`
+ * of `limit` tokens full: past {@link suggestCompactAt}, once per session,
+ * never again after a suggestion or on a session a compact made or left.
+ */
+export function shouldSuggestCompact(items: readonly TranscriptItem[], session: string | undefined, used: number, limit: number): boolean {
+	return !!session && used >= limit * suggestCompactAt
+		&& !items.some(item => item.kind === 'compact' && (item.state === 'suggested' || item.state === 'dismissed' || item.to === session || item.from === session));
 }

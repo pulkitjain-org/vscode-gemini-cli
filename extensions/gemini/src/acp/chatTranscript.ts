@@ -71,6 +71,8 @@ export type TranscriptItem =
 	| { readonly id: string; readonly kind: 'notice'; readonly text: string; readonly severity: 'info' | 'error' }
 	/** The saved chat's last turn never ended: GeminiCode quit while the agent worked. Offers to send the message again. */
 	| { readonly id: string; readonly kind: 'cutOff'; readonly prompt: string; readonly dismissed?: boolean }
+	/** Compact: the suggestion to compact this chat's session, then the switch to the compacted one. */
+	| CompactItem
 	/** Where a turn's time went, from the fork's measurements and the CLI's trace (while a trace is recording). */
 	| { readonly id: string; readonly kind: 'trace'; readonly readout: TurnReadout; readonly file: string }
 	/** Ends a turn: how long the agent worked, with a way to copy its reply, retry it, or undo its file changes. */
@@ -130,6 +132,29 @@ export interface ThreadCard {
 /** A thread card's item id. */
 export function threadCardId(thread: string): string {
 	return `thread-${thread}`;
+}
+
+/** Where a compact stands: offered, under way, done (and maybe undone), refused or failed. */
+export type CompactState = 'suggested' | 'dismissed' | 'running' | 'done' | 'undone' | 'failed';
+
+/** The compact card and divider (`src/host/chat/chatCompact.ts`). */
+export interface CompactItem {
+	readonly id: string;
+	readonly kind: 'compact';
+	readonly state: CompactState;
+	/** How full the context was when compacting was suggested, in whole percent. */
+	readonly percent?: number;
+	/** About how many tokens the session sent with each request before and after. */
+	readonly before?: number;
+	readonly after?: number;
+	/** How many of the latest prompts were kept as they were. */
+	readonly kept?: number;
+	readonly summary?: string;
+	/** The session compacted, which Undo goes back to, and the compacted one. */
+	readonly from?: string;
+	readonly to?: string;
+	/** Why it failed, as a sentence. */
+	readonly error?: string;
 }
 
 type TextItem = Extract<TranscriptItem, { kind: 'user' | 'agent' | 'thought' }>;
@@ -310,6 +335,21 @@ export class ChatTranscript {
 		const item = this._items.find(i => i.id === id);
 		if (item?.kind === 'cutOff') {
 			this.upsert({ ...item, dismissed: true });
+		}
+	}
+
+	/** Adds a compact card; returns its id. */
+	addCompact(item: Omit<CompactItem, 'id' | 'kind'>): string {
+		const id = this.newId();
+		this.push({ ...item, id, kind: 'compact' });
+		return id;
+	}
+
+	/** Changes a compact card: its state, and what the compact did. */
+	updateCompact(id: string, patch: Partial<Omit<CompactItem, 'id' | 'kind'>>): void {
+		const item = this._items.find(i => i.id === id);
+		if (item?.kind === 'compact') {
+			this.upsert({ ...item, ...patch });
 		}
 	}
 

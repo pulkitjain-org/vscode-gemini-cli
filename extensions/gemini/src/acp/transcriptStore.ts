@@ -101,6 +101,8 @@ function trim(item: TranscriptItem): TranscriptItem {
 		case 'thought':
 		case 'notice':
 			return item.text.length > maxTextLength ? { ...item, text: `${item.text.slice(0, maxTextLength)}…` } : item;
+		case 'compact':
+			return item.summary && item.summary.length > maxTextLength ? { ...item, summary: `${item.summary.slice(0, maxTextLength)}…` } : item;
 		case 'toolCall':
 			return { ...item, details: item.details.map(d => d.type === 'text' && d.text.length > maxTextLength ? { ...d, text: `${d.text.slice(0, maxTextLength)}…` } : d) };
 		default:
@@ -115,6 +117,10 @@ function settle(item: TranscriptItem): TranscriptItem {
 	}
 	if (item.kind === 'toolCall' && (item.status === 'pending' || item.status === 'in_progress')) {
 		return { ...item, status: 'failed' };
+	}
+	if (item.kind === 'compact' && item.state === 'running') {
+		// The app quit while it compacted: the chat stayed on its session.
+		return { ...item, state: 'failed' };
 	}
 	if (item.kind === 'turnEnd' && (item.undo === 'available' || item.retry)) {
 		// Checkpoints and the last prompt live in memory, so another window cannot undo or retry.
@@ -139,7 +145,7 @@ export function withoutLeakedReplay(items: readonly TranscriptItem[]): Transcrip
 	});
 }
 
-const kinds = new Set(['user', 'agent', 'thought', 'toolCall', 'plan', 'permission', 'other', 'notice', 'cutOff', 'trace', 'turnEnd', 'thread']);
+const kinds = new Set(['user', 'agent', 'thought', 'toolCall', 'plan', 'permission', 'other', 'notice', 'cutOff', 'compact', 'trace', 'turnEnd', 'thread']);
 
 function isTranscriptItem(value: unknown): value is TranscriptItem {
 	const item = value as TranscriptItem;
@@ -162,6 +168,8 @@ function isTranscriptItem(value: unknown): value is TranscriptItem {
 			return typeof item.type === 'string';
 		case 'cutOff':
 			return typeof item.prompt === 'string';
+		case 'compact':
+			return typeof item.state === 'string';
 		case 'trace':
 			return typeof item.file === 'string' && typeof item.readout === 'object' && item.readout !== null && Array.isArray(item.readout.hops);
 		case 'turnEnd':

@@ -11,7 +11,7 @@ import MarkdownIt from 'markdown-it';
 import { basename } from '../src/acp/attachments';
 import type { PromptAttachmentLabel, TranscriptItem } from '../src/acp/chatTranscript';
 import type { ThreadAction, ViewSession } from '../src/host/chatProtocol';
-import { attachmentIcon, codeLanguage, format, formatDuration, formatSentAt, permissionDefaults, planIcon, replyBefore, subagentName, thoughtSeconds, toolKindIcon, type ItemOf } from './chatLogic';
+import { attachmentIcon, codeLanguage, format, formatDuration, formatTokens, formatSentAt, permissionDefaults, planIcon, replyBefore, subagentName, thoughtSeconds, toolKindIcon, type ItemOf } from './chatLogic';
 import { highlightCode } from './codeHighlight';
 import { applyInlineStyles } from './inlineStyles';
 import { renderMath } from './math';
@@ -57,6 +57,8 @@ export function render(item: TranscriptItem, toggleToolCall: ToggleToolCall): HT
 			return renderNotice(item.text, item.severity);
 		case 'cutOff':
 			return renderCutOff(item);
+		case 'compact':
+			return renderCompact(item);
 		case 'trace':
 			return renderTrace(item);
 		case 'turnEnd':
@@ -529,6 +531,45 @@ function renderCutOff(item: ItemOf<'cutOff'>): HTMLElement {
 	actions.append(button('secondary', strings.cutOff.keep, () => vscode.postMessage({ type: 'dismissCutOff', itemId: item.id })));
 	card.append(actions);
 	return card;
+}
+
+/**
+ * Compact: the suggestion card while the context is filling up, then a line
+ * across the chat where the session was compacted, with View Summary and Undo.
+ */
+function renderCompact(item: ItemOf<'compact'>): HTMLElement {
+	const text = strings.compact;
+	const send = (type: 'compact' | 'undoCompact' | 'dismissCompact' | 'viewCompactSummary') => vscode.postMessage({ type, itemId: item.id });
+	switch (item.state) {
+		case 'dismissed':
+			return el('div', 'compact-card dismissed');
+		case 'suggested': {
+			const card = el('div', 'compact-card');
+			card.append(el('strong', undefined, format(text.suggested, item.percent ?? 0)), el('span', 'compact-text', text.suggestedText));
+			const actions = el('div', 'permission-actions compact-actions');
+			actions.append(button('primary', text.compact, () => send('compact'), 'fold'), button('secondary', text.notNow, () => send('dismissCompact')));
+			card.append(actions);
+			return card;
+		}
+		case 'failed':
+			return renderNotice(format(text.failed, item.error ?? ''), 'error');
+	}
+	const line = el('div', `compact-line state-${item.state}`);
+	const label = el('span', 'compact-label');
+	if (item.state === 'running') {
+		label.append(icon('loading', 'codicon-modifier-spin'), el('span', undefined, text.running));
+	} else if (item.state === 'undone') {
+		label.append(icon('discard'), el('span', undefined, text.undone));
+	} else {
+		label.append(icon('fold'), el('span', undefined, text.done.replace('{0}', formatTokens(item.before ?? 0)).replace('{1}', formatTokens(item.after ?? 0))));
+		setTip(label, item.kept === 0 ? text.keptNone : item.kept === 1 ? text.keptOne : format(text.kept, item.kept ?? 0));
+	}
+	line.append(el('span', 'compact-rule'), label);
+	if (item.state === 'done') {
+		line.append(button('turn-action', text.viewSummary, () => send('viewCompactSummary'), 'book'), button('turn-action', text.undo, () => send('undoCompact'), 'discard'));
+	}
+	line.append(el('span', 'compact-rule'));
+	return line;
 }
 
 /** Where the turn's time went, hop by hop against the budget, with the tokens and the trace file. */
