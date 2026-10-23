@@ -544,7 +544,7 @@ export interface ForkStrings {
 	readonly fromHere: string;
 	/** `{0}` is the agent's name. */
 	readonly title: string;
-	/** `{0}` is the prompt the fork stops before. */
+	/** `{0}` is the prompt whose reply the fork ends with. */
 	readonly fromHereNote: string;
 	readonly name: string;
 	readonly context: string;
@@ -590,8 +590,8 @@ export interface ForkView {
 	/** The agent forked, and the name suggested for the fork. */
 	readonly parentTitle: string;
 	readonly title: string;
-	/** Fork from Here: the prompt the fork stops before, and that prompt's item. */
-	readonly before?: { readonly itemId: string; readonly prompt: string };
+	/** Fork from Here on a reply: the prompt item the fork stops before (none for the last reply), and the prompt the reply answered. */
+	readonly fromHere?: { readonly before?: string; readonly answered: string };
 	/** About how many tokens each choice sends with every request; `compact` is unset when it can't be made now, with `compactWhy`. */
 	readonly tokens: { readonly whole: number; readonly compact?: number; readonly conversation: number };
 	readonly compactWhy?: string;
@@ -760,8 +760,8 @@ export type FromWebview =
 	| { readonly type: 'compact'; readonly itemId?: string }
 	/** A compact card's Undo, Not Now and View Summary. */
 	| { readonly type: 'undoCompact' | 'dismissCompact' | 'viewCompactSummary'; readonly itemId: string }
-	/** Open the Fork dialog: for the whole chat, or (Fork from Here) for the chat before prompt `itemId`. */
-	| { readonly type: 'requestFork'; readonly itemId?: string }
+	/** Open the Fork dialog: for the whole chat, or (Fork from Here) for the chat up to the reply that ends at `turnEnd`. */
+	| { readonly type: 'requestFork'; readonly turnEnd?: string }
 	/** The Fork dialog's Fork. */
 	| { readonly type: 'fork'; readonly fork: ForkRequest }
 	/** A fork card's buttons, in its parent's chat. */

@@ -40,8 +40,8 @@ export function openForkDialog(view: ForkView): void {
 	close.addEventListener('click', () => dialog.close());
 	head.append(heading, close);
 	form.append(head);
-	if (view.before) {
-		form.append(el('p', 'new-thread-hint', format(text.fromHereNote, firstLine(view.before.prompt))));
+	if (view.fromHere) {
+		form.append(el('p', 'new-thread-hint', format(text.fromHereNote, firstLine(view.fromHere.answered))));
 	}
 
 	const title = input('fork-title', 'input');
@@ -132,7 +132,7 @@ export function openForkDialog(view: ForkView): void {
 				...(own && branch.value.trim() ? { branch: branch.value.trim() } : {}),
 				...(model.value ? { model: model.value } : {}),
 				...(message.value.trim() ? { message: message.value.trim() } : {}),
-				...(view.before ? { before: view.before.itemId } : {}),
+				...(view.fromHere?.before ? { before: view.fromHere.before } : {}),
 			},
 		});
 		dialog.close();

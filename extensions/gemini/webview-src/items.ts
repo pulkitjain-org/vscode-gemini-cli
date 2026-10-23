@@ -163,6 +163,11 @@ function renderTurnEnd(item: ItemOf<'turnEnd'>): HTMLElement {
 		node.append(el('span', 'turn-dot', '\u00b7'), sentAt(item.at));
 	}
 	node.append(copyButton('copy-reply', strings.copyReply, () => replyBefore(state.items, item.id)));
+	if (strings.fork) {
+		const fork = button('turn-action fork-reply', strings.fork.button, () => vscode.postMessage({ type: 'requestFork', turnEnd: item.id }), 'gemini-fork');
+		setLabel(fork, strings.fork.fromHere);
+		node.append(fork);
+	}
 	if (item.retry) {
 		const retry = button('turn-action', strings.retry, () => vscode.postMessage({ type: 'retry', itemId: item.id }), 'refresh');
 		setLabel(retry, strings.retryTooltip);
@@ -243,11 +248,6 @@ function renderUserMessage(item: { readonly text: string; readonly attachments?:
 		const rewind = button('icon-button copy-message rewind-prompt', '', () => vscode.postMessage({ type: 'rewind', itemId: id }), 'history');
 		setLabel(rewind, strings.rewindPrompt);
 		meta.append(rewind);
-	}
-	if (item.text && id && strings.fork) {
-		const fork = button('icon-button copy-message fork-prompt', '', () => vscode.postMessage({ type: 'requestFork', itemId: id }), 'gemini-fork');
-		setLabel(fork, strings.fork.fromHere);
-		meta.append(fork);
 	}
 	if (item.text) {
 		meta.append(copyButton('copy-message', strings.copyMessage, () => item.text));

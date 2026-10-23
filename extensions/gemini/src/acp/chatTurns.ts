@@ -137,6 +137,21 @@ export function shouldSuggestCompact(items: readonly TranscriptItem[], session: 
 }
 
 /**
+ * Fork from Here on the reply that ends at turn end `turnEnd`: the prompt
+ * after it, which the fork stops before (none for the last reply), and the
+ * prompt the reply answered. Undefined when the turn end is not there.
+ */
+export function forkPointAfter(items: readonly TranscriptItem[], turnEnd: string): { readonly before?: string; readonly answered?: string } | undefined {
+	const index = items.findIndex(item => item.id === turnEnd && item.kind === 'turnEnd');
+	if (index < 0) {
+		return undefined;
+	}
+	const next = items.slice(index + 1).find(item => item.kind === 'user');
+	const answered = items.slice(0, index).reverse().find(item => item.kind === 'user');
+	return { ...(next ? { before: next.id } : {}), ...(answered?.kind === 'user' ? { answered: answered.text } : {}) };
+}
+
+/**
  * What a fork's chat shows of its parent's: the items before item `before`
  * (a prompt, for Fork from Here or a turn still running), else all of them.
  * Nothing in them can act on the parent: requests and tool calls still open

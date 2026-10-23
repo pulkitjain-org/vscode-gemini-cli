@@ -6,7 +6,7 @@
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { TranscriptItem } from '../../src/acp/chatTranscript';
-import { buildModeAfterPlan, checkpointsFit, diffsOf, dropOldest, lastPromptAt, laterRepeats, rewindPrompts, runningStep, forkedItems, forkNote, shouldSuggestCompact, turnShape, undoNote, wasCutOff } from '../../src/acp/chatTurns';
+import { buildModeAfterPlan, checkpointsFit, diffsOf, dropOldest, lastPromptAt, laterRepeats, rewindPrompts, runningStep, forkedItems, forkNote, forkPointAfter, shouldSuggestCompact, turnShape, undoNote, wasCutOff } from '../../src/acp/chatTurns';
 
 const user = (id: string, text: string, at?: number): TranscriptItem => ({ id, kind: 'user', text, ...(at ? { at } : {}) });
 const agent = (id: string, text: string): TranscriptItem => ({ id, kind: 'agent', text });
@@ -127,6 +127,18 @@ describe('shouldSuggestCompact', () => {
 		expect(shouldSuggestCompact([{ id: 'c', kind: 'compact', state: 'dismissed' }], 's1', 500, limit)).toBe(false);
 		const done: TranscriptItem = { id: 'c', kind: 'compact', state: 'done', from: 's1', to: 's2' };
 		expect([shouldSuggestCompact([done], 's2', 500, limit), shouldSuggestCompact([done], 's1', 500, limit), shouldSuggestCompact([done], 's3', 500, limit)]).toEqual([false, false, true]);
+	});
+});
+
+describe('forkPointAfter', () => {
+	it('stops before the next prompt, or nowhere after the last reply, and names the prompt answered', () => {
+		const items = [user('u1', 'Plan refunds'), agent('a1', 'Plan'), turnEnd('e1'), user('u2', 'Do the UI'), agent('a2', 'Done'), turnEnd('e2')];
+		expect([forkPointAfter(items, 'e1'), forkPointAfter(items, 'e2'), forkPointAfter(items, 'u2'), forkPointAfter(items, 'x')]).toEqual([
+			{ before: 'u2', answered: 'Plan refunds' },
+			{ answered: 'Do the UI' },
+			undefined,
+			undefined,
+		]);
 	});
 });
 

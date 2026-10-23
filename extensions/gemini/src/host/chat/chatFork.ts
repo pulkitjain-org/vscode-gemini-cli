@@ -7,12 +7,13 @@
 // with. A fork is a new agent whose session is a copy of this one's (whole,
 // or compacted with a summary) or that is given its conversation; the Agents
 // pane (`src/host/agents/agentForks.ts`) makes its branch and starts it.
-// Fork from Here forks the chat as it was before a prompt; while a turn runs,
-// the fork leaves that turn out, since it isn't finished.
+// Fork from Here, on a reply, forks the chat as it was at the end of that
+// reply, that is before the next prompt; while a turn runs, the fork leaves
+// that turn out, since it isn't finished.
 
 import * as vscode from 'vscode';
 import type { ChatTranscript, ForkContext } from '../../acp/chatTranscript';
-import { forkedItems, laterRepeats } from '../../acp/chatTurns';
+import { forkedItems, forkPointAfter, laterRepeats } from '../../acp/chatTurns';
 import { carriedConversationNote, conversationOf, MessageRecord, readSessionMessages, readSessionTokens } from '../../acp/cliSessions';
 import { errorMessage } from '../../acp/errors';
 import { compactedMessages, compactSplit, estimateTokens, messagesBefore } from '../../acp/sessionSnapshot';
@@ -66,7 +67,7 @@ export class ChatFork {
 	onMessage(message: ForkMessage): void {
 		switch (message.type) {
 			case 'requestFork':
-				void this.open(message.itemId);
+				void this.open(message.turnEnd);
 				break;
 			case 'fork':
 				void this.fork(message.fork);
@@ -77,24 +78,28 @@ export class ChatFork {
 		}
 	}
 
-	/** Opens the Fork dialog, for the whole chat or (Fork from Here) for the chat before prompt `itemId`. */
-	async open(itemId?: string): Promise<void> {
+	/** Opens the Fork dialog, for the whole chat or (Fork from Here) for the chat up to the reply that ends at `turnEnd`. */
+	async open(turnEnd?: string): Promise<void> {
 		const forker = this.options.fork;
 		if (!forker) {
 			return;
 		}
 		try {
+			const point = turnEnd ? forkPointAfter(this.transcript.items, turnEnd) : undefined;
+			if (turnEnd && !point) {
+				return;
+			}
+			const itemId = point?.before;
 			const source = await this.source(itemId);
 			const place = await forker.place();
 			const busy = this.host.isBusy();
 			const whole = Math.max(estimateTokens(source.messages), source.before ? 0 : (await this.contextTokens()) ?? 0);
 			const compact = busy ? undefined : estimateTokens(compactedMessages(source.messages, '', compactSplit(source.messages))) + summaryTokens;
 			const conversation = Math.round(carriedConversationNote(this.host.title(), conversationOf(source.messages)).length / 4);
-			const prompt = itemId ? this.transcript.items.find(item => item.id === itemId) : undefined;
 			const view: ForkView = {
 				parentTitle: this.host.title(),
 				title: vscode.l10n.t("{0} (fork)", this.host.title()),
-				...(itemId && prompt?.kind === 'user' ? { before: { itemId, prompt: prompt.text } } : {}),
+				...(point?.answered !== undefined ? { fromHere: { ...(itemId ? { before: itemId } : {}), answered: point.answered } } : {}),
 				tokens: { whole, conversation, ...(compact !== undefined ? { compact } : {}) },
 				...(compact === undefined ? { compactWhy: vscode.l10n.t("Compacted waits for the agent to finish its turn.") } : {}),
 				context: defaultContext(whole, compact),

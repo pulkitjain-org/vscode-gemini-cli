@@ -60,7 +60,7 @@ To start every new agent on its own branch, turn on `gemini.agents.ownBranch`.
 When an agent's work splits in two, fork it: the fork is a new agent that starts from the same conversation, so it already knows what the agent read, decided and planned, and works on its part while the agent carries on with its own.
 
 - **Fork Agent** is the split-arrows icon on an agent's row (on hover), in its right-click menu, in the composer's **+** menu, and `/fork`.
-- **Fork from Here**, the same icon on any of your messages, forks the conversation as it was before that message.
+- **Fork**, beside Retry at the end of any reply, forks the conversation as it was at the end of that reply.
 
 The Fork dialog asks:
 

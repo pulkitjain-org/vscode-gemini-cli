@@ -372,9 +372,9 @@ function forkStrings(): ForkStrings {
 	return {
 		button: vscode.l10n.t("Fork"),
 		buttonTip: vscode.l10n.t("Fork Agent: a new agent that starts from this conversation"),
-		fromHere: vscode.l10n.t("Fork from Here"),
+		fromHere: vscode.l10n.t("Fork from Here: a new agent that starts from the conversation up to this reply"),
 		title: vscode.l10n.t("Fork \"{0}\""),
-		fromHereNote: vscode.l10n.t("The fork starts from the conversation before \"{0}\"."),
+		fromHereNote: vscode.l10n.t("The fork starts from the conversation up to the reply to \"{0}\"."),
 		name: vscode.l10n.t("Name"),
 		context: vscode.l10n.t("Context"),
 		whole: vscode.l10n.t("Whole session"),
