@@ -8,7 +8,8 @@
 
 import * as vscode from 'vscode';
 import type { AgentClient } from '../../acp/agentClient';
-import { readSessionTokens } from '../../acp/cliSessions';
+import { readSessionContext } from '../../acp/cliSessions';
+import { compactMinPrompts } from '../../acp/sessionSnapshot';
 import { upgradeUrl } from '../../acp/helpLinks';
 import type { FromWebview, ToWebview } from '../chatProtocol';
 import type { ChatControllerOptions } from './chatOptions';
@@ -71,8 +72,9 @@ export class ChatUsage {
 	/** How full this session's context window is, from the counts the CLI saved; none until the agent has answered. */
 	async postContext(): Promise<void> {
 		const state = this.client.state;
-		const tokens = state.kind === 'ready' && this.hasConversation() ? await readSessionTokens(this.client.cwd, state.savedSessionId).catch(() => undefined) : undefined;
-		this.post({ type: 'context', context: tokens && { used: tokens.context, limit: contextWindow, cached: tokens.cached, ...(tokens.model ? { model: tokens.model } : {}) } });
+		const saved = state.kind === 'ready' && this.hasConversation() ? await readSessionContext(this.client.cwd, state.savedSessionId).catch(() => undefined) : undefined;
+		const tokens = saved?.tokens;
+		this.post({ type: 'context', context: tokens && { used: tokens.context, limit: contextWindow, cached: tokens.cached, ...(tokens.model ? { model: tokens.model } : {}), canCompact: saved.prompts >= compactMinPrompts } });
 		if (tokens) {
 			this.onContext?.(tokens.context, contextWindow);
 		}

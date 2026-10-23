@@ -627,6 +627,12 @@ export async function readSessionTokens(cwd: string, id: string, home?: string):
 	return (await readSessionById(cwd, id, home))?.tokens;
 }
 
+/** Session `id`'s token counts and how many prompts it holds, for the context meter and Compact; reads only that session's files. */
+export async function readSessionContext(cwd: string, id: string, home?: string): Promise<{ readonly tokens?: SessionTokens; readonly prompts: number } | undefined> {
+	const session = await readSessionById(cwd, id, home);
+	return session && { ...(session.tokens ? { tokens: session.tokens } : {}), prompts: session.prompts.length };
+}
+
 /** What reopening session `id` in `cwd` by its id needs: its replay length. Reads only that session's files. */
 export async function readCliSession(cwd: string, id: string, home?: string): Promise<{ readonly firstPrompt: string; readonly replayUpdates: number } | undefined> {
 	const session = await readSessionById(cwd, id, home);

@@ -535,6 +535,8 @@ export interface ViewContext {
 	/** Input tokens served from the cache over the session. */
 	readonly cached: number;
 	readonly model?: string;
+	/** Whether the session holds enough prompts for Compact to summarize. */
+	readonly canCompact: boolean;
 }
 
 /** Fork Agent's button, dialog, cards and line (`webview-src/fork.ts`, `items.ts`). */

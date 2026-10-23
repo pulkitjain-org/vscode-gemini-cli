@@ -77,7 +77,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			done: vscode.l10n.t("Compacted: {0} to {1} tokens"),
 			keptOne: vscode.l10n.t("The older work is summarized; the last prompt is kept as it was."),
 			kept: vscode.l10n.t("The older work is summarized; the last {0} prompts are kept as they were."),
-			keptNone: vscode.l10n.t("The work so far is summarized; the latest prompts were too large to keep as they were."),
+			keptNone: vscode.l10n.t("The work so far is summarized, with no prompt kept as it was."),
 			undo: vscode.l10n.t("Undo"),
 			viewSummary: vscode.l10n.t("View Summary"),
 			undone: vscode.l10n.t("Compact undone: the chat is back on its full session."),

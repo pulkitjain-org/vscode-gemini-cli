@@ -39,6 +39,10 @@ describe('compactSplit', () => {
 		expect(compactSplit(session, 4, 1)).toBe(3);
 		expect(compactSplit(session, 1, 1)).toBe(7);
 		expect(compactSplit([...session, user('u5', 'Huge'), reply('g5', '', 'd'.repeat(50_000))])).toBe(11);
+		// One prompt whose tool calls fill the context: all of it is summarized.
+		const one = session.slice(0, 3);
+		expect(compactSplit(one, 4, 1)).toBe(3);
+		expect(compactedMessages(one, 'S', compactSplit(one, 4, 1)).map(m => m.type)).toEqual(['user', 'gemini']);
 	});
 });
 

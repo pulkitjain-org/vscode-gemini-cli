@@ -17,7 +17,7 @@ import type { ChatTranscript, CompactItem } from '../../acp/chatTranscript';
 import { shouldSuggestCompact } from '../../acp/chatTurns';
 import { isPrompt, MessageRecord, readSessionMessages, readSessionTokens, rewindCliSession, textOf } from '../../acp/cliSessions';
 import { errorMessage } from '../../acp/errors';
-import { compactedMessages, compactSplit, estimateTokens, summaryMarker, summaryPrompt, writeSessionCopy } from '../../acp/sessionSnapshot';
+import { compactedMessages, compactMinPrompts, compactSplit, estimateTokens, summaryMarker, summaryPrompt, writeSessionCopy } from '../../acp/sessionSnapshot';
 import type { SlashCommand } from '../../acp/slashCommands';
 import type { FromWebview } from '../chatProtocol';
 import type { ChatControllerOptions, ChatHost } from './chatOptions';
@@ -99,7 +99,7 @@ export class ChatCompact {
 		const client = this.service.client;
 		const from = this.sessions.current();
 		const saved = from ? await readSessionMessages(client.cwd, from) : undefined;
-		if (!from || !saved || saved.messages.filter(isPromptMessage).length < 2) {
+		if (!from || !saved || saved.messages.filter(isPromptMessage).length < compactMinPrompts) {
 			throw new Error(vscode.l10n.t("There isn't enough in this chat to compact yet."));
 		}
 		const { messages } = saved;

@@ -18,6 +18,13 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { isPrompt, MessageRecord, projectHash, registeredChatsFolder, squashSpaces, textOf } from './cliSessions';
 
+/**
+ * The fewest prompts a session needs before compacting it can summarize
+ * anything. One is enough: a single prompt's tool calls can fill the context,
+ * and then the whole session is summarized, with no prompt kept as it was.
+ */
+export const compactMinPrompts = 1;
+
 /** How many of the latest prompts a compacted session keeps as they were, at most. */
 export const compactKeepPrompts = 4;
 

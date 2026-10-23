@@ -1459,6 +1459,28 @@ body.vscode-high-contrast-light {
 	margin-top: 8px;
 }
 
+/* A quiet link, like the popover's other actions, not a button. */
+.usage-compact-link {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	gap: 4px;
+	white-space: nowrap;
+}
+
+.usage-compact-link .codicon {
+	font-size: 12px;
+}
+
+/* Only the label underlines: the icon's own box sits lower and would break the line. */
+.usage-compact-link:hover {
+	text-decoration: none;
+}
+
+.usage-compact-link:hover > span:last-child {
+	text-decoration: underline;
+}
+
 /* Where a turn's time went: hop, bar, this turn, budget. */
 .trace-card {
 	display: flex;
@@ -2571,7 +2593,7 @@ body.vscode-high-contrast-light #send {
 	padding: 0;
 	border: none;
 	background: none;
-	color: var(--gemini-accent);
+	color: var(--vscode-textLink-foreground, var(--gemini-accent));
 	font: inherit;
 	cursor: pointer;
 }

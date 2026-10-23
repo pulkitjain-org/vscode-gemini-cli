@@ -100,7 +100,7 @@ Hover the **Gemini** item in the status bar to see today's quota too; once a mod
 
 When a session's history reaches half of the model's context window, the Gemini CLI summarises the older part and keeps the most recent 30% as it was. It does that only in memory, though: when the session is reopened, after a restart for example, it comes back whole.
 
-**Compact** does the same on request, and keeps it. Type `/compact`, or choose **Compact** in the usage popover; once the context passes 40%, the chat also offers it once. Gemini writes a summary of the work so far (goal, decisions, files, current state, next steps), and the chat moves to a new session made of that summary and your latest messages, as they were. A line across the chat shows the tokens before and after, with **View Summary** and **Undo**, which goes back to the full session. The conversation above stays in the chat either way.
+**Compact** does the same on request, and keeps it. Type `/compact`, or choose **Compact** in the usage popover, which offers it once the agent has answered and is idle; once the context passes 40%, the chat also offers it once. Gemini writes a summary of the work so far (goal, decisions, files, current state, next steps), and the chat moves to a new session made of that summary and your latest messages, as they were. A line across the chat shows the tokens before and after, with **View Summary** and **Undo**, which goes back to the full session. The conversation above stays in the chat either way.
 
 - The thin outline of your prompts down the chat's right edge jumps to each one; <kbd>⌥⌘↑</kbd> and <kbd>⌥⌘↓</kbd> do the same.
 - **Latest** above the input takes you back to the newest message.
