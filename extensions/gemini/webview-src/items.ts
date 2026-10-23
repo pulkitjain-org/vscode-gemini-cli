@@ -59,6 +59,8 @@ export function render(item: TranscriptItem, toggleToolCall: ToggleToolCall): HT
 			return renderCutOff(item);
 		case 'compact':
 			return renderCompact(item);
+		case 'fork':
+			return renderFork(item);
 		case 'trace':
 			return renderTrace(item);
 		case 'turnEnd':
@@ -241,6 +243,11 @@ function renderUserMessage(item: { readonly text: string; readonly attachments?:
 		const rewind = button('icon-button copy-message rewind-prompt', '', () => vscode.postMessage({ type: 'rewind', itemId: id }), 'history');
 		setLabel(rewind, strings.rewindPrompt);
 		meta.append(rewind);
+	}
+	if (item.text && id && strings.fork) {
+		const fork = button('icon-button copy-message fork-prompt', '', () => vscode.postMessage({ type: 'requestFork', itemId: id }), 'gemini-fork');
+		setLabel(fork, strings.fork.fromHere);
+		meta.append(fork);
 	}
 	if (item.text) {
 		meta.append(copyButton('copy-message', strings.copyMessage, () => item.text));
@@ -530,6 +537,39 @@ function renderCutOff(item: ItemOf<'cutOff'>): HTMLElement {
 	}
 	actions.append(button('secondary', strings.cutOff.keep, () => vscode.postMessage({ type: 'dismissCutOff', itemId: item.id })));
 	card.append(actions);
+	return card;
+}
+
+/**
+ * Fork Agent: in a fork's chat, the line where its parent's conversation
+ * ends; in the parent's, a card for the fork with Open and Merge Back.
+ */
+function renderFork(item: ItemOf<'fork'>): HTMLElement {
+	const text = strings.fork;
+	if (item.role === 'from') {
+		const line = el('div', 'compact-line fork-line');
+		const label = el('span', 'compact-label');
+		label.append(icon('gemini-fork'), el('span', undefined, text ? `${format(text.from, item.title)} \u00b7 ${text.fromContext[item.context]}` : item.title));
+		line.append(el('span', 'compact-rule'), label, el('span', 'compact-rule'));
+		return line;
+	}
+	const card = el('div', `fork-card${item.removed ? ' removed' : ''}`);
+	const head = el('div', 'fork-card-head');
+	head.append(icon('gemini-fork'), el('strong', undefined, text ? format(text.card, item.title) : item.title));
+	const where = item.removed ? text?.cardRemoved : item.branch ? text && format(text.cardBranch, item.branch) : text?.cardShared;
+	if (where) {
+		head.append(el('span', 'fork-card-where', where));
+	}
+	card.append(head);
+	if (text && !item.removed) {
+		const send = (action: 'open' | 'merge') => vscode.postMessage({ type: 'forkAction', agent: item.agent, action });
+		const actions = el('div', 'fork-card-actions');
+		actions.append(button('turn-action', text.open, () => send('open'), 'go-to-file'));
+		if (item.branch) {
+			actions.append(button('turn-action', text.merge, () => send('merge'), 'git-merge'));
+		}
+		card.append(actions);
+	}
 	return card;
 }
 

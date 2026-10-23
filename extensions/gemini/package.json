@@ -245,6 +245,15 @@
         "icon": "$(git-merge)"
       },
       {
+        "command": "gemini.agents.fork",
+        "title": "%command.agents.fork%",
+        "category": "%category%",
+        "icon": {
+          "light": "icons/commands/fork-light.svg",
+          "dark": "icons/commands/fork-dark.svg"
+        }
+      },
+      {
         "command": "gemini.agents.rename",
         "title": "%command.agents.rename%",
         "category": "%category%"
@@ -826,6 +835,11 @@
           "group": "inline"
         },
         {
+          "command": "gemini.agents.fork",
+          "when": "view == gemini.agents && viewItem =~ /\\.forkable/",
+          "group": "inline"
+        },
+        {
           "command": "gemini.agents.mergeBack",
           "when": "view == gemini.agents && viewItem =~ /\\.worktree/",
           "group": "inline"
@@ -898,6 +912,11 @@
         {
           "command": "gemini.agents.mergeBack",
           "when": "view == gemini.agents && viewItem =~ /\\.worktree/",
+          "group": "1_agent@4"
+        },
+        {
+          "command": "gemini.agents.fork",
+          "when": "view == gemini.agents && viewItem =~ /\\.forkable/",
           "group": "1_agent@4"
         },
         {

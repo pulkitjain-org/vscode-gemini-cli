@@ -7,13 +7,13 @@
 // from the extension host so they are localized.
 
 import * as vscode from 'vscode';
-import type { ChatStrings, ProjectChatStrings } from '../chatProtocol';
+import type { ChatStrings, ForkStrings, ProjectChatStrings } from '../chatProtocol';
 import { foldWorkOn } from '../foldWork';
 import { spellCheckOn } from '../spellCheck';
 import { createNonce, escapeAttribute } from '../webviewHtml';
 
-/** The chat view's page for `webview`, loading its script and styles from `mediaUri`; `project` adds a project chat's strings. */
-export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project: boolean): string {
+/** The chat view's page for `webview`, loading its script and styles from `mediaUri`; `project` adds a project chat's strings, `fork` Fork Agent's. */
+export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project: boolean, fork: boolean): string {
 	const nonce = createNonce();
 	const script = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'chat.js'));
 	const style = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'chat.css'));
@@ -29,6 +29,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		placeholder: vscode.l10n.t("Ask Gemini anything about this workspace"),
 		fromCoordinator: vscode.l10n.t("From coordinator"),
 		...(project ? { project: projectStrings() } : {}),
+		...(fork ? { fork: forkStrings() } : {}),
 		placeholderFollowUp: vscode.l10n.t("Ask a follow-up"),
 		send: process.platform === 'darwin' ? vscode.l10n.t("Send (Return)") : vscode.l10n.t("Send (Enter)"),
 		stop: vscode.l10n.t("Stop (Esc Esc)"),
@@ -365,6 +366,53 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-fold-work="${foldWorkOn()}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
 </html>`;
+}
+
+function forkStrings(): ForkStrings {
+	return {
+		button: vscode.l10n.t("Fork"),
+		buttonTip: vscode.l10n.t("Fork Agent: a new agent that starts from this conversation"),
+		fromHere: vscode.l10n.t("Fork from Here"),
+		title: vscode.l10n.t("Fork \"{0}\""),
+		fromHereNote: vscode.l10n.t("The fork starts from the conversation before \"{0}\"."),
+		name: vscode.l10n.t("Name"),
+		context: vscode.l10n.t("Context"),
+		whole: vscode.l10n.t("Whole session"),
+		wholeHint: vscode.l10n.t("An exact copy, tool output included."),
+		compact: vscode.l10n.t("Compacted"),
+		compactHint: vscode.l10n.t("A summary of the older work, plus the latest prompts as they were."),
+		conversation: vscode.l10n.t("Conversation only"),
+		conversationHint: vscode.l10n.t("Prompts and replies, without tool output."),
+		tokens: vscode.l10n.t("~{0} tokens"),
+		wholeLarge: vscode.l10n.t("Large: every turn of the fork sends all of it, and it may not fit the model's context."),
+		where: vscode.l10n.t("Where it works"),
+		ownBranch: vscode.l10n.t("New branch off {0}"),
+		ownBranchPlain: vscode.l10n.t("New branch"),
+		ownBranchHint: vscode.l10n.t("With the parent's uncommitted changes; the parent's folder is left as it is. Merge Back asks whether to merge into the parent's branch or its base."),
+		branch: vscode.l10n.t("Branch"),
+		sameFolder: vscode.l10n.t("Same folder"),
+		sameFolderHint: vscode.l10n.t("For questions, reviews and plans: both agents change the same files."),
+		noGit: vscode.l10n.t("This folder isn't in a Git repository, so the fork works in the same folder."),
+		message: vscode.l10n.t("First message (optional)"),
+		messagePlaceholder: vscode.l10n.t("What the fork should do"),
+		model: vscode.l10n.t("Model"),
+		sameModel: vscode.l10n.t("Same as this agent's"),
+		cancel: vscode.l10n.t("Cancel"),
+		start: vscode.l10n.t("Fork"),
+		close: vscode.l10n.t("Close"),
+		card: vscode.l10n.t("Forked \"{0}\""),
+		cardBranch: vscode.l10n.t("on {0}"),
+		cardShared: vscode.l10n.t("in this folder"),
+		cardRemoved: vscode.l10n.t("removed"),
+		open: vscode.l10n.t("Open"),
+		merge: vscode.l10n.t("Merge Back"),
+		from: vscode.l10n.t("Forked from \"{0}\""),
+		fromContext: {
+			whole: vscode.l10n.t("with the whole session"),
+			compact: vscode.l10n.t("with a compacted session"),
+			conversation: vscode.l10n.t("with the conversation, without tool output"),
+		},
+	};
 }
 
 function projectStrings(): ProjectChatStrings {

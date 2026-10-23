@@ -115,6 +115,32 @@ export class ChatCompact {
 		return { before, after: estimateTokens(compacted), kept: compacted.filter(isPromptMessage).length - 1, summary, from, to };
 	}
 
+	/**
+	 * A summary of the chat's session for a compacted fork, which the chat
+	 * itself keeps: written in a turn kept out of the chat, then rewound out
+	 * of the session, which the agent opens again so it forgets the turn too.
+	 */
+	async summaryForFork(): Promise<string> {
+		if (this.running || this.host.isBusy()) {
+			throw new Error(vscode.l10n.t("A compacted fork waits for the agent to finish: try again once this turn ends."));
+		}
+		this.running = true;
+		try {
+			return await this.host.quietly(async () => {
+				await this.service.ensureReady();
+				const session = this.sessions.current();
+				const summary = await this.summarize();
+				if (session && await rewindCliSession(this.service.client.cwd, session, summaryMarker, 0).catch(() => false)) {
+					this.sessions.moveTo(session);
+					await this.service.client.loadSession(session).catch(() => false);
+				}
+				return summary;
+			});
+		} finally {
+			this.running = false;
+		}
+	}
+
 	/** The agent's summary of the session, from a turn whose updates stay out of the chat. */
 	private async summarize(): Promise<string> {
 		let text = '';

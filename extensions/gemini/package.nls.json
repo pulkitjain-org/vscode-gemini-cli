@@ -84,6 +84,7 @@
 	"command.projects.newThread": "New Thread",
 	"command.projects.settings": "Project Settings",
 	"command.agents.mergeBack": "Merge Back",
+	"command.agents.fork": "Fork Agent",
 	"command.reviewChanges": "Review My Changes",
 	"command.projectSettings": "Project Helpers",
 	"command.connections": "Connections",

@@ -87,6 +87,10 @@ function sections(): MenuSection[] {
 	if (project) {
 		result.push({ rows: [{ icon: 'git-branch', name: project.newThread, run: () => { closePlusMenu(); openNewThread(); } }] });
 	}
+	const fork = strings.fork;
+	if (fork) {
+		result.push({ rows: [{ icon: 'gemini-fork', name: fork.button, tooltip: fork.buttonTip, end: '/fork', run: () => { closePlusMenu(false); vscode.postMessage({ type: 'requestFork' }); } }] });
+	}
 	if (mode) {
 		result.push({
 			heading: strings.mode,

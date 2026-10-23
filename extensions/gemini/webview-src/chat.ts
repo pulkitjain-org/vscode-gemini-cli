@@ -30,6 +30,7 @@ import { attachToolRef, setToolRefContext, toolRefResolved, watchToolRefs } from
 import { setBusy, setFollow, setFollowed, setGit, setSettings, setStatus } from './composer';
 import { applyTokenColors } from './codeHighlight';
 import { onEnhanced, onEnhanceFailed, onEnhanceProgress, replaceInput, toggleEnhance } from './enhance';
+import { openForkDialog } from './fork';
 import { setLabel } from './dom';
 import { restoreComposerHeight, updatePlaceholder, updateSendState } from './inputBox';
 import { showSavedSessions } from './items';
@@ -214,6 +215,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'openNewThread':
 			openNewThread();
+			break;
+		case 'openFork':
+			openForkDialog(message.fork);
 			break;
 		case 'projectSettings':
 			showProjectSettings(message.settings, message.open);

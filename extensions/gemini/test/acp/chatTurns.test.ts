@@ -6,7 +6,7 @@
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { TranscriptItem } from '../../src/acp/chatTranscript';
-import { buildModeAfterPlan, checkpointsFit, diffsOf, dropOldest, lastPromptAt, laterRepeats, rewindPrompts, runningStep, shouldSuggestCompact, turnShape, undoNote, wasCutOff } from '../../src/acp/chatTurns';
+import { buildModeAfterPlan, checkpointsFit, diffsOf, dropOldest, lastPromptAt, laterRepeats, rewindPrompts, runningStep, forkedItems, forkNote, shouldSuggestCompact, turnShape, undoNote, wasCutOff } from '../../src/acp/chatTurns';
 
 const user = (id: string, text: string, at?: number): TranscriptItem => ({ id, kind: 'user', text, ...(at ? { at } : {}) });
 const agent = (id: string, text: string): TranscriptItem => ({ id, kind: 'agent', text });
@@ -127,5 +127,38 @@ describe('shouldSuggestCompact', () => {
 		expect(shouldSuggestCompact([{ id: 'c', kind: 'compact', state: 'dismissed' }], 's1', 500, limit)).toBe(false);
 		const done: TranscriptItem = { id: 'c', kind: 'compact', state: 'done', from: 's1', to: 's2' };
 		expect([shouldSuggestCompact([done], 's2', 500, limit), shouldSuggestCompact([done], 's1', 500, limit), shouldSuggestCompact([done], 's3', 500, limit)]).toEqual([false, false, true]);
+	});
+});
+
+describe('forkedItems', () => {
+	it('copies the chat up to a prompt, with nothing left that acts on the parent', () => {
+		const items: TranscriptItem[] = [
+			user('u1', 'Plan refunds'),
+			{ id: 'p1', kind: 'permission', title: 'Write', options: [], diffPaths: [] },
+			tool('t1', 'Edit', 'in_progress'),
+			{ id: 'e1', kind: 'turnEnd', durationMs: 1, undo: 'available', retry: true, files: 2 },
+			{ id: 'c1', kind: 'compact', state: 'done', before: 9, after: 1, from: 's1', to: 's2', summary: 'S' },
+			{ id: 'c2', kind: 'compact', state: 'suggested', percent: 45 },
+			{ id: 'f1', kind: 'fork', role: 'child', agent: 'x', title: 'Other fork', context: 'whole' },
+			{ id: 'k1', kind: 'cutOff', prompt: 'p' },
+			user('u2', 'Do the UI'),
+			agent('a2', 'Done'),
+		];
+		expect(forkedItems(items, 'u2')).toEqual([
+			user('u1', 'Plan refunds'),
+			{ id: 'p1', kind: 'permission', title: 'Write', options: [], diffPaths: [], answer: { kind: 'cancelled' } },
+			{ ...tool('t1', 'Edit', 'in_progress'), status: 'failed' },
+			{ id: 'e1', kind: 'turnEnd', durationMs: 1 },
+			{ id: 'c1', kind: 'compact', state: 'done', before: 9, after: 1, summary: 'S' },
+		]);
+		expect(forkedItems(items)?.map(item => item.id).slice(-2)).toEqual(['u2', 'a2']);
+		expect(forkedItems(items, 'missing')).toBeUndefined();
+	});
+});
+
+describe('forkNote', () => {
+	it('moves the paths to the fork\'s own folder, or warns that the folder is shared', () => {
+		expect(forkNote('Refunds', '/t/refunds', '/t/refunds-fork', 'gemini/refunds-fork')).toContain('Files the earlier messages name under /t/refunds are under /t/refunds-fork now');
+		expect(forkNote('Refunds', '/t/refunds', '/t/refunds', undefined)).toContain('the same folder as the other agent');
 	});
 });

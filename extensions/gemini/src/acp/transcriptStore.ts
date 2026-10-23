@@ -145,7 +145,7 @@ export function withoutLeakedReplay(items: readonly TranscriptItem[]): Transcrip
 	});
 }
 
-const kinds = new Set(['user', 'agent', 'thought', 'toolCall', 'plan', 'permission', 'other', 'notice', 'cutOff', 'compact', 'trace', 'turnEnd', 'thread']);
+const kinds = new Set(['user', 'agent', 'thought', 'toolCall', 'plan', 'permission', 'other', 'notice', 'cutOff', 'compact', 'fork', 'trace', 'turnEnd', 'thread']);
 
 function isTranscriptItem(value: unknown): value is TranscriptItem {
 	const item = value as TranscriptItem;
@@ -170,6 +170,8 @@ function isTranscriptItem(value: unknown): value is TranscriptItem {
 			return typeof item.prompt === 'string';
 		case 'compact':
 			return typeof item.state === 'string';
+		case 'fork':
+			return (item.role === 'from' || item.role === 'child') && typeof item.agent === 'string' && typeof item.title === 'string';
 		case 'trace':
 			return typeof item.file === 'string' && typeof item.readout === 'object' && item.readout !== null && Array.isArray(item.readout.hops);
 		case 'turnEnd':

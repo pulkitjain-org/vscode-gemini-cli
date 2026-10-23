@@ -5,7 +5,7 @@
 
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { AgentsModel, archiveAfterMs, freeTitle, isArchived, resolvedAt, titleFromPrompt, warmThreads } from '../../src/acp/agents';
+import { agentFolder, AgentsModel, archiveAfterMs, freeTitle, isArchived, resolvedAt, titleFromPrompt, warmThreads } from '../../src/acp/agents';
 
 function clock(start = 1_000) {
 	let time = start;
@@ -48,6 +48,27 @@ describe('AgentsModel', () => {
 		const workspace = model.addWorkspace('/work/api').id;
 		expect(model.addAgent(workspace, 'New agent', undefined, 'given').id).toBe('given');
 		expect(() => model.addAgent(workspace, 'Again', undefined, 'given')).toThrow();
+	});
+
+	it('adds a fork under its parent, on its own branch or in the folder it shares, across reloads', () => {
+		const time = clock();
+		const model = new AgentsModel(undefined, time.now);
+		const workspace = model.addWorkspace('/work/shop').id;
+		const parent = model.addAgent(workspace, 'Refunds', { folder: '/t/refunds', cwd: '/t/refunds/api', branch: 'gemini/refunds', base: 'main' }, 'p');
+		time.advance(10);
+		const branched = model.addFork(parent, 'Refund UI', {}, { folder: '/t/refunds-fork', cwd: '/t/refunds-fork/api', branch: 'gemini/refunds-fork', base: 'gemini/refunds' }, 'copied-session');
+		time.advance(10);
+		const shared = model.addFork(parent, 'Refund review', { sharedFolder: '/t/refunds/api' });
+		const reloaded = new AgentsModel(model.snapshot());
+		expect(reloaded.agent(branched.id)).toMatchObject({ title: 'Refund UI', titleSetByUser: true, sessionId: 'copied-session', forkedFrom: { agent: 'p', at: 1_010 } });
+		expect(reloaded.forksOf('p').map(a => a.title)).toEqual(['Refund UI', 'Refund review']);
+		expect(reloaded.parentOf(reloaded.agent(shared.id)!)?.id).toBe('p');
+		expect([reloaded.folderOf(reloaded.agent(branched.id)!), reloaded.folderOf(reloaded.agent(shared.id)!), agentFolder(reloaded.agent('p')!, '/work/shop')]).toEqual(['/t/refunds-fork/api', '/t/refunds/api', '/t/refunds/api']);
+		// A shared folder never makes it own the parent's worktree.
+		expect(reloaded.agent(shared.id)?.worktree).toBeUndefined();
+		reloaded.removeAgent('p');
+		expect(reloaded.parentOf(reloaded.agent(shared.id)!)).toBeUndefined();
+		expect(new AgentsModel({ workspaces: model.snapshot().workspaces, agents: [{ ...branched, forkedFrom: { agent: 'p', at: 1, sharedFolder: 'relative' } }] }).agent(branched.id)).toBeUndefined();
 	});
 
 	it('keeps a multi-repository thread\'s repositories across reloads', () => {

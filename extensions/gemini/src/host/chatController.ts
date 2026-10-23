@@ -13,12 +13,12 @@ import { parseTraceFile, summarizeTrace, turnReadout } from '../acp/traceRecordi
 import type { Attachment } from '../acp/attachments';
 import { isValidAttachment } from '../acp/attachmentValidation';
 import { chatToMarkdown } from '../acp/chatMarkdown';
-import { ChatTranscript, ThreadCard, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
+import { ChatTranscript, ForkContext, ThreadCard, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
 import { buildModeAfterPlan, diffsOf, dropOldest, lastPromptAt, runningStep, turnShape, wasCutOff } from '../acp/chatTurns';
 import type { StoredCheckpoints } from '../acp/checkpoints';
 import { buildPromptContent } from '../acp/promptContent';
 import { TeamCommandCancelled } from '../acp/teamCommandExpansion';
-import { readCliConversation } from '../acp/cliSessions';
+import { ConversationEntry, readCliConversation } from '../acp/cliSessions';
 import { isModelOutput } from '../acp/sessionUpdates';
 import { TextDeltas } from '../acp/textDeltas';
 import type { ModelTokens } from '../acp/turnUsage';
@@ -36,6 +36,7 @@ import { ChatAttachments } from './chat/chatAttachments';
 import { ChatCheckpoints } from './chat/chatCheckpoints';
 import { ChatCommands } from './chat/chatCommands';
 import { ChatCompact, compactCommand } from './chat/chatCompact';
+import { ChatFork, forkCommand } from './chat/chatFork';
 import { ChatEnhance } from './chat/chatEnhance';
 import { ChatFileLinks } from './chat/chatFiles';
 import { ChatFollow } from './chat/chatFollow';
@@ -139,6 +140,7 @@ export class ChatController implements vscode.Disposable {
 	private readonly sessions: ChatSessions;
 	private readonly checkpoints: ChatCheckpoints;
 	private readonly compacting: ChatCompact;
+	private readonly forks: ChatFork;
 	private readonly project: ChatProjectView;
 
 	constructor(
@@ -164,7 +166,7 @@ export class ChatController implements vscode.Disposable {
 		this.settings = new ChatSettings(service, this.transcript, options, post);
 		this.enhance = new ChatEnhance(client, options, () => this.transcript.items, post);
 		// A project's chat goes to its hub, so it has neither saved sessions to resume nor a session of its own to compact.
-		this.commands = new ChatCommands(client, this.transcript, [...options.savedSessions ? [resumeCommand()] : [], ...options.project ? [] : [compactCommand()]], isAttached, post);
+		this.commands = new ChatCommands(client, this.transcript, [...options.savedSessions ? [resumeCommand()] : [], ...options.project ? [] : [compactCommand()], ...options.fork ? [forkCommand()] : []], isAttached, post);
 		this.sessions = new ChatSessions(service, this.transcript, options, {
 			isBusy,
 			setBusy,
@@ -186,6 +188,10 @@ export class ChatController implements vscode.Disposable {
 			quietly: work => this.quietly(work),
 			refreshContext: () => void this.usage.postContext(),
 		});
+		this.forks = new ChatFork(service, this.transcript, this.sessions, this.compacting, options, {
+			isBusy,
+			title: () => options.title?.() ?? '',
+		}, post);
 		this.project = new ChatProjectView(options, isViewReady, post);
 		this.disposables.push(
 			onDidChangeSpellCheck(on => this.post({ type: 'spellCheck', on })),
@@ -333,7 +339,7 @@ export class ChatController implements vscode.Disposable {
 		this.service.ensureReady().catch(() => undefined);
 		const mediaUri = vscode.Uri.joinPath(this.extensionUri, 'media');
 		webview.options = { enableScripts: true, localResourceRoots: [mediaUri] };
-		webview.html = chatHtml(webview, mediaUri, !!this.options.project);
+		webview.html = chatHtml(webview, mediaUri, !!this.options.project, this.forks.available);
 		this.webviewListener = webview.onDidReceiveMessage((message: FromWebview) => this.onMessage(message));
 	}
 
@@ -432,6 +438,10 @@ export class ChatController implements vscode.Disposable {
 		}
 		if (text.trim() === `/${compactCommand().name}` && !attachments.length) {
 			void this.compacting.compact();
+			return;
+		}
+		if (this.forks.available && text.trim() === `/${forkCommand().name}` && !attachments.length) {
+			void this.forks.open();
 			return;
 		}
 		this.sessions.stopReplay();
@@ -878,6 +888,11 @@ export class ChatController implements vscode.Disposable {
 			case 'pickRewind':
 				this.checkpoints.onMessage(message);
 				break;
+			case 'requestFork':
+			case 'fork':
+			case 'forkAction':
+				this.forks.onMessage(message);
+				break;
 			case 'compact':
 			case 'undoCompact':
 			case 'dismissCompact':
@@ -905,6 +920,28 @@ export class ChatController implements vscode.Disposable {
 				this.usage.onMessage(message);
 				break;
 		}
+	}
+
+	/** Opens the Fork dialog in this chat, as its Fork button does; the chat comes into view first. */
+	async openFork(): Promise<void> {
+		await this.options.reveal(false);
+		await this.forks.open();
+	}
+
+	/** This chat starts a fork's conversation: its parent's, then a line naming the parent. */
+	startFork(items: readonly TranscriptItem[], sessionId: string | undefined, line: { readonly parent: string; readonly title: string; readonly context: ForkContext }): void {
+		this.restore(items, sessionId);
+		this.transcript.addFork({ role: 'from', agent: line.parent, title: line.title, context: line.context });
+	}
+
+	/** Gives the next prompt `conversation` from agent `title`, which this chat's new session would not otherwise have. */
+	carryConversation(title: string, conversation: readonly ConversationEntry[]): void {
+		this.sessions.carry(title, conversation);
+	}
+
+	/** Fork `agent` was removed: its cards here say so. */
+	forkRemoved(agent: string): void {
+		this.transcript.forkRemoved(agent);
 	}
 
 	/** Clears the conversation and what the chat keeps about it: proposed edits, checkpoints, Retry, and what the next prompt would carry. */

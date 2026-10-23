@@ -3258,6 +3258,111 @@ textarea.new-thread-input {
 	margin-right: auto;
 }
 
+/* The Fork dialog's choices: a radio, its name and hint, and its token figure at the end. */
+.fork-choices {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin: 0;
+	padding: 0;
+	border: none;
+}
+
+.fork-choices legend {
+	margin-bottom: 6px;
+	padding: 0;
+	font-weight: 600;
+}
+
+.fork-choice {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 8px 10px;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius-small);
+	cursor: pointer;
+}
+
+.fork-choice:has(input:checked) {
+	border-color: var(--gemini-accent);
+}
+
+.fork-choice:has(input:disabled) {
+	cursor: default;
+	opacity: 0.6;
+}
+
+.fork-choice input {
+	margin: 3px 0 0;
+}
+
+.fork-choice-text {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	gap: 2px;
+	line-height: 1.4;
+}
+
+.fork-choice-end {
+	flex: none;
+	font-size: 0.9em;
+	color: var(--gemini-muted);
+	white-space: nowrap;
+}
+
+.fork-branch-field {
+	margin: 0 0 4px 28px;
+}
+
+.fork-branch-field input:disabled {
+	opacity: 0.6;
+}
+
+/* A fork's card in its parent's chat. */
+.fork-card {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	max-width: 720px;
+	margin: 12px 0;
+	padding: 10px 12px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: 9px;
+	background: var(--gemini-card);
+}
+
+.fork-card.removed {
+	opacity: 0.7;
+}
+
+.fork-card-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+}
+
+.fork-card-head strong {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fork-card-where {
+	overflow: hidden;
+	font-size: 0.9em;
+	color: var(--gemini-muted);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.fork-card-actions {
+	display: flex;
+	gap: 4px;
+}
+
 @media (max-width: 520px) {
 	.new-thread-pair {
 		flex-direction: column;

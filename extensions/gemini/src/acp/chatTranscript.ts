@@ -73,6 +73,8 @@ export type TranscriptItem =
 	| { readonly id: string; readonly kind: 'cutOff'; readonly prompt: string; readonly dismissed?: boolean }
 	/** Compact: the suggestion to compact this chat's session, then the switch to the compacted one. */
 	| CompactItem
+	/** Fork Agent: in a fork, where it was forked from; in its parent, a card for the fork. */
+	| ForkItem
 	/** Where a turn's time went, from the fork's measurements and the CLI's trace (while a trace is recording). */
 	| { readonly id: string; readonly kind: 'trace'; readonly readout: TurnReadout; readonly file: string }
 	/** Ends a turn: how long the agent worked, with a way to copy its reply, retry it, or undo its file changes. */
@@ -155,6 +157,25 @@ export interface CompactItem {
 	readonly to?: string;
 	/** Why it failed, as a sentence. */
 	readonly error?: string;
+}
+
+/** What a fork starts with: its parent's whole session, a compacted copy, or the conversation without tool output. */
+export type ForkContext = 'whole' | 'compact' | 'conversation';
+
+/** A fork's line in its own chat (`from`), or its card in its parent's (`child`). */
+export interface ForkItem {
+	readonly id: string;
+	readonly kind: 'fork';
+	readonly role: 'from' | 'child';
+	/** The other agent: the parent, in a fork's chat; the fork, in its parent's. */
+	readonly agent: string;
+	/** Its title when forked. */
+	readonly title: string;
+	readonly context: ForkContext;
+	/** The fork's own branch; unset when it shares its parent's folder. */
+	readonly branch?: string;
+	/** The fork was removed since. */
+	readonly removed?: boolean;
 }
 
 type TextItem = Extract<TranscriptItem, { kind: 'user' | 'agent' | 'thought' }>;
@@ -350,6 +371,22 @@ export class ChatTranscript {
 		const item = this._items.find(i => i.id === id);
 		if (item?.kind === 'compact') {
 			this.upsert({ ...item, ...patch });
+		}
+	}
+
+	/** Adds a fork's line or card; returns its id. */
+	addFork(item: Omit<ForkItem, 'id' | 'kind'>): string {
+		const id = this.newId();
+		this.push({ ...item, id, kind: 'fork' });
+		return id;
+	}
+
+	/** Marks the cards of fork `agent` as removed. */
+	forkRemoved(agent: string): void {
+		for (const item of this._items) {
+			if (item.kind === 'fork' && item.role === 'child' && item.agent === agent && !item.removed) {
+				this.upsert({ ...item, removed: true });
+			}
 		}
 	}
 

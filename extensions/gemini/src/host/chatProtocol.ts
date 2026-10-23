@@ -9,7 +9,7 @@
 import type { Attachment } from '../acp/attachments';
 import type { IndexToolVerbs, TeamToolVerbs, ToolRef, ToolRefContext } from '../acp/toolLinks';
 import type { ModelQuota } from '../acp/directRequest';
-import type { TranscriptItem } from '../acp/chatTranscript';
+import type { ForkContext, TranscriptItem } from '../acp/chatTranscript';
 import type { ItemUpdate } from '../acp/textDeltas';
 import type { SessionSettings } from '../acp/sessionSettings';
 import type { SlashCommand } from '../acp/slashCommands';
@@ -247,6 +247,8 @@ export interface ChatStrings {
 	readonly placeholder: string;
 	/** Set only in a project's chat. */
 	readonly project?: ProjectChatStrings;
+	/** Fork Agent's strings, in chats that can fork. */
+	readonly fork?: ForkStrings;
 	/** The badge on a thread's brief and the notes its coordinator relays. */
 	readonly fromCoordinator: string;
 	readonly placeholderFollowUp: string;
@@ -535,6 +537,89 @@ export interface ViewContext {
 	readonly model?: string;
 }
 
+/** Fork Agent's button, dialog, cards and line (`webview-src/fork.ts`, `items.ts`). */
+export interface ForkStrings {
+	readonly button: string;
+	readonly buttonTip: string;
+	readonly fromHere: string;
+	/** `{0}` is the agent's name. */
+	readonly title: string;
+	/** `{0}` is the prompt the fork stops before. */
+	readonly fromHereNote: string;
+	readonly name: string;
+	readonly context: string;
+	readonly whole: string;
+	readonly wholeHint: string;
+	readonly compact: string;
+	readonly compactHint: string;
+	readonly conversation: string;
+	readonly conversationHint: string;
+	/** `{0}` is a token count such as "38k". */
+	readonly tokens: string;
+	readonly wholeLarge: string;
+	readonly where: string;
+	/** `{0}` is the parent's branch. */
+	readonly ownBranch: string;
+	readonly ownBranchPlain: string;
+	readonly ownBranchHint: string;
+	readonly branch: string;
+	readonly sameFolder: string;
+	readonly sameFolderHint: string;
+	readonly noGit: string;
+	readonly message: string;
+	readonly messagePlaceholder: string;
+	readonly model: string;
+	readonly sameModel: string;
+	readonly cancel: string;
+	readonly start: string;
+	readonly close: string;
+	/** A fork's card in its parent's chat: `{0}` is its name, `{1}` its branch. */
+	readonly card: string;
+	readonly cardBranch: string;
+	readonly cardShared: string;
+	readonly cardRemoved: string;
+	readonly open: string;
+	readonly merge: string;
+	/** The line in a fork's chat: `{0}` is its parent's name. */
+	readonly from: string;
+	readonly fromContext: Readonly<Record<ForkContext, string>>;
+}
+
+/** What the Fork dialog offers (`webview-src/fork.ts`). */
+export interface ForkView {
+	/** The agent forked, and the name suggested for the fork. */
+	readonly parentTitle: string;
+	readonly title: string;
+	/** Fork from Here: the prompt the fork stops before, and that prompt's item. */
+	readonly before?: { readonly itemId: string; readonly prompt: string };
+	/** About how many tokens each choice sends with every request; `compact` is unset when it can't be made now, with `compactWhy`. */
+	readonly tokens: { readonly whole: number; readonly compact?: number; readonly conversation: number };
+	readonly compactWhy?: string;
+	readonly context: ForkContext;
+	/** Whether the fork can have a branch of its own, the parent's branch it would start from, and the name suggested. */
+	readonly git: boolean;
+	readonly parentBranch?: string;
+	readonly branch: string;
+	/** The parent has no branch of its own: the fork's branch is named after the fork until the user types one. */
+	readonly branchFollowsName: boolean;
+}
+
+/** The Fork dialog's choices. */
+export interface ForkRequest {
+	readonly title: string;
+	readonly context: ForkContext;
+	readonly ownBranch: boolean;
+	readonly branch?: string;
+	readonly model?: string;
+	/** Sent to the fork once it starts. */
+	readonly message?: string;
+	/** Fork from Here: the prompt's item. */
+	readonly before?: string;
+}
+
+/** What a fork card in the parent's chat can do with the fork. */
+export type ForkAction = 'open' | 'merge';
+
 /** Today's quota for the usage popover. */
 export type ViewQuota =
 	| { readonly kind: 'ok'; readonly quota: readonly ModelQuota[]; /** When it was read, in ms since the epoch. */ readonly at: number; /** A newer read is on its way. */ readonly checking?: boolean }
@@ -675,6 +760,12 @@ export type FromWebview =
 	| { readonly type: 'compact'; readonly itemId?: string }
 	/** A compact card's Undo, Not Now and View Summary. */
 	| { readonly type: 'undoCompact' | 'dismissCompact' | 'viewCompactSummary'; readonly itemId: string }
+	/** Open the Fork dialog: for the whole chat, or (Fork from Here) for the chat before prompt `itemId`. */
+	| { readonly type: 'requestFork'; readonly itemId?: string }
+	/** The Fork dialog's Fork. */
+	| { readonly type: 'fork'; readonly fork: ForkRequest }
+	/** A fork card's buttons, in its parent's chat. */
+	| { readonly type: 'forkAction'; readonly agent: string; readonly action: ForkAction }
 	| { readonly type: 'openTrace'; readonly file: string }
 	/** Leave Plan mode and carry out the plan; only the latest turn offers it, when it ended in Plan mode. */
 	| { readonly type: 'buildPlan'; readonly itemId: string }
@@ -745,6 +836,8 @@ export type ToWebview =
 	| { readonly type: 'context'; readonly context: ViewContext | undefined }
 	/** Show Usage and Quota: open the usage popover, or close it if open. */
 	| { readonly type: 'toggleUsage' }
+	/** Open the Fork dialog. */
+	| { readonly type: 'openFork'; readonly fork: ForkView }
 	/** A project chat's side panel. */
 	| { readonly type: 'projectPanel'; readonly panel: ProjectPanel }
 	/** Open the New thread dialog, from the New Thread command. */

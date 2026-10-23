@@ -22,6 +22,7 @@ function summary(items: readonly TranscriptItem[]): string[] {
 			case 'permission': return `permission:${item.title}:${item.answer ? (item.answer.kind === 'selected' ? item.answer.name : 'cancelled') : 'pending'}`;
 			case 'cutOff': return `cutOff:${item.prompt}`;
 			case 'compact': return `compact:${item.state}`;
+			case 'fork': return `fork:${item.role}:${item.title}${item.removed ? ':removed' : ''}`;
 			case 'trace': return `trace:${item.file}`;
 			case 'turnEnd': return 'turnEnd';
 			case 'thread': return `thread:${item.title}:${item.state}`;
@@ -30,6 +31,14 @@ function summary(items: readonly TranscriptItem[]): string[] {
 }
 
 describe('ChatTranscript', () => {
+	it('adds a fork\'s card, and marks it when the fork is removed', () => {
+		const transcript = new ChatTranscript(() => 7000);
+		transcript.addFork({ role: 'child', agent: 'f1', title: 'Refund UI', context: 'whole', branch: 'gemini/ui' });
+		transcript.addFork({ role: 'from', agent: 'p', title: 'Refunds', context: 'compact' });
+		transcript.forkRemoved('f1');
+		expect(summary(transcript.items)).toEqual(['fork:child:Refund UI:removed', 'fork:from:Refunds']);
+	});
+
 	it('adds a compact card and changes it in place', () => {
 		const transcript = new ChatTranscript(() => 7000);
 		const id = transcript.addCompact({ state: 'suggested', percent: 42 });

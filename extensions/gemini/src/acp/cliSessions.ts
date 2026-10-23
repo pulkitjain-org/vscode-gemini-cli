@@ -590,8 +590,13 @@ export async function readCliConversation(cwd: string, id: string, home?: string
 		return undefined;
 	}
 	const { all } = parseSessionRecords(await fs.readFile(newest.file, 'utf8'), newest.file.endsWith('.json'));
+	return conversationOf(all);
+}
+
+/** `messages` as the user saw them: prompts and the model's text, without the CLI's context, commands, thoughts and tool results. */
+export function conversationOf(messages: readonly MessageRecord[]): ConversationEntry[] {
 	const entries: ConversationEntry[] = [];
-	for (const message of all) {
+	for (const message of messages) {
 		const text = textOf(message.content).trim();
 		if (message.type === 'user' && isPrompt(text)) {
 			entries.push({ role: 'user', text });
