@@ -16,13 +16,16 @@ Every GeminiCode shortcut in one place. ⌘ is Command, ⌥ is Option, ⇧ is Sh
 | Keys | What it does |
 | --- | --- |
 | <kbd>↩</kbd> / <kbd>⇧↩</kbd> (chat input) | Send, or start a new line |
+| <kbd>↩</kbd> (chat input, agent working) | Send now: the agent takes the message after its current step |
+| <kbd>⌘↩</kbd> (chat input, agent working) | Queue the message for after the agent's turn |
+| <kbd>↑</kbd> (empty chat input, messages queued) | Take the last queued message back to edit |
 | <kbd>esc</kbd> <kbd>esc</kbd> (chat input, agent working) | Stop the agent |
 | <kbd>esc</kbd> (chat input) | Cancel Enhance prompt |
 | <kbd>esc</kbd> <kbd>esc</kbd> (empty chat input) | Rewind to before one of your messages |
 | <kbd>⌘N</kbd> (chat) | New chat |
 | <kbd>⌘L</kbd> | Add the selection to the agent in front, or to a new agent |
 | <kbd>⌥⌘E</kbd> | Enhance prompt |
-| <kbd>↑</kbd> / <kbd>↓</kbd> (empty chat input) | Bring back an earlier prompt |
+| <kbd>↑</kbd> / <kbd>↓</kbd> (empty chat input) | Bring back an earlier prompt, once no message is queued |
 | <kbd>⌥⌘↑</kbd> / <kbd>⌥⌘↓</kbd> (chat) | Jump to your previous or next prompt |
 | <kbd>⌘B</kbd> / <kbd>⌘E</kbd> (chat input) | Make the selection bold, or code |
 | <kbd>⇧⌘V</kbd> (chat input) | Switch between Write and Preview |

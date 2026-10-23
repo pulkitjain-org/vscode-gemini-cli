@@ -28,6 +28,7 @@ import { coalesceUpdates } from './chatLogic';
 import { addAttachments, setSharedPage } from './attachmentChips';
 import { attachToolRef, setToolRefContext, toolRefResolved, watchToolRefs } from './toolChips';
 import { setBusy, setFollow, setFollowed, setGit, setSettings, setStatus } from './composer';
+import { setQueue } from './queueStrip';
 import { applyTokenColors } from './codeHighlight';
 import { onEnhanced, onEnhanceFailed, onEnhanceProgress, replaceInput, toggleEnhance } from './enhance';
 import { openForkDialog } from './fork';
@@ -132,6 +133,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'busy':
 			setBusy(message.busy);
+			break;
+		case 'queue':
+			setQueue(message.items);
 			break;
 		case 'status':
 			setStatus(message.status);

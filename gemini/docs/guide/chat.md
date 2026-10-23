@@ -67,6 +67,17 @@ When the turn ends they fold under one line, such as **Worked for 3m 12s · read
 
 ![A finished turn opened, with its thoughts, searches, reads, commands and edits](../../site/media/docs/folded-turn-dark.webp)
 
+### Sending while the agent works
+
+You don't have to wait for the agent to finish. While it works, the composer says **↩ to send, ⌘↩ to queue for later**:
+
+- **↩ sends now.** The message shows above the input as **Sending after the current step**. As soon as no command or edit is running (straight away while the agent is thinking or writing, or at a permission card), the chat stops the turn and sends your message at once, telling the agent to adjust its plan and carry on. Use it to steer, such as "use pnpm, not npm" or "leave the tests alone".
+- **⌘↩ queues.** The message shows as **Queued: goes after this turn**, and is sent when the turn finishes. Several queued messages go together as one.
+
+Each waiting message has **Send now**, **Edit** and **Remove**. <kbd>↑</kbd> in the empty input takes the last queued one back to edit. If you stop the agent (<kbd>esc</kbd> <kbd>esc</kbd>), or the turn fails, nothing goes by itself: the messages stay queued until you send them.
+
+Sending now stops the turn between steps rather than mid-command, so a running command or edit always finishes. The turn you steered gets its own end line and **Undo**, and the steered message starts a new turn. The Gemini CLI can't add a message to a turn that is running in GeminiCode, so this costs one more model request, mostly from its cache.
+
 When the agent hands part of the work to one of the Gemini CLI's subagents (such as the Codebase Investigator, or your own in `.gemini/agents/`), the chat shows a **Subagent** row with its name and how long it has worked. Click it to read the subagent's report.
 
 ## Replies

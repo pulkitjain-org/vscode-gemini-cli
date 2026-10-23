@@ -225,6 +225,17 @@ Read from gemini-cli 0.64.0's bundle and checked by `realSessionSnapshot.test.ts
 - **Paths outside the folder are refused.** In the copy, a write to the parent's folder fails with "Path not in workspace ... resolves outside the allowed workspace directories".
 - A loaded session starts on Auto unless a model is set, so its first request routes through Flash-Lite first.
 
+## Steering a running turn
+
+Read from gemini-cli 0.64.0's bundle and the 0.67.0 nightly of 2026-10-23 (the ACP loop is the same in both):
+
+- **The terminal UI queues by default.** A message typed while the agent works waits and goes as the next prompt once the turn ends.
+- **Steering mid-turn is terminal-only and experimental.** With `experimental.modelSteering` on (off by default), a message typed while tools run is kept as a `user_steering` injection (`injectionService.addInjection`) and put in front of the next tool results as "User steering update", with `USER_STEERING_INSTRUCTION` telling the model to change only the tasks it affects. That happens in the terminal UI's `useGeminiStream`, not in core.
+- **ACP has neither.** The ACP session's `prompt()` sends each round's tool results straight back (`currentParts = toolResponseParts`) without reading injections, and the agent has no extension method or notification for a client to add one. A second `session/prompt` while one runs aborts the running one first (`pendingPrompt.abort()`).
+- **Hooks are no way in.** `BeforeAgent` fires once per prompt id, `AfterTool` does not run on the ACP tool path (`runTool` calls `invocation.execute` directly), and `BeforeModel` changes only the one request.
+
+So the chat steers by stopping at a point where no tool runs and sending the message straight away, with the CLI's own steering wording as a hidden note (`promptQueue.ts`).
+
 ## Subagents
 
 The CLI's `invoke_agent` tool reaches ACP as one `think` tool call titled `Delegating to agent '<name>'` and its final report. The subagent's own steps are not sent.

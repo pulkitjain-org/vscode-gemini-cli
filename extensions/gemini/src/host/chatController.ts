@@ -17,6 +17,7 @@ import { ChatTranscript, ForkContext, ThreadCard, toolCallItemId, TranscriptItem
 import { buildModeAfterPlan, diffsOf, dropOldest, lastPromptAt, runningStep, turnShape, wasCutOff } from '../acp/chatTurns';
 import type { StoredCheckpoints } from '../acp/checkpoints';
 import { buildPromptContent } from '../acp/promptContent';
+import { atSafePoint, PromptQueue, steeringNote } from '../acp/promptQueue';
 import { TeamCommandCancelled } from '../acp/teamCommandExpansion';
 import { ConversationEntry, readCliConversation } from '../acp/cliSessions';
 import { isModelOutput } from '../acp/sessionUpdates';
@@ -92,6 +93,13 @@ export class ChatController implements vscode.Disposable {
 	private lastStep: string | undefined;
 	/** Sessions told about the folder's index already. */
 	private readonly hintedSessions = new Set<string>();
+
+	/** Messages sent while the agent works: queued for after the turn, or steering it at its next safe point. */
+	private readonly queue = new PromptQueue();
+	/** The turn is being stopped to send the messages that steer it. */
+	private steerStopping = false;
+	/** A prompt's turn is running; other work that keeps the chat busy (Compact, Undo, a new session) is not one. */
+	private turnRunning = false;
 
 	/** The last prompt, for Retry. */
 	private lastPrompt: { readonly text: string; readonly attachments: readonly Attachment[] } | undefined;
@@ -213,6 +221,7 @@ export class ChatController implements vscode.Disposable {
 				}
 				this.permissions.apply(event);
 				this.fireActivity();
+				this.trySteer();
 			}),
 			this.transcript,
 			this.transcript.onDidChangeItem(item => this.items.push(item)),
@@ -254,6 +263,7 @@ export class ChatController implements vscode.Disposable {
 					}
 					if (event.kind === 'toolCall') {
 						this.follow.onToolCall(event.call);
+						this.trySteer();
 					}
 					if (event.kind === 'toolCall' && this.activity.step !== this.lastStep) {
 						this.fireActivity();
@@ -412,8 +422,13 @@ export class ChatController implements vscode.Disposable {
 		return this.busy;
 	}
 
-	/** Sends a prompt as if typed in the view; `from` marks one its project's coordinator sent. */
-	async send(text: string, attachments: readonly Attachment[] = [], from?: 'coordinator'): Promise<void> {
+	/**
+	 * Sends a prompt as if typed in the view; `from` marks one its project's
+	 * coordinator sent. While the agent works, `when` decides: `queue` holds
+	 * it until the turn ends, `now` steers the turn at its next safe point;
+	 * without it the prompt is dropped, as before.
+	 */
+	async send(text: string, attachments: readonly Attachment[] = [], from?: 'coordinator', when?: 'now' | 'queue'): Promise<void> {
 		attachments = attachments.filter(isValidAttachment);
 		if (!text.trim() && !attachments.length) {
 			return;
@@ -430,6 +445,11 @@ export class ChatController implements vscode.Disposable {
 			return;
 		}
 		if (this.busy) {
+			if (when && !from) {
+				this.queue.add(text, attachments, when === 'now');
+				this.postQueue();
+				this.trySteer();
+			}
 			return;
 		}
 		if (this.options.savedSessions && text.trim() === `/${resumeCommand().name}` && !attachments.length) {
@@ -486,12 +506,16 @@ export class ChatController implements vscode.Disposable {
 		await this.runTurn(text, [], false);
 	}
 
-	private async runTurn(text: string, attachments: readonly Attachment[], expand: boolean): Promise<void> {
+	/** `steer` carries on after a turn stopped for messages sent now: the agent is told why it stopped. */
+	private async runTurn(text: string, attachments: readonly Attachment[], expand: boolean, steer = false): Promise<void> {
+		this.turnRunning = true;
 		this.checkpoints.beginTurn();
 		this.setBusy(true);
 		const started = Date.now();
 		let ended = false;
 		let overflowed = false;
+		/** How the turn came to an end, for the messages waiting on it. */
+		let outcome: 'done' | 'steer' | 'stopped' = 'stopped';
 		this.timing = { started, permissions: 0 };
 		try {
 			await this.service.ensureReady();
@@ -528,6 +552,9 @@ export class ChatController implements vscode.Disposable {
 			if (context) {
 				content.unshift({ type: 'text', text: context });
 			}
+			if (steer) {
+				content.unshift({ type: 'text', text: steeringNote() });
+			}
 			this.timing.sent = Date.now();
 			recordPilot({ kind: 'prompt', waitedMs: this.timing.ready - started });
 			const { stopReason, usage } = await this.promptRecovering(content);
@@ -536,12 +563,15 @@ export class ChatController implements vscode.Disposable {
 				this.pendingContext = undefined;
 			}
 			this.sessions.delivered(carried);
-			const notice = stopReasonNotice(stopReason);
+			// Stopped to steer: no "Stopped." notice, since the agent carries on with the messages at once.
+			const steered = stopReason === 'cancelled' && this.steerStopping && this.queue.hasSteer;
+			const notice = steered ? undefined : stopReasonNotice(stopReason);
 			if (notice) {
 				this.transcript.addNotice(notice, stopReason === 'refusal' ? 'error' : 'info');
 			}
 			this.endTurn(Date.now() - started, usage);
 			ended = true;
+			outcome = steered ? 'steer' : stopReason === 'end_turn' ? 'done' : 'stopped';
 		} catch (err) {
 			if (isContextOverflow(errorMessage(err))) {
 				overflowed = true;
@@ -553,11 +583,96 @@ export class ChatController implements vscode.Disposable {
 				// The turn failed after changing files; they can still be undone.
 				this.endTurn(Date.now() - started);
 			}
-			this.setBusy(false);
+			this.steerStopping = false;
+			// Stopped to steer, the chat stays busy into the next turn.
+			if (outcome !== 'steer') {
+				this.setBusy(false);
+			}
 			void this.usage.postContext();
 		}
 		if (overflowed) {
+			this.queue.holdSteers();
+			this.postQueue();
 			await this.continueAfterOverflow(expand ? text : undefined);
+			this.turnRunning = false;
+			return;
+		}
+		this.turnRunning = false;
+		await this.sendPending(outcome);
+	}
+
+	/**
+	 * After a turn: messages sent now go at once, steering a stopped turn or
+	 * starting the next one if the turn ended first; queued ones go when the
+	 * turn finished, all together. A turn the user stopped, or that failed,
+	 * keeps them waiting, and what was sent now waits like a queued message.
+	 */
+	private async sendPending(outcome: 'done' | 'steer' | 'stopped'): Promise<void> {
+		if (outcome !== 'steer' && this.busy) {
+			return;
+		}
+		if (outcome === 'stopped') {
+			if (this.queue.hasSteer) {
+				this.queue.holdSteers();
+				this.postQueue();
+			}
+			return;
+		}
+		const next = outcome === 'steer' || this.queue.hasSteer ? this.queue.takeSteers() : this.queue.takeAll();
+		this.postQueue();
+		if (!next) {
+			if (outcome === 'steer') {
+				this.setBusy(false);
+			}
+			return;
+		}
+		this.transcript.addPrompt(next.text, next.attachments);
+		this.onDidSendPromptEmitter.fire(next.text);
+		this.lastPrompt = next;
+		await this.runTurn(next.text, next.attachments, true, outcome === 'steer');
+	}
+
+	/** Stops the turn for the messages sent now, once no tool is running; a running tool's end calls this again. */
+	private trySteer(): void {
+		if (!this.busy || this.quiet || this.steerStopping || !this.queue.hasSteer) {
+			return;
+		}
+		const waiting = this.service.permissions.pendingPermissions.length > 0;
+		if (!atSafePoint(this.transcript.items, waiting)) {
+			return;
+		}
+		this.steerStopping = true;
+		void this.service.cancel();
+	}
+
+	private postQueue(): void {
+		this.post({ type: 'queue', items: this.queue.view });
+	}
+
+	/** A pending message's buttons in the composer. */
+	private queueAction(id: string, action: 'send' | 'edit' | 'remove'): void {
+		if (action === 'send') {
+			if (!this.busy) {
+				const prompt = this.queue.remove(id);
+				this.postQueue();
+				if (prompt) {
+					void this.send(prompt.text, prompt.attachments);
+				}
+				return;
+			}
+			if (this.queue.steer(id)) {
+				this.postQueue();
+				this.trySteer();
+			}
+			return;
+		}
+		const prompt = this.queue.remove(id);
+		this.postQueue();
+		if (action === 'edit' && prompt) {
+			this.post({ type: 'draft', text: prompt.text });
+			if (prompt.attachments.length) {
+				void this.attachments.add(prompt.attachments);
+			}
 		}
 	}
 
@@ -796,6 +911,7 @@ export class ChatController implements vscode.Disposable {
 				this.follow.postFollowing();
 				this.follow.postFollowed();
 				this.attachments.postPending();
+				this.postQueue();
 				this.usage.onReady();
 				this.git.refresh();
 				void this.sharedPage.refresh();
@@ -806,12 +922,21 @@ export class ChatController implements vscode.Disposable {
 				setTimeout(() => void this.postTokenColors(), 0);
 				break;
 			case 'prompt':
-				void this.send(message.text, message.attachments ?? []);
+				void this.send(message.text, message.attachments ?? [], undefined, message.when);
+				break;
+			case 'queueAction':
+				this.queueAction(message.id, message.action);
 				break;
 			case 'composerHeight':
 				rememberComposerHeight(message.height);
 				break;
 			case 'stop':
+				// Stop means stop: messages sent now wait instead, for the user to send.
+				this.steerStopping = false;
+				if (this.queue.hasSteer) {
+					this.queue.holdSteers();
+					this.postQueue();
+				}
 				void this.service.cancel();
 				break;
 			case 'command':
@@ -947,6 +1072,8 @@ export class ChatController implements vscode.Disposable {
 	/** Clears the conversation and what the chat keeps about it: proposed edits, checkpoints, Retry, and what the next prompt would carry. */
 	private clearConversation(): void {
 		this.transcript.clear();
+		this.queue.clear();
+		this.postQueue();
 		this.files.clear();
 		this.completedToolCalls.clear();
 		this.checkpoints.clear();
@@ -971,7 +1098,12 @@ export class ChatController implements vscode.Disposable {
 		if (busy && !this.busy) {
 			this.turnStartedAt = lastPromptAt(this.transcript.items) ?? Date.now();
 		}
+		const finished = this.busy && !busy;
 		this.busy = busy;
+		if (finished && !this.turnRunning && this.queue.pending.length) {
+			// Messages sent during other work, such as Compact, go once it is done.
+			setTimeout(() => void this.sendPending('done'), 0);
+		}
 		if (this.options.busyContextKey) {
 			void vscode.commands.executeCommand('setContext', this.options.busyContextKey, busy);
 		}

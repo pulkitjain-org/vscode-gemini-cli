@@ -31,8 +31,16 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		...(project ? { project: projectStrings() } : {}),
 		...(fork ? { fork: forkStrings() } : {}),
 		placeholderFollowUp: vscode.l10n.t("Ask a follow-up"),
+		placeholderWorking: process.platform === 'darwin' ? vscode.l10n.t("↩ to send, ⌘↩ to queue for later") : vscode.l10n.t("Enter to send, Ctrl+Enter to queue for later"),
 		send: process.platform === 'darwin' ? vscode.l10n.t("Send (Return)") : vscode.l10n.t("Send (Enter)"),
+		sendNow: process.platform === 'darwin' ? vscode.l10n.t("Send now (Return). ⌘Return queues it for after this turn.") : vscode.l10n.t("Send now (Enter). Ctrl+Enter queues it for after this turn."),
 		stop: vscode.l10n.t("Stop (Esc Esc)"),
+		queued: vscode.l10n.t("Queued: goes after this turn"),
+		steering: vscode.l10n.t("Sending after the current step"),
+		queueSendNow: vscode.l10n.t("Send now"),
+		queueEdit: vscode.l10n.t("Edit"),
+		queueRemove: vscode.l10n.t("Remove"),
+		queueAttached: vscode.l10n.t("{0} attached"),
 		replyFinished: vscode.l10n.t("Reply finished"),
 		welcomeTitle: vscode.l10n.t("What are we building?"),
 		welcome: vscode.l10n.t("Ask Gemini to explain, change or create code in this workspace. It asks before it edits files."),
@@ -327,6 +335,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			<div class="drop-overlay" aria-hidden="true"><i class="codicon codicon-cloud-upload"></i><span id="drop-label"></span></div>
 			<div id="picker" class="picker" role="listbox" hidden></div>
 			<div id="usage-popover" class="usage-popover" role="dialog" hidden></div>
+			<div id="queue" class="queue" role="list" hidden></div>
 			<div id="attachments" class="attachments" hidden></div>
 			<div class="composer-tabs" role="tablist"><button type="button" id="tab-write" class="composer-tab" role="tab" aria-selected="true" aria-controls="input"></button><button type="button" id="tab-preview" class="composer-tab" role="tab" aria-selected="false" aria-controls="preview"></button></div>
 			<div id="preview" class="composer-preview markdown" role="tabpanel" tabindex="0" hidden></div>

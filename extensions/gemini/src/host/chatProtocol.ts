@@ -15,12 +15,13 @@ import type { SessionSettings } from '../acp/sessionSettings';
 import type { SlashCommand } from '../acp/slashCommands';
 import type { AgentPhase } from '../acp/status';
 import type { TokenColors } from '../acp/tokenColors';
+import type { PendingPromptView } from '../acp/promptQueue';
 
 /**
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 32;
+export const chatProtocolVersion = 33;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
@@ -252,8 +253,20 @@ export interface ChatStrings {
 	/** The badge on a thread's brief and the notes its coordinator relays. */
 	readonly fromCoordinator: string;
 	readonly placeholderFollowUp: string;
+	/** While the agent works: how Return sends now and ⌘Return queues. */
+	readonly placeholderWorking: string;
 	readonly send: string;
+	/** Send while the agent works: it steers the running turn. */
+	readonly sendNow: string;
 	readonly stop: string;
+	/** The strip of messages sent while the agent works. */
+	readonly queued: string;
+	readonly steering: string;
+	readonly queueSendNow: string;
+	readonly queueEdit: string;
+	readonly queueRemove: string;
+	/** "{0} attached", for a pending message with attachments. */
+	readonly queueAttached: string;
 	/** Read out by screen readers when a turn ends. */
 	readonly replyFinished: string;
 	/** The empty chat's heading, and the line and hints under it. */
@@ -682,7 +695,10 @@ export type FromWebview =
 	| { readonly type: 'ready'; readonly protocol?: number }
 	/** The transcript from `reset` is on screen. */
 	| { readonly type: 'shown' }
-	| { readonly type: 'prompt'; readonly text: string; readonly attachments: readonly Attachment[] }
+	/** `when` matters only while the agent works: `now` steers the running turn, `queue` waits for it to end. */
+	| { readonly type: 'prompt'; readonly text: string; readonly attachments: readonly Attachment[]; readonly when?: 'now' | 'queue' }
+	/** A pending message's buttons: send it now, take it back into the box, or drop it. */
+	| { readonly type: 'queueAction'; readonly id: string; readonly action: 'send' | 'edit' | 'remove' }
 	/** The @-mention picker wants files matching `query`; answered with `files` carrying the same `requestId`. */
 	| { readonly type: 'searchFiles'; readonly requestId: number; readonly query: string }
 	/** The "/" menu opened; answered with `commands`. */
@@ -792,6 +808,8 @@ export type ToWebview =
 	/** Added or changed items, in the order they first changed; streaming updates are batched. */
 	| { readonly type: 'items'; readonly items: readonly ItemUpdate[] }
 	| { readonly type: 'busy'; readonly busy: boolean }
+	/** The messages sent while the agent works that have not gone yet, oldest first. */
+	| { readonly type: 'queue'; readonly items: readonly PendingPromptView[] }
 	/** The view's tab or pane went out of sight, or came back: a hidden view keeps updates and renders them when shown. */
 	| { readonly type: 'visibility'; readonly hidden: boolean }
 	| { readonly type: 'status'; readonly status: ViewStatus }
