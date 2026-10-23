@@ -70,6 +70,9 @@ export class BrowserTools implements vscode.Disposable {
 			}),
 			vscode.commands.registerCommand('_gemini.browser.addToPrompt', (context: unknown, agent: unknown) =>
 				this.addToPrompt(context as PageContext, typeof agent === 'string' ? agent : undefined)),
+			// The workbench asks before an agent's page loads a file (geminiAgentFiles.ts in the browser view's main process code).
+			vscode.commands.registerCommand('_gemini.browser.fileAllowed', (agent: unknown, url: unknown) =>
+				typeof agent === 'string' && typeof url === 'string' && this.host.fileAllowed(agent, url)),
 			vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.browser.enabled`) && this.applyEnabled()),
 		);
 		this.applyEnabled();

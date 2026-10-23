@@ -20,12 +20,14 @@ import { encodeBase64 } from '../../../../base/common/buffer.js';
 import { Codicon } from '../../../../base/common/codicons.js';
 import { Event } from '../../../../base/common/event.js';
 import { KeyCode, KeyMod } from '../../../../base/common/keyCodes.js';
-import { DisposableStore } from '../../../../base/common/lifecycle.js';
+import { Disposable, DisposableStore, toDisposable } from '../../../../base/common/lifecycle.js';
 import { ThemeIcon } from '../../../../base/common/themables.js';
 import { ProxyChannel } from '../../../../base/parts/ipc/common/ipc.js';
+import { ipcRenderer } from '../../../../base/parts/sandbox/electron-browser/globals.js';
 import { localize, localize2 } from '../../../../nls.js';
 import { Action2, MenuId, MenuRegistry, registerAction2 } from '../../../../platform/actions/common/actions.js';
 import { BrowserElementSelectionMode, BrowserViewStorageScope, getAgentBrowserViewCreationDefaults, IBrowserViewRect, IBrowserViewService, IElementData, ipcBrowserViewChannelName } from '../../../../platform/browserView/common/browserView.js';
+import { GeminiAgentFileAnswerChannel, GeminiAgentFileRequestChannel, geminiAgentOf, geminiAgentSessionPrefix, IGeminiAgentFileRequest } from '../../../../platform/browserView/common/geminiAgentFiles.js';
 import { IPlaywrightService } from '../../../../platform/browserView/common/playwrightService.js';
 import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
@@ -38,6 +40,7 @@ import { INotificationService } from '../../../../platform/notification/common/n
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { IWorkspaceContextService, WorkbenchState } from '../../../../platform/workspace/common/workspace.js';
 import { IWorkspaceTrustManagementService } from '../../../../platform/workspace/common/workspaceTrust.js';
+import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
 import { EditorsOrder } from '../../../common/editor.js';
 import { IEditorGroupsService } from '../../../services/editor/common/editorGroupsService.js';
 import { IEditorService, SIDE_GROUP } from '../../../services/editor/common/editorService.js';
@@ -48,8 +51,6 @@ import { BROWSER_EDITOR_ACTIVE, BrowserActionCategory, BrowserActionGroup, Brows
 import { ChatContextKeys } from '../../chat/common/actions/chatContextKeys.js';
 import './geminiBrowser.css';
 
-/** Agent sessions are `gemini-agent:<key>`; the key is the extension's id for the agent. */
-const sessionPrefix = 'gemini-agent:';
 const pageReadyTimeoutMs = 8000;
 const navigationTimeoutMs = 30000;
 const actionTimeoutMs = 30000;
@@ -59,11 +60,11 @@ function sessionOf(key: unknown): string {
 	if (typeof key !== 'string' || !/^[\w-]{1,80}$/.test(key)) {
 		throw new Error('Invalid agent key');
 	}
-	return sessionPrefix + key;
+	return geminiAgentSessionPrefix + key;
 }
 
 function keyOf(model: IBrowserViewModel): string | undefined {
-	return model.owner.type === 'agent' && model.owner.sessionId.startsWith(sessionPrefix) ? model.owner.sessionId.slice(sessionPrefix.length) : undefined;
+	return geminiAgentOf(model.owner);
 }
 
 /** The pages an agent owns, by id. */
@@ -216,6 +217,10 @@ CommandsRegistry.registerCommand('_gemini.browser.share', async (accessor, key: 
 	try {
 		await views.setAudience(model.id, { type: 'agent', sessionId: session }, true);
 		await model.setOwner({ type: 'agent', sessionId: session });
+		if (parsed.protocol === 'file:') {
+			// It loaded its frames and files as the user's page: loading it again checks them as the agent's.
+			await model.reload();
+		}
 		await playwright.waitForPageAndGetSummary(session, model.id, model.url, pageReadyTimeoutMs);
 		await playwright.invokeFunctionRaw(session, model.id, recordNetwork).catch(() => undefined);
 		return { url: await playwright.invokeFunctionRaw<string>(session, model.id, currentUrl), title: model.title };
@@ -392,6 +397,31 @@ CommandsRegistry.registerCommand('_gemini.browser.close', async (accessor, key: 
 	await Promise.all([...released, editorService.closeEditors(editors)]);
 	await playwright.disposeSession(session);
 });
+
+/**
+ * Answers the main process, which asks before a Gemini agent's page loads a
+ * file (platform/browserView/electron-main/geminiAgentFiles.ts): the Gemini
+ * extension checks it against the agent's file access policy. A load nobody
+ * answers for fails.
+ */
+class GeminiAgentFileChecks extends Disposable implements IWorkbenchContribution {
+
+	static readonly ID = 'workbench.contrib.geminiAgentFileChecks';
+
+	constructor(@ICommandService private readonly commandService: ICommandService) {
+		super();
+		const onRequest = (_event: unknown, ...args: unknown[]) => void this.answer(args[0] as IGeminiAgentFileRequest);
+		ipcRenderer.on(GeminiAgentFileRequestChannel, onRequest);
+		this._register(toDisposable(() => ipcRenderer.removeListener(GeminiAgentFileRequestChannel, onRequest)));
+	}
+
+	private async answer({ id, agent, url }: IGeminiAgentFileRequest): Promise<void> {
+		const allowed = await this.commandService.executeCommand<boolean>('_gemini.browser.fileAllowed', agent, url).catch(() => false);
+		ipcRenderer.send(GeminiAgentFileAnswerChannel, id, allowed === true);
+	}
+}
+
+registerWorkbenchContribution2(GeminiAgentFileChecks.ID, GeminiAgentFileChecks, WorkbenchPhase.BlockRestore);
 
 /** Whether the page in the browser editor is an agent's (any agent's), so it can't be handed over. */
 const pageIsAgents = new RawContextKey<boolean>('geminiBrowserPageIsAgents', false, localize('gemini.browser.pageIsAgents', "Whether an agent is using the page in the browser editor"));

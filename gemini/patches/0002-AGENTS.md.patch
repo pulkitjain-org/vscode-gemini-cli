@@ -1,8 +1,8 @@
 diff --git a/AGENTS.md b/AGENTS.md
-index d6abb76ab8384fb7b391b551b159002657c218c1..fcad2ad23afe10c380be0f95d47e608453d658d5 100644
+index d6abb76ab8384fb7b391b551b159002657c218c1..afdb705f048e5dfb4641a81460105895119d84c5 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -1,3 +1,77 @@
+@@ -1,3 +1,82 @@
 +# GeminiCode fork
 +
 +This repository is GeminiCode, a fork of VS Code with the Gemini CLI built in. Before changing anything, read [gemini/README.md](gemini/README.md) and the [design rules](gemini/docs/ARCHITECTURE.md#design-rules). In short:
@@ -43,6 +43,11 @@ index d6abb76ab8384fb7b391b551b159002657c218c1..fcad2ad23afe10c380be0f95d47e6084
 +- Anything Home opens (Run Checks, Log Time, Move, Connections, Project Helpers, a merge request review) opens as a tab in the active group, with `vscode.ViewColumn.Active`. Never `ViewColumn.Beside`: that splits Home.
 +- An agent's own files, diffs and pages go in that agent's side group (`agentColumn` in `src/host/editorPlacement.ts`), and only after the agent's tab is in front. The side group shows only with its agent, so it never sits beside Home.
 +- In the workbench, team-flow pages do not make a group "the agents' group" (`isAgentsTab` in `src/vs/workbench/contrib/gemini/electron-browser/geminiAgentGroups.ts`). Without that, the next agent opens beside the flow page and Home ends up in three columns.
++
++### The agents' browser
++
++- Checking the URL an agent opens is not enough. Electron gives `file:` pages fetch, workers and access to `file:` frames, so a page the agent wrote can show it any file the browser serves. Every file a Gemini agent's page loads is checked against the agent's file policy in the main process (`src/vs/platform/browserView/electron-main/geminiAgentFiles.ts`), which asks the extension (`fileAllowed` in `src/acp/browserMcp.ts`).
++- Workers load `file:` URLs where neither `webRequest` nor the session's `file:` handler sees them, so agents' documents get `worker-src 'none'`. Test a change here with frames, fetch and workers in the real app, not only the snapshot.
 +
 +### Webviews
 +

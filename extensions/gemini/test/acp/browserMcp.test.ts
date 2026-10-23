@@ -207,6 +207,22 @@ describe('BrowserToolHost', () => {
 		expect(asked).toEqual([]);
 	});
 
+	it('lets a page load only the files the agent may read, and none once the browser is off', async () => {
+		const { host, asked, turnOff } = setup(true);
+		const loads = async () => Object.fromEntries(await Promise.all(Object.entries({
+			inside: fileUrl(workspace, 'img', 'logo.png'),
+			secret: fileUrl(workspace, '.env'),
+			ignored: fileUrl(workspace, 'debug.log'),
+			outside: fileUrl(path.resolve('/Users/me/.aws'), 'credentials'),
+			web: 'http://localhost:5173/app.js',
+			bad: 'not a url',
+		}).map(async ([name, url]) => [name, await host.fileAllowed('a1', url)])));
+		expect(await loads()).toEqual({ inside: true, secret: false, ignored: false, outside: false, web: false, bad: false });
+		turnOff();
+		expect(await loads()).toEqual({ inside: false, secret: false, ignored: false, outside: false, web: false, bad: false });
+		expect(asked).toEqual([]);
+	});
+
 	it('checks where the page really is: after a redirect on open, and on snapshot and screenshot', async () => {
 		const { browser, host, asked } = setup(false);
 		browser.redirects.set('http://localhost:3000/login', 'https://accounts.example.com/');
