@@ -111,3 +111,9 @@ async function comparable(folder: string): Promise<string> {
 	}
 	return process.platform === 'win32' || process.platform === 'darwin' ? resolved.toLowerCase() : resolved;
 }
+
+/** Whether the Gemini CLI trusts all of `folders`, or checks no folder's trust. */
+export async function foldersTrusted(folders: readonly string[], env: NodeJS.ProcessEnv, homedir: string = os.homedir()): Promise<boolean> {
+	const file = trustedFoldersPath(env, homedir);
+	return !await folderTrustApplies(env, homedir) || (await Promise.all(folders.map(each => isFolderTrusted(file, each)))).every(trusted => trusted === true);
+}

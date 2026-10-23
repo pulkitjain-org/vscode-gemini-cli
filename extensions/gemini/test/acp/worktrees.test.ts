@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { allThreadsHome, branchExists, commitAll, createWorktree, createWorktreeAt, currentBranch, folderInRepository, folderSize, freeFolder, git, mergeBranch, removeWorktree, repositoryRoot, restoreWorktree, runWorktreeSetup, threadGuide, threadsHome, worktreeSetupCommand, worktreesHome, worktreeStatus, writeThreadGuide } from '../../src/acp/worktrees';
+import { allThreadsHome, branchExists, commitAll, createWorktree, createWorktreeAt, currentBranch, folderInRepository, folderSize, freeBranchName, freeFolder, git, mergeBranch, pathExists, projectFolders, projectsHome, removeThreadFolder, removeWorktree, repositoryRoot, restoreWorktree, runWorktreeSetup, threadGuide, threadsHome, TurnQueue, worktreeSetupCommand, worktreesHome, worktreeStatus, writeThreadGuide } from '../../src/acp/worktrees';
 
 let root: string;
 let repo: string;
@@ -145,6 +145,27 @@ describe('threads in several repositories', () => {
 		expect(await repositoryRoot(folder)).toBeUndefined();
 	});
 
+	it('names a branch free in every repository, and removes the thread\'s worktrees and folder', async () => {
+		const cms = path.join(root, 'cms');
+		await fs.mkdir(cms);
+		await git(cms, ['init', '--quiet', '--initial-branch=main']);
+		await fs.writeFile(path.join(cms, 'labels.json'), '{}\n');
+		await commitAll(cms, 'Initial');
+		await git(cms, ['branch', 'gemini/gift']);
+		await git(cms, ['branch', 'gemini/gift-2']);
+		const branch = await freeBranchName([repo, cms], 'gemini/gift');
+		const folder = path.join(threadsHome('p1', home), 'gift');
+		const repos = await Promise.all([repo, cms].map(async repository => ({ ...await createWorktreeAt(repository, branch, path.join(folder, path.basename(repository))), key: path.basename(repository), repository })));
+		await removeThreadFolder(repos, folder, true, home);
+		expect({
+			branch,
+			free: await freeBranchName([repo], 'gemini/other'),
+			folder: await pathExists(folder),
+			threadsHome: await pathExists(threadsHome('p1', home)),
+			branches: [await branchExists(repo, branch), await branchExists(cms, branch)],
+		}).toEqual({ branch: 'gemini/gift-3', free: 'gemini/other', folder: false, threadsHome: true, branches: [false, false] });
+	});
+
 	it('leaves the memory out of the guide when there is none', () => {
 		expect(threadGuide([{ key: 'shop' }], 'b')).not.toContain('# Project memory');
 	});
@@ -168,5 +189,30 @@ describe('worktree setup', () => {
 		expect(output.trim()).toBe('copied on gemini/setup');
 		expect(await fs.readFile(path.join(worktree.folder, '.env'), 'utf8')).toBe('KEY=1\n');
 		expect(await runWorktreeSetup('exit 3', worktree, repo, () => undefined)).toBe(3);
+	});
+});
+
+describe('project folders', () => {
+	it('names the folders a project needs trusted', () => {
+		expect([projectFolders(repo, false, home), projectFolders(repo, true, home)]).toEqual([
+			[projectsHome(home), worktreesHome(repo, home)],
+			[projectsHome(home), worktreesHome(repo, home), allThreadsHome(home)],
+		]);
+	});
+});
+
+describe('TurnQueue', () => {
+	it('runs tasks one at a time per key, after a failed one too, and other keys at once', async () => {
+		const queue = new TurnQueue();
+		const order: string[] = [];
+		let release!: () => void;
+		const first = queue.run('a', () => new Promise<void>(resolve => { release = resolve; }).then(() => { order.push('a1'); }));
+		const failed = queue.run('a', async () => { order.push('a2'); throw new Error('no'); });
+		const third = queue.run('a', async () => { order.push('a3'); return 3; });
+		await queue.run('b', async () => { order.push('b1'); });
+		release();
+		await first;
+		await expect(failed).rejects.toThrow('no');
+		expect({ third: await third, order }).toEqual({ third: 3, order: ['b1', 'a1', 'a2', 'a3'] });
 	});
 });

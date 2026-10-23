@@ -326,3 +326,64 @@ export function runWorktreeSetup(command: string, worktree: AgentWorktree, repos
 		child.on('close', code => resolve(code ?? -1));
 	});
 }
+
+/** `branch`, or `branch-2`, `branch-3`... when taken in any of `repositories`. */
+export async function freeBranchName(repositories: readonly string[], branch: string): Promise<string> {
+	for (let n = 1; ; n++) {
+		const candidate = n === 1 ? branch : `${branch}-${n}`;
+		if (!(await Promise.all(repositories.map(repository => branchExists(repository, candidate)))).some(Boolean)) {
+			return candidate;
+		}
+	}
+}
+
+/** Removes a multi-repository thread's worktrees, then its folder, which GeminiCode made and holds nothing else of the user's. */
+export async function removeThreadFolder(repos: readonly RepoWorktree[], folder: string, deleteBranch: boolean, home: string = os.homedir()): Promise<void> {
+	const results = await Promise.allSettled(repos.map(repo => removeWorktree(repo.repository, repo, deleteBranch)));
+	if (path.dirname(path.dirname(folder)) === allThreadsHome(home)) {
+		await fs.rm(folder, { recursive: true, force: true });
+	}
+	const failed = results.find(result => result.status === 'rejected');
+	if (failed) {
+		throw failed.reason;
+	}
+}
+
+/**
+ * The folders a project needs trusted: the coordinators' own, which hold
+ * nothing; the repository's threads' worktrees; and with several
+ * repositories, the folders that hold a worktree of each.
+ */
+export function projectFolders(repository: string, threads: boolean, home: string = os.homedir()): string[] {
+	return [projectsHome(home), worktreesHome(repository, home), ...threads ? [allThreadsHome(home)] : []];
+}
+
+/** Whether `folder` exists. */
+export async function pathExists(folder: string): Promise<boolean> {
+	try {
+		await fs.stat(folder);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/** Runs tasks one at a time per key, each once the last one queued under its key has ended, however it ended. */
+export class TurnQueue {
+
+	/** The last task queued under each key, while it runs. */
+	private readonly tails = new Map<string, Promise<void>>();
+
+	run<T>(key: string, task: () => Promise<T>): Promise<T> {
+		const previous = this.tails.get(key) ?? Promise.resolve();
+		const next = previous.catch(() => undefined).then(task);
+		const tail = next.then(() => undefined, () => undefined);
+		this.tails.set(key, tail);
+		void tail.then(() => {
+			if (this.tails.get(key) === tail) {
+				this.tails.delete(key);
+			}
+		});
+		return next;
+	}
+}
