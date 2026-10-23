@@ -134,6 +134,8 @@ export interface ChatControllerOptions {
 	/** The merge request review a reviewer agent works on, for the chip beside its branch. */
 	review?(): { readonly label: string; readonly tip: string } | undefined;
 	openReview?(): void;
+	/** Opens the Open Merge Request page for the agent's branch; unset when the team tools aren't set up. */
+	openMergeRequest?(): void;
 }
 
 /** A page shared with the agent: pinned to the composer, and named in every prompt until the user stops sharing it. */
@@ -1521,6 +1523,9 @@ export class ChatController implements vscode.Disposable {
 			case 'openReview':
 				this.options.openReview?.();
 				break;
+			case 'openMergeRequest':
+				this.options.openMergeRequest?.();
+				break;
 			case 'restoreSession':
 				if (typeof message.id === 'string') {
 					void this.restoreSession(message.id);
@@ -2198,6 +2203,8 @@ export class ChatController implements vscode.Disposable {
 			gitlabItem: vscode.l10n.t("GitLab merge request or issue"),
 			figmaFrame: vscode.l10n.t("Figma frame"),
 			pasteLink: vscode.l10n.t("paste link"),
+			openMergeRequest: vscode.l10n.t("Open Merge Request"),
+			openMergeRequestTip: vscode.l10n.t("Open a merge request on GitLab for this agent's branch"),
 			toolChipLoading: vscode.l10n.t("Reading\u2026"),
 			openToolItem: vscode.l10n.t("Open {0}"),
 			indexToolVerbs: {

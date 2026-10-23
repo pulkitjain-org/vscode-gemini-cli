@@ -16,6 +16,7 @@ import { closePicker, startCommand, startMention } from './picker';
 import { openNewThread } from './project';
 import { toolRefContext } from './toolChips';
 import { toolLogo } from './toolLogos';
+import { setTip } from './tooltip';
 import { contextPercent, toggleUsage } from './usage';
 import { state, strings, ui, vscode } from './view';
 
@@ -34,6 +35,7 @@ const menu = new Menu({
 	empty: () => strings.noCommands,
 	inside: [ui.modeChip],
 	returnFocus: () => input,
+	tip: setTip,
 	onOpen: () => {
 		closePicker();
 		page = 'main';
@@ -108,6 +110,18 @@ function sections(): MenuSection[] {
 			},
 		],
 	});
+	// Not in a project's coordinator chat, which runs in an empty folder with no branch.
+	if (!project && toolRefContext().connected.includes('gitlab')) {
+		result.push({
+			rows: [{
+				iconElement: () => toolLogo('gitlab', 14), name: strings.openMergeRequest, tooltip: strings.openMergeRequestTip,
+				run: () => {
+					closePlusMenu();
+					vscode.postMessage({ type: 'openMergeRequest' });
+				},
+			}],
+		});
+	}
 	const tools = fromYourTools();
 	if (tools.length) {
 		result.push({ heading: strings.fromYourTools, rows: tools });

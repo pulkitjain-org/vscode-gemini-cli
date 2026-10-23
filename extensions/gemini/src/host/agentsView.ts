@@ -2086,6 +2086,7 @@ export class AgentsView implements vscode.TreeDataProvider<Node>, vscode.Disposa
 				toolChips: () => this.teamTools && toolChipsFor(this.teamTools),
 				review: () => this.reviewChip?.(record.id),
 				openReview: () => this.openReview?.(record.id),
+				openMergeRequest: () => void vscode.commands.executeCommand('gemini.team.openMergeRequest', record.id),
 				...(project?.role === 'coordinator' ? { project: this.projects.chatProject(record.id) } : {}),
 				...(project?.role === 'thread' ? {
 					parentProject: {

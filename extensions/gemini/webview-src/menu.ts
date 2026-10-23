@@ -57,6 +57,8 @@ export interface MenuOptions {
 	/** Where focus goes once the menu closes; the anchor by default. */
 	readonly returnFocus?: () => HTMLElement;
 	readonly onOpen?: () => void;
+	/** Sets a row's tooltip, such as the themed `setTip`; the native title by default, so pages without the tooltip module stay small. */
+	readonly tip?: (node: HTMLElement, tip: string) => void;
 }
 
 const menus: Menu[] = [];
@@ -238,7 +240,12 @@ export class Menu {
 		if (end.childElementCount) {
 			node.append(end);
 		}
-		node.title = row.tooltip ?? (row.detail ? `${row.name}: ${row.detail}` : row.name);
+		const tip = row.tooltip ?? (row.detail ? `${row.name}: ${row.detail}` : row.name);
+		if (this.options.tip) {
+			this.options.tip(node, tip);
+		} else {
+			node.title = tip;
+		}
 		node.addEventListener('mousemove', () => {
 			if (this.active !== index) {
 				this.active = index;
