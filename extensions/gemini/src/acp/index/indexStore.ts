@@ -145,9 +145,18 @@ export class IndexStore {
 		}
 	}
 
-	fileStates(): Map<string, FileState> {
+	/**
+	 * What the index knows of each file, or only of `paths`: a few changed
+	 * files are looked up one by one rather than reading every row of a large
+	 * repository's index.
+	 */
+	fileStates(paths?: readonly string[]): Map<string, FileState> {
+		type Row = { path: string; size: number; mtime: number; hash: string; skipped: string | null };
+		const rows = paths
+			? paths.flatMap(p => (this.statement('SELECT path, size, mtime, hash, skipped FROM files WHERE path = ?').get(p) as Row | undefined) ?? [])
+			: this.statement('SELECT path, size, mtime, hash, skipped FROM files').all() as Row[];
 		const states = new Map<string, FileState>();
-		for (const row of this.statement('SELECT path, size, mtime, hash, skipped FROM files').all() as { path: string; size: number; mtime: number; hash: string; skipped: string | null }[]) {
+		for (const row of rows) {
 			states.set(row.path, { size: row.size, mtime: row.mtime, hash: row.hash, ...row.skipped ? { skipped: row.skipped } : {} });
 		}
 		return states;

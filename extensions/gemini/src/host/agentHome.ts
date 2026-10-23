@@ -29,6 +29,7 @@ import { projectsEnabled } from './projects';
 import { agentsColumn } from './editorPlacement';
 import { createNonce, escapeAttribute } from './webviewHtml';
 import { openTeamLink } from './teamLinks';
+import { indexBuildOn } from './workspaceIndex';
 
 const homeViewType = 'gemini.agentHome';
 const layoutKey = 'gemini.home.layout';
@@ -725,7 +726,7 @@ function homeIndex(summary: 'ready' | 'building' | 'paused' | 'failed' | 'none',
 		case 'failed':
 			return { state: 'none', label: `${vscode.l10n.t("Not indexed: the last build failed.")} ${open}` };
 		default: {
-			const buildOn = vscode.workspace.getConfiguration(configSection).get<string>('index.buildOn', 'agentStart');
+			const buildOn = indexBuildOn();
 			const when = buildOn === 'manual' ? vscode.l10n.t("Choose Index Now on the Index page to build one.") : buildOn === 'workspaceOpen' ? vscode.l10n.t("It is built when the window opens.") : vscode.l10n.t("It is built when an agent first starts here.");
 			return { state: 'none', label: `${vscode.l10n.t("Not indexed yet.")} ${when} ${open}` };
 		}
