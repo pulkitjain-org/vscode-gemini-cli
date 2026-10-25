@@ -139,7 +139,7 @@ function show(wrapper: HTMLElement, state: RunState, asked: boolean): void {
 		} else {
 			status.append(icon('error'), el('span', undefined, String(state.exitCode)));
 			status.classList.add('failed');
-			setTip(status, format(strings.run.failed, state.exitCode).replace('{1}', formatDuration(state.ms ?? 0)));
+			setTip(status, format(strings.run.failed, state.exitCode, formatDuration(state.ms ?? 0)));
 			status.append(button('run-send', strings.run.sendOutput, () => vscode.postMessage({ type: 'sendRunOutput', text: block.text })));
 		}
 		runButton.before(status);

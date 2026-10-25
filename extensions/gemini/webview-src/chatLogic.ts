@@ -5,6 +5,8 @@
 
 // The chat view's decisions that need no DOM, so they can be tested.
 
+/// <reference lib="es2025.intl" />
+
 import type { Attachment } from '../src/acp/attachments';
 import type { TranscriptItem } from '../src/acp/chatTranscript';
 import type { ItemUpdate, TextAppend } from '../src/acp/textDeltas';
@@ -12,9 +14,9 @@ import { thoughtPreview } from './streaming';
 
 export type ItemOf<K extends TranscriptItem['kind']> = Extract<TranscriptItem, { kind: K }>;
 
-/** Puts `value` in place of "{0}" in a localized string. */
-export function format(template: string, value: string | number): string {
-	return template.replace('{0}', String(value));
+/** Puts `values` in place of "{0}", "{1}" and so on in a localized string. */
+export function format(template: string, ...values: (string | number)[]): string {
+	return template.replace(/\{(\d+)\}/g, (match, i) => i < values.length ? String(values[Number(i)]) : match);
 }
 
 /** When a message was sent: the time alone today, with the day before that ("10:42", "3 Oct, 10:42"). */
@@ -28,14 +30,22 @@ export function formatSentAt(at: number, now: number, locale?: string): string {
 	return `${sent.toLocaleDateString(locale, sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' })}, ${time}`;
 }
 
-/** "12s", "2m 5s" or "1h 3m". */
-export function formatDuration(ms: number): string {
+/** Formatters for `formatDuration`, by locale and by its largest unit. */
+const durationFormats = new Map<string, Intl.DurationFormat>();
+
+/** "12s", "2m 5s" or "1h 3m" in English: the two largest units, narrow, as the locale writes them. */
+export function formatDuration(ms: number, locale?: string): string {
 	const seconds = Math.max(1, Math.round(ms / 1000));
-	if (seconds < 60) {
-		return `${seconds}s`;
-	}
 	const minutes = Math.floor(seconds / 60);
-	return minutes < 60 ? `${minutes}m ${seconds % 60}s` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+	const unit = seconds < 60 ? 'seconds' : minutes < 60 ? 'minutes' : 'hours';
+	const key = `${locale}|${unit}`;
+	let formatter = durationFormats.get(key);
+	if (!formatter) {
+		// The smaller unit shows even when it is 0 ("2m 0s"), as the larger one leads.
+		formatter = new Intl.DurationFormat(locale, { style: 'narrow', ...unit === 'minutes' ? { secondsDisplay: 'always' } : unit === 'hours' ? { minutesDisplay: 'always' } : {} });
+		durationFormats.set(key, formatter);
+	}
+	return formatter.format(unit === 'seconds' ? { seconds } : unit === 'minutes' ? { minutes, seconds: seconds % 60 } : { hours: Math.floor(minutes / 60), minutes: minutes % 60 });
 }
 
 /** How long a thought took, in whole seconds and at least one. */

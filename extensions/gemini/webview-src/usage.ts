@@ -184,7 +184,7 @@ function renderChat(): HTMLElement {
 	summary.append(figure(strings.usageOutput, usage.output));
 	section.append(summary);
 	if (usage.countedTurns < usage.turns) {
-		section.append(el('p', 'usage-note', strings.usageSomeCounted.replace('{0}', String(usage.countedTurns)).replace('{1}', String(usage.turns))));
+		section.append(el('p', 'usage-note', format(strings.usageSomeCounted, usage.countedTurns, usage.turns)));
 	}
 	section.append(moreLink(details ? strings.usageHideDetails : strings.usageDetails, details, () => details = !details));
 	if (!details) {

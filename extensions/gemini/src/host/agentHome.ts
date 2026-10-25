@@ -637,6 +637,9 @@ export class AgentHome implements vscode.Disposable {
 			commentTipVisibility: vscode.l10n.t("Who can see this comment in Jira"),
 			commentTipCancel: vscode.l10n.t("Close without posting. What you wrote is kept until Home closes."),
 			commentRemoveFile: vscode.l10n.t("Remove {0}"),
+			sizeBytes: vscode.l10n.t("{0} B"),
+			sizeKilobytes: vscode.l10n.t("{0} KB"),
+			sizeMegabytes: vscode.l10n.t("{0} MB"),
 			cancel: vscode.l10n.t("Cancel"),
 		};
 		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'home.js'));

@@ -60,3 +60,12 @@ describe('the composer', () => {
 		expect(attributes(names)).toEqual(Object.fromEntries(names.map(name => [name, null])));
 	});
 });
+
+describe('a turn\'s end', () => {
+	it('writes its times from the host\'s templates, with the numbers and units as the locale writes them', () => {
+		sendToPage({ type: 'foldWork', on: false });
+		sendToPage({ type: 'reset', items: [prompt, { id: 'e1', kind: 'turnEnd', durationMs: 125_000, firstTokenMs: 1400 }, { id: 'u2', kind: 'user', text: 'Again' }, { id: 'e2', kind: 'turnEnd', durationMs: 9000, firstTokenMs: 380 }], busy: false, status: { phase: 'ready', text: '' }, settings: {} });
+		expect([...document.querySelectorAll('.turn-end')].map(end => [end.querySelector('.worked-for')?.textContent, end.querySelector('.first-token')?.textContent]))
+			.toEqual([['Worked for 2m 5s', 'first token 1.4 s'], ['Worked for 9s', 'first token 380 ms']]);
+	});
+});

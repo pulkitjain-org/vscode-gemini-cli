@@ -18,20 +18,24 @@ describe('format', () => {
 		expect(format('Thought for {0}s', 3)).toBe('Thought for 3s');
 		expect(format('No placeholder', 1)).toBe('No placeholder');
 	});
+
+	it('fills in several placeholders, in any order, and leaves ones without a value', () => {
+		expect(format('{1} of {0} merged, {2}', 3, 1)).toBe('1 of 3 merged, {2}');
+	});
 });
 
 describe('formatDuration', () => {
 	it('shows at least a second', () => {
-		expect(formatDuration(0)).toBe('1s');
-		expect(formatDuration(400)).toBe('1s');
+		expect(formatDuration(0, 'en')).toBe('1s');
+		expect(formatDuration(400, 'en')).toBe('1s');
 	});
 
 	it('shows seconds, then minutes, then hours', () => {
-		expect(formatDuration(12_000)).toBe('12s');
-		expect(formatDuration(59_400)).toBe('59s');
-		expect(formatDuration(59_600)).toBe('1m 0s');
-		expect(formatDuration(125_000)).toBe('2m 5s');
-		expect(formatDuration(3_780_000)).toBe('1h 3m');
+		expect([12_000, 59_400, 59_600, 125_000, 3_600_000, 3_780_000].map(ms => formatDuration(ms, 'en'))).toEqual(['12s', '59s', '1m 0s', '2m 5s', '1h 0m', '1h 3m']);
+	});
+
+	it('writes the units as the locale does', () => {
+		expect(formatDuration(125_000, 'de')).toBe('2 Min., 5 Sek.');
 	});
 });
 

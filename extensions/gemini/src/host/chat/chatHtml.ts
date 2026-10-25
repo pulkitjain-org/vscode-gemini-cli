@@ -94,6 +94,8 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		permissionAnswered: vscode.l10n.t("You chose: {0}"),
 		permissionCancelled: vscode.l10n.t("Not answered; the request was cancelled."),
 		permissionHint: vscode.l10n.t("Esc rejects"),
+		durationSeconds: vscode.l10n.t("{0} s"),
+		durationMs: vscode.l10n.t("{0} ms"),
 		permissionWaiting: vscode.l10n.t("Gemini is waiting for your answer: {0}"),
 		confirmClass: vscode.l10n.t("confirm class"),
 		confirmWhy: vscode.l10n.t("Shown exactly as {0} will record it under your account. This card never offers \"Allow for this session\": it asks every time."),

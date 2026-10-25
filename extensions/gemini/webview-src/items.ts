@@ -96,7 +96,7 @@ function renderThreadCard(item: ItemOf<'thread'>): HTMLElement {
 	const state = project?.states[item.state] ?? item.state;
 	const repos = item.repos ?? [];
 	const mergedRepos = repos.filter(repo => repo.merged).length;
-	const partly = !item.merged && mergedRepos > 0 && project ? format(project.mergedCount, mergedRepos).replace('{1}', String(repos.length)) : undefined;
+	const partly = !item.merged && mergedRepos > 0 && project ? format(project.mergedCount, mergedRepos, repos.length) : undefined;
 	const line = item.removed ? project?.undone : item.merged ? project?.merged : partly ?? (item.detail ? `${state} \u00b7 ${item.detail}` : state);
 	// Under the title: the branch, then each repository it works in, then how long it has run.
 	const meta = el('div', 'thread-meta');
@@ -606,9 +606,11 @@ export function renderNotice(text: string, severity: 'info' | 'error', retryId?:
 	return node;
 }
 
-/** "1.4 s" or "380 ms". */
+/** "1.4 s" or "380 ms", from the host's templates with the number as the locale writes it. */
 function shortMs(ms: number): string {
-	return ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`;
+	return ms >= 1000
+		? format(strings.durationSeconds, (ms / 1000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }))
+		: format(strings.durationMs, Math.round(ms).toLocaleString());
 }
 
 /** The turn GeminiCode's quit cut off: what is on disk, and Retry the Turn or Keep and Continue. */
@@ -688,7 +690,7 @@ function renderCompact(item: ItemOf<'compact'>): HTMLElement {
 	} else if (item.state === 'undone') {
 		label.append(icon('discard'), el('span', undefined, text.undone));
 	} else {
-		label.append(icon('fold'), el('span', undefined, text.done.replace('{0}', formatTokens(item.before ?? 0)).replace('{1}', formatTokens(item.after ?? 0))));
+		label.append(icon('fold'), el('span', undefined, format(text.done, formatTokens(item.before ?? 0), formatTokens(item.after ?? 0))));
 		setTip(label, item.kept === 0 ? text.keptNone : item.kept === 1 ? text.keptOne : format(text.kept, item.kept ?? 0));
 	}
 	line.append(el('span', 'compact-rule'), label);
@@ -718,7 +720,7 @@ function renderTrace(item: ItemOf<'trace'>): HTMLElement {
 		grid.append(el('span', undefined, hop.name), track, el('span', 'trace-value', hop.value), el('span', 'trace-value', hop.budget));
 	}
 	card.append(grid);
-	const tokens = [readout.input.toLocaleString(), readout.cached.toLocaleString(), readout.output.toLocaleString(), String(readout.requests)].reduce((text, value, i) => text.replace(`{${i}}`, value), strings.trace.tokens);
+	const tokens = format(strings.trace.tokens, readout.input.toLocaleString(), readout.cached.toLocaleString(), readout.output.toLocaleString(), String(readout.requests));
 	card.append(el('div', 'trace-line', tokens));
 	const file = el('div', 'trace-line trace-file');
 	file.append(el('span', 'trace-file-name', format(strings.trace.file, item.file)), button('turn-action', strings.trace.open, () => vscode.postMessage({ type: 'openTrace', file: item.file }), 'go-to-file'));

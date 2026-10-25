@@ -390,6 +390,10 @@ export interface HomeStrings {
 	readonly commentTipVisibility: string;
 	readonly commentTipCancel: string;
 	readonly commentRemoveFile: string;
+	/** An attached file's size; `{0}` is the number. */
+	readonly sizeBytes: string;
+	readonly sizeKilobytes: string;
+	readonly sizeMegabytes: string;
 	readonly cancel: string;
 }
 

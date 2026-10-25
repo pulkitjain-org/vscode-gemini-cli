@@ -422,6 +422,9 @@ export interface ChatStrings {
 	readonly permissionAnswered: string;
 	readonly permissionCancelled: string;
 	readonly permissionHint: string;
+	/** A short time such as the first token's: "{0} s" (with one decimal) and "{0} ms". */
+	readonly durationSeconds: string;
+	readonly durationMs: string;
 	/** Announced to screen readers as a question comes, whether or not focus moves to it; `{0}` is its title. */
 	readonly permissionWaiting: string;
 	/** The pill on a confirm-class card, and the line under its effect; `{0}` is the tool's name. */
