@@ -58,6 +58,8 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 			// A folder outside this window's workspace is the agent's only root.
 			fileSystem: isInWorkspace(folder) ? undefined : createFileHandlers(new WorkspaceFileSystem(), () => ({ roots: [folder], isIgnored: isIgnoredByGitCached })),
 		});
+		// Redirects into the agent's folder may be approved for the session; others always ask.
+		this.permissions.roots = () => isInWorkspace(folder) ? getFileAccessPolicy().roots : [folder];
 		const fire = () => this.onDidChangeStatusEmitter.fire(this.status);
 		this.disposables.push(
 			this.onDidChangeStatusEmitter,

@@ -17,7 +17,7 @@
 
 import type * as acp from '@agentclientprotocol/sdk';
 import { Emitter } from './events';
-import { parseCommand, SessionApprovals } from './sessionApprovals';
+import { SessionApprovals } from './sessionApprovals';
 
 export interface PendingPermission {
 	readonly id: string;
@@ -60,8 +60,10 @@ export class PermissionBroker {
 	readonly onDidChange = this.onDidChangeEmitter.event;
 
 	private readonly pending = new Map<string, { permission: PendingPermission; resolve: (response: acp.RequestPermissionResponse) => void }>();
-	/** The shell programs allowed for this session. */
-	readonly approvals = new SessionApprovals();
+	/** The agent's folders, for telling redirects inside them from ones outside, which always ask. */
+	roots: (() => readonly string[]) | undefined;
+	/** The shell command prefixes allowed for this session. */
+	readonly approvals = new SessionApprovals(() => ({ roots: this.roots?.() ?? [] }));
 	/** Answers some requests at once, such as a project coordinator's (see projectMcp.ts). */
 	answerAtOnce: ((request: acp.RequestPermissionRequest) => InstantAnswer | undefined) | undefined;
 	/** Says which requests are in the confirm class: always a card, with Allow once and Reject only. */
@@ -91,7 +93,7 @@ export class PermissionBroker {
 			this.onDidChangeEmitter.fire({ kind: 'allowed', permission: { id: newPermissionId(), request }, outcome });
 			return Promise.resolve({ outcome });
 		}
-		return this.ask(withApprovalLabels(request, command));
+		return this.ask(withApprovalLabels(request, command === undefined ? undefined : this.approvals.prefixesOf(command)));
 	}
 
 	/** Shows the card and waits. */
@@ -181,13 +183,12 @@ function confirmOptions(request: acp.RequestPermissionRequest): acp.RequestPermi
 	return options.length ? { ...request, options } : request;
 }
 
-/** Says what "Allow for this session" covers for a shell command: "Allow grep, cut, head for this session". */
-function withApprovalLabels(request: acp.RequestPermissionRequest, command: string | undefined): acp.RequestPermissionRequest {
-	const parsed = command === undefined ? undefined : parseCommand(command);
-	if (parsed?.kind !== 'ok') {
+/** Says what "Allow for this session" covers for a shell command: "Allow git status, grep, head for this session". */
+function withApprovalLabels(request: acp.RequestPermissionRequest, prefixes: readonly string[] | undefined): acp.RequestPermissionRequest {
+	if (!prefixes?.length) {
 		return request;
 	}
-	const programs = [...new Set(parsed.programs.map(p => p.split('/').pop()!))].join(', ');
+	const programs = prefixes.join(', ');
 	return {
 		...request,
 		options: request.options.map(option => option.kind === 'allow_always' && /for this session/i.test(option.name)

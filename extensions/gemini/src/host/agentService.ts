@@ -82,6 +82,8 @@ export class AgentService implements vscode.Disposable {
 			onDidWriteFile: filePath => this.permissions.approvals.noteWrite(filePath),
 		});
 
+		// Redirects into the workspace may be approved for the session; others always ask.
+		this.permissions.roots = () => getFileAccessPolicy().roots;
 		this.disposables.push(
 			this.onDidChangeStatusEmitter,
 			this.sidecar.onDidChangeState(() => this.onDidChangeStatusEmitter.fire(this.status)),
