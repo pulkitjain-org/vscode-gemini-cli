@@ -293,7 +293,7 @@ describe('git that talks to a server', () => {
 	});
 
 	it('fails a fetch from a host that refuses in plain words, keeping the raw output', async () => {
-		const failure = await git(repo, ['fetch', '--quiet', 'ssh://nobody@127.0.0.1:1/shop.git', 'main']).catch((err: unknown) => err as { message: string; stderr: string; problem?: string });
+		const failure = await git(repo, ['fetch', '--quiet', 'ssh://nobody@127.0.0.1:1/shop.git', 'main']).then(() => ({ message: '', stderr: '', problem: 'none' }), (err: unknown) => err as { message: string; stderr: string; problem?: string });
 		expect({ message: failure.message, problem: failure.problem }).toEqual({ message: 'Git couldn\'t reach the server. Check your VPN.', problem: 'vpn' });
 		expect(failure.stderr).toMatch(/127\.0\.0\.1/);
 	});
@@ -302,7 +302,7 @@ describe('git that talks to a server', () => {
 		const saved = process.env.GIT_SSH_COMMAND;
 		process.env.GIT_SSH_COMMAND = 'sh -c "echo own-ssh >&2; exit 1" --';
 		try {
-			const failure = await git(repo, ['fetch', '--quiet', 'ssh://nobody@gitlab.invalid/shop.git', 'main']).catch((err: unknown) => err as { stderr: string });
+			const failure = await git(repo, ['fetch', '--quiet', 'ssh://nobody@gitlab.invalid/shop.git', 'main']).then(() => ({ stderr: '' }), (err: unknown) => err as { stderr: string });
 			expect(failure.stderr).toContain('own-ssh');
 		} finally {
 			if (saved === undefined) {

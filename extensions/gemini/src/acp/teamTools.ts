@@ -26,7 +26,10 @@ import type { TeamDefaults } from './teamDefaults';
 import { ChildServer, McpServerUnavailableError } from './mcpStdio';
 import { recordPilot } from './pilotLog';
 import { gitlabVia, jiraVia, snykVia, sonarVia, TeamChildren } from './teamContainers';
+import { external } from './externalText';
 import { clip, TeamToolError, TeamToolId } from './teamHttp';
+
+export { external };
 import { git } from './worktrees';
 
 /** The clients for the tools the user has connected; a tool not connected is absent. */
@@ -237,17 +240,6 @@ export function confirmToolGroups(): { server: string; tools: string[] }[] {
 export function isConfirmToolCall(request: { readonly toolCall: { readonly title?: string | null } }): boolean {
 	const title = request.toolCall.title ?? '';
 	return confirmToolNames.some(name => title === name || title.startsWith(`${name}(`));
-}
-
-/**
- * Text that came from outside (a ticket, a merge request, a job log, a
- * design), marked so the model treats it as something to read, not as
- * instructions. The frame is plain text; the server's instructions say what
- * it means. An `<external>` or `</external>` tag inside the text is escaped,
- * so the text cannot close its frame early and go on as if it were outside it.
- */
-export function external(source: TeamToolId, ref: string, text: string): string {
-	return `<external source="${source}" ref="${ref.replace(/["<>\r\n]/g, '')}">\n${text.replace(/<(\/?external)\b/gi, '&lt;$1')}\n</external>`;
 }
 
 /** The tools for the connected tools; with `readOnly`, only those that read. */

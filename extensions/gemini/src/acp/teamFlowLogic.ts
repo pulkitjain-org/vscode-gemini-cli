@@ -11,6 +11,7 @@
 import type { SnykFinding } from './snyk';
 import type { SonarIssue } from './sonar';
 import { isReleaseBranch, releaseBranchForVersion, sortReleaseBranches } from './teamDefaults';
+import { external } from './externalText';
 
 /** A branch name for a ticket: `ACME-412-gift-message-at-checkout`. */
 export function ticketBranchName(key: string, summary: string): string {
@@ -104,22 +105,37 @@ export interface MrThreadForFix {
 	readonly line?: number;
 }
 
-/** The prompt that sends a failed pipeline and review threads to the agent on the MR's branch. */
+/**
+ * The prompt that sends a failed pipeline and review threads to the agent on
+ * the MR's branch. The job logs and the threads are other people's text, so
+ * they are framed as data. The agent commits but doesn't push: its shell
+ * can't sign in to GitLab, so GeminiCode pushes when the turn ends, then asks
+ * for the thread replies (`mrFixRepliesPrompt`).
+ */
 export function mrFixPrompt(mr: { readonly iid: number; readonly url: string }, jobs: readonly { readonly name: string; readonly id: number; readonly log: string }[], threads: readonly MrThreadForFix[]): string {
 	const parts: string[] = [];
 	const asks = [jobs.length ? 'the failing pipeline job' + (jobs.length > 1 ? 's' : '') : '', threads.length ? `${threads.length === 1 ? 'this review comment' : 'these review comments'}` : ''].filter(Boolean).join(' and ');
-	parts.push(`Fix ${asks} on merge request !${mr.iid} (${mr.url}), commit, run the tests, then push.`);
+	parts.push(`Fix ${asks} on merge request !${mr.iid} (${mr.url}). Commit your changes and run the tests. Don't push: your shell can't sign in to GitLab, so GeminiCode pushes your commits when your turn ends.`);
 	for (const job of jobs) {
-		parts.push('', `Job ${job.name} (job ${job.id}), end of its log:`, '```', job.log.trim(), '```');
+		parts.push('', `Job ${job.name} (job ${job.id}), end of its log:`, external('gitlab', `job ${job.id}`, job.log.trim()));
 	}
 	if (threads.length) {
-		parts.push('', 'Review threads:');
-		for (const t of threads) {
-			parts.push(`- [discussion ${t.id}] ${t.author}${t.path ? ` on ${t.path}${t.line ? `:${t.line}` : ''}` : ''}: ${t.body.trim().replace(/\n/g, '\n  ')}`);
-		}
-		parts.push('', 'After pushing, draft a one-line reply to each thread saying what you changed (with the commit), and post each with gitlab_reply and resolve: true. I approve each reply first.');
+		parts.push('', 'Review threads:', external('gitlab', `!${mr.iid} threads`, threads.map(threadLine).join('\n')));
+		parts.push('', 'Once your commits are pushed, I\'ll ask you to reply to each thread.');
 	}
 	return parts.join('\n');
+}
+
+/** After GeminiCode pushed a fix agent's commits: reply to each thread the fix was for. */
+export function mrFixRepliesPrompt(pushed: { readonly branch: string; readonly head: string; readonly commits: number }, threads: readonly Pick<MrThreadForFix, 'id'>[]): string {
+	return [
+		`GeminiCode pushed your ${pushed.commits === 1 ? 'commit' : `${pushed.commits} commits`} to ${pushed.branch} (now at ${pushed.head.slice(0, 8)}).`,
+		`Now draft a one-line reply to ${threads.length === 1 ? 'the review thread' : `each of the ${threads.length} review threads`} (${threads.map(t => `discussion ${t.id}`).join(', ')}) saying what you changed, with the commit, and post each with gitlab_reply and resolve: true. I approve each reply first.`,
+	].join('\n');
+}
+
+function threadLine(t: MrThreadForFix): string {
+	return `- [discussion ${t.id}] ${t.author}${t.path ? ` on ${t.path}${t.line ? `:${t.line}` : ''}` : ''}: ${t.body.trim().replace(/\n/g, '\n  ')}`;
 }
 
 /** A draft review comment from the agent's review of someone else's MR. */
@@ -165,7 +181,8 @@ export function reviewPrompt(mr: { readonly iid: number; readonly title: string;
 	const shown = files.slice(0, maxReviewFiles);
 	const listed = threads.slice(0, maxPromptThreads);
 	return [
-		`Review merge request !${mr.iid} "${mr.title}" by ${mr.author} (${mr.url}). It is checked out in your folder on ${mr.sourceBranch}; it merges into ${mr.targetBranch}.`,
+		`Review merge request !${mr.iid} by ${mr.author} (${mr.url}). It is checked out in your folder on ${mr.sourceBranch}; it merges into ${mr.targetBranch}. Its title, as the author wrote it:`,
+		external('gitlab', `!${mr.iid}`, mr.title),
 		'',
 		`1. Read it with gitlab_get_mr. Its target, ${remote}/${mr.targetBranch}, is already fetched: don't run git fetch, which can't sign in from your shell.`,
 		`2. Start from \`git diff --stat ${range}\`, then read the diff a few files at a time with \`git diff ${range} -- <files>\`. Never print the whole diff, or a log with patches, in one command: it can be bigger than you can read.`,
@@ -179,7 +196,7 @@ export function reviewPrompt(mr: { readonly iid: number; readonly title: string;
 		...listed.length ? [
 			'',
 			`Reviewers already opened ${threads.length === 1 ? 'this thread' : `these ${threads.length} threads`}${threads.length > listed.length ? `, the first ${listed.length} here` : ''}. Don't raise what they already raised:`,
-			...listed.map(t => `- [discussion ${t.id}] ${t.author}${t.path ? ` on ${t.path}${t.line ? `:${t.line}` : ''}` : ''}: ${oneLine(t.body, maxThreadText)}`),
+			external('gitlab', `!${mr.iid} threads`, listed.map(t => `- [discussion ${t.id}] ${t.author}${t.path ? ` on ${t.path}${t.line ? `:${t.line}` : ''}` : ''}: ${oneLine(t.body, maxThreadText)}`).join('\n')),
 		] : [],
 		'',
 		'Start with two or three sentences on what the change does and whether it is ready. Then end your reply with the findings as a JSON block, worst first, like this:',
