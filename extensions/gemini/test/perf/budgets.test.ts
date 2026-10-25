@@ -11,7 +11,7 @@
 // or the bundle growing by a library. The agent start, which runs the real CLI,
 // is timed by scripts/perf-first-reply.mts.
 
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AgentClient, type AgentClientState } from '../../src/acp/agentClient';
@@ -26,46 +26,55 @@ import { matchCommands, mentionAt, slashQuery } from '../../webview-src/chatLogi
 import { scanStreaming } from '../../webview-src/streaming';
 import { fakeAgentCommand, waitFor } from '../helpers';
 
-/** Bundle size budgets in bytes, minified. KaTeX and the highlighter load on demand and are not part of the chat view's first paint. */
+/**
+ * Bundle size budgets in bytes, minified: every script in media/ and dist/ has one. KaTeX and the
+ * highlighter load on demand and are not part of the chat view's first paint. Sizes in the comments
+ * are as of the latest change to a budget.
+ */
 export const bundleBudgets: Readonly<Record<string, number>> = {
-	// 1.1.0's Rewind, Subagent rows and the Shared page chip took it just past 215 KB; folding finished work
-	// (work.ts, workFold.ts) took it to about 225 KB, all GeminiCode's own code. The team tools' chips,
-	// + menu section and tool rows with logos took it to about 237 KB; the confirm-class card's effect,
-	// the cut-off card and the turn's trace readout to about 241 KB. Later chat features took it to about
-	// 249 KB, and sending while the agent works (the queue strip, Return and ⌘Return) to about 251 KB.
-	// Reactions (the button, quick bar, chips and badge) added about 3 KB; writing the bundles as UTF-8
-	// rather than escaping non-ASCII text then took about 21 KB off, to about 237 KB.
+	// The chat view: about 238 KB, all GeminiCode's own code apart from the Markdown splitter it shares.
+	// Writing the bundles as UTF-8 rather than escaping non-ASCII text took about 21 KB off; reactions,
+	// the queue strip and the trace readout added most of what came after.
 	'media/chat.js': 255_000,
-	// Home's startup script: Preview's renderer is its own file. The dashboard (cards, Needs you,
-	// Customize) and the tools' logos took it to about 25 KB, and Show All's popup to about 28 KB.
+	// Home's startup script, about 29.6 KB: Preview's renderer is its own file. The dashboard (cards,
+	// Needs you, Customize) and Show All's popup take most of it.
 	'media/home.js': 30_000,
+	// The Changes panel, about 12 KB.
 	'media/changes.js': 16_000,
-	// The team flows: Open Merge Request, Move Ticket and Log Time, Review and Checks. Loaded only with a flow's page.
-	// The review's own comments, threads and suggested changes and Open Merge Request's target menu took it from
-	// about 25 KB to 32 KB, all its own code.
+	// The team flows, about 32 KB: Open Merge Request, Move Ticket and Log Time, Review and Checks, with the
+	// review's comments, threads and suggested changes. Loaded only with a flow's page.
 	'media/teamFlow.js': 36_000,
+	// Project Helpers, about 15 KB.
 	'media/settings.js': 16_000,
-	// The Index page: workspaces' indexes, attached docs, the Add Docs and Files Left Out popups, with the shared select menu and tooltips.
+	// Connections, about 13.5 KB.
+	'media/connections.js': 16_000,
+	// The audit log page, about 8 KB.
+	'media/auditLog.js': 10_000,
+	// The Index page, about 19 KB: workspaces' indexes, attached docs, the Add Docs and Files Left Out popups,
+	// with the shared select menu and tooltips.
 	'media/indexPage.js': 22_000,
+	// The rich Jira comment box, about 22.5 KB, loaded the first time a page opens one.
+	'media/commentBox.js': 26_000,
+	// About 158 KB.
 	'media/highlight.js': 180_000,
-	// Loaded only when a reply has math.
+	// About 265 KB, loaded only when a reply has math.
 	'media/katex.js': 290_000,
+	// About 110 KB, loaded the first time a draft is shown as Markdown.
 	'media/draftMarkdown.js': 140_000,
-	// The emoji picker, loaded the first time a reaction button is hovered or focused: about 88 KB of emoji data
-	// (1,923 emoji with their names and three search words each) and its own code.
+	// The emoji picker, about 97 KB, loaded the first time a reaction button is hovered or focused: about 88 KB
+	// of emoji data (1,923 emoji with their names and three search words each) and its own code.
 	'media/emojiPicker.js': 105_000,
-	// Projects' settings, memory and threads across repositories took it from 887 KB to 913 KB, all GeminiCode's own code.
-	// 1.1.0's saved checkpoints, Rewind, Check for Updates and browser fixes took it to 941 KB, all its own code too.
-	// The team tools (five connectors, the geminicode-tools server, Connections, Home's dashboard and the
-	// merge request, review, release, Jira and checks flows) took it to about 1,090 KB, all its own code, no libraries.
-	// The pages' writes through the agents' tools, the audit log page and keeping flows across a quit took it to
-	// about 1,137 KB; loading the ACP SDK only when an agent starts wraps its modules, about 6 KB more, and takes
-	// about 12 ms off the bundle's load time. Run Benchmark, the pilot's counters, and the team's own Jira and
-	// GitLab servers as children (the stdio MCP client, the take-over) took it to about 1,172 KB, its own code.
-	// The workspace index's host side (its client, the geminicode-index server, the docs fetcher, the Index page's host
-	// and the status bar) added about 56 KB, all its own code, no libraries.
+	// The extension host's bundle, about 1,061 KB: GeminiCode's own code, the ACP SDK and zod with its English
+	// messages only (esbuild.mts). Project Helpers, Connections, the audit log, Run Benchmark, the pilot and the
+	// trace recorder moved to dist/pages.js and dist/onDemand.js, about 60 KB.
 	'dist/extension.js': 1_200_000,
-	// The indexer process: parsing, SQLite queries and docs conversion, forked on first use, never loaded in the extension host.
+	// Project Helpers and Connections, about 65 KB, loaded the first time one is opened (src/pages.ts).
+	'dist/pages.js': 80_000,
+	// The audit log, Run Benchmark, the pilot's export and the trace recorder, about 31 KB, loaded the first time
+	// one of their commands runs (src/onDemand.ts).
+	'dist/onDemand.js': 40_000,
+	// The indexer process, about 66 KB: parsing, SQLite queries and docs conversion, forked on first use, never
+	// loaded in the extension host.
 	'dist/indexer.js': 120_000,
 };
 
@@ -82,12 +91,20 @@ function median(rounds: number, run: () => void): number {
 
 describe('bundle size', () => {
 	const root = path.join(__dirname, '..', '..');
+	// Locally a bundle that is not built is skipped; CI builds them all first (gemini-ci.yml), so there a missing one fails.
+	const ci = !!process.env.CI;
 	for (const [file, budget] of Object.entries(bundleBudgets)) {
 		const full = path.join(root, file);
-		it.skipIf(!existsSync(full))(`${file} is within ${budget / 1000} KB`, () => {
+		it.skipIf(!ci && !existsSync(full))(`${file} is within ${budget / 1000} KB`, () => {
+			expect(existsSync(full), `${file} is not built: run node esbuild.mts and node esbuild.webview.mts`).toBe(true);
 			expect(statSync(full).size).toBeLessThanOrEqual(budget);
 		});
 	}
+
+	it.skipIf(!ci && !['media', 'dist'].every(dir => existsSync(path.join(root, dir))))('has a budget for every script in media/ and dist/', () => {
+		const built = ['media', 'dist'].flatMap(dir => existsSync(path.join(root, dir)) ? readdirSync(path.join(root, dir)).filter(name => name.endsWith('.js')).map(name => `${dir}/${name}`) : []);
+		expect(built.filter(file => !(file in bundleBudgets))).toEqual([]);
+	});
 });
 
 describe('a project with 500 threads', () => {
