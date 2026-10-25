@@ -39,6 +39,7 @@ import { restoreComposerHeight, updatePlaceholder, updateSendState } from './inp
 import { showSavedSessions } from './items';
 import { setBranches } from './pickers';
 import { showCommands, showFiles } from './picker';
+import { updatePlusMenu } from './plusMenu';
 import { openNewThread, showParentProject, showProjectPanel } from './project';
 import { pickedRepository, showProjectSettings } from './projectSettings';
 import { setRunState, setRunView } from './runButtons';
@@ -233,6 +234,8 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'projectPanel':
 			showProjectPanel(message.panel);
+			// An open "+" menu's Plan first switch follows the project's settings.
+			updatePlusMenu();
 			break;
 		case 'openNewThread':
 			openNewThread();

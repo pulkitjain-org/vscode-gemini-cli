@@ -21,7 +21,7 @@ import type { PendingPromptView } from '../acp/promptQueue';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 35;
+export const chatProtocolVersion = 36;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal'] as const;
@@ -143,6 +143,9 @@ export interface ProjectChatStrings {
 	readonly retryWake: string;
 	/** The "+" menu's item to start a thread directly. */
 	readonly newThread: string;
+	/** The "+" menu's switch for the project's Plan first default, in place of the coordinator's own mode. */
+	readonly planFirst: string;
+	readonly planFirstTip: string;
 	/** The New thread dialog; `{0}` in its title is the project's name. */
 	readonly dialog: {
 		readonly title: string;
@@ -848,6 +851,8 @@ export type FromWebview =
 	/** Open Project settings. */
 	| { readonly type: 'openProjectSettings' }
 	| { readonly type: 'saveProjectSettings'; readonly settings: ProjectSettingsSave }
+	/** The "+" menu's Plan first switch: the project's default for new threads. */
+	| { readonly type: 'setPlanFirst'; readonly on: boolean }
 	/** One of Project settings' buttons that need the extension. */
 	| { readonly type: 'projectSettingsAction'; readonly action: ProjectSettingsAction; readonly name?: string }
 	/** The pointer is on a thread's card or panel row: it is likely opened next, so its agent can start now. */
