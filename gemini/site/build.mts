@@ -82,6 +82,12 @@ const builtOn = {
 	cli: (JSON.parse(fs.readFileSync(path.join(siteDir, '..', '..', 'extensions', 'gemini', 'package.json'), 'utf8')) as { bundledCli: { version: string } }).bundledCli.version,
 };
 
+/**
+ * Google Search Console's proof that the site is ours, on the landing page (the property's
+ * address). It is public by design; keep it, or Search Console loses the site.
+ */
+const googleSiteVerification = 'jWfKW_dLBk62vzPu616ATIHNRtywScD-e8Ir5rktWXE';
+
 /** The landing page's description, also the start of llms.txt. */
 const siteDescription = 'GeminiCode is an open-source Mac code editor built on VS Code, with the Gemini CLI as its agent. Run Gemini agents side by side and review every change.';
 const dmgPattern = /^GeminiCode-.+-arm64(-unsigned)?\.dmg$/;
@@ -619,7 +625,8 @@ function layout(title: string, body: string, c: Context, current: PageKind, root
 	<title>${text(title)}</title>
 	<meta name="description" content="${attr(meta.description)}">
 	${headTags(title, meta, c)}
-	<meta name="color-scheme" content="light dark">
+	<meta name="color-scheme" content="light dark">${current === 'home' ? `
+	<meta name="google-site-verification" content="${googleSiteVerification}">` : ''}
 	<link rel="icon" href="${root}icon.svg" type="image/svg+xml">
 	<style>
 ${css}
