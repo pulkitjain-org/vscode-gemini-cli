@@ -14,11 +14,11 @@ import { errorMessage } from '../acp/errors';
 import { addHook, disabledHooks, HookEvent, hookEvents, hooksIn, setHookEnabled, toolEvents } from '../acp/hooks';
 import { addMcpServer, disabledServers, isServerEnabled, mcpServersIn, readSettingsFile, rulesFileNames, serverConfigFrom, setServerEnabled } from '../acp/projectSettings';
 import { disabledSkills, loadSkills, setSkillEnabled, skillFolders, skillSlug, skillTemplate } from '../acp/skills';
-import { AgentService } from './agentService';
-import { getAgentCommand, getWorkspaceCwd } from './configuration';
+import type { AgentService } from './agentService';
+import { type getAgentCommand, getWorkspaceCwd } from './configuration';
 import { tildify } from './displayText';
 import { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage } from './panelProtocol';
-import { forgetSkills } from './teamCommands';
+import type { forgetSkills } from './teamCommands';
 import { createNonce, escapeAttribute } from './webviewHtml';
 import { ContextCost, estimateTokens, heavyContextTokens, heavyServerTokens } from '../acp/contextCost';
 
@@ -33,6 +33,18 @@ const viewType = 'gemini.projectSettings';
  * the user presses Refresh, which starts it. Files are read when the page is
  * shown and after each change.
  */
+/**
+ * What Project Helpers takes from the extension's own bundle: the page runs
+ * from a bundle of its own (src/pages.ts), whose copies of these modules'
+ * state would be empty.
+ */
+export interface SettingsHost {
+	/** The command that starts the CLI, for its subcommands in a terminal. */
+	readonly getAgentCommand: typeof getAgentCommand;
+	/** Drops the cached skills, so a skill turned on or off shows in the next list. */
+	readonly forgetSkills: typeof forgetSkills;
+}
+
 export class SettingsPage implements vscode.Disposable {
 
 	private panel: vscode.WebviewPanel | undefined;
@@ -53,7 +65,7 @@ export class SettingsPage implements vscode.Disposable {
 	private measureError: string | undefined;
 
 	/** `measureContext` measures what every model call carries in a folder (contextCostProbe.ts); `state` keeps the last result. */
-	constructor(private readonly extensionUri: vscode.Uri, private readonly service: AgentService, private readonly measureContext?: (folder: string, servers: readonly string[]) => Promise<ContextCost>, private readonly state?: vscode.Memento) {
+	constructor(private readonly extensionUri: vscode.Uri, private readonly service: AgentService, private readonly host: SettingsHost, private readonly measureContext?: (folder: string, servers: readonly string[]) => Promise<ContextCost>, private readonly state?: vscode.Memento) {
 		this.disposables.push(
 			vscode.commands.registerCommand('gemini.projectSettings', () => this.show()),
 			vscode.commands.registerCommand('gemini.newSkill', () => this.newSkill()),
@@ -562,7 +574,7 @@ export class SettingsPage implements vscode.Disposable {
 				return;
 			}
 		}
-		forgetSkills();
+		this.host.forgetSkills();
 		this.offerRestart(enabled
 			? vscode.l10n.t("\"{0}\" is on for new agents.", name)
 			: vscode.l10n.t("\"{0}\" is off for new agents.", name));
@@ -635,7 +647,7 @@ export class SettingsPage implements vscode.Disposable {
 	}
 
 	private async runInTerminal(name: string, args: readonly string[], message = vscode.l10n.t("Answer the Gemini CLI's questions here. Project Helpers updates when it finishes; restart the agent to use the change.")): Promise<void> {
-		const command = await getAgentCommand({ subcommand: args });
+		const command = await this.host.getAgentCommand({ subcommand: args });
 		this.terminal?.dispose();
 		this.terminal = vscode.window.createTerminal({
 			name: vscode.l10n.t("Gemini: {0}", name),

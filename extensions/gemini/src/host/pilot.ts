@@ -9,12 +9,23 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { AuditEntry } from '../acp/auditLog';
 import { errorMessage } from '../acp/errors';
-import { PilotLog, pilotExport, recordPilot, setPilotSink } from '../acp/pilotLog';
+import { PilotLog, pilotExport, type recordPilot, type setPilotSink } from '../acp/pilotLog';
 import { configSection } from './configuration';
 import type { TeamConnections } from './teamConnections';
 import type { UsageMeter } from './usageMeter';
 
+/** The setting that turns recording on; extension.ts constructs the pilot at launch when it is on. */
 const recordSetting = 'pilot.record';
+
+/**
+ * Where the pilot's events go, from the extension's own bundle: every part of
+ * GeminiCode records through it, and this runs from a bundle of its own
+ * (src/onDemand.ts), whose copy of pilotLog.ts would have another sink.
+ */
+export interface PilotHost {
+	readonly setSink: typeof setPilotSink;
+	readonly record: typeof recordPilot;
+}
 /** Home lists what was unfinished once startup has settled; the count is taken then too. */
 const unfinishedDelayMs = 10_000;
 
@@ -29,19 +40,20 @@ export class Pilot implements vscode.Disposable {
 	private readonly disposables: vscode.Disposable[] = [];
 	private unfinishedTimer: ReturnType<typeof setTimeout> | undefined;
 
-	constructor(storageDir: string, private readonly team: TeamConnections, usage: UsageMeter) {
+	/** `launch`: constructed as the extension activates, so the launch and what was unfinished are recorded. */
+	constructor(storageDir: string, private readonly team: TeamConnections, usage: UsageMeter, private readonly host: PilotHost, launch: boolean) {
 		this.log = new PilotLog(path.join(storageDir, 'pilot'));
 		this.disposables.push(
 			vscode.commands.registerCommand('gemini.pilot.export', () => this.export()),
 			vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.${recordSetting}`) && this.apply(false)),
-			usage.onDidChange(quota => quota && recordPilot({ kind: 'usage', quota: quota.map(q => ({ model: q.model, used: q.used, ...q.resetTime ? { resetTime: q.resetTime } : {} })) })),
+			usage.onDidChange(quota => quota && host.record({ kind: 'usage', quota: quota.map(q => ({ model: q.model, used: q.used, ...q.resetTime ? { resetTime: q.resetTime } : {} })) })),
 		);
-		this.apply(true);
+		this.apply(launch);
 	}
 
 	dispose(): void {
 		clearTimeout(this.unfinishedTimer);
-		setPilotSink(undefined);
+		this.host.setSink(undefined);
 		void this.log.flush();
 		vscode.Disposable.from(...this.disposables).dispose();
 	}
@@ -49,16 +61,16 @@ export class Pilot implements vscode.Disposable {
 	/** Starts or stops recording as the setting says; at launch, also records the launch and what was unfinished. */
 	private apply(launch: boolean): void {
 		const on = vscode.workspace.getConfiguration(configSection).get<boolean>(recordSetting, false);
-		setPilotSink(on ? record => this.log.add(record) : undefined);
+		this.host.setSink(on ? record => this.log.add(record) : undefined);
 		if (on && launch) {
-			recordPilot({ kind: 'launch' });
+			this.host.record({ kind: 'launch' });
 			this.unfinishedTimer = setTimeout(() => void this.recordUnfinished(), unfinishedDelayMs);
 		}
 	}
 
 	private async recordUnfinished(): Promise<void> {
 		const [flows, writes] = await Promise.all([this.team.flows.list(), this.team.audit.unfinished()]).catch(() => [[], []]);
-		recordPilot({ kind: 'unfinished', flows: flows.length, writes: writes.length });
+		this.host.record({ kind: 'unfinished', flows: flows.length, writes: writes.length });
 	}
 
 	private async export(): Promise<void> {
