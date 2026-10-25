@@ -56,6 +56,7 @@ Without the Apple secrets, steps 6 to 8 are replaced by an ad hoc signature. The
 
 The landing page has, in order:
 
+- A **New** banner above the nav, linking to the release's headline feature. Change it with each release that has one (`news` in `layout()`).
 - The hero: the headline, **Download for Mac**, a line with the version, macOS 26 or later, Apple silicon, the download size and the licence (MIT). The eight capability tiles turn around it on two rings.
 - A showcase card with the `showcase-work` screenshot, and a play button for its clip.
 - A strip of things you can do.
@@ -82,9 +83,9 @@ The user docs: a page per Markdown file in [`gemini/docs/guide/`](guide/), rende
 
 Update the guide in the same pull request as the feature. The site always describes what is on `main`, and the Pages workflow publishes it as soon as it merges.
 
-### `notes.html`
+### `notes.html` and `notes/`
 
-The release notes from the GitHub release, with the download button, **Copy as Markdown** (`notes.md`) and the checksum. Its `##` and `###` headings, and lines that are only bold text, become the side navigation. Images pasted into the notes are copied onto the site, because GitHub's links to them expire.
+Every published release (drafts and prereleases left out) has a page of its own, `notes/<version>.html`, so old notes keep their address. `notes.html` shows the latest, and names its version page as the canonical address for search engines. Each page has the download button and checksum when the release has a `.dmg`, **Copy as Markdown** (`notes.md`, or `notes/<version>.md`), and a list of every release. Its `##` and `###` headings, and lines that are only bold text, become the side navigation. Images pasted into the notes are copied onto the site, because GitHub's links to them expire.
 
 ### `latest.json`
 
@@ -99,6 +100,8 @@ The build also writes:
 - `sitemap.xml`, listing every page that may be indexed. Submit it once in Google Search Console.
 - `llms.txt`, which says in a few lines what GeminiCode is and links each docs page's Markdown copy, for AI tools.
 - `404.html`, which GitHub Pages serves for any address on the site that has no page.
+
+Every product screenshot can be opened full size, and every clip is described as a `VideoObject`, with its duration read from the MP4 and its date from `clipDates` in `build.mts`. The build stops when a clip has no date there, so add one with each new clip, and change it when a clip is retaken. Docs pages show when their Markdown last changed and list it in `sitemap.xml`, from git, or from GitHub's API in the Pages workflow's one-commit checkout. Pages that may be indexed allow large image previews (`max-image-preview:large`).
 
 Link previews use the 1200 × 630 JPEG crops in `media/og/`, one for the landing page and one per feature page. Remake one with `ffmpeg -i <shot>-light.webp -vf "crop=2000:1050:0:0,scale=1200:630:flags=lanczos" -q:v 3 og/<page>.jpg` when its screenshot is retaken.
 

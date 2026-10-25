@@ -4,8 +4,9 @@
  *--------------------------------------------------------------------------------------------*/
 
 // Builds the GeminiCode site for GitHub Pages from the latest GitHub Release:
-// `index.html` (the landing page), `notes.html` (the release notes, rendered
-// from the markdown written in the release, with `notes.md` beside it),
+// `index.html` (the landing page), `notes/<version>.html` for every published
+// release and `notes.html` for the latest (rendered from the markdown written in
+// the release, each with a `.md` copy beside it),
 // `docs/` (the user docs, from gemini/docs/guide/, see docs.mts), and
 // `latest.json`, which the app's update notice reads. Run on every release and
 // on changes to this folder or the guide (.github/workflows/gemini-pages.yml).
@@ -34,6 +35,7 @@
 //   node gemini/site/build.mts <out-dir> --sample   # a made-up release, to preview the page
 //   node gemini/site/build.mts <out-dir> --none     # the page before the first release
 
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { stripTypeScriptTypes } from 'node:module';
@@ -109,7 +111,14 @@ async function main(outDir: string | undefined, mode: string | undefined): Promi
 	const latest = await toLatest(release, pageUrl);
 
 	fs.mkdirSync(outDir, { recursive: true });
-	const notesHtml = await copyNotesImages(release?.body_html ?? '', outDir);
+	// Every published release keeps a page of its own, notes/<version>.html; notes.html shows the latest.
+	const releases = mode === '--sample' ? sampleReleases(repo) : mode === '--none' ? [] : await fetchReleases(repo);
+	const allNotes: ReleaseNotes[] = [];
+	for (const each of releases) {
+		allNotes.push({ info: await releaseInfo(each, pageUrl), html: await copyNotesImages(each.body_html ?? '', outDir), body: each.body });
+	}
+	const latestNotes = allNotes.find(notes => notes.info.version === latest.version)
+		?? (release && latest.version ? { info: latest, html: await copyNotesImages(release.body_html ?? '', outDir), body: release.body } : undefined);
 	const mediaDir = path.join(siteDir, 'media');
 	const available = new Set(fs.existsSync(mediaDir) ? fs.readdirSync(mediaDir) : []);
 	if (available.size) {
@@ -120,9 +129,16 @@ async function main(outDir: string | undefined, mode: string | undefined): Promi
 	fs.writeFileSync(path.join(outDir, 'media', 'silent.vtt'), 'WEBVTT\n\nNOTE This clip has no speech.\n');
 	fs.writeFileSync(path.join(outDir, 'latest.json'), JSON.stringify(latest, null, '\t') + '\n');
 	fs.writeFileSync(path.join(outDir, 'index.html'), renderPage(latest, repo, available));
-	fs.writeFileSync(path.join(outDir, 'notes.html'), renderNotesPage(latest, notesHtml, repo));
-	fs.writeFileSync(path.join(outDir, 'notes.md'), notesMarkdown(latest, release?.body));
-	writeDocs(outDir, latest, repo, pageUrl, mediaDir);
+	fs.writeFileSync(path.join(outDir, 'notes.html'), renderNotesPage(latest, latestNotes, allNotes, repo, ''));
+	fs.writeFileSync(path.join(outDir, 'notes.md'), notesMarkdown(latestNotes?.info ?? latest, latestNotes?.body));
+	if (allNotes.length) {
+		fs.mkdirSync(path.join(outDir, 'notes'), { recursive: true });
+	}
+	for (const notes of allNotes) {
+		fs.writeFileSync(path.join(outDir, 'notes', `${notes.info.version}.html`), renderNotesPage(latest, notes, allNotes, repo, '../'));
+		fs.writeFileSync(path.join(outDir, 'notes', `${notes.info.version}.md`), notesMarkdown(notes.info, notes.body));
+	}
+	writeDocs(outDir, latest, repo, pageUrl, mediaDir, await guideDates(repo));
 	writeFeatures(outDir, latest, repo, mediaDir);
 	fs.writeFileSync(path.join(outDir, '404.html'), renderNotFound(latest, repo));
 	// Written last: they list what the pages above are.
@@ -141,15 +157,12 @@ async function main(outDir: string | undefined, mode: string | undefined): Promi
 }
 
 /**
- * sitemap.xml: every page layout() wrote that isn't marked noindex. Only the release notes get a
- * last-modified date, from the release: the Pages workflow checks out one commit, so git can't
- * say when other pages changed, and a wrong date is worse than none.
+ * sitemap.xml: every page layout() wrote that is its own canonical address and isn't marked
+ * noindex, with when it last changed where that is known: the release notes from their release,
+ * the docs pages from their Markdown's last commit.
  */
 function sitemap(latest: LatestRelease): string {
-	const urls = [...indexedPages].sort().map(at => {
-		const lastmod = at === 'notes.html' && latest.publishedAt ? `<lastmod>${latest.publishedAt.slice(0, 10)}</lastmod>` : '';
-		return `\t<url><loc>${text(`${latest.url}${at}`)}</loc>${lastmod}</url>`;
-	});
+	const urls = [...indexedPages].sort(([a], [b]) => a.localeCompare(b)).map(([at, modified]) => `\t<url><loc>${text(`${latest.url}${at}`)}</loc>${modified ? `<lastmod>${modified}</lastmod>` : ''}</url>`);
 	return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>\n`;
 }
 
@@ -194,6 +207,19 @@ function llmsText(latest: LatestRelease, repo: string): string {
 		`- [Architecture](${c.repoUrl}/blob/main/gemini/docs/ARCHITECTURE.md): how GeminiCode works, and its security model`,
 		'',
 	].join('\n');
+}
+
+/** Every published release, newest first: no drafts or prereleases. */
+async function fetchReleases(repo: string): Promise<GitHubRelease[]> {
+	const headers: Record<string, string> = { accept: 'application/vnd.github.full+json', 'x-github-api-version': '2022-11-28' };
+	if (process.env.GITHUB_TOKEN) {
+		headers.authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+	}
+	const response = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=100`, { headers });
+	if (!response.ok) {
+		throw new Error(`GitHub answered HTTP ${response.status} for the list of releases.`);
+	}
+	return (await response.json() as GitHubRelease[]).filter(each => !each.draft && !each.prerelease);
 }
 
 async function fetchLatestRelease(repo: string): Promise<GitHubRelease | undefined> {
@@ -274,21 +300,23 @@ function decodeEntities(value: string): string {
 }
 
 async function toLatest(release: GitHubRelease | undefined, pageUrl: string): Promise<LatestRelease> {
-	const dmg = release?.assets.find(asset => dmgPattern.test(asset.name));
-	if (!release || !dmg) {
-		return { schema: 1, version: null, url: pageUrl, downloads: {} };
-	}
-	const checksum = release.assets.find(asset => asset.name === `${dmg.name}.sha256`);
+	return release && hasDmg(release) ? releaseInfo(release, pageUrl) : { schema: 1, version: null, url: pageUrl, downloads: {} };
+}
+
+/** A release as latest.json describes one; an old release without a .dmg has no downloads. */
+async function releaseInfo(release: GitHubRelease, pageUrl: string): Promise<LatestRelease> {
+	const dmg = release.assets.find(asset => dmgPattern.test(asset.name));
+	const checksum = dmg && release.assets.find(asset => asset.name === `${dmg.name}.sha256`);
 	const sha256 = checksum ? await fetchChecksum(checksum.browser_download_url) : undefined;
 	return {
 		schema: 1,
 		version: release.tag_name.replace(/^v/, ''),
 		name: release.name ?? release.tag_name,
 		publishedAt: release.published_at,
-		signed: !dmg.name.endsWith('-unsigned.dmg'),
+		...dmg ? { signed: !dmg.name.endsWith('-unsigned.dmg') } : {},
 		url: pageUrl,
 		notesUrl: release.html_url,
-		downloads: { 'darwin-arm64': { name: dmg.name, url: dmg.browser_download_url, size: dmg.size, ...(sha256 ? { sha256 } : {}) } },
+		downloads: dmg ? { 'darwin-arm64': { name: dmg.name, url: dmg.browser_download_url, size: dmg.size, ...(sha256 ? { sha256 } : {}) } } : {},
 	};
 }
 
@@ -418,6 +446,10 @@ interface JsonLd { readonly [key: string]: string | number | boolean | JsonLd | 
 interface PageMeta {
 	/** The page's path from the site's root, such as `docs/chat.html`; empty for the landing page. */
 	readonly path: string;
+	/** The path search engines should index instead, when another page has the same content. */
+	readonly canonical?: string;
+	/** When the page's content last changed, as YYYY-MM-DD, for sitemap.xml and the JSON-LD. */
+	readonly modified?: string;
 	/** For search results and link previews: at most 160 characters. */
 	readonly description: string;
 	/** The link preview image in `media/og/`; the landing page's when not named. */
@@ -442,8 +474,56 @@ const ogImages = {
 	'team-tools.jpg': 'A merge request\'s diff with Gemini\'s review comments on their lines',
 } as const;
 
-/** The pages layout() wrote that belong in sitemap.xml, by path. */
-const indexedPages = new Set<string>();
+/** The pages layout() wrote that belong in sitemap.xml, by path, with when each last changed. */
+const indexedPages = new Map<string, string | undefined>();
+
+/**
+ * When each clip was taken (MEDIA-TODO.md has the same dates), for its VideoObject's
+ * uploadDate: the files carry no date. A clip missing here stops the build; add it when a clip
+ * is added, and change its date when one is retaken.
+ */
+const clipDates: Readonly<Record<string, string>> = {
+	'showcase-console': '2026-10-15',
+	'showcase-enhance': '2026-10-19',
+	'showcase-mr-review': '2026-10-23',
+	'showcase-notes': '2026-10-19',
+	'showcase-plan': '2026-10-19',
+	'showcase-projects': '2026-10-19',
+	'showcase-review': '2026-10-19',
+	'showcase-wait': '2026-10-19',
+	'showcase-work': '2026-10-23',
+};
+
+/** A clip's length in whole seconds, from its MP4's movie header (the mvhd box). */
+function clipSeconds(file: string): number | undefined {
+	const data = fs.readFileSync(file);
+	const at = data.indexOf('mvhd');
+	if (at < 0) {
+		return undefined;
+	}
+	const long = data[at + 4] === 1;
+	const timescale = data.readUInt32BE(at + (long ? 24 : 16));
+	const duration = long ? Number(data.readBigUInt64BE(at + 28)) : data.readUInt32BE(at + 20);
+	return timescale ? Math.round(duration / timescale) : undefined;
+}
+
+/** A clip as a schema.org VideoObject, so it can show in video results. `name` is like `showcase-plan`. */
+function videoObject(c: Context, name: string, alt: string): JsonLd {
+	const date = clipDates[name];
+	if (!date) {
+		throw new Error(`${name} has no date in clipDates (build.mts): add the day it was taken.`);
+	}
+	const seconds = clipSeconds(path.join(siteDir, 'media', `${name}-light.mp4`));
+	return {
+		'@type': 'VideoObject',
+		name: alt,
+		description: alt,
+		thumbnailUrl: `${c.siteUrl}media/${name}-light.webp`,
+		contentUrl: `${c.siteUrl}media/${name}-light.mp4`,
+		uploadDate: date,
+		...seconds ? { duration: `PT${seconds}S` } : {},
+	};
+}
 
 /** The site as a schema.org WebSite, for pages to say they are part of. */
 function website(c: Context): JsonLd {
@@ -463,15 +543,17 @@ function headTags(title: string, meta: PageMeta, c: Context): string {
 	if (!meta.description || meta.description.length > 160) {
 		throw new Error(`${meta.path || 'index.html'}: the description must be 1 to 160 characters, not ${meta.description.length}: ${meta.description}`);
 	}
-	if (!meta.noindex) {
-		indexedPages.add(meta.path);
+	const canonical = meta.canonical ?? meta.path;
+	if (!meta.noindex && canonical === meta.path) {
+		indexedPages.set(meta.path, meta.modified);
 	}
-	const url = `${c.siteUrl}${meta.path}`;
+	const url = `${c.siteUrl}${canonical}`;
 	const image = meta.image ?? 'home.jpg';
 	const schema = meta.schema?.length ? { '@context': 'https://schema.org', '@graph': meta.schema } : undefined;
 	return [
 		`<link rel="canonical" href="${attr(url)}">`,
-		...meta.noindex ? ['<meta name="robots" content="noindex">'] : [],
+		// Search results may show the product shots at full size.
+		meta.noindex ? '<meta name="robots" content="noindex">' : '<meta name="robots" content="max-image-preview:large">',
 		...meta.markdown ? [`<link rel="alternate" type="text/markdown" href="${attr(meta.markdown)}" title="This page as Markdown">`] : [],
 		'<meta property="og:type" content="website">',
 		'<meta property="og:site_name" content="GeminiCode">',
@@ -525,7 +607,7 @@ function layout(title: string, body: string, c: Context, current: PageKind, root
 	// The site's own drop-down, drawn in its theme: a disclosure button and a panel (page.mts opens it).
 	const featureMenu = `<div class="fmenu"><button type="button" class="fm-btn" aria-expanded="false" aria-controls="fm-panel"${current === 'feature' ? ' data-current' : ''}>Features${icon('chevron-down')}</button><div class="fm-panel" id="fm-panel" hidden>${features('fm-item')}</div></div>`;
 	const news = current === 'home' ? `
-		<div class="news"><div class="wrap"><span class="k">New</span><a href="#projects">Projects: one chat, many threads, each on its own branch →</a></div></div>` : '';
+		<div class="news"><div class="wrap"><span class="k">New</span><a href="docs/terminal.html">Run Gemini's commands in each agent's own terminal, and answer replies with an emoji →</a></div></div>` : '';
 	const search = current === 'docs' ? `
 				<button type="button" class="search-btn" aria-label="Search the docs">${icon('search')}<span>Search docs</span><kbd>⌘K</kbd></button>` : '';
 	const brandTail = current === 'docs' ? `<span class="sep">/</span><span class="sub">Docs</span>` : '';
@@ -994,7 +1076,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 	return layout('GeminiCode: code with Gemini agents, review every change', body, c, 'home', '', {
 		path: '',
 		description: siteDescription,
-		schema: [app, { ...website(c), description: siteDescription }],
+		schema: [app, { ...website(c), description: siteDescription }, ...available.has('showcase-work-light.mp4') ? [videoObject(c, 'showcase-work', 'An agent at work in GeminiCode: the agent list, its chat and the Changes panel')] : []],
 	});
 }
 
@@ -1038,9 +1120,22 @@ export function addHeadingIds(notesHtml: string): { html: string; headings: { le
 	return { html, headings };
 }
 
-export function renderNotesPage(latest: LatestRelease, notesHtml: string, repo: string): string {
+/** One release's notes: what latest.json would say about it, the notes as HTML and as written. */
+interface ReleaseNotes {
+	readonly info: LatestRelease;
+	readonly html: string;
+	readonly body?: string;
+}
+
+/**
+ * A release notes page: notes.html for the latest release (`root` empty), or
+ * notes/<version>.html for any release (`root` `../`), which is the address search engines get.
+ */
+export function renderNotesPage(latest: LatestRelease, notes: ReleaseNotes | undefined, all: readonly ReleaseNotes[], repo: string, root: string): string {
 	const c = context(latest, repo);
-	if (!c.version || !c.dmg) {
+	const r = notes && context(notes.info, repo);
+	const version = notes?.info.version;
+	if (!notes || !r || !version) {
 		const empty = `
 	<section class="release wrap">
 		<div class="aside">
@@ -1055,42 +1150,53 @@ export function renderNotesPage(latest: LatestRelease, notesHtml: string, repo: 
 		});
 	}
 
-	const { html, headings } = addHeadingIds(notesHtml);
+	const own = `notes/${version}.html`;
+	// Images copied from the notes sit in notes/ at the site's root.
+	const { html, headings } = addHeadingIds(notes.html.replace(/(\s(?:src|href)=")notes\//g, `$1${root}notes/`));
 	const top = Math.min(...headings.map(h => h.level));
 	const toc = headings.length >= 2 ? `
 			<nav class="toc" aria-label="Sections of the notes">
 				${headings.map(h => `<a${h.level > top ? ' class="sub"' : ''} href="#${attr(h.id)}">${text(h.label)}</a>`).join('\n\t\t\t\t')}
 			</nav>` : '';
-	const sha = c.dmg.sha256 ? `
-			<div class="sha" id="sha">SHA-256 of ${text(c.dmg.name)}<code>${text(c.dmg.sha256)}</code></div>` : '';
+	const releaseList = all.length > 1 ? `
+			<nav class="toc releases" aria-label="All releases">
+				${all.map(each => `<a href="${root}notes/${attr(each.info.version ?? '')}.html"${each === notes ? ' aria-current="page"' : ''}>GeminiCode ${text(each.info.version ?? '')}</a>`).join('\n\t\t\t\t')}
+			</nav>` : '';
+	const download = r.dmg ? `
+			<div>
+				<a class="btn primary dl" href="${attr(r.dmg.url)}">${icon('download')}<span class="dl-label">Download ${text(version)}</span></a>
+				<small>Apple silicon · ${r.sizeMb} MB · macOS 26 or later</small>
+			</div>` : '';
+	const sha = r.dmg?.sha256 ? `
+			<div class="sha" id="sha">SHA-256 of ${text(r.dmg.name)}<code>${text(r.dmg.sha256)}</code></div>` : '';
+	const published = notes.info.publishedAt?.slice(0, 10);
 
 	const body = `
 	<section class="release wrap">
 		<div class="aside">
-			<a class="back" href="./">← Back</a>
+			<a class="back" href="${root}./">← Back</a>
 			<div>
 				<span class="label">Release notes</span>
-				<h1>GeminiCode ${text(c.version)}</h1>
-				${c.releasedLong ? `<p class="date">${text(c.releasedLong)}</p>` : ''}
-			</div>
-			<div>
-				<a class="btn primary dl" href="${attr(c.dmg.url)}">${icon('download')}<span class="dl-label">Download ${text(c.version)}</span></a>
-				<small>Apple silicon · ${c.sizeMb} MB · macOS 26 or later</small>
-			</div>
-			<div>${copyButton('notes.md')}</div>${toc}${sha}
+				<h1>GeminiCode ${text(version)}</h1>
+				${r.releasedLong ? `<p class="date">${text(r.releasedLong)}</p>` : ''}
+			</div>${download}
+			<div>${copyButton(root ? `${version}.md` : 'notes.md')}</div>${toc}${sha}${releaseList}
 		</div>
-		<div>${unsignedNote(latest)}
+		<div>${unsignedNote(notes.info)}
 			<div class="notes">${html.trim() ? html : '<p>No notes for this release.</p>'}</div>
-			<a class="more" href="${attr(latest.notesUrl ?? `${c.repoUrl}/releases`)}">See this release on GitHub ${icon('external')}</a>
+			<a class="more" href="${attr(notes.info.notesUrl ?? `${c.repoUrl}/releases`)}">See this release on GitHub ${icon('external')}</a>
 		</div>
 	</section>`;
-	return layout(`GeminiCode ${c.version} release notes`, body, c, 'notes', '', {
-		path: 'notes.html',
-		description: `What's new in GeminiCode ${c.version}${c.releasedLong ? `, released ${c.releasedLong}` : ''}: new features, what changes for you, new commands and shortcuts, and the download.`,
-		markdown: 'notes.md',
+	const title = root ? `GeminiCode ${version} release notes` : `Latest release notes · GeminiCode ${version}`;
+	return layout(title, body, c, 'notes', root, {
+		path: root ? own : 'notes.html',
+		canonical: own,
+		modified: published,
+		description: `What's new in GeminiCode ${version}${r.releasedLong ? `, released ${r.releasedLong}` : ''}: new features, what changes for you, new commands and shortcuts${r.dmg ? ', and the download' : ''}.`,
+		markdown: root ? `${version}.md` : 'notes.md',
 		schema: [
-			{ '@type': 'WebPage', name: `GeminiCode ${c.version} release notes`, url: `${c.siteUrl}notes.html`, isPartOf: website(c), ...latest.publishedAt ? { datePublished: latest.publishedAt.slice(0, 10) } : {} },
-			breadcrumbs(c, [['Release notes', 'notes.html']]),
+			{ '@type': 'WebPage', name: `GeminiCode ${version} release notes`, url: `${c.siteUrl}${own}`, isPartOf: website(c), ...published ? { datePublished: published } : {} },
+			breadcrumbs(c, [['Release notes', 'notes.html'], [`GeminiCode ${version}`, own]]),
 		],
 	});
 }
@@ -1201,6 +1307,9 @@ function writeFeatures(outDir: string, latest: LatestRelease, repo: string, medi
 			schema: [
 				{ '@type': 'WebPage', name: `${page.name} · GeminiCode`, description: page.description, url: `${c.siteUrl}${at}`, isPartOf: website(c) },
 				breadcrumbs(c, [[page.name, at]]),
+				...[page.hero, ...page.sections.flatMap(section => section.media ? [section.media] : [])]
+					.filter(item => item.clip && media.has(`${item.name}-light.mp4`))
+					.map(item => videoObject(c, item.name, item.alt)),
 			],
 		}));
 	}
@@ -1210,7 +1319,47 @@ function writeFeatures(outDir: string, latest: LatestRelease, repo: string, medi
 	}
 }
 
-function writeDocs(outDir: string, latest: LatestRelease, repo: string, pageUrl: string, mediaDir: string): void {
+/**
+ * When each guide page last changed, as YYYY-MM-DD by slug, from its Markdown's last commit.
+ * A checkout with history answers from git. The Pages workflow checks out one commit, where git
+ * would date every page to it, so there GitHub's API answers. A page it can't date shows none.
+ */
+async function guideDates(repo: string): Promise<Map<string, string>> {
+	const dates = new Map<string, string>();
+	const git = (...args: string[]) => execFileSync('git', args, { cwd: guideDir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+	let shallow = true;
+	try {
+		shallow = git('rev-parse', '--is-shallow-repository') !== 'false';
+	} catch {
+		// Not a git checkout: ask GitHub.
+	}
+	const headers: Record<string, string> = { accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' };
+	if (process.env.GITHUB_TOKEN) {
+		headers.authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+	}
+	for (const page of docPages) {
+		const file = `gemini/docs/guide/${page.slug}.md`;
+		try {
+			if (!shallow) {
+				dates.set(page.slug, git('log', '-1', '--format=%cs', '--', `${page.slug}.md`));
+				continue;
+			}
+			const response = await fetch(`https://api.github.com/repos/${repo}/commits?path=${encodeURIComponent(file)}&per_page=1`, { headers });
+			if (!response.ok) {
+				throw new Error(`HTTP ${response.status}`);
+			}
+			const [last] = await response.json() as { commit: { committer: { date: string } } }[];
+			if (last) {
+				dates.set(page.slug, last.commit.committer.date.slice(0, 10));
+			}
+		} catch (err) {
+			console.warn(`Could not date ${file} (${err}); its page shows no date.`);
+		}
+	}
+	return new Map([...dates].filter(([, date]) => /^\d{4}-\d{2}-\d{2}$/.test(date)));
+}
+
+function writeDocs(outDir: string, latest: LatestRelease, repo: string, pageUrl: string, mediaDir: string, dates: ReadonlyMap<string, string>): void {
 	const c = context(latest, repo);
 	const docsDir = path.join(outDir, 'docs');
 	fs.mkdirSync(docsDir, { recursive: true });
@@ -1226,6 +1375,7 @@ function writeDocs(outDir: string, latest: LatestRelease, repo: string, pageUrl:
 		const previous = docPages[index - 1];
 		const next = docPages[index + 1];
 		const onPage = doc.headings.filter(h => h.level === 2);
+		const updated = dates.get(page.slug);
 		const body = `
 	<div class="layout">${docsSidebar(c, page, doc)}
 		<article class="doc">
@@ -1240,7 +1390,7 @@ function writeDocs(outDir: string, latest: LatestRelease, repo: string, pageUrl:
 			${doc.lead ? `<p class="lead">${doc.lead}</p>` : ''}
 ${doc.html}
 			<div class="edit-row">
-				<span>${c.version ? `Up to date with GeminiCode ${text(c.version)}.` : ''}</span>
+				<span>${updated ? `Updated <time datetime="${updated}">${text(new Date(`${updated}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }))}</time>${c.version ? ` · GeminiCode ${text(c.version)}` : ''}` : c.version ? `Up to date with GeminiCode ${text(c.version)}.` : ''}</span>
 				<a href="${attr(c.repoUrl)}/edit/main/gemini/docs/guide/${page.slug}.md">${icon('pencil')}Edit this page on GitHub</a>
 			</div>
 			<nav class="pager" aria-label="Previous and next page">${previous ? `<a href="${previous.slug}.html"><small>Previous</small><b>${text(previous.title)}</b></a>` : `<a href="./"><small>Previous</small><b>Docs home</b></a>`}${next ? `<a class="next" href="${next.slug}.html"><small>Next</small><b>${text(next.title)} ${icon('arrow-right')}</b></a>` : ''}</nav>
@@ -1254,11 +1404,15 @@ ${doc.html}
 		const at = `docs/${page.slug}.html`;
 		fs.writeFileSync(path.join(docsDir, `${page.slug}.html`), layout(`${doc.title} · GeminiCode docs`, body, c, 'docs', '../', {
 			path: at,
+			modified: updated,
 			description: page.description,
 			markdown: `${page.slug}.md`,
 			schema: [
-				{ '@type': 'TechArticle', headline: doc.title, description: page.description, url: `${c.siteUrl}${at}`, inLanguage: 'en', isPartOf: website(c), about: { '@type': 'SoftwareApplication', name: 'GeminiCode' } },
+				{ '@type': 'TechArticle', headline: doc.title, description: page.description, url: `${c.siteUrl}${at}`, inLanguage: 'en', isPartOf: website(c), about: { '@type': 'SoftwareApplication', name: 'GeminiCode' }, ...updated ? { dateModified: updated } : {} },
 				breadcrumbs(c, [['Docs', 'docs/'], [doc.title, at]]),
+				...[...source.matchAll(/!\[([^\]]*)\]\(\.\.\/\.\.\/site\/media\/(showcase-[\w-]+)-dark\.webp "clip"\)/g)]
+					.filter(([, , name]) => media.has(`${name}-light.mp4`))
+					.map(([, alt, name]) => videoObject(c, name, alt)),
 			],
 		}));
 		const markdown = markdownForCopy(source, pageUrl);
@@ -1372,6 +1526,19 @@ function text(value: string): string {
 
 function attr(value: string): string {
 	return text(value).replace(/"/g, '&quot;');
+}
+
+/** The made-up releases a --sample build shows: 1.0.0, and 0.9.0 before it, without a .dmg. */
+function sampleReleases(repo: string): GitHubRelease[] {
+	return [sampleRelease(repo), {
+		tag_name: 'v0.9.0',
+		name: 'GeminiCode 0.9.0',
+		html_url: `https://github.com/${repo}/releases/tag/v0.9.0`,
+		published_at: '2026-10-09T12:00:00Z',
+		body: '## What\'s Changed\n\n- Agents mode and Editor mode',
+		body_html: '<h2>What\'s Changed</h2><ul><li>Agents mode and Editor mode</li></ul>',
+		assets: [],
+	}];
 }
 
 function sampleRelease(repo: string): GitHubRelease {
