@@ -110,6 +110,10 @@ jobs:
       - name: Build the download page (sample release)
         run: node gemini/site/build.mts "$RUNNER_TEMP/site" --sample
 
+      - name: Search and link preview tags on the download page
+        # Titles, descriptions, canonical addresses, Open Graph, JSON-LD, sitemap.xml, llms.txt and 404.html.
+        run: node gemini/site/check-seo.mts "$RUNNER_TEMP/site"
+
       - name: Accessibility and Lighthouse on the download page
         # axe-core on every page (no violations), Lighthouse on the landing and docs pages (accessibility 100, the rest 90 or more).
         run: |

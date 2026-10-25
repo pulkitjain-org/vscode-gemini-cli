@@ -27,3 +27,5 @@ Capture from the real app, against demo data, so no real account, ticket, name o
 - The Agents pane with five agents in different states, for the landing page's Agents section ("Agents side by side" tile).
 - Enhance prompt before and after, as a still. The `showcase-enhance` clip shows it.
 - Forks listed under their agent, with the fork card in its chat. On the Agents feature page, "Fork an agent" shows only the Fork dialog.
+
+The link preview images in `media/og/` (1200 × 630 JPEG) are crops of the light shots named in `ogImages` in `build.mts`. Remake one when its shot is retaken; [RELEASING.md](../docs/RELEASING.md#search-engines-link-previews-and-ai-tools) has the command.

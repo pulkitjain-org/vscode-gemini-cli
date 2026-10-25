@@ -32,6 +32,8 @@ export interface FeaturePage {
 	readonly name: string;
 	/** One line under the name in the Features menu. */
 	readonly summary: string;
+	/** For search results and link previews: at most 160 characters. */
+	readonly description: string;
 	/** The headline, with its second half in italics. */
 	readonly headline: readonly [string, string];
 	readonly lead: string;
@@ -48,6 +50,7 @@ export const featurePages: readonly FeaturePage[] = [
 		slug: 'agents',
 		name: 'Agents',
 		summary: 'Several agents side by side, and the index they find code with.',
+		description: 'Run several Gemini agents side by side in GeminiCode, each with its own chat, files and branch. A local index lets them find code in one step.',
 		headline: ['Run agents side by side.', 'They find the code in one step.'],
 		lead: 'Each agent is a tab with its own chat, files and changes, in the folder it works in or on a branch of its own. A local index of every workspace lets agents go straight to the code that matters, instead of reading file by file.',
 		hero: { name: 'showcase-work', alt: 'An agent at work in Agents mode: the agent list on the left, its chat in the middle and its changes on the right', clip: true },
@@ -98,6 +101,7 @@ export const featurePages: readonly FeaturePage[] = [
 		slug: 'chat-and-review',
 		name: 'Chat and review',
 		summary: 'Prompting, Plan mode, reactions, approvals, and Keep, Undo and Rewind.',
+		description: 'Prompt Gemini agents in GeminiCode, steer them while they work, run their commands, and keep, undo or rewind every change they make.',
 		headline: ['Ask in plain words.', 'Review every change.'],
 		lead: 'The chat holds everything a prompt needs: files and context, the model, the approval mode and your slash commands. Every command asks before it runs, and every change an agent makes can be kept, undone or rewound.',
 		hero: { name: 'showcase-review', alt: 'Keeping an agent\'s edits one by one, with Keep and Undo above each change', clip: true },
@@ -165,6 +169,7 @@ export const featurePages: readonly FeaturePage[] = [
 		slug: 'projects',
 		name: 'Projects',
 		summary: 'A coordinator that splits larger work into threads.',
+		description: 'GeminiCode Projects: a coordinator splits larger work into threads, each a Gemini agent on its own branch, that you merge back, review or undo.',
 		headline: ['One chat for the whole job.', 'Threads you can merge.'],
 		lead: 'Describe larger work in a project chat. Its coordinator splits it into threads, each an agent on its own branch, passes your follow-ups to the right one, and keeps track of where each stands.',
 		hero: { name: 'showcase-projects', alt: 'The coordinator starting two threads, whose cards update as they work', clip: true },
@@ -206,6 +211,7 @@ export const featurePages: readonly FeaturePage[] = [
 		slug: 'browser',
 		name: 'Browser',
 		summary: 'A browser your agents can use, beside the chat.',
+		description: 'GeminiCode\'s browser is shared with your agents: they open your app, click, type and read the console, and you point at what to change.',
 		headline: ['A browser your agents use.', 'Point at what to change.'],
 		lead: 'GeminiCode has a browser of its own. Agents open your app in it, click, type, take screenshots and read the console. You point at an element, or pin notes on the page, and send them to an agent.',
 		hero: { name: 'browser-page', alt: 'A cart page open in GeminiCode\'s browser beside the chat, with Add to Gemini in the toolbar' },
@@ -239,6 +245,7 @@ export const featurePages: readonly FeaturePage[] = [
 		slug: 'team-tools',
 		name: 'Connected tools',
 		summary: 'Jira, GitLab, SonarQube, Snyk and Figma, from ticket to merge.',
+		description: 'Connect Jira, GitLab, SonarQube, Snyk and Figma to GeminiCode. Go from a ticket to a merged merge request, and review merge requests with Gemini.',
 		headline: ['From ticket to merge request.', 'Without leaving the editor.'],
 		lead: 'Connect Jira, GitLab, SonarQube, Snyk and Figma with your own account. Home shows your tickets and merge requests. Start an agent from a ticket, open its merge request, fix the pipeline and the comments, review a teammate\'s work with Gemini, and merge when GitLab\'s checks pass.',
 		hero: { name: 'showcase-mr-review', alt: 'Gemini\'s review of a merge request, a comment of your own with a suggested change, and the review posted', clip: true },

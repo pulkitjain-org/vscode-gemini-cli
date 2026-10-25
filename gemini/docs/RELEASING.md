@@ -90,6 +90,18 @@ The release notes from the GitHub release, with the download button, **Copy as M
 
 The version, download and release links. The app's update notice reads it, so keep its `version`, `url` and `notesUrl` fields stable.
 
+### Search engines, link previews and AI tools
+
+Every page's `<head>` has a canonical address, Open Graph and Twitter tags, and schema.org JSON-LD: a `SoftwareApplication` on the landing page, built from the latest release, and breadcrumbs on the other pages. `layout()` in `build.mts` writes them from each page's `PageMeta`. Descriptions are at most 160 characters: the feature pages' are in `featurePages` (`description`), the docs pages' in `docGroups`.
+
+The build also writes:
+
+- `sitemap.xml`, listing every page that may be indexed. Submit it once in Google Search Console.
+- `llms.txt`, which says in a few lines what GeminiCode is and links each docs page's Markdown copy, for AI tools.
+- `404.html`, which GitHub Pages serves for any address on the site that has no page.
+
+Link previews use the 1200 × 630 JPEG crops in `media/og/`, one for the landing page and one per feature page. Remake one with `ffmpeg -i <shot>-light.webp -vf "crop=2000:1050:0:0,scale=1200:630:flags=lanczos" -q:v 3 og/<page>.jpg` when its screenshot is retaken.
+
 ### Screenshots and clips
 
 The site's media are in `gemini/site/media/`, each in a `-dark` and a `-light` copy taken from the app at 1440 × 900 points in GeminiCode Dark and Light:
@@ -105,7 +117,7 @@ The Geist, Geist Mono and Newsreader fonts in `gemini/site/fonts/` are served wi
 
 ### Checks before deploying
 
-Before the upload, `gemini/site/check-a11y.mts` runs axe-core on every page, and `gemini/site/check-lighthouse.mts` runs Lighthouse on the landing and docs pages. A violation, or a score under its floor (accessibility 100, the rest 90), stops the deploy. Gemini CI runs the same checks on the sample build, so a pull request sees them first.
+Before the upload, `gemini/site/check-seo.mts` checks every page's title, description, canonical address, Open Graph tags and JSON-LD, and that `sitemap.xml`, `llms.txt` and `404.html` match the pages. `gemini/site/check-a11y.mts` runs axe-core on every page, with the screenshot viewer open on pages that have one, and `gemini/site/check-lighthouse.mts` runs Lighthouse on the landing and docs pages. A problem, a violation, or a score under its floor (accessibility 100, the rest 90), stops the deploy. Gemini CI runs the same checks on the sample build, so a pull request sees them first.
 
 ### When the page is rebuilt
 

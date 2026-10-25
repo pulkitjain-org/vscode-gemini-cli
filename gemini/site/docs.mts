@@ -21,6 +21,8 @@ export interface DocPage {
 	readonly title: string;
 	readonly icon: string;
 	readonly summary: string;
+	/** For search results and link previews: at most 160 characters. */
+	readonly description: string;
 	/** A few of the page's topics, for its card on the docs home. */
 	readonly topics: readonly string[];
 }
@@ -28,26 +30,26 @@ export interface DocPage {
 export const docGroups: readonly { readonly name: string; readonly pages: readonly DocPage[] }[] = [
 	{
 		name: 'Start here', pages: [
-			{ slug: 'getting-started', title: 'Getting started', icon: 'rocket', summary: 'Install, sign in, pick a model and run your first agent.', topics: ['Install', 'Sign in', 'First agent', 'Make it yours', 'Updates'] },
+			{ slug: 'getting-started', title: 'Getting started', icon: 'rocket', summary: 'Install, sign in, pick a model and run your first agent.', description: 'Install GeminiCode on a Mac with Apple silicon, sign in with Google, set your Cloud project and start your first Gemini agent.', topics: ['Install', 'Sign in', 'First agent', 'Make it yours', 'Updates'] },
 		],
 	},
 	{
 		name: 'Using GeminiCode', pages: [
-			{ slug: 'agents', title: 'Agents', icon: 'bot', summary: 'Agents and Editor modes, Home, branches, forks, and the workspace index and docs agents search.', topics: ['Home', 'Agents mode', 'Own branch', 'Fork', 'Workspace index', 'Docs'] },
-			{ slug: 'chat', title: 'Chat and prompting', icon: 'message', summary: 'The + menu, context, Enhance, Plan mode, steering, reactions and Compact.', topics: ['+ menu', '@ context', 'Enhance', 'Plan mode', 'Send or queue', 'Reactions', 'Compact'] },
-			{ slug: 'review', title: 'Review and safety', icon: 'shield-check', summary: 'Approvals, Keep and Undo, Rewind, inline edit and Review My Changes.', topics: ['Approval modes', 'Keep and Undo', 'Rewind', 'Inline edit', 'Review My Changes'] },
-			{ slug: 'terminal', title: 'Terminal', icon: 'terminal', summary: 'Each agent\'s terminal, Run on a reply\'s commands, and sending output to Gemini.', topics: ['Agent terminal', 'Run', 'Send to Gemini', '⌘I'] },
-			{ slug: 'projects', title: 'Projects', icon: 'network', summary: 'A coordinator and its threads, across one or more repositories.', topics: ['Coordinator', 'Threads', 'Plan first', 'Repositories', 'Memory'] },
-			{ slug: 'browser', title: 'Browser', icon: 'globe', summary: 'Add to Gemini, notes on the page, console and network.', topics: ['Add to Gemini', 'Notes', 'Shared pages', 'Console'] },
-			{ slug: 'team-tools', title: 'Team tools', icon: 'plug', summary: 'Jira, GitLab, SonarQube, Snyk and Figma, and the Home dashboard.', topics: ['Connections', 'Home', 'Ticket to MR', 'Ticket comments', 'Review', 'Audit log'] },
+			{ slug: 'agents', title: 'Agents', icon: 'bot', summary: 'Agents and Editor modes, Home, branches, forks, and the workspace index and docs agents search.', description: 'Run Gemini agents side by side in GeminiCode: Home, Agents mode, agents on their own branch, forks, and the workspace index they search.', topics: ['Home', 'Agents mode', 'Own branch', 'Fork', 'Workspace index', 'Docs'] },
+			{ slug: 'chat', title: 'Chat and prompting', icon: 'message', summary: 'The + menu, context, Enhance, Plan mode, steering, reactions and Compact.', description: 'Prompt a Gemini agent in GeminiCode: attach context, enhance prompts, plan first, steer or queue messages, react with emoji and compact long chats.', topics: ['+ menu', '@ context', 'Enhance', 'Plan mode', 'Send or queue', 'Reactions', 'Compact'] },
+			{ slug: 'review', title: 'Review and safety', icon: 'shield-check', summary: 'Approvals, Keep and Undo, Rewind, inline edit and Review My Changes.', description: 'How GeminiCode keeps you in control of Gemini agents: approval modes, permission cards, Keep and Undo, Rewind, inline edit and what agents can\'t read.', topics: ['Approval modes', 'Keep and Undo', 'Rewind', 'Inline edit', 'Review My Changes'] },
+			{ slug: 'terminal', title: 'Terminal', icon: 'terminal', summary: 'Each agent\'s terminal, Run on a reply\'s commands, and sending output to Gemini.', description: 'Each GeminiCode agent has its own terminal. Run the commands Gemini suggests, send terminal output to Gemini, and press ⌘I to ask for a command.', topics: ['Agent terminal', 'Run', 'Send to Gemini', '⌘I'] },
+			{ slug: 'projects', title: 'Projects', icon: 'network', summary: 'A coordinator and its threads, across one or more repositories.', description: 'GeminiCode Projects: talk to a coordinator that splits work into threads, each a Gemini agent on its own branch, across one or more repositories.', topics: ['Coordinator', 'Threads', 'Plan first', 'Repositories', 'Memory'] },
+			{ slug: 'browser', title: 'Browser', icon: 'globe', summary: 'Add to Gemini, notes on the page, console and network.', description: 'Let Gemini agents use GeminiCode\'s browser: open your app, point at elements, pin notes on the page, and read the console and network.', topics: ['Add to Gemini', 'Notes', 'Shared pages', 'Console'] },
+			{ slug: 'team-tools', title: 'Team tools', icon: 'plug', summary: 'Jira, GitLab, SonarQube, Snyk and Figma, and the Home dashboard.', description: 'Connect Jira, GitLab, SonarQube, Snyk and Figma to GeminiCode: start from a ticket, open and merge the merge request, and review with Gemini.', topics: ['Connections', 'Home', 'Ticket to MR', 'Ticket comments', 'Review', 'Audit log'] },
 		],
 	},
 	{
 		name: 'Set up and fix', pages: [
-			{ slug: 'helpers', title: 'Project Helpers', icon: 'blocks', summary: 'Context per model call, MCP servers, skills, hooks, extensions, memory and the CLI\'s settings.', topics: ['Context cost', 'MCP servers', 'Skills', 'Hooks', 'Memory'] },
-			{ slug: 'settings', title: 'Settings', icon: 'settings', summary: 'Every GeminiCode setting by area, and the ones an administrator can lock.', topics: ['Chat', 'Agents', 'Browser', 'Team tools', 'Policies'] },
-			{ slug: 'shortcuts', title: 'Keyboard shortcuts', icon: 'keyboard', summary: 'Every shortcut in one table, by area.', topics: ['Agents', 'Chat', 'Editor', 'Browser'] },
-			{ slug: 'troubleshooting', title: 'Troubleshooting', icon: 'life-buoy', summary: 'Common problems, a performance trace, and how to report a bug well.', topics: ['Common problems', 'Trace', 'Report'] },
+			{ slug: 'helpers', title: 'Project Helpers', icon: 'blocks', summary: 'Context per model call, MCP servers, skills, hooks, extensions, memory and the CLI\'s settings.', description: 'GeminiCode\'s Project Helpers: what each model call costs, and the MCP servers, skills, hooks, extensions and memory your Gemini agents load.', topics: ['Context cost', 'MCP servers', 'Skills', 'Hooks', 'Memory'] },
+			{ slug: 'settings', title: 'Settings', icon: 'settings', summary: 'Every GeminiCode setting by area, and the ones an administrator can lock.', description: 'Every GeminiCode setting, grouped by area with its default, and the settings an administrator can lock with a policy.', topics: ['Chat', 'Agents', 'Browser', 'Team tools', 'Policies'] },
+			{ slug: 'shortcuts', title: 'Keyboard shortcuts', icon: 'keyboard', summary: 'Every shortcut in one table, by area.', description: 'Every GeminiCode keyboard shortcut in one place: agents and layout, the chat, the editor, the terminal and the browser.', topics: ['Agents', 'Chat', 'Editor', 'Browser'] },
+			{ slug: 'troubleshooting', title: 'Troubleshooting', icon: 'life-buoy', summary: 'Common problems, a performance trace, and how to report a bug well.', description: 'Fix common GeminiCode problems: sign-in, the Gemini CLI, folder trust, the index, slow agents, and how to report a bug.', topics: ['Common problems', 'Trace', 'Report'] },
 		],
 	},
 ];

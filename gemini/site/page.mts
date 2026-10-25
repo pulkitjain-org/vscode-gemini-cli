@@ -4,8 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 // What every page shares: the Dark · Light · System switch, the screenshot swap that goes with
-// it, the nav's scrolled state and phone menu, and the reveals that IntersectionObserver
-// triggers once. Served as plain JavaScript (build.mts strips the types).
+// it, the nav's scrolled state and phone menu, the reveals that IntersectionObserver triggers
+// once, and the viewer that shows a screenshot at full size. Served as plain JavaScript (build.mts strips the types).
 
 type Mode = 'dark' | 'light' | 'system';
 
@@ -217,6 +217,102 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('[data-copy-md
 			say('Couldn\'t copy', false);
 		}
 	});
+}
+
+// ---- Screenshots at full size: a button on each product shot opens it in a dialog ----
+
+/** The image a shot shows now: its light or dark copy, whichever the page's theme leaves visible. */
+function shownImage(holder: HTMLElement): HTMLImageElement | undefined {
+	return [...holder.querySelectorAll<HTMLImageElement>('img')].find(image => getComputedStyle(image).display !== 'none');
+}
+
+function svgIcon(name: string): string {
+	return `<svg class="i" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+}
+
+let viewer: HTMLDialogElement | undefined;
+
+/** The dialog, made the first time a shot is opened: the caption, Full screen and Close above the image. */
+function viewerDialog(): HTMLDialogElement {
+	if (viewer) {
+		return viewer;
+	}
+	const dialog = document.createElement('dialog');
+	dialog.className = 'viewer';
+	dialog.setAttribute('aria-labelledby', 'viewer-cap');
+	dialog.innerHTML = `<div class="viewer-bar"><p id="viewer-cap"></p>${document.fullscreenEnabled ? `<button type="button" class="viewer-btn" data-full>${svgIcon('fullscreen')}<span>Full screen</span></button>` : ''}<button type="button" class="viewer-btn" data-close aria-label="Close">${svgIcon('x')}</button></div><img alt="" decoding="async">`;
+	const image = dialog.querySelector('img')!;
+	const full = dialog.querySelector<HTMLButtonElement>('[data-full]');
+	full?.addEventListener('click', () => {
+		if (document.fullscreenElement) {
+			void document.exitFullscreen();
+		} else {
+			void image.requestFullscreen().catch(() => undefined);
+		}
+	});
+	document.addEventListener('fullscreenchange', () => {
+		const label = full?.querySelector('span');
+		if (label) {
+			label.textContent = document.fullscreenElement ? 'Exit full screen' : 'Full screen';
+		}
+	});
+	dialog.querySelector('[data-close]')!.addEventListener('click', () => dialog.close());
+	// A click beside the image, on the dark ground, closes the viewer.
+	dialog.addEventListener('click', event => {
+		if (event.target === dialog) {
+			dialog.close();
+		}
+	});
+	document.body.append(dialog);
+	viewer = dialog;
+	return dialog;
+}
+
+/** Opens `holder`'s shown image in the viewer; focus goes back to `opener` when it closes. */
+function openShot(holder: HTMLElement, opener: HTMLElement): void {
+	const shown = shownImage(holder);
+	if (!shown) {
+		return;
+	}
+	const dialog = viewerDialog();
+	const image = dialog.querySelector('img')!;
+	// The full file, never the phone-sized copy a srcset may have picked for the page.
+	image.src = shown.getAttribute('src') ?? shown.currentSrc;
+	image.alt = shown.alt;
+	dialog.querySelector('#viewer-cap')!.textContent = shown.alt || holder.closest('figure')?.querySelector('figcaption')?.textContent || 'Screenshot';
+	dialog.addEventListener('close', () => opener.focus(), { once: true });
+	dialog.showModal();
+}
+
+/** Gives `holder` a full-size button, and makes its images open the viewer when clicked. */
+function makeZoomable(holder: HTMLElement): void {
+	const label = shownImage(holder)?.alt || 'this screenshot';
+	const button = document.createElement('button');
+	button.type = 'button';
+	button.className = 'zoom';
+	button.setAttribute('aria-label', `View full size: ${label}`);
+	button.innerHTML = svgIcon('maximize');
+	button.addEventListener('click', () => openShot(holder, button));
+	holder.append(button);
+	for (const image of holder.querySelectorAll('img')) {
+		image.addEventListener('click', () => openShot(holder, button));
+	}
+	holder.classList.add('can-zoom');
+}
+
+// Product shots, but not the orbit's thumbnails or a still that a play button turns into a clip.
+for (const holder of document.querySelectorAll<HTMLElement>('.shot')) {
+	if (holder.querySelector('img') && !holder.querySelector('video') && !holder.closest('.thumb, .float') && !holder.parentElement?.querySelector('.play')) {
+		makeZoomable(holder);
+	}
+}
+// Images pasted into the release notes, each wrapped so its button has a corner to sit in.
+for (const image of document.querySelectorAll<HTMLImageElement>('.notes img')) {
+	const holder = document.createElement('span');
+	holder.className = 'zoomable';
+	image.replaceWith(holder);
+	holder.append(image);
+	makeZoomable(holder);
 }
 
 export { pageTheme };
