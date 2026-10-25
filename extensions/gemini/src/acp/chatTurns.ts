@@ -19,7 +19,7 @@ const planModeId = 'plan';
 const defaultModeId = 'default';
 
 /** The most proposed edits, and tool calls, a chat keeps track of. */
-const maxRemembered = 200;
+export const maxRemembered = 200;
 
 /** Whether the saved chat ends in a prompt that never got its turn end or an error. */
 export function wasCutOff(items: readonly TranscriptItem[]): boolean {

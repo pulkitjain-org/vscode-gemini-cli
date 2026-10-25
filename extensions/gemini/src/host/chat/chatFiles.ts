@@ -5,24 +5,37 @@
 
 // The files a chat opens: a proposed edit's diff, a file and line a tool call
 // or a reply names, and a turn's trace file. Proposed edits are kept in memory
-// only, by transcript item id, so their diffs can be opened after the turn.
+// only, by transcript item id, so their diffs can be opened after the turn:
+// the latest 200, and no more than 20 MB of text before and after.
 
 import * as path from 'node:path';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
-import { dropOldest } from '../../acp/chatTurns';
+import { BoundedStore, diffBytes, ToolOutputStore } from '../../acp/chatMemory';
+import { maxRemembered } from '../../acp/chatTurns';
 import { errorMessage } from '../../acp/errors';
 import { fileNamePattern } from '../../acp/folderFiles';
 import type { FromWebview } from '../chatProtocol';
 import type { DiffPreview } from '../diffPreview';
 import type { ChatControllerOptions } from './chatOptions';
 
+/** How much proposed edits' text a chat keeps, before and after, for their diffs: the oldest go first. */
+const maxDiffBytes = 20 * 1024 * 1024;
+/** How much of tools' long output a chat keeps whole, for Show All. */
+const maxOutputBytes = 16 * 1024 * 1024;
+
 export type FileLinkMessage = Extract<FromWebview, { readonly type: 'openDiff' | 'openLocation' | 'openPath' | 'openTrace' }>;
 
 export class ChatFileLinks {
 
 	/** Proposed edits by transcript item id (tool calls and permission requests), so their diffs can be opened later. */
-	private readonly diffs = new Map<string, readonly acp.Diff[]>();
+	private readonly diffs = new BoundedStore<string, readonly acp.Diff[]>(maxDiffBytes, diffBytes, maxRemembered);
+	/**
+	 * Tools' full output, for a tool card that shows only the first and last
+	 * lines of a long one to fetch on Show All: the transcript then keeps the
+	 * trimmed text (`ToolOutputStore.put` returns it) and this the whole.
+	 */
+	readonly outputs = new ToolOutputStore(maxOutputBytes);
 
 	constructor(
 		private readonly diffPreview: DiffPreview,
@@ -51,16 +64,15 @@ export class ChatFileLinks {
 	/** Keeps the proposed edits of transcript item `itemId`, to open their diffs later. */
 	remember(itemId: string, diffs: readonly acp.Diff[]): void {
 		if (diffs.length) {
-			// Re-inserting keeps the most recent edits when old ones are dropped.
-			this.diffs.delete(itemId);
+			// Setting again keeps the most recent edits when old ones are dropped.
 			this.diffs.set(itemId, diffs);
-			dropOldest(this.diffs);
 		}
 	}
 
-	/** Forgets every proposed edit, as the conversation is cleared. */
+	/** Forgets every proposed edit and tool output, as the conversation is cleared. */
 	clear(): void {
 		this.diffs.clear();
+		this.outputs.clear();
 	}
 
 	async openDiff(itemId: string, filePath: string, preserveFocus: boolean): Promise<void> {
