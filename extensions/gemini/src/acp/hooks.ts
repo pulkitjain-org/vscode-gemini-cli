@@ -72,7 +72,7 @@ export function disabledHooks(settings: Record<string, unknown>): Set<string> {
 	return new Set(list.filter((n): n is string => typeof n === 'string'));
 }
 
-/** Adds a command hook. False when the file has comments, which GeminiCode will not rewrite. */
+/** Adds a command hook. False when the file isn't valid JSON, which GeminiCode will not rewrite. */
 export function addHook(file: string, event: HookEvent, command: string, matcher?: string): Promise<boolean> {
 	return updateSettingsFile(file, settings => {
 		const hooks = isRecord(settings.hooks) ? settings.hooks : {};
@@ -82,7 +82,7 @@ export function addHook(file: string, event: HookEvent, command: string, matcher
 	});
 }
 
-/** Switches a hook on or off in `file`, as the CLI's /hooks enable and disable do. False when the file has comments. */
+/** Switches a hook on or off in `file`, as the CLI's /hooks enable and disable do. False when the file isn't valid JSON. */
 export function setHookEnabled(file: string, name: string, enabled: boolean): Promise<boolean> {
 	return updateSettingsFile(file, settings => {
 		const config = isRecord(settings.hooksConfig) ? settings.hooksConfig : {};

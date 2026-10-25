@@ -670,7 +670,7 @@ export class SettingsPage implements vscode.Disposable {
 	}
 
 	private async cannotRewrite(file: string, needle: string): Promise<void> {
-		void vscode.window.showWarningMessage(vscode.l10n.t("{0} has comments, so GeminiCode won't rewrite it. Make the change under {1} yourself.", tildify(file), needle));
+		void vscode.window.showWarningMessage(vscode.l10n.t("{0} isn't valid JSON, so GeminiCode won't rewrite it. Make the change under {1} yourself.", tildify(file), needle));
 		await openAt(file, needle);
 	}
 

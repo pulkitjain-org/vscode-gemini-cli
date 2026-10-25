@@ -135,7 +135,7 @@ export class ConnectionsPage implements vscode.Disposable {
 				if (this.allowlist) {
 					const done = await allowServer(this.allowlist.path, teamToolsServerName).catch(() => false);
 					if (!done) {
-						void vscode.window.showWarningMessage(vscode.l10n.t("GeminiCode can't rewrite {0} because it has comments. Remove \"{1}\" from mcp.excluded there yourself.", this.allowlist.file, teamToolsServerName));
+						void vscode.window.showWarningMessage(vscode.l10n.t("GeminiCode can't rewrite {0} because it isn't valid JSON. Remove \"{1}\" from mcp.excluded there yourself.", this.allowlist.file, teamToolsServerName));
 						await this.openFile(this.allowlist.path, 'excluded');
 					}
 					await this.readFiles();

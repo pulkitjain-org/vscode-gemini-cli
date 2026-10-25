@@ -48,11 +48,14 @@ describe('cliPreferences', () => {
 		]);
 	});
 
-	it('writes the user settings file and refuses one with comments', async () => {
+	it('writes the user settings file, keeping its comments, and refuses one that is not JSON', async () => {
 		const file = path.join(dir, 'settings.json');
 		expect(await setCliPreference(file, 'permanentApproval', true)).toBe(true);
 		expect(await readSettingsFile(file)).toEqual({ security: { enablePermanentToolApproval: true } });
 		await fs.writeFile(file, '{\n  // mine\n}\n');
+		expect(await setCliPreference(file, 'usageStatistics', false)).toBe(true);
+		expect(await fs.readFile(file, 'utf8')).toContain('// mine');
+		await fs.writeFile(file, '{\n  "a": \n}\n');
 		expect(await setCliPreference(file, 'usageStatistics', false)).toBe(false);
 		await expect(setCliPreference(file, 'keepChats', '1h')).rejects.toThrow();
 	});

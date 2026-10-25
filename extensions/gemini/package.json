@@ -1587,6 +1587,7 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.6.0",
+    "jsonc-parser": "3.3.1",
     "zod": "^4.1.0"
   },
   "devDependencies": {

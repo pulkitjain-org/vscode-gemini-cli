@@ -76,7 +76,7 @@ export async function takeOverTeamServers(connections: TeamConnections, file: st
 	}
 	log.info(`Took over ${names} from ${file}${rewritten ? `; removed ${removed.join(', ')}` : '; the file was left as it is'}`);
 	if (!rewritten) {
-		void vscode.window.showWarningMessage(vscode.l10n.t("GeminiCode keeps the tokens now, but can't rewrite {0} because it has comments. Remove {1} from mcpServers there, and their tokens from security.environmentVariableRedaction.allowed.", file, names));
+		void vscode.window.showWarningMessage(vscode.l10n.t("GeminiCode keeps the tokens now, but can't rewrite {0} because it isn't valid JSON. Remove {1} from mcpServers there, and their tokens from security.environmentVariableRedaction.allowed.", file, names));
 		const document = await vscode.workspace.openTextDocument(file);
 		await vscode.window.showTextDocument(document);
 		return false;
