@@ -7,7 +7,8 @@
 // from the extension host so they are localized.
 
 import * as vscode from 'vscode';
-import type { ChatStrings, ForkStrings, ProjectChatStrings } from '../chatProtocol';
+import type { ChatStrings, ForkStrings, ProjectChatStrings, ReactionStrings } from '../chatProtocol';
+import { reactionsOn } from '../chatReactions';
 import { foldWorkOn } from '../foldWork';
 import { spellCheckOn } from '../spellCheck';
 import { createNonce, escapeAttribute } from '../webviewHtml';
@@ -25,11 +26,14 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 	// Loaded by the view when a reply first has math.
 	const katex = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'katex.js'));
 	const katexStyle = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'katex-style.css'));
+	// Loaded by the view when the reaction button is first hovered or focused.
+	const emojiPicker = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'emojiPicker.js'));
 	const strings: ChatStrings = {
 		placeholder: vscode.l10n.t("Ask Gemini anything about this workspace"),
 		fromCoordinator: vscode.l10n.t("From coordinator"),
 		...(project ? { project: projectStrings() } : {}),
 		...(fork ? { fork: forkStrings() } : {}),
+		...(project ? {} : { reactions: reactionStrings() }),
 		placeholderFollowUp: vscode.l10n.t("Ask a follow-up"),
 		placeholderWorking: process.platform === 'darwin' ? vscode.l10n.t("↩ to send, ⌘↩ to queue for later") : vscode.l10n.t("Enter to send, Ctrl+Enter to queue for later"),
 		send: process.platform === 'darwin' ? vscode.l10n.t("Send (Return)") : vscode.l10n.t("Send (Enter)"),
@@ -389,9 +393,37 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			<div id="repos-menu" class="foot-menu" hidden></div>
 		</div>
 	</div>
-	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-fold-work="${foldWorkOn()}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
+	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-fold-work="${foldWorkOn()}" data-emoji-picker="${emojiPicker}" data-reactions="${!project && reactionsOn()}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
 </html>`;
+}
+
+function reactionStrings(): ReactionStrings {
+	return {
+		add: vscode.l10n.t("React to this reply"),
+		more: vscode.l10n.t("All emoji"),
+		quick: [vscode.l10n.t("Go ahead"), vscode.l10n.t("Not what I meant"), vscode.l10n.t("Explain more simply"), vscode.l10n.t("Thanks (no reply)")],
+		reacted: vscode.l10n.t("You reacted {0} to Gemini's reply"),
+		chip: vscode.l10n.t("Reaction: {0}"),
+		agentReacted: vscode.l10n.t("Gemini reacted {0}"),
+		queued: vscode.l10n.t("{0} on Gemini's reply"),
+		showReply: vscode.l10n.t("Show the reply"),
+		picker: vscode.l10n.t("Emoji"),
+		search: vscode.l10n.t("Search emoji"),
+		recent: vscode.l10n.t("Recent"),
+		noResults: vscode.l10n.t("No emoji found"),
+		groups: [
+			vscode.l10n.t("Smileys and emotion"),
+			vscode.l10n.t("People and body"),
+			vscode.l10n.t("Animals and nature"),
+			vscode.l10n.t("Food and drink"),
+			vscode.l10n.t("Travel and places"),
+			vscode.l10n.t("Activities"),
+			vscode.l10n.t("Objects"),
+			vscode.l10n.t("Symbols"),
+			vscode.l10n.t("Flags"),
+		],
+	};
 }
 
 function forkStrings(): ForkStrings {

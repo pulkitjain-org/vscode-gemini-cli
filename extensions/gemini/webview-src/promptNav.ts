@@ -68,7 +68,8 @@ export function updateOutline(): void {
 	active = -1;
 	ticks = ids.map((id, index) => {
 		const item = state.items.find(i => i.id === id);
-		const text = item && item.kind === 'user' ? item.text.replace(/\s+/g, ' ').trim() : '';
+		// A reaction sent on its own is named by its emoji.
+		const text = item && item.kind === 'user' ? item.text.replace(/\s+/g, ' ').trim() || (item.reactions ?? []).map(reaction => reaction.emoji).join(' ') : '';
 		const tick = button('outline-tick', '', () => jumpTo(index));
 		tick.title = text.length > 120 ? `${text.slice(0, 119)}…` : text;
 		tick.setAttribute('aria-label', tick.title);

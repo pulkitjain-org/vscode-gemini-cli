@@ -10,6 +10,7 @@
 import MarkdownIt from 'markdown-it';
 import { basename } from '../src/acp/attachments';
 import type { PromptAttachmentLabel, TranscriptItem } from '../src/acp/chatTranscript';
+import type { ReactionRef } from '../src/acp/reactions';
 import type { ThreadAction, ViewSession } from '../src/host/chatProtocol';
 import { attachmentIcon, codeLanguage, format, formatDuration, formatTokens, formatSentAt, permissionDefaults, planIcon, replyBefore, subagentName, thoughtSeconds, toolKindIcon, type ItemOf } from './chatLogic';
 import { highlightCode } from './codeHighlight';
@@ -25,6 +26,7 @@ import { toolLogo } from './toolLogos';
 import { toneOf } from './repoTones';
 import { thoughtPreview } from './streaming';
 import { thoughtSummary } from './workFold';
+import { agentBadge, reactionLines, replyReactions } from './reactionBar';
 import { expanded, state, strings, subagentTimes, thoughtTimes, ui, vscode } from './view';
 
 const mac = /Mac/.test(navigator.platform);
@@ -187,6 +189,7 @@ function renderTurnEnd(item: ItemOf<'turnEnd'>): HTMLElement {
 	} else if (item.undo === 'undone') {
 		node.append(el('span', 'turn-undone', strings.turnUndone));
 	}
+	node.append(...replyReactions(item));
 	return node;
 }
 
@@ -199,9 +202,20 @@ function sentAt(at: number): HTMLElement {
 }
 
 /** The user's message, with its time and Copy under it, shown on hover. */
-function renderUserMessage(item: { readonly text: string; readonly attachments?: readonly PromptAttachmentLabel[]; readonly at?: number; readonly from?: 'coordinator' }, id?: string): HTMLElement {
+function renderUserMessage(item: { readonly text: string; readonly attachments?: readonly PromptAttachmentLabel[]; readonly at?: number; readonly from?: 'coordinator'; readonly reactions?: readonly ReactionRef[]; readonly agentReaction?: string }, id?: string): HTMLElement {
+	const reactions = item.reactions ?? [];
+	if (!item.text && !item.attachments?.length && reactions.length) {
+		// A reaction sent on its own: a line, not a bubble.
+		const turn = el('div', 'user-turn reaction-turn');
+		turn.append(...reactionLines(reactions));
+		return turn;
+	}
 	const turn = el('div', `user-turn${item.from ? ' from-coordinator' : ''}`);
-	const node = el('div', 'message user');
+	turn.append(...reactionLines(reactions));
+	const node = el('div', `message user${item.agentReaction ? ' has-reaction' : ''}`);
+	if (item.agentReaction) {
+		node.append(agentBadge(item.agentReaction));
+	}
 	if (item.from) {
 		node.append(el('span', 'from-badge', strings.fromCoordinator));
 	}

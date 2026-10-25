@@ -23,12 +23,16 @@ run({
 		'katex': path.join(srcDir, 'katex.ts'),
 		'draftMarkdown': path.join(srcDir, 'draftMarkdown.ts'),
 		'commentBox': path.join(srcDir, 'commentBox.ts'),
+		'emojiPicker': path.join(srcDir, 'emojiPicker.ts'),
 		'katex-style': path.join(import.meta.dirname, 'node_modules', 'katex', 'dist', 'katex.min.css'),
 		'codicon': path.join(import.meta.dirname, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css'),
 	},
 	srcDir,
 	outdir: outDir,
 	additionalOptions: {
+		// Text as UTF-8 rather than escaped: the emoji picker's data is mostly emoji, which escapes would make a fifth larger.
+		// Module scripts are always read as UTF-8.
+		charset: 'utf8',
 		// The icon font as its own file rather than inlined: every page (chat, Home, Changes, settings)
 		// then parses a small stylesheet and shares one cached font.
 		loader: {

@@ -84,6 +84,23 @@ describe('PromptQueue', () => {
 		expect(queue.remove('q1')).toBeUndefined();
 		expect(queue.view.map(item => item.id)).toEqual(['q2']);
 	});
+
+	it('queues a reaction as its own message, replacing one still waiting for the same reply', () => {
+		const queue = new PromptQueue();
+		queue.add('use pnpm', [], false);
+		queue.addReaction({ turnEnd: 'item-3', emoji: '🚀', name: 'rocket' }, false);
+		queue.addReaction({ turnEnd: 'item-3', emoji: '👎', name: 'thumbs down', meaning: 'Stop.' }, true);
+		queue.addReaction({ turnEnd: 'item-7', emoji: '❓', name: 'question mark' }, false);
+		expect(queue.hasReaction('item-3', '👎')).toBe(true);
+		expect(queue.hasReaction('item-3', '🚀')).toBe(false);
+		expect(queue.view).toEqual([
+			{ id: 'q1', text: 'use pnpm', attachments: 0, steer: false },
+			{ id: 'q2', text: '', attachments: 0, steer: true, reactions: [{ emoji: '👎', name: 'thumbs down' }] },
+			{ id: 'q3', text: '', attachments: 0, steer: false, reactions: [{ emoji: '❓', name: 'question mark' }] },
+		]);
+		expect(queue.takeSteers()).toEqual({ text: '', attachments: [], reactions: [{ turnEnd: 'item-3', emoji: '👎', name: 'thumbs down', meaning: 'Stop.' }] });
+		expect(queue.takeAll()).toEqual({ text: 'use pnpm', attachments: [], reactions: [{ turnEnd: 'item-7', emoji: '❓', name: 'question mark' }] });
+	});
 });
 
 describe('atSafePoint', () => {

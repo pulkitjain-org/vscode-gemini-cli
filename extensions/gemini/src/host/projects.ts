@@ -27,6 +27,7 @@ import type { InstantAnswer } from '../acp/permissions';
 import { ProjectHub, panelState, threadCounts, threadMemoryContext, type ThreadRequest } from '../acp/projectHub';
 import { coordinatorTools, isProjectToolCall, isProjectToolTitle, ProjectMcpServer, projectServerName, threadTools, type ProjectCaller } from '../acp/projectMcp';
 import { projectToolsBlock, type ProjectToolsBlock } from '../acp/projectToolsCheck';
+import { reactionReport, type ReactionRef } from '../acp/reactions';
 import type { McpToolResult } from '../acp/browserMcp';
 import { errorMessage } from '../acp/errors';
 import { cleanDraft, draftRequest, repoFacts } from '../acp/projectDraft';
@@ -482,7 +483,9 @@ export class Projects implements vscode.Disposable {
 		if (!project.reported.has(record.id) && !planned) {
 			// Ending a turn without a report still tells the coordinator.
 			const said = lastReply(controller);
-			hub.notify({ kind: 'report', thread: record.id, report: 'result', text: said ? `Finished its turn. It last said: ${said}` : 'Finished its turn without a reply.' });
+			const reacted = reactionReport(lastPromptReactions(controller));
+			const result = said ? `Finished its turn. It last said: ${said}` : 'Finished its turn without a reply.';
+			hub.notify({ kind: 'report', thread: record.id, report: 'result', text: reacted ? `${reacted} ${result}` : result });
 		}
 		project.reported.delete(record.id);
 		const queued = project.queued.get(record.id);
@@ -977,6 +980,12 @@ function callerOf(record: AgentRecord): ProjectCaller | undefined {
 	return role?.role === 'coordinator' ? { role: 'coordinator', project: record.id }
 		: role?.role === 'thread' ? { role: 'thread', project: role.coordinator, thread: record.id }
 			: undefined;
+}
+
+/** The reactions the turn's prompt carried, so the coordinator hears of them as a line rather than as their notes. */
+function lastPromptReactions(controller: ChatController | undefined): readonly ReactionRef[] {
+	const prompt = controller?.conversation.findLast(item => item.kind === 'user');
+	return prompt?.kind === 'user' ? prompt.reactions ?? [] : [];
 }
 
 function lastReply(controller: ChatController | undefined): string | undefined {

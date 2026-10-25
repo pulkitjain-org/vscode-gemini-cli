@@ -14,6 +14,7 @@
 
 import type { Attachment } from './attachments';
 import type { TranscriptItem } from './chatTranscript';
+import type { ReactionRequest } from './reactions';
 
 export interface PendingPrompt {
 	readonly id: string;
@@ -23,6 +24,8 @@ export interface PendingPrompt {
 	readonly steer: boolean;
 	/** Sent by the thread's project coordinator, not typed by the user. */
 	readonly from?: 'coordinator';
+	/** Reactions to the agent's replies, sent with hidden notes. */
+	readonly reactions?: readonly ReactionRequest[];
 }
 
 /** What the composer shows about a pending prompt. */
@@ -32,6 +35,7 @@ export interface PendingPromptView {
 	readonly attachments: number;
 	readonly steer: boolean;
 	readonly from?: 'coordinator';
+	readonly reactions?: readonly { readonly emoji: string; readonly name: string }[];
 }
 
 /** The prompts waiting in one chat, oldest first. */
@@ -48,11 +52,34 @@ export class PromptQueue {
 	}
 
 	get view(): PendingPromptView[] {
-		return this.items.map(({ id, text, attachments, steer, from }) => ({ id, text, attachments: attachments.length, steer, ...(from ? { from } : {}) }));
+		return this.items.map(({ id, text, attachments, steer, from, reactions }) => ({
+			id, text, attachments: attachments.length, steer, ...(from ? { from } : {}),
+			...(reactions?.length ? { reactions: reactions.map(({ emoji, name }) => ({ emoji, name })) } : {}),
+		}));
 	}
 
 	add(text: string, attachments: readonly Attachment[], steer: boolean, from?: 'coordinator'): void {
 		this.items.push({ id: `q${this.nextId++}`, text, attachments, steer, ...(from ? { from } : {}) });
+	}
+
+	/**
+	 * Adds a reaction as a message of its own. A reaction still waiting for the
+	 * same reply is replaced, so reacting again changes it rather than adding a turn.
+	 */
+	addReaction(reaction: ReactionRequest, steer: boolean): void {
+		const index = this.items.findIndex(item => !item.text && item.reactions?.some(r => r.turnEnd === reaction.turnEnd));
+		const id = index < 0 ? `q${this.nextId++}` : this.items[index].id;
+		const item: PendingPrompt = { id, text: '', attachments: [], steer, reactions: [reaction] };
+		if (index < 0) {
+			this.items.push(item);
+		} else {
+			this.items[index] = item;
+		}
+	}
+
+	/** Whether `emoji` on reply `turnEnd` is waiting to go. */
+	hasReaction(turnEnd: string, emoji: string): boolean {
+		return this.items.some(item => item.reactions?.some(r => r.turnEnd === turnEnd && r.emoji === emoji));
 	}
 
 	/** Takes out the prompt `id`; undefined when it is gone. */
@@ -100,6 +127,7 @@ export interface JoinedPrompt {
 	readonly text: string;
 	readonly attachments: readonly Attachment[];
 	readonly from?: 'coordinator';
+	readonly reactions?: readonly ReactionRequest[];
 }
 
 function joinPrompts(prompts: readonly PendingPrompt[]): JoinedPrompt | undefined {
@@ -110,6 +138,7 @@ function joinPrompts(prompts: readonly PendingPrompt[]): JoinedPrompt | undefine
 		text: prompts.map(prompt => prompt.text.trim()).filter(Boolean).join('\n\n'),
 		attachments: prompts.flatMap(prompt => prompt.attachments),
 		...(prompts.every(prompt => prompt.from === 'coordinator') ? { from: 'coordinator' as const } : {}),
+		...(prompts.some(prompt => prompt.reactions?.length) ? { reactions: prompts.flatMap(prompt => prompt.reactions ?? []) } : {}),
 	};
 }
 

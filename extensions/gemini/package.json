@@ -1254,6 +1254,28 @@
           "scope": "machine",
           "markdownDescription": "%configuration.chat.foldFinishedWork%"
         },
+        "gemini.chat.reactions.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "markdownDescription": "%configuration.chat.reactions.enabled%"
+        },
+        "gemini.chat.reactions.agentReactions": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "markdownDescription": "%configuration.chat.reactions.agentReactions%"
+        },
+        "gemini.chat.reactions.meanings": {
+          "type": "object",
+          "default": {},
+          "scope": "window",
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "markdownDescription": "%configuration.chat.reactions.meanings%"
+        },
         "gemini.chat.spellCheck": {
           "type": "boolean",
           "default": true,
@@ -1555,6 +1577,7 @@
     "watch": "gulp watch-extension:gemini",
     "typecheck-tests": "tsc -p tsconfig.test.json",
     "bundle-cli": "node scripts/bundle-cli.mts",
+    "emoji-data": "node scripts/build-emoji-data.mts",
     "spike-coordinator": "node --experimental-transform-types --no-warnings scripts/coordinator-spike.mts",
     "test": "vitest run"
   },

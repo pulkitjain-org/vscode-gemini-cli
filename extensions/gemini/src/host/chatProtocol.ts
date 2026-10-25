@@ -21,7 +21,7 @@ import type { PendingPromptView } from '../acp/promptQueue';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 34;
+export const chatProtocolVersion = 35;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal'] as const;
@@ -297,12 +297,39 @@ export type RunState =
 	/** How it ended; unset when the shell had no integration to say. */
 	| { readonly kind: 'done'; readonly exitCode?: number; readonly ms?: number };
 
+/** The reaction button, quick reactions, chips and picker. */
+export interface ReactionStrings {
+	/** The reaction button's tooltip. */
+	readonly add: string;
+	/** The quick bar's last button, which opens the picker. */
+	readonly more: string;
+	/** The quick reactions' tooltips, in order: thumbs up, thumbs down, question mark, heart. */
+	readonly quick: readonly [string, string, string, string];
+	/** `{0}` is the emoji: the line for a prompt that reacted, and the chip's label. */
+	readonly reacted: string;
+	readonly chip: string;
+	/** `{0}` is the emoji: the agent's reaction to a prompt, as its badge's tooltip. */
+	readonly agentReacted: string;
+	/** `{0}` is the emoji, in the queue strip. */
+	readonly queued: string;
+	/** Jumps to the reply a reaction line points at. */
+	readonly showReply: string;
+	readonly picker: string;
+	readonly search: string;
+	readonly recent: string;
+	readonly noResults: string;
+	/** The picker's categories, in emojibase's group order without its component group. */
+	readonly groups: readonly string[];
+}
+
 export interface ChatStrings {
 	readonly placeholder: string;
 	/** Set only in a project's chat. */
 	readonly project?: ProjectChatStrings;
 	/** Fork Agent's strings, in chats that can fork. */
 	readonly fork?: ForkStrings;
+	/** Emoji reactions' strings; unset in a project's chat, which has none. */
+	readonly reactions?: ReactionStrings;
 	/** The badge on a thread's brief and the notes its coordinator relays. */
 	readonly fromCoordinator: string;
 	readonly placeholderFollowUp: string;
@@ -760,6 +787,8 @@ export type FromWebview =
 	| { readonly type: 'prompt'; readonly text: string; readonly attachments: readonly Attachment[]; readonly when?: 'now' | 'queue' }
 	/** A pending message's buttons: send it now, take it back into the box, or drop it. */
 	| { readonly type: 'queueAction'; readonly id: string; readonly action: 'send' | 'edit' | 'remove' }
+	/** The user reacted to the reply that turnEnd item `turnEnd` ends; `name` is the emoji's name in the picker. */
+	| { readonly type: 'react'; readonly turnEnd: string; readonly emoji: string; readonly name: string }
 	/** The @-mention picker wants files matching `query`; answered with `files` carrying the same `requestId`. */
 	| { readonly type: 'searchFiles'; readonly requestId: number; readonly query: string }
 	/** The "/" menu opened; answered with `commands`. */
@@ -869,6 +898,8 @@ export type ToWebview =
 	| { readonly type: 'spellCheck'; readonly on: boolean }
 	/** `gemini.chat.foldFinishedWork` changed. */
 	| { readonly type: 'foldWork'; readonly on: boolean }
+	/** Whether reactions are on (`gemini.chat.reactions.enabled`), and the picker's Recent row. */
+	| { readonly type: 'reactions'; readonly on: boolean; readonly recents: readonly string[] }
 	| { readonly type: 'reset'; readonly items: readonly TranscriptItem[]; readonly busy: boolean; readonly status: ViewStatus; readonly settings: SessionSettings }
 	/** Added or changed items, in the order they first changed; streaming updates are batched. */
 	| { readonly type: 'items'; readonly items: readonly ItemUpdate[] }

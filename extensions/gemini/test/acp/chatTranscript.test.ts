@@ -288,3 +288,65 @@ describe('ChatTranscript.updateTurnEnd', () => {
 		expect(transcript.items.at(-1)).toEqual({ id, kind: 'turnEnd', durationMs: 1200, at: 5000, undo: 'undone', files: 2 });
 	});
 });
+
+describe('ChatTranscript reactions', () => {
+	const text = (t: string) => ({ kind: 'text' as const, role: 'agent' as const, text: t });
+
+	it('lifts the agent\'s reaction onto the prompt, across chunks, and never shows the tag', () => {
+		const transcript = new ChatTranscript(() => 1000);
+		transcript.liftReactions = true;
+		transcript.addPrompt('tests are green, ship it');
+		transcript.apply(text('<rea'));
+		transcript.apply(text('ct>🎉</react> Pushed'));
+		transcript.apply(text(' to main.'));
+		transcript.addTurnEnd(10);
+		expect(transcript.items.slice(0, 2)).toEqual([
+			{ id: 'item-0', kind: 'user', text: 'tests are green, ship it', at: 1000, agentReaction: '🎉' },
+			{ id: 'item-1', kind: 'agent', text: 'Pushed to main.' },
+		]);
+	});
+
+	it('looks for the tag after the turn\'s first steps, and shows short or plain replies at once', () => {
+		const transcript = new ChatTranscript();
+		transcript.liftReactions = true;
+		transcript.addPrompt('fix it');
+		transcript.apply({ kind: 'toolCall', call: { id: 't1', title: 'Shell', kind: 'execute', status: 'completed', locations: [], content: [] } });
+		transcript.apply(text('<react>✅</react>Fixed.'));
+		transcript.addTurnEnd(10);
+		transcript.addPrompt('again');
+		transcript.apply(text('Done.'));
+		transcript.addPrompt('and again');
+		transcript.apply(text('<'));
+		transcript.addTurnEnd(10);
+		expect(summary(transcript.items)).toEqual(['user:fix it', 'tool:Shell:completed', 'agent:Fixed.', 'turnEnd', 'user:again', 'agent:Done.', 'user:and again', 'agent:<', 'turnEnd']);
+		expect(transcript.items[0]).toMatchObject({ agentReaction: '✅' });
+	});
+
+	it('leaves the tag as text when reactions are not lifted, or it comes mid-reply', () => {
+		const transcript = new ChatTranscript();
+		transcript.addPrompt('hi');
+		transcript.apply(text('<react>🎉</react> Hello.'));
+		transcript.liftReactions = true;
+		transcript.addPrompt('hi again');
+		transcript.apply(text('Hello. <react>🎉</react>'));
+		expect(summary(transcript.items)).toEqual(['user:hi', 'agent:<react>🎉</react> Hello.', 'user:hi again', 'agent:Hello. <react>🎉</react>']);
+	});
+
+	it('puts each emoji on a reply once, keeps reactions through restore, and drops them with Rewind', () => {
+		const transcript = new ChatTranscript(() => 1000);
+		transcript.addPrompt('hi');
+		const turnEnd = transcript.addTurnEnd(10);
+		transcript.addReaction(turnEnd, '🚀');
+		transcript.addReaction(turnEnd, '🚀');
+		transcript.addReaction(turnEnd, '👍');
+		transcript.addPrompt('', [], undefined, [{ turnEnd, emoji: '🚀', name: 'rocket' }]);
+		const restored = new ChatTranscript();
+		restored.restore(transcript.items);
+		expect(restored.items.slice(1)).toEqual([
+			{ id: turnEnd, kind: 'turnEnd', durationMs: 10, at: 1000, reactions: ['🚀', '👍'] },
+			{ id: 'item-2', kind: 'user', text: '', at: 1000, reactions: [{ turnEnd, emoji: '🚀', name: 'rocket' }] },
+		]);
+		restored.cutAt('item-2');
+		expect(summary(restored.items)).toEqual(['user:hi', 'turnEnd']);
+	});
+});

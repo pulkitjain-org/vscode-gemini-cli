@@ -18,6 +18,7 @@ import { buildModeAfterPlan, diffsOf, dropOldest, lastPromptAt, runningStep, tur
 import type { StoredCheckpoints } from '../acp/checkpoints';
 import { buildPromptContent } from '../acp/promptContent';
 import { atSafePoint, PromptQueue, steeringNote } from '../acp/promptQueue';
+import { meaningOf, olderReplyExcerpt, reactionNote, reactionRule, routeReaction, type ReactionRef, type ReactionRequest } from '../acp/reactions';
 import { CoordinatorTurnFailed } from '../acp/projectHub';
 import { TeamCommandCancelled } from '../acp/teamCommandExpansion';
 import { ConversationEntry, readCliConversation } from '../acp/cliSessions';
@@ -32,6 +33,7 @@ import { recordPilot } from '../acp/pilotLog';
 import { chatProtocolVersion, FromWebview, ProjectPanel, ProjectRepoView, ProjectSettingsView, statusCommands, ToWebview } from './chatProtocol';
 import { stopReasonNotice, toViewStatus } from './chatStatus';
 import type { DiffPreview } from './diffPreview';
+import { agentReactionsOn, onDidChangeReactions, reactionMeanings, reactionsOn, recentReactions, rememberReaction } from './chatReactions';
 import { preferredComposerHeight, rememberComposerHeight } from './modelPreference';
 import { onDidChangeThemeTokens, themeTokenColors } from './themeTokens';
 import { ChatAttachments } from './chat/chatAttachments';
@@ -98,6 +100,8 @@ export class ChatController implements vscode.Disposable {
 	private lastStep: string | undefined;
 	/** Sessions told about the folder's index already. */
 	private readonly hintedSessions = new Set<string>();
+	/** Sessions told they may react to the user's prompts already. */
+	private readonly reactionRuleSessions = new Set<string>();
 
 	/** Messages sent while the agent works: queued for after the turn, or steering it at its next safe point. */
 	private readonly queue = new PromptQueue();
@@ -107,7 +111,7 @@ export class ChatController implements vscode.Disposable {
 	private turnRunning = false;
 
 	/** The last prompt, for Retry. */
-	private lastPrompt: { readonly text: string; readonly attachments: readonly Attachment[] } | undefined;
+	private lastPrompt: { readonly text: string; readonly attachments: readonly Attachment[]; readonly reactions?: readonly ReactionRequest[] } | undefined;
 	/** The turnEnd item that offers Retry. */
 	private retryItemId: string | undefined;
 	/** Context sent ahead of the next prompt without showing in the chat, such as a project's memory for a thread. */
@@ -170,6 +174,8 @@ export class ChatController implements vscode.Disposable {
 		const isBusy = () => this.busy;
 		const setBusy = (busy: boolean) => this.setBusy(busy);
 		const client = service.client;
+		// A project's chat never asks its coordinator to react.
+		this.transcript.liftReactions = !options.project;
 		this.files = new ChatFileLinks(diffPreview, () => options.git?.folder() ?? client.cwd, options);
 		this.permissions = new ChatPermissions(service.permissions, this.transcript, this.files, options);
 		this.follow = new ChatFollow(client.cwd, options, post);
@@ -212,6 +218,7 @@ export class ChatController implements vscode.Disposable {
 		this.disposables.push(
 			onDidChangeSpellCheck(on => this.post({ type: 'spellCheck', on })),
 			onDidChangeFoldWork(on => this.post({ type: 'foldWork', on })),
+			onDidChangeReactions(() => this.postReactions()),
 			this.onDidChangeActivityEmitter,
 			this.onDidEditFilesEmitter,
 			this.onDidSendPromptEmitter,
@@ -484,16 +491,83 @@ export class ChatController implements vscode.Disposable {
 			void this.forks.open();
 			return;
 		}
+		await this.startPrompt(text, attachments, from);
+	}
+
+	/** Starts a prompt's turn, the chat being idle: shows it, and sends it with the notes of any reactions it carries. */
+	private async startPrompt(text: string, attachments: readonly Attachment[], from?: 'coordinator', reactions: readonly ReactionRequest[] = []): Promise<void> {
 		this.sessions.stopReplay();
 		this.service.open?.();
 		if (this.retryItemId) {
 			this.transcript.updateTurnEnd(this.retryItemId, { retry: undefined, buildPlan: undefined });
 			this.retryItemId = undefined;
 		}
-		this.transcript.addPrompt(text, attachments, from);
-		this.onDidSendPromptEmitter.fire(text);
-		this.lastPrompt = { text, attachments };
-		await this.runTurn(text, attachments, true);
+		this.transcript.addPrompt(text, attachments, from, reactions.map(reactionRef));
+		if (text.trim()) {
+			this.onDidSendPromptEmitter.fire(text);
+		}
+		this.lastPrompt = { text, attachments, ...(reactions.length ? { reactions } : {}) };
+		await this.runTurn(text, attachments, true, false, reactions);
+	}
+
+	/**
+	 * The user reacted to the reply that `turnEnd` ends: the reply gets the
+	 * chip, and the reaction goes to the agent as {@link routeReaction} says.
+	 * The same reaction while it is still waiting or running is not sent again.
+	 */
+	private react(turnEnd: string, emoji: string, name: string): void {
+		const target = this.transcript.items.find(item => item.id === turnEnd);
+		if (this.options.project || !reactionsOn() || target?.kind !== 'turnEnd' || this.queue.hasReaction(turnEnd, emoji) || this.reactionRunning(turnEnd, emoji)) {
+			return;
+		}
+		rememberReaction(emoji);
+		this.postReactions();
+		const meanings = reactionMeanings();
+		const route = routeReaction(emoji, meanings, { busy: this.busy || !!this.restoring, buildPlan: !!target.buildPlan && turnEnd === this.retryItemId });
+		this.transcript.addReaction(turnEnd, emoji);
+		if (route === 'mark') {
+			return;
+		}
+		if (route === 'buildPlan') {
+			void this.buildPlan(turnEnd);
+			return;
+		}
+		const meaning = meaningOf(emoji, meanings);
+		const excerpt = olderReplyExcerpt(this.transcript.items, turnEnd);
+		const request: ReactionRequest = { turnEnd, emoji, name, ...(meaning ? { meaning } : {}), ...(excerpt ? { excerpt } : {}), ...(target.unfinished ? { unfinished: true } : {}) };
+		if (route === 'send') {
+			void this.sendReaction(request);
+			return;
+		}
+		this.queue.addReaction(request, route === 'now');
+		this.postQueue();
+		this.trySteer();
+	}
+
+	/** Sends a reaction as its own turn, once a saved conversation is in; it waits in the queue if a turn started meanwhile. */
+	private async sendReaction(request: ReactionRequest): Promise<void> {
+		if (this.restoring) {
+			await this.restoring;
+		}
+		if (this.busy) {
+			this.queue.addReaction(request, false);
+			this.postQueue();
+			return;
+		}
+		await this.startPrompt('', [], undefined, [request]);
+	}
+
+	/** Whether the running turn's prompt carried this reaction. */
+	private reactionRunning(turnEnd: string, emoji: string): boolean {
+		if (!this.busy) {
+			return false;
+		}
+		const prompt = this.transcript.items.findLast(item => item.kind === 'user');
+		return prompt?.kind === 'user' && !!prompt.reactions?.some(reaction => reaction.turnEnd === turnEnd && reaction.emoji === emoji);
+	}
+
+	private postReactions(): void {
+		this.post({ type: 'reactions', on: !this.options.project && reactionsOn(), recents: recentReactions() });
 	}
 
 	/** Sends `text` to the agent ahead of the next prompt, without showing it in the chat. */
@@ -554,7 +628,7 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	/** `steer` carries on after a turn stopped for messages sent now: the agent is told why it stopped. */
-	private async runTurn(text: string, attachments: readonly Attachment[], expand: boolean, steer = false): Promise<TurnOutcome> {
+	private async runTurn(text: string, attachments: readonly Attachment[], expand: boolean, steer = false, reactions: readonly ReactionRequest[] = []): Promise<TurnOutcome> {
 		this.turnRunning = true;
 		this.checkpoints.beginTurn();
 		this.setBusy(true);
@@ -570,7 +644,10 @@ export class ChatController implements vscode.Disposable {
 			this.timing.ready = Date.now();
 			// Built after the agent is ready, so it reflects what this agent accepts.
 			const content = buildPromptContent(expand ? await this.commands.expand(text) : text, attachments, this.service.client.promptCapabilities);
-			if (!content.length) {
+			// A reaction with nothing typed stops the turn for itself: its note says so, in place of the steering note.
+			const reactionOnly = !!reactions.length && !text.trim();
+			const notes = reactions.map(reaction => reactionNote(reaction, steer && reactionOnly));
+			if (!content.length && !notes.length) {
 				throw new Error(vscode.l10n.t("The agent cannot take images, so there was nothing to send."));
 			}
 			// Told once per session: without it the model reaches for grep_search first (FINDINGS.md, workspace index).
@@ -600,7 +677,14 @@ export class ChatController implements vscode.Disposable {
 			if (context) {
 				content.unshift({ type: 'text', text: context });
 			}
-			if (steer) {
+			if (session && !this.options.project && agentReactionsOn() && !this.reactionRuleSessions.has(session)) {
+				this.reactionRuleSessions.add(session);
+				content.unshift({ type: 'text', text: reactionRule() });
+			}
+			for (const note of [...notes].reverse()) {
+				content.unshift({ type: 'text', text: note });
+			}
+			if (steer && !reactionOnly) {
 				content.unshift({ type: 'text', text: steeringNote() });
 			}
 			this.timing.sent = Date.now();
@@ -617,7 +701,7 @@ export class ChatController implements vscode.Disposable {
 			if (notice) {
 				this.transcript.addNotice(notice, stopReason === 'refusal' ? 'error' : 'info');
 			}
-			this.endTurn(Date.now() - started, usage);
+			this.endTurn(Date.now() - started, usage, !steered && stopReason !== 'end_turn');
 			ended = true;
 			outcome = steered ? 'steer' : stopReason === 'end_turn' ? 'done' : 'stopped';
 		} catch (err) {
@@ -630,7 +714,7 @@ export class ChatController implements vscode.Disposable {
 		} finally {
 			if (!ended && this.checkpoints.turnChangedFiles) {
 				// The turn failed after changing files; they can still be undone.
-				this.endTurn(Date.now() - started);
+				this.endTurn(Date.now() - started, undefined, true);
 			}
 			this.steerStopping = false;
 			// Stopped to steer, the chat stays busy into the next turn.
@@ -681,10 +765,12 @@ export class ChatController implements vscode.Disposable {
 			await this.send(next.text, next.attachments);
 			return;
 		}
-		this.transcript.addPrompt(next.text, next.attachments, next.from);
-		this.onDidSendPromptEmitter.fire(next.text);
+		this.transcript.addPrompt(next.text, next.attachments, next.from, (next.reactions ?? []).map(reactionRef));
+		if (next.text.trim()) {
+			this.onDidSendPromptEmitter.fire(next.text);
+		}
 		this.lastPrompt = next;
-		await this.runTurn(next.text, next.attachments, true, outcome === 'steer');
+		await this.runTurn(next.text, next.attachments, true, outcome === 'steer', next.reactions);
 	}
 
 	/** Stops the turn for the messages sent now, once no tool is running; a running tool's end calls this again. */
@@ -710,7 +796,9 @@ export class ChatController implements vscode.Disposable {
 			if (!this.busy) {
 				const prompt = this.queue.remove(id);
 				this.postQueue();
-				if (prompt) {
+				if (prompt?.reactions?.length) {
+					void this.startPrompt(prompt.text, prompt.attachments, prompt.from, prompt.reactions);
+				} else if (prompt) {
 					void this.send(prompt.text, prompt.attachments, prompt.from);
 				}
 				return;
@@ -724,7 +812,8 @@ export class ChatController implements vscode.Disposable {
 		}
 		const prompt = this.queue.remove(id);
 		this.postQueue();
-		if (action === 'edit' && prompt) {
+		// A reaction has no text to edit: Edit only takes it out.
+		if (action === 'edit' && prompt?.text) {
 			this.post({ type: 'draft', text: prompt.text });
 			if (prompt.attachments.length) {
 				void this.attachments.add(prompt.attachments);
@@ -794,10 +883,10 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	/** Adds the turn's end, offering Retry and, when it changed files, Undo. */
-	private endTurn(durationMs: number, usage?: readonly ModelTokens[]): void {
+	private endTurn(durationMs: number, usage?: readonly ModelTokens[], unfinished = false): void {
 		const id = this.transcript.addTurnEnd(durationMs, usage);
 		const { files, undoable } = this.checkpoints.endTurn(id);
-		this.transcript.updateTurnEnd(id, { retry: !this.options.project, ...(files ? { files } : {}), ...(undoable ? { undo: 'available' } : {}), ...(buildModeAfterPlan(this.service.client.settings) ? { buildPlan: true } : {}) });
+		this.transcript.updateTurnEnd(id, { retry: !this.options.project, ...(files ? { files } : {}), ...(undoable ? { undo: 'available' } : {}), ...(buildModeAfterPlan(this.service.client.settings) ? { buildPlan: true } : {}), ...(unfinished ? { unfinished } : {}) });
 		this.retryItemId = id;
 		const timing = this.timing;
 		this.timing = undefined;
@@ -972,6 +1061,7 @@ export class ChatController implements vscode.Disposable {
 				this.follow.postFollowed();
 				this.attachments.postPending();
 				this.postQueue();
+				this.postReactions();
 				this.usage.onReady();
 				this.git.refresh();
 				void this.sharedPage.refresh();
@@ -986,6 +1076,9 @@ export class ChatController implements vscode.Disposable {
 				break;
 			case 'queueAction':
 				this.queueAction(message.id, message.action);
+				break;
+			case 'react':
+				this.react(message.turnEnd, message.emoji, message.name);
 				break;
 			case 'composerHeight':
 				rememberComposerHeight(message.height);
@@ -1009,6 +1102,8 @@ export class ChatController implements vscode.Disposable {
 					// A project's failed wake: the hub sends its events again.
 					this.transcript.clearRetry();
 					this.options.project.retryWake();
+				} else if (this.lastPrompt?.reactions && message.itemId === this.retryItemId && !this.busy) {
+					void this.startPrompt(this.lastPrompt.text, this.lastPrompt.attachments, undefined, this.lastPrompt.reactions);
 				} else if (this.lastPrompt && message.itemId === this.retryItemId) {
 					void this.send(this.lastPrompt.text, this.lastPrompt.attachments);
 				}
@@ -1221,6 +1316,7 @@ export async function openChatAsMarkdown(title: string, items: readonly Transcri
 		workedFor: vscode.l10n.t("Worked for {0}"),
 		permission: vscode.l10n.t("Permission for {0}: {1}"),
 		cancelled: vscode.l10n.t("Cancelled"),
+		reacted: vscode.l10n.t("You reacted {0} to Gemini's reply"),
 	});
 	const document = await vscode.workspace.openTextDocument({ language: 'markdown', content });
 	await vscode.window.showTextDocument(document, { preview: false, viewColumn: column });
@@ -1237,4 +1333,9 @@ interface TurnTiming {
 	firstToken?: number;
 	/** The first reply text, which in an agentic turn often comes after every step. */
 	firstText?: number;
+}
+
+/** What the transcript keeps of a reaction sent with a prompt. */
+function reactionRef({ turnEnd, emoji, name }: ReactionRequest): ReactionRef {
+	return { ...(turnEnd ? { turnEnd } : {}), emoji, name };
 }
