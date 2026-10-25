@@ -89,6 +89,12 @@ export async function startScript(name: string): Promise<Readonly<Record<string,
 	return import(`../../webview-src/${name}.ts`);
 }
 
+/** Home's page, as `AgentHome` draws it; start `webview-src/home` after it. */
+export async function showHomePage(): Promise<void> {
+	const home = await hostExport<{ prototype: { html(webview: unknown, media: string): string } }>('src/host/agentHome.ts', 'AgentHome');
+	showPage(home.prototype.html(fakeWebview, 'media'));
+}
+
 /** Sends the page a message from the extension. */
 export function sendToPage(data: unknown): void {
 	page.dispatchEvent(new page.MessageEvent('message', { data }));

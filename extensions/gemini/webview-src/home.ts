@@ -9,12 +9,13 @@
 // Gemini, and earlier agents to resume.
 
 import { type Attachment, attachmentLabel } from '../src/acp/attachments';
-import type { FromHome, HomeAction, HomeAgent, HomeButton, HomeCard, HomeCardId, HomeDashboard, HomeList, HomeRow, HomeStrings, HomeView, ToHome } from '../src/host/panelProtocol';
+import type { FromHome, HomeAction, HomeAgent, HomeButton, HomeCard, HomeDashboard, HomeRow, HomeStrings, HomeView, ToHome } from '../src/host/panelProtocol';
 import { attachmentIcon, sameAttachment } from './chatLogic';
 import { Menu, type MenuRow, type MenuSection } from './menu';
 import { modeIcon } from './modeIcon';
-import { button, el, format, icon, pageStrings } from './panelDom';
+import { button, el, format, icon, keepFocus, pageStrings } from './panelDom';
 import type { CommentBox } from './commentBox';
+import type { HomePopups } from './homePopups';
 import { letSpellingMenuThrough } from './spellCheck';
 import { createPreviewTabs, isPreviewShortcut } from './markdownPreview';
 import { toolLogo } from './toolLogos';
@@ -254,6 +255,57 @@ function renderAttachments(): void {
 	attachmentList.hidden = !attachments.length;
 }
 
+/** What each part of the page was last drawn from, so a part that hasn't changed is left as it is, keeping hover and focus. */
+const drawnFrom = new WeakMap<HTMLElement, string>();
+
+/** Whether `node` was drawn from something other than `data`; it is taken as drawn from `data` from now. */
+function changed(node: HTMLElement, data: unknown): boolean {
+	const from = JSON.stringify(data) ?? '';
+	if (drawnFrom.get(node) === from) {
+		return false;
+	}
+	drawnFrom.set(node, from);
+	return true;
+}
+
+/** Makes `parent`'s children `nodes`, in order, moving only those out of place, so a focused one stays focused. */
+function place(parent: HTMLElement, nodes: readonly HTMLElement[]): void {
+	let cursor = parent.firstElementChild;
+	for (const node of nodes) {
+		if (node === cursor) {
+			cursor = cursor.nextElementSibling;
+		} else {
+			parent.insertBefore(node, cursor);
+		}
+	}
+	while (cursor) {
+		const next = cursor.nextElementSibling;
+		cursor.remove();
+		cursor = next;
+	}
+}
+
+/** Elements drawn for items, by the items' keys, with what each was drawn from. */
+type Drawn = Map<string, { readonly node: HTMLElement; readonly from: string }>;
+
+/** Draws `items` into `parent` by key: an unchanged item keeps its element, a changed one is drawn again from it (`draw`'s `old`). */
+function drawKeyed<T extends { readonly id: string }>(parent: HTMLElement, cache: Drawn, items: readonly T[], draw: (item: T, old?: HTMLElement) => HTMLElement): void {
+	const kept: Drawn = new Map();
+	place(parent, items.map(item => {
+		const from = JSON.stringify(item);
+		const entry = cache.get(item.id);
+		const node = entry?.from === from ? entry.node : draw(item, entry?.node);
+		kept.set(item.id, { node, from });
+		return node;
+	}));
+	cache.clear();
+	kept.forEach((entry, id) => cache.set(id, entry));
+}
+
+const activeCards = el('div', 'cards');
+const agentCards: Drawn = new Map();
+const dashCards: Drawn = new Map();
+
 function render(next: HomeView): void {
 	view = next;
 	if (!next.workspaces.some(w => w.folder === folder)) {
@@ -264,24 +316,22 @@ function render(next: HomeView): void {
 	}
 	updateControls();
 
-	active.replaceChildren();
-	active.append(el('h2', undefined, strings.active));
-	if (!next.workspaces.length) {
-		active.append(el('p', 'muted', strings.noWorkspace));
-	} else if (!next.active.length) {
-		active.append(el('p', 'muted', strings.noAgents));
+	const note = !next.workspaces.length ? strings.noWorkspace : !next.active.length ? strings.noAgents : '';
+	if (changed(active, note)) {
+		active.replaceChildren(el('h2', undefined, strings.active), ...note ? [el('p', 'muted', note)] : [], activeCards);
 	}
-	const cards = el('div', 'cards');
-	for (const agent of next.active) {
-		cards.append(card(agent));
-	}
-	active.append(cards);
+	drawKeyed(activeCards, agentCards, next.active, card);
 
-	renderProjects(next);
+	if (changed(projects, next.projects ?? null)) {
+		renderProjects(next);
+	}
 	renderDashboard(next.dashboard);
 	// The Agents card lists them; the big cards show only while it's hidden.
 	active.hidden = next.dashboard.cards.some(c => c.id === 'agents');
 
+	if (!changed(earlier, next.earlier)) {
+		return;
+	}
 	earlier.replaceChildren();
 	earlier.hidden = !next.earlier.length;
 	if (next.earlier.length) {
@@ -324,22 +374,29 @@ function renderProjects(next: HomeView): void {
 	projects.append(rows);
 }
 
-function card(agent: HomeAgent): HTMLElement {
-	const node = el('article', `card ${agent.state}`);
-	node.tabIndex = 0;
+/** What an agent's card's buttons do, and how they are drawn: the message, its label and icon. */
+type AgentButton = readonly ['stop' | 'review' | 'mergeBack' | 'open', string, string?];
+
+/**
+ * An agent's card, or `old` brought up to date in place. A click anywhere on
+ * it opens the agent; from the keyboard, its Open button does, so the card
+ * is not itself a control holding others.
+ */
+function card(agent: HomeAgent, old?: HTMLElement): HTMLElement {
+	const node = old ?? el('article');
+	if (!old) {
+		node.addEventListener('click', () => vscode.postMessage({ type: 'open', id: agent.id }));
+		const head = el('div', 'card-head');
+		head.append(el('span', 'dot'), el('span', 'title'), el('span', 'muted'));
+		node.append(head, el('div', 'card-status'), el('div', 'card-meta muted'), el('div', 'card-actions'));
+	}
+	node.className = `card ${agent.state}`;
 	node.setAttribute('aria-label', `${agent.title}, ${agent.status}`);
-	node.addEventListener('click', () => vscode.postMessage({ type: 'open', id: agent.id }));
-	node.addEventListener('keydown', e => {
-		if ((e.key === 'Enter' || e.key === ' ') && e.target === node) {
-			e.preventDefault();
-			vscode.postMessage({ type: 'open', id: agent.id });
-		}
-	});
-	const head = el('div', 'card-head');
-	head.append(el('span', 'dot'), el('span', 'title', agent.title), el('span', 'muted', agent.updated));
-	const status = el('div', 'card-status', agent.status);
-	const meta = el('div', 'card-meta muted');
-	meta.append(el('span', undefined, agent.workspace));
+	const [head, status, meta, actions] = [...node.children] as HTMLElement[];
+	head.children[1].textContent = agent.title;
+	head.children[2].textContent = agent.updated;
+	status.textContent = agent.status;
+	meta.replaceChildren(el('span', undefined, agent.workspace));
 	if (agent.branch) {
 		const branch = el('span', 'branch');
 		branch.append(icon('git-branch'), el('span', undefined, agent.branch));
@@ -348,18 +405,16 @@ function card(agent: HomeAgent): HTMLElement {
 	if (agent.changes) {
 		meta.append(el('span', undefined, agent.changes));
 	}
-	const actions = el('div', 'card-actions');
-	if (agent.state === 'working' || agent.state === 'waiting') {
-		actions.append(button('secondary', strings.stop, () => vscode.postMessage({ type: 'stop', id: agent.id }), 'debug-stop'));
+	// The buttons are drawn again only when which of them show changes.
+	const shown: AgentButton[] = [
+		...agent.state === 'working' || agent.state === 'waiting' ? [['stop', strings.stop, 'debug-stop'] as const] : [],
+		...agent.changes ? [['review', strings.review, 'diff'] as const] : [],
+		...agent.branch && agent.changes && agent.state !== 'working' ? [['mergeBack', strings.mergeBack, 'git-merge'] as const] : [],
+		['open', strings.open],
+	];
+	if (changed(actions, shown)) {
+		actions.replaceChildren(...shown.map(([type, label, iconName]) => button(type === 'open' ? 'primary' : 'secondary', label, () => vscode.postMessage({ type, id: agent.id }), iconName)));
 	}
-	if (agent.changes) {
-		actions.append(button('secondary', strings.review, () => vscode.postMessage({ type: 'review', id: agent.id }), 'diff'));
-	}
-	if (agent.branch && agent.changes && agent.state !== 'working') {
-		actions.append(button('secondary', strings.mergeBack, () => vscode.postMessage({ type: 'mergeBack', id: agent.id }), 'git-merge'));
-	}
-	actions.append(button('primary', strings.open, () => vscode.postMessage({ type: 'open', id: agent.id })));
-	node.append(head, status, meta, actions);
 	return node;
 }
 
@@ -468,86 +523,32 @@ refreshButton.title = strings.refresh;
 refreshButton.setAttribute('aria-label', strings.refresh);
 refreshButton.addEventListener('click', () => vscode.postMessage({ type: 'refresh' }));
 
-// A card's whole list, in a popup: Show All opens it, and the extension keeps it current while it is open.
-const listDialog = el('dialog', 'dash-list-dialog');
-const listBody = el('div', 'dash-list-body');
-const listHead = el('div', 'dash-card-head dash-list-head');
-const listTitle = el('h2');
-listTitle.id = 'dash-list-title';
-listDialog.setAttribute('aria-labelledby', listTitle.id);
-const listFilter = el('input', 'dash-list-filter') as HTMLInputElement;
-listFilter.type = 'search';
-listFilter.placeholder = strings.filterList;
-listFilter.setAttribute('aria-label', strings.filterList);
-const listRows = el('div', 'dash-rows dash-list-rows');
-listBody.append(listHead, listFilter, listRows);
-listDialog.append(listBody);
-document.body.append(listDialog);
-/** The list in the popup, and the card it is for. */
-let shownList: HomeList | undefined;
-let listCard: HomeCardId | undefined;
+type HomePopupsModule = typeof import('./homePopups');
+const homePopupsUrl = document.querySelector<HTMLScriptElement>('script[data-home-popups]')?.dataset.homePopups;
+let homePopups: Promise<HomePopups> | undefined;
+/** Show All's popup and Customize, once loaded. */
+let popups: HomePopups | undefined;
 
-/** Opens `card`'s whole list: its rows at once, then the rest when the extension sends them. */
-function showList(card: HomeCard): void {
-	listCard = card.id;
-	listFilter.value = '';
-	renderList({ card: card.id, title: card.title, rows: card.rows, ...card.tool ? { tool: card.tool } : {}, ...card.icon ? { icon: card.icon } : {}, ...card.query ? { query: card.query } : {} }, card.total);
-	listDialog.showModal();
-	(listFilter.hidden ? listDialog.querySelector<HTMLElement>('.dash-list-close') : listFilter)?.focus();
-	vscode.postMessage({ type: 'showList', card: card.id });
+/** Show All's popup and the Customize menu, a chunk of their own loaded the first time either opens. */
+function loadPopups(): Promise<HomePopups> {
+	// eslint-disable-next-line no-restricted-syntax
+	homePopups ??= (homePopupsUrl ? import(/* webpackIgnore: true */ homePopupsUrl) as Promise<HomePopupsModule> : Promise.reject(new Error('no popups'))).then(module => popups = module.createHomePopups({
+		strings,
+		post: message => vscode.postMessage(message),
+		Menu,
+		customizeButton,
+		customizeElement: document.getElementById('customize-menu')!,
+		dashboard: () => view?.dashboard,
+		dashRow,
+		groupHeading,
+		logo,
+		queryText,
+	}));
+	return homePopups;
 }
 
-function renderList(list: HomeList, total = list.rows.length): void {
-	shownList = list;
-	const close = button('icon-button dash-list-close', '', () => listDialog.close(), 'close', strings.close);
-	listHead.replaceChildren(list.tool ? logo(list.tool, 16) : icon(list.icon ?? 'list-flat'), listTitle, el('span', 'dash-list-count'), ...list.query ? [queryText(list.query)] : [], close);
-	listTitle.textContent = list.title;
-	listHead.dataset.total = String(total);
-	listFilter.hidden = total <= 8;
-	renderListRows();
-}
-
-/** The rows that match the filter, under their groups' headings. */
-function renderListRows(): void {
-	const list = shownList;
-	if (!list) {
-		return;
-	}
-	const words = listFilter.value.trim().toLowerCase();
-	const nodes: HTMLElement[] = [];
-	let group: HomeRow | undefined;
-	let headed: HomeRow | undefined;
-	for (const row of list.rows) {
-		group = row.group ? row : group;
-		if (words && ![row.type?.name, row.key, row.repo, row.title, row.detail, row.pill?.text].some(text => text?.toLowerCase().includes(words))) {
-			continue;
-		}
-		if (group && group !== headed) {
-			nodes.push(groupHeading(group));
-			headed = group;
-		}
-		nodes.push(dashRow(row, true));
-	}
-	const shown = nodes.filter(node => node.classList.contains('dash-row')).length;
-	listRows.replaceChildren(...nodes.length ? nodes : [el('p', 'dash-note muted', strings.noMatches)]);
-	const count = listHead.querySelector('.dash-list-count');
-	if (count) {
-		count.textContent = words ? `${shown} / ${listHead.dataset.total}` : listHead.dataset.total ?? '';
-	}
-}
-
-listFilter.addEventListener('input', renderListRows);
-listDialog.addEventListener('close', () => {
-	listCard = undefined;
-	shownList = undefined;
-	vscode.postMessage({ type: 'showList' });
-});
-// A click on the scrim, outside the popup's body, closes it.
-listDialog.addEventListener('click', event => {
-	if (event.target === listDialog) {
-		listDialog.close();
-	}
-});
+// Until the chunk is loaded; then the Customize menu opens and closes itself.
+customizeButton.addEventListener('click', () => void (popups ? undefined : loadPopups().then(loaded => loaded.openCustomize())));
 
 function run(action: HomeAction): void {
 	if (action.kind === 'comment') {
@@ -556,8 +557,8 @@ function run(action: HomeAction): void {
 		return;
 	}
 	// An item opened from the popup leaves it open when it opens elsewhere (a link), and closes it when it opens here.
-	if (listDialog.open && action.kind !== 'link') {
-		listDialog.close();
+	if (popups?.listOpen && action.kind !== 'link') {
+		popups.closeList();
 	}
 	vscode.postMessage({ type: 'action', action });
 }
@@ -606,45 +607,6 @@ function logo(tool: HomeRow['tool'], size: number): Element {
 	return tool === 'gemini' ? icon('sparkle') : toolLogo(tool, size);
 }
 
-const customizeMenu: Menu = new Menu({
-	element: document.getElementById('customize-menu')!,
-	anchor: customizeButton,
-	label: strings.customize,
-	sections: () => {
-		const dash = view?.dashboard;
-		if (!dash) {
-			return [];
-		}
-		return [
-			{
-				heading: strings.cards,
-				rows: dash.layout.flatMap((card, i) => [{
-					name: card.title,
-					switchOn: card.visible,
-					run: () => vscode.postMessage({ type: 'layout', card: card.id, visible: !card.visible }),
-				}, ...i > 0 ? [{
-					icon: 'arrow-up',
-					name: `${strings.moveUp}: ${card.title}`,
-					run: () => vscode.postMessage({ type: 'layout', card: card.id, move: -1 }),
-				}] : []]),
-			},
-			...dash.releaseBranches.length ? [{
-				heading: strings.qualityBranch,
-				rows: [...dash.releaseBranches].reverse().slice(0, 6).map(branch => ({
-					icon: 'git-branch',
-					name: branch,
-					checked: branch === (dash.qualityBranch ?? dash.releaseBranches[dash.releaseBranches.length - 1]),
-					run: () => {
-						vscode.postMessage({ type: 'qualityBranch', branch });
-						customizeMenu.close();
-					},
-				})),
-			}] : [],
-		];
-	},
-	empty: () => '',
-});
-
 /** The "..." menu of a row; moved into the row it opens for. */
 let rowMenuItems: readonly HomeButton[] = [];
 let rowMenuReturn: HTMLElement | undefined;
@@ -674,29 +636,35 @@ function renderDashboard(dash: HomeDashboard): void {
 	subtitle.textContent = dash.context;
 	stale.hidden = !dash.stale;
 	stale.textContent = dash.stale ?? '';
-	tools.replaceChildren(...dash.tools.map(tool => {
-		const node = el('span', `dash-tool ${tool.tone}`);
-		node.title = tool.label;
-		node.setAttribute('role', 'img');
-		node.setAttribute('aria-label', tool.label);
-		node.append(toolLogo(tool.id, 18));
-		node.addEventListener('click', () => run({ kind: 'command', command: 'gemini.connections' }));
-		return node;
-	}));
+	// Each part is drawn again only when what it shows changed: Home gets a new view every moment while agents work.
+	if (changed(tools, dash.tools)) {
+		tools.replaceChildren(...dash.tools.map(tool => {
+			const node = el('span', `dash-tool ${tool.tone}`);
+			node.title = tool.label;
+			node.setAttribute('role', 'img');
+			node.setAttribute('aria-label', tool.label);
+			node.append(toolLogo(tool.id, 18));
+			node.addEventListener('click', () => run({ kind: 'command', command: 'gemini.connections' }));
+			return node;
+		}));
+	}
 	refreshButton.classList.toggle('spinning', dash.refreshing);
 	banner.hidden = !dash.banner;
-	banner.replaceChildren(...dash.banner ? [icon('warning'), el('span', undefined, dash.banner)] : []);
+	if (changed(banner, dash.banner ?? '')) {
+		banner.replaceChildren(...dash.banner ? [icon('warning'), el('span', undefined, dash.banner)] : []);
+	}
 
-	quick.replaceChildren(...dash.quickActions.map(action => {
-		const node = button('dash-quick-action', '', () => run(action.action));
-		node.append(action.tool ? toolLogo(action.tool, 14) : icon(action.icon ?? 'play'), el('span', undefined, action.label));
-		return node;
-	}));
+	if (changed(quick, dash.quickActions)) {
+		quick.replaceChildren(...dash.quickActions.map(action => {
+			const node = button('dash-quick-action', '', () => run(action.action));
+			node.append(action.tool ? toolLogo(action.tool, 14) : icon(action.icon ?? 'play'), el('span', undefined, action.label));
+			return node;
+		}));
+	}
 
 	setup.hidden = !dash.setup;
-	setup.replaceChildren();
-	if (dash.setup) {
-		setup.append(el('h2', undefined, strings.getStarted));
+	if (changed(setup, dash.setup ?? null) && dash.setup) {
+		setup.replaceChildren(el('h2', undefined, strings.getStarted));
 		const steps = el('ol', 'dash-steps');
 		dash.setup.forEach((step, i) => {
 			const item = el('li', `dash-step${step.done ? ' done' : ''}`);
@@ -716,25 +684,23 @@ function renderDashboard(dash: HomeDashboard): void {
 	}
 
 	needs.hidden = !dash.needs.length;
-	needs.replaceChildren();
-	if (dash.needs.length) {
-		const head = el('div', 'dash-card-head');
-		const query = el('span', 'dash-query', dash.needsQuery);
-		query.title = dash.needsQuery;
-		head.append(el('span', 'dot warn'), el('h3', undefined, strings.needsYou), query);
-		const rows = el('div', 'dash-rows');
-		for (const need of dash.needs) {
-			rows.append(dashRow({ tool: need.tool, title: need.title, detail: need.detail, ...need.pill ? { pill: need.pill } : {}, button: need.button }));
+	if (changed(needs, [dash.needs, dash.needsQuery])) {
+		needs.replaceChildren();
+		if (dash.needs.length) {
+			const head = el('div', 'dash-card-head');
+			const query = el('span', 'dash-query', dash.needsQuery);
+			query.title = dash.needsQuery;
+			head.append(el('span', 'dot warn'), el('h3', undefined, strings.needsYou), query);
+			const rows = el('div', 'dash-rows');
+			for (const need of dash.needs) {
+				rows.append(dashRow({ tool: need.tool, title: need.title, detail: need.detail, ...need.pill ? { pill: need.pill } : {}, button: need.button }));
+			}
+			needs.append(head, rows);
 		}
-		needs.append(head, rows);
 	}
 
-	cardsSection.replaceChildren(...dash.cards.map(dashCard));
-	// An open Customize menu shows the switches and order just saved, so the next click reads the new state.
-	customizeMenu.render();
-	if (listDialog.open && dash.list && dash.list.card === listCard) {
-		renderList(dash.list);
-	}
+	drawKeyed(cardsSection, dashCards, dash.cards, dashCard);
+	popups?.update(dash);
 }
 
 function dashCard(card: HomeCard): HTMLElement {
@@ -768,7 +734,7 @@ function dashCard(card: HomeCard): HTMLElement {
 		node.append(el('p', 'dash-note muted', card.note));
 	}
 	if (card.total) {
-		node.append(button('link-button dash-show-all', format(strings.showAll, card.total), () => showList(card)));
+		node.append(button('link-button dash-show-all', format(strings.showAll, card.total), () => void loadPopups().then(loaded => loaded.showList(card))));
 	}
 	return node;
 }
@@ -832,7 +798,8 @@ function dashRow(row: HomeRow, inList = false): HTMLElement {
 window.addEventListener('message', (event: MessageEvent<ToHome>) => {
 	const message = event.data;
 	if (message.type === 'view') {
-		render(message.view);
+		// What changed is drawn again; focus, and the caret in a field, stay where they were.
+		keepFocus(document.body, () => render(message.view));
 	} else if (message.type === 'focus') {
 		prompt.focus();
 	} else if (message.type === 'spellCheck') {

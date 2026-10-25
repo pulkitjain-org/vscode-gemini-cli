@@ -24,6 +24,7 @@ run({
 		'katex': path.join(srcDir, 'katex.ts'),
 		'draftMarkdown': path.join(srcDir, 'draftMarkdown.ts'),
 		'commentBox': path.join(srcDir, 'commentBox.ts'),
+		'homePopups': path.join(srcDir, 'homePopups.ts'),
 		'emojiPicker': path.join(srcDir, 'emojiPicker.ts'),
 		'katex-style': path.join(import.meta.dirname, 'node_modules', 'katex', 'dist', 'katex.min.css'),
 		'codicon': path.join(import.meta.dirname, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css'),

@@ -647,6 +647,8 @@ export class AgentHome implements vscode.Disposable {
 		const draftMarkdown = webview.asWebviewUri(vscode.Uri.joinPath(media, 'draftMarkdown.js'));
 		// The comment box for Jira tickets, loaded the first time it opens.
 		const commentBox = webview.asWebviewUri(vscode.Uri.joinPath(media, 'commentBox.js'));
+		// Show All's popup and the Customize menu, loaded the first time either opens.
+		const homePopups = webview.asWebviewUri(vscode.Uri.joinPath(media, 'homePopups.js'));
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
 		const menuStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'menu.css'));
 		const homeStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'home.css'));
@@ -669,7 +671,7 @@ export class AgentHome implements vscode.Disposable {
 	<main class="home dash">
 		<header class="dash-head">
 			<h1 id="title"></h1><p id="subtitle" class="muted"></p><span id="stale" class="dash-pill" hidden></span>
-			<div class="dash-tools"><span id="tools" class="dash-tool-logos"></span><button type="button" id="refresh" class="icon-button"><i class="codicon codicon-refresh" aria-hidden="true"></i></button><span class="dash-customize"><button type="button" id="customize" class="icon-button"><i class="codicon codicon-settings-gear" aria-hidden="true"></i></button><div id="customize-menu" class="home-menu" hidden></div></span></div>
+			<div class="dash-tools"><span id="tools" class="dash-tool-logos"></span><button type="button" id="refresh" class="icon-button"><i class="codicon codicon-refresh" aria-hidden="true"></i></button><span class="dash-customize"><button type="button" id="customize" class="icon-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-settings-gear" aria-hidden="true"></i></button><div id="customize-menu" class="home-menu" hidden></div></span></div>
 		</header>
 		<div id="banner" class="dash-banner" hidden></div>
 		<section class="home-start">
@@ -699,7 +701,7 @@ export class AgentHome implements vscode.Disposable {
 		<section id="projects" class="home-section" hidden></section>
 		<section id="earlier" class="home-section"></section>
 	</main>
-	<script nonce="${nonce}" type="module" src="${script}" data-draft-markdown="${draftMarkdown}" data-comment-box="${commentBox}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
+	<script nonce="${nonce}" type="module" src="${script}" data-draft-markdown="${draftMarkdown}" data-comment-box="${commentBox}" data-home-popups="${homePopups}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
 </html>`;
 	}

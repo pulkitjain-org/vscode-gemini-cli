@@ -51,6 +51,7 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// Loaded only when a reply has math.
 	'media/katex.js': 290_000,
 	'media/draftMarkdown.js': 140_000,
+	'media/homePopups.js': 5_000,
 	// The emoji picker, loaded the first time a reaction button is hovered or focused: about 88 KB of emoji data
 	// (1,923 emoji with their names and three search words each) and its own code.
 	'media/emojiPicker.js': 105_000,
