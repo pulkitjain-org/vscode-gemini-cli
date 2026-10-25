@@ -4,10 +4,10 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { createHash } from 'node:crypto';
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, promises as fsPromises, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { carriedConversationNote, chatsFolder, findCliSession, isPassingFailure, listCliSessions, parseSessionFile, readCliConversation, readCliSession, readSessionContext, readSessionTokens, reopenFailure, replayUpdateCount, rewindCliSession } from '../../src/acp/cliSessions';
 
 /** Written by gemini-cli 0.62 for `gemini -p "Fix the rounding in the cart total"`, paths changed. */
@@ -245,6 +245,59 @@ describe('listCliSessions', () => {
 		writeFileSync(file, [line({ sessionId: id, projectHash: 'h' }), line({ id: 'x1', type: 'user', content: 'a different start that is long enough' }), reply(9, 900), reply(10, 950)].join('\n') + '\n');
 		expect(await readSessionTokens(work, id, home)).toEqual({ context: 950, model: 'm', cached: 20 });
 		expect((await readCliSession(work, id, home))?.firstPrompt).toBe('a different start that is long enough');
+	});
+
+	it('reads a few files at a time, and once for two listings at the same time', async () => {
+		home = mkdtempSync(path.join(tmpdir(), 'cli-home-'));
+		const work = path.join(home, 'shop');
+		writeFileSync(path.join(home, 'projects.json'), JSON.stringify({ projects: { [work]: 'shop' } }));
+		const chats = path.join(home, 'tmp', 'shop', 'chats');
+		for (let i = 10; i < 40; i++) {
+			saveSession(chats, `session-${i}.jsonl`, `s${i}`, `Task ${i}`, `2026-10-01T00:00:${i}.000Z`);
+		}
+		let reading = 0;
+		let most = 0;
+		const read = fsPromises.readFile;
+		const readFile = vi.spyOn(fsPromises, 'readFile').mockImplementation(async (...args: Parameters<typeof read>) => {
+			most = Math.max(most, ++reading);
+			try {
+				return await read(...args);
+			} finally {
+				reading--;
+			}
+		});
+		try {
+			const [first, second] = await Promise.all([listCliSessions(work, { home }), listCliSessions(work, { home })]);
+			expect(first).toHaveLength(30);
+			expect(second).toEqual(first);
+			const sessionReads = readFile.mock.calls.filter(([file]) => String(file).includes('session-'));
+			expect(sessionReads).toHaveLength(30);
+			expect(most).toBeLessThanOrEqual(8);
+		} finally {
+			readFile.mockRestore();
+		}
+	});
+
+	it('keeps a short summary of a long session, without its tool output', async () => {
+		home = mkdtempSync(path.join(tmpdir(), 'cli-home-'));
+		const work = path.join(home, 'shop');
+		writeFileSync(path.join(home, 'projects.json'), JSON.stringify({ projects: { [work]: 'shop' } }));
+		const chats = path.join(home, 'tmp', 'shop', 'chats');
+		mkdirSync(chats, { recursive: true });
+		const id = 'beef1234-0000-4000-8000-000000000000';
+		const prompt = `Refactor the cart ${'and more '.repeat(200)}`;
+		const output = 'x'.repeat(2_000_000);
+		const lines = [line({ sessionId: id, projectHash: 'h', startTime: '2026-10-01T00:00:00.000Z' }), line({ id: 'u1', type: 'user', content: prompt })];
+		for (let i = 0; i < 2_000; i++) {
+			lines.push(line({ id: `g${i}`, type: 'gemini', content: '', toolCalls: [{ id: `t${i}`, result: i === 0 ? output : 'ok' }] }));
+		}
+		lines.push(line({ $patch: { id: 'u1', content: [{ text: 'Refactor the cart, edited' }] } }), line({ $set: { lastUpdated: '2026-10-02T00:00:00.000Z' } }));
+		writeFileSync(path.join(chats, 'session-2026-10-01T00-00-beef1234.jsonl'), lines.join('\n') + '\n');
+		const [session] = await listCliSessions(work, { home });
+		expect(session).toMatchObject({ id, title: 'Refactor the cart, edited', firstPrompt: 'Refactor the cart, edited', messages: 1, replayUpdates: 2_001, updatedAt: Date.parse('2026-10-02T00:00:00.000Z') });
+		writeFileSync(path.join(chats, 'session-2026-10-01T00-00-beef1234.jsonl'), lines.slice(0, -2).join('\n') + '\n');
+		// A long prompt is kept only as far as the title and the replay check need.
+		expect((await findCliSession(work, id, home))?.firstPrompt).toBe(prompt.trim().slice(0, 500));
 	});
 });
 

@@ -19,6 +19,13 @@
 // .json file is one object with a `messages` array. Anything unexpected makes
 // a file count as having no session; a changed layout gives an empty list,
 // never an error.
+//
+// The CLI appends its metadata updates (`$set` with `lastUpdated` or
+// `summary`), rewinds and patches to the end of the file, and its own listing
+// reads every line, so a file's head alone cannot say what a session is. A
+// listing keeps a small digest per message instead of the message (no tool
+// output), reads a few files at a time, and parses in short slices so the
+// extension host's other work goes on between them.
 
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
@@ -126,17 +133,26 @@ interface CachedFile {
 	readonly mtime: number;
 	readonly size: number;
 	readonly session: ParsedSession | undefined;
-	/** For a .jsonl file: its records so far, to add only what the CLI appended. */
-	readonly records?: SessionRecords;
+	/** For a .jsonl file: its messages' digests so far, to add only what the CLI appended. */
+	readonly records?: SessionRecords<MessageDigest>;
 	/** The bytes parsed: up to the end of the last whole line. */
 	readonly offset?: number;
 	/** The bytes just before `offset`, to tell an append from a rewrite. */
 	readonly tail?: Buffer;
 }
 
-/** Parsed files by path, so listing again reads only the files that changed. */
+/**
+ * Session files' summaries by path, so listing again reads only the files
+ * that changed. Each keeps a digest per message, never the messages.
+ */
 const parsedFiles = new Map<string, CachedFile>();
 const maxCachedFiles = 2000;
+/** Reads in flight, by path, size and time, so two chats listing at once read each file once. */
+const readsInFlight = new Map<string, Promise<ParsedSession | undefined>>();
+/** How many session files a listing reads at once. */
+const readConcurrency = 8;
+/** How long parsing runs before it lets the extension host's other work go on. */
+const parseSliceMs = 8;
 
 /**
  * Every session the CLI would offer for `cwd`, numbered as it numbers them:
@@ -153,7 +169,7 @@ async function numberedSessions(cwd: string, home?: string): Promise<CliSession[
 	} catch {
 		return [];
 	}
-	const parsed = await Promise.all(names.map(name => readSessionFile(path.join(folder, name))));
+	const parsed = await mapLimited(names, readConcurrency, name => readSessionFile(path.join(folder, name)));
 	// As the CLI does: drop what it would not offer, keep each id's latest file, then order by start.
 	const byId = new Map<string, ParsedSession>();
 	for (const session of parsed) {
@@ -174,20 +190,53 @@ async function numberedSessions(cwd: string, home?: string): Promise<CliSession[
 		}));
 }
 
+/** `run` over `items`, at most `limit` at a time, in order. */
+async function mapLimited<T, R>(items: readonly T[], limit: number, run: (item: T) => Promise<R>): Promise<R[]> {
+	const results: R[] = new Array(items.length);
+	let next = 0;
+	const worker = async () => {
+		while (next < items.length) {
+			const i = next++;
+			results[i] = await run(items[i]);
+		}
+	};
+	await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+	return results;
+}
+
 /** Bytes compared to tell that a session file only grew. */
 const tailCheckBytes = 256;
 
 async function readSessionFile(file: string): Promise<ParsedSession | undefined> {
+	let stat;
 	try {
-		const stat = await fs.stat(file);
-		const cached = parsedFiles.get(file);
-		if (cached && cached.mtime === stat.mtimeMs && cached.size === stat.size) {
-			return cached.session;
-		}
+		stat = await fs.stat(file);
+	} catch {
+		return undefined;
+	}
+	const cached = parsedFiles.get(file);
+	if (cached && cached.mtime === stat.mtimeMs && cached.size === stat.size) {
+		// Most recently used last, so the oldest goes first when the cache is full.
+		parsedFiles.delete(file);
+		parsedFiles.set(file, cached);
+		return cached.session;
+	}
+	// The same file as it is now, being read for another listing.
+	const key = `${file}\0${stat.mtimeMs}\0${stat.size}`;
+	let reading = readsInFlight.get(key);
+	if (!reading) {
+		reading = parseSessionFileAt(file, stat, cached).finally(() => readsInFlight.delete(key));
+		readsInFlight.set(key, reading);
+	}
+	return reading;
+}
+
+async function parseSessionFileAt(file: string, stat: { readonly mtimeMs: number; readonly size: number }, cached: CachedFile | undefined): Promise<ParsedSession | undefined> {
+	try {
 		// The CLI appends a record or two per message, so after the first read
 		// of a long session only the new lines are parsed, not the whole file.
 		const appended = cached?.records && stat.size > cached.size ? await readAppended(file, cached, stat.size) : undefined;
-		const entry = appended ?? parseWholeFile(await fs.readFile(file), file.endsWith('.json'));
+		const entry = appended ?? await parseWholeFile(await fs.readFile(file), file.endsWith('.json'));
 		let session: ParsedSession | undefined;
 		if (entry.records) {
 			// A last line without its line end may still be complete; it is read but not kept, since the next append may finish it.
@@ -197,10 +246,12 @@ async function readSessionFile(file: string): Promise<ParsedSession | undefined>
 			}
 			session = sessionFrom(current.meta, current.messages(), stat.mtimeMs);
 		} else {
-			session = parseSessionFile(entry.text ?? '', true, stat.mtimeMs);
+			const { meta, all } = parseRecords(entry.text ?? '', true, digests);
+			session = sessionFrom(meta, all, stat.mtimeMs);
 		}
+		parsedFiles.delete(file);
 		if (parsedFiles.size >= maxCachedFiles) {
-			parsedFiles.clear();
+			parsedFiles.delete(parsedFiles.keys().next().value!);
 		}
 		parsedFiles.set(file, { mtime: stat.mtimeMs, size: stat.size, session, ...(entry.records ? { records: entry.records, offset: entry.offset, tail: entry.tail } : {}) });
 		return session;
@@ -210,7 +261,7 @@ async function readSessionFile(file: string): Promise<ParsedSession | undefined>
 }
 
 interface ParsedFile {
-	readonly records?: SessionRecords;
+	readonly records?: SessionRecords<MessageDigest>;
 	readonly offset?: number;
 	readonly tail?: Buffer;
 	/** Text after the last line end. */
@@ -219,13 +270,13 @@ interface ParsedFile {
 	readonly text?: string;
 }
 
-function parseWholeFile(data: Buffer, wholeJson: boolean): ParsedFile {
+async function parseWholeFile(data: Buffer, wholeJson: boolean): Promise<ParsedFile> {
 	if (wholeJson) {
 		return { text: data.toString('utf8') };
 	}
-	const records = new SessionRecords();
+	const records = new SessionRecords(digests);
 	const end = data.lastIndexOf(0x0a) + 1;
-	records.addLines(data.subarray(0, end).toString('utf8'));
+	await records.addLinesInSlices(data.subarray(0, end).toString('utf8'));
 	return { records, offset: end, tail: Buffer.from(data.subarray(Math.max(0, end - tailCheckBytes), end)), rest: data.subarray(end).toString('utf8') };
 }
 
@@ -249,7 +300,7 @@ async function readAppended(file: string, cached: CachedFile, size: number): Pro
 	const added = data.subarray(tail.length);
 	const end = added.lastIndexOf(0x0a) + 1;
 	const records = cached.records!.clone();
-	records.addLines(added.subarray(0, end).toString('utf8'));
+	await records.addLinesInSlices(added.subarray(0, end).toString('utf8'));
 	const parsed = Buffer.concat([tail, added.subarray(0, end)]);
 	return { records, offset: offset + end, tail: Buffer.from(parsed.subarray(Math.max(0, parsed.length - tailCheckBytes))), rest: added.subarray(end).toString('utf8') };
 }
@@ -279,17 +330,90 @@ export interface MessageRecord {
 
 /** One session file's session, or undefined when it has none worth reopening. */
 export function parseSessionFile(text: string, wholeJson: boolean, mtime = 0): ParsedSession | undefined {
-	const { meta, all } = parseSessionRecords(text, wholeJson);
+	const { meta, all } = parseRecords(text, wholeJson, digests);
 	return sessionFrom(meta, all, mtime);
 }
 
-function sessionFrom(meta: Record<string, unknown>, all: readonly MessageRecord[], mtime: number): ParsedSession | undefined {
+/** Up to how many characters of a prompt a session's summary keeps: enough for its title, and for checking a replay's first prompt. */
+const keptPromptLength = 500;
+
+/**
+ * What a session's summary needs of one message, kept instead of the
+ * message, so a listing never holds a tool's output or a long reply.
+ */
+interface MessageDigest {
+	readonly type: unknown;
+	/** The user's prompt, cut to {@link keptPromptLength}; undefined when the message is not one. */
+	readonly prompt: string | undefined;
+	/** Whether the message has text. */
+	readonly text: boolean;
+	/** Whether the CLI's verbose text of the content is more than white space (see `hasReplayText`). */
+	readonly replayText: boolean;
+	readonly thoughts: number;
+	readonly toolCalls: number;
+	/** A reply's token counts and model, as the CLI saved them. */
+	readonly input?: number;
+	readonly cached?: number;
+	readonly model?: string;
+}
+
+/** What a digest takes from a message's content: a `$patch` may replace it. */
+function contentDigest(type: unknown, content: unknown): Pick<MessageDigest, 'prompt' | 'text' | 'replayText'> {
+	const text = textOf(content).trim();
+	return { prompt: type === 'user' && isPrompt(text) ? text.slice(0, keptPromptLength) : undefined, text: !!text, replayText: hasReplayText(content) };
+}
+
+/** A message's digest. */
+function digestOf(message: MessageRecord): MessageDigest {
+	const record = message as MessageRecord & { readonly toolCalls?: unknown; readonly thoughts?: unknown; readonly tokens?: unknown; readonly model?: unknown };
+	const tokens = message.type === 'gemini' && isObject(record.tokens) ? record.tokens : undefined;
+	const count = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
+	const input = count(tokens?.input);
+	const cached = count(tokens?.cached);
+	return {
+		type: message.type,
+		...contentDigest(message.type, message.content),
+		thoughts: Array.isArray(record.thoughts) ? record.thoughts.length : 0,
+		toolCalls: Array.isArray(record.toolCalls) ? record.toolCalls.length : 0,
+		...(input !== undefined ? { input } : {}),
+		...(cached !== undefined ? { cached } : {}),
+		...(input !== undefined && typeof record.model === 'string' && record.model ? { model: record.model } : {}),
+	};
+}
+
+/** What a session's records keep of each message, and of the metadata. */
+interface RecordKeeper<T> {
+	message(message: MessageRecord): T;
+	/** `kept` with new content, from a `$patch`. */
+	patched(kept: T, content: unknown): T;
+	meta(meta: Record<string, unknown>): Record<string, unknown>;
+}
+
+/** Keeps the messages and metadata whole. Records are shared with earlier parses of a file, so a patch replaces a message rather than change it. */
+const wholeRecords: RecordKeeper<MessageRecord> = {
+	message: message => message,
+	patched: (kept, content) => ({ ...kept, content }),
+	meta: meta => meta,
+};
+
+/** The metadata a session's summary reads. */
+const summaryMeta = ['sessionId', 'kind', 'summary', 'startTime', 'lastUpdated'];
+
+/** Keeps each message's digest and the metadata a summary reads. */
+const digests: RecordKeeper<MessageDigest> = {
+	message: message => digestOf(message),
+	patched: (kept, content) => ({ ...kept, ...contentDigest(kept.type, content) }),
+	meta: meta => Object.fromEntries(summaryMeta.filter(key => meta[key] !== undefined).map(key => [key, meta[key]])),
+};
+
+function sessionFrom(meta: Record<string, unknown>, all: readonly MessageDigest[], mtime: number): ParsedSession | undefined {
 	const id = meta.sessionId;
 	if (typeof id !== 'string' || !id || meta.kind === 'subagent') {
 		return undefined;
 	}
-	const prompts = all.filter(m => m.type === 'user').map(m => textOf(m.content).trim()).filter(isPrompt);
-	const resumable = prompts.length > 0 || all.some(isReply);
+	const prompts = all.flatMap(m => m.prompt !== undefined ? [m.prompt] : []);
+	// A reply the CLI would resume: one with text, tool calls or thoughts.
+	const resumable = prompts.length > 0 || all.some(m => m.type === 'gemini' && (m.text || m.toolCalls > 0 || m.thoughts > 0));
 	const summary = typeof meta.summary === 'string' ? meta.summary.trim() : '';
 	const time = (key: string) => typeof meta[key] === 'string' ? Date.parse(meta[key] as string) : NaN;
 	const started = time('startTime');
@@ -301,22 +425,24 @@ function sessionFrom(meta: Record<string, unknown>, all: readonly MessageRecord[
 		resumable,
 		startedAt: Number.isFinite(started) ? started : Number.isFinite(updated) ? updated : mtime,
 		updatedAt: Number.isFinite(updated) ? updated : Number.isFinite(started) ? started : mtime,
-		replayUpdates: replayUpdateCount(all),
+		replayUpdates: all.reduce((sum, m) => sum + replayCount(m), 0),
 		...withTokens(all),
 	};
 }
 
 /** A .jsonl session file's metadata and messages as they stand, after rewinds and rewrites, built up record by record. */
-class SessionRecords {
+class SessionRecords<T> {
 	meta: Record<string, unknown> = {};
-	private readonly byId = new Map<string, MessageRecord>();
+	private readonly byId = new Map<string, T>();
 
-	messages(): MessageRecord[] {
+	constructor(private readonly keeper: RecordKeeper<T>) { }
+
+	messages(): T[] {
 		return [...this.byId.values()];
 	}
 
-	clone(): SessionRecords {
-		const copy = new SessionRecords();
+	clone(): SessionRecords<T> {
+		const copy = new SessionRecords(this.keeper);
 		copy.meta = this.meta;
 		for (const [id, message] of this.byId) {
 			copy.byId.set(id, message);
@@ -327,12 +453,21 @@ class SessionRecords {
 	/** Whole lines of the file; a line cut short by a crash is skipped, as the CLI does. */
 	addLines(text: string): void {
 		for (const line of text.split('\n')) {
-			if (line.trim()) {
-				try {
-					this.add(JSON.parse(line));
-				} catch {
-					// Skipped.
-				}
+			this.addLine(line);
+		}
+	}
+
+	/** As {@link addLines}, letting other work run every few milliseconds, so a long session never holds the extension host up. */
+	async addLinesInSlices(text: string): Promise<void> {
+		let sliceStart = Date.now();
+		for (let start = 0; start < text.length;) {
+			const end = text.indexOf('\n', start);
+			const stop = end < 0 ? text.length : end;
+			this.addLine(text.slice(start, stop));
+			start = stop + 1;
+			if (Date.now() - sliceStart >= parseSliceMs) {
+				await new Promise(resolve => setImmediate(resolve));
+				sliceStart = Date.now();
 			}
 		}
 	}
@@ -341,7 +476,17 @@ class SessionRecords {
 		this.byId.clear();
 		for (const message of Array.isArray(list) ? list : []) {
 			if (isMessage(message)) {
-				this.byId.set(message.id, message);
+				this.byId.set(message.id, this.keeper.message(message));
+			}
+		}
+	}
+
+	private addLine(line: string): void {
+		if (line.trim()) {
+			try {
+				this.add(JSON.parse(line));
+			} catch {
+				// Skipped.
 			}
 		}
 	}
@@ -365,18 +510,18 @@ class SessionRecords {
 		} else if (isObject(value.$patch)) {
 			this.patch(value.$patch);
 		} else if (isMessage(value)) {
-			this.byId.set(value.id, value);
+			this.byId.set(value.id, this.keeper.message(value));
 		} else if (isObject(value.$set)) {
 			if (Array.isArray(value.$set.messages)) {
 				this.setMessages(value.$set.messages);
 			}
-			this.meta = { ...this.meta, ...value.$set };
+			this.meta = this.keeper.meta({ ...this.meta, ...value.$set });
 		} else if (typeof value.sessionId === 'string') {
-			this.meta = { ...this.meta, ...value };
+			this.meta = this.keeper.meta({ ...this.meta, ...value });
 			if (Array.isArray(value.messages)) {
 				for (const message of value.messages) {
 					if (isMessage(message)) {
-						this.byId.set(message.id, message);
+						this.byId.set(message.id, this.keeper.message(message));
 					}
 				}
 			}
@@ -392,10 +537,11 @@ class SessionRecords {
 	 */
 	private patch(patch: Record<string, unknown>): void {
 		for (const update of [patch, ...(Array.isArray(patch.updates) ? patch.updates : [])]) {
-			const message = isObject(update) && typeof update.id === 'string' ? this.byId.get(update.id) : undefined;
-			if (message && update.content !== undefined) {
-				// Records are shared with earlier parses of the file, so replace rather than change one.
-				this.byId.set(message.id, { ...message, content: update.content });
+			const id = isObject(update) && typeof update.id === 'string' ? update.id : undefined;
+			const kept = id !== undefined ? this.byId.get(id) : undefined;
+			if (id !== undefined && kept !== undefined && isObject(update) && update.content !== undefined) {
+				// Kept values are shared with earlier parses of the file, so replace rather than change one.
+				this.byId.set(id, this.keeper.patched(kept, update.content));
 			}
 		}
 		if (Array.isArray(patch.removeIds)) {
@@ -407,21 +553,21 @@ class SessionRecords {
 		}
 		if (Array.isArray(patch.orderIds)) {
 			const ordered = patch.orderIds.flatMap(id => {
-				const message = typeof id === 'string' ? this.byId.get(id) : undefined;
-				return message ? [message] : [];
+				const kept = typeof id === 'string' ? this.byId.get(id) : undefined;
+				return kept !== undefined ? [[id as string, kept] as const] : [];
 			});
-			const named = new Set(ordered.map(message => message.id));
-			const rest = [...this.byId.values()].filter(message => !named.has(message.id));
+			const named = new Set(ordered.map(([id]) => id));
+			const rest = [...this.byId].filter(([id]) => !named.has(id));
 			this.byId.clear();
-			for (const message of [...rest, ...ordered]) {
-				this.byId.set(message.id, message);
+			for (const [id, kept] of [...rest, ...ordered]) {
+				this.byId.set(id, kept);
 			}
 		}
 	}
 }
 
 /** A session file's metadata and its messages as they stand, after rewinds and rewrites. */
-function parseSessionRecords(text: string, wholeJson: boolean): { meta: Record<string, unknown>; all: MessageRecord[] } {
+function parseRecords<T>(text: string, wholeJson: boolean, keeper: RecordKeeper<T>): { meta: Record<string, unknown>; all: T[] } {
 	let whole: unknown;
 	if (wholeJson) {
 		try {
@@ -430,14 +576,19 @@ function parseSessionRecords(text: string, wholeJson: boolean): { meta: Record<s
 			// Not one object: read it as records.
 		}
 	}
-	const records = new SessionRecords();
+	const records = new SessionRecords(keeper);
 	if (isObject(whole)) {
-		records.meta = whole;
+		records.meta = keeper.meta(whole);
 		records.setMessages(whole.messages);
 	} else {
 		records.addLines(text);
 	}
 	return { meta: records.meta, all: records.messages() };
+}
+
+/** A session file's metadata and its messages, whole, as they stand after rewinds and rewrites. */
+function parseSessionRecords(text: string, wholeJson: boolean): { meta: Record<string, unknown>; all: MessageRecord[] } {
+	return parseRecords(text, wholeJson, wholeRecords);
 }
 
 /**
@@ -448,20 +599,14 @@ function parseSessionRecords(text: string, wholeJson: boolean): { meta: Record<s
  * replay is over, so this is how GeminiCode knows when it is.
  */
 export function replayUpdateCount(messages: readonly unknown[]): number {
-	let count = 0;
-	for (const message of messages) {
-		if (!isObject(message)) {
-			continue;
-		}
-		if (message.type === 'user') {
-			count += hasReplayText(message.content) ? 1 : 0;
-		} else if (message.type === 'gemini') {
-			count += (Array.isArray(message.thoughts) ? message.thoughts.length : 0)
-				+ (hasReplayText(message.content) ? 1 : 0)
-				+ (Array.isArray(message.toolCalls) ? message.toolCalls.length : 0);
-		}
-	}
-	return count;
+	return messages.reduce<number>((sum, message) => sum + (isObject(message) ? replayCount(digestOf({ ...message, id: '' })) : 0), 0);
+}
+
+/** How many updates the CLI sends when it replays one message (see {@link replayUpdateCount}). */
+function replayCount(message: MessageDigest): number {
+	return message.type === 'user' ? (message.replayText ? 1 : 0)
+		: message.type === 'gemini' ? message.thoughts + (message.replayText ? 1 : 0) + message.toolCalls
+			: 0;
 }
 
 /** Parts the CLI's verbose converter writes as a marker such as `[Function Call: replace]`, which is never empty. */
@@ -478,21 +623,14 @@ function hasReplayText(content: unknown): boolean {
 }
 
 /** The session's token counts from its replies' `tokens` (`input`, `cached`, ...), as gemini-cli 0.62 to 0.64 save them. */
-function withTokens(messages: readonly MessageRecord[]): { tokens?: SessionTokens } {
+function withTokens(messages: readonly MessageDigest[]): { tokens?: SessionTokens } {
 	let latest: { readonly input: number; readonly model?: string } | undefined;
 	let cached = 0;
 	for (const message of messages) {
-		const tokens = (message as { tokens?: unknown }).tokens;
-		if (message.type !== 'gemini' || !isObject(tokens)) {
-			continue;
+		if (message.input !== undefined) {
+			latest = { input: message.input, ...(message.model ? { model: message.model } : {}) };
 		}
-		const model = (message as { model?: unknown }).model;
-		if (typeof tokens.input === 'number' && Number.isFinite(tokens.input) && tokens.input > 0) {
-			latest = { input: tokens.input, ...(typeof model === 'string' && model ? { model } : {}) };
-		}
-		if (typeof tokens.cached === 'number' && Number.isFinite(tokens.cached) && tokens.cached > 0) {
-			cached += tokens.cached;
-		}
+		cached += message.cached ?? 0;
 	}
 	return latest ? { tokens: { context: Math.round(latest.input), ...(latest.model ? { model: latest.model } : {}), cached: Math.round(cached) } } : {};
 }
@@ -529,7 +667,7 @@ async function newestSessionFile(cwd: string, id: string, home?: string): Promis
 	} catch {
 		return undefined;
 	}
-	const files = await Promise.all(names.map(async name => ({ file: path.join(folder, name), session: await readSessionFile(path.join(folder, name)) })));
+	const files = await mapLimited(names, readConcurrency, async name => ({ file: path.join(folder, name), session: await readSessionFile(path.join(folder, name)) }));
 	return files.filter((f): f is { file: string; session: ParsedSession } => f.session?.id === id).sort((a, b) => b.session.updatedAt - a.session.updatedAt)[0];
 }
 
@@ -637,12 +775,6 @@ export async function readSessionContext(cwd: string, id: string, home?: string)
 export async function readCliSession(cwd: string, id: string, home?: string): Promise<{ readonly firstPrompt: string; readonly replayUpdates: number } | undefined> {
 	const session = await readSessionById(cwd, id, home);
 	return session && { firstPrompt: session.prompts[0] ?? '', replayUpdates: session.replayUpdates };
-}
-
-/** A model message the CLI would resume: one with text, tool calls or thoughts. */
-function isReply(message: MessageRecord): boolean {
-	const record = message as MessageRecord & { readonly toolCalls?: unknown; readonly thoughts?: unknown };
-	return message.type === 'gemini' && (!!textOf(message.content).trim() || (Array.isArray(record.toolCalls) && record.toolCalls.length > 0) || (Array.isArray(record.thoughts) && record.thoughts.length > 0));
 }
 
 /** Whether a user message is a prompt, as the CLI counts them: not empty, a command or context it added. */
