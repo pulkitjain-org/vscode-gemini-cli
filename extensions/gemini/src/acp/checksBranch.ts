@@ -11,8 +11,8 @@
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
-import { reviewWorktree } from './releaseMerge';
-import { AgentWorktree, branchExists, freeFolder, git, worktreesHome } from './worktrees';
+import { branchWorktree } from './releaseMerge';
+import { AgentWorktree, branchExists, checkoutOf, freeFolder, git, worktreesHome } from './worktrees';
 
 export type BranchChoiceKind = 'current' | 'agent' | 'local' | 'remote';
 
@@ -64,19 +64,7 @@ export async function listBranches(repository: string, remote = 'origin'): Promi
 	return { locals, remotes };
 }
 
-/** The folder where `branch` is checked out, if the repository or one of its worktrees has it. */
-export async function checkoutOf(repository: string, branch: string): Promise<string | undefined> {
-	const text = await git(repository, ['worktree', 'list', '--porcelain']);
-	let folder: string | undefined;
-	for (const line of text.split('\n')) {
-		if (line.startsWith('worktree ')) {
-			folder = line.slice('worktree '.length).trim();
-		} else if (line.trim() === `branch refs/heads/${branch}` && folder) {
-			return folder;
-		}
-	}
-	return undefined;
-}
+export { checkoutOf };
 
 export interface ChecksCheckout {
 	/** Where to run the checks. */
@@ -107,7 +95,8 @@ export async function checkoutForChecks(repository: string, remote: string, bran
 		const base = (await git(repository, ['rev-parse', '--abbrev-ref', `${branch}@{upstream}`]).catch(() => '')).trim() || branch;
 		return { cwd: folder, worktree: { folder, cwd: folder, branch, base }, created: true };
 	}
-	const worktree = await reviewWorktree(repository, remote, branch, branch, '', home);
+	// Only on the remote: a new local branch of the same name, made from it.
+	const worktree = await branchWorktree(repository, remote, branch, { parent: path.join(worktreesHome(repository, home), 'checks') });
 	return { cwd: worktree.cwd, worktree, created: true };
 }
 
