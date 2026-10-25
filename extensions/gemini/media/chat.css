@@ -1464,8 +1464,11 @@ body.vscode-high-contrast-light {
 	color: var(--gemini-muted);
 }
 
-.turn-end .copy-reply {
-	opacity: 0.7;
+/* The row's buttons look the same at rest and on hover; focus still shows its outline. */
+.turn-end .turn-action:hover,
+.turn-end .copy-reply:hover {
+	background: transparent;
+	color: inherit;
 }
 
 /* A turn GeminiCode's quit cut off: a warm card with what is on disk and what to do. */
@@ -1657,11 +1660,6 @@ body.vscode-high-contrast-light {
 	text-overflow: ellipsis;
 }
 
-.turn-end:hover .copy-reply,
-.turn-end .copy-reply:focus-visible {
-	opacity: 1;
-}
-
 .turn-action {
 	display: inline-flex;
 	align-items: center;
@@ -1712,12 +1710,6 @@ body.vscode-high-contrast-light {
 
 .turn-action.reaction-add {
 	padding: 0 4px;
-	opacity: 0.7;
-}
-
-.turn-end:hover .reaction-add,
-.reaction-add:focus-visible {
-	opacity: 1;
 }
 
 .reaction-icon {
