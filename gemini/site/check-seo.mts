@@ -6,7 +6,8 @@
 // Checks what the built site tells search engines, link previews and AI tools, and fails on
 // the first kind of mistake it finds on any page. Every page needs a unique title, a
 // description of at most 160 characters, a canonical address that is a page of the site,
-// Open Graph tags whose image exists, and JSON-LD that parses. sitemap.xml must list exactly
+// Open Graph tags whose image exists, and JSON-LD that parses; a clip's VideoObject must name a
+// thumbnail and a video that exist, a date and a duration. sitemap.xml must list exactly
 // the pages that may be indexed, llms.txt may link only files that exist, and 404.html must
 // be there and say noindex. Needs nothing installed.
 //
@@ -87,10 +88,25 @@ for (const page of htmlFiles()) {
 		say('og:url is not the canonical address');
 	}
 	for (const [, json] of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) {
+		let graph: { '@type'?: string; [key: string]: unknown }[] = [];
 		try {
-			JSON.parse(json);
+			graph = (JSON.parse(json) as { '@graph'?: typeof graph })['@graph'] ?? [];
 		} catch (error) {
 			say(`JSON-LD that doesn't parse: ${(error as Error).message}`);
+		}
+		for (const video of graph.filter(entry => entry['@type'] === 'VideoObject')) {
+			for (const key of ['thumbnailUrl', 'contentUrl'] as const) {
+				const file = typeof video[key] === 'string' ? fileFor(video[key]) : undefined;
+				if (!file || !existsSync(path.join(site, file))) {
+					say(`a VideoObject's ${key}, ${String(video[key])}, is not in the site`);
+				}
+			}
+			if (typeof video.uploadDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(video.uploadDate)) {
+				say(`a VideoObject has no uploadDate: ${String(video.name)}`);
+			}
+			if (typeof video.duration !== 'string' || !/^PT\d+S$/.test(video.duration)) {
+				say(`a VideoObject has no duration: ${String(video.name)}`);
+			}
 		}
 	}
 	const noindex = html.includes('<meta name="robots" content="noindex">');

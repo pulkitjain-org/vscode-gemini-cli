@@ -360,6 +360,7 @@ html.theming .shot { opacity: 0; }
 	.release { grid-template-columns: minmax(0, 1fr); gap: 28px; }
 	.release .aside { position: static; }
 	.release .toc { display: none; }
+	.release .toc.releases { display: grid; }
 	.foot .cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 760px) {
