@@ -152,16 +152,20 @@ export function findSymbols(lines: readonly string[], language: Language): Parse
  * without trailing blank lines.
  */
 function withEnds(found: readonly Found[], lines: readonly string[], language: Language): ParsedSymbol[] {
+	// The last container seen with each name: one pass, so a class with thousands of members stays linear.
+	const containers = new Map<string, Found>();
 	return found.map((symbol, index) => {
 		let end = symbol.endLine;
 		if (end === undefined) {
 			const next = found[index + 1];
 			end = next ? leadingStart(lines, next.line - 1, language) : lines.length;
-			const parent = symbol.container ? found.slice(0, index).reverse().find(other => other.name === symbol.container && other.endLine !== undefined) : undefined;
+			const parent = symbol.container ? containers.get(symbol.container) : undefined;
 			if (parent?.endLine !== undefined && parent.endLine >= symbol.line) {
 				const closing = /^(?:[}\])]|end\b)/.test(lines[parent.endLine - 1]?.trim() ?? '');
 				end = Math.min(end, closing ? parent.endLine - 1 : parent.endLine);
 			}
+		} else {
+			containers.set(symbol.name, symbol);
 		}
 		while (end > symbol.line && !lines[end - 1]?.trim()) {
 			end--;
@@ -229,10 +233,11 @@ export function makeChunks(lines: readonly string[], symbols: readonly ParsedSym
 		}
 	}
 
+	const symbolAt = chunkSymbols(symbols);
 	return joined.map(([start, end]) => ({
 		startLine: start + 1,
 		endLine: end + 1,
-		symbol: chunkSymbol(symbols, start + 1, end + 1),
+		symbol: symbolAt(start + 1, end + 1),
 		text: chunkText(lines, start, end),
 	}));
 }
@@ -249,19 +254,51 @@ function leadingStart(lines: readonly string[], index: number, language: Languag
 	return start;
 }
 
-/** The definition that starts in the chunk's first lines, else the innermost one around its start. */
-function chunkSymbol(symbols: readonly ParsedSymbol[], start: number, end: number): string | undefined {
-	const starting = symbols.find(s => s.line >= start && s.line <= Math.min(end, start + 12));
-	if (starting) {
-		return qualifiedName(starting);
-	}
-	let around: ParsedSymbol | undefined;
-	for (const symbol of symbols) {
-		if (symbol.line <= start && symbol.endLine >= start && (!around || symbol.line >= around.line)) {
-			around = symbol;
+/**
+ * The name for each chunk, asked for in order of their first lines: the
+ * definition that starts in the chunk's first lines, else the innermost one
+ * around its start. `symbols` are in line order; a stack of the definitions
+ * still open keeps this linear however many members a class has.
+ */
+function chunkSymbols(symbols: readonly ParsedSymbol[]): (start: number, end: number) => string | undefined {
+	let next = 0;
+	let lastStart = 0;
+	const open: ParsedSymbol[] = [];
+	return (start, end) => {
+		if (start < lastStart) {
+			next = 0;
+			open.length = 0;
+		}
+		lastStart = start;
+		const starting = symbols[firstAtOrAfter(symbols, start)];
+		if (starting && starting.line <= Math.min(end, start + 12)) {
+			return qualifiedName(starting);
+		}
+		while (next < symbols.length && symbols[next].line <= start) {
+			open.push(symbols[next++]);
+		}
+		// A definition that ended before this chunk ends before every later one too.
+		while (open.length && open[open.length - 1].endLine < start) {
+			open.pop();
+		}
+		const around = open[open.length - 1];
+		return around ? qualifiedName(around) : undefined;
+	};
+}
+
+/** The index of the first symbol at or after `line`. */
+function firstAtOrAfter(symbols: readonly ParsedSymbol[], line: number): number {
+	let low = 0;
+	let high = symbols.length;
+	while (low < high) {
+		const middle = (low + high) >> 1;
+		if (symbols[middle].line < line) {
+			low = middle + 1;
+		} else {
+			high = middle;
 		}
 	}
-	return around ? qualifiedName(around) : undefined;
+	return low;
 }
 
 function chunkText(lines: readonly string[], start: number, end: number): string {
