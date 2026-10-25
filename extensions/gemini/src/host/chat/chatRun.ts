@@ -71,13 +71,12 @@ export class ChatRun implements vscode.Disposable {
 		const places = terminal.places();
 		const place = message.place !== undefined ? places.find(each => each.name === message.place) : placeFor(command, places);
 		if (!place) {
-			state({ kind: 'pick' });
+			state({ kind: 'pick', action: message.action });
 			return;
 		}
 		if (message.action === 'insert') {
-			// Nothing runs until the user presses Return in the terminal.
+			// Nothing runs until the user presses Return in the terminal; the block keeps its last result.
 			terminal.insert(place, command);
-			state({ kind: 'idle' });
 			return;
 		}
 		if (!message.confirmed) {

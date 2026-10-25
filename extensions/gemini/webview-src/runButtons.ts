@@ -136,7 +136,12 @@ function show(wrapper: HTMLElement, state: RunState, asked: boolean): void {
 		actions.append(button('primary', strings.run.run, () => send(block.text, block.language, 'run', { confirmed: true, ...place === undefined ? {} : { place } })), cancel);
 	} else {
 		bar.append(el('div', 'run-question', strings.run.pick));
-		actions.append(...view.places.map(place => button('secondary', place, () => send(block.text, block.language, 'run', { place }))), cancel);
+		const action = state.action;
+		actions.append(...view.places.map(place => button('secondary', place, () => {
+			// The question goes; the extension says what happens next (a question, Running, or nothing for Insert).
+			setRunState(block.text, { kind: 'idle' });
+			send(block.text, block.language, action, { place });
+		})), cancel);
 	}
 	bar.append(actions);
 	bar.addEventListener('keydown', event => {

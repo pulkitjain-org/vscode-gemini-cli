@@ -776,7 +776,6 @@
         },
         {
           "command": "gemini.terminal.sendLastCommand",
-          "when": "terminalShellIntegrationEnabled",
           "group": "gemini@2"
         }
       ],
@@ -1055,10 +1054,6 @@
         {
           "command": "gemini.terminal.askAboutFailure",
           "when": "false"
-        },
-        {
-          "command": "gemini.terminal.sendSelection",
-          "when": "terminalTextSelected"
         },
         {
           "command": "gemini.team.startNewReview",

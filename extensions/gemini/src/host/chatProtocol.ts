@@ -291,8 +291,8 @@ export type RunState =
 	| { readonly kind: 'idle' }
 	/** Asks before it runs: `text` says what the command does and where; `place` is the repository picked, if one was. */
 	| { readonly kind: 'confirm'; readonly text: string; readonly place?: string }
-	/** Asks which repository to run in. */
-	| { readonly kind: 'pick' }
+	/** Asks which repository to run in, for `action`. */
+	| { readonly kind: 'pick'; readonly action: RunAction }
 	| { readonly kind: 'running' }
 	/** How it ended; unset when the shell had no integration to say. */
 	| { readonly kind: 'done'; readonly exitCode?: number; readonly ms?: number };

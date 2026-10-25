@@ -67,9 +67,16 @@ describe('OutputTail', () => {
 		expect(tail.finish()).toEqual({ lines: ['three', 'four', 'progress 100%'], dropped: 2 });
 	});
 
-	it('drops trailing empty lines', () => {
+	it('keeps the last line of a chunk that ends in \\r\\n, as zsh and npm write it', () => {
 		const tail = new OutputTail();
-		tail.push('ok\n\n\n');
+		tail.push('\x1b]633;C\x07');
+		tail.push('\r\n> test\r\n> echo running tests && exit 3\r\n\r\nrunning tests\r\n\u2819\x1b[1G\x1b[0K\x1b[1m\x1b[7m%\x1b[27m\x1b[1m\x1b[0m      \r \r');
+		expect(tail.finish()).toEqual({ lines: ['> test', '> echo running tests && exit 3', '', 'running tests'], dropped: 0 });
+	});
+
+	it('drops empty lines at either end', () => {
+		const tail = new OutputTail();
+		tail.push('\n\nok\n\n\n');
 		expect(tail.finish()).toEqual({ lines: ['ok'], dropped: 0 });
 	});
 });

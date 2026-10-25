@@ -39,10 +39,11 @@ export class TerminalGemini implements vscode.Disposable {
 		this.disposables = [
 			vscode.commands.registerCommand('gemini.terminal.sendSelection', () => this.sendSelection()),
 			vscode.commands.registerCommand('gemini.terminal.sendLastCommand', () => this.sendLastCommand()),
-			vscode.commands.registerCommand('gemini.terminal.askAboutFailure', (commandLine?: string) => this.sendLastCommand(typeof commandLine === 'string' ? commandLine : undefined)),
+			// The failed command's ✨ quick fix; the workbench runs it without arguments, on the terminal in front.
+			vscode.commands.registerCommand('gemini.terminal.askAboutFailure', () => this.sendLastCommand()),
 			vscode.commands.registerCommand('gemini.terminal.suggestCommand', () => this.suggestCommand()),
 			vscode.window.registerTerminalQuickFixProvider('gemini.askAboutFailure', {
-				provideTerminalQuickFixes: match => ({ command: 'gemini.terminal.askAboutFailure', title: vscode.l10n.t("Ask Gemini About This Failure"), arguments: [match.commandLine] }),
+				provideTerminalQuickFixes: () => ({ command: 'gemini.terminal.askAboutFailure', title: vscode.l10n.t("Ask Gemini About This Failure") }),
 			}),
 		];
 	}
@@ -62,11 +63,11 @@ export class TerminalGemini implements vscode.Disposable {
 		await this.send(terminal, [{ kind: 'document', name: vscode.l10n.t("Terminal selection"), mimeType: 'text/plain', text: selectionReport(selection) }]);
 	}
 
-	/** The last command of the active terminal; with `commandLine` (from a quick fix), only if it is that command. */
-	private async sendLastCommand(commandLine?: string): Promise<void> {
+	/** The last command of the active terminal. */
+	private async sendLastCommand(): Promise<void> {
 		const terminal = vscode.window.activeTerminal;
 		const last = terminal && this.host.terminals.lastCommand(terminal);
-		if (!terminal || !last || (commandLine !== undefined && last.commandLine.trim() !== commandLine.trim())) {
+		if (!terminal || !last) {
 			void vscode.window.showInformationMessage(terminal?.shellIntegration
 				? vscode.l10n.t("No command has finished in this terminal since GeminiCode started watching it. Run the command again, then send it.")
 				: vscode.l10n.t("This terminal doesn't report its commands: its shell has no shell integration. Select the output and use Send to Gemini instead."));

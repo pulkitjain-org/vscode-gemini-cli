@@ -56,9 +56,11 @@ export class AgentTerminals implements vscode.Disposable {
 				// The stream ends with the command; give its last chunk a moment.
 				await Promise.race([run?.done, new Promise(resolve => setTimeout(resolve, 200))]);
 				const output = run?.tail.finish() ?? { lines: [], dropped: 0 };
+				// The execution's folder, else the terminal's: zsh's integration often reports only the terminal's.
+				const cwd = execution.cwd ?? terminal.shellIntegration?.cwd;
 				const finished: FinishedCommand = {
 					commandLine: execution.commandLine.value,
-					...execution.cwd ? { cwd: execution.cwd.fsPath } : {},
+					...cwd ? { cwd: cwd.fsPath } : {},
 					...exitCode !== undefined ? { exitCode } : {},
 					...output,
 				};

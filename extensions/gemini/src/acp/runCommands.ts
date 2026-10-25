@@ -71,9 +71,16 @@ function escapeRegExp(text: string): string {
 /** Terminal control sequences: colours, cursor moves, titles and shell integration marks. */
 const controlSequence = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]/g;
 
-/** `text` without terminal control sequences, and with each carriage-return rewrite of a line kept as its last. */
+/**
+ * `text` without terminal control sequences, and with each carriage-return
+ * rewrite of a line kept as its last. A line's own ending `\r` (of a `\r\n`
+ * split elsewhere) is not a rewrite.
+ */
 export function plainTerminalText(text: string): string {
-	return text.replace(controlSequence, '').replace(/\r\n/g, '\n').split('\n').map(line => line.slice(line.lastIndexOf('\r') + 1)).join('\n');
+	return text.replace(controlSequence, '').split('\n').map(line => {
+		const own = line.replace(/\r+$/, '');
+		return own.slice(own.lastIndexOf('\r') + 1);
+	}).join('\n');
 }
 
 /**
@@ -104,15 +111,19 @@ export class OutputTail {
 		}
 	}
 
-	/** The lines kept, the line still open last; and how many earlier lines were dropped. */
+	/** The lines kept, the line still open last and without blank lines at either end; and how many earlier lines were dropped. */
 	finish(): { readonly lines: readonly string[]; readonly dropped: number } {
 		const last = plainTerminalText(this.partial);
 		const lines = last ? [...this.lines, last] : [...this.lines];
 		const over = Math.max(0, lines.length - this.max);
-		while (lines.length && !lines[lines.length - 1].trim()) {
-			lines.pop();
+		const kept = lines.slice(over);
+		while (kept.length && !kept[kept.length - 1].trim()) {
+			kept.pop();
 		}
-		return { lines: lines.slice(over), dropped: this.dropped + over };
+		while (kept.length && !kept[0].trim()) {
+			kept.shift();
+		}
+		return { lines: kept, dropped: this.dropped + over };
 	}
 }
 
