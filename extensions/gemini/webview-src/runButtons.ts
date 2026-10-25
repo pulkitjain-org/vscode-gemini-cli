@@ -3,8 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Run on a reply's shell blocks: ▷ runs the block in the agent's terminal, and
-// ⌄ offers Insert Without Running, Run in New Terminal and each repository.
+// Run on a reply's shell blocks: Run (a play icon) runs the block in the agent's
+// terminal, and the chevron beside it offers Insert Without Running, Run in New
+// Terminal and each repository.
 // The extension decides where it runs and whether to ask first (chatRun.ts);
 // the block shows its question, then how the command ended. States are kept
 // by the block's text, so a block drawn again keeps its result.
@@ -36,7 +37,7 @@ function send(text: string, language: string, action: RunAction, extra: { readon
 }
 
 /**
- * Adds Run and its ⌄ to a shell block's header, before Copy. While the block
+ * Adds Run and its chevron menu to a shell block's header, before Copy. While the block
  * still streams (`ready` false) Run is off, so half a command never runs.
  */
 export function addRunButtons(wrapper: HTMLElement, copy: HTMLElement, language: string, text: string, ready: boolean): void {
@@ -55,7 +56,7 @@ export function addRunButtons(wrapper: HTMLElement, copy: HTMLElement, language:
 	}
 }
 
-/** The ⌄ menu, made on its first click; the menu's own click handler opens and closes it after that. */
+/** The chevron's menu, made on its first click; the menu's own click handler opens and closes it after that. */
 function openMenu(anchor: HTMLElement, text: string, language: string): void {
 	const element = el('div', 'run-menu');
 	element.hidden = true;

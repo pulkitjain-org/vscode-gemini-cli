@@ -252,7 +252,7 @@ export interface ProjectChatStrings {
 /** Localised strings the webview shows; it has no l10n of its own. Placeholders are `{0}`. */
 export interface RunStrings {
 	readonly run: string;
-	/** The ⌄ beside Run. */
+	/** The chevron button beside Run, which opens its menu. */
 	readonly more: string;
 	readonly insert: string;
 	readonly newTerminal: string;
