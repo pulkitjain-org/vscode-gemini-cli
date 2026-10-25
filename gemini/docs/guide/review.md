@@ -22,7 +22,14 @@ Pick a mode from the composer's **+** menu. The list comes from the Gemini CLI, 
 
 A permission card shows the CLI's own choices, such as **Allow**, **Allow for this session** and **Reject**; <kbd>esc</kbd> rejects. When an agent asks, its tab comes to the front and the proposed edit opens as a diff; in the Agents pane its row shows an amber dot and "waiting".
 
-**Allow for this session** on a shell command covers the programs it runs for the rest of that chat's session. A command that reaches the network, writes through a redirection or runs code it builds still asks each time, and so does one that runs another program or code it's given, such as `env`, `xargs`, `sudo`, `python -c`, `npx`, `find -exec`, `git -c`, `git config` that sets a value, `git rebase -x` or `rg --pre`, and one whose program is a variable or a pattern, such as `$EDITOR`. When the agent edits a build file, such as `package.json`, a `Makefile` or `build.gradle`, the task runners you allowed (`npm`, `make`, `gradle` and the like) ask again, since their next run would run what the agent wrote. A shell command that writes a build file or anything under `.git` (through `>`, `tee`, `cp`, `mv` or `sed -i`, say) always asks.
+**Allow for this session** on a shell command covers the programs it runs for the rest of that chat's session. Some commands ask every time anyway, because allowing them once would allow far more than you saw:
+
+- a command that reaches the network, writes through a redirection, or runs code it builds
+- a command that runs another program or code it is given, such as `env`, `xargs`, `sudo`, `python -c`, `npx`, `find -exec`, `git -c`, `git config` that sets a value, `git rebase -x` or `rg --pre`
+- a command whose program is a variable or a pattern, such as `$EDITOR`
+- a command that writes a build file or anything under `.git`, through `>`, `tee`, `cp`, `mv` or `sed -i`, for example
+
+When the agent edits a build file, such as `package.json`, a `Makefile` or `build.gradle`, the task runners you allowed (`npm`, `make`, `gradle` and the like) ask again, since their next run would run what the agent wrote.
 
 **Gemini: Commands Allowed for This Session...** lists what the chat in front allowed, and lets you forget any of it. Turn on **Allow for all future sessions** in [Project Helpers](helpers.md#gemini-cli-settings) to also be offered a permanent allow.
 
@@ -65,7 +72,7 @@ In the Source Control view, the sparkle button writes a commit message for the s
 
 Select some code (or put the cursor on a line), press <kbd>⌘I</kbd> and say what to change. Gemini rewrites just those lines in a second or two, and the change shows in the file with **Keep** and **Undo**, like an agent's. The request box remembers your last request, so a retry is <kbd>⌘I</kbd> and Return. Inline edit doesn't save the file or start an agent.
 
-Inline edit and commit messages use the newest Flash model for speed. `gemini.inlineEdit.model` can switch them to the chat's model or one you name, and `gemini.inlineEdit.enabled` turns them off. They work with Google sign-in and a Gemini API key, not yet with Vertex AI.
+Inline edit and commit messages use the newest Flash model for speed. `gemini.inlineEdit.model` can switch them to the chat's model or one you name, and `gemini.inlineEdit.enabled` turns them off. They work with Google sign-in or a Gemini API key, but not with Vertex AI.
 
 ## Review My Changes
 

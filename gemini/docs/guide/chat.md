@@ -13,7 +13,7 @@ The **+** menu at the bottom left of the composer holds:
 - **Follow the agent**: open each file the agent reads or edits.
 - **Model**: the models the terminal's `/model` shows, in the same order. The model you pick is used for every new or reopened agent.
 - **Fork**: start a new agent from this conversation. See [Fork an agent](agents.md#fork-an-agent).
-- **Open Terminal**: the agent's own terminal, in its folder. See [Terminals](agents.md#terminals).
+- **Open Terminal**: the agent's own terminal, in its folder. See [Terminal](terminal.md).
 - **Usage and quota**: how full the chat is and today's quota.
 - **Skills and commands**: the same list as typing `/`.
 
@@ -68,24 +68,26 @@ When the turn ends they fold under one line, such as **Worked for 3m 12s · read
 
 ![A finished turn opened, with its thoughts, searches, reads, commands and edits](../../site/media/docs/folded-turn-dark.webp)
 
-### Sending while the agent works
-
-You don't have to wait for the agent to finish. While it works, the composer says **↩ to send, ⌘↩ to queue for later**:
-
-- **↩ sends now.** The message shows above the input as **Sending after the current step**. As soon as no command or edit is running (straight away while the agent is thinking or writing, or at a permission card), the chat stops the turn and sends your message at once, telling the agent to adjust its plan and carry on. Use it to steer, such as "use pnpm, not npm" or "leave the tests alone".
-- **⌘↩ queues.** The message shows as **Queued: goes after this turn**, and is sent when the turn finishes. Several queued messages go together as one.
-
-Each waiting message has **Send now**, **Edit** and **Remove**. <kbd>↑</kbd> in the empty input takes the last queued one back to edit. If you stop the agent (<kbd>esc</kbd> <kbd>esc</kbd>), or the turn fails, nothing goes by itself: the messages stay queued until you send them.
-
-In a project's thread, notes the coordinator passes on while the thread works wait in the same place, as **From coordinator: goes after this turn**. In the project chat itself, ↩ and ⌘↩ both wait for the coordinator's turn to end: see [Projects](projects.md#talk-to-the-coordinator).
-
-Sending now stops the turn between steps rather than mid-command, so a running command or edit always finishes. The turn you steered gets its own end line and **Undo**, and the steered message starts a new turn. The Gemini CLI can't add a message to a turn that is running in GeminiCode, so this costs one more model request, mostly from its cache.
-
 When the agent hands part of the work to one of the Gemini CLI's subagents (such as the Codebase Investigator, or your own in `.gemini/agents/`), the chat shows a **Subagent** row with its name and how long it has worked. Click it to read the subagent's report.
+
+## Sending while the agent works
+
+You don't have to wait for the agent to finish. While it works, the composer says **↩ to send, ⌘↩ to queue for later**.
+
+- **↩ sends now**, to steer the agent: "use pnpm, not npm", or "leave the tests alone". The message shows above the input as **Sending after the current step**. As soon as no command or edit is running, the chat stops the turn and sends your message, telling the agent to adjust its plan and carry on. That is straight away while the agent is thinking or writing, or showing a permission card.
+- **⌘↩ queues** the message for after the turn. It shows as **Queued: goes after this turn**. Several queued messages go together as one.
+
+![The composer while an agent runs a command, with one message sending after the current step and another queued](../../site/media/queue-dark.webp)
+
+Each waiting message has **Send now**, **Edit** and **Remove**, and <kbd>↑</kbd> in the empty input takes the last queued one back to edit. If you stop the agent (<kbd>esc</kbd> <kbd>esc</kbd>), or the turn fails, nothing is sent by itself: your messages stay queued until you send them.
+
+Sending now stops the turn between steps, never in the middle of a command, so a running command or edit always finishes. The turn you steered gets its own end line and **Undo**, and your message starts a new turn. The Gemini CLI can't add a message to a running turn, so steering costs one more model request, mostly served from its cache.
+
+In a project's thread, notes from the coordinator wait in the same place, as **From coordinator: goes after this turn**. In the project chat itself, ↩ and ⌘↩ both wait for the coordinator's turn to end; see [Projects](projects.md#talk-to-the-coordinator).
 
 ## Replies
 
-- Code is coloured like the editor, and the button at the top of a code block copies it. A shell command also has **Run**, which runs it in the agent's terminal; see [Terminals](agents.md#terminals).
+- Code is coloured like the editor, and the button at the top of a code block copies it. A shell command also has **Run**, which runs it in the agent's terminal; see [Terminal](terminal.md#run-a-command-from-a-reply).
 - A file name in a reply, such as `src/cart/total.ts:11`, opens the file at that line.
 - Math written as `$...$`, `$$...$$`, `\(...\)` or `\[...\]` is typeset; prices and shell variables stay plain text.
 - Notes, tips and warnings show as coloured callouts.
@@ -96,18 +98,28 @@ Each message you send shows the time you sent it, **Rewind** and **Copy**. Under
 
 ### Reacting to replies
 
-The smiley at the end of a reply's row reacts to it. Hover it, or tab to it, for four quick reactions. The smiley at the end of those opens every emoji, with search and the ones you used last.
+Sometimes a reply only needs a nod, or a quick "no, not that". React to it with an emoji instead of writing a message.
 
-- 👍 **Go ahead**: approves what the agent proposed. On a plan, it does what **Build This Plan** does.
-- 👎 **Not what I meant**: the agent stops, says in one line what it understood, and asks what to change. While it works, 👎 stops the turn at the next safe point, as ↩ does.
-- ❓ **Explain more simply**: the agent explains its reply again, with an example.
-- ❤️ **Thanks (no reply)**: marks the reply and sends nothing.
+The smiley at the end of a reply's row opens the reaction bar when you point at it or tab to it. It has four quick reactions, and a smiley of its own that opens every emoji, with search and the ones you used last.
 
-Gemini reads any other emoji as intent and says in one line how it read it before it acts, so a misread shows before any tool runs. Its edits and commands still ask for permission as usual. A reaction is sent at once and shows as a chip on the reply and a line in the conversation; click the line to go back to the reply. While the agent works, reactions other than 👎 wait in the queue, and a second reaction to the same reply replaces a waiting one.
+![The reaction bar on a reply, with Go ahead, Not what I meant, Explain more simply and Thanks](../../site/media/reactions-dark.webp)
+
+| Reaction | What Gemini does |
+| --- | --- |
+| 👍 Go ahead | Carries on with what it proposed. On a plan, this is the same as **Build This Plan**. |
+| 👎 Not what I meant | Stops, says in one line what it understood, and asks what to change. While the agent works, 👎 stops the turn at the next safe point, as ↩ does. |
+| ❓ Explain more simply | Explains the reply again, more simply, with an example. |
+| ❤️ Thanks | Nothing. The reply is marked, and no message is sent. |
+
+Any other emoji is read as intent: Gemini says in one line how it read it before it does anything, so a misreading shows before any tool runs. Its edits and commands still ask for permission as usual.
+
+A reaction is sent straight away. It shows as a chip on the reply and as a line in the conversation; click the line to go back to the reply. While the agent works, reactions other than 👎 wait in the queue with your other messages, and a second reaction to the same reply replaces one that is still waiting.
 
 Gemini may react to your message too, with a small emoji on its corner, when it has something to add. Most messages get none.
 
-To change what an emoji asks for, or give one a meaning, set `gemini.chat.reactions.meanings`, such as `{ "🚀": "Go ahead, then commit with a short message." }`; in a workspace's settings it is shared with everyone who opens the folder. `gemini.chat.reactions.agentReactions` turns Gemini's reactions off, and `gemini.chat.reactions.enabled` turns reactions off altogether. Reactions are in agents' and threads' chats, not in a project's coordinator chat.
+To change what an emoji asks for, or to give a new one a meaning, set `gemini.chat.reactions.meanings`, such as `{ "🚀": "Go ahead, then commit with a short message." }`. In a workspace's settings it is shared with everyone who opens the folder. `gemini.chat.reactions.agentReactions` turns Gemini's own reactions off, and `gemini.chat.reactions.enabled` turns reactions off altogether.
+
+Reactions work in agents' and threads' chats. A project's coordinator chat has none.
 
 ## Writing in the composer
 
@@ -127,12 +139,22 @@ Hover the **Gemini** item in the status bar to see today's quota too; once a mod
 
 ## Long conversations
 
-When a session's history reaches half of the model's context window, the Gemini CLI summarises the older part and keeps the most recent 30% as it was. It does that only in memory, though: when the session is reopened, after a restart for example, it comes back whole.
+### Compact
 
-**Compact** does the same on request, and keeps it. Type `/compact`, or choose **Compact** in the usage popover, which offers it once the agent has answered and is idle; once the context passes 40%, the chat also offers it once. Gemini writes a summary of the work so far (goal, decisions, files, current state, next steps), and the chat moves to a new session made of that summary and your latest messages, as they were. A line across the chat shows the tokens before and after, with **View Summary** and **Undo**, which goes back to the full session. The conversation above stays in the chat either way.
+When a session's history reaches half of the model's context window, the Gemini CLI summarises the older part and keeps the most recent 30% as it was. It does that only in memory: when the session is reopened, after a restart for example, it comes back whole.
 
-- The thin outline of your prompts down the chat's right edge jumps to each one; <kbd>⌥⌘↑</kbd> and <kbd>⌥⌘↓</kbd> do the same.
-- **Latest** above the input takes you back to the newest message.
-- **Open Chat as Markdown** (in an agent's right-click menu, or the Command Palette) opens the whole conversation as a document you can search, save or share.
+**Compact** does the same when you ask, and the result is kept. Type `/compact`, or choose **Compact** in the usage popover, which offers it once the agent has answered and is idle. Once the context passes 40%, the chat also offers it, once.
+
+Gemini writes a summary of the work so far (goal, decisions, files, current state and next steps), and the chat moves to a new session made of that summary and your latest messages, as they were. A line across the chat shows the tokens before and after, with **View Summary** and **Undo**. Undo goes back to the full session, even after a restart. The conversation above the line stays in the chat either way.
+
+![A chat after /compact, with the Compacted line showing the tokens before and after, View Summary and Undo](../../site/media/compact-line-dark.webp)
+
+Writing the summary is a model turn, so it counts toward your quota.
+
+### Finding your way
+
+- The thin outline of your prompts down the chat's right edge jumps to each one. <kbd>⌥⌘↑</kbd> and <kbd>⌥⌘↓</kbd> do the same.
+- **Latest**, above the input, takes you back to the newest message.
+- **Open Chat as Markdown**, in an agent's right-click menu or the Command Palette, opens the whole conversation as a document you can search, save or share.
 
 For a fresh session, start a new agent. Removing an agent you no longer need also deletes its saved conversation.

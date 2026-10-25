@@ -448,8 +448,8 @@ function docsFooter(c: Context, root: string): string {
 				<a class="brand" href="${root}./">${logo(24)}<span class="wm">GeminiCode</span></a>
 				<p>Pages are plain Markdown in gemini/docs/guide/, so they read on GitHub too. Edit a page from its footer.</p>
 			</div>
-			<div class="col"><b>Guides</b><a href="getting-started.html">Getting started</a><a href="agents.html">Agents</a><a href="review.html">Review and safety</a><a href="projects.html">Projects</a></div>
-			<div class="col"><b>Reference</b><a href="shortcuts.html">Keyboard shortcuts</a><a href="helpers.html#geminicode-settings">Settings</a><a href="troubleshooting.html">Troubleshooting</a></div>
+			<div class="col"><b>Guides</b><a href="getting-started.html">Getting started</a><a href="agents.html">Agents</a><a href="chat.html">Chat and prompting</a><a href="review.html">Review and safety</a><a href="projects.html">Projects</a></div>
+			<div class="col"><b>Reference</b><a href="shortcuts.html">Keyboard shortcuts</a><a href="settings.html">Settings</a><a href="troubleshooting.html">Troubleshooting</a></div>
 			<div class="col"><b>Project</b><a href="${attr(c.repoUrl)}">GitHub</a><a href="${attr(c.repoUrl)}/issues">Issues</a><a href="${attr(c.repoUrl)}/blob/main/gemini/docs/ARCHITECTURE.md">Architecture</a><a href="${root}./#install">Download</a></div>
 		</div>
 		<div class="wrap legal"><span>© 2026 pulkitjain-org and contributors · MIT License</span><span>Not affiliated with or endorsed by Google.</span></div>
@@ -543,6 +543,8 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 		'<kbd>↩</kbd> steer · <kbd>⌘↩</kbd> queue',
 		'<b>Fork</b> an agent',
 		'<b>/compact</b> long chats',
+		'<b>👍 👎 ❓</b> react to a reply',
+		'<b>Run</b> a suggested command',
 		'<b>Merge Back</b> a branch',
 		'<b>Add to Gemini</b> from the browser',
 		'<b>Review My Changes</b>',

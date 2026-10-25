@@ -1,13 +1,29 @@
-# Media still needed for the site
+# Site media
 
-Every screenshot and clip in `gemini/site/media/` comes from the real app, except `showcase-console-*` (kept from an earlier build by choice). They were taken in GeminiCode Dark and GeminiCode Light, with the window filling the built-in display at 2x, and exported at 2000 × 1250. Each product shot has a `-dark.webp` and a `-light.webp`; `build.mts` shows the one that matches the page's theme.
+This file records where the screenshots and clips in `gemini/site/media/` came from, and what is still not pictured.
 
-The feature pages' shots (`home`, `index-page`, `files`, `docs/plus-menu`, `mr-review-diff`, `jira-comment`) and the `showcase-work` and `showcase-mr-review` clips were taken on 2026-10-23 against a demo Jira, GitLab and SonarQube with made-up people and tickets, signed in as the demo's Sam Rivera. The `fork-dialog`, `queue` and `compact-line` shots were taken on 2026-10-23 against the same demo repository. The others were taken on 2026-10-19.
+## How the media are made
 
-Capture from the real app, against demo data so no real account, ticket, name or path shows: never redraw or reuse a shot from this folder for a different purpose.
+Every screenshot and clip comes from the real app, except `showcase-console-*`, which is kept from an earlier build by choice.
+
+- Each was taken in GeminiCode Dark and GeminiCode Light, with the window filling the built-in display at 2x, and exported at 2000 × 1250.
+- Each product shot has a `-dark.webp` and a `-light.webp` copy, and the site shows the one that matches the page's theme.
+- `showcase-work` also has a 1000-pixel-wide copy of each (`showcase-work-<theme>-1000.webp`), which the landing page serves to phones.
+- A shot that is missing leaves a labelled placeholder frame on the page.
+
+Capture from the real app, against demo data, so no real account, ticket, name or path shows. Never redraw a shot, and never reuse one from this folder for a different purpose.
+
+## When each was taken
+
+| Taken on | Against | Media |
+| --- | --- | --- |
+| 2026-10-25 | The demo repository | `reactions` (the reaction bar on a reply) and `run-command` (a reply's shell block with Run and its result), both for the Chat and review feature page |
+| 2026-10-23 | The demo repository | `fork-dialog`, `queue`, `compact-line` |
+| 2026-10-23 | A demo Jira, GitLab and SonarQube with made-up people and tickets, signed in as the demo's Sam Rivera | The feature pages' shots `home`, `index-page`, `files`, `docs/plus-menu`, `mr-review-diff` and `jira-comment`, and the `showcase-work` and `showcase-mr-review` clips |
+| 2026-10-19 | | Everything else |
 
 ## Not yet pictured anywhere
 
-- The Agents pane with five agents in different states (Agents bento, "Agents side by side" tile).
-- Enhance prompt before and after as a still (the `showcase-enhance` clip shows it).
-- Forks listed under their agent, with the fork card in its chat (Agents, "Fork an agent" shows only the Fork dialog).
+- The Agents pane with five agents in different states, for the landing page's Agents section ("Agents side by side" tile).
+- Enhance prompt before and after, as a still. The `showcase-enhance` clip shows it.
+- Forks listed under their agent, with the fork card in its chat. On the Agents feature page, "Fork an agent" shows only the Fork dialog.

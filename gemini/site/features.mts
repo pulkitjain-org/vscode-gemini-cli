@@ -90,13 +90,14 @@ export const featurePages: readonly FeaturePage[] = [
 			{ href: 'agents.html', label: 'Agents' },
 			{ href: 'agents.html#fork-an-agent', label: 'Fork an agent' },
 			{ href: 'agents.html#workspace-index-and-docs', label: 'Workspace index and docs' },
+			{ href: 'terminal.html', label: 'Terminal' },
 			{ href: 'shortcuts.html', label: 'Keyboard shortcuts' },
 		],
 	},
 	{
 		slug: 'chat-and-review',
 		name: 'Chat and review',
-		summary: 'Prompting, Plan mode, approvals, and Keep, Undo and Rewind.',
+		summary: 'Prompting, Plan mode, reactions, approvals, and Keep, Undo and Rewind.',
 		headline: ['Ask in plain words.', 'Review every change.'],
 		lead: 'The chat holds everything a prompt needs: files and context, the model, the approval mode and your slash commands. Every command asks before it runs, and every change an agent makes can be kept, undone or rewound.',
 		hero: { name: 'showcase-review', alt: 'Keeping an agent\'s edits one by one, with Keep and Undo above each change', clip: true },
@@ -123,6 +124,16 @@ export const featurePages: readonly FeaturePage[] = [
 				media: { name: 'queue', alt: 'The composer while an agent runs a command, with one message sending after the current step and another queued for after the turn' },
 			},
 			{
+				title: 'Answer with an emoji',
+				body: ['Some replies only need a nod. React with 👍 and the agent goes ahead, 👎 and it stops to ask what you meant, ❓ and it explains more simply. ❤️ just says thanks. Any other emoji works too: Gemini says how it read it before it does anything.'],
+				media: { name: 'reactions', alt: 'The reaction bar on a reply, with Go ahead, Not what I meant, Explain more simply and Thanks' },
+			},
+			{
+				title: 'Run what it suggests',
+				body: ['A shell command in a reply has **Run** beside **Copy**. It runs in the agent\'s own terminal, in its folder, and the block shows how it ended. When it fails, **Send Output to Gemini** hands the exit code and output straight back. Commands that delete work, force-push or write outside the folder ask first.'],
+				media: { name: 'run-command', alt: 'A reply\'s shell command with Run beside Copy, and a failed run with its exit code and Send Output to Gemini' },
+			},
+			{
 				title: 'Compact long chats',
 				body: ['Type `/compact`, or choose **Compact** in the usage popover. Gemini summarizes the work so far and the chat moves to a session made of that summary and your latest messages, so each turn sends less. It stays compacted when the chat is reopened, and **Undo** goes back to the full session.'],
 				media: { name: 'compact-line', alt: 'A chat after /compact, with the Compacted line showing the tokens before and after, View Summary and Undo' },
@@ -142,10 +153,12 @@ export const featurePages: readonly FeaturePage[] = [
 			'**Review My Changes** has an agent read your uncommitted diff and report findings, without changing anything.',
 			'Select code and press ⌘I to change it in place, or let Gemini write the commit message.',
 			'Replies colour code like the editor and typeset math.',
+			'Right-click in any terminal for **Send to Gemini**, or press ⌘I there to ask Gemini for a command.',
 		],
 		docs: [
 			{ href: 'chat.html', label: 'Chat and prompting' },
 			{ href: 'review.html', label: 'Review and safety' },
+			{ href: 'terminal.html', label: 'Terminal' },
 		],
 	},
 	{

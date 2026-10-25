@@ -4,13 +4,6 @@ A project hands a larger piece of work to a team of agents. You talk to a **coor
 
 ![A project chat where the coordinator answers with a plan of two threads](../../site/media/project-chat-dark.webp)
 
-## Turn Projects on or off
-
-Projects are on by default. To hide them, turn off `gemini.projects.enabled` in Settings; **New Project** then asks whether to turn them on again.
-
-> [!NOTE]
-> The first time, GeminiCode asks to trust the folders where coordinators run (`~/.geminicode/projects`) and where threads check out their branches (`~/.geminicode/worktrees/<repository>`). The Gemini CLI loads a project's tools only in trusted folders.
-
 ## Start a project
 
 1. Choose **+** next to **Projects** in the agent list, or on Home.
@@ -18,6 +11,9 @@ Projects are on by default. To hide them, turn off `gemini.projects.enabled` in 
 3. The project chat opens at once, named after the repository. Describe the work and press Return.
 
 The coordinator plans the work and starts a thread for each part.
+
+> [!NOTE]
+> The first time, GeminiCode asks to trust the folders where coordinators run (`~/.geminicode/projects`) and where threads check out their branches (`~/.geminicode/worktrees/<repository>`). The Gemini CLI loads a project's tools only in trusted folders.
 
 ![The coordinator starting two threads, whose cards update as they work](../../site/media/showcase-projects-dark.webp "clip")
 
@@ -43,10 +39,6 @@ Threads run in the repository's worktrees with all of its rules, and a thread's 
 
 When the coordinator passes a thread a note while the thread is working, the note shows above the thread's input as **From coordinator: goes after this turn**. It goes when the turn ends; **Send now** gives it to the thread after its current step instead, and **Remove** drops it.
 
-## Fork a thread
-
-**Fork Agent** works on a thread too: the split-arrows icon on its row, the row's right-click menu, the **+** menu, `/fork`, or **Fork** at the end of any reply. The fork is a new thread in the same project, on a new branch made from the thread's branch with its uncommitted changes, and starts with the thread's conversation (whole, compacted or the conversation only). It gets a card in the project chat, and the coordinator is told about it with your next message. A thread in several repositories can't be forked yet.
-
 ## Start a thread yourself
 
 Choose **New thread** in the project chat's **+** menu, or **New Thread** on the project's row in the agent list. Give it a title, what it should do, a branch and a model. It starts at once, and the coordinator hears about it afterwards.
@@ -54,6 +46,10 @@ Choose **New thread** in the project chat's **+** menu, or **New Thread** on the
 Tick **Plan first** to have it write a short plan and wait for **Approve plan** before changing files.
 
 ![The New thread dialog with a title, a brief, a branch and Plan first](../../site/media/project-new-thread-dark.webp)
+
+## Fork a thread
+
+**Fork Agent** works on a thread too: the split-arrows icon on its row, the row's right-click menu, the **+** menu, `/fork`, or **Fork** at the end of any reply. The fork is a new thread in the same project, on a new branch made from the thread's branch with its uncommitted changes, and starts with the thread's conversation (whole, compacted or the conversation only). It gets a card in the project chat, and the coordinator is told about it with your next message. A thread that works in several repositories can't be forked.
 
 ## Merge back, review or undo
 
@@ -104,3 +100,7 @@ For a new project, Gemini drafts this from the repositories for you to review; *
 ## The side panel
 
 When the project chat is at least 1000 px wide, a panel on its right lists the threads by state (click one to open it), the Conductor tracks the coordinator reads from a `conductor/` folder, and the coordinator's model. Drag its left edge to resize it; double-click the edge to reset it.
+
+## Turn Projects off
+
+Projects are on by default. To hide them, turn off `gemini.projects.enabled` in Settings. **New Project** then offers to turn them back on.
