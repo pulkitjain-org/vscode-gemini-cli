@@ -1,5 +1,5 @@
 diff --git a/product.json b/product.json
-index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..f682fc45588b114ede8aad3698e76383c2961b05 100644
+index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..d44b195337b8b17da30e12a2144bce6369acb00e 100644
 --- a/product.json
 +++ b/product.json
 @@ -1,41 +1,49 @@
@@ -117,7 +117,7 @@ index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..f682fc45588b114ede8aad3698e76383
  			"type": "light"
  		},
  		{
-@@ -242,9 +244,206 @@
+@@ -242,9 +244,217 @@
  			"type": "light"
  		}
  	],
@@ -323,6 +323,17 @@ index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..f682fc45588b114ede8aad3698e76383
 +				"description": {
 +					"key": "gemini.docs.allowedDomains.policy",
 +					"value": "The only sites documentation may be fetched from, as a list such as react.dev or *.example.com. Empty allows every site."
++				}
++			}
++		},
++		"gemini.chat.runCommands": {
++			"name": "GeminiChatRunCommands",
++			"category": "Extensions",
++			"minimumVersion": "1.142",
++			"localization": {
++				"description": {
++					"key": "gemini.chat.runCommands.policy",
++					"value": "Whether replies' shell commands have a Run button that runs them in the agent's terminal: askWhenRisky asks first only for risky commands, alwaysAsk asks before every command, off removes Run so commands can only be copied."
 +				}
 +			}
 +		}

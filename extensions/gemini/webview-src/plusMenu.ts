@@ -14,6 +14,7 @@ import { Menu, type MenuRow, type MenuSection } from './menu';
 import { modeIcon } from './modeIcon';
 import { closePicker, startCommand, startMention } from './picker';
 import { openNewThread } from './project';
+import { hasTerminal } from './runButtons';
 import { toolRefContext } from './toolChips';
 import { toolLogo } from './toolLogos';
 import { setTip } from './tooltip';
@@ -112,6 +113,7 @@ function sections(): MenuSection[] {
 				tooltip: state.following ? strings.followAgentOn : strings.followAgent,
 				run: () => vscode.postMessage({ type: 'setFollow', on: !state.following }),
 			},
+			...hasTerminal() ? [{ icon: 'terminal', name: strings.run.openTerminal, detail: strings.run.openTerminalDetail, run: () => { closePlusMenu(false); vscode.postMessage({ type: 'command', command: 'gemini.agents.openTerminal' }); } }] : [],
 		],
 	});
 	// Not in a project's coordinator chat, which runs in an empty folder with no branch.

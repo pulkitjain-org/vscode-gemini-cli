@@ -86,3 +86,18 @@ describe.each(Object.keys(glassFill))('%s glass', name => {
 		expect(contrast(colors[text], over(glassFill[name], colors[under]))).toBeGreaterThanOrEqual(4.5);
 	});
 });
+
+// The terminal's ANSI colours as text on the terminal: every colour programs print in. Dark's ansiBlack is left out:
+// on a dark terminal it is the colour of backgrounds and hidden text, and Light's ansiBrightWhite reads as text there.
+const ansiText: Record<string, readonly string[]> = {
+	'geminicode-dark.json': ['Red', 'Green', 'Yellow', 'Blue', 'Magenta', 'Cyan', 'White', 'BrightBlack', 'BrightRed', 'BrightGreen', 'BrightYellow', 'BrightBlue', 'BrightMagenta', 'BrightCyan', 'BrightWhite'],
+	'geminicode-light.json': ['Black', 'Red', 'Green', 'Yellow', 'Blue', 'Magenta', 'Cyan', 'White', 'BrightBlack', 'BrightRed', 'BrightGreen', 'BrightYellow', 'BrightBlue', 'BrightMagenta', 'BrightCyan', 'BrightWhite'],
+};
+
+describe.each(Object.keys(ansiText))('%s terminal', name => {
+	const colors = load(name);
+	it.each(ansiText[name])('ansi%s on terminal.background reads at 4.5:1 or more', color => {
+		expect(colors[`terminal.ansi${color}`], color).toBeDefined();
+		expect(contrast(colors[`terminal.ansi${color}`], colors['terminal.background'])).toBeGreaterThanOrEqual(4.5);
+	});
+});

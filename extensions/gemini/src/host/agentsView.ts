@@ -20,6 +20,7 @@ import { TranscriptStore } from '../acp/transcriptStore';
 import { CheckpointStore } from '../acp/checkpointStore';
 import { AgentWorktree, coordinatorHome, removeThreadFolder, removeWorktree, repositoryRoot, worktreeStatus } from '../acp/worktrees';
 import { AgentNotifier } from './agentNotifier';
+import { AgentTerminals } from './agentTerminals';
 import { AgentService } from './agentService';
 import { AgentSession } from './agentSession';
 import { ChangesSource, ChangesView } from './changesView';
@@ -29,7 +30,7 @@ import type { BrowserTools } from './browserTools';
 import type { TeamConnections } from './teamConnections';
 import type { WorkspaceIndex } from './workspaceIndex';
 import { toolChipsFor } from './toolChips';
-import { ChatActivity, ChatController, ChatEnhancer, FileSearch, openChatAsMarkdown } from './chatController';
+import { ChatActivity, ChatController, ChatEnhancer, ChatTerminal, ChatWorkspace, FileSearch, openChatAsMarkdown } from './chatController';
 import { configSection } from './configuration';
 import { tildify } from './displayText';
 import { Projects, projectsEnabled } from './projects';
@@ -157,6 +158,8 @@ export class AgentsView implements vscode.Disposable {
 	private persistTimeout: ReturnType<typeof setTimeout> | undefined;
 	/** Projects: coordinators and their threads. */
 	private readonly projects: Projects;
+	/** Each agent's terminals, and the last command of every terminal. */
+	readonly terminals = new AgentTerminals();
 
 	constructor(
 		private readonly context: vscode.ExtensionContext,
@@ -245,6 +248,7 @@ export class AgentsView implements vscode.Disposable {
 		this.disposables.push(
 			this.tree,
 			this.notifier,
+			this.terminals,
 			this.changesView,
 			this.review,
 			this.worktrees,
@@ -277,6 +281,7 @@ export class AgentsView implements vscode.Disposable {
 				const target = typeof id === 'string' ? id : selected?.kind === 'agent' ? selected.record.id : undefined;
 				return target && this.open(target);
 			}),
+			vscode.commands.registerCommand('gemini.agents.openTerminal', (node?: AgentTreeNode) => this.openTerminal(node?.kind === 'agent' ? node.record.id : this.activeAgentId())),
 			vscode.commands.registerCommand('gemini.agents.openChanges', (node?: AgentTreeNode) => node?.kind === 'agent' && this.openChanges(node.record.id)),
 			vscode.commands.registerCommand('gemini.agents.rename', (node?: AgentTreeNode) => this.rename(node)),
 			vscode.commands.registerCommand('gemini.agents.openAsMarkdown', (node?: AgentTreeNode) => node?.kind === 'agent' && this.openAsMarkdown(node.record.id)),
@@ -518,6 +523,7 @@ export class AgentsView implements vscode.Disposable {
 		void this.transcripts.delete(id);
 		void this.checkpointFiles.delete(id);
 		this.browser?.closeAgent(id);
+		this.terminals.closeAgent(id);
 		this.teamTools?.forgetAgent(id);
 		this.index?.forgetAgent(id);
 		if (record?.worktree && record.repos?.length) {
@@ -726,6 +732,14 @@ export class AgentsView implements vscode.Disposable {
 		// A folder outside the window lists its files from its index once that is built, else from git.
 		const files: FileSearch = isOpenFolder(folder) ? this.workspaceFiles : new FolderFileIndex(folder, undefined, () => this.index?.files(folder) ?? Promise.resolve(undefined));
 		const changes = new AgentChanges(folder);
+		const workspace = (): ChatWorkspace | undefined => {
+			const workspace = this.model.workspace(record.workspaceId);
+			const current = this.model.agent(record.id) ?? record;
+			// A coordinator of a project with several repositories shows each; a thread across them, its worktree of each.
+			const threadRepos = current.repos?.filter(repo => !repo.merged).map(repo => ({ name: repo.key, folder: repo.cwd }));
+			const repos = current.project?.role === 'coordinator' && projectsEnabled() ? this.projects.repoFolders(current.id) : threadRepos && threadRepos.length > 1 ? threadRepos : undefined;
+			return workspace && { folder: workspace.folder, cwd: folder, worktree: !!current.worktree, ...(repos ? { repos } : {}) };
+		};
 		const live: LiveAgent = {
 			session,
 			changes,
@@ -762,14 +776,8 @@ export class AgentsView implements vscode.Disposable {
 					stop: () => this.browser?.stopSharing(record.id) ?? Promise.resolve(),
 					reveal: () => this.browser?.revealSharedPage(record.id) ?? Promise.resolve(false),
 				},
-				workspace: () => {
-					const workspace = this.model.workspace(record.workspaceId);
-					const current = this.model.agent(record.id) ?? record;
-					// A coordinator of a project with several repositories shows each; a thread across them, its worktree of each.
-					const threadRepos = current.repos?.filter(repo => !repo.merged).map(repo => ({ name: repo.key, folder: repo.cwd }));
-					const repos = current.project?.role === 'coordinator' && projectsEnabled() ? this.projects.repoFolders(current.id) : threadRepos && threadRepos.length > 1 ? threadRepos : undefined;
-					return workspace && { folder: workspace.folder, cwd: folder, worktree: !!current.worktree, ...(repos ? { repos } : {}) };
-				},
+				workspace,
+				terminal: this.chatTerminal(record.id, workspace, project?.role === 'coordinator'),
 				git: {
 					folder: () => folder,
 					// An agent on its own branch commits there with Merge Back, not from the chat.
@@ -853,6 +861,46 @@ export class AgentsView implements vscode.Disposable {
 			this.projects.attach(record);
 		}
 		return live;
+	}
+
+	/**
+	 * Run on the agent's replies: its folder, or each repository of a thread or
+	 * project, in the agent's own terminals. A coordinator's Run always asks:
+	 * its repositories are the user's own checkouts.
+	 */
+	private chatTerminal(id: string, workspace: () => ChatWorkspace | undefined, coordinator: boolean): ChatTerminal {
+		const several = () => (workspace()?.repos?.length ?? 0) > 1;
+		return {
+			places: () => {
+				const current = workspace();
+				return current?.repos?.length ? current.repos : current ? [{ name: path.basename(current.cwd), folder: current.cwd }] : [];
+			},
+			alwaysAsk: coordinator,
+			run: (place, command, fresh) => this.terminals.run(id, this.terminalName(id, place.name, several()), place.folder, command, fresh),
+			insert: (place, command) => this.terminals.insert(id, this.terminalName(id, place.name, several()), place.folder, command),
+		};
+	}
+
+	/** An agent's terminal: "fix-login · Gemini", or "thread · api" for one of its several repositories. */
+	private terminalName(id: string, place: string, several: boolean): string {
+		const title = this.model.agent(id)?.title ?? vscode.l10n.t("Agent");
+		return several ? vscode.l10n.t("{0} \u00b7 {1}", title, place) : vscode.l10n.t("{0} \u00b7 Gemini", title);
+	}
+
+	/** Open Terminal: the agent's terminal in its folder, or in each of a thread's repositories. */
+	private openTerminal(id: string | undefined): void {
+		const record = id ? this.model.agent(id) : undefined;
+		const workspace = record && this.model.workspace(record.workspaceId);
+		if (!id || !record || !workspace) {
+			void vscode.window.showInformationMessage(vscode.l10n.t("Open an agent first."));
+			return;
+		}
+		const repos = record.repos?.filter(repo => !repo.merged);
+		const folder = agentFolder(record, workspace.folder);
+		const places = repos && repos.length > 1 ? repos.map(repo => ({ name: repo.key, folder: repo.cwd })) : [{ name: path.basename(folder), folder }];
+		for (const place of places) {
+			this.terminals.open(id, this.terminalName(id, place.name, places.length > 1), place.folder);
+		}
 	}
 
 	private scheduleSave(id: string, live: LiveAgent): void {
@@ -964,6 +1012,7 @@ export class AgentsView implements vscode.Disposable {
 			void this.transcripts.delete(node.record.id);
 			void this.checkpointFiles.delete(node.record.id);
 			this.browser?.closeAgent(node.record.id);
+			this.terminals.closeAgent(node.record.id);
 			this.teamTools?.forgetAgent(node.record.id);
 			this.index?.forgetAgent(node.record.id);
 		}
@@ -1011,6 +1060,7 @@ export class AgentsView implements vscode.Disposable {
 				void this.transcripts.delete(agent.id);
 				void this.checkpointFiles.delete(agent.id);
 				this.browser?.closeAgent(agent.id);
+				this.terminals.closeAgent(agent.id);
 				this.teamTools?.forgetAgent(agent.id);
 				this.index?.forgetAgent(agent.id);
 			}

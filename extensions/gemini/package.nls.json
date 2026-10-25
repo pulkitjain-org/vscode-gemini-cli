@@ -159,5 +159,14 @@
 	"theme.dark": "GeminiCode Dark",
 	"theme.light": "GeminiCode Light",
 	"iconTheme.label": "GeminiCode Icons",
-	"command.sessionApprovals": "Commands Allowed for This Session..."
+	"command.sessionApprovals": "Commands Allowed for This Session...",
+	"command.agents.openTerminal": "Open Terminal",
+	"command.terminal.sendSelection": "Send to Gemini",
+	"command.terminal.sendLastCommand": "Send Last Command to Gemini",
+	"command.terminal.suggestCommand": "Ask Gemini for a Command",
+	"command.terminal.askAboutFailure": "Ask Gemini About This Failure",
+	"configuration.chat.runCommands": "Run on shell commands in a reply (bash, zsh, sh, console, PowerShell): the command runs in the agent's own terminal, in its folder. Commands that delete or throw away work, force-push, run as root, run a download, write a disk or write outside the folder ask first, as do blocks of several commands.",
+	"configuration.chat.runCommands.askWhenRisky": "Run at once, and ask first for risky commands.",
+	"configuration.chat.runCommands.alwaysAsk": "Ask before every command runs.",
+	"configuration.chat.runCommands.off": "No Run button: replies' commands can only be copied."
 }

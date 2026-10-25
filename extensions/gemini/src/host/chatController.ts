@@ -47,12 +47,13 @@ import { chatHtml } from './chat/chatHtml';
 import type { ChatControllerOptions, ChatHost, FileSearch } from './chat/chatOptions';
 import { ChatPermissions } from './chat/chatPermissions';
 import { ChatProjectView } from './chat/chatProject';
+import { ChatRun } from './chat/chatRun';
 import { ChatSessions, resumeCommand } from './chat/chatSessions';
 import { ChatSettings } from './chat/chatSettings';
 import { SharedPageChip } from './chat/chatSharedPage';
 import { ChatUsage } from './chat/chatUsage';
 
-export type { ChatControllerOptions, ChatEnhancer, ChatGit, ChatHost, ChatProject, ChatSharedPage, ChatWorkspace, FileSearch } from './chat/chatOptions';
+export type { ChatControllerOptions, ChatEnhancer, ChatGit, ChatHost, ChatProject, ChatSharedPage, ChatTerminal, ChatWorkspace, FileSearch } from './chat/chatOptions';
 
 /** How a prompt's turn ended: `steer` stopped it for messages sent now, `failed` with an error the chat shows. */
 type TurnOutcome = 'done' | 'steer' | 'stopped' | 'failed';
@@ -154,6 +155,7 @@ export class ChatController implements vscode.Disposable {
 	private readonly compacting: ChatCompact;
 	private readonly forks: ChatFork;
 	private readonly project: ChatProjectView;
+	private readonly runs: ChatRun;
 
 	constructor(
 		private readonly extensionUri: vscode.Uri,
@@ -206,6 +208,7 @@ export class ChatController implements vscode.Disposable {
 			title: () => options.title?.() ?? '',
 		}, post);
 		this.project = new ChatProjectView(options, isViewReady, post);
+		this.runs = new ChatRun(options, isAttached, post, attachments => void this.addAttachments(attachments));
 		this.disposables.push(
 			onDidChangeSpellCheck(on => this.post({ type: 'spellCheck', on })),
 			onDidChangeFoldWork(on => this.post({ type: 'foldWork', on })),
@@ -220,6 +223,7 @@ export class ChatController implements vscode.Disposable {
 			this.enhance,
 			this.commands,
 			this.sessions,
+			this.runs,
 			service.permissions.onDidChange(event => {
 				if (event.kind === 'requested' && this.timing) {
 					this.timing.permissions++;
@@ -931,6 +935,7 @@ export class ChatController implements vscode.Disposable {
 	/** Shows the branch and folder again, as after a project's repositories changed. */
 	refreshGit(): void {
 		this.git.refresh();
+		this.runs.postView();
 	}
 
 	dispose(): void {
@@ -955,6 +960,8 @@ export class ChatController implements vscode.Disposable {
 					void vscode.window.showWarningMessage(vscode.l10n.t("The Gemini chat view's script is out of date. Rebuild it with \"npm run gulp compile-extension-media\" (or keep \"npm run watch\" running) and reload the window."));
 				}
 				this.viewReady = true;
+				// Before the items, so their shell blocks show Run as they are drawn.
+				this.runs.postView();
 				this.postReset();
 				// In case the view never says it is shown, such as one hidden as it loads.
 				clearTimeout(this.openTimer);
@@ -1098,6 +1105,10 @@ export class ChatController implements vscode.Disposable {
 			case 'readQuota':
 			case 'openUpgrade':
 				this.usage.onMessage(message);
+				break;
+			case 'runCommand':
+			case 'sendRunOutput':
+				this.runs.onMessage(message);
 				break;
 		}
 	}

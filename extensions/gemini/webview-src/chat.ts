@@ -21,6 +21,7 @@
 //   usage.ts           the context ring and usage popover: context, quota and tokens
 //   project.ts         a project chat's New thread dialog and side panel
 //   projectSettings.ts a project chat's settings popup (settingsLogic.ts holds its state)
+//   runButtons.ts      Run on a reply's shell blocks, and how the command ended
 
 import type { ItemUpdate } from '../src/acp/textDeltas';
 import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
@@ -39,6 +40,7 @@ import { setBranches } from './pickers';
 import { showCommands, showFiles } from './picker';
 import { openNewThread, showParentProject, showProjectPanel } from './project';
 import { pickedRepository, showProjectSettings } from './projectSettings';
+import { setRunState, setRunView } from './runButtons';
 import { updateOutline } from './promptNav';
 import { appended, applyItem, isNearBottom, reset, setFoldWork, settleScroll, updateWorking } from './transcript';
 import { showContext, showQuota, toggleUsage, updateUsage } from './usage';
@@ -231,6 +233,12 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'parentProject':
 			showParentProject(message.parent);
+			break;
+		case 'run':
+			setRunView(message.run);
+			break;
+		case 'runState':
+			setRunState(message.text, message.state);
 			break;
 		case 'focus':
 			// Not from under an open popup, such as Project settings or New thread.

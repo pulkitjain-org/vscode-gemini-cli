@@ -94,7 +94,7 @@ export function toolChipParts(attachment: Attachment): readonly [string, string]
 
 /** The codicon for an attachment chip. */
 export function attachmentIcon(kind: Attachment['kind'] | 'page', label: string): string {
-	return kind === 'page' ? 'globe' : kind === 'image' ? 'file-media' : kind === 'selection' ? 'list-selection' : /\.pdf$/i.test(label) ? 'file-pdf' : 'file';
+	return kind === 'page' ? 'globe' : kind === 'image' ? 'file-media' : kind === 'selection' ? 'list-selection' : /\.pdf$/i.test(label) ? 'file-pdf' : label.startsWith('$ ') ? 'terminal' : 'file';
 }
 
 /** The name for a pasted or dropped image, which may have none. */

@@ -13,6 +13,7 @@ The **+** menu at the bottom left of the composer holds:
 - **Follow the agent**: open each file the agent reads or edits.
 - **Model**: the models the terminal's `/model` shows, in the same order. The model you pick is used for every new or reopened agent.
 - **Fork**: start a new agent from this conversation. See [Fork an agent](agents.md#fork-an-agent).
+- **Open Terminal**: the agent's own terminal, in its folder. See [Terminals](agents.md#terminals).
 - **Usage and quota**: how full the chat is and today's quota.
 - **Skills and commands**: the same list as typing `/`.
 
@@ -84,7 +85,7 @@ When the agent hands part of the work to one of the Gemini CLI's subagents (such
 
 ## Replies
 
-- Code is coloured like the editor, and the button at the top of a code block copies it.
+- Code is coloured like the editor, and the button at the top of a code block copies it. A shell command also has **Run**, which runs it in the agent's terminal; see [Terminals](agents.md#terminals).
 - A file name in a reply, such as `src/cart/total.ts:11`, opens the file at that line.
 - Math written as `$...$`, `$$...$$`, `\(...\)` or `\[...\]` is typeset; prices and shell variables stay plain text.
 - Notes, tips and warnings show as coloured callouts.

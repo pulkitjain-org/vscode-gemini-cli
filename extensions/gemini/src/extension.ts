@@ -13,6 +13,7 @@ import { AgentService } from './host/agentService';
 import { AgentHome } from './host/agentHome';
 import { AgentWarmup } from './host/agentWarmup';
 import { AgentsView } from './host/agentsView';
+import { TerminalGemini } from './host/terminalGemini';
 import { tildify } from './host/displayText';
 import { ChangesPanel } from './host/changesPanel';
 import { applyLayoutDefaults } from './host/layoutDefaults';
@@ -199,6 +200,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		new ConnectionsPage(context.extensionUri, teamTools, log),
 		new TeamStatusBar(context.extensionUri, teamTools),
 		new AuditStatusBar(teamTools.audit),
+		new TerminalGemini({
+			terminals: agentsView.terminals,
+			attachTo: async (agent, attachments) => {
+				await agentsView.open(agent);
+				await agentsView.controllerOf(agent)?.addAttachments(attachments);
+			},
+			attachToFront: async attachments => (await chatInFront(true))?.addAttachments(attachments),
+			direct: request => quickEdits.enhancePrompt(request),
+		}),
 		service.runtime.onDidBecomeBusy(() => keepAwake.setBusy(true)),
 		service.runtime.onDidBecomeIdle(() => keepAwake.setBusy(false)),
 		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.keepAwake`) && readKeepAwake()),

@@ -16,6 +16,8 @@ import type { EnhancePromptInput } from '../../acp/quickPrompts';
 import type { AgentStatus } from '../../acp/status';
 import type { TranscriptItem } from '../../acp/chatTranscript';
 import type { ConversationEntry, MessageRecord } from '../../acp/cliSessions';
+import type { RunPlace } from '../../acp/runCommands';
+import type { RunOutcome } from '../agentTerminals';
 import type { ForkAction, ForkRequest, NewThread, ProjectSettingsAction, ProjectSettingsSave, ThreadAction } from '../chatProtocol';
 import type { ToolChips } from '../toolChips';
 import type { UsageMeter } from '../usageMeter';
@@ -93,6 +95,20 @@ export interface ChatControllerOptions {
 	title?(): string;
 	/** Fork Agent: makes forks of this chat's agent; unset in chats that can't fork, such as a project's. */
 	readonly fork?: ChatForker;
+	/** Run on a reply's shell blocks, in the agent's own terminals; unset hides Run. */
+	readonly terminal?: ChatTerminal;
+}
+
+/** Where and how Run on a reply's command runs it. */
+export interface ChatTerminal {
+	/** Where Run can run: the agent's folder, or each repository of a thread or project. */
+	places(): readonly RunPlace[];
+	/** Every Run asks first, as in a project chat, whose repositories are the user's own checkouts. */
+	readonly alwaysAsk?: boolean;
+	/** Runs `command` in the agent's terminal in `place` (a new one with `fresh`), and resolves when it ends. */
+	run(place: RunPlace, command: string, fresh: boolean): Promise<RunOutcome>;
+	/** Types `command` into the agent's terminal in `place`, and leaves Return to the user. */
+	insert(place: RunPlace, command: string): void;
 }
 
 /** What Fork Agent asks of the Agents pane, which makes the fork. */
