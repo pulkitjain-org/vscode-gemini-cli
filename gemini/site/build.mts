@@ -17,12 +17,18 @@
 // missing one leaves a labelled placeholder frame (see MEDIA-TODO.md).
 // `site.css` holds the two palettes (Paper and Charcoal) as one token set,
 // `landing.css` and `docs.css` each page's own parts; `page.mts` runs the theme
-// switch and the reveals, `landing.mts` the hero and the showcase card,
+// switch, the reveals and the web fonts (`fonts.css`, loaded after the first
+// paint), `landing.mts` the hero and the showcase card,
 // `docs-page.mts` the docs' search, code copy and "On this page". The .mts
 // files are served as plain JavaScript modules. The Geist, Geist Mono and
 // Newsreader fonts in `gemini/site/fonts/` are served with the page. Each docs
 // page and the release notes are also written as Markdown, which Copy as
 // Markdown copies.
+//
+// Every page's <head> says what the page is to search engines, link previews and AI tools
+// (`PageMeta`): a canonical address, Open Graph and Twitter tags with a preview image from
+// `media/og/`, and schema.org JSON-LD. The build also writes `sitemap.xml`, `llms.txt` (what
+// GeminiCode is, with links to the docs' Markdown) and `404.html`; check-seo.mts checks them.
 //
 //   node gemini/site/build.mts <out-dir>            # needs GITHUB_REPOSITORY, uses GITHUB_TOKEN if set
 //   node gemini/site/build.mts <out-dir> --sample   # a made-up release, to preview the page
@@ -67,6 +73,15 @@ interface GitHubRelease {
 
 const siteDir = import.meta.dirname;
 const guideDir = path.join(siteDir, '..', 'docs', 'guide');
+
+/** The Code - OSS release and the Gemini CLI a build is made from, for llms.txt and the landing page's JSON-LD. */
+const builtOn = {
+	codeOss: (JSON.parse(fs.readFileSync(path.join(siteDir, '..', 'upstream.json'), 'utf8')) as { tag: string }).tag,
+	cli: (JSON.parse(fs.readFileSync(path.join(siteDir, '..', '..', 'extensions', 'gemini', 'package.json'), 'utf8')) as { bundledCli: { version: string } }).bundledCli.version,
+};
+
+/** The landing page's description, also the start of llms.txt. */
+const siteDescription = 'GeminiCode is an open-source Mac code editor built on VS Code, with the Gemini CLI as its agent. Run Gemini agents side by side and review every change.';
 const dmgPattern = /^GeminiCode-.+-arm64(-unsigned)?\.dmg$/;
 /**
  * The landing page's screenshots in `media/`: `<name>-dark.webp` and
@@ -109,7 +124,11 @@ async function main(outDir: string | undefined, mode: string | undefined): Promi
 	fs.writeFileSync(path.join(outDir, 'notes.md'), notesMarkdown(latest, release?.body));
 	writeDocs(outDir, latest, repo, pageUrl, mediaDir);
 	writeFeatures(outDir, latest, repo, mediaDir);
-	for (const file of ['site.css', 'landing.css', 'docs.css', 'features.css']) {
+	fs.writeFileSync(path.join(outDir, '404.html'), renderNotFound(latest, repo));
+	// Written last: they list what the pages above are.
+	fs.writeFileSync(path.join(outDir, 'sitemap.xml'), sitemap(latest));
+	fs.writeFileSync(path.join(outDir, 'llms.txt'), llmsText(latest, repo));
+	for (const file of ['site.css', 'landing.css', 'docs.css', 'features.css', 'fonts.css']) {
 		fs.copyFileSync(path.join(siteDir, file), path.join(outDir, file));
 	}
 	for (const script of ['page', 'landing', 'docs-page']) {
@@ -119,6 +138,62 @@ async function main(outDir: string | undefined, mode: string | undefined): Promi
 	fs.writeFileSync(path.join(outDir, 'icon.svg'), favicon());
 	fs.writeFileSync(path.join(outDir, '.nojekyll'), '');
 	console.log(latest.version ? `Built the page for GeminiCode ${latest.version}.` : 'Built the page; there is no release yet.');
+}
+
+/**
+ * sitemap.xml: every page layout() wrote that isn't marked noindex. Only the release notes get a
+ * last-modified date, from the release: the Pages workflow checks out one commit, so git can't
+ * say when other pages changed, and a wrong date is worse than none.
+ */
+function sitemap(latest: LatestRelease): string {
+	const urls = [...indexedPages].sort().map(at => {
+		const lastmod = at === 'notes.html' && latest.publishedAt ? `<lastmod>${latest.publishedAt.slice(0, 10)}</lastmod>` : '';
+		return `\t<url><loc>${text(`${latest.url}${at}`)}</loc>${lastmod}</url>`;
+	});
+	return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>\n`;
+}
+
+/**
+ * llms.txt (llmstxt.org): what GeminiCode is in a few plain lines, then links to the docs as
+ * Markdown and to the feature pages, for AI tools that answer questions about it.
+ */
+function llmsText(latest: LatestRelease, repo: string): string {
+	const c = context(latest, repo);
+	const site = c.siteUrl;
+	const facts = [
+		'Runs on: a Mac with Apple silicon, macOS 26 or later. Windows, Linux and Intel Macs can build it from source.',
+		'Needs: a Google account with a Gemini Code Assist license, and a Google Cloud project to bill usage to.',
+		`Built on: Code - OSS ${builtOn.codeOss} (VS Code's open-source core), with Gemini CLI ${builtOn.cli} included and run over the Agent Client Protocol.`,
+		'License: MIT. Not affiliated with or endorsed by Microsoft or Google.',
+		...c.version && c.dmg ? [`Latest version: ${c.version}${c.releasedLong ? `, released ${c.releasedLong}` : ''}. Download: ${c.dmg.url}`] : [],
+		`Source: ${c.repoUrl}`,
+	];
+	const docs = docPages.map(page => `- [${page.title}](${site}docs/${page.slug}.md): ${page.description}`);
+	const features = featurePages.map(page => `- [${page.name}](${site}features/${page.slug}.html): ${page.description}`);
+	return [
+		'# GeminiCode',
+		'',
+		`> ${siteDescription}`,
+		'',
+		'GeminiCode runs the official `gemini` CLI inside the editor, so it uses the CLI\'s agent, sign-in and settings. Each agent works in its own tab and folder, optionally on its own branch, and asks before every edit and command unless you choose a looser approval mode.',
+		'',
+		...facts.map(fact => `- ${fact}`),
+		'',
+		'## Docs',
+		'',
+		...docs,
+		'',
+		'## Features',
+		'',
+		...features,
+		'',
+		'## Optional',
+		'',
+		`- [All docs in one file](${site}docs/all.md): every docs page above, as one Markdown file`,
+		`- [Release notes](${site}notes.md): what changed in the latest version`,
+		`- [Architecture](${c.repoUrl}/blob/main/gemini/docs/ARCHITECTURE.md): how GeminiCode works, and its security model`,
+		'',
+	].join('\n');
 }
 
 async function fetchLatestRelease(repo: string): Promise<GitHubRelease | undefined> {
@@ -233,6 +308,8 @@ async function fetchChecksum(url: string): Promise<string | undefined> {
 // ---- Shared page parts ----
 
 interface Context {
+	/** The site's address, ending in `/`. */
+	readonly siteUrl: string;
 	readonly repoUrl: string;
 	readonly version: string | null;
 	readonly dmg: LatestRelease['downloads']['darwin-arm64'];
@@ -246,6 +323,7 @@ function context(latest: LatestRelease, repo: string): Context {
 	const date = latest.publishedAt ? new Date(latest.publishedAt) : undefined;
 	const format = (month: 'long' | 'short') => date?.toLocaleDateString('en-GB', { day: 'numeric', month, year: 'numeric', timeZone: 'UTC' });
 	return {
+		siteUrl: latest.url,
 		repoUrl: `https://github.com/${repo}`,
 		version: dmg ? latest.version : null,
 		dmg,
@@ -274,6 +352,8 @@ const icons = {
 	'chevrons-up-down': '<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>',
 	'menu': '<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>',
 	'x': '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+	'maximize': '<polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" x2="14" y1="3" y2="10"/><line x1="3" x2="10" y1="21" y2="14"/>',
+	'fullscreen': '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/>',
 	'pointer': '<path d="M12.586 12.586 19 19"/><path d="M3.688 3.037a.497.497 0 0 0-.651.651l6.5 15.999a.501.501 0 0 0 .947-.062l1.569-6.083a2 2 0 0 1 1.448-1.479l6.124-1.579a.5.5 0 0 0 .063-.947z"/>',
 	'pencil': '<path d="M12 20h9"/><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/>',
 	'rocket': '<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>',
@@ -329,7 +409,86 @@ function favicon(): string {
 	return `<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg"><rect x="16" y="16" width="224" height="224" rx="54" fill="#F4F2EC" stroke="rgba(22,21,15,.18)" stroke-width="6"/><rect x="50" y="50" width="156" height="156" rx="36" fill="none" stroke="#16150F" stroke-width="20"/><circle cx="128" cy="128" r="54" fill="none" stroke="#16150F" stroke-width="14"/><path d="M128 92Q128 128 164 128Q128 128 128 164Q128 128 92 128Q128 128 128 92Z" fill="#16150F"/></svg>\n`;
 }
 
-type PageKind = 'home' | 'notes' | 'docs' | 'feature';
+type PageKind = 'home' | 'notes' | 'docs' | 'feature' | 'missing';
+
+/** A schema.org entry, written into a page as JSON-LD. */
+interface JsonLd { readonly [key: string]: string | number | boolean | JsonLd | readonly JsonLd[] }
+
+/** What a page says about itself in its <head>: to search engines, link previews and AI tools. */
+interface PageMeta {
+	/** The page's path from the site's root, such as `docs/chat.html`; empty for the landing page. */
+	readonly path: string;
+	/** For search results and link previews: at most 160 characters. */
+	readonly description: string;
+	/** The link preview image in `media/og/`; the landing page's when not named. */
+	readonly image?: keyof typeof ogImages;
+	readonly schema?: readonly JsonLd[];
+	/** The page as Markdown, relative to the page. */
+	readonly markdown?: string;
+	/** A page that should never be a search result, such as the 404 page. */
+	readonly noindex?: boolean;
+}
+
+/**
+ * The link preview images in `media/og/`, 1200 × 630 JPEG crops of the product shots (JPEG
+ * because not every link preview shows WebP), with their alt text.
+ */
+const ogImages = {
+	'home.jpg': 'GeminiCode in Agents mode: the agent list, an agent\'s chat and the files it opened beside it',
+	'agents.jpg': 'The Index page, with two indexed workspaces and attached documentation',
+	'chat-and-review.jpg': 'An agent\'s edits in the file, with Keep and Undo above each change',
+	'projects.jpg': 'Thread cards in a project chat, with the side panel counting threads by state',
+	'browser.jpg': 'A cart page in GeminiCode\'s browser beside the chat, with Add to Gemini',
+	'team-tools.jpg': 'A merge request\'s diff with Gemini\'s review comments on their lines',
+} as const;
+
+/** The pages layout() wrote that belong in sitemap.xml, by path. */
+const indexedPages = new Set<string>();
+
+/** The site as a schema.org WebSite, for pages to say they are part of. */
+function website(c: Context): JsonLd {
+	return { '@type': 'WebSite', name: 'GeminiCode', url: c.siteUrl };
+}
+
+/** A schema.org breadcrumb trail from the landing page; each step is a name and a path. */
+function breadcrumbs(c: Context, steps: readonly (readonly [string, string])[]): JsonLd {
+	return {
+		'@type': 'BreadcrumbList',
+		itemListElement: [['GeminiCode', ''] as const, ...steps].map(([name, at], i) => ({ '@type': 'ListItem', position: i + 1, name, item: `${c.siteUrl}${at}` })),
+	};
+}
+
+/** The tags layout() puts in <head> for `meta`. */
+function headTags(title: string, meta: PageMeta, c: Context): string {
+	if (!meta.description || meta.description.length > 160) {
+		throw new Error(`${meta.path || 'index.html'}: the description must be 1 to 160 characters, not ${meta.description.length}: ${meta.description}`);
+	}
+	if (!meta.noindex) {
+		indexedPages.add(meta.path);
+	}
+	const url = `${c.siteUrl}${meta.path}`;
+	const image = meta.image ?? 'home.jpg';
+	const schema = meta.schema?.length ? { '@context': 'https://schema.org', '@graph': meta.schema } : undefined;
+	return [
+		`<link rel="canonical" href="${attr(url)}">`,
+		...meta.noindex ? ['<meta name="robots" content="noindex">'] : [],
+		...meta.markdown ? [`<link rel="alternate" type="text/markdown" href="${attr(meta.markdown)}" title="This page as Markdown">`] : [],
+		'<meta property="og:type" content="website">',
+		'<meta property="og:site_name" content="GeminiCode">',
+		`<meta property="og:title" content="${attr(title)}">`,
+		`<meta property="og:description" content="${attr(meta.description)}">`,
+		`<meta property="og:url" content="${attr(url)}">`,
+		`<meta property="og:image" content="${attr(`${c.siteUrl}media/og/${image}`)}">`,
+		'<meta property="og:image:width" content="1200">',
+		'<meta property="og:image:height" content="630">',
+		`<meta property="og:image:alt" content="${attr(ogImages[image])}">`,
+		'<meta name="twitter:card" content="summary_large_image">',
+		'<meta name="theme-color" media="(prefers-color-scheme: light)" content="#F4F2EC">',
+		'<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#141412">',
+		// `<` is escaped so no text in the data can close the script element.
+		...schema ? [`<script type="application/ld+json">${JSON.stringify(schema).replace(/</g, '\\u003c')}</script>`] : [],
+	].join('\n\t');
+}
 
 function themeSwitch(): string {
 	return `<div class="seg" role="group" aria-label="Site theme">
@@ -344,13 +503,16 @@ function themeSwitch(): string {
  * `../` for the docs. The docs take a white reading ground in Paper and the
  * same Charcoal as the rest of the site when dark.
  */
-function layout(title: string, body: string, c: Context, current: PageKind, root = '', description = 'GeminiCode is a VS Code fork with the Gemini CLI built in. Run Gemini agents side by side and review every change they make. Download it for Mac.'): string {
+function layout(title: string, body: string, c: Context, current: PageKind, root: string, meta: PageMeta): string {
 	const home = current === 'home' ? '' : `${root}./`;
-	const style = { home: 'landing.css', notes: 'docs.css', docs: 'docs.css', feature: 'features.css' }[current];
-	const script = { home: 'landing.js', notes: 'page.js', docs: 'docs-page.js', feature: 'page.js' }[current];
+	const style = { home: 'landing.css', notes: 'docs.css', docs: 'docs.css', feature: 'features.css', missing: 'docs.css' }[current];
+	const script = { home: 'landing.js', notes: 'page.js', docs: 'docs-page.js', feature: 'page.js', missing: 'page.js' }[current];
 	// The stylesheets go inline, so the first paint waits for nothing but the HTML; their font
 	// paths are relative to the site's root, so a page in docs/ gets them rewritten.
 	const css = ['site.css', style].map(file => fs.readFileSync(path.join(siteDir, file), 'utf8').replace(/^\/\*[\s\S]*?\*\/\n\n/, '').replace(/url\(fonts\//g, `url(${root}fonts/`)).join('\n');
+	// Once a session has the web fonts cached, they load with the page, before its first paint;
+	// on a session's first page, page.mts loads them just after it (site.css says why).
+	const fonts = `try{if(sessionStorage.getItem('fonts')){const l=document.createElement('link');l.rel='stylesheet';l.id='fonts';l.href='${root}fonts.css';l.setAttribute('blocking','render');document.head.append(l)}}catch{}`;
 	const typing = current === 'home' ? 'try{if(!matchMedia(\'(prefers-reduced-motion: reduce)\').matches&&!sessionStorage.getItem(\'typed\')){document.documentElement.classList.add(\'typing\')}}catch{}' : '';
 	const download = c.dmg
 		? `<a class="btn primary small dl" href="${attr(c.dmg.url)}">${icon('download')}<span class="dl-label">Download<span class="long"> for Mac</span></span></a>`
@@ -373,18 +535,19 @@ function layout(title: string, body: string, c: Context, current: PageKind, root
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>${text(title)}</title>
-	<meta name="description" content="${attr(description)}">
+	<meta name="description" content="${attr(meta.description)}">
+	${headTags(title, meta, c)}
 	<meta name="color-scheme" content="light dark">
 	<link rel="icon" href="${root}icon.svg" type="image/svg+xml">
-	<link rel="preload" href="${root}fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
 	<style>
 ${css}
 	</style>
-	<script>document.documentElement.classList.add('js');try{const t=localStorage.getItem('theme');if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t}}catch{}${typing}</script>${script === 'page.js' ? '' : `
+	<script>document.documentElement.classList.add('js');try{const t=localStorage.getItem('theme');if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t}}catch{}${fonts}${typing}</script>
+	<noscript><link rel="stylesheet" href="${root}fonts.css"></noscript>${script === 'page.js' ? '' : `
 	<link rel="modulepreload" href="${root}page.js">`}
 	<script type="module" src="${root}${script}"></script>
 </head>
-<body class="${current === 'docs' || current === 'notes' ? 'docs-ground' : current === 'feature' ? 'home feature-page' : 'home'}">
+<body class="${current === 'docs' || current === 'notes' || current === 'missing' ? 'docs-ground' : current === 'feature' ? 'home feature-page' : 'home'}">
 	${sprite()}
 	<div class="frame l" aria-hidden="true"></div>
 	<div class="frame r" aria-hidden="true"></div>
@@ -574,7 +737,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 			<div class="centre">
 				${logo(56, true, 'mark')}
 				<h1 class="h1 serif" id="headline"><span class="sr">Code with Gemini agents. Review every change.</span><span class="tw" aria-hidden="true"><span data-t="Code with Gemini agents.">Code with Gemini agents.</span><br><em data-t="Review every change.">Review every change.</em></span><span class="caret" aria-hidden="true"></span></h1>
-				<p class="lead after">A VS Code fork with the official Gemini CLI built in. Run several agents side by side, give each its own branch, and approve every edit and command before it lands.</p>
+				<p class="lead">A VS Code fork with the official Gemini CLI built in. Run several agents side by side, give each its own branch, and approve every edit and command before it lands.</p>
 				<div class="actions after">
 					${primary('Download for Mac')}
 					<a class="btn ghost" href="docs/">${icon('book')}Read the docs</a>
@@ -805,7 +968,34 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 			<span class="meta">${installMeta}</span>
 		</div>
 	</section>`;
-	return layout('GeminiCode: code with Gemini agents, review every change', body, c, 'home');
+	const app: JsonLd = {
+		'@type': 'SoftwareApplication',
+		name: 'GeminiCode',
+		description: siteDescription,
+		url: c.siteUrl,
+		applicationCategory: 'DeveloperApplication',
+		operatingSystem: 'macOS 26 or later, on Apple silicon',
+		isAccessibleForFree: true,
+		offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+		license: 'https://opensource.org/licenses/MIT',
+		image: `${c.siteUrl}media/og/home.jpg`,
+		screenshot: `${c.siteUrl}media/showcase-work-light.webp`,
+		softwareRequirements: 'A Google account with a Gemini Code Assist license, and a Google Cloud project',
+		sameAs: c.repoUrl,
+		author: { '@type': 'Organization', name: 'pulkitjain-org', url: 'https://github.com/pulkitjain-org' },
+		...c.version && c.dmg ? {
+			softwareVersion: c.version,
+			downloadUrl: c.dmg.url,
+			fileSize: `${c.sizeMb} MB`,
+			releaseNotes: `${c.siteUrl}notes.html`,
+			...latest.publishedAt ? { datePublished: latest.publishedAt.slice(0, 10) } : {},
+		} : {},
+	};
+	return layout('GeminiCode: code with Gemini agents, review every change', body, c, 'home', '', {
+		path: '',
+		description: siteDescription,
+		schema: [app, { ...website(c), description: siteDescription }],
+	});
 }
 
 // ---- Release notes page ----
@@ -859,7 +1049,10 @@ export function renderNotesPage(latest: LatestRelease, notesHtml: string, repo: 
 		</div>
 		<div class="notes"><p>The first build is on its way. <a href="${attr(c.repoUrl)}/releases">Check GitHub Releases</a>.</p></div>
 	</section>`;
-		return layout('Release notes · GeminiCode', empty, c, 'notes');
+		return layout('Release notes · GeminiCode', empty, c, 'notes', '', {
+			path: 'notes.html',
+			description: 'Release notes for GeminiCode, the Mac code editor with the Gemini CLI built in. The first build is on its way.',
+		});
 	}
 
 	const { html, headings } = addHeadingIds(notesHtml);
@@ -891,7 +1084,39 @@ export function renderNotesPage(latest: LatestRelease, notesHtml: string, repo: 
 			<a class="more" href="${attr(latest.notesUrl ?? `${c.repoUrl}/releases`)}">See this release on GitHub ${icon('external')}</a>
 		</div>
 	</section>`;
-	return layout(`GeminiCode ${c.version} release notes`, body, c, 'notes');
+	return layout(`GeminiCode ${c.version} release notes`, body, c, 'notes', '', {
+		path: 'notes.html',
+		description: `What's new in GeminiCode ${c.version}${c.releasedLong ? `, released ${c.releasedLong}` : ''}: new features, what changes for you, new commands and shortcuts, and the download.`,
+		markdown: 'notes.md',
+		schema: [
+			{ '@type': 'WebPage', name: `GeminiCode ${c.version} release notes`, url: `${c.siteUrl}notes.html`, isPartOf: website(c), ...latest.publishedAt ? { datePublished: latest.publishedAt.slice(0, 10) } : {} },
+			breadcrumbs(c, [['Release notes', 'notes.html']]),
+		],
+	});
+}
+
+/** 404.html, which GitHub Pages serves at any address on the site that has no page; its links are absolute. */
+function renderNotFound(latest: LatestRelease, repo: string): string {
+	const c = context(latest, repo);
+	const root = new URL(c.siteUrl).pathname;
+	const body = `
+	<section class="release wrap not-found">
+		<div>
+			<span class="label">404</span>
+			<h1 class="serif">This page isn't here.</h1>
+			<p>The address may be mistyped, or the page may have moved. These are good places to look instead:</p>
+			<ul>
+				<li><a href="${root}">GeminiCode home</a>, with the download</li>
+				<li><a href="${root}docs/">The docs</a>, which you can search with <kbd>/</kbd></li>
+				<li><a href="${root}notes.html">The latest release notes</a></li>
+			</ul>
+		</div>
+	</section>`;
+	return layout('Page not found · GeminiCode', body, c, 'missing', root, {
+		path: '404.html',
+		description: 'This page of the GeminiCode site does not exist. Try the home page, the docs or the release notes.',
+		noindex: true,
+	});
 }
 
 // ---- Docs ----
@@ -968,8 +1193,16 @@ function writeFeatures(outDir: string, latest: LatestRelease, repo: string, medi
 	fs.mkdirSync(dir, { recursive: true });
 	const media = filesUnder(mediaDir);
 	for (const page of featurePages) {
-		const description = `${page.headline[0]} ${page.headline[1]} ${page.lead}`;
-		fs.writeFileSync(path.join(dir, `${page.slug}.html`), layout(`${page.name} · GeminiCode`, renderFeature(page, '../', media, icon('arrow-right')), c, 'feature', '../', description));
+		const at = `features/${page.slug}.html`;
+		fs.writeFileSync(path.join(dir, `${page.slug}.html`), layout(`${page.name} · GeminiCode`, renderFeature(page, '../', media, icon('arrow-right')), c, 'feature', '../', {
+			path: at,
+			description: page.description,
+			image: `${page.slug}.jpg`,
+			schema: [
+				{ '@type': 'WebPage', name: `${page.name} · GeminiCode`, description: page.description, url: `${c.siteUrl}${at}`, isPartOf: website(c) },
+				breadcrumbs(c, [[page.name, at]]),
+			],
+		}));
 	}
 	const missing = featureMedia().filter(m => !media.has(`${m.name}-dark.webp`) || !media.has(`${m.name}-light.webp`)).map(m => m.name);
 	if (missing.length) {
@@ -1018,7 +1251,16 @@ ${doc.html}
 			<div class="extra"><a href="${attr(c.repoUrl)}/issues">Report a problem</a><a href="shortcuts.html">Keyboard shortcuts</a></div>
 		</aside>` : ''}
 	</div>${searchDialog()}`;
-		fs.writeFileSync(path.join(docsDir, `${page.slug}.html`), layout(`${doc.title} · GeminiCode docs`, body, c, 'docs', '../', page.summary));
+		const at = `docs/${page.slug}.html`;
+		fs.writeFileSync(path.join(docsDir, `${page.slug}.html`), layout(`${doc.title} · GeminiCode docs`, body, c, 'docs', '../', {
+			path: at,
+			description: page.description,
+			markdown: `${page.slug}.md`,
+			schema: [
+				{ '@type': 'TechArticle', headline: doc.title, description: page.description, url: `${c.siteUrl}${at}`, inLanguage: 'en', isPartOf: website(c), about: { '@type': 'SoftwareApplication', name: 'GeminiCode' } },
+				breadcrumbs(c, [['Docs', 'docs/'], [doc.title, at]]),
+			],
+		}));
 		const markdown = markdownForCopy(source, pageUrl);
 		fs.writeFileSync(path.join(docsDir, `${page.slug}.md`), markdown);
 		copies.push(markdown);
@@ -1088,7 +1330,16 @@ ${doc.html}
 	for (const [slug, to] of Object.entries(movedDocs)) {
 		fs.writeFileSync(path.join(docsDir, `${slug}.html`), redirect(to));
 	}
-	fs.writeFileSync(path.join(docsDir, 'index.html'), layout('GeminiCode docs', home, c, 'docs', '../', 'How to use GeminiCode: agents, chat, review, projects, the browser, team tools and settings.'));
+	const docsDescription = 'How to use GeminiCode: agents, chat, review, the terminal, projects, the browser, team tools, settings and troubleshooting.';
+	fs.writeFileSync(path.join(docsDir, 'index.html'), layout('GeminiCode docs', home, c, 'docs', '../', {
+		path: 'docs/',
+		description: docsDescription,
+		markdown: 'all.md',
+		schema: [
+			{ '@type': 'CollectionPage', name: 'GeminiCode docs', description: docsDescription, url: `${c.siteUrl}docs/`, isPartOf: website(c) },
+			breadcrumbs(c, [['Docs', 'docs/']]),
+		],
+	}));
 	fs.writeFileSync(path.join(docsDir, 'all.md'), `# GeminiCode docs\n\nFrom ${pageUrl}docs/\n\n` + copies.map(copy => copy.replace(/^(#+) /gm, '#$1 ')).join('\n'));
 	fs.writeFileSync(path.join(docsDir, 'search.json'), JSON.stringify(search));
 }

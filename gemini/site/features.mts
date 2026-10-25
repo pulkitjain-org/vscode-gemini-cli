@@ -32,6 +32,8 @@ export interface FeaturePage {
 	readonly name: string;
 	/** One line under the name in the Features menu. */
 	readonly summary: string;
+	/** For search results and link previews: at most 160 characters. */
+	readonly description: string;
 	/** The headline, with its second half in italics. */
 	readonly headline: readonly [string, string];
 	readonly lead: string;
@@ -48,6 +50,7 @@ export const featurePages: readonly FeaturePage[] = [
 		slug: 'agents',
 		name: 'Agents',
 		summary: 'Several agents side by side, and the index they find code with.',
+		description: 'Run several Gemini agents side by side in GeminiCode, each with its own chat, files and branch. A local index lets them find code in one step.',
 		headline: ['Run agents side by side.', 'They find the code in one step.'],
 		lead: 'Each agent is a tab with its own chat, files and changes, in the folder it works in or on a branch of its own. A local index of every workspace lets agents go straight to the code that matters, instead of reading file by file.',
 		hero: { name: 'showcase-work', alt: 'An agent at work in Agents mode: the agent list on the left, its chat in the middle and its changes on the right', clip: true },
@@ -98,6 +101,7 @@ export const featurePages: readonly FeaturePage[] = [
 		slug: 'chat-and-review',
 		name: 'Chat and review',
 		summary: 'Prompting, Plan mode, reactions, approvals, and Keep, Undo and Rewind.',
+		description: 'Prompt Gemini agents in GeminiCode, steer them while they work, run their commands, and keep, undo or rewind every change they make.',
 		headline: ['Ask in plain words.', 'Review every change.'],
 		lead: 'The chat holds everything a prompt needs: files and context, the model, the approval mode and your slash commands. Every command asks before it runs, and every change an agent makes can be kept, undone or rewound.',
 		hero: { name: 'showcase-review', alt: 'Keeping an agent\'s edits one by one, with Keep and Undo above each change', clip: true },
@@ -165,6 +169,7 @@ export const featurePages: readonly FeaturePage[] = [
 		slug: 'projects',
 		name: 'Projects',
 		summary: 'A coordinator that splits larger work into threads.',
+		description: 'GeminiCode Projects: a coordinator splits larger work into threads, each a Gemini agent on its own branch, that you merge back, review or undo.',
 		headline: ['One chat for the whole job.', 'Threads you can merge.'],
 		lead: 'Describe larger work in a project chat. Its coordinator splits it into threads, each an agent on its own branch, passes your follow-ups to the right one, and keeps track of where each stands.',
 		hero: { name: 'showcase-projects', alt: 'The coordinator starting two threads, whose cards update as they work', clip: true },
@@ -206,6 +211,7 @@ export const featurePages: readonly FeaturePage[] = [
 		slug: 'browser',
 		name: 'Browser',
 		summary: 'A browser your agents can use, beside the chat.',
+		description: 'GeminiCode\'s browser is shared with your agents: they open your app, click, type and read the console, and you point at what to change.',
 		headline: ['A browser your agents use.', 'Point at what to change.'],
 		lead: 'GeminiCode has a browser of its own. Agents open your app in it, click, type, take screenshots and read the console. You point at an element, or pin notes on the page, and send them to an agent.',
 		hero: { name: 'browser-page', alt: 'A cart page open in GeminiCode\'s browser beside the chat, with Add to Gemini in the toolbar' },
@@ -239,6 +245,7 @@ export const featurePages: readonly FeaturePage[] = [
 		slug: 'team-tools',
 		name: 'Connected tools',
 		summary: 'Jira, GitLab, SonarQube, Snyk and Figma, from ticket to merge.',
+		description: 'Connect Jira, GitLab, SonarQube, Snyk and Figma to GeminiCode. Go from a ticket to a merged merge request, and review merge requests with Gemini.',
 		headline: ['From ticket to merge request.', 'Without leaving the editor.'],
 		lead: 'Connect Jira, GitLab, SonarQube, Snyk and Figma with your own account. Home shows your tickets and merge requests. Start an agent from a ticket, open its merge request, fix the pipeline and the comments, review a teammate\'s work with Gemini, and merge when GitLab\'s checks pass.',
 		hero: { name: 'showcase-mr-review', alt: 'Gemini\'s review of a merge request, a comment of your own with a suggested change, and the review posted', clip: true },
@@ -296,23 +303,26 @@ export function inlineText(value: string): string {
 }
 
 /**
- * A screenshot or clip in both themes, the page's theme showing one. `root`
- * leads to the site's root; `available` lists the files in media/.
+ * A screenshot or clip in both themes, the page's theme showing one. `root` leads to the site's
+ * root; `available` lists the files in media/. A clip shows its last frame until Play loads the
+ * video (page.mts), since a <video> fetches its poster even when the theme hides it. The hero
+ * (`eager`) loads at once and fills the page's width; the others load when near, at half of it.
  */
 export function featureFigure(media: FeatureMedia, root: string, available: ReadonlySet<string>, eager = false): string {
 	const has = (theme: string, ext: string) => available.has(`${media.name}-${theme}.${ext}`);
 	const themes = ['light', 'dark'] as const;
+	const sizes = eager ? '(max-width: 900px) calc(100vw - 32px), 1152px' : '(max-width: 900px) calc(100vw - 32px), 600px';
+	const isClip = media.clip && themes.every(theme => has(theme, 'mp4') && has(theme, 'webp'));
 	const frame = themes.map(theme => {
-		const poster = `${root}media/${media.name}-${theme}.webp`;
-		if (media.clip && has(theme, 'mp4') && has(theme, 'webp')) {
-			return `<video class="on-${theme}" src="${root}media/${media.name}-${theme}.mp4" poster="${poster}" controls muted playsinline preload="none" aria-label="${escape(media.alt)}"><track kind="captions" srclang="en" label="No speech" src="${root}media/silent.vtt"></video>`;
-		}
+		const still = `${root}media/${media.name}-${theme}.webp`;
+		const srcset = has(`${theme}-1000`, 'webp') ? ` srcset="${root}media/${media.name}-${theme}-1000.webp 1000w, ${still} 2000w" sizes="${sizes}"` : '';
 		if (has(theme, 'webp')) {
-			return `<img class="on-${theme}" src="${poster}" width="2000" height="1250" alt="${escape(media.alt)}"${eager && theme === 'light' ? ' fetchpriority="high"' : ' loading="lazy"'} decoding="async">`;
+			return `<img class="on-${theme}" src="${still}"${srcset} width="2000" height="1250" alt="${escape(media.alt)}"${eager && theme === 'light' ? ' fetchpriority="high"' : ' loading="lazy"'} decoding="async">`;
 		}
 		return `<span class="ph on-${theme}"><b>${media.clip ? 'Clip' : 'Screenshot'} still to come</b><span>media/${escape(media.name)}-${theme}.${media.clip ? 'mp4' : 'webp'}, 2000 × 1250</span></span>`;
 	}).join('');
-	return `<figure class="fshot${media.clip ? ' clip' : ''}"><span class="shot" style="--ar: 2000 / 1250">${frame}</span><figcaption>${escape(media.alt)}</figcaption></figure>`;
+	const play = isClip ? `<button type="button" class="clip-play" data-dark="${root}media/${media.name}-dark.mp4" data-light="${root}media/${media.name}-light.mp4" aria-label="Play the clip: ${escape(media.alt)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button>` : '';
+	return `<figure class="fshot${media.clip ? ' clip' : ''}"><span class="shot" style="--ar: 2000 / 1250">${frame}${play}</span><figcaption>${escape(media.alt)}</figcaption></figure>`;
 }
 
 /** The body of a feature page: hero, steps, sections, good to know, and where to read more. */

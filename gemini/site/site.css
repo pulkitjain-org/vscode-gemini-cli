@@ -8,16 +8,17 @@
    Dark · Light · System switch sets data-theme on <html>; without it the system decides.
    Newsreader carries the headlines, Geist the reading text and Geist Mono every label. */
 
-/* Geist, Geist Mono and Newsreader (SIL Open Font License, see fonts/), served with the page.
-   Newsreader is the optical size 72 cut (the display face) in weights 300 to 400, the only ones the site uses. */
-@font-face { font-family: Geist; font-weight: 100 900; font-display: swap; src: url(fonts/geist-latin-wght-normal.woff2) format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
-@font-face { font-family: Geist; font-weight: 100 900; font-display: swap; src: url(fonts/geist-latin-ext-wght-normal.woff2) format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
-@font-face { font-family: "Geist Mono"; font-weight: 100 900; font-display: swap; src: url(fonts/geist-mono-latin-wght-normal.woff2) format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
-@font-face { font-family: "Geist Mono"; font-weight: 100 900; font-display: swap; src: url(fonts/geist-mono-latin-ext-wght-normal.woff2) format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
-@font-face { font-family: Newsreader; font-style: normal; font-weight: 300 400; font-display: swap; src: url(fonts/newsreader-latin-wght-normal.woff2) format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
-@font-face { font-family: Newsreader; font-style: normal; font-weight: 300 400; font-display: swap; src: url(fonts/newsreader-latin-ext-wght-normal.woff2) format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
-@font-face { font-family: Newsreader; font-style: italic; font-weight: 300 400; font-display: swap; src: url(fonts/newsreader-latin-wght-italic.woff2) format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
-@font-face { font-family: Newsreader; font-style: italic; font-weight: 300 400; font-display: swap; src: url(fonts/newsreader-latin-ext-wght-italic.woff2) format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+/* Geist, Geist Mono and Newsreader (SIL Open Font License, see fonts/) are in fonts.css, which
+   page.mts loads just after a session's first paint and the page's first script loads at once
+   after that, when the files are cached. Until they arrive the text is drawn in these local
+   faces, scaled to the web fonts' widths and line heights (size-adjust and the overrides,
+   measured from the font files), so the swap moves nothing. Liberation is metric-compatible
+   with Arial, Times New Roman and Courier New, for Linux. */
+@font-face { font-family: "Geist Fallback"; font-weight: 100 499; src: local("Arial"), local("ArialMT"), local("Liberation Sans"); size-adjust: 105.49%; ascent-override: 95.27%; descent-override: 27.97%; line-gap-override: 0%; }
+@font-face { font-family: "Geist Fallback"; font-weight: 500 900; src: local("Arial Bold"), local("Arial-BoldMT"), local("Liberation Sans Bold"); size-adjust: 101.84%; ascent-override: 98.69%; descent-override: 28.97%; line-gap-override: 0%; }
+@font-face { font-family: "Geist Mono Fallback"; src: local("Courier New"), local("CourierNewPSMT"), local("Liberation Mono"); size-adjust: 99.98%; ascent-override: 100.52%; descent-override: 29.5%; line-gap-override: 0%; }
+@font-face { font-family: "Newsreader Fallback"; font-style: normal; src: local("Times New Roman"), local("TimesNewRomanPSMT"), local("Liberation Serif"); size-adjust: 107.68%; ascent-override: 68.26%; descent-override: 24.61%; line-gap-override: 0%; }
+@font-face { font-family: "Newsreader Fallback"; font-style: italic; src: local("Times New Roman Italic"), local("TimesNewRomanPS-ItalicMT"), local("Liberation Serif Italic"); size-adjust: 96.53%; ascent-override: 76.14%; descent-override: 27.45%; line-gap-override: 0%; }
 
 /* ---- Tokens: Paper ---- */
 :root {
@@ -58,9 +59,9 @@
 	--code-fg: #16150F;
 	--pre-bg: #16150F;
 	--pre-fg: #F1EEE6;
-	--sans: Geist, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-	--serif: Newsreader, Georgia, "Times New Roman", serif;
-	--mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+	--sans: Geist, "Geist Fallback", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+	--serif: Newsreader, "Newsreader Fallback", Georgia, "Times New Roman", serif;
+	--mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, SFMono-Regular, Menlo, monospace;
 	--ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 	--ease-in: cubic-bezier(0.4, 0, 1, 1);
 	--wrap: 1200px;
@@ -310,6 +311,11 @@ html.theming .shot { opacity: 0; }
 .release .toc a { color: var(--muted); padding: 4px 0 4px 14px; margin-left: -1px; border-left: 1px solid transparent; transition: color 0.2s, border-color 0.2s; }
 .release .toc a:hover { color: var(--fg); border-left-color: var(--fg); }
 .release .toc a.sub { padding-left: 26px; font-size: 13.5px; }
+/* The 404 page: one column, in the notes page's type */
+.release.not-found { display: block; max-width: 640px; padding-block: 96px 120px; }
+.not-found p, .not-found li { color: var(--soft); font-size: 17px; line-height: 1.6; }
+.not-found ul { padding-left: 20px; display: grid; gap: 6px; }
+.not-found a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 .sha { font: 12px var(--mono); color: var(--muted); word-break: break-all; }
 .sha code { display: block; margin-top: 6px; font-size: 11px; padding: 6px 8px; }
 .notes { min-width: 0; border-radius: 16px; padding: 36px 40px; font-size: 16px; line-height: 1.7; color: var(--soft); background: var(--surface); border: 1px solid var(--line); }
@@ -370,8 +376,38 @@ html.theming .shot { opacity: 0; }
 	.foot .mark span { font-size: 96px; left: 8px; }
 	.notes { padding: 24px 18px; }
 }
+/* ---- A clip's still with its play button (page.mts loads the clip) ---- */
+.clip-play { position: absolute; left: 50%; top: 50%; translate: -50% -50%; z-index: 2; width: 64px; height: 64px; padding: 0; border-radius: 50%; border: 0; background: var(--btn); color: var(--btn-fg); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: var(--shadow-pop); transition: scale 0.2s var(--ease-out); }
+.clip-play svg { width: 22px; height: 22px; fill: currentColor; margin-left: 3px; }
+.clip-play:hover { scale: 1.06; }
+.shot video { display: block; width: 100%; height: 100%; }
+@media (max-width: 640px) { .clip-play { width: 52px; height: 52px; } }
+
+/* ---- Screenshots at full size (page.mts): a button in each shot's corner, and the viewer ---- */
+.zoomable { position: relative; display: block; }
+.zoomable img { display: block; }
+.can-zoom img { cursor: zoom-in; }
+.zoom { position: absolute; top: 10px; right: 10px; z-index: 2; width: 36px; height: 36px; padding: 0; border-radius: 9px; border: 1px solid var(--line-2); background: var(--surface); color: var(--fg); display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 14px rgb(22 21 15 / 0.16); opacity: 0; transition: opacity 0.15s; }
+.zoom .i { width: 16px; height: 16px; }
+.can-zoom:hover .zoom, .zoom:focus-visible { opacity: 1; }
+@media (hover: none) { .zoom { opacity: 1; } }
+html:has(.viewer[open]) { overflow: hidden; }
+.viewer { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: #121210; color: #F1EEE6; }
+.viewer[open] { display: flex; flex-direction: column; }
+.viewer::backdrop { background: #121210; }
+.js .viewer[open] { animation: viewer-in 0.18s var(--ease-out); }
+@keyframes viewer-in { from { opacity: 0; } }
+.viewer-bar { display: flex; align-items: center; gap: 8px; padding: 12px 16px; }
+.viewer-bar p { flex: 1; min-width: 0; margin: 0; font-size: 14px; line-height: 1.4; color: #D9D6CC; }
+.viewer-btn { display: inline-flex; align-items: center; gap: 8px; height: 36px; min-width: 36px; justify-content: center; padding: 0 12px; border-radius: 9px; border: 1px solid rgb(241 238 230 / 0.22); background: #26251F; color: #F1EEE6; font: 500 13.5px var(--sans); cursor: pointer; }
+.viewer-btn:hover { background: #33322B; }
+.viewer-btn[data-close] { padding: 0; }
+.viewer img { flex: 1; min-height: 0; width: 100%; object-fit: contain; padding: 0 16px 16px; cursor: auto; }
+.viewer img:fullscreen { padding: 0; background: #121210; }
+
 @media (prefers-reduced-motion: reduce) {
 	html { scroll-behavior: auto; }
+	.js .viewer[open] { animation: none; }
 	.js .reveal, .js .foot .mark span { transform: none; transition-property: opacity; }
 	.menu a { animation: none; opacity: 1; transform: none; }
 	.btn:active { transform: none; }

@@ -123,7 +123,8 @@ body:has(.layout) .frame.r { right: calc(50% - 680px); }
 .doc figure { margin: 0 0 24px; }
 .doc figure .shot { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
 .doc figure .shot img, .doc figure .shot video { width: 100%; height: auto; }
-.js .doc figure img { opacity: 0; transition: opacity 0.25s; }
+/* Images fade in once loaded, except the page's first, which paints at once as its largest. */
+.js .doc figure img:not([fetchpriority]) { opacity: 0; transition: opacity 0.25s; }
 .js .doc figure img.loaded { opacity: 1; }
 .doc .clip .shot video { aspect-ratio: 16 / 10; }
 .doc figcaption { margin-top: 8px; font-size: 13.5px; color: var(--muted); text-align: center; text-wrap: balance; }

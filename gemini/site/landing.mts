@@ -41,20 +41,28 @@ function finishHeadline(): void {
 }
 
 if (hero && typed.length && willType) {
+	// The text still to type stays in the layout, invisible, so the headline keeps its size as it
+	// types and nothing below it moves. The caret rides at the typing point and takes no width.
+	const untyped = (text: string) => Object.assign(document.createElement('span'), { className: 'untyped', textContent: text });
 	const parts = typed.map(el => ({ el, text: el.dataset.t ?? '' }));
-	parts.forEach(part => (part.el.textContent = ''));
+	parts.forEach(part => part.el.replaceChildren(untyped(part.text)));
+	const caretHome = caret?.parentElement;
 	html.classList.add('type-run');
 	let part = 0;
 	let at = 0;
 	const step = () => {
 		const current = parts[part];
 		if (!current) {
+			if (caret && caretHome) {
+				caretHome.append(caret);
+			}
 			finishHeadline();
 			return;
 		}
 		at++;
-		current.el.textContent = current.text.slice(0, at);
+		current.el.replaceChildren(current.text.slice(0, at), ...caret ? [caret] : [], untyped(current.text.slice(at)));
 		if (at >= current.text.length) {
+			current.el.replaceChildren(current.text);
 			part++;
 			at = 0;
 		}

@@ -61,6 +61,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
+      - name: Search and link preview tags
+        # Titles, descriptions, canonical addresses, Open Graph, JSON-LD, sitemap.xml, llms.txt and 404.html (gemini/site/check-seo.mts).
+        run: node gemini/site/check-seo.mts "$RUNNER_TEMP/site"
+
       - name: Accessibility and Lighthouse
         # Nothing goes live with an axe violation or a Lighthouse score under its floor (gemini/site/check-*.mts).
         run: |
