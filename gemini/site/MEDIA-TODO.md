@@ -22,6 +22,8 @@ Capture from the real app, against demo data, so no real account, ticket, name o
 | 2026-10-23 | A demo Jira, GitLab and SonarQube with made-up people and tickets, signed in as the demo's Sam Rivera | The feature pages' shots `home`, `index-page`, `files`, `docs/plus-menu`, `mr-review-diff` and `jira-comment`, and the `showcase-work` and `showcase-mr-review` clips |
 | 2026-10-19 | | Everything else |
 
+The clips' dates are also in `clipDates` in `build.mts`, which the site's video data uses. Keep the two in step.
+
 ## Not yet pictured anywhere
 
 - The Agents pane with five agents in different states, for the landing page's Agents section ("Agents side by side" tile).

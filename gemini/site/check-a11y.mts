@@ -34,7 +34,7 @@ if (!site) {
 const folder = (name: string) => existsSync(path.join(site, name)) ? readdirSync(path.join(site, name)).filter(file => file.endsWith('.html')).map(file => `${name}/${file}`) : [];
 // A moved page's stand-in only sends the visitor on, so it has nothing to check.
 const moved = (page: string) => readFileSync(path.join(site, page), 'utf8').includes('http-equiv="refresh"');
-const pages = named.length ? named : ['index.html', 'notes.html', '404.html', ...folder('features'), ...folder('docs')].filter(page => existsSync(path.join(site, page)) && !moved(page));
+const pages = named.length ? named : ['index.html', 'notes.html', '404.html', ...folder('notes'), ...folder('features'), ...folder('docs')].filter(page => existsSync(path.join(site, page)) && !moved(page));
 
 const candidates = [process.env.CHROMIUM, process.env.CHROME_PATH, '/opt/pw-browsers/chromium', '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'].filter(Boolean);
 const executablePath = candidates.find(p => existsSync(p));
