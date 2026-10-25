@@ -8,13 +8,14 @@
 
 import type { TranscriptItem } from '../src/acp/chatTranscript';
 import type { TextAppend } from '../src/acp/textDeltas';
+import { teamToolTitle } from '../src/acp/toolLinks';
 import { updateActivity } from './activity';
-import { indexOfItem, isNearBottom as nearBottom, withAppended, type ItemOf } from './chatLogic';
+import { format, indexOfItem, isNearBottom as nearBottom, withAppended, type ItemOf } from './chatLogic';
 import { el } from './dom';
 import { render, renderEmpty, renderNotice, setToolCallOpen, updateThought } from './items';
 import { updateOutline } from './promptNav';
 import { renderStreamingReply, streamingReplies, updateStreamingReply } from './streamingReply';
-import { autoOpened, elements, expanded, foldOpen, runOpen, state, thoughtTimes, ui } from './view';
+import { autoOpened, elements, expanded, foldOpen, runOpen, state, strings, thoughtTimes, ui } from './view';
 import { renderFoldHead, renderPinned, renderRunRow, type FoldState } from './work';
 import { foldGroups, runId, turnLayout, turnOf, turnStarts, workSummary, type FoldGroup } from './workFold';
 
@@ -206,12 +207,22 @@ function addOrUpdate(item: TranscriptItem, live: boolean): boolean {
 		// It is no longer the last item, so it is no longer "Thinking".
 		rerender(previous);
 	}
-	if (item.kind === 'permission' && !item.answer && live && !isEditing()) {
-		// Never while the user types: a Space or Return meant for the composer would answer it unseen.
-		elements.get(item.id)?.querySelector<HTMLButtonElement>('button.primary')?.focus();
+	if (item.kind === 'permission' && !item.answer && live) {
+		if (!announced.has(item.id)) {
+			// Said whether or not focus moves: someone typing the next prompt hears that the turn waits.
+			announced.add(item.id);
+			ui.announce.textContent = format(strings.permissionWaiting, teamToolTitle(item.title, strings.teamToolVerbs)?.title ?? item.title);
+		}
+		if (!isEditing()) {
+			// Never while the user types: a Space or Return meant for the composer would answer it unseen.
+			elements.get(item.id)?.querySelector<HTMLButtonElement>('button.primary')?.focus();
+		}
 	}
 	return item.kind === 'user';
 }
+
+/** Questions already announced, so an update to one is not announced again. */
+const announced = new Set<string>();
 
 /** Indexes of the prompts in `state.items`; each starts a turn. */
 let starts: number[] = [];

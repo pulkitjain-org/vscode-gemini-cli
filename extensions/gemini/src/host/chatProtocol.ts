@@ -396,6 +396,9 @@ export interface ChatStrings {
 	readonly model: string;
 	readonly noFiles: string;
 	readonly noCommands: string;
+	/** The composer's menus' names for screen readers: files to attach, and slash commands. */
+	readonly pickerFiles: string;
+	readonly pickerCommands: string;
 	/** Labels for a command from the agent and one from .gemini/commands. */
 	readonly commandFromCli: string;
 	readonly commandFromTeam: string;
@@ -419,6 +422,8 @@ export interface ChatStrings {
 	readonly permissionAnswered: string;
 	readonly permissionCancelled: string;
 	readonly permissionHint: string;
+	/** Announced to screen readers as a question comes, whether or not focus moves to it; `{0}` is its title. */
+	readonly permissionWaiting: string;
 	/** The pill on a confirm-class card, and the line under its effect; `{0}` is the tool's name. */
 	readonly confirmClass: string;
 	readonly confirmWhy: string;
