@@ -20,7 +20,7 @@ import { threadMemoryContext, threadPrompt, type ThreadRequest } from '../../acp
 import { linkCoordinatorRules, linkThreadRules, ruleEntries, ruleFolders } from '../../acp/projectRules';
 import { savedRepoCount, type ProjectRepo } from '../../acp/projectStore';
 import { foldersTrusted } from '../../acp/trustedFolders';
-import { AgentWorktree, branchExists, coordinatorHome, createWorktreeAt, currentBranch, folderSize, freeBranchName, freeFolder, pathExists, projectFolders, removeThreadFolder, removeWorktree, repositoryRoot, threadGuide, threadsHome, worktreeStatus, writeThreadGuide } from '../../acp/worktrees';
+import { AgentWorktree, branchExists, coordinatorHome, createWorktreeAt, currentBranch, folderSize, freeBranchName, freeFolder, inRepository, pathExists, projectFolders, removeThreadFolder, removeWorktree, repositoryRoot, threadGuide, threadsHome, worktreeStatus, writeThreadGuide } from '../../acp/worktrees';
 import type { AgentService } from '../agentService';
 import type { ChatActivity, ChatController } from '../chatController';
 import { configSection } from '../configuration';
@@ -170,7 +170,7 @@ export class AgentProjects {
 		if (record.repos.some(each => each.key === repo.key)) {
 			return `${repo.key}/ is already in your folder.`;
 		}
-		const made = await this.worktrees.inTurn(`threads:${coordinator}`, async () => {
+		const made = await inRepository(repo.folder, async () => {
 			if (await branchExists(repo.folder, branch)) {
 				throw new Error(`${repo.key} already has a branch named ${branch}.`);
 			}
@@ -417,8 +417,9 @@ export class AgentProjects {
 		if (!await this.ensureProjectTrust(workspace.folder, true)) {
 			throw new Error(vscode.l10n.t("A thread across repositories needs its folder trusted."));
 		}
-		// Threads started together take turns, so they can't pick the same branch or folder.
-		const made = await this.worktrees.inTurn(`threads:${coordinatorId}`, async () => {
+		// Threads started together take turns, so they can't pick the same branch or folder: the project's
+		// threads under its own key (their folders), and every repository's git lock (their branches).
+		const made = await this.worktrees.inTurn(`threads:${coordinatorId}`, () => inRepository(repos.map(repo => repo.folder), async () => {
 			const branch = await freeBranchName(repos.map(repo => repo.folder), named);
 			const folder = await freeFolder(threadsHome(coordinatorId), branch);
 			await fs.promises.mkdir(folder, { recursive: true });
@@ -430,7 +431,7 @@ export class AgentProjects {
 				throw failed.reason;
 			}
 			return { branch, folder, worktrees };
-		});
+		}));
 		const worktree: AgentWorktree = { folder: made.folder, cwd: made.folder, branch: made.branch, base: made.worktrees[0].base };
 		let agentId: string | undefined;
 		try {

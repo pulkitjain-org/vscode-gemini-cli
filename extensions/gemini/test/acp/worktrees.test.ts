@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { allThreadsHome, branchExists, commitAll, createWorktree, createWorktreeAt, createWorktreeFrom, currentBranch, folderInRepository, folderSize, freeBranchName, freeFolder, git, mainRepository, mergeBranch, pathExists, projectFolders, projectsHome, removeThreadFolder, removeWorktree, repositoryRoot, restoreWorktree, runWorktreeSetup, threadGuide, threadsHome, TurnQueue, unfinishedOperation, worktreeSetupCommand, worktreesHome, worktreeStatus, writeThreadGuide } from '../../src/acp/worktrees';
+import { allThreadsHome, branchExists, commitAll, createWorktree, createWorktreeAt, createWorktreeFrom, currentBranch, folderInRepository, folderSize, freeBranchName, freeFolder, git, gitNetworkProblem, inRepository, mainRepository, mergeBranch, pathExists, projectFolders, projectsHome, removeThreadFolder, removeWorktree, repositoryRoot, restoreWorktree, runWorktreeSetup, threadGuide, threadsHome, TurnQueue, unfinishedOperation, worktreeSetupCommand, worktreesHome, worktreeStatus, writeThreadGuide } from '../../src/acp/worktrees';
 
 let root: string;
 let repo: string;
@@ -257,5 +257,59 @@ describe('TurnQueue', () => {
 		await first;
 		await expect(failed).rejects.toThrow('no');
 		expect({ third: await third, order }).toEqual({ third: 3, order: ['b1', 'a1', 'a2', 'a3'] });
+	});
+});
+
+describe('one git lock per repository', () => {
+	it('queues writes to a repository by its main checkout, however it is named, and lets other repositories run', async () => {
+		const worktree = await createWorktree(repo, 'gemini/lock', '', home);
+		const other = path.join(root, 'other');
+		await fs.mkdir(other);
+		await git(other, ['init', '--quiet', '--initial-branch=main']);
+		const order: string[] = [];
+		let release!: () => void;
+		const first = inRepository(repo, () => new Promise<void>(resolve => { release = resolve; }).then(() => { order.push('repo'); }));
+		// Wait until the first task holds the lock.
+		await new Promise(resolve => setTimeout(resolve, 50));
+		const second = inRepository(worktree.folder, async () => { order.push('worktree'); });
+		await inRepository(other, async () => { order.push('other'); });
+		release();
+		await Promise.all([first, second]);
+		expect(order).toEqual(['other', 'repo', 'worktree']);
+		// Several at once, in a fixed order, so two callers never wait on each other.
+		expect(await Promise.all([inRepository([repo, other], async () => 1), inRepository([other, repo], async () => 2)])).toEqual([1, 2]);
+	});
+});
+
+describe('git that talks to a server', () => {
+	it('names the usual problems in plain words', () => {
+		expect([
+			'ssh: connect to host gitlab.acme.internal port 22: Operation timed out\nfatal: Could not read from remote repository.',
+			'fatal: unable to access \'https://gitlab.acme.internal/x.git/\': Could not resolve host: gitlab.acme.internal',
+			'git@gitlab.acme.internal: Permission denied (publickey).',
+			'fatal: could not read Username for \'https://gitlab.acme.internal\': terminal prompts disabled',
+			'error: failed to push some refs',
+		].map(gitNetworkProblem)).toEqual(['vpn', 'vpn', 'signIn', 'signIn', undefined]);
+	});
+
+	it('fails a fetch from a host that refuses in plain words, keeping the raw output', async () => {
+		const failure = await git(repo, ['fetch', '--quiet', 'ssh://nobody@127.0.0.1:1/shop.git', 'main']).catch((err: unknown) => err as { message: string; stderr: string; problem?: string });
+		expect({ message: failure.message, problem: failure.problem }).toEqual({ message: 'Git couldn\'t reach the server. Check your VPN.', problem: 'vpn' });
+		expect(failure.stderr).toMatch(/127\.0\.0\.1/);
+	});
+
+	it('leaves an ssh the user set alone', async () => {
+		const saved = process.env.GIT_SSH_COMMAND;
+		process.env.GIT_SSH_COMMAND = 'sh -c "echo own-ssh >&2; exit 1" --';
+		try {
+			const failure = await git(repo, ['fetch', '--quiet', 'ssh://nobody@gitlab.invalid/shop.git', 'main']).catch((err: unknown) => err as { stderr: string });
+			expect(failure.stderr).toContain('own-ssh');
+		} finally {
+			if (saved === undefined) {
+				delete process.env.GIT_SSH_COMMAND;
+			} else {
+				process.env.GIT_SSH_COMMAND = saved;
+			}
+		}
 	});
 });

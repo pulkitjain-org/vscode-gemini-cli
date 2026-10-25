@@ -14,7 +14,7 @@ import * as vscode from 'vscode';
 import type { AgentChanges } from '../../acp/agentChanges';
 import type { AgentRecord, AgentsModel } from '../../acp/agents';
 import { errorMessage } from '../../acp/errors';
-import { AgentWorktree, commitAll, currentBranch, mergeBranch, repositoryRoot, worktreeStatus } from '../../acp/worktrees';
+import { AgentWorktree, commitAll, currentBranch, inRepository, mergeBranch, repositoryRoot, worktreeStatus } from '../../acp/worktrees';
 import type { ChatActivity } from '../chatController';
 import { tildify } from '../displayText';
 
@@ -190,12 +190,15 @@ export class AgentMerge {
 			if (stillWorking()) {
 				return false;
 			}
-			if (status.uncommitted) {
-				await commitAll(worktree.folder, record.title);
-				// A thread in several repositories keeps the others' changes.
-				live?.changes.clear(record.repos?.length ? worktree.folder : undefined);
-			}
-			const result = await mergeBranch(repository, worktree.branch);
+			// The commit and the merge take a turn of the repository's git lock, as worktree adds and pushes do.
+			const result = await inRepository(repository, async () => {
+				if (status.uncommitted) {
+					await commitAll(worktree.folder, record.title);
+					// A thread in several repositories keeps the others' changes.
+					live?.changes.clear(record.repos?.length ? worktree.folder : undefined);
+				}
+				return mergeBranch(repository, worktree.branch);
+			});
 			if (result.kind === 'conflicts') {
 				const open = vscode.l10n.t("Open Source Control");
 				const message = result.files.length === 1
