@@ -1,6 +1,6 @@
 # ADR 0009: Desktop only, no server component
 
-**Status:** accepted: a product constraint, recorded so designs never assume otherwise.
+**Status:** accepted on 2026-10-18. It is a product constraint, recorded so designs never assume otherwise.
 
 ## Context
 
@@ -8,12 +8,12 @@ GeminiCode is a Mac app. When the app quits or the laptop restarts, the extensio
 
 ## Decision
 
-- Nothing runs or continues while the app is closed. Work in a turn that was running is lost and said so; it is never replayed on the user's behalf.
-- All state is on the Mac: agent records, transcripts, checkpoints, team snapshots and the audit log in the user's Library; tokens in the keychain; worktrees under `~/.geminicode`.
+- Nothing runs or continues while the app is closed. Work in a turn that was running is lost, and the app says so. It is never replayed on the user's behalf.
+- All state is on the Mac. Agent records, transcripts, checkpoints, team snapshots and the audit log are in the user's Library, tokens are in the keychain, and worktrees are under `~/.geminicode`.
 - Every flow that spans a model turn or a remote write keeps a record on disk at each step and registers a serializer, so a restart reopens it where it stopped, and Home lists what is unfinished.
 - A write records its intent before the call and its result after. After a restart, an intent without a result is shown, and the flow re-checks the remote before redoing anything.
-- A restart never answers a permission request or reuses a session approval; both end with the process.
-- Measurement, benchmarks and gates that need a seat run from a developer's Mac by a command; CI runs only what needs no sign-in.
+- A restart never answers a permission request or reuses a session approval. Both end with the process.
+- Measurement, benchmarks and gates that need a seat run from a developer's Mac, by a command. CI runs only what needs no sign-in.
 
 ## Consequences
 

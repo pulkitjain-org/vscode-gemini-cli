@@ -2,115 +2,52 @@
 
 GeminiCode is a fork of VS Code (Code - OSS) with the [Gemini CLI](https://github.com/google-gemini/gemini-cli) built in as its coding agent. It runs the official `gemini` CLI over the [Agent Client Protocol](https://agentclientprotocol.com), so you get the CLI's agent, sign-in and Gemini Code Assist license inside a full editor.
 
-The repository's top-level README, SECURITY and AGENTS files point here. CONTRIBUTING.md and the `.github` agent instructions are upstream's and stay unchanged, so upstream merges stay clean. This folder is where the fork's own docs live:
-
-- [docs/guide/](docs/guide/): the user docs, published as the [GeminiCode docs](https://pulkitjain-org.github.io/vscode-gemini-cli/docs/). Every feature and how to use it: agents, chat, review, Projects, the browser, team tools, settings, shortcuts and troubleshooting.
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how GeminiCode works and why, including the security model and admin policies.
-- [docs/PROJECTS.md](docs/PROJECTS.md): how Projects work: the coordinator and its threads, how prompts move between them, and what drives the coordinator's decisions.
-- [docs/FINDINGS.md](docs/FINDINGS.md): Gemini CLI behaviour and measurements the design relies on.
-- [docs/RELEASING.md](docs/RELEASING.md): versions, cutting a release, the download page, and the Apple signing setup.
-- [docs/ROADMAP.md](docs/ROADMAP.md): open work and risks.
-- [docs/adr/](docs/adr/): the decisions that shape the fork, one record each.
-- [bench/](bench/README.md): the benchmark's tasks and results. [pilot/](pilot/README.md): the pilot's admin profile.
-- [branding/](branding/): icon sources.
-- [site/](site/): the generator (`build.mts`) for the download page and the docs, which the Pages workflow runs.
-- [patches/](patches/) and [upstream.json](upstream.json): the fork's edits to upstream files, as a patch series over the pinned upstream tag.
-- [scripts/upstream-series.sh](scripts/upstream-series.sh): lists, regenerates, applies and checks the patch series.
-- [scripts/list-fork-touches.sh](scripts/list-fork-touches.sh): lists every `GEMINI-FORK` marker in upstream files.
-- [scripts/notarize.sh](scripts/notarize.sh): sends a signed build to Apple's notary service, for the release workflow.
-- [scripts/make-icons.sh](scripts/make-icons.sh): builds the app icon from [branding/](branding/README.md): the layered macOS 26 icon catalog, the classic `.icns` and the workbench's `code-icon.svg`.
-
-The product code is in [`../extensions/gemini/`](../extensions/gemini/).
-
-## Features
-
-- **Agents and Editor modes.** Agents mode (the default) puts the agent list on the left, the chat in the middle and its Changes on the right, with each agent as a tab in the title bar. Editor mode is the classic layout, with Changes under the Agents pane. Switch with the Agents | Editor switch or ⌥⌘M; every pane is a normal, resizable VS Code view or editor group.
-- **Agent Home.** Describe a task and press Return to start an agent on it, optionally on its own branch, and see each agent's status, changes and next step as a card.
-- **Agents pane.** Run several agents side by side. Each one opens as a tab with its own chat, keeps to the folder it works in (the open folder or any folder you add), and opens its files in a group of its own beside the chat. Each row shows a status dot (a spinner while it works, amber when it waits for you, green when done, red when something went wrong, grey otherwise) and one short note, such as how long it has worked or the lines it added; point at it for the line counts and branch. Rename, stop or remove an agent from its context menu.
-- **Projects.** A project chat whose coordinator splits larger work into threads, each an agent on its own branch, and passes your follow-ups to them. Threads show as cards you can open, merge back, review, fork or undo. On by default; `gemini.projects.enabled` turns it off.
-- **Ask before acting.** Permission requests show the agent's own options, such as Allow, Allow for this session and Reject. Proposed edits open in a diff editor first.
-- **Edits through the editor.** Agent edits can be undone, and the agent reads your unsaved changes. The agent cannot read secret files such as `.env` and private keys, or git-ignored files, including through a symbolic link.
-- **Steer or queue while it works.** Keep typing while an agent works: Return sends the message now (the chat stops the turn between steps and the agent carries on with it), ⌘Return queues it for after the turn.
-- **Fork Agent.** Start a new agent from another agent's conversation, with its whole session, a compacted copy or only the conversation, on a new branch off the agent's (with its uncommitted changes) or in the same folder. **Fork** at the end of a reply forks from that point. Forks are listed under their agent and merge back into its branch or yours. See [the guide](docs/guide/agents.md#fork-an-agent).
-- **Compact.** `/compact` or the usage popover summarizes the older work and moves the chat to a smaller session that stays compacted when reopened, with **Undo** back to the full session. See [the guide](docs/guide/chat.md#long-conversations).
-- **Enhance prompt.** Write what you want in plain words and choose **Enhance prompt** (⌥⌘E): Gemini rewrites it as a precise prompt for you to review, with **Revert** to undo.
-- **Workspace index.** Agents find code in one step instead of searching file by file: each workspace keeps a local index (kept up to date as files and branches change), and agents get `code_search`, `find_symbol`, `related_files` and `repo_map` over it, plus `docs_search` over documentation you attach from the web. Manage it from **Index** on Home. See [the guide](docs/guide/agents.md#workspace-index-and-docs).
-- **Context per model call.** Project Helpers measures what every model call sends before your prompt (the CLI's own prompt, your rules files, each MCP server's tools) and suggests what to trim. See [the guide](docs/guide/helpers.md#context-per-model-call).
-- **Context.** Type `@` to attach workspace files. Press <kbd>⌘L</kbd> to add the editor selection. You can also attach or drop files and images from anywhere.
-- **Changes.** See every file the agent in front has changed, one diff at a time or all together with **Open All Changes**. **Clear List** empties it.
-- **Branches and commits.** The branch under each chat's composer opens a list in the chat to switch or create a branch. In an agent's chat, **Create Branch & Commit** commits just the files that agent changed to a new branch, and warns first if other files are staged.
-- **GeminiCode Dark and Light.** Calm, functional themes with a touch of glass: soft greys, panels as cards whose top edge catches the light, glass controls in the title bar with an Agents | Editor switch that slides, opaque pop-ups with a soft sheen, one blue accent with graphite selections, and the Gemini colours only for Gemini's own moments. Nothing blurs, so the look costs no performance. The model, branch and folder menus open in the chat, not as system menus. GeminiCode also defaults to the view icons at the top of the side bar, pill-shaped tabs, and no minimap or breadcrumbs; change any of these in Settings.
-- **Agent browser.** The globe in the title bar opens GeminiCode's browser. Agents can open and use pages in it, and **Let Gemini Use This Page** hands one of your own tabs to an agent.
-- **Team tools.** Connect Jira, GitLab, SonarQube, Snyk and Figma with your own account (tokens stay in the macOS keychain). Home lists your tickets and merge requests with their pipelines and approvals. Start an agent from a ticket, open its merge request, fix the pipeline and review comments, and merge once GitLab's checks pass. Comment on tickets in Markdown with @mentions and attachments. Every write is recorded in an audit log on your Mac. See [the guide](docs/guide/team-tools.md).
-- **Merge request review.** Gemini reviews a merge request against its ticket and drafts comments; you add your own on any line or range in the diff, reply to and resolve the merge request's threads, attach suggested changes, then post the whole review, approve or request changes. The draft is saved as you go and reopens from Home.
-- **Terminals.** A reply's shell commands have **Run** beside **Copy**: the command runs in the agent's own terminal, in its folder, and the block shows how it ended, with **Send Output to Gemini** when it fails. Commands that delete or throw away work, force-push, run as root or write outside the folder ask first. **Open Terminal** opens an agent's terminal, **Send to Gemini** and **Send Last Command to Gemini** attach a terminal's output to a chat, and ⌘I in a terminal asks Gemini for a command. See [the guide](docs/guide/agents.md#terminals).
-- **Follow the agent.** A switch in the composer's **+** menu opens each file the agent reads or edits as it works, and names the file it opened last under the composer with a button to close it.
-- **Keep the Mac awake.** While any agent works, the Mac doesn't go to sleep.
-- **Replies.** Code is coloured like the editor, math is typeset, and the composers check spelling and preview your Markdown.
-- **Long chats.** Jump between your prompts with ⌥⌘↑ and ⌥⌘↓, return to the newest message with **Latest**, or open the whole chat as Markdown.
-- **Modes and models.** Pick an approval mode and a model from the composer. The lists come from the agent. The model list matches the terminal's `/model`, and the model you picked last is used for new and reopened agents too.
-- **Composer.** The **+** menu holds the approval mode, files, `@` context, Follow the agent, the model, usage and the slash commands, so the composer shows only the input, its Write and Preview tabs, the model and Send. A mode other than Default shows as a chip beside **+**.
-- **Usage and quota.** The ring under the composer shows how full the chat's context window is. Click it for today's quota per model for your account, and the tokens each model used in the chat.
-- **Conversations persist.** Agents keep their conversation across reloads and restarts, and resume their CLI session when the CLI supports it.
-- **Managed CLI.** GeminiCode ships with a tested Gemini CLI, and can install, update and switch between newer versions in its own storage, without touching your system.
-- **Update notice.** Once a day GeminiCode checks its download page. When a newer version is out it says so, with **Download** and **Release Notes** buttons; it downloads nothing on its own.
-- **Admin policy.** Organisations can lock the CLI path or version, remove Auto Edit or YOLO, turn off shell commands, and turn off the CLI update offers and the update notice.
+This folder holds everything the fork adds besides its product code, which lives in [`../extensions/gemini/`](../extensions/gemini/). Start here if you want to build GeminiCode, change it, or understand how it works. If you only want to use it, read the [user docs](https://pulkitjain-org.github.io/vscode-gemini-cli/docs/) instead.
 
 > [!IMPORTANT]
 > The agent is not sandboxed. Its shell and search tools run with your permissions. **Default** mode asks before every change and command; use **Auto Edit** and **YOLO** only in folders you trust.
 
-## Getting started
+## What GeminiCode does
 
-Download GeminiCode for Mac (Apple silicon, macOS 26 or later) from the [download page](https://pulkitjain-org.github.io/vscode-gemini-cli/), open the `.dmg` and drag GeminiCode to Applications.
+In a sentence each, with the guide page that covers it:
 
-You need a Google account with a **Gemini Code Assist** license and a **Google Cloud project** to bill usage to. Your organisation may set the project for you.
+- **Agents.** Several agents side by side, each in its own tab and folder, optionally on a branch of its own, and forkable when the work splits. [Agents](docs/guide/agents.md)
+- **Chat.** A composer with context, slash commands, Enhance prompt and Plan mode; send or queue messages while an agent works, react to replies with an emoji, and compact long chats. [Chat and prompting](docs/guide/chat.md)
+- **Review.** Approval modes, permission cards, Keep and Undo in the file, Rewind, inline edit and Review My Changes. [Review and safety](docs/guide/review.md)
+- **Terminal.** Each agent has a terminal; a reply's shell commands run there with one click, and terminal output goes back to Gemini. [Terminal](docs/guide/terminal.md)
+- **Projects.** A coordinator that splits larger work into threads, each an agent on its own branch, that you merge back, review or undo. [Projects](docs/guide/projects.md)
+- **Browser.** A browser agents can use, with Add to Gemini and notes on the page. [Browser](docs/guide/browser.md)
+- **Workspace index.** A local index of each workspace, and of attached docs, that agents search in one step. [Workspace index and docs](docs/guide/agents.md#workspace-index-and-docs)
+- **Team tools.** Jira, GitLab, SonarQube, Snyk and Figma with your own account, from ticket to merged merge request, and merge request reviews. [Team tools](docs/guide/team-tools.md)
+- **Setup and policy.** A managed Gemini CLI, Project Helpers for MCP servers, skills and rules, and settings an administrator can lock. [Getting started](docs/guide/getting-started.md), [Project Helpers](docs/guide/helpers.md), [Settings](docs/guide/settings.md)
 
-GeminiCode opens on Agent Home. **Gemini: Get Started** opens the **Get Started with GeminiCode** walkthrough, which walks through five steps:
+## What is in this folder
 
-1. **Gemini CLI.** GeminiCode comes with a tested Gemini CLI, so there is nothing to install. It uses `gemini.cliPath`, then a copy you installed from GeminiCode, then the bundled copy, then `gemini` on your `PATH`.
-2. **Sign in.** Run **Gemini: Sign In with Google**. If your account needs a one-time step that the editor cannot show, run **Gemini: Complete Setup in Terminal**.
-3. **Project.** Run **Gemini: Set Google Cloud Project ID**. Enter the project ID, not the project number.
-4. **Make it yours.** Pick a theme, a code font and file icons.
-5. **First agent.** Choose **New Agent** in the Agents pane.
+Documentation:
 
-The **Gemini** status bar item shows the agent's state. Hover over it to see the account, project and CLI version, and where that CLI came from. Click it to start or restart the agent, change the project or CLI version, sign in or finish setup in a terminal, open the chat, or open the log.
+- [docs/guide/](docs/guide/): the user docs, one page per area, published as the [GeminiCode docs](https://pulkitjain-org.github.io/vscode-gemini-cli/docs/). They describe what is on `main`; update them in the same pull request as the feature.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how GeminiCode works and why, including the security model, admin policies and the [design rules](docs/ARCHITECTURE.md#design-rules).
+- [docs/PROJECTS.md](docs/PROJECTS.md): how Projects work inside: the coordinator and its threads, how prompts move between them, and what drives the coordinator's decisions.
+- [docs/FINDINGS.md](docs/FINDINGS.md): Gemini CLI behaviour and measurements the design relies on.
+- [docs/RELEASING.md](docs/RELEASING.md): versions, cutting a release, the download page, and Apple signing.
+- [docs/ROADMAP.md](docs/ROADMAP.md): open work and risks.
+- [docs/adr/](docs/adr/): the decisions that shape the fork, one record each.
 
-## Settings
+Tools and assets:
 
-| Setting | What it does |
-| --- | --- |
-| `gemini.projectId` | Google Cloud project ID to bill. A workspace value overrides a user value. |
-| `gemini.cliPath` | Path to a `gemini` executable or `bundle/gemini.js`. Overrides GeminiCode's own copies. |
-| `gemini.cli.version` | Which of GeminiCode's own CLI copies to run. Empty means the newest. |
-| `gemini.cli.checkForUpdates` | Offer newer CLI releases, at most once a day. |
-| `gemini.app.checkForUpdates` | Say when a newer GeminiCode is out, checking every few hours. **Check for Updates…** checks now. |
-| `gemini.approval.allowAutoEdit` | Offer the Auto Edit mode. |
-| `gemini.approval.allowYolo` | Offer the YOLO mode, which runs everything without asking. Off by default. |
-| `gemini.tools.allowShell` | Let the agent run shell commands. Each command still asks first. |
-| `gemini.browser.enabled` | Let agents open and use a page in the GeminiCode browser. On by default. |
-| `gemini.browser.allowOtherSites` | Let agents open sites other than local ones, after asking. On by default. |
-| `gemini.browser.allowedOrigins` | The only sites agents may open, such as `https://*.example.com`. Empty allows every site. |
-| `gemini.browser.keepSignIns` | Keep agents' browser cookies and storage between sessions, per workspace, so they stay signed in. Off by default. |
-| `gemini.usageMeter.enabled` | Show today's quota in the Gemini status bar item and the chat's Usage and quota popover. On by default. |
-| `gemini.agent.startEarly` | Start the agent a few seconds after the window opens, so the first chat doesn't wait for it. Only when GeminiCode was set up before and the sign-in is saved. On by default. |
-| `gemini.keepAwake` | Keep the Mac awake while any agent works. On by default. |
-| `gemini.chat.followAgent` | Open each file the agent reads or edits as it works. The switch in the composer's + menu toggles it. Off by default. |
-| `gemini.agents.ownBranch` | Start every new agent on its own branch, in its own worktree. Off by default. |
-| `gemini.agents.worktreeSetup` | A command run in each new agent branch's folder before the agent starts, such as `npm ci`. |
-| `gemini.agents.allWorkspaceFolders` | Let every agent read and edit all folders of a multi-root window, not only its own. Off by default. |
-| `gemini.projects.enabled` | Projects. On by default. |
-| `gemini.inlineEdit.enabled` | Inline edit, Enhance prompt's quick rewrite and commit messages, which send the code or diff straight to a fast Gemini model. On by default. |
-| `gemini.inlineEdit.model` | The model those use: the newest Flash (the default), the chat's model, or one you name. |
-| `gemini.chat.spellCheck` | Check spelling in the chat and Agent Home composers. On by default. |
-| `gemini.chat.foldFinishedWork` | Fold each finished turn's thoughts and steps under one "Worked for" line in the chat. On by default; off shows every step as its own row. |
-| `gemini.notifications.enabled` | Notify you, and badge the Dock, when an agent finishes or needs you while GeminiCode is in the background. On by default. |
-| `gemini.layout.showAgentsInNewWorkspaces` | Show the Gemini side bar rather than Explorer the first time a workspace opens in Editor mode. |
-| `gemini.team.runTeamServers` | Run the tools' own MCP servers for the team tools' calls: the team's Jira and GitLab servers and SonarQube's in Docker at pinned versions, and Snyk's from the Snyk CLI. Checks then also analyses changed files with SonarQube on this Mac. Off by default; **Take Over Both Servers** in Connections turns it on. |
-| `gemini.tools.denyEnvironmentCommands` | Refuse the shell commands that print the environment (`env`, `printenv`, and `set` or `export` alone), which could show an agent a token. On by default. |
-| `gemini.mcp.allowedServers` | The only MCP servers agents may use, besides GeminiCode's own. Empty by default, which leaves it to the CLI's `mcp.allowed`, with GeminiCode's own servers always added. |
-| `gemini.pilot.record` | Count the pilot's measures (launches, waits, permission cards, Undo and Rewind, team tool errors), with times and no text, for **Gemini: Export Pilot Data**. Off by default. |
+- [site/](site/): the generator for the download page, the feature pages and the docs site (`build.mts`), which the Pages workflow runs.
+- [bench/](bench/README.md): the benchmark's tasks and results.
+- [pilot/](pilot/README.md): the pilot's admin profile.
+- [branding/](branding/README.md): icon sources.
+- [patches/](patches/) and [upstream.json](upstream.json): the fork's edits to upstream files, as a patch series over the pinned upstream tag.
+- [scripts/](scripts/):
+  - `upstream-series.sh` lists, regenerates, applies and checks the patch series.
+  - `list-fork-touches.sh` lists every `GEMINI-FORK` marker in upstream files.
+  - `notarize.sh` sends a signed build to Apple's notary service, for the release workflow.
+  - `make-icons.sh` builds the app icon from `branding/`: the layered macOS 26 icon catalog, the classic `.icns` and the workbench's `code-icon.svg`.
+  - `git-hooks/` holds the commit and push hooks; install them once per clone with `git-hooks/install.sh`.
 
-Changing the CLI path or version, the project, or an approval or shell setting restarts the agent so the change applies. Admins can lock the CLI, update, approval, shell, inline edit, usage and browser settings through policy; see [Security model](docs/ARCHITECTURE.md#security-model).
+The repository's top-level README, SECURITY and AGENTS files point here. CONTRIBUTING.md and the `.github` agent instructions are upstream's and stay unchanged, so upstream merges stay clean.
 
 ## Issues and security
 
@@ -118,7 +55,9 @@ Report bugs in [GitHub Issues](https://github.com/pulkitjain-org/vscode-gemini-c
 
 ## Contributing
 
-Put new code in `extensions/gemini/`, follow the [design rules](docs/ARCHITECTURE.md#design-rules), and keep `src/acp` free of `vscode` imports. If you change the messages between the chat view and its webview (`src/host/chatProtocol.ts`), bump `chatProtocolVersion`. Before a pull request, run the checks under [Developing](#developing) and `npx eslint --max-warnings 0 extensions/gemini` from the repository root.
+Put new code in `extensions/gemini/` and follow the [design rules](docs/ARCHITECTURE.md#design-rules). Keep `src/acp` free of `vscode` imports, so its logic can be unit tested. If you change the messages between the chat view and its webview (`src/host/chatProtocol.ts`), bump `chatProtocolVersion`.
+
+Commits are authored as the repository owner, branches start with `task/`, `feature/` or `bugfix/`, and nothing names an AI tool; [AGENTS.md](../AGENTS.md#commits-branches-and-pull-requests) has the full rules, and the hooks in `scripts/git-hooks/` enforce them.
 
 ## Developing
 
@@ -129,20 +68,23 @@ npm run watch            # keep running; rebuilds the workbench, extensions and 
 ./scripts/code.sh        # launches the branded dev build
 ```
 
-To run the dev build on the bundled CLI, as a release does, run `npm run bundle-cli --prefix extensions/gemini` once. Without it the dev build uses an installed copy or `gemini` on your `PATH`.
+To run the dev build on the bundled CLI, as a release does, run `npm run bundle-cli --prefix extensions/gemini` once. Without it, the dev build uses a copy you installed from GeminiCode or `gemini` on your `PATH`.
 
-The Gemini extension on its own:
+Before a pull request, run the extension's checks:
 
 ```sh
 cd extensions/gemini
-npm test                 # Vitest unit tests
-npm run typecheck-tests
-npx tsc -p webview-src/tsconfig.json
+npx vitest run                                   # unit tests
+npx tsc -p tsconfig.json --noEmit                # the extension
+npx tsc -p webview-src/tsconfig.json --noEmit    # the webviews
+npx tsc -p tsconfig.test.json --noEmit           # the tests
 ```
+
+Then, from the repository root, lint the files you changed with `npm run eslint -- <files>`.
 
 The tests run against a scripted fake ACP agent. To also run the real-CLI tests (the `initialize` handshake and admin policy), set `GEMINI_CLI_PATH` to a Gemini CLI, either its `gemini` executable or its `bundle/gemini.js`.
 
-If the chat view warns that its script is out of date, the webview bundle in `media/` is older than the extension. Run `npm run gulp compile-extension-media`, or keep `npm run watch` running, then reload the window.
+`node esbuild.mts` and `node esbuild.webview.mts` in `extensions/gemini` rebuild `dist/` and `media/`. The size budgets in `test/perf/budgets.test.ts` read those files, so rebuild before trusting them. If the chat view warns that its script is out of date, the webview bundle in `media/` is older than the extension: run `npm run gulp compile-extension-media`, or keep `npm run watch` running, then reload the window.
 
 ## CI
 

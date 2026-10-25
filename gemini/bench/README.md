@@ -1,6 +1,6 @@
 # Benchmark
 
-A set of tasks drawn from the team's own closed Jira tickets, run against a release build of GeminiCode's agent path on a developer's Mac, under that developer's seat. It reports, per task and per release, whether the agent completed the task, how many tokens and requests it took, and how long.
+The benchmark is a set of tasks drawn from the team's own closed Jira tickets. It runs against a release build of GeminiCode's agent path on a developer's Mac, under that developer's seat, and reports per task and per release whether the agent completed the task, how many tokens and requests it took, and how long it took.
 
 Nothing here runs in hosted CI: hosted runners cannot sign in to Gemini Code Assist, and this project owns no always-on machine. Run it on release day, by hand, from the release build.
 
@@ -38,7 +38,13 @@ It keeps tickets whose merge request merged, changed between 20 and 400 lines, a
 
 ## Running
 
-From the release build: **Gemini: Run Benchmark...** in the Command Palette or the Gemini status menu. It uses `gemini/bench/tasks` when the window has this repository open, or asks for a tasks folder, then asks for the model and confirms the run. It starts the CLI the app runs, as the app starts it, and writes `<GeminiCode version>-<CLI version>-<model>.json` into `results/` beside the tasks folder. Cancel it from its notification; a cancelled run writes nothing.
+In the release build, run **Gemini: Run Benchmark...** from the Command Palette or the Gemini status menu.
+
+1. It uses `gemini/bench/tasks` when the window has this repository open, or asks for a tasks folder.
+2. It asks for the model and confirms the run.
+3. It starts the CLI the app runs, as the app starts it, and writes `<GeminiCode version>-<CLI version>-<model>.json` into `results/` beside the tasks folder.
+
+Cancel it from its notification. A cancelled run writes nothing.
 
 The same run as a script, for a CLI the app doesn't use:
 
@@ -47,9 +53,19 @@ node --experimental-transform-types extensions/gemini/scripts/bench-run.mts --cl
   --model gemini-3.8-flash --out gemini/bench/results/1.2.0-0.64.0.json
 ```
 
-For each task it clones the repository at `baseSha` into a temporary worktree, starts `gemini --acp` with your saved sign-in and the project ID you use, opens a session there in Auto Edit mode on the named model, sends the prompt, allows the agent's tool calls, and when the turn ends runs the grader. It records the tokens the CLI reports for the turn, the number of model calls, the time to the first text and to the end, and the grader's result. One task at a time; about 15 requests per task, so 30 tasks on two models fit in a day's Enterprise quota with room to work.
+For each task, the run:
 
-The results file is added to `results/` by pull request. On release day the release workflow opens an issue titled `Benchmark <version>` as the reminder. The docs site's **Benchmark** page shows every results file, newest release first, and is rebuilt when a results file is merged.
+1. clones the repository at `baseSha` into a temporary worktree;
+2. starts `gemini --acp` with your saved sign-in and the project ID you use;
+3. opens a session there in Auto Edit mode on the named model and sends the prompt;
+4. allows the agent's tool calls;
+5. runs the grader when the turn ends.
+
+It records the tokens the CLI reports for the turn, the number of model calls, the time to the first text and to the end, and the grader's result. Tasks run one at a time. A task takes about 15 requests, so 30 tasks on two models fit in a day's Enterprise quota with room left to work.
+
+Add the results files to `results/` by pull request. On release day the release workflow opens an issue titled `Benchmark <version>` as the reminder.
+
+The site has no Benchmark page. `gemini/site/bench.mts` can write the results files as a Markdown page (`benchmarkMarkdown`), but `build.mts` does not use it, and the Pages workflow does not run when a results file changes.
 
 ## Reading the results
 

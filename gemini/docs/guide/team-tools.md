@@ -63,15 +63,43 @@ Paste a Jira key or link, a GitLab merge request or issue link, or a Figma link 
 
 ## From ticket to merge request
 
-1. **Start Agent on a ticket** (on Home, or **Gemini: Start Agent on Jira Ticket**) starts an agent on its own branch named after the ticket. It reads the ticket and plans first, and offers to move the ticket to In Progress.
-2. **Run Checks** runs Snyk on dependencies and code, and SonarQube's new-code issues for the agent's branch, each finding with **Fix**, or **Fix All with This Agent**. **Run Checks on a Branch…** (on Home, or from the Command Palette) does the same for any branch before a merge request exists: the branch checked out here, an agent's, a local one or one on origin. A branch that isn't checked out gets a checkout of its own under `~/.geminicode/worktrees/<repository>/checks/`, with your `gemini.agents.worktreeSetup` command run in it once, and later runs reuse it; your own checkout never moves. SonarQube's gate comes from the server's last analysis of the branch, so it needs one push. With no agent on the branch, **Fix** starts one in that checkout with the findings as its first prompt.
-3. **Open Merge Request** (beside Merge back in Changes) opens a page for the merge request. **Merge into** is a searchable menu of the repository's branches: **Suggested** (the release branch matching the ticket's fix version, or the project's default), **Recently used here**, **Release branches** and **Other branches**. A target that is a feature branch, not `main`, `develop` or a release, is flagged with how many commits and files it is behind. Then the title, a description Gemini drafts against that target that you edit (pick another target and it offers to write it again), the files to attach, reviewers, and draft and delete-branch options. It pushes the branch, opens the merge request and offers to move the ticket. On an agent that is reviewing someone else's merge request, the button points to that merge request instead, since the agent's branch is only a local copy for the review.
-4. **The merge request panel** in Changes shows the pipeline (failed jobs with **Fix**), the SonarQube gate, Snyk and open review threads. **Fix Pipeline and N Comments** sends them to the agent.
-5. **Merge.** The same panel lists the checks GitLab applies to the merge request, read live: open and not a draft, the pipeline, each approval rule by name with who approved, threads resolved, no conflicts, and GitLab's own verdict. **Merge…** is on only when every line holds. It asks once more, naming the commit it read and whether the commits are squashed and the branch deleted (the project's settings), and GitLab checks again when it merges, so a push in between makes it refuse rather than merge something else. Afterwards it offers to move the ticket. **Gemini: Merge Merge Request…** does the same for the agent in front, and **Merge…** on Home for a merge request listed as ready.
+A ticket's whole journey can happen in GeminiCode:
 
-**Reassign…** on a ticket (on Home, or **Gemini: Reassign Jira Ticket…**) lists the people Jira lets take it, plus you and nobody.
+1. **Start an agent on the ticket.** **Start** on Home, or **Gemini: Start Agent on Jira Ticket**, starts an agent on its own branch named after the ticket. It reads the ticket and plans first, and offers to move the ticket to In Progress.
+2. **Run the checks.** **Run Checks** runs Snyk on the dependencies and code, and lists SonarQube's issues in new code on the agent's branch. Each finding has **Fix**, and **Fix All with This Agent** hands them all over.
+3. **Open the merge request.** **Open Merge Request**, beside Merge back in Changes, pushes the branch and opens the merge request.
+4. **Fix what comes back.** The merge request panel in Changes shows the pipeline, the quality gate and open review threads. **Fix Pipeline and N Comments** sends them to the agent.
+5. **Merge.** **Merge…** turns on when every one of GitLab's checks passes.
 
-**Move Ticket** shows the moves your Jira workflow allows, any field a move needs, and a comment Gemini drafts that you edit. **Log Time** records time spent, such as "1h 30m", on its own or with a move.
+### Checks on any branch
+
+**Run Checks on a Branch…**, on Home or in the Command Palette, runs the same checks on any branch before a merge request exists: the branch checked out here, an agent's, a local one or one on origin.
+
+A branch that isn't checked out gets a checkout of its own under `~/.geminicode/worktrees/<repository>/checks/`, with your `gemini.agents.worktreeSetup` command run in it once. Later runs reuse it, and your own checkout never moves. SonarQube's gate comes from the server's last analysis of the branch, so it needs one push first. With no agent on the branch, **Fix** starts one in that checkout, with the findings as its first prompt.
+
+### The Open Merge Request page
+
+**Merge into** is a searchable menu of the repository's branches, in four groups: **Suggested** (the release branch that matches the ticket's fix version, or the project's default), **Recently used here**, **Release branches** and **Other branches**. A target that is a feature branch, rather than `main`, `develop` or a release, is flagged with how many commits and files it is behind.
+
+Below it are the title, a description Gemini drafts against that target for you to edit (pick another target and it offers to write it again), the files to attach, reviewers, and the draft and delete-branch options. Opening the merge request pushes the branch, and then offers to move the ticket.
+
+An agent that is reviewing someone else's merge request works on a local copy of that branch, so its Open Merge Request button points to the merge request under review instead.
+
+### The merge request panel
+
+The panel in Changes shows the pipeline, with **Fix** on each failed job, the SonarQube gate, Snyk and the open review threads.
+
+It also lists the checks GitLab applies before a merge, read live: the merge request is open and not a draft, the pipeline, each approval rule by name with who approved, resolved threads, no conflicts, and GitLab's own verdict. **Merge…** is on only when every line holds.
+
+Merge asks once more, naming the commit it read and whether the commits are squashed and the branch deleted, as the project's settings say. GitLab checks again as it merges, so if someone pushes in between, GitLab refuses rather than merging something you didn't see. Afterwards it offers to move the ticket.
+
+**Gemini: Merge Merge Request…** does the same for the agent in front, and so does **Merge…** on Home for a merge request listed as ready.
+
+### Move, reassign and log time
+
+- **Move Ticket** shows the moves your Jira workflow allows, any field a move needs, and a comment Gemini drafts for you to edit.
+- **Log Time** records time spent, such as "1h 30m", on its own or with a move.
+- **Reassign…**, on Home or with **Gemini: Reassign Jira Ticket…**, lists the people Jira lets take the ticket, plus you and nobody.
 
 ## Comment on a ticket
 
@@ -111,9 +139,17 @@ Every write GeminiCode makes to Jira or GitLab for you is recorded on your Mac, 
 
 **Gemini: Open Audit Log** (also in the Gemini status bar menu, and behind **Audit: 14 actions today** at the right of the status bar) shows the log as a page: one row per write with the time, who asked (an agent or a button of yours), the action, its effect, how you answered, the id the tool gave back and the state. Pick a day, a tool, or only the intents without a result. A row with no result is a write that was running when GeminiCode last quit; it is highlighted, and Home lists it under **Unfinished**. Check the tool before doing it again, then **Mark as Checked**. **Export the Day…** writes the day as Markdown to your home folder, and **Open Folder** shows the files.
 
-If your repository's `.gemini/settings.json` runs the team's own Jira and GitLab servers (mcp-atlassian and gitlab-mcp), Connections shows a card for them. **Take Over Both Servers...** moves their tokens into the keychain, removes the two servers from the file, and runs the same servers in Docker behind GeminiCode's team tools, at pinned versions. Agents then see one set of Jira and GitLab tools, and an agent's shell can no longer read the tokens. The file is shared, so commit the change or ask whoever owns it. Without Docker, the team tools call Jira and GitLab directly. The same **Gemini › Team: Run Team Servers** setting also runs SonarQube's own server in Docker and Snyk's own server from your Snyk CLI; with SonarQube's, **Checks** adds a row that analyses the files your branch changed, on your Mac, before you push.
+## Your team's own servers
 
-If you are in the pilot, turn on the **Gemini › Pilot: Record** setting. GeminiCode then counts launches, waits, permission cards, Undo and Rewind, team tool errors and links that leave the app, with times and no text, on your Mac only. At the end of the pilot, run **Gemini: Export Pilot Data** and hand over the `geminicode-pilot` folder in your home folder.
+Some teams already run Jira and GitLab MCP servers (mcp-atlassian and gitlab-mcp) from the repository's `.gemini/settings.json`. When yours does, Connections shows a card for them, with **Take Over Both Servers...**. It:
+
+1. moves the servers' tokens into the keychain
+2. removes the two servers from the settings file
+3. runs the same servers in Docker, at pinned versions, behind GeminiCode's team tools
+
+Agents then see one set of Jira and GitLab tools, and an agent's shell can't read the tokens. The settings file is shared, so commit the change, or ask whoever owns the file. Without Docker, the team tools call Jira and GitLab directly.
+
+The same setting, **Gemini › Team: Run Team Servers** (`gemini.team.runTeamServers`), also runs SonarQube's own server in Docker and Snyk's own server from your Snyk CLI. With SonarQube's server running, **Checks** adds a row that analyses the files your branch changed, on your Mac, before you push.
 
 ## What agents get
 

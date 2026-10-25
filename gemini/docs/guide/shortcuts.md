@@ -35,9 +35,15 @@ Every GeminiCode shortcut in one place. ⌘ is Command, ⌥ is Option, ⇧ is Sh
 
 | Keys | What it does |
 | --- | --- |
-| <kbd>⌘I</kbd> | Inline edit; in a terminal, ask Gemini for a command |
+| <kbd>⌘I</kbd> | Inline edit: say what to change in the selection |
 | <kbd>⌘↩</kbd> / <kbd>⌘⌫</kbd> | Keep or undo the agent's changes to the file you're in |
 | <kbd>⌥]</kbd> / <kbd>⌥[</kbd> | Next or previous agent change in the file |
+
+## Terminal
+
+| Keys | What it does |
+| --- | --- |
+| <kbd>⌘I</kbd> (terminal) | Ask Gemini for a command, shown before it runs |
 
 ## Browser
 

@@ -1,4 +1,4 @@
-# Project Helpers and settings
+# Project Helpers
 
 **Project Helpers** shows what every agent loads when it starts: MCP servers, skills, hooks, extensions, memory and rules, each with a switch, and how many tokens they add to every model call. It shares them with the `gemini` command in your terminal.
 
@@ -58,38 +58,4 @@ Four of the CLI's own settings, in your personal `~/.gemini/settings.json`:
 
 A project's `.gemini/settings.json` can still override them, as in the CLI. A settings file with comments is never rewritten: GeminiCode opens it at the right place so you can make the change yourself.
 
-## GeminiCode settings
-
-| Setting | What it does |
-| --- | --- |
-| `gemini.projectId` | Google Cloud project ID to bill. A workspace value overrides a user value. |
-| `gemini.cliPath` | Path to a `gemini` executable or `bundle/gemini.js`. Overrides GeminiCode's own copies. |
-| `gemini.cli.version` | Which of GeminiCode's own CLI copies to run. Empty means the newest. |
-| `gemini.cli.checkForUpdates` | Offer newer CLI releases, at most once a day. |
-| `gemini.app.checkForUpdates` | Say when a newer GeminiCode is out. |
-| `gemini.approval.allowAutoEdit` | Offer the Auto Edit mode. |
-| `gemini.approval.allowYolo` | Offer the YOLO mode. Off by default. |
-| `gemini.tools.allowShell` | Let the agent run shell commands. Each command still asks first. |
-| `gemini.tools.denyEnvironmentCommands` | Refuse the commands that print the environment (`env`, `printenv`, and `set` or `export` alone), where a token could be. On by default; an agent that needs one variable can `echo` it. |
-| `gemini.mcp.allowedServers` | The only MCP servers agents may use, besides GeminiCode's own. Usually set by your organisation. |
-| `gemini.agents.ownBranch` | Start every new agent on its own branch. Off by default. |
-| `gemini.agents.worktreeSetup` | A command run in each new agent branch's folder before the agent starts, such as `npm ci`. |
-| `gemini.agents.allWorkspaceFolders` | Let every agent use all folders of a multi-folder window. Off by default. |
-| `gemini.projects.enabled` | Projects. On by default. |
-| `gemini.home.openOnStartup` | Open Home each time GeminiCode starts. On by default. |
-| `gemini.chat.followAgent` | Open each file the agent reads or edits. Off by default. |
-| `gemini.chat.foldFinishedWork` | Fold each finished turn under one "Worked for" line. On by default. |
-| `gemini.chat.spellCheck` | Check spelling in the composers. On by default. |
-| `gemini.inlineEdit.enabled` | Inline edit, Enhance prompt's quick rewrite and commit messages. On by default. |
-| `gemini.inlineEdit.model` | The model those use: the newest Flash, the chat's model, or one you name. |
-| `gemini.browser.enabled` | Let agents use the browser. On by default. |
-| `gemini.browser.allowOtherSites` | Let agents open sites other than local ones, after asking. On by default. |
-| `gemini.browser.allowedOrigins` | The only sites agents may open. Empty allows every site. |
-| `gemini.browser.keepSignIns` | Keep agents' browser sign-ins per workspace. Off by default. |
-| `gemini.index.enabled` | Keep an index of each workspace and give agents the index tools. On by default. See [Index settings](agents.md#index-settings) for the other `gemini.index.*` and `gemini.docs.*` settings. |
-| `gemini.usageMeter.enabled` | Show today's quota. On by default. |
-| `gemini.notifications.enabled` | Notify you and badge the Dock when an agent finishes or needs you. On by default. |
-| `gemini.keepAwake` | Keep the Mac awake while any agent works. On by default. |
-| `gemini.team.openMergeRequestsIn` | Open merge requests in GeminiCode's browser or your default browser. |
-
-Changing the CLI path or version, the project, or an approval or shell setting restarts the agent so the change applies; open agents resume their sessions. Admins can lock the CLI, update, approval, shell, inline edit, usage, browser, index and docs settings through policy.
+GeminiCode's own settings are listed in [Settings](settings.md).

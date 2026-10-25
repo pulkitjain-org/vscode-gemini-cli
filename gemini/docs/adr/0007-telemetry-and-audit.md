@@ -1,6 +1,6 @@
 # ADR 0007: Telemetry is the CLI's OpenTelemetry export; audit is an append-only local log
 
-**Status:** accepted.
+**Status:** accepted on 2026-10-18.
 
 ## Context
 
@@ -8,8 +8,8 @@ The pinned CLI emits OpenTelemetry metrics and events (`gemini_cli.api.request.l
 
 ## Decision
 
-- Performance traces are the CLI's export to a local file, turned on by a command for one agent restart, with `logPrompts` off. No collector and no cloud target without a separate decision.
-- The client audit log is append-only JSONL per day in global storage: time, agent, caller, tool, argument hash, approved-text hash, permission outcome, remote id. It is readable from the app and exported for the pilot by hand.
+- Performance traces are the CLI's export to a local file, turned on by a command for one agent restart, with `logPrompts` off. A collector or a cloud target needs a separate decision.
+- The client audit log is append-only JSONL, one file per day in global storage. Each record holds the time, agent, caller, tool, argument hash, approved-text hash, permission outcome and remote id. It is readable from the app, and exported by hand for the pilot.
 - No data leaves the Mac on its own.
 
 ## Consequences
