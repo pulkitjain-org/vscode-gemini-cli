@@ -25,7 +25,7 @@
 
 import type { ItemUpdate } from '../src/acp/textDeltas';
 import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
-import { coalesceUpdates, format } from './chatLogic';
+import { format, HeldUpdates } from './chatLogic';
 import { addAttachments, setSharedPage } from './attachmentChips';
 import { attachToolRef, setToolRefContext, toolRefResolved, watchToolRefs } from './toolChips';
 import { setBusy, setFollow, setFollowed, setGit, setSettings, setStatus } from './composer';
@@ -58,9 +58,10 @@ initReactionBar();
 /**
  * Updates that came while the view was hidden. An agent's tab keeps its view
  * when hidden, and rendering every streamed chunk there would cost as much as
- * in the tab in front; they are rendered together when it shows.
+ * in the tab in front; they are merged as they come, and rendered together
+ * when it shows.
  */
-let hiddenUpdates: ItemUpdate[] = [];
+const hiddenUpdates = new HeldUpdates();
 /** The host says the view's tab or pane is out of sight; `document.hidden` covers a hidden window. */
 let tabHidden = false;
 
@@ -71,10 +72,8 @@ function isHidden(): boolean {
 /** Nothing animates while the view is hidden, and updates kept meanwhile render once it shows. */
 function onVisibility(): void {
 	document.body.classList.toggle('paused', isHidden());
-	if (!isHidden() && hiddenUpdates.length) {
-		const updates = coalesceUpdates(hiddenUpdates);
-		hiddenUpdates = [];
-		applyUpdates(updates);
+	if (!isHidden() && hiddenUpdates.size) {
+		applyUpdates(hiddenUpdates.take());
 	}
 }
 
@@ -126,7 +125,7 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'reset':
 			// The reset carries every item as it is now.
-			hiddenUpdates = [];
+			hiddenUpdates.clear();
 			state.busy = message.busy;
 			reset(message.items);
 			updateOutline();
@@ -144,7 +143,7 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'items':
 			if (isHidden()) {
-				hiddenUpdates.push(...message.items);
+				message.items.forEach(update => hiddenUpdates.add(update));
 			} else {
 				applyUpdates(message.items);
 			}

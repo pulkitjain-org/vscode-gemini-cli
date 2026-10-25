@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import type { TranscriptItem } from '../../src/acp/chatTranscript';
 import {
 	subagentName,
-	acceptsEnhanceReply, coalesceUpdates, attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, currentActivity, currentPrompt, promptStep, formatClock, turnStart, draggedHeight, emptyFence, enhanceButtonPlacement, enhanceOriginal, type EnhancePhase, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, fileReference, fileUris, folderOf, format, formatDuration, formatSentAt, isEnhanceShortcut, isQueueShortcut,
+	acceptsEnhanceReply, coalesceUpdates, HeldUpdates, attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, currentActivity, currentPrompt, promptStep, formatClock, turnStart, draggedHeight, emptyFence, enhanceButtonPlacement, enhanceOriginal, type EnhancePhase, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, fileReference, fileUris, folderOf, format, formatDuration, formatSentAt, isEnhanceShortcut, isQueueShortcut,
 	imageName, indexOfItem, isNearBottom, matchCommands, mentionAt, mentionInsertion, permissionDefaults, planIcon, replyBefore, restoredHeight,
 	formatTokens, resetsIn, sameAttachment, slashQuery, thoughtSeconds, toolKindIcon, withAppended, withoutMention, wrapIndex,
 } from '../../webview-src/chatLogic';
@@ -459,6 +459,27 @@ describe('coalesceUpdates', () => {
 	it('lets a whole item replace what came before it, and keeps appends after it', () => {
 		expect(coalesceUpdates([agent('a', 'one'), append('a', ' two'), agent('b', 'x'), agent('a', 'three'), append('a', ' four')]))
 			.toEqual([agent('a', 'three'), agent('b', 'x'), append('a', ' four')]);
+	});
+});
+
+describe('HeldUpdates', () => {
+	const agent = (id: string, text: string) => ({ id, kind: 'agent' as const, text });
+	const append = (id: string, text: string) => ({ kind: 'append' as const, id, append: text });
+
+	it('holds about one update per item however long a hidden chat streams', () => {
+		const held = new HeldUpdates();
+		let text = '';
+		for (let i = 0; i < 1000; i++) {
+			text += `${i} `;
+			held.add(i % 10 ? append('a', `${i} `) : agent('a', text));
+			held.add(agent('b', `step ${i}`));
+		}
+		expect(held.size).toBeLessThanOrEqual(3);
+		const updates = held.take();
+		expect({ updates: updates.map(update => update.kind === 'append' ? `append ${update.id}` : update.id), size: held.size }).toEqual({ updates: ['a', 'b', 'append a'], size: 0 });
+		const whole = updates[0] as ReturnType<typeof agent>;
+		const tail = updates[2] as ReturnType<typeof append>;
+		expect(whole.text + tail.append).toBe(text);
 	});
 });
 
