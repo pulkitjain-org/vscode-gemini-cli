@@ -533,6 +533,76 @@ kbd {
 	white-space: nowrap;
 }
 
+/* Run on a reply's shell block (runButtons.ts): hidden when the chat has no terminal or Run is off. */
+body:not(.can-run) .code-run {
+	display: none;
+}
+
+.run-menu:not([hidden]) {
+	position: fixed;
+	bottom: auto;
+	min-width: 220px;
+}
+
+.code-more .codicon {
+	font-size: 12px;
+}
+
+.code-run:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+.run-status {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	margin-right: 4px;
+	font-variant-numeric: tabular-nums;
+}
+
+.run-status.passed {
+	color: var(--gemini-ok);
+}
+
+.run-status.failed {
+	color: var(--gemini-error);
+}
+
+.run-send {
+	margin-left: 4px;
+	padding: 1px 6px;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius-small);
+	background: none;
+	color: var(--vscode-foreground);
+	font: inherit;
+	cursor: pointer;
+}
+
+.run-send:hover {
+	background: var(--gemini-hover);
+}
+
+/* The block's question before a risky command runs, or which repository to run in. */
+.run-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 12px;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--gemini-border);
+	font-size: 12px;
+}
+
+.run-question {
+	flex: 1 1 220px;
+}
+
+.run-bar .permission-actions {
+	margin: 0;
+}
+
 /* The line height of a code block, as a length, so its streaming lines can use it. */
 @property --gemini-pre-line-height {
 	syntax: '<length>';

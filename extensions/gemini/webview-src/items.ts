@@ -18,6 +18,8 @@ import { renderMath } from './math';
 import { mathPlugin } from './mathRule';
 import { enhanceMarkdown } from './markdownExtras';
 import { button, copyButton, el, icon, onIntent, setLabel, setTip } from './dom';
+import { canRun } from '../src/acp/runCommands';
+import { addRunButtons } from './runButtons';
 import { indexToolTitle, teamToolTitle } from '../src/acp/toolLinks';
 import { toolLogo } from './toolLogos';
 import { toneOf } from './repoTones';
@@ -271,8 +273,9 @@ export function renderUserMarkdown(text: string): Node[] {
 
 /**
  * Markdown as nodes, with each code block under a header that names its
- * language and copies it. Without `highlight`, code is left plain: for the
- * tail of a streaming reply, whose last code block is still growing.
+ * language and copies it, and a reply's shell blocks Run too. Without
+ * `highlight`, code is left plain and Run is off: for the tail of a streaming
+ * reply, whose last code block is still growing.
  */
 export function renderBlocks(text: string, renderer = markdown, highlight = true): Node[] {
 	const node = el('div');
@@ -286,8 +289,12 @@ export function renderBlocks(text: string, renderer = markdown, highlight = true
 		const header = el('div', 'code-header');
 		const code = pre.querySelector('code');
 		const language = codeLanguage(code?.className ?? '');
-		header.append(el('span', 'code-language', language), copyButton('copy', strings.copy, () => pre.textContent ?? ''));
+		const copy = copyButton('copy', strings.copy, () => pre.textContent ?? '');
+		header.append(el('span', 'code-language', language), copy);
 		wrapper.append(header, pre);
+		if (renderer === markdown && canRun(language)) {
+			addRunButtons(wrapper, copy, language, pre.textContent ?? '', highlight);
+		}
 		if (code && highlight) {
 			highlightCode(code, language.toLowerCase());
 		}

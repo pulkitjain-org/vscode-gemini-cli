@@ -21,10 +21,10 @@ import type { PendingPromptView } from '../acp/promptQueue';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 33;
+export const chatProtocolVersion = 34;
 
 /** Commands the status line may offer; the host runs only these. */
-export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog'] as const;
+export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal'] as const;
 export type StatusCommand = typeof statusCommands[number];
 
 export interface ViewStatus {
@@ -250,6 +250,53 @@ export interface ProjectChatStrings {
 }
 
 /** Localised strings the webview shows; it has no l10n of its own. Placeholders are `{0}`. */
+export interface RunStrings {
+	readonly run: string;
+	/** The chevron button beside Run, which opens its menu. */
+	readonly more: string;
+	readonly insert: string;
+	readonly newTerminal: string;
+	/** `{0}` is a repository's name. */
+	readonly runIn: string;
+	/** A thread or project with several repositories, when the command names none. */
+	readonly pick: string;
+	readonly cancel: string;
+	/** Run is off until the reply's block is finished. */
+	readonly streaming: string;
+	readonly running: string;
+	/** `{0}` is how long it took. */
+	readonly passed: string;
+	/** `{0}` is the exit code, `{1}` how long it took. */
+	readonly failed: string;
+	readonly sendOutput: string;
+	/** The "+" menu's Open Terminal, in the agent's folder. */
+	readonly openTerminal: string;
+	readonly openTerminalDetail: string;
+}
+
+/** How Run on a reply's shell blocks behaves, from `gemini.chat.runCommands`. */
+export type RunMode = 'askWhenRisky' | 'alwaysAsk' | 'off';
+
+/** Run on a reply's shell block: run it, type it in without Return, or run it in a new terminal. */
+export type RunAction = 'run' | 'insert' | 'newTerminal';
+
+/** Where a chat's Run runs: the names of its places, more than one only in a thread or project with several repositories. */
+export interface RunView {
+	readonly mode: RunMode;
+	readonly places: readonly string[];
+}
+
+/** A shell block's Run, by the block's text. */
+export type RunState =
+	| { readonly kind: 'idle' }
+	/** Asks before it runs: `text` says what the command does and where; `place` is the repository picked, if one was. */
+	| { readonly kind: 'confirm'; readonly text: string; readonly place?: string }
+	/** Asks which repository to run in, for `action`. */
+	| { readonly kind: 'pick'; readonly action: RunAction }
+	| { readonly kind: 'running' }
+	/** How it ended; unset when the shell had no integration to say. */
+	| { readonly kind: 'done'; readonly exitCode?: number; readonly ms?: number };
+
 export interface ChatStrings {
 	readonly placeholder: string;
 	/** Set only in a project's chat. */
@@ -313,6 +360,8 @@ export interface ChatStrings {
 	readonly openDiff: string;
 	readonly copy: string;
 	readonly copied: string;
+	/** Run on a reply's shell blocks. */
+	readonly run: RunStrings;
 	readonly mode: string;
 	readonly model: string;
 	readonly noFiles: string;
@@ -806,6 +855,10 @@ export type FromWebview =
 	| { readonly type: 'cancelEnhance'; readonly requestId: number }
 	/** The usage popover opened; answered with `quota`, once or twice. */
 	| { readonly type: 'readQuota' }
+	/** Run on a reply's shell block: `text` is the block, `place` a repository picked, `confirmed` after the block asked. */
+	| { readonly type: 'runCommand'; readonly text: string; readonly language: string; readonly action: RunAction; readonly place?: string; readonly confirmed?: boolean }
+	/** A failed Run's Send Output to Gemini: the command and its output go to the composer. */
+	| { readonly type: 'sendRunOutput'; readonly text: string }
 	/** "Get higher limits" in the usage popover, shown when a model's quota runs low. */
 	| { readonly type: 'openUpgrade' };
 
@@ -879,4 +932,8 @@ export type ToWebview =
 	/** The folder picked for Project settings' Add repository. */
 	| { readonly type: 'pickedRepository'; readonly repo: ProjectRepoView }
 	/** A project thread's chat: the bar that leads back to its project chat. */
-	| { readonly type: 'parentProject'; readonly parent: ParentProject };
+	| { readonly type: 'parentProject'; readonly parent: ParentProject }
+	/** How Run on shell blocks behaves, and where it runs. */
+	| { readonly type: 'run'; readonly run: RunView }
+	/** A shell block's Run, by the block's text. */
+	| { readonly type: 'runState'; readonly text: string; readonly state: RunState };

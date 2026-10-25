@@ -444,6 +444,17 @@
 					"value": "The only sites documentation may be fetched from, as a list such as react.dev or *.example.com. Empty allows every site."
 				}
 			}
+		},
+		"gemini.chat.runCommands": {
+			"name": "GeminiChatRunCommands",
+			"category": "Extensions",
+			"minimumVersion": "1.142",
+			"localization": {
+				"description": {
+					"key": "gemini.chat.runCommands.policy",
+					"value": "Whether replies' shell commands have a Run button that runs them in the agent's terminal: askWhenRisky asks first only for risky commands, alwaysAsk asks before every command, off removes Run so commands can only be copied."
+				}
+			}
 		}
 	}
 }

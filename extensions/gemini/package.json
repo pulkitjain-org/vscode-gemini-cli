@@ -23,6 +23,10 @@
     "onStartupFinished"
   ],
   "main": "./out/extension",
+  "enabledApiProposals": [
+    "terminalSelection",
+    "terminalQuickFixProvider"
+  ],
   "contributes": {
     "commands": [
       {
@@ -237,6 +241,32 @@
         "title": "%command.agents.openChanges%",
         "category": "%category%",
         "icon": "$(diff-multiple)"
+      },
+      {
+        "command": "gemini.agents.openTerminal",
+        "title": "%command.agents.openTerminal%",
+        "category": "%category%",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "gemini.terminal.sendSelection",
+        "title": "%command.terminal.sendSelection%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.terminal.sendLastCommand",
+        "title": "%command.terminal.sendLastCommand%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.terminal.suggestCommand",
+        "title": "%command.terminal.suggestCommand%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.terminal.askAboutFailure",
+        "title": "%command.terminal.askAboutFailure%",
+        "category": "%category%"
       },
       {
         "command": "gemini.agents.mergeBack",
@@ -578,6 +608,12 @@
     ],
     "keybindings": [
       {
+        "command": "gemini.terminal.suggestCommand",
+        "key": "ctrl+i",
+        "mac": "cmd+i",
+        "when": "terminalFocus && !terminalFindFocused"
+      },
+      {
         "command": "gemini.home",
         "key": "ctrl+shift+h",
         "mac": "cmd+shift+h",
@@ -725,6 +761,22 @@
           "command": "gemini.addFileToChat",
           "when": "resourceScheme == file",
           "group": "gemini@1"
+        },
+        {
+          "command": "gemini.agents.openTerminal",
+          "when": "activeWebviewPanelId == 'gemini.agent'",
+          "group": "gemini@2"
+        }
+      ],
+      "terminal/context": [
+        {
+          "command": "gemini.terminal.sendSelection",
+          "when": "terminalTextSelected",
+          "group": "gemini@1"
+        },
+        {
+          "command": "gemini.terminal.sendLastCommand",
+          "group": "gemini@2"
         }
       ],
       "scm/title": [
@@ -925,6 +977,11 @@
           "group": "1_agent@5"
         },
         {
+          "command": "gemini.agents.openTerminal",
+          "when": "view == gemini.agents && viewItem =~ /^agent/",
+          "group": "1_agent@6"
+        },
+        {
           "command": "gemini.agents.remove",
           "when": "view == gemini.agents && viewItem =~ /^agent/",
           "group": "2_remove@1"
@@ -994,6 +1051,10 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "gemini.terminal.askAboutFailure",
+          "when": "false"
+        },
         {
           "command": "gemini.team.startNewReview",
           "when": "false"
@@ -1198,6 +1259,22 @@
           "default": true,
           "scope": "machine",
           "markdownDescription": "%configuration.chat.spellCheck%"
+        },
+        "gemini.chat.runCommands": {
+          "type": "string",
+          "enum": [
+            "askWhenRisky",
+            "alwaysAsk",
+            "off"
+          ],
+          "enumDescriptions": [
+            "%configuration.chat.runCommands.askWhenRisky%",
+            "%configuration.chat.runCommands.alwaysAsk%",
+            "%configuration.chat.runCommands.off%"
+          ],
+          "default": "askWhenRisky",
+          "scope": "machine",
+          "markdownDescription": "%configuration.chat.runCommands%"
         },
         "gemini.browser.enabled": {
           "type": "boolean",
@@ -1431,6 +1508,20 @@
       "editor.fontFamily": "'JetBrains Mono', Menlo, Monaco, 'Courier New', monospace",
       "workbench.iconTheme": "geminicode-icons"
     },
+    "terminalQuickFixes": [
+      {
+        "id": "gemini.askAboutFailure",
+        "commandLineMatcher": ".+",
+        "outputMatcher": {
+          "lineMatcher": ".*",
+          "anchor": "bottom",
+          "offset": 0,
+          "length": 1
+        },
+        "commandExitResult": "error",
+        "kind": "explain"
+      }
+    ],
     "themes": [
       {
         "id": "GeminiCode Dark",

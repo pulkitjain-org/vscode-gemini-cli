@@ -128,6 +128,10 @@ export function updateStreamingReply(reply: StreamingReply, text: string): boole
 		const blocks = renderBlocks(emptyFence(open.opener));
 		const code = blocks.map(b => b instanceof HTMLElement ? b.querySelector('code') : null).find(c => c);
 		if (code) {
+			// Run waits for the block to finish; it is drawn again then.
+			for (const run of code.closest('.code-block')?.querySelectorAll<HTMLButtonElement>('.code-run') ?? []) {
+				run.disabled = true;
+			}
 			node.append(...blocks);
 			const tail = el('span', 'code-chunk');
 			code.replaceChildren(tail);

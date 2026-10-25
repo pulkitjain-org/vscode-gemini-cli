@@ -143,6 +143,24 @@ Each source refreshes daily by default (`gemini.docs.refresh`, or per source); a
 
 An administrator can lock `gemini.index.enabled`, `gemini.docs.enabled` and `gemini.docs.allowedDomains` as policies.
 
+## Terminals
+
+Each agent has its own terminal, named after it ("fix-login · Gemini") and opened in its folder: its branch's folder for an agent on its own branch, one per repository for a thread in several. **Open Terminal** is in the agent's right-click menu, its tab's right-click menu and the composer's **+** menu. Removing an agent closes its terminals.
+
+**Run on a reply's commands.** A shell code block in a reply (`bash`, `sh`, `zsh`, `console`, PowerShell) has ▷ **Run** beside **Copy**. Run runs the command in the agent's terminal and shows the terminal without leaving the chat. When it finishes, the block shows ✓, or ✗ with the exit code and **Send Output to Gemini**, which attaches the command and its last 200 lines of output to the composer for you to send. In a `console` block only the lines after a `$` prompt run.
+
+Run asks first, in the block, when a command deletes files or branches (`rm -r`, `git clean`), throws away uncommitted work (`git reset --hard`, `git checkout -- .`), force-pushes, runs as root, runs a downloaded script (`curl … | sh`), writes a disk, or writes outside the agent's folder, and for a block of several commands. The check reads the command line only: a script can still write anywhere. Run from a project chat always asks, since it runs in your own checkout. While a reply is still writing a block, its Run waits for the block to finish.
+
+The ⌄ beside Run offers **Insert Without Running** (the command waits in the terminal for Return), **Run in New Terminal**, and in a thread or project with several repositories, **Run in** each one. A command that names one of the repositories runs there; otherwise the block asks which.
+
+`gemini.chat.runCommands` sets how Run behaves: `askWhenRisky` (the default), `alwaysAsk`, or `off` to leave only Copy. Your admin can set it for you.
+
+**Send terminal output to Gemini.** In any terminal's right-click menu, **Send to Gemini** attaches the selection and **Send Last Command to Gemini** the last command with its exit code and its last 200 lines of output. From an agent's terminal they go to that agent, from any other to the chat in front. A failed command also offers **Ask Gemini About This Failure** on its lightbulb. Nothing is sent until you send it. The last command needs the shell's integration, which is on by default for zsh, bash, fish and PowerShell.
+
+**Ask for a command.** <kbd>⌘I</kbd> in a terminal asks what you want to do and shows Gemini's command before anything runs: **Run** it, or **Insert Without Running** to edit it first. A risky command says why and offers **Run Anyway**. It uses the same quick requests as inline edit, so it is off when `gemini.inlineEdit.enabled` is.
+
+GeminiCode Dark and Light colour the terminal's text, command marks and find results to match the chat.
+
 ## Pick up a Gemini CLI session
 
 A new, empty agent lists the three sessions the Gemini CLI saved most recently for its folder, including ones started with `gemini` in the terminal, with a link to show them all. Pick one to continue it: its conversation appears in the chat and the agent takes the session's title. `/resume` in the composer opens the same list at any time.
