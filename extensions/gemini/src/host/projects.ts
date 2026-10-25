@@ -194,6 +194,7 @@ export class Projects implements vscode.Disposable {
 			startThread: thread => void this.startThread(coordinatorId, thread),
 			openSettings: () => void this.openSettings(coordinatorId),
 			saveSettings: settings => void this.saveSettings(coordinatorId, settings),
+			setPlanFirst: on => void this.setPlanFirst(coordinatorId, on),
 			settingsAction: (action, name) => void this.settingsAction(coordinatorId, action, name),
 			retryWake: () => this.projects.get(coordinatorId)?.hub.retry(),
 			sessionReplaced: () => {
@@ -392,6 +393,8 @@ export class Projects implements vscode.Disposable {
 		const hub = new ProjectHub(record.id, {
 			prompt: async text => {
 				await this.ensureTools(record, coordinator);
+				// Plan mode takes away the project's tools, and the coordinator never edits anyway.
+				await coordinator.leavePlanMode();
 				return coordinator.sendUnseen(text);
 			},
 		}, {
@@ -689,6 +692,26 @@ export class Projects implements vscode.Disposable {
 			if (added && (!instructions.trim() || keepDraft)) {
 				void this.draft(project);
 			}
+		} catch (err) {
+			void vscode.window.showErrorMessage(vscode.l10n.t("Could not save the project's settings: {0}", errorMessage(err)));
+		}
+		void this.refreshSettings(project);
+	}
+
+	/** The "+" menu's Plan first switch: changes only that default, as Project settings would save it. */
+	private async setPlanFirst(coordinatorId: string, on: boolean): Promise<void> {
+		const project = this.projects.get(coordinatorId);
+		if (!project) {
+			return;
+		}
+		try {
+			const before = await project.loading;
+			if (!!before.defaults.planFirst === on) {
+				return;
+			}
+			const config: ProjectConfig = { ...before, defaults: { ...before.defaults, planFirst: on } };
+			await writeProjectConfig(project.home, config);
+			this.setConfig(project, config);
 		} catch (err) {
 			void vscode.window.showErrorMessage(vscode.l10n.t("Could not save the project's settings: {0}", errorMessage(err)));
 		}

@@ -157,6 +157,8 @@ export interface ChatProject {
 	/** Project settings: open it, save it, or one of its buttons that needs the extension. */
 	openSettings(): void;
 	saveSettings(settings: ProjectSettingsSave): void;
+	/** The "+" menu's switch: whether new threads plan first by default. */
+	setPlanFirst(on: boolean): void;
 	settingsAction(action: ProjectSettingsAction, name?: string): void;
 	/** The pointer is on a thread's card or panel row: start its agent ahead of the click. */
 	prepareThread(thread: string): void;

@@ -18,6 +18,19 @@ import { state, strings, vscode } from './view';
 
 let panel: ProjectPanel | undefined;
 
+/** Whether new threads plan first by default, as the "+" menu's switch shows it. */
+export function planFirst(): boolean {
+	return !!panel?.defaults?.planFirst;
+}
+
+/** The "+" menu's switch: shown at once, and saved as the project's default. */
+export function setPlanFirst(on: boolean): void {
+	if (panel?.defaults) {
+		panel = { ...panel, defaults: { ...panel.defaults, planFirst: on } };
+	}
+	vscode.postMessage({ type: 'setPlanFirst', on });
+}
+
 /** Opens the New thread dialog; the thread starts when the user picks Start thread. */
 export function openNewThread(): void {
 	const project = strings.project;

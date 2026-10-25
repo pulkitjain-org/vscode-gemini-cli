@@ -923,6 +923,14 @@ export class ChatController implements vscode.Disposable {
 		}), file);
 	}
 
+	/** Switches a session in Plan mode to Default, as a project's coordinator needs before each wake. */
+	async leavePlanMode(): Promise<void> {
+		const mode = buildModeAfterPlan(this.service.client.settings);
+		if (mode) {
+			await this.settings.change(() => this.service.client.setMode(mode));
+		}
+	}
+
 	/** Leaves Plan mode and asks the agent to carry out the plan it just wrote. */
 	private async buildPlan(itemId: string): Promise<void> {
 		const mode = buildModeAfterPlan(this.service.client.settings);
@@ -1187,6 +1195,7 @@ export class ChatController implements vscode.Disposable {
 			case 'prepareThread':
 			case 'openProjectSettings':
 			case 'saveProjectSettings':
+			case 'setPlanFirst':
 			case 'projectSettingsAction':
 			case 'startThread':
 			case 'openParentProject':

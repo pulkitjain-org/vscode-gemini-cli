@@ -482,6 +482,8 @@ function projectStrings(): ProjectChatStrings {
 		queued: vscode.l10n.t("Goes to the coordinator after this turn"),
 		retryWake: vscode.l10n.t("Send what this turn was given to the coordinator again"),
 		newThread: vscode.l10n.t("New thread"),
+		planFirst: vscode.l10n.t("New threads plan first"),
+		planFirstTip: vscode.l10n.t("New threads write a short plan and wait for your OK before changing files. The coordinator itself never changes files."),
 		dialog: {
 			title: vscode.l10n.t("New thread in {0}"),
 			titleLabel: vscode.l10n.t("Title"),

@@ -13,7 +13,7 @@ import { setLabel } from './dom';
 import { Menu, type MenuRow, type MenuSection } from './menu';
 import { modeIcon } from './modeIcon';
 import { closePicker, startCommand, startMention } from './picker';
-import { openNewThread } from './project';
+import { openNewThread, planFirst, setPlanFirst } from './project';
 import { hasTerminal } from './runButtons';
 import { toolRefContext } from './toolChips';
 import { toolLogo } from './toolLogos';
@@ -86,13 +86,25 @@ function sections(): MenuSection[] {
 	const result: MenuSection[] = [];
 	const project = strings.project;
 	if (project) {
-		result.push({ rows: [{ icon: 'git-branch', name: project.newThread, run: () => { closePlusMenu(); openNewThread(); } }] });
+		result.push({
+			rows: [
+				{ icon: 'git-branch', name: project.newThread, run: () => { closePlusMenu(); openNewThread(); } },
+				{
+					icon: modeIcon('plan'), name: project.planFirst, tooltip: project.planFirstTip, switchOn: planFirst(),
+					run: () => {
+						setPlanFirst(!planFirst());
+						menu.render();
+					},
+				},
+			],
+		});
 	}
 	const fork = strings.fork;
 	if (fork) {
 		result.push({ rows: [{ icon: 'gemini-fork', name: fork.button, tooltip: fork.buttonTip, end: '/fork', run: () => { closePlusMenu(false); vscode.postMessage({ type: 'requestFork' }); } }] });
 	}
-	if (mode) {
+	// Not in a project's coordinator chat: the coordinator never edits, and Plan mode would take away its project tools.
+	if (mode && !project) {
 		result.push({
 			heading: strings.mode,
 			rows: mode.available.map(choice => ({

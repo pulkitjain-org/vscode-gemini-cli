@@ -11,7 +11,7 @@ import * as vscode from 'vscode';
 import type { FromWebview, ProjectPanel, ProjectRepoView, ProjectSettingsView, ToWebview } from '../chatProtocol';
 import type { ChatControllerOptions } from './chatOptions';
 
-export type ProjectMessage = Extract<FromWebview, { readonly type: 'threadAction' | 'prepareThread' | 'openProjectSettings' | 'saveProjectSettings' | 'projectSettingsAction' | 'startThread' | 'openParentProject' }>;
+export type ProjectMessage = Extract<FromWebview, { readonly type: 'threadAction' | 'prepareThread' | 'openProjectSettings' | 'saveProjectSettings' | 'setPlanFirst' | 'projectSettingsAction' | 'startThread' | 'openParentProject' }>;
 
 export class ChatProjectView {
 
@@ -90,6 +90,9 @@ export class ChatProjectView {
 				break;
 			case 'saveProjectSettings':
 				project?.saveSettings(message.settings);
+				break;
+			case 'setPlanFirst':
+				project?.setPlanFirst(message.on);
 				break;
 			case 'projectSettingsAction':
 				project?.settingsAction(message.action, message.name);
