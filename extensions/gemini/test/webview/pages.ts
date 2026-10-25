@@ -80,9 +80,13 @@ export async function showChatPage(options: { project?: boolean; fork?: boolean 
 	showPage(chatHtml(fakeWebview, 'media', !!options.project, !!options.fork));
 }
 
-/** Runs the page's script, `webview-src/<name>.ts`, once per test file; it is not type-checked with the tests. */
-export async function startScript(name: string): Promise<void> {
-	await import(`../../webview-src/${name}.ts`);
+/**
+ * Runs `webview-src/<name>.ts`, the page's script or one of its modules, once
+ * per test file, and returns its exports. The webviews' code is written
+ * against the DOM's types, so it is type-checked with the webviews, not here.
+ */
+export async function startScript(name: string): Promise<Readonly<Record<string, unknown>>> {
+	return import(`../../webview-src/${name}.ts`);
 }
 
 /** Sends the page a message from the extension. */
