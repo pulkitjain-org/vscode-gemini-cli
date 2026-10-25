@@ -211,6 +211,10 @@ export class AgentsView implements vscode.Disposable {
 			cleanUpMerged: id => this.projectAgents.cleanUpMerged(id),
 			settingUp: id => this.projectAgents.isSettingUp(id),
 			setResolved: (id, resolved) => this.model.setThreadResolved(id, resolved),
+			setPendingNotes: (id, notes) => {
+				const role = this.model.agent(id)?.project;
+				this.model.setThreadPending(id, { ...role?.role === 'thread' ? role.pending : {}, notes });
+			},
 		}, String(context.extension.packageJSON.version ?? '0'));
 		// What the modules that start, stop and remove agents may ask of this view.
 		const host = {

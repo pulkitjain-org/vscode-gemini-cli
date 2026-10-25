@@ -111,6 +111,20 @@ describe('AgentsModel', () => {
 		expect(changes).toBe(2);
 	});
 
+	it('keeps a thread\'s brief and held notes across a reload until they are sent', () => {
+		const model = new AgentsModel();
+		const workspace = model.addWorkspace('/work/api').id;
+		model.addAgent(workspace, 'Thread', undefined, 't', { role: 'thread', coordinator: 'c', byCoordinator: true });
+		model.setThreadPending('t', { brief: 'Add dark mode', from: 'coordinator' });
+		model.setThreadPending('t', { brief: 'Add dark mode', from: 'coordinator', notes: ['Also the toggle'] });
+		const reloaded = new AgentsModel(JSON.parse(JSON.stringify(model.snapshot())));
+		expect(reloaded.agent('t')?.project).toEqual({ role: 'thread', coordinator: 'c', byCoordinator: true, pending: { brief: 'Add dark mode', from: 'coordinator', notes: ['Also the toggle'] } });
+		// Sent: the brief goes, then the notes.
+		reloaded.setThreadPending('t', { notes: ['Also the toggle'] });
+		reloaded.setThreadPending('t', { notes: [] });
+		expect(reloaded.agent('t')?.project).toEqual({ role: 'thread', coordinator: 'c', byCoordinator: true });
+	});
+
 	it('keeps change totals only while there are changes', () => {
 		const model = new AgentsModel();
 		const agent = model.addAgent(model.addWorkspace('/work/api').id, 'New agent');
