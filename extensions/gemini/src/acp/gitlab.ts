@@ -8,7 +8,7 @@
 // the model needs: an MR's state, pipeline, approvals and open threads, a
 // failed job's log tail.
 
-import { clip, Fetch, normalizeBaseUrl, teamRequest } from './teamHttp';
+import { clip, countText, Fetch, listed, Listed, normalizeBaseUrl, teamRequest, teamRequestPage, TeamToolError } from './teamHttp';
 
 export interface GitLabAuth {
 	readonly url: string;
@@ -180,6 +180,28 @@ export class GitLabClient {
 		return teamRequest<T>('gitlab', `${this.url}/api/v4${path}`, { ...init, headers: { 'PRIVATE-TOKEN': this.auth.token, ...init.headers } }, this.fetcher);
 	}
 
+	/** One page of a list, with the total GitLab reports. */
+	private async list<T>(path: string): Promise<Listed<T>> {
+		const page = await teamRequestPage<T[]>('gitlab', `${this.url}/api/v4${path}`, { headers: { 'PRIVATE-TOKEN': this.auth.token } }, this.fetcher);
+		return listed(page.body ?? [], page.total);
+	}
+
+	/** A list read page by page, 100 a page and `maxListPages` pages at most, with the total GitLab reports when it is longer. */
+	private async allPages<T>(path: string): Promise<Listed<T>> {
+		const items: T[] = [];
+		let total: number | undefined;
+		for (let page = 1; page <= maxListPages; page++) {
+			const answer = await teamRequestPage<T[]>('gitlab', `${this.url}/api/v4${path}${path.includes('?') ? '&' : '?'}per_page=100&page=${page}`, { headers: { 'PRIVATE-TOKEN': this.auth.token } }, this.fetcher);
+			const list = answer.body ?? [];
+			items.push(...list);
+			total = answer.total ?? total;
+			if (list.length < 100 || (answer.total === undefined ? false : items.length >= answer.total)) {
+				break;
+			}
+		}
+		return listed(items, total);
+	}
+
 	user(): Promise<GitLabUser> {
 		this.me ??= this.request<GitLabUser>('/user').then(u => ({ id: u.id, username: u.username, name: u.name }), err => {
 			this.me = undefined;
@@ -220,30 +242,37 @@ export class GitLabClient {
 	}
 
 	/** Open MRs where the user is a reviewer. */
-	async reviewRequests(): Promise<GitLabMrSummary[]> {
+	async reviewRequests(): Promise<Listed<GitLabMrSummary>> {
 		const me = await this.user();
-		const list = await this.request<RawMr[]>(`/merge_requests?scope=all&state=opened&reviewer_id=${me.id}&per_page=20&order_by=updated_at`);
-		return list.map(mrSummary);
+		const list = await this.list<RawMr>(`/merge_requests?scope=all&state=opened&reviewer_id=${me.id}&per_page=20&order_by=updated_at`);
+		return listed(list.map(mrSummary), list.total);
 	}
 
 	/** Open MRs assigned to the user (as the one to finish them), which may not be theirs. */
-	async assignedMergeRequests(): Promise<GitLabMrSummary[]> {
+	async assignedMergeRequests(): Promise<Listed<GitLabMrSummary>> {
 		const me = await this.user();
-		const list = await this.request<RawMr[]>(`/merge_requests?scope=all&state=opened&assignee_id=${me.id}&per_page=20&order_by=updated_at`);
-		return list.map(mrSummary);
+		const list = await this.list<RawMr>(`/merge_requests?scope=all&state=opened&assignee_id=${me.id}&per_page=20&order_by=updated_at`);
+		return listed(list.map(mrSummary), list.total);
 	}
 
 	/** The user's own open MRs. */
-	async myMergeRequests(): Promise<GitLabMrSummary[]> {
-		const list = await this.request<RawMr[]>('/merge_requests?scope=created_by_me&state=opened&per_page=20&order_by=updated_at');
-		return list.map(mrSummary);
+	async myMergeRequests(): Promise<Listed<GitLabMrSummary>> {
+		const list = await this.list<RawMr>('/merge_requests?scope=created_by_me&state=opened&per_page=20&order_by=updated_at');
+		return listed(list.map(mrSummary), list.total);
 	}
 
-	/** The open MR from `branch` in `project`, if any. */
+	/**
+	 * The open MR from `branch` in `project`, if any. Throws, listing them,
+	 * when several are open from it (to different targets): which one is
+	 * meant has to be said.
+	 */
 	async mrForBranch(project: string | number, branch: string): Promise<GitLabMrSummary | undefined> {
 		const id = await this.projectId(project);
-		const list = await this.request<RawMr[]>(`/projects/${id}/merge_requests?state=opened&source_branch=${encodeURIComponent(branch)}&per_page=1`);
-		return list[0] && mrSummary(list[0]);
+		const list = (await this.request<RawMr[]>(`/projects/${id}/merge_requests?state=opened&source_branch=${encodeURIComponent(branch)}&per_page=20`)).map(mrSummary);
+		if (list.length > 1) {
+			throw new Error(`${list.length} merge requests are open from ${branch}; name the one you mean:\n${list.map(mr => `- !${mr.iid} ${mr.title} → ${mr.targetBranch} (${mr.url})`).join('\n')}`);
+		}
+		return list[0];
 	}
 
 	async mr(project: string | number, iid: number, withApprovals = true): Promise<GitLabMr> {
@@ -265,10 +294,11 @@ export class GitLabClient {
 		};
 	}
 
-	async diffs(project: string | number, iid: number): Promise<GitLabDiffFile[]> {
+	/** The MR's changed files, read page by page up to `maxListPages` pages; `total` says how many there are when there are more. */
+	async diffs(project: string | number, iid: number): Promise<Listed<GitLabDiffFile>> {
 		const id = await this.projectId(project);
-		const files = await this.request<{ old_path: string; new_path: string; diff: string; new_file: boolean; deleted_file: boolean }[]>(`/projects/${id}/merge_requests/${iid}/diffs?per_page=100`);
-		return files.map(f => ({ oldPath: f.old_path, newPath: f.new_path, diff: f.diff, newFile: f.new_file, deletedFile: f.deleted_file }));
+		const files = await this.allPages<{ old_path: string; new_path: string; diff: string; new_file: boolean; deleted_file: boolean }>(`/projects/${id}/merge_requests/${iid}/diffs`);
+		return listed(files.map(f => ({ oldPath: f.old_path, newPath: f.new_path, diff: f.diff, newFile: f.new_file, deletedFile: f.deleted_file })), files.total);
 	}
 
 	/** The MR's threads that people wrote (not system notes), oldest first, read page by page. */
@@ -312,10 +342,10 @@ export class GitLabClient {
 		});
 	}
 
-	async jobs(project: string | number, pipeline: number, failedOnly = false): Promise<GitLabJob[]> {
+	async jobs(project: string | number, pipeline: number, failedOnly = false): Promise<Listed<GitLabJob>> {
 		const id = await this.projectId(project);
-		const jobs = await this.request<{ id: number; name: string; stage: string; status: string; web_url: string }[]>(`/projects/${id}/pipelines/${pipeline}/jobs?per_page=100${failedOnly ? '&scope[]=failed' : ''}`);
-		return jobs.map(j => ({ id: j.id, name: j.name, stage: j.stage, status: j.status, url: j.web_url }));
+		const jobs = await this.list<{ id: number; name: string; stage: string; status: string; web_url: string }>(`/projects/${id}/pipelines/${pipeline}/jobs?per_page=100${failedOnly ? '&scope[]=failed' : ''}`);
+		return listed(jobs.map(j => ({ id: j.id, name: j.name, stage: j.stage, status: j.status, url: j.web_url })), jobs.total);
 	}
 
 	/** The end of a job's log, where the failure usually is, without terminal colour codes. */
@@ -332,17 +362,18 @@ export class GitLabClient {
 		return { title: i.title, description: i.description ?? '', state: i.state, url: i.web_url, labels: i.labels ?? [] };
 	}
 
-	async branches(project: string | number, search = ''): Promise<GitLabBranch[]> {
+	async branches(project: string | number, search = ''): Promise<Listed<GitLabBranch>> {
 		const id = await this.projectId(project);
-		const list = await this.request<{ name: string; protected?: boolean; commit?: { committed_date?: string } }[]>(`/projects/${id}/repository/branches?per_page=100${search ? `&search=${encodeURIComponent(search)}` : ''}`);
-		return list.map(b => ({ name: b.name, protected: !!b.protected, commitDate: b.commit?.committed_date }));
+		const list = await this.list<{ name: string; protected?: boolean; commit?: { committed_date?: string } }>(`/projects/${id}/repository/branches?per_page=100${search ? `&search=${encodeURIComponent(search)}` : ''}`);
+		return listed(list.map(b => ({ name: b.name, protected: !!b.protected, commitDate: b.commit?.committed_date })), list.total);
 	}
 
-	async members(project: string | number, query = ''): Promise<GitLabUser[]> {
+	/** The project's people who could review, other than the user and bots; `total` is GitLab's count before those are left out. */
+	async members(project: string | number, query = ''): Promise<Listed<GitLabUser>> {
 		const id = await this.projectId(project);
-		const list = await this.request<{ id: number; username: string; name: string; state?: string }[]>(`/projects/${id}/members/all?per_page=50${query ? `&query=${encodeURIComponent(query)}` : ''}`);
+		const list = await this.list<{ id: number; username: string; name: string; state?: string }>(`/projects/${id}/members/all?per_page=50${query ? `&query=${encodeURIComponent(query)}` : ''}`);
 		const me = await this.user().catch(() => undefined);
-		return list.filter(u => u.state !== 'blocked' && u.id !== me?.id && !/bot$/i.test(u.username)).map(u => ({ id: u.id, username: u.username, name: u.name }));
+		return listed(list.filter(u => u.state !== 'blocked' && u.id !== me?.id && !/bot$/i.test(u.username)).map(u => ({ id: u.id, username: u.username, name: u.name })), list.total);
 	}
 
 	async createMergeRequest(project: string | number, mr: NewMergeRequest): Promise<GitLabMrSummary> {
@@ -390,8 +421,9 @@ export class GitLabClient {
 	}
 
 	/**
-	 * A comment on a line of the MR's new version; a general comment when the
-	 * line isn't in the diff. `options.oldLine` places it on an unchanged line,
+	 * A comment on a line of the MR's new version; a general comment only when
+	 * GitLab refuses the line as not in the diff (any other failure, such as no
+	 * answer in time, is thrown, since the line comment may have been made). `options.oldLine` places it on an unchanged line,
 	 * `options.oldPath` names a renamed file's old path, and `options.refs` the
 	 * version the line was read in (else the latest).
 	 */
@@ -412,7 +444,10 @@ export class GitLabClient {
 					},
 				});
 				return 'line';
-			} catch {
+			} catch (err) {
+				if (!isLineNotInDiff(err)) {
+					throw err;
+				}
 				// The line isn't part of the diff; fall through to a general comment that names it.
 			}
 		}
@@ -445,16 +480,20 @@ export class GitLabClient {
 		};
 	}
 
-	/** Whether the merge request can be merged now, check by check, read live. */
+	/**
+	 * Whether the merge request can be merged now, check by check, read live.
+	 * An approvals or threads check that couldn't be read counts as pending,
+	 * never as passed.
+	 */
 	async mergeReadiness(project: string | number, iid: number): Promise<MergeReadiness> {
 		const id = await this.projectId(project);
 		const [raw, rules, settings, discussions] = await Promise.all([
 			this.request<RawMr>(`/projects/${id}/merge_requests/${iid}`),
-			this.approvalState(id, iid).catch(() => []),
+			this.approvalState(id, iid).catch(() => undefined),
 			this.mergeSettings(id),
-			this.discussions(id, iid).catch(() => []),
+			this.discussions(id, iid).catch(() => undefined),
 		]);
-		return mergeReadiness(raw, rules, settings, discussions.filter(d => !d.resolved).length);
+		return mergeReadiness(raw, rules, settings, discussions?.filter(d => !d.resolved).length);
 	}
 
 	/** Merges the merge request at `sha`, the head the user saw; GitLab refuses if it moved. */
@@ -513,6 +552,8 @@ export interface MergeCheck {
 	readonly detail: string;
 	/** Where the rule comes from, for the panel's small print. */
 	readonly source: string;
+	/** GitLab didn't answer for this check, so it counts as pending: "couldn't read". */
+	readonly unreadable?: boolean;
 }
 
 export interface MergeReadiness {
@@ -529,7 +570,7 @@ export interface MergeReadiness {
  * each rule the project applies. GitLab enforces the same rules when the
  * merge is requested, so this decides what the button says, not what is allowed.
  */
-export function mergeReadiness(mr: Pick<RawMr, 'state' | 'detailed_merge_status' | 'has_conflicts' | 'draft' | 'work_in_progress' | 'head_pipeline' | 'sha' | 'diff_refs'>, rules: readonly ApprovalRule[], settings: MergeSettings, unresolvedThreads: number): MergeReadiness {
+export function mergeReadiness(mr: Pick<RawMr, 'state' | 'detailed_merge_status' | 'has_conflicts' | 'draft' | 'work_in_progress' | 'head_pipeline' | 'sha' | 'diff_refs'>, rules: readonly ApprovalRule[] | undefined, settings: MergeSettings, unresolvedThreads: number | undefined): MergeReadiness {
 	const checks: MergeCheck[] = [];
 	const status = mr.detailed_merge_status ?? '';
 	checks.push({ name: 'Open and not a draft', ok: mr.state === 'opened' && !(mr.draft ?? mr.work_in_progress), detail: mr.state !== 'opened' ? `the merge request is ${mr.state}` : (mr.draft ?? mr.work_in_progress) ? 'still a draft' : 'open', source: 'state, draft' });
@@ -542,13 +583,19 @@ export function mergeReadiness(mr: Pick<RawMr, 'state' | 'detailed_merge_status'
 		detail: pipeline ? `head pipeline ${pipeline}` : 'no pipeline',
 		source: settings.pipelineMustSucceed ? 'only_allow_merge_if_pipeline_succeeds' : 'head_pipeline.status',
 	});
-	for (const rule of rules) {
+	for (const rule of rules ?? []) {
 		checks.push({ name: `Approvals: ${rule.name}`, ok: rule.met, detail: `${rule.approvedBy.length} of ${rule.required}${rule.approvedBy.length ? ` (${rule.approvedBy.join(', ')})` : ''}${!rule.met && rule.eligible.length ? `; eligible: ${rule.eligible.slice(0, 6).join(', ')}` : ''}`, source: 'approval_state' });
 	}
-	if (!rules.length) {
+	if (!rules) {
+		checks.push({ name: 'Approvals', ok: false, pending: true, unreadable: true, detail: 'couldn\'t read', source: 'approval_state' });
+	} else if (!rules.length) {
 		checks.push({ name: 'Approvals', ok: true, detail: 'no approval rules apply', source: 'approval_state' });
 	}
-	checks.push({ name: settings.threadsMustBeResolved ? 'All threads resolved' : 'Review threads', ok: !settings.threadsMustBeResolved || unresolvedThreads === 0, detail: unresolvedThreads ? `${unresolvedThreads} unresolved` : 'none open', source: settings.threadsMustBeResolved ? 'only_allow_merge_if_all_discussions_are_resolved' : 'discussions' });
+	const threadsName = settings.threadsMustBeResolved ? 'All threads resolved' : 'Review threads';
+	const threadsSource = settings.threadsMustBeResolved ? 'only_allow_merge_if_all_discussions_are_resolved' : 'discussions';
+	checks.push(unresolvedThreads === undefined
+		? { name: threadsName, ok: !settings.threadsMustBeResolved, ...settings.threadsMustBeResolved ? { pending: true } : {}, unreadable: true, detail: 'couldn\'t read', source: threadsSource }
+		: { name: threadsName, ok: !settings.threadsMustBeResolved || unresolvedThreads === 0, detail: unresolvedThreads ? `${unresolvedThreads} unresolved` : 'none open', source: threadsSource });
 	checks.push({ name: 'No conflicts with the target', ok: !mr.has_conflicts && status !== 'conflict', detail: mr.has_conflicts || status === 'conflict' ? 'conflicts' : 'clean', source: 'has_conflicts' });
 	const gitlabSaysNo = status && status !== 'mergeable' && status !== 'ci_still_running' && status !== 'ci_must_pass';
 	checks.push({ name: 'GitLab says mergeable', ok: status === 'mergeable', ...status === 'ci_still_running' || status === 'ci_must_pass' || status === 'checking' ? { pending: true } : {}, detail: status || 'unknown', source: 'detailed_merge_status' });
@@ -622,12 +669,21 @@ function pipelineState(status: string): PipelineState {
 	return (['success', 'failed', 'running', 'pending', 'canceled', 'skipped', 'manual', 'created'] as const).find(s => s === status) ?? (status === 'waiting_for_resource' || status === 'preparing' || status === 'scheduled' ? 'pending' : 'none');
 }
 
+/**
+ * Whether GitLab refused a line comment because the line isn't part of the
+ * diff (a 400 about the note's position or line code), the one failure a
+ * general comment may stand in for.
+ */
+export function isLineNotInDiff(err: unknown): boolean {
+	return err instanceof TeamToolError && err.status === 400 && /line[ _]?code|position/i.test(err.message);
+}
+
 export function stripAnsi(text: string): string {
 	return text.replace(/\u001b\[[0-9;]*[A-Za-z]|\u001b\]8;;[^\u0007]*\u0007|section_(start|end):\d+:[\w.-]+\r?\u001b\[0K/g, '').replace(/\r(?!\n)/g, '\n');
 }
 
 /** An MR as text for the model: state, pipeline, approvals, open threads and the diff, cut to size. */
-export function describeMr(mr: GitLabMr, discussions: readonly GitLabDiscussion[], diffs: readonly GitLabDiffFile[], failedJobs: readonly GitLabJob[] = []): string {
+export function describeMr(mr: GitLabMr, discussions: readonly GitLabDiscussion[], diffs: Listed<GitLabDiffFile> | readonly GitLabDiffFile[], failedJobs: readonly GitLabJob[] = []): string {
 	const lines = [
 		`!${mr.iid} ${mr.title} (${mr.url})`,
 		`${mr.sourceBranch} → ${mr.targetBranch} · by ${mr.author}${mr.draft ? ' · draft' : ''} · ${mr.state}${mr.mergeStatus ? ` · ${mr.mergeStatus}` : ''}`,
@@ -650,7 +706,7 @@ export function describeMr(mr: GitLabMr, discussions: readonly GitLabDiscussion[
 		}
 	}
 	if (diffs.length) {
-		lines.push('', `Changed files (${diffs.length}):`);
+		lines.push('', `Changed files (${countText(diffs)}):`);
 		let budget = 30_000;
 		for (const file of diffs) {
 			const header = `--- ${file.newFile ? '(new) ' : file.deletedFile ? '(deleted) ' : ''}${file.newPath}`;
