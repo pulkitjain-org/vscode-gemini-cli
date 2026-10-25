@@ -78,6 +78,49 @@ systemDark.addEventListener('change', () => {
 	}
 });
 
+// ---- Web fonts: on a session's first page, just after the first paint ----
+
+// The page paints at once in the local fallback faces, which site.css sizes to match the web
+// fonts, and the fonts swap in a moment later. Once they are cached, the page's first script
+// loads them before the first paint instead (layout() in build.mts).
+if (!document.getElementById('fonts')) {
+	let loaded = false;
+	const loadFonts = () => {
+		if (loaded) {
+			return;
+		}
+		loaded = true;
+		const link = Object.assign(document.createElement('link'), { rel: 'stylesheet', id: 'fonts', href: new URL('fonts.css', import.meta.url).href });
+		link.addEventListener('load', () => void document.fonts.ready.then(() => {
+			try {
+				sessionStorage.setItem('fonts', '1');
+			} catch {
+				// Without storage, each page loads the fonts after its first paint.
+			}
+		}), { once: true });
+		document.head.append(link);
+	};
+	// The browser says when the first text or image painted; without paint timing, two frames on.
+	if (PerformanceObserver.supportedEntryTypes?.includes('paint')) {
+		const observer = new PerformanceObserver(list => {
+			if (list.getEntries().some(entry => entry.name === 'first-contentful-paint')) {
+				observer.disconnect();
+				loadFonts();
+			}
+		});
+		observer.observe({ type: 'paint', buffered: true });
+	} else {
+		requestAnimationFrame(() => requestAnimationFrame(loadFonts));
+	}
+	// A page opened in a background tab gets no first-contentful-paint entry at all.
+	const late = () => setTimeout(loadFonts, 1000);
+	if (document.readyState === 'complete') {
+		late();
+	} else {
+		addEventListener('load', late, { once: true });
+	}
+}
+
 // ---- Nav: scrolled state and the phone menu ----
 
 const top = document.querySelector<HTMLElement>('.top');
@@ -300,9 +343,9 @@ function makeZoomable(holder: HTMLElement): void {
 	holder.classList.add('can-zoom');
 }
 
-// Product shots, but not the orbit's thumbnails or a still that a play button turns into a clip.
+// Product shots, but not the orbit's thumbnails or a clip's still, which a play button turns into the clip.
 for (const holder of document.querySelectorAll<HTMLElement>('.shot')) {
-	if (holder.querySelector('img') && !holder.querySelector('video') && !holder.closest('.thumb, .float') && !holder.parentElement?.querySelector('.play')) {
+	if (holder.querySelector('img') && !holder.querySelector('video') && !holder.closest('.thumb, .float') && !holder.querySelector('.clip-play') && !holder.parentElement?.querySelector('.play')) {
 		makeZoomable(holder);
 	}
 }
@@ -313,6 +356,34 @@ for (const image of document.querySelectorAll<HTMLImageElement>('.notes img')) {
 	image.replaceWith(holder);
 	holder.append(image);
 	makeZoomable(holder);
+}
+
+// ---- Clips: a still with Play, which loads the clip in the theme the still shows ----
+
+for (const button of document.querySelectorAll<HTMLButtonElement>('.clip-play')) {
+	button.addEventListener('click', () => {
+		const holder = button.closest<HTMLElement>('.shot');
+		const shown = holder && shownImage(holder);
+		if (!holder || !shown) {
+			return;
+		}
+		const theme = shown.classList.contains('on-dark') ? 'dark' : 'light';
+		const video = document.createElement('video');
+		video.controls = true;
+		video.muted = true;
+		video.playsInline = true;
+		video.autoplay = true;
+		video.poster = shown.getAttribute('src') ?? '';
+		video.src = button.dataset[theme] ?? '';
+		video.setAttribute('aria-label', shown.alt);
+		// The clips have no speech; the empty captions track says so to assistive technology.
+		const track = Object.assign(document.createElement('track'), { kind: 'captions', srclang: 'en', label: 'No speech', src: new URL('media/silent.vtt', import.meta.url).href });
+		video.append(track);
+		holder.style.aspectRatio = '2000 / 1250';
+		holder.replaceChildren(video);
+		video.focus();
+		void video.play().catch(() => undefined);
+	});
 }
 
 export { pageTheme };

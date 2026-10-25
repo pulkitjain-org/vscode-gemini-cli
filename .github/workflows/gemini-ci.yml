@@ -115,7 +115,7 @@ jobs:
         run: node gemini/site/check-seo.mts "$RUNNER_TEMP/site"
 
       - name: Accessibility and Lighthouse on the download page
-        # axe-core on every page (no violations), Lighthouse on the landing and docs pages (accessibility 100, the rest 90 or more).
+        # axe-core on every page (no violations), Lighthouse on the landing page, the docs home and a feature and a docs page (accessibility 100, the rest 90 or more).
         run: |
           npm install --no-save --no-audit --no-fund --prefix "$RUNNER_TEMP/site-checks" axe-core@4.10.3 playwright-core@1.49.1 lighthouse@12.6.1
           export NODE_PATH="$RUNNER_TEMP/site-checks/node_modules"

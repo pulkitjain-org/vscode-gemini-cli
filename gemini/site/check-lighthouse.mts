@@ -26,7 +26,8 @@ if (!site) {
 	console.error('Pass the built site folder.');
 	process.exit(2);
 }
-const pages = named.length ? named : ['index.html', 'docs/index.html'].filter(page => existsSync(path.join(site, page)));
+// The landing page, the docs home, and a feature page and a docs page heavy with screenshots and clips.
+const pages = named.length ? named : ['index.html', 'docs/index.html', 'features/chat-and-review.html', 'docs/chat.html'].filter(page => existsSync(path.join(site, page)));
 const floors = { performance: 90, accessibility: 100, 'best-practices': 90, seo: 90 };
 const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.json': 'application/json', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.mp4': 'video/mp4', '.woff2': 'font/woff2', '.png': 'image/png', '.md': 'text/markdown' };
 

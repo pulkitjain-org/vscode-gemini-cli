@@ -193,6 +193,7 @@ export function renderMarkdown(source: string, options: RenderOptions): Rendered
 	const sections: { id: string; heading: string; text: string }[] = [];
 	let title = '';
 	let lead = '';
+	let figures = 0;
 	let i = 0;
 	const inline = (value: string) => renderInline(value);
 	const note = (plain: string) => {
@@ -282,7 +283,7 @@ export function renderMarkdown(source: string, options: RenderOptions): Rendered
 		const joined = paragraph.join(' ');
 		const image = /^!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)$/.exec(joined);
 		if (image) {
-			out.push(renderFigure(image[1], image[2], image[3], options));
+			out.push(renderFigure(image[1], image[2], image[3], options, !figures++));
 			continue;
 		}
 		if (!lead && !out.length && title) {
@@ -293,11 +294,23 @@ export function renderMarkdown(source: string, options: RenderOptions): Rendered
 		out.push(`<p>${inline(joined)}</p>`);
 	}
 
-	const html = out.join('\n').replace(/(href|src|poster)="(__ROOT__)/g, `$1="${options.root}`);
+	const html = out.join('\n').replace(/(href|src|poster|data-dark|data-light)="(__ROOT__)/g, `$1="${options.root}`).replace(/(srcset="[^"]*)/g, set => set.replace(/__ROOT__/g, options.root));
 	return { title, lead: lead.replace(/__ROOT__/g, options.root), html, headings, sections };
 }
 
-function renderFigure(alt: string, src: string, title: string | undefined, options: RenderOptions): string {
+/**
+ * One copy of a product shot. Every shot in media/ is 2000 × 1250 (MEDIA-TODO.md), so its size
+ * is known before it loads and the text below never moves; a 1000px copy beside it serves phones.
+ * The page's first figure loads at once (it is usually its largest paint), the others when near.
+ */
+function mediaImage(file: string, alt: string, options: RenderOptions, cls: string, first: boolean): string {
+	const phone = file.replace(/\.webp$/, '-1000.webp');
+	const srcset = options.media.has(phone) ? ` srcset="__ROOT__media/${escapeAttr(phone)} 1000w, __ROOT__media/${escapeAttr(file)} 2000w" sizes="(max-width: 800px) calc(100vw - 48px), 720px"` : '';
+	const loading = first && cls !== 'on-dark' ? ' fetchpriority="high"' : ' loading="lazy"';
+	return `<img${cls ? ` class="${cls}"` : ''} src="__ROOT__media/${escapeAttr(file)}"${srcset} width="2000" height="1250" alt="${escapeAttr(alt)}"${loading} decoding="async">`;
+}
+
+function renderFigure(alt: string, src: string, title: string | undefined, options: RenderOptions, first: boolean): string {
 	if (!src.startsWith(mediaPrefix)) {
 		return `<figure><div class="shot"><img src="${escapeAttr(src)}" alt="${escapeAttr(alt)}" loading="lazy" decoding="async"></div><figcaption>${escape(alt)}</figcaption></figure>`;
 	}
@@ -307,12 +320,14 @@ function renderFigure(alt: string, src: string, title: string | undefined, optio
 	const clip = title === 'clip' ? /^showcase-([\w-]+)-dark\.webp$/.exec(name) : null;
 	let shot: string;
 	if (clip && pair && options.media.has(`showcase-${clip[1]}-dark.mp4`) && options.media.has(`showcase-${clip[1]}-light.mp4`)) {
-		// The clips have no speech; the empty captions track says so (build.mts writes it).
-		shot = ['dark', 'light'].map(theme => `<video class="on-${theme}" src="__ROOT__media/showcase-${clip[1]}-${theme}.mp4" poster="__ROOT__media/showcase-${clip[1]}-${theme}.webp" controls muted playsinline preload="none" aria-label="${escapeAttr(alt)}"><track kind="captions" srclang="en" label="No speech" src="__ROOT__media/silent.vtt"></video>`).join('');
+		// A clip shows its last frame, in the page's theme, until Play loads the video (page.mts):
+		// a <video> fetches its poster even when the theme hides it, so this way only one loads.
+		const stills = pair.map((file, n) => mediaImage(file, alt, options, `on-${n ? 'light' : 'dark'}`, first)).join('');
+		shot = `${stills}<button type="button" class="clip-play" data-dark="__ROOT__media/showcase-${clip[1]}-dark.mp4" data-light="__ROOT__media/showcase-${clip[1]}-light.mp4" aria-label="Play the clip: ${escapeAttr(alt)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button>`;
 	} else if (pair) {
-		shot = pair.map((file, n) => `<img class="on-${n ? 'light' : 'dark'}" src="__ROOT__media/${file}" alt="${escapeAttr(alt)}" loading="lazy" decoding="async">`).join('');
+		shot = pair.map((file, n) => mediaImage(file, alt, options, `on-${n ? 'light' : 'dark'}`, first)).join('');
 	} else {
-		shot = `<img src="__ROOT__media/${escapeAttr(name)}" alt="${escapeAttr(alt)}" loading="lazy" decoding="async">`;
+		shot = mediaImage(name, alt, options, '', first);
 	}
 	return `<figure${clip ? ' class="clip"' : ''}><div class="shot">${shot}</div><figcaption>${escape(alt)}</figcaption></figure>`;
 }

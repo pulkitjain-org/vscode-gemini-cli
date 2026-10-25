@@ -303,23 +303,26 @@ export function inlineText(value: string): string {
 }
 
 /**
- * A screenshot or clip in both themes, the page's theme showing one. `root`
- * leads to the site's root; `available` lists the files in media/.
+ * A screenshot or clip in both themes, the page's theme showing one. `root` leads to the site's
+ * root; `available` lists the files in media/. A clip shows its last frame until Play loads the
+ * video (page.mts), since a <video> fetches its poster even when the theme hides it. The hero
+ * (`eager`) loads at once and fills the page's width; the others load when near, at half of it.
  */
 export function featureFigure(media: FeatureMedia, root: string, available: ReadonlySet<string>, eager = false): string {
 	const has = (theme: string, ext: string) => available.has(`${media.name}-${theme}.${ext}`);
 	const themes = ['light', 'dark'] as const;
+	const sizes = eager ? '(max-width: 900px) calc(100vw - 32px), 1152px' : '(max-width: 900px) calc(100vw - 32px), 600px';
+	const isClip = media.clip && themes.every(theme => has(theme, 'mp4') && has(theme, 'webp'));
 	const frame = themes.map(theme => {
-		const poster = `${root}media/${media.name}-${theme}.webp`;
-		if (media.clip && has(theme, 'mp4') && has(theme, 'webp')) {
-			return `<video class="on-${theme}" src="${root}media/${media.name}-${theme}.mp4" poster="${poster}" controls muted playsinline preload="none" aria-label="${escape(media.alt)}"><track kind="captions" srclang="en" label="No speech" src="${root}media/silent.vtt"></video>`;
-		}
+		const still = `${root}media/${media.name}-${theme}.webp`;
+		const srcset = has(`${theme}-1000`, 'webp') ? ` srcset="${root}media/${media.name}-${theme}-1000.webp 1000w, ${still} 2000w" sizes="${sizes}"` : '';
 		if (has(theme, 'webp')) {
-			return `<img class="on-${theme}" src="${poster}" width="2000" height="1250" alt="${escape(media.alt)}"${eager && theme === 'light' ? ' fetchpriority="high"' : ' loading="lazy"'} decoding="async">`;
+			return `<img class="on-${theme}" src="${still}"${srcset} width="2000" height="1250" alt="${escape(media.alt)}"${eager && theme === 'light' ? ' fetchpriority="high"' : ' loading="lazy"'} decoding="async">`;
 		}
 		return `<span class="ph on-${theme}"><b>${media.clip ? 'Clip' : 'Screenshot'} still to come</b><span>media/${escape(media.name)}-${theme}.${media.clip ? 'mp4' : 'webp'}, 2000 × 1250</span></span>`;
 	}).join('');
-	return `<figure class="fshot${media.clip ? ' clip' : ''}"><span class="shot" style="--ar: 2000 / 1250">${frame}</span><figcaption>${escape(media.alt)}</figcaption></figure>`;
+	const play = isClip ? `<button type="button" class="clip-play" data-dark="${root}media/${media.name}-dark.mp4" data-light="${root}media/${media.name}-light.mp4" aria-label="Play the clip: ${escape(media.alt)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button>` : '';
+	return `<figure class="fshot${media.clip ? ' clip' : ''}"><span class="shot" style="--ar: 2000 / 1250">${frame}${play}</span><figcaption>${escape(media.alt)}</figcaption></figure>`;
 }
 
 /** The body of a feature page: hero, steps, sections, good to know, and where to read more. */

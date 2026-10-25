@@ -17,7 +17,8 @@
 // missing one leaves a labelled placeholder frame (see MEDIA-TODO.md).
 // `site.css` holds the two palettes (Paper and Charcoal) as one token set,
 // `landing.css` and `docs.css` each page's own parts; `page.mts` runs the theme
-// switch and the reveals, `landing.mts` the hero and the showcase card,
+// switch, the reveals and the web fonts (`fonts.css`, loaded after the first
+// paint), `landing.mts` the hero and the showcase card,
 // `docs-page.mts` the docs' search, code copy and "On this page". The .mts
 // files are served as plain JavaScript modules. The Geist, Geist Mono and
 // Newsreader fonts in `gemini/site/fonts/` are served with the page. Each docs
@@ -127,7 +128,7 @@ async function main(outDir: string | undefined, mode: string | undefined): Promi
 	// Written last: they list what the pages above are.
 	fs.writeFileSync(path.join(outDir, 'sitemap.xml'), sitemap(latest));
 	fs.writeFileSync(path.join(outDir, 'llms.txt'), llmsText(latest, repo));
-	for (const file of ['site.css', 'landing.css', 'docs.css', 'features.css']) {
+	for (const file of ['site.css', 'landing.css', 'docs.css', 'features.css', 'fonts.css']) {
 		fs.copyFileSync(path.join(siteDir, file), path.join(outDir, file));
 	}
 	for (const script of ['page', 'landing', 'docs-page']) {
@@ -509,6 +510,9 @@ function layout(title: string, body: string, c: Context, current: PageKind, root
 	// The stylesheets go inline, so the first paint waits for nothing but the HTML; their font
 	// paths are relative to the site's root, so a page in docs/ gets them rewritten.
 	const css = ['site.css', style].map(file => fs.readFileSync(path.join(siteDir, file), 'utf8').replace(/^\/\*[\s\S]*?\*\/\n\n/, '').replace(/url\(fonts\//g, `url(${root}fonts/`)).join('\n');
+	// Once a session has the web fonts cached, they load with the page, before its first paint;
+	// on a session's first page, page.mts loads them just after it (site.css says why).
+	const fonts = `try{if(sessionStorage.getItem('fonts')){const l=document.createElement('link');l.rel='stylesheet';l.id='fonts';l.href='${root}fonts.css';l.setAttribute('blocking','render');document.head.append(l)}}catch{}`;
 	const typing = current === 'home' ? 'try{if(!matchMedia(\'(prefers-reduced-motion: reduce)\').matches&&!sessionStorage.getItem(\'typed\')){document.documentElement.classList.add(\'typing\')}}catch{}' : '';
 	const download = c.dmg
 		? `<a class="btn primary small dl" href="${attr(c.dmg.url)}">${icon('download')}<span class="dl-label">Download<span class="long"> for Mac</span></span></a>`
@@ -535,11 +539,11 @@ function layout(title: string, body: string, c: Context, current: PageKind, root
 	${headTags(title, meta, c)}
 	<meta name="color-scheme" content="light dark">
 	<link rel="icon" href="${root}icon.svg" type="image/svg+xml">
-	<link rel="preload" href="${root}fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
 	<style>
 ${css}
 	</style>
-	<script>document.documentElement.classList.add('js');try{const t=localStorage.getItem('theme');if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t}}catch{}${typing}</script>${script === 'page.js' ? '' : `
+	<script>document.documentElement.classList.add('js');try{const t=localStorage.getItem('theme');if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t}}catch{}${fonts}${typing}</script>
+	<noscript><link rel="stylesheet" href="${root}fonts.css"></noscript>${script === 'page.js' ? '' : `
 	<link rel="modulepreload" href="${root}page.js">`}
 	<script type="module" src="${root}${script}"></script>
 </head>
@@ -733,7 +737,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 			<div class="centre">
 				${logo(56, true, 'mark')}
 				<h1 class="h1 serif" id="headline"><span class="sr">Code with Gemini agents. Review every change.</span><span class="tw" aria-hidden="true"><span data-t="Code with Gemini agents.">Code with Gemini agents.</span><br><em data-t="Review every change.">Review every change.</em></span><span class="caret" aria-hidden="true"></span></h1>
-				<p class="lead after">A VS Code fork with the official Gemini CLI built in. Run several agents side by side, give each its own branch, and approve every edit and command before it lands.</p>
+				<p class="lead">A VS Code fork with the official Gemini CLI built in. Run several agents side by side, give each its own branch, and approve every edit and command before it lands.</p>
 				<div class="actions after">
 					${primary('Download for Mac')}
 					<a class="btn ghost" href="docs/">${icon('book')}Read the docs</a>

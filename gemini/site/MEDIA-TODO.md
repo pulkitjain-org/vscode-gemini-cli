@@ -8,7 +8,7 @@ Every screenshot and clip comes from the real app, except `showcase-console-*`, 
 
 - Each was taken in GeminiCode Dark and GeminiCode Light, with the window filling the built-in display at 2x, and exported at 2000 × 1250.
 - Each product shot has a `-dark.webp` and a `-light.webp` copy, and the site shows the one that matches the page's theme.
-- `showcase-work` also has a 1000-pixel-wide copy of each (`showcase-work-<theme>-1000.webp`), which the landing page serves to phones.
+- Every screenshot and clip still also has a 1000-pixel-wide copy (`<name>-<theme>-1000.webp`), which phones get instead. Make one for each new or retaken shot ([RELEASING.md](../docs/RELEASING.md#screenshots-and-clips) has the command).
 - A shot that is missing leaves a labelled placeholder frame on the page.
 
 Capture from the real app, against demo data, so no real account, ticket, name or path shows. Never redraw a shot, and never reuse one from this folder for a different purpose.

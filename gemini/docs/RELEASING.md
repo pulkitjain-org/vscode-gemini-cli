@@ -106,18 +106,20 @@ Link previews use the 1200 × 630 JPEG crops in `media/og/`, one for the landing
 
 The site's media are in `gemini/site/media/`, each in a `-dark` and a `-light` copy taken from the app at 1440 × 900 points in GeminiCode Dark and Light:
 
-- Screenshots are `<name>-<theme>.webp`, 2000 × 1250. A `<name>-<theme>-1000.webp` copy beside one serves phones.
+- Screenshots are `<name>-<theme>.webp`, 2000 × 1250, each with a `<name>-<theme>-1000.webp` copy that phones get through `srcset`. Make it with `cwebp -q 80 -m 6 -resize 1000 0 <name>-<theme>.webp -o <name>-<theme>-1000.webp` whenever a screenshot is added or retaken.
 - Clips are `showcase-<id>-<theme>.mp4` (2000 × 1250, H.264), each with its last frame as `showcase-<id>-<theme>.webp`, used as the poster.
 
 A missing screenshot or clip leaves a labelled placeholder frame. Take every screenshot and clip from the real app, never a mockup, and retake them when a release changes what they show. [MEDIA-TODO.md](../site/MEDIA-TODO.md) records when each was taken and what is still missing.
 
 ### Fonts
 
-The Geist, Geist Mono and Newsreader fonts in `gemini/site/fonts/` are served with the site, so it loads nothing from other sites.
+The Geist, Geist Mono and Newsreader fonts in `gemini/site/fonts/` are served with the site, so it loads nothing from other sites. Each is cut to the weights the site uses (fontTools' instancer), and `fonts.css` declares them.
+
+The fonts never hold up the first paint. On a session's first page, `page.mts` loads `fonts.css` once the browser reports the first paint, and the text shows until then in local fallback faces that `site.css` scales to the web fonts' measurements, so the swap moves nothing. Later pages in the session load `fonts.css` before their first paint, from the cache. Change a font file and the fallback numbers in `site.css` need measuring again.
 
 ### Checks before deploying
 
-Before the upload, `gemini/site/check-seo.mts` checks every page's title, description, canonical address, Open Graph tags and JSON-LD, and that `sitemap.xml`, `llms.txt` and `404.html` match the pages. `gemini/site/check-a11y.mts` runs axe-core on every page, with the screenshot viewer open on pages that have one, and `gemini/site/check-lighthouse.mts` runs Lighthouse on the landing and docs pages. A problem, a violation, or a score under its floor (accessibility 100, the rest 90), stops the deploy. Gemini CI runs the same checks on the sample build, so a pull request sees them first.
+Before the upload, `gemini/site/check-seo.mts` checks every page's title, description, canonical address, Open Graph tags and JSON-LD, and that `sitemap.xml`, `llms.txt` and `404.html` match the pages. `gemini/site/check-a11y.mts` runs axe-core on every page, with the screenshot viewer open on pages that have one, and `gemini/site/check-lighthouse.mts` runs Lighthouse on the landing page, the docs home, the Chat and review feature page and the Chat docs page. All four score 100 for performance locally. A problem, a violation, or a score under its floor (accessibility 100, the rest 90), stops the deploy. Gemini CI runs the same checks on the sample build, so a pull request sees them first.
 
 ### When the page is rebuilt
 
