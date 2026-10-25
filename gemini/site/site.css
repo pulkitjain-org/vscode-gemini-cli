@@ -351,7 +351,7 @@ html.theming .shot { opacity: 0; }
 .copy-md.copied .ok { display: block; }
 .copy-md.copied .cp { display: none; }
 .note { max-width: 780px; margin: 0 0 24px; text-align: left; background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--warn-dot); border-radius: 12px; padding: 18px 22px; font-size: 15px; line-height: 1.6; color: var(--soft); }
-.note h3 { margin: 0 0 6px; font-size: 16px; font-weight: 600; color: var(--fg); }
+.note h2, .note h3 { margin: 0 0 6px; font-size: 16px; font-weight: 600; color: var(--fg); }
 .note p { margin: 6px 0 0; }
 .note b { color: var(--fg); font-weight: 600; }
 
