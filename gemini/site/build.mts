@@ -708,10 +708,11 @@ function docsFooter(c: Context, root: string): string {
 	</footer>`;
 }
 
-function unsignedNote(latest: LatestRelease): string {
+/** The steps to open an unsigned build; `heading` keeps the page's heading levels in order. */
+function unsignedNote(latest: LatestRelease, heading: 'h2' | 'h3'): string {
 	return latest.version && latest.signed === false ? `
 			<div class="note" role="note">
-				<h3>This build is not signed by Apple yet</h3>
+				<${heading}>This build is not signed by Apple yet</${heading}>
 				<p>macOS blocks it the first time. After dragging GeminiCode to Applications, open it once and choose <b>Done</b>. Then open <b>System Settings → Privacy &amp; Security</b> and choose <b>Open Anyway</b> next to GeminiCode.</p>
 				<p>Or run this in Terminal: <code>xattr -dr com.apple.quarantine /Applications/GeminiCode.app</code></p>
 			</div>` : '';
@@ -1049,7 +1050,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 		<div class="head">
 			<span class="label reveal" data-reveal>Install</span>
 			<h2 class="h2 serif reveal head" id="install-h" data-reveal>Four steps.<br><em class="m">Nothing else to install.</em></h2>
-		</div>${unsignedNote(latest)}
+		</div>${unsignedNote(latest, 'h3')}
 		<div class="four" data-reveal>${steps}
 		</div>
 		<div class="get-row reveal" data-reveal>
@@ -1189,7 +1190,7 @@ export function renderNotesPage(latest: LatestRelease, notes: ReleaseNotes | und
 			</div>${download}
 			<div>${copyButton(root ? `${version}.md` : 'notes.md')}</div>${toc}${sha}${releaseList}
 		</div>
-		<div>${unsignedNote(notes.info)}
+		<div>${unsignedNote(notes.info, 'h2')}
 			<div class="notes">${html.trim() ? html : '<p>No notes for this release.</p>'}</div>
 			<a class="more" href="${attr(notes.info.notesUrl ?? `${c.repoUrl}/releases`)}">See this release on GitHub ${icon('external')}</a>
 		</div>
@@ -1535,17 +1536,25 @@ function attr(value: string): string {
 	return text(value).replace(/"/g, '&quot;');
 }
 
-/** The made-up releases a --sample build shows: 1.0.0, and 0.9.0 before it, without a .dmg. */
+/**
+ * The made-up releases a --sample build shows, so the checks see each kind of notes page: 1.0.0,
+ * signed; 0.9.0, unsigned, with the steps to open it; and 0.8.0, without a .dmg.
+ */
 function sampleReleases(repo: string): GitHubRelease[] {
-	return [sampleRelease(repo), {
-		tag_name: 'v0.9.0',
-		name: 'GeminiCode 0.9.0',
-		html_url: `https://github.com/${repo}/releases/tag/v0.9.0`,
-		published_at: '2026-10-09T12:00:00Z',
+	const older = (version: string, day: string, assets: GitHubAsset[]): GitHubRelease => ({
+		tag_name: `v${version}`,
+		name: `GeminiCode ${version}`,
+		html_url: `https://github.com/${repo}/releases/tag/v${version}`,
+		published_at: `2026-10-${day}T12:00:00Z`,
 		body: '## What\'s Changed\n\n- Agents mode and Editor mode',
 		body_html: '<h2>What\'s Changed</h2><ul><li>Agents mode and Editor mode</li></ul>',
-		assets: [],
-	}];
+		assets,
+	});
+	return [
+		sampleRelease(repo),
+		older('0.9.0', '09', [{ name: 'GeminiCode-0.9.0-arm64-unsigned.dmg', browser_download_url: `https://github.com/${repo}/releases/download/v0.9.0/GeminiCode-0.9.0-arm64-unsigned.dmg`, size: 205_000_000 }]),
+		older('0.8.0', '05', []),
+	];
 }
 
 function sampleRelease(repo: string): GitHubRelease {
