@@ -11,7 +11,7 @@ import type { TextAppend } from '../src/acp/textDeltas';
 import { updateActivity } from './activity';
 import { indexOfItem, isNearBottom as nearBottom, withAppended, type ItemOf } from './chatLogic';
 import { el } from './dom';
-import { render, renderEmpty, renderNotice } from './items';
+import { render, renderEmpty, renderNotice, setToolCallOpen, updateThought } from './items';
 import { updateOutline } from './promptNav';
 import { renderStreamingReply, streamingReplies, updateStreamingReply } from './streamingReply';
 import { autoOpened, elements, expanded, foldOpen, runOpen, state, thoughtTimes, ui } from './view';
@@ -93,22 +93,46 @@ function renderItem(item: TranscriptItem): HTMLElement {
 	return render(item, toggleToolCall);
 }
 
-/** Expands or collapses a tool call's output. */
+/** A new element for `item`; a reply that is still streaming is drawn so that its tail can grow. */
+function draw(item: TranscriptItem, live: boolean): HTMLElement {
+	return item.kind === 'agent' && live && state.busy ? renderStreamingReply(item) : renderItem(item);
+}
+
+/** Expands or collapses a tool call's output in place, so its row keeps focus, keeping the view at the bottom if it was there. */
 function toggleToolCall(item: ItemOf<'toolCall'>): void {
 	const opening = !expanded.delete(item.id);
 	if (opening) {
 		expanded.add(item.id);
 	}
-	upsert(item);
-	if (opening) {
-		elements.get(item.id)?.querySelector('.tool-body')?.classList.add('reveal');
+	const card = elements.get(item.id);
+	if (card) {
+		const stick = isNearBottom();
+		const current = state.items[indexOfItem(state.items, item.id)];
+		setToolCallOpen(card, current?.kind === 'toolCall' ? current : item, opening);
+		settleScroll(stick);
 	}
 }
 
-/** Adds or replaces one item, keeping the view scrolled to the bottom if it was there. */
-function upsert(item: TranscriptItem, live = false): void {
-	const stick = isNearBottom();
-	settleScroll(applyItem(item, live) || stick);
+/**
+ * Runs `change`, then puts focus back if it was in the transcript and the
+ * change took it away: on the same element if it was only moved, else on the
+ * element drawn in its place, found by `data-focus-key` (a tool call's row,
+ * a fold's line, a permission's choices).
+ */
+function keepFocus<T>(change: () => T): T {
+	const active = document.activeElement;
+	if (!(active instanceof HTMLElement) || !transcript.contains(active)) {
+		return change();
+	}
+	const key = active.closest<HTMLElement>('[data-focus-key]')?.dataset.focusKey;
+	const result = change();
+	const now = document.activeElement;
+	const lost = now === active ? !active.isConnected : !now || now === document.body;
+	if (lost) {
+		const target = active.isConnected ? active : key ? [...transcript.querySelectorAll<HTMLElement>('[data-focus-key]')].find(node => node.dataset.focusKey === key) : undefined;
+		target?.focus({ preventScroll: true });
+	}
+	return result;
 }
 
 /**
@@ -117,6 +141,10 @@ function upsert(item: TranscriptItem, live = false): void {
  * scroll to the bottom whatever its position (the user's own message).
  */
 export function applyItem(item: TranscriptItem, live: boolean): boolean {
+	return keepFocus(() => addOrUpdate(item, live));
+}
+
+function addOrUpdate(item: TranscriptItem, live: boolean): boolean {
 	const { items } = state;
 	const index = indexOfItem(items, item.id);
 	let previous: TranscriptItem | undefined;
@@ -151,26 +179,22 @@ export function applyItem(item: TranscriptItem, live: boolean): boolean {
 	if (turn !== -1) {
 		// In a turn that folds: where it goes is the turn's layout, which only a new item or a step's change can alter.
 		if (existing) {
-			const node = item.kind === 'agent' && live && state.busy ? renderStreamingReply(item) : renderItem(item);
-			replaceNode(existing, node);
-			elements.set(item.id, node);
+			refresh(existing, item, live);
 		}
 		if (!resetting && (index === -1 || (item.kind !== 'agent' && item.kind !== 'thought'))) {
 			layoutTurn(turn, live);
 		}
+	} else if (existing) {
+		refresh(existing, item, live);
 	} else {
-		const node = item.kind === 'agent' && live && state.busy ? renderStreamingReply(item) : renderItem(item);
-		if (existing) {
-			replaceNode(existing, node);
-		} else {
-			transcript.querySelector('.empty')?.remove();
-			if (live) {
-				// Only new items animate in, not ones shown again or restored.
-				node.classList.add('enter');
-			}
-			transcript.append(node);
-			markSettled(false);
+		const node = draw(item, live);
+		transcript.querySelector('.empty')?.remove();
+		if (live) {
+			// Only new items animate in, not ones shown again or restored.
+			node.classList.add('enter');
 		}
+		transcript.append(node);
+		markSettled(false);
 		elements.set(item.id, node);
 	}
 	if (previous?.kind === 'agent' && streamingReplies.has(previous.id)) {
@@ -212,7 +236,7 @@ function foldingTurn(index: number): number {
 function elementFor(item: TranscriptItem, live: boolean): HTMLElement {
 	let node = elements.get(item.id);
 	if (!node) {
-		node = item.kind === 'agent' && live && state.busy ? renderStreamingReply(item) : renderItem(item);
+		node = draw(item, live);
 		if (live) {
 			node.classList.add('enter');
 		}
@@ -252,9 +276,12 @@ function reconcile(parent: HTMLElement, wanted: readonly HTMLElement[]): void {
  * rebuilt; a folded fold has no elements for its steps at all.
  */
 function layoutTurn(start: number, live: boolean): void {
-	if (!state.foldWork) {
-		return;
+	if (state.foldWork) {
+		keepFocus(() => layoutTurnNow(start, live));
 	}
+}
+
+function layoutTurnNow(start: number, live: boolean): void {
 	const { items } = state;
 	const prompt = items[start];
 	const promptNode = prompt && elements.get(prompt.id);
@@ -314,12 +341,15 @@ function fillFold(fold: HTMLElement, key: string, folded: readonly TranscriptIte
 	const how = foldState(after, running);
 	const steps = folded.filter(item => item.kind === 'thought' || item.kind === 'toolCall').length;
 	fold.className = `work-fold${open ? ' open' : ''}${how.kind === 'stopped' ? ' stopped' : ''}`;
-	// Each new step lays the turn out again; its line is rebuilt only when what it says changes.
-	const headKey = JSON.stringify([how, steps, summary.counts, summary.failed.length, summary.recovered.size, open]);
+	// Each new step lays the turn out again; its line is rebuilt only when what it says changes, and opening or closing changes it in place.
+	const headKey = JSON.stringify([how, steps, summary.counts, summary.failed.length, summary.recovered.size]);
 	let head = fold.firstElementChild as HTMLElement | null;
 	if (!head || drawn.get(head) !== headKey) {
-		head = renderFoldHead(how, steps, summary, open, () => toggleFold(key, !open));
+		head = renderFoldHead(how, steps, summary, open, () => toggleFold(key, !fold.classList.contains('open')));
+		head.dataset.focusKey = `fold:${key}`;
 		drawn.set(head, headKey);
+	} else {
+		head.setAttribute('aria-expanded', String(open));
 	}
 	const parts: HTMLElement[] = [head];
 	if (!open) {
@@ -345,6 +375,18 @@ function fillFold(fold: HTMLElement, key: string, folded: readonly TranscriptIte
 	reconcile(body, groups.map((group, i) => group.kind === 'item'
 		? elementFor(group.item, live)
 		: runElement(key, group, running && i === groups.length - 1, live)));
+	markSteps(body);
+}
+
+/** How many of an open fold's last lines are always laid out (chat.css, `.settled-step`). */
+const liveSteps = 4;
+
+/** Marks an open fold's lines before its last few as settled, so they skip layout while out of view; see `markSettled`. */
+function markSteps(body: HTMLElement): void {
+	const children = body.children;
+	for (let i = 0; i < children.length; i++) {
+		children[i].classList.toggle('settled-step', i < children.length - liveSteps);
+	}
 }
 
 /** A run of steps: its line and, when open, each step. The run still growing is open while the agent works. */
@@ -357,14 +399,18 @@ function runElement(key: string, group: Extract<FoldGroup, { kind: 'run' }>, cur
 		runElements.set(id, node);
 	}
 	node.classList.toggle('open', open);
-	const rowKey = `${open}|${group.calls.map(call => `${call.status} ${call.title} ${call.locations.map(location => location.path).join()}`).join('\n')}`;
+	const run = node;
+	const rowKey = group.calls.map(call => `${call.status} ${call.title} ${call.locations.map(location => location.path).join()}`).join('\n');
 	let row = node.firstElementChild as HTMLElement | null;
 	if (!row || drawn.get(row) !== rowKey) {
 		row = renderRunRow(group, open, () => {
-			runOpen.set(id, !open);
+			runOpen.set(id, !run.classList.contains('open'));
 			relayout(key);
 		});
+		row.dataset.focusKey = `run:${id}`;
 		drawn.set(row, rowKey);
+	} else {
+		row.setAttribute('aria-expanded', String(open));
 	}
 	if (!open) {
 		reconcile(node, [row]);
@@ -423,21 +469,28 @@ export function appended(update: TextAppend): TranscriptItem | undefined {
 function rerender(item: TranscriptItem): void {
 	const existing = elements.get(item.id);
 	if (existing) {
-		const node = renderItem(item);
-		replaceNode(existing, node);
-		elements.set(item.id, node);
+		keepFocus(() => refresh(existing, item, false));
 	}
 }
 
-/** Puts `node` in place of `existing`, keeping a thought open if the user opened it. */
-function replaceNode(existing: HTMLElement, node: HTMLElement): void {
-	if (existing instanceof HTMLDetailsElement && node instanceof HTMLDetailsElement) {
-		node.open = existing.open;
+/**
+ * Brings `item`'s element up to date. A thought is updated in place, so one
+ * the user opened stays open and text selected in it stays selected while it
+ * streams; anything else is drawn again.
+ */
+function refresh(existing: HTMLElement, item: TranscriptItem, live: boolean): void {
+	if (item.kind === 'thought' && existing instanceof HTMLDetailsElement) {
+		updateThought(existing, item);
+		return;
 	}
-	if (existing.classList.contains('settled')) {
-		node.classList.add('settled');
+	const node = draw(item, live);
+	for (const settled of ['settled', 'settled-step']) {
+		if (existing.classList.contains(settled)) {
+			node.classList.add(settled);
+		}
 	}
 	existing.replaceWith(node);
+	elements.set(item.id, node);
 }
 
 /** Renders finished replies as a whole, which also mends anything split across blocks (a loose list). */
