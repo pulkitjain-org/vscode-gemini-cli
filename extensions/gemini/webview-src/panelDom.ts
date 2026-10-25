@@ -3,9 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Element helpers for the page webviews (changes.ts, home.ts and settings.ts), which
-// don't load the chat view's modules, and two the chat's composer shares with
-// Home's comment box: applyTextEdit and readFileBase64. Nothing runs on import.
+// Element helpers for every webview: the pages (changes.ts, home.ts, settings.ts and
+// the others), which don't load the chat view's modules, and the chat, whose dom.ts
+// passes them on. applyTextEdit and readFileBase64 are the chat's composer's and
+// Home's comment box's. Nothing runs on import.
 
 import type { TextEdit } from './markdownEdit';
 
@@ -20,8 +21,9 @@ export function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: st
 	return node;
 }
 
-export function icon(name: string): HTMLElement {
-	const node = el('i', `codicon codicon-${name}`);
+/** A codicon, hidden from screen readers; `extra` adds classes, such as a spinner's. */
+export function icon(name: string, extra = ''): HTMLElement {
+	const node = el('i', `codicon codicon-${name}${extra ? ` ${extra}` : ''}`);
 	node.setAttribute('aria-hidden', 'true');
 	return node;
 }
