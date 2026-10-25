@@ -24,7 +24,7 @@ import type { ForkContext, ThreadCard, TranscriptItem } from '../acp/chatTranscr
 import { attachmentLabel, type Attachment } from '../acp/attachments';
 import { ConductorReader } from '../acp/conductor';
 import type { InstantAnswer } from '../acp/permissions';
-import { ProjectHub, panelState, threadCounts, threadMemoryContext, type ThreadRequest } from '../acp/projectHub';
+import { ProjectHub, panelState, threadCounts, threadMemoryContext, threadMessages, type ThreadRequest } from '../acp/projectHub';
 import { coordinatorTools, isProjectToolCall, isProjectToolTitle, ProjectMcpServer, projectServerName, threadTools, type ProjectCaller } from '../acp/projectMcp';
 import { projectToolsBlock, type ProjectToolsBlock } from '../acp/projectToolsCheck';
 import { reactionReport, type ReactionRef } from '../acp/reactions';
@@ -555,11 +555,8 @@ export class Projects implements vscode.Disposable {
 		if (!this.agents.record(thread)) {
 			return undefined;
 		}
-		const items = await this.agents.savedConversation(thread).catch(() => []);
-		return items
-			.flatMap(item => item.kind === 'user' ? [`User: ${item.text}`] : item.kind === 'agent' ? [`Thread: ${item.text}`] : [])
-			.slice(-last)
-			.join('\n\n');
+		// Each message cut to about 2,000 characters: a thread's reply can hold a whole log.
+		return threadMessages(await this.agents.savedConversation(thread).catch(() => []), last);
 	}
 
 	/** A thread the coordinator or the dialog asked for, with what the project's settings add. */
