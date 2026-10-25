@@ -19,6 +19,8 @@ export interface ChatMarkdownLabels {
 	/** `{0}` is the request, `{1}` the answer. */
 	readonly permission: string;
 	readonly cancelled: string;
+	/** `{0}` is an emoji: a reaction the user sent to a reply. */
+	readonly reacted?: string;
 }
 
 export function chatToMarkdown(title: string, items: readonly TranscriptItem[], labels: ChatMarkdownLabels): string {
@@ -38,7 +40,14 @@ export function chatToMarkdown(title: string, items: readonly TranscriptItem[], 
 		}
 		switch (item.kind) {
 			case 'user': {
-				blocks.push(`## ${labels.you}`, item.text.trim());
+				blocks.push(`## ${labels.you}`);
+				const reacted = labels.reacted;
+				if (reacted) {
+					blocks.push(...(item.reactions ?? []).map(reaction => `*${reacted.replace('{0}', reaction.emoji)}*`));
+				}
+				if (item.text.trim()) {
+					blocks.push(item.text.trim());
+				}
 				if (item.attachments?.length) {
 					blocks.push(`*${labels.attached}: ${item.attachments.map(a => `\`${a.label}\``).join(', ')}*`);
 				}

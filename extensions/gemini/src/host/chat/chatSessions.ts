@@ -15,6 +15,7 @@ import type { ChatTranscript } from '../../acp/chatTranscript';
 import { keepChatsForever, keepChatsPeriod, readCliPreferences } from '../../acp/cliPreferences';
 import { carriedConversationNote, CliSession, ConversationEntry, isPassingFailure, isPrompt, listCliSessions, readCliConversation, reopenFailure } from '../../acp/cliSessions';
 import { withoutSteeringNote } from '../../acp/promptQueue';
+import { withoutReactionNotes } from '../../acp/reactions';
 import { geminiDir } from '../../acp/directRequest';
 import { AgentErrorInfo, errorMessage } from '../../acp/errors';
 import { readSettingsFile } from '../../acp/projectSettings';
@@ -266,10 +267,11 @@ export class ChatSessions implements vscode.Disposable {
 	/** A message of a reopened session as it replays: the CLI's own context and commands are left out. */
 	private applyReplayed(event: ChatEvent): void {
 		if (event.kind === 'text' && event.role === 'user') {
-			// A message that steered a stopped turn replays without the note sent with it.
-			const text = withoutSteeringNote(event.text).trim();
-			if (isPrompt(text)) {
-				this.transcript.addReplayedPrompt(text);
+			// A message replays without the notes sent with it: a steering note, and reactions' notes, which come back as reaction lines.
+			const { text: rest, reactions } = withoutReactionNotes(withoutSteeringNote(event.text));
+			const text = rest.trim();
+			if (isPrompt(text) || reactions.length) {
+				this.transcript.addReplayedPrompt(isPrompt(text) ? text : '', reactions);
 			}
 			return;
 		}

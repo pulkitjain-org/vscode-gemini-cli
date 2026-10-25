@@ -130,6 +130,10 @@ export const state = {
 	following: false,
 	/** Whether each turn's steps fold under one line once it is done (`gemini.chat.foldFinishedWork`). */
 	foldWork: document.querySelector<HTMLScriptElement>('script[data-strings]')?.dataset.foldWork !== 'false',
+	/** Whether replies offer reactions (`gemini.chat.reactions.enabled`); never in a project's chat. */
+	reactions: document.querySelector<HTMLScriptElement>('script[data-strings]')?.dataset.reactions === 'true',
+	/** The picker's Recent row, newest first. */
+	recents: [] as readonly string[],
 };
 
 /** Each item's element in the transcript. */

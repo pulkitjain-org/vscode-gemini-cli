@@ -47,4 +47,12 @@ describe('chatToMarkdown', () => {
 		];
 		expect(chatToMarkdown('T', items, labels)).toBe('# T\n\n**Plan**\n\n- [x] Read\n- [ ] Fix\n\n*Worked for 1s*\n');
 	});
+
+	it('writes a reaction as a line of its own', () => {
+		const items: TranscriptItem[] = [
+			{ id: '1', kind: 'user', text: '', reactions: [{ turnEnd: '0', emoji: '🚀', name: 'rocket' }] },
+			{ id: '2', kind: 'agent', text: 'Committing.' },
+		];
+		expect(chatToMarkdown('T', items, { ...labels, reacted: 'You reacted {0} to the reply' })).toBe('# T\n\n## You\n\n*You reacted 🚀 to the reply*\n\n## Gemini\n\nCommitting.\n');
+	});
 });

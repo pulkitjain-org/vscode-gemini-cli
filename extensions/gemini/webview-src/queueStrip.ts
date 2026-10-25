@@ -31,9 +31,10 @@ function row(item: PendingPromptView): HTMLElement {
 	const node = el('div', `queue-item${item.steer ? ' steer' : ''}${item.from ? ' from-coordinator' : ''}`);
 	node.setAttribute('role', 'listitem');
 	const status = item.steer ? strings.steering : strings.project?.queued ?? (item.from ? strings.queuedFromCoordinator : strings.queued);
-	const line = item.text.split('\n').map(part => part.trim()).find(Boolean) ?? '';
+	const reacted = (item.reactions ?? []).map(reaction => strings.reactions ? format(strings.reactions.queued, reaction.emoji) : reaction.emoji).join(' ');
+	const line = item.text.split('\n').map(part => part.trim()).find(Boolean) ?? reacted;
 	const text = el('span', 'queue-text', line);
-	setTip(text, item.text);
+	setTip(text, item.text || reacted);
 	const parts: HTMLElement[] = [icon(item.steer ? 'loading' : 'clock', item.steer ? 'codicon-modifier-spin' : ''), el('span', 'queue-status', status), text];
 	if (item.attachments) {
 		parts.push(el('span', 'queue-attached', format(strings.queueAttached, String(item.attachments))));
@@ -42,9 +43,13 @@ function row(item: PendingPromptView): HTMLElement {
 	if (!item.steer && !(strings.project && state.busy)) {
 		actions.append(action(strings.queueSendNow, 'arrow-up', item.id, 'send'));
 	}
-	actions.append(action(strings.queueEdit, 'edit', item.id, 'edit'), action(strings.queueRemove, 'close', item.id, 'remove'));
+	if (item.text) {
+		// A reaction has no text to take back into the box.
+		actions.append(action(strings.queueEdit, 'edit', item.id, 'edit'));
+	}
+	actions.append(action(strings.queueRemove, 'close', item.id, 'remove'));
 	node.append(...parts, actions);
-	node.setAttribute('aria-label', `${status}: ${item.text}`);
+	node.setAttribute('aria-label', `${status}: ${item.text || reacted}`);
 	return node;
 }
 
@@ -61,7 +66,8 @@ function action(label: string, iconName: string, id: string, kind: 'send' | 'edi
 
 /** Takes the newest queued message back into the empty box to edit; false when nothing waits. */
 export function editLastQueued(): boolean {
-	const last = state.queue.at(-1);
+	// A reaction has no text to edit, so it is passed over.
+	const last = state.queue.findLast(item => item.text);
 	if (!last) {
 		return false;
 	}

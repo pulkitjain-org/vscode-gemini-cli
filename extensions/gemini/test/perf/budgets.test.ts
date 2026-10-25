@@ -33,6 +33,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// + menu section and tool rows with logos took it to about 237 KB; the confirm-class card's effect,
 	// the cut-off card and the turn's trace readout to about 241 KB. Later chat features took it to about
 	// 249 KB, and sending while the agent works (the queue strip, Return and ⌘Return) to about 251 KB.
+	// Reactions (the button, quick bar, chips and badge) added about 3 KB; writing the bundles as UTF-8
+	// rather than escaping non-ASCII text then took about 21 KB off, to about 237 KB.
 	'media/chat.js': 255_000,
 	// Home's startup script: Preview's renderer is its own file. The dashboard (cards, Needs you,
 	// Customize) and the tools' logos took it to about 25 KB, and Show All's popup to about 28 KB.
@@ -49,6 +51,9 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// Loaded only when a reply has math.
 	'media/katex.js': 290_000,
 	'media/draftMarkdown.js': 140_000,
+	// The emoji picker, loaded the first time a reaction button is hovered or focused: about 88 KB of emoji data
+	// (1,923 emoji with their names and three search words each) and its own code.
+	'media/emojiPicker.js': 105_000,
 	// Projects' settings, memory and threads across repositories took it from 887 KB to 913 KB, all GeminiCode's own code.
 	// 1.1.0's saved checkpoints, Rewind, Check for Updates and browser fixes took it to 941 KB, all its own code too.
 	// The team tools (five connectors, the geminicode-tools server, Connections, Home's dashboard and the

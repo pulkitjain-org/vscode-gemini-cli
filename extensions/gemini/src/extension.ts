@@ -24,6 +24,7 @@ import { errorMessage } from './acp/errors';
 import { PromptEnhancer } from './acp/promptEnhancer';
 import { configSection, getWorkspaceCwd, loadProductInfo, productInfo, setStorageDirs } from './host/configuration';
 import { initModelList, initModelPreference } from './host/modelPreference';
+import { initReactionRecents } from './host/chatReactions';
 import { SetupWalkthrough, walkthroughId } from './host/setupWalkthrough';
 import { GeminiStatusBar } from './host/statusBar';
 import { QuickEdits } from './host/quickEdits';
@@ -57,6 +58,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const log = vscode.window.createOutputChannel('Gemini', { log: true });
 	await loadProductInfo();
 	initModelPreference(context.globalState);
+	initReactionRecents(context.globalState);
 	setStorageDirs({
 		managedCli: vscode.Uri.joinPath(context.globalStorageUri, 'gemini-cli').fsPath,
 		bundledCli: vscode.Uri.joinPath(context.extensionUri, 'cli').fsPath,

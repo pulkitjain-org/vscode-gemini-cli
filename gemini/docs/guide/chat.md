@@ -94,6 +94,21 @@ When the agent hands part of the work to one of the Gemini CLI's subagents (such
 
 Each message you send shows the time you sent it, **Rewind** and **Copy**. Under each reply is how long the agent worked, the time it finished and **Copy**.
 
+### Reacting to replies
+
+The smiley at the end of a reply's row reacts to it. Hover it, or tab to it, for four quick reactions. The smiley at the end of those opens every emoji, with search and the ones you used last.
+
+- 👍 **Go ahead**: approves what the agent proposed. On a plan, it does what **Build This Plan** does.
+- 👎 **Not what I meant**: the agent stops, says in one line what it understood, and asks what to change. While it works, 👎 stops the turn at the next safe point, as ↩ does.
+- ❓ **Explain more simply**: the agent explains its reply again, with an example.
+- ❤️ **Thanks (no reply)**: marks the reply and sends nothing.
+
+Gemini reads any other emoji as intent and says in one line how it read it before it acts, so a misread shows before any tool runs. Its edits and commands still ask for permission as usual. A reaction is sent at once and shows as a chip on the reply and a line in the conversation; click the line to go back to the reply. While the agent works, reactions other than 👎 wait in the queue, and a second reaction to the same reply replaces a waiting one.
+
+Gemini may react to your message too, with a small emoji on its corner, when it has something to add. Most messages get none.
+
+To change what an emoji asks for, or give one a meaning, set `gemini.chat.reactions.meanings`, such as `{ "🚀": "Go ahead, then commit with a short message." }`; in a workspace's settings it is shared with everyone who opens the folder. `gemini.chat.reactions.agentReactions` turns Gemini's reactions off, and `gemini.chat.reactions.enabled` turns reactions off altogether. Reactions are in agents' and threads' chats, not in a project's coordinator chat.
+
 ## Writing in the composer
 
 Messages you send show Markdown the way replies do. In the composer, <kbd>⌘B</kbd> makes the selection bold and <kbd>⌘E</kbd> makes it code, and <kbd>⇧↩</kbd> on a list line starts the next item. The **Write** and **Preview** tabs (or <kbd>⇧⌘V</kbd>) switch between your draft and how it will look.

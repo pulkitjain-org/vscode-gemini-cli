@@ -25,11 +25,12 @@
 
 import type { ItemUpdate } from '../src/acp/textDeltas';
 import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
-import { coalesceUpdates } from './chatLogic';
+import { coalesceUpdates, format } from './chatLogic';
 import { addAttachments, setSharedPage } from './attachmentChips';
 import { attachToolRef, setToolRefContext, toolRefResolved, watchToolRefs } from './toolChips';
 import { setBusy, setFollow, setFollowed, setGit, setSettings, setStatus } from './composer';
 import { setQueue } from './queueStrip';
+import { initReactionBar } from './reactionBar';
 import { applyTokenColors } from './codeHighlight';
 import { onEnhanced, onEnhanceFailed, onEnhanceProgress, replaceInput, toggleEnhance } from './enhance';
 import { openForkDialog } from './fork';
@@ -51,6 +52,7 @@ setLabel(ui.stopButton, strings.stop);
 setLabel(ui.scrollButton, strings.scrollToBottom);
 ui.scrollLabel.textContent = strings.latest;
 ui.dropLabel.textContent = strings.dropFiles;
+initReactionBar();
 
 /**
  * Updates that came while the view was hidden. An agent's tab keeps its view
@@ -82,6 +84,12 @@ function applyUpdates(updates: readonly ItemUpdate[]): void {
 	let scroll = stick;
 	for (const update of updates) {
 		const item = update.kind === 'append' ? appended(update) : update;
+		if (item?.kind === 'user' && item.agentReaction && strings.reactions) {
+			const before = state.items.find(other => other.id === item.id);
+			if (before?.kind === 'user' && !before.agentReaction) {
+				ui.announce.textContent = format(strings.reactions.agentReacted, item.agentReaction);
+			}
+		}
 		if (item) {
 			scroll = applyItem(item, true) || scroll;
 		}
@@ -107,6 +115,13 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 		case 'foldWork':
 			setFoldWork(message.on);
 			updateOutline();
+			break;
+		case 'reactions':
+			state.recents = message.recents;
+			if (state.reactions !== message.on) {
+				state.reactions = message.on;
+				reset(state.items.slice());
+			}
 			break;
 		case 'reset':
 			// The reset carries every item as it is now.

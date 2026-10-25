@@ -11,6 +11,7 @@ import type * as acp from '@agentclientprotocol/sdk';
 import { Emitter } from './events';
 import type { PendingPermission } from './permissions';
 import { Attachment, attachmentLabel } from './attachments';
+import { leadingReaction, type ReactionRef } from './reactions';
 import { ChatEvent, contentBlockToText, ToolCallModel } from './sessionUpdates';
 import type { TurnReadout } from './traceRecording';
 import type { ModelTokens } from './turnUsage';
@@ -47,6 +48,10 @@ export type TranscriptItem =
 		readonly at?: number;
 		/** A thread's brief or a note relayed to it, sent by its project's coordinator rather than typed here. */
 		readonly from?: 'coordinator';
+		/** A user prompt that carried reactions to the agent's replies. */
+		readonly reactions?: readonly ReactionRef[];
+		/** The emoji the agent reacted to this prompt with. */
+		readonly agentReaction?: string;
 	}
 	| {
 		readonly id: string; readonly kind: 'toolCall'; readonly title: string; readonly toolKind: string | undefined;
@@ -95,6 +100,10 @@ export type TranscriptItem =
 		readonly buildPlan?: boolean;
 		/** Tokens the turn used per model, when the agent reported them. */
 		readonly usage?: readonly ModelTokens[];
+		/** The turn was stopped or failed before the agent finished. */
+		readonly unfinished?: boolean;
+		/** The emoji the user reacted to this reply with, once each, oldest first. */
+		readonly reactions?: readonly string[];
 	};
 
 /**
@@ -205,6 +214,14 @@ export class ChatTranscript {
 	 */
 	private echo: string | undefined;
 	private held = '';
+	/**
+	 * Whether a reply may start with the agent's reaction to the prompt
+	 * (`<react>X</react>`), which is lifted onto the prompt. Off in a
+	 * project's chat, which never asks for one.
+	 */
+	liftReactions = false;
+	/** The turn's first reply text, held while it may still be a reaction tag. */
+	private reactionHeld: string | undefined;
 
 	constructor(private readonly now: () => number = Date.now) { }
 
@@ -212,12 +229,11 @@ export class ChatTranscript {
 		return this._items;
 	}
 
-	addPrompt(text: string, attachments: readonly Attachment[] = [], from?: 'coordinator'): void {
+	addPrompt(text: string, attachments: readonly Attachment[] = [], from?: 'coordinator', reactions: readonly ReactionRef[] = []): void {
 		this.settleEcho();
-		this.turnStart = this._items.length;
-		this.lastMessageId = undefined;
+		this.startTurn();
 		this.push({
-			id: this.newId(), kind: 'user', text, at: this.now(), ...(from ? { from } : {}),
+			id: this.newId(), kind: 'user', text, at: this.now(), ...(from ? { from } : {}), ...(reactions.length ? { reactions } : {}),
 			...(attachments.length ? {
 				attachments: attachments.map(a => ({
 					kind: a.kind,
@@ -241,16 +257,27 @@ export class ChatTranscript {
 	}
 
 	/** A user message replayed from a saved session: its own bubble, with no time, since the replay does not carry one. */
-	addReplayedPrompt(text: string): void {
+	addReplayedPrompt(text: string, reactions: readonly ReactionRef[] = []): void {
 		this.settleEcho();
-		this.turnStart = this._items.length;
-		this.lastMessageId = undefined;
-		this.push({ id: this.newId(), kind: 'user', text });
+		this.startTurn();
+		this.push({ id: this.newId(), kind: 'user', text, ...(reactions.length ? { reactions } : {}) });
+	}
+
+	/** Puts the user's reaction on a reply, once per emoji. */
+	addReaction(turnEndId: string, emoji: string): void {
+		const item = this._items.find(i => i.id === turnEndId);
+		if (item?.kind === 'turnEnd' && !item.reactions?.includes(emoji)) {
+			this.upsert({ ...item, reactions: [...item.reactions ?? [], emoji] });
+		}
 	}
 
 	apply(event: ChatEvent): void {
 		if (event.kind !== 'text') {
 			this.settleEcho();
+			// Reply text cut short by a step is shown; before any reply text, the tag may still come after the steps.
+			if (this.reactionHeld) {
+				this.settleReaction();
+			}
 		}
 		switch (event.kind) {
 			case 'text':
@@ -304,13 +331,14 @@ export class ChatTranscript {
 	/** Ends the turn; returns the item's id. */
 	addTurnEnd(durationMs: number, usage?: readonly ModelTokens[]): string {
 		this.settleEcho();
+		this.settleReaction();
 		const id = this.newId();
 		this.push({ id, kind: 'turnEnd', durationMs: Math.max(0, Math.round(durationMs)), at: this.now(), ...(usage?.length ? { usage } : {}) });
 		return id;
 	}
 
 	/** Changes what a turnEnd item offers. */
-	updateTurnEnd(id: string, patch: Pick<TurnEndItem, 'files' | 'undo' | 'retry' | 'buildPlan' | 'firstTokenMs'>): void {
+	updateTurnEnd(id: string, patch: Pick<TurnEndItem, 'files' | 'undo' | 'retry' | 'buildPlan' | 'firstTokenMs' | 'unfinished'>): void {
 		const item = this._items.find(i => i.id === id);
 		if (item?.kind === 'turnEnd') {
 			const next: Record<string, unknown> = { ...item, ...patch };
@@ -436,6 +464,7 @@ export class ChatTranscript {
 		this.nextId = Math.max(this.nextId, ...items.map(i => /^item-(\d+)$/.exec(i.id)).map(m => m ? Number(m[1]) + 1 : 0));
 		this.turnStart = this._items.length;
 		this.lastMessageId = undefined;
+		this.reactionHeld = undefined;
 		this.onDidResetEmitter.fire();
 	}
 
@@ -446,6 +475,7 @@ export class ChatTranscript {
 			return;
 		}
 		this.settleEcho();
+		this.reactionHeld = undefined;
 		this._items = this._items.slice(0, index);
 		this.turnStart = this._items.length;
 		this.lastMessageId = undefined;
@@ -456,6 +486,7 @@ export class ChatTranscript {
 		this._items = [];
 		this.turnStart = 0;
 		this.lastMessageId = undefined;
+		this.reactionHeld = undefined;
 		this.onDidResetEmitter.fire();
 	}
 
@@ -475,6 +506,23 @@ export class ChatTranscript {
 			const rest = said.startsWith(this.echo) ? afterEcho(this.held, this.echo) : this.held;
 			this.echo = undefined;
 			this.held = '';
+			if (rest) {
+				this.appendText(role, rest, messageId);
+			}
+			return;
+		}
+		if (role === 'agent' && this.reactionHeld !== undefined) {
+			this.reactionHeld += text;
+			const found = leadingReaction(this.reactionHeld);
+			if (found === 'pending') {
+				return;
+			}
+			const held = this.reactionHeld;
+			this.reactionHeld = undefined;
+			if (found !== 'none') {
+				this.setAgentReaction(found.emoji);
+			}
+			const rest = found === 'none' ? held : found.rest;
 			if (rest) {
 				this.appendText(role, rest, messageId);
 			}
@@ -501,6 +549,31 @@ export class ChatTranscript {
 		this.held = '';
 		if (held && !repeated) {
 			this.appendText('agent', held, undefined);
+		}
+	}
+
+	/** A new prompt's turn: its first reply text may carry the agent's reaction. */
+	private startTurn(): void {
+		this.settleReaction();
+		this.turnStart = this._items.length;
+		this.lastMessageId = undefined;
+		this.reactionHeld = this.liftReactions ? '' : undefined;
+	}
+
+	/** Something other than reply text came, or the turn ended: held text is shown, and no tag is looked for after it. */
+	private settleReaction(): void {
+		const held = this.reactionHeld;
+		this.reactionHeld = undefined;
+		if (held) {
+			this.appendText('agent', held, undefined);
+		}
+	}
+
+	/** The agent's reaction, on the prompt that started the turn. */
+	private setAgentReaction(emoji: string): void {
+		const item = this._items[this.turnStart];
+		if (item?.kind === 'user') {
+			this.upsert({ ...item, agentReaction: emoji });
 		}
 	}
 

@@ -1695,6 +1695,311 @@ body.vscode-high-contrast-light {
 	font-style: italic;
 }
 
+/* ---- Reactions: chips and the reaction button on a reply, the quick bar, the agent's badge, reaction lines ---- */
+
+.reaction-chip {
+	display: inline-flex;
+	align-items: center;
+	height: 20px;
+	margin-left: 4px;
+	padding: 0 7px;
+	border: 1px solid color-mix(in srgb, var(--gemini-accent) 55%, transparent);
+	border-radius: 10px;
+	background: color-mix(in srgb, var(--gemini-accent) 14%, transparent);
+	font-size: 12px;
+	line-height: 1;
+}
+
+.turn-action.reaction-add {
+	padding: 0 4px;
+	opacity: 0.7;
+}
+
+.turn-end:hover .reaction-add,
+.reaction-add:focus-visible {
+	opacity: 1;
+}
+
+.reaction-icon {
+	width: 15px;
+	height: 15px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.15;
+	stroke-linecap: round;
+}
+
+.reaction-icon circle {
+	fill: currentColor;
+	stroke: none;
+}
+
+.reaction-bar {
+	display: inline-flex;
+	align-items: center;
+	gap: 1px;
+	height: 26px;
+	margin-left: 2px;
+	padding: 0 3px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: 13px;
+	background: var(--gemini-popover);
+	box-shadow: 0 2px 8px var(--gemini-shadow);
+	animation: reaction-bar-in 0.12s ease-out;
+}
+
+@keyframes reaction-bar-in {
+	from { opacity: 0; transform: translateX(-4px); }
+}
+
+.reaction-quick {
+	width: 26px;
+	height: 22px;
+	padding: 0;
+	border: none;
+	border-radius: 11px;
+	background: transparent;
+	font-size: 15px;
+	line-height: 1;
+	cursor: pointer;
+	transition: transform 0.1s ease;
+}
+
+.reaction-quick:hover {
+	background: var(--gemini-hover);
+	transform: scale(1.15);
+}
+
+.reaction-divider {
+	width: 1px;
+	height: 16px;
+	margin: 0 3px;
+	background: var(--gemini-border-strong);
+}
+
+.reaction-more {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 22px;
+	padding: 0;
+	border: none;
+	border-radius: 11px;
+	background: transparent;
+	color: var(--gemini-muted);
+	cursor: pointer;
+}
+
+.reaction-more:hover {
+	background: var(--gemini-hover);
+	color: var(--vscode-foreground);
+}
+
+.reaction-more:focus-visible,
+.reaction-quick:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.message.user.has-reaction {
+	position: relative;
+	margin-bottom: 8px;
+}
+
+.agent-reaction {
+	position: absolute;
+	right: -8px;
+	bottom: -11px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: 50%;
+	background: var(--gemini-popover);
+	font-size: 12px;
+	line-height: 1;
+	animation: reaction-pop 0.25s ease-out;
+}
+
+@keyframes reaction-pop {
+	from { transform: scale(0.4); opacity: 0; }
+	70% { transform: scale(1.15); }
+}
+
+.reaction-line {
+	display: block;
+	width: fit-content;
+	margin: 0 0 4px auto;
+	padding: 2px 6px;
+	border: none;
+	border-radius: var(--gemini-radius-small);
+	background: transparent;
+	color: var(--gemini-muted);
+	font: inherit;
+	font-size: 12px;
+}
+
+button.reaction-line {
+	cursor: pointer;
+}
+
+button.reaction-line:hover {
+	background: var(--gemini-hover);
+	color: var(--vscode-foreground);
+}
+
+button.reaction-line:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+}
+
+.user-turn.reaction-turn {
+	margin: 10px 0 8px;
+}
+
+/* ---- The emoji picker (webview-src/emojiPicker.ts), in the top layer over the chat ---- */
+
+.emoji-picker {
+	position: fixed;
+	inset: auto;
+	box-sizing: border-box;
+	width: 324px;
+	margin: 0;
+	padding: 8px 8px 0;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius);
+	background: var(--gemini-popover);
+	box-shadow: 0 8px 28px var(--gemini-shadow);
+	color: var(--vscode-foreground);
+	font-family: var(--vscode-font-family);
+	font-size: 12.5px;
+}
+
+.emoji-search {
+	box-sizing: border-box;
+	width: 100%;
+	height: 28px;
+	padding: 0 8px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-small);
+	background: var(--gemini-composer);
+	color: var(--vscode-input-foreground, var(--vscode-foreground));
+	font: inherit;
+	outline: none;
+}
+
+.emoji-search:focus {
+	border-color: var(--vscode-focusBorder);
+}
+
+.emoji-tabs {
+	display: flex;
+	justify-content: space-between;
+	margin: 6px 0 2px;
+	padding-bottom: 4px;
+	border-bottom: 1px solid var(--gemini-border);
+}
+
+.emoji-tab,
+.emoji-cell {
+	padding: 0;
+	border: none;
+	border-radius: var(--gemini-radius-small);
+	background: transparent;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.emoji-tab {
+	width: 28px;
+	height: 26px;
+	font-size: 15px;
+	opacity: 0.75;
+}
+
+.emoji-tab:hover {
+	background: var(--gemini-hover);
+	opacity: 1;
+}
+
+.emoji-body {
+	height: 232px;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+
+.emoji-section {
+	content-visibility: auto;
+	contain-intrinsic-size: auto 200px;
+}
+
+.emoji-section-title {
+	position: sticky;
+	top: 0;
+	padding: 6px 2px 3px;
+	background: var(--gemini-popover);
+	color: var(--gemini-muted);
+	font-size: 11.5px;
+}
+
+.emoji-row {
+	display: grid;
+	grid-template-columns: repeat(8, 1fr);
+}
+
+.emoji-cell {
+	height: 34px;
+	font-size: 21px;
+}
+
+.emoji-cell:hover {
+	background: var(--gemini-hover);
+}
+
+.emoji-cell:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+	background: var(--gemini-selected);
+}
+
+.emoji-empty {
+	padding: 24px 0;
+	color: var(--gemini-muted);
+	text-align: center;
+}
+
+.emoji-footer {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 34px;
+	border-top: 1px solid var(--gemini-border);
+}
+
+.emoji-footer-emoji {
+	font-size: 18px;
+}
+
+.emoji-footer-name {
+	overflow: hidden;
+	color: var(--gemini-muted);
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.reaction-bar,
+	.agent-reaction {
+		animation: none;
+	}
+
+	.reaction-quick:hover {
+		transform: none;
+	}
+}
+
 /* ---- Working strip: a quiet line over the composer with a clock and the current step ---- */
 
 .activity {
