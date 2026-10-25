@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Projects (preview, `gemini.projects.enabled`): a coordinator agent whose
+// Projects (`gemini.projects.enabled`, on by default): a coordinator agent whose
 // chat is the project chat, and threads that do the work, each an agent on a
 // new branch in its own worktree. The extension host plays the platform: the
 // coordinator's chat sends what the user writes to a ProjectHub, which wakes
@@ -20,11 +20,11 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { EditedFile } from '../acp/agentChanges';
 import { isArchived, warmThreads, type AgentProjectRole, type AgentRecord } from '../acp/agents';
-import type { ThreadCard, TranscriptItem } from '../acp/chatTranscript';
+import type { ForkContext, ThreadCard, TranscriptItem } from '../acp/chatTranscript';
 import { attachmentLabel, type Attachment } from '../acp/attachments';
 import { ConductorReader } from '../acp/conductor';
 import type { InstantAnswer } from '../acp/permissions';
-import { ProjectHub, panelState, threadCounts, type ThreadRequest } from '../acp/projectHub';
+import { ProjectHub, panelState, threadCounts, threadMemoryContext, type ThreadRequest } from '../acp/projectHub';
 import { coordinatorTools, isProjectToolCall, isProjectToolTitle, ProjectMcpServer, projectServerName, threadTools, type ProjectCaller } from '../acp/projectMcp';
 import { projectToolsBlock, type ProjectToolsBlock } from '../acp/projectToolsCheck';
 import type { McpToolResult } from '../acp/browserMcp';
@@ -106,7 +106,7 @@ export interface ProjectAgents {
 }
 
 export function projectsEnabled(): boolean {
-	return vscode.workspace.getConfiguration(configSection).get<boolean>('projects.enabled', false);
+	return vscode.workspace.getConfiguration(configSection).get<boolean>('projects.enabled', true);
 }
 
 /** One open project: its hub, and what the threads are doing. */
@@ -119,7 +119,7 @@ interface LiveProject {
 	readonly coordinator: ChatController;
 	/** Threads that called report in the turn now running. */
 	readonly reported: Set<string>;
-	/** Notes for threads that were busy, sent when their turn ends. */
+	/** Notes for threads still setting up or starting a turn, sent when that ends; a thread's running turn holds its own (its queue). */
 	readonly queued: Map<string, string[]>;
 	/** Threads whose current turn is their plan (Plan first). */
 	readonly planning: Set<string>;
@@ -194,7 +194,41 @@ export class Projects implements vscode.Disposable {
 			openSettings: () => void this.openSettings(coordinatorId),
 			saveSettings: settings => void this.saveSettings(coordinatorId, settings),
 			settingsAction: (action, name) => void this.settingsAction(coordinatorId, action, name),
+			retryWake: () => this.projects.get(coordinatorId)?.hub.retry(),
+			sessionReplaced: () => {
+				const hub = this.projects.get(coordinatorId)?.hub;
+				hub?.setBriefed(false);
+				hub?.memoryChanged();
+			},
 		};
+	}
+
+	/**
+	 * Fork Thread made `fork` from thread `parent`: it joins the parent's
+	 * project as a thread of its own, with a card, and the coordinator hears
+	 * with its next wake.
+	 */
+	async threadForked(fork: AgentRecord, parent: AgentRecord, context: ForkContext): Promise<void> {
+		const role = fork.project?.role === 'thread' ? fork.project : undefined;
+		const project = role && this.projects.get(role.coordinator);
+		if (!project) {
+			return;
+		}
+		project.hub.addForkedThread({ id: fork.id, title: fork.title, ...(fork.worktree ? { branch: fork.worktree.branch } : {}) }, parent.id);
+		this.showCard(project, fork.id);
+		// A copied session already holds the project's notes the thread was given; the conversation alone doesn't.
+		if (context === 'conversation') {
+			const memory = await projectMemory(project.home, await project.loading, 'threads').catch(() => undefined);
+			if (memory) {
+				this.agents.controller(fork.id)?.addContext(threadMemoryContext(memory));
+			}
+		}
+	}
+
+	/** Merge Back on a thread, as its card does: once all its work is merged, the thread is resolved. */
+	mergeThread(thread: string): Promise<void> {
+		const role = this.agents.record(thread)?.project;
+		return role?.role === 'thread' ? this.threadAction(role.coordinator, thread, 'merge') : Promise.resolve();
 	}
 
 	/** A project agent started: a coordinator opens its project, a thread joins its own. */
@@ -407,6 +441,9 @@ export class Projects implements vscode.Disposable {
 				}
 			}),
 			hub.onDidChangeThread(thread => this.showCard(project, thread.id)),
+			// A failed wake offers Retry on its error, until the next wake starts.
+			hub.onDidFailWake(failure => coordinator.offerRetry(failure.message)),
+			hub.onDidChangeBusy(busy => busy && coordinator.clearRetry()),
 		);
 		this.projects.set(record.id, project);
 		this.schedulePanel(project);
@@ -496,8 +533,11 @@ export class Projects implements vscode.Disposable {
 			void restoring.then(() => this.deliver(project, thread, controller, text, from));
 			return;
 		}
-		// The pane's activity can lag the controller by a tick, so both are asked: a note sent to a busy chat would be dropped.
-		if (this.agents.settingUp(thread) || this.agents.activity(thread)?.busy || controller.running) {
+		// A running turn queues the note in the thread's chat, where the user sees it and can send it now or remove it.
+		if (controller.running && !this.agents.settingUp(thread)) {
+			void controller.send(text, [], from, 'queue');
+		} else if (this.agents.settingUp(thread) || this.agents.activity(thread)?.busy) {
+			// The pane's activity can lag the controller by a tick: the note waits for the turn's end.
 			project.queued.set(thread, [...project.queued.get(thread) ?? [], text]);
 		} else {
 			void controller.send(text, [], from);

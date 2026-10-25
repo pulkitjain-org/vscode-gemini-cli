@@ -158,6 +158,22 @@ describe('ChatTranscript', () => {
 	});
 });
 
+describe('ChatTranscript retry on errors', () => {
+	it('offers Retry on the latest error only, and takes it off again', () => {
+		const transcript = new ChatTranscript();
+		transcript.addNotice('quota', 'error');
+		transcript.addNotice('Stopped.');
+		transcript.addNotice('network', 'error');
+		transcript.offerRetry();
+		expect(transcript.items.map(item => item.kind === 'notice' && !!item.retry)).toEqual([false, false, true]);
+		transcript.addNotice('again', 'error');
+		transcript.offerRetry();
+		expect(transcript.items.map(item => item.kind === 'notice' && !!item.retry)).toEqual([false, false, false, true]);
+		transcript.clearRetry();
+		expect(transcript.items.some(item => item.kind === 'notice' && Object.keys(item).includes('retry'))).toBe(false);
+	});
+});
+
 describe('ChatTranscript permissions', () => {
 	const request = {
 		sessionId: 's1',

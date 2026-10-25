@@ -18,6 +18,7 @@ Every GeminiCode shortcut in one place. ⌘ is Command, ⌥ is Option, ⇧ is Sh
 | <kbd>↩</kbd> / <kbd>⇧↩</kbd> (chat input) | Send, or start a new line |
 | <kbd>↩</kbd> (chat input, agent working) | Send now: the agent takes the message after its current step |
 | <kbd>⌘↩</kbd> (chat input, agent working) | Queue the message for after the agent's turn |
+| <kbd>↩</kbd> or <kbd>⌘↩</kbd> (project chat, coordinator working) | Send the message when the coordinator's turn ends |
 | <kbd>↑</kbd> (empty chat input, messages queued) | Take the last queued message back to edit |
 | <kbd>esc</kbd> <kbd>esc</kbd> (chat input, agent working) | Stop the agent |
 | <kbd>esc</kbd> (chat input) | Cancel Enhance prompt |

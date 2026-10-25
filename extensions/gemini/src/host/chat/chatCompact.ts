@@ -19,6 +19,7 @@ import { isPrompt, MessageRecord, readSessionMessages, readSessionTokens, rewind
 import { errorMessage } from '../../acp/errors';
 import { compactedMessages, compactMinPrompts, compactSplit, estimateTokens, summaryMarker, summaryPrompt, writeSessionCopy } from '../../acp/sessionSnapshot';
 import type { SlashCommand } from '../../acp/slashCommands';
+import { coordinatorSummaryNote } from '../../acp/projectHub';
 import type { FromWebview } from '../chatProtocol';
 import type { ChatControllerOptions, ChatHost } from './chatOptions';
 import type { ChatSessions } from './chatSessions';
@@ -32,6 +33,8 @@ export interface CompactHost {
 	quietly<T>(work: () => Promise<T>): Promise<T>;
 	/** Reads the context's use again, for the ring. */
 	refreshContext(): void;
+	/** The chat moved to another session: the compacted one, or back to the full one. */
+	movedSession(): void;
 }
 
 export class ChatCompact {
@@ -43,7 +46,7 @@ export class ChatCompact {
 		private readonly service: Pick<ChatHost, 'client' | 'ensureReady' | 'writeLog'>,
 		private readonly transcript: ChatTranscript,
 		private readonly sessions: ChatSessions,
-		private readonly options: Pick<ChatControllerOptions, 'editorColumn'>,
+		private readonly options: Pick<ChatControllerOptions, 'editorColumn' | 'project'>,
 		private readonly host: CompactHost,
 	) { }
 
@@ -112,6 +115,7 @@ export class ChatCompact {
 		const compacted = compactedMessages(messages, summary, split);
 		const to = await writeSessionCopy(client.cwd, compacted);
 		await this.switchTo(to, from);
+		this.host.movedSession();
 		return { before, after: estimateTokens(compacted), kept: compacted.filter(isPromptMessage).length - 1, summary, from, to };
 	}
 
@@ -150,7 +154,9 @@ export class ChatCompact {
 			}
 		});
 		try {
-			const { stopReason } = await this.service.client.promptTurn([{ type: 'text', text: summaryPrompt }]);
+			// A project's coordinator keeps track of its threads through the summary too.
+			const prompt = this.options.project ? `${summaryPrompt}\n\n${coordinatorSummaryNote}` : summaryPrompt;
+			const { stopReason } = await this.service.client.promptTurn([{ type: 'text', text: prompt }]);
 			if (stopReason === 'cancelled') {
 				throw new Error(vscode.l10n.t("Compacting was stopped."));
 			}
@@ -192,6 +198,7 @@ export class ChatCompact {
 		this.running = true;
 		try {
 			await this.host.quietly(() => this.switchTo(item.from!, item.to!));
+			this.host.movedSession();
 			this.transcript.updateCompact(itemId, { state: 'undone' });
 		} catch (err) {
 			this.transcript.addNotice(vscode.l10n.t("Could not undo the compact: {0}", errorMessage(err)), 'error');

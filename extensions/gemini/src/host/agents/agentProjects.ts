@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The Agents pane's side of Projects (preview): starting a project and its
+// The Agents pane's side of Projects: starting a project and its
 // threads (each on a new branch in its own worktree, or across several
 // repositories in a folder of its own), the trust and rules their folders
 // need, and Clean Up of merged threads' folders.
@@ -75,7 +75,7 @@ export class AgentProjects {
 	async newProject(node: AgentTreeNode | undefined): Promise<void> {
 		if (!projectsEnabled()) {
 			const enable = vscode.l10n.t("Turn On");
-			if (await vscode.window.showInformationMessage(vscode.l10n.t("Projects are a preview. Turn them on?"), enable) !== enable) {
+			if (await vscode.window.showInformationMessage(vscode.l10n.t("Projects are turned off in Settings. Turn them on?"), enable) !== enable) {
 				return;
 			}
 			await vscode.workspace.getConfiguration(configSection).update('projects.enabled', true, vscode.ConfigurationTarget.Global);

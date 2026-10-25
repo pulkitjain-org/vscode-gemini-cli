@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { coordinatorBrief, listedMergedThreads, multiRepoBrief, ProjectHub, threadMemoryContext, wakeThreadLines, type CoordinatorSession, type FeedEntry, type ThreadDriver, type ThreadInfo } from '../../src/acp/projectHub';
+import { coordinatorBrief, CoordinatorTurnFailed, listedMergedThreads, multiRepoBrief, ProjectHub, threadMemoryContext, wakeThreadLines, type CoordinatorSession, type FeedEntry, type ThreadDriver, type ThreadInfo } from '../../src/acp/projectHub';
 
 function setup(turn: (prompt: string, hub: ProjectHub) => Promise<void> = async () => { }) {
 	const prompts: string[] = [];
@@ -154,18 +154,60 @@ describe('ProjectHub', () => {
 		expect((await hub.call({ role: 'coordinator', project: 'other' }, 'post', { text: 'x' })).isError).toBe(true);
 	});
 
-	it('reports a failed coordinator turn in the chat and keeps going', async () => {
+	it('reports a failed wake, keeps its events for the next wake and wakes no more by itself', async () => {
 		const { hub, feed, prompts } = setup(async prompt => {
-			if (prompt.includes('boom')) {
+			if (prompt.includes('boom') && !prompt.includes('second try')) {
 				throw new Error('quota');
 			}
 		});
+		const failures: { message?: string }[] = [];
+		hub.onDidFailWake(failure => failures.push(failure));
 		hub.post('boom');
 		await hub.idle();
-		expect(feed.at(-1)).toMatchObject({ kind: 'coordinator', text: 'The coordinator could not answer: quota' });
-		hub.post('again');
+		expect(failures).toEqual([{ message: 'The coordinator could not answer: quota' }]);
+		expect(feed.some(entry => entry.kind === 'coordinator')).toBe(false);
+		expect(prompts).toHaveLength(1);
+		hub.post('second try');
 		await hub.idle();
 		expect(prompts).toHaveLength(2);
+		expect(prompts[1]).toContain('<event kind="user">\nboom\n</event>');
+		expect(prompts[1].indexOf('boom')).toBeLessThan(prompts[1].indexOf('second try'));
+	});
+
+	it('sends a failed wake again on Retry, with the brief it may never have had', async () => {
+		let fail = true;
+		const { hub, prompts } = setup(async () => {
+			if (fail) {
+				fail = false;
+				throw new CoordinatorTurnFailed();
+			}
+		});
+		const failures: { message?: string }[] = [];
+		hub.onDidFailWake(failure => failures.push(failure));
+		hub.post('Fix the cart total');
+		await hub.idle();
+		// The chat already shows why a turn failed.
+		expect(failures).toEqual([{}]);
+		hub.retry();
+		await hub.idle();
+		expect(prompts).toHaveLength(2);
+		expect(prompts[1].startsWith(coordinatorBrief)).toBe(true);
+		expect(prompts[1]).toContain('<event kind="user">\nFix the cart total\n</event>');
+		hub.retry();
+		await hub.idle();
+		expect(prompts).toHaveLength(2);
+	});
+
+	it('tells the coordinator about a forked thread with the next wake', async () => {
+		const { hub, prompts, feed } = setup();
+		hub.addForkedThread({ id: 't9', title: 'Try a second approach', branch: 'gemini/second' }, 't1');
+		expect(feed.at(-1)).toMatchObject({ kind: 'thread', thread: 't9' });
+		await hub.idle();
+		expect(prompts).toHaveLength(0);
+		hub.post('How is it going?');
+		await hub.idle();
+		expect(prompts[0]).toContain('<event kind="forked" thread="t9" from="t1">');
+		expect(prompts[0]).toContain('t9 "Try a second approach": starting');
 	});
 
 	it('sends the notes again only when they change', async () => {

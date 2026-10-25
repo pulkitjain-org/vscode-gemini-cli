@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// A project chat's own parts (Projects preview): the New thread dialog and the
+// A project chat's own parts: the New thread dialog and the
 // side panel. Neither exists in other chats, and nothing here runs while
 // typing or streaming: the dialog is built when opened, and the panel only
 // when the extension sends it, after a burst of thread changes settles.

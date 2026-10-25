@@ -4,9 +4,9 @@ A project hands a larger piece of work to a team of agents. You talk to a **coor
 
 ![A project chat where the coordinator answers with a plan of two threads](../../site/media/project-chat-dark.webp)
 
-## Turn on Projects
+## Turn Projects on or off
 
-Projects are off by default. Choose **New Project** and say yes when it asks, or turn on `gemini.projects.enabled` in Settings.
+Projects are on by default. To hide them, turn off `gemini.projects.enabled` in Settings; **New Project** then asks whether to turn them on again.
 
 > [!NOTE]
 > The first time, GeminiCode asks to trust the folders where coordinators run (`~/.geminicode/projects`) and where threads check out their branches (`~/.geminicode/worktrees/<repository>`). The Gemini CLI loads a project's tools only in trusted folders.
@@ -27,6 +27,12 @@ The coordinator never edits files or reads the code itself. It plans, starts thr
 
 Only your messages wake the coordinator. When a thread finishes, asks something or fails, you take it up in that thread; the coordinator sees what changed the next time you write to it. A follow-up on work a thread already has goes to that thread, whether it's working, waiting or done.
 
+You can write while the coordinator works. Your message shows above the input as **Goes to the coordinator after this turn**, with **Edit** and **Remove**, and goes as soon as the turn ends. Return and ⌘Return both wait: the coordinator's turn is never stopped for a message. If you stop the coordinator, your messages stay there until you choose **Send now**.
+
+If a coordinator turn fails, for example on a quota or network error, its error offers **Retry**, which sends the coordinator what that turn was given again. Your next message carries it too, so nothing you wrote is lost.
+
+**Compact** works in the project chat as in any chat: type `/compact`, use the **Compact** link in the usage popover, or the card offered once the context passes 40%. The coordinator's summary lists its threads, and its next turn gets its role and the project memory again.
+
 ## Threads
 
 Each thread shows as a card in the project chat with its state, branch, changed lines and time, and updates in place. Click its title, or **Open**, to open its chat in a tab of its own. A thread's questions and permission requests stay in its own chat (**Open to answer**).
@@ -34,6 +40,12 @@ Each thread shows as a card in the project chat with its state, branch, changed 
 ![Thread cards in the project chat, with the side panel counting threads by state](../../site/media/project-threads-dark.webp)
 
 Threads run in the repository's worktrees with all of its rules, and a thread's agent starts while its folder is set up. In the agent list, the **Projects** section lists each project with its threads below it.
+
+When the coordinator passes a thread a note while the thread is working, the note shows above the thread's input as **From coordinator: goes after this turn**. It goes when the turn ends; **Send now** gives it to the thread after its current step instead, and **Remove** drops it.
+
+## Fork a thread
+
+**Fork Agent** works on a thread too: the split-arrows icon on its row, the row's right-click menu, the **+** menu, `/fork`, or **Fork** at the end of any reply. The fork is a new thread in the same project, on a new branch made from the thread's branch with its uncommitted changes, and starts with the thread's conversation (whole, compacted or the conversation only). It gets a card in the project chat, and the coordinator is told about it with your next message. A thread in several repositories can't be forked yet.
 
 ## Start a thread yourself
 

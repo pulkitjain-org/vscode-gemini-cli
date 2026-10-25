@@ -68,7 +68,8 @@ export type TranscriptItem =
 	| ThreadCard
 	/** An update kind this version does not know (design rule 4 in gemini/docs/ARCHITECTURE.md). */
 	| { readonly id: string; readonly kind: 'other'; readonly type: string }
-	| { readonly id: string; readonly kind: 'notice'; readonly text: string; readonly severity: 'info' | 'error' }
+	/** `retry`: a project's failed wake, which the hub can send again. */
+	| { readonly id: string; readonly kind: 'notice'; readonly text: string; readonly severity: 'info' | 'error'; readonly retry?: boolean }
 	/** The saved chat's last turn never ended: GeminiCode quit while the agent worked. Offers to send the message again. */
 	| { readonly id: string; readonly kind: 'cutOff'; readonly prompt: string; readonly dismissed?: boolean }
 	/** Compact: the suggestion to compact this chat's session, then the switch to the compacted one. */
@@ -344,6 +345,28 @@ export class ChatTranscript {
 
 	addNotice(text: string, severity: 'info' | 'error' = 'info'): void {
 		this.push({ id: this.newId(), kind: 'notice', text, severity });
+	}
+
+	/** Offers Retry on the latest error, and on no other. */
+	offerRetry(): void {
+		this.clearRetry();
+		for (let i = this._items.length - 1; i >= 0; i--) {
+			const item = this._items[i];
+			if (item.kind === 'notice' && item.severity === 'error') {
+				this.upsert({ ...item, retry: true });
+				return;
+			}
+		}
+	}
+
+	/** Takes Retry off every error that offers it. */
+	clearRetry(): void {
+		for (const item of this._items) {
+			if (item.kind === 'notice' && item.retry) {
+				const { retry: _retry, ...rest } = item;
+				this.upsert(rest);
+			}
+		}
 	}
 
 	/** Says the last turn was cut off by a quit, with its prompt to send again. */

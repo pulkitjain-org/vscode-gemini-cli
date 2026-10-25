@@ -107,6 +107,7 @@ export class ChatFork {
 				...(place.branch ? { parentBranch: place.branch } : {}),
 				branch: place.forkBranch,
 				branchFollowsName: !place.ownBranch,
+				...(place.branchOnly ? { branchOnly: true } : {}),
 			};
 			this.post({ type: 'openFork', fork: view });
 		} catch (err) {

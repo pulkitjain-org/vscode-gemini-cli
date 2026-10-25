@@ -1,6 +1,6 @@
 # Projects: a coordinator and its threads
 
-Projects (preview, `gemini.projects.enabled`) let one chat run a team of agents. You talk to a **coordinator**, which splits the work into **threads**: each thread is an ordinary GeminiCode agent on its own branch, in its own worktree. This page explains the idea, how the parts fit, how prompts move between them, and what drives the coordinator's decisions. How to use it is in [the Projects guide](guide/projects.md); the short version for the code is in [ARCHITECTURE.md](ARCHITECTURE.md#the-agent-workspace); the measurements behind it are in [FINDINGS.md](FINDINGS.md#a-projects-coordinator-and-threads).
+Projects (`gemini.projects.enabled`, on by default) let one chat run a team of agents. You talk to a **coordinator**, which splits the work into **threads**: each thread is an ordinary GeminiCode agent on its own branch, in its own worktree. This page explains the idea, how the parts fit, how prompts move between them, and what drives the coordinator's decisions. How to use it is in [the Projects guide](guide/projects.md); the short version for the code is in [ARCHITECTURE.md](ARCHITECTURE.md#the-agent-workspace); the measurements behind it are in [FINDINGS.md](FINDINGS.md#a-projects-coordinator-and-threads).
 
 ## The idea
 
@@ -105,7 +105,11 @@ An ACP session runs one prompt at a time, so the hub keeps a queue (`ProjectHub.
 3. Events that arrive while the coordinator is mid-turn wait. When the turn ends, the hub checks the queue again and sends the next wake if your message is in it.
 4. There is no timer. A wake goes out the moment the coordinator is free, never later.
 
-If a turn fails, the project chat says the coordinator could not answer and the loop carries on with the next message.
+What you write while the coordinator works waits in the project chat's own queue, where you can edit or remove it, and goes to the hub when the turn ends; the coordinator's turn is never stopped for it, since stopping one can cut a `start_thread` off half way.
+
+If a turn fails, the hub keeps that wake's events (`ProjectHub.failed`) and does not wake again by itself, which could fail the same way. The error in the project chat offers **Retry** (`ProjectHub.retry`), and your next message carries them too, oldest first. A wake that failed before reaching the session sends the role brief and the notes again.
+
+**Compact** moves the coordinator to a summarized copy of its session, as in any chat. Its summary prompt adds `coordinatorSummaryNote`, so the summary lists the threads, and the hub sends the role brief and the notes with the next wake (`ChatProject.sessionReplaced`), as it does after a context overflow moves the coordinator to a new session.
 
 ```mermaid
 sequenceDiagram
@@ -163,7 +167,7 @@ Also make the toggle remember its last value
 
 - **Threads:** one line each, with id, title, state (or "resolved (merged)"), its last line of activity cut to 160 characters, and whether you started it.
 - **Conductor:** when the repository has a `conductor/` folder ([Conductor](https://github.com/gemini-cli-extensions/conductor)), its product and tech-stack notes and its open tracks. Files are cached until they change, so this costs a stat per file (`src/acp/conductor.ts`).
-- **Events:** everything queued since the last wake, oldest first: your messages, thread reports, and threads you started.
+- **Events:** everything queued since the last wake, oldest first: your messages, thread reports, and threads you started or forked.
 
 The wake is sent with `sendUnseen`, so it reaches the model without showing in the project chat; you see your own message and the coordinator's posts and thread cards.
 
@@ -175,7 +179,11 @@ A thread's first prompt is built by `threadPrompt`:
 2. With Plan first, an instruction to write a short plan and stop. The session also opens in the CLI's Plan mode, which refuses edits until you choose **Approve plan**.
 3. An instruction to call `report` once, with one or two sentences, when the work is done, it is blocked, or only you can answer something.
 
-The brief is sent only when the worktree's setup script ends, so the thread never starts on a half-installed checkout. Later notes from the coordinator (`message_thread`) are delivered the same way: at once if the thread is idle, otherwise queued and sent together when its turn or setup ends (`Projects.deliver`). A note is never dropped because the thread was busy.
+The brief is sent only when the worktree's setup script ends, so the thread never starts on a half-installed checkout. Later notes from the coordinator (`message_thread`) are delivered the same way: at once if the thread is idle, otherwise queued and sent together when its turn or setup ends (`Projects.deliver`). A note for a thread mid-turn waits in that thread's chat queue, marked as the coordinator's, where you can send it now (it steers the thread after its current step) or remove it; one for a thread still setting up waits in the hub. A note is never dropped because the thread was busy. As with your own queued messages, a turn you stop, or that fails, keeps the notes waiting until you send them.
+
+### Forked threads
+
+**Fork Agent** on a thread makes a new thread of the same project (`AgentForks`, `Projects.threadForked`): its record is a thread of the same coordinator, started by you, on a new branch made from the thread's branch with its uncommitted changes, and its worktree gets the repository's rules linked in as a new thread's does. It always gets a branch of its own, since two threads in one folder would change the same files. Its card shows in the project chat, and the next wake carries a `forked` event naming the thread it came from. A fork given only the conversation also gets the project's notes for threads. A thread in several repositories can't be forked yet.
 
 ## How the coordinator decides
 

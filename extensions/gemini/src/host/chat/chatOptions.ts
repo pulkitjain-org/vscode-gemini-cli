@@ -98,7 +98,7 @@ export interface ChatControllerOptions {
 /** What Fork Agent asks of the Agents pane, which makes the fork. */
 export interface ChatForker {
 	/** Whether the agent's folder is in Git, the branch it has checked out, and a free name for a fork's own branch. */
-	place(): Promise<{ readonly git: boolean; readonly branch?: string; readonly forkBranch: string; readonly ownBranch: boolean }>;
+	place(): Promise<{ readonly git: boolean; readonly branch?: string; readonly forkBranch: string; readonly ownBranch: boolean; readonly branchOnly?: boolean }>;
 	/** Makes the fork, opens it and sends it its first message; rejects with a reason to show. */
 	start(start: ForkStart): Promise<void>;
 	/** A fork card's button. */
@@ -128,7 +128,7 @@ export interface ChatSharedPage {
 	reveal(): Promise<boolean>;
 }
 
-/** Makes a chat a project's chat (Projects preview): the coordinator's, fed through the project's hub. */
+/** Makes a chat a project's chat: the coordinator's, fed through the project's hub. */
 export interface ChatProject {
 	/** What the user sends goes to the hub, which wakes the coordinator with it. */
 	post(text: string, attachments: readonly Attachment[]): void;
@@ -144,6 +144,10 @@ export interface ChatProject {
 	settingsAction(action: ProjectSettingsAction, name?: string): void;
 	/** The pointer is on a thread's card or panel row: start its agent ahead of the click. */
 	prepareThread(thread: string): void;
+	/** Retry on a failed wake: the hub sends what that wake carried again. */
+	retryWake(): void;
+	/** The coordinator moved to another session (Compact, its Undo, a full context): the next wake carries the role brief again. */
+	sessionReplaced(): void;
 }
 
 export interface ChatWorkspace {

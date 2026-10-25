@@ -75,7 +75,7 @@ A project's `.gemini/settings.json` can still override them, as in the CLI. A se
 | `gemini.agents.ownBranch` | Start every new agent on its own branch. Off by default. |
 | `gemini.agents.worktreeSetup` | A command run in each new agent branch's folder before the agent starts, such as `npm ci`. |
 | `gemini.agents.allWorkspaceFolders` | Let every agent use all folders of a multi-folder window. Off by default. |
-| `gemini.projects.enabled` | Projects. Off by default. |
+| `gemini.projects.enabled` | Projects. On by default. |
 | `gemini.home.openOnStartup` | Open Home each time GeminiCode starts. On by default. |
 | `gemini.chat.followAgent` | Open each file the agent reads or edits. Off by default. |
 | `gemini.chat.foldFinishedWork` | Fold each finished turn under one "Worked for" line. On by default. |

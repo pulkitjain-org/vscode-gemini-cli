@@ -36,6 +36,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		sendNow: process.platform === 'darwin' ? vscode.l10n.t("Send now (Return). ⌘Return queues it for after this turn.") : vscode.l10n.t("Send now (Enter). Ctrl+Enter queues it for after this turn."),
 		stop: vscode.l10n.t("Stop (Esc Esc)"),
 		queued: vscode.l10n.t("Queued: goes after this turn"),
+		queuedFromCoordinator: vscode.l10n.t("From coordinator: goes after this turn"),
 		steering: vscode.l10n.t("Sending after the current step"),
 		queueSendNow: vscode.l10n.t("Send now"),
 		queueEdit: vscode.l10n.t("Edit"),
@@ -401,6 +402,7 @@ function forkStrings(): ForkStrings {
 		branch: vscode.l10n.t("Branch"),
 		sameFolder: vscode.l10n.t("Same folder"),
 		sameFolderHint: vscode.l10n.t("For questions, reviews and plans: both agents change the same files."),
+		threadHint: vscode.l10n.t("The fork is a new thread in this project, with a card in the project chat. The coordinator is told about it."),
 		noGit: vscode.l10n.t("This folder isn't in a Git repository, so the fork works in the same folder."),
 		message: vscode.l10n.t("First message (optional)"),
 		messagePlaceholder: vscode.l10n.t("What the fork should do"),
@@ -427,6 +429,10 @@ function forkStrings(): ForkStrings {
 function projectStrings(): ProjectChatStrings {
 	return {
 		placeholder: vscode.l10n.t("Message the coordinator, or describe work to split into threads"),
+		placeholderWorking: process.platform === 'darwin' ? vscode.l10n.t("The coordinator is working. ↩ sends your message when it's done") : vscode.l10n.t("The coordinator is working. Enter sends your message when it's done"),
+		sendAfterTurn: vscode.l10n.t("Send when the coordinator is done"),
+		queued: vscode.l10n.t("Goes to the coordinator after this turn"),
+		retryWake: vscode.l10n.t("Send what this turn was given to the coordinator again"),
 		newThread: vscode.l10n.t("New thread"),
 		dialog: {
 			title: vscode.l10n.t("New thread in {0}"),

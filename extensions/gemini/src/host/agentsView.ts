@@ -155,7 +155,7 @@ export class AgentsView implements vscode.Disposable {
 	/** One direct request to the quick model, for drafting a project's memory; set once the extension has made it. */
 	direct: ((request: { readonly system: string; readonly prompt: string }) => Promise<string | undefined>) | undefined;
 	private persistTimeout: ReturnType<typeof setTimeout> | undefined;
-	/** Projects (preview): coordinators and their threads. */
+	/** Projects: coordinators and their threads. */
 	private readonly projects: Projects;
 
 	constructor(
@@ -225,7 +225,16 @@ export class AgentsView implements vscode.Disposable {
 			start: (record, folder) => this.start(record, folder),
 			open: id => this.open(id),
 			pickModel: (id, model) => void this.threadModels.set(id, model),
-			mergeBack: id => this.merge.mergeBack(id),
+			// A forked thread's card merges it as a thread, so it is resolved once merged.
+			mergeBack: async id => {
+				if (this.model.agent(id)?.project?.role !== 'thread') {
+					return this.merge.mergeBack(id);
+				}
+				await this.projects.mergeThread(id);
+				return true;
+			},
+			linkThreadRules: (repository, folder) => this.projectAgents.linkRules(repository, folder, 'thread'),
+			threadForked: (fork, parent, context) => this.projects.threadForked(fork, parent, context),
 		});
 		this.spare = new SpareSession(this.service, {
 			servers: folder => [...this.browser?.spareServers() ?? [], ...this.teamTools?.spareServers() ?? [], ...this.index?.spareServers(folder) ?? []],
@@ -735,8 +744,8 @@ export class AgentsView implements vscode.Disposable {
 				openReview: () => this.openReview?.(record.id),
 				openMergeRequest: () => void vscode.commands.executeCommand('gemini.team.openMergeRequest', record.id),
 				title: () => this.model.agent(record.id)?.title ?? record.title,
-				// A project's agents split work into threads through their coordinator instead.
-				...(record.project ? {} : { fork: this.forks.forkerFor(record.id) }),
+				// A coordinator splits work into threads instead; a thread's fork is a new thread (Fork Thread).
+				...(record.project?.role === 'coordinator' ? {} : { fork: this.forks.forkerFor(record.id) }),
 				...(project?.role === 'coordinator' ? { project: this.projects.chatProject(record.id) } : {}),
 				...(project?.role === 'thread' ? {
 					parentProject: {
@@ -898,8 +907,8 @@ export class AgentsView implements vscode.Disposable {
 			void vscode.window.showInformationMessage(vscode.l10n.t("Select an agent to fork."));
 			return;
 		}
-		if (record.project) {
-			void vscode.window.showInformationMessage(vscode.l10n.t("A project's agents can't be forked: start a thread from the project chat instead."));
+		if (record.project?.role === 'coordinator') {
+			void vscode.window.showInformationMessage(vscode.l10n.t("A project chat can't be forked: fork one of its threads, or start a new thread from the project chat."));
 			return;
 		}
 		await this.open(id);

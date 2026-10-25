@@ -363,7 +363,7 @@ function layout(title: string, body: string, c: Context, current: PageKind, root
 	// The site's own drop-down, drawn in its theme: a disclosure button and a panel (page.mts opens it).
 	const featureMenu = `<div class="fmenu"><button type="button" class="fm-btn" aria-expanded="false" aria-controls="fm-panel"${current === 'feature' ? ' data-current' : ''}>Features${icon('chevron-down')}</button><div class="fm-panel" id="fm-panel" hidden>${features('fm-item')}</div></div>`;
 	const news = current === 'home' ? `
-		<div class="news"><div class="wrap"><span class="k">Preview</span><a href="#projects">Projects: one chat, many threads, each on its own branch →</a></div></div>` : '';
+		<div class="news"><div class="wrap"><span class="k">New</span><a href="#projects">Projects: one chat, many threads, each on its own branch →</a></div></div>` : '';
 	const search = current === 'docs' ? `
 				<button type="button" class="search-btn" aria-label="Search the docs">${icon('search')}<span>Search docs</span><kbd>⌘K</kbd></button>` : '';
 	const brandTail = current === 'docs' ? `<span class="sep">/</span><span class="sub">Docs</span>` : '';
@@ -743,7 +743,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 		<div class="proj reveal" data-reveal>
 			<div class="split">
 				<div class="copy">
-					<span class="label">Projects · preview</span>
+					<span class="label">Projects</span>
 					<h2 class="h2 serif" id="projects-h">One chat for the <em>whole feature.</em></h2>
 					<p>Talk to a coordinator. It splits larger work into threads, each an agent on its own branch, and passes your follow-ups to the right one. Threads show as cards you can open, merge back, review or undo.</p>
 					<div class="threads" aria-hidden="true">
@@ -927,7 +927,7 @@ function docsSidebar(c: Context, current: DocPage | undefined, rendered?: Render
 				<div>
 					<h2>${text(group.name)}</h2>
 					<ul>${group.pages.map(page => `
-						<li><a href="${page.slug}.html"${page === current ? ' aria-current="page"' : ''}>${text(page.title)}${page.slug === 'projects' ? ' <span class="badge">PREVIEW</span>' : ''}</a>${page === current && subs.length ? `
+						<li><a href="${page.slug}.html"${page === current ? ' aria-current="page"' : ''}>${text(page.title)}</a>${page === current && subs.length ? `
 							<div class="subs">${subs.map(h => `<a href="#${attr(h.id)}">${text(h.text)}</a>`).join('')}</div>` : ''}</li>`).join('')}
 					</ul>
 				</div>`).join('');
@@ -1033,7 +1033,7 @@ ${doc.html}
 			<div class="grid3">${group.pages.map(page => `
 				<a class="gcard" href="${page.slug}.html">
 					<span class="n">${String(++number).padStart(2, '0')}</span>
-					<b>${text(page.title)}${page.slug === 'projects' ? ' <span class="badge">PREVIEW</span>' : ''}</b>
+					<b>${text(page.title)}</b>
 					<span>${text(page.summary)}</span>${page.topics.length ? `
 					<span class="topics">${page.topics.map(topic => `<span>${text(topic)}</span>`).join('')}</span>` : ''}
 					${icon('arrow-right', 'go')}

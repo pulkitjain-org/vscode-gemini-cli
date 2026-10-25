@@ -13,8 +13,8 @@ import { renderAttachments } from './attachmentChips';
 import { format, isQueueShortcut } from './chatLogic';
 import { button, el, icon, setLabel } from './dom';
 import { applyTextEdit } from './panelDom';
-import { autoGrow, sendsWhileWorking, updatePlaceholder, updateSendState } from './inputBox';
-import { editLastQueued } from './queueStrip';
+import { autoGrow, updatePlaceholder, updateSendState } from './inputBox';
+import { editLastQueued, renderQueue } from './queueStrip';
 import { onEnhanceKey } from './enhance';
 import { continueList, formatShortcut, toggleWrap, type TextEdit } from './markdownEdit';
 import { createPreviewTabs, isPreviewShortcut } from './markdownPreview';
@@ -49,6 +49,10 @@ export function setBusy(value: boolean): void {
 	setTranscriptBusy(value);
 	updatePlaceholder();
 	updateSendState();
+	// A project chat's waiting messages offer Send now only once the coordinator is done.
+	if (strings.project) {
+		renderQueue();
+	}
 }
 
 export function setStatus(value: ViewStatus): void {
@@ -196,11 +200,11 @@ function applyEdit(edit: TextEdit): void {
 /**
  * Sends what the composer holds. While the agent works, `when` says how:
  * `now` (Return, or Send) steers the turn, `queue` (⌘Return) waits for it to
- * end. A project's chat sends nothing while its coordinator works.
+ * end. In a project's chat both wait for the coordinator's turn to end.
  */
 function submit(when: 'now' | 'queue' = 'now'): void {
 	const text = input.value;
-	if ((state.busy && !sendsWhileWorking()) || state.enhancing || (!text.trim() && !state.attachments.length)) {
+	if (state.enhancing || (!text.trim() && !state.attachments.length)) {
 		return;
 	}
 	if (text.trim() && sent[sent.length - 1] !== text) {
