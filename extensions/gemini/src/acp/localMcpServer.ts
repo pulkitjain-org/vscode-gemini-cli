@@ -215,7 +215,8 @@ export interface AgentMcpServerOptions {
 	readonly name: string;
 	readonly version: string;
 	readonly instructions: string;
-	tools(): readonly McpTool[];
+	/** The tools the route lists: an agent's, or a spare session's slot (`agent` unset until bound). */
+	tools(agent: string | undefined): readonly McpTool[];
 	call(agent: string, name: string, args: Record<string, unknown>): Promise<McpToolResult>;
 	/** The answer to a call from a spare session no agent has taken yet. */
 	readonly notReady: string;
@@ -242,7 +243,7 @@ export class AgentMcpServer {
 			// A slot it no longer keeps is refused; one not bound yet lists the tools but runs none.
 			callerOf: route => route.includes('/') || (isSlot(route) && !this.slots.has(route)) ? undefined : { agent: isSlot(route) ? this.slots.get(route) : route },
 			instructions: () => options.instructions,
-			tools: () => options.tools(),
+			tools: ({ agent }) => options.tools(agent),
 			call: async ({ agent }, name, args) => agent ? options.call(agent, name, args) : { content: [{ type: 'text', text: options.notReady }], isError: true },
 		});
 	}
