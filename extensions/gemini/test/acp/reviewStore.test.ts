@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { mkdtempSync, rmSync } from 'node:fs';
+import { readdir, writeFile } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -39,5 +40,14 @@ describe('review store', () => {
 		t += reviewKeepMs + 1;
 		expect(await store.list()).toEqual([]);
 		expect(await store.get('vca/cms-vca2', 9558)).toBeUndefined();
+	});
+
+	it('moves an unreadable review aside, and leaves no temporary file behind', async () => {
+		dir = mkdtempSync(path.join(os.tmpdir(), 'reviews-'));
+		const store = new ReviewStore(dir);
+		await store.save(review(12));
+		await writeFile(path.join(dir, 'broken-1.json'), '{');
+		expect((await store.list()).map(r => r.iid)).toEqual([12]);
+		expect((await readdir(dir)).sort()).toEqual(['broken-1.json.broken', 'vca_cms-vca2-12.json']);
 	});
 });

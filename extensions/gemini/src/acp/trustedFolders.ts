@@ -12,6 +12,7 @@
 import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { comparablePath, isRecord, writeJsonAtomic } from './fsUtil';
 import { stripJsonComments } from './projectSettings';
 
 /** Where the CLI keeps its trusted folders; mirrors `Storage.getTrustedFoldersPath` in gemini-cli. */
@@ -35,22 +36,14 @@ export async function trustFolder(file: string, folder: string): Promise<void> {
 	}
 	if (text?.trim()) {
 		const parsed: unknown = JSON.parse(text);
-		if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+		if (!isRecord(parsed)) {
 			throw new Error(`${file} is not a JSON object.`);
 		}
-		config = parsed as Record<string, unknown>;
+		config = parsed;
 	}
 	config[path.resolve(folder)] = 'TRUST_FOLDER';
 	// Written the way the CLI writes it: owner-only, replaced in one rename.
-	await fs.mkdir(path.dirname(file), { recursive: true });
-	const temp = `${file}.tmp.${process.pid}.${Date.now()}`;
-	try {
-		await fs.writeFile(temp, JSON.stringify(config, undefined, 2), { encoding: 'utf8', mode: 0o600 });
-		await fs.rename(temp, file);
-	} catch (err) {
-		await fs.rm(temp, { force: true });
-		throw err;
-	}
+	await writeJsonAtomic(file, config, { indent: 2, newline: false, mode: 0o600 });
 }
 
 /**
@@ -63,10 +56,10 @@ export async function isFolderTrusted(file: string, folder: string): Promise<boo
 	let config: Record<string, unknown>;
 	try {
 		const parsed: unknown = JSON.parse(await fs.readFile(file, 'utf8'));
-		if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+		if (!isRecord(parsed)) {
 			return undefined;
 		}
-		config = parsed as Record<string, unknown>;
+		config = parsed;
 	} catch {
 		return undefined;
 	}
@@ -109,7 +102,7 @@ async function comparable(folder: string): Promise<string> {
 	} catch {
 		// Not there yet, such as a worktrees folder no thread has made: compare as written.
 	}
-	return process.platform === 'win32' || process.platform === 'darwin' ? resolved.toLowerCase() : resolved;
+	return comparablePath(resolved);
 }
 
 /** Whether the Gemini CLI trusts all of `folders`, or checks no folder's trust. */

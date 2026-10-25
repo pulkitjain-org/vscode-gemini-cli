@@ -13,6 +13,7 @@
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
+import { writeFileAtomic } from './fsUtil';
 
 export interface ApprovalPolicy {
 	/** Auto Edit: edits are applied without asking. */
@@ -130,8 +131,8 @@ export async function prepareAdminPolicy(dir: string, policy: ApprovalPolicy): P
 	}
 	const current = await fs.readFile(file, 'utf8').catch(() => undefined);
 	if (current !== content) {
-		await fs.mkdir(dir, { recursive: true });
-		await fs.writeFile(file, content);
+		// Replaced in one rename, so an agent starting in another window never reads half a policy.
+		await writeFileAtomic(file, content);
 	}
 	// The CLI ranks a directory passed this way as admin policy.
 	return ['--admin-policy', dir];
