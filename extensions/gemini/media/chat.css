@@ -1726,13 +1726,22 @@ body.vscode-high-contrast-light {
 	stroke: none;
 }
 
+/* Floats over the row rather than sitting in it: the bar is taller than the row, and showing it must not move the chat. */
+.turn-end:has(> .reaction-bar) {
+	position: relative;
+}
+
 .reaction-bar {
+	position: absolute;
+	top: 50%;
+	z-index: 2;
+	translate: 0 -50%;
 	display: inline-flex;
 	align-items: center;
 	gap: 1px;
 	height: 26px;
-	margin-left: 2px;
 	padding: 0 3px;
+	white-space: nowrap;
 	border: 1px solid var(--gemini-border-strong);
 	border-radius: 13px;
 	background: var(--gemini-popover);

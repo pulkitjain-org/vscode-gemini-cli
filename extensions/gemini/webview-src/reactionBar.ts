@@ -135,6 +135,8 @@ function showBar(add: HTMLElement, turnEnd: string): void {
 	if (add.nextSibling !== node) {
 		add.after(node);
 	}
+	// The bar floats over the row (chat.css), just after the button, so showing it never moves the chat.
+	node.style.left = `${add.offsetLeft + add.offsetWidth + 2}px`;
 }
 
 function hideBarSoon(): void {
