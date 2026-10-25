@@ -9,7 +9,8 @@ import * as vscode from 'vscode';
 import { AgentChanges, ChangeTotals } from '../acp/agentChanges';
 import { attentionChange } from '../acp/attention';
 import { branchNameFrom } from '../acp/branchNames';
-import { agentFolder, AgentRecord, AgentsModel, AgentsSnapshot } from '../acp/agents';
+import { agentFolder, AgentRecord, AgentsModel, AgentsSnapshot, mergedThreads, type StoredAgents } from '../acp/agents';
+import { AgentsStore } from '../acp/agentsStore';
 import { coordinatorModel } from '../acp/projectHub';
 import { savedRepoCount } from '../acp/projectStore';
 import type { Attachment } from '../acp/attachments';
@@ -52,7 +53,31 @@ export { startModes } from './agents/agentStarts';
 export type { WorkspaceSummary } from './agents/agentTree';
 
 const agentPanelType = 'gemini.agent';
+/** Where the agent list was kept before the record store; still written when a window closes, for a downgrade. */
 const storageKey = 'gemini.agents';
+
+/** The agent list as the window starts with it, and the store it is saved to. */
+export interface SavedAgents {
+	readonly snapshot: AgentsSnapshot | StoredAgents | undefined;
+	/** Undefined when the store could not be read: the list then lives in global state, as before. */
+	readonly store: AgentsStore | undefined;
+}
+
+/**
+ * Reads the agent list from its record store (`agentsStore.ts`), moving the
+ * global state snapshot in the first time; falls back to that snapshot when
+ * the store can't be read.
+ */
+export async function loadSavedAgents(context: vscode.ExtensionContext): Promise<SavedAgents> {
+	const legacy = context.globalState.get<AgentsSnapshot>(storageKey);
+	const store = new AgentsStore(vscode.Uri.joinPath(context.globalStorageUri, 'records').fsPath);
+	try {
+		return { snapshot: await store.load(legacy), store };
+	} catch {
+		store.dispose();
+		return { snapshot: legacy, store: undefined };
+	}
+}
 
 /** One agent, as Agent Home and the title bar show it. */
 export interface AgentSummary {
@@ -106,6 +131,12 @@ const saveMaxWaitMs = 10_000;
 export class AgentsView implements vscode.Disposable {
 
 	private readonly model: AgentsModel;
+	/** Where the list is saved, shared with every window; undefined when it could not be read. */
+	private readonly agentStore: AgentsStore | undefined;
+	/** Whether this window said that saving failed; it says so once. */
+	private warnedSaveFailed = false;
+	/** Merged threads whose checkpoints were dropped in this window. */
+	private readonly droppedCheckpoints = new Set<string>();
 	/** Each agent's conversation as shown, so its tab looks the same after a reload. */
 	private readonly transcripts: TranscriptStore;
 	/** Each agent's checkpoints, for Undo and Rewind after a reload. */
@@ -167,10 +198,16 @@ export class AgentsView implements vscode.Disposable {
 		private readonly diffPreview: DiffPreview,
 		private readonly workspaceFiles: WorkspaceFileIndex,
 		private readonly enhancer: ChatEnhancer,
+		saved: SavedAgents,
 	) {
-		this.model = new AgentsModel(context.globalState.get<AgentsSnapshot>(storageKey));
-		this.transcripts = new TranscriptStore(vscode.Uri.joinPath(context.globalStorageUri, 'agents').fsPath);
-		this.checkpointFiles = new CheckpointStore(vscode.Uri.joinPath(context.globalStorageUri, 'checkpoints').fsPath);
+		this.model = new AgentsModel(saved.snapshot);
+		this.agentStore = saved.store;
+		if (this.agentStore) {
+			this.agentStore.log = message => this.service.writeLog(message);
+		}
+		const saveFailed = (err: unknown) => this.saveFailed(err);
+		this.transcripts = new TranscriptStore(vscode.Uri.joinPath(context.globalStorageUri, 'agents').fsPath, saveFailed);
+		this.checkpointFiles = new CheckpointStore(vscode.Uri.joinPath(context.globalStorageUri, 'checkpoints').fsPath, saveFailed);
 		this.tree = new AgentTree(this.model, this.live);
 		this.changesView = new ChangesView(id => this.live.get(id)?.changes);
 		this.worktrees = new AgentWorktrees(this.model);
@@ -258,6 +295,8 @@ export class AgentsView implements vscode.Disposable {
 				this.persistSoon();
 				this.refresh();
 			}),
+			// Agents another window added, changed or removed.
+			...(this.agentStore ? [this.agentStore, this.agentStore.watch(this.model, removed => removed.forEach(agent => this.stop(agent.id, false)))] : []),
 			vscode.workspace.onDidChangeWorkspaceFolders(() => this.refresh()),
 			vscode.workspace.onDidChangeConfiguration(e => (e.affectsConfiguration(`${configSection}.notifications`) || e.affectsConfiguration(`${configSection}.projects.enabled`)) && this.refresh()),
 			// Relative times go stale; refresh them only while the pane is visible.
@@ -301,6 +340,9 @@ export class AgentsView implements vscode.Disposable {
 		if (folder) {
 			this.prepareStart(folder, spareDelayMs);
 		}
+		// Merged threads keep their chats, not their checkpoints; dropped once the window has settled.
+		const settle = setTimeout(() => void this.dropMergedCheckpoints(), 30_000);
+		this.disposables.push({ dispose: () => clearTimeout(settle) });
 	}
 
 	/** Opens agent `id`'s conversation as Markdown; one not running in this window is read from its saved file. */
@@ -475,10 +517,41 @@ export class AgentsView implements vscode.Disposable {
 		this.persistTimeout ??= setTimeout(() => this.persist(), 1000);
 	}
 
+	/** Saves what changed in the list: to the record store, each changed record on its own, else to global state. */
 	private persist(): Thenable<void> {
 		clearTimeout(this.persistTimeout);
 		this.persistTimeout = undefined;
-		return this.context.globalState.update(storageKey, this.model.snapshot());
+		if (!this.agentStore) {
+			return this.context.globalState.update(storageKey, this.model.stored());
+		}
+		void this.dropMergedCheckpoints();
+		return this.agentStore.save(this.model);
+	}
+
+	/** Removes the saved checkpoints of threads merged back: their work is in the repository, and Undo has nothing left to do. */
+	private async dropMergedCheckpoints(): Promise<void> {
+		const merged = new Set(mergedThreads(this.model.snapshot().agents));
+		// A thread opened again keeps the checkpoints of its new turns until it is merged again.
+		for (const id of this.droppedCheckpoints) {
+			if (!merged.has(id)) {
+				this.droppedCheckpoints.delete(id);
+			}
+		}
+		const ids = [...merged].filter(id => !this.droppedCheckpoints.has(id));
+		if (!ids.length) {
+			return;
+		}
+		ids.forEach(id => this.droppedCheckpoints.add(id));
+		await Promise.all((await this.checkpointFiles.savedOf(ids)).map(id => this.checkpointFiles.delete(id)));
+	}
+
+	/** A chat or its checkpoints could not be saved: logged every time, and said once per window. */
+	private saveFailed(err: unknown): void {
+		this.service.writeLog(`Saving a chat failed: ${errorMessage(err)}`);
+		if (!this.warnedSaveFailed) {
+			this.warnedSaveFailed = true;
+			void vscode.window.showWarningMessage(vscode.l10n.t("GeminiCode couldn't save chats: {0}", errorMessage(err)));
+		}
 	}
 
 	private refreshNow(): void {
@@ -1109,7 +1182,11 @@ export class AgentsView implements vscode.Disposable {
 			}
 		}
 		const list = this.persistTimeout ? this.persist() : undefined;
-		await Promise.all([this.transcripts.flush(), list]);
+		await Promise.all([this.transcripts.flush(), this.checkpointFiles.flush(), list, this.agentStore?.flush()]);
+		// Kept in global state too, where an earlier version of GeminiCode reads it.
+		if (this.agentStore) {
+			await this.context.globalState.update(storageKey, this.model.stored());
+		}
 	}
 
 	dispose(): void {

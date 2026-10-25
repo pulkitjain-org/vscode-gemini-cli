@@ -12,7 +12,7 @@ import { Appearance } from './host/appearance';
 import { AgentService } from './host/agentService';
 import { AgentHome } from './host/agentHome';
 import { AgentWarmup } from './host/agentWarmup';
-import { AgentsView } from './host/agentsView';
+import { AgentsView, loadSavedAgents } from './host/agentsView';
 import { TerminalGemini } from './host/terminalGemini';
 import { tildify } from './host/displayText';
 import { ChangesPanel } from './host/changesPanel';
@@ -56,6 +56,8 @@ let saveBeforeExit: (() => Promise<void>) | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
 	const log = vscode.window.createOutputChannel('Gemini', { log: true });
+	// The agent list is read while the product info loads.
+	const savedAgents = loadSavedAgents(context);
 	await loadProductInfo();
 	initModelPreference(context.globalState);
 	initReactionRecents(context.globalState);
@@ -77,7 +79,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		onDirectFailed: err => log.info(`Prompt enhancement's direct request failed (${errorMessage(err)}); asking the CLI`),
 		onDidEnhance: ({ ms, model }) => log.info(`Prompt enhanced in ${ms} ms with ${model ?? 'the default model'}`),
 	});
-	const agentsView = new AgentsView(context, service, diffPreview, fileIndex, enhancer);
+	const agentsView = new AgentsView(context, service, diffPreview, fileIndex, enhancer, await savedAgents);
 	saveBeforeExit = () => agentsView.saveAll();
 	// Agents mode's Changes panel follows the agent in front, as the Changes view does.
 	const changesPanel = new ChangesPanel(context.extensionUri);
