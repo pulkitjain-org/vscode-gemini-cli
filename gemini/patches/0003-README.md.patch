@@ -1,8 +1,8 @@
 diff --git a/README.md b/README.md
-index b7770cecdd10433d6e7f072a3e2adf2f41bbedc2..4cb835e874424ed2ce6190d6ca74d24936157290 100644
+index b7770cecdd10433d6e7f072a3e2adf2f41bbedc2..04eb45b88f0a73e8af9b2303934a4e834f3b42f2 100644
 --- a/README.md
 +++ b/README.md
-@@ -1,76 +1,29 @@
+@@ -1,76 +1,30 @@
 -# Visual Studio Code - Open Source ("Code - OSS")
 -[![Feature Requests](https://img.shields.io/github/issues/microsoft/vscode/feature-request.svg)](https://github.com/microsoft/vscode/issues?q=is%3Aopen+is%3Aissue+label%3Afeature-request+sort%3Areactions-%2B1-desc)
 -[![Bugs](https://img.shields.io/github/issues/microsoft/vscode/bug.svg)](https://github.com/microsoft/vscode/issues?utf8=✓&q=is%3Aissue+is%3Aopen+label%3Abug)
@@ -13,7 +13,8 @@ index b7770cecdd10433d6e7f072a3e2adf2f41bbedc2..4cb835e874424ed2ce6190d6ca74d249
  
 -This repository ("`Code - OSS`") is where we (Microsoft) develop the [Visual Studio Code](https://code.visualstudio.com) product together with the community. Not only do we work on code and issues here, but we also publish our [roadmap](https://github.com/microsoft/vscode/wiki/Roadmap), [monthly iteration plans](https://github.com/microsoft/vscode/wiki/Iteration-Plans), and our [endgame plans](https://github.com/microsoft/vscode/wiki/Running-the-Endgame). This source code is available to everyone under the standard [MIT license](https://github.com/microsoft/vscode/blob/main/LICENSE.txt).
 +- **Agents side by side.** Run several agents at once, each in its own tab and folder, optionally on a branch of its own. Fork one to split its work without starting over. Home shows each agent's status, changes and next step.
-+- **Chat that asks first.** Every command and edit asks before it runs unless you pick a looser mode, and each change can be kept or undone in the file. Steer an agent while it works, or queue your next message, and compact long chats.
++- **Chat that asks first.** Every command and edit asks before it runs unless you pick a looser mode, and each change can be kept or undone in the file. Steer an agent while it works or queue your next message, answer a reply with an emoji, and compact long chats.
++- **A terminal per agent.** Run the commands Gemini suggests with one click, in the agent's own terminal, and send a failed command's output straight back to it.
 +- **Context.** `@` to mention files, <kbd>Cmd</kbd>+<kbd>L</kbd> to add the selection, and drag in files, images and PDFs from anywhere. A local workspace index lets agents find code in one step.
 +- **Projects.** A coordinator splits larger work into threads, each an agent on its own branch, that you merge back, review or undo.
 +- **A browser agents can use.** Agents open your app, click, type and read the console; point at an element to add it to a prompt.
@@ -86,8 +87,8 @@ index b7770cecdd10433d6e7f072a3e2adf2f41bbedc2..4cb835e874424ed2ce6190d6ca74d249
 -## Code of Conduct
 -
 -This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/). For more information, see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
-+- [gemini/README.md](gemini/README.md): features, getting started, settings, building and contributing.
-+- [GeminiCode docs](https://pulkitjain-org.github.io/vscode-gemini-cli/docs/) (source in [gemini/docs/guide/](gemini/docs/guide/)): every feature and how to use it, from approval modes and projects to troubleshooting.
++- [gemini/README.md](gemini/README.md): what is in the fork, building it, and contributing.
++- [GeminiCode docs](https://pulkitjain-org.github.io/vscode-gemini-cli/docs/) (source in [gemini/docs/guide/](gemini/docs/guide/)): every feature and how to use it, from approval modes and projects to settings and troubleshooting.
 +- [gemini/docs/ARCHITECTURE.md](gemini/docs/ARCHITECTURE.md): how GeminiCode works, its security model and admin policies.
 +- [gemini/docs/RELEASING.md](gemini/docs/RELEASING.md): versions, releases and the download page.
 +- [gemini/docs/ROADMAP.md](gemini/docs/ROADMAP.md): open work and risks.
