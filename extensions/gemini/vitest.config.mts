@@ -1,5 +1,5 @@
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) pulkitjain-org and contributors. All rights reserved.
+ *  Copyright (c) Pulkit Jain. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 import { defineConfig } from 'vitest/config';

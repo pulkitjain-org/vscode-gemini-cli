@@ -1,5 +1,5 @@
 diff --git a/eslint.config.js b/eslint.config.js
-index 4397cebb83603ec3667d6788903a89ac529f9da6..bfd7a4572e999aa748aefb5def5cc194fcda0d29 100644
+index 4397cebb83603ec3667d6788903a89ac529f9da6..03d1e42b271cbec32fd05e1431a0236e0473d246 100644
 --- a/eslint.config.js
 +++ b/eslint.config.js
 @@ -3098,4 +3098,42 @@ export default defineConfig(
@@ -19,7 +19,7 @@ index 4397cebb83603ec3667d6788903a89ac529f9da6..bfd7a4572e999aa748aefb5def5cc194
 +				'block',
 +				[
 +					'---------------------------------------------------------------------------------------------',
-+					' *  Copyright (c) pulkitjain-org and contributors. All rights reserved.',
++					' *  Copyright (c) Pulkit Jain. All rights reserved.',
 +					' *  Licensed under the MIT License. See License.txt in the project root for license information.',
 +					' *--------------------------------------------------------------------------------------------'
 +				]

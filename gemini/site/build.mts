@@ -1,5 +1,5 @@
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) pulkitjain-org and contributors. All rights reserved.
+ *  Copyright (c) Pulkit Jain. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
@@ -686,7 +686,7 @@ function siteFooter(c: Context, root: string): string {
 			<div class="col"><span class="label">Project</span><a href="${attr(c.repoUrl)}">GitHub</a><a href="${attr(c.repoUrl)}/issues">Issues</a><a href="${attr(c.repoUrl)}/security/advisories/new">Report a vulnerability</a><a href="${attr(c.repoUrl)}/blob/main/gemini/docs/ARCHITECTURE.md">Architecture</a></div>
 		</div>
 		<div class="wrap legal">
-			<span>Copyright © 2026 pulkitjain-org and contributors. Released under the MIT License.</span>
+			<span>Copyright © 2026 Pulkit Jain. Released under the MIT License.</span>
 			<span>Gemini is a trademark of Google LLC. GeminiCode is not affiliated with or endorsed by Google.</span>
 		</div>
 		<div class="wrap mark" data-reveal aria-hidden="true"><span>GeminiCode</span></div>
@@ -704,7 +704,7 @@ function docsFooter(c: Context, root: string): string {
 			<div class="col"><b>Reference</b><a href="shortcuts.html">Keyboard shortcuts</a><a href="settings.html">Settings</a><a href="troubleshooting.html">Troubleshooting</a></div>
 			<div class="col"><b>Project</b><a href="${attr(c.repoUrl)}">GitHub</a><a href="${attr(c.repoUrl)}/issues">Issues</a><a href="${attr(c.repoUrl)}/blob/main/gemini/docs/ARCHITECTURE.md">Architecture</a><a href="${root}./#install">Download</a></div>
 		</div>
-		<div class="wrap legal"><span>© 2026 pulkitjain-org and contributors · MIT License</span><span>Not affiliated with or endorsed by Google.</span></div>
+		<div class="wrap legal"><span>© 2026 Pulkit Jain · MIT License</span><span>Not affiliated with or endorsed by Google.</span></div>
 	</footer>`;
 }
 

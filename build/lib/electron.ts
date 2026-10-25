@@ -145,7 +145,7 @@ export const config = {
 	productAppName: product.nameLong,
 	// GEMINI-FORK: publisher shown in the app's file properties and About panel
 	companyName: 'pulkitjain-org',
-	copyright: 'Copyright (C) 2026 pulkitjain-org and contributors. Based on Code - OSS, Copyright (C) Microsoft Corporation',
+	copyright: 'Copyright (C) 2026 Pulkit Jain. Based on Code - OSS, Copyright (C) Microsoft Corporation',
 	darwinExecutable: product.nameShort,
 	darwinIcon: 'resources/darwin/code.icns',
 	darwinBundleIdentifier: product.darwinBundleIdentifier,
