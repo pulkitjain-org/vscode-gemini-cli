@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// A project's chat (Projects preview): its side panel, the New thread dialog
+// A project's chat: its side panel, the New thread dialog
 // and Project settings, and a thread chat's way back to its project. The
 // thread cards and the coordinator's posts are transcript items.
 

@@ -391,8 +391,9 @@ export class AgentTree implements vscode.TreeDataProvider<AgentTreeNode>, vscode
 		const forked = parent ? `\n\n${vscode.l10n.t("Forked from \"{0}\"", escapeMarkdown(parent.title))}` : '';
 		const counts = changes?.files ? `\n\n${escapeMarkdown(formatCounts(changes))}` : '';
 		item.tooltip = new vscode.MarkdownString(`**${escapeMarkdown(record.title)}**\n\n${escapeMarkdown(state.status)}${counts}\n\n${where}${forked}`);
-		// A project's agents fork as threads, through their coordinator, not with Fork Agent.
-		item.contextValue = `${live?.activity.busy ? 'agent.busy' : 'agent'}${record.worktree ? '.worktree' : ''}${record.project ? '' : '.forkable'}${changes?.files ? '.changes' : ''}${record.project?.role === 'coordinator' ? '.project' : ''}`;
+		// A coordinator isn't forked, nor yet a thread in several repositories; any other thread forks as a new thread.
+		const forkable = record.project?.role !== 'coordinator' && !record.repos?.length;
+		item.contextValue = `${live?.activity.busy ? 'agent.busy' : 'agent'}${record.worktree ? '.worktree' : ''}${forkable ? '.forkable' : ''}${changes?.files ? '.changes' : ''}${record.project?.role === 'coordinator' ? '.project' : ''}`;
 		item.command = { command: 'gemini.agents.open', title: vscode.l10n.t("Open Agent"), arguments: [record.id] };
 		item.accessibilityInformation = { label: `${record.title}, ${state.status}` };
 		return item;

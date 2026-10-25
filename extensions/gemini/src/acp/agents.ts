@@ -39,7 +39,7 @@ export interface AgentRecord {
 	readonly worktree?: AgentWorktree;
 	/** A project thread in several repositories: each one's worktree, inside `worktree.folder`. */
 	readonly repos?: readonly ThreadRepo[];
-	/** Its part in a project (Projects preview): the project's coordinator, or one of its threads. */
+	/** Its part in a project: the project's coordinator, or one of its threads. */
 	readonly project?: AgentProjectRole;
 	/** The last checks run on the agent's branch, in a line, for Open Merge Request's attachment; kept across restarts. */
 	readonly checks?: { readonly summary: string; readonly at: number };
@@ -225,9 +225,13 @@ export class AgentsModel {
 		return agent;
 	}
 
-	/** Adds an agent forked from `fork.agent`, in its parent's workspace, already on session `sessionId` when it has one. */
-	addFork(parent: AgentRecord, title: string, fork: Omit<AgentFork, 'agent' | 'at'>, worktree?: AgentWorktree, sessionId?: string): AgentRecord {
-		const agent = this.addAgent(parent.workspaceId, title, worktree);
+	/**
+	 * Adds an agent forked from `fork.agent`, in its parent's workspace, already
+	 * on session `sessionId` when it has one; `project` makes a fork of a
+	 * project's thread a thread of that project.
+	 */
+	addFork(parent: AgentRecord, title: string, fork: Omit<AgentFork, 'agent' | 'at'>, worktree?: AgentWorktree, sessionId?: string, project?: AgentProjectRole): AgentRecord {
+		const agent = this.addAgent(parent.workspaceId, title, worktree, undefined, project);
 		// Named in the Fork dialog, so the first prompt doesn't rename it.
 		this.update(agent.id, a => ({ ...a, titleSetByUser: true, forkedFrom: { agent: parent.id, at: this.now(), ...fork }, ...(sessionId ? { sessionId } : {}) }));
 		return this.agent(agent.id)!;

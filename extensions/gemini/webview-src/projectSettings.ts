@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Project settings (Projects preview): a popup over the project chat with a
+// Project settings: a popup over the project chat with a
 // General and a Memory tab, and Save and Cancel. Nothing is saved until Save;
 // the extension's refreshes (a finished draft, an added file) keep the user's
 // unsaved edits. Built when opened, so it costs nothing while chatting.

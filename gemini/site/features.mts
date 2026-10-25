@@ -154,7 +154,6 @@ export const featurePages: readonly FeaturePage[] = [
 		summary: 'A coordinator that splits larger work into threads.',
 		headline: ['One chat for the whole job.', 'Threads you can merge.'],
 		lead: 'Describe larger work in a project chat. Its coordinator splits it into threads, each an agent on its own branch, passes your follow-ups to the right one, and keeps track of where each stands.',
-		preview: true,
 		hero: { name: 'showcase-projects', alt: 'The coordinator starting two threads, whose cards update as they work', clip: true },
 		steps: [
 			{ title: 'Describe the work', body: 'The coordinator answers with a plan of threads, or starts them straight away.' },
@@ -182,7 +181,9 @@ export const featurePages: readonly FeaturePage[] = [
 		notes: [
 			'A project can span several repositories: a thread gets a worktree of each one it needs.',
 			'Project instructions and context files are read by the coordinator and every thread.',
-			'Projects are in preview. Turn them on with `gemini.projects.enabled`.',
+			'Write to the coordinator while it works: your message goes when its turn ends. A thread shows the coordinator\'s notes the same way.',
+			'**Fork Agent** on a thread starts a new thread from its conversation, on a branch of its own.',
+			'Projects are on by default. Turn them off with `gemini.projects.enabled`.',
 		],
 		docs: [
 			{ href: 'projects.html', label: 'Projects' },

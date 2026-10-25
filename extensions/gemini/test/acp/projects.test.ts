@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The pure pieces of Projects (preview): project roles on agents, thread
+// The pure pieces of Projects: project roles on agents, thread
 // cards and coordinator posts in the transcript, instant permission answers,
 // and the coordinator's model.
 

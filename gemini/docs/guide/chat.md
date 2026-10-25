@@ -76,6 +76,8 @@ You don't have to wait for the agent to finish. While it works, the composer say
 
 Each waiting message has **Send now**, **Edit** and **Remove**. <kbd>↑</kbd> in the empty input takes the last queued one back to edit. If you stop the agent (<kbd>esc</kbd> <kbd>esc</kbd>), or the turn fails, nothing goes by itself: the messages stay queued until you send them.
 
+In a project's thread, notes the coordinator passes on while the thread works wait in the same place, as **From coordinator: goes after this turn**. In the project chat itself, ↩ and ⌘↩ both wait for the coordinator's turn to end: see [Projects](projects.md#talk-to-the-coordinator).
+
 Sending now stops the turn between steps rather than mid-command, so a running command or edit always finishes. The turn you steered gets its own end line and **Undo**, and the steered message starts a new turn. The Gemini CLI can't add a message to a turn that is running in GeminiCode, so this costs one more model request, mostly from its cache.
 
 When the agent hands part of the work to one of the Gemini CLI's subagents (such as the Codebase Investigator, or your own in `.gemini/agents/`), the chat shows a **Subagent** row with its name and how long it has worked. Click it to read the subagent's report.

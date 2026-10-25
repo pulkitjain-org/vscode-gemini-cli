@@ -43,7 +43,7 @@ GeminiCode ships as a Mac app for Apple silicon with the Gemini CLI bundled, fro
 - **Compat CI.** CI runs the real-CLI tests against the `latest` and `preview` CLI. Add `latest-1` and `nightly`, run it on a schedule, and diff the capabilities the CLI reports. A scheduled run on a machine with a seat should also make a signed-in smoke test of models and modes, which hosted CI cannot do.
 - **Containment.** Evaluate the CLI's `--sandbox` mode as an admin option.
 - **Per-project processes.** Agents in other folders share the window's project ID. Add a process per project ID when someone needs it.
-- **Projects out of preview.** Check that thread worktrees load the linked rules in a signed-in session, then turn `gemini.projects.enabled` on by default.
+- **Projects: linked rules check.** Projects are on by default now. Check in a signed-in session that thread worktrees load the linked rules.
 - **Workbench text.** Reword the rest of upstream's welcome text; only the product name in its setup walkthrough is changed. This needs a workbench change.
 - **Upstream's Agents window.** At each upstream move, check whether `src/vs/sessions` gained an extension API for agent providers; if it has, move the Agents pane onto it.
 

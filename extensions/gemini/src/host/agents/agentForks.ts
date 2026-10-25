@@ -8,11 +8,13 @@
 // the parent's folder, writes its copy of the parent's session where the CLI
 // keeps the fork's folder's sessions, and starts it on that session with its
 // parent's conversation in its chat. The chat prepares what the fork starts
-// with (`src/host/chat/chatFork.ts`).
+// with (`src/host/chat/chatFork.ts`). A fork of a project's thread is a new
+// thread of that project (Fork Thread), always on a branch of its own: two
+// threads in one folder would change the same files.
 
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import type { AgentsModel } from '../../acp/agents';
+import type { AgentProjectRole, AgentRecord, AgentsModel } from '../../acp/agents';
 import { branchNameFrom, isValidBranchName } from '../../acp/branchNames';
 import { forkNote } from '../../acp/chatTurns';
 import { registeredChatsFolder } from '../../acp/cliSessions';
@@ -20,6 +22,7 @@ import { errorMessage } from '../../acp/errors';
 import { writeSessionCopy } from '../../acp/sessionSnapshot';
 import { AgentWorktree, currentBranch, freeBranchName, mainRepository, removeWorktree, repositoryRoot, unfinishedOperation } from '../../acp/worktrees';
 import type { ForkAction } from '../chatProtocol';
+import type { ForkContext } from '../../acp/chatTranscript';
 import type { ChatController } from '../chatController';
 import type { AgentService } from '../agentService';
 import type { ChatForker, ForkStart } from '../chat/chatOptions';
@@ -38,6 +41,10 @@ export interface ForksHost {
 	open(id: string): Promise<void>;
 	pickModel(id: string, model: string): void;
 	mergeBack(id: string): Promise<boolean>;
+	/** Links the repository's ignored rules into a thread's new folder, as a new thread gets them. */
+	linkThreadRules(repository: string, folder: string): Promise<void>;
+	/** A fork of a project's thread started: it joins the project; one given only the conversation gets the project's notes too. */
+	threadForked(fork: AgentRecord, parent: AgentRecord, context: ForkContext): Promise<void>;
 }
 
 export class AgentForks {
@@ -60,9 +67,12 @@ export class AgentForks {
 	}
 
 	/** Whether agent `id`'s folder is in Git, its branch, and a free name for a fork's branch. */
-	private async place(id: string): Promise<{ readonly git: boolean; readonly branch?: string; readonly forkBranch: string; readonly ownBranch: boolean }> {
+	private async place(id: string): Promise<{ readonly git: boolean; readonly branch?: string; readonly forkBranch: string; readonly ownBranch: boolean; readonly branchOnly?: boolean }> {
 		const record = this.model.agent(id);
 		const folder = record && this.model.folderOf(record);
+		if (record?.repos?.length) {
+			throw new Error(vscode.l10n.t("A thread that works in several repositories can't be forked yet. Start a new thread from the project chat instead."));
+		}
 		const repository = folder ? await repositoryRoot(folder) : undefined;
 		if (!record || !folder || !repository) {
 			return { git: false, forkBranch: '', ownBranch: false };
@@ -71,7 +81,7 @@ export class AgentForks {
 		const main = await mainRepository(repository);
 		// A fork of an agent on its own branch is named after that branch; otherwise the dialog names it after the fork.
 		const named = record.worktree ? `${record.worktree.branch}-fork` : branchNameFrom(vscode.l10n.t("{0} (fork)", record.title));
-		return { git: true, ...(branch ? { branch } : {}), forkBranch: await freeBranchName([main], named), ownBranch: !!record.worktree };
+		return { git: true, ...(branch ? { branch } : {}), forkBranch: await freeBranchName([main], named), ownBranch: !!record.worktree, ...(record.project?.role === 'thread' ? { branchOnly: true } : {}) };
 	}
 
 	/** Makes agent `parentId`'s fork, opens it and sends it its first message. */
@@ -82,6 +92,10 @@ export class AgentForks {
 			throw new Error(vscode.l10n.t("The agent is no longer here."));
 		}
 		const { request } = start;
+		const thread = parent.project?.role === 'thread' ? parent.project : undefined;
+		if (thread && (!request.ownBranch || parent.repos?.length)) {
+			throw new Error(vscode.l10n.t("A thread's fork is a new thread, so it needs a branch of its own."));
+		}
 		let worktree: AgentWorktree | undefined;
 		if (request.ownBranch) {
 			worktree = await this.makeBranch(parentFolder, request.branch);
@@ -92,6 +106,12 @@ export class AgentForks {
 		const folder = worktree?.cwd ?? parentFolder;
 		let sessionId: string | undefined;
 		try {
+			if (thread && worktree) {
+				const workspaceFolder = this.model.workspace(parent.workspaceId)?.folder;
+				if (workspaceFolder) {
+					await this.host.linkThreadRules(workspaceFolder, worktree.cwd);
+				}
+			}
 			if (start.messages) {
 				await this.register(folder);
 				sessionId = await writeSessionCopy(folder, start.messages);
@@ -102,7 +122,8 @@ export class AgentForks {
 			}
 			throw err;
 		}
-		const fork = this.model.addFork(parent, request.title, sharedFolder ? { sharedFolder } : {}, worktree, sessionId);
+		const project: AgentProjectRole | undefined = thread && { role: 'thread', coordinator: thread.coordinator, byCoordinator: false };
+		const fork = this.model.addFork(parent, request.title, sharedFolder ? { sharedFolder } : {}, worktree, sessionId, project);
 		const parentClient = this.live.get(parentId)?.session.client;
 		// The parent's model and mode, unless the dialog picked another model.
 		const modelId = request.model ?? parentClient?.settings.model?.currentId;
@@ -119,6 +140,9 @@ export class AgentForks {
 			live.controller.carryConversation(parent.title, start.conversation);
 		}
 		live.controller.addContext(forkNote(parent.title, parentFolder, folder, worktree?.branch));
+		if (thread) {
+			await this.host.threadForked(this.model.agent(fork.id) ?? fork, parent, request.context);
+		}
 		await this.host.open(fork.id);
 		start.onStarted(fork.id, worktree?.branch);
 		this.service.writeLog(`Forked "${parent.title}" as "${fork.title}" (${request.context}${worktree ? `, on ${worktree.branch}` : ', in the same folder'}).`);

@@ -54,7 +54,7 @@ export function render(item: TranscriptItem, toggleToolCall: ToggleToolCall): HT
 		case 'other':
 			return renderNotice(format(strings.unknownUpdate, item.type), 'info');
 		case 'notice':
-			return renderNotice(item.text, item.severity);
+			return renderNotice(item.text, item.severity, item.retry ? item.id : undefined);
 		case 'cutOff':
 			return renderCutOff(item);
 		case 'compact':
@@ -513,9 +513,15 @@ function renderPermission(item: ItemOf<'permission'>): HTMLElement {
 	return card;
 }
 
-export function renderNotice(text: string, severity: 'info' | 'error'): HTMLElement {
+/** `retryId`: a project's failed wake, whose Retry sends what it carried again. */
+export function renderNotice(text: string, severity: 'info' | 'error', retryId?: string): HTMLElement {
 	const node = el('div', `notice ${severity}`);
 	node.append(icon(severity === 'error' ? 'error' : 'info'), el('span', undefined, text));
+	if (retryId) {
+		const retry = button('turn-action notice-retry', strings.retry, () => vscode.postMessage({ type: 'retry', itemId: retryId }), 'refresh');
+		setLabel(retry, strings.project?.retryWake ?? strings.retryTooltip);
+		node.append(retry);
+	}
 	return node;
 }
 

@@ -5,7 +5,9 @@
 
 // The messages sent while the agent works, as a strip above the input: each
 // queued one waits for the turn to end, and one sent now waits for the
-// current step. Each can be sent now, taken back to edit, or removed.
+// current step. Each can be sent now, taken back to edit, or removed. A
+// thread's coordinator queues its notes here too; in a project's chat every
+// message waits for the coordinator's turn, which is never stopped for one.
 
 import type { PendingPromptView } from '../src/acp/promptQueue';
 import { format } from './chatLogic';
@@ -16,14 +18,19 @@ const { queueList } = ui;
 
 export function setQueue(items: readonly PendingPromptView[]): void {
 	state.queue = [...items];
-	queueList.hidden = !items.length;
-	queueList.replaceChildren(...items.map(row));
+	renderQueue();
+}
+
+/** Draws the strip again, as when the agent stops working. */
+export function renderQueue(): void {
+	queueList.hidden = !state.queue.length;
+	queueList.replaceChildren(...state.queue.map(row));
 }
 
 function row(item: PendingPromptView): HTMLElement {
-	const node = el('div', `queue-item${item.steer ? ' steer' : ''}`);
+	const node = el('div', `queue-item${item.steer ? ' steer' : ''}${item.from ? ' from-coordinator' : ''}`);
 	node.setAttribute('role', 'listitem');
-	const status = item.steer ? strings.steering : strings.queued;
+	const status = item.steer ? strings.steering : strings.project?.queued ?? (item.from ? strings.queuedFromCoordinator : strings.queued);
 	const line = item.text.split('\n').map(part => part.trim()).find(Boolean) ?? '';
 	const text = el('span', 'queue-text', line);
 	setTip(text, item.text);
@@ -32,7 +39,7 @@ function row(item: PendingPromptView): HTMLElement {
 		parts.push(el('span', 'queue-attached', format(strings.queueAttached, String(item.attachments))));
 	}
 	const actions = el('span', 'queue-actions');
-	if (!item.steer) {
+	if (!item.steer && !(strings.project && state.busy)) {
 		actions.append(action(strings.queueSendNow, 'arrow-up', item.id, 'send'));
 	}
 	actions.append(action(strings.queueEdit, 'edit', item.id, 'edit'), action(strings.queueRemove, 'close', item.id, 'remove'));

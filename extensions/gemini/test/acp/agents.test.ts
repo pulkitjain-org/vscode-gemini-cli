@@ -50,6 +50,17 @@ describe('AgentsModel', () => {
 		expect(() => model.addAgent(workspace, 'Again', undefined, 'given')).toThrow();
 	});
 
+	it('makes a fork of a project\'s thread a thread of the same project', () => {
+		const model = new AgentsModel();
+		const workspace = model.addWorkspace('/work/shop').id;
+		model.addAgent(workspace, 'Shop', undefined, 'c', { role: 'coordinator' });
+		const thread = model.addAgent(workspace, 'Refunds', { folder: '/t/refunds', cwd: '/t/refunds', branch: 'gemini/refunds', base: 'main' }, 't', { role: 'thread', coordinator: 'c', byCoordinator: true });
+		const fork = model.addFork(thread, 'Refunds, second try', {}, { folder: '/t/refunds-fork', cwd: '/t/refunds-fork', branch: 'gemini/refunds-fork', base: 'gemini/refunds' }, undefined, { role: 'thread', coordinator: 'c', byCoordinator: false });
+		const reloaded = new AgentsModel(model.snapshot());
+		expect(reloaded.threadsOf('c').map(a => a.id)).toEqual(['t', fork.id]);
+		expect(reloaded.agent(fork.id)).toMatchObject({ forkedFrom: { agent: 't' }, project: { role: 'thread', coordinator: 'c', byCoordinator: false } });
+	});
+
 	it('adds a fork under its parent, on its own branch or in the folder it shares, across reloads', () => {
 		const time = clock();
 		const model = new AgentsModel(undefined, time.now);

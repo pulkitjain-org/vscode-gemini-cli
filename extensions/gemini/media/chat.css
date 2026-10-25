@@ -1373,6 +1373,16 @@ body.vscode-high-contrast-light {
 	color: var(--vscode-errorForeground);
 }
 
+/* A project's failed coordinator turn: Retry sends what it was given again. */
+.notice .notice-retry {
+	flex: none;
+	margin-block: -3px;
+}
+
+.notice .notice-retry .codicon {
+	margin-top: 0;
+}
+
 /* ---- End of a turn ---- */
 
 .turn-end {

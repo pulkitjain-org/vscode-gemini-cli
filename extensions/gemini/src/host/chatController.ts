@@ -18,6 +18,7 @@ import { buildModeAfterPlan, diffsOf, dropOldest, lastPromptAt, runningStep, tur
 import type { StoredCheckpoints } from '../acp/checkpoints';
 import { buildPromptContent } from '../acp/promptContent';
 import { atSafePoint, PromptQueue, steeringNote } from '../acp/promptQueue';
+import { CoordinatorTurnFailed } from '../acp/projectHub';
 import { TeamCommandCancelled } from '../acp/teamCommandExpansion';
 import { ConversationEntry, readCliConversation } from '../acp/cliSessions';
 import { isModelOutput } from '../acp/sessionUpdates';
@@ -52,6 +53,9 @@ import { SharedPageChip } from './chat/chatSharedPage';
 import { ChatUsage } from './chat/chatUsage';
 
 export type { ChatControllerOptions, ChatEnhancer, ChatGit, ChatHost, ChatProject, ChatSharedPage, ChatWorkspace, FileSearch } from './chat/chatOptions';
+
+/** How a prompt's turn ended: `steer` stopped it for messages sent now, `failed` with an error the chat shows. */
+type TurnOutcome = 'done' | 'steer' | 'stopped' | 'failed';
 
 /** How long after the view loads a session waiting for it to show opens anyway. */
 const openFallbackMs = 2_000;
@@ -173,8 +177,7 @@ export class ChatController implements vscode.Disposable {
 		this.sharedPage = new SharedPageChip(options, post);
 		this.settings = new ChatSettings(service, this.transcript, options, post);
 		this.enhance = new ChatEnhance(client, options, () => this.transcript.items, post);
-		// A project's chat goes to its hub, so it has neither saved sessions to resume nor a session of its own to compact.
-		this.commands = new ChatCommands(client, this.transcript, [...options.savedSessions ? [resumeCommand()] : [], ...options.project ? [] : [compactCommand()], ...options.fork ? [forkCommand()] : []], isAttached, post);
+		this.commands = new ChatCommands(client, this.transcript, [...options.savedSessions ? [resumeCommand()] : [], compactCommand(), ...options.fork ? [forkCommand()] : []], isAttached, post);
 		this.sessions = new ChatSessions(service, this.transcript, options, {
 			isBusy,
 			setBusy,
@@ -195,6 +198,8 @@ export class ChatController implements vscode.Disposable {
 			isBusy,
 			quietly: work => this.quietly(work),
 			refreshContext: () => void this.usage.postContext(),
+			// A coordinator on another session needs its role brief again.
+			movedSession: () => options.project?.sessionReplaced(),
 		});
 		this.forks = new ChatFork(service, this.transcript, this.sessions, this.compacting, options, {
 			isBusy,
@@ -438,6 +443,16 @@ export class ChatController implements vscode.Disposable {
 		}
 		const project = this.options.project;
 		if (project) {
+			if (this.busy) {
+				// The coordinator is working: the message waits for its turn to end, never stopping it.
+				this.queue.add(text, attachments, false);
+				this.postQueue();
+				return;
+			}
+			if (text.trim() === `/${compactCommand().name}` && !attachments.length) {
+				void this.compacting.compact();
+				return;
+			}
 			// A project's chat: the message goes to the hub, which wakes the coordinator with it.
 			this.transcript.addPrompt(text, attachments);
 			this.onDidSendPromptEmitter.fire(text);
@@ -445,8 +460,9 @@ export class ChatController implements vscode.Disposable {
 			return;
 		}
 		if (this.busy) {
-			if (when && !from) {
-				this.queue.add(text, attachments, when === 'now');
+			// A coordinator's note waits for the turn to end; the user's own message steers when sent now.
+			if (when || from) {
+				this.queue.add(text, attachments, when === 'now', from);
 				this.postQueue();
 				this.trySteer();
 			}
@@ -492,28 +508,56 @@ export class ChatController implements vscode.Disposable {
 
 	/**
 	 * Sends `text` as a turn with no message of its own in the chat, such as a
-	 * project's wake for its coordinator; resolves when the turn ends.
+	 * project's wake for its coordinator; resolves when the turn ends, and
+	 * rejects with {@link CoordinatorTurnFailed} when it failed.
 	 */
 	async sendUnseen(text: string): Promise<void> {
 		if (this.restoring) {
 			await this.restoring;
+		}
+		// Other work that keeps the chat busy, such as Compact, ends first.
+		while (this.busy && !this.turnRunning) {
+			await new Promise<void>(resolve => {
+				const listener = this.onDidChangeActivity(activity => {
+					if (!activity.busy) {
+						listener.dispose();
+						resolve();
+					}
+				});
+			});
 		}
 		if (this.busy) {
 			throw new Error('A turn is already running.');
 		}
 		this.sessions.stopReplay();
 		this.service.open?.();
-		await this.runTurn(text, [], false);
+		if (await this.runTurn(text, [], false) === 'failed') {
+			throw new CoordinatorTurnFailed();
+		}
+	}
+
+	/** Puts Retry on the latest error in the chat (adding `text` as one first, when given), for a project's failed wake. */
+	offerRetry(text?: string): void {
+		if (text) {
+			this.transcript.addNotice(text, 'error');
+		}
+		this.transcript.offerRetry();
+	}
+
+	/** Takes Retry off the chat's errors again, as a project's next wake starts. */
+	clearRetry(): void {
+		this.transcript.clearRetry();
 	}
 
 	/** `steer` carries on after a turn stopped for messages sent now: the agent is told why it stopped. */
-	private async runTurn(text: string, attachments: readonly Attachment[], expand: boolean, steer = false): Promise<void> {
+	private async runTurn(text: string, attachments: readonly Attachment[], expand: boolean, steer = false): Promise<TurnOutcome> {
 		this.turnRunning = true;
 		this.checkpoints.beginTurn();
 		this.setBusy(true);
 		const started = Date.now();
 		let ended = false;
 		let overflowed = false;
+		let failed = false;
 		/** How the turn came to an end, for the messages waiting on it. */
 		let outcome: 'done' | 'steer' | 'stopped' = 'stopped';
 		this.timing = { started, permissions: 0 };
@@ -577,6 +621,7 @@ export class ChatController implements vscode.Disposable {
 				overflowed = true;
 			} else {
 				this.transcript.addNotice(errorMessage(err), err instanceof TeamCommandCancelled ? 'info' : 'error');
+				failed = !(err instanceof TeamCommandCancelled);
 			}
 		} finally {
 			if (!ended && this.checkpoints.turnChangedFiles) {
@@ -595,10 +640,11 @@ export class ChatController implements vscode.Disposable {
 			this.postQueue();
 			await this.continueAfterOverflow(expand ? text : undefined);
 			this.turnRunning = false;
-			return;
+			return 'failed';
 		}
 		this.turnRunning = false;
 		await this.sendPending(outcome);
+		return failed ? 'failed' : outcome;
 	}
 
 	/**
@@ -626,7 +672,12 @@ export class ChatController implements vscode.Disposable {
 			}
 			return;
 		}
-		this.transcript.addPrompt(next.text, next.attachments);
+		if (this.options.project) {
+			// What waited in a project's chat goes to the hub, which wakes the coordinator again.
+			await this.send(next.text, next.attachments);
+			return;
+		}
+		this.transcript.addPrompt(next.text, next.attachments, next.from);
 		this.onDidSendPromptEmitter.fire(next.text);
 		this.lastPrompt = next;
 		await this.runTurn(next.text, next.attachments, true, outcome === 'steer');
@@ -656,11 +707,12 @@ export class ChatController implements vscode.Disposable {
 				const prompt = this.queue.remove(id);
 				this.postQueue();
 				if (prompt) {
-					void this.send(prompt.text, prompt.attachments);
+					void this.send(prompt.text, prompt.attachments, prompt.from);
 				}
 				return;
 			}
-			if (this.queue.steer(id)) {
+			// A coordinator's turn is never stopped: its messages go when it ends.
+			if (!this.options.project && this.queue.steer(id)) {
 				this.postQueue();
 				this.trySteer();
 			}
@@ -692,6 +744,7 @@ export class ChatController implements vscode.Disposable {
 			// Moving on on purpose: not the agent losing the session.
 			this.sessions.moveTo(undefined);
 			await this.service.client.newSession();
+			this.options.project?.sessionReplaced();
 		} catch (err) {
 			this.transcript.addNotice(vscode.l10n.t("Gemini's context for this chat is full, and a new session could not start: {0} Start a new chat to carry on.", errorMessage(err)), 'error');
 			return;
@@ -945,7 +998,11 @@ export class ChatController implements vscode.Disposable {
 				}
 				break;
 			case 'retry':
-				if (this.lastPrompt && message.itemId === this.retryItemId) {
+				if (this.options.project) {
+					// A project's failed wake: the hub sends its events again.
+					this.transcript.clearRetry();
+					this.options.project.retryWake();
+				} else if (this.lastPrompt && message.itemId === this.retryItemId) {
 					void this.send(this.lastPrompt.text, this.lastPrompt.attachments);
 				}
 				break;
@@ -1022,9 +1079,7 @@ export class ChatController implements vscode.Disposable {
 			case 'undoCompact':
 			case 'dismissCompact':
 			case 'viewCompactSummary':
-				if (!this.options.project) {
-					this.compacting.onMessage(message);
-				}
+				this.compacting.onMessage(message);
 				break;
 			case 'threadAction':
 			case 'prepareThread':

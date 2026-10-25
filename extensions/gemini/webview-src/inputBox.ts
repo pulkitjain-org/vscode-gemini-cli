@@ -39,21 +39,16 @@ export function onComposerChange(listener: () => void): void {
 	changeListeners.push(listener);
 }
 
-/** Whether a message can be sent while the agent works: in an agent's chat, not a project's. */
-export function sendsWhileWorking(): boolean {
-	return !strings.project;
-}
-
 /**
  * Enables Send when there is something to send and nothing in the way. While
- * the agent works, Send shows beside Stop once there is text, and sends now.
+ * the agent works, Send shows beside Stop once there is text, and sends now;
+ * in a project's chat it waits for the coordinator's turn to end.
  */
 export function updateSendButton(): void {
 	const empty = !input.value.trim() && !state.attachments.length;
-	const whileWorking = state.busy && sendsWhileWorking();
-	sendButton.disabled = (state.busy && !whileWorking) || state.enhancing || empty;
-	sendButton.hidden = state.busy && (!whileWorking || empty);
-	const label = whileWorking ? strings.sendNow : strings.send;
+	sendButton.disabled = state.enhancing || empty;
+	sendButton.hidden = state.busy && empty;
+	const label = state.busy ? strings.project?.sendAfterTurn ?? strings.sendNow : strings.send;
 	if (sendButton.getAttribute('aria-label') !== label) {
 		setLabel(sendButton, label);
 	}
@@ -68,8 +63,9 @@ export function updateSendState(): void {
 }
 
 export function updatePlaceholder(): void {
-	input.placeholder = strings.project?.placeholder
-		?? (state.busy ? strings.placeholderWorking : state.items.some(item => item.kind === 'user') ? strings.placeholderFollowUp : strings.placeholder);
+	const project = strings.project;
+	input.placeholder = project ? (state.busy ? project.placeholderWorking : project.placeholder)
+		: state.busy ? strings.placeholderWorking : state.items.some(item => item.kind === 'user') ? strings.placeholderFollowUp : strings.placeholder;
 }
 
 // Dragging the composer's top edge resizes the input; a double-click resets it.

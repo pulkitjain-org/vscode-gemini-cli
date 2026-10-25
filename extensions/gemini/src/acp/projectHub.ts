@@ -71,9 +71,19 @@ export interface ThreadDriver {
 
 /** The coordinator's agent session. */
 export interface CoordinatorSession {
-	/** Sends a prompt; resolves when the turn ends. */
+	/** Sends a prompt; resolves when the turn ends, rejects when it failed. */
 	prompt(text: string): Promise<void>;
 }
+
+/** A coordinator turn that failed with an error its chat already shows. */
+export class CoordinatorTurnFailed extends Error {
+	constructor() {
+		super('The coordinator\'s turn failed.');
+	}
+}
+
+/** What Compact's summary prompt adds for a coordinator, so its summary keeps the project's threads. */
+export const coordinatorSummaryNote = 'You are this project\'s coordinator. Under "Current state", list every thread you started or messaged, by its id and title, with what it is doing and what the user is waiting on from it. Leave out "Files" if no file was read or changed.';
 
 export type ProjectEvent =
 	| { readonly kind: 'user'; readonly text: string }
@@ -82,6 +92,8 @@ export type ProjectEvent =
 	| { readonly kind: 'failed'; readonly thread: string; readonly text: string }
 	/** A thread the user started themselves; context for the next wake, which it doesn't cause. */
 	| { readonly kind: 'started'; readonly thread: string }
+	/** A thread the user forked from another (Fork Thread); context only. */
+	| { readonly kind: 'forked'; readonly thread: string; readonly from: string }
 	/** The user wrote in a thread; context only. */
 	| { readonly kind: 'threadUser'; readonly thread: string; readonly text: string };
 
@@ -197,6 +209,8 @@ export class ProjectHub implements ProjectToolHost {
 	private briefed = false;
 	private disposed = false;
 	private turn: Promise<void> | undefined;
+	/** The events of the last wake, when it failed: they go again with the next one, or on Retry. */
+	private failed: ProjectEvent[] = [];
 	/** The memory the coordinator's session last got; it is sent again only when it changes. */
 	private sentMemory: string | undefined;
 
@@ -207,6 +221,9 @@ export class ProjectHub implements ProjectToolHost {
 	readonly onDidChangeThread = this.onDidChangeThreadEmitter.event;
 	private readonly onDidChangeBusyEmitter = new Emitter<boolean>();
 	readonly onDidChangeBusy = this.onDidChangeBusyEmitter.event;
+	private readonly onDidFailWakeEmitter = new Emitter<{ readonly message?: string }>();
+	/** A wake failed; `message` says why when the coordinator's chat doesn't already. Its events wait for Retry or the next wake. */
+	readonly onDidFailWake = this.onDidFailWakeEmitter.event;
 
 	readonly stats: HubStats = { wakes: 0, tools: {} };
 
@@ -238,6 +255,18 @@ export class ProjectHub implements ProjectToolHost {
 		this.onDidPostEmitter.fire({ kind: 'thread', thread: id, at: Date.now() });
 		this.notify({ kind: 'started', thread: id });
 		return id;
+	}
+
+	/** A thread the user forked from thread `from`: it is working already, and the coordinator hears with the next wake. */
+	addForkedThread(thread: Omit<ThreadInfo, 'byCoordinator' | 'state'>, from: string): void {
+		this.setThread({ ...thread, state: 'starting', byCoordinator: false });
+		this.onDidPostEmitter.fire({ kind: 'thread', thread: thread.id, at: Date.now() });
+		this.notify({ kind: 'forked', thread: thread.id, from });
+	}
+
+	/** Retry on a failed wake: sends its events again now, with any that arrived since. */
+	retry(): void {
+		void this.wake(true);
 	}
 
 	/**
@@ -297,22 +326,31 @@ export class ProjectHub implements ProjectToolHost {
 		this.onDidPostEmitter.dispose();
 		this.onDidChangeThreadEmitter.dispose();
 		this.onDidChangeBusyEmitter.dispose();
+		this.onDidFailWakeEmitter.dispose();
 	}
 
-	private async wake(): Promise<void> {
+	/** `retry`: the user asked for a failed wake to go again, which wakes even without a new message. */
+	private async wake(retry = false): Promise<void> {
 		// One prompt at a time per session: what arrives meanwhile goes out when this turn ends.
-		if (this.busy || this.disposed || !this.pending.some(wakes)) {
+		if (this.busy || this.disposed || !(this.pending.some(wakes) || (retry && this.failed.length))) {
 			return;
 		}
-		const events = this.pending.splice(0);
+		// A failed wake's events were never handled: they go first, in their order.
+		const events = [...this.failed.splice(0), ...this.pending.splice(0)];
 		this.setBusy(true);
 		this.stats.wakes++;
+		const briefed = this.briefed;
 		this.turn = (async () => {
 			try {
 				const prompt = await this.wakePrompt(events);
 				await this.coordinator.prompt(prompt);
 			} catch (err) {
-				this.onDidPostEmitter.fire({ kind: 'coordinator', text: `The coordinator could not answer: ${err instanceof Error ? err.message : String(err)}`, at: Date.now() });
+				// Nothing wakes again by itself, which could fail the same way: the user retries, or writes again.
+				this.failed = events;
+				// What this wake carried may never have reached the session; a session replaced meanwhile stays unbriefed.
+				this.briefed &&= briefed;
+				this.sentMemory = undefined;
+				this.onDidFailWakeEmitter.fire(err instanceof CoordinatorTurnFailed ? {} : { message: `The coordinator could not answer: ${err instanceof Error ? err.message : String(err)}` });
 			} finally {
 				this.setBusy(false);
 				this.turn = undefined;
@@ -522,6 +560,8 @@ function eventText(event: ProjectEvent): string {
 			return `<event kind="failed" thread="${event.thread}">\n${event.text}\n</event>`;
 		case 'started':
 			return `<event kind="started" thread="${event.thread}">The user started this thread themselves; it is already working.</event>`;
+		case 'forked':
+			return `<event kind="forked" thread="${event.thread}" from="${event.from}">The user forked this thread from ${event.from}: it carries that thread's conversation and works on a branch of its own, made from that thread's.</event>`;
 		case 'threadUser':
 			return `<event kind="thread-user" thread="${event.thread}">\n${event.text}\n</event>`;
 	}

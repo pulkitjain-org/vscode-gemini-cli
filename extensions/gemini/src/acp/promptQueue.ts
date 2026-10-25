@@ -21,6 +21,8 @@ export interface PendingPrompt {
 	readonly attachments: readonly Attachment[];
 	/** Sent now: it goes as soon as the turn reaches a safe point. Otherwise it waits for the turn to end. */
 	readonly steer: boolean;
+	/** Sent by the thread's project coordinator, not typed by the user. */
+	readonly from?: 'coordinator';
 }
 
 /** What the composer shows about a pending prompt. */
@@ -29,6 +31,7 @@ export interface PendingPromptView {
 	readonly text: string;
 	readonly attachments: number;
 	readonly steer: boolean;
+	readonly from?: 'coordinator';
 }
 
 /** The prompts waiting in one chat, oldest first. */
@@ -45,11 +48,11 @@ export class PromptQueue {
 	}
 
 	get view(): PendingPromptView[] {
-		return this.items.map(({ id, text, attachments, steer }) => ({ id, text, attachments: attachments.length, steer }));
+		return this.items.map(({ id, text, attachments, steer, from }) => ({ id, text, attachments: attachments.length, steer, ...(from ? { from } : {}) }));
 	}
 
-	add(text: string, attachments: readonly Attachment[], steer: boolean): void {
-		this.items.push({ id: `q${this.nextId++}`, text, attachments, steer });
+	add(text: string, attachments: readonly Attachment[], steer: boolean, from?: 'coordinator'): void {
+		this.items.push({ id: `q${this.nextId++}`, text, attachments, steer, ...(from ? { from } : {}) });
 	}
 
 	/** Takes out the prompt `id`; undefined when it is gone. */
@@ -74,14 +77,14 @@ export class PromptQueue {
 	}
 
 	/** Takes out the prompts that steer, joined into one; undefined when there are none. */
-	takeSteers(): { readonly text: string; readonly attachments: readonly Attachment[] } | undefined {
+	takeSteers(): JoinedPrompt | undefined {
 		const taken = this.items.filter(item => item.steer);
 		this.items = this.items.filter(item => !item.steer);
 		return joinPrompts(taken);
 	}
 
 	/** Takes out every prompt, joined into one, as gemini-cli sends its own queue; undefined when there are none. */
-	takeAll(): { readonly text: string; readonly attachments: readonly Attachment[] } | undefined {
+	takeAll(): JoinedPrompt | undefined {
 		const taken = this.items;
 		this.items = [];
 		return joinPrompts(taken);
@@ -92,13 +95,21 @@ export class PromptQueue {
 	}
 }
 
-function joinPrompts(prompts: readonly PendingPrompt[]): { readonly text: string; readonly attachments: readonly Attachment[] } | undefined {
+/** Prompts taken out together, as one; from the coordinator only when every one of them was. */
+export interface JoinedPrompt {
+	readonly text: string;
+	readonly attachments: readonly Attachment[];
+	readonly from?: 'coordinator';
+}
+
+function joinPrompts(prompts: readonly PendingPrompt[]): JoinedPrompt | undefined {
 	if (!prompts.length) {
 		return undefined;
 	}
 	return {
 		text: prompts.map(prompt => prompt.text.trim()).filter(Boolean).join('\n\n'),
 		attachments: prompts.flatMap(prompt => prompt.attachments),
+		...(prompts.every(prompt => prompt.from === 'coordinator') ? { from: 'coordinator' as const } : {}),
 	};
 }
 

@@ -27,7 +27,7 @@ The product code is in [`../extensions/gemini/`](../extensions/gemini/).
 - **Agents and Editor modes.** Agents mode (the default) puts the agent list on the left, the chat in the middle and its Changes on the right, with each agent as a tab in the title bar. Editor mode is the classic layout, with Changes under the Agents pane. Switch with the Agents | Editor switch or ⌥⌘M; every pane is a normal, resizable VS Code view or editor group.
 - **Agent Home.** Describe a task and press Return to start an agent on it, optionally on its own branch, and see each agent's status, changes and next step as a card.
 - **Agents pane.** Run several agents side by side. Each one opens as a tab with its own chat, keeps to the folder it works in (the open folder or any folder you add), and opens its files in a group of its own beside the chat. Each row shows a status dot (a spinner while it works, amber when it waits for you, green when done, red when something went wrong, grey otherwise) and one short note, such as how long it has worked or the lines it added; point at it for the line counts and branch. Rename, stop or remove an agent from its context menu.
-- **Projects (preview).** A project chat whose coordinator splits larger work into threads, each an agent on its own branch, and passes your follow-ups to them. Threads show as cards you can open, merge back, review or undo. Turn it on with `gemini.projects.enabled`.
+- **Projects.** A project chat whose coordinator splits larger work into threads, each an agent on its own branch, and passes your follow-ups to them. Threads show as cards you can open, merge back, review, fork or undo. On by default; `gemini.projects.enabled` turns it off.
 - **Ask before acting.** Permission requests show the agent's own options, such as Allow, Allow for this session and Reject. Proposed edits open in a diff editor first.
 - **Edits through the editor.** Agent edits can be undone, and the agent reads your unsaved changes. The agent cannot read secret files such as `.env` and private keys, or git-ignored files, including through a symbolic link.
 - **Steer or queue while it works.** Keep typing while an agent works: Return sends the message now (the chat stops the turn between steps and the agent carries on with it), ⌘Return queues it for after the turn.
@@ -97,7 +97,7 @@ The **Gemini** status bar item shows the agent's state. Hover over it to see the
 | `gemini.agents.ownBranch` | Start every new agent on its own branch, in its own worktree. Off by default. |
 | `gemini.agents.worktreeSetup` | A command run in each new agent branch's folder before the agent starts, such as `npm ci`. |
 | `gemini.agents.allWorkspaceFolders` | Let every agent read and edit all folders of a multi-root window, not only its own. Off by default. |
-| `gemini.projects.enabled` | Projects (preview). Off by default. |
+| `gemini.projects.enabled` | Projects. On by default. |
 | `gemini.inlineEdit.enabled` | Inline edit, Enhance prompt's quick rewrite and commit messages, which send the code or diff straight to a fast Gemini model. On by default. |
 | `gemini.inlineEdit.model` | The model those use: the newest Flash (the default), the chat's model, or one you name. |
 | `gemini.chat.spellCheck` | Check spelling in the chat and Agent Home composers. On by default. |

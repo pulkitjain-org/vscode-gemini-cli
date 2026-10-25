@@ -132,9 +132,15 @@ export interface ParentProject {
 	readonly action: string;
 }
 
-/** The strings only a project's chat shows (Projects preview). */
+/** The strings only a project's chat shows. */
 export interface ProjectChatStrings {
 	readonly placeholder: string;
+	/** While the coordinator works, what the user writes waits for its turn to end. */
+	readonly placeholderWorking: string;
+	readonly sendAfterTurn: string;
+	readonly queued: string;
+	/** Retry on a failed coordinator turn. */
+	readonly retryWake: string;
 	/** The "+" menu's item to start a thread directly. */
 	readonly newThread: string;
 	/** The New thread dialog; `{0}` in its title is the project's name. */
@@ -261,6 +267,8 @@ export interface ChatStrings {
 	readonly stop: string;
 	/** The strip of messages sent while the agent works. */
 	readonly queued: string;
+	/** A note from a thread's coordinator, waiting for the thread's turn to end. */
+	readonly queuedFromCoordinator: string;
 	readonly steering: string;
 	readonly queueSendNow: string;
 	readonly queueEdit: string;
@@ -580,6 +588,8 @@ export interface ForkStrings {
 	readonly branch: string;
 	readonly sameFolder: string;
 	readonly sameFolderHint: string;
+	/** Under the branch, for a project thread's fork, which is always a new thread. */
+	readonly threadHint: string;
 	readonly noGit: string;
 	readonly message: string;
 	readonly messagePlaceholder: string;
@@ -617,6 +627,8 @@ export interface ForkView {
 	readonly branch: string;
 	/** The parent has no branch of its own: the fork's branch is named after the fork until the user types one. */
 	readonly branchFollowsName: boolean;
+	/** A project's thread: its fork is a new thread, which always has a branch of its own. */
+	readonly branchOnly?: boolean;
 }
 
 /** The Fork dialog's choices. */

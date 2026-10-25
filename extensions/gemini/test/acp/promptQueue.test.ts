@@ -63,6 +63,19 @@ describe('PromptQueue', () => {
 		expect(queue.view).toEqual([{ id: 'q1', text: 'now', attachments: 0, steer: false }]);
 	});
 
+	it('marks the coordinator\'s notes, and sends them as its own only when nothing else goes with them', () => {
+		const queue = new PromptQueue();
+		queue.add('check the tests', [], false, 'coordinator');
+		expect(queue.view).toEqual([{ id: 'q1', text: 'check the tests', attachments: 0, steer: false, from: 'coordinator' }]);
+		expect(queue.remove('q1')?.from).toBe('coordinator');
+		queue.add('check the tests', [], false, 'coordinator');
+		queue.add('and the docs', [], false, 'coordinator');
+		expect(queue.takeAll()).toEqual({ text: 'check the tests\n\nand the docs', attachments: [], from: 'coordinator' });
+		queue.add('check the tests', [], false, 'coordinator');
+		queue.add('use pnpm', [], false);
+		expect(queue.takeAll()).toEqual({ text: 'check the tests\n\nuse pnpm', attachments: [] });
+	});
+
 	it('removes one message by id', () => {
 		const queue = new PromptQueue();
 		queue.add('one', [], false);

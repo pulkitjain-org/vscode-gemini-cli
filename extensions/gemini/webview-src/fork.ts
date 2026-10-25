@@ -85,10 +85,15 @@ export function openForkDialog(view: ForkView): void {
 		ownBranch.checked = true;
 		const branchField = field(text.branch, branch, 'fork-branch-field');
 		places.append(branchField);
-		const same = choiceRow(places, 'fork-place', 'same', text.sameFolder, text.sameFolderHint);
-		const update = () => branch.disabled = !ownBranch!.checked;
-		ownBranch.addEventListener('change', update);
-		same.addEventListener('change', update);
+		if (view.branchOnly) {
+			// A thread's fork is a new thread of the project: two threads in one folder would change the same files.
+			places.append(el('p', 'new-thread-hint', text.threadHint));
+		} else {
+			const same = choiceRow(places, 'fork-place', 'same', text.sameFolder, text.sameFolderHint);
+			const update = () => branch.disabled = !ownBranch!.checked;
+			ownBranch.addEventListener('change', update);
+			same.addEventListener('change', update);
+		}
 	} else {
 		places.append(el('p', 'new-thread-hint', text.noGit));
 	}
