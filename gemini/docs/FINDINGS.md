@@ -243,6 +243,21 @@ Read from the build:
 - With chunk text stored uncompressed, this repository's file was 537 MB, and checking it with `PRAGMA quick_check` on open took 5 s. That is why opening checks only the schema.
 - Without word positions (`detail=column`) the file was 31 MB smaller here. BM25 then counts a word only once per column, and it ranked short Markdown chunks above definitions. So positions stay, and the chunk that defines a queried name is put first.
 
+Measured on 25 Oct 2026 on a checkout of this repository (21,368 files), with the indexer before and after the changes for large repositories:
+
+| What | Before | After |
+| --- | --- | --- |
+| Parsing a generated class of 16,000 one-line methods (0.97 MB) | 312 ms (1.8 s at 32,000) | 21 ms |
+| A save, from the change to the new status | 22 ms | 10 ms (imports are re-resolved only when files are added) |
+| Copying the index for a new worktree | 608 ms, with the process unable to answer for 585 ms (`VACUUM INTO`) | 412 ms, never more than 1 ms without answering (`backup()`) |
+| An agent's turn ending in a worktree | 0.86 s, 0.4 s of the indexer's CPU (a reconcile) | 0.64 s, 0.01 s of the indexer's CPU (`git status` and `git diff`; the rest is git's) |
+
+The top five results for six queries were the same before and after.
+
+### When the indexer gives up
+
+After three crashes the indexer stops for ten minutes. New sessions then get no `geminicode-index` server in `session/new` and no `indexHint`; `mcpServers` per session is what the CLI already supports. The CLI 0.64.0 does handle `notifications/tools/list_changed` (its MCP client calls `refreshTools`), but GeminiCode's local MCP server (`localMcpServer.ts`) answers requests only and has no stream to send notifications on, so a session already running keeps the tools, and their calls fail with a message.
+
 ### Ripgrep
 
 - The CLI's `grep_search` uses `bundle/vendor/ripgrep/rg-<platform>-<arch>`, or an `rg` in a system folder (`/usr/bin`, `/opt/homebrew/bin` and the like). Otherwise it falls back to `git grep` ("Ripgrep is not available. Falling back to GrepTool.").
