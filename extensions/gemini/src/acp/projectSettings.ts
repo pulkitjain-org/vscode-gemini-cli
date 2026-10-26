@@ -9,9 +9,17 @@
 // `McpServerEnablementManager` keeps switched-off servers in
 // ~/.gemini/mcp-server-enablement.json by lowercased name, and
 // `context.fileName` names the rules files.
+//
+// Writes keep the files the CLI also writes intact: a settings file is edited
+// in place, its comments and layout kept, as the CLI's own
+// `updateSettingsFilePreservingFormat` does (it reads them with
+// strip-json-comments), and every file is replaced in one rename.
 
 import { promises as fs } from 'node:fs';
-import * as path from 'node:path';
+import { applyEdits, modify, parse, type JSONPath, type ParseError } from 'jsonc-parser';
+import { isRecord, writeFileAtomic, writeJsonAtomic } from './fsUtil';
+
+export { isRecord } from './fsUtil';
 
 export type McpTransport = 'stdio' | 'http' | 'sse';
 
@@ -93,8 +101,8 @@ export async function setServerEnabled(enablementFile: string, name: string, ena
 	} else {
 		config[key] = { enabled: false };
 	}
-	await fs.mkdir(path.dirname(enablementFile), { recursive: true });
-	await fs.writeFile(enablementFile, JSON.stringify(config, null, 2), 'utf8');
+	// Plain JSON, as the CLI writes it: it reads this file with JSON.parse.
+	await writeJsonAtomic(enablementFile, config, { indent: 2, newline: false });
 }
 
 /** A server's settings from what the user typed: a URL, or a command line. */
@@ -109,8 +117,8 @@ export function serverConfigFrom(input: string): Record<string, unknown> {
 }
 
 /**
- * Adds a server to a settings file. Returns false, leaving the file alone,
- * when it has comments (rewriting it would lose them) or is not an object.
+ * Adds a server to a settings file, keeping its comments. Returns false,
+ * leaving the file alone, when it is not a JSON object.
  */
 export function addMcpServer(file: string, name: string, config: Record<string, unknown>): Promise<boolean> {
 	return updateSettingsFile(file, settings => {
@@ -120,9 +128,10 @@ export function addMcpServer(file: string, name: string, config: Record<string, 
 }
 
 /**
- * Reads a settings file, lets `change` edit it and writes it back, creating
- * it if missing. Returns false, leaving the file alone, when it has comments
- * (rewriting it would lose them) or is not an object.
+ * Reads a settings file, lets `change` edit it and writes back only what
+ * changed, keeping comments and layout; creates the file if missing. Returns
+ * false, leaving the file alone, when it is not a JSON object (comments
+ * allowed), which the CLI could not read either.
  */
 export async function updateSettingsFile(file: string, change: (settings: Record<string, unknown>) => void): Promise<boolean> {
 	let text = '';
@@ -133,21 +142,57 @@ export async function updateSettingsFile(file: string, change: (settings: Record
 			throw err;
 		}
 	}
-	let settings: unknown = {};
-	if (text.trim()) {
-		try {
-			settings = JSON.parse(text);
-		} catch {
-			return false;
-		}
-	}
-	if (!isRecord(settings)) {
+	const updated = editSettingsText(text, change);
+	if (updated === undefined) {
 		return false;
 	}
-	change(settings);
-	await fs.mkdir(path.dirname(file), { recursive: true });
-	await fs.writeFile(file, JSON.stringify(settings, null, 2) + '\n', 'utf8');
+	if (updated !== text) {
+		await writeFileAtomic(file, updated);
+	}
 	return true;
+}
+
+/**
+ * `text` with `change` applied, edited in place so comments and layout stay;
+ * undefined when `text` is not a JSON object (comments allowed).
+ */
+export function editSettingsText(text: string, change: (settings: Record<string, unknown>) => void): string | undefined {
+	if (!text.trim()) {
+		const settings: Record<string, unknown> = {};
+		change(settings);
+		return `${JSON.stringify(settings, undefined, 2)}\n`;
+	}
+	const errors: ParseError[] = [];
+	const before: unknown = parse(text, errors, { allowTrailingComma: false, disallowComments: false });
+	if (errors.length || !isRecord(before)) {
+		return undefined;
+	}
+	const after = structuredClone(before);
+	change(after);
+	const indent = /^([ \t]+)\S/m.exec(text)?.[1] ?? '  ';
+	const formattingOptions = { insertSpaces: !indent.includes('\t'), tabSize: indent.includes('\t') ? 1 : indent.length, eol: text.includes('\r\n') ? '\r\n' : '\n' };
+	let updated = text;
+	for (const edit of settingsEdits(before, after, [])) {
+		updated = applyEdits(updated, modify(updated, edit.path, edit.value, { formattingOptions }));
+	}
+	return updated;
+}
+
+/** The property edits that turn `before` into `after`; a changed array or value is replaced whole. */
+function settingsEdits(before: unknown, after: unknown, at: JSONPath): { readonly path: JSONPath; readonly value: unknown }[] {
+	if (isRecord(before) && isRecord(after)) {
+		const edits: { readonly path: JSONPath; readonly value: unknown }[] = [];
+		for (const key of Object.keys(before)) {
+			if (!Object.hasOwn(after, key)) {
+				edits.push({ path: [...at, key], value: undefined });
+			}
+		}
+		for (const [key, value] of Object.entries(after)) {
+			edits.push(...Object.hasOwn(before, key) ? settingsEdits(before[key], value, [...at, key]) : [{ path: [...at, key], value }]);
+		}
+		return edits;
+	}
+	return JSON.stringify(before) === JSON.stringify(after) ? [] : [{ path: at, value: after }];
 }
 
 /** Removes comments and trailing commas outside strings. */
@@ -179,8 +224,4 @@ export function stripJsonComments(text: string): string {
 		}
 	}
 	return out;
-}
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

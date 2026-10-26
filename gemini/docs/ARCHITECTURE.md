@@ -263,7 +263,7 @@ Switching to an agent's or thread's tab sends its chat `focus`, and showing Agen
 
 A first launch opens on Agent Home: the window defaults leave out upstream's onboarding and startup editor, and the Get Started walkthrough opens only from **Gemini: Get Started**. The first time a workspace opens, `layoutDefaults.ts` reveals the Gemini side bar (the workbench would otherwise open on the Explorer). After that the workbench restores whatever the user arranged.
 
-The list of workspaces and agents is kept in global state. Each agent's visible conversation (the last 300 items, long text cut to 20,000 characters) and changed files are saved as one JSON file per agent in the extension's global storage. On reopen, or after the process restarts, GeminiCode resumes the session with `session/load` when the CLI supports it. Otherwise it starts a fresh session and says so in the chat. See [Restarts](#restarts) for everything else that survives a quit.
+The list of workspaces and agents is kept in a record store shared by every window (see [Storage](#storage)). Each agent's visible conversation (the last 300 items, long text cut to 20,000 characters) and changed files are saved as one JSON file per agent in the extension's global storage. On reopen, or after the process restarts, GeminiCode resumes the session with `session/load` when the CLI supports it. Otherwise it starts a fresh session and says so in the chat. See [Restarts](#restarts) for everything else that survives a quit.
 
 ### The chat
 
@@ -402,7 +402,7 @@ Forks are listed under their parent (`AgentRecord.forkedFrom`), and the parent's
 
 Files: `checkpoints.ts`, `checkpointStore.ts`.
 
-After each turn, the text every file had before the agent first edited it in that turn is kept, for the last 100 turns and 20 MB per agent. It is saved to `<globalStorage>/checkpoints/<agent>.json` after the turn ends, never while a tool runs, and deleted with the agent.
+After each turn, the text every file had before the agent first edited it in that turn is kept, for the last 100 turns and 20 MB per agent. It is saved to `<globalStorage>/checkpoints/<agent>.json` two seconds after the turn ends, so a burst of quick turns writes once, never while a tool runs. The file is written a file's text at a time (`serialize`), so 20 MB never goes through one `JSON.stringify`. It is deleted with the agent, and once its thread is merged back (`mergedThreads`).
 
 ACP has no rewind. Rewind appends the record the CLI's own `/rewind` writes (`{"$rewindTo": <message id>}`, `rewindCliSession` in `cliSessions.ts`) to the session's `.jsonl`, then loads the session again over ACP in the same process. The CLI rebuilds its history without that message and what followed.
 
@@ -673,7 +673,7 @@ The confirm class (`teamConfirmTools`) is a ticket's status, a time log, a new m
 
 #### Audit log
 
-Every write, by an agent or from a page, goes through the audit log (`src/acp/auditLog.ts`): one JSON line per record, in a file per day under global storage, never rewritten. Each write records an intent before the call, then a result with the id the tool gave back, or the failure.
+Every write, by an agent or from a page, goes through the audit log (`src/acp/auditLog.ts`): one JSON line per record, in a file per day under global storage, never rewritten. Days older than `gemini.storage.keepLogsDays` (90 by default, at least 7) are removed a minute after startup, with the pilot's. Each write records an intent before the call, then a result with the id the tool gave back, or the failure.
 
 An intent with no result is a write that was running when the app quit. **Open Audit Log** (`src/host/auditPage.ts`, a webview page over the same files) highlights those, Home lists them under Unfinished, and the status bar counts the day's writes (`auditStatusBar.ts`).
 
@@ -687,7 +687,7 @@ Once the user takes over a repository's own Jira and GitLab servers (`src/host/t
 
 #### Performance trace, benchmark and pilot counters
 
-**Record Performance Trace** (`src/host/traceCommand.ts`, `src/acp/traceRecording.ts`) restarts the agent once with the CLI's OpenTelemetry export going to a file in the home folder, prompts off. While it records, every turn's end gets a readout in the chat of where the time went, hop by hop against a budget for each hop (`turnReadout`: the fork's own hops from what the chat controller measured, the model's and the tools' from the CLI's file). Stop reads the whole file back into a table of each turn's routing call, model calls, tool calls and cached tokens. The CLI writes its records as JSON objects back to back, not one per line, which `parseTraceFile` handles.
+**Record Performance Trace** (`src/host/traceCommand.ts`, `src/acp/traceRecording.ts`) restarts the agent once with the CLI's OpenTelemetry export going to a file in `<globalStorage>/traces/`, prompts off. While it records, every turn's end gets a readout in the chat of where the time went, hop by hop against a budget for each hop (`turnReadout`: the fork's own hops from what the chat controller measured, the model's and the tools' from the CLI's file). Stop reads the whole file back into a table of each turn's routing call, model calls, tool calls and cached tokens. The CLI writes its records as JSON objects back to back, not one per line, which `parseTraceFile` handles.
 
 **Run Benchmark** (`src/host/benchmarkCommand.ts`) and `scripts/bench-run.mts` share `src/acp/benchmark.ts`, which the command loads only when it runs.
 
@@ -848,7 +848,7 @@ GeminiCode runs only on the Mac, with no server ([ADR 0009](adr/0009-desktop-onl
 
 | State | Kept in | After a restart |
 | --- | --- | --- |
-| Agents, workspaces, projects and threads | global state | the same list and cards |
+| Agents, workspaces, projects and threads | `<globalStorage>/records/`, one file per record (global state before, still written when a window closes) | the same list and cards |
 | Each conversation | one JSON file per agent in global storage, and the CLI's own chat file | shown at once; the session reopens with `session/load` |
 | Undo and Rewind checkpoints | `<globalStorage>/checkpoints/<agent>.json`, written when a turn ends | up to the last finished turn |
 | A turn that was running | the agent process | lost; the chat shows that it was cut off, with Retry the Turn and Keep and Continue |
@@ -859,6 +859,42 @@ GeminiCode runs only on the Mac, with no server ([ADR 0009](adr/0009-desktop-onl
 | Home's team data | a snapshot in global state | shown at once, dimmed until it refreshes |
 | Sign-in, team tokens, worktrees, folder trust | the CLI's files, the keychain, `~/.geminicode/`, `~/.gemini/trustedFolders.json` | as they were |
 | The spare session and the team servers' children | memory and child processes | opened or started again when first needed |
+
+### Storage
+
+Everything GeminiCode keeps, for an uninstall or a full disk (`storageAreas` in `src/acp/storageUsage.ts`):
+
+| Where | What |
+| --- | --- |
+| `<globalStorage>/records/agents/`, `records/workspaces/` | the agent list, one file per record |
+| `<globalStorage>/agents/`, `checkpoints/` | each agent's chat as shown, and its Undo checkpoints |
+| `<globalStorage>/reviews/`, `flows/` | merge request review drafts, open team flows |
+| `<globalStorage>/audit/`, `pilot/` | the audit log and the pilot's counters, a file per day |
+| `<globalStorage>/traces/`, `cli-logs/` | performance traces; the CLI's debug log, one per window's process |
+| `<globalStorage>/gemini-cli/`, `policy/`, `enhance/` | installed CLI copies, the admin policy file, Enhance prompt's empty folder |
+| `~/.geminicode/index/`, `worktrees/`, `threads/`, `projects/` | the workspace index, agents' worktrees, threads' folders, projects' folders and memory |
+| `~/.gemini/` | the CLI's own files, which GeminiCode edits only as the CLI would |
+
+How files are written (`src/acp/fsUtil.ts`):
+
+- **Atomic, per process.** Every file is written to `<file>.<pid>.<n>.tmp` and renamed over it (`writeFileAtomic`, `writeJsonAtomic`), so a crash leaves the last good copy and two windows never rename each other's half-written file into place. This includes the CLI's `~/.gemini/settings.json`, `mcp-server-enablement.json` and `trustedFolders.json`, and the admin policy file.
+- **Never written over when unreadable.** A chat, checkpoints, a review or a record that can't be parsed, or that a newer version wrote, is moved aside as `<file>.broken` (`quarantine`) and the store starts empty for it.
+- **The CLI's settings keep their comments.** gemini-cli 0.64 reads settings files with strip-json-comments and writes them back with comment-json, keeping comments. GeminiCode edits them the same way, in place with `jsonc-parser`'s `modify` (`editSettingsText` in `projectSettings.ts`), and leaves alone a file that is not a JSON object with comments at most. `mcp-server-enablement.json` stays plain JSON: the CLI reads it with `JSON.parse`.
+
+**The agent list** (`src/acp/recordStore.ts`, `agentsStore.ts`). Every window has the whole list in memory, as `AgentsModel`. Each record is a file, `{ "version": 1, "order": n, "record": { ... } }`:
+
+- A save writes only the records whose object changed since the last save, so a prompt in a 500-thread project writes one small file, not the list.
+- A removed record leaves a tombstone, `{ "version": 1, "id": ..., "deleted": <time> }`, kept 30 days, so a window that still has it never brings it back.
+- Before a record is written, its file is read again: a tombstone, or another window's copy used later (`updatedAt`), wins and goes into this window's model.
+- Each window watches the two folders and takes in the others' changes (`AgentsModel.applyExternal`); a change of its own not saved yet stays unless theirs is newer, and an agent another window removed closes here.
+- Records this version doesn't recognise (a newer version's role, a missing workspace) and fields it doesn't know are kept and saved back as they were (`AgentsModel.stored`). A file of a newer format version is never written.
+- The first start with the store moves the `gemini.agents` global state snapshot in, once (`migrated.json` marks it). The snapshot is left there, now with `version: 2`, and is written again when a window closes, so an earlier GeminiCode still finds the list. If the store can't be read, the window works from that snapshot and saves to it, as before.
+
+**The CLI's debug log.** GeminiCode points the CLI's debug log (`GEMINI_DEBUG_LOG_FILE`) at `<globalStorage>/cli-logs/cli-debug-<pid>.log`, one per window's extension host, so a window starting its agent empties only its own (`McpDiagnostics.reset`). The logs of processes that have ended are removed at the next start, and the single `cli-debug.log` every window shared before goes with the housekeeping a minute after startup (`storageMaintenance.ts`).
+
+**Save failures.** A chat or checkpoints that can't be saved, such as on a full disk, is logged each time, and the window warns once: "GeminiCode couldn't save chats".
+
+**Sizes and Clean Up.** `measureStorage` gives each area's size and `cleanupPlan` lists what Clean Up would remove, each with its reason: chats and checkpoints of agents no longer in the list, merged threads' checkpoints, log days past the retention, traces, `.broken` files, ended windows' debug logs, and merged threads' worktrees whose work is all committed and merged (never one with uncommitted changes or unmerged commits). `runCleanup` removes only a plan the user agreed to, a worktree through the `removeWorktree` it is handed. Settings has no Storage section yet; these are its data.
 
 ## Direct requests
 

@@ -108,7 +108,7 @@ export function applyCliPreference<K extends CliPreference>(settings: Record<str
 	}
 }
 
-/** Writes one preference to a settings file. False, leaving the file alone, when it has comments. */
+/** Writes one preference to a settings file. False, leaving the file alone, when it isn't valid JSON (comments are kept). */
 export async function setCliPreference<K extends CliPreference>(file: string, key: K, value: CliPreferences[K]): Promise<boolean> {
 	if (key === 'keepChats' && !isKeepChats(value as string)) {
 		throw new Error(`Not a retention the Gemini CLI accepts: ${value}`);

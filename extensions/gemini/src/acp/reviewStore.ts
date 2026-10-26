@@ -14,6 +14,7 @@ import * as path from 'node:path';
 import type { DiffRefs } from './gitlab';
 import type { ReviewDraft } from './reviewDraft';
 import type { AgentWorktree } from './worktrees';
+import { quarantine, writeJsonAtomic } from './fsUtil';
 
 export interface SavedReview {
 	readonly project: string;
@@ -60,11 +61,8 @@ export class ReviewStore {
 	async save(review: Omit<SavedReview, 'createdAt' | 'updatedAt'> & { readonly createdAt?: string }): Promise<SavedReview> {
 		const now = this.now().toISOString();
 		const saved: SavedReview = { ...review, createdAt: review.createdAt ?? now, updatedAt: now };
-		await fs.mkdir(this.dir, { recursive: true });
 		// Written beside it and renamed over it, so a quit mid-write leaves the last good draft.
-		const file = this.file(review.project, review.iid);
-		await fs.writeFile(`${file}.tmp`, JSON.stringify(saved, null, '\t'));
-		await fs.rename(`${file}.tmp`, file);
+		await writeJsonAtomic(this.file(review.project, review.iid), saved, { indent: '\t', newline: false });
 		return saved;
 	}
 
@@ -92,8 +90,8 @@ export class ReviewStore {
 					reviews.push(review);
 				}
 			} catch {
-				// An unreadable review is of no use.
-				await fs.rm(file, { force: true });
+				// An unreadable review is moved aside, for whoever wants to look, and the list goes on without it.
+				await quarantine(file).catch(() => undefined);
 			}
 		}
 		return reviews.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));

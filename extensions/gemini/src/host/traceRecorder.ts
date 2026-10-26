@@ -4,7 +4,6 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { promises as fs } from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { parseTraceFile, renderTrace, summarizeTrace, traceEnv } from '../acp/traceRecording';
@@ -22,11 +21,13 @@ export interface TraceHost {
 	readonly setTraceFile: typeof setTraceFile;
 	/** The environment the next agent process starts with. */
 	readonly setAgentEnvOverride: typeof setAgentEnvOverride;
+	/** The folder traces are written to: the extension's global storage, where Settings' Storage section counts and cleans them. */
+	readonly dir: string;
 }
 
 /**
  * Gemini: Record Performance Trace. Restarts the agent once with the CLI's
- * own telemetry writing to a file in the home folder, and on Stop restarts
+ * own telemetry writing to a file in the extension's global storage, and on Stop restarts
  * it again without, then opens a summary of where each turn's time went.
  * Nothing leaves the Mac. The file holds timings and token counts, the CLI's
  * system prompt and tool declarations, and no prompt or reply text.
@@ -54,9 +55,10 @@ export class TraceRecorder implements vscode.Disposable {
 
 	private async start(): Promise<void> {
 		const stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
-		const file = path.join(os.homedir(), `geminicode-trace-${stamp}.jsonl`);
+		const file = path.join(this.host.dir, `geminicode-trace-${stamp}.jsonl`);
 		this.file = file;
 		this.host.setTraceFile(file);
+		await fs.mkdir(this.host.dir, { recursive: true }).catch(() => undefined);
 		this.host.setAgentEnvOverride(traceEnv(file));
 		this.log.info(`Recording a performance trace to ${file}`);
 		this.service.restart();

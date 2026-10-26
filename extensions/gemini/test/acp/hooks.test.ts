@@ -48,10 +48,13 @@ describe('hooks', () => {
 		expect(settings.hooksConfig).toEqual({ disabled: [] });
 	});
 
-	it('leaves a settings file with comments alone', async () => {
+	it('keeps the comments of a settings file, and leaves one that is not JSON alone', async () => {
 		const file = path.join(dir, 'settings.json');
 		await fs.writeFile(file, '{\n  // mine\n}\n');
+		expect(await addHook(file, 'SessionStart', 'echo')).toBe(true);
+		expect(await fs.readFile(file, 'utf8')).toContain('// mine');
+		await fs.writeFile(file, '{ // mine\n');
 		expect(await addHook(file, 'SessionStart', 'echo')).toBe(false);
-		expect(await fs.readFile(file, 'utf8')).toBe('{\n  // mine\n}\n');
+		expect(await fs.readFile(file, 'utf8')).toBe('{ // mine\n');
 	});
 });

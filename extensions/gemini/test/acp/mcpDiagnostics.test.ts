@@ -3,11 +3,11 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { appendFile, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { appendFile, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { McpDiagnostics, McpProblem, parseMcpProblems } from '../../src/acp/mcpDiagnostics';
+import { debugLogName, McpDiagnostics, McpProblem, parseMcpProblems, removeEndedDebugLogs } from '../../src/acp/mcpDiagnostics';
 import { waitFor } from '../helpers';
 
 // Copied from gemini-cli 0.62's debug log with two broken servers configured.
@@ -75,6 +75,35 @@ describe('McpDiagnostics', () => {
 		await appendFile(file, log);
 		await diagnostics.read();
 		expect(seen).toHaveLength(8);
+	});
+
+	it('gives the process of each window its own log, so one window starting never empties the log of another', async () => {
+		dir = await mkdtemp(path.join(tmpdir(), 'gemini-mcp-'));
+		const logs = path.join(dir, 'cli-logs');
+		const mine = new McpDiagnostics(path.join(logs, debugLogName()));
+		// Another window's process, still running: the parent of this one.
+		const other = new McpDiagnostics(path.join(logs, debugLogName(process.ppid)));
+		try {
+			await other.reset();
+			await appendFile(other.file, log);
+			await mine.reset();
+			// Ended processes' logs are removed in the background; give it a moment.
+			await new Promise(resolve => setTimeout(resolve, 50));
+			expect(await readFile(other.file, 'utf8')).toBe(log);
+		} finally {
+			mine.dispose();
+			other.dispose();
+		}
+	});
+
+	it('removes the logs of processes that have ended', async () => {
+		dir = await mkdtemp(path.join(tmpdir(), 'gemini-mcp-'));
+		for (const name of [debugLogName(), debugLogName(11), debugLogName(22), 'other.log']) {
+			await writeFile(path.join(dir, name), '');
+		}
+		const removed = await removeEndedDebugLogs(dir, pid => pid === 22);
+		expect(removed.map(file => path.basename(file))).toEqual([debugLogName(11)]);
+		expect((await readdir(dir)).sort()).toEqual([debugLogName(), debugLogName(22), 'other.log'].sort());
 	});
 
 	it('reads the log when the CLI writes to it', async () => {

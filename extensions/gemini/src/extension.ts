@@ -12,7 +12,7 @@ import { Appearance } from './host/appearance';
 import { AgentService } from './host/agentService';
 import { AgentHome } from './host/agentHome';
 import { AgentWarmup } from './host/agentWarmup';
-import { AgentsView } from './host/agentsView';
+import { AgentsView, loadSavedAgents } from './host/agentsView';
 import { TerminalGemini } from './host/terminalGemini';
 import { tildify } from './host/displayText';
 import { ChangesPanel } from './host/changesPanel';
@@ -31,10 +31,12 @@ import { QuickEdits } from './host/quickEdits';
 import { UsageMeter } from './host/usageMeter';
 import { forgetSkills, initTeamCommands } from './host/teamCommands';
 import { KeepAwake } from './acp/keepAwake';
+import { debugLogName } from './acp/mcpDiagnostics';
 import { BrowserTools } from './host/browserTools';
 import { TeamConnections } from './host/teamConnections';
 import { TeamFlows } from './host/teamFlows';
 import { setTraceFile } from './host/traceCommand';
+import { scheduleStorageMaintenance } from './host/storageMaintenance';
 import { MrPanel } from './host/mrPanel';
 import { TeamStatusBar } from './host/teamStatusBar';
 import { AuditStatusBar } from './host/auditStatusBar';
@@ -56,6 +58,8 @@ let saveBeforeExit: (() => Promise<void>) | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
 	const log = vscode.window.createOutputChannel('Gemini', { log: true });
+	// The agent list is read while the product info loads.
+	const savedAgents = loadSavedAgents(context);
 	await loadProductInfo();
 	initModelPreference(context.globalState);
 	initReactionRecents(context.globalState);
@@ -65,7 +69,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		adminPolicy: vscode.Uri.joinPath(context.globalStorageUri, 'policy').fsPath,
 	});
 	const teamCommandStore = initTeamCommands(log);
-	const service = new AgentService(log, vscode.Uri.joinPath(context.globalStorageUri, 'cli-debug.log').fsPath);
+	// The CLI's debug log, one per window's process (GEMINI_DEBUG_LOG_FILE), so windows never empty each other's.
+	const service = new AgentService(log, vscode.Uri.joinPath(context.globalStorageUri, 'cli-logs', debugLogName()).fsPath);
 	const diffPreview = new DiffPreview();
 	const fileIndex = new WorkspaceFileIndex();
 	// Rewrites run on the agent process every chat shares, in an empty folder of their own.
@@ -77,7 +82,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		onDirectFailed: err => log.info(`Prompt enhancement's direct request failed (${errorMessage(err)}); asking the CLI`),
 		onDidEnhance: ({ ms, model }) => log.info(`Prompt enhanced in ${ms} ms with ${model ?? 'the default model'}`),
 	});
-	const agentsView = new AgentsView(context, service, diffPreview, fileIndex, enhancer);
+	const agentsView = new AgentsView(context, service, diffPreview, fileIndex, enhancer, await savedAgents);
 	saveBeforeExit = () => agentsView.saveAll();
 	// Agents mode's Changes panel follows the agent in front, as the Changes view does.
 	const changesPanel = new ChangesPanel(context.extensionUri);
@@ -211,7 +216,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		browserTools,
 		teamTools,
 		teamFlows,
-		new LazyFeature(['gemini.recordTrace'], () => new (onDemand().TraceRecorder)(service, log, { setTraceFile, setAgentEnvOverride })),
+		new LazyFeature(['gemini.recordTrace'], () => new (onDemand().TraceRecorder)(service, log, { setTraceFile, setAgentEnvOverride, dir: vscode.Uri.joinPath(context.globalStorageUri, 'traces').fsPath })),
 		new LazyFeature(['gemini.runBenchmark'], () => new (onDemand().BenchmarkCommand)(service, log, {
 			getAgentCommand,
 			knownModelList,
@@ -221,6 +226,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		})),
 		pilot,
 		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.${pilotRecordSetting}`) && startPilot()),
+		scheduleStorageMaintenance(context.globalStorageUri.fsPath, log),
 		mrPanel,
 		new LazyFeature(['gemini.connections'], () => new (pages().ConnectionsPage)(context.extensionUri, teamTools, log)),
 		new TeamStatusBar(context.extensionUri, teamTools),

@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { addMcpServer, disabledServers, serverConfigFrom, isServerEnabled, mcpServersIn, readSettingsFile, rulesFileNames, setServerEnabled, stripJsonComments } from '../../src/acp/projectSettings';
+import { addMcpServer, disabledServers, editSettingsText, serverConfigFrom, isServerEnabled, mcpServersIn, readSettingsFile, rulesFileNames, setServerEnabled, stripJsonComments } from '../../src/acp/projectSettings';
 
 let dir: string;
 
@@ -88,12 +88,39 @@ describe('adding a server', () => {
 		expect(JSON.parse(await fs.readFile(file, 'utf8'))).toEqual({ theme: 'x', mcpServers: { a: { command: 'a' }, b: { command: 'b' } } });
 	});
 
-	it('creates the file, and leaves one with comments alone', async () => {
+	it('creates the file, keeps the comments of one that has them, and leaves one that is not JSON alone', async () => {
 		const created = path.join(dir, 'new', 'settings.json');
 		expect(await addMcpServer(created, 'b', { command: 'b' })).toBe(true);
 		const commented = path.join(dir, 'commented.json');
-		await fs.writeFile(commented, '{ // mine\n}');
-		expect(await addMcpServer(commented, 'b', { command: 'b' })).toBe(false);
-		expect(await fs.readFile(commented, 'utf8')).toBe('{ // mine\n}');
+		await fs.writeFile(commented, '{\n  // mine\n  "theme": "x" /* dark */\n}\n');
+		expect(await addMcpServer(commented, 'b', { command: 'b' })).toBe(true);
+		const text = await fs.readFile(commented, 'utf8');
+		expect(text).toContain('// mine');
+		expect(text).toContain('/* dark */');
+		expect(await readSettingsFile(commented)).toEqual({ theme: 'x', mcpServers: { b: { command: 'b' } } });
+		const broken = path.join(dir, 'broken.json');
+		await fs.writeFile(broken, '{ "theme": ');
+		expect(await addMcpServer(broken, 'b', { command: 'b' })).toBe(false);
+		expect(await fs.readFile(broken, 'utf8')).toBe('{ "theme": ');
+		expect((await fs.readdir(dir)).filter(name => name.endsWith('.tmp'))).toEqual([]);
+	});
+
+	it('edits only what changed, in the layout the file has', () => {
+		const text = '{\n\t// Mine.\n\t"a": 1,\n\t"b": { "keep": true, "drop": 2 }\n}\n';
+		expect(editSettingsText(text, settings => {
+			delete (settings.b as Record<string, unknown>).drop;
+			settings.c = ['x'];
+		})).toBe('{\n\t// Mine.\n\t"a": 1,\n\t"b": {\n\t\t"keep": true\n\t},\n\t"c": [\n\t\t"x"\n\t]\n}\n');
+		expect(editSettingsText(text, () => undefined)).toBe(text);
+		expect(editSettingsText('[1]', () => undefined)).toBeUndefined();
+		expect(editSettingsText('{ "a": 1, }', () => undefined)).toBeUndefined();
+	});
+
+	it('writes the enablement file as the CLI does: plain JSON, replaced in one rename', async () => {
+		const file = path.join(dir, 'mcp-server-enablement.json');
+		await setServerEnabled(file, 'Jira', false);
+		expect(await fs.readFile(file, 'utf8')).toBe(JSON.stringify({ jira: { enabled: false } }, null, 2));
+		await setServerEnabled(file, 'jira', true);
+		expect(JSON.parse(await fs.readFile(file, 'utf8'))).toEqual({});
 	});
 });

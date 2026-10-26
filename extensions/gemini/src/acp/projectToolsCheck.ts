@@ -141,7 +141,7 @@ export async function allowlistWith(servers: readonly string[], files: readonly 
 
 /**
  * Lets `server` load per `file`: adds it to `mcp.allowed` and takes it out of
- * `mcp.excluded`. Returns false, leaving the file alone, when it has comments.
+ * `mcp.excluded`. Returns false, leaving the file alone, when it isn't valid JSON.
  */
 export function allowServer(file: string, server: string): Promise<boolean> {
 	return updateSettingsFile(file, settings => {

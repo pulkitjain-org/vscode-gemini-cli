@@ -56,6 +56,6 @@ Four of the CLI's own settings, in your personal `~/.gemini/settings.json`:
 | Send usage statistics | `privacy.usageStatisticsEnabled` | On |
 | Keep saved chats for | `general.sessionRetention` | 30 days |
 
-A project's `.gemini/settings.json` can still override them, as in the CLI. A settings file with comments is never rewritten: GeminiCode opens it at the right place so you can make the change yourself.
+A project's `.gemini/settings.json` can still override them, as in the CLI. GeminiCode edits a settings file in place and keeps its comments, as the CLI does. A file that isn't valid JSON is never rewritten: GeminiCode opens it at the right place so you can make the change yourself.
 
 GeminiCode's own settings are listed in [Settings](settings.md).

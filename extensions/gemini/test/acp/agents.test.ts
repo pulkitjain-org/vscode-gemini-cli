@@ -5,7 +5,7 @@
 
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { agentFolder, AgentsModel, archiveAfterMs, freeTitle, isArchived, resolvedAt, titleFromPrompt, warmThreads } from '../../src/acp/agents';
+import { agentFolder, type AgentRecord, AgentsModel, archiveAfterMs, freeTitle, isArchived, mergedThreads, resolvedAt, titleFromPrompt, warmThreads } from '../../src/acp/agents';
 
 function clock(start = 1_000) {
 	let time = start;
@@ -187,6 +187,63 @@ describe('AgentsModel', () => {
 		})));
 		expect(restored.workspaces).toEqual([ws]);
 		expect(restored.agentsIn(ws.id).map(a => a.title)).toEqual(['a']);
+	});
+
+	it('keeps records it does not recognise, and their fields, and saves them back as they were (ADR 0008)', () => {
+		const model = new AgentsModel();
+		const ws = model.addWorkspace('/w');
+		const agent = model.addAgent(ws.id, 'a');
+		const fromNewer = { id: 'r', workspaceId: ws.id, title: 'Reviewer', createdAt: 1, updatedAt: 1, project: { role: 'reviewer' } };
+		const orphan = { id: 'orphan', workspaceId: 'gone', title: 't', createdAt: 1, updatedAt: 1 };
+		const oddWorkspace = { id: 'x', folder: 'relative/path', kind: 'remote' };
+		const restored = new AgentsModel(JSON.parse(JSON.stringify({
+			workspaces: [...model.snapshot().workspaces, oddWorkspace],
+			agents: [{ ...agent, pinned: true }, fromNewer, orphan, { id: 'bad' }, 'junk'],
+		})));
+		restored.rename(agent.id, 'b');
+		expect(restored.agent(agent.id)).toMatchObject({ title: 'b', pinned: true });
+		expect(restored.agent('r')).toBeUndefined();
+		expect(restored.stored()).toEqual({
+			version: 2,
+			workspaces: [ws, oddWorkspace],
+			agents: [{ ...agent, title: 'b', titleSetByUser: true, pinned: true }, fromNewer, orphan, { id: 'bad' }],
+		});
+		expect(restored.snapshot().version).toBe(2);
+	});
+
+	it('takes in the changes of another window, keeping an unsaved change of its own unless theirs is newer', () => {
+		const time = clock();
+		const model = new AgentsModel(undefined, time.now);
+		const ws = model.addWorkspace('/w');
+		const a = model.addAgent(ws.id, 'a');
+		const b = model.addAgent(ws.id, 'b');
+		model.rename(a.id, 'renamed here');
+		const ours = model.agent(a.id)!;
+		const unsaved = (record: { readonly id: string }) => record === ours;
+		const theirs: AgentRecord[] = [{ ...a, title: 'older there' }, { ...b, title: 'newer there', updatedAt: b.updatedAt + 5 }, { ...b, id: 'c', title: 'new there' }];
+		const removed = model.applyExternal({ agents: { upserted: theirs, removed: [] } }, unsaved);
+		expect(removed).toEqual([]);
+		expect(model.agentsIn(ws.id).map(x => x.title).sort()).toEqual(['new there', 'newer there', 'renamed here']);
+		const used: AgentRecord = { ...ours, title: 'used there', updatedAt: ours.updatedAt + 1 };
+		expect(model.applyExternal({ agents: { upserted: [used], removed: ['c'] } }, unsaved).map(x => x.id)).toEqual(['c']);
+		expect(model.agent(a.id)?.title).toBe('used there');
+		// An agent whose workspace arrives later shows once it does.
+		const ws2 = { id: 'w2', folder: path.resolve('/w2') };
+		const elsewhere: AgentRecord = { ...b, id: 'd', workspaceId: 'w2' };
+		model.applyExternal({ agents: { upserted: [elsewhere], removed: [] } });
+		expect(model.agent('d')).toBeUndefined();
+		model.applyExternal({ workspaces: { upserted: [ws2], removed: [] } });
+		expect(model.agent('d')?.workspaceId).toBe('w2');
+	});
+
+	it('lists the threads merged back, whose checkpoints can go', () => {
+		const model = new AgentsModel();
+		const ws = model.addWorkspace('/w').id;
+		model.addAgent(ws, 'P', undefined, 'c', { role: 'coordinator' });
+		model.addAgent(ws, 'open', undefined, 't1', { role: 'thread', coordinator: 'c', byCoordinator: true });
+		model.addAgent(ws, 'merged', undefined, 't2', { role: 'thread', coordinator: 'c', byCoordinator: true });
+		model.setThreadResolved('t2', true);
+		expect(mergedThreads(model.snapshot().agents)).toEqual(['t2']);
 	});
 
 	it('tells listeners about every change', () => {

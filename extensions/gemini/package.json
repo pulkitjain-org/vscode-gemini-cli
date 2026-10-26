@@ -1454,6 +1454,13 @@
           "scope": "machine",
           "markdownDescription": "%configuration.pilot.record%"
         },
+        "gemini.storage.keepLogsDays": {
+          "type": "number",
+          "default": 90,
+          "minimum": 0,
+          "scope": "machine",
+          "markdownDescription": "%configuration.storage.keepLogsDays%"
+        },
         "gemini.usageMeter.enabled": {
           "type": "boolean",
           "default": true,
@@ -1587,6 +1594,7 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.6.0",
+    "jsonc-parser": "3.3.1",
     "zod": "^4.1.0"
   },
   "devDependencies": {
