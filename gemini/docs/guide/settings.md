@@ -33,6 +33,7 @@ See [Review and safety](review.md) for how approvals work.
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `gemini.agents.ownBranch` | off | Start every new agent on its own branch, in its own folder under `~/.geminicode/worktrees`. |
+| `gemini.agents.defaultMode` | `default` | The approval mode new agents start in: `default`, `autoEdit`, `plan` or `yolo`. Agent Home's mode picker starts on it too. A mode your administrator turns off falls back to Default. |
 | `gemini.agents.worktreeSetup` | empty | A command run in each new agent branch's folder before the agent starts, such as `npm ci`. |
 | `gemini.agents.allWorkspaceFolders` | off | Let every agent read and edit all folders of a multi-folder window, not only its own. |
 | `gemini.projects.enabled` | on | [Projects](projects.md): a coordinator that splits larger work into threads. |
@@ -48,6 +49,7 @@ See [Review and safety](review.md) for how approvals work.
 | `gemini.chat.followAgent` | off | Open each file the agent reads or edits as it works. The switch in the composer's **+** menu sets it too. |
 | `gemini.chat.foldFinishedWork` | on | Fold each finished turn under one "Worked for" line. Off shows every step as its own row. |
 | `gemini.chat.spellCheck` | on | Underline misspelt words in the chat and Home composers. |
+| `gemini.chat.sendWith` | `enter` | Which key sends: `enter` (Return sends, Shift+Return makes a new line, ⌘Return queues while the agent works) or `cmdEnter` (⌘Return sends, Return makes a new line, Shift+⌘Return queues). Ctrl takes ⌘'s place on Windows and Linux. |
 | `gemini.chat.runCommands` | `askWhenRisky` | How **Run** on a reply's shell commands behaves: `askWhenRisky`, `alwaysAsk`, or `off` to leave only Copy. See [Terminal](terminal.md#run-a-command-from-a-reply). |
 | `gemini.usageMeter.enabled` | on | Show today's quota in the Gemini status bar item and the chat's usage popover. |
 
@@ -134,6 +136,7 @@ An organisation can lock these settings through VS Code's policy system: a macOS
 | `gemini.team.runTeamServers` | `GeminiRunTeamServers` |
 | `gemini.agents.worktreeSetup` | `GeminiWorktreeSetup` |
 | `gemini.agents.allWorkspaceFolders` | `GeminiAllWorkspaceFolders` |
+| `gemini.agents.defaultMode` | `GeminiAgentsDefaultMode` |
 | `gemini.browser.keepSignIns` | `GeminiBrowserKeepSignIns` |
 | `gemini.pilot.record` | `GeminiPilotRecord` |
 

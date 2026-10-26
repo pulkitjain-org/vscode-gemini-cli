@@ -876,10 +876,11 @@ Each setting below can be locked through VS Code's policy system (Group Policy, 
 | `gemini.team.runTeamServers` | `GeminiRunTeamServers` | off |
 | `gemini.agents.worktreeSetup` | `GeminiWorktreeSetup` | empty (the repository's `.gemini/worktree-setup.sh`) |
 | `gemini.agents.allWorkspaceFolders` | `GeminiAllWorkspaceFolders` | off |
+| `gemini.agents.defaultMode` | `GeminiAgentsDefaultMode` | `default` (`autoEdit`, `plan` or `yolo`; a mode turned off by `GeminiAllowAutoEdit` or `GeminiAllowYolo` falls back to `default`) |
 | `gemini.browser.keepSignIns` | `GeminiBrowserKeepSignIns` | off |
 | `gemini.pilot.record` | `GeminiPilotRecord` | off |
 
-`gemini.agents.worktreeSetup` is machine-scoped, so a repository's own settings can't set the command. `gemini.projectId` stays window-scoped, since a workspace's own billing project is documented and in use; starting an agent logs a warning when a workspace's value replaces the user's or the organisation's, and a `GeminiProjectId` policy wins over both (`getProjectSettings` reads it through `get`, as `inspect` leaves policies out).
+`gemini.agents.worktreeSetup` and `gemini.agents.defaultMode` are machine-scoped, so a repository's own settings can't set the command, or start agents in a mode that asks less. `gemini.projectId` stays window-scoped, since a workspace's own billing project is documented and in use; starting an agent logs a warning when a workspace's value replaces the user's or the organisation's, and a `GeminiProjectId` policy wins over both (`getProjectSettings` reads it through `get`, as `inspect` leaves policies out).
 
 `gemini/pilot/GeminiCode-pilot.mobileconfig` sets the pilot's values as a macOS configuration profile for the app's preferences domain. An array setting's policy is a JSON string.
 

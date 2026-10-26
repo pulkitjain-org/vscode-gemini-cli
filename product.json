@@ -511,6 +511,17 @@
 				}
 			}
 		},
+		"gemini.agents.defaultMode": {
+			"name": "GeminiAgentsDefaultMode",
+			"category": "Extensions",
+			"minimumVersion": "1.142",
+			"localization": {
+				"description": {
+					"key": "gemini.agents.defaultMode.policy",
+					"value": "The approval mode new agents start in: default, autoEdit, plan or yolo. A mode GeminiAllowAutoEdit or GeminiAllowYolo turns off falls back to default."
+				}
+			}
+		},
 		"gemini.agents.allWorkspaceFolders": {
 			"name": "GeminiAllWorkspaceFolders",
 			"category": "Extensions",
