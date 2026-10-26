@@ -961,6 +961,51 @@ body.vscode-high-contrast-light {
 	font-size: 0.9em;
 }
 
+/* A long output: its first and last lines, joined by the line that says how many are hidden. */
+.tool-output-trimmed .tool-output-head {
+	border-bottom-left-radius: 0;
+	border-bottom-right-radius: 0;
+}
+
+.tool-output-trimmed .tool-output-tail {
+	border-top-left-radius: 0;
+	border-top-right-radius: 0;
+}
+
+.tool-output-gap {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 12px;
+	border-inline: 1px solid var(--gemini-border);
+	border-block: 1px dashed var(--gemini-border);
+	background: var(--gemini-code-background);
+	color: var(--gemini-muted);
+	font-size: 11.5px;
+}
+
+/* An edit applied in Auto Edit to a file another agent is changing too. */
+.tool-shared {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin: 0 0 4px 26px;
+	color: var(--gemini-muted);
+	font-size: 0.92em;
+}
+
+.tool-shared .codicon {
+	color: var(--gemini-warn);
+}
+
+.tool-shared-text {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 .chip {
 	display: inline-flex;
 	align-items: center;
@@ -1441,6 +1486,87 @@ body.vscode-high-contrast-light {
 
 .notice.error {
 	color: var(--vscode-errorForeground);
+}
+
+/* A failed or cut-short turn, and a stalled one: a card of the notice's tone, with its ways out under it. */
+.notice.has-actions {
+	flex-direction: column;
+	gap: 8px;
+	margin: 10px 0;
+	padding: 9px 12px;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius-small);
+	background: var(--gemini-card);
+	color: var(--vscode-foreground);
+}
+
+.notice.has-actions.error {
+	border-color: color-mix(in srgb, var(--gemini-error) 45%, var(--gemini-border));
+	background: color-mix(in srgb, var(--gemini-error) 6%, var(--gemini-card));
+}
+
+.notice.has-actions.warn {
+	border-color: color-mix(in srgb, var(--gemini-warn) 45%, var(--gemini-border));
+	background: color-mix(in srgb, var(--gemini-warn) 6%, var(--gemini-card));
+}
+
+.notice-line {
+	display: flex;
+	gap: 6px;
+	align-items: flex-start;
+}
+
+.notice.error .notice-line > .codicon {
+	color: var(--gemini-error);
+}
+
+.notice.warn .notice-line > .codicon {
+	color: var(--gemini-warn);
+}
+
+.notice-detail {
+	display: block;
+	margin-top: 2px;
+	color: var(--gemini-muted);
+	font-size: 0.92em;
+}
+
+.notice .notice-actions {
+	margin-top: 0;
+}
+
+/* Show Log, and other links among the buttons: no box. */
+.permission-actions button.link-button {
+	padding: 4px 4px;
+	border-color: transparent;
+	background: none;
+}
+
+/* An edit card's warning that another agent is changing the file too. */
+.permission .permission-shared {
+	margin: 8px 0 0;
+	gap: 4px;
+}
+
+.permission-shared .link-button {
+	align-self: flex-start;
+	margin-left: 20px;
+}
+
+/* The keys that answer a card from the chat box: only on the newest waiting card, which they answer. */
+.permission-key {
+	margin-left: 8px;
+	font-weight: normal;
+}
+
+.permission-key-hint {
+	margin-top: 8px;
+}
+
+.permission:not(.newest) .permission-key,
+.permission:not(.newest) .permission-key-hint,
+.permission.newest .permission-hint {
+	display: none;
 }
 
 /* A project's failed coordinator turn: Retry sends what it was given again. */

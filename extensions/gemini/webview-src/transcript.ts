@@ -8,11 +8,12 @@
 
 import type { TranscriptItem } from '../src/acp/chatTranscript';
 import type { TextAppend } from '../src/acp/textDeltas';
+import type { ViewStall } from '../src/host/chatProtocol';
 import { teamToolTitle } from '../src/acp/toolLinks';
 import { updateActivity } from './activity';
 import { format, indexOfItem, isNearBottom as nearBottom, withAppended, type ItemOf } from './chatLogic';
 import { el } from './dom';
-import { render, renderEmpty, renderNotice, setToolCallOpen, updateThought } from './items';
+import { render, renderEmpty, renderNotice, renderStall, setToolCallOpen, updateThought } from './items';
 import { updateOutline } from './promptNav';
 import { renderStreamingReply, streamingReplies, updateStreamingReply } from './streamingReply';
 import { autoOpened, elements, expanded, foldOpen, runOpen, state, strings, thoughtTimes, ui } from './view';
@@ -142,7 +143,11 @@ function keepFocus<T>(change: () => T): T {
  * scroll to the bottom whatever its position (the user's own message).
  */
 export function applyItem(item: TranscriptItem, live: boolean): boolean {
-	return keepFocus(() => addOrUpdate(item, live));
+	const scroll = keepFocus(() => addOrUpdate(item, live));
+	if (item.kind === 'permission') {
+		markNewestCard();
+	}
+	return scroll;
 }
 
 function addOrUpdate(item: TranscriptItem, live: boolean): boolean {
@@ -655,15 +660,42 @@ const working = el('div', 'working');
 working.setAttribute('aria-hidden', 'true');
 working.append(el('span'), el('span'), el('span'));
 
+/** The stall notice (M2), last in the running turn while the agent has said nothing for a while. */
+let stallNotice: HTMLElement | undefined;
+
 export function updateWorking(): void {
 	updateActivity();
 	if (state.busy && state.items.at(-1)?.kind === 'user') {
-		if (transcript.lastElementChild !== working) {
+		if (transcript.lastElementChild !== working && transcript.lastElementChild?.previousElementSibling !== working) {
 			transcript.append(working);
 		}
 	} else {
 		working.remove();
 	}
+	if (stallNotice && transcript.lastElementChild !== stallNotice) {
+		transcript.append(stallNotice);
+	}
+}
+
+/** Shows the stall notice at the end of the running turn, or takes it away (`undefined`) once anything arrives. */
+export function setStall(stall: ViewStall | undefined): void {
+	const stick = isNearBottom();
+	stallNotice?.remove();
+	stallNotice = stall && state.busy ? renderStall(stall) : undefined;
+	if (stallNotice) {
+		transcript.append(stallNotice);
+		settleScroll(stick);
+	}
+}
+
+/**
+ * Marks the newest card waiting for an answer, the one the chat box's keys
+ * answer, so only it shows them (chat.css, `.permission.newest`). Run when a
+ * card is added or answered, not on every update.
+ */
+function markNewestCard(): void {
+	const waiting = transcript.querySelectorAll('.permission.waiting');
+	waiting.forEach((card, index) => card.classList.toggle('newest', index === waiting.length - 1));
 }
 
 /** Shows whether the agent is working on a turn. */
@@ -673,6 +705,7 @@ export function setTranscriptBusy(value: boolean): void {
 	transcript.classList.toggle('turn-running', value);
 	const last = state.items.at(-1);
 	if (!value) {
+		setStall(undefined);
 		finishStreamingReplies();
 		// The turn ended: a thought that was still last has ended too.
 		if (last?.kind === 'thought') {

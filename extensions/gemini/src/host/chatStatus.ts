@@ -8,16 +8,13 @@
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
 import type { TurnStall } from '../acp/agentClient';
+import type { NoticeAction } from '../acp/chatTranscript';
 import type { AgentErrorInfo, TurnErrorInfo } from '../acp/errors';
 import { AgentStatus } from '../acp/status';
 import { ViewStatus } from './chatProtocol';
 
-/**
- * The ways out a failed or cut-short turn offers, for the notice's buttons:
- * send the prompt again, pick another model, sign in again, carry on from
- * the request limit, open the Gemini log, or stop a stalled turn.
- */
-export type TurnAction = 'retry' | 'switchModel' | 'signIn' | 'continue' | 'showLog' | 'stop';
+/** The ways out a failed or cut-short turn offers, for the notice's buttons (see `NoticeAction`). */
+export type TurnAction = NoticeAction;
 
 /** What the chat says about a failed turn, and the ways out it offers. */
 export interface TurnErrorNotice {
@@ -75,7 +72,7 @@ export function stopReasonNotice(stopReason: acp.StopReason): string | undefined
 
 /** The ways out a turn that ended early offers: Continue at the request limit. */
 export function stopReasonActions(stopReason: acp.StopReason): readonly TurnAction[] {
-	return stopReason === 'max_turn_requests' ? ['continue', 'retry'] : [];
+	return stopReason === 'max_turn_requests' ? ['continue'] : [];
 }
 
 /** When a quota resets, as a time today or a date and time later. */
@@ -111,14 +108,15 @@ export function turnErrorNotice(error: TurnErrorInfo, now = Date.now()): TurnErr
 		case 'timeout':
 			return { text: vscode.l10n.t("The Gemini agent stopped answering while it set up the chat. Restart the agent to try again."), actions: ['retry', 'showLog'], error };
 		default:
-			return { text: error.message, actions: ['retry'], error };
+			return { text: error.message, actions: ['retry', 'showLog'], error };
 	}
 }
 
 /** What the chat says about a stalled turn (see `AgentClient.stall`), with Stop and Show Log as its ways out. */
 export function stallNotice(stall: TurnStall, now = Date.now()): { readonly text: string; readonly actions: readonly TurnAction[] } {
+	const seconds = Math.max(0, Math.round((now - stall.since) / 1000));
 	const text = stall.retry
-		? vscode.l10n.t("Gemini is retrying after a server error (attempt {0})", stall.retry.attempt)
-		: vscode.l10n.t("No response from Gemini for {0} s", Math.max(0, Math.round((now - stall.since) / 1000)));
+		? vscode.l10n.t("No response from Gemini for {0} s. Gemini is retrying after a server error (attempt {1}).", seconds, stall.retry.attempt)
+		: vscode.l10n.t("No response from Gemini for {0} s. It may be retrying a busy server.", seconds);
 	return { text, actions: ['stop', 'showLog'] };
 }

@@ -36,7 +36,7 @@ import { onEnhanced, onEnhanceFailed, onEnhanceProgress, replaceInput, toggleEnh
 import { openForkDialog } from './fork';
 import { setLabel } from './dom';
 import { restoreComposerHeight, updatePlaceholder, updateSendState } from './inputBox';
-import { showSavedSessions } from './items';
+import { answerFromComposer, showFullOutput, showSavedSessions } from './items';
 import { setBranches } from './pickers';
 import { showCommands, showFiles } from './picker';
 import { updatePlusMenu } from './plusMenu';
@@ -44,7 +44,7 @@ import { openNewThread, showParentProject, showProjectPanel } from './project';
 import { pickedRepository, showProjectSettings } from './projectSettings';
 import { setRunState, setRunView } from './runButtons';
 import { updateOutline } from './promptNav';
-import { appended, applyItem, isNearBottom, reset, setFoldWork, settleScroll, updateWorking } from './transcript';
+import { appended, applyItem, isNearBottom, reset, setFoldWork, setStall, settleScroll, updateWorking } from './transcript';
 import { showContext, showQuota, toggleUsage, updateUsage } from './usage';
 import { state, strings, ui, vscode } from './view';
 
@@ -131,6 +131,7 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			updateOutline();
 			updatePlaceholder();
 			setBusy(message.busy);
+			setStall(message.stall);
 			setStatus(message.status);
 			setSettings(message.settings);
 			updateUsage();
@@ -257,6 +258,12 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 		case 'runState':
 			setRunState(message.text, message.state);
 			break;
+		case 'stall':
+			setStall(message.stall);
+			break;
+		case 'output':
+			showFullOutput(message.itemId, message.part, message.text);
+			break;
 		case 'focus':
 			// Not from under an open popup, such as Project settings or New thread.
 			if (!document.querySelector('dialog[open]')) {
@@ -265,6 +272,14 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 	}
 });
+
+// Before the composer's own keys, and so the workbench never sees them (⌥⌘S is its Save All): a waiting card's answers.
+window.addEventListener('keydown', event => {
+	if (answerFromComposer(event)) {
+		event.preventDefault();
+		event.stopPropagation();
+	}
+}, true);
 
 watchToolRefs(ui.input);
 vscode.postMessage({ type: 'ready', protocol: chatProtocolVersion });

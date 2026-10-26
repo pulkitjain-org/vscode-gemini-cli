@@ -9,7 +9,7 @@
 import type { Attachment } from '../acp/attachments';
 import type { IndexToolVerbs, TeamToolVerbs, ToolRef, ToolRefContext } from '../acp/toolLinks';
 import type { ModelQuota } from '../acp/directRequest';
-import type { ForkContext, TranscriptItem } from '../acp/chatTranscript';
+import type { ForkContext, NoticeAction, TranscriptItem } from '../acp/chatTranscript';
 import type { ItemUpdate } from '../acp/textDeltas';
 import type { SessionSettings } from '../acp/sessionSettings';
 import type { SlashCommand } from '../acp/slashCommands';
@@ -21,7 +21,7 @@ import type { PendingPromptView } from '../acp/promptQueue';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 36;
+export const chatProtocolVersion = 37;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.signIn', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal'] as const;
@@ -33,6 +33,12 @@ export interface ViewStatus {
 	readonly text: string;
 	/** Buttons shown with the text, such as Start or Sign In. */
 	readonly actions?: readonly { readonly label: string; readonly command: StatusCommand }[];
+}
+
+/** The stall notice: what it says, and its buttons. */
+export interface ViewStall {
+	readonly text: string;
+	readonly actions: readonly NoticeAction[];
 }
 
 /** What a project chat's thread card buttons do. */
@@ -422,6 +428,22 @@ export interface ChatStrings {
 	readonly permissionAnswered: string;
 	readonly permissionCancelled: string;
 	readonly permissionHint: string;
+	/**
+	 * A waiting card's choices and the keys that answer it from the chat box.
+	 * `session` takes the command prefixes; `hint` and `hintNoSession` take the keys.
+	 */
+	readonly permission: {
+		readonly once: string; readonly session: string; readonly reject: string;
+		readonly hint: string; readonly hintNoSession: string;
+		/** On another agent's unreviewed changes in the file: `{0}` is the agent's name. */
+		readonly othersChanging: string; readonly othersDetail: string; readonly showTheirChanges: string;
+	};
+	/** A failed or cut-short turn's buttons, and the stall notice's. */
+	readonly noticeActions: Readonly<Record<NoticeAction, string>>;
+	/** A long tool output's line between its first and last lines: `{0}` is how many are hidden. */
+	readonly outputHidden: string;
+	readonly outputShowAll: string;
+	readonly outputGone: string;
 	/** A short time such as the first token's: "{0} s" (with one decimal) and "{0} ms". */
 	readonly durationSeconds: string;
 	readonly durationMs: string;
@@ -810,6 +832,12 @@ export type FromWebview =
 	| { readonly type: 'setModel'; readonly id: string }
 	/** The user picked one of a permission request's options. */
 	| { readonly type: 'permission'; readonly id: string; readonly optionId: string }
+	/** Retry or Continue on a failed or cut-short turn's notice (`itemId`). */
+	| { readonly type: 'noticeAction'; readonly itemId: string; readonly action: 'retry' | 'continue' }
+	/** Show All on a long tool output: the host answers with `output`. */
+	| { readonly type: 'showOutput'; readonly itemId: string; readonly part: number }
+	/** Show Its Changes on an edit another agent is changing the file too: opens that agent's changes. */
+	| { readonly type: 'showAgentChanges'; readonly agent: string }
 	/** Show the diff for a file a tool call or permission request changes; `itemId` is the transcript item. */
 	| { readonly type: 'openDiff'; readonly itemId: string; readonly path: string }
 	| { readonly type: 'openLocation'; readonly path: string; readonly line?: number }
@@ -913,7 +941,11 @@ export type ToWebview =
 	| { readonly type: 'foldWork'; readonly on: boolean }
 	/** Whether reactions are on (`gemini.chat.reactions.enabled`), and the picker's Recent row. */
 	| { readonly type: 'reactions'; readonly on: boolean; readonly recents: readonly string[] }
-	| { readonly type: 'reset'; readonly items: readonly TranscriptItem[]; readonly busy: boolean; readonly status: ViewStatus; readonly settings: SessionSettings }
+	| { readonly type: 'reset'; readonly items: readonly TranscriptItem[]; readonly busy: boolean; readonly status: ViewStatus; readonly settings: SessionSettings; readonly stall?: ViewStall }
+	/** The running turn has had no update for a while, with Stop and Show Log; undefined once anything arrives. */
+	| { readonly type: 'stall'; readonly stall: ViewStall | undefined }
+	/** A long tool output in full, for Show All; undefined when the chat no longer keeps it. */
+	| { readonly type: 'output'; readonly itemId: string; readonly part: number; readonly text: string | undefined }
 	/** Added or changed items, in the order they first changed; streaming updates are batched. */
 	| { readonly type: 'items'; readonly items: readonly ItemUpdate[] }
 	| { readonly type: 'busy'; readonly busy: boolean }

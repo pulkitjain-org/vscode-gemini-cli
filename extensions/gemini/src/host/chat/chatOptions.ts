@@ -14,7 +14,7 @@ import type { StoredCheckpoints } from '../../acp/checkpoints';
 import type { PermissionBroker } from '../../acp/permissions';
 import type { EnhancePromptInput } from '../../acp/quickPrompts';
 import type { AgentStatus } from '../../acp/status';
-import type { TranscriptItem } from '../../acp/chatTranscript';
+import type { OtherAgentChanges, TranscriptItem } from '../../acp/chatTranscript';
 import type { ConversationEntry, MessageRecord } from '../../acp/cliSessions';
 import type { RunPlace } from '../../acp/runCommands';
 import type { RunOutcome } from '../agentTerminals';
@@ -97,6 +97,12 @@ export interface ChatControllerOptions {
 	readonly fork?: ChatForker;
 	/** Run on a reply's shell blocks, in the agent's own terminals; unset hides Run. */
 	readonly terminal?: ChatTerminal;
+	/** Other live agents in the same folder with changes still to review, for the warning on this agent's edits to the same file. */
+	readonly sharedFiles?: {
+		others(filePath: string): readonly OtherAgentChanges[];
+		/** Show Its Changes: opens agent `agent`'s changes. */
+		show(agent: string): void;
+	};
 }
 
 /** Where and how Run on a reply's command runs it. */
