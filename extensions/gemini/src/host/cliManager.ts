@@ -9,7 +9,7 @@
 // exists. Installing always waits for the user.
 
 import * as vscode from 'vscode';
-import { cliCopiesToKeep, fetchCliVersions, Fetch, installCli, pruneCliVersions } from '../acp/cliInstall';
+import { cliCopiesToKeep, cliRegistry, fetchCliVersions, Fetch, installCli, pruneCliVersions } from '../acp/cliInstall';
 import { isOlderThan, listManagedVersions } from '../acp/cliResolution';
 import { shouldCheckForUpdate, updateToOffer } from '../acp/cliUpdates';
 import { errorMessage } from '../acp/errors';
@@ -70,7 +70,7 @@ export class CliManager implements vscode.Disposable {
 		const installed = new Set(await listManagedVersions(managedDir));
 		const running = this.service.cli?.version;
 		const picked = await vscode.window.showQuickPick((async () => {
-			const { versions, latest } = await fetchCliVersions({ fetch: fetch as Fetch });
+			const { versions, latest } = await fetchCliVersions({ fetch: fetch as Fetch, registry: registry() });
 			// Releases older than the oldest GeminiCode supports aren't offered.
 			return versions.filter(version => !isOlderThan(version, MIN_CLI_VERSION)).slice(0, 30).map(version => ({
 				label: version,
@@ -103,7 +103,7 @@ export class CliManager implements vscode.Disposable {
 			}, (_progress, token) => {
 				const abort = new AbortController();
 				token.onCancellationRequested(() => abort.abort());
-				return installCli({ fetch: fetch as Fetch, managedDir, version, signal: abort.signal });
+				return installCli({ fetch: fetch as Fetch, registry: registry(), managedDir, version, signal: abort.signal });
 			});
 		} catch (err) {
 			if (!(err instanceof Error && err.name === 'AbortError')) {
@@ -163,7 +163,7 @@ export class CliManager implements vscode.Disposable {
 		await this.globalState.update(lastUpdateCheckKey, now);
 		let latest: string | undefined;
 		try {
-			({ latest } = await fetchCliVersions({ fetch: fetch as Fetch }));
+			({ latest } = await fetchCliVersions({ fetch: fetch as Fetch, registry: registry() }));
 		} catch (err) {
 			this.log.info(`Could not check for a newer Gemini CLI: ${errorMessage(err)}`);
 			return;
@@ -210,4 +210,9 @@ export class CliManager implements vscode.Disposable {
 			this.log.warn(`Could not remove old Gemini CLI copies: ${errorMessage(err)}`);
 		}
 	}
+}
+
+/** The npm registry the CLI is installed and updated from: `gemini.cli.registry`, which policy can lock, or npm's own. */
+function registry(): string {
+	return cliRegistry(vscode.workspace.getConfiguration(configSection).get<string>('cli.registry'));
 }

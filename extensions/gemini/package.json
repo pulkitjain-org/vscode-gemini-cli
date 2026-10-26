@@ -23,6 +23,9 @@
     "onStartupFinished"
   ],
   "main": "./out/extension",
+  "extensionKind": [
+    "ui"
+  ],
   "enabledApiProposals": [
     "terminalSelection",
     "terminalQuickFixProvider"
@@ -1215,6 +1218,12 @@
           "scope": "machine",
           "markdownDescription": "%configuration.cli.checkForUpdates%"
         },
+        "gemini.cli.registry": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "%configuration.cli.registry%"
+        },
         "gemini.app.checkForUpdates": {
           "type": "boolean",
           "default": true,
@@ -1404,11 +1413,18 @@
           "scope": "machine",
           "markdownDescription": "%configuration.docs.refresh%"
         },
-        "gemini.agent.startEarly": {
+        "gemini.agents.startEarly": {
           "type": "boolean",
           "default": true,
           "scope": "machine",
           "markdownDescription": "%configuration.agent.startEarly%"
+        },
+        "gemini.agent.startEarly": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine",
+          "markdownDescription": "%configuration.agent.startEarly%",
+          "markdownDeprecationMessage": "%configuration.agent.startEarly.deprecated%"
         },
         "gemini.home.openOnStartup": {
           "type": "boolean",
@@ -1576,6 +1592,7 @@
     "compile": "gulp compile-extension:gemini",
     "watch": "gulp watch-extension:gemini",
     "typecheck-tests": "tsc -p tsconfig.test.json",
+    "check": "node esbuild.mts && node esbuild.webview.mts && vitest run && tsc -p tsconfig.json --noEmit && tsc -p webview-src/tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "bundle-cli": "node scripts/bundle-cli.mts",
     "emoji-data": "node scripts/build-emoji-data.mts",
     "spike-coordinator": "node --experimental-transform-types --no-warnings scripts/coordinator-spike.mts",
@@ -1586,15 +1603,15 @@
     "integrity": "sha512-FHrZ1NPf9QszyVMaa/BP3SsPy40ogBLnbZNWkv/PMi1Uz2zoDNMLGiBzBGmx4Bl7iLRq01K9PY/5kmloXFTpsA=="
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "1.6.0",
-    "zod": "^4.1.0"
+    "@agentclientprotocol/sdk": "1.9.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.2.0",
     "@types/node": "24.x",
     "@vscode/codicons": "^0.0.36",
     "highlight.js": "^11.12.0",
-    "katex": "^0.16.22",
+    "katex": "^0.16.47",
     "markdown-it": "^14.3.2",
     "vitest": "^4.1.8"
   },

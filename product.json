@@ -280,6 +280,17 @@
 				}
 			}
 		},
+		"gemini.cli.registry": {
+			"name": "GeminiCliRegistry",
+			"category": "Extensions",
+			"minimumVersion": "1.141",
+			"localization": {
+				"description": {
+					"key": "gemini.cli.registry.policy",
+					"value": "The npm registry, such as an organisation's mirror, that GeminiCode installs and updates its own copy of the Gemini CLI from. Empty uses the public npm registry."
+				}
+			}
+		},
 		"gemini.inlineEdit.enabled": {
 			"name": "GeminiInlineEdit",
 			"category": "Extensions",
