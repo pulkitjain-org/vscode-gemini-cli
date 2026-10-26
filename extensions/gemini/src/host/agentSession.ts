@@ -82,8 +82,8 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 		this.client.open();
 	}
 
-	ensureReady(): Promise<unknown> {
-		return this.service.ensureReady(this.client);
+	ensureReady(signal?: AbortSignal): Promise<unknown> {
+		return this.service.ensureReady(this.client, signal);
 	}
 
 	writeLog(message: string): void {

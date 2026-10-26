@@ -30,8 +30,8 @@ export interface ChatHost {
 	readonly permissions: PermissionBroker;
 	readonly status: AgentStatus;
 	readonly onDidChangeStatus: vscode.Event<AgentStatus>;
-	/** Starts the agent if needed and resolves once this session is ready. */
-	ensureReady(): Promise<unknown>;
+	/** Starts the agent if needed and resolves once this session is ready; rejects with a `WaitAbortedError` when `signal` aborts. */
+	ensureReady(signal?: AbortSignal): Promise<unknown>;
 	/** Opens a session that waits to be opened until its chat is on screen; unset when sessions open at once. */
 	open?(): void;
 	/** Stops the current turn. */
