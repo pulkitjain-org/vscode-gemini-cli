@@ -213,14 +213,14 @@ function line(item: ThreadCard, d: ThreadCardDeps): string {
 	return item.detail ? `${state} · ${item.detail}` : state;
 }
 
-/** In the thread › Trying in your workspace › Kept, with the current step lit. */
+/** In the thread, Trying in your workspace, Kept: the steps, with the current one lit. */
 function steps(item: ThreadCard, d: ThreadCardDeps): HTMLElement {
 	const current = item.tried?.state === 'trying' ? 1 : item.tried?.state === 'kept' ? 2 : 0;
 	const node = d.el('div', 'thread-steps');
 	const labels = [d.strings.steps.thread, d.strings.steps.trying, d.strings.steps.kept];
 	labels.forEach((label, index) => {
 		if (index) {
-			node.append(d.el('span', 'thread-step-sep', '›'));
+			node.append(d.el('span', 'thread-step-sep', '\u203a'));
 		}
 		const step = d.el('span', `thread-step${index < current ? ' done' : index === current ? ' now' : ''}${index === 2 ? ' kept' : ''}`);
 		step.append(d.el('i'), d.el('span', undefined, label));

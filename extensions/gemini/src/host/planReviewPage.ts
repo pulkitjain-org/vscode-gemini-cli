@@ -466,7 +466,7 @@ export function planStrings(): PlanStrings {
 		commentsHead: vscode.l10n.t("Comments"),
 		toSend: vscode.l10n.t("{0} to send"),
 		allSent: vscode.l10n.t("All sent"),
-		onSection: vscode.l10n.t("On “{0}”"),
+		onSection: vscode.l10n.t("On \u201c{0}\u201d"),
 		sent: vscode.l10n.t("sent"),
 		addTip: vscode.l10n.t("Comment on this section"),
 		comment: vscode.l10n.t("Comment"),

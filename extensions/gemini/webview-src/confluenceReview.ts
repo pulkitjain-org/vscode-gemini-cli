@@ -146,7 +146,7 @@ function header(v: ReviewView): HTMLElement {
 	const crumbs = el('nav', 'review-crumbs');
 	v.where.forEach((part, i) => {
 		if (i) {
-			crumbs.append(el('span', 'review-sep', '›'));
+			crumbs.append(el('span', 'review-sep', '\u203a'));
 		}
 		crumbs.append(el('span', undefined, part));
 	});

@@ -3752,7 +3752,7 @@ body.vscode-high-contrast-light #send {
 	margin-top: 6px;
 }
 
-/* Where a thread's work is: In the thread › Trying in your workspace › Kept (webview-src/threadCard.ts). */
+/* Where a thread's work is: In the thread, Trying in your workspace, Kept (webview-src/threadCard.ts). */
 .thread-steps {
 	display: flex;
 	flex-wrap: wrap;
