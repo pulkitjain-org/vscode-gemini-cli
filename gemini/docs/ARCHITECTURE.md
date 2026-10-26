@@ -494,7 +494,7 @@ Threads show as cards in the project chat that update in place, with Merge back,
 
 Starting a thread:
 
-- `start_thread` returns as soon as the worktree exists. Worktrees are added one at a time per repository, so threads started together can't pick the same branch name.
+- `start_thread` returns as soon as the worktree exists. Worktrees are added one at a time per repository, so threads started together can't pick the same branch name: every worktree add, Merge Back's commit and merge, and the flows' commits and pushes take a turn of one git lock per repository (`inRepository` in `worktrees.ts`), keyed by its main checkout.
 - The repository's setup script runs behind a notification while the thread's agent starts. The brief is sent when setup ends.
 - A thread that fails to start removes its worktree and branch again.
 
@@ -678,7 +678,7 @@ The connectors call each tool from the user's machine, so the Mac's VPN, proxy a
 | The user's Snyk CLI | `snyk.ts` | JSON and SARIF output |
 | Figma desktop app's Dev Mode MCP server on `127.0.0.1:3845` | `figma.ts`, a small MCP client | none |
 
-`teamHttp.ts` gives every call an 8-second timeout and turns failures into a reason the user can act on (no answer: check the VPN; 401: replace the token). Tokens are in SecretStorage only; agents never see them. Tool results are trimmed text (`teamTools.ts`), never raw JSON. Tool results that carry other people's text are wrapped in an `<external>` tag (`external()` in `teamTools.ts`), which the server's instructions tell the model to read as data. Team defaults come from `.gemini/geminicode-tools.json` (`teamDefaults.ts`).
+`teamHttp.ts` gives every read an 8-second timeout and every write 20 seconds, and turns failures into a reason the user can act on (no answer: check the VPN; 401: replace the token; a write with no answer: it may have gone through, and its audit intent stays open). It keeps one reachability state per server (`teamReachability`): after no answer, calls fail at once for 30 s, 1, 2 and up to 5 minutes, and `TeamConnections` checks the server again when the wait ends; a refused token stops calls with that token until it changes. A read that meets 429, 502, 503 or 504 is retried once, honouring Retry-After up to 5 s; a write never is. Tokens are in SecretStorage only; agents never see them. Tool results are trimmed text (`teamTools.ts`), never raw JSON. Tool results that carry other people's text are wrapped in an `<external>` tag (`external()` in `teamTools.ts`), which the server's instructions tell the model to read as data. Team defaults come from `.gemini/geminicode-tools.json` (`teamDefaults.ts`).
 
 #### Reads, writes and the confirm class
 
@@ -712,7 +712,7 @@ The pilot's counters (`src/acp/pilotLog.ts`) go nowhere unless `gemini.pilot.rec
 
 A review (`src/host/reviewSession.ts`, one per merge request, listed by `src/host/reviews.ts`) is a draft that only the user's post sends to GitLab.
 
-**The reviewer.** The reviewer agent works in a worktree of its own checked out at the source branch (`reviewWorktree` in `releaseMerge.ts`). It reads the merge request against its ticket and the open threads, and ends with its findings as a JSON block.
+**The reviewer.** The reviewer agent works in a worktree of its own checked out at the source branch, on GeminiCode's own `review/<iid>-…` branch (`reviewWorktree` in `releaseMerge.ts`); a second review of the same merge request reuses it, moved to the new head, and its reviewer. Its team tools only read (`TeamConnections.markReadOnlyFolder`, `readOnly` in `teamTools.ts`). The CLI 0.64.0 offers no per-session way to ignore the branch's own `.gemini/settings.json`, hooks or MCP servers: `session/new` takes only `cwd` and `mcpServers`, and `--allowed-mcp-server-names`, `GEMINI_CLI_HOME` and `hooksConfig` apply to the whole process. Folder trust is the one per-session control. It reads the merge request against its ticket and the open threads, and ends with its findings as a JSON block.
 
 **The draft.** `src/acp/reviewDraft.ts` turns that block into draft comments, replies and suggested changes. The module holds the draft's logic and calls nothing: ticking, editing (an edited comment of Gemini's is kept when Gemini reviews again), moving comments to a newer version by the text of their line, and the GitLab position each one is posted at.
 

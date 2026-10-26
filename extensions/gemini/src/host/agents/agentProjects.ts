@@ -20,7 +20,7 @@ import { threadMemoryContext, threadPrompt, type ThreadRequest } from '../../acp
 import { linkCoordinatorRules, linkThreadRules, ruleEntries, ruleFolders } from '../../acp/projectRules';
 import { savedRepoCount, type ProjectRepo } from '../../acp/projectStore';
 import { foldersTrusted } from '../../acp/trustedFolders';
-import { AgentWorktree, branchExists, coordinatorHome, createWorktreeAt, currentBranch, folderSize, freeBranchName, freeFolder, pathExists, projectFolders, removeThreadFolder, removeWorktree, repositoryRoot, threadGuide, threadsHome, worktreeStatus, writeThreadGuide } from '../../acp/worktrees';
+import { AgentWorktree, branchExists, coordinatorHome, createWorktreeAt, currentBranch, folderSize, freeBranchName, freeFolder, inRepository, pathExists, projectFolders, removeThreadFolder, removeWorktree, repositoryRoot, threadGuide, threadsHome, worktreeStatus, writeThreadGuide } from '../../acp/worktrees';
 import type { AgentService } from '../agentService';
 import type { ChatActivity, ChatController } from '../chatController';
 import { configSection } from '../configuration';
@@ -57,7 +57,7 @@ export class AgentProjects {
 	constructor(
 		private readonly model: AgentsModel,
 		private readonly service: Pick<AgentService, 'writeLog' | 'restartWhenIdle' | 'trustFolder' | 'runtime'>,
-		private readonly projects: Pick<Projects, 'ready' | 'sendToThread'>,
+		private readonly projects: Pick<Projects, 'ready' | 'sendBrief'>,
 		private readonly worktrees: AgentWorktrees,
 		private readonly merge: Pick<AgentMerge, 'isMerging'>,
 		/** The agents running in this window. */
@@ -146,7 +146,7 @@ export class AgentProjects {
 			if (setup.memory) {
 				live.controller.addContext(threadMemoryContext(setup.memory));
 			}
-			this.briefAfterSetup(agent.id, request, this.worktrees.setUpThread(repository, worktree));
+			this.briefAfterSetup(agent.id, threadPrompt(request.brief, request.planFirst), request.byCoordinator ? 'coordinator' : undefined, this.worktrees.setUpThread(repository, worktree));
 			return agent.id;
 		} catch (err) {
 			// Nothing points at the worktree any more: remove it with its branch.
@@ -170,7 +170,7 @@ export class AgentProjects {
 		if (record.repos.some(each => each.key === repo.key)) {
 			return `${repo.key}/ is already in your folder.`;
 		}
-		const made = await this.worktrees.inTurn(`threads:${coordinator}`, async () => {
+		const made = await inRepository(repo.folder, async () => {
 			if (await branchExists(repo.folder, branch)) {
 				throw new Error(`${repo.key} already has a branch named ${branch}.`);
 			}
@@ -216,19 +216,25 @@ export class AgentProjects {
 		}
 	}
 
-	/** Starts a project thread's agent without a tab, as its project opens; skipped when it runs or its worktree is gone. */
+	/**
+	 * Starts a project thread's agent without a tab, as its project opens;
+	 * skipped when its worktree is gone. A thread whose brief was never sent
+	 * (the window closed during its setup) runs its setup again and then gets it.
+	 */
 	async resumeThread(id: string): Promise<void> {
 		const record = this.model.agent(id);
 		const folder = record && this.model.folderOf(record);
-		if (this.live.has(id) || !folder || !await pathExists(folder)) {
+		if (!folder || (!this.live.has(id) && !await pathExists(folder))) {
 			return;
 		}
-		if (this.live.has(id)) {
-			// Opened while the folder was checked.
-			return;
+		if (!this.live.has(id)) {
+			this.host.ensureLive(id);
+			this.host.refresh(id);
 		}
-		this.host.ensureLive(id);
-		this.host.refresh(id);
+		const pending = record.project?.role === 'thread' ? record.project.pending : undefined;
+		if (pending?.brief && !this.settingUp.has(id) && this.live.has(id)) {
+			this.briefAfterSetup(id, pending.brief, pending.from, this.setUpAgain(record));
+		}
 	}
 
 	/**
@@ -394,16 +400,38 @@ export class AgentProjects {
 		return true;
 	}
 
-	/** Sends a new thread its brief once `setup` ends; meanwhile notes for it wait. */
-	private briefAfterSetup(id: string, request: ThreadRequest, setup: Promise<unknown>): void {
+	/**
+	 * Sends a new thread its brief (`prompt`) once `setup` ends; meanwhile
+	 * notes for it wait. The brief is kept on the thread's record until it is
+	 * sent, so a window closed during setup sends it when the thread resumes.
+	 */
+	private briefAfterSetup(id: string, prompt: string, from: 'coordinator' | undefined, setup: Promise<unknown>): void {
 		this.settingUp.add(id);
-		void setup.then(() => {
+		const pending = this.model.agent(id)?.project;
+		this.model.setThreadPending(id, { ...pending?.role === 'thread' ? pending.pending : {}, brief: prompt, ...from ? { from } : {} });
+		void setup.then(async () => {
 			this.settingUp.delete(id);
 			if (this.model.agent(id) && this.live.get(id)) {
-				// Not awaited: send resolves when the whole turn ends.
-				this.projects.sendToThread(id, threadPrompt(request.brief, request.planFirst), request.byCoordinator ? 'coordinator' : undefined);
+				// Resolves once the brief is sent or queued, not when its turn ends.
+				await this.projects.sendBrief(id, prompt, from).catch(() => undefined);
+				const now = this.model.agent(id)?.project;
+				if (now?.role === 'thread' && now.pending?.brief === prompt) {
+					this.model.setThreadPending(id, { ...now.pending, brief: undefined });
+				}
 			}
 		});
+	}
+
+	/** Runs a thread's setup again, in each of its worktrees: one cut short by a closed window may have left them half set up. */
+	private async setUpAgain(record: AgentRecord): Promise<void> {
+		if (record.repos?.length) {
+			await Promise.all(record.repos.filter(repo => !repo.merged).map(repo => this.worktrees.setUpThread(repo.repository, repo)));
+			return;
+		}
+		const workspace = this.model.workspace(record.workspaceId);
+		if (record.worktree && workspace) {
+			await this.worktrees.setUpThread(await repositoryRoot(workspace.folder) ?? workspace.folder, record.worktree);
+		}
 	}
 
 	/**
@@ -417,8 +445,9 @@ export class AgentProjects {
 		if (!await this.ensureProjectTrust(workspace.folder, true)) {
 			throw new Error(vscode.l10n.t("A thread across repositories needs its folder trusted."));
 		}
-		// Threads started together take turns, so they can't pick the same branch or folder.
-		const made = await this.worktrees.inTurn(`threads:${coordinatorId}`, async () => {
+		// Threads started together take turns, so they can't pick the same branch or folder: the project's
+		// threads under its own key (their folders), and every repository's git lock (their branches).
+		const made = await this.worktrees.inTurn(`threads:${coordinatorId}`, () => inRepository(repos.map(repo => repo.folder), async () => {
 			const branch = await freeBranchName(repos.map(repo => repo.folder), named);
 			const folder = await freeFolder(threadsHome(coordinatorId), branch);
 			await fs.promises.mkdir(folder, { recursive: true });
@@ -430,7 +459,7 @@ export class AgentProjects {
 				throw failed.reason;
 			}
 			return { branch, folder, worktrees };
-		});
+		}));
 		const worktree: AgentWorktree = { folder: made.folder, cwd: made.folder, branch: made.branch, base: made.worktrees[0].base };
 		let agentId: string | undefined;
 		try {
@@ -453,7 +482,7 @@ export class AgentProjects {
 				live.session.client.setModeOnNextSession('plan');
 			}
 			this.host.refresh();
-			this.briefAfterSetup(agent.id, request, Promise.all(made.worktrees.map(each => this.worktrees.setUpThread(each.repository, each))));
+			this.briefAfterSetup(agent.id, threadPrompt(request.brief, request.planFirst), request.byCoordinator ? 'coordinator' : undefined, Promise.all(made.worktrees.map(each => this.worktrees.setUpThread(each.repository, each))));
 			return agent.id;
 		} catch (err) {
 			if (agentId) {

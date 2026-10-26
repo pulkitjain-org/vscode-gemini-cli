@@ -24,7 +24,7 @@ import type { ForkContext, ThreadCard, TranscriptItem } from '../acp/chatTranscr
 import { attachmentLabel, type Attachment } from '../acp/attachments';
 import { ConductorReader } from '../acp/conductor';
 import type { InstantAnswer } from '../acp/permissions';
-import { ProjectHub, panelState, threadCounts, threadMemoryContext, type ThreadRequest } from '../acp/projectHub';
+import { ProjectHub, panelState, threadCounts, threadMemoryContext, threadMessages, type ThreadRequest } from '../acp/projectHub';
 import { coordinatorTools, isProjectToolCall, isProjectToolTitle, ProjectMcpServer, projectServerName, threadTools, toolCallOwner, type ProjectCaller } from '../acp/projectMcp';
 import { projectToolsBlock, type ProjectToolsBlock } from '../acp/projectToolsCheck';
 import { reactionReport, type ReactionRef } from '../acp/reactions';
@@ -104,6 +104,8 @@ export interface ProjectAgents {
 	settingUp(id: string): boolean;
 	/** Keeps a thread's resolved state across reloads. */
 	setResolved(id: string, resolved: boolean): void;
+	/** Keeps the notes held for a thread on its record, so a closed window doesn't drop them. */
+	setPendingNotes(id: string, notes: readonly string[]): void;
 }
 
 export function projectsEnabled(): boolean {
@@ -432,12 +434,21 @@ export class Projects implements vscode.Disposable {
 		};
 		project.loading = this.loadConfig(project, folder);
 		const threads = this.agents.threadsOf(record.id);
+		/** Threads with a brief or notes a closed window kept from them: they start first, and get them. */
+		const pending: string[] = [];
 		for (const thread of threads) {
 			if (thread.project?.role === 'thread') {
 				const resolved = !!thread.project.resolved;
 				hub.restoreThread({ id: thread.id, title: thread.title, state: 'done', byCoordinator: thread.project.byCoordinator, ...(resolved ? { resolved } : {}) });
 				if (resolved) {
 					project.merged.add(thread.id);
+				}
+				const held = thread.project.pending;
+				if (held?.notes?.length) {
+					project.queued.set(thread.id, [...held.notes]);
+				}
+				if (held?.brief || held?.notes?.length) {
+					pending.push(thread.id);
 				}
 			}
 		}
@@ -467,14 +478,18 @@ export class Projects implements vscode.Disposable {
 		// thread starts when it is needed: the pointer on its card or row, opening it, or a note
 		// from the coordinator. A merged one starts only when it is opened.
 		// One at a time, a moment apart: starting them all at once would compete with the window's own start.
-		const warm = warmThreads(threads);
+		const warm = [...pending, ...warmThreads(threads).filter(thread => !pending.includes(thread))];
 		void (async () => {
 			for (const thread of warm) {
 				await new Promise(resolve => setTimeout(resolve, threadStartGapMs));
 				if (this.projects.get(record.id) !== project) {
 					return;
 				}
+				// A thread with a brief still to send gets it, after its setup runs again (AgentProjects.resumeThread).
 				await this.agents.resume(thread).catch(() => undefined);
+				if (pending.includes(thread)) {
+					this.sendHeldNotes(project, thread);
+				}
 			}
 		})();
 	}
@@ -499,8 +514,27 @@ export class Projects implements vscode.Disposable {
 		const queued = project.queued.get(record.id);
 		if (queued?.length && controller) {
 			project.queued.delete(record.id);
+			this.agents.setPendingNotes(record.id, []);
 			void controller.send(queued.join('\n\n'), [], 'coordinator');
 		}
+	}
+
+	/**
+	 * Notes a closed window kept for a thread whose brief went already: they
+	 * go now (or after a turn that runs). A thread still to get its brief
+	 * keeps them until that turn ends, as any notes held for setup.
+	 */
+	private sendHeldNotes(project: LiveProject, thread: string): void {
+		const record = this.agents.record(thread);
+		const held = record?.project?.role === 'thread' ? record.project.pending : undefined;
+		const queued = project.queued.get(thread);
+		const controller = this.agents.controller(thread);
+		if (held?.brief || this.agents.settingUp(thread) || !queued?.length || !controller) {
+			return;
+		}
+		project.queued.delete(thread);
+		this.agents.setPendingNotes(thread, []);
+		this.deliver(project, thread, controller, queued.join('\n\n'), 'coordinator');
 	}
 
 	private async message(coordinatorId: string, thread: string, text: string): Promise<boolean> {
@@ -520,6 +554,23 @@ export class Projects implements vscode.Disposable {
 		}
 		this.deliver(project, thread, controller, text, 'coordinator');
 		return true;
+	}
+
+	/**
+	 * Sends a thread its brief, once its setup ended: now, or after a turn
+	 * that runs. Not when its chat already has a message, which means the brief
+	 * went before the window closed. Resolves once it is sent or queued.
+	 */
+	async sendBrief(thread: string, text: string, from?: 'coordinator'): Promise<void> {
+		const controller = this.agents.controller(thread);
+		if (!controller) {
+			return;
+		}
+		await controller.whenRestored;
+		if (controller.conversation.some(item => item.kind === 'user')) {
+			return;
+		}
+		this.sendToThread(thread, text, from);
 	}
 
 	/** Sends a thread `text` now, or when its running turn (or its setup) ends. */
@@ -548,8 +599,10 @@ export class Projects implements vscode.Disposable {
 		if (controller.running && !this.agents.settingUp(thread)) {
 			void controller.send(text, [], from, 'queue');
 		} else if (this.agents.settingUp(thread) || this.agents.activity(thread)?.busy) {
-			// The pane's activity can lag the controller by a tick: the note waits for the turn's end.
-			project.queued.set(thread, [...project.queued.get(thread) ?? [], text]);
+			// The pane's activity can lag the controller by a tick: the note waits for the turn's end, on the thread's record too.
+			const queued = [...project.queued.get(thread) ?? [], text];
+			project.queued.set(thread, queued);
+			this.agents.setPendingNotes(thread, queued);
 		} else {
 			void controller.send(text, [], from);
 		}
@@ -560,11 +613,8 @@ export class Projects implements vscode.Disposable {
 		if (!this.agents.record(thread)) {
 			return undefined;
 		}
-		const items = await this.agents.savedConversation(thread).catch(() => []);
-		return items
-			.flatMap(item => item.kind === 'user' ? [`User: ${item.text}`] : item.kind === 'agent' ? [`Thread: ${item.text}`] : [])
-			.slice(-last)
-			.join('\n\n');
+		// Each message cut to about 2,000 characters: a thread's reply can hold a whole log.
+		return threadMessages(await this.agents.savedConversation(thread).catch(() => []), last);
 	}
 
 	/** A thread the coordinator or the dialog asked for, with what the project's settings add. */

@@ -37,6 +37,10 @@ export class Reviews implements vscode.Disposable {
 	readonly diffs = new ReviewDiffs();
 	readonly comments = new ReviewComments();
 	private readonly sessions = new Map<string, ReviewSession>();
+	/** Each review being opened, so a double click opens it once. */
+	private readonly opening = new Map<string, Promise<void>>();
+	/** The reviewer agents of reviews posted or discarded in this window, for Remove Reviewer and Checkout. */
+	private readonly endedReviewers = new Map<string, string>();
 	private saved: readonly SavedReview[] = [];
 	private readonly onDidChangeEmitter = new vscode.EventEmitter<void>();
 	/** A review started, changed, was posted or discarded. */
@@ -90,7 +94,44 @@ export class Reviews implements vscode.Disposable {
 	 * was left, else a new one that Gemini starts. `fresh` starts over,
 	 * replacing a draft in progress.
 	 */
-	async open(project: string, iid: number, fresh = false): Promise<void> {
+	open(project: string, iid: number, fresh = false): Promise<void> {
+		const key = reviewKey(project, iid);
+		const pending = this.opening.get(key);
+		if (pending) {
+			return pending;
+		}
+		const opening = this.openNow(project, iid, fresh).finally(() => this.opening.delete(key));
+		this.opening.set(key, opening);
+		return opening;
+	}
+
+	/**
+	 * The reviewer agent of merge request `iid`'s review, when the review was
+	 * posted or discarded in this window and the agent is still there: what
+	 * Remove Reviewer and Checkout offers to remove.
+	 */
+	endedReviewer(project: string, iid: number): string | undefined {
+		const agentId = this.endedReviewers.get(reviewKey(project, iid));
+		return agentId && this.deps.agents.agentPlace(agentId) ? agentId : undefined;
+	}
+
+	/**
+	 * Remove Reviewer and Checkout, after Post or Discard: removes the
+	 * reviewer agent with its worktree and its review/ branch, which are
+	 * GeminiCode's own. Resolves whether there was one to remove.
+	 */
+	async removeReviewer(project: string, iid: number): Promise<boolean> {
+		const key = reviewKey(project, iid);
+		const agentId = this.endedReviewer(project, iid);
+		this.endedReviewers.delete(key);
+		if (!agentId || this.sessions.has(key)) {
+			return false;
+		}
+		await this.deps.agents.removeTeamAgent(agentId, true);
+		return true;
+	}
+
+	private async openNow(project: string, iid: number, fresh: boolean): Promise<void> {
 		const key = reviewKey(project, iid);
 		const live = this.sessions.get(key);
 		if (live && !fresh) {
@@ -137,6 +178,10 @@ export class Reviews implements vscode.Disposable {
 	async discard(project: string, iid: number): Promise<void> {
 		const key = reviewKey(project, iid);
 		const live = this.sessions.get(key);
+		const agentId = live?.agentId ?? this.saved.find(r => r.project === project && r.iid === iid)?.agentId;
+		if (agentId) {
+			this.endedReviewers.set(key, agentId);
+		}
 		this.sessions.delete(key);
 		if (live) {
 			await live.end(true);
@@ -161,6 +206,9 @@ export class Reviews implements vscode.Disposable {
 	}
 
 	private forget(session: ReviewSession): void {
+		if (session.agentId) {
+			this.endedReviewers.set(session.key, session.agentId);
+		}
 		if (this.sessions.get(session.key) === session) {
 			this.sessions.delete(session.key);
 		}

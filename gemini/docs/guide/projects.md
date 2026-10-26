@@ -35,9 +35,9 @@ Each thread shows as a card in the project chat with its state, branch, changed 
 
 ![Thread cards in the project chat, with the side panel counting threads by state](../../site/media/project-threads-dark.webp)
 
-Threads run in the repository's worktrees with all of its rules, and a thread's agent starts while its folder is set up. In the agent list, the **Projects** section lists each project with its threads below it.
+Threads run in the repository's worktrees with all of its rules, and a thread's agent starts while its folder is set up. If you quit while a thread is still being set up, it keeps its brief: when the project opens again, the setup runs again and the thread gets its brief then. In the agent list, the **Projects** section lists each project with its threads below it.
 
-When the coordinator passes a thread a note while the thread is working, the note shows above the thread's input as **From coordinator: goes after this turn**. It goes when the turn ends; **Send now** gives it to the thread after its current step instead, and **Remove** drops it.
+When the coordinator passes a thread a note while the thread is working, the note shows above the thread's input as **From coordinator: goes after this turn**. It goes when the turn ends; **Send now** gives it to the thread after its current step instead, and **Remove** drops it. A note held while a thread is still being set up survives quitting, and goes when the project opens again.
 
 ## Start a thread yourself
 

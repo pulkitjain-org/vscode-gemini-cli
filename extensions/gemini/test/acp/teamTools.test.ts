@@ -5,13 +5,14 @@
 
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { lastEvent, parseFigmaLink } from '../../src/acp/figma';
-import { GitLabClient, mergeReadiness, parseMrRef, projectPathFromRemote, stripAnsi } from '../../src/acp/gitlab';
+import { describeMr, GitLabClient, GitLabMr, mergeReadiness, parseMrRef, projectPathFromRemote, stripAnsi } from '../../src/acp/gitlab';
 import { adfToText, formatDuration, JiraClient, jiraKeyIn, parseDuration, textToAdf } from '../../src/acp/jira';
 import { locateInLoginShell, parseSnykCode, parseSnykTest, Run, SnykCli } from '../../src/acp/snyk';
 import { isReleaseBranch, releaseBranchForVersion, sortReleaseBranches } from '../../src/acp/teamDefaults';
-import { normalizeBaseUrl, teamRequest, TeamToolError } from '../../src/acp/teamHttp';
+import { normalizeBaseUrl, teamReachability, teamRequest, TeamToolError } from '../../src/acp/teamHttp';
+import { describeSonar, SonarClient } from '../../src/acp/sonar';
 import { callTeamTool, external, isConfirmToolCall, teamConfirmTools, teamReadTools, TeamToolContext, teamToolsFor, teamWriteTools } from '../../src/acp/teamTools';
 import { TeamToolsMcpServer } from '../../src/acp/teamToolsMcp';
 
@@ -34,6 +35,7 @@ async function serve(handler: (req: http.IncomingMessage, body: string) => { sta
 }
 
 const servers: http.Server[] = [];
+beforeEach(() => teamReachability.clear());
 afterEach(() => {
 	servers.splice(0).forEach(s => s.close());
 });
@@ -308,6 +310,15 @@ describe('merge readiness', () => {
 		expect(mergeReadiness({ state: 'merged', detailed_merge_status: 'not_open', sha: 'abc' }, [], { ...settings, pipelineMustSucceed: false, threadsMustBeResolved: false }, 0).checks[0].detail).toBe('the merge request is merged');
 	});
 
+	it('counts an approvals or threads check it couldn\'t read as pending, never as passed', () => {
+		const unread = mergeReadiness({ state: 'opened', detailed_merge_status: 'mergeable', head_pipeline: { id: 1, status: 'success' }, sha: 'abc' }, undefined, settings, undefined);
+		expect(unread.ready).toBe(false);
+		expect(unread.checks.filter(c => c.unreadable).map(c => ({ name: c.name, ok: c.ok, pending: c.pending, detail: c.detail }))).toEqual([
+			{ name: 'Approvals', ok: false, pending: true, detail: 'couldn\'t read' },
+			{ name: 'All threads resolved', ok: false, pending: true, detail: 'couldn\'t read' },
+		]);
+	});
+
 	it('reads the approval state and merges at the head it read', async () => {
 		const fake = await serve((req, body) => {
 			if (req.url === '/api/v4/projects/g%2Fr' || req.url === '/api/v4/projects/7') { return { body: { id: 7, only_allow_merge_if_pipeline_succeeds: true, only_allow_merge_if_all_discussions_are_resolved: false, squash_option: 'default_on' } }; }
@@ -354,5 +365,60 @@ describe('merge readiness', () => {
 			people: [{ accountId: 'a2', displayName: 'Ann Lee' }],
 			visibilities: { roles: ['Administrators', 'Developers'], groups: ['eng', 'qa'] },
 		});
+	});
+});
+
+describe('GitLab lists and lookups', () => {
+	const mrJson = (iid: number, target = 'main') => ({ iid, project_id: 7, title: `MR ${iid}`, web_url: `https://gl/g/r/-/merge_requests/${iid}`, source_branch: 'feature', target_branch: target, references: { full: `g/r!${iid}` } });
+
+	it('reads every page of a merge request\'s files, and says how many there are when GitLab has more', async () => {
+		const fake = await serve(req => {
+			const page = Number(new URL(req.url!, 'http://x').searchParams.get('page'));
+			return { body: Array.from({ length: 100 }, (_, i) => ({ old_path: `f${page}-${i}`, new_path: `f${page}-${i}`, diff: '', new_file: false, deleted_file: false })) };
+		});
+		// A server that reports its total in the header.
+		const counted = await serve(req => {
+			const page = Number(new URL(req.url!, 'http://x').searchParams.get('page'));
+			return { body: Array.from({ length: page === 1 ? 100 : 40 }, (_, i) => ({ old_path: `f${page}-${i}`, new_path: `f${page}-${i}`, diff: '', new_file: false, deleted_file: false })) };
+		});
+		const all = await new GitLabClient({ url: counted.url, token: 't' }).diffs(7, 3);
+		expect({ files: all.length, total: all.total, pages: counted.requests.length }).toEqual({ files: 140, total: undefined, pages: 2 });
+		const capped = await new GitLabClient({ url: fake.url, token: 't' }).diffs(7, 3);
+		expect({ files: capped.length, pages: fake.requests.length }).toEqual({ files: 1000, pages: 10 });
+	});
+
+	it('says "1 of 312" for a cut list', () => {
+		const files = Object.assign([{ oldPath: 'a.ts', newPath: 'a.ts', diff: '', newFile: false, deletedFile: false }], { total: 312 });
+		const mr = { iid: 3, title: 't', url: 'u', sourceBranch: 's', targetBranch: 'main', author: 'a', draft: false, state: 'opened', description: '', reviewers: [], project: 'g/r', projectId: 7, updatedAt: '' } as GitLabMr;
+		expect(describeMr(mr, [], files)).toContain('Changed files (1 of 312):');
+		expect(describeSonar({ project: 'p' }, undefined, [{ key: 'k', rule: 'r', severity: 'MAJOR', message: 'm', url: 'u' }], 312)).toContain('1 of 312 open issues on new code, worst first:');
+	});
+
+	it('reads Sonar\'s total of open issues', async () => {
+		const fake = await serve(() => ({ body: { paging: { total: 312 }, issues: [{ key: 'k', rule: 'r', severity: 'MAJOR', message: 'm' }] } }));
+		const issues = await new SonarClient({ url: fake.url, token: 't' }).issues({ project: 'p' });
+		expect({ length: issues.length, total: issues.total }).toEqual({ length: 1, total: 312 });
+	});
+
+	it('refuses to guess between several merge requests from one branch', async () => {
+		const fake = await serve(() => ({ body: [mrJson(3), mrJson(4, 'release/2026.11')] }));
+		await expect(new GitLabClient({ url: fake.url, token: 't' }).mrForBranch(7, 'feature')).rejects.toThrow(/2 merge requests are open from feature; name the one you mean:\n- !3 MR 3 → main .*\n- !4 MR 4 → release\/2026\.11/);
+	});
+
+	it('falls back to a general comment only when GitLab says the line isn\'t in the diff', async () => {
+		let lineStatus = 400;
+		const fake = await serve(req => {
+			if (req.url?.endsWith('/discussions')) {
+				return { status: lineStatus, body: { message: '400 Bad request - Note {:line_code=>["can\'t be blank", "must be a valid line code"]}' } };
+			}
+			return { status: 201, body: { id: 1 } };
+		});
+		const gitlab = new GitLabClient({ url: fake.url, token: 't' });
+		const refs = { baseSha: 'b', startSha: 's', headSha: 'h' };
+		expect(await gitlab.commentOnLine(7, 3, 'a.ts', 9, 'Nit', { refs })).toBe('general');
+		lineStatus = 500;
+		await expect(gitlab.commentOnLine(7, 3, 'a.ts', 9, 'Nit', { refs })).rejects.toThrow(/answered 500/);
+		// One general comment, for the 400 only.
+		expect(fake.requests.filter(r => r.url.endsWith('/notes')).length).toBe(1);
 	});
 });

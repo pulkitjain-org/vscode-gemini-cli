@@ -26,7 +26,10 @@ import type { TeamDefaults } from './teamDefaults';
 import { ChildServer, McpServerUnavailableError } from './mcpStdio';
 import { recordPilot } from './pilotLog';
 import { gitlabVia, jiraVia, snykVia, sonarVia, TeamChildren } from './teamContainers';
+import { external } from './externalText';
 import { clip, TeamToolError, TeamToolId } from './teamHttp';
+
+export { external };
 import { git } from './worktrees';
 
 /** The clients for the tools the user has connected; a tool not connected is absent. */
@@ -53,6 +56,8 @@ export interface TeamToolContext {
 	childUnavailable?(server: string, reason: string): void;
 	/** Whether the admin allows shell commands (`gemini.tools.allowShell`); tools that run the project's build code are refused when not. */
 	allowShell?(): boolean;
+	/** Whether `agent` may only read, such as a merge request's reviewer: it is offered no write tool, and any it asks for is refused. */
+	readOnly?(agent: string): boolean;
 }
 
 /** The server's name in a session's MCP servers and in `mcp.allowed`. */
@@ -171,7 +176,8 @@ export const teamTools: readonly TeamTool[] = [
 		description: 'Merges a GitLab merge request, only when GitLab says it is ready: pipeline passed, every approval rule met, threads resolved, no conflicts. Reads the checks first and refuses otherwise, saying what is missing. The user approves the merge itself.',
 		inputSchema: {
 			type: 'object',
-			properties: { mr: mrParam, squash: { type: 'boolean', description: 'Squash the commits; the project\'s setting by default.' }, deleteBranch: { type: 'boolean', description: 'Delete the source branch after merging (default true).' } },
+			properties: { mr: { ...text, description: 'The merge request to merge: its link, or its number such as 318 or !318.' }, squash: { type: 'boolean', description: 'Squash the commits; the project\'s setting by default.' }, deleteBranch: { type: 'boolean', description: 'Delete the source branch after merging (default true).' } },
+			required: ['mr'],
 		},
 	},
 	{
@@ -240,34 +246,33 @@ export function isConfirmToolCall(request: { readonly toolCall: { readonly title
 	return confirmToolNames.some(name => title === name || title.startsWith(`${name}(`));
 }
 
-/**
- * Text that came from outside (a ticket, a merge request, a job log, a
- * design), marked so the model treats it as something to read, not as
- * instructions. The frame is plain text; the server's instructions say what
- * it means. An `<external>` or `</external>` tag inside the text is escaped,
- * so the text cannot close its frame early and go on as if it were outside it.
- */
-export function external(source: TeamToolId, ref: string, text: string): string {
-	return `<external source="${source}" ref="${ref.replace(/["<>\r\n]/g, '')}">\n${text.replace(/<(\/?external)\b/gi, '&lt;$1')}\n</external>`;
+/** The tools for the connected tools; with `readOnly`, only those that read. */
+export function teamToolsFor(connected: ReadonlySet<TeamToolId>, readOnly = false): McpTool[] {
+	return teamTools.filter(tool => connected.has(tool.tool) && !(readOnly && tool.write)).map(({ name, description, inputSchema }) => ({ name, description, inputSchema }));
 }
 
-/** The tools for the connected tools. */
-export function teamToolsFor(connected: ReadonlySet<TeamToolId>): McpTool[] {
-	return teamTools.filter(tool => connected.has(tool.tool)).map(({ name, description, inputSchema }) => ({ name, description, inputSchema }));
-}
+/** What a read-only agent gets when it asks for a write. */
+export const readOnlyRefusal = 'Your team tools only read here: you are reviewing, and the user posts what you found from the Review page. Put it in your reply instead.';
 
 /**
  * A tool's answer, with the id the remote gave back for a write, which the
  * audit log keeps and the model never sees, and what a page needs next (a
- * new merge request's link).
+ * new merge request's link). `warning` marks a write that went through with a
+ * later step failed ("replied, but couldn't resolve the thread"), and `unsure`
+ * a failed write that may have gone through all the same (no answer in time).
  */
-type TeamToolResult = McpToolResult & { readonly remote?: string; readonly data?: TeamWriteData };
+type TeamToolResult = McpToolResult & { readonly remote?: string; readonly data?: TeamWriteData; readonly warning?: string; readonly unsure?: boolean };
 
 /** What a page needs after a write: a merge request's number and link, a merge commit. */
 export type TeamWriteData = Readonly<Record<string, string | number>>;
 
 function ok(content: string | McpContent[], remote?: string, data?: TeamWriteData): TeamToolResult {
 	return { content: typeof content === 'string' ? [{ type: 'text', text: content }] : content, ...remote ? { remote } : {}, ...data ? { data } : {} };
+}
+
+/** A write that went through, with a later step of it that failed: success, with the failure as a warning. */
+function partly(done: string, warning: string, remote?: string): TeamToolResult {
+	return { ...ok(`${done} ${warning}`, remote), warning };
 }
 
 /** Who asks for a team tool: an agent, whose folder the context knows, or one of GeminiCode's pages, working in `folder`. */
@@ -283,6 +288,10 @@ export interface TeamWriteResult {
 	readonly text: string;
 	readonly remote?: string;
 	readonly data?: TeamWriteData;
+	/** It went through, but a later step failed: what to show beside the success. */
+	readonly warning?: string;
+	/** It failed without an answer and may have gone through: its audit record stays open until the user checks. */
+	readonly unsure?: boolean;
 }
 
 /**
@@ -295,10 +304,13 @@ const pageTools: readonly TeamTool[] = [
 	{ tool: 'gitlab', name: 'gitlab_approve', write: true, description: 'Approves a merge request.', inputSchema: { type: 'object', properties: {} } },
 	{ tool: 'gitlab', name: 'gitlab_request_changes', write: true, description: 'Requests changes on a merge request with a summary note.', inputSchema: { type: 'object', properties: {} } },
 	{ tool: 'gitlab', name: 'gitlab_resolve', write: true, description: 'Resolves a review thread without replying.', inputSchema: { type: 'object', properties: {} } },
+	{ tool: 'gitlab', name: 'gitlab_upload', write: true, description: 'Uploads a file to a project for a merge request\'s description (Open Merge Request\'s attachments).', inputSchema: { type: 'object', properties: {} } },
 ];
 
 /** Files a page may attach, at most: well past Jira Cloud's own default limit, so Jira's message is the one people see. */
 const maxAttachmentBytes = 256 * 1024 * 1024;
+/** Files Open Merge Request may upload to GitLab, at most: GitLab's own default limit for an attachment. */
+export const maxUploadBytes = 100 * 1024 * 1024;
 
 /**
  * Home's comment box: `document`, the comment as Jira rich text the box made
@@ -375,7 +387,10 @@ export async function callTeamTool(context: TeamToolContext, agent: string, name
 	if (!tool) {
 		return fail(`No tool named ${name}.`);
 	}
-	const { remote: _remote, data: _data, ...result } = await runAudited(context, { caller: 'agent', agent }, tool, args);
+	if (tool.write && context.readOnly?.(agent)) {
+		return fail(readOnlyRefusal);
+	}
+	const { remote: _remote, data: _data, warning: _warning, unsure: _unsure, ...result } = await runAudited(context, { caller: 'agent', agent }, tool, args);
 	return result;
 }
 
@@ -396,6 +411,8 @@ export async function teamWrite(context: TeamToolContext, who: TeamCaller, name:
 		text: result.content.map(c => c.type === 'text' ? c.text : '').join('\n').trim(),
 		...result.remote ? { remote: result.remote } : {},
 		...result.data ? { data: result.data } : {},
+		...result.warning ? { warning: result.warning } : {},
+		...result.unsure ? { unsure: true } : {},
 	};
 }
 
@@ -411,17 +428,32 @@ async function runAudited(context: TeamToolContext, who: TeamCaller, tool: TeamT
 	return result;
 }
 
-/** A write's intent, then its result or failure, in the audit log. */
+/**
+ * A write's intent, then its result or failure, in the audit log. A write
+ * that got no answer in time gets neither: it may have gone through, so its
+ * intent stays open, and Home lists it as unfinished until the user checks.
+ */
 async function auditedWrite(audit: AuditLog, who: TeamCaller, tool: TeamTool, args: Record<string, unknown>, run: () => Promise<TeamToolResult>): Promise<TeamToolResult> {
 	const ref = refOf(args);
 	const intent = { caller: who.caller, ...who.agent ? { agent: who.agent } : {}, tool: tool.name, ...ref ? { ref } : {}, effect: effectOf(tool.name, args), args };
-	return audit.record(intent, async () => {
-		const answer = await run();
-		if (answer.isError) {
-			throw new Error(answer.content.map(c => c.type === 'text' ? c.text : '').join(' ').trim() || 'failed');
+	try {
+		const id = await audit.intent(intent);
+		let answer: TeamToolResult;
+		try {
+			answer = await run();
+		} catch (err) {
+			answer = fail(err instanceof Error ? err.message : String(err));
+		}
+		if (!answer.isError) {
+			await audit.result(id, intent, answer.remote);
+		} else if (!answer.unsure) {
+			await audit.failed(id, intent, answer.content.map(c => c.type === 'text' ? c.text : '').join(' ').trim() || 'failed');
 		}
 		return answer;
-	}, answer => answer.remote).catch(err => fail(err instanceof Error ? err.message : String(err)) as TeamToolResult);
+	} catch (err) {
+		// The audit log couldn't be written: the write isn't made without its record.
+		return fail(err instanceof Error ? err.message : String(err));
+	}
 }
 
 /** A write tool called only to list choices (moves, people), which changes nothing. */
@@ -452,6 +484,7 @@ export function effectOf(name: string, args: Record<string, unknown>): string {
 		case 'gitlab_approve': return `Approve ${key}`;
 		case 'gitlab_request_changes': return `Request changes on ${key}`;
 		case 'gitlab_resolve': return `Resolve thread ${arg(args, 'discussion') ?? ''} on ${key}`;
+		case 'gitlab_upload': return `Upload ${path.basename(arg(args, 'file') ?? '')} to ${arg(args, 'project') ?? 'the project'}`;
 		default: return name;
 	}
 }
@@ -487,7 +520,7 @@ async function runTeamTool(context: TeamToolContext, folder: string | undefined,
 				return connectors.figma ? await figmaCall(connectors.figma, name, args) : notConnected('Figma');
 		}
 	} catch (err) {
-		return fail(err instanceof TeamToolError || err instanceof Error ? err.message : String(err));
+		return { ...fail(err instanceof TeamToolError || err instanceof Error ? err.message : String(err)), ...err instanceof TeamToolError && err.detail.unsure ? { unsure: true } : {} };
 	}
 }
 
@@ -620,8 +653,17 @@ async function jiraCall(jira: JiraClient, via: Through, name: string, args: Reco
 				await jiraVia.transition(server, key ?? '', move.id, visibility ? undefined : comment, fields);
 				return { id: move.id, to: move.to };
 			}, () => jira.transition(key ?? '', wanted, visibility ? undefined : comment, fields));
-			const commentId = comment && visibility ? await via(server => jiraVia.comment(server, key ?? '', comment, visibility), async () => (await jira.comment(key ?? '', comment, visibility)).id) : undefined;
-			return ok(`Moved ${key} to ${moved.to}${comment ? ' with the comment' : ''}.`, [`transition ${moved.id} → ${moved.to}`, commentId ? `comment ${commentId}` : ''].filter(Boolean).join(' · '));
+			const remote = `transition ${moved.id} → ${moved.to}`;
+			let commentId: string | undefined;
+			if (comment && visibility) {
+				try {
+					commentId = await via(server => jiraVia.comment(server, key ?? '', comment, visibility), async () => (await jira.comment(key ?? '', comment, visibility)).id);
+				} catch (err) {
+					// The move went through: a retry would move it again, or fail. Only the comment is left to add.
+					return partly(`Moved ${key} to ${moved.to}.`, `The comment wasn't added: ${err instanceof Error ? err.message : String(err)}`, remote);
+				}
+			}
+			return ok(`Moved ${key} to ${moved.to}${comment ? ' with the comment' : ''}.`, [remote, commentId ? `comment ${commentId}` : ''].filter(Boolean).join(' · '));
 		}
 	}
 	return fail(`No tool named ${name}.`);
@@ -661,7 +703,8 @@ async function gitlabCall(gitlab: GitLabClient, via: Through, name: string, args
 		}
 		case 'gitlab_list_mrs': {
 			const list = arg(args, 'which') === 'mine' ? await gitlab.myMergeRequests() : await gitlab.reviewRequests();
-			return ok(list.length ? list.map(mr => `!${mr.iid} ${mr.title} · ${mr.project} · ${mr.sourceBranch} → ${mr.targetBranch} · by ${mr.author}${mr.draft ? ' · draft' : ''} (${mr.url})`).join('\n') : 'None.');
+			const more = list.total !== undefined && list.total > list.length ? `\n(${list.length} of ${list.total}, the most recently updated.)` : '';
+			return ok(list.length ? `${list.map(mr => `!${mr.iid} ${mr.title} · ${mr.project} · ${mr.sourceBranch} → ${mr.targetBranch} · by ${mr.author}${mr.draft ? ' · draft' : ''} (${mr.url})`).join('\n')}${more}` : 'None.');
 		}
 		case 'gitlab_job_log': {
 			const job = arg(args, 'job');
@@ -738,10 +781,16 @@ async function gitlabCall(gitlab: GitLabClient, via: Through, name: string, args
 			const discussion = arg(args, 'discussion');
 			if (discussion) {
 				const noteId = await via(server => gitlabVia.reply(server, project, iid, discussion, body), async () => idText((await gitlab.replyToDiscussion(project, iid, discussion, body)).id));
+				const remote = noteId ? `note ${noteId} on !${iid}` : `!${iid}`;
 				if (args.resolve === true) {
-					await via(server => gitlabVia.resolve(server, project, iid, discussion), () => gitlab.resolveDiscussion(project, iid, discussion));
+					try {
+						await via(server => gitlabVia.resolve(server, project, iid, discussion), () => gitlab.resolveDiscussion(project, iid, discussion));
+					} catch (err) {
+						// The reply is posted: a retry would post it again. Only resolving is left.
+						return partly(`Replied on !${iid}.`, `The thread wasn't resolved: ${err instanceof Error ? err.message : String(err)}`, remote);
+					}
 				}
-				return ok(`Replied on !${iid}${args.resolve === true ? ' and resolved the thread' : ''}.`, noteId ? `note ${noteId} on !${iid}` : `!${iid}`);
+				return ok(`Replied on !${iid}${args.resolve === true ? ' and resolved the thread' : ''}.`, remote);
 			}
 			const path = arg(args, 'path');
 			const line = Number(args.line);
@@ -768,7 +817,24 @@ async function gitlabCall(gitlab: GitLabClient, via: Through, name: string, args
 			await via(server => gitlabVia.resolve(server, project, iid, discussion), () => gitlab.resolveDiscussion(project, iid, discussion));
 			return ok(`Resolved the thread on !${iid}.`, `discussion ${discussion} on !${iid}`);
 		}
+		case 'gitlab_upload': {
+			const file = arg(args, 'file');
+			const project = arg(args, 'project') ?? (folder ? (await gitlabProjectOf(folder, gitlab.url, defaults)).project : undefined);
+			if (!file || !project) {
+				return fail('Name the file and the project to upload it to.');
+			}
+			const size = (await fs.stat(file)).size;
+			if (size > maxUploadBytes) {
+				return fail(`${path.basename(file)} is larger than ${maxUploadBytes / 1024 / 1024} MB, more than GitLab takes as an attachment.`);
+			}
+			const markdown = await gitlab.upload(project, path.basename(file), await fs.readFile(file));
+			return ok(`Uploaded ${path.basename(file)}.`, `upload ${path.basename(file)} to ${project}`, { markdown });
+		}
 		case 'gitlab_merge': {
+			// The merge request is always named: merging "the current branch's" could pick another of several open from it.
+			if (!arg(args, 'mr')) {
+				return fail('Name the merge request to merge with mr: its link, or its number such as 318.');
+			}
 			const { project, iid } = await resolveMr(gitlab, arg(args, 'mr'), folder, defaults, arg(args, 'project'));
 			const readiness = await gitlab.mergeReadiness(project, iid);
 			if (!readiness.ready) {
@@ -805,7 +871,7 @@ async function sonarCall(sonar: SonarClient, via: Through, name: string, args: R
 			return ok(external('sonar', ref, clip([`Quality gate:\n${gate}`, issues && `Open issues:\n${issues}`].filter(Boolean).join('\n\n'), 20_000)));
 		}, async () => {
 			const [gate, issues] = await Promise.all([sonar.gate(target), sonar.issues(target, 20).catch(() => [])]);
-			return ok(describeSonar(target, gate, issues));
+			return ok(describeSonar(target, gate, issues, 'total' in issues ? issues.total : undefined));
 		});
 	}
 	return via(async server => {
@@ -813,7 +879,8 @@ async function sonarCall(sonar: SonarClient, via: Through, name: string, args: R
 		return ok(external('sonar', ref, clip([`Open issues:\n${issues}`, hotspots && `Security hotspots to review:\n${hotspots}`].filter(Boolean).join('\n\n'), 20_000)));
 	}, async () => {
 		const [issues, hotspots] = await Promise.all([sonar.issues(target), sonar.hotspots(target).catch(() => [])]);
-		return ok(describeSonar(target, undefined, [...issues, ...hotspots]));
+		const total = (issues.total ?? issues.length) + (('total' in hotspots ? hotspots.total : undefined) ?? hotspots.length);
+		return ok(describeSonar(target, undefined, [...issues, ...hotspots], total));
 	});
 }
 

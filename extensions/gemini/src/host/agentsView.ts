@@ -248,6 +248,10 @@ export class AgentsView implements vscode.Disposable {
 			cleanUpMerged: id => this.projectAgents.cleanUpMerged(id),
 			settingUp: id => this.projectAgents.isSettingUp(id),
 			setResolved: (id, resolved) => this.model.setThreadResolved(id, resolved),
+			setPendingNotes: (id, notes) => {
+				const role = this.model.agent(id)?.project;
+				this.model.setThreadPending(id, { ...role?.role === 'thread' ? role.pending : {}, notes });
+			},
 		}, String(context.extension.packageJSON.version ?? '0'));
 		// What the modules that start, stop and remove agents may ask of this view.
 		const host = {
@@ -466,6 +470,11 @@ export class AgentsView implements vscode.Disposable {
 	/** Starts an agent for the team flows, named `title`; resolves with its id, or undefined when its branch could not be made. */
 	startTeamAgent(options: { readonly folder: string; readonly title: string; readonly text: string; readonly branch?: string; readonly worktree?: AgentWorktree; readonly mode?: string }): Promise<string | undefined> {
 		return this.starts.startTeamAgent(options);
+	}
+
+	/** Removes an agent a team flow started, with its worktree folder and, with `deleteBranch`, its branch: Remove Reviewer and Checkout. */
+	removeTeamAgent(id: string, deleteBranch: boolean): Promise<void> {
+		return this.removeAgentAndWorktree(id, deleteBranch);
 	}
 
 	/** Where an agent works (its worktree's folder, or its workspace), and its own branch when it has one. */

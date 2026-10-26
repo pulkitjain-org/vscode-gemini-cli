@@ -92,7 +92,19 @@ export type AgentProjectRole =
 		readonly resolved?: boolean;
 		/** When it was merged back, in ms since the epoch; a week on, it is archived (`isArchived`). */
 		readonly resolvedAt?: number;
+		/** What it is still to be sent, kept so a window closed during its setup loses neither its brief nor its notes. */
+		readonly pending?: ThreadPending;
 	};
+
+/** A thread's brief, while its setup runs, and the notes that wait for it. */
+export interface ThreadPending {
+	/** The first prompt, sent when the worktree's setup ends; gone once sent. */
+	readonly brief?: string;
+	/** Who the brief is from, as the thread's chat labels it. */
+	readonly from?: 'coordinator';
+	/** Notes from the coordinator held until the thread's setup or its current turn ends, oldest first. */
+	readonly notes?: readonly string[];
+}
 
 /**
  * The list as saved. Version 2 keeps records this version doesn't recognise,
@@ -339,6 +351,22 @@ export class AgentsModel {
 		}
 		const { resolved: _, resolvedAt: __, ...rest } = project;
 		this.update(id, a => ({ ...a, project: resolved ? { ...rest, resolved: true, resolvedAt: this.now() } : rest }));
+	}
+
+	/** Keeps what thread `id` is still to be sent; undefined, or nothing in it, clears it. */
+	setThreadPending(id: string, pending: ThreadPending | undefined): void {
+		const project = this.agent(id)?.project;
+		if (project?.role !== 'thread') {
+			return;
+		}
+		const { pending: _, ...rest } = project;
+		const kept = pending && (pending.brief || pending.notes?.length) ? {
+			...pending.brief ? { brief: pending.brief, ...pending.from ? { from: pending.from } : {} } : {},
+			...pending.notes?.length ? { notes: pending.notes } : {},
+		} : undefined;
+		if (JSON.stringify(kept) !== JSON.stringify(project.pending)) {
+			this.update(id, a => ({ ...a, project: kept ? { ...rest, pending: kept } : rest }));
+		}
 	}
 
 	/** A project's threads, oldest first. */
