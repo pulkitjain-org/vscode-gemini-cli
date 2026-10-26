@@ -232,12 +232,48 @@ export function planIcon(status: ItemOf<'plan'>['entries'][number]['status']): s
 
 type PermissionOption = ItemOf<'permission'>['options'][number];
 
-/** The option to show as primary ("Allow" once, else any allow) and the one Escape picks (a rejection). */
-export function permissionDefaults(options: readonly PermissionOption[]): { primary?: PermissionOption; reject?: PermissionOption } {
+/**
+ * A request's options by role: the one shown as primary ("Allow" once, else
+ * any allow), Allow once, "Allow for this session" (gemini-cli's
+ * `proceed_always`, or the narrowest of an MCP tool's), and the one Escape
+ * picks (a rejection).
+ */
+export function permissionChoices(options: readonly PermissionOption[]): { primary?: PermissionOption; once?: PermissionOption; session?: PermissionOption; reject?: PermissionOption } {
+	const always = options.filter(o => o.kind === 'allow_always');
 	return {
 		primary: options.find(o => o.kind === 'allow_once') ?? options.find(o => o.kind.startsWith('allow')),
+		once: options.find(o => o.kind === 'allow_once'),
+		session: always.find(o => o.optionId === 'proceed_always') ?? always.find(o => o.optionId === 'proceed_always_tool') ?? always.find(o => /for this session/i.test(o.name)),
 		reject: options.find(o => o.kind === 'reject_once') ?? options.find(o => o.kind.startsWith('reject')),
 	};
+}
+
+/** The permission card still waiting for an answer, the newest if several are. */
+export function waitingPermission(items: readonly TranscriptItem[]): ItemOf<'permission'> | undefined {
+	for (let i = items.length - 1; i >= 0; i--) {
+		const item = items[i];
+		if (item.kind === 'permission' && !item.answer) {
+			return item;
+		}
+	}
+	return undefined;
+}
+
+/**
+ * What a key in the chat box does to a waiting card: ⌥⌘↩ (Ctrl+Alt+Enter)
+ * allows once, ⌥⌘S (Ctrl+Alt+S) allows for the session, Esc rejects. Clear
+ * of the composer's own keys: ↩ sends, ⌘↩ queues, ⌥⌘↑ ⌥⌘↓ move between prompts.
+ */
+export function cardKey(event: { readonly key: string; readonly code: string; readonly altKey: boolean; readonly metaKey: boolean; readonly ctrlKey: boolean; readonly shiftKey: boolean }, mac: boolean): 'once' | 'session' | 'reject' | undefined {
+	if (event.key === 'Escape') {
+		return event.altKey || event.metaKey || event.ctrlKey || event.shiftKey ? undefined : 'reject';
+	}
+	const chord = event.altKey && !event.shiftKey && (mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey);
+	if (!chord) {
+		return undefined;
+	}
+	// The key's code, not its character: ⌥ turns S into ß on a Mac.
+	return event.key === 'Enter' ? 'once' : event.code === 'KeyS' ? 'session' : undefined;
 }
 
 /** Whether a scroll position is close enough to the bottom to keep following new content. */

@@ -11,7 +11,7 @@
 import type { ViewContext, ViewQuota } from '../src/host/chatProtocol';
 import { chatUsage } from '../src/acp/turnUsage';
 import { format, formatTokens, resetsIn } from './chatLogic';
-import { button, el, setLabel } from './dom';
+import { button, el, setLabel, setTip } from './dom';
 import { closePicker } from './picker';
 import { state, strings, ui, vscode } from './view';
 
@@ -144,7 +144,7 @@ function renderContext(): HTMLElement {
 	const row = el('div', 'usage-row');
 	const used = el('span');
 	used.append(el('b', undefined, formatTokens(context.used)), ` ${format(strings.usageContextOf, formatTokens(context.limit))}`);
-	used.title = context.used.toLocaleString();
+	setTip(used, context.used.toLocaleString());
 	row.append(used, el('span', 'usage-detail', `${percent}%`));
 	section.append(row, meter(percent, share >= 0.9 ? 'full' : share >= summariseAt ? 'high' : '', strings.usageContext), el('p', 'usage-note', format(strings.usageContextNote, Math.round(summariseAt * 100))));
 	// Compact shows only when it can run now: enough prompts, and no turn or compact going.
@@ -207,7 +207,7 @@ function renderChat(): HTMLElement {
 /** "Input 295.8K", with the exact count and what it means on hover. */
 function figure(label: string, count: number, note?: string): HTMLElement {
 	const item = el('span', undefined, `${label} ${formatTokens(count)}`);
-	item.title = note ? `${count.toLocaleString()}. ${note}` : count.toLocaleString();
+	setTip(item, note ? `${count.toLocaleString()}. ${note}` : count.toLocaleString());
 	return item;
 }
 
@@ -227,7 +227,7 @@ function meter(percent: number, level: '' | 'high' | 'full', label: string): HTM
 
 function tokensCell(count: number): HTMLElement {
 	const cell = el('td', 'num', formatTokens(count));
-	cell.title = count.toLocaleString();
+	setTip(cell, count.toLocaleString());
 	return cell;
 }
 

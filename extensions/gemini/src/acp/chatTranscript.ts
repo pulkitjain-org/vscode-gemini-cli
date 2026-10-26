@@ -12,12 +12,17 @@ import { Emitter } from './events';
 import type { PendingPermission } from './permissions';
 import { Attachment, attachmentLabel } from './attachments';
 import { leadingReaction, type ReactionRef } from './reactions';
+import type { TrimmedOutput } from './chatMemory';
 import { ChatEvent, contentBlockToText, ToolCallModel } from './sessionUpdates';
 import type { TurnReadout } from './traceRecording';
 import type { ModelTokens } from './turnUsage';
 
 export type ToolCallDetail =
-	| { readonly type: 'text'; readonly text: string }
+	/**
+	 * A tool's text output. A long one keeps only its first lines in `text` and its
+	 * last in `tail`, with `hiddenLines` between them, which Show All fetches from the host.
+	 */
+	| { readonly type: 'text'; readonly text: string; readonly tail?: string; readonly hiddenLines?: number }
 	| { readonly type: 'diff'; readonly path: string; readonly added: number; readonly removed: number }
 	| { readonly type: 'terminal'; readonly terminalId: string };
 
@@ -31,6 +36,20 @@ export interface PromptAttachmentLabel {
 	/** For a Jira ticket, GitLab item or Figma frame: its tool and its `toolRefId`, so the view can open it there. */
 	readonly tool?: 'jira' | 'gitlab' | 'figma';
 	readonly ref?: string;
+}
+
+/**
+ * The ways out a failed or cut-short turn's notice offers: send the prompt
+ * again, pick another model, sign in again, carry on from the request limit,
+ * open the Gemini log, or stop a stalled turn.
+ */
+export type NoticeAction = 'retry' | 'switchModel' | 'signIn' | 'continue' | 'showLog' | 'stop';
+
+/** Another live agent in the same folder with changes still to review in a file this one edits. */
+export interface OtherAgentChanges {
+	/** The agent's id, to show its changes. */
+	readonly agent: string;
+	readonly title: string;
 }
 
 export interface ToolCallLocation {
@@ -56,6 +75,8 @@ export type TranscriptItem =
 	| {
 		readonly id: string; readonly kind: 'toolCall'; readonly title: string; readonly toolKind: string | undefined;
 		readonly status: acp.ToolCallStatus; readonly locations: readonly ToolCallLocation[]; readonly details: readonly ToolCallDetail[];
+		/** An edit applied without a card (Auto Edit) to a file another agent has unreviewed changes in. */
+		readonly others?: readonly OtherAgentChanges[];
 	}
 	| { readonly id: string; readonly kind: 'plan'; readonly entries: readonly { readonly content: string; readonly status: acp.PlanEntryStatus }[] }
 	| {
@@ -65,6 +86,10 @@ export type TranscriptItem =
 		readonly diffPaths: readonly string[];
 		/** Confirm class (gemini/docs/adr/0006-confirm-class.md): hard to take back, so it asks every time with Allow once and Reject only. */
 		readonly confirm?: boolean;
+		/** For a shell command, the prefixes "Allow for this session" covers (`npx vitest`, `git status`). */
+		readonly prefixes?: readonly string[];
+		/** Other agents with unreviewed changes in a file this edit changes. */
+		readonly others?: readonly OtherAgentChanges[];
 		/** Unset while the agent waits for an answer. */
 		/** `automatic` when GeminiCode answered without asking, so the row doesn't say the user chose. */
 		readonly answer?: { readonly kind: 'selected'; readonly name: string; readonly automatic?: true } | { readonly kind: 'cancelled' };
@@ -73,8 +98,11 @@ export type TranscriptItem =
 	| ThreadCard
 	/** An update kind this version does not know (design rule 4 in gemini/docs/ARCHITECTURE.md). */
 	| { readonly id: string; readonly kind: 'other'; readonly type: string }
-	/** `retry`: a project's failed wake, which the hub can send again. */
-	| { readonly id: string; readonly kind: 'notice'; readonly text: string; readonly severity: 'info' | 'error'; readonly retry?: boolean }
+	/**
+	 * `retry`: a project's failed wake, which the hub can send again. `actions`: a failed
+	 * or cut-short turn's ways out, on the latest such notice only, until the next turn starts.
+	 */
+	| { readonly id: string; readonly kind: 'notice'; readonly text: string; readonly severity: 'info' | 'error'; readonly retry?: boolean; readonly actions?: readonly NoticeAction[] }
 	/** The saved chat's last turn never ended: GeminiCode quit while the agent worked. Offers to send the message again. */
 	| { readonly id: string; readonly kind: 'cutOff'; readonly prompt: string; readonly dismissed?: boolean }
 	/** Compact: the suggestion to compact this chat's session, then the switch to the compacted one. */
@@ -222,6 +250,12 @@ export class ChatTranscript {
 	liftReactions = false;
 	/** The turn's first reply text, held while it may still be a reaction tag. */
 	private reactionHeld: string | undefined;
+	/**
+	 * Keeps a long tool output whole elsewhere and says what its card shows
+	 * first (`ToolOutputStore.put`), so the transcript holds only its first and
+	 * last lines; unset, outputs are kept whole.
+	 */
+	trimOutput: ((itemId: string, part: number, text: string) => TrimmedOutput) | undefined;
 
 	constructor(private readonly now: () => number = Date.now) { }
 
@@ -284,10 +318,12 @@ export class ChatTranscript {
 				this.appendText(event.role, event.text, event.messageId);
 				break;
 			case 'toolCall': {
-				const item = toToolCallItem(event.call);
-				const shown = !item.details.length ? this._items.findLast(i => i.id === item.id) : undefined;
+				const item = toToolCallItem(event.call, this.trimOutput);
+				const shown = this._items.findLast(i => i.id === item.id);
+				const others = shown?.kind === 'toolCall' ? shown.others : undefined;
 				// An update of a finished call carries no content: it keeps what it showed.
-				this.upsert(shown?.kind === 'toolCall' ? { ...item, details: shown.details } : item);
+				const details = !item.details.length && shown?.kind === 'toolCall' ? shown.details : item.details;
+				this.upsert({ ...item, details, ...others ? { others } : {} });
 				break;
 			}
 			case 'plan':
@@ -306,7 +342,8 @@ export class ChatTranscript {
 		}
 	}
 
-	addPermission(permission: PendingPermission): void {
+	/** `others`: agents with unreviewed changes in a file the request edits. */
+	addPermission(permission: PendingPermission, others?: readonly OtherAgentChanges[]): void {
 		const { toolCall, options } = permission.request;
 		this.push({
 			id: permission.id,
@@ -315,7 +352,17 @@ export class ChatTranscript {
 			options: options.map(o => ({ optionId: o.optionId, name: o.name, kind: o.kind })),
 			diffPaths: (toolCall.content ?? []).flatMap(c => c.type === 'diff' ? [c.path] : []),
 			...permission.confirm ? { confirm: true } : {},
+			...permission.prefixes?.length ? { prefixes: permission.prefixes } : {},
+			...others?.length ? { others } : {},
 		});
+	}
+
+	/** Notes on a tool call's row that other agents have unreviewed changes in a file it edited. */
+	setOthers(id: string, others: readonly OtherAgentChanges[]): void {
+		const item = this._items.findLast(i => i.id === id);
+		if (item?.kind === 'toolCall' && others.length) {
+			this.upsert({ ...item, others });
+		}
 	}
 
 	/** Records the answer; `label` says how it was chosen when the user didn't, such as "Allowed for this session". */
@@ -371,8 +418,28 @@ export class ChatTranscript {
 		this.echo = squash(text) || undefined;
 	}
 
-	addNotice(text: string, severity: 'info' | 'error' = 'info'): void {
-		this.push({ id: this.newId(), kind: 'notice', text, severity });
+	/** `actions`: the notice's ways out, such as Retry; the latest notice's go when the next turn starts (`clearNoticeActions`). */
+	addNotice(text: string, severity: 'info' | 'error' = 'info', actions: readonly NoticeAction[] = []): void {
+		if (actions.length) {
+			this.clearNoticeActions();
+		}
+		this.push({ id: this.newId(), kind: 'notice', text, severity, ...actions.length ? { actions } : {} });
+	}
+
+	/** The notice that offers `action` now, if `id` is it. */
+	noticeOffering(id: string, action: NoticeAction): Extract<TranscriptItem, { kind: 'notice' }> | undefined {
+		const item = this._items.findLast(i => i.id === id);
+		return item?.kind === 'notice' && item.actions?.includes(action) ? item : undefined;
+	}
+
+	/** Takes the ways out off every notice that offers them, as the next turn starts. */
+	clearNoticeActions(): void {
+		for (const item of this._items) {
+			if (item.kind === 'notice' && item.actions) {
+				const { actions: _actions, ...rest } = item;
+				this.upsert(rest);
+			}
+		}
 	}
 
 	/** Offers Retry on the latest error, and on no other. */
@@ -460,7 +527,21 @@ export class ChatTranscript {
 	/** Replaces the conversation with saved items, such as an agent's from an earlier window. */
 	restore(items: readonly TranscriptItem[]): void {
 		// A request still open when the chat was saved went with its session: nothing can answer its buttons now.
-		this._items = items.map(item => item.kind === 'permission' && !item.answer ? { ...item, answer: { kind: 'cancelled' as const } } : item);
+		// Nor a failed turn's notice: its prompt went with the window. Long tool outputs are kept whole elsewhere again.
+		this._items = items.map(item => {
+			if (item.kind === 'permission' && !item.answer) {
+				return { ...item, answer: { kind: 'cancelled' as const } };
+			}
+			if (item.kind === 'notice' && item.actions) {
+				const { actions: _actions, ...rest } = item;
+				return rest;
+			}
+			if (item.kind === 'toolCall' && this.trimOutput) {
+				const trim = this.trimOutput;
+				return { ...item, details: item.details.map((detail, part) => trimDetail(item.id, part, detail, trim)) };
+			}
+			return item;
+		});
 		this.nextId = Math.max(this.nextId, ...items.map(i => /^item-(\d+)$/.exec(i.id)).map(m => m ? Number(m[1]) + 1 : 0));
 		this.turnStart = this._items.length;
 		this.lastMessageId = undefined;
@@ -605,16 +686,26 @@ export function toolCallItemId(toolCallId: string): string {
 	return `tool-${toolCallId}`;
 }
 
-function toToolCallItem(call: ToolCallModel): Extract<TranscriptItem, { readonly kind: 'toolCall' }> {
+function toToolCallItem(call: ToolCallModel, trim: ChatTranscript['trimOutput']): Extract<TranscriptItem, { readonly kind: 'toolCall' }> {
+	const id = toolCallItemId(call.id);
 	return {
-		id: toolCallItemId(call.id),
+		id,
 		kind: 'toolCall',
 		title: call.title,
 		toolKind: call.kind,
 		status: call.status,
 		locations: call.locations.map(l => l.line ? { path: l.path, line: l.line } : { path: l.path }),
-		details: call.content.map(toToolCallDetail),
+		details: call.content.map((content, part) => trim ? trimDetail(id, part, toToolCallDetail(content), trim) : toToolCallDetail(content)),
 	};
+}
+
+/** A text output as its card first shows it: whole, or its first and last lines when long (see `ToolOutputStore`). */
+function trimDetail(itemId: string, part: number, detail: ToolCallDetail, trim: NonNullable<ChatTranscript['trimOutput']>): ToolCallDetail {
+	if (detail.type !== 'text' || detail.hiddenLines) {
+		return detail;
+	}
+	const trimmed = trim(itemId, part, detail.text);
+	return trimmed.hiddenLines ? { type: 'text', text: trimmed.head, tail: trimmed.tail, hiddenLines: trimmed.hiddenLines } : detail;
 }
 
 function toToolCallDetail(content: acp.ToolCallContent): ToolCallDetail {

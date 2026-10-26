@@ -6,6 +6,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { AgentClient, AgentClientState } from '../../src/acp/agentClient';
 import { ChatTranscript, countChangedLines, TranscriptItem } from '../../src/acp/chatTranscript';
+import { ToolOutputStore } from '../../src/acp/chatMemory';
 import { SessionUpdateAdapter } from '../../src/acp/sessionUpdates';
 import { AgentRuntime } from '../../src/acp/agentRuntime';
 import { AgentSidecar } from '../../src/acp/sidecar';
@@ -174,6 +175,56 @@ describe('ChatTranscript retry on errors', () => {
 	});
 });
 
+describe('ChatTranscript notice actions', () => {
+	it('puts the ways out on the latest failed turn only, until the next turn or a restore', () => {
+		const transcript = new ChatTranscript();
+		transcript.addNotice('quota', 'error', ['retry', 'switchModel']);
+		transcript.addNotice('limit', 'info', ['continue']);
+		const [quota, limit] = transcript.items;
+		expect([transcript.noticeOffering(quota.id, 'retry'), transcript.noticeOffering(limit.id, 'continue')?.text, transcript.noticeOffering(limit.id, 'retry')]).toEqual([undefined, 'limit', undefined]);
+		const restored = new ChatTranscript();
+		restored.restore(transcript.items);
+		transcript.clearNoticeActions();
+		expect([transcript.items, restored.items].map(items => items.some(item => item.kind === 'notice' && item.actions !== undefined))).toEqual([false, false]);
+	});
+});
+
+describe('ChatTranscript tool outputs', () => {
+	const lines = (count: number) => Array.from({ length: count }, (_, i) => `line ${i + 1}`).join('\n');
+	const call = (text: string, status: 'in_progress' | 'completed' = 'completed') => ({ kind: 'toolCall' as const, call: { id: 't1', title: 'git log', kind: 'execute' as const, status, locations: [], content: [{ type: 'content' as const, content: { type: 'text' as const, text } }] } });
+
+	it('keeps only a long output\'s first and last lines, the whole in the store, and short ones as they are', () => {
+		const store = new ToolOutputStore(1024 * 1024);
+		const transcript = new ChatTranscript();
+		transcript.trimOutput = (itemId, part, text) => store.put(itemId, part, text);
+		transcript.apply(call(lines(100)));
+		const [item] = transcript.items;
+		expect(item.kind === 'toolCall' && item.details[0]).toEqual({ type: 'text', text: lines(20), tail: lines(100).split('\n').slice(-20).join('\n'), hiddenLines: 60 });
+		expect(store.get(item.id, 0)).toBe(lines(100));
+		transcript.apply(call('done'));
+		expect(transcript.items[0].kind === 'toolCall' && transcript.items[0].details[0]).toEqual({ type: 'text', text: 'done' });
+	});
+
+	it('trims a saved chat\'s long outputs as it is restored', () => {
+		const store = new ToolOutputStore(1024 * 1024);
+		const saved = new ChatTranscript();
+		saved.apply(call(lines(90)));
+		const transcript = new ChatTranscript();
+		transcript.trimOutput = (itemId, part, text) => store.put(itemId, part, text);
+		transcript.restore(saved.items);
+		const [item] = transcript.items;
+		expect([item.kind === 'toolCall' && item.details[0].type === 'text' && item.details[0].hiddenLines, store.get(item.id, 0)]).toEqual([50, lines(90)]);
+	});
+
+	it('keeps the note about another agent\'s changes as the call updates', () => {
+		const transcript = new ChatTranscript();
+		transcript.apply(call('editing', 'in_progress'));
+		transcript.setOthers('tool-t1', [{ agent: 'a2', title: 'Login fix' }]);
+		transcript.apply(call('edited'));
+		expect(transcript.items[0].kind === 'toolCall' && transcript.items[0].others).toEqual([{ agent: 'a2', title: 'Login fix' }]);
+	});
+});
+
 describe('ChatTranscript permissions', () => {
 	const request = {
 		sessionId: 's1',
@@ -195,6 +246,13 @@ describe('ChatTranscript permissions', () => {
 			options: [{ optionId: 'proceed_once', name: 'Allow', kind: 'allow_once' }, { optionId: 'cancel', name: 'Reject', kind: 'reject_once' }],
 			diffPaths: ['/w/a.ts'],
 		});
+	});
+
+	it('carries a shell command\'s prefixes and the other agents changing its files', () => {
+		const transcript = new ChatTranscript();
+		transcript.addPermission({ id: 'permission-0', request, prefixes: ['npx vitest'] }, [{ agent: 'a2', title: 'Login fix' }]);
+		const [item] = transcript.items;
+		expect(item.kind === 'permission' && [item.prefixes, item.others]).toEqual([['npx vitest'], [{ agent: 'a2', title: 'Login fix' }]]);
 	});
 
 	it('records the answer in place', () => {

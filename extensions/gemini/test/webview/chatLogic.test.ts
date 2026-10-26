@@ -8,7 +8,7 @@ import type { TranscriptItem } from '../../src/acp/chatTranscript';
 import {
 	subagentName,
 	acceptsEnhanceReply, coalesceUpdates, HeldUpdates, attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, currentActivity, currentPrompt, promptStep, formatClock, turnStart, draggedHeight, emptyFence, enhanceButtonPlacement, enhanceOriginal, type EnhancePhase, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, fileReference, fileUris, folderOf, format, formatDuration, formatSentAt, isEnhanceShortcut, isQueueShortcut,
-	imageName, indexOfItem, isNearBottom, matchCommands, mentionAt, mentionInsertion, permissionDefaults, planIcon, replyBefore, restoredHeight,
+	imageName, indexOfItem, isNearBottom, matchCommands, mentionAt, mentionInsertion, permissionChoices, planIcon, cardKey, waitingPermission, replyBefore, restoredHeight,
 	formatTokens, resetsIn, sameAttachment, slashQuery, thoughtSeconds, toolKindIcon, withAppended, withoutMention, wrapIndex,
 } from '../../webview-src/chatLogic';
 
@@ -210,24 +210,62 @@ describe('icons', () => {
 	});
 });
 
-describe('permissionDefaults', () => {
-	it('prefers allowing and rejecting once', () => {
+describe('permissionChoices', () => {
+	it('prefers allowing and rejecting once, and finds the CLI\'s "Allow for this session"', () => {
 		const options = [
-			{ optionId: 'aa', name: 'Always', kind: 'allow_always' },
+			{ optionId: 'proceed_always_and_save', name: 'Allow this command for all future sessions', kind: 'allow_always' },
+			{ optionId: 'proceed_always', name: 'Allow for this session', kind: 'allow_always' },
 			{ optionId: 'a', name: 'Allow', kind: 'allow_once' },
 			{ optionId: 'ra', name: 'Never', kind: 'reject_always' },
 			{ optionId: 'r', name: 'Reject', kind: 'reject_once' },
 		] as const;
-		const { primary, reject } = permissionDefaults(options);
-		expect(primary?.optionId).toBe('a');
-		expect(reject?.optionId).toBe('r');
+		const { primary, once, session, reject } = permissionChoices(options);
+		expect([primary?.optionId, once?.optionId, session?.optionId, reject?.optionId]).toEqual(['a', 'a', 'proceed_always', 'r']);
+		// An MCP tool's card: the narrower of its two session options.
+		expect(permissionChoices([
+			{ optionId: 'proceed_always_server', name: 'Allow all server tools for this session', kind: 'allow_always' },
+			{ optionId: 'proceed_always_tool', name: 'Allow tool for this session', kind: 'allow_always' },
+		]).session?.optionId).toBe('proceed_always_tool');
 	});
 
 	it('falls back to any allow or reject, or none', () => {
-		const { primary, reject } = permissionDefaults([{ optionId: 'aa', name: 'Always', kind: 'allow_always' }, { optionId: 'ra', name: 'Never', kind: 'reject_always' }]);
-		expect(primary?.optionId).toBe('aa');
-		expect(reject?.optionId).toBe('ra');
-		expect(permissionDefaults([])).toEqual({ primary: undefined, reject: undefined });
+		const { primary, once, reject } = permissionChoices([{ optionId: 'aa', name: 'Always', kind: 'allow_always' }, { optionId: 'ra', name: 'Never', kind: 'reject_always' }]);
+		expect([primary?.optionId, once, reject?.optionId]).toEqual(['aa', undefined, 'ra']);
+		expect(permissionChoices([])).toEqual({ primary: undefined, once: undefined, session: undefined, reject: undefined });
+	});
+});
+
+describe('cardKey', () => {
+	const key = (key: string, code: string, mods: { alt?: boolean; meta?: boolean; ctrl?: boolean; shift?: boolean } = {}) =>
+		({ key, code, altKey: !!mods.alt, metaKey: !!mods.meta, ctrlKey: !!mods.ctrl, shiftKey: !!mods.shift });
+
+	it('answers with ⌥⌘↩, ⌥⌘S and Esc on a Mac, and Ctrl+Alt elsewhere', () => {
+		expect([
+			cardKey(key('Enter', 'Enter', { alt: true, meta: true }), true),
+			cardKey(key('ß', 'KeyS', { alt: true, meta: true }), true),
+			cardKey(key('Escape', 'Escape'), true),
+			cardKey(key('Enter', 'Enter', { alt: true, ctrl: true }), false),
+			cardKey(key('s', 'KeyS', { alt: true, ctrl: true }), false),
+		]).toEqual(['once', 'session', 'reject', 'once', 'session']);
+	});
+
+	it('leaves the composer\'s own keys alone', () => {
+		expect([
+			cardKey(key('Enter', 'Enter'), true),
+			cardKey(key('Enter', 'Enter', { meta: true }), true),
+			cardKey(key('Enter', 'Enter', { alt: true, meta: true, shift: true }), true),
+			cardKey(key('ArrowUp', 'ArrowUp', { alt: true, meta: true }), true),
+			cardKey(key('Enter', 'Enter', { alt: true, ctrl: true }), true),
+			cardKey(key('Escape', 'Escape', { shift: true }), true),
+		]).toEqual([undefined, undefined, undefined, undefined, undefined, undefined]);
+	});
+});
+
+describe('waitingPermission', () => {
+	it('finds the newest card not yet answered', () => {
+		const card = (id: string, answered = false) => ({ id, kind: 'permission' as const, title: id, options: [], diffPaths: [], ...answered ? { answer: { kind: 'cancelled' as const } } : {} });
+		expect(waitingPermission([card('p1'), card('p2'), card('p3', true)])?.id).toBe('p2');
+		expect(waitingPermission([card('p1', true)])).toBeUndefined();
 	});
 });
 

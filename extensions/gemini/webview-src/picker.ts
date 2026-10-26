@@ -10,7 +10,7 @@ import { basename } from '../src/acp/attachments';
 import { addAttachments } from './attachmentChips';
 import type { SlashCommand } from '../src/acp/slashCommands';
 import { folderOf, matchCommands, mentionAt, mentionInsertion, slashQuery, withoutMention, wrapIndex } from './chatLogic';
-import { el, icon } from './dom';
+import { el, icon, setTip } from './dom';
 import { autoGrow, updateSendState } from './inputBox';
 import { strings, ui, vscode } from './view';
 
@@ -129,7 +129,7 @@ function renderPicker(): void {
 		? state.files.map((file, index) => {
 			const r = row(index);
 			r.append(icon('file'), el('span', 'picker-name', basename(file.relative)), el('span', 'picker-folder', folderOf(file.relative)));
-			r.title = file.relative;
+			setTip(r, file.relative);
 			return r;
 		})
 		: state.commands.map((command, index) => {
@@ -140,7 +140,7 @@ function renderPicker(): void {
 				el('span', 'picker-name', `/${command.name}`),
 				el('span', 'picker-folder', command.description),
 			);
-			r.title = `${command.source === 'team' ? strings.commandFromTeam : command.source === 'skill' ? strings.commandFromSkill : command.source === 'app' ? strings.commandFromApp : strings.commandFromCli}: /${command.name}`;
+			setTip(r, `${command.source === 'team' ? strings.commandFromTeam : command.source === 'skill' ? strings.commandFromSkill : command.source === 'app' ? strings.commandFromApp : strings.commandFromCli}: /${command.name}`);
 			return r;
 		})));
 	input.setAttribute('aria-activedescendant', `picker-${state.active}`);

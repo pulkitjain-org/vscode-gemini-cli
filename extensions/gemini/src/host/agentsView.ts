@@ -890,6 +890,11 @@ export class AgentsView implements vscode.Disposable {
 				},
 				workspace,
 				terminal: this.chatTerminal(record.id, workspace, project?.role === 'coordinator'),
+				// An edit to a file another live agent in the folder has unreviewed changes in says so.
+				sharedFiles: {
+					others: filePath => this.review.othersChanging(filePath, record.id).flatMap(source => source.id ? [{ agent: source.id, title: this.model.agent(source.id)?.title ?? '' }] : []),
+					show: agent => void this.openChanges(agent),
+				},
 				git: {
 					folder: () => folder,
 					// An agent on its own branch commits there with Merge Back, not from the chat.
