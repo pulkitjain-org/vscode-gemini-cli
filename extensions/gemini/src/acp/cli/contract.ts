@@ -109,3 +109,12 @@ export async function checkCliContract(entry: string): Promise<CliContractMismat
 	}
 	return [...missing.keys()].map(({ check, area, detail }) => ({ check, area, detail }));
 }
+
+/**
+ * The line Check Agent Connection adds for `mismatches`: each check's
+ * sentence from `sentences`, once each and in the order found; empty when
+ * everything matches, so nothing is shown.
+ */
+export function contractLine(mismatches: readonly CliContractMismatch[], sentences: Readonly<Record<CliContractCheck, string>>): string {
+	return [...new Set(mismatches.map(mismatch => sentences[mismatch.check]))].join(' ');
+}

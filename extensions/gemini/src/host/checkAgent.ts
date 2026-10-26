@@ -5,14 +5,18 @@
 
 import * as vscode from 'vscode';
 import { spawnAgent } from '../acp/agentProcess';
+import { checkCliContract, contractLine, type CliContractCheck, type CliContractMismatch } from '../acp/cli/contract';
 import { errorMessage } from '../acp/errors';
 import { getAgentCommand, getWorkspaceCwd } from './configuration';
+import { findCliEntry } from './quickEdits';
 
 const initializeTimeoutMs = 30_000;
 
 /**
  * Starts `gemini --acp`, runs the unauthenticated `initialize` handshake,
- * reports what the agent advertises, and stops the process again.
+ * reports what the agent advertises, and stops the process again. When
+ * something GeminiCode reads from the CLI outside ACP doesn't match
+ * (`checkCliContract`), one more line says what that affects.
  */
 export async function checkAgent(log: vscode.LogOutputChannel): Promise<void> {
 	const command = await getAgentCommand();
@@ -31,6 +35,8 @@ export async function checkAgent(log: vscode.LogOutputChannel): Promise<void> {
 		requestPermission: async () => ({ outcome: { outcome: 'cancelled' } }),
 	});
 	let timer: ReturnType<typeof setTimeout> | undefined;
+	// Read alongside the handshake: about 0.4 s of reading the CLI's bundle.
+	const contract = findCliEntry().then(entry => entry ? checkCliContract(entry) : [], () => [] as CliContractMismatch[]);
 	try {
 		const timeout = new Promise<never>((_, reject) => {
 			timer = setTimeout(() => reject(new Error(`No response to initialize within ${initializeTimeoutMs / 1000}s`)), initializeTimeoutMs);
@@ -40,6 +46,7 @@ export async function checkAgent(log: vscode.LogOutputChannel): Promise<void> {
 		const authMethods = (info.authMethods ?? []).map(m => m.id).join(', ') || 'none';
 		log.info(`Connected to ${agent}, protocol ${info.protocolVersion}, auth methods: ${authMethods}`);
 		void vscode.window.showInformationMessage(vscode.l10n.t("Connected to {0} (ACP protocol {1}).", agent, info.protocolVersion));
+		void reportContract(await contract, log);
 	} catch (err) {
 		log.error(err instanceof Error ? err : String(err));
 		const showLog = vscode.l10n.t("Show Log");
@@ -51,5 +58,30 @@ export async function checkAgent(log: vscode.LogOutputChannel): Promise<void> {
 		clearTimeout(timer);
 		connection.dispose();
 		child.kill();
+	}
+}
+
+/** The one line for what doesn't match, with Show Log; nothing when everything matches. */
+async function reportContract(mismatches: readonly CliContractMismatch[], log: vscode.LogOutputChannel): Promise<void> {
+	for (const mismatch of mismatches) {
+		log.warn(`The Gemini CLI doesn't have what GeminiCode reads for ${mismatch.area}: ${mismatch.detail}`);
+	}
+	const sentences: Record<CliContractCheck, string> = {
+		bundle: vscode.l10n.t("GeminiCode can't read this CLI's files, so inline edit, MCP server problems, performance traces and saved sessions may not work."),
+		oauthClient: vscode.l10n.t("Inline edit can't read this CLI's sign-in settings, so it uses the slower agent path."),
+		flashModels: vscode.l10n.t("Inline edit can't read this CLI's model names, so it uses the slower agent path."),
+		debugLog: vscode.l10n.t("GeminiCode can't read this CLI's debug log, so MCP servers that fail to start aren't reported."),
+		mcpLogLines: vscode.l10n.t("GeminiCode can't read this CLI's debug log, so MCP servers that fail to start aren't reported."),
+		telemetryEnv: vscode.l10n.t("Record Performance Trace can't read this CLI's telemetry, so its traces may be empty."),
+		traceEvents: vscode.l10n.t("Record Performance Trace can't read this CLI's telemetry, so its traces may be empty."),
+		sessionFiles: vscode.l10n.t("GeminiCode can't find this CLI's session files, so picking up a CLI session and Rewind may not work."),
+	};
+	const line = contractLine(mismatches, sentences);
+	if (!line) {
+		return;
+	}
+	const showLog = vscode.l10n.t("Show Log");
+	if (await vscode.window.showWarningMessage(line, showLog) === showLog) {
+		log.show();
 	}
 }
