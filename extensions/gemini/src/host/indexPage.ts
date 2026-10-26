@@ -10,16 +10,13 @@ import { provisionalTitle } from '../acp/docs/docsRegistry';
 import { suggestDocs } from '../acp/docs/suggest';
 import type { IndexStatus } from '../acp/index/indexerProtocol';
 import { folderTrustApplies, isFolderTrusted, trustedFoldersPath } from '../acp/trustedFolders';
-import { errorMessage } from '../acp/errors';
 import type { AgentService } from './agentService';
-import { askToTrustFolder } from './chat/chatSettings';
 import { configSection } from './configuration';
 import { DocsSources, defaultMaxPages, SourceView } from './docsSources';
 import { tildify } from './displayText';
 import type { DocsSourceView, FromIndexPage, IndexPageStrings, IndexPageView, IndexWorkspaceView, ToIndexPage } from './indexProtocol';
 import { createNonce, escapeAttribute } from './webviewHtml';
 import { indexBuildOn, type WorkspaceIndex } from './workspaceIndex';
-import { showError } from './errorNotice';
 
 const viewType = 'gemini.index';
 const dismissedKey = 'gemini.index.dismissedDocs';
@@ -160,10 +157,9 @@ export class IndexPage implements vscode.Disposable {
 				return;
 			case 'trust':
 				// Only a folder the page lists, and only once the user agreed, as Chat asks.
-				if (!(await this.agents.workspaces()).some(workspace => workspace.folder === message.folder) || !await askToTrustFolder(message.folder, vscode.l10n.t("The Gemini CLI loads GeminiCode's tools, the index among them, only in trusted folders."))) {
+				if (!(await this.agents.workspaces()).some(workspace => workspace.folder === message.folder) || !await this.service.trust.ask(message.folder, { explicit: true })) {
 					return;
 				}
-				await this.service.trustFolder(message.folder).catch(err => showError(vscode.l10n.t("The folder could not be trusted: {0}", errorMessage(err))));
 				break;
 			case 'reveal':
 				await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(message.folder));

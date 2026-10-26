@@ -16,10 +16,10 @@ import { appRipgrep } from '../acp/index/ripgrepPath';
 import { createFileHandlers } from '../acp/fileAccess';
 import { PermissionBroker } from '../acp/permissions';
 import { CliResolution, isOlderThan } from '../acp/cliResolution';
+import { FolderTrust } from './folderTrust';
 import { McpDiagnostics, McpProblem } from '../acp/mcpDiagnostics';
 import { MIN_CLI_VERSION } from '../acp/protocol';
 import { AgentSidecar } from '../acp/sidecar';
-import { trustedFoldersPath, trustFolder } from '../acp/trustedFolders';
 import { AgentStatus, describeAgentStatus, describeRuntimeStatus } from '../acp/status';
 import { isConfirmToolCall } from '../acp/teamTools';
 import { agentErrorText } from './chatStatus';
@@ -88,8 +88,20 @@ export class AgentService implements vscode.Disposable {
 	/** Fires when an MCP server fails, or the agent restarts and they start afresh. */
 	readonly onDidChangeMcpProblems = this.onDidChangeMcpProblemsEmitter.event;
 
-	/** `debugLog` is where the agent writes its debug log, read for MCP failures the CLI does not report over ACP. */
-	constructor(private readonly log: vscode.LogOutputChannel, debugLog?: string) {
+	/** Folder trust for agents: the first-use question, and changes reaching the running agents. */
+	readonly trust: FolderTrust;
+
+	/**
+	 * `debugLog` is where the agent writes its debug log, read for MCP failures the CLI does not report over ACP;
+	 * `state` keeps folder trust's Not Now answers.
+	 */
+	constructor(private readonly log: vscode.LogOutputChannel, debugLog?: string, state?: vscode.Memento) {
+		this.trust = new FolderTrust(state, {
+			runningTurns: () => this.runtime.runningTurns,
+			reloadWhenIdle: () => this.started && this.restartWhenIdle('restarting so the agents get the new folder trust'),
+			restartNow: () => this.started && this.restart(),
+			log: message => this.log.info(message),
+		});
 		this.mcpDiagnostics = debugLog ? new McpDiagnostics(debugLog) : undefined;
 		this.sidecar = new AgentSidecar({ command: () => this.agentCommand(), cwd: getWorkspaceCwd() });
 		this.runtime = new AgentRuntime(this.sidecar, {
@@ -224,22 +236,6 @@ export class AgentService implements vscode.Disposable {
 		});
 	}
 
-	/**
-	 * Adds `folders` to the CLI's trusted folders and restarts the agent once no
-	 * prompt runs, since the CLI reads that list once per process. Returns
-	 * whether the restart has to wait. Throws when the list cannot be updated.
-	 */
-	async trustFolder(...folders: string[]): Promise<boolean> {
-		const file = trustedFoldersPath(process.env);
-		for (const folder of folders) {
-			await trustFolder(file, folder);
-			this.log.info(`Trusted ${folder} in ${file}`);
-		}
-		const waits = this.runtime.busy;
-		this.restartWhenIdle('restarting so the agent trusts the folder');
-		return waits;
-	}
-
 	/** The agent's status: the process, and how opening sessions on it went for every chat (`describeRuntimeStatus`). */
 	get status(): AgentStatus {
 		return describeRuntimeStatus(this.sidecar.state, this.runtime.state, this.runtime.sessionHealth, this.blocked);
@@ -345,6 +341,8 @@ export class AgentService implements vscode.Disposable {
 
 	/** The agent's command, with its debug log pointed at a file GeminiCode reads, unless the user set one. */
 	private async agentCommand(): Promise<AgentCommand> {
+		// Before the process reads the trust file, which it does once.
+		await this.trust.beforeLaunch();
 		this.includedFolders = includeDirectoryArgs(includedFolderPaths()).join('\n');
 		const command = await getAgentCommand({ cli: await this.resolveCli() });
 		if (!this.mcpDiagnostics || command.env.GEMINI_DEBUG_LOG_FILE || !await this.mcpDiagnostics.reset()) {
@@ -384,6 +382,7 @@ export class AgentService implements vscode.Disposable {
 
 	dispose(): void {
 		this.idleRestart?.dispose();
+		this.trust.dispose();
 		this.setupTerminal?.dispose();
 		this.permissions.dispose();
 		this.client.dispose();

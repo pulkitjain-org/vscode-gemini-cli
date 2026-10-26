@@ -137,11 +137,19 @@ button.link-button:hover {
 	min-width: 0;
 }
 
-/* Where the next agent works: Here, On Its Own Branch or As a Project, as one segmented control; each choice explains itself in its tooltip. */
+/* The chooser's row: the chooser, To a Project's project picker, and what needs trust. */
+.home-start-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+/* Where the next task goes: Here, On Its Own Branch or To a Project, as one segmented control; each choice explains itself in its tooltip. */
 .home-start-as {
 	display: inline-flex;
 	gap: 2px;
-	margin-top: 8px;
 	padding: 2px;
 	border: 1px solid var(--gemini-border);
 	border-radius: 8px;
@@ -150,6 +158,42 @@ button.link-button:hover {
 }
 
 .home-start-as[hidden] { display: none; }
+
+.home-project {
+	position: relative;
+	display: inline-flex;
+}
+
+.home-project[hidden],
+.needs-trust[hidden] {
+	display: none;
+}
+
+.home-project button.option-button {
+	height: 26px;
+	padding: 0 8px;
+	border-radius: var(--gemini-radius-small);
+}
+
+/* A choice the folder's trust holds back, said in place with the way to trust it. */
+.needs-trust {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	height: 26px;
+	padding: 0 3px 0 8px;
+	border: 1px solid color-mix(in srgb, var(--gemini-warn) 35%, transparent);
+	border-radius: var(--gemini-radius-small);
+	background: color-mix(in srgb, var(--gemini-warn) 10%, transparent);
+	color: var(--gemini-warn);
+	font-size: 12px;
+}
+
+.needs-trust button.primary {
+	height: 20px;
+	padding: 0 9px;
+	font-size: 12px;
+}
 
 button.start-as-option {
 	height: 22px;
@@ -214,7 +258,8 @@ button.start-as-option:focus-visible {
 	position: relative;
 }
 
-.home-model[hidden] {
+.home-model[hidden],
+.home-from-tools[hidden] {
 	display: none;
 }
 

@@ -36,8 +36,8 @@ export interface ChatHost {
 	open?(): void;
 	/** Stops the current turn. */
 	cancel(): Promise<void>;
-	/** Trusts `folder` for the CLI and restarts the agent; returns whether the restart waits for running prompts. */
-	trustFolder(folder: string): Promise<boolean>;
+	/** Asks to trust `folder` for the CLI, as on first use; resolves whether agents there run trusted now. The agent restarts once no prompt runs. */
+	askToTrust(folder: string): Promise<boolean>;
 	/** Writes to the Gemini log. */
 	writeLog?(message: string): void;
 }

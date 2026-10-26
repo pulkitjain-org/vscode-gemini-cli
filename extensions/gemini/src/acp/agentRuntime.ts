@@ -148,6 +148,11 @@ export class AgentRuntime {
 		return this.turns > 0;
 	}
 
+	/** How many prompts are running, in every session. */
+	get runningTurns(): number {
+		return this.turns;
+	}
+
 	/** Counts `turn` as running until it settles, for `busy`. */
 	async trackTurn<T>(turn: Promise<T>): Promise<T> {
 		if (this.turns++ === 0) {

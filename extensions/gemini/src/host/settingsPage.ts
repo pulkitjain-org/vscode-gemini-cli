@@ -14,10 +14,13 @@ import { errorMessage } from '../acp/errors';
 import { addHook, disabledHooks, HookEvent, hookEvents, hooksIn, setHookEnabled, toolEvents } from '../acp/hooks';
 import { addMcpServer, disabledServers, isServerEnabled, mcpServersIn, readSettingsFile, rulesFileNames, serverConfigFrom, setServerEnabled } from '../acp/projectSettings';
 import { disabledSkills, loadSkills, setSkillEnabled, skillFolders, skillSlug, skillTemplate } from '../acp/skills';
+import type { AuditLog } from '../acp/auditLog';
+import { ownTrustRules, readTrustRules, type TrustLevel, type TrustRule } from '../acp/trustedFolders';
+import { trustRows, type TrustRow } from '../acp/trustRows';
 import type { AgentService } from './agentService';
 import { type getAgentCommand, getWorkspaceCwd } from './configuration';
 import { tildify } from './displayText';
-import { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage } from './panelProtocol';
+import { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage, TrustRowView, TrustView } from './panelProtocol';
 import { StorageSection, type StorageHost } from './storageSection';
 import type { forgetSkills } from './teamCommands';
 import { createNonce, escapeAttribute } from './webviewHtml';
@@ -47,6 +50,8 @@ export interface SettingsHost {
 	readonly forgetSkills: typeof forgetSkills;
 	/** What the Storage section measures and cleans up; without it, the section isn't shown. */
 	readonly storage?: StorageHost;
+	/** The team tools' audit log, where Trusted Folders records each change; without it, changes are only logged. */
+	readonly audit?: AuditLog;
 }
 
 export class SettingsPage implements vscode.Disposable {
@@ -78,6 +83,8 @@ export class SettingsPage implements vscode.Disposable {
 			vscode.commands.registerCommand('gemini.projectSettings', () => this.show()),
 			vscode.commands.registerCommand('gemini.newSkill', () => this.newSkill()),
 			service.onDidChangeMcpProblems(() => void this.update()),
+			// GeminiCode's own trust changes and edits to the file elsewhere, such as the terminal's CLI.
+			service.trust.onDidChange(() => void this.update()),
 			// The CLI could not be asked while the agent was not running; ask now.
 			// Each ask opens a CLI session, so a hidden page asks once it shows again.
 			service.runtime.onDidChangeState(state => state.kind === 'ready' && this.panel && this.refreshCliWhenShown()),
@@ -195,6 +202,7 @@ export class SettingsPage implements vscode.Disposable {
 
 	private async build(): Promise<SettingsPageView> {
 		const dir = geminiDir();
+		const trust = this.trustView();
 		const personal = await readSettingsFile(this.personalSettings());
 		const folders = vscode.workspace.workspaceFolders ?? [];
 		const projects = await Promise.all(folders.map(async folder => {
@@ -256,8 +264,59 @@ export class SettingsPage implements vscode.Disposable {
 			servers: servers.map(server => measured.has(server.name) ? { ...server, tokens: measured.get(server.name) } : server),
 			skills, hooks, extensions: this.extensions, memory: this.memory, rules, preferences: this.preferencesView(personal),
 			contextCost: this.contextCostView(folder, cost),
+			trust: await trust,
 			...this.storage ? { storage: this.storage.view() } : {},
 		};
+	}
+
+	/** Trusted Folders: every rule of the Gemini CLI's trust file, in plain words. */
+	private async trustView(): Promise<TrustView> {
+		const trust = this.service.trust;
+		if (!await trust.applies()) {
+			return { state: 'off', message: vscode.l10n.t("Folder trust is off in your Gemini CLI settings, so agents trust every folder.") };
+		}
+		let rules: TrustRule[];
+		try {
+			rules = await readTrustRules(trust.file);
+		} catch {
+			return { state: 'unreadable', message: vscode.l10n.t("{0} can't be read as JSON, so GeminiCode won't change it.", tildify(trust.file)) };
+		}
+		return { state: 'ready', rows: (await trustRows(rules, ownTrustRules())).map(trustRowView) };
+	}
+
+	/** Trust Folder..., Trust a Parent Folder... or Never Trust a Folder...: asks for the folder, then writes its rule. */
+	private async trustFolder(kind: 'folder' | 'parent' | 'never'): Promise<void> {
+		const workspace = vscode.workspace.workspaceFolders?.find(each => each.uri.scheme === 'file')?.uri;
+		const [title, openLabel] = kind === 'folder' ? [vscode.l10n.t("Trust Folder"), vscode.l10n.t("Trust")]
+			: kind === 'parent' ? [vscode.l10n.t("Trust a Parent Folder"), vscode.l10n.t("Trust Everything in It")]
+				: [vscode.l10n.t("Never Trust a Folder"), vscode.l10n.t("Never Trust")];
+		const picked = await vscode.window.showOpenDialog({
+			title, openLabel, canSelectFiles: false, canSelectFolders: true, canSelectMany: false,
+			// A parent folder is usually the one that holds this window's repository.
+			...workspace ? { defaultUri: kind === 'parent' ? vscode.Uri.file(path.dirname(workspace.fsPath)) : workspace } : {},
+		});
+		const folder = picked?.[0]?.fsPath;
+		if (!folder) {
+			return;
+		}
+		const level: TrustLevel = kind === 'never' ? 'DO_NOT_TRUST' : 'TRUST_FOLDER';
+		const shown = tildify(folder);
+		await this.changeTrust(folder, level, kind === 'folder' ? `Trust ${shown}` : kind === 'parent' ? `Trust ${shown} and everything in it` : `Never trust ${shown}`);
+	}
+
+	/** Remove on a row: only a rule the section shows as removable, read again from the file. */
+	private async removeTrust(rule: string): Promise<void> {
+		const rows = await trustRows(await readTrustRules(this.service.trust.file), ownTrustRules());
+		if (rows.some(row => row.rule === rule)) {
+			await this.changeTrust(rule, undefined, `Remove the trust rule for ${tildify(rule)}`);
+		}
+	}
+
+	/** Writes a rule through FolderTrust, which logs it and lets the agents pick it up, recording it in the audit log too. */
+	private async changeTrust(folder: string, level: TrustLevel | undefined, effect: string): Promise<void> {
+		const write = () => this.service.trust.set(folder, level);
+		const audit = this.host.audit;
+		await (audit ? audit.record({ caller: 'ui', tool: 'folder_trust', ref: folder, effect }, write) : write());
 	}
 
 	private cachedCost(folder: string): ContextCost | undefined {
@@ -421,6 +480,12 @@ export class SettingsPage implements vscode.Disposable {
 					}
 					await openAt(message.path, message.server ? `"${message.server}"` : message.needle);
 					return;
+				case 'trustFolder':
+					await this.trustFolder(message.kind);
+					break;
+				case 'removeTrust':
+					await this.removeTrust(message.rule);
+					break;
 				case 'createRules':
 					if (!this.files.has(message.path)) {
 						return;
@@ -782,6 +847,13 @@ export class SettingsPage implements vscode.Disposable {
 			storageMeasuring: vscode.l10n.t("Measuring\u2026"),
 			cleanUp: vscode.l10n.t("Clean Up..."),
 			keepLogs: vscode.l10n.t("Keep logs for"),
+			trust: vscode.l10n.t("Trusted Folders"),
+			trustHint: vscode.l10n.t("Where the Gemini CLI loads a folder's own settings, hooks and MCP servers. Shared with the terminal."),
+			trustFolder: vscode.l10n.t("Trust Folder..."),
+			trustParent: vscode.l10n.t("Trust a Parent Folder..."),
+			neverTrust: vscode.l10n.t("Never Trust a Folder..."),
+			removeTrust: vscode.l10n.t("Remove"),
+			noTrust: vscode.l10n.t("No trusted folders yet."),
 		};
 		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'settings.js'));
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
@@ -805,6 +877,30 @@ export class SettingsPage implements vscode.Disposable {
 	<script nonce="${nonce}" type="module" src="${script}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
 </html>`;
+	}
+}
+
+/** A Trusted Folders row in plain words. */
+function trustRowView(row: TrustRow): TrustRowView {
+	const base = { folder: tildify(row.folder), ...row.rule ? { rule: row.rule } : {} };
+	switch (row.kind) {
+		case 'trusted':
+			return { ...base, status: vscode.l10n.t("Trusted"), tone: 'ok', ...row.worktrees ? { detail: vscode.l10n.t("and its agents' branches in {0}", tildify(path.dirname(row.worktrees))) } : {} };
+		case 'branches':
+			return { ...base, status: vscode.l10n.t("Trusted"), tone: 'ok', detail: vscode.l10n.t("Agents' branches of {0}", path.basename(row.folder)) };
+		case 'subfolders': {
+			const names = (row.repositories ?? []).join(', ');
+			const detail = !names ? vscode.l10n.t("and everything in it")
+				: row.more ? vscode.l10n.t("and everything in it: {0} and {1} more", names, row.more)
+					: vscode.l10n.t("and everything in it: {0}", names);
+			return { ...base, status: vscode.l10n.t("Trusted, with subfolders"), tone: 'ok', detail };
+		}
+		case 'never':
+			return { ...base, status: vscode.l10n.t("Never trust"), tone: 'warn' };
+		case 'ownTrusted':
+			return { ...base, status: vscode.l10n.t("Trusted by GeminiCode"), tone: 'muted', detail: vscode.l10n.t("GeminiCode's project coordinators; no repository code") };
+		case 'ownNever':
+			return { ...base, status: vscode.l10n.t("Never trusted"), tone: 'warn', detail: vscode.l10n.t("Merge request checkouts: other people's code, so their hooks and MCP servers never run") };
 	}
 }
 

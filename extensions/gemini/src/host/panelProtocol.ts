@@ -107,6 +107,8 @@ export interface HomeProject {
 	readonly id: string;
 	readonly title: string;
 	readonly workspace: string;
+	/** The repository folder the project works in, one of the view's workspaces. */
+	readonly folder: string;
 	readonly state: AgentStateKind;
 	/** "3 threads" */
 	readonly threads: string;
@@ -120,6 +122,8 @@ export interface HomeWorkspace {
 	readonly git: boolean;
 	/** The folder's index, for the icon beside the workspace; unset while indexing is off. */
 	readonly index?: HomeIndex;
+	/** Whether agents here run trusted by the Gemini CLI, by the folder's own entry or a parent's; unset while folder trust is off. */
+	readonly trust?: 'trusted' | 'parent' | 'untrusted';
 }
 
 export interface HomeIndex {
@@ -323,6 +327,26 @@ export interface HomeStrings {
 	readonly startOwnBranchHint: string;
 	readonly startProject: string;
 	readonly startProjectHint: string;
+	/** The project picker beside the chooser, and its menu. */
+	readonly project: string;
+	readonly projectsIn: string;
+	readonly otherProjects: string;
+	readonly newProjectIn: string;
+	readonly sendToProject: string;
+	readonly startNewProject: string;
+	/** The prompt's placeholder for a project's coordinator; {0} is the project. */
+	readonly projectPlaceholder: string;
+	readonly newProjectPlaceholder: string;
+	/** In place of the mode and model, which are the coordinator's. */
+	readonly coordinatorSettings: string;
+	/** Trust, as the folder picker and the composer show it. */
+	readonly trusted: string;
+	readonly trustedByParent: string;
+	readonly needsTrust: string;
+	/** "Needs trust: {0} isn't trusted for agents". */
+	readonly needsTrustFolder: string;
+	readonly trustButton: string;
+	readonly needsTrustedFolder: string;
 	readonly workspace: string;
 	readonly addFolder: string;
 	readonly agentSetup: string;
@@ -430,6 +454,8 @@ export type ToHome =
 	 * tab covers Home, whose hidden webview would not get a message anyway.
 	 */
 	| { readonly type: 'startFailed'; readonly text: string }
+	/** Open Folder... added `folder` for agents: the composer picks it. */
+	| { readonly type: 'folderAdded'; readonly folder: string }
 	/** Files the user picked to send with the task. */
 	| { readonly type: 'attached'; readonly attachments: readonly Attachment[] }
 	/** The comment on `key` was posted, or why it wasn't, for the comment box. */
@@ -440,8 +466,13 @@ export type ToHome =
 
 export type FromHome =
 	| { readonly type: 'ready' }
-	/** Start an agent on `text`: in `folder`, on its own branch, or as a project's coordinator (`project`). */
-	| { readonly type: 'start'; readonly folder: string; readonly text: string; readonly ownBranch: boolean; readonly project?: boolean; readonly mode: string; readonly attachments: readonly Attachment[] }
+	/**
+	 * Start an agent on `text`: in `folder`, or on its own branch; or send it to
+	 * a project's coordinator (`project`: its id, or 'new' to start a project).
+	 */
+	| { readonly type: 'start'; readonly folder: string; readonly text: string; readonly ownBranch: boolean; readonly project?: string; readonly mode: string; readonly attachments: readonly Attachment[] }
+	/** The user picked `folder` for agents, so its first-use trust question can be asked; `trust` is Trust... (always asks). */
+	| { readonly type: 'folderPicked' | 'trust'; readonly folder: string }
 	/** The user is typing a task, so the agent and a session for it can get ready. */
 	| { readonly type: 'typing'; readonly folder: string; readonly ownBranch: boolean }
 	| { readonly type: 'addFolder' | 'agentSetup' | 'openIndex' | 'pickFiles' | 'newProject' }
@@ -599,6 +630,23 @@ export interface StorageView {
 	readonly error?: string;
 }
 
+/** One row of Trusted Folders: a rule of the Gemini CLI's trust file, in plain words. */
+export interface TrustRowView {
+	/** The folder, with ~ for the home folder. */
+	readonly folder: string;
+	/** "Trusted", "Never trust". */
+	readonly status: string;
+	readonly tone: 'ok' | 'warn' | 'muted';
+	readonly detail?: string;
+	/** The rule's key, which Remove deletes; unset for GeminiCode's own rules. */
+	readonly rule?: string;
+}
+
+/** Trusted Folders: the trust file's rules, or one line when folder trust is off or the file isn't JSON. */
+export type TrustView =
+	| { readonly state: 'ready'; readonly rows: readonly TrustRowView[] }
+	| { readonly state: 'off' | 'unreadable'; readonly message: string };
+
 export interface SettingsPageView {
 	readonly servers: readonly McpServerView[];
 	readonly skills: readonly SkillView[];
@@ -608,6 +656,7 @@ export interface SettingsPageView {
 	readonly rules: readonly RulesFileView[];
 	readonly preferences: PreferencesView;
 	readonly contextCost: ContextCostView;
+	readonly trust: TrustView;
 	/** Unset when the page has nothing to measure it with. */
 	readonly storage?: StorageView;
 }
@@ -684,6 +733,13 @@ export interface SettingsPageStrings {
 	readonly storageMeasuring: string;
 	readonly cleanUp: string;
 	readonly keepLogs: string;
+	readonly trust: string;
+	readonly trustHint: string;
+	readonly trustFolder: string;
+	readonly trustParent: string;
+	readonly neverTrust: string;
+	readonly removeTrust: string;
+	readonly noTrust: string;
 }
 
 export type ToSettingsPage = { readonly type: 'view'; readonly view: SettingsPageView };
@@ -701,4 +757,7 @@ export type FromSettingsPage =
 	| { readonly type: 'setPreference'; readonly key: 'keepChats'; readonly value: string }
 	| { readonly type: 'extension'; readonly action: 'enable' | 'disable' | 'update' | 'uninstall'; readonly name: string }
 	| { readonly type: 'openFile'; readonly path: string; readonly server?: string; readonly needle?: string }
-	| { readonly type: 'createRules'; readonly path: string };
+	| { readonly type: 'createRules'; readonly path: string }
+	/** Trust Folder..., Trust a Parent Folder... and Never Trust a Folder..., which ask for the folder. */
+	| { readonly type: 'trustFolder'; readonly kind: 'folder' | 'parent' | 'never' }
+	| { readonly type: 'removeTrust'; readonly rule: string };

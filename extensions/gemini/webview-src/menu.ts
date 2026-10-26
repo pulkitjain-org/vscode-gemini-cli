@@ -20,6 +20,9 @@ export interface MenuRow {
 	readonly detail?: string;
 	/** Quiet text at the row's end, such as a time. */
 	readonly end?: string;
+	/** The end text's colour, and a codicon before it, for a state such as a folder's trust. */
+	readonly endTone?: 'ok' | 'warn';
+	readonly endIcon?: string;
 	/** A tick, for the current choice. */
 	readonly checked?: boolean;
 	/** An on/off switch, with its state. */
@@ -274,7 +277,12 @@ export class Menu {
 		}
 		const end = el('span', 'menu-end');
 		if (row.end) {
-			end.append(el('span', undefined, row.end));
+			const text = el('span', row.endTone && `menu-end-${row.endTone}`);
+			if (row.endIcon) {
+				text.append(icon(row.endIcon));
+			}
+			text.append(row.end);
+			end.append(text);
 		}
 		if (row.checked) {
 			end.append(icon('check'));

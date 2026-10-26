@@ -75,7 +75,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	});
 	const teamCommandStore = initTeamCommands(log);
 	// The CLI's debug log, one per window's process (GEMINI_DEBUG_LOG_FILE), so windows never empty each other's.
-	const service = new AgentService(log, vscode.Uri.joinPath(context.globalStorageUri, 'cli-logs', debugLogName()).fsPath);
+	const service = new AgentService(log, vscode.Uri.joinPath(context.globalStorageUri, 'cli-logs', debugLogName()).fsPath, context.globalState);
 	const diffPreview = new DiffPreview();
 	const fileIndex = new WorkspaceFileIndex();
 	// Rewrites run on the agent process every chat shares, in an empty folder of their own.
@@ -224,6 +224,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		new LazyFeature(['gemini.projectSettings', 'gemini.newSkill'], () => new (pages().SettingsPage)(context.extensionUri, service, {
 			getAgentCommand,
 			forgetSkills,
+			audit: teamTools.audit,
 			storage: {
 				globalStorage: context.globalStorageUri.fsPath,
 				agents: () => agentsView.storageAgents(),

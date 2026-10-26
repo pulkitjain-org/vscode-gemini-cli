@@ -8,7 +8,6 @@
 // agent switches mode by itself. The mode the chat was in before Plan is kept
 // for Build This Plan, which builds in it.
 
-import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { ChatTranscript } from '../../acp/chatTranscript';
 import { AgentError, errorMessage } from '../../acp/errors';
@@ -25,7 +24,7 @@ export class ChatSettings implements vscode.Disposable {
 	private lastBuildMode: string | undefined;
 
 	constructor(
-		private readonly service: Pick<ChatHost, 'client' | 'permissions' | 'trustFolder'>,
+		private readonly service: Pick<ChatHost, 'client' | 'permissions' | 'askToTrust'>,
 		private readonly transcript: ChatTranscript,
 		private readonly options: Pick<ChatControllerOptions, 'onDidPickModel'>,
 		private readonly post: (message: ToWebview) => void,
@@ -103,14 +102,12 @@ export class ChatSettings implements vscode.Disposable {
 		}
 		const folder = this.service.client.cwd;
 		const modeName = this.service.client.settings.mode?.available.find(choice => choice.id === modeId)?.name ?? modeId;
-		if (!await askToTrustFolder(folder, vscode.l10n.t("{0} mode needs a trusted folder.", modeName))) {
+		if (!await this.service.askToTrust(folder)) {
+			this.transcript.addNotice(vscode.l10n.t("{0} mode needs a trusted folder.", modeName), 'info');
 			return;
 		}
 		this.service.client.setModeOnNextSession(modeId);
-		const waits = await this.service.trustFolder(folder);
-		this.transcript.addNotice(waits
-			? vscode.l10n.t("Folder trusted. The agent restarts in {0} mode once no agent is working.", modeName)
-			: vscode.l10n.t("Folder trusted. Restarting the agent in {0} mode.", modeName), 'info');
+		this.transcript.addNotice(vscode.l10n.t("Folder trusted. The agent switches to {0} mode when it restarts, once no agent is working.", modeName), 'info');
 	}
 }
 
@@ -126,19 +123,4 @@ export function onDidChangeSendWith(listener: (cmdEnter: boolean) => void): vsco
 			listener(sendsWithCmdEnter());
 		}
 	});
-}
-
-/**
- * The dialog before GeminiCode trusts a folder for the Gemini CLI, from Chat
- * or the Index page; `reason` says why it is asked. Resolves whether the user
- * chose Trust Folder.
- */
-export async function askToTrustFolder(folder: string, reason?: string): Promise<boolean> {
-	const trust = vscode.l10n.t("Trust Folder");
-	const detail = [
-		reason,
-		vscode.l10n.t("Trusting a folder lets the Gemini CLI load its MCP servers, hooks and project settings, which can run programs on this Mac."),
-		vscode.l10n.t("The Gemini CLI remembers the choice for this folder, including in the terminal."),
-	].filter(Boolean).join(' ');
-	return await vscode.window.showWarningMessage(vscode.l10n.t("Trust {0}?", path.basename(folder) || folder), { modal: true, detail }, trust) === trust;
 }

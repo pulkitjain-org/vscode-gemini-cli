@@ -57,6 +57,7 @@ import { agentState, AgentTree, AgentTreeNode, WorkspaceSummary } from './agents
 import { AgentWorktrees } from './agents/agentWorktrees';
 import { spareDelayMs, SpareSession } from './agents/spareSession';
 import { showError } from './errorNotice';
+import type { FolderTrust } from './folderTrust';
 export { startModes } from './agents/agentStarts';
 export type { WorkspaceSummary } from './agents/agentTree';
 
@@ -203,6 +204,16 @@ export class AgentsView implements vscode.Disposable {
 	private persistTimeout: ReturnType<typeof setTimeout> | undefined;
 	/** Projects: coordinators and their threads. */
 	private readonly projects: Projects;
+
+	/** Folder trust for agents. */
+	get folderTrust(): FolderTrust {
+		return this.service.trust;
+	}
+
+	/** Adds `folder` to the folders agents can work in, without adding it to the window. */
+	addFolder(folder: string): void {
+		this.model.addWorkspace(folder);
+	}
 	/** Each agent's terminals, and the last command of every terminal. */
 	readonly terminals = new AgentTerminals();
 
@@ -283,6 +294,7 @@ export class AgentsView implements vscode.Disposable {
 			refresh: (id?: string) => this.refresh(id),
 			pickModel: (id: string, model: string) => void this.threadModels.set(id, model),
 			removeAgent: (id: string, deleteBranch: boolean) => this.removeAgentAndWorktree(id, deleteBranch),
+			trust: this.service.trust,
 		};
 		this.projectAgents = new AgentProjects(this.model, this.service, this.projects, this.worktrees, this.merge, this.live, this.tree, host);
 		this.starts = new AgentStarts(this.model, this.worktrees, this.tree, this.live, host);

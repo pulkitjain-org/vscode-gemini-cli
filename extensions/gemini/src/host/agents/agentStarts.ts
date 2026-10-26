@@ -24,6 +24,7 @@ import { knownModelList, sessionModel, sessionModelList } from '../modelPreferen
 import type { HomeMode } from '../panelProtocol';
 import type { AgentTree, AgentTreeNode } from './agentTree';
 import type { AgentWorktrees } from './agentWorktrees';
+import type { FolderTrust } from '../folderTrust';
 import { showError } from '../errorNotice';
 
 /** What starting an agent needs of the Agents pane. */
@@ -34,6 +35,8 @@ export interface AgentStartsHost {
 	open(id: string): Promise<void>;
 	/** The model agent `id`'s first session starts on. */
 	pickModel(id: string, model: string): void;
+	/** Folder trust, asked the first time a folder is chosen for agents. */
+	readonly trust: Pick<FolderTrust, 'ask'>;
 }
 
 export class AgentStarts {
@@ -57,6 +60,7 @@ export class AgentStarts {
 		if (!folder) {
 			return undefined;
 		}
+		await this.host.trust.ask(folder);
 		let worktree: AgentWorktree | undefined;
 		if (ownBranch ?? vscode.workspace.getConfiguration(configSection).get<boolean>('agents.ownBranch', false)) {
 			const repository = await repositoryRoot(folder);
@@ -79,6 +83,8 @@ export class AgentStarts {
 	/** Starts an agent in `folder` (on its own branch, named after the prompt, with `ownBranch`) and sends it `text`. */
 	/** Returns whether the agent started; when not, the user has been told why. */
 	async startWithPrompt(folder: string, text: string, ownBranch: boolean, mode: string, attachments: readonly Attachment[]): Promise<boolean> {
+		// Asked before the agent process reads the trust file; after Not Now the agent works in Default or Plan mode.
+		const trusted = await this.host.trust.ask(folder);
 		let worktree: AgentWorktree | undefined;
 		if (ownBranch) {
 			worktree = await this.worktrees.makeFree(folder, branchNameFrom(text));
@@ -90,8 +96,8 @@ export class AgentStarts {
 		const agent = this.model.addAgent(workspace.id, vscode.l10n.t("New agent"), worktree);
 		// Started here, so its session opens in the mode picked.
 		const live = this.host.start(agent, worktree?.cwd ?? folder);
-		// Default too, picked over `gemini.agents.defaultMode`.
-		live.session.client.setModeOnNextSession(mode);
+		// Default too, picked over `gemini.agents.defaultMode`. The CLI refuses Auto Edit in a folder it doesn't trust.
+		live.session.client.setModeOnNextSession(trusted || mode === 'plan' ? mode : 'default');
 		await this.host.open(agent.id);
 		// Not awaited: send resolves when the whole turn ends, and the agent has started now.
 		void live.controller.send(text, attachments);
@@ -107,6 +113,10 @@ export class AgentStarts {
 	 */
 	async startTeamAgent(options: { readonly folder: string; readonly title: string; readonly text: string; readonly branch?: string; readonly worktree?: AgentWorktree; readonly mode?: string }): Promise<string | undefined> {
 		let worktree = options.worktree;
+		// A checkout made for the flow (a review, a release merge) is GeminiCode's own, never trusted for the repository: no question.
+		if (!worktree) {
+			await this.host.trust.ask(options.folder);
+		}
 		if (!worktree && options.branch) {
 			worktree = await this.worktrees.makeFree(options.folder, options.branch);
 			if (!worktree) {
@@ -152,7 +162,8 @@ export class AgentStarts {
 			return undefined;
 		}
 		const { folder, ownBranch, model } = choice;
-		const mode = typeof choice.mode === 'string' ? choice.mode : 'default';
+		const trusted = await this.host.trust.ask(folder);
+		const mode = typeof choice.mode === 'string' && (trusted || choice.mode === 'plan') ? choice.mode : 'default';
 		let worktree: AgentWorktree | undefined;
 		if (ownBranch) {
 			worktree = await this.worktrees.makeFree(folder, choice.branch && isValidBranchName(choice.branch) ? choice.branch : branchNameFrom(page));
@@ -198,6 +209,7 @@ export class AgentStarts {
 			return;
 		}
 		const request = reviewRequest(changes);
+		await this.host.trust.ask(folder);
 		const workspace = this.model.addWorkspace(folder);
 		const agent = this.model.addAgent(workspace.id, vscode.l10n.t("Review my changes"));
 		this.model.rename(agent.id, agent.title);
@@ -224,6 +236,7 @@ export class AgentStarts {
 	async addWorkspace(): Promise<void> {
 		const folder = await chooseFolder();
 		if (folder) {
+			await this.host.trust.ask(folder);
 			const workspace = this.model.addWorkspace(folder);
 			await this.host.open(this.model.addAgent(workspace.id, vscode.l10n.t("New agent")).id);
 		}

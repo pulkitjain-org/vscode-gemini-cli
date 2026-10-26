@@ -27,6 +27,8 @@ interface SavedState {
 	readonly draft?: string;
 	readonly folder?: string;
 	readonly mode?: string;
+	/** The project picked for To a Project, by folder: a coordinator's id, or 'new'. */
+	readonly projects?: Readonly<Record<string, string>>;
 }
 
 const vscode = acquireVsCodeApi();
@@ -44,6 +46,10 @@ const plusButton = document.getElementById('plus') as HTMLButtonElement;
 const modeButton = document.getElementById('mode') as HTMLButtonElement;
 const modelLabel = document.getElementById('model')!;
 const fromToolsButton = document.getElementById('from-tools') as HTMLButtonElement;
+const projectButton = document.getElementById('project') as HTMLButtonElement;
+const coordinatorNote = document.getElementById('coordinator')!;
+const needsTrust = document.getElementById('needs-trust')!;
+const trustButton = needsTrust.querySelector('button')!;
 const attachmentList = document.getElementById('attachments')!;
 const active = document.getElementById('active')!;
 const earlier = document.getElementById('earlier')!;
@@ -75,6 +81,9 @@ for (const button of [indexButton, indexState]) {
 }
 setTip(plusButton, strings.plusMenu);
 plusButton.setAttribute('aria-label', strings.plusMenu);
+coordinatorNote.textContent = strings.coordinatorSettings;
+trustButton.textContent = strings.trustButton;
+trustButton.addEventListener('click', () => vscode.postMessage({ type: 'trust', folder }));
 
 let view: HomeView | undefined;
 /** The folder the next agent starts in. */
@@ -83,8 +92,16 @@ let folder = saved.folder ?? '';
 let mode = saved.mode ?? '';
 /** Files the next agent's task is sent with. */
 let attachments: Attachment[] = [];
+let projectPicks: Readonly<Record<string, string>> = saved.projects ?? {};
 
-/** Where the next agent works: here, on its own branch, or as a project's coordinator. */
+/** The project To a Project sends to: the one picked for this folder while it lasts, else the folder's latest, else a new one. */
+function currentProject(): string {
+	const list = view?.projects ?? [];
+	const picked = projectPicks[folder];
+	return picked === 'new' || list.some(p => p.id === picked) ? picked : list.find(p => p.folder === folder)?.id ?? 'new';
+}
+
+/** Where the next task goes: an agent here, one on its own branch, or a project's coordinator. */
 type StartAs = 'here' | 'branch' | 'project';
 /** The user's pick; until they pick, `gemini.agents.ownBranch` decides. */
 let startAsPicked: StartAs | undefined;
@@ -151,6 +168,13 @@ function loadMenus(): Promise<HomeMenus> {
 		},
 		pickFiles: () => vscode.postMessage({ type: 'pickFiles' }),
 		addFolder: () => vscode.postMessage({ type: 'addFolder' }),
+		trust: each => vscode.postMessage({ type: 'trust', folder: each }),
+		project: currentProject,
+		pickProject: id => {
+			projectPicks = { ...projectPicks, [folder]: id };
+			save();
+			updateControls();
+		},
 		run,
 		logo: (tool, size) => toolLogo(tool, size),
 		tip: setTip,
@@ -160,7 +184,7 @@ function loadMenus(): Promise<HomeMenus> {
 }
 
 // Until the chunk is loaded; then each menu opens and closes itself.
-for (const anchor of [plusButton, fromToolsButton, modeButton, workspaceButton]) {
+for (const anchor of [plusButton, fromToolsButton, modeButton, workspaceButton, projectButton]) {
 	anchor.addEventListener('click', () => void (menus ? undefined : loadMenus().then(loaded => loaded.open(anchor))));
 }
 
@@ -174,13 +198,15 @@ function tipButton(className: string, label: string, onClick: () => void, iconNa
 }
 
 function save(): void {
-	vscode.setState({ draft: prompt.value, folder, mode } satisfies SavedState);
+	vscode.setState({ draft: prompt.value, folder, mode, projects: projectPicks } satisfies SavedState);
 }
 
 function pickFolder(next: string): void {
 	folder = next;
 	save();
 	updateControls();
+	// Its trust is asked now, the first time, rather than when a task starts.
+	vscode.postMessage({ type: 'folderPicked', folder });
 }
 
 function updateControls(): void {
@@ -197,18 +223,36 @@ function updateControls(): void {
 	setTip(workspaceButton, label);
 	workspaceButton.setAttribute('aria-label', label);
 	updateStartAs(!!current?.git);
-	start.disabled = !prompt.value.trim() || !current;
-	const currentMode = view?.modes.find(choice => choice.id === (mode || view?.defaultMode)) ?? view?.modes[0];
-	modeButton.parentElement!.hidden = !currentMode;
+	// A project's coordinator has its own mode and model; From Your Tools starts agents.
+	const toProject = startAs === 'project';
+	const project = toProject ? currentProject() : undefined;
+	const projectTitle = view?.projects?.find(p => p.id === project)?.title;
+	projectButton.parentElement!.hidden = !toProject;
+	projectButton.querySelector('span')!.textContent = projectTitle ?? strings.newProject;
+	setTip(projectButton, `${strings.project}: ${projectTitle ?? strings.newProject}`);
+	coordinatorNote.hidden = !toProject;
+	fromToolsButton.parentElement!.hidden = toProject;
+	const startLabel = !toProject ? strings.start : projectTitle ? strings.sendToProject : strings.startNewProject;
+	start.querySelector('span')!.textContent = startLabel;
+	setTip(start, startLabel);
+	prompt.placeholder = !toProject ? strings.composerPlaceholder : projectTitle ? format(strings.projectPlaceholder, projectTitle) : strings.newProjectPlaceholder;
+	// Here works in an untrusted folder, in Default or Plan; a branch, a project and Auto Edit need trust, said in place.
+	const untrusted = current?.trust === 'untrusted';
+	needsTrust.hidden = !untrusted || startAs === 'here';
+	needsTrust.querySelector('span')!.textContent = format(strings.needsTrustFolder, current?.name ?? '');
+	start.disabled = !prompt.value.trim() || !current || !needsTrust.hidden;
+	const wanted = untrusted && mode === 'autoEdit' ? 'default' : mode || view?.defaultMode;
+	const currentMode = view?.modes.find(choice => choice.id === wanted) ?? view?.modes[0];
+	modeButton.parentElement!.hidden = !currentMode || toProject;
 	if (currentMode) {
-		mode = currentMode.id;
+		mode = untrusted && mode === 'autoEdit' ? mode : currentMode.id;
 		modeButton.querySelector('span')!.textContent = currentMode.name;
 		modeButton.querySelector('.codicon')!.className = `codicon codicon-${modeIcon(currentMode.id)}`;
 		const label = `${strings.mode}: ${currentMode.name}`;
 		setTip(modeButton, label);
 		modeButton.setAttribute('aria-label', label);
 	}
-	modelLabel.hidden = !view?.model;
+	modelLabel.hidden = !view?.model || toProject;
 	modelLabel.lastElementChild!.textContent = view?.model ?? '';
 	menus?.render();
 }
@@ -390,12 +434,17 @@ function card(agent: HomeAgent, old?: HTMLElement): HTMLElement {
 	return node;
 }
 
+function workspaceTrust(): string | undefined {
+	return view?.workspaces.find(w => w.folder === folder)?.trust;
+}
+
 function submit(): void {
 	const text = prompt.value.trim();
-	if (!text || !folder) {
+	if (!text || !folder || start.disabled) {
 		return;
 	}
-	vscode.postMessage({ type: 'start', folder, text, ownBranch: startAs === 'branch', ...startAs === 'project' ? { project: true } : {}, mode, attachments });
+	const shownMode = workspaceTrust() === 'untrusted' && mode === 'autoEdit' ? 'default' : mode;
+	vscode.postMessage({ type: 'start', folder, text, ownBranch: startAs === 'branch', ...startAs === 'project' ? { project: currentProject() } : {}, mode: shownMode, attachments });
 	// The next task gets a session of its own.
 	typingFor = undefined;
 	prompt.value = '';
@@ -764,6 +813,10 @@ window.addEventListener('message', (event: MessageEvent<ToHome>) => {
 		prompt.focus();
 	} else if (message.type === 'commented' || message.type === 'commentPeople' || message.type === 'commentOptions' || message.type === 'commentFiles') {
 		void commentBox?.then(box => box.onMessage(message));
+	} else if (message.type === 'folderAdded') {
+		folder = message.folder;
+		save();
+		updateControls();
 	} else if (message.type === 'startFailed') {
 		prompt.value ||= message.text;
 		save();

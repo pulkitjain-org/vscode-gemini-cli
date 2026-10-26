@@ -57,7 +57,7 @@ export class AgentProjects {
 
 	constructor(
 		private readonly model: AgentsModel,
-		private readonly service: Pick<AgentService, 'writeLog' | 'restartWhenIdle' | 'trustFolder' | 'runtime'>,
+		private readonly service: Pick<AgentService, 'writeLog' | 'restartWhenIdle' | 'trust' | 'runtime'>,
 		private readonly projects: Pick<Projects, 'ready' | 'sendBrief'>,
 		private readonly worktrees: AgentWorktrees,
 		private readonly merge: Pick<AgentMerge, 'isMerging'>,
@@ -349,37 +349,26 @@ export class AgentProjects {
 
 	/**
 	 * A project works through its own MCP server, and the Gemini CLI loads MCP
-	 * servers only in folders it trusts, so a project needs its repository and
-	 * its threads' worktrees trusted. Asks when either isn't, and once trusted,
-	 * waits for the agent's restart (unless a turn holds it up) so the next
-	 * session has the tools. False when the user declines.
+	 * servers only in folders it trusts, so a project needs its repository
+	 * trusted; its threads' folders follow it. Asks when it isn't, as on first
+	 * use, and once trusted waits for the agent's restart (unless a turn holds
+	 * it up) so the next session has the tools. False when the user declines.
 	 */
 	async ensureProjectTrust(folder: string, threads = false): Promise<boolean> {
 		const repository = await repositoryRoot(folder) ?? folder;
 		const folders = projectFolders(repository, threads);
-		if (await foldersTrusted(folders, process.env)) {
+		if (await foldersTrusted([repository, ...folders], process.env)) {
 			return true;
 		}
-		const trust = vscode.l10n.t("Trust Folder");
-		const choice = await vscode.window.showWarningMessage(
-			vscode.l10n.t("Trust {0}'s project folders?", path.basename(repository)),
-			{
-				modal: true,
-				detail: threads
-					? vscode.l10n.t("A project's coordinator and threads work through GeminiCode's project tools, which the Gemini CLI loads only in trusted folders: {0}, where coordinators run, and {1} and {2}, where threads check out their branches. Trusting the threads' folders also lets the Gemini CLI load the repositories' own Gemini settings and MCP servers there, which can run programs. The Gemini CLI remembers the choice, including in the terminal.", tildify(folders[0]), tildify(folders[1]), tildify(folders[2]))
-					: vscode.l10n.t("A project's coordinator and threads work through GeminiCode's project tools, which the Gemini CLI loads only in trusted folders: {0}, where coordinators run, and {1}, where threads check out their branches. Trusting the threads' folder also lets the Gemini CLI load the repository's own Gemini settings and MCP servers there, which can run programs. The Gemini CLI remembers the choice, including in the terminal.", tildify(folders[0]), tildify(folders[1])),
-			},
-			trust);
-		if (choice !== trust) {
+		const runtime = this.service.runtime;
+		const waits = runtime.busy;
+		if (!await this.service.trust.ask(repository, { explicit: true })) {
 			return false;
 		}
-		const runtime = this.service.runtime;
-		let waits: boolean;
-		try {
-			waits = await this.service.trustFolder(...folders);
-		} catch (err) {
-			void showError(vscode.l10n.t("Could not trust {0}: {1}", path.basename(repository), errorMessage(err)));
-			return false;
+		// GeminiCode's own folders, where coordinators and threads across repositories run, when the launch didn't set them.
+		const missing = await Promise.all(folders.map(async each => [each, await foldersTrusted([each], process.env)] as const));
+		for (const [each] of missing.filter(([, trusted]) => !trusted)) {
+			await this.service.trust.set(each, 'TRUST_FOLDER', path.basename(repository)).catch(err => this.service.writeLog(`Could not trust ${each}: ${errorMessage(err)}`));
 		}
 		if (waits) {
 			void vscode.window.showInformationMessage(vscode.l10n.t("Folder trusted. The project's tools arrive when the agent restarts, once no agent is working."));

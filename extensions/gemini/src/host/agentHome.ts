@@ -18,6 +18,7 @@ import type { JiraClient } from '../acp/jira';
 import { formatCounts } from '../acp/agentChanges';
 import { attachmentsForFiles } from './addToChat';
 import { AgentsView, AgentSummary, relativeTime, startModes } from './agentsView';
+import { chooseFolder } from './agents/agentStarts';
 import { startsQuietly } from './agentWarmup';
 import { detectAuth } from '../acp/directRequest';
 import { tildify } from './displayText';
@@ -123,6 +124,7 @@ export class AgentHome implements vscode.Disposable {
 				}
 			}),
 			agents.onDidChangeAgents(() => this.schedule()),
+			agents.folderTrust.onDidChange(() => this.schedule()),
 			agents.index?.onDidChangeStatus(() => this.schedule()) ?? { dispose: () => undefined },
 		);
 		void Promise.resolve(vscode.commands.executeCommand<Mode>('_gemini.getMode')).then(mode => this.setMode(mode), () => undefined);
@@ -264,9 +266,10 @@ export class AgentHome implements vscode.Disposable {
 	private async build(): Promise<HomeView> {
 		const now = Date.now();
 		const index = this.agents.index?.enabled ? this.agents.index : undefined;
+		const trust = this.agents.folderTrust;
 		const workspaces = await Promise.all((await this.agents.workspaces()).map(async w => {
-			const state = index ? homeIndex(await index.summary(w.folder), index.status(w.folder)) : undefined;
-			return { folder: w.folder, name: path.basename(w.folder) || w.folder, description: tildify(path.dirname(w.folder)), git: w.git, ...state ? { index: state } : {} };
+			const [state, trusted] = await Promise.all([index ? index.summary(w.folder).then(summary => homeIndex(summary, index.status(w.folder))) : undefined, trust.label(w.folder).catch(() => undefined)]);
+			return { folder: w.folder, name: path.basename(w.folder) || w.folder, description: tildify(path.dirname(w.folder)), git: w.git, ...state ? { index: state } : {}, ...trusted ? { trust: trusted } : {} };
 		}));
 		// Archived agents are only under the pane's Archived row.
 		const all = this.agents.summaries().filter(a => !a.archived);
@@ -285,7 +288,7 @@ export class AgentHome implements vscode.Disposable {
 			earlier: summaries.filter(a => !isActive(a)).slice(0, maxEarlier).map(toView),
 			...(projectsEnabled() ? {
 				projects: all.flatMap((a): HomeProject[] => a.project?.role === 'coordinator' ? [{
-					id: a.id, title: a.title, workspace: path.basename(a.folder), state: a.state, updated: relativeTime(a.updatedAt, now),
+					id: a.id, title: a.title, workspace: path.basename(a.folder), folder: a.folder, state: a.state, updated: relativeTime(a.updatedAt, now),
 					threads: a.project.threads === 1 ? vscode.l10n.t("1 thread") : vscode.l10n.t("{0} threads", a.project.threads),
 				}] : []),
 			} : {}),
@@ -384,6 +387,26 @@ export class AgentHome implements vscode.Disposable {
 		const folder = (await this.agents.workspaces())[0]?.folder;
 		await this.teamData?.refresh(folder, this.layout().qualityBranch);
 		this.schedule();
+	}
+
+	/**
+	 * Sends `text` to project `id`'s coordinator, as the user's message in its
+	 * chat, which opens; the coordinator decides whether it becomes a new
+	 * thread or a note to one already working. Resolves with whether it went.
+	 */
+	private async sendToProject(id: string, text: string, attachments: Extract<FromHome, { type: 'start' }>['attachments']): Promise<boolean> {
+		if (!this.agents.summaries().some(a => a.id === id && a.project?.role === 'coordinator')) {
+			void showError(vscode.l10n.t("The project is gone."));
+			return false;
+		}
+		await this.agents.open(id);
+		const chat = this.agents.controllerOf(id);
+		if (!chat) {
+			return false;
+		}
+		// Not awaited: send resolves when the whole turn ends.
+		void chat.send(text, attachments);
+		return true;
 	}
 
 	/**
@@ -500,9 +523,9 @@ export class AgentHome implements vscode.Disposable {
 				return;
 			case 'start':
 				if (message.text.trim()) {
-					const started = message.project
-						? await this.startProject(message.folder, message.text.trim(), message.attachments)
-						: await this.agents.startWithPrompt(message.folder, message.text.trim(), message.ownBranch, message.mode, message.attachments);
+					const started = message.project === 'new' ? await this.startProject(message.folder, message.text.trim(), message.attachments)
+						: message.project ? await this.sendToProject(message.project, message.text.trim(), message.attachments)
+							: await this.agents.startWithPrompt(message.folder, message.text.trim(), message.ownBranch, message.mode, message.attachments);
 					if (!started) {
 						void this.panel?.webview.postMessage({ type: 'startFailed', text: message.text } satisfies ToHome);
 					}
@@ -510,16 +533,31 @@ export class AgentHome implements vscode.Disposable {
 				return;
 			case 'typing':
 				this.onTyping();
-				if (!message.ownBranch) {
+				// Not before the folder's trust is asked: the agent process reads it once, when it starts.
+				if (!message.ownBranch && !await this.agents.folderTrust.unanswered(message.folder)) {
 					this.agents.prepareStart(message.folder);
+				}
+				return;
+			case 'folderPicked':
+			case 'trust':
+				if ((await this.agents.workspaces()).some(w => w.folder === message.folder)) {
+					await this.agents.folderTrust.ask(message.folder, { explicit: message.type === 'trust' });
 				}
 				return;
 			case 'newProject':
 				await vscode.commands.executeCommand('gemini.projects.new');
 				return;
-			case 'addFolder':
-				await vscode.commands.executeCommand('workbench.action.addRootFolder');
+			case 'addFolder': {
+				// For agents only: the window's folders stay as they are.
+				const folder = await chooseFolder();
+				if (folder) {
+					this.agents.addFolder(folder);
+					await this.update();
+					void this.panel?.webview.postMessage({ type: 'folderAdded', folder: path.resolve(folder) } satisfies ToHome);
+					await this.agents.folderTrust.ask(folder);
+				}
 				return;
+			}
 			case 'pickFiles': {
 				const uris = await vscode.window.showOpenDialog({
 					canSelectMany: true,
@@ -612,10 +650,25 @@ export class AgentHome implements vscode.Disposable {
 			startHereHint: vscode.l10n.t("Works in this folder, on your current branch."),
 			startOwnBranch: vscode.l10n.t("On Its Own Branch"),
 			startOwnBranchHint: vscode.l10n.t("A new branch and folder, merged back when done."),
-			startProject: vscode.l10n.t("As a Project"),
-			startProjectHint: vscode.l10n.t("A coordinator that splits the work into threads."),
+			startProject: vscode.l10n.t("To a Project"),
+			startProjectHint: vscode.l10n.t("Goes to a project's coordinator, which makes it a thread or passes it on."),
+			project: vscode.l10n.t("Project"),
+			projectsIn: vscode.l10n.t("Projects in {0}"),
+			otherProjects: vscode.l10n.t("Other repositories"),
+			newProjectIn: vscode.l10n.t("New Project in {0}"),
+			sendToProject: vscode.l10n.t("Send to Project"),
+			startNewProject: vscode.l10n.t("Start Project"),
+			projectPlaceholder: vscode.l10n.t("Tell {0}'s coordinator what to do next..."),
+			newProjectPlaceholder: vscode.l10n.t("Describe the work for a new project's coordinator..."),
+			coordinatorSettings: vscode.l10n.t("The coordinator's mode and model"),
+			trusted: vscode.l10n.t("Trusted"),
+			trustedByParent: vscode.l10n.t("Trusted by parent"),
+			needsTrust: vscode.l10n.t("Needs trust"),
+			needsTrustFolder: vscode.l10n.t("Needs trust: {0} isn't trusted for agents"),
+			trustButton: vscode.l10n.t("Trust..."),
+			needsTrustedFolder: vscode.l10n.t("Needs a trusted folder"),
 			workspace: vscode.l10n.t("Workspace"),
-			addFolder: vscode.l10n.t("Add Folder to Workspace..."),
+			addFolder: vscode.l10n.t("Open Folder..."),
 			agentSetup: vscode.l10n.t("Agent Setup"),
 			agentSetupHint: vscode.l10n.t("MCP servers, skills, rules and hooks your agents load"),
 			index: vscode.l10n.t("Index"),
@@ -745,12 +798,13 @@ export class AgentHome implements vscode.Disposable {
 				<div class="composer-tabs" role="tablist"><button type="button" id="tab-write" class="composer-tab" role="tab" aria-selected="true" aria-controls="prompt"></button><button type="button" id="tab-preview" class="composer-tab" role="tab" aria-selected="false" aria-controls="preview"></button></div>
 				<textarea id="prompt" rows="4" spellcheck="${spellCheckOn()}"></textarea>
 				<div id="preview" class="composer-preview markdown" role="tabpanel" tabindex="0" hidden></div>
-				<div id="start-as" class="home-start-as" role="radiogroup" hidden></div>
+				<div class="home-start-row"><div id="start-as" class="home-start-as" role="radiogroup" hidden></div><span class="home-project" hidden><button type="button" id="project" class="option-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-project" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="project-menu" class="home-menu" hidden></div></span><span id="needs-trust" class="needs-trust" hidden><i class="codicon codicon-workspace-untrusted" aria-hidden="true"></i><span></span><button type="button" class="primary"></button></span></div>
 				<div class="home-composer-bar">
 					<span class="home-plus"><button type="button" id="plus" class="plus-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-add" aria-hidden="true"></i></button><div id="plus-menu" class="home-menu" hidden></div></span>
 					<span class="home-folder"><button type="button" id="workspace" class="option-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="workspace-menu" class="home-menu" hidden></div></span><button type="button" id="index-state" class="index-state" hidden></button>
 					<span class="home-mode"><button type="button" id="mode" class="option-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="mode-menu" class="home-menu" hidden></div></span>
 					<span id="model" class="home-model" hidden><span></span></span>
+					<span id="coordinator" class="home-model" hidden></span>
 					<span class="spacer"></span>
 					<span class="home-from-tools"><button type="button" id="from-tools" class="option-button" aria-haspopup="menu" aria-expanded="false"><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="from-tools-menu" class="home-menu" hidden></div></span>
 					<button type="submit" id="start" class="primary"><span></span></button>

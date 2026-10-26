@@ -128,6 +128,21 @@ export function projectsHome(home: string = os.homedir()): string {
 	return path.join(home, '.geminicode', 'projects');
 }
 
+/**
+ * Where merge request reviews check out the branch they review:
+ * ~/.geminicode/reviews/<repository name>. Never trusted for the Gemini CLI
+ * (`ownTrustRules`), so a merge request's own Gemini settings, hooks and MCP
+ * servers never run.
+ */
+export function reviewsHome(repository: string, home: string = os.homedir()): string {
+	return path.join(allReviewsHome(home), path.basename(repository) || 'repository');
+}
+
+/** The folder that holds every repository's review checkouts. */
+export function allReviewsHome(home: string = os.homedir()): string {
+	return path.join(home, '.geminicode', 'reviews');
+}
+
 /** A free folder name in `parent` for `branch`: its last part, with -2, -3... if taken. */
 export async function freeFolder(parent: string, branch: string): Promise<string> {
 	const name = branch.split('/').pop()?.replace(/[^\w.-]+/g, '-') || 'agent';

@@ -3,29 +3,41 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Folder trust. gemini-cli 0.62 refuses Auto Edit and YOLO, and skips a
-// folder's own .gemini settings and MCP servers, until the folder is in its
+// Folder trust. gemini-cli refuses Auto Edit and YOLO, asks before every git
+// command, and skips a folder's own .gemini settings, GEMINI.md and MCP
+// servers (GeminiCode's own among them) until the folder is in its
 // trusted-folders list. Its terminal asks once per folder; GeminiCode asks the
-// same question when the user picks such a mode, and records the answer in the
-// same file the CLI writes.
+// same question the first time a folder is chosen for agents (folderTrust.ts
+// in the host), and records the answer in the same file the CLI writes, with
+// the CLI's own three levels.
 
 import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { comparablePath, isRecord, writeJsonAtomic } from './fsUtil';
 import { stripJsonComments } from './projectSettings';
+import { allReviewsHome, projectsHome } from './worktrees';
+
+/** gemini-cli's levels: a folder and everything in it, its parent folder and everything in that, or never. */
+export type TrustLevel = 'TRUST_FOLDER' | 'TRUST_PARENT' | 'DO_NOT_TRUST';
+
+/** One entry of the trusted-folders file: the path as written, and its level. */
+export interface TrustRule {
+	readonly path: string;
+	readonly level: TrustLevel;
+}
+
+function isTrustLevel(value: unknown): value is TrustLevel {
+	return value === 'TRUST_FOLDER' || value === 'TRUST_PARENT' || value === 'DO_NOT_TRUST';
+}
 
 /** Where the CLI keeps its trusted folders; mirrors `Storage.getTrustedFoldersPath` in gemini-cli. */
 export function trustedFoldersPath(env: NodeJS.ProcessEnv, homedir: string = os.homedir()): string {
 	return env.GEMINI_CLI_TRUSTED_FOLDERS_PATH || path.join(env.GEMINI_CLI_HOME || homedir, '.gemini', 'trustedFolders.json');
 }
 
-/**
- * Adds `folder` to the CLI's trusted folders, keeping every other entry.
- * Throws, and leaves the file alone, when it cannot be read as JSON.
- */
-export async function trustFolder(file: string, folder: string): Promise<void> {
-	let config: Record<string, unknown> = {};
+/** The file's entries as an object; empty when there is no file. Throws when it cannot be read as a JSON object. */
+async function readConfig(file: string): Promise<Record<string, unknown>> {
 	let text: string | undefined;
 	try {
 		text = await fs.readFile(file, 'utf8');
@@ -34,48 +46,104 @@ export async function trustFolder(file: string, folder: string): Promise<void> {
 			throw err;
 		}
 	}
-	if (text?.trim()) {
-		const parsed: unknown = JSON.parse(text);
-		if (!isRecord(parsed)) {
-			throw new Error(`${file} is not a JSON object.`);
-		}
-		config = parsed;
+	if (!text?.trim()) {
+		return {};
 	}
-	config[path.resolve(folder)] = 'TRUST_FOLDER';
-	// Written the way the CLI writes it: owner-only, replaced in one rename.
-	await writeJsonAtomic(file, config, { indent: 2, newline: false, mode: 0o600 });
+	const parsed: unknown = JSON.parse(text);
+	if (!isRecord(parsed)) {
+		throw new Error(`${file} is not a JSON object.`);
+	}
+	return parsed;
+}
+
+/** Writes the entries the way the CLI writes them: owner-only, replaced in one rename. */
+function writeConfig(file: string, config: Record<string, unknown>): Promise<void> {
+	return writeJsonAtomic(file, config, { indent: 2, newline: false, mode: 0o600 });
 }
 
 /**
- * Whether the CLI trusts `folder` by `file`, decided as gemini-cli's
+ * Sets `folder`'s entry in the CLI's trusted folders to `level`, or removes it
+ * when `level` is undefined, keeping every other entry. Throws, and leaves the
+ * file alone, when it cannot be read as JSON.
+ */
+export async function setFolderTrust(file: string, folder: string, level: TrustLevel | undefined): Promise<void> {
+	const config = await readConfig(file);
+	const key = path.resolve(folder);
+	if (level) {
+		config[key] = level;
+	} else {
+		delete config[key];
+	}
+	await writeConfig(file, config);
+}
+
+/** Adds `folder` to the CLI's trusted folders, keeping every other entry (`setFolderTrust`). */
+export function trustFolder(file: string, folder: string): Promise<void> {
+	return setFolderTrust(file, folder, 'TRUST_FOLDER');
+}
+
+/** Every entry of the trusted-folders file, in its order; entries with a value the CLI doesn't know are left out. Throws as `setFolderTrust` does. */
+export async function readTrustRules(file: string): Promise<TrustRule[]> {
+	return Object.entries(await readConfig(file)).flatMap(([rule, level]) => isTrustLevel(level) ? [{ path: rule, level }] : []);
+}
+
+/**
+ * GeminiCode's own entries: its project coordinators' folders, which hold no
+ * repository's code, are trusted so the project tools load there; its review
+ * checkouts, other people's code, are never trusted.
+ */
+export function ownTrustRules(home: string = os.homedir()): readonly TrustRule[] {
+	return [{ path: projectsHome(home), level: 'TRUST_FOLDER' }, { path: allReviewsHome(home), level: 'DO_NOT_TRUST' }];
+}
+
+/** Writes GeminiCode's own entries where the file lacks them or has them at another level; resolves whether it wrote. */
+export async function ensureOwnTrustRules(file: string, home: string = os.homedir()): Promise<boolean> {
+	const config = await readConfig(file);
+	const missing = ownTrustRules(home).filter(rule => config[rule.path] !== rule.level);
+	if (!missing.length) {
+		return false;
+	}
+	for (const rule of missing) {
+		config[rule.path] = rule.level;
+	}
+	await writeConfig(file, config);
+	return true;
+}
+
+/** What decides a folder's trust: the entry that covers it, if any. */
+export interface FolderTrustState {
+	/** Undefined when no entry covers the folder, which the CLI treats as untrusted. */
+	readonly trusted: boolean | undefined;
+	readonly rule?: TrustRule;
+}
+
+/**
+ * What the CLI makes of `folder` by `file`, decided as gemini-cli's
  * `isPathTrusted` does: the longest rule that covers the folder wins, where
  * TRUST_FOLDER covers its folder and TRUST_PARENT the folder's parent.
- * Undefined when no rule covers it, which the CLI treats as untrusted.
  */
-export async function isFolderTrusted(file: string, folder: string): Promise<boolean | undefined> {
-	let config: Record<string, unknown>;
+export async function folderTrustState(file: string, folder: string): Promise<FolderTrustState> {
+	let rules: TrustRule[];
 	try {
-		const parsed: unknown = JSON.parse(await fs.readFile(file, 'utf8'));
-		if (!isRecord(parsed)) {
-			return undefined;
-		}
-		config = parsed;
+		rules = await readTrustRules(file);
 	} catch {
-		return undefined;
+		return { trusted: undefined };
 	}
 	const location = await comparable(folder);
-	let longest = -1;
-	let level: unknown;
-	const rules = Object.entries(config);
-	const covers = await Promise.all(rules.map(([rule, value]) => comparable(value === 'TRUST_PARENT' ? path.dirname(rule) : rule)));
-	for (const [i, [rule, value]] of rules.entries()) {
+	let found: TrustRule | undefined;
+	const covers = await Promise.all(rules.map(rule => comparable(rule.level === 'TRUST_PARENT' ? path.dirname(rule.path) : rule.path)));
+	for (const [i, rule] of rules.entries()) {
 		const covered = covers[i];
-		if ((location === covered || location.startsWith(covered.endsWith(path.sep) ? covered : covered + path.sep)) && rule.length > longest) {
-			longest = rule.length;
-			level = value;
+		if ((location === covered || location.startsWith(covered.endsWith(path.sep) ? covered : covered + path.sep)) && rule.path.length > (found?.path.length ?? -1)) {
+			found = rule;
 		}
 	}
-	return level === 'DO_NOT_TRUST' ? false : level === 'TRUST_FOLDER' || level === 'TRUST_PARENT' ? true : undefined;
+	return found ? { trusted: found.level !== 'DO_NOT_TRUST', rule: found } : { trusted: undefined };
+}
+
+/** Whether the CLI trusts `folder` by `file` (`folderTrustState`); undefined when no rule covers it. */
+export async function isFolderTrusted(file: string, folder: string): Promise<boolean | undefined> {
+	return (await folderTrustState(file, folder)).trusted;
 }
 
 /**

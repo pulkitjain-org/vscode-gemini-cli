@@ -1403,3 +1403,52 @@ button.option-button .codicon-chevron-down {
 	margin-top: 6px;
 	font-size: 11.5px;
 }
+
+/* Agent Setup's Trusted Folders: the folder and what its rule covers, how it stands, and Remove. */
+.settings .row.trust {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 150px 80px;
+}
+
+.settings .trust-folder {
+	display: block;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.settings .trust .row-detail {
+	white-space: normal;
+}
+
+.settings .trust > button {
+	justify-self: end;
+}
+
+.trust-status.ok {
+	color: var(--gemini-ok);
+}
+
+.trust-status.warn {
+	color: var(--gemini-warn);
+}
+
+.trust-status.muted {
+	color: var(--gemini-muted);
+}
+
+.settings .trust-actions {
+	flex-wrap: wrap;
+	margin-top: 12px;
+}
+
+.settings .trust-note {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 12px;
+}
+
+.settings .trust-note.problem {
+	color: var(--gemini-warn);
+}
