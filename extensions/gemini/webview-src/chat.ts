@@ -28,7 +28,7 @@ import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
 import { format, HeldUpdates } from './chatLogic';
 import { addAttachments, setSharedPage } from './attachmentChips';
 import { attachToolRef, setToolRefContext, toolRefResolved, watchToolRefs } from './toolChips';
-import { setBusy, setFollow, setFollowed, setGit, setSettings, setStatus } from './composer';
+import { setBusy, setFollow, setFollowed, setGit, setSendWith, setSettings, setStatus } from './composer';
 import { setQueue } from './queueStrip';
 import { initReactionBar } from './reactionBar';
 import { applyTokenColors } from './codeHighlight';
@@ -37,7 +37,7 @@ import { openForkDialog } from './fork';
 import { setLabel } from './dom';
 import { restoreComposerHeight, updatePlaceholder, updateSendState } from './inputBox';
 import { showSavedSessions } from './items';
-import { setBranches } from './pickers';
+import { commitDone, setBranches, setCommitMessage } from './pickers';
 import { showCommands, showFiles } from './picker';
 import { updatePlusMenu } from './plusMenu';
 import { openNewThread, showParentProject, showProjectPanel } from './project';
@@ -45,7 +45,7 @@ import { pickedRepository, showProjectSettings } from './projectSettings';
 import { setRunState, setRunView } from './runButtons';
 import { updateOutline } from './promptNav';
 import { appended, applyItem, isNearBottom, reset, setFoldWork, settleScroll, updateWorking } from './transcript';
-import { showContext, showQuota, toggleUsage, updateUsage } from './usage';
+import { showBreakdown, showContext, showQuota, toggleUsage, updateUsage } from './usage';
 import { state, strings, ui, vscode } from './view';
 
 setLabel(ui.sendButton, strings.send);
@@ -182,7 +182,7 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			showCommands(message.commands);
 			break;
 		case 'files':
-			showFiles(message.requestId, message.files);
+			showFiles(message.requestId, message.files, message.mentions ?? []);
 			break;
 		case 'attach':
 			addAttachments(message.attachments);
@@ -229,7 +229,19 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			showContext(message.context);
 			break;
 		case 'toggleUsage':
-			toggleUsage();
+			toggleUsage(message.open);
+			break;
+		case 'contextBreakdown':
+			showBreakdown(message.breakdown);
+			break;
+		case 'commitMessage':
+			setCommitMessage(message.message);
+			break;
+		case 'commitDone':
+			commitDone(message.ok);
+			break;
+		case 'sendWith':
+			setSendWith(message.cmdEnter);
 			break;
 		case 'projectPanel':
 			showProjectPanel(message.panel);

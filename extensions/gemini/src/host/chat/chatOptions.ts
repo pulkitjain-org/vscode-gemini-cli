@@ -16,9 +16,9 @@ import type { EnhancePromptInput } from '../../acp/quickPrompts';
 import type { AgentStatus } from '../../acp/status';
 import type { TranscriptItem } from '../../acp/chatTranscript';
 import type { ConversationEntry, MessageRecord } from '../../acp/cliSessions';
-import type { RunPlace } from '../../acp/runCommands';
+import type { FinishedCommand, RunPlace } from '../../acp/runCommands';
 import type { RunOutcome } from '../agentTerminals';
-import type { ForkAction, ForkRequest, NewThread, ProjectSettingsAction, ProjectSettingsSave, ThreadAction } from '../chatProtocol';
+import type { ForkAction, ForkRequest, NewThread, ProjectSettingsAction, ProjectSettingsSave, ThreadAction, ViewContextBreakdown } from '../chatProtocol';
 import type { ToolChips } from '../toolChips';
 import type { UsageMeter } from '../usageMeter';
 import type { FileMatch } from '../workspaceFiles';
@@ -97,6 +97,30 @@ export interface ChatControllerOptions {
 	readonly fork?: ChatForker;
 	/** Run on a reply's shell blocks, in the agent's own terminals; unset hides Run. */
 	readonly terminal?: ChatTerminal;
+	/** The usage popover's context breakdown (`/context`); unset shows none. */
+	contextCost?(): ChatContextCost | undefined;
+	/** The @ picker's Symbols: definitions named like `query` in the folder's index; undefined while the index is off, unavailable or not built. */
+	symbols?(query: string): Promise<readonly ChatSymbol[] | undefined>;
+}
+
+/** A definition the workspace index found, for the @ picker. */
+export interface ChatSymbol {
+	readonly name: string;
+	readonly kind: string;
+	/** Absolute. */
+	readonly path: string;
+	/** 1-based, inclusive. */
+	readonly line: number;
+	readonly endLine: number;
+}
+
+/** What every model call in a folder carries, and the rule files loaded there (chatContext.ts). */
+export interface ChatContextCost {
+	view(folder: string): ViewContextBreakdown;
+	/** Measures `folder` when its last measure is a day old, or at once with `force`; resolves once done. */
+	measure(folder: string, force: boolean): Promise<void>;
+	/** Fires with the folder whose breakdown changed. */
+	onDidChange(listener: (folder: string) => void): { dispose(): void };
 }
 
 /** Where and how Run on a reply's command runs it. */
@@ -109,6 +133,8 @@ export interface ChatTerminal {
 	run(place: RunPlace, command: string, fresh: boolean): Promise<RunOutcome>;
 	/** Types `command` into the agent's terminal in `place`, and leaves Return to the user. */
 	insert(place: RunPlace, command: string): void;
+	/** The last command that finished in the agent's terminals, else in the terminal in front, with its output, for the @ picker. */
+	lastCommand?(): FinishedCommand | undefined;
 }
 
 /** What Fork Agent asks of the Agents pane, which makes the fork. */

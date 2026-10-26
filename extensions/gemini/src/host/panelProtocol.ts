@@ -139,6 +139,8 @@ export interface HomeView {
 	readonly ownBranch: boolean;
 	/** The approval modes a new agent can start in, as policy allows. */
 	readonly modes: readonly HomeMode[];
+	/** The mode picked until the user picks one: `gemini.agents.defaultMode`. */
+	readonly defaultMode?: string;
 	/** The model a new agent starts on, when the user picked one. */
 	readonly model?: string;
 	/** The dashboard around the composer: the team tools, what needs the user, the cards. */

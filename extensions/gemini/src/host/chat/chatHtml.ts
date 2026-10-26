@@ -173,9 +173,28 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		retryTooltip: vscode.l10n.t("Send this message again"),
 		buildPlan: vscode.l10n.t("Build This Plan"),
 		buildPlanTooltip: vscode.l10n.t("Leave Plan mode and carry out this plan"),
+		planBuild: {
+			more: vscode.l10n.t("Other ways to build"),
+			buildIn: vscode.l10n.t("Build in {0}"),
+			asking: vscode.l10n.t("Build, Asking for Each Edit"),
+			beforePlan: vscode.l10n.t("The mode you were in before planning"),
+			defaultMode: vscode.l10n.t("Default mode"),
+			models: vscode.l10n.t("Builds with {0}; planned with {1}."),
+		},
 		switchBranch: vscode.l10n.t("Branch {0}: switch or create a branch"),
 		createBranchAndCommit: vscode.l10n.t("Create a branch and commit these changes"),
 		commit: vscode.l10n.t("Commit\u2026"),
+		commitTo: {
+			button: vscode.l10n.t("Commit to {0}"),
+			tip: vscode.l10n.t("Commit the agent's changes to {0}"),
+			more: vscode.l10n.t("More ways to commit"),
+			newBranch: vscode.l10n.t("Create Branch and Commit\u2026"),
+			message: vscode.l10n.t("Commit message"),
+			writing: vscode.l10n.t("Writing a commit message\u2026"),
+			generated: vscode.l10n.t("Generated from the changes \u00b7 edit before committing"),
+			commit: vscode.l10n.t("Commit"),
+			cancel: vscode.l10n.t("Cancel"),
+		},
 		enhance: vscode.l10n.t("Enhance prompt"),
 		enhanceShort: vscode.l10n.t("Enhance"),
 		previewMarkdown: vscode.l10n.t("Preview ({0})"),
@@ -297,6 +316,13 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		addFolder: vscode.l10n.t("Add Folder to Workspace..."),
 		modeChip: vscode.l10n.t("Mode: {0}. Click to change it."),
 		modeChipReset: vscode.l10n.t("Back to {0}"),
+		modeRecommended: vscode.l10n.t("Recommended here"),
+		modeDetails: {
+			default: vscode.l10n.t("Asks before every change and command"),
+			autoEdit: vscode.l10n.t("Edits apply at once; review them with Keep and Undo. Commands still ask."),
+			plan: vscode.l10n.t("Reads and plans; changes nothing"),
+			yolo: vscode.l10n.t("Runs everything without asking"),
+		},
 		usageRing: vscode.l10n.t("Context {0}% used. Click for usage and quota."),
 		followedFile: vscode.l10n.t("{0}, the file the agent is on. Click to show it."),
 		closeFollowed: vscode.l10n.t("Close {0}"),
@@ -312,6 +338,40 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		usageHideDetails: vscode.l10n.t("Hide details"),
 		usageAllModels: vscode.l10n.t("All {0} models"),
 		usageFewerModels: vscode.l10n.t("Fewer models"),
+		contextParts: {
+			conversation: vscode.l10n.t("Conversation"),
+			servers: vscode.l10n.t("MCP servers ({0})"),
+			rules: vscode.l10n.t("Rule files ({0})"),
+			geminicode: vscode.l10n.t("GeminiCode tools"),
+			cli: vscode.l10n.t("CLI system prompt"),
+			ruleFiles: vscode.l10n.t("Rule files loaded"),
+			kilobytes: vscode.l10n.t("{0} KB"),
+			aboutTokens: vscode.l10n.t("about {0} tokens"),
+			large: vscode.l10n.t("{0} is large: every turn carries it. Trim it or split it with @imports."),
+			measured: vscode.l10n.t("Measured {0}"),
+			measureAgain: vscode.l10n.t("Measure Again"),
+			measuring: vscode.l10n.t("Measuring what each turn carries\u2026"),
+			notMeasured: vscode.l10n.t("Not measured yet."),
+			failed: vscode.l10n.t("Couldn't measure: {0}"),
+			compactNote: vscode.l10n.t("/compact frees the conversation part"),
+		},
+		mentions: {
+			files: vscode.l10n.t("Files"),
+			folders: vscode.l10n.t("Folders"),
+			symbols: vscode.l10n.t("Symbols"),
+			workspace: vscode.l10n.t("Workspace"),
+			problems: vscode.l10n.t("Problems"),
+			problemsDetail: vscode.l10n.t("{0} errors, {1} warnings"),
+			changes: vscode.l10n.t("Uncommitted changes"),
+			changesDetail: vscode.l10n.t("{0} files"),
+			terminal: vscode.l10n.t("Last terminal command"),
+			terminalFailed: vscode.l10n.t("{0} \u00b7 failed"),
+		},
+		cmdEnter: {
+			placeholderWorking: process.platform === 'darwin' ? vscode.l10n.t("⌘↩ to send, ⇧⌘↩ to queue for later") : vscode.l10n.t("Ctrl+Enter to send, Shift+Ctrl+Enter to queue for later"),
+			send: process.platform === 'darwin' ? vscode.l10n.t("Send (⌘Return)") : vscode.l10n.t("Send (Ctrl+Enter)"),
+			sendNow: process.platform === 'darwin' ? vscode.l10n.t("Send now (⌘Return). ⇧⌘Return queues it for after this turn.") : vscode.l10n.t("Send now (Ctrl+Enter). Shift+Ctrl+Enter queues it for after this turn."),
+		},
 		noFiles: vscode.l10n.t("No matching files"),
 		noCommands: vscode.l10n.t("No matching commands"),
 		pickerFiles: vscode.l10n.t("Files to attach"),
@@ -390,12 +450,15 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			<button type="button" id="workspace" class="foot-button workspace" hidden><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button>
 			<span id="repos" class="foot-repos" hidden></span>
 			<button type="button" id="commit" class="foot-button commit" hidden><i class="codicon codicon-git-commit" aria-hidden="true"></i><span></span></button>
+			<button type="button" id="commit-more" class="foot-button commit-more" hidden><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button>
 			<span id="followed" class="foot-followed" hidden><button type="button" class="foot-button followed-name"><i class="codicon codicon-eye" aria-hidden="true"></i><span></span></button><button type="button" class="followed-close"><i class="codicon codicon-close" aria-hidden="true"></i></button></span>
 			<span class="spacer"></span>
 			<button type="button" id="usage-ring" class="foot-button usage-ring" aria-expanded="false" aria-controls="usage-popover"><svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="ring-track" cx="8" cy="8" r="6"/><circle class="ring-fill" cx="8" cy="8" r="6" pathLength="100" stroke-dasharray="0 100" transform="rotate(-90 8 8)"/></svg><span></span></button>
 			<div id="branch-menu" class="foot-menu" hidden></div>
 			<div id="workspace-menu" class="foot-menu" hidden></div>
 			<div id="repos-menu" class="foot-menu" hidden></div>
+			<div id="commit-menu" class="foot-menu" hidden></div>
+			<div id="commit-box" class="usage-popover commit-box" role="dialog" hidden><label class="usage-heading" for="commit-message"></label><textarea id="commit-message" class="commit-message" rows="4" spellcheck="${spellCheckOn()}"></textarea><p class="usage-note commit-note" role="status"></p><div class="permission-actions"><button type="button" class="secondary commit-cancel"></button><button type="button" class="primary commit-confirm"></button></div></div>
 		</div>
 	</div>
 	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-fold-work="${foldWorkOn()}" data-emoji-picker="${emojiPicker}" data-reactions="${!project && reactionsOn()}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>

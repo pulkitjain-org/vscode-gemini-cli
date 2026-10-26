@@ -15,13 +15,14 @@ import type { SessionSettings } from '../acp/sessionSettings';
 import type { SlashCommand } from '../acp/slashCommands';
 import type { AgentPhase } from '../acp/status';
 import type { TokenColors } from '../acp/tokenColors';
+import type { ContextBreakdown } from '../acp/contextCost';
 import type { PendingPromptView } from '../acp/promptQueue';
 
 /**
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 36;
+export const chatProtocolVersion = 37;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.signIn', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal'] as const;
@@ -481,11 +482,20 @@ export interface ChatStrings {
 	readonly retryTooltip: string;
 	readonly buildPlan: string;
 	readonly buildPlanTooltip: string;
+	/** Build This Plan's chevron and its menu: `{0}` is a mode's name; the hint names the build's model, then the plan's. */
+	readonly planBuild: {
+		readonly more: string; readonly buildIn: string; readonly asking: string; readonly beforePlan: string; readonly defaultMode: string; readonly models: string;
+	};
 	/** `{0}` is the branch; the branch pill's tooltip. */
 	readonly switchBranch: string;
 	/** The commit pill's tooltip, and its short label. */
 	readonly createBranchAndCommit: string;
 	readonly commit: string;
+	/** Commit to the branch the folder is on (`{0}`), its chevron's menu, and the message box it opens. */
+	readonly commitTo: {
+		readonly button: string; readonly tip: string; readonly more: string; readonly newBranch: string;
+		readonly message: string; readonly writing: string; readonly generated: string; readonly commit: string; readonly cancel: string;
+	};
 	/** The Enhance prompt pill, its tooltip, and what screen readers hear while and after it works. */
 	readonly enhance: string;
 	/** The floating button's own label, short as it follows the text. */
@@ -609,6 +619,10 @@ export interface ChatStrings {
 	readonly modeChip: string;
 	/** `{0}` is the default mode. */
 	readonly modeChipReset: string;
+	/** The mode menu's tag on the mode suggested for this folder. */
+	readonly modeRecommended: string;
+	/** What each of the CLI's modes does, by mode id, in place of the CLI's own short descriptions. */
+	readonly modeDetails: Readonly<Record<string, string>>;
 	/** The context ring's tooltip; `{0}` is a percentage. */
 	readonly usageRing: string;
 	readonly followedFile: string;
@@ -628,7 +642,32 @@ export interface ChatStrings {
 	readonly usageHideDetails: string;
 	readonly usageAllModels: string;
 	readonly usageFewerModels: string;
+	/** The usage popover's context breakdown and rule files (`/context`); `{0}` is a count, a name, a time or a size. */
+	readonly contextParts: {
+		readonly conversation: string; readonly servers: string; readonly rules: string; readonly geminicode: string; readonly cli: string;
+		readonly ruleFiles: string; readonly kilobytes: string; readonly aboutTokens: string; readonly large: string;
+		readonly measured: string; readonly measureAgain: string; readonly measuring: string; readonly notMeasured: string; readonly failed: string; readonly compactNote: string;
+	};
+	/** The @ picker's groups and its Workspace rows; `{0}` and `{1}` are counts or a command. */
+	readonly mentions: {
+		readonly files: string; readonly folders: string; readonly symbols: string; readonly workspace: string;
+		readonly problems: string; readonly problemsDetail: string; readonly changes: string; readonly changesDetail: string;
+		readonly terminal: string; readonly terminalFailed: string;
+	};
+	/** With `gemini.chat.sendWith` set to cmdEnter: what the placeholder and Send say. */
+	readonly cmdEnter: { readonly placeholderWorking: string; readonly send: string; readonly sendNow: string };
 }
+
+/** The usage popover's context breakdown (contextCost.ts). */
+export type ViewContextBreakdown = ContextBreakdown;
+
+/** The @ picker's rows besides files: a folder, a symbol from the index, or one of the Workspace rows. */
+export type ViewMention =
+	| { readonly kind: 'folder'; readonly path: string; readonly relative: string }
+	| { readonly kind: 'symbol'; readonly name: string; readonly symbolKind: string; readonly path: string; readonly relative: string; readonly line: number; readonly endLine: number }
+	| { readonly kind: 'problems'; readonly errors: number; readonly warnings: number }
+	| { readonly kind: 'changes'; readonly files: number }
+	| { readonly kind: 'terminal'; readonly command: string; readonly failed: boolean };
 
 /** How full the session's context window is, from the counts the CLI saved with its replies. */
 export interface SharedPageView {
@@ -759,6 +798,10 @@ export interface ViewGit {
 	readonly branch?: string;
 	/** Whether there are agent changes to commit. */
 	readonly canCommit: boolean;
+	/** The branch Commit commits to, when it isn't the repository's default branch; unset offers Create Branch & Commit. */
+	readonly commitTo?: string;
+	/** The mode the mode menu tags "Recommended here" for this folder. */
+	readonly recommendMode?: string;
 	/** The workspace the chat's agent works in, for the workspace pill. */
 	readonly workspace?: ViewWorkspace;
 	/** A project's several repositories, each with its branch, in place of the branch and workspace pills. */
@@ -851,6 +894,14 @@ export type FromWebview =
 	/** Close the file Follow the agent opened last. */
 	| { readonly type: 'closeFollowed' }
 	| { readonly type: 'createBranchAndCommit' }
+	/** The commit message box opened: answered with `commitMessage`. */
+	| { readonly type: 'writeCommitMessage' }
+	/** The message box's Commit: commit the agent's files to the current branch with `message`. */
+	| { readonly type: 'commitToBranch'; readonly message: string }
+	/** The usage popover's Measure Again. */
+	| { readonly type: 'measureContext' }
+	/** A Folders, Symbols or Workspace row of the @ picker: the extension answers with `attach`. */
+	| { readonly type: 'attachMention'; readonly mention: ViewMention }
 	/** A project chat's thread card button. */
 	| { readonly type: 'threadAction'; readonly thread: string; readonly action: ThreadAction; readonly repo?: string }
 	/** The New thread dialog: start a thread directly; the coordinator hears afterwards. */
@@ -889,7 +940,7 @@ export type FromWebview =
 	| { readonly type: 'forkAction'; readonly agent: string; readonly action: ForkAction }
 	| { readonly type: 'openTrace'; readonly file: string }
 	/** Leave Plan mode and carry out the plan; only the latest turn offers it, when it ended in Plan mode. */
-	| { readonly type: 'buildPlan'; readonly itemId: string }
+	| { readonly type: 'buildPlan'; readonly itemId: string; readonly mode?: string }
 	/** The composer has text: get a rewrite session ready. */
 	| { readonly type: 'prepareEnhance' }
 	/** Rewrite the draft as a precise prompt; answered with `enhanced` or `enhanceFailed` carrying the same `requestId`. */
@@ -931,7 +982,7 @@ export type ToWebview =
 	| { readonly type: 'follow'; readonly on: boolean }
 	/** The file Follow the agent opened last, while it is still open. */
 	| { readonly type: 'followed'; readonly file: { readonly name: string; readonly path: string } | undefined }
-	| { readonly type: 'files'; readonly requestId: number; readonly files: readonly { readonly path: string; readonly relative: string }[] }
+	| { readonly type: 'files'; readonly requestId: number; readonly files: readonly { readonly path: string; readonly relative: string }[]; readonly mentions?: readonly ViewMention[] }
 	/** Every slash command this chat offers: the agent's, then the team's. */
 	| { readonly type: 'commands'; readonly commands: readonly SlashCommand[] }
 	/** Context to add to the composer, from the Add to Chat commands. */
@@ -961,10 +1012,18 @@ export type ToWebview =
 	/** `retention` says how long the CLI keeps saved chats. */
 	| { readonly type: 'sessions'; readonly sessions: readonly ViewSession[]; readonly total: number; readonly retention: string }
 	| { readonly type: 'quota'; readonly quota: ViewQuota }
+	/** The usage popover's context breakdown. */
+	| { readonly type: 'contextBreakdown'; readonly breakdown: ViewContextBreakdown }
+	/** The message written for the commit box; unset when none could be written. */
+	| { readonly type: 'commitMessage'; readonly message: string | undefined }
+	/** The box's commit finished: committed, or not (the extension said why), so the box closes or stays. */
+	| { readonly type: 'commitDone'; readonly ok: boolean }
+	/** `gemini.chat.sendWith`: whether ⌘Return (Ctrl+Enter) sends and Return makes a new line. */
+	| { readonly type: 'sendWith'; readonly cmdEnter: boolean }
 	/** The context window's use; unset when unknown, such as before the first reply. */
 	| { readonly type: 'context'; readonly context: ViewContext | undefined }
-	/** Show Usage and Quota: open the usage popover, or close it if open. */
-	| { readonly type: 'toggleUsage' }
+	/** Show Usage and Quota: open the usage popover, or close it if open; `open` (/context) only opens it. */
+	| { readonly type: 'toggleUsage'; readonly open?: boolean }
 	/** Open the Fork dialog. */
 	| { readonly type: 'openFork'; readonly fork: ForkView }
 	/** A project chat's side panel. */

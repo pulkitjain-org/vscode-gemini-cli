@@ -34,7 +34,10 @@ import type { TeamConnections } from './teamConnections';
 import type { WorkspaceIndex } from './workspaceIndex';
 import { toolChipsFor } from './toolChips';
 import { ChatActivity, ChatController, ChatEnhancer, ChatTerminal, ChatWorkspace, FileSearch, openChatAsMarkdown } from './chatController';
-import { configSection } from './configuration';
+import { configSection, getApprovalPolicy } from './configuration';
+import { isModeAllowed } from '../acp/adminPolicy';
+import { defaultStartMode } from '../acp/chatTurns';
+import type { ChatContextCost } from './chat/chatOptions';
 import { tildify } from './displayText';
 import { Projects, projectsEnabled } from './projects';
 export { relativeTime } from './displayText';
@@ -188,6 +191,8 @@ export class AgentsView implements vscode.Disposable {
 	index: WorkspaceIndex | undefined;
 	/** Today's quota, for the chats' usage popover. */
 	usage: UsageMeter | undefined;
+	/** What each folder's model calls carry, for the chats' usage popover (/context); set by activate. */
+	contextCost: ChatContextCost | undefined;
 	/** One direct request to the quick model, for drafting a project's memory; set once the extension has made it. */
 	direct: ((request: { readonly system: string; readonly prompt: string }) => Promise<string | undefined>) | undefined;
 	private persistTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -838,6 +843,11 @@ export class AgentsView implements vscode.Disposable {
 				}
 			},
 		}, this.preferredModel(record));
+		// A new agent starts in `gemini.agents.defaultMode`; one started with a mode of its own (Home, a team flow) switches to it after this.
+		const startMode = !record.sessionId && !project ? defaultStartMode(vscode.workspace.getConfiguration(configSection).get('agents.defaultMode'), modeId => isModeAllowed(getApprovalPolicy(), modeId)) : undefined;
+		if (startMode) {
+			session.client.setModeOnNextSession(startMode);
+		}
 		session.permissions.confirmOnly = request => !!this.teamTools?.isConfirmCall(request);
 		session.permissions.answerAtOnce = request => (project ? this.projects.instantAnswer(this.model.agent(record.id) ?? record, request) : undefined)
 			?? this.teamTools?.instantAnswer(request);
@@ -865,6 +875,17 @@ export class AgentsView implements vscode.Disposable {
 				// Not for a coordinator, which runs in an empty folder without the index.
 				indexHint: () => cwd === folder ? this.index?.hint(folder) : undefined,
 				usage: () => this.usage,
+				contextCost: () => this.contextCost,
+				// The index's definitions, only while agents get its tools and the folder's index is built.
+				symbols: async query => {
+					const index = this.index;
+					if (!index?.hint(cwd) || cwd !== folder) {
+						return undefined;
+					}
+					const answer = await index.request('findSymbol', { root: folder, name: query });
+					const found = answer ? [...answer.result.definitions, ...answer.result.similar] : [];
+					return found.map(symbol => ({ name: symbol.name, kind: symbol.kind, path: path.join(folder, symbol.path), line: symbol.line, endLine: symbol.endLine }));
+				},
 				toolChips: () => this.teamTools && toolChipsFor(this.teamTools),
 				review: () => this.reviewChip?.(record.id),
 				openReview: () => this.openReview?.(record.id),
@@ -992,6 +1013,7 @@ export class AgentsView implements vscode.Disposable {
 			alwaysAsk: coordinator,
 			run: (place, command, fresh) => this.terminals.run(id, this.terminalName(id, place.name, several()), place.folder, command, fresh),
 			insert: (place, command) => this.terminals.insert(id, this.terminalName(id, place.name, several()), place.folder, command),
+			lastCommand: () => this.terminals.lastCommandFor(id),
 		};
 	}
 

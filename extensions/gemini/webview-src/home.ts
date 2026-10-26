@@ -83,7 +83,7 @@ let view: HomeView | undefined;
 let folder = saved.folder ?? '';
 let ownBranchTouched = false;
 /** The approval mode the next agent starts in. */
-let mode = saved.mode ?? 'default';
+let mode = saved.mode ?? '';
 /** Files the next agent's task is sent with. */
 let attachments: Attachment[] = [];
 
@@ -220,7 +220,7 @@ function updateControls(): void {
 	workspaceButton.setAttribute('aria-label', label);
 	ownBranchLabel.hidden = !current?.git;
 	start.disabled = !prompt.value.trim() || !current;
-	const currentMode = view?.modes.find(choice => choice.id === mode) ?? view?.modes[0];
+	const currentMode = view?.modes.find(choice => choice.id === (mode || view?.defaultMode)) ?? view?.modes[0];
 	modeButton.parentElement!.hidden = !currentMode;
 	if (currentMode) {
 		mode = currentMode.id;

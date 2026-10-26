@@ -28,6 +28,7 @@ import { toneOf } from './repoTones';
 import { thoughtPreview } from './streaming';
 import { thoughtSummary } from './workFold';
 import { agentBadge, reactionLines, replyReactions } from './reactionBar';
+import { planBuildButtons } from './planBuild';
 import { expanded, state, strings, subagentTimes, thoughtTimes, ui, vscode } from './view';
 
 const mac = /Mac/.test(navigator.platform);
@@ -182,9 +183,7 @@ function renderTurnEnd(item: ItemOf<'turnEnd'>): HTMLElement {
 		node.append(retry);
 	}
 	if (item.buildPlan) {
-		const build = button('turn-action', strings.buildPlan, () => vscode.postMessage({ type: 'buildPlan', itemId: item.id }), 'play');
-		setLabel(build, strings.buildPlanTooltip);
-		node.append(build);
+		node.append(...planBuildButtons(item));
 	}
 	if (item.undo === 'available') {
 		const undo = button('turn-action undo-turn', strings.undoTurn, () => vscode.postMessage({ type: 'undoTurn', itemId: item.id }), 'discard');
@@ -775,7 +774,7 @@ function restoreCard(): HTMLElement | undefined {
 export function renderEmpty(): HTMLElement {
 	const node = el('div', 'empty');
 	const hints = el('ul', 'empty-hints');
-	for (const [key, text] of [['@', strings.hintMention], ['/', strings.hintCommands], [mac ? '⇧↩' : 'Shift+Enter', strings.hintNewLine], ['', strings.dropFiles]] as const) {
+	for (const [key, text] of [['@', strings.hintMention], ['/', strings.hintCommands], [state.cmdEnter ? (mac ? '↩' : 'Enter') : mac ? '⇧↩' : 'Shift+Enter', strings.hintNewLine], ['', strings.dropFiles]] as const) {
 		const hint = el('li');
 		hint.append(key ? el('kbd', undefined, key) : icon('cloud-upload'), el('span', undefined, text));
 		hints.append(hint);

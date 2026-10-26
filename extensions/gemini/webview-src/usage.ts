@@ -4,20 +4,24 @@
  *--------------------------------------------------------------------------------------------*/
 
 // The context ring under the composer and the usage popover it opens: how
-// full this chat's context window is, today's quota per model for the
-// account, which the extension reads when the popover opens, and the tokens
-// this chat used per model, from its turn ends.
+// full this chat's context window is and what each part of it is (also
+// `/context`), today's quota per model for the account, which the extension
+// reads when the popover opens, and the tokens this chat used per model,
+// from its turn ends.
 
-import type { ViewContext, ViewQuota } from '../src/host/chatProtocol';
+import type { ViewContext, ViewContextBreakdown, ViewQuota } from '../src/host/chatProtocol';
 import { chatUsage } from '../src/acp/turnUsage';
-import { format, formatTokens, resetsIn } from './chatLogic';
-import { button, el, setLabel } from './dom';
+import { contextParts, format, formatSentAt, formatTokens, resetsIn } from './chatLogic';
+import { button, el, icon, setLabel } from './dom';
 import { closePicker } from './picker';
 import { state, strings, ui, vscode } from './view';
 
 const { usagePopover: popover, usageRing: ring } = ui;
 let quota: ViewQuota = { kind: 'checking' };
 let context: ViewContext | undefined;
+let breakdown: ViewContextBreakdown | undefined;
+/** A rule file this large is worth trimming: every turn carries it (contextCost.ts `largeRuleFileBytes`). */
+const largeRuleBytes = 20 * 1024;
 /** Whether the popover lists every model's quota, and this chat's tokens per model. */
 let allModels = false;
 let details = false;
@@ -57,10 +61,12 @@ function updateRing(): void {
 	setLabel(ring, percent === undefined ? strings.usage : format(strings.usageRing, percent));
 }
 
-/** Opens the popover, or closes it if open. */
-export function toggleUsage(): void {
+/** Opens the popover, or closes it if open; `open` (/context) leaves an open one open. */
+export function toggleUsage(open = false): void {
 	if (!popover.hidden) {
-		closeUsage();
+		if (!open) {
+			closeUsage();
+		}
 		return;
 	}
 	closePicker();
@@ -88,6 +94,14 @@ function closeUsage(): void {
 /** Today's quota from the extension; shown if the popover is still open. */
 export function showQuota(value: ViewQuota): void {
 	quota = value;
+	if (!popover.hidden) {
+		renderUsage();
+	}
+}
+
+/** The context breakdown from the extension; shown if the popover is still open. */
+export function showBreakdown(value: ViewContextBreakdown): void {
+	breakdown = value;
 	if (!popover.hidden) {
 		renderUsage();
 	}
@@ -137,6 +151,9 @@ function renderContext(): HTMLElement {
 	section.append(heading);
 	if (!context) {
 		section.append(el('p', 'usage-note', strings.usageContextNone));
+		if (breakdown) {
+			section.append(renderBreakdown(breakdown));
+		}
 		return section;
 	}
 	const share = Math.min(1, context.used / context.limit);
@@ -147,6 +164,9 @@ function renderContext(): HTMLElement {
 	used.title = context.used.toLocaleString();
 	row.append(used, el('span', 'usage-detail', `${percent}%`));
 	section.append(row, meter(percent, share >= 0.9 ? 'full' : share >= summariseAt ? 'high' : '', strings.usageContext), el('p', 'usage-note', format(strings.usageContextNote, Math.round(summariseAt * 100))));
+	if (breakdown) {
+		section.append(renderBreakdown(breakdown, context.used));
+	}
 	// Compact shows only when it can run now: enough prompts, and no turn or compact going.
 	if (context.canCompact && !state.busy && !state.items.some(item => item.kind === 'compact' && item.state === 'running')) {
 		const compact = el('div', 'usage-row usage-compact');
@@ -157,6 +177,56 @@ function renderContext(): HTMLElement {
 		section.append(compact);
 	}
 	return section;
+}
+
+/** What each turn carries, from the folder's last measure, and the rule files the CLI loaded; `used` is the latest request's input. */
+function renderBreakdown(value: ViewContextBreakdown, used?: number): HTMLElement {
+	const part = strings.contextParts;
+	const node = el('div', 'context-parts');
+	const rules = value.rules ?? [];
+	const rows = value.parts ? contextParts(value.parts, rules.length, used) : [];
+	const whole = used ?? value.parts?.total ?? 0;
+	for (const row of rows) {
+		const name = row.part === 'servers' ? format(part.servers, row.count ?? 0) : row.part === 'rules' ? format(part.rules, row.count ?? 0) : part[row.part];
+		const line = el('div', 'usage-row');
+		line.append(el('span', undefined, name), el('span', 'usage-detail', formatTokens(row.tokens)));
+		line.title = row.tokens.toLocaleString();
+		const percent = whole ? Math.round(Math.min(1, row.tokens / whole) * 100) : 0;
+		node.append(line, meter(percent, '', name));
+	}
+	if (rules.length) {
+		const list = el('div', 'context-rules');
+		list.append(el('div', 'usage-heading', part.ruleFiles));
+		for (const rule of rules) {
+			const large = rule.bytes > largeRuleBytes;
+			const item = el('div', `context-rule${large ? ' large' : ''}`);
+			if (large) {
+				item.append(icon('warning'));
+			}
+			const size = format(part.kilobytes, Math.max(1, Math.round(rule.bytes / 1024)));
+			item.append(el('span', 'usage-model', rule.name), el('span', 'usage-detail', large ? `${size} \u00b7 ${format(part.aboutTokens, formatTokens(Math.round(rule.bytes / 4_000) * 1_000))}` : size));
+			item.title = rule.path;
+			list.append(item);
+		}
+		for (const rule of rules.filter(each => each.bytes > largeRuleBytes)) {
+			list.append(el('p', 'usage-note context-warning', format(part.large, rule.name)));
+		}
+		node.append(list);
+	}
+	const foot = el('div', 'usage-row context-foot');
+	const status = value.state === 'measuring' ? part.measuring
+		: value.state === 'failed' ? format(part.failed, value.error ?? '')
+			: value.measuredAt ? format(part.measured, formatSentAt(value.measuredAt, Date.now())) : part.notMeasured;
+	const left = el('span', 'usage-note', status);
+	if (value.state !== 'measuring') {
+		left.append(' \u00b7 ', button('usage-more', part.measureAgain, () => vscode.postMessage({ type: 'measureContext' })));
+	}
+	foot.append(left);
+	if (rows.some(row => row.part === 'conversation')) {
+		foot.append(el('span', 'usage-note', part.compactNote));
+	}
+	node.append(foot);
+	return node;
 }
 
 function renderChat(): HTMLElement {

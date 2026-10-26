@@ -3,13 +3,16 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The composer's menu: typing "@" lists workspace files to attach, and "/"
-// at the start lists slash commands.
+// The composer's menu: typing "@" lists workspace files to attach, with the
+// folders they are in, symbols from the workspace index and the Workspace
+// rows (the Problems list, uncommitted changes, the last terminal command),
+// each group under its heading; "/" at the start lists slash commands.
 
 import { basename } from '../src/acp/attachments';
 import { addAttachments } from './attachmentChips';
 import type { SlashCommand } from '../src/acp/slashCommands';
-import { folderOf, matchCommands, mentionAt, mentionInsertion, slashQuery, withoutMention, wrapIndex } from './chatLogic';
+import type { ViewMention } from '../src/host/chatProtocol';
+import { folderOf, format, matchCommands, mentionAt, mentionGroup, mentionInsertion, slashQuery, symbolIcon, withoutMention, wrapIndex } from './chatLogic';
 import { el, icon } from './dom';
 import { autoGrow, updateSendState } from './inputBox';
 import { strings, ui, vscode } from './view';
@@ -18,13 +21,16 @@ const { input, picker } = ui;
 
 type FileMatch = { readonly path: string; readonly relative: string };
 
+/** A row of the @ picker: a file, or a folder, symbol or Workspace row. */
+type MentionRow = { readonly kind: 'file'; readonly file: FileMatch } | ViewMention;
+
 type PickerState =
 	| {
 		readonly kind: 'files';
 		/** Where the "@" is in the input. */
 		readonly start: number;
 		query: string;
-		files: readonly FileMatch[];
+		files: readonly MentionRow[];
 		active: number;
 	}
 	| {
@@ -86,12 +92,51 @@ export function closePicker(): void {
 	}
 }
 
-/** Shows the files the extension found for search `requestId`, if it is still the latest. */
-export function showFiles(requestId: number, files: readonly FileMatch[]): void {
+/** Shows the files and other rows the extension found for search `requestId`, if it is still the latest. */
+export function showFiles(requestId: number, files: readonly FileMatch[], mentions: readonly ViewMention[] = []): void {
 	if (pickerState?.kind === 'files' && requestId === lastSearchId) {
-		pickerState.files = files;
+		const query = pickerState.query.trim().toLowerCase();
+		// The Workspace rows are always offered; typing narrows them by name.
+		const shown = mentions.filter(mention => mentionGroup(mention.kind) !== 'workspace' || !query || mentionName(mention).toLowerCase().includes(query));
+		pickerState.files = [...files.map(file => ({ kind: 'file' as const, file })), ...shown];
 		pickerState.active = 0;
 		renderPicker();
+	}
+}
+
+/** A row's name and the quiet text after it. */
+function mentionName(row: MentionRow): string {
+	const names = strings.mentions;
+	switch (row.kind) {
+		case 'file': return basename(row.file.relative);
+		case 'folder': return row.relative;
+		case 'symbol': return row.name;
+		case 'problems': return names.problems;
+		case 'changes': return names.changes;
+		case 'terminal': return names.terminal;
+	}
+}
+
+function mentionDetail(row: MentionRow): string {
+	const names = strings.mentions;
+	switch (row.kind) {
+		case 'file': return folderOf(row.file.relative);
+		case 'folder': return '';
+		case 'symbol': return `${row.relative}:${row.line}`;
+		case 'problems': return format(names.problemsDetail, row.errors, row.warnings);
+		case 'changes': return format(names.changesDetail, row.files);
+		case 'terminal': return row.failed ? format(names.terminalFailed, row.command) : row.command;
+	}
+}
+
+function mentionIcon(row: MentionRow): string {
+	switch (row.kind) {
+		case 'file': return 'file';
+		case 'folder': return 'folder';
+		case 'symbol': return symbolIcon(row.symbolKind);
+		case 'problems': return 'warning';
+		case 'changes': return 'diff';
+		case 'terminal': return 'terminal';
 	}
 }
 
@@ -126,12 +171,7 @@ function renderPicker(): void {
 		return row;
 	};
 	picker.replaceChildren(...(state.kind === 'files'
-		? state.files.map((file, index) => {
-			const r = row(index);
-			r.append(icon('file'), el('span', 'picker-name', basename(file.relative)), el('span', 'picker-folder', folderOf(file.relative)));
-			r.title = file.relative;
-			return r;
-		})
+		? mentionRows(state.files, row)
 		: state.commands.map((command, index) => {
 			const r = row(index);
 			r.classList.add('picker-command');
@@ -145,6 +185,27 @@ function renderPicker(): void {
 		})));
 	input.setAttribute('aria-activedescendant', `picker-${state.active}`);
 	picker.querySelector('.active')?.scrollIntoView({ block: 'nearest' });
+}
+
+/** The @ picker's rows, under a heading for each group once there is more than one. */
+function mentionRows(rows: readonly MentionRow[], row: (index: number) => HTMLElement): HTMLElement[] {
+	const groups = new Set(rows.map(each => mentionGroup(each.kind)));
+	const nodes: HTMLElement[] = [];
+	let group: string | undefined;
+	rows.forEach((each, index) => {
+		const next = mentionGroup(each.kind);
+		if (groups.size > 1 && next !== group) {
+			const heading = el('div', 'picker-heading', strings.mentions[next]);
+			heading.setAttribute('role', 'presentation');
+			nodes.push(heading);
+		}
+		group = next;
+		const r = row(index);
+		r.append(icon(mentionIcon(each)), el('span', 'picker-name', mentionName(each)), el('span', 'picker-folder', mentionDetail(each)));
+		r.title = each.kind === 'file' ? each.file.relative : each.kind === 'symbol' ? `${each.name} \u00b7 ${each.relative}:${each.line}` : mentionName(each);
+		nodes.push(r);
+	});
+	return nodes;
 }
 
 function pickerCount(state: PickerState): number {
@@ -167,15 +228,20 @@ function pick(index: number): void {
 		}
 		return;
 	}
-	const file = state?.files[index];
-	if (!state || !file) {
+	const picked = state?.files[index];
+	if (!state || !picked) {
 		return;
 	}
-	// Replace the typed "@query" with nothing; the chip shows the file.
+	// Replace the typed "@query" with nothing; the chip shows what was picked.
 	input.value = withoutMention(input.value, state.start, state.query);
 	input.setSelectionRange(state.start, state.start);
 	closePicker();
-	addAttachments([{ kind: 'file', path: file.path }]);
+	if (picked.kind === 'file') {
+		addAttachments([{ kind: 'file', path: picked.file.path }]);
+	} else {
+		// The extension makes the chip: a folder, a symbol's lines, the Problems list, the diff or the command's output.
+		vscode.postMessage({ type: 'attachMention', mention: picked });
+	}
 	autoGrow();
 }
 

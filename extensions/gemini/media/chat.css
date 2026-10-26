@@ -4632,3 +4632,128 @@ body.has-parent-project .prompt-outline {
 	overflow: auto;
 	color: var(--vscode-foreground);
 }
+
+/* ---- The composer's menus and footer: the mode tag, Build This Plan's chevron, Commit to a branch, the context breakdown, the @ picker's groups ---- */
+
+/* The mode menu's tag on the mode suggested for this folder, in the from-badge's pill. */
+.menu-badge {
+	flex: none;
+	padding: 0 7px;
+	border-radius: 999px;
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--gemini-accent);
+	background: color-mix(in srgb, var(--gemini-accent) 16%, transparent);
+}
+
+/* Build This Plan's chevron sits against it, as Run's does; the models' line follows on the same row. */
+.turn-action.plan-build-more {
+	margin-left: -4px;
+	padding: 0 3px;
+}
+
+.turn-end:has(.plan-build-models) {
+	flex-wrap: wrap;
+}
+
+.plan-build-models {
+	flex-basis: 100%;
+	font-size: 11.5px;
+	color: var(--gemini-faint);
+}
+
+/* Commit to a branch: its chevron against it, and the message box over the footer. */
+.foot-button.commit-more {
+	margin-left: -6px;
+	padding: 0 3px;
+}
+
+.foot-button.commit {
+	flex-shrink: 1;
+}
+
+.usage-popover.commit-box {
+	right: auto;
+	left: 0;
+	padding: 10px 14px;
+}
+
+.commit-message {
+	display: block;
+	width: 100%;
+	box-sizing: border-box;
+	margin: 0 0 6px;
+	padding: 6px 8px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-small);
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	font: inherit;
+	resize: vertical;
+}
+
+.commit-message:focus {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.commit-box .permission-actions {
+	justify-content: flex-end;
+	margin-top: 8px;
+}
+
+/* The context breakdown under the context window's bar: a quieter bar per part, the rule files and the last measure. */
+.context-parts {
+	margin-top: 10px;
+}
+
+.context-parts .usage-bar {
+	height: 3px;
+	margin: 3px 0 7px;
+	--usage-fill: color-mix(in srgb, var(--gemini-accent) 70%, var(--gemini-border));
+}
+
+.context-rules {
+	margin-top: 8px;
+}
+
+.context-rule {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+}
+
+.context-rule .usage-model {
+	flex: 1;
+}
+
+.context-rule.large,
+.context-rule.large .codicon {
+	color: var(--gemini-warn);
+}
+
+.context-rule .codicon {
+	font-size: 12px;
+	align-self: center;
+}
+
+.context-warning {
+	margin-top: 4px;
+	color: var(--gemini-warn);
+}
+
+.context-foot {
+	margin-top: 8px;
+	flex-wrap: wrap;
+}
+
+/* The @ picker's group headings, as the menus have them. */
+.picker-heading {
+	padding: 6px 8px 2px;
+	font-size: 10.5px;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--gemini-faint);
+}
