@@ -69,6 +69,10 @@ export const posted: { type: string;[key: string]: unknown }[] = [];
 function showPage(html: string): void {
 	page.document.body.innerHTML = html.replace(/^[\s\S]*<body[^>]*>/, '').replace(/<\/body>[\s\S]*$/, '').replace(/<script([^>]*) src="[^"]*"/g, '<script$1');
 	posted.length = 0;
+	// Not in happy-dom: the Popover API, which the themed tooltip opens a moment after focus or hover.
+	const element = page.HTMLElement.prototype as unknown as { showPopover?: () => void; hidePopover?: () => void };
+	element.showPopover ??= () => undefined;
+	element.hidePopover ??= () => undefined;
 	let saved: unknown;
 	Object.assign(globalThis, {
 		// Not in happy-dom: idle work (the highlighter, a long chat's older items) runs on a timer.

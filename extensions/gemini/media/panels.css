@@ -441,7 +441,8 @@ button.chip-remove .codicon {
 	display: block;
 	width: 100%;
 	box-sizing: border-box;
-	min-height: 52px;
+	/* Four lines before it grows: room to describe a task without a cramped box. */
+	min-height: 84px;
 	max-height: 40vh;
 	padding: 0;
 	resize: none;

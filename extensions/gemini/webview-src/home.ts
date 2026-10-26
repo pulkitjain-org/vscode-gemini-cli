@@ -39,7 +39,6 @@ const prompt = document.getElementById('prompt') as HTMLTextAreaElement;
 const workspaceButton = document.getElementById('workspace') as HTMLButtonElement;
 const workspaceLabel = workspaceButton.querySelector('span')!;
 const startAsGroup = document.getElementById('start-as')!;
-const startHint = document.getElementById('start-hint')!;
 const start = document.getElementById('start') as HTMLButtonElement;
 const plusButton = document.getElementById('plus') as HTMLButtonElement;
 const modeButton = document.getElementById('mode') as HTMLButtonElement;
@@ -70,7 +69,6 @@ indexButton.querySelector('span')!.textContent = strings.index;
 setTip(indexButton, strings.indexHint);
 const indexState = document.getElementById('index-state') as HTMLButtonElement;
 // A database drum: its outline, and a fill the state's class shows full, half or not at all. Static markup, never page data.
-indexState.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path class="fill-full" d="M3 4v8.5c0 1.1 2.2 2 5 2s5-.9 5-2V4c0 1.1-2.2 2-5 2S3 5.1 3 4z"/><path class="fill-half" d="M3 8.5v4c0 1.1 2.2 2 5 2s5-.9 5-2v-4c0 1.1-2.2 2-5 2s-5-.9-5-2z"/><ellipse cx="8" cy="4" rx="5" ry="2"/><path d="M3 4v8.5c0 1.1 2.2 2 5 2s5-.9 5-2V4"/></svg>';
 for (const button of [indexButton, indexState]) {
 	button.addEventListener('click', () => vscode.postMessage({ type: 'openIndex' }));
 }
@@ -92,13 +90,14 @@ let startAsPicked: StartAs | undefined;
 let startAs: StartAs = 'here';
 const startChoices = ([['here', strings.startHere, strings.startHereHint], ['branch', strings.startOwnBranch, strings.startOwnBranchHint], ['project', strings.startProject, strings.startProjectHint]] as const)
 	.map(([id, label, hint]) => {
-		const node = button('composer-tab', label, () => {
+		const node = button('start-as-option', label, () => {
 			startAsPicked = id;
 			updateControls();
 			reportTyping();
 		});
 		node.setAttribute('role', 'radio');
-		return { id, hint, node };
+		setTip(node, hint);
+		return { id, node };
 	});
 startAsGroup.setAttribute('aria-label', strings.startAs);
 startAsGroup.append(...startChoices.map(choice => choice.node));
@@ -120,16 +119,13 @@ function updateStartAs(git: boolean): void {
 	const wanted = startAsPicked ?? (view?.ownBranch ? 'branch' : 'here');
 	startAs = offered(wanted) ? wanted : 'here';
 	let count = 0;
-	for (const { id, hint, node } of startChoices) {
+	for (const { id, node } of startChoices) {
 		node.hidden = !offered(id);
 		count += Number(!node.hidden);
 		node.setAttribute('aria-checked', String(id === startAs));
 		node.tabIndex = id === startAs ? 0 : -1;
-		if (id === startAs) {
-			startHint.textContent = hint;
-		}
 	}
-	startAsGroup.hidden = startHint.hidden = count < 2;
+	startAsGroup.hidden = count < 2;
 }
 
 type HomeMenusModule = typeof import('./homeMenus');

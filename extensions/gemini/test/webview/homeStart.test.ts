@@ -38,14 +38,14 @@ function view(options: { git?: boolean; projects?: boolean; ownBranch?: boolean 
 	};
 }
 
-/** The chooser as the user sees it: the choices shown, the one checked, and the line under it. */
+/** The chooser as the user sees it: the choices shown, the one checked, and the checked one's tooltip. */
 function chooser() {
 	const group = byId('start-as');
-	const hint = byId('start-hint');
+	const checked = [...group.querySelectorAll('[aria-checked="true"]')] as HTMLElement[];
 	return {
 		shown: group.hidden ? [] : [...group.querySelectorAll('[role="radio"]')].filter(node => !(node as HTMLElement).hidden).map(node => node.textContent),
-		checked: [...group.querySelectorAll('[aria-checked="true"]')].map(node => node.textContent),
-		hint: hint.hidden ? '' : hint.textContent,
+		checked: checked.map(node => node.textContent),
+		hint: group.hidden ? '' : checked[0]?.dataset.tip ?? '',
 	};
 }
 
@@ -77,8 +77,8 @@ describe('Home\'s new-agent chooser', () => {
 		const before = chooser();
 		choice('On Its Own Branch').click();
 		expect({ before, after: chooser() }).toEqual({
-			before: { shown: ['Here', 'On Its Own Branch', 'As a Project'], checked: ['Here'], hint: 'Here: works in this folder, on your current branch.' },
-			after: { shown: ['Here', 'On Its Own Branch', 'As a Project'], checked: ['On Its Own Branch'], hint: 'On Its Own Branch: a new branch and folder, merged back when done.' },
+			before: { shown: ['Here', 'On Its Own Branch', 'As a Project'], checked: ['Here'], hint: 'Works in this folder, on your current branch.' },
+			after: { shown: ['Here', 'On Its Own Branch', 'As a Project'], checked: ['On Its Own Branch'], hint: 'A new branch and folder, merged back when done.' },
 		});
 	});
 
@@ -113,7 +113,7 @@ describe('Home\'s new-agent chooser', () => {
 		const noGit = chooser();
 		const message = startTask('Rename a file');
 		expect({ noProjects, noGit, ownBranch: message?.ownBranch, project: message?.project }).toEqual({
-			noProjects: { shown: ['Here', 'On Its Own Branch'], checked: ['Here'], hint: 'Here: works in this folder, on your current branch.' },
+			noProjects: { shown: ['Here', 'On Its Own Branch'], checked: ['Here'], hint: 'Works in this folder, on your current branch.' },
 			noGit: { shown: [], checked: ['Here'], hint: '' },
 			ownBranch: false,
 			project: undefined,

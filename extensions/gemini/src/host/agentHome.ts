@@ -609,11 +609,11 @@ export class AgentHome implements vscode.Disposable {
 			start: vscode.l10n.t("Start Agent"),
 			startAs: vscode.l10n.t("Where the agent works"),
 			startHere: vscode.l10n.t("Here"),
-			startHereHint: vscode.l10n.t("Here: works in this folder, on your current branch."),
+			startHereHint: vscode.l10n.t("Works in this folder, on your current branch."),
 			startOwnBranch: vscode.l10n.t("On Its Own Branch"),
-			startOwnBranchHint: vscode.l10n.t("On Its Own Branch: a new branch and folder, merged back when done."),
+			startOwnBranchHint: vscode.l10n.t("A new branch and folder, merged back when done."),
 			startProject: vscode.l10n.t("As a Project"),
-			startProjectHint: vscode.l10n.t("As a Project: a coordinator that splits the work into threads."),
+			startProjectHint: vscode.l10n.t("A coordinator that splits the work into threads."),
 			workspace: vscode.l10n.t("Workspace"),
 			addFolder: vscode.l10n.t("Add Folder to Workspace..."),
 			agentSetup: vscode.l10n.t("Agent Setup"),
@@ -743,15 +743,14 @@ export class AgentHome implements vscode.Disposable {
 			<form id="composer" class="home-composer">
 				<div id="attachments" class="attachments" hidden></div>
 				<div class="composer-tabs" role="tablist"><button type="button" id="tab-write" class="composer-tab" role="tab" aria-selected="true" aria-controls="prompt"></button><button type="button" id="tab-preview" class="composer-tab" role="tab" aria-selected="false" aria-controls="preview"></button></div>
-				<textarea id="prompt" rows="3" spellcheck="${spellCheckOn()}"></textarea>
+				<textarea id="prompt" rows="4" spellcheck="${spellCheckOn()}"></textarea>
 				<div id="preview" class="composer-preview markdown" role="tabpanel" tabindex="0" hidden></div>
 				<div id="start-as" class="home-start-as" role="radiogroup" hidden></div>
-				<p id="start-hint" class="home-start-hint muted" hidden></p>
 				<div class="home-composer-bar">
 					<span class="home-plus"><button type="button" id="plus" class="plus-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-add" aria-hidden="true"></i></button><div id="plus-menu" class="home-menu" hidden></div></span>
 					<span class="home-folder"><button type="button" id="workspace" class="option-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="workspace-menu" class="home-menu" hidden></div></span><button type="button" id="index-state" class="index-state" hidden></button>
-					<span class="home-mode"><span class="sep" aria-hidden="true">·</span><button type="button" id="mode" class="option-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="mode-menu" class="home-menu" hidden></div></span>
-					<span id="model" class="home-model" hidden><span class="sep" aria-hidden="true">·</span><span></span></span>
+					<span class="home-mode"><button type="button" id="mode" class="option-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="mode-menu" class="home-menu" hidden></div></span>
+					<span id="model" class="home-model" hidden><span></span></span>
 					<span class="spacer"></span>
 					<span class="home-from-tools"><button type="button" id="from-tools" class="option-button" aria-haspopup="menu" aria-expanded="false"><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="from-tools-menu" class="home-menu" hidden></div></span>
 					<button type="submit" id="start" class="primary"><span></span></button>
