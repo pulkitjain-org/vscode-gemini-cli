@@ -644,24 +644,24 @@
       },
       {
         "command": "gemini.review.keepFile",
-        "key": "ctrl+enter",
-        "mac": "cmd+enter",
-        "when": "gemini.review.active && editorTextFocus"
+        "key": "ctrl+alt+enter",
+        "mac": "cmd+alt+enter",
+        "when": "gemini.review.active && editorTextFocus && !findWidgetVisible"
       },
       {
         "command": "gemini.review.undoFile",
-        "key": "ctrl+backspace",
-        "mac": "cmd+backspace",
+        "key": "ctrl+shift+alt+backspace",
+        "mac": "cmd+shift+alt+backspace",
         "when": "gemini.review.active && editorTextFocus"
       },
       {
         "command": "gemini.review.nextChange",
-        "key": "alt+]",
+        "key": "alt+f5",
         "when": "gemini.review.active && editorTextFocus"
       },
       {
         "command": "gemini.review.previousChange",
-        "key": "alt+[",
+        "key": "shift+alt+f5",
         "when": "gemini.review.active && editorTextFocus"
       },
       {

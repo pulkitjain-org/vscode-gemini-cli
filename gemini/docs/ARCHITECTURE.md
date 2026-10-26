@@ -414,7 +414,9 @@ Rewind always does both: it undoes the code from the first kept turn after the m
 
 The **Changes panel** (`changesPanel.ts`, `webview-src/changes.ts`) is Agents mode's live diff of what the agent in front changed. Each change shows as a unified diff with Keep and Undo, which run the same commands as the editor's CodeLenses, plus Keep All, Undo All and Commit (or Merge Back for an agent on its own branch). Diffs are worked out with `lineDiff.ts` against the open document's text, 150 ms after the last edit, and only while the panel is visible.
 
-In Editor mode the **Changes view** below the Agents pane is shown instead. It lists the files the agent in front has edited, recorded from its completed edit tool calls. Each file opens a diff against its text from before the agent's first edit, **Open All Changes** shows them in the multi-diff editor, and **Clear List** forgets them.
+The list keeps what the agent last wrote to each file (`agentText`, from the ACP diffs). Edits made after it, by the user or another agent, are moved into the baseline where they don't touch the agent's lines (`rebaseOriginal`), so the panel and the editor show only the agent's changes, and Undo All asks first when it would lose such edits. When two agents changed one file, the editor reviews the one whose text the file has, else the latest to edit it (`reviewOrder`). `CommitSettler` watches the git directory of each folder with changes to review; when HEAD or a branch moves, files whose text is what HEAD has (`filesMatchingHead`) leave the list, however they were committed.
+
+In Editor mode the **Changes view** below the Agents pane is shown instead. It lists the files the agent in front has edited, recorded from its completed edit tool calls. Each file opens a diff against its text from before the agent's first edit, **Open All Changes** shows them in the multi-diff editor, and **Clear Agent's Change List** forgets them.
 
 #### Git
 

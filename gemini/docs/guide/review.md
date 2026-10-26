@@ -47,8 +47,14 @@ Open a file an agent changed and its changes show in place: added lines are tint
 
 | Keys | What it does |
 | --- | --- |
-| <kbd>⌘↩</kbd> / <kbd>⌘⌫</kbd> | Keep or undo the agent's changes to the file you're in |
-| <kbd>⌥]</kbd> / <kbd>⌥[</kbd> | Next or previous agent change in the file |
+| <kbd>⌥⌘↩</kbd> / <kbd>⇧⌥⌘⌫</kbd> | Keep or undo the agent's changes to the file you're in |
+| <kbd>⌥F5</kbd> / <kbd>⇧⌥F5</kbd> | Next or previous agent change in the file |
+
+Only the agent's own changes show. What you type in the file afterwards isn't counted as the agent's, and Keep or Undo on a change leaves your edits alone. **Undo All** restores the file as it was before the agent, so when the file also has edits that aren't the agent's, it asks first: they would go too.
+
+When two agents in one folder changed the same file, the changes of the one that edited it last show first; the other's show once those are kept or undone.
+
+Changes you commit leave the list by themselves, however you commit: from the chat, Source Control, the terminal, or by asking the agent. Once a file is what the latest commit has, its changes count as kept.
 
 ## Undo or retry a reply
 

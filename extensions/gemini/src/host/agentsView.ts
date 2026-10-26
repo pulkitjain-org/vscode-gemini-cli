@@ -26,6 +26,7 @@ import { AgentSession } from './agentSession';
 import { ChangesSource, ChangesView } from './changesView';
 import type { AgentStateKind } from './panelProtocol';
 import { ReviewController } from './reviewController';
+import { CommitSettler } from './commitSettler';
 import type { BrowserTools } from './browserTools';
 import type { TeamConnections } from './teamConnections';
 import type { WorkspaceIndex } from './workspaceIndex';
@@ -116,6 +117,8 @@ export class AgentsView implements vscode.Disposable {
 	private readonly changesView: ChangesView;
 	/** Keep and Undo on each agent change, in the files themselves. */
 	readonly review: ReviewController;
+	/** Takes committed files out of each agent's changes to review. */
+	private readonly settler: CommitSettler;
 	/** The agent whose tab was last in front; the Changes view shows it. */
 	private focusedId: string | undefined;
 	private readonly disposables: vscode.Disposable[] = [];
@@ -243,7 +246,8 @@ export class AgentsView implements vscode.Disposable {
 			servers: folder => [...this.browser?.spareServers() ?? [], ...this.teamTools?.spareServers() ?? [], ...this.index?.spareServers(folder) ?? []],
 			serving: () => [!!this.browser?.serving, !!this.teamTools?.serving, !!this.index?.serving],
 		});
-		this.review = new ReviewController(() => [...this.live.entries()].map(([id, live]) => ({ title: vscode.l10n.t("the agent \"{0}\"", this.model.agent(id)?.title ?? ''), changes: live.changes })));
+		this.review = new ReviewController(() => [...this.live.entries()].map(([id, live]) => ({ id, title: vscode.l10n.t("the agent \"{0}\"", this.model.agent(id)?.title ?? ''), changes: live.changes })));
+		this.settler = new CommitSettler(() => [...this.live.values()].map(live => live.changes), message => this.service.writeLog(message));
 		this.indicators = new AgentIndicators(context.extensionUri, this.model, this.live, this.tree.view, this.notifier);
 		this.disposables.push(
 			this.tree,
@@ -251,6 +255,7 @@ export class AgentsView implements vscode.Disposable {
 			this.terminals,
 			this.changesView,
 			this.review,
+			this.settler,
 			this.worktrees,
 			this.onDidChangeAgentsEmitter,
 			this.onDidFocusEmitter,
@@ -832,6 +837,7 @@ export class AgentsView implements vscode.Disposable {
 			}),
 			changes.onDidChange(() => {
 				this.review.refreshSoon();
+				this.settler.update();
 				this.model.setChanges(record.id, changes.totals);
 				if (project) {
 					this.projects.threadChanged(this.model.agent(record.id) ?? record);
@@ -1093,6 +1099,7 @@ export class AgentsView implements vscode.Disposable {
 		live.changes.dispose();
 		live.session.dispose();
 		this.review.refresh();
+		this.settler.update();
 	}
 
 	/**
