@@ -24,6 +24,8 @@ export interface PendingPermission {
 	readonly request: acp.RequestPermissionRequest;
 	/** Confirm class: the card offers Allow once and Reject only, every time. */
 	readonly confirm?: boolean;
+	/** For a shell command, the prefixes "Allow for this session" would record (`npx vitest`), for the card's label. */
+	readonly prefixes?: readonly string[];
 }
 
 export type PermissionEvent =
@@ -93,12 +95,13 @@ export class PermissionBroker {
 			this.onDidChangeEmitter.fire({ kind: 'allowed', permission: { id: newPermissionId(), request }, outcome });
 			return Promise.resolve({ outcome });
 		}
-		return this.ask(withApprovalLabels(request, command === undefined ? undefined : this.approvals.prefixesOf(command)));
+		const prefixes = command === undefined ? undefined : this.approvals.prefixesOf(command);
+		return this.ask(withApprovalLabels(request, prefixes), false, prefixes);
 	}
 
 	/** Shows the card and waits. */
-	private ask(request: acp.RequestPermissionRequest, confirm = false): Promise<acp.RequestPermissionResponse> {
-		const permission: PendingPermission = { id: newPermissionId(), request, ...confirm ? { confirm: true } : {} };
+	private ask(request: acp.RequestPermissionRequest, confirm = false, prefixes?: readonly string[]): Promise<acp.RequestPermissionResponse> {
+		const permission: PendingPermission = { id: newPermissionId(), request, ...confirm ? { confirm: true } : {}, ...prefixes?.length ? { prefixes } : {} };
 		return new Promise(resolve => {
 			this.pending.set(permission.id, { permission, resolve });
 			this.onDidChangeEmitter.fire({ kind: 'requested', permission });
@@ -113,10 +116,12 @@ export class PermissionBroker {
 			return false;
 		}
 		const command = shellCommand(entry.permission.request);
-		if (command !== undefined && option.kind === 'allow_always') {
-			this.approvals.approve(command);
-		}
-		this.resolve(id, { outcome: 'selected', optionId });
+		const recorded = command !== undefined && option.kind === 'allow_always' ? this.approvals.approve(command) : undefined;
+		const chosen: acp.RequestPermissionOutcome = { outcome: 'selected', optionId };
+		// GeminiCode answers the session's repeats of the prefixes it recorded. The CLI is told
+		// "once": its own session rule would cover the whole program (`npx`), not the prefix (`npx vitest`).
+		const once = recorded && isSessionOption(option) ? entry.permission.request.options.find(o => o.kind === 'allow_once') : undefined;
+		this.resolve(id, once ? { outcome: 'selected', optionId: once.optionId } : chosen, chosen);
 		return true;
 	}
 
@@ -150,14 +155,15 @@ export class PermissionBroker {
 		this.onDidChangeEmitter.dispose();
 	}
 
-	private resolve(id: string, outcome: acp.RequestPermissionOutcome): void {
+	/** Answers the agent with `outcome`; the card shows `shown`, the user's own choice, when the agent is told otherwise. */
+	private resolve(id: string, outcome: acp.RequestPermissionOutcome, shown = outcome): void {
 		const entry = this.pending.get(id);
 		if (!entry) {
 			return;
 		}
 		this.pending.delete(id);
 		entry.resolve({ outcome });
-		this.onDidChangeEmitter.fire({ kind: 'resolved', id, outcome });
+		this.onDidChangeEmitter.fire({ kind: 'resolved', id, outcome: shown });
 	}
 }
 
@@ -183,6 +189,11 @@ function confirmOptions(request: acp.RequestPermissionRequest): acp.RequestPermi
 	return options.length ? { ...request, options } : request;
 }
 
+/** Whether `option` is a request's "Allow for this session" (gemini-cli's `proceed_always`), not "for all future sessions". */
+export function isSessionOption(option: acp.PermissionOption): boolean {
+	return option.kind === 'allow_always' && (option.optionId === 'proceed_always' || /for this session/i.test(option.name));
+}
+
 /** Says what "Allow for this session" covers for a shell command: "Allow git status, grep, head for this session". */
 function withApprovalLabels(request: acp.RequestPermissionRequest, prefixes: readonly string[] | undefined): acp.RequestPermissionRequest {
 	if (!prefixes?.length) {
@@ -191,7 +202,7 @@ function withApprovalLabels(request: acp.RequestPermissionRequest, prefixes: rea
 	const programs = prefixes.join(', ');
 	return {
 		...request,
-		options: request.options.map(option => option.kind === 'allow_always' && /for this session/i.test(option.name)
+		options: request.options.map(option => isSessionOption(option)
 			? { ...option, name: `Allow ${programs} for this session` }
 			: option),
 	};
