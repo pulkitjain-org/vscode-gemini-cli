@@ -13,9 +13,12 @@
 // only ever removes the holder's own lock. Each rewrite goes through a
 // temporary file of its own, one at a time: two heartbeats sharing one once
 // renamed a half-written file into place, and a window reading it took the
-// lock for free. A lock that can't be read is taken as one being written,
-// held until it is as old as a stale one. The holder rewrites its time
-// every minute; a lock whose process is gone, or whose time is more than
+// lock for free. A rewrite checks the lock is still this process's and
+// renames the new one over it, so the lock is never absent, and gives the
+// lock up after a pause long enough for another process to have taken it;
+// the indexer writes only while `held`. A lock that can't be read is taken
+// as one being written, held until it is as old as a stale one. The holder
+// rewrites its time every minute; a lock whose process is gone, or whose time is more than
 // five minutes old (the process hung, or its pid now belongs to another
 // program), is taken over.
 
@@ -46,8 +49,11 @@ export class IndexLock {
 	private lost = false;
 	/** A rewrite in progress: the next heartbeat skips rather than overlapping it, and a release waits for it. */
 	private beating: Promise<void> | undefined;
+	/** When the lock's time was last written. */
+	private written: number;
 
 	private constructor(private readonly file: string, private readonly holder: Holder, private readonly now: () => number, heartbeat: number) {
+		this.written = holder.at;
 		if (heartbeat > 0) {
 			this.timer = setInterval(() => void this.beat(), heartbeat);
 			this.timer.unref?.();
@@ -97,9 +103,8 @@ export class IndexLock {
 		this.lost = true;
 		// A rewrite under way would put the lock back after it was removed.
 		await this.beating;
-		if ((await readHolder(this.file))?.token === this.holder.token) {
-			await fs.unlink(this.file).catch(() => undefined);
-		}
+		// Only this process's own lock: one another process took over is put back.
+		await removeIfUnchanged(this.file, this.holder);
 	}
 
 	/** Rewrites the lock's time, while it is still this process's. */
@@ -115,28 +120,46 @@ export class IndexLock {
 		}
 	}
 
+	/**
+	 * Renames the lock with the new time over the old one, after checking it
+	 * is still this process's. Another process takes a lock over only once
+	 * its time is stale, so while the last rewrite is recent nothing can
+	 * replace it between the check and the rename, and the lock is never
+	 * absent. After a longer pause (the process hung) it may have been taken
+	 * over: this process gives it up, and the indexer takes it again before
+	 * its next change.
+	 */
 	private async rewrite(): Promise<void> {
-		const current = await readHolder(this.file);
-		if (current?.token !== this.holder.token) {
-			this.lost = !!current || this.lost;
-			if (current) {
-				clearInterval(this.timer);
-				this.timer = undefined;
-			}
-			return;
-		}
 		const temporary = `${this.file}.${randomUUID()}.tmp`;
 		try {
-			await fs.writeFile(temporary, JSON.stringify({ ...this.holder, at: this.now() }));
+			const at = this.now();
+			if (at - this.written >= staleLockMs - heartbeatMs) {
+				this.stop();
+				return;
+			}
+			await fs.writeFile(temporary, JSON.stringify({ ...this.holder, at }));
 			if (this.lost) {
 				// Released meanwhile.
-				await fs.unlink(temporary);
+				return;
+			}
+			if ((await readHolder(this.file))?.token !== this.holder.token) {
+				this.stop();
 				return;
 			}
 			await fs.rename(temporary, this.file);
+			this.written = at;
 		} catch {
+			// Unwritable: try again at the next beat.
+		} finally {
 			await fs.unlink(temporary).catch(() => undefined);
 		}
+	}
+
+	/** Another process holds the lock now: stop rewriting it. */
+	private stop(): void {
+		this.lost = true;
+		clearInterval(this.timer);
+		this.timer = undefined;
 	}
 }
 

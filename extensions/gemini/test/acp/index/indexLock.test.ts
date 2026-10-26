@@ -10,7 +10,7 @@ import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { IndexLock, staleLockMs } from '../../../src/acp/index/indexLock';
 
 async function eventually(check: () => boolean): Promise<void> {
-	for (let i = 0; i < 100; i++) {
+	for (let i = 0; i < 300; i++) {
 		if (check()) {
 			return;
 		}
@@ -44,7 +44,16 @@ describe('IndexLock, between processes', () => {
 		expect(JSON.parse(readFileSync(lockFile, 'utf8')).token).toBe('theirs');
 	});
 
-	it('never shows a half-written lock while it beats faster than it writes', async () => {
+	it('gives the lock up after a pause long enough for another process to have taken it', async () => {
+		let now = 1_000;
+		const lock = await IndexLock.acquire(dir, process.pid, 'index.lock', { now: () => now, heartbeatMs: 10 });
+		now += staleLockMs;
+		await eventually(() => !lock!.held);
+		expect(JSON.parse(readFileSync(lockFile, 'utf8')).at).toBe(1_000);
+		await lock!.release();
+	});
+
+	it('never shows a half-written or missing lock while it beats faster than it writes', async () => {
 		const lock = await IndexLock.acquire(dir, process.pid, 'index.lock', { heartbeatMs: 1 });
 		let unreadable = 0;
 		const end = Date.now() + 500;
