@@ -652,6 +652,7 @@ function projectStrings(): ProjectChatStrings {
 		panel: {
 			title: vscode.l10n.t("Project"),
 			noThreads: vscode.l10n.t("No threads yet"),
+			queued: vscode.l10n.t("{0} waiting to start"),
 			working: vscode.l10n.t("{0} working"),
 			waiting: vscode.l10n.t("{0} waiting on you"),
 			planned: vscode.l10n.t("{0} with a plan to approve"),
@@ -679,6 +680,7 @@ function projectStrings(): ProjectChatStrings {
 			undo: vscode.l10n.t("Undo thread"),
 			approve: vscode.l10n.t("Approve plan"),
 			retry: vscode.l10n.t("Retry"),
+			startAnyway: vscode.l10n.t("Start Anyway"),
 		},
 		openToAnswer: vscode.l10n.t("Open to answer"),
 		merged: vscode.l10n.t("Merged back"),

@@ -860,6 +860,13 @@ button.option-button .codicon-chevron-down {
 	font-size: 12px;
 }
 
+.settings .storage-size {
+	flex: none;
+	min-width: 64px;
+	text-align: right;
+	color: var(--gemini-muted);
+}
+
 .settings .row-detail {
 	margin-top: 3px;
 	color: var(--gemini-muted);

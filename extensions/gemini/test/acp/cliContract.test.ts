@@ -7,7 +7,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { checkCliContract } from '../../src/acp/cli/contract';
+import { checkCliContract, contractLine, type CliContractCheck } from '../../src/acp/cli/contract';
 
 /** The lines of a 0.64.0 bundle each check looks for, as esbuild writes them. */
 const parts = {
@@ -61,5 +61,16 @@ describe('checkCliContract', () => {
 			['bundle', 'performanceTrace'],
 			['bundle', 'savedSessions'],
 		]);
+	});
+});
+
+describe('contractLine', () => {
+	const sentences: Record<CliContractCheck, string> = {
+		bundle: 'No bundle.', oauthClient: 'No sign-in.', flashModels: 'No models.', debugLog: 'No log.', mcpLogLines: 'No log.', telemetryEnv: 'No trace.', traceEvents: 'No trace.', sessionFiles: 'No sessions.',
+	};
+
+	it('says nothing when everything matches, and each sentence once otherwise', async () => {
+		expect(contractLine([], sentences)).toBe('');
+		expect(contractLine(await checkCliContract(bundle(['oauthClient', 'debugLog', 'mcpLogLines'])), sentences)).toBe('No sign-in. No log.');
 	});
 });

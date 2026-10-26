@@ -330,6 +330,19 @@ describe('many threads', () => {
 		expect(isArchived(old, time.now())).toBe(true);
 	});
 
+	it('archives an agent the user archived until its next prompt, keeping its record', () => {
+		const time = clock();
+		const { model } = project(1, time);
+		const workspace = model.workspaces[0].id;
+		const agent = model.addAgent(workspace, 'Login fix').id;
+		time.advance(5);
+		model.archive(agent);
+		const archived = { now: isArchived(model.agent(agent)!, time.now()), later: isArchived(model.agent(agent)!, time.now() + archiveAfterMs * 10), title: model.agent(agent)!.title };
+		time.advance(1);
+		model.recordPrompt(agent, 'Carry on');
+		expect({ archived, afterPrompt: isArchived(model.agent(agent)!, time.now()) }).toEqual({ archived: { now: true, later: true, title: 'Login fix' }, afterPrompt: false });
+	});
+
 	it('dates a thread\'s merge from when it was resolved, else from its last use', () => {
 		const time = clock();
 		const { model } = project(2, time);

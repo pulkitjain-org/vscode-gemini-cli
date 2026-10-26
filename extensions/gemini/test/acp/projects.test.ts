@@ -165,7 +165,7 @@ describe('the coordinator', () => {
 });
 
 describe('the project side panel', () => {
-	it('counts threads by state, with merged ones apart and undone ones left out', () => {
+	it('counts threads by state, with queued and merged ones apart and undone ones left out', () => {
 		const threads = [
 			{ id: 'a', state: 'starting' as const },
 			{ id: 'b', state: 'working' as const },
@@ -175,8 +175,9 @@ describe('the project side panel', () => {
 			{ id: 'f', state: 'error' as const },
 			{ id: 'g', state: 'done' as const },
 			{ id: 'h', state: 'done' as const },
+			{ id: 'i', state: 'queued' as const },
 		];
-		expect(threadCounts(threads, new Set(['g']), new Set(['h']))).toEqual({ working: 2, waiting: 1, planned: 1, done: 2, merged: 1 });
-		expect(threadCounts([], new Set(), new Set())).toEqual({ working: 0, waiting: 0, planned: 0, done: 0, merged: 0 });
+		expect(threadCounts(threads, new Set(['g']), new Set(['h']))).toEqual({ queued: 1, working: 2, waiting: 1, planned: 1, done: 2, merged: 1 });
+		expect(threadCounts([], new Set(), new Set())).toEqual({ queued: 0, working: 0, waiting: 0, planned: 0, done: 0, merged: 0 });
 	});
 });

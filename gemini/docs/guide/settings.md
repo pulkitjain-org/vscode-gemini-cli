@@ -34,9 +34,10 @@ See [Review and safety](review.md) for how approvals work.
 | --- | --- | --- |
 | `gemini.agents.ownBranch` | off | Start every new agent on its own branch, in its own folder under `~/.geminicode/worktrees`: Home's chooser starts on **On Its Own Branch**. |
 | `gemini.agents.defaultMode` | `default` | The approval mode new agents start in: `default`, `autoEdit`, `plan` or `yolo`. Agent Home's mode picker starts on it too. A mode your administrator turns off falls back to Default. |
-| `gemini.agents.worktreeSetup` | empty | A command run in each new agent branch's folder before the agent starts, such as `npm ci`. |
+| `gemini.agents.worktreeSetup` | empty | A command run in each new agent branch's folder before the agent starts, such as `npm ci`. Without it, a repository's own `.gemini/worktree-setup.sh` runs, once you have seen it and chosen **Run Once** or **Run and Remember**; a changed script asks again. |
 | `gemini.agents.allWorkspaceFolders` | off | Let every agent read and edit all folders of a multi-folder window, not only its own. |
 | `gemini.projects.enabled` | on | [Projects](projects.md): a coordinator that splits larger work into threads. |
+| `gemini.projects.maxRunningThreads` | 4 | How many of a project's threads work at once; the rest wait for one to finish. See [How many threads run at once](projects.md#how-many-threads-run-at-once). |
 | `gemini.home.openOnStartup` | on | Open Home in front of your restored tabs each time GeminiCode starts. |
 | `gemini.layout.showAgentsInNewWorkspaces` | on | Show the Agents pane, with Changes below it, the first time a workspace opens. After that, your layout is kept. |
 | `gemini.notifications.enabled` | on | Notify you, and badge the Dock, when an agent finishes or needs you while GeminiCode is in the background. |
@@ -102,6 +103,10 @@ If you are in the pilot, turn `gemini.pilot.record` on. At the end, run **Gemini
 | --- | --- | --- |
 | `gemini.storage.keepLogsDays` | 90 | How many days of the audit log and the pilot's counters to keep. Older days are removed in the background after GeminiCode starts. At least 7 days are kept; 0 keeps everything. |
 
+The **Storage** section at the bottom of Project Helpers shows how much room each part of GeminiCode's data takes on your Mac: agent worktrees, workspace indexes, Gemini CLI copies, undo history, chats and reviews, and logs. The sizes are measured when you scroll to the section, not when GeminiCode starts. The logs row sets `gemini.storage.keepLogsDays`, and **Open Folder** shows GeminiCode's own storage folder in Finder.
+
+**Clean Up** lists everything it would remove and asks first: the worktrees of merged threads, of reviews that ended (with their reviewer agents) and of agents you removed; saved chats and undo history of removed agents; undo history of merged threads; logs older than the days kept; performance traces; damaged files that were moved aside; and debug logs of closed windows. A worktree with uncommitted changes, or with commits no other branch has, is never offered, and branches stay.
+
 ## When a change applies
 
 Changing the CLI path or version, the project, or an approval or shell setting restarts the agent so the change takes effect, and open agents resume their sessions. Other settings apply at once, or to the next agent you start.
@@ -133,6 +138,7 @@ An organisation can lock these settings through VS Code's policy system: a macOS
 | `gemini.docs.allowedDomains` | `GeminiDocsAllowedDomains` |
 | `gemini.projectId` | `GeminiProjectId` |
 | `gemini.projects.enabled` | `GeminiProjects` |
+| `gemini.projects.maxRunningThreads` | `GeminiProjectsMaxRunningThreads` |
 | `gemini.team.runTeamServers` | `GeminiRunTeamServers` |
 | `gemini.agents.worktreeSetup` | `GeminiWorktreeSetup` |
 | `gemini.agents.allWorkspaceFolders` | `GeminiAllWorkspaceFolders` |

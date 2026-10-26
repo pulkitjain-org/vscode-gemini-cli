@@ -33,6 +33,30 @@ export function resolveWorkFolder(hints: { readonly agentFolder?: string; readon
 	return { ...hints.folders.length ? { folder: hints.folders[0] } : {}, ambiguous: hints.folders.length > 1 };
 }
 
+/** One choice of "Run Checks in which folder?": the agent last in front, or an open folder. */
+export interface WorkFolderChoice {
+	/** The agent's id, for the agent's own choice. */
+	readonly agent?: string;
+	/** What it is called: the agent's title, or the folder's name. */
+	readonly label: string;
+	/** Where it works, shown under the label: the agent's own folder, or the open folder. */
+	readonly path: string;
+	/** The folder the flow works in: the agent's workspace, or the open folder. */
+	readonly folder: string;
+}
+
+/**
+ * The choices when `resolveWorkFolder` found the window ambiguous: the agent
+ * last in front first (when there is one), then each open folder, once each.
+ */
+export function workFolderChoices(agent: { readonly id: string; readonly title: string; readonly cwd: string; readonly folder: string } | undefined, folders: readonly string[]): WorkFolderChoice[] {
+	const name = (folder: string) => folder.split(/[\\/]/).filter(Boolean).pop() ?? folder;
+	return [
+		...agent ? [{ agent: agent.id, label: agent.title, path: agent.cwd, folder: agent.folder }] : [],
+		...[...new Set(folders)].map(folder => ({ label: name(folder), path: folder, folder })),
+	];
+}
+
 /** A branch name for a ticket: `ACME-412-gift-message-at-checkout`. */
 export function ticketBranchName(key: string, summary: string): string {
 	const slug = summary.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '');

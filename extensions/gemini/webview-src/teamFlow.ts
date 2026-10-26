@@ -635,6 +635,9 @@ function review(view: ReviewView): ReturnType<typeof dialog> {
 		if (p) {
 			line.append(p);
 		}
+		if (row.retry) {
+			line.append(button('link', strings.retry, () => act('retrySide'), 'refresh'));
+		}
 		side.append(line);
 	}
 	side.append(el('h2', undefined, strings.yourReview));
@@ -644,6 +647,11 @@ function review(view: ReviewView): ReturnType<typeof dialog> {
 		const done = el('div', 'flow-done');
 		done.append(icon('pass-filled'), el('span', undefined, view.done));
 		side.append(done);
+		if (view.leftover) {
+			const leftover = el('div', 'flow-actions');
+			leftover.append(button('secondary', strings.removeReviewer, () => act('removeReviewer'), 'trash'), button('secondary', strings.keepReviewer, () => act('keepReviewer')));
+			side.append(el('p', 'hint', view.leftover), leftover);
+		}
 	}
 	if (view.files.length) {
 		side.append(el('h2', 'quiet', strings.files));
@@ -665,7 +673,7 @@ function review(view: ReviewView): ReturnType<typeof dialog> {
 			side.append(row);
 		}
 		if (view.moreFiles) {
-			side.append(el('p', 'hint', format(strings.moreFiles, view.moreFiles)));
+			side.append(el('p', 'hint', format(strings.moreFiles, view.files.length, view.files.length + view.moreFiles)));
 		}
 	}
 	if (view.agentGone) {
@@ -708,6 +716,10 @@ function checks(view: ChecksView): ReturnType<typeof dialog> {
 		const p = pill(row.pill);
 		if (p) {
 			line.append(p);
+		}
+		const link = row.link;
+		if (link) {
+			line.append(button('link', link.label, () => act('open', link.url), 'link-external'));
 		}
 		rows.append(line);
 	}

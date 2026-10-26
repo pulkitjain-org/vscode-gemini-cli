@@ -55,13 +55,15 @@ interface GapNode {
 	readonly kind: 'gap';
 }
 
-/** A project's threads merged over a week ago, collapsed under one row so a long-running project's list stays short. */
-interface ArchiveNode {
+/**
+ * A project's threads merged over a week ago, or a workspace's agents the
+ * user archived, collapsed under one row so the list stays short.
+ */
+type ArchiveNode = {
 	readonly kind: 'archive';
-	readonly coordinator: AgentRecord;
 	readonly folder: string;
 	readonly count: number;
-}
+} & ({ readonly coordinator: AgentRecord; readonly workspace?: undefined } | { readonly workspace: WorkspaceRecord; readonly coordinator?: undefined });
 
 export type AgentTreeNode = SectionNode | MessageNode | GapNode | WorkspaceNode | AgentNode | ArchiveNode;
 
@@ -131,11 +133,28 @@ export class AgentTree implements vscode.TreeDataProvider<AgentTreeNode>, vscode
 			return rows.length ? rows : [{ kind: 'message', section: node.section }];
 		}
 		if (node.kind === 'workspace' && node.record) {
-			return this.agentsOf(node.record.id).map(record => {
+			const workspace = node.record;
+			const agents = this.agentsOf(workspace.id);
+			const archived = agents.filter(record => this.archived(record));
+			const rows: AgentTreeNode[] = agents.filter(record => !archived.includes(record)).map(record => {
 				const agent: AgentNode = { kind: 'agent', record, folder: agentFolder(record, node.folder) };
 				this.agentNodes.set(record.id, agent);
 				return agent;
 			});
+			if (archived.length) {
+				rows.push({ kind: 'archive', workspace, folder: node.folder, count: archived.length });
+			}
+			return rows;
+		}
+		if (node.kind === 'archive' && node.workspace) {
+			// Most recently archived first.
+			return this.agentsOf(node.workspace.id).filter(record => this.archived(record))
+				.sort((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0))
+				.map(record => {
+					const agent: AgentNode = { kind: 'agent', record, folder: agentFolder(record, node.folder) };
+					this.agentNodes.set(record.id, agent);
+					return agent;
+				});
 		}
 		if (node.kind === 'agent' && !node.record.project) {
 			// Its forks, under it.
@@ -156,7 +175,7 @@ export class AgentTree implements vscode.TreeDataProvider<AgentTreeNode>, vscode
 			}
 			return rows;
 		}
-		if (node.kind === 'archive') {
+		if (node.kind === 'archive' && node.coordinator) {
 			const now = Date.now();
 			// Most recently merged first: the one most likely looked for.
 			return this.model.threadsOf(node.coordinator.id)
@@ -174,6 +193,10 @@ export class AgentTree implements vscode.TreeDataProvider<AgentTreeNode>, vscode
 			case 'workspace':
 				return { kind: 'section', section: 'agents' };
 			case 'archive':
+				if (node.workspace) {
+					const current = (vscode.workspace.workspaceFolders ?? []).some(f => f.uri.scheme === 'file' && f.uri.fsPath === node.workspace.folder);
+					return { kind: 'workspace', folder: node.workspace.folder, record: node.workspace, current };
+				}
 				return this.agentNodes.get(node.coordinator.id) ?? { kind: 'agent', record: node.coordinator, folder: node.folder };
 			case 'agent': {
 				const { record } = node;
@@ -193,6 +216,9 @@ export class AgentTree implements vscode.TreeDataProvider<AgentTreeNode>, vscode
 				const workspace = this.model.workspace(record.workspaceId);
 				if (!workspace) {
 					return undefined;
+				}
+				if (this.archived(record)) {
+					return { kind: 'archive', workspace, folder: workspace.folder, count: this.agentsOf(workspace.id).filter(each => this.archived(each)).length };
 				}
 				const current = (vscode.workspace.workspaceFolders ?? []).some(f => f.uri.scheme === 'file' && f.uri.fsPath === workspace.folder);
 				return { kind: 'workspace', folder: workspace.folder, record: workspace, current };
@@ -283,12 +309,19 @@ export class AgentTree implements vscode.TreeDataProvider<AgentTreeNode>, vscode
 		return agent;
 	}
 
+	/** An agent of a workspace's own the user archived, not running in this window. */
+	private archived(record: AgentRecord): boolean {
+		return record.archivedAt !== undefined && isArchived(record, Date.now()) && !this.live.has(record.id);
+	}
+
 	private archiveItem(node: ArchiveNode): vscode.TreeItem {
 		const item = new vscode.TreeItem(vscode.l10n.t("Archived"), vscode.TreeItemCollapsibleState.Collapsed);
-		item.id = `archive:${node.coordinator.id}`;
+		item.id = node.workspace ? `archive:workspace:${node.workspace.id}` : `archive:${node.coordinator.id}`;
 		item.description = String(node.count);
 		item.iconPath = new vscode.ThemeIcon('archive');
-		item.tooltip = vscode.l10n.t("Threads merged over a week ago. Each keeps its chat and branch: open one to pick it up again.");
+		item.tooltip = node.workspace
+			? vscode.l10n.t("Agents you archived. Each keeps its chat and undo history: open one to pick it up again.")
+			: vscode.l10n.t("Threads merged over a week ago. Each keeps its chat and branch: open one to pick it up again.");
 		item.contextValue = 'archive';
 		return item;
 	}

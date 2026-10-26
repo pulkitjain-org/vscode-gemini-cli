@@ -10,7 +10,7 @@ import { AgentChanges, ChangeTotals } from '../acp/agentChanges';
 import { attentionChange } from '../acp/attention';
 import { branchNameFrom } from '../acp/branchNames';
 import { writeCommitMessage } from '../acp/commitMessage';
-import { agentFolder, AgentRecord, AgentsModel, AgentsSnapshot, mergedThreads, type StoredAgents } from '../acp/agents';
+import { agentFolder, AgentRecord, AgentsModel, AgentsSnapshot, isArchived, mergedThreads, type StoredAgents } from '../acp/agents';
 import { AgentsStore } from '../acp/agentsStore';
 import { coordinatorModel } from '../acp/projectHub';
 import { savedRepoCount } from '../acp/projectStore';
@@ -20,7 +20,9 @@ import { errorMessage } from '../acp/errors';
 import type { SessionChoice } from '../acp/sessionSettings';
 import { TranscriptStore } from '../acp/transcriptStore';
 import { CheckpointStore } from '../acp/checkpointStore';
-import { AgentWorktree, coordinatorHome, removeThreadFolder, removeWorktree, repositoryRoot, worktreeStatus } from '../acp/worktrees';
+import type { CleanupItem, WorktreeCandidate } from '../acp/storageUsage';
+import { cleanupWorktrees } from '../acp/worktreeCleanup';
+import { AgentWorktree, coordinatorHome, inRepository, removeThreadFolder, removeWorktree, repositoryRoot, worktreeStatus } from '../acp/worktrees';
 import { AgentNotifier } from './agentNotifier';
 import { AgentTerminals } from './agentTerminals';
 import { AgentService } from './agentService';
@@ -98,6 +100,8 @@ export interface AgentSummary {
 	readonly updatedAt: number;
 	/** Its part in a project, while Projects are on; a coordinator also has its thread count. */
 	readonly project?: { readonly role: 'coordinator'; readonly threads: number } | { readonly role: 'thread' };
+	/** Archived by the user (Remove's Archive): Home leaves it out, and the pane lists it under Archived. */
+	readonly archived?: boolean;
 }
 
 /** An agent with a live session in this window. */
@@ -219,7 +223,7 @@ export class AgentsView implements vscode.Disposable {
 		this.checkpointFiles = new CheckpointStore(vscode.Uri.joinPath(context.globalStorageUri, 'checkpoints').fsPath, saveFailed);
 		this.tree = new AgentTree(this.model, this.live);
 		this.changesView = new ChangesView(id => this.live.get(id)?.changes);
-		this.worktrees = new AgentWorktrees(this.model);
+		this.worktrees = new AgentWorktrees(this.model, context.globalState);
 		this.merge = new AgentMerge(this.model, this.live, (id, deleteBranch) => this.removeAgentAndWorktree(id, deleteBranch), folder => writeCommitMessage(folder, undefined, this.direct));
 		this.projects = new Projects({
 			record: id => this.model.agent(id),
@@ -261,6 +265,13 @@ export class AgentsView implements vscode.Disposable {
 				const role = this.model.agent(id)?.project;
 				this.model.setThreadPending(id, { ...role?.role === 'thread' ? role.pending : {}, notes });
 			},
+			// The usage meter is set by activate, after this; read when a project asks.
+			quota: () => {
+				const reading = this.usage?.reading;
+				return reading?.kind === 'ok' ? reading.quota : undefined;
+			},
+			onDidChangeQuota: listener => this.usage?.onDidChange(listener) ?? { dispose: () => undefined },
+			refreshQuota: () => void this.usage?.refresh(),
 		}, String(context.extension.packageJSON.version ?? '0'));
 		// What the modules that start, stop and remove agents may ask of this view.
 		const host = {
@@ -399,6 +410,11 @@ export class AgentsView implements vscode.Disposable {
 		return undefined;
 	}
 
+	/** The agent whose tab is in front, else the one last in front while it is still in the list. */
+	agentLastInFront(): string | undefined {
+		return this.activeAgentId() ?? (this.focusedId && this.model.agent(this.focusedId) ? this.focusedId : undefined);
+	}
+
 	/** The chat of the agent whose tab is in front, else the one last in front. */
 	private chatInFront(): ChatController | undefined {
 		const id = this.activeAgentId() ?? this.focusedId;
@@ -407,7 +423,7 @@ export class AgentsView implements vscode.Disposable {
 
 	/** Puts the cursor in the message box of the agent in front (or last in front), opening its tab; with no agent yet, starts one. */
 	private async focusChat(): Promise<void> {
-		const id = this.activeAgentId() ?? (this.focusedId && this.model.agent(this.focusedId) ? this.focusedId : undefined);
+		const id = this.agentLastInFront();
 		if (!id) {
 			await vscode.commands.executeCommand('gemini.agents.newAgent');
 			return;
@@ -473,6 +489,7 @@ export class AgentsView implements vscode.Disposable {
 				summaries.push({
 					id: record.id, title: record.title, folder: workspace.folder, state: state.kind, status: state.status,
 					...(changes?.files ? { changes } : {}), ...(record.worktree ? { worktree: record.worktree } : {}), updatedAt: record.updatedAt,
+					...(record.archivedAt !== undefined && !live && isArchived(record, Date.now()) ? { archived: true } : {}),
 					...(projects && record.project?.role === 'coordinator' ? { project: { role: 'coordinator', threads: this.model.threadsOf(record.id).length } } : {}),
 					...(projects && record.project?.role === 'thread' && this.model.coordinatorOf(record) ? { project: { role: 'thread' } } : {}),
 				});
@@ -505,6 +522,40 @@ export class AgentsView implements vscode.Disposable {
 	/** Starts an agent for the team flows, named `title`; resolves with its id, or undefined when its branch could not be made. */
 	startTeamAgent(options: { readonly folder: string; readonly title: string; readonly text: string; readonly branch?: string; readonly worktree?: AgentWorktree; readonly mode?: string }): Promise<string | undefined> {
 		return this.starts.startTeamAgent(options);
+	}
+
+	/** Every agent's id, and the threads merged back, for Settings' Clean Up. */
+	storageAgents(): { readonly all: ReadonlySet<string>; readonly merged: ReadonlySet<string> } {
+		const records = this.model.snapshot().agents;
+		return { all: new Set(records.map(record => record.id)), merged: new Set(mergedThreads(records)) };
+	}
+
+	/** The worktrees Settings' Clean Up may offer: merged threads', ended reviews' and removed agents', none in use here. */
+	storageWorktrees(): Promise<WorktreeCandidate[]> {
+		return cleanupWorktrees({
+			records: this.model.snapshot().agents,
+			repositoryOf: async record => {
+				const workspace = this.model.workspace(record.workspaceId);
+				return workspace && (await repositoryRoot(workspace.folder) ?? workspace.folder);
+			},
+			running: id => this.live.has(id) || this.merge.isMerging(id),
+			reviewing: id => !!this.reviewChip?.(id),
+		});
+	}
+
+	/**
+	 * Removes a worktree Clean Up listed, keeping its branch: an ended
+	 * review's goes with its reviewer agent (Remove Reviewer and Checkout);
+	 * a merged thread's comes back from its branch when the thread is opened.
+	 */
+	async removeStorageWorktree(repository: string, worktree: AgentWorktree, item: CleanupItem): Promise<void> {
+		if (item.reason === 'reviewWorktree' && item.agent && this.model.agent(item.agent)) {
+			return this.removeAgentAndWorktree(item.agent, true);
+		}
+		if (item.agent && this.live.has(item.agent)) {
+			throw new Error(vscode.l10n.t("Its agent is running."));
+		}
+		await inRepository(repository, () => removeWorktree(repository, worktree, false));
 	}
 
 	/** Removes an agent a team flow started, with its worktree folder and, with `deleteBranch`, its branch: Remove Reviewer and Checkout. */
@@ -1149,8 +1200,11 @@ export class AgentsView implements vscode.Disposable {
 		const names = unreviewed.length > 5 ? `${unreviewed.slice(0, 5).join(', ')}, …` : unreviewed.join(', ');
 		const detail = unreviewed.length === 1 ? vscode.l10n.t("1 file still has changes to review: {0}.", names)
 			: unreviewed.length ? vscode.l10n.t("{0} files still have changes to review: {1}.", unreviewed.length, names) : undefined;
-		const answer = await vscode.window.showWarningMessage(vscode.l10n.t("Remove the agent \"{0}\"? This deletes its conversation and undo history.", node.record.title), { modal: true, detail }, remove);
-		if (answer === remove) {
+		const archive = vscode.l10n.t("Archive");
+		const answer = await vscode.window.showWarningMessage(vscode.l10n.t("Remove the agent \"{0}\"? This deletes its conversation and undo history.", node.record.title), { modal: true, detail }, archive, remove);
+		if (answer === archive) {
+			this.archiveAgent(node.record.id);
+		} else if (answer === remove) {
 			this.stop(node.record.id, false);
 			this.forkGone(node.record);
 			this.projects.threadRemoved(node.record);
@@ -1162,6 +1216,16 @@ export class AgentsView implements vscode.Disposable {
 			this.teamTools?.forgetAgent(node.record.id);
 			this.index?.forgetAgent(node.record.id);
 		}
+	}
+
+	/**
+	 * Remove's Archive: the agent leaves the pane's list and Home for its
+	 * workspace's Archived row, keeping its chat, undo history and branch.
+	 * Its session ends, with the chat saved; opening it brings it back.
+	 */
+	private archiveAgent(id: string): void {
+		this.stop(id, true);
+		this.model.archive(id);
 	}
 
 	private async removeWorktreeAgent(record: AgentRecord, worktree: AgentWorktree): Promise<void> {
@@ -1183,8 +1247,11 @@ export class AgentsView implements vscode.Disposable {
 			: vscode.l10n.t("Its branch {0} has no work of its own.", worktree.branch);
 		const deleteBranch = vscode.l10n.t("Remove and Delete Branch");
 		const keepBranch = vscode.l10n.t("Remove, Keep Branch");
-		const answer = await vscode.window.showWarningMessage(vscode.l10n.t("Remove the agent \"{0}\" and its folder?", record.title), { modal: true, detail }, deleteBranch, keepBranch);
-		if (answer) {
+		const archive = vscode.l10n.t("Archive");
+		const answer = await vscode.window.showWarningMessage(vscode.l10n.t("Remove the agent \"{0}\" and its folder?", record.title), { modal: true, detail }, archive, deleteBranch, keepBranch);
+		if (answer === archive) {
+			this.archiveAgent(record.id);
+		} else if (answer) {
 			await this.removeAgentAndWorktree(record.id, answer === deleteBranch);
 		}
 	}

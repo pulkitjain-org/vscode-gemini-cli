@@ -47,8 +47,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// The team flows, about 32 KB: Open Merge Request, Move Ticket and Log Time, Review and Checks, with the
 	// review's comments, threads and suggested changes. Loaded only with a flow's page.
 	'media/teamFlow.js': 36_000,
-	// Project Helpers, about 15 KB.
-	'media/settings.js': 16_000,
+	// Project Helpers, about 17.3 KB: the Storage section added about 1.4 KB.
+	'media/settings.js': 19_000,
 	// Connections, about 13.5 KB.
 	'media/connections.js': 16_000,
 	// The audit log page, about 8 KB.
@@ -76,9 +76,10 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// messages only (esbuild.mts). Project Helpers, Connections, the audit log, Run Benchmark, the pilot and the
 	// trace recorder moved to dist/pages.js and dist/onDemand.js, about 60 KB.
 	'dist/extension.js': 1_200_000,
-	// Project Helpers and Connections, about 86 KB, loaded the first time one is opened (src/pages.ts): their own code
+	// Project Helpers and Connections, about 96 KB, loaded the first time one is opened (src/pages.ts): their own code
 	// and their copy of jsonc-parser (about 17 KB), which edits the Gemini CLI's settings files keeping their comments.
-	'dist/pages.js': 95_000,
+	// Project Helpers' Storage section, with the storage measuring and Clean Up's list, is about 9 KB of it.
+	'dist/pages.js': 105_000,
 	// The audit log, Run Benchmark, the pilot's export and the trace recorder, about 31 KB, loaded the first time
 	// one of their commands runs (src/onDemand.ts).
 	'dist/onDemand.js': 40_000,

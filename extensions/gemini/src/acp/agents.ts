@@ -46,6 +46,12 @@ export interface AgentRecord {
 	readonly checks?: { readonly summary: string; readonly at: number };
 	/** The agent this one was forked from (Fork Agent), which it is listed under. */
 	readonly forkedFrom?: AgentFork;
+	/**
+	 * When the user archived it (Remove's Archive), in ms since the epoch: it
+	 * is listed under Archived, with its chat and undo history kept, until it
+	 * is used again (`isArchived`).
+	 */
+	readonly archivedAt?: number;
 }
 
 /** Where a forked agent came from. */
@@ -154,10 +160,14 @@ export function warmThreads(threads: readonly AgentRecord[], limit = warmThreadC
 }
 
 /**
- * A thread merged back over a week ago: listed under Archived, and never
- * started until the user opens it. Its chat, branch and record all stay.
+ * Listed under Archived, and never started until the user opens it: an
+ * agent the user archived and hasn't used since, or a thread merged back
+ * over a week ago. Its chat, branch and record all stay.
  */
 export function isArchived(record: AgentRecord, now: number): boolean {
+	if (record.archivedAt !== undefined && record.archivedAt >= record.updatedAt) {
+		return true;
+	}
 	const project = record.project;
 	return project?.role === 'thread' && !!project.resolved && (project.resolvedAt ?? record.updatedAt) <= now - archiveAfterMs;
 }
@@ -323,6 +333,11 @@ export class AgentsModel {
 				return changes.files ? { ...rest, changes } : rest;
 			});
 		}
+	}
+
+	/** Archives the agent: listed under Archived until its next prompt (`isArchived`), with everything it has kept. */
+	archive(id: string): void {
+		this.update(id, a => ({ ...a, archivedAt: Math.max(this.now(), a.updatedAt) }));
 	}
 
 	/** A multi-repository thread's repositories changed: one was added or merged. */

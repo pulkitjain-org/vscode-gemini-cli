@@ -578,6 +578,27 @@ export type CliReport<T> =
 	| { readonly state: 'unavailable'; readonly message: string }
 	| { readonly state: 'ready'; readonly items: readonly T[] };
 
+/** One row of the Storage section: an area, what it holds and its size. */
+export interface StorageRowView {
+	readonly id: 'worktrees' | 'index' | 'cli' | 'checkpoints' | 'chats' | 'logs';
+	readonly label: string;
+	readonly detail: string;
+	/** "2.3 GB"; empty until measured. */
+	readonly size: string;
+	readonly action?: { readonly kind: 'showIndex' | 'openFolder'; readonly label: string };
+}
+
+/** The Storage section: measured the first time it scrolls into view, never at startup. */
+export interface StorageView {
+	readonly state: 'waiting' | 'measuring' | 'ready';
+	readonly rows: readonly StorageRowView[];
+	/** Clean Up's button when it has something to remove, such as "Clean Up 4..."; it lists everything and asks first. */
+	readonly cleanup?: string;
+	/** `gemini.storage.keepLogsDays`, as the logs row's menu shows it. */
+	readonly keepLogs: { readonly value: string; readonly choices: readonly { readonly value: string; readonly label: string }[] };
+	readonly error?: string;
+}
+
 export interface SettingsPageView {
 	readonly servers: readonly McpServerView[];
 	readonly skills: readonly SkillView[];
@@ -587,6 +608,8 @@ export interface SettingsPageView {
 	readonly rules: readonly RulesFileView[];
 	readonly preferences: PreferencesView;
 	readonly contextCost: ContextCostView;
+	/** Unset when the page has nothing to measure it with. */
+	readonly storage?: StorageView;
 }
 
 export interface SettingsPageStrings {
@@ -656,12 +679,19 @@ export interface SettingsPageStrings {
 	readonly usageStatisticsHint: string;
 	readonly keepChats: string;
 	readonly keepChatsHint: string;
+	readonly storage: string;
+	readonly storageHint: string;
+	readonly storageMeasuring: string;
+	readonly cleanUp: string;
+	readonly keepLogs: string;
 }
 
 export type ToSettingsPage = { readonly type: 'view'; readonly view: SettingsPageView };
 
 export type FromSettingsPage =
-	| { readonly type: 'ready' | 'restart' | 'addServer' | 'connections' | 'newSkill' | 'addHook' | 'installExtension' | 'addMemory' | 'refreshMemory' | 'measureContext' }
+	| { readonly type: 'ready' | 'restart' | 'addServer' | 'connections' | 'newSkill' | 'addHook' | 'installExtension' | 'addMemory' | 'refreshMemory' | 'measureContext' | 'measureStorage' | 'cleanUp' }
+	| { readonly type: 'storageAction'; readonly action: 'showIndex' | 'openFolder' }
+	| { readonly type: 'setKeepLogs'; readonly days: string }
 	| { readonly type: 'toggle'; readonly name: string; readonly enabled: boolean }
 	| { readonly type: 'toggleHook'; readonly file: string; readonly name: string; readonly enabled: boolean }
 	| { readonly type: 'toggleSkill'; readonly file: string; readonly name: string; readonly enabled: boolean }

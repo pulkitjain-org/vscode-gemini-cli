@@ -40,6 +40,8 @@ export interface ReviewDeps {
 	changed(): void;
 	/** The review is over: posted or discarded, with its page closed. */
 	ended(session: ReviewSession): void;
+	/** Remove Reviewer and Checkout after Post: ends the review, then removes its reviewer agent with its worktree and branch. */
+	removeReviewer(session: ReviewSession): Promise<void>;
 }
 
 /** How long after the last keystroke on the page the draft is saved and the diff's threads redrawn. */
@@ -98,6 +100,8 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 	private side: ReviewView['side'] = [];
 	private approvedByMe = false;
 	private done: string | undefined;
+	/** After Post, until the user keeps or removes them: offer to remove the reviewer and its checkout. */
+	private offerRemove = false;
 	private moved: { readonly head: string; readonly text: string } | undefined;
 	private viewRev = 0;
 	private readonly suggesting = new Set<string>();
@@ -525,6 +529,7 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 			...this.moved ? { moved: this.moved.text } : {},
 			approvedByMe: this.approvedByMe,
 			...this.done ? { done: this.done } : {},
+			...this.done && this.offerRemove ? leftoverOf(this.saved.agentId && this.deps.agents.agentPlace(this.saved.agentId)) : {},
 		};
 	}
 
@@ -651,6 +656,13 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 				return this.flow?.busy(vscode.l10n.t("Reading the new commits..."), () => this.refresh());
 			case 'post':
 				return this.flow?.busy(vscode.l10n.t("Posting to GitLab..."), () => this.post(id));
+			case 'retrySide':
+				return this.flow?.busy(vscode.l10n.t("Reading GitLab again..."), () => this.readSide());
+			case 'removeReviewer':
+				return this.flow?.busy(vscode.l10n.t("Removing the reviewer..."), () => this.deps.removeReviewer(this));
+			case 'keepReviewer':
+				this.offerRemove = false;
+				return this.render();
 		}
 	}
 
@@ -669,6 +681,15 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 			title: reviewDiffTitle(diff.newPath, this.saved.iid, this.mr?.targetBranch ?? this.saved.target, this.mr?.sourceBranch ?? this.saved.source),
 			viewColumn,
 		});
+	}
+
+	/** Reads the merge request and the rows beside the review again, after one couldn't be read. */
+	private async readSide(): Promise<void> {
+		const mr = await this.deps.gitlab().mr(this.saved.project, this.saved.iid);
+		this.mr = mr;
+		this.approvedByMe = !!mr.approvals?.approvedByMe;
+		this.side = await this.deps.side(mr, this.ticketKey, this.saved.repository);
+		this.render();
 	}
 
 	/** Moves the review to the merge request's newest version: comments follow their lines, those whose line changed are flagged. */
@@ -745,7 +766,8 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 		const total = comments + replies;
 		this.done = mode === 'approve' ? (total ? vscode.l10n.t("Approved !{0} and posted {1} comments.", iid, total) : vscode.l10n.t("Approved !{0}.", iid))
 			: mode === 'request' ? vscode.l10n.t("Posted {0} comments and requested changes on !{1}.", total, iid)
-				: vscode.l10n.t("Posted {0} comments on !{1}.", total, iid);
+				: vscode.l10n.t("Posted {0} comments to !{1}.", total, iid);
+		this.offerRemove = true;
 		// The review is done: its saved draft goes, and the diffs show the merge request's threads as GitLab has them now.
 		this.posted = true;
 		await this.persisting;
@@ -820,6 +842,14 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 		this.disposed = true;
 		this.deps.comments.hide(this.key);
 	}
+}
+
+/** What Post leaves on this Mac: the reviewer agent and its checkout, as the page says it; nothing once the agent is gone. */
+function leftoverOf(place: { readonly branch?: string } | false | undefined | ''): { readonly leftover?: string } {
+	if (!place) {
+		return {};
+	}
+	return { leftover: place.branch ? vscode.l10n.t("The reviewer agent and its checkout ({0}) are still on this Mac.", place.branch) : vscode.l10n.t("The reviewer agent and its checkout are still on this Mac.") };
 }
 
 /** A review that just started: what it is about, before its first save. */

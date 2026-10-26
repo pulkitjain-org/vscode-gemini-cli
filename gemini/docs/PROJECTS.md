@@ -305,6 +305,8 @@ A thread's state lives in the hub (`ThreadState`) and is set from the thread's o
 
 ```mermaid
 stateDiagram-v2
+    [*] --> queued: thread limit reached, or quota over 90%
+    queued --> starting: a running thread finishes, the quota resets, or Start Anyway
     [*] --> starting: start_thread or New thread
     starting --> working: brief sent after setup
     working --> waiting: asks you for permission
@@ -319,6 +321,7 @@ stateDiagram-v2
     resolved --> [*]: Remove with its branch
 ```
 
+- **Queued** threads have no agent yet. At most `gemini.projects.maxRunningThreads` threads (4 by default, lockable by policy) are starting, working or waiting on the user at once; a planned or done thread doesn't count. Above 90% of today's quota (`quotaHold`, from the usage meter's most used model), new threads are queued too, until the quota reads lower or the user presses **Start Anyway**, which lifts the quota hold for the threads queued then. A queued thread gets its id at once, so `start_thread` answers with it and `message_thread` notes wait with it; `read_thread` says it hasn't started. It starts in the order queued, when a running thread stops running, is merged or removed, or the limits change (`ProjectHub.startQueued`).
 - **Resolved** is kept on the agent's record, so a merged thread stays resolved after a reload.
 - **Undo thread** removes the thread's branch and worktree. Its card says it was removed, and the hub stops listing it.
 - **Merge back** checks that the thread is idle before and after its dialog, and runs once per thread at a time.
@@ -348,6 +351,8 @@ From [FINDINGS.md](FINDINGS.md#a-projects-coordinator-and-threads), with gemini-
 - **A fresh coordinator session may miss its brief.** The hub decides whether to send the role brief from whether the coordinator had a saved session. If that session can't be loaded (by default the CLI deletes chats after 30 days without updates), the agent opens a fresh one, but the hub still counts it as briefed. The tool guardrails still hold, but the role rules would not be restated. This is inferred from the code, not observed.
 - **Two thread events are never sent.** The hub can tell the coordinator that a thread failed (`failed`) or that you wrote to a thread yourself (`thread-user`), but the extension sends neither. The coordinator learns of both only from the threads' state in its next wake.
 - **One project ID per window.** All sessions share the process's Google Cloud project.
+- **Requests are turns.** The side panel's request counts are the turns each thread's chat recorded (`requestCount`). Over ACP the Gemini CLI reports a turn's tokens but not how many model calls it made, so a turn with tool calls counts as one request although it used several from the quota.
+- **A queued thread lives only in the open project.** It has no agent, record or card until it starts, so it can't be undone before then, and closing the project chat's agent or the window drops it. The coordinator sees it missing from the next wake's thread list.
 
 ## Code map
 
@@ -355,7 +360,7 @@ All paths are under `extensions/gemini/`.
 
 | File | Role |
 | --- | --- |
-| `src/acp/projectHub.ts` | Wake loop, wake prompt, role brief, thread prompt, tool handling, coordinator model choice |
+| `src/acp/projectHub.ts` | Wake loop, wake prompt, role brief, thread prompt, tool handling, coordinator model choice, the thread limit and quota hold |
 | `src/acp/projectMcp.ts` | The `geminicode-project` MCP server, its tools and the permission check |
 | `src/acp/projectRules.ts` | Links context files into the coordinator's folder, and ignored rules into a thread's worktree |
 | `src/acp/conductor.ts` | Reads `conductor/` for wakes and track briefs |

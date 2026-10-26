@@ -108,7 +108,8 @@ export class MrPanel implements vscode.Disposable {
 					merge: {
 						heading: vscode.l10n.t("Merge !{0}", mr.iid),
 						readAt: Date.now() - state.at < 60_000 ? vscode.l10n.t("read live {0} s ago", Math.round((Date.now() - state.at) / 1000)) : vscode.l10n.t("read live {0} ago", relativeTime(state.at, Date.now())),
-						checks: readiness.checks.map(c => ({ name: c.name, state: c.ok ? 'ok' : c.pending ? 'pending' : 'missing', detail: c.detail, source: c.source })),
+						// A check GitLab didn't answer for is pending, never passed, with Retry.
+						checks: readiness.checks.map(c => ({ name: c.name, state: c.ok && !c.unreadable ? 'ok' : c.pending || c.unreadable ? 'pending' : 'missing', detail: c.unreadable ? vscode.l10n.t("couldn't read, counted as pending") : c.detail, source: c.source, ...c.unreadable ? { retry: vscode.l10n.t("Retry") } : {} })),
 						ready: readiness.ready,
 						squash: { label: vscode.l10n.t("Squash commits (project default)"), on: readiness.squash },
 						removeSourceBranch: { label: vscode.l10n.t("Delete source branch"), on: readiness.removeSourceBranch },
@@ -154,6 +155,15 @@ export class MrPanel implements vscode.Disposable {
 					this.states.set(source.agentId, { ...state, at: 0 });
 					this.onDidChangeEmitter.fire();
 				}
+				return;
+			}
+			case 'retry': {
+				// Read the merge request again now, for a check GitLab didn't answer.
+				const state = this.states.get(source.agentId);
+				if (state) {
+					this.states.set(source.agentId, { ...state, at: 0 });
+				}
+				await this.load(source);
 				return;
 			}
 			case 'openUrl': {

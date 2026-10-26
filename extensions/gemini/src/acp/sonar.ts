@@ -119,6 +119,11 @@ function targetQuery(target: SonarTarget, projectParam: string): string {
 	].join('&');
 }
 
+/** SonarQube's own page of the open issues on new code that `issues` reads, for the ones a cut list leaves out. */
+export function sonarIssuesUrl(url: string, target: SonarTarget): string {
+	return `${url}/project/issues?${targetQuery(target, 'id')}&inNewCodePeriod=true&resolved=false`;
+}
+
 /** `sonar.projectKey` from the repository's sonar-project.properties, when it has one. */
 export async function sonarProjectKeyIn(folder: string): Promise<string | undefined> {
 	try {

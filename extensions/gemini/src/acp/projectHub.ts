@@ -16,13 +16,22 @@
 //   only while it is mid-turn, never on a timer.
 // - Changes the user already sees (a thread working, waiting or done) don't
 //   wake it; only reports, failures and the user's own posts do.
+// - At most `maxRunning` threads run at once, and above 90% of the day's
+//   quota new threads are held: either way a new thread is listed as queued,
+//   with its id, and starts on its own when a running one finishes, the
+//   quota resets or the user presses Start Anyway.
+
+import { randomUUID } from 'node:crypto';
 
 import { conductorSummary, type ConductorContext } from './conductor';
 import { Emitter } from './events';
 import type { McpToolResult } from './browserMcp';
 import type { ProjectCaller, ProjectToolHost } from './projectMcp';
 
-export type ThreadState = 'starting' | 'working' | 'waiting' | 'planned' | 'done' | 'error';
+export type ThreadState = 'queued' | 'starting' | 'working' | 'waiting' | 'planned' | 'done' | 'error';
+
+/** Why a queued thread hasn't started: as many threads run as `maxRunning` allows, or today's quota is nearly used up. */
+export type QueuedReason = 'limit' | 'quota';
 
 export interface ThreadInfo {
 	readonly id: string;
@@ -37,9 +46,13 @@ export interface ThreadInfo {
 	readonly resolved?: boolean;
 	/** In a project with several repositories, the keys of those the thread works in. */
 	readonly repos?: readonly string[];
+	/** For a queued thread, why it waits. */
+	readonly queued?: QueuedReason;
 }
 
 export interface ThreadRequest {
+	/** The id the thread's agent gets: a queued thread's, chosen when it was queued. */
+	readonly id?: string;
 	readonly title: string;
 	readonly brief: string;
 	readonly planFirst: boolean;
@@ -109,6 +122,10 @@ export interface ProjectContext {
 	repos?(): readonly string[];
 	conductor?(): Promise<ConductorContext | undefined>;
 	trackBrief?(track: string): Promise<string | undefined>;
+	/** How many threads may run at once (`gemini.projects.maxRunningThreads`); unset, any number. */
+	maxRunning?(): number;
+	/** Whether today's quota is over 90% used, so new threads wait for the reset or Start Anyway. */
+	quotaHeld?(): boolean;
 }
 
 /** Counts for the spike and the usage meter. */
@@ -140,8 +157,8 @@ export const multiRepoBrief = [
  * Starting counts as working and an error as done; merged threads count only
  * as merged, and undone ones not at all.
  */
-export function threadCounts(threads: readonly Pick<ThreadInfo, 'id' | 'state'>[], merged: ReadonlySet<string>, removed: ReadonlySet<string>): { working: number; waiting: number; planned: number; done: number; merged: number } {
-	const counts = { working: 0, waiting: 0, planned: 0, done: 0, merged: 0 };
+export function threadCounts(threads: readonly Pick<ThreadInfo, 'id' | 'state'>[], merged: ReadonlySet<string>, removed: ReadonlySet<string>): { queued: number; working: number; waiting: number; planned: number; done: number; merged: number } {
+	const counts = { queued: 0, working: 0, waiting: 0, planned: 0, done: 0, merged: 0 };
 	for (const thread of threads) {
 		const state = panelState(thread, merged, removed);
 		if (state) {
@@ -165,6 +182,8 @@ export function panelState(thread: Pick<ThreadInfo, 'id' | 'state'>, merged: Rea
 			return 'working';
 		case 'waiting':
 			return 'waiting';
+		case 'queued':
+			return 'queued';
 		case 'planned':
 			return 'planned';
 		case 'done':
@@ -173,7 +192,7 @@ export function panelState(thread: Pick<ThreadInfo, 'id' | 'state'>, merged: Rea
 	}
 }
 
-export type PanelThreadState = 'working' | 'waiting' | 'planned' | 'done' | 'merged';
+export type PanelThreadState = 'queued' | 'working' | 'waiting' | 'planned' | 'done' | 'merged';
 
 /**
  * The coordinator's model: a named Flash model (never Auto, which adds a
@@ -202,9 +221,52 @@ export function threadPrompt(brief: string, planFirst: boolean): string {
 	].filter(Boolean).join('\n\n');
 }
 
+/** Threads that run now: starting, working or waiting on the user mid-turn. A planned or done thread is idle. */
+export function runningThreads(threads: readonly Pick<ThreadInfo, 'state' | 'resolved'>[]): number {
+	return threads.filter(thread => !thread.resolved && (thread.state === 'starting' || thread.state === 'working' || thread.state === 'waiting')).length;
+}
+
+/** Why a new thread would wait now, if it would: the quota first, as Start Anyway lifts only that. */
+export function queueReason(running: number, maxRunning: number | undefined, quotaHeld: boolean, startAnyway = false): QueuedReason | undefined {
+	if (quotaHeld && !startAnyway) {
+		return 'quota';
+	}
+	return maxRunning !== undefined && maxRunning > 0 && running >= maxRunning ? 'limit' : undefined;
+}
+
+/** Above this share of today's quota, new threads wait for the reset or Start Anyway. */
+export const quotaHoldShare = 0.9;
+
+/**
+ * What holds new threads: the most used model's quota, as the status bar
+ * shows it, when it is over 90% used; undefined otherwise, and with no
+ * quota to read (an API key).
+ */
+export function quotaHold(quota: readonly { readonly used: number; readonly resetTime?: string }[] | undefined): { readonly used: number; readonly resetTime?: string } | undefined {
+	const top = [...quota ?? []].sort((a, b) => b.used - a.used)[0];
+	return top && top.used > quotaHoldShare ? top : undefined;
+}
+
+/** How many turns a chat recorded: each prompt the thread was sent, with its answer, counts as one request. */
+export function requestCount(items: readonly { readonly kind: string }[]): number {
+	return items.filter(item => item.kind === 'turnEnd').length;
+}
+
+/** A thread waiting to start, with its request and the notes sent to it meanwhile. */
+interface QueuedThread {
+	readonly request: ThreadRequest & { readonly id: string };
+	readonly notes: string[];
+	/** The user pressed Start Anyway: the quota no longer holds it, only the thread limit. */
+	startAnyway: boolean;
+}
+
 export class ProjectHub implements ProjectToolHost {
 
 	private readonly threads = new Map<string, ThreadInfo>();
+	/** Threads waiting to start, oldest first. */
+	private readonly queue: QueuedThread[] = [];
+	/** The queue is being worked through. */
+	private starting = false;
 	private readonly pending: ProjectEvent[] = [];
 	private busy = false;
 	private briefed = false;
@@ -251,13 +313,97 @@ export class ProjectHub implements ProjectToolHost {
 		this.notify({ kind: 'user', text });
 	}
 
-	/** A thread the user starts directly: it begins at once, and the coordinator hears with the next wake. */
+	/** A thread the user starts directly: it begins at once (or is queued), and the coordinator hears with the next wake. */
 	async startThread(title: string, brief: string, planFirst = false, options: Pick<ThreadRequest, 'branch' | 'model' | 'repos'> = {}): Promise<string> {
-		const id = await this.driver.start({ title, brief, planFirst, byCoordinator: false, ...options });
-		this.setThread({ id, title, state: 'starting', byCoordinator: false, ...(options.repos?.length ? { repos: options.repos } : {}) });
-		this.onDidPostEmitter.fire({ kind: 'thread', thread: id, at: Date.now() });
+		const { id } = await this.begin({ title, brief, planFirst, byCoordinator: false, ...options });
 		this.notify({ kind: 'started', thread: id });
 		return id;
+	}
+
+	/** The threads waiting to start, oldest first, with why. */
+	get queued(): readonly ThreadInfo[] {
+		return this.queue.flatMap(entry => this.threads.get(entry.request.id) ?? []);
+	}
+
+	/** Start Anyway: the threads the quota holds start now, as the thread limit allows. */
+	startAnyway(): void {
+		for (const entry of this.queue) {
+			entry.startAnyway = true;
+		}
+		void this.startQueued();
+	}
+
+	/** The quota or the thread limit changed: queued threads start if they now may. */
+	limitsChanged(): void {
+		void this.startQueued();
+	}
+
+	/**
+	 * Starts a thread now, or queues it when the thread limit or the quota
+	 * holds it: listed as queued under an id of its own, which its agent gets
+	 * when it starts.
+	 */
+	private async begin(request: ThreadRequest): Promise<{ readonly id: string; readonly queued?: QueuedReason }> {
+		// Behind the threads queued before it, whatever holds them.
+		const reason = this.reasonNow(false) ?? (this.queue.length ? 'limit' : undefined);
+		const info = (id: string, state: ThreadState, queued?: QueuedReason): ThreadInfo => ({ id, title: request.title, state, byCoordinator: request.byCoordinator, ...(request.repos?.length ? { repos: request.repos } : {}), ...(queued ? { queued } : {}) });
+		if (reason) {
+			const id = request.id ?? randomUUID();
+			this.queue.push({ request: { ...request, id }, notes: [], startAnyway: false });
+			this.setThread(info(id, 'queued', reason));
+			this.onDidPostEmitter.fire({ kind: 'thread', thread: id, at: Date.now() });
+			void this.startQueued();
+			return { id, queued: reason };
+		}
+		const id = await this.driver.start(request);
+		this.setThread(info(id, 'starting'));
+		this.onDidPostEmitter.fire({ kind: 'thread', thread: id, at: Date.now() });
+		return { id };
+	}
+
+	private reasonNow(startAnyway: boolean): QueuedReason | undefined {
+		return queueReason(runningThreads(this.threadList), this.context.maxRunning?.(), !!this.context.quotaHeld?.(), startAnyway);
+	}
+
+	/** Starts queued threads, oldest first, while the limit and the quota allow; one pass at a time. */
+	private async startQueued(): Promise<void> {
+		if (this.starting || this.disposed) {
+			return;
+		}
+		this.starting = true;
+		try {
+			while (this.queue.length) {
+				const entry = this.queue[0];
+				const reason = this.reasonNow(entry.startAnyway);
+				const thread = this.threads.get(entry.request.id);
+				if (reason) {
+					// Still waiting: say why, as that may have changed.
+					if (thread && thread.queued !== reason) {
+						this.setThread({ ...thread, queued: reason });
+					}
+					return;
+				}
+				this.queue.shift();
+				if (!thread) {
+					// Removed while it waited.
+					continue;
+				}
+				// Counted as running from now, so the next pass sees it.
+				const { queued: _queued, ...rest } = thread;
+				this.setThread({ ...rest, state: 'starting' });
+				try {
+					await this.driver.start(entry.request);
+					this.onDidPostEmitter.fire({ kind: 'thread', thread: thread.id, at: Date.now() });
+					if (entry.notes.length) {
+						await this.driver.message(thread.id, entry.notes.join('\n\n'));
+					}
+				} catch (err) {
+					this.updateThread(thread.id, { state: 'error', detail: `Couldn't start: ${err instanceof Error ? err.message : String(err)}` });
+				}
+			}
+		} finally {
+			this.starting = false;
+		}
 	}
 
 	/** A thread the user forked from thread `from`: it is working already, and the coordinator hears with the next wake. */
@@ -302,6 +448,11 @@ export class ProjectHub implements ProjectToolHost {
 
 	removeThread(id: string): void {
 		this.threads.delete(id);
+		const queued = this.queue.findIndex(entry => entry.request.id === id);
+		if (queued >= 0) {
+			this.queue.splice(queued, 1);
+		}
+		void this.startQueued();
 	}
 
 	/** Queues an event; it wakes the coordinator unless it is context only. */
@@ -375,8 +526,13 @@ export class ProjectHub implements ProjectToolHost {
 	}
 
 	private setThread(thread: ThreadInfo): void {
+		const before = this.threads.get(thread.id);
 		this.threads.set(thread.id, thread);
 		this.onDidChangeThreadEmitter.fire(thread);
+		// A thread that stopped running frees its place for the next one queued.
+		if (this.queue.length && before && runningThreads([before]) > runningThreads([thread])) {
+			void this.startQueued();
+		}
 	}
 
 	/** The wake: the role brief the first time, then the facts the coordinator would otherwise fetch, then the events. */
@@ -486,10 +642,12 @@ export class ProjectHub implements ProjectToolHost {
 					}
 				}
 				const chosen = known.length > 1 ? known.filter(repo => repos.includes(repo)) : [];
-				const id = await this.driver.start({ title, brief, planFirst, byCoordinator: true, ...(track ? { track } : {}), ...(chosen.length ? { repos: chosen } : {}) });
-				this.setThread({ id, title, state: 'starting', byCoordinator: true, ...(chosen.length ? { repos: chosen } : {}) });
-				this.onDidPostEmitter.fire({ kind: 'thread', thread: id, at: Date.now() });
-				return ok(`Started thread ${id}.`);
+				const { id, queued } = await this.begin({ title, brief, planFirst, byCoordinator: true, ...(track ? { track } : {}), ...(chosen.length ? { repos: chosen } : {}) });
+				return ok(queued === 'quota'
+					? `Queued thread ${id}: today's quota is over 90% used, so it starts when the quota resets or the user says to start it. message_thread notes wait with it.`
+					: queued
+						? `Queued thread ${id}: as many threads run as the user allows, so it starts when one finishes. message_thread notes wait with it.`
+						: `Started thread ${id}.`);
 			}
 			case 'message_thread': {
 				const thread = str(args.thread);
@@ -499,6 +657,11 @@ export class ProjectHub implements ProjectToolHost {
 				}
 				if (!text) {
 					return error('Say what to send in text.');
+				}
+				const waiting = this.queue.find(entry => entry.request.id === thread);
+				if (waiting) {
+					waiting.notes.push(text);
+					return ok('Noted: the thread gets it when it starts.');
 				}
 				if (this.threads.get(thread)?.resolved && args.reopen !== true) {
 					return error(`Thread ${thread} is resolved (merged). Start a new thread for this work. Only if the user asked to reopen ${thread}, call message_thread again with reopen: true.`);
@@ -516,6 +679,9 @@ export class ProjectHub implements ProjectToolHost {
 			case 'read_thread': {
 				const thread = str(args.thread);
 				const last = typeof args.last === 'number' && args.last > 0 ? Math.min(Math.floor(args.last), 50) : 10;
+				if (this.queue.some(entry => entry.request.id === thread)) {
+					return ok('(queued: it has not started yet)');
+				}
 				const text = this.threads.has(thread) ? await this.driver.read(thread, last) : undefined;
 				return text === undefined ? error(`No thread ${thread}.`) : ok(text || '(no messages yet)');
 			}
@@ -560,7 +726,8 @@ export function wakeThreadLines(threads: readonly ThreadInfo[]): string[] {
 }
 
 function threadLine(thread: ThreadInfo): string {
-	return `- ${thread.id} "${thread.title}": ${thread.resolved ? 'resolved (merged)' : thread.state}${thread.repos?.length ? ` [${thread.repos.join(', ')}]` : ''}${thread.detail ? `, ${oneLine(thread.detail)}` : ''}${thread.byCoordinator ? '' : ' (started by the user)'}`;
+	const state = thread.resolved ? 'resolved (merged)' : thread.state === 'queued' ? `queued, ${thread.queued === 'quota' ? 'until the quota resets' : 'until a running thread finishes'}` : thread.state;
+	return `- ${thread.id} "${thread.title}": ${state}${thread.repos?.length ? ` [${thread.repos.join(', ')}]` : ''}${thread.detail ? `, ${oneLine(thread.detail)}` : ''}${thread.byCoordinator ? '' : ' (started by the user)'}`;
 }
 
 /** Removes `thread`'s reports from `events`. */

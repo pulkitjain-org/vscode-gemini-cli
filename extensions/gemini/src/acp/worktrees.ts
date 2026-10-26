@@ -399,22 +399,30 @@ export async function folderSize(folder: string): Promise<number> {
 /** The script a repository keeps for setting up a new agent worktree, relative to its top folder. */
 export const setupScriptFile = path.join('.gemini', 'worktree-setup.sh');
 
+/** The setup a new worktree gets, and, when it is the repository's own script, that script. */
+export interface WorktreeSetup {
+	readonly command: string;
+	/** The repository's `.gemini/worktree-setup.sh`, which runs only once the user allowed its content (setupConsent.ts). */
+	readonly script?: { readonly file: string; readonly content: string };
+}
+
 /**
  * The setup to run in a new worktree: the `gemini.agents.worktreeSetup` command when set, else
- * the repository's own `.gemini/worktree-setup.sh` when it has one. Undefined when neither.
+ * the repository's own `.gemini/worktree-setup.sh` when it has one, with its content. Undefined when neither.
  */
-export async function worktreeSetupCommand(repository: string, configured: string | undefined): Promise<string | undefined> {
+export async function worktreeSetup(repository: string, configured: string | undefined): Promise<WorktreeSetup | undefined> {
 	if (configured?.trim()) {
-		return configured.trim();
+		return { command: configured.trim() };
 	}
-	const script = path.join(repository, setupScriptFile);
-	try {
-		await fs.access(script);
-		// From the repository, so a script not yet committed (and so not in the worktree) still runs.
-		return `sh ${shellQuote(script)}`;
-	} catch {
-		return undefined;
-	}
+	const file = path.join(repository, setupScriptFile);
+	const content = await fs.readFile(file, 'utf8').catch(() => undefined);
+	// From the repository, so a script not yet committed (and so not in the worktree) still runs.
+	return content === undefined ? undefined : { command: `sh ${shellQuote(file)}`, script: { file, content } };
+}
+
+/** The command of `worktreeSetup`, for a caller that runs it as it is. */
+export async function worktreeSetupCommand(repository: string, configured: string | undefined): Promise<string | undefined> {
+	return (await worktreeSetup(repository, configured))?.command;
 }
 
 function shellQuote(value: string): string {

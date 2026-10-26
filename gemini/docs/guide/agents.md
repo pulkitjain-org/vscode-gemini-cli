@@ -38,7 +38,7 @@ In the Agents layout the agent list highlights the agent, project or thread whos
 
 Each agent opens as a tab with its own chat. The tab shows what the agent is doing: a spinner while it works, an amber dot when it needs you, a tick when it has finished, and how many lines it has changed.
 
-In the Agents pane, each agent's row has the same signal (green when finished, red when something went wrong, grey otherwise). On the right it shows how long the agent has been working, "waiting", the lines it added, or when it was last active. Point at a row to see its branch and folder. Rename, stop or remove an agent from its right-click menu; **Gemini: Stop Agent** (<kbd>⌘esc</kbd>) stops the one in front. Removing an agent deletes its conversation and undo history, and the question names any files whose changes you haven't reviewed yet.
+In the Agents pane, each agent's row has the same signal (green when finished, red when something went wrong, grey otherwise). On the right it shows how long the agent has been working, "waiting", the lines it added, or when it was last active. Point at a row to see its branch and folder. Rename, stop or remove an agent from its right-click menu; **Gemini: Stop Agent** (<kbd>⌘esc</kbd>) stops the one in front. Removing an agent deletes its conversation and undo history, and the question names any files whose changes you haven't reviewed yet. **Archive**, in the same question, keeps all of that and moves the agent under an **Archived** row in its workspace, out of the list and off Home; its next prompt brings it back.
 
 - In the Editor layout, agents that are working, waiting, or finished but not yet read show as pills in the title bar.
 - Right-click GeminiCode in the Dock for **New Agent**.
@@ -64,7 +64,7 @@ Two agents in the same folder can trip over each other's edits. To keep them apa
 
 When the work is done, **Merge Back** (the merge icon on the agent's row) commits anything the agent left uncommitted, with a message written from its diff, and merges its branch into the branch your folder has checked out. If the merge conflicts, it stops so you can finish it in Source Control. After a clean merge, it offers to remove the agent with its branch and folder.
 
-A new copy has no `node_modules` or build output. To get it ready before the agent starts, set **Gemini › Agents: Worktree Setup** in your user settings to a command such as `npm ci` (a repository's own settings can't set it), or commit a `.gemini/worktree-setup.sh` to the repository. The command can use `GEMINI_SOURCE_REPOSITORY`, the repository the copy came from, to copy files Git doesn't carry, such as `.env`. If setup fails, the agent starts anyway, and the output is in the **Gemini Worktree Setup** output channel.
+A new copy has no `node_modules` or build output. To get it ready before the agent starts, set **Gemini › Agents: Worktree Setup** in your user settings to a command such as `npm ci` (a repository's own settings can't set it), or commit a `.gemini/worktree-setup.sh` to the repository. Before a repository's script runs the first time, GeminiCode shows it and asks: **Don't Run**, **Run Once** or **Run and Remember**. It asks again whenever the script changes, and runs none in a workspace you haven't trusted. The command can use `GEMINI_SOURCE_REPOSITORY`, the repository the copy came from, to copy files Git doesn't carry, such as `.env`. If setup fails, the agent starts anyway, and the output is in the **Gemini Worktree Setup** output channel.
 
 To start every new agent on its own branch, turn on `gemini.agents.ownBranch`: Home's chooser then starts on **On Its Own Branch**.
 
@@ -120,7 +120,7 @@ Each session also starts with a short outline of the folder, so the agent knows 
 
 GeminiCode also gives the Gemini CLI the app's own ripgrep, so the agent's plain text searches are fast too, with or without an index.
 
-An agent uses these tools only in a folder the Gemini CLI trusts. The Index page says when a workspace isn't trusted, and offers **Trust Folder**.
+An agent uses these tools only in a folder the Gemini CLI trusts. The Index page says when a workspace isn't trusted, and offers **Trust Folder**, which asks first, as Chat does, since trust also lets the Gemini CLI load the folder's MCP servers, hooks and project settings.
 
 ### One index per workspace
 

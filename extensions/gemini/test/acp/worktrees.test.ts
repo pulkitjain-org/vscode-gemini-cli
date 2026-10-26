@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { allThreadsHome, branchExists, commitAll, createWorktree, createWorktreeAt, createWorktreeFrom, currentBranch, folderInRepository, folderSize, freeBranchName, freeFolder, git, gitNetworkProblem, inRepository, mainRepository, mergeBranch, pathExists, projectFolders, projectsHome, removeThreadFolder, removeWorktree, repositoryRoot, restoreWorktree, runWorktreeSetup, threadGuide, threadsHome, TurnQueue, unfinishedOperation, worktreeSetupCommand, worktreesHome, worktreeStatus, writeThreadGuide } from '../../src/acp/worktrees';
+import { allThreadsHome, branchExists, commitAll, createWorktree, createWorktreeAt, createWorktreeFrom, currentBranch, folderInRepository, folderSize, freeBranchName, freeFolder, git, gitNetworkProblem, inRepository, mainRepository, mergeBranch, pathExists, projectFolders, projectsHome, removeThreadFolder, removeWorktree, repositoryRoot, restoreWorktree, runWorktreeSetup, threadGuide, threadsHome, TurnQueue, unfinishedOperation, worktreeSetup, worktreeSetupCommand, worktreesHome, worktreeStatus, writeThreadGuide } from '../../src/acp/worktrees';
 
 let root: string;
 let repo: string;
@@ -221,6 +221,19 @@ describe('worktree setup', () => {
 		await fs.mkdir(path.join(repo, '.gemini'));
 		await fs.writeFile(path.join(repo, '.gemini', 'worktree-setup.sh'), 'echo hi\n');
 		expect(await worktreeSetupCommand(repo, undefined)).toBe(`sh '${path.join(repo, '.gemini', 'worktree-setup.sh')}'`);
+	});
+
+	it('hands over the repository\'s script with its content, to ask before it runs, but not the setting\'s command', async () => {
+		await fs.mkdir(path.join(repo, '.gemini'));
+		const file = path.join(repo, '.gemini', 'worktree-setup.sh');
+		await fs.writeFile(file, 'npm ci\n');
+		expect({
+			script: await worktreeSetup(repo, undefined),
+			setting: await worktreeSetup(repo, 'npm ci'),
+		}).toEqual({
+			script: { command: `sh '${file}'`, script: { file, content: 'npm ci\n' } },
+			setting: { command: 'npm ci' },
+		});
 	});
 
 	it('runs in the new folder, knows where it came from, and reports the exit code', async () => {

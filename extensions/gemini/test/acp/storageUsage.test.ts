@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { debugLogName } from '../../src/acp/mcpDiagnostics';
-import { applyLogRetention, cleanupPlan, keepLogsDays, measureStorage, runCleanup, storageAreas } from '../../src/acp/storageUsage';
+import { applyLogRetention, cleanupPlan, entriesIn, foldersTwoDown, keepLogsDays, measureStorage, runCleanup, storageAreas, storageGroups } from '../../src/acp/storageUsage';
 
 describe('storage usage', () => {
 	const dirs: string[] = [];
@@ -98,5 +98,33 @@ describe('storage usage', () => {
 		expect(await applyLogRetention(globalStorage, 90, new Date('2026-04-30T00:00:00Z'))).toBe(2);
 		expect(await readdir(path.join(globalStorage, 'audit'))).toEqual(['2026-04-29.jsonl']);
 		expect([undefined, 90, 3, 0, -1, 30.5, 'x'].map(keepLogsDays)).toEqual([90, 90, 7, 0, 0, 30, 90]);
+	});
+
+	it('adds the areas up into the Storage section\'s rows, and counts worktrees and entries', async () => {
+		const { root, globalStorage, put } = await storage();
+		await put('agents/a.json', '12345');
+		await put('records/agents/a.json', '12');
+		await put('audit/2026-04-29.jsonl', '123');
+		await put('traces/t.jsonl', '1');
+		await put('checkpoints/a.json');
+		await put('checkpoints/b.json');
+		await put('checkpoints/c.json.broken');
+		const worktrees = path.join(root, '.geminicode', 'worktrees');
+		await mkdir(path.join(worktrees, 'shop', 'login-fix'), { recursive: true });
+		await mkdir(path.join(worktrees, 'shop', 'cart'), { recursive: true });
+		await mkdir(path.join(worktrees, 'web', 'nav'), { recursive: true });
+		await writeFile(path.join(worktrees, 'shop', 'notes.txt'), 'x');
+		const groups = storageGroups(await measureStorage(storageAreas(globalStorage, root)));
+		expect({
+			groups: groups.map(group => [group.group, group.bytes]),
+			worktrees: (await foldersTwoDown(worktrees)).map(folder => path.relative(worktrees, folder)).sort(),
+			checkpoints: await entriesIn(path.join(globalStorage, 'checkpoints'), '.json'),
+			missing: await entriesIn(path.join(root, 'nowhere')),
+		}).toEqual({
+			groups: [['worktrees', 1], ['index', 0], ['cli', 0], ['checkpoints', 3], ['chats', 7], ['logs', 4]],
+			worktrees: ['shop/cart', 'shop/login-fix', 'web/nav'],
+			checkpoints: 2,
+			missing: 0,
+		});
 	});
 });

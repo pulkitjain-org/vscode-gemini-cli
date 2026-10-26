@@ -103,15 +103,7 @@ export class ChatSettings implements vscode.Disposable {
 		}
 		const folder = this.service.client.cwd;
 		const modeName = this.service.client.settings.mode?.available.find(choice => choice.id === modeId)?.name ?? modeId;
-		const trust = vscode.l10n.t("Trust Folder");
-		const choice = await vscode.window.showWarningMessage(
-			vscode.l10n.t("Trust {0} for the Gemini agent?", path.basename(folder) || folder),
-			{
-				modal: true,
-				detail: vscode.l10n.t("{0} mode needs a trusted folder. Trusting it also lets the Gemini CLI load this folder's own Gemini settings and MCP servers, which can run programs. The Gemini CLI remembers the choice for this folder, including in the terminal.", modeName),
-			},
-			trust);
-		if (choice !== trust) {
+		if (!await askToTrustFolder(folder, vscode.l10n.t("{0} mode needs a trusted folder.", modeName))) {
 			return;
 		}
 		this.service.client.setModeOnNextSession(modeId);
@@ -134,4 +126,19 @@ export function onDidChangeSendWith(listener: (cmdEnter: boolean) => void): vsco
 			listener(sendsWithCmdEnter());
 		}
 	});
+}
+
+/**
+ * The dialog before GeminiCode trusts a folder for the Gemini CLI, from Chat
+ * or the Index page; `reason` says why it is asked. Resolves whether the user
+ * chose Trust Folder.
+ */
+export async function askToTrustFolder(folder: string, reason?: string): Promise<boolean> {
+	const trust = vscode.l10n.t("Trust Folder");
+	const detail = [
+		reason,
+		vscode.l10n.t("Trusting a folder lets the Gemini CLI load its MCP servers, hooks and project settings, which can run programs on this Mac."),
+		vscode.l10n.t("The Gemini CLI remembers the choice for this folder, including in the terminal."),
+	].filter(Boolean).join(' ');
+	return await vscode.window.showWarningMessage(vscode.l10n.t("Trust {0}?", path.basename(folder) || folder), { modal: true, detail }, trust) === trust;
 }

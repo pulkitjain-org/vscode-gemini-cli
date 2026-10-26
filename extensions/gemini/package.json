@@ -1312,6 +1312,14 @@
             "default": true,
             "markdownDescription": "%configuration.projects.enabled%"
           },
+          "gemini.projects.maxRunningThreads": {
+            "type": "integer",
+            "default": 4,
+            "minimum": 1,
+            "maximum": 20,
+            "scope": "machine",
+            "markdownDescription": "%configuration.projects.maxRunningThreads%"
+          },
           "gemini.agents.ownBranch": {
             "type": "boolean",
             "default": false,

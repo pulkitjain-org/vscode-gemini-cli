@@ -8,6 +8,7 @@
 import type { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage } from '../src/host/panelProtocol';
 import { button, el, format, icon, pageStrings } from './panelDom';
 import { selectMenu, type SelectMenu } from './selectMenu';
+import { storageSection } from './settingsStorage';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromSettingsPage): void };
 
@@ -301,7 +302,7 @@ function render(view: SettingsPageView): void {
 
 	// Re-rendering replaces every element; keep keyboard focus on the same control.
 	const focused = document.activeElement instanceof HTMLElement && page.contains(document.activeElement) ? document.activeElement.getAttribute('aria-label') ?? document.activeElement.textContent : undefined;
-	page.replaceChildren(header, contextSection(view.contextCost), servers, skills, hooks, extensions, memory, rules, preferencesSection(view.preferences));
+	page.replaceChildren(header, contextSection(view.contextCost), servers, skills, hooks, extensions, memory, rules, preferencesSection(view.preferences), ...view.storage ? [storageSection(view.storage, strings, post)] : []);
 	if (focused) {
 		[...page.querySelectorAll<HTMLElement>('button')].find(b => (b.getAttribute('aria-label') ?? b.textContent) === focused)?.focus();
 	}

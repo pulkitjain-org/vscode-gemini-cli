@@ -140,6 +140,9 @@ function renderMerge(merge: NonNullable<NonNullable<ChangesTeamView['mr']>['merg
 		const text = el('div', 'mr-check-text');
 		text.append(el('div', undefined, check.name), el('div', 'mr-check-source mono', `${check.source} · ${check.detail}`));
 		row.append(mark, text);
+		if (check.retry) {
+			row.append(button('link', check.retry, () => post({ type: 'team', action: 'retry' }), 'refresh'));
+		}
 		card.append(row);
 	}
 

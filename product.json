@@ -533,6 +533,17 @@
 				}
 			}
 		},
+		"gemini.projects.maxRunningThreads": {
+			"name": "GeminiProjectsMaxRunningThreads",
+			"category": "Extensions",
+			"minimumVersion": "1.142",
+			"localization": {
+				"description": {
+					"key": "gemini.projects.maxRunningThreads.policy",
+					"value": "How many of a project's threads may work at once; threads started beyond it wait for a running one to finish."
+				}
+			}
+		},
 		"gemini.browser.keepSignIns": {
 			"name": "GeminiBrowserKeepSignIns",
 			"category": "Extensions",

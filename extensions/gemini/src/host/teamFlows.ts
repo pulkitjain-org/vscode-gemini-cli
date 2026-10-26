@@ -16,15 +16,16 @@ import { GitLabClient, GitLabMr } from '../acp/gitlab';
 import { formatDuration, JiraClient, type JiraMyTickets, jiraKeyIn, parseDuration } from '../acp/jira';
 import { branchSummary, branchWorktree, fetchBranches, pushBranch, UnpushedCommitsError } from '../acp/releaseMerge';
 import { describeSnyk } from '../acp/snyk';
-import { sonarProjectKeyIn } from '../acp/sonar';
+import { sonarIssuesUrl, sonarProjectKeyIn } from '../acp/sonar';
+import { countText } from '../acp/teamHttp';
 import {
 	CheckFinding, checksFixPrompt, findingsFromLocalSonar, findingsFromSnyk, findingsFromSonar, isUsualTarget, jiraCommentRequest, mrDescriptionRequest, mrFixPrompt,
-	mrFixRepliesPrompt, MrThreadForFix, resolveWorkFolder, targetChoices, ticketBranchName, ticketStartPrompt, WorkFolder,
+	mrFixRepliesPrompt, MrThreadForFix, resolveWorkFolder, targetChoices, ticketBranchName, ticketStartPrompt, WorkFolder, workFolderChoices,
 } from '../acp/teamFlowLogic';
 import { gitlabProjectOf } from '../acp/teamTools';
-import { AgentWorktree, commitAll, currentBranch, git, GitError, inRepository, repositoryRoot, runWorktreeSetup, worktreeSetupCommand } from '../acp/worktrees';
+import { AgentWorktree, commitAll, currentBranch, git, GitError, inRepository, repositoryRoot, runWorktreeSetup } from '../acp/worktrees';
+import { setupCommandFor } from './agents/agentWorktrees';
 import type { AgentsView } from './agentsView';
-import { configSection } from './configuration';
 import type { TeamConnections } from './teamConnections';
 import type { FlowRecord } from '../acp/flowRecords';
 import { FlowRecording, TeamFlowPanel } from './teamFlowPanel';
@@ -186,6 +187,44 @@ export class TeamFlows implements vscode.Disposable {
 		});
 	}
 
+	/**
+	 * The folder a flow works in, as `workFolder` finds it; when several
+	 * folders are open and nothing says which, a quick pick titled `title`
+	 * asks, with the agent last in front first: the folder, and the agent when
+	 * its choice was picked. Undefined when dismissed; no folder when none is open.
+	 */
+	private async pickWorkFolder(title: string): Promise<{ readonly folder?: string; readonly agent?: string } | undefined> {
+		const work = this.workFolder();
+		if (!work.ambiguous) {
+			return { ...work.folder ? { folder: work.folder } : {} };
+		}
+		const last = this.agents.agentLastInFront();
+		const place = last ? this.agents.agentPlace(last) : undefined;
+		const choices = workFolderChoices(last && place ? { id: last, title: place.title, cwd: place.cwd, folder: place.folder } : undefined, (vscode.workspace.workspaceFolders ?? []).filter(f => f.uri.scheme === 'file').map(f => f.uri.fsPath));
+		const inFront = vscode.l10n.t("agent in front");
+		type Item = vscode.QuickPickItem & { readonly choice: ReturnType<typeof workFolderChoices>[number] };
+		const pick = vscode.window.createQuickPick<Item>();
+		pick.title = title;
+		pick.placeholder = vscode.l10n.t("Several folders are open, and neither the agent in front nor the active editor says which");
+		pick.matchOnDescription = true;
+		pick.items = choices.map(choice => ({ label: `$(${choice.agent ? 'git-branch' : 'folder'}) ${choice.label}`, description: choice.agent ? `${tildify(choice.path)} · ${inFront}` : tildify(choice.path), choice }));
+		const picked = await new Promise<{ readonly folder: string; readonly agent?: string } | undefined>(resolve => {
+			pick.onDidAccept(() => {
+				resolve(pick.selectedItems[0]?.choice);
+				pick.hide();
+			});
+			pick.onDidHide(() => resolve(undefined));
+			pick.show();
+		});
+		pick.dispose();
+		return picked;
+	}
+
+	/** The folder of the team's defaults (Jira projects, targets): the flow's folder, asked for when the window doesn't say. */
+	private defaultsFolder(): Promise<{ readonly folder?: string } | undefined> {
+		return this.pickWorkFolder(vscode.l10n.t("Use the team settings of which folder?"));
+	}
+
 	/** The agent asked for, else the one in front, else the only running one. */
 	private agentId(agent: string | undefined): string {
 		const id = agent ?? this.agents.activeAgentId() ?? this.agents.summaries().find(a => a.state !== 'stopped')?.id;
@@ -256,9 +295,12 @@ export class TeamFlows implements vscode.Disposable {
 			return;
 		}
 		const issue = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Reading {0}...", key) }, () => jira.issue(key!));
-		const folder = this.workFolder().folder;
-		if (!folder) {
+		if (!this.workFolder().folder) {
 			throw new Error(vscode.l10n.t("Open your repository's folder first."));
+		}
+		const folder = (await this.pickWorkFolder(vscode.l10n.t("Start on {0} in which folder?", issue.key)))?.folder;
+		if (!folder) {
+			return;
 		}
 		const id = await this.agents.startTeamAgent({
 			folder,
@@ -282,7 +324,11 @@ export class TeamFlows implements vscode.Disposable {
 	private async moveTicket(key: string | undefined, agent: string | undefined, suggest: string | undefined, mode: 'move' | 'log' = 'move'): Promise<void> {
 		const jira = this.jira();
 		const place = agent ? this.agents.agentPlace(agent) : undefined;
-		const defaults = await this.tools.workspaceDefaults(place?.folder ?? this.workFolder().folder);
+		const defaultsIn = place ? { folder: place.folder } : await this.defaultsFolder();
+		if (!defaultsIn) {
+			return;
+		}
+		const defaults = await this.tools.workspaceDefaults(defaultsIn.folder);
 		key ??= place ? jiraKeyIn(`${place.branch ?? ''} ${place.title}`, defaults.jira?.projects) : undefined;
 		key ??= await this.pickTicket(jira);
 		if (!key) {
@@ -744,6 +790,9 @@ export class TeamFlows implements vscode.Disposable {
 		}
 		if (mr.approvals) {
 			side.push({ tool: 'people', label: vscode.l10n.t("Approvals"), pill: { text: vscode.l10n.t("{0} of {1}", mr.approvals.given, mr.approvals.required), tone: mr.approvals.given >= mr.approvals.required && mr.approvals.required ? 'ok' : 'muted' } });
+		} else {
+			// GitLab didn't answer for the approvals: pending, never passed.
+			side.push({ tool: 'people', label: vscode.l10n.t("Approvals"), detail: vscode.l10n.t("couldn't read, counted as pending"), pill: { text: vscode.l10n.t("pending"), tone: 'muted' }, retry: true });
 		}
 		return side;
 	}
@@ -772,9 +821,16 @@ export class TeamFlows implements vscode.Disposable {
 		const n = iid;
 		const [mr, readiness] = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Reading !{0}...", n) }, () => Promise.all([gitlab.mr(p, n, false), gitlab.mergeReadiness(p, n)]));
 		// allow-any-unicode-next-line
-		const lines = readiness.checks.map(c => `${c.ok ? '✓' : '✗'} ${c.name}: ${c.detail}`);
+		const lines = readiness.checks.map(c => c.unreadable ? `◌ ${c.name}: ${vscode.l10n.t("couldn't read, counted as pending")}` : `${c.ok ? '✓' : '✗'} ${c.name}: ${c.detail}`);
 		if (!readiness.ready) {
-			await vscode.window.showWarningMessage(vscode.l10n.t("!{0} can't be merged yet.", n), { modal: true, detail: lines.join('\n') });
+			// A check GitLab didn't answer for may pass when read again.
+			const retry = readiness.checks.some(c => c.unreadable) ? vscode.l10n.t("Retry") : undefined;
+			if (retry && await vscode.window.showWarningMessage(vscode.l10n.t("!{0} can't be merged yet.", n), { modal: true, detail: lines.join('\n') }, retry) === retry) {
+				return this.mergeMergeRequest(p, n, options);
+			}
+			if (!retry) {
+				await vscode.window.showWarningMessage(vscode.l10n.t("!{0} can't be merged yet.", n), { modal: true, detail: lines.join('\n') });
+			}
 			return;
 		}
 		const squash = options.squash ?? readiness.squash;
@@ -792,6 +848,7 @@ export class TeamFlows implements vscode.Disposable {
 		const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Merging !{0}...", n) }, () =>
 			this.tools.write('gitlab_merge', { project: p, mr: String(n), sha: readiness.sha, squash, deleteBranch: removeSourceBranch }));
 		const merged = { sha: typeof result.data?.sha === 'string' ? result.data.sha : undefined };
+		// After the merge, only to find the ticket in the branch's name: no question for that.
 		const defaults = await this.tools.workspaceDefaults(this.workFolder().folder);
 		const ticket = options.moveTicket ?? (this.tools.connectors.jira ? jiraKeyIn(`${mr.sourceBranch} ${mr.title}`, defaults.jira?.projects) : undefined);
 		if (options.moveTicket) {
@@ -928,10 +985,20 @@ export class TeamFlows implements vscode.Disposable {
 
 	/** Checks for an agent's branch, in its folder; with no agent in front, for a branch the user picks. */
 	private async runChecks(agent: string | undefined): Promise<void> {
-		const id = agent ?? this.agents.activeAgentId();
+		let id = agent ?? this.agents.activeAgentId();
+		let repository: string | undefined;
+		if (!id) {
+			// With several folders and nothing in front, the agent last in front is one of the choices.
+			const picked = await this.pickWorkFolder(vscode.l10n.t("Run Checks in which folder?"));
+			if (!picked) {
+				return;
+			}
+			id = picked.agent;
+			repository = picked.folder;
+		}
 		const place = id ? this.agents.agentPlace(id) : undefined;
 		if (!id || !place) {
-			return this.runChecksOnBranch(undefined);
+			return this.runChecksOnBranch(undefined, repository);
 		}
 		await this.openChecks({ cwd: place.cwd, title: place.title, repository: place.folder, agentId: id, ...place.branch ? { branch: place.branch } : {} });
 	}
@@ -942,8 +1009,11 @@ export class TeamFlows implements vscode.Disposable {
 	 * out gets a worktree of its own (with the repository's setup run in it),
 	 * which later runs reuse. Fix starts an agent there when none works on it.
 	 */
-	private async runChecksOnBranch(branch: string | undefined): Promise<void> {
-		const repository = await this.checksRepository();
+	private async runChecksOnBranch(branch: string | undefined, folder?: string): Promise<void> {
+		const repository = await this.checksRepository(folder);
+		if (!repository) {
+			return;
+		}
 		const gitlab = this.tools.connectors.gitlab;
 		const remote = (gitlab ? await gitlabProjectOf(repository, gitlab.url, await this.tools.defaults(repository)).catch(() => ({ remote: undefined })) : { remote: undefined }).remote ?? 'origin';
 		if (!branch) {
@@ -965,7 +1035,7 @@ export class TeamFlows implements vscode.Disposable {
 		let setup: string | undefined;
 		if (checkout.created && checkout.worktree) {
 			const worktree = checkout.worktree;
-			const command = await worktreeSetupCommand(repository, vscode.workspace.getConfiguration(configSection).get<string>('agents.worktreeSetup'));
+			const command = await setupCommandFor(repository, this.state, 'checks');
 			if (command) {
 				const started = Date.now();
 				const code = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Setting up {0} for the checks...", chosen) }, () => runWorktreeSetup(command, worktree, repository, () => undefined));
@@ -979,9 +1049,17 @@ export class TeamFlows implements vscode.Disposable {
 		await this.openChecks({ cwd: checkout.cwd, title: chosen, branch: chosen, repository, ...agent ? { agentId: agent.id } : {}, ...checkout.worktree ? { worktree: checkout.worktree } : {}, ...setup ? { setup } : {} });
 	}
 
-	/** The repository Run Checks works in: the agent in front's, else the active editor's, else the first open folder's. */
-	private async checksRepository(): Promise<string> {
-		const folder = this.workFolder().folder;
+	/**
+	 * The repository Run Checks works in: `picked`'s, else the agent in
+	 * front's, else the active editor's, else the one the user picks among
+	 * several open folders. Undefined when the user dismissed the question.
+	 */
+	private async checksRepository(picked?: string): Promise<string | undefined> {
+		const chosen = picked ? { folder: picked } : await this.pickWorkFolder(vscode.l10n.t("Run Checks in which folder?"));
+		if (!chosen) {
+			return undefined;
+		}
+		const folder = chosen.folder;
 		if (!folder) {
 			throw new Error(vscode.l10n.t("Open your repository's folder first."));
 		}
@@ -1075,8 +1153,18 @@ export class TeamFlows implements vscode.Disposable {
 				try {
 					const [gate, issues] = await Promise.all([sonar.gate(target), sonar.issues(target)]);
 					const findings = findingsFromSonar(issues);
-					results.push(vscode.l10n.t("SonarQube new code: {0}{1}, {2} issues", gate.status === 'OK' ? vscode.l10n.t("gate passed") : gate.status === 'ERROR' ? vscode.l10n.t("gate failed") : vscode.l10n.t("no gate"), gate.coverage ? vscode.l10n.t(", coverage {0}%", gate.coverage) : '', issues.length));
-					setRow(name, { state: 'done', detail: vscode.l10n.t("Quality gate {0}{1}", gate.status === 'OK' ? vscode.l10n.t("passed") : gate.status === 'ERROR' ? vscode.l10n.t("failed") : vscode.l10n.t("not computed"), gate.coverage ? vscode.l10n.t(" · coverage {0}%", gate.coverage) : ''), pill: { text: findings.length ? String(findings.length) : vscode.l10n.t("clean"), tone: gate.status === 'ERROR' ? 'error' : findings.length ? 'warn' : 'ok' } }, findings);
+					// A list cut at its page says so: "50 of 312 issues shown", with SonarQube's own list for the rest.
+					const cut = issues.total !== undefined && issues.total > issues.length;
+					results.push(vscode.l10n.t("SonarQube new code: {0}{1}, {2} issues", gate.status === 'OK' ? vscode.l10n.t("gate passed") : gate.status === 'ERROR' ? vscode.l10n.t("gate failed") : vscode.l10n.t("no gate"), gate.coverage ? vscode.l10n.t(", coverage {0}%", gate.coverage) : '', countText(issues)));
+					setRow(name, {
+						state: 'done',
+						detail: [
+							vscode.l10n.t("Quality gate {0}{1}", gate.status === 'OK' ? vscode.l10n.t("passed") : gate.status === 'ERROR' ? vscode.l10n.t("failed") : vscode.l10n.t("not computed"), gate.coverage ? vscode.l10n.t(" · coverage {0}%", gate.coverage) : ''),
+							...cut ? [vscode.l10n.t("{0} of {1} issues shown", issues.length, issues.total!)] : [],
+						].join(' · '),
+						pill: { text: findings.length ? String(findings.length) : vscode.l10n.t("clean"), tone: gate.status === 'ERROR' ? 'error' : findings.length ? 'warn' : 'ok' },
+						...cut ? { link: { label: vscode.l10n.t("Open in SonarQube"), url: sonarIssuesUrl(sonar.url, target) } } : {},
+					}, findings);
 				} catch (err) {
 					setRow(name, { state: 'problem', detail: /404|found nothing/.test(errorMessage(err)) ? vscode.l10n.t("{0} hasn't been analysed yet; SonarQube runs in the pipeline after you push.", branch ?? key) : errorMessage(err) });
 				}

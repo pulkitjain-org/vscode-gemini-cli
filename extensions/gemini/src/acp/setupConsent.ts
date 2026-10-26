@@ -39,3 +39,30 @@ export function setupScriptConsent(content: string, allowed: Iterable<string>): 
 export function rememberSetupScript(allowed: readonly string[], hash: string, limit = 200): string[] {
 	return [...allowed.filter(each => each !== hash), hash].slice(-limit);
 }
+
+/** What the consent dialog shows of a script: its first lines, and how many lines it leaves out. */
+export interface ScriptPreview {
+	readonly text: string;
+	/** Lines left out at the end; 0 when the whole script shows. */
+	readonly moreLines: number;
+}
+
+/**
+ * A script cut for the consent dialog: blank lines at either end dropped, at
+ * most `maxLines` lines, each at most 200 characters, and `maxChars` in all,
+ * so a long script still leaves the dialog's buttons on screen.
+ */
+export function scriptPreview(content: string, maxLines = 30, maxChars = 1_500): ScriptPreview {
+	const lines = content.replace(/\r\n?/g, '\n').replace(/^\s*\n|\s+$/g, '').split('\n');
+	const shown: string[] = [];
+	let chars = 0;
+	for (const line of lines) {
+		const cut = line.length > 200 ? `${line.slice(0, 199)}…` : line;
+		if (shown.length >= maxLines || chars + cut.length > maxChars) {
+			break;
+		}
+		shown.push(cut);
+		chars += cut.length + 1;
+	}
+	return { text: shown.join('\n'), moreLines: lines.length - shown.length };
+}

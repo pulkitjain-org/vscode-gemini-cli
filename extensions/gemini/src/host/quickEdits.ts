@@ -250,7 +250,7 @@ async function gitApi(): Promise<GitApi | undefined> {
 }
 
 /** The CLI's `gemini.js`: the one GeminiCode runs, else the one on the PATH. */
-async function findCliEntry(): Promise<string | undefined> {
+export async function findCliEntry(): Promise<string | undefined> {
 	const configured = (await getCliResolution()).cliPath;
 	if (configured) {
 		return configured;
