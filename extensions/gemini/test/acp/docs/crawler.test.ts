@@ -6,7 +6,7 @@
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { crawl, CrawlOptions, domainAllowed, markdownLinks, parseRobots, scopeOf } from '../../../src/acp/docs/crawler';
+import { crawl, CrawlOptions, domainAllowed, isPrivateAddress, markdownLinks, parseRobots, readCapped, scopeOf } from '../../../src/acp/docs/crawler';
 import type { DocsPage } from '../../../src/acp/index/indexerProtocol';
 
 type Route = { status?: number; type?: string; body?: string; headers?: Record<string, string>; redirect?: string };
@@ -108,6 +108,91 @@ describe('crawl', () => {
 		expect(result.error).toBe('Sign-in needed: the page redirected to a sign-in form. Pages behind a sign-in aren\'t supported yet.');
 		await expect(crawl({ url: `${origin}/x`, scope: 'page', maxPages: 1, validators: {}, fetch, onBatch: async () => undefined, allowedHost: host => domainAllowed(host, ['react.dev']) }))
 			.rejects.toThrow('127.0.0.1 is not in gemini.docs.allowedDomains.');
+	});
+
+	it('follows a redirect only to an allowed host within the source\'s scope', async () => {
+		routes.clear();
+		routes.set('/docs/away', { redirect: 'http://elsewhere.invalid/docs/away' });
+		routes.set('/docs/moved', { redirect: '/blog/moved' });
+		routes.set('/docs/renamed', { redirect: '/docs/new-name' });
+		routes.set('/docs/new-name', { body: '<h1>New</h1>' });
+		routes.set('/docs/llms.txt', { type: 'text/plain', body: '- [A](/docs/away)\n- [M](/docs/moved)\n- [R](/docs/renamed)\n' });
+		const { result, pages } = await run({ url: `${origin}/docs`, allowedHost: host => host === '127.0.0.1' });
+		expect(result).toMatchObject({ mode: 'llms', fetched: 1, failed: 2 });
+		expect(pages).toEqual(['/docs/renamed']);
+		const away = await run({ url: `${origin}/docs/away`, scope: 'page', allowedHost: host => host === '127.0.0.1' });
+		expect(away.result.error).toBe(`${origin}/docs/away: redirected to http://elsewhere.invalid/docs/away, outside this source`);
+	});
+
+	it('fetches sitemaps only from allowed hosts', async () => {
+		routes.clear();
+		routes.set('/robots.txt', { type: 'text/plain', body: 'Sitemap: http://elsewhere.invalid/sitemap.xml\n' });
+		routes.set('/sitemap.xml', { type: 'application/xml', body: `<sitemapindex><sitemap><loc>http://elsewhere.invalid/more.xml</loc></sitemap><sitemap><loc>${origin}/s2.xml</loc></sitemap></sitemapindex>` });
+		routes.set('/s2.xml', { type: 'application/xml', body: `<urlset><url><loc>${origin}/ref/a</loc></url></urlset>` });
+		routes.set('/ref/a', { body: '<h1>A</h1>' });
+		const { result, pages } = await run({ url: `${origin}/ref`, allowedHost: host => host === '127.0.0.1' });
+		expect(result).toMatchObject({ mode: 'sitemap', fetched: 1 });
+		expect(pages).toEqual(['/ref/a']);
+		expect(requested).toEqual(expect.arrayContaining(['/robots.txt', '/sitemap.xml', '/s2.xml']));
+	});
+
+	it('sends pages to the indexer in batches of at most about 8 MB', async () => {
+		routes.clear();
+		const big = `<main><p>${'x'.repeat(3 * 1024 * 1024)}</p></main>`;
+		for (const name of ['a', 'b', 'c', 'd']) {
+			routes.set(`/big/${name}`, { body: big });
+		}
+		routes.set('/big/llms.txt', { type: 'text/plain', body: '- [a](/big/a)\n- [b](/big/b)\n- [c](/big/c)\n- [d](/big/d)\n' });
+		const batches: number[] = [];
+		const result = await crawl({ url: `${origin}/big`, scope: 'prefix', maxPages: 50, validators: {}, fetch, delayMs: 0, onBatch: async pages => { batches.push(pages.length); } });
+		expect(result).toMatchObject({ fetched: 4 });
+		expect(batches).toEqual([3, 1]);
+	});
+});
+
+describe('crawl, from a public address', () => {
+	it('never asks a private or loopback address, through redirects, robots.txt or sitemaps', async () => {
+		const asked: string[] = [];
+		const addresses: Record<string, string[]> = { 'docs.example.com': ['93.184.216.34'], 'intranet.example.com': ['10.1.2.3'] };
+		const answers: Record<string, () => Response> = {
+			'https://docs.example.com/robots.txt': () => new Response('Sitemap: https://intranet.example.com/sitemap.xml\n', { headers: { 'Content-Type': 'text/plain' } }),
+			'https://docs.example.com/guide/llms.txt': () => new Response(null, { status: 302, headers: { Location: 'http://169.254.169.254/latest/meta-data' } }),
+			'https://docs.example.com/sitemap.xml': () => new Response('<sitemapindex><sitemap><loc>http://127.0.0.1:9/s.xml</loc></sitemap></sitemapindex>', { headers: { 'Content-Type': 'application/xml' } }),
+			'https://docs.example.com/guide/': () => new Response('<main><h1>Guide</h1><a href="https://docs.example.com/guide/next">n</a></main>', { headers: { 'Content-Type': 'text/html' } }),
+			'https://docs.example.com/guide/next': () => new Response(null, { status: 301, headers: { Location: 'https://localhost/guide/next' } }),
+		};
+		const fakeFetch = (async (url: string | URL | Request) => {
+			const href = String(url);
+			asked.push(href);
+			return answers[href]?.() ?? new Response('', { status: 404 });
+		}) as typeof fetch;
+		const pages: string[] = [];
+		const result = await crawl({
+			url: 'https://docs.example.com/guide/', scope: 'site', maxPages: 10, validators: {}, fetch: fakeFetch, delayMs: 0,
+			lookup: async host => addresses[host] ?? ['93.184.216.34'],
+			onBatch: async batch => { pages.push(...batch.map(p => p.url)); },
+		});
+		expect(pages).toEqual(['https://docs.example.com/guide/']);
+		expect(result).toMatchObject({ mode: 'links', fetched: 1, failed: 1 });
+		expect(asked.filter(url => !url.startsWith('https://docs.example.com/'))).toEqual([]);
+	});
+
+	it('knows private, loopback, link-local and shared addresses', () => {
+		expect(['10.0.0.1', '172.16.5.4', '172.32.0.1', '192.168.1.1', '127.0.0.1', '169.254.169.254', '100.64.0.1', '8.8.8.8', '::1', 'fd00::1', 'fe80::1', '::ffff:10.0.0.1', '2001:4860::8888'].map(isPrivateAddress))
+			.toEqual([true, true, false, true, true, true, true, false, true, true, true, true, false]);
+	});
+
+	it('stops reading a body past its cap, whatever length the server gives', async () => {
+		let pulled = 0;
+		const stream = new ReadableStream<Uint8Array>({
+			pull: controller => {
+				pulled++;
+				controller.enqueue(new Uint8Array(64 * 1024));
+			},
+		});
+		expect(await readCapped(new Response(stream), 1024 * 1024)).toBeUndefined();
+		expect(pulled).toBeLessThan(20);
+		expect(await readCapped(new Response('small'), 1024)).toEqual({ text: 'small', bytes: 5 });
 	});
 });
 
