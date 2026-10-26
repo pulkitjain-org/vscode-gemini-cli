@@ -94,6 +94,9 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		permissionAnswered: vscode.l10n.t("You chose: {0}"),
 		permissionCancelled: vscode.l10n.t("Not answered; the request was cancelled."),
 		permissionHint: vscode.l10n.t("Esc rejects"),
+		durationSeconds: vscode.l10n.t("{0} s"),
+		durationMs: vscode.l10n.t("{0} ms"),
+		permissionWaiting: vscode.l10n.t("Gemini is waiting for your answer: {0}"),
 		confirmClass: vscode.l10n.t("confirm class"),
 		confirmWhy: vscode.l10n.t("Shown exactly as {0} will record it under your account. This card never offers \"Allow for this session\": it asks every time."),
 		firstToken: vscode.l10n.t("first token {0}"),
@@ -311,6 +314,8 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		usageFewerModels: vscode.l10n.t("Fewer models"),
 		noFiles: vscode.l10n.t("No matching files"),
 		noCommands: vscode.l10n.t("No matching commands"),
+		pickerFiles: vscode.l10n.t("Files to attach"),
+		pickerCommands: vscode.l10n.t("Commands"),
 		commandFromCli: vscode.l10n.t("Gemini CLI"),
 		commandFromTeam: vscode.l10n.t("Team"),
 		commandFromSkill: vscode.l10n.t("Skill"),
@@ -361,7 +366,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			<div class="composer-tabs" role="tablist"><button type="button" id="tab-write" class="composer-tab" role="tab" aria-selected="true" aria-controls="input"></button><button type="button" id="tab-preview" class="composer-tab" role="tab" aria-selected="false" aria-controls="preview"></button></div>
 			<div id="preview" class="composer-preview markdown" role="tabpanel" tabindex="0" hidden></div>
 			<div class="input-wrap">
-				<textarea id="input" rows="1" spellcheck="${spellCheckOn()}"></textarea>
+				<textarea id="input" rows="1" spellcheck="${spellCheckOn()}" aria-label="${escapeAttribute(vscode.l10n.t("Message to Gemini"))}"></textarea>
 				<div class="input-mirror" aria-hidden="true"></div>
 				<span id="enhance-float" class="enhance-float" hidden><button type="button" id="revert" class="enhance-chip" hidden><i class="codicon codicon-discard" aria-hidden="true"></i><span></span></button><button type="button" id="enhance" class="enhance-chip"><svg class="enhance-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 3.5C6.88 7 9 9.12 12.5 9.5C9 9.88 6.88 12 6.5 15.5C6.12 12 4 9.88 0.5 9.5C4 9.12 6.12 7 6.5 3.5Z"/><path d="M12.75 0.5C12.92 2.1 13.9 3.08 15.5 3.25C13.9 3.42 12.92 4.4 12.75 6C12.58 4.4 11.6 3.42 10 3.25C11.6 3.08 12.58 2.1 12.75 0.5Z"/></svg><i class="codicon codicon-loading codicon-modifier-spin" aria-hidden="true"></i><span></span><span class="enhance-key"></span></button></span>
 			</div>

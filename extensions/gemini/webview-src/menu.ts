@@ -6,7 +6,9 @@
 // A pop-up list for the chat's "+" menu, model, branch and folder, and Agent
 // Home's folder, so none of them opens a system menu or the Command Palette.
 // Rows can be filtered by an optional search field and picked with the arrow
-// keys. Styled by media/menu.css.
+// keys. Styled by media/menu.css. Without a search field it is a menu of
+// menu items; with one, a popup whose field is a combobox over a listbox of
+// options, as screen readers expect of a field that filters a list.
 
 import { el, icon } from './panelDom';
 
@@ -62,6 +64,8 @@ export interface MenuOptions {
 }
 
 const menus: Menu[] = [];
+/** Names popups that have no id of their own, so their rows' ids are unique. */
+let unnamed = 0;
 
 /** Closes every open menu, as another pop-up opens. */
 export function closeMenus(): void {
@@ -74,18 +78,25 @@ export class Menu {
 	private rows: MenuRow[] = [];
 	private readonly field?: HTMLInputElement;
 	private readonly onDocumentDown: (event: MouseEvent) => void;
+	/** The button it opens from; `setAnchor` moves a menu shared by several. */
+	private anchor: HTMLElement;
 
 	constructor(private readonly options: MenuOptions) {
 		menus.push(this);
 		const { element, anchor } = options;
+		this.anchor = anchor;
+		element.id ||= `menu-${++unnamed}`;
 		element.classList.add('menu');
-		element.setAttribute('role', 'menu');
+		element.setAttribute('role', options.search ? 'dialog' : 'menu');
 		element.setAttribute('aria-label', options.label);
-		anchor.setAttribute('aria-haspopup', 'menu');
-		anchor.setAttribute('aria-expanded', 'false');
+		this.markAnchor();
 		if (options.search) {
 			this.field = el('input', 'menu-search');
 			this.field.type = 'text';
+			this.field.setAttribute('role', 'combobox');
+			this.field.setAttribute('aria-expanded', 'true');
+			this.field.setAttribute('aria-autocomplete', 'list');
+			this.field.setAttribute('aria-controls', `${element.id}-list`);
 			this.field.addEventListener('input', () => {
 				this.query = this.field!.value;
 				this.active = 0;
@@ -99,7 +110,7 @@ export class Menu {
 		anchor.addEventListener('click', () => this.isOpen ? this.close() : this.open());
 		this.onDocumentDown = event => {
 			const target = event.target as Node | null;
-			if (this.isOpen && target && !element.contains(target) && !anchor.contains(target) && !options.inside?.some(node => node.contains(target))) {
+			if (this.isOpen && target && !element.contains(target) && !this.anchor.contains(target) && !options.inside?.some(node => node.contains(target))) {
 				this.close(false);
 			}
 		};
@@ -117,6 +128,25 @@ export class Menu {
 		return !this.options.element.hidden;
 	}
 
+	/** Whether it is open from `anchor`. */
+	isOpenFrom(anchor: HTMLElement): boolean {
+		return this.isOpen && this.anchor === anchor;
+	}
+
+	/** Opens from `anchor` from now on: one menu shared by many buttons, such as each shell block's Run chevron. Closes it first. */
+	setAnchor(anchor: HTMLElement): void {
+		if (anchor !== this.anchor) {
+			this.close(false);
+			this.anchor = anchor;
+			this.markAnchor();
+		}
+	}
+
+	private markAnchor(): void {
+		this.anchor.setAttribute('aria-haspopup', this.options.search ? 'dialog' : 'menu');
+		this.anchor.setAttribute('aria-expanded', 'false');
+	}
+
 	get text(): string {
 		return this.query;
 	}
@@ -130,7 +160,7 @@ export class Menu {
 			this.field.value = '';
 		}
 		this.options.element.hidden = false;
-		this.options.anchor.setAttribute('aria-expanded', 'true');
+		this.anchor.setAttribute('aria-expanded', 'true');
 		this.render();
 		(this.field ?? this.options.element).focus();
 	}
@@ -140,9 +170,9 @@ export class Menu {
 			return;
 		}
 		this.options.element.hidden = true;
-		this.options.anchor.setAttribute('aria-expanded', 'false');
+		this.anchor.setAttribute('aria-expanded', 'false');
 		if (restoreFocus) {
-			(this.options.returnFocus?.() ?? this.options.anchor).focus();
+			(this.options.returnFocus?.() ?? this.anchor).focus();
 		}
 	}
 
@@ -176,6 +206,11 @@ export class Menu {
 			nodes.push(this.field);
 		}
 		const list = el('div', 'menu-list');
+		if (this.field) {
+			list.id = `${element.id}-list`;
+			list.setAttribute('role', 'listbox');
+			list.setAttribute('aria-label', options.label);
+		}
 		this.rows = [];
 		const q = this.query.trim().toLowerCase();
 		for (const section of options.sections(this.query)) {
@@ -184,10 +219,16 @@ export class Menu {
 				continue;
 			}
 			if (this.rows.length) {
-				list.append(el('div', 'menu-separator'));
+				const separator = el('div', 'menu-separator');
+				separator.setAttribute('role', this.field ? 'none' : 'separator');
+				list.append(separator);
 			}
 			if (section.heading && !q) {
-				list.append(el('div', 'menu-heading', section.heading));
+				const heading = el('div', 'menu-heading', section.heading);
+				if (this.field) {
+					heading.setAttribute('role', 'presentation');
+				}
+				list.append(heading);
 			}
 			for (const row of shown) {
 				list.append(this.renderRow(row, this.rows.length));
@@ -209,7 +250,7 @@ export class Menu {
 	private renderRow(row: MenuRow, index: number): HTMLElement {
 		const node = el('div', `menu-row${row.checked ? ' checked' : ''}`);
 		node.id = `${this.options.element.id}-row-${index}`;
-		node.setAttribute('role', row.switchOn !== undefined ? 'menuitemcheckbox' : row.checked !== undefined ? 'menuitemradio' : 'menuitem');
+		node.setAttribute('role', this.field ? 'option' : row.switchOn !== undefined ? 'menuitemcheckbox' : row.checked !== undefined ? 'menuitemradio' : 'menuitem');
 		if (row.switchOn !== undefined || row.checked !== undefined) {
 			node.setAttribute('aria-checked', String(row.switchOn ?? row.checked));
 		}
@@ -258,7 +299,12 @@ export class Menu {
 	}
 
 	private highlight(): void {
-		this.options.element.querySelectorAll('.menu-row').forEach((node, i) => node.classList.toggle('active', i === this.active));
+		this.options.element.querySelectorAll('.menu-row').forEach((node, i) => {
+			node.classList.toggle('active', i === this.active);
+			if (this.field) {
+				node.setAttribute('aria-selected', String(i === this.active));
+			}
+		});
 		const current = this.options.element.querySelector<HTMLElement>(`#${this.options.element.id}-row-${this.active}`);
 		current?.scrollIntoView({ block: 'nearest' });
 		if (current) {

@@ -203,7 +203,7 @@ export function setRepos(list: readonly ViewRepo[]): void {
 		if (repo.branch) {
 			pill.append(icon('git-branch'), el('span', 'repo-branch', repo.branch));
 		}
-		setLabel(pill, strings.repoTooltip.replace('{0}', repo.name).replace('{1}', repo.branch ?? '?').replace('{2}', repo.path));
+		setLabel(pill, format(strings.repoTooltip, repo.name, repo.branch ?? '?', repo.path));
 		// The pills share one menu: a click on another pill while it is open moves it there.
 		pill.addEventListener('click', () => {
 			const moving = reposMenu.isOpen && menuRepo?.name !== repo.name;

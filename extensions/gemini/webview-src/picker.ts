@@ -80,7 +80,10 @@ export function showCommands(commands: readonly SlashCommand[]): void {
 export function closePicker(): void {
 	pickerState = undefined;
 	picker.hidden = true;
-	input.removeAttribute('aria-activedescendant');
+	// A plain text box again once its menu closes.
+	for (const name of ['role', 'aria-expanded', 'aria-controls', 'aria-autocomplete', 'aria-activedescendant']) {
+		input.removeAttribute(name);
+	}
 }
 
 /** Shows the files the extension found for search `requestId`, if it is still the latest. */
@@ -98,6 +101,12 @@ function renderPicker(): void {
 		return;
 	}
 	picker.hidden = false;
+	// While the menu is open the input is its combobox, so screen readers follow the highlighted row.
+	picker.setAttribute('aria-label', state.kind === 'files' ? strings.pickerFiles : strings.pickerCommands);
+	input.setAttribute('role', 'combobox');
+	input.setAttribute('aria-expanded', 'true');
+	input.setAttribute('aria-controls', picker.id);
+	input.setAttribute('aria-autocomplete', 'list');
 	const count = pickerCount(state);
 	if (!count) {
 		picker.replaceChildren(el('div', 'picker-empty', state.kind === 'files' ? strings.noFiles : strings.noCommands));

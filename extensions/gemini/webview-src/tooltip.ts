@@ -5,7 +5,9 @@
 
 // Themed tooltips for controls, for the chat (dom.ts) and Home: shown on
 // hover and on keyboard focus, styled by menu.css. Importing it starts the
-// listeners; a control opts in with `setTip`.
+// listeners; a control opts in with `setTip`. While a control's tip is up, or
+// about to be, the control is described by it (`aria-describedby`), as a
+// native `title` would be.
 
 /**
  * Gives `node` a themed tooltip, shown on hover and keyboard focus. The
@@ -15,7 +17,7 @@
 export function setTip(node: HTMLElement, tip: string): void {
 	node.removeAttribute('title');
 	node.dataset.tip = tip;
-	if (shownFor === node && tooltip && !tooltip.hidden) {
+	if (shownFor === node && tooltip) {
 		tooltip.textContent = tip;
 	}
 }
@@ -25,20 +27,53 @@ let tooltip: HTMLElement | undefined;
 /** The control whose tooltip shows, or is about to. */
 let shownFor: HTMLElement | undefined;
 let tipTimer: ReturnType<typeof setTimeout> | undefined;
+/** The control the tooltip describes, and the description it had of its own. */
+let described: { readonly node: HTMLElement; readonly own: string | null } | undefined;
 
-function showTip(target: HTMLElement): void {
-	const tip = target.dataset.tip;
-	if (!tip || !target.isConnected) {
-		return;
-	}
+function tipElement(): HTMLElement {
 	if (!tooltip) {
 		tooltip = document.createElement('div');
+		tooltip.id = 'gemini-tooltip';
 		tooltip.className = 'gemini-tooltip';
 		tooltip.setAttribute('role', 'tooltip');
 		// In the top layer, so it shows over a modal dialog too (Home's popups).
 		tooltip.popover = 'manual';
 		document.body.append(tooltip);
 	}
+	return tooltip;
+}
+
+/** Describes `target` by its tip from now, so a screen reader reads it with the control; not when the tip is the control's name already. */
+function describe(target: HTMLElement): void {
+	const tip = target.dataset.tip;
+	if (!tip || tip === target.getAttribute('aria-label') || tip === target.textContent?.trim()) {
+		return;
+	}
+	const node = tipElement();
+	node.textContent = tip;
+	const own = target.getAttribute('aria-describedby');
+	target.setAttribute('aria-describedby', own ? `${own} ${node.id}` : node.id);
+	described = { node: target, own };
+}
+
+function undescribe(): void {
+	if (described) {
+		const { node, own } = described;
+		if (own === null) {
+			node.removeAttribute('aria-describedby');
+		} else {
+			node.setAttribute('aria-describedby', own);
+		}
+		described = undefined;
+	}
+}
+
+function showTip(target: HTMLElement): void {
+	const tip = target.dataset.tip;
+	if (!tip || !target.isConnected) {
+		return;
+	}
+	const tooltip = tipElement();
 	tooltip.textContent = tip;
 	tooltip.hidden = false;
 	// Shown again each time, so it stacks over a dialog opened since.
@@ -59,6 +94,7 @@ function hideTip(): void {
 	clearTimeout(tipTimer);
 	tipTimer = undefined;
 	shownFor = undefined;
+	undescribe();
 	if (tooltip) {
 		tooltip.hidden = true;
 		if (tooltip.matches(':popover-open')) {
@@ -78,6 +114,7 @@ function scheduleTip(target: HTMLElement | undefined): void {
 	hideTip();
 	if (target) {
 		shownFor = target;
+		describe(target);
 		tipTimer = setTimeout(() => showTip(target), tipDelayMs);
 	}
 }

@@ -282,8 +282,11 @@ export function createCommentBox(host: CommentBoxHost): CommentBox {
 		setCommentPosting(commentPosting);
 	}
 
+	/** "12 B", "34 KB" or "1.5 MB", from the host's templates with the number as the locale writes it. */
 	function formatSize(bytes: number): string {
-		return bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+		return bytes < 1024 ? format(strings.sizeBytes, bytes)
+			: bytes < 1024 * 1024 ? format(strings.sizeKilobytes, Math.round(bytes / 1024))
+				: format(strings.sizeMegabytes, (bytes / 1024 / 1024).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1, useGrouping: false }));
 	}
 
 	function addCommentFiles(files: readonly CommentFile[]): void {

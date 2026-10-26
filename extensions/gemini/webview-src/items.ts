@@ -100,7 +100,7 @@ function renderThreadCard(item: ItemOf<'thread'>): HTMLElement {
 	const state = project?.states[item.state] ?? item.state;
 	const repos = item.repos ?? [];
 	const mergedRepos = repos.filter(repo => repo.merged).length;
-	const partly = !item.merged && mergedRepos > 0 && project ? format(project.mergedCount, mergedRepos).replace('{1}', String(repos.length)) : undefined;
+	const partly = !item.merged && mergedRepos > 0 && project ? format(project.mergedCount, mergedRepos, repos.length) : undefined;
 	const line = item.removed ? project?.undone : item.merged ? project?.merged : partly ?? (item.detail ? `${state} \u00b7 ${item.detail}` : state);
 	// Under the title: the branch, then each repository it works in, then how long it has run.
 	const meta = el('div', 'thread-meta');
@@ -331,18 +331,48 @@ function thoughtLabel(item: { readonly id: string }, thinking: boolean): string 
 function renderThought(item: { readonly id: string; readonly text: string }): HTMLElement {
 	const details = el('details', 'thought');
 	const summary = el('summary');
-	const thinking = state.busy && state.items.at(-1)?.id === item.id;
-	summary.append(icon('chevron-right', 'chevron'), el('span', thinking ? 'shimmer' : undefined, thoughtLabel(item, thinking)));
-	// While it thinks, show what about, so a long think does not look idle; after, what it was about.
-	const preview = thinking ? thoughtPreview(item.text) : thoughtSummary(item.text);
-	if (preview) {
-		summary.append(el('span', 'thought-preview', preview));
-	}
-	const text = el('div', 'thought-text', item.text);
-	// Animate opening by the user only, not the re-renders while it streams.
+	summary.dataset.focusKey = `thought:${item.id}`;
+	summary.append(icon('chevron-right', 'chevron'), el('span'));
+	const text = el('div', 'thought-text');
+	// Animate opening by the user only, not the updates while it streams.
 	summary.addEventListener('click', () => text.classList.toggle('reveal', !details.open));
 	details.append(summary, text);
+	updateThought(details, item);
 	return details;
+}
+
+/**
+ * Brings a thought's element up to date in place: its label, its preview and
+ * its text, with streamed text added to the end. The element is kept, so a
+ * thought the user opened stays open, and text selected in it stays selected.
+ */
+export function updateThought(details: HTMLElement, item: { readonly id: string; readonly text: string }): void {
+	const summary = details.firstElementChild!;
+	const label = summary.children[1];
+	const thinking = state.busy && state.items.at(-1)?.id === item.id;
+	label.classList.toggle('shimmer', thinking);
+	const name = thoughtLabel(item, thinking);
+	if (label.textContent !== name) {
+		label.textContent = name;
+	}
+	// While it thinks, show what about, so a long think does not look idle; after, what it was about.
+	const preview = thinking ? thoughtPreview(item.text) : thoughtSummary(item.text);
+	const previewNode = summary.querySelector('.thought-preview');
+	if (!preview) {
+		previewNode?.remove();
+	} else if (!previewNode) {
+		summary.append(el('span', 'thought-preview', preview));
+	} else if (previewNode.textContent !== preview) {
+		previewNode.textContent = preview;
+	}
+	const text = details.lastElementChild!;
+	const shown = text.textContent ?? '';
+	const last = text.lastChild;
+	if (shown && item.text.startsWith(shown) && last instanceof Text) {
+		last.appendData(item.text.slice(shown.length));
+	} else if (shown !== item.text) {
+		text.textContent = item.text;
+	}
 }
 
 function statusIcon(value: ItemOf<'toolCall'>['status']): HTMLElement {
@@ -433,32 +463,60 @@ function renderToolCall(item: ItemOf<'toolCall'>, toggleToolCall: ToggleToolCall
 	return card;
 }
 
-/** The tool call's output, folded under its row until the row is clicked. */
-function appendToolBody(card: HTMLElement, row: HTMLElement, item: ItemOf<'toolCall'>, toggleToolCall: ToggleToolCall): void {
+/** Whether a tool call has output to show under its row. */
+function hasOutput(detail: ItemOf<'toolCall'>['details'][number]): boolean {
+	return detail.type === 'terminal' || (detail.type === 'text' && /\S/.test(detail.text));
+}
+
+/** The tool call's output, built only when it is first shown: a long chat's outputs mostly stay folded. */
+function toolBody(item: ItemOf<'toolCall'>): HTMLElement {
 	const body = el('div', 'tool-body');
 	for (const detail of item.details) {
-		if (detail.type === 'text' && detail.text.trim()) {
-			body.append(el('pre', 'tool-output', detail.text));
-		} else if (detail.type === 'terminal') {
+		if (detail.type === 'terminal') {
 			body.append(el('div', 'tool-note', strings.terminal));
+		} else if (detail.type === 'text' && hasOutput(detail)) {
+			body.append(el('pre', 'tool-output', detail.text));
 		}
 	}
-	if (body.childElementCount) {
-		card.classList.add('expandable');
-		card.classList.toggle('expanded', expanded.has(item.id));
-		row.prepend(icon('chevron-right', 'chevron'));
-		row.tabIndex = 0;
-		row.setAttribute('role', 'button');
-		row.setAttribute('aria-expanded', String(expanded.has(item.id)));
-		row.addEventListener('click', () => toggleToolCall(item));
-		row.addEventListener('keydown', event => {
-			// Not when a file or diff chip inside the row has focus.
-			if (event.target === row && (event.key === 'Enter' || event.key === ' ')) {
-				event.preventDefault();
-				toggleToolCall(item);
-			}
-		});
-		card.append(body);
+	return body;
+}
+
+/** The tool call's output, folded under its row until the row is clicked. */
+function appendToolBody(card: HTMLElement, row: HTMLElement, item: ItemOf<'toolCall'>, toggleToolCall: ToggleToolCall): void {
+	if (!item.details.some(hasOutput)) {
+		return;
+	}
+	const open = expanded.has(item.id);
+	card.classList.add('expandable');
+	card.classList.toggle('expanded', open);
+	row.prepend(icon('chevron-right', 'chevron'));
+	row.tabIndex = 0;
+	row.dataset.focusKey = `tool:${item.id}`;
+	row.setAttribute('role', 'button');
+	row.setAttribute('aria-expanded', String(open));
+	row.addEventListener('click', () => toggleToolCall(item));
+	row.addEventListener('keydown', event => {
+		// Not when a file or diff chip inside the row has focus.
+		if (event.target === row && (event.key === 'Enter' || event.key === ' ')) {
+			event.preventDefault();
+			toggleToolCall(item);
+		}
+	});
+	if (open) {
+		card.append(toolBody(item));
+	}
+}
+
+/** Opens or closes a tool call's output in place, so its row keeps focus; the output is built the first time it opens. */
+export function setToolCallOpen(card: HTMLElement, item: ItemOf<'toolCall'>, open: boolean): void {
+	card.classList.toggle('expanded', open);
+	card.querySelector(':scope > .tool-row')?.setAttribute('aria-expanded', String(open));
+	let body = card.querySelector(':scope > .tool-body');
+	if (open) {
+		body ??= card.appendChild(toolBody(item));
+		body.classList.add('reveal');
+	} else {
+		body?.classList.remove('reveal');
 	}
 }
 
@@ -523,7 +581,9 @@ function renderPermission(item: ItemOf<'permission'>): HTMLElement {
 	// "Allow" once is the primary action; other allows and rejections look secondary.
 	const { primary, reject } = permissionDefaults(item.options);
 	for (const option of item.options) {
-		actions.append(button(option === primary ? 'primary' : item.confirm && option.kind.startsWith('reject') ? 'secondary reject' : 'secondary', option.name, () => choose(option.optionId)));
+		const choice = button(option === primary ? 'primary' : item.confirm && option.kind.startsWith('reject') ? 'secondary reject' : 'secondary', option.name, () => choose(option.optionId));
+		choice.dataset.focusKey = `permission:${item.id}:${option.optionId}`;
+		actions.append(choice);
 	}
 	if (reject) {
 		actions.append(el('span', 'hint', strings.permissionHint));
@@ -550,9 +610,11 @@ export function renderNotice(text: string, severity: 'info' | 'error', retryId?:
 	return node;
 }
 
-/** "1.4 s" or "380 ms". */
+/** "1.4 s" or "380 ms", from the host's templates with the number as the locale writes it. */
 function shortMs(ms: number): string {
-	return ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`;
+	return ms >= 1000
+		? format(strings.durationSeconds, (ms / 1000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }))
+		: format(strings.durationMs, Math.round(ms).toLocaleString());
 }
 
 /** The turn GeminiCode's quit cut off: what is on disk, and Retry the Turn or Keep and Continue. */
@@ -632,7 +694,7 @@ function renderCompact(item: ItemOf<'compact'>): HTMLElement {
 	} else if (item.state === 'undone') {
 		label.append(icon('discard'), el('span', undefined, text.undone));
 	} else {
-		label.append(icon('fold'), el('span', undefined, text.done.replace('{0}', formatTokens(item.before ?? 0)).replace('{1}', formatTokens(item.after ?? 0))));
+		label.append(icon('fold'), el('span', undefined, format(text.done, formatTokens(item.before ?? 0), formatTokens(item.after ?? 0))));
 		setTip(label, item.kept === 0 ? text.keptNone : item.kept === 1 ? text.keptOne : format(text.kept, item.kept ?? 0));
 	}
 	line.append(el('span', 'compact-rule'), label);
@@ -662,7 +724,7 @@ function renderTrace(item: ItemOf<'trace'>): HTMLElement {
 		grid.append(el('span', undefined, hop.name), track, el('span', 'trace-value', hop.value), el('span', 'trace-value', hop.budget));
 	}
 	card.append(grid);
-	const tokens = [readout.input.toLocaleString(), readout.cached.toLocaleString(), readout.output.toLocaleString(), String(readout.requests)].reduce((text, value, i) => text.replace(`{${i}}`, value), strings.trace.tokens);
+	const tokens = format(strings.trace.tokens, readout.input.toLocaleString(), readout.cached.toLocaleString(), readout.output.toLocaleString(), String(readout.requests));
 	card.append(el('div', 'trace-line', tokens));
 	const file = el('div', 'trace-line trace-file');
 	file.append(el('span', 'trace-file-name', format(strings.trace.file, item.file)), button('turn-action', strings.trace.open, () => vscode.postMessage({ type: 'openTrace', file: item.file }), 'go-to-file'));

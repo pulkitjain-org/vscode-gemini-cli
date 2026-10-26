@@ -61,6 +61,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	'media/katex.js': 290_000,
 	// About 110 KB, loaded the first time a draft is shown as Markdown.
 	'media/draftMarkdown.js': 140_000,
+	// Home's Show All list and Customize menu, loaded the first time either opens.
+	'media/homePopups.js': 5_000,
 	// The emoji picker, about 97 KB, loaded the first time a reaction button is hovered or focused: about 88 KB
 	// of emoji data (1,923 emoji with their names and three search words each) and its own code.
 	'media/emojiPicker.js': 105_000,

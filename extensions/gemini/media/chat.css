@@ -192,8 +192,8 @@ button {
 	contain-intrinsic-size: auto 80px;
 }
 
-/* The same inside an open fold, which is one element however many steps it holds: all but its last few lines. */
-.work-body > :not(:nth-last-child(-n + 4)) {
+/* The same inside an open fold, which is one element however many steps it holds: all but its last few lines (`markSteps`). */
+.work-body > .settled-step {
 	content-visibility: auto;
 	contain-intrinsic-size: auto 28px;
 }

@@ -3,45 +3,15 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Small helpers for building the chat view's elements.
+// Small helpers for building the chat view's elements: the pages' own
+// (panelDom.ts), and those that need the chat's strings or tooltips.
 
+import { button, icon } from './panelDom';
 import { setTip } from './tooltip';
 import { strings } from './view';
 
+export { button, el, icon } from './panelDom';
 export { setTip };
-
-export function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
-	const node = document.createElement(tag);
-	if (className) {
-		node.className = className;
-	}
-	if (text !== undefined) {
-		node.textContent = text;
-	}
-	return node;
-}
-
-export function icon(name: string, extra = ''): HTMLElement {
-	const node = el('i', `codicon codicon-${name}${extra ? ` ${extra}` : ''}`);
-	node.setAttribute('aria-hidden', 'true');
-	return node;
-}
-
-export function button(className: string, label: string, onClick: () => void, iconName?: string): HTMLButtonElement {
-	const node = el('button', className);
-	node.type = 'button';
-	if (iconName) {
-		node.append(icon(iconName));
-	}
-	if (label) {
-		node.append(el('span', undefined, label));
-	}
-	node.addEventListener('click', event => {
-		event.stopPropagation();
-		onClick();
-	});
-	return node;
-}
 
 /** Sets the tooltip and the accessible name together, as icon-only controls need both. */
 export function setLabel(node: HTMLElement, label: string): void {
@@ -64,8 +34,6 @@ export function copyButton(className: string, label: string, text: () => string)
 	setLabel(copy, label);
 	return copy;
 }
-
-/** Sizes the view's text, which everything else is sized from; anything but a number keeps the app's UI size. */
 
 /** How long the pointer rests on something before `onIntent` takes it as a step toward clicking it. */
 const intentDelayMs = 150;
