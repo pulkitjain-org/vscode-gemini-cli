@@ -1,5 +1,5 @@
 diff --git a/product.json b/product.json
-index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..d44b195337b8b17da30e12a2144bce6369acb00e 100644
+index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..de3d7b04a32bb1b6e917abcf99e6c2171efa0b83 100644
 --- a/product.json
 +++ b/product.json
 @@ -1,41 +1,49 @@
@@ -117,7 +117,7 @@ index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..d44b195337b8b17da30e12a2144bce63
  			"type": "light"
  		},
  		{
-@@ -242,9 +244,217 @@
+@@ -242,9 +244,283 @@
  			"type": "light"
  		}
  	],
@@ -334,6 +334,72 @@ index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..d44b195337b8b17da30e12a2144bce63
 +				"description": {
 +					"key": "gemini.chat.runCommands.policy",
 +					"value": "Whether replies' shell commands have a Run button that runs them in the agent's terminal: askWhenRisky asks first only for risky commands, alwaysAsk asks before every command, off removes Run so commands can only be copied."
++				}
++			}
++		},
++		"gemini.projectId": {
++			"name": "GeminiProjectId",
++			"category": "Extensions",
++			"minimumVersion": "1.142",
++			"localization": {
++				"description": {
++					"key": "gemini.projectId.policy",
++					"value": "The Google Cloud project ID agents bill to, passed to the Gemini CLI as GOOGLE_CLOUD_PROJECT. Set, it wins over workspace and user settings."
++				}
++			}
++		},
++		"gemini.projects.enabled": {
++			"name": "GeminiProjects",
++			"category": "Extensions",
++			"minimumVersion": "1.142",
++			"localization": {
++				"description": {
++					"key": "gemini.projects.enabled.policy",
++					"value": "Whether GeminiCode offers Projects, where a coordinator agent starts and steers threads of work across repositories."
++				}
++			}
++		},
++		"gemini.team.runTeamServers": {
++			"name": "GeminiRunTeamServers",
++			"category": "Extensions",
++			"minimumVersion": "1.142",
++			"localization": {
++				"description": {
++					"key": "gemini.team.runTeamServers.policy",
++					"value": "Whether the team tools' calls go through the tools' own MCP servers: the team's Jira and GitLab servers and SonarSource's SonarQube server in Docker, and Snyk's server from the Snyk CLI."
++				}
++			}
++		},
++		"gemini.agents.worktreeSetup": {
++			"name": "GeminiWorktreeSetup",
++			"category": "Extensions",
++			"minimumVersion": "1.142",
++			"localization": {
++				"description": {
++					"key": "gemini.agents.worktreeSetup.policy",
++					"value": "The shell command GeminiCode runs in each new agent worktree before the agent starts. When empty, a repository's own .gemini/worktree-setup.sh runs."
++				}
++			}
++		},
++		"gemini.agents.allWorkspaceFolders": {
++			"name": "GeminiAllWorkspaceFolders",
++			"category": "Extensions",
++			"minimumVersion": "1.142",
++			"localization": {
++				"description": {
++					"key": "gemini.agents.allWorkspaceFolders.policy",
++					"value": "Whether every agent may read and edit all folders of a multi-root window, not only the folder it works in."
++				}
++			}
++		},
++		"gemini.browser.keepSignIns": {
++			"name": "GeminiBrowserKeepSignIns",
++			"category": "Extensions",
++			"minimumVersion": "1.142",
++			"localization": {
++				"description": {
++					"key": "gemini.browser.keepSignIns.policy",
++					"value": "Whether the agents' browser pages keep their cookies and storage between sessions, so agents stay signed in to the sites they use."
 +				}
 +			}
 +		}
