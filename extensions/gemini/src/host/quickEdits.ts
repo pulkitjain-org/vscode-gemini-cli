@@ -13,6 +13,7 @@ import { configSection, getCliResolution, getProjectSettings, getWorkspaceCwd } 
 import { InlineEditPreview } from './inlineEditPreview';
 import { preferredModel } from './modelPreference';
 import { ReviewController, ReviewSource } from './reviewController';
+import { showError } from './errorNotice';
 
 const enabledSetting = 'inlineEdit.enabled';
 const modelSetting = 'inlineEdit.model';
@@ -231,7 +232,7 @@ export class QuickEdits implements vscode.Disposable {
 				this.log.warn(`Direct request failed: ${errorMessage(err)}`);
 				const signIn = vscode.l10n.t("Sign In");
 				const actions = err instanceof DirectRequestError && err.kind === 'auth' ? [signIn] : [];
-				if (await vscode.window.showErrorMessage(errorMessage(err), ...actions) === signIn) {
+				if (await showError(errorMessage(err), ...actions) === signIn) {
 					void vscode.commands.executeCommand('gemini.signIn');
 				}
 			}

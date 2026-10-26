@@ -16,6 +16,7 @@ import { errorMessage } from '../acp/errors';
 import { MIN_CLI_VERSION } from '../acp/protocol';
 import { AgentService } from './agentService';
 import { configSection, getCliResolution, getManagedCliDir } from './configuration';
+import { showError } from './errorNotice';
 
 export const installCliCommand = 'gemini.installCli';
 export const installCliVersionCommand = 'gemini.installCliVersion';
@@ -80,7 +81,7 @@ export class CliManager implements vscode.Disposable {
 				].filter(Boolean).join(' · '),
 			}));
 		})().catch(err => {
-			void vscode.window.showErrorMessage(vscode.l10n.t("Could not list Gemini CLI versions: {0}", errorMessage(err)));
+			void showError(vscode.l10n.t("Could not list Gemini CLI versions: {0}", errorMessage(err)));
 			return [];
 		}), { placeHolder: vscode.l10n.t("Gemini CLI version to install and use") });
 		if (picked) {
@@ -108,7 +109,7 @@ export class CliManager implements vscode.Disposable {
 		} catch (err) {
 			if (!(err instanceof Error && err.name === 'AbortError')) {
 				this.log.error(`Installing Gemini CLI ${version} failed: ${errorMessage(err)}`);
-				void vscode.window.showErrorMessage(vscode.l10n.t("Installing the Gemini CLI failed: {0}", errorMessage(err)));
+				void showError(vscode.l10n.t("Installing the Gemini CLI failed: {0}", errorMessage(err)));
 			}
 			return;
 		}

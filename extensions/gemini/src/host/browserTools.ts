@@ -12,6 +12,7 @@ import { FileAccessPolicyOptions, isInside } from '../acp/fileAccess';
 import { PageContext, pageContextAttachments } from '../acp/pageContext';
 import { configSection } from './configuration';
 import { getFileAccessPolicy, isIgnoredByGitCached } from './workspaceFileSystem';
+import { showError } from './errorNotice';
 
 /**
  * The GeminiCode browser for agents: the MCP server each agent session gets
@@ -131,21 +132,21 @@ export class BrowserTools implements vscode.Disposable {
 		}
 		const refused = await this.host.handOverRefusal(agent.id, url);
 		if (refused) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("Gemini can't use this page: {0}.", refused));
+			void showError(vscode.l10n.t("Gemini can't use this page: {0}.", refused));
 			return undefined;
 		}
 		let shared: { url: string; title: string };
 		try {
 			shared = await run<{ url: string; title: string }>('_gemini.browser.share', agent.id, pageId);
 		} catch (err) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("Gemini can't use this page: {0}", err instanceof Error ? err.message : String(err)));
+			void showError(vscode.l10n.t("Gemini can't use this page: {0}", err instanceof Error ? err.message : String(err)));
 			return undefined;
 		}
 		// The page may have moved on while the agent was picked.
 		const moved = await this.host.handOverRefusal(agent.id, shared.url);
 		if (moved) {
 			await run('_gemini.browser.release', agent.id, pageId).catch(() => undefined);
-			void vscode.window.showErrorMessage(vscode.l10n.t("Gemini can't use this page: {0}.", moved));
+			void showError(vscode.l10n.t("Gemini can't use this page: {0}.", moved));
 			return undefined;
 		}
 		this.host.adopt(agent.id, pageId, shared.url);

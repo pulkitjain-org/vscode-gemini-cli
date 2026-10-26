@@ -11,6 +11,7 @@ import { findDocker, teamImages } from '../acp/teamContainers';
 import { readTeamServers, removeTeamServers, TakeoverServer } from '../acp/teamTakeover';
 import { configSection } from './configuration';
 import { runTeamServersSetting, TeamConnections } from './teamConnections';
+import { showError } from './errorNotice';
 
 /**
  * Take Over Both Servers, from Connections: the Jira and GitLab servers that `file` (a repository's
@@ -61,7 +62,7 @@ export async function takeOverTeamServers(connections: TeamConnections, file: st
 		try {
 			await connections.connect(tool, { url, ...email ? { email } : {}, token });
 		} catch (err) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("Couldn't connect {0}: {1} Nothing in {2} changed.", tool === 'jira' ? 'Jira' : 'GitLab', errorMessage(err), path.basename(file)));
+			void showError(vscode.l10n.t("Couldn't connect {0}: {1} Nothing in {2} changed.", tool === 'jira' ? 'Jira' : 'GitLab', errorMessage(err), path.basename(file)));
 			return false;
 		}
 	}

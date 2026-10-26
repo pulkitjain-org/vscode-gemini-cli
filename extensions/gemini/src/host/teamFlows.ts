@@ -33,6 +33,7 @@ import { ChecksView, FlowAttachment, MoveTicketView, OpenMrView, ReviewView, Ton
 import { Reviews } from './reviews';
 import { openTeamLink } from './teamLinks';
 import { ticketPickItems } from './toolChips';
+import { showError } from './errorNotice';
 
 /** Where checks run: a checkout on a branch, the repository it belongs to, and the agent working there when there is one. */
 interface ChecksPlace {
@@ -77,7 +78,7 @@ export class TeamFlows implements vscode.Disposable {
 	private readonly describedFor = new WeakMap<TeamFlowPanel<OpenMrView>, string>();
 
 	constructor(private readonly extensionUri: vscode.Uri, private readonly tools: TeamConnections, private readonly agents: AgentsView, private readonly state?: vscode.Memento) {
-		const run = <A extends unknown[]>(id: string, handler: (...args: A) => Promise<unknown>) => vscode.commands.registerCommand(id, (...args: A) => handler(...args).catch(err => void vscode.window.showErrorMessage(errorMessage(err))));
+		const run = <A extends unknown[]>(id: string, handler: (...args: A) => Promise<unknown>) => vscode.commands.registerCommand(id, (...args: A) => handler(...args).catch(err => void showError(errorMessage(err))));
 		this.reviews = new Reviews({
 			extensionUri, tools, agents,
 			gitlab: () => this.gitlab(),

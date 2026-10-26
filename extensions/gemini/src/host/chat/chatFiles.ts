@@ -21,6 +21,7 @@ import { traceFolders } from '../traceCommand';
 import type { FromWebview } from '../chatProtocol';
 import type { DiffPreview } from '../diffPreview';
 import type { ChatControllerOptions } from './chatOptions';
+import { showError } from '../errorNotice';
 
 /** How much proposed edits' text a chat keeps, before and after, for their diffs: the oldest go first. */
 const maxDiffBytes = 20 * 1024 * 1024;
@@ -122,7 +123,7 @@ export class ChatFileLinks {
 		try {
 			await vscode.window.showTextDocument(vscode.Uri.file(filePath), { selection: new vscode.Range(position, position), preview: true, viewColumn: await this.options.editorColumn?.() });
 		} catch (err) {
-			void vscode.window.showErrorMessage(errorMessage(err));
+			void showError(errorMessage(err));
 		}
 	}
 }

@@ -24,6 +24,7 @@ import type { SlashCommand } from '../../acp/slashCommands';
 import type { FromWebview, ToWebview } from '../chatProtocol';
 import { relativeTime } from '../displayText';
 import type { ChatControllerOptions, ChatHost } from './chatOptions';
+import { showError } from '../errorNotice';
 
 /** How many saved sessions an empty chat lists before "Show all". */
 const shownSessions = 3;
@@ -240,7 +241,7 @@ export class ChatSessions implements vscode.Disposable {
 					: vscode.l10n.t("The agent could not reopen \"{0}\", so this chat starts afresh.", title), 'error');
 			}
 			const retry = vscode.l10n.t("Try Again");
-			void vscode.window.showErrorMessage(vscode.l10n.t("Could not restore \"{0}\".", title), retry).then(choice => {
+			void showError(vscode.l10n.t("Could not restore \"{0}\".", title), retry).then(choice => {
 				if (choice === retry) {
 					void this.restore(id, title, true);
 				}

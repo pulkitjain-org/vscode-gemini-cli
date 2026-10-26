@@ -70,7 +70,7 @@ Upstream files are touched only where the fork must register itself or rebrand. 
 - **Slimming upstream down**:
   - with `chat.disableAIFeatures` on (GeminiCode's default), Copilot setup does not start (`chatSetupContributions.ts`), so there are no entitlement requests to GitHub at startup;
   - the `tunnel-forwarding` extension, which needs the `code` CLI GeminiCode does not ship, is left out of the build (`build/lib/extensions.ts`);
-  - the layout tolerates the activity bar being hidden before its grid exists (`browser/layout.ts`), which Agents mode does at startup.
+  - the layout tolerates the activity bar being hidden before its grid exists (`browser/layout.ts`), which Agents layout does at startup.
 - **Four workbench edits**:
   - Chat commands are hidden from the Command Palette while upstream AI is off (`commandsQuickAccess.ts`);
   - the Gemini extension cannot be disabled (`extensionEnablementService.ts`, with its test);
@@ -90,7 +90,7 @@ Edits for specific features (tab rows, agent groups, spell check, menus, the bro
 
 The stylesheet is static apart from one transform, which slides the mode switch's lens, so it costs nothing at runtime. It was profiled with an agent streaming a long reply while the chat scrolls, a menu open over it and a mode switch, three runs before and after: no measure (paint, raster, composite, layout, dropped frames) moved beyond the spread between runs, under 0.01 ms per frame.
 
-Its siblings in the same folder are `geminiModes.ts` (the window modes), `geminiTitleTabs.ts` (Agents mode's title bar tabs) and `geminiBrowser.ts` (the agents' browser), all described below. The i18n list in `build/lib/i18n.resources.json` names the folder.
+Its siblings in the same folder are `geminiModes.ts` (the window modes), `geminiTitleTabs.ts` (Agents layout's title bar tabs) and `geminiBrowser.ts` (the agents' browser), all described below. The i18n list in `build/lib/i18n.resources.json` names the folder.
 
 ## How a prompt flows
 
@@ -206,25 +206,25 @@ Git-ignore checks go to one long-lived `git check-ignore --stdin` per folder (`g
 
 GeminiCode builds its agent views on public extension APIs rather than upstream's Agents window (`src/vs/sessions`). That window only takes agents registered in core code, and it is the fastest-moving part of upstream. The domain names (workspace, agent session) follow upstream's, so the views can move onto it if it gains an extension API.
 
-### Agents and Editor modes
+### Agents and Editor layouts
 
-`contrib/gemini/electron-browser/geminiModes.ts` (fork-only) switches the window between two layouts, from a switch in the title bar or ⌥⌘M. Editor mode is the classic layout. A new workspace opens in Agents mode.
+`contrib/gemini/electron-browser/geminiModes.ts` (fork-only) switches the window between two layouts, from a switch in the title bar or ⌥⌘M. Editor layout is the classic layout. A new workspace opens in Agents layout.
 
-Agents mode:
+Agents layout:
 
-- hides the activity bar, by setting `workbench.activityBar.location` to `hidden` in memory only, so the user's own setting returns in Editor mode;
+- hides the activity bar, by setting `workbench.activityBar.location` to `hidden` in memory only, so the user's own setting returns in Editor layout;
 - shows the Gemini side bar on the left and the extension's **Changes** panel in the secondary side bar;
-- keeps its views fixed: when the user opens any other view container in the side bar (a command, a shortcut or an extension revealing it), the window switches to Editor mode with that container open and says so once.
+- keeps its views fixed: when the user opens any other view container in the side bar (a command, a shortcut or an extension revealing it), the window switches to Editor layout with that container open and says so once.
 
-Each mode stores which parts were open, per workspace (Editor mode also which side bar and secondary side bar), and switching only shows and hides parts. The mode is the context key `gemini.mode`, which the extension's views use in their `when` clauses. The workbench tells the extension about changes through `_gemini.modeChanged`, and `_gemini.getMode` answers at start.
+Each layout stores which parts were open, per workspace (Editor layout also which side bar and secondary side bar), and switching only shows and hides parts. The mode is the context key `gemini.mode`, which the extension's views use in their `when` clauses. The workbench tells the extension about changes through `_gemini.modeChanged`, and `_gemini.getMode` answers at start.
 
-In Editor mode, the same file draws a pill in the title bar for each agent that is working, waiting, or done and unread, from what the extension sends with `_gemini.setAgentStatus`. Clicking one opens that agent. Agents mode has no pills, because the title bar tabs and the agent list already show each agent's state.
+In Editor layout, the same file draws a pill in the title bar for each agent that is working, waiting, or done and unread, from what the extension sends with `_gemini.setAgentStatus`. Clicking one opens that agent. Agents layout has no pills, because the title bar tabs and the agent list already show each agent's state.
 
-The Changes panel is contributed by the extension and can register after the layout is applied, or not at all on a first open in Restricted Mode, where the extension does not run. Agents mode opens it as soon as it registers, remembering in workspace storage that it still owes it. At startup it also fills an open but empty secondary side bar with Changes; a view the user put there is left alone.
+The Changes panel is contributed by the extension and can register after the layout is applied, or not at all on a first open in Restricted Mode, where the extension does not run. Agents layout opens it as soon as it registers, remembering in workspace storage that it still owes it. At startup it also fills an open but empty secondary side bar with Changes; a view the user put there is left alone.
 
-#### Tabs in Agents mode
+#### Tabs in Agents layout
 
-In Agents mode the group holding the agents has no tab row of its own. `browser/parts/editor/geminiTabRows.ts` (fork-only) takes a policy from `geminiModes.ts`, and a marked edit in `editorTitleControl.ts` gives that group no tab row while every other group keeps the normal one. Agents mode sets `workbench.editor.showTabs` to `multiple` in memory only, so a file an agent opens has its name, × and editor actions.
+In Agents layout the group holding the agents has no tab row of its own. `browser/parts/editor/geminiTabRows.ts` (fork-only) takes a policy from `geminiModes.ts`, and a marked edit in `editorTitleControl.ts` gives that group no tab row while every other group keeps the normal one. Agents layout sets `workbench.editor.showTabs` to `multiple` in memory only, so a file an agent opens has its name, × and editor actions.
 
 The agents' tabs go to `geminiTitleTabs.ts`, a fork-only tab strip in the title bar: one capsule of tabs mirroring the agents' group, with icon and agent state, truncated title, close button, dirty dot, click to activate, middle-click to close, a context menu and overflow scroll. It stays on the agents when a file beside them is clicked, and redraws only on that group's own model events.
 
@@ -241,11 +241,11 @@ Each agent's files get a side group of their own, from `geminiAgentGroups.ts` (f
 
 #### Title bar and side bar
 
-In Agents mode the title bar carries a search button, which opens Quick Open in place of the Command Center that `geminiModes.css` hides there. It also carries the integrated browser button, which the window defaults turn on (`workbench.browser.showInTitleBar`). The foot of the side bar shows the selected agent's branch, which the extension sends with `_gemini.setAgentFooter` (a tree view cannot draw a footer).
+In Agents layout the title bar carries a search button, which opens Quick Open in place of the Command Center that `geminiModes.css` hides there. It also carries the integrated browser button, which the window defaults turn on (`workbench.browser.showInTitleBar`). The foot of the side bar shows the selected agent's branch, which the extension sends with `_gemini.setAgentFooter` (a tree view cannot draw a footer).
 
 ### Agent Home
 
-Agent Home (`agentHome.ts`, `webview-src/home.ts`) opens in Agents mode whenever the editor area is empty (except right after closing Agent Home itself), and from the house at the start of the title bar (`geminiModes.ts`, which runs `gemini.home`). The page loads only when first shown.
+Agent Home (`agentHome.ts`, `webview-src/home.ts`) opens in Agents layout whenever the editor area is empty (except right after closing Agent Home itself), and from the house at the start of the title bar (`geminiModes.ts`, which runs `gemini.home`). The page loads only when first shown.
 
 Its composer starts an agent in a chosen workspace and sends the prompt in one step, optionally on its own branch named after the prompt. Cards show the agents that are working, waiting, done or have changes, with Stop, Review, Merge Back and Open. Earlier agents can be resumed. Projects are listed apart from agents.
 
@@ -262,7 +262,7 @@ Each agent row shows its status as a coloured dot, or a spinner while it works: 
 
 The `+N −M` count and the git branch (read from `.git/HEAD`) are in the tooltip. An agent takes its name from its first prompt unless the user renames it. Removing an agent deletes its saved conversation; removing a workspace only drops it from the list.
 
-The list has a Projects section (projects with their threads below) above the Agents section, each with its own + and a note when empty. Agents mode shows both, since its list has no header (`geminiModes.css`).
+The list has a Projects section (projects with their threads below) above the Agents section, each with its own + and a note when empty. Agents layout shows both, since its list has no header (`geminiModes.css`).
 
 ### Agent tabs
 
@@ -427,11 +427,11 @@ Rewind always does both: it undoes the code from the first kept turn after the m
 
 #### Changes panel and Changes view
 
-The **Changes panel** (`changesPanel.ts`, `webview-src/changes.ts`) is Agents mode's live diff of what the agent in front changed. Each change shows as a unified diff with Keep and Undo, which run the same commands as the editor's CodeLenses, plus Keep All, Undo All and Commit (or Merge Back for an agent on its own branch). Diffs are worked out with `lineDiff.ts` against the open document's text, 150 ms after the last edit, and only while the panel is visible.
+The **Changes panel** (`changesPanel.ts`, `webview-src/changes.ts`) is Agents layout's live diff of what the agent in front changed. Each change shows as a unified diff with Keep and Undo, which run the same commands as the editor's CodeLenses, plus Keep All, Undo All and Commit (or Merge Back for an agent on its own branch). Diffs are worked out with `lineDiff.ts` against the open document's text, 150 ms after the last edit, and only while the panel is visible.
 
 The list keeps what the agent last wrote to each file (`agentText`, from the ACP diffs). Edits made after it, by the user or another agent, are moved into the baseline where they don't touch the agent's lines (`rebaseOriginal`), so the panel and the editor show only the agent's changes, and Undo All asks first when it would lose such edits. When two agents changed one file, the editor reviews the one whose text the file has, else the latest to edit it (`reviewOrder`). `CommitSettler` watches the git directory of each folder with changes to review; when HEAD or a branch moves, files whose text is what HEAD has (`filesMatchingHead`) leave the list, however they were committed.
 
-In Editor mode the **Changes view** below the Agents pane is shown instead. It lists the files the agent in front has edited, recorded from its completed edit tool calls. Each file opens a diff against its text from before the agent's first edit, **Open All Changes** shows them in the multi-diff editor, and **Clear Agent's Change List** forgets them.
+In Editor layout the **Changes view** below the Agents pane is shown instead. It lists the files the agent in front has edited, recorded from its completed edit tool calls. Each file opens a diff against its text from before the agent's first edit, **Open All Changes** shows them in the multi-diff editor, and **Clear Agent's Change List** forgets them.
 
 #### Git
 
@@ -752,7 +752,7 @@ GeminiCode indexes each folder agents work in, and documentation the user attach
 
 ### Context per model call
 
-Project Helpers measures what every model call carries in the workspace (`src/acp/contextCost.ts`, `src/host/contextCostProbe.ts`). It sends one "reply OK" prompt on the lightest Flash model per variant, each in a CLI started as agents are (`getAgentCommand` with an explicit `--allowed-mcp-server-names`). The variants are:
+Agent Setup measures what every model call carries in the workspace (`src/acp/contextCost.ts`, `src/host/contextCostProbe.ts`). It sends one "reply OK" prompt on the lightest Flash model per variant, each in a CLI started as agents are (`getAgentCommand` with an explicit `--allowed-mcp-server-names`). The variants are:
 
 - every server and GeminiCode's own (the total);
 - none (the CLI and context files);
@@ -984,9 +984,9 @@ The usage meter (`usageMeter.ts`) makes the same `retrieveUserQuota` request the
 
 **Build This Plan** appears on the latest turn end when the session's mode is `plan` and the agent offers `default`. It sets the mode with `session/set_mode` and sends a short prompt.
 
-### Project Helpers
+### Agent Setup
 
-The Project Helpers page (`settingsPage.ts`, `projectSettings.ts`, `skills.ts`, `hooks.ts`, `cliCommands.ts`, `memory.ts`) edits the CLI's own files rather than keeping settings of its own:
+The Agent Setup page (`settingsPage.ts`, `projectSettings.ts`, `skills.ts`, `hooks.ts`, `cliCommands.ts`, `memory.ts`) edits the CLI's own files rather than keeping settings of its own:
 
 - `mcpServers` in the personal and workspace `settings.json`, read as JSON with comments, and only rewritten when they have none;
 - `mcp-server-enablement.json`, keyed by the lowercased server name as gemini-cli's `McpServerEnablementManager` writes it;

@@ -10,6 +10,7 @@ import { acceptHunk, diffLines, Hunk, revertHunk, splitLines } from '../acp/line
 import { errorMessage } from '../acp/errors';
 import { recordPilot } from '../acp/pilotLog';
 import { deleteFile, replaceFileText } from './workspaceFileSystem';
+import { showError } from './errorNotice';
 
 /** An agent whose changes can be reviewed in the editor. */
 export interface ReviewSource {
@@ -347,7 +348,7 @@ export class ReviewController implements vscode.CodeLensProvider, vscode.HoverPr
 			}
 			review.source.changes.keep(review.file.path, base, next ?? '');
 		} catch (err) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("Could not undo the change: {0}", errorMessage(err)));
+			void showError(vscode.l10n.t("Could not undo the change: {0}", errorMessage(err)));
 		}
 	}
 

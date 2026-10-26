@@ -11,6 +11,7 @@ import { errorMessage } from '../acp/errors';
 import type { AgentService } from './agentService';
 import { type getAgentCommand, workspaceFolderPaths } from './configuration';
 import type { knownModelList } from './modelPreference';
+import { showError } from './errorNotice';
 
 /**
  * What Run Benchmark takes from the extension's own bundle: it runs from a
@@ -63,7 +64,7 @@ export class BenchmarkCommand implements vscode.Disposable {
 		try {
 			tasks = await bench.readBenchTasks(tasksDir);
 		} catch (err) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("Couldn't read the benchmark tasks in {0}: {1}", tasksDir, errorMessage(err)));
+			void showError(vscode.l10n.t("Couldn't read the benchmark tasks in {0}: {1}", tasksDir, errorMessage(err)));
 			return;
 		}
 		if (!tasks.length) {
@@ -115,7 +116,7 @@ export class BenchmarkCommand implements vscode.Disposable {
 			}
 		} catch (err) {
 			this.log.error(`The benchmark stopped: ${errorMessage(err)}`);
-			void vscode.window.showErrorMessage(vscode.l10n.t("The benchmark stopped: {0}", errorMessage(err)));
+			void showError(vscode.l10n.t("The benchmark stopped: {0}", errorMessage(err)));
 		} finally {
 			this.running = undefined;
 		}

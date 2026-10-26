@@ -19,6 +19,7 @@ import { tildify } from './displayText';
 import type { DocsSourceView, FromIndexPage, IndexPageStrings, IndexPageView, IndexWorkspaceView, ToIndexPage } from './indexProtocol';
 import { createNonce, escapeAttribute } from './webviewHtml';
 import { indexBuildOn, type WorkspaceIndex } from './workspaceIndex';
+import { showError } from './errorNotice';
 
 const viewType = 'gemini.index';
 const dismissedKey = 'gemini.index.dismissedDocs';
@@ -162,7 +163,7 @@ export class IndexPage implements vscode.Disposable {
 				if (!(await this.agents.workspaces()).some(workspace => workspace.folder === message.folder) || !await askToTrustFolder(message.folder, vscode.l10n.t("The Gemini CLI loads GeminiCode's tools, the index among them, only in trusted folders."))) {
 					return;
 				}
-				await this.service.trustFolder(message.folder).catch(err => vscode.window.showErrorMessage(vscode.l10n.t("The folder could not be trusted: {0}", errorMessage(err))));
+				await this.service.trustFolder(message.folder).catch(err => showError(vscode.l10n.t("The folder could not be trusted: {0}", errorMessage(err))));
 				break;
 			case 'reveal':
 				await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(message.folder));

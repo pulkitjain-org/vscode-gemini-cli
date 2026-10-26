@@ -295,7 +295,7 @@ One "reply OK" prompt with `gemini-3.8-flash` in `cms-vca2`:
 | With neither | 32,209 |
 | In an empty folder | 9,620 |
 
-So the CLI's own prompt and tools were 15% of the call, the context files 36% (`GEMINI.md` importing nine rule files, 68 KB, and the skills list), GitLab's tools 32% and Jira's 17%. GeminiCode's own servers added about 4,200 tokens. Every step of an agent sends all of it again. Project Helpers' **Measure** (`contextCost.ts`) repeats this measurement for any folder.
+So the CLI's own prompt and tools were 15% of the call, the context files 36% (`GEMINI.md` importing nine rule files, 68 KB, and the skills list), GitLab's tools 32% and Jira's 17%. GeminiCode's own servers added about 4,200 tokens. Every step of an agent sends all of it again. Agent Setup' **Measure** (`contextCost.ts`) repeats this measurement for any folder.
 
 ### How the CLI finds code
 

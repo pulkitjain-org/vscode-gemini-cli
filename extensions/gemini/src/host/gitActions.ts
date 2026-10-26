@@ -13,6 +13,7 @@ import * as vscode from 'vscode';
 import { isValidBranchName } from '../acp/branchNames';
 import { errorMessage } from '../acp/errors';
 import { git } from '../acp/worktrees';
+import { showError } from './errorNotice';
 
 /** The parts of the git extension's API (extensions/git/src/api/git.d.ts) used here. */
 interface GitRef {
@@ -47,12 +48,12 @@ async function repositoryFor(folder: string): Promise<GitRepository | undefined>
 	const extension = vscode.extensions.getExtension<GitExtension>('vscode.git');
 	const exports = extension && (extension.isActive ? extension.exports : await extension.activate());
 	if (!exports?.enabled) {
-		void vscode.window.showErrorMessage(vscode.l10n.t("Git is not available. Enable the Git extension (git.enabled) and try again."));
+		void showError(vscode.l10n.t("Git is not available. Enable the Git extension (git.enabled) and try again."));
 		return undefined;
 	}
 	const repository = await exports.getAPI(1).openRepository(vscode.Uri.file(folder));
 	if (!repository) {
-		void vscode.window.showErrorMessage(vscode.l10n.t("{0} is not in a Git repository.", folder));
+		void showError(vscode.l10n.t("{0} is not in a Git repository.", folder));
 	}
 	return repository ?? undefined;
 }
@@ -90,7 +91,7 @@ export async function switchBranch(folder: string, name: string, create: boolean
 			await repository.checkout(name);
 		}
 	} catch (err) {
-		void vscode.window.showErrorMessage(errorMessage(err));
+		void showError(errorMessage(err));
 	}
 }
 
@@ -124,7 +125,7 @@ export async function createBranchAndCommit(request: CommitRequest): Promise<boo
 	try {
 		await repository.createBranch(branch, true);
 	} catch (err) {
-		void vscode.window.showErrorMessage(errorMessage(err));
+		void showError(errorMessage(err));
 		return false;
 	}
 	try {
@@ -132,7 +133,7 @@ export async function createBranchAndCommit(request: CommitRequest): Promise<boo
 		await repository.commit(message);
 		return true;
 	} catch (err) {
-		void vscode.window.showErrorMessage(vscode.l10n.t("Created and switched to {0}, but could not commit: {1}", branch, errorMessage(err)));
+		void showError(vscode.l10n.t("Created and switched to {0}, but could not commit: {1}", branch, errorMessage(err)));
 		return false;
 	}
 }
@@ -163,7 +164,7 @@ export async function commitToCurrentBranch(request: Omit<CommitRequest, 'sugges
 		await repository.commit(message);
 		return true;
 	} catch (err) {
-		void vscode.window.showErrorMessage(vscode.l10n.t("Could not commit: {0}", errorMessage(err)));
+		void showError(vscode.l10n.t("Could not commit: {0}", errorMessage(err)));
 		return false;
 	}
 }

@@ -16,6 +16,7 @@ import { ChangedFileView, ChangesPanelStrings, ChangesPanelView, FromChangesPane
 import { deleteFile, replaceFileText } from './workspaceFileSystem';
 import type { MrPanel } from './mrPanel';
 import type { FromChangesTeam } from './teamFlowProtocol';
+import { showError } from './errorNotice';
 
 export const changesPanelId = 'gemini.changesPanel';
 
@@ -77,7 +78,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		const media = vscode.Uri.joinPath(this.extensionUri, 'media');
 		view.webview.options = { enableScripts: true, localResourceRoots: [media] };
 		view.webview.html = this.html(view.webview, media);
-		view.webview.onDidReceiveMessage((message: FromChangesPanel) => this.onMessage(message).catch(err => void vscode.window.showErrorMessage(errorMessage(err))));
+		view.webview.onDidReceiveMessage((message: FromChangesPanel) => this.onMessage(message).catch(err => void showError(errorMessage(err))));
 		view.onDidChangeVisibility(() => {
 			if (view.visible) {
 				this.lastView = undefined;
@@ -244,7 +245,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 				}
 				source.changes.keep(file.path, next, next);
 			} catch (err) {
-				void vscode.window.showErrorMessage(vscode.l10n.t("Could not undo the changes to {0}: {1}", path.basename(file.path), errorMessage(err)));
+				void showError(vscode.l10n.t("Could not undo the changes to {0}: {1}", path.basename(file.path), errorMessage(err)));
 			}
 		}
 	}

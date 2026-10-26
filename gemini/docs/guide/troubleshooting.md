@@ -33,6 +33,6 @@ The file stays on your Mac. It holds timings, token counts, the CLI's own system
 
 ## Report a problem
 
-Click the **Gemini** status bar item and choose **Report an Issue...**, which opens a new issue with the GeminiCode, VS Code, Gemini CLI and OS versions filled in. Run **Gemini: Show Log** and include the relevant lines, with account names and project IDs removed. **Gemini CLI Docs** in the same menu opens the CLI's own documentation.
+Click the **Gemini** status bar item and choose **Report an Issue...**, which opens a new issue with the GeminiCode, VS Code, Gemini CLI and OS versions filled in. Run **Gemini: Show Log** and include the relevant lines, with account names and project IDs removed. Every GeminiCode error message has a **Show Log** button too, and writes its text to the log first. **Gemini CLI Docs** in the same menu opens the CLI's own documentation.
 
 Report security problems privately through [GitHub's vulnerability reporting](https://github.com/pulkitjain-org/vscode-gemini-cli/security/advisories/new), never in a public issue.

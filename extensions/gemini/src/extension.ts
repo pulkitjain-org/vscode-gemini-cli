@@ -52,6 +52,7 @@ import { ContextMeasures } from './host/chat/chatContext';
 import { FixWithGemini } from './host/quickFix';
 import { parseMemoryList, runCliCommands } from './acp/cliCommands';
 import { disposeGitIgnore } from './host/workspaceFileSystem';
+import { logErrorCommand } from './host/errorNotice';
 
 /** The pilot's setting (pilot.ts): while it is on, the pilot is constructed at launch, to record it. */
 const pilotRecordSetting = 'pilot.record';
@@ -292,6 +293,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			return (await chatInFront(true))?.addAttachments(attachments);
 		}),
 		vscode.commands.registerCommand('gemini.showLog', () => log.show()),
+		vscode.commands.registerCommand(logErrorCommand, (message: unknown) => typeof message === 'string' && log.error(message)),
 		new LazyFeature(['gemini.openAuditLog'], () => new (onDemand().AuditPage)(context.extensionUri, teamTools.audit, id => agentsView.summaries().find(agent => agent.id === id)?.title)),
 		vscode.commands.registerCommand('gemini.checkAgent', () => checkAgent(log)),
 		vscode.commands.registerCommand('gemini.restartAgent', () => service.restart()),

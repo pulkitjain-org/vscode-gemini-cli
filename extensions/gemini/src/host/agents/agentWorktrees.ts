@@ -17,6 +17,7 @@ import { errorMessage } from '../../acp/errors';
 import { rememberSetupScript, scriptPreview, setupScriptConsent } from '../../acp/setupConsent';
 import { AgentWorktree, branchExists, createWorktree, createWorktreeFrom, folderInRepository, freeBranchName, inRepository, mainRepository, pathExists, repositoryRoot, restoreWorktree, runWorktreeSetup, setupScriptFile, TurnQueue, worktreeSetup } from '../../acp/worktrees';
 import { configSection } from '../configuration';
+import { showError } from '../errorNotice';
 
 /** The hashes of the repository setup scripts the user chose to run without asking again; this machine's only. */
 const allowedScriptsKey = 'gemini.setupScripts.allowed';
@@ -114,7 +115,7 @@ export class AgentWorktrees implements vscode.Disposable {
 		try {
 			return await this.make(repository, branch.trim(), folder);
 		} catch (err) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("Could not create the agent's branch: {0}", errorMessage(err)));
+			void showError(vscode.l10n.t("Could not create the agent's branch: {0}", errorMessage(err)));
 			return undefined;
 		}
 	}
@@ -127,13 +128,13 @@ export class AgentWorktrees implements vscode.Disposable {
 	async makeFree(folder: string, named: string): Promise<AgentWorktree | undefined> {
 		const repository = await repositoryRoot(folder);
 		if (!repository) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("{0} is not in a Git repository, so the agent can't have its own branch.", path.basename(folder)));
+			void showError(vscode.l10n.t("{0} is not in a Git repository, so the agent can't have its own branch.", path.basename(folder)));
 			return undefined;
 		}
 		try {
 			return await this.make(repository, named, folder, true);
 		} catch (err) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("Could not create the agent's branch: {0}", errorMessage(err)));
+			void showError(vscode.l10n.t("Could not create the agent's branch: {0}", errorMessage(err)));
 			return undefined;
 		}
 	}

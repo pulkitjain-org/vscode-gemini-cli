@@ -472,7 +472,7 @@ interface PageMeta {
  * because not every link preview shows WebP), with their alt text.
  */
 const ogImages = {
-	'home.jpg': 'GeminiCode in Agents mode: the agent list, an agent\'s chat and the files it opened beside it',
+	'home.jpg': 'GeminiCode in Agents layout: the agent list, an agent\'s chat and the files it opened beside it',
 	'agents.jpg': 'The Index page, with two indexed workspaces and attached documentation',
 	'chat-and-review.jpg': 'An agent\'s edits in the file, with Keep and Undo above each change',
 	'projects.jpg': 'Thread cards in a project chat, with the side panel counting threads by state',
@@ -785,7 +785,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 		{ href: '#beyond', title: 'Agent browser', cap: 'Agents open and use your app', thumb: thumbShot('browser-page') },
 		{ href: '#beyond', title: 'Team tools', cap: 'Ticket to merge request', thumb: `<span class="thumb" style="justify-content: center; gap: 8px"><span style="display: flex; gap: 5px; flex-wrap: wrap"><span class="chip xs">Jira</span><span class="chip xs">GitLab</span><span class="chip xs">Sonar</span><span class="chip xs">Snyk</span><span class="chip xs">Figma</span></span><span class="mono" style="font-size: 10px; color: var(--accent)">ACME-412 → !412</span></span>` },
 		{ href: '#agents', title: 'Enhance prompt', cap: 'Plain words in, precise prompt out', thumb: `<span class="thumb white" style="justify-content: center; gap: 5px"><span class="draft">make uploads not fail so much</span><span class="mono" style="font-size: 10px; color: var(--accent); align-self: center">↓ ⌥⌘E</span><span class="better">Add backoff, 3 attempts, with a test</span></span>` },
-		{ href: 'docs/helpers.html', title: 'Project Helpers', cap: 'MCP, skills, hooks, memory', thumb: `<span class="thumb white" style="justify-content: center; gap: 6px"><span class="row-xs"><span>MCP servers</span><span class="toggle"></span></span><span class="row-xs"><span>Skills</span><span class="toggle"></span></span><span class="row-xs"><span>Hooks</span><span class="toggle off"></span></span><span class="row-xs"><span>Memory and rules</span><span class="toggle"></span></span></span>` },
+		{ href: 'docs/helpers.html', title: 'Agent Setup', cap: 'MCP, skills, hooks, memory', thumb: `<span class="thumb white" style="justify-content: center; gap: 6px"><span class="row-xs"><span>MCP servers</span><span class="toggle"></span></span><span class="row-xs"><span>Skills</span><span class="toggle"></span></span><span class="row-xs"><span>Hooks</span><span class="toggle off"></span></span><span class="row-xs"><span>Memory and rules</span><span class="toggle"></span></span></span>` },
 	];
 	const strip = [
 		'<b>Plan mode</b> read first, then build',
@@ -837,7 +837,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 		</div>
 	</section>
 
-	<section class="show show-anchor" id="tour" aria-label="GeminiCode in Agents mode" data-reveal>
+	<section class="show show-anchor" id="tour" aria-label="GeminiCode in Agents layout" data-reveal>
 		<div class="block" aria-hidden="true"></div>
 		<div class="card" data-frame>
 			<div class="bar">
@@ -846,7 +846,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 				<div class="pill" role="group" aria-label="Screenshot theme"><button type="button" data-shot-theme="dark" aria-pressed="false">Dark</button><button type="button" data-shot-theme="light" aria-pressed="true">Light</button></div>
 			</div>
 			<div class="stage">
-				${shot('showcase-work', available, 'GeminiCode in Agents mode: the agent list on the left, a chat in the middle and the Changes panel on the right', { eager: true })}${available.has('showcase-work-light.mp4') && available.has('showcase-work-dark.mp4') ? `
+				${shot('showcase-work', available, 'GeminiCode in Agents layout: the agent list on the left, a chat in the middle and the Changes panel on the right', { eager: true })}${available.has('showcase-work-light.mp4') && available.has('showcase-work-dark.mp4') ? `
 				<button type="button" class="play" data-clip="work" aria-label="Play a short clip of an agent at work"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button>` : ''}
 			</div>
 		</div>
@@ -1092,7 +1092,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 
 /**
  * Gives each h2/h3 in the notes an id, and returns them for the side navigation.
- * A paragraph that is only bold text, such as `**Agents mode**` on a line of
+ * A paragraph that is only bold text, such as `**Agents layout**` on a line of
  * its own, reads as a heading, so it becomes an h4 and is listed too.
  *
  * The page's title is the h1, so the notes' headings are renumbered to start

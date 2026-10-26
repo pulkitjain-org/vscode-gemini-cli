@@ -24,6 +24,7 @@ import type { TeamConnections } from './teamConnections';
 import { TeamFlowPanel } from './teamFlowPanel';
 import type { ReviewCommentView, ReviewThreadView, ReviewView } from './teamFlowProtocol';
 import { openTeamLink } from './teamLinks';
+import { showError } from './errorNotice';
 
 /** What a review needs from the team flows around it. */
 export interface ReviewDeps {
@@ -227,7 +228,7 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 		if (this.flow && !this.flow.isDisposed) {
 			this.flow.fail(error);
 		} else {
-			void vscode.window.showErrorMessage(errorMessage(error));
+			void showError(errorMessage(error));
 		}
 	}
 

@@ -13,6 +13,7 @@ import { PilotLog, pilotExport, type recordPilot, type setPilotSink } from '../a
 import { configSection } from './configuration';
 import type { TeamConnections } from './teamConnections';
 import type { UsageMeter } from './usageMeter';
+import { showError } from './errorNotice';
 
 /** The setting that turns recording on; extension.ts constructs the pilot at launch when it is on. */
 const recordSetting = 'pilot.record';
@@ -93,7 +94,7 @@ export class Pilot implements vscode.Disposable {
 				await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(file));
 			}
 		} catch (err) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("Couldn't export the pilot data: {0}", errorMessage(err)));
+			void showError(vscode.l10n.t("Couldn't export the pilot data: {0}", errorMessage(err)));
 		}
 	}
 }

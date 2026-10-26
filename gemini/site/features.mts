@@ -53,7 +53,7 @@ export const featurePages: readonly FeaturePage[] = [
 		description: 'Run several Gemini agents side by side in GeminiCode, each with its own chat, files and branch. A local index lets them find code in one step.',
 		headline: ['Run agents side by side.', 'They find the code in one step.'],
 		lead: 'Each agent is a tab with its own chat, files and changes, in the folder it works in or on a branch of its own. A local index of every workspace lets agents go straight to the code that matters, instead of reading file by file.',
-		hero: { name: 'showcase-work', alt: 'An agent at work in Agents mode: the agent list on the left, its chat in the middle and its changes on the right', clip: true },
+		hero: { name: 'showcase-work', alt: 'An agent at work in Agents layout: the agent list on the left, its chat in the middle and its changes on the right', clip: true },
 		steps: [
 			{ title: 'Describe the task', body: 'Type it on Home and press Return. Tick **On its own branch** to give the agent a copy of the repository on a new branch.' },
 			{ title: 'Watch, or step away', body: 'A status dot per agent: a spinner while it works, amber when it waits for you, green when done. A Mac notification says when one needs you.' },

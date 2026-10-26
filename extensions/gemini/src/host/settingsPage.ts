@@ -22,6 +22,7 @@ import { StorageSection, type StorageHost } from './storageSection';
 import type { forgetSkills } from './teamCommands';
 import { createNonce, escapeAttribute } from './webviewHtml';
 import { ContextCost, estimateTokens, heavyContextTokens, heavyServerTokens } from '../acp/contextCost';
+import { showError } from './errorNotice';
 
 const viewType = 'gemini.projectSettings';
 
@@ -430,7 +431,7 @@ export class SettingsPage implements vscode.Disposable {
 					break;
 			}
 		} catch (err) {
-			void vscode.window.showErrorMessage(errorMessage(err));
+			void showError(errorMessage(err));
 		}
 		await this.update();
 	}

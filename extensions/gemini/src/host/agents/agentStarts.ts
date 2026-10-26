@@ -24,6 +24,7 @@ import { knownModelList, sessionModel, sessionModelList } from '../modelPreferen
 import type { HomeMode } from '../panelProtocol';
 import type { AgentTree, AgentTreeNode } from './agentTree';
 import type { AgentWorktrees } from './agentWorktrees';
+import { showError } from '../errorNotice';
 
 /** What starting an agent needs of the Agents pane. */
 export interface AgentStartsHost {
@@ -65,7 +66,7 @@ export class AgentStarts {
 					return undefined;
 				}
 			} else if (ownBranch) {
-				void vscode.window.showErrorMessage(vscode.l10n.t("{0} is not in a Git repository, so the agent can't have its own branch.", path.basename(folder)));
+				void showError(vscode.l10n.t("{0} is not in a Git repository, so the agent can't have its own branch.", path.basename(folder)));
 				return undefined;
 			}
 		}
@@ -182,14 +183,14 @@ export class AgentStarts {
 		}
 		const repository = await repositoryRoot(folder);
 		if (!repository) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("{0} is not in a Git repository, so there are no changes to review.", path.basename(folder)));
+			void showError(vscode.l10n.t("{0} is not in a Git repository, so there are no changes to review.", path.basename(folder)));
 			return;
 		}
 		let changes;
 		try {
 			changes = await workingChanges(repository);
 		} catch (err) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("Could not read the changes: {0}", errorMessage(err)));
+			void showError(vscode.l10n.t("Could not read the changes: {0}", errorMessage(err)));
 			return;
 		}
 		if (!changes.diff.trim() && !changes.untracked.length) {

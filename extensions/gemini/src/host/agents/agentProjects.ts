@@ -30,6 +30,7 @@ import type { AgentMerge } from './agentMerge';
 import { chooseFolder } from './agentStarts';
 import type { AgentTree, AgentTreeNode } from './agentTree';
 import type { AgentWorktrees } from './agentWorktrees';
+import { showError } from '../errorNotice';
 
 /** What starting and cleaning up project agents needs of the Agents pane. */
 export interface AgentProjectsHost {
@@ -86,7 +87,7 @@ export class AgentProjects {
 		}
 		const repository = await repositoryRoot(folder);
 		if (!repository) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("{0} is not in a Git repository. A project's threads each work on their own branch, so a project needs one.", path.basename(folder)));
+			void showError(vscode.l10n.t("{0} is not in a Git repository. A project's threads each work on their own branch, so a project needs one.", path.basename(folder)));
 			return;
 		}
 		if (!await this.ensureProjectTrust(folder)) {
@@ -377,7 +378,7 @@ export class AgentProjects {
 		try {
 			waits = await this.service.trustFolder(...folders);
 		} catch (err) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("Could not trust {0}: {1}", path.basename(repository), errorMessage(err)));
+			void showError(vscode.l10n.t("Could not trust {0}: {1}", path.basename(repository), errorMessage(err)));
 			return false;
 		}
 		if (waits) {

@@ -15,6 +15,7 @@ import { tildify } from './displayText';
 import { ConnectionState, createTokenUrl, TeamConnections } from './teamConnections';
 import { takeOverTeamServers } from './teamTakeover';
 import { createNonce, escapeAttribute } from './webviewHtml';
+import { showError } from './errorNotice';
 
 const viewType = 'gemini.connections';
 
@@ -105,7 +106,7 @@ export class ConnectionsPage implements vscode.Disposable {
 					this.post({ type: 'connectResult', tool: message.tool, ok: false, message: text });
 					if (message.tool === 'snyk' || message.tool === 'figma') {
 						// No dialog to show it in.
-						void vscode.window.showErrorMessage(text);
+						void showError(text);
 					}
 				}
 				return;

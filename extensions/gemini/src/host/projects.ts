@@ -38,6 +38,7 @@ import type { ChatActivity, ChatController, ChatProject } from './chatController
 import type { NewThread, ProjectDefaultsView, ProjectSettingsAction, ProjectSettingsSave, ProjectSettingsView, ThreadAction } from './chatProtocol';
 import { configSection } from './configuration';
 import { tildify } from './displayText';
+import { showError } from './errorNotice';
 
 /** What a new thread gets from its project besides its request. */
 export interface ThreadSetup {
@@ -789,7 +790,7 @@ export class Projects implements vscode.Disposable {
 				void this.draft(project);
 			}
 		} catch (err) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("Could not save the project's settings: {0}", errorMessage(err)));
+			void showError(vscode.l10n.t("Could not save the project's settings: {0}", errorMessage(err)));
 		}
 		void this.refreshSettings(project);
 	}
@@ -809,7 +810,7 @@ export class Projects implements vscode.Disposable {
 			await writeProjectConfig(project.home, config);
 			this.setConfig(project, config);
 		} catch (err) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("Could not save the project's settings: {0}", errorMessage(err)));
+			void showError(vscode.l10n.t("Could not save the project's settings: {0}", errorMessage(err)));
 		}
 		void this.refreshSettings(project);
 	}
@@ -829,7 +830,7 @@ export class Projects implements vscode.Disposable {
 					}
 					const root = await repositoryRoot(picked[0].fsPath);
 					if (!root) {
-						void vscode.window.showErrorMessage(vscode.l10n.t("{0} is not in a Git repository. A project's threads each work on their own branch, so each repository needs Git.", path.basename(picked[0].fsPath)));
+						void showError(vscode.l10n.t("{0} is not in a Git repository. A project's threads each work on their own branch, so each repository needs Git.", path.basename(picked[0].fsPath)));
 						return;
 					}
 					const config = await project.loading;
@@ -865,7 +866,7 @@ export class Projects implements vscode.Disposable {
 					return this.refreshSettings(project);
 			}
 		} catch (err) {
-			void vscode.window.showErrorMessage(errorMessage(err));
+			void showError(errorMessage(err));
 		}
 	}
 
@@ -1077,7 +1078,7 @@ export class Projects implements vscode.Disposable {
 		const config = await project.loading;
 		const repos = config.repos.length > 1 ? repoKeys(config).filter(key => thread.repos?.includes(key)) : [];
 		if (config.repos.length > 1 && !repos.length) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("Choose at least one repository for the thread."));
+			void showError(vscode.l10n.t("Choose at least one repository for the thread."));
 			return;
 		}
 		try {
@@ -1087,7 +1088,7 @@ export class Projects implements vscode.Disposable {
 				...(repos.length ? { repos } : {}),
 			});
 		} catch (err) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("Could not start the thread: {0}", err instanceof Error ? err.message : String(err)));
+			void showError(vscode.l10n.t("Could not start the thread: {0}", err instanceof Error ? err.message : String(err)));
 		}
 	}
 }

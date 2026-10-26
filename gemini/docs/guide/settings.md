@@ -103,7 +103,7 @@ If you are in the pilot, turn `gemini.pilot.record` on. At the end, run **Gemini
 | --- | --- | --- |
 | `gemini.storage.keepLogsDays` | 90 | How many days of the audit log and the pilot's counters to keep. Older days are removed in the background after GeminiCode starts. At least 7 days are kept; 0 keeps everything. |
 
-The **Storage** section at the bottom of Project Helpers shows how much room each part of GeminiCode's data takes on your Mac: agent worktrees, workspace indexes, Gemini CLI copies, undo history, chats and reviews, and logs. The sizes are measured when you scroll to the section, not when GeminiCode starts. The logs row sets `gemini.storage.keepLogsDays`, and **Open Folder** shows GeminiCode's own storage folder in Finder.
+The **Storage** section at the bottom of Agent Setup shows how much room each part of GeminiCode's data takes on your Mac: agent worktrees, workspace indexes, Gemini CLI copies, undo history, chats and reviews, and logs. The sizes are measured when you scroll to the section, not when GeminiCode starts. The logs row sets `gemini.storage.keepLogsDays`, and **Open Folder** shows GeminiCode's own storage folder in Finder.
 
 **Clean Up** lists everything it would remove and asks first: the worktrees of merged threads, of reviews that ended (with their reviewer agents) and of agents you removed; saved chats and undo history of removed agents; undo history of merged threads; logs older than the days kept; performance traces; damaged files that were moved aside; and debug logs of closed windows. A worktree with uncommitted changes, or with commits no other branch has, is never offered, and branches stay.
 

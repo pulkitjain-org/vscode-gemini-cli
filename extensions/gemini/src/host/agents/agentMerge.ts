@@ -18,6 +18,7 @@ import { AgentWorktree, commitAll, currentBranch, inRepository, mergeBranch, rep
 import type { ChatActivity } from '../chatController';
 import { tildify } from '../displayText';
 import { awaitCommitMessage } from '../gitActions';
+import { showError } from '../errorNotice';
 
 /** What Merge Back needs of an agent running in this window. */
 interface MergingAgent {
@@ -217,10 +218,10 @@ export class AgentMerge {
 			return true;
 		} catch (err) {
 			if (/Author identity unknown|Please tell me who you are/.test(errorMessage(err))) {
-				void vscode.window.showErrorMessage(vscode.l10n.t("Could not merge {0}: Git doesn't know your name and email yet. Set them with git config --global user.name and user.email, then try again.", worktree.branch));
+				void showError(vscode.l10n.t("Could not merge {0}: Git doesn't know your name and email yet. Set them with git config --global user.name and user.email, then try again.", worktree.branch));
 				return false;
 			}
-			void vscode.window.showErrorMessage(vscode.l10n.t("Could not merge {0}: {1}", worktree.branch, errorMessage(err)));
+			void showError(vscode.l10n.t("Could not merge {0}: {1}", worktree.branch, errorMessage(err)));
 			return false;
 		}
 	}

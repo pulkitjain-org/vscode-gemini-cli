@@ -56,6 +56,7 @@ import { AgentStarts } from './agents/agentStarts';
 import { agentState, AgentTree, AgentTreeNode, WorkspaceSummary } from './agents/agentTree';
 import { AgentWorktrees } from './agents/agentWorktrees';
 import { spareDelayMs, SpareSession } from './agents/spareSession';
+import { showError } from './errorNotice';
 export { startModes } from './agents/agentStarts';
 export type { WorkspaceSummary } from './agents/agentTree';
 
@@ -720,7 +721,7 @@ export class AgentsView implements vscode.Disposable {
 			const folder = agentFolder(record, workspace.folder);
 			// A merged thread's folder may have been cleaned up: it comes back from its branch.
 			if (record.worktree && !await this.worktrees.restoreFolder(id)) {
-				void vscode.window.showErrorMessage(vscode.l10n.t("The folder of \"{0}\"'s branch, {1}, no longer exists.", record.title, tildify(record.worktree.folder)));
+				void showError(vscode.l10n.t("The folder of \"{0}\"'s branch, {1}, no longer exists.", record.title, tildify(record.worktree.folder)));
 				return;
 			}
 			if (record.project && projectsEnabled()) {
