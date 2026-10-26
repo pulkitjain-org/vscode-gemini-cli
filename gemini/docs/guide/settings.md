@@ -1,6 +1,6 @@
 # Settings
 
-Every GeminiCode setting, by area. Open Settings with <kbd>⌘,</kbd> and type `gemini` to see them all, or type a setting's name to go straight to it. The Gemini CLI's own settings are in [Project Helpers](helpers.md#gemini-cli-settings).
+Every GeminiCode setting, by area. Open Settings with <kbd>⌘,</kbd> and type `gemini` to see them all, or type a setting's name to go straight to it. The Gemini CLI's own settings are in [Agent Setup](helpers.md#gemini-cli-settings).
 
 A setting in a workspace's settings applies only to that folder, and is shared with everyone who opens it when the folder's `.vscode/settings.json` is checked in.
 
@@ -8,7 +8,7 @@ A setting in a workspace's settings applies only to that folder, and is shared w
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `gemini.projectId` | empty | The Google Cloud project ID to bill. Use the ID, such as `my-project-123`, not the project number. A workspace value wins over your own, and the Gemini log warns when one does. An admin policy wins over both. |
+| `gemini.projectId` | empty | The Google Cloud Project ID to bill. Use the ID, such as `my-project-123`, not the project number. A workspace value wins over your own, and the Gemini log warns when one does. An admin policy wins over both. |
 | `gemini.cliPath` | empty | A `gemini` executable or a CLI's `bundle/gemini.js` to run instead of GeminiCode's own copies. |
 | `gemini.cli.version` | empty | Which of GeminiCode's own CLI copies to run, such as `0.64.0`. Empty runs the newest. |
 | `gemini.cli.checkForUpdates` | on | Offer newer Gemini CLI releases, at most once a day. Nothing installs without your click. |
@@ -32,7 +32,7 @@ See [Review and safety](review.md) for how approvals work.
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `gemini.agents.ownBranch` | off | Start every new agent on its own branch, in its own folder under `~/.geminicode/worktrees`. |
+| `gemini.agents.ownBranch` | off | Start every new agent on its own branch, in its own folder under `~/.geminicode/worktrees`: Home's chooser starts on **On Its Own Branch**. |
 | `gemini.agents.worktreeSetup` | empty | A command run in each new agent branch's folder before the agent starts, such as `npm ci`. |
 | `gemini.agents.allWorkspaceFolders` | off | Let every agent read and edit all folders of a multi-folder window, not only its own. |
 | `gemini.projects.enabled` | on | [Projects](projects.md): a coordinator that splits larger work into threads. |
@@ -90,7 +90,7 @@ These are under **Gemini › Advanced** in Settings.
 | `gemini.chat.reactions.agentReactions` | on | Let Gemini react to your messages when it has something to add. Costs about 50 tokens per session. |
 | `gemini.chat.reactions.meanings` | `{}` | What an emoji asks Gemini to do, such as `{ "🚀": "Go ahead, then commit with a short message." }`. An entry can change a built-in meaning (👍 👎 ❓ ❤️) or add one. |
 | `gemini.pilot.record` | off | Count the pilot's measures on your Mac: launches, waits, permission cards, Undo and Rewind, team tool errors and links that leave the app, with times and no text. |
-| `gemini.developer.showTools` | off | Show GeminiCode's developer tools in the Command Palette: Run Benchmark, Record or Stop Performance Trace, Export Pilot Data, Show Status Menu, New Skill, and installing a Gemini CLI version. They still run from the Gemini status bar menu, Project Helpers and the messages that offer them. |
+| `gemini.developer.showTools` | off | Show GeminiCode's developer tools in the Command Palette: Run Benchmark, Record or Stop Performance Trace, Export Pilot Data, Show Status Menu, New Skill, and installing a Gemini CLI version. They still run from the Gemini status bar menu, Agent Setup and the messages that offer them. |
 
 If you are in the pilot, turn `gemini.pilot.record` on. At the end, run **Gemini: Export Pilot Data**, which the Command Palette shows while it is on, and hand over the `geminicode-pilot` folder in your home folder.
 

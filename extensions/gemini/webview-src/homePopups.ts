@@ -19,6 +19,8 @@ export interface HomePopupsHost {
 	post(message: FromHome): void;
 	/** Home's own menu class, so Customize closes as Home's other menus open. */
 	readonly Menu: typeof Menu;
+	/** Home's themed tooltip. */
+	tip(node: HTMLElement, tip: string): void;
 	readonly customizeButton: HTMLElement;
 	readonly customizeElement: HTMLElement;
 	/** The dashboard Home shows now. */
@@ -65,6 +67,7 @@ export function createHomePopups(host: HomePopupsHost): HomePopups {
 	function renderList(list: HomeList, total = list.rows.length): void {
 		shownList = list;
 		const close = button('icon-button dash-list-close', '', () => listDialog.close(), 'close', strings.close);
+		host.tip(close, strings.close);
 		listHead.replaceChildren(list.tool ? host.logo(list.tool, 16) : icon(list.icon ?? 'list-flat'), listTitle, el('span', 'dash-list-count'), ...list.query ? [host.queryText(list.query)] : [], close);
 		listTitle.textContent = list.title;
 		listHead.dataset.total = String(total);
@@ -151,6 +154,7 @@ export function createHomePopups(host: HomePopupsHost): HomePopups {
 			];
 		},
 		empty: () => '',
+		tip: host.tip,
 	});
 
 	return {

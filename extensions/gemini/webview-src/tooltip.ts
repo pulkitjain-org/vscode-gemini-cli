@@ -119,12 +119,17 @@ function scheduleTip(target: HTMLElement | undefined): void {
 	}
 }
 
-// Moving the pointer, not just entering, so a tooltip hidden by scrolling or a click comes back.
-document.addEventListener('pointermove', event => scheduleTip(tipTarget(event)), { passive: true });
-document.documentElement.addEventListener('pointerleave', hideTip);
-document.addEventListener('focusin', event => scheduleTip(event.target instanceof HTMLElement && event.target.matches(':focus-visible') ? tipTarget(event) : undefined));
-document.addEventListener('focusout', hideTip);
-document.addEventListener('pointerdown', hideTip, true);
-document.addEventListener('keydown', hideTip, true);
-document.addEventListener('wheel', hideTip, { capture: true, passive: true });
-window.addEventListener('blur', hideTip);
+// One set of listeners per page: a chunk with its own copy of this module (Home's comment box) only sets tips, and the page's shows them.
+const listening = Symbol.for('gemini.tooltip');
+if (!Object.hasOwn(window, listening)) {
+	Object.defineProperty(window, listening, { value: true });
+	// Moving the pointer, not just entering, so a tooltip hidden by scrolling or a click comes back.
+	document.addEventListener('pointermove', event => scheduleTip(tipTarget(event)), { passive: true });
+	document.documentElement.addEventListener('pointerleave', hideTip);
+	document.addEventListener('focusin', event => scheduleTip(event.target instanceof HTMLElement && event.target.matches(':focus-visible') ? tipTarget(event) : undefined));
+	document.addEventListener('focusout', hideTip);
+	document.addEventListener('pointerdown', hideTip, true);
+	document.addEventListener('keydown', hideTip, true);
+	document.addEventListener('wheel', hideTip, { capture: true, passive: true });
+	window.addEventListener('blur', hideTip);
+}

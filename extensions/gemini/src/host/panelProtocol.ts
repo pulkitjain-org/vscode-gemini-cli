@@ -136,6 +136,7 @@ export interface HomeView {
 	readonly earlier: readonly HomeAgent[];
 	/** Every project, newest first; absent while Projects are off. Neither list above has projects or their threads. */
 	readonly projects?: readonly HomeProject[];
+	/** Whether new agents start on their own branch by default (`gemini.agents.ownBranch`). */
 	readonly ownBranch: boolean;
 	/** The approval modes a new agent can start in, as policy allows. */
 	readonly modes: readonly HomeMode[];
@@ -154,7 +155,9 @@ export type HomeAction =
 	| { readonly kind: 'link'; readonly url: string }
 	| { readonly kind: 'agent'; readonly id: string; readonly do: 'open' | 'stop' | 'review' | 'mergeBack' }
 	/** Opens Home's comment box for Jira ticket `key`; `visibility` is the project role the team's comments are limited to. */
-	| { readonly kind: 'comment'; readonly key: string; readonly title: string; readonly visibility?: string };
+	| { readonly kind: 'comment'; readonly key: string; readonly title: string; readonly visibility?: string }
+	/** Checks `tool`'s server again now, as a banner's Retry does, and reads its data. */
+	| { readonly kind: 'retry'; readonly tool: HomeToolId };
 
 export interface HomeButton {
 	readonly label: string;
@@ -223,6 +226,8 @@ export interface HomeCard {
 	readonly note?: string;
 	/** The last data, shown dimmed with its time, while the tool can't answer. */
 	readonly stale?: boolean;
+	/** When a stale card's data came, as "10:42", beside its title. */
+	readonly asOf?: string;
 	/** For a tool that isn't connected: what the card will show, and a Connect button. */
 	readonly connect?: { readonly text: string; readonly button: HomeButton };
 }
@@ -265,8 +270,8 @@ export interface HomeDashboard {
 	readonly cards: readonly HomeCard[];
 	/** First run: nothing connected yet. */
 	readonly setup?: readonly HomeSetupStep[];
-	/** "GitLab, SonarQube and Snyk can't be reached. Turn on your VPN to refresh them." */
-	readonly banner?: string;
+	/** One per team server that can't be reached or refused the token; each clears by itself once the server answers. */
+	readonly banners?: readonly HomeBanner[];
 	/** While the tools are being read again: "Showing results from 14:31 · refreshing". */
 	readonly stale?: string;
 	/** For Customize: every card with whether it shows, in the user's order. */
@@ -276,6 +281,15 @@ export interface HomeDashboard {
 	readonly refreshing: boolean;
 	/** The card whose whole list is open in a popup, kept current while it is open. */
 	readonly list?: HomeList;
+}
+
+/** "GitLab is unreachable, probably the VPN. Showing results from 10:42." with Retry; "Jira rejected your token." with Replace Token. */
+export interface HomeBanner {
+	readonly tool: HomeToolId;
+	/** warn: unreachable; error: the token was refused. */
+	readonly tone: 'warn' | 'error';
+	readonly text: string;
+	readonly button: HomeButton;
 }
 
 export interface HomeMode {
@@ -299,12 +313,18 @@ export interface HomeStrings {
 	readonly subtitle: string;
 	readonly placeholder: string;
 	readonly start: string;
-	readonly ownBranch: string;
-	readonly ownBranchHint: string;
+	/** The chooser of where a new agent works, and its three choices with a line each. */
+	readonly startAs: string;
+	readonly startHere: string;
+	readonly startHereHint: string;
+	readonly startOwnBranch: string;
+	readonly startOwnBranchHint: string;
+	readonly startProject: string;
+	readonly startProjectHint: string;
 	readonly workspace: string;
 	readonly addFolder: string;
-	readonly projectHelpers: string;
-	readonly projectHelpersHint: string;
+	readonly agentSetup: string;
+	readonly agentSetupHint: string;
 	readonly index: string;
 	readonly indexHint: string;
 	readonly plusMenu: string;
@@ -418,10 +438,11 @@ export type ToHome =
 
 export type FromHome =
 	| { readonly type: 'ready' }
-	| { readonly type: 'start'; readonly folder: string; readonly text: string; readonly ownBranch: boolean; readonly mode: string; readonly attachments: readonly Attachment[] }
+	/** Start an agent on `text`: in `folder`, on its own branch, or as a project's coordinator (`project`). */
+	| { readonly type: 'start'; readonly folder: string; readonly text: string; readonly ownBranch: boolean; readonly project?: boolean; readonly mode: string; readonly attachments: readonly Attachment[] }
 	/** The user is typing a task, so the agent and a session for it can get ready. */
 	| { readonly type: 'typing'; readonly folder: string; readonly ownBranch: boolean }
-	| { readonly type: 'addFolder' | 'projectHelpers' | 'openIndex' | 'pickFiles' | 'newProject' }
+	| { readonly type: 'addFolder' | 'agentSetup' | 'openIndex' | 'pickFiles' | 'newProject' }
 	| { readonly type: 'open' | 'stop' | 'review' | 'mergeBack'; readonly id: string }
 	| { readonly type: 'action'; readonly action: HomeAction }
 	| { readonly type: 'refresh' }

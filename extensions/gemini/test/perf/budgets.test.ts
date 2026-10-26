@@ -36,8 +36,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// Writing the bundles as UTF-8 rather than escaping non-ASCII text took about 21 KB off; reactions,
 	// the queue strip and the trace readout added most of what came after.
 	'media/chat.js': 255_000,
-	// Home's startup script, about 29.6 KB: Preview's renderer is its own file. The dashboard (cards,
-	// Needs you, Customize) and Show All's popup take most of it.
+	// Home's startup script, about 26 KB: Preview's renderer, the menus and the popups are files of their own.
+	// The dashboard (cards, Needs you, banners), the composer and the themed tooltips take most of it.
 	'media/home.js': 30_000,
 	// The Changes panel, about 12 KB.
 	'media/changes.js': 16_000,
@@ -63,6 +63,9 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	'media/draftMarkdown.js': 140_000,
 	// Home's Show All list and Customize menu, loaded the first time either opens.
 	'media/homePopups.js': 5_000,
+	// Home's menus (+, folder, mode, From Your Tools, a row's "...") with the menu class, about 7.6 KB, loaded once
+	// Home has settled or on the first click on a menu's button.
+	'media/homeMenus.js': 9_000,
 	// The emoji picker, about 97 KB, loaded the first time a reaction button is hovered or focused: about 88 KB
 	// of emoji data (1,923 emoji with their names and three search words each) and its own code.
 	'media/emojiPicker.js': 105_000,

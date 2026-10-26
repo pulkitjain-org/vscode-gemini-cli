@@ -4,24 +4,24 @@ Run several Gemini agents side by side, each with its own chat, files, changes a
 
 ![An agent's chat with the files it opened in a group beside it](../../site/media/files-dark.webp)
 
-## Agents and Editor modes
+## Agents and Editor layouts
 
 GeminiCode has two layouts. Switch between them with the **Agents | Editor** switch at the top of the window, or <kbd>⌥⌘M</kbd>.
 
-- **Agents mode**, the default, is for working with agents: your agents on the left, the chat in the middle, and the agent's changes on the right. Opening Explorer, Search or any other view switches to Editor mode with that view open.
-- **Editor mode** is the classic VS Code layout, with Explorer, Search and Source Control, for hands-on coding. The agent's changes sit below the Agents pane.
+- **Agents layout**, the default, is for working with agents: your agents on the left, the chat in the middle, and the agent's changes on the right. Opening Explorer, Search or any other view switches to the Editor layout with that view open.
+- **Editor layout** is the classic VS Code layout, with Explorer, Search and Source Control, for hands-on coding. The agent's changes sit below the Agents pane.
 
-In Agents mode the top of the window is a single row: the Home button, the mode switch, your open tabs (agents, Home, files and browser pages) in one capsule, then a globe for the browser, a magnifier for Quick Open, and the layout buttons. Each mode remembers which panels you had open.
+In the Agents layout the top of the window is a single row: the Home button, the layout switch, your open tabs (agents, Home, files and browser pages) in one capsule, then a globe for the browser, a magnifier for Quick Open, and the layout buttons. Each layout remembers which panels you had open.
 
 ## Home
 
-**Home** is where you start agents and see what needs you. It opens when no tab is open in Agents mode, and in front of your restored tabs each time GeminiCode starts.
+**Home** is where you start agents and see what needs you. It opens when no tab is open in the Agents layout, and in front of your restored tabs each time GeminiCode starts.
 
-To start an agent, describe the task in **Start Agent** and press Return. Tick **On its own branch** to give it a branch of its own. The bar under the composer shows the folder, the branch, the approval mode and the model the agent starts with, and **From Your Tools…** lists your tickets and merge requests to start from one.
+To start an agent, describe the task in **Start Agent** and press Return. Under the task, choose where it works: **Here**, in this folder on your current branch; **On Its Own Branch**, a new branch and folder, merged back when done (see [Agents on their own branch](#agents-on-their-own-branch)); or **As a Project**, a coordinator that splits the work into threads (see [Projects](projects.md)). A line under the choice says what it does. A branch and a project need a Git repository, and **As a Project** shows while Projects are on. The bar under the composer shows the folder, the approval mode and the model the agent starts with, and **From Your Tools…** lists your tickets and merge requests to start from one.
 
 Below the composer:
 
-- **Project Helpers**, on the right, opens the MCP servers, rules and hooks your agents load. See [Project Helpers](helpers.md).
+- **Agent Setup**, on the right, opens the MCP servers, skills, rules and hooks your agents load. See [Agent Setup](helpers.md).
 - **Index**, beside it, opens the workspace index. A drum icon beside the workspace shows its state. See [Workspace index and docs](#workspace-index-and-docs).
 - **Needs you** lists what is waiting on you, such as an agent asking for permission.
 - Cards follow for your agents and, once you connect your team's tools, your tickets, the merge requests waiting on you and your own, quality checks, and Gemini's usage. See [Team tools](team-tools.md#home).
@@ -32,7 +32,7 @@ If GeminiCode quit while something was running, two cards come first. **Unfinish
 
 To get back to Home, click the house at the start of the title bar, press <kbd>⇧⌘H</kbd> (outside the editor, where it is Replace in Files), or run **Gemini: Home**. To stop it opening at start-up, turn off `gemini.home.openOnStartup`.
 
-In Agents mode the agent list highlights the agent, project or thread whose tab is in front. The status bar leaves out the window's repository, branch and problem counts, because each agent's own folder and branch show under its composer. Editor mode keeps them.
+In the Agents layout the agent list highlights the agent, project or thread whose tab is in front. The status bar leaves out the window's repository, branch and problem counts, because each agent's own folder and branch show under its composer. The Editor layout keeps them.
 
 ## Agents side by side
 
@@ -40,7 +40,7 @@ Each agent opens as a tab with its own chat. The tab shows what the agent is doi
 
 In the Agents pane, each agent's row has the same signal (green when finished, red when something went wrong, grey otherwise). On the right it shows how long the agent has been working, "waiting", the lines it added, or when it was last active. Point at a row to see its branch and folder. Rename, stop or remove an agent from its right-click menu; **Gemini: Stop Agent** (<kbd>⌘esc</kbd>) stops the one in front. Removing an agent deletes its conversation and undo history, and the question names any files whose changes you haven't reviewed yet.
 
-- In Editor mode, agents that are working, waiting, or finished but not yet read show as pills in the title bar.
+- In the Editor layout, agents that are working, waiting, or finished but not yet read show as pills in the title bar.
 - Right-click GeminiCode in the Dock for **New Agent**.
 - In a window with several folders, each agent keeps to the folder it works in. Turn on `gemini.agents.allWorkspaceFolders` to let every agent use all of them.
 
@@ -66,7 +66,7 @@ When the work is done, **Merge Back** (the merge icon on the agent's row) commit
 
 A new copy has no `node_modules` or build output. To get it ready before the agent starts, set **Gemini › Agents: Worktree Setup** in your user settings to a command such as `npm ci` (a repository's own settings can't set it), or commit a `.gemini/worktree-setup.sh` to the repository. The command can use `GEMINI_SOURCE_REPOSITORY`, the repository the copy came from, to copy files Git doesn't carry, such as `.env`. If setup fails, the agent starts anyway, and the output is in the **Gemini Worktree Setup** output channel.
 
-To start every new agent on its own branch, turn on `gemini.agents.ownBranch`.
+To start every new agent on its own branch, turn on `gemini.agents.ownBranch`: Home's chooser then starts on **On Its Own Branch**.
 
 ## Fork an agent
 
@@ -102,7 +102,7 @@ GeminiCode keeps an index of the code in each workspace, and of any documentatio
 
 ![The Index page with two indexed workspaces and attached documentation](../../site/media/index-page-dark.webp)
 
-Open the **Index** page from **Index** on Home, beside Project Helpers, or with **Gemini: Manage Index**. On Home, a drum icon beside the workspace shows its state: full when it is indexed, half full while it is indexing, and empty when it has no index yet. Click it to open the Index page.
+Open the **Index** page from **Index** on Home, beside Agent Setup, or with **Gemini: Manage Index**. On Home, a drum icon beside the workspace shows its state: full when it is indexed, half full while it is indexing, and empty when it has no index yet. Click it to open the Index page.
 
 ### Index tools for agents
 
@@ -191,7 +191,7 @@ An administrator can lock `gemini.index.enabled`, `gemini.docs.enabled` and `gem
 
 A new, empty agent lists the three sessions the Gemini CLI saved most recently for its folder, including ones you started with `gemini` in a terminal, with a link to show them all. Pick one to continue it: its conversation appears in the chat, and the agent takes the session's title. Type `/resume` in the composer to open the same list at any time.
 
-The CLI deletes saved sessions after 30 days. The list says when each one goes, and **Keep saved chats for** in [Project Helpers](helpers.md#gemini-cli-settings) changes how long they are kept.
+The CLI deletes saved sessions after 30 days. The list says when each one goes, and **Keep saved chats for** in [Agent Setup](helpers.md#gemini-cli-settings) changes how long they are kept.
 
 ## Notifications and keeping awake
 

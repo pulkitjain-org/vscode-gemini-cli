@@ -11,14 +11,15 @@
 import { type Attachment, attachmentLabel } from '../src/acp/attachments';
 import type { FromHome, HomeAction, HomeAgent, HomeButton, HomeCard, HomeDashboard, HomeRow, HomeStrings, HomeView, ToHome } from '../src/host/panelProtocol';
 import { attachmentIcon, sameAttachment } from './chatLogic';
-import { Menu, type MenuRow, type MenuSection } from './menu';
 import { modeIcon } from './modeIcon';
 import { button, el, format, icon, keepFocus, pageStrings } from './panelDom';
 import type { CommentBox } from './commentBox';
+import type { HomeMenus } from './homeMenus';
 import type { HomePopups } from './homePopups';
 import { letSpellingMenuThrough } from './spellCheck';
 import { createPreviewTabs, isPreviewShortcut } from './markdownPreview';
 import { toolLogo } from './toolLogos';
+import { setTip } from './tooltip';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromHome): void; getState(): unknown; setState(state: unknown): void };
 
@@ -37,8 +38,8 @@ const form = document.getElementById('composer') as HTMLFormElement;
 const prompt = document.getElementById('prompt') as HTMLTextAreaElement;
 const workspaceButton = document.getElementById('workspace') as HTMLButtonElement;
 const workspaceLabel = workspaceButton.querySelector('span')!;
-const ownBranch = document.getElementById('own-branch') as HTMLInputElement;
-const ownBranchLabel = document.getElementById('own-branch-label') as HTMLLabelElement;
+const startAsGroup = document.getElementById('start-as')!;
+const startHint = document.getElementById('start-hint')!;
 const start = document.getElementById('start') as HTMLButtonElement;
 const plusButton = document.getElementById('plus') as HTMLButtonElement;
 const modeButton = document.getElementById('mode') as HTMLButtonElement;
@@ -56,144 +57,124 @@ subtitle.textContent = strings.subtitle;
 prompt.placeholder = strings.composerPlaceholder;
 prompt.value = saved.draft ?? '';
 prompt.setAttribute('aria-label', strings.title);
-ownBranchLabel.querySelector('.switch-label')!.textContent = strings.ownBranch;
-ownBranchLabel.title = strings.ownBranchHint;
-start.title = strings.start;
+setTip(start, strings.start);
 start.querySelector('span')!.textContent = strings.start;
 fromToolsButton.querySelector('span')!.textContent = strings.fromTools;
-fromToolsButton.title = strings.fromTools;
+setTip(fromToolsButton, strings.fromTools);
 const helpers = document.getElementById('helpers') as HTMLButtonElement;
-helpers.querySelector('span')!.textContent = strings.projectHelpers;
-helpers.title = strings.projectHelpersHint;
-helpers.addEventListener('click', () => vscode.postMessage({ type: 'projectHelpers' }));
+helpers.querySelector('span')!.textContent = strings.agentSetup;
+setTip(helpers, strings.agentSetupHint);
+helpers.addEventListener('click', () => vscode.postMessage({ type: 'agentSetup' }));
 const indexButton = document.getElementById('index') as HTMLButtonElement;
 indexButton.querySelector('span')!.textContent = strings.index;
-indexButton.title = strings.indexHint;
+setTip(indexButton, strings.indexHint);
 const indexState = document.getElementById('index-state') as HTMLButtonElement;
 // A database drum: its outline, and a fill the state's class shows full, half or not at all. Static markup, never page data.
 indexState.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path class="fill-full" d="M3 4v8.5c0 1.1 2.2 2 5 2s5-.9 5-2V4c0 1.1-2.2 2-5 2S3 5.1 3 4z"/><path class="fill-half" d="M3 8.5v4c0 1.1 2.2 2 5 2s5-.9 5-2v-4c0 1.1-2.2 2-5 2s-5-.9-5-2z"/><ellipse cx="8" cy="4" rx="5" ry="2"/><path d="M3 4v8.5c0 1.1 2.2 2 5 2s5-.9 5-2V4"/></svg>';
 for (const button of [indexButton, indexState]) {
 	button.addEventListener('click', () => vscode.postMessage({ type: 'openIndex' }));
 }
-plusButton.title = strings.plusMenu;
+setTip(plusButton, strings.plusMenu);
 plusButton.setAttribute('aria-label', strings.plusMenu);
 
 let view: HomeView | undefined;
 /** The folder the next agent starts in. */
 let folder = saved.folder ?? '';
-let ownBranchTouched = false;
 /** The approval mode the next agent starts in. */
 let mode = saved.mode ?? 'default';
 /** Files the next agent's task is sent with. */
 let attachments: Attachment[] = [];
 
-/** A row per mode the next agent can start in; picking one closes `menu`. */
-function modeRows(menu: () => Menu): MenuRow[] {
-	return (view?.modes ?? []).map(choice => ({
-		icon: modeIcon(choice.id),
-		name: choice.name,
-		detail: choice.description,
-		checked: choice.id === mode,
-		run: () => {
-			mode = choice.id;
+/** Where the next agent works: here, on its own branch, or as a project's coordinator. */
+type StartAs = 'here' | 'branch' | 'project';
+/** The user's pick; until they pick, `gemini.agents.ownBranch` decides. */
+let startAsPicked: StartAs | undefined;
+let startAs: StartAs = 'here';
+const startChoices = ([['here', strings.startHere, strings.startHereHint], ['branch', strings.startOwnBranch, strings.startOwnBranchHint], ['project', strings.startProject, strings.startProjectHint]] as const)
+	.map(([id, label, hint]) => {
+		const node = button('composer-tab', label, () => {
+			startAsPicked = id;
+			updateControls();
+			reportTyping();
+		});
+		node.setAttribute('role', 'radio');
+		return { id, hint, node };
+	});
+startAsGroup.setAttribute('aria-label', strings.startAs);
+startAsGroup.append(...startChoices.map(choice => choice.node));
+// The arrow keys move between the choices, as in any radio group.
+startAsGroup.addEventListener('keydown', e => {
+	const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+	const shown = startChoices.filter(choice => !choice.node.hidden);
+	const next = step && shown[(shown.findIndex(choice => choice.id === startAs) + step + shown.length) % shown.length];
+	if (next) {
+		e.preventDefault();
+		next.node.click();
+		next.node.focus();
+	}
+});
+
+/** Which choices the current folder offers, and the one in effect: a branch and a project need Git, and a project needs Projects on. */
+function updateStartAs(git: boolean): void {
+	const offered = (id: StartAs) => id === 'here' || git && (id === 'branch' || !!view?.projects);
+	const wanted = startAsPicked ?? (view?.ownBranch ? 'branch' : 'here');
+	startAs = offered(wanted) ? wanted : 'here';
+	let count = 0;
+	for (const { id, hint, node } of startChoices) {
+		node.hidden = !offered(id);
+		count += Number(!node.hidden);
+		node.setAttribute('aria-checked', String(id === startAs));
+		node.tabIndex = id === startAs ? 0 : -1;
+		if (id === startAs) {
+			startHint.textContent = hint;
+		}
+	}
+	startAsGroup.hidden = startHint.hidden = count < 2;
+}
+
+type HomeMenusModule = typeof import('./homeMenus');
+const homeMenusUrl = document.querySelector<HTMLScriptElement>('script[data-home-menus]')?.dataset.homeMenus;
+let homeMenus: Promise<HomeMenus> | undefined;
+/** The composer's and the rows' menus, once loaded. */
+let menus: HomeMenus | undefined;
+
+/** The menus and their class, a chunk of their own loaded once Home has settled, or on the first click on a menu's button. */
+function loadMenus(): Promise<HomeMenus> {
+	// eslint-disable-next-line no-restricted-syntax
+	homeMenus ??= (homeMenusUrl ? import(/* webpackIgnore: true */ homeMenusUrl) as Promise<HomeMenusModule> : Promise.reject(new Error('no menus'))).then(module => menus = module.createHomeMenus({
+		strings,
+		view: () => view,
+		folder: () => folder,
+		pickFolder,
+		mode: () => mode,
+		pickMode: next => {
+			mode = next;
 			save();
 			updateControls();
-			menu().close();
 		},
+		pickFiles: () => vscode.postMessage({ type: 'pickFiles' }),
+		addFolder: () => vscode.postMessage({ type: 'addFolder' }),
+		run,
+		logo: (tool, size) => toolLogo(tool, size),
+		tip: setTip,
+		fallbackFocus: () => prompt,
 	}));
+	return homeMenus;
 }
 
-const plusMenu: Menu = new Menu({
-	element: document.getElementById('plus-menu')!,
-	anchor: plusButton,
-	label: strings.plusMenu,
-	sections: () => [
-		{ heading: strings.mode, rows: modeRows(() => plusMenu) },
-		{
-			rows: [{
-				icon: 'files',
-				name: strings.files,
-				detail: strings.filesDetail,
-				run: () => {
-					plusMenu.close();
-					vscode.postMessage({ type: 'pickFiles' });
-				},
-			}],
-		},
-	],
-	empty: () => '',
-});
-
-/** "From Your Tools...": the tickets and merge requests on the cards, each starting an agent or a review on it. */
-const fromToolsMenu: Menu = new Menu({
-	element: document.getElementById('from-tools-menu')!,
-	anchor: fromToolsButton,
-	label: strings.fromTools,
-	sections: () => fromToolsSections(),
-	empty: () => strings.fromToolsEmpty,
-});
-
-function fromToolsSections(): MenuSection[] {
-	const cards = view?.dashboard.cards ?? [];
-	const rowsOf = (id: HomeCard['id'], tool: 'jira' | 'gitlab', actionOf: (row: HomeRow) => HomeAction | undefined): MenuRow[] =>
-		(cards.find(card => card.id === id)?.rows ?? []).flatMap(row => {
-			const action = actionOf(row);
-			return row.key && action ? [{
-				iconElement: () => toolLogo(tool, 14),
-				name: `${row.key} ${row.title}`,
-				detail: [row.detail, row.pill?.text].filter(Boolean).join(' · '),
-				run: () => {
-					fromToolsMenu.close();
-					run(action);
-				},
-			}] : [];
-		});
-	const tickets = rowsOf('tickets', 'jira', row => row.menu?.[0]?.action);
-	const mergeRequests = rowsOf('mergeRequests', 'gitlab', row => row.button?.action);
-	return [
-		...tickets.length ? [{ heading: strings.tickets, rows: tickets }] : [],
-		...mergeRequests.length ? [{ heading: strings.mergeRequests, rows: mergeRequests }] : [],
-	];
+// Until the chunk is loaded; then each menu opens and closes itself.
+for (const anchor of [plusButton, fromToolsButton, modeButton, workspaceButton]) {
+	anchor.addEventListener('click', () => void (menus ? undefined : loadMenus().then(loaded => loaded.open(anchor))));
 }
 
-const modeMenu: Menu = new Menu({
-	element: document.getElementById('mode-menu')!,
-	anchor: modeButton,
-	label: strings.mode,
-	sections: () => [{ rows: modeRows(() => modeMenu) }],
-	empty: () => '',
-});
-
-const folderMenu = new Menu({
-	element: document.getElementById('workspace-menu')!,
-	anchor: workspaceButton,
-	label: strings.workspace,
-	sections: () => [
-		{
-			rows: (view?.workspaces ?? []).map(w => ({
-				icon: 'folder',
-				name: w.name,
-				detail: w.description,
-				checked: w.folder === folder,
-				run: () => {
-					pickFolder(w.folder);
-					folderMenu.close();
-				},
-			})),
-		},
-		{
-			rows: [{
-				icon: 'add',
-				name: strings.addFolder,
-				run: () => {
-					folderMenu.close();
-					vscode.postMessage({ type: 'addFolder' });
-				},
-			}],
-		},
-	],
-	empty: () => strings.noWorkspace,
-});
+/** A button whose tooltip, when it has one, is the themed one. */
+function tipButton(className: string, label: string, onClick: () => void, iconName?: string, tip?: string): HTMLButtonElement {
+	const node = button(className, label, onClick, iconName, tip);
+	if (tip) {
+		setTip(node, tip);
+	}
+	return node;
+}
 
 function save(): void {
 	vscode.setState({ draft: prompt.value, folder, mode } satisfies SavedState);
@@ -212,13 +193,13 @@ function updateControls(): void {
 	indexState.hidden = !index;
 	if (index) {
 		indexState.className = `index-state ${index.state}`;
-		indexState.title = index.label;
+		setTip(indexState, index.label);
 		indexState.setAttribute('aria-label', index.label);
 	}
 	const label = current ? `${strings.workspace}: ${current.description}/${current.name}` : strings.workspace;
-	workspaceButton.title = label;
+	setTip(workspaceButton, label);
 	workspaceButton.setAttribute('aria-label', label);
-	ownBranchLabel.hidden = !current?.git;
+	updateStartAs(!!current?.git);
 	start.disabled = !prompt.value.trim() || !current;
 	const currentMode = view?.modes.find(choice => choice.id === mode) ?? view?.modes[0];
 	modeButton.parentElement!.hidden = !currentMode;
@@ -227,24 +208,21 @@ function updateControls(): void {
 		modeButton.querySelector('span')!.textContent = currentMode.name;
 		modeButton.querySelector('.codicon')!.className = `codicon codicon-${modeIcon(currentMode.id)}`;
 		const label = `${strings.mode}: ${currentMode.name}`;
-		modeButton.title = label;
+		setTip(modeButton, label);
 		modeButton.setAttribute('aria-label', label);
 	}
 	modelLabel.hidden = !view?.model;
 	modelLabel.lastElementChild!.textContent = view?.model ?? '';
-	folderMenu.render();
-	plusMenu.render();
-	modeMenu.render();
-	fromToolsMenu.render();
+	menus?.render();
 }
 
 function renderAttachments(): void {
 	attachmentList.replaceChildren(...attachments.map(attachment => {
 		const chip = el('span', 'chip attachment');
 		const label = attachmentLabel(attachment);
-		chip.title = attachment.kind !== 'image' && attachment.path || label;
+		setTip(chip, attachment.kind !== 'image' && attachment.path || label);
 		chip.append(icon(attachmentIcon(attachment.kind, label)), el('span', undefined, label));
-		const remove = button('chip-remove', '', () => {
+		const remove = tipButton('chip-remove', '', () => {
 			attachments = attachments.filter(a => a !== attachment);
 			renderAttachments();
 			prompt.focus();
@@ -311,9 +289,6 @@ function render(next: HomeView): void {
 	if (!next.workspaces.some(w => w.folder === folder)) {
 		folder = next.workspaces[0]?.folder ?? '';
 	}
-	if (!ownBranchTouched) {
-		ownBranch.checked = next.ownBranch;
-	}
 	updateControls();
 
 	const note = !next.workspaces.length ? strings.noWorkspace : !next.active.length ? strings.noAgents : '';
@@ -356,7 +331,7 @@ function renderProjects(next: HomeView): void {
 		return;
 	}
 	const heading = el('div', 'section-heading');
-	const add = button('icon-button', '', () => vscode.postMessage({ type: 'newProject' }), 'add', strings.newProject);
+	const add = tipButton('icon-button', '', () => vscode.postMessage({ type: 'newProject' }), 'add', strings.newProject);
 	heading.append(el('h2', undefined, strings.projects), add);
 	projects.append(heading);
 	if (!next.projects.length) {
@@ -423,7 +398,7 @@ function submit(): void {
 	if (!text || !folder) {
 		return;
 	}
-	vscode.postMessage({ type: 'start', folder, text, ownBranch: !ownBranchLabel.hidden && ownBranch.checked, mode, attachments });
+	vscode.postMessage({ type: 'start', folder, text, ownBranch: startAs === 'branch', ...startAs === 'project' ? { project: true } : {}, mode, attachments });
 	// The next task gets a session of its own.
 	typingFor = undefined;
 	prompt.value = '';
@@ -455,18 +430,24 @@ const calloutLabels: Record<string, string> = {
 	note: strings.calloutNote, tip: strings.calloutTip, important: strings.calloutImportant, warning: strings.calloutWarning, caution: strings.calloutCaution,
 };
 
+const previewTab = document.getElementById('tab-preview') as HTMLButtonElement;
 const previewTabs = createPreviewTabs({
 	input: prompt,
 	inputWrap: prompt,
 	preview: document.getElementById('preview')!,
 	writeTab: document.getElementById('tab-write') as HTMLButtonElement,
-	previewTab: document.getElementById('tab-preview') as HTMLButtonElement,
+	previewTab,
 	form,
 	strings,
 	render: text => loadDraftMarkdown().then(module => module.renderDraft(text, kind => calloutLabels[kind] ?? kind)),
 });
-// Warm the renderer once Home has settled, so the first Preview is instant.
-setTimeout(() => (window.requestIdleCallback ?? setTimeout)(() => void loadDraftMarkdown().catch(() => undefined)), 2000);
+// The shortcut, which the shared tabs put in a native tooltip, in the themed one.
+setTip(previewTab, previewTab.title);
+// Warm the menus and the renderer once Home has settled, so the first menu and the first Preview open at once.
+setTimeout(() => (window.requestIdleCallback ?? setTimeout)(() => {
+	void loadMenus().catch(() => undefined);
+	void loadDraftMarkdown().catch(() => undefined);
+}), 2000);
 
 prompt.addEventListener('keydown', e => {
 	if (!e.isComposing && isPreviewShortcut(e)) {
@@ -484,23 +465,19 @@ let typingFor: string | undefined;
 
 /** Lets the extension start the agent, and a session for this task, while the user types it. */
 function reportTyping(): void {
-	const own = !ownBranchLabel.hidden && ownBranch.checked;
-	const key = `${folder}\n${own}`;
+	const key = `${folder}\n${startAs}`;
 	if (!prompt.value.trim() || !folder || key === typingFor) {
 		return;
 	}
 	typingFor = key;
-	vscode.postMessage({ type: 'typing', folder, ownBranch: own });
+	// Only an agent here can start in the folder while the task is typed.
+	vscode.postMessage({ type: 'typing', folder, ownBranch: startAs !== 'here' });
 }
 
 prompt.addEventListener('input', () => {
 	previewTabs.update();
 	save();
 	updateControls();
-	reportTyping();
-});
-ownBranch.addEventListener('change', () => {
-	ownBranchTouched = true;
 	reportTyping();
 });
 
@@ -510,16 +487,15 @@ const tools = document.getElementById('tools')!;
 const stale = document.getElementById('stale')!;
 const refreshButton = document.getElementById('refresh') as HTMLButtonElement;
 const customizeButton = document.getElementById('customize') as HTMLButtonElement;
-const banner = document.getElementById('banner')!;
+const banners = document.getElementById('banners')!;
 const quick = document.getElementById('quick')!;
 const setup = document.getElementById('setup')!;
 const needs = document.getElementById('needs')!;
 const cardsSection = document.getElementById('cards')!;
-const rowMenuElement = document.getElementById('row-menu')!;
 
-customizeButton.title = strings.customize;
+setTip(customizeButton, strings.customize);
 customizeButton.setAttribute('aria-label', strings.customize);
-refreshButton.title = strings.refresh;
+setTip(refreshButton, strings.refresh);
 refreshButton.setAttribute('aria-label', strings.refresh);
 refreshButton.addEventListener('click', () => vscode.postMessage({ type: 'refresh' }));
 
@@ -532,10 +508,11 @@ let popups: HomePopups | undefined;
 /** Show All's popup and the Customize menu, a chunk of their own loaded the first time either opens. */
 function loadPopups(): Promise<HomePopups> {
 	// eslint-disable-next-line no-restricted-syntax
-	homePopups ??= (homePopupsUrl ? import(/* webpackIgnore: true */ homePopupsUrl) as Promise<HomePopupsModule> : Promise.reject(new Error('no popups'))).then(module => popups = module.createHomePopups({
+	homePopups ??= Promise.all([homePopupsUrl ? import(/* webpackIgnore: true */ homePopupsUrl) as Promise<HomePopupsModule> : Promise.reject(new Error('no popups')), loadMenus()]).then(([module, loaded]) => popups = module.createHomePopups({
 		strings,
 		post: message => vscode.postMessage(message),
-		Menu,
+		Menu: loaded.Menu,
+		tip: setTip,
 		customizeButton,
 		customizeElement: document.getElementById('customize-menu')!,
 		dashboard: () => view?.dashboard,
@@ -581,7 +558,7 @@ function loadCommentBox(): Promise<CommentBox> {
 
 function queryText(text: string): HTMLElement {
 	const query = el('span', 'dash-query', text);
-	query.title = text;
+	setTip(query, text);
 	return query;
 }
 
@@ -596,8 +573,7 @@ function groupHeading(row: HomeRow): HTMLElement {
 }
 
 function actionButton(spec: HomeButton, className = 'secondary'): HTMLButtonElement {
-	const node = button(spec.primary ? 'primary' : className, spec.label, () => run(spec.action), undefined, spec.title);
-	return node;
+	return tipButton(spec.primary ? 'primary' : className, spec.label, () => run(spec.action), undefined, spec.title);
 }
 
 function logo(tool: HomeRow['tool'], size: number): Element {
@@ -605,30 +581,6 @@ function logo(tool: HomeRow['tool'], size: number): Element {
 		return el('span');
 	}
 	return tool === 'gemini' ? icon('sparkle') : toolLogo(tool, size);
-}
-
-/** The "..." menu of a row; moved into the row it opens for. */
-let rowMenuItems: readonly HomeButton[] = [];
-let rowMenuReturn: HTMLElement | undefined;
-const rowMenuAnchor = el('button');
-const rowMenu: Menu = new Menu({
-	element: rowMenuElement,
-	anchor: rowMenuAnchor,
-	label: strings.moreActions,
-	sections: () => [{ rows: rowMenuItems.map(item => ({ name: item.label, run: () => { rowMenu.close(); run(item.action); } })) }],
-	empty: () => '',
-	returnFocus: () => rowMenuReturn ?? prompt,
-});
-
-function openRowMenu(anchor: HTMLElement, items: readonly HomeButton[]): void {
-	if (rowMenu.isOpen && rowMenuReturn === anchor) {
-		rowMenu.close();
-		return;
-	}
-	rowMenuItems = items;
-	rowMenuReturn = anchor;
-	anchor.parentElement!.append(rowMenuElement);
-	rowMenu.open();
 }
 
 function renderDashboard(dash: HomeDashboard): void {
@@ -640,7 +592,7 @@ function renderDashboard(dash: HomeDashboard): void {
 	if (changed(tools, dash.tools)) {
 		tools.replaceChildren(...dash.tools.map(tool => {
 			const node = el('span', `dash-tool ${tool.tone}`);
-			node.title = tool.label;
+			setTip(node, tool.label);
 			node.setAttribute('role', 'img');
 			node.setAttribute('aria-label', tool.label);
 			node.append(toolLogo(tool.id, 18));
@@ -649,9 +601,15 @@ function renderDashboard(dash: HomeDashboard): void {
 		}));
 	}
 	refreshButton.classList.toggle('spinning', dash.refreshing);
-	banner.hidden = !dash.banner;
-	if (changed(banner, dash.banner ?? '')) {
-		banner.replaceChildren(...dash.banner ? [icon('warning'), el('span', undefined, dash.banner)] : []);
+	// One per server down or refusing its token; the extension drops each once its server answers.
+	banners.hidden = !dash.banners?.length;
+	if (changed(banners, dash.banners ?? [])) {
+		banners.replaceChildren(...(dash.banners ?? []).map(banner => {
+			const node = el('div', `dash-banner ${banner.tone}`);
+			node.setAttribute('role', 'status');
+			node.append(icon(banner.tone === 'error' ? 'error' : 'warning'), el('span', undefined, banner.text), actionButton(banner.button));
+			return node;
+		}));
 	}
 
 	if (changed(quick, dash.quickActions)) {
@@ -688,9 +646,7 @@ function renderDashboard(dash: HomeDashboard): void {
 		needs.replaceChildren();
 		if (dash.needs.length) {
 			const head = el('div', 'dash-card-head');
-			const query = el('span', 'dash-query', dash.needsQuery);
-			query.title = dash.needsQuery;
-			head.append(el('span', 'dot warn'), el('h3', undefined, strings.needsYou), query);
+			head.append(el('span', 'dot warn'), el('h3', undefined, strings.needsYou), queryText(dash.needsQuery));
 			const rows = el('div', 'dash-rows');
 			for (const need of dash.needs) {
 				rows.append(dashRow({ tool: need.tool, title: need.title, detail: need.detail, ...need.pill ? { pill: need.pill } : {}, button: need.button }));
@@ -712,9 +668,10 @@ function dashCard(card: HomeCard): HTMLElement {
 		head.append(button('link-button', card.link.label, () => run(card.link!.action)));
 	}
 	if (card.query) {
-		const query = el('span', 'dash-query', card.query);
-		query.title = card.query;
-		head.append(query);
+		head.append(queryText(card.query));
+	}
+	if (card.stale && card.asOf) {
+		head.append(el('span', 'dash-pill dash-as-of', card.asOf));
 	}
 	node.append(head);
 	if (card.connect) {
@@ -750,7 +707,7 @@ function dashRow(row: HomeRow, inList = false): HTMLElement {
 	if (row.type) {
 		const type = icon(row.type.icon);
 		type.classList.add('dash-type', row.type.color);
-		type.title = row.type.name;
+		setTip(type, row.type.name);
 		type.removeAttribute('aria-hidden');
 		type.setAttribute('role', 'img');
 		type.setAttribute('aria-label', row.type.name);
@@ -761,11 +718,11 @@ function dashRow(row: HomeRow, inList = false): HTMLElement {
 	}
 	if (row.repo && inList) {
 		const repo = el('span', 'dash-repo', row.repo.slice(row.repo.lastIndexOf('/') + 1));
-		repo.title = row.repo;
+		setTip(repo, row.repo);
 		node.append(repo);
 	}
 	const name = row.open ? button('dash-row-title', row.title, () => run(row.open!)) : el('span', 'dash-row-title', row.title);
-	name.title = row.title;
+	setTip(name, row.title);
 	node.append(name);
 	if (row.detail) {
 		node.append(el('span', 'dash-row-detail', row.detail));
@@ -788,7 +745,7 @@ function dashRow(row: HomeRow, inList = false): HTMLElement {
 	}
 	if (row.menu?.length) {
 		const wrap = el('span', 'dash-row-more');
-		const more = button('icon-button', '', () => openRowMenu(more, row.menu!), 'ellipsis', strings.moreActions);
+		const more = tipButton('icon-button', '', () => void loadMenus().then(loaded => loaded.openRow(more, row.menu!)), 'ellipsis', strings.moreActions);
 		wrap.append(more);
 		node.append(wrap);
 	}

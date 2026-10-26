@@ -25,7 +25,7 @@ Home's **Get started** card has a button for each step that is left: **Sign In**
 
 1. **Gemini CLI.** GeminiCode comes with a tested Gemini CLI. It uses `gemini.cliPath`, then a copy you installed from GeminiCode, then the bundled copy, then `gemini` on your `PATH`.
 2. **Sign in.** Run **Gemini: Sign In with Google**. If your account needs a one-time step the editor can't show, run **Gemini: Complete Setup in Terminal**.
-3. **Project.** Run **Gemini: Set Google Cloud Project ID** and enter the project ID, such as `my-project-123`, not the project number.
+3. **Google Cloud Project ID.** Run **Gemini: Set Google Cloud Project ID** and enter the project ID, such as `my-project-123`, not the project number.
 4. **Make it yours.** Pick a theme, a code font and file icons.
 5. **First agent.** Describe a task on Home and press Return.
 
@@ -35,7 +35,7 @@ The **Gemini** item in the status bar shows the agent's state. Hover over it for
 
 Describe a task on **Home** and press Return. The agent opens in a tab of its own: it reads your code, asks before each edit and command, and shows every file it changes in the **Changes** panel on the right. Keep or undo each change when it's done.
 
-- To give the agent its own branch, tick **On its own branch** before you press Return. See [Agents on their own branch](agents.md#agents-on-their-own-branch).
+- To give the agent its own branch, choose **On Its Own Branch** under the task before you press Return. See [Agents on their own branch](agents.md#agents-on-their-own-branch).
 - To start more agents, choose **New Agent** in the Agents pane, or press <kbd>⌥⌘N</kbd>.
 - Your terminal's `gemini` and GeminiCode share settings, sign-in and saved chats.
 

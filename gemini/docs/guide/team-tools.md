@@ -57,7 +57,7 @@ Cards follow:
 
 A card shows its first few items. When it has more, **Show All** opens the whole list in a popup, with a filter for long lists: click an item to open it, as on the card. In the merge requests' popup each row also names its repository after the `!number` (point at it for the full `group/repo` path), and the filter matches it, so merge requests with the same title in different repositories stay apart. A ticket or merge request opens in your browser and leaves the list open; an agent opens in its tab.
 
-**Customize** hides and reorders cards and picks the release branch. Home shows the last data at once and refreshes each tool in the background; with the VPN off, VPN-only cards keep their last results, dimmed. Turn off opening it at start-up with `gemini.home.openOnStartup`; <kbd>⇧⌘H</kbd> or **Gemini: Home** brings it back.
+**Customize** hides and reorders cards and picks the release branch. Home shows the last data at once and refreshes each tool in the background; with the VPN off, VPN-only cards keep their last results, dimmed, with their time. One banner per server says so, such as "GitLab is unreachable, probably the VPN. Showing results from 10:42.", with **Retry**, and it clears by itself once the server answers. When a server refuses your token, a banner says so, such as "Jira rejected your token.", with **Replace Token...**, which opens Connections. Turn off opening it at start-up with `gemini.home.openOnStartup`; <kbd>⇧⌘H</kbd> or **Gemini: Home** brings it back.
 
 ## In chat
 

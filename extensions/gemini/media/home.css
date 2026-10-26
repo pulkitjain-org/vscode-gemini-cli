@@ -107,20 +107,58 @@ button.link-button:hover {
 	#refresh.spinning .codicon { animation: none; }
 }
 
+/* One banner per team server that is down (warn) or refused the token (error), above the composer. */
+.dash-banners {
+	display: grid;
+	gap: 8px;
+	margin-bottom: 14px;
+}
+
+.dash-banners[hidden] { display: none; }
+
 .dash-banner {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	margin-bottom: 14px;
 	padding: 8px 12px;
 	border: 1px solid color-mix(in srgb, var(--gemini-warn) 40%, transparent);
 	border-radius: var(--gemini-radius);
 	color: var(--gemini-warn);
 }
 
-.dash-banner[hidden] { display: none; }
+.dash-banner.error {
+	border-color: color-mix(in srgb, var(--gemini-error) 45%, transparent);
+	background: color-mix(in srgb, var(--gemini-error) 7%, transparent);
+	color: var(--gemini-error);
+}
 
-/* The composer's bar: folder · own branch · mode · model, then From Your Tools and Start Agent. */
+.dash-banner > span {
+	flex: 1;
+	min-width: 0;
+}
+
+/* Where the next agent works: Here, On Its Own Branch or As a Project, as tabs like Write and Preview, with a line on the one picked. */
+.home-start-as {
+	display: flex;
+	gap: 12px;
+	margin-top: 4px;
+	font-size: 11.5px;
+}
+
+.home-start-as .composer-tab[aria-checked="true"] {
+	color: var(--vscode-foreground);
+	box-shadow: inset 0 -1.5px var(--vscode-foreground);
+}
+
+.home-start-hint {
+	margin: 4px 0 6px;
+	font-size: 11.5px;
+}
+
+.home-start-as[hidden],
+.home-start-hint[hidden] { display: none; }
+
+/* The composer's bar: folder · mode · model, then From Your Tools and Start Agent. */
 .dash .home-composer-bar {
 	flex-wrap: wrap;
 	gap: 6px;
@@ -159,7 +197,7 @@ button.link-button:hover {
 	padding: 3px 10px;
 }
 
-/* The quick actions, and Project Helpers at the far right under the composer. */
+/* The quick actions, and Agent Setup at the far right under the composer. */
 .dash-quick-row {
 	display: flex;
 	align-items: center;

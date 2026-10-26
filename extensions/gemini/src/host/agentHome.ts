@@ -26,6 +26,7 @@ import { moveCard, toggleCard, type DashboardLayout } from '../acp/dashboard';
 import { buildDashboard, DashboardInput, StartupState } from './homeDashboard';
 import { FromHome, HomeAction, HomeAgent, HomeCardId, HomeIndex, HomeProject, HomeStrings, HomeView, ToHome } from './panelProtocol';
 import { TeamData } from './teamData';
+import { teamToolIds } from '../acp/teamHttp';
 import type { TeamConnections } from './teamConnections';
 import { projectsEnabled } from './projects';
 import { agentsColumn } from './editorPlacement';
@@ -320,6 +321,8 @@ export class AgentHome implements vscode.Disposable {
 			now: new Date(),
 			connected: team?.connected ?? new Set(),
 			state: tool => team?.state(tool) ?? { kind: 'off' },
+			health: tool => team?.serverHealth(tool) ?? { kind: 'ok' },
+			resultsAt: tool => this.teamData?.resultsAt(tool),
 			data: this.teamData?.snapshot ?? {},
 			agents,
 			layout: this.layout(),
@@ -360,7 +363,42 @@ export class AgentHome implements vscode.Disposable {
 			case 'comment':
 				// The page opens its comment box itself; the comment comes back as a 'comment' message.
 				return;
+			case 'retry':
+				return this.retry(action.tool);
 		}
+	}
+
+	/** A banner's Retry: checks `tool`'s server now, past its backoff, and reads the cards' data again. */
+	private async retry(tool: string): Promise<void> {
+		const team = this.agents.teamTools;
+		const known = teamToolIds.find(id => id === tool);
+		if (!team || !known || !team.connected.has(known)) {
+			return;
+		}
+		this.schedule();
+		await team.refresh([known]);
+		const folder = (await this.agents.workspaces())[0]?.folder;
+		await this.teamData?.refresh(folder, this.layout().qualityBranch);
+		this.schedule();
+	}
+
+	/**
+	 * Starts a project on `text` in `folder`, as New Project does there, and
+	 * sends the task to its coordinator. Resolves with whether it started; when
+	 * not, the user has been told why, or turned it down.
+	 */
+	private async startProject(folder: string, text: string, attachments: Extract<FromHome, { type: 'start' }>['attachments']): Promise<boolean> {
+		const coordinators = () => this.agents.summaries().filter(a => a.project?.role === 'coordinator').map(a => a.id);
+		const before = new Set(coordinators());
+		await vscode.commands.executeCommand('gemini.projects.new', { kind: 'workspace', folder });
+		const id = coordinators().find(each => !before.has(each));
+		const chat = id ? this.agents.controllerOf(id) : undefined;
+		if (!chat) {
+			return false;
+		}
+		// Not awaited: send resolves when the whole turn ends.
+		void chat.send(text, attachments);
+		return true;
 	}
 
 	/** The team tools and the Jira client for the comment box, which always goes to Jira's REST API (never mcp-atlassian in Docker). */
@@ -458,7 +496,10 @@ export class AgentHome implements vscode.Disposable {
 				return;
 			case 'start':
 				if (message.text.trim()) {
-					if (!await this.agents.startWithPrompt(message.folder, message.text.trim(), message.ownBranch, message.mode, message.attachments)) {
+					const started = message.project
+						? await this.startProject(message.folder, message.text.trim(), message.attachments)
+						: await this.agents.startWithPrompt(message.folder, message.text.trim(), message.ownBranch, message.mode, message.attachments);
+					if (!started) {
 						void this.panel?.webview.postMessage({ type: 'startFailed', text: message.text } satisfies ToHome);
 					}
 				}
@@ -488,7 +529,7 @@ export class AgentHome implements vscode.Disposable {
 				}
 				return;
 			}
-			case 'projectHelpers':
+			case 'agentSetup':
 				await vscode.commands.executeCommand('gemini.projectSettings');
 				return;
 			case 'openIndex':
@@ -562,12 +603,17 @@ export class AgentHome implements vscode.Disposable {
 			subtitle: vscode.l10n.t("Describe the task. A new agent starts on it right away, and you can start more while it works."),
 			placeholder: vscode.l10n.t("Fix the rounding in the cart total and add a test"),
 			start: vscode.l10n.t("Start Agent"),
-			ownBranch: vscode.l10n.t("On its own branch"),
-			ownBranchHint: vscode.l10n.t("The agent works in its own copy of the repository, on a new branch. Merge Back brings its work into yours."),
+			startAs: vscode.l10n.t("Where the agent works"),
+			startHere: vscode.l10n.t("Here"),
+			startHereHint: vscode.l10n.t("Here: works in this folder, on your current branch."),
+			startOwnBranch: vscode.l10n.t("On Its Own Branch"),
+			startOwnBranchHint: vscode.l10n.t("On Its Own Branch: a new branch and folder, merged back when done."),
+			startProject: vscode.l10n.t("As a Project"),
+			startProjectHint: vscode.l10n.t("As a Project: a coordinator that splits the work into threads."),
 			workspace: vscode.l10n.t("Workspace"),
 			addFolder: vscode.l10n.t("Add Folder to Workspace..."),
-			projectHelpers: vscode.l10n.t("Project Helpers"),
-			projectHelpersHint: vscode.l10n.t("MCP servers, rules and hooks for your projects"),
+			agentSetup: vscode.l10n.t("Agent Setup"),
+			agentSetupHint: vscode.l10n.t("MCP servers, skills, rules and hooks your agents load"),
 			index: vscode.l10n.t("Index"),
 			indexHint: vscode.l10n.t("What agents can look up without searching file by file: each workspace's index and the docs you attach"),
 			plusMenu: vscode.l10n.t("Add files and pick a mode"),
@@ -662,6 +708,8 @@ export class AgentHome implements vscode.Disposable {
 		const commentBox = webview.asWebviewUri(vscode.Uri.joinPath(media, 'commentBox.js'));
 		// Show All's popup and the Customize menu, loaded the first time either opens.
 		const homePopups = webview.asWebviewUri(vscode.Uri.joinPath(media, 'homePopups.js'));
+		// The composer's and the rows' menus, loaded once Home has settled or on the first click on one of their buttons.
+		const homeMenus = webview.asWebviewUri(vscode.Uri.joinPath(media, 'homeMenus.js'));
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
 		const menuStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'menu.css'));
 		const homeStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'home.css'));
@@ -686,21 +734,22 @@ export class AgentHome implements vscode.Disposable {
 			<h1 id="title"></h1><p id="subtitle" class="muted"></p><span id="stale" class="dash-pill" hidden></span>
 			<div class="dash-tools"><span id="tools" class="dash-tool-logos"></span><button type="button" id="refresh" class="icon-button"><i class="codicon codicon-refresh" aria-hidden="true"></i></button><span class="dash-customize"><button type="button" id="customize" class="icon-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-settings-gear" aria-hidden="true"></i></button><div id="customize-menu" class="home-menu" hidden></div></span></div>
 		</header>
-		<div id="banner" class="dash-banner" hidden></div>
+		<div id="banners" class="dash-banners" hidden></div>
 		<section class="home-start">
 			<form id="composer" class="home-composer">
 				<div id="attachments" class="attachments" hidden></div>
 				<div class="composer-tabs" role="tablist"><button type="button" id="tab-write" class="composer-tab" role="tab" aria-selected="true" aria-controls="prompt"></button><button type="button" id="tab-preview" class="composer-tab" role="tab" aria-selected="false" aria-controls="preview"></button></div>
 				<textarea id="prompt" rows="3" spellcheck="${spellCheckOn()}"></textarea>
 				<div id="preview" class="composer-preview markdown" role="tabpanel" tabindex="0" hidden></div>
+				<div id="start-as" class="home-start-as" role="radiogroup" hidden></div>
+				<p id="start-hint" class="home-start-hint muted" hidden></p>
 				<div class="home-composer-bar">
-					<span class="home-plus"><button type="button" id="plus" class="plus-button"><i class="codicon codicon-add" aria-hidden="true"></i></button><div id="plus-menu" class="home-menu" hidden></div></span>
-					<span class="home-folder"><button type="button" id="workspace" class="option-button"><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="workspace-menu" class="home-menu" hidden></div></span><button type="button" id="index-state" class="index-state" hidden></button>
-					<label id="own-branch-label" class="option-switch"><span class="sep" aria-hidden="true">·</span><input type="checkbox" id="own-branch"><span class="switch-track" aria-hidden="true"></span><span class="switch-label"></span></label>
-					<span class="home-mode"><span class="sep" aria-hidden="true">·</span><button type="button" id="mode" class="option-button"><i class="codicon" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="mode-menu" class="home-menu" hidden></div></span>
+					<span class="home-plus"><button type="button" id="plus" class="plus-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-add" aria-hidden="true"></i></button><div id="plus-menu" class="home-menu" hidden></div></span>
+					<span class="home-folder"><button type="button" id="workspace" class="option-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="workspace-menu" class="home-menu" hidden></div></span><button type="button" id="index-state" class="index-state" hidden></button>
+					<span class="home-mode"><span class="sep" aria-hidden="true">·</span><button type="button" id="mode" class="option-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="mode-menu" class="home-menu" hidden></div></span>
 					<span id="model" class="home-model" hidden><span class="sep" aria-hidden="true">·</span><span></span></span>
 					<span class="spacer"></span>
-					<span class="home-from-tools"><button type="button" id="from-tools" class="option-button"><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="from-tools-menu" class="home-menu" hidden></div></span>
+					<span class="home-from-tools"><button type="button" id="from-tools" class="option-button" aria-haspopup="menu" aria-expanded="false"><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="from-tools-menu" class="home-menu" hidden></div></span>
 					<button type="submit" id="start" class="primary"><span></span></button>
 				</div>
 			</form>
@@ -714,7 +763,7 @@ export class AgentHome implements vscode.Disposable {
 		<section id="projects" class="home-section" hidden></section>
 		<section id="earlier" class="home-section"></section>
 	</main>
-	<script nonce="${nonce}" type="module" src="${script}" data-draft-markdown="${draftMarkdown}" data-comment-box="${commentBox}" data-home-popups="${homePopups}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
+	<script nonce="${nonce}" type="module" src="${script}" data-draft-markdown="${draftMarkdown}" data-comment-box="${commentBox}" data-home-popups="${homePopups}" data-home-menus="${homeMenus}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
 </html>`;
 	}

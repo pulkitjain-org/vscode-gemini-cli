@@ -513,7 +513,7 @@ button.send:disabled {
 	color: var(--gemini-faint);
 }
 
-/* The folder, the own-branch switch and the mode, in the composer's bar. */
+/* The folder and the mode, in the composer's bar. */
 .home-folder,
 .home-mode,
 .home-plus {
@@ -553,56 +553,6 @@ button.option-button[aria-expanded="true"] {
 
 button.option-button .codicon-chevron-down {
 	font-size: 11px;
-}
-
-.option-switch {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	cursor: pointer;
-	user-select: none;
-}
-
-.option-switch[hidden] {
-	display: none;
-}
-
-.option-switch input {
-	position: absolute;
-	opacity: 0;
-	pointer-events: none;
-}
-
-.switch-track {
-	position: relative;
-	width: 26px;
-	height: 15px;
-	border-radius: 8px;
-	background: var(--gemini-switch-off);
-}
-
-.switch-track::after {
-	content: "";
-	position: absolute;
-	top: 2px;
-	left: 2px;
-	width: 11px;
-	height: 11px;
-	border-radius: 50%;
-	background: var(--gemini-surface);
-}
-
-.option-switch input:checked + .switch-track {
-	background: var(--gemini-accent);
-}
-
-.option-switch input:checked + .switch-track::after {
-	left: 13px;
-}
-
-.option-switch input:focus-visible + .switch-track {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: 2px;
 }
 
 .home-section {

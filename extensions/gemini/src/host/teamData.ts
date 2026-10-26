@@ -100,6 +100,12 @@ export class TeamData implements vscode.Disposable {
 		return this.snapshotValue as TeamSnapshot;
 	}
 
+	/** When the newest of `tool`'s data on the cards came, in ms since the epoch; unset when it has none. For Home's banners. */
+	resultsAt(tool: TeamToolId): number | undefined {
+		const times = (Object.keys(sourceTool) as Source[]).filter(source => sourceTool[source] === tool).map(source => this.snapshotValue[source]).flatMap(fetched => fetched?.data !== undefined && fetched.at ? [fetched.at] : []);
+		return times.length ? Math.max(...times) : undefined;
+	}
+
 	/** When the last refresh started, in ms since the epoch; 0 before the first. */
 	get refreshedAt(): number {
 		return this.lastRefresh;
