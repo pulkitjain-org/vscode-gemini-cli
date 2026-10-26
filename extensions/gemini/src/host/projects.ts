@@ -25,7 +25,7 @@ import { attachmentLabel, type Attachment } from '../acp/attachments';
 import { ConductorReader } from '../acp/conductor';
 import type { InstantAnswer } from '../acp/permissions';
 import { ProjectHub, panelState, threadCounts, threadMemoryContext, type ThreadRequest } from '../acp/projectHub';
-import { coordinatorTools, isProjectToolCall, isProjectToolTitle, ProjectMcpServer, projectServerName, threadTools, type ProjectCaller } from '../acp/projectMcp';
+import { coordinatorTools, isProjectToolCall, isProjectToolTitle, ProjectMcpServer, projectServerName, threadTools, toolCallOwner, type ProjectCaller } from '../acp/projectMcp';
 import { projectToolsBlock, type ProjectToolsBlock } from '../acp/projectToolsCheck';
 import { reactionReport, type ReactionRef } from '../acp/reactions';
 import type { McpToolResult } from '../acp/browserMcp';
@@ -168,13 +168,18 @@ export class Projects implements vscode.Disposable {
 	instantAnswer(record: AgentRecord, request: acp.RequestPermissionRequest): InstantAnswer | undefined {
 		const allow = request.options.find(option => option.kind === 'allow_once') ?? request.options.find(option => option.kind.startsWith('allow'));
 		if (record.project?.role === 'coordinator') {
-			if (isProjectToolCall(request, coordinatorTools)) {
+			const owner = toolCallOwner(request, coordinatorTools, projectServerName);
+			if (owner === 'ours') {
 				return allow && { optionId: allow.optionId, quiet: true };
+			}
+			if (owner === 'unknown') {
+				// Titled as a project tool, but its id doesn't say whose: the user decides.
+				return undefined;
 			}
 			const reject = request.options.find(option => option.kind === 'reject_once') ?? request.options.find(option => option.kind.startsWith('reject'));
 			return reject && { optionId: reject.optionId, label: vscode.l10n.t("Refused automatically: the coordinator hands work to threads") };
 		}
-		if (record.project?.role === 'thread' && isProjectToolCall(request, threadTools)) {
+		if (record.project?.role === 'thread' && isProjectToolCall(request, threadTools, projectServerName)) {
 			return allow && { optionId: allow.optionId, quiet: true };
 		}
 		return undefined;

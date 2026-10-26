@@ -12,7 +12,7 @@ import { adfToText, formatDuration, JiraClient, jiraKeyIn, parseDuration, textTo
 import { locateInLoginShell, parseSnykCode, parseSnykTest, Run, SnykCli } from '../../src/acp/snyk';
 import { isReleaseBranch, releaseBranchForVersion, sortReleaseBranches } from '../../src/acp/teamDefaults';
 import { normalizeBaseUrl, teamRequest, TeamToolError } from '../../src/acp/teamHttp';
-import { external, isConfirmToolCall, teamConfirmTools, teamReadTools, teamToolsFor, teamWriteTools } from '../../src/acp/teamTools';
+import { callTeamTool, external, isConfirmToolCall, teamConfirmTools, teamReadTools, TeamToolContext, teamToolsFor, teamWriteTools } from '../../src/acp/teamTools';
 import { TeamToolsMcpServer } from '../../src/acp/teamToolsMcp';
 
 /** A local HTTP server answering with `handler`; records each request. */
@@ -243,8 +243,23 @@ describe('geminicode-tools server', () => {
 	it('keeps writes apart from reads', () => {
 		expect(teamWriteTools.map(t => t.name)).toEqual(['jira_comment', 'jira_transition', 'jira_log_time', 'jira_assign', 'gitlab_create_mr', 'gitlab_reply', 'gitlab_merge']);
 		expect(teamWriteTools.filter(t => !teamConfirmTools.includes(t)).map(t => t.name)).toEqual(['jira_comment', 'jira_assign', 'gitlab_reply']);
-		expect(teamReadTools).toHaveLength(12);
+		expect(teamReadTools).toHaveLength(10);
+		expect(teamReadTools.map(t => t.name)).not.toContain('snyk_test');
 		expect(teamToolsFor(new Set())).toEqual([]);
+	});
+
+	it('refuses Snyk\'s tests when shell commands are off, since they run the project\'s build tools', async () => {
+		const ran: string[] = [];
+		const snyk = new SnykCli('snyk', async (_file, args) => {
+			ran.push(args.join(' '));
+			return { code: 0, stdout: args[0] === 'test' ? '{"vulnerabilities":[],"ok":true}' : '1.1301.0', stderr: '' };
+		}, async () => undefined);
+		const context = (allowShell: boolean): TeamToolContext => ({ connected: () => new Set(['snyk']), connectors: () => ({ snyk }), folder: () => '/work/app', defaults: async () => ({}), allowShell: () => allowShell });
+		const off = await callTeamTool(context(false), 'a1', 'snyk_test', {});
+		const offCode = await callTeamTool(context(false), 'a1', 'snyk_code_test', {});
+		expect({ off: off.isError, offCode: offCode.isError, text: off.content[0], ran }).toEqual({ off: true, offCode: true, text: { type: 'text', text: expect.stringMatching(/shell commands are turned off/) }, ran: [] });
+		const on = await callTeamTool(context(true), 'a1', 'snyk_test', {});
+		expect({ on: !!on.isError, ran: ran.filter(r => r.startsWith('test')) }).toEqual({ on: false, ran: ['test --json --all-projects'] });
 	});
 });
 
