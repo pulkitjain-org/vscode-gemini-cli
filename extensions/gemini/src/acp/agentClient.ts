@@ -3,8 +3,12 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { promises as fs } from 'node:fs';
 import type * as acp from '@agentclientprotocol/sdk';
 import type { AgentConnection } from './agentConnection';
+import { FileAccessDeniedError } from './fileAccess';
+import { isAllowed, protectedWriteRequest } from './permissions';
+import { isProtectedSetting } from './sessionApprovals';
 import { AgentError, AgentErrorInfo, classifyAgentError } from './errors';
 import { Emitter } from './events';
 import { AgentRuntime, AgentRuntimeState, FileSystemHandlers } from './agentRuntime';
@@ -422,6 +426,7 @@ export class AgentClient {
 				requestPermission: params => this.requestPermission(params),
 				fileSystem: this.options.fileSystem,
 				onDidWriteFile: filePath => this.options.onDidWriteFile?.(filePath),
+				beforeWrite: (filePath, content) => this.confirmProtectedWrite(session.sessionId, filePath, content),
 			});
 			this.resumeSessionId = savedSessionId;
 			// Model and mode together rather than one after the other: they are independent, and each is a round trip before the chat is ready.
@@ -554,6 +559,25 @@ export class AgentClient {
 			return Promise.resolve({ outcome: { outcome: 'selected', optionId: allow.optionId } });
 		}
 		return this.options.requestPermission(params);
+	}
+
+	/**
+	 * In Auto Edit the CLI applies edits without asking, and its policy engine is
+	 * not consulted for them (gemini-cli 0.64), so an edit to a setting that
+	 * decides what runs next (the worktree setup script, the CLI's project
+	 * settings, the folder's editor settings and tasks) asks here, as a card,
+	 * before the write. Other modes ask already (Default) or never (YOLO).
+	 */
+	private async confirmProtectedWrite(sessionId: string, filePath: string, content: string): Promise<void> {
+		if (this._settings.mode?.currentId !== 'autoEdit' || !isProtectedSetting(filePath)) {
+			return;
+		}
+		const oldText = await fs.readFile(filePath, 'utf8').catch(() => null);
+		const request = protectedWriteRequest(sessionId, filePath, oldText, content);
+		const response = await this.options.requestPermission(request);
+		if (!isAllowed(request, response)) {
+			throw new FileAccessDeniedError(filePath, 'the user did not allow the edit, since this file decides what runs next');
+		}
 	}
 
 	/** Starts counting a reopened session's replay; `count` updates are coming, or an unknown number. */

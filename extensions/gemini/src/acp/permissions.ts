@@ -196,3 +196,33 @@ function withApprovalLabels(request: acp.RequestPermissionRequest, prefixes: rea
 			: option),
 	};
 }
+
+let nextProtectedWrite = 0;
+
+/**
+ * The card for an agent's edit to a setting that decides what runs next, asked by GeminiCode
+ * before the write in Auto Edit: the edit as a diff, with Allow and Reject only.
+ */
+export function protectedWriteRequest(sessionId: string, filePath: string, oldText: string | null, newText: string): acp.RequestPermissionRequest {
+	return {
+		sessionId,
+		toolCall: {
+			toolCallId: `geminicode-protected-write-${nextProtectedWrite++}`,
+			status: 'pending',
+			title: `Edit ${filePath}, which decides what runs next`,
+			kind: 'edit',
+			content: [{ type: 'diff', path: filePath, oldText, newText }],
+			locations: [{ path: filePath }],
+		},
+		options: [
+			{ optionId: 'allow', name: 'Allow', kind: 'allow_once' },
+			{ optionId: 'reject', name: 'Reject', kind: 'reject_once' },
+		],
+	};
+}
+
+/** Whether `response` picked one of `request`'s allow options. */
+export function isAllowed(request: acp.RequestPermissionRequest, response: acp.RequestPermissionResponse): boolean {
+	const outcome = response.outcome;
+	return outcome.outcome === 'selected' && request.options.some(option => option.optionId === outcome.optionId && option.kind.startsWith('allow'));
+}

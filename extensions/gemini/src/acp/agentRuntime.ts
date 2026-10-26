@@ -37,6 +37,8 @@ export interface SessionHandlers {
 	readonly fileSystem?: FileSystemHandlers;
 	/** Told after the agent wrote a file through the client, such as to let shell approvals lapse. */
 	onDidWriteFile?(filePath: string): void;
+	/** Asked before the agent writes a file through the client; rejects to refuse the write. */
+	beforeWrite?(filePath: string, content: string): Promise<void>;
 }
 
 export interface AgentRuntimeOptions {
@@ -379,6 +381,7 @@ export class AgentRuntime {
 				if (!write) {
 					throw unsupported('fs/write_text_file');
 				}
+				await this.sessions.get(params.sessionId)?.beforeWrite?.(params.path, params.content);
 				const written = await write(params);
 				this.sessions.get(params.sessionId)?.onDidWriteFile?.(params.path);
 				return written;
