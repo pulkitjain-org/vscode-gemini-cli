@@ -12,8 +12,9 @@ A setting in a workspace's settings applies only to that folder, and is shared w
 | `gemini.cliPath` | empty | A `gemini` executable or a CLI's `bundle/gemini.js` to run instead of GeminiCode's own copies. |
 | `gemini.cli.version` | empty | Which of GeminiCode's own CLI copies to run, such as `0.64.0`. Empty runs the newest. |
 | `gemini.cli.checkForUpdates` | on | Offer newer Gemini CLI releases, at most once a day. Nothing installs without your click. |
+| `gemini.cli.registry` | empty | The npm registry, such as your organisation's mirror, that GeminiCode installs and updates its copy of the Gemini CLI from. Empty uses the public registry. |
 | `gemini.app.checkForUpdates` | on | Say when a newer GeminiCode is out, checking every few hours. GeminiCode never downloads it by itself. |
-| `gemini.agent.startEarly` | on | Start the Gemini CLI a few seconds after GeminiCode opens, once you're signed in, so your first prompt doesn't wait for it. |
+| `gemini.agents.startEarly` | on | Start the Gemini CLI a few seconds after GeminiCode opens, once you're signed in, so your first prompt doesn't wait for it. |
 
 ## Approvals and tools
 
@@ -103,6 +104,7 @@ An organisation can lock these settings through VS Code's policy system: a macOS
 | `gemini.cliPath` | `GeminiCliPath` |
 | `gemini.cli.version` | `GeminiCliVersion` |
 | `gemini.cli.checkForUpdates` | `GeminiCliCheckForUpdates` |
+| `gemini.cli.registry` | `GeminiCliRegistry` |
 | `gemini.app.checkForUpdates` | `GeminiCodeCheckForUpdates` |
 | `gemini.approval.allowAutoEdit` | `GeminiAllowAutoEdit` |
 | `gemini.approval.allowYolo` | `GeminiAllowYolo` |

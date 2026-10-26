@@ -123,7 +123,7 @@ The command is worked out without blocking the extension host. The CLI's resolut
 
 `AgentRuntime` runs `initialize` once and serves every chat from that process. Each chat is its own ACP session with its own `cwd`. With a Google sign-in a new session takes about 0.8 s, against about 3 s for a new process ([FINDINGS.md](FINDINGS.md#sessions)).
 
-`AgentWarmup` starts the process 3 s after the window opens (`gemini.agent.startEarly`), but only when it can start without asking anything: setup finished before, a saved sign-in or API key, and no project problem. A CLI with no saved sign-in opens the sign-in flow as it starts.
+`AgentWarmup` starts the process 3 s after the window opens (`gemini.agents.startEarly`, which still reads its old name, `gemini.agent.startEarly`), but only when it can start without asking anything: setup finished before, a saved sign-in or API key, and no project problem. A CLI with no saved sign-in opens the sign-in flow as it starts.
 
 While the user types on Agent Home, `AgentRuntime.prepareSession` opens a spare session for that folder and the agent's browser servers (the agent id is chosen ahead for that). The next `newSession` with the same key takes it, so starting the agent waits for no `session/new`. A project's coordinator and threads never take a spare, because their sessions need the project's MCP server, which a spare opens without.
 
@@ -760,7 +760,7 @@ A CLI older than `MIN_CLI_VERSION` (0.64.0) gets a warning.
 
 ### The bundled CLI
 
-The bundled version and its npm SHA-512 are pinned in `extensions/gemini/package.json` (`bundledCli`). `npm run bundle-cli` in `extensions/gemini` downloads it with `npm pack`, refuses a mismatched checksum, and unpacks `bundle/`, `package.json` and `LICENSE` into `cli/`, which git ignores. The release build runs it before packaging. The CLI is plain JavaScript with no native modules, so it needs nothing extra for macOS signing. Raise the pin only to a version the real-CLI tests pass on.
+The bundled version and its npm SHA-512 are pinned in `extensions/gemini/package.json` (`bundledCli`). `npm run bundle-cli` in `extensions/gemini` downloads it with `npm pack`, refuses a mismatched checksum, and unpacks `bundle/`, `package.json` and `LICENSE` into `cli/`, which git ignores. The release build runs it before packaging. The CLI is plain JavaScript with no native modules, so it needs nothing extra for macOS signing. Raise the pin only to a version the real-CLI tests pass on. `bundle-cli` also stops when the CLI breaks the contract in `src/acp/cli/` (below), and, in CI, when the app's ripgrep is missing.
 
 ### What GeminiCode changes in its own copies
 
@@ -769,11 +769,31 @@ GeminiCode's own copies (bundled and installed) get two changes. A CLI the user 
 - **The output cap.** In ACP mode the CLI hands a tool's whole output to the model, skipping the 40,000-character cap it applies elsewhere, so one large `git diff` could push a session past the model's input limit. `src/acp/cliPatches.ts` puts the cap back on the ACP path in three places: when the bundled copy is built, on install, and at launch for older installs. `npm run bundle-cli` fails when the patch no longer matches a new CLI.
 - **Ripgrep.** `cliRipgrep.ts` copies the app's ripgrep into `bundle/vendor/ripgrep/`, in the bundled copy when it is built and in installed copies at launch. Without it the CLI's `grep_search` falls back to `git grep`.
 
+### What GeminiCode reads from the CLI
+
+Besides ACP, a few features read the CLI's private formats. They are all in `src/acp/cli/formats.ts`, so a CLI bump has one file to check:
+
+- **Bundle constants**: the OAuth client and the Flash model names, which direct requests read from the installed bundle (`readCliBundle`).
+- **Saved sessions**: `~/.gemini` (or `GEMINI_CLI_HOME`), `projects.json`, and `tmp/<project>/chats/session-*`, for reopening a terminal session, Rewind and session snapshots.
+- **The debug log**: `GEMINI_DEBUG_LOG_FILE` and its `[<time>] [<level>] [MCP error] ...` lines, for MCP servers that fail to start.
+- **The telemetry file**: the `GEMINI_TELEMETRY_*` variables and the `gemini_cli.*` event names, for Record Performance Trace.
+
+`checkCliContract` (`src/acp/cli/contract.ts`) looks in a CLI's bundle for the code behind each one and returns what is missing, by the feature it affects. `npm run bundle-cli` refuses a CLI that misses any, `test/acp/realCliContract.test.ts` runs it against the real CLI in Gemini CI (bundled, `latest` and `preview`), and Check Agent Connection can show the result for whichever CLI runs.
+
+### Networks and certificates
+
+The agent's environment is the app's, so an app opened from the Dock gets no shell variables. `buildAgentEnv` (`src/acp/env.ts`) fills two gaps, and never overrides what the environment already sets:
+
+- **Proxy.** When no `HTTPS_PROXY`, `HTTP_PROXY` or lowercase spelling is set, the editor's `http.proxy` (an `http` or `https` address; the CLI refuses other kinds) becomes those variables, and `http.noProxy` plus `localhost` and `127.0.0.1` becomes `NO_PROXY`, so GeminiCode's own MCP servers on this Mac never go through it. Gemini CLI 0.64.0 reads exactly these: gaxios and its `setGlobalProxy` for undici read `HTTPS_PROXY`, `https_proxy`, `HTTP_PROXY`, `http_proxy`, `NO_PROXY` and `no_proxy`. Changing either setting restarts the agent. Team containers get the same variables from the app's environment, with a proxy on this Mac addressed as `host.docker.internal`.
+- **Certificates.** `NODE_USE_SYSTEM_CA=1`, unless set, makes Node trust the Mac's keychain as well as its own list, for networks that inspect TLS. The CLI runs on Electron 43.7.7's Node 24.21.0, which reads it (with it the default store grows from Node's 121 certificates by the keychain's own); an older Node on `PATH` ignores it.
+
+`gemini.cli.registry` (policy `GeminiCliRegistry`) points installs and updates at an organisation's npm mirror; the download is still checked against the registry's SHA-512.
+
 If a turn fails anyway with "input token count exceeds the maximum", the chat moves to a new session that carries the conversation without its tool outputs (`continueAfterOverflow` in `chatController.ts`), since retrying the same session would send the same history.
 
 ### Installing and updating
 
-- **Install Latest Gemini CLI** downloads the release from the npm registry, checks its SHA-512 checksum, and unpacks only `bundle/` and `package.json`.
+- **Install Latest Gemini CLI** downloads the release from the npm registry (or `gemini.cli.registry`), checks its SHA-512 checksum, and unpacks only `bundle/` and `package.json`.
 - **Install or Change Gemini CLI Version...** lists the last 30 releases, leaving out those older than `MIN_CLI_VERSION`, and pins the one picked in `gemini.cli.version` (unless policy locks it).
 - Switching versions restarts the agent once no agent is working. GeminiCode keeps only the installed copy in use (and a pinned one), so copies older than what runs, the bundled CLI included, are deleted.
 - Once a day, after the agent is ready, GeminiCode checks for a newer release and offers **Install**, **Skip This Version** or **Don't Check Again**. It never installs without a click, and skips the check when a version or path is pinned.
@@ -816,6 +836,7 @@ Each setting below can be locked through VS Code's policy system (Group Policy, 
 | `gemini.cliPath` | `GeminiCliPath` | empty |
 | `gemini.cli.version` | `GeminiCliVersion` | empty (newest copy) |
 | `gemini.cli.checkForUpdates` | `GeminiCliCheckForUpdates` | on |
+| `gemini.cli.registry` | `GeminiCliRegistry` | empty (`https://registry.npmjs.org`) |
 | `gemini.app.checkForUpdates` | `GeminiCodeCheckForUpdates` | on |
 | `gemini.approval.allowAutoEdit` | `GeminiAllowAutoEdit` | on |
 | `gemini.approval.allowYolo` | `GeminiAllowYolo` | off |
@@ -965,7 +986,8 @@ The window defaults set `chat.disableAIFeatures`. That hides upstream's chat vie
   - the local MCP servers, the team connectors, their writes and audit records, the team's servers as children (against a scripted MCP server, `test/fake-mcp`) and the take-over;
   - the benchmark and the pilot's counters;
   - Projects: the hub's wake and thread rules (with several repositories too), its MCP server, how rules are linked into a coordinator's folder and a thread's worktree, project settings and memory storage, memory drafts, and multi-repository thread folders.
-- **Real CLI tests** (`test/acp/real*.test.ts`) run when `GEMINI_CLI_PATH` points at a CLI, against a fake Gemini API on localhost. They cover the `initialize` handshake and the sign-in-required path, the admin policy (modes, shell, the environment commands and the confirm class), the model list's shape, reopening sessions by id and from the terminal with the replay count, Rewind, and an MCP server that cannot start. CI runs them against the `latest` and `preview` CLI.
+- **Real CLI tests** (`test/acp/real*.test.ts`) run against the bundled CLI once `npm run bundle-cli` has placed it, or the CLI `GEMINI_CLI_PATH` names, against a fake Gemini API on localhost (`test/realCli.ts` picks the CLI; without one they are skipped locally and fail in CI). They cover the `initialize` handshake and the sign-in-required path, the admin policy (modes, shell, the environment commands and the confirm class), the model list's shape, reopening sessions by id and from the terminal with the replay count, Rewind, an MCP server that cannot start, and the contract with the CLI's private formats (`realCliContract.test.ts`). CI runs them against the bundled, `latest` and `preview` CLI.
+- **Fork tests in upstream code** (`src/vs/**/test/`, such as the agents' browser file policy in `geminiAgentFiles.test.ts`) run with upstream's runner, `./scripts/test.sh --run <file>`, after `npm run compile`; Gemini CI's Compile & hygiene job runs them.
 - **Performance budgets** (`test/perf/budgets.test.ts`) time the work on the paths a user waits on (a keystroke, a streamed chunk, switching agents, Enter to the first chunk, a 500-thread project) and the bundle sizes, and fail CI when one grows past its budget. The scripts in `scripts/` measure what CI cannot ([FINDINGS.md](FINDINGS.md)):
   - `perf-real.mts`: an agent's start, sessions and first reply on a real account;
   - `perf-first-reply.mts`: the same against a stand-in API;
