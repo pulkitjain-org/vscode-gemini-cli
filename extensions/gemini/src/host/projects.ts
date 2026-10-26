@@ -24,7 +24,7 @@ import type { ForkContext, ThreadCard, TranscriptItem } from '../acp/chatTranscr
 import { attachmentLabel, type Attachment } from '../acp/attachments';
 import { ConductorReader } from '../acp/conductor';
 import type { InstantAnswer } from '../acp/permissions';
-import { ProjectHub, panelState, threadCounts, threadMemoryContext, threadMessages, type ThreadRequest } from '../acp/projectHub';
+import { ProjectHub, panelState, quotaHold, requestCount, runningThreads, threadCounts, threadMemoryContext, threadMessages, type ThreadRequest } from '../acp/projectHub';
 import { coordinatorTools, isProjectToolCall, isProjectToolTitle, ProjectMcpServer, projectServerName, threadTools, toolCallOwner, type ProjectCaller } from '../acp/projectMcp';
 import { projectToolsBlock, type ProjectToolsBlock } from '../acp/projectToolsCheck';
 import { reactionReport, type ReactionRef } from '../acp/reactions';
@@ -106,10 +106,22 @@ export interface ProjectAgents {
 	setResolved(id: string, resolved: boolean): void;
 	/** Keeps the notes held for a thread on its record, so a closed window doesn't drop them. */
 	setPendingNotes(id: string, notes: readonly string[]): void;
+	/** Today's quota as the usage meter last read it, most used model first; undefined with none to read. */
+	quota(): readonly { readonly model: string; readonly used: number; readonly resetTime?: string }[] | undefined;
+	/** Fires when the usage meter reads a different quota. */
+	onDidChangeQuota(listener: () => void): vscode.Disposable;
+	/** Reads the quota again now, as at its reset. */
+	refreshQuota(): void;
 }
 
 export function projectsEnabled(): boolean {
 	return vscode.workspace.getConfiguration(configSection).get<boolean>('projects.enabled', true);
+}
+
+/** `gemini.projects.maxRunningThreads`: how many of a project's threads may run at once, at least 1. */
+function maxRunningThreads(): number {
+	const value = vscode.workspace.getConfiguration(configSection).get<number>('projects.maxRunningThreads', 4);
+	return typeof value === 'number' && Number.isFinite(value) ? Math.max(1, Math.floor(value)) : 4;
 }
 
 /** One open project: its hub, and what the threads are doing. */
@@ -137,6 +149,10 @@ interface LiveProject {
 	/** Gemini is drafting the Memory text, and why the last draft failed. */
 	drafting?: boolean;
 	draftError?: string;
+	/** How many requests (turns) each thread's chat recorded, counted once from its saved chat, then at each turn's end. */
+	readonly requests: Map<string, number>;
+	/** Reads the quota again when it resets, while new threads are held for it. */
+	quotaTimer?: ReturnType<typeof setTimeout>;
 }
 
 export class Projects implements vscode.Disposable {
@@ -265,6 +281,7 @@ export class Projects implements vscode.Disposable {
 		if (project) {
 			this.projects.delete(id);
 			clearTimeout(project.panelTimer);
+			clearTimeout(project.quotaTimer);
 			vscode.Disposable.from(...project.disposables).dispose();
 			project.hub.dispose();
 		}
@@ -424,6 +441,8 @@ export class Projects implements vscode.Disposable {
 			repos: () => repoKeys(project.config),
 			conductor: () => conductor.read(),
 			trackBrief: track => conductor.trackBrief(track),
+			maxRunning: () => maxRunningThreads(),
+			quotaHeld: () => !!quotaHold(this.agents.quota()),
 		});
 		// A coordinator reopened with its history already has the role brief.
 		hub.setBriefed(!!record.sessionId);
@@ -431,6 +450,7 @@ export class Projects implements vscode.Disposable {
 			id: record.id, hub, coordinator, conductor,
 			reported: new Set(), queued: new Map(), planning: new Set(), merged: new Set(), removed: new Set(),
 			disposables: [], home, loading: Promise.resolve({ repos: [], instructions: '', files: [], defaults: {} }),
+			requests: new Map(),
 		};
 		project.loading = this.loadConfig(project, folder);
 		const threads = this.agents.threadsOf(record.id);
@@ -461,12 +481,30 @@ export class Projects implements vscode.Disposable {
 				}
 			}),
 			hub.onDidChangeThread(thread => this.showCard(project, thread.id)),
+			// A lower quota, or a higher limit, lets queued threads start.
+			this.agents.onDidChangeQuota(() => {
+				hub.limitsChanged();
+				this.schedulePanel(project);
+			}),
+			vscode.workspace.onDidChangeConfiguration(e => {
+				if (e.affectsConfiguration(`${configSection}.projects.maxRunningThreads`)) {
+					hub.limitsChanged();
+					this.schedulePanel(project);
+				}
+			}),
 			// A failed wake offers Retry on its error, until the next wake starts.
 			hub.onDidFailWake(failure => coordinator.offerRetry(failure.message)),
 			hub.onDidChangeBusy(busy => busy && coordinator.clearRetry()),
 		);
 		this.projects.set(record.id, project);
 		this.schedulePanel(project);
+		// Each thread's requests, from its saved chat, once; its turns' ends keep them current.
+		void Promise.all(threads.map(async thread => {
+			const count = requestCount(await this.agents.savedConversation(thread.id).catch(() => []));
+			if (!project.requests.has(thread.id)) {
+				project.requests.set(thread.id, count);
+			}
+		})).then(() => this.schedulePanel(project));
 		// A new project's Memory text starts as Gemini's draft, made in the background for the user to review.
 		void project.loading.then(async config => {
 			if (!config.instructions.trim() && !await fs.access(path.join(home, configFile)).then(() => true, () => false)) {
@@ -497,6 +535,9 @@ export class Projects implements vscode.Disposable {
 	private threadTurnEnded(project: LiveProject, record: AgentRecord): void {
 		const { hub } = project;
 		const controller = this.agents.controller(record.id);
+		if (controller) {
+			project.requests.set(record.id, requestCount(controller.conversation));
+		}
 		const planned = record.project?.role === 'thread' && !!record.project.planFirst && controller?.conversation.filter(item => item.kind === 'user').length === 1;
 		if (planned) {
 			hub.updateThread(record.id, { state: 'planned', detail: undefined });
@@ -889,7 +930,8 @@ export class Projects implements vscode.Disposable {
 		project.coordinator.showThread({
 			thread,
 			title: record.title,
-			state: info.state,
+			// A queued thread has no agent, so no card, until it starts.
+			state: info.state === 'queued' ? 'starting' : info.state,
 			...(info.detail ? { detail: info.detail } : {}),
 			...(record.worktree ? { branch: record.worktree.branch } : {}),
 			...(record.changes ? { changes: record.changes } : {}),
@@ -921,15 +963,31 @@ export class Projects implements vscode.Disposable {
 		}
 		const model = project.coordinator.model;
 		const now = Date.now();
+		const list = project.hub.threadList;
+		const running = runningThreads(list);
+		const limit = maxRunningThreads();
+		const requests = (count: number) => count === 1 ? vscode.l10n.t("1 request") : vscode.l10n.t("{0} requests", count);
+		const counted = list.filter(thread => !project.removed.has(thread.id) && project.requests.has(thread.id));
+		const total = counted.reduce((sum, thread) => sum + (project.requests.get(thread.id) ?? 0), 0);
 		project.coordinator.showProjectPanel({
 			name: this.agents.record(project.id)?.title ?? '',
-			counts: threadCounts(project.hub.threadList, project.merged, project.removed),
+			counts: threadCounts(list, project.merged, project.removed),
 			// Archived threads leave the list (the Agents pane has them under Archived); the merged count still counts them.
-			threads: project.hub.threadList.flatMap(thread => {
+			threads: list.flatMap(thread => {
 				const state = panelState(thread, project.merged, project.removed);
 				const record = this.agents.record(thread.id);
-				return state && !(record && isArchived(record, now)) ? [{ id: thread.id, title: record?.title ?? thread.title, state }] : [];
+				const count = project.requests.get(thread.id);
+				const detail = thread.queued === 'quota'
+					? vscode.l10n.t("Starts when today's quota resets, or with Start Anyway")
+					: thread.queued ? vscode.l10n.t("Starts when a running thread finishes · {0} of {1} running", running, limit) : undefined;
+				return state && !(record && isArchived(record, now)) ? [{
+					id: thread.id, title: record?.title ?? thread.title, state,
+					...count ? { requests: requests(count) } : {},
+					...detail ? { detail } : {},
+				}] : [];
 			}),
+			...total ? { requests: counted.length === 1 ? vscode.l10n.t("This project: {0} across 1 thread", requests(total)) : vscode.l10n.t("This project: {0} across {1} threads", requests(total), counted.length) } : {},
+			...this.heldBanner(project),
 			...(conductor ? { conductor: { openTracks: conductor.tracks.filter(track => track.state !== 'done').length } } : {}),
 			...(model ? { model } : {}),
 			...(config.repos.length > 1 ? { repos: repoKeys(config) } : {}),
@@ -937,9 +995,39 @@ export class Projects implements vscode.Disposable {
 		});
 	}
 
+	/**
+	 * The side panel's banner while today's quota holds new threads, with
+	 * when they start; and, when the quota says when it resets, a read of
+	 * the quota then, so they start without waiting for the meter's next read.
+	 */
+	private heldBanner(project: LiveProject): { readonly held?: string } {
+		const hold = quotaHold(this.agents.quota());
+		const held = project.hub.queued.filter(thread => thread.queued === 'quota').length;
+		clearTimeout(project.quotaTimer);
+		project.quotaTimer = undefined;
+		if (!hold || !held) {
+			return {};
+		}
+		const resetAt = hold.resetTime ? Date.parse(hold.resetTime) : NaN;
+		const percent = Math.round(hold.used * 100);
+		if (Number.isFinite(resetAt) && resetAt > Date.now()) {
+			// Timers past about 24 days fire at once; a quota resets daily.
+			project.quotaTimer = setTimeout(() => this.agents.refreshQuota(), Math.min(resetAt - Date.now() + 60_000, 2 ** 31 - 1));
+			const at = new Date(resetAt).toLocaleTimeString(vscode.env.language, { hour: '2-digit', minute: '2-digit' });
+			return { held: held === 1 ? vscode.l10n.t("Holding 1 new thread: today's quota is {0}% used. It starts when the quota resets at {1}.", percent, at) : vscode.l10n.t("Holding {0} new threads: today's quota is {1}% used. They start when it resets at {2}.", held, percent, at) };
+		}
+		return { held: held === 1 ? vscode.l10n.t("Holding 1 new thread: today's quota is {0}% used. It starts when the quota resets.", percent) : vscode.l10n.t("Holding {0} new threads: today's quota is {1}% used. They start when it resets.", held, percent) };
+	}
+
 	private async threadAction(coordinatorId: string, thread: string, action: ThreadAction, repo?: string): Promise<void> {
 		const project = this.projects.get(coordinatorId);
 		switch (action) {
+			case 'startAnyway':
+				project?.hub.startAnyway();
+				if (project) {
+					this.schedulePanel(project);
+				}
+				return;
 			case 'open':
 				return this.agents.open(thread);
 			case 'stop':

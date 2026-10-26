@@ -39,7 +39,8 @@ export interface ViewStatus {
 /** Project settings' buttons that need the extension: pick a repository folder, add or make a context file, open one, draft the Memory text, or clean up merged threads' folders. */
 export type ProjectSettingsAction = 'pickRepository' | 'addFiles' | 'newFile' | 'openFile' | 'draft' | 'cleanUp';
 
-export type ThreadAction = 'open' | 'stop' | 'merge' | 'review' | 'undo' | 'approve' | 'retry';
+/** `startAnyway`: the side panel's Start Anyway, which starts the threads today's quota holds. */
+export type ThreadAction = 'open' | 'stop' | 'merge' | 'review' | 'undo' | 'approve' | 'retry' | 'startAnyway';
 
 /** A thread the user starts from the project chat's New thread dialog. */
 export interface NewThread {
@@ -111,13 +112,20 @@ export interface ProjectPanel {
 	/** The project's name, which the New thread dialog's title shows. */
 	readonly name: string;
 	/** How many threads are in each state; merged and undone threads are left out. */
-	readonly counts: { readonly working: number; readonly waiting: number; readonly planned: number; readonly done: number; readonly merged: number };
+	readonly counts: { readonly queued: number; readonly working: number; readonly waiting: number; readonly planned: number; readonly done: number; readonly merged: number };
 	/** The repo's Conductor files, when it has a `conductor/` folder. */
 	readonly conductor?: { readonly openTracks: number };
 	/** The model the coordinator runs on, when known. */
 	readonly model?: string;
-	/** Every thread, oldest first, each opening its own chat. */
-	readonly threads: readonly { readonly id: string; readonly title: string; readonly state: 'working' | 'waiting' | 'planned' | 'done' | 'merged' }[];
+	/**
+	 * Every thread, oldest first, each opening its own chat: `requests`, how many its chat recorded
+	 * ("148 requests"), and `detail` for a queued one ("Starts when a running thread finishes · 4 of 4 running").
+	 */
+	readonly threads: readonly { readonly id: string; readonly title: string; readonly state: 'queued' | 'working' | 'waiting' | 'planned' | 'done' | 'merged'; readonly requests?: string; readonly detail?: string }[];
+	/** "This project: 382 requests across 6 threads", once its threads made any. */
+	readonly requests?: string;
+	/** New threads held because today's quota is over 90% used: the banner, with Start Anyway. */
+	readonly held?: string;
 	/** The project's repositories by key, when it has more than one; the New thread dialog offers them. */
 	readonly repos?: readonly string[];
 	/** What the New thread dialog starts with. */
@@ -229,6 +237,7 @@ export interface ProjectChatStrings {
 	readonly panel: {
 		readonly title: string;
 		readonly noThreads: string;
+		readonly queued: string;
 		readonly working: string;
 		readonly waiting: string;
 		readonly planned: string;

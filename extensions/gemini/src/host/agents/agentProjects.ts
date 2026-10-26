@@ -125,7 +125,7 @@ export class AgentProjects {
 		let agentId: string | undefined;
 		try {
 			await this.linkRules(workspace.folder, worktree.cwd, 'thread');
-			const agent = this.model.addAgent(workspace.id, request.title, worktree, undefined, {
+			const agent = this.model.addAgent(workspace.id, request.title, worktree, request.id, {
 				role: 'thread', coordinator: coordinatorId, byCoordinator: request.byCoordinator,
 				...(request.planFirst ? { planFirst: true } : {}),
 				...(request.track ? { track: request.track } : {}),
@@ -465,7 +465,7 @@ export class AgentProjects {
 		try {
 			await Promise.all(made.worktrees.map(each => this.linkRules(each.repository, each.folder, 'thread')));
 			await writeThreadGuide(made.folder, threadGuide(made.worktrees, made.branch, setup.memory));
-			const agent = this.model.addAgent(workspace.id, request.title, worktree, undefined, {
+			const agent = this.model.addAgent(workspace.id, request.title, worktree, request.id, {
 				role: 'thread', coordinator: coordinatorId, byCoordinator: request.byCoordinator,
 				...(request.planFirst ? { planFirst: true } : {}),
 				...(request.track ? { track: request.track } : {}),

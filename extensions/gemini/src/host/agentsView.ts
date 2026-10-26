@@ -260,6 +260,13 @@ export class AgentsView implements vscode.Disposable {
 				const role = this.model.agent(id)?.project;
 				this.model.setThreadPending(id, { ...role?.role === 'thread' ? role.pending : {}, notes });
 			},
+			// The usage meter is set by activate, after this; read when a project asks.
+			quota: () => {
+				const reading = this.usage?.reading;
+				return reading?.kind === 'ok' ? reading.quota : undefined;
+			},
+			onDidChangeQuota: listener => this.usage?.onDidChange(listener) ?? { dispose: () => undefined },
+			refreshQuota: () => void this.usage?.refresh(),
 		}, String(context.extension.packageJSON.version ?? '0'));
 		// What the modules that start, stop and remove agents may ask of this view.
 		const host = {

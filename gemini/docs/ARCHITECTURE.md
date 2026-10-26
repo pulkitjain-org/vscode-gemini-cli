@@ -873,6 +873,7 @@ Each setting below can be locked through VS Code's policy system (Group Policy, 
 | `gemini.chat.runCommands` | `GeminiChatRunCommands` | `askWhenRisky` (`alwaysAsk`, or `off` to remove Run) |
 | `gemini.projectId` | `GeminiProjectId` | empty (workspace, user, org default, environment) |
 | `gemini.projects.enabled` | `GeminiProjects` | on |
+| `gemini.projects.maxRunningThreads` | `GeminiProjectsMaxRunningThreads` | 4 |
 | `gemini.team.runTeamServers` | `GeminiRunTeamServers` | off |
 | `gemini.agents.worktreeSetup` | `GeminiWorktreeSetup` | empty (the repository's `.gemini/worktree-setup.sh`) |
 | `gemini.agents.allWorkspaceFolders` | `GeminiAllWorkspaceFolders` | off |

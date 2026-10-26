@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { coordinatorBrief, CoordinatorTurnFailed, latestReports, listedMergedThreads, multiRepoBrief, ProjectHub, readThreadMessageChars, threadMemoryContext, threadMessages, wakeThreadLines, type CoordinatorSession, type FeedEntry, type ThreadDriver, type ThreadInfo } from '../../src/acp/projectHub';
+import { coordinatorBrief, CoordinatorTurnFailed, latestReports, listedMergedThreads, multiRepoBrief, ProjectHub, queueReason, quotaHold, readThreadMessageChars, requestCount, runningThreads, threadMemoryContext, threadMessages, wakeThreadLines, type CoordinatorSession, type FeedEntry, type ThreadDriver, type ThreadInfo } from '../../src/acp/projectHub';
 
 function setup(turn: (prompt: string, hub: ProjectHub) => Promise<void> = async () => { }) {
 	const prompts: string[] = [];
@@ -383,5 +383,107 @@ describe('ProjectHub with several repositories', () => {
 	it('gives a single-repository thread its memory as context', () => {
 		expect(threadMemoryContext(' Use pnpm. ')).toContain('<project-memory>\nThe project\'s shared notes');
 		expect(threadMemoryContext(' Use pnpm. ')).toMatch(/Use pnpm\.\n<\/project-memory>$/);
+	});
+});
+
+describe('a project\'s thread limit and quota hold', () => {
+	function limited(options: { max: number; quota?: { held: boolean } }) {
+		const started: string[] = [];
+		const messages: [string, string][] = [];
+		let next = 0;
+		const driver: ThreadDriver = {
+			start: async request => {
+				const id = request.id ?? `t${++next}`;
+				started.push(id);
+				return id;
+			},
+			message: (thread, text) => { messages.push([thread, text]); },
+			read: thread => `messages of ${thread}`,
+		};
+		const hub = new ProjectHub('p1', { prompt: async () => { } }, driver, { maxRunning: () => options.max, quotaHeld: () => !!options.quota?.held });
+		const states = () => hub.threadList.map(thread => [thread.title, thread.state, thread.queued ?? null]);
+		const text = (result: { readonly content: readonly unknown[] }) => (result.content[0] as { readonly text?: string }).text;
+		return { hub, started, messages, states, text };
+	}
+
+	it('queues threads over the limit, keeps their notes, and starts them in order as running ones finish', async () => {
+		const { hub, started, messages, states, text } = limited({ max: 2 });
+		await hub.startThread('A', 'a');
+		await hub.call(coordinator, 'start_thread', { title: 'B', brief: 'b' });
+		const queued = await hub.call(coordinator, 'start_thread', { title: 'C', brief: 'c' });
+		const d = await hub.startThread('D', 'd');
+		const c = hub.threadList.find(thread => thread.title === 'C')!.id;
+		const noted = await hub.call(coordinator, 'message_thread', { thread: c, text: 'Use the new API.' });
+		const read = await hub.call(coordinator, 'read_thread', { thread: c });
+		const before = { started: [...started], states: states() };
+		hub.updateThread('t1', { state: 'done' });
+		await new Promise(resolve => setTimeout(resolve));
+		const afterOne = { started: [...started], states: states() };
+		// A planned or done thread is idle; resolved or removed ones free their place too.
+		hub.updateThread('t2', { state: 'planned' });
+		await new Promise(resolve => setTimeout(resolve));
+		expect({
+			queuedReply: text(queued)?.startsWith(`Queued thread ${c}: as many threads run as the user allows`),
+			noted: text(noted),
+			read: text(read),
+			before,
+			afterOne,
+			afterTwo: started,
+			notes: messages,
+			d: started.includes(d),
+		}).toEqual({
+			queuedReply: true,
+			noted: 'Noted: the thread gets it when it starts.',
+			read: '(queued: it has not started yet)',
+			before: { started: ['t1', 't2'], states: [['A', 'starting', null], ['B', 'starting', null], ['C', 'queued', 'limit'], ['D', 'queued', 'limit']] },
+			afterOne: { started: ['t1', 't2', c], states: [['A', 'done', null], ['B', 'starting', null], ['C', 'starting', null], ['D', 'queued', 'limit']] },
+			afterTwo: ['t1', 't2', c, d],
+			notes: [[c, 'Use the new API.']],
+			d: true,
+		});
+	});
+
+	it('holds new threads above 90% of the quota until it resets or the user starts them anyway', async () => {
+		const quota = { held: true };
+		const { hub, started, states } = limited({ max: 4, quota });
+		await hub.startThread('A', 'a');
+		await hub.startThread('B', 'b');
+		const held = { started: [...started], states: states(), queued: hub.queued.length };
+		hub.startAnyway();
+		await new Promise(resolve => setTimeout(resolve));
+		const anyway = { started: [...started], states: states() };
+		await hub.startThread('C', 'c');
+		const again = states().at(-1);
+		quota.held = false;
+		hub.limitsChanged();
+		await new Promise(resolve => setTimeout(resolve));
+		expect({ held, anyway, again, reset: started.length }).toEqual({
+			held: { started: [], states: [['A', 'queued', 'quota'], ['B', 'queued', 'quota']], queued: 2 },
+			anyway: { started: [expect.any(String), expect.any(String)], states: [['A', 'starting', null], ['B', 'starting', null]] },
+			again: ['C', 'queued', 'quota'],
+			reset: 3,
+		});
+	});
+
+	it('drops a queued thread that is removed, and counts what runs and what a chat recorded', async () => {
+		const { hub, started } = limited({ max: 1 });
+		await hub.startThread('A', 'a');
+		const b = await hub.startThread('B', 'b');
+		hub.removeThread(b);
+		hub.updateThread('t1', { state: 'done' });
+		await new Promise(resolve => setTimeout(resolve));
+		expect({
+			started,
+			running: runningThreads([{ state: 'working' }, { state: 'waiting' }, { state: 'planned' }, { state: 'done' }, { state: 'starting', resolved: true }, { state: 'queued' }]),
+			reasons: [queueReason(3, 4, false), queueReason(4, 4, false), queueReason(0, 4, true), queueReason(0, 4, true, true), queueReason(9, undefined, false)],
+			requests: requestCount([{ kind: 'user' }, { kind: 'agent' }, { kind: 'turnEnd' }, { kind: 'user' }, { kind: 'turnEnd' }]),
+			hold: [quotaHold([{ used: 0.5 }, { used: 0.92, resetTime: '2026-10-26T20:39:00Z' }]), quotaHold([{ used: 0.9 }]), quotaHold(undefined)],
+		}).toEqual({
+			started: ['t1'],
+			running: 2,
+			reasons: [undefined, 'limit', 'quota', undefined, undefined],
+			requests: 2,
+			hold: [{ used: 0.92, resetTime: '2026-10-26T20:39:00Z' }, undefined, undefined],
+		});
 	});
 });
