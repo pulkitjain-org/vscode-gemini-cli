@@ -295,6 +295,21 @@
         "icon": "$(debug-stop)"
       },
       {
+        "command": "gemini.agents.focusChat",
+        "title": "%command.agents.focusChat%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.agents.cycleMode",
+        "title": "%command.agents.cycleMode%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.agents.switchModel",
+        "title": "%command.agents.switchModel%",
+        "category": "%category%"
+      },
+      {
         "command": "gemini.agents.remove",
         "title": "%command.agents.remove%",
         "category": "%category%"
@@ -663,6 +678,30 @@
         "command": "gemini.review.previousChange",
         "key": "shift+alt+f5",
         "when": "gemini.review.active && editorTextFocus"
+      },
+      {
+        "command": "gemini.agents.focusChat",
+        "key": "ctrl+alt+i",
+        "mac": "ctrl+cmd+i"
+      },
+      {
+        "command": "gemini.agents.stop",
+        "key": "ctrl+escape",
+        "mac": "cmd+escape",
+        "win": "alt+backspace",
+        "when": "activeWebviewPanelId == 'gemini.agent'"
+      },
+      {
+        "command": "gemini.agents.cycleMode",
+        "key": "ctrl+.",
+        "mac": "cmd+.",
+        "when": "activeWebviewPanelId == 'gemini.agent'"
+      },
+      {
+        "command": "gemini.agents.switchModel",
+        "key": "ctrl+alt+.",
+        "mac": "cmd+alt+.",
+        "when": "activeWebviewPanelId == 'gemini.agent'"
       },
       {
         "command": "gemini.agents.rename",
@@ -1161,7 +1200,15 @@
         },
         {
           "command": "gemini.agents.stop",
-          "when": "false"
+          "when": "activeWebviewPanelId == 'gemini.agent'"
+        },
+        {
+          "command": "gemini.agents.cycleMode",
+          "when": "activeWebviewPanelId == 'gemini.agent'"
+        },
+        {
+          "command": "gemini.agents.switchModel",
+          "when": "activeWebviewPanelId == 'gemini.agent'"
         },
         {
           "command": "gemini.agents.remove",

@@ -9,7 +9,7 @@ Agents ask before they act, and every change they make can be kept, undone or re
 
 ## Approval modes
 
-Pick a mode from the composer's **+** menu. The list comes from the Gemini CLI, minus any mode your admin turned off.
+Pick a mode from the composer's **+** menu, or press <kbd>⌘.</kbd> in an agent's tab (**Gemini: Cycle Approval Mode**) to step through Default, Auto Edit and Plan as the CLI's <kbd>⇧Tab</kbd> does; it never picks YOLO. The list comes from the Gemini CLI, minus any mode your admin turned off.
 
 | Mode | What the agent does |
 | --- | --- |

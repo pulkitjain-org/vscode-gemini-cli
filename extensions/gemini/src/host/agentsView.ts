@@ -290,7 +290,14 @@ export class AgentsView implements vscode.Disposable {
 			vscode.commands.registerCommand('gemini.agents.openChanges', (node?: AgentTreeNode) => node?.kind === 'agent' && this.openChanges(node.record.id)),
 			vscode.commands.registerCommand('gemini.agents.rename', (node?: AgentTreeNode) => this.rename(node)),
 			vscode.commands.registerCommand('gemini.agents.openAsMarkdown', (node?: AgentTreeNode) => node?.kind === 'agent' && this.openAsMarkdown(node.record.id)),
-			vscode.commands.registerCommand('gemini.agents.stop', (node?: AgentTreeNode) => node?.kind === 'agent' && this.stopTurn(node.record.id)),
+			// From the palette or a key: the agent in front.
+			vscode.commands.registerCommand('gemini.agents.stop', (node?: AgentTreeNode) => {
+				const id = node?.kind === 'agent' ? node.record.id : this.activeAgentId();
+				return id && this.stopTurn(id);
+			}),
+			vscode.commands.registerCommand('gemini.agents.focusChat', () => this.focusChat()),
+			vscode.commands.registerCommand('gemini.agents.cycleMode', () => this.chatInFront()?.cycleMode()),
+			vscode.commands.registerCommand('gemini.agents.switchModel', () => this.chatInFront()?.pickModel()),
 			vscode.commands.registerCommand('gemini.agents.remove', (node?: AgentTreeNode) => this.removeAgent(node)),
 			vscode.commands.registerCommand('gemini.agents.removeWorkspace', (node?: AgentTreeNode) => this.removeWorkspace(node)),
 			vscode.commands.registerCommand('gemini.projects.new', (node?: AgentTreeNode) => this.projectAgents.newProject(node)),
@@ -338,6 +345,23 @@ export class AgentsView implements vscode.Disposable {
 			}
 		}
 		return undefined;
+	}
+
+	/** The chat of the agent whose tab is in front, else the one last in front. */
+	private chatInFront(): ChatController | undefined {
+		const id = this.activeAgentId() ?? this.focusedId;
+		return id ? this.live.get(id)?.controller : undefined;
+	}
+
+	/** Puts the cursor in the message box of the agent in front (or last in front), opening its tab; with no agent yet, starts one. */
+	private async focusChat(): Promise<void> {
+		const id = this.activeAgentId() ?? (this.focusedId && this.model.agent(this.focusedId) ? this.focusedId : undefined);
+		if (!id) {
+			await vscode.commands.executeCommand('gemini.agents.newAgent');
+			return;
+		}
+		await this.open(id);
+		this.live.get(id)?.controller.focusComposer();
 	}
 
 	/** Shows each running chat's branch and chips again, as after a review changed. */

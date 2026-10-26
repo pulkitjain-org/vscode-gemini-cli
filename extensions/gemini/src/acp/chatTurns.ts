@@ -17,6 +17,7 @@ import type { SessionSettings } from './sessionSettings';
 /** The CLI's Plan and Default mode IDs (gemini-cli 0.63 `ApprovalMode`); Build This Plan shows only when the agent offers both. */
 const planModeId = 'plan';
 const defaultModeId = 'default';
+const yoloModeId = 'yolo';
 
 /** The most proposed edits, and tool calls, a chat keeps track of. */
 const maxRemembered = 200;
@@ -106,6 +107,24 @@ export function undoNote(cwd: string, files: readonly string[]): string {
 export function buildModeAfterPlan(settings: SessionSettings): string | undefined {
 	const mode = settings.mode;
 	return mode?.currentId === planModeId && mode.available.some(m => m.id === defaultModeId) ? defaultModeId : undefined;
+}
+
+/**
+ * The approval mode after `settings`' current one, for Cycle Approval Mode: the
+ * next the agent lists, as the CLI's own ⇧Tab steps through them, but never
+ * YOLO, which approves everything and is picked on purpose. Undefined when
+ * there is nothing to switch to.
+ */
+export function nextApprovalMode(settings: SessionSettings): string | undefined {
+	const mode = settings.mode;
+	const cycle = mode?.available.filter(choice => choice.id !== yoloModeId) ?? [];
+	if (!mode || !cycle.length) {
+		return undefined;
+	}
+	const index = cycle.findIndex(choice => choice.id === mode.currentId);
+	// From YOLO, the next mode the agent lists after it.
+	const next = index >= 0 ? cycle[(index + 1) % cycle.length] : cycle.find(choice => mode.available.indexOf(choice) > mode.available.findIndex(c => c.id === mode.currentId)) ?? cycle[0];
+	return next.id === mode.currentId ? undefined : next.id;
 }
 
 /** A tool call's proposed edits. */

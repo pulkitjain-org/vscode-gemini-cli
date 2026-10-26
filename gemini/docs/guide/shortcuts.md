@@ -1,6 +1,8 @@
 # Keyboard shortcuts
 
-Every GeminiCode shortcut in one place. ⌘ is Command, ⌥ is Option, ⇧ is Shift, ↩ is Return and ⌫ is Delete. VS Code's own shortcuts work as usual.
+Every GeminiCode shortcut in one place. ⌘ is Command, ⌥ is Option, ⌃ is Control, ⇧ is Shift, ↩ is Return and ⌫ is Delete. On Windows and Linux, Ctrl takes the place of ⌘ (and Ctrl+Alt of ⌃⌘). VS Code's own shortcuts work as usual: the review keys stay off ⌘↩, ⌘⌫ and ⌥[ ⌥], which edit text.
+
+Stop Agent, Focus Chat, Cycle Approval Mode and Switch Model are also in the Command Palette, under **Gemini**.
 
 ## Agents and layout
 
@@ -21,6 +23,9 @@ Every GeminiCode shortcut in one place. ⌘ is Command, ⌥ is Option, ⇧ is Sh
 | <kbd>↩</kbd> or <kbd>⌘↩</kbd> (project chat, coordinator working) | Send the message when the coordinator's turn ends |
 | <kbd>↑</kbd> (empty chat input, messages queued) | Take the last queued message back to edit |
 | <kbd>esc</kbd> <kbd>esc</kbd> (chat input, agent working) | Stop the agent |
+| <kbd>⌘esc</kbd> (agent's tab; Alt+Backspace on Windows) | Stop the agent at once |
+| <kbd>⌘.</kbd> (agent's tab) | Next approval mode: Default, Auto Edit, Plan, as the CLI's <kbd>⇧Tab</kbd> steps; never YOLO |
+| <kbd>⌥⌘.</kbd> (agent's tab) | Switch the agent's model |
 | <kbd>esc</kbd> (chat input) | Cancel Enhance prompt |
 | <kbd>esc</kbd> <kbd>esc</kbd> (empty chat input) | Rewind to before one of your messages |
 | <kbd>⌘N</kbd> (chat) | New chat |

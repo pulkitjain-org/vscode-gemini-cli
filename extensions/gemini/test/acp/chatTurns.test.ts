@@ -6,7 +6,7 @@
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { TranscriptItem } from '../../src/acp/chatTranscript';
-import { buildModeAfterPlan, checkpointsFit, diffsOf, dropOldest, lastPromptAt, laterRepeats, rewindPrompts, runningStep, forkedItems, forkNote, forkPointAfter, shouldSuggestCompact, turnShape, undoNote, wasCutOff } from '../../src/acp/chatTurns';
+import { buildModeAfterPlan, checkpointsFit, nextApprovalMode, diffsOf, dropOldest, lastPromptAt, laterRepeats, rewindPrompts, runningStep, forkedItems, forkNote, forkPointAfter, shouldSuggestCompact, turnShape, undoNote, wasCutOff } from '../../src/acp/chatTurns';
 
 const user = (id: string, text: string, at?: number): TranscriptItem => ({ id, kind: 'user', text, ...(at ? { at } : {}) });
 const agent = (id: string, text: string): TranscriptItem => ({ id, kind: 'agent', text });
@@ -86,6 +86,25 @@ describe('checkpoints and undo', () => {
 		const cwd = path.join(path.sep, 'w');
 		expect(undoNote(cwd, [path.join(cwd, 'src', 'a.ts'), path.join(path.sep, 'elsewhere', 'b.ts')])).toBe(
 			`[The user undid your file changes. These files are back to how they were before those replies, so read them again before editing them: ${path.join('src', 'a.ts')}, ${path.relative(cwd, path.join(path.sep, 'elsewhere', 'b.ts'))}]`);
+	});
+});
+
+describe('nextApprovalMode', () => {
+	it('steps through the agent\'s modes as the CLI\'s Shift+Tab does, never into YOLO', () => {
+		// gemini-cli 0.64 lists default, autoEdit, yolo and, with Plan on, plan.
+		const modes = (currentId: string, ...ids: string[]) => ({ mode: { currentId, available: ids.map(id => ({ id, name: id })) } });
+		const cli = ['default', 'autoEdit', 'yolo', 'plan'];
+		expect([
+			nextApprovalMode(modes('default', ...cli)),
+			nextApprovalMode(modes('autoEdit', ...cli)),
+			nextApprovalMode(modes('plan', ...cli)),
+			nextApprovalMode(modes('yolo', ...cli)),
+			// Without Plan, and with Auto Edit turned off by policy.
+			nextApprovalMode(modes('autoEdit', 'default', 'autoEdit', 'yolo')),
+			nextApprovalMode(modes('yolo', 'default', 'yolo')),
+			nextApprovalMode(modes('default', 'default', 'yolo')),
+			nextApprovalMode({}),
+		]).toEqual(['autoEdit', 'plan', 'default', 'plan', 'default', 'default', undefined, undefined]);
 	});
 });
 
