@@ -1,5 +1,5 @@
 diff --git a/product.json b/product.json
-index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..ad5125f2af5964551fe3bb9ba8fb38deef379648 100644
+index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..fcace22878781d3472b315f9feac0fba0e39d2e3 100644
 --- a/product.json
 +++ b/product.json
 @@ -1,41 +1,49 @@
@@ -117,7 +117,7 @@ index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..ad5125f2af5964551fe3bb9ba8fb38de
  			"type": "light"
  		},
  		{
-@@ -242,9 +244,294 @@
+@@ -242,9 +244,316 @@
  			"type": "light"
  		}
  	],
@@ -392,6 +392,17 @@ index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..ad5125f2af5964551fe3bb9ba8fb38de
 +				}
 +			}
 +		},
++		"gemini.agents.defaultMode": {
++			"name": "GeminiAgentsDefaultMode",
++			"category": "Extensions",
++			"minimumVersion": "1.142",
++			"localization": {
++				"description": {
++					"key": "gemini.agents.defaultMode.policy",
++					"value": "The approval mode new agents start in: default, autoEdit, plan or yolo. A mode GeminiAllowAutoEdit or GeminiAllowYolo turns off falls back to default."
++				}
++			}
++		},
 +		"gemini.agents.allWorkspaceFolders": {
 +			"name": "GeminiAllWorkspaceFolders",
 +			"category": "Extensions",
@@ -400,6 +411,17 @@ index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..ad5125f2af5964551fe3bb9ba8fb38de
 +				"description": {
 +					"key": "gemini.agents.allWorkspaceFolders.policy",
 +					"value": "Whether every agent may read and edit all folders of a multi-root window, not only the folder it works in."
++				}
++			}
++		},
++		"gemini.projects.maxRunningThreads": {
++			"name": "GeminiProjectsMaxRunningThreads",
++			"category": "Extensions",
++			"minimumVersion": "1.142",
++			"localization": {
++				"description": {
++					"key": "gemini.projects.maxRunningThreads.policy",
++					"value": "How many of a project's threads may work at once; threads started beyond it wait for a running one to finish."
 +				}
 +			}
 +		},
