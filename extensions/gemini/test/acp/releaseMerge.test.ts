@@ -8,7 +8,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { branchWorktree, reviewWorktree, UnpushedCommitsError } from '../../src/acp/releaseMerge';
-import { commitAll, currentBranch, git } from '../../src/acp/worktrees';
+import { commitAll, currentBranch, git, reviewsHome, worktreesHome } from '../../src/acp/worktrees';
 
 // A clone of a bare "GitLab" with a merge request's branch on it, as Fix and a review see them.
 let root: string;
@@ -82,17 +82,46 @@ describe('Fix on a merge request\'s branch', () => {
 
 describe('a merge request\'s review', () => {
 	it('reuses the worktree of an earlier review of the same merge request, at the new head', async () => {
-		const first = await reviewWorktree(clone, 'origin', 'feature/gift', 'review/12-feature-gift', '', home);
+		const first = await reviewWorktree(clone, 'origin', 'feature/gift', 'review/12-feature-gift', { home });
 		await fs.writeFile(path.join(author, 'gift.ts'), 'export const gift = "yes";\n');
 		await commitAll(author, 'After review');
 		await git(author, ['push', '--quiet', 'origin', 'feature/gift']);
-		const second = await reviewWorktree(clone, 'origin', 'feature/gift', 'review/12-feature-gift', '', home);
+		const second = await reviewWorktree(clone, 'origin', 'feature/gift', 'review/12-feature-gift', { home });
 		expect(second.folder).toBe(first.folder);
 		expect(await head(second.folder)).toBe(await head(author));
 		expect((await git(clone, ['worktree', 'list', '--porcelain'])).match(/^worktree /gm)).toHaveLength(2);
 	});
 
+	it('checks out in the reviews folder, which the Gemini CLI never trusts', async () => {
+		const review = await reviewWorktree(clone, 'origin', 'feature/gift', 'review/12-feature-gift', { home, subfolder: 'web' });
+		expect({ folder: review.folder, cwd: review.cwd, branch: await currentBranch(review.folder) })
+			.toEqual({ folder: path.join(reviewsHome(clone, home), '12-feature-gift'), cwd: path.join(reviewsHome(clone, home), '12-feature-gift', 'web'), branch: 'review/12-feature-gift' });
+	});
+
+	it('makes a checkout left in the agents\' worktrees folder again in the reviews folder, unless an agent still works there', async () => {
+		const old = async (local: string) => {
+			const folder = path.join(worktreesHome(clone, home), local.split('/').pop()!);
+			await git(clone, ['worktree', 'add', '--quiet', '-b', local, folder, 'origin/main']);
+			return folder;
+		};
+		const idle = await old('review/12-feature-gift');
+		const busy = await old('review/13-feature-gift');
+		const moved = await reviewWorktree(clone, 'origin', 'feature/gift', 'review/12-feature-gift', { home, inUse: folder => folder === busy });
+		const kept = await reviewWorktree(clone, 'origin', 'feature/gift', 'review/13-feature-gift', { home, inUse: folder => folder === busy });
+		expect({
+			moved: path.relative(home, moved.folder),
+			kept: path.relative(home, kept.folder),
+			heads: [await head(moved.folder), await head(kept.folder)],
+			idleGone: await fs.access(idle).then(() => false, () => true),
+		}).toEqual({
+			moved: path.join('.geminicode', 'reviews', 'shop', '12-feature-gift'),
+			kept: path.join('.geminicode', 'worktrees', 'shop', '13-feature-gift'),
+			heads: [await head(author), await head(author)],
+			idleGone: true,
+		});
+	});
+
 	it('resets only GeminiCode\'s own review branches', async () => {
-		await expect(reviewWorktree(clone, 'origin', 'feature/gift', 'feature/gift', '', home)).rejects.toThrow(/isn't a review branch/);
+		await expect(reviewWorktree(clone, 'origin', 'feature/gift', 'feature/gift', { home })).rejects.toThrow(/isn't a review branch/);
 	});
 });

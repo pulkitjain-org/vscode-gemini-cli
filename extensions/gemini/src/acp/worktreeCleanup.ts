@@ -6,7 +6,7 @@
 // The worktrees Settings' Clean Up may offer, with what git says of each
 // (storageUsage.ts offers only those with nothing uncommitted and nothing
 // unmerged): merged threads', reviewers' whose review is over, and folders
-// in ~/.geminicode/worktrees that no agent has any more. Agents running in
+// in ~/.geminicode/worktrees or ~/.geminicode/reviews that no agent has any more. Agents running in
 // this window are never offered.
 
 import * as os from 'node:os';
@@ -14,7 +14,7 @@ import * as path from 'node:path';
 import type { AgentRecord } from './agents';
 import { samePath } from './fsUtil';
 import { foldersTwoDown, type WorktreeCandidate } from './storageUsage';
-import { type AgentWorktree, currentBranch, git, mainRepository, pathExists, worktreeStatus, type WorktreeStatus } from './worktrees';
+import { allReviewsHome, type AgentWorktree, currentBranch, git, mainRepository, pathExists, worktreeStatus, type WorktreeStatus } from './worktrees';
 
 export interface CleanupAgents {
 	readonly records: readonly AgentRecord[];
@@ -54,7 +54,9 @@ export async function cleanupWorktrees(agents: CleanupAgents, home: string = os.
 		}
 	}
 	const known = agents.records.flatMap(record => [record.worktree?.folder, ...(record.repos ?? []).map(repo => repo.folder)].filter((folder): folder is string => !!folder));
-	for (const folder of await foldersTwoDown(path.join(home, '.geminicode', 'worktrees'))) {
+	// Review checkouts are in ~/.geminicode/reviews, and were in ~/.geminicode/worktrees before.
+	const leftOver = (await Promise.all([path.join(home, '.geminicode', 'worktrees'), allReviewsHome(home)].map(root => foldersTwoDown(root)))).flat();
+	for (const folder of leftOver) {
 		if (!known.some(each => samePath(each, folder))) {
 			const removed = await removedWorktree(folder);
 			if (removed) {

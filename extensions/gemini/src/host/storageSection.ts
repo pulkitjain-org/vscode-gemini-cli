@@ -69,10 +69,12 @@ export class StorageSection {
 		this.changed();
 		try {
 			const geminicode = path.join(this.home, '.geminicode');
-			const [sizes, worktrees, worktreeFolders, indexes, checkpoints] = await Promise.all([
+			const [sizes, worktrees, worktreeFolders, reviewFolders, indexes, checkpoints] = await Promise.all([
 				measureStorage(storageAreas(this.host.globalStorage, this.home)),
 				this.host.worktrees(),
 				foldersTwoDown(path.join(geminicode, 'worktrees')),
+				// Merge request reviews' checkouts, apart from the agents' own.
+				foldersTwoDown(path.join(geminicode, 'reviews')),
 				entriesIn(path.join(geminicode, 'index', 'code')),
 				entriesIn(path.join(this.host.globalStorage, 'checkpoints'), '.json'),
 			]);
@@ -80,10 +82,12 @@ export class StorageSection {
 			const bytes = new Map(storageGroups(sizes).map(group => [group.group, group.bytes]));
 			const offered = this.plan.filter(item => item.area === 'worktrees').length;
 			const where = tildify(path.join(geminicode, 'worktrees'));
+			const reviewsWhere = tildify(path.join(geminicode, 'reviews'));
+			const folders = worktreeFolders.length + reviewFolders.length;
 			const details: Record<StorageGroup, string> = {
 				worktrees: offered
-					? vscode.l10n.t("{0} folders in {1} · {2} belong to merged or removed agents", worktreeFolders.length, where, offered)
-					: vscode.l10n.t("{0} folders in {1}", worktreeFolders.length, where),
+					? vscode.l10n.t("{0} folders in {1} and {2} · {3} belong to merged or removed agents", folders, where, reviewsWhere, offered)
+					: vscode.l10n.t("{0} folders in {1} and {2}", folders, where, reviewsWhere),
 				index: vscode.l10n.t("{0} folders · unused ones are deleted after 30 days", indexes),
 				cli: this.host.cliVersion() ? vscode.l10n.t("{0} in use", this.host.cliVersion()!) : vscode.l10n.t("Copies GeminiCode installed"),
 				checkpoints: vscode.l10n.t("Checkpoints for {0} agents · removed when a thread is merged", checkpoints),

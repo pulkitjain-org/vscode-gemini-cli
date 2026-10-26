@@ -58,9 +58,9 @@ describe('team flow logic', () => {
 	it('has a reviewer read the diff a few files at a time from the fetched target, never fetching itself', () => {
 		const mr = { iid: 706, title: 'Landing page', url: 'u', author: 'hh', sourceBranch: 'VCAN-1-landing', targetBranch: 'develop' };
 		const files = Array.from({ length: 62 }, (_, i) => `src/f${i}.ts`);
-		const prompt = reviewPrompt(mr, 'VCAN-1', 'upstream', files).split('\n');
+		const prompt = reviewPrompt(mr, { key: 'VCAN-1' }, 'upstream', files).split('\n');
 		expect(prompt.filter(line => /upstream\/develop|changed files|^- src\/f(0|59|60)\.ts$/.test(line))).toEqual([
-			'1. Read it with gitlab_get_mr. Its target, upstream/develop, is already fetched: don\'t run git fetch, which can\'t sign in from your shell.',
+			'1. Its target, upstream/develop, is already fetched: don\'t run git fetch, which can\'t sign in from your shell.',
 			'2. Start from `git diff --stat upstream/develop...HEAD`, then read the diff a few files at a time with `git diff upstream/develop...HEAD -- <files>`. Never print the whole diff, or a log with patches, in one command: it can be bigger than you can read.',
 			'GitLab lists 62 changed files, the first 60 here:',
 			'- src/f0.ts',
@@ -70,6 +70,29 @@ describe('team flow logic', () => {
 		expect(withThreads).toContain('- [discussion d1] tom.k on a.ts:52: Why a fixed wait?');
 		expect(withThreads).toContain('give `"discussion"` (its id)');
 		expect(reviewPrompt(mr)).not.toContain('discussion');
+	});
+
+	it('gives a reviewer in its untrusted checkout, which has no MCP tools, the description and the ticket\'s text', () => {
+		const mr = { iid: 706, title: 'Landing page', url: 'u', author: 'hh', sourceBranch: 'VCAN-1-landing', targetBranch: 'develop', description: 'Adds the hero.' };
+		const read = reviewPrompt(mr, { key: 'VCAN-1', text: 'Landing page\n\nShow a hero image.' });
+		const unread = reviewPrompt({ ...mr, description: ' ' }, { key: 'VCAN-1' });
+		expect({
+			tools: /gitlab_|jira_|geminicode/.test(read + unread + reviewPrompt(mr)),
+			description: read.includes('Its description:\n<external source="gitlab" ref="!706 description">\nAdds the hero.\n</external>'),
+			ticket: read.includes('The Jira ticket it links, VCAN-1:\n<external source="jira" ref="VCAN-1">\nLanding page\n\nShow a hero image.\n</external>'),
+			steps: [read, unread, reviewPrompt(mr)].map(text => text.split('\n').find(line => line.startsWith('3. '))),
+			emptyDescription: unread.includes('Its description'),
+		}).toEqual({
+			tools: false,
+			description: true,
+			ticket: true,
+			steps: [
+				'3. Check the change does what VCAN-1 asks.',
+				'3. It links the Jira ticket VCAN-1, which couldn\'t be read: judge the change by its title and description.',
+				'3. Check the change does what its title and description say.',
+			],
+			emptyDescription: false,
+		});
 	});
 
 	it('writes fix prompts with the findings, logs and threads', () => {

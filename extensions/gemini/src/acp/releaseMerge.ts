@@ -9,7 +9,8 @@
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
-import { AgentWorktree, branchExists, checkoutOf, freeFolder, git, pathExists, worktreesHome } from './worktrees';
+import { isInside } from './fileAccess';
+import { AgentWorktree, branchExists, checkoutOf, freeFolder, git, pathExists, reviewsHome, worktreesHome } from './worktrees';
 
 /** Fetches `branches` from `remote`, so checks see what GitLab has. */
 export async function fetchBranches(repository: string, remote: string, branches: readonly string[]): Promise<void> {
@@ -20,24 +21,34 @@ export async function fetchBranches(repository: string, remote: string, branches
 
 /**
  * A worktree for the review of `remote/branch` (someone else's MR) on
- * GeminiCode's own local branch `local` (review/...), fetched first. A second
- * review of the same merge request reuses the worktree already on `local`,
- * moved to the branch's new head; nothing in it is the user's, since the
- * reviewer only reads. Only a name GeminiCode owns is ever reset like this.
+ * GeminiCode's own local branch `local` (review/...), fetched first, in the
+ * repository's reviews folder (`reviewsHome`), which the Gemini CLI never
+ * trusts: the merge request's own Gemini settings, hooks and MCP servers
+ * never run. A second review of the same merge request reuses the worktree
+ * already on `local`, moved to the branch's new head; nothing in it is the
+ * user's, since the reviewer only reads. One left in the agents' worktrees
+ * folder by an earlier version, which is trusted with the repository, is made
+ * again in the reviews folder, unless `inUse` says an agent works there.
+ * Only a name GeminiCode owns is ever reset like this.
  */
-export async function reviewWorktree(repository: string, remote: string, branch: string, local: string, subfolder = '', home?: string): Promise<AgentWorktree> {
+export async function reviewWorktree(repository: string, remote: string, branch: string, local: string, options: { readonly subfolder?: string; readonly home?: string; readonly inUse?: (folder: string) => boolean } = {}): Promise<AgentWorktree> {
 	if (!local.startsWith('review/')) {
 		throw new Error(`${local} isn't a review branch; GeminiCode resets only its own review/ branches.`);
 	}
+	const subfolder = options.subfolder ?? '';
 	await fetchBranches(repository, remote, [branch]);
 	const existing = await checkoutOf(repository, local);
 	if (existing && await pathExists(existing)) {
-		await git(existing, ['reset', '--quiet', '--hard', `${remote}/${branch}`]);
-		return { folder: existing, cwd: path.join(existing, subfolder), branch: local, base: branch };
+		const trusted = isInside(path.dirname(worktreesHome(repository, options.home)), existing);
+		const moved = trusted && !options.inUse?.(existing) && await git(repository, ['worktree', 'remove', '--force', existing]).then(() => true, () => false);
+		if (!moved) {
+			await git(existing, ['reset', '--quiet', '--hard', `${remote}/${branch}`]);
+			return { folder: existing, cwd: path.join(existing, subfolder), branch: local, base: branch };
+		}
 	}
 	// A folder removed by hand is still listed until pruned, and git refuses its branch meanwhile.
 	await git(repository, ['worktree', 'prune']);
-	const parent = worktreesHome(repository, home);
+	const parent = reviewsHome(repository, options.home);
 	await fs.mkdir(parent, { recursive: true });
 	const folder = await freeFolder(parent, local);
 	await git(repository, ['worktree', 'add', '--quiet', '-B', local, folder, `${remote}/${branch}`]);

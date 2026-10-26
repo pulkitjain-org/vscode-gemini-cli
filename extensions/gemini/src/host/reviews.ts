@@ -166,9 +166,10 @@ export class Reviews implements vscode.Disposable {
 		}
 		const gitlab = this.deps.gitlab();
 		const mr = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Reading !{0}...", iid) }, () => gitlab.mr(project, iid));
-		const clone = await this.deps.cloneOf(project, gitlab);
+		const clone = await this.deps.cloneOf(project, gitlab, iid);
 		if (!clone) {
-			throw new Error(vscode.l10n.t("Open a clone of {0} first, so the merge request can be checked out.", project));
+			// The user cancelled the question where their clone is: no review, and nothing to report.
+			return;
 		}
 		const session = this.add(new ReviewSession(await store.save(newReview(mr, clone)), this.deps));
 		this.changed();

@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import { errorMessage } from '../acp/errors';
+import { samePath } from '../acp/fsUtil';
 import type { GitLabClient, GitLabDiffFile, GitLabDiscussion, GitLabMr } from '../acp/gitlab';
 import { jiraKeyIn } from '../acp/jira';
 import { fetchBranches, reviewWorktree } from '../acp/releaseMerge';
@@ -34,7 +35,8 @@ export interface ReviewDeps {
 	readonly diffs: ReviewDiffs;
 	readonly comments: ReviewComments;
 	gitlab(): GitLabClient;
-	cloneOf(project: string, gitlab: GitLabClient): Promise<{ folder: string; remote: string } | undefined>;
+	/** The clone of `project` to check out from; for the review of merge request `askFor`, asks the user when none is found. Undefined when they cancel. */
+	cloneOf(project: string, gitlab: GitLabClient, askFor?: number): Promise<{ folder: string; remote: string } | undefined>;
 	/** The Pipeline, Quality gate, ticket and Approvals rows beside the review. */
 	side(mr: GitLabMr, ticket: string | undefined, folder: string): Promise<ReviewView['side']>;
 	/** The review changed: its draft, or it was posted or discarded. */
@@ -182,11 +184,16 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 			return;
 		}
 		const { repository, remote, iid } = this.saved;
+		// The ticket's text goes in the prompt: in its untrusted checkout the reviewer has no MCP tools to read it.
+		const jira = this.ticketKey ? this.deps.tools.connectors.jira : undefined;
+		const issue = jira && this.ticketKey ? jira.issue(this.ticketKey).catch(() => undefined) : undefined;
 		// The target too, so the reviewer diffs against today's target: its shell can't sign in to fetch it.
 		await fetchBranches(repository, remote, [mr.targetBranch]).catch(() => undefined);
 		// The worktree on the review's branch, this review's or an earlier one's of the same merge request, moved to the new head.
+		// One in the agents' trusted worktrees folder is made again in the untrusted reviews folder, unless an agent's record still has it.
 		const branch = reviewBranch(iid, mr.sourceBranch);
-		const worktree = await inRepository(repository, () => reviewWorktree(repository, remote, mr.sourceBranch, branch));
+		const inUse = (folder: string) => this.deps.agents.summaries().some(a => !!a.worktree && samePath(a.worktree.folder, folder));
+		const worktree = await inRepository(repository, () => reviewWorktree(repository, remote, mr.sourceBranch, branch, { inUse }));
 		// Read-only from its session's first tool list: what the reviewer finds goes out only when the user posts it.
 		this.deps.tools.markReadOnlyFolder(worktree.cwd);
 		// The reviewer of an earlier review of this merge request works there already: it reviews again, so no second agent shares its folder.
@@ -205,7 +212,9 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 		await this.place();
 		const controller = this.deps.agents.controllerOf(agentId);
 		const threads = this.discussions.filter(d => !d.resolved).map(d => ({ id: d.id, author: d.notes[0].author, body: d.notes.map(n => n.body).join('\n'), path: d.notes[0].path, line: d.notes[0].line }));
-		const prompt = reviewPrompt({ iid, title: mr.title, url: mr.url, author: mr.author, sourceBranch: mr.sourceBranch, targetBranch: mr.targetBranch }, this.ticketKey, remote, this.files.map(f => f.newPath), threads);
+		const read = await issue;
+		const ticket = this.ticketKey ? { key: this.ticketKey, ...read ? { text: `${read.summary}\n\n${read.description}`.trim() } : {} } : undefined;
+		const prompt = reviewPrompt({ iid, title: mr.title, url: mr.url, author: mr.author, sourceBranch: mr.sourceBranch, targetBranch: mr.targetBranch, description: mr.description }, ticket, remote, this.files.map(f => f.newPath), threads);
 		await this.run(async () => {
 			await controller?.send(prompt);
 			await this.readReview();

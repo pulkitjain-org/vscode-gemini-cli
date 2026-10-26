@@ -237,6 +237,12 @@ export class GitLabClient {
 		return id;
 	}
 
+	/** The URLs `git clone` takes for `project`, over HTTPS and SSH, as GitLab gives them. */
+	async cloneUrls(project: string | number): Promise<{ readonly http?: string; readonly ssh?: string }> {
+		const p = await this.request<{ http_url_to_repo?: string; ssh_url_to_repo?: string }>(`/projects/${encodeURIComponent(String(project))}`);
+		return { http: p.http_url_to_repo || undefined, ssh: p.ssh_url_to_repo || undefined };
+	}
+
 	mrUrl(project: string, iid: number): string {
 		return `${this.url}/${project}/-/merge_requests/${iid}`;
 	}

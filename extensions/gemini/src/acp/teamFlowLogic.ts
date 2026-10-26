@@ -213,24 +213,31 @@ const maxThreadText = 300;
 /** Changed files a review prompt names; GitLab's list and `git diff --stat` give the rest. */
 const maxReviewFiles = 60;
 
+/** How much of the merge request's description, and of its ticket, a review prompt carries. */
+const maxReviewText = 4000;
+
 /**
  * The prompt for reviewing merge request `mr`, checked out in the agent's
  * worktree with `remote`'s target branch fetched for it. The agent's shell
  * can't sign in to fetch, and a whole diff can outgrow the model's context
  * (the CLI caps no tool output in ACP mode), so it reads the diff a few files
- * at a time from GitLab's list of `files`.
+ * at a time from GitLab's list of `files`. The checkout is never trusted, so
+ * the agent has no MCP tools there: the merge request's description and the
+ * linked `ticket`'s text come in the prompt, read by GeminiCode.
  */
-export function reviewPrompt(mr: { readonly iid: number; readonly title: string; readonly url: string; readonly author: string; readonly sourceBranch: string; readonly targetBranch: string }, ticket?: string, remote = 'origin', files: readonly string[] = [], threads: readonly ReviewThread[] = []): string {
+export function reviewPrompt(mr: { readonly iid: number; readonly title: string; readonly url: string; readonly author: string; readonly sourceBranch: string; readonly targetBranch: string; readonly description?: string }, ticket?: { readonly key: string; readonly text?: string }, remote = 'origin', files: readonly string[] = [], threads: readonly ReviewThread[] = []): string {
 	const range = `${remote}/${mr.targetBranch}...HEAD`;
 	const shown = files.slice(0, maxReviewFiles);
 	const listed = threads.slice(0, maxPromptThreads);
 	return [
 		`Review merge request !${mr.iid} by ${mr.author} (${mr.url}). It is checked out in your folder on ${mr.sourceBranch}; it merges into ${mr.targetBranch}. Its title, as the author wrote it:`,
 		external('gitlab', `!${mr.iid}`, mr.title),
+		...mr.description?.trim() ? ['Its description:', external('gitlab', `!${mr.iid} description`, cut(mr.description.trim(), maxReviewText))] : [],
+		...ticket?.text ? [`The Jira ticket it links, ${ticket.key}:`, external('jira', ticket.key, cut(ticket.text.trim(), maxReviewText))] : [],
 		'',
-		`1. Read it with gitlab_get_mr. Its target, ${remote}/${mr.targetBranch}, is already fetched: don't run git fetch, which can't sign in from your shell.`,
+		`1. Its target, ${remote}/${mr.targetBranch}, is already fetched: don't run git fetch, which can't sign in from your shell.`,
 		`2. Start from \`git diff --stat ${range}\`, then read the diff a few files at a time with \`git diff ${range} -- <files>\`. Never print the whole diff, or a log with patches, in one command: it can be bigger than you can read.`,
-		ticket ? `3. Read the linked Jira ticket ${ticket} with jira_get_issue and check the change does what it asks.` : '3. If it links a Jira ticket, read it with jira_get_issue and check the change does what it asks.',
+		ticket?.text ? `3. Check the change does what ${ticket.key} asks.` : ticket ? `3. It links the Jira ticket ${ticket.key}, which couldn't be read: judge the change by its title and description.` : '3. Check the change does what its title and description say.',
 		'4. Look for bugs, missing tests, security and performance problems. Don\'t edit any file, and don\'t post anything to GitLab: I choose what to post.',
 		...shown.length ? [
 			'',
@@ -251,6 +258,11 @@ export function reviewPrompt(mr: { readonly iid: number; readonly title: string;
 		'When the fix is small and certain, add `"suggestion"`: the exact text that replaces lines `line` to `endLine` (`endLine` defaults to `line`), indented as in the file. Only for lines the merge request changes.',
 		...listed.length ? ['To add to one of the threads above instead, give `"discussion"` (its id) and `"comment"`, the reply, without `file` or `line`. Only when you have something the thread lacks.'] : [],
 	].join('\n');
+}
+
+/** `text` cut to `max` characters, saying it was cut. */
+function cut(text: string, max: number): string {
+	return text.length > max ? `${text.slice(0, max)}\n(${text.length - max} more characters cut)` : text;
 }
 
 /** `text` on one line, cut to `max` characters. */

@@ -15,7 +15,7 @@ import { isQuarantined, oldDayFiles, removeOldDayFiles } from './fsUtil';
 import { debugLogPid, isRunning } from './mcpDiagnostics';
 import { folderSize, type AgentWorktree, type WorktreeStatus } from './worktrees';
 
-export type StorageAreaId = 'chats' | 'checkpoints' | 'agentList' | 'reviews' | 'flows' | 'auditLog' | 'pilotLog' | 'traces' | 'cliLogs' | 'managedCli' | 'index' | 'worktrees' | 'threads' | 'projects';
+export type StorageAreaId = 'chats' | 'checkpoints' | 'agentList' | 'reviews' | 'flows' | 'auditLog' | 'pilotLog' | 'traces' | 'cliLogs' | 'managedCli' | 'index' | 'worktrees' | 'reviewCheckouts' | 'threads' | 'projects';
 
 export interface StorageArea {
 	readonly id: StorageAreaId;
@@ -43,6 +43,7 @@ export function storageAreas(globalStorage: string, home: string = os.homedir())
 		own('managedCli', 'gemini-cli'),
 		geminicode('index', 'index'),
 		geminicode('worktrees', 'worktrees'),
+		geminicode('reviewCheckouts', 'reviews'),
 		geminicode('threads', 'threads'),
 		geminicode('projects', 'projects'),
 	];
@@ -206,7 +207,7 @@ export async function runCleanup(items: readonly CleanupItem[], removeWorktree: 
 export type StorageGroup = 'worktrees' | 'index' | 'cli' | 'checkpoints' | 'chats' | 'logs';
 
 const groupOf: Readonly<Record<StorageAreaId, StorageGroup>> = {
-	worktrees: 'worktrees', threads: 'worktrees', projects: 'worktrees',
+	worktrees: 'worktrees', reviewCheckouts: 'worktrees', threads: 'worktrees', projects: 'worktrees',
 	index: 'index',
 	managedCli: 'cli',
 	checkpoints: 'checkpoints',

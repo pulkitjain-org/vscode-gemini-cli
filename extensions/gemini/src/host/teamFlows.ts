@@ -23,6 +23,8 @@ import {
 	mrFixRepliesPrompt, MrThreadForFix, resolveWorkFolder, targetChoices, ticketBranchName, ticketStartPrompt, WorkFolder, workFolderChoices,
 } from '../acp/teamFlowLogic';
 import { gitlabProjectOf } from '../acp/teamTools';
+import { findClone, type FoundClone, locateClone, recentFolders, RememberedClones } from '../acp/cloneSearch';
+import { askForClone } from './reviewClone';
 import { AgentWorktree, commitAll, currentBranch, git, GitError, inRepository, repositoryRoot, runWorktreeSetup } from '../acp/worktrees';
 import { setupCommandFor } from './agents/agentWorktrees';
 import type { AgentsView } from './agentsView';
@@ -82,7 +84,7 @@ export class TeamFlows implements vscode.Disposable {
 		this.reviews = new Reviews({
 			extensionUri, tools, agents,
 			gitlab: () => this.gitlab(),
-			cloneOf: (project, gitlab) => this.cloneOf(project, gitlab),
+			cloneOf: (project, gitlab, askFor) => this.cloneOf(project, gitlab, askFor),
 			side: (mr, ticket, folder) => this.reviewSide(mr, ticket, folder),
 		});
 		// A reviewer only reads, after a restart too: its writes would go out before the user chose what to post.
@@ -247,19 +249,28 @@ export class TeamFlows implements vscode.Disposable {
 		return { cwd, project: local.project, branch: local.branch, remote: local.remote ?? 'origin' };
 	}
 
-	/** An open folder that is a clone of `project`, for checking out its branches. */
-	private async cloneOf(project: string, gitlab: GitLabClient): Promise<{ folder: string; remote: string } | undefined> {
-		const folders = [
-			...(vscode.workspace.workspaceFolders ?? []).filter(f => f.uri.scheme === 'file').map(f => f.uri.fsPath),
-			...this.agents.summaries().map(a => a.folder),
-		];
-		for (const folder of [...new Set(folders)]) {
-			const local = await gitlabProjectOf(folder, gitlab.url).catch(() => undefined);
-			if (local?.project?.toLowerCase() === project.toLowerCase()) {
-				return { folder, remote: local.remote ?? 'origin' };
-			}
+	/**
+	 * A clone of `project`, for checking out its branches: the one remembered
+	 * for it, else the first among the window's folders, the agents' folders
+	 * and VS Code's recent folders, remembered. For the review of merge
+	 * request `askFor`, asks the user when none is found; undefined when they cancel.
+	 */
+	private async cloneOf(project: string, gitlab: GitLabClient, askFor?: number): Promise<FoundClone | undefined> {
+		const memory = new RememberedClones(this.state, gitlab.url);
+		const probe = (folder: string) => gitlabProjectOf(folder, gitlab.url);
+		const found = await locateClone(project, memory, [
+			() => (vscode.workspace.workspaceFolders ?? []).filter(f => f.uri.scheme === 'file').map(f => f.uri.fsPath),
+			async () => [...this.agents.summaries().map(a => a.folder), ...(await this.agents.workspaces()).map(w => w.folder)],
+			async () => recentFolders(await vscode.commands.executeCommand('_workbench.getRecentlyOpened')),
+		], probe, path.join(os.homedir(), '.geminicode'));
+		if (found || askFor === undefined) {
+			return found;
 		}
-		return undefined;
+		const chosen = await askForClone(project, askFor, gitlab, folder => findClone(project, [() => [folder]], probe));
+		if (chosen) {
+			await memory.set(project, chosen.folder);
+		}
+		return chosen;
 	}
 
 	private async draft(request: { readonly system: string; readonly prompt: string }): Promise<string | undefined> {
