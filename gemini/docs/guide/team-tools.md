@@ -68,16 +68,16 @@ Paste a Jira key or link, a GitLab merge request or issue link, or a Figma link 
 A ticket's whole journey can happen in GeminiCode:
 
 1. **Start an agent on the ticket.** **Start** on Home, or **Gemini: Start Agent on Jira Ticket**, starts an agent on its own branch named after the ticket. It reads the ticket and plans first, and offers to move the ticket to In Progress.
-2. **Run the checks.** **Run Checks** runs Snyk on the dependencies and code, and lists SonarQube's issues in new code on the agent's branch. Each finding has **Fix**, and **Fix All with This Agent** hands them all over.
+2. **Run the checks.** **Run Checks** runs Snyk on the dependencies and code, and lists SonarQube's issues in new code on the agent's branch. Each finding has **Fix**, and **Fix All with This Agent** hands them all over. When SonarQube has more issues than the page lists, the row says so, such as "50 of 312 issues shown", with **Open in SonarQube** for the rest.
 3. **Open the merge request.** **Open Merge Request**, beside Merge back in Changes, pushes the branch and opens the merge request.
 4. **Fix what comes back.** The merge request panel in Changes shows the pipeline, the quality gate and open review threads. **Fix Pipeline and N Comments** sends them to the agent on the merge request's branch, in a clone of the same project. The agent commits its fix; when its turn ends, GeminiCode pushes the commits (an agent's shell can't sign in to GitLab) and asks it to reply to each thread. Without an agent on the branch, Fix starts one: where the branch is checked out already, in that checkout; otherwise in a worktree of its own. Fix never resets your branch: when your local copy has commits that aren't pushed, it says how many and stops.
 5. **Merge.** **Merge…** turns on when every one of GitLab's checks passes.
 
 ### Checks on any branch
 
-**Run Checks on a Branch…**, on Home or in the Command Palette, runs the same checks on any branch before a merge request exists: the branch checked out here, an agent's, a local one or one on origin. In a window with several folders it works in the repository of the agent in front, else of the active editor, else of the first folder. Start on Ticket and the team's defaults pick their folder the same way.
+**Run Checks on a Branch…**, on Home or in the Command Palette, runs the same checks on any branch before a merge request exists: the branch checked out here, an agent's, a local one or one on origin. In a window with several folders it works in the repository of the agent in front, else of the active editor; when neither says which, it asks, with the agent last in front first, then each folder. Start on Ticket and Move's team defaults pick their folder the same way. A window with one folder never asks.
 
-A branch that isn't checked out gets a checkout of its own under `~/.geminicode/worktrees/<repository>/checks/`, with your `gemini.agents.worktreeSetup` command run in it once. Later runs reuse it, and your own checkout never moves. SonarQube's gate comes from the server's last analysis of the branch, so it needs one push first. With no agent on the branch, **Fix** starts one in that checkout, with the findings as its first prompt.
+A branch that isn't checked out gets a checkout of its own under `~/.geminicode/worktrees/<repository>/checks/`, with your `gemini.agents.worktreeSetup` command, or the repository's own setup script once you allow it, run in it once. Later runs reuse it, and your own checkout never moves. SonarQube's gate comes from the server's last analysis of the branch, so it needs one push first. With no agent on the branch, **Fix** starts one in that checkout, with the findings as its first prompt.
 
 ### The Open Merge Request page
 
@@ -93,7 +93,7 @@ An agent that is reviewing someone else's merge request works on a local copy of
 
 The panel in Changes shows the pipeline, with **Fix** on each failed job, the SonarQube gate, Snyk and the open review threads.
 
-It also lists the checks GitLab applies before a merge, read live: the merge request is open and not a draft, the pipeline, each approval rule by name with who approved, resolved threads, no conflicts, and GitLab's own verdict. A check GitLab didn't answer for counts as not met yet ("couldn't read"), never as passed. **Merge…** is on only when every line holds.
+It also lists the checks GitLab applies before a merge, read live: the merge request is open and not a draft, the pipeline, each approval rule by name with who approved, resolved threads, no conflicts, and GitLab's own verdict. A check GitLab didn't answer for counts as pending ("couldn't read, counted as pending"), never as passed, with **Retry** to read it again; the review page's Approvals row and the merge dialog say the same. **Merge…** is on only when every line holds.
 
 Merge asks once more, naming the commit it read and whether the commits are squashed and the branch deleted, as the project's settings say. GitLab checks again as it merges, so if someone pushes in between, GitLab refuses rather than merging something you didn't see. Afterwards it offers to move the ticket.
 
@@ -127,7 +127,7 @@ The **Review** page lists the merge request's files, its threads and your draft.
 - **Threads.** The merge request's GitLab threads show on their lines and under **Threads** on the page, open and resolved. **Reply**, **Resolve** and **Add Reply and Resolve** go into your draft and are posted with it. Gemini reads the open threads too, and can draft a reply for you to edit.
 - **Suggested changes.** Any line comment can carry a suggestion that the author applies in GitLab with one click. Write it with **Add Suggestion** (**Suggest Change** in the diff), keep the one Gemini wrote with its finding, or press **Ask Gemini to Suggest**.
 
-When you are done, **Post N Comments**, **Post N Comments and Approve** or **Post N Comments and Request Changes** posts the ticked comments as you, on their lines, against the version you reviewed. **Approve** on its own approves without comments.
+When you are done, **Post N Comments**, **Post N Comments and Approve** or **Post N Comments and Request Changes** posts the ticked comments as you, on their lines, against the version you reviewed. **Approve** on its own approves without comments. Afterwards the page says the reviewer agent and its checkout are still on your Mac: **Remove Reviewer and Checkout** removes both, and **Keep for Re-review** leaves them, so the next review of that merge request reuses the checkout. **Discard Draft…** offers the same. Reviewers' checkouts of reviews that ended also show in Project Helpers' **Clean Up**.
 
 The draft is saved as it changes, so closing the page or quitting GeminiCode loses nothing. **Continue Review** on Home, the **Review !N** chip in the reviewer's chat and **Gemini: Open Merge Request Review** (reviews in progress, the last changed first) open it again where you left it. **Ask Gemini Again** reviews the merge request once more and replaces Gemini's comments you haven't touched; yours, and Gemini's that you edited, stay. **Start a New Review…** starts over without the draft, and **Discard Draft…** throws it away. A draft nobody opens for two weeks is removed.
 

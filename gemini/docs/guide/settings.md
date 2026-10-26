@@ -33,9 +33,10 @@ See [Review and safety](review.md) for how approvals work.
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `gemini.agents.ownBranch` | off | Start every new agent on its own branch, in its own folder under `~/.geminicode/worktrees`. |
-| `gemini.agents.worktreeSetup` | empty | A command run in each new agent branch's folder before the agent starts, such as `npm ci`. |
+| `gemini.agents.worktreeSetup` | empty | A command run in each new agent branch's folder before the agent starts, such as `npm ci`. Without it, a repository's own `.gemini/worktree-setup.sh` runs, once you have seen it and chosen **Run Once** or **Run and Remember**; a changed script asks again. |
 | `gemini.agents.allWorkspaceFolders` | off | Let every agent read and edit all folders of a multi-folder window, not only its own. |
 | `gemini.projects.enabled` | on | [Projects](projects.md): a coordinator that splits larger work into threads. |
+| `gemini.projects.maxRunningThreads` | 4 | How many of a project's threads work at once; the rest wait for one to finish. See [How many threads run at once](projects.md#how-many-threads-run-at-once). |
 | `gemini.home.openOnStartup` | on | Open Home in front of your restored tabs each time GeminiCode starts. |
 | `gemini.layout.showAgentsInNewWorkspaces` | on | Show the Agents pane, with Changes below it, the first time a workspace opens. After that, your layout is kept. |
 | `gemini.notifications.enabled` | on | Notify you, and badge the Dock, when an agent finishes or needs you while GeminiCode is in the background. |
@@ -135,6 +136,7 @@ An organisation can lock these settings through VS Code's policy system: a macOS
 | `gemini.docs.allowedDomains` | `GeminiDocsAllowedDomains` |
 | `gemini.projectId` | `GeminiProjectId` |
 | `gemini.projects.enabled` | `GeminiProjects` |
+| `gemini.projects.maxRunningThreads` | `GeminiProjectsMaxRunningThreads` |
 | `gemini.team.runTeamServers` | `GeminiRunTeamServers` |
 | `gemini.agents.worktreeSetup` | `GeminiWorktreeSetup` |
 | `gemini.agents.allWorkspaceFolders` | `GeminiAllWorkspaceFolders` |
