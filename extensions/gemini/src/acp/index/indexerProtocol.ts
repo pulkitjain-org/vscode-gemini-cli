@@ -34,6 +34,8 @@ export interface IndexStatus {
 export interface Answer<T> {
 	readonly result: T;
 	readonly fallback?: { readonly done: number; readonly total: number };
+	/** The index covers only part of the folder (too many files to list without git), so results aren't complete. */
+	readonly partial?: boolean;
 }
 
 /** Each method may answer at once or later. */
@@ -41,6 +43,7 @@ export interface IndexerMethods {
 	ensure(params: { readonly root: string; readonly settings: IndexSettings; readonly build: boolean }): IndexStatus;
 	update(params: { readonly root: string; readonly paths: readonly string[] }): void;
 	reconcile(params: { readonly root: string }): void;
+	turnEnded(params: { readonly root: string }): void;
 	rebuild(params: { readonly root: string; readonly settings: IndexSettings }): IndexStatus;
 	pause(params: { readonly root: string }): IndexStatus;
 	resume(params: { readonly root: string }): IndexStatus;

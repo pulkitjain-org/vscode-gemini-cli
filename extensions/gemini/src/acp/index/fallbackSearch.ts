@@ -5,17 +5,22 @@
 
 // Search without an index, while a folder's first build runs: the app's own
 // ripgrep (it ships with VS Code), with the same caps as indexed results, so
-// a session that starts before any index exists still gets answers.
+// a session that starts before any index exists still gets answers. Ripgrep
+// honours .gitignore; what the index leaves out besides (secret files,
+// .geminiignore, gemini.index.exclude) is dropped from its lines by `allowed`.
 
 import { execFile } from 'node:child_process';
 import { listFiles } from '../folderFiles';
 import { queryTerms, type SearchHit, type SearchResult } from './query';
 
+/** Whether a folder-relative path may be shown: what the index would cover. */
+export type PathFilter = (relative: string) => boolean;
+
 const timeoutMs = 5_000;
 const maxOutputBytes = 2 * 1024 * 1024;
 
 /** Lines matching any of the query's words, grouped into hits of nearby lines, best-covered files first. */
-export async function ripgrepSearch(rg: string | undefined, root: string, query: string, limit: number, glob?: string): Promise<SearchResult> {
+export async function ripgrepSearch(rg: string | undefined, root: string, query: string, limit: number, glob?: string, allowed?: PathFilter): Promise<SearchResult> {
 	const { words } = queryTerms(query);
 	if (!rg || !words.length) {
 		return { hits: [], total: 0, terms: words };
@@ -29,17 +34,17 @@ export async function ripgrepSearch(rg: string | undefined, root: string, query:
 	}
 	args.push('--', '.');
 	const output = await run(rg, args, root);
-	return groupLines(output, words, limit);
+	return groupLines(output, words, limit, allowed);
 }
 
 /** Definitions of `name` in common languages, for find_symbol without an index. */
-export async function ripgrepDefinitions(rg: string | undefined, root: string, name: string): Promise<{ path: string; line: number; text: string }[]> {
+export async function ripgrepDefinitions(rg: string | undefined, root: string, name: string, allowed?: PathFilter): Promise<{ path: string; line: number; text: string }[]> {
 	if (!rg || !/^\w+$/.test(name)) {
 		return [];
 	}
 	const pattern = `\\b(class|interface|type|enum|struct|trait|def|function|func|fn|module|namespace)\\s+${name}\\b|\\b(const|let|var)\\s+${name}\\s*[:=]|^\\s*func\\s+\\([^)]*\\)\\s*${name}\\b`;
 	const output = await run(rg, ['--line-number', '--no-heading', '--max-count', '5', '--max-columns', '300', '--color', 'never', '-e', pattern, '--', '.'], root);
-	return parseLines(output).slice(0, 20).map(({ file, line, text }) => ({ path: file, line, text: text.trim() }));
+	return parseLines(output, allowed).slice(0, 20).map(({ file, line, text }) => ({ path: file, line, text: text.trim() }));
 }
 
 function run(rg: string, args: string[], cwd: string): Promise<string> {
@@ -48,20 +53,30 @@ function run(rg: string, args: string[], cwd: string): Promise<string> {
 	});
 }
 
-function parseLines(output: string): { file: string; line: number; text: string }[] {
+function parseLines(output: string, allowed?: PathFilter): { file: string; line: number; text: string }[] {
 	const lines: { file: string; line: number; text: string }[] = [];
+	const verdicts = new Map<string, boolean>();
 	for (const raw of output.split('\n')) {
 		const match = /^(?:\.\/)?(.+?):(\d+):(.*)$/.exec(raw);
-		if (match) {
-			lines.push({ file: match[1].replace(/\\/g, '/'), line: Number(match[2]), text: match[3] });
+		if (!match) {
+			continue;
+		}
+		const file = match[1].replace(/\\/g, '/');
+		let shown = verdicts.get(file);
+		if (shown === undefined) {
+			shown = !allowed || allowed(file);
+			verdicts.set(file, shown);
+		}
+		if (shown) {
+			lines.push({ file, line: Number(match[2]), text: match[3] });
 		}
 	}
 	return lines;
 }
 
-export function groupLines(output: string, words: readonly string[], limit: number): SearchResult {
+export function groupLines(output: string, words: readonly string[], limit: number, allowed?: PathFilter): SearchResult {
 	const byFile = new Map<string, { line: number; text: string }[]>();
-	for (const { file, line, text } of parseLines(output)) {
+	for (const { file, line, text } of parseLines(output, allowed)) {
 		const list = byFile.get(file) ?? [];
 		list.push({ line, text });
 		byFile.set(file, list);
@@ -89,8 +104,8 @@ export function groupLines(output: string, words: readonly string[], limit: numb
 }
 
 /** A plain outline of the folder while its index is being built: its top folders and how many files each holds. */
-export async function fallbackRepoMap(root: string, maxChars = 4_000): Promise<string> {
-	const files = await listFiles(root).catch(() => [] as string[]);
+export async function fallbackRepoMap(root: string, maxChars = 4_000, allowed?: PathFilter): Promise<string> {
+	const files = (await listFiles(root).catch(() => [] as string[])).filter(file => !allowed || allowed(file));
 	const folders = new Map<string, number>();
 	const top: string[] = [];
 	for (const file of files) {

@@ -8,6 +8,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { isInside } from '../acp/fileAccess';
 import { findGitDir } from '../acp/gitHead';
+import { ChangeBatch } from '../acp/index/changeBatch';
 
 /** File events are passed on in batches, this long after the last one. */
 const filesDebounceMs = 1_000;
@@ -26,12 +27,12 @@ export interface IndexChanges {
  * watcher per indexed folder, its events batched, and a watch on the
  * repository's HEAD and branch refs for checkouts and pulls. Folders outside
  * the window (agents' worktrees) are kept current by the agents' own edits
- * and a reconcile when each turn ends, which costs no watcher.
+ * and, when each turn ends, what git says changed, which costs no watcher.
  */
 export class IndexWatchers implements vscode.Disposable {
 
 	private readonly watched = new Map<string, vscode.Disposable>();
-	private readonly pending = new Map<string, Set<string>>();
+	private readonly pending = new Map<string, ChangeBatch>();
 	private filesTimer: ReturnType<typeof setTimeout> | undefined;
 	private readonly headTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	private readonly disposables: vscode.Disposable[] = [];
@@ -87,12 +88,12 @@ export class IndexWatchers implements vscode.Disposable {
 		if (uri.scheme !== 'file' || uri.fsPath.split(path.sep).includes('.git')) {
 			return;
 		}
-		let paths = this.pending.get(folder);
-		if (!paths) {
-			paths = new Set();
-			this.pending.set(folder, paths);
+		let batch = this.pending.get(folder);
+		if (!batch) {
+			batch = new ChangeBatch();
+			this.pending.set(folder, batch);
 		}
-		paths.add(uri.fsPath);
+		batch.add(uri.fsPath);
 		clearTimeout(this.filesTimer);
 		this.filesTimer = setTimeout(() => this.flush(), filesDebounceMs);
 	}
@@ -100,8 +101,14 @@ export class IndexWatchers implements vscode.Disposable {
 	private flush(): void {
 		const batches = [...this.pending];
 		this.pending.clear();
-		for (const [folder, paths] of batches) {
-			this.target.changed(folder, [...paths]);
+		for (const [folder, batch] of batches) {
+			const changed = batch.changed;
+			if (changed) {
+				this.target.changed(folder, changed);
+			} else {
+				// More than the indexer applies one by one: it compares everything instead.
+				this.target.moved(folder);
+			}
 		}
 	}
 

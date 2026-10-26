@@ -65,10 +65,18 @@ export class FolderFileIndex {
 
 /** Folder-relative paths, with `/` separators. */
 export async function listFiles(folder: string): Promise<string[]> {
+	return (await listFolder(folder)).files;
+}
+
+/**
+ * Folder-relative paths, and whether the list stopped short: the walk stops
+ * at 50,000 files, and results from a cut list can't claim to be complete.
+ */
+export async function listFolder(folder: string, limit = maxFiles): Promise<{ readonly files: string[]; readonly truncated: boolean }> {
 	try {
-		return await gitLsFiles(folder);
+		return { files: await gitLsFiles(folder), truncated: false };
 	} catch {
-		return walk(folder);
+		return walk(folder, limit);
 	}
 }
 
@@ -84,11 +92,13 @@ function gitLsFiles(folder: string): Promise<string[]> {
 	});
 }
 
-async function walk(folder: string): Promise<string[]> {
+async function walk(folder: string, limit: number): Promise<{ files: string[]; truncated: boolean }> {
 	const files: string[] = [];
 	const pending = [''];
-	while (pending.length && files.length < maxFiles) {
-		const relative = pending.shift()!;
+	// A read position rather than shift(), which moves every queued folder each time.
+	let next = 0;
+	while (next < pending.length && files.length < limit) {
+		const relative = pending[next++];
 		let entries;
 		try {
 			entries = await readdir(path.join(folder, relative), { withFileTypes: true });
@@ -106,5 +116,5 @@ async function walk(folder: string): Promise<string[]> {
 			}
 		}
 	}
-	return files.slice(0, maxFiles);
+	return { files: files.slice(0, limit), truncated: files.length > limit || next < pending.length };
 }
