@@ -49,13 +49,20 @@ export class Reviews implements vscode.Disposable {
 	private readonly disposables: vscode.Disposable[] = [this.diffs, this.comments, this.onDidChangeEmitter];
 	private readonly deps: ReviewDeps;
 
-	constructor(deps: Omit<ReviewDeps, 'diffs' | 'comments' | 'changed' | 'ended'>) {
+	constructor(deps: Omit<ReviewDeps, 'diffs' | 'comments' | 'changed' | 'ended' | 'removeReviewer'>) {
 		this.deps = {
 			...deps,
 			diffs: this.diffs,
 			comments: this.comments,
 			changed: () => this.changed(),
 			ended: session => this.forget(session),
+			removeReviewer: async session => {
+				const { project, iid } = session.review;
+				this.forget(session);
+				if (await this.removeReviewer(project, iid)) {
+					void vscode.window.showInformationMessage(vscode.l10n.t("Removed the reviewer of !{0} and its checkout.", iid));
+				}
+			},
 		};
 		this.disposables.push(deps.agents.onDidChangeAgents(() => {
 			// A reviewer removed: its review offers Ask Gemini Again.
@@ -189,6 +196,24 @@ export class Reviews implements vscode.Disposable {
 			await this.deps.tools.reviews.remove(project, iid);
 		}
 		await this.reload();
+		void this.offerRemoveAfterDiscard(project, iid);
+	}
+
+	/** After Discard, while the reviewer is still there: Remove Reviewer and Checkout, or Keep for Re-review. */
+	private async offerRemoveAfterDiscard(project: string, iid: number): Promise<void> {
+		const agentId = this.endedReviewer(project, iid);
+		const branch = agentId && this.deps.agents.agentPlace(agentId)?.branch;
+		if (!agentId) {
+			return;
+		}
+		const remove = vscode.l10n.t("Remove Reviewer and Checkout");
+		const keep = vscode.l10n.t("Keep for Re-review");
+		const text = branch
+			? vscode.l10n.t("Discarded your review of !{0}. The reviewer agent and its checkout ({1}) are still on this Mac.", iid, branch)
+			: vscode.l10n.t("Discarded your review of !{0}. The reviewer agent and its checkout are still on this Mac.", iid);
+		if (await vscode.window.showInformationMessage(text, remove, keep) === remove && await this.removeReviewer(project, iid)) {
+			void vscode.window.showInformationMessage(vscode.l10n.t("Removed the reviewer of !{0} and its checkout.", iid));
+		}
 	}
 
 	dispose(): void {

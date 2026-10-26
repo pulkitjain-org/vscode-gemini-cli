@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { describeSonar, sonarProjectKeyIn } from '../../src/acp/sonar';
+import { describeSonar, sonarIssuesUrl, sonarProjectKeyIn } from '../../src/acp/sonar';
 
 describe('sonarProjectKeyIn', () => {
 	it('reads sonar.projectKey from sonar-project.properties, if there is one', async () => {
@@ -50,6 +50,18 @@ describe('describeSonar', () => {
 			'SonarQube shop, branch feature/cart:\nQuality gate: passed\nNo open issues on new code.',
 			'SonarQube shop, the main branch:\n1 open issue on new code:\n- [INFO]  m (r)',
 			'SonarQube shop, the main branch:\nQuality gate: not computed\nNo open issues on new code.',
+		]);
+	});
+});
+
+describe('sonarIssuesUrl', () => {
+	it('opens the open issues on new code that a cut list leaves out, for the branch or merge request', () => {
+		expect([
+			sonarIssuesUrl('https://sonar.example.com', { project: 'shop api', branch: 'feature/login' }),
+			sonarIssuesUrl('https://sonar.example.com', { project: 'shop', mergeRequest: '482' }),
+		]).toEqual([
+			'https://sonar.example.com/project/issues?id=shop%20api&branch=feature%2Flogin&inNewCodePeriod=true&resolved=false',
+			'https://sonar.example.com/project/issues?id=shop&pullRequest=482&inNewCodePeriod=true&resolved=false',
 		]);
 	});
 });

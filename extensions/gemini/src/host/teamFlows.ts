@@ -16,7 +16,8 @@ import { GitLabClient, GitLabMr } from '../acp/gitlab';
 import { formatDuration, JiraClient, type JiraMyTickets, jiraKeyIn, parseDuration } from '../acp/jira';
 import { branchSummary, branchWorktree, fetchBranches, pushBranch, UnpushedCommitsError } from '../acp/releaseMerge';
 import { describeSnyk } from '../acp/snyk';
-import { sonarProjectKeyIn } from '../acp/sonar';
+import { sonarIssuesUrl, sonarProjectKeyIn } from '../acp/sonar';
+import { countText } from '../acp/teamHttp';
 import {
 	CheckFinding, checksFixPrompt, findingsFromLocalSonar, findingsFromSnyk, findingsFromSonar, isUsualTarget, jiraCommentRequest, mrDescriptionRequest, mrFixPrompt,
 	mrFixRepliesPrompt, MrThreadForFix, resolveWorkFolder, targetChoices, ticketBranchName, ticketStartPrompt, WorkFolder, workFolderChoices,
@@ -789,6 +790,9 @@ export class TeamFlows implements vscode.Disposable {
 		}
 		if (mr.approvals) {
 			side.push({ tool: 'people', label: vscode.l10n.t("Approvals"), pill: { text: vscode.l10n.t("{0} of {1}", mr.approvals.given, mr.approvals.required), tone: mr.approvals.given >= mr.approvals.required && mr.approvals.required ? 'ok' : 'muted' } });
+		} else {
+			// GitLab didn't answer for the approvals: pending, never passed.
+			side.push({ tool: 'people', label: vscode.l10n.t("Approvals"), detail: vscode.l10n.t("couldn't read, counted as pending"), pill: { text: vscode.l10n.t("pending"), tone: 'muted' }, retry: true });
 		}
 		return side;
 	}
@@ -817,9 +821,16 @@ export class TeamFlows implements vscode.Disposable {
 		const n = iid;
 		const [mr, readiness] = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Reading !{0}...", n) }, () => Promise.all([gitlab.mr(p, n, false), gitlab.mergeReadiness(p, n)]));
 		// allow-any-unicode-next-line
-		const lines = readiness.checks.map(c => `${c.ok ? '✓' : '✗'} ${c.name}: ${c.detail}`);
+		const lines = readiness.checks.map(c => c.unreadable ? `◌ ${c.name}: ${vscode.l10n.t("couldn't read, counted as pending")}` : `${c.ok ? '✓' : '✗'} ${c.name}: ${c.detail}`);
 		if (!readiness.ready) {
-			await vscode.window.showWarningMessage(vscode.l10n.t("!{0} can't be merged yet.", n), { modal: true, detail: lines.join('\n') });
+			// A check GitLab didn't answer for may pass when read again.
+			const retry = readiness.checks.some(c => c.unreadable) ? vscode.l10n.t("Retry") : undefined;
+			if (retry && await vscode.window.showWarningMessage(vscode.l10n.t("!{0} can't be merged yet.", n), { modal: true, detail: lines.join('\n') }, retry) === retry) {
+				return this.mergeMergeRequest(p, n, options);
+			}
+			if (!retry) {
+				await vscode.window.showWarningMessage(vscode.l10n.t("!{0} can't be merged yet.", n), { modal: true, detail: lines.join('\n') });
+			}
 			return;
 		}
 		const squash = options.squash ?? readiness.squash;
@@ -1142,8 +1153,18 @@ export class TeamFlows implements vscode.Disposable {
 				try {
 					const [gate, issues] = await Promise.all([sonar.gate(target), sonar.issues(target)]);
 					const findings = findingsFromSonar(issues);
-					results.push(vscode.l10n.t("SonarQube new code: {0}{1}, {2} issues", gate.status === 'OK' ? vscode.l10n.t("gate passed") : gate.status === 'ERROR' ? vscode.l10n.t("gate failed") : vscode.l10n.t("no gate"), gate.coverage ? vscode.l10n.t(", coverage {0}%", gate.coverage) : '', issues.length));
-					setRow(name, { state: 'done', detail: vscode.l10n.t("Quality gate {0}{1}", gate.status === 'OK' ? vscode.l10n.t("passed") : gate.status === 'ERROR' ? vscode.l10n.t("failed") : vscode.l10n.t("not computed"), gate.coverage ? vscode.l10n.t(" · coverage {0}%", gate.coverage) : ''), pill: { text: findings.length ? String(findings.length) : vscode.l10n.t("clean"), tone: gate.status === 'ERROR' ? 'error' : findings.length ? 'warn' : 'ok' } }, findings);
+					// A list cut at its page says so: "50 of 312 issues shown", with SonarQube's own list for the rest.
+					const cut = issues.total !== undefined && issues.total > issues.length;
+					results.push(vscode.l10n.t("SonarQube new code: {0}{1}, {2} issues", gate.status === 'OK' ? vscode.l10n.t("gate passed") : gate.status === 'ERROR' ? vscode.l10n.t("gate failed") : vscode.l10n.t("no gate"), gate.coverage ? vscode.l10n.t(", coverage {0}%", gate.coverage) : '', countText(issues)));
+					setRow(name, {
+						state: 'done',
+						detail: [
+							vscode.l10n.t("Quality gate {0}{1}", gate.status === 'OK' ? vscode.l10n.t("passed") : gate.status === 'ERROR' ? vscode.l10n.t("failed") : vscode.l10n.t("not computed"), gate.coverage ? vscode.l10n.t(" · coverage {0}%", gate.coverage) : ''),
+							...cut ? [vscode.l10n.t("{0} of {1} issues shown", issues.length, issues.total!)] : [],
+						].join(' · '),
+						pill: { text: findings.length ? String(findings.length) : vscode.l10n.t("clean"), tone: gate.status === 'ERROR' ? 'error' : findings.length ? 'warn' : 'ok' },
+						...cut ? { link: { label: vscode.l10n.t("Open in SonarQube"), url: sonarIssuesUrl(sonar.url, target) } } : {},
+					}, findings);
 				} catch (err) {
 					setRow(name, { state: 'problem', detail: /404|found nothing/.test(errorMessage(err)) ? vscode.l10n.t("{0} hasn't been analysed yet; SonarQube runs in the pipeline after you push.", branch ?? key) : errorMessage(err) });
 				}

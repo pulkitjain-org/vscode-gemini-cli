@@ -157,7 +157,8 @@ export interface ReviewView {
 	readonly resolvedThreads: number;
 	/** Bumped when the host replaces the draft, so the page takes its text over what the user typed. */
 	readonly rev: number;
-	readonly side: readonly { readonly tool: FlowTool | 'people'; readonly label: string; readonly detail?: string; readonly pill?: FlowPill }[];
+	/** `retry`: the row couldn't be read, so it counts as pending until Retry reads it again. */
+	readonly side: readonly { readonly tool: FlowTool | 'people'; readonly label: string; readonly detail?: string; readonly pill?: FlowPill; readonly retry?: boolean }[];
 	readonly files: readonly { readonly path: string; readonly dir: string; readonly name: string; readonly added: number; readonly removed: number; readonly comments: number }[];
 	/** Changed files GitLab didn't list, beyond its first 100. */
 	readonly moreFiles?: number;
@@ -168,6 +169,11 @@ export interface ReviewView {
 	readonly moved?: string;
 	readonly approvedByMe: boolean;
 	readonly done?: string;
+	/**
+	 * After Post: the reviewer agent and its checkout are still on this Mac,
+	 * as a sentence, with Remove Reviewer and Checkout and Keep for Re-review.
+	 */
+	readonly leftover?: string;
 }
 
 export interface ChecksView {
@@ -179,7 +185,8 @@ export interface ChecksView {
 	readonly where?: string;
 	/** What the checkout's setup did: "setup: npm ci (done, 41 s)". */
 	readonly setup?: string;
-	readonly rows: readonly { readonly tool: FlowTool; readonly name: string; readonly state: 'running' | 'done' | 'problem' | 'off'; readonly detail: string; readonly pill?: FlowPill }[];
+	/** `link`: a page with what the row leaves out, such as SonarQube's list when only the first issues are shown. */
+	readonly rows: readonly { readonly tool: FlowTool; readonly name: string; readonly state: 'running' | 'done' | 'problem' | 'off'; readonly detail: string; readonly pill?: FlowPill; readonly link?: { readonly label: string; readonly url: string } }[];
 	readonly findings: readonly (CheckFinding & { readonly checked: boolean })[];
 	readonly sent?: string;
 }
@@ -295,7 +302,11 @@ export interface TeamFlowStrings {
 	readonly deleteReply: string;
 	readonly refresh: string;
 	readonly askGeminiAgain: string;
+	/** `{0}` files shown of `{1}`. */
 	readonly moreFiles: string;
+	readonly retry: string;
+	readonly removeReviewer: string;
+	readonly keepReviewer: string;
 	readonly files: string;
 	readonly noFindings: string;
 	readonly kindBug: string;
@@ -359,8 +370,11 @@ export interface ChangesTeamView {
 			readonly heading: string;
 			/** "read live 12 s ago" */
 			readonly readAt: string;
-			/** pending: waiting on GitLab, such as a pipeline still running. */
-			readonly checks: readonly { readonly name: string; readonly state: 'ok' | 'missing' | 'pending'; readonly detail: string; readonly source: string }[];
+			/**
+			 * pending: waiting on GitLab, such as a pipeline still running. `retry`, the button's label, when
+			 * GitLab didn't answer for the check: it counts as pending until read again.
+			 */
+			readonly checks: readonly { readonly name: string; readonly state: 'ok' | 'missing' | 'pending'; readonly detail: string; readonly source: string; readonly retry?: string }[];
 			readonly ready: boolean;
 			readonly squash: { readonly label: string; readonly on: boolean };
 			readonly removeSourceBranch: { readonly label: string; readonly on: boolean };
@@ -375,7 +389,7 @@ export interface ChangesTeamView {
 }
 
 export type FromChangesTeam =
-	| { readonly type: 'team'; readonly action: 'openMr' | 'runChecks' | 'openUrl' }
+	| { readonly type: 'team'; readonly action: 'openMr' | 'runChecks' | 'openUrl' | 'retry' }
 	| { readonly type: 'team'; readonly action: 'merge'; readonly squash: boolean; readonly removeSourceBranch: boolean; readonly moveTicket: boolean }
 	| { readonly type: 'team'; readonly action: 'fixJob'; readonly job: number }
 	| { readonly type: 'team'; readonly action: 'fixMr'; readonly jobs: boolean; readonly threads: readonly string[] };
