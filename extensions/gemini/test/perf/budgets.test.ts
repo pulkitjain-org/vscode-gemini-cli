@@ -106,7 +106,7 @@ describe('bundle size', () => {
 
 	it.skipIf(!ci && !['media', 'dist'].every(dir => existsSync(path.join(root, dir))))('has a budget for every script in media/ and dist/', () => {
 		const built = ['media', 'dist'].flatMap(dir => existsSync(path.join(root, dir)) ? readdirSync(path.join(root, dir)).filter(name => name.endsWith('.js')).map(name => `${dir}/${name}`) : []);
-		expect(built.filter(file => !(file in bundleBudgets))).toEqual([]);
+		expect(built.filter(file => !Object.hasOwn(bundleBudgets, file))).toEqual([]);
 	});
 });
 

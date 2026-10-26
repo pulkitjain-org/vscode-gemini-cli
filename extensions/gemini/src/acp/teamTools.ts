@@ -871,7 +871,7 @@ async function sonarCall(sonar: SonarClient, via: Through, name: string, args: R
 			return ok(external('sonar', ref, clip([`Quality gate:\n${gate}`, issues && `Open issues:\n${issues}`].filter(Boolean).join('\n\n'), 20_000)));
 		}, async () => {
 			const [gate, issues] = await Promise.all([sonar.gate(target), sonar.issues(target, 20).catch(() => [])]);
-			return ok(describeSonar(target, gate, issues, 'total' in issues ? issues.total : undefined));
+			return ok(describeSonar(target, gate, issues, (issues as { readonly total?: number }).total));
 		});
 	}
 	return via(async server => {
@@ -879,7 +879,7 @@ async function sonarCall(sonar: SonarClient, via: Through, name: string, args: R
 		return ok(external('sonar', ref, clip([`Open issues:\n${issues}`, hotspots && `Security hotspots to review:\n${hotspots}`].filter(Boolean).join('\n\n'), 20_000)));
 	}, async () => {
 		const [issues, hotspots] = await Promise.all([sonar.issues(target), sonar.hotspots(target).catch(() => [])]);
-		const total = (issues.total ?? issues.length) + (('total' in hotspots ? hotspots.total : undefined) ?? hotspots.length);
+		const total = (issues.total ?? issues.length) + ((hotspots as { readonly total?: number }).total ?? hotspots.length);
 		return ok(describeSonar(target, undefined, [...issues, ...hotspots], total));
 	});
 }
