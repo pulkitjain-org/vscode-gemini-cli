@@ -48,7 +48,7 @@ describe('the worktrees Clean Up may offer', () => {
 		const review = await createWorktree(repo, 'review/482-rate-limit', '', home);
 		const reviewing = await createWorktree(repo, 'review/483-other', '', home);
 		const running = await createWorktree(repo, 'gemini/running', '', home);
-		const removedClean = await createWorktree(repo, 'gemini/removed-clean', '', home);
+		await createWorktree(repo, 'gemini/removed-clean', '', home);
 		const removedAhead = await createWorktree(repo, 'gemini/removed-ahead', '', home);
 		await fs.writeFile(path.join(removedAhead.folder, 'c.ts'), 'c\n');
 		await commitAll(removedAhead.folder, 'C');
