@@ -272,7 +272,7 @@ export function cardKey(event: { readonly key: string; readonly code: string; re
 	if (!chord) {
 		return undefined;
 	}
-	// The key's code, not its character: ⌥ turns S into ß on a Mac.
+	// The key's code, not its character: on a Mac, Option turns S into another letter.
 	return event.key === 'Enter' ? 'once' : event.code === 'KeyS' ? 'session' : undefined;
 }
 

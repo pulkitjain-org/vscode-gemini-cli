@@ -1,5 +1,5 @@
 diff --git a/AGENTS.md b/AGENTS.md
-index d6abb76ab8384fb7b391b551b159002657c218c1..70ac01b11cabbee87f066c373d10d14fe65dfbf5 100644
+index d6abb76ab8384fb7b391b551b159002657c218c1..a9457ac068a6c957a076766d62f144a3ea1261b3 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
 @@ -1,3 +1,99 @@
@@ -52,7 +52,7 @@ index d6abb76ab8384fb7b391b551b159002657c218c1..70ac01b11cabbee87f066c373d10d14f
 +
 +### Where pages open
 +
-+- Anything Home opens (Run Checks, Log Time, Move, Connections, Project Helpers, a merge request review) opens as a tab in the active group, with `vscode.ViewColumn.Active`. Never `ViewColumn.Beside`: that splits Home.
++- Anything Home opens (Run Checks, Log Time, Move, Connections, Agent Setup, a merge request review) opens as a tab in the active group, with `vscode.ViewColumn.Active`. Never `ViewColumn.Beside`: that splits Home.
 +- An agent's own files, diffs and pages go in that agent's side group (`agentColumn` in `src/host/editorPlacement.ts`), and only after the agent's tab is in front. The side group shows only with its agent, so it never sits beside Home.
 +- In the workbench, team-flow pages do not make a group "the agents' group" (`isAgentsTab` in `src/vs/workbench/contrib/gemini/electron-browser/geminiAgentGroups.ts`). Without that, the next agent opens beside the flow page and Home ends up in three columns.
 +
@@ -65,7 +65,7 @@ index d6abb76ab8384fb7b391b551b159002657c218c1..70ac01b11cabbee87f066c373d10d14f
 +
 +- Use themed tooltips (`setTip` from `webview-src/tooltip.ts`), not `title`. Native tooltips are slow to appear and unthemed. The themed one is a top-layer popover, so it also shows over a modal dialog.
 +- A `Menu` that stays open while its data changes must be redrawn (`menu.render()`) when a new view arrives. Otherwise its switches show the old state, and the next click sends the same value again.
-+- Size budgets in `extensions/gemini/test/perf/budgets.test.ts` are enforced: `media/home.js` 30 KB, `dist/extension.js` 1.2 MB. A heavy dependency goes in a chunk loaded on first use (`draftMarkdown.js`, `commentBox.js`, through a `data-` attribute on the page's script tag), never in the startup script or the extension host.
++- Size budgets in `extensions/gemini/test/perf/budgets.test.ts` are enforced: `media/home.js` 30 KB, `dist/extension.js` 1.2 MB. A heavy dependency goes in a chunk loaded on first use (`draftMarkdown.js`, `commentBox.js`, through a `data-` attribute on the page's script tag), never in the startup script or the extension host. On the host side, pages opened on request and rarely used tools load from bundles of their own (`dist/pages.js`, `dist/onDemand.js`, through `LazyFeature` in `src/host/lazyFeature.ts`); such a bundle has its own copy of every module it imports, so module state reaches it through constructors, which `test/perf/chunks.test.ts` checks. `dist/extension.js` is at about 1.18 MB: new host features go in one of those bundles unless they are needed at startup.
 +- `esbuild.mts` keeps only zod's English messages: its fifty locales were a third of the extension bundle. To measure the bundle again, build with esbuild's `metafile` and group `bytesInOutput` by package.
 +- User-visible strings come from the extension host (`HomeStrings`, `vscode.l10n.t`), are never joined from pieces, and use `{0}` placeholders.
 +
