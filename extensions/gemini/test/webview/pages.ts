@@ -45,6 +45,8 @@ async function hostExport<T>(file: string, name: string): Promise<T> {
 		write: false,
 		format: 'cjs',
 		platform: 'node',
+		// As the extension's own build does (esbuild-extension-common.mts): a package's ES module build, which esbuild can follow, before its UMD one.
+		mainFields: ['module', 'main'],
 		logLevel: 'silent',
 		plugins: [{
 			name: 'fake-vscode',

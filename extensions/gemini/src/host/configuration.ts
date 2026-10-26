@@ -10,7 +10,7 @@ import * as vscode from 'vscode';
 import { ApprovalPolicy, prepareAdminPolicy } from '../acp/adminPolicy';
 import { AgentCommand, cliHeapSizeMb, includeDirectoryArgs, resolveAgentCommand } from '../acp/agentProcess';
 import { CliResolution, resolveCli } from '../acp/cliResolution';
-import { buildAgentEnv } from '../acp/env';
+import { AgentNetwork, buildAgentEnv } from '../acp/env';
 import { ProjectIdProblem, ResolvedProjectId, resolveProjectId, validateProjectId, workspaceOverride } from '../acp/projectId';
 import { indexServerName } from '../acp/indexMcp';
 import { projectServerName } from '../acp/projectMcp';
@@ -104,7 +104,7 @@ async function allowedMcpServerArgs(): Promise<string[]> {
 }
 
 /** The settings that change how the agent process starts; a change restarts it. */
-export const agentLaunchSettings = ['cliPath', 'cli.version', 'projectId', 'approval.allowAutoEdit', 'approval.allowYolo', 'tools.allowShell', 'tools.denyEnvironmentCommands', 'mcp.allowedServers', 'agents.allWorkspaceFolders'].map(key => `${configSection}.${key}`);
+export const agentLaunchSettings = [...['cliPath', 'cli.version', 'projectId', 'approval.allowAutoEdit', 'approval.allowYolo', 'tools.allowShell', 'tools.denyEnvironmentCommands', 'mcp.allowedServers', 'agents.allWorkspaceFolders'].map(key => `${configSection}.${key}`), 'http.proxy', 'http.noProxy'];
 
 export function getManagedCliDir(): string | undefined {
 	return managedCliDir;
@@ -145,7 +145,7 @@ export async function getAgentCommand(options: { interactive?: boolean; cli?: Cl
 	return resolveAgentCommand({
 		cliPath: cli.cliPath,
 		execPath: process.execPath,
-		env: { ...buildAgentEnv(process.env, getProjectSettings().resolved?.projectId), ...options.interactive || options.subcommand ? {} : agentEnvOverride },
+		env: { ...buildAgentEnv(process.env, getProjectSettings().resolved?.projectId, editorNetwork()), ...options.interactive || options.subcommand ? {} : agentEnvOverride },
 		platform: process.platform,
 		interactive: options.interactive || !!options.subcommand,
 		heapSizeMb: options.interactive || options.subcommand ? undefined : cliHeapSizeMb(settings, os.totalmem()),
@@ -155,6 +155,12 @@ export async function getAgentCommand(options: { interactive?: boolean; cli?: Cl
 			...includeDirectoryArgs(options.ownFolderOnly ? [] : includedFolderPaths()),
 		],
 	});
+}
+
+/** The editor's proxy settings, which the agent follows when the app's environment names no proxy (env.ts). */
+function editorNetwork(): AgentNetwork {
+	const http = vscode.workspace.getConfiguration('http');
+	return { proxy: http.get<string>('proxy') || undefined, noProxy: http.get<string[]>('noProxy') ?? [] };
 }
 
 /**

@@ -6,7 +6,7 @@
 // Checks that a real Gemini CLI obeys the policy file GeminiCode writes. The
 // CLI talks to a fake Gemini API on localhost, through GOOGLE_GEMINI_BASE_URL,
 // that always asks for one shell command; no credentials or network are needed.
-// Skipped unless GEMINI_CLI_PATH points at the CLI. Runs with an empty HOME.
+// Runs against the bundled CLI or GEMINI_CLI_PATH (test/realCli.ts). Runs with an empty HOME.
 
 import { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
@@ -14,7 +14,7 @@ import { createServer, Server } from 'node:http';
 import { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
 import { ApprovalPolicy, prepareAdminPolicy, shellToolName } from '../../src/acp/adminPolicy';
 import type * as acp from '@agentclientprotocol/sdk';
 import { confirmToolGroups, teamToolsServerName } from '../../src/acp/teamTools';
@@ -22,8 +22,9 @@ import { AgentErrorInfo, classifyAgentError } from '../../src/acp/errors';
 import { trustFolder } from '../../src/acp/trustedFolders';
 import { AgentConnection } from '../../src/acp/agentConnection';
 import { resolveAgentCommand, spawnAgent } from '../../src/acp/agentProcess';
+import { describeRealCli, realCliPath } from '../realCli';
 
-const cliPath = process.env.GEMINI_CLI_PATH;
+const cliPath = realCliPath;
 const fakeMcpServer = path.join(import.meta.dirname, '..', 'fake-mcp', 'fakeMcpServer.ts');
 
 interface FunctionResponse {
@@ -58,7 +59,7 @@ async function startFakeGemini(responses: FunctionResponse[], command = 'touch r
 	return server;
 }
 
-describe.skipIf(!cliPath)('gemini --acp with a GeminiCode admin policy', () => {
+describeRealCli('gemini --acp with a GeminiCode admin policy', () => {
 	let child: ChildProcessWithoutNullStreams | undefined;
 	let connection: AgentConnection | undefined;
 	let server: Server | undefined;

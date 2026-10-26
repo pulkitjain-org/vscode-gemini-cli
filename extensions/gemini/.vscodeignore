@@ -8,3 +8,4 @@ vitest.config.mts
 package-lock.json
 webview-src/**
 scripts/**
+knip.json

@@ -19,6 +19,8 @@ let home: string;
 
 beforeAll(() => {
 	Object.assign(process.env, { GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 'test@example.com', GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 'test@example.com' });
+	// The throwaway repositories are never signed, whatever the user's global git config asks for.
+	Object.assign(process.env, { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'commit.gpgsign', GIT_CONFIG_VALUE_0: 'false' });
 });
 
 beforeEach(async () => {

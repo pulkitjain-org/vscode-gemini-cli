@@ -4,9 +4,10 @@
  *--------------------------------------------------------------------------------------------*/
 
 // Installs GeminiCode's own copies of the Gemini CLI: one folder per version
-// under the managed folder, taken from the npm registry. Only `bundle/` and
-// `package.json` are kept; the CLI's optional packages (node-pty, keytar)
-// are left out, and the CLI runs without them.
+// under the managed folder, taken from the npm registry, or the mirror in
+// `gemini.cli.registry`. Only `bundle/` and `package.json` are kept; the CLI's
+// optional packages (node-pty, keytar) are left out, and the CLI runs without
+// them.
 
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
@@ -18,6 +19,27 @@ import { compareVersions, isVersion, listManagedVersions } from './cliResolution
 
 export const cliPackageName = '@google/gemini-cli';
 export const defaultRegistry = 'https://registry.npmjs.org';
+
+/**
+ * The registry to install from: `configured` (`gemini.cli.registry`, an
+ * organisation's npm mirror) when it is an https address, or plain http on
+ * this machine, else the public registry. No trailing slash.
+ */
+export function cliRegistry(configured: string | undefined): string {
+	const value = configured?.trim();
+	if (value) {
+		try {
+			const url = new URL(value);
+			const local = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]';
+			if ((url.protocol === 'https:' || url.protocol === 'http:' && local) && !url.username && !url.password && !url.search && !url.hash) {
+				return url.href.replace(/\/+$/, '');
+			}
+		} catch {
+			// Not an address: the public registry.
+		}
+	}
+	return defaultRegistry;
+}
 
 /** The parts of `fetch` used here, so tests can pass a fake. */
 export type Fetch = (url: string, init?: { readonly headers?: Record<string, string>; readonly signal?: AbortSignal }) => Promise<{

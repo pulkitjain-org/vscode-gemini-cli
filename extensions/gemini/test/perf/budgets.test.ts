@@ -70,8 +70,9 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// messages only (esbuild.mts). Project Helpers, Connections, the audit log, Run Benchmark, the pilot and the
 	// trace recorder moved to dist/pages.js and dist/onDemand.js, about 60 KB.
 	'dist/extension.js': 1_200_000,
-	// Project Helpers and Connections, about 65 KB, loaded the first time one is opened (src/pages.ts).
-	'dist/pages.js': 80_000,
+	// Project Helpers and Connections, about 86 KB, loaded the first time one is opened (src/pages.ts): their own code
+	// and their copy of jsonc-parser (about 17 KB), which edits the Gemini CLI's settings files keeping their comments.
+	'dist/pages.js': 95_000,
 	// The audit log, Run Benchmark, the pilot's export and the trace recorder, about 31 KB, loaded the first time
 	// one of their commands runs (src/onDemand.ts).
 	'dist/onDemand.js': 40_000,

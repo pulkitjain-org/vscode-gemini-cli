@@ -5,22 +5,22 @@
 
 // Checks that a real Gemini CLI loads the geminicode-index server from a
 // session's mcpServers in a trusted folder: it initializes it (reading the
-// folder's outline) and lists its tools. Skipped unless GEMINI_CLI_PATH points
-// at the CLI. Runs with an empty HOME and no credentials or network.
+// folder's outline) and lists its tools. Runs against the bundled CLI or GEMINI_CLI_PATH (test/realCli.ts). Runs with an empty HOME and no credentials or network.
 
 import { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
 import { AgentConnection } from '../../src/acp/agentConnection';
 import { resolveAgentCommand, spawnAgent } from '../../src/acp/agentProcess';
 import { IndexMcpServer } from '../../src/acp/indexMcp';
 import { trustFolder } from '../../src/acp/trustedFolders';
+import { describeRealCli, realCliPath } from '../realCli';
 
-const cliPath = process.env.GEMINI_CLI_PATH;
+const cliPath = realCliPath;
 
-describe.skipIf(!cliPath)('gemini --acp with the geminicode-index server', () => {
+describeRealCli('gemini --acp with the geminicode-index server', () => {
 	let child: ChildProcessWithoutNullStreams | undefined;
 	let connection: AgentConnection | undefined;
 	let server: IndexMcpServer | undefined;

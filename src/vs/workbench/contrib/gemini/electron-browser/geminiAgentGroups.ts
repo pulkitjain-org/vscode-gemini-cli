@@ -14,9 +14,10 @@
 // The Gemini extension asks for an agent's column with `_gemini.agentGroupColumn`
 // before it opens something, and closes the group with `_gemini.closeAgentGroup`.
 
-import { Disposable } from '../../../../base/common/lifecycle.js';
+import { Disposable, DisposableMap } from '../../../../base/common/lifecycle.js';
 import { ThemeIcon } from '../../../../base/common/themables.js';
 import { CommandsRegistry } from '../../../../platform/commands/common/commands.js';
+import { ILogService } from '../../../../platform/log/common/log.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
 import { EditorsOrder, GroupIdentifier, GroupModelChangeKind } from '../../../common/editor.js';
@@ -90,11 +91,15 @@ class GeminiAgentGroups extends Disposable implements IWorkbenchContribution {
 	/** The agent whose group is in view: the one last in front in the agents' group. */
 	private current: string | undefined;
 	private restored = false;
+	/** Each group's model listener, until the group goes. */
+	private readonly groupListeners = this._register(new DisposableMap<GroupIdentifier>());
+	private reportedMissingVisibility = false;
 
 	constructor(
 		@IEditorGroupsService private readonly editorGroupsService: IEditorGroupsService,
 		@IStorageService private readonly storageService: IStorageService,
 		@ILifecycleService lifecycleService: ILifecycleService,
+		@ILogService private readonly logService: ILogService,
 	) {
 		super();
 		agentGroups = this;
@@ -116,7 +121,10 @@ class GeminiAgentGroups extends Disposable implements IWorkbenchContribution {
 					this.groups.delete(id);
 				}
 			}
-			this._register(part.onDidRemoveGroup(group => this.forgetGroup(group.id)));
+			this._register(part.onDidRemoveGroup(group => {
+				this.groupListeners.deleteAndDispose(group.id);
+				this.forgetGroup(group.id);
+			}));
 			this._register(part.onDidChangeActiveGroup(group => this.onDidActivateGroup(group)));
 			this._register(part.onDidAddGroup(group => this.watch(group)));
 			// Visibility waits while a group is maximized (editorPart.ts); the agent in front may have changed meanwhile.
@@ -132,7 +140,7 @@ class GeminiAgentGroups extends Disposable implements IWorkbenchContribution {
 	}
 
 	private watch(group: IEditorGroup): void {
-		const listener = group.onDidModelChange(e => {
+		this.groupListeners.set(group.id, group.onDidModelChange(e => {
 			if (e.kind === GroupModelChangeKind.EDITOR_ACTIVE) {
 				if (agentIdOf(group.activeEditor) !== undefined || group.activeEditor && isGeminiTab(group.activeEditor)) {
 					this.apply();
@@ -140,15 +148,23 @@ class GeminiAgentGroups extends Disposable implements IWorkbenchContribution {
 			} else if ((e.kind === GroupModelChangeKind.EDITOR_OPEN || e.kind === GroupModelChangeKind.EDITOR_CLOSE) && e.editor && isGeminiTab(e.editor)) {
 				refreshGeminiTabRows();
 			}
-		});
-		const removed = this.part.onDidRemoveGroup(g => {
-			if (g === group) {
-				listener.dispose();
-				removed.dispose();
-			}
-		});
-		this._register(listener);
-		this._register(removed);
+		}));
+	}
+
+	/**
+	 * The group visibility calls the fork adds to EditorPart, or undefined, logged once, when
+	 * they are missing (renamed or lost in an upstream merge): side groups then all stay in view.
+	 */
+	private get visibility(): GroupVisibility | undefined {
+		const part = this.part as unknown as Partial<GroupVisibility>;
+		if (typeof part.geminiSetGroupVisible === 'function' && typeof part.geminiIsGroupVisible === 'function') {
+			return part as GroupVisibility;
+		}
+		if (!this.reportedMissingVisibility) {
+			this.reportedMissingVisibility = true;
+			this.logService.error('[GeminiAgentGroups] EditorPart has no geminiSetGroupVisible or geminiIsGroupVisible (editorPart.ts, GEMINI-FORK): every agent\'s side group stays in view.');
+		}
+		return undefined;
 	}
 
 	/** Shows the group of the agent in front and hides the other agents'. */
@@ -162,7 +178,7 @@ class GeminiAgentGroups extends Disposable implements IWorkbenchContribution {
 			// Agent Home and the extension's pages show no agent's files.
 			this.current = agentIdOf(front);
 		}
-		const part = this.part as unknown as Partial<GroupVisibility>;
+		const visibility = this.visibility;
 		for (const [id, group] of [...this.groups]) {
 			if (this.part.getGroup(group)?.editors.some(isAgentsTab)) {
 				// An agent or Agent Home opened in this group (it was the active
@@ -170,10 +186,10 @@ class GeminiAgentGroups extends Disposable implements IWorkbenchContribution {
 				// would leave the editor area blank with a stale webview over it.
 				this.groups.delete(id);
 				this.save();
-				part.geminiSetGroupVisible?.(group, true);
+				visibility?.geminiSetGroupVisible(group, true);
 				continue;
 			}
-			part.geminiSetGroupVisible?.(group, id === this.current);
+			visibility?.geminiSetGroupVisible(group, id === this.current);
 		}
 	}
 
@@ -249,7 +265,7 @@ class GeminiAgentGroups extends Disposable implements IWorkbenchContribution {
 			}
 		} else {
 			// Unsaved files stay in view until the user saves or closes them.
-			(this.part as unknown as Partial<GroupVisibility>).geminiSetGroupVisible?.(group.id, true);
+			this.visibility?.geminiSetGroupVisible(group.id, true);
 		}
 	}
 }

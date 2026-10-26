@@ -12,6 +12,7 @@
 
 import { promises as fs, watch, FSWatcher } from 'node:fs';
 import * as path from 'node:path';
+import { debugLogEntryStart as entryStart, debugLogMcpEntry as mcpEntry } from './cli/formats';
 import { Emitter } from './events';
 
 export interface McpProblem {
@@ -25,10 +26,6 @@ export interface McpProblem {
 }
 
 const unreachable = /^fetch failed$|ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|ETIMEDOUT/;
-
-/** An entry's first line: "[2026-10-04T10:36:52.038Z] [LOG] ...". Lines after it, such as a stack trace, belong to it. */
-const entryStart = /^\[\d{4}-\d\d-\d\dT[^\]]*\] \[[A-Z]+\] /;
-const mcpEntry = /^\[MCP (error|warning)\] (.*)$/;
 
 /** The MCP problems in complete lines of the CLI's debug log. */
 export function parseMcpProblems(lines: readonly string[]): McpProblem[] {

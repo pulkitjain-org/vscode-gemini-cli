@@ -8,7 +8,7 @@
 // opens there with `session/load`, tool calls and all, and the next request
 // carries its history; a compacted copy carries the summary and the kept
 // prompts instead of the older ones. The CLI talks to a fake Gemini API on
-// localhost. Skipped unless GEMINI_CLI_PATH points at the CLI. Runs with an
+// localhost. Runs against the bundled CLI or GEMINI_CLI_PATH (test/realCli.ts). Runs with an
 // empty HOME.
 
 import type * as acp from '@agentclientprotocol/sdk';
@@ -18,16 +18,17 @@ import { createServer, Server } from 'node:http';
 import { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
 import { AgentConnection } from '../../src/acp/agentConnection';
 import { resolveAgentCommand, spawnAgent } from '../../src/acp/agentProcess';
 import { isPrompt, readSessionMessages, registeredChatsFolder, rewindCliSession } from '../../src/acp/cliSessions';
 import { compactedMessages, compactSplit, messagesBefore, summaryMarker, summaryPrompt, writeSessionCopy } from '../../src/acp/sessionSnapshot';
 import { contentBlockToText } from '../../src/acp/sessionUpdates';
+import { describeRealCli, realCliPath } from '../realCli';
 
-const cliPath = process.env.GEMINI_CLI_PATH;
+const cliPath = realCliPath;
 
-describe.skipIf(!cliPath)('session snapshots on the real CLI', () => {
+describeRealCli('session snapshots on the real CLI', () => {
 	const children: ChildProcessWithoutNullStreams[] = [];
 	const connections: AgentConnection[] = [];
 	let server: Server | undefined;
