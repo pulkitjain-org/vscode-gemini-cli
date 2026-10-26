@@ -18,6 +18,14 @@ describe('IgnoreRules', () => {
 		expect(ignored).toEqual(['a.log', 'src/b.log', 'dist/x.js', 'tmp/a.txt', 'src/tmp/a.txt', 'docs/a/b/draft-1.md']);
 		expect(['keep.log', 'src/dist/x.js', 'tmpfile', 'docs/draft.md'].filter(p => rules.ignores(p))).toEqual([]);
 	});
+
+	it('reads a glob it can\'t make sense of as its own text, and stays fast on many **', () => {
+		expect(new IgnoreRules(['[z-a].ts', '*(x']).ignores('[z-a].ts')).toBe(true);
+		const rules = new IgnoreRules(['**/a/**/b/**/c/**/d/**/e/**/f/**/x.ts']);
+		const started = performance.now();
+		expect(rules.ignores(`${'a/'.repeat(40)}y.ts`)).toBe(false);
+		expect(performance.now() - started).toBeLessThan(500);
+	});
 });
 
 describe('inventory filters', () => {
@@ -64,6 +72,13 @@ describe('identifiers and queries', () => {
 		expect(queryTerms('where is applyDiscount used for the cart_total?')).toEqual({
 			groups: ['("applydiscount"* OR (idents:"apply" AND idents:"discount"))', '"used"*', '("cart" AND "total")'],
 			words: ['applydiscount', 'apply', 'discount', 'used', 'cart_total', 'cart', 'total'],
+		});
+	});
+
+	it('takes words in any script, with diacritics folded as the full-text index folds them', () => {
+		expect(queryTerms('Größe café 価格')).toEqual({
+			groups: ['"große"*', '"cafe"*', '"価格"*'],
+			words: ['größe', 'große', 'café', 'cafe', '価格'],
 		});
 	});
 });

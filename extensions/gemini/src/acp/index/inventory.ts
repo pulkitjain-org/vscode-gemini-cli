@@ -14,7 +14,7 @@
 import { promises as fs, type Stats } from 'node:fs';
 import * as path from 'node:path';
 import { isInside, secretPathReason } from '../fileAccess';
-import { listFiles } from '../folderFiles';
+import { listFolder } from '../folderFiles';
 import { IgnoreRules } from './ignore';
 
 export interface InventoryOptions {
@@ -40,6 +40,8 @@ export interface SkippedFile {
 export interface Inventory {
 	readonly files: readonly InventoryFile[];
 	readonly skipped: readonly SkippedFile[];
+	/** The folder held more files than the walk lists (no git): the index covers only part of it. */
+	readonly truncated: boolean;
 }
 
 /** Files that are never worth searching: media, archives, fonts, compiled code. */
@@ -155,7 +157,8 @@ export async function takeInventory(root: string, options: InventoryOptions): Pr
 	const files: InventoryFile[] = [];
 	const skipped: SkippedFile[] = [];
 	const candidates: string[] = [];
-	for (const relative of await listFiles(root)) {
+	const listed = await listFolder(root);
+	for (const relative of listed.files) {
 		const reason = rules.pathReason(relative);
 		if (reason) {
 			skipped.push({ path: relative, reason });
@@ -190,7 +193,7 @@ export async function takeInventory(root: string, options: InventoryOptions): Pr
 	};
 	await Promise.all(Array.from({ length: statConcurrency }, worker));
 	files.sort((a, b) => a.path < b.path ? -1 : 1);
-	return { files, skipped };
+	return { files, skipped, truncated: listed.truncated };
 }
 
 /** Why `relative` is left out by its path alone, or undefined; `SkipRules.pathReason` also honours includes. */

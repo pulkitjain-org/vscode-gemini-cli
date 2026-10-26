@@ -71,17 +71,31 @@ const candidatePool = 150;
 /** Words that only make a question a question. */
 const stopWords = new Set(['a', 'an', 'the', 'is', 'are', 'was', 'be', 'of', 'to', 'in', 'on', 'at', 'by', 'for', 'from', 'with', 'and', 'or', 'not', 'it', 'its', 'this', 'that', 'these', 'those', 'where', 'what', 'which', 'who', 'how', 'why', 'when', 'does', 'do', 'did', 'can', 'should', 'we', 'i', 'you', 'all', 'any', 'some', 'there', 'here', 'into', 'about', 'find', 'show', 'me', 'get']);
 
-/** The words of a query, as SQLite's tokenizer sees them, with camelCase names also split. */
+/**
+ * The words of a query, as SQLite's tokenizer sees them (letters and digits
+ * of any script, diacritics folded as `remove_diacritics 2` folds them), with
+ * camelCase names also split. Each word goes to FTS5 quoted, so nothing in a
+ * query is read as its syntax.
+ */
 export function queryTerms(query: string): { readonly groups: readonly string[]; readonly words: readonly string[] } {
 	const groups: string[] = [];
 	const words = new Set<string>();
-	for (const token of query.match(/[A-Za-z0-9_]+/g) ?? []) {
+	for (const original of query.match(/[\p{L}\p{N}_]+/gu) ?? []) {
+		const token = original.normalize('NFD').replace(/\p{M}+/gu, '');
+		if (!token) {
+			continue;
+		}
 		const lower = token.toLowerCase();
+		if (token !== original) {
+			// Live search (ripgrep) matches the text as written.
+			words.add(original.toLowerCase());
+		}
 		if (stopWords.has(lower) && token === lower) {
 			continue;
 		}
 		const parts = token.split('_').filter(Boolean).map(part => part.toLowerCase());
-		const camel = splitIdentifier(token).filter(word => !parts.includes(word));
+		// camelCase is split for ASCII names only; other scripts are one word each, as the tokenizer keeps them.
+		const camel = /^[A-Za-z0-9_]+$/.test(token) ? splitIdentifier(token).filter(word => !parts.includes(word)) : [];
 		const alternatives = [...parts.length > 1 ? [`(${parts.map(p => `"${p}"`).join(' AND ')})`] : [`"${lower}"*`], ...camel.length > 1 ? [`(${camel.map(w => `idents:"${w}"`).join(' AND ')})`] : []];
 		groups.push(alternatives.length > 1 ? `(${alternatives.join(' OR ')})` : alternatives[0]);
 		for (const word of [lower, ...parts, ...camel]) {

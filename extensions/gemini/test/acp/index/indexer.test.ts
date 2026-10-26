@@ -8,9 +8,11 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, sy
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import { Indexer, workspaceId } from '../../../src/acp/index/indexer';
+import { changedSince, porcelainPaths } from '../../../src/acp/index/gitChanges';
+import { importNames, Indexer, workspaceId } from '../../../src/acp/index/indexer';
 import type { IndexStatus } from '../../../src/acp/index/indexerProtocol';
 import { IndexLock } from '../../../src/acp/index/indexLock';
+import { IndexStore, schemaVersion } from '../../../src/acp/index/indexStore';
 
 const settings = { exclude: ['fixtures/'], maxFileBytes: 64 * 1024 };
 
@@ -268,9 +270,95 @@ describe('Indexer', () => {
 		}
 	});
 
+	it('drops a deleted folder\'s files when only the folder is reported', async () => {
+		write(repo, 'src/legacy/a.ts', 'export function legacyA() {}\n');
+		write(repo, 'src/legacy/deep/b.ts', 'export function legacyB() {}\n');
+		write(repo, 'src/legacyKeep.ts', 'export function legacyKeep() {}\n');
+		await indexer.update({ root: repo, paths: ['src/legacy/a.ts', 'src/legacy/deep/b.ts', 'src/legacyKeep.ts'] });
+		await eventually(async () => (await indexer.findSymbol({ root: repo, name: 'legacyB' })).result.definitions.length === 1);
+		rmSync(path.join(repo, 'src/legacy'), { recursive: true });
+		await indexer.update({ root: repo, paths: ['src/legacy'] });
+		await eventually(async () => (await indexer.findSymbol({ root: repo, name: 'legacyB' })).result.definitions.length === 0);
+		const files = await indexer.files({ root: repo });
+		expect(files?.filter(f => f.includes('legacy'))).toEqual(['src/legacyKeep.ts']);
+		// The counts kept by each write match a fresh count.
+		const status = (await indexer.status({ roots: [repo] }))[0];
+		const store = await IndexStore.open(path.join(indexes, 'code', await workspaceId(repo), 'index.db'), { readOnly: true });
+		try {
+			expect(status.state).toMatchObject(store.counts());
+		} finally {
+			store.close();
+		}
+	});
+
+	it('points an import at a file added after it, without re-resolving on saves', async () => {
+		write(repo, 'src/cart/checkout.ts', 'import { tax } from \'./taxes\';\nexport function checkoutTotal() { return tax(); }\n');
+		await indexer.update({ root: repo, paths: ['src/cart/checkout.ts'] });
+		await eventually(async () => (await indexer.related({ root: repo, path: 'src/cart/checkout.ts' })).result.known);
+		expect((await indexer.related({ root: repo, path: 'src/cart/checkout.ts' })).result.imports).toEqual([]);
+		write(repo, 'src/cart/taxes.ts', 'export function tax() { return 1; }\n');
+		await indexer.update({ root: repo, paths: ['src/cart/taxes.ts'] });
+		await eventually(async () => (await indexer.related({ root: repo, path: 'src/cart/checkout.ts' })).result.imports.length === 1);
+		expect((await indexer.related({ root: repo, path: 'src/cart/taxes.ts' })).result.importedBy).toEqual(['src/cart/checkout.ts']);
+		expect([...importNames(['src/a/cart.service.ts', 'pkg/mod/__init__.py', 'Foo.java'])]).toEqual(['cart', '__init__', 'mod', 'Foo']);
+	});
+
+	it('applies what git says changed when an agent\'s turn ends', async () => {
+		const worktree = path.join(base, 'wt');
+		write(worktree, 'src/cart/turn.ts', 'export function fromTheTurn() {}\n');
+		write(worktree, 'src/cart/committed.ts', 'export function committedInTurn() {}\n');
+		git(worktree, 'add', 'src/cart/committed.ts');
+		git(worktree, 'commit', '-qm', 'in the turn');
+		await indexer.turnEnded({ root: worktree });
+		await eventually(async () => (await indexer.findSymbol({ root: worktree, name: 'fromTheTurn' })).result.definitions.length === 1);
+		await eventually(async () => (await indexer.findSymbol({ root: worktree, name: 'committedInTurn' })).result.definitions.length === 1);
+		expect(porcelainPaths(' M a.ts\0R  new.ts\0old.ts\0?? dir/x.ts\0')).toEqual(['a.ts', 'new.ts', 'old.ts', 'dir/x.ts']);
+		expect(await changedSince(path.join(base, 'plain'), undefined)).toBeUndefined();
+	});
+
+	it('closes an idle index and opens it again for the next change', async () => {
+		let now = Date.now();
+		const idleBase = path.join(base, 'idle-indexes');
+		const idle = new Indexer({ baseDir: idleBase, now: () => now });
+		const folder = path.join(base, 'idle');
+		write(folder, 'a.ts', 'export function beforeIdle() {}\n');
+		try {
+			await idle.ensure({ root: folder, settings, build: true });
+			await eventually(async () => (await idle.findSymbol({ root: folder, name: 'beforeIdle' })).result.definitions.length === 1);
+			now += 11 * 60 * 1000;
+			await idle.closeIdle();
+			expect(existsSync(path.join(idleBase, 'code', await workspaceId(folder), 'index.lock'))).toBe(false);
+			write(folder, 'b.ts', 'export function afterIdle() {}\n');
+			await idle.update({ root: folder, paths: ['b.ts'] });
+			await eventually(async () => (await idle.findSymbol({ root: folder, name: 'afterIdle' })).result.definitions.length === 1);
+		} finally {
+			await idle.dispose();
+		}
+	});
+
 	it('removes an index', async () => {
 		await indexer.remove({ root: path.join(base, 'damaged') });
 		expect(existsSync(path.join(indexes, 'code', await workspaceId(path.join(base, 'damaged'))))).toBe(false);
+	});
+});
+
+describe('IndexStore', () => {
+	const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'store-')));
+	afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+	it('keeps an index it can\'t open for a passing reason, and moves aside one from another schema', async () => {
+		const busy = path.join(dir, 'busy.db');
+		// Not a file SQLite can open (as with a full disk or too many open files), but nothing says it is damaged.
+		mkdirSync(busy);
+		await expect(IndexStore.open(busy)).rejects.toThrow();
+		expect([existsSync(busy), existsSync(`${busy}.broken`)]).toEqual([true, false]);
+
+		const old = path.join(dir, 'old.db');
+		const store = await IndexStore.open(old);
+		store.setMeta('schema_version', String(schemaVersion + 1));
+		store.close();
+		(await IndexStore.open(old)).close();
+		expect(existsSync(`${old}.broken`)).toBe(true);
 	});
 });
 

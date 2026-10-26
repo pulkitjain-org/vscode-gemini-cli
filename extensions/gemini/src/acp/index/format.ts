@@ -18,6 +18,9 @@ import type { RelatedResult, SearchResult, SymbolResult } from './query';
  */
 export const searchFooter = 'These are the best matches in the whole folder, ranked. Read only the lines you need with read_file; you don\'t need to grep for what they show.';
 
+/** Instead of claiming completeness, when the index covers only part of the folder. */
+export const partialNote = 'The index covers only part of this folder (it has more files than can be listed without git), so files it doesn\'t cover can also match.';
+
 /** The most a tool result says, in characters. */
 export const maxResultChars = 8_000;
 const snippetLines = 14;
@@ -37,9 +40,9 @@ export function fallbackNote(progress: Progress | undefined): string {
 	return `\n\nThe index for this folder is still being built${share}; these results come from a plain text search.`;
 }
 
-export function formatSearch(query: string, result: SearchResult, progress?: Progress): string {
+export function formatSearch(query: string, result: SearchResult, progress?: Progress, partial = false): string {
 	if (!result.hits.length) {
-		return `Nothing in the code matches "${query}". Try other words, a symbol name, or find_symbol.${fallbackNote(progress)}`;
+		return `Nothing in the code matches "${query}". Try other words, a symbol name, or find_symbol.${partial ? ` ${partialNote}` : ''}${fallbackNote(progress)}`;
 	}
 	const head = `${result.hits.length} ${result.hits.length === 1 ? 'result' : 'results'} for "${query}"${result.total > result.hits.length ? ` (showing ${result.hits.length} of ${result.total}; narrow with path or lang)` : ''}`;
 	const parts: string[] = [head];
@@ -57,7 +60,7 @@ export function formatSearch(query: string, result: SearchResult, progress?: Pro
 		parts.push(block);
 		length += block.length;
 	});
-	parts.push(`\n${searchFooter}`);
+	parts.push(`\n${partial ? partialNote : searchFooter}`);
 	return parts.join('\n') + fallbackNote(progress);
 }
 
@@ -76,7 +79,7 @@ export function snippet(text: string, startLine: number, terms: readonly string[
 	return out.join('\n');
 }
 
-export function formatSymbol(name: string, result: SymbolResult, progress?: Progress): string {
+export function formatSymbol(name: string, result: SymbolResult, progress?: Progress, partial = false): string {
 	const parts: string[] = [];
 	if (result.definitions.length) {
 		parts.push(`${name}: ${result.definitions.length} ${result.definitions.length === 1 ? 'definition' : 'definitions'}`);
@@ -100,7 +103,9 @@ export function formatSymbol(name: string, result: SymbolResult, progress?: Prog
 			parts.push(`  ${r.path}:${r.line}  ${r.text}`);
 		}
 	}
-	if (result.definitions.length && !progress) {
+	if (partial) {
+		parts.push('', partialNote);
+	} else if (result.definitions.length && !progress) {
 		parts.push('', 'These are every definition the index has, and every line that uses the name; no need to grep for them.');
 	}
 	return capped(parts.join('\n')) + fallbackNote(progress);

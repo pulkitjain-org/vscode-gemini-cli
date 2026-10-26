@@ -233,7 +233,7 @@ export class IndexMcpServer {
 					return text('code_search needs a query.', true);
 				}
 				const answer = await this.backend.search(folder, { query, path: str('path') || undefined, lang: str('lang') || undefined, limit: num('limit') });
-				return text(formatSearch(query, answer.result, answer.fallback));
+				return text(formatSearch(query, answer.result, answer.fallback, answer.partial));
 			}
 			case 'find_symbol': {
 				const symbol = str('name');
@@ -241,7 +241,7 @@ export class IndexMcpServer {
 					return text('find_symbol needs a name.', true);
 				}
 				const answer = await this.backend.findSymbol(folder, symbol, str('kind') || undefined, args.references === true);
-				return text(formatSymbol(symbol, answer.result, answer.fallback));
+				return text(formatSymbol(symbol, answer.result, answer.fallback, answer.partial));
 			}
 			case 'related_files': {
 				const file = str('path');

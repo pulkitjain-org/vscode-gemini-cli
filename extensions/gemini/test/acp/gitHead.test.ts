@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { listFiles } from '../../src/acp/folderFiles';
+import { listFiles, listFolder } from '../../src/acp/folderFiles';
 import { readGitHead } from '../../src/acp/gitHead';
 
 function repo(head: string): string {
@@ -50,5 +50,16 @@ describe('listFiles', () => {
 		writeFileSync(path.join(root, 'node_modules', 'x', 'index.js'), '');
 		// Not a repository, so git ls-files fails and the walk runs.
 		expect((await listFiles(root)).sort()).toEqual(['README.md', 'src/a.ts']);
+	});
+
+	it('says when the walk stopped short of the whole folder', async () => {
+		const root = mkdtempSync(path.join(tmpdir(), 'list-files-'));
+		for (const name of ['a', 'b', 'c', 'd']) {
+			mkdirSync(path.join(root, name));
+			writeFileSync(path.join(root, name, 'x.ts'), '');
+		}
+		const cut = await listFolder(root, 2);
+		const whole = await listFolder(root, 10);
+		expect([cut.files.length, cut.truncated, whole.files.length, whole.truncated]).toEqual([2, true, 4, false]);
 	});
 });

@@ -37,6 +37,7 @@ const handlers: { [M in keyof IndexerMethods]: (params: Parameters<IndexerMethod
 	ensure: params => indexer.ensure(params),
 	update: params => indexer.update(params),
 	reconcile: params => indexer.reconcile(params),
+	turnEnded: params => indexer.turnEnded(params),
 	rebuild: params => indexer.rebuild(params),
 	pause: params => indexer.pause(params),
 	resume: params => indexer.resume(params),

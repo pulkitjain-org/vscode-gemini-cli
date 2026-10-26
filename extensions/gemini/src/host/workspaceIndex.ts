@@ -247,10 +247,13 @@ export class WorkspaceIndex implements vscode.Disposable {
 		}
 	}
 
-	/** An agent's turn ended in `folder`: outside the window, where no watcher runs, look for what its commands changed. */
+	/**
+	 * An agent's turn ended in `folder`: outside the window, where no watcher
+	 * runs, the indexer applies what git says its commands changed.
+	 */
 	agentTurnEnded(folder: string): void {
-		if (!IndexWatchers.inWindow(folder)) {
-			this.moved(folder);
+		if (!IndexWatchers.inWindow(folder) && this.client?.running && this.folders.has(folder)) {
+			this.client.notify('turnEnded', { root: folder });
 		}
 	}
 
