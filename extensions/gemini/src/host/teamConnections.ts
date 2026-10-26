@@ -78,6 +78,8 @@ export class TeamConnections implements vscode.Disposable {
 	private readonly recheck = new Map<TeamToolId, ReturnType<typeof setTimeout>>();
 	/** Agents whose team tools only read, such as a merge request's reviewer. */
 	private readonly readOnlyAgents = new Set<string>();
+	/** Folders whose agents' team tools only read: a review's worktree, marked before its reviewer's session opens. */
+	private readonly readOnlyFolders = new Set<string>();
 	private readOnlyWhen: ((agent: string) => boolean) | undefined;
 
 	constructor(private readonly context: vscode.ExtensionContext, version: string, private readonly log: vscode.LogOutputChannel) {
@@ -123,11 +125,13 @@ export class TeamConnections implements vscode.Disposable {
 	/**
 	 * A write from one of GeminiCode's pages, through the same code and audit
 	 * record as an agent's tool call (acp/teamTools.ts, `teamWrite`), in
-	 * `folder` (else the first workspace folder) for the team's defaults and
-	 * the GitLab project. Throws with the tool's own message when it fails.
+	 * `folder` (else the active editor's folder, else the first workspace
+	 * folder) for the team's defaults and the GitLab project. Throws with the
+	 * tool's own message when it fails; a write that went through with a later
+	 * step failed resolves, with that step in `warning`.
 	 */
 	async write(name: string, args: Record<string, unknown>, folder?: string): Promise<TeamWriteResult> {
-		const where = folder ?? vscode.workspace.workspaceFolders?.find(f => f.uri.scheme === 'file')?.uri.fsPath;
+		const where = folder ?? editorFolder() ?? vscode.workspace.workspaceFolders?.find(f => f.uri.scheme === 'file')?.uri.fsPath;
 		const result = await teamWrite(this.toolContext, { caller: 'ui', ...where ? { folder: where } : {} }, name, args);
 		if (!result.ok) {
 			throw new Error(result.text);
@@ -143,13 +147,19 @@ export class TeamConnections implements vscode.Disposable {
 		this.readOnlyAgents.add(agent);
 	}
 
+	/** Makes the team tools of any agent working in `folder` read-only, from its session's first tool list. */
+	markReadOnlyFolder(folder: string): void {
+		this.readOnlyFolders.add(folder);
+	}
+
 	/** Also treats as read-only the agents `when` names, such as every review's reviewer after a restart. */
 	readOnlyBy(when: (agent: string) => boolean): void {
 		this.readOnlyWhen = when;
 	}
 
 	isReadOnly(agent: string): boolean {
-		return this.readOnlyAgents.has(agent) || !!this.readOnlyWhen?.(agent);
+		const folder = this.folders.get(agent);
+		return this.readOnlyAgents.has(agent) || (!!folder && this.readOnlyFolders.has(folder)) || !!this.readOnlyWhen?.(agent);
 	}
 
 	/**
@@ -210,11 +220,12 @@ export class TeamConnections implements vscode.Disposable {
 		return value;
 	}
 
-	/** The defaults of the first open folder that has them. */
-	async workspaceDefaults(): Promise<TeamDefaults> {
-		for (const folder of vscode.workspace.workspaceFolders ?? []) {
-			if (folder.uri.scheme === 'file') {
-				const defaults = await this.defaults(folder.uri.fsPath);
+	/** The defaults of `preferred` (the folder the flow works in) when it has them, else of the active editor's folder, else of the first open folder that has them. */
+	async workspaceDefaults(preferred?: string): Promise<TeamDefaults> {
+		const folders = [preferred, editorFolder(), ...(vscode.workspace.workspaceFolders ?? []).filter(f => f.uri.scheme === 'file').map(f => f.uri.fsPath)];
+		for (const folder of [...new Set(folders)]) {
+			if (folder) {
+				const defaults = await this.defaults(folder);
 				if (defaults.file) {
 					return defaults;
 				}
@@ -525,6 +536,13 @@ const connectTimeoutMs = 45_000;
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	return Promise.race([promise, new Promise<T>(resolve => timer = setTimeout(() => resolve(fallback), ms))]).finally(() => clearTimeout(timer));
+}
+
+/** The workspace folder of the active editor, when it has one on disk. */
+function editorFolder(): string | undefined {
+	const uri = vscode.window.activeTextEditor?.document.uri;
+	const folder = uri && vscode.workspace.getWorkspaceFolder(uri);
+	return folder?.uri.scheme === 'file' ? folder.uri.fsPath : undefined;
 }
 
 function secretKey(tool: TeamToolId): string {

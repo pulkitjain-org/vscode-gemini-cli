@@ -3,7 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { promises as fs } from 'node:fs';
 import * as vscode from 'vscode';
 import { errorMessage } from '../acp/errors';
 import type { GitLabClient, GitLabDiffFile, GitLabDiscussion, GitLabMr } from '../acp/gitlab';
@@ -15,7 +14,7 @@ import {
 } from '../acp/reviewDraft';
 import type { SavedReview } from '../acp/reviewStore';
 import { parseReviewFindings, parseSuggestion, reviewPrompt, reviewSummary, suggestPrompt } from '../acp/teamFlowLogic';
-import { git } from '../acp/worktrees';
+import { git, inRepository } from '../acp/worktrees';
 import type { AgentsView } from './agentsView';
 import type { ChatController } from './chatController';
 import { agentColumn } from './editorPlacement';
@@ -49,6 +48,11 @@ const typingDelayMs = 500;
 /** The review's key: project and number. */
 export function reviewKey(project: string, iid: number): string {
 	return `${project}!${iid}`;
+}
+
+/** The local branch a review of merge request `iid` checks out: GeminiCode's own, so it may be reset to a new head. */
+export function reviewBranch(iid: number, sourceBranch: string): string {
+	return `review/${iid}-${sourceBranch.replace(/[^\w.-]+/g, '-')}`.slice(0, 60);
 }
 
 /** Waits until the agent's turn, if one runs, is over. */
@@ -175,11 +179,20 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 		const { repository, remote, iid } = this.saved;
 		// The target too, so the reviewer diffs against today's target: its shell can't sign in to fetch it.
 		await fetchBranches(repository, remote, [mr.targetBranch]).catch(() => undefined);
-		const existing = this.saved.worktree && await fs.stat(this.saved.worktree.folder).then(() => this.saved.worktree, () => undefined);
-		const worktree = existing ?? await reviewWorktree(repository, remote, mr.sourceBranch, `review/${iid}-${mr.sourceBranch.replace(/[^\w.-]+/g, '-')}`.slice(0, 60));
-		const agentId = await this.deps.agents.startTeamAgent({ folder: repository, title: vscode.l10n.t("Review !{0} {1}", iid, mr.title), worktree, text: '' });
+		// The worktree on the review's branch, this review's or an earlier one's of the same merge request, moved to the new head.
+		const branch = reviewBranch(iid, mr.sourceBranch);
+		const worktree = await inRepository(repository, () => reviewWorktree(repository, remote, mr.sourceBranch, branch));
+		// Read-only from its session's first tool list: what the reviewer finds goes out only when the user posts it.
+		this.deps.tools.markReadOnlyFolder(worktree.cwd);
+		// The reviewer of an earlier review of this merge request works there already: it reviews again, so no second agent shares its folder.
+		const previous = [this.saved.agentId, ...this.deps.agents.summaries().filter(a => a.worktree?.branch === branch && a.folder === repository).map(a => a.id)]
+			.find(id => !!id && !!this.deps.agents.agentPlace(id));
+		const agentId = previous ?? await this.deps.agents.startTeamAgent({ folder: repository, title: vscode.l10n.t("Review !{0} {1}", iid, mr.title), worktree, text: '' });
 		if (!agentId) {
 			throw new Error(vscode.l10n.t("The reviewer couldn't start."));
+		}
+		if (previous) {
+			await this.deps.agents.open(previous);
 		}
 		this.saved = { ...this.saved, agentId, worktree, state: 'reviewing' };
 		this.persist();

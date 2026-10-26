@@ -430,6 +430,11 @@ export class AgentsView implements vscode.Disposable {
 		return this.starts.startTeamAgent(options);
 	}
 
+	/** Removes an agent a team flow started, with its worktree folder and, with `deleteBranch`, its branch: Remove Reviewer and Checkout. */
+	removeTeamAgent(id: string, deleteBranch: boolean): Promise<void> {
+		return this.removeAgentAndWorktree(id, deleteBranch);
+	}
+
 	/** Where an agent works (its worktree's folder, or its workspace), and its own branch when it has one. */
 	agentPlace(id: string): { readonly folder: string; readonly cwd: string; readonly branch?: string; readonly title: string } | undefined {
 		const record = this.model.agent(id);
