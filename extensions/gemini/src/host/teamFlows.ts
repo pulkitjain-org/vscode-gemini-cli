@@ -22,9 +22,9 @@ import {
 	mrFixRepliesPrompt, MrThreadForFix, resolveWorkFolder, targetChoices, ticketBranchName, ticketStartPrompt, WorkFolder,
 } from '../acp/teamFlowLogic';
 import { gitlabProjectOf } from '../acp/teamTools';
-import { AgentWorktree, commitAll, currentBranch, git, GitError, inRepository, repositoryRoot, runWorktreeSetup, worktreeSetupCommand } from '../acp/worktrees';
+import { AgentWorktree, commitAll, currentBranch, git, GitError, inRepository, repositoryRoot, runWorktreeSetup } from '../acp/worktrees';
+import { setupCommandFor } from './agents/agentWorktrees';
 import type { AgentsView } from './agentsView';
-import { configSection } from './configuration';
 import type { TeamConnections } from './teamConnections';
 import type { FlowRecord } from '../acp/flowRecords';
 import { FlowRecording, TeamFlowPanel } from './teamFlowPanel';
@@ -965,7 +965,7 @@ export class TeamFlows implements vscode.Disposable {
 		let setup: string | undefined;
 		if (checkout.created && checkout.worktree) {
 			const worktree = checkout.worktree;
-			const command = await worktreeSetupCommand(repository, vscode.workspace.getConfiguration(configSection).get<string>('agents.worktreeSetup'));
+			const command = await setupCommandFor(repository, this.state, 'checks');
 			if (command) {
 				const started = Date.now();
 				const code = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Setting up {0} for the checks...", chosen) }, () => runWorktreeSetup(command, worktree, repository, () => undefined));

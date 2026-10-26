@@ -183,7 +183,7 @@ export class AgentProjects {
 		await writeThreadGuide(folder, threadGuide(repos, branch, memory));
 		const command = await this.worktrees.setupCommand(repo.folder).catch(() => undefined);
 		if (command) {
-			void this.worktrees.setUpThread(repo.folder, added);
+			void this.worktrees.setUpThread(repo.folder, added, command);
 		}
 		return `Added ${repo.key}/ to your folder, on the branch ${branch}.${command ? ' Its setup script is running in the background, so packages may not be installed yet.' : ''}`;
 	}

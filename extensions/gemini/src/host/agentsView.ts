@@ -214,7 +214,7 @@ export class AgentsView implements vscode.Disposable {
 		this.checkpointFiles = new CheckpointStore(vscode.Uri.joinPath(context.globalStorageUri, 'checkpoints').fsPath, saveFailed);
 		this.tree = new AgentTree(this.model, this.live);
 		this.changesView = new ChangesView(id => this.live.get(id)?.changes);
-		this.worktrees = new AgentWorktrees(this.model);
+		this.worktrees = new AgentWorktrees(this.model, context.globalState);
 		this.merge = new AgentMerge(this.model, this.live, (id, deleteBranch) => this.removeAgentAndWorktree(id, deleteBranch), folder => writeCommitMessage(folder, undefined, this.direct));
 		this.projects = new Projects({
 			record: id => this.model.agent(id),
