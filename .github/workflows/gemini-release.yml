@@ -3,7 +3,9 @@
 # or later (an arm64-only binary that declares macOS 26 as its minimum), signs it
 # with the Developer ID in the repository secrets, notarizes and staples it,
 # packs a .dmg and publishes it to a GitHub Release. Without the Apple
-# secrets the app is only ad-hoc signed and the release is marked unsigned.
+# secrets a prerelease or dev build is only ad-hoc signed and marked
+# unsigned; a stable tag fails instead. A tag publishes only when its commit is
+# on main and Gemini CI passed on it.
 # If the release already exists (made in GitHub's UI, say), the .dmg is
 # added to it and its title and notes are kept. Every run also keeps the
 # .dmg and its checksum as unzipped workflow artifacts. Running the workflow
@@ -38,6 +40,7 @@ jobs:
     permissions:
       contents: write # create the GitHub Release
       actions: write # start the download page build
+      checks: read # see that Gemini CI passed on the tag's commit
       issues: write # open the benchmark reminder
     env:
       VSCODE_ARCH: arm64
@@ -83,9 +86,35 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Building GeminiCode $VERSION (publish: $PUBLISH)"
 
+      - name: Check that the tag is on main and passed Gemini CI
+        # A release is built from a commit main already has, and Gemini CI's jobs that main's ruleset requires
+        # passed on that commit (gemini/docs/RELEASING.md). A dev build skips this.
+        if: steps.version.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SHA="$(git rev-parse HEAD)"
+          # "behind" or "identical": main already holds the commit.
+          STATUS="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$SHA" --jq .status)"
+          if [[ "$STATUS" != "identical" && "$STATUS" != "behind" ]]; then
+            echo "::error::$SHA is not on main (compared with main it is $STATUS). Tag a commit on main."
+            exit 1
+          fi
+          RUNS="$(gh api --paginate "repos/$GITHUB_REPOSITORY/commits/$SHA/check-runs?per_page=100" --jq '.check_runs[] | "\(.name)|\(.conclusion)"')"
+          for JOB in "Checks" "Real CLI (bundled)" "Compile & hygiene"; do
+            if ! printf '%s\n' "$RUNS" | grep -qxF "$JOB|success"; then
+              echo "::error::Gemini CI's \"$JOB\" has not passed on $SHA. Wait for Gemini CI on main to pass, or tag a commit it passed on."
+              exit 1
+            fi
+          done
+          echo "$SHA is on main and passed Gemini CI."
+
       - name: Check the Apple secrets
         id: signing
         env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PUBLISH: ${{ steps.version.outputs.publish }}
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
@@ -101,6 +130,9 @@ jobs:
           if [[ $SET -eq 6 ]]; then
             echo "signed=true" >> "$GITHUB_OUTPUT"
             echo "Signing and notarizing with the Developer ID."
+          elif [[ $SET -eq 0 && "$PUBLISH" == "true" && "$VERSION" != *-* ]]; then
+            echo "::error::No Apple secrets: a stable release must be signed and notarized. Add the secrets (gemini/docs/RELEASING.md, Apple setup), or tag a prerelease such as v$VERSION-rc.1."
+            exit 1
           elif [[ $SET -eq 0 ]]; then
             echo "signed=false" >> "$GITHUB_OUTPUT"
             echo "::warning::No Apple secrets: building an unsigned app."
@@ -148,6 +180,10 @@ jobs:
           # must pass the package's min-release-age (bundle-cli.mts also passes this, from v0.1.1).
           npm_config_min_release_age: 0
 
+      - name: Write the Gemini extension's third-party notices
+        # The bundled CLI's licence, the packages bundled into the extension, the emoji data and ripgrep.
+        run: node gemini/scripts/third-party-notices.mts
+
       - name: Build the app
         run: npm run gulp vscode-darwin-arm64-min
         env:
@@ -162,7 +198,13 @@ jobs:
           RESOURCES="$APP/Contents/Resources/app"
           CLI_VERSION="$(node -p 'require("./extensions/gemini/package.json").bundledCli.version')"
           test -d "$APP" || { echo "::error::$APP was not built"; exit 1; }
-          test -f "$RESOURCES/extensions/gemini/cli/$CLI_VERSION/bundle/gemini.js" || { echo "::error::The bundled Gemini CLI is missing from the app"; exit 1; }
+          CLI_BUNDLE="$RESOURCES/extensions/gemini/cli/$CLI_VERSION/bundle"
+          test -f "$CLI_BUNDLE/gemini.js" || { echo "::error::The bundled Gemini CLI is missing from the app"; exit 1; }
+          # The app's ripgrep where the CLI looks for its own (src/acp/cliRipgrep.ts); without it search falls back to git grep.
+          test -x "$CLI_BUNDLE/vendor/ripgrep/rg-darwin-arm64" || { echo "::error::The bundled Gemini CLI has no ripgrep (bundle/vendor/ripgrep/rg-darwin-arm64)"; exit 1; }
+          # The ACP output cap (src/acp/cliPatches.ts).
+          grep -qF 'GeminiCode patch: acp-output-cap' "$CLI_BUNDLE"/gemini-*.js || { echo "::error::The bundled Gemini CLI is not patched (src/acp/cliPatches.ts)"; exit 1; }
+          test -s "$RESOURCES/extensions/gemini/ThirdPartyNotices.txt" || { echo "::error::The Gemini extension's ThirdPartyNotices.txt is missing from the app"; exit 1; }
           test ! -e "$RESOURCES/extensions/copilot" || { echo "::error::Upstream's Copilot extension is in the app"; exit 1; }
           # shellcheck disable=SC2016 # a JavaScript template string, not shell
           node -e 'const p = require(process.argv[1]); if (p.geminiCodeVersion !== process.argv[2]) { throw new Error(`product.json has ${p.geminiCodeVersion}`); }' "$RESOURCES/product.json" "${{ steps.version.outputs.version }}"

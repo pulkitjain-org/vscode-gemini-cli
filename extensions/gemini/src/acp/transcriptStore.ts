@@ -8,16 +8,19 @@
 // is only what the tab displays, so it is capped to stay small and fast to
 // read: the last items, with long text cut.
 
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import * as path from 'node:path';
 import type { EditedFile } from './agentChanges';
 import type { TranscriptItem } from './chatTranscript';
+import { KeyedQueue, quarantine, writeFileAtomic } from './fsUtil';
 import { hasReplayMarkers, withoutReplayMarkers } from './replayText';
 import type { ModelTokens } from './turnUsage';
 
 /**
  * 2 since replayed history can no longer leak into a chat (see replayText.ts);
- * a version 1 file is cleaned of the markers it may have when it loads.
+ * a version 1 file is cleaned of the markers it may have when it loads. A
+ * file of any other version, or one that can't be parsed, is moved aside as
+ * `.broken` rather than written over.
  */
 const formatVersion = 2;
 const maxItems = 300;
@@ -33,60 +36,62 @@ interface StoredTranscript extends StoredAgent {
 	readonly version: number;
 }
 
+const empty: StoredAgent = { items: [], changes: [] };
+
 export class TranscriptStore {
 
-	/** The last write per agent, so writes to one file never overlap. */
-	private readonly writes = new Map<string, Promise<void>>();
+	/** Reads and writes per agent, one after another, so they never overlap. */
+	private readonly queue = new KeyedQueue();
 
-	constructor(private readonly directory: string) { }
+	/** `onError` hears of every write that fails, such as on a full disk. */
+	constructor(private readonly directory: string, private readonly onError: (err: unknown) => void = () => undefined) { }
 
-	/** The saved items, ready to show; empty when there are none or the file is unreadable. */
-	async load(agentId: string): Promise<StoredAgent> {
-		await this.writes.get(agentId);
-		try {
-			const stored = JSON.parse(await readFile(this.file(agentId), 'utf8')) as StoredTranscript;
-			if (stored?.version !== formatVersion && stored?.version !== 1) {
-				return { items: [], changes: [] };
+	/** The saved items, ready to show; empty when there are none, or when the file can't be read, which is then moved aside. */
+	load(agentId: string): Promise<StoredAgent> {
+		return this.queue.run(agentId, async () => {
+			const file = this.file(agentId);
+			let text: string;
+			try {
+				text = await readFile(file, 'utf8');
+			} catch {
+				return empty;
+			}
+			let stored: StoredTranscript;
+			try {
+				stored = JSON.parse(text) as StoredTranscript;
+				if (stored?.version !== formatVersion && stored?.version !== 1) {
+					throw new Error(`version ${String(stored?.version)}`);
+				}
+			} catch {
+				// A newer version's chat, or a damaged one: kept aside, never written over.
+				await quarantine(file).catch(err => this.onError(err));
+				return empty;
 			}
 			const items = Array.isArray(stored.items) ? stored.items.filter(isTranscriptItem).map(settle) : [];
 			return {
 				items: stored.version === 1 ? withoutLeakedReplay(items) : items,
 				changes: Array.isArray(stored.changes) ? stored.changes : [],
 			};
-		} catch {
-			return { items: [], changes: [] };
-		}
+		});
 	}
 
 	save(agentId: string, agent: StoredAgent): Promise<void> {
 		const stored: StoredTranscript = { version: formatVersion, items: agent.items.slice(-maxItems).map(trim), changes: agent.changes };
-		return this.enqueue(agentId, async () => {
-			const file = this.file(agentId);
-			await mkdir(this.directory, { recursive: true });
-			// Write then rename, so a crash never leaves half a file.
-			await writeFile(`${file}.tmp`, JSON.stringify(stored));
-			await rename(`${file}.tmp`, file);
-		});
+		return this.write(agentId, () => writeFileAtomic(this.file(agentId), JSON.stringify(stored)));
 	}
 
 	/** Resolves once every write queued so far is on disk. */
-	async flush(): Promise<void> {
-		await Promise.all([...this.writes.values()]);
+	flush(): Promise<void> {
+		return this.queue.flush();
 	}
 
 	delete(agentId: string): Promise<void> {
-		return this.enqueue(agentId, () => rm(this.file(agentId), { force: true }));
+		return this.write(agentId, () => rm(this.file(agentId), { force: true }));
 	}
 
-	private enqueue(agentId: string, write: () => Promise<void>): Promise<void> {
-		const next = (this.writes.get(agentId) ?? Promise.resolve()).then(write).catch(() => undefined);
-		this.writes.set(agentId, next);
-		void next.then(() => {
-			if (this.writes.get(agentId) === next) {
-				this.writes.delete(agentId);
-			}
-		});
-		return next;
+	/** Queues a write; one that fails goes to `onError` and resolves. */
+	private write(agentId: string, write: () => Promise<void>): Promise<void> {
+		return this.queue.run(agentId, write).catch(err => this.onError(err));
 	}
 
 	private file(agentId: string): string {

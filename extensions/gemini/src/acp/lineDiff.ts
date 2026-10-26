@@ -155,3 +155,67 @@ export function hunkLines(original: readonly string[], modified: readonly string
 	const shown = changed.slice(0, maxLines);
 	return { lines: [...before, ...shown, ...(changed.length > maxLines ? [] : after)], hidden: changed.length - shown.length };
 }
+
+/**
+ * Tells an agent's changes to a file from edits made after it (by the user,
+ * or another agent). `agentText` is what the agent last wrote and `current`
+ * the file now. Returns `original` with those later edits applied where they
+ * don't touch lines the agent changed, so a diff of `base` against `current`
+ * shows only the agent's changes, and whether there were later edits at all.
+ * A later edit inside lines the agent changed stays part of the agent's change.
+ */
+export function rebaseOriginal(original: string, agentText: string, current: string): { readonly base: string; readonly foreign: boolean } {
+	if (agentText === current) {
+		return { base: original, foreign: false };
+	}
+	const before = splitLines(original);
+	const agent = splitLines(agentText);
+	const now = splitLines(current);
+	const agentHunks = diffLines(before, agent);
+	const base: string[] = [];
+	let consumed = 0;
+	for (const later of diffLines(agent, now)) {
+		if (agentHunks.some(hunk => overlaps(hunk.modifiedStart, hunk.modifiedEnd, later.originalStart, later.originalEnd))) {
+			continue;
+		}
+		const start = toOriginalLine(later.originalStart, agentHunks, true);
+		const end = toOriginalLine(later.originalEnd, agentHunks, false);
+		base.push(...before.slice(consumed, start), ...now.slice(later.modifiedStart, later.modifiedEnd));
+		consumed = end;
+	}
+	base.push(...before.slice(consumed));
+	return { base: base.join('\n'), foreign: true };
+}
+
+/** Whether line ranges `[a, b)` and `[c, d)` touch the same lines; an empty range is a point between lines. */
+function overlaps(a: number, b: number, c: number, d: number): boolean {
+	if (a === b && c === d) {
+		return a === c;
+	}
+	if (a === b) {
+		return c < a && a < d;
+	}
+	if (c === d) {
+		return a < c && c < b;
+	}
+	return a < d && c < b;
+}
+
+/**
+ * Where line `line` of the agent's text is in the original, outside the
+ * agent's changes. Lines the agent removed at that point come before a range
+ * that starts there (`start`), and after one that ends there.
+ */
+function toOriginalLine(line: number, agentHunks: readonly Hunk[], start: boolean): number {
+	let shift = 0;
+	for (const hunk of agentHunks) {
+		const before = start
+			? hunk.modifiedEnd <= line
+			: hunk.modifiedEnd < line || (hunk.modifiedEnd === line && hunk.modifiedStart < line);
+		if (!before) {
+			break;
+		}
+		shift += (hunk.originalEnd - hunk.originalStart) - (hunk.modifiedEnd - hunk.modifiedStart);
+	}
+	return line + shift;
+}

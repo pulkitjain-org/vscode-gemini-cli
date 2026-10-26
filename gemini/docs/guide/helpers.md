@@ -1,10 +1,10 @@
-# Project Helpers
+# Agent Setup
 
-**Project Helpers** shows what every agent loads when it starts: MCP servers, skills, hooks, extensions, memory and rules, each with a switch, and how many tokens they add to every model call. It shares them with the `gemini` command in your terminal.
+**Agent Setup** shows what every agent loads when it starts: MCP servers, skills, hooks, extensions, memory and rules, each with a switch, and how many tokens they add to every model call. It shares them with the `gemini` command in your terminal.
 
-![Project Helpers with MCP servers and skills, each with a switch](../../site/media/docs/project-helpers-dark.webp)
+![Agent Setup with MCP servers and skills, each with a switch](../../site/media/docs/project-helpers-dark.webp)
 
-Open it with **Gemini: Project Helpers**, or from the Agents pane's **...** menu. Changes apply to agents started afterwards; **Restart Agent** applies them now. Opening the page never starts the Gemini CLI.
+Open it with **Gemini: Agent Setup**, or **Agent Setup** on Home, or from the Agents pane's **...** menu. Changes apply to agents started afterwards; **Restart Agent** applies them now. Opening the page never starts the Gemini CLI.
 
 ## Context per model call
 
@@ -56,6 +56,6 @@ Four of the CLI's own settings, in your personal `~/.gemini/settings.json`:
 | Send usage statistics | `privacy.usageStatisticsEnabled` | On |
 | Keep saved chats for | `general.sessionRetention` | 30 days |
 
-A project's `.gemini/settings.json` can still override them, as in the CLI. A settings file with comments is never rewritten: GeminiCode opens it at the right place so you can make the change yourself.
+A project's `.gemini/settings.json` can still override them, as in the CLI. GeminiCode edits a settings file in place and keeps its comments, as the CLI does. A file that isn't valid JSON is never rewritten: GeminiCode opens it at the right place so you can make the change yourself.
 
 GeminiCode's own settings are listed in [Settings](settings.md).

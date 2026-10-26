@@ -3,11 +3,12 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// The model menu beside Send and the branch and folder menus under the
-// composer, as pop-ups in the chat rather than system menus or quick picks.
+// The model menu beside Send and the branch, folder and commit menus under
+// the composer, as pop-ups in the chat rather than system menus or quick
+// picks, and the commit message box Commit to {0} opens.
 
 import { isValidBranchName } from '../src/acp/branchNames';
-import type { ViewBranch, ViewRepo, ViewWorkspace } from '../src/host/chatProtocol';
+import type { ViewBranch, ViewGit, ViewRepo, ViewWorkspace } from '../src/host/chatProtocol';
 import { format } from './chatLogic';
 import { el, icon, setLabel } from './dom';
 import { Menu, type MenuRow } from './menu';
@@ -203,7 +204,7 @@ export function setRepos(list: readonly ViewRepo[]): void {
 		if (repo.branch) {
 			pill.append(icon('git-branch'), el('span', 'repo-branch', repo.branch));
 		}
-		setLabel(pill, strings.repoTooltip.replace('{0}', repo.name).replace('{1}', repo.branch ?? '?').replace('{2}', repo.path));
+		setLabel(pill, format(strings.repoTooltip, repo.name, repo.branch ?? '?', repo.path));
 		// The pills share one menu: a click on another pill while it is open moves it there.
 		pill.addEventListener('click', () => {
 			const moving = reposMenu.isOpen && menuRepo?.name !== repo.name;
@@ -228,3 +229,144 @@ export function setWorkspace(value: ViewWorkspace | undefined): void {
 	workspace = value;
 	folderMenu.render();
 }
+
+// ---- Commit ----
+
+// On a branch other than the repository's default, Commit commits there, with
+// a message the extension writes from the changes, edited in a box over the
+// footer; its chevron offers Create Branch and Commit. On the default branch
+// Commit is Create Branch & Commit, as it always was.
+
+const commitBox = ui.commitBox;
+const commitMessage = commitBox.querySelector<HTMLTextAreaElement>('.commit-message')!;
+const commitNote = commitBox.querySelector<HTMLElement>('.commit-note')!;
+const commitConfirm = commitBox.querySelector<HTMLButtonElement>('.commit-confirm')!;
+const commitCancel = commitBox.querySelector<HTMLButtonElement>('.commit-cancel')!;
+commitBox.querySelector('label')!.textContent = strings.commitTo.message;
+commitConfirm.textContent = strings.commitTo.commit;
+commitCancel.textContent = strings.commitTo.cancel;
+commitBox.setAttribute('aria-label', strings.commitTo.message);
+commitBox.tabIndex = -1;
+setLabel(ui.commitMore, strings.commitTo.more);
+
+/** The branch Commit commits to; unset on the default branch. */
+let commitTo: string | undefined;
+/** Waiting for the written message, or for the commit to finish. */
+let commitState: 'writing' | 'ready' | 'committing' = 'ready';
+
+const commitMenu = new Menu({
+	element: ui.commitMenu,
+	anchor: ui.commitMore,
+	label: strings.commitTo.more,
+	sections: () => [{
+		rows: [{
+			icon: 'git-branch', name: strings.commitTo.newBranch, run: () => {
+				commitMenu.close();
+				closeCommitBox(false);
+				vscode.postMessage({ type: 'createBranchAndCommit' });
+			},
+		}],
+	}],
+	empty: () => '',
+});
+
+/** The commit button and its chevron, as the folder's branch has them. */
+export function setCommit(git: ViewGit): void {
+	commitTo = git.canCommit ? git.commitTo : undefined;
+	ui.commitButton.hidden = !git.canCommit || !git.branch;
+	ui.commitMore.hidden = ui.commitButton.hidden || !commitTo;
+	ui.commitLabel.textContent = commitTo ? format(strings.commitTo.button, commitTo) : strings.commit;
+	setLabel(ui.commitButton, commitTo ? format(strings.commitTo.tip, commitTo) : strings.createBranchAndCommit);
+	if (ui.commitMore.hidden) {
+		commitMenu.close(false);
+	}
+	if (!commitTo && commitState !== 'committing') {
+		closeCommitBox(false);
+	}
+}
+
+function showCommitState(): void {
+	commitNote.textContent = commitState === 'writing' ? strings.commitTo.writing : strings.commitTo.generated;
+	commitMessage.disabled = commitState !== 'ready';
+	commitConfirm.disabled = commitState !== 'ready' || !commitMessage.value.trim();
+}
+
+function openCommitBox(): void {
+	commitMenu.close(false);
+	commitBox.hidden = false;
+	ui.commitButton.setAttribute('aria-expanded', 'true');
+	commitState = 'writing';
+	commitMessage.value = '';
+	showCommitState();
+	vscode.postMessage({ type: 'writeCommitMessage' });
+	commitBox.focus();
+}
+
+function closeCommitBox(focus = true): void {
+	if (commitBox.hidden) {
+		return;
+	}
+	commitBox.hidden = true;
+	commitState = 'ready';
+	ui.commitButton.setAttribute('aria-expanded', 'false');
+	if (focus) {
+		ui.commitButton.focus();
+	}
+}
+
+/** The message the extension wrote for the box. */
+export function setCommitMessage(message: string | undefined): void {
+	if (commitBox.hidden || commitState !== 'writing') {
+		return;
+	}
+	commitState = 'ready';
+	commitMessage.value = message ?? '';
+	showCommitState();
+	commitMessage.focus();
+	commitMessage.setSelectionRange(0, 0);
+}
+
+/** The box's commit finished: it closes once committed, and stays for another try when not. */
+export function commitDone(ok: boolean): void {
+	if (ok) {
+		closeCommitBox(false);
+	} else if (!commitBox.hidden) {
+		commitState = 'ready';
+		showCommitState();
+	}
+}
+
+function confirmCommit(): void {
+	const message = commitMessage.value.trim();
+	if (commitState !== 'ready' || !message) {
+		return;
+	}
+	commitState = 'committing';
+	showCommitState();
+	vscode.postMessage({ type: 'commitToBranch', message });
+}
+
+ui.commitButton.setAttribute('aria-haspopup', 'dialog');
+ui.commitButton.addEventListener('click', () => {
+	if (!commitTo) {
+		vscode.postMessage({ type: 'createBranchAndCommit' });
+	} else if (commitBox.hidden) {
+		openCommitBox();
+	} else {
+		closeCommitBox();
+	}
+});
+commitMessage.addEventListener('input', showCommitState);
+commitConfirm.addEventListener('click', confirmCommit);
+commitCancel.addEventListener('click', () => closeCommitBox());
+commitBox.addEventListener('keydown', event => {
+	if (event.key === 'Escape') {
+		event.preventDefault();
+		event.stopPropagation();
+		closeCommitBox();
+	} else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+		// ⌘Return commits, as in Source Control's message box.
+		event.preventDefault();
+		confirmCommit();
+	}
+});

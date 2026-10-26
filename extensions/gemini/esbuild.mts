@@ -14,6 +14,10 @@ run({
 		'extension': path.join(srcDir, 'extension.ts'),
 		// The indexer process (src/acp/index), forked on first use; none of it loads in the extension host.
 		'indexer': path.join(srcDir, 'indexer.ts'),
+		// Features loaded the first time one of their commands runs (src/host/lazyFeature.ts), so the
+		// extension's own bundle never carries them: pages opened on request, and tools used rarely.
+		'pages': path.join(srcDir, 'pages.ts'),
+		'onDemand': path.join(srcDir, 'onDemand.ts'),
 	},
 	srcDir,
 	outdir: outDir,

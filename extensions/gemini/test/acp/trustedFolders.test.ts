@@ -7,7 +7,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { foldersTrusted, folderTrustApplies, isFolderTrusted, trustedFoldersPath, trustFolder } from '../../src/acp/trustedFolders';
+import { ensureOwnTrustRules, foldersTrusted, folderTrustApplies, folderTrustState, isFolderTrusted, readTrustRules, setFolderTrust, trustedFoldersPath, trustFolder } from '../../src/acp/trustedFolders';
 
 describe('trustedFoldersPath', () => {
 	it('follows the CLI: its own variable, then GEMINI_CLI_HOME, then the home folder', async () => {
@@ -104,5 +104,46 @@ describe('foldersTrusted', () => {
 			await foldersTrusted([path.join(home, 'a'), path.join(home, 'b')], {}, home),
 			await foldersTrusted([path.join(home, 'b')], { GEMINI_CLI_TRUST_WORKSPACE: 'true' }, home),
 		]).toEqual([true, false, true]);
+	});
+});
+
+describe('setFolderTrust, readTrustRules and GeminiCode\'s own rules', () => {
+	let dir: string;
+	let file: string;
+	beforeEach(() => {
+		dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'gemini-trust-')));
+		file = path.join(dir, 'trustedFolders.json');
+	});
+	afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+	it('sets each of the CLI\'s levels, removes a rule, and lists the rules the CLI knows in order', async () => {
+		fs.writeFileSync(file, JSON.stringify({ '/old': 'TRUST_FOLDER', '/odd': 'MAYBE' }));
+		await setFolderTrust(file, '/work/app', 'TRUST_PARENT');
+		await setFolderTrust(file, '/work/bad', 'DO_NOT_TRUST');
+		await setFolderTrust(file, '/old', undefined);
+		expect(await readTrustRules(file)).toEqual([
+			{ path: path.resolve('/work/app'), level: 'TRUST_PARENT' },
+			{ path: path.resolve('/work/bad'), level: 'DO_NOT_TRUST' },
+		]);
+	});
+
+	it('says which rule decides: the longest that covers the folder', async () => {
+		const repo = path.join(dir, 'work', 'app');
+		fs.mkdirSync(repo, { recursive: true });
+		await setFolderTrust(file, path.join(dir, 'work'), 'TRUST_FOLDER');
+		await setFolderTrust(file, path.join(repo, 'vendor'), 'DO_NOT_TRUST');
+		expect([await folderTrustState(file, repo), await folderTrustState(file, path.join(repo, 'vendor', 'x'))]).toEqual([
+			{ trusted: true, rule: { path: path.join(dir, 'work'), level: 'TRUST_FOLDER' } },
+			{ trusted: false, rule: { path: path.join(repo, 'vendor'), level: 'DO_NOT_TRUST' } },
+		]);
+	});
+
+	it('trusts the project coordinators\' folder and never the review checkouts, writing only when either is missing', async () => {
+		const home = path.join(dir, 'home');
+		await setFolderTrust(file, path.join(home, '.geminicode', 'reviews'), 'TRUST_FOLDER');
+		const first = await ensureOwnTrustRules(file, home);
+		const again = await ensureOwnTrustRules(file, home);
+		expect({ first, again, review: await isFolderTrusted(file, path.join(home, '.geminicode', 'reviews', 'shop', 'review-12')), project: await isFolderTrusted(file, path.join(home, '.geminicode', 'projects', 'p1')) })
+			.toEqual({ first: true, again: false, review: false, project: true });
 	});
 });

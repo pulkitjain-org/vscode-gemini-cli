@@ -11,6 +11,7 @@
 import * as os from 'node:os';
 import * as vscode from 'vscode';
 import type { Attachment } from '../../acp/attachments';
+import { isTranscriptBlock } from '../../acp/hostAllowlists';
 import { RunRisk, runRisk } from '../../acp/riskyCommand';
 import { blockCommands, commandAttachment, FinishedCommand, placeFor, RunPlace } from '../../acp/runCommands';
 import type { FromWebview, RunMode, RunState, ToWebview } from '../chatProtocol';
@@ -33,6 +34,8 @@ export class ChatRun implements vscode.Disposable {
 		private readonly isAttached: () => boolean,
 		private readonly post: (message: ToWebview) => void,
 		private readonly attach: (attachments: readonly Attachment[]) => void,
+		/** The chat's messages: a block runs only if one of them has it, so a page can't run a command it made up. */
+		private readonly messages: () => Iterable<string> = () => [],
 	) {
 		this.disposables.push(vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.${runSetting}`) && this.postView()));
 	}
@@ -64,7 +67,7 @@ export class ChatRun implements vscode.Disposable {
 		const terminal = this.options.terminal;
 		const command = blockCommands(message.language, message.text);
 		const state = (value: RunState) => this.post({ type: 'runState', text: message.text, state: value });
-		if (!terminal || this.mode === 'off' || !command) {
+		if (!terminal || this.mode === 'off' || !command || !isTranscriptBlock(message.text, this.messages())) {
 			state({ kind: 'idle' });
 			return;
 		}

@@ -14,13 +14,18 @@ import { errorMessage } from '../acp/errors';
 import { addHook, disabledHooks, HookEvent, hookEvents, hooksIn, setHookEnabled, toolEvents } from '../acp/hooks';
 import { addMcpServer, disabledServers, isServerEnabled, mcpServersIn, readSettingsFile, rulesFileNames, serverConfigFrom, setServerEnabled } from '../acp/projectSettings';
 import { disabledSkills, loadSkills, setSkillEnabled, skillFolders, skillSlug, skillTemplate } from '../acp/skills';
-import { AgentService } from './agentService';
-import { getAgentCommand, getWorkspaceCwd } from './configuration';
+import type { AuditLog } from '../acp/auditLog';
+import { ownTrustRules, readTrustRules, type TrustLevel, type TrustRule } from '../acp/trustedFolders';
+import { trustRows, type TrustRow } from '../acp/trustRows';
+import type { AgentService } from './agentService';
+import { type getAgentCommand, getWorkspaceCwd } from './configuration';
 import { tildify } from './displayText';
-import { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage } from './panelProtocol';
-import { forgetSkills } from './teamCommands';
+import { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage, TrustRowView, TrustView } from './panelProtocol';
+import { StorageSection, type StorageHost } from './storageSection';
+import type { forgetSkills } from './teamCommands';
 import { createNonce, escapeAttribute } from './webviewHtml';
 import { ContextCost, estimateTokens, heavyContextTokens, heavyServerTokens } from '../acp/contextCost';
+import { showError } from './errorNotice';
 
 const viewType = 'gemini.projectSettings';
 
@@ -33,6 +38,22 @@ const viewType = 'gemini.projectSettings';
  * the user presses Refresh, which starts it. Files are read when the page is
  * shown and after each change.
  */
+/**
+ * What Project Helpers takes from the extension's own bundle: the page runs
+ * from a bundle of its own (src/pages.ts), whose copies of these modules'
+ * state would be empty.
+ */
+export interface SettingsHost {
+	/** The command that starts the CLI, for its subcommands in a terminal. */
+	readonly getAgentCommand: typeof getAgentCommand;
+	/** Drops the cached skills, so a skill turned on or off shows in the next list. */
+	readonly forgetSkills: typeof forgetSkills;
+	/** What the Storage section measures and cleans up; without it, the section isn't shown. */
+	readonly storage?: StorageHost;
+	/** The team tools' audit log, where Trusted Folders records each change; without it, changes are only logged. */
+	readonly audit?: AuditLog;
+}
+
 export class SettingsPage implements vscode.Disposable {
 
 	private panel: vscode.WebviewPanel | undefined;
@@ -48,16 +69,22 @@ export class SettingsPage implements vscode.Disposable {
 	private cliStale = false;
 	private readonly disposables: vscode.Disposable[] = [];
 
+	/** The Storage section, measured the first time it scrolls into view. */
+	private readonly storage: StorageSection | undefined;
+
 	/** A context cost measurement under way, for the folder it measures. */
 	private measuring: string | undefined;
 	private measureError: string | undefined;
 
 	/** `measureContext` measures what every model call carries in a folder (contextCostProbe.ts); `state` keeps the last result. */
-	constructor(private readonly extensionUri: vscode.Uri, private readonly service: AgentService, private readonly measureContext?: (folder: string, servers: readonly string[]) => Promise<ContextCost>, private readonly state?: vscode.Memento) {
+	constructor(private readonly extensionUri: vscode.Uri, private readonly service: AgentService, private readonly host: SettingsHost, private readonly measureContext?: (folder: string, servers: readonly string[]) => Promise<ContextCost>, private readonly state?: vscode.Memento) {
+		this.storage = host.storage && new StorageSection(host.storage, () => void this.update());
 		this.disposables.push(
 			vscode.commands.registerCommand('gemini.projectSettings', () => this.show()),
 			vscode.commands.registerCommand('gemini.newSkill', () => this.newSkill()),
 			service.onDidChangeMcpProblems(() => void this.update()),
+			// GeminiCode's own trust changes and edits to the file elsewhere, such as the terminal's CLI.
+			service.trust.onDidChange(() => void this.update()),
 			// The CLI could not be asked while the agent was not running; ask now.
 			// Each ask opens a CLI session, so a hidden page asks once it shows again.
 			service.runtime.onDidChangeState(state => state.kind === 'ready' && this.panel && this.refreshCliWhenShown()),
@@ -77,7 +104,7 @@ export class SettingsPage implements vscode.Disposable {
 			return;
 		}
 		const media = vscode.Uri.joinPath(this.extensionUri, 'media');
-		const panel = vscode.window.createWebviewPanel(viewType, vscode.l10n.t("Project Helpers"), vscode.ViewColumn.Active, {
+		const panel = vscode.window.createWebviewPanel(viewType, vscode.l10n.t("Agent Setup"), vscode.ViewColumn.Active, {
 			enableScripts: true,
 			localResourceRoots: [media],
 		});
@@ -175,6 +202,7 @@ export class SettingsPage implements vscode.Disposable {
 
 	private async build(): Promise<SettingsPageView> {
 		const dir = geminiDir();
+		const trust = this.trustView();
 		const personal = await readSettingsFile(this.personalSettings());
 		const folders = vscode.workspace.workspaceFolders ?? [];
 		const projects = await Promise.all(folders.map(async folder => {
@@ -236,7 +264,66 @@ export class SettingsPage implements vscode.Disposable {
 			servers: servers.map(server => measured.has(server.name) ? { ...server, tokens: measured.get(server.name) } : server),
 			skills, hooks, extensions: this.extensions, memory: this.memory, rules, preferences: this.preferencesView(personal),
 			contextCost: this.contextCostView(folder, cost),
+			trust: await trust,
+			...this.storage ? { storage: this.storage.view() } : {},
 		};
+	}
+
+	/** Trusted Folders: every rule of the Gemini CLI's trust file, in plain words. */
+	private async trustView(): Promise<TrustView> {
+		const trust = this.service.trust;
+		if (!await trust.applies()) {
+			return { state: 'off', message: vscode.l10n.t("Folder trust is off in your Gemini CLI settings, so agents trust every folder.") };
+		}
+		let rules: TrustRule[];
+		try {
+			rules = await readTrustRules(trust.file);
+		} catch {
+			return { state: 'unreadable', message: vscode.l10n.t("{0} can't be read as JSON, so GeminiCode won't change it.", tildify(trust.file)) };
+		}
+		// A rule GeminiCode didn't write, or wrote at another level, says so: it came from the terminal or a hand edit.
+		const outside = (row: TrustRow) => !!row.rule && rules.some(rule => rule.path === row.rule && trust.addedOutside(rule));
+		return {
+			state: 'ready', rows: (await trustRows(rules, ownTrustRules())).map(row => {
+				const view = trustRowView(row);
+				return !outside(row) ? view : { ...view, detail: view.detail ? vscode.l10n.t("{0} \u00b7 Added in the terminal or by hand", view.detail) : vscode.l10n.t("Added in the terminal or by hand") };
+			}),
+		};
+	}
+
+	/** Trust Folder..., Trust a Parent Folder... or Never Trust a Folder...: asks for the folder, then writes its rule. */
+	private async trustFolder(kind: 'folder' | 'parent' | 'never'): Promise<void> {
+		const workspace = vscode.workspace.workspaceFolders?.find(each => each.uri.scheme === 'file')?.uri;
+		const [title, openLabel] = kind === 'folder' ? [vscode.l10n.t("Trust Folder"), vscode.l10n.t("Trust")]
+			: kind === 'parent' ? [vscode.l10n.t("Trust a Parent Folder"), vscode.l10n.t("Trust Everything in It")]
+				: [vscode.l10n.t("Never Trust a Folder"), vscode.l10n.t("Never Trust")];
+		const picked = await vscode.window.showOpenDialog({
+			title, openLabel, canSelectFiles: false, canSelectFolders: true, canSelectMany: false,
+			// A parent folder is usually the one that holds this window's repository.
+			...workspace ? { defaultUri: kind === 'parent' ? vscode.Uri.file(path.dirname(workspace.fsPath)) : workspace } : {},
+		});
+		const folder = picked?.[0]?.fsPath;
+		if (!folder) {
+			return;
+		}
+		const level: TrustLevel = kind === 'never' ? 'DO_NOT_TRUST' : 'TRUST_FOLDER';
+		const shown = tildify(folder);
+		await this.changeTrust(folder, level, kind === 'folder' ? `Trust ${shown}` : kind === 'parent' ? `Trust ${shown} and everything in it` : `Never trust ${shown}`);
+	}
+
+	/** Remove on a row: only a rule the section shows as removable, read again from the file. */
+	private async removeTrust(rule: string): Promise<void> {
+		const rows = await trustRows(await readTrustRules(this.service.trust.file), ownTrustRules());
+		if (rows.some(row => row.rule === rule)) {
+			await this.changeTrust(rule, undefined, `Remove the trust rule for ${tildify(rule)}`);
+		}
+	}
+
+	/** Writes a rule through FolderTrust, which logs it and lets the agents pick it up, recording it in the audit log too. */
+	private async changeTrust(folder: string, level: TrustLevel | undefined, effect: string): Promise<void> {
+		const write = () => this.service.trust.set(folder, level);
+		const audit = this.host.audit;
+		await (audit ? audit.record({ caller: 'ui', tool: 'folder_trust', ref: folder, effect }, write) : write());
 	}
 
 	private cachedCost(folder: string): ContextCost | undefined {
@@ -318,6 +405,20 @@ export class SettingsPage implements vscode.Disposable {
 				case 'measureContext':
 					void this.measure();
 					return;
+				case 'measureStorage':
+					void this.storage?.measure();
+					return;
+				case 'cleanUp':
+					await this.storage?.cleanUp();
+					return;
+				case 'setKeepLogs':
+					await this.storage?.setKeepLogs(message.days);
+					return;
+				case 'storageAction':
+					if (message.action === 'showIndex' || message.action === 'openFolder') {
+						await this.storage?.action(message.action);
+					}
+					return;
 				case 'restart':
 					this.service.restart();
 					return;
@@ -386,6 +487,12 @@ export class SettingsPage implements vscode.Disposable {
 					}
 					await openAt(message.path, message.server ? `"${message.server}"` : message.needle);
 					return;
+				case 'trustFolder':
+					await this.trustFolder(message.kind);
+					break;
+				case 'removeTrust':
+					await this.removeTrust(message.rule);
+					break;
 				case 'createRules':
 					if (!this.files.has(message.path)) {
 						return;
@@ -396,7 +503,7 @@ export class SettingsPage implements vscode.Disposable {
 					break;
 			}
 		} catch (err) {
-			void vscode.window.showErrorMessage(errorMessage(err));
+			void showError(errorMessage(err));
 		}
 		await this.update();
 	}
@@ -562,7 +669,7 @@ export class SettingsPage implements vscode.Disposable {
 				return;
 			}
 		}
-		forgetSkills();
+		this.host.forgetSkills();
 		this.offerRestart(enabled
 			? vscode.l10n.t("\"{0}\" is on for new agents.", name)
 			: vscode.l10n.t("\"{0}\" is off for new agents.", name));
@@ -634,8 +741,8 @@ export class SettingsPage implements vscode.Disposable {
 		this.offerRestart(reply.trim() || name);
 	}
 
-	private async runInTerminal(name: string, args: readonly string[], message = vscode.l10n.t("Answer the Gemini CLI's questions here. Project Helpers updates when it finishes; restart the agent to use the change.")): Promise<void> {
-		const command = await getAgentCommand({ subcommand: args });
+	private async runInTerminal(name: string, args: readonly string[], message = vscode.l10n.t("Answer the Gemini CLI's questions here. Agent Setup updates when it finishes; restart the agent to use the change.")): Promise<void> {
+		const command = await this.host.getAgentCommand({ subcommand: args });
 		this.terminal?.dispose();
 		this.terminal = vscode.window.createTerminal({
 			name: vscode.l10n.t("Gemini: {0}", name),
@@ -670,7 +777,7 @@ export class SettingsPage implements vscode.Disposable {
 	}
 
 	private async cannotRewrite(file: string, needle: string): Promise<void> {
-		void vscode.window.showWarningMessage(vscode.l10n.t("{0} has comments, so GeminiCode won't rewrite it. Make the change under {1} yourself.", tildify(file), needle));
+		void vscode.window.showWarningMessage(vscode.l10n.t("{0} isn't valid JSON, so GeminiCode won't rewrite it. Make the change under {1} yourself.", tildify(file), needle));
 		await openAt(file, needle);
 	}
 
@@ -691,7 +798,7 @@ export class SettingsPage implements vscode.Disposable {
 			contextNone: vscode.l10n.t("Not measured yet."),
 			contextTotal: vscode.l10n.t("{0} tokens in every model call"),
 			tokensPerCall: vscode.l10n.t("\u2248{0} tokens"),
-			title: vscode.l10n.t("Project Helpers"),
+			title: vscode.l10n.t("Agent Setup"),
 			subtitle: vscode.l10n.t("What every Gemini agent loads when it starts, shared with the gemini command in your terminal. Changes apply to new agents."),
 			restart: vscode.l10n.t("Restart Agent"),
 			servers: vscode.l10n.t("MCP servers"),
@@ -742,6 +849,18 @@ export class SettingsPage implements vscode.Disposable {
 			usageStatisticsHint: vscode.l10n.t("The Gemini CLI sends anonymous usage statistics to Google to improve it."),
 			keepChats: vscode.l10n.t("Keep saved chats for"),
 			keepChatsHint: vscode.l10n.t("The Gemini CLI deletes saved chats older than this, so they no longer show under Restore Session."),
+			storage: vscode.l10n.t("Storage"),
+			storageHint: vscode.l10n.t("What GeminiCode keeps on this Mac, and how much room each part takes."),
+			storageMeasuring: vscode.l10n.t("Measuring\u2026"),
+			cleanUp: vscode.l10n.t("Clean Up..."),
+			keepLogs: vscode.l10n.t("Keep logs for"),
+			trust: vscode.l10n.t("Trusted Folders"),
+			trustHint: vscode.l10n.t("Where the Gemini CLI loads a folder's own settings, hooks and MCP servers. Shared with the terminal."),
+			trustFolder: vscode.l10n.t("Trust Folder..."),
+			trustParent: vscode.l10n.t("Trust a Parent Folder..."),
+			neverTrust: vscode.l10n.t("Never Trust a Folder..."),
+			removeTrust: vscode.l10n.t("Remove"),
+			noTrust: vscode.l10n.t("No trusted folders yet."),
 		};
 		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'settings.js'));
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
@@ -765,6 +884,30 @@ export class SettingsPage implements vscode.Disposable {
 	<script nonce="${nonce}" type="module" src="${script}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
 </html>`;
+	}
+}
+
+/** A Trusted Folders row in plain words. */
+function trustRowView(row: TrustRow): TrustRowView {
+	const base = { folder: tildify(row.folder), ...row.rule ? { rule: row.rule } : {} };
+	switch (row.kind) {
+		case 'trusted':
+			return { ...base, status: vscode.l10n.t("Trusted"), tone: 'ok', ...row.worktrees ? { detail: vscode.l10n.t("and its agents' branches in {0}", tildify(path.dirname(row.worktrees))) } : {} };
+		case 'branches':
+			return { ...base, status: vscode.l10n.t("Trusted"), tone: 'ok', detail: vscode.l10n.t("Agents' branches of {0}", path.basename(row.folder)) };
+		case 'subfolders': {
+			const names = (row.repositories ?? []).join(', ');
+			const detail = !names ? vscode.l10n.t("and everything in it")
+				: row.more ? vscode.l10n.t("and everything in it: {0} and {1} more", names, row.more)
+					: vscode.l10n.t("and everything in it: {0}", names);
+			return { ...base, status: vscode.l10n.t("Trusted, with subfolders"), tone: 'ok', detail };
+		}
+		case 'never':
+			return { ...base, status: vscode.l10n.t("Never trust"), tone: 'warn' };
+		case 'ownTrusted':
+			return { ...base, status: vscode.l10n.t("Trusted by GeminiCode"), tone: 'muted', detail: vscode.l10n.t("GeminiCode's project coordinators; no repository code") };
+		case 'ownNever':
+			return { ...base, status: vscode.l10n.t("Never trusted"), tone: 'warn', detail: vscode.l10n.t("Merge request checkouts: other people's code, so their hooks and MCP servers never run") };
 	}
 }
 

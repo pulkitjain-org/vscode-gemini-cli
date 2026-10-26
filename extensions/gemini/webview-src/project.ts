@@ -196,6 +196,7 @@ export function showProjectPanel(next: ProjectPanel): void {
 	aside.setAttribute('aria-label', text.title);
 	const counts = next.counts;
 	const rows: [number, string, string][] = [
+		[counts.queued, 'queued', text.queued],
 		[counts.working, 'working', text.working],
 		[counts.waiting, 'waiting', text.waiting],
 		[counts.planned, 'planned', text.planned],
@@ -208,6 +209,14 @@ export function showProjectPanel(next: ProjectPanel): void {
 	setLabel(gear, strings.project?.settings.open ?? '');
 	heading.append(el('h3', undefined, text.title), gear);
 	threads.append(heading);
+	// New threads held for today's quota, which Start Anyway starts.
+	if (next.held) {
+		const held = el('div', 'panel-held');
+		held.setAttribute('role', 'status');
+		held.append(icon('warning'), el('span', 'panel-held-text', next.held),
+			button('secondary', strings.project?.actions.startAnyway ?? '', () => vscode.postMessage({ type: 'threadAction', thread: '', action: 'startAnyway' })));
+		threads.append(held);
+	}
 	const shown = rows.filter(([count]) => count > 0);
 	if (!shown.length) {
 		threads.append(el('p', 'panel-row panel-empty', text.noThreads));
@@ -224,12 +233,28 @@ export function showProjectPanel(next: ProjectPanel): void {
 			const row = el('button', 'panel-thread');
 			row.type = 'button';
 			row.title = thread.title;
-			row.append(el('span', `panel-dot state-${thread.state}`), el('span', 'panel-thread-title', thread.title));
-			row.addEventListener('click', () => vscode.postMessage({ type: 'threadAction', thread: thread.id, action: 'open' }));
-			onIntent(row, () => vscode.postMessage({ type: 'prepareThread', thread: thread.id }));
+			const name = el('span', 'panel-thread-name');
+			name.append(el('span', 'panel-thread-title', thread.title));
+			if (thread.detail) {
+				name.append(el('span', 'panel-thread-detail', thread.detail));
+			}
+			row.append(el('span', `panel-dot state-${thread.state}`), name);
+			if (thread.requests) {
+				row.append(el('span', 'panel-thread-requests', thread.requests));
+			}
+			// A queued thread has no chat until it starts.
+			if (thread.state === 'queued') {
+				row.disabled = true;
+			} else {
+				row.addEventListener('click', () => vscode.postMessage({ type: 'threadAction', thread: thread.id, action: 'open' }));
+				onIntent(row, () => vscode.postMessage({ type: 'prepareThread', thread: thread.id }));
+			}
 			list.append(row);
 		}
 		threads.append(list);
+	}
+	if (next.requests) {
+		threads.append(el('p', 'panel-row panel-requests', next.requests));
 	}
 	const context = el('section', 'panel-section');
 	context.append(el('h3', undefined, text.context));

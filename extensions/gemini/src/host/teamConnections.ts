@@ -18,11 +18,11 @@ import { SonarClient } from '../acp/sonar';
 import type { ChildServer } from '../acp/mcpStdio';
 import { findDocker, FolderChildren, gitlabContainer, jiraContainer, snykServer, sonarContainer, TeamChildren, teamImages } from '../acp/teamContainers';
 import { readTeamDefaults, TeamDefaults } from '../acp/teamDefaults';
-import { normalizeBaseUrl, TeamToolError, TeamToolId, teamToolIds, teamToolNames } from '../acp/teamHttp';
-import { isConfirmToolCall, TeamConnectors, teamReadTools, TeamToolContext, teamWrite, TeamWriteResult } from '../acp/teamTools';
+import { normalizeBaseUrl, ServerHealth, ServerHealthChange, teamReachability, TeamToolError, TeamToolId, teamToolIds, teamToolNames, unreachableNow } from '../acp/teamHttp';
+import { isConfirmToolCall, TeamConnectors, teamReadTools, TeamToolContext, teamToolsServerName, teamWrite, TeamWriteResult } from '../acp/teamTools';
 import { TeamToolsMcpServer } from '../acp/teamToolsMcp';
 import { repositoryRoot } from '../acp/worktrees';
-import { configSection } from './configuration';
+import { configSection, getApprovalPolicy } from './configuration';
 
 /** Runs the tools' own MCP servers as children of the team tools; set by Take Over Both Servers in Connections. */
 export const runTeamServersSetting = 'team.runTeamServers';
@@ -74,6 +74,13 @@ export class TeamConnections implements vscode.Disposable {
 	private childKeys: Partial<Record<ChildTool, string>> = {};
 	private readonly tokens = new Map<TeamToolId, string>();
 	private warnedNoDocker = false;
+	/** Each unreachable tool's next check, when its backoff ends, so its state clears by itself once the server answers. */
+	private readonly recheck = new Map<TeamToolId, ReturnType<typeof setTimeout>>();
+	/** Agents whose team tools only read, such as a merge request's reviewer. */
+	private readonly readOnlyAgents = new Set<string>();
+	/** Folders whose agents' team tools only read: a review's worktree, marked before its reviewer's session opens. */
+	private readonly readOnlyFolders = new Set<string>();
+	private readOnlyWhen: ((agent: string) => boolean) | undefined;
 
 	constructor(private readonly context: vscode.ExtensionContext, version: string, private readonly log: vscode.LogOutputChannel) {
 		this.audit = new AuditLog(vscode.Uri.joinPath(context.globalStorageUri, 'audit').fsPath);
@@ -86,7 +93,9 @@ export class TeamConnections implements vscode.Disposable {
 			folder: agent => this.folders.get(agent),
 			defaults: folder => this.defaults(folder),
 			children: () => this.children,
+			readOnly: agent => this.isReadOnly(agent),
 			childUnavailable: (server, reason) => this.log.warn(`The ${server} server didn't start, so the call went to ${server === 'jira' ? 'Jira' : 'GitLab'} directly: ${reason}`),
+			allowShell: () => getApprovalPolicy().allowShell,
 		};
 		this.server = new TeamToolsMcpServer(this.toolContext, version);
 		for (const tool of teamToolIds) {
@@ -98,6 +107,7 @@ export class TeamConnections implements vscode.Disposable {
 		this.disposables.push(
 			this.onDidChangeEmitter,
 			context.secrets.onDidChange(e => e.key.startsWith(secretPrefix) && void this.load().then(() => this.onDidChangeEmitter.fire())),
+			teamReachability.onDidChange(change => this.reachabilityChanged(change)),
 			vscode.workspace.onDidChangeConfiguration(e => {
 				if (e.affectsConfiguration(`${configSection}.${runTeamServersSetting}`)) {
 					this.updateChildren();
@@ -116,11 +126,13 @@ export class TeamConnections implements vscode.Disposable {
 	/**
 	 * A write from one of GeminiCode's pages, through the same code and audit
 	 * record as an agent's tool call (acp/teamTools.ts, `teamWrite`), in
-	 * `folder` (else the first workspace folder) for the team's defaults and
-	 * the GitLab project. Throws with the tool's own message when it fails.
+	 * `folder` (else the active editor's folder, else the first workspace
+	 * folder) for the team's defaults and the GitLab project. Throws with the
+	 * tool's own message when it fails; a write that went through with a later
+	 * step failed resolves, with that step in `warning`.
 	 */
 	async write(name: string, args: Record<string, unknown>, folder?: string): Promise<TeamWriteResult> {
-		const where = folder ?? vscode.workspace.workspaceFolders?.find(f => f.uri.scheme === 'file')?.uri.fsPath;
+		const where = folder ?? editorFolder() ?? vscode.workspace.workspaceFolders?.find(f => f.uri.scheme === 'file')?.uri.fsPath;
 		const result = await teamWrite(this.toolContext, { caller: 'ui', ...where ? { folder: where } : {} }, name, args);
 		if (!result.ok) {
 			throw new Error(result.text);
@@ -128,7 +140,42 @@ export class TeamConnections implements vscode.Disposable {
 		return result;
 	}
 
+	/**
+	 * Makes `agent`'s team tools read-only: it is offered only the reading
+	 * tools, and any write it asks for is refused. Set before its session opens.
+	 */
+	markReadOnly(agent: string): void {
+		this.readOnlyAgents.add(agent);
+	}
+
+	/** Makes the team tools of any agent working in `folder` read-only, from its session's first tool list. */
+	markReadOnlyFolder(folder: string): void {
+		this.readOnlyFolders.add(folder);
+	}
+
+	/** Also treats as read-only the agents `when` names, such as every review's reviewer after a restart. */
+	readOnlyBy(when: (agent: string) => boolean): void {
+		this.readOnlyWhen = when;
+	}
+
+	isReadOnly(agent: string): boolean {
+		const folder = this.folders.get(agent);
+		return this.readOnlyAgents.has(agent) || (!!folder && this.readOnlyFolders.has(folder)) || !!this.readOnlyWhen?.(agent);
+	}
+
+	/**
+	 * The reachability of `tool`'s servers, one state per server: unreachable
+	 * (calls fail at once until `retryAt`), sign-in needed (the token was
+	 * refused), or fine. The data behind the pages' per-server banners.
+	 */
+	serverHealth(tool: TeamToolId): ServerHealth {
+		return teamReachability.health(tool);
+	}
+
 	dispose(): void {
+		for (const timer of this.recheck.values()) {
+			clearTimeout(timer);
+		}
 		for (const tool of childTools) {
 			this.children[tool]?.stop();
 		}
@@ -174,11 +221,12 @@ export class TeamConnections implements vscode.Disposable {
 		return value;
 	}
 
-	/** The defaults of the first open folder that has them. */
-	async workspaceDefaults(): Promise<TeamDefaults> {
-		for (const folder of vscode.workspace.workspaceFolders ?? []) {
-			if (folder.uri.scheme === 'file') {
-				const defaults = await this.defaults(folder.uri.fsPath);
+	/** The defaults of `preferred` (the folder the flow works in) when it has them, else of the active editor's folder, else of the first open folder that has them. */
+	async workspaceDefaults(preferred?: string): Promise<TeamDefaults> {
+		const folders = [preferred, editorFolder(), ...(vscode.workspace.workspaceFolders ?? []).filter(f => f.uri.scheme === 'file').map(f => f.uri.fsPath)];
+		for (const folder of [...new Set(folders)]) {
+			if (folder) {
+				const defaults = await this.defaults(folder);
 				if (defaults.file) {
 					return defaults;
 				}
@@ -300,9 +348,9 @@ export class TeamConnections implements vscode.Disposable {
 		return isConfirmToolCall(request);
 	}
 
-	/** Lets the reading tools run without a card; changes still ask. */
+	/** Lets the reading tools run without a card; changes, and Snyk's tests, which run the project's build tools, still ask. */
 	instantAnswer(request: acp.RequestPermissionRequest): InstantAnswer | undefined {
-		if (!this.connectedSet.size || !isProjectToolCall(request, teamReadTools)) {
+		if (!this.connectedSet.size || !isProjectToolCall(request, teamReadTools, teamToolsServerName)) {
 			return undefined;
 		}
 		const allow = request.options.find(option => option.kind === 'allow_once') ?? request.options.find(option => option.kind.startsWith('allow'));
@@ -399,10 +447,44 @@ export class TeamConnections implements vscode.Disposable {
 		return this.children.sonar?.for(folder);
 	}
 
+	/**
+	 * A server's reachability changed on some call: an outage marks the tool
+	 * unreachable once and checks it again when its wait ends; a refused token
+	 * marks it as needing sign-in until the token changes; an answer after an
+	 * outage checks it again, so its row shows the account.
+	 */
+	private reachabilityChanged(change: ServerHealthChange): void {
+		const { tool, health } = change;
+		if (!this.connectedSet.has(tool)) {
+			return;
+		}
+		clearTimeout(this.recheck.get(tool));
+		this.recheck.delete(tool);
+		const current = this.states.get(tool);
+		if (health.kind === 'unreachable') {
+			if (current?.kind !== 'unreachable' || current.retryAt !== health.retryAt) {
+				this.setState(tool, { ...current?.kind === 'unreachable' ? current : {}, kind: 'unreachable', detail: unreachableNow(tool), retryAt: health.retryAt });
+			}
+			this.recheck.set(tool, setTimeout(() => {
+				this.recheck.delete(tool);
+				void this.check(tool);
+			}, Math.max(0, health.retryAt - Date.now())));
+		} else if (health.kind === 'signIn') {
+			if (current?.kind !== 'auth') {
+				this.log.warn(`${teamToolNames[tool]} refused the token; its calls stop until the token is replaced`);
+				this.setState(tool, { kind: 'auth', detail: vscode.l10n.t("{0} refused the token. It may have expired or been revoked: replace it in Connections.", teamToolNames[tool]) });
+			}
+		} else if (current?.kind === 'unreachable' || current?.kind === 'auth') {
+			void this.check(tool);
+		}
+	}
+
 	private async check(tool: TeamToolId): Promise<void> {
 		if (!this.connectedSet.has(tool)) {
 			return;
 		}
+		// An explicit check always asks the server, even while it waits out an outage.
+		teamReachability.retryNow(tool);
 		const previous = this.states.get(tool);
 		if (!previous || previous.kind === 'off') {
 			this.setState(tool, { kind: 'checking' });
@@ -441,6 +523,8 @@ export interface ConnectionState {
 	/** What went wrong, or how it connects, for the user. */
 	readonly detail?: string;
 	readonly checkedAt?: number;
+	/** For an unreachable tool: when it is next tried, in ms since the epoch. */
+	readonly retryAt?: number;
 	/** Loaded from the last window, not checked yet in this one. */
 	readonly stale?: boolean;
 }
@@ -453,6 +537,13 @@ const connectTimeoutMs = 45_000;
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	return Promise.race([promise, new Promise<T>(resolve => timer = setTimeout(() => resolve(fallback), ms))]).finally(() => clearTimeout(timer));
+}
+
+/** The workspace folder of the active editor, when it has one on disk. */
+function editorFolder(): string | undefined {
+	const uri = vscode.window.activeTextEditor?.document.uri;
+	const folder = uri && vscode.workspace.getWorkspaceFolder(uri);
+	return folder?.uri.scheme === 'file' ? folder.uri.fsPath : undefined;
 }
 
 function secretKey(tool: TeamToolId): string {

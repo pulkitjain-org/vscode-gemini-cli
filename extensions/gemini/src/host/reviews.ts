@@ -37,6 +37,10 @@ export class Reviews implements vscode.Disposable {
 	readonly diffs = new ReviewDiffs();
 	readonly comments = new ReviewComments();
 	private readonly sessions = new Map<string, ReviewSession>();
+	/** Each review being opened, so a double click opens it once. */
+	private readonly opening = new Map<string, Promise<void>>();
+	/** The reviewer agents of reviews posted or discarded in this window, for Remove Reviewer and Checkout. */
+	private readonly endedReviewers = new Map<string, string>();
 	private saved: readonly SavedReview[] = [];
 	private readonly onDidChangeEmitter = new vscode.EventEmitter<void>();
 	/** A review started, changed, was posted or discarded. */
@@ -45,13 +49,20 @@ export class Reviews implements vscode.Disposable {
 	private readonly disposables: vscode.Disposable[] = [this.diffs, this.comments, this.onDidChangeEmitter];
 	private readonly deps: ReviewDeps;
 
-	constructor(deps: Omit<ReviewDeps, 'diffs' | 'comments' | 'changed' | 'ended'>) {
+	constructor(deps: Omit<ReviewDeps, 'diffs' | 'comments' | 'changed' | 'ended' | 'removeReviewer'>) {
 		this.deps = {
 			...deps,
 			diffs: this.diffs,
 			comments: this.comments,
 			changed: () => this.changed(),
 			ended: session => this.forget(session),
+			removeReviewer: async session => {
+				const { project, iid } = session.review;
+				this.forget(session);
+				if (await this.removeReviewer(project, iid)) {
+					void vscode.window.showInformationMessage(vscode.l10n.t("Removed the reviewer of !{0} and its checkout.", iid));
+				}
+			},
 		};
 		this.disposables.push(deps.agents.onDidChangeAgents(() => {
 			// A reviewer removed: its review offers Ask Gemini Again.
@@ -90,7 +101,44 @@ export class Reviews implements vscode.Disposable {
 	 * was left, else a new one that Gemini starts. `fresh` starts over,
 	 * replacing a draft in progress.
 	 */
-	async open(project: string, iid: number, fresh = false): Promise<void> {
+	open(project: string, iid: number, fresh = false): Promise<void> {
+		const key = reviewKey(project, iid);
+		const pending = this.opening.get(key);
+		if (pending) {
+			return pending;
+		}
+		const opening = this.openNow(project, iid, fresh).finally(() => this.opening.delete(key));
+		this.opening.set(key, opening);
+		return opening;
+	}
+
+	/**
+	 * The reviewer agent of merge request `iid`'s review, when the review was
+	 * posted or discarded in this window and the agent is still there: what
+	 * Remove Reviewer and Checkout offers to remove.
+	 */
+	endedReviewer(project: string, iid: number): string | undefined {
+		const agentId = this.endedReviewers.get(reviewKey(project, iid));
+		return agentId && this.deps.agents.agentPlace(agentId) ? agentId : undefined;
+	}
+
+	/**
+	 * Remove Reviewer and Checkout, after Post or Discard: removes the
+	 * reviewer agent with its worktree and its review/ branch, which are
+	 * GeminiCode's own. Resolves whether there was one to remove.
+	 */
+	async removeReviewer(project: string, iid: number): Promise<boolean> {
+		const key = reviewKey(project, iid);
+		const agentId = this.endedReviewer(project, iid);
+		this.endedReviewers.delete(key);
+		if (!agentId || this.sessions.has(key)) {
+			return false;
+		}
+		await this.deps.agents.removeTeamAgent(agentId, true);
+		return true;
+	}
+
+	private async openNow(project: string, iid: number, fresh: boolean): Promise<void> {
 		const key = reviewKey(project, iid);
 		const live = this.sessions.get(key);
 		if (live && !fresh) {
@@ -118,9 +166,10 @@ export class Reviews implements vscode.Disposable {
 		}
 		const gitlab = this.deps.gitlab();
 		const mr = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Reading !{0}...", iid) }, () => gitlab.mr(project, iid));
-		const clone = await this.deps.cloneOf(project, gitlab);
+		const clone = await this.deps.cloneOf(project, gitlab, iid);
 		if (!clone) {
-			throw new Error(vscode.l10n.t("Open a clone of {0} first, so the merge request can be checked out.", project));
+			// The user cancelled the question where their clone is: no review, and nothing to report.
+			return;
 		}
 		const session = this.add(new ReviewSession(await store.save(newReview(mr, clone)), this.deps));
 		this.changed();
@@ -137,6 +186,10 @@ export class Reviews implements vscode.Disposable {
 	async discard(project: string, iid: number): Promise<void> {
 		const key = reviewKey(project, iid);
 		const live = this.sessions.get(key);
+		const agentId = live?.agentId ?? this.saved.find(r => r.project === project && r.iid === iid)?.agentId;
+		if (agentId) {
+			this.endedReviewers.set(key, agentId);
+		}
 		this.sessions.delete(key);
 		if (live) {
 			await live.end(true);
@@ -144,6 +197,24 @@ export class Reviews implements vscode.Disposable {
 			await this.deps.tools.reviews.remove(project, iid);
 		}
 		await this.reload();
+		void this.offerRemoveAfterDiscard(project, iid);
+	}
+
+	/** After Discard, while the reviewer is still there: Remove Reviewer and Checkout, or Keep for Re-review. */
+	private async offerRemoveAfterDiscard(project: string, iid: number): Promise<void> {
+		const agentId = this.endedReviewer(project, iid);
+		const branch = agentId && this.deps.agents.agentPlace(agentId)?.branch;
+		if (!agentId) {
+			return;
+		}
+		const remove = vscode.l10n.t("Remove Reviewer and Checkout");
+		const keep = vscode.l10n.t("Keep for Re-review");
+		const text = branch
+			? vscode.l10n.t("Discarded your review of !{0}. The reviewer agent and its checkout ({1}) are still on this Mac.", iid, branch)
+			: vscode.l10n.t("Discarded your review of !{0}. The reviewer agent and its checkout are still on this Mac.", iid);
+		if (await vscode.window.showInformationMessage(text, remove, keep) === remove && await this.removeReviewer(project, iid)) {
+			void vscode.window.showInformationMessage(vscode.l10n.t("Removed the reviewer of !{0} and its checkout.", iid));
+		}
 	}
 
 	dispose(): void {
@@ -161,6 +232,9 @@ export class Reviews implements vscode.Disposable {
 	}
 
 	private forget(session: ReviewSession): void {
+		if (session.agentId) {
+			this.endedReviewers.set(session.key, session.agentId);
+		}
 		if (this.sessions.get(session.key) === session) {
 			this.sessions.delete(session.key);
 		}

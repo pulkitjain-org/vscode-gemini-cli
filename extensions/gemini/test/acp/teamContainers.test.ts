@@ -250,18 +250,45 @@ describe('the team\'s servers as children', () => {
 		});
 	});
 
-	it('runs the pinned image with the token only in the container\'s environment', () => {
-		const spec = containerSpec('/opt/docker/bin/docker', teamImages.jira, { JIRA_URL: 'https://acme.atlassian.net', JIRA_API_TOKEN: 'secret-token' }, { PATH: '/usr/bin', HOME: '/Users/me' });
+	it('runs the pinned image with settings in its environment and the token on its input, out of docker inspect\'s reach', () => {
+		const spec = containerSpec('/opt/docker/bin/docker', teamImages.jira, { JIRA_URL: 'https://acme.atlassian.net' }, { PATH: '/usr/bin', HOME: '/Users/me' }, [], { JIRA_API_TOKEN: 'secret-token', OTHER: 'two\nlines' });
 		expect({ spec, docker: findDocker(file => file === '/opt/homebrew/bin/docker') }).toEqual({
 			spec: {
 				command: '/opt/docker/bin/docker',
-				args: ['run', '-i', '--rm', '-e', 'JIRA_URL', '-e', 'JIRA_API_TOKEN', pinnedReference(teamImages.jira)],
+				args: ['run', '-i', '--rm', '-e', 'JIRA_URL', '--entrypoint', '/bin/sh', pinnedReference(teamImages.jira),
+					'-c', 'IFS= read -r v0 && IFS= read -r v1 && export JIRA_API_TOKEN="$v0" OTHER="$v1" && exec "$@"', 'sh', 'mcp-atlassian'],
 				// Docker's folder leads the PATH, for its credential helper.
-				env: { PATH: '/opt/docker/bin:/Applications/Docker.app/Contents/Resources/bin:/usr/bin', HOME: '/Users/me', DOCKER_HOST: undefined, DOCKER_CONFIG: undefined, JIRA_URL: 'https://acme.atlassian.net', JIRA_API_TOKEN: 'secret-token' },
+				env: { PATH: '/opt/docker/bin:/Applications/Docker.app/Contents/Resources/bin:/usr/bin', HOME: '/Users/me', DOCKER_HOST: undefined, DOCKER_CONFIG: undefined, JIRA_URL: 'https://acme.atlassian.net' },
+				stdin: 'secret-token\ntwolines\n',
 			},
 			docker: '/opt/homebrew/bin/docker',
 		});
+		expect(JSON.stringify(spec.args)).not.toContain('secret-token');
+		expect(containerSpec('/d', teamImages.sonar, { A: '1' }, {}).args.slice(-1)).toEqual([pinnedReference(teamImages.sonar)]);
 		expect(pinnedReference(teamImages.gitlab)).toMatch(/^zereight050\/gitlab-mcp:2\.3\.3@sha256:[0-9a-f]{64}$/);
+	});
+
+	it('starts a server whose shell reads its secrets from its input first, as the containers do', async () => {
+		const dir = await tempDir();
+		const scriptPath = path.join(dir, 'script.json');
+		const callsPath = path.join(dir, 'calls.jsonl');
+		await fs.writeFile(scriptPath, JSON.stringify({ tools: { jira_get_issue: { text: 'ACME-412: Cap the gift message' } } } satisfies FakeMcpScript));
+		const server = new ChildServer('jira', {
+			command: '/bin/sh',
+			args: ['-c', 'IFS= read -r v0 && export JIRA_API_TOKEN="$v0" && test "$JIRA_API_TOKEN" = secret-token && exec "$@"', 'sh', process.execPath, fakeServer, scriptPath, callsPath],
+			env: process.env,
+			stdin: 'secret-token\n',
+		}, { startTimeoutMs: 10_000, callTimeoutMs: 10_000 });
+		children.push(server);
+		expect(await server.call('jira_get_issue', { issue_key: 'ACME-412' })).toMatchObject({ content: [{ type: 'text', text: 'ACME-412: Cap the gift message' }] });
+	});
+
+	it('passes the agent\'s proxy into the container, a proxy on this Mac by Docker Desktop\'s name for it', () => {
+		const spec = containerSpec('/opt/docker/bin/docker', teamImages.gitlab, { GITLAB_PERSONAL_ACCESS_TOKEN: 'secret' }, { PATH: '/usr/bin', HTTPS_PROXY: 'http://user:pw@127.0.0.1:3128', http_proxy: 'http://proxy.corp:8080', NO_PROXY: 'localhost,corp.example', GEMINI_API_KEY: 'not-passed' });
+		expect({ args: spec.args, env: Object.fromEntries(Object.entries(spec.env ?? {}).filter(([name]) => /proxy|TOKEN|GEMINI/i.test(name))) }).toEqual({
+			args: ['run', '-i', '--rm', '-e', 'HTTPS_PROXY', '-e', 'http_proxy', '-e', 'NO_PROXY', '-e', 'GITLAB_PERSONAL_ACCESS_TOKEN', pinnedReference(teamImages.gitlab)],
+			env: { HTTPS_PROXY: 'http://user:pw@host.docker.internal:3128', http_proxy: 'http://proxy.corp:8080', NO_PROXY: 'localhost,corp.example', GITLAB_PERSONAL_ACCESS_TOKEN: 'secret' },
+		});
 	});
 
 	it('analyses a branch\'s changed files on this Mac, by path in the mounted folder, skipping what it can\'t read', async () => {

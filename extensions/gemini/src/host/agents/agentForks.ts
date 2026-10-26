@@ -28,6 +28,7 @@ import type { AgentService } from '../agentService';
 import type { ChatForker, ForkStart } from '../chat/chatOptions';
 import type { AgentSession } from '../agentSession';
 import type { AgentWorktrees } from './agentWorktrees';
+import { showError } from '../errorNotice';
 
 /** What a fork needs of an agent running in this window. */
 interface ForkingAgent {
@@ -199,7 +200,7 @@ export class AgentForks {
 				void this.host.open(agent);
 				break;
 			case 'merge':
-				void this.host.mergeBack(agent).catch(err => vscode.window.showErrorMessage(errorMessage(err)));
+				void this.host.mergeBack(agent).catch(err => showError(errorMessage(err)));
 				break;
 		}
 	}

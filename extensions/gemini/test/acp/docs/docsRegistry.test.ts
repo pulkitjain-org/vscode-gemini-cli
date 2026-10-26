@@ -7,7 +7,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { DocsRegistry, DocsSource, isDue, provisionalTitle, sourceId } from '../../../src/acp/docs/docsRegistry';
+import { DocsRegistry, DocsSource, isDue, provisionalTitle, retryDue, sourceId } from '../../../src/acp/docs/docsRegistry';
 
 describe('DocsRegistry', () => {
 	const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'docs-registry-')));
@@ -40,5 +40,18 @@ describe('DocsRegistry', () => {
 			isDue(source({ fetchedAt: 1, refresh: 'weekly' }), 'daily', day + 1),
 			isDue(source({ fetchedAt: 1, refresh: 'manual' }), 'daily', 100 * day),
 		]).toEqual([true, false, true, false, false]);
+	});
+
+	it('tries a failed source again later and later, at most a day apart', () => {
+		const minute = 60 * 1000;
+		const failed = (failures: number) => source({ error: 'HTTP 503', failures, failedAt: 0 });
+		expect([
+			retryDue(failed(1), 'daily', 14 * minute),
+			retryDue(failed(1), 'daily', 15 * minute),
+			retryDue(failed(3), 'daily', 59 * minute),
+			retryDue(failed(3), 'daily', 60 * minute),
+			retryDue(failed(40), 'daily', 24 * 60 * minute),
+			retryDue(source({ error: 'HTTP 503', fetchedAt: 0, failedAt: 0, refresh: 'manual' }), 'daily', 100 * 24 * 60 * minute),
+		]).toEqual([false, true, false, true, true, false]);
 	});
 });

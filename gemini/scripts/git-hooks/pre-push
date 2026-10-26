@@ -1,56 +1,47 @@
 #!/bin/sh
-# Refuses to push commits that aren't the repository owner's or that carry an
-# AI tool's trailer, and new branches not named task/..., feature/... or
-# bugfix/... (AGENTS.md, "Commits, branches and pull requests"). Then runs Git
-# LFS's own pre-push step, which this replaces. Installed by
+# Refuses to push commits that aren't the repository owner's or that name an
+# AI tool, and new branches not named task/..., feature/... or bugfix/...
+# (AGENTS.md, "Commits, branches and pull requests"). The rules are in
+# gemini/scripts/commit-policy.sh, which Gemini CI's policy job runs too. Then
+# runs Git LFS's own pre-push step, which this replaces. Installed by
 # gemini/scripts/git-hooks/install.sh.
 
-owner='er.pulkit@gmail.com'
+remote_name=$1
+remote_url=$2
 zero='0000000000000000000000000000000000000000'
+policy="$(git rev-parse --show-toplevel)/gemini/scripts/commit-policy.sh"
 refs=$(cat)
 failed=0
 
-while read -r local_ref local_sha remote_ref remote_sha; do
-	[ -z "$local_sha" ] && continue
-	case "$local_sha" in "$zero") continue ;; esac
-	# A new branch starts with task/, feature/ or bugfix/; branches GitHub already has keep their names.
-	if [ "$remote_sha" = "$zero" ]; then
-		case "$remote_ref" in
-			refs/heads/task/?* | refs/heads/feature/?* | refs/heads/bugfix/?* | refs/tags/*) ;;
-			*)
-				echo >&2 "pre-push: new branch ${remote_ref#refs/heads/} must start with task/, feature/ or bugfix/. Rename it (git branch -m feature/<what-it-is>) and push again."
-				failed=1
-				;;
-		esac
-	fi
-	# Only commits no remote has yet: what is already there stays as it is. That
-	# leaves out main's commits that a merge of origin/main brings in, such as
-	# GitHub's merge commits. The branch's old tip and its history are left out
-	# too, for a remote this clone has no tracking refs for.
-	range="$local_sha --not --remotes"
-	if [ "$remote_sha" != "$zero" ] && git rev-parse --quiet --verify "$remote_sha^{commit}" >/dev/null; then
-		range="$range $remote_sha"
-	fi
-	for commit in $(git rev-list $range); do
-		emails=$(git log -1 --format='%ae %ce' "$commit")
-		for address in $emails; do
-			if [ "$address" != "$owner" ]; then
-				echo >&2 "pre-push: $(git log -1 --format='%h %s' "$commit") is by $address, not $owner. Fix it with: git commit --amend --reset-author (or a rebase for older commits)."
-				failed=1
-				break
-			fi
-		done
-		if git log -1 --format='%B' "$commit" | grep -qiE '^[[:space:]]*(co-authored-by:.*(claude|anthropic|copilot|codex|openai)|claude-session:|.*generated (with|by) .*(claude|copilot|codex|chatgpt))'; then
-			echo >&2 "pre-push: $(git log -1 --format='%h %s' "$commit") carries an AI tool's trailer or footer. Reword it without it."
-			failed=1
+if [ ! -f "$policy" ]; then
+	echo >&2 "pre-push: $policy is missing, so the commit rules were not checked."
+else
+	while read -r local_ref local_sha remote_ref remote_sha; do
+		[ -z "$local_sha" ] && continue
+		case "$local_sha" in "$zero") continue ;; esac
+		# A new branch starts with task/, feature/ or bugfix/; branches GitHub already has keep their names.
+		if [ "$remote_sha" = "$zero" ]; then
+			case "$remote_ref" in
+				refs/tags/*) ;;
+				*) sh "$policy" branch "${remote_ref#refs/heads/}" >&2 || failed=1 ;;
+			esac
 		fi
-	done
-done <<REFS
+		# Only commits no remote has yet: what is already there stays as it is. That
+		# leaves out main's commits that a merge of origin/main brings in, such as
+		# GitHub's merge commits. The branch's old tip and its history are left out
+		# too, for a remote this clone has no tracking refs for.
+		set -- "$local_sha" --not --remotes
+		if [ "$remote_sha" != "$zero" ] && git rev-parse --quiet --verify "$remote_sha^{commit}" >/dev/null; then
+			set -- "$@" "$remote_sha"
+		fi
+		sh "$policy" commits "$@" >&2 || failed=1
+	done <<REFS
 $refs
 REFS
+fi
 
-[ "$failed" = 0 ] || exit 1
+[ "$failed" = 0 ] || { echo >&2 "pre-push: nothing was pushed."; exit 1; }
 
 if command -v git-lfs >/dev/null 2>&1; then
-	printf '%s\n' "$refs" | git lfs pre-push "$@"
+	printf '%s\n' "$refs" | git lfs pre-push "$remote_name" "$remote_url"
 fi

@@ -441,7 +441,8 @@ button.chip-remove .codicon {
 	display: block;
 	width: 100%;
 	box-sizing: border-box;
-	min-height: 52px;
+	/* Four lines before it grows: room to describe a task without a cramped box. */
+	min-height: 84px;
 	max-height: 40vh;
 	padding: 0;
 	resize: none;
@@ -513,7 +514,7 @@ button.send:disabled {
 	color: var(--gemini-faint);
 }
 
-/* The folder, the own-branch switch and the mode, in the composer's bar. */
+/* The folder and the mode, in the composer's bar. */
 .home-folder,
 .home-mode,
 .home-plus {
@@ -553,56 +554,6 @@ button.option-button[aria-expanded="true"] {
 
 button.option-button .codicon-chevron-down {
 	font-size: 11px;
-}
-
-.option-switch {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	cursor: pointer;
-	user-select: none;
-}
-
-.option-switch[hidden] {
-	display: none;
-}
-
-.option-switch input {
-	position: absolute;
-	opacity: 0;
-	pointer-events: none;
-}
-
-.switch-track {
-	position: relative;
-	width: 26px;
-	height: 15px;
-	border-radius: 8px;
-	background: var(--gemini-switch-off);
-}
-
-.switch-track::after {
-	content: "";
-	position: absolute;
-	top: 2px;
-	left: 2px;
-	width: 11px;
-	height: 11px;
-	border-radius: 50%;
-	background: var(--gemini-surface);
-}
-
-.option-switch input:checked + .switch-track {
-	background: var(--gemini-accent);
-}
-
-.option-switch input:checked + .switch-track::after {
-	left: 13px;
-}
-
-.option-switch input:focus-visible + .switch-track {
-	outline: 1px solid var(--vscode-focusBorder);
-	outline-offset: 2px;
 }
 
 .home-section {
@@ -908,6 +859,13 @@ button.option-button .codicon-chevron-down {
 .settings .mono {
 	font-family: var(--vscode-editor-font-family);
 	font-size: 12px;
+}
+
+.settings .storage-size {
+	flex: none;
+	min-width: 64px;
+	text-align: right;
+	color: var(--gemini-muted);
 }
 
 .settings .row-detail {
@@ -1444,4 +1402,53 @@ button.option-button .codicon-chevron-down {
 .settings .context-note {
 	margin-top: 6px;
 	font-size: 11.5px;
+}
+
+/* Agent Setup's Trusted Folders: the folder and what its rule covers, how it stands, and Remove. */
+.settings .row.trust {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 150px 80px;
+}
+
+.settings .trust-folder {
+	display: block;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.settings .trust .row-detail {
+	white-space: normal;
+}
+
+.settings .trust > button {
+	justify-self: end;
+}
+
+.trust-status.ok {
+	color: var(--gemini-ok);
+}
+
+.trust-status.warn {
+	color: var(--gemini-warn);
+}
+
+.trust-status.muted {
+	color: var(--gemini-muted);
+}
+
+.settings .trust-actions {
+	flex-wrap: wrap;
+	margin-top: 12px;
+}
+
+.settings .trust-note {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 12px;
+}
+
+.settings .trust-note.problem {
+	color: var(--gemini-warn);
 }

@@ -8,7 +8,7 @@
 // how fast, and how good the rewrites are. It sends direct requests with the
 // sign-in the Gemini CLI saved, read only.
 //
-//   node --experimental-transform-types --no-warnings extensions/gemini/scripts/probe-enhance.mts [--cli <gemini>]
+//   node --import ./extensions/gemini/scripts/sourceImports.mts --experimental-transform-types --no-warnings extensions/gemini/scripts/probe-enhance.mts [--cli <gemini>]
 //
 // Requests are spaced like clicks (--gap seconds apart) and a refused one is
 // retried the way the Gemini CLI retries: after the delay the server names,

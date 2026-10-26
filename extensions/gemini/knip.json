@@ -1,0 +1,13 @@
+{
+	"$schema": "https://unpkg.com/knip@6/schema.json",
+	"entry": [
+		"src/extension.ts",
+		"src/indexer.ts",
+		"webview-src/{chat,changes,home,connections,auditLog,settings,indexPage,teamFlow,highlight,katex,draftMarkdown,commentBox,emojiPicker}.ts",
+		"scripts/*.mts",
+		"esbuild*.mts",
+		"test/**/*.ts"
+	],
+	"project": ["src/**/*.ts", "webview-src/**/*.ts", "scripts/**/*.mts", "test/**/*.ts"],
+	"ignoreDependencies": ["@vscode/codicons", "katex"]
+}

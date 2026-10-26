@@ -40,6 +40,37 @@ describe('PermissionBroker', () => {
 		broker.cancelAll();
 	});
 
+	it('records the command prefix, so allowing git status never answers git grep -O', async () => {
+		const broker = new PermissionBroker();
+		broker.roots = () => ['/work/app'];
+		const first = broker.request(shell('git status && npm run lint > /work/app/lint.txt'));
+		const [pending] = broker.pendingPermissions;
+		expect(pending.request.options.map(o => o.name)).toEqual(['Allow', 'Allow git status, npm run lint for this session', 'Reject']);
+		broker.select(pending.id, 'proceed_always');
+		await first;
+		expect(await broker.request(shell('git status -s'))).toEqual({ outcome: { outcome: 'selected', optionId: 'proceed_once' } });
+		void broker.request(shell('git grep -O\'sh -c id\' x'));
+		void broker.request(shell('npm run lint > /Users/me/.zshrc'));
+		expect(broker.pendingPermissions).toHaveLength(2);
+		broker.cancelAll();
+	});
+
+	it('tells the CLI "once" for a prefix GeminiCode records, so the CLI keeps no rule for the whole program, and shows the user\'s choice', async () => {
+		const broker = new PermissionBroker();
+		const events: PermissionEvent[] = [];
+		broker.onDidChange(e => events.push(e));
+		const first = broker.request(shell('npx vitest run test/auth'));
+		const [pending] = broker.pendingPermissions;
+		expect(pending.prefixes).toEqual(['npx vitest']);
+		broker.select(pending.id, 'proceed_always');
+		expect(await first).toEqual({ outcome: { outcome: 'selected', optionId: 'proceed_once' } });
+		expect(events.at(-1)).toEqual({ kind: 'resolved', id: pending.id, outcome: { outcome: 'selected', optionId: 'proceed_always' } });
+		expect(await broker.request(shell('npx vitest run test/cart'))).toEqual({ outcome: { outcome: 'selected', optionId: 'proceed_once' } });
+		void broker.request(shell('npx -y cowsay hi'));
+		expect(broker.pendingPermissions).toHaveLength(1);
+		broker.cancelAll();
+	});
+
 	it('reads the command from the tool input when the agent sends it, not from the title', async () => {
 		const broker = new PermissionBroker();
 		const titled = (title: string, command: string): acp.RequestPermissionRequest => ({ ...request, toolCall: { toolCallId: title, title, kind: 'execute', rawInput: { command } } });

@@ -32,6 +32,8 @@ export interface RunOutcome {
 export class AgentTerminals implements vscode.Disposable {
 	private readonly terminals: AgentTerminal[] = [];
 	private readonly last = new Map<vscode.Terminal, FinishedCommand>();
+	/** When each terminal's last command finished, so the newest of an agent's terminals can be told. */
+	private readonly endedAt = new Map<vscode.Terminal, number>();
 	private readonly running = new Map<vscode.TerminalShellExecution, { readonly tail: OutputTail; readonly done: Promise<void> }>();
 	/** Called with each command that finishes in a terminal Run is waiting on. */
 	private readonly waiters = new Map<vscode.Terminal, (command: FinishedCommand | undefined) => void>();
@@ -65,10 +67,12 @@ export class AgentTerminals implements vscode.Disposable {
 					...output,
 				};
 				this.last.set(terminal, finished);
+				this.endedAt.set(terminal, Date.now());
 				this.waiters.get(terminal)?.(finished);
 			}),
 			vscode.window.onDidCloseTerminal(terminal => {
 				this.last.delete(terminal);
+				this.endedAt.delete(terminal);
 				this.waiters.get(terminal)?.(undefined);
 				const at = this.terminals.findIndex(each => each.terminal === terminal);
 				if (at >= 0) {
@@ -86,6 +90,14 @@ export class AgentTerminals implements vscode.Disposable {
 	/** The last command that finished in `terminal`, while shell integration reports commands there. */
 	lastCommand(terminal: vscode.Terminal): FinishedCommand | undefined {
 		return this.last.get(terminal);
+	}
+
+	/** The newest command that finished in `agent`'s terminals, else in the terminal in front; for the chat's @ picker. */
+	lastCommandFor(agent: string): FinishedCommand | undefined {
+		const own = this.terminals.filter(each => each.agent === agent && this.last.has(each.terminal))
+			.sort((a, b) => (this.endedAt.get(b.terminal) ?? 0) - (this.endedAt.get(a.terminal) ?? 0))[0];
+		const terminal = own?.terminal ?? vscode.window.activeTerminal;
+		return terminal && this.last.get(terminal);
 	}
 
 	/** The agent's terminal in `folder`, named `name`, made the first time; `fresh` makes another. */
@@ -169,5 +181,6 @@ export class AgentTerminals implements vscode.Disposable {
 		vscode.Disposable.from(...this.disposables).dispose();
 		this.running.clear();
 		this.last.clear();
+		this.endedAt.clear();
 	}
 }

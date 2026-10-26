@@ -6,25 +6,36 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { isModeAllowed, takesAway } from '../acp/adminPolicy';
-import { AgentClient, AgentClientState } from '../acp/agentClient';
+import { AgentClient, AgentClientState, WaitAbortedError } from '../acp/agentClient';
 import { AgentCommand, includeDirectoryArgs } from '../acp/agentProcess';
-import { AgentRuntime } from '../acp/agentRuntime';
-import { AgentErrorInfo, errorMessage } from '../acp/errors';
+import { AgentRuntime, AgentRuntimeState } from '../acp/agentRuntime';
+import { AgentError, AgentErrorInfo, errorMessage, parseCliRetry } from '../acp/errors';
 import { patchCliBundle } from '../acp/cliPatches';
 import { provideRipgrep } from '../acp/cliRipgrep';
 import { appRipgrep } from '../acp/index/ripgrepPath';
 import { createFileHandlers } from '../acp/fileAccess';
 import { PermissionBroker } from '../acp/permissions';
 import { CliResolution, isOlderThan } from '../acp/cliResolution';
+import { FolderTrust } from './folderTrust';
 import { McpDiagnostics, McpProblem } from '../acp/mcpDiagnostics';
 import { MIN_CLI_VERSION } from '../acp/protocol';
 import { AgentSidecar } from '../acp/sidecar';
-import { trustedFoldersPath, trustFolder } from '../acp/trustedFolders';
-import { AgentStatus, describeAgentStatus } from '../acp/status';
+import { AgentStatus, describeAgentStatus, describeRuntimeStatus } from '../acp/status';
 import { isConfirmToolCall } from '../acp/teamTools';
+import { agentErrorText } from './chatStatus';
 import { agentLaunchSettings, configSection, getAgentCommand, getApprovalPolicy, getCliResolution, getProjectSettings, getWorkspaceCwd, includedFolderPaths } from './configuration';
 import { sessionModel, sessionModelList } from './modelPreference';
 import { getFileAccessPolicy, WorkspaceFileSystem } from './workspaceFileSystem';
+
+/** How long the first agent process of a launch took, from its spawn. */
+export interface StartupTimes {
+	/** When it was spawned (ms since the epoch). */
+	readonly spawnedAt: number;
+	/** Spawn to the `initialize` answer. */
+	readonly processReadyMs: number;
+	/** Spawn to the first session open on it. */
+	readonly firstSessionMs: number;
+}
 
 /**
  * The VS Code side of the agent: starts the sidecar on first use, logs it,
@@ -36,7 +47,11 @@ export class AgentService implements vscode.Disposable {
 	private readonly sidecar: AgentSidecar;
 	/** The agent process; every chat session shares it. */
 	readonly runtime: AgentRuntime;
-	/** The sidebar chat's session. */
+	/**
+	 * A session of the service's own, opened only when something asks for it
+	 * (`ensureReady`), such as the walkthrough's Sign In: the status comes from
+	 * the process and every chat's sessions, so no session opens per process start.
+	 */
 	readonly client: AgentClient;
 	/** The agent's permission requests, answered in the chat view. */
 	readonly permissions = new PermissionBroker();
@@ -58,6 +73,14 @@ export class AgentService implements vscode.Disposable {
 	private readonly onDidChangeStatusEmitter = new vscode.EventEmitter<AgentStatus>();
 	readonly onDidChangeStatus = this.onDidChangeStatusEmitter.event;
 
+	/** The error last shown as a notification, so a status that repeats it does not show it again. */
+	private shownError: string | undefined;
+	/** When the first agent process of this launch started, became ready, and served its first session. */
+	private startup: { spawnedAt?: number; readyAt?: number; sessionAt?: number } = {};
+	private readonly onDidStartEmitter = new vscode.EventEmitter<StartupTimes>();
+	/** Fires once per launch, when the first session opens: how long the first agent process took. */
+	readonly onDidStart = this.onDidStartEmitter.event;
+
 	/** MCP servers that fail to start, read from the CLI's debug log; unset in tests. */
 	private readonly mcpDiagnostics: McpDiagnostics | undefined;
 	private _mcpProblems: McpProblem[] = [];
@@ -65,15 +88,29 @@ export class AgentService implements vscode.Disposable {
 	/** Fires when an MCP server fails, or the agent restarts and they start afresh. */
 	readonly onDidChangeMcpProblems = this.onDidChangeMcpProblemsEmitter.event;
 
-	/** `debugLog` is where the agent writes its debug log, read for MCP failures the CLI does not report over ACP. */
-	constructor(private readonly log: vscode.LogOutputChannel, debugLog?: string) {
+	/** Folder trust for agents: the first-use question, and changes reaching the running agents. */
+	readonly trust: FolderTrust;
+
+	/**
+	 * `debugLog` is where the agent writes its debug log, read for MCP failures the CLI does not report over ACP;
+	 * `state` keeps folder trust's Not Now answers.
+	 */
+	constructor(private readonly log: vscode.LogOutputChannel, debugLog?: string, state?: vscode.Memento) {
+		this.trust = new FolderTrust(state, {
+			runningTurns: () => this.runtime.runningTurns,
+			reloadWhenIdle: () => this.started && this.restartWhenIdle('restarting so the agents get the new folder trust'),
+			restartNow: () => this.started && this.restart(),
+			log: message => this.log.info(message),
+		});
 		this.mcpDiagnostics = debugLog ? new McpDiagnostics(debugLog) : undefined;
 		this.sidecar = new AgentSidecar({ command: () => this.agentCommand(), cwd: getWorkspaceCwd() });
 		this.runtime = new AgentRuntime(this.sidecar, {
 			fileSystem: createFileHandlers(new WorkspaceFileSystem(), getFileAccessPolicy),
+			log: message => log.debug(message),
 		});
 		this.client = new AgentClient(this.runtime, {
 			cwd: getWorkspaceCwd(),
+			openLater: true,
 			requestPermission: params => this.permissions.request(params),
 			preferredModel: sessionModel,
 			modelList: sessionModelList,
@@ -82,9 +119,22 @@ export class AgentService implements vscode.Disposable {
 			onDidWriteFile: filePath => this.permissions.approvals.noteWrite(filePath),
 		});
 
+		// Redirects into the workspace may be approved for the session; others always ask.
+		this.permissions.roots = () => getFileAccessPolicy().roots;
 		this.disposables.push(
 			this.onDidChangeStatusEmitter,
-			this.sidecar.onDidChangeState(() => this.onDidChangeStatusEmitter.fire(this.status)),
+			this.onDidStartEmitter,
+			this.onDidChangeStatus(status => this.onStatus(status)),
+			this.sidecar.onDidChangeState(() => this.fireStatus()),
+			this.runtime.onDidChangeState(state => this.onRuntimeState(state)),
+			this.runtime.onDidChangeSessionHealth(health => {
+				if (health.opened && this.startup.readyAt !== undefined && this.startup.sessionAt === undefined) {
+					this.startup.sessionAt = Date.now();
+					const { spawnedAt = 0, readyAt, sessionAt } = this.startup;
+					this.onDidStartEmitter.fire({ spawnedAt, processReadyMs: readyAt - spawnedAt, firstSessionMs: sessionAt - spawnedAt });
+				}
+				this.fireStatus();
+			}),
 			this.client.onDidChangeState(state => {
 				// A request from an agent that is gone can no longer be answered.
 				if (state.kind !== 'ready') {
@@ -92,17 +142,37 @@ export class AgentService implements vscode.Disposable {
 					// Session approvals end with the session.
 					this.permissions.approvals.clear();
 				}
-				this.onDidChangeStatusEmitter.fire(this.status);
+				if (state.kind === 'ready') {
+					this.log.info(`Session ${state.sessionId} ready`);
+				} else if (state.kind === 'error' && this.runtime.state.kind === 'ready') {
+					// Its own session failed, such as for the walkthrough's Sign In: say why, as for the agent.
+					this.showOnce(state.error);
+				}
 			}),
 			this.sidecar.onStderr(line => log.info(`[agent] ${line}`)),
 			this.onDidChangeMcpProblemsEmitter,
-			...(this.mcpDiagnostics ? [this.mcpDiagnostics, this.mcpDiagnostics.onDidReport(problem => this.reportMcpProblem(problem))] : []),
+			...(this.mcpDiagnostics ? [
+				this.mcpDiagnostics,
+				this.mcpDiagnostics.onDidReport(problem => this.reportMcpProblem(problem)),
+				// Over ACP the CLI says nothing while it retries an API call; its debug log does.
+				this.mcpDiagnostics.onDidReadLines(lines => {
+					for (const line of lines) {
+						const retry = parseCliRetry(line);
+						if (retry) {
+							log.info(`The Gemini CLI is retrying an API call (attempt ${retry.attempt}${retry.status ? `, status ${retry.status}` : ''})`);
+							this.runtime.noteRetry(retry);
+						}
+					}
+				}),
+			] : []),
 			this.sidecar.onDidChangeState(state => {
 				const detail = state.kind === 'restarting' ? ` (attempt ${state.attempt} in ${state.delayMs}ms, exit code ${state.exitCode})`
 					: state.kind === 'failed' ? ` (${state.reason}: ${state.message})` : '';
 				log.info(`Sidecar ${state.kind}${detail}`);
+				if (state.kind === 'running' && this.startup.spawnedAt === undefined) {
+					this.startup.spawnedAt = Date.now();
+				}
 			}),
-			this.client.onDidChangeState(state => this.onClientState(state)),
 			vscode.workspace.onDidChangeConfiguration(e => {
 				const before = this.policy;
 				this.policy = getApprovalPolicy();
@@ -166,24 +236,13 @@ export class AgentService implements vscode.Disposable {
 		});
 	}
 
-	/**
-	 * Adds `folders` to the CLI's trusted folders and restarts the agent once no
-	 * prompt runs, since the CLI reads that list once per process. Returns
-	 * whether the restart has to wait. Throws when the list cannot be updated.
-	 */
-	async trustFolder(...folders: string[]): Promise<boolean> {
-		const file = trustedFoldersPath(process.env);
-		for (const folder of folders) {
-			await trustFolder(file, folder);
-			this.log.info(`Trusted ${folder} in ${file}`);
-		}
-		const waits = this.runtime.busy;
-		this.restartWhenIdle('restarting so the agent trusts the folder');
-		return waits;
+	/** The agent's status: the process, and how opening sessions on it went for every chat (`describeRuntimeStatus`). */
+	get status(): AgentStatus {
+		return describeRuntimeStatus(this.sidecar.state, this.runtime.state, this.runtime.sessionHealth, this.blocked);
 	}
 
-	get status(): AgentStatus {
-		return this.statusFor(this.client);
+	private fireStatus(): void {
+		this.onDidChangeStatusEmitter.fire(this.status);
 	}
 
 	/** The status of `client`'s session on the shared agent process. */
@@ -196,29 +255,35 @@ export class AgentService implements vscode.Disposable {
 		this.log.info(message);
 	}
 
-	/** Starts the agent if it is not running yet and waits until `client`'s session is ready. */
-	async ensureReady(client: AgentClient = this.client): Promise<Extract<AgentClientState, { kind: 'ready' }>> {
+	/**
+	 * Starts the agent if it is not running yet and waits until `client`'s
+	 * session is ready, opening it if it waits to be opened. A session that
+	 * failed while the agent stayed ready is tried again (`AgentClient.retryOpen`).
+	 * Rejects with a `WaitAbortedError` when `signal` aborts, such as on Stop.
+	 */
+	async ensureReady(client: AgentClient = this.client, signal?: AbortSignal): Promise<Extract<AgentClientState, { kind: 'ready' }>> {
 		if (!this.started) {
 			this.restart();
 		}
-		const state = client.state;
-		if (state.kind === 'ready') {
-			return state;
+		if (client === this.client) {
+			// The service's own session opens only when asked for.
+			client.open();
 		}
-		if (state.kind === 'error' || state.kind === 'idle') {
-			throw new Error(state.kind === 'error' ? state.error.message : vscode.l10n.t("The Gemini agent is not running."));
+		const wasIdle = client.state.kind === 'idle';
+		try {
+			return await client.whenReady(signal);
+		} catch (err) {
+			if (err instanceof WaitAbortedError) {
+				throw err;
+			}
+			if (client.state.kind === 'idle') {
+				throw new Error(wasIdle ? vscode.l10n.t("The Gemini agent is not running.") : vscode.l10n.t("The Gemini agent stopped."));
+			}
+			if (err instanceof AgentError) {
+				throw new AgentError({ ...err.info, message: agentErrorText(err.info) });
+			}
+			throw err;
 		}
-		return new Promise((resolve, reject) => {
-			const listener = client.onDidChangeState(s => {
-				if (s.kind === 'ready') {
-					listener.dispose();
-					resolve(s);
-				} else if (s.kind === 'error' || s.kind === 'idle') {
-					listener.dispose();
-					reject(new Error(s.kind === 'error' ? s.error.message : vscode.l10n.t("The Gemini agent stopped.")));
-				}
-			});
-		});
 	}
 
 	/** Stops the current turn. Open permission requests are answered `cancelled`. */
@@ -230,18 +295,22 @@ export class AgentService implements vscode.Disposable {
 	restart(): void {
 		this.idleRestart?.dispose();
 		this.idleRestart = undefined;
-		const { resolved, problem } = getProjectSettings();
+		const { resolved, problem, overrides } = getProjectSettings();
 		if (resolved && problem === 'numeric') {
 			this.started = false;
 			this.blocked = { kind: 'project-id-numeric', message: vscode.l10n.t("\"{0}\" is a project number. Set the project ID instead, for example my-project-123.", resolved.projectId) };
 			this.sidecar.stop();
-			this.onDidChangeStatusEmitter.fire(this.status);
-			void this.showError(this.blocked);
+			// The status shows the error, once.
+			this.shownError = undefined;
+			this.fireStatus();
 			return;
 		}
 		this.blocked = undefined;
 		if (resolved && problem === 'malformed') {
 			this.log.warn(`Project ID "${resolved.projectId}" does not look like a Google Cloud project ID; starting anyway`);
+		}
+		if (resolved?.source === 'workspace' && overrides) {
+			this.log.warn(`This workspace's settings set gemini.projectId to "${resolved.projectId}", in place of "${overrides}": usage is billed to the workspace's project`);
 		}
 		this.log.info(`Starting agent with project ${resolved ? `${resolved.projectId} (from ${resolved.source})` : '(none)'}`);
 		this.started = true;
@@ -272,6 +341,8 @@ export class AgentService implements vscode.Disposable {
 
 	/** The agent's command, with its debug log pointed at a file GeminiCode reads, unless the user set one. */
 	private async agentCommand(): Promise<AgentCommand> {
+		// Before the process reads the trust file, which it does once.
+		await this.trust.beforeLaunch();
 		this.includedFolders = includeDirectoryArgs(includedFolderPaths()).join('\n');
 		const command = await getAgentCommand({ cli: await this.resolveCli() });
 		if (!this.mcpDiagnostics || command.env.GEMINI_DEBUG_LOG_FILE || !await this.mcpDiagnostics.reset()) {
@@ -311,6 +382,7 @@ export class AgentService implements vscode.Disposable {
 
 	dispose(): void {
 		this.idleRestart?.dispose();
+		this.trust.dispose();
 		this.setupTerminal?.dispose();
 		this.permissions.dispose();
 		this.client.dispose();
@@ -348,22 +420,40 @@ export class AgentService implements vscode.Disposable {
 		return cli;
 	}
 
-	private onClientState(state: AgentClientState): void {
-		switch (state.kind) {
-			case 'ready': {
-				const agent = state.agent.agentInfo;
-				this.log.info(`Session ${state.sessionId} ready (${agent ? `${agent.name} ${agent.version}` : 'unknown agent'})`);
-				if (agent?.version && agent.version !== this.warnedVersion && isOlderThan(agent.version, MIN_CLI_VERSION)) {
-					this.warnedVersion = agent.version;
-					void this.showOldCli(agent.version);
-				}
-				break;
+	private onRuntimeState(state: AgentRuntimeState): void {
+		if (state.kind === 'ready') {
+			const agent = state.agent.agentInfo;
+			if (this.startup.readyAt === undefined && this.startup.spawnedAt !== undefined) {
+				this.startup.readyAt = Date.now();
 			}
-			case 'error':
-				this.log.error(`Agent error (${state.error.kind}): ${state.error.message}`);
-				void this.showError(state.error);
-				break;
+			this.log.info(`Agent ready (${agent ? `${agent.name} ${agent.version}` : 'unknown agent'})`);
+			if (agent?.version && agent.version !== this.warnedVersion && isOlderThan(agent.version, MIN_CLI_VERSION)) {
+				this.warnedVersion = agent.version;
+				void this.showOldCli(agent.version);
+			}
 		}
+		this.fireStatus();
+	}
+
+	/** Shows an agent-level error once, however many times the status repeats it; a status without an error clears it. */
+	private onStatus(status: AgentStatus): void {
+		if (status.phase !== 'error' || !status.error) {
+			if (status.phase !== 'restarting') {
+				this.shownError = undefined;
+			}
+			return;
+		}
+		this.showOnce(status.error);
+	}
+
+	private showOnce(error: AgentErrorInfo): void {
+		const key = `${error.kind}\n${error.message}`;
+		if (key === this.shownError) {
+			return;
+		}
+		this.shownError = key;
+		this.log.error(`Agent error (${error.kind}): ${error.message}`);
+		void this.showError(error);
 	}
 
 	private async showOldCli(version: string): Promise<void> {
@@ -415,6 +505,15 @@ export class AgentService implements vscode.Disposable {
 			case 'agent-not-found':
 				message = vscode.l10n.t("The Gemini CLI was not found. Install it, or set its path in the gemini.cliPath setting.");
 				actions = [installCli, setCliPath, showLog];
+				break;
+			case 'network':
+				// Setup in a terminal cannot fix the network; the log shows what failed.
+				message = agentErrorText(error);
+				actions = [restart, showLog];
+				break;
+			case 'timeout':
+				message = agentErrorText(error);
+				actions = [restart, showLog];
 				break;
 			default:
 				message = vscode.l10n.t("The Gemini agent failed: {0}", error.message);

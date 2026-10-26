@@ -15,6 +15,7 @@ import { tildify } from './displayText';
 import { ConnectionState, createTokenUrl, TeamConnections } from './teamConnections';
 import { takeOverTeamServers } from './teamTakeover';
 import { createNonce, escapeAttribute } from './webviewHtml';
+import { showError } from './errorNotice';
 
 const viewType = 'gemini.connections';
 
@@ -105,7 +106,7 @@ export class ConnectionsPage implements vscode.Disposable {
 					this.post({ type: 'connectResult', tool: message.tool, ok: false, message: text });
 					if (message.tool === 'snyk' || message.tool === 'figma') {
 						// No dialog to show it in.
-						void vscode.window.showErrorMessage(text);
+						void showError(text);
 					}
 				}
 				return;
@@ -135,7 +136,7 @@ export class ConnectionsPage implements vscode.Disposable {
 				if (this.allowlist) {
 					const done = await allowServer(this.allowlist.path, teamToolsServerName).catch(() => false);
 					if (!done) {
-						void vscode.window.showWarningMessage(vscode.l10n.t("GeminiCode can't rewrite {0} because it has comments. Remove \"{1}\" from mcp.excluded there yourself.", this.allowlist.file, teamToolsServerName));
+						void vscode.window.showWarningMessage(vscode.l10n.t("GeminiCode can't rewrite {0} because it isn't valid JSON. Remove \"{1}\" from mcp.excluded there yourself.", this.allowlist.file, teamToolsServerName));
 						await this.openFile(this.allowlist.path, 'excluded');
 					}
 					await this.readFiles();

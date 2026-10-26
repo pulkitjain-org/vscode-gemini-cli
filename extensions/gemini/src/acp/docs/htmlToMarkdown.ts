@@ -33,6 +33,12 @@ const chromeHint = /(?:^|[\s_-])(?:nav|navbar|sidebar|side-bar|menu|breadcrumbs?
 /** Tags that close an open `<p>` or `<li>` when they start, as browsers do. */
 const blockTags = new Set(['p', 'div', 'ul', 'ol', 'li', 'table', 'pre', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'section', 'article', 'dl', 'dt', 'dd', 'hr']);
 const rawTextTags = new Set(['script', 'style', 'textarea', 'title']);
+/**
+ * Elements nested deeper than this are kept as siblings at this depth: the
+ * tree is walked recursively, and a page of 100,000 nested tags must not
+ * exhaust the stack.
+ */
+const maxDepth = 200;
 
 export function htmlToMarkdown(html: string, pageUrl: string): ConvertedPage {
 	const root = parse(html);
@@ -46,6 +52,9 @@ export function htmlToMarkdown(html: string, pageUrl: string): ConvertedPage {
 function parse(html: string): Element {
 	const root: Element = { tag: '#root', attrs: {}, children: [], parent: undefined };
 	let current = root;
+	let depth = 0;
+	// Lowered once (ASCII only, so positions match), for finding where raw text ends: lowering the page at every <script> was quadratic.
+	let lowered: string | undefined;
 	const tagPattern = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<![^>]*>|<\/?([A-Za-z][\w:-]*)((?:\s+[^\s"'>/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+))?)*)\s*(\/?)>/g;
 	let at = 0;
 	let match: RegExpExecArray | null;
@@ -60,18 +69,22 @@ function parse(html: string): Element {
 		}
 		if (match[0][1] === '/') {
 			// Close the nearest open element with this name, if any.
-			for (let open: Element | undefined = current; open && open !== root; open = open.parent) {
+			let up = 1;
+			for (let open: Element | undefined = current; open && open !== root; open = open.parent, up++) {
 				if (open.tag === name) {
 					current = open.parent ?? root;
+					depth -= up;
 					break;
 				}
 			}
 			continue;
 		}
 		if (blockTags.has(name)) {
-			for (let open: Element | undefined = current; open && open !== root; open = open.parent) {
+			let up = 1;
+			for (let open: Element | undefined = current; open && open !== root; open = open.parent, up++) {
 				if (open.tag === 'p' || (name === 'li' && open.tag === 'li') || ((name === 'dt' || name === 'dd') && (open.tag === 'dt' || open.tag === 'dd'))) {
 					current = open.parent ?? root;
+					depth -= up;
 					break;
 				}
 				if (open.tag !== 'p' && blockTags.has(open.tag) && open.tag !== 'li') {
@@ -82,7 +95,8 @@ function parse(html: string): Element {
 		const element: Element = { tag: name, attrs: parseAttrs(match[2] ?? ''), children: [], parent: current };
 		current.children.push(element);
 		if (rawTextTags.has(name)) {
-			const end = html.toLowerCase().indexOf(`</${name}`, at);
+			lowered ??= html.replace(/[A-Z]+/g, letters => letters.toLowerCase());
+			const end = lowered.indexOf(`</${name}`, at);
 			const stop = end < 0 ? html.length : end;
 			if (name === 'title' || name === 'textarea') {
 				element.children.push(decode(html.slice(at, stop)));
@@ -91,8 +105,9 @@ function parse(html: string): Element {
 			tagPattern.lastIndex = stop;
 			continue;
 		}
-		if (!voidTags.has(name) && !match[3]) {
+		if (!voidTags.has(name) && !match[3] && depth < maxDepth) {
 			current = element;
+			depth++;
 		}
 	}
 	if (at < html.length) {

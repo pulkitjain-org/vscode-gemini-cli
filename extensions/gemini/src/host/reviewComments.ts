@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import { errorMessage } from '../acp/errors';
+import { showError } from './errorNotice';
 
 export const reviewControllerId = 'gemini.review';
 
@@ -95,9 +96,9 @@ export class ReviewComments implements vscode.Disposable {
 		};
 		const run = (id: string, handler: (...args: never[]) => unknown) => vscode.commands.registerCommand(id, (...args: never[]) => {
 			try {
-				return Promise.resolve(handler(...args)).catch(err => void vscode.window.showErrorMessage(errorMessage(err)));
+				return Promise.resolve(handler(...args)).catch(err => void showError(errorMessage(err)));
 			} catch (err) {
-				void vscode.window.showErrorMessage(errorMessage(err));
+				void showError(errorMessage(err));
 				return undefined;
 			}
 		});

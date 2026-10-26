@@ -13,6 +13,7 @@
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
+import { writeFileAtomic } from './fsUtil';
 
 export interface ApprovalPolicy {
 	/** Auto Edit: edits are applied without asking. */
@@ -28,15 +29,18 @@ export interface ApprovalPolicy {
 }
 
 /**
- * Commands that print the environment: `env` and `printenv` with anything after them, and `set` or
- * `export` alone (with arguments they change the shell, as in `set -e`, and print nothing).
+ * Commands that print the environment: `env` and `printenv` with anything after them, the shells'
+ * listings of exported variables (`declare -x`, `typeset -x`, `export -p`, `compgen -e`), and `set`,
+ * `export`, `declare` or `typeset` alone (with arguments they change the shell, as in `set -e`, and
+ * print nothing). `ps` with an environment flag (`ps eww`, `ps -E`) prints other processes' environments.
  */
-export const environmentCommandPrefixes = ['env', 'printenv'] as const;
-export const environmentCommandRegex = '(?:set|export)\\s*"';
+export const environmentCommandPrefixes = ['env', 'printenv', 'declare -x', 'declare -p', 'typeset -x', 'typeset -p', 'export -p', 'compgen -e', 'compgen -v'] as const;
+export const environmentCommandRegex = '(?:set|export|declare|typeset)\\s*"';
+export const processEnvironmentRegex = 'ps\\s(?:[a-zA-Z]*e[a-zA-Z]*[\\s"]|-[a-zA-Z]*E|[^"]*\\s-[a-zA-Z]*E)';
 
 export const shellToolName = 'run_shell_command';
 export const policyFileName = 'geminicode.toml';
-const environmentDenyMessage = 'Commands that print the environment are turned off in GeminiCode, because it can hold tokens. Read the one variable you need instead, such as `echo $PATH`.';
+const environmentDenyMessage = 'Commands that print the environment are turned off in GeminiCode, because it can hold tokens. If a task needs a setting from the environment, ask the user for it.';
 
 /**
  * Whether `after` takes away something `before` allowed: a mode, the shell, or
@@ -89,6 +93,13 @@ export function buildAdminPolicy(policy: ApprovalPolicy): string | undefined {
 			`decision = "deny"`,
 			`priority = 960`,
 			`denyMessage = "${environmentDenyMessage}"`,
+			``,
+			`[[rule]]`,
+			`toolName = "${shellToolName}"`,
+			`commandRegex = '${processEnvironmentRegex}'`,
+			`decision = "deny"`,
+			`priority = 960`,
+			`denyMessage = "${environmentDenyMessage}"`,
 		].join('\n'));
 	}
 	// By the names the model calls them (`mcp_<server>_<tool>`), not `mcpName`: gemini-cli 0.63 gives the
@@ -130,8 +141,8 @@ export async function prepareAdminPolicy(dir: string, policy: ApprovalPolicy): P
 	}
 	const current = await fs.readFile(file, 'utf8').catch(() => undefined);
 	if (current !== content) {
-		await fs.mkdir(dir, { recursive: true });
-		await fs.writeFile(file, content);
+		// Replaced in one rename, so an agent starting in another window never reads half a policy.
+		await writeFileAtomic(file, content);
 	}
 	// The CLI ranks a directory passed this way as admin policy.
 	return ['--admin-policy', dir];

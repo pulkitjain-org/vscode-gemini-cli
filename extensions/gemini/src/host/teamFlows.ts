@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { promises as fs } from 'node:fs';
+import * as os from 'node:os';
 import { suggestedTransition } from '../acp/teamDefaults';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
@@ -13,17 +14,20 @@ import { analyzeFiles } from '../acp/teamContainers';
 import { errorMessage } from '../acp/errors';
 import { GitLabClient, GitLabMr } from '../acp/gitlab';
 import { formatDuration, JiraClient, type JiraMyTickets, jiraKeyIn, parseDuration } from '../acp/jira';
-import { branchSummary, fetchBranches, pushBranch, reviewWorktree } from '../acp/releaseMerge';
+import { branchSummary, branchWorktree, fetchBranches, pushBranch, UnpushedCommitsError } from '../acp/releaseMerge';
 import { describeSnyk } from '../acp/snyk';
-import { sonarProjectKeyIn } from '../acp/sonar';
+import { sonarIssuesUrl, sonarProjectKeyIn } from '../acp/sonar';
+import { countText } from '../acp/teamHttp';
 import {
 	CheckFinding, checksFixPrompt, findingsFromLocalSonar, findingsFromSnyk, findingsFromSonar, isUsualTarget, jiraCommentRequest, mrDescriptionRequest, mrFixPrompt,
-	targetChoices, ticketBranchName, ticketStartPrompt,
+	mrFixRepliesPrompt, MrThreadForFix, resolveWorkFolder, targetChoices, ticketBranchName, ticketStartPrompt, WorkFolder, workFolderChoices,
 } from '../acp/teamFlowLogic';
 import { gitlabProjectOf } from '../acp/teamTools';
-import { AgentWorktree, commitAll, currentBranch, git, repositoryRoot, runWorktreeSetup, worktreeSetupCommand } from '../acp/worktrees';
+import type { FoundClone } from '../acp/cloneSearch';
+import type { CloneAsk } from './reviewClone';
+import { AgentWorktree, commitAll, currentBranch, git, GitError, inRepository, repositoryRoot, runWorktreeSetup } from '../acp/worktrees';
+import { setupCommandFor } from './agents/agentWorktrees';
 import type { AgentsView } from './agentsView';
-import { configSection } from './configuration';
 import type { TeamConnections } from './teamConnections';
 import type { FlowRecord } from '../acp/flowRecords';
 import { FlowRecording, TeamFlowPanel } from './teamFlowPanel';
@@ -31,6 +35,7 @@ import { ChecksView, FlowAttachment, MoveTicketView, OpenMrView, ReviewView, Ton
 import { Reviews } from './reviews';
 import { openTeamLink } from './teamLinks';
 import { ticketPickItems } from './toolChips';
+import { showError } from './errorNotice';
 
 /** Where checks run: a checkout on a branch, the repository it belongs to, and the agent working there when there is one. */
 interface ChecksPlace {
@@ -74,14 +79,17 @@ export class TeamFlows implements vscode.Disposable {
 	/** The target each Open Merge Request's description was written for. */
 	private readonly describedFor = new WeakMap<TeamFlowPanel<OpenMrView>, string>();
 
-	constructor(private readonly extensionUri: vscode.Uri, private readonly tools: TeamConnections, private readonly agents: AgentsView, private readonly state?: vscode.Memento) {
-		const run = <A extends unknown[]>(id: string, handler: (...args: A) => Promise<unknown>) => vscode.commands.registerCommand(id, (...args: A) => handler(...args).catch(err => void vscode.window.showErrorMessage(errorMessage(err))));
+	/** `onDemand` loads dist/onDemand.js, where finding or cloning a merge request's repository lives (reviewClone.ts). */
+	constructor(private readonly extensionUri: vscode.Uri, private readonly tools: TeamConnections, private readonly agents: AgentsView, private readonly state?: vscode.Memento, private readonly onDemand?: () => typeof import('../onDemand')) {
+		const run = <A extends unknown[]>(id: string, handler: (...args: A) => Promise<unknown>) => vscode.commands.registerCommand(id, (...args: A) => handler(...args).catch(err => void showError(errorMessage(err))));
 		this.reviews = new Reviews({
 			extensionUri, tools, agents,
 			gitlab: () => this.gitlab(),
-			cloneOf: (project, gitlab) => this.cloneOf(project, gitlab),
+			cloneOf: (project, gitlab, askFor) => this.cloneOf(project, gitlab, askFor === undefined ? undefined : { iid: askFor, purpose: 'review' }),
 			side: (mr, ticket, folder) => this.reviewSide(mr, ticket, folder),
 		});
+		// A reviewer only reads, after a restart too: its writes would go out before the user chose what to post.
+		tools.readOnlyBy(agent => !!this.reviews.forAgent(agent));
 		this.disposables.push(
 			this.reviews,
 			run('gemini.team.startOnTicket', (key?: unknown) => this.startOnTicket(str(key))),
@@ -167,6 +175,60 @@ export class TeamFlows implements vscode.Disposable {
 		return gitlab;
 	}
 
+	/**
+	 * The folder a flow works in: the agent in front's workspace, else the
+	 * active editor's folder, else the first open folder. `ambiguous` says the
+	 * window gave no hint between several, where the visual pass asks.
+	 */
+	private workFolder(): WorkFolder {
+		const activeId = this.agents.activeAgentId();
+		const editor = vscode.window.activeTextEditor?.document.uri;
+		const editorFolder = editor && vscode.workspace.getWorkspaceFolder(editor);
+		return resolveWorkFolder({
+			agentFolder: activeId ? this.agents.agentPlace(activeId)?.folder : undefined,
+			editorFolder: editorFolder?.uri.scheme === 'file' ? editorFolder.uri.fsPath : undefined,
+			folders: (vscode.workspace.workspaceFolders ?? []).filter(f => f.uri.scheme === 'file').map(f => f.uri.fsPath),
+		});
+	}
+
+	/**
+	 * The folder a flow works in, as `workFolder` finds it; when several
+	 * folders are open and nothing says which, a quick pick titled `title`
+	 * asks, with the agent last in front first: the folder, and the agent when
+	 * its choice was picked. Undefined when dismissed; no folder when none is open.
+	 */
+	private async pickWorkFolder(title: string): Promise<{ readonly folder?: string; readonly agent?: string } | undefined> {
+		const work = this.workFolder();
+		if (!work.ambiguous) {
+			return { ...work.folder ? { folder: work.folder } : {} };
+		}
+		const last = this.agents.agentLastInFront();
+		const place = last ? this.agents.agentPlace(last) : undefined;
+		const choices = workFolderChoices(last && place ? { id: last, title: place.title, cwd: place.cwd, folder: place.folder } : undefined, (vscode.workspace.workspaceFolders ?? []).filter(f => f.uri.scheme === 'file').map(f => f.uri.fsPath));
+		const inFront = vscode.l10n.t("agent in front");
+		type Item = vscode.QuickPickItem & { readonly choice: ReturnType<typeof workFolderChoices>[number] };
+		const pick = vscode.window.createQuickPick<Item>();
+		pick.title = title;
+		pick.placeholder = vscode.l10n.t("Several folders are open, and neither the agent in front nor the active editor says which");
+		pick.matchOnDescription = true;
+		pick.items = choices.map(choice => ({ label: `$(${choice.agent ? 'git-branch' : 'folder'}) ${choice.label}`, description: choice.agent ? `${tildify(choice.path)} · ${inFront}` : tildify(choice.path), choice }));
+		const picked = await new Promise<{ readonly folder: string; readonly agent?: string } | undefined>(resolve => {
+			pick.onDidAccept(() => {
+				resolve(pick.selectedItems[0]?.choice);
+				pick.hide();
+			});
+			pick.onDidHide(() => resolve(undefined));
+			pick.show();
+		});
+		pick.dispose();
+		return picked;
+	}
+
+	/** The folder of the team's defaults (Jira projects, targets): the flow's folder, asked for when the window doesn't say. */
+	private defaultsFolder(): Promise<{ readonly folder?: string } | undefined> {
+		return this.pickWorkFolder(vscode.l10n.t("Use the team settings of which folder?"));
+	}
+
 	/** The agent asked for, else the one in front, else the only running one. */
 	private agentId(agent: string | undefined): string {
 		const id = agent ?? this.agents.activeAgentId() ?? this.agents.summaries().find(a => a.state !== 'stopped')?.id;
@@ -188,19 +250,19 @@ export class TeamFlows implements vscode.Disposable {
 		return { cwd, project: local.project, branch: local.branch, remote: local.remote ?? 'origin' };
 	}
 
-	/** An open folder that is a clone of `project`, for checking out its branches. */
-	private async cloneOf(project: string, gitlab: GitLabClient): Promise<{ folder: string; remote: string } | undefined> {
-		const folders = [
-			...(vscode.workspace.workspaceFolders ?? []).filter(f => f.uri.scheme === 'file').map(f => f.uri.fsPath),
-			...this.agents.summaries().map(a => a.folder),
-		];
-		for (const folder of [...new Set(folders)]) {
-			const local = await gitlabProjectOf(folder, gitlab.url).catch(() => undefined);
-			if (local?.project?.toLowerCase() === project.toLowerCase()) {
-				return { folder, remote: local.remote ?? 'origin' };
-			}
+	/**
+	 * A clone of `project`, for checking out its branches: the one remembered
+	 * for it, else the first among the window's folders, the agents' folders
+	 * and VS Code's recent folders, remembered. For the review of merge
+	 * request `askFor`, asks the user when none is found; undefined when they cancel.
+	 */
+	/** A clone of `project` among the user's folders; with `ask`, the one they choose or clone when none is found. */
+	private async cloneOf(project: string, gitlab: GitLabClient, ask?: CloneAsk): Promise<FoundClone | undefined> {
+		if (!this.onDemand) {
+			return undefined;
 		}
-		return undefined;
+		const agentFolders = async () => [...this.agents.summaries().map(a => a.folder), ...(await this.agents.workspaces()).map(w => w.folder)];
+		return this.onDemand().cloneFor(project, gitlab, this.state, agentFolders, folder => gitlabProjectOf(folder, gitlab.url), ask);
 	}
 
 	private async draft(request: { readonly system: string; readonly prompt: string }): Promise<string | undefined> {
@@ -212,6 +274,11 @@ export class TeamFlows implements vscode.Disposable {
 	}
 
 	private async send(agentId: string, text: string): Promise<void> {
+		void (await this.startTurn(agentId, text)).turn;
+	}
+
+	/** Opens the agent and sends it `text`; `turn` resolves when that turn ends. */
+	private async startTurn(agentId: string, text: string): Promise<{ readonly controller: NonNullable<ReturnType<AgentsView['controllerOf']>>; readonly turn: Promise<void> }> {
 		await this.agents.open(agentId);
 		const controller = this.agents.controllerOf(agentId);
 		if (!controller) {
@@ -220,7 +287,7 @@ export class TeamFlows implements vscode.Disposable {
 		if (controller.running) {
 			throw new Error(vscode.l10n.t("The agent is working. Try again when it finishes its turn."));
 		}
-		void controller.send(text);
+		return { controller, turn: controller.send(text) };
 	}
 
 	// --- Start on a ticket
@@ -232,9 +299,12 @@ export class TeamFlows implements vscode.Disposable {
 			return;
 		}
 		const issue = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Reading {0}...", key) }, () => jira.issue(key!));
-		const folder = vscode.workspace.workspaceFolders?.find(f => f.uri.scheme === 'file')?.uri.fsPath;
-		if (!folder) {
+		if (!this.workFolder().folder) {
 			throw new Error(vscode.l10n.t("Open your repository's folder first."));
+		}
+		const folder = (await this.pickWorkFolder(vscode.l10n.t("Start on {0} in which folder?", issue.key)))?.folder;
+		if (!folder) {
+			return;
 		}
 		const id = await this.agents.startTeamAgent({
 			folder,
@@ -258,7 +328,11 @@ export class TeamFlows implements vscode.Disposable {
 	private async moveTicket(key: string | undefined, agent: string | undefined, suggest: string | undefined, mode: 'move' | 'log' = 'move'): Promise<void> {
 		const jira = this.jira();
 		const place = agent ? this.agents.agentPlace(agent) : undefined;
-		const defaults = await this.tools.workspaceDefaults();
+		const defaultsIn = place ? { folder: place.folder } : await this.defaultsFolder();
+		if (!defaultsIn) {
+			return;
+		}
+		const defaults = await this.tools.workspaceDefaults(defaultsIn.folder);
 		key ??= place ? jiraKeyIn(`${place.branch ?? ''} ${place.title}`, defaults.jira?.projects) : undefined;
 		key ??= await this.pickTicket(jira);
 		if (!key) {
@@ -266,6 +340,8 @@ export class TeamFlows implements vscode.Disposable {
 		}
 		const ticket = key;
 		let mrInfo: { iid: number; url: string; target: string } | undefined;
+		/** The steps of this flow that went through, so pressing again after a failure doesn't repeat them: a move, a time log. */
+		const finished = new Map<string, string>();
 		const flow: TeamFlowPanel<MoveTicketView> = new TeamFlowPanel<MoveTicketView>(this.extensionUri, mode === 'log' ? vscode.l10n.t("Log Time on {0}", ticket) : vscode.l10n.t("Move {0}", ticket), 'jira', vscode.l10n.t("Reading {0}...", ticket), async (action, value) => {
 			const view = flow.view;
 			if (!view) {
@@ -307,16 +383,31 @@ export class TeamFlows implements vscode.Disposable {
 								}
 							}
 							const comment = flow.field('addComment', current.addComment) ? flow.field('comment', current.comment).trim() : '';
-							// The agent's jira_transition, by transition id: the same checks, the comment's visibility and the audit record.
-							await this.tools.write('jira_transition', { key: ticket, to: transition.to, transition: transition.id, fields, ...comment ? { comment } : {} }, place?.cwd);
-							done.push(vscode.l10n.t("Moved {0} to {1}{2}.", ticket, transition.to, comment ? vscode.l10n.t(" with the comment") : ''));
+							const step = `move:${transition.id}`;
+							if (!finished.has(step)) {
+								// The agent's jira_transition, by transition id: the same checks, the comment's visibility and the audit record.
+								const moved = await this.tools.write('jira_transition', { key: ticket, to: transition.to, transition: transition.id, fields, ...comment ? { comment } : {} }, place?.cwd);
+								finished.set(step, moved.warning
+									? vscode.l10n.t("Moved {0} to {1}. {2}", ticket, transition.to, moved.warning)
+									: vscode.l10n.t("Moved {0} to {1}{2}.", ticket, transition.to, comment ? vscode.l10n.t(" with the comment") : ''));
+							}
+							done.push(finished.get(step)!);
 						}
 						if (logTime) {
 							const date = flow.field('date', current.date);
 							const started = /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T${new Date().toTimeString().slice(0, 8)}`) : new Date();
 							const workComment = flow.field('workComment', current.workComment);
-							await this.tools.write('jira_log_time', { key: ticket, spent, started: started.toISOString(), ...workComment ? { comment: workComment } : {} }, place?.cwd);
-							done.push(vscode.l10n.t("Logged {0} on {1}.", formatDuration(parseDuration(spent)), ticket));
+							const step = `log:${spent}:${date}`;
+							if (!finished.has(step)) {
+								try {
+									await this.tools.write('jira_log_time', { key: ticket, spent, started: started.toISOString(), ...workComment ? { comment: workComment } : {} }, place?.cwd);
+								} catch (err) {
+									// The move went through: say so, so pressing again logs only the time.
+									throw done.length ? new Error(vscode.l10n.t("{0} Logging the time failed: {1} Press the button again to log only the time.", done.join(' '), errorMessage(err))) : err;
+								}
+								finished.set(step, vscode.l10n.t("Logged {0} on {1}.", formatDuration(parseDuration(spent)), ticket));
+							}
+							done.push(finished.get(step)!);
 						}
 						if (!done.length) {
 							throw new Error(current.mode === 'log' ? vscode.l10n.t("Enter the time spent.") : vscode.l10n.t("Choose where to move the ticket, or tick Log time."));
@@ -527,6 +618,13 @@ export class TeamFlows implements vscode.Disposable {
 			case 'submit':
 				this.keepTyped(flow);
 				return flow.busy(vscode.l10n.t("Pushing {0}...", gp.branch), async () => {
+					// Committing mid-turn would push half the agent's edits, and its own git commit would meet our index.lock.
+					const whenIdle = () => {
+						if (this.agents.controllerOf(agentId)?.running) {
+							throw new Error(vscode.l10n.t("Wait for the agent to finish its turn, then press Open again."));
+						}
+					};
+					whenIdle();
 					const current = flow.view!;
 					const title = flow.field('title', current.title).trim();
 					if (!title || !current.target) {
@@ -534,11 +632,15 @@ export class TeamFlows implements vscode.Disposable {
 					}
 					const target = current.target;
 					this.rememberTarget(gp.project, target);
-					const dirty = (await git(gp.cwd, ['status', '--porcelain'])).trim();
-					if (dirty) {
-						await commitAll(gp.cwd, title);
-					}
-					await pushBranch(gp.cwd, gp.remote, gp.branch);
+					await inRepository(gp.cwd, async () => {
+						const dirty = (await git(gp.cwd, ['status', '--porcelain'])).trim();
+						if (dirty) {
+							// Checked again: a turn may have started while the page was open.
+							whenIdle();
+							await commitAll(gp.cwd, title);
+						}
+						await pushBranch(gp.cwd, gp.remote, gp.branch).catch(err => { throw plainGitError(err); });
+					});
 					let description = flow.field('description', current.description);
 					const ticked = current.attachments.filter(a => flow.field(`attach:${a.id}`, a.checked));
 					const extra: string[] = [];
@@ -546,8 +648,9 @@ export class TeamFlows implements vscode.Disposable {
 						if (attachment.id === 'checks') {
 							extra.push(`**${attachment.name}:** ${attachment.detail}`);
 						} else if (attachment.id.startsWith('file:')) {
-							const file = attachment.id.slice(5);
-							extra.push(await gitlab.upload(gp.project, path.basename(file), await fs.readFile(file)));
+							// A page tool: the same checks (a size cap) and audit record as every other write.
+							const uploaded = await this.tools.write('gitlab_upload', { project: gp.project, file: attachment.id.slice(5) }, gp.cwd);
+							extra.push(String(uploaded.data?.markdown ?? ''));
 						}
 					}
 					if (extra.length) {
@@ -691,6 +794,9 @@ export class TeamFlows implements vscode.Disposable {
 		}
 		if (mr.approvals) {
 			side.push({ tool: 'people', label: vscode.l10n.t("Approvals"), pill: { text: vscode.l10n.t("{0} of {1}", mr.approvals.given, mr.approvals.required), tone: mr.approvals.given >= mr.approvals.required && mr.approvals.required ? 'ok' : 'muted' } });
+		} else {
+			// GitLab didn't answer for the approvals: pending, never passed.
+			side.push({ tool: 'people', label: vscode.l10n.t("Approvals"), detail: vscode.l10n.t("couldn't read, counted as pending"), pill: { text: vscode.l10n.t("pending"), tone: 'muted' }, retry: true });
 		}
 		return side;
 	}
@@ -719,9 +825,16 @@ export class TeamFlows implements vscode.Disposable {
 		const n = iid;
 		const [mr, readiness] = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Reading !{0}...", n) }, () => Promise.all([gitlab.mr(p, n, false), gitlab.mergeReadiness(p, n)]));
 		// allow-any-unicode-next-line
-		const lines = readiness.checks.map(c => `${c.ok ? '✓' : '✗'} ${c.name}: ${c.detail}`);
+		const lines = readiness.checks.map(c => c.unreadable ? `◌ ${c.name}: ${vscode.l10n.t("couldn't read, counted as pending")}` : `${c.ok ? '✓' : '✗'} ${c.name}: ${c.detail}`);
 		if (!readiness.ready) {
-			await vscode.window.showWarningMessage(vscode.l10n.t("!{0} can't be merged yet.", n), { modal: true, detail: lines.join('\n') });
+			// A check GitLab didn't answer for may pass when read again.
+			const retry = readiness.checks.some(c => c.unreadable) ? vscode.l10n.t("Retry") : undefined;
+			if (retry && await vscode.window.showWarningMessage(vscode.l10n.t("!{0} can't be merged yet.", n), { modal: true, detail: lines.join('\n') }, retry) === retry) {
+				return this.mergeMergeRequest(p, n, options);
+			}
+			if (!retry) {
+				await vscode.window.showWarningMessage(vscode.l10n.t("!{0} can't be merged yet.", n), { modal: true, detail: lines.join('\n') });
+			}
 			return;
 		}
 		const squash = options.squash ?? readiness.squash;
@@ -739,7 +852,8 @@ export class TeamFlows implements vscode.Disposable {
 		const result = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Merging !{0}...", n) }, () =>
 			this.tools.write('gitlab_merge', { project: p, mr: String(n), sha: readiness.sha, squash, deleteBranch: removeSourceBranch }));
 		const merged = { sha: typeof result.data?.sha === 'string' ? result.data.sha : undefined };
-		const defaults = await this.tools.workspaceDefaults();
+		// After the merge, only to find the ticket in the branch's name: no question for that.
+		const defaults = await this.tools.workspaceDefaults(this.workFolder().folder);
 		const ticket = options.moveTicket ?? (this.tools.connectors.jira ? jiraKeyIn(`${mr.sourceBranch} ${mr.title}`, defaults.jira?.projects) : undefined);
 		if (options.moveTicket) {
 			// The panel's "Move … to Done" was ticked: the move opens at once, with its own confirmation.
@@ -780,12 +894,20 @@ export class TeamFlows implements vscode.Disposable {
 			return;
 		}
 		const who = picked.accountId === null ? vscode.l10n.t("nobody") : picked.label.replace(/^\$\([^)]*\)\s*/, '');
-		await this.tools.write('jira_assign', { key: ticket, to: who, accountId: picked.accountId });
+		await this.tools.write('jira_assign', { key: ticket, to: who, accountId: picked.accountId }, this.workFolder().folder);
 		void vscode.window.showInformationMessage(picked.accountId === null ? vscode.l10n.t("{0} is now unassigned.", ticket) : vscode.l10n.t("Assigned {0} to {1}.", ticket, who));
 	}
 
 	// --- Fix a merge request's pipeline (from Home)
 
+	/**
+	 * Fix on Home: sends a failed pipeline's logs and the open threads to the
+	 * agent on the merge request's branch, in a clone of its project, else to
+	 * a new agent in a worktree on that branch (never moving the branch back or
+	 * dropping a commit; see branchWorktree). The agent commits; its shell
+	 * can't sign in, so GeminiCode pushes when the turn ends, then asks for
+	 * the thread replies.
+	 */
 	private async fixMergeRequest(project: string | undefined, iid: number | undefined): Promise<void> {
 		const gitlab = this.gitlab();
 		if (!project || !iid) {
@@ -797,27 +919,91 @@ export class TeamFlows implements vscode.Disposable {
 		const discussions = await gitlab.discussions(project, iid).catch(() => []);
 		const threads = discussions.filter(d => !d.resolved).map(d => ({ id: d.id, author: d.notes[0].author, body: d.notes.map(n => n.body).join('\n'), path: d.notes[0].path, line: d.notes[0].line }));
 		const text = mrFixPrompt({ iid, url: mr.url }, logs, threads);
-		const existing = this.agents.summaries().find(a => a.worktree?.branch === mr.sourceBranch);
+		const existing = await this.agentOnBranch(project, mr.sourceBranch, gitlab);
 		if (existing) {
-			await this.send(existing.id, text);
+			const { controller, turn } = await this.startTurn(existing.id, text);
+			return this.pushFix(existing.id, existing.cwd, existing.remote, mr.sourceBranch, threads, controller, turn);
+		}
+		const clone = await this.cloneOf(project, gitlab, { iid, purpose: 'fix' });
+		if (!clone) {
+			// The user cancelled the question of where the clone is.
 			return;
 		}
-		const clone = await this.cloneOf(project, gitlab);
-		if (!clone) {
-			throw new Error(vscode.l10n.t("Open a clone of {0} first.", project));
+		let worktree: AgentWorktree & { readonly existing?: boolean };
+		try {
+			worktree = await inRepository(clone.folder, () => branchWorktree(clone.folder, clone.remote, mr.sourceBranch));
+		} catch (err) {
+			if (err instanceof UnpushedCommitsError) {
+				throw new Error(err.count === 1
+					? vscode.l10n.t("Your local {0} has 1 commit that isn't pushed. Push it, or move it to another branch, then press Fix again.", err.branch)
+					: vscode.l10n.t("Your local {0} has {1} commits that aren't pushed. Push them, or move them to another branch, then press Fix again.", err.branch, err.count));
+			}
+			throw plainGitError(err);
 		}
-		const worktree = await reviewWorktree(clone.folder, clone.remote, mr.sourceBranch, mr.sourceBranch);
-		await this.agents.startTeamAgent({ folder: clone.folder, title: vscode.l10n.t("Fix !{0} {1}", iid, mr.title), worktree, text });
+		// A checkout that was there already stays the user's: the agent works in it, but removing the agent leaves it alone.
+		const ours = !worktree.existing || worktree.folder.startsWith(path.join(os.homedir(), '.geminicode') + path.sep);
+		const id = await this.agents.startTeamAgent({ folder: ours ? clone.folder : worktree.folder, title: vscode.l10n.t("Fix !{0} {1}", iid, mr.title), ...ours ? { worktree } : {}, text: '' });
+		if (!id) {
+			throw new Error(vscode.l10n.t("The agent couldn't start."));
+		}
+		const { controller, turn } = await this.startTurn(id, text);
+		return this.pushFix(id, worktree.cwd, clone.remote, mr.sourceBranch, threads, controller, turn);
+	}
+
+	/** An agent on `branch` in a clone of `project`: the same branch name in another repository is another branch. */
+	private async agentOnBranch(project: string, branch: string, gitlab: GitLabClient): Promise<{ readonly id: string; readonly cwd: string; readonly remote: string } | undefined> {
+		for (const agent of this.agents.summaries().filter(a => a.worktree?.branch === branch)) {
+			const cwd = this.agents.agentPlace(agent.id)?.cwd;
+			const local = cwd ? await gitlabProjectOf(cwd, gitlab.url).catch(() => undefined) : undefined;
+			if (cwd && local?.project?.toLowerCase() === project.toLowerCase()) {
+				return { id: agent.id, cwd, remote: local.remote ?? 'origin' };
+			}
+		}
+		return undefined;
+	}
+
+	/**
+	 * Once a fix agent's turn ends: pushes the commits it made (taking the
+	 * repository's git lock), then asks it to reply to the threads it fixed.
+	 * Nothing is pushed while it left changes uncommitted, or made no commit.
+	 */
+	private async pushFix(agentId: string, cwd: string, remote: string, branch: string, threads: readonly MrThreadForFix[], controller: { send(text: string): Promise<void> }, turn: Promise<void>): Promise<void> {
+		await turn;
+		if (!this.agents.agentPlace(agentId) || this.agents.controllerOf(agentId)?.running) {
+			return;
+		}
+		const ahead = Number((await git(cwd, ['rev-list', '--count', `${remote}/${branch}..HEAD`]).catch(() => '0')).trim()) || 0;
+		if (!ahead) {
+			return;
+		}
+		if ((await git(cwd, ['status', '--porcelain'])).trim()) {
+			throw new Error(vscode.l10n.t("The agent left changes in {0} that aren't committed, so its commits weren't pushed. Ask it to commit them, then press Fix again.", branch));
+		}
+		await inRepository(cwd, () => pushBranch(cwd, remote, branch)).catch(err => { throw plainGitError(err); });
+		if (threads.length) {
+			const head = (await git(cwd, ['rev-parse', 'HEAD'])).trim();
+			void controller.send(mrFixRepliesPrompt({ branch, head, commits: ahead }, threads));
+		}
 	}
 
 	// --- Checks
 
 	/** Checks for an agent's branch, in its folder; with no agent in front, for a branch the user picks. */
 	private async runChecks(agent: string | undefined): Promise<void> {
-		const id = agent ?? this.agents.activeAgentId();
+		let id = agent ?? this.agents.activeAgentId();
+		let repository: string | undefined;
+		if (!id) {
+			// With several folders and nothing in front, the agent last in front is one of the choices.
+			const picked = await this.pickWorkFolder(vscode.l10n.t("Run Checks in which folder?"));
+			if (!picked) {
+				return;
+			}
+			id = picked.agent;
+			repository = picked.folder;
+		}
 		const place = id ? this.agents.agentPlace(id) : undefined;
 		if (!id || !place) {
-			return this.runChecksOnBranch(undefined);
+			return this.runChecksOnBranch(undefined, repository);
 		}
 		await this.openChecks({ cwd: place.cwd, title: place.title, repository: place.folder, agentId: id, ...place.branch ? { branch: place.branch } : {} });
 	}
@@ -828,8 +1014,11 @@ export class TeamFlows implements vscode.Disposable {
 	 * out gets a worktree of its own (with the repository's setup run in it),
 	 * which later runs reuse. Fix starts an agent there when none works on it.
 	 */
-	private async runChecksOnBranch(branch: string | undefined): Promise<void> {
-		const repository = await this.checksRepository();
+	private async runChecksOnBranch(branch: string | undefined, folder?: string): Promise<void> {
+		const repository = await this.checksRepository(folder);
+		if (!repository) {
+			return;
+		}
 		const gitlab = this.tools.connectors.gitlab;
 		const remote = (gitlab ? await gitlabProjectOf(repository, gitlab.url, await this.tools.defaults(repository)).catch(() => ({ remote: undefined })) : { remote: undefined }).remote ?? 'origin';
 		if (!branch) {
@@ -847,11 +1036,11 @@ export class TeamFlows implements vscode.Disposable {
 			branch = picked.choice.branch;
 		}
 		const chosen = branch;
-		const checkout = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Checking out {0}...", chosen) }, () => checkoutForChecks(repository, remote, chosen));
+		const checkout = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Checking out {0}...", chosen) }, () => inRepository(repository, () => checkoutForChecks(repository, remote, chosen)).catch(err => { throw plainGitError(err); }));
 		let setup: string | undefined;
 		if (checkout.created && checkout.worktree) {
 			const worktree = checkout.worktree;
-			const command = await worktreeSetupCommand(repository, vscode.workspace.getConfiguration(configSection).get<string>('agents.worktreeSetup'));
+			const command = await setupCommandFor(repository, this.state, 'checks');
 			if (command) {
 				const started = Date.now();
 				const code = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Setting up {0} for the checks...", chosen) }, () => runWorktreeSetup(command, worktree, repository, () => undefined));
@@ -865,10 +1054,17 @@ export class TeamFlows implements vscode.Disposable {
 		await this.openChecks({ cwd: checkout.cwd, title: chosen, branch: chosen, repository, ...agent ? { agentId: agent.id } : {}, ...checkout.worktree ? { worktree: checkout.worktree } : {}, ...setup ? { setup } : {} });
 	}
 
-	/** The repository Run Checks works in: the open folder's, else the agent in front's. */
-	private async checksRepository(): Promise<string> {
-		const activeId = this.agents.activeAgentId();
-		const folder = vscode.workspace.workspaceFolders?.find(f => f.uri.scheme === 'file')?.uri.fsPath ?? (activeId ? this.agents.agentPlace(activeId)?.folder : undefined);
+	/**
+	 * The repository Run Checks works in: `picked`'s, else the agent in
+	 * front's, else the active editor's, else the one the user picks among
+	 * several open folders. Undefined when the user dismissed the question.
+	 */
+	private async checksRepository(picked?: string): Promise<string | undefined> {
+		const chosen = picked ? { folder: picked } : await this.pickWorkFolder(vscode.l10n.t("Run Checks in which folder?"));
+		if (!chosen) {
+			return undefined;
+		}
+		const folder = chosen.folder;
 		if (!folder) {
 			throw new Error(vscode.l10n.t("Open your repository's folder first."));
 		}
@@ -962,8 +1158,18 @@ export class TeamFlows implements vscode.Disposable {
 				try {
 					const [gate, issues] = await Promise.all([sonar.gate(target), sonar.issues(target)]);
 					const findings = findingsFromSonar(issues);
-					results.push(vscode.l10n.t("SonarQube new code: {0}{1}, {2} issues", gate.status === 'OK' ? vscode.l10n.t("gate passed") : gate.status === 'ERROR' ? vscode.l10n.t("gate failed") : vscode.l10n.t("no gate"), gate.coverage ? vscode.l10n.t(", coverage {0}%", gate.coverage) : '', issues.length));
-					setRow(name, { state: 'done', detail: vscode.l10n.t("Quality gate {0}{1}", gate.status === 'OK' ? vscode.l10n.t("passed") : gate.status === 'ERROR' ? vscode.l10n.t("failed") : vscode.l10n.t("not computed"), gate.coverage ? vscode.l10n.t(" · coverage {0}%", gate.coverage) : ''), pill: { text: findings.length ? String(findings.length) : vscode.l10n.t("clean"), tone: gate.status === 'ERROR' ? 'error' : findings.length ? 'warn' : 'ok' } }, findings);
+					// A list cut at its page says so: "50 of 312 issues shown", with SonarQube's own list for the rest.
+					const cut = issues.total !== undefined && issues.total > issues.length;
+					results.push(vscode.l10n.t("SonarQube new code: {0}{1}, {2} issues", gate.status === 'OK' ? vscode.l10n.t("gate passed") : gate.status === 'ERROR' ? vscode.l10n.t("gate failed") : vscode.l10n.t("no gate"), gate.coverage ? vscode.l10n.t(", coverage {0}%", gate.coverage) : '', countText(issues)));
+					setRow(name, {
+						state: 'done',
+						detail: [
+							vscode.l10n.t("Quality gate {0}{1}", gate.status === 'OK' ? vscode.l10n.t("passed") : gate.status === 'ERROR' ? vscode.l10n.t("failed") : vscode.l10n.t("not computed"), gate.coverage ? vscode.l10n.t(" · coverage {0}%", gate.coverage) : ''),
+							...cut ? [vscode.l10n.t("{0} of {1} issues shown", issues.length, issues.total!)] : [],
+						].join(' · '),
+						pill: { text: findings.length ? String(findings.length) : vscode.l10n.t("clean"), tone: gate.status === 'ERROR' ? 'error' : findings.length ? 'warn' : 'ok' },
+						...cut ? { link: { label: vscode.l10n.t("Open in SonarQube"), url: sonarIssuesUrl(sonar.url, target) } } : {},
+					}, findings);
 				} catch (err) {
 					setRow(name, { state: 'problem', detail: /404|found nothing/.test(errorMessage(err)) ? vscode.l10n.t("{0} hasn't been analysed yet; SonarQube runs in the pipeline after you push.", branch ?? key) : errorMessage(err) });
 				}
@@ -999,6 +1205,21 @@ export class TeamFlows implements vscode.Disposable {
 			this.agents.setCheckResult(place.agentId, summary);
 		}
 	}
+}
+
+/**
+ * A git failure in plain words, for the usual problems (no VPN, no sign-in).
+ * The GitError, with git's own output, stays as the cause: what a Show Log
+ * would show.
+ */
+function plainGitError(err: unknown): unknown {
+	if (!(err instanceof GitError) || !err.problem) {
+		return err;
+	}
+	const message = err.problem === 'vpn' ? vscode.l10n.t("Git couldn't reach the server. Check your VPN.")
+		: err.problem === 'signIn' ? vscode.l10n.t("Git couldn't sign in to the server. Sign in with git once in a terminal (run git fetch there), then try again.")
+			: vscode.l10n.t("Git got no answer from the server within a minute. Check your VPN.");
+	return new Error(message, { cause: err });
 }
 
 function str(value: unknown): string | undefined {

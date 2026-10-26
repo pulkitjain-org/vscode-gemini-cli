@@ -11,6 +11,7 @@ import { findDocker, teamImages } from '../acp/teamContainers';
 import { readTeamServers, removeTeamServers, TakeoverServer } from '../acp/teamTakeover';
 import { configSection } from './configuration';
 import { runTeamServersSetting, TeamConnections } from './teamConnections';
+import { showError } from './errorNotice';
 
 /**
  * Take Over Both Servers, from Connections: the Jira and GitLab servers that `file` (a repository's
@@ -61,7 +62,7 @@ export async function takeOverTeamServers(connections: TeamConnections, file: st
 		try {
 			await connections.connect(tool, { url, ...email ? { email } : {}, token });
 		} catch (err) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("Couldn't connect {0}: {1} Nothing in {2} changed.", tool === 'jira' ? 'Jira' : 'GitLab', errorMessage(err), path.basename(file)));
+			void showError(vscode.l10n.t("Couldn't connect {0}: {1} Nothing in {2} changed.", tool === 'jira' ? 'Jira' : 'GitLab', errorMessage(err), path.basename(file)));
 			return false;
 		}
 	}
@@ -76,7 +77,7 @@ export async function takeOverTeamServers(connections: TeamConnections, file: st
 	}
 	log.info(`Took over ${names} from ${file}${rewritten ? `; removed ${removed.join(', ')}` : '; the file was left as it is'}`);
 	if (!rewritten) {
-		void vscode.window.showWarningMessage(vscode.l10n.t("GeminiCode keeps the tokens now, but can't rewrite {0} because it has comments. Remove {1} from mcpServers there, and their tokens from security.environmentVariableRedaction.allowed.", file, names));
+		void vscode.window.showWarningMessage(vscode.l10n.t("GeminiCode keeps the tokens now, but can't rewrite {0} because it isn't valid JSON. Remove {1} from mcpServers there, and their tokens from security.environmentVariableRedaction.allowed.", file, names));
 		const document = await vscode.workspace.openTextDocument(file);
 		await vscode.window.showTextDocument(document);
 		return false;

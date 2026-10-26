@@ -5,6 +5,8 @@
 
 // The chat view's decisions that need no DOM, so they can be tested.
 
+/// <reference lib="es2025.intl" />
+
 import type { Attachment } from '../src/acp/attachments';
 import type { TranscriptItem } from '../src/acp/chatTranscript';
 import type { ItemUpdate, TextAppend } from '../src/acp/textDeltas';
@@ -12,9 +14,9 @@ import { thoughtPreview } from './streaming';
 
 export type ItemOf<K extends TranscriptItem['kind']> = Extract<TranscriptItem, { kind: K }>;
 
-/** Puts `value` in place of "{0}" in a localized string. */
-export function format(template: string, value: string | number): string {
-	return template.replace('{0}', String(value));
+/** Puts `values` in place of "{0}", "{1}" and so on in a localized string. */
+export function format(template: string, ...values: (string | number)[]): string {
+	return template.replace(/\{(\d+)\}/g, (match, i) => i < values.length ? String(values[Number(i)]) : match);
 }
 
 /** When a message was sent: the time alone today, with the day before that ("10:42", "3 Oct, 10:42"). */
@@ -28,14 +30,22 @@ export function formatSentAt(at: number, now: number, locale?: string): string {
 	return `${sent.toLocaleDateString(locale, sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' })}, ${time}`;
 }
 
-/** "12s", "2m 5s" or "1h 3m". */
-export function formatDuration(ms: number): string {
+/** Formatters for `formatDuration`, by locale and by its largest unit. */
+const durationFormats = new Map<string, Intl.DurationFormat>();
+
+/** "12s", "2m 5s" or "1h 3m" in English: the two largest units, narrow, as the locale writes them. */
+export function formatDuration(ms: number, locale?: string): string {
 	const seconds = Math.max(1, Math.round(ms / 1000));
-	if (seconds < 60) {
-		return `${seconds}s`;
-	}
 	const minutes = Math.floor(seconds / 60);
-	return minutes < 60 ? `${minutes}m ${seconds % 60}s` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+	const unit = seconds < 60 ? 'seconds' : minutes < 60 ? 'minutes' : 'hours';
+	const key = `${locale}|${unit}`;
+	let formatter = durationFormats.get(key);
+	if (!formatter) {
+		// The smaller unit shows even when it is 0 ("2m 0s"), as the larger one leads.
+		formatter = new Intl.DurationFormat(locale, { style: 'narrow', ...unit === 'minutes' ? { secondsDisplay: 'always' } : unit === 'hours' ? { minutesDisplay: 'always' } : {} });
+		durationFormats.set(key, formatter);
+	}
+	return formatter.format(unit === 'seconds' ? { seconds } : unit === 'minutes' ? { minutes, seconds: seconds % 60 } : { hours: Math.floor(minutes / 60), minutes: minutes % 60 });
 }
 
 /** How long a thought took, in whole seconds and at least one. */
@@ -222,12 +232,48 @@ export function planIcon(status: ItemOf<'plan'>['entries'][number]['status']): s
 
 type PermissionOption = ItemOf<'permission'>['options'][number];
 
-/** The option to show as primary ("Allow" once, else any allow) and the one Escape picks (a rejection). */
-export function permissionDefaults(options: readonly PermissionOption[]): { primary?: PermissionOption; reject?: PermissionOption } {
+/**
+ * A request's options by role: the one shown as primary ("Allow" once, else
+ * any allow), Allow once, "Allow for this session" (gemini-cli's
+ * `proceed_always`, or the narrowest of an MCP tool's), and the one Escape
+ * picks (a rejection).
+ */
+export function permissionChoices(options: readonly PermissionOption[]): { primary?: PermissionOption; once?: PermissionOption; session?: PermissionOption; reject?: PermissionOption } {
+	const always = options.filter(o => o.kind === 'allow_always');
 	return {
 		primary: options.find(o => o.kind === 'allow_once') ?? options.find(o => o.kind.startsWith('allow')),
+		once: options.find(o => o.kind === 'allow_once'),
+		session: always.find(o => o.optionId === 'proceed_always') ?? always.find(o => o.optionId === 'proceed_always_tool') ?? always.find(o => /for this session/i.test(o.name)),
 		reject: options.find(o => o.kind === 'reject_once') ?? options.find(o => o.kind.startsWith('reject')),
 	};
+}
+
+/** The permission card still waiting for an answer, the newest if several are. */
+export function waitingPermission(items: readonly TranscriptItem[]): ItemOf<'permission'> | undefined {
+	for (let i = items.length - 1; i >= 0; i--) {
+		const item = items[i];
+		if (item.kind === 'permission' && !item.answer) {
+			return item;
+		}
+	}
+	return undefined;
+}
+
+/**
+ * What a key in the chat box does to a waiting card: ⌥⌘↩ (Ctrl+Alt+Enter)
+ * allows once, ⌥⌘S (Ctrl+Alt+S) allows for the session, Esc rejects. Clear
+ * of the composer's own keys: ↩ sends, ⌘↩ queues, ⌥⌘↑ ⌥⌘↓ move between prompts.
+ */
+export function cardKey(event: { readonly key: string; readonly code: string; readonly altKey: boolean; readonly metaKey: boolean; readonly ctrlKey: boolean; readonly shiftKey: boolean }, mac: boolean): 'once' | 'session' | 'reject' | undefined {
+	if (event.key === 'Escape') {
+		return event.altKey || event.metaKey || event.ctrlKey || event.shiftKey ? undefined : 'reject';
+	}
+	const chord = event.altKey && !event.shiftKey && (mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey);
+	if (!chord) {
+		return undefined;
+	}
+	// The key's code, not its character: on a Mac, Option turns S into another letter.
+	return event.key === 'Enter' ? 'once' : event.code === 'KeyS' ? 'session' : undefined;
 }
 
 /** Whether a scroll position is close enough to the bottom to keep following new content. */
@@ -407,43 +453,144 @@ export function resetsIn(resetTime: string | undefined, now: number): { readonly
 }
 
 /**
- * Updates that arrived while the view was hidden, as few as give the same
- * result: appends to one item joined into one, and an item sent whole
- * replacing what came before it for that item. Each item is then rendered
- * once when the view shows, not once per streamed chunk.
+ * Updates that arrive while the view is hidden, merged as they arrive into as
+ * few as give the same result: appends to one item joined into one, and an
+ * item sent whole replacing what came before it for that item. A hidden chat
+ * then holds about one update per item however long it streams, and each item
+ * is rendered once when the view shows, not once per streamed chunk.
  */
-export function coalesceUpdates(updates: readonly ItemUpdate[]): ItemUpdate[] {
-	const out: (ItemUpdate | undefined)[] = [];
-	const whole = new Map<string, number>();
-	const appends = new Map<string, number>();
-	for (const update of updates) {
+export class HeldUpdates {
+	private slots: (ItemUpdate | undefined)[] = [];
+	/** Slots emptied by a later whole item; dropped once they are half the slots. */
+	private emptied = 0;
+	private readonly whole = new Map<string, number>();
+	private readonly appends = new Map<string, number>();
+
+	/** How many updates are held. */
+	get size(): number {
+		return this.slots.length - this.emptied;
+	}
+
+	add(update: ItemUpdate): void {
+		const at = this.appends.get(update.id);
 		if (update.kind === 'append') {
-			const at = appends.get(update.id);
-			const previous = at === undefined ? undefined : out[at];
+			const previous = at === undefined ? undefined : this.slots[at];
 			if (previous?.kind === 'append') {
-				out[at!] = { kind: 'append', id: update.id, append: previous.append + update.append };
+				this.slots[at!] = { kind: 'append', id: update.id, append: previous.append + update.append };
 			} else {
-				appends.set(update.id, out.push(update) - 1);
+				this.appends.set(update.id, this.slots.push(update) - 1);
 			}
-			continue;
+			return;
 		}
-		const at = appends.get(update.id);
 		if (at !== undefined) {
 			// The whole item already has that text.
-			out[at] = undefined;
-			appends.delete(update.id);
+			this.slots[at] = undefined;
+			this.appends.delete(update.id);
+			this.emptied++;
 		}
-		const slot = whole.get(update.id);
+		const slot = this.whole.get(update.id);
 		if (slot === undefined) {
-			whole.set(update.id, out.push(update) - 1);
+			this.whole.set(update.id, this.slots.push(update) - 1);
 		} else {
-			out[slot] = update;
+			this.slots[slot] = update;
+		}
+		if (this.emptied > 32 && this.emptied * 2 > this.slots.length) {
+			this.compact();
 		}
 	}
-	return out.filter((update): update is ItemUpdate => update !== undefined);
+
+	/** The held updates, in the order their items first changed; the holder is left empty. */
+	take(): ItemUpdate[] {
+		const updates = this.slots.filter((update): update is ItemUpdate => update !== undefined);
+		this.clear();
+		return updates;
+	}
+
+	clear(): void {
+		this.slots = [];
+		this.emptied = 0;
+		this.whole.clear();
+		this.appends.clear();
+	}
+
+	private compact(): void {
+		const updates = this.take();
+		this.slots = updates;
+		updates.forEach((update, i) => (update.kind === 'append' ? this.appends : this.whole).set(update.id, i));
+	}
+}
+
+/** `updates` merged as `HeldUpdates` merges them. */
+export function coalesceUpdates(updates: readonly ItemUpdate[]): ItemUpdate[] {
+	const held = new HeldUpdates();
+	updates.forEach(update => held.add(update));
+	return held.take();
+}
+
+type EnterKey = { readonly key: string; readonly altKey: boolean; readonly metaKey: boolean; readonly ctrlKey: boolean; readonly shiftKey: boolean };
+
+/**
+ * What Return does in the composer: send now, queue for after the agent's
+ * turn, or make a new line (undefined: not Return). With `cmdEnter`
+ * (`gemini.chat.sendWith`), ⌘Return (Ctrl+Enter) sends, ⇧⌘Return queues and
+ * Return makes a new line; otherwise Return sends, ⌘Return queues and
+ * ⇧Return makes a new line.
+ */
+export function enterAction(event: EnterKey, mac: boolean, cmdEnter: boolean): 'now' | 'queue' | 'newLine' | undefined {
+	if (event.key !== 'Enter' || event.altKey) {
+		return undefined;
+	}
+	const command = mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+	if (cmdEnter) {
+		return command ? (event.shiftKey ? 'queue' : 'now') : event.metaKey || event.ctrlKey ? undefined : 'newLine';
+	}
+	return isQueueShortcut(event, mac) ? 'queue' : event.shiftKey ? 'newLine' : 'now';
 }
 
 /** ⌘Return on a Mac, Ctrl+Enter elsewhere: queues a message while the agent works, instead of sending it now. */
 export function isQueueShortcut(event: { readonly key: string; readonly altKey: boolean; readonly metaKey: boolean; readonly ctrlKey: boolean; readonly shiftKey: boolean }, mac: boolean): boolean {
 	return event.key === 'Enter' && !event.shiftKey && !event.altKey && (mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey);
+}
+
+/** A part of what each turn carries, for the usage popover's breakdown. */
+export interface ContextPart {
+	readonly part: 'conversation' | 'servers' | 'rules' | 'geminicode' | 'cli';
+	readonly tokens: number;
+	/** How many servers or rule files the part is. */
+	readonly count?: number;
+}
+
+/**
+ * The usage popover's breakdown, largest first: the measured parts every
+ * call carries, and the conversation, which is what the latest request's
+ * input (`used`) holds beyond them. Parts that cost nothing are left out.
+ */
+export function contextParts(parts: { readonly cli: number; readonly rules: number; readonly geminicode: number; readonly servers: number; readonly serverTokens: number; readonly total: number }, rules: number, used?: number): ContextPart[] {
+	const rows: ContextPart[] = [
+		...used !== undefined ? [{ part: 'conversation' as const, tokens: Math.max(0, used - parts.total) }] : [],
+		{ part: 'servers', tokens: parts.serverTokens, count: parts.servers },
+		{ part: 'rules', tokens: parts.rules, count: rules },
+		{ part: 'geminicode', tokens: parts.geminicode },
+		{ part: 'cli', tokens: parts.cli },
+	];
+	return rows.filter(row => row.tokens > 0).sort((a, b) => b.tokens - a.tokens);
+}
+
+/** The codicon for a symbol of the index's `kind` (function, class, method…). */
+export function symbolIcon(kind: string): string {
+	switch (kind) {
+		case 'class': case 'method': case 'function': case 'interface': case 'enum': case 'constant': case 'struct': case 'module': case 'variable': case 'field': case 'property':
+			return `symbol-${kind}`;
+		case 'type': return 'symbol-interface';
+		case 'trait': return 'symbol-interface';
+		default: return 'symbol-misc';
+	}
+}
+
+/** The @ picker's group a row is in, in the order the groups show. */
+export type MentionGroup = 'files' | 'folders' | 'symbols' | 'workspace';
+
+/** Which group a picker row of `kind` goes in. */
+export function mentionGroup(kind: 'file' | 'folder' | 'symbol' | 'problems' | 'changes' | 'terminal'): MentionGroup {
+	return kind === 'file' ? 'files' : kind === 'folder' ? 'folders' : kind === 'symbol' ? 'symbols' : 'workspace';
 }

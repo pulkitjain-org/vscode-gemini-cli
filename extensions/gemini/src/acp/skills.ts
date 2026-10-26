@@ -135,7 +135,7 @@ export function disabledSkills(settings: Record<string, unknown>): Set<string> {
 	return new Set(list.filter((n): n is string => typeof n === 'string').map(n => n.toLowerCase()));
 }
 
-/** Switches a skill on or off in `file`, as the CLI's /skills enable and disable do. False when the file has comments. */
+/** Switches a skill on or off in `file`, as the CLI's /skills enable and disable do. False when the file isn't valid JSON. */
 export function setSkillEnabled(file: string, name: string, enabled: boolean): Promise<boolean> {
 	return updateSettingsFile(file, settings => {
 		const config = isRecord(settings.skills) ? settings.skills : {};

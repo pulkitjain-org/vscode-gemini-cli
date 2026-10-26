@@ -5,11 +5,14 @@
 
 // One folder's index: a SQLite file (node:sqlite, built into the app's Node,
 // so no native module) in WAL mode, written in transactions so a crash leaves
-// the last committed state. A file SQLite can't open or reports damaged, or
-// one written with another schema, is moved aside and started again: a broken
-// index never fails a prompt, it only costs a rebuild. Opening checks nothing
-// more than the schema, since a full check reads the whole file (seconds for
-// a large repository); damage found later is reported by `isCorruption`.
+// the last committed state. A file SQLite reports damaged, or one written
+// with another schema, is moved aside and started again: a broken index never
+// fails a prompt, it only costs a rebuild. Any other error opening it (the
+// file is busy, the disk is full, too many open files) leaves the file alone
+// and fails, to be tried again: a healthy index is never thrown away for a
+// passing problem. Opening checks nothing more than the schema, since a full
+// check reads the whole file (seconds for a large repository); damage found
+// later is reported by `isCorruption`.
 //
 // Chunk text is stored compressed, about a third of its size for source
 // code: the index of a 20,000-file repository (this one) went from 537 MB to
@@ -25,6 +28,8 @@ import type { ParsedFile } from './parse';
 
 /** Raise when the tables change; an index with another version is rebuilt. */
 export const schemaVersion = 1;
+/** Pages the backup copies per step, between which queries run. */
+const backupPagesPerStep = 256;
 
 const schema = `
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -64,16 +69,32 @@ function loadSqlite(): Sqlite {
 	return sqlite ??= require('node:sqlite') as Sqlite;
 }
 
+/** The index was written with another schema, so it is rebuilt. */
+export class SchemaMismatch extends Error {
+	constructor() {
+		super('The index is from another version.');
+	}
+}
+
+interface Counts {
+	files: number;
+	symbols: number;
+	skipped: number;
+}
+
 export class IndexStore {
 
 	private readonly statements = new Map<string, StatementSync>();
+	/** Counted once, then kept current by each write, so a save doesn't count every row again. */
+	private counted: Counts | undefined;
 
 	private constructor(readonly db: DatabaseSync, readonly file: string, readonly readOnly: boolean) { }
 
 	/**
 	 * Opens the index at `file`, creating it (and its folder) when missing. A
-	 * file that is damaged or from another schema is moved aside and a new one
-	 * started, unless `readOnly`, which then throws.
+	 * file SQLite reports damaged, or one from another schema, is moved aside
+	 * and a new one started, unless `readOnly`, which then throws. Any other
+	 * error leaves the file as it is and throws, to be tried again.
 	 */
 	static async open(file: string, options: { readonly readOnly?: boolean } = {}): Promise<IndexStore> {
 		const { DatabaseSync } = loadSqlite();
@@ -83,14 +104,17 @@ export class IndexStore {
 			db.exec('PRAGMA busy_timeout = 3000');
 			if (store.meta('schema_version') !== String(schemaVersion)) {
 				db.close();
-				throw new Error('The index is from another version.');
+				throw new SchemaMismatch();
 			}
 			return store;
 		}
 		await fs.mkdir(path.dirname(file), { recursive: true });
 		try {
 			return IndexStore.openWritable(file, DatabaseSync);
-		} catch {
+		} catch (err) {
+			if (!(err instanceof SchemaMismatch) && !isCorruption(err)) {
+				throw err;
+			}
 			await moveAside(file);
 			return IndexStore.openWritable(file, DatabaseSync);
 		}
@@ -103,7 +127,7 @@ export class IndexStore {
 			const hasMeta = db.prepare('SELECT 1 FROM sqlite_master WHERE name = \'meta\'').get();
 			const version = hasMeta ? (db.prepare('SELECT value FROM meta WHERE key = \'schema_version\'').get() as { value?: string } | undefined)?.value : undefined;
 			if (hasMeta && version !== String(schemaVersion)) {
-				throw new Error('The index is from another version.');
+				throw new SchemaMismatch();
 			}
 			db.exec(schema);
 			db.prepare('INSERT OR REPLACE INTO meta(key, value) VALUES (\'schema_version\', ?)').run(String(schemaVersion));
@@ -140,6 +164,8 @@ export class IndexStore {
 			this.db.exec('COMMIT');
 			return result;
 		} catch (err) {
+			// The kept counts may have moved with what was rolled back.
+			this.counted = undefined;
 			this.db.exec('ROLLBACK');
 			throw err;
 		}
@@ -165,10 +191,17 @@ export class IndexStore {
 	/** Replaces everything known about one file. `targets` are the files its imports resolve to, in `parsed.imports` order. */
 	writeFile(record: FileRecord, parsed: ParsedFile | undefined, targets: readonly (string | undefined)[] = []): void {
 		this.removeContents(record.path);
+		this.countFile(record.path, -1);
 		this.statement('INSERT OR REPLACE INTO files(path, lang, size, mtime, hash, skipped) VALUES (?, ?, ?, ?, ?, ?)')
 			.run(record.path, record.lang, record.size, record.mtime, record.hash, record.skipped ?? null);
+		if (this.counted) {
+			this.counted[record.skipped ? 'skipped' : 'files']++;
+		}
 		if (!parsed) {
 			return;
+		}
+		if (this.counted) {
+			this.counted.symbols += parsed.symbols.length;
 		}
 		const pathWords = splitIdentifier(record.path).join(' ');
 		for (const chunk of parsed.chunks) {
@@ -194,8 +227,27 @@ export class IndexStore {
 
 	removeFile(relative: string): void {
 		this.removeContents(relative);
+		this.countFile(relative, -1);
 		this.statement('DELETE FROM files WHERE path = ?').run(relative);
 		this.statement('UPDATE imports SET target = NULL WHERE target = ?').run(relative);
+	}
+
+	/** The indexed files under the folder `relative`, found by their path's prefix. */
+	filesUnder(relative: string): string[] {
+		const prefix = `${relative.replace(/\/+$/, '')}/`;
+		// '0' follows '/': the range is every path that starts with the prefix, read from the primary key.
+		return (this.statement('SELECT path FROM files WHERE path >= ? AND path < ?').all(prefix, `${prefix.slice(0, -1)}0`) as { path: string }[]).map(row => row.path);
+	}
+
+	/** Moves the kept counts by one file at `relative`, of the kind it is stored as now. */
+	private countFile(relative: string, delta: number): void {
+		if (!this.counted) {
+			return;
+		}
+		const row = this.statement('SELECT skipped FROM files WHERE path = ?').get(relative) as { skipped: string | null } | undefined;
+		if (row) {
+			this.counted[row.skipped ? 'skipped' : 'files'] += delta;
+		}
 	}
 
 	private removeContents(relative: string): void {
@@ -203,12 +255,26 @@ export class IndexStore {
 			this.statement('DELETE FROM chunks_fts WHERE rowid = ?').run(row.id);
 		}
 		this.statement('DELETE FROM chunks WHERE path = ?').run(relative);
-		this.statement('DELETE FROM symbols WHERE path = ?').run(relative);
+		const removed = Number(this.statement('DELETE FROM symbols WHERE path = ?').run(relative).changes);
+		if (this.counted) {
+			this.counted.symbols -= removed;
+		}
 		this.statement('DELETE FROM imports WHERE path = ?').run(relative);
 	}
 
-	unresolvedImports(): { readonly id: number; readonly path: string; readonly spec: string; readonly lang: string }[] {
-		return this.statement('SELECT imports.id AS id, imports.path AS path, imports.spec AS spec, files.lang AS lang FROM imports JOIN files ON files.path = imports.path WHERE imports.target IS NULL').all() as { id: number; path: string; spec: string; lang: string }[];
+	/**
+	 * Imports not pointing at a file, whose specifier holds one of `names` as
+	 * a part (`./cart`, `com.acme.Cart`, `cart.h`): the ones a newly added
+	 * file can resolve. Only id and specifier are read for the rest.
+	 */
+	unresolvedImports(names: ReadonlySet<string>): { readonly id: number; readonly path: string; readonly spec: string; readonly lang: string }[] {
+		const ids: number[] = [];
+		for (const row of this.statement('SELECT id, spec FROM imports WHERE target IS NULL').iterate() as Iterable<{ id: number; spec: string }>) {
+			if (row.spec.split(/[/\\.:]+/).some(part => names.has(part))) {
+				ids.push(row.id);
+			}
+		}
+		return ids.flatMap(id => (this.statement('SELECT imports.id AS id, imports.path AS path, imports.spec AS spec, files.lang AS lang FROM imports JOIN files ON files.path = imports.path WHERE imports.id = ?').get(id) as { id: number; path: string; spec: string; lang: string } | undefined) ?? []);
 	}
 
 	setImportTarget(id: number, target: string): void {
@@ -224,13 +290,30 @@ export class IndexStore {
 	}
 
 	counts(): { readonly files: number; readonly symbols: number; readonly skipped: number } {
-		const files = (this.statement('SELECT count(*) AS n FROM files WHERE skipped IS NULL').get() as { n: number }).n;
-		const skipped = (this.statement('SELECT count(*) AS n FROM files WHERE skipped IS NOT NULL').get() as { n: number }).n;
-		const symbols = (this.statement('SELECT count(*) AS n FROM symbols').get() as { n: number }).n;
-		return { files, symbols, skipped };
+		if (!this.counted) {
+			const files = (this.statement('SELECT count(*) AS n FROM files WHERE skipped IS NULL').get() as { n: number }).n;
+			const skipped = (this.statement('SELECT count(*) AS n FROM files WHERE skipped IS NOT NULL').get() as { n: number }).n;
+			const symbols = (this.statement('SELECT count(*) AS n FROM symbols').get() as { n: number }).n;
+			if (this.readOnly) {
+				// Another window writes it: what was counted goes stale.
+				return { files, symbols, skipped };
+			}
+			this.counted = { files, symbols, skipped };
+		}
+		return { ...this.counted };
+	}
+
+	/**
+	 * Copies the index to `target` with SQLite's online backup, a few hundred
+	 * pages a step on SQLite's own thread, so queries go on meanwhile (`VACUUM
+	 * INTO` held the process for seconds on a large index).
+	 */
+	async copyTo(target: string): Promise<void> {
+		await loadSqlite().backup(this.db, target, { rate: backupPagesPerStep });
 	}
 
 	close(): void {
+		this.counted = undefined;
 		this.statements.clear();
 		try {
 			this.db.close();

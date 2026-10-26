@@ -7,12 +7,17 @@
 // added) is its own SQLite file under <base>/docs, stored once however many
 // workspaces attach it. Pages arrive from the extension host, which fetches
 // them; here they become Markdown, are cut into sections by heading, and
-// are searched like code, with headings weighted above body text.
+// are searched like code, with headings weighted above body text. Pages are
+// written in transactions of about 40 ms, as the code index is, so searches
+// are answered while a large source is stored. A store SQLite reports damaged
+// is deleted and fetched again; any other error opening it (busy, disk full)
+// leaves it alone, and the next request tries again.
 
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
+import { isCorruption } from '../index/indexStore';
 import { queryTerms } from '../index/query';
 import type { DocsPage } from '../index/indexerProtocol';
 import type { DocsHit, DocsSearchResult, DocsSourceInput, DocsSourceStatus } from './docsProtocol';
@@ -31,6 +36,8 @@ const defaultLimit = 6;
 const maxLimit = 15;
 /** Sources kept open at once. */
 const maxOpen = 16;
+/** A write runs this long before yielding to searches. */
+const sliceMs = 40;
 
 export interface Section {
 	readonly heading: string;
@@ -46,44 +53,60 @@ export class DocsLibrary {
 	constructor(private readonly baseDir: string) { }
 
 	async ingest({ source, pages, unchanged, complete }: { source: DocsSourceInput; pages: readonly DocsPage[]; unchanged: readonly string[]; complete: boolean }): Promise<DocsSourceStatus> {
-		const db = await this.db(source.id);
+		await this.db(source.id);
 		const run = (sql: string, ...args: (string | number | bigint | null)[]) => this.statement(source.id, sql).run(...args);
-		db.exec('BEGIN');
-		try {
-			for (const page of pages) {
-				const converted = page.type === 'html' ? htmlToMarkdown(page.body, page.url) : { title: titleOfMarkdown(page.body) ?? page.url, markdown: page.body };
-				const hash = createHash('sha1').update(converted.markdown).digest('hex');
-				const existing = this.statement(source.id, 'SELECT hash FROM pages WHERE url = ?').get(page.url) as { hash: string } | undefined;
-				run('INSERT OR REPLACE INTO pages(url, title, hash, run, etag, last_modified) VALUES (?, ?, ?, ?, ?, ?)', page.url, converted.title || page.url, hash, source.run, page.etag ?? null, page.lastModified ?? null);
-				if (existing?.hash === hash) {
-					continue;
-				}
-				this.removeSections(source.id, page.url);
-				for (const section of sectionsOf(converted.markdown)) {
-					const id = run('INSERT INTO sections(url, heading, text) VALUES (?, ?, ?)', page.url, section.heading, section.text).lastInsertRowid;
-					run('INSERT INTO sections_fts(rowid, text, heading, title) VALUES (?, ?, ?, ?)', id, section.text, section.heading, converted.title);
-				}
-				if (!this.meta(source.id, 'title') && converted.title) {
-					run('INSERT OR REPLACE INTO meta(key, value) VALUES (\'title\', ?)', siteTitle(converted.title));
-				}
+		await this.sliced(source.id, pages, page => {
+			const converted = page.type === 'html' ? htmlToMarkdown(page.body, page.url) : { title: titleOfMarkdown(page.body) ?? page.url, markdown: page.body };
+			const hash = createHash('sha1').update(converted.markdown).digest('hex');
+			const existing = this.statement(source.id, 'SELECT hash FROM pages WHERE url = ?').get(page.url) as { hash: string } | undefined;
+			run('INSERT OR REPLACE INTO pages(url, title, hash, run, etag, last_modified) VALUES (?, ?, ?, ?, ?, ?)', page.url, converted.title || page.url, hash, source.run, page.etag ?? null, page.lastModified ?? null);
+			if (existing?.hash === hash) {
+				return;
 			}
-			for (const url of unchanged) {
-				run('UPDATE pages SET run = ? WHERE url = ?', source.run, url);
+			this.removeSections(source.id, page.url);
+			for (const section of sectionsOf(converted.markdown)) {
+				const id = run('INSERT INTO sections(url, heading, text) VALUES (?, ?, ?)', page.url, section.heading, section.text).lastInsertRowid;
+				run('INSERT INTO sections_fts(rowid, text, heading, title) VALUES (?, ?, ?, ?)', id, section.text, section.heading, converted.title);
 			}
-			if (complete) {
-				for (const row of this.statement(source.id, 'SELECT url FROM pages WHERE run != ?').all(source.run) as { url: string }[]) {
-					this.removeSections(source.id, row.url);
-					run('DELETE FROM pages WHERE url = ?', row.url);
-				}
+			if (!this.meta(source.id, 'title') && converted.title) {
+				run('INSERT OR REPLACE INTO meta(key, value) VALUES (\'title\', ?)', siteTitle(converted.title));
+			}
+		});
+		await this.sliced(source.id, unchanged, url => {
+			run('UPDATE pages SET run = ? WHERE url = ?', source.run, url);
+		});
+		if (complete) {
+			const gone = (this.statement(source.id, 'SELECT url FROM pages WHERE run != ?').all(source.run) as { url: string }[]).map(row => row.url);
+			await this.sliced(source.id, gone, url => {
+				this.removeSections(source.id, url);
+				run('DELETE FROM pages WHERE url = ?', url);
+			});
+			await this.sliced(source.id, [source.url], url => {
 				run('INSERT OR REPLACE INTO meta(key, value) VALUES (\'fetched_at\', ?)', String(Date.now()));
-				run('INSERT OR REPLACE INTO meta(key, value) VALUES (\'url\', ?)', source.url);
-			}
-			db.exec('COMMIT');
-		} catch (err) {
-			db.exec('ROLLBACK');
-			throw err;
+				run('INSERT OR REPLACE INTO meta(key, value) VALUES (\'url\', ?)', url);
+			});
 		}
 		return await this.statusOf(source.id);
+	}
+
+	/** Runs `write` for each item in transactions of about `sliceMs`, yielding between them. */
+	private async sliced<T>(id: string, items: readonly T[], write: (item: T) => void): Promise<void> {
+		let at = 0;
+		while (at < items.length) {
+			const db = await this.db(id);
+			const started = Date.now();
+			db.exec('BEGIN');
+			try {
+				while (at < items.length && Date.now() - started < sliceMs) {
+					write(items[at++]);
+				}
+				db.exec('COMMIT');
+			} catch (err) {
+				db.exec('ROLLBACK');
+				throw err;
+			}
+			await new Promise<void>(resolve => setImmediate(resolve));
+		}
 	}
 
 	async status({ ids }: { ids: readonly string[] }): Promise<DocsSourceStatus[]> {
@@ -189,20 +212,19 @@ export class DocsLibrary {
 			if (this.open.size >= maxOpen) {
 				this.close(this.open.keys().next().value!);
 			}
-			const { DatabaseSync } = require('node:sqlite') as Sqlite;
 			let db: DatabaseSync;
 			try {
-				db = new DatabaseSync(file);
-				db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 3000');
-				db.exec(schema);
-			} catch {
+				db = openSource(file);
+			} catch (err) {
+				if (!isCorruption(err)) {
+					// Busy, the disk full, too many files open: the store is kept, and the next request tries again.
+					throw err;
+				}
 				// A damaged source is fetched again from scratch.
 				for (const suffix of ['', '-wal', '-shm']) {
 					await fs.rm(file + suffix, { force: true });
 				}
-				db = new DatabaseSync(file);
-				db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 3000');
-				db.exec(schema);
+				db = openSource(file);
 			}
 			entry = { db, statements: new Map() };
 			this.open.set(id, entry);
@@ -234,6 +256,19 @@ export class DocsLibrary {
 			}
 			this.open.delete(id);
 		}
+	}
+}
+
+function openSource(file: string): DatabaseSync {
+	const { DatabaseSync } = require('node:sqlite') as Sqlite;
+	const db = new DatabaseSync(file);
+	try {
+		db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 3000');
+		db.exec(schema);
+		return db;
+	} catch (err) {
+		db.close();
+		throw err;
 	}
 }
 

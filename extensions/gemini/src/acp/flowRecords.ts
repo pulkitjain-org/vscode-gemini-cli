@@ -14,6 +14,7 @@
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
+import { writeJsonAtomic } from './fsUtil';
 
 export interface FlowRecord {
 	readonly id: string;
@@ -36,8 +37,7 @@ export class FlowRecordStore {
 	/** Writes the record for a flow that just opened; returns its id. */
 	async open(record: Omit<FlowRecord, 'id' | 'startedAt'>): Promise<string> {
 		const id = `${this.now().getTime().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-		await fs.mkdir(this.dir, { recursive: true });
-		await fs.writeFile(this.file(id), JSON.stringify({ ...record, id, startedAt: this.now().toISOString() } satisfies FlowRecord, null, '\t'));
+		await writeJsonAtomic(this.file(id), { ...record, id, startedAt: this.now().toISOString() } satisfies FlowRecord, { indent: '\t', newline: false });
 		return id;
 	}
 
@@ -50,7 +50,7 @@ export class FlowRecordStore {
 	async saveFields(id: string, fields: Readonly<Record<string, string | number | boolean>>): Promise<void> {
 		const record = await this.get(id);
 		if (record) {
-			await fs.writeFile(this.file(id), JSON.stringify({ ...record, fields } satisfies FlowRecord, null, '\t'));
+			await writeJsonAtomic(this.file(id), { ...record, fields } satisfies FlowRecord, { indent: '\t', newline: false });
 		}
 	}
 

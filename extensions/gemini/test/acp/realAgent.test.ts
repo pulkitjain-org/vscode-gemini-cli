@@ -5,21 +5,22 @@
 
 // Checks a real Gemini CLI without credentials: the `initialize` handshake,
 // and that `session/new` fails with an error our classifier still recognises.
-// Skipped unless GEMINI_CLI_PATH points at the CLI (its executable or its JS entry point).
+// Runs against the bundled CLI or GEMINI_CLI_PATH (test/realCli.ts).
 // Runs with an empty HOME so a developer's own ~/.gemini is never read or changed.
 
 import { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
 import { AgentConnection } from '../../src/acp/agentConnection';
 import { resolveAgentCommand, spawnAgent } from '../../src/acp/agentProcess';
 import { classifyAgentError } from '../../src/acp/errors';
+import { describeRealCli, realCliPath } from '../realCli';
 
-const cliPath = process.env.GEMINI_CLI_PATH;
+const cliPath = realCliPath;
 
-describe.skipIf(!cliPath)('gemini --acp', () => {
+describeRealCli('gemini --acp', () => {
 	let child: ChildProcessWithoutNullStreams | undefined;
 	let connection: AgentConnection | undefined;
 

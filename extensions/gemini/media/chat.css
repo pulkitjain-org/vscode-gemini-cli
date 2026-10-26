@@ -192,8 +192,8 @@ button {
 	contain-intrinsic-size: auto 80px;
 }
 
-/* The same inside an open fold, which is one element however many steps it holds: all but its last few lines. */
-.work-body > :not(:nth-last-child(-n + 4)) {
+/* The same inside an open fold, which is one element however many steps it holds: all but its last few lines (`markSteps`). */
+.work-body > .settled-step {
 	content-visibility: auto;
 	contain-intrinsic-size: auto 28px;
 }
@@ -961,6 +961,51 @@ body.vscode-high-contrast-light {
 	font-size: 0.9em;
 }
 
+/* A long output: its first and last lines, joined by the line that says how many are hidden. */
+.tool-output-trimmed .tool-output-head {
+	border-bottom-left-radius: 0;
+	border-bottom-right-radius: 0;
+}
+
+.tool-output-trimmed .tool-output-tail {
+	border-top-left-radius: 0;
+	border-top-right-radius: 0;
+}
+
+.tool-output-gap {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 12px;
+	border-inline: 1px solid var(--gemini-border);
+	border-block: 1px dashed var(--gemini-border);
+	background: var(--gemini-code-background);
+	color: var(--gemini-muted);
+	font-size: 11.5px;
+}
+
+/* An edit applied in Auto Edit to a file another agent is changing too. */
+.tool-shared {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin: 0 0 4px 26px;
+	color: var(--gemini-muted);
+	font-size: 0.92em;
+}
+
+.tool-shared .codicon {
+	color: var(--gemini-warn);
+}
+
+.tool-shared-text {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 .chip {
 	display: inline-flex;
 	align-items: center;
@@ -1441,6 +1486,87 @@ body.vscode-high-contrast-light {
 
 .notice.error {
 	color: var(--vscode-errorForeground);
+}
+
+/* A failed or cut-short turn, and a stalled one: a card of the notice's tone, with its ways out under it. */
+.notice.has-actions {
+	flex-direction: column;
+	gap: 8px;
+	margin: 10px 0;
+	padding: 9px 12px;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius-small);
+	background: var(--gemini-card);
+	color: var(--vscode-foreground);
+}
+
+.notice.has-actions.error {
+	border-color: color-mix(in srgb, var(--gemini-error) 45%, var(--gemini-border));
+	background: color-mix(in srgb, var(--gemini-error) 6%, var(--gemini-card));
+}
+
+.notice.has-actions.warn {
+	border-color: color-mix(in srgb, var(--gemini-warn) 45%, var(--gemini-border));
+	background: color-mix(in srgb, var(--gemini-warn) 6%, var(--gemini-card));
+}
+
+.notice-line {
+	display: flex;
+	gap: 6px;
+	align-items: flex-start;
+}
+
+.notice.error .notice-line > .codicon {
+	color: var(--gemini-error);
+}
+
+.notice.warn .notice-line > .codicon {
+	color: var(--gemini-warn);
+}
+
+.notice-detail {
+	display: block;
+	margin-top: 2px;
+	color: var(--gemini-muted);
+	font-size: 0.92em;
+}
+
+.notice .notice-actions {
+	margin-top: 0;
+}
+
+/* Show Log, and other links among the buttons: no box. */
+.permission-actions button.link-button {
+	padding: 4px 4px;
+	border-color: transparent;
+	background: none;
+}
+
+/* An edit card's warning that another agent is changing the file too. */
+.permission .permission-shared {
+	margin: 8px 0 0;
+	gap: 4px;
+}
+
+.permission-shared .link-button {
+	align-self: flex-start;
+	margin-left: 20px;
+}
+
+/* The keys that answer a card from the chat box: only on the newest waiting card, which they answer. */
+.permission-key {
+	margin-left: 8px;
+	font-weight: normal;
+}
+
+.permission-key-hint {
+	margin-top: 8px;
+}
+
+.permission:not(.newest) .permission-key,
+.permission:not(.newest) .permission-key-hint,
+.permission.newest .permission-hint {
+	display: none;
 }
 
 /* A project's failed coordinator turn: Retry sends what it was given again. */
@@ -4503,6 +4629,56 @@ textarea.new-thread-input {
 	white-space: nowrap;
 }
 
+/* A thread waiting to start, and how many requests each thread made. */
+.panel-dot.state-queued {
+	background: transparent;
+	box-shadow: inset 0 0 0 1px var(--gemini-faint);
+}
+
+.panel-thread:disabled {
+	cursor: default;
+	background: none;
+}
+
+.panel-thread-name {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	min-width: 0;
+}
+
+.panel-thread-detail,
+.panel-thread-requests,
+.panel-requests {
+	color: var(--gemini-muted);
+	font-size: 0.92em;
+}
+
+.panel-thread-requests {
+	flex: none;
+}
+
+/* New threads held for today's quota, with Start Anyway. */
+.panel-held {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 8px;
+	margin: 4px 0 8px;
+	padding: 8px;
+	border: 1px solid var(--gemini-warn);
+	border-radius: var(--gemini-radius-small);
+}
+
+.panel-held > .codicon {
+	color: var(--gemini-warn);
+}
+
+.panel-held-text {
+	flex: 1;
+	min-width: 140px;
+}
+
 /* A project thread's bar (project.ts): the way back to the project chat on the left, and which project it belongs to on the right. */
 .parent-project {
 	flex: none;
@@ -4631,4 +4807,129 @@ body.has-parent-project .prompt-outline {
 	max-height: 240px;
 	overflow: auto;
 	color: var(--vscode-foreground);
+}
+
+/* ---- The composer's menus and footer: the mode tag, Build This Plan's chevron, Commit to a branch, the context breakdown, the @ picker's groups ---- */
+
+/* The mode menu's tag on the mode suggested for this folder, in the from-badge's pill. */
+.menu-badge {
+	flex: none;
+	padding: 0 7px;
+	border-radius: 999px;
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--gemini-accent);
+	background: color-mix(in srgb, var(--gemini-accent) 16%, transparent);
+}
+
+/* Build This Plan's chevron sits against it, as Run's does; the models' line follows on the same row. */
+.turn-action.plan-build-more {
+	margin-left: -4px;
+	padding: 0 3px;
+}
+
+.turn-end:has(.plan-build-models) {
+	flex-wrap: wrap;
+}
+
+.plan-build-models {
+	flex-basis: 100%;
+	font-size: 11.5px;
+	color: var(--gemini-faint);
+}
+
+/* Commit to a branch: its chevron against it, and the message box over the footer. */
+.foot-button.commit-more {
+	margin-left: -6px;
+	padding: 0 3px;
+}
+
+.foot-button.commit {
+	flex-shrink: 1;
+}
+
+.usage-popover.commit-box {
+	right: auto;
+	left: 0;
+	padding: 10px 14px;
+}
+
+.commit-message {
+	display: block;
+	width: 100%;
+	box-sizing: border-box;
+	margin: 0 0 6px;
+	padding: 6px 8px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-small);
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	font: inherit;
+	resize: vertical;
+}
+
+.commit-message:focus {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.commit-box .permission-actions {
+	justify-content: flex-end;
+	margin-top: 8px;
+}
+
+/* The context breakdown under the context window's bar: a quieter bar per part, the rule files and the last measure. */
+.context-parts {
+	margin-top: 10px;
+}
+
+.context-parts .usage-bar {
+	height: 3px;
+	margin: 3px 0 7px;
+	--usage-fill: color-mix(in srgb, var(--gemini-accent) 70%, var(--gemini-border));
+}
+
+.context-rules {
+	margin-top: 8px;
+}
+
+.context-rule {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+}
+
+.context-rule .usage-model {
+	flex: 1;
+}
+
+.context-rule.large,
+.context-rule.large .codicon {
+	color: var(--gemini-warn);
+}
+
+.context-rule .codicon {
+	font-size: 12px;
+	align-self: center;
+}
+
+.context-warning {
+	margin-top: 4px;
+	color: var(--gemini-warn);
+}
+
+.context-foot {
+	margin-top: 8px;
+	flex-wrap: wrap;
+}
+
+/* The @ picker's group headings, as the menus have them. */
+.picker-heading {
+	padding: 6px 8px 2px;
+	font-size: 10.5px;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--gemini-faint);
 }

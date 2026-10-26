@@ -35,9 +35,15 @@ Each thread shows as a card in the project chat with its state, branch, changed 
 
 ![Thread cards in the project chat, with the side panel counting threads by state](../../site/media/project-threads-dark.webp)
 
-Threads run in the repository's worktrees with all of its rules, and a thread's agent starts while its folder is set up. In the agent list, the **Projects** section lists each project with its threads below it.
+Threads run in the repository's worktrees with all of its rules, and a thread's agent starts while its folder is set up. If you quit while a thread is still being set up, it keeps its brief: when the project opens again, the setup runs again and the thread gets its brief then. In the agent list, the **Projects** section lists each project with its threads below it.
 
-When the coordinator passes a thread a note while the thread is working, the note shows above the thread's input as **From coordinator: goes after this turn**. It goes when the turn ends; **Send now** gives it to the thread after its current step instead, and **Remove** drops it.
+When the coordinator passes a thread a note while the thread is working, the note shows above the thread's input as **From coordinator: goes after this turn**. It goes when the turn ends; **Send now** gives it to the thread after its current step instead, and **Remove** drops it. A note held while a thread is still being set up survives quitting, and goes when the project opens again.
+
+### How many threads run at once
+
+At most four of a project's threads work at once (`gemini.projects.maxRunningThreads`, which your administrator can lock). A thread started beyond that, by you or the coordinator, waits: the side panel lists it as waiting, with **Starts when a running thread finishes** and how many run, and it starts on its own when one finishes its turn, is merged or is undone. Notes the coordinator sends it meanwhile wait with it. A thread that is planned or done doesn't count as running.
+
+When today's Gemini quota is over 90% used, as the usage meter in the status bar reads it, new threads wait too: a banner in the side panel says how many it holds and when the quota resets. They start when it resets, or at once with **Start Anyway**. A sign-in with an API key has no quota to read, so nothing waits for it.
 
 ## Start a thread yourself
 
@@ -99,7 +105,7 @@ For a new project, Gemini drafts this from the repositories for you to review; *
 
 ## The side panel
 
-When the project chat is at least 1000 px wide, a panel on its right lists the threads by state (click one to open it), the Conductor tracks the coordinator reads from a `conductor/` folder, and the coordinator's model. Drag its left edge to resize it; double-click the edge to reset it.
+When the project chat is at least 1000 px wide, a panel on its right lists the threads by state (click one to open it), with how many requests each thread's chat has made and the project's total, the Conductor tracks the coordinator reads from a `conductor/` folder, and the coordinator's model. A request is one prompt the thread was sent, with its answer: the Gemini CLI doesn't say how many model calls a turn made. Drag its left edge to resize it; double-click the edge to reset it.
 
 ## Turn Projects off
 

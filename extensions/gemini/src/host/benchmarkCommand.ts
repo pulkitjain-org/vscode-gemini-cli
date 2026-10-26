@@ -9,8 +9,23 @@ import * as vscode from 'vscode';
 import type { BenchSummary } from '../acp/benchmark';
 import { errorMessage } from '../acp/errors';
 import type { AgentService } from './agentService';
-import { getAgentCommand, productInfo, workspaceFolderPaths } from './configuration';
-import { knownModelList } from './modelPreference';
+import { type getAgentCommand, workspaceFolderPaths } from './configuration';
+import type { knownModelList } from './modelPreference';
+import { showError } from './errorNotice';
+
+/**
+ * What Run Benchmark takes from the extension's own bundle: it runs from a
+ * bundle of its own (src/onDemand.ts), whose copies of these modules' state
+ * would be empty.
+ */
+export interface BenchmarkHost {
+	readonly getAgentCommand: typeof getAgentCommand;
+	readonly knownModelList: typeof knownModelList;
+	/** GeminiCode's release version; a development build has none. */
+	readonly version: () => string | undefined;
+	/** The runner, with the ACP SDK it uses, which the extension's bundle already carries. */
+	readonly runner: () => Promise<typeof import('../acp/benchmark')>;
+}
 
 /** About how many model calls one task takes (gemini/bench/README.md), for the quota note. */
 const requestsPerTask = 15;
@@ -25,7 +40,7 @@ export class BenchmarkCommand implements vscode.Disposable {
 	private running: AbortController | undefined;
 	private readonly disposables: vscode.Disposable[] = [];
 
-	constructor(private readonly service: AgentService, private readonly log: vscode.LogOutputChannel) {
+	constructor(private readonly service: AgentService, private readonly log: vscode.LogOutputChannel, private readonly host: BenchmarkHost) {
 		this.disposables.push(vscode.commands.registerCommand('gemini.runBenchmark', () => this.run()));
 	}
 
@@ -44,19 +59,19 @@ export class BenchmarkCommand implements vscode.Disposable {
 			return;
 		}
 		// The runner and the ACP SDK it uses load now, not when the extension activates.
-		const bench = await import('../acp/benchmark');
+		const bench = await this.host.runner();
 		let tasks;
 		try {
 			tasks = await bench.readBenchTasks(tasksDir);
 		} catch (err) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("Couldn't read the benchmark tasks in {0}: {1}", tasksDir, errorMessage(err)));
+			void showError(vscode.l10n.t("Couldn't read the benchmark tasks in {0}: {1}", tasksDir, errorMessage(err)));
 			return;
 		}
 		if (!tasks.length) {
 			void vscode.window.showWarningMessage(vscode.l10n.t("There are no task files in {0}. gemini/bench/README.md says how to make them from closed tickets.", tasksDir));
 			return;
 		}
-		const model = await pickModel();
+		const model = await pickModel(this.host.knownModelList());
 		if (!model) {
 			return;
 		}
@@ -78,9 +93,9 @@ export class BenchmarkCommand implements vscode.Disposable {
 				token.onCancellationRequested(() => controller.abort());
 				return bench.runBenchmark({
 					tasks,
-					agent: await getAgentCommand({ ownFolderOnly: true }),
+					agent: await this.host.getAgentCommand({ ownFolderOnly: true }),
 					model,
-					geminiCodeVersion: productInfo.version,
+					geminiCodeVersion: this.host.version(),
 					cliVersion: this.service.cli?.version ?? this.service.status.agentVersion,
 					signal: controller.signal,
 					log: line => this.log.info(`[benchmark] ${line}`),
@@ -101,7 +116,7 @@ export class BenchmarkCommand implements vscode.Disposable {
 			}
 		} catch (err) {
 			this.log.error(`The benchmark stopped: ${errorMessage(err)}`);
-			void vscode.window.showErrorMessage(vscode.l10n.t("The benchmark stopped: {0}", errorMessage(err)));
+			void showError(vscode.l10n.t("The benchmark stopped: {0}", errorMessage(err)));
 		} finally {
 			this.running = undefined;
 		}
@@ -128,8 +143,7 @@ async function pickTasksFolder(): Promise<string | undefined> {
 }
 
 /** One model per run, so a Flash run and a Pro run are two results files. */
-async function pickModel(): Promise<string | undefined> {
-	const models = knownModelList();
+async function pickModel(models: ReturnType<typeof knownModelList>): Promise<string | undefined> {
 	if (!models.length) {
 		const typed = await vscode.window.showInputBox({
 			title: vscode.l10n.t("Benchmark Model"),

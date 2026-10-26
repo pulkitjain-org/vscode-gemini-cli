@@ -13,7 +13,7 @@ import { AgentsModel } from '../../src/acp/agents';
 import { ChatTranscript, threadCardId } from '../../src/acp/chatTranscript';
 import { PermissionBroker, PermissionEvent } from '../../src/acp/permissions';
 import { coordinatorModel, threadCounts, threadPrompt } from '../../src/acp/projectHub';
-import { coordinatorTools, isProjectToolCall, isProjectToolTitle, threadTools } from '../../src/acp/projectMcp';
+import { coordinatorTools, isProjectToolCall, isProjectToolTitle, mcpToolOf, threadTools, toolCallOwner } from '../../src/acp/projectMcp';
 
 const mcpOptions: acp.PermissionOption[] = [
 	{ optionId: 'proceed_once', name: 'Allow', kind: 'allow_once' },
@@ -103,14 +103,26 @@ describe('thread cards and coordinator posts', () => {
 
 describe('project tools in permission requests', () => {
 	it('tells the project tools from the agent\'s own and the user\'s other servers', () => {
-		const call = (title: string, options = mcpOptions) => ({ toolCall: { title }, options });
-		expect(isProjectToolCall(call('start_thread(title: Fix, brief: Fix it)'), coordinatorTools)).toBe(true);
-		expect(isProjectToolCall(call('post(text: Hi)'), coordinatorTools)).toBe(true);
+		// The ids gemini-cli gives MCP calls: the API's (`<name>__call_<n>`) or its own (`<name>-<time>-<n>`).
+		const call = (title: string, toolCallId = `mcp_geminicode-project_${title.split('(')[0]}__call_17`, options = mcpOptions) => ({ toolCall: { toolCallId, title }, options });
+		const project = 'geminicode-project';
+		expect(isProjectToolCall(call('start_thread(title: Fix, brief: Fix it)'), coordinatorTools, project)).toBe(true);
+		expect(isProjectToolCall(call('post(text: Hi)', 'mcp_geminicode-project_post-1761400000000-3'), coordinatorTools, project)).toBe(true);
 		// A built-in tool offers no "all server tools".
-		expect(isProjectToolCall(call('post(text: Hi)', mcpOptions.filter(o => o.optionId !== 'proceed_always_server')), coordinatorTools)).toBe(false);
-		expect(isProjectToolCall(call('poster(text: Hi)'), coordinatorTools)).toBe(false);
-		expect(isProjectToolCall(call('report(kind: result, text: Done)'), threadTools)).toBe(true);
-		expect(isProjectToolCall(call('report(kind: result, text: Done)'), coordinatorTools)).toBe(false);
+		expect(isProjectToolCall(call('post(text: Hi)', undefined, mcpOptions.filter(o => o.optionId !== 'proceed_always_server')), coordinatorTools, project)).toBe(false);
+		expect(isProjectToolCall(call('poster(text: Hi)'), coordinatorTools, project)).toBe(false);
+		expect(isProjectToolCall(call('report(kind: result, text: Done)'), threadTools, project)).toBe(true);
+		expect(isProjectToolCall(call('report(kind: result, text: Done)'), coordinatorTools, project)).toBe(false);
+		// A user's server with a tool of the same name, or an id that doesn't say whose the tool is.
+		expect(isProjectToolCall(call('report(kind: result, text: Done)', 'mcp_acme_report__call_4'), threadTools, project)).toBe(false);
+		expect(isProjectToolCall(call('post(text: Hi)', 'post-1761400000000-3'), coordinatorTools, project)).toBe(false);
+		expect([
+			toolCallOwner(call('post(text: Hi)'), coordinatorTools, project),
+			toolCallOwner(call('post(text: Hi)', 'mcp_slack_post__call_2'), coordinatorTools, project),
+			toolCallOwner(call('post(text: Hi)', 'call_2'), coordinatorTools, project),
+			toolCallOwner(call('ls -la', 'run_shell_command__call_3'), coordinatorTools, project),
+		]).toEqual(['ours', 'other', 'unknown', 'other']);
+		expect(mcpToolOf('mcp_geminicode-tools_jira_get_issue__call_124')).toEqual({ server: 'geminicode-tools', tool: 'jira_get_issue' });
 		expect(isProjectToolTitle('message_thread(thread: t1, text: x)', coordinatorTools)).toBe(true);
 		expect(isProjectToolTitle('Edit cli.js', coordinatorTools)).toBe(false);
 	});
@@ -153,7 +165,7 @@ describe('the coordinator', () => {
 });
 
 describe('the project side panel', () => {
-	it('counts threads by state, with merged ones apart and undone ones left out', () => {
+	it('counts threads by state, with queued and merged ones apart and undone ones left out', () => {
 		const threads = [
 			{ id: 'a', state: 'starting' as const },
 			{ id: 'b', state: 'working' as const },
@@ -163,8 +175,9 @@ describe('the project side panel', () => {
 			{ id: 'f', state: 'error' as const },
 			{ id: 'g', state: 'done' as const },
 			{ id: 'h', state: 'done' as const },
+			{ id: 'i', state: 'queued' as const },
 		];
-		expect(threadCounts(threads, new Set(['g']), new Set(['h']))).toEqual({ working: 2, waiting: 1, planned: 1, done: 2, merged: 1 });
-		expect(threadCounts([], new Set(), new Set())).toEqual({ working: 0, waiting: 0, planned: 0, done: 0, merged: 0 });
+		expect(threadCounts(threads, new Set(['g']), new Set(['h']))).toEqual({ queued: 1, working: 2, waiting: 1, planned: 1, done: 2, merged: 1 });
+		expect(threadCounts([], new Set(), new Set())).toEqual({ queued: 0, working: 0, waiting: 0, planned: 0, done: 0, merged: 0 });
 	});
 });

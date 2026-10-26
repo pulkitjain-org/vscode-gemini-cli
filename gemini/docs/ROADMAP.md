@@ -49,7 +49,9 @@ The app reads `geminiDefaultProjectId` from `product.json`, but no build sets it
 
 ### Repository settings
 
-- Branch protection on `main` that requires Gemini CI, including its three `Gemini extension` jobs.
+- A ruleset on `main` that accepts pull requests only, requires Gemini CI's **Policy**, **Checks**, **Real CLI (bundled)** and **Compile & hygiene** jobs, and allows no bypass outside pull requests ([README](../README.md#ci)). Today it requires one approval and no checks, and the owner can bypass it.
+- The owner's GitHub commit email set to the address in AGENTS.md, with **Keep my email addresses private** off for this repository's commits, so commits made on GitHub pass the Policy job.
+- Deleting the old `claude/*` branches once their work is merged; new branches start with `task/`, `feature/` or `bugfix/`.
 - The `GEMINI_UPSTREAM_TOKEN` secret. Without it the upstream job cannot push an upstream move ([README](../README.md#upstream-releases)).
 - The `SNYK_TOKEN` secret, which turns the Snyk job into a gate.
 
@@ -99,7 +101,7 @@ The update notice links to the download page. Upstream's updater needs a server 
 
 ### Compat CI
 
-CI runs the real-CLI tests against the `latest` and `preview` CLI. Add `latest-1` and `nightly`, run them on a schedule, and diff the capabilities the CLI reports. A scheduled run on a machine with a seat should also make a signed-in smoke test of models and modes, which hosted CI cannot do.
+CI runs the real-CLI tests against the bundled, `latest` and `preview` CLI. Add `latest-1` and `nightly`, run them on a schedule, and diff the capabilities the CLI reports. A scheduled run on a machine with a seat should also make a signed-in smoke test of models and modes, which hosted CI cannot do.
 
 ### Containment
 

@@ -58,6 +58,8 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 			// A folder outside this window's workspace is the agent's only root.
 			fileSystem: isInWorkspace(folder) ? undefined : createFileHandlers(new WorkspaceFileSystem(), () => ({ roots: [folder], isIgnored: isIgnoredByGitCached })),
 		});
+		// Redirects into the agent's folder may be approved for the session; others always ask.
+		this.permissions.roots = () => isInWorkspace(folder) ? getFileAccessPolicy().roots : [folder];
 		const fire = () => this.onDidChangeStatusEmitter.fire(this.status);
 		this.disposables.push(
 			this.onDidChangeStatusEmitter,
@@ -82,16 +84,16 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 		this.client.open();
 	}
 
-	ensureReady(): Promise<unknown> {
-		return this.service.ensureReady(this.client);
+	ensureReady(signal?: AbortSignal): Promise<unknown> {
+		return this.service.ensureReady(this.client, signal);
 	}
 
 	writeLog(message: string): void {
 		this.service.writeLog(message);
 	}
 
-	trustFolder(folder: string): Promise<boolean> {
-		return this.service.trustFolder(folder);
+	askToTrust(folder: string): Promise<boolean> {
+		return this.service.trust.ask(folder, { explicit: true });
 	}
 
 	async cancel(): Promise<void> {

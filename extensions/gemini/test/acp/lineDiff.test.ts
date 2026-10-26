@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { acceptHunk, diffLines, hunkLines, minimalEdit, revertHunk, splitLines } from '../../src/acp/lineDiff';
+import { acceptHunk, diffLines, hunkLines, minimalEdit, rebaseOriginal, revertHunk, splitLines } from '../../src/acp/lineDiff';
 
 const lines = (text: string) => splitLines(text);
 
@@ -122,5 +122,35 @@ describe('hunkLines', () => {
 		const { lines, hidden } = hunkLines(original, modified, hunk, 2, 2);
 		expect(lines.map(l => l.text)).toEqual(['1', '2']);
 		expect(hidden).toBe(2);
+	});
+});
+
+describe('rebaseOriginal', () => {
+	it('puts edits made after the agent into the original, outside the agent\'s lines', () => {
+		expect(rebaseOriginal('a\nb\nc', 'a\nb\nc', 'a\nb\nc')).toEqual({ base: 'a\nb\nc', foreign: false });
+		// The agent changed b; the user then changed d and added a line at the end.
+		expect(rebaseOriginal('a\nb\nc\nd', 'a\nB\nc\nd', 'a\nB\nc\nD\ne')).toEqual({ base: 'a\nb\nc\nD\ne', foreign: true });
+		// An edit inside the agent's lines stays the agent's.
+		expect(rebaseOriginal('a\nb\nc', 'a\nB\nc', 'a\nX\nc')).toEqual({ base: 'a\nb\nc', foreign: true });
+	});
+
+	it('keeps lines the agent removed in place around later edits', () => {
+		// The agent removed b and c; the user added a line where they were, and one after d.
+		expect(rebaseOriginal('a\nb\nc\nd', 'a\nd', 'a\nd\nmine')).toEqual({ base: 'a\nb\nc\nd\nmine', foreign: true });
+		expect(rebaseOriginal('a\nb\nc\nd', 'a\nd', 'mine\na\nd')).toEqual({ base: 'mine\na\nb\nc\nd', foreign: true });
+	});
+
+	it('leaves only the agent\'s changes to diff, on random edits', () => {
+		let seed = 7;
+		const random = (n: number) => (seed = (seed * 16807) % 2147483647) % n;
+		for (let round = 0; round < 200; round++) {
+			const original = Array.from({ length: 12 }, (_, i) => `line ${i}`);
+			// The agent changes lines in the first half, the user lines in the second.
+			const agent = original.map((line, i) => i < 6 && random(3) === 0 ? `agent ${i}` : line);
+			const current = agent.map((line, i) => i >= 7 && random(3) === 0 ? `user ${i}` : line);
+			const { base } = rebaseOriginal(original.join('\n'), agent.join('\n'), current.join('\n'));
+			const expected = original.map((line, i) => i >= 7 ? current[i] : line);
+			expect(base).toBe(expected.join('\n'));
+		}
 	});
 });

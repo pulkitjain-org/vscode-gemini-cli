@@ -6,10 +6,13 @@
 // MCP servers that fail to start. Over ACP, gemini-cli 0.62 tells the client
 // nothing when an MCP server fails; it only writes "[MCP error] ..." to its
 // debug log. GeminiCode points that log (GEMINI_DEBUG_LOG_FILE) at a file of
-// its own and reads the MCP lines from it.
+// its own and reads the MCP lines from it: one file per window's extension
+// host process (`debugLogName`), so a window starting its agent never empties
+// another window's log. Logs of processes that have ended are removed.
 
 import { promises as fs, watch, FSWatcher } from 'node:fs';
 import * as path from 'node:path';
+import { debugLogEntryStart as entryStart, debugLogMcpEntry as mcpEntry } from './cli/formats';
 import { Emitter } from './events';
 
 export interface McpProblem {
@@ -23,10 +26,6 @@ export interface McpProblem {
 }
 
 const unreachable = /^fetch failed$|ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|ETIMEDOUT/;
-
-/** An entry's first line: "[2026-10-04T10:36:52.038Z] [LOG] ...". Lines after it, such as a stack trace, belong to it. */
-const entryStart = /^\[\d{4}-\d\d-\d\dT[^\]]*\] \[[A-Z]+\] /;
-const mcpEntry = /^\[MCP (error|warning)\] (.*)$/;
 
 /** The MCP problems in complete lines of the CLI's debug log. */
 export function parseMcpProblems(lines: readonly string[]): McpProblem[] {
@@ -51,6 +50,39 @@ export function parseMcpProblems(lines: readonly string[]): McpProblem[] {
 /** Past this, the log is emptied; the CLI appends, so it carries on at the start. */
 const maxLogBytes = 1024 * 1024;
 
+/** The debug log's name for process `pid`. */
+export function debugLogName(pid: number = process.pid): string {
+	return `cli-debug-${pid}.log`;
+}
+
+/** The process a debug log belongs to, from its name; undefined for any other file. */
+export function debugLogPid(name: string): number | undefined {
+	const pid = /^cli-debug-(?<pid>\d+)\.log$/.exec(name)?.groups?.pid;
+	return pid ? Number(pid) : undefined;
+}
+
+/** Whether process `pid` is still running. */
+export function isRunning(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (err) {
+		// EPERM: it runs, as another user.
+		return (err as NodeJS.ErrnoException).code === 'EPERM';
+	}
+}
+
+/** Removes the debug logs in `dir` of processes that have ended; returns the files removed. */
+export async function removeEndedDebugLogs(dir: string, running: (pid: number) => boolean = isRunning): Promise<string[]> {
+	const names = await fs.readdir(dir).catch(() => [] as string[]);
+	const ended = names.flatMap(name => {
+		const pid = debugLogPid(name);
+		return pid !== undefined && pid !== process.pid && !running(pid) ? [path.join(dir, name)] : [];
+	});
+	await Promise.all(ended.map(file => fs.rm(file, { force: true })));
+	return ended;
+}
+
 /**
  * Follows the debug log of one agent process and reports each MCP problem
  * once. `reset` empties the log for a new process.
@@ -59,6 +91,9 @@ export class McpDiagnostics {
 
 	private readonly onDidReportEmitter = new Emitter<McpProblem>();
 	readonly onDidReport = this.onDidReportEmitter.event;
+	private readonly onDidReadLinesEmitter = new Emitter<readonly string[]>();
+	/** The complete lines each read found, for other readers of the log, such as the CLI's retries. */
+	readonly onDidReadLines = this.onDidReadLinesEmitter.event;
 
 	private watcher: FSWatcher | undefined;
 	private offset = 0;
@@ -81,6 +116,7 @@ export class McpDiagnostics {
 		this.reported.clear();
 		try {
 			await fs.mkdir(path.dirname(this.file), { recursive: true });
+			void removeEndedDebugLogs(path.dirname(this.file));
 			await fs.writeFile(this.file, '');
 			this.watcher = watch(this.file, () => this.schedule());
 			this.watcher.on('error', () => this.stopWatching());
@@ -93,6 +129,7 @@ export class McpDiagnostics {
 	dispose(): void {
 		this.stopWatching();
 		this.onDidReportEmitter.dispose();
+		this.onDidReadLinesEmitter.dispose();
 	}
 
 	/** Reads what was added since the last read, a moment after the file changes, so a burst of writes is read once. */
@@ -123,6 +160,7 @@ export class McpDiagnostics {
 					this.offset = size;
 					const lines = (this.partial + buffer.toString('utf8')).split('\n');
 					this.partial = lines.pop() ?? '';
+					this.onDidReadLinesEmitter.fire(lines);
 					for (const problem of parseMcpProblems(lines)) {
 						const key = `${problem.server ?? ''}\n${problem.message}`;
 						if (!this.reported.has(key)) {

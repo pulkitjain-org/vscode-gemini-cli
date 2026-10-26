@@ -15,6 +15,8 @@ export interface StdioServerSpec {
 	readonly command: string;
 	readonly args: readonly string[];
 	readonly env: NodeJS.ProcessEnv;
+	/** Written to the server's input before the first message, such as the secrets a container reads as it starts (teamContainers.ts). */
+	readonly stdin?: string;
 }
 
 /** A tool call's answer, as MCP gives it. */
@@ -62,6 +64,9 @@ export class McpStdioClient {
 	static async start(spec: StdioServerSpec, timeoutMs: number): Promise<McpStdioClient> {
 		const child = spawn(spec.command, [...spec.args], { env: spec.env, stdio: 'pipe', windowsHide: true });
 		const client = new McpStdioClient(child);
+		if (spec.stdin) {
+			child.stdin.write(spec.stdin);
+		}
 		try {
 			await client.request('initialize', { protocolVersion, capabilities: {}, clientInfo: { name: 'geminicode-tools', version: '1' } }, timeoutMs);
 			client.notify('notifications/initialized');

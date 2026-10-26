@@ -3,9 +3,13 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { promises as fs } from 'node:fs';
 import type * as acp from '@agentclientprotocol/sdk';
 import type { AgentConnection } from './agentConnection';
-import { AgentError, AgentErrorInfo, classifyAgentError } from './errors';
+import { AgentError, AgentErrorInfo, classifyAgentError, CliRetry, errorMessage, isConnectionClosed } from './errors';
+import { FileAccessDeniedError } from './fileAccess';
+import { isAllowed, protectedWriteRequest } from './permissions';
+import { isProtectedSetting } from './sessionApprovals';
 import { Emitter } from './events';
 import { AgentRuntime, AgentRuntimeState, FileSystemHandlers } from './agentRuntime';
 import { readCliSession } from './cliSessions';
@@ -49,6 +53,48 @@ export interface SavedSession {
 
 /** After this long without a replayed update, a replay whose length is not known is taken as over. */
 const replayQuietMs = 250;
+/** The same for a replay whose length is known, where it only covers a count that is off. */
+const countedReplayQuietMs = 3_000;
+/** How long a turn that was asked to stop may take to end before it is ended here (see `cancel`). */
+const defaultCancelGraceMs = 10_000;
+/** How long a turn may go without any update from the agent before it counts as stalled (see `stall`). */
+const defaultStallAfterMs = 45_000;
+/**
+ * Waits before opening a session again after it failed while the agent
+ * stayed ready (see `retryOpen`): the first retry is at once, later ones back off.
+ */
+const defaultRetryDelaysMs: readonly number[] = [0, 2_000, 5_000, 15_000];
+
+/** A turn that has had no update from the agent for a while. */
+export interface TurnStall {
+	/** When the last update came (ms since the epoch), or the turn started. */
+	readonly since: number;
+	/** The CLI's latest retry of an API call since then, from its debug log, when it logged one. */
+	readonly retry?: CliRetry;
+}
+
+/** Thrown by `whenReady` when its signal aborts. */
+export class WaitAbortedError extends Error {
+	constructor() {
+		super('Stopped while waiting for the agent.');
+		this.name = 'AbortError';
+	}
+}
+
+type ReadyState = Extract<AgentClientState, { kind: 'ready' }>;
+
+/** A reopened session's replay of its history (see `AgentClient.beginReplay`). */
+interface Replay {
+	received: number;
+	remaining?: number;
+	counting: boolean;
+	quiet?: ReturnType<typeof setTimeout>;
+	readonly done: Promise<void>;
+	readonly end: () => void;
+}
+
+/** How `openSession` went: opened, or not, with why when it failed (unset when a newer open or a restart took over). */
+type OpenOutcome = { readonly opened: true } | { readonly opened: false; readonly error?: AgentErrorInfo };
 
 /**
  * gemini-cli 0.62 and 0.63 tell the client about a mode change they make
@@ -109,6 +155,12 @@ export interface AgentClientOptions {
 	readonly onDidOpenSession?: (mcpServers: readonly acp.McpServer[]) => void;
 	/** Awaited before each session opens, such as for a server in `mcpServers` to listen; `mcpServers` is asked after it. */
 	readonly beforeOpen?: () => Promise<void>;
+	/** Overrides how long a stopped turn may take to end (default 10 s), such as in tests. */
+	readonly cancelGraceMs?: number;
+	/** Overrides when a turn without updates counts as stalled (default 45 s), such as in tests. */
+	readonly stallAfterMs?: number;
+	/** Overrides the waits before opening a failed session again (see `retryOpen`), such as in tests. */
+	readonly retryDelaysMs?: readonly number[];
 }
 
 /**
@@ -152,6 +204,10 @@ export class AgentClient {
 	/** The agent listed a new set of slash commands for the current session. */
 	readonly onDidChangeCommands = this.onDidChangeCommandsEmitter.event;
 
+	private readonly onDidChangeStallEmitter = new Emitter<TurnStall | undefined>();
+	/** A running turn stalled, its stall changed (a retry was logged), or it ended (undefined): see `stall`. */
+	readonly onDidChangeStall = this.onDidChangeStallEmitter.event;
+
 	private _commands: readonly SlashCommand[] = [];
 	private _state: AgentClientState = { kind: 'idle' };
 	private _settings: SessionSettings = {};
@@ -174,13 +230,36 @@ export class AgentClient {
 	private readonly runtimeListener: { dispose(): void };
 	/** Set until `open()` with `openLater`: the runtime may be ready, but no session is opened yet. */
 	private held: boolean;
-	/** While a reopened session replays its history: updates still to come (unknown when unset), and the end that prompts wait for. */
-	private replay: { remaining?: number; quiet?: ReturnType<typeof setTimeout>; readonly done: Promise<void>; readonly end: () => void } | undefined;
+	/**
+	 * While a reopened session replays its history: updates received, updates
+	 * still to come (unknown when unset, and while `counting`), and the end
+	 * that prompts wait for.
+	 */
+	private replay: Replay | undefined;
+	private disposed = false;
+	/** Called when the client is disposed, so waits on it end. */
+	private readonly onDispose = new Set<() => void>();
+	/** Ends each running turn here, without the agent's answer (see `cancel`). */
+	private readonly endTurnLocally = new Set<() => void>();
+	private cancelTimer: ReturnType<typeof setTimeout> | undefined;
+	/** Sessions that failed to open in a row while the agent stayed ready, and when the last one failed. */
+	private failures = 0;
+	private failedAt = 0;
+	private retrying: Promise<void> | undefined;
+	/** For stall detection: when the running turn last heard from the agent, and what may keep it quiet. */
+	private lastUpdateAt = 0;
+	private readonly openToolCalls = new Set<string>();
+	private waitingPermissions = 0;
+	private lastRetry: CliRetry | undefined;
+	private stallTimer: ReturnType<typeof setTimeout> | undefined;
+	private _stall: TurnStall | undefined;
+	private readonly retryListener: { dispose(): void };
 
 	constructor(private readonly runtime: AgentRuntime, private readonly options: AgentClientOptions) {
 		this.resumeSessionId = options.resumeSessionId;
 		this.held = !!options.openLater;
 		this.runtimeListener = runtime.onDidChangeState(state => this.onRuntimeState(state));
+		this.retryListener = runtime.onDidRetry(retry => this.onRetry(retry));
 		this.onRuntimeState(runtime.state);
 	}
 
@@ -229,31 +308,136 @@ export class AgentClient {
 		}
 	}
 
-	/** Starts a fresh session on the running agent; the old conversation is gone for the agent too. */
+	/**
+	 * Starts a fresh session on the running agent; the old conversation is
+	 * gone for the agent too. Rejects with an `AgentError` when no session
+	 * opened; the old one is closed only once the new one is open, and is
+	 * never reopened after a restart.
+	 */
 	async newSession(): Promise<void> {
 		const state = this._state;
 		if (state.kind !== 'ready' || this.runtime.state.kind !== 'ready') {
 			throw new Error('The agent is not ready.');
 		}
 		const old = this.connection;
-		await this.openSession(false);
+		// Whatever happens next, the old session is not the one to go back to.
+		this.resumeSessionId = undefined;
+		const outcome = await this.openSession(false);
+		if (!outcome.opened) {
+			throw new AgentError(outcome.error ?? { kind: 'unknown', message: 'The agent could not start a new session.' });
+		}
 		if (old) {
-			closeSession(old, state.agent, state.sessionId);
+			this.closeSession(old, state.agent, state.sessionId);
 		}
 	}
 
 	/**
 	 * Replaces the current session with saved session `id`, such as one
 	 * started in the terminal. Resolves with whether the agent opened it; if
-	 * not, the chat carries on in a new session.
+	 * not, the chat carries on in a new session. Rejects with an `AgentError`
+	 * when no session opened at all.
 	 */
 	async loadSession(id: string): Promise<boolean> {
 		if (this._state.kind !== 'ready' || this.runtime.state.kind !== 'ready') {
 			throw new Error('The agent is not ready.');
 		}
 		this.resumeSessionId = id;
-		await this.openSession(true);
+		const outcome = await this.openSession(true);
+		if (!outcome.opened && outcome.error) {
+			throw new AgentError(outcome.error);
+		}
 		return this._state.kind === 'ready' && this._state.savedSessionId === id;
+	}
+
+	/**
+	 * Opens the session again after it failed to open while the agent process
+	 * stayed ready, such as after a passing network or MCP error: at once the
+	 * first time, then after a growing wait since the last failure. Resolves
+	 * once that open settles; undefined when there is nothing to retry.
+	 */
+	retryOpen(): Promise<void> | undefined {
+		if (this._state.kind !== 'error' || this.runtime.state.kind !== 'ready' || this.held || this.disposed) {
+			return undefined;
+		}
+		return this.retrying ??= (async () => {
+			try {
+				const delays = this.options.retryDelaysMs ?? defaultRetryDelaysMs;
+				const wait = delays[Math.min(Math.max(this.failures - 1, 0), delays.length - 1)] - (Date.now() - this.failedAt);
+				if (wait > 0) {
+					await new Promise<void>(resolve => {
+						const done = () => {
+							clearTimeout(timer);
+							this.onDispose.delete(done);
+							resolve();
+						};
+						const timer = setTimeout(done, wait);
+						this.onDispose.add(done);
+					});
+				}
+				if (this._state.kind === 'error' && this.runtime.state.kind === 'ready' && !this.disposed) {
+					this.runtime.debug(`Opening the session in ${this.options.cwd} again after it failed ${this.failures} time(s)`);
+					await this.openSession(true);
+				}
+			} finally {
+				this.retrying = undefined;
+			}
+		})();
+	}
+
+	/**
+	 * Resolves with the ready state once a session is open; one made with
+	 * `openLater` waits for `open()`. A session that failed to open while the
+	 * agent stayed ready is opened once more first (`retryOpen`). Rejects with
+	 * an `AgentError` when it fails or the agent stops, with a
+	 * `WaitAbortedError` when `signal` aborts, and when the client is disposed.
+	 */
+	async whenReady(signal?: AbortSignal): Promise<ReadyState> {
+		let retried = false;
+		for (;;) {
+			const state = this._state;
+			if (signal?.aborted) {
+				throw new WaitAbortedError();
+			}
+			if (this.disposed) {
+				throw new AgentError({ kind: 'unknown', message: 'The chat closed.' });
+			}
+			if (state.kind === 'ready') {
+				return state;
+			}
+			if (state.kind === 'idle') {
+				throw new AgentError({ kind: 'unknown', message: 'The agent is not running.' });
+			}
+			if (state.kind === 'error') {
+				const retry = retried ? undefined : this.retryOpen();
+				if (!retry) {
+					throw new AgentError(state.error);
+				}
+				retried = true;
+				await this.untilChange(retry, signal);
+				continue;
+			}
+			await this.untilChange(undefined, signal);
+		}
+	}
+
+	/** Resolves on the next state change, when `also` settles, or when the client is disposed; rejects when `signal` aborts. */
+	private untilChange(also: Promise<void> | undefined, signal: AbortSignal | undefined): Promise<void> {
+		return new Promise<void>((resolve, reject) => {
+			const finish = () => {
+				listener.dispose();
+				this.onDispose.delete(finish);
+				signal?.removeEventListener('abort', abort);
+				resolve();
+			};
+			const abort = () => {
+				finish();
+				reject(new WaitAbortedError());
+			};
+			const listener = this.onDidChangeStateEmitter.event(finish);
+			this.onDispose.add(finish);
+			signal?.addEventListener('abort', abort);
+			void also?.then(finish, finish);
+		});
 	}
 
 	/** Makes the next session a new one instead of reopening the last, for a chat cleared while the agent is not running. */
@@ -315,36 +499,166 @@ export class AgentClient {
 			throw new Error('The agent is not ready.');
 		}
 		const connection = this.connection;
-		this.turns++;
+		if (this.turns++ === 0) {
+			this.beginStallWatch();
+		}
+		let endLocally!: () => void;
+		const endedHere = new Promise<undefined>(resolve => endLocally = () => resolve(undefined));
+		this.endTurnLocally.add(endLocally);
 		try {
-			const response = await this.runtime.trackTurn(connection.prompt(state.sessionId, typeof content === 'string' ? [{ type: 'text', text: content }] : content));
+			const response = await this.runtime.trackTurn(Promise.race([connection.prompt(state.sessionId, typeof content === 'string' ? [{ type: 'text', text: content }] : content), endedHere]));
+			if (!response) {
+				this.runtime.debug(`The turn in ${state.sessionId} did not stop when asked; ended it without the agent's answer`);
+				return { stopReason: 'cancelled' };
+			}
 			const usage = readTurnUsage(response._meta);
 			return { stopReason: response.stopReason, ...(usage ? { usage } : {}) };
 		} catch (err) {
+			if (isConnectionClosed(err) || connection.isClosed) {
+				// The agent restarted, or its connection broke, under the turn.
+				throw new AgentError({ kind: 'agent-restarted', message: errorMessage(err) });
+			}
 			throw new AgentError(classifyAgentError(err));
 		} finally {
+			this.endTurnLocally.delete(endLocally);
+			if (!this.endTurnLocally.size) {
+				clearTimeout(this.cancelTimer);
+				this.cancelTimer = undefined;
+			}
 			const deferred = this.deferredMode;
-			if (--this.turns === 0 && deferred && this.connection === connection) {
-				this.deferredMode = undefined;
-				void connection.setMode(state.sessionId, deferred).catch(() => undefined);
+			if (--this.turns === 0) {
+				this.endStallWatch();
+				if (deferred && this.connection === connection) {
+					this.deferredMode = undefined;
+					void connection.setMode(state.sessionId, deferred).catch(err => this.runtime.debug(`Could not switch ${state.sessionId} to ${deferred} after the turn: ${errorMessage(err)}`));
+				}
 			}
 		}
 	}
 
-	/** Asks the agent to stop the current turn; the pending `prompt` resolves with `cancelled`. */
+	/**
+	 * Asks the agent to stop the current turn; the pending `prompt` resolves
+	 * with `cancelled`. gemini-cli stops at its next check, which a hung MCP
+	 * server or tool can hold up, so a turn still running after a grace period
+	 * is ended here (the CLI drops it when the next prompt comes). Without a
+	 * session to send the cancel to, it ends at once.
+	 */
 	async cancel(): Promise<void> {
-		if (this._state.kind === 'ready' && this.connection) {
-			await this.connection.cancel(this._state.sessionId);
+		const state = this._state;
+		const connection = this.connection;
+		if (state.kind === 'ready' && connection) {
+			try {
+				await connection.cancel(state.sessionId);
+			} catch (err) {
+				this.runtime.debug(`Could not ask the agent to stop the turn in ${state.sessionId}: ${errorMessage(err)}`);
+			}
+		}
+		if (!this.endTurnLocally.size) {
+			return;
+		}
+		if (state.kind !== 'ready' || !connection || connection.isClosed) {
+			this.endRunningTurns();
+		} else {
+			this.cancelTimer ??= setTimeout(() => this.endRunningTurns(), this.options.cancelGraceMs ?? defaultCancelGraceMs);
+		}
+	}
+
+	private endRunningTurns(): void {
+		clearTimeout(this.cancelTimer);
+		this.cancelTimer = undefined;
+		for (const end of [...this.endTurnLocally]) {
+			end();
+		}
+	}
+
+	/** The running turn's stall, while it has had no update for a while; undefined otherwise. */
+	get stall(): TurnStall | undefined {
+		return this._stall;
+	}
+
+	private beginStallWatch(): void {
+		this.lastUpdateAt = Date.now();
+		this.lastRetry = undefined;
+		this.openToolCalls.clear();
+		this.armStallTimer(this.options.stallAfterMs ?? defaultStallAfterMs);
+	}
+
+	private endStallWatch(): void {
+		clearTimeout(this.stallTimer);
+		this.stallTimer = undefined;
+		this.openToolCalls.clear();
+		this.lastRetry = undefined;
+		this.setStall(undefined);
+	}
+
+	/** One timer per turn, moved on only when it fires: an update costs no timer work. */
+	private armStallTimer(ms: number): void {
+		clearTimeout(this.stallTimer);
+		this.stallTimer = setTimeout(() => this.checkStall(), ms);
+	}
+
+	private checkStall(): void {
+		this.stallTimer = undefined;
+		if (this.turns === 0) {
+			return;
+		}
+		const after = this.options.stallAfterMs ?? defaultStallAfterMs;
+		const quiet = Date.now() - this.lastUpdateAt;
+		if (this.openToolCalls.size || this.waitingPermissions) {
+			// A running tool or a question for the user: the agent is not stuck.
+			this.armStallTimer(after);
+		} else if (quiet >= after) {
+			this.setStall({ since: this.lastUpdateAt, ...(this.lastRetry ? { retry: this.lastRetry } : {}) });
+		} else {
+			this.armStallTimer(after - quiet);
+		}
+	}
+
+	/** Something came from the agent for the running turn: it is not stalled. */
+	private noteActivity(): void {
+		if (this.turns === 0) {
+			return;
+		}
+		this.lastUpdateAt = Date.now();
+		this.lastRetry = undefined;
+		if (this._stall) {
+			this.setStall(undefined);
+			this.armStallTimer(this.options.stallAfterMs ?? defaultStallAfterMs);
+		}
+	}
+
+	private onRetry(retry: CliRetry): void {
+		if (this.turns === 0) {
+			return;
+		}
+		this.lastRetry = retry;
+		if (this._stall) {
+			this.setStall({ ...this._stall, retry });
+		}
+	}
+
+	private setStall(stall: TurnStall | undefined): void {
+		if (stall || this._stall) {
+			this._stall = stall;
+			this.onDidChangeStallEmitter.fire(stall);
 		}
 	}
 
 	dispose(): void {
+		this.disposed = true;
 		this.runtimeListener.dispose();
+		this.retryListener.dispose();
 		// The agent keeps an open session in memory until it exits; the chat reopens it from the CLI's file when it comes back.
 		const state = this._state;
 		if (state.kind === 'ready' && this.connection) {
-			closeSession(this.connection, state.agent, state.sessionId);
+			this.closeSession(this.connection, state.agent, state.sessionId);
 		}
+		this.endRunningTurns();
+		this.endStallWatch();
+		for (const done of [...this.onDispose]) {
+			done();
+		}
+		this.onDispose.clear();
 		this.dropSession();
 		this.onDidChangeStateEmitter.dispose();
 		this.onDidReceiveEventEmitter.dispose();
@@ -354,6 +668,7 @@ export class AgentClient {
 		this.onDidAllowInYoloEmitter.dispose();
 		this.onDidChangeSettingsEmitter.dispose();
 		this.onDidChangeCommandsEmitter.dispose();
+		this.onDidChangeStallEmitter.dispose();
 	}
 
 	private onRuntimeState(state: AgentRuntimeState): void {
@@ -391,7 +706,7 @@ export class AgentClient {
 	}
 
 	/** Opens a session: with `resume`, the last one is reopened if the agent can, else a new one. */
-	private async openSession(resume: boolean): Promise<void> {
+	private async openSession(resume: boolean): Promise<OpenOutcome> {
 		this.dropSession();
 		const generation = ++this.generation;
 		this.setState({ kind: 'connecting' });
@@ -399,7 +714,7 @@ export class AgentClient {
 			if (this.options.beforeOpen) {
 				await this.options.beforeOpen();
 				if (generation !== this.generation) {
-					return;
+					return { opened: false };
 				}
 			}
 			const { connection, agent, session, savedSessionId, replayUpdates } = await this.loadOrCreate(resume ? this.resumeSessionId : undefined);
@@ -407,14 +722,14 @@ export class AgentClient {
 				// A newer open took over while this one waited: nobody will use a new session it opened.
 				// A reopened one keeps its saved id, which the newer open may be reopening too.
 				if (replayUpdates === null) {
-					closeSession(connection, agent, session.sessionId);
+					this.closeSession(connection, agent, session.sessionId);
 				}
-				return;
+				return { opened: false };
 			}
 			this.connection = connection;
 			this.adapter = new SessionUpdateAdapter();
 			if (replayUpdates !== null) {
-				// Before registering, which hands over the updates that came first.
+				// Before registering, which hands over the updates that came first; the count follows once the session file is read.
 				this.beginReplay(replayUpdates);
 			}
 			this.registration = this.runtime.register(session.sessionId, {
@@ -422,6 +737,7 @@ export class AgentClient {
 				requestPermission: params => this.requestPermission(params),
 				fileSystem: this.options.fileSystem,
 				onDidWriteFile: filePath => this.options.onDidWriteFile?.(filePath),
+				beforeWrite: (filePath, content) => this.confirmProtectedWrite(session.sessionId, filePath, content),
 			});
 			this.resumeSessionId = savedSessionId;
 			// Model and mode together rather than one after the other: they are independent, and each is a round trip before the chat is ready.
@@ -432,31 +748,44 @@ export class AgentClient {
 			]);
 			const settings: SessionSettings = { ...opened, model: withModel.model, mode: withMode.mode };
 			if (generation !== this.generation) {
-				return;
+				return { opened: false };
 			}
 			this.setReady(agent, session, savedSessionId, settings);
+			return { opened: true };
 		} catch (err) {
 			// If the process died, the runtime reports why (and the sidecar may
 			// restart it); the closed-connection error says less. An error the
 			// agent explained, such as a sign-in one, shows at once.
 			const error = err instanceof AgentError ? err.info : classifyAgentError(err);
-			const explained = error.kind !== 'unknown' && error.kind !== 'agent-exited';
+			const explained = error.kind !== 'unknown' && error.kind !== 'agent-exited' && error.kind !== 'agent-restarted';
 			if (generation === this.generation && (explained || await this.runtimeStaysReady(1_000)) && generation === this.generation) {
+				this.failures++;
+				this.failedAt = Date.now();
 				this.setState({ kind: 'error', error });
+				return { opened: false, error };
 			}
+			this.runtime.debug(`Opening the session in ${this.options.cwd} failed as the agent went away: ${error.message}`);
+			return { opened: false };
 		}
 	}
 
-	/** `replayUpdates` is null for a new session, which replays nothing, and undefined for a reopened one whose replay length is unknown. */
-	private async loadOrCreate(resumeSessionId: string | undefined): Promise<Awaited<ReturnType<AgentRuntime['newSession']>> & { readonly savedSessionId: string; readonly replayUpdates: number | undefined | null }> {
+	/**
+	 * `replayUpdates` is null for a new session, which replays nothing, and
+	 * for a reopened one resolves with its replay length, undefined when not known.
+	 */
+	private async loadOrCreate(resumeSessionId: string | undefined): Promise<Awaited<ReturnType<AgentRuntime['newSession']>> & { readonly savedSessionId: string; readonly replayUpdates: Promise<number | undefined> | null }> {
 		if (resumeSessionId) {
 			try {
-				// The session file is read for its replay length while the agent loads the session by its id.
-				const finding = (this.options.findSavedSession ?? readCliSession)(this.options.cwd, resumeSessionId).catch(() => undefined);
+				// The session file is read for its replay length while the agent loads the session by its id;
+				// the session registers without waiting for it, so its replay is not held back.
+				const finding = (this.options.findSavedSession ?? readCliSession)(this.options.cwd, resumeSessionId).then(found => found?.replayUpdates, err => {
+					this.runtime.debug(`Could not read saved session ${resumeSessionId}: ${errorMessage(err)}`);
+					return undefined;
+				});
 				const servers = this.mcpServers();
 				const loaded = await this.runtime.loadSession(this.options.cwd, resumeSessionId, undefined, servers);
 				this._openedMcpServers = servers;
-				return { ...loaded, savedSessionId: resumeSessionId, replayUpdates: (await finding)?.replayUpdates };
+				return { ...loaded, savedSessionId: resumeSessionId, replayUpdates: finding };
 			} catch (err) {
 				// Not supported, or the agent no longer has it: start afresh, and say why.
 				this.onDidFailToReopenEmitter.fire({ sessionId: resumeSessionId, error: err instanceof AgentError ? err.info : classifyAgentError(err) });
@@ -497,6 +826,17 @@ export class AgentClient {
 			this.onReplayed(update);
 			return;
 		}
+		if (this.turns > 0) {
+			this.noteActivity();
+			if (update.sessionUpdate === 'tool_call' || update.sessionUpdate === 'tool_call_update') {
+				// A tool call without a status is pending; one that ended is no longer running.
+				if (update.status === 'completed' || update.status === 'failed') {
+					this.openToolCalls.delete(update.toolCallId);
+				} else if (update.sessionUpdate === 'tool_call' || update.status) {
+					this.openToolCalls.add(update.toolCallId);
+				}
+			}
+		}
 		if (update.sessionUpdate === 'agent_message_chunk' && update.content.type === 'text' && modeUpdateText.test(update.content.text.trim())) {
 			const modes = update.content.text.trim().split('[MODE_UPDATE] ').filter(Boolean);
 			this.onModeUpdate(modes[modes.length - 1].trim());
@@ -532,7 +872,10 @@ export class AgentClient {
 			return;
 		}
 		if (this.chosenMode === 'yolo' && modeId === 'autoEdit' && state.kind === 'ready' && this.connection) {
-			void this.connection.setMode(state.sessionId, 'yolo').catch(() => this.setSettings({ ...this._settings, mode: { ...mode, currentId: modeId } }));
+			void this.connection.setMode(state.sessionId, 'yolo').catch(err => {
+				this.runtime.debug(`Could not put ${state.sessionId} back in YOLO: ${errorMessage(err)}`);
+				this.setSettings({ ...this._settings, mode: { ...mode, currentId: modeId } });
+			});
 			return;
 		}
 		const from = mode.currentId;
@@ -553,20 +896,63 @@ export class AgentClient {
 			this.onDidAllowInYoloEmitter.fire(params);
 			return Promise.resolve({ outcome: { outcome: 'selected', optionId: allow.optionId } });
 		}
-		return this.options.requestPermission(params);
+		return this.askUser(params);
 	}
 
-	/** Starts counting a reopened session's replay; `count` updates are coming, or an unknown number. */
-	private beginReplay(count: number | undefined): void {
+	/** Asks the host; while the user decides, the turn does not count as stalled. */
+	private async askUser(params: acp.RequestPermissionRequest): Promise<acp.RequestPermissionResponse> {
+		this.noteActivity();
+		this.waitingPermissions++;
+		try {
+			return await this.options.requestPermission(params);
+		} finally {
+			this.waitingPermissions--;
+			this.noteActivity();
+		}
+	}
+
+	/**
+	 * In Auto Edit the CLI applies edits without asking, and its policy engine is
+	 * not consulted for them (gemini-cli 0.64), so an edit to a setting that
+	 * decides what runs next (the worktree setup script, the CLI's project
+	 * settings, the folder's editor settings and tasks) asks here, as a card,
+	 * before the write. Other modes ask already (Default) or never (YOLO).
+	 */
+	private async confirmProtectedWrite(sessionId: string, filePath: string, content: string): Promise<void> {
+		if (this._settings.mode?.currentId !== 'autoEdit' || !isProtectedSetting(filePath)) {
+			return;
+		}
+		const oldText = await fs.readFile(filePath, 'utf8').catch(() => null);
+		const request = protectedWriteRequest(sessionId, filePath, oldText, content);
+		const response = await this.askUser(request);
+		if (!isAllowed(request, response)) {
+			throw new FileAccessDeniedError(filePath, 'the user did not allow the edit, since this file decides what runs next');
+		}
+	}
+
+	/**
+	 * Starts a reopened session's replay; `count` resolves with how many
+	 * updates it has, or undefined when that is not known. Until it does, the
+	 * replay does not end on its own.
+	 */
+	private beginReplay(count: Promise<number | undefined>): void {
 		this.endReplay();
 		let end!: () => void;
 		const done = new Promise<void>(resolve => end = resolve);
-		this.replay = { remaining: count, done, end };
-		if (count === 0) {
-			this.endReplay();
-		} else {
-			this.armReplayQuiet();
-		}
+		const replay: Replay = { received: 0, counting: true, done, end };
+		this.replay = replay;
+		void count.then(total => {
+			if (this.replay !== replay) {
+				return;
+			}
+			replay.counting = false;
+			replay.remaining = total === undefined ? undefined : total - replay.received;
+			if (replay.remaining !== undefined && replay.remaining <= 0) {
+				this.endReplay();
+			} else {
+				this.armReplayQuiet();
+			}
+		});
 	}
 
 	/** One replayed update: shown to whoever shows the replay (cleaned), never as part of a turn. */
@@ -581,22 +967,24 @@ export class AgentClient {
 		} else {
 			this.onDidReplayEventEmitter.fire(event);
 		}
+		replay.received++;
 		if (replay.remaining !== undefined && --replay.remaining <= 0) {
 			this.endReplay();
-		} else {
+		} else if (!replay.counting) {
 			this.armReplayQuiet();
 		}
 	}
 
 	/**
 	 * Ends the replay when no update came for a while. With a known count it
-	 * is a fallback for a count that is off; prompts wait for nothing longer.
+	 * is a fallback for a count that is off, so it waits longer: a long
+	 * history can pause between updates. Prompts wait for nothing longer.
 	 */
 	private armReplayQuiet(): void {
 		const replay = this.replay;
 		if (replay) {
 			clearTimeout(replay.quiet);
-			replay.quiet = setTimeout(() => this.replay === replay && this.endReplay(), replayQuietMs);
+			replay.quiet = setTimeout(() => this.replay === replay && this.endReplay(), replay.remaining === undefined ? replayQuietMs : countedReplayQuietMs);
 		}
 	}
 
@@ -606,6 +994,13 @@ export class AgentClient {
 		if (replay) {
 			clearTimeout(replay.quiet);
 			replay.end();
+		}
+	}
+
+	/** Frees a session the agent keeps in memory, when it can close sessions (gemini-cli 0.64 cannot); never throws. */
+	private closeSession(connection: AgentConnection, agent: acp.InitializeResponse, sessionId: string): void {
+		if (agent.agentCapabilities?.sessionCapabilities?.close) {
+			void connection.close(sessionId).catch(err => this.runtime.debug(`Could not close session ${sessionId}: ${errorMessage(err)}`));
 		}
 	}
 
@@ -628,8 +1023,9 @@ export class AgentClient {
 		try {
 			await connection.setModel(sessionId, preferred);
 			return { ...settings, model: { ...model, currentId: preferred } };
-		} catch {
+		} catch (err) {
 			// The session keeps the agent's default; the picker shows it.
+			this.runtime.debug(`Could not switch ${sessionId} to ${preferred}: ${errorMessage(err)}`);
 			return settings;
 		}
 	}
@@ -644,13 +1040,15 @@ export class AgentClient {
 		try {
 			await connection.setMode(sessionId, modeId);
 			return { ...settings, mode: { ...mode, currentId: modeId } };
-		} catch {
+		} catch (err) {
 			// The session still opens, in the mode the agent chose.
+			this.runtime.debug(`Could not switch ${sessionId} to ${modeId}: ${errorMessage(err)}`);
 			return settings;
 		}
 	}
 
 	private setReady(agent: acp.InitializeResponse, session: acp.NewSessionResponse, savedSessionId: string, settings: SessionSettings): void {
+		this.failures = 0;
 		this.setSettings(settings);
 		this.setState({ kind: 'ready', sessionId: session.sessionId, savedSessionId, agent, session });
 	}
@@ -701,12 +1099,6 @@ export class AgentClient {
 	}
 }
 
-/** Frees a session the agent keeps in memory, when it can close sessions (gemini-cli 0.64 can); never throws. */
-function closeSession(connection: AgentConnection, agent: acp.InitializeResponse, sessionId: string): void {
-	if (agent.agentCapabilities?.sessionCapabilities?.close) {
-		void connection.close(sessionId).catch(() => undefined);
-	}
-}
 
 /** `servers` without those over a transport the agent does not advertise (ACP `mcpCapabilities`); every agent takes stdio. */
 export function supportedMcpServers(agent: acp.InitializeResponse | undefined, servers: readonly acp.McpServer[]): acp.McpServer[] {

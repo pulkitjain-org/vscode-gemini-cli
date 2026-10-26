@@ -9,15 +9,16 @@
 
 import MarkdownIt from 'markdown-it';
 import { basename } from '../src/acp/attachments';
-import type { PromptAttachmentLabel, TranscriptItem } from '../src/acp/chatTranscript';
+import type { NoticeAction, OtherAgentChanges, PromptAttachmentLabel, TranscriptItem } from '../src/acp/chatTranscript';
 import type { ReactionRef } from '../src/acp/reactions';
-import type { ThreadAction, ViewSession } from '../src/host/chatProtocol';
-import { attachmentIcon, codeLanguage, format, formatDuration, formatTokens, formatSentAt, permissionDefaults, planIcon, replyBefore, subagentName, thoughtSeconds, toolKindIcon, type ItemOf } from './chatLogic';
+import type { ThreadAction, ViewSession, ViewStall } from '../src/host/chatProtocol';
+import { attachmentIcon, cardKey, codeLanguage, format, formatDuration, formatTokens, formatSentAt, permissionChoices, planIcon, replyBefore, subagentName, thoughtSeconds, toolKindIcon, waitingPermission, type ItemOf } from './chatLogic';
 import { highlightCode } from './codeHighlight';
 import { applyInlineStyles } from './inlineStyles';
 import { renderMath } from './math';
 import { mathPlugin } from './mathRule';
 import { enhanceMarkdown } from './markdownExtras';
+import { isSafeLink } from './linkPolicy';
 import { button, copyButton, el, icon, onIntent, setLabel, setTip } from './dom';
 import { canRun } from '../src/acp/runCommands';
 import { addRunButtons } from './runButtons';
@@ -27,6 +28,7 @@ import { toneOf } from './repoTones';
 import { thoughtPreview } from './streaming';
 import { thoughtSummary } from './workFold';
 import { agentBadge, reactionLines, replyReactions } from './reactionBar';
+import { planBuildButtons } from './planBuild';
 import { expanded, state, strings, subagentTimes, thoughtTimes, ui, vscode } from './view';
 
 const mac = /Mac/.test(navigator.platform);
@@ -34,9 +36,12 @@ const mac = /Mac/.test(navigator.platform);
 const markdown = new MarkdownIt({ html: false, linkify: true }).use(mathPlugin);
 // Only links with a scheme or www.; file names such as README.md are not web addresses.
 markdown.linkify.set({ fuzzyLink: false });
+// Only web and mail links: never another app's URL handler.
+markdown.validateLink = isSafeLink;
 // The user's own messages keep their line breaks, as typed.
 const userMarkdown = new MarkdownIt({ html: false, linkify: true, breaks: true });
 userMarkdown.linkify.set({ fuzzyLink: false });
+userMarkdown.validateLink = isSafeLink;
 
 /** Called when the user expands or collapses a tool call's output. */
 export type ToggleToolCall = (item: ItemOf<'toolCall'>) => void;
@@ -58,7 +63,7 @@ export function render(item: TranscriptItem, toggleToolCall: ToggleToolCall): HT
 		case 'other':
 			return renderNotice(format(strings.unknownUpdate, item.type), 'info');
 		case 'notice':
-			return renderNotice(item.text, item.severity, item.retry ? item.id : undefined);
+			return item.actions?.length ? renderActionNotice(item.text, item.severity, item.actions, item.id) : renderNotice(item.text, item.severity, item.retry ? item.id : undefined);
 		case 'cutOff':
 			return renderCutOff(item);
 		case 'compact':
@@ -96,7 +101,7 @@ function renderThreadCard(item: ItemOf<'thread'>): HTMLElement {
 	const state = project?.states[item.state] ?? item.state;
 	const repos = item.repos ?? [];
 	const mergedRepos = repos.filter(repo => repo.merged).length;
-	const partly = !item.merged && mergedRepos > 0 && project ? format(project.mergedCount, mergedRepos).replace('{1}', String(repos.length)) : undefined;
+	const partly = !item.merged && mergedRepos > 0 && project ? format(project.mergedCount, mergedRepos, repos.length) : undefined;
 	const line = item.removed ? project?.undone : item.merged ? project?.merged : partly ?? (item.detail ? `${state} \u00b7 ${item.detail}` : state);
 	// Under the title: the branch, then each repository it works in, then how long it has run.
 	const meta = el('div', 'thread-meta');
@@ -178,9 +183,7 @@ function renderTurnEnd(item: ItemOf<'turnEnd'>): HTMLElement {
 		node.append(retry);
 	}
 	if (item.buildPlan) {
-		const build = button('turn-action', strings.buildPlan, () => vscode.postMessage({ type: 'buildPlan', itemId: item.id }), 'play');
-		setLabel(build, strings.buildPlanTooltip);
-		node.append(build);
+		node.append(...planBuildButtons(item));
 	}
 	if (item.undo === 'available') {
 		const undo = button('turn-action undo-turn', strings.undoTurn, () => vscode.postMessage({ type: 'undoTurn', itemId: item.id }), 'discard');
@@ -251,7 +254,7 @@ function renderUserMessage(item: { readonly text: string; readonly attachments?:
 			if (!path) {
 				chip.append(icon(attachmentIcon(attachment.kind, attachment.label)), el('span', undefined, attachment.label));
 			}
-			chip.title = path ?? attachment.label;
+			setTip(chip, path ?? attachment.label);
 			chips.append(chip);
 		}
 		node.append(chips);
@@ -327,18 +330,48 @@ function thoughtLabel(item: { readonly id: string }, thinking: boolean): string 
 function renderThought(item: { readonly id: string; readonly text: string }): HTMLElement {
 	const details = el('details', 'thought');
 	const summary = el('summary');
-	const thinking = state.busy && state.items.at(-1)?.id === item.id;
-	summary.append(icon('chevron-right', 'chevron'), el('span', thinking ? 'shimmer' : undefined, thoughtLabel(item, thinking)));
-	// While it thinks, show what about, so a long think does not look idle; after, what it was about.
-	const preview = thinking ? thoughtPreview(item.text) : thoughtSummary(item.text);
-	if (preview) {
-		summary.append(el('span', 'thought-preview', preview));
-	}
-	const text = el('div', 'thought-text', item.text);
-	// Animate opening by the user only, not the re-renders while it streams.
+	summary.dataset.focusKey = `thought:${item.id}`;
+	summary.append(icon('chevron-right', 'chevron'), el('span'));
+	const text = el('div', 'thought-text');
+	// Animate opening by the user only, not the updates while it streams.
 	summary.addEventListener('click', () => text.classList.toggle('reveal', !details.open));
 	details.append(summary, text);
+	updateThought(details, item);
 	return details;
+}
+
+/**
+ * Brings a thought's element up to date in place: its label, its preview and
+ * its text, with streamed text added to the end. The element is kept, so a
+ * thought the user opened stays open, and text selected in it stays selected.
+ */
+export function updateThought(details: HTMLElement, item: { readonly id: string; readonly text: string }): void {
+	const summary = details.firstElementChild!;
+	const label = summary.children[1];
+	const thinking = state.busy && state.items.at(-1)?.id === item.id;
+	label.classList.toggle('shimmer', thinking);
+	const name = thoughtLabel(item, thinking);
+	if (label.textContent !== name) {
+		label.textContent = name;
+	}
+	// While it thinks, show what about, so a long think does not look idle; after, what it was about.
+	const preview = thinking ? thoughtPreview(item.text) : thoughtSummary(item.text);
+	const previewNode = summary.querySelector('.thought-preview');
+	if (!preview) {
+		previewNode?.remove();
+	} else if (!previewNode) {
+		summary.append(el('span', 'thought-preview', preview));
+	} else if (previewNode.textContent !== preview) {
+		previewNode.textContent = preview;
+	}
+	const text = details.lastElementChild!;
+	const shown = text.textContent ?? '';
+	const last = text.lastChild;
+	if (shown && item.text.startsWith(shown) && last instanceof Text) {
+		last.appendData(item.text.slice(shown.length));
+	} else if (shown !== item.text) {
+		text.textContent = item.text;
+	}
 }
 
 function statusIcon(value: ItemOf<'toolCall'>['status']): HTMLElement {
@@ -379,7 +412,7 @@ function renderToolCall(item: ItemOf<'toolCall'>, toggleToolCall: ToggleToolCall
 		label.append(el('span', 'tool-verb', format(strings.subagent, subagent)));
 		const status = subagentStatus(item);
 		row.append(icon('hubot', 'kind-icon'), label, ...status ? [el('span', 'subagent-status', status)] : [], statusIcon(item.status));
-		row.title = item.title;
+		setTip(row, item.title);
 		card.append(row);
 		appendToolBody(card, row, item, toggleToolCall);
 		return card;
@@ -398,7 +431,7 @@ function renderToolCall(item: ItemOf<'toolCall'>, toggleToolCall: ToggleToolCall
 	const kindIcon = team ? toolLogo(team.tool, 14) : icon(indexed ? 'search' : toolKindIcon(item.toolKind));
 	kindIcon.classList.add('kind-icon');
 	row.append(kindIcon, title);
-	row.title = item.title;
+	setTip(row, item.title);
 
 	for (const location of item.locations) {
 		// A file the title already names needs no chip of its own; the title opens it.
@@ -407,54 +440,145 @@ function renderToolCall(item: ItemOf<'toolCall'>, toggleToolCall: ToggleToolCall
 		if (named) {
 			title.classList.add('tool-link');
 			title.addEventListener('click', open);
-			title.title = location.path;
+			setTip(title, location.path);
 			continue;
 		}
 		const label = location.line ? `${basename(location.path)}:${location.line}` : basename(location.path);
 		const chip = button('chip', label, open);
-		chip.title = location.path;
+		setTip(chip, location.path);
 		row.append(chip);
 	}
 	for (const detail of item.details) {
 		if (detail.type === 'diff') {
 			const chip = button('chip diff-chip', '', () => vscode.postMessage({ type: 'openDiff', itemId: item.id, path: detail.path }));
 			chip.append(el('span', 'added', `+${detail.added}`), el('span', 'removed', `-${detail.removed}`));
-			chip.title = `${strings.openDiff}: ${detail.path}`;
+			setTip(chip, `${strings.openDiff}: ${detail.path}`);
 			row.append(chip);
 		}
 	}
 	row.append(statusIcon(item.status));
 	card.append(row);
+	// Applied without a card (Auto Edit): a line says another agent is changing the file too.
+	for (const other of item.others ?? []) {
+		const note = el('div', 'tool-shared');
+		note.append(icon('warning'), el('span', 'tool-shared-text', format(strings.permission.othersChanging, other.title)), showTheirChanges(other));
+		card.append(note);
+	}
 	appendToolBody(card, row, item, toggleToolCall);
 	return card;
 }
 
-/** The tool call's output, folded under its row until the row is clicked. */
-function appendToolBody(card: HTMLElement, row: HTMLElement, item: ItemOf<'toolCall'>, toggleToolCall: ToggleToolCall): void {
+/** Show Its Changes, for another agent with unreviewed changes in the same file. */
+function showTheirChanges(other: OtherAgentChanges): HTMLElement {
+	return button('link-button', strings.permission.showTheirChanges, () => vscode.postMessage({ type: 'showAgentChanges', agent: other.agent }));
+}
+
+/** Whether a tool call has output to show under its row. */
+function hasOutput(detail: ItemOf<'toolCall'>['details'][number]): boolean {
+	return detail.type === 'terminal' || (detail.type === 'text' && /\S/.test(detail.text));
+}
+
+/**
+ * Long outputs fetched whole with Show All, by item and part, so the card
+ * shows them whole when it is drawn again. Only the latest few are kept.
+ */
+const fullOutputs = new Map<string, string>();
+const maxFullOutputs = 8;
+
+function outputKey(itemId: string, part: number): string {
+	return `${itemId}\n${part}`;
+}
+
+/** The tool call's output, built only when it is first shown: a long chat's outputs mostly stay folded. */
+function toolBody(item: ItemOf<'toolCall'>): HTMLElement {
 	const body = el('div', 'tool-body');
-	for (const detail of item.details) {
-		if (detail.type === 'text' && detail.text.trim()) {
-			body.append(el('pre', 'tool-output', detail.text));
-		} else if (detail.type === 'terminal') {
+	item.details.forEach((detail, part) => {
+		if (detail.type === 'terminal') {
 			body.append(el('div', 'tool-note', strings.terminal));
+		} else if (detail.type === 'text' && hasOutput(detail)) {
+			const full = detail.hiddenLines ? fullOutputs.get(outputKey(item.id, part)) : undefined;
+			body.append(full === undefined && detail.hiddenLines ? trimmedOutput(item.id, part, detail.text, detail.tail ?? '', detail.hiddenLines) : el('pre', 'tool-output', full ?? detail.text));
+		}
+	});
+	return body;
+}
+
+/** A long output's first and last lines, with how many are hidden between them and Show All, which asks the host for the rest. */
+function trimmedOutput(itemId: string, part: number, head: string, tail: string, hidden: number): HTMLElement {
+	const node = el('div', 'tool-output-trimmed');
+	node.dataset.outputPart = outputKey(itemId, part);
+	const gap = el('div', 'tool-output-gap');
+	const showAll = button('link-button', strings.outputShowAll, () => vscode.postMessage({ type: 'showOutput', itemId, part }));
+	showAll.dataset.focusKey = `output:${itemId}:${part}`;
+	gap.append(el('span', undefined, format(strings.outputHidden, hidden.toLocaleString())), el('span', 'turn-dot', '·'), showAll);
+	node.append(el('pre', 'tool-output tool-output-head', head), gap, el('pre', 'tool-output tool-output-tail', tail));
+	return node;
+}
+
+/** The host's answer to Show All: the whole output in place of its first and last lines, or a line saying it is gone. */
+export function showFullOutput(itemId: string, part: number, text: string | undefined): void {
+	const key = outputKey(itemId, part);
+	const node = [...ui.transcript.querySelectorAll<HTMLElement>('.tool-output-trimmed')].find(candidate => candidate.dataset.outputPart === key);
+	if (text === undefined) {
+		node?.querySelector('.tool-output-gap')?.replaceChildren(el('span', undefined, strings.outputGone));
+		return;
+	}
+	fullOutputs.delete(key);
+	fullOutputs.set(key, text);
+	for (const oldest of fullOutputs.keys()) {
+		if (fullOutputs.size <= maxFullOutputs) {
+			break;
+		}
+		fullOutputs.delete(oldest);
+	}
+	if (node) {
+		const full = el('pre', 'tool-output', text);
+		// The whole output takes the place of the lines it hid; focus moves from Show All onto it.
+		full.tabIndex = -1;
+		const focused = node.contains(document.activeElement);
+		node.replaceWith(full);
+		if (focused) {
+			full.focus({ preventScroll: true });
 		}
 	}
-	if (body.childElementCount) {
-		card.classList.add('expandable');
-		card.classList.toggle('expanded', expanded.has(item.id));
-		row.prepend(icon('chevron-right', 'chevron'));
-		row.tabIndex = 0;
-		row.setAttribute('role', 'button');
-		row.setAttribute('aria-expanded', String(expanded.has(item.id)));
-		row.addEventListener('click', () => toggleToolCall(item));
-		row.addEventListener('keydown', event => {
-			// Not when a file or diff chip inside the row has focus.
-			if (event.target === row && (event.key === 'Enter' || event.key === ' ')) {
-				event.preventDefault();
-				toggleToolCall(item);
-			}
-		});
-		card.append(body);
+}
+
+/** The tool call's output, folded under its row until the row is clicked. */
+function appendToolBody(card: HTMLElement, row: HTMLElement, item: ItemOf<'toolCall'>, toggleToolCall: ToggleToolCall): void {
+	if (!item.details.some(hasOutput)) {
+		return;
+	}
+	const open = expanded.has(item.id);
+	card.classList.add('expandable');
+	card.classList.toggle('expanded', open);
+	row.prepend(icon('chevron-right', 'chevron'));
+	row.tabIndex = 0;
+	row.dataset.focusKey = `tool:${item.id}`;
+	row.setAttribute('role', 'button');
+	row.setAttribute('aria-expanded', String(open));
+	row.addEventListener('click', () => toggleToolCall(item));
+	row.addEventListener('keydown', event => {
+		// Not when a file or diff chip inside the row has focus.
+		if (event.target === row && (event.key === 'Enter' || event.key === ' ')) {
+			event.preventDefault();
+			toggleToolCall(item);
+		}
+	});
+	if (open) {
+		card.append(toolBody(item));
+	}
+}
+
+/** Opens or closes a tool call's output in place, so its row keeps focus; the output is built the first time it opens. */
+export function setToolCallOpen(card: HTMLElement, item: ItemOf<'toolCall'>, open: boolean): void {
+	card.classList.toggle('expanded', open);
+	card.querySelector(':scope > .tool-row')?.setAttribute('aria-expanded', String(open));
+	let body = card.querySelector(':scope > .tool-body');
+	if (open) {
+		body ??= card.appendChild(toolBody(item));
+		body.classList.add('reveal');
+	} else {
+		body?.classList.remove('reveal');
 	}
 }
 
@@ -505,7 +629,7 @@ function renderPermission(item: ItemOf<'permission'>): HTMLElement {
 		const files = el('div', 'permission-files');
 		for (const filePath of item.diffPaths) {
 			const chip = button('chip', basename(filePath), () => vscode.postMessage({ type: 'openDiff', itemId: item.id, path: filePath }), 'diff');
-			chip.title = `${strings.openDiff}: ${filePath}`;
+			setTip(chip, `${strings.openDiff}: ${filePath}`);
 			files.append(chip);
 		}
 		card.append(files);
@@ -514,15 +638,48 @@ function renderPermission(item: ItemOf<'permission'>): HTMLElement {
 		card.append(el('div', 'permission-answer', item.answer.kind !== 'selected' ? strings.permissionCancelled : item.answer.automatic ? item.answer.name : format(strings.permissionAnswered, item.answer.name)));
 		return card;
 	}
+	// Another live agent in the folder has unreviewed changes in a file this edit changes.
+	for (const other of item.others ?? []) {
+		const shared = el('div', 'notice warn has-actions permission-shared');
+		const line = el('div', 'notice-line');
+		const text = el('div', 'notice-text', format(strings.permission.othersChanging, other.title));
+		text.append(el('small', 'notice-detail', strings.permission.othersDetail));
+		line.append(icon('warning'), text);
+		shared.append(line, showTheirChanges(other));
+		card.append(shared);
+	}
+	card.classList.add('waiting');
 	const actions = el('div', 'permission-actions');
 	const choose = (optionId: string) => vscode.postMessage({ type: 'permission', id: item.id, optionId });
-	// "Allow" once is the primary action; other allows and rejections look secondary.
-	const { primary, reject } = permissionDefaults(item.options);
-	for (const option of item.options) {
-		actions.append(button(option === primary ? 'primary' : item.confirm && option.kind.startsWith('reject') ? 'secondary reject' : 'secondary', option.name, () => choose(option.optionId)));
+	// "Allow once" is the primary action; other allows and rejections look secondary.
+	const { primary, once, session, reject } = permissionChoices(item.options);
+	const keys = cardKeys();
+	// Allow once first, then for this session, then the CLI's other allows, then rejections.
+	const rank = (option: typeof item.options[number]) => option === once ? 0 : option === session ? 1 : option.kind.startsWith('allow') ? 2 : 3;
+	for (const option of [...item.options].sort((a, b) => rank(a) - rank(b))) {
+		const choice = button(option === primary ? 'primary' : item.confirm && option.kind.startsWith('reject') ? 'secondary reject' : 'secondary', '', () => choose(option.optionId));
+		choice.dataset.focusKey = `permission:${item.id}:${option.optionId}`;
+		const label = el('span');
+		if (option === once) {
+			label.textContent = strings.permission.once;
+		} else if (option === session && item.prefixes?.length) {
+			label.append(...withPrefixes(strings.permission.session, item.prefixes));
+		} else {
+			label.textContent = option === reject && option.kind === 'reject_once' ? strings.permission.reject : option.name;
+		}
+		choice.append(label);
+		// The keys that pick it from the chat box, shown on the newest waiting card (transcript.ts, `newest`).
+		const key = option === (once ?? primary) ? keys.once : option === session && !item.confirm ? keys.session : option === reject ? keys.reject : undefined;
+		if (key) {
+			choice.append(el('kbd', 'permission-key', key));
+		}
+		actions.append(choice);
 	}
+	card.append(actions);
 	if (reject) {
-		actions.append(el('span', 'hint', strings.permissionHint));
+		actions.append(el('span', 'hint permission-hint', strings.permissionHint));
+		const keyHint = session && !item.confirm ? format(strings.permission.hint, keys.once, keys.session, keys.reject) : format(strings.permission.hintNoSession, keys.once, keys.reject);
+		card.append(el('div', 'hint permission-key-hint', keyHint));
 		card.addEventListener('keydown', event => {
 			if (event.key === 'Escape') {
 				event.preventDefault();
@@ -530,8 +687,48 @@ function renderPermission(item: ItemOf<'permission'>): HTMLElement {
 			}
 		});
 	}
-	card.append(actions);
 	return card;
+}
+
+/** The keys that answer the newest waiting card from the chat box, as this platform writes them. */
+function cardKeys(): { readonly once: string; readonly session: string; readonly reject: string } {
+	return mac ? { once: '⌥⌘↩', session: '⌥⌘S', reject: 'Esc' } : { once: 'Ctrl+Alt+Enter', session: 'Ctrl+Alt+S', reject: 'Esc' };
+}
+
+/** `template`'s `{0}` as the command prefixes, each as code, listed as the locale lists them. */
+function withPrefixes(template: string, prefixes: readonly string[]): Node[] {
+	const at = template.indexOf('{0}');
+	const parts = new Intl.ListFormat(undefined, { style: 'narrow', type: 'unit' }).formatToParts(prefixes);
+	const list = parts.map(part => part.type === 'element' ? el('code', undefined, part.value) : document.createTextNode(part.value));
+	return at === -1 ? [document.createTextNode(template)] : [document.createTextNode(template.slice(0, at)), ...list, document.createTextNode(template.slice(at + 3))];
+}
+
+/**
+ * Answers the newest waiting card from the chat box: ⌥⌘↩ (Ctrl+Alt+Enter)
+ * allows once, ⌥⌘S (Ctrl+Alt+S) allows for the session, Esc rejects. True
+ * when it did, so the key goes no further: not to the composer, where ↩
+ * sends, nor to the workbench, where ⌥⌘S is Save All. Esc is left to an open
+ * picker or a running rewrite of the draft.
+ */
+export function answerFromComposer(event: KeyboardEvent): boolean {
+	if (event.isComposing || event.repeat || document.activeElement !== ui.input) {
+		return false;
+	}
+	const how = cardKey(event, mac);
+	const card = how && waitingPermission(state.items);
+	if (!how || !card) {
+		return false;
+	}
+	if (how === 'reject' && (!ui.picker.hidden || state.enhancing || document.querySelector('dialog[open]'))) {
+		return false;
+	}
+	const choices = permissionChoices(card.options);
+	const option = how === 'once' ? choices.once ?? choices.primary : how === 'session' ? card.confirm ? undefined : choices.session : choices.reject;
+	if (!option) {
+		return false;
+	}
+	vscode.postMessage({ type: 'permission', id: card.id, optionId: option.optionId });
+	return true;
 }
 
 /** `retryId`: a project's failed wake, whose Retry sends what it carried again. */
@@ -546,9 +743,70 @@ export function renderNotice(text: string, severity: 'info' | 'error', retryId?:
 	return node;
 }
 
-/** "1.4 s" or "380 ms". */
+/**
+ * A failed or cut-short turn's notice with its ways out: the first is the
+ * primary button, Show Log a link. Retry and Continue ask the host, which
+ * checks the notice still offers them; the rest act here or run a command.
+ */
+function renderActionNotice(text: string, severity: 'info' | 'error', actions: readonly NoticeAction[], itemId: string): HTMLElement {
+	return actionNotice(`notice ${severity} has-actions`, severity === 'error' ? 'error' : 'info', text, actions, true, itemId);
+}
+
+/** The stall notice, shown at the end of the running turn (transcript.ts): Stop and Show Log. */
+export function renderStall(stall: ViewStall): HTMLElement {
+	const node = actionNotice('notice warn has-actions stall-notice', 'warning', stall.text, stall.actions, false);
+	node.setAttribute('role', 'status');
+	return node;
+}
+
+function actionNotice(className: string, iconName: string, text: string, actions: readonly NoticeAction[], primaryFirst: boolean, itemId?: string): HTMLElement {
+	const node = el('div', className);
+	const line = el('div', 'notice-line');
+	line.append(icon(iconName), el('span', 'notice-text', text));
+	const row = el('div', 'permission-actions notice-actions');
+	actions.forEach((action, index) => {
+		const kind = action === 'showLog' ? 'link-button' : primaryFirst && index === 0 ? 'primary' : 'secondary';
+		const choice = button(kind, strings.noticeActions[action], () => runNoticeAction(action, itemId));
+		if (itemId) {
+			choice.dataset.focusKey = `notice:${itemId}:${action}`;
+		}
+		row.append(choice);
+	});
+	node.append(line, row);
+	return node;
+}
+
+function runNoticeAction(action: NoticeAction, itemId: string | undefined): void {
+	switch (action) {
+		case 'retry':
+		case 'continue':
+			if (itemId) {
+				vscode.postMessage({ type: 'noticeAction', itemId, action });
+			}
+			break;
+		case 'switchModel':
+			// The model menu beside Send, as its own button opens it.
+			if (!ui.modelButton.hidden) {
+				ui.modelButton.click();
+			}
+			break;
+		case 'signIn':
+			vscode.postMessage({ type: 'command', command: 'gemini.signIn' });
+			break;
+		case 'showLog':
+			vscode.postMessage({ type: 'command', command: 'gemini.showLog' });
+			break;
+		case 'stop':
+			vscode.postMessage({ type: 'stop' });
+			break;
+	}
+}
+
+/** "1.4 s" or "380 ms", from the host's templates with the number as the locale writes it. */
 function shortMs(ms: number): string {
-	return ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`;
+	return ms >= 1000
+		? format(strings.durationSeconds, (ms / 1000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }))
+		: format(strings.durationMs, Math.round(ms).toLocaleString());
 }
 
 /** The turn GeminiCode's quit cut off: what is on disk, and Retry the Turn or Keep and Continue. */
@@ -628,7 +886,7 @@ function renderCompact(item: ItemOf<'compact'>): HTMLElement {
 	} else if (item.state === 'undone') {
 		label.append(icon('discard'), el('span', undefined, text.undone));
 	} else {
-		label.append(icon('fold'), el('span', undefined, text.done.replace('{0}', formatTokens(item.before ?? 0)).replace('{1}', formatTokens(item.after ?? 0))));
+		label.append(icon('fold'), el('span', undefined, format(text.done, formatTokens(item.before ?? 0), formatTokens(item.after ?? 0))));
 		setTip(label, item.kept === 0 ? text.keptNone : item.kept === 1 ? text.keptOne : format(text.kept, item.kept ?? 0));
 	}
 	line.append(el('span', 'compact-rule'), label);
@@ -658,7 +916,7 @@ function renderTrace(item: ItemOf<'trace'>): HTMLElement {
 		grid.append(el('span', undefined, hop.name), track, el('span', 'trace-value', hop.value), el('span', 'trace-value', hop.budget));
 	}
 	card.append(grid);
-	const tokens = [readout.input.toLocaleString(), readout.cached.toLocaleString(), readout.output.toLocaleString(), String(readout.requests)].reduce((text, value, i) => text.replace(`{${i}}`, value), strings.trace.tokens);
+	const tokens = format(strings.trace.tokens, readout.input.toLocaleString(), readout.cached.toLocaleString(), readout.output.toLocaleString(), String(readout.requests));
 	card.append(el('div', 'trace-line', tokens));
 	const file = el('div', 'trace-line trace-file');
 	file.append(el('span', 'trace-file-name', format(strings.trace.file, item.file)), button('turn-action', strings.trace.open, () => vscode.postMessage({ type: 'openTrace', file: item.file }), 'go-to-file'));
@@ -693,7 +951,7 @@ function restoreCard(): HTMLElement | undefined {
 		const row = el('div', 'restore-row');
 		const text = el('div', 'restore-text');
 		text.append(el('span', 'restore-title', session.title), el('span', 'restore-detail', session.detail));
-		text.title = session.title;
+		setTip(text, session.title);
 		row.append(text, button('restore-button', strings.restore, () => vscode.postMessage({ type: 'restoreSession', id: session.id })));
 		card.append(row);
 	}
@@ -709,7 +967,7 @@ function restoreCard(): HTMLElement | undefined {
 export function renderEmpty(): HTMLElement {
 	const node = el('div', 'empty');
 	const hints = el('ul', 'empty-hints');
-	for (const [key, text] of [['@', strings.hintMention], ['/', strings.hintCommands], [mac ? '⇧↩' : 'Shift+Enter', strings.hintNewLine], ['', strings.dropFiles]] as const) {
+	for (const [key, text] of [['@', strings.hintMention], ['/', strings.hintCommands], [state.cmdEnter ? (mac ? '↩' : 'Enter') : mac ? '⇧↩' : 'Shift+Enter', strings.hintNewLine], ['', strings.dropFiles]] as const) {
 		const hint = el('li');
 		hint.append(key ? el('kbd', undefined, key) : icon('cloud-upload'), el('span', undefined, text));
 		hints.append(hint);

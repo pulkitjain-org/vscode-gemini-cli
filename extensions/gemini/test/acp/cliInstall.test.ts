@@ -9,7 +9,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { checkIntegrity, cliCopiesToKeep, Fetch, fetchCliVersions, installCli, pruneCliVersions, readTar } from '../../src/acp/cliInstall';
+import { checkIntegrity, cliCopiesToKeep, cliRegistry, Fetch, fetchCliVersions, installCli, pruneCliVersions, readTar } from '../../src/acp/cliInstall';
 import { cliPatchMarker } from '../../src/acp/cliPatches';
 import { listManagedVersions, resolveCli } from '../../src/acp/cliResolution';
 
@@ -164,5 +164,26 @@ describe('cliCopiesToKeep', () => {
 	it('keeps the newest when it is not known which CLI runs', async () => {
 		expect(cliCopiesToKeep(installed, undefined)).toEqual(['0.64.0']);
 		expect(cliCopiesToKeep([], undefined)).toEqual([]);
+	});
+});
+
+describe('cliRegistry', () => {
+	it('uses an https mirror, or http on this machine, and the public registry otherwise', () => {
+		expect([
+			cliRegistry('https://npm.example.com/api/npm/npm-remote/'),
+			cliRegistry('  https://npm.example.com  '),
+			cliRegistry('http://localhost:4873'),
+			cliRegistry(undefined),
+			cliRegistry(''),
+			cliRegistry('http://npm.example.com'),
+			cliRegistry('https://user:secret@npm.example.com'),
+			cliRegistry('https://npm.example.com/?token=x'),
+			cliRegistry('npm.example.com'),
+		]).toEqual([
+			'https://npm.example.com/api/npm/npm-remote',
+			'https://npm.example.com',
+			'http://localhost:4873',
+			...Array(6).fill('https://registry.npmjs.org'),
+		]);
 	});
 });

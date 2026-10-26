@@ -36,7 +36,8 @@ export class SetupWalkthrough extends vscode.Disposable {
 	/** Starts the agent, which signs in with Google when the CLI asks for it. */
 	async signIn(): Promise<void> {
 		const status = this.service.status;
-		if (status.phase === 'ready') {
+		// A ready process proves the sign-in only once a session opened on it.
+		if (status.phase === 'ready' && status.sessionOpened !== false) {
 			void vscode.window.showInformationMessage(vscode.l10n.t("You are signed in, and the Gemini agent is ready."));
 			return;
 		}

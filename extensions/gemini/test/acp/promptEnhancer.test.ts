@@ -186,6 +186,88 @@ describe('PromptEnhancer', () => {
 		expect(newSession).not.toHaveBeenCalled();
 	});
 
+	/** A direct request that answers `text` after `ms`, or rejects once its signal aborts. */
+	function slowDirect(ms: number, text: string | Error, stream?: string) {
+		return vi.fn((request: { signal: AbortSignal; onText?: (text: string) => void }) => new Promise<string>((resolve, reject) => {
+			if (stream) {
+				request.onText?.(stream);
+			}
+			const timer = setTimeout(() => text instanceof Error ? reject(text) : resolve(text), ms);
+			request.signal.addEventListener('abort', () => {
+				clearTimeout(timer);
+				reject(new Error('aborted'));
+			});
+		}));
+	}
+
+	it('starts the CLI too while the direct request is slow, and cancels its turn when the direct request answers first', async () => {
+		const cancel = vi.spyOn(AgentConnection.prototype, 'cancel');
+		const direct = slowDirect(150, 'Direct.');
+		const onDirectFailed = vi.fn();
+		const onDidEnhance = vi.fn();
+		const { runtime, enhancer } = await start({ turns: [[{ step: 'delay', ms: 2000 }, reply('late')]] }, undefined, { direct, hedgeAfterMs: 20, onDirectFailed, onDidEnhance });
+		const newSession = vi.spyOn(runtime, 'newSession');
+		expect(await enhancer.enhance({ draft: 'x' })).toBe('Direct.');
+		expect(newSession).toHaveBeenCalledOnce();
+		await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+		expect(onDidEnhance).toHaveBeenCalledWith(expect.objectContaining({ model: 'a direct request' }));
+		expect(onDirectFailed).not.toHaveBeenCalled();
+	});
+
+	it('uses the CLI\'s rewrite when it answers before the slow direct request, and stops the direct request without counting it as failed', async () => {
+		const direct = slowDirect(5_000, 'Too late.');
+		const onDirectFailed = vi.fn();
+		const { enhancer } = await start({ turns: [[reply('From the CLI.')], [reply('Again.')]] }, undefined, { direct, hedgeAfterMs: 20, onDirectFailed });
+		expect(await enhancer.enhance({ draft: 'x' })).toBe('From the CLI.');
+		expect(direct.mock.calls[0][0].signal.aborted).toBe(true);
+		expect(onDirectFailed).not.toHaveBeenCalled();
+		// The next rewrite tries the direct request again.
+		await enhancer.enhance({ draft: 'y' });
+		expect(direct).toHaveBeenCalledTimes(2);
+	});
+
+	it('keeps the direct request\'s 15 s cap, and the CLI\'s rewrite still wins after it', async () => {
+		const direct = slowDirect(5_000, 'Too late.');
+		const onDirectFailed = vi.fn();
+		const { enhancer } = await start({ turns: [[{ step: 'delay', ms: 150 }, reply('From the CLI.')]] }, undefined, { direct, hedgeAfterMs: 20, directTimeoutMs: 50, onDirectFailed });
+		expect(await enhancer.enhance({ draft: 'x' })).toBe('From the CLI.');
+		expect(onDirectFailed).toHaveBeenCalledOnce();
+	});
+
+	it('waits for the slow direct request when the CLI fails, and gives the CLI\'s error when both fail', async () => {
+		const failing = { newSession: { error: { code: -32000, message: 'This account requires setting the GOOGLE_CLOUD_PROJECT or GOOGLE_CLOUD_PROJECT_ID env var.' } } } as FakeAgentScript;
+		const { runtime, enhancer } = await start(failing, undefined, { direct: slowDirect(100, 'Direct.'), hedgeAfterMs: 20 });
+		expect(await enhancer.enhance({ draft: 'x' })).toBe('Direct.');
+		const both = new PromptEnhancer(runtime, { cwd, direct: slowDirect(100, new Error('500')), hedgeAfterMs: 20 });
+		try {
+			await expect(both.enhance({ draft: 'x' })).rejects.toThrow(/GOOGLE_CLOUD_PROJECT/);
+		} finally {
+			both.dispose();
+		}
+	});
+
+	it('shows the route that streams first, and the winner\'s text once one wins', async () => {
+		const direct = slowDirect(5_000, 'Too late.', 'Here is the improved prompt:\nDirect so far');
+		const { enhancer } = await start({ turns: [[{ step: 'delay', ms: 50 }, reply('From '), reply('the CLI.')]] }, undefined, { direct, hedgeAfterMs: 20 });
+		const seen: string[] = [];
+		expect(await enhancer.enhance({ draft: 'x' }, undefined, text => seen.push(text))).toBe('From the CLI.');
+		// The direct request's text stays until the CLI wins, then the CLI's is shown.
+		expect(seen).toEqual(['Direct so far', 'From the CLI.']);
+	});
+
+	it('stops both routes when cancelled while the CLI runs alongside', async () => {
+		const cancel = vi.spyOn(AgentConnection.prototype, 'cancel');
+		const direct = slowDirect(5_000, 'Too late.');
+		const { enhancer } = await start({ turns: [[{ step: 'delay', ms: 2000 }, reply('late')]] }, undefined, { direct, hedgeAfterMs: 20 });
+		const abort = new AbortController();
+		const enhancing = enhancer.enhance({ draft: 'x' }, abort.signal);
+		await vi.waitFor(() => expect(direct).toHaveBeenCalled());
+		setTimeout(() => abort.abort(), 150);
+		await expect(enhancing).rejects.toBeInstanceOf(EnhanceCancelledError);
+		expect(direct.mock.calls[0][0].signal.aborted).toBe(true);
+		await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+	});
+
 	it('sends the enhancement prompt with the draft', async () => {
 		const { enhancer } = await start({ turns: [[{ step: 'prompt' }]] });
 		const text = await enhancer.enhance({ draft: 'make login faster' });

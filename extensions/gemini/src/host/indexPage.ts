@@ -156,7 +156,10 @@ export class IndexPage implements vscode.Disposable {
 				await vscode.commands.executeCommand('workbench.action.openSettings', `${configSection}.index.include`);
 				return;
 			case 'trust':
-				await this.service.trustFolder(message.folder).catch(err => vscode.window.showErrorMessage(vscode.l10n.t("The folder could not be trusted: {0}", err instanceof Error ? err.message : String(err))));
+				// Only a folder the page lists, and only once the user agreed, as Chat asks.
+				if (!(await this.agents.workspaces()).some(workspace => workspace.folder === message.folder) || !await this.service.trust.ask(message.folder, { explicit: true })) {
+					return;
+				}
 				break;
 			case 'reveal':
 				await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(message.folder));

@@ -166,6 +166,21 @@
 	font-size: 14px;
 }
 
+.menu-end-ok,
+.menu-end-warn {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.menu-end-ok { color: var(--gemini-ok); }
+.menu-end-warn { color: var(--gemini-warn); }
+
+.menu-end-ok .codicon,
+.menu-end-warn .codicon {
+	font-size: 12px;
+}
+
 .menu-switch {
 	position: relative;
 	flex: none;

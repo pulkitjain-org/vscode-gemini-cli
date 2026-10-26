@@ -14,6 +14,7 @@
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
+import { samePath, writeFileAtomic } from './fsUtil';
 
 /** One of a project's repositories: `key` names it to the agents and is its folder's name in a thread's folder. */
 export interface ProjectRepo {
@@ -133,8 +134,8 @@ export async function savedRepoCount(folder: string): Promise<number> {
 export async function writeProjectConfig(folder: string, config: ProjectConfig): Promise<void> {
 	await fs.mkdir(folder, { recursive: true });
 	const { instructions, ...rest } = config;
-	await writeAtomic(path.join(folder, configFile), `${JSON.stringify({ version: 1, ...rest }, undefined, '\t')}\n`);
-	await writeAtomic(path.join(folder, instructionsFile), instructions.slice(0, maxInstructionsChars));
+	await writeFileAtomic(path.join(folder, configFile), `${JSON.stringify({ version: 1, ...rest }, undefined, '\t')}\n`);
+	await writeFileAtomic(path.join(folder, instructionsFile), instructions.slice(0, maxInstructionsChars));
 }
 
 /** The Markdown files in a project's memory folder, by name. */
@@ -205,18 +206,4 @@ async function freeName(dir: string, stem: string): Promise<string> {
 			return name;
 		}
 	}
-}
-
-async function writeAtomic(file: string, text: string): Promise<void> {
-	const temp = `${file}.${process.pid}.tmp`;
-	await fs.writeFile(temp, text);
-	await fs.rename(temp, file);
-}
-
-function samePath(a: string, b: string): boolean {
-	const normalize = (p: string) => {
-		const resolved = path.resolve(p);
-		return process.platform === 'win32' || process.platform === 'darwin' ? resolved.toLowerCase() : resolved;
-	};
-	return normalize(a) === normalize(b);
 }

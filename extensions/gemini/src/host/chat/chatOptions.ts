@@ -14,11 +14,11 @@ import type { StoredCheckpoints } from '../../acp/checkpoints';
 import type { PermissionBroker } from '../../acp/permissions';
 import type { EnhancePromptInput } from '../../acp/quickPrompts';
 import type { AgentStatus } from '../../acp/status';
-import type { TranscriptItem } from '../../acp/chatTranscript';
+import type { OtherAgentChanges, TranscriptItem } from '../../acp/chatTranscript';
 import type { ConversationEntry, MessageRecord } from '../../acp/cliSessions';
-import type { RunPlace } from '../../acp/runCommands';
+import type { FinishedCommand, RunPlace } from '../../acp/runCommands';
 import type { RunOutcome } from '../agentTerminals';
-import type { ForkAction, ForkRequest, NewThread, ProjectSettingsAction, ProjectSettingsSave, ThreadAction } from '../chatProtocol';
+import type { ForkAction, ForkRequest, NewThread, ProjectSettingsAction, ProjectSettingsSave, ThreadAction, ViewContextBreakdown } from '../chatProtocol';
 import type { ToolChips } from '../toolChips';
 import type { UsageMeter } from '../usageMeter';
 import type { FileMatch } from '../workspaceFiles';
@@ -30,14 +30,14 @@ export interface ChatHost {
 	readonly permissions: PermissionBroker;
 	readonly status: AgentStatus;
 	readonly onDidChangeStatus: vscode.Event<AgentStatus>;
-	/** Starts the agent if needed and resolves once this session is ready. */
-	ensureReady(): Promise<unknown>;
+	/** Starts the agent if needed and resolves once this session is ready; rejects with a `WaitAbortedError` when `signal` aborts. */
+	ensureReady(signal?: AbortSignal): Promise<unknown>;
 	/** Opens a session that waits to be opened until its chat is on screen; unset when sessions open at once. */
 	open?(): void;
 	/** Stops the current turn. */
 	cancel(): Promise<void>;
-	/** Trusts `folder` for the CLI and restarts the agent; returns whether the restart waits for running prompts. */
-	trustFolder(folder: string): Promise<boolean>;
+	/** Asks to trust `folder` for the CLI, as on first use; resolves whether agents there run trusted now. The agent restarts once no prompt runs. */
+	askToTrust(folder: string): Promise<boolean>;
 	/** Writes to the Gemini log. */
 	writeLog?(message: string): void;
 }
@@ -97,6 +97,36 @@ export interface ChatControllerOptions {
 	readonly fork?: ChatForker;
 	/** Run on a reply's shell blocks, in the agent's own terminals; unset hides Run. */
 	readonly terminal?: ChatTerminal;
+	/** Other live agents in the same folder with changes still to review, for the warning on this agent's edits to the same file. */
+	readonly sharedFiles?: {
+		others(filePath: string): readonly OtherAgentChanges[];
+		/** Show Its Changes: opens agent `agent`'s changes. */
+		show(agent: string): void;
+	};
+	/** The usage popover's context breakdown (`/context`); unset shows none. */
+	contextCost?(): ChatContextCost | undefined;
+	/** The @ picker's Symbols: definitions named like `query` in the folder's index; undefined while the index is off, unavailable or not built. */
+	symbols?(query: string): Promise<readonly ChatSymbol[] | undefined>;
+}
+
+/** A definition the workspace index found, for the @ picker. */
+export interface ChatSymbol {
+	readonly name: string;
+	readonly kind: string;
+	/** Absolute. */
+	readonly path: string;
+	/** 1-based, inclusive. */
+	readonly line: number;
+	readonly endLine: number;
+}
+
+/** What every model call in a folder carries, and the rule files loaded there (chatContext.ts). */
+export interface ChatContextCost {
+	view(folder: string): ViewContextBreakdown;
+	/** Measures `folder` when its last measure is a day old, or at once with `force`; resolves once done. */
+	measure(folder: string, force: boolean): Promise<void>;
+	/** Fires with the folder whose breakdown changed. */
+	onDidChange(listener: (folder: string) => void): { dispose(): void };
 }
 
 /** Where and how Run on a reply's command runs it. */
@@ -109,6 +139,8 @@ export interface ChatTerminal {
 	run(place: RunPlace, command: string, fresh: boolean): Promise<RunOutcome>;
 	/** Types `command` into the agent's terminal in `place`, and leaves Return to the user. */
 	insert(place: RunPlace, command: string): void;
+	/** The last command that finished in the agent's terminals, else in the terminal in front, with its output, for the @ picker. */
+	lastCommand?(): FinishedCommand | undefined;
 }
 
 /** What Fork Agent asks of the Agents pane, which makes the fork. */
@@ -194,7 +226,8 @@ export interface ChatGit {
 		/** Absolute paths; empty hides the button. */
 		files(): readonly string[];
 		onDidChange(listener: () => void): { dispose(): void };
-		suggestion(): { readonly branch: string; readonly message: string };
+		/** The branch and message offered; `writeMessage` writes a better message from the changes, when it can. */
+		suggestion(): { readonly branch: string; readonly message: string; readonly writeMessage?: () => Promise<string | undefined> };
 		/** The files were committed. */
 		committed(): void;
 	};

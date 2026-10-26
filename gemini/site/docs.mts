@@ -35,7 +35,7 @@ export const docGroups: readonly { readonly name: string; readonly pages: readon
 	},
 	{
 		name: 'Using GeminiCode', pages: [
-			{ slug: 'agents', title: 'Agents', icon: 'bot', summary: 'Agents and Editor modes, Home, branches, forks, and the workspace index and docs agents search.', description: 'Run Gemini agents side by side in GeminiCode: Home, Agents mode, agents on their own branch, forks, and the workspace index they search.', topics: ['Home', 'Agents mode', 'Own branch', 'Fork', 'Workspace index', 'Docs'] },
+			{ slug: 'agents', title: 'Agents', icon: 'bot', summary: 'Agents and Editor layouts, Home, branches, forks, and the workspace index and docs agents search.', description: 'Run Gemini agents side by side in GeminiCode: Home, Agents layout, agents on their own branch, forks, and the workspace index they search.', topics: ['Home', 'Agents layout', 'Own branch', 'Fork', 'Workspace index', 'Docs'] },
 			{ slug: 'chat', title: 'Chat and prompting', icon: 'message', summary: 'The + menu, context, Enhance, Plan mode, steering, reactions and Compact.', description: 'Prompt a Gemini agent in GeminiCode: attach context, enhance prompts, plan first, steer or queue messages, react with emoji and compact long chats.', topics: ['+ menu', '@ context', 'Enhance', 'Plan mode', 'Send or queue', 'Reactions', 'Compact'] },
 			{ slug: 'review', title: 'Review and safety', icon: 'shield-check', summary: 'Approvals, Keep and Undo, Rewind, inline edit and Review My Changes.', description: 'How GeminiCode keeps you in control of Gemini agents: approval modes, permission cards, Keep and Undo, Rewind, inline edit and what agents can\'t read.', topics: ['Approval modes', 'Keep and Undo', 'Rewind', 'Inline edit', 'Review My Changes'] },
 			{ slug: 'terminal', title: 'Terminal', icon: 'terminal', summary: 'Each agent\'s terminal, Run on a reply\'s commands, and sending output to Gemini.', description: 'Each GeminiCode agent has its own terminal. Run the commands Gemini suggests, send terminal output to Gemini, and press ⌘I to ask for a command.', topics: ['Agent terminal', 'Run', 'Send to Gemini', '⌘I'] },
@@ -46,7 +46,7 @@ export const docGroups: readonly { readonly name: string; readonly pages: readon
 	},
 	{
 		name: 'Set up and fix', pages: [
-			{ slug: 'helpers', title: 'Project Helpers', icon: 'blocks', summary: 'Context per model call, MCP servers, skills, hooks, extensions, memory and the CLI\'s settings.', description: 'GeminiCode\'s Project Helpers: what each model call costs, and the MCP servers, skills, hooks, extensions and memory your Gemini agents load.', topics: ['Context cost', 'MCP servers', 'Skills', 'Hooks', 'Memory'] },
+			{ slug: 'helpers', title: 'Agent Setup', icon: 'blocks', summary: 'Context per model call, MCP servers, skills, hooks, extensions, memory and the CLI\'s settings.', description: 'GeminiCode\'s Agent Setup: what each model call costs, and the MCP servers, skills, hooks, extensions and memory your Gemini agents load.', topics: ['Context cost', 'MCP servers', 'Skills', 'Hooks', 'Memory'] },
 			{ slug: 'settings', title: 'Settings', icon: 'settings', summary: 'Every GeminiCode setting by area, and the ones an administrator can lock.', description: 'Every GeminiCode setting, grouped by area with its default, and the settings an administrator can lock with a policy.', topics: ['Chat', 'Agents', 'Browser', 'Team tools', 'Policies'] },
 			{ slug: 'shortcuts', title: 'Keyboard shortcuts', icon: 'keyboard', summary: 'Every shortcut in one table, by area.', description: 'Every GeminiCode keyboard shortcut in one place: agents and layout, the chat, the editor, the terminal and the browser.', topics: ['Agents', 'Chat', 'Editor', 'Browser'] },
 			{ slug: 'troubleshooting', title: 'Troubleshooting', icon: 'life-buoy', summary: 'Common problems, a performance trace, and how to report a bug well.', description: 'Fix common GeminiCode problems: sign-in, the Gemini CLI, folder trust, the index, slow agents, and how to report a bug.', topics: ['Common problems', 'Trace', 'Report'] },
@@ -62,7 +62,7 @@ export interface Feature { readonly icon: string; readonly title: string; readon
 export const featureIndex: readonly { readonly name: string; readonly items: readonly Feature[] }[] = [
 	{
 		name: 'Agents', items: [
-			{ icon: 'layout-grid', title: 'Agents and Editor modes', body: 'Agents on the left, the chat in the middle, its changes on the right. ⌥⌘M switches.', href: 'agents.html#agents-and-editor-modes' },
+			{ icon: 'layout-grid', title: 'Agents and Editor layouts', body: 'Agents on the left, the chat in the middle, its changes on the right. ⌥⌘M switches.', href: 'agents.html#agents-and-editor-layouts' },
 			{ icon: 'sparkles', title: 'Home', body: 'Describe a task and press Return. See what needs you across agents and tools.', href: 'agents.html#home' },
 			{ icon: 'bot', title: 'Agents side by side', body: 'Each agent has its own tab and chat, with a status dot.', href: 'agents.html#agents-side-by-side' },
 			{ icon: 'columns-2', title: 'Files beside each agent', body: 'What an agent opens goes in a group of its own beside its chat.', href: 'agents.html#files-beside-each-agent' },
@@ -138,7 +138,7 @@ export const featureIndex: readonly { readonly name: string; readonly items: rea
 	},
 	{
 		name: 'Set up', items: [
-			{ icon: 'blocks', title: 'Project Helpers', body: 'MCP servers, skills, hooks, extensions and memory, each with a switch.', href: 'helpers.html' },
+			{ icon: 'blocks', title: 'Agent Setup', body: 'MCP servers, skills, hooks, extensions and memory, each with a switch.', href: 'helpers.html' },
 			{ icon: 'terminal', title: 'Gemini CLI inside', body: 'Your terminal\'s gemini and GeminiCode share settings and chats.', href: 'getting-started.html#set-up' },
 			{ icon: 'settings', title: 'Settings', body: 'Every setting by area, and what an administrator can lock.', href: 'settings.html' },
 			{ icon: 'sparkles', title: 'Make it yours', body: 'Theme, code font and file icons.', href: 'getting-started.html#make-it-yours' },

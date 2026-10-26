@@ -8,32 +8,39 @@ Everything you need to talk to an agent sits in the composer's **+** menu. Attac
 
 The **+** menu at the bottom left of the composer holds:
 
-- **Mode**: Default, Auto Edit, Plan and, if your admin allows it, YOLO. See [Approval modes](review.md#approval-modes).
+- **Mode**: Default, Auto Edit, Plan and, if your admin allows it, YOLO. See [Approval modes](review.md#approval-modes). In a trusted folder that is a Git repository with at least one commit, Auto Edit is tagged **Recommended here**: its edits apply at once and you review them with Keep and Undo, while commands still ask. The tag never switches the mode for you. `gemini.agents.defaultMode` sets the mode new agents start in.
 - **Files** and **Context**: attach files from anywhere, or workspace files with `@`.
 - **Follow the agent**: open each file the agent reads or edits.
 - **Model**: the models the terminal's `/model` shows, in the same order. The model you pick is used for every new or reopened agent.
 - **Fork**: start a new agent from this conversation. See [Fork an agent](agents.md#fork-an-agent).
 - **Open Terminal**: the agent's own terminal, in its folder. See [Terminal](terminal.md).
-- **Usage and quota**: how full the chat is and today's quota.
+- **Usage and quota**: how full the chat is, what each turn carries, and today's quota.
 - **Skills and commands**: the same list as typing `/`.
 
-A mode other than Default shows as a chip beside **+**; click its × to go back.
+A mode other than Default shows as a chip beside **+**; click its × to go back. From the keyboard, <kbd>⌘.</kbd> steps to the next mode and <kbd>⌥⌘.</kbd> switches the model (**Gemini: Cycle Approval Mode** and **Gemini: Switch Model...**), and <kbd>⌃⌘I</kbd> puts the cursor back in the message box (**Gemini: Focus Chat**).
 
 ## Attaching context
 
 - **Workspace files.** Type `@`, or choose **Context** in the **+** menu. The agent gets a link and reads the file itself, including unsaved changes.
+- **More with `@`.** Under the files, the `@` list has groups of its own:
+  - **Folders**: the folders the matching files are in. The agent reads every file in the folder.
+  - **Symbols**: functions, classes and other definitions from the [workspace index](agents.md#workspace-index-and-docs), attached as their lines. Shown only while the index is on and built.
+  - **Workspace**: **Problems** (the folder's errors and warnings from the Problems view), **Uncommitted changes** (the diff against the last commit, new files included) and **Last terminal command** (the command that finished last in the agent's terminal, else in the terminal in front, with its output). Each shows only when it has something to send.
+- **Fix with Gemini.** The light bulb on any error or warning in the editor offers **Fix with Gemini**: the problem and the ten lines either side of it are attached to the agent in front, or to a new agent, ready for you to add a word and send.
 - **The selection.** <kbd>⌘L</kbd> adds the editor selection with its line numbers, to the agent in front or to a new agent.
 - **Files from anywhere.** Choose **Files** in the **+** menu, paste, or drop files from Finder. Hold <kbd>⇧</kbd> when dropping from the Explorer. Text and code files up to 1 MB are sent with their contents; images and PDFs up to about 7 MB are sent inline; other files outside the workspace are sent as links, and the CLI asks once before reading each.
 - **Your team's tools.** Paste a Jira key, a GitLab merge request or a Figma link, or choose **From your tools** in the **+** menu. See [Team tools](team-tools.md#in-chat).
 
 The agent can't read secret files such as `.env` and private keys, or git-ignored files.
 
+GeminiCode has no inline (ghost text) completions as you type, and none are planned: the agents, inline edit and **Fix with Gemini** are how Gemini changes code in the editor.
+
 ## Slash commands and skills
 
 Type `/` at the start of the composer, or choose **Skills and commands** in the **+** menu, to list commands: team commands first, then skills, then the CLI's own. Keep typing to filter, then press <kbd>Tab</kbd> or <kbd>Enter</kbd> to complete the name and add arguments.
 
 - **Gemini CLI commands** such as `/init`, `/memory` and `/restore` run in the CLI.
-- **GeminiCode's own**: `/resume` reopens a saved session, `/compact` compacts the chat (below), and `/fork` forks the agent.
+- **GeminiCode's own**: `/resume` reopens a saved session, `/compact` compacts the chat (below), `/context` shows what each turn carries (see [Usage and quota](#usage-and-quota)), and `/fork` forks the agent.
 - **Team commands** are TOML files in `.gemini/commands/` in the workspace, or in `~/.gemini/commands/` for your own. It's the Gemini CLI's own format, so the same files work in the terminal: `git/commit.toml` becomes `/git:commit`.
 - **Skills** are folders with a `SKILL.md`, in `.gemini/skills/` (or `.agents/skills/`) in the workspace, or in `~/.gemini/skills/` for your own. Picking one asks the agent to load it, with what you typed after the name as the task.
 
@@ -54,11 +61,11 @@ The rewrite replaces your draft as Gemini writes it; **Cancel** or <kbd>esc</kbd
 
 ## Plan, then build
 
-In **Plan** mode the agent reads and proposes a plan without changing anything. When a reply ends in Plan mode, **Build This Plan** under it switches the chat to Default mode and asks Gemini to carry out the plan.
+In **Plan** mode the agent reads and proposes a plan without changing anything. When a reply ends in Plan mode, **Build This Plan** under it switches the chat back to the mode it was in before Plan (Default when it started in Plan) and asks Gemini to carry out the plan. The chevron beside it offers the other choice: **Build, Asking for Each Edit** in Default mode, or **Build in Auto Edit** when you planned from Default. When you switched to another model after planning, a line under the button names both: "Builds with … ; planned with …". The Gemini CLI doesn't say ahead which model Auto will pick, so with Auto there is no such line.
 
 ![An agent in Plan mode writing a plan that ends with Build This Plan](../../site/media/showcase-plan-dark.webp "clip")
 
-With the model on Auto, Gemini plans with Pro and builds with Flash. Turn off **Plan with Pro, build with Flash** in [Project Helpers](helpers.md#gemini-cli-settings) to keep one model throughout.
+With the model on Auto, Gemini plans with Pro and builds with Flash. Turn off **Plan with Pro, build with Flash** in [Agent Setup](helpers.md#gemini-cli-settings) to keep one model throughout.
 
 ## Watching the agent work
 
@@ -68,11 +75,26 @@ When the turn ends they fold under one line, such as **Worked for 3m 12s · read
 
 ![A finished turn opened, with its thoughts, searches, reads, commands and edits](../../site/media/docs/folded-turn-dark.webp)
 
+A command's output over 80 lines shows its first and last 20, with **1,240 lines hidden · Show All** between them. **Show All** fetches the rest; the chat keeps the whole of the latest outputs, up to 16 MB, so a long chat doesn't hold every output in memory. An output from before the window reloaded may no longer be kept whole.
+
+If nothing at all arrives from Gemini for 45 seconds, no text, step or thought, the turn says so: **No response from Gemini for 45 s. It may be retrying a busy server.** When the CLI's log shows it retrying after a server error, the notice says which attempt it is on. **Stop** stops the turn and **Show Log** opens the Gemini log. The notice goes by itself as soon as anything arrives. It doesn't show while a command runs or a card waits for you.
+
 When the agent hands part of the work to one of the Gemini CLI's subagents (such as the Codebase Investigator, or your own in `.gemini/agents/`), the chat shows a **Subagent** row with its name and how long it has worked. Click it to read the subagent's report.
+
+## When a turn fails
+
+A failed turn says what went wrong in plain words and offers a way out:
+
+- **Quota used up**: **Retry** sends your message again and **Switch Model…** opens the model menu. The reset time shows when the Gemini CLI reports one, which it usually doesn't.
+- **Can't reach Google**: check your connection, VPN or proxy, then **Retry**. **Show Log** opens the Gemini log.
+- **Your Gemini sign-in has expired**: **Sign In** signs in again in the browser, then **Retry**.
+- **The turn reached the request limit**: **Continue** tells Gemini to carry on.
+
+Any other error keeps the CLI's own message, without its JSON wrapper, with **Retry** and **Show Log**. The buttons stay on the latest failure until your next message.
 
 ## Sending while the agent works
 
-You don't have to wait for the agent to finish. While it works, the composer says **↩ to send, ⌘↩ to queue for later**.
+You don't have to wait for the agent to finish. While it works, the composer says **↩ to send, ⌘↩ to queue for later**. With `gemini.chat.sendWith` set to `cmdEnter`, ⌘↩ sends, ⇧⌘↩ queues and ↩ makes a new line (Ctrl takes ⌘'s place on Windows and Linux).
 
 - **↩ sends now**, to steer the agent: "use pnpm, not npm", or "leave the tests alone". The message shows above the input as **Sending after the current step**. As soon as no command or edit is running, the chat stops the turn and sends your message, telling the agent to adjust its plan and carry on. That is straight away while the agent is thinking or writing, or showing a permission card.
 - **⌘↩ queues** the message for after the turn. It shows as **Queued: goes after this turn**. Several queued messages go together as one.
@@ -131,7 +153,7 @@ The composers underline misspelt words; right-click a word for suggestions or **
 
 The ring at the bottom right of the composer shows how full this chat's context window is. It turns amber at 50%, where Gemini starts summarising older messages, and red at 90%. Click it, or choose **Usage and quota** in the **+** menu, for:
 
-- **Context window**: the tokens in the latest request out of the model's limit.
+- **Context window**: the tokens in the latest request out of the model's limit, and what they are: the conversation, the MCP servers' tools, the rule files (`GEMINI.md` and the files it imports), GeminiCode's own tools and the CLI's own prompt. The parts are measured with one short request each on the lightest model, in the background, at most once a day per folder; **Measure Again** measures now. The rule files are listed as the CLI loaded them, with their sizes, and one over 20 KB gets a warning, since every turn carries it. Typing `/context` opens the same view. Agent Setup' **Context cost** shares the measure.
 - **Today's quota**: how much of today's quota each model has used for your account, and when it resets. **All models** shows the rest.
 - **This chat**: input, cached and output tokens over the chat's replies, with **Details by model**.
 

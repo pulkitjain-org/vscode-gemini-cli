@@ -5,9 +5,10 @@
 
 // The Project Helpers page (src/host/settingsPage.ts).
 
-import type { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage } from '../src/host/panelProtocol';
+import type { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage, TrustRowView, TrustView } from '../src/host/panelProtocol';
 import { button, el, format, icon, pageStrings } from './panelDom';
 import { selectMenu, type SelectMenu } from './selectMenu';
+import { storageSection } from './settingsStorage';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromSettingsPage): void };
 
@@ -216,6 +217,44 @@ function rulesRow(rules: RulesFileView): HTMLElement {
 	return row;
 }
 
+function trustRow(rule: TrustRowView): HTMLElement {
+	const row = el('div', 'row trust');
+	const main = el('div', 'row-main');
+	main.append(el('div', 'row-title trust-folder', rule.folder));
+	if (rule.detail) {
+		main.append(el('div', 'row-detail', rule.detail));
+	}
+	row.append(main, el('span', `trust-status ${rule.tone}`, rule.status));
+	const key = rule.rule;
+	if (key) {
+		const remove = button('secondary', strings.removeTrust, () => post({ type: 'removeTrust', rule: key }));
+		remove.setAttribute('aria-label', `${strings.removeTrust}: ${rule.folder}`);
+		row.append(remove);
+	} else {
+		// GeminiCode's own rules have no Remove; the empty cell keeps the columns in line.
+		row.append(el('span'));
+	}
+	return row;
+}
+
+/** Trusted Folders: a row per rule of the Gemini CLI's trust file, and the buttons that add one. */
+function trustSection(trust: TrustView): HTMLElement {
+	const node = section(strings.trust, strings.trustHint);
+	if (trust.state !== 'ready') {
+		const line = el('p', `hint trust-note${trust.state === 'unreadable' ? ' problem' : ''}`);
+		line.append(icon(trust.state === 'off' ? 'info' : 'warning'), el('span', undefined, trust.message));
+		node.append(line);
+		return node;
+	}
+	const actions = el('div', 'section-actions trust-actions');
+	actions.append(
+		button('primary', strings.trustFolder, () => post({ type: 'trustFolder', kind: 'folder' })),
+		button('secondary', strings.trustParent, () => post({ type: 'trustFolder', kind: 'parent' })),
+		button('secondary', strings.neverTrust, () => post({ type: 'trustFolder', kind: 'never' })));
+	node.append(listOf(trust.rows, trustRow, strings.noTrust), actions);
+	return node;
+}
+
 /** Context per model call: the total, a bar of its parts, each part, and advice for the heavy ones. */
 function contextSection(cost: ContextCostView): HTMLElement {
 	const measuring = cost.state === 'measuring';
@@ -301,7 +340,7 @@ function render(view: SettingsPageView): void {
 
 	// Re-rendering replaces every element; keep keyboard focus on the same control.
 	const focused = document.activeElement instanceof HTMLElement && page.contains(document.activeElement) ? document.activeElement.getAttribute('aria-label') ?? document.activeElement.textContent : undefined;
-	page.replaceChildren(header, contextSection(view.contextCost), servers, skills, hooks, extensions, memory, rules, preferencesSection(view.preferences));
+	page.replaceChildren(header, contextSection(view.contextCost), servers, skills, hooks, extensions, memory, rules, trustSection(view.trust), preferencesSection(view.preferences), ...view.storage ? [storageSection(view.storage, strings, post)] : []);
 	if (focused) {
 		[...page.querySelectorAll<HTMLElement>('button')].find(b => (b.getAttribute('aria-label') ?? b.textContent) === focused)?.focus();
 	}

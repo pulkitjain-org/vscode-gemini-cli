@@ -11,7 +11,7 @@
 import type { TargetChoice } from '../src/acp/teamFlowLogic';
 import type { ChecksView, FlowPerson, FlowPill, FlowTool, FromTeamFlow, MoveTicketView, OpenMrView, ReviewCommentView, ReviewThreadView, ReviewView, TeamFlowState, TeamFlowStrings, ToTeamFlow } from '../src/host/teamFlowProtocol';
 import { Menu } from './menu';
-import { button, el, format, icon, pageStrings } from './panelDom';
+import { button, el, format, icon, keepFocus, pageStrings } from './panelDom';
 import { selectMenu } from './selectMenu';
 import { toolLogo } from './toolLogos';
 import { setTip } from './tooltip';
@@ -47,6 +47,7 @@ function checkbox(label: string | Node, checked: boolean, onChange: (on: boolean
 	const box = el('input');
 	box.type = 'checkbox';
 	box.checked = checked;
+	box.dataset.focusKey = `check:${typeof label === 'string' ? label : label.textContent}`;
 	box.addEventListener('change', () => onChange(box.checked));
 	const text = el('span', 'flow-check-text');
 	text.append(label);
@@ -60,6 +61,8 @@ function checkbox(label: string | Node, checked: boolean, onChange: (on: boolean
 /** A text field that reports each change; `rev` lets the host replace what the user typed (a regenerated description). */
 function textField(field: string, value: string, options: { multiline?: boolean; placeholder?: string; rev?: number; mono?: boolean; onInput?: (text: string) => void } = {}): HTMLInputElement | HTMLTextAreaElement {
 	const input = options.multiline ? el('textarea', 'flow-input') : el('input', 'flow-input');
+	// Found again by its field when the page is drawn again, so the caret stays where the user types.
+	input.dataset.focusKey = field;
 	if (input instanceof HTMLInputElement) {
 		input.type = 'text';
 	}
@@ -160,7 +163,12 @@ function heading(text: string, end?: Node): HTMLElement {
 	return h;
 }
 
+/** Draws the page for `state`. Focus, and the caret in a field, stay where they were: a description that arrives while the user types the title doesn't interrupt them. */
 function render(state: TeamFlowState): void {
+	keepFocus(root, () => draw(state));
+}
+
+function draw(state: TeamFlowState): void {
 	disposables.forEach(d => d.dispose());
 	disposables = [];
 	root.replaceChildren();
@@ -627,6 +635,9 @@ function review(view: ReviewView): ReturnType<typeof dialog> {
 		if (p) {
 			line.append(p);
 		}
+		if (row.retry) {
+			line.append(button('link', strings.retry, () => act('retrySide'), 'refresh'));
+		}
 		side.append(line);
 	}
 	side.append(el('h2', undefined, strings.yourReview));
@@ -636,6 +647,11 @@ function review(view: ReviewView): ReturnType<typeof dialog> {
 		const done = el('div', 'flow-done');
 		done.append(icon('pass-filled'), el('span', undefined, view.done));
 		side.append(done);
+		if (view.leftover) {
+			const leftover = el('div', 'flow-actions');
+			leftover.append(button('secondary', strings.removeReviewer, () => act('removeReviewer'), 'trash'), button('secondary', strings.keepReviewer, () => act('keepReviewer')));
+			side.append(el('p', 'hint', view.leftover), leftover);
+		}
 	}
 	if (view.files.length) {
 		side.append(el('h2', 'quiet', strings.files));
@@ -657,7 +673,7 @@ function review(view: ReviewView): ReturnType<typeof dialog> {
 			side.append(row);
 		}
 		if (view.moreFiles) {
-			side.append(el('p', 'hint', format(strings.moreFiles, view.moreFiles)));
+			side.append(el('p', 'hint', format(strings.moreFiles, view.files.length, view.files.length + view.moreFiles)));
 		}
 	}
 	if (view.agentGone) {
@@ -700,6 +716,10 @@ function checks(view: ChecksView): ReturnType<typeof dialog> {
 		const p = pill(row.pill);
 		if (p) {
 			line.append(p);
+		}
+		const link = row.link;
+		if (link) {
+			line.append(button('link', link.label, () => act('open', link.url), 'link-external'));
 		}
 		rows.append(line);
 	}

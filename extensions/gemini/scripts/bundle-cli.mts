@@ -8,8 +8,10 @@
 // SHA-512 are pinned in package.json (`bundledCli`); a download that does not
 // match is refused. The checked copy then gets GeminiCode's patch
 // (src/acp/cliPatches.ts), which caps tool output in ACP mode; a CLI the patch
-// doesn't recognize stops the script, so the app never ships it uncapped. Run
-// before packaging the app:
+// doesn't recognize stops the script, so the app never ships it uncapped. So
+// does a CLI that no longer has what GeminiCode reads from it outside ACP
+// (src/acp/cli/contract.ts), and, in CI, a missing ripgrep. Run before
+// packaging the app:
 //
 //   node extensions/gemini/scripts/bundle-cli.mts
 //
@@ -20,8 +22,12 @@ import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import './sourceImports.mts';
 import { patchCliBundle } from '../src/acp/cliPatches.ts';
 import { provideRipgrep } from '../src/acp/cliRipgrep.ts';
+
+// Imported once sourceImports.mts resolves the sources' extensionless imports.
+const { checkCliContract } = await import('../src/acp/cli/contract.ts');
 
 const extensionDir = path.dirname(import.meta.dirname);
 const cliDir = path.join(extensionDir, 'cli');
@@ -42,8 +48,17 @@ async function patch(): Promise<void> {
 		const binary = process.platform === 'win32' ? 'rg.exe' : 'rg';
 		const source = path.join(extensionDir, '..', '..', 'node_modules', '@vscode', 'ripgrep-universal', 'bin', `${process.platform}-${arch}`, binary);
 		const placed = await provideRipgrep(path.join(target, 'bundle'), source, process.platform, arch);
+		if (placed === 'unavailable' && process.env.CI) {
+			// A release without it searches three to four times slower; CI installs the root packages, which carry it.
+			throw new Error(`No ripgrep for ${process.platform}-${arch} at ${path.relative(process.cwd(), source)}: install the root packages (npm ci) first.`);
+		}
 		console.log(placed === 'unavailable' ? `No ripgrep for ${process.platform}-${arch} in node_modules; the bundled CLI falls back to git grep there.` : `Ripgrep for ${process.platform}-${arch}: ${placed}.`);
 	}
+	const mismatches = await checkCliContract(path.join(target, 'bundle', 'gemini.js'));
+	if (mismatches.length) {
+		throw new Error(`Gemini CLI ${version} no longer has what GeminiCode reads from it (src/acp/cli/formats.ts):\n${mismatches.map(m => `  ${m.check} (${m.area}): ${m.detail}`).join('\n')}\nUpdate src/acp/cli/ for this version before bundling it.`);
+	}
+	console.log(`Gemini CLI ${version} has everything GeminiCode reads from it outside ACP.`);
 }
 
 if (fs.existsSync(path.join(target, 'bundle', 'gemini.js')) && fs.existsSync(marker) && fs.readFileSync(marker, 'utf8') === integrity) {
@@ -70,8 +85,10 @@ try {
 		throw new Error(`@google/gemini-cli ${version} does not match the pinned checksum.\n  expected ${integrity}\n  got      ${actual}`);
 	}
 
-	// Keep what an install from the app keeps, plus the licence.
-	execFileSync('tar', ['-xzf', tarball, '-C', work, 'package/bundle', 'package/package.json', 'package/LICENSE']);
+	// Keep what an install from the app keeps, plus the licence and, when the package has one, its NOTICE.
+	const listed = execFileSync('tar', ['-tzf', tarball], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).split('\n');
+	const notice = listed.includes('package/NOTICE') ? ['package/NOTICE'] : [];
+	execFileSync('tar', ['-xzf', tarball, '-C', work, 'package/bundle', 'package/package.json', 'package/LICENSE', ...notice]);
 	const unpacked = path.join(work, 'package');
 	if (!fs.existsSync(path.join(unpacked, 'bundle', 'gemini.js'))) {
 		throw new Error(`@google/gemini-cli ${version} has no bundle/gemini.js.`);

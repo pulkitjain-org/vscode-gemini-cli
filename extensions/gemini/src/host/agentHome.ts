@@ -10,11 +10,15 @@ import * as vscode from 'vscode';
 import type { IndexStatus } from '../acp/index/indexerProtocol';
 import { onDidChangeSpellCheck, spellCheckOn } from './spellCheck';
 import { isModeAllowed } from '../acp/adminPolicy';
+import { defaultStartMode } from '../acp/chatTurns';
 import { errorMessage } from '../acp/errors';
+import { secretPathReason } from '../acp/fileAccess';
+import { collectCommandActions, commandActionKey } from '../acp/hostAllowlists';
 import type { JiraClient } from '../acp/jira';
 import { formatCounts } from '../acp/agentChanges';
 import { attachmentsForFiles } from './addToChat';
 import { AgentsView, AgentSummary, relativeTime, startModes } from './agentsView';
+import { chooseFolder } from './agents/agentStarts';
 import { startsQuietly } from './agentWarmup';
 import { detectAuth } from '../acp/directRequest';
 import { tildify } from './displayText';
@@ -24,12 +28,14 @@ import { moveCard, toggleCard, type DashboardLayout } from '../acp/dashboard';
 import { buildDashboard, DashboardInput, StartupState } from './homeDashboard';
 import { FromHome, HomeAction, HomeAgent, HomeCardId, HomeIndex, HomeProject, HomeStrings, HomeView, ToHome } from './panelProtocol';
 import { TeamData } from './teamData';
+import { teamToolIds } from '../acp/teamHttp';
 import type { TeamConnections } from './teamConnections';
 import { projectsEnabled } from './projects';
 import { agentsColumn } from './editorPlacement';
 import { createNonce, escapeAttribute } from './webviewHtml';
 import { openTeamLink } from './teamLinks';
 import { indexBuildOn } from './workspaceIndex';
+import { showError } from './errorNotice';
 
 const homeViewType = 'gemini.agentHome';
 const layoutKey = 'gemini.home.layout';
@@ -68,6 +74,9 @@ type Mode = 'agents' | 'editor';
  * The tools' data shows at once from the last answers and refreshes in the
  * background while the page is visible; nothing here starts the Gemini CLI.
  */
+/** Commands the page's own buttons run, with no arguments, beside those the host sends in a view. */
+const pageCommands: ReadonlySet<string> = new Set(['gemini.connections']);
+
 export class AgentHome implements vscode.Disposable {
 
 	private panel: vscode.WebviewPanel | undefined;
@@ -83,6 +92,8 @@ export class AgentHome implements vscode.Disposable {
 	private listCard: HomeCardId | undefined;
 	/** Files the user picked or dropped for the comment box: the only paths a comment may upload. */
 	private readonly commentFilePaths = new Set<string>();
+	/** The command actions sent to the page in a view: the only commands its buttons may run. */
+	private readonly sentActions = new Set<string>();
 
 	/** `onTyping` runs when the user starts typing a task, so the agent can start meanwhile. */
 	constructor(private readonly extensionUri: vscode.Uri, private readonly agents: AgentsView, private readonly onTyping: () => void = () => undefined, private readonly options?: HomeOptions) {
@@ -113,6 +124,7 @@ export class AgentHome implements vscode.Disposable {
 				}
 			}),
 			agents.onDidChangeAgents(() => this.schedule()),
+			agents.folderTrust.onDidChange(() => this.schedule()),
 			agents.index?.onDidChangeStatus(() => this.schedule()) ?? { dispose: () => undefined },
 		);
 		void Promise.resolve(vscode.commands.executeCommand<Mode>('_gemini.getMode')).then(mode => this.setMode(mode), () => undefined);
@@ -148,7 +160,7 @@ export class AgentHome implements vscode.Disposable {
 		});
 		panel.iconPath = vscode.Uri.joinPath(this.extensionUri, 'media', 'gemini.svg');
 		panel.webview.html = this.html(panel.webview, media);
-		panel.webview.onDidReceiveMessage((message: FromHome) => this.onMessage(message).catch(err => void vscode.window.showErrorMessage(errorMessage(err))));
+		panel.webview.onDidReceiveMessage((message: FromHome) => this.onMessage(message).catch(err => void showError(errorMessage(err))));
 		panel.onDidChangeViewState(e => {
 			if (e.webviewPanel.visible) {
 				this.schedule(0);
@@ -247,17 +259,20 @@ export class AgentHome implements vscode.Disposable {
 			return;
 		}
 		this.lastView = json;
+		collectCommandActions(view, this.sentActions);
 		void panel.webview.postMessage({ type: 'view', view } satisfies ToHome);
 	}
 
 	private async build(): Promise<HomeView> {
 		const now = Date.now();
 		const index = this.agents.index?.enabled ? this.agents.index : undefined;
+		const trust = this.agents.folderTrust;
 		const workspaces = await Promise.all((await this.agents.workspaces()).map(async w => {
-			const state = index ? homeIndex(await index.summary(w.folder), index.status(w.folder)) : undefined;
-			return { folder: w.folder, name: path.basename(w.folder) || w.folder, description: tildify(path.dirname(w.folder)), git: w.git, ...state ? { index: state } : {} };
+			const [state, trusted] = await Promise.all([index ? index.summary(w.folder).then(summary => homeIndex(summary, index.status(w.folder))) : undefined, trust.label(w.folder).catch(() => undefined)]);
+			return { folder: w.folder, name: path.basename(w.folder) || w.folder, description: tildify(path.dirname(w.folder)), git: w.git, ...state ? { index: state } : {}, ...trusted ? { trust: trusted } : {} };
 		}));
-		const all = this.agents.summaries();
+		// Archived agents are only under the pane's Archived row.
+		const all = this.agents.summaries().filter(a => !a.archived);
 		// Projects and their threads have their own list.
 		const summaries = all.filter(a => !a.project);
 		const isActive = (a: AgentSummary) => a.state === 'working' || a.state === 'waiting' || a.state === 'done' || a.state === 'error' || !!a.changes?.files;
@@ -273,12 +288,13 @@ export class AgentHome implements vscode.Disposable {
 			earlier: summaries.filter(a => !isActive(a)).slice(0, maxEarlier).map(toView),
 			...(projectsEnabled() ? {
 				projects: all.flatMap((a): HomeProject[] => a.project?.role === 'coordinator' ? [{
-					id: a.id, title: a.title, workspace: path.basename(a.folder), state: a.state, updated: relativeTime(a.updatedAt, now),
+					id: a.id, title: a.title, workspace: path.basename(a.folder), folder: a.folder, state: a.state, updated: relativeTime(a.updatedAt, now),
 					threads: a.project.threads === 1 ? vscode.l10n.t("1 thread") : vscode.l10n.t("{0} threads", a.project.threads),
 				}] : []),
 			} : {}),
 			ownBranch: vscode.workspace.getConfiguration(configSection).get<boolean>('agents.ownBranch', false),
 			modes: startModes().filter(mode => isModeAllowed(getApprovalPolicy(), mode.id)),
+			defaultMode: defaultStartMode(vscode.workspace.getConfiguration(configSection).get('agents.defaultMode'), modeId => isModeAllowed(getApprovalPolicy(), modeId)) ?? 'default',
 			...preferredModel() ? { model: preferredModel() } : {},
 			dashboard: this.dashboard(all, await this.unfinished(), await this.signedIn(), (await this.agents.teamTools?.workspaceDefaults().catch(() => undefined))?.jira?.commentVisibility),
 		};
@@ -312,6 +328,8 @@ export class AgentHome implements vscode.Disposable {
 			now: new Date(),
 			connected: team?.connected ?? new Set(),
 			state: tool => team?.state(tool) ?? { kind: 'off' },
+			health: tool => team?.serverHealth(tool) ?? { kind: 'ok' },
+			resultsAt: tool => this.teamData?.resultsAt(tool),
 			data: this.teamData?.snapshot ?? {},
 			agents,
 			layout: this.layout(),
@@ -343,15 +361,71 @@ export class AgentHome implements vscode.Disposable {
 			case 'agent':
 				return this.onMessage({ type: action.do, id: action.id });
 			case 'command':
-				// Only GeminiCode's own commands and opening a folder: the page can't run anything else.
-				if (/^gemini\.|^workbench\.action\.files\.openFolder$|^workbench\.view\.extension\.gemini/.test(action.command)) {
+				// Only a command this page was sent, with the same arguments, or opening Connections from the page itself.
+				if ((this.sentActions.has(commandActionKey(action.command, action.args)) || (pageCommands.has(action.command) && !action.args?.length))
+					&& /^gemini\.|^workbench\.action\.files\.openFolder$|^workbench\.view\.extension\.gemini/.test(action.command)) {
 					await vscode.commands.executeCommand(action.command, ...action.args ?? []);
 				}
 				return;
 			case 'comment':
 				// The page opens its comment box itself; the comment comes back as a 'comment' message.
 				return;
+			case 'retry':
+				return this.retry(action.tool);
 		}
+	}
+
+	/** A banner's Retry: checks `tool`'s server now, past its backoff, and reads the cards' data again. */
+	private async retry(tool: string): Promise<void> {
+		const team = this.agents.teamTools;
+		const known = teamToolIds.find(id => id === tool);
+		if (!team || !known || !team.connected.has(known)) {
+			return;
+		}
+		this.schedule();
+		await team.refresh([known]);
+		const folder = (await this.agents.workspaces())[0]?.folder;
+		await this.teamData?.refresh(folder, this.layout().qualityBranch);
+		this.schedule();
+	}
+
+	/**
+	 * Sends `text` to project `id`'s coordinator, as the user's message in its
+	 * chat, which opens; the coordinator decides whether it becomes a new
+	 * thread or a note to one already working. Resolves with whether it went.
+	 */
+	private async sendToProject(id: string, text: string, attachments: Extract<FromHome, { type: 'start' }>['attachments']): Promise<boolean> {
+		if (!this.agents.summaries().some(a => a.id === id && a.project?.role === 'coordinator')) {
+			void showError(vscode.l10n.t("The project is gone."));
+			return false;
+		}
+		await this.agents.open(id);
+		const chat = this.agents.controllerOf(id);
+		if (!chat) {
+			return false;
+		}
+		// Not awaited: send resolves when the whole turn ends.
+		void chat.send(text, attachments);
+		return true;
+	}
+
+	/**
+	 * Starts a project on `text` in `folder`, as New Project does there, and
+	 * sends the task to its coordinator. Resolves with whether it started; when
+	 * not, the user has been told why, or turned it down.
+	 */
+	private async startProject(folder: string, text: string, attachments: Extract<FromHome, { type: 'start' }>['attachments']): Promise<boolean> {
+		const coordinators = () => this.agents.summaries().filter(a => a.project?.role === 'coordinator').map(a => a.id);
+		const before = new Set(coordinators());
+		await vscode.commands.executeCommand('gemini.projects.new', { kind: 'workspace', folder });
+		const id = coordinators().find(each => !before.has(each));
+		const chat = id ? this.agents.controllerOf(id) : undefined;
+		if (!chat) {
+			return false;
+		}
+		// Not awaited: send resolves when the whole turn ends.
+		void chat.send(text, attachments);
+		return true;
 	}
 
 	/** The team tools and the Jira client for the comment box, which always goes to Jira's REST API (never mcp-atlassian in Docker). */
@@ -418,10 +492,14 @@ export class AgentHome implements vscode.Disposable {
 		void this.panel?.webview.postMessage({ type: 'commentOptions', key, roles, groups } satisfies ToHome);
 	}
 
-	/** Files to attach: dropped ones by their URIs, or picked. */
+	/**
+	 * Files to attach: dropped ones by their URIs, or picked. The host can't tell a drop from
+	 * a URI the page made up, so a dropped file that may hold secrets (a key, `~/.ssh`) is left out;
+	 * pick it in the dialog to attach it.
+	 */
 	private async commentFiles(uris: readonly string[] | undefined): Promise<void> {
 		const picked = uris
-			? uris.map(uri => vscode.Uri.parse(uri)).filter(uri => uri.scheme === 'file')
+			? uris.map(uri => vscode.Uri.parse(uri)).filter(uri => uri.scheme === 'file' && !secretPathReason(uri.fsPath))
 			: await vscode.window.showOpenDialog({ canSelectMany: true, canSelectFiles: true, canSelectFolders: false, openLabel: vscode.l10n.t("Attach"), title: vscode.l10n.t("Attach Files to the Comment") }) ?? [];
 		const files = (await Promise.all(picked.map(async uri => {
 			const stat = await fs.stat(uri.fsPath).catch(() => undefined);
@@ -445,23 +523,41 @@ export class AgentHome implements vscode.Disposable {
 				return;
 			case 'start':
 				if (message.text.trim()) {
-					if (!await this.agents.startWithPrompt(message.folder, message.text.trim(), message.ownBranch, message.mode, message.attachments)) {
+					const started = message.project === 'new' ? await this.startProject(message.folder, message.text.trim(), message.attachments)
+						: message.project ? await this.sendToProject(message.project, message.text.trim(), message.attachments)
+							: await this.agents.startWithPrompt(message.folder, message.text.trim(), message.ownBranch, message.mode, message.attachments);
+					if (!started) {
 						void this.panel?.webview.postMessage({ type: 'startFailed', text: message.text } satisfies ToHome);
 					}
 				}
 				return;
 			case 'typing':
 				this.onTyping();
-				if (!message.ownBranch) {
+				// Not before the folder's trust is asked: the agent process reads it once, when it starts.
+				if (!message.ownBranch && !await this.agents.folderTrust.unanswered(message.folder)) {
 					this.agents.prepareStart(message.folder);
+				}
+				return;
+			case 'folderPicked':
+			case 'trust':
+				if ((await this.agents.workspaces()).some(w => w.folder === message.folder)) {
+					await this.agents.folderTrust.ask(message.folder, { explicit: message.type === 'trust' });
 				}
 				return;
 			case 'newProject':
 				await vscode.commands.executeCommand('gemini.projects.new');
 				return;
-			case 'addFolder':
-				await vscode.commands.executeCommand('workbench.action.addRootFolder');
+			case 'addFolder': {
+				// For agents only: the window's folders stay as they are.
+				const folder = await chooseFolder(true);
+				if (folder) {
+					this.agents.addFolder(folder);
+					await this.update();
+					void this.panel?.webview.postMessage({ type: 'folderAdded', folder: path.resolve(folder) } satisfies ToHome);
+					await this.agents.folderTrust.ask(folder);
+				}
 				return;
+			}
 			case 'pickFiles': {
 				const uris = await vscode.window.showOpenDialog({
 					canSelectMany: true,
@@ -475,7 +571,7 @@ export class AgentHome implements vscode.Disposable {
 				}
 				return;
 			}
-			case 'projectHelpers':
+			case 'agentSetup':
 				await vscode.commands.executeCommand('gemini.projectSettings');
 				return;
 			case 'openIndex':
@@ -549,12 +645,32 @@ export class AgentHome implements vscode.Disposable {
 			subtitle: vscode.l10n.t("Describe the task. A new agent starts on it right away, and you can start more while it works."),
 			placeholder: vscode.l10n.t("Fix the rounding in the cart total and add a test"),
 			start: vscode.l10n.t("Start Agent"),
-			ownBranch: vscode.l10n.t("On its own branch"),
-			ownBranchHint: vscode.l10n.t("The agent works in its own copy of the repository, on a new branch. Merge Back brings its work into yours."),
+			startAs: vscode.l10n.t("Where the agent works"),
+			startHere: vscode.l10n.t("Here"),
+			startHereHint: vscode.l10n.t("Works in this folder, on your current branch."),
+			startOwnBranch: vscode.l10n.t("On Its Own Branch"),
+			startOwnBranchHint: vscode.l10n.t("A new branch and folder, merged back when done."),
+			startProject: vscode.l10n.t("To a Project"),
+			startProjectHint: vscode.l10n.t("Goes to a project's coordinator, which makes it a thread or passes it on."),
+			project: vscode.l10n.t("Project"),
+			projectsIn: vscode.l10n.t("Projects in {0}"),
+			otherProjects: vscode.l10n.t("Other repositories"),
+			newProjectIn: vscode.l10n.t("New Project in {0}"),
+			sendToProject: vscode.l10n.t("Send to Project"),
+			startNewProject: vscode.l10n.t("Start Project"),
+			projectPlaceholder: vscode.l10n.t("Tell {0}'s coordinator what to do next..."),
+			newProjectPlaceholder: vscode.l10n.t("Describe the work for a new project's coordinator..."),
+			coordinatorSettings: vscode.l10n.t("The coordinator's mode and model"),
+			trusted: vscode.l10n.t("Trusted"),
+			trustedByParent: vscode.l10n.t("Trusted by parent"),
+			needsTrust: vscode.l10n.t("Needs trust"),
+			needsTrustFolder: vscode.l10n.t("Needs trust: {0} isn't trusted for agents"),
+			trustButton: vscode.l10n.t("Trust..."),
+			needsTrustedFolder: vscode.l10n.t("Needs a trusted folder"),
 			workspace: vscode.l10n.t("Workspace"),
-			addFolder: vscode.l10n.t("Add Folder to Workspace..."),
-			projectHelpers: vscode.l10n.t("Project Helpers"),
-			projectHelpersHint: vscode.l10n.t("MCP servers, rules and hooks for your projects"),
+			addFolder: vscode.l10n.t("Open Folder..."),
+			agentSetup: vscode.l10n.t("Agent Setup"),
+			agentSetupHint: vscode.l10n.t("MCP servers, skills, rules and hooks your agents load"),
 			index: vscode.l10n.t("Index"),
 			indexHint: vscode.l10n.t("What agents can look up without searching file by file: each workspace's index and the docs you attach"),
 			plusMenu: vscode.l10n.t("Add files and pick a mode"),
@@ -637,6 +753,9 @@ export class AgentHome implements vscode.Disposable {
 			commentTipVisibility: vscode.l10n.t("Who can see this comment in Jira"),
 			commentTipCancel: vscode.l10n.t("Close without posting. What you wrote is kept until Home closes."),
 			commentRemoveFile: vscode.l10n.t("Remove {0}"),
+			sizeBytes: vscode.l10n.t("{0} B"),
+			sizeKilobytes: vscode.l10n.t("{0} KB"),
+			sizeMegabytes: vscode.l10n.t("{0} MB"),
 			cancel: vscode.l10n.t("Cancel"),
 		};
 		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'home.js'));
@@ -644,6 +763,10 @@ export class AgentHome implements vscode.Disposable {
 		const draftMarkdown = webview.asWebviewUri(vscode.Uri.joinPath(media, 'draftMarkdown.js'));
 		// The comment box for Jira tickets, loaded the first time it opens.
 		const commentBox = webview.asWebviewUri(vscode.Uri.joinPath(media, 'commentBox.js'));
+		// Show All's popup and the Customize menu, loaded the first time either opens.
+		const homePopups = webview.asWebviewUri(vscode.Uri.joinPath(media, 'homePopups.js'));
+		// The composer's and the rows' menus, loaded once Home has settled or on the first click on one of their buttons.
+		const homeMenus = webview.asWebviewUri(vscode.Uri.joinPath(media, 'homeMenus.js'));
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
 		const menuStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'menu.css'));
 		const homeStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'home.css'));
@@ -666,23 +789,24 @@ export class AgentHome implements vscode.Disposable {
 	<main class="home dash">
 		<header class="dash-head">
 			<h1 id="title"></h1><p id="subtitle" class="muted"></p><span id="stale" class="dash-pill" hidden></span>
-			<div class="dash-tools"><span id="tools" class="dash-tool-logos"></span><button type="button" id="refresh" class="icon-button"><i class="codicon codicon-refresh" aria-hidden="true"></i></button><span class="dash-customize"><button type="button" id="customize" class="icon-button"><i class="codicon codicon-settings-gear" aria-hidden="true"></i></button><div id="customize-menu" class="home-menu" hidden></div></span></div>
+			<div class="dash-tools"><span id="tools" class="dash-tool-logos"></span><button type="button" id="refresh" class="icon-button"><i class="codicon codicon-refresh" aria-hidden="true"></i></button><span class="dash-customize"><button type="button" id="customize" class="icon-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-settings-gear" aria-hidden="true"></i></button><div id="customize-menu" class="home-menu" hidden></div></span></div>
 		</header>
-		<div id="banner" class="dash-banner" hidden></div>
+		<div id="banners" class="dash-banners" hidden></div>
 		<section class="home-start">
 			<form id="composer" class="home-composer">
 				<div id="attachments" class="attachments" hidden></div>
 				<div class="composer-tabs" role="tablist"><button type="button" id="tab-write" class="composer-tab" role="tab" aria-selected="true" aria-controls="prompt"></button><button type="button" id="tab-preview" class="composer-tab" role="tab" aria-selected="false" aria-controls="preview"></button></div>
-				<textarea id="prompt" rows="3" spellcheck="${spellCheckOn()}"></textarea>
+				<textarea id="prompt" rows="4" spellcheck="${spellCheckOn()}"></textarea>
 				<div id="preview" class="composer-preview markdown" role="tabpanel" tabindex="0" hidden></div>
+				<div class="home-start-row"><div id="start-as" class="home-start-as" role="radiogroup" hidden></div><span class="home-project" hidden><button type="button" id="project" class="option-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-project" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="project-menu" class="home-menu" hidden></div></span><span id="needs-trust" class="needs-trust" hidden><i class="codicon codicon-workspace-untrusted" aria-hidden="true"></i><span></span><button type="button" class="primary"></button></span></div>
 				<div class="home-composer-bar">
-					<span class="home-plus"><button type="button" id="plus" class="plus-button"><i class="codicon codicon-add" aria-hidden="true"></i></button><div id="plus-menu" class="home-menu" hidden></div></span>
-					<span class="home-folder"><button type="button" id="workspace" class="option-button"><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="workspace-menu" class="home-menu" hidden></div></span><button type="button" id="index-state" class="index-state" hidden></button>
-					<label id="own-branch-label" class="option-switch"><span class="sep" aria-hidden="true">·</span><input type="checkbox" id="own-branch"><span class="switch-track" aria-hidden="true"></span><span class="switch-label"></span></label>
-					<span class="home-mode"><span class="sep" aria-hidden="true">·</span><button type="button" id="mode" class="option-button"><i class="codicon" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="mode-menu" class="home-menu" hidden></div></span>
-					<span id="model" class="home-model" hidden><span class="sep" aria-hidden="true">·</span><span></span></span>
+					<span class="home-plus"><button type="button" id="plus" class="plus-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-add" aria-hidden="true"></i></button><div id="plus-menu" class="home-menu" hidden></div></span>
+					<span class="home-folder"><button type="button" id="workspace" class="option-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon codicon-folder" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="workspace-menu" class="home-menu" hidden></div></span><button type="button" id="index-state" class="index-state" hidden></button>
+					<span class="home-mode"><button type="button" id="mode" class="option-button" aria-haspopup="menu" aria-expanded="false"><i class="codicon" aria-hidden="true"></i><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="mode-menu" class="home-menu" hidden></div></span>
+					<span id="model" class="home-model" hidden><span></span></span>
+					<span id="coordinator" class="home-model" hidden></span>
 					<span class="spacer"></span>
-					<span class="home-from-tools"><button type="button" id="from-tools" class="option-button"><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="from-tools-menu" class="home-menu" hidden></div></span>
+					<span class="home-from-tools"><button type="button" id="from-tools" class="option-button" aria-haspopup="menu" aria-expanded="false"><span></span><i class="codicon codicon-chevron-down" aria-hidden="true"></i></button><div id="from-tools-menu" class="home-menu" hidden></div></span>
 					<button type="submit" id="start" class="primary"><span></span></button>
 				</div>
 			</form>
@@ -696,7 +820,7 @@ export class AgentHome implements vscode.Disposable {
 		<section id="projects" class="home-section" hidden></section>
 		<section id="earlier" class="home-section"></section>
 	</main>
-	<script nonce="${nonce}" type="module" src="${script}" data-draft-markdown="${draftMarkdown}" data-comment-box="${commentBox}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
+	<script nonce="${nonce}" type="module" src="${script}" data-draft-markdown="${draftMarkdown}" data-comment-box="${commentBox}" data-home-popups="${homePopups}" data-home-menus="${homeMenus}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
 </html>`;
 	}

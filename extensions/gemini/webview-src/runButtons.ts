@@ -42,11 +42,12 @@ function send(text: string, language: string, action: RunAction, extra: { readon
  */
 export function addRunButtons(wrapper: HTMLElement, copy: HTMLElement, language: string, text: string, ready: boolean): void {
 	const run = button('icon-button code-run', '', () => send(text, language, 'run'), 'play');
-	const more = button('icon-button code-run code-more', '', () => undefined, 'chevron-down');
+	const more = button('icon-button code-run code-more', '', () => toggleMenu(more, { text, language }), 'chevron-down');
 	setLabel(run, ready ? strings.run.run : strings.run.streaming);
 	setLabel(more, strings.run.more);
+	more.setAttribute('aria-haspopup', 'menu');
+	more.setAttribute('aria-expanded', 'false');
 	run.disabled = more.disabled = !ready;
-	more.addEventListener('click', () => openMenu(more, text, language), { once: true });
 	copy.before(run, more);
 	wrapper.classList.add('runnable');
 	blocks.set(wrapper, { text, language });
@@ -56,25 +57,44 @@ export function addRunButtons(wrapper: HTMLElement, copy: HTMLElement, language:
 	}
 }
 
-/** The chevron's menu, made on its first click; the menu's own click handler opens and closes it after that. */
-function openMenu(anchor: HTMLElement, text: string, language: string): void {
+/** The chevrons' menu: one for every shell block, made on the first click. */
+let menu: Menu | undefined;
+/** The block the menu is open for, and its chevron. */
+let menuBlock: { readonly text: string; readonly language: string; readonly anchor: HTMLElement } | undefined;
+
+/** Opens the chevrons' menu for a block under its chevron `anchor`, or closes it if it is open there. */
+function toggleMenu(anchor: HTMLElement, block: { readonly text: string; readonly language: string }): void {
+	menu ??= createMenu();
+	if (menu.isOpenFrom(anchor)) {
+		menu.close();
+		return;
+	}
+	menu.setAnchor(anchor);
+	menuBlock = { ...block, anchor };
+	menu.open();
+}
+
+function createMenu(): Menu {
 	const element = el('div', 'run-menu');
+	element.id = 'run-menu';
 	element.hidden = true;
 	document.body.append(element);
-	const menu: Menu = new Menu({
+	const created: Menu = new Menu({
 		element,
-		anchor,
+		// The chevrons open and close it (toggleMenu), each made its anchor in turn; this one is never shown.
+		anchor: el('button'),
 		label: strings.run.more,
 		tip: setTip,
 		onOpen: () => {
-			const box = anchor.getBoundingClientRect();
+			const box = menuBlock!.anchor.getBoundingClientRect();
 			element.style.top = `${box.bottom + 4}px`;
 			element.style.right = `${Math.max(8, innerWidth - box.right)}px`;
 		},
 		sections: () => {
+			const block = menuBlock!;
 			const pick = (action: RunAction, place?: string) => () => {
-				menu.close();
-				send(text, language, action, place === undefined ? {} : { place });
+				created.close();
+				send(block.text, block.language, action, place === undefined ? {} : { place });
 			};
 			return [
 				{ rows: [{ icon: 'insert', name: strings.run.insert, run: pick('insert') }, { icon: 'terminal', name: strings.run.newTerminal, run: pick('newTerminal') }] },
@@ -83,7 +103,7 @@ function openMenu(anchor: HTMLElement, text: string, language: string): void {
 		},
 		empty: () => '',
 	});
-	menu.open();
+	return created;
 }
 
 /** A block's Run changed, as the extension tells it. */
@@ -119,7 +139,7 @@ function show(wrapper: HTMLElement, state: RunState, asked: boolean): void {
 		} else {
 			status.append(icon('error'), el('span', undefined, String(state.exitCode)));
 			status.classList.add('failed');
-			setTip(status, format(strings.run.failed, state.exitCode).replace('{1}', formatDuration(state.ms ?? 0)));
+			setTip(status, format(strings.run.failed, state.exitCode, formatDuration(state.ms ?? 0)));
 			status.append(button('run-send', strings.run.sendOutput, () => vscode.postMessage({ type: 'sendRunOutput', text: block.text })));
 		}
 		runButton.before(status);

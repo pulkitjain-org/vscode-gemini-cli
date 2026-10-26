@@ -82,6 +82,9 @@ export const ui = {
 	branchLabel: within(branchButton, 'span', HTMLSpanElement),
 	commitButton,
 	commitLabel: within(commitButton, 'span', HTMLSpanElement),
+	commitMore: byId('commit-more', HTMLButtonElement),
+	commitMenu: byId('commit-menu', HTMLElement),
+	commitBox: byId('commit-box', HTMLElement),
 	workspaceButton,
 	workspaceLabel: within(workspaceButton, 'span', HTMLSpanElement),
 	reviewChip,
@@ -134,6 +137,10 @@ export const state = {
 	reactions: document.querySelector<HTMLScriptElement>('script[data-strings]')?.dataset.reactions === 'true',
 	/** The picker's Recent row, newest first. */
 	recents: [] as readonly string[],
+	/** `gemini.chat.sendWith` is cmdEnter: ⌘Return (Ctrl+Enter) sends, Return makes a new line. */
+	cmdEnter: false,
+	/** The mode the mode menu tags "Recommended here" for this folder. */
+	recommendMode: undefined as string | undefined,
 };
 
 /** Each item's element in the transcript. */

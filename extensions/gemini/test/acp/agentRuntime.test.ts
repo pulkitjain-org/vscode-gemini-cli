@@ -30,8 +30,8 @@ describe('AgentRuntime', () => {
 		sidecar?.dispose();
 	});
 
-	function start(script: FakeAgentScript, options?: ConstructorParameters<typeof AgentRuntime>[1]) {
-		sidecar = new AgentSidecar({ command: () => fakeAgentCommand(script), cwd: undefined, restartDelaysMs: [] });
+	function start(script: FakeAgentScript, options?: ConstructorParameters<typeof AgentRuntime>[1], restartDelaysMs: number[] = []) {
+		sidecar = new AgentSidecar({ command: () => fakeAgentCommand(script), cwd: undefined, restartDelaysMs });
 		runtime = new AgentRuntime(sidecar, options);
 		const spawned: SidecarState[] = [];
 		sidecar.onDidChangeState(s => s.kind === 'running' && spawned.push(s));
@@ -162,6 +162,63 @@ describe('AgentRuntime', () => {
 		await a.client.prompt('who');
 		expect(replayed).toEqual(['history:fake-session-1', 'Part 1', 'Part 2', 'Part 3', 'Part 4', 'Part 5', 'Part 6']);
 		expect(a.texts).toEqual(['session:fake-session-1:/work/a']);
+	});
+
+	it('waits for the whole replay when its length is known, though the agent pauses between updates', async () => {
+		const { sidecar } = start({ storedSessions: ['fake-session-1'], replay: { updates: 3, delayMs: 400 }, turns: [[{ step: 'session' }]] });
+		const a = await session('/work/a', { findSavedSession: async () => ({ replayUpdates: 4 }) });
+		const replayed: string[] = [];
+		a.client.onDidReplayEvent(e => e.kind === 'text' && replayed.push(e.text));
+		const readyAgain = waitFor<AgentClientState>(a.client.onDidChangeState, s => s.kind === 'ready');
+		sidecar.stop();
+		sidecar.start();
+		await readyAgain;
+		await a.client.prompt('who');
+		expect(replayed).toEqual(['history:fake-session-1', 'Part 1', 'Part 2', 'Part 3']);
+		expect(a.texts).toEqual(['session:fake-session-1:/work/a']);
+	});
+
+	it('keeps the newest updates for a session that registers late, dropping the oldest', async () => {
+		start({ earlyUpdates: 5_600 });
+		const client = new AgentClient(runtime!, { cwd: '/work/a', requestPermission: cancelled });
+		clients.push(client);
+		const texts: string[] = [];
+		client.onDidReceiveEvent(e => e.kind === 'text' && texts.push(e.text));
+		await waitFor<AgentClientState>(client.onDidChangeState, s => s.kind === 'ready');
+		expect(texts.length).toBeGreaterThanOrEqual(5_000);
+		expect(texts.length).toBeLessThanOrEqual(5_500);
+		expect(texts.at(-1)).toBe('early 5600');
+		expect(texts[0]).not.toBe('early 1');
+	});
+
+	it('restarts the agent when its stream closes while the process keeps running', async () => {
+		const { spawned } = start({}, undefined, [50]);
+		const a = await session('/work/a');
+		expect(a.state.kind).toBe('ready');
+		const first = spawned[0];
+		const readyAgain = waitFor<AgentClientState>(a.client.onDidChangeState, s => s.kind === 'ready');
+		if (first.kind === 'running') {
+			// As the SDK does on a message over its limit: the stream ends, the process lives on.
+			first.process.stdout.destroy();
+		}
+		await readyAgain;
+		expect(spawned).toHaveLength(2);
+		expect(first.kind === 'running' && first.process.exitCode === null && first.process.signalCode === null).toBe(false);
+	});
+
+	it('records how opening sessions went for the agent\'s status, afresh for each process', async () => {
+		const { sidecar } = start({ newSessionErrors: [{ error: { code: -32000, message: 'This account requires setting the GOOGLE_CLOUD_PROJECT or GOOGLE_CLOUD_PROJECT_ID env var. See https://geminicli.com/docs/get-started/authentication/#set-gcp' } }] });
+		await ready(runtime!);
+		expect(runtime!.sessionHealth).toEqual({ opened: false });
+		const failed = await session('/work/a');
+		expect(failed.state).toMatchObject({ kind: 'error', error: { kind: 'project-id-required' } });
+		expect(runtime!.sessionHealth).toMatchObject({ opened: false, error: { kind: 'project-id-required' } });
+		await session('/work/b');
+		expect(runtime!.sessionHealth).toEqual({ opened: true });
+		sidecar.stop();
+		sidecar.start();
+		await ready(runtime!);
+		expect(runtime!.sessionHealth).toEqual({ opened: false });
 	});
 
 	it('reopens a session from an earlier run on first open', async () => {

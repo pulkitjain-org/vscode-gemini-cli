@@ -10,10 +10,11 @@ import type { ModelQuota } from '../acp/directRequest';
 import type { FlowRecord } from '../acp/flowRecords';
 import type { GitLabMr, PipelineState } from '../acp/gitlab';
 import { type JiraIssueSummary, type JiraMyTicket, type JiraSprint, myTicketsJql } from '../acp/jira';
-import { TeamToolId, teamToolIds, teamToolNames } from '../acp/teamHttp';
+import { teamBanners } from '../acp/homeBanners';
+import { ServerHealth, TeamToolId, teamToolIds, teamToolNames } from '../acp/teamHttp';
 import type { AgentSummary } from './agentsView';
 import { relativeTime } from './displayText';
-import type { HomeAction, HomeButton, HomeCard, HomeCardId, HomeDashboard, HomeList, HomeNeed, HomeRow, HomeTool, HomeTone, HomeTypeColor } from './panelProtocol';
+import type { HomeAction, HomeBanner, HomeButton, HomeCard, HomeCardId, HomeDashboard, HomeList, HomeNeed, HomeRow, HomeTool, HomeTone, HomeTypeColor } from './panelProtocol';
 import type { ConnectionState } from './teamConnections';
 import type { Fetched, TeamSnapshot } from './teamData';
 
@@ -21,6 +22,10 @@ export interface DashboardInput {
 	readonly now: Date;
 	readonly connected: ReadonlySet<TeamToolId>;
 	readonly state: (tool: TeamToolId) => ConnectionState;
+	/** The worst reachability among the tool's servers in this window (`TeamConnections.serverHealth`), for the banners. */
+	readonly health?: (tool: TeamToolId) => ServerHealth;
+	/** When the tool's data on the cards came (`TeamData.resultsAt`), for the banners. */
+	readonly resultsAt?: (tool: TeamToolId) => number | undefined;
 	readonly data: TeamSnapshot;
 	readonly agents: readonly AgentSummary[];
 	readonly layout?: DashboardLayout;
@@ -96,7 +101,6 @@ function cardTitles(): Record<HomeCardId, string> {
 export function buildDashboard(input: DashboardInput): HomeDashboard {
 	const { now, data } = input;
 	const tools = teamToolIds.map(id => toolView(id, input));
-	const unreachable = tools.filter(t => t.tone === 'warn' && t.id !== 'figma').map(t => t.name);
 	const tickets = data.tickets?.data;
 	const groups = ticketGroups(tickets?.issues ?? []);
 	// Closed tickets leave the list but still count towards the sprint's progress.
@@ -144,8 +148,8 @@ export function buildDashboard(input: DashboardInput): HomeDashboard {
 		needsQuery: 'agent waiting · pipeline failed · mergeable & approved · reviewer_id=me · reopened',
 		cards,
 		...nothingConnected ? { setup: setupSteps(input) } : {},
-		...unreachable.length ? { banner: vscode.l10n.t("Can't reach {0}. Turn on your VPN to refresh; the cards show the last results.", listOf(unreachable)) } : {},
-		...input.refreshing && input.dataFrom ? { stale: vscode.l10n.t("Showing results from {0} · refreshing", new Date(input.dataFrom).toLocaleTimeString(vscode.env.language, { hour: '2-digit', minute: '2-digit' })) } : {},
+		...banners(input),
+		...input.refreshing && input.dataFrom ? { stale: vscode.l10n.t("Showing results from {0} · refreshing", clockTime(input.dataFrom)) } : {},
 		layout: order.map(id => ({ id, title: titles[id], visible: !input.layout?.hidden?.includes(id) })),
 		releaseBranches: data.releases?.data?.branches ?? [],
 		...input.layout?.qualityBranch ? { qualityBranch: input.layout.qualityBranch } : {},
@@ -154,8 +158,30 @@ export function buildDashboard(input: DashboardInput): HomeDashboard {
 	};
 }
 
-function listOf(names: readonly string[]): string {
-	return names.length < 2 ? names.join('') : vscode.l10n.t("{0} and {1}", names.slice(0, -1).join(', '), names[names.length - 1]);
+/** A time of day, as "10:42". */
+function clockTime(at: number): string {
+	return new Date(at).toLocaleTimeString(vscode.env.language, { hour: '2-digit', minute: '2-digit' });
+}
+
+/** A banner per team server that can't be reached, with Retry, or that refused the token, with Replace Token (Connections). */
+function banners(input: DashboardInput): { banners?: HomeBanner[] } {
+	const list = teamBanners({
+		tools: teamToolIds,
+		connected: input.connected,
+		state: input.state,
+		health: input.health ?? (() => ({ kind: 'ok' })),
+		resultsAt: input.resultsAt ?? (() => undefined),
+	}).map((banner): HomeBanner => {
+		const name = teamToolNames[banner.tool];
+		return banner.kind === 'auth'
+			? { tool: banner.tool, tone: 'error', text: vscode.l10n.t("{0} rejected your token.", name), button: { label: vscode.l10n.t("Replace Token..."), action: connect, primary: true } }
+			: {
+				tool: banner.tool, tone: 'warn',
+				text: banner.resultsAt ? vscode.l10n.t("{0} is unreachable, probably the VPN. Showing results from {1}.", name, clockTime(banner.resultsAt)) : vscode.l10n.t("{0} is unreachable, probably the VPN.", name),
+				button: { label: vscode.l10n.t("Retry"), action: { kind: 'retry', tool: banner.tool } },
+			};
+	});
+	return list.length ? { banners: list } : {};
 }
 
 function toolView(id: TeamToolId, input: DashboardInput): HomeTool {
@@ -211,30 +237,32 @@ function setupSteps(input: DashboardInput): HomeDashboard['setup'] {
 	const agentStarted = input.agents.length > 0;
 	return [
 		{ title: vscode.l10n.t("Sign in to Gemini"), detail: vscode.l10n.t("Gemini Code Assist, with your Google account."), done: input.signedIn, button: { label: vscode.l10n.t("Sign In"), action: command('gemini.signIn'), primary: true } },
-		{ title: vscode.l10n.t("Set your Google Cloud project"), detail: vscode.l10n.t("The project your usage is billed to. Your organisation may set it for you."), done: !!input.projectId, button: { label: vscode.l10n.t("Set Project"), action: command('gemini.setProjectId') } },
+		{ title: vscode.l10n.t("Set your Google Cloud Project ID"), detail: vscode.l10n.t("The Google Cloud project your usage is billed to. Your organisation may set it for you."), done: !!input.projectId, button: { label: vscode.l10n.t("Set Project ID"), action: command('gemini.setProjectId') } },
 		{ title: vscode.l10n.t("Connect your team's tools"), detail: vscode.l10n.t("Jira, GitLab, SonarQube, Snyk and Figma, each with your own account."), done: input.connected.size > 0, button: { label: vscode.l10n.t("Connect"), action: connect, primary: input.signedIn } },
 		{ title: vscode.l10n.t("Open a repository and start an agent"), detail: vscode.l10n.t("Describe a task above, or start from a Jira ticket."), done: agentStarted, button: { label: vscode.l10n.t("Open Folder"), action: command('workbench.action.files.openFolder') } },
 	];
 }
 
-/** The card's state from its tool and source: not connected, stale (VPN off) or current. */
-function sourceState(input: DashboardInput, tool: TeamToolId, fetched: Fetched<unknown> | undefined): { stale: boolean; note?: string } {
+/**
+ * The card's state from its tool and source: not connected, stale (VPN off,
+ * token refused) or current. A stale card keeps its last results with their
+ * time (`asOf`); the banner above the cards says why, so the card doesn't.
+ */
+function sourceState(input: DashboardInput, tool: TeamToolId, fetched: Fetched<unknown> | undefined): { stale: boolean; note?: string; asOf?: string } {
 	const state = input.state(tool);
+	const kept = fetched?.data !== undefined && fetched.at ? { stale: true, asOf: clockTime(fetched.at) } : undefined;
 	const unreachable = state.kind === 'unreachable' || fetched?.error?.kind === 'unreachable';
 	if (unreachable) {
-		const when = fetched?.at ? relativeTime(fetched.at, input.now.getTime()) : undefined;
-		return {
-			stale: !!fetched?.data,
-			note: tool === 'figma' || tool === 'jira'
-				? vscode.l10n.t("Can't reach {0}. Check your connection.", teamToolNames[tool])
-				: when ? vscode.l10n.t("VPN off: showing results from {0} ago. Turn on your VPN to refresh.", when) : vscode.l10n.t("VPN off. Turn on your VPN to see this."),
+		return kept ?? {
+			stale: false,
+			note: tool === 'figma' || tool === 'jira' ? vscode.l10n.t("Can't reach {0}. Check your connection.", teamToolNames[tool]) : vscode.l10n.t("VPN off. Turn on your VPN to see this."),
 		};
+	}
+	if (state.kind === 'auth' || fetched?.error?.kind === 'auth') {
+		return kept ?? { stale: false, note: state.detail ?? fetched?.error?.message };
 	}
 	if (fetched?.error) {
 		return { stale: !!fetched.data, note: fetched.error.message };
-	}
-	if (state.kind === 'auth') {
-		return { stale: !!fetched?.data, note: state.detail };
 	}
 	return { stale: false };
 }
@@ -387,7 +415,7 @@ function ticketsCard(input: DashboardInput, title: string, groups: ReturnType<ty
 		return input.hideUnconnected ? undefined : fixed(notConnected('tickets', title, 'jira', vscode.l10n.t("Your open tickets, this sprint's first, with Start Agent on each.")));
 	}
 	const fetched = input.data.tickets;
-	const { stale, note } = sourceState(input, 'jira', fetched);
+	const { stale, note, asOf } = sourceState(input, 'jira', fetched);
 	const inSprint = groups.sprint.map((issue, i): HomeRow => ({
 		...ticketRow(issue, input.jiraCommentVisibility),
 		...i === 0 ? { group: sprint?.name ?? vscode.l10n.t("This sprint"), ...progress?.total ? { groupQuery: vscode.l10n.t("{0} of {1} done", progress.done, progress.total) } : {} } : {},
@@ -398,7 +426,7 @@ function ticketsCard(input: DashboardInput, title: string, groups: ReturnType<ty
 	}));
 	const all = [...inSprint, ...other];
 	return listed({
-		id: 'tickets', title, tool: 'jira', stale, query: myTicketsJql,
+		id: 'tickets', title, tool: 'jira', stale, ...asOf ? { asOf } : {}, query: myTicketsJql,
 		...input.jiraUrl ? { link: { label: vscode.l10n.t("Open in Jira"), action: { kind: 'link', url: `${input.jiraUrl}/issues/?jql=${encodeURIComponent(myTicketsJql)}` } } } : {},
 		...note ? { note } : !all.length ? { note: fetched?.loading || !fetched ? vscode.l10n.t("Loading your tickets...") : vscode.l10n.t("No open tickets assigned to you.") } : {},
 	}, all, all.slice(0, 6));
@@ -435,7 +463,7 @@ function mergeRequestsCard(input: DashboardInput, title: string): ListedCard | u
 	}
 	const reviews = input.data.reviews;
 	const mine = input.data.mine;
-	const { stale, note } = sourceState(input, 'gitlab', reviews?.error ? reviews : mine);
+	const { stale, note, asOf } = sourceState(input, 'gitlab', reviews?.error ? reviews : mine);
 	const mineGroup = vscode.l10n.t("Mine");
 	const forMe = (reviews?.data ?? []).map((mr): HomeRow => {
 		const going = reviewInProgress(input, mr);
@@ -460,7 +488,7 @@ function mergeRequestsCard(input: DashboardInput, title: string): ListedCard | u
 	}));
 	const all = [...forMe, ...mineRows];
 	return listed({
-		id: 'mergeRequests', title, tool: 'gitlab', stale, query: 'reviewer_id=me OR assignee_id=me, state=opened',
+		id: 'mergeRequests', title, tool: 'gitlab', stale, ...asOf ? { asOf } : {}, query: 'reviewer_id=me OR assignee_id=me, state=opened',
 		...input.gitlabUrl ? { link: { label: vscode.l10n.t("Open in GitLab"), action: { kind: 'link', url: `${input.gitlabUrl}/dashboard/merge_requests?reviewer_username=${encodeURIComponent(input.state('gitlab').account ?? '')}` } } } : {},
 		...note ? { note } : !all.length ? { note: !reviews || reviews.loading ? vscode.l10n.t("Loading merge requests...") : vscode.l10n.t("No open merge requests for you or waiting on you.") } : {},
 	}, all, [...forMe.slice(0, 4), ...mineRows.slice(0, 4)]);
@@ -507,6 +535,7 @@ function qualityCard(input: DashboardInput, title: string): HomeCard | undefined
 	const sonarState = sonar ? sourceState(input, 'sonar', quality) : { stale: false };
 	const snykState = snyk ? sourceState(input, 'snyk', snykData) : { stale: false };
 	const note = sonarState.note ?? snykState.note;
+	const asOf = sonarState.asOf ?? snykState.asOf;
 	return {
 		id: 'quality',
 		title: branch ? vscode.l10n.t("Quality on {0}", branch) : title,
@@ -514,6 +543,7 @@ function qualityCard(input: DashboardInput, title: string): HomeCard | undefined
 		query: [sonar ? 'sonar gate' : '', snyk ? 'snyk test' : ''].filter(Boolean).join(' · '),
 		rows,
 		stale: sonarState.stale || snykState.stale,
+		...asOf ? { asOf } : {},
 		...note ? { note } : !rows.length ? { note: vscode.l10n.t("Loading checks...") } : {},
 	};
 }

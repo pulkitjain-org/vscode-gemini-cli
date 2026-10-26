@@ -71,16 +71,32 @@ function parseRule(line: string): Rule | undefined {
 	if (!text) {
 		return undefined;
 	}
-	const body = globToRegex(text);
-	return { pattern: new RegExp(anchored ? `^${body}$` : `(?:^|/)${body}$`), negated, directoryOnly };
+	let pattern: RegExp;
+	try {
+		pattern = new RegExp(anchored ? `^${globToRegex(text)}$` : `(?:^|/)${globToRegex(text)}$`);
+	} catch {
+		// Not a glob that makes sense (`[z-a]`): it matches its own text.
+		const literal = text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+		pattern = new RegExp(anchored ? `^${literal}$` : `(?:^|/)${literal}$`);
+	}
+	return { pattern, negated, directoryOnly };
 }
 
-function globToRegex(glob: string): string {
+/** `**` segments kept in one pattern; more of them (each can try every position) count as `*`. */
+const maxGlobstars = 2;
+
+function globToRegex(source: string): string {
+	// Runs of `**` say no more than one does.
+	const glob = source.replace(/\*{3,}/g, '**').replace(/(?:\*\*\/)+/g, '**/').replace(/(?:\/\*\*)+$/g, '/**');
+	let globstars = 0;
 	let out = '';
 	for (let i = 0; i < glob.length; i++) {
 		const char = glob[i];
 		if (char === '*') {
-			if (glob[i + 1] === '*') {
+			if (glob[i + 1] === '*' && globstars++ >= maxGlobstars) {
+				out += '[^/]*';
+				i++;
+			} else if (glob[i + 1] === '*') {
 				const slashAfter = glob[i + 2] === '/';
 				out += slashAfter ? '(?:.*/)?' : '.*';
 				i += slashAfter ? 2 : 1;

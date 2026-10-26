@@ -11,6 +11,8 @@ import { sonarProjectKeyIn, type SonarGate } from '../acp/sonar';
 import { isReleaseBranch, sortReleaseBranches } from '../acp/teamDefaults';
 import { TeamToolError, type TeamErrorKind, type TeamToolId } from '../acp/teamHttp';
 import { gitlabProjectOf } from '../acp/teamTools';
+import { foldersTrusted } from '../acp/trustedFolders';
+import { getApprovalPolicy } from './configuration';
 import type { TeamConnections } from './teamConnections';
 
 /** One source's last answer: its data and when it came, or why the latest try failed (the data stays). */
@@ -98,6 +100,12 @@ export class TeamData implements vscode.Disposable {
 		return this.snapshotValue as TeamSnapshot;
 	}
 
+	/** When the newest of `tool`'s data on the cards came, in ms since the epoch; unset when it has none. For Home's banners. */
+	resultsAt(tool: TeamToolId): number | undefined {
+		const times = (Object.keys(sourceTool) as Source[]).filter(source => sourceTool[source] === tool).map(source => this.snapshotValue[source]).flatMap(fetched => fetched?.data !== undefined && fetched.at ? [fetched.at] : []);
+		return times.length ? Math.max(...times) : undefined;
+	}
+
 	/** When the last refresh started, in ms since the epoch; 0 before the first. */
 	get refreshedAt(): number {
 		return this.lastRefresh;
@@ -162,7 +170,10 @@ export class TeamData implements vscode.Disposable {
 			tasks.push(this.clear('quality', !connected.has('sonar')));
 		}
 		const snykAge = Date.now() - (this.snapshotValue.snyk?.at ?? 0);
-		if (snyk && folder && (snykAge > snykMaxAgeMs || this.snapshotValue.snyk?.error)) {
+		// A Snyk test runs the project's own build tools to resolve its dependencies, so Home runs it
+		// unasked only where the agent could run them too: shell commands allowed, and a folder both
+		// the editor and the Gemini CLI trust. Elsewhere the card waits for Snyk to be run from a chat.
+		if (snyk && folder && (snykAge > snykMaxAgeMs || this.snapshotValue.snyk?.error) && await mayRunBuildTools(folder)) {
 			// A full test takes a while; it runs on its own and lands when it lands.
 			void this.fetch('snyk', async () => {
 				const result = await snyk.testDependencies(folder);
@@ -212,4 +223,9 @@ export class TeamData implements vscode.Disposable {
 		void this.state.update(storageKey, this.snapshotValue);
 		this.onDidChangeEmitter.fire();
 	}
+}
+
+/** Whether GeminiCode may run `folder`'s build tools without asking: shell commands allowed, and the folder trusted by the editor and the Gemini CLI. */
+async function mayRunBuildTools(folder: string): Promise<boolean> {
+	return getApprovalPolicy().allowShell && vscode.workspace.isTrusted && foldersTrusted([folder], process.env);
 }

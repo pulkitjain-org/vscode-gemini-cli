@@ -1,10 +1,12 @@
 #!/bin/sh
 # Keeps AI attribution out of commit messages, and commits under the
 # repository owner's identity (AGENTS.md, "Commits, branches and pull requests").
-# Installed by gemini/scripts/git-hooks/install.sh.
+# The rules themselves are in gemini/scripts/commit-policy.sh, which Gemini CI
+# runs too. Installed by gemini/scripts/git-hooks/install.sh.
 
 owner='er.pulkit@gmail.com'
 message="$1"
+policy="$(git rev-parse --show-toplevel)/gemini/scripts/commit-policy.sh"
 
 # A tool's trailers and footers go, wherever a tool added them.
 kept="$message.kept.$$"
@@ -12,6 +14,12 @@ grep -viE '^[[:space:]]*(co-authored-by:.*(claude|anthropic|copilot|codex|openai
 # Trailing blank lines left behind by a removed footer go too.
 sed -e :a -e '/^[[:space:]]*$/{$d;N;ba' -e '}' "$kept" > "$message"
 rm -f "$kept"
+
+# Anything else that names a tool is the writer's to reword.
+if [ -f "$policy" ] && ! sh "$policy" message "$message" >&2; then
+	echo >&2 "commit-msg: the commit was not made. Your message is in $(git rev-parse --git-dir)/COMMIT_EDITMSG."
+	exit 1
+fi
 
 email() {
 	git var "$1" | sed -n 's/^.*<\(.*\)>.*$/\1/p'

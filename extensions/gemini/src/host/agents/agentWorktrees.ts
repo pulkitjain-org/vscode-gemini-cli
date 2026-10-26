@@ -5,26 +5,93 @@
 
 // Agents' own branches: making a worktree (asking for its branch, or naming
 // it free), running the repository's setup script in it, adding worktrees one
-// at a time per repository, and putting back folders Clean Up removed.
+// at a time per repository (the one git lock, `inRepository`), and putting
+// back folders Clean Up removed. A repository's own setup script runs only
+// once the user allowed its content (`setupCommandFor`).
 
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AgentRecord, AgentsModel } from '../../acp/agents';
 import { isValidBranchName } from '../../acp/branchNames';
 import { errorMessage } from '../../acp/errors';
-import { AgentWorktree, branchExists, createWorktree, createWorktreeFrom, folderInRepository, freeBranchName, mainRepository, pathExists, repositoryRoot, restoreWorktree, runWorktreeSetup, TurnQueue, worktreeSetupCommand } from '../../acp/worktrees';
+import { rememberSetupScript, scriptPreview, setupScriptConsent } from '../../acp/setupConsent';
+import { AgentWorktree, branchExists, createWorktree, createWorktreeFrom, folderInRepository, freeBranchName, inRepository, mainRepository, pathExists, repositoryRoot, restoreWorktree, runWorktreeSetup, setupScriptFile, TurnQueue, worktreeSetup } from '../../acp/worktrees';
 import { configSection } from '../configuration';
+import { showError } from '../errorNotice';
+
+/** The hashes of the repository setup scripts the user chose to run without asking again; this machine's only. */
+const allowedScriptsKey = 'gemini.setupScripts.allowed';
+
+/** The consent dialogs open now, by script hash, so threads started together ask once. */
+const askingConsent = new Map<string, Promise<boolean>>();
+
+/** What the setup is for, which the dialog says. */
+export type SetupPurpose = 'agent' | 'checks';
+
+/**
+ * The setup command for a new worktree of `repository`: the
+ * `gemini.agents.worktreeSetup` command as set, or the repository's
+ * `.gemini/worktree-setup.sh` once the user allowed its content (asked the
+ * first time, and again whenever it changes). None in an untrusted
+ * workspace, or when the user chose Don't Run.
+ */
+export async function setupCommandFor(repository: string, state: vscode.Memento | undefined, purpose: SetupPurpose = 'agent'): Promise<string | undefined> {
+	if (!vscode.workspace.isTrusted) {
+		return undefined;
+	}
+	const setup = await worktreeSetup(repository, vscode.workspace.getConfiguration(configSection).get<string>('agents.worktreeSetup'));
+	if (!setup?.script) {
+		return setup?.command;
+	}
+	const allowed = state?.get<string[]>(allowedScriptsKey) ?? [];
+	const consent = setupScriptConsent(setup.script.content, allowed);
+	if (!consent.needed) {
+		return setup.command;
+	}
+	let asking = askingConsent.get(consent.hash);
+	if (!asking) {
+		asking = askSetupConsent(repository, setup.script.content, purpose).then(async answer => {
+			if (answer === 'remember') {
+				await state?.update(allowedScriptsKey, rememberSetupScript(state.get<string[]>(allowedScriptsKey) ?? [], consent.hash));
+			}
+			return answer !== 'no';
+		}).finally(() => askingConsent.delete(consent.hash));
+		askingConsent.set(consent.hash, asking);
+	}
+	return await asking ? setup.command : undefined;
+}
+
+/** The dialog before a repository's setup script runs, with the script in it. */
+async function askSetupConsent(repository: string, content: string, purpose: SetupPurpose): Promise<'no' | 'once' | 'remember'> {
+	const name = path.basename(repository);
+	const script = setupScriptFile.split(path.sep).join('/');
+	const preview = scriptPreview(content);
+	const detail = [
+		purpose === 'checks'
+			? vscode.l10n.t("Run Checks runs {0} from {1} in the branch's new checkout. It runs in your shell, with your permissions.", script, name)
+			: vscode.l10n.t("New agents on their own branch run {0} from {1}. It runs in your shell, with your permissions.", script, name),
+		preview.moreLines ? `${preview.text}
+${vscode.l10n.t("({0} more lines)", preview.moreLines)}` : preview.text,
+		vscode.l10n.t("GeminiCode asks again only if the script changes."),
+	].join('\n\n');
+	const no: vscode.MessageItem = { title: vscode.l10n.t("Don't Run"), isCloseAffordance: true };
+	const once: vscode.MessageItem = { title: vscode.l10n.t("Run Once") };
+	const remember: vscode.MessageItem = { title: vscode.l10n.t("Run and Remember") };
+	const choice = await vscode.window.showWarningMessage(vscode.l10n.t("Run this repository's setup script?"), { modal: true, detail }, no, once, remember);
+	return choice === remember ? 'remember' : choice === once ? 'once' : 'no';
+}
 
 export class AgentWorktrees implements vscode.Disposable {
 
-	/** The last worktree being added in each repository, so threads started together take turns. */
+	/** Work that takes turns under a key of its own, such as a project's multi-repository thread folders. */
 	private readonly queue = new TurnQueue();
 	/** Threads whose cleaned-up folders are being put back, so two callers share one `git worktree add`. */
 	private readonly restoringFolders = new Map<string, Promise<boolean>>();
 	/** Output of worktree setup scripts, made the first time one runs. */
 	private setupOutput: vscode.OutputChannel | undefined;
 
-	constructor(private readonly model: AgentsModel) { }
+	/** `state` keeps the setup scripts the user allowed (`setupCommandFor`). */
+	constructor(private readonly model: AgentsModel, private readonly state?: vscode.Memento) { }
 
 	/** Asks for a branch name and makes the agent's worktree; undefined when dismissed or failed (the failure is shown). */
 	async ask(repository: string, folder: string): Promise<AgentWorktree | undefined> {
@@ -48,7 +115,7 @@ export class AgentWorktrees implements vscode.Disposable {
 		try {
 			return await this.make(repository, branch.trim(), folder);
 		} catch (err) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("Could not create the agent's branch: {0}", errorMessage(err)));
+			void showError(vscode.l10n.t("Could not create the agent's branch: {0}", errorMessage(err)));
 			return undefined;
 		}
 	}
@@ -61,13 +128,13 @@ export class AgentWorktrees implements vscode.Disposable {
 	async makeFree(folder: string, named: string): Promise<AgentWorktree | undefined> {
 		const repository = await repositoryRoot(folder);
 		if (!repository) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("{0} is not in a Git repository, so the agent can't have its own branch.", path.basename(folder)));
+			void showError(vscode.l10n.t("{0} is not in a Git repository, so the agent can't have its own branch.", path.basename(folder)));
 			return undefined;
 		}
 		try {
-			return await this.make(repository, await freeBranchName([repository], named), folder);
+			return await this.make(repository, named, folder, true);
 		} catch (err) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("Could not create the agent's branch: {0}", errorMessage(err)));
+			void showError(vscode.l10n.t("Could not create the agent's branch: {0}", errorMessage(err)));
 			return undefined;
 		}
 	}
@@ -76,16 +143,19 @@ export class AgentWorktrees implements vscode.Disposable {
 	 * Makes the agent's worktree, then runs the repository's setup in it (`gemini.agents.worktreeSetup`,
 	 * else `.gemini/worktree-setup.sh`), such as installing packages or copying .env. A failed setup is
 	 * reported with its output, but the agent still starts: the branch is there either way.
+	 * With `free`, `branch` is a name to start from: a free one like it is picked, in the same turn of
+	 * the repository's git lock as the worktree is added, so two starts can't pick the same name.
 	 */
-	make(repository: string, branch: string, folder: string): Thenable<AgentWorktree> {
+	make(repository: string, branch: string, folder: string, free = false): Thenable<AgentWorktree> {
 		return vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Creating the agent's branch..."), cancellable: true }, async (progress, token) => {
-			const worktree = await createWorktree(repository, branch, await folderInRepository(folder));
+			const subfolder = await folderInRepository(folder);
+			const worktree = await inRepository(repository, async () => createWorktree(repository, free ? await freeBranchName([repository], branch) : branch, subfolder));
 			const command = await this.setupCommand(repository);
 			if (!command || token.isCancellationRequested) {
 				return worktree;
 			}
 			progress.report({ message: vscode.l10n.t("Running the setup script...") });
-			await this.runSetup(command, worktree, repository, branch, token);
+			await this.runSetup(command, worktree, repository, worktree.branch, token);
 			return worktree;
 		});
 	}
@@ -99,7 +169,8 @@ export class AgentWorktrees implements vscode.Disposable {
 	makeFrom(parent: string, branch: string): Thenable<AgentWorktree> {
 		return vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Creating the fork's branch {0}...", branch), cancellable: true }, async (progress, token) => {
 			const repository = await mainRepository(parent);
-			const worktree = await this.inTurn(repository, async () => createWorktreeFrom(parent, branch, await folderInRepository(parent)));
+			const subfolder = await folderInRepository(parent);
+			const worktree = await inRepository(repository, () => createWorktreeFrom(parent, branch, subfolder));
 			const command = await this.setupCommand(repository);
 			if (!command || token.isCancellationRequested) {
 				return worktree;
@@ -110,16 +181,18 @@ export class AgentWorktrees implements vscode.Disposable {
 		});
 	}
 
-	/** The repository's setup command for a new worktree; none in an untrusted workspace. */
-	async setupCommand(repository: string): Promise<string | undefined> {
-		return vscode.workspace.isTrusted
-			? worktreeSetupCommand(repository, vscode.workspace.getConfiguration(configSection).get<string>('agents.worktreeSetup'))
-			: undefined;
+	/** The repository's setup command for a new worktree, asking first for a repository's own script; none in an untrusted workspace. */
+	setupCommand(repository: string): Promise<string | undefined> {
+		return setupCommandFor(repository, this.state);
 	}
 
-	/** Runs the repository's setup in a thread's new worktree, behind a notification; resolves when it ends, however it ends. */
-	async setUpThread(repository: string, worktree: AgentWorktree): Promise<void> {
-		const command = await this.setupCommand(repository).catch(() => undefined);
+	/**
+	 * Runs the repository's setup in a thread's new worktree, behind a
+	 * notification; resolves when it ends, however it ends. `command` is the
+	 * one the caller already has, so the user isn't asked twice.
+	 */
+	async setUpThread(repository: string, worktree: AgentWorktree, command?: string): Promise<void> {
+		command ??= await this.setupCommand(repository).catch(() => undefined);
 		if (!command) {
 			return;
 		}
@@ -128,14 +201,15 @@ export class AgentWorktrees implements vscode.Disposable {
 	}
 
 	/**
-	 * Picks a free branch name and adds its worktree, one at a time per
-	 * repository: threads started together could otherwise pick the same name.
+	 * Picks a free branch name and adds its worktree, in one turn of the
+	 * repository's git lock: threads started together could otherwise pick the same name.
 	 */
-	addThreadWorktree(repository: string, named: string, folder: string): Promise<AgentWorktree> {
-		return this.inTurn(repository, async () => createWorktree(repository, await freeBranchName([repository], named), await folderInRepository(folder)));
+	async addThreadWorktree(repository: string, named: string, folder: string): Promise<AgentWorktree> {
+		const subfolder = await folderInRepository(folder);
+		return inRepository(repository, async () => createWorktree(repository, await freeBranchName([repository], named), subfolder));
 	}
 
-	/** Runs `task` once the last one queued under `key` has ended. */
+	/** Runs `task` once the last one queued under `key` has ended; for git work in a repository, use `inRepository`. */
 	inTurn<T>(key: string, task: () => Promise<T>): Promise<T> {
 		return this.queue.run(key, task);
 	}

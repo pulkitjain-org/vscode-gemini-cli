@@ -9,7 +9,7 @@ Agents ask before they act, and every change they make can be kept, undone or re
 
 ## Approval modes
 
-Pick a mode from the composer's **+** menu. The list comes from the Gemini CLI, minus any mode your admin turned off.
+Pick a mode from the composer's **+** menu, or press <kbd>⌘.</kbd> in an agent's tab (**Gemini: Cycle Approval Mode**) to step through Default, Auto Edit and Plan as the CLI's <kbd>⇧Tab</kbd> does; it never picks YOLO. The list comes from the Gemini CLI, minus any mode your admin turned off.
 
 | Mode | What the agent does |
 | --- | --- |
@@ -20,18 +20,24 @@ Pick a mode from the composer's **+** menu. The list comes from the Gemini CLI, 
 
 ## Permission requests
 
-A permission card shows the CLI's own choices, such as **Allow**, **Allow for this session** and **Reject**; <kbd>esc</kbd> rejects. When an agent asks, its tab comes to the front and the proposed edit opens as a diff; in the Agents pane its row shows an amber dot and "waiting".
+A permission card shows the CLI's own choices: **Allow once**, **Allow for this session** and **Reject**. You can answer the newest card without leaving the chat box: <kbd>⌥⌘↩</kbd> allows once, <kbd>⌥⌘S</kbd> allows for this session and <kbd>esc</kbd> rejects (Ctrl+Alt+Enter and Ctrl+Alt+S on Windows and Linux). The card lists the keys under its buttons. While a card waits, <kbd>⌥⌘S</kbd> in the chat box answers it rather than saving all files. An agent that asks never takes over the chat you're typing in: its tab isn't brought forward. If its chat is in view, the proposed edit opens as a diff. In the Agents pane its row shows an amber dot and "waiting", and the Dock badge and a notification say it waits.
 
-**Allow for this session** on a shell command covers the programs it runs for the rest of that chat's session. Some commands ask every time anyway, because allowing them once would allow far more than you saw:
+**Allow for this session** on a shell command covers the command prefixes it runs for the rest of that chat's session: the program, and for programs with subcommands the subcommand, as the button says (**Allow `git status`, `grep` for this session**). GeminiCode keeps these prefixes and answers the session's repeats itself; the Gemini CLI is told "once", because its own session rule would cover the whole program. Allowing `git status` never covers `git push` or `git grep`, and allowing `npm run lint` never covers `npm run deploy`. A redirect is allowed for the file it wrote only. Some commands ask every time anyway, because allowing them once would allow far more than you saw:
 
-- a command that reaches the network, writes through a redirection, or runs code it builds
-- a command that runs another program or code it is given, such as `env`, `xargs`, `sudo`, `python -c`, `npx`, `find -exec`, `git -c`, `git config` that sets a value, `git rebase -x` or `rg --pre`
-- a command whose program is a variable or a pattern, such as `$EDITOR`
-- a command that writes a build file or anything under `.git`, through `>`, `tee`, `cp`, `mv` or `sed -i`, for example
+- a command that reaches the network, installs a package by name (`npm install left-pad`, `pip install requests`), or runs code it builds
+- a redirect into a file outside the agent's folder
+- a command that runs another program or code it is given, such as `env`, `xargs`, `sudo`, `python -c`, `npx`, `npm exec`, `yarn dlx`, `make -f`, `awk -f`, `sed -f`, `find -exec`, `git -c`, `git grep -O`, `git fetch --upload-pack`, `git config` that sets a value, `git rebase -x` or `rg --pre`
+- `docker` and the like, since `docker inspect` shows a container's settings
+- a script the agent could have written, by relative or absolute path, and a program named by a variable or a pattern, such as `$EDITOR`
+- a command that writes a build file, a git hook, anything under `.git`, `.gemini/settings.json`, a `.gemini/*.sh` script or `.vscode/settings.json` or `tasks.json`, through `>`, `tee`, `cp`, `mv` or `sed -i`, for example
 
-When the agent edits a build file, such as `package.json`, a `Makefile` or `build.gradle`, the task runners you allowed (`npm`, `make`, `gradle` and the like) ask again, since their next run would run what the agent wrote.
+A few test and read-only commands whose programs otherwise always ask can still be allowed for the session: `npx vitest`, `npx tsc --noEmit`, `npx eslint`, `python -m pytest` and `./gradlew test`.
 
-**Gemini: Commands Allowed for This Session...** lists what the chat in front allowed, and lets you forget any of it. Turn on **Allow for all future sessions** in [Project Helpers](helpers.md#gemini-cli-settings) to also be offered a permanent allow.
+When the agent edits a build file, such as `package.json`, a `Makefile` or `build.gradle`, the task runners you allowed (`npm`, `make`, `gradle` and the like) and the git commands that run hooks (`git commit`, `git push`) ask again, since their next run would run what the agent wrote. When it edits a git hook or a hook manager's settings (`.husky/`, `.pre-commit-config.yaml`, `.lintstagedrc`), every git command asks again.
+
+In Auto Edit, an edit to a file that decides what runs next still shows a card first: the worktree setup script (`.gemini/*.sh`), the CLI's project settings (`.gemini/settings.json`), and the folder's `.vscode/settings.json` and `.vscode/tasks.json`.
+
+**Gemini: Commands Allowed for This Session...** lists the command prefixes the chat in front allowed, and lets you forget any of them. Turn on **Allow for all future sessions** in [Agent Setup](helpers.md#gemini-cli-settings) to also be offered the CLI's permanent allow. The Gemini CLI saves that rule for the whole program (`npx`, not `npx vitest`) and for every folder, in `~/.gemini/policies/auto-saved.toml`, so the card shows it with the CLI's own wording, **Allow this command for all future sessions**.
 
 ## Folder trust
 
@@ -47,8 +53,16 @@ Open a file an agent changed and its changes show in place: added lines are tint
 
 | Keys | What it does |
 | --- | --- |
-| <kbd>⌘↩</kbd> / <kbd>⌘⌫</kbd> | Keep or undo the agent's changes to the file you're in |
-| <kbd>⌥]</kbd> / <kbd>⌥[</kbd> | Next or previous agent change in the file |
+| <kbd>⌥⌘↩</kbd> / <kbd>⇧⌥⌘⌫</kbd> | Keep or undo the agent's changes to the file you're in |
+| <kbd>⌥F5</kbd> / <kbd>⇧⌥F5</kbd> | Next or previous agent change in the file |
+
+Only the agent's own changes show. What you type in the file afterwards isn't counted as the agent's, and Keep or Undo on a change leaves your edits alone. **Undo All** restores the file as it was before the agent, so when the file also has edits that aren't the agent's, it asks first: they would go too.
+
+When two agents in one folder changed the same file, the changes of the one that edited it last show first; the other's show once those are kept or undone.
+
+So that their edits don't mix unnoticed, an agent's edit card warns when another live agent in the folder has changes to that file still waiting for Keep or Undo: **"Login fix" also has unreviewed changes in this file**. **Show Its Changes** opens the other agent's changes. In Auto Edit, where edits don't ask, the same warning is a line under the edit's row. To keep two agents apart, give one its own branch.
+
+Changes you commit leave the list by themselves, however you commit: from the chat, Source Control, the terminal, or by asking the agent. Once a file is what the latest commit has, its changes count as kept.
 
 ## Undo or retry a reply
 
@@ -64,7 +78,7 @@ That message and everything after it go from the chat and from Gemini's context,
 
 ## Commit the agent's work
 
-The branch under a chat's composer switches to another branch or creates one. **Create Branch & Commit** creates a branch, stages only the files that agent changed, and commits them; it warns first if other files are already staged. An agent on its own branch has **Merge Back** instead.
+The branch under a chat's composer switches to another branch or creates one. On a branch other than the repository's default (origin's HEAD, else `main` or `master`), the composer offers **Commit to** that branch: a box opens with a message written from the agent's changes, for you to edit, and **Commit** (or <kbd>⌘↩</kbd>) commits only the files that agent changed; its chevron offers **Create Branch and Commit…**. On the default branch, **Create Branch & Commit** creates a branch, stages only the files that agent changed, and commits them. Both warn first if other files are already staged. The commit message is written from the agent's diff, as the Source Control sparkle writes one, for you to edit; the agent's name is used when it can't be (inline edit turned off, or a sign-in that can't make direct requests). An agent on its own branch has **Merge Back** instead, which commits its leftovers with a message written the same way.
 
 In the Source Control view, the sparkle button writes a commit message for the staged changes (or, with nothing staged, all changes).
 

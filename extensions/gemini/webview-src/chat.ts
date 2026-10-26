@@ -25,10 +25,10 @@
 
 import type { ItemUpdate } from '../src/acp/textDeltas';
 import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
-import { coalesceUpdates, format } from './chatLogic';
+import { format, HeldUpdates } from './chatLogic';
 import { addAttachments, setSharedPage } from './attachmentChips';
 import { attachToolRef, setToolRefContext, toolRefResolved, watchToolRefs } from './toolChips';
-import { setBusy, setFollow, setFollowed, setGit, setSettings, setStatus } from './composer';
+import { setBusy, setFollow, setFollowed, setGit, setSendWith, setSettings, setStatus } from './composer';
 import { setQueue } from './queueStrip';
 import { initReactionBar } from './reactionBar';
 import { applyTokenColors } from './codeHighlight';
@@ -36,16 +36,16 @@ import { onEnhanced, onEnhanceFailed, onEnhanceProgress, replaceInput, toggleEnh
 import { openForkDialog } from './fork';
 import { setLabel } from './dom';
 import { restoreComposerHeight, updatePlaceholder, updateSendState } from './inputBox';
-import { showSavedSessions } from './items';
-import { setBranches } from './pickers';
+import { answerFromComposer, showFullOutput, showSavedSessions } from './items';
+import { commitDone, setBranches, setCommitMessage } from './pickers';
 import { showCommands, showFiles } from './picker';
 import { updatePlusMenu } from './plusMenu';
 import { openNewThread, showParentProject, showProjectPanel } from './project';
 import { pickedRepository, showProjectSettings } from './projectSettings';
 import { setRunState, setRunView } from './runButtons';
 import { updateOutline } from './promptNav';
-import { appended, applyItem, isNearBottom, reset, setFoldWork, settleScroll, updateWorking } from './transcript';
-import { showContext, showQuota, toggleUsage, updateUsage } from './usage';
+import { appended, applyItem, isNearBottom, reset, setFoldWork, setStall, settleScroll, updateWorking } from './transcript';
+import { showBreakdown, showContext, showQuota, toggleUsage, updateUsage } from './usage';
 import { state, strings, ui, vscode } from './view';
 
 setLabel(ui.sendButton, strings.send);
@@ -58,9 +58,10 @@ initReactionBar();
 /**
  * Updates that came while the view was hidden. An agent's tab keeps its view
  * when hidden, and rendering every streamed chunk there would cost as much as
- * in the tab in front; they are rendered together when it shows.
+ * in the tab in front; they are merged as they come, and rendered together
+ * when it shows.
  */
-let hiddenUpdates: ItemUpdate[] = [];
+const hiddenUpdates = new HeldUpdates();
 /** The host says the view's tab or pane is out of sight; `document.hidden` covers a hidden window. */
 let tabHidden = false;
 
@@ -71,10 +72,8 @@ function isHidden(): boolean {
 /** Nothing animates while the view is hidden, and updates kept meanwhile render once it shows. */
 function onVisibility(): void {
 	document.body.classList.toggle('paused', isHidden());
-	if (!isHidden() && hiddenUpdates.length) {
-		const updates = coalesceUpdates(hiddenUpdates);
-		hiddenUpdates = [];
-		applyUpdates(updates);
+	if (!isHidden() && hiddenUpdates.size) {
+		applyUpdates(hiddenUpdates.take());
 	}
 }
 
@@ -126,12 +125,13 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'reset':
 			// The reset carries every item as it is now.
-			hiddenUpdates = [];
+			hiddenUpdates.clear();
 			state.busy = message.busy;
 			reset(message.items);
 			updateOutline();
 			updatePlaceholder();
 			setBusy(message.busy);
+			setStall(message.stall);
 			setStatus(message.status);
 			setSettings(message.settings);
 			updateUsage();
@@ -144,7 +144,7 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'items':
 			if (isHidden()) {
-				hiddenUpdates.push(...message.items);
+				message.items.forEach(update => hiddenUpdates.add(update));
 			} else {
 				applyUpdates(message.items);
 			}
@@ -183,7 +183,7 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			showCommands(message.commands);
 			break;
 		case 'files':
-			showFiles(message.requestId, message.files);
+			showFiles(message.requestId, message.files, message.mentions ?? []);
 			break;
 		case 'attach':
 			addAttachments(message.attachments);
@@ -230,7 +230,19 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			showContext(message.context);
 			break;
 		case 'toggleUsage':
-			toggleUsage();
+			toggleUsage(message.open);
+			break;
+		case 'contextBreakdown':
+			showBreakdown(message.breakdown);
+			break;
+		case 'commitMessage':
+			setCommitMessage(message.message);
+			break;
+		case 'commitDone':
+			commitDone(message.ok);
+			break;
+		case 'sendWith':
+			setSendWith(message.cmdEnter);
 			break;
 		case 'projectPanel':
 			showProjectPanel(message.panel);
@@ -258,6 +270,12 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 		case 'runState':
 			setRunState(message.text, message.state);
 			break;
+		case 'stall':
+			setStall(message.stall);
+			break;
+		case 'output':
+			showFullOutput(message.itemId, message.part, message.text);
+			break;
 		case 'focus':
 			// Not from under an open popup, such as Project settings or New thread.
 			if (!document.querySelector('dialog[open]')) {
@@ -266,6 +284,14 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 	}
 });
+
+// Before the composer's own keys, and so the workbench never sees them (⌥⌘S is its Save All): a waiting card's answers.
+window.addEventListener('keydown', event => {
+	if (answerFromComposer(event)) {
+		event.preventDefault();
+		event.stopPropagation();
+	}
+}, true);
 
 watchToolRefs(ui.input);
 vscode.postMessage({ type: 'ready', protocol: chatProtocolVersion });

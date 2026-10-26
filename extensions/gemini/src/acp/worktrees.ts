@@ -25,19 +25,66 @@ export interface AgentWorktree {
 	readonly base: string;
 }
 
+/** What went wrong with a git command that talks to a server, in terms the user can act on. */
+export type GitNetworkProblem = 'vpn' | 'signIn' | 'timeout';
+
 export class GitError extends Error {
-	constructor(message: string, readonly stderr: string) {
+	constructor(message: string, readonly stderr: string, readonly problem?: GitNetworkProblem) {
 		super(message);
 	}
 }
 
-/** Runs git in `cwd`; rejects with its stderr. */
-export function git(cwd: string, args: readonly string[]): Promise<string> {
+/** The git commands that talk to a server, which get a time limit and an ssh that never prompts. */
+const networkCommands = new Set(['fetch', 'push', 'pull', 'ls-remote', 'clone']);
+/** How long a git command that talks to a server may take. */
+export const networkGitTimeoutMs = 60_000;
+/** The ssh git uses for those, unless the user set their own: no prompt to hang on, and a quick give-up on a host that doesn't answer. */
+export const batchSsh = 'ssh -o BatchMode=yes -o ConnectTimeout=10';
+
+/** What a network git command's stderr means, when it is a usual failure: no route (the VPN), or no sign-in. */
+export function gitNetworkProblem(stderr: string): GitNetworkProblem | undefined {
+	if (/Permission denied \(|Authentication failed|terminal prompts disabled|could not read (Username|Password)|Host key verification failed|HTTP Basic: Access denied|returned error: 40[13]/i.test(stderr)) {
+		return 'signIn';
+	}
+	if (/Could not resolve host|Operation timed out|Connection timed out|Connection refused|Network is unreachable|No route to host|ssh: connect to host|unable to access .*: (Failed to connect|Couldn't connect)/i.test(stderr)) {
+		return 'vpn';
+	}
+	return undefined;
+}
+
+/** The plain words for a network problem. */
+export function gitNetworkMessage(problem: GitNetworkProblem): string {
+	switch (problem) {
+		case 'vpn': return 'Git couldn\'t reach the server. Check your VPN.';
+		case 'signIn': return 'Git couldn\'t sign in to the server. Sign in with git once in a terminal (run git fetch there), then try again.';
+		case 'timeout': return `Git got no answer from the server within ${networkGitTimeoutMs / 1000} s. Check your VPN.`;
+	}
+}
+
+/** Whether the user set an ssh for git themselves (in the environment, or core.sshCommand), which is then left alone. */
+async function ownSsh(cwd: string): Promise<boolean> {
+	if (process.env.GIT_SSH_COMMAND || process.env.GIT_SSH) {
+		return true;
+	}
+	return new Promise(resolve => execFile('git', ['config', '--get', 'core.sshCommand'], { cwd, env: { ...process.env, LC_ALL: 'C' } }, (err, stdout) => resolve(!err && !!String(stdout).trim())));
+}
+
+/**
+ * Runs git in `cwd`; rejects with its stderr. A command that talks to a
+ * server (fetch, push...) is given up after `networkGitTimeoutMs`, runs ssh
+ * in batch mode unless the user set their own, and fails in plain words for
+ * the usual problems (no VPN, no sign-in); the raw stderr stays on the error.
+ */
+export async function git(cwd: string, args: readonly string[]): Promise<string> {
+	const network = networkCommands.has(args[0]);
+	const ssh = network && !await ownSsh(cwd) ? { GIT_SSH_COMMAND: batchSsh } : {};
 	return new Promise((resolve, reject) => {
-		execFile('git', args, { cwd, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' } }, (err, stdout, stderr) => {
+		execFile('git', args, { cwd, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C', ...ssh }, ...network ? { timeout: networkGitTimeoutMs } : {} }, (err, stdout, stderr) => {
 			if (err) {
-				const detail = String(stderr).trim() || err.message;
-				reject(new GitError(detail.split('\n').filter(line => !/^hint:/.test(line)).join('\n'), String(stderr)));
+				const raw = String(stderr);
+				const detail = (raw.trim() || err.message).split('\n').filter(line => !/^hint:/.test(line)).join('\n');
+				const problem = network ? (err.killed ? 'timeout' : gitNetworkProblem(raw)) : undefined;
+				reject(new GitError(problem ? gitNetworkMessage(problem) : detail, raw || detail, problem));
 			} else {
 				resolve(String(stdout));
 			}
@@ -81,6 +128,21 @@ export function projectsHome(home: string = os.homedir()): string {
 	return path.join(home, '.geminicode', 'projects');
 }
 
+/**
+ * Where merge request reviews check out the branch they review:
+ * ~/.geminicode/reviews/<repository name>. Never trusted for the Gemini CLI
+ * (`ownTrustRules`), so a merge request's own Gemini settings, hooks and MCP
+ * servers never run.
+ */
+export function reviewsHome(repository: string, home: string = os.homedir()): string {
+	return path.join(allReviewsHome(home), path.basename(repository) || 'repository');
+}
+
+/** The folder that holds every repository's review checkouts. */
+export function allReviewsHome(home: string = os.homedir()): string {
+	return path.join(home, '.geminicode', 'reviews');
+}
+
 /** A free folder name in `parent` for `branch`: its last part, with -2, -3... if taken. */
 export async function freeFolder(parent: string, branch: string): Promise<string> {
 	const name = branch.split('/').pop()?.replace(/[^\w.-]+/g, '-') || 'agent';
@@ -92,6 +154,20 @@ export async function freeFolder(parent: string, branch: string): Promise<string
 			return candidate;
 		}
 	}
+}
+
+/** The folder where `branch` is checked out, if the repository or one of its worktrees has it. */
+export async function checkoutOf(repository: string, branch: string): Promise<string | undefined> {
+	const text = await git(repository, ['worktree', 'list', '--porcelain']);
+	let folder: string | undefined;
+	for (const line of text.split('\n')) {
+		if (line.startsWith('worktree ')) {
+			folder = line.slice('worktree '.length).trim();
+		} else if (line.trim() === `branch refs/heads/${branch}` && folder) {
+			return folder;
+		}
+	}
+	return undefined;
 }
 
 /** Whether `branch` already exists in `repository`. */
@@ -338,22 +414,30 @@ export async function folderSize(folder: string): Promise<number> {
 /** The script a repository keeps for setting up a new agent worktree, relative to its top folder. */
 export const setupScriptFile = path.join('.gemini', 'worktree-setup.sh');
 
+/** The setup a new worktree gets, and, when it is the repository's own script, that script. */
+export interface WorktreeSetup {
+	readonly command: string;
+	/** The repository's `.gemini/worktree-setup.sh`, which runs only once the user allowed its content (setupConsent.ts). */
+	readonly script?: { readonly file: string; readonly content: string };
+}
+
 /**
  * The setup to run in a new worktree: the `gemini.agents.worktreeSetup` command when set, else
- * the repository's own `.gemini/worktree-setup.sh` when it has one. Undefined when neither.
+ * the repository's own `.gemini/worktree-setup.sh` when it has one, with its content. Undefined when neither.
  */
-export async function worktreeSetupCommand(repository: string, configured: string | undefined): Promise<string | undefined> {
+export async function worktreeSetup(repository: string, configured: string | undefined): Promise<WorktreeSetup | undefined> {
 	if (configured?.trim()) {
-		return configured.trim();
+		return { command: configured.trim() };
 	}
-	const script = path.join(repository, setupScriptFile);
-	try {
-		await fs.access(script);
-		// From the repository, so a script not yet committed (and so not in the worktree) still runs.
-		return `sh ${shellQuote(script)}`;
-	} catch {
-		return undefined;
-	}
+	const file = path.join(repository, setupScriptFile);
+	const content = await fs.readFile(file, 'utf8').catch(() => undefined);
+	// From the repository, so a script not yet committed (and so not in the worktree) still runs.
+	return content === undefined ? undefined : { command: `sh ${shellQuote(file)}`, script: { file, content } };
+}
+
+/** The command of `worktreeSetup`, for a caller that runs it as it is. */
+export async function worktreeSetupCommand(repository: string, configured: string | undefined): Promise<string | undefined> {
+	return (await worktreeSetup(repository, configured))?.command;
 }
 
 function shellQuote(value: string): string {
@@ -443,4 +527,29 @@ export class TurnQueue {
 		});
 		return next;
 	}
+}
+
+/**
+ * The key a repository's git writes queue under: its main checkout's real
+ * path, so a worktree of it, a symlink to it and the folder itself share one.
+ */
+export async function repositoryKey(folder: string): Promise<string> {
+	const main = await mainRepository(folder).catch(() => folder);
+	return fs.realpath(main).catch(() => main);
+}
+
+const repositoryQueue = new TurnQueue();
+
+/**
+ * Runs `task` once every git write queued for the repository `folder` is in
+ * has ended: adding a worktree, merging, committing and pushing take turns
+ * per repository, whichever part of GeminiCode asks (Projects, the team
+ * flows, Merge Back). `folder` may name several repositories, locked in a
+ * fixed order so two callers can't wait on each other. Never nest a call for a repository the
+ * task already holds.
+ */
+export async function inRepository<T>(folder: string | readonly string[], task: () => Promise<T>): Promise<T> {
+	const keys = [...new Set(await Promise.all((typeof folder === 'string' ? [folder] : folder).map(repositoryKey)))].sort();
+	const run = (index: number): Promise<T> => index < keys.length ? repositoryQueue.run(keys[index], () => run(index + 1)) : task();
+	return run(0);
 }

@@ -6,14 +6,17 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { reviewBase } from '../acp/agentChanges';
 import { errorMessage } from '../acp/errors';
 import { diffLines, hunkLines, splitLines } from '../acp/lineDiff';
 import { ChangesSource } from './changesView';
+import { undoForeignMessage } from './reviewController';
 import { createNonce, escapeAttribute } from './webviewHtml';
 import { ChangedFileView, ChangesPanelStrings, ChangesPanelView, FromChangesPanel, ToChangesPanel } from './panelProtocol';
 import { deleteFile, replaceFileText } from './workspaceFileSystem';
 import type { MrPanel } from './mrPanel';
 import type { FromChangesTeam } from './teamFlowProtocol';
+import { showError } from './errorNotice';
 
 export const changesPanelId = 'gemini.changesPanel';
 
@@ -38,7 +41,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 	/** Bumped on every refresh, so a slower earlier one doesn't overwrite a later one. */
 	private generation = 0;
 	/** Each file's last diff, so typing in one file re-diffs only that file. */
-	private readonly diffs = new Map<string, { readonly original: string; readonly current: string; readonly hunks: NonNullable<ChangedFileView['hunks']> }>();
+	private readonly diffs = new Map<string, { readonly original: string; readonly agentText?: string; readonly current: string; readonly hunks: NonNullable<ChangedFileView['hunks']> }>();
 	/** The last view posted, to skip posting the same one again. */
 	private lastView: string | undefined;
 	private readonly disposables: vscode.Disposable[] = [];
@@ -75,7 +78,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		const media = vscode.Uri.joinPath(this.extensionUri, 'media');
 		view.webview.options = { enableScripts: true, localResourceRoots: [media] };
 		view.webview.html = this.html(view.webview, media);
-		view.webview.onDidReceiveMessage((message: FromChangesPanel) => this.onMessage(message).catch(err => void vscode.window.showErrorMessage(errorMessage(err))));
+		view.webview.onDidReceiveMessage((message: FromChangesPanel) => this.onMessage(message).catch(err => void showError(errorMessage(err))));
 		view.onDidChangeVisibility(() => {
 			if (view.visible) {
 				this.lastView = undefined;
@@ -132,13 +135,14 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 				return base;
 			}
 			const cached = this.diffs.get(file.path);
-			if (cached?.original === file.original && cached.current === current) {
+			if (cached?.original === file.original && cached.agentText === file.agentText && cached.current === current) {
 				return { ...base, hunks: cached.hunks };
 			}
-			const original = splitLines(file.original);
+			// Against the original with others' later edits in it, as in the editor, so only the agent's changes show and the indexes match.
+			const original = splitLines(reviewBase(file, current)?.base ?? file.original);
 			const modified = splitLines(current);
 			const hunks = diffLines(original, modified).map((hunk, index, all) => ({ index, ...hunkLines(original, modified, hunk, 1, undefined, all[index + 1]) }));
-			this.diffs.set(file.path, { original: file.original, current, hunks });
+			this.diffs.set(file.path, { original: file.original, agentText: file.agentText, current, hunks });
 			return { ...base, hunks };
 		}));
 		for (const filePath of this.diffs.keys()) {
@@ -173,16 +177,16 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		}
 		switch (message.type) {
 			case 'keep':
-				await vscode.commands.executeCommand('gemini.review.keepChange', vscode.Uri.file(message.path).toString(), message.index);
+				await vscode.commands.executeCommand('gemini.review.keepChange', vscode.Uri.file(message.path).toString(), message.index, source?.agentId);
 				return;
 			case 'undo':
-				await vscode.commands.executeCommand('gemini.review.undoChange', vscode.Uri.file(message.path).toString(), message.index);
+				await vscode.commands.executeCommand('gemini.review.undoChange', vscode.Uri.file(message.path).toString(), message.index, source?.agentId);
 				return;
 			case 'keepFile':
-				await vscode.commands.executeCommand('gemini.review.keepFile', vscode.Uri.file(message.path).toString());
+				await vscode.commands.executeCommand('gemini.review.keepFile', vscode.Uri.file(message.path).toString(), source?.agentId);
 				return;
 			case 'undoFile':
-				await vscode.commands.executeCommand('gemini.review.undoFile', vscode.Uri.file(message.path).toString());
+				await vscode.commands.executeCommand('gemini.review.undoFile', vscode.Uri.file(message.path).toString(), source?.agentId);
 				return;
 			case 'openFile':
 				await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(message.path), { viewColumn: await source?.editorColumn(), preview: true });
@@ -215,9 +219,16 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		if (!files.length) {
 			return;
 		}
+		const texts = await Promise.all(files.map(file => currentText(file.path)));
 		const undo = vscode.l10n.t("Undo All");
 		const created = files.filter(file => file.created).length;
-		const detail = created ? vscode.l10n.t("Files the agent created are deleted ({0}).", created) : undefined;
+		// Edits made after the agent's go too: say so, naming the files.
+		const foreign = files.filter((file, i) => !file.created && reviewBase(file, texts[i] ?? '')?.foreign).map(file => path.basename(file.path));
+		const detail = [
+			created ? vscode.l10n.t("Files the agent created are deleted ({0}).", created) : undefined,
+			foreign.length === 1 ? undoForeignMessage(foreign[0], source.title)
+				: foreign.length ? vscode.l10n.t("{0} have edits that aren't from {1}. Undo All restores them as they were before {1}, losing those edits too.", foreign.join(', '), source.title) : undefined,
+		].filter(Boolean).join('\n') || undefined;
 		const message = files.length === 1
 			? vscode.l10n.t("Undo {0}'s changes to {1}?", source.title, path.basename(files[0].path))
 			: vscode.l10n.t("Undo {0}'s changes to {1} files?", source.title, files.length);
@@ -226,15 +237,15 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		}
 		for (const file of files) {
 			try {
-				const current = await currentText(file.path) ?? '';
+				const next = file.created ? '' : file.original!;
 				if (file.created) {
 					await deleteFile(file.path);
 				} else {
-					await replaceFileText(file.path, file.original!, true);
+					await replaceFileText(file.path, next, true);
 				}
-				source.changes.record([{ path: file.path, oldText: current, newText: file.created ? '' : file.original! }]);
+				source.changes.keep(file.path, next, next);
 			} catch (err) {
-				void vscode.window.showErrorMessage(vscode.l10n.t("Could not undo the changes to {0}: {1}", path.basename(file.path), errorMessage(err)));
+				void showError(vscode.l10n.t("Could not undo the changes to {0}: {1}", path.basename(file.path), errorMessage(err)));
 			}
 		}
 	}

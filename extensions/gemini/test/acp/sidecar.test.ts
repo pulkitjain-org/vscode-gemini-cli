@@ -19,6 +19,21 @@ describe('AgentSidecar', () => {
 		return kinds;
 	}
 
+	it('ends a process it is asked to end as a crash, and restarts it', async () => {
+		sidecar = new AgentSidecar({ command: () => fakeAgentCommand(), cwd: undefined, restartDelaysMs: [10] });
+		const kinds = record(sidecar);
+		sidecar.start();
+		const running = await waitFor(sidecar.onDidChangeState, s => s.kind === 'running');
+		const restarted = waitFor(sidecar.onDidChangeState, s => s.kind === 'running');
+		if (running.kind === 'running') {
+			// Another process than the running one is left alone.
+			sidecar.endProcess({ ...running.process } as typeof running.process);
+			sidecar.endProcess(running.process);
+		}
+		await restarted;
+		expect(kinds).toEqual(['starting', 'running', 'restarting', 'starting', 'running']);
+	});
+
 	it('restarts a crashing agent with backoff, then gives up', async () => {
 		sidecar = new AgentSidecar({ command: () => fakeAgentCommand({ exitCode: 3 }), cwd: undefined, restartDelaysMs: [10, 20] });
 		const kinds = record(sidecar);

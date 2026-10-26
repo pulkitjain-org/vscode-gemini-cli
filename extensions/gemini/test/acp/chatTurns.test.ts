@@ -6,7 +6,7 @@
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { TranscriptItem } from '../../src/acp/chatTranscript';
-import { buildModeAfterPlan, checkpointsFit, diffsOf, dropOldest, lastPromptAt, laterRepeats, rewindPrompts, runningStep, forkedItems, forkNote, forkPointAfter, shouldSuggestCompact, turnShape, undoNote, wasCutOff } from '../../src/acp/chatTurns';
+import { buildModeAfterPlan, defaultStartMode, planBuildChoice, planBuildModels, recommendedMode, checkpointsFit, nextApprovalMode, diffsOf, dropOldest, lastPromptAt, laterRepeats, rewindPrompts, runningStep, forkedItems, forkNote, forkPointAfter, shouldSuggestCompact, turnShape, undoNote, wasCutOff } from '../../src/acp/chatTurns';
 
 const user = (id: string, text: string, at?: number): TranscriptItem => ({ id, kind: 'user', text, ...(at ? { at } : {}) });
 const agent = (id: string, text: string): TranscriptItem => ({ id, kind: 'agent', text });
@@ -89,6 +89,25 @@ describe('checkpoints and undo', () => {
 	});
 });
 
+describe('nextApprovalMode', () => {
+	it('steps through the agent\'s modes as the CLI\'s Shift+Tab does, never into YOLO', () => {
+		// gemini-cli 0.64 lists default, autoEdit, yolo and, with Plan on, plan.
+		const modes = (currentId: string, ...ids: string[]) => ({ mode: { currentId, available: ids.map(id => ({ id, name: id })) } });
+		const cli = ['default', 'autoEdit', 'yolo', 'plan'];
+		expect([
+			nextApprovalMode(modes('default', ...cli)),
+			nextApprovalMode(modes('autoEdit', ...cli)),
+			nextApprovalMode(modes('plan', ...cli)),
+			nextApprovalMode(modes('yolo', ...cli)),
+			// Without Plan, and with Auto Edit turned off by policy.
+			nextApprovalMode(modes('autoEdit', 'default', 'autoEdit', 'yolo')),
+			nextApprovalMode(modes('yolo', 'default', 'yolo')),
+			nextApprovalMode(modes('default', 'default', 'yolo')),
+			nextApprovalMode({}),
+		]).toEqual(['autoEdit', 'plan', 'default', 'plan', 'default', 'default', undefined, undefined]);
+	});
+});
+
 describe('buildModeAfterPlan', () => {
 	it('offers Default after a plan, only in Plan mode when the agent has both', () => {
 		const modes = (currentId: string, ...ids: string[]) => ({ mode: { currentId, available: ids.map(id => ({ id, name: id })) } });
@@ -98,6 +117,58 @@ describe('buildModeAfterPlan', () => {
 			buildModeAfterPlan(modes('plan', 'plan', 'autoEdit')),
 			buildModeAfterPlan({}),
 		]).toEqual(['default', undefined, undefined, undefined]);
+	});
+});
+
+describe('Build This Plan', () => {
+	const modes = (currentId: string, ...ids: string[]) => ({ mode: { currentId, available: ids.map(id => ({ id, name: id })) } });
+
+	it('builds in the mode before Plan when the agent still offers it, else Default, with the other choice on its chevron', () => {
+		expect([
+			planBuildChoice(modes('plan', 'default', 'autoEdit', 'plan'), 'autoEdit'),
+			planBuildChoice(modes('plan', 'default', 'autoEdit', 'plan'), 'default'),
+			planBuildChoice(modes('plan', 'default', 'autoEdit', 'plan'), undefined),
+			planBuildChoice(modes('plan', 'default', 'plan'), 'autoEdit'),
+			planBuildChoice(modes('plan', 'default', 'autoEdit', 'plan', 'yolo'), 'yolo'),
+			planBuildChoice(modes('autoEdit', 'default', 'autoEdit', 'plan'), 'default'),
+			buildModeAfterPlan(modes('plan', 'autoEdit', 'plan'), 'plan'),
+		]).toEqual([
+			{ mode: 'autoEdit', other: 'default' },
+			{ mode: 'default', other: 'autoEdit' },
+			{ mode: 'default', other: 'autoEdit' },
+			{ mode: 'default' },
+			{ mode: 'yolo', other: 'default' },
+			undefined,
+			undefined,
+		]);
+	});
+
+	it('names both models only when the build\'s is known and differs from the one the plan used most', () => {
+		const usage = [{ model: 'gemini-3-flash', input: 900, output: 10 }, { model: 'gemini-3-pro', input: 40_000, output: 2_000 }];
+		expect([
+			planBuildModels(usage, 'gemini-3.8-flash'),
+			planBuildModels(usage, 'gemini-3-pro'),
+			planBuildModels(usage, 'auto-gemini-3'),
+			planBuildModels(undefined, 'gemini-3-pro'),
+			planBuildModels(usage, undefined),
+		]).toEqual([{ plan: 'gemini-3-pro', build: 'gemini-3.8-flash' }, undefined, undefined, undefined, undefined]);
+	});
+});
+
+describe('defaultStartMode and recommendedMode', () => {
+	it('starts new agents in the setting\'s mode only when it is one of the CLI\'s and policy allows it; Auto Edit is suggested only in a trusted folder with a commit', () => {
+		const allowed = (id: string) => id !== 'yolo';
+		expect({
+			start: ['default', 'autoEdit', 'plan', 'yolo', 'bogus', 3, undefined].map(value => defaultStartMode(value, allowed)),
+			recommended: [
+				recommendedMode({ trusted: true, committed: true }),
+				recommendedMode({ trusted: false, committed: true }),
+				recommendedMode({ trusted: true, committed: false }),
+			],
+		}).toEqual({
+			start: [undefined, 'autoEdit', 'plan', undefined, undefined, undefined, undefined],
+			recommended: ['autoEdit', undefined, undefined],
+		});
 	});
 });
 

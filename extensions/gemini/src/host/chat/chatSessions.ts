@@ -24,6 +24,7 @@ import type { SlashCommand } from '../../acp/slashCommands';
 import type { FromWebview, ToWebview } from '../chatProtocol';
 import { relativeTime } from '../displayText';
 import type { ChatControllerOptions, ChatHost } from './chatOptions';
+import { showError } from '../errorNotice';
 
 /** How many saved sessions an empty chat lists before "Show all". */
 const shownSessions = 3;
@@ -240,7 +241,7 @@ export class ChatSessions implements vscode.Disposable {
 					: vscode.l10n.t("The agent could not reopen \"{0}\", so this chat starts afresh.", title), 'error');
 			}
 			const retry = vscode.l10n.t("Try Again");
-			void vscode.window.showErrorMessage(vscode.l10n.t("Could not restore \"{0}\".", title), retry).then(choice => {
+			void showError(vscode.l10n.t("Could not restore \"{0}\".", title), retry).then(choice => {
 				if (choice === retry) {
 					void this.restore(id, title, true);
 				}
@@ -288,7 +289,7 @@ export function resumeCommand(): SlashCommand {
 	return { name: 'resume', description: vscode.l10n.t("Restore a saved Gemini CLI session for this folder"), source: 'app' };
 }
 
-/** How long the CLI keeps saved chats, from the user's own settings (Project Helpers changes it). */
+/** How long the CLI keeps saved chats, from the user's own settings (Agent Setup changes it). */
 async function retentionNote(): Promise<string> {
 	const { keepChats } = readCliPreferences(await readSettingsFile(path.join(geminiDir(), 'settings.json')));
 	if (keepChats === keepChatsForever) {
@@ -303,7 +304,7 @@ async function retentionNote(): Promise<string> {
 		: unit === 'd' ? (count === 1 ? vscode.l10n.t("1 day") : vscode.l10n.t("{0} days", count))
 			: unit === 'w' ? (count === 1 ? vscode.l10n.t("1 week") : vscode.l10n.t("{0} weeks", count))
 				: count === 1 ? vscode.l10n.t("1 month") : vscode.l10n.t("{0} months", count);
-	return vscode.l10n.t("The Gemini CLI deletes them after {0}; Project Helpers can change that.", text);
+	return vscode.l10n.t("The Gemini CLI deletes them after {0}; Agent Setup can change that.", text);
 }
 
 /** "3 prompts · 2h" */

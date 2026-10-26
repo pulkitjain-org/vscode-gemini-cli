@@ -7,9 +7,10 @@ import { describe, expect, it } from 'vitest';
 import type { TranscriptItem } from '../../src/acp/chatTranscript';
 import {
 	subagentName,
-	acceptsEnhanceReply, coalesceUpdates, attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, currentActivity, currentPrompt, promptStep, formatClock, turnStart, draggedHeight, emptyFence, enhanceButtonPlacement, enhanceOriginal, type EnhancePhase, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, fileReference, fileUris, folderOf, format, formatDuration, formatSentAt, isEnhanceShortcut, isQueueShortcut,
-	imageName, indexOfItem, isNearBottom, matchCommands, mentionAt, mentionInsertion, permissionDefaults, planIcon, replyBefore, restoredHeight,
+	acceptsEnhanceReply, coalesceUpdates, HeldUpdates, attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, currentActivity, currentPrompt, promptStep, formatClock, turnStart, draggedHeight, emptyFence, enhanceButtonPlacement, enhanceOriginal, type EnhancePhase, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, fileReference, fileUris, folderOf, format, formatDuration, formatSentAt, isEnhanceShortcut, isQueueShortcut,
+	imageName, indexOfItem, isNearBottom, matchCommands, mentionAt, mentionInsertion, permissionChoices, planIcon, cardKey, waitingPermission, replyBefore, restoredHeight,
 	formatTokens, resetsIn, sameAttachment, slashQuery, thoughtSeconds, toolKindIcon, withAppended, withoutMention, wrapIndex,
+	contextParts, enterAction, mentionGroup, symbolIcon,
 } from '../../webview-src/chatLogic';
 
 describe('format', () => {
@@ -18,20 +19,24 @@ describe('format', () => {
 		expect(format('Thought for {0}s', 3)).toBe('Thought for 3s');
 		expect(format('No placeholder', 1)).toBe('No placeholder');
 	});
+
+	it('fills in several placeholders, in any order, and leaves ones without a value', () => {
+		expect(format('{1} of {0} merged, {2}', 3, 1)).toBe('1 of 3 merged, {2}');
+	});
 });
 
 describe('formatDuration', () => {
 	it('shows at least a second', () => {
-		expect(formatDuration(0)).toBe('1s');
-		expect(formatDuration(400)).toBe('1s');
+		expect(formatDuration(0, 'en')).toBe('1s');
+		expect(formatDuration(400, 'en')).toBe('1s');
 	});
 
 	it('shows seconds, then minutes, then hours', () => {
-		expect(formatDuration(12_000)).toBe('12s');
-		expect(formatDuration(59_400)).toBe('59s');
-		expect(formatDuration(59_600)).toBe('1m 0s');
-		expect(formatDuration(125_000)).toBe('2m 5s');
-		expect(formatDuration(3_780_000)).toBe('1h 3m');
+		expect([12_000, 59_400, 59_600, 125_000, 3_600_000, 3_780_000].map(ms => formatDuration(ms, 'en'))).toEqual(['12s', '59s', '1m 0s', '2m 5s', '1h 0m', '1h 3m']);
+	});
+
+	it('writes the units as the locale does', () => {
+		expect(formatDuration(125_000, 'de')).toBe('2 Min., 5 Sek.');
 	});
 });
 
@@ -206,24 +211,62 @@ describe('icons', () => {
 	});
 });
 
-describe('permissionDefaults', () => {
-	it('prefers allowing and rejecting once', () => {
+describe('permissionChoices', () => {
+	it('prefers allowing and rejecting once, and finds the CLI\'s "Allow for this session"', () => {
 		const options = [
-			{ optionId: 'aa', name: 'Always', kind: 'allow_always' },
+			{ optionId: 'proceed_always_and_save', name: 'Allow this command for all future sessions', kind: 'allow_always' },
+			{ optionId: 'proceed_always', name: 'Allow for this session', kind: 'allow_always' },
 			{ optionId: 'a', name: 'Allow', kind: 'allow_once' },
 			{ optionId: 'ra', name: 'Never', kind: 'reject_always' },
 			{ optionId: 'r', name: 'Reject', kind: 'reject_once' },
 		] as const;
-		const { primary, reject } = permissionDefaults(options);
-		expect(primary?.optionId).toBe('a');
-		expect(reject?.optionId).toBe('r');
+		const { primary, once, session, reject } = permissionChoices(options);
+		expect([primary?.optionId, once?.optionId, session?.optionId, reject?.optionId]).toEqual(['a', 'a', 'proceed_always', 'r']);
+		// An MCP tool's card: the narrower of its two session options.
+		expect(permissionChoices([
+			{ optionId: 'proceed_always_server', name: 'Allow all server tools for this session', kind: 'allow_always' },
+			{ optionId: 'proceed_always_tool', name: 'Allow tool for this session', kind: 'allow_always' },
+		]).session?.optionId).toBe('proceed_always_tool');
 	});
 
 	it('falls back to any allow or reject, or none', () => {
-		const { primary, reject } = permissionDefaults([{ optionId: 'aa', name: 'Always', kind: 'allow_always' }, { optionId: 'ra', name: 'Never', kind: 'reject_always' }]);
-		expect(primary?.optionId).toBe('aa');
-		expect(reject?.optionId).toBe('ra');
-		expect(permissionDefaults([])).toEqual({ primary: undefined, reject: undefined });
+		const { primary, once, reject } = permissionChoices([{ optionId: 'aa', name: 'Always', kind: 'allow_always' }, { optionId: 'ra', name: 'Never', kind: 'reject_always' }]);
+		expect([primary?.optionId, once, reject?.optionId]).toEqual(['aa', undefined, 'ra']);
+		expect(permissionChoices([])).toEqual({ primary: undefined, once: undefined, session: undefined, reject: undefined });
+	});
+});
+
+describe('cardKey', () => {
+	const key = (key: string, code: string, mods: { alt?: boolean; meta?: boolean; ctrl?: boolean; shift?: boolean } = {}) =>
+		({ key, code, altKey: !!mods.alt, metaKey: !!mods.meta, ctrlKey: !!mods.ctrl, shiftKey: !!mods.shift });
+
+	it('answers with ⌥⌘↩, ⌥⌘S and Esc on a Mac, and Ctrl+Alt elsewhere', () => {
+		expect([
+			cardKey(key('Enter', 'Enter', { alt: true, meta: true }), true),
+			cardKey(key('ß', 'KeyS', { alt: true, meta: true }), true),
+			cardKey(key('Escape', 'Escape'), true),
+			cardKey(key('Enter', 'Enter', { alt: true, ctrl: true }), false),
+			cardKey(key('s', 'KeyS', { alt: true, ctrl: true }), false),
+		]).toEqual(['once', 'session', 'reject', 'once', 'session']);
+	});
+
+	it('leaves the composer\'s own keys alone', () => {
+		expect([
+			cardKey(key('Enter', 'Enter'), true),
+			cardKey(key('Enter', 'Enter', { meta: true }), true),
+			cardKey(key('Enter', 'Enter', { alt: true, meta: true, shift: true }), true),
+			cardKey(key('ArrowUp', 'ArrowUp', { alt: true, meta: true }), true),
+			cardKey(key('Enter', 'Enter', { alt: true, ctrl: true }), true),
+			cardKey(key('Escape', 'Escape', { shift: true }), true),
+		]).toEqual([undefined, undefined, undefined, undefined, undefined, undefined]);
+	});
+});
+
+describe('waitingPermission', () => {
+	it('finds the newest card not yet answered', () => {
+		const card = (id: string, answered = false) => ({ id, kind: 'permission' as const, title: id, options: [], diffPaths: [], ...answered ? { answer: { kind: 'cancelled' as const } } : {} });
+		expect(waitingPermission([card('p1'), card('p2'), card('p3', true)])?.id).toBe('p2');
+		expect(waitingPermission([card('p1', true)])).toBeUndefined();
 	});
 });
 
@@ -462,6 +505,27 @@ describe('coalesceUpdates', () => {
 	});
 });
 
+describe('HeldUpdates', () => {
+	const agent = (id: string, text: string) => ({ id, kind: 'agent' as const, text });
+	const append = (id: string, text: string) => ({ kind: 'append' as const, id, append: text });
+
+	it('holds about one update per item however long a hidden chat streams', () => {
+		const held = new HeldUpdates();
+		let text = '';
+		for (let i = 0; i < 1000; i++) {
+			text += `${i} `;
+			held.add(i % 10 ? append('a', `${i} `) : agent('a', text));
+			held.add(agent('b', `step ${i}`));
+		}
+		expect(held.size).toBeLessThanOrEqual(3);
+		const updates = held.take();
+		expect({ updates: updates.map(update => update.kind === 'append' ? `append ${update.id}` : update.id), size: held.size }).toEqual({ updates: ['a', 'b', 'append a'], size: 0 });
+		const whole = updates[0] as ReturnType<typeof agent>;
+		const tail = updates[2] as ReturnType<typeof append>;
+		expect(whole.text + tail.append).toBe(text);
+	});
+});
+
 describe('subagentName', () => {
 	it('names the subagent the CLI hands work to', () => {
 		expect(subagentName('Delegating to agent \'codebase_investigator\'')).toBe('Codebase Investigator');
@@ -490,5 +554,53 @@ describe('isQueueShortcut', () => {
 		expect(isQueueShortcut(key({ metaKey: true, shiftKey: true }), true)).toBe(false);
 		expect(isQueueShortcut(key({ metaKey: true, altKey: true }), true)).toBe(false);
 		expect(isQueueShortcut(key({ metaKey: true }, 'b'), true)).toBe(false);
+	});
+});
+
+describe('enterAction', () => {
+	const key = (mods: { metaKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean; altKey?: boolean }, name = 'Enter') => ({ key: name, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...mods });
+	const keys = [key({}), key({ shiftKey: true }), key({ metaKey: true }), key({ metaKey: true, shiftKey: true }), key({ ctrlKey: true }), key({ altKey: true }), key({}, 'a')];
+
+	it('sends with Return, or with ⌘Return (Ctrl+Enter elsewhere) when gemini.chat.sendWith says so', () => {
+		expect({
+			enterMac: keys.map(each => enterAction(each, true, false)),
+			cmdEnterMac: keys.map(each => enterAction(each, true, true)),
+			cmdEnterOther: keys.map(each => enterAction(each, false, true)),
+		}).toEqual({
+			enterMac: ['now', 'newLine', 'queue', 'newLine', 'now', undefined, undefined],
+			cmdEnterMac: ['newLine', 'newLine', 'now', 'queue', undefined, undefined, undefined],
+			cmdEnterOther: ['newLine', 'newLine', undefined, undefined, 'now', undefined, undefined],
+		});
+	});
+});
+
+describe('contextParts', () => {
+	it('splits what each turn carries into the conversation and the measured parts, largest first, without empty ones', () => {
+		const parts = { cli: 9_000, rules: 18_000, geminicode: 11_000, servers: 3, serverTokens: 61_000, total: 99_000 };
+		expect({
+			withConversation: contextParts(parts, 2, 306_000),
+			beforeAReply: contextParts({ ...parts, geminicode: 0 }, 2).map(part => part.part),
+		}).toEqual({
+			withConversation: [
+				{ part: 'conversation', tokens: 207_000 },
+				{ part: 'servers', tokens: 61_000, count: 3 },
+				{ part: 'rules', tokens: 18_000, count: 2 },
+				{ part: 'geminicode', tokens: 11_000 },
+				{ part: 'cli', tokens: 9_000 },
+			],
+			beforeAReply: ['servers', 'rules', 'cli'],
+		});
+	});
+});
+
+describe('the @ picker\'s groups', () => {
+	it('puts each row in its group, with a symbol icon for each of the index\'s kinds', () => {
+		expect({
+			groups: (['file', 'folder', 'symbol', 'problems', 'changes', 'terminal'] as const).map(mentionGroup),
+			icons: ['function', 'class', 'type', 'trait', 'heading'].map(symbolIcon),
+		}).toEqual({
+			groups: ['files', 'folders', 'symbols', 'workspace', 'workspace', 'workspace'],
+			icons: ['symbol-function', 'symbol-class', 'symbol-interface', 'symbol-interface', 'symbol-misc'],
+		});
 	});
 });

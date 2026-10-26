@@ -24,8 +24,8 @@ import type { ForkContext, ThreadCard, TranscriptItem } from '../acp/chatTranscr
 import { attachmentLabel, type Attachment } from '../acp/attachments';
 import { ConductorReader } from '../acp/conductor';
 import type { InstantAnswer } from '../acp/permissions';
-import { ProjectHub, panelState, threadCounts, threadMemoryContext, type ThreadRequest } from '../acp/projectHub';
-import { coordinatorTools, isProjectToolCall, isProjectToolTitle, ProjectMcpServer, projectServerName, threadTools, type ProjectCaller } from '../acp/projectMcp';
+import { ProjectHub, panelState, quotaHold, requestCount, runningThreads, threadCounts, threadMemoryContext, threadMessages, type ThreadRequest } from '../acp/projectHub';
+import { coordinatorTools, isProjectToolCall, isProjectToolTitle, ProjectMcpServer, projectServerName, threadTools, toolCallOwner, type ProjectCaller } from '../acp/projectMcp';
 import { projectToolsBlock, type ProjectToolsBlock } from '../acp/projectToolsCheck';
 import { reactionReport, type ReactionRef } from '../acp/reactions';
 import type { McpToolResult } from '../acp/browserMcp';
@@ -38,6 +38,7 @@ import type { ChatActivity, ChatController, ChatProject } from './chatController
 import type { NewThread, ProjectDefaultsView, ProjectSettingsAction, ProjectSettingsSave, ProjectSettingsView, ThreadAction } from './chatProtocol';
 import { configSection } from './configuration';
 import { tildify } from './displayText';
+import { showError } from './errorNotice';
 
 /** What a new thread gets from its project besides its request. */
 export interface ThreadSetup {
@@ -104,10 +105,24 @@ export interface ProjectAgents {
 	settingUp(id: string): boolean;
 	/** Keeps a thread's resolved state across reloads. */
 	setResolved(id: string, resolved: boolean): void;
+	/** Keeps the notes held for a thread on its record, so a closed window doesn't drop them. */
+	setPendingNotes(id: string, notes: readonly string[]): void;
+	/** Today's quota as the usage meter last read it, most used model first; undefined with none to read. */
+	quota(): readonly { readonly model: string; readonly used: number; readonly resetTime?: string }[] | undefined;
+	/** Fires when the usage meter reads a different quota. */
+	onDidChangeQuota(listener: () => void): vscode.Disposable;
+	/** Reads the quota again now, as at its reset. */
+	refreshQuota(): void;
 }
 
 export function projectsEnabled(): boolean {
 	return vscode.workspace.getConfiguration(configSection).get<boolean>('projects.enabled', true);
+}
+
+/** `gemini.projects.maxRunningThreads`: how many of a project's threads may run at once, at least 1. */
+function maxRunningThreads(): number {
+	const value = vscode.workspace.getConfiguration(configSection).get<number>('projects.maxRunningThreads', 4);
+	return typeof value === 'number' && Number.isFinite(value) ? Math.max(1, Math.floor(value)) : 4;
 }
 
 /** One open project: its hub, and what the threads are doing. */
@@ -135,6 +150,10 @@ interface LiveProject {
 	/** Gemini is drafting the Memory text, and why the last draft failed. */
 	drafting?: boolean;
 	draftError?: string;
+	/** How many requests (turns) each thread's chat recorded, counted once from its saved chat, then at each turn's end. */
+	readonly requests: Map<string, number>;
+	/** Reads the quota again when it resets, while new threads are held for it. */
+	quotaTimer?: ReturnType<typeof setTimeout>;
 }
 
 export class Projects implements vscode.Disposable {
@@ -168,13 +187,18 @@ export class Projects implements vscode.Disposable {
 	instantAnswer(record: AgentRecord, request: acp.RequestPermissionRequest): InstantAnswer | undefined {
 		const allow = request.options.find(option => option.kind === 'allow_once') ?? request.options.find(option => option.kind.startsWith('allow'));
 		if (record.project?.role === 'coordinator') {
-			if (isProjectToolCall(request, coordinatorTools)) {
+			const owner = toolCallOwner(request, coordinatorTools, projectServerName);
+			if (owner === 'ours') {
 				return allow && { optionId: allow.optionId, quiet: true };
+			}
+			if (owner === 'unknown') {
+				// Titled as a project tool, but its id doesn't say whose: the user decides.
+				return undefined;
 			}
 			const reject = request.options.find(option => option.kind === 'reject_once') ?? request.options.find(option => option.kind.startsWith('reject'));
 			return reject && { optionId: reject.optionId, label: vscode.l10n.t("Refused automatically: the coordinator hands work to threads") };
 		}
-		if (record.project?.role === 'thread' && isProjectToolCall(request, threadTools)) {
+		if (record.project?.role === 'thread' && isProjectToolCall(request, threadTools, projectServerName)) {
 			return allow && { optionId: allow.optionId, quiet: true };
 		}
 		return undefined;
@@ -258,6 +282,7 @@ export class Projects implements vscode.Disposable {
 		if (project) {
 			this.projects.delete(id);
 			clearTimeout(project.panelTimer);
+			clearTimeout(project.quotaTimer);
 			vscode.Disposable.from(...project.disposables).dispose();
 			project.hub.dispose();
 		}
@@ -417,6 +442,8 @@ export class Projects implements vscode.Disposable {
 			repos: () => repoKeys(project.config),
 			conductor: () => conductor.read(),
 			trackBrief: track => conductor.trackBrief(track),
+			maxRunning: () => maxRunningThreads(),
+			quotaHeld: () => !!quotaHold(this.agents.quota()),
 		});
 		// A coordinator reopened with its history already has the role brief.
 		hub.setBriefed(!!record.sessionId);
@@ -424,15 +451,25 @@ export class Projects implements vscode.Disposable {
 			id: record.id, hub, coordinator, conductor,
 			reported: new Set(), queued: new Map(), planning: new Set(), merged: new Set(), removed: new Set(),
 			disposables: [], home, loading: Promise.resolve({ repos: [], instructions: '', files: [], defaults: {} }),
+			requests: new Map(),
 		};
 		project.loading = this.loadConfig(project, folder);
 		const threads = this.agents.threadsOf(record.id);
+		/** Threads with a brief or notes a closed window kept from them: they start first, and get them. */
+		const pending: string[] = [];
 		for (const thread of threads) {
 			if (thread.project?.role === 'thread') {
 				const resolved = !!thread.project.resolved;
 				hub.restoreThread({ id: thread.id, title: thread.title, state: 'done', byCoordinator: thread.project.byCoordinator, ...(resolved ? { resolved } : {}) });
 				if (resolved) {
 					project.merged.add(thread.id);
+				}
+				const held = thread.project.pending;
+				if (held?.notes?.length) {
+					project.queued.set(thread.id, [...held.notes]);
+				}
+				if (held?.brief || held?.notes?.length) {
+					pending.push(thread.id);
 				}
 			}
 		}
@@ -445,12 +482,30 @@ export class Projects implements vscode.Disposable {
 				}
 			}),
 			hub.onDidChangeThread(thread => this.showCard(project, thread.id)),
+			// A lower quota, or a higher limit, lets queued threads start.
+			this.agents.onDidChangeQuota(() => {
+				hub.limitsChanged();
+				this.schedulePanel(project);
+			}),
+			vscode.workspace.onDidChangeConfiguration(e => {
+				if (e.affectsConfiguration(`${configSection}.projects.maxRunningThreads`)) {
+					hub.limitsChanged();
+					this.schedulePanel(project);
+				}
+			}),
 			// A failed wake offers Retry on its error, until the next wake starts.
 			hub.onDidFailWake(failure => coordinator.offerRetry(failure.message)),
 			hub.onDidChangeBusy(busy => busy && coordinator.clearRetry()),
 		);
 		this.projects.set(record.id, project);
 		this.schedulePanel(project);
+		// Each thread's requests, from its saved chat, once; its turns' ends keep them current.
+		void Promise.all(threads.map(async thread => {
+			const count = requestCount(await this.agents.savedConversation(thread.id).catch(() => []));
+			if (!project.requests.has(thread.id)) {
+				project.requests.set(thread.id, count);
+			}
+		})).then(() => this.schedulePanel(project));
 		// A new project's Memory text starts as Gemini's draft, made in the background for the user to review.
 		void project.loading.then(async config => {
 			if (!config.instructions.trim() && !await fs.access(path.join(home, configFile)).then(() => true, () => false)) {
@@ -462,14 +517,18 @@ export class Projects implements vscode.Disposable {
 		// thread starts when it is needed: the pointer on its card or row, opening it, or a note
 		// from the coordinator. A merged one starts only when it is opened.
 		// One at a time, a moment apart: starting them all at once would compete with the window's own start.
-		const warm = warmThreads(threads);
+		const warm = [...pending, ...warmThreads(threads).filter(thread => !pending.includes(thread))];
 		void (async () => {
 			for (const thread of warm) {
 				await new Promise(resolve => setTimeout(resolve, threadStartGapMs));
 				if (this.projects.get(record.id) !== project) {
 					return;
 				}
+				// A thread with a brief still to send gets it, after its setup runs again (AgentProjects.resumeThread).
 				await this.agents.resume(thread).catch(() => undefined);
+				if (pending.includes(thread)) {
+					this.sendHeldNotes(project, thread);
+				}
 			}
 		})();
 	}
@@ -477,6 +536,9 @@ export class Projects implements vscode.Disposable {
 	private threadTurnEnded(project: LiveProject, record: AgentRecord): void {
 		const { hub } = project;
 		const controller = this.agents.controller(record.id);
+		if (controller) {
+			project.requests.set(record.id, requestCount(controller.conversation));
+		}
 		const planned = record.project?.role === 'thread' && !!record.project.planFirst && controller?.conversation.filter(item => item.kind === 'user').length === 1;
 		if (planned) {
 			hub.updateThread(record.id, { state: 'planned', detail: undefined });
@@ -494,8 +556,27 @@ export class Projects implements vscode.Disposable {
 		const queued = project.queued.get(record.id);
 		if (queued?.length && controller) {
 			project.queued.delete(record.id);
+			this.agents.setPendingNotes(record.id, []);
 			void controller.send(queued.join('\n\n'), [], 'coordinator');
 		}
+	}
+
+	/**
+	 * Notes a closed window kept for a thread whose brief went already: they
+	 * go now (or after a turn that runs). A thread still to get its brief
+	 * keeps them until that turn ends, as any notes held for setup.
+	 */
+	private sendHeldNotes(project: LiveProject, thread: string): void {
+		const record = this.agents.record(thread);
+		const held = record?.project?.role === 'thread' ? record.project.pending : undefined;
+		const queued = project.queued.get(thread);
+		const controller = this.agents.controller(thread);
+		if (held?.brief || this.agents.settingUp(thread) || !queued?.length || !controller) {
+			return;
+		}
+		project.queued.delete(thread);
+		this.agents.setPendingNotes(thread, []);
+		this.deliver(project, thread, controller, queued.join('\n\n'), 'coordinator');
 	}
 
 	private async message(coordinatorId: string, thread: string, text: string): Promise<boolean> {
@@ -515,6 +596,23 @@ export class Projects implements vscode.Disposable {
 		}
 		this.deliver(project, thread, controller, text, 'coordinator');
 		return true;
+	}
+
+	/**
+	 * Sends a thread its brief, once its setup ended: now, or after a turn
+	 * that runs. Not when its chat already has a message, which means the brief
+	 * went before the window closed. Resolves once it is sent or queued.
+	 */
+	async sendBrief(thread: string, text: string, from?: 'coordinator'): Promise<void> {
+		const controller = this.agents.controller(thread);
+		if (!controller) {
+			return;
+		}
+		await controller.whenRestored;
+		if (controller.conversation.some(item => item.kind === 'user')) {
+			return;
+		}
+		this.sendToThread(thread, text, from);
 	}
 
 	/** Sends a thread `text` now, or when its running turn (or its setup) ends. */
@@ -543,8 +641,10 @@ export class Projects implements vscode.Disposable {
 		if (controller.running && !this.agents.settingUp(thread)) {
 			void controller.send(text, [], from, 'queue');
 		} else if (this.agents.settingUp(thread) || this.agents.activity(thread)?.busy) {
-			// The pane's activity can lag the controller by a tick: the note waits for the turn's end.
-			project.queued.set(thread, [...project.queued.get(thread) ?? [], text]);
+			// The pane's activity can lag the controller by a tick: the note waits for the turn's end, on the thread's record too.
+			const queued = [...project.queued.get(thread) ?? [], text];
+			project.queued.set(thread, queued);
+			this.agents.setPendingNotes(thread, queued);
 		} else {
 			void controller.send(text, [], from);
 		}
@@ -555,11 +655,8 @@ export class Projects implements vscode.Disposable {
 		if (!this.agents.record(thread)) {
 			return undefined;
 		}
-		const items = await this.agents.savedConversation(thread).catch(() => []);
-		return items
-			.flatMap(item => item.kind === 'user' ? [`User: ${item.text}`] : item.kind === 'agent' ? [`Thread: ${item.text}`] : [])
-			.slice(-last)
-			.join('\n\n');
+		// Each message cut to about 2,000 characters: a thread's reply can hold a whole log.
+		return threadMessages(await this.agents.savedConversation(thread).catch(() => []), last);
 	}
 
 	/** A thread the coordinator or the dialog asked for, with what the project's settings add. */
@@ -693,7 +790,7 @@ export class Projects implements vscode.Disposable {
 				void this.draft(project);
 			}
 		} catch (err) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("Could not save the project's settings: {0}", errorMessage(err)));
+			void showError(vscode.l10n.t("Could not save the project's settings: {0}", errorMessage(err)));
 		}
 		void this.refreshSettings(project);
 	}
@@ -713,7 +810,7 @@ export class Projects implements vscode.Disposable {
 			await writeProjectConfig(project.home, config);
 			this.setConfig(project, config);
 		} catch (err) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("Could not save the project's settings: {0}", errorMessage(err)));
+			void showError(vscode.l10n.t("Could not save the project's settings: {0}", errorMessage(err)));
 		}
 		void this.refreshSettings(project);
 	}
@@ -733,7 +830,7 @@ export class Projects implements vscode.Disposable {
 					}
 					const root = await repositoryRoot(picked[0].fsPath);
 					if (!root) {
-						void vscode.window.showErrorMessage(vscode.l10n.t("{0} is not in a Git repository. A project's threads each work on their own branch, so each repository needs Git.", path.basename(picked[0].fsPath)));
+						void showError(vscode.l10n.t("{0} is not in a Git repository. A project's threads each work on their own branch, so each repository needs Git.", path.basename(picked[0].fsPath)));
 						return;
 					}
 					const config = await project.loading;
@@ -769,7 +866,7 @@ export class Projects implements vscode.Disposable {
 					return this.refreshSettings(project);
 			}
 		} catch (err) {
-			void vscode.window.showErrorMessage(errorMessage(err));
+			void showError(errorMessage(err));
 		}
 	}
 
@@ -834,7 +931,8 @@ export class Projects implements vscode.Disposable {
 		project.coordinator.showThread({
 			thread,
 			title: record.title,
-			state: info.state,
+			// A queued thread has no agent, so no card, until it starts.
+			state: info.state === 'queued' ? 'starting' : info.state,
 			...(info.detail ? { detail: info.detail } : {}),
 			...(record.worktree ? { branch: record.worktree.branch } : {}),
 			...(record.changes ? { changes: record.changes } : {}),
@@ -866,15 +964,31 @@ export class Projects implements vscode.Disposable {
 		}
 		const model = project.coordinator.model;
 		const now = Date.now();
+		const list = project.hub.threadList;
+		const running = runningThreads(list);
+		const limit = maxRunningThreads();
+		const requests = (count: number) => count === 1 ? vscode.l10n.t("1 request") : vscode.l10n.t("{0} requests", count);
+		const counted = list.filter(thread => !project.removed.has(thread.id) && project.requests.has(thread.id));
+		const total = counted.reduce((sum, thread) => sum + (project.requests.get(thread.id) ?? 0), 0);
 		project.coordinator.showProjectPanel({
 			name: this.agents.record(project.id)?.title ?? '',
-			counts: threadCounts(project.hub.threadList, project.merged, project.removed),
+			counts: threadCounts(list, project.merged, project.removed),
 			// Archived threads leave the list (the Agents pane has them under Archived); the merged count still counts them.
-			threads: project.hub.threadList.flatMap(thread => {
+			threads: list.flatMap(thread => {
 				const state = panelState(thread, project.merged, project.removed);
 				const record = this.agents.record(thread.id);
-				return state && !(record && isArchived(record, now)) ? [{ id: thread.id, title: record?.title ?? thread.title, state }] : [];
+				const count = project.requests.get(thread.id);
+				const detail = thread.queued === 'quota'
+					? vscode.l10n.t("Starts when today's quota resets, or with Start Anyway")
+					: thread.queued ? vscode.l10n.t("Starts when a running thread finishes · {0} of {1} running", running, limit) : undefined;
+				return state && !(record && isArchived(record, now)) ? [{
+					id: thread.id, title: record?.title ?? thread.title, state,
+					...count ? { requests: requests(count) } : {},
+					...detail ? { detail } : {},
+				}] : [];
 			}),
+			...total ? { requests: counted.length === 1 ? vscode.l10n.t("This project: {0} across 1 thread", requests(total)) : vscode.l10n.t("This project: {0} across {1} threads", requests(total), counted.length) } : {},
+			...this.heldBanner(project),
 			...(conductor ? { conductor: { openTracks: conductor.tracks.filter(track => track.state !== 'done').length } } : {}),
 			...(model ? { model } : {}),
 			...(config.repos.length > 1 ? { repos: repoKeys(config) } : {}),
@@ -882,9 +996,39 @@ export class Projects implements vscode.Disposable {
 		});
 	}
 
+	/**
+	 * The side panel's banner while today's quota holds new threads, with
+	 * when they start; and, when the quota says when it resets, a read of
+	 * the quota then, so they start without waiting for the meter's next read.
+	 */
+	private heldBanner(project: LiveProject): { readonly held?: string } {
+		const hold = quotaHold(this.agents.quota());
+		const held = project.hub.queued.filter(thread => thread.queued === 'quota').length;
+		clearTimeout(project.quotaTimer);
+		project.quotaTimer = undefined;
+		if (!hold || !held) {
+			return {};
+		}
+		const resetAt = hold.resetTime ? Date.parse(hold.resetTime) : NaN;
+		const percent = Math.round(hold.used * 100);
+		if (Number.isFinite(resetAt) && resetAt > Date.now()) {
+			// Timers past about 24 days fire at once; a quota resets daily.
+			project.quotaTimer = setTimeout(() => this.agents.refreshQuota(), Math.min(resetAt - Date.now() + 60_000, 2 ** 31 - 1));
+			const at = new Date(resetAt).toLocaleTimeString(vscode.env.language, { hour: '2-digit', minute: '2-digit' });
+			return { held: held === 1 ? vscode.l10n.t("Holding 1 new thread: today's quota is {0}% used. It starts when the quota resets at {1}.", percent, at) : vscode.l10n.t("Holding {0} new threads: today's quota is {1}% used. They start when it resets at {2}.", held, percent, at) };
+		}
+		return { held: held === 1 ? vscode.l10n.t("Holding 1 new thread: today's quota is {0}% used. It starts when the quota resets.", percent) : vscode.l10n.t("Holding {0} new threads: today's quota is {1}% used. They start when it resets.", held, percent) };
+	}
+
 	private async threadAction(coordinatorId: string, thread: string, action: ThreadAction, repo?: string): Promise<void> {
 		const project = this.projects.get(coordinatorId);
 		switch (action) {
+			case 'startAnyway':
+				project?.hub.startAnyway();
+				if (project) {
+					this.schedulePanel(project);
+				}
+				return;
 			case 'open':
 				return this.agents.open(thread);
 			case 'stop':
@@ -934,7 +1078,7 @@ export class Projects implements vscode.Disposable {
 		const config = await project.loading;
 		const repos = config.repos.length > 1 ? repoKeys(config).filter(key => thread.repos?.includes(key)) : [];
 		if (config.repos.length > 1 && !repos.length) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("Choose at least one repository for the thread."));
+			void showError(vscode.l10n.t("Choose at least one repository for the thread."));
 			return;
 		}
 		try {
@@ -944,7 +1088,7 @@ export class Projects implements vscode.Disposable {
 				...(repos.length ? { repos } : {}),
 			});
 		} catch (err) {
-			void vscode.window.showErrorMessage(vscode.l10n.t("Could not start the thread: {0}", err instanceof Error ? err.message : String(err)));
+			void showError(vscode.l10n.t("Could not start the thread: {0}", err instanceof Error ? err.message : String(err)));
 		}
 	}
 }

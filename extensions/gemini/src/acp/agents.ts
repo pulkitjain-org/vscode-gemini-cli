@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
 import type { ChangeTotals } from './agentChanges';
 import { Emitter } from './events';
+import { isRecord, samePath } from './fsUtil';
 import type { AgentWorktree, RepoWorktree } from './worktrees';
 
 export interface WorkspaceRecord {
@@ -45,6 +46,12 @@ export interface AgentRecord {
 	readonly checks?: { readonly summary: string; readonly at: number };
 	/** The agent this one was forked from (Fork Agent), which it is listed under. */
 	readonly forkedFrom?: AgentFork;
+	/**
+	 * When the user archived it (Remove's Archive), in ms since the epoch: it
+	 * is listed under Archived, with its chat and undo history kept, until it
+	 * is used again (`isArchived`).
+	 */
+	readonly archivedAt?: number;
 }
 
 /** Where a forked agent came from. */
@@ -91,11 +98,49 @@ export type AgentProjectRole =
 		readonly resolved?: boolean;
 		/** When it was merged back, in ms since the epoch; a week on, it is archived (`isArchived`). */
 		readonly resolvedAt?: number;
+		/** What it is still to be sent, kept so a window closed during its setup loses neither its brief nor its notes. */
+		readonly pending?: ThreadPending;
 	};
 
+/** A thread's brief, while its setup runs, and the notes that wait for it. */
+export interface ThreadPending {
+	/** The first prompt, sent when the worktree's setup ends; gone once sent. */
+	readonly brief?: string;
+	/** Who the brief is from, as the thread's chat labels it. */
+	readonly from?: 'coordinator';
+	/** Notes from the coordinator held until the thread's setup or its current turn ends, oldest first. */
+	readonly notes?: readonly string[];
+}
+
+/**
+ * The list as saved. Version 2 keeps records this version doesn't recognise,
+ * such as a newer version's, as they are (`AgentsModel.stored`); a snapshot
+ * without a version is read the same way.
+ */
 export interface AgentsSnapshot {
+	readonly version?: number;
 	readonly workspaces: readonly WorkspaceRecord[];
 	readonly agents: readonly AgentRecord[];
+}
+
+export const agentsSnapshotVersion = 2;
+
+/** A saved record as it is, whether or not this version recognises it; its other fields are kept as they are. */
+export interface SavedRecord {
+	readonly id: string;
+}
+
+/** The whole list as saved, the records this version doesn't recognise included. */
+export interface StoredAgents {
+	readonly version: number;
+	readonly workspaces: readonly SavedRecord[];
+	readonly agents: readonly SavedRecord[];
+}
+
+/** Records another window added, changed or removed, by list. */
+export interface AgentsChange {
+	readonly workspaces?: { readonly upserted: readonly SavedRecord[]; readonly removed: readonly string[] };
+	readonly agents?: { readonly upserted: readonly SavedRecord[]; readonly removed: readonly string[] };
 }
 
 const maxTitleLength = 48;
@@ -115,12 +160,21 @@ export function warmThreads(threads: readonly AgentRecord[], limit = warmThreadC
 }
 
 /**
- * A thread merged back over a week ago: listed under Archived, and never
- * started until the user opens it. Its chat, branch and record all stay.
+ * Listed under Archived, and never started until the user opens it: an
+ * agent the user archived and hasn't used since, or a thread merged back
+ * over a week ago. Its chat, branch and record all stay.
  */
 export function isArchived(record: AgentRecord, now: number): boolean {
+	if (record.archivedAt !== undefined && record.archivedAt >= record.updatedAt) {
+		return true;
+	}
 	const project = record.project;
 	return project?.role === 'thread' && !!project.resolved && (project.resolvedAt ?? record.updatedAt) <= now - archiveAfterMs;
+}
+
+/** The threads merged back, archived or not: their work is in the repository, so their checkpoints can go. */
+export function mergedThreads(records: readonly AgentRecord[]): string[] {
+	return records.filter(record => record.project?.role === 'thread' && !!record.project.resolved).map(record => record.id);
 }
 
 /** When a thread was merged back: kept since this version, else its last use. */
@@ -146,26 +200,23 @@ export function titleFromPrompt(text: string): string | undefined {
 	return line.length > maxTitleLength ? `${line.slice(0, maxTitleLength - 1).trimEnd()}…` : line;
 }
 
-function sameFolder(a: string, b: string): boolean {
-	const normalize = (p: string) => {
-		const resolved = path.resolve(p);
-		return process.platform === 'win32' || process.platform === 'darwin' ? resolved.toLowerCase() : resolved;
-	};
-	return normalize(a) === normalize(b);
-}
-
 export class AgentsModel {
 
 	private readonly onDidChangeEmitter = new Emitter<void>();
 	readonly onDidChange = this.onDidChangeEmitter.event;
 
-	private _workspaces: WorkspaceRecord[];
-	private _agents: AgentRecord[];
+	private _workspaces: WorkspaceRecord[] = [];
+	private _agents: AgentRecord[] = [];
+	/**
+	 * Saved records this version doesn't recognise, such as a newer version's,
+	 * or an agent whose workspace isn't here (yet): kept as they are and saved
+	 * back, never dropped.
+	 */
+	private otherWorkspaces: SavedRecord[] = [];
+	private otherAgents: SavedRecord[] = [];
 
-	constructor(snapshot: AgentsSnapshot = { workspaces: [], agents: [] }, private readonly now: () => number = Date.now) {
-		this._workspaces = (snapshot.workspaces ?? []).filter(isWorkspaceRecord);
-		const ids = new Set(this._workspaces.map(w => w.id));
-		this._agents = (snapshot.agents ?? []).filter(a => isAgentRecord(a) && ids.has(a.workspaceId));
+	constructor(snapshot: AgentsSnapshot | StoredAgents = { workspaces: [], agents: [] }, private readonly now: () => number = Date.now) {
+		this.take(snapshot.workspaces ?? [], snapshot.agents ?? []);
 	}
 
 	get workspaces(): readonly WorkspaceRecord[] {
@@ -177,7 +228,7 @@ export class AgentsModel {
 	}
 
 	workspaceFor(folder: string): WorkspaceRecord | undefined {
-		return this._workspaces.find(w => sameFolder(w.folder, folder));
+		return this._workspaces.find(w => samePath(w.folder, folder));
 	}
 
 	agent(id: string): AgentRecord | undefined {
@@ -206,6 +257,7 @@ export class AgentsModel {
 		const removed = this._agents.filter(a => a.workspaceId === id);
 		this._workspaces = this._workspaces.filter(w => w.id !== id);
 		this._agents = this._agents.filter(a => a.workspaceId !== id);
+		this.otherAgents = this.otherAgents.filter(a => (a as { readonly workspaceId?: unknown }).workspaceId !== id);
 		this.changed();
 		return removed;
 	}
@@ -283,6 +335,11 @@ export class AgentsModel {
 		}
 	}
 
+	/** Archives the agent: listed under Archived until its next prompt (`isArchived`), with everything it has kept. */
+	archive(id: string): void {
+		this.update(id, a => ({ ...a, archivedAt: Math.max(this.now(), a.updatedAt) }));
+	}
+
 	/** A multi-repository thread's repositories changed: one was added or merged. */
 	setRepos(id: string, repos: readonly ThreadRepo[]): void {
 		this.update(id, a => ({ ...a, repos }));
@@ -311,6 +368,22 @@ export class AgentsModel {
 		this.update(id, a => ({ ...a, project: resolved ? { ...rest, resolved: true, resolvedAt: this.now() } : rest }));
 	}
 
+	/** Keeps what thread `id` is still to be sent; undefined, or nothing in it, clears it. */
+	setThreadPending(id: string, pending: ThreadPending | undefined): void {
+		const project = this.agent(id)?.project;
+		if (project?.role !== 'thread') {
+			return;
+		}
+		const { pending: _, ...rest } = project;
+		const kept = pending && (pending.brief || pending.notes?.length) ? {
+			...pending.brief ? { brief: pending.brief, ...pending.from ? { from: pending.from } : {} } : {},
+			...pending.notes?.length ? { notes: pending.notes } : {},
+		} : undefined;
+		if (JSON.stringify(kept) !== JSON.stringify(project.pending)) {
+			this.update(id, a => ({ ...a, project: kept ? { ...rest, pending: kept } : rest }));
+		}
+	}
+
 	/** A project's threads, oldest first. */
 	threadsOf(coordinatorId: string): readonly AgentRecord[] {
 		return this._agents.filter(a => a.project?.role === 'thread' && a.project.coordinator === coordinatorId).sort((a, b) => a.createdAt - b.createdAt);
@@ -334,8 +407,37 @@ export class AgentsModel {
 		this.changed();
 	}
 
+	/** The records this version recognises. */
 	snapshot(): AgentsSnapshot {
-		return { workspaces: this._workspaces, agents: this._agents };
+		return { version: agentsSnapshotVersion, workspaces: this._workspaces, agents: this._agents };
+	}
+
+	/** Every record, those this version doesn't recognise included, to save. */
+	stored(): StoredAgents {
+		return {
+			version: agentsSnapshotVersion,
+			workspaces: this.otherWorkspaces.length ? [...this._workspaces, ...this.otherWorkspaces] : this._workspaces,
+			agents: this.otherAgents.length ? [...this._agents, ...this.otherAgents] : this._agents,
+		};
+	}
+
+	/**
+	 * Takes in what another window added, changed or removed. A record changed
+	 * here and not saved yet (`unsaved`) stays, unless theirs was used later;
+	 * a removal always wins. Returns the agents that went.
+	 */
+	applyExternal(change: AgentsChange, unsaved: (record: SavedRecord) => boolean = () => false): readonly AgentRecord[] {
+		const stored = this.stored();
+		const workspaces = mergeRecords(stored.workspaces, change.workspaces, unsaved);
+		const agents = mergeRecords(stored.agents, change.agents, unsaved);
+		if (workspaces === stored.workspaces && agents === stored.agents) {
+			return [];
+		}
+		const before = this._agents;
+		this.take(workspaces, agents);
+		const ids = new Set(this._agents.map(a => a.id));
+		this.changed();
+		return before.filter(a => !ids.has(a.id));
 	}
 
 	dispose(): void {
@@ -354,6 +456,65 @@ export class AgentsModel {
 	private changed(): void {
 		this.onDidChangeEmitter.fire();
 	}
+
+	/** Sorts saved records into those this version shows and the others, which it keeps. */
+	private take(workspaces: readonly unknown[], agents: readonly unknown[]): void {
+		this._workspaces = [];
+		this.otherWorkspaces = [];
+		for (const workspace of workspaces) {
+			if (isWorkspaceRecord(workspace)) {
+				this._workspaces.push(workspace);
+			} else if (hasId(workspace)) {
+				this.otherWorkspaces.push(workspace);
+			}
+		}
+		const ids = new Set(this._workspaces.map(w => w.id));
+		this._agents = [];
+		this.otherAgents = [];
+		for (const agent of agents) {
+			if (isAgentRecord(agent) && ids.has(agent.workspaceId)) {
+				this._agents.push(agent);
+			} else if (hasId(agent)) {
+				this.otherAgents.push(agent);
+			}
+		}
+	}
+}
+
+/** `records` with `change` taken in; the same array when nothing changed. */
+function mergeRecords(records: readonly SavedRecord[], change: { readonly upserted: readonly SavedRecord[]; readonly removed: readonly string[] } | undefined, unsaved: (record: SavedRecord) => boolean): readonly SavedRecord[] {
+	if (!change || (!change.upserted.length && !change.removed.length)) {
+		return records;
+	}
+	const removed = new Set(change.removed);
+	const merged = removed.size ? records.filter(record => !removed.has(record.id)) : [...records];
+	let changed = merged.length !== records.length;
+	const index = new Map(merged.map((record, i) => [record.id, i]));
+	for (const theirs of change.upserted) {
+		const at = index.get(theirs.id);
+		if (at === undefined) {
+			index.set(theirs.id, merged.length);
+			merged.push(theirs);
+			changed = true;
+			continue;
+		}
+		const ours = merged[at];
+		if (ours === theirs || (unsaved(ours) && !(updatedAt(theirs) > updatedAt(ours)))) {
+			continue;
+		}
+		merged[at] = theirs;
+		changed = true;
+	}
+	return changed ? merged : records;
+}
+
+function updatedAt(record: SavedRecord): number {
+	const value = (record as { readonly updatedAt?: unknown }).updatedAt;
+	return typeof value === 'number' ? value : 0;
+}
+
+function hasId(value: unknown): value is SavedRecord {
+	return isRecord(value) && typeof value.id === 'string';
 }
 
 function isWorkspaceRecord(value: unknown): value is WorkspaceRecord {
@@ -361,6 +522,7 @@ function isWorkspaceRecord(value: unknown): value is WorkspaceRecord {
 	return typeof w?.id === 'string' && typeof w.folder === 'string' && path.isAbsolute(w.folder);
 }
 
+/** Whether this version can show `value`; it ignores fields it doesn't know, and the model keeps a record it can't show (`stored`). */
 function isAgentRecord(value: unknown): value is AgentRecord {
 	const a = value as AgentRecord;
 	return typeof a?.id === 'string' && typeof a.workspaceId === 'string' && typeof a.title === 'string'

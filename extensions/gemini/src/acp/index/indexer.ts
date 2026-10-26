@@ -18,15 +18,15 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { isInside } from '../fileAccess';
-import { findGitDir } from '../gitHead';
 import { GitIgnoreChecker } from '../gitIgnore';
 import { cochangePairs } from './cochange';
-import { fallbackRepoMap, ripgrepDefinitions, ripgrepSearch } from './fallbackSearch';
+import { fallbackRepoMap, PathFilter, ripgrepDefinitions, ripgrepSearch } from './fallbackSearch';
+import { changedSince, gitHead } from './gitChanges';
 import { IndexLock } from './indexLock';
 import { workspaceId } from './indexPaths';
 import { IndexStore, isCorruption, moveAside } from './indexStore';
 import type { Answer, IndexSettings, IndexState, IndexStatus } from './indexerProtocol';
-import { canInclude, InventoryFile, SkipRules, takeInventory } from './inventory';
+import { canInclude, InventoryFile, SkipRules, statInFolder, takeInventory } from './inventory';
 import { languageName } from './languages';
 import { parseFile } from './parse';
 import { filesNamed, findSymbol, hasFile, relatedFiles, RelatedResult, search, SearchQuery, SearchResult, SymbolResult } from './query';
@@ -55,6 +55,12 @@ const unusedMs = 30 * 24 * 60 * 60 * 1000;
 const maxSkippedKept = 2_000;
 /** More changed paths than this at once are handled by reconciling the whole folder. */
 const maxPathsPerUpdate = 300;
+/** The most paths the @-mention list gets from an index. */
+const maxListedFiles = 50_000;
+/** A folder's index nobody asked anything of for this long is closed, until it is needed again. */
+const idleCloseMs = 10 * 60 * 1000;
+/** After an index failed to open (busy, disk full), it is tried again this long after. */
+const reopenAfterMs = 30_000;
 const defaultSettings: IndexSettings = { exclude: [], maxFileBytes: 1024 * 1024 };
 
 interface Workspace {
@@ -75,6 +81,17 @@ interface Workspace {
 	rules: SkipRules | undefined;
 	lastStatusAt: number;
 	skipped: { path: string; reason: string }[];
+	/** The folder's real path, for telling where links lead. */
+	realRoot: string | undefined;
+	/** The window wants this index kept current: it was opened to build or read. */
+	wanted: boolean;
+	/** Closed for being idle, not for a failure: nothing was missed meanwhile, since changes reopen it. */
+	evicted: boolean;
+	/** When a request last touched it, for closing idle ones. */
+	usedAt: number;
+	/** The commit the last turn-end update looked from. */
+	turnHead: string | undefined;
+	reopenTimer: ReturnType<typeof setTimeout> | undefined;
 }
 
 /** The folder's files for import resolution: a set, and paths by file name. */
@@ -96,9 +113,10 @@ class Known implements KnownFiles {
 		return this.byName.get(base) ?? [];
 	}
 
-	add(relative: string): void {
+	/** Adds a file; whether it is new. */
+	add(relative: string): boolean {
 		if (this.paths.has(relative)) {
-			return;
+			return false;
 		}
 		this.paths.add(relative);
 		const base = relative.slice(relative.lastIndexOf('/') + 1);
@@ -108,6 +126,7 @@ class Known implements KnownFiles {
 		} else {
 			this.byName.set(base, [relative]);
 		}
+		return true;
 	}
 
 	delete(relative: string): void {
@@ -130,9 +149,12 @@ export class Indexer {
 	private readonly ignored = new GitIgnoreChecker();
 	private readonly now: () => number;
 	private busy = 0;
+	private readonly idleTimer: ReturnType<typeof setInterval>;
 
 	constructor(private readonly options: IndexerOptions) {
 		this.now = options.now ?? Date.now;
+		this.idleTimer = setInterval(() => void this.closeIdle(), 60_000);
+		this.idleTimer.unref?.();
 	}
 
 	// --- Folder lifecycle
@@ -141,7 +163,8 @@ export class Indexer {
 	async ensure({ root, settings, build }: { root: string; settings: IndexSettings; build: boolean }): Promise<IndexStatus> {
 		const workspace = await this.workspace(root, settings);
 		if (!workspace.store) {
-			if (build || await exists(workspace.file)) {
+			if (build || workspace.wanted || await exists(workspace.file)) {
+				workspace.wanted = true;
 				await this.open(workspace);
 				workspace.needsReconcile = true;
 			}
@@ -154,8 +177,8 @@ export class Indexer {
 	}
 
 	async update({ root, paths }: { root: string; paths: readonly string[] }): Promise<void> {
-		const workspace = await this.workspaces.get(root);
-		if (!workspace?.store) {
+		const workspace = await this.reopened(root);
+		if (!workspace) {
 			return;
 		}
 		for (const absoluteOrRelative of paths) {
@@ -173,11 +196,37 @@ export class Indexer {
 	}
 
 	async reconcile({ root }: { root: string }): Promise<void> {
-		const workspace = await this.workspaces.get(root);
-		if (workspace?.store) {
+		const workspace = await this.reopened(root);
+		if (workspace) {
 			workspace.needsReconcile = true;
 			this.schedule(workspace);
 		}
+	}
+
+	/**
+	 * An agent's turn ended in `root`, a folder no watcher sees: applies what
+	 * git says changed (the worktree's changes and the commits since the last
+	 * look), or reconciles when that is many files or git can't tell.
+	 */
+	async turnEnded({ root }: { root: string }): Promise<void> {
+		const workspace = await this.reopened(root);
+		if (!workspace) {
+			return;
+		}
+		const since = workspace.turnHead ?? workspace.store?.meta('head');
+		const changes = await changedSince(root, since);
+		if (!changes || changes.paths.length > maxPathsPerUpdate) {
+			workspace.needsReconcile = true;
+		} else {
+			for (const file of changes.paths) {
+				const relative = relativeTo(workspace.root, file);
+				if (relative !== undefined) {
+					workspace.pending.add(relative);
+				}
+			}
+		}
+		workspace.turnHead = changes?.head;
+		this.schedule(workspace);
 	}
 
 	async rebuild({ root, settings }: { root: string; settings: IndexSettings }): Promise<IndexStatus> {
@@ -217,6 +266,8 @@ export class Indexer {
 		const dir = workspace?.dir ?? path.join(this.options.baseDir, 'code', await workspaceId(root));
 		if (workspace) {
 			workspace.paused = true;
+			workspace.wanted = false;
+			clearTimeout(workspace.reopenTimer);
 			await this.closeStore(workspace);
 			this.workspaces.delete(root);
 		}
@@ -237,11 +288,11 @@ export class Indexer {
 			try {
 				await fs.mkdir(target.dir, { recursive: true });
 				if (source) {
-					source.db.prepare('VACUUM INTO ?').run(target.file);
+					await source.copyTo(target.file);
 				} else if (await exists(sourceFile)) {
 					const copy = await IndexStore.open(sourceFile, { readOnly: true });
 					try {
-						copy.db.prepare('VACUUM INTO ?').run(target.file);
+						await copy.copyTo(target.file);
 					} finally {
 						copy.close();
 					}
@@ -292,18 +343,19 @@ export class Indexer {
 		if (!workspace?.store || !built(workspace)) {
 			return undefined;
 		}
-		return (workspace.store.statement('SELECT path FROM files ORDER BY path').all() as { path: string }[]).map(row => row.path);
+		workspace.usedAt = this.now();
+		return (workspace.store.statement('SELECT path FROM files ORDER BY path LIMIT ?').all(maxListedFiles) as { path: string }[]).map(row => row.path);
 	}
 
 	// --- Queries
 
 	search({ root, query }: { root: string; query: SearchQuery }): Promise<Answer<SearchResult>> {
-		return this.answer(root, store => search(store, query), async () => ripgrepSearch(this.options.ripgrep, root, query.query, Math.min(query.limit ?? 8, 20), query.path));
+		return this.answer(root, store => search(store, query), async () => ripgrepSearch(this.options.ripgrep, root, query.query, Math.min(query.limit ?? 8, 20), query.path, await this.shown(root)));
 	}
 
 	findSymbol({ root, name, kind, references }: { root: string; name: string; kind?: string; references?: boolean }): Promise<Answer<SymbolResult>> {
 		return this.answer<SymbolResult>(root, store => findSymbol(store, name, { kind, references }), async () => {
-			const found = await ripgrepDefinitions(this.options.ripgrep, root, name.slice(name.lastIndexOf('.') + 1));
+			const found = await ripgrepDefinitions(this.options.ripgrep, root, name.slice(name.lastIndexOf('.') + 1), await this.shown(root));
 			return { definitions: found.map(f => ({ name, kind: 'definition', path: f.path, line: f.line, endLine: f.line, exported: true, signature: f.text })), similar: [], references: [], referenceTotal: 0 };
 		});
 	}
@@ -317,7 +369,18 @@ export class Indexer {
 	}
 
 	repoMap({ root, path: subfolder, depth, maxChars }: { root: string; path?: string; depth?: number; maxChars?: number }): Promise<Answer<string>> {
-		return this.answer(root, store => repoMap(store, root, { path: subfolder, depth, maxChars }), () => fallbackRepoMap(root, maxChars));
+		return this.answer(root, store => repoMap(store, root, { path: subfolder, depth, maxChars }), async () => fallbackRepoMap(root, maxChars, await this.shown(root)));
+	}
+
+	/**
+	 * What live search may show of `root`: the files the index would cover,
+	 * so secret files, .geminiignore and gemini.index.exclude apply before
+	 * the first build as they do after it.
+	 */
+	private async shown(root: string): Promise<PathFilter> {
+		const workspace = await this.workspaces.get(root);
+		const rules = workspace ? await this.rules(workspace) : await SkipRules.forFolder(root, defaultSettings);
+		return relative => !rules.pathReason(relative);
 	}
 
 	/**
@@ -329,7 +392,8 @@ export class Indexer {
 		const store = await this.queryable(root);
 		if (store) {
 			try {
-				return { result: await query(store) };
+				const result = await query(store);
+				return store.meta('truncated') === '1' ? { result, partial: true } : { result };
 			} catch (err) {
 				if (!isCorruption(err)) {
 					throw err;
@@ -373,13 +437,30 @@ export class Indexer {
 	}
 
 	async dispose(): Promise<void> {
+		clearInterval(this.idleTimer);
 		const workspaces = await Promise.all(this.workspaces.values());
 		this.workspaces.clear();
 		for (const workspace of workspaces) {
 			workspace.paused = true;
+			clearTimeout(workspace.reopenTimer);
 			await this.closeStore(workspace);
 		}
 		this.ignored.dispose();
+	}
+
+	/**
+	 * Closes the indexes nobody used for ten minutes, with nothing to do: an
+	 * open one holds a database connection and its cache. The next request or
+	 * file change opens it again.
+	 */
+	async closeIdle(): Promise<void> {
+		for (const pending of [...this.workspaces.values()]) {
+			const workspace = await pending;
+			if (workspace.store && !workspace.running && !workspace.opening && !workspace.pending.size && !workspace.needsReconcile && this.now() - workspace.usedAt >= idleCloseMs) {
+				await this.closeStore(workspace);
+				workspace.evicted = true;
+			}
+		}
 	}
 
 	// --- Internals
@@ -392,12 +473,14 @@ export class Indexer {
 				return {
 					root, dir, file: path.join(dir, 'index.db'), settings, store: undefined, lock: undefined, state: { kind: 'none' },
 					pending: new Set(), needsReconcile: false, paused: false, running: undefined, opening: undefined, known: undefined, rules: undefined, lastStatusAt: 0, skipped: [],
+					realRoot: undefined, wanted: false, evicted: false, usedAt: this.now(), turnHead: undefined, reopenTimer: undefined,
 				} satisfies Workspace;
 			});
 			this.workspaces.set(root, pending);
 			return pending;
 		}
 		return pending.then(workspace => {
+			workspace.usedAt = this.now();
 			if (JSON.stringify(workspace.settings) !== JSON.stringify(settings)) {
 				workspace.settings = settings;
 				workspace.rules = undefined;
@@ -405,6 +488,25 @@ export class Indexer {
 			}
 			return workspace;
 		});
+	}
+
+	/**
+	 * A folder this window keeps current, its index open: opened again when it
+	 * was closed for being idle, or failed to open before.
+	 */
+	private async reopened(root: string): Promise<Workspace | undefined> {
+		const workspace = await this.workspaces.get(root);
+		if (!workspace || (!workspace.store && !workspace.wanted)) {
+			return undefined;
+		}
+		workspace.usedAt = this.now();
+		if (!workspace.store) {
+			const evicted = workspace.evicted;
+			await this.open(workspace);
+			// After a failure, what changed meanwhile is unknown.
+			workspace.needsReconcile ||= !evicted;
+		}
+		return workspace.store ? workspace : undefined;
 	}
 
 	/** Opens the folder's index, once however many requests ask at the same time. */
@@ -428,11 +530,22 @@ export class Indexer {
 				await fs.writeFile(path.join(workspace.dir, 'root'), workspace.root);
 				workspace.state = built(workspace) ? await readyState(workspace.store) : { kind: 'building', done: 0, total: 0, first: true };
 			}
+			workspace.evicted = false;
 		} catch (err) {
 			await workspace.lock?.release();
 			workspace.lock = undefined;
 			workspace.store = undefined;
 			this.setState(workspace, { kind: 'failed', message: err instanceof Error ? err.message : String(err) }, true);
+			// A passing problem (the file busy, the disk full): the file is kept, and opened again soon.
+			this.options.log?.(`Could not open the index of ${workspace.root}: ${err instanceof Error ? err.message : String(err)}`);
+			clearTimeout(workspace.reopenTimer);
+			workspace.reopenTimer = setTimeout(() => {
+				workspace.reopenTimer = undefined;
+				if (workspace.wanted && !workspace.store && this.workspaces.has(workspace.root)) {
+					void this.reconcile({ root: workspace.root });
+				}
+			}, reopenAfterMs);
+			workspace.reopenTimer.unref?.();
 		}
 	}
 
@@ -447,9 +560,11 @@ export class Indexer {
 
 	/** Takes the lock and reopens for writing, for a window whose index another window was writing. */
 	private async takeOver(workspace: Workspace): Promise<boolean> {
-		if (workspace.lock) {
+		if (workspace.lock?.held) {
 			return true;
 		}
+		// Another window took over a lock this process stopped refreshing.
+		workspace.lock = undefined;
 		const lock = await IndexLock.acquire(workspace.dir);
 		if (!lock) {
 			return false;
@@ -478,6 +593,7 @@ export class Indexer {
 			}
 			workspace = await this.workspace(root, defaultSettings);
 		}
+		workspace.usedAt = this.now();
 		if (!workspace.store) {
 			await this.open(workspace);
 		}
@@ -568,6 +684,8 @@ export class Indexer {
 			return !state || state.size !== file.size || state.mtime !== file.mtime || (!!state.skipped && rules.forced(file.path));
 		});
 		const removed = [...states.keys()].filter(p => !listed.has(p));
+		// Imports written now resolve against every listed file; older ones may name a file new since.
+		const added = inventory.files.filter(file => !states.has(file.path)).map(file => file.path);
 		const known = workspace.known = new Known(listed);
 		this.setState(workspace, { kind: 'building', done: 0, total: changed.length, first }, true);
 
@@ -585,13 +703,12 @@ export class Indexer {
 		if (workspace.store !== store) {
 			return;
 		}
-		store.transaction(() => {
-			for (const relative of removed) {
-				store.removeFile(relative);
-			}
-		});
-		this.resolveImports(store, known);
-		const head = await readHead(workspace.root);
+		await this.removeSliced(store, removed, known);
+		if (!first) {
+			this.resolveImports(store, known, added);
+		}
+		store.setMeta('truncated', inventory.truncated ? '1' : '0');
+		const head = await gitHead(workspace.root);
 		if (first || head !== headBefore || !store.meta('cochange_at')) {
 			const pairs = await cochangePairs(workspace.root);
 			store.transaction(() => store.replaceCochange(pairs));
@@ -600,6 +717,8 @@ export class Indexer {
 		if (head) {
 			store.setMeta('head', head);
 		}
+		// The next turn-end update looks from what this reconcile saw.
+		workspace.turnHead = undefined;
 		store.setMeta('built_at', String(this.now()));
 		store.setMeta('root', workspace.root);
 		this.setState(workspace, await readyState(store), true);
@@ -614,16 +733,24 @@ export class Indexer {
 		const store = workspace.store!;
 		const rules = await this.rules(workspace);
 		const known = workspace.known ??= new Known((store.statement('SELECT path FROM files').all() as { path: string }[]).map(r => r.path));
+		const realRoot = workspace.realRoot ??= await fs.realpath(workspace.root).catch(() => workspace.root);
 		// Only the changed paths: a save in a large repository must not read the whole index.
 		const states = store.fileStates(paths);
 		const toWrite: { file: InventoryFile; content: Buffer | undefined }[] = [];
 		const toRemove: string[] = [];
 		for (const relative of paths) {
-			const stat = await fs.stat(path.join(workspace.root, relative)).catch(() => undefined);
+			// Through links too: a path from a file event may lead out of the folder.
+			const found = await statInFolder(realRoot, workspace.root, relative, true);
+			const stat = found?.stat;
 			if (stat?.isDirectory()) {
 				// A folder appeared (a checkout, a copy): look at everything.
 				workspace.needsReconcile = true;
 				return;
+			}
+			if (!stat && !states.has(relative)) {
+				// A folder went (rm -rf src/legacy is one event): its files go with it.
+				toRemove.push(...store.filesUnder(relative));
+				continue;
 			}
 			if (!stat || rules.pathReason(relative) || rules.sizeReason(relative, stat.size) || await this.ignored.isIgnored(path.join(workspace.root, relative), workspace.root)) {
 				if (states.has(relative)) {
@@ -641,21 +768,33 @@ export class Indexer {
 		if (workspace.store !== store) {
 			return;
 		}
-		store.transaction(() => {
-			for (const relative of toRemove) {
-				store.removeFile(relative);
-				known.delete(relative);
-			}
-		});
-		await this.writeSliced(store, toWrite, states, known, rules);
+		await this.removeSliced(store, toRemove, known);
+		const added = await this.writeSliced(store, toWrite, states, known, rules);
 		if (toWrite.length || toRemove.length) {
-			this.resolveImports(store, known);
+			this.resolveImports(store, known, added);
 			this.setState(workspace, await readyState(store), true);
 		}
 	}
 
-	/** Writes files in transactions of about `sliceMs` each, yielding between them. */
-	private async writeSliced(store: IndexStore, items: readonly { file: InventoryFile; content: Buffer | undefined }[], states: ReadonlyMap<string, { hash: string; skipped?: string }>, known: Known, rules: SkipRules): Promise<void> {
+	/** Removes files in transactions of about `sliceMs` each, yielding between them, as `writeSliced` writes. */
+	private async removeSliced(store: IndexStore, paths: readonly string[], known: Known): Promise<void> {
+		let at = 0;
+		while (at < paths.length) {
+			const started = this.now();
+			store.transaction(() => {
+				while (at < paths.length && (this.now() - started < sliceMs)) {
+					const relative = paths[at++];
+					store.removeFile(relative);
+					known.delete(relative);
+				}
+			});
+			await new Promise<void>(resolve => setImmediate(resolve));
+		}
+	}
+
+	/** Writes files in transactions of about `sliceMs` each, yielding between them. The files new to the index. */
+	private async writeSliced(store: IndexStore, items: readonly { file: InventoryFile; content: Buffer | undefined }[], states: ReadonlyMap<string, { hash: string; skipped?: string }>, known: Known, rules: SkipRules): Promise<string[]> {
+		const added: string[] = [];
 		let at = 0;
 		while (at < items.length) {
 			const started = this.now();
@@ -669,7 +808,9 @@ export class Indexer {
 						known.delete(file.path);
 						continue;
 					}
-					known.add(file.path);
+					if (known.add(file.path)) {
+						added.push(file.path);
+					}
 					const hash = createHash('sha1').update(content).digest('hex');
 					const state = states.get(file.path);
 					if (state?.hash === hash && !(state.skipped && rules.forced(file.path))) {
@@ -689,11 +830,19 @@ export class Indexer {
 			});
 			await new Promise<void>(resolve => setImmediate(resolve));
 		}
+		return added;
 	}
 
-	/** Points imports at files that exist now, such as one added after the file importing it. */
-	private resolveImports(store: IndexStore, known: Known): void {
-		const unresolved = store.unresolvedImports();
+	/**
+	 * Points imports at files that exist now, such as one added after the file
+	 * importing it. Only when files were added, and only the imports that can
+	 * name one of them: a save changes no file's existence.
+	 */
+	private resolveImports(store: IndexStore, known: Known, added: readonly string[]): void {
+		if (!added.length) {
+			return;
+		}
+		const unresolved = store.unresolvedImports(importNames(added));
 		if (!unresolved.length) {
 			return;
 		}
@@ -743,29 +892,22 @@ async function readyState(store: IndexStore): Promise<IndexState> {
 	return { kind: 'ready', ...counts, bytes, updatedAt: Number(store.meta('built_at') ?? 0) };
 }
 
-/** The commit HEAD points at, read from the files (no process), to tell when history moved. */
-async function readHead(root: string): Promise<string | undefined> {
-	const gitDir = await findGitDir(root);
-	if (!gitDir) {
-		return undefined;
-	}
-	try {
-		const head = (await fs.readFile(path.join(gitDir, 'HEAD'), 'utf8')).trim();
-		const ref = /^ref:\s*(.+)$/.exec(head)?.[1];
-		if (!ref) {
-			return head;
+/**
+ * The names an import of one of `files` can carry: a file's name before its
+ * first dot (`cart` for cart.service.ts, `Cart` for Cart.java), and the
+ * folder's name for a folder's own module (index.ts, __init__.py, mod.rs).
+ */
+export function importNames(files: readonly string[]): Set<string> {
+	const names = new Set<string>();
+	for (const file of files) {
+		const parts = file.split('/');
+		const stem = parts[parts.length - 1].split('.')[0];
+		if (stem) {
+			names.add(stem);
 		}
-		// A worktree's branches live in the repository's git directory.
-		const common = (await fs.readFile(path.join(gitDir, 'commondir'), 'utf8').catch(() => '')).trim();
-		const dirs = common ? [gitDir, path.resolve(gitDir, common)] : [gitDir];
-		for (const dir of dirs) {
-			const commit = await fs.readFile(path.join(dir, ref), 'utf8').catch(() => undefined);
-			if (commit) {
-				return commit.trim();
-			}
+		if ((stem === 'index' || stem === '__init__' || stem === 'mod') && parts.length > 1) {
+			names.add(parts[parts.length - 2]);
 		}
-		return ref;
-	} catch {
-		return undefined;
 	}
+	return names;
 }

@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { baseFlashPattern, codeAssistFlashPattern, latestFlashPattern, oauthClientIdPattern, oauthClientSecretPattern } from './cli/formats';
 
 /** How the CLI signs in, from its settings and environment. */
 export type DirectAuth =
@@ -129,12 +130,12 @@ export async function readCliBundle(entry: string): Promise<CliBundleInfo> {
 		} catch {
 			continue;
 		}
-		const id = /OAUTH_CLIENT_ID\s*=\s*["']([\w.-]+\.apps\.googleusercontent\.com)["']/.exec(text)?.[1];
-		const secret = /OAUTH_CLIENT_SECRET\s*=\s*["']([\w-]+)["']/.exec(text)?.[1];
+		const id = oauthClientIdPattern.exec(text)?.[1];
+		const secret = oauthClientSecretPattern.exec(text)?.[1];
 		oauthClient ??= id && secret ? { id, secret } : undefined;
-		latestFlash ??= /\bLATEST_GEMINI_FLASH_MODEL\s*=\s*["']([\w.-]+)["']/.exec(text)?.[1];
-		baseFlash ??= /\bBASE_GEMINI_FLASH_MODEL\s*=\s*["']([\w.-]+)["']/.exec(text)?.[1];
-		codeAssistFlash ??= /\bLEGACY_CCPA_FLASH_MODEL\s*=\s*["']([\w.-]+)["']/.exec(text)?.[1];
+		latestFlash ??= latestFlashPattern.exec(text)?.[1];
+		baseFlash ??= baseFlashPattern.exec(text)?.[1];
+		codeAssistFlash ??= codeAssistFlashPattern.exec(text)?.[1];
 		if (oauthClient && latestFlash && baseFlash && codeAssistFlash) {
 			break;
 		}

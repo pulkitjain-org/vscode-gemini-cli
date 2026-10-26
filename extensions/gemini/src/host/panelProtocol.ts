@@ -107,6 +107,8 @@ export interface HomeProject {
 	readonly id: string;
 	readonly title: string;
 	readonly workspace: string;
+	/** The repository folder the project works in, one of the view's workspaces. */
+	readonly folder: string;
 	readonly state: AgentStateKind;
 	/** "3 threads" */
 	readonly threads: string;
@@ -120,6 +122,8 @@ export interface HomeWorkspace {
 	readonly git: boolean;
 	/** The folder's index, for the icon beside the workspace; unset while indexing is off. */
 	readonly index?: HomeIndex;
+	/** Whether agents here run trusted by the Gemini CLI, by the folder's own entry or a parent's; unset while folder trust is off. */
+	readonly trust?: 'trusted' | 'parent' | 'untrusted';
 }
 
 export interface HomeIndex {
@@ -136,9 +140,12 @@ export interface HomeView {
 	readonly earlier: readonly HomeAgent[];
 	/** Every project, newest first; absent while Projects are off. Neither list above has projects or their threads. */
 	readonly projects?: readonly HomeProject[];
+	/** Whether new agents start on their own branch by default (`gemini.agents.ownBranch`). */
 	readonly ownBranch: boolean;
 	/** The approval modes a new agent can start in, as policy allows. */
 	readonly modes: readonly HomeMode[];
+	/** The mode picked until the user picks one: `gemini.agents.defaultMode`. */
+	readonly defaultMode?: string;
 	/** The model a new agent starts on, when the user picked one. */
 	readonly model?: string;
 	/** The dashboard around the composer: the team tools, what needs the user, the cards. */
@@ -154,7 +161,9 @@ export type HomeAction =
 	| { readonly kind: 'link'; readonly url: string }
 	| { readonly kind: 'agent'; readonly id: string; readonly do: 'open' | 'stop' | 'review' | 'mergeBack' }
 	/** Opens Home's comment box for Jira ticket `key`; `visibility` is the project role the team's comments are limited to. */
-	| { readonly kind: 'comment'; readonly key: string; readonly title: string; readonly visibility?: string };
+	| { readonly kind: 'comment'; readonly key: string; readonly title: string; readonly visibility?: string }
+	/** Checks `tool`'s server again now, as a banner's Retry does, and reads its data. */
+	| { readonly kind: 'retry'; readonly tool: HomeToolId };
 
 export interface HomeButton {
 	readonly label: string;
@@ -223,6 +232,8 @@ export interface HomeCard {
 	readonly note?: string;
 	/** The last data, shown dimmed with its time, while the tool can't answer. */
 	readonly stale?: boolean;
+	/** When a stale card's data came, as "10:42", beside its title. */
+	readonly asOf?: string;
 	/** For a tool that isn't connected: what the card will show, and a Connect button. */
 	readonly connect?: { readonly text: string; readonly button: HomeButton };
 }
@@ -265,8 +276,8 @@ export interface HomeDashboard {
 	readonly cards: readonly HomeCard[];
 	/** First run: nothing connected yet. */
 	readonly setup?: readonly HomeSetupStep[];
-	/** "GitLab, SonarQube and Snyk can't be reached. Turn on your VPN to refresh them." */
-	readonly banner?: string;
+	/** One per team server that can't be reached or refused the token; each clears by itself once the server answers. */
+	readonly banners?: readonly HomeBanner[];
 	/** While the tools are being read again: "Showing results from 14:31 · refreshing". */
 	readonly stale?: string;
 	/** For Customize: every card with whether it shows, in the user's order. */
@@ -276,6 +287,15 @@ export interface HomeDashboard {
 	readonly refreshing: boolean;
 	/** The card whose whole list is open in a popup, kept current while it is open. */
 	readonly list?: HomeList;
+}
+
+/** "GitLab is unreachable, probably the VPN. Showing results from 10:42." with Retry; "Jira rejected your token." with Replace Token. */
+export interface HomeBanner {
+	readonly tool: HomeToolId;
+	/** warn: unreachable; error: the token was refused. */
+	readonly tone: 'warn' | 'error';
+	readonly text: string;
+	readonly button: HomeButton;
 }
 
 export interface HomeMode {
@@ -299,12 +319,38 @@ export interface HomeStrings {
 	readonly subtitle: string;
 	readonly placeholder: string;
 	readonly start: string;
-	readonly ownBranch: string;
-	readonly ownBranchHint: string;
+	/** The chooser of where a new agent works, and its three choices with a line each. */
+	readonly startAs: string;
+	readonly startHere: string;
+	readonly startHereHint: string;
+	readonly startOwnBranch: string;
+	readonly startOwnBranchHint: string;
+	readonly startProject: string;
+	readonly startProjectHint: string;
+	/** The project picker beside the chooser, and its menu. */
+	readonly project: string;
+	readonly projectsIn: string;
+	readonly otherProjects: string;
+	readonly newProjectIn: string;
+	readonly sendToProject: string;
+	readonly startNewProject: string;
+	/** The prompt's placeholder for a project's coordinator; {0} is the project. */
+	readonly projectPlaceholder: string;
+	readonly newProjectPlaceholder: string;
+	/** In place of the mode and model, which are the coordinator's. */
+	readonly coordinatorSettings: string;
+	/** Trust, as the folder picker and the composer show it. */
+	readonly trusted: string;
+	readonly trustedByParent: string;
+	readonly needsTrust: string;
+	/** "Needs trust: {0} isn't trusted for agents". */
+	readonly needsTrustFolder: string;
+	readonly trustButton: string;
+	readonly needsTrustedFolder: string;
 	readonly workspace: string;
 	readonly addFolder: string;
-	readonly projectHelpers: string;
-	readonly projectHelpersHint: string;
+	readonly agentSetup: string;
+	readonly agentSetupHint: string;
 	readonly index: string;
 	readonly indexHint: string;
 	readonly plusMenu: string;
@@ -390,6 +436,10 @@ export interface HomeStrings {
 	readonly commentTipVisibility: string;
 	readonly commentTipCancel: string;
 	readonly commentRemoveFile: string;
+	/** An attached file's size; `{0}` is the number. */
+	readonly sizeBytes: string;
+	readonly sizeKilobytes: string;
+	readonly sizeMegabytes: string;
 	readonly cancel: string;
 }
 
@@ -404,6 +454,8 @@ export type ToHome =
 	 * tab covers Home, whose hidden webview would not get a message anyway.
 	 */
 	| { readonly type: 'startFailed'; readonly text: string }
+	/** Open Folder... added `folder` for agents: the composer picks it. */
+	| { readonly type: 'folderAdded'; readonly folder: string }
 	/** Files the user picked to send with the task. */
 	| { readonly type: 'attached'; readonly attachments: readonly Attachment[] }
 	/** The comment on `key` was posted, or why it wasn't, for the comment box. */
@@ -414,10 +466,16 @@ export type ToHome =
 
 export type FromHome =
 	| { readonly type: 'ready' }
-	| { readonly type: 'start'; readonly folder: string; readonly text: string; readonly ownBranch: boolean; readonly mode: string; readonly attachments: readonly Attachment[] }
+	/**
+	 * Start an agent on `text`: in `folder`, or on its own branch; or send it to
+	 * a project's coordinator (`project`: its id, or 'new' to start a project).
+	 */
+	| { readonly type: 'start'; readonly folder: string; readonly text: string; readonly ownBranch: boolean; readonly project?: string; readonly mode: string; readonly attachments: readonly Attachment[] }
+	/** The user picked `folder` for agents, so its first-use trust question can be asked; `trust` is Trust... (always asks). */
+	| { readonly type: 'folderPicked' | 'trust'; readonly folder: string }
 	/** The user is typing a task, so the agent and a session for it can get ready. */
 	| { readonly type: 'typing'; readonly folder: string; readonly ownBranch: boolean }
-	| { readonly type: 'addFolder' | 'projectHelpers' | 'openIndex' | 'pickFiles' | 'newProject' }
+	| { readonly type: 'addFolder' | 'agentSetup' | 'openIndex' | 'pickFiles' | 'newProject' }
 	| { readonly type: 'open' | 'stop' | 'review' | 'mergeBack'; readonly id: string }
 	| { readonly type: 'action'; readonly action: HomeAction }
 	| { readonly type: 'refresh' }
@@ -551,6 +609,44 @@ export type CliReport<T> =
 	| { readonly state: 'unavailable'; readonly message: string }
 	| { readonly state: 'ready'; readonly items: readonly T[] };
 
+/** One row of the Storage section: an area, what it holds and its size. */
+export interface StorageRowView {
+	readonly id: 'worktrees' | 'index' | 'cli' | 'checkpoints' | 'chats' | 'logs';
+	readonly label: string;
+	readonly detail: string;
+	/** "2.3 GB"; empty until measured. */
+	readonly size: string;
+	readonly action?: { readonly kind: 'showIndex' | 'openFolder'; readonly label: string };
+}
+
+/** The Storage section: measured the first time it scrolls into view, never at startup. */
+export interface StorageView {
+	readonly state: 'waiting' | 'measuring' | 'ready';
+	readonly rows: readonly StorageRowView[];
+	/** Clean Up's button when it has something to remove, such as "Clean Up 4..."; it lists everything and asks first. */
+	readonly cleanup?: string;
+	/** `gemini.storage.keepLogsDays`, as the logs row's menu shows it. */
+	readonly keepLogs: { readonly value: string; readonly choices: readonly { readonly value: string; readonly label: string }[] };
+	readonly error?: string;
+}
+
+/** One row of Trusted Folders: a rule of the Gemini CLI's trust file, in plain words. */
+export interface TrustRowView {
+	/** The folder, with ~ for the home folder. */
+	readonly folder: string;
+	/** "Trusted", "Never trust". */
+	readonly status: string;
+	readonly tone: 'ok' | 'warn' | 'muted';
+	readonly detail?: string;
+	/** The rule's key, which Remove deletes; unset for GeminiCode's own rules. */
+	readonly rule?: string;
+}
+
+/** Trusted Folders: the trust file's rules, or one line when folder trust is off or the file isn't JSON. */
+export type TrustView =
+	| { readonly state: 'ready'; readonly rows: readonly TrustRowView[] }
+	| { readonly state: 'off' | 'unreadable'; readonly message: string };
+
 export interface SettingsPageView {
 	readonly servers: readonly McpServerView[];
 	readonly skills: readonly SkillView[];
@@ -560,6 +656,9 @@ export interface SettingsPageView {
 	readonly rules: readonly RulesFileView[];
 	readonly preferences: PreferencesView;
 	readonly contextCost: ContextCostView;
+	readonly trust: TrustView;
+	/** Unset when the page has nothing to measure it with. */
+	readonly storage?: StorageView;
 }
 
 export interface SettingsPageStrings {
@@ -629,12 +728,26 @@ export interface SettingsPageStrings {
 	readonly usageStatisticsHint: string;
 	readonly keepChats: string;
 	readonly keepChatsHint: string;
+	readonly storage: string;
+	readonly storageHint: string;
+	readonly storageMeasuring: string;
+	readonly cleanUp: string;
+	readonly keepLogs: string;
+	readonly trust: string;
+	readonly trustHint: string;
+	readonly trustFolder: string;
+	readonly trustParent: string;
+	readonly neverTrust: string;
+	readonly removeTrust: string;
+	readonly noTrust: string;
 }
 
 export type ToSettingsPage = { readonly type: 'view'; readonly view: SettingsPageView };
 
 export type FromSettingsPage =
-	| { readonly type: 'ready' | 'restart' | 'addServer' | 'connections' | 'newSkill' | 'addHook' | 'installExtension' | 'addMemory' | 'refreshMemory' | 'measureContext' }
+	| { readonly type: 'ready' | 'restart' | 'addServer' | 'connections' | 'newSkill' | 'addHook' | 'installExtension' | 'addMemory' | 'refreshMemory' | 'measureContext' | 'measureStorage' | 'cleanUp' }
+	| { readonly type: 'storageAction'; readonly action: 'showIndex' | 'openFolder' }
+	| { readonly type: 'setKeepLogs'; readonly days: string }
 	| { readonly type: 'toggle'; readonly name: string; readonly enabled: boolean }
 	| { readonly type: 'toggleHook'; readonly file: string; readonly name: string; readonly enabled: boolean }
 	| { readonly type: 'toggleSkill'; readonly file: string; readonly name: string; readonly enabled: boolean }
@@ -644,4 +757,7 @@ export type FromSettingsPage =
 	| { readonly type: 'setPreference'; readonly key: 'keepChats'; readonly value: string }
 	| { readonly type: 'extension'; readonly action: 'enable' | 'disable' | 'update' | 'uninstall'; readonly name: string }
 	| { readonly type: 'openFile'; readonly path: string; readonly server?: string; readonly needle?: string }
-	| { readonly type: 'createRules'; readonly path: string };
+	| { readonly type: 'createRules'; readonly path: string }
+	/** Trust Folder..., Trust a Parent Folder... and Never Trust a Folder..., which ask for the folder. */
+	| { readonly type: 'trustFolder'; readonly kind: 'folder' | 'parent' | 'never' }
+	| { readonly type: 'removeTrust'; readonly rule: string };

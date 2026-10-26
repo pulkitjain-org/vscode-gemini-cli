@@ -75,4 +75,22 @@ describe('IndexClient with the real indexer process', () => {
 		expect(status[0].state).toMatchObject({ kind: 'ready', files: 1 });
 		expect(logs.some(line => line.includes('Indexer exited'))).toBe(true);
 	});
+
+	it('gives up after crashing again and again, then tries again after a cooldown', async () => {
+		const flaky = new IndexClient({ script, execPath: process.execPath, baseDir: path.join(base, 'indexes'), log: () => undefined, restartDelaysMs: [], cooldownMs: 300 });
+		const changes: boolean[] = [];
+		flaky.onDidChangeFailed(failed => changes.push(failed));
+		try {
+			await flaky.request('status', { roots: [folder] });
+			(flaky as unknown as { child: { kill(signal: string): void } }).child.kill('SIGKILL');
+			await new Promise(resolve => setTimeout(resolve, 100));
+			expect(flaky.failed).toBe(true);
+			await expect(flaky.request('status', { roots: [folder] })).rejects.toThrow('stopped after crashing');
+			await new Promise(resolve => setTimeout(resolve, 350));
+			expect([flaky.failed, changes]).toEqual([false, [true, false]]);
+			expect((await flaky.request('status', { roots: [folder] }))[0].root).toBe(folder);
+		} finally {
+			flaky.dispose();
+		}
+	});
 });

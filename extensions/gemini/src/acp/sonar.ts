@@ -8,7 +8,7 @@
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
-import { Fetch, normalizeBaseUrl, teamRequest, TeamToolError } from './teamHttp';
+import { countText, Fetch, listed, Listed, normalizeBaseUrl, teamRequest, TeamToolError } from './teamHttp';
 
 export interface SonarAuth {
 	readonly url: string;
@@ -80,11 +80,11 @@ export class SonarClient {
 		};
 	}
 
-	/** Open issues on new code, worst first. */
-	async issues(target: SonarTarget, max = 50): Promise<SonarIssue[]> {
-		const result = await this.request<{ issues?: { key: string; rule: string; severity?: string; type?: string; message: string; component?: string; line?: number; impacts?: { severity?: string }[] }[] }>(
+	/** Open issues on new code, worst first; `total` says how many there are when more than `max`. */
+	async issues(target: SonarTarget, max = 50): Promise<Listed<SonarIssue>> {
+		const result = await this.request<{ total?: number; paging?: { total?: number }; issues?: { key: string; rule: string; severity?: string; type?: string; message: string; component?: string; line?: number; impacts?: { severity?: string }[] }[] }>(
 			`/api/issues/search?${targetQuery(target, 'componentKeys')}&inNewCodePeriod=true&resolved=false&ps=${Math.min(max, 100)}&s=SEVERITY&asc=false`);
-		return (result.issues ?? []).map(issue => ({
+		return listed((result.issues ?? []).map(issue => ({
 			key: issue.key,
 			rule: issue.rule,
 			severity: issue.severity ?? issue.impacts?.[0]?.severity ?? 'INFO',
@@ -93,13 +93,13 @@ export class SonarClient {
 			...issue.component ? { file: issue.component.replace(/^[^:]*:/, '') } : {},
 			...issue.line ? { line: issue.line } : {},
 			url: `${this.url}/project/issues?id=${encodeURIComponent(target.project)}&open=${encodeURIComponent(issue.key)}${target.branch ? `&branch=${encodeURIComponent(target.branch)}` : ''}${target.mergeRequest ? `&pullRequest=${encodeURIComponent(target.mergeRequest)}` : ''}`,
-		}));
+		})), result.paging?.total ?? result.total);
 	}
 
-	async hotspots(target: SonarTarget): Promise<SonarIssue[]> {
-		const result = await this.request<{ hotspots?: { key: string; ruleKey?: string; vulnerabilityProbability?: string; message: string; component?: string; line?: number }[] }>(
+	async hotspots(target: SonarTarget): Promise<Listed<SonarIssue>> {
+		const result = await this.request<{ paging?: { total?: number }; hotspots?: { key: string; ruleKey?: string; vulnerabilityProbability?: string; message: string; component?: string; line?: number }[] }>(
 			`/api/hotspots/search?${targetQuery(target, 'projectKey')}&inNewCodePeriod=true&status=TO_REVIEW&ps=50`);
-		return (result.hotspots ?? []).map(h => ({
+		return listed((result.hotspots ?? []).map(h => ({
 			key: h.key,
 			rule: h.ruleKey ?? '',
 			severity: h.vulnerabilityProbability ?? 'MEDIUM',
@@ -108,7 +108,7 @@ export class SonarClient {
 			...h.component ? { file: h.component.replace(/^[^:]*:/, '') } : {},
 			...h.line ? { line: h.line } : {},
 			url: `${this.url}/security_hotspots?id=${encodeURIComponent(target.project)}&hotspots=${encodeURIComponent(h.key)}`,
-		}));
+		})), result.paging?.total);
 	}
 }
 
@@ -117,6 +117,11 @@ function targetQuery(target: SonarTarget, projectParam: string): string {
 		`${projectParam}=${encodeURIComponent(target.project)}`,
 		...target.mergeRequest ? [`pullRequest=${encodeURIComponent(target.mergeRequest)}`] : target.branch ? [`branch=${encodeURIComponent(target.branch)}`] : [],
 	].join('&');
+}
+
+/** SonarQube's own page of the open issues on new code that `issues` reads, for the ones a cut list leaves out. */
+export function sonarIssuesUrl(url: string, target: SonarTarget): string {
+	return `${url}/project/issues?${targetQuery(target, 'id')}&inNewCodePeriod=true&resolved=false`;
 }
 
 /** `sonar.projectKey` from the repository's sonar-project.properties, when it has one. */
@@ -129,7 +134,8 @@ export async function sonarProjectKeyIn(folder: string): Promise<string | undefi
 	}
 }
 
-export function describeSonar(target: SonarTarget, gate: SonarGate | undefined, issues: readonly SonarIssue[]): string {
+/** The analysis as text for the model; `total`, when more than the issues listed, is how many there are in all. */
+export function describeSonar(target: SonarTarget, gate: SonarGate | undefined, issues: readonly SonarIssue[], total?: number): string {
 	const where = target.mergeRequest ? `merge request ${target.mergeRequest}` : target.branch ? `branch ${target.branch}` : 'the main branch';
 	const lines = [`SonarQube ${target.project}, ${where}:`];
 	if (gate) {
@@ -138,7 +144,8 @@ export function describeSonar(target: SonarTarget, gate: SonarGate | undefined, 
 			lines.push(`- ${c.metric}: ${c.actual ?? '?'} (threshold ${c.threshold ?? '?'})`);
 		}
 	}
-	lines.push(issues.length ? `${issues.length} open issue${issues.length === 1 ? '' : 's'} on new code:` : 'No open issues on new code.');
+	const count = countText({ length: issues.length, total });
+	lines.push(issues.length ? `${count} open issue${issues.length === 1 && count === '1' ? '' : 's'} on new code${count !== String(issues.length) ? ', worst first' : ''}:` : 'No open issues on new code.');
 	for (const issue of issues) {
 		lines.push(`- [${issue.severity}${issue.type ? ` ${issue.type}` : ''}] ${issue.file ?? ''}${issue.line ? `:${issue.line}` : ''} ${issue.message} (${issue.rule})`);
 	}

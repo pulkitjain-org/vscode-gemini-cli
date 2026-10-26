@@ -12,6 +12,7 @@
 import { access } from 'node:fs/promises';
 import * as vscode from 'vscode';
 import { detectAuth, DirectAuth } from '../acp/directRequest';
+import { aliasedSetting } from '../acp/settingAlias';
 import { AgentService } from './agentService';
 import { configSection, getProjectSettings } from './configuration';
 
@@ -48,7 +49,7 @@ export class AgentWarmup implements vscode.Disposable {
 
 	/** Starts the agent now if it can start quietly, such as when the user starts typing a task. */
 	startSoon(): void {
-		if (this.service.isStarted || !vscode.workspace.getConfiguration(configSection).get<boolean>('agent.startEarly', true) || !this.isSetUp()) {
+		if (this.service.isStarted || !startEarly() || !this.isSetUp()) {
 			return;
 		}
 		// A project number stops the start with an error, which belongs to a chat the user opened.
@@ -72,4 +73,10 @@ export class AgentWarmup implements vscode.Disposable {
 		this.disposed = true;
 		clearTimeout(this.timer);
 	}
+}
+
+/** `gemini.agents.startEarly`, or the setting's old name, `gemini.agent.startEarly`, which still counts until it is removed. */
+function startEarly(): boolean {
+	const config = vscode.workspace.getConfiguration(configSection);
+	return aliasedSetting(config.inspect<boolean>('agents.startEarly'), config.inspect<boolean>('agent.startEarly'), true);
 }

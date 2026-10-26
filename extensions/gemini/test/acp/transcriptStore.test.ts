@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -84,6 +84,38 @@ describe('TranscriptStore', () => {
 			{ id: 'd', kind: 'agent', text: 'Fixed the total.' },
 			{ id: 'e', kind: 'agent', text: '[x] is a checkbox' },
 		]);
+	});
+
+	it('moves a chat of another version, or one that is not JSON, aside instead of writing over it', async () => {
+		const { dir, store: s } = await store();
+		const agents = path.join(dir, 'agents');
+		const newer = JSON.stringify({ version: 3, items: [{ id: 'x', kind: 'agent', text: 'from a newer GeminiCode' }], changes: [] });
+		await s.save('a1', { items: [], changes: [] });
+		await writeFile(path.join(agents, 'a1.json'), newer);
+		expect(await s.load('a1')).toEqual({ items: [], changes: [] });
+		await s.save('a1', { items: [{ id: 'item-0', kind: 'agent', text: 'new chat' }], changes: [] });
+		await writeFile(path.join(agents, 'a2.json'), '{ half');
+		expect(await s.load('a2')).toEqual({ items: [], changes: [] });
+		expect((await readdir(agents)).sort()).toEqual(['a1.json', 'a1.json.broken', 'a2.json.broken']);
+		expect(await readFile(path.join(agents, 'a1.json.broken'), 'utf8')).toBe(newer);
+	});
+
+	it('tells its caller of a write that fails, and keeps saving the others', async () => {
+		const dir = await mkdtemp(path.join(tmpdir(), 'transcripts-'));
+		try {
+			const errors: unknown[] = [];
+			const s = new TranscriptStore(path.join(dir, 'agents'), err => errors.push(err));
+			await s.save('a1', { items: [], changes: [] });
+			await chmod(path.join(dir, 'agents'), 0o500);
+			await s.save('a1', { items: [{ id: 'item-0', kind: 'agent', text: 'lost' }], changes: [] });
+			await chmod(path.join(dir, 'agents'), 0o700);
+			expect(errors).toHaveLength(1);
+			await s.save('a1', { items: [{ id: 'item-0', kind: 'agent', text: 'kept' }], changes: [] });
+			expect((await s.load('a1')).items).toEqual([{ id: 'item-0', kind: 'agent', text: 'kept' }]);
+			expect((await readdir(path.join(dir, 'agents'))).filter(name => name.endsWith('.tmp'))).toEqual([]);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
 	});
 
 	it('deletes an agent\'s conversation', async () => {

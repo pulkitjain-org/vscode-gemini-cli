@@ -26,12 +26,17 @@ export interface DocsSource {
 	readonly fetchedAt?: number;
 	/** The last fetch's problem, until a fetch works. */
 	readonly error?: string;
+	/** Fetches that failed in a row, and when the last did, for retrying later and later. */
+	readonly failures?: number;
+	readonly failedAt?: number;
 	readonly pages?: number;
 	/** Folders whose agents can search it. */
 	readonly folders: readonly string[];
 }
 
 const dayMs = 24 * 60 * 60 * 1000;
+/** The first retry of a source whose fetch failed; each failure after doubles it, up to a day. */
+const firstRetryMs = 15 * 60 * 1000;
 
 /** A source's id: the same address and scope are one source, whoever adds them. */
 export function sourceId(url: string, scope: DocsScope): string {
@@ -58,6 +63,20 @@ export function isDue(source: DocsSource, fallback: DocsRefresh, now: number): b
 		return false;
 	}
 	return now - source.fetchedAt >= (refresh === 'weekly' ? 7 * dayMs : dayMs);
+}
+
+/**
+ * Whether a source whose last fetch failed is due another try: 15 minutes
+ * after the first failure, then 30, an hour and so on, at most a day apart.
+ * A source refreshed only by hand is tried again only until it first works.
+ */
+export function retryDue(source: DocsSource, fallback: DocsRefresh, now: number): boolean {
+	if ((source.refresh ?? fallback) === 'manual' && source.fetchedAt !== undefined) {
+		return false;
+	}
+	const failures = Math.max(1, source.failures ?? 1);
+	const wait = Math.min(firstRetryMs * 2 ** Math.min(failures - 1, 16), dayMs);
+	return now - (source.failedAt ?? source.fetchedAt ?? source.addedAt) >= wait;
 }
 
 /** A readable name for a source before its pages give one: the host and the path's last part. */

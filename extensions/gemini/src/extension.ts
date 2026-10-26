@@ -12,7 +12,7 @@ import { Appearance } from './host/appearance';
 import { AgentService } from './host/agentService';
 import { AgentHome } from './host/agentHome';
 import { AgentWarmup } from './host/agentWarmup';
-import { AgentsView } from './host/agentsView';
+import { AgentsView, loadSavedAgents } from './host/agentsView';
 import { TerminalGemini } from './host/terminalGemini';
 import { tildify } from './host/displayText';
 import { ChangesPanel } from './host/changesPanel';
@@ -22,40 +22,49 @@ import { CliManager } from './host/cliManager';
 import { DiffPreview } from './host/diffPreview';
 import { errorMessage } from './acp/errors';
 import { PromptEnhancer } from './acp/promptEnhancer';
-import { configSection, getWorkspaceCwd, loadProductInfo, productInfo, setStorageDirs } from './host/configuration';
-import { initModelList, initModelPreference } from './host/modelPreference';
+import { configSection, getAgentCommand, getWorkspaceCwd, loadProductInfo, productInfo, setAgentEnvOverride, setStorageDirs } from './host/configuration';
+import { initModelList, initModelPreference, knownModelList } from './host/modelPreference';
 import { initReactionRecents } from './host/chatReactions';
 import { SetupWalkthrough, walkthroughId } from './host/setupWalkthrough';
 import { GeminiStatusBar } from './host/statusBar';
 import { QuickEdits } from './host/quickEdits';
-import { SettingsPage } from './host/settingsPage';
 import { UsageMeter } from './host/usageMeter';
-import { initTeamCommands } from './host/teamCommands';
+import { forgetSkills, initTeamCommands } from './host/teamCommands';
 import { KeepAwake } from './acp/keepAwake';
+import { debugLogName } from './acp/mcpDiagnostics';
 import { BrowserTools } from './host/browserTools';
 import { TeamConnections } from './host/teamConnections';
 import { TeamFlows } from './host/teamFlows';
-import { TraceRecorder } from './host/traceCommand';
-import { BenchmarkCommand } from './host/benchmarkCommand';
-import { Pilot } from './host/pilot';
+import { setTraceFile, setTraceFolder } from './host/traceCommand';
+import { scheduleStorageMaintenance } from './host/storageMaintenance';
 import { MrPanel } from './host/mrPanel';
-import { ConnectionsPage } from './host/connectionsPage';
 import { TeamStatusBar } from './host/teamStatusBar';
-import { AuditPage } from './host/auditPage';
 import { AuditStatusBar } from './host/auditStatusBar';
+import { chunkLoader, LazyFeature } from './host/lazyFeature';
+import { recordPilot, setPilotSink } from './acp/pilotLog';
 import { WorkspaceFileIndex } from './host/workspaceFiles';
 import { WorkspaceIndex } from './host/workspaceIndex';
 import { DocsSources } from './host/docsSources';
 import { IndexPage } from './host/indexPage';
 import { IndexStatusBar } from './host/indexStatusBar';
 import { measureFolderContextCost } from './host/contextCostProbe';
+import { ContextMeasures } from './host/chat/chatContext';
+import { FixWithGemini } from './host/quickFix';
+import { parseMemoryList, runCliCommands } from './acp/cliCommands';
 import { disposeGitIgnore } from './host/workspaceFileSystem';
+import { logErrorCommand } from './host/errorNotice';
+
+/** The pilot's setting (pilot.ts): while it is on, the pilot is constructed at launch, to record it. */
+const pilotRecordSetting = 'pilot.record';
 
 /** Finishes the writes that must outlive the window; set by activate. */
 let saveBeforeExit: (() => Promise<void>) | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+	const activationStart = Date.now();
 	const log = vscode.window.createOutputChannel('Gemini', { log: true });
+	// The agent list is read while the product info loads.
+	const savedAgents = loadSavedAgents(context);
 	await loadProductInfo();
 	initModelPreference(context.globalState);
 	initReactionRecents(context.globalState);
@@ -65,7 +74,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		adminPolicy: vscode.Uri.joinPath(context.globalStorageUri, 'policy').fsPath,
 	});
 	const teamCommandStore = initTeamCommands(log);
-	const service = new AgentService(log, vscode.Uri.joinPath(context.globalStorageUri, 'cli-debug.log').fsPath);
+	// The CLI's debug log, one per window's process (GEMINI_DEBUG_LOG_FILE), so windows never empty each other's.
+	const service = new AgentService(log, vscode.Uri.joinPath(context.globalStorageUri, 'cli-logs', debugLogName()).fsPath, context.globalState);
+	// GeminiCode's own trust rules once the window has settled: Agent Setup lists them, and reviews are never trusted.
+	const ownTrust = setTimeout(() => void service.trust.startup(), 3000);
+	context.subscriptions.push({ dispose: () => clearTimeout(ownTrust) });
 	const diffPreview = new DiffPreview();
 	const fileIndex = new WorkspaceFileIndex();
 	// Rewrites run on the agent process every chat shares, in an empty folder of their own.
@@ -77,7 +90,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		onDirectFailed: err => log.info(`Prompt enhancement's direct request failed (${errorMessage(err)}); asking the CLI`),
 		onDidEnhance: ({ ms, model }) => log.info(`Prompt enhanced in ${ms} ms with ${model ?? 'the default model'}`),
 	});
-	const agentsView = new AgentsView(context, service, diffPreview, fileIndex, enhancer);
+	const agentsView = new AgentsView(context, service, diffPreview, fileIndex, enhancer, await savedAgents);
 	saveBeforeExit = () => agentsView.saveAll();
 	// Agents mode's Changes panel follows the agent in front, as the Changes view does.
 	const changesPanel = new ChangesPanel(context.extensionUri);
@@ -146,7 +159,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		teamTools.onDidChange(() => agentsView.refreshSpare()),
 		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.browser`) && agentsView.refreshSpare()),
 	);
-	const teamFlows = new TeamFlows(context.extensionUri, teamTools, agentsView, context.globalState);
+	// What every model call in a folder carries: Project Helpers' Context cost, and the chat's usage popover (/context).
+	const measureContext = (folder: string, servers: readonly string[]) => measureFolderContextCost({
+		folder,
+		servers,
+		// What a new agent's session gets from GeminiCode itself.
+		geminicodeServers: () => [...browserTools.spareServers(), ...teamTools.spareServers(), ...workspaceIndex.spareServers(folder)],
+		emptyFolder: vscode.Uri.joinPath(context.globalStorageUri, 'context-probe').fsPath,
+		log: message => log.info(message),
+	});
+	const contextMeasures = new ContextMeasures(context.globalState, {
+		measure: measureContext,
+		// The CLI lists the context files it loaded itself, without a model call, in a hidden session.
+		ruleFiles: async folder => {
+			const [reply] = await runCliCommands(service.runtime, folder, ['/memory list']);
+			return reply === undefined ? undefined : parseMemoryList(reply);
+		},
+		log: message => log.info(message),
+	});
+	agentsView.contextCost = contextMeasures;
+	// Pages opened on request and tools used rarely load from bundles of their own, the first time one of their commands runs.
+	const pages = chunkLoader<typeof import('./pages')>(__dirname, 'pages');
+	const onDemand = chunkLoader<typeof import('./onDemand')>(__dirname, 'onDemand');
+	const teamFlows = new TeamFlows(context.extensionUri, teamTools, agentsView, context.globalState, onDemand);
 	// A reviewer agent's chat has a chip that opens its review.
 	agentsView.reviewChip = agentId => {
 		const review = teamFlows.reviews.forAgent(agentId);
@@ -154,7 +189,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	};
 	agentsView.openReview = agentId => void vscode.commands.executeCommand('gemini.team.openAgentReview', agentId);
 	context.subscriptions.push(teamFlows.reviews.onDidChange(() => agentsView.refreshChats()));
-	const traceRecorder = new TraceRecorder(service, log);
+	const traceFolder = vscode.Uri.joinPath(context.globalStorageUri, 'traces').fsPath;
+	setTraceFolder(traceFolder);
+	let launching = true;
+	const pilot = new LazyFeature(['gemini.pilot.export'], () => new (onDemand().Pilot)(context.globalStorageUri.fsPath, teamTools, usageMeter, { setSink: setPilotSink, record: recordPilot }, launching));
+	// While recording is on, the pilot starts with the window, to record the launch; turned on later, it starts then.
+	const startPilot = () => {
+		if (vscode.workspace.getConfiguration(configSection).get<boolean>(pilotRecordSetting, false)) {
+			try {
+				pilot.get();
+			} catch (err) {
+				log.error(`The pilot's counters could not start: ${errorMessage(err)}`);
+			}
+		}
+	};
+	startPilot();
+	launching = false;
 	const mrPanel = new MrPanel(teamTools, agentsView, agent => teamFlows.checksSummary(agent));
 	changesPanel.team = mrPanel;
 	// caffeinate watches this process, so it ends with GeminiCode even if GeminiCode crashes.
@@ -174,14 +224,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		changesPanel,
 		agentsView.onDidFocus(source => changesPanel.show(source)),
 		new AgentHome(context.extensionUri, agentsView, () => warmup.startSoon(), { state: context.globalState, version: productInfo.version ?? String(context.extension.packageJSON.version ?? ''), cli: () => service.status.agentVersion, startup: () => ({ activatedAt, agent: agentPhase(service.status.phase), ...readyAt ? { readyAt } : {} }), reviews: { inProgress: () => teamFlows.reviews.inProgress, onDidChange: teamFlows.reviews.onDidChange } }),
-		new SettingsPage(context.extensionUri, service, (folder, servers) => measureFolderContextCost({
-			folder,
-			servers,
-			// What a new agent's session gets from GeminiCode itself.
-			geminicodeServers: () => [...browserTools.spareServers(), ...teamTools.spareServers(), ...workspaceIndex.spareServers(folder)],
-			emptyFolder: vscode.Uri.joinPath(context.globalStorageUri, 'context-probe').fsPath,
-			log: message => log.info(message),
-		}), context.globalState),
+		new LazyFeature(['gemini.projectSettings', 'gemini.newSkill'], () => new (pages().SettingsPage)(context.extensionUri, service, {
+			getAgentCommand,
+			forgetSkills,
+			audit: teamTools.audit,
+			storage: {
+				globalStorage: context.globalStorageUri.fsPath,
+				agents: () => agentsView.storageAgents(),
+				worktrees: () => agentsView.storageWorktrees(),
+				removeWorktree: (repository, worktree, item) => agentsView.removeStorageWorktree(repository, worktree, item),
+				cliVersion: () => service.status.agentVersion,
+			},
+		}, measureContext, context.globalState)),
+		contextMeasures,
+		// A quick fix on every problem: attach it, and the code around it, to the agent in front.
+		new FixWithGemini(() => chatInFront(true)),
 		quickEdits,
 		statusBar,
 		usageMeter,
@@ -195,11 +252,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		browserTools,
 		teamTools,
 		teamFlows,
-		traceRecorder,
-		new BenchmarkCommand(service, log),
-		new Pilot(context.globalStorageUri.fsPath, teamTools, usageMeter),
+		new LazyFeature(['gemini.recordTrace'], () => new (onDemand().TraceRecorder)(service, log, { setTraceFile, setAgentEnvOverride, dir: traceFolder })),
+		new LazyFeature(['gemini.runBenchmark'], () => new (onDemand().BenchmarkCommand)(service, log, {
+			getAgentCommand,
+			knownModelList,
+			version: () => productInfo.version,
+			// Imported here, so the runner and the ACP SDK it uses stay in this bundle, which carries the SDK anyway.
+			runner: () => import('./acp/benchmark'),
+		})),
+		pilot,
+		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.${pilotRecordSetting}`) && startPilot()),
+		scheduleStorageMaintenance(context.globalStorageUri.fsPath, log),
 		mrPanel,
-		new ConnectionsPage(context.extensionUri, teamTools, log),
+		new LazyFeature(['gemini.connections'], () => new (pages().ConnectionsPage)(context.extensionUri, teamTools, log)),
 		new TeamStatusBar(context.extensionUri, teamTools),
 		new AuditStatusBar(teamTools.audit),
 		new TerminalGemini({
@@ -232,7 +297,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			return (await chatInFront(true))?.addAttachments(attachments);
 		}),
 		vscode.commands.registerCommand('gemini.showLog', () => log.show()),
-		new AuditPage(context.extensionUri, teamTools.audit, id => agentsView.summaries().find(agent => agent.id === id)?.title),
+		vscode.commands.registerCommand(logErrorCommand, (message: unknown) => typeof message === 'string' && log.error(message)),
+		new LazyFeature(['gemini.openAuditLog'], () => new (onDemand().AuditPage)(context.extensionUri, teamTools.audit, id => agentsView.summaries().find(agent => agent.id === id)?.title)),
 		vscode.commands.registerCommand('gemini.checkAgent', () => checkAgent(log)),
 		vscode.commands.registerCommand('gemini.restartAgent', () => service.restart()),
 		vscode.commands.registerCommand('gemini.completeSetupInTerminal', () => service.completeSetupInTerminal()),
@@ -240,6 +306,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		vscode.commands.registerCommand('gemini.signIn', () => walkthrough.signIn()),
 		vscode.commands.registerCommand('gemini.getStarted', () => vscode.commands.executeCommand('workbench.action.openWalkthrough', walkthroughId, false)),
 	);
+	// One line per launch, to measure startup on real machines (FINDINGS.md, starting the agent).
+	const servicesUpMs = Date.now() - activationStart;
+	const started = service.onDidStart(times => {
+		started.dispose();
+		log.info(`Startup: services up ${servicesUpMs} ms after activation; agent spawned ${times.spawnedAt - activationStart} ms after activation, process ready ${times.processReadyMs} ms after spawn, first session ready ${times.firstSessionMs} ms after spawn`);
+	});
+	context.subscriptions.push(started);
 }
 
 export function deactivate(): Promise<void> | undefined {
@@ -250,7 +323,7 @@ export function deactivate(): Promise<void> | undefined {
 async function setProjectId(): Promise<void> {
 	const config = vscode.workspace.getConfiguration(configSection);
 	const value = await vscode.window.showInputBox({
-		title: vscode.l10n.t("Google Cloud project ID"),
+		title: vscode.l10n.t("Google Cloud Project ID"),
 		prompt: vscode.l10n.t("The project ID (not the project number) that Gemini bills to, for example my-project-123."),
 		value: config.get<string>('projectId') ?? '',
 		ignoreFocusOut: true,

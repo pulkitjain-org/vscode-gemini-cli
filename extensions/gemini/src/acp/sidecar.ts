@@ -59,6 +59,28 @@ function stopProcess(child: ChildProcessWithoutNullStreams): void {
 }
 
 /**
+ * Agent processes still running. The CLI ends when its stdin closes, which
+ * happens when this process dies however it dies; on an ordinary exit, such
+ * as the extension host shutting down without disposing the sidecar, they
+ * are also killed here, since exit handlers can only run synchronous code.
+ */
+const running = new Set<ChildProcessWithoutNullStreams>();
+let killOnExit = false;
+
+function track(child: ChildProcessWithoutNullStreams): void {
+	running.add(child);
+	child.once('exit', () => running.delete(child));
+	if (!killOnExit) {
+		killOnExit = true;
+		process.once('exit', () => {
+			for (const agent of running) {
+				agent.kill('SIGKILL');
+			}
+		});
+	}
+}
+
+/**
  * Runs `gemini --acp` and keeps it running: crash detection, bounded restarts
  * with backoff, and state events. Each `running` state carries a new process,
  * so the client must reconnect and start a new session on every one.
@@ -115,6 +137,18 @@ export class AgentSidecar {
 		this.stop();
 		this.onDidChangeStateEmitter.dispose();
 		this.onStderrEmitter.dispose();
+	}
+
+	/**
+	 * Ends `child` when it is the running process, as a crash would: the
+	 * sidecar restarts it with backoff. For a process that still runs but can
+	 * no longer be talked to.
+	 */
+	endProcess(child: ChildProcessWithoutNullStreams): void {
+		const state = this._state;
+		if (state.kind === 'running' && state.process === child) {
+			stopProcess(child);
+		}
 	}
 
 	private launch(): void {
@@ -195,6 +229,7 @@ export class AgentSidecar {
 		};
 		child.once('exit', code => onExit(code));
 		child.once('error', err => onExit(null, err));
+		track(child);
 
 		this.setState({ kind: 'running', process: child });
 		this.healthyTimer = setTimeout(() => this.restarts = this.relaunches = 0, this.healthyAfterMs);

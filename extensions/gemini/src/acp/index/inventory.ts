@@ -11,10 +11,10 @@
 // lines) is checked when it is read (`contentSkipReason`). The user can
 // force files back in with `gemini.index.include` (`SkipRules`).
 
-import { promises as fs } from 'node:fs';
+import { promises as fs, type Stats } from 'node:fs';
 import * as path from 'node:path';
-import { secretPathReason } from '../fileAccess';
-import { listFiles } from '../folderFiles';
+import { isInside, secretPathReason } from '../fileAccess';
+import { listFolder } from '../folderFiles';
 import { IgnoreRules } from './ignore';
 
 export interface InventoryOptions {
@@ -40,6 +40,8 @@ export interface SkippedFile {
 export interface Inventory {
 	readonly files: readonly InventoryFile[];
 	readonly skipped: readonly SkippedFile[];
+	/** The folder held more files than the walk lists (no git): the index covers only part of it. */
+	readonly truncated: boolean;
 }
 
 /** Files that are never worth searching: media, archives, fonts, compiled code. */
@@ -58,6 +60,10 @@ const statConcurrency = 64;
 export const hardMaxFileBytes = 16 * 1024 * 1024;
 /** The reason for binary content: never indexed, whatever the user includes. */
 export const binaryContentReason = 'binary content';
+/** The reason for a link leading out of the folder: never indexed, whatever the user includes. */
+export const linkOutsideReason = 'a link to a file outside the folder';
+/** The reason for a link to a secret file: never indexed, whatever the user includes. */
+export const linkSecretReason = 'a link to a file that may contain secrets';
 
 /**
  * What is left out of a folder's index, and why: the folder's ignore rules
@@ -107,7 +113,43 @@ export class SkipRules {
 
 /** Whether a file left out for `reason` can be indexed by including it: anything but secrets and binary content. */
 export function canInclude(relative: string, reason: string): boolean {
-	return !secretPathReason(relative) && reason !== binaryContentReason;
+	return !secretPathReason(relative) && reason !== binaryContentReason && reason !== linkOutsideReason && reason !== linkSecretReason;
+}
+
+/**
+ * The file at `relative` as the index may read it: a file in the folder, or a
+ * link to one. `git ls-files` lists a link as a file, and reading it reads
+ * whatever it points at, so a link that leads out of the folder (to
+ * ~/.ssh/id_rsa, say) or to a secret file is left out, as read_file refuses
+ * it. `throughFolders` also resolves the folders on the way, for paths that
+ * came from file events rather than from git or the walk, which never pass
+ * through a linked folder.
+ */
+export async function statInFolder(realRoot: string, root: string, relative: string, throughFolders = false): Promise<{ readonly stat: Stats; readonly reason?: undefined } | { readonly stat?: undefined; readonly reason: string } | undefined> {
+	const absolute = path.join(root, relative);
+	let stat: Stats;
+	try {
+		stat = await fs.lstat(absolute);
+	} catch {
+		return undefined;
+	}
+	if (!stat.isSymbolicLink() && !throughFolders) {
+		return { stat };
+	}
+	let real: string;
+	try {
+		real = await fs.realpath(absolute);
+	} catch {
+		// A dangling link.
+		return undefined;
+	}
+	if (!isInside(realRoot, real)) {
+		return { reason: linkOutsideReason };
+	}
+	if (secretPathReason(path.relative(realRoot, real))) {
+		return { reason: linkSecretReason };
+	}
+	return stat.isSymbolicLink() ? fs.stat(real).then(target => ({ stat: target }), () => undefined) : { stat };
 }
 
 export async function takeInventory(root: string, options: InventoryOptions): Promise<Inventory> {
@@ -115,7 +157,8 @@ export async function takeInventory(root: string, options: InventoryOptions): Pr
 	const files: InventoryFile[] = [];
 	const skipped: SkippedFile[] = [];
 	const candidates: string[] = [];
-	for (const relative of await listFiles(root)) {
+	const listed = await listFolder(root);
+	for (const relative of listed.files) {
 		const reason = rules.pathReason(relative);
 		if (reason) {
 			skipped.push({ path: relative, reason });
@@ -123,14 +166,18 @@ export async function takeInventory(root: string, options: InventoryOptions): Pr
 			candidates.push(relative);
 		}
 	}
+	const realRoot = await fs.realpath(root).catch(() => root);
 	let next = 0;
 	const worker = async () => {
 		while (next < candidates.length) {
 			const relative = candidates[next++];
-			let stat;
-			try {
-				stat = await fs.stat(path.join(root, relative));
-			} catch {
+			const found = await statInFolder(realRoot, root, relative);
+			if (!found) {
+				continue;
+			}
+			const stat = found.stat;
+			if (!stat) {
+				skipped.push({ path: relative, reason: found.reason });
 				continue;
 			}
 			if (!stat.isFile()) {
@@ -146,7 +193,7 @@ export async function takeInventory(root: string, options: InventoryOptions): Pr
 	};
 	await Promise.all(Array.from({ length: statConcurrency }, worker));
 	files.sort((a, b) => a.path < b.path ? -1 : 1);
-	return { files, skipped };
+	return { files, skipped, truncated: listed.truncated };
 }
 
 /** Why `relative` is left out by its path alone, or undefined; `SkipRules.pathReason` also honours includes. */

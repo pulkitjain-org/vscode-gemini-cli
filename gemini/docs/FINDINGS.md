@@ -39,6 +39,8 @@ Re-check both kinds when GeminiCode moves to a new CLI version.
 - Without the wrapper process, two things change. The interactive terminal used for sign-in keeps the CLI's own behaviour.
   - The CLI asks its wrapper to restart it by exiting with code 199 (`RELAUNCH_EXIT_CODE`). The sidecar restarts it at once on that code, at most three times in a row.
   - The wrapper forwards admin settings over IPC between relaunches. The CLI does that only when `process.send` exists, so it is skipped.
+- In ACP mode the CLI ends when its standard input closes: `runAcpClient` awaits the connection's end and runs its exit cleanup. Measured with 0.64.0: it exits within about 10 ms of the end of input, with and without a `session/new` before it. So the CLI dies with the extension host however the host ends; on an ordinary exit the sidecar also kills it.
+- GeminiCode logs one line per launch, "Startup: services up … ms after activation; agent spawned …, process ready … ms after spawn, first session ready … ms after spawn", to measure this on real machines.
 - The real start takes about 2.1 s longer than the stand-in's. The stand-in uses an API key, so the difference is the Google sign-in's own work at start (inferred from the two setups, not traced). GeminiCode hides it by starting the agent a few seconds after the window opens when a sign-in is saved.
 
 ## Sessions
@@ -54,6 +56,7 @@ Same runs as above.
 - With a Google sign-in a session costs most of a second, against well under 100 ms with an API key. GeminiCode hides it behind a spare session opened while the user types.
 - One process serves any number of sessions, each with its own `cwd`. Each session loads the settings of its own folder, so one process serves agents in different folders. The process environment, such as `GOOGLE_CLOUD_PROJECT`, is shared, so agents that need another project need another process.
 - Over ACP, gemini-cli 0.64.0 implements `initialize`, `authenticate`, `session/new`, `session/load`, `session/cancel`, `session/prompt`, `session/set_mode` and `session/set_model`.
+- `session/new` and `initialize` have no time limit of their own, and there is no `$/cancel_request`: a request GeminiCode gives up on keeps running in the CLI. GeminiCode gives `initialize`, `session/new` and `session/load` 120 s and `authenticate` 330 s, since the CLI's browser sign-in waits up to 5 minutes ("Authentication timed out after 5 minutes"). `session/new` does not wait for MCP servers; `session/prompt` does (`waitForMcpInit`), so a hung MCP server holds up the first prompt, not the session.
 - It advertises `loadSession`, `promptCapabilities` (`image`, `audio`, `embeddedContext`) and `mcpCapabilities` (`http`, `sse`), and no `sessionCapabilities`. There is no `session/close`, `session/list`, `session/fork`, `session/resume` or `session/set_config_option`, so a session stays in the process until it exits. GeminiCode closes the sessions it leaves only when a CLI advertises `sessionCapabilities.close`.
 
 ## A prompt's first reply
@@ -171,6 +174,13 @@ The CLI turns setup failures into JSON-RPC error `-32000` with a message string.
 | Auto Edit or YOLO in a folder the CLI does not trust | "Cannot enable privileged approval modes in an untrusted folder." |
 
 - Outside `authenticate` and `session/new`, a failure is a generic "Internal error" with the CLI's message in `data.details`, which the IDE reads instead.
+- A failed `session/prompt` carries the API's HTTP status as the JSON-RPC code (`acpSession.ts`): the status from the stream's error event with the API's message, or `getErrorStatus(error) || 500` with `getAcpErrorMessage`, which takes the message out of a JSON body. So code 500 means any error without a status.
+  - Quota: the CLI retries a 429 itself (`retryWithBackoff`). One it stops on comes either as code 429 with the API's message ("You have exhausted your capacity on this model. Your quota will reset after …", "… Please retry in 34s.", "Suggested retry after 60s.") or, when thrown, as code 429 "Rate limit exceeded. Try again later.". Neither names the model unless the API's message does ("model: gemini-2.5-pro"), so the chat names the session's model. `classifyTurnError` reads the reset time from those phrases.
+  - An expired sign-in: the CLI turns a 401 into an `UnauthorizedError`, which has no status, so it comes as code 500 with the API's message ("Request had invalid authentication credentials …", or `invalid_grant` from the token refresh).
+  - Network failures come as code 500 with Node's wording (`fetch failed`, `getaddrinfo ENOTFOUND …`, `ECONNREFUSED`, certificate errors).
+- While it waits to retry, the CLI says nothing over ACP. Its debug log (`GEMINI_DEBUG_LOG_FILE`) gets `[<time>] [WARN] Attempt 2 failed with status 503. Retrying with backoff...` (`logRetryAttempt`; "429 error" or "5xx error" when the status is only in the text) or `Attempt 2 failed: <message>. Retrying after 2312ms...` for a quota error with a delay. GeminiCode reads these (`parseCliRetry`) for a running turn that has gone quiet. The log is per process, so a retry is not tied to one session.
+- `session/cancel` aborts the session's running prompt (`cancelPendingPrompt`), which answers `cancelled` at its next check: between stream events and tool calls. Waiting for MCP servers at the start of a prompt does not check it, so GeminiCode ends a stopped turn itself after 10 s; the CLI drops it when the next prompt comes (`pendingPrompt.abort()`).
+- When the process ends under a request, the SDK rejects it with "ACP connection closed"; when only the stream ends, with "The operation was aborted". The chat says "The agent restarted. Send your message again." for both.
 - `IneligibleTierError` and `ValidationRequiredError` carry text from the server, so they cannot be matched by pattern. They show as they come.
 
 The CLI reads `GOOGLE_CLOUD_PROJECT`, then `GOOGLE_CLOUD_PROJECT_ID`, and not `GOOGLE_CLOUD_QUOTA_PROJECT`. GeminiCode resolves the project itself and always passes `GOOGLE_CLOUD_PROJECT`.
@@ -243,6 +253,21 @@ Read from the build:
 - With chunk text stored uncompressed, this repository's file was 537 MB, and checking it with `PRAGMA quick_check` on open took 5 s. That is why opening checks only the schema.
 - Without word positions (`detail=column`) the file was 31 MB smaller here. BM25 then counts a word only once per column, and it ranked short Markdown chunks above definitions. So positions stay, and the chunk that defines a queried name is put first.
 
+Measured on 25 Oct 2026 on a checkout of this repository (21,368 files), with the indexer before and after the changes for large repositories:
+
+| What | Before | After |
+| --- | --- | --- |
+| Parsing a generated class of 16,000 one-line methods (0.97 MB) | 312 ms (1.8 s at 32,000) | 21 ms |
+| A save, from the change to the new status | 22 ms | 10 ms (imports are re-resolved only when files are added) |
+| Copying the index for a new worktree | 608 ms, with the process unable to answer for 585 ms (`VACUUM INTO`) | 412 ms, never more than 1 ms without answering (`backup()`) |
+| An agent's turn ending in a worktree | 0.86 s, 0.4 s of the indexer's CPU (a reconcile) | 0.64 s, 0.01 s of the indexer's CPU (`git status` and `git diff`; the rest is git's) |
+
+The top five results for six queries were the same before and after.
+
+### When the indexer gives up
+
+After three crashes the indexer stops for ten minutes. New sessions then get no `geminicode-index` server in `session/new` and no `indexHint`; `mcpServers` per session is what the CLI already supports. The CLI 0.64.0 does handle `notifications/tools/list_changed` (its MCP client calls `refreshTools`), but GeminiCode's local MCP server (`localMcpServer.ts`) answers requests only and has no stream to send notifications on, so a session already running keeps the tools, and their calls fail with a message.
+
 ### Ripgrep
 
 - The CLI's `grep_search` uses `bundle/vendor/ripgrep/rg-<platform>-<arch>`, or an `rg` in a system folder (`/usr/bin`, `/opt/homebrew/bin` and the like). Otherwise it falls back to `git grep` ("Ripgrep is not available. Falling back to GrepTool.").
@@ -270,7 +295,7 @@ One "reply OK" prompt with `gemini-3.8-flash` in `cms-vca2`:
 | With neither | 32,209 |
 | In an empty folder | 9,620 |
 
-So the CLI's own prompt and tools were 15% of the call, the context files 36% (`GEMINI.md` importing nine rule files, 68 KB, and the skills list), GitLab's tools 32% and Jira's 17%. GeminiCode's own servers added about 4,200 tokens. Every step of an agent sends all of it again. Project Helpers' **Measure** (`contextCost.ts`) repeats this measurement for any folder.
+So the CLI's own prompt and tools were 15% of the call, the context files 36% (`GEMINI.md` importing nine rule files, 68 KB, and the skills list), GitLab's tools 32% and Jira's 17%. GeminiCode's own servers added about 4,200 tokens. Every step of an agent sends all of it again. Agent Setup' **Measure** (`contextCost.ts`) repeats this measurement for any folder.
 
 ### How the CLI finds code
 

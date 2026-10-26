@@ -3,9 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { promises as fs } from 'node:fs';
 import * as vscode from 'vscode';
 import { errorMessage } from '../acp/errors';
+import { samePath } from '../acp/fsUtil';
 import type { GitLabClient, GitLabDiffFile, GitLabDiscussion, GitLabMr } from '../acp/gitlab';
 import { jiraKeyIn } from '../acp/jira';
 import { fetchBranches, reviewWorktree } from '../acp/releaseMerge';
@@ -15,7 +15,7 @@ import {
 } from '../acp/reviewDraft';
 import type { SavedReview } from '../acp/reviewStore';
 import { parseReviewFindings, parseSuggestion, reviewPrompt, reviewSummary, suggestPrompt } from '../acp/teamFlowLogic';
-import { git } from '../acp/worktrees';
+import { git, inRepository } from '../acp/worktrees';
 import type { AgentsView } from './agentsView';
 import type { ChatController } from './chatController';
 import { agentColumn } from './editorPlacement';
@@ -25,6 +25,7 @@ import type { TeamConnections } from './teamConnections';
 import { TeamFlowPanel } from './teamFlowPanel';
 import type { ReviewCommentView, ReviewThreadView, ReviewView } from './teamFlowProtocol';
 import { openTeamLink } from './teamLinks';
+import { showError } from './errorNotice';
 
 /** What a review needs from the team flows around it. */
 export interface ReviewDeps {
@@ -34,13 +35,16 @@ export interface ReviewDeps {
 	readonly diffs: ReviewDiffs;
 	readonly comments: ReviewComments;
 	gitlab(): GitLabClient;
-	cloneOf(project: string, gitlab: GitLabClient): Promise<{ folder: string; remote: string } | undefined>;
+	/** The clone of `project` to check out from; for the review of merge request `askFor`, asks the user when none is found. Undefined when they cancel. */
+	cloneOf(project: string, gitlab: GitLabClient, askFor?: number): Promise<{ folder: string; remote: string } | undefined>;
 	/** The Pipeline, Quality gate, ticket and Approvals rows beside the review. */
 	side(mr: GitLabMr, ticket: string | undefined, folder: string): Promise<ReviewView['side']>;
 	/** The review changed: its draft, or it was posted or discarded. */
 	changed(): void;
 	/** The review is over: posted or discarded, with its page closed. */
 	ended(session: ReviewSession): void;
+	/** Remove Reviewer and Checkout after Post: ends the review, then removes its reviewer agent with its worktree and branch. */
+	removeReviewer(session: ReviewSession): Promise<void>;
 }
 
 /** How long after the last keystroke on the page the draft is saved and the diff's threads redrawn. */
@@ -49,6 +53,11 @@ const typingDelayMs = 500;
 /** The review's key: project and number. */
 export function reviewKey(project: string, iid: number): string {
 	return `${project}!${iid}`;
+}
+
+/** The local branch a review of merge request `iid` checks out: GeminiCode's own, so it may be reset to a new head. */
+export function reviewBranch(iid: number, sourceBranch: string): string {
+	return `review/${iid}-${sourceBranch.replace(/[^\w.-]+/g, '-')}`.slice(0, 60);
 }
 
 /** Waits until the agent's turn, if one runs, is over. */
@@ -94,6 +103,8 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 	private side: ReviewView['side'] = [];
 	private approvedByMe = false;
 	private done: string | undefined;
+	/** After Post, until the user keeps or removes them: offer to remove the reviewer and its checkout. */
+	private offerRemove = false;
 	private moved: { readonly head: string; readonly text: string } | undefined;
 	private viewRev = 0;
 	private readonly suggesting = new Set<string>();
@@ -173,13 +184,27 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 			return;
 		}
 		const { repository, remote, iid } = this.saved;
+		// The ticket's text goes in the prompt: in its untrusted checkout the reviewer has no MCP tools to read it.
+		const jira = this.ticketKey ? this.deps.tools.connectors.jira : undefined;
+		const issue = jira && this.ticketKey ? jira.issue(this.ticketKey).catch(() => undefined) : undefined;
 		// The target too, so the reviewer diffs against today's target: its shell can't sign in to fetch it.
 		await fetchBranches(repository, remote, [mr.targetBranch]).catch(() => undefined);
-		const existing = this.saved.worktree && await fs.stat(this.saved.worktree.folder).then(() => this.saved.worktree, () => undefined);
-		const worktree = existing ?? await reviewWorktree(repository, remote, mr.sourceBranch, `review/${iid}-${mr.sourceBranch.replace(/[^\w.-]+/g, '-')}`.slice(0, 60));
-		const agentId = await this.deps.agents.startTeamAgent({ folder: repository, title: vscode.l10n.t("Review !{0} {1}", iid, mr.title), worktree, text: '' });
+		// The worktree on the review's branch, this review's or an earlier one's of the same merge request, moved to the new head.
+		// One in the agents' trusted worktrees folder is made again in the untrusted reviews folder, unless an agent's record still has it.
+		const branch = reviewBranch(iid, mr.sourceBranch);
+		const inUse = (folder: string) => this.deps.agents.summaries().some(a => !!a.worktree && samePath(a.worktree.folder, folder));
+		const worktree = await inRepository(repository, () => reviewWorktree(repository, remote, mr.sourceBranch, branch, { inUse }));
+		// Read-only from its session's first tool list: what the reviewer finds goes out only when the user posts it.
+		this.deps.tools.markReadOnlyFolder(worktree.cwd);
+		// The reviewer of an earlier review of this merge request works there already: it reviews again, so no second agent shares its folder.
+		const previous = [this.saved.agentId, ...this.deps.agents.summaries().filter(a => a.worktree?.branch === branch && a.folder === repository).map(a => a.id)]
+			.find(id => !!id && !!this.deps.agents.agentPlace(id));
+		const agentId = previous ?? await this.deps.agents.startTeamAgent({ folder: repository, title: vscode.l10n.t("Review !{0} {1}", iid, mr.title), worktree, text: '' });
 		if (!agentId) {
 			throw new Error(vscode.l10n.t("The reviewer couldn't start."));
+		}
+		if (previous) {
+			await this.deps.agents.open(previous);
 		}
 		this.saved = { ...this.saved, agentId, worktree, state: 'reviewing' };
 		this.persist();
@@ -187,7 +212,9 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 		await this.place();
 		const controller = this.deps.agents.controllerOf(agentId);
 		const threads = this.discussions.filter(d => !d.resolved).map(d => ({ id: d.id, author: d.notes[0].author, body: d.notes.map(n => n.body).join('\n'), path: d.notes[0].path, line: d.notes[0].line }));
-		const prompt = reviewPrompt({ iid, title: mr.title, url: mr.url, author: mr.author, sourceBranch: mr.sourceBranch, targetBranch: mr.targetBranch }, this.ticketKey, remote, this.files.map(f => f.newPath), threads);
+		const read = await issue;
+		const ticket = this.ticketKey ? { key: this.ticketKey, ...read ? { text: `${read.summary}\n\n${read.description}`.trim() } : {} } : undefined;
+		const prompt = reviewPrompt({ iid, title: mr.title, url: mr.url, author: mr.author, sourceBranch: mr.sourceBranch, targetBranch: mr.targetBranch, description: mr.description }, ticket, remote, this.files.map(f => f.newPath), threads);
 		await this.run(async () => {
 			await controller?.send(prompt);
 			await this.readReview();
@@ -210,7 +237,7 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 		if (this.flow && !this.flow.isDisposed) {
 			this.flow.fail(error);
 		} else {
-			void vscode.window.showErrorMessage(errorMessage(error));
+			void showError(errorMessage(error));
 		}
 	}
 
@@ -512,6 +539,7 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 			...this.moved ? { moved: this.moved.text } : {},
 			approvedByMe: this.approvedByMe,
 			...this.done ? { done: this.done } : {},
+			...this.done && this.offerRemove ? leftoverOf(this.saved.agentId && this.deps.agents.agentPlace(this.saved.agentId)) : {},
 		};
 	}
 
@@ -638,6 +666,13 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 				return this.flow?.busy(vscode.l10n.t("Reading the new commits..."), () => this.refresh());
 			case 'post':
 				return this.flow?.busy(vscode.l10n.t("Posting to GitLab..."), () => this.post(id));
+			case 'retrySide':
+				return this.flow?.busy(vscode.l10n.t("Reading GitLab again..."), () => this.readSide());
+			case 'removeReviewer':
+				return this.flow?.busy(vscode.l10n.t("Removing the reviewer..."), () => this.deps.removeReviewer(this));
+			case 'keepReviewer':
+				this.offerRemove = false;
+				return this.render();
 		}
 	}
 
@@ -656,6 +691,15 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 			title: reviewDiffTitle(diff.newPath, this.saved.iid, this.mr?.targetBranch ?? this.saved.target, this.mr?.sourceBranch ?? this.saved.source),
 			viewColumn,
 		});
+	}
+
+	/** Reads the merge request and the rows beside the review again, after one couldn't be read. */
+	private async readSide(): Promise<void> {
+		const mr = await this.deps.gitlab().mr(this.saved.project, this.saved.iid);
+		this.mr = mr;
+		this.approvedByMe = !!mr.approvals?.approvedByMe;
+		this.side = await this.deps.side(mr, this.ticketKey, this.saved.repository);
+		this.render();
 	}
 
 	/** Moves the review to the merge request's newest version: comments follow their lines, those whose line changed are flagged. */
@@ -732,7 +776,8 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 		const total = comments + replies;
 		this.done = mode === 'approve' ? (total ? vscode.l10n.t("Approved !{0} and posted {1} comments.", iid, total) : vscode.l10n.t("Approved !{0}.", iid))
 			: mode === 'request' ? vscode.l10n.t("Posted {0} comments and requested changes on !{1}.", total, iid)
-				: vscode.l10n.t("Posted {0} comments on !{1}.", total, iid);
+				: vscode.l10n.t("Posted {0} comments to !{1}.", total, iid);
+		this.offerRemove = true;
 		// The review is done: its saved draft goes, and the diffs show the merge request's threads as GitLab has them now.
 		this.posted = true;
 		await this.persisting;
@@ -807,6 +852,14 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 		this.disposed = true;
 		this.deps.comments.hide(this.key);
 	}
+}
+
+/** What Post leaves on this Mac: the reviewer agent and its checkout, as the page says it; nothing once the agent is gone. */
+function leftoverOf(place: { readonly branch?: string } | false | undefined | ''): { readonly leftover?: string } {
+	if (!place) {
+		return {};
+	}
+	return { leftover: place.branch ? vscode.l10n.t("The reviewer agent and its checkout ({0}) are still on this Mac.", place.branch) : vscode.l10n.t("The reviewer agent and its checkout are still on this Mac.") };
 }
 
 /** A review that just started: what it is about, before its first save. */

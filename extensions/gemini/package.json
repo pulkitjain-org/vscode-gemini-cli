@@ -23,6 +23,9 @@
     "onStartupFinished"
   ],
   "main": "./out/extension",
+  "extensionKind": [
+    "ui"
+  ],
   "enabledApiProposals": [
     "terminalSelection",
     "terminalQuickFixProvider"
@@ -293,6 +296,21 @@
         "title": "%command.agents.stop%",
         "category": "%category%",
         "icon": "$(debug-stop)"
+      },
+      {
+        "command": "gemini.agents.focusChat",
+        "title": "%command.agents.focusChat%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.agents.cycleMode",
+        "title": "%command.agents.cycleMode%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.agents.switchModel",
+        "title": "%command.agents.switchModel%",
+        "category": "%category%"
       },
       {
         "command": "gemini.agents.remove",
@@ -644,25 +662,49 @@
       },
       {
         "command": "gemini.review.keepFile",
-        "key": "ctrl+enter",
-        "mac": "cmd+enter",
-        "when": "gemini.review.active && editorTextFocus"
+        "key": "ctrl+alt+enter",
+        "mac": "cmd+alt+enter",
+        "when": "gemini.review.active && editorTextFocus && !findWidgetVisible"
       },
       {
         "command": "gemini.review.undoFile",
-        "key": "ctrl+backspace",
-        "mac": "cmd+backspace",
+        "key": "ctrl+shift+alt+backspace",
+        "mac": "cmd+shift+alt+backspace",
         "when": "gemini.review.active && editorTextFocus"
       },
       {
         "command": "gemini.review.nextChange",
-        "key": "alt+]",
+        "key": "alt+f5",
         "when": "gemini.review.active && editorTextFocus"
       },
       {
         "command": "gemini.review.previousChange",
-        "key": "alt+[",
+        "key": "shift+alt+f5",
         "when": "gemini.review.active && editorTextFocus"
+      },
+      {
+        "command": "gemini.agents.focusChat",
+        "key": "ctrl+alt+i",
+        "mac": "ctrl+cmd+i"
+      },
+      {
+        "command": "gemini.agents.stop",
+        "key": "ctrl+escape",
+        "mac": "cmd+escape",
+        "win": "alt+backspace",
+        "when": "activeWebviewPanelId == 'gemini.agent'"
+      },
+      {
+        "command": "gemini.agents.cycleMode",
+        "key": "ctrl+.",
+        "mac": "cmd+.",
+        "when": "activeWebviewPanelId == 'gemini.agent'"
+      },
+      {
+        "command": "gemini.agents.switchModel",
+        "key": "ctrl+alt+.",
+        "mac": "cmd+alt+.",
+        "when": "activeWebviewPanelId == 'gemini.agent'"
       },
       {
         "command": "gemini.agents.rename",
@@ -1052,6 +1094,34 @@
       ],
       "commandPalette": [
         {
+          "command": "gemini.runBenchmark",
+          "when": "config.gemini.developer.showTools"
+        },
+        {
+          "command": "gemini.pilot.export",
+          "when": "config.gemini.developer.showTools || config.gemini.pilot.record"
+        },
+        {
+          "command": "gemini.recordTrace",
+          "when": "config.gemini.developer.showTools"
+        },
+        {
+          "command": "gemini.showStatusMenu",
+          "when": "config.gemini.developer.showTools"
+        },
+        {
+          "command": "gemini.newSkill",
+          "when": "config.gemini.developer.showTools"
+        },
+        {
+          "command": "gemini.installCli",
+          "when": "config.gemini.developer.showTools"
+        },
+        {
+          "command": "gemini.installCliVersion",
+          "when": "config.gemini.developer.showTools"
+        },
+        {
           "command": "gemini.terminal.askAboutFailure",
           "when": "false"
         },
@@ -1161,7 +1231,15 @@
         },
         {
           "command": "gemini.agents.stop",
-          "when": "false"
+          "when": "activeWebviewPanelId == 'gemini.agent'"
+        },
+        {
+          "command": "gemini.agents.cycleMode",
+          "when": "activeWebviewPanelId == 'gemini.agent'"
+        },
+        {
+          "command": "gemini.agents.switchModel",
+          "when": "activeWebviewPanelId == 'gemini.agent'"
         },
         {
           "command": "gemini.agents.remove",
@@ -1193,332 +1271,408 @@
         }
       ]
     },
-    "configuration": {
-      "title": "%configuration.title%",
-      "properties": {
-        "gemini.cliPath": {
-          "type": "string",
-          "default": "",
-          "scope": "machine",
-          "markdownDescription": "%configuration.cliPath%"
-        },
-        "gemini.cli.version": {
-          "type": "string",
-          "default": "",
-          "scope": "machine",
-          "pattern": "^$|^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$",
-          "markdownDescription": "%configuration.cli.version%"
-        },
-        "gemini.cli.checkForUpdates": {
-          "type": "boolean",
-          "default": true,
-          "scope": "machine",
-          "markdownDescription": "%configuration.cli.checkForUpdates%"
-        },
-        "gemini.app.checkForUpdates": {
-          "type": "boolean",
-          "default": true,
-          "scope": "machine",
-          "markdownDescription": "%configuration.app.checkForUpdates%"
-        },
-        "gemini.projects.enabled": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "%configuration.projects.enabled%"
-        },
-        "gemini.agents.ownBranch": {
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "%configuration.agents.ownBranch%"
-        },
-        "gemini.agents.allWorkspaceFolders": {
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "%configuration.agents.allWorkspaceFolders%"
-        },
-        "gemini.agents.worktreeSetup": {
-          "type": "string",
-          "default": "",
-          "scope": "resource",
-          "markdownDescription": "%configuration.agents.worktreeSetup%"
-        },
-        "gemini.chat.followAgent": {
-          "type": "boolean",
-          "default": false,
-          "scope": "machine",
-          "markdownDescription": "%configuration.chat.followAgent%"
-        },
-        "gemini.chat.foldFinishedWork": {
-          "type": "boolean",
-          "default": true,
-          "scope": "machine",
-          "markdownDescription": "%configuration.chat.foldFinishedWork%"
-        },
-        "gemini.chat.reactions.enabled": {
-          "type": "boolean",
-          "default": true,
-          "scope": "machine",
-          "markdownDescription": "%configuration.chat.reactions.enabled%"
-        },
-        "gemini.chat.reactions.agentReactions": {
-          "type": "boolean",
-          "default": true,
-          "scope": "machine",
-          "markdownDescription": "%configuration.chat.reactions.agentReactions%"
-        },
-        "gemini.chat.reactions.meanings": {
-          "type": "object",
-          "default": {},
-          "scope": "window",
-          "additionalProperties": {
+    "configuration": [
+      {
+        "title": "%configuration.title%",
+        "order": 1,
+        "properties": {
+          "gemini.cliPath": {
             "type": "string",
-            "maxLength": 500
+            "default": "",
+            "scope": "machine",
+            "markdownDescription": "%configuration.cliPath%"
           },
-          "markdownDescription": "%configuration.chat.reactions.meanings%"
-        },
-        "gemini.chat.spellCheck": {
-          "type": "boolean",
-          "default": true,
-          "scope": "machine",
-          "markdownDescription": "%configuration.chat.spellCheck%"
-        },
-        "gemini.chat.runCommands": {
-          "type": "string",
-          "enum": [
-            "askWhenRisky",
-            "alwaysAsk",
-            "off"
-          ],
-          "enumDescriptions": [
-            "%configuration.chat.runCommands.askWhenRisky%",
-            "%configuration.chat.runCommands.alwaysAsk%",
-            "%configuration.chat.runCommands.off%"
-          ],
-          "default": "askWhenRisky",
-          "scope": "machine",
-          "markdownDescription": "%configuration.chat.runCommands%"
-        },
-        "gemini.browser.enabled": {
-          "type": "boolean",
-          "default": true,
-          "scope": "machine",
-          "markdownDescription": "%configuration.browser.enabled%"
-        },
-        "gemini.browser.allowOtherSites": {
-          "type": "boolean",
-          "default": true,
-          "scope": "machine",
-          "markdownDescription": "%configuration.browser.allowOtherSites%"
-        },
-        "gemini.browser.allowedOrigins": {
-          "type": "array",
-          "items": {
-            "type": "string"
+          "gemini.cli.version": {
+            "type": "string",
+            "default": "",
+            "scope": "machine",
+            "pattern": "^$|^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$",
+            "markdownDescription": "%configuration.cli.version%"
           },
-          "default": [],
-          "scope": "machine",
-          "markdownDescription": "%configuration.browser.allowedOrigins%"
-        },
-        "gemini.browser.keepSignIns": {
-          "type": "boolean",
-          "default": false,
-          "scope": "machine",
-          "markdownDescription": "%configuration.browser.keepSignIns%"
-        },
-        "gemini.index.enabled": {
-          "type": "boolean",
-          "default": true,
-          "scope": "machine",
-          "markdownDescription": "%configuration.index.enabled%"
-        },
-        "gemini.index.buildOn": {
-          "type": "string",
-          "enum": [
-            "agentStart",
-            "workspaceOpen",
-            "manual"
-          ],
-          "enumDescriptions": [
-            "%configuration.index.buildOn.agentStart%",
-            "%configuration.index.buildOn.workspaceOpen%",
-            "%configuration.index.buildOn.manual%"
-          ],
-          "default": "agentStart",
-          "scope": "machine",
-          "markdownDescription": "%configuration.index.buildOn%"
-        },
-        "gemini.index.exclude": {
-          "type": "array",
-          "items": {
-            "type": "string"
+          "gemini.cli.checkForUpdates": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.cli.checkForUpdates%"
           },
-          "default": [],
-          "scope": "resource",
-          "markdownDescription": "%configuration.index.exclude%"
-        },
-        "gemini.index.include": {
-          "type": "array",
-          "items": {
-            "type": "string"
+          "gemini.cli.registry": {
+            "type": "string",
+            "default": "",
+            "scope": "machine",
+            "markdownDescription": "%configuration.cli.registry%"
           },
-          "default": [],
-          "scope": "resource",
-          "markdownDescription": "%configuration.index.include%"
-        },
-        "gemini.index.maxFileSizeKb": {
-          "type": "number",
-          "default": 1024,
-          "minimum": 16,
-          "maximum": 16384,
-          "scope": "machine",
-          "markdownDescription": "%configuration.index.maxFileSizeKb%"
-        },
-        "gemini.docs.enabled": {
-          "type": "boolean",
-          "default": true,
-          "scope": "machine",
-          "markdownDescription": "%configuration.docs.enabled%"
-        },
-        "gemini.docs.allowedDomains": {
-          "type": "array",
-          "items": {
-            "type": "string"
+          "gemini.app.checkForUpdates": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.app.checkForUpdates%"
           },
-          "default": [],
-          "scope": "machine",
-          "markdownDescription": "%configuration.docs.allowedDomains%"
-        },
-        "gemini.docs.refresh": {
-          "type": "string",
-          "enum": [
-            "daily",
-            "weekly",
-            "manual"
-          ],
-          "enumDescriptions": [
-            "%configuration.docs.refresh.daily%",
-            "%configuration.docs.refresh.weekly%",
-            "%configuration.docs.refresh.manual%"
-          ],
-          "default": "daily",
-          "scope": "machine",
-          "markdownDescription": "%configuration.docs.refresh%"
-        },
-        "gemini.agent.startEarly": {
-          "type": "boolean",
-          "default": true,
-          "scope": "machine",
-          "markdownDescription": "%configuration.agent.startEarly%"
-        },
-        "gemini.home.openOnStartup": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "%configuration.home.openOnStartup%"
-        },
-        "gemini.team.openMergeRequestsIn": {
-          "type": "string",
-          "enum": [
-            "ask",
-            "geminicode",
-            "browser"
-          ],
-          "enumDescriptions": [
-            "%configuration.team.openMergeRequestsIn.ask%",
-            "%configuration.team.openMergeRequestsIn.geminicode%",
-            "%configuration.team.openMergeRequestsIn.browser%"
-          ],
-          "default": "ask",
-          "markdownDescription": "%configuration.team.openMergeRequestsIn%"
-        },
-        "gemini.keepAwake": {
-          "type": "boolean",
-          "default": true,
-          "scope": "machine",
-          "markdownDescription": "%configuration.keepAwake%"
-        },
-        "gemini.inlineEdit.enabled": {
-          "type": "boolean",
-          "default": true,
-          "scope": "machine",
-          "markdownDescription": "%configuration.inlineEdit.enabled%"
-        },
-        "gemini.team.runTeamServers": {
-          "type": "boolean",
-          "default": false,
-          "scope": "machine",
-          "markdownDescription": "%configuration.team.runTeamServers%"
-        },
-        "gemini.pilot.record": {
-          "type": "boolean",
-          "default": false,
-          "scope": "machine",
-          "markdownDescription": "%configuration.pilot.record%"
-        },
-        "gemini.usageMeter.enabled": {
-          "type": "boolean",
-          "default": true,
-          "scope": "machine",
-          "markdownDescription": "%configuration.usageMeter.enabled%"
-        },
-        "gemini.inlineEdit.model": {
-          "type": "string",
-          "default": "latestFlash",
-          "scope": "machine",
-          "markdownDescription": "%configuration.inlineEdit.model%"
-        },
-        "gemini.approval.allowAutoEdit": {
-          "type": "boolean",
-          "default": true,
-          "scope": "machine",
-          "markdownDescription": "%configuration.approval.allowAutoEdit%"
-        },
-        "gemini.approval.allowYolo": {
-          "type": "boolean",
-          "default": false,
-          "scope": "machine",
-          "markdownDescription": "%configuration.approval.allowYolo%"
-        },
-        "gemini.tools.allowShell": {
-          "type": "boolean",
-          "default": true,
-          "scope": "machine",
-          "markdownDescription": "%configuration.tools.allowShell%"
-        },
-        "gemini.tools.denyEnvironmentCommands": {
-          "type": "boolean",
-          "default": true,
-          "scope": "machine",
-          "markdownDescription": "%configuration.tools.denyEnvironmentCommands%"
-        },
-        "gemini.mcp.allowedServers": {
-          "type": "array",
-          "items": {
-            "type": "string"
+          "gemini.projects.enabled": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "%configuration.projects.enabled%"
           },
-          "default": [],
-          "scope": "machine",
-          "markdownDescription": "%configuration.mcp.allowedServers%"
-        },
-        "gemini.projectId": {
-          "type": "string",
-          "default": "",
-          "scope": "window",
-          "markdownDescription": "%configuration.projectId%"
-        },
-        "gemini.notifications.enabled": {
-          "type": "boolean",
-          "default": true,
-          "scope": "application",
-          "markdownDescription": "%configuration.notifications.enabled%"
-        },
-        "gemini.layout.showAgentsInNewWorkspaces": {
-          "type": "boolean",
-          "default": true,
-          "scope": "window",
-          "markdownDescription": "%configuration.layout.showAgentsInNewWorkspaces%"
+          "gemini.projects.maxRunningThreads": {
+            "type": "integer",
+            "default": 4,
+            "minimum": 1,
+            "maximum": 20,
+            "scope": "machine",
+            "markdownDescription": "%configuration.projects.maxRunningThreads%"
+          },
+          "gemini.agents.ownBranch": {
+            "type": "boolean",
+            "default": false,
+            "markdownDescription": "%configuration.agents.ownBranch%"
+          },
+          "gemini.agents.defaultMode": {
+            "type": "string",
+            "enum": [
+              "default",
+              "autoEdit",
+              "plan",
+              "yolo"
+            ],
+            "enumDescriptions": [
+              "%configuration.agents.defaultMode.default%",
+              "%configuration.agents.defaultMode.autoEdit%",
+              "%configuration.agents.defaultMode.plan%",
+              "%configuration.agents.defaultMode.yolo%"
+            ],
+            "default": "default",
+            "scope": "machine",
+            "markdownDescription": "%configuration.agents.defaultMode%"
+          },
+          "gemini.agents.allWorkspaceFolders": {
+            "type": "boolean",
+            "default": false,
+            "markdownDescription": "%configuration.agents.allWorkspaceFolders%"
+          },
+          "gemini.agents.worktreeSetup": {
+            "type": "string",
+            "default": "",
+            "scope": "machine",
+            "markdownDescription": "%configuration.agents.worktreeSetup%"
+          },
+          "gemini.chat.followAgent": {
+            "type": "boolean",
+            "default": false,
+            "scope": "machine",
+            "markdownDescription": "%configuration.chat.followAgent%"
+          },
+          "gemini.chat.foldFinishedWork": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.chat.foldFinishedWork%"
+          },
+          "gemini.chat.spellCheck": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.chat.spellCheck%"
+          },
+          "gemini.chat.sendWith": {
+            "type": "string",
+            "enum": [
+              "enter",
+              "cmdEnter"
+            ],
+            "enumDescriptions": [
+              "%configuration.chat.sendWith.enter%",
+              "%configuration.chat.sendWith.cmdEnter%"
+            ],
+            "default": "enter",
+            "scope": "machine",
+            "markdownDescription": "%configuration.chat.sendWith%"
+          },
+          "gemini.chat.runCommands": {
+            "type": "string",
+            "enum": [
+              "askWhenRisky",
+              "alwaysAsk",
+              "off"
+            ],
+            "enumDescriptions": [
+              "%configuration.chat.runCommands.askWhenRisky%",
+              "%configuration.chat.runCommands.alwaysAsk%",
+              "%configuration.chat.runCommands.off%"
+            ],
+            "default": "askWhenRisky",
+            "scope": "machine",
+            "markdownDescription": "%configuration.chat.runCommands%"
+          },
+          "gemini.browser.enabled": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.browser.enabled%"
+          },
+          "gemini.browser.allowOtherSites": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.browser.allowOtherSites%"
+          },
+          "gemini.browser.allowedOrigins": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "scope": "machine",
+            "markdownDescription": "%configuration.browser.allowedOrigins%"
+          },
+          "gemini.browser.keepSignIns": {
+            "type": "boolean",
+            "default": false,
+            "scope": "machine",
+            "markdownDescription": "%configuration.browser.keepSignIns%"
+          },
+          "gemini.index.enabled": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.index.enabled%"
+          },
+          "gemini.index.buildOn": {
+            "type": "string",
+            "enum": [
+              "agentStart",
+              "workspaceOpen",
+              "manual"
+            ],
+            "enumDescriptions": [
+              "%configuration.index.buildOn.agentStart%",
+              "%configuration.index.buildOn.workspaceOpen%",
+              "%configuration.index.buildOn.manual%"
+            ],
+            "default": "agentStart",
+            "scope": "machine",
+            "markdownDescription": "%configuration.index.buildOn%"
+          },
+          "gemini.index.exclude": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "scope": "resource",
+            "markdownDescription": "%configuration.index.exclude%"
+          },
+          "gemini.index.include": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "scope": "resource",
+            "markdownDescription": "%configuration.index.include%"
+          },
+          "gemini.index.maxFileSizeKb": {
+            "type": "number",
+            "default": 1024,
+            "minimum": 16,
+            "maximum": 16384,
+            "scope": "machine",
+            "markdownDescription": "%configuration.index.maxFileSizeKb%"
+          },
+          "gemini.docs.enabled": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.docs.enabled%"
+          },
+          "gemini.docs.allowedDomains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "scope": "machine",
+            "markdownDescription": "%configuration.docs.allowedDomains%"
+          },
+          "gemini.storage.keepLogsDays": {
+            "type": "number",
+            "default": 90,
+            "minimum": 0,
+            "scope": "machine",
+            "markdownDescription": "%configuration.storage.keepLogsDays%"
+          },
+          "gemini.docs.refresh": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "weekly",
+              "manual"
+            ],
+            "enumDescriptions": [
+              "%configuration.docs.refresh.daily%",
+              "%configuration.docs.refresh.weekly%",
+              "%configuration.docs.refresh.manual%"
+            ],
+            "default": "daily",
+            "scope": "machine",
+            "markdownDescription": "%configuration.docs.refresh%"
+          },
+          "gemini.agents.startEarly": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.agent.startEarly%"
+          },
+          "gemini.agent.startEarly": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.agent.startEarly%",
+            "markdownDeprecationMessage": "%configuration.agent.startEarly.deprecated%"
+          },
+          "gemini.home.openOnStartup": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "%configuration.home.openOnStartup%"
+          },
+          "gemini.team.openMergeRequestsIn": {
+            "type": "string",
+            "enum": [
+              "ask",
+              "geminicode",
+              "browser"
+            ],
+            "enumDescriptions": [
+              "%configuration.team.openMergeRequestsIn.ask%",
+              "%configuration.team.openMergeRequestsIn.geminicode%",
+              "%configuration.team.openMergeRequestsIn.browser%"
+            ],
+            "default": "ask",
+            "markdownDescription": "%configuration.team.openMergeRequestsIn%"
+          },
+          "gemini.keepAwake": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.keepAwake%"
+          },
+          "gemini.inlineEdit.enabled": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.inlineEdit.enabled%"
+          },
+          "gemini.team.runTeamServers": {
+            "type": "boolean",
+            "default": false,
+            "scope": "machine",
+            "markdownDescription": "%configuration.team.runTeamServers%"
+          },
+          "gemini.usageMeter.enabled": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.usageMeter.enabled%"
+          },
+          "gemini.inlineEdit.model": {
+            "type": "string",
+            "default": "latestFlash",
+            "scope": "machine",
+            "markdownDescription": "%configuration.inlineEdit.model%"
+          },
+          "gemini.approval.allowAutoEdit": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.approval.allowAutoEdit%"
+          },
+          "gemini.approval.allowYolo": {
+            "type": "boolean",
+            "default": false,
+            "scope": "machine",
+            "markdownDescription": "%configuration.approval.allowYolo%"
+          },
+          "gemini.tools.allowShell": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.tools.allowShell%"
+          },
+          "gemini.tools.denyEnvironmentCommands": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.tools.denyEnvironmentCommands%"
+          },
+          "gemini.mcp.allowedServers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "scope": "machine",
+            "markdownDescription": "%configuration.mcp.allowedServers%"
+          },
+          "gemini.projectId": {
+            "type": "string",
+            "default": "",
+            "scope": "window",
+            "markdownDescription": "%configuration.projectId%"
+          },
+          "gemini.notifications.enabled": {
+            "type": "boolean",
+            "default": true,
+            "scope": "application",
+            "markdownDescription": "%configuration.notifications.enabled%"
+          },
+          "gemini.layout.showAgentsInNewWorkspaces": {
+            "type": "boolean",
+            "default": true,
+            "scope": "window",
+            "markdownDescription": "%configuration.layout.showAgentsInNewWorkspaces%"
+          }
+        }
+      },
+      {
+        "id": "gemini.advanced",
+        "title": "%configuration.advancedTitle%",
+        "order": 2,
+        "properties": {
+          "gemini.chat.reactions.enabled": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.chat.reactions.enabled%"
+          },
+          "gemini.chat.reactions.agentReactions": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.chat.reactions.agentReactions%"
+          },
+          "gemini.chat.reactions.meanings": {
+            "type": "object",
+            "default": {},
+            "scope": "window",
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "markdownDescription": "%configuration.chat.reactions.meanings%"
+          },
+          "gemini.pilot.record": {
+            "type": "boolean",
+            "default": false,
+            "scope": "machine",
+            "markdownDescription": "%configuration.pilot.record%"
+          },
+          "gemini.developer.showTools": {
+            "type": "boolean",
+            "default": false,
+            "scope": "machine",
+            "markdownDescription": "%configuration.developer.showTools%"
+          }
         }
       }
-    },
+    ],
     "configurationDefaults": {
       "workbench.browser.openLocalhostLinks": true,
       "breadcrumbs.enabled": false,
@@ -1576,6 +1730,7 @@
     "compile": "gulp compile-extension:gemini",
     "watch": "gulp watch-extension:gemini",
     "typecheck-tests": "tsc -p tsconfig.test.json",
+    "check": "node esbuild.mts && node esbuild.webview.mts && vitest run && tsc -p tsconfig.json --noEmit && tsc -p webview-src/tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "bundle-cli": "node scripts/bundle-cli.mts",
     "emoji-data": "node scripts/build-emoji-data.mts",
     "spike-coordinator": "node --experimental-transform-types --no-warnings scripts/coordinator-spike.mts",
@@ -1586,15 +1741,17 @@
     "integrity": "sha512-FHrZ1NPf9QszyVMaa/BP3SsPy40ogBLnbZNWkv/PMi1Uz2zoDNMLGiBzBGmx4Bl7iLRq01K9PY/5kmloXFTpsA=="
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "1.6.0",
-    "zod": "^4.1.0"
+    "@agentclientprotocol/sdk": "1.9.0",
+    "jsonc-parser": "3.3.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.2.0",
     "@types/node": "24.x",
     "@vscode/codicons": "^0.0.36",
+    "happy-dom": "20.10.1",
     "highlight.js": "^11.12.0",
-    "katex": "^0.16.22",
+    "katex": "^0.16.47",
     "markdown-it": "^14.3.2",
     "vitest": "^4.1.8"
   },

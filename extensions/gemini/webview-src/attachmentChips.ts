@@ -65,7 +65,7 @@ export function renderAttachments(): void {
 			chip.append(open);
 		} else {
 			chip.append(icon(attachmentIcon(attachment.kind, attachmentLabel(attachment))));
-			chip.title = attachment.path ?? attachmentLabel(attachment);
+			setTip(chip, attachment.path ?? attachmentLabel(attachment));
 		}
 		if (!chip.classList.contains('tool-chip')) {
 			chip.append(el('span', undefined, attachmentLabel(attachment)));
@@ -82,7 +82,7 @@ export function renderAttachments(): void {
 			renderAttachments();
 			input.focus();
 		}, 'close');
-		remove.title = strings.remove;
+		setTip(remove, strings.remove);
 		remove.setAttribute('aria-label', `${strings.remove} ${attachmentLabel(attachment)}`);
 		chip.append(remove);
 		return chip;
