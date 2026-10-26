@@ -13,6 +13,26 @@ import type { SonarIssue } from './sonar';
 import { isReleaseBranch, releaseBranchForVersion, sortReleaseBranches } from './teamDefaults';
 import { external } from './externalText';
 
+/** Where a flow works, and whether the window gave no hint between several folders, which a picker would settle. */
+export interface WorkFolder {
+	readonly folder?: string;
+	/** Several folders are open and neither the agent in front nor the active editor says which: `folder` is the first. */
+	readonly ambiguous: boolean;
+}
+
+/**
+ * The folder a team flow (Start on Ticket, Run Checks, the team's defaults)
+ * works in: the agent in front's workspace, else the active editor's folder,
+ * else the first open folder.
+ */
+export function resolveWorkFolder(hints: { readonly agentFolder?: string; readonly editorFolder?: string; readonly folders: readonly string[] }): WorkFolder {
+	const hinted = hints.agentFolder ?? hints.editorFolder;
+	if (hinted) {
+		return { folder: hinted, ambiguous: false };
+	}
+	return { ...hints.folders.length ? { folder: hints.folders[0] } : {}, ambiguous: hints.folders.length > 1 };
+}
+
 /** A branch name for a ticket: `ACME-412-gift-message-at-checkout`. */
 export function ticketBranchName(key: string, summary: string): string {
 	const slug = summary.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '');
