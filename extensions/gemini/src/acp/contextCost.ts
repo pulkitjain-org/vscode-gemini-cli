@@ -38,6 +38,56 @@ export interface ContextCost {
 	readonly measuredAt: number;
 	/** The model that counted, since tokens differ a little between models. */
 	readonly model?: string;
+	/** The context files the CLI loaded (its `/memory list`), with their sizes; unset in measures made before they were kept. */
+	readonly rules?: readonly RuleFile[];
+}
+
+export interface RuleFile {
+	readonly path: string;
+	readonly bytes: number;
+}
+
+/** A rule file larger than this is worth trimming: every model call carries it. */
+export const largeRuleFileBytes = 20 * 1024;
+
+/** The chat's usage popover's breakdown of a folder's context (`/context`). */
+export interface ContextBreakdown {
+	readonly state: 'none' | 'measuring' | 'ready' | 'failed';
+	/** When the parts were measured, in ms since the epoch. */
+	readonly measuredAt?: number;
+	/** Tokens of each part; `servers` is how many MCP servers, `serverTokens` what they cost together. */
+	readonly parts?: { readonly cli: number; readonly rules: number; readonly geminicode: number; readonly servers: number; readonly serverTokens: number; readonly total: number };
+	/** The rule files, by name, largest first. */
+	readonly rules?: readonly { readonly name: string; readonly path: string; readonly bytes: number }[];
+	readonly error?: string;
+}
+
+/** The breakdown of `cost`, the folder's last measure; `measuring` while a new one runs, `error` when the last one failed. */
+export function contextBreakdown(cost: ContextCost | undefined, measuring: boolean, error?: string): ContextBreakdown {
+	const state = measuring ? 'measuring' : error ? 'failed' : cost ? 'ready' : 'none';
+	if (!cost) {
+		return { state, ...error ? { error } : {} };
+	}
+	return {
+		state,
+		measuredAt: cost.measuredAt,
+		parts: {
+			cli: cost.cli,
+			rules: cost.context,
+			geminicode: cost.geminicode,
+			servers: cost.servers.length,
+			serverTokens: cost.servers.reduce((sum, server) => sum + server.tokens, 0),
+			total: cost.total,
+		},
+		...cost.rules ? { rules: [...cost.rules].sort((a, b) => b.bytes - a.bytes).map(rule => ({ name: ruleFileName(rule.path), path: rule.path, bytes: rule.bytes })) } : {},
+		...error ? { error } : {},
+	};
+}
+
+/** A rule file's name as the popover lists it, without its folder; the full path is its tooltip. */
+function ruleFileName(file: string): string {
+	const parts = file.split(/[\\/]/).filter(Boolean);
+	return parts.slice(-1)[0] ?? file;
 }
 
 /** Variants measured at once. */

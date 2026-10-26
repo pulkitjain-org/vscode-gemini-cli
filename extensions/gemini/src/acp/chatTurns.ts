@@ -17,6 +17,7 @@ import type { SessionSettings } from './sessionSettings';
 /** The CLI's Plan and Default mode IDs (gemini-cli 0.63 `ApprovalMode`); Build This Plan shows only when the agent offers both. */
 const planModeId = 'plan';
 const defaultModeId = 'default';
+const autoEditModeId = 'autoEdit';
 const yoloModeId = 'yolo';
 
 /** The most proposed edits, and tool calls, a chat keeps track of. */
@@ -103,10 +104,65 @@ export function undoNote(cwd: string, files: readonly string[]): string {
 	return `[The user undid your file changes. These files are back to how they were before those replies, so read them again before editing them: ${names.join(', ')}]`;
 }
 
-/** The mode Build This Plan switches to: Default, when the chat is in Plan mode and the agent offers both. */
-export function buildModeAfterPlan(settings: SessionSettings): string | undefined {
+/**
+ * The mode Build This Plan switches to, when the chat is in Plan mode: the
+ * mode it was in before Plan (`before`) when the agent still offers it, else
+ * Default when the agent offers that.
+ */
+export function buildModeAfterPlan(settings: SessionSettings, before?: string): string | undefined {
 	const mode = settings.mode;
-	return mode?.currentId === planModeId && mode.available.some(m => m.id === defaultModeId) ? defaultModeId : undefined;
+	if (mode?.currentId !== planModeId) {
+		return undefined;
+	}
+	const offered = (id: string | undefined) => !!id && id !== planModeId && mode.available.some(m => m.id === id);
+	return offered(before) ? before : offered(defaultModeId) ? defaultModeId : undefined;
+}
+
+/** What Build This Plan offers: the mode it builds in, and the other choice its chevron gives (Default, or Auto Edit from Default). */
+export interface PlanBuildChoice {
+	readonly mode: string;
+	readonly other?: string;
+}
+
+export function planBuildChoice(settings: SessionSettings, before?: string): PlanBuildChoice | undefined {
+	const mode = buildModeAfterPlan(settings, before);
+	if (!mode) {
+		return undefined;
+	}
+	const other = mode === defaultModeId ? autoEditModeId : defaultModeId;
+	return { mode, ...settings.mode?.available.some(m => m.id === other) ? { other } : {} };
+}
+
+/**
+ * The models Build This Plan's hint names: the model the plan's turn used
+ * most (from its token counts) and the one the build will use, only when both
+ * are known and differ. Auto (`auto…`) picks a model per request, so the
+ * build's model isn't known ahead and no hint is given.
+ */
+export function planBuildModels(planUsage: readonly { readonly model: string; readonly input: number; readonly output: number }[] | undefined, buildModel: string | undefined): { readonly plan: string; readonly build: string } | undefined {
+	const plan = [...planUsage ?? []].sort((a, b) => b.input + b.output - a.input - a.output)[0]?.model;
+	if (!plan || !buildModel || /^auto/i.test(buildModel) || plan === buildModel) {
+		return undefined;
+	}
+	return { plan, build: buildModel };
+}
+
+/** The approval modes `gemini.agents.defaultMode` takes: gemini-cli 0.64's `ApprovalMode` ids. */
+export const startModeIds = [defaultModeId, autoEditModeId, planModeId, yoloModeId] as const;
+
+/** The mode a new agent's first session switches to, from `gemini.agents.defaultMode`: undefined for Default, an unknown value or one policy turns off. */
+export function defaultStartMode(setting: unknown, isAllowed: (modeId: string) => boolean): string | undefined {
+	return typeof setting === 'string' && setting !== defaultModeId && (startModeIds as readonly string[]).includes(setting) && isAllowed(setting) ? setting : undefined;
+}
+
+/**
+ * The mode the mode menu tags "Recommended here": Auto Edit, where its edits
+ * can be reviewed with Keep and Undo against Git (the folder is trusted, in a
+ * repository with at least one commit). Only a tag, on a mode the agent
+ * offers: nothing switches by itself.
+ */
+export function recommendedMode(folder: { readonly trusted: boolean; readonly committed: boolean }): string | undefined {
+	return folder.trusted && folder.committed ? autoEditModeId : undefined;
 }
 
 /**
