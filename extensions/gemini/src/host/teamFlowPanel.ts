@@ -49,6 +49,8 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 	/** Saves the typed fields to the record, a moment after the last change. */
 	private saveFields: () => void = () => undefined;
 	private saveTimer: ReturnType<typeof setTimeout> | undefined;
+	/** A state change not yet sent to the page; changes made in one go go as one. */
+	private postTimer: ReturnType<typeof setTimeout> | undefined;
 	/** Fields to put back into the first view, for a reopened flow. */
 	private restore: Readonly<Record<string, string | number | boolean>> | undefined;
 
@@ -70,6 +72,7 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 		this.panel.onDidDispose(() => {
 			this.disposed = true;
 			clearTimeout(this.saveTimer);
+			clearTimeout(this.postTimer);
 			void this.closeRecord();
 			this.onDidDisposeEmitter.fire();
 			this.onDidDisposeEmitter.dispose();
@@ -178,13 +181,29 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 		this.panel.dispose();
 	}
 
+	/**
+	 * Sends the state once the changes made in one go are done: an action
+	 * that shows Busy and changes the view at once, or a view changed field
+	 * by field, re-renders the page once rather than once for each change.
+	 */
 	private post(): void {
-		void this.panel.webview.postMessage({ type: 'state', state: this.state } satisfies ToTeamFlow);
+		this.postTimer ??= setTimeout(() => this.postNow());
 	}
 
-	/** Sends the page something besides its state, which it takes without a re-render. */
+	private postNow(): void {
+		clearTimeout(this.postTimer);
+		this.postTimer = undefined;
+		if (!this.disposed) {
+			void this.panel.webview.postMessage({ type: 'state', state: this.state } satisfies ToTeamFlow);
+		}
+	}
+
+	/** Sends the page something besides its state, which it takes without a re-render; after the state it goes with. */
 	send(message: Exclude<ToTeamFlow, { type: 'state' }>): void {
 		if (!this.disposed) {
+			if (this.postTimer) {
+				this.postNow();
+			}
 			void this.panel.webview.postMessage(message);
 		}
 	}
@@ -192,7 +211,7 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 	private onMessage(message: FromTeamFlow): void {
 		switch (message.type) {
 			case 'ready':
-				this.post();
+				this.postNow();
 				return;
 			case 'set':
 				this.fields.set(message.field, message.value);

@@ -29,7 +29,12 @@ export const workspace = { getConfiguration: () => ({ get: (key, fallback) => fa
 export const Uri = { joinPath: (base, ...parts) => [base, ...parts].join('/') };
 export class EventEmitter { event = () => ({ dispose() { } }); fire() { } dispose() { } }
 export const ViewColumn = { Active: -1 };
-export const window = {};
+export const window = {
+	createWebviewPanel: () => ({
+		webview: { html: '', cspSource: 'webview', asWebviewUri: uri => String(uri), onDidReceiveMessage: () => ({ dispose() { } }), postMessage: async () => true },
+		onDidDispose: () => ({ dispose() { } }),
+	}),
+};
 `;
 
 /** Exports `name` from the host module at `file` (relative to the extension), bundled with the stand-in for `vscode`. */
@@ -64,6 +69,9 @@ function showPage(html: string): void {
 	posted.length = 0;
 	let saved: unknown;
 	Object.assign(globalThis, {
+		// Not in happy-dom: idle work (the highlighter, a long chat's older items) runs on a timer.
+		requestIdleCallback: (callback: (deadline: { didTimeout: boolean; timeRemaining(): number }) => void) => setTimeout(() => callback({ didTimeout: false, timeRemaining: () => 50 })),
+		cancelIdleCallback: (handle: ReturnType<typeof setTimeout>) => clearTimeout(handle),
 		acquireVsCodeApi: () => ({
 			postMessage: (message: { type: string }) => posted.push(message),
 			getState: () => saved,
@@ -93,6 +101,12 @@ export async function startScript(name: string): Promise<Readonly<Record<string,
 export async function showHomePage(): Promise<void> {
 	const home = await hostExport<{ prototype: { html(webview: unknown, media: string): string } }>('src/host/agentHome.ts', 'AgentHome');
 	showPage(home.prototype.html(fakeWebview, 'media'));
+}
+
+/** A team flow's page, as `TeamFlowPanel` draws it; start `webview-src/teamFlow` after it. */
+export async function showTeamFlowPage(): Promise<void> {
+	const TeamFlowPanel = await hostExport<new (extensionUri: string, title: string, icon: string, loading: string, onAction: () => void) => { panel: { webview: { html: string } } }>('src/host/teamFlowPanel.ts', 'TeamFlowPanel');
+	showPage(new TeamFlowPanel('extension', 'Open Merge Request', 'gitlab', 'Loading', () => undefined).panel.webview.html);
 }
 
 /** Sends the page a message from the extension. */
