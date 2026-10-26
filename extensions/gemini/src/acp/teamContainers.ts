@@ -8,6 +8,8 @@
 // once the user takes them over in Connections (gemini/docs/adr/0004-one-tool-adapter.md). Each image is pinned by digest, the token reaches only the container's environment
 // (Docker gets the variable's name, not its value), and each container lists only the tools the
 // adapter calls, so the agent still sees geminicode-tools' own curated tools and nothing else.
+// Tokens go to the container on its input, read by a shell before the server starts: `docker inspect`
+// prints a container's environment (an `--env-file`'s values included), and the agent's shell can run it.
 //
 // SonarSource's SonarQube server (in Docker, the folder mounted read-only) and Snyk's own server
 // (`snyk mcp`, from the user's Snyk CLI) run the same way, one per folder.
@@ -27,14 +29,16 @@ export interface PinnedImage {
 	readonly image: string;
 	readonly tag: string;
 	readonly digest: string;
+	/** The image's own entrypoint, which the shell that reads the tokens hands over to. Read from the image's config at this digest; each image has /bin/sh. */
+	readonly entrypoint: readonly string[];
 }
 
 /** Read from the registries on 18 Oct 2026, at the versions the team's settings file was measured with. */
 export const teamImages = {
-	jira: { image: 'ghcr.io/sooperset/mcp-atlassian', tag: '0.23.1', digest: 'sha256:5b7c9b64d4eb3210cab74be8bf3e6aeea9ed14f3042dc59ba5c5287bd4dbe466' },
-	gitlab: { image: 'zereight050/gitlab-mcp', tag: '2.3.3', digest: 'sha256:0b4acfbe69e5021833bc47a0dd24ba6280502f7ff200f52f3b45d18b06516cb2' },
+	jira: { image: 'ghcr.io/sooperset/mcp-atlassian', tag: '0.23.1', digest: 'sha256:5b7c9b64d4eb3210cab74be8bf3e6aeea9ed14f3042dc59ba5c5287bd4dbe466', entrypoint: ['mcp-atlassian'] },
+	gitlab: { image: 'zereight050/gitlab-mcp', tag: '2.3.3', digest: 'sha256:0b4acfbe69e5021833bc47a0dd24ba6280502f7ff200f52f3b45d18b06516cb2', entrypoint: ['node', 'build/index.js'] },
 	/** SonarSource's own server, the newest release on 18 Oct 2026; it needs SonarQube Server 2025.1 or later. */
-	sonar: { image: 'sonarsource/sonarqube-mcp', tag: '2026.5.0', digest: 'sha256:21bb7bf785a8c9cbe19553f6957d83ef45138926bbb15ca9e1fc4895e5026b6f' },
+	sonar: { image: 'sonarsource/sonarqube-mcp', tag: '2026.5.0', digest: 'sha256:21bb7bf785a8c9cbe19553f6957d83ef45138926bbb15ca9e1fc4895e5026b6f', entrypoint: ['/usr/local/bin/docker-entrypoint'] },
 } as const satisfies Record<string, PinnedImage>;
 
 /** The containers' tools the adapter calls; each container is started with only these. */
@@ -52,16 +56,24 @@ export function findDocker(exists: (file: string) => boolean = existsSync): stri
 }
 
 /**
- * `docker run` for `pin` with `env` in the child's environment only: the arguments name each
- * variable (`-e NAME`), so the values are in no process list.
+ * `docker run` for `pin`, with `env` in the child's environment only: the arguments name each
+ * variable (`-e NAME`), so the values are in no process list. `secrets` never reach Docker's
+ * environment or the container's settings, where `docker inspect` would show them: the container
+ * starts a shell that reads them from its input, one a line, exports them and runs the image's
+ * own entrypoint, which then reads MCP messages from the same input.
  */
-export function containerSpec(docker: string, pin: PinnedImage, env: Readonly<Record<string, string>>, base: NodeJS.ProcessEnv = process.env, mounts: readonly string[] = []): StdioServerSpec {
+export function containerSpec(docker: string, pin: PinnedImage, env: Readonly<Record<string, string>>, base: NodeJS.ProcessEnv = process.env, mounts: readonly string[] = [], secrets: Readonly<Record<string, string>> = {}): StdioServerSpec {
+	const names = Object.keys(secrets);
+	const reader = names.length
+		? ['--entrypoint', '/bin/sh', pinnedReference(pin), '-c', [...names.map((_, i) => `IFS= read -r v${i}`), `export ${names.map((name, i) => `${name}="$v${i}"`).join(' ')}`, 'exec "$@"'].join(' && '), 'sh', ...pin.entrypoint]
+		: [pinnedReference(pin)];
 	return {
 		command: docker,
-		args: ['run', '-i', '--rm', ...mounts.flatMap(mount => ['-v', mount]), ...Object.keys(env).flatMap(name => ['-e', name]), pinnedReference(pin)],
+		args: ['run', '-i', '--rm', ...mounts.flatMap(mount => ['-v', mount]), ...Object.keys(env).flatMap(name => ['-e', name]), ...reader],
 		// Docker's folders lead the PATH: it runs its credential helper (docker-credential-desktop) from
 		// there, even for a public image, and an app opened from the Dock has a short PATH.
 		env: { PATH: [...dockerFolders(docker), base.PATH].filter(Boolean).join(path.delimiter), HOME: base.HOME, DOCKER_HOST: base.DOCKER_HOST, DOCKER_CONFIG: base.DOCKER_CONFIG, ...env },
+		...names.length ? { stdin: names.map(name => `${secrets[name].replace(/[\r\n]/g, '')}\n`).join('') } : {},
 	};
 }
 
@@ -77,17 +89,15 @@ export function jiraContainer(docker: string, account: { readonly site: string; 
 	return new ChildServer('jira', containerSpec(docker, teamImages.jira, {
 		JIRA_URL: account.site,
 		JIRA_USERNAME: account.email,
-		JIRA_API_TOKEN: account.token,
 		ENABLED_TOOLS: jiraContainerTools.join(','),
-	}));
+	}, process.env, [], { JIRA_API_TOKEN: account.token }));
 }
 
 export function gitlabContainer(docker: string, account: { readonly url: string; readonly token: string }): ChildServer {
 	return new ChildServer('gitlab', containerSpec(docker, teamImages.gitlab, {
 		GITLAB_API_URL: `${account.url.replace(/\/+$/, '')}/api/v4`,
-		GITLAB_PERSONAL_ACCESS_TOKEN: account.token,
 		GITLAB_TOOLS: gitlabContainerTools.join(','),
-	}));
+	}, process.env, [], { GITLAB_PERSONAL_ACCESS_TOKEN: account.token }));
 }
 
 /** The toolsets the SonarQube server lists; analysis reads the mounted folder, so no file's text passes through a message. */
@@ -97,9 +107,8 @@ const sonarToolsets = 'analysis,issues,quality-gates,security-hotspots,projects'
 export function sonarContainer(docker: string, account: { readonly url: string; readonly token: string }, folder: string): ChildServer {
 	return new ChildServer('sonar', containerSpec(docker, teamImages.sonar, {
 		SONARQUBE_URL: account.url,
-		SONARQUBE_TOKEN: account.token,
 		SONARQUBE_TOOLSETS: sonarToolsets,
-	}, process.env, [`${folder}:/app/mcp-workspace:ro`]));
+	}, process.env, [`${folder}:/app/mcp-workspace:ro`], { SONARQUBE_TOKEN: account.token }));
 }
 
 /**
