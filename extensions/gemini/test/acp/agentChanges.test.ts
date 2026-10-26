@@ -4,20 +4,23 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as path from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { AgentChanges } from '../../src/acp/agentChanges';
+import { describe, expect, it, vi } from 'vitest';
+import { AgentChanges, EditedFile, othersChanging, reviewBase, reviewOrder } from '../../src/acp/agentChanges';
+import { diffLines, splitLines } from '../../src/acp/lineDiff';
 
 const root = path.resolve('/work/app');
 const file = (name: string) => path.join(root, name);
 
 describe('AgentChanges', () => {
 	it('counts lines against the text before the first edit', () => {
+		vi.useFakeTimers({ now: 1000 });
 		const changes = new AgentChanges(root);
 		let fired = 0;
 		changes.onDidChange(() => fired++);
 		changes.record([{ path: file('a.ts'), oldText: 'one\ntwo', newText: 'one\nTWO' }]);
 		changes.record([{ path: file('a.ts'), oldText: 'one\nTWO', newText: 'one\nTWO\nthree' }]);
-		expect(changes.files).toEqual([{ path: file('a.ts'), created: false, original: 'one\ntwo', added: 2, removed: 1 }]);
+		vi.useRealTimers();
+		expect(changes.files).toEqual([{ path: file('a.ts'), created: false, original: 'one\ntwo', added: 2, removed: 1, agentText: 'one\nTWO\nthree', editedAt: 1000 }]);
 		expect(changes.totals).toEqual({ files: 1, added: 2, removed: 1 });
 		expect(fired).toBe(2);
 	});
@@ -80,5 +83,71 @@ describe('AgentChanges.keep', () => {
 		expect(changes.file(file('a.ts'))).toMatchObject({ original: 'a\nB\nc', added: 1, removed: 1 });
 		changes.keep(file('a.ts'), 'a\nB\nC', 'a\nB\nC');
 		expect(changes.files).toEqual([]);
+	});
+});
+
+describe('the agent\'s own changes', () => {
+	/** The hunks Review shows: against the original with later edits in it. */
+	const agentHunks = (changes: AgentChanges, name: string, current: string) => {
+		const base = reviewBase(changes.file(file(name))!, current)!;
+		return { foreign: base.foreign, hunks: diffLines(splitLines(base.base), splitLines(current)).map(h => splitLines(current).slice(h.modifiedStart, h.modifiedEnd)) };
+	};
+
+	it('does not count lines the user typed after the agent as its changes', () => {
+		const changes = new AgentChanges(root);
+		changes.record([{ path: file('a.ts'), oldText: 'a\nb\nc\nd\ne', newText: 'a\nB\nc\nd\ne' }]);
+		expect(agentHunks(changes, 'a.ts', 'a\nB\nc\nd\ne')).toEqual({ foreign: false, hunks: [['B']] });
+		// The user changes another line, and adds one right after the agent's.
+		expect(agentHunks(changes, 'a.ts', 'a\nB\nmine\nc\nd\nE')).toEqual({ foreign: true, hunks: [['B']] });
+	});
+
+	it('takes the user\'s edits between two of the agent\'s out of its changes', () => {
+		const changes = new AgentChanges(root);
+		changes.record([{ path: file('a.ts'), oldText: 'a\nb\nc', newText: 'A\nb\nc' }]);
+		// The user edits c; the agent then edits b, reading the file with the user's edit.
+		changes.record([{ path: file('a.ts'), oldText: 'A\nb\nmine', newText: 'A\nB\nmine' }]);
+		expect(changes.file(file('a.ts'))).toMatchObject({ original: 'a\nb\nmine', added: 2, removed: 2 });
+		expect(agentHunks(changes, 'a.ts', 'A\nB\nmine')).toEqual({ foreign: false, hunks: [['A', 'B']] });
+	});
+
+	it('keeps an edit inside the agent\'s lines with the agent\'s change', () => {
+		const changes = new AgentChanges(root);
+		changes.record([{ path: file('a.ts'), oldText: 'a\nb\nc', newText: 'a\nB\nc' }]);
+		expect(agentHunks(changes, 'a.ts', 'a\nB2\nc')).toEqual({ foreign: true, hunks: [['B2']] });
+	});
+
+	it('makes the remaining changes the agent\'s text once some are kept', () => {
+		const changes = new AgentChanges(root);
+		changes.record([{ path: file('a.ts'), oldText: 'a\nb\nc', newText: 'A\nb\nC' }]);
+		changes.keep(file('a.ts'), 'A\nb\nc', 'A\nb\nC');
+		expect(changes.file(file('a.ts'))).toMatchObject({ original: 'A\nb\nc', agentText: 'A\nb\nC' });
+		expect(agentHunks(changes, 'a.ts', 'A\nb\nC')).toEqual({ foreign: false, hunks: [['C']] });
+	});
+
+	it('settles committed files', () => {
+		const changes = new AgentChanges(root);
+		let fired = 0;
+		changes.onDidChange(() => fired++);
+		changes.record([{ path: file('a.ts'), oldText: 'x', newText: 'y' }, { path: file('b.ts'), oldText: 'x', newText: 'y' }]);
+		changes.settle([file('a.ts'), file('other.ts')]);
+		changes.settle([file('other.ts')]);
+		expect([changes.files.map(f => f.path), fired]).toEqual([[file('b.ts')], 2]);
+	});
+
+	it('reviews first the agent whose text the file has, then the latest to edit it', () => {
+		const at = (name: string, editedAt: number, agentText?: string) => ({ name, file: { path: file('a.ts'), created: false, original: '', added: 1, removed: 0, editedAt, ...agentText === undefined ? {} : { agentText } } satisfies EditedFile });
+		expect(reviewOrder([at('first', 1), at('second', 2)], 'now').map(c => c.name)).toEqual(['second', 'first']);
+		expect(reviewOrder([at('first', 1, 'now'), at('second', 2, 'then')], 'now').map(c => c.name)).toEqual(['first', 'second']);
+	});
+
+	it('finds the other agents changing a file', () => {
+		const mine = new AgentChanges(root);
+		const theirs = new AgentChanges(root);
+		const idle = new AgentChanges(root);
+		mine.record([{ path: file('a.ts'), oldText: 'x', newText: 'y' }]);
+		theirs.record([{ path: file('a.ts'), oldText: 'y', newText: 'z' }]);
+		const sources = [{ id: 'mine', changes: mine }, { id: 'theirs', changes: theirs }, { id: 'idle', changes: idle }];
+		expect(othersChanging(file('a.ts'), sources, mine).map(s => s.id)).toEqual(['theirs']);
+		expect(othersChanging(file('b.ts'), sources, mine)).toEqual([]);
 	});
 });

@@ -14,7 +14,7 @@ import type { Attachment } from '../acp/attachments';
 import { isValidAttachment } from '../acp/attachmentValidation';
 import { chatToMarkdown } from '../acp/chatMarkdown';
 import { ChatTranscript, ForkContext, ThreadCard, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
-import { buildModeAfterPlan, diffsOf, dropOldest, lastPromptAt, runningStep, turnShape, wasCutOff } from '../acp/chatTurns';
+import { buildModeAfterPlan, diffsOf, nextApprovalMode, dropOldest, lastPromptAt, runningStep, turnShape, wasCutOff } from '../acp/chatTurns';
 import type { StoredCheckpoints } from '../acp/checkpoints';
 import { buildPromptContent } from '../acp/promptContent';
 import { atSafePoint, PromptQueue, steeringNote } from '../acp/promptQueue';
@@ -956,6 +956,36 @@ export class ChatController implements vscode.Disposable {
 		const mode = buildModeAfterPlan(this.service.client.settings);
 		if (mode) {
 			await this.settings.change(() => this.service.client.setMode(mode));
+		}
+	}
+
+	/**
+	 * Switches to the next approval mode, as the CLI's ⇧Tab does; the
+	 * composer's mode chip shows it. A project's coordinator has no modes to pick.
+	 */
+	cycleMode(): void {
+		const next = this.options.project ? undefined : nextApprovalMode(this.service.client.settings);
+		if (!next) {
+			return;
+		}
+		this.settings.onMessage({ type: 'setMode', id: next });
+	}
+
+	/** Picks the session's model in a quick pick, as the composer's model picker does. */
+	async pickModel(): Promise<void> {
+		const model = this.service.client.settings.model;
+		if (!model) {
+			void vscode.window.showInformationMessage(vscode.l10n.t("This agent offers no other model."));
+			return;
+		}
+		const picked = await vscode.window.showQuickPick(model.available.map(choice => ({
+			label: choice.name,
+			description: choice.id === model.currentId ? vscode.l10n.t("Current") : undefined,
+			detail: choice.description,
+			id: choice.id,
+		})), { title: vscode.l10n.t("Switch Model"), placeHolder: vscode.l10n.t("The model this agent's next prompts use") });
+		if (picked && picked.id !== model.currentId) {
+			this.settings.onMessage({ type: 'setModel', id: picked.id });
 		}
 	}
 

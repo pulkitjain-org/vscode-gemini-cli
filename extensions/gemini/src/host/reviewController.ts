@@ -5,7 +5,7 @@
 
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { AgentChanges, EditedFile } from '../acp/agentChanges';
+import { AgentChanges, EditedFile, othersChanging, reviewBase, reviewOrder } from '../acp/agentChanges';
 import { acceptHunk, diffLines, Hunk, revertHunk, splitLines } from '../acp/lineDiff';
 import { errorMessage } from '../acp/errors';
 import { recordPilot } from '../acp/pilotLog';
@@ -13,6 +13,8 @@ import { deleteFile, replaceFileText } from './workspaceFileSystem';
 
 /** An agent whose changes can be reviewed in the editor. */
 export interface ReviewSource {
+	/** The agent's id, for agents; inline edits have none. */
+	readonly id?: string;
 	readonly title: string;
 	readonly changes: AgentChanges;
 	/** Whether undoing a change saves the file, as agents' edits are saved. Inline edits leave saving to the user. */
@@ -23,6 +25,10 @@ export interface ReviewSource {
 interface FileReview {
 	readonly source: ReviewSource;
 	readonly file: EditedFile & { readonly original: string };
+	/** The original with edits made after the agent's: the hunks are against it, so they are only the agent's. */
+	readonly base: string;
+	/** The file has edits that aren't the agent's, which Undo All would lose too. */
+	readonly foreign: boolean;
 	readonly version: number;
 	readonly hunks: readonly Hunk[];
 }
@@ -81,10 +87,11 @@ export class ReviewController implements vscode.CodeLensProvider, vscode.HoverPr
 			vscode.window.onDidChangeVisibleTextEditors(() => this.refresh()),
 			vscode.window.onDidChangeActiveTextEditor(() => this.updateContext()),
 			vscode.workspace.onDidChangeTextDocument(e => this.reviews.has(e.document.uri.fsPath) && this.refreshSoon()),
-			vscode.commands.registerCommand('gemini.review.keepChange', (uri: string, index: number) => this.keepChange(uri, index)),
-			vscode.commands.registerCommand('gemini.review.undoChange', (uri: string, index: number) => this.undoChange(uri, index)),
-			vscode.commands.registerCommand('gemini.review.keepFile', (uri?: unknown) => this.keepFile(fileOf(uri))),
-			vscode.commands.registerCommand('gemini.review.undoFile', (uri?: unknown) => this.undoFile(fileOf(uri))),
+			// The Changes panel names its agent (`sourceId`), as the file may have another agent's changes too.
+			vscode.commands.registerCommand('gemini.review.keepChange', (uri: string, index: number, sourceId?: string) => this.keepChange(uri, index, sourceId)),
+			vscode.commands.registerCommand('gemini.review.undoChange', (uri: string, index: number, sourceId?: string) => this.undoChange(uri, index, sourceId)),
+			vscode.commands.registerCommand('gemini.review.keepFile', (uri?: unknown, sourceId?: string) => this.keepFile(fileOf(uri), sourceId)),
+			vscode.commands.registerCommand('gemini.review.undoFile', (uri?: unknown, sourceId?: string) => this.undoFile(fileOf(uri), sourceId)),
 			vscode.commands.registerCommand('gemini.review.nextChange', () => this.step(1)),
 			vscode.commands.registerCommand('gemini.review.previousChange', () => this.step(-1)),
 			vscode.commands.registerCommand('gemini.review.nextFile', (uri?: unknown) => this.nextFile(fileOf(uri))),
@@ -101,6 +108,17 @@ export class ReviewController implements vscode.CodeLensProvider, vscode.HoverPr
 			this.extraSources.splice(this.extraSources.indexOf(source), 1);
 			this.refresh();
 		});
+	}
+
+	/**
+	 * The other sources with changes still to review in `filePath`, besides
+	 * agent `agentId`'s: for warning on an agent's edit card that another live
+	 * agent in the same folder is changing the file too.
+	 */
+	othersChanging(filePath: string, agentId: string): readonly ReviewSource[] {
+		const sources = [...this.sources()];
+		const self = sources.find(source => source.id === agentId);
+		return self ? othersChanging(filePath, sources, self.changes).filter(source => source.id !== undefined) : [];
 	}
 
 	/** Works out the changes again, for example after an agent edited or the user kept some. */
@@ -163,7 +181,7 @@ export class ReviewController implements vscode.CodeLensProvider, vscode.HoverPr
 		if (!review || !hunk) {
 			return undefined;
 		}
-		const removed = splitLines(review.file.original).slice(hunk.originalStart, hunk.originalEnd).join('\n');
+		const removed = splitLines(review.base).slice(hunk.originalStart, hunk.originalEnd).join('\n');
 		const markdown = new vscode.MarkdownString(vscode.l10n.t("**Removed by {0}**", review.source.title));
 		markdown.appendCodeblock(removed.length > 20_000 ? `${removed.slice(0, 20_000)}\n…` : removed, document.languageId);
 		return new vscode.Hover(markdown);
@@ -180,23 +198,37 @@ export class ReviewController implements vscode.CodeLensProvider, vscode.HoverPr
 		this.timer = setTimeout(() => this.refresh(), refreshDelayMs);
 	}
 
-	/** The file's changes, if an agent changed it and its original text is known. */
-	private review(document: vscode.TextDocument): FileReview | undefined {
+	/**
+	 * The file's changes, if an agent changed it and its original text is
+	 * known. When several agents changed it, the one whose text it has (else
+	 * the latest) is reviewed first, or `sourceId` when given.
+	 */
+	private review(document: vscode.TextDocument, sourceId?: string): FileReview | undefined {
 		if (document.uri.scheme !== 'file') {
 			return undefined;
 		}
-		for (const source of [...this.extraSources, ...this.sources()]) {
+		const text = document.getText();
+		const candidates = [...this.extraSources, ...this.sources()].flatMap(source => {
 			const file = source.changes.file(document.uri.fsPath);
-			if (file?.original !== undefined) {
-				const hunks = diffLines(splitLines(file.original), splitLines(document.getText()));
-				return hunks.length ? { source, file: { ...file, original: file.original }, version: document.version, hunks } : undefined;
+			return file?.original !== undefined && (sourceId === undefined || source.id === sourceId) ? [{ source, file: { ...file, original: file.original } }] : [];
+		});
+		const lines = splitLines(text);
+		for (const candidate of reviewOrder(candidates, text)) {
+			const base = reviewBase(candidate.file, text);
+			const hunks = base ? diffLines(splitLines(base.base), lines) : [];
+			if (base && hunks.length) {
+				return { ...candidate, base: base.base, foreign: base.foreign, version: document.version, hunks };
 			}
 		}
 		return undefined;
 	}
 
-	/** The review for `document` as it is now. */
-	private current(document: vscode.TextDocument): FileReview | undefined {
+	/** The review for `document` as it is now; of `sourceId`'s changes, when given. */
+	private current(document: vscode.TextDocument, sourceId?: string): FileReview | undefined {
+		if (sourceId !== undefined) {
+			const review = this.reviews.get(document.uri.fsPath);
+			return review?.source.id === sourceId && review.version === document.version ? review : this.review(document, sourceId);
+		}
 		const review = this.reviews.get(document.uri.fsPath);
 		if (review && review.version === document.version) {
 			return review;
@@ -244,69 +276,76 @@ export class ReviewController implements vscode.CodeLensProvider, vscode.HoverPr
 		return target?.scheme === 'file' ? vscode.workspace.openTextDocument(target) : undefined;
 	}
 
-	private async keepChange(uri: string, index: number): Promise<void> {
+	private async keepChange(uri: string, index: number, sourceId?: string): Promise<void> {
 		const document = await this.documentFor(uri);
-		const review = document && this.current(document);
+		const review = document && this.current(document, sourceId);
 		const hunk = review?.hunks[index];
 		if (!document || !review || !hunk) {
 			return;
 		}
 		const text = document.getText();
-		const original = acceptHunk(splitLines(review.file.original), splitLines(text), hunk).join('\n');
+		const original = acceptHunk(splitLines(review.base), splitLines(text), hunk).join('\n');
 		review.source.changes.keep(review.file.path, original, text);
 	}
 
-	private async undoChange(uri: string, index: number): Promise<void> {
+	private async undoChange(uri: string, index: number, sourceId?: string): Promise<void> {
 		const document = await this.documentFor(uri);
-		const review = document && this.current(document);
+		const review = document && this.current(document, sourceId);
 		const hunk = review?.hunks[index];
 		if (!document || !review || !hunk) {
 			return;
 		}
-		if (review.file.created && review.hunks.length === 1) {
-			return this.undoFile(document.uri.toString());
+		if (review.file.created && review.hunks.length === 1 && !review.foreign) {
+			return this.undoFile(document.uri.toString(), sourceId);
 		}
 		recordPilot({ kind: 'undo', scope: 'change' });
-		const text = document.getText();
-		const reverted = revertHunk(splitLines(review.file.original), splitLines(text), hunk).join('\n');
-		await this.write(review, text, reverted);
+		const reverted = revertHunk(splitLines(review.base), splitLines(document.getText()), hunk).join('\n');
+		// The edits that aren't the agent's stay, in the file and in its new baseline.
+		await this.write(review, reverted, review.base);
 	}
 
-	private async keepFile(uri: string | undefined): Promise<void> {
+	private async keepFile(uri: string | undefined, sourceId?: string): Promise<void> {
 		const document = await this.documentFor(uri);
-		const review = document && this.current(document);
+		const review = document && this.current(document, sourceId);
 		if (document && review) {
 			const text = document.getText();
 			review.source.changes.keep(review.file.path, text, text);
 		}
 	}
 
-	private async undoFile(uri: string | undefined): Promise<void> {
+	private async undoFile(uri: string | undefined, sourceId?: string): Promise<void> {
 		const document = await this.documentFor(uri);
-		const review = document && this.current(document);
+		const review = document && this.current(document, sourceId);
 		if (!document || !review) {
 			return;
 		}
-		recordPilot({ kind: 'undo', scope: 'file' });
+		const name = path.basename(review.file.path);
 		if (review.file.created) {
 			const remove = vscode.l10n.t("Delete File");
-			const choice = await vscode.window.showWarningMessage(vscode.l10n.t("{0} was created by {1}. Delete it?", path.basename(review.file.path), review.source.title), { modal: true }, remove);
+			const choice = await vscode.window.showWarningMessage(vscode.l10n.t("{0} was created by {1}. Delete it?", name, review.source.title), { modal: true }, remove);
 			if (choice !== remove) {
 				return;
 			}
+		} else if (review.foreign) {
+			const undo = vscode.l10n.t("Undo All");
+			if (await vscode.window.showWarningMessage(undoForeignMessage(name, review.source.title), { modal: true }, undo) !== undo) {
+				return;
+			}
 		}
-		await this.write(review, document.getText(), review.file.created ? undefined : review.file.original);
+		recordPilot({ kind: 'undo', scope: 'file' });
+		const next = review.file.created ? undefined : review.file.original;
+		await this.write(review, next, next ?? '');
 	}
 
-	/** Writes `next` (or deletes the file), then tells the agent's change list. */
-	private async write(review: FileReview, current: string, next: string | undefined): Promise<void> {
+	/** Writes `next` (or deletes the file), then makes `base` the agent's change list's baseline for the file. */
+	private async write(review: FileReview, next: string | undefined, base: string): Promise<void> {
 		try {
 			if (next === undefined) {
 				await deleteFile(review.file.path);
 			} else {
 				await replaceFileText(review.file.path, next, review.source.saves !== false);
 			}
-			review.source.changes.record([{ path: review.file.path, oldText: current, newText: next ?? '' }]);
+			review.source.changes.keep(review.file.path, base, next ?? '');
 		} catch (err) {
 			void vscode.window.showErrorMessage(vscode.l10n.t("Could not undo the change: {0}", errorMessage(err)));
 		}
@@ -363,6 +402,11 @@ function reveal(editor: vscode.TextEditor, line: number): void {
 	const position = new vscode.Position(line, 0);
 	editor.selection = new vscode.Selection(position, position);
 	editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+}
+
+/** Undo All's question when the file has edits that aren't from `source`. */
+export function undoForeignMessage(file: string, source: string): string {
+	return vscode.l10n.t("{0} has edits that aren't from {1}. Undo All restores the file as it was before {1}, losing them too.", file, source);
 }
 
 /** A command's URI argument: a string from a code lens, or a Uri from an editor title button. */

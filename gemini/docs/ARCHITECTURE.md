@@ -429,13 +429,15 @@ Rewind always does both: it undoes the code from the first kept turn after the m
 
 The **Changes panel** (`changesPanel.ts`, `webview-src/changes.ts`) is Agents mode's live diff of what the agent in front changed. Each change shows as a unified diff with Keep and Undo, which run the same commands as the editor's CodeLenses, plus Keep All, Undo All and Commit (or Merge Back for an agent on its own branch). Diffs are worked out with `lineDiff.ts` against the open document's text, 150 ms after the last edit, and only while the panel is visible.
 
-In Editor mode the **Changes view** below the Agents pane is shown instead. It lists the files the agent in front has edited, recorded from its completed edit tool calls. Each file opens a diff against its text from before the agent's first edit, **Open All Changes** shows them in the multi-diff editor, and **Clear List** forgets them.
+The list keeps what the agent last wrote to each file (`agentText`, from the ACP diffs). Edits made after it, by the user or another agent, are moved into the baseline where they don't touch the agent's lines (`rebaseOriginal`), so the panel and the editor show only the agent's changes, and Undo All asks first when it would lose such edits. When two agents changed one file, the editor reviews the one whose text the file has, else the latest to edit it (`reviewOrder`). `CommitSettler` watches the git directory of each folder with changes to review; when HEAD or a branch moves, files whose text is what HEAD has (`filesMatchingHead`) leave the list, however they were committed.
+
+In Editor mode the **Changes view** below the Agents pane is shown instead. It lists the files the agent in front has edited, recorded from its completed edit tool calls. Each file opens a diff against its text from before the agent's first edit, **Open All Changes** shows them in the multi-diff editor, and **Clear Agent's Change List** forgets them.
 
 #### Git
 
 Each chat's composer shows the folder's branch as a pill that switches or creates a branch through the built-in Git extension, which is only activated when the user picks an action (`gitActions.ts`).
 
-An agent's chat also offers **Create Branch & Commit**. It stages and commits only that agent's changed files to a new branch (suggested as `gemini/<agent name>`, with the agent's name as the message), warns first when other files are already staged, and then clears the agent's Changes list.
+An agent's chat also offers **Create Branch & Commit**. It stages and commits only that agent's changed files to a new branch (suggested as `gemini/<agent name>`), warns first when other files are already staged, and then clears the agent's Changes list. The message is written by the quick model from the diff (`commitMessage.ts`, the same prompt as Generate Commit Message), with the agent's name when it can't be. `commitToCurrentBranch` commits to the branch checked out instead.
 
 #### Worktrees
 
@@ -443,7 +445,7 @@ An agent can work on its own branch in a Git worktree (`src/acp/worktrees.ts`, p
 
 The agent's session gets the worktree (or the workspace's matching subfolder in it) as its `cwd`, and the agent record keeps the folder, branch and base. Creating one costs a checkout of the repository's files, shown as progress, and nothing on later prompts.
 
-**Merge Back** commits leftovers with the agent's name and runs `git merge --no-ff` in the workspace's repository, leaving conflicts for Source Control.
+**Merge Back** commits leftovers with a message written the same way (the agent's name when none is) and runs `git merge --no-ff` in the workspace's repository, leaving conflicts for Source Control.
 
 ### Terminals
 
@@ -997,7 +999,7 @@ The status bar menu's **Report an Issue...** opens `reportIssueUrl` from `produc
 
 ## Sign-in and errors
 
-- **Sign-in is delegated.** The CLI owns OAuth. GeminiCode calls `authenticate("oauth-personal")` only when `session/new` reports that sign-in is required, because the call rewrites `security.auth.selectedType` in the user's `~/.gemini/settings.json`.
+- **Sign-in is delegated.** The CLI owns OAuth. GeminiCode calls `authenticate("oauth-personal")` only when `session/new` reports that sign-in is required, because the call rewrites `security.auth.selectedType` in the user's `~/.gemini/settings.json`. Over ACP, gemini-cli 0.64.0 skips its consent prompt and opens Google's sign-in page in the browser, waiting up to five minutes. The chat's **Sign In** restarts the agent to do that again (a failed sign-in stays cached in the process).
 - **Terminal fallback.** Some steps cannot finish over ACP: account validation, and a sign-in on a machine with no browser. For these, **Complete Setup in Terminal** runs the interactive `gemini` with the same environment, and GeminiCode restarts the agent when the terminal closes.
 - **Errors are strings.** The CLI turns every setup failure into JSON-RPC error `-32000` with a message string. Other failures arrive as a generic internal error with the CLI's message in `data.details`. `classifyAgentError()` matches those strings against a small table of known patterns (sign-in required or failed, project ID missing or numeric, untrusted folder), each with a test fixture. An unknown message is shown as it is.
 - **Project ID.** GeminiCode resolves the Google Cloud project from the workspace setting, then the user setting, then the organisation default, then the `GOOGLE_CLOUD_QUOTA_PROJECT`, `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_PROJECT_ID` environment variables. It refuses to start the CLI with a project number, and only logs a warning for an ID that looks malformed.

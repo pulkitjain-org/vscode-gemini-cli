@@ -9,7 +9,7 @@ Agents ask before they act, and every change they make can be kept, undone or re
 
 ## Approval modes
 
-Pick a mode from the composer's **+** menu. The list comes from the Gemini CLI, minus any mode your admin turned off.
+Pick a mode from the composer's **+** menu, or press <kbd>⌘.</kbd> in an agent's tab (**Gemini: Cycle Approval Mode**) to step through Default, Auto Edit and Plan as the CLI's <kbd>⇧Tab</kbd> does; it never picks YOLO. The list comes from the Gemini CLI, minus any mode your admin turned off.
 
 | Mode | What the agent does |
 | --- | --- |
@@ -20,7 +20,7 @@ Pick a mode from the composer's **+** menu. The list comes from the Gemini CLI, 
 
 ## Permission requests
 
-A permission card shows the CLI's own choices, such as **Allow**, **Allow for this session** and **Reject**; <kbd>esc</kbd> rejects. When an agent asks, its tab comes to the front and the proposed edit opens as a diff; in the Agents pane its row shows an amber dot and "waiting".
+A permission card shows the CLI's own choices, such as **Allow**, **Allow for this session** and **Reject**; <kbd>esc</kbd> rejects. An agent that asks never takes over the chat you're typing in: its tab isn't brought forward. If its chat is in view, the proposed edit opens as a diff. In the Agents pane its row shows an amber dot and "waiting", and the Dock badge and a notification say it waits.
 
 **Allow for this session** on a shell command covers the command prefixes it runs for the rest of that chat's session: the program, and for programs with subcommands the subcommand, as the button says (**Allow git status, grep for this session**). Allowing `git status` never covers `git push` or `git grep`, and allowing `npm run lint` never covers `npm run deploy`. A redirect is allowed for the file it wrote only. Some commands ask every time anyway, because allowing them once would allow far more than you saw:
 
@@ -53,8 +53,14 @@ Open a file an agent changed and its changes show in place: added lines are tint
 
 | Keys | What it does |
 | --- | --- |
-| <kbd>⌘↩</kbd> / <kbd>⌘⌫</kbd> | Keep or undo the agent's changes to the file you're in |
-| <kbd>⌥]</kbd> / <kbd>⌥[</kbd> | Next or previous agent change in the file |
+| <kbd>⌥⌘↩</kbd> / <kbd>⇧⌥⌘⌫</kbd> | Keep or undo the agent's changes to the file you're in |
+| <kbd>⌥F5</kbd> / <kbd>⇧⌥F5</kbd> | Next or previous agent change in the file |
+
+Only the agent's own changes show. What you type in the file afterwards isn't counted as the agent's, and Keep or Undo on a change leaves your edits alone. **Undo All** restores the file as it was before the agent, so when the file also has edits that aren't the agent's, it asks first: they would go too.
+
+When two agents in one folder changed the same file, the changes of the one that edited it last show first; the other's show once those are kept or undone.
+
+Changes you commit leave the list by themselves, however you commit: from the chat, Source Control, the terminal, or by asking the agent. Once a file is what the latest commit has, its changes count as kept.
 
 ## Undo or retry a reply
 
@@ -70,7 +76,7 @@ That message and everything after it go from the chat and from Gemini's context,
 
 ## Commit the agent's work
 
-The branch under a chat's composer switches to another branch or creates one. **Create Branch & Commit** creates a branch, stages only the files that agent changed, and commits them; it warns first if other files are already staged. An agent on its own branch has **Merge Back** instead.
+The branch under a chat's composer switches to another branch or creates one. **Create Branch & Commit** creates a branch, stages only the files that agent changed, and commits them; it warns first if other files are already staged. The commit message is written from the agent's diff, as the Source Control sparkle writes one, for you to edit; the agent's name is used when it can't be (inline edit turned off, or a sign-in that can't make direct requests). An agent on its own branch has **Merge Back** instead, which commits its leftovers with a message written the same way.
 
 In the Source Control view, the sparkle button writes a commit message for the staged changes (or, with nothing staged, all changes).
 

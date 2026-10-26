@@ -76,7 +76,7 @@ export class ChatGitControls implements vscode.Disposable {
 			return;
 		}
 		const suggestion = commit.suggestion();
-		if (await createBranchAndCommit({ folder, files, suggestedBranch: suggestion.branch, suggestedMessage: suggestion.message })) {
+		if (await createBranchAndCommit({ folder, files, suggestedBranch: suggestion.branch, suggestedMessage: suggestion.message, writeMessage: suggestion.writeMessage })) {
 			commit.committed();
 		}
 		this.refresh();

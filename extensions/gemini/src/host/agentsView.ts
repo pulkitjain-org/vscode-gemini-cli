@@ -9,6 +9,7 @@ import * as vscode from 'vscode';
 import { AgentChanges, ChangeTotals } from '../acp/agentChanges';
 import { attentionChange } from '../acp/attention';
 import { branchNameFrom } from '../acp/branchNames';
+import { writeCommitMessage } from '../acp/commitMessage';
 import { agentFolder, AgentRecord, AgentsModel, AgentsSnapshot, mergedThreads, type StoredAgents } from '../acp/agents';
 import { AgentsStore } from '../acp/agentsStore';
 import { coordinatorModel } from '../acp/projectHub';
@@ -27,6 +28,7 @@ import { AgentSession } from './agentSession';
 import { ChangesSource, ChangesView } from './changesView';
 import type { AgentStateKind } from './panelProtocol';
 import { ReviewController } from './reviewController';
+import { CommitSettler } from './commitSettler';
 import type { BrowserTools } from './browserTools';
 import type { TeamConnections } from './teamConnections';
 import type { WorkspaceIndex } from './workspaceIndex';
@@ -147,6 +149,8 @@ export class AgentsView implements vscode.Disposable {
 	private readonly changesView: ChangesView;
 	/** Keep and Undo on each agent change, in the files themselves. */
 	readonly review: ReviewController;
+	/** Takes committed files out of each agent's changes to review. */
+	private readonly settler: CommitSettler;
 	/** The agent whose tab was last in front; the Changes view shows it. */
 	private focusedId: string | undefined;
 	private readonly disposables: vscode.Disposable[] = [];
@@ -211,7 +215,7 @@ export class AgentsView implements vscode.Disposable {
 		this.tree = new AgentTree(this.model, this.live);
 		this.changesView = new ChangesView(id => this.live.get(id)?.changes);
 		this.worktrees = new AgentWorktrees(this.model);
-		this.merge = new AgentMerge(this.model, this.live, (id, deleteBranch) => this.removeAgentAndWorktree(id, deleteBranch));
+		this.merge = new AgentMerge(this.model, this.live, (id, deleteBranch) => this.removeAgentAndWorktree(id, deleteBranch), folder => writeCommitMessage(folder, undefined, this.direct));
 		this.projects = new Projects({
 			record: id => this.model.agent(id),
 			workspaceFolder: id => {
@@ -284,7 +288,8 @@ export class AgentsView implements vscode.Disposable {
 			servers: folder => [...this.browser?.spareServers() ?? [], ...this.teamTools?.spareServers() ?? [], ...this.index?.spareServers(folder) ?? []],
 			serving: () => [!!this.browser?.serving, !!this.teamTools?.serving, !!this.index?.serving],
 		});
-		this.review = new ReviewController(() => [...this.live.entries()].map(([id, live]) => ({ title: vscode.l10n.t("the agent \"{0}\"", this.model.agent(id)?.title ?? ''), changes: live.changes })));
+		this.review = new ReviewController(() => [...this.live.entries()].map(([id, live]) => ({ id, title: vscode.l10n.t("the agent \"{0}\"", this.model.agent(id)?.title ?? ''), changes: live.changes })));
+		this.settler = new CommitSettler(() => [...this.live.values()].map(live => live.changes), message => this.service.writeLog(message));
 		this.indicators = new AgentIndicators(context.extensionUri, this.model, this.live, this.tree.view, this.notifier);
 		this.disposables.push(
 			this.tree,
@@ -292,6 +297,7 @@ export class AgentsView implements vscode.Disposable {
 			this.terminals,
 			this.changesView,
 			this.review,
+			this.settler,
 			this.worktrees,
 			this.onDidChangeAgentsEmitter,
 			this.onDidFocusEmitter,
@@ -328,7 +334,14 @@ export class AgentsView implements vscode.Disposable {
 			vscode.commands.registerCommand('gemini.agents.openChanges', (node?: AgentTreeNode) => node?.kind === 'agent' && this.openChanges(node.record.id)),
 			vscode.commands.registerCommand('gemini.agents.rename', (node?: AgentTreeNode) => this.rename(node)),
 			vscode.commands.registerCommand('gemini.agents.openAsMarkdown', (node?: AgentTreeNode) => node?.kind === 'agent' && this.openAsMarkdown(node.record.id)),
-			vscode.commands.registerCommand('gemini.agents.stop', (node?: AgentTreeNode) => node?.kind === 'agent' && this.stopTurn(node.record.id)),
+			// From the palette or a key: the agent in front.
+			vscode.commands.registerCommand('gemini.agents.stop', (node?: AgentTreeNode) => {
+				const id = node?.kind === 'agent' ? node.record.id : this.activeAgentId();
+				return id && this.stopTurn(id);
+			}),
+			vscode.commands.registerCommand('gemini.agents.focusChat', () => this.focusChat()),
+			vscode.commands.registerCommand('gemini.agents.cycleMode', () => this.chatInFront()?.cycleMode()),
+			vscode.commands.registerCommand('gemini.agents.switchModel', () => this.chatInFront()?.pickModel()),
 			vscode.commands.registerCommand('gemini.agents.remove', (node?: AgentTreeNode) => this.removeAgent(node)),
 			vscode.commands.registerCommand('gemini.agents.removeWorkspace', (node?: AgentTreeNode) => this.removeWorkspace(node)),
 			vscode.commands.registerCommand('gemini.projects.new', (node?: AgentTreeNode) => this.projectAgents.newProject(node)),
@@ -379,6 +392,23 @@ export class AgentsView implements vscode.Disposable {
 			}
 		}
 		return undefined;
+	}
+
+	/** The chat of the agent whose tab is in front, else the one last in front. */
+	private chatInFront(): ChatController | undefined {
+		const id = this.activeAgentId() ?? this.focusedId;
+		return id ? this.live.get(id)?.controller : undefined;
+	}
+
+	/** Puts the cursor in the message box of the agent in front (or last in front), opening its tab; with no agent yet, starts one. */
+	private async focusChat(): Promise<void> {
+		const id = this.activeAgentId() ?? (this.focusedId && this.model.agent(this.focusedId) ? this.focusedId : undefined);
+		if (!id) {
+			await vscode.commands.executeCommand('gemini.agents.newAgent');
+			return;
+		}
+		await this.open(id);
+		this.live.get(id)?.controller.focusComposer();
 	}
 
 	/** Shows each running chat's branch and chips again, as after a review changed. */
@@ -869,7 +899,8 @@ export class AgentsView implements vscode.Disposable {
 							onDidChange: listener => changes.onDidChange(listener),
 							suggestion: () => {
 								const title = this.model.agent(record.id)?.title ?? record.title;
-								return { branch: branchNameFrom(title), message: title };
+								// The agent's name when no message can be written from the diff.
+								return { branch: branchNameFrom(title), message: title, writeMessage: () => writeCommitMessage(folder, changes.files.map(file => file.path), this.direct) };
 							},
 							// Committed changes are no longer the agent's to review.
 							committed: () => changes.clear(),
@@ -914,6 +945,7 @@ export class AgentsView implements vscode.Disposable {
 			}),
 			changes.onDidChange(() => {
 				this.review.refreshSoon();
+				this.settler.update();
 				this.model.setChanges(record.id, changes.totals);
 				if (project) {
 					this.projects.threadChanged(this.model.agent(record.id) ?? record);
@@ -1085,7 +1117,12 @@ export class AgentsView implements vscode.Disposable {
 			await this.removeWorktreeAgent(node.record, worktree);
 			return;
 		}
-		const answer = await vscode.window.showWarningMessage(vscode.l10n.t("Remove the agent \"{0}\"? Its conversation is closed.", node.record.title), { modal: true }, remove);
+		// Its change list goes with it, so name what still waits for Keep or Undo.
+		const unreviewed = (this.live.get(node.record.id)?.changes.files ?? (await this.transcripts.load(node.record.id)).changes).map(file => path.basename(file.path));
+		const names = unreviewed.length > 5 ? `${unreviewed.slice(0, 5).join(', ')}, …` : unreviewed.join(', ');
+		const detail = unreviewed.length === 1 ? vscode.l10n.t("1 file still has changes to review: {0}.", names)
+			: unreviewed.length ? vscode.l10n.t("{0} files still have changes to review: {1}.", unreviewed.length, names) : undefined;
+		const answer = await vscode.window.showWarningMessage(vscode.l10n.t("Remove the agent \"{0}\"? This deletes its conversation and undo history.", node.record.title), { modal: true, detail }, remove);
 		if (answer === remove) {
 			this.stop(node.record.id, false);
 			this.forkGone(node.record);
@@ -1175,6 +1212,7 @@ export class AgentsView implements vscode.Disposable {
 		live.changes.dispose();
 		live.session.dispose();
 		this.review.refresh();
+		this.settler.update();
 	}
 
 	/**

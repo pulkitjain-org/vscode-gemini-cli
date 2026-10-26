@@ -47,8 +47,12 @@ export function toViewStatus(status: AgentStatus): ViewStatus {
 		case 'error': {
 			const retry = { label: vscode.l10n.t("Retry"), command: 'gemini.restartAgent' } as const;
 			const kind = status.error?.kind;
-			const fix = kind === 'auth-required' || kind === 'auth-failed'
-				? { label: vscode.l10n.t("Sign In"), command: 'gemini.completeSetupInTerminal' } as const
+			// Sign In restarts the agent, whose `authenticate` opens Google's sign-in in the browser (gemini-cli
+			// skips its consent prompt over ACP). A failed sign-in with a code means no browser can open: that one needs the terminal.
+			const fix = kind === 'auth-required'
+				? { label: vscode.l10n.t("Sign In"), command: 'gemini.signIn' } as const
+				: kind === 'auth-failed'
+					? { label: vscode.l10n.t("Sign In"), command: 'gemini.completeSetupInTerminal' } as const
 				: kind === 'project-id-required' || kind === 'project-id-numeric'
 					? { label: vscode.l10n.t("Set Project ID"), command: 'gemini.setProjectId' } as const
 					: { label: vscode.l10n.t("Show Log"), command: 'gemini.showLog' } as const;

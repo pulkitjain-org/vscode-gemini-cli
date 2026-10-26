@@ -3,12 +3,13 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { listFiles, listFolder } from '../../src/acp/folderFiles';
-import { readGitHead } from '../../src/acp/gitHead';
+import { filesMatchingHead, gitDirs, porcelainPaths, readGitHead } from '../../src/acp/gitHead';
 
 function repo(head: string): string {
 	const root = mkdtempSync(path.join(tmpdir(), 'git-head-'));
@@ -63,3 +64,60 @@ describe('listFiles', () => {
 		expect([cut.files.length, cut.truncated, whole.files.length, whole.truncated]).toEqual([2, true, 4, false]);
 	});
 });
+
+/** A repository with one commit of `a.ts` and `src/b.ts`. */
+function committedRepo(): { readonly root: string; readonly run: (...args: string[]) => string } {
+	const root = mkdtempSync(path.join(tmpdir(), 'git-settle-'));
+	const run = (...args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8' });
+	run('init', '-q', '-b', 'main');
+	run('config', 'user.email', 't@example.com');
+	run('config', 'user.name', 'T');
+	mkdirSync(path.join(root, 'src'));
+	writeFileSync(path.join(root, 'a.ts'), 'one\n');
+	writeFileSync(path.join(root, 'src', 'b.ts'), 'two\n');
+	run('add', '.');
+	run('commit', '-q', '-m', 'first');
+	return { root, run };
+}
+
+describe('filesMatchingHead', () => {
+	it('finds the files whose text is what HEAD has, from the repository or a subfolder', async () => {
+		const { root, run } = committedRepo();
+		const a = path.join(root, 'a.ts');
+		const b = path.join(root, 'src', 'b.ts');
+		const created = path.join(root, 'src', 'new file.ts');
+		writeFileSync(a, 'one, changed\n');
+		writeFileSync(b, 'two, changed\n');
+		writeFileSync(created, 'new\n');
+		expect(await filesMatchingHead(root, [a, b, created])).toEqual([]);
+		// b.ts and the new file are committed; a.ts is staged but not committed.
+		run('add', 'src');
+		run('commit', '-q', '-m', 'second');
+		run('add', 'a.ts');
+		expect((await filesMatchingHead(root, [a, b, created])).sort()).toEqual([b, created].sort());
+		expect((await filesMatchingHead(path.join(root, 'src'), [a, b, created])).sort()).toEqual([b, created].sort());
+	});
+
+	it('does not count a file Git ignores as committed', async () => {
+		const { root } = committedRepo();
+		writeFileSync(path.join(root, '.gitignore'), 'out.log\n');
+		writeFileSync(path.join(root, 'out.log'), 'x');
+		expect(await filesMatchingHead(root, [path.join(root, 'out.log')])).toEqual([]);
+	});
+
+	it('reads paths from porcelain status, with both sides of a rename', () => {
+		expect(porcelainPaths(' M a.ts\0R  new.ts\0old.ts\0?? dir/x y.ts\0')).toEqual(['a.ts', 'new.ts', 'old.ts', 'dir/x y.ts']);
+		expect(porcelainPaths('')).toEqual([]);
+	});
+
+	it('finds the git directories to watch, also for a worktree', async () => {
+		const { root, run } = committedRepo();
+		expect(await gitDirs(root)).toEqual({ gitDir: path.join(root, '.git'), commonDir: path.join(root, '.git') });
+		const worktree = path.join(mkdtempSync(path.join(tmpdir(), 'git-settle-wt-')), 'wt');
+		run('worktree', 'add', '-q', '-b', 'wt', worktree);
+		const dirs = await gitDirs(worktree);
+		expect(realpathSync(dirs!.commonDir)).toBe(realpathSync(path.join(root, '.git')));
+		expect(dirs?.gitDir).not.toBe(dirs?.commonDir);
+	});
+});
+
