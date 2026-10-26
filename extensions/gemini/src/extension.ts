@@ -32,6 +32,7 @@ import { SettingsPage } from './host/settingsPage';
 import { UsageMeter } from './host/usageMeter';
 import { initTeamCommands } from './host/teamCommands';
 import { KeepAwake } from './acp/keepAwake';
+import { debugLogName } from './acp/mcpDiagnostics';
 import { BrowserTools } from './host/browserTools';
 import { TeamConnections } from './host/teamConnections';
 import { TeamFlows } from './host/teamFlows';
@@ -67,7 +68,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		adminPolicy: vscode.Uri.joinPath(context.globalStorageUri, 'policy').fsPath,
 	});
 	const teamCommandStore = initTeamCommands(log);
-	const service = new AgentService(log, vscode.Uri.joinPath(context.globalStorageUri, 'cli-debug.log').fsPath);
+	// The CLI's debug log, one per window's process (GEMINI_DEBUG_LOG_FILE), so windows never empty each other's.
+	const service = new AgentService(log, vscode.Uri.joinPath(context.globalStorageUri, 'cli-logs', debugLogName()).fsPath);
 	const diffPreview = new DiffPreview();
 	const fileIndex = new WorkspaceFileIndex();
 	// Rewrites run on the agent process every chat shares, in an empty folder of their own.
