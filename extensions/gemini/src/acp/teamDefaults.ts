@@ -10,7 +10,8 @@
 //   {
 //     "jira": { "site": "https://acme.atlassian.net", "projects": ["ACME"] },
 //     "gitlab": { "url": "https://gitlab.acme.internal", "releaseBranches": "release/*", "defaultTarget": "develop" },
-//     "sonar": { "url": "https://sonar.acme.internal", "projectKey": "acme-checkout" }
+//     "sonar": { "url": "https://sonar.acme.internal", "projectKey": "acme-checkout" },
+//     "figma": { "viewports": ["XS", "S", "M", "L"] }
 //   }
 
 import { promises as fs } from 'node:fs';
@@ -30,6 +31,8 @@ export interface TeamDefaults {
 	readonly gitlab?: { readonly url?: string; readonly releaseBranches?: string; readonly defaultTarget?: string; readonly project?: string };
 	readonly sonar?: { readonly url?: string; readonly projectKey?: string };
 	readonly snyk?: { readonly endpoint?: string };
+	/** The screen sizes the team's designs have one frame for, as the designers name them. */
+	readonly figma?: { readonly viewports?: readonly string[] };
 	/** The file it came from, for the Connections page. */
 	readonly file?: string;
 }
@@ -90,6 +93,8 @@ function sanitize(raw: unknown): TeamDefaults {
 	const gitlab = o.gitlab ?? {};
 	const sonar = o.sonar ?? {};
 	const snyk = o.snyk ?? {};
+	const figma = o.figma ?? {};
+	const viewports = Array.isArray(figma.viewports) ? figma.viewports.flatMap(v => str(v) ? [String(v).trim()] : []) : [];
 	return {
 		jira: {
 			site: str(jira.site), projects: Array.isArray(jira.projects) ? jira.projects.flatMap(p => str(p) ? [String(p).trim().toUpperCase()] : []) : undefined, commentVisibility: str(jira.commentVisibility),
@@ -98,6 +103,7 @@ function sanitize(raw: unknown): TeamDefaults {
 		gitlab: { url: str(gitlab.url), releaseBranches: str(gitlab.releaseBranches), defaultTarget: str(gitlab.defaultTarget), project: str(gitlab.project) },
 		sonar: { url: str(sonar.url), projectKey: str(sonar.projectKey) },
 		snyk: { endpoint: str(snyk.endpoint) },
+		...viewports.length ? { figma: { viewports } } : {},
 	};
 }
 

@@ -104,10 +104,17 @@ describe('PromptQueue', () => {
 });
 
 describe('atSafePoint', () => {
-	it('is safe while the model thinks or writes, and after every tool finished', () => {
+	it('is safe before any tool, and once the model answers after the last tool', () => {
 		expect(atSafePoint([user('u')], false)).toBe(true);
+		expect(atSafePoint([user('u'), agent('a')], false)).toBe(true);
 		expect(atSafePoint([user('u'), tool('t', 'completed'), agent('a')], false)).toBe(true);
-		expect(atSafePoint([user('u'), tool('t', 'failed')], false)).toBe(true);
+		expect(atSafePoint([user('u'), tool('t', 'completed'), { id: 'th', kind: 'thought', text: 'reading the result' }], false)).toBe(true);
+	});
+
+	it('waits after a tool finished until the model answers: the CLI hasn\'t sent it the result yet', () => {
+		expect(atSafePoint([user('u'), tool('t', 'completed')], false)).toBe(false);
+		expect(atSafePoint([user('u'), tool('t', 'failed')], false)).toBe(false);
+		expect(atSafePoint([user('u'), agent('a'), tool('t', 'completed')], false)).toBe(false);
 	});
 
 	it('waits while a tool runs', () => {
@@ -136,5 +143,30 @@ describe('steeringNote', () => {
 		expect(withoutSteeringNote(steeringNote())).toBe('');
 		expect(withoutSteeringNote('use pnpm')).toBe('use pnpm');
 		expect(withoutSteeringNote('<steering_note> unclosed')).toBe('<steering_note> unclosed');
+	});
+});
+
+describe('PromptQueue, for a message someone waits on', () => {
+	it('tells it whether it went: joined with the rest, or taken out unsent when the queue is held or cleared', () => {
+		const queue = new PromptQueue();
+		const told: string[] = [];
+		queue.add('Fix the tax line', [], false, undefined, { includeEdits: true });
+		queue.add('Revise the plan', [], false, undefined, { settle: sent => told.push(`plan ${sent}`) });
+		const joined = queue.takeAll()!;
+		joined.settle!(true);
+		queue.add('Revise again', [], false, undefined, { settle: sent => told.push(`again ${sent}`) });
+		queue.add('And the docs', [], false);
+		queue.dropAwaited();
+		const held = queue.view.map(each => each.text);
+		queue.add('Once more', [], false, undefined, { settle: sent => told.push(`once ${sent}`) });
+		queue.clear();
+		expect({ includeEdits: joined.includeEdits, told, held }).toEqual({ includeEdits: true, told: ['plan true', 'again false', 'once false'], held: ['And the docs'] });
+	});
+
+	it('won\'t send a message with the user\'s edits now: it waits for the turn to end', () => {
+		const queue = new PromptQueue();
+		queue.add('Use my edits', [], false, undefined, { includeEdits: true });
+		const [item] = queue.view;
+		expect({ steered: queue.steer(item.id), view: queue.view }).toEqual({ steered: false, view: [{ id: item.id, text: 'Use my edits', attachments: 0, steer: false, withEdits: true }] });
 	});
 });

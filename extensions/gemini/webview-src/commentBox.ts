@@ -112,6 +112,8 @@ export function createCommentBox(host: CommentBoxHost): CommentBox {
 	/** Files read here to send with the comment, at most: bigger ones go by the paperclip, as paths. */
 	const maxPastedBytes = 20 * 1024 * 1024;
 	let commentKey: string | undefined;
+	/** The ticket's link, so Jira calls reach its site when several are connected. */
+	let commentUrl: string | undefined;
 	let commentPosting = false;
 	let commentDefaultRole: string | undefined;
 	const commentDrafts = new Map<string, CommentDraft>();
@@ -199,6 +201,7 @@ export function createCommentBox(host: CommentBoxHost): CommentBox {
 
 	function openComment(action: Extract<HomeAction, { kind: 'comment' }>): void {
 		commentKey = action.key;
+		commentUrl = action.url;
 		commentDefaultRole = action.visibility;
 		const draft = commentDraft()!;
 		commentHead.replaceChildren(toolLogo('jira', 16), commentTitle, tip(button('icon-button dash-list-close', '', () => commentDialog.close(), 'close'), strings.close, strings.commentTipCancel));
@@ -214,7 +217,7 @@ export function createCommentBox(host: CommentBoxHost): CommentBox {
 		commentError.textContent = '';
 		commentDialog.showModal();
 		commentText.focus();
-		host.post({ type: 'commentOptions', key: action.key });
+		host.post({ type: 'commentOptions', key: action.key, ...action.url ? { url: action.url } : {} });
 	}
 
 	/** Everyone, the team's role, and the project's roles and the user's groups once Jira says. */
@@ -378,7 +381,7 @@ export function createCommentBox(host: CommentBoxHost): CommentBox {
 			commentPeople.hidden = false;
 		}
 		const id = ++peopleQuestion;
-		peopleTimer = setTimeout(() => host.post({ type: 'commentPeople', key: commentKey!, query: at.query, id }), 150);
+		peopleTimer = setTimeout(() => host.post({ type: 'commentPeople', key: commentKey!, ...commentUrl ? { url: commentUrl } : {}, query: at.query, id }), 150);
 	}
 
 	function renderPeople(): void {
@@ -520,11 +523,12 @@ export function createCommentBox(host: CommentBoxHost): CommentBox {
 		closePeople();
 		setCommentPosting(true);
 		const key = commentKey;
+		const url = commentUrl;
 		const chosen = commentVisibility.value;
 		const visibility = chosen === 'everyone' ? 'everyone' as const : /^(role|group):/.test(chosen) ? { type: chosen.startsWith('role:') ? 'role' as const : 'group' as const, value: chosen.replace(/^(role|group):/, '') } : undefined;
 		// Only the people still named in the text.
 		void host.toAdf(markdown, draft.mentions.filter(m => markdown.includes(`@${m.name}`))).then(document => host.post({
-			type: 'comment', key, markdown, document,
+			type: 'comment', key, ...url ? { url } : {}, markdown, document,
 			files: draft.files.flatMap(f => f.kind === 'path' ? [f.path] : []),
 			pasted: draft.files.flatMap(f => f.kind === 'data' ? [{ name: f.name, data: f.data }] : []),
 			...visibility ? { visibility } : {},

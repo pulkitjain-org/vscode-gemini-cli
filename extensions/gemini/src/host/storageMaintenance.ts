@@ -7,6 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { errorMessage } from '../acp/errors';
+import { removeKeptSessionFolders } from '../acp/sessionFolder';
 import { applyLogRetention, keepLogsDays } from '../acp/storageUsage';
 import { configSection } from './configuration';
 
@@ -16,7 +17,8 @@ const startDelayMs = 60_000;
 /**
  * Housekeeping once the window has settled: the audit and pilot logs' days
  * past `gemini.storage.keepLogsDays` go, and so does the CLI debug log every
- * window shared before each got its own.
+ * window shared before each got its own, and copies of sessions' folders a
+ * load never put back (sessionFolder.ts).
  */
 export function scheduleStorageMaintenance(globalStorage: string, log: vscode.LogOutputChannel): vscode.Disposable {
 	const timer = setTimeout(async () => {
@@ -24,6 +26,7 @@ export function scheduleStorageMaintenance(globalStorage: string, log: vscode.Lo
 			const days = keepLogsDays(vscode.workspace.getConfiguration(configSection).get<number>('storage.keepLogsDays'));
 			const removed = await applyLogRetention(globalStorage, days);
 			await fs.rm(path.join(globalStorage, 'cli-debug.log'), { force: true });
+			await removeKeptSessionFolders();
 			if (removed) {
 				log.info(`Removed ${removed} log files older than ${days} days`);
 			}

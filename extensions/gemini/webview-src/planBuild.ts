@@ -31,6 +31,12 @@ export function planBuildButtons(item: ItemOf<'turnEnd'>): HTMLElement[] {
 		more.setAttribute('aria-expanded', 'false');
 		nodes.push(more);
 	}
+	// The plan file this turn wrote: Review Plan edits it and gathers comments for Gemini.
+	if (item.planFile) {
+		const review = button('turn-action', strings.reviewPlan, () => vscode.postMessage({ type: 'reviewPlan', itemId: item.id }), 'comment-discussion');
+		setLabel(review, strings.reviewPlanTooltip);
+		nodes.push(review);
+	}
 	if (choice?.models) {
 		nodes.push(el('span', 'plan-build-models', format(strings.planBuild.models, choice.models.build, choice.models.plan)));
 	}

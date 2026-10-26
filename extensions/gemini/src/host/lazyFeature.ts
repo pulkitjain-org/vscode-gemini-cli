@@ -15,6 +15,23 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 
+/** The folder extension.js runs from, as `activate` sets it: the chunks sit beside it. */
+let extensionDir: string | undefined;
+
+export function setExtensionDir(dir: string): void {
+	extensionDir = dir;
+}
+
+/**
+ * Loads bundle `name` from beside extension.js, for a module other than
+ * extension.ts: in a development build (out/) each module is a file of its
+ * own, so its `__dirname` is not extension.js's folder.
+ */
+export function extensionChunk<T>(name: string): () => T {
+	let loaded: T | undefined;
+	return () => loaded ??= chunkLoader<T>(extensionDir ?? __dirname, name)();
+}
+
 /**
  * Loads bundle `name` from `dir`, the folder extension.js runs from (dist/,
  * or out/ in a development build), the first time the returned function is

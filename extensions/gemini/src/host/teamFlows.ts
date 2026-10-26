@@ -13,7 +13,9 @@ import { branchChoices, changedFiles, checkoutForChecks, listBranches } from '..
 import { analyzeFiles } from '../acp/teamContainers';
 import { errorMessage } from '../acp/errors';
 import { GitLabClient, GitLabMr } from '../acp/gitlab';
-import { formatDuration, JiraClient, type JiraMyTickets, jiraKeyIn, parseDuration } from '../acp/jira';
+import { formatDuration, type JiraMyTickets, jiraKeyIn, parseDuration } from '../acp/jira';
+import { keyOf, type JiraSites } from '../acp/jiraSites';
+import { extensionChunk } from './lazyFeature';
 import { branchSummary, branchWorktree, fetchBranches, pushBranch, UnpushedCommitsError } from '../acp/releaseMerge';
 import { describeSnyk } from '../acp/snyk';
 import { sonarIssuesUrl, sonarProjectKeyIn } from '../acp/sonar';
@@ -30,7 +32,7 @@ import { setupCommandFor } from './agents/agentWorktrees';
 import type { AgentsView } from './agentsView';
 import type { TeamConnections } from './teamConnections';
 import type { FlowRecord } from '../acp/flowRecords';
-import { FlowRecording, TeamFlowPanel } from './teamFlowPanel';
+import type { FlowRecording, TeamFlowPanel } from './teamFlowPanel';
 import { ChecksView, FlowAttachment, MoveTicketView, OpenMrView, ReviewView, Tone, TransitionView } from './teamFlowProtocol';
 import { Reviews } from './reviews';
 import { openTeamLink } from './teamLinks';
@@ -78,6 +80,8 @@ export class TeamFlows implements vscode.Disposable {
 
 	/** The target each Open Merge Request's description was written for. */
 	private readonly describedFor = new WeakMap<TeamFlowPanel<OpenMrView>, string>();
+	/** The bundle the flows' page comes from (src/pages.ts), loaded with the first flow opened. */
+	private readonly pages = extensionChunk<typeof import('../pages')>('pages');
 
 	/** `onDemand` loads dist/onDemand.js, where finding or cloning a merge request's repository lives (reviewClone.ts). */
 	constructor(private readonly extensionUri: vscode.Uri, private readonly tools: TeamConnections, private readonly agents: AgentsView, private readonly state?: vscode.Memento, private readonly onDemand?: () => typeof import('../onDemand')) {
@@ -159,7 +163,7 @@ export class TeamFlows implements vscode.Disposable {
 
 	// --- Helpers
 
-	private jira(): JiraClient {
+	private jira(): JiraSites {
 		const jira = this.tools.connectors.jira;
 		if (!jira) {
 			throw new Error(vscode.l10n.t("Connect Jira first, in Connections."));
@@ -292,13 +296,14 @@ export class TeamFlows implements vscode.Disposable {
 
 	// --- Start on a ticket
 
+	/** Starts an agent on a ticket, named by its key or, from Home and the picker, its link, which says the ticket's Jira site. */
 	private async startOnTicket(key: string | undefined): Promise<void> {
 		const jira = this.jira();
 		key ??= await this.pickTicket(jira);
 		if (!key) {
 			return;
 		}
-		const issue = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Reading {0}...", key) }, () => jira.issue(key!));
+		const issue = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Reading {0}...", keyOf(key)) }, () => jira.issue(key!));
 		if (!this.workFolder().folder) {
 			throw new Error(vscode.l10n.t("Open your repository's folder first."));
 		}
@@ -313,14 +318,15 @@ export class TeamFlows implements vscode.Disposable {
 			text: ticketStartPrompt(issue.key, issue.summary),
 		});
 		if (id && issue.statusCategory === 'new') {
-			await this.moveTicket(issue.key, id, 'start');
+			await this.moveTicket(issue.url, id, 'start');
 		}
 	}
 
-	private async pickTicket(jira: JiraClient): Promise<string | undefined> {
+	/** The link of the ticket the user picks, which names its Jira site too. */
+	private async pickTicket(jira: JiraSites): Promise<string | undefined> {
 		const mine = await jira.myTickets().catch((): JiraMyTickets => ({ issues: [] }));
 		const picked = await vscode.window.showQuickPick(ticketPickItems(mine), { title: vscode.l10n.t("Start Agent on a Jira Ticket"), placeHolder: vscode.l10n.t("Your open tickets, this sprint's first"), matchOnDescription: true });
-		return picked?.key;
+		return picked?.url ?? picked?.key;
 	}
 
 	// --- Move a ticket, and log time
@@ -338,11 +344,13 @@ export class TeamFlows implements vscode.Disposable {
 		if (!key) {
 			return;
 		}
-		const ticket = key;
+		// `ref` names the ticket to Jira: its link, from Home or the picker, says which site it is on.
+		const ref = key;
+		const ticket = keyOf(key);
 		let mrInfo: { iid: number; url: string; target: string } | undefined;
 		/** The steps of this flow that went through, so pressing again after a failure doesn't repeat them: a move, a time log. */
 		const finished = new Map<string, string>();
-		const flow: TeamFlowPanel<MoveTicketView> = new TeamFlowPanel<MoveTicketView>(this.extensionUri, mode === 'log' ? vscode.l10n.t("Log Time on {0}", ticket) : vscode.l10n.t("Move {0}", ticket), 'jira', vscode.l10n.t("Reading {0}...", ticket), async (action, value) => {
+		const flow: TeamFlowPanel<MoveTicketView> = new (this.pages().TeamFlowPanel<MoveTicketView>)(this.extensionUri, mode === 'log' ? vscode.l10n.t("Log Time on {0}", ticket) : vscode.l10n.t("Move {0}", ticket), 'jira', vscode.l10n.t("Reading {0}...", ticket), async (action, value) => {
 			const view = flow.view;
 			if (!view) {
 				return;
@@ -386,7 +394,7 @@ export class TeamFlows implements vscode.Disposable {
 							const step = `move:${transition.id}`;
 							if (!finished.has(step)) {
 								// The agent's jira_transition, by transition id: the same checks, the comment's visibility and the audit record.
-								const moved = await this.tools.write('jira_transition', { key: ticket, to: transition.to, transition: transition.id, fields, ...comment ? { comment } : {} }, place?.cwd);
+								const moved = await this.tools.write('jira_transition', { key: ref, to: transition.to, transition: transition.id, fields, ...comment ? { comment } : {} }, place?.cwd);
 								finished.set(step, moved.warning
 									? vscode.l10n.t("Moved {0} to {1}. {2}", ticket, transition.to, moved.warning)
 									: vscode.l10n.t("Moved {0} to {1}{2}.", ticket, transition.to, comment ? vscode.l10n.t(" with the comment") : ''));
@@ -400,7 +408,7 @@ export class TeamFlows implements vscode.Disposable {
 							const step = `log:${spent}:${date}`;
 							if (!finished.has(step)) {
 								try {
-									await this.tools.write('jira_log_time', { key: ticket, spent, started: started.toISOString(), ...workComment ? { comment: workComment } : {} }, place?.cwd);
+									await this.tools.write('jira_log_time', { key: ref, spent, started: started.toISOString(), ...workComment ? { comment: workComment } : {} }, place?.cwd);
 								} catch (err) {
 									// The move went through: say so, so pressing again logs only the time.
 									throw done.length ? new Error(vscode.l10n.t("{0} Logging the time failed: {1} Press the button again to log only the time.", done.join(' '), errorMessage(err))) : err;
@@ -417,16 +425,16 @@ export class TeamFlows implements vscode.Disposable {
 				case 'open':
 					return void openTeamLink(view.url);
 			}
-		}, vscode.ViewColumn.Active, this.recording(mode === 'log' ? 'gemini.team.logTime' : 'gemini.team.moveTicket', mode === 'log' ? [ticket] : [ticket, agent, suggest], ticket));
+		}, vscode.ViewColumn.Active, this.recording(mode === 'log' ? 'gemini.team.logTime' : 'gemini.team.moveTicket', mode === 'log' ? [ref] : [ref, agent, suggest], ticket));
 		try {
 			const [issue, transitions, me, place2] = await Promise.all([
-				jira.issue(ticket),
-				mode === 'move' ? jira.transitions(ticket) : Promise.resolve([]),
-				jira.myself().catch(() => undefined),
+				jira.issue(ref),
+				mode === 'move' ? jira.transitions(ref) : Promise.resolve([]),
+				jira.myself(ref).catch(() => undefined),
 				agent ? this.mrOfAgent(agent).catch(() => undefined) : Promise.resolve(undefined),
 			]);
 			mrInfo = place2 && { iid: place2.iid, url: place2.url, target: place2.targetBranch };
-			const logged = await jira.worklogTotals(ticket, me?.accountId).catch(() => undefined);
+			const logged = await jira.worklogTotals(ref, me?.accountId).catch(() => undefined);
 			const views: TransitionView[] = transitions.map(t => ({ id: t.id, name: t.name, to: t.to, tone: categoryTone(t.toCategory), fields: t.fields }));
 			// The team's transition ids from .gemini/geminicode-tools.json when set, else the default workflow's status names.
 			const selected = suggestedTransition(views, suggest, defaults.jira?.transitions);
@@ -467,7 +475,7 @@ export class TeamFlows implements vscode.Disposable {
 		const gitlab = this.gitlab();
 		const agentId = this.agentId(agent);
 		const place = this.agents.agentPlace(agentId)!;
-		const flow: TeamFlowPanel<OpenMrView> = new TeamFlowPanel<OpenMrView>(this.extensionUri, vscode.l10n.t("Open Merge Request"), 'gitlab', vscode.l10n.t("Reading the branch..."), (action, value) => this.openMrAction(flow, agentId, gp!, action, value), vscode.ViewColumn.Active, this.recording('gemini.team.openMergeRequest', [agentId], place.title));
+		const flow: TeamFlowPanel<OpenMrView> = new (this.pages().TeamFlowPanel<OpenMrView>)(this.extensionUri, vscode.l10n.t("Open Merge Request"), 'gitlab', vscode.l10n.t("Reading the branch..."), (action, value) => this.openMrAction(flow, agentId, gp!, action, value), vscode.ViewColumn.Active, this.recording('gemini.team.openMergeRequest', [agentId], place.title));
 		let gp: GitPlace | undefined;
 		try {
 			gp = await this.gitPlace(place.cwd, gitlab);
@@ -880,21 +888,13 @@ export class TeamFlows implements vscode.Disposable {
 		if (!key) {
 			return;
 		}
-		const ticket = key;
-		const [me, people] = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Reading who can take {0}...", ticket) }, () => Promise.all([jira.myself(), jira.assignableUsers(ticket)]));
-		type Pick = vscode.QuickPickItem & { readonly accountId: string | null };
-		const items: Pick[] = [
-			{ label: vscode.l10n.t("$(account) Me"), description: me.displayName, accountId: me.accountId },
-			{ label: vscode.l10n.t("$(circle-slash) Unassigned"), accountId: null },
-			{ label: '', kind: vscode.QuickPickItemKind.Separator, accountId: null },
-			...people.filter(u => u.accountId !== me.accountId).map((u): Pick => ({ label: u.displayName, description: u.emailAddress, accountId: u.accountId })),
-		];
-		const picked = await vscode.window.showQuickPick(items, { title: vscode.l10n.t("Reassign {0}", ticket), placeHolder: vscode.l10n.t("Who should have it? Jira lists the people the project allows."), matchOnDescription: true });
-		if (!picked || picked.kind === vscode.QuickPickItemKind.Separator) {
+		const ticket = keyOf(key);
+		const picked = await extensionChunk<typeof import('../onDemand')>('onDemand')().pickAssignee(jira, key, ticket);
+		if (!picked) {
 			return;
 		}
 		const who = picked.accountId === null ? vscode.l10n.t("nobody") : picked.label.replace(/^\$\([^)]*\)\s*/, '');
-		await this.tools.write('jira_assign', { key: ticket, to: who, accountId: picked.accountId }, this.workFolder().folder);
+		await this.tools.write('jira_assign', { key, to: who, accountId: picked.accountId }, this.workFolder().folder);
 		void vscode.window.showInformationMessage(picked.accountId === null ? vscode.l10n.t("{0} is now unassigned.", ticket) : vscode.l10n.t("Assigned {0} to {1}.", ticket, who));
 	}
 
@@ -1074,7 +1074,7 @@ export class TeamFlows implements vscode.Disposable {
 	private async openChecks(start: ChecksPlace): Promise<void> {
 		let place = start;
 		// A tab in the active group (Home's, when Run Checks... starts it there), not a split beside Home.
-		const flow: TeamFlowPanel<ChecksView> = new TeamFlowPanel<ChecksView>(this.extensionUri, vscode.l10n.t("Checks: {0}", place.title), this.tools.connected.has('snyk') ? 'snyk' : 'sonar', vscode.l10n.t("Starting the checks..."), async (action, value) => {
+		const flow: TeamFlowPanel<ChecksView> = new (this.pages().TeamFlowPanel<ChecksView>)(this.extensionUri, vscode.l10n.t("Checks: {0}", place.title), this.tools.connected.has('snyk') ? 'snyk' : 'sonar', vscode.l10n.t("Starting the checks..."), async (action, value) => {
 			const view = flow.view;
 			if (!view) {
 				return;

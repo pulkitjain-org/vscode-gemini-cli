@@ -20,7 +20,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { EditedFile } from '../acp/agentChanges';
 import { isArchived, warmThreads, type AgentProjectRole, type AgentRecord } from '../acp/agents';
-import type { ForkContext, ThreadCard, TranscriptItem } from '../acp/chatTranscript';
+import type { ForkContext, ThreadCard, TranscriptItem, TriedCard } from '../acp/chatTranscript';
 import { attachmentLabel, type Attachment } from '../acp/attachments';
 import { ConductorReader } from '../acp/conductor';
 import type { InstantAnswer } from '../acp/permissions';
@@ -35,7 +35,7 @@ import { ruleEntries, ruleFolders } from '../acp/projectRules';
 import { addMemoryFiles, configFile, maxInstructionsChars, memoryFolder, newMemoryFile, projectMemory, readProjectConfig, removeMemoryFile, repoKey, writeProjectConfig, type ProjectConfig, type ProjectDefaults, type ProjectRepo } from '../acp/projectStore';
 import { coordinatorHome, repositoryRoot } from '../acp/worktrees';
 import type { ChatActivity, ChatController, ChatProject } from './chatController';
-import type { NewThread, ProjectDefaultsView, ProjectSettingsAction, ProjectSettingsSave, ProjectSettingsView, ThreadAction } from './chatProtocol';
+import type { NewThread, ProjectDefaultsView, ProjectSettingsAction, ProjectSettingsSave, ProjectSettingsView, ThreadAction, TryAction } from './chatProtocol';
 import { configSection } from './configuration';
 import { tildify } from './displayText';
 import { showError } from './errorNotice';
@@ -91,6 +91,16 @@ export interface ProjectAgents {
 	openChanges(id: string): Promise<void>;
 	/** Asks, then removes the thread with its folder and branch; returns whether it did. */
 	undoThread(id: string): Promise<boolean>;
+	/** Tries a thread's work in the user's checkout, keeps it, takes it back... (agentTries.ts, loaded on first use); returns whether it did. */
+	tryAction(id: string, action: TryAction): Promise<boolean>;
+	/** Whether Merge Back makes a merge commit (`gemini.agents.mergeBack` set to "commit") rather than trying the work. */
+	mergeCommits(): boolean;
+	/** Whether the person has read the first-try guide; setting it shows or hides it on cards. */
+	guideSeen(): boolean;
+	setGuideSeen(seen: boolean): Promise<void>;
+	/** The tried files the user edited and hasn't sent, as last told. */
+	triedEdits(id: string): readonly string[] | undefined;
+	openTerminal(id: string): void;
 	/** Starts a thread's agent without a tab, when it isn't running and its folder still exists. */
 	resume(id: string): Promise<void>;
 	/** The user is about to open the thread: start it now if it isn't running. */
@@ -251,10 +261,16 @@ export class Projects implements vscode.Disposable {
 		}
 	}
 
-	/** Merge Back on a thread, as its card does: once all its work is merged, the thread is resolved. */
+	/** Merge Back on a thread, as its card does: Try in Workspace, or Keep Changes once tried; with merge commits, the merge, after which it is resolved. */
 	mergeThread(thread: string): Promise<void> {
-		const role = this.agents.record(thread)?.project;
-		return role?.role === 'thread' ? this.threadAction(role.coordinator, thread, 'merge') : Promise.resolve();
+		const record = this.agents.record(thread);
+		const role = record?.project;
+		if (!this.agents.mergeCommits() && record?.tried?.state === 'trying') {
+			// Once tried, the fork card's one button offers Keep Changes, Take Back and the rest.
+			return this.agents.mergeBack(thread).then(() => undefined);
+		}
+		const action = this.agents.mergeCommits() ? 'merge' : 'try';
+		return role?.role === 'thread' ? this.threadAction(role.coordinator, thread, action) : Promise.resolve();
 	}
 
 	/** A project agent started: a coordinator opens its project, a thread joins its own. */
@@ -499,6 +515,16 @@ export class Projects implements vscode.Disposable {
 		);
 		this.projects.set(record.id, project);
 		this.schedulePanel(project);
+		// Cards as saved may be out of date: a thread removed while this project wasn't open, or a try that changed.
+		for (const item of coordinator.conversation) {
+			if (item.kind === 'thread' && !item.removed && !this.agents.record(item.thread)) {
+				project.removed.add(item.thread);
+				coordinator.showThread({ thread: item.thread, title: item.title, state: 'done', startedAt: item.startedAt, removed: true, tried: undefined, guide: undefined });
+			}
+		}
+		for (const thread of threads) {
+			this.showCard(project, thread.id);
+		}
 		// Each thread's requests, from its saved chat, once; its turns' ends keep them current.
 		void Promise.all(threads.map(async thread => {
 			const count = requestCount(await this.agents.savedConversation(thread.id).catch(() => []));
@@ -921,6 +947,32 @@ export class Projects implements vscode.Disposable {
 		return project.hub.call(caller, name, args);
 	}
 
+	/** A thread's work moved in or out of the user's checkout: its card and the coordinator's list show it. */
+	refreshThread(thread: string): void {
+		const role = this.agents.record(thread)?.project;
+		const project = role?.role === 'thread' ? this.projects.get(role.coordinator) : undefined;
+		if (project) {
+			this.showCard(project, thread);
+		}
+	}
+
+	/** A thread's work was kept in the user's checkout (resolved), or it is being tried again (open). */
+	setThreadKept(thread: string, kept: boolean): void {
+		this.agents.setResolved(thread, kept);
+		const role = this.agents.record(thread)?.project;
+		const project = role?.role === 'thread' ? this.projects.get(role.coordinator) : undefined;
+		if (!project) {
+			return;
+		}
+		if (kept) {
+			project.merged.add(thread);
+		} else {
+			project.merged.delete(thread);
+		}
+		project.hub.updateThread(thread, { resolved: kept });
+		this.showCard(project, thread);
+	}
+
 	private showCard(project: LiveProject, thread: string): void {
 		const record = this.agents.record(thread);
 		const info = project.hub.threadList.find(t => t.id === thread);
@@ -928,6 +980,12 @@ export class Projects implements vscode.Disposable {
 			return;
 		}
 		const role = record.project?.role === 'thread' ? record.project : undefined;
+		// Discarded work later turns replaced is offered from the card's ⋯ menu (tryState.ts, discardOffer).
+		const offer = !record.discarded?.length ? undefined : record.discarded.some(repo => repo.superseded) ? 'menu' : 'restore';
+		const workspace = offer === 'restore' ? 'discarded' : record.tried?.state;
+		if (info.workspace !== workspace) {
+			project.hub.updateThread(thread, { workspace });
+		}
 		project.coordinator.showThread({
 			thread,
 			title: record.title,
@@ -941,6 +999,12 @@ export class Projects implements vscode.Disposable {
 			...(project.merged.has(thread) ? { merged: true } : {}),
 			...(project.removed.has(thread) ? { removed: true } : {}),
 			...(record.repos?.length ? { repos: repoCards(record, this.agents.changedFiles(thread)) } : {}),
+			// Set every time, so a card loses what no longer applies.
+			tried: triedCard(record, this.agents.triedEdits(thread)),
+			discarded: offer === 'restore' ? true : undefined,
+			restorable: offer === 'menu' ? true : undefined,
+			guide: record.tried?.state === 'trying' && !this.agents.guideSeen() ? true : undefined,
+			mergeCommits: this.agents.mergeCommits() ? true : undefined,
 		});
 		this.schedulePanel(project);
 	}
@@ -1045,9 +1109,33 @@ export class Projects implements vscode.Disposable {
 					this.showCard(project, thread);
 				}
 				return;
-			case 'undo':
+			case 'remove':
 				// threadRemoved updates the card and the hub.
 				await this.agents.undoThread(thread);
+				return;
+			case 'try':
+			case 'keep':
+			case 'takeBack':
+			case 'send':
+			case 'resolve':
+			case 'discard':
+			case 'restore':
+				await this.agents.tryAction(thread, action);
+				if (project) {
+					this.showCard(project, thread);
+				}
+				return;
+			case 'guide':
+			case 'dismissGuide':
+				await this.agents.setGuideSeen(action === 'dismissGuide');
+				for (const each of project ? this.agents.threadsOf(project.id) : []) {
+					this.showCard(project!, each.id);
+				}
+				return;
+			case 'terminal':
+				return this.agents.openTerminal(thread);
+			case 'checks':
+				await vscode.commands.executeCommand('gemini.team.runChecks', thread);
 				return;
 			case 'approve': {
 				const controller = this.agents.controller(thread);
@@ -1105,6 +1193,24 @@ function repoKeys(config: ProjectConfig | undefined): string[] {
 
 function defaultsView(defaults: ProjectDefaults): ProjectDefaultsView {
 	return { ...(defaults.threadModel ? { threadModel: defaults.threadModel } : {}), planFirst: !!defaults.planFirst, branchPrefix: defaults.branchPrefix ?? 'gemini/' };
+}
+
+/** A card's view of a thread's try: its file count, how often it followed, and what holds it back. */
+function triedCard(record: AgentRecord, edits: readonly string[] | undefined): TriedCard | undefined {
+	const tried = record.tried;
+	if (!tried) {
+		return undefined;
+	}
+	const conflicts = tried.repos.flatMap(repo => repo.conflicts ?? []);
+	const unmerged = tried.state === 'trying' ? tried.repos.flatMap(repo => repo.unmerged ?? []) : [];
+	return {
+		state: tried.state,
+		files: tried.repos.reduce((sum, repo) => sum + repo.files.length, 0),
+		...tried.updates ? { updates: tried.updates } : {},
+		...conflicts.length ? { conflicts } : {},
+		...unmerged.length ? { unmerged } : {},
+		...tried.state === 'trying' && edits?.length ? { edits } : {},
+	};
 }
 
 /** A multi-repository thread's card rows: each repository's changed files, from the edits its agent made there. */

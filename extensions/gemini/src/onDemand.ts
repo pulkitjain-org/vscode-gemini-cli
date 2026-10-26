@@ -11,10 +11,20 @@
 // keeps state (configuration.ts, modelPreference.ts, pilotLog.ts' sink,
 // traceCommand.ts' recording) must be the extension bundle's, so what these
 // tools need of it comes in through their constructors, never an import;
-// test/perf/chunks.test.ts checks that.
+// test/perf/chunks.test.ts checks that. Trying an agent's changes in the
+// workspace and Merge Back are here too: most windows never use them. So is
+// Check Agent, with the CLI contract it reads, and rebuilding a plan the CLI
+// deleted (sessionReplay.ts).
 
+export { AgentMerge } from './host/agents/agentMerge';
+export { AgentTries } from './host/agents/agentTries';
 export { AuditPage } from './host/auditPage';
 export { BenchmarkCommand } from './host/benchmarkCommand';
+export { checkAgent } from './host/checkAgent';
 export { Pilot } from './host/pilot';
 export { TraceRecorder } from './host/traceRecorder';
 export { cloneFor } from './host/reviewClone';
+export { FigmaDesktop } from './acp/figma';
+export { pickAssignee } from './host/assigneePicker';
+export { projectStrings } from './host/chat/projectStrings';
+export { rebuildSessionFile } from './acp/sessionReplay';

@@ -17,7 +17,6 @@ import { TerminalGemini } from './host/terminalGemini';
 import { tildify } from './host/displayText';
 import { ChangesPanel } from './host/changesPanel';
 import { applyLayoutDefaults } from './host/layoutDefaults';
-import { checkAgent } from './host/checkAgent';
 import { CliManager } from './host/cliManager';
 import { DiffPreview } from './host/diffPreview';
 import { errorMessage } from './acp/errors';
@@ -27,7 +26,7 @@ import { initModelList, initModelPreference, knownModelList } from './host/model
 import { initReactionRecents } from './host/chatReactions';
 import { SetupWalkthrough, walkthroughId } from './host/setupWalkthrough';
 import { GeminiStatusBar } from './host/statusBar';
-import { QuickEdits } from './host/quickEdits';
+import { findCliEntry, QuickEdits } from './host/quickEdits';
 import { UsageMeter } from './host/usageMeter';
 import { forgetSkills, initTeamCommands } from './host/teamCommands';
 import { KeepAwake } from './acp/keepAwake';
@@ -40,7 +39,9 @@ import { scheduleStorageMaintenance } from './host/storageMaintenance';
 import { MrPanel } from './host/mrPanel';
 import { TeamStatusBar } from './host/teamStatusBar';
 import { AuditStatusBar } from './host/auditStatusBar';
-import { chunkLoader, LazyFeature } from './host/lazyFeature';
+import { chunkLoader, LazyFeature, setExtensionDir } from './host/lazyFeature';
+import { teamRequest } from './acp/teamHttp';
+import { openTeamLink } from './host/teamLinks';
 import { recordPilot, setPilotSink } from './acp/pilotLog';
 import { WorkspaceFileIndex } from './host/workspaceFiles';
 import { WorkspaceIndex } from './host/workspaceIndex';
@@ -62,6 +63,8 @@ let saveBeforeExit: (() => Promise<void>) | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
 	const activationStart = Date.now();
+	// Modules that load a chunk find it beside this file, which in a development build is not beside them.
+	setExtensionDir(__dirname);
 	const log = vscode.window.createOutputChannel('Gemini', { log: true });
 	// The agent list is read while the product info loads.
 	const savedAgents = loadSavedAgents(context);
@@ -181,6 +184,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	// Pages opened on request and tools used rarely load from bundles of their own, the first time one of their commands runs.
 	const pages = chunkLoader<typeof import('./pages')>(__dirname, 'pages');
 	const onDemand = chunkLoader<typeof import('./onDemand')>(__dirname, 'onDemand');
+	const confluence = chunkLoader<typeof import('./confluence')>(__dirname, 'confluence');
+	teamTools.useConfluence(() => new (confluence().ConfluenceFeature)({
+		extensionUri: context.extensionUri,
+		storageDir: context.globalStorageUri.fsPath,
+		accounts: () => teamTools.connectors.confluence ?? [],
+		request: (url, request) => teamRequest('confluence', url, request),
+		write: (name, args) => teamTools.tryWrite(name, args),
+		openLink: openTeamLink,
+		agentInFront: () => agentsView.activeAgentId(),
+		log,
+	}));
 	const teamFlows = new TeamFlows(context.extensionUri, teamTools, agentsView, context.globalState, onDemand);
 	// A reviewer agent's chat has a chip that opens its review.
 	agentsView.reviewChip = agentId => {
@@ -264,6 +278,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.${pilotRecordSetting}`) && startPilot()),
 		scheduleStorageMaintenance(context.globalStorageUri.fsPath, log),
 		mrPanel,
+		vscode.commands.registerCommand('gemini.confluence.openDraft', (id?: unknown) => teamTools.openConfluenceDraft(typeof id === 'string' ? id : undefined)),
 		new LazyFeature(['gemini.connections'], () => new (pages().ConnectionsPage)(context.extensionUri, teamTools, log)),
 		new TeamStatusBar(context.extensionUri, teamTools),
 		new AuditStatusBar(teamTools.audit),
@@ -299,7 +314,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		vscode.commands.registerCommand('gemini.showLog', () => log.show()),
 		vscode.commands.registerCommand(logErrorCommand, (message: unknown) => typeof message === 'string' && log.error(message)),
 		new LazyFeature(['gemini.openAuditLog'], () => new (onDemand().AuditPage)(context.extensionUri, teamTools.audit, id => agentsView.summaries().find(agent => agent.id === id)?.title)),
-		vscode.commands.registerCommand('gemini.checkAgent', () => checkAgent(log)),
+		vscode.commands.registerCommand('gemini.checkAgent', async () => onDemand().checkAgent(log, {
+			command: await getAgentCommand(),
+			cwd: getWorkspaceCwd(),
+			connection: async () => (await import('./acp/agentConnection')).AgentConnection,
+			findCliEntry,
+		})),
 		vscode.commands.registerCommand('gemini.restartAgent', () => service.restart()),
 		vscode.commands.registerCommand('gemini.completeSetupInTerminal', () => service.completeSetupInTerminal()),
 		vscode.commands.registerCommand('gemini.setProjectId', () => setProjectId()),

@@ -10,6 +10,7 @@ import type { SharedPageView } from '../src/host/chatProtocol';
 import { type Attachment, attachmentLabel, classifyFile, maxImageBase64Length, supportedImageTypes } from '../src/acp/attachments';
 import { attachmentIcon, carriesFiles, fileUris, format, imageName, sameAttachment, toolChipParts } from './chatLogic';
 import { readFileBase64 } from './panelDom';
+import { openFigmaDesign } from './figmaDesignLoader';
 import { toolLogo } from './toolLogos';
 import { button, el, icon, setLabel, setTip } from './dom';
 import { updateSendState } from './inputBox';
@@ -53,6 +54,14 @@ export function renderAttachments(): void {
 			thumbnail.src = `data:${attachment.mimeType};base64,${attachment.data}`;
 			thumbnail.alt = '';
 			chip.append(thumbnail);
+		} else if (attachment.kind === 'document' && attachment.design) {
+			// A Figma design with a frame for each size: its sizes, and a click to change them.
+			const design = attachment.design;
+			chip.classList.add('tool-chip');
+			const open = button('tool-chip-open', '', () => openFigmaDesign(design));
+			open.append(toolLogo('figma', 14), el('span', 'tool-chip-key', strings.figmaDesignChip), el('span', 'tool-chip-title', design.map(frame => frame.size).join(' · ')));
+			setTip(open, strings.figmaEditDesign);
+			chip.append(open);
 		} else if (attachment.kind === 'document' && attachment.tool) {
 			// A Jira ticket, GitLab item or Figma frame: the tool's logo, its key in bold, then its title; a click opens it in its tool.
 			const [key, title] = toolChipParts(attachment);

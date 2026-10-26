@@ -11,7 +11,7 @@ import MarkdownIt from 'markdown-it';
 import { basename } from '../src/acp/attachments';
 import type { NoticeAction, OtherAgentChanges, PromptAttachmentLabel, TranscriptItem } from '../src/acp/chatTranscript';
 import type { ReactionRef } from '../src/acp/reactions';
-import type { ThreadAction, ViewSession, ViewStall } from '../src/host/chatProtocol';
+import type { FromWebview, ViewSession, ViewStall } from '../src/host/chatProtocol';
 import { attachmentIcon, cardKey, codeLanguage, format, formatDuration, formatTokens, formatSentAt, permissionChoices, planIcon, replyBefore, subagentName, thoughtSeconds, toolKindIcon, waitingPermission, type ItemOf } from './chatLogic';
 import { highlightCode } from './codeHighlight';
 import { applyInlineStyles } from './inlineStyles';
@@ -20,6 +20,7 @@ import { mathPlugin } from './mathRule';
 import { enhanceMarkdown } from './markdownExtras';
 import { isSafeLink } from './linkPolicy';
 import { button, copyButton, el, icon, onIntent, setLabel, setTip } from './dom';
+import { Menu } from './menu';
 import { canRun } from '../src/acp/runCommands';
 import { addRunButtons } from './runButtons';
 import { indexToolTitle, teamToolTitle } from '../src/acp/toolLinks';
@@ -87,84 +88,33 @@ function counts(added: number, removed: number): HTMLElement {
 }
 
 /** A project's thread: its state, what it is doing, its branch and changes, and what can be done with it. */
+const threadCardUrl = document.querySelector<HTMLScriptElement>('script[data-strings]')?.dataset.threadCard;
+let threadCards: typeof import('./threadCard') | undefined;
+let loadingThreadCards: Promise<void> | undefined;
+
+/** A thread's card; its code (media/threadCard.js) loads the first time one shows, and fills the card in. */
 function renderThreadCard(item: ItemOf<'thread'>): HTMLElement {
-	const project = strings.project;
-	const card = el('div', `thread-card state-${item.state}${item.removed ? ' removed' : ''}`);
-	const send = (action: ThreadAction, repo?: string) => vscode.postMessage({ type: 'threadAction', thread: item.thread, action, ...(repo ? { repo } : {}) });
-	const title = button('thread-title', item.title, () => send('open'));
-	title.prepend(el('span', 'thread-dot'));
-	// A thread that isn't running starts as the pointer reaches its title, so its chat is ready by the click.
-	if (!item.removed) {
-		onIntent(title, () => vscode.postMessage({ type: 'prepareThread', thread: item.thread }));
-	}
-	card.append(title);
-	const state = project?.states[item.state] ?? item.state;
-	const repos = item.repos ?? [];
-	const mergedRepos = repos.filter(repo => repo.merged).length;
-	const partly = !item.merged && mergedRepos > 0 && project ? format(project.mergedCount, mergedRepos, repos.length) : undefined;
-	const line = item.removed ? project?.undone : item.merged ? project?.merged : partly ?? (item.detail ? `${state} \u00b7 ${item.detail}` : state);
-	// Under the title: the branch, then each repository it works in, then how long it has run.
-	const meta = el('div', 'thread-meta');
-	if (item.branch) {
-		const branch = el('span', 'thread-branch');
-		branch.append(icon('git-branch'), el('span', undefined, item.branch));
-		meta.append(branch);
-	}
-	for (const repo of repos) {
-		meta.append(toneOf(el('span', 'repo-pill', repo.key), repo.key));
-	}
-	if (!repos.length && item.changes?.files) {
-		meta.append(counts(item.changes.added, item.changes.removed));
-	}
-	const extra = [item.track && project ? format(project.track, item.track) : undefined, formatDuration(Date.now() - item.startedAt)].filter(Boolean).join(' \u00b7 ');
-	meta.append(el('span', 'thread-meta-end', extra));
-	card.append(meta);
-	// A thread in several repositories: a row for each, merged back one at a time.
-	if (repos.length && !item.removed && project) {
-		const list = el('div', 'thread-repos');
-		for (const repo of repos) {
-			const row = el('div', `thread-repo${repo.merged ? ' merged' : ''}`);
-			row.append(toneOf(el('span', 'thread-repo-dot'), repo.key), el('span', 'thread-repo-name', repo.key));
-			row.append(repo.files ? counts(repo.added, repo.removed) : el('span', 'thread-repo-state', '\u2014'));
-			if (repo.merged) {
-				row.append(el('span', 'thread-repo-state', project.repoMerged));
-			} else if (item.state === 'done' && !item.merged) {
-				row.append(button('secondary thread-repo-merge', project.actions.merge, () => send('merge', repo.key)));
-			}
-			list.append(row);
-		}
-		card.append(list);
-	}
-	card.append(el('div', 'thread-line', line ?? state));
-	if (item.removed || !project) {
+	const card = el('div', `thread-card state-${item.state}`);
+	const deps = () => ({ strings: strings.project!, post: (message: FromWebview) => vscode.postMessage(message), el, button, icon, setTip, onIntent, toneOf, counts, format, formatDuration: (ms: number) => formatDuration(ms), Menu });
+	if (threadCards && strings.project) {
+		threadCards.renderThreadCard(item, deps(), card);
 		return card;
 	}
-	const actions: [ThreadAction, boolean][] = item.state === 'waiting'
-		? [['open', true]]
-		: item.state === 'planned'
-			? [['approve', true], ['open', false]]
-			: item.state === 'error'
-				? [['retry', true], ['open', false]]
-				: item.state === 'done' && !item.merged && item.changes?.files
-					? repos.length ? [['review', true], ['undo', false]] : [['merge', true], ['review', false], ['undo', false]]
-					// Done with nothing to merge, such as an assessment: its answer is in the thread.
-					: item.state === 'done' && !item.merged
-						? [['open', true], ['undo', false]]
-						: item.state === 'done'
-							? [['open', false]]
-							: [['open', false], ['stop', false]];
-	const row = el('div', 'permission-actions');
-	for (const [action, primary] of actions) {
-		row.append(button(primary ? 'primary' : 'secondary', action === 'open' && item.state === 'waiting' ? project.openToAnswer : project.actions[action], () => send(action)));
-	}
-	card.append(row);
+	card.append(el('div', 'thread-title', item.title));
+	// eslint-disable-next-line no-restricted-syntax
+	loadingThreadCards ??= threadCardUrl ? import(/* webpackIgnore: true */ threadCardUrl).then(module => { threadCards = module; }, () => undefined) : Promise.resolve();
+	void loadingThreadCards.then(() => {
+		if (threadCards && strings.project) {
+			threadCards.renderThreadCard(item, deps(), card);
+		}
+	});
 	return card;
 }
 
 function renderTurnEnd(item: ItemOf<'turnEnd'>): HTMLElement {
 	const node = el('div', 'turn-end');
 	// Hidden when the turn's fold says it (transcript.ts, `has-fold`).
-	node.append(el('span', 'worked-for', format(strings.workedFor, formatDuration(item.durationMs))));
+	node.append(el('span', 'worked-for', format(item.steered ? strings.stoppedForMessage : strings.workedFor, formatDuration(item.durationMs))));
 	if (item.firstTokenMs !== undefined) {
 		node.append(el('span', 'turn-dot', '·'), el('span', 'first-token', format(strings.firstToken, shortMs(item.firstTokenMs))));
 	}
@@ -780,6 +730,7 @@ function runNoticeAction(action: NoticeAction, itemId: string | undefined): void
 	switch (action) {
 		case 'retry':
 		case 'continue':
+		case 'newSession':
 			if (itemId) {
 				vscode.postMessage({ type: 'noticeAction', itemId, action });
 			}

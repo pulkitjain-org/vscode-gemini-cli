@@ -44,7 +44,14 @@ export interface GitLabMrSummary {
 	/** GitLab's `detailed_merge_status`, such as mergeable, ci_still_running, conflict. */
 	readonly mergeStatus?: string;
 	readonly reviewers: readonly string[];
+	/** Discussions that must be resolved before it can merge are still open: someone is waiting on a reply. */
+	readonly unresolved?: boolean;
+	/** Where the user's own review stands, for an MR they review, as GitLab keeps it; unset when unknown. */
+	readonly myReview?: ReviewState;
 }
+
+/** A reviewer's state on an MR, as GitLab's reviewers endpoint gives it. */
+export type ReviewState = 'unreviewed' | 'review_started' | 'reviewed' | 'requested_changes' | 'approved' | 'unapproved';
 
 export interface GitLabMr extends GitLabMrSummary {
 	readonly description: string;
@@ -166,11 +173,18 @@ export function parseMrRef(ref: string): { readonly project?: string; readonly i
 	return bang ? { iid: Number(bang[1]) } : undefined;
 }
 
+/** The most merge requests whose review state is kept: a few loads of Home's 20. */
+const maxReviewStates = 100;
+/** How long the user's review state on a merge request is kept. */
+const reviewStateMs = 3 * 60_000;
+
 export class GitLabClient {
 
 	readonly url: string;
 	private me: Promise<GitLabUser> | undefined;
 	private readonly projectIds = new Map<string, Promise<number>>();
+	/** The user's review state on each MR (`project!iid`), with the MR's `updated_at` and the time it was read at; kept until the MR changes, for `reviewStateMs` at most. */
+	private readonly reviewStates = new Map<string, { readonly updated: string; readonly at: number; readonly state: Promise<ReviewState | undefined> }>();
 
 	constructor(private readonly auth: GitLabAuth, private readonly fetcher: Fetch = fetch) {
 		this.url = normalizeBaseUrl(auth.url);
@@ -251,7 +265,43 @@ export class GitLabClient {
 	async reviewRequests(): Promise<Listed<GitLabMrSummary>> {
 		const me = await this.user();
 		const list = await this.list<RawMr>(`/merge_requests?scope=all&state=opened&reviewer_id=${me.id}&per_page=20&order_by=updated_at`);
-		return listed(list.map(mrSummary), list.total);
+		// Where the user's review of each stands, so Home leaves out the ones they already approved or reviewed.
+		const states = await Promise.all(list.map(raw => this.reviewState(raw, me.id)));
+		return listed(list.map((raw, i) => ({ ...mrSummary(raw), ...states[i] ? { myReview: states[i] } : {} })), list.total);
+	}
+
+	/** The user's review state on `raw`, from GitLab's reviewers endpoint; undefined when GitLab doesn't say (older versions). */
+	private reviewState(raw: RawMr, userId: number): Promise<ReviewState | undefined> {
+		const key = `${raw.project_id}!${raw.iid}`;
+		const updated = raw.updated_at ?? '';
+		const cached = this.reviewStates.get(key);
+		// An approval on GitLab's own pages may leave `updated_at` as it was: the state is read again after a while all the same.
+		if (cached?.updated === updated && Date.now() - cached.at < reviewStateMs) {
+			return cached.state;
+		}
+		const state = this.request<readonly { readonly user?: { readonly id?: number }; readonly state?: string }[]>(`/projects/${raw.project_id}/merge_requests/${raw.iid}/reviewers`)
+			.then(reviewers => reviewers.find(r => r.user?.id === userId)?.state as ReviewState | undefined, () => {
+				// A failure isn't kept: the next load asks again.
+				if (this.reviewStates.get(key) === entry) {
+					this.reviewStates.delete(key);
+				}
+				return undefined;
+			});
+		const entry = { updated, at: Date.now(), state };
+		this.reviewStates.delete(key);
+		this.reviewStates.set(key, entry);
+		for (const oldest of this.reviewStates.keys()) {
+			if (this.reviewStates.size <= maxReviewStates) {
+				break;
+			}
+			this.reviewStates.delete(oldest);
+		}
+		return state;
+	}
+
+	/** Forgets the user's review state on a merge request after they approved it or asked for changes, so Home reads it again. */
+	forgetReviewState(project: string | number, iid: number): void {
+		void this.projectId(project).then(id => this.reviewStates.delete(`${id}!${iid}`), () => undefined);
 	}
 
 	/** Open MRs assigned to the user (as the one to finish them), which may not be theirs. */
@@ -636,6 +686,7 @@ interface RawMr {
 	readonly head_pipeline?: { readonly id: number; readonly status: string; readonly web_url?: string };
 	readonly diff_refs?: { readonly base_sha: string; readonly head_sha: string; readonly start_sha: string };
 	readonly changes_count?: string;
+	readonly blocking_discussions_resolved?: boolean;
 }
 
 interface RawDiscussion {
@@ -668,6 +719,7 @@ function mrSummary(raw: RawMr): GitLabMrSummary {
 		updatedAt: raw.updated_at ?? '',
 		...raw.detailed_merge_status ? { mergeStatus: raw.detailed_merge_status } : {},
 		reviewers: (raw.reviewers ?? []).flatMap(r => r.username ? [r.username] : []),
+		...raw.blocking_discussions_resolved === false ? { unresolved: true } : {},
 	};
 }
 

@@ -22,7 +22,8 @@ import { agentColumn } from './editorPlacement';
 import { DiffThread, ReviewComments, ReviewDiffHost } from './reviewComments';
 import { ReviewDiffs, reviewDiffTitle } from './reviewDiffs';
 import type { TeamConnections } from './teamConnections';
-import { TeamFlowPanel } from './teamFlowPanel';
+import type { TeamFlowPanel } from './teamFlowPanel';
+import { extensionChunk } from './lazyFeature';
 import type { ReviewCommentView, ReviewThreadView, ReviewView } from './teamFlowProtocol';
 import { openTeamLink } from './teamLinks';
 import { showError } from './errorNotice';
@@ -96,6 +97,8 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 
 	readonly key: string;
 	private flow: TeamFlowPanel<ReviewView> | undefined;
+	/** The bundle the review's page comes from (src/pages.ts), loaded when the review opens. */
+	private readonly pages = extensionChunk<typeof import('../pages')>('pages');
 	private mr: GitLabMr | undefined;
 	private files: readonly GitLabDiffFile[] = [];
 	private readonly hunks = new Map<string, Hunk[]>();
@@ -376,7 +379,7 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 	private openPanel(): void {
 		const { iid } = this.saved;
 		// A tab in the active group (Home's), not a split beside Home; it moves beside its reviewer once that runs.
-		const flow = new TeamFlowPanel<ReviewView>(this.deps.extensionUri, vscode.l10n.t("Review !{0}", iid), 'gitlab', vscode.l10n.t("Reading !{0}...", iid), (action, value) => this.act(action, value), vscode.ViewColumn.Active);
+		const flow = new (this.pages().TeamFlowPanel<ReviewView>)(this.deps.extensionUri, vscode.l10n.t("Review !{0}", iid), 'gitlab', vscode.l10n.t("Reading !{0}...", iid), (action, value) => this.act(action, value), vscode.ViewColumn.Active);
 		this.flow = flow;
 		this.viewRev++;
 		flow.onDidSetField(name => {

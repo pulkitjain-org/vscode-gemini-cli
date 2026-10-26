@@ -32,8 +32,12 @@ import { WebviewInput } from '../../webviewPanel/browser/webviewEditorInput.js';
 /** The workbench's names for the Gemini extension's webview tabs: agents, Agent Home and its pages. */
 const geminiViewTypePrefix = 'mainThreadWebview-gemini.';
 const agentViewType = 'mainThreadWebview-gemini.agent';
-/** A team flow's page (Review !706, Log Time): it opens beside its agent, in that agent's side group. */
-const flowViewType = 'mainThreadWebview-gemini.teamFlow';
+/**
+ * The extension's pages that open beside their agent, in its side group, and
+ * so hide and come back with it like its files: a team flow's (Review !706,
+ * Log Time), Plan Review, and Confluence's Review Page.
+ */
+const sidePageViewTypes: ReadonlySet<string> = new Set(['teamFlow', 'planReview', 'confluenceReview'].map(name => `${geminiViewTypePrefix}${name}`));
 /** Agent tab icons end in #gemini-agent=<id> (the extension's agentsView.ts). */
 const agentFragment = 'gemini-agent=';
 const groupsKey = 'gemini.agentGroups';
@@ -52,9 +56,13 @@ function isGeminiTab(editor: EditorInput): boolean {
 	return editor instanceof WebviewInput && editor.viewType.startsWith(geminiViewTypePrefix);
 }
 
-/** A tab that makes its group the agents' group: an agent, Agent Home or one of its pages, but not a flow's page, which may sit in an agent's side group. */
+/**
+ * A tab that makes its group the agents' group: an agent, Agent Home or one of
+ * its pages, but not a page that sits in an agent's side group. Counting one
+ * of those would take the side group from its agent and keep it in view.
+ */
 function isAgentsTab(editor: EditorInput): boolean {
-	return editor instanceof WebviewInput && editor.viewType.startsWith(geminiViewTypePrefix) && editor.viewType !== flowViewType;
+	return editor instanceof WebviewInput && editor.viewType.startsWith(geminiViewTypePrefix) && !sidePageViewTypes.has(editor.viewType);
 }
 
 /** Whether a group holds agents (or Agent Home), so its tabs are the title bar's in Agents mode. */

@@ -16,7 +16,15 @@ import type { Attachment } from './attachments';
 import type { TranscriptItem } from './chatTranscript';
 import type { ReactionRequest } from './reactions';
 
-export interface PendingPrompt {
+/** What a message can carry besides its text, kept while it waits. */
+export interface PromptExtras {
+	/** "Include your edits": the user's edits to tried files go to the agent's folder just before the message does. */
+	readonly includeEdits?: boolean;
+	/** Told whether the message went: true once its own turn is over, false when it was taken out of the queue or held back unsent. */
+	readonly settle?: (sent: boolean) => void;
+}
+
+export interface PendingPrompt extends PromptExtras {
 	readonly id: string;
 	readonly text: string;
 	readonly attachments: readonly Attachment[];
@@ -36,6 +44,8 @@ export interface PendingPromptView {
 	readonly steer: boolean;
 	readonly from?: 'coordinator';
 	readonly reactions?: readonly { readonly emoji: string; readonly name: string }[];
+	/** It carries the user's edits, so it waits for the turn to end: no Send now. */
+	readonly withEdits?: true;
 }
 
 /** The prompts waiting in one chat, oldest first. */
@@ -52,14 +62,14 @@ export class PromptQueue {
 	}
 
 	get view(): PendingPromptView[] {
-		return this.items.map(({ id, text, attachments, steer, from, reactions }) => ({
-			id, text, attachments: attachments.length, steer, ...(from ? { from } : {}),
+		return this.items.map(({ id, text, attachments, steer, from, reactions, includeEdits }) => ({
+			id, text, attachments: attachments.length, steer, ...(from ? { from } : {}), ...(includeEdits ? { withEdits: true as const } : {}),
 			...(reactions?.length ? { reactions: reactions.map(({ emoji, name }) => ({ emoji, name })) } : {}),
 		}));
 	}
 
-	add(text: string, attachments: readonly Attachment[], steer: boolean, from?: 'coordinator'): void {
-		this.items.push({ id: `q${this.nextId++}`, text, attachments, steer, ...(from ? { from } : {}) });
+	add(text: string, attachments: readonly Attachment[], steer: boolean, from?: 'coordinator', extras: PromptExtras = {}): void {
+		this.items.push({ ...extras, id: `q${this.nextId++}`, text, attachments, steer, ...(from ? { from } : {}) });
 	}
 
 	/**
@@ -82,16 +92,27 @@ export class PromptQueue {
 		return this.items.some(item => item.reactions?.some(r => r.turnEnd === turnEnd && r.emoji === emoji));
 	}
 
-	/** Takes out the prompt `id`; undefined when it is gone. */
+	/** Takes out the prompt `id`; undefined when it is gone. Whoever waits on it (`settle`) is the caller's to tell. */
 	remove(id: string): PendingPrompt | undefined {
 		const index = this.items.findIndex(item => item.id === id);
 		return index < 0 ? undefined : this.items.splice(index, 1)[0];
 	}
 
-	/** Sends `id` now: it joins the prompts that steer. */
+	/**
+	 * The turn before them was stopped or failed, which holds the queue: the
+	 * prompts someone waits on (Plan Review's) come out, so they are not left
+	 * marked sent while they wait for the user.
+	 */
+	dropAwaited(): void {
+		const awaited = this.items.filter(item => item.settle);
+		this.items = this.items.filter(item => !item.settle);
+		awaited.forEach(item => item.settle!(false));
+	}
+
+	/** Sends `id` now: it joins the prompts that steer. Not one with the user's edits, which go only once the turn is over. */
 	steer(id: string): boolean {
 		const index = this.items.findIndex(item => item.id === id);
-		if (index < 0 || this.items[index].steer) {
+		if (index < 0 || this.items[index].steer || this.items[index].includeEdits) {
 			return false;
 		}
 		this.items[index] = { ...this.items[index], steer: true };
@@ -118,12 +139,14 @@ export class PromptQueue {
 	}
 
 	clear(): void {
+		const items = this.items;
 		this.items = [];
+		items.forEach(item => item.settle?.(false));
 	}
 }
 
 /** Prompts taken out together, as one; from the coordinator only when every one of them was. */
-export interface JoinedPrompt {
+export interface JoinedPrompt extends PromptExtras {
 	readonly text: string;
 	readonly attachments: readonly Attachment[];
 	readonly from?: 'coordinator';
@@ -134,8 +157,11 @@ function joinPrompts(prompts: readonly PendingPrompt[]): JoinedPrompt | undefine
 	if (!prompts.length) {
 		return undefined;
 	}
+	const settles = prompts.flatMap(prompt => prompt.settle ?? []);
 	return {
 		text: prompts.map(prompt => prompt.text.trim()).filter(Boolean).join('\n\n'),
+		...(prompts.some(prompt => prompt.includeEdits) ? { includeEdits: true } : {}),
+		...(settles.length ? { settle: (sent: boolean) => settles.forEach(settle => settle(sent)) } : {}),
 		attachments: prompts.flatMap(prompt => prompt.attachments),
 		...(prompts.every(prompt => prompt.from === 'coordinator') ? { from: 'coordinator' as const } : {}),
 		...(prompts.some(prompt => prompt.reactions?.length) ? { reactions: prompts.flatMap(prompt => prompt.reactions ?? []) } : {}),
@@ -143,22 +169,32 @@ function joinPrompts(prompts: readonly PendingPrompt[]): JoinedPrompt | undefine
 }
 
 /**
- * Whether the running turn can be stopped without cutting a tool short: no
- * tool call since the last prompt is running. A tool call waiting for the
- * user's permission has not started, so stopping there is safe too.
+ * Whether the running turn can be stopped without losing a tool's work: no
+ * tool call since the last prompt is running, and the model has answered
+ * since the last one finished. Until it has, the Gemini CLI holds the tool's
+ * result back from the history, and a stop then has it replaced with
+ * "Response was lost or interrupted." A tool call waiting for the user's
+ * permission has not started, so stopping there is safe too.
  */
 export function atSafePoint(items: readonly TranscriptItem[], waitingForPermission: boolean): boolean {
 	for (let i = items.length - 1; i >= 0; i--) {
 		const item = items[i];
-		if (item.kind === 'user') {
+		if (item.kind === 'user' || item.kind === 'agent' || item.kind === 'thought') {
 			return true;
 		}
-		if (item.kind === 'toolCall' && (item.status === 'in_progress' || (item.status === 'pending' && !waitingForPermission))) {
+		if (item.kind === 'toolCall') {
+			if (item.status === 'pending' && waitingForPermission) {
+				return true;
+			}
+			// Running, or finished with its result not yet sent to the model.
 			return false;
 		}
 	}
 	return true;
 }
+
+/** How long a message sent now waits for a safe point before the queue offers Stop Now. */
+export const steerWaitMs = 15_000;
 
 const noteStart = '<steering_note>';
 const noteEnd = '</steering_note>';

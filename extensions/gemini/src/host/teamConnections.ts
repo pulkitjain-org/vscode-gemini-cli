@@ -8,9 +8,12 @@ import * as vscode from 'vscode';
 import { AuditLog } from '../acp/auditLog';
 import { FlowRecordStore } from '../acp/flowRecords';
 import { ReviewStore } from '../acp/reviewStore';
-import { FigmaDesktop } from '../acp/figma';
+import type { FigmaClient, FigmaDesktop } from '../acp/figma';
+import { extensionChunk } from './lazyFeature';
 import { GitLabClient } from '../acp/gitlab';
 import { JiraClient } from '../acp/jira';
+import { JiraSite, JiraSites } from '../acp/jiraSites';
+import { LatestLoad } from '../acp/latestLoad';
 import type { InstantAnswer } from '../acp/permissions';
 import { isProjectToolCall } from '../acp/projectMcp';
 import { SnykCli } from '../acp/snyk';
@@ -18,8 +21,8 @@ import { SonarClient } from '../acp/sonar';
 import type { ChildServer } from '../acp/mcpStdio';
 import { findDocker, FolderChildren, gitlabContainer, jiraContainer, snykServer, sonarContainer, TeamChildren, teamImages } from '../acp/teamContainers';
 import { readTeamDefaults, TeamDefaults } from '../acp/teamDefaults';
-import { normalizeBaseUrl, ServerHealth, ServerHealthChange, teamReachability, TeamToolError, TeamToolId, teamToolIds, teamToolNames, unreachableNow } from '../acp/teamHttp';
-import { isConfirmToolCall, TeamConnectors, teamReadTools, TeamToolContext, teamToolsServerName, teamWrite, TeamWriteResult } from '../acp/teamTools';
+import { hostOf, normalizeBaseUrl, ServerHealth, ServerHealthChange, teamReachability, teamRequest, TeamToolError, TeamToolId, teamToolIds, teamToolNames, unreachableNow } from '../acp/teamHttp';
+import { ConfluenceAccount, ConfluenceTools, isConfirmToolCall, TeamConnectors, teamReadTools, TeamToolContext, teamToolsServerName, teamWrite, TeamWriteResult } from '../acp/teamTools';
 import { TeamToolsMcpServer } from '../acp/teamToolsMcp';
 import { repositoryRoot } from '../acp/worktrees';
 import { configSection, getApprovalPolicy } from './configuration';
@@ -63,6 +66,13 @@ export class TeamConnections implements vscode.Disposable {
 	private clients: TeamConnectors = {};
 	private connectedSet = new Set<TeamToolId>();
 	private readonly states = new Map<TeamToolId, ConnectionState>();
+	/** The state of each Jira site after the first, by its id. */
+	private readonly siteStates = new Map<string, ConnectionState>();
+	/** The state of Confluence on each Jira site it is turned on for, by the site's id. */
+	private readonly confluenceStates = new Map<string, ConnectionState>();
+	/** Confluence's tools, from its bundle, constructed on first use. */
+	private confluenceTools: (ConfluenceTools & vscode.Disposable) | undefined;
+	private createConfluence: (() => ConfluenceTools & vscode.Disposable) | undefined;
 	private readonly folders = new Map<string, string>();
 	private readonly defaultsCache = new Map<string, { at: number; value: Promise<TeamDefaults> }>();
 	private checking: Promise<void> | undefined;
@@ -72,10 +82,18 @@ export class TeamConnections implements vscode.Disposable {
 	/** The team's own servers, run as children once taken over, with what each was started for. */
 	private children: TeamChildren = {};
 	private childKeys: Partial<Record<ChildTool, string>> = {};
-	private readonly tokens = new Map<TeamToolId, string>();
+	private tokens = new Map<TeamToolId, string>();
+	/** The tokens of the Jira sites after the first, by id. */
+	private siteTokens = new Map<string, string>();
+	/** What each tool's client was made from, so a load keeps a client whose account and token didn't change. */
+	private clientKeys: Record<string, string> = {};
+	/** Figma's client, kept while Figma is on: its connection and the designs it read outlive a load. */
+	private figma: LazyFigma | undefined;
+	private readonly loader = new LatestLoad(() => this.read(), loaded => this.applyLoaded(loaded));
 	private warnedNoDocker = false;
 	/** Each unreachable tool's next check, when its backoff ends, so its state clears by itself once the server answers. */
 	private readonly recheck = new Map<TeamToolId, ReturnType<typeof setTimeout>>();
+	private readonly siteRecheck = new Map<string, ReturnType<typeof setTimeout>>();
 	/** Agents whose team tools only read, such as a merge request's reviewer. */
 	private readonly readOnlyAgents = new Set<string>();
 	/** Folders whose agents' team tools only read: a review's worktree, marked before its reviewer's session opens. */
@@ -96,12 +114,20 @@ export class TeamConnections implements vscode.Disposable {
 			readOnly: agent => this.isReadOnly(agent),
 			childUnavailable: (server, reason) => this.log.warn(`The ${server} server didn't start, so the call went to ${server === 'jira' ? 'Jira' : 'GitLab'} directly: ${reason}`),
 			allowShell: () => getApprovalPolicy().allowShell,
+			confluence: () => this.confluence(),
+			figmaCodeConnect: () => vscode.workspace.getConfiguration(configSection).get<boolean>('figma.codeConnect', false),
 		};
 		this.server = new TeamToolsMcpServer(this.toolContext, version);
 		for (const tool of teamToolIds) {
 			const saved = context.globalState.get<ConnectionState>(stateKey(tool));
 			if (saved) {
 				this.states.set(tool, { ...saved, stale: true });
+			}
+		}
+		for (const site of this.jiraSiteList()) {
+			const saved = context.globalState.get<ConnectionState>(siteStateKey(site.id));
+			if (saved) {
+				this.siteStates.set(site.id, { ...saved, stale: true });
 			}
 		}
 		this.disposables.push(
@@ -140,6 +166,22 @@ export class TeamConnections implements vscode.Disposable {
 		return result;
 	}
 
+	/** As `write`, without throwing: a failed write's result, with what the tool gave back (a Confluence conflict's version). */
+	tryWrite(name: string, args: Record<string, unknown>, folder?: string): Promise<TeamWriteResult> {
+		const where = folder ?? editorFolder() ?? vscode.workspace.workspaceFolders?.find(f => f.uri.scheme === 'file')?.uri.fsPath;
+		return teamWrite(this.toolContext, { caller: 'ui', ...where ? { folder: where } : {} }, name, args);
+	}
+
+	/** Opens a Confluence draft's Review Page, or asks which; says so when Confluence isn't connected. */
+	async openConfluenceDraft(id?: string): Promise<void> {
+		const confluence = this.confluence();
+		if (!confluence) {
+			void vscode.window.showInformationMessage(vscode.l10n.t("Connect Confluence in Connections to review drafts."));
+			return;
+		}
+		await confluence.openDraft(id);
+	}
+
 	/**
 	 * Makes `agent`'s team tools read-only: it is offered only the reading
 	 * tools, and any write it asks for is refused. Set before its session opens.
@@ -173,13 +215,14 @@ export class TeamConnections implements vscode.Disposable {
 	}
 
 	dispose(): void {
-		for (const timer of this.recheck.values()) {
+		for (const timer of [...this.recheck.values(), ...this.siteRecheck.values()]) {
 			clearTimeout(timer);
 		}
 		for (const tool of childTools) {
 			this.children[tool]?.stop();
 		}
 		this.server.dispose();
+		this.confluenceTools?.dispose();
 		vscode.Disposable.from(...this.disposables).dispose();
 	}
 
@@ -257,14 +300,18 @@ export class TeamConnections implements vscode.Disposable {
 	 * when the server can't be reached: then it is saved, as the VPN may
 	 * just be off.
 	 */
-	async connect(tool: TeamToolId, details: { url?: string; email?: string; token?: string }): Promise<ConnectionState> {
+	async connect(tool: TeamToolId, details: { url?: string; email?: string; token?: string; name?: string }): Promise<ConnectionState> {
 		const url = details.url ? normalizeBaseUrl(details.url) : undefined;
 		const token = details.token?.trim();
-		const account: StoredAccount = { ...url ? { url } : {}, ...details.email ? { email: details.email.trim() } : {} };
+		const name = tool === 'jira' ? details.name?.trim() || this.accountOf('jira')?.name : undefined;
+		const account: StoredAccount = { ...url ? { url } : {}, ...details.email ? { email: details.email.trim() } : {}, ...name ? { name } : {} };
 		if ((tool === 'jira' || tool === 'gitlab' || tool === 'sonar') && (!url || !token || (tool === 'jira' && !account.email))) {
 			throw new TeamToolError('failed', tool === 'jira' ? vscode.l10n.t("Enter the Jira site, your email and an API token.") : vscode.l10n.t("Enter the server address and a token."));
 		}
-		const clients = clientsFor(tool, account, token);
+		if (tool === 'jira' && url && this.jiraSiteList().some(site => hostOf(site.url) === hostOf(url))) {
+			throw new TeamToolError('failed', vscode.l10n.t("{0} is already connected.", hostOf(url)));
+		}
+		const clients = clientsFor(tool, account, token, tool === 'figma' ? this.figma ??= lazyFigma(this.log) : undefined);
 		const needsToken = tool === 'jira' || tool === 'gitlab' || tool === 'sonar';
 		this.log.info(`Connecting ${teamToolNames[tool]}${url ? ` at ${url}` : ''}`);
 		this.connecting.add(tool);
@@ -296,12 +343,138 @@ export class TeamConnections implements vscode.Disposable {
 	}
 
 	async disconnect(tool: TeamToolId): Promise<void> {
+		if (tool === 'confluence') {
+			await this.context.globalState.update(confluenceSitesKey, undefined);
+			this.confluenceStates.clear();
+		}
 		await this.context.secrets.delete(secretKey(tool));
 		await this.context.globalState.update(stateKey(tool), undefined);
 		this.states.delete(tool);
 		await this.load();
 		this.onDidChangeEmitter.fire();
 		this.log.info(`Disconnected ${teamToolNames[tool]}`);
+	}
+
+	/** The Jira sites added after the first, in the order they were added. */
+	jiraSiteList(): readonly StoredJiraSite[] {
+		const saved = this.context.globalState.get<unknown>(jiraSitesKey);
+		return Array.isArray(saved) ? saved.filter(isStoredSite) : [];
+	}
+
+	/** A Jira site's last known state, by its id; `stale` until checked in this window. */
+	siteState(id: string): ConnectionState {
+		return this.siteStates.get(id) ?? { kind: 'checking' };
+	}
+
+	/** The name the first Jira site shows under, on Home and in Connections. */
+	jiraName(): string {
+		const account = this.accountOf('jira');
+		return account?.name || defaultSiteName(account?.url ?? '');
+	}
+
+	/**
+	 * Confluence's tools, from `create` (its bundle's feature), constructed
+	 * the first time an agent or a page uses Confluence.
+	 */
+	useConfluence(create: () => ConfluenceTools & vscode.Disposable): void {
+		this.createConfluence = create;
+	}
+
+	confluence(): ConfluenceTools | undefined {
+		if (!this.connectedSet.has('confluence') || !this.createConfluence) {
+			return undefined;
+		}
+		return this.confluenceTools ??= this.createConfluence();
+	}
+
+	/** The Jira sites Confluence is turned on for, by id ('default' for the first). */
+	confluenceSiteIds(): readonly string[] {
+		const saved = this.context.globalState.get<unknown>(confluenceSitesKey);
+		return Array.isArray(saved) ? saved.filter((id): id is string => typeof id === 'string') : [];
+	}
+
+	/** Confluence's state on a Jira site, by the site's id. */
+	confluenceState(id: string): ConnectionState {
+		return this.confluenceStates.get(id) ?? { kind: 'checking' };
+	}
+
+	/** The keychain and saved settings, for Connections' site actions (siteConnections.ts, in the pages bundle). */
+	get storage(): { readonly secrets: vscode.SecretStorage; readonly globalState: vscode.Memento } {
+		return this.context;
+	}
+
+	/** Reads the saved accounts and tokens again, after Connections changed them, and tells the pages. */
+	async reload(): Promise<void> {
+		await this.load();
+		this.onDidChangeEmitter.fire();
+	}
+
+	/** Sets, or with none forgets, a Jira site's state after the first. */
+	setSiteState(id: string, state: ConnectionState | undefined): void {
+		if (state) {
+			const stamped = { ...state, checkedAt: Date.now() };
+			this.siteStates.set(id, stamped);
+			void this.context.globalState.update(siteStateKey(id), stamped);
+		} else {
+			this.siteStates.delete(id);
+			void this.context.globalState.update(siteStateKey(id), undefined);
+		}
+		this.onDidChangeEmitter.fire();
+	}
+
+	/** Sets, or with none forgets, Confluence's state on a Jira site; Confluence's own state follows. */
+	setConfluenceState(id: string, state: ConnectionState | undefined): void {
+		if (state) {
+			this.confluenceStates.set(id, { ...state, checkedAt: Date.now() });
+		} else {
+			this.confluenceStates.delete(id);
+		}
+		this.setState('confluence', aggregate([...this.confluenceStates.values()]));
+	}
+
+	/** Sets a tool's state, and checks it again unless `state` is final. */
+	setToolState(tool: TeamToolId, state: ConnectionState, recheck = false): void {
+		this.setState(tool, state);
+		if (recheck) {
+			void this.check(tool);
+		}
+	}
+
+	/** Marks a tool as being connected, which pages show as checking. */
+	setConnecting(tool: TeamToolId, on: boolean): void {
+		if (on) {
+			this.connecting.add(tool);
+		} else {
+			this.connecting.delete(tool);
+		}
+	}
+
+	/** Checks a Jira site's account before it is saved, within the Connect dialog's time. */
+	checkJiraSite(url: string, email: string, token: string): Promise<ConnectionState> {
+		return withTimeout(probeSite(new JiraClient({ site: url, email, token })), connectTimeoutMs, { kind: 'failed', detail: vscode.l10n.t("{0} didn't answer within {1} seconds.", teamToolNames.jira, connectTimeoutMs / 1000) });
+	}
+
+	/** Checks Confluence with a Jira site's account, within the Connect dialog's time. */
+	checkConfluence(account: ConfluenceAccount): Promise<ConnectionState> {
+		return withTimeout(probeConfluence(account), connectTimeoutMs, { kind: 'failed', detail: vscode.l10n.t("{0} didn't answer within {1} seconds.", teamToolNames.confluence, connectTimeoutMs / 1000) });
+	}
+
+	startServer(): void {
+		void this.server.start().catch(err => this.log.warn(`The team tools server didn't start: ${err}`));
+	}
+
+	/** Each connected Jira site's account, the first site first. */
+	jiraAccounts(tokens = this.tokens, siteTokens = this.siteTokens): ConfluenceAccount[] {
+		const first = this.accountOf('jira');
+		const token = tokens.get('jira');
+		const accounts: ConfluenceAccount[] = first?.url && first.email && token ? [{ id: 'default', name: this.jiraName(), site: first.url, email: first.email, token }] : [];
+		for (const site of this.jiraSiteList()) {
+			const siteToken = siteTokens.get(site.id);
+			if (siteToken) {
+				accounts.push({ id: site.id, name: site.name, site: site.url, email: site.email, token: siteToken });
+			}
+		}
+		return accounts;
 	}
 
 	/** The `mcpServers` for an agent's session: the team tools, once any is connected and the server listens. */
@@ -357,24 +530,76 @@ export class TeamConnections implements vscode.Disposable {
 		return allow && { optionId: allow.optionId, quiet: true };
 	}
 
-	private async load(): Promise<void> {
+	/** Reads the saved accounts and tokens again; loads run one at a time, and only the newest is applied. */
+	private load(): Promise<void> {
+		return this.loader.load();
+	}
+
+	private async read(): Promise<LoadedClients> {
 		const clients: { -readonly [K in keyof TeamConnectors]: TeamConnectors[K] } = {};
 		const connected = new Set<TeamToolId>();
+		const tokens = new Map<TeamToolId, string>();
+		const siteTokens = new Map<string, string>();
+		const keys: Record<string, string> = {};
 		for (const tool of teamToolIds) {
 			const token = await this.context.secrets.get(secretKey(tool));
 			if (!token) {
 				continue;
 			}
 			const account = this.accountOf(tool) ?? {};
-			Object.assign(clients, clientsFor(tool, account, token));
+			Object.assign(clients, clientsFor(tool, account, token, tool === 'figma' ? this.figma ??= lazyFigma(this.log) : undefined));
 			connected.add(tool);
-			this.tokens.set(tool, token);
+			tokens.set(tool, token);
+			keys[tool] = JSON.stringify([account, token]);
 		}
-		for (const tool of teamToolIds.filter(t => !connected.has(t))) {
-			this.tokens.delete(tool);
+		if (clients.jira) {
+			const more: JiraSite[] = [];
+			// A site with the first's host, or another's, is left out: one site, one client.
+			const hosts = new Set([hostOf(clients.jira.site)]);
+			for (const site of this.jiraSiteList()) {
+				const token = await this.context.secrets.get(siteSecretKey(site.id));
+				if (token && !hosts.has(hostOf(site.url))) {
+					hosts.add(hostOf(site.url));
+					siteTokens.set(site.id, token);
+					more.push({ id: site.id, name: site.name, client: new JiraClient({ site: site.url, email: site.email, token }) });
+				}
+			}
+			keys.jira += JSON.stringify([this.jiraName(), ...this.jiraSiteList().filter(site => siteTokens.has(site.id)), ...siteTokens]);
+			clients.jira = new JiraSites([{ ...clients.jira.sites[0], name: this.jiraName() }, ...more]);
+			// Confluence shares each Jira site's account; it is on for the sites the user turned it on for.
+			const enabled = new Set(this.confluenceSiteIds());
+			const confluence = this.jiraAccounts(tokens, siteTokens).filter(account => enabled.has(account.id));
+			if (confluence.length) {
+				clients.confluence = confluence;
+				connected.add('confluence');
+			}
 		}
-		this.clients = clients;
-		this.connectedSet = connected;
+		return { clients, connected, tokens, siteTokens, keys };
+	}
+
+	/**
+	 * Uses what `read` found. A tool whose account and token didn't change
+	 * keeps its client, and with it what the client learned (Jira's projects,
+	 * GitLab's review states, Figma's connection and designs); Figma's is
+	 * closed once Figma is turned off.
+	 */
+	private applyLoaded(loaded: LoadedClients): void {
+		const clients = loaded.clients as Record<string, unknown>;
+		const old = this.clients as Record<string, unknown>;
+		for (const [tool, key] of Object.entries(loaded.keys)) {
+			if (this.clientKeys[tool] === key && old[tool]) {
+				clients[tool] = old[tool];
+			}
+		}
+		if (!loaded.clients.figma) {
+			this.figma?.dispose();
+			this.figma = undefined;
+		}
+		this.clients = loaded.clients;
+		this.clientKeys = loaded.keys;
+		this.connectedSet = loaded.connected;
+		this.tokens = loaded.tokens;
+		this.siteTokens = loaded.siteTokens;
 		this.updateChildren();
 	}
 
@@ -458,6 +683,11 @@ export class TeamConnections implements vscode.Disposable {
 		if (!this.connectedSet.has(tool)) {
 			return;
 		}
+		const site = tool === 'jira' ? this.clients.jira?.sites.slice(1).find(s => new URL(s.client.site).origin === change.origin) : undefined;
+		if (site) {
+			this.siteReachabilityChanged(site, health);
+			return;
+		}
 		clearTimeout(this.recheck.get(tool));
 		this.recheck.delete(tool);
 		const current = this.states.get(tool);
@@ -479,8 +709,44 @@ export class TeamConnections implements vscode.Disposable {
 		}
 	}
 
+	/** As `reachabilityChanged`, for a Jira site after the first: its own row's state. */
+	private siteReachabilityChanged(site: JiraSite, health: ServerHealth): void {
+		const key = `jira ${site.id}`;
+		clearTimeout(this.siteRecheck.get(key));
+		this.siteRecheck.delete(key);
+		const current = this.siteStates.get(site.id);
+		if (health.kind === 'unreachable') {
+			this.setSiteState(site.id, { kind: 'unreachable', detail: vscode.l10n.t("Can't reach {0}. Check your connection.", hostOf(site.client.site)), retryAt: health.retryAt });
+			this.siteRecheck.set(key, setTimeout(() => {
+				this.siteRecheck.delete(key);
+				void this.checkSite(site);
+			}, Math.max(0, health.retryAt - Date.now())));
+		} else if (health.kind === 'signIn') {
+			this.setSiteState(site.id, { kind: 'auth', detail: vscode.l10n.t("Jira refused the token. It may have expired or been revoked: replace it.") });
+		} else if (current?.kind === 'unreachable' || current?.kind === 'auth') {
+			void this.checkSite(site);
+		}
+	}
+
+	private async checkSite(site: JiraSite): Promise<void> {
+		teamReachability.retryNow('jira');
+		this.setSiteState(site.id, await probeSite(site.client));
+	}
+
 	private async check(tool: TeamToolId): Promise<void> {
 		if (!this.connectedSet.has(tool)) {
+			return;
+		}
+		if (tool === 'jira') {
+			void Promise.all((this.clients.jira?.sites.slice(1) ?? []).map(site => this.checkSite(site)));
+		}
+		if (tool === 'confluence') {
+			const states = await Promise.all((this.clients.confluence ?? []).map(async account => {
+				const state = await probeConfluence(account);
+				this.confluenceStates.set(account.id, { ...state, checkedAt: Date.now() });
+				return state;
+			}));
+			this.setState(tool, aggregate(states));
 			return;
 		}
 		// An explicit check always asks the server, even while it waits out an outage.
@@ -507,6 +773,29 @@ export class TeamConnections implements vscode.Disposable {
 export interface StoredAccount {
 	readonly url?: string;
 	readonly email?: string;
+	/** For Jira: the name the first site shows under once there are more. */
+	readonly name?: string;
+}
+
+/** A Jira site added after the first; its token is in SecretStorage under its id. */
+export interface StoredJiraSite {
+	readonly id: string;
+	readonly name: string;
+	readonly url: string;
+	readonly email: string;
+}
+
+export const jiraSitesKey = 'gemini.teamTools.jira.sites';
+
+export function isStoredSite(value: unknown): value is StoredJiraSite {
+	const site = value as Partial<StoredJiraSite> | null;
+	return !!site && typeof site.id === 'string' && typeof site.name === 'string' && typeof site.url === 'string' && typeof site.email === 'string';
+}
+
+/** A site's name until the user gives one: its subdomain, as Acme for acme.atlassian.net. */
+export function defaultSiteName(url: string): string {
+	const label = hostOf(url).split('.')[0] ?? '';
+	return label ? label[0].toUpperCase() + label.slice(1) : 'Jira';
 }
 
 export type ConnectionKind = 'off' | 'checking' | 'connected' | 'unreachable' | 'auth' | 'failed' | 'notInstalled';
@@ -529,12 +818,12 @@ export interface ConnectionState {
 	readonly stale?: boolean;
 }
 
-const secretPrefix = 'geminicode-tools.';
+export const secretPrefix = 'geminicode-tools.';
 
 /** The longest a Connect check may take: the Snyk CLI can be slow to start. */
-const connectTimeoutMs = 45_000;
+export const connectTimeoutMs = 45_000;
 
-function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+export function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	return Promise.race([promise, new Promise<T>(resolve => timer = setTimeout(() => resolve(fallback), ms))]).finally(() => clearTimeout(timer));
 }
@@ -546,22 +835,30 @@ function editorFolder(): string | undefined {
 	return folder?.uri.scheme === 'file' ? folder.uri.fsPath : undefined;
 }
 
-function secretKey(tool: TeamToolId): string {
+export function secretKey(tool: TeamToolId): string {
 	return `${secretPrefix}${tool}`;
 }
 
-function accountKey(tool: TeamToolId): string {
+export function accountKey(tool: TeamToolId): string {
 	return `gemini.teamTools.${tool}.account`;
 }
 
-function stateKey(tool: TeamToolId): string {
+export function stateKey(tool: TeamToolId): string {
 	return `gemini.teamTools.${tool}.state`;
 }
 
-function clientsFor(tool: TeamToolId, account: StoredAccount, token: string | undefined): TeamConnectors {
+export function siteSecretKey(id: string): string {
+	return `${secretPrefix}jira.${id}`;
+}
+
+export function siteStateKey(id: string): string {
+	return `gemini.teamTools.jira.sites.${id}.state`;
+}
+
+function clientsFor(tool: TeamToolId, account: StoredAccount, token: string | undefined, figma?: FigmaClient): TeamConnectors {
 	switch (tool) {
 		case 'jira':
-			return { jira: new JiraClient({ site: account.url ?? '', email: account.email ?? '', token: token ?? '' }) };
+			return { jira: new JiraSites([{ id: 'default', name: account.name || defaultSiteName(account.url ?? ''), client: new JiraClient({ site: account.url ?? '', email: account.email ?? '', token: token ?? '' }) }]) };
 		case 'gitlab':
 			return { gitlab: new GitLabClient({ url: account.url ?? '', token: token ?? '' }) };
 		case 'sonar':
@@ -569,27 +866,67 @@ function clientsFor(tool: TeamToolId, account: StoredAccount, token: string | un
 		case 'snyk':
 			return { snyk: new SnykCli() };
 		case 'figma':
-			return { figma: new FigmaDesktop() };
+			return figma ? { figma } : {};
+		case 'confluence':
+			// Made from the Jira sites' accounts in `load`.
+			return {};
 	}
 }
 
-function hostOf(url: string): string {
+type LazyFigma = FigmaClient & { dispose(): void };
+
+/** Figma's client, from dist/onDemand.js the first time Figma is checked or read. */
+function lazyFigma(log: vscode.LogOutputChannel | undefined): LazyFigma {
+	let client: FigmaDesktop | undefined;
+	const get = () => client ??= new (extensionChunk<typeof import('../onDemand')>('onDemand')().FigmaDesktop)(undefined, undefined, line => log?.info(line));
+	return {
+		status: () => get().status(),
+		designContext: (link, options) => get().designContext(link, options),
+		screenshot: link => get().screenshot(link),
+		dispose: () => client?.dispose(),
+	};
+}
+
+interface LoadedClients {
+	readonly clients: TeamConnectors;
+	readonly connected: Set<TeamToolId>;
+	readonly tokens: Map<TeamToolId, string>;
+	readonly siteTokens: Map<string, string>;
+	readonly keys: Record<string, string>;
+}
+
+export const confluenceSitesKey = 'gemini.teamTools.confluence.sites';
+
+/** Confluence on several sites as one state: connected when any site is, else the first site's problem. */
+function aggregate(states: readonly ConnectionState[]): ConnectionState {
+	return states.find(state => state.kind === 'connected') ?? states[0] ?? { kind: 'off' };
+}
+
+/** Checks Confluence on one site with its Jira site's account, never throwing; through the main bundle's request, so its reachability is shared. */
+export async function probeConfluence(account: ConfluenceAccount): Promise<ConnectionState> {
 	try {
-		return new URL(url).host;
-	} catch {
-		return url;
+		const basic = Buffer.from(`${account.email}:${account.token}`).toString('base64');
+		const me = await teamRequest<{ displayName?: string; publicName?: string }>('confluence', `${account.site.replace(/\/+$/, '')}/wiki/rest/api/user/current`, { headers: { Authorization: `Basic ${basic}`, Accept: 'application/json' } });
+		return { kind: 'connected', account: me?.displayName ?? me?.publicName ?? '', server: hostOf(account.site) };
+	} catch (err) {
+		return stateOfError(err);
 	}
+}
+
+/** A failed check as a connection state. */
+export function stateOfError(err: unknown): ConnectionState {
+	if (err instanceof TeamToolError) {
+		return { kind: err.kind === 'unreachable' ? 'unreachable' : err.kind === 'auth' ? 'auth' : 'failed', detail: err.message };
+	}
+	return { kind: 'failed', detail: err instanceof Error ? err.message : String(err) };
 }
 
 /** Checks one tool, never throwing. */
 export async function probe(tool: TeamToolId, clients: TeamConnectors): Promise<ConnectionState> {
 	try {
 		switch (tool) {
-			case 'jira': {
-				const jira = clients.jira!;
-				const me = await jira.myself();
-				return { kind: 'connected', account: me.displayName, server: hostOf(jira.site) };
-			}
+			case 'jira':
+				return await probeSite(clients.jira!.primary);
 			case 'gitlab': {
 				const gitlab = clients.gitlab!;
 				const [user, version, token] = await Promise.all([gitlab.user(), gitlab.version().catch(() => undefined), gitlab.token()]);
@@ -619,12 +956,24 @@ export async function probe(tool: TeamToolId, clients: TeamConnectors): Promise<
 				const status = await clients.figma!.status();
 				return status.running ? { kind: 'connected', detail: vscode.l10n.t("Through the Figma desktop app.") } : { kind: 'unreachable', detail: status.problem };
 			}
+			case 'confluence':
+				return aggregate(await Promise.all((clients.confluence ?? []).map(probeConfluence)));
 		}
 	} catch (err) {
 		if (err instanceof TeamToolError) {
 			return { kind: err.kind === 'unreachable' ? 'unreachable' : err.kind === 'auth' ? 'auth' : 'failed', detail: err.message };
 		}
 		return { kind: 'failed', detail: err instanceof Error ? err.message : String(err) };
+	}
+}
+
+/** Checks one Jira site, never throwing. */
+export async function probeSite(jira: JiraClient): Promise<ConnectionState> {
+	try {
+		const me = await jira.myself();
+		return { kind: 'connected', account: me.displayName, server: hostOf(jira.site) };
+	} catch (err) {
+		return stateOfError(err);
 	}
 }
 

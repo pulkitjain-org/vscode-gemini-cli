@@ -12,6 +12,7 @@ import { format } from './chatLogic';
 import { setLabel } from './dom';
 import { Menu, type MenuRow, type MenuSection } from './menu';
 import { modeIcon } from './modeIcon';
+import { openFigmaDesign } from './figmaDesignLoader';
 import { closePicker, startCommand, startMention } from './picker';
 import { openNewThread, planFirst, setPlanFirst } from './project';
 import { hasTerminal } from './runButtons';
@@ -162,12 +163,17 @@ function fromYourTools(): MenuRow[] {
 	const connected = toolRefContext().connected;
 	const pick = (tool: 'jira' | 'gitlab' | 'figma') => () => {
 		closePlusMenu();
+		if (tool === 'figma') {
+			// A frame for each screen size, in a dialog of its own.
+			openFigmaDesign();
+			return;
+		}
 		vscode.postMessage({ type: 'pickToolItem', tool });
 	};
 	const rows: { readonly tool: 'jira' | 'gitlab' | 'figma'; readonly name: string; readonly end: string }[] = [
 		{ tool: 'jira', name: strings.jiraTicket, end: '' },
 		{ tool: 'gitlab', name: strings.gitlabItem, end: '!… #…' },
-		{ tool: 'figma', name: strings.figmaFrame, end: strings.pasteLink },
+		{ tool: 'figma', name: strings.figmaDesign, end: strings.figmaDesignEnd },
 	];
 	return rows.filter(row => connected.includes(row.tool)).map(row => ({
 		iconElement: () => toolLogo(row.tool, 14), name: row.name, end: row.end || undefined, run: pick(row.tool),

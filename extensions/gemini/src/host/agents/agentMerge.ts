@@ -3,8 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Merge Back: commits an agent's work on its own branch and merges the branch
-// into what its workspace has checked out, one repository at a time for a
+// Merge Back, with `gemini.agents.mergeBack` set to "commit": commits an
+// agent's work on its own branch and merges the branch into what its
+// workspace has checked out, one repository at a time for a
 // thread in several, never while the agent works and never twice at once. A
 // fork whose parent works on a branch of its own asks which to merge into:
 // the parent's branch, in the parent's folder, or what the workspace has.
@@ -14,7 +15,7 @@ import * as vscode from 'vscode';
 import type { AgentChanges } from '../../acp/agentChanges';
 import type { AgentRecord, AgentsModel } from '../../acp/agents';
 import { errorMessage } from '../../acp/errors';
-import { AgentWorktree, commitAll, currentBranch, inRepository, mergeBranch, repositoryRoot, worktreeStatus } from '../../acp/worktrees';
+import { AgentWorktree, commitAll, currentBranch, type inRepository, mergeBranch, repositoryRoot, worktreeStatus } from '../../acp/worktrees';
 import type { ChatActivity } from '../chatController';
 import { tildify } from '../displayText';
 import { awaitCommitMessage } from '../gitActions';
@@ -37,6 +38,8 @@ export class AgentMerge {
 		private readonly live: ReadonlyMap<string, MergingAgent>,
 		/** Removes the agent, its folder and, with `deleteBranch`, its branch. */
 		private readonly removeAgent: (id: string, deleteBranch: boolean) => Promise<void>,
+		/** The extension bundle's repository lock: this class loads from dist/onDemand.js, which has its own copy of the module. */
+		private readonly lock: typeof inRepository,
 		/** Writes a commit message for a folder's uncommitted work; undefined when it can't. */
 		private readonly writeMessage?: (folder: string) => Promise<string | undefined>,
 	) { }
@@ -197,7 +200,7 @@ export class AgentMerge {
 				return false;
 			}
 			// The commit and the merge take a turn of the repository's git lock, as worktree adds and pushes do.
-			const result = await inRepository(repository, async () => {
+			const result = await this.lock(repository, async () => {
 				if (status.uncommitted) {
 					await commitAll(worktree.folder, await awaitCommitMessage(written, record.title));
 					// A thread in several repositories keeps the others' changes.

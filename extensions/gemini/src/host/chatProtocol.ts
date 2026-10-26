@@ -22,7 +22,7 @@ import type { PendingPromptView } from '../acp/promptQueue';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 38;
+export const chatProtocolVersion = 42;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.signIn', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal'] as const;
@@ -46,8 +46,16 @@ export interface ViewStall {
 /** Project settings' buttons that need the extension: pick a repository folder, add or make a context file, open one, draft the Memory text, or clean up merged threads' folders. */
 export type ProjectSettingsAction = 'pickRepository' | 'addFiles' | 'newFile' | 'openFile' | 'draft' | 'cleanUp';
 
-/** `startAnyway`: the side panel's Start Anyway, which starts the threads today's quota holds. */
-export type ThreadAction = 'open' | 'stop' | 'merge' | 'review' | 'undo' | 'approve' | 'retry' | 'startAnyway';
+/**
+ * `startAnyway`: the side panel's Start Anyway, which starts the threads
+ * today's quota holds. `merge` is Merge Back's merge commit, with
+ * `gemini.agents.mergeBack` set to "commit"; the rest of the try actions are
+ * `TryAction`s. `guide` shows the first-try guide, `dismissGuide` hides it.
+ */
+export type ThreadAction = 'open' | 'stop' | 'merge' | 'review' | 'remove' | 'approve' | 'retry' | 'startAnyway' | TryAction | 'guide' | 'dismissGuide' | 'terminal' | 'checks';
+
+/** Trying an agent's work in the user's checkout (agentTries.ts). */
+export type TryAction = 'try' | 'keep' | 'takeBack' | 'send' | 'resolve' | 'discard' | 'restore';
 
 /** A thread the user starts from the project chat's New thread dialog. */
 export interface NewThread {
@@ -258,7 +266,33 @@ export interface ProjectChatStrings {
 	};
 	readonly states: { readonly starting: string; readonly working: string; readonly waiting: string; readonly planned: string; readonly done: string; readonly error: string };
 	readonly actions: { readonly [action in ThreadAction]: string };
+	/** Each action's tooltip, for the buttons that have one. */
+	readonly tips: { readonly [action in ThreadAction]?: string };
 	readonly openToAnswer: string;
+	/** The three steps a thread's work goes through, on its card. */
+	readonly steps: { readonly thread: string; readonly trying: string; readonly kept: string };
+	/** The card's line for each try state; `{0}` is a number of files, `{1}` a list of them. */
+	readonly tryLines: {
+		readonly trying: string;
+		readonly tryingOne: string;
+		readonly updated: string;
+		readonly working: string;
+		readonly paused: string;
+		readonly yourEdits: string;
+		readonly kept: string;
+		readonly keptOne: string;
+		readonly discarded: string;
+		readonly done: string;
+		readonly doneOne: string;
+		/** Files Try couldn't merge with the user's edits and left as they were; `{0}` lists them. */
+		readonly unmerged: string;
+	};
+	/** The first-try guide: a title and its three steps. */
+	readonly guide: { readonly title: string; readonly steps: readonly string[]; readonly gotIt: string };
+	/** The card's ⋯ button's label. */
+	readonly more: string;
+	/** Open's label on a card whose work is tried or kept: the thread's chat, to ask for more. */
+	readonly askForChanges: string;
 	readonly merged: string;
 	/** A thread in several repositories: one repository merged, and how many of how many are. */
 	readonly repoMerged: string;
@@ -357,6 +391,9 @@ export interface ChatStrings {
 	readonly send: string;
 	/** Send while the agent works: it steers the running turn. */
 	readonly sendNow: string;
+	/** The checkbox above the message box for an agent whose work is tried; `{0}` lists the files the user edited. */
+	readonly includeEdits: string;
+	readonly includeEditsTip: string;
 	readonly stop: string;
 	/** The strip of messages sent while the agent works. */
 	readonly queued: string;
@@ -478,6 +515,12 @@ export interface ChatStrings {
 	readonly trace: { readonly title: string; readonly source: string; readonly hop: string; readonly share: string; readonly thisTurn: string; readonly budget: string; readonly tokens: string; readonly file: string; readonly open: string };
 	/** `{0}` is a duration such as "12s" or "2m 5s". */
 	readonly workedFor: string;
+	/** A turn stopped for a message sent now; `{0}` is how long it ran. */
+	readonly stoppedForMessage: string;
+	/** A message sent now, waiting for the agent to reach a safe point, and the button that stops it anyway. */
+	readonly steerWaiting: string;
+	readonly steerStopNow: string;
+	readonly steerStopNowTip: string;
 	/** A turn's fold: its steps under one line once the turn is done (webview-src/work.ts). */
 	readonly work: {
 		/** The line of a turn that ended in an error, with and without its duration (`{0}`). */
@@ -513,6 +556,9 @@ export interface ChatStrings {
 	readonly retryTooltip: string;
 	readonly buildPlan: string;
 	readonly buildPlanTooltip: string;
+	/** Review Plan beside Build This Plan, opening the plan file in Plan Review. */
+	readonly reviewPlan: string;
+	readonly reviewPlanTooltip: string;
 	/** Build This Plan's chevron and its menu: `{0}` is a mode's name; the hint names the build's model, then the plan's. */
 	readonly planBuild: {
 		readonly more: string; readonly buildIn: string; readonly asking: string; readonly beforePlan: string; readonly defaultMode: string; readonly models: string;
@@ -620,6 +666,26 @@ export interface ChatStrings {
 	readonly gitlabItem: string;
 	readonly figmaFrame: string;
 	readonly pasteLink: string;
+	/** Add Figma Design: a link for each screen size. */
+	readonly figmaDesign: string;
+	readonly figmaDesignEnd: string;
+	readonly figmaDesignTitle: string;
+	readonly figmaDesignHint: string;
+	readonly figmaSize: string;
+	/** `{0}` the size. */
+	readonly figmaLinkFor: string;
+	readonly figmaAddSize: string;
+	readonly figmaAddDesign: string;
+	readonly figmaUpdateDesign: string;
+	/** `{0}` the sizes. */
+	readonly figmaOtherFile: string;
+	/** `{0}` the size. */
+	readonly figmaRepeated: string;
+	readonly figmaNotLink: string;
+	readonly figmaDesignChip: string;
+	/** Add Figma Design's chunk didn't load; the next try loads it again. */
+	readonly figmaDesignFailed: string;
+	readonly figmaEditDesign: string;
 	/** The + menu's row that opens the Open Merge Request page for the agent's branch, when GitLab is connected. */
 	readonly openMergeRequest: string;
 	readonly openMergeRequestTip: string;
@@ -869,9 +935,11 @@ export type FromWebview =
 	/** The transcript from `reset` is on screen. */
 	| { readonly type: 'shown' }
 	/** `when` matters only while the agent works: `now` steers the running turn, `queue` waits for it to end. */
-	| { readonly type: 'prompt'; readonly text: string; readonly attachments: readonly Attachment[]; readonly when?: 'now' | 'queue' }
+	/** `includeEdits`: the message box's "Include your edits", sending the user's edits to tried files to the agent first. */
+	| { readonly type: 'prompt'; readonly text: string; readonly attachments: readonly Attachment[]; readonly when?: 'now' | 'queue'; readonly includeEdits?: boolean }
 	/** A pending message's buttons: send it now, take it back into the box, or drop it. */
-	| { readonly type: 'queueAction'; readonly id: string; readonly action: 'send' | 'edit' | 'remove' }
+	/** `stopNow`: a message sent now that waited long for a safe point stops the turn anyway. */
+	| { readonly type: 'queueAction'; readonly id: string; readonly action: 'send' | 'edit' | 'remove' | 'stopNow' }
 	/** The user reacted to the reply that turnEnd item `turnEnd` ends; `name` is the emoji's name in the picker. */
 	| { readonly type: 'react'; readonly turnEnd: string; readonly emoji: string; readonly name: string }
 	/** The @-mention picker wants files matching `query`; answered with `files` carrying the same `requestId`. */
@@ -885,7 +953,7 @@ export type FromWebview =
 	/** The user picked one of a permission request's options. */
 	| { readonly type: 'permission'; readonly id: string; readonly optionId: string }
 	/** Retry or Continue on a failed or cut-short turn's notice (`itemId`). */
-	| { readonly type: 'noticeAction'; readonly itemId: string; readonly action: 'retry' | 'continue' }
+	| { readonly type: 'noticeAction'; readonly itemId: string; readonly action: 'retry' | 'continue' | 'newSession' }
 	/** Show All on a long tool output: the host answers with `output`. */
 	| { readonly type: 'showOutput'; readonly itemId: string; readonly part: number }
 	/** Show Its Changes on an edit another agent is changing the file too: opens that agent's changes. */
@@ -978,6 +1046,7 @@ export type FromWebview =
 	| { readonly type: 'openTrace'; readonly file: string }
 	/** Leave Plan mode and carry out the plan; only the latest turn offers it, when it ended in Plan mode. */
 	| { readonly type: 'buildPlan'; readonly itemId: string; readonly mode?: string }
+	| { readonly type: 'reviewPlan'; readonly itemId: string }
 	/** The composer has text: get a rewrite session ready. */
 	| { readonly type: 'prepareEnhance' }
 	/** Rewrite the draft as a precise prompt; answered with `enhanced` or `enhanceFailed` carrying the same `requestId`. */
@@ -1011,6 +1080,10 @@ export type ToWebview =
 	| { readonly type: 'busy'; readonly busy: boolean }
 	/** The messages sent while the agent works that have not gone yet, oldest first. */
 	| { readonly type: 'queue'; readonly items: readonly PendingPromptView[] }
+	/** The agent's tried files the user edited and hasn't sent it: the message box offers to include them. */
+	| { readonly type: 'triedEdits'; readonly files: readonly string[] }
+	/** A message sent now has waited long for a safe point: the queue offers Stop Now. */
+	| { readonly type: 'steerWaiting'; readonly waiting: boolean }
 	/** The view's tab or pane went out of sight, or came back: a hidden view keeps updates and renders them when shown. */
 	| { readonly type: 'visibility'; readonly hidden: boolean }
 	| { readonly type: 'status'; readonly status: ViewStatus }

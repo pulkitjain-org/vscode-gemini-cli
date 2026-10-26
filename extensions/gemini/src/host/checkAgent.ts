@@ -3,14 +3,26 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+// Check Agent, in the on-demand bundle (src/onDemand.ts) with the CLI
+// contract it reads: what it needs of the extension bundle, the agent's
+// command and the ACP code with its SDK, comes in through `CheckAgentDeps`.
+
 import * as vscode from 'vscode';
-import { spawnAgent } from '../acp/agentProcess';
+import type { AgentConnection } from '../acp/agentConnection';
+import { type AgentCommand, spawnAgent } from '../acp/agentProcess';
 import { checkCliContract, contractLine, type CliContractCheck, type CliContractMismatch } from '../acp/cli/contract';
 import { errorMessage } from '../acp/errors';
-import { getAgentCommand, getWorkspaceCwd } from './configuration';
-import { findCliEntry } from './quickEdits';
 
 const initializeTimeoutMs = 30_000;
+
+export interface CheckAgentDeps {
+	readonly command: AgentCommand;
+	readonly cwd: string;
+	/** The extension bundle's ACP code. */
+	readonly connection: () => Promise<typeof AgentConnection>;
+	/** The CLI's entry file, for the contract check. */
+	readonly findCliEntry: () => Promise<string | undefined>;
+}
 
 /**
  * Starts `gemini --acp`, runs the unauthenticated `initialize` handshake,
@@ -18,18 +30,17 @@ const initializeTimeoutMs = 30_000;
  * something GeminiCode reads from the CLI outside ACP doesn't match
  * (`checkCliContract`), one more line says what that affects.
  */
-export async function checkAgent(log: vscode.LogOutputChannel): Promise<void> {
-	const command = await getAgentCommand();
+export async function checkAgent(log: vscode.LogOutputChannel, { command, cwd, connection: connectionClass, findCliEntry }: CheckAgentDeps): Promise<void> {
 	log.info(`Starting agent: ${command.command} ${command.args.join(' ')}`);
 
-	const child = spawnAgent(command, getWorkspaceCwd());
+	const child = spawnAgent(command, cwd);
 	child.stderr.on('data', (chunk: Buffer) => log.info(`[agent] ${chunk.toString().trimEnd()}`));
 	const exited = new Promise<never>((_, reject) => {
 		child.once('error', reject);
 		child.once('exit', code => reject(new Error(`Agent exited with code ${code}`)));
 	});
 
-	const { AgentConnection } = await import('../acp/agentConnection');
+	const AgentConnection = await connectionClass();
 	const connection = new AgentConnection(child.stdin, child.stdout, {
 		sessionUpdate: () => { },
 		requestPermission: async () => ({ outcome: { outcome: 'cancelled' } }),

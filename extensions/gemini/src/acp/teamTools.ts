@@ -16,9 +16,11 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import type { AuditCaller, AuditLog } from './auditLog';
 import type { McpContent, McpTool, McpToolResult } from './browserMcp';
-import { FigmaDesktop, parseFigmaLink } from './figma';
+import { errorMessage } from './errors';
+import { type FigmaClient, type FigmaContent, isNodeNotFound, parseFigmaLink } from './figma';
 import { describeMr, GitLabClient, parseMrRef, projectPathFromRemote } from './gitlab';
-import { JiraClient, type JiraCommentVisibility } from './jira';
+import type { JiraClient, JiraCommentVisibility } from './jira';
+import type { JiraApi, JiraSites } from './jiraSites';
 import { appendAttachments, isAdfDocument } from './jiraAdf';
 import { describeSnyk, SnykCli } from './snyk';
 import { describeSonar, SonarClient, sonarProjectKeyIn, SonarTarget } from './sonar';
@@ -27,18 +29,37 @@ import { ChildServer, McpServerUnavailableError } from './mcpStdio';
 import { recordPilot } from './pilotLog';
 import { gitlabVia, jiraVia, snykVia, sonarVia, TeamChildren } from './teamContainers';
 import { external } from './externalText';
-import { clip, TeamToolError, TeamToolId } from './teamHttp';
+import { clip, hostOf, TeamToolError, TeamToolId } from './teamHttp';
 
 export { external };
 import { git } from './worktrees';
 
 /** The clients for the tools the user has connected; a tool not connected is absent. */
 export interface TeamConnectors {
-	readonly jira?: JiraClient;
+	readonly jira?: JiraSites;
+	/** The Confluence sites turned on; their client is in Confluence's own bundle (`TeamToolContext.confluence`). */
+	readonly confluence?: readonly ConfluenceAccount[];
 	readonly gitlab?: GitLabClient;
 	readonly sonar?: SonarClient;
 	readonly snyk?: SnykCli;
-	readonly figma?: FigmaDesktop;
+	readonly figma?: FigmaClient;
+}
+
+/** A Confluence site turned on: the account of the Jira site it shares, as Atlassian Cloud has one per site. */
+export interface ConfluenceAccount {
+	/** The Jira site's id. */
+	readonly id: string;
+	readonly name: string;
+	readonly site: string;
+	readonly email: string;
+	readonly token: string;
+}
+
+/** Confluence's tool calls, in a bundle of their own loaded on first use (src/confluence.ts). */
+export interface ConfluenceTools {
+	call(name: string, args: Record<string, unknown>, agent?: string): Promise<TeamToolResult>;
+	/** Opens a draft's Review Page, or with no id asks which draft. */
+	openDraft(id?: string): Promise<void>;
 }
 
 export interface TeamToolContext {
@@ -58,6 +79,10 @@ export interface TeamToolContext {
 	allowShell?(): boolean;
 	/** Whether `agent` may only read, such as a merge request's reviewer: it is offered no write tool, and any it asks for is refused. */
 	readOnly?(agent: string): boolean;
+	/** Confluence's calls, its bundle loaded now if it was not yet; undefined when Confluence isn't connected. */
+	confluence?(): ConfluenceTools | undefined;
+	/** Whether Figma looks up Code Connect mappings in design reads (`gemini.figma.codeConnect`); off, Figma answers faster and never asks about them. */
+	figmaCodeConnect?(): boolean;
 }
 
 /** The server's name in a session's MCP servers and in `mcp.allowed`. */
@@ -65,6 +90,7 @@ export const teamToolsServerName = 'geminicode-tools';
 
 const text = { type: 'string' } as const;
 const mrParam = { ...text, description: 'A merge request link, or its number such as 318 or !318. Leave out for the merge request of your current branch.' };
+const viewportParam = { ...text, description: 'The screen size this frame is for, such as XS or Mobile, when the design has a frame for each size.' };
 const targetParams = {
 	branch: { ...text, description: 'The branch to look at. Leave out for your current branch.' },
 	mr: { ...text, description: 'A merge request number, to look at its analysis instead of a branch\'s.' },
@@ -202,13 +228,36 @@ export const teamTools: readonly TeamTool[] = [
 	},
 	{
 		tool: 'figma', name: 'figma_design',
-		description: 'The design of a Figma frame from its link: code hints, layout, text and the design variables (colours, spacing, type). Use it before building UI from a design.',
-		inputSchema: { type: 'object', properties: { link: { ...text, description: 'A Figma link with a node-id.' }, framework: { ...text, description: 'The UI framework to hint for, such as React or Vue.' } }, required: ['link'] },
+		description: 'The design of a Figma frame from its link: code hints, layout, text and the design variables (colours, spacing, type). Use it before building UI from a design. It has no screenshot: call figma_screenshot when you need to see the frame. A large frame comes in sections, with the node ids of any not read yet.',
+		inputSchema: { type: 'object', properties: { link: { ...text, description: 'A Figma link with a node-id.' }, framework: { ...text, description: 'The UI framework to hint for, such as React or Vue.' }, viewport: viewportParam }, required: ['link'] },
+	},
+	{
+		tool: 'confluence', name: 'confluence_search',
+		description: 'Finds Confluence pages by words in them, or by a CQL query, newest first, with each page\'s link. Use it for the specs, decisions and runbooks a ticket refers to.',
+		inputSchema: { type: 'object', properties: { query: { ...text, description: 'Words to find, or a CQL query.' }, space: { ...text, description: 'A space key, such as CHK, to search only that space.' } }, required: ['query'] },
+	},
+	{
+		tool: 'confluence', name: 'confluence_get_page',
+		description: 'A Confluence page from its link: its title, space, version and text. Read the pages a ticket links before you start.',
+		inputSchema: { type: 'object', properties: { link: { ...text, description: 'The page\'s link, or its id.' } }, required: ['link'] },
+	},
+	{
+		tool: 'confluence', name: 'confluence_draft_page',
+		description: 'Drafts a Confluence page for the user to review: a new page in a space (`space`, and `parent` to put it under a page), or a new version of a page (`page`). Write the whole page in Markdown; for a new version, keep everything you don\'t mean to change. Tables, macros, mentions and images you read as text stay on the page as they are: leave them out rather than rewrite them. Nothing is published: the user edits it and publishes it from GeminiCode\'s Review Page.',
+		inputSchema: {
+			type: 'object', properties: {
+				title: text, markdown: { ...text, description: 'The whole page, in Markdown.' },
+				page: { ...text, description: 'The link of the page this is a new version of.' },
+				space: { ...text, description: 'For a new page: the space key, such as CHK.' },
+				parent: { ...text, description: 'For a new page: the link of the page to put it under.' },
+			},
+			required: ['title', 'markdown'],
+		},
 	},
 	{
 		tool: 'figma', name: 'figma_screenshot',
 		description: 'A screenshot of a Figma frame from its link, to compare with what you built.',
-		inputSchema: { type: 'object', properties: { link: text }, required: ['link'] },
+		inputSchema: { type: 'object', properties: { link: text, viewport: viewportParam }, required: ['link'] },
 	},
 ];
 
@@ -261,7 +310,7 @@ export const readOnlyRefusal = 'Your team tools only read here: you are reviewin
  * later step failed ("replied, but couldn't resolve the thread"), and `unsure`
  * a failed write that may have gone through all the same (no answer in time).
  */
-type TeamToolResult = McpToolResult & { readonly remote?: string; readonly data?: TeamWriteData; readonly warning?: string; readonly unsure?: boolean };
+export type TeamToolResult = McpToolResult & { readonly remote?: string; readonly data?: TeamWriteData; readonly warning?: string; readonly unsure?: boolean };
 
 /** What a page needs after a write: a merge request's number and link, a merge commit. */
 export type TeamWriteData = Readonly<Record<string, string | number>>;
@@ -301,6 +350,7 @@ export interface TeamWriteResult {
  */
 const pageTools: readonly TeamTool[] = [
 	{ tool: 'jira', name: 'jira_rich_comment', write: true, description: 'Comments on a ticket from Home\'s comment box: Markdown as Jira rich text, with mentions, attached files and who may see it.', inputSchema: { type: 'object', properties: {} } },
+	{ tool: 'confluence', name: 'confluence_publish', write: true, description: 'Publishes a draft from the Review Page: a new page, or a new version of one.', inputSchema: { type: 'object', properties: {} } },
 	{ tool: 'gitlab', name: 'gitlab_approve', write: true, description: 'Approves a merge request.', inputSchema: { type: 'object', properties: {} } },
 	{ tool: 'gitlab', name: 'gitlab_request_changes', write: true, description: 'Requests changes on a merge request with a summary note.', inputSchema: { type: 'object', properties: {} } },
 	{ tool: 'gitlab', name: 'gitlab_resolve', write: true, description: 'Resolves a review thread without replying.', inputSchema: { type: 'object', properties: {} } },
@@ -318,7 +368,7 @@ export const maxUploadBytes = 100 * 1024 * 1024;
  * uploaded to the ticket first and listed under it, and `visibility` a role
  * or group, "everyone", or unset for the team's default.
  */
-async function richComment(jira: JiraClient, key: string, args: Record<string, unknown>, defaults: TeamDefaults): Promise<TeamToolResult> {
+async function richComment(jira: JiraApi, key: string, args: Record<string, unknown>, defaults: TeamDefaults): Promise<TeamToolResult> {
 	const document = isAdfDocument(args.document) ? args.document : undefined;
 	const files = stringList(args.files);
 	if (!key || (!document?.content.length && !files.length)) {
@@ -419,11 +469,17 @@ export async function teamWrite(context: TeamToolContext, who: TeamCaller, name:
 /** Runs a tool; a write gets the audit log's intent first, then the result or the failure. */
 async function runAudited(context: TeamToolContext, who: TeamCaller, tool: TeamTool, args: Record<string, unknown>): Promise<TeamToolResult> {
 	const folder = who.folder ?? (who.agent ? context.folder(who.agent) : undefined);
-	const run = () => runTeamTool(context, folder, tool, args);
 	if (!tool.write || !context.audit || isListing(tool.name, args)) {
-		return run();
+		return runTeamTool(context, folder, tool, args, who.agent);
 	}
-	const result = await auditedWrite(context.audit, who, tool, args, run);
+	// With more than one Jira site, the ticket's site is found first, so the record names it.
+	const sites = tool.tool === 'jira' ? context.connectors().jira : undefined;
+	const key = arg(args, 'key');
+	const routed = sites && sites.sites.length > 1 && key ? sites.clientFor(key, true) : undefined;
+	// Confluence's publish names its draft's site: with more than one connected, the record says which.
+	const site = routed ? await routed.then(client => hostOf(client.site), () => undefined)
+		: tool.tool === 'confluence' && (context.connectors().confluence?.length ?? 0) > 1 ? arg(args, 'site') : undefined;
+	const result = await auditedWrite(context.audit, who, tool, args, () => runTeamTool(context, folder, tool, args, who.agent, routed), site);
 	recordPilot({ kind: 'write', tool: tool.name, caller: who.caller, ok: !result.isError });
 	return result;
 }
@@ -433,9 +489,9 @@ async function runAudited(context: TeamToolContext, who: TeamCaller, tool: TeamT
  * that got no answer in time gets neither: it may have gone through, so its
  * intent stays open, and Home lists it as unfinished until the user checks.
  */
-async function auditedWrite(audit: AuditLog, who: TeamCaller, tool: TeamTool, args: Record<string, unknown>, run: () => Promise<TeamToolResult>): Promise<TeamToolResult> {
+async function auditedWrite(audit: AuditLog, who: TeamCaller, tool: TeamTool, args: Record<string, unknown>, run: () => Promise<TeamToolResult>, site?: string): Promise<TeamToolResult> {
 	const ref = refOf(args);
-	const intent = { caller: who.caller, ...who.agent ? { agent: who.agent } : {}, tool: tool.name, ...ref ? { ref } : {}, effect: effectOf(tool.name, args), args };
+	const intent = { caller: who.caller, ...who.agent ? { agent: who.agent } : {}, tool: tool.name, ...ref ? { ref } : {}, effect: `${effectOf(tool.name, args)}${site ? ` (${site})` : ''}`, args };
 	try {
 		const id = await audit.intent(intent);
 		let answer: TeamToolResult;
@@ -471,6 +527,7 @@ export function effectOf(name: string, args: Record<string, unknown>): string {
 	const key = refOf(args);
 	switch (name) {
 		case 'jira_comment': return `Comment on ${key}`;
+		case 'confluence_publish': return `Publish "${arg(args, 'title') ?? ''}" to Confluence${arg(args, 'page') ? ` as a new version of page ${arg(args, 'page')}` : ''}`;
 		case 'jira_rich_comment': {
 			const files = stringList(args.files).length;
 			return `Comment on ${key}${files ? `, with ${files === 1 ? '1 attached file' : `${files} attached files`}` : ''}`;
@@ -489,13 +546,22 @@ export function effectOf(name: string, args: Record<string, unknown>): string {
 	}
 }
 
-async function runTeamTool(context: TeamToolContext, folder: string | undefined, tool: TeamTool, args: Record<string, unknown>): Promise<TeamToolResult> {
+async function runTeamTool(context: TeamToolContext, folder: string | undefined, tool: TeamTool, args: Record<string, unknown>, agent?: string, routed?: Promise<JiraClient>): Promise<TeamToolResult> {
 	const name = tool.name;
 	const connectors = context.connectors();
 	try {
 		switch (tool.tool) {
-			case 'jira':
-				return connectors.jira ? await jiraCall(connectors.jira, through(context, context.children?.().jira), name, args, folder ? await context.defaults(folder) : {}) : notConnected('Jira');
+			case 'jira': {
+				const sites = connectors.jira;
+				if (!sites) {
+					return notConnected('Jira');
+				}
+				// A ticket goes to the site that has it; a search, with more than one site, to all of them.
+				const ref = arg(args, 'key');
+				const jira = ref ? await (routed ?? sites.clientFor(ref, tool.write && !isListing(name, args))) : name === 'jira_search' && sites.sites.length > 1 ? sites : sites.primary;
+				// The team's mcp-atlassian server knows only the first site.
+				return await jiraCall(jira, through(context, jira === sites.primary ? context.children?.().jira : undefined), name, args, folder ? await context.defaults(folder) : {});
+			}
 			case 'gitlab':
 				return connectors.gitlab ? await gitlabCall(connectors.gitlab, through(context, context.children?.().gitlab), name, args, folder, folder ? await context.defaults(folder) : {}) : notConnected('GitLab');
 			case 'sonar':
@@ -517,7 +583,11 @@ async function runTeamTool(context: TeamToolContext, folder: string | undefined,
 					async () => ok(describeSnyk(code ? await snyk.testCode(folder) : await snyk.testDependencies(folder))));
 			}
 			case 'figma':
-				return connectors.figma ? await figmaCall(connectors.figma, name, args) : notConnected('Figma');
+				return connectors.figma ? await figmaCall(connectors.figma, name, args, !!context.figmaCodeConnect?.()) : notConnected('Figma');
+			case 'confluence': {
+				const confluence = connectors.confluence?.length ? context.confluence?.() : undefined;
+				return confluence ? await confluence.call(name, args, agent) : notConnected('Confluence');
+			}
 		}
 	} catch (err) {
 		return { ...fail(err instanceof TeamToolError || err instanceof Error ? err.message : String(err)), ...err instanceof TeamToolError && err.detail.unsure ? { unsure: true } : {} };
@@ -568,7 +638,7 @@ function notConnected(tool: string): McpToolResult {
 	return fail(`${tool} isn't connected. The user can connect it in GeminiCode's Connections page.`);
 }
 
-async function jiraCall(jira: JiraClient, via: Through, name: string, args: Record<string, unknown>, defaults: TeamDefaults): Promise<TeamToolResult> {
+async function jiraCall(jira: JiraApi, via: Through, name: string, args: Record<string, unknown>, defaults: TeamDefaults): Promise<TeamToolResult> {
 	const key = arg(args, 'key')?.replace(/^.*\/browse\//, '').replace(/[?#].*$/, '').toUpperCase();
 	switch (name) {
 		case 'jira_get_issue': {
@@ -592,8 +662,12 @@ async function jiraCall(jira: JiraClient, via: Through, name: string, args: Reco
 			if (fromServer) {
 				return fromServer;
 			}
-			const issues = await jira.search(arg(args, 'jql') ?? '', Number(args.max) || 20);
-			return ok(issues.length ? external('jira', 'search', issues.map(i => `${i.key} [${i.status}] ${i.summary}`).join('\n')) : 'No tickets match.');
+			const jql = arg(args, 'jql') ?? '';
+			const max = Number(args.max) || 20;
+			// With more than one site, the sites that failed or have more than shown are named, so the list isn't taken as complete.
+			const { issues, notes } = jira.searchSites ? await jira.searchSites(jql, max) : { issues: await jira.search(jql, max), notes: [] };
+			// With more than one site, each line has its link: a key can be on two sites, and the link says which.
+			return ok([issues.length ? external('jira', 'search', issues.map(i => `${i.key} [${i.status}] ${i.summary}${jira.searchSites ? ` (${i.url})` : ''}`).join('\n')) : 'No tickets match.', ...notes].join('\n'));
 		}
 		case 'jira_comment': {
 			const id = await via(server => jiraVia.comment(server, key ?? '', arg(args, 'text') ?? '', defaults.jira?.commentVisibility), async () => (await jira.comment(key ?? '', arg(args, 'text') ?? '', defaults.jira?.commentVisibility)).id);
@@ -625,7 +699,7 @@ async function jiraCall(jira: JiraClient, via: Through, name: string, args: Reco
 				await via(server => jiraVia.assign(server, key ?? '', null), () => jira.assign(key ?? '', null));
 				return ok(`${key} is now unassigned.`);
 			}
-			const person = /^me$/i.test(to) ? await jira.myself() : (await jira.assignableUsers(key ?? '', to))[0];
+			const person = /^me$/i.test(to) ? await jira.myself(key) : (await jira.assignableUsers(key ?? '', to))[0];
 			if (!person) {
 				return fail(`Nobody matching "${to}" can be assigned ${key}. Call jira_assign without \`to\` to list who can.`);
 			}
@@ -768,11 +842,13 @@ async function gitlabCall(gitlab: GitLabClient, via: Through, name: string, args
 		case 'gitlab_approve': {
 			const { project, iid } = await resolveMr(gitlab, arg(args, 'mr'), folder, defaults, arg(args, 'project'));
 			await via(server => gitlabVia.approve(server, project, iid), () => gitlab.approve(project, iid));
+			gitlab.forgetReviewState(project, iid);
 			return ok(`Approved !${iid}.`, `approval on !${iid}`);
 		}
 		case 'gitlab_request_changes': {
 			const { project, iid } = await resolveMr(gitlab, arg(args, 'mr'), folder, defaults, arg(args, 'project'));
 			await gitlab.requestChanges(project, iid, typeof args.text === 'string' ? args.text : '');
+			gitlab.forgetReviewState(project, iid);
 			return ok(`Requested changes on !${iid}.`, `requested_changes on !${iid}`);
 		}
 		case 'gitlab_reply': {
@@ -884,11 +960,24 @@ async function sonarCall(sonar: SonarClient, via: Through, name: string, args: R
 	});
 }
 
-async function figmaCall(figma: FigmaDesktop, name: string, args: Record<string, unknown>): Promise<McpToolResult> {
+async function figmaCall(figma: FigmaClient, name: string, args: Record<string, unknown>, codeConnect: boolean): Promise<McpToolResult> {
 	const link = arg(args, 'link') ?? '';
 	if (!parseFigmaLink(link)) {
 		return fail('That isn\'t a Figma link. Copy the frame\'s link in Figma (it has node-id=…).');
 	}
-	const content = name === 'figma_screenshot' ? await figma.screenshot(link) : await figma.designContext(link, arg(args, 'framework'));
-	return ok(content.map(c => c.type === 'text' ? { type: 'text' as const, text: external('figma', link, clip(c.text, 40_000)) } : c));
+	let content: FigmaContent[];
+	try {
+		content = name === 'figma_screenshot' ? await figma.screenshot(link) : await figma.designContext(link, { ...arg(args, 'framework') ? { frameworks: arg(args, 'framework') } : {}, codeConnect });
+	} catch (err) {
+		if (isNodeNotFound(errorMessage(err))) {
+			return fail('Figma can\'t find this frame. Ask the user to open its file in the Figma desktop app and go to the frame\'s page once (Figma only knows pages it has opened), then try again.');
+		}
+		throw err;
+	}
+	const viewport = arg(args, 'viewport');
+	return ok([
+		...viewport ? [{ type: 'text' as const, text: `The ${viewport} frame. Figma reads the file open in the desktop app: if this isn't the right frame, ask the user to open the file this link is in.` }] : [],
+		// figma.ts keeps each part under the CLI's cap; the clip is only a guard.
+		...content.map(c => c.type === 'text' ? { type: 'text' as const, text: external('figma', link, clip(c.text, 40_000)) } : c),
+	]);
 }

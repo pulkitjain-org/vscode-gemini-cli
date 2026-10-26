@@ -20,11 +20,11 @@ import { Emitter } from './events';
 import { recordPilot } from './pilotLog';
 
 /** The tools GeminiCode connects to. */
-export type TeamToolId = 'jira' | 'gitlab' | 'sonar' | 'snyk' | 'figma';
+export type TeamToolId = 'jira' | 'confluence' | 'gitlab' | 'sonar' | 'snyk' | 'figma';
 
-export const teamToolIds: readonly TeamToolId[] = ['jira', 'gitlab', 'sonar', 'snyk', 'figma'];
+export const teamToolIds: readonly TeamToolId[] = ['jira', 'confluence', 'gitlab', 'sonar', 'snyk', 'figma'];
 
-export const teamToolNames: Readonly<Record<TeamToolId, string>> = { jira: 'Jira', gitlab: 'GitLab', sonar: 'SonarQube', snyk: 'Snyk', figma: 'Figma' };
+export const teamToolNames: Readonly<Record<TeamToolId, string>> = { jira: 'Jira', confluence: 'Confluence', gitlab: 'GitLab', sonar: 'SonarQube', snyk: 'Snyk', figma: 'Figma' };
 
 /**
  * Why a call failed: `unreachable` (no answer: the VPN is off, or the host is

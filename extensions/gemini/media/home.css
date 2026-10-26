@@ -523,6 +523,15 @@ button.dash-quick-action:hover {
 	border-top: 1px solid var(--gemini-border);
 }
 
+/* A Jira site that can't be reached now: its heading says so, and its last tickets show dimmed. */
+.dash-group .dash-query.warn {
+	color: var(--gemini-warn);
+}
+
+.dash-row.dim {
+	opacity: 0.55;
+}
+
 .dash-group + .dash-row,
 .dash-rows > .dash-row:first-child {
 	border-top: none;

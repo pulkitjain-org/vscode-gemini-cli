@@ -51,6 +51,73 @@
 	margin-top: 2px;
 }
 
+/* Jira's other sites, each with its own token, under the Jira row. */
+.site-rows {
+	margin-top: 10px;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius-small);
+	overflow: hidden;
+}
+
+.site-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 8px 10px;
+}
+
+.site-row + .site-row {
+	border-top: 1px solid var(--gemini-border);
+}
+
+.site-row .row-title {
+	flex-wrap: wrap;
+	gap: 6px 8px;
+}
+
+/* Confluence's Connect dialog: one choice per Jira site. */
+.choice-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.choice {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 10px 12px;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius-small);
+	cursor: pointer;
+}
+
+.choice:has(input:checked) {
+	border-color: var(--gemini-accent);
+	background: color-mix(in srgb, var(--gemini-accent) 10%, transparent);
+}
+
+.choice.off {
+	opacity: 0.6;
+	cursor: default;
+}
+
+.choice input {
+	margin: 3px 0 0;
+	accent-color: var(--gemini-accent);
+}
+
+.choice-text {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.choice-problem {
+	color: var(--gemini-error);
+	font-size: 12px;
+}
+
 /* The repository's own Jira and GitLab servers: a card with a warm hairline, above the tools. */
 .team-servers {
 	display: flex;

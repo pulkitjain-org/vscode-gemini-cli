@@ -31,6 +31,23 @@ export interface ConnectionRowView {
 	readonly email?: string;
 	/** Whether a "Create Token" link can open. */
 	readonly canCreateToken: boolean;
+	/** For Jira: the first site's name, which the page shows once there are more sites. */
+	readonly siteName?: string;
+	/** For Jira: the sites added after the first. For Confluence: the Jira sites it is on for. */
+	readonly sites?: readonly JiraSiteRowView[];
+	/** For Confluence: the connected Jira sites it can be turned on for, with why not when it can't now. */
+	readonly choices?: readonly { readonly id: string; readonly name: string; readonly host: string; readonly problem?: string }[];
+}
+
+/** A Jira site added after the first, in a list under the Jira row. */
+export interface JiraSiteRowView {
+	readonly id: string;
+	readonly name: string;
+	readonly url: string;
+	readonly email: string;
+	readonly kind: TeamToolStateKind;
+	readonly label: string;
+	readonly detail: string;
 }
 
 export interface ConnectionsView {
@@ -83,6 +100,16 @@ export interface ConnectionsStrings {
 	readonly serverHintVpn: string;
 	readonly email: string;
 	readonly emailHint: string;
+	readonly siteName: string;
+	readonly siteNameHint: string;
+	readonly addSite: string;
+	readonly removeSite: string;
+	readonly confluenceTitle: string;
+	readonly confluenceText: string;
+	/** `{0}` the Jira site's name. */
+	readonly useJiraAccount: string;
+	readonly confluenceNeedsJira: string;
+	readonly confluenceAnother: string;
 	readonly token: string;
 	readonly tokenHintJira: string;
 	readonly tokenHintGitlab: string;
@@ -118,7 +145,12 @@ export type ToConnections =
 
 export type FromConnections =
 	| { readonly type: 'ready' }
-	| { readonly type: 'connect'; readonly tool: TeamToolId; readonly url?: string; readonly email?: string; readonly token?: string }
+	| { readonly type: 'connect'; readonly tool: TeamToolId; readonly url?: string; readonly email?: string; readonly token?: string; readonly name?: string }
+	/** Adds a Jira site after the first, or with `id` replaces one's details and token. */
+	| { readonly type: 'connectSite'; readonly id?: string; readonly name?: string; readonly url?: string; readonly email?: string; readonly token?: string }
+	| { readonly type: 'removeSite'; readonly id: string }
+	/** Turns Confluence on, or off, for a Jira site, with that site's account. */
+	| { readonly type: 'connectConfluence' | 'removeConfluence'; readonly id: string }
 	| { readonly type: 'disconnect' | 'refresh'; readonly tool: TeamToolId }
 	| { readonly type: 'createToken'; readonly tool: TeamToolId; readonly url?: string }
 	| { readonly type: 'openFigma' | 'allowlist' | 'openAllowlistFile' | 'openDefaults' | 'checkAll' | 'openTeamServers' | 'takeOverTeamServers' };

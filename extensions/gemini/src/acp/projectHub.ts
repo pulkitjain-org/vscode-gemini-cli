@@ -48,6 +48,8 @@ export interface ThreadInfo {
 	readonly repos?: readonly string[];
 	/** For a queued thread, why it waits. */
 	readonly queued?: QueuedReason;
+	/** What the user did with its work: trying it in their checkout, kept it there, or discarded it. */
+	readonly workspace?: 'trying' | 'kept' | 'discarded';
 }
 
 export interface ThreadRequest {
@@ -727,8 +729,15 @@ export function wakeThreadLines(threads: readonly ThreadInfo[]): string[] {
 
 function threadLine(thread: ThreadInfo): string {
 	const state = thread.resolved ? 'resolved (merged)' : thread.state === 'queued' ? `queued, ${thread.queued === 'quota' ? 'until the quota resets' : 'until a running thread finishes'}` : thread.state;
-	return `- ${thread.id} "${thread.title}": ${state}${thread.repos?.length ? ` [${thread.repos.join(', ')}]` : ''}${thread.detail ? `, ${oneLine(thread.detail)}` : ''}${thread.byCoordinator ? '' : ' (started by the user)'}`;
+	return `- ${thread.id} "${thread.title}": ${state}${thread.repos?.length ? ` [${thread.repos.join(', ')}]` : ''}${thread.workspace ? `, ${workspaceNotes[thread.workspace]}` : ''}${thread.detail ? `, ${oneLine(thread.detail)}` : ''}${thread.byCoordinator ? '' : ' (started by the user)'}`;
 }
+
+/** What the coordinator is told of a thread's work in the user's checkout. */
+const workspaceNotes: Readonly<Record<NonNullable<ThreadInfo['workspace']>, string>> = {
+	trying: 'its changes are in the user\'s workspace for testing (not kept yet)',
+	kept: 'the user kept its changes in their workspace',
+	discarded: 'the user discarded its changes: don\'t build on that work',
+};
 
 /** Removes `thread`'s reports from `events`. */
 function dropReportsOf(events: ProjectEvent[], thread: string): void {

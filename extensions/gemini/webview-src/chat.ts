@@ -28,8 +28,8 @@ import { chatProtocolVersion, type ToWebview } from '../src/host/chatProtocol';
 import { format, HeldUpdates } from './chatLogic';
 import { addAttachments, setSharedPage } from './attachmentChips';
 import { attachToolRef, setToolRefContext, toolRefResolved, watchToolRefs } from './toolChips';
-import { setBusy, setFollow, setFollowed, setGit, setSendWith, setSettings, setStatus } from './composer';
-import { setQueue } from './queueStrip';
+import { setBusy, setFollow, setFollowed, setGit, setSendWith, setSettings, setStatus, setTriedEdits } from './composer';
+import { setQueue, setSteerWaiting } from './queueStrip';
 import { initReactionBar } from './reactionBar';
 import { applyTokenColors } from './codeHighlight';
 import { onEnhanced, onEnhanceFailed, onEnhanceProgress, replaceInput, toggleEnhance } from './enhance';
@@ -154,6 +154,12 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'queue':
 			setQueue(message.items);
+			break;
+		case 'triedEdits':
+			setTriedEdits(message.files);
+			break;
+		case 'steerWaiting':
+			setSteerWaiting(message.waiting);
 			break;
 		case 'status':
 			setStatus(message.status);

@@ -52,6 +52,72 @@ export interface AgentRecord {
 	 * is used again (`isArchived`).
 	 */
 	readonly archivedAt?: number;
+	/** Its work in the user's checkout (Try in Workspace), until taken back; kept across restarts. */
+	readonly tried?: AgentTried;
+	/** Its folder's work, saved by Discard Changes so Restore can bring it back. */
+	readonly discarded?: readonly DiscardedRepo[];
+}
+
+/** An agent's work applied to the user's checkout, without a commit: tried, or kept as the user's own. */
+export interface AgentTried {
+	/** Trying: it can be taken back and follows the agent's turns. Kept: the user's now, and the thread is resolved. */
+	readonly state: 'trying' | 'kept';
+	readonly repos: readonly TriedRepo[];
+	/** When it was last tried, updated or kept, in ms since the epoch. */
+	readonly at: number;
+	/** How many times it followed the agent's turns. */
+	readonly updates?: number;
+}
+
+/** One repository's part of a try: which trees of the agent's worktree are in which checkout. */
+export interface TriedRepo {
+	/** The thread's repository key, '' for an agent in one repository. */
+	readonly key: string;
+	/** The user's checkout the work is applied to. */
+	readonly repository: string;
+	/** The agent's worktree it comes from. */
+	readonly worktree: string;
+	/** The tree with none of the agent's work: the tree of the commit its branch started from. */
+	readonly base: string;
+	/** The commit its branch started from (`startOf`); missing on tries recorded before it was kept. */
+	readonly start?: string;
+	/** The tree of the agent's work now in the checkout, with the edits the user sent it. */
+	readonly tree: string;
+	/** The tree the user kept, when they kept some and are trying more on top. */
+	readonly kept?: string;
+	/**
+	 * The tried files as Try in Workspace last wrote them in the checkout: the
+	 * user's edits are what differs from it. `tree` when unset.
+	 */
+	readonly applied?: string;
+	/** What Take Back puts the files back to: `kept`, else `base`, with the edits the user sent on top. */
+	readonly back?: string;
+	/** The files that differ from `base`, relative to the repository. */
+	readonly files: readonly string[];
+	/** Files the last apply left with conflict markers; updating waits until they're resolved. */
+	readonly conflicts?: readonly string[];
+	/** Files the last apply couldn't merge (binary, a link, deleted on one side), left as the user had them. */
+	readonly unmerged?: readonly string[];
+	/** Files the last update held back because they had unsaved edits; saving them brings the update. */
+	readonly deferred?: readonly string[];
+	/** Files whose sent edits clashed with the thread's lines: Take Back leaves them as the user has them, the thread's change included. */
+	readonly mixed?: readonly string[];
+}
+
+/** One worktree's work saved by Discard Changes. */
+export interface DiscardedRepo {
+	readonly key: string;
+	readonly folder: string;
+	/** The saved commit (the work), and the branch's commit it sits on. */
+	readonly commit: string;
+	readonly head: string;
+	/** The tree the folder was reset to: while it still holds it, Restore replaces nothing. */
+	readonly reset?: string;
+	/**
+	 * A later turn changed the folder since: the saved work is kept (until the
+	 * thread is removed) and offered from the card's ⋯ menu, not as its main button.
+	 */
+	readonly superseded?: boolean;
 }
 
 /** Where a forked agent came from. */
@@ -223,6 +289,11 @@ export class AgentsModel {
 		return this._workspaces;
 	}
 
+	/** Every agent, in every workspace. */
+	get agents(): readonly AgentRecord[] {
+		return this._agents;
+	}
+
 	workspace(id: string): WorkspaceRecord | undefined {
 		return this._workspaces.find(w => w.id === id);
 	}
@@ -343,6 +414,17 @@ export class AgentsModel {
 	/** A multi-repository thread's repositories changed: one was added or merged. */
 	setRepos(id: string, repos: readonly ThreadRepo[]): void {
 		this.update(id, a => ({ ...a, repos }));
+	}
+
+	/** Keeps what of the agent's work is in the user's checkout, or forgets it. */
+	setTried(id: string, tried: AgentTried | undefined): void {
+		// Undefined fields are left out when the record is saved.
+		this.update(id, a => ({ ...a, tried }));
+	}
+
+	/** Keeps the work Discard Changes saved, or forgets it once restored. */
+	setDiscarded(id: string, discarded: readonly DiscardedRepo[] | undefined): void {
+		this.update(id, a => ({ ...a, discarded: discarded?.length ? discarded : undefined }));
 	}
 
 	/** Keeps the last checks' result on the agent's record. */

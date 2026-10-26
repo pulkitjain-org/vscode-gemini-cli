@@ -16,6 +16,7 @@ import { AgentError, AgentErrorInfo, AgentErrorKind, classifyAgentError, CliRetr
 import { Emitter } from './events';
 import { isPrompt } from './cliSessions';
 import { contentBlockToText } from './sessionUpdates';
+import { keepSessionFolder } from './sessionFolder';
 import { AgentSidecar, SidecarState } from './sidecar';
 
 /** The one auth method the IDE ever selects. */
@@ -319,8 +320,10 @@ export class AgentRuntime {
 		this.earlyUpdates.delete(sessionId);
 		this.closedSessions.delete(sessionId);
 		return this.noteOutcome((async () => {
+			// The CLI deletes the session's plans as it reopens it: keep them (sessionFolder.ts).
+			const putBack = await keepSessionFolder(cwd, sessionId).catch(() => undefined);
 			try {
-				const response = await connection.loadSession(sessionId, cwd, mcpServers);
+				const response = await connection.loadSession(sessionId, cwd, mcpServers).finally(() => putBack?.());
 				if (firstPrompt !== undefined && !await this.replayStartsWith(sessionId, firstPrompt)) {
 					throw new AgentError({ kind: 'unknown', message: 'The agent opened a different session.' });
 				}

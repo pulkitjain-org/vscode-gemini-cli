@@ -10,9 +10,10 @@ import { allowlistBlock, allowServer, settingsFiles } from '../acp/projectToolsC
 import type { TeamDefaults } from '../acp/teamDefaults';
 import { TeamToolId, teamToolIds, teamToolNames } from '../acp/teamHttp';
 import { teamToolsServerName } from '../acp/teamTools';
-import type { ConnectionRowView, ConnectionsStrings, ConnectionsView, FromConnections, TeamServerView, ToConnections } from './connectionsProtocol';
+import type { ConnectionRowView, ConnectionsStrings, JiraSiteRowView, ConnectionsView, FromConnections, TeamServerView, ToConnections } from './connectionsProtocol';
 import { tildify } from './displayText';
 import { ConnectionState, createTokenUrl, TeamConnections } from './teamConnections';
+import { connectConfluence, connectJiraSite, disconnectConfluence, disconnectJira, removeJiraSite } from './siteConnections';
 import { takeOverTeamServers } from './teamTakeover';
 import { createNonce, escapeAttribute } from './webviewHtml';
 import { showError } from './errorNotice';
@@ -95,11 +96,12 @@ export class ConnectionsPage implements vscode.Disposable {
 				void this.connections.refresh();
 				return;
 			case 'connect':
-				if (!isTool(message.tool)) {
+				// Confluence is turned on per Jira site (connectConfluence).
+				if (!isTool(message.tool) || message.tool === 'confluence') {
 					return;
 				}
 				try {
-					await this.connections.connect(message.tool, { url: message.url, email: message.email, token: message.token });
+					await this.connections.connect(message.tool, { url: message.url, email: message.email, token: message.token, name: message.name });
 					this.post({ type: 'connectResult', tool: message.tool, ok: true });
 				} catch (err) {
 					const text = err instanceof Error ? err.message : String(err);
@@ -110,8 +112,37 @@ export class ConnectionsPage implements vscode.Disposable {
 					}
 				}
 				return;
+			case 'connectSite':
+				try {
+					await connectJiraSite(this.connections, message, this.log);
+					this.post({ type: 'connectResult', tool: 'jira', ok: true });
+				} catch (err) {
+					this.post({ type: 'connectResult', tool: 'jira', ok: false, message: err instanceof Error ? err.message : String(err) });
+				}
+				return;
+			case 'connectConfluence':
+				try {
+					await connectConfluence(this.connections, message.id, this.log);
+					this.post({ type: 'connectResult', tool: 'confluence', ok: true });
+				} catch (err) {
+					this.post({ type: 'connectResult', tool: 'confluence', ok: false, message: err instanceof Error ? err.message : String(err) });
+				}
+				return;
+			case 'removeConfluence':
+				await disconnectConfluence(this.connections, message.id);
+				return;
+			case 'removeSite': {
+				const site = this.connections.jiraSiteList().find(s => s.id === message.id);
+				const remove = vscode.l10n.t("Remove");
+				if (site && await vscode.window.showWarningMessage(vscode.l10n.t("Remove the Jira site {0}?", site.name), { modal: true, detail: vscode.l10n.t("Its token is deleted from the keychain, and its tickets leave Home.") }, remove) === remove) {
+					await removeJiraSite(this.connections, site.id, this.log);
+				}
+				return;
+			}
 			case 'disconnect':
-				if (isTool(message.tool)) {
+				if (message.tool === 'jira') {
+					await disconnectJira(this.connections, this.log);
+				} else if (isTool(message.tool)) {
 					await this.connections.disconnect(message.tool);
 				}
 				return;
@@ -236,7 +267,37 @@ export class ConnectionsPage implements vscode.Disposable {
 			urlFromDefaults: fromDefaults,
 			...tool === 'jira' && this.connections.accountOf(tool)?.email ? { email: this.connections.accountOf(tool)!.email } : {},
 			canCreateToken: needsToken && (tool === 'jira' || !!url),
+			...tool === 'jira' && saved ? { siteName: this.connections.jiraName(), sites: this.connections.jiraSiteList().map(site => this.siteRow(site.id, site.name, site.url, site.email)) } : {},
+			...tool === 'confluence' ? this.confluenceSites() : {},
 		};
+	}
+
+	/** Confluence's sites: the Jira sites it is on for, and the others it can be turned on for. */
+	private confluenceSites(): Pick<ConnectionRowView, 'sites' | 'choices'> & Partial<Pick<ConnectionRowView, 'detail'>> {
+		if (!this.connections.connected.has('jira')) {
+			return { sites: [], choices: [], detail: vscode.l10n.t("Uses your Jira account: connect Jira first.") };
+		}
+		const first = this.connections.accountOf('jira');
+		const jira = [
+			{ id: 'default', name: this.connections.jiraName(), url: first?.url ?? '', email: first?.email ?? '', state: this.connections.state('jira') },
+			...this.connections.jiraSiteList().map(site => ({ ...site, state: this.connections.siteState(site.id) })),
+		];
+		const on = new Set(this.connections.confluenceSiteIds());
+		return {
+			sites: jira.filter(site => on.has(site.id)).map(site => {
+				const state = this.connections.confluenceState(site.id);
+				return { id: site.id, name: site.name, url: site.url, email: site.email, kind: state.kind, label: stateLabel('confluence', state), detail: state.kind === 'connected' ? vscode.l10n.t("Uses your {0} Jira account", site.name) : state.detail ?? '' };
+			}),
+			choices: jira.filter(site => !on.has(site.id)).map(site => ({
+				id: site.id, name: site.name, host: hostOf(site.url) ?? site.url,
+				...site.state.kind === 'auth' ? { problem: vscode.l10n.t("its token was refused; replace it under Jira first") } : {},
+			})),
+		};
+	}
+
+	private siteRow(id: string, name: string, url: string, email: string): JiraSiteRowView {
+		const state = this.connections.siteState(id);
+		return { id, name, url, email, kind: state.kind, label: stateLabel('jira', state), detail: state.kind === 'checking' ? '' : stateDetail('jira', state, url) };
 	}
 
 	private html(webview: vscode.Webview, media: vscode.Uri): string {
@@ -268,6 +329,15 @@ export class ConnectionsPage implements vscode.Disposable {
 			serverHintVpn: vscode.l10n.t("{0} is only reachable on the VPN."),
 			email: vscode.l10n.t("Email"),
 			emailHint: vscode.l10n.t("The email you sign in to Jira with."),
+			siteName: vscode.l10n.t("Name"),
+			siteNameHint: vscode.l10n.t("Shown on Home above this site's tickets, such as the team or client."),
+			addSite: vscode.l10n.t("Add Another Jira"),
+			removeSite: vscode.l10n.t("Remove"),
+			confluenceTitle: vscode.l10n.t("Connect Confluence"),
+			confluenceText: vscode.l10n.t("On Atlassian Cloud, Confluence and Jira on the same site share one account and token, so there's nothing to paste. Agents read pages and draft new ones; you review every draft before it's published."),
+			useJiraAccount: vscode.l10n.t("Use My {0} Jira Account"),
+			confluenceNeedsJira: vscode.l10n.t("Connect Jira first: Confluence uses its account."),
+			confluenceAnother: vscode.l10n.t("Turn On for Another Site"),
 			token: vscode.l10n.t("Token"),
 			tokenHintJira: vscode.l10n.t("An Atlassian API token. The link opens your Atlassian account's token page."),
 			tokenHintGitlab: vscode.l10n.t("A personal access token with the api scope. The link opens GitLab with the name and scope filled in."),
@@ -285,7 +355,7 @@ export class ConnectionsPage implements vscode.Disposable {
 			confirmWrites: vscode.l10n.t("Move tickets, log time, open merge requests, merge"),
 			confirmWritesDetail: vscode.l10n.t("jira_transition · jira_log_time · gitlab_create_mr · gitlab_merge: hard to take back, so no session option"),
 			reads: vscode.l10n.t("Read tickets, merge requests, checks and designs"),
-			readsDetail: vscode.l10n.t("Jira, GitLab, SonarQube, Snyk and Figma"),
+			readsDetail: vscode.l10n.t("Jira, Confluence, GitLab, SonarQube, Snyk and Figma"),
 			askEachTime: vscode.l10n.t("Ask each time"),
 			askOnceOnly: vscode.l10n.t("Ask every time, Allow once only"),
 			alwaysAllowed: vscode.l10n.t("Always allowed"),
@@ -391,6 +461,9 @@ function pillsOf(tool: TeamToolId, state: ConnectionState, url: string | undefin
 function tokenLine(tool: TeamToolId, state: ConnectionState): string {
 	if (tool === 'snyk' || tool === 'figma') {
 		return vscode.l10n.t("No token held by GeminiCode.");
+	}
+	if (tool === 'confluence') {
+		return vscode.l10n.t("Token: your Jira site's, in the macOS keychain");
 	}
 	return state.expires ? vscode.l10n.t("Token: in the macOS keychain · expires {0}", formatDate(state.expires)) : vscode.l10n.t("Token: in the macOS keychain");
 }
