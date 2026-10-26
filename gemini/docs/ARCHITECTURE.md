@@ -159,17 +159,22 @@ Shell blocks also get Run (see [Terminals](#terminals)).
 
 `PermissionBroker` holds each `session/request_permission` until the user picks one of the options the agent sent. A request that proposes an edit opens a real diff editor. Stopping a turn answers any open request as cancelled.
 
-The CLI accepts "Allow for this session" on a shell command that reuses earlier tool output but doesn't keep it ([FINDINGS.md](FINDINGS.md#approval-modes-and-the-clis-own-changes)). GeminiCode therefore keeps those approvals itself, per session and in memory (`sessionApprovals.ts`), and answers repeats of the programs allowed. The command is read from the call's `rawInput`, not its title.
+The CLI accepts "Allow for this session" on a shell command that reuses earlier tool output but doesn't keep it ([FINDINGS.md](FINDINGS.md#approval-modes-and-the-clis-own-changes)). GeminiCode therefore keeps those approvals itself, per session and in memory (`sessionApprovals.ts`), and answers repeats of the command prefixes allowed. A prefix is the program and, for programs with subcommands, the subcommand and where it matters the word after it (`git status`, `npm run lint`, `go mod tidy`); with options before the subcommand it runs to the first word after a plain word, so it is only ever longer. Redirect targets are approved one by one. The command is read from the call's `rawInput`, not its title.
 
 These always ask again:
 
-- commands that reach the network, write through a redirection or run code they build;
-- programs that run another program (`env`, `xargs`, `sudo`, `timeout`, shells, interpreters such as `python` or `node`, `npx`);
-- a program run by relative path;
+- commands that reach the network (including `gh`, `glab`, `gcloud`, `aws`, `az`), install a package by name, or run code they build;
+- a redirect outside the agent's folders (`PermissionBroker.roots`) or after `cd`, and one whose target is a variable or a pattern;
+- programs that run another program (`env`, `xargs`, `sudo`, `timeout`, shells, interpreters such as `python` or `node`, `npx`) and container tools (`docker`, `podman`);
+- a program by a path outside the installed-program folders (`/bin`, `/usr`, `/opt/homebrew` and the like), relative or absolute;
 - an environment prefix other than locale and colour variables;
-- arguments that run code (`find -exec` or `-delete`, `awk` with `system(` or a pipe, `git -c`).
+- arguments and subcommands that run code: `find -exec` or `-delete`; `awk` with `-f`, `system(` or a pipe; `sed -f` or `e`/`w`; `make -f`, `-E`, `--eval` or a variable naming a program; `npm`/`pnpm`/`yarn` `exec`, `x`, `dlx`, `create` or npm settings; `go -exec`, `-toolexec` and `go env -w`; `kubectl exec`; and in git `-c`, `--git-dir`, `--upload-pack`, `--receive-pack`, `--exec`, `grep -O`, `clone -u`, `--template`, `--output`, `credential`.
 
-Approvals of task runners (`npm`, `make`, `gradle`, `cargo`, `go` and the like) lapse when the agent writes a build file through the editor (`package.json`, a `Makefile`, `build.gradle`, `Cargo.toml` and so on), since the next run would run what the agent wrote.
+`builtinPrefixes` names the test and read-only prefixes one approval may cover although their program otherwise always asks (`npx vitest`, `npx tsc --noEmit`, `npx eslint`, `python -m pytest`, `./gradlew test`, and read-only git and listing). Each rule has a source, `session` or `permanent`; `setPermanent` takes a permanent list from the host, for an "Always allow" that is not built yet. The CLI's `tools.allowed` is no place for one: gemini-cli 0.64 adds a deny rule for every other shell command once it lists a narrowed `run_shell_command(...)`, and calls the setting deprecated.
+
+Approvals of task runners (`npm`, `make`, `gradle`, `cargo`, `go`, `npx` and the like) and of git commands that run hooks lapse when the agent writes a build file through the editor (`package.json`, a `Makefile`, `build.gradle`, `Cargo.toml`, a tool's config such as `vitest.config.ts`, anything in `node_modules` and so on), since the next run would run what the agent wrote. Every git approval lapses when it writes a git hook (any file named as one, wherever `core.hooksPath` points), a hook manager's settings, a `.git` file or a bare repository's `config` or `HEAD`. A lapsed permanent rule asks again for the rest of the session.
+
+In Auto Edit gemini-cli 0.64 applies edits without consulting its policy engine (`shouldConfirmExecute` returns before the policy check), so no admin rule can make one ask. GeminiCode serves the writes, and `AgentClient` shows a card before writing a protected setting (`isProtectedSetting`: `.gemini/*.sh`, `.gemini/settings.json`, `.vscode/settings.json`, `.vscode/tasks.json`), refusing the write when the user rejects it.
 
 In YOLO the chat allows requests itself, except the confirm class ([Team tools](#team-tools)), which always asks. **Commands Allowed for This Session...** lists and forgets the session's approvals.
 
@@ -796,15 +801,17 @@ What keeps the user in control:
 2. **Admin policy passed to the CLI.** GeminiCode writes a policy file and passes it with `--admin-policy`. A system policy directory on the machine overrides this file. `test/acp/realAgentPolicy.test.ts` checks all of the following against the bundled CLI.
    - When a mode is turned off, the CLI itself keeps asking in that mode.
    - When shell access is off, the CLI removes its shell tool.
-   - The commands that print the environment (`env`, `printenv`, and `set` or `export` alone) are refused, even inside a longer command, unless `gemini.tools.denyEnvironmentCommands` is off.
+   - The commands that print the environment (`env`, `printenv`, `declare -x`, `typeset -x`, `export -p`, `compgen -e`, `ps` with an environment flag, and `set`, `export`, `declare` or `typeset` alone) are refused, even inside a longer command, unless `gemini.tools.denyEnvironmentCommands` is off.
    - The confirm class (merge, open a merge request, move a ticket, log time, and the same actions in a team's `jira` and `gitlab` servers) asks in every mode, YOLO included. Its rules name each tool as the model calls it (`mcp_<server>_<tool>`), because the CLI gives the policy check no server name for servers a session brings. In YOLO the chat answers other requests itself, never those.
    - With `gemini.mcp.allowedServers` set, GeminiCode also passes `--allowed-mcp-server-names` with that list and its own four servers (`ownServers`), which outranks `mcp.allowed` in any settings file. Without it, when the settings files' `mcp.allowed` leaves out any of GeminiCode's servers, GeminiCode passes the flag with that allowlist plus its servers, less anything in `mcp.excluded` (`allowlistWith` in `projectToolsCheck.ts`), so users never add them by hand.
 3. **Folder trust.** The CLI refuses Auto Edit and YOLO in a folder it does not trust. GeminiCode asks the user before adding the folder to the CLI's trusted list. A project needs its agents' folders trusted too, since the CLI loads no MCP servers in an untrusted folder. GeminiCode asks before trusting them, and never when `security.folderTrust.enabled` is off.
 4. **No silent changes.** The IDE never changes the approval mode on the user's behalf.
-5. **File requests stay in the folder.** The CLI's file tools go through the IDE, which refuses paths outside the agent's folder, secret files and git-ignored reads, following symbolic links to their real target. Session approvals of shell commands never cover a program that runs another program or code it is given ([Permissions](#permissions)). Reads through the CLI's own shell, `grep`, `glob` and `ls` are not covered.
+5. **File requests stay in the folder.** The CLI's file tools go through the IDE, which refuses paths outside the agent's folder, secret files and git-ignored reads, following symbolic links to their real target. Session approvals of shell commands cover a command prefix, never a program that runs another program or code it is given ([Permissions](#permissions)). An Auto Edit write to a setting that decides what runs next asks first. Reads through the CLI's own shell, `grep`, `glob` and `ls` are not covered.
 6. **Team tools ask for every write.** Write tools always reach a permission card with the exact text, and the confirm class offers only Allow once and Reject, in every mode. Every write, by an agent or a page, is in the audit log with its intent, its result and who answered.
 7. **Other people's text is marked as data.** Tool results that carry text from Jira, GitLab, Figma or a page are wrapped in `<external source="…" ref="…">`, with any `<external>` tag inside the text escaped so it can't close the frame early (`external` in `teamTools.ts`). The servers' instructions tell the model to read it as data, never as instructions.
-8. **Tokens stay out of the agent's reach.** Team tool tokens are in the keychain (SecretStorage), never in settings or the agent's environment. Taking over a repository's own Jira and GitLab servers moves their tokens out of the shell environment, and the environment commands are refused (2, above).
+8. **Tokens stay out of the agent's reach.** Team tool tokens are in the keychain (SecretStorage), never in settings or the agent's environment. Taking over a repository's own Jira and GitLab servers moves their tokens out of the shell environment, and the environment commands are refused (2, above). The team's containers get their tokens on their input, read by a shell that then runs the image's own entrypoint (`containerSpec`), so neither `docker inspect` (which shows `-e` and `--env-file` values alike) nor the Docker client's environment holds them, and `docker` always asks.
+10. **Pages are not trusted to name what runs.** Home runs only the commands it sent the page, with the same arguments; a chat runs only a shell block that is in its messages; Open Trace opens only GeminiCode's own trace files; a dropped file that may hold secrets is not attached; rendered Markdown links only to http, https and mailto (`hostAllowlists.ts`, `linkPolicy.ts`).
+11. **Project tools by server, not by name.** A project's tools, and the team tools that only read, are answered for the user only when the call's id names GeminiCode's server (`mcp_<server>_<tool>…`, `mcpToolOf`), so another server's `report` or `post` never is. Snyk's tests run the project's build tools, so they show a card and are refused while shell commands are off.
 9. **Sites ask first.** In the browser, an agent opens other origins only after asking, per agent and site, and `gemini.browser.allowedOrigins` can pin them. The CLI's `web_fetch` refuses private hosts.
 
 ### Policies
@@ -831,7 +838,15 @@ Each setting below can be locked through VS Code's policy system (Group Policy, 
 | `gemini.docs.enabled` | `GeminiDocs` | on |
 | `gemini.docs.allowedDomains` | `GeminiDocsAllowedDomains` | empty (every site) |
 | `gemini.chat.runCommands` | `GeminiChatRunCommands` | `askWhenRisky` (`alwaysAsk`, or `off` to remove Run) |
+| `gemini.projectId` | `GeminiProjectId` | empty (workspace, user, org default, environment) |
+| `gemini.projects.enabled` | `GeminiProjects` | on |
+| `gemini.team.runTeamServers` | `GeminiRunTeamServers` | off |
+| `gemini.agents.worktreeSetup` | `GeminiWorktreeSetup` | empty (the repository's `.gemini/worktree-setup.sh`) |
+| `gemini.agents.allWorkspaceFolders` | `GeminiAllWorkspaceFolders` | off |
+| `gemini.browser.keepSignIns` | `GeminiBrowserKeepSignIns` | off |
 | `gemini.pilot.record` | `GeminiPilotRecord` | off |
+
+`gemini.agents.worktreeSetup` is machine-scoped, so a repository's own settings can't set the command. `gemini.projectId` stays window-scoped, since a workspace's own billing project is documented and in use; starting an agent logs a warning when a workspace's value replaces the user's or the organisation's, and a `GeminiProjectId` policy wins over both (`getProjectSettings` reads it through `get`, as `inspect` leaves policies out).
 
 `gemini/pilot/GeminiCode-pilot.mobileconfig` sets the pilot's values as a macOS configuration profile for the app's preferences domain. An array setting's policy is a JSON string.
 

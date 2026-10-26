@@ -8,7 +8,7 @@ A setting in a workspace's settings applies only to that folder, and is shared w
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `gemini.projectId` | empty | The Google Cloud project ID to bill. Use the ID, such as `my-project-123`, not the project number. A workspace value wins over your own. |
+| `gemini.projectId` | empty | The Google Cloud project ID to bill. Use the ID, such as `my-project-123`, not the project number. A workspace value wins over your own, and the Gemini log warns when one does. An admin policy wins over both. |
 | `gemini.cliPath` | empty | A `gemini` executable or a CLI's `bundle/gemini.js` to run instead of GeminiCode's own copies. |
 | `gemini.cli.version` | empty | Which of GeminiCode's own CLI copies to run, such as `0.64.0`. Empty runs the newest. |
 | `gemini.cli.checkForUpdates` | on | Offer newer Gemini CLI releases, at most once a day. Nothing installs without your click. |
@@ -22,7 +22,7 @@ A setting in a workspace's settings applies only to that folder, and is shared w
 | `gemini.approval.allowAutoEdit` | on | Offer the Auto Edit mode, which edits files without asking. |
 | `gemini.approval.allowYolo` | off | Offer the YOLO mode, which runs everything without asking. |
 | `gemini.tools.allowShell` | on | Let agents run shell commands. Each command still asks first, except in YOLO. |
-| `gemini.tools.denyEnvironmentCommands` | on | Refuse the commands that print the environment (`env`, `printenv`, and `set` or `export` alone), where a token could show. An agent that needs one variable can `echo` it. |
+| `gemini.tools.denyEnvironmentCommands` | on | Refuse the commands that print the environment (`env`, `printenv`, `declare -x`, `export -p`, `ps eww`, and `set` or `export` alone), where a token could show. |
 | `gemini.mcp.allowedServers` | empty | The only MCP servers agents may use, besides GeminiCode's own. Empty leaves it to the CLI's `mcp.allowed`. Usually set by your organisation. |
 
 See [Review and safety](review.md) for how approvals work.
@@ -118,6 +118,12 @@ An organisation can lock these settings through VS Code's policy system: a macOS
 | `gemini.index.enabled` | `GeminiIndex` |
 | `gemini.docs.enabled` | `GeminiDocs` |
 | `gemini.docs.allowedDomains` | `GeminiDocsAllowedDomains` |
+| `gemini.projectId` | `GeminiProjectId` |
+| `gemini.projects.enabled` | `GeminiProjects` |
+| `gemini.team.runTeamServers` | `GeminiRunTeamServers` |
+| `gemini.agents.worktreeSetup` | `GeminiWorktreeSetup` |
+| `gemini.agents.allWorkspaceFolders` | `GeminiAllWorkspaceFolders` |
+| `gemini.browser.keepSignIns` | `GeminiBrowserKeepSignIns` |
 | `gemini.pilot.record` | `GeminiPilotRecord` |
 
 To pin one CLI version for everyone, lock `GeminiCliPath` to an empty string and `GeminiCliVersion` to the version. How each policy reaches the Gemini CLI is described in [the architecture notes](https://github.com/pulkitjain-org/vscode-gemini-cli/blob/main/gemini/docs/ARCHITECTURE.md#security-model).
