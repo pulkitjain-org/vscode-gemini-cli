@@ -10,7 +10,7 @@ import { AgentChanges, ChangeTotals } from '../acp/agentChanges';
 import { attentionChange } from '../acp/attention';
 import { branchNameFrom } from '../acp/branchNames';
 import { writeCommitMessage } from '../acp/commitMessage';
-import { agentFolder, AgentRecord, AgentsModel, AgentsSnapshot, mergedThreads, type StoredAgents } from '../acp/agents';
+import { agentFolder, AgentRecord, AgentsModel, AgentsSnapshot, isArchived, mergedThreads, type StoredAgents } from '../acp/agents';
 import { AgentsStore } from '../acp/agentsStore';
 import { coordinatorModel } from '../acp/projectHub';
 import { savedRepoCount } from '../acp/projectStore';
@@ -95,6 +95,8 @@ export interface AgentSummary {
 	readonly updatedAt: number;
 	/** Its part in a project, while Projects are on; a coordinator also has its thread count. */
 	readonly project?: { readonly role: 'coordinator'; readonly threads: number } | { readonly role: 'thread' };
+	/** Archived by the user (Remove's Archive): Home leaves it out, and the pane lists it under Archived. */
+	readonly archived?: boolean;
 }
 
 /** An agent with a live session in this window. */
@@ -473,6 +475,7 @@ export class AgentsView implements vscode.Disposable {
 				summaries.push({
 					id: record.id, title: record.title, folder: workspace.folder, state: state.kind, status: state.status,
 					...(changes?.files ? { changes } : {}), ...(record.worktree ? { worktree: record.worktree } : {}), updatedAt: record.updatedAt,
+					...(record.archivedAt !== undefined && !live && isArchived(record, Date.now()) ? { archived: true } : {}),
 					...(projects && record.project?.role === 'coordinator' ? { project: { role: 'coordinator', threads: this.model.threadsOf(record.id).length } } : {}),
 					...(projects && record.project?.role === 'thread' && this.model.coordinatorOf(record) ? { project: { role: 'thread' } } : {}),
 				});
@@ -1127,8 +1130,11 @@ export class AgentsView implements vscode.Disposable {
 		const names = unreviewed.length > 5 ? `${unreviewed.slice(0, 5).join(', ')}, …` : unreviewed.join(', ');
 		const detail = unreviewed.length === 1 ? vscode.l10n.t("1 file still has changes to review: {0}.", names)
 			: unreviewed.length ? vscode.l10n.t("{0} files still have changes to review: {1}.", unreviewed.length, names) : undefined;
-		const answer = await vscode.window.showWarningMessage(vscode.l10n.t("Remove the agent \"{0}\"? This deletes its conversation and undo history.", node.record.title), { modal: true, detail }, remove);
-		if (answer === remove) {
+		const archive = vscode.l10n.t("Archive");
+		const answer = await vscode.window.showWarningMessage(vscode.l10n.t("Remove the agent \"{0}\"? This deletes its conversation and undo history.", node.record.title), { modal: true, detail }, archive, remove);
+		if (answer === archive) {
+			this.archiveAgent(node.record.id);
+		} else if (answer === remove) {
 			this.stop(node.record.id, false);
 			this.forkGone(node.record);
 			this.projects.threadRemoved(node.record);
@@ -1140,6 +1146,16 @@ export class AgentsView implements vscode.Disposable {
 			this.teamTools?.forgetAgent(node.record.id);
 			this.index?.forgetAgent(node.record.id);
 		}
+	}
+
+	/**
+	 * Remove's Archive: the agent leaves the pane's list and Home for its
+	 * workspace's Archived row, keeping its chat, undo history and branch.
+	 * Its session ends, with the chat saved; opening it brings it back.
+	 */
+	private archiveAgent(id: string): void {
+		this.stop(id, true);
+		this.model.archive(id);
 	}
 
 	private async removeWorktreeAgent(record: AgentRecord, worktree: AgentWorktree): Promise<void> {
@@ -1161,8 +1177,11 @@ export class AgentsView implements vscode.Disposable {
 			: vscode.l10n.t("Its branch {0} has no work of its own.", worktree.branch);
 		const deleteBranch = vscode.l10n.t("Remove and Delete Branch");
 		const keepBranch = vscode.l10n.t("Remove, Keep Branch");
-		const answer = await vscode.window.showWarningMessage(vscode.l10n.t("Remove the agent \"{0}\" and its folder?", record.title), { modal: true, detail }, deleteBranch, keepBranch);
-		if (answer) {
+		const archive = vscode.l10n.t("Archive");
+		const answer = await vscode.window.showWarningMessage(vscode.l10n.t("Remove the agent \"{0}\" and its folder?", record.title), { modal: true, detail }, archive, deleteBranch, keepBranch);
+		if (answer === archive) {
+			this.archiveAgent(record.id);
+		} else if (answer) {
 			await this.removeAgentAndWorktree(record.id, answer === deleteBranch);
 		}
 	}

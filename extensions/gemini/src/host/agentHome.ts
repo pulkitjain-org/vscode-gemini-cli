@@ -265,7 +265,8 @@ export class AgentHome implements vscode.Disposable {
 			const state = index ? homeIndex(await index.summary(w.folder), index.status(w.folder)) : undefined;
 			return { folder: w.folder, name: path.basename(w.folder) || w.folder, description: tildify(path.dirname(w.folder)), git: w.git, ...state ? { index: state } : {} };
 		}));
-		const all = this.agents.summaries();
+		// Archived agents are only under the pane's Archived row.
+		const all = this.agents.summaries().filter(a => !a.archived);
 		// Projects and their threads have their own list.
 		const summaries = all.filter(a => !a.project);
 		const isActive = (a: AgentSummary) => a.state === 'working' || a.state === 'waiting' || a.state === 'done' || a.state === 'error' || !!a.changes?.files;
