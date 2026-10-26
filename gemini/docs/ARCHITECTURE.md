@@ -115,6 +115,8 @@ Restarts:
 
 - A crashed process restarts with backoff (1 s, 4 s, 15 s; the count resets once a process stays up for a minute), but never after a fatal exit such as a failed sign-in (exit code 41).
 - Exit code 199, the CLI asking to be relaunched, restarts it at once.
+- A connection that closes while the process keeps running (the SDK ends it on a message over its limit, raised to 128 MB) gets the process ended and restarted like a crash, since every later request would fail.
+- `initialize`, `session/new` and `session/load` fail after 120 s and `authenticate` after 330 s (the CLI's own sign-in waits 5 minutes), with an error that offers Restart Agent ([FINDINGS.md](FINDINGS.md#sessions)).
 - Changing a setting that affects the process (CLI path or version, project, approval or shell settings) restarts it. The restart is immediate when the change takes a permission away or changes which MCP servers may load (`takesAway`); otherwise it waits until no prompt runs, so turning on YOLO doesn't cut off a running turn.
 
 The command is worked out without blocking the extension host. The CLI's resolution, the CLI's settings and the admin policy file are read at once, asynchronously, and a stop that arrives while they are read wins, so a stopped agent never starts late.
@@ -122,6 +124,8 @@ The command is worked out without blocking the extension host. The CLI's resolut
 ### One process, many agents
 
 `AgentRuntime` runs `initialize` once and serves every chat from that process. Each chat is its own ACP session with its own `cwd`. With a Google sign-in a new session takes about 0.8 s, against about 3 s for a new process ([FINDINGS.md](FINDINGS.md#sessions)).
+
+The agent's status (status bar, walkthrough, Home) comes from the process and from how opening sessions went for every chat (`describeRuntimeStatus`): a sign-in, project, network or timeout error from any chat's session shows once as a notification. The service's own session (`AgentService.client`) opens only when something asks for it, such as the walkthrough's Sign In, so a process start opens no session of its own.
 
 `AgentWarmup` starts the process 3 s after the window opens (`gemini.agent.startEarly`), but only when it can start without asking anything: setup finished before, a saved sign-in or API key, and no project problem. A CLI with no saved sign-in opens the sign-in flow as it starts.
 
@@ -131,7 +135,13 @@ While the user types on Agent Home, `AgentRuntime.prepareSession` opens a spare 
 
 `AgentClient` opens a session (`session/new`, or `session/load` to resume), signs in when the CLI asks, sends prompts, and exposes the modes and models the agent reports, minus any mode the admin policy turns off. Nothing in the UI hardcodes a mode or model ID.
 
-It closes the sessions it leaves (the one a new session replaces, its own when disposed, and one an outdated open created) when the CLI advertises `sessionCapabilities.close`. gemini-cli 0.64.0 does not, so with it they stay until the process exits.
+It closes the sessions it leaves (the one a new session replaces, once the new one has opened; its own when disposed; and one an outdated open created) when the CLI advertises `sessionCapabilities.close`. gemini-cli 0.64.0 does not, so with it they stay until the process exits. `newSession` and `loadSession` reject when no session opened, and a session a chat moved away from (a new chat, a full context) is never reopened after a restart.
+
+A session that fails to open while the process stays ready (a passing network or MCP error) is opened again the next time the chat needs it (`retryOpen`): at once, then after 2, 5 and 15 s since the last failure, so one failure no longer needs Restart Agent. Waiting for a session (`whenReady`) can be stopped: Stop while a turn waits for its session ends the turn without sending. A stopped turn the CLI has not ended after 10 s is ended in the chat.
+
+A turn with no update for 45 s, and no tool running or question waiting, counts as stalled (`AgentClient.stall`), with the CLI's latest retry from its debug log when there is one. The next update clears it.
+
+A failed turn's notice says what failed in plain words, without the API's JSON (`classifyTurnError` in `errors.ts`, `turnErrorNotice` in `chatStatus.ts`): a used-up quota with its model and reset time when the error gives them, no connection to Google, an expired sign-in, a server error, or an agent restart. Each notice also lists its ways out (Retry, Switch Model, Sign In, Show Log) for its buttons.
 
 The model picker rebuilds the list the terminal's `/model` dialog shows from the one the CLI sends apps, which can name a model twice and lacks Gemma (`modelList.ts`). The model the user picked last (kept in global state) is applied to each new or reopened session when the agent offers it. With no pick yet, or one the agent no longer offers, it is the first Flash model the agent lists (`defaultModel`, never Flash-Lite). That also spares the CLI its Auto routing call ([FINDINGS.md](FINDINGS.md#a-prompts-first-reply)).
 

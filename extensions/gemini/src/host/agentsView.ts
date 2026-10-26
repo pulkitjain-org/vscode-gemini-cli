@@ -490,9 +490,9 @@ export class AgentsView implements vscode.Disposable {
 		return this.merge.mergeBack(id, repo);
 	}
 
-	/** Stops the agent's current turn. */
+	/** Stops the agent's current turn, as its Stop button does, even while its session still opens. */
 	stopTurn(id: string): void {
-		void this.live.get(id)?.session.cancel();
+		this.live.get(id)?.controller.stop();
 	}
 
 	/**

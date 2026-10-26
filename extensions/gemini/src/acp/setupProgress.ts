@@ -22,11 +22,12 @@ export const noSetupProgress: SetupProgress = { cliReady: false, signedIn: false
 
 export function advanceSetupProgress(previous: SetupProgress, status: AgentStatus): SetupProgress {
 	const kind = status.phase === 'error' ? status.error?.kind : undefined;
-	const ready = status.phase === 'ready';
+	// A process can be ready before any session opened on it: only a session shows the sign-in and project are in order.
+	const ready = status.phase === 'ready' && status.sessionOpened !== false;
 	// Only a CLI that is running can ask for a project or for sign-in.
 	const projectMissing = kind === 'project-id-required' || kind === 'project-id-numeric';
 	const signedIn = ready || projectMissing;
-	const cliReady = signedIn || kind === 'auth-required' || kind === 'auth-failed';
+	const cliReady = signedIn || status.phase === 'ready' || kind === 'auth-required' || kind === 'auth-failed';
 	return {
 		cliReady: previous.cliReady || cliReady,
 		signedIn: previous.signedIn || signedIn,

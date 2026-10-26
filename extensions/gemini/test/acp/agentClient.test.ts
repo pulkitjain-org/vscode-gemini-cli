@@ -7,8 +7,9 @@ import type * as acp from '@agentclientprotocol/sdk';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { AgentClient, AgentClientState, supportedMcpServers } from '../../src/acp/agentClient';
-import { AgentRuntime, FileSystemHandlers } from '../../src/acp/agentRuntime';
+import { AgentClient, AgentClientOptions, AgentClientState, supportedMcpServers, TurnStall, WaitAbortedError } from '../../src/acp/agentClient';
+import { AgentRuntime, AgentRuntimeOptions, FileSystemHandlers } from '../../src/acp/agentRuntime';
+import { AgentError, classifyTurnError } from '../../src/acp/errors';
 import { ClientFileSystem, createFileHandlers } from '../../src/acp/fileAccess';
 import { AgentSidecar } from '../../src/acp/sidecar';
 import type { ChatEvent } from '../../src/acp/sessionUpdates';
@@ -26,12 +27,13 @@ describe('AgentClient', () => {
 		sidecar?.dispose();
 	});
 
-	function start(script: FakeAgentScript, requestPermission?: (p: acp.RequestPermissionRequest) => Promise<acp.RequestPermissionResponse>, fileSystem?: FileSystemHandlers) {
-		sidecar = new AgentSidecar({ command: () => fakeAgentCommand(script), cwd: undefined, restartDelaysMs: [] });
-		runtime = new AgentRuntime(sidecar, { fileSystem });
+	function start(script: FakeAgentScript, requestPermission?: (p: acp.RequestPermissionRequest) => Promise<acp.RequestPermissionResponse>, fileSystem?: FileSystemHandlers, options: { readonly client?: Partial<AgentClientOptions>; readonly runtime?: AgentRuntimeOptions; readonly restartDelaysMs?: number[] } = {}) {
+		sidecar = new AgentSidecar({ command: () => fakeAgentCommand(script), cwd: undefined, restartDelaysMs: options.restartDelaysMs ?? [] });
+		runtime = new AgentRuntime(sidecar, { fileSystem, ...options.runtime });
 		client = new AgentClient(runtime, {
 			cwd: process.cwd(),
 			requestPermission: requestPermission ?? (async () => ({ outcome: { outcome: 'cancelled' } })),
+			...options.client,
 		});
 		const settled = waitFor<AgentClientState>(client.onDidChangeState, s => s.kind === 'ready' || s.kind === 'error');
 		sidecar.start();
@@ -183,6 +185,136 @@ describe('AgentClient', () => {
 			expect(files[path.join(root, 'b.ts')]).toBe('created');
 			expect(secret).toMatch(/^error:.*denied/);
 			expect(missing).toBe('read:');
+		});
+	});
+
+	describe('opening sessions', () => {
+		const offline = { error: { code: -32000, message: 'fetch failed' } };
+
+		it('rejects a new session that failed to open, keeps the old one, and never goes back to it', async () => {
+			const { client, settled } = start({
+				storedSessions: [],
+				initialize: { agentCapabilities: { loadSession: true, sessionCapabilities: { close: {} } } },
+				newSessionErrors: [null, offline],
+				turns: [[{ step: 'closed' }]],
+			});
+			await settled;
+			const failure = await client.newSession().then(() => undefined, (err: unknown) => err);
+			expect(failure).toBeInstanceOf(AgentError);
+			expect((failure as AgentError).info.kind).toBe('network');
+			// The next use opens a new session at once rather than reopening the one left.
+			expect(await client.whenReady()).toMatchObject({ kind: 'ready', sessionId: 'fake-session-2' });
+			const texts: string[] = [];
+			client.onDidReceiveEvent(e => e.kind === 'text' && texts.push(e.text));
+			await client.prompt('closed?');
+			expect(texts).toEqual(['closed:']);
+		});
+
+		it('rejects a saved session that could not be opened when no new one opens either', async () => {
+			const { client, settled } = start({ storedSessions: [], newSessionErrors: [null, offline] });
+			await settled;
+			await expect(client.loadSession('gone')).rejects.toMatchObject({ info: { kind: 'network' } });
+		});
+
+		it('opens a session again after it failed while the agent stayed ready, backing off after the first retry', async () => {
+			const { client, settled } = start({ newSessionErrors: [offline, offline, null] }, undefined, undefined, { client: { retryDelaysMs: [0, 300] } });
+			expect(await settled).toMatchObject({ kind: 'error', error: { kind: 'network' } });
+			// One retry per wait: this one fails again at once.
+			await expect(client.whenReady()).rejects.toMatchObject({ info: { kind: 'network' } });
+			const started = Date.now();
+			expect(await client.whenReady()).toMatchObject({ kind: 'ready', sessionId: 'fake-session-1' });
+			expect(Date.now() - started).toBeGreaterThanOrEqual(250);
+		});
+
+		it('gives up on a session/new that takes too long, with an error saying so', async () => {
+			const { settled } = start({ newSessionDelayMs: 3_000 }, undefined, undefined, { runtime: { timeouts: { newSession: 200 } } });
+			expect(await settled).toMatchObject({ kind: 'error', error: { kind: 'timeout' } });
+		});
+
+		it('gives up on an initialize that takes too long', async () => {
+			const { settled } = start({ initializeDelayMs: 5_000 }, undefined, undefined, { runtime: { timeouts: { initialize: 200 } } });
+			expect(await settled).toMatchObject({ kind: 'error', error: { kind: 'timeout' } });
+		});
+
+		it('stops waiting for the session when told to, and when the client goes', async () => {
+			const { client } = start({ initializeDelayMs: 2_000 });
+			const abort = new AbortController();
+			const waiting = client.whenReady(abort.signal);
+			abort.abort();
+			await expect(waiting).rejects.toBeInstanceOf(WaitAbortedError);
+			const disposedWait = client.whenReady();
+			client.dispose();
+			await expect(disposedWait).rejects.toBeInstanceOf(AgentError);
+		});
+	});
+
+	describe('turns', () => {
+		const text = (value: string) => ({ step: 'update' as const, update: { sessionUpdate: 'agent_message_chunk' as const, content: { type: 'text' as const, text: value } } });
+
+		it('ends a turn here when the agent does not stop it in time', async () => {
+			const { client, settled } = start({ turns: [[{ step: 'delay', ms: 5_000 }, text('too late')]] }, undefined, undefined, { client: { cancelGraceMs: 100 } });
+			await settled;
+			const started = Date.now();
+			const turn = client.prompt('long task');
+			await new Promise(resolve => setTimeout(resolve, 50));
+			await client.cancel();
+			expect(await turn).toBe('cancelled');
+			expect(Date.now() - started).toBeLessThan(2_000);
+		});
+
+		it('says when a turn has had no update for a while, with the CLI\'s retry, and clears it on the next update', async () => {
+			const { client, settled } = start({ turns: [[{ step: 'delay', ms: 400 }, text('answer')]] }, undefined, undefined, { client: { stallAfterMs: 100 } });
+			await settled;
+			const stalls: (TurnStall | undefined)[] = [];
+			client.onDidChangeStall(stall => {
+				stalls.push(stall);
+				if (stall && !stall.retry) {
+					runtime!.noteRetry({ attempt: 2, status: 503 });
+				}
+			});
+			await client.prompt('slow');
+			expect(stalls.map(stall => stall && { retry: stall.retry })).toEqual([{ retry: undefined }, { retry: { attempt: 2, status: 503 } }, undefined]);
+			expect(client.stall).toBeUndefined();
+		});
+
+		it('does not count a running tool or a question for the user as a stall', async () => {
+			const { client, settled } = start({
+				turns: [[
+					{ step: 'update', update: { sessionUpdate: 'tool_call', toolCallId: 't1', title: 'npm test', status: 'in_progress' } },
+					{ step: 'delay', ms: 300 },
+					{ step: 'update', update: { sessionUpdate: 'tool_call_update', toolCallId: 't1', status: 'completed' } },
+					{ step: 'permission', request: { toolCall: { toolCallId: 't2', title: 'Write file' }, options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }] } },
+				]],
+			}, async () => {
+				await new Promise(resolve => setTimeout(resolve, 300));
+				return { outcome: { outcome: 'selected', optionId: 'allow' } };
+			}, undefined, { client: { stallAfterMs: 100 } });
+			await settled;
+			const stalls: (TurnStall | undefined)[] = [];
+			client.onDidChangeStall(stall => stalls.push(stall));
+			await client.prompt('test it');
+			expect(stalls).toEqual([]);
+		});
+
+		it('passes on the API error a turn failed with, which classifies as a quota error', async () => {
+			const { client, settled } = start({ turns: [[{ step: 'fail', error: { code: 429, message: 'You have exhausted your capacity on this model. Your quota will reset after 2h.' } }]] });
+			await settled;
+			const failure = await client.prompt('hello').then(() => undefined, (err: unknown) => err);
+			expect(classifyTurnError(failure, { model: 'gemini-3.8-pro', now: 0 })).toEqual({
+				kind: 'quota', message: 'You have exhausted your capacity on this model. Your quota will reset after 2h.', model: 'gemini-3.8-pro', resetsAt: 7_200_000,
+			});
+		});
+
+		it('says the agent restarted when its process ends under a turn', async () => {
+			const { client, settled } = start({ turns: [[{ step: 'delay', ms: 3_000 }]] }, undefined, undefined, { restartDelaysMs: [100] });
+			await settled;
+			const turn = client.prompt('long task');
+			await new Promise(resolve => setTimeout(resolve, 100));
+			const state = sidecar!.state;
+			if (state.kind === 'running') {
+				state.process.kill('SIGKILL');
+			}
+			await expect(turn).rejects.toMatchObject({ info: { kind: 'agent-restarted' } });
 		});
 	});
 

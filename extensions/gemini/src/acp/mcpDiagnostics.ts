@@ -94,6 +94,9 @@ export class McpDiagnostics {
 
 	private readonly onDidReportEmitter = new Emitter<McpProblem>();
 	readonly onDidReport = this.onDidReportEmitter.event;
+	private readonly onDidReadLinesEmitter = new Emitter<readonly string[]>();
+	/** The complete lines each read found, for other readers of the log, such as the CLI's retries. */
+	readonly onDidReadLines = this.onDidReadLinesEmitter.event;
 
 	private watcher: FSWatcher | undefined;
 	private offset = 0;
@@ -129,6 +132,7 @@ export class McpDiagnostics {
 	dispose(): void {
 		this.stopWatching();
 		this.onDidReportEmitter.dispose();
+		this.onDidReadLinesEmitter.dispose();
 	}
 
 	/** Reads what was added since the last read, a moment after the file changes, so a burst of writes is read once. */
@@ -159,6 +163,7 @@ export class McpDiagnostics {
 					this.offset = size;
 					const lines = (this.partial + buffer.toString('utf8')).split('\n');
 					this.partial = lines.pop() ?? '';
+					this.onDidReadLinesEmitter.fire(lines);
 					for (const problem of parseMcpProblems(lines)) {
 						const key = `${problem.server ?? ''}\n${problem.message}`;
 						if (!this.reported.has(key)) {

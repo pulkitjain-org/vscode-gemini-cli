@@ -11,8 +11,8 @@
 
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import type * as acp from '@agentclientprotocol/sdk';
-import type { AgentClientHandlers, AgentConnection } from './agentConnection';
-import { AgentError, AgentErrorInfo, classifyAgentError } from './errors';
+import type { AgentClientHandlers, AgentConnection, SetupTimeouts } from './agentConnection';
+import { AgentError, AgentErrorInfo, AgentErrorKind, classifyAgentError, CliRetry, errorMessage } from './errors';
 import { Emitter } from './events';
 import { isPrompt } from './cliSessions';
 import { contentBlockToText } from './sessionUpdates';
@@ -45,11 +45,31 @@ export interface AgentRuntimeOptions {
 	 * Without it the client does not advertise `fs` and the agent uses the disk.
 	 */
 	readonly fileSystem?: FileSystemHandlers;
+	/** Overrides how long setup requests may take (see `defaultSetupTimeouts`), such as in tests. */
+	readonly timeouts?: Partial<SetupTimeouts>;
+	/** Writes a debug line to the log, such as for an error the runtime or its sessions get past. */
+	readonly log?: (message: string) => void;
 }
+
+/**
+ * How opening sessions on the running process went, across every chat: the
+ * agent's status without a session of its own. Starts afresh with each process.
+ */
+export interface SessionHealth {
+	/** Whether any session opened on this process. */
+	readonly opened: boolean;
+	/** Why the last session failed to open, when it failed for a reason the user can act on, such as signing in. */
+	readonly error?: AgentErrorInfo;
+}
+
+/** Session failures that say something about the agent as a whole, rather than about one chat. */
+const agentLevelErrors: ReadonlySet<AgentErrorKind> = new Set(['auth-required', 'auth-failed', 'project-id-required', 'project-id-numeric', 'network', 'timeout']);
 
 /** Updates kept for a session the client has not registered yet, such as one whose `session/new` reply is still being handled. */
 /** Enough for a long conversation the agent replays when it reopens a session. */
 const maxEarlyUpdates = 5000;
+/** How far past `maxEarlyUpdates` the list grows before the oldest are dropped. */
+const earlyUpdatesSlack = 500;
 /**
  * How long updates for a session nobody registered are kept. A session being
  * opened registers within this; one that never will (a tab closed mid-turn, a
@@ -102,8 +122,15 @@ export class AgentRuntime {
 	private readonly onDidBecomeIdleEmitter = new Emitter<void>();
 	/** Fires when the last running prompt ends. */
 	readonly onDidBecomeIdle = this.onDidBecomeIdleEmitter.event;
+	private _sessionHealth: SessionHealth = { opened: false };
+	private readonly onDidChangeSessionHealthEmitter = new Emitter<SessionHealth>();
+	/** Fires when a session opens or fails to open after a different outcome. */
+	readonly onDidChangeSessionHealth = this.onDidChangeSessionHealthEmitter.event;
+	private readonly onDidRetryEmitter = new Emitter<CliRetry>();
+	/** The CLI retries an API call (from its debug log, see `noteRetry`); not tied to one session. */
+	readonly onDidRetry = this.onDidRetryEmitter.event;
 
-	constructor(sidecar: AgentSidecar, private readonly options: AgentRuntimeOptions = {}) {
+	constructor(private readonly sidecar: AgentSidecar, private readonly options: AgentRuntimeOptions = {}) {
 		this.sidecarListener = sidecar.onDidChangeState(state => this.onSidecarState(state));
 		if (sidecar.state.kind === 'running') {
 			void this.connect(sidecar.state.process);
@@ -138,6 +165,23 @@ export class AgentRuntime {
 		return this.sessions.size;
 	}
 
+	/** How opening sessions on the running process went (see `SessionHealth`). */
+	get sessionHealth(): SessionHealth {
+		return this._sessionHealth;
+	}
+
+	/** Writes a debug line to the log, when the runtime has one. */
+	debug(message: string): void {
+		this.options.log?.(message);
+	}
+
+	/** Tells sessions with a running turn that the CLI is retrying an API call, as its debug log shows. */
+	noteRetry(retry: CliRetry): void {
+		if (this.turns > 0) {
+			this.onDidRetryEmitter.fire(retry);
+		}
+	}
+
 	/**
 	 * Opens a session in `cwd` on the running process. When the agent asks for
 	 * auth, authenticates once with `oauth-personal` and retries.
@@ -150,11 +194,35 @@ export class AgentRuntime {
 		if (spare) {
 			try {
 				return await spare;
-			} catch {
+			} catch (err) {
 				// Open another; this one's error may have been passing, such as a sign-in that has since finished.
+				this.debug(`The spare session failed (${errorMessage(err)}); opening another`);
 			}
 		}
-		return this.openNewSession(cwd, mcpServers);
+		return this.noteOutcome(this.openNewSession(cwd, mcpServers));
+	}
+
+	/** Records how opening a session went, for `sessionHealth`. */
+	private async noteOutcome(opening: Promise<RuntimeSession>): Promise<RuntimeSession> {
+		const connection = this.connection;
+		try {
+			const opened = await opening;
+			if (this.connection === connection && (!this._sessionHealth.opened || this._sessionHealth.error)) {
+				this.setSessionHealth({ opened: true });
+			}
+			return opened;
+		} catch (err) {
+			const info = err instanceof AgentError ? err.info : classifyAgentError(err);
+			if (this.connection === connection && agentLevelErrors.has(info.kind)) {
+				this.setSessionHealth({ opened: this._sessionHealth.opened, error: info });
+			}
+			throw err;
+		}
+	}
+
+	private setSessionHealth(health: SessionHealth): void {
+		this._sessionHealth = health;
+		this.onDidChangeSessionHealthEmitter.fire(health);
 	}
 
 	/**
@@ -163,8 +231,8 @@ export class AgentRuntime {
 	 * `session/new`. The next `newSession` with the same folder and servers on
 	 * this process takes it. Does nothing until the process is ready. One spare
 	 * at a time: a spare it replaces is closed when the agent can close
-	 * sessions (gemini-cli 0.64 advertises `sessionCapabilities.close`); an
-	 * older CLI keeps it (about 2.5 MB) until the process exits.
+	 * sessions (`sessionCapabilities.close`, which gemini-cli 0.64 does not
+	 * advertise); otherwise the CLI keeps it (about 2.5 MB) until the process exits.
 	 */
 	prepareSession(cwd: string, mcpServers: readonly acp.McpServer[] = [], key = spareKey(cwd, mcpServers)): void {
 		const connection = this.connection;
@@ -174,10 +242,10 @@ export class AgentRuntime {
 		}
 		const replaced = this.spare?.connection === connection ? this.spare.session : undefined;
 		const session = this.openNewSession(cwd, mcpServers);
-		session.catch(() => undefined);
+		session.catch(err => this.debug(`Could not open a spare session in ${cwd}: ${errorMessage(err)}`));
 		this.spare = { key, connection, session };
 		if (replaced && state.agent.agentCapabilities?.sessionCapabilities?.close) {
-			void replaced.then(old => connection.close(old.session.sessionId), () => undefined).catch(() => undefined);
+			void replaced.then(old => connection.close(old.session.sessionId), () => undefined).catch(err => this.debug(`Could not close the replaced spare session: ${errorMessage(err)}`));
 		}
 	}
 
@@ -243,16 +311,18 @@ export class AgentRuntime {
 		}
 		this.earlyUpdates.delete(sessionId);
 		this.closedSessions.delete(sessionId);
-		try {
-			const response = await connection.loadSession(sessionId, cwd, mcpServers);
-			if (firstPrompt !== undefined && !await this.replayStartsWith(sessionId, firstPrompt)) {
-				throw new AgentError({ kind: 'unknown', message: 'The agent opened a different session.' });
+		return this.noteOutcome((async () => {
+			try {
+				const response = await connection.loadSession(sessionId, cwd, mcpServers);
+				if (firstPrompt !== undefined && !await this.replayStartsWith(sessionId, firstPrompt)) {
+					throw new AgentError({ kind: 'unknown', message: 'The agent opened a different session.' });
+				}
+				return { connection, agent: state.agent, session: { ...response, sessionId }, mcpServers };
+			} catch (err) {
+				this.earlyUpdates.delete(sessionId);
+				throw err instanceof AgentError ? err : new AgentError(classifyAgentError(err));
 			}
-			return { connection, agent: state.agent, session: { ...response, sessionId }, mcpServers };
-		} catch (err) {
-			this.earlyUpdates.delete(sessionId);
-			throw err instanceof AgentError ? err : new AgentError(classifyAgentError(err));
-		}
+		})());
 	}
 
 	/**
@@ -303,6 +373,8 @@ export class AgentRuntime {
 		this.onDidChangeStateEmitter.dispose();
 		this.onDidBecomeBusyEmitter.dispose();
 		this.onDidBecomeIdleEmitter.dispose();
+		this.onDidChangeSessionHealthEmitter.dispose();
+		this.onDidRetryEmitter.dispose();
 	}
 
 	private onSidecarState(state: SidecarState): void {
@@ -332,20 +404,32 @@ export class AgentRuntime {
 	private async connect(agentProcess: ChildProcessWithoutNullStreams): Promise<void> {
 		this.dropConnection();
 		this.connectingTo = agentProcess;
-		// The ACP SDK (and zod, which it validates with) loads here, when the agent starts, not when the extension activates.
-		const { AgentConnection } = await import('./agentConnection');
+		if (this._sessionHealth.opened || this._sessionHealth.error) {
+			this.setSessionHealth({ opened: false });
+		}
+		let module: typeof import('./agentConnection');
+		try {
+			// The ACP SDK (and zod, which it validates with) loads here, when the agent starts, not when the extension activates.
+			module = await import('./agentConnection');
+		} catch (err) {
+			if (this.connectingTo === agentProcess) {
+				this.setState({ kind: 'error', error: { kind: 'unknown', message: `The agent's protocol code did not load: ${errorMessage(err)}` } });
+			}
+			return;
+		}
 		if (this.connectingTo !== agentProcess) {
 			return;
 		}
-		const connection = new AgentConnection(agentProcess.stdin, agentProcess.stdout, {
+		const connection = new module.AgentConnection(agentProcess.stdin, agentProcess.stdout, {
 			sessionUpdate: params => this.routeUpdate(params),
 			requestPermission: async params => {
 				const session = this.sessions.get(params.sessionId);
 				return session ? session.requestPermission(params) : { outcome: { outcome: 'cancelled' } };
 			},
 			...this.fileHandlers(),
-		});
+		}, { ...module.defaultSetupTimeouts, ...this.options.timeouts });
 		this.connection = connection;
+		void connection.closed.then(() => this.onConnectionClosed(connection, agentProcess));
 		this.setState({ kind: 'connecting' });
 		try {
 			const agent = await connection.initialize();
@@ -359,6 +443,21 @@ export class AgentRuntime {
 				this.setState({ kind: 'error', error: err instanceof AgentError ? err.info : classifyAgentError(err) });
 			}
 		}
+	}
+
+	/**
+	 * The stream to the agent closed. When the process exited, the sidecar
+	 * reports it and restarts it. When it is still running, the connection
+	 * broke on its own (the SDK ends it on a message too large, for example)
+	 * and every later request would fail, so the process is ended and the
+	 * sidecar restarts it as after a crash.
+	 */
+	private async onConnectionClosed(connection: AgentConnection, agentProcess: ChildProcessWithoutNullStreams): Promise<void> {
+		if (this.connection !== connection || await exitsWithin(agentProcess, 1_000) || this.connection !== connection) {
+			return;
+		}
+		this.debug('The connection to the agent closed while the agent kept running; restarting it');
+		this.sidecar.endProcess(agentProcess);
 	}
 
 	/** File handlers that pick the requesting session's own handlers first. */
@@ -406,8 +505,10 @@ export class AgentRuntime {
 			early = { since: now, updates: [] };
 			this.earlyUpdates.set(params.sessionId, early);
 		}
-		if (early.updates.length < maxEarlyUpdates) {
-			early.updates.push(params.update);
+		early.updates.push(params.update);
+		if (early.updates.length > maxEarlyUpdates + earlyUpdatesSlack) {
+			// The oldest go: a session registered late wants the newest, such as the end of a replay. In batches, so a long replay is not shifted once per update.
+			early.updates.splice(0, early.updates.length - maxEarlyUpdates);
 		}
 	}
 

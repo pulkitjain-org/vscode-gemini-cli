@@ -27,11 +27,11 @@ import { TextDeltas } from '../acp/textDeltas';
 import type { ModelTokens } from '../acp/turnUsage';
 import { UpdateBatcher } from '../acp/updateBatcher';
 import { isBlockedWebFetch } from '../acp/webFetchHint';
-import type { AgentClient } from '../acp/agentClient';
-import { errorMessage, isContextOverflow, isModelTurnRefusal } from '../acp/errors';
+import { type AgentClient, WaitAbortedError } from '../acp/agentClient';
+import { classifyTurnError, errorMessage, isContextOverflow, isModelTurnRefusal } from '../acp/errors';
 import { recordPilot } from '../acp/pilotLog';
 import { chatProtocolVersion, FromWebview, ProjectPanel, ProjectRepoView, ProjectSettingsView, statusCommands, ToWebview } from './chatProtocol';
-import { stopReasonNotice, toViewStatus } from './chatStatus';
+import { stopReasonNotice, toViewStatus, turnErrorNotice, type TurnErrorNotice } from './chatStatus';
 import type { DiffPreview } from './diffPreview';
 import { agentReactionsOn, onDidChangeReactions, reactionMeanings, reactionsOn, recentReactions, rememberReaction } from './chatReactions';
 import { preferredComposerHeight, rememberComposerHeight } from './modelPreference';
@@ -123,6 +123,13 @@ export class ChatController implements vscode.Disposable {
 	/** Opens a session waiting for the chat to show, if the view does not say it is shown. */
 	private openTimer: ReturnType<typeof setTimeout> | undefined;
 
+	/** Aborts the running turn's wait for its session (`ensureReady`), so Stop works before the prompt is sent. */
+	private turnWait: AbortController | undefined;
+	/** The latest failed turn's notice, with the ways out it offers; cleared when the next turn starts. */
+	private _lastTurnError: TurnErrorNotice | undefined;
+	private disposed = false;
+	/** Called on dispose, so waits on this chat end. */
+	private readonly onDispose = new Set<() => void>();
 	private readonly onDidChangeActivityEmitter = new vscode.EventEmitter<ChatActivity>();
 	readonly onDidChangeActivity = this.onDidChangeActivityEmitter.event;
 
@@ -594,15 +601,19 @@ export class ChatController implements vscode.Disposable {
 			await this.restoring;
 		}
 		// Other work that keeps the chat busy, such as Compact, ends first.
-		while (this.busy && !this.turnRunning) {
+		while (this.busy && !this.turnRunning && !this.disposed) {
 			await new Promise<void>(resolve => {
-				const listener = this.onDidChangeActivity(activity => {
-					if (!activity.busy) {
-						listener.dispose();
-						resolve();
-					}
-				});
+				const done = () => {
+					listener.dispose();
+					this.onDispose.delete(done);
+					resolve();
+				};
+				const listener = this.onDidChangeActivity(activity => !activity.busy && done());
+				this.onDispose.add(done);
 			});
+		}
+		if (this.disposed) {
+			throw new Error('The chat closed.');
 		}
 		if (this.busy) {
 			throw new Error('A turn is already running.');
@@ -639,8 +650,16 @@ export class ChatController implements vscode.Disposable {
 		/** How the turn came to an end, for the messages waiting on it. */
 		let outcome: 'done' | 'steer' | 'stopped' = 'stopped';
 		this.timing = { started, permissions: 0 };
+		this._lastTurnError = undefined;
+		const wait = this.turnWait = new AbortController();
 		try {
-			await this.service.ensureReady();
+			try {
+				await this.service.ensureReady(wait.signal);
+			} finally {
+				if (this.turnWait === wait) {
+					this.turnWait = undefined;
+				}
+			}
 			this.timing.ready = Date.now();
 			// Built after the agent is ready, so it reflects what this agent accepts.
 			const content = buildPromptContent(expand ? await this.commands.expand(text) : text, attachments, this.service.client.promptCapabilities);
@@ -705,11 +724,18 @@ export class ChatController implements vscode.Disposable {
 			ended = true;
 			outcome = steered ? 'steer' : stopReason === 'end_turn' ? 'done' : 'stopped';
 		} catch (err) {
-			if (isContextOverflow(errorMessage(err))) {
+			if (err instanceof WaitAbortedError) {
+				// Stopped while the session was still opening: nothing was sent.
+				this.transcript.addNotice(stopReasonNotice('cancelled') ?? '', 'info');
+			} else if (isContextOverflow(errorMessage(err))) {
 				overflowed = true;
+			} else if (err instanceof TeamCommandCancelled) {
+				this.transcript.addNotice(errorMessage(err), 'info');
 			} else {
-				this.transcript.addNotice(errorMessage(err), err instanceof TeamCommandCancelled ? 'info' : 'error');
-				failed = !(err instanceof TeamCommandCancelled);
+				const notice = this._lastTurnError = this.turnError(err);
+				this.service.writeLog?.(`The turn failed (${notice.error.kind}): ${errorMessage(err)}`);
+				this.transcript.addNotice(notice.text, 'error');
+				failed = true;
 			}
 		} finally {
 			if (!ended && this.checkpoints.turnChangedFiles) {
@@ -775,7 +801,8 @@ export class ChatController implements vscode.Disposable {
 
 	/** Stops the turn for the messages sent now, once no tool is running; a running tool's end calls this again. */
 	private trySteer(): void {
-		if (!this.busy || this.quiet || this.steerStopping || !this.queue.hasSteer) {
+		// While the session still opens there is no turn to stop: the messages go when it ends.
+		if (!this.busy || this.quiet || this.steerStopping || !this.queue.hasSteer || this.turnWait) {
 			return;
 		}
 		const waiting = this.service.permissions.pendingPermissions.length > 0;
@@ -839,7 +866,7 @@ export class ChatController implements vscode.Disposable {
 			await this.service.client.newSession();
 			this.options.project?.sessionReplaced();
 		} catch (err) {
-			this.transcript.addNotice(vscode.l10n.t("Gemini's context for this chat is full, and a new session could not start: {0} Start a new chat to carry on.", errorMessage(err)), 'error');
+			this.transcript.addNotice(vscode.l10n.t("Gemini's context for this chat is full, and a new session could not start: {0} Start a new chat to carry on.", this.turnError(err).text), 'error');
 			return;
 		} finally {
 			this.setBusy(false);
@@ -1003,10 +1030,38 @@ export class ChatController implements vscode.Disposable {
 		try {
 			await this.service.client.newSession();
 		} catch (err) {
-			this.transcript.addNotice(errorMessage(err), 'error');
+			// The chat is cleared either way; the next prompt opens a new session (the old one is never reopened).
+			this.transcript.addNotice(vscode.l10n.t("A new session could not start: {0}", this.turnError(err).text), 'error');
 		} finally {
 			this.setBusy(false);
 		}
+	}
+
+	/** The plain-words notice for a failed turn or session, from the error it failed with. */
+	private turnError(err: unknown): TurnErrorNotice {
+		return turnErrorNotice(classifyTurnError(err, { model: this.service.client.settings.model?.currentId }));
+	}
+
+	/**
+	 * The latest failed turn's notice and its ways out (Retry, Switch Model,
+	 * Sign In, Show Log), until the next turn starts; for the notice's buttons.
+	 */
+	get lastTurnError(): TurnErrorNotice | undefined {
+		return this._lastTurnError;
+	}
+
+	/**
+	 * Stops the running turn, as the Stop button does: one still waiting for
+	 * its session ends at once, without sending; messages sent now wait.
+	 */
+	stop(): void {
+		this.steerStopping = false;
+		if (this.queue.hasSteer) {
+			this.queue.holdSteers();
+			this.postQueue();
+		}
+		this.turnWait?.abort();
+		void this.service.cancel();
 	}
 
 	/** Opens the conversation as a Markdown document, titled `title`. */
@@ -1036,6 +1091,11 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	dispose(): void {
+		this.disposed = true;
+		this.turnWait?.abort();
+		for (const done of [...this.onDispose]) {
+			done();
+		}
 		clearTimeout(this.openTimer);
 		this.detach();
 		vscode.Disposable.from(...this.disposables).dispose();
@@ -1093,12 +1153,7 @@ export class ChatController implements vscode.Disposable {
 				break;
 			case 'stop':
 				// Stop means stop: messages sent now wait instead, for the user to send.
-				this.steerStopping = false;
-				if (this.queue.hasSteer) {
-					this.queue.holdSteers();
-					this.postQueue();
-				}
-				void this.service.cancel();
+				this.stop();
 				break;
 			case 'command':
 				if (statusCommands.includes(message.command)) {

@@ -38,13 +38,23 @@ export type ScriptedStep =
 	/** Echoes how many times `authenticate` was called, as `auth:<count>`. */
 	| { readonly step: 'auth' }
 	/** Replies with the sessions closed so far, "closed:<ids>". */
-	| { readonly step: 'closed' };
+	| { readonly step: 'closed' }
+	/** Fails the prompt with this JSON-RPC error, as gemini-cli does with an API error (its HTTP status as the code). */
+	| { readonly step: 'fail'; readonly error: { readonly code: number; readonly message: string } };
 
 export interface FakeAgentScript {
 	/** Exit with this code before reading anything, like a CLI that dies on startup. */
 	readonly exitCode?: number;
 	/** Merged over the default `initialize` response. */
 	readonly initialize?: Partial<acp.InitializeResponse> | ScriptedError;
+	/** Waits this long before answering `initialize`. */
+	readonly initializeDelayMs?: number;
+	/** Waits this long before answering each `session/new`, like a CLI held up by its setup. */
+	readonly newSessionDelayMs?: number;
+	/** Per `session/new` call, in order: an error to fail it with, or null to answer it. Calls past the list answer. */
+	readonly newSessionErrors?: readonly (ScriptedError | null)[];
+	/** Updates (agent messages "early 1" and on) sent for a new session before `session/new` answers. */
+	readonly earlyUpdates?: number;
 	/**
 	 * Until `authenticate` succeeds, `session/new` fails the way gemini 0.62
 	 * does when no auth type is selected.
@@ -104,6 +114,7 @@ let clientCapabilities: acp.ClientCapabilities | undefined;
 /** The last model set through `session/set_model`; the `model` step echoes it. */
 let lastModel: string | undefined;
 let sessionCount = 0;
+let newSessionCalls = 0;
 let turnIndex = 0;
 const pendingTurns = new Map<string, AbortController>();
 
@@ -113,23 +124,39 @@ const stream = acp.ndJsonStream(
 );
 
 acp.agent({ name: 'fake-agent' })
-	.onRequest('initialize', ctx => (clientCapabilities = ctx.params.clientCapabilities, answer<acp.InitializeResponse>({
-		protocolVersion: acp.PROTOCOL_VERSION,
-		agentInfo: { name: 'fake-agent', version: '0.0.0' },
-		agentCapabilities: { loadSession: !!script.storedSessions },
-		authMethods: [{ id: 'oauth-personal', name: 'Log in with Google' }],
-	}, script.initialize)))
+	.onRequest('initialize', async ctx => {
+		clientCapabilities = ctx.params.clientCapabilities;
+		if (script.initializeDelayMs) {
+			await new Promise(resolve => setTimeout(resolve, script.initializeDelayMs));
+		}
+		return answer<acp.InitializeResponse>({
+			protocolVersion: acp.PROTOCOL_VERSION,
+			agentInfo: { name: 'fake-agent', version: '0.0.0' },
+			agentCapabilities: { loadSession: !!script.storedSessions },
+			authMethods: [{ id: 'oauth-personal', name: 'Log in with Google' }],
+		}, script.initialize);
+	})
 	.onRequest('authenticate', () => {
 		authenticated = true;
 		authCount++;
 		return {};
 	})
-	.onRequest('session/new', ctx => {
+	.onRequest('session/new', async ctx => {
 		if (script.requireAuth && !authenticated) {
 			throw new acp.RequestError(-32000, 'Gemini API key is missing or not configured.');
 		}
+		const failure = script.newSessionErrors?.[newSessionCalls++];
+		if (failure) {
+			throw new acp.RequestError(failure.error.code, failure.error.message);
+		}
+		if (script.newSessionDelayMs) {
+			await new Promise(resolve => setTimeout(resolve, script.newSessionDelayMs));
+		}
 		const response = answer<acp.NewSessionResponse>({ sessionId: `fake-session-${++sessionCount}` }, script.newSession);
 		sessionCwds.set(response.sessionId, ctx.params.cwd);
+		for (let i = 1; i <= (script.earlyUpdates ?? 0); i++) {
+			await ctx.client.notify('session/update', { sessionId: response.sessionId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `early ${i}` } } });
+		}
 		if (script.availableCommands) {
 			const availableCommands = [...script.availableCommands];
 			setTimeout(() => void ctx.client.notify('session/update', { sessionId: response.sessionId, update: { sessionUpdate: 'available_commands_update', availableCommands } }), 0);
@@ -193,6 +220,8 @@ acp.agent({ name: 'fake-agent' })
 					case 'closed':
 						await ctx.client.notify('session/update', { sessionId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `closed:${closedSessions.join(',')}` } } });
 						break;
+					case 'fail':
+						throw new acp.RequestError(step.error.code, step.error.message);
 					case 'readFile':
 					case 'writeFile':
 					case 'capabilities': {

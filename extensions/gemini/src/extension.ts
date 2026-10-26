@@ -57,6 +57,7 @@ const pilotRecordSetting = 'pilot.record';
 let saveBeforeExit: (() => Promise<void>) | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+	const activationStart = Date.now();
 	const log = vscode.window.createOutputChannel('Gemini', { log: true });
 	// The agent list is read while the product info loads.
 	const savedAgents = loadSavedAgents(context);
@@ -269,6 +270,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		vscode.commands.registerCommand('gemini.signIn', () => walkthrough.signIn()),
 		vscode.commands.registerCommand('gemini.getStarted', () => vscode.commands.executeCommand('workbench.action.openWalkthrough', walkthroughId, false)),
 	);
+	// One line per launch, to measure startup on real machines (FINDINGS.md, starting the agent).
+	const servicesUpMs = Date.now() - activationStart;
+	const started = service.onDidStart(times => {
+		started.dispose();
+		log.info(`Startup: services up ${servicesUpMs} ms after activation; agent spawned ${times.spawnedAt - activationStart} ms after activation, process ready ${times.processReadyMs} ms after spawn, first session ready ${times.firstSessionMs} ms after spawn`);
+	});
+	context.subscriptions.push(started);
 }
 
 export function deactivate(): Promise<void> | undefined {
