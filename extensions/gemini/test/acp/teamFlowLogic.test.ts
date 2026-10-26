@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { checksFixPrompt, findingsFromSnyk, mrFixPrompt, mrFixRepliesPrompt, resolveWorkFolder, parseReviewFindings, parseSuggestion, reviewPrompt, reviewSummary, suggestPrompt, targetChoices, ticketBranchName } from '../../src/acp/teamFlowLogic';
+import { checksFixPrompt, findingsFromSnyk, mrFixPrompt, mrFixRepliesPrompt, resolveWorkFolder, parseReviewFindings, parseSuggestion, reviewPrompt, reviewSummary, suggestPrompt, targetChoices, ticketBranchName, workFolderChoices } from '../../src/acp/teamFlowLogic';
 
 describe('team flow logic', () => {
 	it('names a ticket\'s branch after its key and summary', () => {
@@ -106,6 +106,20 @@ describe('team flow logic', () => {
 			{ folder: '/work/api', ambiguous: true },
 			{ folder: '/work/api', ambiguous: false },
 			{ ambiguous: false },
+		]);
+	});
+
+	it('offers the agent last in front first, then each open folder once', () => {
+		expect([
+			workFolderChoices({ id: 'a1', title: 'Login fix', cwd: '/home/.geminicode/worktrees/api/login-fix', folder: '/work/api' }, ['/work/api', '/work/web', '/work/web']),
+			workFolderChoices(undefined, ['/work/api', '/work/web']).map(choice => choice.label),
+		]).toEqual([
+			[
+				{ agent: 'a1', label: 'Login fix', path: '/home/.geminicode/worktrees/api/login-fix', folder: '/work/api' },
+				{ label: 'api', path: '/work/api', folder: '/work/api' },
+				{ label: 'web', path: '/work/web', folder: '/work/web' },
+			],
+			['api', 'web'],
 		]);
 	});
 });

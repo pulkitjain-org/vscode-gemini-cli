@@ -394,6 +394,11 @@ export class AgentsView implements vscode.Disposable {
 		return undefined;
 	}
 
+	/** The agent whose tab is in front, else the one last in front while it is still in the list. */
+	agentLastInFront(): string | undefined {
+		return this.activeAgentId() ?? (this.focusedId && this.model.agent(this.focusedId) ? this.focusedId : undefined);
+	}
+
 	/** The chat of the agent whose tab is in front, else the one last in front. */
 	private chatInFront(): ChatController | undefined {
 		const id = this.activeAgentId() ?? this.focusedId;
@@ -402,7 +407,7 @@ export class AgentsView implements vscode.Disposable {
 
 	/** Puts the cursor in the message box of the agent in front (or last in front), opening its tab; with no agent yet, starts one. */
 	private async focusChat(): Promise<void> {
-		const id = this.activeAgentId() ?? (this.focusedId && this.model.agent(this.focusedId) ? this.focusedId : undefined);
+		const id = this.agentLastInFront();
 		if (!id) {
 			await vscode.commands.executeCommand('gemini.agents.newAgent');
 			return;
