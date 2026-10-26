@@ -7,7 +7,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { crawl, CrawlError, domainAllowed } from '../acp/docs/crawler';
 import type { DocsRefresh, DocsScope, DocsSearchResult, DocsSourceStatus } from '../acp/docs/docsProtocol';
-import { DocsRegistry, DocsSource, isDue, normalizedUrl, provisionalTitle, sourceId } from '../acp/docs/docsRegistry';
+import { DocsRegistry, DocsSource, isDue, normalizedUrl, provisionalTitle, retryDue, sourceId } from '../acp/docs/docsRegistry';
 import { IndexLock } from '../acp/index/indexLock';
 import type { AttachedDocs } from '../acp/indexMcp';
 import { configSection } from './configuration';
@@ -205,7 +205,7 @@ export class DocsSources implements DocsProvider, vscode.Disposable {
 				...s,
 				...status?.title ? { title: status.title } : {},
 				...status ? { pages: status.pages } : {},
-				...error ? { error } : { error: undefined, fetchedAt: Date.now() },
+				...error ? { error, failures: (s.failures ?? 0) + 1, failedAt: Date.now() } : { error: undefined, failures: undefined, failedAt: undefined, fetchedAt: Date.now() },
 			}));
 		}
 		this.onDidChangeEmitter.fire();
@@ -221,7 +221,7 @@ export class DocsSources implements DocsProvider, vscode.Disposable {
 		this.onDidChangeEmitter.dispose();
 	}
 
-	/** Fetches the sources due again, one after another, that some folder uses. */
+	/** Fetches the sources due again, one after another, that some folder uses; a failed one later and later. */
 	private async refreshDue(): Promise<void> {
 		if (!docsEnabled()) {
 			return;
@@ -229,7 +229,7 @@ export class DocsSources implements DocsProvider, vscode.Disposable {
 		const fallback = refreshSetting();
 		const now = Date.now();
 		for (const source of await this.registry.load()) {
-			if (source.folders.length && isDue(source, fallback, now) && !source.error) {
+			if (source.folders.length && (source.error ? retryDue(source, fallback, now) : isDue(source, fallback, now))) {
 				await this.fetch(source.id);
 			}
 		}

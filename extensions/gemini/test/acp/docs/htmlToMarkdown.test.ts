@@ -48,6 +48,18 @@ describe('htmlToMarkdown', () => {
 	});
 });
 
+describe('htmlToMarkdown on hostile pages', () => {
+	it('survives tags nested far deeper than any page needs, and many scripts', () => {
+		const deep = `<main>${'<div>'.repeat(100_000)}<p>Deep text.</p>${'</div>'.repeat(100_000)}</main>`;
+		expect(htmlToMarkdown(deep, 'https://x.dev/').markdown).toBe('Deep text.');
+		const scripts = `<main>${'<SCRIPT>var a = 1;</SCRIPT><p>Kept.</p>'.repeat(5_000)}</main>`;
+		const started = performance.now();
+		const page = htmlToMarkdown(scripts, 'https://x.dev/');
+		expect([page.markdown.split('\n\n').length, page.markdown.includes('var a')]).toEqual([5_000, false]);
+		expect(performance.now() - started).toBeLessThan(2_000);
+	});
+});
+
 describe('sectionsOf', () => {
 	it('cuts at headings, keeping the headings above each section', () => {
 		const markdown = '# Payments\n\nIntro.\n\n## Retries\n\nBackoff.\n\n```sh\n# not a heading\n```\n\n### Limits\n\nFive.\n\n## Refunds\n\nWithin 30 days.';
