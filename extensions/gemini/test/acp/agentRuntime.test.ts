@@ -164,6 +164,20 @@ describe('AgentRuntime', () => {
 		expect(a.texts).toEqual(['session:fake-session-1:/work/a']);
 	});
 
+	it('waits for the whole replay when its length is known, though the agent pauses between updates', async () => {
+		const { sidecar } = start({ storedSessions: ['fake-session-1'], replay: { updates: 3, delayMs: 400 }, turns: [[{ step: 'session' }]] });
+		const a = await session('/work/a', { findSavedSession: async () => ({ replayUpdates: 4 }) });
+		const replayed: string[] = [];
+		a.client.onDidReplayEvent(e => e.kind === 'text' && replayed.push(e.text));
+		const readyAgain = waitFor<AgentClientState>(a.client.onDidChangeState, s => s.kind === 'ready');
+		sidecar.stop();
+		sidecar.start();
+		await readyAgain;
+		await a.client.prompt('who');
+		expect(replayed).toEqual(['history:fake-session-1', 'Part 1', 'Part 2', 'Part 3']);
+		expect(a.texts).toEqual(['session:fake-session-1:/work/a']);
+	});
+
 	it('keeps the newest updates for a session that registers late, dropping the oldest', async () => {
 		start({ earlyUpdates: 5_600 });
 		const client = new AgentClient(runtime!, { cwd: '/work/a', requestPermission: cancelled });
