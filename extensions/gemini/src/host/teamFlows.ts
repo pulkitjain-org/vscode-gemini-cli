@@ -23,8 +23,8 @@ import {
 	mrFixRepliesPrompt, MrThreadForFix, resolveWorkFolder, targetChoices, ticketBranchName, ticketStartPrompt, WorkFolder, workFolderChoices,
 } from '../acp/teamFlowLogic';
 import { gitlabProjectOf } from '../acp/teamTools';
-import { findClone, type FoundClone, locateClone, recentFolders, RememberedClones } from '../acp/cloneSearch';
-import { askForClone } from './reviewClone';
+import type { FoundClone } from '../acp/cloneSearch';
+import type { CloneAsk } from './reviewClone';
 import { AgentWorktree, commitAll, currentBranch, git, GitError, inRepository, repositoryRoot, runWorktreeSetup } from '../acp/worktrees';
 import { setupCommandFor } from './agents/agentWorktrees';
 import type { AgentsView } from './agentsView';
@@ -79,12 +79,13 @@ export class TeamFlows implements vscode.Disposable {
 	/** The target each Open Merge Request's description was written for. */
 	private readonly describedFor = new WeakMap<TeamFlowPanel<OpenMrView>, string>();
 
-	constructor(private readonly extensionUri: vscode.Uri, private readonly tools: TeamConnections, private readonly agents: AgentsView, private readonly state?: vscode.Memento) {
+	/** `onDemand` loads dist/onDemand.js, where finding or cloning a merge request's repository lives (reviewClone.ts). */
+	constructor(private readonly extensionUri: vscode.Uri, private readonly tools: TeamConnections, private readonly agents: AgentsView, private readonly state?: vscode.Memento, private readonly onDemand?: () => typeof import('../onDemand')) {
 		const run = <A extends unknown[]>(id: string, handler: (...args: A) => Promise<unknown>) => vscode.commands.registerCommand(id, (...args: A) => handler(...args).catch(err => void showError(errorMessage(err))));
 		this.reviews = new Reviews({
 			extensionUri, tools, agents,
 			gitlab: () => this.gitlab(),
-			cloneOf: (project, gitlab, askFor) => this.cloneOf(project, gitlab, askFor),
+			cloneOf: (project, gitlab, askFor) => this.cloneOf(project, gitlab, askFor === undefined ? undefined : { iid: askFor, purpose: 'review' }),
 			side: (mr, ticket, folder) => this.reviewSide(mr, ticket, folder),
 		});
 		// A reviewer only reads, after a restart too: its writes would go out before the user chose what to post.
@@ -255,22 +256,13 @@ export class TeamFlows implements vscode.Disposable {
 	 * and VS Code's recent folders, remembered. For the review of merge
 	 * request `askFor`, asks the user when none is found; undefined when they cancel.
 	 */
-	private async cloneOf(project: string, gitlab: GitLabClient, askFor?: number): Promise<FoundClone | undefined> {
-		const memory = new RememberedClones(this.state, gitlab.url);
-		const probe = (folder: string) => gitlabProjectOf(folder, gitlab.url);
-		const found = await locateClone(project, memory, [
-			() => (vscode.workspace.workspaceFolders ?? []).filter(f => f.uri.scheme === 'file').map(f => f.uri.fsPath),
-			async () => [...this.agents.summaries().map(a => a.folder), ...(await this.agents.workspaces()).map(w => w.folder)],
-			async () => recentFolders(await vscode.commands.executeCommand('_workbench.getRecentlyOpened')),
-		], probe, path.join(os.homedir(), '.geminicode'));
-		if (found || askFor === undefined) {
-			return found;
+	/** A clone of `project` among the user's folders; with `ask`, the one they choose or clone when none is found. */
+	private async cloneOf(project: string, gitlab: GitLabClient, ask?: CloneAsk): Promise<FoundClone | undefined> {
+		if (!this.onDemand) {
+			return undefined;
 		}
-		const chosen = await askForClone(project, askFor, gitlab, folder => findClone(project, [() => [folder]], probe));
-		if (chosen) {
-			await memory.set(project, chosen.folder);
-		}
-		return chosen;
+		const agentFolders = async () => [...this.agents.summaries().map(a => a.folder), ...(await this.agents.workspaces()).map(w => w.folder)];
+		return this.onDemand().cloneFor(project, gitlab, this.state, agentFolders, folder => gitlabProjectOf(folder, gitlab.url), ask);
 	}
 
 	private async draft(request: { readonly system: string; readonly prompt: string }): Promise<string | undefined> {
@@ -932,9 +924,10 @@ export class TeamFlows implements vscode.Disposable {
 			const { controller, turn } = await this.startTurn(existing.id, text);
 			return this.pushFix(existing.id, existing.cwd, existing.remote, mr.sourceBranch, threads, controller, turn);
 		}
-		const clone = await this.cloneOf(project, gitlab);
+		const clone = await this.cloneOf(project, gitlab, { iid, purpose: 'fix' });
 		if (!clone) {
-			throw new Error(vscode.l10n.t("Open a clone of {0} first.", project));
+			// The user cancelled the question of where the clone is.
+			return;
 		}
 		let worktree: AgentWorktree & { readonly existing?: boolean };
 		try {

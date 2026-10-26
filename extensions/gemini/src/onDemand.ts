@@ -17,3 +17,4 @@ export { AuditPage } from './host/auditPage';
 export { BenchmarkCommand } from './host/benchmarkCommand';
 export { Pilot } from './host/pilot';
 export { TraceRecorder } from './host/traceRecorder';
+export { cloneFor } from './host/reviewClone';

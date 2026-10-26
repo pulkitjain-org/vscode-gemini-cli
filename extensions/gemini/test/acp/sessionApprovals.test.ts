@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { isBuildFile, isGitHookFile, isProtectedSetting, parseCommand, SessionApprovals } from '../../src/acp/sessionApprovals';
+import { isBuildFile, isGitHookFile, isProtectedSetting, isReadOnlyGitRead, parseCommand, SessionApprovals } from '../../src/acp/sessionApprovals';
 
 describe('parseCommand', () => {
 	it('finds each prefix of a pipeline or list, outside quotes', () => {
@@ -224,5 +224,16 @@ describe('SessionApprovals', () => {
 	it('names the settings an agent\'s write always asks for', () => {
 		expect(['/w/.gemini/worktree-setup.sh', '/w/.gemini/settings.json', '/w/.vscode/settings.json', '/w/.vscode/tasks.json', '/w/.gemini/GEMINI.md', '/w/.vscode/launch.json', '/w/src/settings.json'].map(isProtectedSetting))
 			.toEqual([true, true, true, true, false, false, false]);
+	});
+});
+
+describe('isReadOnlyGitRead', () => {
+	it('allows a reviewer git\'s reads of the repository, and nothing that writes, reads outside it or runs something else', () => {
+		const commands = [
+			'git diff origin/main...HEAD -- src/cart.ts', 'git log --oneline -20 origin/main..HEAD', 'git show HEAD:src/cart.ts', 'git status --short', 'git diff --stat && git log -3',
+			'git diff --output=/tmp/x.patch', 'git diff --no-index /etc/passwd /dev/null', 'git diff --ext-diff', 'git log > notes.txt', 'git diff | head -50',
+			'git -c core.pager=sh log', 'git push', 'git checkout main', 'git diff; rm -rf build', 'git show $(cat ref)', 'GIT_EXTERNAL_DIFF=x git diff',
+		];
+		expect(commands.filter(command => isReadOnlyGitRead(command))).toEqual(commands.slice(0, 5));
 	});
 });

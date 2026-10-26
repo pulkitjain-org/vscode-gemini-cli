@@ -270,11 +270,12 @@ export function startModes(): HomeMode[] {
 	];
 }
 
-/** A folder the user picks to add as a workspace; undefined when dismissed. */
-export async function chooseFolder(): Promise<string | undefined> {
+/** A folder the user picks to add as a workspace, or with `open`, as Home's Open Folder... asks; undefined when dismissed. */
+export async function chooseFolder(open = false): Promise<string | undefined> {
 	const [uri] = await vscode.window.showOpenDialog({
 		canSelectFolders: true, canSelectFiles: false, canSelectMany: false,
-		openLabel: vscode.l10n.t("Add Workspace"), title: vscode.l10n.t("Add a workspace for agents"),
+		openLabel: open ? vscode.l10n.t("Open") : vscode.l10n.t("Add Workspace"),
+		title: open ? vscode.l10n.t("Open a Folder for Agents") : vscode.l10n.t("Add a workspace for agents"),
 	}) ?? [];
 	return uri?.scheme === 'file' ? uri.fsPath : undefined;
 }

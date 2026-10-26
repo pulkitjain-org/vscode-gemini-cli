@@ -549,7 +549,7 @@ export class AgentHome implements vscode.Disposable {
 				return;
 			case 'addFolder': {
 				// For agents only: the window's folders stay as they are.
-				const folder = await chooseFolder();
+				const folder = await chooseFolder(true);
 				if (folder) {
 					this.agents.addFolder(folder);
 					await this.update();

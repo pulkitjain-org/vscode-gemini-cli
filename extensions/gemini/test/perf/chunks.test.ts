@@ -22,7 +22,7 @@ const root = path.join(__dirname, '..', '..');
 /** The modules each chunk exists to keep out of the extension bundle. */
 const moved: Readonly<Record<string, readonly string[]>> = {
 	'src/pages.ts': ['src/host/settingsPage.ts', 'src/host/connectionsPage.ts'],
-	'src/onDemand.ts': ['src/host/auditPage.ts', 'src/host/benchmarkCommand.ts', 'src/host/pilot.ts', 'src/host/traceRecorder.ts'],
+	'src/onDemand.ts': ['src/host/auditPage.ts', 'src/host/benchmarkCommand.ts', 'src/host/pilot.ts', 'src/host/traceRecorder.ts', 'src/host/reviewClone.ts', 'src/acp/cloneSearch.ts'],
 };
 
 interface Built {

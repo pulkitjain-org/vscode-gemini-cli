@@ -5,6 +5,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
 import { AgentChanges, ChangeTotals } from '../acp/agentChanges';
 import { attentionChange } from '../acp/attention';
@@ -39,6 +40,8 @@ import { ChatActivity, ChatController, ChatEnhancer, ChatTerminal, ChatWorkspace
 import { configSection, getApprovalPolicy } from './configuration';
 import { isModeAllowed } from '../acp/adminPolicy';
 import { defaultStartMode } from '../acp/chatTurns';
+import { type InstantAnswer, shellCommand } from '../acp/permissions';
+import { isReadOnlyGitRead } from '../acp/sessionApprovals';
 import type { ChatContextCost } from './chat/chatOptions';
 import { tildify } from './displayText';
 import { Projects, projectsEnabled } from './projects';
@@ -914,7 +917,7 @@ export class AgentsView implements vscode.Disposable {
 		}
 		session.permissions.confirmOnly = request => !!this.teamTools?.isConfirmCall(request);
 		session.permissions.answerAtOnce = request => (project ? this.projects.instantAnswer(this.model.agent(record.id) ?? record, request) : undefined)
-			?? this.teamTools?.instantAnswer(request);
+			?? this.teamTools?.instantAnswer(request) ?? (this.reviewChip?.(record.id) ? reviewerGitAnswer(request) : undefined);
 		// A folder outside the window lists its files from its index once that is built, else from git.
 		const files: FileSearch = isOpenFolder(folder) ? this.workspaceFiles : new FolderFileIndex(folder, undefined, () => this.index?.files(folder) ?? Promise.resolve(undefined));
 		const changes = new AgentChanges(folder);
@@ -1361,4 +1364,17 @@ export class AgentsView implements vscode.Disposable {
 
 function isOpenFolder(folder: string): boolean {
 	return (vscode.workspace.workspaceFolders ?? []).some(f => f.uri.scheme === 'file' && f.uri.fsPath === folder);
+}
+
+/**
+ * A merge request reviewer's read-only git command (`git diff`, `git log`,
+ * `git show`, `git status`), allowed with Allow once: its checkout is never
+ * trusted, so the Gemini CLI asks before every git command there. It is a
+ * worktree of the user's own clone, so git runs with the user's own config,
+ * and these commands run no hooks.
+ */
+function reviewerGitAnswer(request: acp.RequestPermissionRequest): InstantAnswer | undefined {
+	const command = shellCommand(request);
+	const once = request.options.find(option => option.kind === 'allow_once');
+	return command !== undefined && once && isReadOnlyGitRead(command) ? { optionId: once.optionId, label: vscode.l10n.t("Allowed: the reviewer reads the repository with git") } : undefined;
 }

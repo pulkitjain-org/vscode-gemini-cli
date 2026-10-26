@@ -76,6 +76,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const teamCommandStore = initTeamCommands(log);
 	// The CLI's debug log, one per window's process (GEMINI_DEBUG_LOG_FILE), so windows never empty each other's.
 	const service = new AgentService(log, vscode.Uri.joinPath(context.globalStorageUri, 'cli-logs', debugLogName()).fsPath, context.globalState);
+	// GeminiCode's own trust rules once the window has settled: Agent Setup lists them, and reviews are never trusted.
+	const ownTrust = setTimeout(() => void service.trust.startup(), 3000);
+	context.subscriptions.push({ dispose: () => clearTimeout(ownTrust) });
 	const diffPreview = new DiffPreview();
 	const fileIndex = new WorkspaceFileIndex();
 	// Rewrites run on the agent process every chat shares, in an empty folder of their own.
@@ -175,7 +178,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		log: message => log.info(message),
 	});
 	agentsView.contextCost = contextMeasures;
-	const teamFlows = new TeamFlows(context.extensionUri, teamTools, agentsView, context.globalState);
+	// Pages opened on request and tools used rarely load from bundles of their own, the first time one of their commands runs.
+	const pages = chunkLoader<typeof import('./pages')>(__dirname, 'pages');
+	const onDemand = chunkLoader<typeof import('./onDemand')>(__dirname, 'onDemand');
+	const teamFlows = new TeamFlows(context.extensionUri, teamTools, agentsView, context.globalState, onDemand);
 	// A reviewer agent's chat has a chip that opens its review.
 	agentsView.reviewChip = agentId => {
 		const review = teamFlows.reviews.forAgent(agentId);
@@ -183,11 +189,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	};
 	agentsView.openReview = agentId => void vscode.commands.executeCommand('gemini.team.openAgentReview', agentId);
 	context.subscriptions.push(teamFlows.reviews.onDidChange(() => agentsView.refreshChats()));
-	// Pages opened on request and tools used rarely load from bundles of their own, the first time one of their commands runs.
 	const traceFolder = vscode.Uri.joinPath(context.globalStorageUri, 'traces').fsPath;
 	setTraceFolder(traceFolder);
-	const pages = chunkLoader<typeof import('./pages')>(__dirname, 'pages');
-	const onDemand = chunkLoader<typeof import('./onDemand')>(__dirname, 'onDemand');
 	let launching = true;
 	const pilot = new LazyFeature(['gemini.pilot.export'], () => new (onDemand().Pilot)(context.globalStorageUri.fsPath, teamTools, usageMeter, { setSink: setPilotSink, record: recordPilot }, launching));
 	// While recording is on, the pilot starts with the window, to record the launch; turned on later, it starts then.

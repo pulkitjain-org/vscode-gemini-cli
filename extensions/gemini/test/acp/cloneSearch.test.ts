@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { type CloneMemento, findClone, locateClone, recentFolders, RememberedClones } from '../../src/acp/cloneSearch';
+import { type CloneMemento, cloneUrlChoices, findClone, locateClone, recentFolders, RememberedClones } from '../../src/acp/cloneSearch';
 
 /** A globalState in memory. */
 function memento(initial: Record<string, unknown> = {}): CloneMemento & { readonly values: Record<string, unknown> } {
@@ -96,5 +96,17 @@ describe('VS Code\'s recent folders', () => {
 			two: ['/work/shop', '/work/web'],
 			none: [[], []],
 		});
+	});
+});
+
+describe('cloneUrlChoices', () => {
+	it('offers HTTPS first, SSH first once it was used, and only what GitLab gave', () => {
+		const urls = { http: 'https://gitlab.example.com/qa/app.git', ssh: 'git@gitlab.example.com:qa/app.git' };
+		expect({
+			first: cloneUrlChoices(urls).map(choice => choice.scheme),
+			afterSsh: cloneUrlChoices(urls, 'ssh').map(choice => choice.scheme),
+			sshOnly: cloneUrlChoices({ ssh: urls.ssh }, 'https'),
+			none: cloneUrlChoices({}),
+		}).toEqual({ first: ['https', 'ssh'], afterSsh: ['ssh', 'https'], sshOnly: [{ scheme: 'ssh', url: urls.ssh }], none: [] });
 	});
 });

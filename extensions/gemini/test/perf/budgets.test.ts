@@ -81,8 +81,9 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// Project Helpers' Storage section, with the storage measuring and Clean Up's list, is about 9 KB of it.
 	'dist/pages.js': 105_000,
 	// The audit log, Run Benchmark, the pilot's export and the trace recorder, about 31 KB, loaded the first time
-	// one of their commands runs (src/onDemand.ts).
-	'dist/onDemand.js': 40_000,
+	// one of their commands runs (src/onDemand.ts). Finding or cloning a merge request's repository (reviewClone.ts,
+	// cloneSearch.ts) moved here from dist/extension.js: about 44 KB.
+	'dist/onDemand.js': 48_000,
 	// The indexer process, about 66 KB: parsing, SQLite queries and docs conversion, forked on first use, never
 	// loaded in the extension host.
 	'dist/indexer.js': 120_000,

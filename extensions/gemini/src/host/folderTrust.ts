@@ -20,7 +20,7 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { errorMessage } from '../acp/errors';
-import { ensureOwnTrustRules, folderTrustApplies, folderTrustState, readTrustRules, setFolderTrust, trustedFoldersPath, type TrustLevel } from '../acp/trustedFolders';
+import { ensureOwnTrustRules, folderTrustApplies, folderTrustState, ownTrustRules, readTrustRules, setFolderTrust, trustedFoldersPath, type TrustLevel, type TrustRule } from '../acp/trustedFolders';
 import { repositoryRoot, worktreesHome } from '../acp/worktrees';
 import { tildify } from './displayText';
 import { showError } from './errorNotice';
@@ -41,6 +41,8 @@ export interface FolderTrustHost {
 
 /** Repositories whose first-use question was answered Not Now. */
 const notNowKey = 'gemini.trust.notNow';
+/** The rules GeminiCode wrote, path to level, so Agent Setup can say which were added elsewhere. */
+const writtenKey = 'gemini.trust.written';
 
 export class FolderTrust implements vscode.Disposable {
 
@@ -175,10 +177,12 @@ export class FolderTrust implements vscode.Disposable {
 		const worktrees = worktreesHome(folder);
 		const derived = level !== 'DO_NOT_TRUST' && level ? 'TRUST_FOLDER' : undefined;
 		await setFolderTrust(file, folder, level);
+		await this.wrote(folder, level);
 		const rules = await readTrustRules(file);
 		const isRepository = await fs.stat(path.join(folder, '.git')).then(() => true, () => false);
 		if (isRepository && (derived || rules.some(rule => path.resolve(rule.path) === worktrees))) {
 			await setFolderTrust(file, worktrees, derived);
+			await this.wrote(worktrees, derived);
 		}
 		await this.state?.update(notNowKey, this.notNow().filter(each => each !== path.resolve(folder)));
 		this.host.log(level ? `Set ${folder} to ${level} in ${file}` : `Removed ${folder} from ${file}`);
@@ -193,22 +197,73 @@ export class FolderTrust implements vscode.Disposable {
 			return;
 		}
 		await setFolderTrust(this.file, worktrees, 'TRUST_FOLDER');
+		await this.wrote(worktrees, 'TRUST_FOLDER');
 		this.host.log(`Trusted ${worktrees}, the worktrees of trusted ${repository}`);
 		await this.remember();
 		this.changed(undefined);
 	}
 
-	/** Writes GeminiCode's own entries before the agent process starts and reads the file; a failure is logged, never in the way. */
+	/** The write of GeminiCode's own entries running now, so startup and a launch write once. */
+	private ensuring: Promise<boolean> | undefined;
+
+	/** At startup: GeminiCode's own entries, so Agent Setup lists them and a review is never trusted, whenever the agent started. */
+	async startup(): Promise<void> {
+		if (await this.ensureOwn()) {
+			this.changed(undefined);
+		}
+	}
+
+	/** Before the agent process starts and reads the file: GeminiCode's own entries, with no restart. */
 	async beforeLaunch(): Promise<void> {
-		try {
-			if (await this.applies() && await ensureOwnTrustRules(this.file)) {
+		if (await this.ensureOwn()) {
+			this.labels.clear();
+			this.onDidChangeEmitter.fire();
+		}
+	}
+
+	/**
+	 * Writes GeminiCode's own entries where they are missing; resolves whether
+	 * it wrote. A failure is logged, never in the way. The first time, the
+	 * rules already there are taken as GeminiCode's: an earlier version may
+	 * have written them.
+	 */
+	private ensureOwn(): Promise<boolean> {
+		this.ensuring ??= (async () => {
+			try {
+				if (!await this.applies()) {
+					return false;
+				}
+				if (this.state && !this.state.get(writtenKey)) {
+					const rules = await readTrustRules(this.file).catch(() => []);
+					await this.state.update(writtenKey, Object.fromEntries(rules.map(rule => [path.resolve(rule.path), rule.level])));
+				}
+				if (!await ensureOwnTrustRules(this.file)) {
+					return false;
+				}
 				this.host.log(`Set GeminiCode's own folders in ${this.file}`);
 				await this.remember();
-				this.labels.clear();
+				return true;
+			} catch (err) {
+				this.host.log(`Could not set GeminiCode's own folders in ${this.file}: ${errorMessage(err)}`);
+				return false;
 			}
-		} catch (err) {
-			this.host.log(`Could not set GeminiCode's own folders in ${this.file}: ${errorMessage(err)}`);
+		})().finally(() => this.ensuring = undefined);
+		return this.ensuring;
+	}
+
+	/** Whether `rule` was added or changed outside GeminiCode, such as in the terminal; unknown (false) without state. */
+	addedOutside(rule: TrustRule): boolean {
+		const written = this.state?.get<Record<string, string>>(writtenKey);
+		return !!written && written[path.resolve(rule.path)] !== rule.level && !ownTrustRules().some(own => own.path === path.resolve(rule.path) && own.level === rule.level);
+	}
+
+	/** Records that GeminiCode set `folder`'s entry to `level`, or removed it. */
+	private async wrote(folder: string, level: TrustLevel | undefined): Promise<void> {
+		if (!this.state) {
+			return;
 		}
+		const { [path.resolve(folder)]: _old, ...others } = this.state.get<Record<string, string>>(writtenKey) ?? {};
+		await this.state.update(writtenKey, level ? { ...others, [path.resolve(folder)]: level } : others);
 	}
 
 	private notNow(): readonly string[] {

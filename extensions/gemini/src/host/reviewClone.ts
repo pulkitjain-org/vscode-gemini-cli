@@ -3,16 +3,18 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// When no clone of a merge request's project was found among the user's
-// folders: one question, where their copy is. Choose Folder... checks the
-// folder; Clone It... clones with the user's own git credentials, through
-// VS Code's git extension (its progress and its credential prompts), or in a
-// terminal where git can ask. An agent's shell is never used to sign in.
+// The local clone a merge request's review or fix checks its branch out from:
+// looked for among the user's folders (cloneSearch.ts), and when none is a
+// clone, one question, where their copy is. Choose Folder... checks the
+// folder; Clone It... clones with the user's own git credentials, over HTTPS
+// or SSH, through VS Code's git extension (its progress and its credential
+// prompts), or in a terminal where git can ask. An agent's shell is never
+// used to sign in. In dist/onDemand.js: only a review or a fix needs it.
 
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import type { FoundClone } from '../acp/cloneSearch';
+import { cloneUrlChoices, type CloneProbe, type CloneStage, findClone, type FoundClone, locateClone, recentFolders, RememberedClones } from '../acp/cloneSearch';
 import type { GitLabClient } from '../acp/gitlab';
 import { tildify } from './displayText';
 
@@ -21,23 +23,58 @@ interface GitCloneApi {
 	clone?(uri: vscode.Uri, options: { readonly parentPath?: vscode.Uri; readonly postCloneAction?: 'none' }): Promise<vscode.Uri | null>;
 }
 
+/** The merge request a clone is wanted for, and what for: the question says so. */
+export interface CloneAsk {
+	readonly iid: number;
+	readonly purpose: 'review' | 'fix';
+}
+
+/** The scheme last cloned with, by GitLab. */
+const schemeKey = 'gemini.team.cloneScheme';
+
 /**
- * Asks where the user's clone of `project` is, for the review of merge
- * request `iid`: a folder they choose, which `check` confirms is a clone,
- * or a new clone. Undefined when they cancel.
+ * A clone of `project`: the one remembered for it, else the first among the
+ * window's folders, `agentFolders` and VS Code's recent folders, else, with
+ * `ask`, the folder the user chooses or clones. What is found or chosen is
+ * remembered. Undefined when there is none, or the user cancelled.
  */
-export async function askForClone(project: string, iid: number, gitlab: GitLabClient, check: (folder: string) => Promise<FoundClone | undefined>): Promise<FoundClone | undefined> {
+export async function cloneFor(project: string, gitlab: GitLabClient, state: vscode.Memento | undefined, agentFolders: CloneStage, probe: CloneProbe, ask?: CloneAsk): Promise<FoundClone | undefined> {
+	const memory = new RememberedClones(state, gitlab.url);
+	const found = await locateClone(project, memory, [
+		() => (vscode.workspace.workspaceFolders ?? []).filter(f => f.uri.scheme === 'file').map(f => f.uri.fsPath),
+		agentFolders,
+		async () => recentFolders(await vscode.commands.executeCommand('_workbench.getRecentlyOpened')),
+	], probe, path.join(os.homedir(), '.geminicode'));
+	if (found || !ask) {
+		return found;
+	}
+	const chosen = await askForClone(project, ask, gitlab, state, folder => findClone(project, [() => [folder]], probe));
+	if (chosen) {
+		await memory.set(project, chosen.folder);
+	}
+	return chosen;
+}
+
+/**
+ * Asks where the user's clone of `project` is, for `ask`'s merge request: a
+ * folder they choose, which `check` confirms is a clone, or a new clone.
+ * Undefined when they cancel.
+ */
+async function askForClone(project: string, ask: CloneAsk, gitlab: GitLabClient, state: vscode.Memento | undefined, check: (folder: string) => Promise<FoundClone | undefined>): Promise<FoundClone | undefined> {
 	const choose = vscode.l10n.t("Choose Folder...");
 	const cloneIt = vscode.l10n.t("Clone It...");
-	const detail = [
-		vscode.l10n.t("Reviewing !{0} checks its branch out from a local clone of the repository. GeminiCode didn't find one among your folders.", iid),
+	const detail = ask.purpose === 'review' ? [
+		vscode.l10n.t("Reviewing !{0} checks its branch out from a local clone of the repository. GeminiCode didn't find one among your folders.", ask.iid),
 		vscode.l10n.t("GeminiCode remembers the clone for this project. The review runs in a separate checkout that is never trusted, so nothing in the merge request runs on this Mac."),
-	].join('\n\n');
-	const answer = await vscode.window.showInformationMessage(vscode.l10n.t("Where is your copy of {0}?", project), { modal: true, detail }, choose, cloneIt);
+	] : [
+		vscode.l10n.t("Fixing !{0} checks its branch out from a local clone of the repository. GeminiCode didn't find one among your folders.", ask.iid),
+		vscode.l10n.t("GeminiCode remembers the clone for this project. The fix works on the merge request's branch in a checkout of its own, and GeminiCode pushes it when the agent is done."),
+	];
+	const answer = await vscode.window.showInformationMessage(vscode.l10n.t("Where is your copy of {0}?", project), { modal: true, detail: detail.join('\n\n') }, choose, cloneIt);
 	if (answer === choose) {
 		return chooseClone(project, choose, check);
 	}
-	return answer === cloneIt ? cloneProject(project, gitlab, check) : undefined;
+	return answer === cloneIt ? cloneProject(project, gitlab, state, check) : undefined;
 }
 
 async function chooseClone(project: string, choose: string, check: (folder: string) => Promise<FoundClone | undefined>): Promise<FoundClone | undefined> {
@@ -57,20 +94,30 @@ async function chooseClone(project: string, choose: string, check: (folder: stri
 	}
 }
 
-async function cloneProject(project: string, gitlab: GitLabClient, check: (folder: string) => Promise<FoundClone | undefined>): Promise<FoundClone | undefined> {
+async function cloneProject(project: string, gitlab: GitLabClient, state: vscode.Memento | undefined, check: (folder: string) => Promise<FoundClone | undefined>): Promise<FoundClone | undefined> {
+	const urls = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Reading {0}...", project) }, () => gitlab.cloneUrls(project));
+	const schemes = state?.get<Record<string, string>>(schemeKey) ?? {};
+	const choices = cloneUrlChoices(urls, schemes[gitlab.url]);
+	if (!choices.length) {
+		throw new Error(vscode.l10n.t("GitLab gave no clone URL for {0}.", project));
+	}
+	// Both: the user picks, the one used last on top; one alone needs no question.
+	const picked = choices.length === 1 ? choices[0] : (await vscode.window.showQuickPick(choices.map(choice => ({
+		label: choice.scheme === 'https' ? vscode.l10n.t("Clone over HTTPS") : vscode.l10n.t("Clone over SSH"),
+		detail: choice.scheme === 'https' ? vscode.l10n.t("Signs in with your git credentials, as VS Code asks for them.") : vscode.l10n.t("Uses the SSH key you added to GitLab."),
+		description: choice.url,
+		choice,
+	})), { title: vscode.l10n.t("Clone {0}", project), placeHolder: vscode.l10n.t("How should git reach GitLab?") }))?.choice;
+	if (!picked) {
+		return undefined;
+	}
 	const home = vscode.workspace.getConfiguration('git').get<string>('defaultCloneDirectory')?.replace(/^~(?=$|\/)/, os.homedir()) || os.homedir();
-	const picked = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false, canSelectMany: false, defaultUri: vscode.Uri.file(home), openLabel: vscode.l10n.t("Clone Here"), title: vscode.l10n.t("Where Should {0} Be Cloned?", project) });
-	const parent = picked?.[0];
+	const parent = (await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false, canSelectMany: false, defaultUri: vscode.Uri.file(home), openLabel: vscode.l10n.t("Clone Here"), title: vscode.l10n.t("Where Should {0} Be Cloned?", project) }))?.[0];
 	if (!parent) {
 		return undefined;
 	}
-	const urls = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: vscode.l10n.t("Reading {0}...", project) }, () => gitlab.cloneUrls(project));
-	// HTTPS first: git's credential helper or the git extension's prompt signs in; SSH needs a key set up beforehand.
-	const url = urls.http ?? urls.ssh;
-	if (!url) {
-		throw new Error(vscode.l10n.t("GitLab gave no clone URL for {0}.", project));
-	}
-	const folder = await cloneWithGit(url, parent, project);
+	await state?.update(schemeKey, { ...schemes, [gitlab.url]: picked.scheme });
+	const folder = await cloneWithGit(picked.url, parent, project);
 	if (!folder) {
 		return undefined;
 	}

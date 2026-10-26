@@ -123,3 +123,19 @@ export function recentFolders(recent: unknown, limit = recentFoldersLimit): stri
 	}
 	return folders;
 }
+
+/** A way to clone a project: its scheme and URL. */
+export interface CloneUrl {
+	readonly scheme: 'https' | 'ssh';
+	readonly url: string;
+}
+
+/**
+ * The URLs a project can be cloned from, the one used last for this GitLab
+ * (`preferred`) first, else HTTPS: git's credential helper or VS Code's git
+ * prompt signs in to it, while SSH needs a key set up beforehand.
+ */
+export function cloneUrlChoices(urls: { readonly http?: string; readonly ssh?: string }, preferred?: string): CloneUrl[] {
+	const all: CloneUrl[] = [...urls.http ? [{ scheme: 'https' as const, url: urls.http }] : [], ...urls.ssh ? [{ scheme: 'ssh' as const, url: urls.ssh }] : []];
+	return preferred === 'ssh' ? [...all.filter(each => each.scheme === 'ssh'), ...all.filter(each => each.scheme !== 'ssh')] : all;
+}

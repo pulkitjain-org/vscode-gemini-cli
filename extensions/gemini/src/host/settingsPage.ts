@@ -281,7 +281,14 @@ export class SettingsPage implements vscode.Disposable {
 		} catch {
 			return { state: 'unreadable', message: vscode.l10n.t("{0} can't be read as JSON, so GeminiCode won't change it.", tildify(trust.file)) };
 		}
-		return { state: 'ready', rows: (await trustRows(rules, ownTrustRules())).map(trustRowView) };
+		// A rule GeminiCode didn't write, or wrote at another level, says so: it came from the terminal or a hand edit.
+		const outside = (row: TrustRow) => !!row.rule && rules.some(rule => rule.path === row.rule && trust.addedOutside(rule));
+		return {
+			state: 'ready', rows: (await trustRows(rules, ownTrustRules())).map(row => {
+				const view = trustRowView(row);
+				return !outside(row) ? view : { ...view, detail: view.detail ? vscode.l10n.t("{0} \u00b7 Added in the terminal or by hand", view.detail) : vscode.l10n.t("Added in the terminal or by hand") };
+			}),
+		};
 	}
 
 	/** Trust Folder..., Trust a Parent Folder... or Never Trust a Folder...: asks for the folder, then writes its rule. */

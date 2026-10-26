@@ -172,7 +172,7 @@ export class PermissionBroker {
  * own input wins when the agent sends it, since a title is display text;
  * gemini-cli 0.63 sends none and titles the request with the whole command.
  */
-function shellCommand(request: acp.RequestPermissionRequest): string | undefined {
+export function shellCommand(request: acp.RequestPermissionRequest): string | undefined {
 	if (request.toolCall.kind !== 'execute') {
 		return undefined;
 	}

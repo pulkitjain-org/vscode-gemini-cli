@@ -397,6 +397,24 @@ export function formatPrefix(words: readonly string[]): string {
 
 const builtinKeys = new Set(builtinPrefixes.map(formatPrefix));
 
+/** The git commands that only read the repository a merge request's reviewer works in. */
+const gitReads: ReadonlySet<string> = new Set(['git status', 'git diff', 'git log', 'git show']);
+
+/** Options that make those commands write a file (`--output`), read outside the repository (`--no-index`) or run a diff program (`--ext-diff`). */
+const gitReadRefused = /(^|\s)["']?(--output|--no-index|--ext-diff)(\b|=)/;
+
+/**
+ * Whether `command` only reads the repository with git: every part of it is
+ * `git status`, `git diff`, `git log` or `git show`, with no redirect and
+ * no option that writes, reads outside the repository or runs a program.
+ * A reviewer's checkout is never trusted, so the Gemini CLI asks before
+ * every git command there; GeminiCode answers these for it (agentsView.ts).
+ */
+export function isReadOnlyGitRead(command: string): boolean {
+	const parsed = parseCommand(command);
+	return parsed.kind === 'ok' && !parsed.redirects.length && parsed.prefixes.every(prefix => gitReads.has(prefix)) && !gitReadRefused.test(command);
+}
+
 /** Whether a redirect target is inside the agent's folders (or scratch space), when that can be told. */
 function targetInside(target: string, afterCd: boolean, roots: readonly string[]): boolean {
 	if (scratchTarget.test(target)) {
