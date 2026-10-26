@@ -20,6 +20,7 @@
 
 import { existsSync } from 'node:fs';
 import * as path from 'node:path';
+import { proxyVariables } from './env';
 import { ChildServer, McpServerUnavailableError, StdioServerSpec } from './mcpStdio';
 
 /** An image the adapter runs, pinned by digest, with the tag it was read from. */
@@ -52,16 +53,33 @@ export function findDocker(exists: (file: string) => boolean = existsSync): stri
 }
 
 /**
- * `docker run` for `pin` with `env` in the child's environment only: the arguments name each
- * variable (`-e NAME`), so the values are in no process list.
+ * The proxy variables `base` sets, for a container: the same proxy the agent uses, with a proxy
+ * on this Mac addressed as Docker Desktop's name for it, since the container's own localhost is
+ * the container.
+ */
+export function containerProxyEnv(base: NodeJS.ProcessEnv): Record<string, string> {
+	const env: Record<string, string> = {};
+	for (const name of proxyVariables) {
+		const value = base[name];
+		if (value) {
+			env[name] = name.toLowerCase() === 'no_proxy' ? value : value.replace(/^(\w+:\/\/(?:[^@/]*@)?)(?:localhost|127\.0\.0\.1)(?=[:/]|$)/i, '$1host.docker.internal');
+		}
+	}
+	return env;
+}
+
+/**
+ * `docker run` for `pin` with `env`, and the proxy variables of `base`, in the child's environment
+ * only: the arguments name each variable (`-e NAME`), so the values are in no process list.
  */
 export function containerSpec(docker: string, pin: PinnedImage, env: Readonly<Record<string, string>>, base: NodeJS.ProcessEnv = process.env, mounts: readonly string[] = []): StdioServerSpec {
+	const passed = { ...containerProxyEnv(base), ...env };
 	return {
 		command: docker,
-		args: ['run', '-i', '--rm', ...mounts.flatMap(mount => ['-v', mount]), ...Object.keys(env).flatMap(name => ['-e', name]), pinnedReference(pin)],
+		args: ['run', '-i', '--rm', ...mounts.flatMap(mount => ['-v', mount]), ...Object.keys(passed).flatMap(name => ['-e', name]), pinnedReference(pin)],
 		// Docker's folders lead the PATH: it runs its credential helper (docker-credential-desktop) from
 		// there, even for a public image, and an app opened from the Dock has a short PATH.
-		env: { PATH: [...dockerFolders(docker), base.PATH].filter(Boolean).join(path.delimiter), HOME: base.HOME, DOCKER_HOST: base.DOCKER_HOST, DOCKER_CONFIG: base.DOCKER_CONFIG, ...env },
+		env: { PATH: [...dockerFolders(docker), base.PATH].filter(Boolean).join(path.delimiter), HOME: base.HOME, DOCKER_HOST: base.DOCKER_HOST, DOCKER_CONFIG: base.DOCKER_CONFIG, ...passed },
 	};
 }
 

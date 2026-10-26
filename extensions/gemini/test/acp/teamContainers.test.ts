@@ -264,6 +264,14 @@ describe('the team\'s servers as children', () => {
 		expect(pinnedReference(teamImages.gitlab)).toMatch(/^zereight050\/gitlab-mcp:2\.3\.3@sha256:[0-9a-f]{64}$/);
 	});
 
+	it('passes the agent\'s proxy into the container, a proxy on this Mac by Docker Desktop\'s name for it', () => {
+		const spec = containerSpec('/opt/docker/bin/docker', teamImages.gitlab, { GITLAB_PERSONAL_ACCESS_TOKEN: 'secret' }, { PATH: '/usr/bin', HTTPS_PROXY: 'http://user:pw@127.0.0.1:3128', http_proxy: 'http://proxy.corp:8080', NO_PROXY: 'localhost,corp.example', GEMINI_API_KEY: 'not-passed' });
+		expect({ args: spec.args, env: Object.fromEntries(Object.entries(spec.env ?? {}).filter(([name]) => /proxy|TOKEN|GEMINI/i.test(name))) }).toEqual({
+			args: ['run', '-i', '--rm', '-e', 'HTTPS_PROXY', '-e', 'http_proxy', '-e', 'NO_PROXY', '-e', 'GITLAB_PERSONAL_ACCESS_TOKEN', pinnedReference(teamImages.gitlab)],
+			env: { HTTPS_PROXY: 'http://user:pw@host.docker.internal:3128', http_proxy: 'http://proxy.corp:8080', NO_PROXY: 'localhost,corp.example', GITLAB_PERSONAL_ACCESS_TOKEN: 'secret' },
+		});
+	});
+
 	it('analyses a branch\'s changed files on this Mac, by path in the mounted folder, skipping what it can\'t read', async () => {
 		const repo = await tempDir();
 		const git = (...args: string[]) => execFileSync('git', ['-C', repo, '-c', 'user.name=T', '-c', 'user.email=t@e', ...args]);
