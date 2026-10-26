@@ -20,7 +20,9 @@ import { errorMessage } from '../acp/errors';
 import type { SessionChoice } from '../acp/sessionSettings';
 import { TranscriptStore } from '../acp/transcriptStore';
 import { CheckpointStore } from '../acp/checkpointStore';
-import { AgentWorktree, coordinatorHome, removeThreadFolder, removeWorktree, repositoryRoot, worktreeStatus } from '../acp/worktrees';
+import type { CleanupItem, WorktreeCandidate } from '../acp/storageUsage';
+import { cleanupWorktrees } from '../acp/worktreeCleanup';
+import { AgentWorktree, coordinatorHome, inRepository, removeThreadFolder, removeWorktree, repositoryRoot, worktreeStatus } from '../acp/worktrees';
 import { AgentNotifier } from './agentNotifier';
 import { AgentTerminals } from './agentTerminals';
 import { AgentService } from './agentService';
@@ -508,6 +510,40 @@ export class AgentsView implements vscode.Disposable {
 	/** Starts an agent for the team flows, named `title`; resolves with its id, or undefined when its branch could not be made. */
 	startTeamAgent(options: { readonly folder: string; readonly title: string; readonly text: string; readonly branch?: string; readonly worktree?: AgentWorktree; readonly mode?: string }): Promise<string | undefined> {
 		return this.starts.startTeamAgent(options);
+	}
+
+	/** Every agent's id, and the threads merged back, for Settings' Clean Up. */
+	storageAgents(): { readonly all: ReadonlySet<string>; readonly merged: ReadonlySet<string> } {
+		const records = this.model.snapshot().agents;
+		return { all: new Set(records.map(record => record.id)), merged: new Set(mergedThreads(records)) };
+	}
+
+	/** The worktrees Settings' Clean Up may offer: merged threads', ended reviews' and removed agents', none in use here. */
+	storageWorktrees(): Promise<WorktreeCandidate[]> {
+		return cleanupWorktrees({
+			records: this.model.snapshot().agents,
+			repositoryOf: async record => {
+				const workspace = this.model.workspace(record.workspaceId);
+				return workspace && (await repositoryRoot(workspace.folder) ?? workspace.folder);
+			},
+			running: id => this.live.has(id) || this.merge.isMerging(id),
+			reviewing: id => !!this.reviewChip?.(id),
+		});
+	}
+
+	/**
+	 * Removes a worktree Clean Up listed, keeping its branch: an ended
+	 * review's goes with its reviewer agent (Remove Reviewer and Checkout);
+	 * a merged thread's comes back from its branch when the thread is opened.
+	 */
+	async removeStorageWorktree(repository: string, worktree: AgentWorktree, item: CleanupItem): Promise<void> {
+		if (item.reason === 'reviewWorktree' && item.agent && this.model.agent(item.agent)) {
+			return this.removeAgentAndWorktree(item.agent, true);
+		}
+		if (item.agent && this.live.has(item.agent)) {
+			throw new Error(vscode.l10n.t("Its agent is running."));
+		}
+		await inRepository(repository, () => removeWorktree(repository, worktree, false));
 	}
 
 	/** Removes an agent a team flow started, with its worktree folder and, with `deleteBranch`, its branch: Remove Reviewer and Checkout. */

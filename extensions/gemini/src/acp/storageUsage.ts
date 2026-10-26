@@ -68,7 +68,16 @@ export type CleanupReason =
 	/** The debug log of a window that has closed, or the one all windows shared before. */
 	| 'oldDebugLog'
 	/** A merged thread's worktree, all of its work committed and merged. */
-	| 'mergedWorktree';
+	| 'mergedWorktree'
+	/** The checkout of a reviewer whose review is over, with nothing uncommitted. */
+	| 'reviewWorktree'
+	/** A worktree in ~/.geminicode/worktrees no agent has any more, all of its work committed and on another branch. */
+	| 'removedWorktree';
+
+/** Whose worktree Clean Up offers: a merged thread's, an ended review's, or one no agent has any more. */
+export type WorktreeKind = 'merged' | 'review' | 'removed';
+
+const worktreeReasons: Readonly<Record<WorktreeKind, CleanupReason>> = { merged: 'mergedWorktree', review: 'reviewWorktree', removed: 'removedWorktree' };
 
 export interface CleanupItem {
 	readonly area: StorageAreaId;
@@ -81,9 +90,12 @@ export interface CleanupItem {
 	readonly worktree?: { readonly repository: string; readonly worktree: AgentWorktree };
 }
 
-/** A merged thread's worktree, with what git says about it; undefined when git couldn't say. */
+/** A worktree Clean Up may offer, with what git says about it; undefined when git couldn't say. */
 export interface WorktreeCandidate {
+	/** The agent it belongs to; for a removed agent's, the folder. */
 	readonly agent: string;
+	/** Unset: a merged thread's. */
+	readonly kind?: WorktreeKind;
 	readonly repository: string;
 	readonly worktree: AgentWorktree;
 	readonly status: WorktreeStatus | undefined;
@@ -163,7 +175,7 @@ export async function cleanupPlan(input: CleanupInput): Promise<CleanupItem[]> {
 	for (const candidate of input.worktrees ?? []) {
 		// Never a worktree with uncommitted changes, or work its repository doesn't have.
 		if (candidate.status && !candidate.status.uncommitted && !candidate.status.commits) {
-			await add({ area: 'worktrees', path: candidate.worktree.folder, reason: 'mergedWorktree', agent: candidate.agent, worktree: { repository: candidate.repository, worktree: candidate.worktree } });
+			await add({ area: 'worktrees', path: candidate.worktree.folder, reason: worktreeReasons[candidate.kind ?? 'merged'], agent: candidate.agent, worktree: { repository: candidate.repository, worktree: candidate.worktree } });
 		}
 	}
 	return items;
@@ -171,15 +183,15 @@ export async function cleanupPlan(input: CleanupInput): Promise<CleanupItem[]> {
 
 /**
  * Removes what a plan lists; a worktree goes through `removeWorktree`
- * (`git worktree remove`, keeping its branch). Returns what could not be
- * removed, with why.
+ * (`git worktree remove`, keeping its branch; for an ended review, its
+ * reviewer agent too). Returns what could not be removed, with why.
  */
-export async function runCleanup(items: readonly CleanupItem[], removeWorktree: (repository: string, worktree: AgentWorktree) => Promise<void>): Promise<{ readonly item: CleanupItem; readonly error: string }[]> {
+export async function runCleanup(items: readonly CleanupItem[], removeWorktree: (repository: string, worktree: AgentWorktree, item: CleanupItem) => Promise<void>): Promise<{ readonly item: CleanupItem; readonly error: string }[]> {
 	const failed: { item: CleanupItem; error: string }[] = [];
 	for (const item of items) {
 		try {
 			if (item.worktree) {
-				await removeWorktree(item.worktree.repository, item.worktree.worktree);
+				await removeWorktree(item.worktree.repository, item.worktree.worktree, item);
 			} else {
 				await fs.rm(item.path, { recursive: true, force: true });
 			}
@@ -188,6 +200,35 @@ export async function runCleanup(items: readonly CleanupItem[], removeWorktree: 
 		}
 	}
 	return failed;
+}
+
+/** The rows of Settings' Storage section, each the areas it adds up. */
+export type StorageGroup = 'worktrees' | 'index' | 'cli' | 'checkpoints' | 'chats' | 'logs';
+
+const groupOf: Readonly<Record<StorageAreaId, StorageGroup>> = {
+	worktrees: 'worktrees', threads: 'worktrees', projects: 'worktrees',
+	index: 'index',
+	managedCli: 'cli',
+	checkpoints: 'checkpoints',
+	chats: 'chats', agentList: 'chats', reviews: 'chats', flows: 'chats',
+	auditLog: 'logs', pilotLog: 'logs', traces: 'logs', cliLogs: 'logs',
+};
+
+/** The bytes each row of the Storage section holds, in the section's order. */
+export function storageGroups(sizes: readonly StorageAreaSize[]): { readonly group: StorageGroup; readonly bytes: number }[] {
+	const order: readonly StorageGroup[] = ['worktrees', 'index', 'cli', 'checkpoints', 'chats', 'logs'];
+	return order.map(group => ({ group, bytes: sizes.filter(size => groupOf[size.id] === group).reduce((sum, size) => sum + size.bytes, 0) }));
+}
+
+/** How many folders `root` holds two levels down, such as worktrees under ~/.geminicode/worktrees/<repository>/. */
+export async function foldersTwoDown(root: string): Promise<string[]> {
+	const dirs = async (dir: string) => (await fs.readdir(dir, { withFileTypes: true }).catch(() => [])).filter(entry => entry.isDirectory()).map(entry => path.join(dir, entry.name));
+	return (await Promise.all((await dirs(root)).map(dirs))).flat();
+}
+
+/** How many entries a folder of GeminiCode's own holds, such as one index or checkpoint file per folder or agent; 0 when it is gone. */
+export async function entriesIn(folder: string, suffix = ''): Promise<number> {
+	return (await fs.readdir(folder).catch(() => [] as string[])).filter(name => name.endsWith(suffix) && !isQuarantined(name)).length;
 }
 
 /** The days of the audit and pilot logs past `keepDays` go; run in the background after startup. Returns how many files went. */

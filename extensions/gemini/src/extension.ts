@@ -198,7 +198,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		changesPanel,
 		agentsView.onDidFocus(source => changesPanel.show(source)),
 		new AgentHome(context.extensionUri, agentsView, () => warmup.startSoon(), { state: context.globalState, version: productInfo.version ?? String(context.extension.packageJSON.version ?? ''), cli: () => service.status.agentVersion, startup: () => ({ activatedAt, agent: agentPhase(service.status.phase), ...readyAt ? { readyAt } : {} }), reviews: { inProgress: () => teamFlows.reviews.inProgress, onDidChange: teamFlows.reviews.onDidChange } }),
-		new LazyFeature(['gemini.projectSettings', 'gemini.newSkill'], () => new (pages().SettingsPage)(context.extensionUri, service, { getAgentCommand, forgetSkills }, (folder, servers) => measureFolderContextCost({
+		new LazyFeature(['gemini.projectSettings', 'gemini.newSkill'], () => new (pages().SettingsPage)(context.extensionUri, service, {
+			getAgentCommand,
+			forgetSkills,
+			storage: {
+				globalStorage: context.globalStorageUri.fsPath,
+				agents: () => agentsView.storageAgents(),
+				worktrees: () => agentsView.storageWorktrees(),
+				removeWorktree: (repository, worktree, item) => agentsView.removeStorageWorktree(repository, worktree, item),
+				cliVersion: () => service.status.agentVersion,
+			},
+		}, (folder, servers) => measureFolderContextCost({
 			folder,
 			servers,
 			// What a new agent's session gets from GeminiCode itself.

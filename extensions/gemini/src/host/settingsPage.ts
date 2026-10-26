@@ -18,6 +18,7 @@ import type { AgentService } from './agentService';
 import { type getAgentCommand, getWorkspaceCwd } from './configuration';
 import { tildify } from './displayText';
 import { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage } from './panelProtocol';
+import { StorageSection, type StorageHost } from './storageSection';
 import type { forgetSkills } from './teamCommands';
 import { createNonce, escapeAttribute } from './webviewHtml';
 import { ContextCost, estimateTokens, heavyContextTokens, heavyServerTokens } from '../acp/contextCost';
@@ -43,6 +44,8 @@ export interface SettingsHost {
 	readonly getAgentCommand: typeof getAgentCommand;
 	/** Drops the cached skills, so a skill turned on or off shows in the next list. */
 	readonly forgetSkills: typeof forgetSkills;
+	/** What the Storage section measures and cleans up; without it, the section isn't shown. */
+	readonly storage?: StorageHost;
 }
 
 export class SettingsPage implements vscode.Disposable {
@@ -60,12 +63,16 @@ export class SettingsPage implements vscode.Disposable {
 	private cliStale = false;
 	private readonly disposables: vscode.Disposable[] = [];
 
+	/** The Storage section, measured the first time it scrolls into view. */
+	private readonly storage: StorageSection | undefined;
+
 	/** A context cost measurement under way, for the folder it measures. */
 	private measuring: string | undefined;
 	private measureError: string | undefined;
 
 	/** `measureContext` measures what every model call carries in a folder (contextCostProbe.ts); `state` keeps the last result. */
 	constructor(private readonly extensionUri: vscode.Uri, private readonly service: AgentService, private readonly host: SettingsHost, private readonly measureContext?: (folder: string, servers: readonly string[]) => Promise<ContextCost>, private readonly state?: vscode.Memento) {
+		this.storage = host.storage && new StorageSection(host.storage, () => void this.update());
 		this.disposables.push(
 			vscode.commands.registerCommand('gemini.projectSettings', () => this.show()),
 			vscode.commands.registerCommand('gemini.newSkill', () => this.newSkill()),
@@ -248,6 +255,7 @@ export class SettingsPage implements vscode.Disposable {
 			servers: servers.map(server => measured.has(server.name) ? { ...server, tokens: measured.get(server.name) } : server),
 			skills, hooks, extensions: this.extensions, memory: this.memory, rules, preferences: this.preferencesView(personal),
 			contextCost: this.contextCostView(folder, cost),
+			...this.storage ? { storage: this.storage.view() } : {},
 		};
 	}
 
@@ -329,6 +337,20 @@ export class SettingsPage implements vscode.Disposable {
 					break;
 				case 'measureContext':
 					void this.measure();
+					return;
+				case 'measureStorage':
+					void this.storage?.measure();
+					return;
+				case 'cleanUp':
+					await this.storage?.cleanUp();
+					return;
+				case 'setKeepLogs':
+					await this.storage?.setKeepLogs(message.days);
+					return;
+				case 'storageAction':
+					if (message.action === 'showIndex' || message.action === 'openFolder') {
+						await this.storage?.action(message.action);
+					}
 					return;
 				case 'restart':
 					this.service.restart();
@@ -754,6 +776,11 @@ export class SettingsPage implements vscode.Disposable {
 			usageStatisticsHint: vscode.l10n.t("The Gemini CLI sends anonymous usage statistics to Google to improve it."),
 			keepChats: vscode.l10n.t("Keep saved chats for"),
 			keepChatsHint: vscode.l10n.t("The Gemini CLI deletes saved chats older than this, so they no longer show under Restore Session."),
+			storage: vscode.l10n.t("Storage"),
+			storageHint: vscode.l10n.t("What GeminiCode keeps on this Mac, and how much room each part takes."),
+			storageMeasuring: vscode.l10n.t("Measuring\u2026"),
+			cleanUp: vscode.l10n.t("Clean Up..."),
+			keepLogs: vscode.l10n.t("Keep logs for"),
 		};
 		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'settings.js'));
 		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
