@@ -11,19 +11,14 @@
 // system prompt and tool declarations are, as span attributes.
 //
 // Names come from docs/cli/telemetry.md of the pinned CLI, checked against a
-// file 0.64.0 wrote on 18 Oct 2026 (test/fixtures/trace-sample.txt).
+// file 0.64.0 wrote on 18 Oct 2026 (test/fixtures/trace-sample.txt). The
+// variables and event names are in cli/formats.ts, with the CLI's other
+// private formats.
+
+import { traceEvents } from './cli/formats';
 
 /** The environment that turns the export on for one agent process. */
-export function traceEnv(file: string): NodeJS.ProcessEnv {
-	return {
-		GEMINI_TELEMETRY_ENABLED: 'true',
-		GEMINI_TELEMETRY_TARGET: 'local',
-		GEMINI_TELEMETRY_OUTFILE: file,
-		GEMINI_TELEMETRY_LOG_PROMPTS: 'false',
-		GEMINI_TELEMETRY_TRACES_ENABLED: 'true',
-		GEMINI_TELEMETRY_USE_COLLECTOR: 'false',
-	};
-}
+export { telemetryEnv as traceEnv } from './cli/formats';
 
 export interface TraceEvent {
 	readonly name: string;
@@ -149,7 +144,7 @@ export function summarizeTrace(events: readonly TraceEvent[]): TraceSummary {
 		const a = event.attributes;
 		const session = str(a['session.id']);
 		switch (event.name) {
-			case 'gemini_cli.startup_stats': {
+			case traceEvents.startupStats: {
 				let phases: { name?: string; duration_ms?: number }[] = [];
 				try {
 					phases = JSON.parse(str(a.phases)) as typeof phases;
@@ -159,10 +154,10 @@ export function summarizeTrace(events: readonly TraceEvent[]): TraceSummary {
 				startups.push({ session, phases: phases.map(p => ({ name: str(p.name), ms: num(p.duration_ms) })) });
 				break;
 			}
-			case 'gemini_cli.model_routing':
+			case traceEvents.modelRouting:
 				lastRouting = { session, routing: { ms: num(a.routing_latency_ms), model: str(a.decision_model), source: str(a.decision_source) } };
 				break;
-			case 'gemini_cli.api_response': {
+			case traceEvents.apiResponse: {
 				const promptId = str(a.prompt_id);
 				const role = str(a.role) || 'main';
 				// The routing call has a prompt id of its own; it belongs to the turn whose main call follows it.
@@ -181,7 +176,7 @@ export function summarizeTrace(events: readonly TraceEvent[]): TraceSummary {
 				});
 				break;
 			}
-			case 'gemini_cli.tool_call': {
+			case traceEvents.toolCall: {
 				const t = turn(session, str(a.prompt_id));
 				t.tools.push({ name: str(a.function_name), ms: num(a.duration_ms), ok: a.success === true || a.success === 'true' });
 				break;

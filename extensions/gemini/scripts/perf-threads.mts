@@ -14,7 +14,7 @@
 // - reopening saved chats (`session/load`), longest first, and how many
 //   updates each replays.
 //
-//   node --experimental-transform-types --no-warnings extensions/gemini/scripts/perf-threads.mts \
+//   node --import ./extensions/gemini/scripts/sourceImports.mts --experimental-transform-types --no-warnings extensions/gemini/scripts/perf-threads.mts \
 //     --cli <gemini.js or gemini> --repo <folder> [--load <folder>]... [--sessions 8] [--reopen 3] [--out results.json]
 //
 // It works on a copy of ~/.gemini in a temporary folder (GEMINI_CLI_HOME), so

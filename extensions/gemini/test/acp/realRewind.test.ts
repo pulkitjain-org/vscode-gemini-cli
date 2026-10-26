@@ -6,8 +6,7 @@
 // Checks that Rewind works on the real CLI: the `$rewindTo` record GeminiCode
 // appends to the session file makes `session/load` drop the rewound prompts,
 // both from the replay and from what the next request sends to Gemini. The
-// CLI talks to a fake Gemini API on localhost. Skipped unless GEMINI_CLI_PATH
-// points at the CLI. Runs with an empty HOME.
+// CLI talks to a fake Gemini API on localhost. Runs against the bundled CLI or GEMINI_CLI_PATH (test/realCli.ts). Runs with an empty HOME.
 
 import type * as acp from '@agentclientprotocol/sdk';
 import { ChildProcessWithoutNullStreams } from 'node:child_process';
@@ -16,15 +15,16 @@ import { createServer, Server } from 'node:http';
 import { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
 import { AgentConnection } from '../../src/acp/agentConnection';
 import { resolveAgentCommand, spawnAgent } from '../../src/acp/agentProcess';
 import { findCliSession, isPrompt, rewindCliSession } from '../../src/acp/cliSessions';
 import { contentBlockToText } from '../../src/acp/sessionUpdates';
+import { describeRealCli, realCliPath } from '../realCli';
 
-const cliPath = process.env.GEMINI_CLI_PATH;
+const cliPath = realCliPath;
 
-describe.skipIf(!cliPath)('rewinding a session on the real CLI', () => {
+describeRealCli('rewinding a session on the real CLI', () => {
 	const children: ChildProcessWithoutNullStreams[] = [];
 	const connections: AgentConnection[] = [];
 	let server: Server | undefined;

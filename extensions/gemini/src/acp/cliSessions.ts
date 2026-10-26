@@ -22,9 +22,11 @@
 
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
+import { chatsDirName, cliHome, projectsFileName, projectTempDirName, sessionFilePrefix } from './cli/formats';
 import type { AgentErrorInfo } from './errors';
+
+export { cliHome };
 
 export interface CliSession {
 	readonly id: string;
@@ -72,11 +74,6 @@ export interface SessionTokens {
 	readonly cached: number;
 }
 
-/** The CLI's own folder: ~/.gemini, or under GEMINI_CLI_HOME when that is set. */
-export function cliHome(env: NodeJS.ProcessEnv = process.env): string {
-	return path.join(env.GEMINI_CLI_HOME || os.homedir(), '.gemini');
-}
-
 /** The folder the CLI saves `cwd`'s sessions in, if it ever saved any. */
 export async function chatsFolder(cwd: string, home = cliHome()): Promise<string | undefined> {
 	const key = path.resolve(cwd);
@@ -87,7 +84,7 @@ export async function chatsFolder(cwd: string, home = cliHome()): Promise<string
 	}
 	candidates.push(projectHash(key));
 	for (const id of candidates) {
-		const folder = path.join(home, 'tmp', id, 'chats');
+		const folder = path.join(home, projectTempDirName, id, chatsDirName);
 		if (await isFolder(folder)) {
 			return folder;
 		}
@@ -102,13 +99,13 @@ export async function chatsFolder(cwd: string, home = cliHome()): Promise<string
  */
 export async function registeredChatsFolder(cwd: string, home = cliHome()): Promise<string | undefined> {
 	const id = await registeredProject(path.resolve(cwd), home);
-	return id && path.join(home, 'tmp', id, 'chats');
+	return id && path.join(home, projectTempDirName, id, chatsDirName);
 }
 
 /** The CLI's id for folder `key` in its registry; undefined when it has none. */
 async function registeredProject(key: string, home: string): Promise<string | undefined> {
 	try {
-		const registry = JSON.parse(await fs.readFile(path.join(home, 'projects.json'), 'utf8')) as { projects?: Record<string, unknown> };
+		const registry = JSON.parse(await fs.readFile(path.join(home, projectsFileName), 'utf8')) as { projects?: Record<string, unknown> };
 		const id = registry.projects?.[key];
 		return typeof id === 'string' && id && !id.includes('/') && !id.includes('\\') && id !== '..' ? id : undefined;
 	} catch {
@@ -149,7 +146,7 @@ async function numberedSessions(cwd: string, home?: string): Promise<CliSession[
 	}
 	let names: string[];
 	try {
-		names = (await fs.readdir(folder)).filter(name => name.startsWith('session-') && (name.endsWith('.jsonl') || name.endsWith('.json'))).sort();
+		names = (await fs.readdir(folder)).filter(name => name.startsWith(sessionFilePrefix) && (name.endsWith('.jsonl') || name.endsWith('.json'))).sort();
 	} catch {
 		return [];
 	}
@@ -525,7 +522,7 @@ async function newestSessionFile(cwd: string, id: string, home?: string): Promis
 	try {
 		// The CLI names a session's file after the first 8 characters of its id.
 		const suffix = `-${id.slice(0, 8)}.json`;
-		names = (await fs.readdir(folder)).filter(name => name.startsWith('session-') && (name.endsWith(suffix) || name.endsWith(`${suffix}l`)));
+		names = (await fs.readdir(folder)).filter(name => name.startsWith(sessionFilePrefix) && (name.endsWith(suffix) || name.endsWith(`${suffix}l`)));
 	} catch {
 		return undefined;
 	}

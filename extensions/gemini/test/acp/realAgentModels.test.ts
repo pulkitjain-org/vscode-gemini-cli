@@ -8,23 +8,23 @@
 // `terminalModelList`, is the one the terminal shows for the same account
 // (read from gemini-cli 0.63's `ModelDialog`). If the CLI changes the list it
 // sends, this fails, and modelList.ts needs another look. Uses an API key and
-// a fake Gemini API on localhost. Skipped unless GEMINI_CLI_PATH points at the
-// CLI. Runs with an empty HOME.
+// a fake Gemini API on localhost. Runs against the bundled CLI or GEMINI_CLI_PATH (test/realCli.ts). Runs with an empty HOME.
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, Server } from 'node:http';
 import { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
 import { AgentConnection } from '../../src/acp/agentConnection';
 import { resolveAgentCommand, spawnAgent } from '../../src/acp/agentProcess';
 import { terminalModelList } from '../../src/acp/modelList';
 import { readSessionSettings } from '../../src/acp/sessionSettings';
+import { describeRealCli, realCliPath } from '../realCli';
 
-const cliPath = process.env.GEMINI_CLI_PATH;
+const cliPath = realCliPath;
 
-describe.skipIf(!cliPath)('the model list a real CLI sends', () => {
+describeRealCli('the model list a real CLI sends', () => {
 	let server: Server | undefined;
 	let connection: AgentConnection | undefined;
 	let home: string | undefined;

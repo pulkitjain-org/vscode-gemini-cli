@@ -6,7 +6,7 @@
 // Checks that an agent can reopen a session started in the terminal: the
 // session GeminiCode lists from the CLI's files is one `session/load` accepts,
 // and the CLI replays its messages. The CLI talks to a fake Gemini API on
-// localhost. Skipped unless GEMINI_CLI_PATH points at the CLI. Runs with an empty HOME.
+// localhost. Runs against the bundled CLI or GEMINI_CLI_PATH (test/realCli.ts). Runs with an empty HOME.
 
 import type * as acp from '@agentclientprotocol/sdk';
 import { ChildProcessWithoutNullStreams, execFile } from 'node:child_process';
@@ -16,13 +16,14 @@ import { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
 import { AgentConnection } from '../../src/acp/agentConnection';
 import { resolveAgentCommand, spawnAgent } from '../../src/acp/agentProcess';
 import { findCliSession, isPrompt, listCliSessions } from '../../src/acp/cliSessions';
 import { contentBlockToText } from '../../src/acp/sessionUpdates';
+import { describeRealCli, realCliPath } from '../realCli';
 
-const cliPath = process.env.GEMINI_CLI_PATH;
+const cliPath = realCliPath;
 
 async function startFakeGemini(): Promise<Server> {
 	const server = createServer((req, res) => {
@@ -39,7 +40,7 @@ async function startFakeGemini(): Promise<Server> {
 	return server;
 }
 
-describe.skipIf(!cliPath)('reopening a saved session over ACP', () => {
+describeRealCli('reopening a saved session over ACP', () => {
 	const children: ChildProcessWithoutNullStreams[] = [];
 	const connections: AgentConnection[] = [];
 	let server: Server | undefined;

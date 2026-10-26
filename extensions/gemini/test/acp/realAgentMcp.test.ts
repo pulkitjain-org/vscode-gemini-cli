@@ -4,23 +4,23 @@
  *--------------------------------------------------------------------------------------------*/
 
 // Checks that GeminiCode hears about an MCP server a real Gemini CLI could not
-// start, through the CLI's debug log. Skipped unless GEMINI_CLI_PATH points at
-// the CLI. Runs with an empty HOME and no credentials or network.
+// start, through the CLI's debug log. Runs against the bundled CLI or GEMINI_CLI_PATH (test/realCli.ts). Runs with an empty HOME and no credentials or network.
 
 import { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
 import { AgentConnection } from '../../src/acp/agentConnection';
 import { resolveAgentCommand, spawnAgent } from '../../src/acp/agentProcess';
 import { McpDiagnostics, McpProblem } from '../../src/acp/mcpDiagnostics';
 import { trustFolder } from '../../src/acp/trustedFolders';
 import { waitFor } from '../helpers';
+import { describeRealCli, realCliPath } from '../realCli';
 
-const cliPath = process.env.GEMINI_CLI_PATH;
+const cliPath = realCliPath;
 
-describe.skipIf(!cliPath)('gemini --acp with an MCP server that cannot start', () => {
+describeRealCli('gemini --acp with an MCP server that cannot start', () => {
 	let child: ChildProcessWithoutNullStreams | undefined;
 	let connection: AgentConnection | undefined;
 	let diagnostics: McpDiagnostics | undefined;
