@@ -10,6 +10,7 @@ import {
 	acceptsEnhanceReply, coalesceUpdates, HeldUpdates, attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, currentActivity, currentPrompt, promptStep, formatClock, turnStart, draggedHeight, emptyFence, enhanceButtonPlacement, enhanceOriginal, type EnhancePhase, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, fileReference, fileUris, folderOf, format, formatDuration, formatSentAt, isEnhanceShortcut, isQueueShortcut,
 	imageName, indexOfItem, isNearBottom, matchCommands, mentionAt, mentionInsertion, permissionChoices, planIcon, cardKey, waitingPermission, replyBefore, restoredHeight,
 	formatTokens, resetsIn, sameAttachment, slashQuery, thoughtSeconds, toolKindIcon, withAppended, withoutMention, wrapIndex,
+	contextParts, enterAction, mentionGroup, symbolIcon,
 } from '../../webview-src/chatLogic';
 
 describe('format', () => {
@@ -553,5 +554,53 @@ describe('isQueueShortcut', () => {
 		expect(isQueueShortcut(key({ metaKey: true, shiftKey: true }), true)).toBe(false);
 		expect(isQueueShortcut(key({ metaKey: true, altKey: true }), true)).toBe(false);
 		expect(isQueueShortcut(key({ metaKey: true }, 'b'), true)).toBe(false);
+	});
+});
+
+describe('enterAction', () => {
+	const key = (mods: { metaKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean; altKey?: boolean }, name = 'Enter') => ({ key: name, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...mods });
+	const keys = [key({}), key({ shiftKey: true }), key({ metaKey: true }), key({ metaKey: true, shiftKey: true }), key({ ctrlKey: true }), key({ altKey: true }), key({}, 'a')];
+
+	it('sends with Return, or with ⌘Return (Ctrl+Enter elsewhere) when gemini.chat.sendWith says so', () => {
+		expect({
+			enterMac: keys.map(each => enterAction(each, true, false)),
+			cmdEnterMac: keys.map(each => enterAction(each, true, true)),
+			cmdEnterOther: keys.map(each => enterAction(each, false, true)),
+		}).toEqual({
+			enterMac: ['now', 'newLine', 'queue', 'newLine', 'now', undefined, undefined],
+			cmdEnterMac: ['newLine', 'newLine', 'now', 'queue', undefined, undefined, undefined],
+			cmdEnterOther: ['newLine', 'newLine', undefined, undefined, 'now', undefined, undefined],
+		});
+	});
+});
+
+describe('contextParts', () => {
+	it('splits what each turn carries into the conversation and the measured parts, largest first, without empty ones', () => {
+		const parts = { cli: 9_000, rules: 18_000, geminicode: 11_000, servers: 3, serverTokens: 61_000, total: 99_000 };
+		expect({
+			withConversation: contextParts(parts, 2, 306_000),
+			beforeAReply: contextParts({ ...parts, geminicode: 0 }, 2).map(part => part.part),
+		}).toEqual({
+			withConversation: [
+				{ part: 'conversation', tokens: 207_000 },
+				{ part: 'servers', tokens: 61_000, count: 3 },
+				{ part: 'rules', tokens: 18_000, count: 2 },
+				{ part: 'geminicode', tokens: 11_000 },
+				{ part: 'cli', tokens: 9_000 },
+			],
+			beforeAReply: ['servers', 'rules', 'cli'],
+		});
+	});
+});
+
+describe('the @ picker\'s groups', () => {
+	it('puts each row in its group, with a symbol icon for each of the index\'s kinds', () => {
+		expect({
+			groups: (['file', 'folder', 'symbol', 'problems', 'changes', 'terminal'] as const).map(mentionGroup),
+			icons: ['function', 'class', 'type', 'trait', 'heading'].map(symbolIcon),
+		}).toEqual({
+			groups: ['files', 'folders', 'symbols', 'workspace', 'workspace', 'workspace'],
+			icons: ['symbol-function', 'symbol-class', 'symbol-interface', 'symbol-interface', 'symbol-misc'],
+		});
 	});
 });

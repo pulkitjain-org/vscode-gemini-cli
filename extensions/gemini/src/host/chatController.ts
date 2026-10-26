@@ -14,7 +14,7 @@ import type { Attachment } from '../acp/attachments';
 import { isValidAttachment } from '../acp/attachmentValidation';
 import { chatToMarkdown } from '../acp/chatMarkdown';
 import { ChatTranscript, ForkContext, ThreadCard, toolCallItemId, TranscriptItem } from '../acp/chatTranscript';
-import { buildModeAfterPlan, diffsOf, nextApprovalMode, dropOldest, lastPromptAt, runningStep, turnShape, wasCutOff } from '../acp/chatTurns';
+import { buildModeAfterPlan, diffsOf, nextApprovalMode, dropOldest, lastPromptAt, planBuildChoice, planBuildModels, runningStep, turnShape, wasCutOff } from '../acp/chatTurns';
 import type { StoredCheckpoints } from '../acp/checkpoints';
 import { buildPromptContent } from '../acp/promptContent';
 import { atSafePoint, PromptQueue, steeringNote } from '../acp/promptQueue';
@@ -51,9 +51,9 @@ import { ChatPermissions } from './chat/chatPermissions';
 import { ChatProjectView } from './chat/chatProject';
 import { ChatRun } from './chat/chatRun';
 import { ChatSessions, resumeCommand } from './chat/chatSessions';
-import { ChatSettings } from './chat/chatSettings';
+import { ChatSettings, onDidChangeSendWith, sendsWithCmdEnter } from './chat/chatSettings';
 import { SharedPageChip } from './chat/chatSharedPage';
-import { ChatUsage } from './chat/chatUsage';
+import { ChatUsage, contextCommand } from './chat/chatUsage';
 
 export type { ChatControllerOptions, ChatEnhancer, ChatGit, ChatHost, ChatProject, ChatSharedPage, ChatTerminal, ChatWorkspace, FileSearch } from './chat/chatOptions';
 
@@ -190,11 +190,11 @@ export class ChatController implements vscode.Disposable {
 		this.follow = new ChatFollow(client.cwd, options, post);
 		this.git = new ChatGitControls(options, isBusy, isAttached, post);
 		this.usage = new ChatUsage(client, options, () => this.transcript.items.length > 0, isAttached, post, (used, limit) => this.compacting.contextChanged(used, limit));
-		this.attachments = new ChatAttachments(fileIndex, options, isAttached, isViewReady, post);
+		this.attachments = new ChatAttachments(fileIndex, options, () => options.git?.folder() ?? client.cwd, isAttached, isViewReady, post);
 		this.sharedPage = new SharedPageChip(options, post);
 		this.settings = new ChatSettings(service, this.transcript, options, post);
 		this.enhance = new ChatEnhance(client, options, () => this.transcript.items, post);
-		this.commands = new ChatCommands(client, this.transcript, [...options.savedSessions ? [resumeCommand()] : [], compactCommand(), ...options.fork ? [forkCommand()] : []], isAttached, post);
+		this.commands = new ChatCommands(client, this.transcript, [...options.savedSessions ? [resumeCommand()] : [], compactCommand(), contextCommand(), ...options.fork ? [forkCommand()] : []], isAttached, post);
 		this.sessions = new ChatSessions(service, this.transcript, options, {
 			isBusy,
 			setBusy,
@@ -229,6 +229,9 @@ export class ChatController implements vscode.Disposable {
 			onDidChangeSpellCheck(on => this.post({ type: 'spellCheck', on })),
 			onDidChangeFoldWork(on => this.post({ type: 'foldWork', on })),
 			onDidChangeReactions(() => this.postReactions()),
+			onDidChangeSendWith(cmdEnter => this.post({ type: 'sendWith', cmdEnter })),
+			// The build's model may have changed since the plan: Build This Plan's hint follows.
+			client.onDidChangeSettings(() => this.refreshPlanBuild()),
 			this.onDidChangeActivityEmitter,
 			this.onDidEditFilesEmitter,
 			this.onDidSendPromptEmitter,
@@ -241,6 +244,7 @@ export class ChatController implements vscode.Disposable {
 			this.commands,
 			this.sessions,
 			this.runs,
+			this.usage,
 			service.permissions.onDidChange(event => {
 				if (event.kind === 'requested' && this.timing) {
 					this.timing.permissions++;
@@ -414,7 +418,7 @@ export class ChatController implements vscode.Disposable {
 
 	/** Leaves Plan mode and carries out the plan, as the latest turn's Build button does; false when it offers none. */
 	async approvePlan(): Promise<boolean> {
-		if (!this.retryItemId || !buildModeAfterPlan(this.service.client.settings)) {
+		if (!this.retryItemId || !this.planBuild()) {
 			return false;
 		}
 		await this.buildPlan(this.retryItemId);
@@ -505,6 +509,10 @@ export class ChatController implements vscode.Disposable {
 			void this.compacting.compact();
 			return;
 		}
+		if (text.trim() === `/${contextCommand().name}` && !attachments.length) {
+			void this.usage.show(true);
+			return;
+		}
 		if (this.forks.available && text.trim() === `/${forkCommand().name}` && !attachments.length) {
 			void this.forks.open();
 			return;
@@ -517,7 +525,7 @@ export class ChatController implements vscode.Disposable {
 		this.sessions.stopReplay();
 		this.service.open?.();
 		if (this.retryItemId) {
-			this.transcript.updateTurnEnd(this.retryItemId, { retry: undefined, buildPlan: undefined });
+			this.transcript.updateTurnEnd(this.retryItemId, { retry: undefined, buildPlan: undefined, build: undefined });
 			this.retryItemId = undefined;
 		}
 		this.transcript.addPrompt(text, attachments, from, reactions.map(reactionRef));
@@ -927,7 +935,8 @@ export class ChatController implements vscode.Disposable {
 	private endTurn(durationMs: number, usage?: readonly ModelTokens[], unfinished = false): void {
 		const id = this.transcript.addTurnEnd(durationMs, usage);
 		const { files, undoable } = this.checkpoints.endTurn(id);
-		this.transcript.updateTurnEnd(id, { retry: !this.options.project, ...(files ? { files } : {}), ...(undoable ? { undo: 'available' } : {}), ...(buildModeAfterPlan(this.service.client.settings) ? { buildPlan: true } : {}), ...(unfinished ? { unfinished } : {}) });
+		const build = this.planBuild(usage);
+		this.transcript.updateTurnEnd(id, { retry: !this.options.project, ...(files ? { files } : {}), ...(undoable ? { undo: 'available' } : {}), ...(build ? { buildPlan: true, build } : {}), ...(unfinished ? { unfinished } : {}) });
 		this.retryItemId = id;
 		const timing = this.timing;
 		this.timing = undefined;
@@ -1002,9 +1011,38 @@ export class ChatController implements vscode.Disposable {
 		}
 	}
 
-	/** Leaves Plan mode and asks the agent to carry out the plan it just wrote. */
-	private async buildPlan(itemId: string): Promise<void> {
-		const mode = buildModeAfterPlan(this.service.client.settings);
+	/**
+	 * How Build This Plan builds, while the chat is in Plan mode: in the mode
+	 * the chat was in before Plan, with the other choice on its chevron, and the
+	 * models when the build's differs from the plan's (`planUsage`, the plan
+	 * turn's token counts).
+	 */
+	private planBuild(planUsage?: readonly ModelTokens[]): TurnEndBuild | undefined {
+		const settings = this.service.client.settings;
+		const choice = planBuildChoice(settings, this.settings.modeBeforePlan);
+		if (!choice) {
+			return undefined;
+		}
+		const models = planBuildModels(planUsage, settings.model?.currentId);
+		return { ...choice, ...models ? { models } : {} };
+	}
+
+	/** The latest turn's Build This Plan, again: the model or the modes changed since the turn ended. */
+	private refreshPlanBuild(): void {
+		const item = this.transcript.items.find(each => each.id === this.retryItemId);
+		if (item?.kind !== 'turnEnd' || !item.buildPlan) {
+			return;
+		}
+		const build = this.planBuild(item.usage);
+		if (JSON.stringify(build) !== JSON.stringify(item.build)) {
+			this.transcript.updateTurnEnd(item.id, build ? { buildPlan: true, build } : { buildPlan: undefined, build: undefined });
+		}
+	}
+
+	/** Leaves Plan mode and asks the agent to carry out the plan it just wrote: in `picked` (the chevron's other choice), else the mode before Plan. */
+	private async buildPlan(itemId: string, picked?: string): Promise<void> {
+		const choice = this.planBuild();
+		const mode = picked && (picked === choice?.mode || picked === choice?.other) ? picked : choice?.mode;
 		if (this.busy || itemId !== this.retryItemId || !mode) {
 			return;
 		}
@@ -1161,7 +1199,8 @@ export class ChatController implements vscode.Disposable {
 					void vscode.window.showWarningMessage(vscode.l10n.t("The Gemini chat view's script is out of date. Rebuild it with \"npm run gulp compile-extension-media\" (or keep \"npm run watch\" running) and reload the window."));
 				}
 				this.viewReady = true;
-				// Before the items, so their shell blocks show Run as they are drawn.
+				// Before the items, so their shell blocks show Run, and the empty chat's hints the keys, as they are drawn.
+				this.post({ type: 'sendWith', cmdEnter: sendsWithCmdEnter() });
 				this.runs.postView();
 				this.postReset();
 				// In case the view never says it is shown, such as one hidden as it loads.
@@ -1227,7 +1266,7 @@ export class ChatController implements vscode.Disposable {
 				this.transcript.dismissCutOff(message.itemId);
 				break;
 			case 'buildPlan':
-				void this.buildPlan(message.itemId);
+				void this.buildPlan(message.itemId, typeof message.mode === 'string' ? message.mode : undefined);
 				break;
 			case 'listCommands':
 				void this.commands.postCommands();
@@ -1260,6 +1299,7 @@ export class ChatController implements vscode.Disposable {
 			case 'resolveToolRef':
 			case 'openToolRef':
 			case 'pickToolItem':
+			case 'attachMention':
 				this.attachments.onMessage(message);
 				break;
 			case 'stopSharing':
@@ -1274,6 +1314,8 @@ export class ChatController implements vscode.Disposable {
 			case 'listBranches':
 			case 'switchBranch':
 			case 'createBranchAndCommit':
+			case 'writeCommitMessage':
+			case 'commitToBranch':
 			case 'workspaceAction':
 			case 'openReview':
 			case 'openMergeRequest':
@@ -1316,6 +1358,7 @@ export class ChatController implements vscode.Disposable {
 				break;
 			case 'readQuota':
 			case 'openUpgrade':
+			case 'measureContext':
 				this.usage.onMessage(message);
 				break;
 			case 'runCommand':
@@ -1473,6 +1516,9 @@ interface TurnTiming {
 	/** The first reply text, which in an agentic turn often comes after every step. */
 	firstText?: number;
 }
+
+/** What a turn end's Build This Plan offers. */
+type TurnEndBuild = NonNullable<Extract<TranscriptItem, { readonly kind: 'turnEnd' }>['build']>;
 
 /** What the transcript keeps of a reaction sent with a prompt. */
 function reactionRef({ turnEnd, emoji, name }: ReactionRequest): ReactionRef {

@@ -12,6 +12,7 @@
 import * as vscode from 'vscode';
 import { isValidBranchName } from '../acp/branchNames';
 import { errorMessage } from '../acp/errors';
+import { git } from '../acp/worktrees';
 
 /** The parts of the git extension's API (extensions/git/src/api/git.d.ts) used here. */
 interface GitRef {
@@ -140,9 +141,11 @@ export async function createBranchAndCommit(request: CommitRequest): Promise<boo
  * Commits `files` to the branch the folder has checked out, with a message
  * written from the changes for the user to edit. Resolves `true` once
  * committed. For a "Commit to {0}" choice beside Create Branch & Commit.
+ * With `message`, the user has written it already (the chat's commit box),
+ * and nothing more is asked unless other staged files would go too.
  */
-export async function commitToCurrentBranch(request: Omit<CommitRequest, 'suggestedBranch'>): Promise<boolean> {
-	const written = request.writeMessage?.().catch(() => undefined);
+export async function commitToCurrentBranch(request: Omit<CommitRequest, 'suggestedBranch'> & { readonly message?: string }): Promise<boolean> {
+	const written = request.message === undefined ? request.writeMessage?.().catch(() => undefined) : undefined;
 	const repository = await repositoryFor(request.folder);
 	if (!repository || !await confirmOtherStaged(repository, request.files)) {
 		return false;
@@ -151,7 +154,7 @@ export async function commitToCurrentBranch(request: Omit<CommitRequest, 'sugges
 	const prompt = branch
 		? vscode.l10n.t("Commits {0} files the agent changed to {1}.", request.files.length, branch)
 		: vscode.l10n.t("Commits {0} files the agent changed.", request.files.length);
-	const message = await askCommitMessage(prompt, await awaitCommitMessage(written, request.suggestedMessage));
+	const message = request.message?.trim() || await askCommitMessage(prompt, await awaitCommitMessage(written, request.suggestedMessage));
 	if (!message) {
 		return false;
 	}
@@ -212,4 +215,27 @@ async function askBranchName(value: string | undefined): Promise<string | undefi
 		validateInput: name => isValidBranchName(name.trim()) ? undefined : vscode.l10n.t("Enter a valid branch name."),
 	});
 	return name?.trim() || undefined;
+}
+
+/**
+ * The repository's default branch, which commits from the chat don't go to
+ * directly: origin's HEAD, else a local main or master; undefined when it
+ * can't tell.
+ */
+export async function defaultBranch(folder: string): Promise<string | undefined> {
+	const remote = (await git(folder, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']).catch(() => '')).trim();
+	if (remote) {
+		return remote.replace(/^[^/]+\//, '');
+	}
+	for (const candidate of ['main', 'master']) {
+		if (await git(folder, ['rev-parse', '--verify', '--quiet', `refs/heads/${candidate}`]).then(() => true, () => false)) {
+			return candidate;
+		}
+	}
+	return undefined;
+}
+
+/** Whether the repository has a commit to go back to: Keep and Undo work against Git. */
+export async function hasCommits(folder: string): Promise<boolean> {
+	return git(folder, ['rev-parse', '--verify', '--quiet', 'HEAD']).then(() => true, () => false);
 }

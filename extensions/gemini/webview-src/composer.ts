@@ -10,8 +10,8 @@ import type { SessionSettings } from '../src/acp/sessionSettings';
 import type { ViewGit, ViewStatus } from '../src/host/chatProtocol';
 import { armStop } from './activity';
 import { renderAttachments } from './attachmentChips';
-import { format, isQueueShortcut } from './chatLogic';
-import { button, el, icon, setLabel } from './dom';
+import { enterAction, format } from './chatLogic';
+import { button, el, icon, setLabel, setTip } from './dom';
 import { applyTextEdit } from './panelDom';
 import { autoGrow, updatePlaceholder, updateSendState } from './inputBox';
 import { editLastQueued, renderQueue } from './queueStrip';
@@ -20,14 +20,14 @@ import { continueList, formatShortcut, toggleWrap, type TextEdit } from './markd
 import { createPreviewTabs, isPreviewShortcut } from './markdownPreview';
 import { renderUserMarkdown } from './items';
 import { closePicker, onPickerKey, updatePicker } from './picker';
-import { setRepos, setWorkspace, updateModel } from './pickers';
+import { setCommit, setRepos, setWorkspace, updateModel } from './pickers';
 import { modeIcon } from './modeIcon';
 import { openPlusMenu, updatePlusMenu } from './plusMenu';
 import { setTranscriptBusy } from './transcript';
 import { state, strings, ui, vscode } from './view';
 import { letSpellingMenuThrough } from './spellCheck';
 
-const { form, input, status, branchButton, commitButton } = ui;
+const { form, input, status, branchButton } = ui;
 
 const previewTabs = createPreviewTabs({
 	input, inputWrap: input.parentElement!, preview: ui.preview, writeTab: ui.writeTab, previewTab: ui.previewTab, form, strings,
@@ -91,7 +91,8 @@ function updateModeChip(): void {
 	ui.modeChip.dataset.mode = current.id;
 	ui.modeChipLabel.querySelector('.codicon')!.className = `codicon codicon-${modeIcon(current.id)}`;
 	ui.modeChipLabel.querySelector('span')!.textContent = current.name;
-	setLabel(ui.modeChipLabel, format(strings.modeChip, current.description ? `${current.name}: ${current.description}` : current.name));
+	const detail = strings.modeDetails[current.id] ?? current.description;
+	setLabel(ui.modeChipLabel, format(strings.modeChip, detail ? `${current.name}: ${detail}` : current.name));
 	setLabel(ui.modeChipReset, format(strings.modeChipReset, base.name));
 }
 
@@ -99,9 +100,9 @@ export function setGit(git: ViewGit): void {
 	branchButton.hidden = !git.branch;
 	ui.branchLabel.textContent = git.branch ?? '';
 	const branchLabel = format(strings.switchBranch, git.branch ?? '');
-	branchButton.title = branchLabel;
+	setTip(branchButton, branchLabel);
 	branchButton.setAttribute('aria-label', branchLabel);
-	commitButton.hidden = !git.canCommit || !git.branch;
+	setCommit(git);
 	const workspace = git.workspace;
 	setWorkspace(workspace);
 	setRepos(git.repos ?? []);
@@ -115,9 +116,17 @@ export function setGit(git: ViewGit): void {
 		ui.reviewLabel.textContent = git.review.label;
 		setLabel(ui.reviewChip, git.review.tip);
 	}
-	ui.commitLabel.textContent = strings.commit;
-	commitButton.title = strings.createBranchAndCommit;
-	commitButton.setAttribute('aria-label', strings.createBranchAndCommit);
+	if (state.recommendMode !== git.recommendMode) {
+		state.recommendMode = git.recommendMode;
+		updatePlusMenu();
+	}
+}
+
+/** `gemini.chat.sendWith`: which of Return and ⌘Return sends. */
+export function setSendWith(cmdEnter: boolean): void {
+	state.cmdEnter = cmdEnter;
+	updatePlaceholder();
+	updateSendState();
 }
 
 /** Follow the agent: whether the chat opens each file the agent reads or edits; a switch in the "+" menu. */
@@ -182,7 +191,8 @@ function onMarkdownKey(event: KeyboardEvent): boolean {
 		applyEdit(toggleWrap(value, start, end, marker));
 		return true;
 	}
-	if (event.key === 'Enter' && event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey && start === end) {
+	// Shift+Return continues a list, as does Return when ⌘Return sends.
+	if (event.key === 'Enter' && (event.shiftKey || state.cmdEnter) && !event.altKey && !event.metaKey && !event.ctrlKey && start === end) {
 		const edit = continueList(value, start);
 		if (edit) {
 			applyEdit(edit);
@@ -288,14 +298,10 @@ input.addEventListener('keydown', event => {
 		event.preventDefault();
 		return;
 	}
-	if (!event.isComposing && isQueueShortcut(event, mac)) {
+	const enter = event.isComposing ? undefined : enterAction(event, mac, state.cmdEnter);
+	if (enter === 'now' || enter === 'queue') {
 		event.preventDefault();
-		submit('queue');
-		return;
-	}
-	if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
-		event.preventDefault();
-		submit('now');
+		submit(enter);
 	}
 });
 input.addEventListener('input', () => {
@@ -310,7 +316,6 @@ input.addEventListener('blur', () => setTimeout(() => {
 	}
 }, 0));
 ui.stopButton.addEventListener('click', () => vscode.postMessage({ type: 'stop' }));
-commitButton.addEventListener('click', () => vscode.postMessage({ type: 'createBranchAndCommit' }));
 ui.modeChipLabel.addEventListener('click', () => openPlusMenu());
 ui.modeChipReset.addEventListener('click', () => {
 	const base = state.settings.mode?.available[0];

@@ -527,7 +527,70 @@ export function coalesceUpdates(updates: readonly ItemUpdate[]): ItemUpdate[] {
 	return held.take();
 }
 
+type EnterKey = { readonly key: string; readonly altKey: boolean; readonly metaKey: boolean; readonly ctrlKey: boolean; readonly shiftKey: boolean };
+
+/**
+ * What Return does in the composer: send now, queue for after the agent's
+ * turn, or make a new line (undefined: not Return). With `cmdEnter`
+ * (`gemini.chat.sendWith`), ⌘Return (Ctrl+Enter) sends, ⇧⌘Return queues and
+ * Return makes a new line; otherwise Return sends, ⌘Return queues and
+ * ⇧Return makes a new line.
+ */
+export function enterAction(event: EnterKey, mac: boolean, cmdEnter: boolean): 'now' | 'queue' | 'newLine' | undefined {
+	if (event.key !== 'Enter' || event.altKey) {
+		return undefined;
+	}
+	const command = mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+	if (cmdEnter) {
+		return command ? (event.shiftKey ? 'queue' : 'now') : event.metaKey || event.ctrlKey ? undefined : 'newLine';
+	}
+	return isQueueShortcut(event, mac) ? 'queue' : event.shiftKey ? 'newLine' : 'now';
+}
+
 /** ⌘Return on a Mac, Ctrl+Enter elsewhere: queues a message while the agent works, instead of sending it now. */
 export function isQueueShortcut(event: { readonly key: string; readonly altKey: boolean; readonly metaKey: boolean; readonly ctrlKey: boolean; readonly shiftKey: boolean }, mac: boolean): boolean {
 	return event.key === 'Enter' && !event.shiftKey && !event.altKey && (mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey);
+}
+
+/** A part of what each turn carries, for the usage popover's breakdown. */
+export interface ContextPart {
+	readonly part: 'conversation' | 'servers' | 'rules' | 'geminicode' | 'cli';
+	readonly tokens: number;
+	/** How many servers or rule files the part is. */
+	readonly count?: number;
+}
+
+/**
+ * The usage popover's breakdown, largest first: the measured parts every
+ * call carries, and the conversation, which is what the latest request's
+ * input (`used`) holds beyond them. Parts that cost nothing are left out.
+ */
+export function contextParts(parts: { readonly cli: number; readonly rules: number; readonly geminicode: number; readonly servers: number; readonly serverTokens: number; readonly total: number }, rules: number, used?: number): ContextPart[] {
+	const rows: ContextPart[] = [
+		...used !== undefined ? [{ part: 'conversation' as const, tokens: Math.max(0, used - parts.total) }] : [],
+		{ part: 'servers', tokens: parts.serverTokens, count: parts.servers },
+		{ part: 'rules', tokens: parts.rules, count: rules },
+		{ part: 'geminicode', tokens: parts.geminicode },
+		{ part: 'cli', tokens: parts.cli },
+	];
+	return rows.filter(row => row.tokens > 0).sort((a, b) => b.tokens - a.tokens);
+}
+
+/** The codicon for a symbol of the index's `kind` (function, class, method…). */
+export function symbolIcon(kind: string): string {
+	switch (kind) {
+		case 'class': case 'method': case 'function': case 'interface': case 'enum': case 'constant': case 'struct': case 'module': case 'variable': case 'field': case 'property':
+			return `symbol-${kind}`;
+		case 'type': return 'symbol-interface';
+		case 'trait': return 'symbol-interface';
+		default: return 'symbol-misc';
+	}
+}
+
+/** The @ picker's group a row is in, in the order the groups show. */
+export type MentionGroup = 'files' | 'folders' | 'symbols' | 'workspace';
+
+/** Which group a picker row of `kind` goes in. */
+export function mentionGroup(kind: 'file' | 'folder' | 'symbol' | 'problems' | 'changes' | 'terminal'): MentionGroup {
+	return kind === 'file' ? 'files' : kind === 'folder' ? 'folders' : kind === 'symbol' ? 'symbols' : 'workspace';
 }

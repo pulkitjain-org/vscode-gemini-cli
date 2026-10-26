@@ -48,7 +48,8 @@ export function updateSendButton(): void {
 	const empty = !input.value.trim() && !state.attachments.length;
 	sendButton.disabled = state.enhancing || empty;
 	sendButton.hidden = state.busy && empty;
-	const label = state.busy ? strings.project?.sendAfterTurn ?? strings.sendNow : strings.send;
+	const keys = state.cmdEnter ? strings.cmdEnter : strings;
+	const label = state.busy ? strings.project?.sendAfterTurn ?? keys.sendNow : keys.send;
 	if (sendButton.getAttribute('aria-label') !== label) {
 		setLabel(sendButton, label);
 	}
@@ -65,7 +66,7 @@ export function updateSendState(): void {
 export function updatePlaceholder(): void {
 	const project = strings.project;
 	input.placeholder = project ? (state.busy ? project.placeholderWorking : project.placeholder)
-		: state.busy ? strings.placeholderWorking : state.items.some(item => item.kind === 'user') ? strings.placeholderFollowUp : strings.placeholder;
+		: state.busy ? (state.cmdEnter ? strings.cmdEnter : strings).placeholderWorking : state.items.some(item => item.kind === 'user') ? strings.placeholderFollowUp : strings.placeholder;
 }
 
 // Dragging the composer's top edge resizes the input; a double-click resets it.

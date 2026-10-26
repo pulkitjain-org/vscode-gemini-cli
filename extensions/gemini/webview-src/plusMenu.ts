@@ -107,8 +107,10 @@ function sections(): MenuSection[] {
 	if (mode && !project) {
 		result.push({
 			heading: strings.mode,
+			// GeminiCode's words for the CLI's modes, and a tag on the one suggested for this folder; picking stays the user's.
 			rows: mode.available.map(choice => ({
-				icon: modeIcon(choice.id), name: choice.name, detail: choice.description, checked: choice.id === mode.currentId,
+				icon: modeIcon(choice.id), name: choice.name, detail: strings.modeDetails[choice.id] ?? choice.description, checked: choice.id === mode.currentId,
+				...choice.id === state.recommendMode ? { badge: strings.modeRecommended } : {},
 				run: () => {
 					vscode.postMessage({ type: 'setMode', id: choice.id });
 					closePlusMenu();

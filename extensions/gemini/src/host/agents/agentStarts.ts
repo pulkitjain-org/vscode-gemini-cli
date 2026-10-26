@@ -89,9 +89,8 @@ export class AgentStarts {
 		const agent = this.model.addAgent(workspace.id, vscode.l10n.t("New agent"), worktree);
 		// Started here, so its session opens in the mode picked.
 		const live = this.host.start(agent, worktree?.cwd ?? folder);
-		if (mode !== 'default') {
-			live.session.client.setModeOnNextSession(mode);
-		}
+		// Default too, picked over `gemini.agents.defaultMode`.
+		live.session.client.setModeOnNextSession(mode);
 		await this.host.open(agent.id);
 		// Not awaited: send resolves when the whole turn ends, and the agent has started now.
 		void live.controller.send(text, attachments);
@@ -118,7 +117,7 @@ export class AgentStarts {
 		// Named by the flow, so the first prompt doesn't rename it.
 		this.model.rename(agent.id, options.title);
 		const live = this.host.start(agent, worktree?.cwd ?? options.folder);
-		if (options.mode && options.mode !== 'default') {
+		if (options.mode) {
 			live.session.client.setModeOnNextSession(options.mode);
 		}
 		await this.host.open(agent.id);
@@ -166,9 +165,8 @@ export class AgentStarts {
 			this.host.pickModel(agent.id, model);
 		}
 		const live = this.host.start(agent, worktree?.cwd ?? folder);
-		if (mode !== 'default') {
-			live.session.client.setModeOnNextSession(mode);
-		}
+		// Default too, picked over `gemini.agents.defaultMode`.
+		live.session.client.setModeOnNextSession(mode);
 		await this.host.open(agent.id);
 		return { id: agent.id, title: agent.title, ...(choice.task ? { task: choice.task } : {}) };
 	}

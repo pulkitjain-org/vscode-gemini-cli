@@ -34,8 +34,11 @@ import { fakeAgentCommand, waitFor } from '../helpers';
 export const bundleBudgets: Readonly<Record<string, number>> = {
 	// The chat view: about 238 KB, all GeminiCode's own code apart from the Markdown splitter it shares.
 	// Writing the bundles as UTF-8 rather than escaping non-ASCII text took about 21 KB off; reactions,
-	// the queue strip and the trace readout added most of what came after.
-	'media/chat.js': 255_000,
+	// the queue strip and the trace readout added most of what came after. The review fixes took it to about
+	// 255 KB: notices with Retry and the stall notice, prefix approvals answered from the keyboard, trimmed tool
+	// output, the mode, Build and Commit menus, the context breakdown and the @ picker's new groups. The project
+	// settings panel (about 9 KB, project chats only) is the next candidate for a chunk of its own.
+	'media/chat.js': 260_000,
 	// Home's startup script, about 26 KB: Preview's renderer, the menus and the popups are files of their own.
 	// The dashboard (cards, Needs you, banners), the composer and the themed tooltips take most of it.
 	'media/home.js': 30_000,

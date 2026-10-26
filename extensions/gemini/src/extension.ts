@@ -48,6 +48,9 @@ import { DocsSources } from './host/docsSources';
 import { IndexPage } from './host/indexPage';
 import { IndexStatusBar } from './host/indexStatusBar';
 import { measureFolderContextCost } from './host/contextCostProbe';
+import { ContextMeasures } from './host/chat/chatContext';
+import { FixWithGemini } from './host/quickFix';
+import { parseMemoryList, runCliCommands } from './acp/cliCommands';
 import { disposeGitIgnore } from './host/workspaceFileSystem';
 
 /** The pilot's setting (pilot.ts): while it is on, the pilot is constructed at launch, to record it. */
@@ -152,6 +155,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		teamTools.onDidChange(() => agentsView.refreshSpare()),
 		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.browser`) && agentsView.refreshSpare()),
 	);
+	// What every model call in a folder carries: Project Helpers' Context cost, and the chat's usage popover (/context).
+	const measureContext = (folder: string, servers: readonly string[]) => measureFolderContextCost({
+		folder,
+		servers,
+		// What a new agent's session gets from GeminiCode itself.
+		geminicodeServers: () => [...browserTools.spareServers(), ...teamTools.spareServers(), ...workspaceIndex.spareServers(folder)],
+		emptyFolder: vscode.Uri.joinPath(context.globalStorageUri, 'context-probe').fsPath,
+		log: message => log.info(message),
+	});
+	const contextMeasures = new ContextMeasures(context.globalState, {
+		measure: measureContext,
+		// The CLI lists the context files it loaded itself, without a model call, in a hidden session.
+		ruleFiles: async folder => {
+			const [reply] = await runCliCommands(service.runtime, folder, ['/memory list']);
+			return reply === undefined ? undefined : parseMemoryList(reply);
+		},
+		log: message => log.info(message),
+	});
+	agentsView.contextCost = contextMeasures;
 	const teamFlows = new TeamFlows(context.extensionUri, teamTools, agentsView, context.globalState);
 	// A reviewer agent's chat has a chip that opens its review.
 	agentsView.reviewChip = agentId => {
@@ -198,14 +220,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		changesPanel,
 		agentsView.onDidFocus(source => changesPanel.show(source)),
 		new AgentHome(context.extensionUri, agentsView, () => warmup.startSoon(), { state: context.globalState, version: productInfo.version ?? String(context.extension.packageJSON.version ?? ''), cli: () => service.status.agentVersion, startup: () => ({ activatedAt, agent: agentPhase(service.status.phase), ...readyAt ? { readyAt } : {} }), reviews: { inProgress: () => teamFlows.reviews.inProgress, onDidChange: teamFlows.reviews.onDidChange } }),
-		new LazyFeature(['gemini.projectSettings', 'gemini.newSkill'], () => new (pages().SettingsPage)(context.extensionUri, service, { getAgentCommand, forgetSkills }, (folder, servers) => measureFolderContextCost({
-			folder,
-			servers,
-			// What a new agent's session gets from GeminiCode itself.
-			geminicodeServers: () => [...browserTools.spareServers(), ...teamTools.spareServers(), ...workspaceIndex.spareServers(folder)],
-			emptyFolder: vscode.Uri.joinPath(context.globalStorageUri, 'context-probe').fsPath,
-			log: message => log.info(message),
-		}), context.globalState)),
+		new LazyFeature(['gemini.projectSettings', 'gemini.newSkill'], () => new (pages().SettingsPage)(context.extensionUri, service, { getAgentCommand, forgetSkills }, measureContext, context.globalState)),
+		contextMeasures,
+		// A quick fix on every problem: attach it, and the code around it, to the agent in front.
+		new FixWithGemini(() => chatInFront(true)),
 		quickEdits,
 		statusBar,
 		usageMeter,

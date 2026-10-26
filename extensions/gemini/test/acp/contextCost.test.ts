@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { allowedServersFor, measureContextCost, ProbeVariant } from '../../src/acp/contextCost';
+import { allowedServersFor, contextBreakdown, measureContextCost, ProbeVariant } from '../../src/acp/contextCost';
 
 describe('measureContextCost', () => {
 	it('splits a call into the CLI, the context files, each server and GeminiCode\'s own', async () => {
@@ -40,5 +40,34 @@ describe('measureContextCost', () => {
 			allowedServersFor({ kind: 'server', server: 'a' }),
 			allowedServersFor({ kind: 'context' }),
 		]).toEqual([['a', 'b'], ['a'], ['__geminicode_none__']]);
+	});
+});
+
+describe('contextBreakdown', () => {
+	it('gives the usage popover each part, the servers together, and the rule files largest first, by name', () => {
+		const cost = {
+			total: 64_740, cli: 9_620, context: 22_589, geminicode: 1_191,
+			servers: [{ name: 'gitlab', tokens: 20_534 }, { name: 'jira', tokens: 10_804 }],
+			measuredAt: 7,
+			rules: [{ path: '/w/AGENTS.md', bytes: 4_000 }, { path: '/w/GEMINI.md', bytes: 70_656 }],
+		};
+		expect({
+			none: contextBreakdown(undefined, false),
+			measuring: contextBreakdown(undefined, true).state,
+			failed: contextBreakdown(undefined, false, 'No quota'),
+			ready: contextBreakdown(cost, false),
+			again: contextBreakdown(cost, true).state,
+		}).toEqual({
+			none: { state: 'none' },
+			measuring: 'measuring',
+			failed: { state: 'failed', error: 'No quota' },
+			ready: {
+				state: 'ready',
+				measuredAt: 7,
+				parts: { cli: 9_620, rules: 22_589, geminicode: 1_191, servers: 2, serverTokens: 31_338, total: 64_740 },
+				rules: [{ name: 'GEMINI.md', path: '/w/GEMINI.md', bytes: 70_656 }, { name: 'AGENTS.md', path: '/w/AGENTS.md', bytes: 4_000 }],
+			},
+			again: 'measuring',
+		});
 	});
 });

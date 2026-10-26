@@ -1317,6 +1317,24 @@
             "default": false,
             "markdownDescription": "%configuration.agents.ownBranch%"
           },
+          "gemini.agents.defaultMode": {
+            "type": "string",
+            "enum": [
+              "default",
+              "autoEdit",
+              "plan",
+              "yolo"
+            ],
+            "enumDescriptions": [
+              "%configuration.agents.defaultMode.default%",
+              "%configuration.agents.defaultMode.autoEdit%",
+              "%configuration.agents.defaultMode.plan%",
+              "%configuration.agents.defaultMode.yolo%"
+            ],
+            "default": "default",
+            "scope": "machine",
+            "markdownDescription": "%configuration.agents.defaultMode%"
+          },
           "gemini.agents.allWorkspaceFolders": {
             "type": "boolean",
             "default": false,
@@ -1345,6 +1363,20 @@
             "default": true,
             "scope": "machine",
             "markdownDescription": "%configuration.chat.spellCheck%"
+          },
+          "gemini.chat.sendWith": {
+            "type": "string",
+            "enum": [
+              "enter",
+              "cmdEnter"
+            ],
+            "enumDescriptions": [
+              "%configuration.chat.sendWith.enter%",
+              "%configuration.chat.sendWith.cmdEnter%"
+            ],
+            "default": "enter",
+            "scope": "machine",
+            "markdownDescription": "%configuration.chat.sendWith%"
           },
           "gemini.chat.runCommands": {
             "type": "string",

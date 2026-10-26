@@ -28,6 +28,8 @@ export interface MenuRow {
 	readonly submenu?: boolean;
 	/** The row's tooltip, when the name and detail do not say enough. */
 	readonly tooltip?: string;
+	/** A small tag after the name, such as "Recommended here". */
+	readonly badge?: string;
 	run(): void;
 }
 
@@ -264,6 +266,9 @@ export class Menu {
 			node.append(rowIcon);
 		}
 		node.append(el('span', 'menu-name', row.name));
+		if (row.badge) {
+			node.append(el('span', 'menu-badge', row.badge));
+		}
 		if (row.detail) {
 			node.append(el('span', 'menu-detail', row.detail));
 		}

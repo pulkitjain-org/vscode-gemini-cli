@@ -10,6 +10,7 @@ import * as vscode from 'vscode';
 import type { IndexStatus } from '../acp/index/indexerProtocol';
 import { onDidChangeSpellCheck, spellCheckOn } from './spellCheck';
 import { isModeAllowed } from '../acp/adminPolicy';
+import { defaultStartMode } from '../acp/chatTurns';
 import { errorMessage } from '../acp/errors';
 import { secretPathReason } from '../acp/fileAccess';
 import { collectCommandActions, commandActionKey } from '../acp/hostAllowlists';
@@ -288,6 +289,7 @@ export class AgentHome implements vscode.Disposable {
 			} : {}),
 			ownBranch: vscode.workspace.getConfiguration(configSection).get<boolean>('agents.ownBranch', false),
 			modes: startModes().filter(mode => isModeAllowed(getApprovalPolicy(), mode.id)),
+			defaultMode: defaultStartMode(vscode.workspace.getConfiguration(configSection).get('agents.defaultMode'), modeId => isModeAllowed(getApprovalPolicy(), modeId)) ?? 'default',
 			...preferredModel() ? { model: preferredModel() } : {},
 			dashboard: this.dashboard(all, await this.unfinished(), await this.signedIn(), (await this.agents.teamTools?.workspaceDefaults().catch(() => undefined))?.jira?.commentVisibility),
 		};

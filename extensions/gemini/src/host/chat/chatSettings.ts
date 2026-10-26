@@ -5,7 +5,8 @@
 
 // The composer's mode and model pickers. A mode the CLI refuses because it
 // does not trust the folder offers to trust it, and the chat says when the
-// agent switches mode by itself.
+// agent switches mode by itself. The mode the chat was in before Plan is kept
+// for Build This Plan, which builds in it.
 
 import * as path from 'node:path';
 import * as vscode from 'vscode';
@@ -19,7 +20,9 @@ export type SettingsMessage = Extract<FromWebview, { readonly type: 'setMode' | 
 
 export class ChatSettings implements vscode.Disposable {
 
-	private readonly listener: { dispose(): void };
+	private readonly listeners: { dispose(): void }[];
+	/** The last mode other than Plan the session was in. */
+	private lastBuildMode: string | undefined;
 
 	constructor(
 		private readonly service: Pick<ChatHost, 'client' | 'permissions' | 'trustFolder'>,
@@ -27,12 +30,27 @@ export class ChatSettings implements vscode.Disposable {
 		private readonly options: Pick<ChatControllerOptions, 'onDidPickModel'>,
 		private readonly post: (message: ToWebview) => void,
 	) {
-		this.listener = service.client.onDidChangeModeByAgent(({ from, to }) => {
-			const name = (id: string | undefined) => service.client.settings.mode?.available.find(choice => choice.id === id)?.name ?? id ?? '';
-			this.transcript.addNotice(from === 'plan'
-				? vscode.l10n.t("Plan approved, now in {0} mode.", name(to))
-				: vscode.l10n.t("The agent switched to {0} mode.", name(to)));
-		});
+		this.noteMode(service.client.settings.mode?.currentId);
+		this.listeners = [
+			service.client.onDidChangeModeByAgent(({ from, to }) => {
+				const name = (id: string | undefined) => service.client.settings.mode?.available.find(choice => choice.id === id)?.name ?? id ?? '';
+				this.transcript.addNotice(from === 'plan'
+					? vscode.l10n.t("Plan approved, now in {0} mode.", name(to))
+					: vscode.l10n.t("The agent switched to {0} mode.", name(to)));
+			}),
+			service.client.onDidChangeSettings(settings => this.noteMode(settings.mode?.currentId)),
+		];
+	}
+
+	/** The mode the chat was in before Plan mode, which Build This Plan builds in; unset when it started in Plan. */
+	get modeBeforePlan(): string | undefined {
+		return this.lastBuildMode;
+	}
+
+	private noteMode(id: string | undefined): void {
+		if (id && id !== 'plan') {
+			this.lastBuildMode = id;
+		}
 	}
 
 	onMessage(message: SettingsMessage): void {
@@ -69,7 +87,9 @@ export class ChatSettings implements vscode.Disposable {
 	}
 
 	dispose(): void {
-		this.listener.dispose();
+		for (const listener of this.listeners) {
+			listener.dispose();
+		}
 	}
 
 	/**
@@ -100,4 +120,18 @@ export class ChatSettings implements vscode.Disposable {
 			? vscode.l10n.t("Folder trusted. The agent restarts in {0} mode once no agent is working.", modeName)
 			: vscode.l10n.t("Folder trusted. Restarting the agent in {0} mode.", modeName), 'info');
 	}
+}
+
+/** `gemini.chat.sendWith`: whether ⌘Return (Ctrl+Enter elsewhere) sends, and Return makes a new line. */
+export function sendsWithCmdEnter(): boolean {
+	return vscode.workspace.getConfiguration('gemini').get<string>('chat.sendWith', 'enter') === 'cmdEnter';
+}
+
+/** Calls `listener` with the new value when `gemini.chat.sendWith` changes. */
+export function onDidChangeSendWith(listener: (cmdEnter: boolean) => void): vscode.Disposable {
+	return vscode.workspace.onDidChangeConfiguration(e => {
+		if (e.affectsConfiguration('gemini.chat.sendWith')) {
+			listener(sendsWithCmdEnter());
+		}
+	});
 }

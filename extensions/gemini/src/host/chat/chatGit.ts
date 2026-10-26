@@ -4,24 +4,42 @@
  *--------------------------------------------------------------------------------------------*/
 
 // The composer's git controls: the branch pill and its menu, the workspace
-// pill and its menu (one per repository in a project's chat), Create Branch &
-// Commit, the review chip and Open Merge Request. The branch is read again
-// whenever it may have changed: a turn started or ended, the window got the
-// focus, or the agent's files changed.
+// pill and its menu (one per repository in a project's chat), Commit to the
+// branch the folder is on (with a message box the commit message generator
+// fills) or Create Branch & Commit on the default branch, the review chip and
+// Open Merge Request. The branch is read again whenever it may have changed: a
+// turn started or ended, the window got the focus, or the agent's files
+// changed. Which branch is the default, whether the repository has a commit and
+// whether the folder is trusted (for the mode menu's Auto Edit tag) are read
+// at most once a minute.
 
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { recommendedMode } from '../../acp/chatTurns';
 import { readGitHead } from '../../acp/gitHead';
+import { foldersTrusted } from '../../acp/trustedFolders';
 import type { FromWebview, ToWebview } from '../chatProtocol';
 import { relativeTime, tildify } from '../displayText';
-import { createBranchAndCommit, localBranches, switchBranch } from '../gitActions';
+import { commitToCurrentBranch, createBranchAndCommit, defaultBranch, hasCommits, localBranches, switchBranch } from '../gitActions';
 import type { ChatControllerOptions } from './chatOptions';
 
-export type GitMessage = Extract<FromWebview, { readonly type: 'listBranches' | 'switchBranch' | 'createBranchAndCommit' | 'workspaceAction' | 'openReview' | 'openMergeRequest' }>;
+export type GitMessage = Extract<FromWebview, { readonly type: 'listBranches' | 'switchBranch' | 'createBranchAndCommit' | 'writeCommitMessage' | 'commitToBranch' | 'workspaceAction' | 'openReview' | 'openMergeRequest' }>;
+
+/** How long the repository's default branch, first commit and the folder's trust are trusted before they are read again. */
+const repoFactsMs = 60_000;
+
+interface RepoFacts {
+	readonly folder: string;
+	readonly at: number;
+	readonly facts: Promise<{ readonly defaultBranch?: string; readonly committed: boolean; readonly trusted: boolean }>;
+}
 
 export class ChatGitControls implements vscode.Disposable {
 
 	private readonly disposables: vscode.Disposable[] = [];
+	private repoFacts: RepoFacts | undefined;
+	/** The commit box's message, being written; asked for again only when the box opens again. */
+	private writing: Promise<string | undefined> | undefined;
 
 	constructor(
 		private readonly options: Pick<ChatControllerOptions, 'git' | 'workspace' | 'review' | 'openReview' | 'openMergeRequest'>,
@@ -55,6 +73,12 @@ export class ChatGitControls implements vscode.Disposable {
 			case 'createBranchAndCommit':
 				void this.commit();
 				break;
+			case 'writeCommitMessage':
+				void this.writeMessage();
+				break;
+			case 'commitToBranch':
+				void this.commitToBranch(typeof message.message === 'string' ? message.message : '');
+				break;
 			case 'workspaceAction':
 				void this.workspaceAction(message.action, typeof message.repo === 'string' ? message.repo : undefined);
 				break;
@@ -82,6 +106,52 @@ export class ChatGitControls implements vscode.Disposable {
 		this.refresh();
 	}
 
+	/** The commit box opened: writes a message from the agent's changes, as Source Control's ✨ does; the box shows the agent's name when none can be written. */
+	private async writeMessage(): Promise<void> {
+		const commit = this.options.git?.commit;
+		if (!commit) {
+			return;
+		}
+		const suggestion = commit.suggestion();
+		const writing = this.writing = (suggestion.writeMessage?.() ?? Promise.resolve(undefined)).catch(() => undefined);
+		const written = await writing;
+		if (this.writing === writing) {
+			this.writing = undefined;
+			this.post({ type: 'commitMessage', message: written ?? suggestion.message });
+		}
+	}
+
+	/** The commit box's Commit: the agent's files, to the branch the folder is on, with the message the user edited. */
+	private async commitToBranch(message: string): Promise<void> {
+		const folder = this.options.git?.folder();
+		const commit = this.options.git?.commit;
+		const files = commit?.files() ?? [];
+		let ok = false;
+		if (folder && commit && files.length && message.trim() && !this.isBusy()) {
+			ok = await commitToCurrentBranch({ folder, files, suggestedMessage: message, message });
+			if (ok) {
+				commit.committed();
+			}
+		}
+		this.post({ type: 'commitDone', ok });
+		this.refresh();
+	}
+
+	/** The default branch, first commit and trust of `folder`, read again after a minute. */
+	private factsOf(folder: string): RepoFacts['facts'] {
+		const known = this.repoFacts;
+		if (known?.folder === folder && Date.now() - known.at < repoFactsMs) {
+			return known.facts;
+		}
+		const facts = Promise.all([
+			defaultBranch(folder),
+			hasCommits(folder),
+			foldersTrusted([folder], process.env).catch(() => false),
+		]).then(([branch, committed, trusted]) => ({ ...branch ? { defaultBranch: branch } : {}, committed, trusted: trusted && vscode.workspace.isTrusted }));
+		this.repoFacts = { folder, at: Date.now(), facts };
+		return facts;
+	}
+
 	/** Sends the branch and whether there is anything to commit; the branch is read from `.git/HEAD`, which is cheap. */
 	refresh(): void {
 		const git = this.options.git;
@@ -99,8 +169,13 @@ export class ChatGitControls implements vscode.Disposable {
 				.then(repos => this.post({ type: 'git', git: { canCommit: false, repos } }));
 			return;
 		}
-		void (folder ? readGitHead(folder).catch(() => undefined) : Promise.resolve(undefined))
-			.then(branch => this.post({ type: 'git', git: { branch, canCommit, ...(workspace ? { workspace } : {}), ...(review ? { review } : {}) } }));
+		void (folder ? readGitHead(folder).catch(() => undefined) : Promise.resolve(undefined)).then(async branch => {
+			const facts = folder && branch ? await this.factsOf(folder).catch(() => undefined) : undefined;
+			// A short commit id: detached, so there is no branch to commit to.
+			const commitTo = canCommit && branch && facts && branch !== facts.defaultBranch && !/^[0-9a-f]{7}$/.test(branch) ? branch : undefined;
+			const recommendMode = facts && recommendedMode(facts);
+			this.post({ type: 'git', git: { branch, canCommit, ...commitTo ? { commitTo } : {}, ...recommendMode ? { recommendMode } : {}, ...(workspace ? { workspace } : {}), ...(review ? { review } : {}) } });
+		});
 	}
 
 	dispose(): void {
