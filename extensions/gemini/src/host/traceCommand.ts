@@ -4,7 +4,6 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { promises as fs } from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { parseTraceFile, renderTrace, summarizeTrace, traceEnv } from '../acp/traceRecording';
@@ -20,7 +19,8 @@ export function currentTraceFile(): string | undefined {
 
 /**
  * Gemini: Record Performance Trace. Restarts the agent once with the CLI's
- * own telemetry writing to a file in the home folder, and on Stop restarts
+ * own telemetry writing to a file in `dir` (the extension's global storage,
+ * where Settings' Storage section counts and cleans it), and on Stop restarts
  * it again without, then opens a summary of where each turn's time went.
  * Nothing leaves the Mac. The file holds timings and token counts, the CLI's
  * system prompt and tool declarations, and no prompt or reply text.
@@ -30,7 +30,7 @@ export class TraceRecorder implements vscode.Disposable {
 	private file: string | undefined;
 	private readonly disposables: vscode.Disposable[] = [];
 
-	constructor(private readonly service: AgentService, private readonly log: vscode.LogOutputChannel) {
+	constructor(private readonly service: AgentService, private readonly log: vscode.LogOutputChannel, private readonly dir: string) {
 		this.disposables.push(vscode.commands.registerCommand('gemini.recordTrace', () => this.file ? this.stop() : this.start()));
 	}
 
@@ -48,9 +48,10 @@ export class TraceRecorder implements vscode.Disposable {
 
 	private async start(): Promise<void> {
 		const stamp = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
-		const file = path.join(os.homedir(), `geminicode-trace-${stamp}.jsonl`);
+		const file = path.join(this.dir, `geminicode-trace-${stamp}.jsonl`);
 		this.file = file;
 		recordingFile = file;
+		await fs.mkdir(this.dir, { recursive: true }).catch(() => undefined);
 		setAgentEnvOverride(traceEnv(file));
 		this.log.info(`Recording a performance trace to ${file}`);
 		this.service.restart();

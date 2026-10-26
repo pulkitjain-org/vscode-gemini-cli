@@ -90,6 +90,12 @@ Inline edit (<kbd>⌘I</kbd> in the editor), commit messages, Enhance prompt's r
 
 If you are in the pilot, turn it on. At the end, run **Gemini: Export Pilot Data** and hand over the `geminicode-pilot` folder in your home folder.
 
+## Storage
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `gemini.storage.keepLogsDays` | 90 | How many days of the audit log and the pilot's counters to keep. Older days are removed in the background after GeminiCode starts. At least 7 days are kept; 0 keeps everything. |
+
 ## When a change applies
 
 Changing the CLI path or version, the project, or an approval or shell setting restarts the agent so the change takes effect, and open agents resume their sessions. Other settings apply at once, or to the next agent you start.

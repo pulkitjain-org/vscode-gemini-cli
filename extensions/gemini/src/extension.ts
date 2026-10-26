@@ -37,6 +37,7 @@ import { BrowserTools } from './host/browserTools';
 import { TeamConnections } from './host/teamConnections';
 import { TeamFlows } from './host/teamFlows';
 import { TraceRecorder } from './host/traceCommand';
+import { scheduleStorageMaintenance } from './host/storageMaintenance';
 import { BenchmarkCommand } from './host/benchmarkCommand';
 import { Pilot } from './host/pilot';
 import { MrPanel } from './host/mrPanel';
@@ -158,7 +159,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	};
 	agentsView.openReview = agentId => void vscode.commands.executeCommand('gemini.team.openAgentReview', agentId);
 	context.subscriptions.push(teamFlows.reviews.onDidChange(() => agentsView.refreshChats()));
-	const traceRecorder = new TraceRecorder(service, log);
+	const traceRecorder = new TraceRecorder(service, log, vscode.Uri.joinPath(context.globalStorageUri, 'traces').fsPath);
 	const mrPanel = new MrPanel(teamTools, agentsView, agent => teamFlows.checksSummary(agent));
 	changesPanel.team = mrPanel;
 	// caffeinate watches this process, so it ends with GeminiCode even if GeminiCode crashes.
@@ -200,6 +201,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		teamTools,
 		teamFlows,
 		traceRecorder,
+		scheduleStorageMaintenance(context.globalStorageUri.fsPath, log),
 		new BenchmarkCommand(service, log),
 		new Pilot(context.globalStorageUri.fsPath, teamTools, usageMeter),
 		mrPanel,
