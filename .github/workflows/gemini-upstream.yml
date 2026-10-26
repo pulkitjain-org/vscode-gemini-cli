@@ -7,8 +7,9 @@
 # series (gemini/patches) with a three-way merge, copy the fork's own files
 # over from main, move the pin, regenerate the series against the new tag,
 # bump the bundled Gemini CLI to the newest release with its checksum, and
-# open a pull request. Branch protection on main makes Gemini CI green on it
-# a condition to merge.
+# open a pull request on a task/ branch (AGENTS.md's branch rule). Gemini CI
+# runs on it like any pull request; once main's ruleset requires its checks
+# (gemini/README.md, "CI"), it merges only when they pass.
 #
 # Pushing an upstream move needs the GEMINI_UPSTREAM_TOKEN secret: a token
 # with contents, pull requests and workflows write access, since the workflow's
@@ -78,6 +79,15 @@ jobs:
           WANT_CLI: ${{ inputs.cli }}
         run: |
           pin=$(node -p "require('./gemini/upstream.json').tag")
+          # Values typed into the run form reach git and branch names, so only versions get through.
+          if [ -n "$WANT_TAG" ] && ! printf '%s' "$WANT_TAG" | grep -qE '^1\.[0-9]+\.[0-9]+$'; then
+            echo "::error::'$WANT_TAG' is not an upstream release tag like 1.143.0"
+            exit 1
+          fi
+          if [ -n "$WANT_CLI" ] && ! printf '%s' "$WANT_CLI" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+            echo "::error::'$WANT_CLI' is not a Gemini CLI version like 0.64.0"
+            exit 1
+          fi
           if [ -n "$WANT_TAG" ]; then
             tag=$WANT_TAG
           else
@@ -89,9 +99,9 @@ jobs:
           current=$(node -p "require('./extensions/gemini/package.json').bundledCli.version")
           branch=""
           if [ -n "$tag" ]; then
-            branch="upstream/$tag"
+            branch="task/upstream-$tag"
           elif [ "$cli" != "$current" ]; then
-            branch="gemini-cli/$cli"
+            branch="task/gemini-cli-$cli"
           fi
           work=false
           if [ -n "$branch" ]; then
@@ -131,9 +141,10 @@ jobs:
         id: apply
         env:
           TAG: ${{ steps.pick.outputs.tag }}
+          BRANCH: ${{ steps.pick.outputs.branch }}
           LOG: ${{ runner.temp }}/apply.log
         run: |
-          git checkout -b "upstream/$TAG" "$TAG"
+          git checkout -b "$BRANCH" "$TAG"
           set +e
           FROM=main gemini/scripts/upstream-series.sh apply "$TAG" > "$LOG" 2>&1
           status=$?
@@ -156,7 +167,9 @@ jobs:
 
       - name: Stay on main for a CLI-only bump
         if: steps.pick.outputs.work == 'true' && steps.pick.outputs.tag == ''
-        run: git checkout -b "${{ steps.pick.outputs.branch }}"
+        env:
+          BRANCH: ${{ steps.pick.outputs.branch }}
+        run: git checkout -b "$BRANCH"
 
       - name: Bump the Gemini CLI pin
         if: steps.pick.outputs.work == 'true' && steps.pick.outputs.cli != steps.pick.outputs.cli_current
@@ -182,6 +195,7 @@ jobs:
         if: steps.pick.outputs.work == 'true'
         env:
           GH_TOKEN: ${{ secrets.GEMINI_UPSTREAM_TOKEN || github.token }}
+          BRANCH: ${{ steps.pick.outputs.branch }}
           TAG: ${{ steps.pick.outputs.tag }}
           PIN: ${{ steps.pick.outputs.pin }}
           CLI: ${{ steps.pick.outputs.cli }}
@@ -190,7 +204,7 @@ jobs:
           LOG: ${{ runner.temp }}/apply.log
           BODY: ${{ runner.temp }}/pr-body.md
         run: |
-          branch="${{ steps.pick.outputs.branch }}"
+          branch="$BRANCH"
           git push -u origin "$branch"
           title=""
           [ -n "$TAG" ] && title="Upstream VS Code $TAG"
@@ -209,7 +223,7 @@ jobs:
               echo "- Gemini CLI: $CLI_CURRENT → $CLI, checksum from npm. Re-check the items in gemini/docs/FINDINGS.md that name a CLI version; Gemini CI runs the real-CLI tests against the bundled version."
             fi
             echo
-            echo "Gemini CI must be green to merge."
+            echo "Merge once Gemini CI is green."
             if [ -f "$LOG" ]; then echo; echo '```'; cat "$LOG"; echo '```'; fi
           } > "$BODY"
           gh pr create --base main --head "$branch" --title "$title" --body-file "$BODY"
