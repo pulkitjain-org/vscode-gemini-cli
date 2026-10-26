@@ -9,6 +9,7 @@
 
 import { fileReference } from './chatLogic';
 import { addCallouts, wrapTables } from './draftMarkdown';
+import { setTip } from './dom';
 import { strings, vscode } from './view';
 
 const calloutLabels: Record<string, () => string> = {
@@ -38,7 +39,7 @@ function toFileLink(code: HTMLElement): void {
 	code.classList.add('file-link');
 	code.tabIndex = 0;
 	code.setAttribute('role', 'link');
-	code.title = strings.openFile;
+	setTip(code, strings.openFile);
 	const open = () => vscode.postMessage({ type: 'openPath', path: reference.path, ...(reference.line ? { line: reference.line } : {}) });
 	code.addEventListener('click', open);
 	code.addEventListener('keydown', e => {
