@@ -1,3 +1,4 @@
+.agents/skills/geminicode-real-app/SKILL.md
 resources/darwin/Assets.car
 resources/darwin/dmg-background.tiff
 src/vs/platform/browserView/common/geminiAgentFiles.ts

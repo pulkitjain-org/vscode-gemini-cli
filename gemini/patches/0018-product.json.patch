@@ -1,5 +1,5 @@
 diff --git a/product.json b/product.json
-index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..de3d7b04a32bb1b6e917abcf99e6c2171efa0b83 100644
+index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..ad5125f2af5964551fe3bb9ba8fb38deef379648 100644
 --- a/product.json
 +++ b/product.json
 @@ -1,41 +1,49 @@
@@ -117,7 +117,7 @@ index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..de3d7b04a32bb1b6e917abcf99e6c217
  			"type": "light"
  		},
  		{
-@@ -242,9 +244,283 @@
+@@ -242,9 +244,294 @@
  			"type": "light"
  		}
  	],
@@ -158,6 +158,17 @@ index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..de3d7b04a32bb1b6e917abcf99e6c217
 +				"description": {
 +					"key": "gemini.cli.checkForUpdates.policy",
 +					"value": "Whether GeminiCode checks the npm registry once a day for a newer Gemini CLI and offers to install it."
++				}
++			}
++		},
++		"gemini.cli.registry": {
++			"name": "GeminiCliRegistry",
++			"category": "Extensions",
++			"minimumVersion": "1.141",
++			"localization": {
++				"description": {
++					"key": "gemini.cli.registry.policy",
++					"value": "The npm registry, such as an organisation's mirror, that GeminiCode installs and updates its own copy of the Gemini CLI from. Empty uses the public npm registry."
 +				}
 +			}
 +		},
