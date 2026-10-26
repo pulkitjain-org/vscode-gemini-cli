@@ -289,7 +289,7 @@ export function deactivate(): Promise<void> | undefined {
 async function setProjectId(): Promise<void> {
 	const config = vscode.workspace.getConfiguration(configSection);
 	const value = await vscode.window.showInputBox({
-		title: vscode.l10n.t("Google Cloud project ID"),
+		title: vscode.l10n.t("Google Cloud Project ID"),
 		prompt: vscode.l10n.t("The project ID (not the project number) that Gemini bills to, for example my-project-123."),
 		value: config.get<string>('projectId') ?? '',
 		ignoreFocusOut: true,

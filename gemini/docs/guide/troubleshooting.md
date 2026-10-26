@@ -13,8 +13,8 @@ What to do when something doesn't work. Most fixes are one command away in the *
 | Not sure the CLI starts at all | Run **Gemini: Check Agent Connection**. It starts the CLI on its own and reports its version and protocol, or the error. |
 | The agent stops or misbehaves | Click the **Gemini** status bar item and choose **Restart Agent**. Open agents resume their sessions. |
 | Auto Edit or YOLO is refused | The Gemini CLI won't use them in a folder it doesn't trust. Pick the mode again and trust the folder when asked. |
-| An MCP server doesn't load | Check the warning and the server's mark in **Project Helpers**, and **Gemini: Show Log**. A project's servers load only in a trusted folder. |
-| Agents are slow on a big project | Open **Project Helpers** and choose **Measure** under **Context per model call**. MCP servers with many tools and long rules files are sent with every step; turn off the servers agents don't need, or trim their `includeTools`. |
+| An MCP server doesn't load | Check the warning and the server's mark in **Agent Setup**, and **Gemini: Show Log**. A project's servers load only in a trusted folder. |
+| Agents are slow on a big project | Open **Agent Setup** and choose **Measure** under **Context per model call**. MCP servers with many tools and long rules files are sent with every step; turn off the servers agents don't need, or trim their `includeTools`. |
 | The workspace isn't indexed, or agents don't use the index | Open **Index** on Home. An untrusted folder gets no index tools: choose **Trust Folder**. Check that `gemini.index.enabled` is on. The `gemini` command in your terminal loads the index only if the project's `mcp.allowed` lists `geminicode-index`. |
 | A file is missing from the index | **Files Left Out** on the Index page says why; **Index Anyway** adds it, unless it is a secret file or binary. |
 | A docs source failed | The Index page names the reason. Pages behind a sign-in can't be indexed, and a site outside `gemini.docs.allowedDomains` can't be added. |

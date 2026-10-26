@@ -89,7 +89,7 @@ export class SettingsPage implements vscode.Disposable {
 			return;
 		}
 		const media = vscode.Uri.joinPath(this.extensionUri, 'media');
-		const panel = vscode.window.createWebviewPanel(viewType, vscode.l10n.t("Project Helpers"), vscode.ViewColumn.Active, {
+		const panel = vscode.window.createWebviewPanel(viewType, vscode.l10n.t("Agent Setup"), vscode.ViewColumn.Active, {
 			enableScripts: true,
 			localResourceRoots: [media],
 		});
@@ -646,7 +646,7 @@ export class SettingsPage implements vscode.Disposable {
 		this.offerRestart(reply.trim() || name);
 	}
 
-	private async runInTerminal(name: string, args: readonly string[], message = vscode.l10n.t("Answer the Gemini CLI's questions here. Project Helpers updates when it finishes; restart the agent to use the change.")): Promise<void> {
+	private async runInTerminal(name: string, args: readonly string[], message = vscode.l10n.t("Answer the Gemini CLI's questions here. Agent Setup updates when it finishes; restart the agent to use the change.")): Promise<void> {
 		const command = await this.host.getAgentCommand({ subcommand: args });
 		this.terminal?.dispose();
 		this.terminal = vscode.window.createTerminal({
@@ -703,7 +703,7 @@ export class SettingsPage implements vscode.Disposable {
 			contextNone: vscode.l10n.t("Not measured yet."),
 			contextTotal: vscode.l10n.t("{0} tokens in every model call"),
 			tokensPerCall: vscode.l10n.t("\u2248{0} tokens"),
-			title: vscode.l10n.t("Project Helpers"),
+			title: vscode.l10n.t("Agent Setup"),
 			subtitle: vscode.l10n.t("What every Gemini agent loads when it starts, shared with the gemini command in your terminal. Changes apply to new agents."),
 			restart: vscode.l10n.t("Restart Agent"),
 			servers: vscode.l10n.t("MCP servers"),

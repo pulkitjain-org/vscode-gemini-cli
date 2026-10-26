@@ -102,7 +102,7 @@ export class GeminiStatusBar implements vscode.Disposable {
 			tooltip.appendMarkdown(`${escapeMarkdown(status.error.message)}\n\n`);
 		}
 		tooltip.appendMarkdown(`${vscode.l10n.t("Account")}: ${escapeMarkdown(this.account ?? vscode.l10n.t("not signed in"))}  \n`);
-		tooltip.appendMarkdown(`${vscode.l10n.t("Project")}: ${escapeMarkdown(project ? `${project.projectId} (${project.source})` : vscode.l10n.t("not set"))}  \n`);
+		tooltip.appendMarkdown(`${vscode.l10n.t("Google Cloud Project ID")}: ${escapeMarkdown(project ? `${project.projectId} (${project.source})` : vscode.l10n.t("not set"))}  \n`);
 		tooltip.appendMarkdown(`${vscode.l10n.t("CLI")}: ${escapeMarkdown(this.cli ?? vscode.l10n.t("unknown until the agent starts"))}${escapeMarkdown(describeCliSource(this.service.cli))}`);
 		if (this.usage?.length) {
 			tooltip.appendMarkdown(`\n\n**${vscode.l10n.t("Today's use")}**  \n`);
@@ -115,7 +115,7 @@ export class GeminiStatusBar implements vscode.Disposable {
 		const status = this.service.status;
 		const items: (vscode.QuickPickItem & { command?: string; run?: () => void })[] = [
 			{ label: status.phase === 'stopped' ? vscode.l10n.t("$(play) Start Agent") : vscode.l10n.t("$(debug-restart) Restart Agent"), command: 'gemini.restartAgent' },
-			{ label: vscode.l10n.t("$(project) Change Project ID"), description: getProjectSettings().resolved?.projectId, command: 'gemini.setProjectId' },
+			{ label: vscode.l10n.t("$(project) Change Google Cloud Project ID"), description: getProjectSettings().resolved?.projectId, command: 'gemini.setProjectId' },
 			{ label: vscode.l10n.t("$(versions) Install or Change Gemini CLI Version..."), description: this.cli, command: 'gemini.installCliVersion' },
 			{ label: vscode.l10n.t("$(account) Sign In or Finish Setup in Terminal"), description: this.account, command: 'gemini.completeSetupInTerminal' },
 			{ label: vscode.l10n.t("$(add) New Agent"), command: 'gemini.agents.newAgent' },

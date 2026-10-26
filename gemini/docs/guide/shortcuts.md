@@ -8,7 +8,7 @@ Stop Agent, Focus Chat, Cycle Approval Mode and Switch Model are also in the Com
 
 | Keys | What it does |
 | --- | --- |
-| <kbd>⌥⌘M</kbd> | Switch between Agents and Editor mode |
+| <kbd>⌥⌘M</kbd> | Switch between the Agents and Editor layouts |
 | <kbd>⌥⌘N</kbd> | New agent |
 | <kbd>⇧⌘H</kbd> (outside the editor and Search) | Open Home. In the editor it is VS Code's Replace in Files; run **Gemini: Home** there |
 | <kbd>⌃⌘I</kbd> | Focus the chat of the agent in front, or the last one; with no agent yet, start one |

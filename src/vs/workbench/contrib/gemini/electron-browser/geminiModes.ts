@@ -15,6 +15,9 @@
 // and show each agent's state; in Editor mode the editors keep their own tab row
 // and the title bar shows a pill for each agent that is working or waiting.
 // Agent states come from the Gemini extension through `_gemini.setAgentStatus`.
+// GEMINI-FORK: what the user reads calls the modes layouts ("Agents layout",
+// "Editor layout"), as "mode" also names the approval modes; the command ids,
+// the context key and the code keep "mode".
 
 import './geminiModes.css';
 import { $, addDisposableListener, append, clearNode, EventType } from '../../../../base/browser/dom.js';
@@ -89,7 +92,7 @@ const defaults: Record<Mode, ModeLayout> = {
 	editor: { sideBar: true, sideBarContainer: explorerContainer, auxiliaryBar: false, panel: false },
 };
 
-export const GeminiModeContext = new RawContextKey<Mode>('gemini.mode', 'editor', localize('geminiMode', "Whether GeminiCode is in Agents or Editor mode"));
+export const GeminiModeContext = new RawContextKey<Mode>('gemini.mode', 'editor', localize('geminiMode', "Whether GeminiCode is in the Agents or Editor layout"));
 
 /** Shared between the contribution and the title bar widgets it renders. */
 class ModeState {
@@ -225,8 +228,8 @@ class GeminiModes extends Disposable implements IWorkbenchContribution {
 		const keys = this.keybindingService.lookupKeybinding('gemini.mode.toggle')?.getLabel();
 		this.notificationService.prompt(Severity.Info,
 			keys
-				? localize('gemini.mode.switchedKeys', "Switched to Editor mode to show {0}. Agents mode always shows Gemini; press {1} to go back.", name, keys)
-				: localize('gemini.mode.switched', "Switched to Editor mode to show {0}. Agents mode always shows Gemini.", name),
+				? localize('gemini.mode.switchedKeys', "Switched to the Editor layout to show {0}. The Agents layout always shows Gemini; press {1} to go back.", name, keys)
+				: localize('gemini.mode.switched', "Switched to the Editor layout to show {0}. The Agents layout always shows Gemini.", name),
 			[{ label: localize('gemini.mode.backToAgents', "Back to Agents"), run: () => this.switchTo('agents') }]);
 	}
 
@@ -338,7 +341,7 @@ class SwitchToAgentsMode extends Action2 {
 	constructor() {
 		super({
 			id: 'gemini.mode.agents',
-			title: localize2('gemini.mode.agents', "Switch to Agents Mode"),
+			title: localize2('gemini.mode.agents', "Switch to Agents Layout"),
 			category: localize2('gemini', "Gemini"),
 			f1: true,
 			precondition: GeminiModeContext.notEqualsTo('agents'),
@@ -353,7 +356,7 @@ class SwitchToEditorMode extends Action2 {
 	constructor() {
 		super({
 			id: 'gemini.mode.editor',
-			title: localize2('gemini.mode.editor', "Switch to Editor Mode"),
+			title: localize2('gemini.mode.editor', "Switch to Editor Layout"),
 			category: localize2('gemini', "Gemini"),
 			f1: true,
 			precondition: GeminiModeContext.notEqualsTo('editor'),
@@ -368,7 +371,7 @@ class ToggleMode extends Action2 {
 	constructor() {
 		super({
 			id: 'gemini.mode.toggle',
-			title: localize2('gemini.mode.toggle', "Switch Between Agents and Editor Mode"),
+			title: localize2('gemini.mode.toggle', "Switch Between Agents and Editor Layout"),
 			category: localize2('gemini', "Gemini"),
 			f1: true,
 			keybinding: { weight: KeybindingWeight.WorkbenchContrib, primary: KeyMod.CtrlCmd | KeyMod.Alt | KeyCode.KeyM },
@@ -385,7 +388,7 @@ class ModeSwitcherAction extends Action2 {
 	constructor() {
 		super({
 			id: ModeSwitcherAction.ID,
-			title: localize2('gemini.mode.switcher', "Agents and Editor Modes"),
+			title: localize2('gemini.mode.switcher', "Agents and Editor Layouts"),
 			f1: false,
 			menu: { id: MenuId.TitleBarAdjacentCenter, order: -2000, when: ContextKeyExpr.true() },
 		});
@@ -453,7 +456,7 @@ class ModeSwitcher extends BaseActionViewItem {
 		this.homeButton(container);
 		const toggle = this.toggle = append(container, $('.gemini-mode-toggle'));
 		toggle.setAttribute('role', 'radiogroup');
-		toggle.setAttribute('aria-label', localize('gemini.mode.label', "Window mode"));
+		toggle.setAttribute('aria-label', localize('gemini.mode.label', "Window layout"));
 		// The chosen side's highlight, one element that slides between the two (a transform, run by the compositor).
 		append(toggle, $('span.gemini-mode-lens', { 'aria-hidden': 'true' }));
 		this.agentsButton = this.modeButton(toggle, 'agents', localize('gemini.mode.agentsLabel', "Agents"));
@@ -488,11 +491,11 @@ class ModeSwitcher extends BaseActionViewItem {
 			e.stopPropagation();
 			void this.commandService.executeCommand(mode === 'agents' ? 'gemini.mode.agents' : 'gemini.mode.editor');
 		}));
-		const hover = mode === 'agents' ? localize('gemini.mode.agentsHover', "Agents mode: your agents, their chats and their changes") : localize('gemini.mode.editorHover', "Editor mode: the classic editor layout");
+		const hover = mode === 'agents' ? localize('gemini.mode.agentsHover', "Agents layout: your agents, their chats and their changes") : localize('gemini.mode.editorHover', "Editor layout: the classic layout, with Explorer, Search and Source Control");
 		// Read the shortcut on each hover, so a rebinding shows at once.
 		this._register(this.hoverService.setupManagedHover(getDefaultHoverDelegate('element'), button, () => {
 			const keys = this.keybindingService.lookupKeybinding('gemini.mode.toggle')?.getLabel();
-			return keys ? localize('gemini.mode.hoverKeys', "{0} ({1} switches modes)", hover, keys) : hover;
+			return keys ? localize('gemini.mode.hoverKeys', "{0} ({1} switches layouts)", hover, keys) : hover;
 		}));
 		return button;
 	}

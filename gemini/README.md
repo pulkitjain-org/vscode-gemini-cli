@@ -19,7 +19,7 @@ In a sentence each, with the guide page that covers it:
 - **Browser.** A browser agents can use, with Add to Gemini and notes on the page. [Browser](docs/guide/browser.md)
 - **Workspace index.** A local index of each workspace, and of attached docs, that agents search in one step. [Workspace index and docs](docs/guide/agents.md#workspace-index-and-docs)
 - **Team tools.** Jira, GitLab, SonarQube, Snyk and Figma with your own account, from ticket to merged merge request, and merge request reviews. [Team tools](docs/guide/team-tools.md)
-- **Setup and policy.** A managed Gemini CLI, Project Helpers for MCP servers, skills and rules, and settings an administrator can lock. [Getting started](docs/guide/getting-started.md), [Project Helpers](docs/guide/helpers.md), [Settings](docs/guide/settings.md)
+- **Setup and policy.** A managed Gemini CLI, Agent Setup for MCP servers, skills and rules, and settings an administrator can lock. [Getting started](docs/guide/getting-started.md), [Agent Setup](docs/guide/helpers.md), [Settings](docs/guide/settings.md)
 
 ## What is in this folder
 

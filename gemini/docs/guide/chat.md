@@ -58,7 +58,7 @@ In **Plan** mode the agent reads and proposes a plan without changing anything. 
 
 ![An agent in Plan mode writing a plan that ends with Build This Plan](../../site/media/showcase-plan-dark.webp "clip")
 
-With the model on Auto, Gemini plans with Pro and builds with Flash. Turn off **Plan with Pro, build with Flash** in [Project Helpers](helpers.md#gemini-cli-settings) to keep one model throughout.
+With the model on Auto, Gemini plans with Pro and builds with Flash. Turn off **Plan with Pro, build with Flash** in [Agent Setup](helpers.md#gemini-cli-settings) to keep one model throughout.
 
 ## Watching the agent work
 

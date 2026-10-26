@@ -1,10 +1,10 @@
-# Project Helpers
+# Agent Setup
 
-**Project Helpers** shows what every agent loads when it starts: MCP servers, skills, hooks, extensions, memory and rules, each with a switch, and how many tokens they add to every model call. It shares them with the `gemini` command in your terminal.
+**Agent Setup** shows what every agent loads when it starts: MCP servers, skills, hooks, extensions, memory and rules, each with a switch, and how many tokens they add to every model call. It shares them with the `gemini` command in your terminal.
 
-![Project Helpers with MCP servers and skills, each with a switch](../../site/media/docs/project-helpers-dark.webp)
+![Agent Setup with MCP servers and skills, each with a switch](../../site/media/docs/project-helpers-dark.webp)
 
-Open it with **Gemini: Project Helpers**, or from the Agents pane's **...** menu. Changes apply to agents started afterwards; **Restart Agent** applies them now. Opening the page never starts the Gemini CLI.
+Open it with **Gemini: Agent Setup**, or **Agent Setup** on Home, or from the Agents pane's **...** menu. Changes apply to agents started afterwards; **Restart Agent** applies them now. Opening the page never starts the Gemini CLI.
 
 ## Context per model call
 

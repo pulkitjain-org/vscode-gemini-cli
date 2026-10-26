@@ -62,7 +62,7 @@ export interface Feature { readonly icon: string; readonly title: string; readon
 export const featureIndex: readonly { readonly name: string; readonly items: readonly Feature[] }[] = [
 	{
 		name: 'Agents', items: [
-			{ icon: 'layout-grid', title: 'Agents and Editor modes', body: 'Agents on the left, the chat in the middle, its changes on the right. ⌥⌘M switches.', href: 'agents.html#agents-and-editor-modes' },
+			{ icon: 'layout-grid', title: 'Agents and Editor layouts', body: 'Agents on the left, the chat in the middle, its changes on the right. ⌥⌘M switches.', href: 'agents.html#agents-and-editor-layouts' },
 			{ icon: 'sparkles', title: 'Home', body: 'Describe a task and press Return. See what needs you across agents and tools.', href: 'agents.html#home' },
 			{ icon: 'bot', title: 'Agents side by side', body: 'Each agent has its own tab and chat, with a status dot.', href: 'agents.html#agents-side-by-side' },
 			{ icon: 'columns-2', title: 'Files beside each agent', body: 'What an agent opens goes in a group of its own beside its chat.', href: 'agents.html#files-beside-each-agent' },
