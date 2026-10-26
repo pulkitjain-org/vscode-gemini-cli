@@ -25,20 +25,50 @@ export const page = globalThis as unknown as Window;
 /** What the host modules use of `vscode`: English strings, defaults for every setting, and URIs as plain paths. */
 const fakeVscode = `
 export const l10n = { t: (message, ...args) => message.replace(/\\{(\\d+)\\}/g, (match, i) => i < args.length ? String(args[i]) : match) };
-export const workspace = { getConfiguration: () => ({ get: (key, fallback) => fallback }), onDidChangeConfiguration: () => ({ dispose() { } }) };
-export const Uri = { joinPath: (base, ...parts) => [base, ...parts].join('/') };
+const none = () => ({ dispose() { } });
+export const workspace = {
+	getConfiguration: () => ({ get: (key, fallback) => fallback }),
+	onDidChangeConfiguration: none,
+	// Each watcher's change listeners go to \`fakeWatchers\`, for \`fireWatcher\`.
+	createFileSystemWatcher: () => {
+		const listeners = [];
+		(globalThis.fakeWatchers ??= []).push(listeners);
+		return { onDidChange: listener => (listeners.push(listener), { dispose() { } }), onDidCreate: none, onDidDelete: none, dispose() { } };
+	},
+};
+export const Uri = { joinPath: (base, ...parts) => [base, ...parts].join('/'), file: file => file };
 export class EventEmitter { event = () => ({ dispose() { } }); fire() { } dispose() { } }
+export class RelativePattern { }
+export class ThemeIcon { }
+export const Disposable = { from: () => ({ dispose() { } }) };
 export const ViewColumn = { Active: -1 };
+// A panel's messages both ways, for tests that drive a page's host (\`fakePanels\`): what the host posted, and its handler for the page's.
+const panels = globalThis.fakePanels ??= [];
 export const window = {
-	createWebviewPanel: () => ({
-		webview: { html: '', cspSource: 'webview', asWebviewUri: uri => String(uri), onDidReceiveMessage: () => ({ dispose() { } }), postMessage: async () => true },
-		onDidDispose: () => ({ dispose() { } }),
-	}),
+	createWebviewPanel: (viewType, title, column) => {
+		const panel = { posted: [], receive: undefined, column };
+		panels.push(panel);
+		return {
+			webview: {
+				html: '', cspSource: 'webview', asWebviewUri: uri => String(uri),
+				onDidReceiveMessage: handler => (panel.receive = handler, { dispose() { } }),
+				postMessage: async message => (panel.posted.push(message), true),
+			},
+			onDidDispose: none,
+			reveal() { },
+			dispose() { },
+		};
+	},
 };
 `;
 
 /** Exports `name` from the host module at `file` (relative to the extension), bundled with the stand-in for `vscode`. */
-async function hostExport<T>(file: string, name: string): Promise<T> {
+export async function hostExport<T>(file: string, name: string): Promise<T> {
+	return (await hostModule(file))[name] as T;
+}
+
+/** Every export of a host module, built with a fake `vscode`. */
+async function hostModule(file: string): Promise<Record<string, unknown>> {
 	const result = await build({
 		entryPoints: [path.join(root, file)],
 		bundle: true,
@@ -56,14 +86,34 @@ async function hostExport<T>(file: string, name: string): Promise<T> {
 			},
 		}],
 	});
-	const exports: Record<string, T> = {};
+	const exports: Record<string, unknown> = {};
 	const module = { exports };
 	new Function('module', 'exports', 'require', result.outputFiles[0].text)(module, module.exports, createRequire(path.join(root, file)));
-	return module.exports[name];
+	return module.exports;
 }
 
 /** Messages the page posted to the extension. */
 export const posted: { type: string;[key: string]: unknown }[] = [];
+
+/** A webview panel a host module made with the stand-in \`vscode\`: what its host posted, and the host's handler for the page's messages. */
+export interface FakePanel {
+	readonly posted: { type: string;[key: string]: unknown }[];
+	receive?: (message: unknown) => void;
+	/** The column the panel opened in. */
+	readonly column?: unknown;
+}
+
+/** The panels host modules made, in order. */
+export function fakePanels(): FakePanel[] {
+	return (globalThis as { fakePanels?: FakePanel[] }).fakePanels ??= [];
+}
+
+/** Calls the change listeners of the file watcher a host module made last, as when the file it watches changes. */
+export function fireWatcher(): void {
+	for (const listener of (globalThis as { fakeWatchers?: (() => void)[][] }).fakeWatchers?.at(-1) ?? []) {
+		listener();
+	}
+}
 
 /** Puts `html`'s body into the document and gives the page `acquireVsCodeApi`; nothing is fetched, and scripts are not run. */
 function showPage(html: string): void {
@@ -90,7 +140,10 @@ const fakeWebview = { asWebviewUri: (uri: unknown) => String(uri), cspSource: 'w
 
 /** The chat view's page, as `chatHtml` draws it; import `webview-src/chat` after it. */
 export async function showChatPage(options: { project?: boolean; fork?: boolean } = {}): Promise<void> {
-	const chatHtml = await hostExport<(webview: unknown, media: string, project: boolean, fork: boolean) => string>('src/host/chat/chatHtml.ts', 'chatHtml');
+	const html = await hostModule('src/host/chat/chatHtml.ts');
+	// The extension loads a project chat's strings from dist/onDemand.js; here they come straight from their module.
+	(html.setProjectStrings as (load: () => unknown) => void)(await hostExport<() => unknown>('src/host/chat/projectStrings.ts', 'projectStrings'));
+	const chatHtml = html.chatHtml as (webview: unknown, media: string, project: boolean, fork: boolean) => string;
 	showPage(chatHtml(fakeWebview, 'media', !!options.project, !!options.fork));
 }
 
@@ -101,6 +154,12 @@ export async function showChatPage(options: { project?: boolean; fork?: boolean 
  */
 export async function startScript(name: string): Promise<Readonly<Record<string, unknown>>> {
 	return import(`../../webview-src/${name}.ts`);
+}
+
+/** Plan Review's page with its real strings, without the Markdown chunk (the plan shows as text); start `webview-src/planReview` after it. */
+export async function showPlanReviewPage(): Promise<void> {
+	const strings = (await hostExport<() => unknown>('src/host/planReviewPage.ts', 'planStrings'))();
+	showPage(`<body class="plan-page"><main id="page"></main><script type="module" data-strings='${JSON.stringify(strings).replace(/'/g, '&#39;')}'></script></body>`);
 }
 
 /** Home's page, as `AgentHome` draws it; start `webview-src/home` after it. */
@@ -118,4 +177,10 @@ export async function showTeamFlowPage(): Promise<void> {
 /** Sends the page a message from the extension. */
 export function sendToPage(data: unknown): void {
 	page.dispatchEvent(new page.MessageEvent('message', { data }));
+}
+
+/** The Review Page with its real strings, without the Markdown chunk (the agent's Markdown shows as one paragraph); start `webview-src/confluenceReview` after it. */
+export async function showConfluenceReviewPage(): Promise<void> {
+	const strings = (await hostExport<() => unknown>('src/host/confluenceReviewPage.ts', 'reviewStrings'))();
+	showPage(`<body class="review-page"><main id="page"></main><script type="module" data-strings='${JSON.stringify(strings).replace(/'/g, '&#39;')}'></script></body>`);
 }

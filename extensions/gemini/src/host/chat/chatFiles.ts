@@ -46,6 +46,10 @@ export class ChatFileLinks {
 		/** Where a file a reply names is looked for: the agent's folder. */
 		private readonly folder: () => string,
 		private readonly options: Pick<ChatControllerOptions, 'editorColumn'>,
+		/** Opens a Markdown file in Plan Review when it is the chat's plan; false when it isn't. */
+		private readonly openPlan?: (file: string) => boolean,
+		/** Writes a plan the CLI deleted again, from the session's saved calls. */
+		private readonly rebuildPlan?: (file: string) => Promise<void>,
 	) { }
 
 	onMessage(message: FileLinkMessage): void {
@@ -84,6 +88,13 @@ export class ChatFileLinks {
 
 	async openDiff(itemId: string, filePath: string, preserveFocus: boolean): Promise<void> {
 		const diff = this.diffs.get(itemId)?.find(d => d.path === filePath);
+		if (isMarkdown(filePath)) {
+			await this.rebuildPlan?.(filePath);
+		}
+		// A Markdown file the agent wrote from scratch reads better rendered than as a diff of new lines; Plan mode's plan opens in Plan Review.
+		if (isMarkdown(filePath) && (!diff || !diff.oldText) && await isFile(filePath) && (this.openPlan?.(filePath) || await this.openPreview(filePath, preserveFocus))) {
+			return;
+		}
 		if (diff) {
 			await this.diffPreview.show(diff, { preserveFocus, viewColumn: await this.options.editorColumn?.() });
 			return;
@@ -92,6 +103,16 @@ export class ChatFileLinks {
 		// none: show the file as it is now instead.
 		void vscode.window.showInformationMessage(vscode.l10n.t("The proposed change is no longer available, so the file is shown as it is now."));
 		await this.openLocation(filePath, undefined);
+	}
+
+	/** Opens `filePath` in the Markdown preview, beside the chat like its diffs; false when the preview can't open. */
+	private async openPreview(filePath: string, preserveFocus: boolean): Promise<boolean> {
+		try {
+			await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(filePath), 'vscode.markdown.preview.editor', { viewColumn: await this.options.editorColumn?.(), preserveFocus, preview: true });
+			return true;
+		} catch {
+			return false;
+		}
 	}
 
 	/** Opens a file the reply names: by its path from the agent's folder, else by its name anywhere in the workspace. */
@@ -126,6 +147,11 @@ export class ChatFileLinks {
 			void showError(errorMessage(err));
 		}
 	}
+}
+
+/** The extensions the Markdown preview opens. */
+function isMarkdown(filePath: string): boolean {
+	return /\.(md|markdown|mdown|mkd|mkdn)$/i.test(filePath);
 }
 
 export async function isFile(filePath: string): Promise<boolean> {

@@ -229,6 +229,11 @@
         "icon": "$(plug)"
       },
       {
+        "command": "gemini.confluence.openDraft",
+        "title": "%command.confluenceDrafts%",
+        "category": "%category%"
+      },
+      {
         "command": "gemini.agents.addWorkspace",
         "title": "%command.agents.addWorkspace%",
         "category": "%category%",
@@ -276,6 +281,18 @@
         "title": "%command.agents.mergeBack%",
         "category": "%category%",
         "icon": "$(git-merge)"
+      },
+      {
+        "command": "gemini.agents.tryInWorkspace",
+        "title": "%command.agents.tryInWorkspace%",
+        "category": "%category%",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "gemini.agents.takeBack",
+        "title": "%command.agents.takeBack%",
+        "category": "%category%",
+        "icon": "$(discard)"
       },
       {
         "command": "gemini.agents.fork",
@@ -935,7 +952,12 @@
         },
         {
           "command": "gemini.agents.mergeBack",
-          "when": "view == gemini.agents && viewItem =~ /\\.worktree/",
+          "when": "view == gemini.agents && viewItem =~ /\\.worktree/ && config.gemini.agents.mergeBack == commit",
+          "group": "inline"
+        },
+        {
+          "command": "gemini.agents.tryInWorkspace",
+          "when": "view == gemini.agents && viewItem =~ /\\.worktree/ && config.gemini.agents.mergeBack != commit",
           "group": "inline"
         },
         {
@@ -1005,8 +1027,18 @@
         },
         {
           "command": "gemini.agents.mergeBack",
-          "when": "view == gemini.agents && viewItem =~ /\\.worktree/",
+          "when": "view == gemini.agents && viewItem =~ /\\.worktree/ && config.gemini.agents.mergeBack == commit",
           "group": "1_agent@4"
+        },
+        {
+          "command": "gemini.agents.tryInWorkspace",
+          "when": "view == gemini.agents && viewItem =~ /\\.worktree/ && config.gemini.agents.mergeBack != commit",
+          "group": "1_agent@4"
+        },
+        {
+          "command": "gemini.agents.takeBack",
+          "when": "view == gemini.agents && viewItem =~ /\\.trying/",
+          "group": "1_agent@5"
         },
         {
           "command": "gemini.agents.fork",
@@ -1254,6 +1286,14 @@
           "when": "false"
         },
         {
+          "command": "gemini.agents.tryInWorkspace",
+          "when": "false"
+        },
+        {
+          "command": "gemini.agents.takeBack",
+          "when": "false"
+        },
+        {
           "command": "gemini.agents.openAsMarkdown",
           "when": "false"
         },
@@ -1324,6 +1364,24 @@
             "type": "boolean",
             "default": false,
             "markdownDescription": "%configuration.agents.ownBranch%"
+          },
+          "gemini.figma.codeConnect": {
+            "type": "boolean",
+            "default": false,
+            "markdownDescription": "%configuration.figma.codeConnect%"
+          },
+          "gemini.agents.mergeBack": {
+            "type": "string",
+            "enum": [
+              "try",
+              "commit"
+            ],
+            "enumDescriptions": [
+              "%configuration.agents.mergeBack.try%",
+              "%configuration.agents.mergeBack.commit%"
+            ],
+            "default": "try",
+            "markdownDescription": "%configuration.agents.mergeBack%"
           },
           "gemini.agents.defaultMode": {
             "type": "string",

@@ -8,6 +8,7 @@ import * as path from 'node:path';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
 import { AgentChanges, ChangeTotals } from '../acp/agentChanges';
+import { cliHome, projectTempDirName } from '../acp/cli/formats';
 import { attentionChange } from '../acp/attention';
 import { branchNameFrom } from '../acp/branchNames';
 import { writeCommitMessage } from '../acp/commitMessage';
@@ -52,7 +53,12 @@ import { sessionModel } from './modelPreference';
 import type { UsageMeter } from './usageMeter';
 import { WorkspaceFileIndex } from './workspaceFiles';
 import { AgentIndicators } from './agents/agentIndicators';
-import { AgentMerge } from './agents/agentMerge';
+import type { AgentMerge } from './agents/agentMerge';
+import type { AgentTries } from './agents/agentTries';
+import type { PlanReviews } from './planReviewPage';
+import { extensionChunk } from './lazyFeature';
+import { setProjectStrings } from './chat/chatHtml';
+import type { TryAction } from './chatProtocol';
 import { AgentProjects } from './agents/agentProjects';
 import { AgentForks } from './agents/agentForks';
 import { AgentStarts } from './agents/agentStarts';
@@ -107,6 +113,8 @@ export interface AgentSummary {
 	readonly project?: { readonly role: 'coordinator'; readonly threads: number } | { readonly role: 'thread' };
 	/** Archived by the user (Remove's Archive): Home leaves it out, and the pane lists it under Archived. */
 	readonly archived?: boolean;
+	/** Its work is being tried in the user's checkout. */
+	readonly trying?: boolean;
 }
 
 /** An agent with a live session in this window. */
@@ -171,7 +179,17 @@ export class AgentsView implements vscode.Disposable {
 	private readonly indicators: AgentIndicators;
 	private readonly spare: SpareSession;
 	private readonly worktrees: AgentWorktrees;
-	private readonly merge: AgentMerge;
+	/** Merge Back's merge commits and Try in Workspace, from dist/onDemand.js once first needed. */
+	private readonly onDemand = extensionChunk<typeof import('../onDemand')>('onDemand');
+	private mergeLoaded: AgentMerge | undefined;
+	private triesLoaded: AgentTries | undefined;
+	/** Each tried agent's files the user edited and hasn't sent it, as AgentTries last said. */
+	private readonly triedEdits = new Map<string, readonly string[]>();
+	/** Plan Review, from dist/pages.js the first time a plan is reviewed. */
+	private readonly pages = extensionChunk<typeof import('../pages')>('pages');
+	private planReviewsLoaded: PlanReviews | undefined;
+	/** An agent started or ended a turn, for Plan Review. */
+	private readonly onDidChangeTurnEmitter = new vscode.EventEmitter<string>();
 	private readonly projectAgents: AgentProjects;
 	private readonly starts: AgentStarts;
 	private readonly forks: AgentForks;
@@ -229,6 +247,7 @@ export class AgentsView implements vscode.Disposable {
 		saved: SavedAgents,
 	) {
 		this.model = new AgentsModel(saved.snapshot);
+		setProjectStrings(() => this.onDemand().projectStrings());
 		this.agentStore = saved.store;
 		if (this.agentStore) {
 			this.agentStore.log = message => this.service.writeLog(message);
@@ -239,7 +258,6 @@ export class AgentsView implements vscode.Disposable {
 		this.tree = new AgentTree(this.model, this.live);
 		this.changesView = new ChangesView(id => this.live.get(id)?.changes);
 		this.worktrees = new AgentWorktrees(this.model, context.globalState);
-		this.merge = new AgentMerge(this.model, this.live, (id, deleteBranch) => this.removeAgentAndWorktree(id, deleteBranch), folder => writeCommitMessage(folder, undefined, this.direct));
 		this.projects = new Projects({
 			record: id => this.model.agent(id),
 			workspaceFolder: id => {
@@ -253,7 +271,13 @@ export class AgentsView implements vscode.Disposable {
 			addRepo: (thread, repo, memory) => this.projectAgents.addThreadRepo(thread, repo, memory),
 			open: id => this.open(id),
 			stopTurn: id => this.stopTurn(id),
-			mergeBack: (id, repo) => this.merge.mergeBack(id, repo),
+			mergeBack: (id, repo) => this.mergeBack(id, repo),
+			tryAction: (id, action) => this.tryAction(id, action),
+			mergeCommits: () => mergeCommits(),
+			guideSeen: () => !!context.globalState.get<boolean>('gemini.tries.guideSeen'),
+			setGuideSeen: async seen => { await context.globalState.update('gemini.tries.guideSeen', seen || undefined); },
+			triedEdits: id => this.triedEdits.get(id),
+			openTerminal: id => this.openTerminal(id),
 			changedFiles: id => this.live.get(id)?.changes.files,
 			rename: (id, title) => this.renameAgent(id, title),
 			trustThreads: async id => {
@@ -299,7 +323,7 @@ export class AgentsView implements vscode.Disposable {
 			removeAgent: (id: string, deleteBranch: boolean) => this.removeAgentAndWorktree(id, deleteBranch),
 			trust: this.service.trust,
 		};
-		this.projectAgents = new AgentProjects(this.model, this.service, this.projects, this.worktrees, this.merge, this.live, this.tree, host);
+		this.projectAgents = new AgentProjects(this.model, this.service, this.projects, this.worktrees, { isMerging: id => this.mergeLoaded?.isMerging(id) ?? false }, this.live, this.tree, { ...host, keptClean: record => this.tries.keptClean(record) });
 		this.starts = new AgentStarts(this.model, this.worktrees, this.tree, this.live, host);
 		this.forks = new AgentForks(this.model, this.service, this.worktrees, this.live, {
 			start: (record, folder) => this.start(record, folder),
@@ -308,7 +332,7 @@ export class AgentsView implements vscode.Disposable {
 			// A forked thread's card merges it as a thread, so it is resolved once merged.
 			mergeBack: async id => {
 				if (this.model.agent(id)?.project?.role !== 'thread') {
-					return this.merge.mergeBack(id);
+					return this.mergeBack(id);
 				}
 				await this.projects.mergeThread(id);
 				return true;
@@ -323,6 +347,11 @@ export class AgentsView implements vscode.Disposable {
 		this.review = new ReviewController(() => [...this.live.entries()].map(([id, live]) => ({ id, title: vscode.l10n.t("the agent \"{0}\"", this.model.agent(id)?.title ?? ''), changes: live.changes })));
 		this.settler = new CommitSettler(() => [...this.live.values()].map(live => live.changes), message => this.service.writeLog(message));
 		this.indicators = new AgentIndicators(context.extensionUri, this.model, this.live, this.tree.view, this.notifier);
+		// A try left open last time: its status bar item and file badges come back, after the window's own start.
+		if (this.model.agents.some(record => record.tried?.state === 'trying')) {
+			const timer = setTimeout(() => void this.tries, 2000);
+			this.disposables.push(new vscode.Disposable(() => clearTimeout(timer)));
+		}
 		this.disposables.push(
 			this.tree,
 			this.notifier,
@@ -352,7 +381,12 @@ export class AgentsView implements vscode.Disposable {
 			}),
 			vscode.commands.registerCommand('gemini.agents.newAgent', (node?: AgentTreeNode) => this.starts.newAgent(node)),
 			vscode.commands.registerCommand('gemini.agents.newAgentOnBranch', (node?: AgentTreeNode) => this.starts.newAgent(node, true)),
-			vscode.commands.registerCommand('gemini.agents.mergeBack', (node?: AgentTreeNode) => node?.kind === 'agent' && this.merge.mergeBack(node.record.id)),
+			vscode.commands.registerCommand('gemini.agents.mergeBack', (node?: AgentTreeNode) => node?.kind === 'agent' && this.mergeBack(node.record.id)),
+			// The same action, listed instead of Merge Back unless `gemini.agents.mergeBack` is "commit".
+			vscode.commands.registerCommand('gemini.agents.tryInWorkspace', (node?: AgentTreeNode) => node?.kind === 'agent' && this.mergeBack(node.record.id)),
+			vscode.commands.registerCommand('gemini.agents.takeBack', (node?: AgentTreeNode) => node?.kind === 'agent' && this.tryAction(node.record.id, 'takeBack')),
+			// The status bar item of a try: Keep Changes, Take Back and the rest.
+			vscode.commands.registerCommand('gemini.tries.menu', (id?: unknown) => this.tries.showMenu(typeof id === 'string' ? id : undefined)),
 			vscode.commands.registerCommand('gemini.agents.fork', (node?: AgentTreeNode) => this.fork(node)),
 			vscode.commands.registerCommand('gemini.reviewChanges', (source?: { readonly rootUri?: vscode.Uri }) => this.starts.reviewChanges(source)),
 			vscode.commands.registerCommand('gemini.agents.addWorkspace', () => this.starts.addWorkspace()),
@@ -506,6 +540,7 @@ export class AgentsView implements vscode.Disposable {
 					id: record.id, title: record.title, folder: workspace.folder, state: state.kind, status: state.status,
 					...(changes?.files ? { changes } : {}), ...(record.worktree ? { worktree: record.worktree } : {}), updatedAt: record.updatedAt,
 					...(record.archivedAt !== undefined && !live && isArchived(record, Date.now()) ? { archived: true } : {}),
+					...(record.tried?.state === 'trying' ? { trying: true } : {}),
 					...(projects && record.project?.role === 'coordinator' ? { project: { role: 'coordinator', threads: this.model.threadsOf(record.id).length } } : {}),
 					...(projects && record.project?.role === 'thread' && this.model.coordinatorOf(record) ? { project: { role: 'thread' } } : {}),
 				});
@@ -554,7 +589,7 @@ export class AgentsView implements vscode.Disposable {
 				const workspace = this.model.workspace(record.workspaceId);
 				return workspace && (await repositoryRoot(workspace.folder) ?? workspace.folder);
 			},
-			running: id => this.live.has(id) || this.merge.isMerging(id),
+			running: id => this.live.has(id) || !!this.mergeLoaded?.isMerging(id),
 			reviewing: id => !!this.reviewChip?.(id),
 		});
 	}
@@ -596,9 +631,116 @@ export class AgentsView implements vscode.Disposable {
 		return this.starts.reviewChanges(source);
 	}
 
-	/** Merges an agent's branch into the branch its workspace has checked out; returns whether all of its work is now merged. */
+	/**
+	 * Merge Back, wherever it is offered: Try in Workspace, or Keep Changes
+	 * once tried; with `gemini.agents.mergeBack` set to "commit", the merge of
+	 * the agent's branch (returning whether all of its work is now merged).
+	 */
 	mergeBack(id: string, repo?: string): Promise<boolean> {
-		return this.merge.mergeBack(id, repo);
+		if (mergeCommits()) {
+			return this.merge.mergeBack(id, repo);
+		}
+		// One button, wherever it is: once tried, it offers Keep Changes, Take Back and the rest.
+		if (this.model.agent(id)?.tried?.state === 'trying') {
+			return this.tries.showMenu(id).then(() => true);
+		}
+		return this.tryAction(id, 'try');
+	}
+
+	/** Whether an agent's work is being tried in the user's checkout now. */
+	isTrying(id: string): boolean {
+		return this.model.agent(id)?.tried?.state === 'trying';
+	}
+
+	/** Try in Workspace and the rest (agentTries.ts); returns whether it did. */
+	tryAction(id: string, action: TryAction): Promise<boolean> {
+		const tries = this.tries;
+		switch (action) {
+			case 'try': return tries.tryIn(id);
+			case 'keep': return tries.keep(id);
+			case 'takeBack': return tries.takeBack(id);
+			case 'send': return tries.sendEdits(id);
+			case 'resolve': return tries.openConflict(id).then(() => true);
+			case 'discard': return tries.discard(id);
+			case 'restore': return tries.restore(id);
+		}
+	}
+
+	private get planReviews(): PlanReviews {
+		if (!this.planReviewsLoaded) {
+			this.planReviewsLoaded = new (this.pages().PlanReviews)({
+				extensionUri: this.context.extensionUri,
+				storageFolder: vscode.Uri.joinPath(this.context.globalStorageUri, 'planReviews').fsPath,
+				globalState: this.context.globalState,
+				title: id => this.model.agent(id)?.title,
+				column: async id => {
+					const live = this.live.get(id);
+					return live ? agentColumn(id, live.panel) : vscode.ViewColumn.Active;
+				},
+				busy: id => !!this.live.get(id)?.activity.busy,
+				canBuild: id => !!this.live.get(id)?.controller.canBuildPlan,
+				// Waits for a running turn, as a queued message does; resolves once the message's own turn is over.
+				send: (id, text) => new Promise<boolean>((settle, reject) => {
+					const live = this.ensureLive(id);
+					if (live) {
+						live.controller.send(text, [], undefined, 'queue', { settle }).catch(reject);
+					} else {
+						settle(false);
+					}
+				}),
+				build: async (id, text) => !!await this.live.get(id)?.controller.buildLatestPlan(text),
+				showDiff: async (id, file, before) => {
+					const now = await fs.promises.readFile(file, 'utf8').catch(() => '');
+					const live = this.live.get(id);
+					await this.diffPreview.show({ path: file, oldText: before, newText: now }, live ? { viewColumn: await agentColumn(id, live.panel) } : {});
+				},
+				onDidChangeAgent: this.onDidChangeTurnEmitter.event,
+			});
+			this.disposables.push(this.planReviewsLoaded, this.onDidChangeTurnEmitter);
+		}
+		return this.planReviewsLoaded;
+	}
+
+	private get merge(): AgentMerge {
+		return this.mergeLoaded ??= new (this.onDemand().AgentMerge)(this.model, this.live, (id, deleteBranch) => this.removeAgentAndWorktree(id, deleteBranch), inRepository, folder => writeCommitMessage(folder, undefined, this.direct));
+	}
+
+	private get tries(): AgentTries {
+		if (!this.triesLoaded) {
+			this.triesLoaded = new (this.onDemand().AgentTries)({
+				model: this.model,
+				inRepository,
+				// Not while the chat copies the edits for its own turn ("Include your edits"), busy so nothing else starts.
+				busy: id => !!this.live.get(id)?.activity.busy && !this.live.get(id)?.controller.includingEdits,
+				tell: (id, text) => this.ensureLive(id)?.controller.addContext(text),
+				changed: id => {
+					this.projects.refreshThread(id);
+					this.refresh(id);
+					// The Changes panel's buttons follow the agent's try.
+					if (this.focusedId === id) {
+						this.onDidFocusEmitter.fire(this.focusedSource);
+					}
+				},
+				open: id => this.open(id),
+				log: message => this.service.writeLog(message),
+				postEdits: (id, files) => {
+					if (files.length) {
+						this.triedEdits.set(id, files);
+					} else {
+						this.triedEdits.delete(id);
+					}
+					this.live.get(id)?.controller.setTriedEdits(files);
+					this.projects.refreshThread(id);
+				},
+				setResolved: (id, resolved) => {
+					if (this.model.agent(id)?.project?.role === 'thread') {
+						this.projects.setThreadKept(id, resolved);
+					}
+				},
+			});
+			this.disposables.push(this.triesLoaded);
+		}
+		return this.triesLoaded;
 	}
 
 	/** Stops the agent's current turn, as its Stop button does, even while its session still opens. */
@@ -696,6 +838,14 @@ export class AgentsView implements vscode.Disposable {
 
 	/** Removes the agent, its worktree folder and, with `deleteBranch`, its branch. */
 	private async removeAgentAndWorktree(id: string, deleteBranch: boolean): Promise<void> {
+		// Its work tried in the user's checkout stays theirs or is taken back first, as they say.
+		if (this.model.agent(id)?.tried?.state === 'trying' && !await this.tries.beforeRemove(id)) {
+			return;
+		}
+		// What Discard Changes saved of its folder goes with it.
+		if (this.model.agent(id)?.worktree) {
+			await this.tries.forget(id);
+		}
 		const record = this.model.agent(id);
 		const workspace = record && this.model.workspace(record.workspaceId);
 		this.stop(id, false);
@@ -867,7 +1017,13 @@ export class AgentsView implements vscode.Disposable {
 			editorColumn: () => agentColumn(id, live.panel),
 			focusEditors: async () => { await agentColumn(id, live.panel, true); },
 			busy: () => live.activity.busy,
-			...(record.worktree ? { branch: record.worktree.branch, mergeBack: async () => { await this.merge.mergeBack(id); } } : { commit: () => live.controller.commit() }),
+			...(record.worktree ? {
+				branch: record.worktree.branch,
+				trying: record.tried?.state === 'trying',
+				mergeBack: async () => { await this.mergeBack(id); },
+				keep: async () => { await this.tryAction(id, 'keep'); },
+				takeBack: async () => { await this.tryAction(id, 'takeBack'); },
+			} : { commit: () => live.controller.commit() }),
 		} : undefined;
 	}
 
@@ -920,7 +1076,7 @@ export class AgentsView implements vscode.Disposable {
 			?? this.teamTools?.instantAnswer(request) ?? (this.reviewChip?.(record.id) ? reviewerGitAnswer(request) : undefined);
 		// A folder outside the window lists its files from its index once that is built, else from git.
 		const files: FileSearch = isOpenFolder(folder) ? this.workspaceFiles : new FolderFileIndex(folder, undefined, () => this.index?.files(folder) ?? Promise.resolve(undefined));
-		const changes = new AgentChanges(folder);
+		const changes = new AgentChanges(folder, path.join(cliHome(), projectTempDirName));
 		const workspace = (): ChatWorkspace | undefined => {
 			const workspace = this.model.workspace(record.workspaceId);
 			const current = this.model.agent(record.id) ?? record;
@@ -936,6 +1092,9 @@ export class AgentsView implements vscode.Disposable {
 				reveal: preserveFocus => this.reveal(record.id, preserveFocus),
 				isShown: () => this.live.get(record.id)?.panel?.visible === true,
 				onDidPickModel: modelId => this.model.setCoordinatorModel(record.id, modelId),
+				sendTriedEdits: () => this.tries.sendEdits(record.id, true),
+				reviewPlan: file => void this.planReviews.open(record.id, file).catch(err => showError(errorMessage(err))),
+				planReviewFolder: vscode.Uri.joinPath(this.context.globalStorageUri, 'planReviews').fsPath,
 				editorColumn: () => agentColumn(record.id, this.live.get(record.id)?.panel),
 				enhancer: this.enhancer,
 				indexContext: draft => this.index?.contextFor(folder, draft) ?? Promise.resolve(undefined),
@@ -1024,6 +1183,14 @@ export class AgentsView implements vscode.Disposable {
 				live.activity = activity;
 				if (project) {
 					this.projects.threadActivity(this.model.agent(record.id) ?? record, before, activity);
+				}
+				// A tried agent's turn ended: its new work follows into the checkout. A discarded one's new work replaces what Restore would bring back.
+				const ended = before.busy && !activity.busy ? this.model.agent(record.id) : undefined;
+				if (ended?.tried || ended?.discarded?.length) {
+					void this.tries.turnEnded(record.id);
+				}
+				if (before.busy !== activity.busy) {
+					this.onDidChangeTurnEmitter.fire(record.id);
 				}
 				this.refresh(record.id);
 			}),
@@ -1377,4 +1544,9 @@ function reviewerGitAnswer(request: acp.RequestPermissionRequest): InstantAnswer
 	const command = shellCommand(request);
 	const once = request.options.find(option => option.kind === 'allow_once');
 	return command !== undefined && once && isReadOnlyGitRead(command) ? { optionId: once.optionId, label: vscode.l10n.t("Allowed: the reviewer reads the repository with git") } : undefined;
+}
+
+/** Whether Merge Back makes a merge commit (`gemini.agents.mergeBack` set to "commit") rather than trying the agent's work in the workspace. */
+function mergeCommits(): boolean {
+	return vscode.workspace.getConfiguration(configSection).get<string>('agents.mergeBack') === 'commit';
 }

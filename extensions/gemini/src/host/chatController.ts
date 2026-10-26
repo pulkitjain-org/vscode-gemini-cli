@@ -6,6 +6,7 @@
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
 import { promises as fs } from 'node:fs';
+import * as path from 'node:path';
 import { onDidChangeFoldWork } from './foldWork';
 import { onDidChangeSpellCheck } from './spellCheck';
 import { currentTraceFile } from './traceCommand';
@@ -17,11 +18,13 @@ import { ChatTranscript, ForkContext, ThreadCard, toolCallItemId, TranscriptItem
 import { buildModeAfterPlan, diffsOf, nextApprovalMode, dropOldest, lastPromptAt, planBuildChoice, planBuildModels, runningStep, turnShape, wasCutOff } from '../acp/chatTurns';
 import type { StoredCheckpoints } from '../acp/checkpoints';
 import { buildPromptContent } from '../acp/promptContent';
-import { atSafePoint, PromptQueue, steeringNote } from '../acp/promptQueue';
+import { atSafePoint, PromptQueue, steeringNote, steerWaitMs, type PromptExtras } from '../acp/promptQueue';
 import { meaningOf, olderReplyExcerpt, reactionNote, reactionRule, routeReaction, type ReactionRef, type ReactionRequest } from '../acp/reactions';
 import { CoordinatorTurnFailed } from '../acp/projectHub';
 import { TeamCommandCancelled } from '../acp/teamCommandExpansion';
-import { ConversationEntry, readCliConversation } from '../acp/cliSessions';
+import { cliHome, ConversationEntry, readCliConversation, readSessionMessages } from '../acp/cliSessions';
+import { projectTempDirName } from '../acp/cli/formats';
+import { sessionFolder } from '../acp/sessionFolder';
 import { isModelOutput } from '../acp/sessionUpdates';
 import { TextDeltas } from '../acp/textDeltas';
 import type { ModelTokens } from '../acp/turnUsage';
@@ -42,7 +45,8 @@ import { ChatCommands } from './chat/chatCommands';
 import { ChatCompact, compactCommand } from './chat/chatCompact';
 import { ChatFork, forkCommand } from './chat/chatFork';
 import { ChatEnhance } from './chat/chatEnhance';
-import { ChatFileLinks } from './chat/chatFiles';
+import { ChatFileLinks, isFile } from './chat/chatFiles';
+import { extensionChunk } from './lazyFeature';
 import { ChatFollow } from './chat/chatFollow';
 import { ChatGitControls } from './chat/chatGit';
 import { chatHtml } from './chat/chatHtml';
@@ -107,6 +111,9 @@ export class ChatController implements vscode.Disposable {
 	private readonly queue = new PromptQueue();
 	/** The turn is being stopped to send the messages that steer it. */
 	private steerStopping = false;
+	/** Offers Stop Now on a message sent now that has waited `steerWaitMs` for a safe point. */
+	private steerWaitTimer: ReturnType<typeof setTimeout> | undefined;
+	private steerWaiting = false;
 	/** A prompt's turn is running; other work that keeps the chat busy (Compact, Undo, a new session) is not one. */
 	private turnRunning = false;
 
@@ -116,6 +123,10 @@ export class ChatController implements vscode.Disposable {
 	private retryItemId: string | undefined;
 	/** Context sent ahead of the next prompt without showing in the chat, such as a project's memory for a thread. */
 	private pendingContext: string | undefined;
+	/** The agent's tried files the user edited and hasn't sent it. */
+	private triedEdits: readonly string[] = [];
+	/** The Markdown file the running Plan mode turn wrote last: its plan. */
+	private turnPlanFile: string | undefined;
 	/** The saved chat being read in, while it is: prompts wait for it, so neither replaces the other. */
 	private restoring: Promise<void> | undefined;
 	/** Whether the view's script has said it is ready since the view was attached. */
@@ -125,6 +136,7 @@ export class ChatController implements vscode.Disposable {
 
 	/** Aborts the running turn's wait for its session (`ensureReady`), so Stop works before the prompt is sent. */
 	private turnWait: AbortController | undefined;
+	private _includingEdits = false;
 	/** The latest failed turn's notice, with the ways out it offers; cleared when the next turn starts. */
 	private _lastTurnError: TurnErrorNotice | undefined;
 	private disposed = false;
@@ -183,7 +195,7 @@ export class ChatController implements vscode.Disposable {
 		const client = service.client;
 		// A project's chat never asks its coordinator to react.
 		this.transcript.liftReactions = !options.project;
-		this.files = new ChatFileLinks(diffPreview, () => options.git?.folder() ?? client.cwd, options);
+		this.files = new ChatFileLinks(diffPreview, () => options.git?.folder() ?? client.cwd, options, file => this.reviewPlanFile(file), file => this.rebuildPlan(file));
 		// A long tool output is kept whole here for Show All; the transcript, and every reset, carries its first and last lines.
 		this.transcript.trimOutput = (itemId, part, text) => this.files.outputs.put(itemId, part, text);
 		this.permissions = new ChatPermissions(service.permissions, this.transcript, this.files, options);
@@ -277,6 +289,11 @@ export class ChatController implements vscode.Disposable {
 							this.checkpoints.record(diffs);
 							this.onDidEditFilesEmitter.fire(diffs);
 							edited = diffs;
+							// The plan a Plan mode turn writes, for its Review Plan.
+							const plan = client.settings.mode?.currentId === 'plan' ? diffs.map(diff => diff.path).findLast(file => /\.(md|markdown)$/i.test(file)) : undefined;
+							if (plan) {
+								this.turnPlanFile = plan;
+							}
 						}
 					}
 					if (this.timing?.sent !== undefined) {
@@ -288,6 +305,10 @@ export class ChatController implements vscode.Disposable {
 						}
 					}
 					this.transcript.apply(event);
+					// The model answering after a tool means the tool's result reached it: a message sent now can stop the turn.
+					if (this.queue.hasSteer && isModelOutput(event)) {
+						this.trySteer();
+					}
 					if (event.kind === 'toolCall' && edited.length && editsWithoutCards(client.settings.mode?.currentId)) {
 						// No card asked about this edit: its row says when another agent is changing the file too.
 						this.transcript.setOthers(toolCallItemId(event.call.id), this.permissions.othersChanging(edited.map(diff => diff.path)));
@@ -464,11 +485,13 @@ export class ChatController implements vscode.Disposable {
 	 * Sends a prompt as if typed in the view; `from` marks one its project's
 	 * coordinator sent. While the agent works, `when` decides: `queue` holds
 	 * it until the turn ends, `now` steers the turn at its next safe point;
-	 * without it the prompt is dropped, as before.
+	 * without it the prompt is dropped, as before. `extras.settle` is told
+	 * whether the prompt went, once its own turn is over.
 	 */
-	async send(text: string, attachments: readonly Attachment[] = [], from?: 'coordinator', when?: 'now' | 'queue'): Promise<void> {
+	async send(text: string, attachments: readonly Attachment[] = [], from?: 'coordinator', when?: 'now' | 'queue', extras: PromptExtras = {}): Promise<void> {
 		attachments = attachments.filter(isValidAttachment);
 		if (!text.trim() && !attachments.length) {
+			extras.settle?.(false);
 			return;
 		}
 		if (this.restoring) {
@@ -478,7 +501,7 @@ export class ChatController implements vscode.Disposable {
 		if (project) {
 			if (this.busy) {
 				// The coordinator is working: the message waits for its turn to end, never stopping it.
-				this.queue.add(text, attachments, false);
+				this.queue.add(text, attachments, false, undefined, extras);
 				this.postQueue();
 				return;
 			}
@@ -490,16 +513,24 @@ export class ChatController implements vscode.Disposable {
 			this.transcript.addPrompt(text, attachments);
 			this.onDidSendPromptEmitter.fire(text);
 			project.post(text, attachments);
+			extras.settle?.(true);
 			return;
 		}
 		if (this.busy) {
-			// A coordinator's note waits for the turn to end; the user's own message steers when sent now.
+			// A coordinator's note waits for the turn to end; the user's own message steers when sent now,
+			// except one with the user's edits, which can only go once the agent's turn is over.
 			if (when || from) {
-				this.queue.add(text, attachments, when === 'now', from);
+				this.queue.add(text, attachments, when === 'now' && !extras.includeEdits, from, extras);
 				this.postQueue();
 				this.trySteer();
+			} else {
+				extras.settle?.(false);
 			}
 			return;
+		}
+		if (extras.settle) {
+			// Plan Review's message, never a command.
+			return this.startPrompt(text, attachments, from, [], extras);
 		}
 		if (this.options.savedSessions && text.trim() === `/${resumeCommand().name}` && !attachments.length) {
 			void this.pickSession();
@@ -517,11 +548,11 @@ export class ChatController implements vscode.Disposable {
 			void this.forks.open();
 			return;
 		}
-		await this.startPrompt(text, attachments, from);
+		await this.startPrompt(text, attachments, from, [], extras);
 	}
 
 	/** Starts a prompt's turn, the chat being idle: shows it, and sends it with the notes of any reactions it carries. */
-	private async startPrompt(text: string, attachments: readonly Attachment[], from?: 'coordinator', reactions: readonly ReactionRequest[] = []): Promise<void> {
+	private async startPrompt(text: string, attachments: readonly Attachment[], from?: 'coordinator', reactions: readonly ReactionRequest[] = [], extras: PromptExtras = {}): Promise<void> {
 		this.sessions.stopReplay();
 		this.service.open?.();
 		if (this.retryItemId) {
@@ -533,7 +564,7 @@ export class ChatController implements vscode.Disposable {
 			this.onDidSendPromptEmitter.fire(text);
 		}
 		this.lastPrompt = { text, attachments, ...(reactions.length ? { reactions } : {}) };
-		await this.runTurn(text, attachments, true, false, reactions);
+		await this.runTurn(text, attachments, true, false, reactions, extras);
 	}
 
 	/**
@@ -594,6 +625,33 @@ export class ChatController implements vscode.Disposable {
 
 	private postReactions(): void {
 		this.post({ type: 'reactions', on: !this.options.project && reactionsOn(), recents: recentReactions() });
+	}
+
+	/** The agent's tried files the user edited and hasn't sent it (agentTries.ts): the message box offers to include them. */
+	setTriedEdits(files: readonly string[]): void {
+		this.triedEdits = files;
+		this.post({ type: 'triedEdits', files });
+	}
+
+	/**
+	 * "Include your edits": the user's edits to tried files go to the agent's
+	 * folder as its turn starts, the chat already busy so no other message
+	 * starts one meanwhile; a failure shows in the chat.
+	 */
+	private async includeTriedEdits(): Promise<void> {
+		if (this.triedEdits.length) {
+			this._includingEdits = true;
+			try {
+				await this.options.sendTriedEdits?.().catch(err => this.transcript.addNotice(vscode.l10n.t("Your edits weren't sent to the agent: {0}", errorMessage(err)), 'error'));
+			} finally {
+				this._includingEdits = false;
+			}
+		}
+	}
+
+	/** The chat is busy copying the user's edits for its own turn: Send My Edits' busy check lets that through. */
+	get includingEdits(): boolean {
+		return this._includingEdits;
 	}
 
 	/** Sends `text` to the agent ahead of the next prompt, without showing it in the chat. */
@@ -658,7 +716,7 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	/** `steer` carries on after a turn stopped for messages sent now: the agent is told why it stopped. */
-	private async runTurn(text: string, attachments: readonly Attachment[], expand: boolean, steer = false, reactions: readonly ReactionRequest[] = []): Promise<TurnOutcome> {
+	private async runTurn(text: string, attachments: readonly Attachment[], expand: boolean, steer = false, reactions: readonly ReactionRequest[] = [], extras: PromptExtras = {}): Promise<TurnOutcome> {
 		this.turnRunning = true;
 		this.checkpoints.beginTurn();
 		this.setBusy(true);
@@ -666,6 +724,9 @@ export class ChatController implements vscode.Disposable {
 		let ended = false;
 		let overflowed = false;
 		let failed = false;
+		/** Where the turn's output starts in the transcript, once its prompt went; and whether the agent took it. */
+		let promptAt: number | undefined;
+		let delivered = false;
 		/** How the turn came to an end, for the messages waiting on it. */
 		let outcome: 'done' | 'steer' | 'stopped' = 'stopped';
 		this.timing = { started, permissions: 0 };
@@ -674,6 +735,9 @@ export class ChatController implements vscode.Disposable {
 		this.transcript.clearNoticeActions();
 		const wait = this.turnWait = new AbortController();
 		try {
+			if (extras.includeEdits) {
+				await this.includeTriedEdits();
+			}
 			try {
 				await this.service.ensureReady(wait.signal);
 			} finally {
@@ -729,7 +793,9 @@ export class ChatController implements vscode.Disposable {
 			}
 			this.timing.sent = Date.now();
 			recordPilot({ kind: 'prompt', waitedMs: this.timing.ready - started });
+			promptAt = this.transcript.items.length;
 			const { stopReason, usage } = await this.promptRecovering(content);
+			delivered = true;
 			this.checkpoints.noteDelivered();
 			if (context === this.pendingContext) {
 				this.pendingContext = undefined;
@@ -741,7 +807,7 @@ export class ChatController implements vscode.Disposable {
 			if (notice) {
 				this.transcript.addNotice(notice, stopReason === 'refusal' ? 'error' : 'info', this.options.project ? [] : stopReasonActions(stopReason));
 			}
-			this.endTurn(Date.now() - started, usage, !steered && stopReason !== 'end_turn');
+			this.endTurn(Date.now() - started, usage, !steered && stopReason !== 'end_turn', steered);
 			ended = true;
 			outcome = steered ? 'steer' : stopReason === 'end_turn' ? 'done' : 'stopped';
 		} catch (err) {
@@ -752,6 +818,10 @@ export class ChatController implements vscode.Disposable {
 				overflowed = true;
 			} else if (err instanceof TeamCommandCancelled) {
 				this.transcript.addNotice(errorMessage(err), 'info');
+			} else if (err instanceof RefusedAgainError) {
+				this.service.writeLog?.(`The turn failed: ${errorMessage(err)}`);
+				this.transcript.addNotice(errorMessage(err), 'error', this.options.project ? [] : ['newSession', 'switchModel']);
+				failed = true;
 			} else {
 				const notice = this._lastTurnError = this.turnError(err);
 				this.service.writeLog?.(`The turn failed (${notice.error.kind}): ${errorMessage(err)}`);
@@ -760,6 +830,7 @@ export class ChatController implements vscode.Disposable {
 				failed = true;
 			}
 		} finally {
+			this.setSteerWaiting(false);
 			if (!ended && this.checkpoints.turnChangedFiles) {
 				// The turn failed after changing files; they can still be undone.
 				this.endTurn(Date.now() - started, undefined, true);
@@ -771,6 +842,9 @@ export class ChatController implements vscode.Disposable {
 			}
 			void this.usage.postContext();
 		}
+		// Sent once the agent took the prompt: it answered, or the turn got as far as the model's output before failing.
+		// A turn that failed before that, or overflowed (its prompt goes back in the box), never went.
+		extras.settle?.(!overflowed && (delivered || (promptAt !== undefined && this.transcript.items.slice(promptAt).some(item => item.kind === 'agent' || item.kind === 'thought' || item.kind === 'toolCall'))));
 		if (overflowed) {
 			this.queue.holdSteers();
 			this.postQueue();
@@ -794,10 +868,9 @@ export class ChatController implements vscode.Disposable {
 			return;
 		}
 		if (outcome === 'stopped') {
-			if (this.queue.hasSteer) {
-				this.queue.holdSteers();
-				this.postQueue();
-			}
+			this.queue.holdSteers();
+			this.queue.dropAwaited();
+			this.postQueue();
 			return;
 		}
 		const next = outcome === 'steer' || this.queue.hasSteer ? this.queue.takeSteers() : this.queue.takeAll();
@@ -810,7 +883,7 @@ export class ChatController implements vscode.Disposable {
 		}
 		if (this.options.project) {
 			// What waited in a project's chat goes to the hub, which wakes the coordinator again.
-			await this.send(next.text, next.attachments);
+			await this.send(next.text, next.attachments, undefined, undefined, next);
 			return;
 		}
 		this.transcript.addPrompt(next.text, next.attachments, next.from, (next.reactions ?? []).map(reactionRef));
@@ -818,7 +891,7 @@ export class ChatController implements vscode.Disposable {
 			this.onDidSendPromptEmitter.fire(next.text);
 		}
 		this.lastPrompt = next;
-		await this.runTurn(next.text, next.attachments, true, outcome === 'steer', next.reactions);
+		await this.runTurn(next.text, next.attachments, true, outcome === 'steer', next.reactions, next);
 	}
 
 	/** Stops the turn for the messages sent now, once no tool is running; a running tool's end calls this again. */
@@ -829,10 +902,34 @@ export class ChatController implements vscode.Disposable {
 		}
 		const waiting = this.service.permissions.pendingPermissions.length > 0;
 		if (!atSafePoint(this.transcript.items, waiting)) {
+			// A long tool chain may not reach one for a while: the queue then offers Stop Now.
+			this.steerWaitTimer ??= setTimeout(() => {
+				this.steerWaitTimer = undefined;
+				if (this.busy && this.queue.hasSteer && !this.steerStopping) {
+					this.setSteerWaiting(true);
+				}
+			}, steerWaitMs);
 			return;
 		}
+		this.stopForSteer();
+	}
+
+	/** Stops the turn for the messages sent now; Stop Now does it without waiting for a safe point. */
+	private stopForSteer(): void {
+		this.setSteerWaiting(false);
 		this.steerStopping = true;
 		void this.service.cancel();
+	}
+
+	private setSteerWaiting(waiting: boolean): void {
+		if (!waiting) {
+			clearTimeout(this.steerWaitTimer);
+			this.steerWaitTimer = undefined;
+		}
+		if (this.steerWaiting !== waiting) {
+			this.steerWaiting = waiting;
+			this.post({ type: 'steerWaiting', waiting });
+		}
 	}
 
 	private postQueue(): void {
@@ -840,7 +937,14 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	/** A pending message's buttons in the composer. */
-	private queueAction(id: string, action: 'send' | 'edit' | 'remove'): void {
+	private queueAction(id: string, action: 'send' | 'edit' | 'remove' | 'stopNow'): void {
+		if (action === 'stopNow') {
+			// As `trySteer`: no turn to stop while the session opens, nor a quiet one.
+			if (this.busy && !this.quiet && !this.turnWait && this.queue.hasSteer && !this.steerStopping) {
+				this.stopForSteer();
+			}
+			return;
+		}
 		if (action === 'send') {
 			if (!this.busy) {
 				const prompt = this.queue.remove(id);
@@ -848,7 +952,7 @@ export class ChatController implements vscode.Disposable {
 				if (prompt?.reactions?.length) {
 					void this.startPrompt(prompt.text, prompt.attachments, prompt.from, prompt.reactions);
 				} else if (prompt) {
-					void this.send(prompt.text, prompt.attachments, prompt.from);
+					void this.send(prompt.text, prompt.attachments, prompt.from, undefined, prompt);
 				}
 				return;
 			}
@@ -861,6 +965,7 @@ export class ChatController implements vscode.Disposable {
 		}
 		const prompt = this.queue.remove(id);
 		this.postQueue();
+		prompt?.settle?.(false);
 		// A reaction has no text to edit: Edit only takes it out.
 		if (action === 'edit' && prompt?.text) {
 			this.post({ type: 'draft', text: prompt.text });
@@ -878,7 +983,7 @@ export class ChatController implements vscode.Disposable {
 	 * puts `prompt` back in the box. Nothing is sent again by itself, since the
 	 * turn may have changed files before it failed.
 	 */
-	private async continueAfterOverflow(prompt: string | undefined): Promise<void> {
+	private async continueAfterOverflow(prompt: string | undefined, reason: 'overflow' | 'refused' = 'overflow'): Promise<void> {
 		const sessionId = this.sessions.current();
 		const conversation = sessionId ? await readCliConversation(this.service.client.cwd, sessionId).catch(() => undefined) : undefined;
 		this.setBusy(true);
@@ -888,14 +993,21 @@ export class ChatController implements vscode.Disposable {
 			await this.service.client.newSession();
 			this.options.project?.sessionReplaced();
 		} catch (err) {
-			this.transcript.addNotice(vscode.l10n.t("Gemini's context for this chat is full, and a new session could not start: {0} Start a new chat to carry on.", this.turnError(err).text), 'error');
+			this.transcript.addNotice(reason === 'refused'
+				? vscode.l10n.t("A new session could not start: {0} Start a new chat to carry on.", this.turnError(err).text)
+				: vscode.l10n.t("Gemini's context for this chat is full, and a new session could not start: {0} Start a new chat to carry on.", this.turnError(err).text), 'error');
 			return;
 		} finally {
 			this.setBusy(false);
 		}
-		this.transcript.addNotice(this.sessions.carry('this chat', conversation)
-			? vscode.l10n.t("Gemini's context for this chat filled up, most likely with a large tool output, so Gemini could not answer. The chat continues in a new session that is given the conversation so far, without the tool outputs. Send your message again to carry on.")
-			: vscode.l10n.t("Gemini's context for this chat filled up, most likely with a large tool output, so Gemini could not answer. The chat continues in a new session that starts without the earlier conversation. Send your message again to carry on."), 'error');
+		const carried = this.sessions.carry('this chat', conversation);
+		this.transcript.addNotice(reason === 'refused'
+			? carried
+				? vscode.l10n.t("The chat continues in a new session that is given the conversation so far, without the tool outputs. Send your message again to carry on.")
+				: vscode.l10n.t("The chat continues in a new session that starts without the earlier conversation. Send your message again to carry on.")
+			: carried
+				? vscode.l10n.t("Gemini's context for this chat filled up, most likely with a large tool output, so Gemini could not answer. The chat continues in a new session that is given the conversation so far, without the tool outputs. Send your message again to carry on.")
+				: vscode.l10n.t("Gemini's context for this chat filled up, most likely with a large tool output, so Gemini could not answer. The chat continues in a new session that starts without the earlier conversation. Send your message again to carry on."), reason === 'refused' ? 'info' : 'error');
 		if (prompt) {
 			this.post({ type: 'draft', text: prompt });
 		}
@@ -927,16 +1039,19 @@ export class ChatController implements vscode.Disposable {
 			if (!isModelTurnRefusal(errorMessage(err))) {
 				throw err;
 			}
-			throw new Error(vscode.l10n.t("Gemini refused the request after a tool result, and again when asked to carry on. This is a known Gemini CLI problem after screenshots. The work so far is kept: send your message again, or switch the model and retry."));
+			throw new RefusedAgainError(vscode.l10n.t("Gemini refused this session's request twice after a tool result, a known Gemini CLI problem after images such as screenshots, and it is likely to refuse later messages in this session too. Your files are as the agent left them. Continue in a new session, which is given the conversation so far without tool outputs, or switch the model and retry."));
 		}
 	}
 
 	/** Adds the turn's end, offering Retry and, when it changed files, Undo. */
-	private endTurn(durationMs: number, usage?: readonly ModelTokens[], unfinished = false): void {
+	/** `steered`: stopped for a message sent now, which carries on at once, so it offers no Retry. */
+	private endTurn(durationMs: number, usage?: readonly ModelTokens[], unfinished = false, steered = false): void {
 		const id = this.transcript.addTurnEnd(durationMs, usage);
 		const { files, undoable } = this.checkpoints.endTurn(id);
 		const build = this.planBuild(usage);
-		this.transcript.updateTurnEnd(id, { retry: !this.options.project, ...(files ? { files } : {}), ...(undoable ? { undo: 'available' } : {}), ...(build ? { buildPlan: true, build } : {}), ...(unfinished ? { unfinished } : {}) });
+		const planFile = build && this.options.reviewPlan ? this.turnPlanFile : undefined;
+		this.turnPlanFile = undefined;
+		this.transcript.updateTurnEnd(id, { retry: !this.options.project && !steered, ...(files ? { files } : {}), ...(undoable ? { undo: 'available' } : {}), ...(build ? { buildPlan: true, build } : {}), ...(unfinished ? { unfinished } : {}), ...(steered ? { steered } : {}), ...(planFile ? { planFile } : {}) });
 		this.retryItemId = id;
 		const timing = this.timing;
 		this.timing = undefined;
@@ -1040,16 +1155,64 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	/** Leaves Plan mode and asks the agent to carry out the plan it just wrote: in `picked` (the chevron's other choice), else the mode before Plan. */
-	private async buildPlan(itemId: string, picked?: string): Promise<void> {
+	private async buildPlan(itemId: string, picked?: string, text = vscode.l10n.t("Carry out the plan above.")): Promise<boolean> {
 		const choice = this.planBuild();
 		const mode = picked && (picked === choice?.mode || picked === choice?.other) ? picked : choice?.mode;
 		if (this.busy || itemId !== this.retryItemId || !mode) {
-			return;
+			return false;
+		}
+		const item = this.transcript.items.find(each => each.id === itemId);
+		if (item?.kind === 'turnEnd' && item.planFile) {
+			// The agent reads its plan to carry it out.
+			await this.rebuildPlan(item.planFile);
 		}
 		await this.settings.change(() => this.service.client.setMode(mode));
 		if (this.service.client.settings.mode?.currentId === mode) {
-			await this.send(vscode.l10n.t("Carry out the plan above."));
+			await this.send(text);
+			return true;
 		}
+		return false;
+	}
+
+	/** Whether the latest turn ended in Plan mode and offers Build This Plan, for Plan Review. */
+	get canBuildPlan(): boolean {
+		const item = this.retryItemId ? this.transcript.items.find(each => each.id === this.retryItemId) : undefined;
+		return !this.busy && item?.kind === 'turnEnd' && !!item.buildPlan;
+	}
+
+	/** Build This Plan on the latest turn, from Plan Review, telling the agent `text`; resolves whether it started. */
+	buildLatestPlan(text: string): Promise<boolean> {
+		return this.canBuildPlan && this.retryItemId ? this.buildPlan(this.retryItemId, undefined, text) : Promise.resolve(false);
+	}
+
+	/**
+	 * Writes plan `file` again when the CLI deleted it, as it did on reopening
+	 * a session before GeminiCode kept sessions' plans (src/acp/sessionFolder.ts):
+	 * from Plan Review's copy, else the session's saved calls (sessionReplay.ts).
+	 */
+	private async rebuildPlan(file: string): Promise<void> {
+		const home = cliHome();
+		const cwd = this.service.client.cwd;
+		if (file.startsWith(path.join(home, projectTempDirName) + path.sep) && !await isFile(file)) {
+			const rebuilt = await extensionChunk<typeof import('../onDemand')>('onDemand')().rebuildSessionFile(cwd, file, {
+				home,
+				folder: id => sessionFolder(cwd, id, home),
+				messages: async id => (await readSessionMessages(cwd, id, home))?.messages,
+				reviews: this.options.planReviewFolder,
+			}).catch(() => undefined);
+			if (rebuilt === 'history') {
+				this.transcript.addNotice(vscode.l10n.t("The plan file was gone, so it was rebuilt from the session's history. It may differ a little from the one the agent wrote."), 'info');
+			}
+		}
+	}
+
+	/** Plan mode's plan, opened from its chip: in Plan Review when there is one; false otherwise. */
+	private reviewPlanFile(file: string): boolean {
+		if (!this.options.reviewPlan || this.service.client.settings.mode?.currentId !== 'plan') {
+			return false;
+		}
+		this.options.reviewPlan(file);
+		return true;
 	}
 
 	/** Every saved session for the folder, in a quick pick; the one picked opens here. */
@@ -1138,6 +1301,7 @@ export class ChatController implements vscode.Disposable {
 	 */
 	stop(): void {
 		this.steerStopping = false;
+		this.setSteerWaiting(false);
 		if (this.queue.hasSteer) {
 			this.queue.holdSteers();
 			this.postQueue();
@@ -1175,6 +1339,8 @@ export class ChatController implements vscode.Disposable {
 	dispose(): void {
 		this.disposed = true;
 		this.turnWait?.abort();
+		clearTimeout(this.steerWaitTimer);
+		this.queue.clear();
 		for (const done of [...this.onDispose]) {
 			done();
 		}
@@ -1213,6 +1379,7 @@ export class ChatController implements vscode.Disposable {
 				this.attachments.postPending();
 				this.postQueue();
 				this.postReactions();
+				this.post({ type: 'triedEdits', files: this.triedEdits });
 				this.usage.onReady();
 				this.git.refresh();
 				void this.sharedPage.refresh();
@@ -1223,7 +1390,7 @@ export class ChatController implements vscode.Disposable {
 				setTimeout(() => void this.postTokenColors(), 0);
 				break;
 			case 'prompt':
-				void this.send(message.text, message.attachments ?? [], undefined, message.when);
+				void this.send(message.text, message.attachments ?? [], undefined, message.when, { includeEdits: !!message.includeEdits });
 				break;
 			case 'queueAction':
 				this.queueAction(message.id, message.action);
@@ -1268,6 +1435,14 @@ export class ChatController implements vscode.Disposable {
 			case 'buildPlan':
 				void this.buildPlan(message.itemId, typeof message.mode === 'string' ? message.mode : undefined);
 				break;
+			case 'reviewPlan': {
+				const item = this.transcript.items.find(each => each.id === message.itemId);
+				if (item?.kind === 'turnEnd' && item.planFile) {
+					const file = item.planFile;
+					void this.rebuildPlan(file).then(() => this.options.reviewPlan?.(file));
+				}
+				break;
+			}
 			case 'listCommands':
 				void this.commands.postCommands();
 				break;
@@ -1459,11 +1634,13 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	/** A failed or cut-short turn's Retry or Continue, from its notice, while that notice still offers it. */
-	private noticeAction(itemId: string, action: 'retry' | 'continue'): void {
+	private noticeAction(itemId: string, action: 'retry' | 'continue' | 'newSession'): void {
 		if (this.busy || !this.transcript.noticeOffering(itemId, action)) {
 			return;
 		}
-		if (action === 'continue') {
+		if (action === 'newSession') {
+			void this.continueAfterOverflow(this.lastPrompt?.text, 'refused');
+		} else if (action === 'continue') {
 			// Carries on where the request limit stopped the turn, as the CLI's own "continue" does.
 			void this.send('Continue.');
 		} else if (this.lastPrompt?.reactions) {
@@ -1529,3 +1706,6 @@ function reactionRef({ turnEnd, emoji, name }: ReactionRequest): ReactionRef {
 function editsWithoutCards(mode: string | undefined): boolean {
 	return mode === 'autoEdit' || mode === 'yolo';
 }
+
+/** Gemini refused a turn's request after a tool result, and again when asked to carry on: the session likely refuses every later request. */
+class RefusedAgainError extends Error { }

@@ -9,9 +9,17 @@
 import * as vscode from 'vscode';
 import type { ChatStrings, ForkStrings, ProjectChatStrings, ReactionStrings } from '../chatProtocol';
 import { reactionsOn } from '../chatReactions';
+import { configSection } from '../configuration';
 import { foldWorkOn } from '../foldWork';
 import { spellCheckOn } from '../spellCheck';
 import { createNonce, escapeAttribute } from '../webviewHtml';
+
+/** A project chat's strings, from dist/onDemand.js (projectStrings.ts); set as the extension activates. */
+let projectStringsOf: (() => ProjectChatStrings) | undefined;
+
+export function setProjectStrings(load: () => ProjectChatStrings): void {
+	projectStringsOf = load;
+}
 
 /** The chat view's page for `webview`, loading its script and styles from `mediaUri`; `project` adds a project chat's strings, `fork` Fork Agent's. */
 export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project: boolean, fork: boolean): string {
@@ -28,10 +36,13 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 	const katexStyle = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'katex-style.css'));
 	// Loaded by the view when the reaction button is first hovered or focused.
 	const emojiPicker = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'emojiPicker.js'));
+	const figmaDesign = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'figmaDesign.js'));
+	const threadCard = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'threadCard.js'));
 	const strings: ChatStrings = {
 		placeholder: vscode.l10n.t("Ask Gemini anything about this workspace"),
 		fromCoordinator: vscode.l10n.t("From coordinator"),
-		...(project ? { project: projectStrings() } : {}),
+		// A project chat's strings load with the code they serve, from dist/onDemand.js: most chats aren't project chats.
+		...(project && projectStringsOf ? { project: projectStringsOf() } : {}),
 		...(fork ? { fork: forkStrings() } : {}),
 		...(project ? {} : { reactions: reactionStrings() }),
 		placeholderFollowUp: vscode.l10n.t("Ask a follow-up"),
@@ -39,6 +50,8 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		send: process.platform === 'darwin' ? vscode.l10n.t("Send (Return)") : vscode.l10n.t("Send (Enter)"),
 		sendNow: process.platform === 'darwin' ? vscode.l10n.t("Send now (Return). ⌘Return queues it for after this turn.") : vscode.l10n.t("Send now (Enter). Ctrl+Enter queues it for after this turn."),
 		stop: vscode.l10n.t("Stop (Esc Esc)"),
+		includeEdits: vscode.l10n.t("Include your edits to {0}"),
+		includeEditsTip: vscode.l10n.t("Copies the edits you made to these tried files into the agent's folder before your message, so it builds on them."),
 		queued: vscode.l10n.t("Queued: goes after this turn"),
 		queuedFromCoordinator: vscode.l10n.t("From coordinator: goes after this turn"),
 		steering: vscode.l10n.t("Sending after the current step"),
@@ -111,6 +124,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			continue: vscode.l10n.t("Continue"),
 			showLog: vscode.l10n.t("Show Log"),
 			stop: vscode.l10n.t("Stop"),
+			newSession: vscode.l10n.t("Continue in a New Session"),
 		},
 		outputHidden: vscode.l10n.t("{0} lines hidden"),
 		outputShowAll: vscode.l10n.t("Show All"),
@@ -156,6 +170,10 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			open: vscode.l10n.t("Open"),
 		},
 		workedFor: vscode.l10n.t("Worked for {0}"),
+		stoppedForMessage: vscode.l10n.t("Stopped for your message · {0}"),
+		steerWaiting: vscode.l10n.t("Waiting to stop safely: a tool is finishing"),
+		steerStopNow: vscode.l10n.t("Stop Now"),
+		steerStopNowTip: vscode.l10n.t("Stop the turn now. A tool that finished but whose result the agent hasn't read yet is lost, and the agent may run it again."),
 		work: {
 			stoppedAfter: vscode.l10n.t("Stopped after {0}"),
 			stopped: vscode.l10n.t("Stopped"),
@@ -194,6 +212,8 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		retryTooltip: vscode.l10n.t("Send this message again"),
 		buildPlan: vscode.l10n.t("Build This Plan"),
 		buildPlanTooltip: vscode.l10n.t("Leave Plan mode and carry out this plan"),
+		reviewPlan: vscode.l10n.t("Review Plan"),
+		reviewPlanTooltip: vscode.l10n.t("Open the plan to edit it and comment on its sections, then send the comments to Gemini"),
 		planBuild: {
 			more: vscode.l10n.t("Other ways to build"),
 			buildIn: vscode.l10n.t("Build in {0}"),
@@ -282,6 +302,21 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		gitlabItem: vscode.l10n.t("GitLab merge request or issue"),
 		figmaFrame: vscode.l10n.t("Figma frame"),
 		pasteLink: vscode.l10n.t("paste link"),
+		figmaDesign: vscode.l10n.t("Figma Design..."),
+		figmaDesignEnd: vscode.l10n.t("a link for each size"),
+		figmaDesignTitle: vscode.l10n.t("Add Figma Design"),
+		figmaDesignHint: vscode.l10n.t("Paste the frame link for each screen size. Pasting several links at once fills the rows in order."),
+		figmaSize: vscode.l10n.t("Size"),
+		figmaLinkFor: vscode.l10n.t("Frame link for {0}"),
+		figmaAddSize: vscode.l10n.t("Add Size"),
+		figmaAddDesign: vscode.l10n.t("Add Design"),
+		figmaUpdateDesign: vscode.l10n.t("Update Design"),
+		figmaOtherFile: vscode.l10n.t("{0}: from another Figma file. Figma reads one open file at a time, so the agent will ask you to switch files when it gets there."),
+		figmaRepeated: vscode.l10n.t("{0} is used for more than one frame."),
+		figmaNotLink: vscode.l10n.t("Paste a Figma frame link: in Figma, select the frame and choose Copy Link to Selection."),
+		figmaDesignChip: vscode.l10n.t("Figma design"),
+		figmaDesignFailed: vscode.l10n.t("Add Figma Design couldn't open. Try again."),
+		figmaEditDesign: vscode.l10n.t("Change the design's sizes"),
 		openMergeRequest: vscode.l10n.t("Open Merge Request"),
 		openMergeRequestTip: vscode.l10n.t("Open a merge request on GitLab for this agent's branch"),
 		toolChipLoading: vscode.l10n.t("Reading\u2026"),
@@ -312,6 +347,11 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			snykCode: vscode.l10n.t("Run Snyk Code on the source"),
 			design: vscode.l10n.t("Read the Figma design"),
 			screenshot: vscode.l10n.t("Take a screenshot of the Figma frame"),
+			designAt: vscode.l10n.t("Read the Figma design ({0})"),
+			screenshotAt: vscode.l10n.t("Take a screenshot of the Figma frame ({0})"),
+			searchPages: vscode.l10n.t("Search Confluence for \"{0}\""),
+			readPage: vscode.l10n.t("Read the Confluence page"),
+			draftPage: vscode.l10n.t("Draft the Confluence page \"{0}\""),
 			currentMr: vscode.l10n.t("this branch's merge request"),
 			effectComment: vscode.l10n.t("Comment"),
 			effectWork: vscode.l10n.t("Work description"),
@@ -443,6 +483,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			<div id="picker" class="picker" role="listbox" hidden></div>
 			<div id="usage-popover" class="usage-popover" role="dialog" hidden></div>
 			<div id="queue" class="queue" role="list" hidden></div>
+			<label id="tried-edits" class="tried-edits" hidden><input type="checkbox" id="tried-edits-on" checked><span></span></label>
 			<div id="attachments" class="attachments" hidden></div>
 			<div class="composer-tabs" role="tablist"><button type="button" id="tab-write" class="composer-tab" role="tab" aria-selected="true" aria-controls="input"></button><button type="button" id="tab-preview" class="composer-tab" role="tab" aria-selected="false" aria-controls="preview"></button></div>
 			<div id="preview" class="composer-preview markdown" role="tabpanel" tabindex="0" hidden></div>
@@ -482,7 +523,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			<div id="commit-box" class="usage-popover commit-box" role="dialog" hidden><label class="usage-heading" for="commit-message"></label><textarea id="commit-message" class="commit-message" rows="4" spellcheck="${spellCheckOn()}"></textarea><p class="usage-note commit-note" role="status"></p><div class="permission-actions"><button type="button" class="secondary commit-cancel"></button><button type="button" class="primary commit-confirm"></button></div></div>
 		</div>
 	</div>
-	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-fold-work="${foldWorkOn()}" data-emoji-picker="${emojiPicker}" data-reactions="${!project && reactionsOn()}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
+	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-fold-work="${foldWorkOn()}" data-emoji-picker="${emojiPicker}" data-figma-design="${figmaDesign}" data-thread-card="${threadCard}" data-reactions="${!project && reactionsOn()}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
 </html>`;
 }
@@ -553,7 +594,7 @@ function forkStrings(): ForkStrings {
 		cardShared: vscode.l10n.t("in this folder"),
 		cardRemoved: vscode.l10n.t("removed"),
 		open: vscode.l10n.t("Open"),
-		merge: vscode.l10n.t("Merge Back"),
+		merge: vscode.workspace.getConfiguration(configSection).get<string>('agents.mergeBack') === 'commit' ? vscode.l10n.t("Merge Back") : vscode.l10n.t("Try in Workspace"),
 		from: vscode.l10n.t("Forked from \"{0}\""),
 		fromContext: {
 			whole: vscode.l10n.t("with the whole session"),
@@ -563,130 +604,3 @@ function forkStrings(): ForkStrings {
 	};
 }
 
-function projectStrings(): ProjectChatStrings {
-	return {
-		placeholder: vscode.l10n.t("Message the coordinator, or describe work to split into threads"),
-		placeholderWorking: process.platform === 'darwin' ? vscode.l10n.t("The coordinator is working. ↩ sends your message when it's done") : vscode.l10n.t("The coordinator is working. Enter sends your message when it's done"),
-		sendAfterTurn: vscode.l10n.t("Send when the coordinator is done"),
-		queued: vscode.l10n.t("Goes to the coordinator after this turn"),
-		retryWake: vscode.l10n.t("Send what this turn was given to the coordinator again"),
-		newThread: vscode.l10n.t("New thread"),
-		planFirst: vscode.l10n.t("New threads plan first"),
-		planFirstTip: vscode.l10n.t("New threads write a short plan and wait for your OK before changing files. The coordinator itself never changes files."),
-		dialog: {
-			title: vscode.l10n.t("New thread in {0}"),
-			titleLabel: vscode.l10n.t("Title"),
-			briefLabel: vscode.l10n.t("What should it do?"),
-			briefPlaceholder: vscode.l10n.t("The whole task: what to do, which files, and how to check the work."),
-			branchLabel: vscode.l10n.t("Branch"),
-			modelLabel: vscode.l10n.t("Model"),
-			defaultModel: vscode.l10n.t("Default"),
-			worktreeHint: vscode.l10n.t("Every thread gets its own new branch and worktree. Its chat opens at once while the worktree is created."),
-			planFirst: vscode.l10n.t("Plan first"),
-			planFirstHint: vscode.l10n.t("The thread writes a short plan and waits for your OK before changing files."),
-			startsAtOnce: vscode.l10n.t("Starts right away. The coordinator is told afterwards."),
-			cancel: vscode.l10n.t("Cancel"),
-			start: vscode.l10n.t("Start thread"),
-			close: vscode.l10n.t("Close"),
-			reposLabel: vscode.l10n.t("Repositories"),
-			reposHint: vscode.l10n.t("Each one gets its own worktree, side by side in the thread's folder."),
-			branchLabelShared: vscode.l10n.t("Branch, the same in every repository"),
-		},
-		settings: {
-			open: vscode.l10n.t("Project settings"),
-			title: vscode.l10n.t("{0} settings"),
-			general: vscode.l10n.t("General"),
-			memory: vscode.l10n.t("Memory"),
-			nameLabel: vscode.l10n.t("Name"),
-			nameHint: vscode.l10n.t("Shown in the Projects list and the project chat's tab."),
-			reposLabel: vscode.l10n.t("Repositories"),
-			reposHint: vscode.l10n.t("With more than one, each thread gets a worktree of the ones it needs, in a folder named after the repository."),
-			addRepo: vscode.l10n.t("Add repository"),
-			removeRepo: vscode.l10n.t("Remove {0} from the project"),
-			mainRepo: vscode.l10n.t("The project's own repository"),
-			defaultsLabel: vscode.l10n.t("Defaults for new threads"),
-			threadModel: vscode.l10n.t("Thread model"),
-			planFirst: vscode.l10n.t("Plan first"),
-			planFirstHint: vscode.l10n.t("Threads write a short plan and wait for your OK before changing files."),
-			branchPrefix: vscode.l10n.t("Branch prefix"),
-			branchPrefixHint: vscode.l10n.t("Put before each thread's branch name."),
-			statOpen: vscode.l10n.t("open threads"),
-			statMerged: vscode.l10n.t("merged"),
-			statLines: vscode.l10n.t("lines changed"),
-			statRepos: vscode.l10n.t("repositories"),
-			cleanUpLabel: vscode.l10n.t("Merged threads' folders"),
-			cleanUpHint: vscode.l10n.t("A merged thread keeps its folder, with its dependencies and builds, so it can carry on. Clean up removes the folders whose work is all merged. Each thread keeps its branch and chat, and its folder comes back when you open it."),
-			cleanUp: vscode.l10n.t("Clean Up Folders..."),
-			connectLabel: vscode.l10n.t("How the repositories connect"),
-			connectHint: vscode.l10n.t("Every thread and the coordinator read this. Say what each repository owns and where they meet: APIs, queries, data models, URLs, release order."),
-			instructionsLabel: vscode.l10n.t("Project instructions"),
-			instructionsHint: vscode.l10n.t("Every thread and the coordinator read this. Use it for conventions and anything you'd otherwise repeat."),
-			drafted: vscode.l10n.t("Gemini drafted this on {0} from the repositories. Review it and change anything that's wrong or missing, then save."),
-			drafting: vscode.l10n.t("Gemini is drafting this from the repositories..."),
-			draft: vscode.l10n.t("Draft with Gemini"),
-			redraft: vscode.l10n.t("Draft again"),
-			draftFailed: vscode.l10n.t("Could not draft it: {0}"),
-			filesLabel: vscode.l10n.t("Context files"),
-			filesHint: vscode.l10n.t("Markdown files kept in the project's folder. Choose who reads each one."),
-			fileColumn: vscode.l10n.t("File"),
-			coordinatorColumn: vscode.l10n.t("Coordinator"),
-			threadsColumn: vscode.l10n.t("Threads"),
-			noFiles: vscode.l10n.t("No context files yet."),
-			addFiles: vscode.l10n.t("Add files..."),
-			newFile: vscode.l10n.t("New file"),
-			newFilePrompt: vscode.l10n.t("The new file's name"),
-			removeFile: vscode.l10n.t("Remove {0}"),
-			alsoRead: vscode.l10n.t("Also read"),
-			alsoReadHint: vscode.l10n.t("Each repository's own rules files, which its threads read as they are."),
-			noRules: vscode.l10n.t("none"),
-			tokens: vscode.l10n.t("About {0} tokens added to each thread's first request"),
-			unsaved: vscode.l10n.t("{0} unsaved changes"),
-			unsavedOne: vscode.l10n.t("1 unsaved change"),
-			appliesWhen: vscode.l10n.t("Saved changes apply to new threads and the coordinator's next turn."),
-			discard: vscode.l10n.t("Discard your changes?"),
-			discardConfirm: vscode.l10n.t("Discard"),
-			keepEditing: vscode.l10n.t("Keep Editing"),
-			cancel: vscode.l10n.t("Cancel"),
-			save: vscode.l10n.t("Save"),
-		},
-		panel: {
-			title: vscode.l10n.t("Project"),
-			noThreads: vscode.l10n.t("No threads yet"),
-			queued: vscode.l10n.t("{0} waiting to start"),
-			working: vscode.l10n.t("{0} working"),
-			waiting: vscode.l10n.t("{0} waiting on you"),
-			planned: vscode.l10n.t("{0} with a plan to approve"),
-			done: vscode.l10n.t("{0} done, ready to merge"),
-			merged: vscode.l10n.t("{0} merged back"),
-			context: vscode.l10n.t("Context the coordinator reads"),
-			conductorTracks: vscode.l10n.t("Conductor: {0} open tracks"),
-			noConductor: vscode.l10n.t("No conductor/ folder"),
-			model: vscode.l10n.t("Coordinator model: {0}"),
-			repos: vscode.l10n.t("Repositories: {0}"),
-		},
-		states: {
-			starting: vscode.l10n.t("Starting"),
-			working: vscode.l10n.t("Working"),
-			waiting: vscode.l10n.t("Waiting on you"),
-			planned: vscode.l10n.t("Plan ready, waiting for your OK"),
-			done: vscode.l10n.t("Done"),
-			error: vscode.l10n.t("Error"),
-		},
-		actions: {
-			open: vscode.l10n.t("Open"),
-			stop: vscode.l10n.t("Stop"),
-			merge: vscode.l10n.t("Merge back"),
-			review: vscode.l10n.t("Review changes"),
-			undo: vscode.l10n.t("Undo thread"),
-			approve: vscode.l10n.t("Approve plan"),
-			retry: vscode.l10n.t("Retry"),
-			startAnyway: vscode.l10n.t("Start Anyway"),
-		},
-		openToAnswer: vscode.l10n.t("Open to answer"),
-		merged: vscode.l10n.t("Merged back"),
-		repoMerged: vscode.l10n.t("Merged"),
-		mergedCount: vscode.l10n.t("{0} of {1} merged"),
-		undone: vscode.l10n.t("Undone: its branch and folder were removed"),
-		track: vscode.l10n.t("From Conductor track {0}"),
-	};
-}

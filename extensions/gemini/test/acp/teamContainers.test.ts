@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { AuditLog } from '../../src/acp/auditLog';
 import { GitLabClient } from '../../src/acp/gitlab';
 import { JiraClient } from '../../src/acp/jira';
+import { JiraSites } from '../../src/acp/jiraSites';
 import { ChildServer, ChildServerOptions, McpCallResult, McpServerUnavailableError } from '../../src/acp/mcpStdio';
 import { changedFiles } from '../../src/acp/checksBranch';
 import { SnykCli } from '../../src/acp/snyk';
@@ -71,7 +72,7 @@ async function context(options: { jira?: ChildServer; gitlab?: ChildServer; jira
 		audit: new AuditLog(await tempDir()),
 		connected: () => new Set(['jira', 'gitlab']),
 		connectors: () => ({
-			jira: new JiraClient({ site: options.jiraSite ?? 'http://127.0.0.1:9', email: 'me@acme.com', token: 't' }),
+			jira: new JiraSites([{ id: 'default', name: 'Acme', client: new JiraClient({ site: options.jiraSite ?? 'http://127.0.0.1:9', email: 'me@acme.com', token: 't' }) }]),
 			gitlab: new GitLabClient({ url: 'https://gitlab.acme.internal', token: 't' }),
 		}),
 		folder: () => options.folder,

@@ -9,7 +9,7 @@ import type { AuditEntry } from '../acp/auditLog';
 import type { ModelQuota } from '../acp/directRequest';
 import type { FlowRecord } from '../acp/flowRecords';
 import type { GitLabMr, PipelineState } from '../acp/gitlab';
-import { type JiraIssueSummary, type JiraMyTicket, type JiraSprint, myTicketsJql } from '../acp/jira';
+import { type JiraIssueSummary, type JiraMyTicket, type JiraSiteTickets, type JiraSprint, myTicketsJql } from '../acp/jira';
 import { teamBanners } from '../acp/homeBanners';
 import { ServerHealth, TeamToolId, teamToolIds, teamToolNames } from '../acp/teamHttp';
 import type { AgentSummary } from './agentsView';
@@ -120,7 +120,7 @@ export function buildDashboard(input: DashboardInput): HomeDashboard {
 		unfinished: () => unfinishedCard(input, titles.unfinished),
 		startup: () => fixed(startupCard(input, titles.startup)),
 		agents: () => agentsCard(input, titles.agents),
-		tickets: () => ticketsCard(input, titles.tickets, groups, tickets?.sprint, progress),
+		tickets: () => ticketsCard(input, titles.tickets, groups, tickets?.sprint, progress, now),
 		mergeRequests: () => mergeRequestsCard(input, titles.mergeRequests),
 		quality: () => fixed(qualityCard(input, titles.quality)),
 		gemini: () => fixed(geminiCard(input, titles.gemini)),
@@ -145,7 +145,7 @@ export function buildDashboard(input: DashboardInput): HomeDashboard {
 			...input.connected.has('snyk') || input.connected.has('sonar') ? [{ label: vscode.l10n.t("Run Checks..."), tool: input.connected.has('snyk') ? 'snyk' as const : 'sonar' as const, action: command('gemini.team.runChecksOnBranch') }] : [],
 		],
 		needs: needs(input),
-		needsQuery: 'agent waiting · pipeline failed · mergeable & approved · reviewer_id=me · reopened',
+		needsQuery: 'agent waiting · unresolved threads on your MRs · pipeline failed · mergeable & approved · ready to try · reviewer_id=me (2 shown) · reopened',
 		cards,
 		...nothingConnected ? { setup: setupSteps(input) } : {},
 		...banners(input),
@@ -204,15 +204,31 @@ function toolView(id: TeamToolId, input: DashboardInput): HomeTool {
 }
 
 function needs(input: DashboardInput): HomeNeed[] {
+	const account = input.state('gitlab').account;
 	return needsYou({
-		agents: input.agents,
+		// A project's threads are on their project's cards; an agent of its own is ready to try once done with changes.
+		agents: input.agents.map(a => ({ id: a.id, title: a.title, state: a.state, status: a.status, ...a.state === 'done' && a.worktree && a.changes?.files && !a.trying && !a.project ? { tryReady: true } : {} })),
 		reviews: input.data.reviews?.data,
 		mine: input.data.mine?.data,
 		tickets: input.data.tickets?.data?.issues,
+		reviewing: new Set((input.reviewsInProgress ?? []).map(r => `${r.project}!${r.iid}`)),
+		...account ? { me: account } : {},
 	}).map((item): HomeNeed => {
 		switch (item.kind) {
 			case 'agentWaiting':
 				return { tool: 'gemini', title: vscode.l10n.t("{0} is waiting", item.title), detail: item.status, button: { label: vscode.l10n.t("Open"), action: { kind: 'agent', id: item.agentId, do: 'open' } } };
+			case 'reply':
+				return { tool: 'gitlab', title: vscode.l10n.t("Reply on !{0}", item.mr.iid), detail: item.mr.title, pill: { text: vscode.l10n.t("unresolved threads"), tone: 'warn' }, button: { label: vscode.l10n.t("Open"), action: { kind: 'link', url: item.mr.url } } };
+			case 'tryReady':
+				return { tool: 'gemini', title: vscode.l10n.t("{0} is ready to try", item.title), detail: vscode.l10n.t("Its changes are on its own branch. Try them in your workspace before keeping them."), button: { label: vscode.l10n.t("Try in Workspace"), action: { kind: 'agent', id: item.agentId, do: 'mergeBack' } } };
+			case 'moreReviews':
+				return {
+					tool: 'gitlab', title: item.count === 1 ? vscode.l10n.t("1 more review waiting") : vscode.l10n.t("{0} more reviews waiting", item.count),
+					detail: item.oldest ? vscode.l10n.t("The oldest waiting since {0}", new Date(item.oldest).toLocaleDateString()) : '',
+					button: input.gitlabUrl
+						? { label: vscode.l10n.t("Show All"), action: { kind: 'link', url: `${input.gitlabUrl}/dashboard/merge_requests?reviewer_username=${encodeURIComponent(account ?? '')}` } }
+						: { label: vscode.l10n.t("Show All"), action: command('gemini.home') },
+				};
 			case 'review':
 				return { tool: 'gitlab', title: vscode.l10n.t("Review !{0}", item.mr.iid), detail: [item.mr.author, item.mr.title].join(' · '), button: reviewButton(input, item.mr) };
 			case 'pipelineFailed':
@@ -228,7 +244,7 @@ function needs(input: DashboardInput): HomeNeed[] {
 					button: { label: vscode.l10n.t("Merge..."), action: command('gemini.team.mergeMergeRequest', item.mr.project, item.mr.iid), primary: true },
 				};
 			case 'reopened':
-				return { tool: 'jira', title: vscode.l10n.t("{0} reopened", item.issue.key), detail: item.issue.summary, pill: { text: item.issue.status, tone: 'error' }, button: { label: vscode.l10n.t("Start Agent"), action: command('gemini.team.startOnTicket', item.issue.key) } };
+				return { tool: 'jira', title: vscode.l10n.t("{0} reopened", item.issue.key), detail: item.issue.summary, pill: { text: item.issue.status, tone: 'error' }, button: { label: vscode.l10n.t("Start Agent"), action: command('gemini.team.startOnTicket', item.issue.url) } };
 		}
 	});
 }
@@ -394,13 +410,13 @@ function ticketRow(issue: JiraMyTicket, commentVisibility: string | undefined): 
 		title: issue.summary,
 		pill: { text: issue.status, tone: statusTone(issue) },
 		open: { kind: 'link', url: issue.url },
-		...issue.statusCategory === 'new' || /reopen/i.test(issue.status) ? { button: { label: vscode.l10n.t("Start"), action: command('gemini.team.startOnTicket', issue.key), title: vscode.l10n.t("Start an agent on {0}", issue.key) } } : {},
+		...issue.statusCategory === 'new' || /reopen/i.test(issue.status) ? { button: { label: vscode.l10n.t("Start"), action: command('gemini.team.startOnTicket', issue.url), title: vscode.l10n.t("Start an agent on {0}", issue.key) } } : {},
 		menu: [
-			{ label: vscode.l10n.t("Start Agent"), action: command('gemini.team.startOnTicket', issue.key) },
-			{ label: vscode.l10n.t("Add Comment..."), action: { kind: 'comment', key: issue.key, title: issue.summary, ...commentVisibility ? { visibility: commentVisibility } : {} } },
-			{ label: vscode.l10n.t("Log Time..."), action: command('gemini.team.logTime', issue.key) },
-			{ label: vscode.l10n.t("Move..."), action: command('gemini.team.moveTicket', issue.key) },
-			{ label: vscode.l10n.t("Reassign..."), action: command('gemini.team.reassignTicket', issue.key) },
+			{ label: vscode.l10n.t("Start Agent"), action: command('gemini.team.startOnTicket', issue.url) },
+			{ label: vscode.l10n.t("Add Comment..."), action: { kind: 'comment', key: issue.key, url: issue.url, title: issue.summary, ...commentVisibility ? { visibility: commentVisibility } : {} } },
+			{ label: vscode.l10n.t("Log Time..."), action: command('gemini.team.logTime', issue.url) },
+			{ label: vscode.l10n.t("Move..."), action: command('gemini.team.moveTicket', issue.url) },
+			{ label: vscode.l10n.t("Reassign..."), action: command('gemini.team.reassignTicket', issue.url) },
 			{ label: vscode.l10n.t("Open in Jira"), action: { kind: 'link', url: issue.url } },
 		],
 	};
@@ -410,12 +426,23 @@ function ticketRow(issue: JiraMyTicket, commentVisibility: string | undefined): 
  * Every open ticket assigned to the user: the running sprint's first, under
  * the sprint's name with its progress, then the rest under "Not in this sprint".
  */
-function ticketsCard(input: DashboardInput, title: string, groups: ReturnType<typeof ticketGroups>, sprint: JiraSprint | undefined, progress: { done: number; total: number } | undefined): ListedCard | undefined {
+function ticketsCard(input: DashboardInput, title: string, groups: ReturnType<typeof ticketGroups>, sprint: JiraSprint | undefined, progress: { done: number; total: number } | undefined, now: Date): ListedCard | undefined {
 	if (!input.connected.has('jira')) {
 		return input.hideUnconnected ? undefined : fixed(notConnected('tickets', title, 'jira', vscode.l10n.t("Your open tickets, this sprint's first, with Start Agent on each.")));
 	}
 	const fetched = input.data.tickets;
 	const { stale, note, asOf } = sourceState(input, 'jira', fetched);
+	const sites = fetched?.data?.sites;
+	if (sites && sites.length > 1) {
+		// One group per site, each with its own sprint; the card shows the first few of each.
+		const bySite = sites.map(site => siteTicketRows(input, site, now));
+		const all = bySite.flat();
+		const each = Math.max(2, Math.ceil(6 / sites.length));
+		return listed({
+			id: 'tickets', title, tool: 'jira', stale, ...asOf ? { asOf } : {}, query: myTicketsJql,
+			...note ? { note } : {},
+		}, all, bySite.flatMap(rows => rows.slice(0, each)));
+	}
 	const inSprint = groups.sprint.map((issue, i): HomeRow => ({
 		...ticketRow(issue, input.jiraCommentVisibility),
 		...i === 0 ? { group: sprint?.name ?? vscode.l10n.t("This sprint"), ...progress?.total ? { groupQuery: vscode.l10n.t("{0} of {1} done", progress.done, progress.total) } : {} } : {},
@@ -430,6 +457,26 @@ function ticketsCard(input: DashboardInput, title: string, groups: ReturnType<ty
 		...input.jiraUrl ? { link: { label: vscode.l10n.t("Open in Jira"), action: { kind: 'link', url: `${input.jiraUrl}/issues/?jql=${encodeURIComponent(myTicketsJql)}` } } } : {},
 		...note ? { note } : !all.length ? { note: fetched?.loading || !fetched ? vscode.l10n.t("Loading your tickets...") : vscode.l10n.t("No open tickets assigned to you.") } : {},
 	}, all, all.slice(0, 6));
+}
+
+/** One Jira site's tickets under its name, the running sprint's first; a site that can't be reached says so, and its last tickets show dimmed. */
+function siteTicketRows(input: DashboardInput, site: JiraSiteTickets, now: Date): HomeRow[] {
+	const groups = ticketGroups(site.issues);
+	const progress = sprintProgress(site.issues.filter(i => i.inSprint), site.sprint, now.getTime());
+	const time = site.asOf ? new Date(site.asOf).toLocaleTimeString(vscode.env.language, { hour: '2-digit', minute: '2-digit' }) : undefined;
+	const query = site.error
+		? time ? vscode.l10n.t("Can't reach {0}: tickets from {1}", site.host, time) : vscode.l10n.t("Can't reach {0}", site.host)
+		: site.sprint ? progress.total ? vscode.l10n.t("{0} · {1} of {2} done", site.sprint.name, progress.done, progress.total) : site.sprint.name : site.host;
+	const heading: Partial<HomeRow> = { group: site.name, groupQuery: query, ...site.error ? { groupTone: 'warn' as const } : {} };
+	const rows = [...groups.sprint, ...groups.other].map((issue, i): HomeRow => ({
+		...ticketRow(issue, input.jiraCommentVisibility),
+		...i === 0 ? heading : {},
+		...site.error ? { dim: true } : {},
+	}));
+	if (rows.length) {
+		return rows;
+	}
+	return [{ ...heading, icon: site.error ? 'warning' : 'check', title: site.error ? site.error : vscode.l10n.t("No open tickets assigned to you.") }];
 }
 
 function reviewInProgress(input: DashboardInput, mr: { readonly project: string; readonly iid: number }) {

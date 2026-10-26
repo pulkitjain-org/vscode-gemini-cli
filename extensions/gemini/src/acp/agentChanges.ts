@@ -8,7 +8,9 @@
 // against the file on disk shows everything the agent did to it; the line
 // counts follow the agent's latest edit. What the agent last wrote is kept
 // too, so edits made after it (by the user, or another agent) are not shown
-// as the agent's.
+// as the agent's. Files in the CLI's own folder (`~/.gemini/tmp`: Plan mode's
+// plans, its task tracker) are the CLI's notes, not changes to the work, so
+// they are left out: a thread that only planned has nothing to try or review.
 
 import * as path from 'node:path';
 import { countChangedLines } from './chatTranscript';
@@ -57,7 +59,11 @@ export class AgentChanges {
 
 	private readonly byPath = new Map<string, EditedFile>();
 
-	constructor(private readonly cwd: string) { }
+	constructor(
+		private readonly cwd: string,
+		/** The CLI's own folder, whose files never count as changes. */
+		private readonly cliFolder?: string,
+	) { }
 
 	/** The folder the agent works in; relative paths in edits are against it. */
 	get folder(): string {
@@ -91,6 +97,9 @@ export class AgentChanges {
 		const editedAt = Date.now();
 		for (const edit of edits) {
 			const filePath = path.resolve(this.cwd, edit.path);
+			if (this.isCliFile(filePath)) {
+				continue;
+			}
 			const first = this.byPath.get(filePath);
 			const created = first ? first.created : !edit.oldText;
 			let original = first ? first.original : edit.oldText ?? '';
@@ -162,9 +171,12 @@ export class AgentChanges {
 			return;
 		}
 		for (const file of files.filter(isEditedFile)) {
-			this.byPath.set(file.path, file);
+			if (!this.isCliFile(file.path)) {
+				this.byPath.set(file.path, file);
+			}
 		}
-		if (this.byPath.size) {
+		// Also when everything saved was the CLI's, so the totals saved with the agent go too.
+		if (files.length) {
 			this.onDidChangeEmitter.fire();
 		}
 	}
@@ -188,6 +200,10 @@ export class AgentChanges {
 
 	dispose(): void {
 		this.onDidChangeEmitter.dispose();
+	}
+
+	private isCliFile(filePath: string): boolean {
+		return !!this.cliFolder && filePath.startsWith(this.cliFolder + path.sep);
 	}
 }
 

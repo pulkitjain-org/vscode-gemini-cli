@@ -27,8 +27,12 @@ export interface ChangesSource {
 	readonly branch?: string;
 	/** Commits the changed files on a new branch (agents in the workspace folder). */
 	commit?(): Promise<void>;
-	/** Merges the agent's branch back (agents on their own branch). */
+	/** Merge Back (agents on their own branch): Try in Workspace, or the merge with `gemini.agents.mergeBack` set to "commit". */
 	mergeBack?(): Promise<void>;
+	/** Its work is being tried in the user's checkout: Keep Changes and Take Back instead of Merge Back. */
+	readonly trying?: boolean;
+	keep?(): Promise<void>;
+	takeBack?(): Promise<void>;
 }
 
 /**

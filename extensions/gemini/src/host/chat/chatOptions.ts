@@ -55,6 +55,12 @@ export interface ChatControllerOptions {
 	isShown?(): boolean;
 	/** The user picked a model in this chat. */
 	onDidPickModel?(modelId: string): void;
+	/** Copies the user's edits to the agent's tried files into its folder (Send My Edits); resolves whether it did. */
+	sendTriedEdits?(): Promise<boolean>;
+	/** Opens the plan file a Plan mode turn wrote in Plan Review. */
+	reviewPlan?(file: string): void;
+	/** Where Plan Review keeps its state: a plan rebuilt from the session's history prefers its copy there. */
+	readonly planReviewFolder?: string;
 	/** A context key kept equal to whether a turn runs, for menus. */
 	readonly busyContextKey?: string;
 	/** The branch pill and Create Branch & Commit; without it the composer shows neither. */

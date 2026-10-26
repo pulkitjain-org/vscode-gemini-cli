@@ -43,7 +43,8 @@ export interface PromptAttachmentLabel {
  * again, pick another model, sign in again, carry on from the request limit,
  * open the Gemini log, or stop a stalled turn.
  */
-export type NoticeAction = 'retry' | 'switchModel' | 'signIn' | 'continue' | 'showLog' | 'stop';
+/** `newSession`: the chat moves to a new session given the conversation so far, for a session Gemini keeps refusing. */
+export type NoticeAction = 'retry' | 'switchModel' | 'signIn' | 'continue' | 'showLog' | 'stop' | 'newSession';
 
 /** Another live agent in the same folder with changes still to review in a file this one edits. */
 export interface OtherAgentChanges {
@@ -132,6 +133,10 @@ export type TranscriptItem =
 		readonly usage?: readonly ModelTokens[];
 		/** The turn was stopped or failed before the agent finished. */
 		readonly unfinished?: boolean;
+		/** Stopped for a message the user sent now, which the agent carries on with. */
+		readonly steered?: boolean;
+		/** The plan file a Plan mode turn wrote, for Review Plan. */
+		readonly planFile?: string;
 		/** The emoji the user reacted to this reply with, once each, oldest first. */
 		readonly reactions?: readonly string[];
 	};
@@ -167,8 +172,32 @@ export interface ThreadCard {
 	readonly merged?: boolean;
 	/** A thread in several repositories: each one's changes, and whether they are merged back. */
 	readonly repos?: readonly { readonly key: string; readonly files: number; readonly added: number; readonly removed: number; readonly merged?: boolean }[];
-	/** Undone: its branch and folder are gone. */
+	/** Removed: its branch and folder are gone. */
 	readonly removed?: boolean;
+	/** Its work in the user's checkout: being tried, or kept as theirs. */
+	readonly tried?: TriedCard;
+	/** Discard Changes reset its folder; the work is saved for Restore. */
+	readonly discarded?: boolean;
+	/** Work Discard Changes saved, which later turns replaced: its ⋯ menu offers Restore. */
+	readonly restorable?: boolean;
+	/** Shows the first-try guide under the card. */
+	readonly guide?: boolean;
+	/** Merge Back makes a merge commit (`gemini.agents.mergeBack` set to "commit"): the card offers it instead of Try in Workspace. */
+	readonly mergeCommits?: boolean;
+}
+
+/** A thread card's try: how many files, what the last update did, and what the user changed. */
+export interface TriedCard {
+	readonly state: 'trying' | 'kept';
+	readonly files: number;
+	/** How many times the checkout followed the thread's turns. */
+	readonly updates?: number;
+	/** Files whose conflict markers hold updating back. */
+	readonly conflicts?: readonly string[];
+	/** Files the last update couldn't merge (binary, a link, deleted on one side), left as the user had them. */
+	readonly unmerged?: readonly string[];
+	/** Tried files the user edited and hasn't sent to the thread. */
+	readonly edits?: readonly string[];
 }
 
 /** A thread card's item id. */

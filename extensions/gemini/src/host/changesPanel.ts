@@ -10,6 +10,7 @@ import { reviewBase } from '../acp/agentChanges';
 import { errorMessage } from '../acp/errors';
 import { diffLines, hunkLines, splitLines } from '../acp/lineDiff';
 import { ChangesSource } from './changesView';
+import { configSection } from './configuration';
 import { undoForeignMessage } from './reviewController';
 import { createNonce, escapeAttribute } from './webviewHtml';
 import { ChangedFileView, ChangesPanelStrings, ChangesPanelView, FromChangesPanel, ToChangesPanel } from './panelProtocol';
@@ -153,7 +154,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		const busy = source.busy();
 		const team = this.mrPanel?.view(source);
 		return {
-			agent: { title: source.title, busy, ...(source.branch ? { branch: source.branch } : {}), canCommit: !!source.commit && !busy && files.length > 0 },
+			agent: { title: source.title, busy, ...(source.branch ? { branch: source.branch } : {}), ...(source.trying ? { trying: true } : {}), canCommit: !!source.commit && !busy && files.length > 0 },
 			totals: source.changes.totals,
 			files,
 			...team ? { team } : {},
@@ -202,6 +203,10 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 				return source?.commit?.();
 			case 'mergeBack':
 				return source?.mergeBack?.();
+			case 'keepTried':
+				return source?.keep?.();
+			case 'takeBack':
+				return source?.takeBack?.();
 		}
 	}
 
@@ -252,6 +257,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 
 	private html(webview: vscode.Webview, media: vscode.Uri): string {
 		const nonce = createNonce();
+		const mergeCommits = vscode.workspace.getConfiguration(configSection).get<string>('agents.mergeBack') === 'commit';
 		const strings: ChangesPanelStrings = {
 			empty: vscode.l10n.t("No changes yet. Files the agent changes show here as it works."),
 			noAgent: vscode.l10n.t("Open an agent to see what it changed."),
@@ -264,7 +270,17 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 			openFile: vscode.l10n.t("Open the file"),
 			openAll: vscode.l10n.t("Open all changes in the editor"),
 			commit: vscode.l10n.t("Commit"),
-			mergeBack: vscode.l10n.t("Merge Back"),
+			...mergeCommits ? {
+				mergeBack: vscode.l10n.t("Merge Back"),
+				mergeBackTip: vscode.l10n.t("Commit the agent's work on its branch and merge the branch into yours."),
+			} : {
+				mergeBack: vscode.l10n.t("Try in Workspace"),
+				mergeBackTip: vscode.l10n.t("Copy the agent's changes into your workspace as unstaged files, so your local server and tests use them. They update each time the agent finishes a turn. Take Back removes them."),
+			},
+			keepChanges: vscode.l10n.t("Keep Changes"),
+			keepChangesTip: vscode.l10n.t("Make these changes yours. Nothing is staged or committed; commit them when you're ready."),
+			takeBack: vscode.l10n.t("Take Back"),
+			takeBackTip: vscode.l10n.t("Remove the agent's changes from your workspace. Edits you made yourself stay."),
 			newFile: vscode.l10n.t("new"),
 			hiddenLines: vscode.l10n.t("{0} more changed lines; open the file to see them"),
 			noDiff: vscode.l10n.t("The file is too large to show its changes here."),
@@ -277,6 +293,8 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		const teamStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'teamFlow.css'));
 		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'codicon.css'));
 		const glassStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'glass.css'));
+		// The themed tooltips' look.
+		const menuStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'menu.css'));
 		return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -284,6 +302,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data: ${webview.cspSource}; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link href="${codicons}" rel="stylesheet">
+	<link href="${menuStyle}" rel="stylesheet">
 	<link href="${style}" rel="stylesheet">
 	<link href="${teamStyle}" rel="stylesheet">
 	<link href="${glassStyle}" rel="stylesheet">

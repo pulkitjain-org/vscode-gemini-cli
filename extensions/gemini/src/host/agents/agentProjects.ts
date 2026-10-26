@@ -48,6 +48,8 @@ export interface AgentProjectsHost {
 	pickModel(id: string, model: string): void;
 	/** Removes the agent, its folder and, with `deleteBranch`, its branch. */
 	removeAgent(id: string, deleteBranch: boolean): Promise<void>;
+	/** Whether a thread whose work the user kept has nothing in its folder beyond that, so Clean Up may remove the folder. */
+	keptClean(record: AgentRecord): Promise<boolean>;
 }
 
 export class AgentProjects {
@@ -189,18 +191,21 @@ export class AgentProjects {
 		return `Added ${repo.key}/ to your folder, on the branch ${branch}.${command ? ' Its setup script is running in the background, so packages may not be installed yet.' : ''}`;
 	}
 
-	/** "Undo thread": asks, then removes the thread with its folder and branch. */
+	/** "Remove thread": asks, then removes the thread with its folder and branch. Discard Changes keeps the thread instead. */
 	async undoThread(id: string): Promise<boolean> {
 		const record = this.model.agent(id);
 		if (!record) {
 			return false;
 		}
-		const undo = vscode.l10n.t("Undo Thread");
-		const detail = record.worktree
-			? vscode.l10n.t("Its branch {0} and its folder are deleted, with any work on them.", record.worktree.branch)
-			: undefined;
-		if (await vscode.window.showWarningMessage(vscode.l10n.t("Undo the thread \"{0}\"?", record.title), { modal: true, detail }, undo) !== undo) {
-			return false;
+		// Asking about a try in the user's checkout comes first, and is its own question.
+		if (record.tried?.state !== 'trying') {
+			const remove = vscode.l10n.t("Remove Thread");
+			const detail = record.worktree
+				? vscode.l10n.t("Its branch {0} and its folder are deleted, with any work on them. To keep the thread and only reset its work, use Discard Changes.", record.worktree.branch)
+				: undefined;
+			if (await vscode.window.showWarningMessage(vscode.l10n.t("Remove the thread \"{0}\"?", record.title), { modal: true, detail }, remove) !== remove) {
+				return false;
+			}
 		}
 		await this.host.removeAgent(id, true);
 		return true;
@@ -246,12 +251,14 @@ export class AgentProjects {
 	 */
 	async cleanUpMerged(coordinatorId: string): Promise<void> {
 		const threads = this.model.threadsOf(coordinatorId).filter(thread => thread.project?.role === 'thread' && thread.project.resolved && thread.worktree
-			&& !this.live.get(thread.id)?.activity.busy && !this.merge.isMerging(thread.id) && !this.settingUp.has(thread.id));
+			&& thread.tried?.state !== 'trying' && !this.live.get(thread.id)?.activity.busy && !this.merge.isMerging(thread.id) && !this.settingUp.has(thread.id));
 		type Folder = { readonly thread: AgentRecord; readonly repository: string; readonly worktree: AgentWorktree; readonly size: number };
 		const { found, kept } = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: vscode.l10n.t("Looking at merged threads' folders...") }, async () => {
 			const found: Folder[] = [];
 			let kept = 0;
 			for (const thread of threads) {
+				// Kept in the user's checkout rather than merged: clean when the folder has nothing beyond what was kept.
+				const keptOnly = thread.tried?.state === 'kept' && await this.host.keptClean(thread).catch(() => false);
 				for (const { repository, worktree } of await this.worktrees.threadWorktrees(thread)) {
 					if (!await pathExists(worktree.folder)) {
 						continue;
@@ -259,7 +266,7 @@ export class AgentProjects {
 					// Only a folder whose every change is merged into what its repository has checked out.
 					const into = await currentBranch(repository).catch(() => undefined);
 					const status = into ? await worktreeStatus(worktree, into).catch(() => undefined) : undefined;
-					if (status && !status.uncommitted && !status.commits) {
+					if (keptOnly || (status && !status.uncommitted && !status.commits)) {
 						found.push({ thread, repository, worktree, size: await folderSize(worktree.folder) });
 					} else {
 						kept++;

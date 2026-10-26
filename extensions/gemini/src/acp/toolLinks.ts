@@ -20,6 +20,8 @@ export interface ToolRefContext {
 	readonly connected: readonly string[];
 	/** The team's Jira projects (from .gemini/geminicode-tools.json), whose keys count in lower case too. */
 	readonly jiraProjects?: readonly string[];
+	/** The screen sizes the team's Figma designs have a frame for (`figma.viewports` there), for Add Figma Design. */
+	readonly figmaSizes?: readonly string[];
 }
 
 const jiraKey = /(?:^|[^A-Za-z0-9_-])([A-Z][A-Z0-9_]{1,15}-[1-9]\d{0,6})(?![\w-])/g;
@@ -147,8 +149,8 @@ export function toolRefLabel(ref: ToolRef): string {
 }
 
 /** A geminicode-tools call as the CLI titles it: `jira_get_issue({"key":"ACME-1"})`, or the bare name. */
-export function parseTeamToolCall(title: string): { readonly tool: 'jira' | 'gitlab' | 'sonar' | 'snyk' | 'figma'; readonly name: string; readonly args: Record<string, unknown> } | undefined {
-	const call = parseToolCall(title, /^(jira|gitlab|sonar|snyk|figma)_[a-z_]+/);
+export function parseTeamToolCall(title: string): { readonly tool: 'jira' | 'confluence' | 'gitlab' | 'sonar' | 'snyk' | 'figma'; readonly name: string; readonly args: Record<string, unknown> } | undefined {
+	const call = parseToolCall(title, /^(jira|confluence|gitlab|sonar|snyk|figma)_[a-z_]+/);
 	return call && { tool: call.prefix as 'jira', name: call.name, args: call.args };
 }
 
@@ -234,6 +236,11 @@ export interface TeamToolVerbs {
 	readonly snykCode: string;
 	readonly design: string;
 	readonly screenshot: string;
+	readonly designAt: string;
+	readonly screenshotAt: string;
+	readonly searchPages: string;
+	readonly readPage: string;
+	readonly draftPage: string;
 	/** "this branch's merge request" */
 	readonly currentMr: string;
 	/** Labels in a confirm-class card's effect: what the tool will record, line by line. */
@@ -265,6 +272,11 @@ export const englishTeamToolVerbs: TeamToolVerbs = {
 	snykCode: 'Run Snyk Code on the source',
 	design: 'Read the Figma design',
 	screenshot: 'Take a screenshot of the Figma frame',
+	designAt: 'Read the Figma design ({0})',
+	screenshotAt: 'Take a screenshot of the Figma frame ({0})',
+	searchPages: 'Search Confluence for "{0}"',
+	readPage: 'Read the Confluence page',
+	draftPage: 'Draft the Confluence page "{0}"',
 	currentMr: 'this branch\'s merge request',
 	effectComment: 'Comment',
 	effectWork: 'Work description',
@@ -286,7 +298,7 @@ function fill(template: string, value: string): string {
  * post; `effect` is a confirm-class action as the tool will record it, line
  * by line (the move, its fields and comment; the time; the merge request).
  */
-export function teamToolTitle(title: string, verbs: TeamToolVerbs = englishTeamToolVerbs): { readonly tool: 'jira' | 'gitlab' | 'sonar' | 'snyk' | 'figma'; readonly title: string; readonly text?: string; readonly effect?: string } | undefined {
+export function teamToolTitle(title: string, verbs: TeamToolVerbs = englishTeamToolVerbs): { readonly tool: 'jira' | 'confluence' | 'gitlab' | 'sonar' | 'snyk' | 'figma'; readonly title: string; readonly text?: string; readonly effect?: string } | undefined {
 	const call = parseTeamToolCall(title);
 	if (!call) {
 		return undefined;
@@ -341,8 +353,11 @@ export function teamToolTitle(title: string, verbs: TeamToolVerbs = englishTeamT
 		case 'sonar_issues': return titled(verbs.sonarIssues);
 		case 'snyk_test': return titled(verbs.snykTest);
 		case 'snyk_code_test': return titled(verbs.snykCode);
-		case 'figma_design': return titled(verbs.design);
-		case 'figma_screenshot': return titled(verbs.screenshot);
+		case 'figma_design': return titled(s('viewport') ? fill(verbs.designAt, s('viewport')) : verbs.design);
+		case 'figma_screenshot': return titled(s('viewport') ? fill(verbs.screenshotAt, s('viewport')) : verbs.screenshot);
+		case 'confluence_search': return titled(fill(verbs.searchPages, s('query')));
+		case 'confluence_get_page': return titled(verbs.readPage);
+		case 'confluence_draft_page': return { tool: call.tool, title: fill(verbs.draftPage, s('title')) };
 		default: return undefined;
 	}
 }

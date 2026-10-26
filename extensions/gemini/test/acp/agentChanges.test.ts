@@ -34,6 +34,18 @@ describe('AgentChanges', () => {
 		]);
 	});
 
+	it('leaves out the CLI\'s own files, such as Plan mode\'s plans, also when restoring', () => {
+		const cliFolder = path.resolve('/home/.gemini/tmp');
+		const plan = path.join(cliFolder, 'app', 'session', 'plans', 'plan.md');
+		const changes = new AgentChanges(root, cliFolder);
+		changes.record([{ path: plan, oldText: null, newText: '# Plan' }, { path: file('a.ts'), oldText: 'x', newText: 'y' }]);
+		const restored = new AgentChanges(root, cliFolder);
+		let fired = 0;
+		restored.onDidChange(() => fired++);
+		restored.restore([{ path: plan, created: true, original: '', added: 1, removed: 0 }]);
+		expect({ files: changes.files.map(f => f.path), restored: restored.totals, fired }).toEqual({ files: [file('a.ts')], restored: { files: 0, added: 0, removed: 0 }, fired: 1 });
+	});
+
 	it('drops files the agent changed back or created and then deleted', () => {
 		const changes = new AgentChanges(root);
 		changes.record([{ path: file('a.ts'), oldText: 'x', newText: 'y' }, { path: file('tmp.ts'), oldText: '', newText: 'z' }]);

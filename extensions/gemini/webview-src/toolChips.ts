@@ -53,7 +53,7 @@ function placeholderText(ref: ToolRef): string {
 	switch (ref.tool) {
 		case 'jira': return `Jira ticket ${ref.key}. Read it with jira_get_issue.`;
 		case 'gitlab': return `GitLab ${ref.kind === 'mr' ? 'merge request' : 'issue'} ${ref.url}. Read it with ${ref.kind === 'mr' ? 'gitlab_get_mr' : 'gitlab_get_issue'}.`;
-		case 'figma': return `Figma frame: ${ref.url}\nCall figma_design with this link for its code hints and design variables, and figma_screenshot to see it.`;
+		case 'figma': return `Figma frame: ${ref.url}\nCall figma_design with this link for its code hints and design variables. Call figma_screenshot only when you need to see it, such as to compare what you built.`;
 	}
 }
 

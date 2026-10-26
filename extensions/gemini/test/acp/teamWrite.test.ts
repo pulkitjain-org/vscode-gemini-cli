@@ -11,6 +11,7 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AuditEntry, AuditLog } from '../../src/acp/auditLog';
 import { JiraClient } from '../../src/acp/jira';
+import { JiraSites } from '../../src/acp/jiraSites';
 import type { TeamDefaults } from '../../src/acp/teamDefaults';
 import { callTeamTool, TeamToolContext, teamWrite } from '../../src/acp/teamTools';
 
@@ -57,7 +58,7 @@ async function setUp(defaults: TeamDefaults = {}) {
 	const context: TeamToolContext = {
 		audit,
 		connected: () => new Set(['jira']),
-		connectors: () => ({ jira: new JiraClient({ site: jira.url, email: 'me@acme.com', token: 't' }) }),
+		connectors: () => ({ jira: new JiraSites([{ id: 'default', name: 'Acme', client: new JiraClient({ site: jira.url, email: 'me@acme.com', token: 't' }) }]) }),
 		folder: () => '/work/acme-checkout',
 		defaults: async () => defaults,
 	};

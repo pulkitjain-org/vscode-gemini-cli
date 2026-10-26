@@ -49,8 +49,15 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	'media/teamFlow.js': 36_000,
 	// Project Helpers, about 17.3 KB: the Storage section added about 1.4 KB.
 	'media/settings.js': 19_000,
-	// Connections, about 13.5 KB.
-	'media/connections.js': 16_000,
+	// Connections, about 17.5 KB: the Jira sites after the first and Confluence's per-site Connect dialog added about 4 KB.
+	'media/connections.js': 20_000,
+	// The Review Page for Confluence drafts, about 27 KB: the in-place editor, its floating toolbar, the marked changes
+	// and the merge when the page changed meanwhile. The Markdown parser comes from draftMarkdown.js, loaded on open.
+	// Keeping what Markdown can't write (mentions, macros, tables) with the agent's version beside it, checking pasted
+	// attributes and normalizing for Confluence added about 6 KB.
+	'media/confluenceReview.js': 29_000,
+	// Plan Review's page, about 11 KB; its Markdown comes from draftMarkdown.js.
+	'media/planReview.js': 14_000,
 	// The audit log page, about 8 KB.
 	'media/auditLog.js': 10_000,
 	// The Index page, about 19 KB: workspaces' indexes, attached docs, the Add Docs and Files Left Out popups,
@@ -66,6 +73,12 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	'media/draftMarkdown.js': 140_000,
 	// Home's Show All list and Customize menu, loaded the first time either opens.
 	'media/homePopups.js': 5_000,
+	// Add Figma Design, about 11 KB with its copy of the link parser, loaded the first time a chat opens it from the + menu
+	// or a design's chip.
+	'media/figmaDesign.js': 13_000,
+	// A project thread's card, with its try steps, ⋯ menu and first-try guide, about 5 KB, loaded the first time a
+	// project chat shows a card.
+	'media/threadCard.js': 7_000,
 	// Home's menus (+, folder, mode, From Your Tools, a row's "...") with the menu class, about 7.6 KB, loaded once
 	// Home has settled or on the first click on a menu's button.
 	'media/homeMenus.js': 9_000,
@@ -75,15 +88,30 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// The extension host's bundle, about 1,061 KB: GeminiCode's own code, the ACP SDK and zod with its English
 	// messages only (esbuild.mts). Project Helpers, Connections, the audit log, Run Benchmark, the pilot and the
 	// trace recorder moved to dist/pages.js and dist/onDemand.js, about 60 KB.
-	'dist/extension.js': 1_200_000,
+	// More than one Jira site (routing a ticket to its site, Home's tickets by site) and Confluence's connection
+	// and agent tools' definitions added about 13 KB; Confluence's client, calls, drafts and Review Page are in dist/confluence.js.
+	'dist/extension.js': 1_206_000,
 	// Project Helpers and Connections, about 96 KB, loaded the first time one is opened (src/pages.ts): their own code
 	// and their copy of jsonc-parser (about 17 KB), which edits the Gemini CLI's settings files keeping their comments.
 	// Project Helpers' Storage section, with the storage measuring and Clean Up's list, is about 9 KB of it.
-	'dist/pages.js': 105_000,
+	// Adding and removing Jira sites and turning Confluence on for one (siteConnections.ts) added about 8 KB to Connections.
+	// Plan Review's host side (planReviewPage.ts, planReview.ts, planReviewStore.ts), about 13 KB, loaded the first time a plan is reviewed.
+	// The team flows' page (teamFlowPanel.ts: Log Time, Move, Open Merge Request, Run Checks, a merge request review), about 9 KB,
+	// moved here from dist/extension.js and loaded with the first flow opened.
+	'dist/pages.js': 138_000,
+	// Confluence, about 27 KB, loaded the first time an agent or a page uses it (src/confluence.ts): its client, the
+	// agents' calls, the drafts and the Review Page's host, with publishing only the changes kept (draftReview.ts,
+	// blockMerge.ts) and the page's localized strings.
+	'dist/confluence.js': 29_000,
 	// The audit log, Run Benchmark, the pilot's export and the trace recorder, about 31 KB, loaded the first time
 	// one of their commands runs (src/onDemand.ts). Finding or cloning a merge request's repository (reviewClone.ts,
-	// cloneSearch.ts) moved here from dist/extension.js: about 44 KB.
-	'dist/onDemand.js': 48_000,
+	// cloneSearch.ts) moved here from dist/extension.js: about 44 KB. Merge Back and Try in Workspace (agentMerge.ts,
+	// agentTries.ts, worktreeApply.ts), a project chat's strings (projectStrings.ts) and Figma's client (figma.ts),
+	// about 44 KB, loaded the first time an agent's work is tried or merged, a project chat opens, or Figma is checked.
+	// Check Agent with the CLI contract it reads (checkAgent.ts, cli/contract.ts), about 5 KB, moved here from
+	// dist/extension.js, and rebuilding a plan the CLI deleted (sessionReplay.ts), about 1 KB. Try in Workspace's batched git reads,
+	// links, line endings and per-agent action queue (worktreeApply.ts, tryState.ts) added about 14 KB.
+	'dist/onDemand.js': 118_000,
 	// The indexer process, about 66 KB: parsing, SQLite queries and docs conversion, forked on first use, never
 	// loaded in the extension host.
 	'dist/indexer.js': 120_000,

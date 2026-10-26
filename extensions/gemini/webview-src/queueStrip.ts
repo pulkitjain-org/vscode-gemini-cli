@@ -21,6 +21,14 @@ export function setQueue(items: readonly PendingPromptView[]): void {
 	renderQueue();
 }
 
+/** A message sent now has waited long for a safe point: its row says so and offers Stop Now. */
+let steerWaiting = false;
+
+export function setSteerWaiting(waiting: boolean): void {
+	steerWaiting = waiting;
+	renderQueue();
+}
+
 /** Draws the strip again, as when the agent stops working. */
 export function renderQueue(): void {
 	queueList.hidden = !state.queue.length;
@@ -30,7 +38,7 @@ export function renderQueue(): void {
 function row(item: PendingPromptView): HTMLElement {
 	const node = el('div', `queue-item${item.steer ? ' steer' : ''}${item.from ? ' from-coordinator' : ''}`);
 	node.setAttribute('role', 'listitem');
-	const status = item.steer ? strings.steering : strings.project?.queued ?? (item.from ? strings.queuedFromCoordinator : strings.queued);
+	const status = item.steer ? (steerWaiting ? strings.steerWaiting : strings.steering) : strings.project?.queued ?? (item.from ? strings.queuedFromCoordinator : strings.queued);
 	const reacted = (item.reactions ?? []).map(reaction => strings.reactions ? format(strings.reactions.queued, reaction.emoji) : reaction.emoji).join(' ');
 	const line = item.text.split('\n').map(part => part.trim()).find(Boolean) ?? reacted;
 	const text = el('span', 'queue-text', line);
@@ -40,7 +48,13 @@ function row(item: PendingPromptView): HTMLElement {
 		parts.push(el('span', 'queue-attached', format(strings.queueAttached, String(item.attachments))));
 	}
 	const actions = el('span', 'queue-actions');
-	if (!item.steer && !(strings.project && state.busy)) {
+	if (item.steer && steerWaiting) {
+		const stop = button('queue-stop-now', strings.steerStopNow, () => vscode.postMessage({ type: 'queueAction', id: item.id, action: 'stopNow' }));
+		setTip(stop, strings.steerStopNowTip);
+		actions.append(stop);
+	}
+	// One with the user's edits waits for the turn to end, as its Queued status says.
+	if (!item.steer && !((strings.project || item.withEdits) && state.busy)) {
 		actions.append(action(strings.queueSendNow, 'arrow-up', item.id, 'send'));
 	}
 	if (item.text) {

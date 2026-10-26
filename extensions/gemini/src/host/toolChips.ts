@@ -8,19 +8,25 @@ import type { Attachment } from '../acp/attachments';
 import { ticketGroups } from '../acp/dashboard';
 import { describeMr } from '../acp/gitlab';
 import type { JiraMyTicket, JiraMyTickets } from '../acp/jira';
+import { AmbiguousTicketError } from '../acp/jiraSites';
+import { defaultDesignSizes } from '../acp/figmaDesign';
 import type { TeamDefaults } from '../acp/teamDefaults';
-import { TeamToolError } from '../acp/teamHttp';
+import { hostOf, TeamToolError } from '../acp/teamHttp';
 import { parseToolLink, ToolRef, ToolRefContext, toolRefId, toolRefLabel, toolRefUrl } from '../acp/toolLinks';
 import type { TeamConnections } from './teamConnections';
 import { openTeamLink } from './teamLinks';
 
-/** A ticket in a quick pick, with its key to start on or attach. */
-export type TicketPickItem = vscode.QuickPickItem & { readonly key?: string };
+/** A ticket in a quick pick, with its key to start on or attach, and its link, which says its Jira site. */
+export type TicketPickItem = vscode.QuickPickItem & { readonly key?: string; readonly url?: string };
 
-/** The user's tickets for a quick pick: the running sprint's under its name, then the rest under "Not in this sprint". */
+/**
+ * The user's tickets for a quick pick: the running sprint's under its name,
+ * then the rest under "Not in this sprint"; with more than one Jira site, each says its site.
+ */
 export function ticketPickItems(mine: JiraMyTickets): TicketPickItem[] {
 	const { sprint, other } = ticketGroups(mine.issues);
-	const item = (issue: JiraMyTicket): TicketPickItem => ({ label: issue.key, description: issue.summary, detail: issue.status, key: issue.key });
+	const sites = (mine.sites?.length ?? 0) > 1;
+	const item = (issue: JiraMyTicket): TicketPickItem => ({ label: issue.key, description: issue.summary, detail: sites ? `${issue.status} · ${hostOf(issue.url)}` : issue.status, key: issue.key, url: issue.url });
 	return [
 		...sprint.length ? [{ label: mine.sprint?.name ?? vscode.l10n.t("This sprint"), kind: vscode.QuickPickItemKind.Separator }, ...sprint.map(item)] : [],
 		...sprint.length && other.length ? [{ label: vscode.l10n.t("Not in this sprint"), kind: vscode.QuickPickItemKind.Separator }] : [],
@@ -53,7 +59,7 @@ export class ToolChips {
 	async context(folder?: string): Promise<ToolRefContext> {
 		const connected = [...this.connections.connected].filter(tool => tool === 'jira' || tool === 'gitlab' || tool === 'figma');
 		const defaults: TeamDefaults = await (folder ? this.connections.defaults(folder) : this.connections.workspaceDefaults()).catch(() => ({}));
-		return { connected, jiraProjects: defaults.jira?.projects ?? [] };
+		return { connected, jiraProjects: defaults.jira?.projects ?? [], figmaSizes: defaults.figma?.viewports ?? defaultDesignSizes };
 	}
 
 	/** The item's attachment; never throws (a failure gives a chip with a note instead). */
@@ -74,7 +80,18 @@ export class ToolChips {
 	/** Opens the item a chip names (its `toolRefId`) in its tool, as Home opens team links; says so when that tool isn't connected. */
 	async open(id: string): Promise<void> {
 		const { jira, gitlab } = this.connections.connectors;
-		const url = toolRefUrl(id, { jira: jira?.site, gitlab: gitlab?.url });
+		// A ticket opens on the Jira site that has it.
+		const key = id.startsWith('jira:') ? id.slice('jira:'.length) : undefined;
+		const url = key && jira ? await jira.clientFor(key).then(client => client.issueUrl(key), (err: unknown) => {
+			// A key on more than one site: the user says which, rather than the first site's ticket opening.
+			if (err instanceof AmbiguousTicketError) {
+				return vscode.window.showQuickPick(err.sites.map(site => ({ label: site.name, description: hostOf(site.client.site), url: site.client.issueUrl(key) })), { title: vscode.l10n.t("{0} is on more than one Jira site. Open it on which?", key) }).then(site => site?.url);
+			}
+			return jira.primary.issueUrl(key);
+		}) : toolRefUrl(id, { jira: jira?.site, gitlab: gitlab?.url });
+		if (key && jira && !url) {
+			return;
+		}
 		if (url) {
 			await openTeamLink(url);
 			return;
@@ -225,7 +242,7 @@ export function placeholderAttachment(ref: ToolRef, problem?: string): ToolAttac
 		case 'gitlab':
 			return toolAttachment(ref, toolRefLabel(ref), `GitLab ${ref.kind === 'mr' ? 'merge request' : 'issue'} ${ref.url}.${why} Read it with ${ref.kind === 'mr' ? 'gitlab_get_mr' : 'gitlab_get_issue'}.`);
 		case 'figma':
-			return toolAttachment(ref, vscode.l10n.t("Figma frame {0}", ref.nodeId ?? ''), `Figma frame: ${ref.url}\nCall figma_design with this link for its code hints and design variables, and figma_screenshot to see it.${why}`);
+			return toolAttachment(ref, vscode.l10n.t("Figma frame {0}", ref.nodeId ?? ''), `Figma frame: ${ref.url}\nCall figma_design with this link for its code hints and design variables. Call figma_screenshot only when you need to see it, such as to compare what you built.${why}`);
 	}
 }
 

@@ -1,0 +1,532 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Pulkit Jain. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/* Plan Review (webview-src/planReview.ts), on top of panels.css's tokens. Wide: the plan with its comments in a panel beside it; below 720 px, each comment under its section. */
+body.plan-page {
+	margin: 0;
+	padding: 0;
+	background: var(--vscode-editor-background);
+	color: var(--vscode-foreground);
+	font-family: var(--vscode-font-family);
+	font-size: var(--vscode-font-size);
+	--plan-comment: var(--vscode-editorWarning-foreground, #cca700);
+	--plan-comment-soft: color-mix(in srgb, var(--plan-comment) 10%, transparent);
+	--plan-edit: var(--vscode-charts-blue, #3794ff);
+	--plan-changed: var(--gemini-ok);
+}
+
+#page {
+	display: flex;
+	flex-direction: column;
+	min-height: 100vh;
+}
+
+.plan-head {
+	position: sticky;
+	top: 0;
+	z-index: 3;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px 12px;
+	padding: 10px 20px;
+	border-bottom: 1px solid var(--gemini-border);
+	background: var(--vscode-editor-background);
+}
+
+.plan-title {
+	margin: 0;
+	font-size: 14px;
+	font-weight: 600;
+}
+
+button.plan-file {
+	padding: 1px 6px;
+	border: none;
+	background: none;
+	color: var(--gemini-muted);
+	font-family: var(--vscode-editor-font-family, monospace);
+	font-size: 12px;
+}
+
+button.plan-file:hover {
+	color: var(--vscode-foreground);
+	background: var(--gemini-hover);
+}
+
+.spacer {
+	flex: 1;
+}
+
+.plan-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	padding: 1px 9px;
+	border-radius: 999px;
+	font-size: 11.5px;
+	white-space: nowrap;
+	background: var(--gemini-hover);
+	color: var(--gemini-muted);
+}
+
+.plan-pill.plan {
+	background: color-mix(in srgb, var(--plan-edit) 16%, transparent);
+	color: var(--vscode-foreground);
+}
+
+.plan-pill.cm {
+	background: var(--plan-comment-soft);
+	color: var(--plan-comment);
+}
+
+.plan-dot {
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--plan-edit);
+}
+
+.plan-banner {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px 12px;
+	padding: 8px 20px;
+	border-bottom: 1px solid color-mix(in srgb, var(--plan-edit) 30%, transparent);
+	background: color-mix(in srgb, var(--plan-edit) 10%, transparent);
+	font-size: 12.5px;
+}
+
+.plan-banner.ok {
+	border-bottom-color: color-mix(in srgb, var(--plan-changed) 30%, transparent);
+	background: color-mix(in srgb, var(--plan-changed) 8%, transparent);
+}
+
+.plan-banner.error {
+	border-bottom-color: color-mix(in srgb, var(--gemini-error) 35%, transparent);
+	background: color-mix(in srgb, var(--gemini-error) 10%, transparent);
+}
+
+.plan-banner-text {
+	margin-right: auto;
+}
+
+.plan-spin {
+	width: 12px;
+	height: 12px;
+	border: 2px solid color-mix(in srgb, var(--vscode-foreground) 25%, transparent);
+	border-top-color: var(--vscode-foreground);
+	border-radius: 50%;
+	animation: plan-spin 0.9s linear infinite;
+}
+
+@keyframes plan-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.plan-spin {
+		animation: none;
+	}
+}
+
+.plan-body {
+	display: grid;
+	flex: 1;
+	grid-template-columns: minmax(0, 1fr) 280px;
+}
+
+.plan-sheet {
+	min-width: 0;
+	max-width: 860px;
+	padding: 16px 28px 28px 48px;
+}
+
+.plan-empty {
+	color: var(--gemini-muted);
+}
+
+/* A section: its comments' amber bar, the user's own edit's blue one, a revision's green one. */
+.plan-sec {
+	position: relative;
+	margin: 0 -10px 2px;
+	padding: 2px 10px;
+	border-radius: var(--gemini-radius-small);
+}
+
+.plan-sec:hover {
+	background: color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
+}
+
+.plan-sec.edited {
+	box-shadow: inset 3px 0 0 var(--plan-edit);
+}
+
+.plan-sec.has-cm {
+	box-shadow: inset 3px 0 0 var(--plan-comment);
+	background: var(--plan-comment-soft);
+}
+
+.plan-sec.changed {
+	box-shadow: inset 3px 0 0 var(--plan-changed);
+	background: color-mix(in srgb, var(--plan-changed) 7%, transparent);
+}
+
+.plan-content {
+	cursor: text;
+	line-height: 1.55;
+}
+
+.plan-content:focus-visible,
+.plan-cm-text:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 2px;
+}
+
+/* While the agent works on the plan. */
+.plan-content[aria-disabled="true"] {
+	cursor: default;
+}
+
+/* The agent changed the section being edited. */
+.plan-conflict {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 4px 8px;
+	font-size: 12px;
+	color: var(--gemini-error);
+}
+
+.plan-theirs {
+	margin: 0;
+	padding: 8px 10px;
+	border: 1px dashed var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-small);
+	font-size: 12.5px;
+}
+
+/* An edit that couldn't be saved, to copy. */
+.plan-banner textarea.plan-kept {
+	flex-basis: 100%;
+	box-sizing: border-box;
+	padding: 6px 8px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-small);
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	font-family: var(--vscode-editor-font-family, monospace);
+	font-size: 12px;
+	resize: vertical;
+}
+
+.plan-content :is(h1, h2, h3, h4, h5, h6) {
+	margin: 12px 0 4px;
+	line-height: 1.3;
+}
+
+.plan-content h1 {
+	font-size: 1.5em;
+}
+
+.plan-content h2 {
+	font-size: 1.25em;
+}
+
+.plan-content h3 {
+	font-size: 1.1em;
+}
+
+.plan-content :is(p, ul, ol, pre, blockquote, .table-wrap) {
+	margin: 6px 0;
+}
+
+.plan-content code {
+	padding: 0 4px;
+	border-radius: 3px;
+	background: var(--vscode-textCodeBlock-background, var(--gemini-hover));
+	font-family: var(--vscode-editor-font-family, monospace);
+	font-size: 0.92em;
+}
+
+.plan-content pre {
+	overflow-x: auto;
+	padding: 8px 10px;
+	border-radius: var(--gemini-radius-small);
+	background: var(--vscode-textCodeBlock-background, var(--gemini-hover));
+}
+
+.plan-content pre code {
+	padding: 0;
+	background: none;
+}
+
+.plan-content a {
+	color: var(--vscode-textLink-foreground);
+}
+
+.plan-source {
+	white-space: pre-wrap;
+	font-family: var(--vscode-editor-font-family, monospace);
+}
+
+/* The + in a section's margin, shown on hover and keyboard focus. */
+button.plan-add {
+	position: absolute;
+	left: -30px;
+	top: 6px;
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	justify-content: center;
+	border-color: var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-small);
+	opacity: 0;
+}
+
+.plan-sec:hover button.plan-add,
+button.plan-add:focus-visible {
+	opacity: 1;
+}
+
+.plan-count,
+.plan-changed-tag {
+	position: absolute;
+	right: 6px;
+	top: 6px;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 11px;
+	color: var(--plan-comment);
+}
+
+.plan-changed-tag {
+	color: var(--plan-changed);
+}
+
+.plan-editor,
+.plan-comment-box {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin: 6px 0;
+}
+
+.plan-editor textarea,
+.plan-comment-box textarea,
+.plan-cm textarea {
+	width: 100%;
+	box-sizing: border-box;
+	padding: 8px 10px;
+	border: 1px solid var(--vscode-focusBorder);
+	border-radius: var(--gemini-radius-small);
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	font-family: var(--vscode-editor-font-family, monospace);
+	font-size: 12.5px;
+	line-height: 1.5;
+	resize: vertical;
+}
+
+.plan-comment-box textarea,
+.plan-cm textarea {
+	font-family: inherit;
+}
+
+.plan-comment-box {
+	padding: 8px;
+	border: 1px solid var(--vscode-focusBorder);
+	border-radius: var(--gemini-radius);
+	background: var(--gemini-card);
+}
+
+.plan-quote {
+	padding-left: 8px;
+	border-left: 2px solid var(--plan-comment);
+	color: var(--gemini-muted);
+	font-size: 12px;
+}
+
+.plan-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 6px;
+}
+
+.plan-hint {
+	margin-right: auto;
+	color: var(--gemini-faint);
+	font-size: 11.5px;
+}
+
+/* Comments: in the panel when there is room, under their sections when there isn't. */
+.plan-rail {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 14px 12px;
+	border-left: 1px solid var(--gemini-border);
+	background: var(--vscode-sideBar-background, var(--gemini-card));
+}
+
+.plan-rail-head {
+	display: flex;
+	justify-content: space-between;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--gemini-muted);
+}
+
+.plan-rail-empty {
+	margin: 0;
+	color: var(--gemini-faint);
+	font-size: 12px;
+}
+
+.plan-inline {
+	display: none;
+}
+
+.plan-inline:has(.plan-comment-box) {
+	display: block;
+}
+
+.plan-inline .plan-cm {
+	display: none;
+}
+
+.plan-cm {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+	padding: 8px 10px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-small);
+	background: var(--gemini-card);
+}
+
+.plan-cm.sent {
+	opacity: 0.6;
+}
+
+.plan-cm-on {
+	overflow: hidden;
+	font-size: 11px;
+	color: var(--plan-comment);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.plan-cm-text {
+	cursor: pointer;
+	font-size: 12.5px;
+	overflow-wrap: anywhere;
+	white-space: pre-wrap;
+}
+
+.plan-cm-acts {
+	display: flex;
+	justify-content: flex-end;
+	gap: 4px;
+}
+
+button.link-button {
+	padding: 1px 6px;
+	border: none;
+	background: none;
+	color: var(--gemini-muted);
+	font-size: 11.5px;
+}
+
+button.link-button:hover {
+	color: var(--vscode-foreground);
+	background: var(--gemini-hover);
+}
+
+.plan-foot {
+	position: sticky;
+	bottom: 0;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px 10px;
+	padding: 10px 20px;
+	border-top: 1px solid var(--gemini-border);
+	background: var(--vscode-sideBar-background, var(--gemini-card));
+}
+
+.plan-foot-text {
+	min-width: 0;
+	margin-right: auto;
+	color: var(--gemini-muted);
+	font-size: 12px;
+}
+
+.plan-foot .short {
+	display: none;
+}
+
+.plan-n {
+	margin-left: 6px;
+	padding: 0 6px;
+	border-radius: 999px;
+	background: color-mix(in srgb, currentColor 22%, transparent);
+	font-size: 11px;
+}
+
+button.plan-select-comment {
+	position: absolute;
+	z-index: 5;
+	box-shadow: 0 4px 12px var(--gemini-shadow);
+}
+
+@media (max-width: 720px) {
+	.plan-body {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.plan-sheet {
+		padding: 12px 16px 20px 40px;
+	}
+
+	.plan-rail {
+		display: none;
+	}
+
+	.plan-inline,
+	.plan-inline .plan-cm {
+		display: flex;
+	}
+
+	.plan-inline {
+		flex-direction: column;
+		gap: 6px;
+		margin: 6px 0 4px;
+	}
+
+	.plan-foot-text {
+		display: none;
+	}
+
+	.plan-foot .wide {
+		display: none;
+	}
+
+	.plan-foot .short {
+		display: inline;
+	}
+
+	.plan-foot .spacer-short {
+		flex: 1;
+	}
+}

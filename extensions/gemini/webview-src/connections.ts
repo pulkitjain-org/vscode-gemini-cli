@@ -7,7 +7,7 @@
 // with its logo and state, and an in-page dialog to connect one.
 
 import type { TeamToolId } from '../src/acp/teamHttp';
-import type { ConnectionRowView, ConnectionsStrings, ConnectionsView, FromConnections, ToConnections } from '../src/host/connectionsProtocol';
+import type { ConnectionRowView, ConnectionsStrings, ConnectionsView, FromConnections, JiraSiteRowView, ToConnections } from '../src/host/connectionsProtocol';
 import { button, el, format, icon, pageStrings } from './panelDom';
 import { toolLogo } from './toolLogos';
 
@@ -25,7 +25,10 @@ function post(message: FromConnections): void {
 	vscode.postMessage(message);
 }
 
-function stateClass(row: ConnectionRowView): string {
+/** A Jira site after the first, for the dialog: its id, or none to add one. */
+type SiteTarget = Partial<Pick<JiraSiteRowView, 'id' | 'name' | 'url' | 'email'>>;
+
+function stateClass(row: Pick<ConnectionRowView, 'kind' | 'tool'>): string {
 	switch (row.kind) {
 		case 'connected':
 			return 'ok';
@@ -50,9 +53,7 @@ function toolRow(row: ConnectionRowView): HTMLElement {
 	node.dataset.tool = row.tool;
 	const main = el('div', 'row-main');
 	const title = el('div', 'row-title');
-	const state = el('span', `state-pill ${stateClass(row)}`);
-	state.append(el('span', 'state-dot'), el('span', undefined, row.label));
-	title.append(el('span', 'name', row.name), state, ...row.pills.map(pill => el('span', 'tag', pill)));
+	title.append(el('span', 'name', row.name), ...row.sites?.length && row.siteName ? [el('span', 'tag', row.siteName)] : [], statePill(row), ...row.pills.map(pill => el('span', 'tag', pill)));
 	main.append(title);
 	if (row.detail) {
 		main.append(el('div', 'row-detail', row.detail));
@@ -67,6 +68,10 @@ function toolRow(row: ConnectionRowView): HTMLElement {
 		busy.prepend(spinner());
 		busy.disabled = true;
 		actions.append(busy);
+	} else if (!row.saved && row.tool === 'confluence') {
+		const connectButton = button('', strings.connect, () => openConfluenceDialog(row));
+		connectButton.disabled = !row.choices?.length;
+		actions.append(connectButton);
 	} else if (!row.saved) {
 		const connectButton = button('', strings.connect, () => {
 			if (!row.needsToken) {
@@ -86,11 +91,128 @@ function toolRow(row: ConnectionRowView): HTMLElement {
 			actions.append(button('quiet', strings.replaceToken, () => openDialog(row)));
 		}
 		actions.append(button('quiet', strings.disconnect, () => post({ type: 'disconnect', tool: row.tool })));
+		if (row.sites && row.tool === 'jira') {
+			actions.append(button('quiet', strings.addSite, () => openDialog(row, {}), 'add'));
+		}
+		if (row.choices?.length) {
+			actions.append(button('quiet', strings.confluenceAnother, () => openConfluenceDialog(row), 'add'));
+		}
+	}
+	if (row.sites?.length) {
+		const sites = el('div', 'site-rows');
+		row.sites.forEach(site => sites.append(siteRow(row, site)));
+		main.append(sites);
 	}
 	const logo = el('span', 'tool-mark');
 	logo.append(toolLogo(row.tool, 22));
 	node.append(logo, main, actions);
 	return node;
+}
+
+function statePill(row: Pick<ConnectionRowView, 'kind' | 'tool' | 'label'>): HTMLElement {
+	const state = el('span', `state-pill ${stateClass(row)}`);
+	state.append(el('span', 'state-dot'), el('span', undefined, row.label));
+	return state;
+}
+
+/** A Jira site after the first: its name, address and state, with its own token. */
+function siteRow(row: ConnectionRowView, site: JiraSiteRowView): HTMLElement {
+	const node = el('div', 'site-row');
+	node.dataset.site = site.id;
+	const main = el('div', 'row-main');
+	const title = el('div', 'row-title');
+	title.append(el('span', 'name', site.name), el('span', 'tag', hostOf(site.url)), statePill({ ...site, tool: row.tool }));
+	main.append(title);
+	if (site.detail) {
+		main.append(el('div', 'row-detail', site.detail));
+	}
+	const actions = el('div', 'row-actions');
+	if (site.kind !== 'connected' && site.kind !== 'checking') {
+		actions.append(button('', strings.tryAgain, () => post({ type: 'refresh', tool: row.tool })));
+	}
+	if (row.tool === 'confluence') {
+		// Its token is the Jira site's: replaced there.
+		actions.append(button('quiet', strings.disconnect, () => post({ type: 'removeConfluence', id: site.id })));
+	} else {
+		actions.append(
+			button(site.kind === 'auth' ? 'primary' : 'quiet', strings.replaceToken, () => openDialog(row, site)),
+			button('quiet', strings.removeSite, () => post({ type: 'removeSite', id: site.id })),
+		);
+	}
+	node.append(main, actions);
+	return node;
+}
+
+function hostOf(url: string): string {
+	try {
+		return new URL(url).host;
+	} catch {
+		return url;
+	}
+}
+
+/** Confluence's Connect dialog: which Jira site's account to use; Confluence on Cloud shares it. */
+function openConfluenceDialog(row: ConnectionRowView): void {
+	closeDialog();
+	const returnFocus = document.activeElement as HTMLElement | null;
+	const backdrop = el('div', 'dialog-backdrop');
+	const box = el('div', 'dialog');
+	box.setAttribute('role', 'dialog');
+	box.setAttribute('aria-modal', 'true');
+	box.setAttribute('aria-labelledby', 'connect-confluence');
+	const head = el('div', 'dialog-head');
+	const title = el('h2', undefined, strings.confluenceTitle);
+	title.id = 'connect-confluence';
+	head.append(logoTile('confluence', 18), title, button('icon-button', '', closeDialog, 'close', strings.close));
+	const body = el('div', 'dialog-body');
+	body.append(el('p', 'hint', strings.confluenceText));
+	const options = el('div', 'choice-list');
+	options.setAttribute('role', 'radiogroup');
+	let chosen = row.choices?.find(choice => !choice.problem)?.id;
+	for (const choice of row.choices ?? []) {
+		const option = el('label', `choice${choice.problem ? ' off' : ''}`);
+		const radio = el('input');
+		radio.type = 'radio';
+		radio.name = 'confluence-site';
+		radio.disabled = !!choice.problem;
+		radio.checked = choice.id === chosen;
+		radio.addEventListener('change', () => chosen = choice.id);
+		const text = el('span', 'choice-text');
+		text.append(el('strong', undefined, format(strings.useJiraAccount, choice.name)), el('span', 'mono hint', choice.host));
+		if (choice.problem) {
+			text.append(el('span', 'choice-problem', choice.problem));
+		}
+		option.append(radio, text);
+		options.append(option);
+	}
+	body.append(options);
+	const result = el('div', 'dialog-result');
+	result.setAttribute('role', 'status');
+	body.append(result);
+	const foot = el('div', 'dialog-foot');
+	const submit = button('primary', strings.connect, () => {
+		if (!chosen || !dialog) {
+			return;
+		}
+		dialog.result.className = 'dialog-result checking';
+		dialog.result.replaceChildren(spinner(), el('span', undefined, strings.checking));
+		dialog.submit.disabled = true;
+		post({ type: 'connectConfluence', id: chosen });
+	});
+	submit.disabled = !chosen;
+	foot.append(el('span', 'spacer'), button('', strings.cancel, closeDialog), submit);
+	box.append(head, body, foot);
+	box.addEventListener('keydown', event => {
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			closeDialog();
+		}
+	});
+	backdrop.addEventListener('mousedown', event => event.target === backdrop && closeDialog());
+	backdrop.append(box);
+	document.body.append(backdrop);
+	dialog = { tool: 'confluence', node: backdrop, result, submit, returnFocus };
+	(box.querySelector<HTMLInputElement>('input:checked') ?? submit).focus();
 }
 
 function connect(row: ConnectionRowView): void {
@@ -192,7 +314,7 @@ function render(): void {
 	permissionsHeader.append(permissionsText);
 	const permissionRows = el('div', 'rows');
 	permissionRows.append(
-		permissionRow(strings.reads, strings.readsDetail, strings.alwaysAllowed, ['jira', 'gitlab', 'sonar', 'snyk', 'figma']),
+		permissionRow(strings.reads, strings.readsDetail, strings.alwaysAllowed, ['jira', 'confluence', 'gitlab', 'sonar', 'snyk', 'figma']),
 		permissionRow(strings.writes, strings.writesDetail, strings.askEachTime, ['jira', 'gitlab']),
 		permissionRow(strings.confirmWrites, strings.confirmWritesDetail, strings.askOnceOnly, ['jira', 'gitlab']),
 	);
@@ -226,7 +348,8 @@ function input(type: string, value: string, placeholder: string, autocomplete: A
 	return node;
 }
 
-function openDialog(row: ConnectionRowView): void {
+/** The Connect dialog for `row`, or for one of Jira's other sites (`site`, empty to add one). */
+function openDialog(row: ConnectionRowView, site?: SiteTarget): void {
 	closeDialog();
 	const returnFocus = document.activeElement as HTMLElement | null;
 	const backdrop = el('div', 'dialog-backdrop');
@@ -237,13 +360,14 @@ function openDialog(row: ConnectionRowView): void {
 	box.setAttribute('aria-labelledby', titleId);
 
 	const head = el('div', 'dialog-head');
-	const title = el('h2', undefined, format(strings.connectTitle, row.name));
+	const title = el('h2', undefined, site && !site.id ? strings.addSite : format(strings.connectTitle, site?.name ?? row.name));
 	title.id = titleId;
 	head.append(logoTile(row.tool, 18), title, button('icon-button', '', closeDialog, 'close', strings.close));
 
-	const server = input('url', row.url ?? '', row.tool === 'jira' ? 'https://your-site.atlassian.net' : `https://${row.tool === 'sonar' ? 'sonar' : 'gitlab'}.example.internal`, 'off');
+	const server = input('url', site ? site.url ?? '' : row.url ?? '', row.tool === 'jira' ? 'https://your-site.atlassian.net' : `https://${row.tool === 'sonar' ? 'sonar' : 'gitlab'}.example.internal`, 'off');
 	const serverHint = [row.urlFromDefaults ? strings.serverHintDefaults : format(strings.serverHint, row.name), row.tool === 'jira' ? '' : format(strings.serverHintVpn, row.name)].filter(Boolean).join(' ');
-	const email = input('email', row.email ?? '', 'you@company.com', 'email');
+	const email = input('email', site ? site.email ?? row.email ?? '' : row.email ?? '', 'you@company.com', 'email');
+	const name = input('text', site ? site.name ?? '' : row.siteName ?? '', '', 'off');
 	const token = input('password', '', '', 'off');
 	const create = button('link-button', strings.createToken, () => post({ type: 'createToken', tool: row.tool, url: server.value.trim() || undefined }), 'link-external');
 	create.disabled = row.tool !== 'jira' && !server.value.trim();
@@ -251,6 +375,9 @@ function openDialog(row: ConnectionRowView): void {
 	const tokenHint = row.tool === 'jira' ? strings.tokenHintJira : row.tool === 'gitlab' ? strings.tokenHintGitlab : strings.tokenHintSonar;
 
 	const body = el('div', 'dialog-body');
+	if (row.tool === 'jira' && (site || row.sites?.length)) {
+		body.append(field(strings.siteName, strings.siteNameHint, name));
+	}
 	body.append(field(strings.server, serverHint, server));
 	if (row.tool === 'jira') {
 		body.append(field(strings.email, strings.emailHint, email));
@@ -263,7 +390,7 @@ function openDialog(row: ConnectionRowView): void {
 	body.append(result, note);
 
 	const foot = el('div', 'dialog-foot');
-	const submit = button('primary', strings.connect, () => submitDialog(row, server, email, token));
+	const submit = button('primary', strings.connect, () => submitDialog(row, site, { name, server, email, token }));
 	foot.append(el('span', 'spacer'), button('', strings.cancel, closeDialog), submit);
 
 	box.append(head, body, foot);
@@ -292,10 +419,11 @@ function openDialog(row: ConnectionRowView): void {
 	backdrop.append(box);
 	document.body.append(backdrop);
 	dialog = { tool: row.tool, node: backdrop, result, submit, returnFocus };
-	(server.value ? row.tool === 'jira' && !email.value ? email : token : server).focus();
+	(site && !site.id ? name : server.value ? row.tool === 'jira' && !email.value ? email : token : server).focus();
 }
 
-function submitDialog(row: ConnectionRowView, server: HTMLInputElement, email: HTMLInputElement, token: HTMLInputElement): void {
+function submitDialog(row: ConnectionRowView, site: SiteTarget | undefined, fields: { readonly name: HTMLInputElement; readonly server: HTMLInputElement; readonly email: HTMLInputElement; readonly token: HTMLInputElement }): void {
+	const { name, server, email, token } = fields;
 	if (!dialog) {
 		return;
 	}
@@ -303,7 +431,11 @@ function submitDialog(row: ConnectionRowView, server: HTMLInputElement, email: H
 	dialog.result.replaceChildren(icon('loading'), el('span', undefined, strings.checking));
 	dialog.result.querySelector('.codicon')?.classList.add('codicon-modifier-spin');
 	dialog.submit.disabled = true;
-	post({ type: 'connect', tool: row.tool, url: server.value.trim(), email: row.tool === 'jira' ? email.value.trim() : undefined, token: token.value.trim() });
+	if (site) {
+		post({ type: 'connectSite', ...site.id ? { id: site.id } : {}, name: name.value.trim(), url: server.value.trim(), email: email.value.trim(), token: token.value.trim() });
+		return;
+	}
+	post({ type: 'connect', tool: row.tool, url: server.value.trim(), email: row.tool === 'jira' ? email.value.trim() : undefined, token: token.value.trim(), ...row.tool === 'jira' && name.value.trim() ? { name: name.value.trim() } : {} });
 }
 
 function closeDialog(): void {

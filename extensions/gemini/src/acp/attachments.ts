@@ -6,6 +6,8 @@
 // Context the user attaches to a prompt. Shared with the webview, so this
 // module must not import Node or VS Code.
 
+import type { DesignFrame } from './figmaDesign';
+
 export type Attachment =
 	| { readonly kind: 'file'; readonly path: string }
 	| {
@@ -28,6 +30,8 @@ export type Attachment =
 		 * the chip shows the tool's logo, and `ref` (toolRefId) names the item.
 		 */
 		readonly tool?: 'jira' | 'gitlab' | 'figma'; readonly ref?: string;
+		/** A Figma design with a frame for each screen size, from Add Figma Design: the chip shows the sizes, and opens them again. */
+		readonly design?: readonly DesignFrame[];
 	};
 
 /** Image types Gemini accepts inline. */

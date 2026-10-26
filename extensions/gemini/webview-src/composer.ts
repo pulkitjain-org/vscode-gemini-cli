@@ -35,6 +35,17 @@ const previewTabs = createPreviewTabs({
 });
 const mac = /Mac/.test(navigator.platform);
 
+/** The tried files the user edited: the message box offers to send the edits with the next message. */
+export function setTriedEdits(files: readonly string[]): void {
+	const node = document.getElementById('tried-edits');
+	if (!node) {
+		return;
+	}
+	node.hidden = !files.length;
+	node.querySelector('span')!.textContent = format(strings.includeEdits, files.map(file => file.split('/').pop()).join(', '));
+	setTip(node, strings.includeEditsTip);
+}
+
 export function setBusy(value: boolean): void {
 	ui.stopButton.hidden = !value;
 	form.classList.toggle('busy', value);
@@ -49,8 +60,8 @@ export function setBusy(value: boolean): void {
 	setTranscriptBusy(value);
 	updatePlaceholder();
 	updateSendState();
-	// A project chat's waiting messages offer Send now only once the coordinator is done.
-	if (strings.project) {
+	// A project chat's waiting messages, and one with the user's edits, offer Send now only once the turn is done.
+	if (strings.project || state.queue.some(item => item.withEdits)) {
 		renderQueue();
 	}
 }
@@ -221,7 +232,9 @@ function submit(when: 'now' | 'queue' = 'now'): void {
 		sent.push(text);
 	}
 	recalled = -1;
-	vscode.postMessage({ type: 'prompt', text, attachments: state.attachments, ...(state.busy ? { when } : {}) });
+	const edits = document.getElementById('tried-edits');
+	const includeEdits = !!edits && !edits.hidden && !!document.querySelector<HTMLInputElement>('#tried-edits-on')?.checked;
+	vscode.postMessage({ type: 'prompt', text, attachments: state.attachments, ...(state.busy ? { when } : {}), ...(includeEdits ? { includeEdits } : {}) });
 	state.attachments = [];
 	renderAttachments();
 	closePicker();

@@ -14,7 +14,7 @@ import { defaultStartMode } from '../acp/chatTurns';
 import { errorMessage } from '../acp/errors';
 import { secretPathReason } from '../acp/fileAccess';
 import { collectCommandActions, commandActionKey } from '../acp/hostAllowlists';
-import type { JiraClient } from '../acp/jira';
+import type { JiraSites } from '../acp/jiraSites';
 import { formatCounts } from '../acp/agentChanges';
 import { attachmentsForFiles } from './addToChat';
 import { AgentsView, AgentSummary, relativeTime, startModes } from './agentsView';
@@ -280,6 +280,7 @@ export class AgentHome implements vscode.Disposable {
 			id: a.id, title: a.title, workspace: path.basename(a.folder), state: a.state, status: a.status,
 			...(a.changes?.files ? { changes: a.changes.files === 1 ? vscode.l10n.t("{0} in 1 file", formatCounts(a.changes)) : vscode.l10n.t("{0} in {1} files", formatCounts(a.changes), a.changes.files) } : {}),
 			...(a.worktree ? { branch: a.worktree.branch } : {}),
+			...(a.trying ? { trying: true } : {}),
 			updated: relativeTime(a.updatedAt, now),
 		});
 		return {
@@ -429,7 +430,7 @@ export class AgentHome implements vscode.Disposable {
 	}
 
 	/** The team tools and the Jira client for the comment box, which always goes to Jira's REST API (never mcp-atlassian in Docker). */
-	private jira(): { readonly team: TeamConnections; readonly client: JiraClient } {
+	private jira(): { readonly team: TeamConnections; readonly client: JiraSites } {
 		const team = this.agents.teamTools;
 		const client = team?.connected.has('jira') ? team.connectors.jira : undefined;
 		if (!team || !client) {
@@ -462,7 +463,8 @@ export class AgentHome implements vscode.Disposable {
 				}
 			}
 			await team.write('jira_rich_comment', {
-				key: message.key, markdown: message.markdown, document: message.document, files,
+				// The link, when Home has it, picks the ticket's site.
+				key: message.url ?? message.key, markdown: message.markdown, document: message.document, files,
 				...message.visibility ? { visibility: message.visibility } : {},
 			});
 		} catch (err) {
@@ -487,8 +489,8 @@ export class AgentHome implements vscode.Disposable {
 		void this.panel?.webview.postMessage(answer);
 	}
 
-	private async commentOptions(key: string): Promise<void> {
-		const { roles, groups } = await Promise.resolve().then(() => this.jira().client.commentVisibilities(key)).catch(() => ({ roles: [], groups: [] }));
+	private async commentOptions(key: string, url?: string): Promise<void> {
+		const { roles, groups } = await Promise.resolve().then(() => this.jira().client.commentVisibilities(url ?? key)).catch(() => ({ roles: [], groups: [] }));
 		void this.panel?.webview.postMessage({ type: 'commentOptions', key, roles, groups } satisfies ToHome);
 	}
 
@@ -618,10 +620,10 @@ export class AgentHome implements vscode.Disposable {
 				await this.postComment(message);
 				return;
 			case 'commentPeople':
-				await this.commentPeople(message.key, message.query, message.id);
+				await this.commentPeople(message.url ?? message.key, message.query, message.id);
 				return;
 			case 'commentOptions':
-				await this.commentOptions(message.key);
+				await this.commentOptions(message.key, message.url);
 				return;
 			case 'commentFiles':
 				await this.commentFiles(message.uris);
@@ -686,7 +688,8 @@ export class AgentHome implements vscode.Disposable {
 			open: vscode.l10n.t("Open"),
 			stop: vscode.l10n.t("Stop"),
 			review: vscode.l10n.t("Review"),
-			mergeBack: vscode.l10n.t("Merge Back"),
+			mergeBack: vscode.workspace.getConfiguration(configSection).get<string>('agents.mergeBack') === 'commit' ? vscode.l10n.t("Merge Back") : vscode.l10n.t("Try in Workspace"),
+			trying: vscode.l10n.t("Keep or Take Back…"),
 			noAgents: vscode.l10n.t("No agents are running. Start one above."),
 			noWorkspace: vscode.l10n.t("Add a workspace folder for agents to work in."),
 			customize: vscode.l10n.t("Customize"),

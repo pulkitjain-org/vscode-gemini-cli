@@ -66,7 +66,7 @@ describe('Home', () => {
 		buttonIn(card, 'Open').focus();
 		sendToPage({ type: 'view', view: view([{ ...working, state: 'done', status: 'Done', changes: '+1 -0 in 1 file', branch: 'gemini/cart' }, done]) });
 		expect({ same: cardOf('a1') === card, buttons: [...card.querySelectorAll('button')].map(button => button.textContent), focused: document.activeElement === buttonIn(card, 'Open') })
-			.toEqual({ same: true, buttons: ['Review', 'Merge Back', 'Open'], focused: true });
+			.toEqual({ same: true, buttons: ['Review', 'Try in Workspace', 'Open'], focused: true });
 	});
 
 	it('keeps an unchanged dashboard card as it is, and drops an agent that is gone', () => {

@@ -245,7 +245,8 @@ describe('geminicode-tools server', () => {
 	it('keeps writes apart from reads', () => {
 		expect(teamWriteTools.map(t => t.name)).toEqual(['jira_comment', 'jira_transition', 'jira_log_time', 'jira_assign', 'gitlab_create_mr', 'gitlab_reply', 'gitlab_merge']);
 		expect(teamWriteTools.filter(t => !teamConfirmTools.includes(t)).map(t => t.name)).toEqual(['jira_comment', 'jira_assign', 'gitlab_reply']);
-		expect(teamReadTools).toHaveLength(10);
+		// Confluence's search, read and draft: a draft writes nothing until the user publishes it from the Review Page.
+		expect(teamReadTools).toHaveLength(13);
 		expect(teamReadTools.map(t => t.name)).not.toContain('snyk_test');
 		expect(teamToolsFor(new Set())).toEqual([]);
 	});

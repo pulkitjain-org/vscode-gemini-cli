@@ -50,6 +50,8 @@ export interface ChangesPanelView {
 		/** Its own branch, when it has one: Merge Back instead of Commit. */
 		readonly branch?: string;
 		readonly canCommit: boolean;
+		/** Its work is being tried in the user's checkout: Keep Changes and Take Back instead of Merge Back. */
+		readonly trying?: boolean;
 	};
 	readonly totals: ChangeTotals;
 	readonly files: readonly ChangedFileView[];
@@ -69,7 +71,13 @@ export interface ChangesPanelStrings {
 	readonly openFile: string;
 	readonly openAll: string;
 	readonly commit: string;
+	/** Merge Back's label: Try in Workspace, or Merge Back with merge commits. */
 	readonly mergeBack: string;
+	readonly mergeBackTip: string;
+	readonly keepChanges: string;
+	readonly keepChangesTip: string;
+	readonly takeBack: string;
+	readonly takeBackTip: string;
 	readonly newFile: string;
 	readonly hiddenLines: string;
 	readonly noDiff: string;
@@ -84,7 +92,7 @@ export type FromChangesPanel =
 	| { readonly type: 'ready' }
 	| { readonly type: 'keep' | 'undo'; readonly path: string; readonly index: number }
 	| { readonly type: 'keepFile' | 'undoFile' | 'openFile'; readonly path: string }
-	| { readonly type: 'keepAll' | 'undoAll' | 'openAll' | 'commit' | 'mergeBack' }
+	| { readonly type: 'keepAll' | 'undoAll' | 'openAll' | 'commit' | 'mergeBack' | 'keepTried' | 'takeBack' }
 	| FromChangesTeam;
 
 // --- Agent Home
@@ -98,6 +106,8 @@ export interface HomeAgent {
 	/** "+12 -3 in 2 files" */
 	readonly changes?: string;
 	readonly branch?: string;
+	/** Its work is being tried in the user's checkout: Merge Back's button offers Keep Changes and Take Back. */
+	readonly trying?: boolean;
 	/** "5m" */
 	readonly updated: string;
 }
@@ -152,7 +162,7 @@ export interface HomeView {
 	readonly dashboard: HomeDashboard;
 }
 
-export type HomeToolId = 'jira' | 'gitlab' | 'sonar' | 'snyk' | 'figma';
+export type HomeToolId = 'jira' | 'confluence' | 'gitlab' | 'sonar' | 'snyk' | 'figma';
 export type HomeCardId = 'unfinished' | 'startup' | 'agents' | 'tickets' | 'mergeRequests' | 'quality' | 'gemini';
 
 /** What a button on the dashboard does. */
@@ -161,7 +171,7 @@ export type HomeAction =
 	| { readonly kind: 'link'; readonly url: string }
 	| { readonly kind: 'agent'; readonly id: string; readonly do: 'open' | 'stop' | 'review' | 'mergeBack' }
 	/** Opens Home's comment box for Jira ticket `key`; `visibility` is the project role the team's comments are limited to. */
-	| { readonly kind: 'comment'; readonly key: string; readonly title: string; readonly visibility?: string }
+	| { readonly kind: 'comment'; readonly key: string; readonly title: string; readonly visibility?: string; /** The ticket's link, which says its Jira site when several are connected. */ readonly url?: string }
 	/** Checks `tool`'s server again now, as a banner's Retry does, and reads its data. */
 	| { readonly kind: 'retry'; readonly tool: HomeToolId };
 
@@ -214,6 +224,10 @@ export interface HomeRow {
 	readonly group?: string;
 	/** The query behind that heading, faint beside it. */
 	readonly groupQuery?: string;
+	/** The heading query's tone: warn for a Jira site that can't be reached now. */
+	readonly groupTone?: HomeTone;
+	/** Dimmed: the last answer of a server that can't be reached now. */
+	readonly dim?: boolean;
 }
 
 export interface HomeCard {
@@ -366,7 +380,10 @@ export interface HomeStrings {
 	readonly open: string;
 	readonly stop: string;
 	readonly review: string;
+	/** Merge Back's label: Try in Workspace, or Merge Back with merge commits. */
 	readonly mergeBack: string;
+	/** The button of an agent whose work is tried: Keep Changes, Take Back and the rest. */
+	readonly trying: string;
 	readonly noAgents: string;
 	readonly noWorkspace: string;
 	readonly customize: string;
@@ -489,11 +506,11 @@ export type FromHome =
 	 * `files` (paths) and `pasted` files (base64) attached, and who may see it
 	 * (unset: the team's default).
 	 */
-	| { readonly type: 'comment'; readonly key: string; readonly markdown: string; readonly document: AdfDocument; readonly files: readonly string[]; readonly pasted: readonly HomePastedFile[]; readonly visibility?: JiraCommentVisibility | 'everyone' }
+	| { readonly type: 'comment'; readonly key: string; readonly url?: string; readonly markdown: string; readonly document: AdfDocument; readonly files: readonly string[]; readonly pasted: readonly HomePastedFile[]; readonly visibility?: JiraCommentVisibility | 'everyone' }
 	/** People who can see `key` matching `query`, for @ in the comment box; `id` pairs the answer with the question. */
-	| { readonly type: 'commentPeople'; readonly key: string; readonly query: string; readonly id: number }
+	| { readonly type: 'commentPeople'; readonly key: string; readonly url?: string; readonly query: string; readonly id: number }
 	/** The roles and groups a comment on `key` can be limited to. */
-	| { readonly type: 'commentOptions'; readonly key: string }
+	| { readonly type: 'commentOptions'; readonly key: string; readonly url?: string }
 	/** Files for the comment box: the dropped `uris`, or a file picker without them. */
 	| { readonly type: 'commentFiles'; readonly uris?: readonly string[] };
 

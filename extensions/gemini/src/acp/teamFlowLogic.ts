@@ -68,7 +68,7 @@ export function ticketStartPrompt(key: string, summary: string): string {
 	return [
 		`Work on the Jira ticket ${key}: ${summary}.`,
 		'',
-		`1. Read the ticket with jira_get_issue, including its acceptance criteria and links. If it links a Figma frame, read it with figma_design.`,
+		`1. Read the ticket with jira_get_issue, including its acceptance criteria and links. If it links Figma frames, read them with figma_design: one frame for each screen size, the smallest first. If it links Confluence pages, read them with confluence_get_page.`,
 		'2. Read the code it touches and write a short plan that cites the acceptance criteria. Wait for my OK before changing anything.',
 		'3. Then build it, with tests, and run the tests.',
 	].join('\n');

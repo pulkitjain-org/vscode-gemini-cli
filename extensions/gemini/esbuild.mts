@@ -18,6 +18,8 @@ run({
 		// extension's own bundle never carries them: pages opened on request, and tools used rarely.
 		'pages': path.join(srcDir, 'pages.ts'),
 		'onDemand': path.join(srcDir, 'onDemand.ts'),
+		// Confluence: its client, agents' calls, drafts and the Review Page, loaded the first time Confluence is used.
+		'confluence': path.join(srcDir, 'confluence.ts'),
 	},
 	srcDir,
 	outdir: outDir,

@@ -425,7 +425,7 @@ function card(agent: HomeAgent, old?: HTMLElement): HTMLElement {
 	const shown: AgentButton[] = [
 		...agent.state === 'working' || agent.state === 'waiting' ? [['stop', strings.stop, 'debug-stop'] as const] : [],
 		...agent.changes ? [['review', strings.review, 'diff'] as const] : [],
-		...agent.branch && agent.changes && agent.state !== 'working' ? [['mergeBack', strings.mergeBack, 'git-merge'] as const] : [],
+		...agent.branch && agent.changes && agent.state !== 'working' ? [['mergeBack', agent.trying ? strings.trying : strings.mergeBack, agent.trying ? 'beaker' : 'git-merge'] as const] : [],
 		['open', strings.open],
 	];
 	if (changed(actions, shown)) {
@@ -613,7 +613,7 @@ function groupHeading(row: HomeRow): HTMLElement {
 	const heading = el('div', 'dash-group');
 	heading.append(el('span', undefined, row.group ?? ''));
 	if (row.groupQuery) {
-		heading.append(el('span', 'dash-query', row.groupQuery));
+		heading.append(el('span', `dash-query${row.groupTone ? ` ${row.groupTone}` : ''}`, row.groupQuery));
 	}
 	return heading;
 }
@@ -744,7 +744,7 @@ function dashCard(card: HomeCard): HTMLElement {
 
 /** A card's row; `inList` for Show All's popup, which has room for the repository. */
 function dashRow(row: HomeRow, inList = false): HTMLElement {
-	const node = el('div', 'dash-row');
+	const node = el('div', row.dim ? 'dash-row dim' : 'dash-row');
 	if (row.tool) {
 		node.append(logo(row.tool, 14));
 	} else if (row.icon) {

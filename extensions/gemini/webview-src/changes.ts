@@ -9,6 +9,7 @@
 import type { ChangedFileView, ChangesPanelStrings, ChangesPanelView, FromChangesPanel, ToChangesPanel } from '../src/host/panelProtocol';
 import { button, el, format, icon, pageStrings } from './panelDom';
 import { renderTeam } from './mrPanel';
+import { setTip } from './tooltip';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromChangesPanel): void; getState(): unknown; setState(state: unknown): void };
 
@@ -48,17 +49,22 @@ function render(view: ChangesPanelView): void {
 	);
 	const actions = el('span', 'actions');
 	actions.append(
-		button('icon-button', '', () => post({ type: 'openAll' }), 'diff-multiple', strings.openAll),
+		tip(button('icon-button', '', () => post({ type: 'openAll' }), 'diff-multiple', strings.openAll), strings.openAll),
 		button('secondary', strings.undoAll, () => post({ type: 'undoAll' })),
 		button('secondary', strings.keepAll, () => post({ type: 'keepAll' })),
 	);
-	if (view.agent.branch) {
-		actions.append(button('primary', strings.mergeBack, () => post({ type: 'mergeBack' }), 'git-merge'));
+	if (view.agent.trying) {
+		actions.append(
+			tip(button('secondary', strings.takeBack, () => post({ type: 'takeBack' }), 'discard'), strings.takeBackTip),
+			tip(button('primary', strings.keepChanges, () => post({ type: 'keepTried' }), 'check'), strings.keepChangesTip),
+		);
+	} else if (view.agent.branch) {
+		actions.append(tip(button('primary', strings.mergeBack, () => post({ type: 'mergeBack' }), 'git-merge'), strings.mergeBackTip));
 	} else {
 		const commit = button('primary', strings.commit, () => post({ type: 'commit' }), 'git-commit');
 		commit.disabled = !view.agent.canCommit;
 		if (view.agent.busy) {
-			commit.title = strings.working;
+			setTip(commit, strings.working);
 		}
 		actions.append(commit);
 	}
@@ -91,7 +97,7 @@ function renderFile(file: ChangedFileView): HTMLElement {
 	name.append(icon('chevron-down'), el('span', 'name', file.name));
 	if (file.dir) {
 		const dir = el('span', 'dir', file.dir);
-		dir.title = file.dir;
+		setTip(dir, file.dir);
 		name.append(dir);
 	}
 	if (file.created) {
@@ -101,9 +107,9 @@ function renderFile(file: ChangedFileView): HTMLElement {
 	counts.append(el('span', 'added', `+${file.added}`), el('span', 'removed', `\u2212${file.removed}`));
 	const actions = el('span', 'file-actions');
 	actions.append(
-		button('icon-button', '', () => post({ type: 'openFile', path: file.path }), 'go-to-file', strings.openFile),
-		button('icon-button', '', () => post({ type: 'undoFile', path: file.path }), 'discard', strings.undoFile),
-		button('icon-button', '', () => post({ type: 'keepFile', path: file.path }), 'check', strings.keepFile),
+		tip(button('icon-button', '', () => post({ type: 'openFile', path: file.path }), 'go-to-file', strings.openFile), strings.openFile),
+		tip(button('icon-button', '', () => post({ type: 'undoFile', path: file.path }), 'discard', strings.undoFile), strings.undoFile),
+		tip(button('icon-button', '', () => post({ type: 'keepFile', path: file.path }), 'check', strings.keepFile), strings.keepFile),
 	);
 	header.append(name, counts, actions);
 	section.append(header);
@@ -133,6 +139,12 @@ function renderFile(file: ChangedFileView): HTMLElement {
 	}
 	section.append(body);
 	return section;
+}
+
+/** Gives `node` a themed tooltip in place of the native one; the label stays what screen readers read. */
+function tip<T extends HTMLElement>(node: T, text: string): T {
+	setTip(node, text);
+	return node;
 }
 
 window.addEventListener('message', (event: MessageEvent<ToChangesPanel>) => {

@@ -35,7 +35,7 @@ export class GitError extends Error {
 }
 
 /** The git commands that talk to a server, which get a time limit and an ssh that never prompts. */
-const networkCommands = new Set(['fetch', 'push', 'pull', 'ls-remote', 'clone']);
+const networkCommands: readonly string[] = ['fetch', 'push', 'pull', 'ls-remote', 'clone'];
 /** How long a git command that talks to a server may take. */
 export const networkGitTimeoutMs = 60_000;
 /** The ssh git uses for those, unless the user set their own: no prompt to hang on, and a quick give-up on a host that doesn't answer. */
@@ -76,7 +76,7 @@ async function ownSsh(cwd: string): Promise<boolean> {
  * the usual problems (no VPN, no sign-in); the raw stderr stays on the error.
  */
 export async function git(cwd: string, args: readonly string[]): Promise<string> {
-	const network = networkCommands.has(args[0]);
+	const network = networkCommands.includes(args[0]);
 	const ssh = network && !await ownSsh(cwd) ? { GIT_SSH_COMMAND: batchSsh } : {};
 	return new Promise((resolve, reject) => {
 		execFile('git', args, { cwd, maxBuffer: 16 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C', ...ssh }, ...network ? { timeout: networkGitTimeoutMs } : {} }, (err, stdout, stderr) => {

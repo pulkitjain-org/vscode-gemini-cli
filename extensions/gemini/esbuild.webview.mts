@@ -16,6 +16,9 @@ run({
 		'changes': path.join(srcDir, 'changes.ts'),
 		'home': path.join(srcDir, 'home.ts'),
 		'connections': path.join(srcDir, 'connections.ts'),
+		'confluenceReview': path.join(srcDir, 'confluenceReview.ts'),
+		// Plan Review's page (src/host/planReviewPage.ts).
+		'planReview': path.join(srcDir, 'planReview.ts'),
 		'auditLog': path.join(srcDir, 'auditLog.ts'),
 		'settings': path.join(srcDir, 'settings.ts'),
 		'indexPage': path.join(srcDir, 'indexPage.ts'),
@@ -27,6 +30,8 @@ run({
 		'homePopups': path.join(srcDir, 'homePopups.ts'),
 		'homeMenus': path.join(srcDir, 'homeMenus.ts'),
 		'emojiPicker': path.join(srcDir, 'emojiPicker.ts'),
+		'figmaDesign': path.join(srcDir, 'figmaDesign.ts'),
+		'threadCard': path.join(srcDir, 'threadCard.ts'),
 		'katex-style': path.join(import.meta.dirname, 'node_modules', 'katex', 'dist', 'katex.min.css'),
 		'codicon': path.join(import.meta.dirname, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css'),
 	},

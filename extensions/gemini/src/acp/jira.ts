@@ -8,7 +8,7 @@
 // turned into plain text for the model and the panels, and plain text the
 // user wrote is turned back into it.
 
-import { Fetch, normalizeBaseUrl, teamRequest } from './teamHttp';
+import { Fetch, normalizeBaseUrl, teamRequest, TeamToolError } from './teamHttp';
 
 export interface JiraAuth {
 	readonly site: string;
@@ -104,6 +104,20 @@ export interface JiraMyTicket extends JiraIssueSummary {
 export interface JiraMyTickets {
 	readonly sprint?: JiraSprint;
 	readonly issues: readonly JiraMyTicket[];
+	/** With more than one Jira site connected: each site's own tickets and sprint, in the order the sites were added. */
+	readonly sites?: readonly JiraSiteTickets[];
+}
+
+/** One Jira site's part of the user's tickets. */
+export interface JiraSiteTickets {
+	/** The name the user gave the site, such as the team or client. */
+	readonly name: string;
+	readonly host: string;
+	readonly sprint?: JiraSprint;
+	readonly issues: readonly JiraMyTicket[];
+	/** Why the site didn't answer this time; `issues` are then its last answer, from `asOf`. */
+	readonly error?: string;
+	readonly asOf?: number;
 }
 
 const listFields = ['summary', 'status', 'issuetype', 'priority', 'fixVersions', 'updated'];
@@ -126,6 +140,19 @@ export class JiraClient {
 
 	myself(): Promise<JiraUser> {
 		return this.request<JiraUser>('/rest/api/3/myself');
+	}
+
+	/** Whether `key` is a ticket on this site the user can see; throws when the site can't be asked. */
+	async has(key: string): Promise<boolean> {
+		try {
+			await this.request(`/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary`);
+			return true;
+		} catch (err) {
+			if (err instanceof TeamToolError && (err.kind === 'notFound' || err.kind === 'forbidden')) {
+				return false;
+			}
+			throw err;
+		}
 	}
 
 	issueUrl(key: string): string {
