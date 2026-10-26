@@ -18,6 +18,7 @@ import { applyInlineStyles } from './inlineStyles';
 import { renderMath } from './math';
 import { mathPlugin } from './mathRule';
 import { enhanceMarkdown } from './markdownExtras';
+import { isSafeLink } from './linkPolicy';
 import { button, copyButton, el, icon, onIntent, setLabel, setTip } from './dom';
 import { canRun } from '../src/acp/runCommands';
 import { addRunButtons } from './runButtons';
@@ -34,9 +35,12 @@ const mac = /Mac/.test(navigator.platform);
 const markdown = new MarkdownIt({ html: false, linkify: true }).use(mathPlugin);
 // Only links with a scheme or www.; file names such as README.md are not web addresses.
 markdown.linkify.set({ fuzzyLink: false });
+// Only web and mail links: never another app's URL handler.
+markdown.validateLink = isSafeLink;
 // The user's own messages keep their line breaks, as typed.
 const userMarkdown = new MarkdownIt({ html: false, linkify: true, breaks: true });
 userMarkdown.linkify.set({ fuzzyLink: false });
+userMarkdown.validateLink = isSafeLink;
 
 /** Called when the user expands or collapses a tool call's output. */
 export type ToggleToolCall = (item: ItemOf<'toolCall'>) => void;

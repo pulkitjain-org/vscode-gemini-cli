@@ -7,12 +7,14 @@
 // or a reply names, and a turn's trace file. Proposed edits are kept in memory
 // only, by transcript item id, so their diffs can be opened after the turn.
 
+import * as os from 'node:os';
 import * as path from 'node:path';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
 import { dropOldest } from '../../acp/chatTurns';
 import { errorMessage } from '../../acp/errors';
 import { fileNamePattern } from '../../acp/folderFiles';
+import { isTraceFile } from '../../acp/hostAllowlists';
 import type { FromWebview } from '../chatProtocol';
 import type { DiffPreview } from '../diffPreview';
 import type { ChatControllerOptions } from './chatOptions';
@@ -43,7 +45,10 @@ export class ChatFileLinks {
 				void this.openPath(message.path, message.line);
 				break;
 			case 'openTrace':
-				void vscode.workspace.openTextDocument(message.file).then(doc => vscode.window.showTextDocument(doc, { preview: false }), () => undefined);
+				// Only a trace GeminiCode wrote, never another file the page names.
+				if (isTraceFile(message.file, os.homedir())) {
+					void vscode.workspace.openTextDocument(message.file).then(doc => vscode.window.showTextDocument(doc, { preview: false }), () => undefined);
+				}
 				break;
 		}
 	}

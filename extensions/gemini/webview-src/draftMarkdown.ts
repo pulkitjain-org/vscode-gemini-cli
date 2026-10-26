@@ -10,6 +10,7 @@
 // time the user is likely to want Preview.
 
 import MarkdownIt from 'markdown-it';
+import { isSafeLink } from './linkPolicy';
 import { applyInlineStyles } from './inlineStyles';
 
 export const calloutIcons: Readonly<Record<string, string>> = {
@@ -88,7 +89,11 @@ function addTaskBoxes(root: HTMLElement): void {
 /** A draft as it will show once sent, for Agent Home's Preview. */
 export function renderDraft(text: string, calloutLabel: (kind: string) => string): Node[] {
 	const node = document.createElement('div');
-	draftMarkdown ??= new MarkdownIt({ html: false, linkify: true, breaks: true });
+	if (!draftMarkdown) {
+		draftMarkdown = new MarkdownIt({ html: false, linkify: true, breaks: true });
+		// Only web and mail links: never another app's URL handler.
+		draftMarkdown.validateLink = isSafeLink;
+	}
 	node.innerHTML = draftMarkdown.render(text);
 	applyInlineStyles(node);
 	addCallouts(node, calloutLabel);
