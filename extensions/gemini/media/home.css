@@ -248,19 +248,19 @@ button.start-as-option:focus-visible {
 	color: var(--gemini-muted);
 }
 
-/* The workspace's index as a dot against its folder: filled green when indexed, filled blue while indexing, an empty ring when not yet. */
+/* The workspace's index beside its folder: a drum, full when indexed, half while indexing, empty when not. */
 button.index-state {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 18px;
+	width: 22px;
 	height: 26px;
-	margin-left: -6px;
+	margin-left: -4px;
 	padding: 0;
 	border: none;
 	border-radius: var(--gemini-radius-small);
 	background: none;
-	color: var(--gemini-faint);
+	color: var(--gemini-muted);
 	cursor: pointer;
 }
 
@@ -268,26 +268,33 @@ button.index-state[hidden] {
 	display: none;
 }
 
-button.index-state::before {
-	content: "";
-	width: 7px;
-	height: 7px;
-	box-sizing: border-box;
-	border: 1.5px solid currentColor;
-	border-radius: 50%;
+button.index-state svg {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.2;
+}
+
+button.index-state svg .fill-full,
+button.index-state svg .fill-half {
+	stroke: none;
+	fill: currentColor;
+	opacity: 0;
 }
 
 button.index-state.ready {
-	color: var(--gemini-ok);
+	color: var(--vscode-testing-iconPassed, #3fb86b);
+}
+
+button.index-state.ready svg .fill-full {
+	opacity: 0.55;
 }
 
 button.index-state.building {
-	color: var(--gemini-accent);
+	color: var(--vscode-button-background, #2f7bd8);
 }
 
-button.index-state.ready::before,
-button.index-state.building::before {
-	background: currentColor;
+button.index-state.building svg .fill-half {
+	opacity: 0.55;
 }
 
 button.index-state:hover {
