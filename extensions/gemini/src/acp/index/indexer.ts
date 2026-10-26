@@ -21,12 +21,12 @@ import { isInside } from '../fileAccess';
 import { findGitDir } from '../gitHead';
 import { GitIgnoreChecker } from '../gitIgnore';
 import { cochangePairs } from './cochange';
-import { fallbackRepoMap, ripgrepDefinitions, ripgrepSearch } from './fallbackSearch';
+import { fallbackRepoMap, PathFilter, ripgrepDefinitions, ripgrepSearch } from './fallbackSearch';
 import { IndexLock } from './indexLock';
 import { workspaceId } from './indexPaths';
 import { IndexStore, isCorruption, moveAside } from './indexStore';
 import type { Answer, IndexSettings, IndexState, IndexStatus } from './indexerProtocol';
-import { canInclude, InventoryFile, SkipRules, takeInventory } from './inventory';
+import { canInclude, InventoryFile, SkipRules, statInFolder, takeInventory } from './inventory';
 import { languageName } from './languages';
 import { parseFile } from './parse';
 import { filesNamed, findSymbol, hasFile, relatedFiles, RelatedResult, search, SearchQuery, SearchResult, SymbolResult } from './query';
@@ -75,6 +75,8 @@ interface Workspace {
 	rules: SkipRules | undefined;
 	lastStatusAt: number;
 	skipped: { path: string; reason: string }[];
+	/** The folder's real path, for telling where links lead. */
+	realRoot: string | undefined;
 }
 
 /** The folder's files for import resolution: a set, and paths by file name. */
@@ -298,12 +300,12 @@ export class Indexer {
 	// --- Queries
 
 	search({ root, query }: { root: string; query: SearchQuery }): Promise<Answer<SearchResult>> {
-		return this.answer(root, store => search(store, query), async () => ripgrepSearch(this.options.ripgrep, root, query.query, Math.min(query.limit ?? 8, 20), query.path));
+		return this.answer(root, store => search(store, query), async () => ripgrepSearch(this.options.ripgrep, root, query.query, Math.min(query.limit ?? 8, 20), query.path, await this.shown(root)));
 	}
 
 	findSymbol({ root, name, kind, references }: { root: string; name: string; kind?: string; references?: boolean }): Promise<Answer<SymbolResult>> {
 		return this.answer<SymbolResult>(root, store => findSymbol(store, name, { kind, references }), async () => {
-			const found = await ripgrepDefinitions(this.options.ripgrep, root, name.slice(name.lastIndexOf('.') + 1));
+			const found = await ripgrepDefinitions(this.options.ripgrep, root, name.slice(name.lastIndexOf('.') + 1), await this.shown(root));
 			return { definitions: found.map(f => ({ name, kind: 'definition', path: f.path, line: f.line, endLine: f.line, exported: true, signature: f.text })), similar: [], references: [], referenceTotal: 0 };
 		});
 	}
@@ -317,7 +319,18 @@ export class Indexer {
 	}
 
 	repoMap({ root, path: subfolder, depth, maxChars }: { root: string; path?: string; depth?: number; maxChars?: number }): Promise<Answer<string>> {
-		return this.answer(root, store => repoMap(store, root, { path: subfolder, depth, maxChars }), () => fallbackRepoMap(root, maxChars));
+		return this.answer(root, store => repoMap(store, root, { path: subfolder, depth, maxChars }), async () => fallbackRepoMap(root, maxChars, await this.shown(root)));
+	}
+
+	/**
+	 * What live search may show of `root`: the files the index would cover,
+	 * so secret files, .geminiignore and gemini.index.exclude apply before
+	 * the first build as they do after it.
+	 */
+	private async shown(root: string): Promise<PathFilter> {
+		const workspace = await this.workspaces.get(root);
+		const rules = workspace ? await this.rules(workspace) : await SkipRules.forFolder(root, defaultSettings);
+		return relative => !rules.pathReason(relative);
 	}
 
 	/**
@@ -392,6 +405,7 @@ export class Indexer {
 				return {
 					root, dir, file: path.join(dir, 'index.db'), settings, store: undefined, lock: undefined, state: { kind: 'none' },
 					pending: new Set(), needsReconcile: false, paused: false, running: undefined, opening: undefined, known: undefined, rules: undefined, lastStatusAt: 0, skipped: [],
+					realRoot: undefined,
 				} satisfies Workspace;
 			});
 			this.workspaces.set(root, pending);
@@ -614,12 +628,15 @@ export class Indexer {
 		const store = workspace.store!;
 		const rules = await this.rules(workspace);
 		const known = workspace.known ??= new Known((store.statement('SELECT path FROM files').all() as { path: string }[]).map(r => r.path));
+		const realRoot = workspace.realRoot ??= await fs.realpath(workspace.root).catch(() => workspace.root);
 		// Only the changed paths: a save in a large repository must not read the whole index.
 		const states = store.fileStates(paths);
 		const toWrite: { file: InventoryFile; content: Buffer | undefined }[] = [];
 		const toRemove: string[] = [];
 		for (const relative of paths) {
-			const stat = await fs.stat(path.join(workspace.root, relative)).catch(() => undefined);
+			// Through links too: a path from a file event may lead out of the folder.
+			const found = await statInFolder(realRoot, workspace.root, relative, true);
+			const stat = found?.stat;
 			if (stat?.isDirectory()) {
 				// A folder appeared (a checkout, a copy): look at everything.
 				workspace.needsReconcile = true;

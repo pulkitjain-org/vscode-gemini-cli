@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
@@ -218,6 +218,54 @@ describe('Indexer', () => {
 		await ready(damaged);
 		expect((await indexer.findSymbol({ root: damaged, name: 'fromDamaged' })).result.definitions).toHaveLength(1);
 		expect(existsSync(`${file}.broken`)).toBe(true);
+	});
+
+	it('leaves out links that lead out of the folder or to secret files, and keeps links inside it', async () => {
+		const linked = path.join(base, 'linked');
+		const outside = path.join(base, 'outside-secrets');
+		write(outside, 'id_rsa', 'PRIVATE KEY outsideKeyMaterial\n');
+		write(linked, 'src/real.ts', 'export function realThing() {}\n');
+		write(linked, '.ssh/config', 'Host x\n');
+		symlinkSync(path.join(outside, 'id_rsa'), path.join(linked, 'notes.md'));
+		symlinkSync(path.join(linked, 'src/real.ts'), path.join(linked, 'alias.ts'));
+		symlinkSync(path.join(linked, '.ssh/config'), path.join(linked, 'config.txt'));
+		git(linked, 'init', '-q');
+		git(linked, 'add', '-A');
+		git(linked, 'commit', '-qm', 'links');
+		await indexer.ensure({ root: linked, settings, build: true });
+		await ready(linked);
+		const skipped = (await indexer.skipped({ root: linked })).filter(s => !s.path.startsWith('.ssh/'));
+		expect(skipped).toEqual([
+			{ path: 'config.txt', reason: 'a link to a file that may contain secrets', includable: false },
+			{ path: 'notes.md', reason: 'a link to a file outside the folder', includable: false },
+		]);
+		expect(await indexer.files({ root: linked })).toEqual(['alias.ts', 'src/real.ts']);
+		expect((await indexer.search({ root: linked, query: { query: 'outsideKeyMaterial' } })).result.hits).toEqual([]);
+		// A file event for a link (or a path through a linked folder) is checked the same way.
+		symlinkSync(outside, path.join(linked, 'vendor'));
+		symlinkSync(path.join(outside, 'id_rsa'), path.join(linked, 'later.md'));
+		await indexer.update({ root: linked, paths: ['vendor/id_rsa', 'later.md', 'src/real.ts'] });
+		await new Promise(resolve => setTimeout(resolve, 200));
+		expect(await indexer.files({ root: linked })).toEqual(['alias.ts', 'src/real.ts']);
+	});
+
+	it('keeps secret files and .geminiignore out of live search before the first build', async () => {
+		const fresh = path.join(base, 'fresh');
+		write(fresh, '.geminiignore', 'private/\n');
+		const rg = path.join(base, 'fake-rg.sh');
+		// Stands in for ripgrep: the lines it would print for "private key".
+		writeFileSync(rg, '#!/bin/sh\nprintf \'service-account.json:3:  "private_key": "-----BEGIN"\\nprivate/notes.md:1:private key here\\nsrc/keys.ts:7:export function rotatePrivateKey() {}\\n\'\n');
+		chmodSync(rg, 0o755);
+		const live = new Indexer({ baseDir: path.join(base, 'live-indexes'), ripgrep: rg });
+		try {
+			const answer = await live.search({ root: fresh, query: { query: 'private key' } });
+			expect(answer.fallback).toBeDefined();
+			expect(answer.result.hits.map(h => h.path)).toEqual(['src/keys.ts']);
+			const symbol = await live.findSymbol({ root: fresh, name: 'rotatePrivateKey' });
+			expect(symbol.result.definitions.map(d => d.path)).toEqual(['src/keys.ts']);
+		} finally {
+			await live.dispose();
+		}
 	});
 
 	it('removes an index', async () => {
