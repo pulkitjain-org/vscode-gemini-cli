@@ -6,8 +6,8 @@
 // The extension host's side of the indexer process. The process starts on
 // the first request, never at activation, with the app's own Node at the
 // lowest priority it sets itself; it is started again after a crash (with a
-// growing delay, giving up after a few), and stopped after ten minutes with
-// nothing to do. The host only forwards requests: every file read, parse and
+// growing delay, giving up after a few, then trying once more ten minutes
+// later), and stopped after ten minutes with nothing to do. The host only forwards requests: every file read, parse and
 // database write happens in the process.
 
 import { fork, type ChildProcess } from 'node:child_process';
@@ -25,11 +25,15 @@ export interface IndexClientOptions {
 	readonly log: (message: string) => void;
 	readonly idleStopMs?: number;
 	readonly restartDelaysMs?: readonly number[];
+	/** After giving up, how long before the process may start again. */
+	readonly cooldownMs?: number;
 	readonly fork?: typeof fork;
+	readonly now?: () => number;
 }
 
 const defaultIdleStopMs = 10 * 60 * 1000;
 const defaultRestartDelaysMs = [1_000, 4_000, 16_000];
+const defaultCooldownMs = 10 * 60 * 1000;
 /** A process that ran this long resets the crash count. */
 const healthyAfterMs = 5 * 60 * 1000;
 const heapMb = 512;
@@ -46,6 +50,9 @@ export class IndexClient {
 	/** The process (re)started; folders it should know about need `ensure` again. */
 	private readonly onDidStartEmitter = new Emitter<void>();
 	readonly onDidStart = this.onDidStartEmitter.event;
+	/** `failed` changed: the process gave up, or its cooldown ended. */
+	private readonly onDidChangeFailedEmitter = new Emitter<boolean>();
+	readonly onDidChangeFailed = this.onDidChangeFailedEmitter.event;
 
 	private child: ChildProcess | undefined;
 	private starting: Promise<ChildProcess> | undefined;
@@ -57,36 +64,54 @@ export class IndexClient {
 	private crashes = 0;
 	private startedAt = 0;
 	private notBefore = 0;
-	private stopped = false;
+	/** When the process gave up after crashing again and again; 0 while it hasn't. */
+	private stoppedAt = 0;
+	private cooldownTimer: ReturnType<typeof setTimeout> | undefined;
 	private disposed = false;
 	/** The process is being stopped on purpose, so its exit is no crash. */
 	private expectedExit = false;
 
-	constructor(private readonly options: IndexClientOptions) { }
+	private readonly now: () => number;
+
+	constructor(private readonly options: IndexClientOptions) {
+		this.now = options.now ?? Date.now;
+	}
 
 	/** Whether the process is running now. */
 	get running(): boolean {
 		return !!this.child;
 	}
 
-	/** Whether the process gave up after crashing again and again. */
+	/**
+	 * Whether the process gave up after crashing again and again: until its
+	 * cooldown ends, sessions get neither the index tools nor the hint.
+	 */
 	get failed(): boolean {
-		return this.stopped;
+		return this.stoppedAt > 0 && this.now() - this.stoppedAt < this.cooldownMs;
+	}
+
+	private get cooldownMs(): number {
+		return this.options.cooldownMs ?? defaultCooldownMs;
 	}
 
 	async request<M extends IndexerMethod>(method: M, params: IndexerParams<M>): Promise<Awaited<IndexerResult<M>>> {
 		if (this.disposed) {
 			throw new Error('The indexer has stopped.');
 		}
-		if (this.stopped) {
+		if (this.failed) {
 			throw new Error('The indexer stopped after crashing several times. The Gemini log has the details.');
 		}
-		const wait = this.notBefore - Date.now();
+		if (this.stoppedAt) {
+			// The cooldown is over: try again from scratch.
+			this.stoppedAt = 0;
+			this.crashes = 0;
+		}
+		const wait = this.notBefore - this.now();
 		if (!this.child && wait > 0) {
 			await new Promise(resolve => setTimeout(resolve, wait));
 		}
 		const child = this.child ?? await (this.starting ??= this.start().finally(() => this.starting = undefined));
-		this.lastRequestAt = Date.now();
+		this.lastRequestAt = this.now();
 		const id = this.nextId++;
 		return new Promise<Awaited<IndexerResult<M>>>((resolve, reject) => {
 			this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject });
@@ -106,9 +131,11 @@ export class IndexClient {
 
 	dispose(): void {
 		this.disposed = true;
+		clearTimeout(this.cooldownTimer);
 		this.stop();
 		this.onDidChangeStatusEmitter.dispose();
 		this.onDidStartEmitter.dispose();
+		this.onDidChangeFailedEmitter.dispose();
 	}
 
 	private async start(): Promise<ChildProcess> {
@@ -121,7 +148,7 @@ export class IndexClient {
 			serialization: 'advanced',
 		});
 		this.child = child;
-		this.startedAt = Date.now();
+		this.startedAt = this.now();
 		this.workerIdle = true;
 		child.stderr?.setEncoding('utf8');
 		child.stderr?.on('data', (text: string) => this.options.log(`Indexer: ${text.trim()}`));
@@ -172,19 +199,29 @@ export class IndexClient {
 			return;
 		}
 		this.options.log(`Indexer exited (code ${code}, signal ${signal}).`);
-		if (Date.now() - this.startedAt > healthyAfterMs) {
+		if (this.now() - this.startedAt > healthyAfterMs) {
 			this.crashes = 0;
 		}
 		const delays = this.options.restartDelaysMs ?? defaultRestartDelaysMs;
 		if (this.crashes >= delays.length) {
-			this.stopped = true;
+			this.stoppedAt = this.now();
+			this.options.log(`The indexer crashed ${this.crashes + 1} times; sessions go without the index for ${Math.round(this.cooldownMs / 60_000)} minutes.`);
+			this.onDidChangeFailedEmitter.fire(true);
+			clearTimeout(this.cooldownTimer);
+			this.cooldownTimer = setTimeout(() => {
+				this.cooldownTimer = undefined;
+				if (!this.disposed) {
+					this.onDidChangeFailedEmitter.fire(false);
+				}
+			}, this.cooldownMs);
+			this.cooldownTimer.unref?.();
 			return;
 		}
-		this.notBefore = Date.now() + delays[this.crashes++];
+		this.notBefore = this.now() + delays[this.crashes++];
 	}
 
 	private stopIfIdle(): void {
-		if (this.child && this.workerIdle && !this.pending.size && Date.now() - this.lastRequestAt > (this.options.idleStopMs ?? defaultIdleStopMs)) {
+		if (this.child && this.workerIdle && !this.pending.size && this.now() - this.lastRequestAt > (this.options.idleStopMs ?? defaultIdleStopMs)) {
 			this.stop();
 		}
 	}

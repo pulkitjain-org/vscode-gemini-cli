@@ -75,9 +75,18 @@ export class WorkspaceIndex implements vscode.Disposable {
 		this.applyEnabled();
 	}
 
-	/** Whether agents get the index now. */
+	/** Whether the index is on (`gemini.index.enabled`) and served. */
 	get enabled(): boolean {
 		return indexEnabled() && !!this.server;
+	}
+
+	/**
+	 * Whether new sessions get the index tools and the hint: on, and the
+	 * indexer process hasn't given up after crashing (until its cooldown
+	 * ends), so no agent is told to rely on tools that only fail.
+	 */
+	get available(): boolean {
+		return this.enabled && !this.client?.failed;
 	}
 
 	/** The indexes' home: ~/.geminicode/index. */
@@ -125,7 +134,7 @@ export class WorkspaceIndex implements vscode.Disposable {
 	 * workspace folder an agent's worktree was made from.
 	 */
 	mcpServersFor(agent: string, folder: string, seedFrom?: string): acp.McpServer[] {
-		if (!this.enabled) {
+		if (!this.available) {
 			return [];
 		}
 		this.prepare(folder, seedFrom);
@@ -135,7 +144,7 @@ export class WorkspaceIndex implements vscode.Disposable {
 
 	/** The `mcpServers` for a spare session in `folder`, which no agent has yet. */
 	spareServers(folder: string): acp.McpServer[] {
-		if (!this.enabled) {
+		if (!this.available) {
 			return [];
 		}
 		this.prepare(folder);
@@ -159,7 +168,7 @@ export class WorkspaceIndex implements vscode.Disposable {
 
 	/** Whether a new session gets the index: part of a spare session's key. */
 	get serving(): boolean {
-		return this.enabled && !!this.server?.listening;
+		return this.available && !!this.server?.listening;
 	}
 
 	/** Opens `folder`'s index and builds it when that is due. */
@@ -267,7 +276,7 @@ export class WorkspaceIndex implements vscode.Disposable {
 
 	/** The note for an agent's prompt in `folder` while its index is built and agents get the tools. */
 	hint(folder: string): string | undefined {
-		return this.enabled && this.statuses.get(folder)?.state.kind === 'ready' ? indexHint : undefined;
+		return this.available && this.statuses.get(folder)?.state.kind === 'ready' ? indexHint : undefined;
 	}
 
 	/** Folders whose indexes this window keeps current. */
@@ -330,6 +339,8 @@ export class WorkspaceIndex implements vscode.Disposable {
 			}
 			this.onDidChangeStatusEmitter.fire(status);
 		});
+		// Sessions started from now on go with or without the index; spare ones are opened again to match.
+		client.onDidChangeFailed(() => this.onDidChangeEnabledEmitter.fire(this.enabled));
 		client.onDidStart(() => {
 			// A new process knows no folders; the ones this window keeps current are opened again.
 			for (const folder of this.folders.keys()) {
