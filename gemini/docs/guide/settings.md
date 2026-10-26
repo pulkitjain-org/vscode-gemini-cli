@@ -48,9 +48,6 @@ See [Review and safety](review.md) for how approvals work.
 | `gemini.chat.foldFinishedWork` | on | Fold each finished turn under one "Worked for" line. Off shows every step as its own row. |
 | `gemini.chat.spellCheck` | on | Underline misspelt words in the chat and Home composers. |
 | `gemini.chat.runCommands` | `askWhenRisky` | How **Run** on a reply's shell commands behaves: `askWhenRisky`, `alwaysAsk`, or `off` to leave only Copy. See [Terminal](terminal.md#run-a-command-from-a-reply). |
-| `gemini.chat.reactions.enabled` | on | React to replies with an emoji. See [Reacting to replies](chat.md#reacting-to-replies). |
-| `gemini.chat.reactions.agentReactions` | on | Let Gemini react to your messages when it has something to add. Costs about 50 tokens per session. |
-| `gemini.chat.reactions.meanings` | `{}` | What an emoji asks Gemini to do, such as `{ "🚀": "Go ahead, then commit with a short message." }`. An entry can change a built-in meaning (👍 👎 ❓ ❤️) or add one. |
 | `gemini.usageMeter.enabled` | on | Show today's quota in the Gemini status bar item and the chat's usage popover. |
 
 ## Quick requests
@@ -82,13 +79,19 @@ Inline edit (<kbd>⌘I</kbd> in the editor), commit messages, Enhance prompt's r
 | `gemini.team.openMergeRequestsIn` | `ask` | Where a merge request opens when you click it: GeminiCode's browser or your default browser. |
 | `gemini.team.runTeamServers` | off | Run the tools' own MCP servers behind the team tools: the team's Jira and GitLab servers and SonarQube's in Docker, and Snyk's from your Snyk CLI. **Take Over Both Servers** in Connections turns it on. See [Your team's own servers](team-tools.md#your-teams-own-servers). |
 
-## Pilot
+## Advanced
+
+These are under **Gemini › Advanced** in Settings.
 
 | Setting | Default | What it does |
 | --- | --- | --- |
+| `gemini.chat.reactions.enabled` | on | React to replies with an emoji. See [Reacting to replies](chat.md#reacting-to-replies). |
+| `gemini.chat.reactions.agentReactions` | on | Let Gemini react to your messages when it has something to add. Costs about 50 tokens per session. |
+| `gemini.chat.reactions.meanings` | `{}` | What an emoji asks Gemini to do, such as `{ "🚀": "Go ahead, then commit with a short message." }`. An entry can change a built-in meaning (👍 👎 ❓ ❤️) or add one. |
 | `gemini.pilot.record` | off | Count the pilot's measures on your Mac: launches, waits, permission cards, Undo and Rewind, team tool errors and links that leave the app, with times and no text. |
+| `gemini.developer.showTools` | off | Show GeminiCode's developer tools in the Command Palette: Run Benchmark, Record or Stop Performance Trace, Export Pilot Data, Show Status Menu, New Skill, and installing a Gemini CLI version. They still run from the Gemini status bar menu, Project Helpers and the messages that offer them. |
 
-If you are in the pilot, turn it on. At the end, run **Gemini: Export Pilot Data** and hand over the `geminicode-pilot` folder in your home folder.
+If you are in the pilot, turn `gemini.pilot.record` on. At the end, run **Gemini: Export Pilot Data**, which the Command Palette shows while it is on, and hand over the `geminicode-pilot` folder in your home folder.
 
 ## When a change applies
 

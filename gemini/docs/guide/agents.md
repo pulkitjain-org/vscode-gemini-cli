@@ -30,7 +30,7 @@ Each card names the query that fills it, so you can check its numbers against th
 
 If GeminiCode quit while something was running, two cards come first. **Unfinished when GeminiCode last quit** lists the flows to reopen and any write whose result never came back. **What came back, and when** stays for a few minutes and says what is already back and what is still starting. In the chat, a turn that was cut off shows a card with **Retry the Turn**.
 
-To get back to Home, click the house at the start of the title bar, press <kbd>⇧⌘H</kbd>, or run **Gemini: Home**. To stop it opening at start-up, turn off `gemini.home.openOnStartup`.
+To get back to Home, click the house at the start of the title bar, press <kbd>⇧⌘H</kbd> (outside the editor, where it is Replace in Files), or run **Gemini: Home**. To stop it opening at start-up, turn off `gemini.home.openOnStartup`.
 
 In Agents mode the agent list highlights the agent, project or thread whose tab is in front. The status bar leaves out the window's repository, branch and problem counts, because each agent's own folder and branch show under its composer. Editor mode keeps them.
 
@@ -38,7 +38,7 @@ In Agents mode the agent list highlights the agent, project or thread whose tab 
 
 Each agent opens as a tab with its own chat. The tab shows what the agent is doing: a spinner while it works, an amber dot when it needs you, a tick when it has finished, and how many lines it has changed.
 
-In the Agents pane, each agent's row has the same signal (green when finished, red when something went wrong, grey otherwise). On the right it shows how long the agent has been working, "waiting", the lines it added, or when it was last active. Point at a row to see its branch and folder. Rename, stop or remove an agent from its right-click menu.
+In the Agents pane, each agent's row has the same signal (green when finished, red when something went wrong, grey otherwise). On the right it shows how long the agent has been working, "waiting", the lines it added, or when it was last active. Point at a row to see its branch and folder. Rename, stop or remove an agent from its right-click menu; **Gemini: Stop Agent** (<kbd>⌘esc</kbd>) stops the one in front. Removing an agent deletes its conversation and undo history, and the question names any files whose changes you haven't reviewed yet.
 
 - In Editor mode, agents that are working, waiting, or finished but not yet read show as pills in the title bar.
 - Right-click GeminiCode in the Dock for **New Agent**.

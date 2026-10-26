@@ -1035,7 +1035,12 @@ export class AgentsView implements vscode.Disposable {
 			await this.removeWorktreeAgent(node.record, worktree);
 			return;
 		}
-		const answer = await vscode.window.showWarningMessage(vscode.l10n.t("Remove the agent \"{0}\"? Its conversation is closed.", node.record.title), { modal: true }, remove);
+		// Its change list goes with it, so name what still waits for Keep or Undo.
+		const unreviewed = (this.live.get(node.record.id)?.changes.files ?? (await this.transcripts.load(node.record.id)).changes).map(file => path.basename(file.path));
+		const names = unreviewed.length > 5 ? `${unreviewed.slice(0, 5).join(', ')}, …` : unreviewed.join(', ');
+		const detail = unreviewed.length === 1 ? vscode.l10n.t("1 file still has changes to review: {0}.", names)
+			: unreviewed.length ? vscode.l10n.t("{0} files still have changes to review: {1}.", unreviewed.length, names) : undefined;
+		const answer = await vscode.window.showWarningMessage(vscode.l10n.t("Remove the agent \"{0}\"? This deletes its conversation and undo history.", node.record.title), { modal: true, detail }, remove);
 		if (answer === remove) {
 			this.stop(node.record.id, false);
 			this.forkGone(node.record);

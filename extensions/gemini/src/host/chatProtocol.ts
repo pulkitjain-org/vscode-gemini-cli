@@ -24,7 +24,7 @@ import type { PendingPromptView } from '../acp/promptQueue';
 export const chatProtocolVersion = 36;
 
 /** Commands the status line may offer; the host runs only these. */
-export const statusCommands = ['gemini.restartAgent', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal'] as const;
+export const statusCommands = ['gemini.restartAgent', 'gemini.signIn', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal'] as const;
 export type StatusCommand = typeof statusCommands[number];
 
 export interface ViewStatus {

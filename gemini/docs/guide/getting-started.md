@@ -55,6 +55,6 @@ GeminiCode Dark and Light share one calm look: soft greys, panels as cards with 
 
 ## Updates
 
-GeminiCode checks for a newer version every few hours and offers the download; it never downloads on its own. **GeminiCode: Check for Updates…** (also in the GeminiCode menu, under About GeminiCode) checks now and says whether you are up to date. Turn the automatic check off with `gemini.app.checkForUpdates`.
+GeminiCode checks for a newer version every few hours and offers the download; it never downloads on its own. **Gemini: Check for Updates...** (also in the GeminiCode menu, under About GeminiCode) checks now and says whether you are up to date. Turn the automatic check off with `gemini.app.checkForUpdates`.
 
-GeminiCode also ships with a tested Gemini CLI, and can install, update and switch between newer CLI versions in its own storage with **Gemini: Install or Change Gemini CLI Version...**, without touching your system.
+GeminiCode also ships with a tested Gemini CLI, and can install, update and switch between newer CLI versions in its own storage with **Install or Change Gemini CLI Version...** in the menu of the **Gemini** status bar item, without touching your system.

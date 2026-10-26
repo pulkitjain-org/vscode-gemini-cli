@@ -20,7 +20,7 @@ Pick a mode from the composer's **+** menu, or press <kbd>⌘.</kbd> in an agent
 
 ## Permission requests
 
-A permission card shows the CLI's own choices, such as **Allow**, **Allow for this session** and **Reject**; <kbd>esc</kbd> rejects. When an agent asks, its tab comes to the front and the proposed edit opens as a diff; in the Agents pane its row shows an amber dot and "waiting".
+A permission card shows the CLI's own choices, such as **Allow**, **Allow for this session** and **Reject**; <kbd>esc</kbd> rejects. An agent that asks never takes over the chat you're typing in: its tab isn't brought forward. If its chat is in view, the proposed edit opens as a diff. In the Agents pane its row shows an amber dot and "waiting", and the Dock badge and a notification say it waits.
 
 **Allow for this session** on a shell command covers the programs it runs for the rest of that chat's session. Some commands ask every time anyway, because allowing them once would allow far more than you saw:
 
