@@ -194,7 +194,8 @@ export interface ChatGit {
 		/** Absolute paths; empty hides the button. */
 		files(): readonly string[];
 		onDidChange(listener: () => void): { dispose(): void };
-		suggestion(): { readonly branch: string; readonly message: string };
+		/** The branch and message offered; `writeMessage` writes a better message from the changes, when it can. */
+		suggestion(): { readonly branch: string; readonly message: string; readonly writeMessage?: () => Promise<string | undefined> };
 		/** The files were committed. */
 		committed(): void;
 	};

@@ -422,7 +422,7 @@ In Editor mode the **Changes view** below the Agents pane is shown instead. It l
 
 Each chat's composer shows the folder's branch as a pill that switches or creates a branch through the built-in Git extension, which is only activated when the user picks an action (`gitActions.ts`).
 
-An agent's chat also offers **Create Branch & Commit**. It stages and commits only that agent's changed files to a new branch (suggested as `gemini/<agent name>`, with the agent's name as the message), warns first when other files are already staged, and then clears the agent's Changes list.
+An agent's chat also offers **Create Branch & Commit**. It stages and commits only that agent's changed files to a new branch (suggested as `gemini/<agent name>`), warns first when other files are already staged, and then clears the agent's Changes list. The message is written by the quick model from the diff (`commitMessage.ts`, the same prompt as Generate Commit Message), with the agent's name when it can't be. `commitToCurrentBranch` commits to the branch checked out instead.
 
 #### Worktrees
 
@@ -430,7 +430,7 @@ An agent can work on its own branch in a Git worktree (`src/acp/worktrees.ts`, p
 
 The agent's session gets the worktree (or the workspace's matching subfolder in it) as its `cwd`, and the agent record keeps the folder, branch and base. Creating one costs a checkout of the repository's files, shown as progress, and nothing on later prompts.
 
-**Merge Back** commits leftovers with the agent's name and runs `git merge --no-ff` in the workspace's repository, leaving conflicts for Source Control.
+**Merge Back** commits leftovers with a message written the same way (the agent's name when none is) and runs `git merge --no-ff` in the workspace's repository, leaving conflicts for Source Control.
 
 ### Terminals
 

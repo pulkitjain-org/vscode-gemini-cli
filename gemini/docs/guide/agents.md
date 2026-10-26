@@ -62,7 +62,7 @@ Files outside the agent's folder, and files that may hold secrets, such as `.env
 
 Two agents in the same folder can trip over each other's edits. To keep them apart, give an agent its own branch: choose **New Agent on Its Own Branch** (the branch icon next to **+** on a workspace in a Git repository) and enter a branch name. The agent gets its own copy of the repository, on that new branch, in `~/.geminicode/worktrees/<repository>/`. It reads, edits and runs commands there, so your folder and other agents are untouched.
 
-When the work is done, **Merge Back** (the merge icon on the agent's row) commits anything the agent left uncommitted and merges its branch into the branch your folder has checked out. If the merge conflicts, it stops so you can finish it in Source Control. After a clean merge, it offers to remove the agent with its branch and folder.
+When the work is done, **Merge Back** (the merge icon on the agent's row) commits anything the agent left uncommitted, with a message written from its diff, and merges its branch into the branch your folder has checked out. If the merge conflicts, it stops so you can finish it in Source Control. After a clean merge, it offers to remove the agent with its branch and folder.
 
 A new copy has no `node_modules` or build output. To get it ready before the agent starts, set **Gemini › Agents: Worktree Setup** to a command such as `npm ci`, or commit a `.gemini/worktree-setup.sh` to the repository. The command can use `GEMINI_SOURCE_REPOSITORY`, the repository the copy came from, to copy files Git doesn't carry, such as `.env`. If setup fails, the agent starts anyway, and the output is in the **Gemini Worktree Setup** output channel.
 

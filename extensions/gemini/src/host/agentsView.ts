@@ -9,6 +9,7 @@ import * as vscode from 'vscode';
 import { AgentChanges, ChangeTotals } from '../acp/agentChanges';
 import { attentionChange } from '../acp/attention';
 import { branchNameFrom } from '../acp/branchNames';
+import { writeCommitMessage } from '../acp/commitMessage';
 import { agentFolder, AgentRecord, AgentsModel, AgentsSnapshot } from '../acp/agents';
 import { coordinatorModel } from '../acp/projectHub';
 import { savedRepoCount } from '../acp/projectStore';
@@ -177,7 +178,7 @@ export class AgentsView implements vscode.Disposable {
 		this.tree = new AgentTree(this.model, this.live);
 		this.changesView = new ChangesView(id => this.live.get(id)?.changes);
 		this.worktrees = new AgentWorktrees(this.model);
-		this.merge = new AgentMerge(this.model, this.live, (id, deleteBranch) => this.removeAgentAndWorktree(id, deleteBranch));
+		this.merge = new AgentMerge(this.model, this.live, (id, deleteBranch) => this.removeAgentAndWorktree(id, deleteBranch), folder => writeCommitMessage(folder, undefined, this.direct));
 		this.projects = new Projects({
 			record: id => this.model.agent(id),
 			workspaceFolder: id => {
@@ -816,7 +817,8 @@ export class AgentsView implements vscode.Disposable {
 							onDidChange: listener => changes.onDidChange(listener),
 							suggestion: () => {
 								const title = this.model.agent(record.id)?.title ?? record.title;
-								return { branch: branchNameFrom(title), message: title };
+								// The agent's name when no message can be written from the diff.
+								return { branch: branchNameFrom(title), message: title, writeMessage: () => writeCommitMessage(folder, changes.files.map(file => file.path), this.direct) };
 							},
 							// Committed changes are no longer the agent's to review.
 							committed: () => changes.clear(),

@@ -70,7 +70,7 @@ That message and everything after it go from the chat and from Gemini's context,
 
 ## Commit the agent's work
 
-The branch under a chat's composer switches to another branch or creates one. **Create Branch & Commit** creates a branch, stages only the files that agent changed, and commits them; it warns first if other files are already staged. An agent on its own branch has **Merge Back** instead.
+The branch under a chat's composer switches to another branch or creates one. **Create Branch & Commit** creates a branch, stages only the files that agent changed, and commits them; it warns first if other files are already staged. The commit message is written from the agent's diff, as the Source Control sparkle writes one, for you to edit; the agent's name is used when it can't be (inline edit turned off, or a sign-in that can't make direct requests). An agent on its own branch has **Merge Back** instead, which commits its leftovers with a message written the same way.
 
 In the Source Control view, the sparkle button writes a commit message for the staged changes (or, with nothing staged, all changes).
 

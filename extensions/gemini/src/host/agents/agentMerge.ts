@@ -17,6 +17,7 @@ import { errorMessage } from '../../acp/errors';
 import { AgentWorktree, commitAll, currentBranch, mergeBranch, repositoryRoot, worktreeStatus } from '../../acp/worktrees';
 import type { ChatActivity } from '../chatController';
 import { tildify } from '../displayText';
+import { awaitCommitMessage } from '../gitActions';
 
 /** What Merge Back needs of an agent running in this window. */
 interface MergingAgent {
@@ -35,6 +36,8 @@ export class AgentMerge {
 		private readonly live: ReadonlyMap<string, MergingAgent>,
 		/** Removes the agent, its folder and, with `deleteBranch`, its branch. */
 		private readonly removeAgent: (id: string, deleteBranch: boolean) => Promise<void>,
+		/** Writes a commit message for a folder's uncommitted work; undefined when it can't. */
+		private readonly writeMessage?: (folder: string) => Promise<string | undefined>,
 	) { }
 
 	/** Whether agent `id` is being merged back now. */
@@ -177,10 +180,12 @@ export class AgentMerge {
 				void vscode.window.showInformationMessage(vscode.l10n.t("{0} has nothing to merge into {1}.", worktree.branch, into));
 				return false;
 			}
+			// Written from the uncommitted work while the user reads the question.
+			const written = status.uncommitted ? this.writeMessage?.(worktree.folder).catch(() => undefined) : undefined;
 			const detail = [
 				status.commits === 1 ? vscode.l10n.t("1 commit") : status.commits ? vscode.l10n.t("{0} commits", status.commits) : undefined,
-				status.uncommitted === 1 ? vscode.l10n.t("1 changed file not committed yet; it is committed first as \"{0}\"", record.title)
-					: status.uncommitted ? vscode.l10n.t("{0} changed files not committed yet; they are committed first as \"{1}\"", status.uncommitted, record.title) : undefined,
+				status.uncommitted === 1 ? vscode.l10n.t("1 changed file not committed yet; it is committed first, with a message written from the change (or \"{0}\")", record.title)
+					: status.uncommitted ? vscode.l10n.t("{0} changed files not committed yet; they are committed first, with a message written from the changes (or \"{1}\")", status.uncommitted, record.title) : undefined,
 			].filter(Boolean).join('\n');
 			const merge = vscode.l10n.t("Merge");
 			if (await vscode.window.showInformationMessage(vscode.l10n.t("Merge {0} into {1}?", worktree.branch, into), { modal: true, detail }, merge) !== merge) {
@@ -191,7 +196,7 @@ export class AgentMerge {
 				return false;
 			}
 			if (status.uncommitted) {
-				await commitAll(worktree.folder, record.title);
+				await commitAll(worktree.folder, await awaitCommitMessage(written, record.title));
 				// A thread in several repositories keeps the others' changes.
 				live?.changes.clear(record.repos?.length ? worktree.folder : undefined);
 			}
