@@ -22,14 +22,20 @@ Pick a mode from the composer's **+** menu. The list comes from the Gemini CLI, 
 
 A permission card shows the CLI's own choices, such as **Allow**, **Allow for this session** and **Reject**; <kbd>esc</kbd> rejects. When an agent asks, its tab comes to the front and the proposed edit opens as a diff; in the Agents pane its row shows an amber dot and "waiting".
 
-**Allow for this session** on a shell command covers the programs it runs for the rest of that chat's session. Some commands ask every time anyway, because allowing them once would allow far more than you saw:
+**Allow for this session** on a shell command covers the command prefixes it runs for the rest of that chat's session: the program, and for programs with subcommands the subcommand, as the button says (**Allow git status, grep for this session**). Allowing `git status` never covers `git push` or `git grep`, and allowing `npm run lint` never covers `npm run deploy`. A redirect is allowed for the file it wrote only. Some commands ask every time anyway, because allowing them once would allow far more than you saw:
 
-- a command that reaches the network, writes through a redirection, or runs code it builds
-- a command that runs another program or code it is given, such as `env`, `xargs`, `sudo`, `python -c`, `npx`, `find -exec`, `git -c`, `git config` that sets a value, `git rebase -x` or `rg --pre`
-- a command whose program is a variable or a pattern, such as `$EDITOR`
-- a command that writes a build file or anything under `.git`, through `>`, `tee`, `cp`, `mv` or `sed -i`, for example
+- a command that reaches the network, installs a package by name (`npm install left-pad`, `pip install requests`), or runs code it builds
+- a redirect into a file outside the agent's folder
+- a command that runs another program or code it is given, such as `env`, `xargs`, `sudo`, `python -c`, `npx`, `npm exec`, `yarn dlx`, `make -f`, `awk -f`, `sed -f`, `find -exec`, `git -c`, `git grep -O`, `git fetch --upload-pack`, `git config` that sets a value, `git rebase -x` or `rg --pre`
+- `docker` and the like, since `docker inspect` shows a container's settings
+- a script the agent could have written, by relative or absolute path, and a program named by a variable or a pattern, such as `$EDITOR`
+- a command that writes a build file, a git hook, anything under `.git`, `.gemini/settings.json`, a `.gemini/*.sh` script or `.vscode/settings.json` or `tasks.json`, through `>`, `tee`, `cp`, `mv` or `sed -i`, for example
 
-When the agent edits a build file, such as `package.json`, a `Makefile` or `build.gradle`, the task runners you allowed (`npm`, `make`, `gradle` and the like) ask again, since their next run would run what the agent wrote.
+A few test and read-only commands whose programs otherwise always ask can still be allowed for the session: `npx vitest`, `npx tsc --noEmit`, `npx eslint`, `python -m pytest` and `./gradlew test`.
+
+When the agent edits a build file, such as `package.json`, a `Makefile` or `build.gradle`, the task runners you allowed (`npm`, `make`, `gradle` and the like) and the git commands that run hooks (`git commit`, `git push`) ask again, since their next run would run what the agent wrote. When it edits a git hook or a hook manager's settings (`.husky/`, `.pre-commit-config.yaml`, `.lintstagedrc`), every git command asks again.
+
+In Auto Edit, an edit to a file that decides what runs next still shows a card first: the worktree setup script (`.gemini/*.sh`), the CLI's project settings (`.gemini/settings.json`), and the folder's `.vscode/settings.json` and `.vscode/tasks.json`.
 
 **Gemini: Commands Allowed for This Session...** lists what the chat in front allowed, and lets you forget any of it. Turn on **Allow for all future sessions** in [Project Helpers](helpers.md#gemini-cli-settings) to also be offered a permanent allow.
 

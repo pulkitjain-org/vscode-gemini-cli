@@ -51,6 +51,8 @@ export interface TeamToolContext {
 	children?(): TeamChildren;
 	/** Told when a child server could not start and the call went through the in-process connector instead. */
 	childUnavailable?(server: string, reason: string): void;
+	/** Whether the admin allows shell commands (`gemini.tools.allowShell`); tools that run the project's build code are refused when not. */
+	allowShell?(): boolean;
 }
 
 /** The server's name in a session's MCP servers and in `mcp.allowed`. */
@@ -69,6 +71,8 @@ interface TeamTool extends McpTool {
 	readonly write?: boolean;
 	/** Hard to take back, so the card asks every time and offers no session approval. */
 	readonly confirm?: boolean;
+	/** Runs the project's own code (Snyk resolves dependencies with the project's build tools), so the user answers a card, and it is off when shell commands are. */
+	readonly runsCode?: boolean;
 }
 
 export const teamTools: readonly TeamTool[] = [
@@ -181,13 +185,13 @@ export const teamTools: readonly TeamTool[] = [
 		inputSchema: { type: 'object', properties: targetParams },
 	},
 	{
-		tool: 'snyk', name: 'snyk_test',
-		description: 'Runs the user\'s Snyk CLI on the dependencies in your folder. Returns vulnerable packages with severity and the upgrade that fixes each.',
+		tool: 'snyk', name: 'snyk_test', runsCode: true,
+		description: 'Runs the user\'s Snyk CLI on the dependencies in your folder. Returns vulnerable packages with severity and the upgrade that fixes each. It runs the project\'s build tools, so the user approves it.',
 		inputSchema: { type: 'object', properties: {} },
 	},
 	{
-		tool: 'snyk', name: 'snyk_code_test',
-		description: 'Runs Snyk Code on the source in your folder. Returns security issues with file, line and severity.',
+		tool: 'snyk', name: 'snyk_code_test', runsCode: true,
+		description: 'Runs Snyk Code on the source in your folder, which uploads it to Snyk. Returns security issues with file, line and severity. The user approves it.',
 		inputSchema: { type: 'object', properties: {} },
 	},
 	{
@@ -202,8 +206,8 @@ export const teamTools: readonly TeamTool[] = [
 	},
 ];
 
-/** The tools that only read, which run without asking. */
-export const teamReadTools: readonly McpTool[] = teamTools.filter(tool => !tool.write);
+/** The tools that only read, which run without asking; not the ones that run the project's code. */
+export const teamReadTools: readonly McpTool[] = teamTools.filter(tool => !tool.write && !tool.runsCode);
 export const teamWriteTools: readonly McpTool[] = teamTools.filter(tool => tool.write);
 /** The confirm class: a card every time, with Allow once and Reject only. */
 export const teamConfirmTools: readonly McpTool[] = teamTools.filter(tool => tool.confirm);
@@ -470,6 +474,9 @@ async function runTeamTool(context: TeamToolContext, folder: string | undefined,
 				}
 				if (!folder) {
 					return fail('No folder to test.');
+				}
+				if (tool.runsCode && context.allowShell?.() === false) {
+					return fail('Snyk is turned off because shell commands are turned off in GeminiCode (gemini.tools.allowShell): a Snyk test runs the project\'s build tools.');
 				}
 				const code = name === 'snyk_code_test';
 				return await readThrough(context, context.children?.().snyk?.for(folder))(

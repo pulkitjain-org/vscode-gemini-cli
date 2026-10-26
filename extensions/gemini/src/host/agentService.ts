@@ -107,6 +107,8 @@ export class AgentService implements vscode.Disposable {
 			onDidWriteFile: filePath => this.permissions.approvals.noteWrite(filePath),
 		});
 
+		// Redirects into the workspace may be approved for the session; others always ask.
+		this.permissions.roots = () => getFileAccessPolicy().roots;
 		this.disposables.push(
 			this.onDidChangeStatusEmitter,
 			this.onDidStartEmitter,
@@ -297,7 +299,7 @@ export class AgentService implements vscode.Disposable {
 	restart(): void {
 		this.idleRestart?.dispose();
 		this.idleRestart = undefined;
-		const { resolved, problem } = getProjectSettings();
+		const { resolved, problem, overrides } = getProjectSettings();
 		if (resolved && problem === 'numeric') {
 			this.started = false;
 			this.blocked = { kind: 'project-id-numeric', message: vscode.l10n.t("\"{0}\" is a project number. Set the project ID instead, for example my-project-123.", resolved.projectId) };
@@ -310,6 +312,9 @@ export class AgentService implements vscode.Disposable {
 		this.blocked = undefined;
 		if (resolved && problem === 'malformed') {
 			this.log.warn(`Project ID "${resolved.projectId}" does not look like a Google Cloud project ID; starting anyway`);
+		}
+		if (resolved?.source === 'workspace' && overrides) {
+			this.log.warn(`This workspace's settings set gemini.projectId to "${resolved.projectId}", in place of "${overrides}": usage is billed to the workspace's project`);
 		}
 		this.log.info(`Starting agent with project ${resolved ? `${resolved.projectId} (from ${resolved.source})` : '(none)'}`);
 		this.started = true;

@@ -49,10 +49,15 @@ describe('buildAdminPolicy', () => {
 		const policy = buildAdminPolicy({ ...allowAll, denyEnvironmentCommands: true, confirmTools: [{ server: 'geminicode-tools', tools: ['jira_transition', 'gitlab_merge'] }] }) ?? '';
 		const rules = policy.split('\n\n').filter(block => block.includes('[[rule]]')).map(block => block.trim().split('\n').filter(line => !line.startsWith('#') && !line.startsWith('denyMessage')).join('\n'));
 		expect(rules).toEqual([
-			'[[rule]]\ntoolName = "run_shell_command"\ncommandPrefix = ["env", "printenv"]\ndecision = "deny"\npriority = 960',
-			'[[rule]]\ntoolName = "run_shell_command"\ncommandRegex = \'(?:set|export)\\s*"\'\ndecision = "deny"\npriority = 960',
+			'[[rule]]\ntoolName = "run_shell_command"\ncommandPrefix = ["env", "printenv", "declare -x", "declare -p", "typeset -x", "typeset -p", "export -p", "compgen -e", "compgen -v"]\ndecision = "deny"\npriority = 960',
+			'[[rule]]\ntoolName = "run_shell_command"\ncommandRegex = \'(?:set|export|declare|typeset)\\s*"\'\ndecision = "deny"\npriority = 960',
+			'[[rule]]\ntoolName = "run_shell_command"\ncommandRegex = \'ps\\s(?:[a-zA-Z]*e[a-zA-Z]*[\\s"]|-[a-zA-Z]*E|[^"]*\\s-[a-zA-Z]*E)\'\ndecision = "deny"\npriority = 960',
 			'[[rule]]\ntoolName = ["mcp_geminicode-tools_jira_transition", "mcp_geminicode-tools_gitlab_merge"]\ndecision = "ask_user"\npriority = 990',
 		]);
+	});
+
+	it('never suggests printing a variable instead', async () => {
+		expect(buildAdminPolicy({ ...allowAll, denyEnvironmentCommands: true })).not.toContain('echo');
 	});
 
 	it('leaves the environment rules out when the shell is off anyway', async () => {

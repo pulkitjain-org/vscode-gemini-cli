@@ -87,8 +87,10 @@ describe('bundles loaded on first use', () => {
 	});
 
 	it('take no library along: the ACP SDK and zod stay in the extension bundle', () => {
+		// jsonc-parser (about 17 KB, no state) edits the CLI's settings files, which the Project Helpers page writes too.
+		const small = ['node_modules/jsonc-parser/'];
 		for (const entry of Object.keys(moved)) {
-			expect(built.get(entry)!.inputs.filter(file => file.includes('node_modules/'))).toEqual([]);
+			expect(built.get(entry)!.inputs.filter(file => file.includes('node_modules/') && !small.some(lib => file.includes(lib)))).toEqual([]);
 		}
 	});
 

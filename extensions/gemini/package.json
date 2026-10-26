@@ -1239,7 +1239,7 @@
         "gemini.agents.worktreeSetup": {
           "type": "string",
           "default": "",
-          "scope": "resource",
+          "scope": "machine",
           "markdownDescription": "%configuration.agents.worktreeSetup%"
         },
         "gemini.chat.followAgent": {

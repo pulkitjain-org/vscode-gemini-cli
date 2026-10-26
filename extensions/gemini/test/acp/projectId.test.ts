@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { buildAgentEnv } from '../../src/acp/env';
-import { resolveProjectId, validateProjectId } from '../../src/acp/projectId';
+import { resolveProjectId, validateProjectId, workspaceOverride } from '../../src/acp/projectId';
 
 describe('resolveProjectId', () => {
 	it('prefers workspace, then user, then org default, then the environment', () => {
@@ -14,6 +14,18 @@ describe('resolveProjectId', () => {
 		expect(resolveProjectId({ workspace: ' ', user: 'user-project', orgDefault: 'org-project', env })).toEqual({ projectId: 'user-project', source: 'user' });
 		expect(resolveProjectId({ orgDefault: 'org-project', env })).toEqual({ projectId: 'org-project', source: 'org' });
 		expect(resolveProjectId({ env })).toEqual({ projectId: 'env-project', source: 'env' });
+	});
+
+	it('puts an admin\'s policy first, and says what a workspace value replaces', () => {
+		const env = {};
+		expect(resolveProjectId({ policy: 'managed-project', workspace: 'ws-project', user: 'user-project', env })).toEqual({ projectId: 'managed-project', source: 'policy' });
+		expect([
+			workspaceOverride({ workspace: 'ws-project', user: 'user-project', env }),
+			workspaceOverride({ workspace: 'ws-project', orgDefault: 'org-project', env }),
+			workspaceOverride({ workspace: 'same-project', user: 'same-project', env }),
+			workspaceOverride({ workspace: 'ws-project', env }),
+			workspaceOverride({ policy: 'managed-project', workspace: 'ws-project', user: 'user-project', env }),
+		]).toEqual(['user-project', 'org-project', undefined, undefined, undefined]);
 	});
 
 	it('reads the environment variables in order', () => {

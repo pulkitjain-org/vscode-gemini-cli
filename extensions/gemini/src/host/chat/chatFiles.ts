@@ -8,6 +8,7 @@
 // only, by transcript item id, so their diffs can be opened after the turn:
 // the latest 200, and no more than 20 MB of text before and after.
 
+import * as os from 'node:os';
 import * as path from 'node:path';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
@@ -15,6 +16,8 @@ import { BoundedStore, diffBytes, ToolOutputStore } from '../../acp/chatMemory';
 import { maxRemembered } from '../../acp/chatTurns';
 import { errorMessage } from '../../acp/errors';
 import { fileNamePattern } from '../../acp/folderFiles';
+import { isTraceFile } from '../../acp/hostAllowlists';
+import { traceFolders } from '../traceCommand';
 import type { FromWebview } from '../chatProtocol';
 import type { DiffPreview } from '../diffPreview';
 import type { ChatControllerOptions } from './chatOptions';
@@ -56,7 +59,10 @@ export class ChatFileLinks {
 				void this.openPath(message.path, message.line);
 				break;
 			case 'openTrace':
-				void vscode.workspace.openTextDocument(message.file).then(doc => vscode.window.showTextDocument(doc, { preview: false }), () => undefined);
+				// Only a trace GeminiCode wrote, never another file the page names.
+				if (isTraceFile(message.file, [...traceFolders(), os.homedir()])) {
+					void vscode.workspace.openTextDocument(message.file).then(doc => vscode.window.showTextDocument(doc, { preview: false }), () => undefined);
+				}
 				break;
 		}
 	}

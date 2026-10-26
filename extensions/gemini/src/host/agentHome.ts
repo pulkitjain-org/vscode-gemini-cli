@@ -11,6 +11,8 @@ import type { IndexStatus } from '../acp/index/indexerProtocol';
 import { onDidChangeSpellCheck, spellCheckOn } from './spellCheck';
 import { isModeAllowed } from '../acp/adminPolicy';
 import { errorMessage } from '../acp/errors';
+import { secretPathReason } from '../acp/fileAccess';
+import { collectCommandActions, commandActionKey } from '../acp/hostAllowlists';
 import type { JiraClient } from '../acp/jira';
 import { formatCounts } from '../acp/agentChanges';
 import { attachmentsForFiles } from './addToChat';
@@ -68,6 +70,9 @@ type Mode = 'agents' | 'editor';
  * The tools' data shows at once from the last answers and refreshes in the
  * background while the page is visible; nothing here starts the Gemini CLI.
  */
+/** Commands the page's own buttons run, with no arguments, beside those the host sends in a view. */
+const pageCommands: ReadonlySet<string> = new Set(['gemini.connections']);
+
 export class AgentHome implements vscode.Disposable {
 
 	private panel: vscode.WebviewPanel | undefined;
@@ -83,6 +88,8 @@ export class AgentHome implements vscode.Disposable {
 	private listCard: HomeCardId | undefined;
 	/** Files the user picked or dropped for the comment box: the only paths a comment may upload. */
 	private readonly commentFilePaths = new Set<string>();
+	/** The command actions sent to the page in a view: the only commands its buttons may run. */
+	private readonly sentActions = new Set<string>();
 
 	/** `onTyping` runs when the user starts typing a task, so the agent can start meanwhile. */
 	constructor(private readonly extensionUri: vscode.Uri, private readonly agents: AgentsView, private readonly onTyping: () => void = () => undefined, private readonly options?: HomeOptions) {
@@ -247,6 +254,7 @@ export class AgentHome implements vscode.Disposable {
 			return;
 		}
 		this.lastView = json;
+		collectCommandActions(view, this.sentActions);
 		void panel.webview.postMessage({ type: 'view', view } satisfies ToHome);
 	}
 
@@ -343,8 +351,9 @@ export class AgentHome implements vscode.Disposable {
 			case 'agent':
 				return this.onMessage({ type: action.do, id: action.id });
 			case 'command':
-				// Only GeminiCode's own commands and opening a folder: the page can't run anything else.
-				if (/^gemini\.|^workbench\.action\.files\.openFolder$|^workbench\.view\.extension\.gemini/.test(action.command)) {
+				// Only a command this page was sent, with the same arguments, or opening Connections from the page itself.
+				if ((this.sentActions.has(commandActionKey(action.command, action.args)) || (pageCommands.has(action.command) && !action.args?.length))
+					&& /^gemini\.|^workbench\.action\.files\.openFolder$|^workbench\.view\.extension\.gemini/.test(action.command)) {
 					await vscode.commands.executeCommand(action.command, ...action.args ?? []);
 				}
 				return;
@@ -418,10 +427,14 @@ export class AgentHome implements vscode.Disposable {
 		void this.panel?.webview.postMessage({ type: 'commentOptions', key, roles, groups } satisfies ToHome);
 	}
 
-	/** Files to attach: dropped ones by their URIs, or picked. */
+	/**
+	 * Files to attach: dropped ones by their URIs, or picked. The host can't tell a drop from
+	 * a URI the page made up, so a dropped file that may hold secrets (a key, `~/.ssh`) is left out;
+	 * pick it in the dialog to attach it.
+	 */
 	private async commentFiles(uris: readonly string[] | undefined): Promise<void> {
 		const picked = uris
-			? uris.map(uri => vscode.Uri.parse(uri)).filter(uri => uri.scheme === 'file')
+			? uris.map(uri => vscode.Uri.parse(uri)).filter(uri => uri.scheme === 'file' && !secretPathReason(uri.fsPath))
 			: await vscode.window.showOpenDialog({ canSelectMany: true, canSelectFiles: true, canSelectFolders: false, openLabel: vscode.l10n.t("Attach"), title: vscode.l10n.t("Attach Files to the Comment") }) ?? [];
 		const files = (await Promise.all(picked.map(async uri => {
 			const stat = await fs.stat(uri.fsPath).catch(() => undefined);

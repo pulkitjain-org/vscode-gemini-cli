@@ -86,16 +86,45 @@ export const threadTools: readonly McpTool[] = [
 	},
 ];
 
+/** A permission request as far as telling whose tool it is goes. */
+type ToolRequest = { readonly toolCall: { readonly toolCallId: string; readonly title?: string | null }; readonly options: readonly { readonly optionId: string }[] };
+
 /**
- * Whether a permission request is for one of `tools` from this server. The
- * CLI titles an MCP call by its tool and arguments, without the server's
- * name; only MCP calls offer "Allow all server tools", which together with the
- * tool's name tells the project's tools apart from the user's own servers.
+ * The MCP server and tool a call is for, from its tool call id; undefined
+ * when the id says nothing of it. gemini-cli 0.64 ids a call
+ * `fc.id ?? generateCallId(fc.name)`: the API's id, which is the model's name
+ * for the tool (`mcp_<server>_<tool>`) and `__call_<n>`, or its own
+ * `<name>-<time>-<n>`. The server's name comes first and has no `_`, as the
+ * CLI's own `parseMcpToolName` reads it. The title names the tool only.
  */
-export function isProjectToolCall(request: { readonly toolCall: { readonly title?: string | null }; readonly options: readonly { readonly optionId: string }[] }, tools: readonly McpTool[]): boolean {
-	const title = request.toolCall.title ?? '';
-	return request.options.some(option => /server/i.test(option.optionId))
-		&& tools.some(tool => title === tool.name || title.startsWith(`${tool.name}(`));
+export function mcpToolOf(toolCallId: string): { readonly server: string; readonly tool: string } | undefined {
+	const match = /^mcp_(?<server>[^_]+)_(?<tool>.+?)(?:__call_\w*|-\d+-\d+)?$/.exec(toolCallId);
+	return match?.groups ? { server: match.groups.server, tool: match.groups.tool } : undefined;
+}
+
+/**
+ * Whether a permission request is for one of `tools` of the MCP server named
+ * `server`, as GeminiCode passes it to the session: by the tool call's id,
+ * which carries the server's name, and by the title, which names the tool. A
+ * user's server with a tool of the same name is not this server's.
+ */
+export function isProjectToolCall(request: ToolRequest, tools: readonly McpTool[], server: string): boolean {
+	const id = mcpToolOf(request.toolCall.toolCallId);
+	return !!id && id.server === server && tools.some(tool => tool.name === id.tool)
+		&& request.options.some(option => /server/i.test(option.optionId))
+		&& isProjectToolTitle(request.toolCall.title ?? '', tools.filter(tool => tool.name === id.tool));
+}
+
+/**
+ * Whose a call titled as one of `tools` is: `server`'s, another server's, or
+ * unknown when its id does not say (an id format the CLI has not used so far),
+ * in which case nothing is answered for the user.
+ */
+export function toolCallOwner(request: ToolRequest, tools: readonly McpTool[], server: string): 'ours' | 'other' | 'unknown' {
+	if (isProjectToolCall(request, tools, server)) {
+		return 'ours';
+	}
+	return !mcpToolOf(request.toolCall.toolCallId) && isProjectToolTitle(request.toolCall.title ?? '', tools) ? 'unknown' : 'other';
 }
 
 /** Whether a tool call's title is a call of one of `tools`, as the CLI titles MCP calls. */

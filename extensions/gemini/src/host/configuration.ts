@@ -11,7 +11,7 @@ import { ApprovalPolicy, prepareAdminPolicy } from '../acp/adminPolicy';
 import { AgentCommand, cliHeapSizeMb, includeDirectoryArgs, resolveAgentCommand } from '../acp/agentProcess';
 import { CliResolution, resolveCli } from '../acp/cliResolution';
 import { buildAgentEnv } from '../acp/env';
-import { ProjectIdProblem, ResolvedProjectId, resolveProjectId, validateProjectId } from '../acp/projectId';
+import { ProjectIdProblem, ResolvedProjectId, resolveProjectId, validateProjectId, workspaceOverride } from '../acp/projectId';
 import { indexServerName } from '../acp/indexMcp';
 import { projectServerName } from '../acp/projectMcp';
 import { allowlistWith, settingsFiles } from '../acp/projectToolsCheck';
@@ -44,20 +44,22 @@ export async function loadProductInfo(): Promise<void> {
 	}
 }
 
-/** The project ID in effect; a problem is only possible when there is one. */
+/** The project ID in effect; a problem is only possible when there is one. `overrides` is the project a workspace setting replaced. */
 export type ProjectSettings =
-	| { readonly resolved: undefined; readonly problem: undefined }
-	| { readonly resolved: ResolvedProjectId; readonly problem: ProjectIdProblem | undefined };
+	| { readonly resolved: undefined; readonly problem: undefined; readonly overrides?: undefined }
+	| { readonly resolved: ResolvedProjectId; readonly problem: ProjectIdProblem | undefined; readonly overrides?: string };
 
 export function getProjectSettings(): ProjectSettings {
-	const inspected = vscode.workspace.getConfiguration(configSection).inspect<string>('projectId');
-	const resolved = resolveProjectId({
-		workspace: inspected?.workspaceFolderValue ?? inspected?.workspaceValue,
-		user: inspected?.globalValue,
-		orgDefault: productInfo.defaultProjectId,
-		env: process.env,
-	});
-	return resolved ? { resolved, problem: validateProjectId(resolved.projectId) } : { resolved, problem: undefined };
+	const config = vscode.workspace.getConfiguration(configSection);
+	const inspected = config.inspect<string>('projectId');
+	const workspace = inspected?.workspaceFolderValue ?? inspected?.workspaceValue;
+	// `inspect` leaves out a policy's value; `get` returns it ahead of every setting.
+	const effective = config.get<string>('projectId');
+	const policy = effective?.trim() && effective !== (workspace ?? inspected?.globalValue ?? inspected?.defaultValue) ? effective : undefined;
+	const inputs = { policy, workspace, user: inspected?.globalValue, orgDefault: productInfo.defaultProjectId, env: process.env };
+	const resolved = resolveProjectId(inputs);
+	const overrides = workspaceOverride(inputs);
+	return resolved ? { resolved, problem: validateProjectId(resolved.projectId), ...overrides ? { overrides } : {} } : { resolved, problem: undefined };
 }
 
 export function getWorkspaceCwd(): string {

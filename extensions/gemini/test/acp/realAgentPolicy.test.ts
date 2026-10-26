@@ -142,13 +142,13 @@ describe.skipIf(!cliPath)('gemini --acp with a GeminiCode admin policy', () => {
 
 	const pilot: ApprovalPolicy = { allowAutoEdit: true, allowYolo: true, allowShell: true, denyEnvironmentCommands: true, confirmTools: confirmToolGroups() };
 
-	it.each(['printenv', 'env | grep TOKEN', 'echo start && printenv HOME', 'set'])('refuses `%s`, which prints the environment, even in YOLO mode', async command => {
+	it.each(['printenv', 'env | grep TOKEN', 'echo start && printenv HOME', 'set', 'declare -x', 'typeset -x', 'export -p', 'compgen -e', 'declare', 'ls && ps eww 1', 'ps -E'])('refuses `%s`, which prints the environment, even in YOLO mode', async command => {
 		const result = await runTurn('yolo', pilot, true, command);
 		expect({ permissions: result.permissions, error: result.responses[0]?.response.error ?? result.responses[0]?.response.output }).toMatchObject({ permissions: 0, error: expect.stringMatching(/denied by policy/) });
 	}, 60_000);
 
 	it('still runs `set -e` and a command named like env, which print nothing', async () => {
-		const result = await runTurn('yolo', pilot, true, 'set -e && touch envelope.txt && touch ran.txt');
+		const result = await runTurn('yolo', pilot, true, 'set -e && touch envelope.txt && ps -p 1 -o comm= > /dev/null && touch ran.txt');
 		expect(result).toMatchObject({ permissions: 0, ran: true });
 	}, 60_000);
 

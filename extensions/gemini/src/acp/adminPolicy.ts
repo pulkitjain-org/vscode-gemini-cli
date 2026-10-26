@@ -29,15 +29,18 @@ export interface ApprovalPolicy {
 }
 
 /**
- * Commands that print the environment: `env` and `printenv` with anything after them, and `set` or
- * `export` alone (with arguments they change the shell, as in `set -e`, and print nothing).
+ * Commands that print the environment: `env` and `printenv` with anything after them, the shells'
+ * listings of exported variables (`declare -x`, `typeset -x`, `export -p`, `compgen -e`), and `set`,
+ * `export`, `declare` or `typeset` alone (with arguments they change the shell, as in `set -e`, and
+ * print nothing). `ps` with an environment flag (`ps eww`, `ps -E`) prints other processes' environments.
  */
-export const environmentCommandPrefixes = ['env', 'printenv'] as const;
-export const environmentCommandRegex = '(?:set|export)\\s*"';
+export const environmentCommandPrefixes = ['env', 'printenv', 'declare -x', 'declare -p', 'typeset -x', 'typeset -p', 'export -p', 'compgen -e', 'compgen -v'] as const;
+export const environmentCommandRegex = '(?:set|export|declare|typeset)\\s*"';
+export const processEnvironmentRegex = 'ps\\s(?:[a-zA-Z]*e[a-zA-Z]*[\\s"]|-[a-zA-Z]*E|[^"]*\\s-[a-zA-Z]*E)';
 
 export const shellToolName = 'run_shell_command';
 export const policyFileName = 'geminicode.toml';
-const environmentDenyMessage = 'Commands that print the environment are turned off in GeminiCode, because it can hold tokens. Read the one variable you need instead, such as `echo $PATH`.';
+const environmentDenyMessage = 'Commands that print the environment are turned off in GeminiCode, because it can hold tokens. If a task needs a setting from the environment, ask the user for it.';
 
 /**
  * Whether `after` takes away something `before` allowed: a mode, the shell, or
@@ -87,6 +90,13 @@ export function buildAdminPolicy(policy: ApprovalPolicy): string | undefined {
 			`[[rule]]`,
 			`toolName = "${shellToolName}"`,
 			`commandRegex = '${environmentCommandRegex}'`,
+			`decision = "deny"`,
+			`priority = 960`,
+			`denyMessage = "${environmentDenyMessage}"`,
+			``,
+			`[[rule]]`,
+			`toolName = "${shellToolName}"`,
+			`commandRegex = '${processEnvironmentRegex}'`,
 			`decision = "deny"`,
 			`priority = 960`,
 			`denyMessage = "${environmentDenyMessage}"`,

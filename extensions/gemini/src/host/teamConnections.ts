@@ -19,10 +19,10 @@ import type { ChildServer } from '../acp/mcpStdio';
 import { findDocker, FolderChildren, gitlabContainer, jiraContainer, snykServer, sonarContainer, TeamChildren, teamImages } from '../acp/teamContainers';
 import { readTeamDefaults, TeamDefaults } from '../acp/teamDefaults';
 import { normalizeBaseUrl, TeamToolError, TeamToolId, teamToolIds, teamToolNames } from '../acp/teamHttp';
-import { isConfirmToolCall, TeamConnectors, teamReadTools, TeamToolContext, teamWrite, TeamWriteResult } from '../acp/teamTools';
+import { isConfirmToolCall, TeamConnectors, teamReadTools, TeamToolContext, teamToolsServerName, teamWrite, TeamWriteResult } from '../acp/teamTools';
 import { TeamToolsMcpServer } from '../acp/teamToolsMcp';
 import { repositoryRoot } from '../acp/worktrees';
-import { configSection } from './configuration';
+import { configSection, getApprovalPolicy } from './configuration';
 
 /** Runs the tools' own MCP servers as children of the team tools; set by Take Over Both Servers in Connections. */
 export const runTeamServersSetting = 'team.runTeamServers';
@@ -87,6 +87,7 @@ export class TeamConnections implements vscode.Disposable {
 			defaults: folder => this.defaults(folder),
 			children: () => this.children,
 			childUnavailable: (server, reason) => this.log.warn(`The ${server} server didn't start, so the call went to ${server === 'jira' ? 'Jira' : 'GitLab'} directly: ${reason}`),
+			allowShell: () => getApprovalPolicy().allowShell,
 		};
 		this.server = new TeamToolsMcpServer(this.toolContext, version);
 		for (const tool of teamToolIds) {
@@ -300,9 +301,9 @@ export class TeamConnections implements vscode.Disposable {
 		return isConfirmToolCall(request);
 	}
 
-	/** Lets the reading tools run without a card; changes still ask. */
+	/** Lets the reading tools run without a card; changes, and Snyk's tests, which run the project's build tools, still ask. */
 	instantAnswer(request: acp.RequestPermissionRequest): InstantAnswer | undefined {
-		if (!this.connectedSet.size || !isProjectToolCall(request, teamReadTools)) {
+		if (!this.connectedSet.size || !isProjectToolCall(request, teamReadTools, teamToolsServerName)) {
 			return undefined;
 		}
 		const allow = request.options.find(option => option.kind === 'allow_once') ?? request.options.find(option => option.kind.startsWith('allow'));

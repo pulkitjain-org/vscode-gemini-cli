@@ -221,7 +221,8 @@ export class ChatController implements vscode.Disposable {
 			title: () => options.title?.() ?? '',
 		}, post);
 		this.project = new ChatProjectView(options, isViewReady, post);
-		this.runs = new ChatRun(options, isAttached, post, attachments => void this.addAttachments(attachments));
+		this.runs = new ChatRun(options, isAttached, post, attachments => void this.addAttachments(attachments),
+			() => this.transcript.items.flatMap(item => item.kind === 'agent' || item.kind === 'user' ? [item.text] : []));
 		this.disposables.push(
 			onDidChangeSpellCheck(on => this.post({ type: 'spellCheck', on })),
 			onDidChangeFoldWork(on => this.post({ type: 'foldWork', on })),

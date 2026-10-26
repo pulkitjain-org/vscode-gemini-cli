@@ -7,6 +7,7 @@
 // moving an unreadable file aside instead of writing over it, comparing
 // folders the way the file system does, and removing a log's old day files.
 
+import { randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 
@@ -31,16 +32,15 @@ export interface AtomicWriteOptions {
 	readonly mode?: number;
 }
 
-let tempCounter = 0;
-
 /**
- * Writes `text` to a temporary file beside `file`, named for this process,
+ * Writes `text` to a temporary file beside `file`, named for this process
+ * with a random suffix (so the copies of this module in other bundles never pick the same name),
  * and renames it over `file`, so a crash never leaves half a file and two
  * windows never rename each other's half-written file into place.
  */
 export async function writeFileAtomic(file: string, text: string | Iterable<string>, options: AtomicWriteOptions = {}): Promise<void> {
 	await fs.mkdir(path.dirname(file), { recursive: true });
-	const temp = `${file}.${process.pid}.${tempCounter++}.tmp`;
+	const temp = `${file}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
 	try {
 		if (typeof text === 'string') {
 			await fs.writeFile(temp, text, { encoding: 'utf8', mode: options.mode });

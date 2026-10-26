@@ -35,7 +35,7 @@ import { debugLogName } from './acp/mcpDiagnostics';
 import { BrowserTools } from './host/browserTools';
 import { TeamConnections } from './host/teamConnections';
 import { TeamFlows } from './host/teamFlows';
-import { setTraceFile } from './host/traceCommand';
+import { setTraceFile, setTraceFolder } from './host/traceCommand';
 import { scheduleStorageMaintenance } from './host/storageMaintenance';
 import { MrPanel } from './host/mrPanel';
 import { TeamStatusBar } from './host/teamStatusBar';
@@ -161,6 +161,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	agentsView.openReview = agentId => void vscode.commands.executeCommand('gemini.team.openAgentReview', agentId);
 	context.subscriptions.push(teamFlows.reviews.onDidChange(() => agentsView.refreshChats()));
 	// Pages opened on request and tools used rarely load from bundles of their own, the first time one of their commands runs.
+	const traceFolder = vscode.Uri.joinPath(context.globalStorageUri, 'traces').fsPath;
+	setTraceFolder(traceFolder);
 	const pages = chunkLoader<typeof import('./pages')>(__dirname, 'pages');
 	const onDemand = chunkLoader<typeof import('./onDemand')>(__dirname, 'onDemand');
 	let launching = true;
@@ -217,7 +219,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		browserTools,
 		teamTools,
 		teamFlows,
-		new LazyFeature(['gemini.recordTrace'], () => new (onDemand().TraceRecorder)(service, log, { setTraceFile, setAgentEnvOverride, dir: vscode.Uri.joinPath(context.globalStorageUri, 'traces').fsPath })),
+		new LazyFeature(['gemini.recordTrace'], () => new (onDemand().TraceRecorder)(service, log, { setTraceFile, setAgentEnvOverride, dir: traceFolder })),
 		new LazyFeature(['gemini.runBenchmark'], () => new (onDemand().BenchmarkCommand)(service, log, {
 			getAgentCommand,
 			knownModelList,

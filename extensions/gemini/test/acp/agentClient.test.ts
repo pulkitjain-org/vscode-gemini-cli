@@ -186,6 +186,35 @@ describe('AgentClient', () => {
 			expect(secret).toMatch(/^error:.*denied/);
 			expect(missing).toBe('read:');
 		});
+
+		it('asks before an edit to a setting that decides what runs next, in Auto Edit only', async () => {
+			const modes = (currentModeId: string): Partial<acp.NewSessionResponse> => ({ modes: { currentModeId, availableModes: [{ id: 'default', name: 'Default' }, { id: 'autoEdit', name: 'Auto Edit' }] } });
+			const turn = [
+				{ step: 'writeFile' as const, path: path.join(root, '.gemini', 'settings.json'), content: '{"hooks":{}}' },
+				{ step: 'writeFile' as const, path: path.join(root, '.vscode', 'tasks.json'), content: '{}' },
+				{ step: 'writeFile' as const, path: path.join(root, 'c.ts'), content: 'plain' },
+			];
+			const outcomes = async (mode: string) => {
+				const asked: string[] = [];
+				// Allows the first card and rejects the second.
+				const { client, settled } = start({ newSession: modes(mode), turns: [turn] }, async params => {
+					asked.push(String(params.toolCall.title));
+					const option = params.options.find(o => o.kind === (asked.length === 1 ? 'allow_once' : 'reject_once'))!;
+					return { outcome: { outcome: 'selected', optionId: option.optionId } };
+				}, createFileHandlers(fileSystem, () => ({ roots: [root] })));
+				await settled;
+				const events: ChatEvent[] = [];
+				client.onDidReceiveEvent(e => events.push(e));
+				await client.prompt('edit settings');
+				const texts = agentText(events);
+				client.dispose();
+				runtime!.dispose();
+				sidecar!.dispose();
+				return { asked: asked.length, wrote: texts.map(text => text.startsWith('error:') ? 'refused' : text) };
+			};
+			expect(await outcomes('autoEdit')).toEqual({ asked: 2, wrote: ['wrote', 'refused', 'wrote'] });
+			expect(await outcomes('default')).toEqual({ asked: 0, wrote: ['wrote', 'wrote', 'wrote'] });
+		});
 	});
 
 	describe('opening sessions', () => {
