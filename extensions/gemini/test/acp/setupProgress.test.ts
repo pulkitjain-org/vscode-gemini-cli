@@ -23,6 +23,10 @@ describe('advanceSetupProgress', () => {
 		expect(advanceSetupProgress(noSetupProgress, error('project-id-required'))).toEqual({ cliReady: true, signedIn: true, projectReady: false });
 	});
 
+	it('marks only the CLI ready while no session has opened on a ready process', () => {
+		expect(advanceSetupProgress(noSetupProgress, { phase: 'ready', sessionOpened: false })).toEqual({ cliReady: true, signedIn: false, projectReady: false });
+	});
+
 	it('marks everything done once a session is ready, and keeps it through a restart', () => {
 		const done = advanceSetupProgress(noSetupProgress, { phase: 'ready' });
 		expect(done).toEqual({ cliReady: true, signedIn: true, projectReady: true });

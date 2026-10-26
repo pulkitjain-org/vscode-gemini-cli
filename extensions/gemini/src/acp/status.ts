@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import type { AgentClientState } from './agentClient';
+import type { AgentRuntimeState, SessionHealth } from './agentRuntime';
 import type { AgentErrorInfo } from './errors';
 import type { SidecarState } from './sidecar';
 
@@ -19,6 +20,8 @@ export interface AgentStatus {
 	/** The agent's name and version from `initialize`, once a session is ready. */
 	readonly agentName?: string;
 	readonly agentVersion?: string;
+	/** False while the process is ready but no session has opened on it yet (see `describeRuntimeStatus`). */
+	readonly sessionOpened?: boolean;
 }
 
 /**
@@ -44,5 +47,26 @@ export function describeAgentStatus(sidecar: SidecarState, client: AgentClientSt
 				default:
 					return { phase: 'starting' };
 			}
+	}
+}
+
+/**
+ * The agent's status without a session of its own: the process, and how
+ * opening sessions on it went for every chat (`SessionHealth`). A sign-in or
+ * project error from any chat's session shows, as it would for each.
+ */
+export function describeRuntimeStatus(sidecar: SidecarState, runtime: AgentRuntimeState, health: SessionHealth, blocked?: AgentErrorInfo): AgentStatus {
+	if (sidecar.kind !== 'running') {
+		return describeAgentStatus(sidecar, { kind: 'idle' }, blocked);
+	}
+	switch (runtime.kind) {
+		case 'ready':
+			return health.error
+				? { phase: 'error', error: health.error }
+				: { phase: 'ready', agentName: runtime.agent.agentInfo?.name, agentVersion: runtime.agent.agentInfo?.version, ...(health.opened ? {} : { sessionOpened: false }) };
+		case 'error':
+			return { phase: 'error', error: runtime.error };
+		default:
+			return { phase: 'starting' };
 	}
 }
