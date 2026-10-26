@@ -68,7 +68,22 @@ When the turn ends they fold under one line, such as **Worked for 3m 12s · read
 
 ![A finished turn opened, with its thoughts, searches, reads, commands and edits](../../site/media/docs/folded-turn-dark.webp)
 
+A command's output over 80 lines shows its first and last 20, with **1,240 lines hidden · Show All** between them. **Show All** fetches the rest; the chat keeps the whole of the latest outputs, up to 16 MB, so a long chat doesn't hold every output in memory. An output from before the window reloaded may no longer be kept whole.
+
+If nothing at all arrives from Gemini for 45 seconds, no text, step or thought, the turn says so: **No response from Gemini for 45 s. It may be retrying a busy server.** When the CLI's log shows it retrying after a server error, the notice says which attempt it is on. **Stop** stops the turn and **Show Log** opens the Gemini log. The notice goes by itself as soon as anything arrives. It doesn't show while a command runs or a card waits for you.
+
 When the agent hands part of the work to one of the Gemini CLI's subagents (such as the Codebase Investigator, or your own in `.gemini/agents/`), the chat shows a **Subagent** row with its name and how long it has worked. Click it to read the subagent's report.
+
+## When a turn fails
+
+A failed turn says what went wrong in plain words and offers a way out:
+
+- **Quota used up**: **Retry** sends your message again and **Switch Model…** opens the model menu. The reset time shows when the Gemini CLI reports one, which it usually doesn't.
+- **Can't reach Google**: check your connection, VPN or proxy, then **Retry**. **Show Log** opens the Gemini log.
+- **Your Gemini sign-in has expired**: **Sign In** signs in again in the browser, then **Retry**.
+- **The turn reached the request limit**: **Continue** tells Gemini to carry on.
+
+Any other error keeps the CLI's own message, without its JSON wrapper, with **Retry** and **Show Log**. The buttons stay on the latest failure until your next message.
 
 ## Sending while the agent works
 

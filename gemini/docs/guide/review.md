@@ -20,9 +20,9 @@ Pick a mode from the composer's **+** menu, or press <kbd>⌘.</kbd> in an agent
 
 ## Permission requests
 
-A permission card shows the CLI's own choices, such as **Allow**, **Allow for this session** and **Reject**; <kbd>esc</kbd> rejects. An agent that asks never takes over the chat you're typing in: its tab isn't brought forward. If its chat is in view, the proposed edit opens as a diff. In the Agents pane its row shows an amber dot and "waiting", and the Dock badge and a notification say it waits.
+A permission card shows the CLI's own choices: **Allow once**, **Allow for this session** and **Reject**. You can answer the newest card without leaving the chat box: <kbd>⌥⌘↩</kbd> allows once, <kbd>⌥⌘S</kbd> allows for this session and <kbd>esc</kbd> rejects (Ctrl+Alt+Enter and Ctrl+Alt+S on Windows and Linux). The card lists the keys under its buttons. While a card waits, <kbd>⌥⌘S</kbd> in the chat box answers it rather than saving all files. An agent that asks never takes over the chat you're typing in: its tab isn't brought forward. If its chat is in view, the proposed edit opens as a diff. In the Agents pane its row shows an amber dot and "waiting", and the Dock badge and a notification say it waits.
 
-**Allow for this session** on a shell command covers the command prefixes it runs for the rest of that chat's session: the program, and for programs with subcommands the subcommand, as the button says (**Allow git status, grep for this session**). Allowing `git status` never covers `git push` or `git grep`, and allowing `npm run lint` never covers `npm run deploy`. A redirect is allowed for the file it wrote only. Some commands ask every time anyway, because allowing them once would allow far more than you saw:
+**Allow for this session** on a shell command covers the command prefixes it runs for the rest of that chat's session: the program, and for programs with subcommands the subcommand, as the button says (**Allow `git status`, `grep` for this session**). GeminiCode keeps these prefixes and answers the session's repeats itself; the Gemini CLI is told "once", because its own session rule would cover the whole program. Allowing `git status` never covers `git push` or `git grep`, and allowing `npm run lint` never covers `npm run deploy`. A redirect is allowed for the file it wrote only. Some commands ask every time anyway, because allowing them once would allow far more than you saw:
 
 - a command that reaches the network, installs a package by name (`npm install left-pad`, `pip install requests`), or runs code it builds
 - a redirect into a file outside the agent's folder
@@ -37,7 +37,7 @@ When the agent edits a build file, such as `package.json`, a `Makefile` or `buil
 
 In Auto Edit, an edit to a file that decides what runs next still shows a card first: the worktree setup script (`.gemini/*.sh`), the CLI's project settings (`.gemini/settings.json`), and the folder's `.vscode/settings.json` and `.vscode/tasks.json`.
 
-**Gemini: Commands Allowed for This Session...** lists what the chat in front allowed, and lets you forget any of it. Turn on **Allow for all future sessions** in [Project Helpers](helpers.md#gemini-cli-settings) to also be offered a permanent allow.
+**Gemini: Commands Allowed for This Session...** lists the command prefixes the chat in front allowed, and lets you forget any of them. Turn on **Allow for all future sessions** in [Project Helpers](helpers.md#gemini-cli-settings) to also be offered the CLI's permanent allow. The Gemini CLI saves that rule for the whole program (`npx`, not `npx vitest`) and for every folder, in `~/.gemini/policies/auto-saved.toml`, so the card shows it with the CLI's own wording, **Allow this command for all future sessions**.
 
 ## Folder trust
 
@@ -59,6 +59,8 @@ Open a file an agent changed and its changes show in place: added lines are tint
 Only the agent's own changes show. What you type in the file afterwards isn't counted as the agent's, and Keep or Undo on a change leaves your edits alone. **Undo All** restores the file as it was before the agent, so when the file also has edits that aren't the agent's, it asks first: they would go too.
 
 When two agents in one folder changed the same file, the changes of the one that edited it last show first; the other's show once those are kept or undone.
+
+So that their edits don't mix unnoticed, an agent's edit card warns when another live agent in the folder has changes to that file still waiting for Keep or Undo: **"Login fix" also has unreviewed changes in this file**. **Show Its Changes** opens the other agent's changes. In Auto Edit, where edits don't ask, the same warning is a line under the edit's row. To keep two agents apart, give one its own branch.
 
 Changes you commit leave the list by themselves, however you commit: from the chat, Source Control, the terminal, or by asking the agent. Once a file is what the latest commit has, its changes count as kept.
 

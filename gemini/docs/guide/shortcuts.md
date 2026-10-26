@@ -23,6 +23,9 @@ Stop Agent, Focus Chat, Cycle Approval Mode and Switch Model are also in the Com
 | <kbd>⌘↩</kbd> (chat input, agent working) | Queue the message for after the agent's turn |
 | <kbd>↩</kbd> or <kbd>⌘↩</kbd> (project chat, coordinator working) | Send the message when the coordinator's turn ends |
 | <kbd>↑</kbd> (empty chat input, messages queued) | Take the last queued message back to edit |
+| <kbd>⌥⌘↩</kbd> (chat input, card waiting) | Allow the waiting command or edit once |
+| <kbd>⌥⌘S</kbd> (chat input, card waiting) | Allow the waiting command's prefix, or the edit, for this session |
+| <kbd>esc</kbd> (chat input, card waiting) | Reject the waiting card |
 | <kbd>esc</kbd> <kbd>esc</kbd> (chat input, agent working) | Stop the agent |
 | <kbd>⌘esc</kbd> (agent's tab; Alt+Backspace on Windows) | Stop the agent at once |
 | <kbd>⌘.</kbd> (agent's tab) | Next approval mode: Default, Auto Edit, Plan, as the CLI's <kbd>⇧Tab</kbd> steps; never YOLO |
