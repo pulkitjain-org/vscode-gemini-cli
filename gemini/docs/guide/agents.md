@@ -42,6 +42,8 @@ In the Agents layout the agent list highlights the agent, project or thread whos
 
 Each agent opens as a tab with its own chat. The tab shows what the agent is doing: a spinner while it works, an amber dot when it needs you, a tick when it has finished, and how many lines it has changed.
 
+![The Agents pane with an agent working, one waiting on a command, one finished with 28 lines added, and others idle, one with a fork under it](../../site/media/agents-pane-dark.webp)
+
 In the Agents pane, each agent's row has the same signal (green when finished, red when something went wrong, grey otherwise). On the right it shows how long the agent has been working, "waiting", the lines it added, or when it was last active. Point at a row to see its branch and folder. Rename, stop or remove an agent from its right-click menu; **Gemini: Stop Agent** (<kbd>⌘esc</kbd>) stops the one in front. Removing an agent deletes its conversation and undo history, and the question names any files whose changes you haven't reviewed yet. **Archive**, in the same question, keeps all of that and moves the agent under an **Archived** row in its workspace, out of the list and off Home; its next prompt brings it back.
 
 - In the Editor layout, agents that are working, waiting, or finished but not yet read show as pills in the title bar.
@@ -67,6 +69,8 @@ Files outside the agent's folder, and files that may hold secrets, such as `.env
 Two agents in the same folder can trip over each other's edits. To keep them apart, give an agent its own branch: choose **New Agent on Its Own Branch** (the branch icon next to **+** on a workspace in a Git repository) and enter a branch name. The agent gets its own copy of the repository, on that new branch, in `~/.geminicode/worktrees/<repository>/`. It reads, edits and runs commands there, so your folder and other agents are untouched.
 
 When the work is done, **Try in Workspace** (the icon on the agent's row, its right-click menu, the Changes panel or the agent's card on Home) copies the agent's changes into your checkout of the repository as unstaged files, so your local server and tests run with them. Nothing is committed, staged or merged: your branch, its index and HEAD stay as they are. Each time the agent finishes a turn, your workspace updates with what it changed. The status bar shows **Trying:** and the agent's name, and in Source Control the tried files carry a **T**.
+
+![An agent's changes tried in the workspace: Source Control lists them unstaged with a T, the diff of one is open, and the status bar says Trying](../../site/media/try-scm-dark.webp)
 
 While you try it, the Changes panel offers **Keep Changes** and **Take Back**:
 
@@ -108,6 +112,8 @@ The Fork dialog asks three things.
 **A name, a model and a first message.** The model is the agent's own unless you pick another, and the first message is optional.
 
 A fork is listed under the agent it came from, and the agent's chat gets a card for it with **Open** and **Try in Workspace**, which tries the fork's work in your checkout as for any agent on its own branch. With `gemini.agents.mergeBack` set to `commit`, the card offers **Merge Back**, and when the agent itself works on its own branch, it asks whether to merge the fork into the agent's branch or into the branch your folder has checked out. Removing an agent that has forks asks whether to remove them too; forks you keep stay as agents of their own.
+
+![A fork listed under its agent in the Agents pane, and the fork's card in the agent's chat with Open and Try in Workspace](../../site/media/fork-list-dark.webp)
 
 ## Workspace index and docs
 

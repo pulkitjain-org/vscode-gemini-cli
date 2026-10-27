@@ -59,6 +59,10 @@ Write what you want in plain words, then click **Enhance** at the end of your te
 
 The rewrite replaces your draft as Gemini writes it; **Cancel** or <kbd>esc</kbd> stops it. **Revert** (or <kbd>⌘Z</kbd>) puts your draft back. Nothing is sent to the agent until you press Send, and Enhance works while the agent is busy.
 
+![Before: a draft in plain words, with Enhance at its end](../../site/media/enhance-before-dark.webp)
+
+![After: the draft rewritten as a precise prompt naming the files and the tests, with Revert](../../site/media/enhance-after-dark.webp)
+
 ## Plan, then build
 
 In **Plan** mode the agent reads and proposes a plan without changing anything. When a reply ends in Plan mode, **Build This Plan** under it switches the chat back to the mode it was in before Plan (Default when it started in Plan) and asks Gemini to carry out the plan. The chevron beside it offers the other choice: **Build, Asking for Each Edit** in Default mode, or **Build in Auto Edit** when you planned from Default. When you switched to another model after planning, a line under the button names both: "Builds with … ; planned with …". The Gemini CLI doesn't say ahead which model Auto will pick, so with Auto there is no such line.
