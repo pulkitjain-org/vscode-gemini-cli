@@ -49,7 +49,7 @@ export function setSideLinks(links: ViewSideLinks | undefined): void {
 	heading.textContent = format(strings.sideOn, links.place);
 	setTip(heading, heading.textContent);
 	added.textContent = `+${links.added}`;
-	removed.textContent = `−${links.removed}`;
+	removed.textContent = `\u2212${links.removed}`;
 	counts.hidden = !links.added && !links.removed;
 	setTip(changes, format(strings.sideChangesTip, String(links.added), String(links.removed)));
 }
