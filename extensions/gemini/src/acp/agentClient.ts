@@ -735,6 +735,7 @@ export class AgentClient {
 			this.registration = this.runtime.register(session.sessionId, {
 				sessionUpdate: update => this.onSessionUpdate(update),
 				requestPermission: params => this.requestPermission(params),
+				onDidEnd: () => this.onSessionEnded(session.sessionId),
 				fileSystem: this.options.fileSystem,
 				onDidWriteFile: filePath => this.options.onDidWriteFile?.(filePath),
 				beforeWrite: (filePath, content) => this.confirmProtectedWrite(session.sessionId, filePath, content),
@@ -1001,6 +1002,17 @@ export class AgentClient {
 	private closeSession(connection: AgentConnection, agent: acp.InitializeResponse, sessionId: string): void {
 		if (agent.agentCapabilities?.sessionCapabilities?.close) {
 			void connection.close(sessionId).catch(err => this.runtime.debug(`Could not close session ${sessionId}: ${errorMessage(err)}`));
+		}
+	}
+
+	/** The process of its folder's own the session was open on ended, the shared one still running: it opens again (`retryOpen`). */
+	private onSessionEnded(sessionId: string): void {
+		if (this._state.kind === 'ready' && this._state.sessionId === sessionId) {
+			this.dropSession();
+			this.failures++;
+			this.failedAt = Date.now();
+			this.setState({ kind: 'error', error: { kind: 'agent-exited', message: 'The agent process stopped.' } });
+			void this.retryOpen();
 		}
 	}
 

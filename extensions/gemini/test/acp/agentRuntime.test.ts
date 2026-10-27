@@ -244,6 +244,42 @@ describe('AgentRuntime', () => {
 		expect(a.state).toMatchObject({ kind: 'ready', sessionId: 'fake-session-1' });
 	});
 
+	it('reopens a session whose folder needs it on a process of the folder\'s own, shared by its sessions and ended once they are gone', async () => {
+		const says = (text: string) => [{ step: 'update' as const, update: { sessionUpdate: 'agent_message_chunk' as const, content: { type: 'text' as const, text } } }];
+		const folders: AgentSidecar[] = [];
+		start({ storedSessions: ['a1', 'b1', 'b2'], turns: [says('shared'), says('shared')] }, {
+			folderProcess: {
+				needed: async cwd => cwd === '/work/b',
+				sidecar: () => {
+					const folder = new AgentSidecar({ command: () => fakeAgentCommand({ storedSessions: ['b1', 'b2'], turns: [says('own'), says('own')] }), cwd: undefined, restartDelaysMs: [] });
+					folders.push(folder);
+					return folder;
+				},
+				idleMs: 50,
+			},
+		});
+		const a = await session('/work/a', { resumeSessionId: 'a1' });
+		const b1 = await session('/work/b', { resumeSessionId: 'b1' });
+		const b2 = await session('/work/b', { resumeSessionId: 'b2' });
+		const fresh = await session('/work/b');
+		for (const each of [a, b1, b2, fresh]) {
+			await each.client.prompt('who');
+		}
+		// A new session reads its own folder's settings: it stays on the shared process.
+		expect({ texts: [a, b1, b2, fresh].map(each => each.texts.at(-1)), folders: folders.length }).toEqual({ texts: ['shared', 'own', 'own', 'shared'], folders: 1 });
+
+		// Its process ending, the session opens again on a new one.
+		folders[0].endProcess((folders[0].state as Extract<SidecarState, { kind: 'running' }>).process);
+		await waitFor<AgentClientState>(b1.client.onDidChangeState, s => s.kind === 'ready');
+		await b1.client.prompt('who');
+		expect({ text: b1.texts.at(-1), folders: folders.length }).toEqual({ text: 'own', folders: 2 });
+
+		// With no session left, the process ends after a while.
+		b1.client.dispose();
+		b2.client.dispose();
+		await waitFor<SidecarState>(folders[1].onDidChangeState, s => s.kind === 'stopped');
+	});
+
 	it('opens a new session when the agent cannot load sessions', async () => {
 		start({});
 		const a = await session('/work/a', { resumeSessionId: 'earlier' });
