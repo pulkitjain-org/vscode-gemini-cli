@@ -101,8 +101,8 @@ for (const page of htmlFiles()) {
 					say(`a VideoObject's ${key}, ${String(video[key])}, is not in the site`);
 				}
 			}
-			if (typeof video.uploadDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(video.uploadDate)) {
-				say(`a VideoObject has no uploadDate: ${String(video.name)}`);
+			if (typeof video.uploadDate !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$/.test(video.uploadDate) || Number.isNaN(Date.parse(video.uploadDate))) {
+				say(`a VideoObject's uploadDate is not a date and time with a time zone: ${String(video.name)}, ${String(video.uploadDate)}`);
 			}
 			if (typeof video.duration !== 'string' || !/^PT\d+S$/.test(video.duration)) {
 				say(`a VideoObject has no duration: ${String(video.name)}`);

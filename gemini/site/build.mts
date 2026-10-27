@@ -486,7 +486,8 @@ const indexedPages = new Map<string, string | undefined>();
 /**
  * When each clip was taken (MEDIA-TODO.md has the same dates), for its VideoObject's
  * uploadDate: the files carry no date. A clip missing here stops the build; add it when a clip
- * is added, and change its date when one is retaken.
+ * is added, and change its date when one is retaken. Google wants uploadDate as a date and time
+ * with a time zone, so `videoObject` gives each day as midnight India time, where they are taken.
  */
 const clipDates: Readonly<Record<string, string>> = {
 	'showcase-console': '2026-10-15',
@@ -527,7 +528,7 @@ function videoObject(c: Context, name: string, alt: string): JsonLd {
 		description: alt,
 		thumbnailUrl: `${c.siteUrl}media/${name}-light.webp`,
 		contentUrl: `${c.siteUrl}media/${name}-light.mp4`,
-		uploadDate: date,
+		uploadDate: `${date}T00:00:00+05:30`,
 		...seconds ? { duration: `PT${seconds}S` } : {},
 	};
 }
