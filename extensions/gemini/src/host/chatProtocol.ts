@@ -22,7 +22,7 @@ import type { PendingPromptView } from '../acp/promptQueue';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 42;
+export const chatProtocolVersion = 43;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.signIn', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal'] as const;
@@ -547,6 +547,18 @@ export interface ChatStrings {
 	readonly undoTurnTooltip: string;
 	/** Tooltip of the Shared page chip; `{0}` is the page's address. */
 	readonly showSharedPage: string;
+	/** The side column's heading; `{0}` is the repository or folder. */
+	readonly sideOn: string;
+	readonly sideLinks: string;
+	readonly sideChanges: string;
+	/** The Changes link's tooltip; `{0}` lines added, `{1}` lines removed. */
+	readonly sideChangesTip: string;
+	readonly sideBrowser: string;
+	readonly sideBrowserTip: string;
+	readonly sideTerminal: string;
+	readonly sideTerminalTip: string;
+	readonly sideFiles: string;
+	readonly sideFilesTip: string;
 	/** Tooltip of a prompt's Rewind button. */
 	readonly rewindPrompt: string;
 	/** `{0}` is a number of files. */
@@ -770,6 +782,17 @@ export type ViewMention =
 export interface SharedPageView {
 	readonly title: string;
 	readonly url: string;
+}
+
+/** A link in an agent's or thread's side column, which opens that part of the agent beside its chat. */
+export type SideLink = 'changes' | 'browser' | 'terminal' | 'files';
+
+/** The side column's heading and the agent's change totals. */
+export interface ViewSideLinks {
+	/** The repository or folder the agent works on, for "On {0}". */
+	readonly place: string;
+	readonly added: number;
+	readonly removed: number;
 }
 
 export interface ViewContext {
@@ -1027,6 +1050,8 @@ export type FromWebview =
 	| { readonly type: 'rewind'; readonly itemId: string }
 	/** A Shared page chip was clicked: show the page's tab. */
 	| { readonly type: 'openSharedPage' }
+	/** A link in the side column was clicked. */
+	| { readonly type: 'openSideLink'; readonly link: SideLink }
 	/** Esc twice in an empty message box: pick a prompt to rewind to. */
 	| { readonly type: 'pickRewind' }
 	/** Send the prompt of the turn ending with `itemId` again; only the latest turn offers it. */
@@ -1109,6 +1134,8 @@ export type ToWebview =
 	| { readonly type: 'attachToolRef'; readonly ref: ToolRef }
 	/** The page the user shared with this agent in the GeminiCode browser, pinned to the composer until they stop sharing it. */
 	| { readonly type: 'sharedPage'; readonly page: SharedPageView | undefined }
+	/** The side column of an agent or thread; undefined hides it, as in a project's chat. */
+	| { readonly type: 'sideLinks'; readonly links: ViewSideLinks | undefined }
 	| { readonly type: 'git'; readonly git: ViewGit }
 	/** The folder's local branches for the branch menu, or why it cannot switch (`notice`). */
 	| { readonly type: 'branches'; readonly branches: readonly ViewBranch[]; readonly notice?: string }

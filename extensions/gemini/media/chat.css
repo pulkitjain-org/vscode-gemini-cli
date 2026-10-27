@@ -128,11 +128,12 @@ button {
 	padding: 20px var(--gemini-gutter) 8px;
 }
 
-/* Long chats (promptNav.ts): a tick per prompt down the right edge; the current one is lit. */
+/* Long chats (promptNav.ts): a tick per prompt down the left edge, centred on the view's height; the current one is lit. */
 .prompt-outline {
 	position: fixed;
-	top: 20px;
-	right: 2px;
+	top: 50%;
+	transform: translateY(-50%);
+	left: 2px;
 	z-index: 2;
 	display: flex;
 	flex-direction: column;
@@ -150,7 +151,7 @@ button {
 	min-height: 3px;
 	display: flex;
 	align-items: center;
-	justify-content: flex-end;
+	justify-content: flex-start;
 	width: 14px;
 	padding: 0 2px;
 	border: none;
@@ -182,6 +183,150 @@ button {
 .outline-tick.current::before {
 	width: 12px;
 	background: var(--vscode-textLink-foreground);
+}
+
+/*
+ * An agent's or thread's side column (sideLinks.ts), fixed in the margin right of the centred
+ * transcript, so the chat keeps its place and width. Labels need a margin of 184px (a view of
+ * 1128px); between that and 856px it is a rail of icons; narrower, it hides.
+ */
+.side-links {
+	position: fixed;
+	top: 16px;
+	/* Clear of the transcript's scrollbar. */
+	right: 14px;
+	z-index: 2;
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	width: 160px;
+}
+
+.side-links[hidden] {
+	display: none;
+}
+
+body.has-parent-project .side-links {
+	top: 48px;
+}
+
+.side-on {
+	margin: 0 0 4px;
+	padding: 0 8px;
+	overflow: hidden;
+	color: var(--gemini-muted);
+	font-size: 12px;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.side-link {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	padding: 4px 8px;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--gemini-muted);
+	font-size: 13px;
+	text-align: left;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.side-link:hover,
+.side-link:focus-visible {
+	background: var(--gemini-hover);
+	color: var(--vscode-foreground);
+}
+
+.side-link > span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.side-counts {
+	display: inline-flex;
+	gap: 6px;
+	flex: none;
+	font-variant-numeric: tabular-nums;
+}
+
+.side-counts[hidden] {
+	display: none;
+}
+
+.side-added {
+	color: var(--vscode-gitDecoration-addedResourceForeground, #81b88b);
+}
+
+.side-removed {
+	color: var(--vscode-gitDecoration-deletedResourceForeground, #e66a72);
+}
+
+@media (max-width: 1127px) {
+	.side-links {
+		width: auto;
+	}
+
+	.side-on,
+	.side-link > span {
+		display: none;
+	}
+
+	.side-link {
+		justify-content: center;
+		padding: 6px;
+	}
+}
+
+@media (max-width: 855px) {
+	.side-links {
+		display: none;
+	}
+}
+
+/* A tick's preview: the prompt, then the start of its reply. Shown beside the tick, never over the outline. */
+.prompt-card {
+	position: fixed;
+	inset: auto;
+	margin: 0;
+	width: min(340px, calc(100vw - 40px));
+	box-sizing: border-box;
+	padding: 8px 12px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: 8px;
+	background: var(--gemini-popover);
+	box-shadow: 0 4px 14px var(--gemini-shadow);
+	color: var(--vscode-foreground);
+	font-size: 13px;
+	line-height: 1.45;
+	pointer-events: none;
+	overflow-wrap: anywhere;
+}
+
+.prompt-card p {
+	margin: 0;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.prompt-card p:first-child {
+	-webkit-line-clamp: 2;
+	font-weight: 600;
+}
+
+.prompt-card p + p {
+	-webkit-line-clamp: 3;
+	margin-top: 4px;
+	color: var(--gemini-muted);
+}
+
+.prompt-card p[hidden] {
+	display: none;
 }
 
 /*
@@ -4686,10 +4831,6 @@ textarea.new-thread-input {
 		padding-right: var(--gemini-panel-width);
 	}
 
-	body.has-project-panel .prompt-outline {
-		right: calc(var(--gemini-panel-width) + 2px);
-	}
-
 	.project-panel {
 		position: fixed;
 		top: 0;
@@ -4906,10 +5047,6 @@ textarea.new-thread-input {
 .parent-project-link:focus-visible {
 	background: var(--gemini-hover);
 	color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
-}
-
-body.has-parent-project .prompt-outline {
-	top: 52px;
 }
 
 /* ---- Subagent calls: the agent handed work to one of the CLI's subagents ---- */

@@ -22,11 +22,13 @@ import { Event } from '../../../../base/common/event.js';
 import { KeyCode, KeyMod } from '../../../../base/common/keyCodes.js';
 import { Disposable, DisposableStore, toDisposable } from '../../../../base/common/lifecycle.js';
 import { ThemeIcon } from '../../../../base/common/themables.js';
+import { generateUuid } from '../../../../base/common/uuid.js';
 import { ProxyChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { ipcRenderer } from '../../../../base/parts/sandbox/electron-browser/globals.js';
 import { localize, localize2 } from '../../../../nls.js';
 import { Action2, MenuId, MenuRegistry, registerAction2 } from '../../../../platform/actions/common/actions.js';
 import { BrowserElementSelectionMode, BrowserViewStorageScope, getAgentBrowserViewCreationDefaults, IBrowserViewRect, IBrowserViewService, IElementData, ipcBrowserViewChannelName } from '../../../../platform/browserView/common/browserView.js';
+import { BrowserViewUri } from '../../../../platform/browserView/common/browserViewUri.js';
 import { GeminiAgentFileAnswerChannel, GeminiAgentFileRequestChannel, geminiAgentOf, geminiAgentSessionPrefix, IGeminiAgentFileRequest } from '../../../../platform/browserView/common/geminiAgentFiles.js';
 import { IPlaywrightService } from '../../../../platform/browserView/common/playwrightService.js';
 import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
@@ -42,7 +44,7 @@ import { IWorkspaceContextService, WorkbenchState } from '../../../../platform/w
 import { IWorkspaceTrustManagementService } from '../../../../platform/workspace/common/workspaceTrust.js';
 import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
 import { EditorsOrder } from '../../../common/editor.js';
-import { IEditorGroupsService } from '../../../services/editor/common/editorGroupsService.js';
+import { GroupsOrder, IEditorGroupsService } from '../../../services/editor/common/editorGroupsService.js';
 import { IEditorService, SIDE_GROUP } from '../../../services/editor/common/editorService.js';
 import { IWorkbenchEnvironmentService } from '../../../services/environment/common/environmentService.js';
 import { BrowserEditorInput } from '../../browserView/common/browserEditorInput.js';
@@ -270,6 +272,19 @@ CommandsRegistry.registerCommand('_gemini.browser.reveal', async (accessor, key:
 	const group = accessor.get(IEditorGroupsService).groups.find(g => g.contains(input));
 	await editorService.openEditor(input, { pinned: true, preserveFocus: preserveFocus === true }, group?.id ?? SIDE_GROUP);
 	return true;
+});
+
+/**
+ * Opens a blank page of the user's own, not one an agent drives, in the
+ * group at the 1-based `column` (an agent's side group): the Browser link of
+ * an agent that has no page. The user can share it with the agent from the
+ * page's toolbar, as any page of theirs.
+ */
+CommandsRegistry.registerCommand('_gemini.browser.openBlank', async (accessor, column: unknown) => {
+	const editorService = accessor.get(IEditorService);
+	const groups = accessor.get(IEditorGroupsService).mainPart.getGroups(GroupsOrder.GRID_APPEARANCE);
+	const group = typeof column === 'number' ? groups[column - 1] : undefined;
+	await editorService.openEditor({ resource: BrowserViewUri.forId(generateUuid()), options: { pinned: true } }, group?.id ?? SIDE_GROUP);
 });
 
 /** The agent's open pages. */

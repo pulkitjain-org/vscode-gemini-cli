@@ -437,6 +437,37 @@ export function promptStep(tops: readonly number[], viewTop: number, direction: 
 	return -1;
 }
 
+/** The most of a reply a prompt's preview card shows; the card clamps it to three lines. */
+const replyPreviewLength = 280;
+
+/**
+ * The start of Gemini's reply to prompt `promptId`, as plain text for the
+ * outline's preview card: its first reply before the next prompt, without
+ * code blocks or Markdown marks. Empty while there is none yet.
+ */
+export function replyPreview(items: readonly TranscriptItem[], promptId: string): string {
+	const start = items.findIndex(item => item.id === promptId);
+	for (let i = start + 1; start >= 0 && i < items.length; i++) {
+		const item = items[i];
+		if (item.kind === 'user') {
+			break;
+		}
+		if (item.kind === 'agent' && item.text.trim()) {
+			const text = item.text
+				.replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?(^\1[^\n]*$|(?![\s\S]))/gm, ' ')
+				.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+				.replace(/^\s{0,3}(#{1,6}\s+|>\s?|[-*+]\s+|\d+[.)]\s+)/gm, '')
+				.replace(/(\*\*|__|\*|_|~~|`)(?=\S)([^\n]*?\S)\1/g, '$2')
+				.replace(/\s+/g, ' ')
+				.trim();
+			if (text) {
+				return text.length > replyPreviewLength ? `${text.slice(0, replyPreviewLength - 1).trimEnd()}…` : text;
+			}
+		}
+	}
+	return '';
+}
+
 /** A token count, short: "950", "48.2k", "1.3M". */
 export function formatTokens(count: number, locale?: string): string {
 	return new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }).format(count);

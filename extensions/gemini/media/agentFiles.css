@@ -1,0 +1,181 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Pulkit Jain. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/* An agent's Files page (webview-src/agentFiles.ts): Recents left, the folder tree right; narrow, the tree alone. */
+
+body.files-page {
+	margin: 0;
+	padding: 0;
+	height: 100vh;
+	overflow: hidden;
+	background: var(--vscode-editor-background);
+	color: var(--vscode-foreground);
+	font-family: var(--vscode-font-family);
+	font-size: 13px;
+}
+
+.files-page #page {
+	display: flex;
+	height: 100%;
+}
+
+.files-home {
+	position: relative;
+	flex: 1;
+	min-width: 0;
+	box-sizing: border-box;
+	padding: 56px 32px 24px;
+	overflow-y: auto;
+}
+
+.files-home > * {
+	max-width: 360px;
+	margin-inline: auto;
+}
+
+.files-tree {
+	display: flex;
+	flex-direction: column;
+	flex: none;
+	width: 280px;
+	box-sizing: border-box;
+	border-left: 1px solid var(--gemini-border);
+}
+
+.tree-hidden .files-tree,
+.files-show-tree {
+	display: none;
+}
+
+.tree-hidden .files-show-tree {
+	display: inline-flex;
+	position: absolute;
+	top: 10px;
+	right: 10px;
+	max-width: none;
+}
+
+.files-search {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 16px;
+	padding: 6px 12px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: 999px;
+	background: var(--vscode-input-background);
+	color: var(--gemini-muted);
+}
+
+.files-search:focus-within {
+	border-color: var(--vscode-focusBorder);
+}
+
+.files-search input {
+	flex: 1;
+	min-width: 0;
+	border: none;
+	outline: none;
+	background: transparent;
+	color: var(--vscode-input-foreground, var(--vscode-foreground));
+	font: inherit;
+}
+
+.files-heading {
+	margin: 20px 0 6px;
+	padding: 0 8px;
+	color: var(--gemini-muted);
+	font-size: 13px;
+	font-weight: normal;
+}
+
+button.files-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	min-width: 0;
+	padding: 4px 8px;
+	border: none;
+	border-radius: var(--gemini-radius-small);
+	background: transparent;
+	color: var(--vscode-foreground);
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+button.files-row:hover,
+button.files-row:focus-visible {
+	background: var(--gemini-hover);
+}
+
+.files-row .codicon {
+	flex: none;
+	color: var(--gemini-muted);
+}
+
+.files-name {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.files-folder {
+	overflow: hidden;
+	flex: 1 1 0;
+	min-width: 0;
+	color: var(--gemini-muted);
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.files-row.ignored {
+	color: var(--gemini-faint);
+}
+
+.files-empty {
+	margin: 4px 0;
+	padding: 0 8px;
+	color: var(--gemini-muted);
+}
+
+.files-tree-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 8px 4px 16px;
+	color: var(--gemini-muted);
+}
+
+.files-root {
+	flex: 1;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.files-tree-rows {
+	flex: 1;
+	overflow: auto;
+	padding: 0 8px 12px;
+}
+
+.tree-row {
+	white-space: nowrap;
+}
+
+/* Beside an open file: the tree takes the whole page. */
+@media (max-width: 479px) {
+	.files-home {
+		display: none;
+	}
+
+	.files-tree {
+		flex: 1;
+		width: auto;
+		border-left: none;
+	}
+}

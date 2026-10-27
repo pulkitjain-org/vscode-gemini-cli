@@ -18,3 +18,4 @@ export { ConnectionsPage } from './host/connectionsPage';
 export { SettingsPage } from './host/settingsPage';
 export { PlanReviews } from './host/planReviewPage';
 export { TeamFlowPanel } from './host/teamFlowPanel';
+export { AgentFilesPages } from './host/agentFilesPage';

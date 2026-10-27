@@ -3,11 +3,12 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Long chats: a thin outline of your prompts down the right edge, and keys
+// Long chats: a thin outline of your prompts down the left edge, and keys
 // (⌥⌘↑ / ⌥⌘↓ on a Mac, Ctrl+Alt+↑ / ↓ elsewhere) to jump between them.
+// Hovering a tick shows the prompt and the start of its reply in a card.
 // Layout is read only on a jump, or once a frame while the view scrolls.
 
-import { currentPrompt, promptStep } from './chatLogic';
+import { currentPrompt, promptStep, replyPreview } from './chatLogic';
 import { button } from './dom';
 import { elements, state, strings, ui } from './view';
 
@@ -20,6 +21,39 @@ let promptIds: string[] = [];
 let ticks: HTMLButtonElement[] = [];
 let active = -1;
 let frame = 0;
+/** The preview card, made on the first hover; in the top layer, over the composer and menus. */
+let card: HTMLElement | undefined;
+
+/** The text a prompt is shown by: its words, or a reaction sent on its own by its emoji. */
+function promptText(id: string): string {
+	const item = state.items.find(i => i.id === id);
+	return item && item.kind === 'user' ? item.text.replace(/\s+/g, ' ').trim() || (item.reactions ?? []).map(reaction => reaction.emoji).join(' ') : '';
+}
+
+function showCard(tick: HTMLElement, id: string): void {
+	if (!card) {
+		card = document.createElement('div');
+		card.className = 'prompt-card';
+		card.setAttribute('aria-hidden', 'true');
+		card.popover = 'manual';
+		card.append(document.createElement('p'), document.createElement('p'));
+		document.body.append(card);
+	}
+	const [prompt, reply] = card.children as HTMLCollectionOf<HTMLElement>;
+	prompt.textContent = promptText(id);
+	reply.textContent = replyPreview(state.items, id);
+	reply.hidden = !reply.textContent;
+	card.showPopover();
+	const box = tick.getBoundingClientRect();
+	card.style.left = `${Math.round(box.right + 8)}px`;
+	card.style.top = `${Math.round(Math.max(4, Math.min(box.top + box.height / 2 - 18, innerHeight - card.offsetHeight - 4)))}px`;
+}
+
+function hideCard(): void {
+	if (card?.matches(':popover-open')) {
+		card.hidePopover();
+	}
+}
 
 function promptTops(): number[] {
 	const base = transcript.getBoundingClientRect().top - transcript.scrollTop;
@@ -66,14 +100,17 @@ export function updateOutline(): void {
 	}
 	promptIds = ids;
 	active = -1;
+	hideCard();
 	ticks = ids.map((id, index) => {
-		const item = state.items.find(i => i.id === id);
-		// A reaction sent on its own is named by its emoji.
-		const text = item && item.kind === 'user' ? item.text.replace(/\s+/g, ' ').trim() || (item.reactions ?? []).map(reaction => reaction.emoji).join(' ') : '';
-		const tick = button('outline-tick', '', () => jumpTo(index));
-		tick.title = text.length > 120 ? `${text.slice(0, 119)}…` : text;
-		tick.setAttribute('aria-label', tick.title);
+		const text = promptText(id);
+		const tick = button('outline-tick', '', () => {
+			hideCard();
+			jumpTo(index);
+		});
+		tick.setAttribute('aria-label', text.length > 120 ? `${text.slice(0, 119)}…` : text);
 		tick.tabIndex = -1;
+		tick.addEventListener('mouseenter', () => showCard(tick, id));
+		tick.addEventListener('mouseleave', hideCard);
 		return tick;
 	});
 	outline.replaceChildren(...ticks);

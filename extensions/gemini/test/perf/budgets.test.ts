@@ -58,6 +58,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	'media/confluenceReview.js': 29_000,
 	// Plan Review's page, about 11 KB; its Markdown comes from draftMarkdown.js.
 	'media/planReview.js': 14_000,
+	// An agent's Files page: Recents, search and the folder tree, about 6 KB.
+	'media/agentFiles.js': 7_000,
 	// The audit log page, about 8 KB.
 	'media/auditLog.js': 10_000,
 	// The Index page, about 19 KB: workspaces' indexes, attached docs, the Add Docs and Files Left Out popups,
@@ -98,7 +100,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// Plan Review's host side (planReviewPage.ts, planReview.ts, planReviewStore.ts), about 13 KB, loaded the first time a plan is reviewed.
 	// The team flows' page (teamFlowPanel.ts: Log Time, Move, Open Merge Request, Run Checks, a merge request review), about 9 KB,
 	// moved here from dist/extension.js and loaded with the first flow opened.
-	'dist/pages.js': 138_000,
+	// An agent's Files page (agentFilesPage.ts, agentFiles.ts), about 7 KB, loaded the first time one opens.
+	'dist/pages.js': 145_000,
 	// Confluence, about 27 KB, loaded the first time an agent or a page uses it (src/confluence.ts): its client, the
 	// agents' calls, the drafts and the Review Page's host, with publishing only the changes kept (draftReview.ts,
 	// blockMerge.ts) and the page's localized strings.

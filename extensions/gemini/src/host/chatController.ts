@@ -57,6 +57,7 @@ import { ChatRun } from './chat/chatRun';
 import { ChatSessions, resumeCommand } from './chat/chatSessions';
 import { ChatSettings, onDidChangeSendWith, sendsWithCmdEnter } from './chat/chatSettings';
 import { SharedPageChip } from './chat/chatSharedPage';
+import { SideLinksColumn } from './chat/chatSideLinks';
 import { ChatUsage, contextCommand } from './chat/chatUsage';
 
 export type { ChatControllerOptions, ChatEnhancer, ChatGit, ChatHost, ChatProject, ChatSharedPage, ChatTerminal, ChatWorkspace, FileSearch } from './chat/chatOptions';
@@ -170,6 +171,7 @@ export class ChatController implements vscode.Disposable {
 	private readonly usage: ChatUsage;
 	private readonly attachments: ChatAttachments;
 	private readonly sharedPage: SharedPageChip;
+	private readonly sideLinks: SideLinksColumn;
 	private readonly settings: ChatSettings;
 	private readonly enhance: ChatEnhance;
 	private readonly commands: ChatCommands;
@@ -204,6 +206,7 @@ export class ChatController implements vscode.Disposable {
 		this.usage = new ChatUsage(client, options, () => this.transcript.items.length > 0, isAttached, post, (used, limit) => this.compacting.contextChanged(used, limit));
 		this.attachments = new ChatAttachments(fileIndex, options, () => options.git?.folder() ?? client.cwd, isAttached, isViewReady, post);
 		this.sharedPage = new SharedPageChip(options, post);
+		this.sideLinks = new SideLinksColumn(options, isViewReady, post);
 		this.settings = new ChatSettings(service, this.transcript, options, post);
 		this.enhance = new ChatEnhance(client, options, () => this.transcript.items, post);
 		this.commands = new ChatCommands(client, this.transcript, [...options.savedSessions ? [resumeCommand()] : [], compactCommand(), contextCommand(), ...options.fork ? [forkCommand()] : []], isAttached, post);
@@ -266,6 +269,7 @@ export class ChatController implements vscode.Disposable {
 				this.trySteer();
 			}),
 			this.transcript,
+			this.sideLinks,
 			this.transcript.onDidChangeItem(item => this.items.push(item)),
 			{ dispose: () => this.items.dispose() },
 			this.transcript.onDidReset(() => this.postReset()),
@@ -1383,6 +1387,7 @@ export class ChatController implements vscode.Disposable {
 				this.usage.onReady();
 				this.git.refresh();
 				void this.sharedPage.refresh();
+				this.sideLinks.refresh();
 				void this.attachments.postToolRefs();
 				// The agent was started with the view (see attach); this retries one that has since stopped.
 				this.service.ensureReady().catch(() => undefined);
@@ -1480,6 +1485,9 @@ export class ChatController implements vscode.Disposable {
 			case 'stopSharing':
 			case 'openSharedPage':
 				this.sharedPage.onMessage(message);
+				break;
+			case 'openSideLink':
+				this.sideLinks.onMessage(message);
 				break;
 			case 'setFollow':
 			case 'showFollowed':

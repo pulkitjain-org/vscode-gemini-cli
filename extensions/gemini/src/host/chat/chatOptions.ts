@@ -18,7 +18,7 @@ import type { OtherAgentChanges, TranscriptItem } from '../../acp/chatTranscript
 import type { ConversationEntry, MessageRecord } from '../../acp/cliSessions';
 import type { FinishedCommand, RunPlace } from '../../acp/runCommands';
 import type { RunOutcome } from '../agentTerminals';
-import type { ForkAction, ForkRequest, NewThread, ProjectSettingsAction, ProjectSettingsSave, ThreadAction, ViewContextBreakdown } from '../chatProtocol';
+import type { ForkAction, ForkRequest, NewThread, ProjectSettingsAction, ProjectSettingsSave, SideLink, ThreadAction, ViewContextBreakdown, ViewSideLinks } from '../chatProtocol';
 import type { ToolChips } from '../toolChips';
 import type { UsageMeter } from '../usageMeter';
 import type { FileMatch } from '../workspaceFiles';
@@ -81,6 +81,8 @@ export interface ChatControllerOptions {
 	readonly project?: ChatProject;
 	/** A project thread's chat: names its project, and opens the project chat. */
 	readonly parentProject?: { name(): string; open(): void };
+	/** The side column's links (Changes, Browser, Terminal, Files); unset in chats without one, such as a project's. */
+	readonly sideLinks?: ChatSideLinks;
 	/** The page the user shared with this agent in the GeminiCode browser; unset in chats that never have one. */
 	readonly sharedPage?: ChatSharedPage;
 	/** Saves the chat's checkpoints after each change, so Undo and Rewind outlast a reload; unset keeps them in memory only. */
@@ -113,6 +115,14 @@ export interface ChatControllerOptions {
 	contextCost?(): ChatContextCost | undefined;
 	/** The @ picker's Symbols: definitions named like `query` in the folder's index; undefined while the index is off, unavailable or not built. */
 	symbols?(query: string): Promise<readonly ChatSymbol[] | undefined>;
+}
+
+/** What the side column shows and opens. */
+export interface ChatSideLinks {
+	view(): ViewSideLinks;
+	/** Fires when the totals change. */
+	onDidChange(listener: () => void): { dispose(): void };
+	open(link: SideLink): void;
 }
 
 /** A definition the workspace index found, for the @ picker. */

@@ -19,6 +19,8 @@ run({
 		'confluenceReview': path.join(srcDir, 'confluenceReview.ts'),
 		// Plan Review's page (src/host/planReviewPage.ts).
 		'planReview': path.join(srcDir, 'planReview.ts'),
+		// An agent's Files page (src/host/agentFilesPage.ts).
+		'agentFiles': path.join(srcDir, 'agentFiles.ts'),
 		'auditLog': path.join(srcDir, 'auditLog.ts'),
 		'settings': path.join(srcDir, 'settings.ts'),
 		'indexPage': path.join(srcDir, 'indexPage.ts'),

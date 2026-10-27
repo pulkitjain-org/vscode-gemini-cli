@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import type { TranscriptItem } from '../../src/acp/chatTranscript';
 import {
 	subagentName,
-	acceptsEnhanceReply, coalesceUpdates, HeldUpdates, attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, currentActivity, currentPrompt, promptStep, formatClock, turnStart, draggedHeight, emptyFence, enhanceButtonPlacement, enhanceOriginal, type EnhancePhase, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, fileReference, fileUris, folderOf, format, formatDuration, formatSentAt, isEnhanceShortcut, isQueueShortcut,
+	acceptsEnhanceReply, coalesceUpdates, HeldUpdates, attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, currentActivity, currentPrompt, promptStep, replyPreview, formatClock, turnStart, draggedHeight, emptyFence, enhanceButtonPlacement, enhanceOriginal, type EnhancePhase, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, fileReference, fileUris, folderOf, format, formatDuration, formatSentAt, isEnhanceShortcut, isQueueShortcut,
 	imageName, indexOfItem, isNearBottom, matchCommands, mentionAt, mentionInsertion, permissionChoices, planIcon, cardKey, waitingPermission, replyBefore, restoredHeight,
 	formatTokens, resetsIn, sameAttachment, slashQuery, thoughtSeconds, toolKindIcon, withAppended, withoutMention, wrapIndex,
 	contextParts, enterAction, mentionGroup, symbolIcon,
@@ -464,6 +464,18 @@ describe('prompt navigation', () => {
 		expect(promptStep(tops, 1200, -1)).toBe(1);
 		expect(promptStep(tops, 600, -1)).toBe(1);
 		expect(promptStep(tops, 0, -1)).toBe(-1);
+	});
+	it('previews the start of each prompt’s reply as plain text', () => {
+		const items: TranscriptItem[] = [
+			{ id: 'u1', kind: 'user', text: 'Why does pnpm fail?' },
+			{ id: 't', kind: 'thought', text: 'Looking' },
+			{ id: 'a1', kind: 'agent', text: '## Cause\nThe **pnpm** error is a `version` mismatch, see [the docs](https://pnpm.io).\n```sh\npnpm -v\n```\n- Pin it' },
+			{ id: 'u2', kind: 'user', text: 'Pin it' },
+			{ id: 'u3', kind: 'user', text: 'And then?' },
+			{ id: 'a3', kind: 'agent', text: 'x'.repeat(400) },
+		];
+		const previews = ['u1', 'u2', 'u3', 'missing'].map(id => replyPreview(items, id));
+		expect(previews).toEqual(['Cause The pnpm error is a version mismatch, see the docs. Pin it', '', `${'x'.repeat(279)}…`, '']);
 	});
 });
 
