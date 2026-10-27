@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { allowedServersFor, contextBreakdown, measureContextCost, ProbeVariant } from '../../src/acp/contextCost';
+import { allowedServersFor, contextBreakdown, measureCalls, measureContextCost, measureTokens, ProbeVariant } from '../../src/acp/contextCost';
 
 describe('measureContextCost', () => {
 	it('splits a call into the CLI, the context files, each server and GeminiCode\'s own', async () => {
@@ -32,6 +32,8 @@ describe('measureContextCost', () => {
 			measuredAt: 7,
 		});
 		expect(asked.sort()).toEqual(['all', 'context', 'empty', 'geminicode', 'gitlab', 'jira']);
+		// What measuring again costs is what these calls carried together.
+		expect({ calls: measureCalls(2), tokens: measureTokens(cost) }).toEqual({ calls: asked.length, tokens: (['empty', 'context', 'geminicode', 'all'] as const).reduce((sum, kind) => sum + tokens({ kind, servers: [] }), 0) + tokens({ kind: 'server', server: 'gitlab' }) + tokens({ kind: 'server', server: 'jira' }) });
 	});
 
 	it('allows only the servers a variant measures', () => {

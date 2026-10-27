@@ -8,7 +8,7 @@
 // rule files the CLI loaded there, as its `/memory list` names them. The
 // measure makes a model call per part, so it runs in the background at most
 // once a day per folder, or when the user asks again; every chat in the folder
-// and Project Helpers share the result.
+// and Agent Setup share the result.
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
@@ -41,12 +41,22 @@ export class ContextMeasures implements ChatContextCost, vscode.Disposable {
 	/** Fires with the folder whose breakdown changed. */
 	readonly onDidChange = this.onDidChangeEmitter.event;
 
-	/** `state` keeps each folder's last measure, under the key Project Helpers uses. */
+	/** `state` keeps each folder's last measure. */
 	constructor(private readonly state: vscode.Memento, private readonly host: ContextMeasureHost, private readonly now: () => number = Date.now) { }
 
 	view(folder: string): ViewContextBreakdown {
 		const cost = this.cached(folder);
 		return contextBreakdown(cost, this.running.has(folder), this.failures.get(folder));
+	}
+
+	/** The folder's last measure, with each server's part, for Agent Setup. */
+	cost(folder: string): ContextCost | undefined {
+		return this.cached(folder);
+	}
+
+	/** The MCP servers a measure of `folder` covers. */
+	servers(folder: string): Promise<string[]> {
+		return folderServers(folder);
 	}
 
 	measure(folder: string, force: boolean): Promise<void> {
@@ -105,7 +115,7 @@ export class ContextMeasures implements ChatContextCost, vscode.Disposable {
 	}
 }
 
-/** The MCP servers new agents in `folder` get from the CLI's settings, as Project Helpers lists them: the folder's, then personal ones it doesn't replace, less those switched off. */
+/** The MCP servers new agents in `folder` get from the CLI's settings: the folder's, then personal ones it doesn't replace, less those switched off. */
 async function folderServers(folder: string): Promise<string[]> {
 	const dir = geminiDir();
 	const [project, personal, disabled] = await Promise.all([

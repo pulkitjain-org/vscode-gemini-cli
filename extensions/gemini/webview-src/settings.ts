@@ -255,15 +255,38 @@ function trustSection(trust: TrustView): HTMLElement {
 	return node;
 }
 
-/** Context per model call: the total, a bar of its parts, each part, and advice for the heavy ones. */
+let contextFolderMenu: SelectMenu | undefined;
+
+/** Context per model call: the total, a bar of its parts, each part, and advice for the heavy ones; in a multi-root window, for the folder picked. */
 function contextSection(cost: ContextCostView): HTMLElement {
 	const measuring = cost.state === 'measuring';
-	const action = button('secondary', measuring ? strings.measuring : cost.total === undefined ? strings.measure : strings.measureAgain, () => post({ type: 'measureContext' }), measuring ? 'loading' : 'pulse');
-	action.disabled = measuring;
+	const measure = button('secondary', measuring ? strings.measuring : cost.total === undefined ? strings.measure : strings.measureAgain, () => post({ type: 'measureContext' }), measuring ? 'loading' : 'pulse');
+	measure.disabled = measuring;
 	if (measuring) {
-		action.querySelector('.codicon')?.classList.add('codicon-modifier-spin');
+		measure.querySelector('.codicon')?.classList.add('codicon-modifier-spin');
 	}
-	const node = section(strings.contextTitle, format(strings.contextHint, cost.folder), action);
+	const actions = el('div', 'section-actions');
+	contextFolderMenu?.dispose();
+	contextFolderMenu = undefined;
+	if (cost.folders) {
+		const select = el('select', 'select');
+		select.setAttribute('aria-label', strings.contextFolder);
+		for (const folder of cost.folders) {
+			const option = el('option', undefined, folder.name);
+			option.value = folder.path;
+			option.selected = folder.path === cost.folderPath;
+			select.append(option);
+		}
+		select.addEventListener('change', () => post({ type: 'contextFolder', folder: select.value }));
+		contextFolderMenu = selectMenu(select, strings.contextFolder);
+		actions.append(contextFolderMenu.element);
+	}
+	actions.append(measure);
+	const node = section(strings.contextTitle, format(strings.contextHint, cost.folder), actions);
+	// What measuring takes from the quota, before the button is pressed.
+	const note = el('p', 'hint context-note');
+	note.append(icon('info'), el('span', undefined, cost.note));
+	node.append(note);
 	const list = el('div', 'rows context-cost');
 	if (cost.total !== undefined) {
 		const head = el('div', 'row context-total');
@@ -301,7 +324,7 @@ function contextSection(cost: ContextCostView): HTMLElement {
 		problem.append(icon('warning'), el('span', undefined, ` ${cost.error}`));
 		list.append(problem);
 	}
-	node.append(list, el('p', 'hint context-note', strings.contextNote));
+	node.append(list);
 	return node;
 }
 

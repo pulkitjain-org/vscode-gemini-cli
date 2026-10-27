@@ -12,7 +12,8 @@
 // is remembered, so later starts don't ask again; Home and the mode menu say
 // in place what needs trust, with Trust... asking again. A trusted
 // repository's worktrees folder follows it, and GeminiCode's own folders are
-// set at every launch of the agent process (`ownTrustRules`). Changes made
+// set at every launch of the agent process (`ownTrustRules`). Agent Setup
+// removes the entries of folders that are gone (`staleTrustRules`). Changes made
 // elsewhere (the terminal, Agent Setup, another window) reach the agents too:
 // the file is watched.
 
@@ -20,7 +21,7 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { errorMessage } from '../acp/errors';
-import { ensureOwnTrustRules, folderTrustApplies, folderTrustState, ownTrustRules, readTrustRules, setFolderTrust, trustedFoldersPath, type TrustLevel, type TrustRule } from '../acp/trustedFolders';
+import { ensureOwnTrustRules, folderTrustApplies, folderTrustState, ownTrustRules, readTrustRules, removeTrustRules, setFolderTrust, trustedFoldersPath, type TrustLevel, type TrustRule } from '../acp/trustedFolders';
 import { repositoryRoot, worktreesHome } from '../acp/worktrees';
 import { tildify } from './displayText';
 import { showError } from './errorNotice';
@@ -211,6 +212,20 @@ export class FolderTrust implements vscode.Disposable {
 		if (await this.ensureOwn()) {
 			this.changed(undefined);
 		}
+	}
+
+	/** Removes the entries keyed `rules`, of folders that are gone (`staleTrustRules`), with no restart: no agent works in them. */
+	async forget(rules: readonly string[]): Promise<void> {
+		if (!await removeTrustRules(this.file, rules)) {
+			return;
+		}
+		for (const rule of rules) {
+			await this.wrote(rule, undefined);
+		}
+		this.host.log(`Untrusted gone folders: ${rules.join(', ')}`);
+		await this.remember();
+		this.labels.clear();
+		this.onDidChangeEmitter.fire();
 	}
 
 	/** Before the agent process starts and reads the file: GeminiCode's own entries, with no restart. */

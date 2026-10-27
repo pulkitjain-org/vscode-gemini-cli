@@ -1402,8 +1402,16 @@ button.option-button .codicon-chevron-down {
 }
 
 .settings .context-note {
-	margin-top: 6px;
+	display: flex;
+	align-items: flex-start;
+	gap: 6px;
+	margin-top: 8px;
 	font-size: 11.5px;
+}
+
+.settings .context-note .codicon {
+	flex: none;
+	margin-top: 1px;
 }
 
 /* Agent Setup's Trusted Folders: the folder and what its rule covers, how it stands, and Remove. */
