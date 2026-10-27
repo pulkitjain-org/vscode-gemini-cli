@@ -90,8 +90,24 @@ export class WorkspaceFileIndex implements vscode.Disposable {
 		);
 	}
 
-	async search(query: string, limit: number): Promise<FileMatch[]> {
-		const files = await this.load();
+	/**
+	 * The same list, limited to files under `roots()`: an agent's own folder
+	 * and those it may reach. Read on every search, so a settings change
+	 * applies to the next keystroke.
+	 */
+	scopedTo(roots: () => readonly string[]): { warm(): void; search(query: string, limit: number): Promise<FileMatch[]> } {
+		return {
+			warm: () => this.warm(),
+			search: (query, limit) => this.search(query, limit, new Set(roots())),
+		};
+	}
+
+	async search(query: string, limit: number, roots?: ReadonlySet<string>): Promise<FileMatch[]> {
+		let files = await this.load();
+		// Every folder of the window in scope (one folder, or all of them allowed) needs no filtering.
+		if (roots && !(vscode.workspace.workspaceFolders ?? []).every(folder => folder.uri.scheme !== 'file' || roots.has(folder.uri.fsPath))) {
+			files = files.filter(f => isUnder(f.path, roots));
+		}
 		const deleted = this.deleted;
 		const wanted = limit + deleted.size;
 		let ranked: IndexedFile[];
