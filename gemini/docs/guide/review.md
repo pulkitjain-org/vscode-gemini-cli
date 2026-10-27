@@ -41,7 +41,17 @@ In Auto Edit, an edit to a file that decides what runs next still shows a card f
 
 ## Folder trust
 
-The Gemini CLI refuses Auto Edit and YOLO in a folder it doesn't trust; when you pick one there, GeminiCode asks whether to trust it. Trusting a folder also lets the CLI load that folder's own Gemini settings and MCP servers, which can run programs. The choice is saved in `~/.gemini/trustedFolders.json`, and the terminal's `gemini` sees it too.
+In a folder it trusts, the Gemini CLI loads the folder's own Gemini settings, hooks and MCP servers, which can run programs on your Mac, and allows Auto Edit and YOLO. Agents on their own branch, projects and Auto Edit need a trusted folder.
+
+GeminiCode asks once per repository, the first time you choose a folder for agents anywhere: on Home, for a new agent, a project or a team flow, on the Index page, or for a mode that needs it. The question, **Let agents work in** the folder, offers:
+
+- **Trust This Folder**, for the repository.
+- **Trust Everything in** its parent folder, offered when that folder holds other repositories too.
+- **Not Now**, which is remembered, so later starts don't ask again. Agents still work there **Here**, in Default and Plan mode; Auto Edit falls back to Default. Home says in place what needs trust, with **Trust...** to be asked again.
+
+A trusted repository's agent branches, in `~/.geminicode/worktrees/<repository>`, are trusted with it. Merge request reviews check out in `~/.geminicode/reviews`, which is never trusted, so a merge request's own settings, hooks and MCP servers never run. The choice is saved in `~/.gemini/trustedFolders.json`, and the terminal's `gemini` sees it too. [Agent Setup](helpers.md#trusted-folders) lists every rule and changes them.
+
+When trust changes elsewhere, in the terminal, Agent Setup or another window, agents pick it up once they finish their current work. While some are working, a notice says so and offers **Restart Agents Now**.
 
 ## Review changes in place
 
@@ -78,7 +88,7 @@ That message and everything after it go from the chat and from Gemini's context,
 
 ## Commit the agent's work
 
-The branch under a chat's composer switches to another branch or creates one. On a branch other than the repository's default (origin's HEAD, else `main` or `master`), the composer offers **Commit to** that branch: a box opens with a message written from the agent's changes, for you to edit, and **Commit** (or <kbd>⌘↩</kbd>) commits only the files that agent changed; its chevron offers **Create Branch and Commit…**. On the default branch, **Create Branch & Commit** creates a branch, stages only the files that agent changed, and commits them. Both warn first if other files are already staged. The commit message is written from the agent's diff, as the Source Control sparkle writes one, for you to edit; the agent's name is used when it can't be (inline edit turned off, or a sign-in that can't make direct requests). An agent on its own branch has **Merge Back** instead, which commits its leftovers with a message written the same way.
+The branch under a chat's composer switches to another branch or creates one. On a branch other than the repository's default (origin's HEAD, else `main` or `master`), the composer offers **Commit to** that branch: a box opens with a message written from the agent's changes, for you to edit, and **Commit** (or <kbd>⌘↩</kbd>) commits only the files that agent changed; its chevron offers **Create Branch and Commit…**. On the default branch, **Create Branch & Commit** creates a branch, stages only the files that agent changed, and commits them. Both warn first if other files are already staged. The commit message is written from the agent's diff, as the Source Control sparkle writes one, for you to edit; the agent's name is used when it can't be (inline edit turned off, or a sign-in that can't make direct requests). An agent on its own branch has **Try in Workspace** instead, or **Merge Back** with `gemini.agents.mergeBack` set to `commit`, which commits its leftovers with a message written the same way. See [Agents on their own branch](agents.md#agents-on-their-own-branch).
 
 In the Source Control view, the sparkle button writes a commit message for the staged changes (or, with nothing staged, all changes).
 

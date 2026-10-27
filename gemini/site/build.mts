@@ -494,6 +494,7 @@ const clipDates: Readonly<Record<string, string>> = {
 	'showcase-mr-review': '2026-10-23',
 	'showcase-notes': '2026-10-19',
 	'showcase-plan': '2026-10-19',
+	'showcase-plan-review': '2026-10-27',
 	'showcase-projects': '2026-10-19',
 	'showcase-review': '2026-10-19',
 	'showcase-wait': '2026-10-19',
@@ -909,12 +910,12 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 			<div class="tile s5 reveal" data-reveal style="gap: 20px">
 				<div style="display: flex; flex-direction: column; gap: 8px">
 					<h3 class="serif">Home</h3>
-					<p>Describe a task and press Return. Home shows each agent's status, changes and next step as a card, and, once you connect them, your tickets and merge requests.</p>
+					<p>Describe a task, choose where it runs, and press Return. Home shows each agent's status, changes and next step as a card, and, once you connect them, your tickets and the merge requests waiting on you.</p>
 				</div>
 				<div class="mock home-mock" aria-hidden="true">
 					<p class="task">Make the upload client retry twice with backoff, and cover it with a test<span class="mini-caret"></span></p>
 					<div class="opts">
-						<span><span class="check">${icon('check')}</span>On its own branch</span>
+						<span><span class="check">${icon('check')}</span>On Its Own Branch</span>
 						<span class="m">Default · Auto</span>
 						<span class="start">Start <kbd>↩</kbd></span>
 					</div>
@@ -931,7 +932,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 					<text x="16" y="80">main</text>
 				</svg>
 				<h3 class="serif s">Agents on their own branch</h3>
-				<p>A worktree per agent, in its own branch. <b>Merge Back</b> when it is done.</p>
+				<p>A worktree per agent, on its own branch. <b>Try in Workspace</b> when it is done, then keep the changes or take them back.</p>
 			</div>
 			<div class="tile s4 reveal" data-reveal style="gap: 18px">
 				<div class="mock code" aria-hidden="true">
@@ -1000,9 +1001,9 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 				<div class="copy">
 					<span class="label">Projects</span>
 					<h2 class="h2 serif" id="projects-h">One chat for the <em>whole feature.</em></h2>
-					<p>Talk to a coordinator. It splits larger work into threads, each an agent on its own branch, and passes your follow-ups to the right one. Threads show as cards you can open, merge back, review or undo.</p>
+					<p>Talk to a coordinator. It splits larger work into threads, each an agent on its own branch, and passes your follow-ups to the right one. Threads show as cards: open one to talk to it, or try its changes in your own checkout before you keep them.</p>
 					<div class="threads" aria-hidden="true">
-						<div class="thread" style="--i: 0"><span class="dot ok"></span><span class="n">Thread · API retries</span><span class="mb">Merge back</span></div>
+						<div class="thread" style="--i: 0"><span class="dot ok"></span><span class="n">Thread · API retries</span><span class="mb">Try in Workspace</span></div>
 						<div class="thread" style="--i: 1"><span class="dot warn"></span><span class="n">Thread · Settings UI</span><span class="m w">Approve plan</span></div>
 						<div class="thread" style="--i: 2"><span class="dot spin"></span><span class="n">Thread · Docs</span><span class="m">2 repositories</span></div>
 					</div>
@@ -1034,8 +1035,8 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 			</div>
 			<div class="tile s6 team reveal" data-reveal>
 				<h3 class="serif">From ticket to merge request.</h3>
-				<p>Sign in to your team's tools with your own account. Start an agent from a ticket, open the merge request and fix the pipeline and the comments. Review a teammate's merge request with Gemini's draft, your own comments and suggested changes, then post it in one go.</p>
-				<div class="chips"><span class="chip">Jira</span><span class="chip">GitLab</span><span class="chip">SonarQube</span><span class="chip">Snyk</span><span class="chip">Figma</span></div>
+				<p>Sign in to your team's tools with your own account. Start an agent from a ticket, open the merge request and fix the pipeline and the comments. Review a teammate's merge request with Gemini's draft, your own comments and suggested changes, then post it in one go. Agents draft Confluence pages too, and you keep or undo each change before it is published.</p>
+				<div class="chips"><span class="chip">Jira</span><span class="chip">Confluence</span><span class="chip">GitLab</span><span class="chip">SonarQube</span><span class="chip">Snyk</span><span class="chip">Figma</span></div>
 				<div class="mock mr" aria-hidden="true">
 					<div class="r"><span class="k">ACME-412</span><span class="n">Upload retries</span><span class="s">!412 · passed</span></div>
 					<div class="r on"><span class="k">ACME-419</span><span class="n">Settings rename</span><span class="s w">2 comments</span></div>

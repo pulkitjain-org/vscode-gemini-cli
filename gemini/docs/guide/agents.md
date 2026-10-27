@@ -17,13 +17,17 @@ In the Agents layout the top of the window is a single row: the Home button, the
 
 **Home** is where you start agents and see what needs you. It opens when no tab is open in the Agents layout, and in front of your restored tabs each time GeminiCode starts.
 
-To start an agent, describe the task in **Start Agent** and press Return. Under the task, choose where it works: **Here**, in this folder on your current branch; **On Its Own Branch**, a new branch and folder, merged back when done (see [Agents on their own branch](#agents-on-their-own-branch)); or **As a Project**, a coordinator that splits the work into threads (see [Projects](projects.md)). Hold the pointer over a choice to see what it does. A branch and a project need a Git repository, and **As a Project** shows while Projects are on. The bar under the composer shows the folder, with a drum for its index (full when indexed, half while indexing, empty when not yet), the approval mode and the model the agent starts with, and **From Your Tools…** lists your tickets and merge requests to start from one.
+To start an agent, describe the task in **Start Agent** and press Return. Under the task, choose where it works: **Here**, in this folder on your current branch; **On Its Own Branch**, a new branch and folder (see [Agents on their own branch](#agents-on-their-own-branch)); or **To a Project**, which sends the task to a project's coordinator, which makes it a thread or passes it on (see [Projects](projects.md)). Hold the pointer over a choice to see what it does. A branch and a project need a Git repository, and **To a Project** shows while Projects are on.
+
+With **To a Project**, a picker beside the chooser lists the projects of the folder's repository first, then those of other repositories, and **New Project in** the folder. The button then reads **Send to Project**, or **Start Project** for a new one.
+
+The bar under the composer shows the folder, with a drum for its index (full when indexed, half while indexing, empty when not yet), the approval mode and the model the agent starts with, and **From Your Tools…** lists your tickets and merge requests to start from one. The folder picker marks each folder **Trusted**, **Trusted by parent** or **Needs trust**, and **Open Folder...** adds a folder for agents without adding it to the window. **On Its Own Branch** and **To a Project** need a trusted folder: in one that isn't, Home says so in place, with **Trust...**. See [Folder trust](review.md#folder-trust).
 
 Below the composer:
 
 - **Agent Setup**, on the right, opens the MCP servers, skills, rules and hooks your agents load. See [Agent Setup](helpers.md).
 - **Index**, beside it, opens the workspace index. A drum icon beside the workspace shows its state. See [Workspace index and docs](#workspace-index-and-docs).
-- **Needs you** lists what is waiting on you, such as an agent asking for permission.
+- **Needs you** lists what is waiting on you, most pressing first, such as an agent asking for permission or an agent's work ready to try. See [Team tools](team-tools.md#home) for the rest.
 - Cards follow for your agents and, once you connect your team's tools, your tickets, the merge requests waiting on you and your own, quality checks, and Gemini's usage. See [Team tools](team-tools.md#home).
 
 Each card names the query that fills it, so you can check its numbers against the tool. **Customize** hides and reorders cards.
@@ -62,7 +66,16 @@ Files outside the agent's folder, and files that may hold secrets, such as `.env
 
 Two agents in the same folder can trip over each other's edits. To keep them apart, give an agent its own branch: choose **New Agent on Its Own Branch** (the branch icon next to **+** on a workspace in a Git repository) and enter a branch name. The agent gets its own copy of the repository, on that new branch, in `~/.geminicode/worktrees/<repository>/`. It reads, edits and runs commands there, so your folder and other agents are untouched.
 
-When the work is done, **Merge Back** (the merge icon on the agent's row) commits anything the agent left uncommitted, with a message written from its diff, and merges its branch into the branch your folder has checked out. If the merge conflicts, it stops so you can finish it in Source Control. After a clean merge, it offers to remove the agent with its branch and folder.
+When the work is done, **Try in Workspace** (the icon on the agent's row, its right-click menu, the Changes panel or the agent's card on Home) copies the agent's changes into your checkout of the repository as unstaged files, so your local server and tests run with them. Nothing is committed, staged or merged: your branch, its index and HEAD stay as they are. Each time the agent finishes a turn, your workspace updates with what it changed. The status bar shows **Trying:** and the agent's name, and in Source Control the tried files carry a **T**.
+
+While you try it, the Changes panel offers **Keep Changes** and **Take Back**:
+
+- **Keep Changes** makes the changes yours, unstaged; commit them when you're ready. Committing the tried files yourself keeps them too.
+- **Take Back** removes the agent's changes from your workspace. Edits you made yourself stay.
+
+Edits you make to the tried files stay through every update. To hand them to the agent, tick **Include your edits to** the files above its message box: they are copied into its folder before your message, so it builds on them. When you and the agent changed the same lines, the file gets conflict markers, and updating waits until you resolve them. A file with unsaved edits updates when you save it. One agent's work is tried in a workspace at a time. Removing an agent whose work you are trying asks first: **Keep Changes and Remove** or **Take Back and Remove**.
+
+To merge instead, set `gemini.agents.mergeBack` to `commit`. **Merge Back** then takes the place of Try in Workspace: it commits anything the agent left uncommitted, with a message written from its diff, and merges its branch into the branch your folder has checked out. If the merge conflicts, it stops so you can finish it in Source Control. After a clean merge, it offers to remove the agent with its branch and folder.
 
 A new copy has no `node_modules` or build output. To get it ready before the agent starts, set **Gemini › Agents: Worktree Setup** in your user settings to a command such as `npm ci` (a repository's own settings can't set it), or commit a `.gemini/worktree-setup.sh` to the repository. Before a repository's script runs the first time, GeminiCode shows it and asks: **Don't Run**, **Run Once** or **Run and Remember**. It asks again whenever the script changes, and runs none in a workspace you haven't trusted. The command can use `GEMINI_SOURCE_REPOSITORY`, the repository the copy came from, to copy files Git doesn't carry, such as `.env`. If setup fails, the agent starts anyway, and the output is in the **Gemini Worktree Setup** output channel.
 
@@ -94,7 +107,7 @@ The Fork dialog asks three things.
 
 **A name, a model and a first message.** The model is the agent's own unless you pick another, and the first message is optional.
 
-A fork is listed under the agent it came from, and the agent's chat gets a card for it with **Open** and **Merge Back**. When the agent itself works on its own branch, Merge Back asks whether to merge the fork into the agent's branch or into the branch your folder has checked out. Removing an agent that has forks asks whether to remove them too; forks you keep stay as agents of their own.
+A fork is listed under the agent it came from, and the agent's chat gets a card for it with **Open** and **Try in Workspace**, which tries the fork's work in your checkout as for any agent on its own branch. With `gemini.agents.mergeBack` set to `commit`, the card offers **Merge Back**, and when the agent itself works on its own branch, it asks whether to merge the fork into the agent's branch or into the branch your folder has checked out. Removing an agent that has forks asks whether to remove them too; forks you keep stay as agents of their own.
 
 ## Workspace index and docs
 

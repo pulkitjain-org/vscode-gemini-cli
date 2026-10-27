@@ -29,7 +29,7 @@ A mode other than Default shows as a chip beside **+**; click its × to go back.
 - **Fix with Gemini.** The light bulb on any error or warning in the editor offers **Fix with Gemini**: the problem and the ten lines either side of it are attached to the agent in front, or to a new agent, ready for you to add a word and send.
 - **The selection.** <kbd>⌘L</kbd> adds the editor selection with its line numbers, to the agent in front or to a new agent.
 - **Files from anywhere.** Choose **Files** in the **+** menu, paste, or drop files from Finder. Hold <kbd>⇧</kbd> when dropping from the Explorer. Text and code files up to 1 MB are sent with their contents; images and PDFs up to about 7 MB are sent inline; other files outside the workspace are sent as links, and the CLI asks once before reading each.
-- **Your team's tools.** Paste a Jira key, a GitLab merge request or a Figma link, or choose **From your tools** in the **+** menu. See [Team tools](team-tools.md#in-chat).
+- **Your team's tools.** Paste a Jira key, a GitLab merge request or a Figma link, or choose **From your tools** in the **+** menu, where **Figma Design...** attaches a design as a frame link for each screen size. See [Team tools](team-tools.md#in-chat).
 
 The agent can't read secret files such as `.env` and private keys, or git-ignored files.
 
@@ -67,6 +67,19 @@ In **Plan** mode the agent reads and proposes a plan without changing anything. 
 
 With the model on Auto, Gemini plans with Pro and builds with Flash. Turn off **Plan with Pro, build with Flash** in [Agent Setup](helpers.md#gemini-cli-settings) to keep one model throughout.
 
+### Review the plan
+
+When a Plan mode turn writes a plan file, **Review Plan** beside **Build This Plan** opens it on a page of its own, in the agent's side group; so does the plan's file chip while the agent is in Plan mode. The page shows the plan section by section.
+
+![Plan Review with a plan's sections, a comment beside one and Send Comments to Gemini](../../site/media/plan-review-dark.webp)
+
+- **Edit in place.** Click a section, or press Return on it, to edit its Markdown; **Done** (<kbd>⌘↩</kbd>) saves it to the plan file. Sections can't be edited while Gemini works on the plan.
+- **Comment.** The **+** beside a section, or **Comment** over selected text, adds a comment. Comments wait in a panel beside the plan, and are kept when you close the page.
+- **Send Comments to Gemini** sends every comment at once, with the sections you edited, and Gemini revises the plan. When its turn ends, the page says how many sections changed and marks them **changed**; **Show What Changed** finds them, and **Clear Sent Comments** tidies the panel.
+- **Build This Plan** builds it as it is now, edits included. With comments not yet sent, it asks first: **Send Comments First** or **Build As It Is**.
+
+**Open as Text** opens the plan file in the editor. Plans stay with their session: reopening the session, after a restart for example, keeps the plan, and **Review Plan** still opens it.
+
 ## Watching the agent work
 
 While the agent works, its thoughts and steps show under a **Working** line, with steps of one kind (nine searches, five commands) as one line that opens to each step.
@@ -92,18 +105,20 @@ A failed turn says what went wrong in plain words and offers a way out:
 
 Any other error keeps the CLI's own message, without its JSON wrapper, with **Retry** and **Show Log**. The buttons stay on the latest failure until your next message.
 
+Gemini sometimes refuses a session's request after a tool result, most often after an image such as a screenshot, and a retry sent the same way is refused again. When that happens twice, the chat says so and offers **Continue in a New Session**, which carries the conversation on without the tool outputs, and **Switch Model…**. Your files stay as the agent left them.
+
 ## Sending while the agent works
 
 You don't have to wait for the agent to finish. While it works, the composer says **↩ to send, ⌘↩ to queue for later**. With `gemini.chat.sendWith` set to `cmdEnter`, ⌘↩ sends, ⇧⌘↩ queues and ↩ makes a new line (Ctrl takes ⌘'s place on Windows and Linux).
 
-- **↩ sends now**, to steer the agent: "use pnpm, not npm", or "leave the tests alone". The message shows above the input as **Sending after the current step**. As soon as no command or edit is running, the chat stops the turn and sends your message, telling the agent to adjust its plan and carry on. That is straight away while the agent is thinking or writing, or showing a permission card.
+- **↩ sends now**, to steer the agent: "use pnpm, not npm", or "leave the tests alone". The message shows above the input as **Sending after the current step**. At the next safe point, the chat stops the turn and sends your message, telling the agent to adjust its plan and carry on. A safe point is when no command or edit is running and Gemini has answered the last tool's result, so no tool's work is lost. That is straight away while the agent is thinking or writing, or showing a permission card.
 - **⌘↩ queues** the message for after the turn. It shows as **Queued: goes after this turn**. Several queued messages go together as one.
 
 ![The composer while an agent runs a command, with one message sending after the current step and another queued](../../site/media/queue-dark.webp)
 
 Each waiting message has **Send now**, **Edit** and **Remove**, and <kbd>↑</kbd> in the empty input takes the last queued one back to edit. If you stop the agent (<kbd>esc</kbd> <kbd>esc</kbd>), or the turn fails, nothing is sent by itself: your messages stay queued until you send them.
 
-Sending now stops the turn between steps, never in the middle of a command, so a running command or edit always finishes. The turn you steered gets its own end line and **Undo**, and your message starts a new turn. The Gemini CLI can't add a message to a running turn, so steering costs one more model request, mostly served from its cache.
+Sending now stops the turn between steps, never in the middle of a command, so a running command or edit always finishes. When a long run of tools gives no safe point for 15 seconds, the message's row says **Waiting to stop safely: a tool is finishing** and offers **Stop Now**, which stops the turn at once; a tool that finished but whose result Gemini hasn't read yet is lost, and the agent may run it again. The turn you steered gets its own end line and **Undo**, and your message starts a new turn. The Gemini CLI can't add a message to a running turn, so steering costs one more model request, mostly served from its cache.
 
 In a project's thread, notes from the coordinator wait in the same place, as **From coordinator: goes after this turn**. In the project chat itself, ↩ and ⌘↩ both wait for the coordinator's turn to end; see [Projects](projects.md#talk-to-the-coordinator).
 
@@ -153,7 +168,7 @@ The composers underline misspelt words; right-click a word for suggestions or **
 
 The ring at the bottom right of the composer shows how full this chat's context window is. It turns amber at 50%, where Gemini starts summarising older messages, and red at 90%. Click it, or choose **Usage and quota** in the **+** menu, for:
 
-- **Context window**: the tokens in the latest request out of the model's limit, and what they are: the conversation, the MCP servers' tools, the rule files (`GEMINI.md` and the files it imports), GeminiCode's own tools and the CLI's own prompt. The parts are measured with one short request each on the lightest model, in the background, at most once a day per folder; **Measure Again** measures now. The rule files are listed as the CLI loaded them, with their sizes, and one over 20 KB gets a warning, since every turn carries it. Typing `/context` opens the same view. Agent Setup' **Context cost** shares the measure.
+- **Context window**: the tokens in the latest request out of the model's limit, and what they are: the conversation, the MCP servers' tools, the rule files (`GEMINI.md` and the files it imports), GeminiCode's own tools and the CLI's own prompt. The parts are measured with one short request each on the lightest model, in the background, at most once a day per folder; **Measure Again** measures now. The rule files are listed as the CLI loaded them, with their sizes, and one over 20 KB gets a warning, since every turn carries it. Typing `/context` opens the same view. Agent Setup's **Context cost** shares the measure.
 - **Today's quota**: how much of today's quota each model has used for your account, and when it resets. **All models** shows the rest.
 - **This chat**: input, cached and output tokens over the chat's replies, with **Details by model**.
 

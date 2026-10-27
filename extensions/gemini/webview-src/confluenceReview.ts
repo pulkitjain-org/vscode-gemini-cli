@@ -474,7 +474,9 @@ function footer(v: ReviewView): HTMLElement {
 		publish.setAttribute('aria-describedby', why.id);
 		node.append(why);
 	}
-	node.append(button('quiet', strings.discard, () => post({ type: 'discard' })), button('', strings.save, save), publish);
+	const actions = el('span', 'review-foot-actions');
+	actions.append(button('quiet', strings.discard, () => post({ type: 'discard' })), button('', strings.save, save), publish);
+	node.append(actions);
 	return node;
 }
 

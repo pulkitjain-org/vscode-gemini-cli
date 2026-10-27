@@ -28,7 +28,8 @@ extensions/gemini/
                     messages and state in a module of its own in chat/. AgentsView owns the agents
                     running in the window (sessions, chats, tabs) and their saved state; its list,
                     the title bar and tab indicators, the spare session, worktrees, Merge Back,
-                    Projects and the ways of starting an agent are modules in agents/.
+                    Try in Workspace, Projects and the ways of starting an agent are modules in
+                    agents/.
   webview-src/      The webviews' code, bundled to media/*.js.
   media/            Webview stylesheets and icons.
   themes/           The GeminiCode Dark and Light colour themes.
@@ -247,7 +248,9 @@ In Agents layout the title bar carries a search button, which opens Quick Open i
 
 Agent Home (`agentHome.ts`, `webview-src/home.ts`) opens in Agents layout whenever the editor area is empty (except right after closing Agent Home itself), and from the house at the start of the title bar (`geminiModes.ts`, which runs `gemini.home`). The page loads only when first shown.
 
-Its composer starts an agent in a chosen workspace and sends the prompt in one step, optionally on its own branch named after the prompt. Cards show the agents that are working, waiting, done or have changes, with Stop, Review, Merge Back and Open. Earlier agents can be resumed. Projects are listed apart from agents.
+Its composer starts an agent in a chosen workspace and sends the prompt in one step: Here, On Its Own Branch (a branch named after the prompt), or To a Project, which sends the prompt to a project's coordinator picked beside the chooser, the folder's repository's projects first, or starts a new project. The folder picker shows each folder's trust (`FolderTrust.label`), and Open Folder... adds a folder for agents without adding it to the window. Cards show the agents that are working, waiting, done or have changes, with Stop, Review, Try in Workspace (Merge Back with merge commits) and Open. Earlier agents can be resumed. Projects are listed apart from agents.
+
+Needs you (`needsYou` in `src/acp/dashboard.ts`) orders what waits on the user: agents asking, unresolved threads on their own merge requests, failed pipelines, merge requests ready to merge, agents' work ready to try, reviews asked of them, reopened tickets. Reviews are ranked (`rankReviews`: ones the user started, then ones where they are the only reviewer, then the longest waiting, with the ones the author must fix first last), at most `shownReviews` (2) show, and the rest are one "more reviews waiting" row, so a team's many reviews don't fill the strip.
 
 ### Agents pane
 
@@ -314,7 +317,7 @@ Files: `src/acp/promptQueue.ts`, `webview-src/queueStrip.ts`.
 The composer stays open during a turn. Return sends now and ⌘Return queues (`isQueueShortcut`). The view sends the prompt with `when`, and `ChatController.send` keeps it in the chat's `PromptQueue` instead of dropping it.
 
 - **Queued.** A queued message waits for the turn to end. All queued messages go together as the next prompt, as the CLI's terminal UI sends its queue.
-- **Sent now (steering).** `trySteer` runs on every tool-call update and permission change. Once no tool call of the turn is running (`atSafePoint`; one waiting for permission has not started), it cancels the turn. When the turn comes back `cancelled`, it ends without a "Stopped." notice and the messages go at once as the next turn, with `steeringNote()` ahead of them: the CLI's own steering instruction, in a `<steering_note>` tag that a replayed session leaves out (`withoutSteeringNote`). gemini-cli's ACP mode has no way to add a message to a running turn ([FINDINGS.md](FINDINGS.md#steering-a-running-turn)), so this is the closest it gets without patching the CLI.
+- **Sent now (steering).** `trySteer` runs on every tool-call update and permission change. Once no tool call of the turn is running and the model has answered since the last one finished (`atSafePoint`; one waiting for permission has not started), it cancels the turn. Until the model has answered, the CLI holds the tool's result back from the history, and a cancel would replace it with "Response was lost or interrupted". After `steerWaitMs` (15 s) without a safe point, the strip offers Stop Now, which cancels at once. When the turn comes back `cancelled`, it ends without a "Stopped." notice and the messages go at once as the next turn, with `steeringNote()` ahead of them: the CLI's own steering instruction, in a `<steering_note>` tag that a replayed session leaves out (`withoutSteeringNote`). gemini-cli's ACP mode has no way to add a message to a running turn ([FINDINGS.md](FINDINGS.md#steering-a-running-turn)), so this is the closest it gets without patching the CLI.
 - **Held.** Stop, a failed turn or a full context window holds the messages instead. They wait in the strip above the input for the user to send, edit or remove.
 - Messages sent during Compact, Undo or a new session go once that work is done.
 
@@ -411,7 +414,7 @@ The Agents pane gives the fork a folder in one of two ways:
 
 It has the CLI register the fork's folder with a session it closes again, writes the copy there, and starts the fork with `sessionId` set to the copy, the parent's chat shown, a `fork` line, and a note with its first prompt saying where it works now (`forkNote`).
 
-Forks are listed under their parent (`AgentRecord.forkedFrom`), and the parent's chat gets a card per fork. Merge Back of a fork whose parent works on a branch of its own asks where to merge (`AgentMerge.mergeTarget`). A fork of a single-repository project thread is described under [Projects](#projects).
+Forks are listed under their parent (`AgentRecord.forkedFrom`), and the parent's chat gets a card per fork. With merge commits, Merge Back of a fork whose parent works on a branch of its own asks where to merge (`AgentMerge.mergeTarget`); Try in Workspace always tries a fork's work in the user's checkout. A fork of a single-repository project thread is described under [Projects](#projects).
 
 #### Undo and Rewind
 
@@ -427,7 +430,7 @@ Rewind always does both: it undoes the code from the first kept turn after the m
 
 #### Changes panel and Changes view
 
-The **Changes panel** (`changesPanel.ts`, `webview-src/changes.ts`) is Agents layout's live diff of what the agent in front changed. Each change shows as a unified diff with Keep and Undo, which run the same commands as the editor's CodeLenses, plus Keep All, Undo All and Commit (or Merge Back for an agent on its own branch). Diffs are worked out with `lineDiff.ts` against the open document's text, 150 ms after the last edit, and only while the panel is visible.
+The **Changes panel** (`changesPanel.ts`, `webview-src/changes.ts`) is Agents layout's live diff of what the agent in front changed. Each change shows as a unified diff with Keep and Undo, which run the same commands as the editor's CodeLenses, plus Keep All, Undo All and Commit (for an agent on its own branch, Try in Workspace, then Keep Changes and Take Back while it is tried, or Merge Back with merge commits). Diffs are worked out with `lineDiff.ts` against the open document's text, 150 ms after the last edit, and only while the panel is visible.
 
 The list keeps what the agent last wrote to each file (`agentText`, from the ACP diffs). Edits made after it, by the user or another agent, are moved into the baseline where they don't touch the agent's lines (`rebaseOriginal`), so the panel and the editor show only the agent's changes, and Undo All asks first when it would lose such edits. When two agents changed one file, the editor reviews the one whose text the file has, else the latest to edit it (`reviewOrder`). `CommitSettler` watches the git directory of each folder with changes to review; when HEAD or a branch moves, files whose text is what HEAD has (`filesMatchingHead`) leave the list, however they were committed.
 
@@ -445,7 +448,23 @@ An agent can work on its own branch in a Git worktree (`src/acp/worktrees.ts`, p
 
 The agent's session gets the worktree (or the workspace's matching subfolder in it) as its `cwd`, and the agent record keeps the folder, branch and base. Creating one costs a checkout of the repository's files, shown as progress, and nothing on later prompts.
 
-**Merge Back** commits leftovers with a message written the same way (the agent's name when none is) and runs `git merge --no-ff` in the workspace's repository, leaving conflicts for Source Control.
+With `gemini.agents.mergeBack` set to `commit`, **Merge Back** commits leftovers with a message written the same way (the agent's name when none is) and runs `git merge --no-ff` in the workspace's repository, leaving conflicts for Source Control. By default the same buttons run Try in Workspace (below).
+
+#### Try in Workspace
+
+Files: `src/acp/worktreeApply.ts` (the git work), `src/acp/tryState.ts` (the decisions), `src/host/agents/agentTries.ts` (the editor side, in `dist/onDemand.js`).
+
+Try in Workspace brings an agent's work, from its worktree, into the user's checkout of the repository as unstaged changes, so their local server and tests use it, without a commit, a merge, or a touch of the checkout's index or HEAD.
+
+- **Snapshots as trees.** Each step snapshots a folder as a git tree through a temporary index (`snapshotTree`), so the folder's own index is never written. The record keeps, per repository, the base tree, what was applied (`applied`) and what Take Back returns to (`back`, `kept`).
+- **Applying a difference.** `applyTrees` writes the difference between two trees into the target folder file by file, merged three ways with what the folder holds, so the user's own edits stay. A file both sides changed in the same lines gets conflict markers; a binary file, a symbolic link, a file deleted on one side or one reached through a link out of the folder is left as it is and reported apart (`ApplyResult`). Files are compared and written as git would check them out (its filters: line endings, LFS).
+- **Following the agent.** When a tried agent's turn ends, the difference since the last update is applied (`appliedAfterUpdate`). A file with conflict markers pauses updating until it is resolved (`settleConflicts`); a file open with unsaved edits is skipped until it is saved.
+- **Keep Changes** forgets the try: the files are the user's, still unstaged, and a thread is resolved. A commit of the tried files (a HEAD watcher per checkout) counts as kept.
+- **Take Back** applies the reverse difference, to `takeBackTree`, so exactly what was applied goes and the user's edits stay.
+- **Send My Edits** applies the user's edits to the tried files to the agent's worktree (`sendEdits`), so its next turn builds on them; in an agent's chat, "Include your edits" does it just before the message.
+- **Discard Changes** (threads) saves the worktree under `refs/geminicode/discarded/` (`saveSnapshot`) and resets it to where the branch started; Restore puts it back, saving newer work first.
+
+One agent is tried per checkout at a time. A status bar item and Source Control badges (a T) mark a try; the try is kept on the agent's record, so it survives a reload. Every change takes the repository's git lock (`inRepository`), as worktree adds do.
 
 ### Terminals
 
@@ -490,7 +509,7 @@ The coordinator's session runs in an empty folder of its own (`~/.geminicode/pro
 
 #### Threads
 
-Threads show as cards in the project chat that update in place, with Merge back, Review changes, Undo thread and Approve plan. Approvals stay in the thread that asked. A thread's chat has a bar back to its project chat, and the project chat's side panel lists every thread to open.
+Threads show as cards in the project chat that update in place (`webview-src/threadCard.ts`, a chunk loaded with the first card). Each card has one main button for the next step (Approve Plan, Try in Workspace, Keep Changes, Open the Conflict, Restore Discarded Work), Review Changes and Take Back beside it, a three-step line (in the thread, trying in your workspace, kept) and a More menu for the rest, Remove Thread… among them. With merge commits, Merge Back replaces Try in Workspace. Approvals stay in the thread that asked. A thread's chat has a bar back to its project chat, and the project chat's side panel lists every thread to open.
 
 "New thread" in the + menu opens a dialog in the chat's webview (title, brief, branch, model, Plan first). The thread starts at once and the coordinator hears afterwards.
 
@@ -505,7 +524,7 @@ Notes to a thread are never dropped:
 - a note sent to a thread still setting up waits for setup to end;
 - a note sent mid-turn waits in the thread's queue strip, marked "From coordinator", with Send now and Remove, until the turn ends or the user sends it.
 
-A follow-up on a thread's work goes to that thread whatever its state. Once merged, a thread is resolved (kept on its record, so across reloads) and takes nothing more unless the user asks to reopen it. Merge back checks the thread is idle both before and after its dialog, and runs once per thread at a time. Removing a thread from the agent list, or with its branch after a merge, also removes it from the hub and marks its card removed.
+A follow-up on a thread's work goes to that thread whatever its state. Once kept or merged, a thread is resolved (kept on its record, so across reloads) and takes nothing more unless the user asks to reopen it. Merge back checks the thread is idle both before and after its dialog, and runs once per thread at a time. Removing a thread from the agent list, or with its branch after a merge, also removes it from the hub and marks its card removed.
 
 Fork Agent on a single-repository thread makes a new thread of the same project, always on a branch of its own, with the repository's rules linked in, a card in the project chat and a "forked" event for the coordinator.
 
@@ -513,7 +532,7 @@ Fork Agent on a single-repository thread makes a new thread of the same project,
 
 New Project asks only which folder (an open workspace or any Git folder) and opens the project chat at once, named after its repository.
 
-The Gemini CLI loads MCP servers only in trusted folders. Opening or starting a project therefore asks to trust the coordinators' folder and the repository's worktrees folder when they aren't (`trustedFolders.ts`), then waits for the agent's restart.
+The Gemini CLI loads MCP servers only in trusted folders. Opening or starting a project therefore asks the folder trust question for the repository when it is unanswered ([Security model](#security-model)); the coordinators' folder is one of GeminiCode's own trusted rules, and the repository's worktrees folder follows the repository's trust. A project with several repositories also asks to trust `~/.geminicode/threads`. A change of trust waits for the agent process to restart.
 
 A coordinator whose session opened before the CLI trusted the project's folders has no `start_thread` and can only say so. So before the first wake goes out, `Projects.ensureTools` opens the session and waits up to 10 s for the CLI to list the coordinator's tools (`ProjectMcpServer.whenListed`). If they don't appear, the message waits while GeminiCode asks to trust the folders or, when they are trusted already, restarts the agent once no agent is working (`reloadProjectTools`), and the session reopens with them. When something else keeps the tools out, `projectToolsCheck.ts` reads the files the CLI decides by (folder trust, `mcp.excluded`, `admin.mcp.enabled`, `mcp-server-enablement.json`) and the project chat names the cause instead of restarting.
 
@@ -570,7 +589,7 @@ One thread holds every repository a task touches. Its agent runs in its own fold
 
 That folder needs trusting too, so a project with several repositories also asks to trust `~/.geminicode/threads`. A thread that needs another repository calls `add_repo`, which only multi-repository threads are offered.
 
-Each repository merges back on its own from the thread's card (or a pick in Merge back), committing only that worktree's work. The thread is resolved once no repository has work left. Undo and Remove delete every worktree, then the thread's folder. The New thread dialog offers the repositories as checkboxes, and takes its model, Plan first and branch prefix from the project's defaults.
+Try in Workspace tries each repository's work in the user's checkout of that repository. With merge commits, each repository merges back on its own from the thread's card (or a pick in Merge Back), committing only that worktree's work, and the thread is resolved once no repository has work left. Undo and Remove delete every worktree, then the thread's folder. The New thread dialog offers the repositories as checkboxes, and takes its model, Plan first and branch prefix from the project's defaults.
 
 ### The GeminiCode browser
 
@@ -679,8 +698,24 @@ The connectors call each tool from the user's machine, so the Mac's VPN, proxy a
 | SonarQube Web API | `sonar.ts` | bearer token |
 | The user's Snyk CLI | `snyk.ts` | JSON and SARIF output |
 | Figma desktop app's Dev Mode MCP server on `127.0.0.1:3845` | `figma.ts`, a small MCP client | none |
+| Confluence Cloud REST | `confluence.ts`, in its own bundle (`dist/confluence.js`) | the Jira site's email plus API token |
 
 `teamHttp.ts` gives every read an 8-second timeout and every write 20 seconds, and turns failures into a reason the user can act on (no answer: check the VPN; 401: replace the token; a write with no answer: it may have gone through, and its audit intent stays open). It keeps one reachability state per server (`teamReachability`): after no answer, calls fail at once for 30 s, 1, 2 and up to 5 minutes, and `TeamConnections` checks the server again when the wait ends; a refused token stops calls with that token until it changes. A read that meets 429, 502, 503 or 504 is retried once, honouring Retry-After up to 5 s; a write never is. Tokens are in SecretStorage only; agents never see them. Tool results are trimmed text (`teamTools.ts`), never raw JSON. Tool results that carry other people's text are wrapped in an `<external>` tag (`external()` in `teamTools.ts`), which the server's instructions tell the model to read as data. Team defaults come from `.gemini/geminicode-tools.json` (`teamDefaults.ts`).
+
+Figma takes several seconds per frame and may give up on one by itself, so `figma_design` reads without Code Connect (unless `gemini.figma.codeConnect`) or the screenshot, a frame too large for one answer a section at a time under the CLI's 40,000-character part cap (`figmaPartLimit`), with a deadline per call, and answers a read Figma stopped with the frame's outline and variables. Requests go one at a time, and a frame's design is kept for ten minutes, keyed by file and node.
+
+#### Jira sites
+
+`JiraSites` (`src/acp/jiraSites.ts`) puts the user's Jira sites behind one client with `JiraClient`'s methods. A call about a ticket goes to the site that has it: a link by its host, a key by the site its project was read from, and a key not seen before (or whose project two sites have) is looked for on every site. A key found on two sites is refused (`AmbiguousTicketError`) and the model is asked for the link. Searches and the user's tickets come from every site, with `max` shared among them and notes naming the sites that didn't answer or have more. Home groups tickets by site, each with its sprint. The first site keeps the single-site storage (`default`); the others, and their tokens, are added and removed from Connections (`siteConnections.ts`). A write routed to a site names it in its audit record.
+
+#### Confluence drafts
+
+Confluence on Atlassian Cloud shares the Jira site's account, so Connections turns it on per Jira site (`connectConfluence`) without a token of its own. Its code loads from `dist/confluence.js` the first time it is used (`src/confluence.ts`, `confluenceFeature.ts`).
+
+- `confluence_search` and `confluence_get_page` read, as other reading tools do.
+- `confluence_draft_page` publishes nothing: it keeps a draft on disk (`confluenceDrafts.ts`), the agent's Markdown and, for a new version, the page's document and version it was drafted against, and opens the Review Page in the agent's side group.
+- The **Review Page** (`confluenceReviewPage.ts`, `webview-src/confluenceReview.ts`) shows the page in Confluence's document format with the draft's changes marked block by block (`blockChanges` in `blockMerge.ts`), each kept or undone (`draftReview.ts`). Blocks that Markdown can't write (mentions, macros, tables, media, inline comments and the like) are never rewritten: where the draft dropped or rewrote one, the page's block stays unless the user picks the agent's version (`confluenceSafe`).
+- **Publish** is a page-only write, `confluence_publish`, through `teamWrite`, so it is checked and audited as any write. It publishes the page as it is now with only the kept changes and the user's edits (`publishBlocks`), against the version the draft was made from. When Confluence has a newer version (`ConfluenceConflictError`), nothing is written: the draft is merged three ways with the latest version and the page asks only where both changed the same block.
 
 #### Reads, writes and the confirm class
 
@@ -714,7 +749,9 @@ The pilot's counters (`src/acp/pilotLog.ts`) go nowhere unless `gemini.pilot.rec
 
 A review (`src/host/reviewSession.ts`, one per merge request, listed by `src/host/reviews.ts`) is a draft that only the user's post sends to GitLab.
 
-**The reviewer.** The reviewer agent works in a worktree of its own checked out at the source branch, on GeminiCode's own `review/<iid>-…` branch (`reviewWorktree` in `releaseMerge.ts`); a second review of the same merge request reuses it, moved to the new head, and its reviewer. Its team tools only read (`TeamConnections.markReadOnlyFolder`, `readOnly` in `teamTools.ts`). The CLI 0.64.0 offers no per-session way to ignore the branch's own `.gemini/settings.json`, hooks or MCP servers: `session/new` takes only `cwd` and `mcpServers`, and `--allowed-mcp-server-names`, `GEMINI_CLI_HOME` and `hooksConfig` apply to the whole process. Folder trust is the one per-session control. It reads the merge request against its ticket and the open threads, and ends with its findings as a JSON block.
+**The clone.** A review or a fix checks the branch out from the user's clone of the project, found by `findClone` (`src/acp/cloneSearch.ts`): the clone remembered for the project, the window's folders, the folders agents used, then VS Code's recent folders, and remembered once found. With none, `reviewClone.ts` asks Choose Folder... (checked to be a clone) or Clone It..., which runs `git clone` over HTTPS or SSH in a terminal, so git asks for the user's own credentials.
+
+**The reviewer.** The reviewer agent works in a worktree of its own checked out at the source branch, on GeminiCode's own `review/<iid>-…` branch (`reviewWorktree` in `releaseMerge.ts`), under `~/.geminicode/reviews/<repository>` (`reviewsHome`), which the CLI never trusts, so the merge request's own settings, hooks and MCP servers never run; its prompt carries the merge request's description and the ticket's text instead, and its read-only git commands are answered by GeminiCode. A second review of the same merge request reuses the worktree, moved to the new head, and its reviewer. Its team tools only read (`TeamConnections.markReadOnlyFolder`, `readOnly` in `teamTools.ts`). The CLI 0.64.0 offers no per-session way to ignore the branch's own `.gemini/settings.json`, hooks or MCP servers: `session/new` takes only `cwd` and `mcpServers`, and `--allowed-mcp-server-names`, `GEMINI_CLI_HOME` and `hooksConfig` apply to the whole process. Folder trust is the one per-session control. It reads the merge request against its ticket and the open threads, and ends with its findings as a JSON block.
 
 **The draft.** `src/acp/reviewDraft.ts` turns that block into draft comments, replies and suggested changes. The module holds the draft's logic and calls nothing: ticking, editing (an edited comment of Gemini's is kept when Gemini reviews again), moving comments to a newer version by the text of their line, and the GitLab position each one is posted at.
 
@@ -836,7 +873,7 @@ What keeps the user in control:
    - The commands that print the environment (`env`, `printenv`, `declare -x`, `typeset -x`, `export -p`, `compgen -e`, `ps` with an environment flag, and `set`, `export`, `declare` or `typeset` alone) are refused, even inside a longer command, unless `gemini.tools.denyEnvironmentCommands` is off.
    - The confirm class (merge, open a merge request, move a ticket, log time, and the same actions in a team's `jira` and `gitlab` servers) asks in every mode, YOLO included. Its rules name each tool as the model calls it (`mcp_<server>_<tool>`), because the CLI gives the policy check no server name for servers a session brings. In YOLO the chat answers other requests itself, never those.
    - With `gemini.mcp.allowedServers` set, GeminiCode also passes `--allowed-mcp-server-names` with that list and its own four servers (`ownServers`), which outranks `mcp.allowed` in any settings file. Without it, when the settings files' `mcp.allowed` leaves out any of GeminiCode's servers, GeminiCode passes the flag with that allowlist plus its servers, less anything in `mcp.excluded` (`allowlistWith` in `projectToolsCheck.ts`), so users never add them by hand.
-3. **Folder trust.** The CLI refuses Auto Edit and YOLO in a folder it does not trust. GeminiCode asks the user before adding the folder to the CLI's trusted list. A project needs its agents' folders trusted too, since the CLI loads no MCP servers in an untrusted folder. GeminiCode asks before trusting them, and never when `security.folderTrust.enabled` is off.
+3. **Folder trust.** The CLI refuses Auto Edit and YOLO in a folder it does not trust, and loads a folder's own settings, hooks and MCP servers only in one it trusts. `FolderTrust` (`src/host/folderTrust.ts`) asks once per repository, the first time it is chosen for agents anywhere, before the agent process reads the trust file (the CLI reads it once per process): Trust This Folder, Trust Everything in its parent, or Not Now, which is remembered and never blocks Here in Default or Plan. A trusted repository's worktrees folder follows it. GeminiCode's own rules are written at startup and before each launch (`ownTrustRules`): the coordinators' folder trusted, `~/.geminicode/reviews` never trusted. The file is watched, so a change made elsewhere restarts the agent process once no prompt runs, with Restart Agents Now offered meanwhile. Agent Setup lists the rules (`trustRows.ts`) and records changes in the audit log. Nothing is asked when `security.folderTrust.enabled` is off.
 4. **No silent changes.** The IDE never changes the approval mode on the user's behalf.
 5. **File requests stay in the folder.** The CLI's file tools go through the IDE, which refuses paths outside the agent's folder, secret files and git-ignored reads, following symbolic links to their real target. Session approvals of shell commands cover a command prefix, never a program that runs another program or code it is given ([Permissions](#permissions)). An Auto Edit write to a setting that decides what runs next asks first. Reads through the CLI's own shell, `grep`, `glob` and `ls` are not covered.
 6. **Team tools ask for every write.** Write tools always reach a permission card with the exact text, and the confirm class offers only Allow once and Reject, in every mode. Every write, by an agent or a page, is in the audit log with its intent, its result and who answered.
@@ -983,6 +1020,19 @@ The usage meter (`usageMeter.ts`) makes the same `retrieveUserQuota` request the
 **Review My Changes** (`reviewPrompt.ts`, `AgentsView.reviewChanges`) starts an ordinary agent whose session opens in Plan mode (`setModeOnNextSession('plan')`), so the CLI itself refuses edits. The `git diff HEAD` (cut at 100,000 characters) goes as an `uncommitted.diff` document attachment, which keeps the chat bubble short and reaches the model as an embedded resource.
 
 **Build This Plan** appears on the latest turn end when the session's mode is `plan` and the agent offers `default`. It sets the mode with `session/set_mode` and sends a short prompt.
+
+### Plan Review
+
+Files: `src/host/planReviewPage.ts` (in `dist/pages.js`), `src/acp/planReview.ts`, `src/acp/planReviewStore.ts`, `webview-src/planReview.ts`.
+
+A Plan mode turn that writes a plan file gets Review Plan beside Build This Plan, and the plan's chip opens the same page while the session is in Plan mode. The page opens in the agent's side group and renders the plan by section (`planSections`, the Markdown through the `draftMarkdown.js` chunk, so the page carries no parser).
+
+- **Edits** replace one section's text in the file (`replaceSection`), refused while the agent works. When the agent changed the section meanwhile, the edit isn't saved and the user's text is kept to copy or save over it.
+- **Comments** are kept per plan file in global storage (`planReviewStore.ts`) until Send hands them all to the agent in one message (`reviewMessage`), with the sections the user edited. They count as sent only once that message's turn is over; one taken out of the queue, or held because the turn before stopped, is unsent again.
+- **Revisions.** When the turn ends, `changedSections` compares the plan with the text the comments were sent against, and the page marks what changed.
+- Build This Plan from the page asks first when comments weren't sent.
+
+**Plans across reloads.** gemini-cli 0.64 deletes a session's own folder (`~/.gemini/tmp/<project>/<session>/`, which holds `plans/`) on `session/load`. `keepSessionFolder` (`src/acp/sessionFolder.ts`) copies the folder aside around each load and puts back what the load removed, and `rebuildSessionFile` (`sessionReplay.ts`) rebuilds a plan lost earlier from the write and replace calls the session saved, saying so in the chat.
 
 ### Agent Setup
 
