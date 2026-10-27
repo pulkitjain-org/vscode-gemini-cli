@@ -240,7 +240,7 @@ export class AgentsView implements vscode.Disposable {
 		this.model.addWorkspace(folder);
 	}
 	/** Each agent's terminals, and the last command of every terminal. */
-	readonly terminals = new AgentTerminals();
+	readonly terminals = new AgentTerminals(id => agentColumn(id, this.live.get(id)?.panel));
 
 	constructor(
 		private readonly context: vscode.ExtensionContext,
@@ -1345,7 +1345,7 @@ export class AgentsView implements vscode.Disposable {
 		const folder = agentFolder(record, workspace.folder);
 		const places = repos && repos.length > 1 ? repos.map(repo => ({ name: repo.key, folder: repo.cwd })) : [{ name: path.basename(folder), folder }];
 		for (const place of places) {
-			this.terminals.open(id, this.terminalName(id, place.name, places.length > 1), place.folder);
+			void this.terminals.open(id, this.terminalName(id, place.name, places.length > 1), place.folder);
 		}
 	}
 
