@@ -38,7 +38,7 @@ import type { TeamConnections } from './teamConnections';
 import type { WorkspaceIndex } from './workspaceIndex';
 import { toolChipsFor } from './toolChips';
 import { ChatActivity, ChatController, ChatEnhancer, ChatTerminal, ChatWorkspace, FileSearch, openChatAsMarkdown } from './chatController';
-import { configSection, getApprovalPolicy } from './configuration';
+import { configSection, getApprovalPolicy, includedFolderPaths } from './configuration';
 import { isModeAllowed } from '../acp/adminPolicy';
 import { defaultStartMode } from '../acp/chatTurns';
 import { type InstantAnswer, shellCommand } from '../acp/permissions';
@@ -1074,8 +1074,9 @@ export class AgentsView implements vscode.Disposable {
 		session.permissions.confirmOnly = request => !!this.teamTools?.isConfirmCall(request);
 		session.permissions.answerAtOnce = request => (project ? this.projects.instantAnswer(this.model.agent(record.id) ?? record, request) : undefined)
 			?? this.teamTools?.instantAnswer(request) ?? (this.reviewChip?.(record.id) ? reviewerGitAnswer(request) : undefined);
+		// A folder of the window lists the window's files it may reach: its own, and the others with `gemini.agents.allWorkspaceFolders`.
 		// A folder outside the window lists its files from its index once that is built, else from git.
-		const files: FileSearch = isOpenFolder(folder) ? this.workspaceFiles : new FolderFileIndex(folder, undefined, () => this.index?.files(folder) ?? Promise.resolve(undefined));
+		const files: FileSearch = isOpenFolder(folder) ? this.workspaceFiles.scopedTo(() => [folder, ...includedFolderPaths()]) : new FolderFileIndex(folder, undefined, () => this.index?.files(folder) ?? Promise.resolve(undefined));
 		const changes = new AgentChanges(folder, path.join(cliHome(), projectTempDirName));
 		const workspace = (): ChatWorkspace | undefined => {
 			const workspace = this.model.workspace(record.workspaceId);
