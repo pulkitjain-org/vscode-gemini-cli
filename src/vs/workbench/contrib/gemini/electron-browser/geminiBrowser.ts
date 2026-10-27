@@ -43,7 +43,7 @@ import { IStorageService, StorageScope, StorageTarget } from '../../../../platfo
 import { IWorkspaceContextService, WorkbenchState } from '../../../../platform/workspace/common/workspace.js';
 import { IWorkspaceTrustManagementService } from '../../../../platform/workspace/common/workspaceTrust.js';
 import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
-import { EditorsOrder } from '../../../common/editor.js';
+import { EditorsOrder, GroupIdentifier } from '../../../common/editor.js';
 import { GroupsOrder, IEditorGroupsService } from '../../../services/editor/common/editorGroupsService.js';
 import { IEditorService, SIDE_GROUP } from '../../../services/editor/common/editorService.js';
 import { IWorkbenchEnvironmentService } from '../../../services/environment/common/environmentService.js';
@@ -77,8 +77,10 @@ function pagesOf(service: IBrowserViewWorkbenchService, session: string): string
 }
 
 /**
- * Opens `url` in a new page the agent owns, in a tab beside the editor in
- * front (the agent's chat) without taking focus, so the user sees it load.
+ * Opens `url` in a new page the agent owns, in the agent's side group
+ * (geminiAgentGroups.ts) without taking focus, so the user sees it load and
+ * the page hides and comes back with the agent; beside the editor in front
+ * when the agent has no tab.
  * Upstream opens agents' pages in the background unless their chat widget is
  * visible, which a Gemini agent's never is, so the page is opened here. Resolves
  * with where the page ended up, after any redirect. When it throws, the page
@@ -94,9 +96,13 @@ CommandsRegistry.registerCommand('_gemini.browser.open', async (accessor, key: s
 	const playwright = accessor.get(IPlaywrightService);
 	const editorService = accessor.get(IEditorService);
 	const storageService = accessor.get(IStorageService);
-	const input = await browserViews.createBrowserView({ ...getAgentBrowserViewCreationDefaults(session), ...agentPageStorage(accessor), openSource: 'cdpCreated' });
+	const groupsService = accessor.get(IEditorGroupsService);
+	const commandService = accessor.get(ICommandService);
+	const storage = agentPageStorage(accessor);
+	const column = await commandService.executeCommand<number | undefined>('_gemini.agentGroupColumn', key, false).catch(() => undefined);
+	const input = await browserViews.createBrowserView({ ...getAgentBrowserViewCreationDefaults(session), ...storage, openSource: 'cdpCreated' });
 	rememberAgentPage(storageService, input.id);
-	await editorService.openEditor(input, { preserveFocus: true, pinned: true }, SIDE_GROUP);
+	await editorService.openEditor(input, { preserveFocus: true, pinned: true }, groupAt(groupsService, column) ?? SIDE_GROUP);
 	const model = await input.resolve();
 	await raceTimeout(model.loadURL(parsed.href), navigationTimeoutMs);
 	const summary = await playwright.waitForPageAndGetSummary(session, input.id, parsed.href, pageReadyTimeoutMs);
@@ -282,10 +288,13 @@ CommandsRegistry.registerCommand('_gemini.browser.reveal', async (accessor, key:
  */
 CommandsRegistry.registerCommand('_gemini.browser.openBlank', async (accessor, column: unknown) => {
 	const editorService = accessor.get(IEditorService);
-	const groups = accessor.get(IEditorGroupsService).mainPart.getGroups(GroupsOrder.GRID_APPEARANCE);
-	const group = typeof column === 'number' ? groups[column - 1] : undefined;
-	await editorService.openEditor({ resource: BrowserViewUri.forId(generateUuid()), options: { pinned: true } }, group?.id ?? SIDE_GROUP);
+	await editorService.openEditor({ resource: BrowserViewUri.forId(generateUuid()), options: { pinned: true } }, groupAt(accessor.get(IEditorGroupsService), column) ?? SIDE_GROUP);
 });
+
+/** The group at the 1-based grid `column` of the main editor part, if there is one. */
+function groupAt(groupsService: IEditorGroupsService, column: unknown): GroupIdentifier | undefined {
+	return typeof column === 'number' ? groupsService.mainPart.getGroups(GroupsOrder.GRID_APPEARANCE)[column - 1]?.id : undefined;
+}
 
 /** The agent's open pages. */
 CommandsRegistry.registerCommand('_gemini.browser.pages', (accessor, key: string) => pagesOf(accessor.get(IBrowserViewWorkbenchService), sessionOf(key)));

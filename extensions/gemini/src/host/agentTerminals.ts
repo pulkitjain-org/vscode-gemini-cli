@@ -4,11 +4,12 @@
  *--------------------------------------------------------------------------------------------*/
 
 // Each agent's terminals, one per folder it works in, and the last command of
-// every terminal. Open Terminal and Run on a reply's command use an agent's
-// terminal; Send Last Command to Gemini and Run's "Send Output to Gemini" use
-// the last command, which is kept from shell integration as it runs (its
-// output is only readable by a listener there from its start), capped at the
-// last 200 lines and replaced by the next command.
+// every terminal. An agent's terminals are tabs in its side group, so they
+// hide and come back with the agent as its files do. Open Terminal and Run on
+// a reply's command use an agent's terminal; Send Last Command to Gemini and
+// Run's "Send Output to Gemini" use the last command, which is kept from shell
+// integration as it runs (its output is only readable by a listener there from
+// its start), capped at the last 200 lines and replaced by the next command.
 
 import * as vscode from 'vscode';
 import { commandCount, FinishedCommand, OutputTail } from '../acp/runCommands';
@@ -39,7 +40,8 @@ export class AgentTerminals implements vscode.Disposable {
 	private readonly waiters = new Map<vscode.Terminal, (command: FinishedCommand | undefined) => void>();
 	private readonly disposables: vscode.Disposable[] = [];
 
-	constructor() {
+	/** `columnOf` is the column of the agent's side group, where its terminals open. */
+	constructor(private readonly columnOf: (agent: string) => Promise<vscode.ViewColumn>) {
 		this.disposables.push(
 			vscode.window.onDidStartTerminalShellExecution(({ execution }) => {
 				const tail = new OutputTail();
@@ -101,24 +103,31 @@ export class AgentTerminals implements vscode.Disposable {
 	}
 
 	/** The agent's terminal in `folder`, named `name`, made the first time; `fresh` makes another. */
-	terminalFor(agent: string, name: string, folder: string, fresh = false): vscode.Terminal {
+	async terminalFor(agent: string, name: string, folder: string, fresh = false): Promise<vscode.Terminal> {
 		const known = fresh ? undefined : this.terminals.find(each => each.agent === agent && each.folder === folder && each.terminal.exitStatus === undefined);
 		if (known) {
 			return known.terminal;
 		}
-		const terminal = vscode.window.createTerminal({ name, cwd: folder, iconPath: new vscode.ThemeIcon('terminal') });
+		const viewColumn = await this.columnOf(agent);
+		const again = fresh ? undefined : this.terminals.find(each => each.agent === agent && each.folder === folder && each.terminal.exitStatus === undefined);
+		if (again) {
+			// Made by another call while the column was asked for.
+			return again.terminal;
+		}
+		// Transient: a reload would bring it back as a tab its agent no longer knows, beside the one Open Terminal makes.
+		const terminal = vscode.window.createTerminal({ name, cwd: folder, iconPath: new vscode.ThemeIcon('terminal'), location: { viewColumn, preserveFocus: true }, isTransient: true });
 		this.terminals.push({ agent, folder, terminal });
 		return terminal;
 	}
 
 	/** Opens the agent's terminal in `folder` and shows it. */
-	open(agent: string, name: string, folder: string): void {
-		this.terminalFor(agent, name, folder).show();
+	async open(agent: string, name: string, folder: string): Promise<void> {
+		(await this.terminalFor(agent, name, folder)).show();
 	}
 
 	/** Types `command` into the agent's terminal and leaves Return to the user. */
-	insert(agent: string, name: string, folder: string, command: string): void {
-		const terminal = this.terminalFor(agent, name, folder);
+	async insert(agent: string, name: string, folder: string, command: string): Promise<void> {
+		const terminal = await this.terminalFor(agent, name, folder);
 		terminal.show();
 		terminal.sendText(command, false);
 	}
@@ -129,10 +138,10 @@ export class AgentTerminals implements vscode.Disposable {
 	 * typed in and run, and nothing is known of how it ended.
 	 */
 	async run(agent: string, name: string, folder: string, command: string, fresh: boolean): Promise<RunOutcome> {
-		let terminal = this.terminalFor(agent, name, folder, fresh);
+		let terminal = await this.terminalFor(agent, name, folder, fresh);
 		if (this.waiters.has(terminal)) {
 			// A command Run started still runs there.
-			terminal = this.terminalFor(agent, name, folder, true);
+			terminal = await this.terminalFor(agent, name, folder, true);
 		}
 		terminal.show(true);
 		const shell = terminal.shellIntegration ?? await this.shellIntegrationOf(terminal);

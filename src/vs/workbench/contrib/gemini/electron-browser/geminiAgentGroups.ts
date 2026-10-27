@@ -114,9 +114,10 @@ class GeminiAgentGroups extends Disposable implements IWorkbenchContribution {
 	/**
 	 * The widths of the agents' group and of a hidden agent's Files page, put
 	 * back when the agent comes to the front (its side group takes the rest):
-	 * the grid hands a hidden group's space to its neighbour, which keeps it.
+	 * the grid hands a hidden group's space to its neighbour, another agent's
+	 * side group or the agents' group, which keeps it.
 	 */
-	private readonly hiddenWidths = new Map<string, { readonly agents: number; readonly tree: number }>();
+	private readonly hiddenWidths = new Map<string, { readonly agents: number; readonly tree?: number }>();
 	/** The agent whose group is in view: the one last in front in the agents' group. */
 	private current: string | undefined;
 	private restored = false;
@@ -192,6 +193,12 @@ class GeminiAgentGroups extends Disposable implements IWorkbenchContribution {
 				if (agentIdOf(group.activeEditor) !== undefined || group.activeEditor && isGeminiTab(group.activeEditor)) {
 					this.apply();
 				}
+			} else if (e.kind === GroupModelChangeKind.EDITOR_LABEL && e.editor && e.editor === group.activeEditor) {
+				// An agent's tab is known by its icon, which the extension sets just after the tab opens in front.
+				const agent = agentIdOf(e.editor);
+				if (agent !== undefined && agent !== this.current) {
+					this.apply();
+				}
 			} else if ((e.kind === GroupModelChangeKind.EDITOR_OPEN || e.kind === GroupModelChangeKind.EDITOR_CLOSE) && e.editor && isGeminiTab(e.editor)) {
 				refreshGeminiTabRows();
 			}
@@ -226,9 +233,11 @@ class GeminiAgentGroups extends Disposable implements IWorkbenchContribution {
 			this.current = agentIdOf(front);
 		}
 		const visibility = this.visibility;
-		for (const [id, tree] of this.trees) {
-			if (id !== this.current && agentsGroup && this.part.getGroup(tree.group) && visibility?.geminiIsGroupVisible(tree.group)) {
-				this.hiddenWidths.set(id, { agents: this.part.getSize(agentsGroup).width, tree: this.part.getSize(tree.group).width });
+		const inView = (group: GroupIdentifier | undefined): group is GroupIdentifier => group !== undefined && !!this.part.getGroup(group) && visibility?.geminiIsGroupVisible(group) === true;
+		for (const [id, group] of this.groups) {
+			if (id !== this.current && agentsGroup && inView(group)) {
+				const tree = this.trees.get(id)?.group;
+				this.hiddenWidths.set(id, { agents: this.part.getSize(agentsGroup).width, ...inView(tree) ? { tree: this.part.getSize(tree).width } : {} });
 			}
 		}
 		for (const [id, tree] of [...this.trees]) {
@@ -254,11 +263,13 @@ class GeminiAgentGroups extends Disposable implements IWorkbenchContribution {
 		}
 		const shown = this.current;
 		const widths = shown === undefined ? undefined : this.hiddenWidths.get(shown);
-		const tree = shown === undefined ? undefined : this.trees.get(shown);
-		if (shown !== undefined && widths && tree && agentsGroup && this.part.getGroup(tree.group) && visibility?.geminiIsGroupVisible(tree.group)) {
+		if (shown !== undefined && widths && agentsGroup && inView(this.groups.get(shown))) {
 			this.hiddenWidths.delete(shown);
 			this.part.setSize(agentsGroup, { width: widths.agents, height: this.part.getSize(agentsGroup).height });
-			this.part.setSize(tree.group, { width: widths.tree, height: this.part.getSize(tree.group).height });
+			const tree = this.trees.get(shown)?.group;
+			if (widths.tree !== undefined && inView(tree)) {
+				this.part.setSize(tree, { width: widths.tree, height: this.part.getSize(tree).height });
+			}
 		}
 	}
 
