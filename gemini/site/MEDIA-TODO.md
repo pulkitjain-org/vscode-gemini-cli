@@ -17,6 +17,8 @@ Capture from the real app, against demo data, so no real account, ticket, name o
 
 | Taken on | Against | Media |
 | --- | --- | --- |
+| 2026-10-27 | The demo repository and a demo Jira (two sites), GitLab and SonarQube signed in as Sam Rivera, in the installed GeminiCode 1.6.0 | The `showcase-work` clip (a Jira ticket's task typed on Home, the agent at work, and Keep in the Changes panel) and its Home poster, and `docs/project-helpers` (Agent Setup) |
+| 2026-10-27 | The demo repository, in the installed GeminiCode 1.6.0 | `agents-pane` (the Agents pane with agents working, waiting, finished and idle, and a fork), `fork-list` (a fork under its agent, with its card in the agent's chat), `try-scm` (an agent's changes tried in the workspace, with **T** in Source Control and Trying in the status bar), `enhance-before` and `enhance-after` (a draft, and the prompt Enhance wrote from it, with Revert) |
 | 2026-10-27 | The demo repository, and a demo Jira (two sites), Confluence, GitLab and SonarQube signed in as Sam Rivera | `plan-review` and the `showcase-plan-review` clip (Plan Review with comments, sent and revised), `try-workspace` (a project thread tried in the workspace), `confluence-review` (a Confluence draft on the Review Page), and `home` retaken for the Here / On Its Own Branch / To a Project chooser and both Jira sites |
 | 2026-10-25 | The demo repository | `reactions` (the reaction bar on a reply) and `run-command` (a reply's shell block with Run and its result), both for the Chat and review feature page |
 | 2026-10-23 | The demo repository | `fork-dialog`, `queue`, `compact-line` |
@@ -27,8 +29,24 @@ The clips' dates are also in `clipDates` in `build.mts`, which the site's video 
 
 ## Not yet pictured anywhere
 
-- The Agents pane with five agents in different states, for the landing page's Agents section ("Agents side by side" tile).
-- Enhance prompt before and after, as a still. The `showcase-enhance` clip shows it.
-- Forks listed under their agent, with the fork card in its chat. On the Agents feature page, "Fork an agent" shows only the Fork dialog.
+Nothing at the moment.
+
+## Needs retaking for 1.6
+
+These show the app before 1.6 and are still on the site:
+
+- `project-threads` (landing page, Projects): thread cards with **Merge back** and a side panel saying "1 merged back". 1.6 offers **Try in Workspace**, and the side panel counts each thread's requests.
+- `project-merge` (Projects guide): a finished thread card with **Merge back**, **Review changes** and **Undo thread**. Retake it with the 1.6 card, and change its alt text in `gemini/docs/guide/projects.md`.
+- The `showcase-projects` clip (Projects guide and feature page): ends on a **Merge back** card.
+- The `showcase-plan` clip (Chat guide and feature page): the reply ends with only **Build This Plan**. 1.6 adds **Review Plan** beside it, and Build This Plan has a ⌄.
+
+Possibly out of date, to check when retaking the ones above: `project-chat` (no request counts in the side panel), the `showcase-wait` clip's permission card, and `docs/project-settings` and `docs/project-memory`.
+
+### For the next capture
+
+- Record clips with the window right of the Dock (it sits on the left): x 96, 1960 × 1225 points. A screen recording picks up the Dock over the window; window stills don't.
+- Turn off `gemini.chat.reactions.agentReactions` in the capture profile. Agents otherwise start a later message with `<react>X</react>`, which shows as text.
+- Park the pointer over the empty sidebar, not the status bar, whose items show a hover card.
+- Agent Setup lists the Mac's trusted folders below Rules; keep the shot above them.
 
 The link preview images in `media/og/` (1200 × 630 JPEG) are crops of the light shots named in `ogImages` in `build.mts`. Remake one when its shot is retaken; [RELEASING.md](../docs/RELEASING.md#search-engines-link-previews-and-ai-tools) has the command.

@@ -103,6 +103,10 @@ const mediaFiles = {
 	'project-threads': { width: 2000, height: 1250 },
 	'browser-page': { width: 2000, height: 1250 },
 	files: { width: 2000, height: 1250 },
+	'agents-pane': { width: 2000, height: 1250 },
+	'plan-review': { width: 2000, height: 1250 },
+	'try-scm': { width: 2000, height: 1250 },
+	'confluence-review': { width: 2000, height: 1250 },
 } as const;
 type Media = keyof typeof mediaFiles;
 
@@ -499,7 +503,7 @@ const clipDates: Readonly<Record<string, string>> = {
 	'showcase-projects': '2026-10-19',
 	'showcase-review': '2026-10-19',
 	'showcase-wait': '2026-10-19',
-	'showcase-work': '2026-10-23',
+	'showcase-work': '2026-10-27',
 };
 
 /** A clip's length in whole seconds, from its MP4's movie header (the mvhd box). */
@@ -615,7 +619,7 @@ function layout(title: string, body: string, c: Context, current: PageKind, root
 	// The site's own drop-down, drawn in its theme: a disclosure button and a panel (page.mts opens it).
 	const featureMenu = `<div class="fmenu"><button type="button" class="fm-btn" aria-expanded="false" aria-controls="fm-panel"${current === 'feature' ? ' data-current' : ''}>Features${icon('chevron-down')}</button><div class="fm-panel" id="fm-panel" hidden>${features('fm-item')}</div></div>`;
 	const news = current === 'home' ? `
-		<div class="news"><div class="wrap"><span class="k">New</span><a href="docs/terminal.html">Run Gemini's commands in each agent's own terminal, and answer replies with an emoji →</a></div></div>` : '';
+		<div class="news"><div class="wrap"><span class="k">New</span><a href="docs/agents.html#agents-on-their-own-branch">Try an agent's work in your checkout before you keep it, and review its plan section by section →</a></div></div>` : '';
 	const search = current === 'docs' ? `
 				<button type="button" class="search-btn" aria-label="Search the docs">${icon('search')}<span>Search docs</span><kbd>⌘K</kbd></button>` : '';
 	const brandTail = current === 'docs' ? `<span class="sep">/</span><span class="sub">Docs</span>` : '';
@@ -739,19 +743,19 @@ function shot(media: Media, available: ReadonlySet<string>, alt: string, options
 
 // ---- Landing page ----
 
-/** One of the eight capabilities, as a tile with a caption on the orbit rings around the headline. */
+/** One of the twelve capabilities, as a tile with a caption on the orbit rings around the headline. */
 interface Capability { href: string; title: string; cap: string; thumb: string }
 
 /**
- * Two rings of sixteen tiles each, the eight capabilities twice over, that turn in opposite
- * directions around the headline (landing.mts moves them). Only the outer ring's first pass
- * is in the tab order and the accessibility tree; the repeats are decoration.
+ * Two rings of twelve tiles each, every capability once per ring, that turn in opposite
+ * directions around the headline (landing.mts moves them). Only the outer ring is in the
+ * tab order and the accessibility tree; the inner ring is decoration.
  */
 function orbit(capabilities: readonly Capability[]): string {
 	const sizes = [138, 152, 164, 152];
 	const ring = (order: readonly number[], listed: boolean) => order.map((which, i) => {
 		const { href, title, cap, thumb } = capabilities[which];
-		const quiet = !listed || i >= capabilities.length;
+		const quiet = !listed;
 		return `
 				<a class="float" style="--tsz: ${sizes[i % sizes.length]}" href="${attr(href)}"${quiet ? ' tabindex="-1" aria-hidden="true"' : ''}>
 					${thumb}
@@ -763,9 +767,9 @@ function orbit(capabilities: readonly Capability[]): string {
 	const inner = all.map(i => (i + all.length / 2) % all.length);
 	return `
 		<div class="orbit" data-orbit>
-			<div class="ring" data-ring="outer">${ring([...all, ...all], true)}
+			<div class="ring" data-ring="outer">${ring(all, true)}
 			</div>
-			<div class="ring" data-ring="inner">${ring([...inner, ...inner], false)}
+			<div class="ring" data-ring="inner">${ring(inner, false)}
 			</div>
 		</div>`;
 }
@@ -779,18 +783,25 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 		? `GeminiCode ${text(c.version)} · macOS 26 or later · Apple silicon · ${c.sizeMb} MB · MIT`
 		: `No release yet · <a href="${attr(c.repoUrl)}/releases">Check GitHub Releases</a> · Mac with Apple silicon, macOS 26 or later`;
 	const thumbShot = (media: Media) => `<span class="thumb">${shot(media, available, '')}</span>`;
+	// Shots and drawn tiles take turns round the ring, and the inner ring starts half way
+	// round, so it takes turns too.
 	const capabilities: Capability[] = [
-		{ href: '#agents', title: 'Agents side by side', cap: 'Each in its own tab, with its own chat', thumb: thumbShot('files') },
+		{ href: '#agents', title: 'Agents side by side', cap: 'Each in its own tab, with its own chat', thumb: thumbShot('agents-pane') },
+		{ href: '#agents', title: 'Home', cap: 'Describe a task. Choose where it runs', thumb: `<span class="thumb white" style="justify-content: space-between"><span style="color: var(--fg)">Make the upload client retry twice with backoff<span class="mini-caret"></span></span><span class="where xs" aria-hidden="true"><span>Here</span><span class="on">Branch</span><span>Project</span></span></span>` },
+		{ href: '#flow', title: 'Plan Review', cap: 'Edit and comment, section by section', thumb: thumbShot('plan-review') },
+		{ href: '#flow', title: 'Try in Workspace', cap: 'Run it in your checkout, then keep it', thumb: `<span class="thumb white" style="justify-content: center; gap: 5px"><span class="row-xs mono"><span>retry.ts</span><span class="tbadge">T</span></span><span class="row-xs mono"><span>client.ts</span><span class="tbadge">T</span></span><span class="row-xs mono"><span>upload.test.ts</span><span class="tbadge">T</span></span><span class="row-xs" style="margin-top: 4px"><span class="mini-btn">Keep</span><span class="mono" style="font-size: 10px; color: var(--muted)">Take Back</span></span></span>` },
 		{ href: '#review', title: 'Review and safety', cap: 'Keep, Undo, Rewind. Ask first', thumb: thumbShot('showcase-review') },
-		{ href: '#agents', title: 'Home', cap: 'Describe a task. Press Return', thumb: `<span class="thumb white" style="justify-content: space-between"><span style="color: var(--fg)">Make the upload client retry twice with backoff<span class="mini-caret"></span></span><span class="row-xs"><span class="mono" style="font-size: 10px; color: var(--muted)">☑ Own branch</span><span class="mini-btn">Start ↩</span></span></span>` },
+		{ href: '#agents', title: 'Enhance prompt', cap: 'Plain words in, precise prompt out', thumb: `<span class="thumb white" style="justify-content: center; gap: 5px"><span class="draft">make uploads not fail so much</span><span class="mono" style="font-size: 10px; color: var(--accent); align-self: center">↓ ⌥⌘E</span><span class="better">Add backoff, 3 attempts, with a test</span></span>` },
 		{ href: '#projects', title: 'Projects', cap: 'One chat, many threads', thumb: thumbShot('project-threads') },
+		{ href: '#agents', title: 'Workspace index', cap: 'Finds the code in one step', thumb: `<span class="thumb white" style="justify-content: center; gap: 5px"><span class="mono" style="font-size: 10px; color: var(--accent)">code_search</span><span class="row-xs mono"><span>upload.ts:4</span><span style="color: var(--muted)">41 ms</span></span><span class="row-xs mono"><span>upload.test.ts:7</span></span><span class="mono" style="font-size: 10px; color: var(--accent); margin-top: 4px">find_symbol</span><span class="row-xs mono"><span>2 callers</span></span></span>` },
 		{ href: '#beyond', title: 'Agent browser', cap: 'Agents open and use your app', thumb: thumbShot('browser-page') },
 		{ href: '#beyond', title: 'Team tools', cap: 'Ticket to merge request', thumb: `<span class="thumb" style="justify-content: center; gap: 8px"><span style="display: flex; gap: 5px; flex-wrap: wrap"><span class="chip xs">Jira</span><span class="chip xs">GitLab</span><span class="chip xs">Sonar</span><span class="chip xs">Snyk</span><span class="chip xs">Figma</span></span><span class="mono" style="font-size: 10px; color: var(--accent)">ACME-412 → !412</span></span>` },
-		{ href: '#agents', title: 'Enhance prompt', cap: 'Plain words in, precise prompt out', thumb: `<span class="thumb white" style="justify-content: center; gap: 5px"><span class="draft">make uploads not fail so much</span><span class="mono" style="font-size: 10px; color: var(--accent); align-self: center">↓ ⌥⌘E</span><span class="better">Add backoff, 3 attempts, with a test</span></span>` },
-		{ href: 'docs/helpers.html', title: 'Agent Setup', cap: 'MCP, skills, hooks, memory', thumb: `<span class="thumb white" style="justify-content: center; gap: 6px"><span class="row-xs"><span>MCP servers</span><span class="toggle"></span></span><span class="row-xs"><span>Skills</span><span class="toggle"></span></span><span class="row-xs"><span>Hooks</span><span class="toggle off"></span></span><span class="row-xs"><span>Memory and rules</span><span class="toggle"></span></span></span>` },
+		{ href: '#beyond', title: 'Confluence drafts', cap: 'Keep or undo each change, then publish', thumb: thumbShot('confluence-review') },
+		{ href: 'docs/helpers.html', title: 'Agent Setup', cap: 'MCP, skills, trust rules, storage', thumb: `<span class="thumb white" style="justify-content: center; gap: 6px"><span class="row-xs"><span>MCP servers</span><span class="toggle"></span></span><span class="row-xs"><span>Skills</span><span class="toggle"></span></span><span class="row-xs"><span>Trust rules</span><span class="toggle"></span></span><span class="row-xs"><span>Storage</span><span class="mono" style="font-size: 9px; color: var(--muted)">2.1 GB</span></span></span>` },
 	];
 	const strip = [
 		'<b>Plan mode</b> read first, then build',
+		'<b>Review Plan</b> section by section',
 		'<b>@file</b> attach context',
 		'<b>Enhance</b> <kbd>⌥⌘E</kbd>',
 		'<b>Keep</b> · <b>Undo</b> in place',
@@ -800,12 +811,13 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 		'<b>/compact</b> long chats',
 		'<b>👍 👎 ❓</b> react to a reply',
 		'<b>Run</b> a suggested command',
-		'<b>Merge Back</b> a branch',
+		'<b>Try in Workspace</b> before you keep it',
 		'<b>Add to Gemini</b> from the browser',
 		'<b>Review My Changes</b>',
 		'<b>Follow the agent</b>',
 		'<kbd>⌥⌘M</kbd> Agents ⇄ Editor',
 		'<b>Ticket → MR</b> Jira · GitLab',
+		'<b>Confluence</b> drafts you review',
 	].map(tick => `<span class="tick">${tick}</span>`).join('');
 	const steps = [
 		['Install', 'Open the .dmg and drag GeminiCode to Applications. The Gemini CLI comes with it.'],
@@ -818,6 +830,19 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 					<h3>${title}</h3>
 					<p>${body}</p>
 				</div>`).join('');
+	const flowSteps = [
+		['Plan', 'In Plan mode the agent reads and writes a plan. <b>Review Plan</b> opens it a section at a time to edit and comment on.'],
+		['Build', '<b>Build This Plan</b> starts the work, on a branch of its own if you like. Each edit and command asks first.'],
+		['Review', 'Each change shows in its file with <b>Keep</b> and <b>Undo</b>, and every changed file is in Changes beside the chat.'],
+		['Try', '<b>Try in Workspace</b> copies the changes into your checkout, unstaged. Run the app and the tests with them.'],
+		['Keep', '<b>Keep Changes</b> makes them your own change. <b>Take Back</b> removes them and leaves your own edits.'],
+	].map(([title, body], i) => `
+			<li class="reveal" data-reveal>
+				<span class="n">0${i + 1}</span>
+				<h3 class="serif">${title}</h3>
+				<p>${body}</p>
+			</li>`).join('');
+	const halfSizes = '(max-width: 760px) calc(100vw - 32px), 564px';
 	const installMeta = c.dmg
 		? `${text(c.dmg.name)} · ${c.sizeMb} MB · macOS 26 or later${c.dmg.sha256 ? ` · <a class="sha-link" href="notes.html#sha">SHA-256</a>` : ''}`
 		: `The first build is on its way. <a href="${attr(c.repoUrl)}/releases">Check GitHub Releases</a>.`;
@@ -848,7 +873,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 				<div class="pill" role="group" aria-label="Screenshot theme"><button type="button" data-shot-theme="dark" aria-pressed="false">Dark</button><button type="button" data-shot-theme="light" aria-pressed="true">Light</button></div>
 			</div>
 			<div class="stage">
-				${shot('showcase-work', available, 'GeminiCode in Agents layout: the agent list on the left, a chat in the middle and the Changes panel on the right', { eager: true })}${available.has('showcase-work-light.mp4') && available.has('showcase-work-dark.mp4') ? `
+				${shot('showcase-work', available, 'Home in GeminiCode, with the composer, the merge requests that need you, your Jira tickets and the quality gate', { eager: true })}${available.has('showcase-work-light.mp4') && available.has('showcase-work-dark.mp4') ? `
 				<button type="button" class="play" data-clip="work" aria-label="Play a short clip of an agent at work"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></button>` : ''}
 			</div>
 		</div>
@@ -878,6 +903,29 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 		</div>
 	</section>
 
+	<section class="sec" id="flow" aria-labelledby="flow-h">
+		<div class="top-row">
+			<div class="head">
+				<span class="label reveal" data-reveal>From plan to your checkout</span>
+				<h2 class="h2 serif reveal head" id="flow-h" data-reveal>Plan it, build it.<br><em class="m">Try it before you keep it.</em></h2>
+			</div>
+			<p class="reveal" data-reveal>Every change goes through you twice: once as a plan you can edit, and once as files in your own checkout, before anything is committed.</p>
+		</div>
+		<ol class="flow" data-stagger>${flowSteps}
+		</ol>
+		<div class="flow-pics" data-stagger>
+			<figure class="reveal" data-reveal>
+				${shot('plan-review', available, 'Plan Review with a plan\'s sections, a comment beside one and Send Comments to Gemini', { sizes: halfSizes })}
+				<figcaption><b>Plan Review.</b> Click a section to edit it or comment on it, then send every comment at once.</figcaption>
+			</figure>
+			<figure class="reveal" data-reveal>
+				${shot('try-scm', available, 'An agent\'s changes tried in the workspace: Source Control lists them unstaged with a T, and the status bar says Trying', { sizes: halfSizes })}
+				<figcaption><b>Try in Workspace.</b> The agent\'s changes, unstaged in your checkout, each marked <b>T</b> in Source Control.</figcaption>
+			</figure>
+		</div>
+		<a class="more reveal" data-reveal href="features/chat-and-review.html">How plans and reviews work ${icon('arrow-right')}</a>
+	</section>
+
 	<section class="sec" id="agents" aria-labelledby="agents-h">
 		<div class="top-row">
 			<div class="head">
@@ -892,20 +940,8 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 					<h3 class="serif">Agents side by side</h3>
 					<p style="max-width: 480px">A status dot per agent: a spinner while it works, amber when it waits for you, green when done. One short note says how long it has worked or the lines it added.</p>
 				</div>
-				<div class="agents-mock">
-					<div class="mock list" aria-hidden="true">
-						<div class="r on"><span class="dot spin"></span><span class="n">Flaky upload test</span><span class="t">4m</span></div>
-						<div class="r"><span class="dot warn"></span><span class="n">Jira client retries</span><span class="t w">waiting</span></div>
-						<div class="r"><span class="dot ok"></span><span class="n">Rename settings</span><span class="t">+184</span></div>
-						<div class="r"><span class="dot ok"></span><span class="n">Release docs</span><span class="t">+62</span></div>
-						<div class="r"><span class="dot idle"></span><span class="n">Spike: ACP streaming</span><span class="t">2h ago</span></div>
-					</div>
-					<div class="mock reply" aria-hidden="true">
-						<div class="fold">${icon('chevron-right')}<span>Worked for 4m 12s · read 6 files, ran 3 commands</span></div>
-						<p>The test failed because the mock server closed the socket before the retry fired. I added a backoff of 200 ms and a third attempt, and the suite passes locally.</p>
-						<div class="files"><span>retry.ts</span><span>upload.test.ts</span></div>
-						<div class="bar"></div>
-					</div>
+				<div class="agents-shot">
+					${shot('agents-pane', available, 'The Agents pane with an agent working, one waiting on a command, one finished with 28 lines added, and others idle, one with a fork under it', { sizes: '(max-width: 1100px) 250vw, 1700px' })}
 				</div>
 			</div>
 			<div class="tile s5 reveal" data-reveal style="gap: 20px">
@@ -916,8 +952,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 				<div class="mock home-mock" aria-hidden="true">
 					<p class="task">Make the upload client retry twice with backoff, and cover it with a test<span class="mini-caret"></span></p>
 					<div class="opts">
-						<span><span class="check">${icon('check')}</span>On Its Own Branch</span>
-						<span class="m">Default · Auto</span>
+						<span class="where"><span>Here</span><span class="on">On Its Own Branch</span><span>To a Project</span></span>
 						<span class="start">Start <kbd>↩</kbd></span>
 					</div>
 				</div>
@@ -989,6 +1024,14 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 					<span class="n">03</span>
 					<div><h3 class="serif">Secrets stay out</h3><p>Agents cannot read .env files, private keys, cloud credentials or git-ignored files, even through a symbolic link.</p></div>
 				</div>
+				<div class="row reveal" data-reveal>
+					<span class="n">04</span>
+					<div><h3 class="serif">Trust, asked once</h3><p>The first time you pick a folder for agents, GeminiCode asks whether to trust it. A repository's worktree setup script runs only after you have seen it.</p></div>
+				</div>
+				<div class="row reveal" data-reveal>
+					<span class="n">05</span>
+					<div><h3 class="serif">Reviews in a sandbox</h3><p>A merge request's checkout is never trusted, so its settings, hooks and MCP servers never run, and the reviewer has read-only tools.</p></div>
+				</div>
 				<div class="pic reveal" data-reveal>
 					${shot('showcase-review', available, 'An agent\'s edits shown in the file, with Keep and Undo above each change')}
 				</div>
@@ -1002,7 +1045,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 				<div class="copy">
 					<span class="label">Projects</span>
 					<h2 class="h2 serif" id="projects-h">One chat for the <em>whole feature.</em></h2>
-					<p>Talk to a coordinator. It splits larger work into threads, each an agent on its own branch, and passes your follow-ups to the right one. Threads show as cards: open one to talk to it, or try its changes in your own checkout before you keep them.</p>
+					<p>Talk to a coordinator. It splits larger work into threads, each an agent on its own branch, and passes your follow-ups to the right one. Threads show as cards: open one to talk to it, or try its changes in your own checkout before you keep them. Up to four work at once, and the rest wait their turn.</p>
 					<div class="threads" aria-hidden="true">
 						<div class="thread" style="--i: 0"><span class="dot ok"></span><span class="n">Thread · API retries</span><span class="mb">Try in Workspace</span></div>
 						<div class="thread" style="--i: 1"><span class="dot warn"></span><span class="n">Thread · Settings UI</span><span class="m w">Approve plan</span></div>
@@ -1036,7 +1079,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 			</div>
 			<div class="tile s6 team reveal" data-reveal>
 				<h3 class="serif">From ticket to merge request.</h3>
-				<p>Sign in to your team's tools with your own account. Start an agent from a ticket, open the merge request and fix the pipeline and the comments. Review a teammate's merge request with Gemini's draft, your own comments and suggested changes, then post it in one go. Agents draft Confluence pages too, and you keep or undo each change before it is published.</p>
+				<p>Sign in to your team's tools with your own account. Start an agent from a ticket, open the merge request and fix the pipeline and the comments. Review a teammate's merge request with Gemini's draft, your own comments and suggested changes, then post it in one go. Connect more than one Jira site, each named on Home.</p>
 				<div class="chips"><span class="chip">Jira</span><span class="chip">Confluence</span><span class="chip">GitLab</span><span class="chip">SonarQube</span><span class="chip">Snyk</span><span class="chip">Figma</span></div>
 				<div class="mock mr" aria-hidden="true">
 					<div class="r"><span class="k">ACME-412</span><span class="n">Upload retries</span><span class="s">!412 · passed</span></div>
@@ -1044,6 +1087,14 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 					<div class="r"><span class="k">SONAR</span><span class="n">New code</span><span class="s">0 new issues</span></div>
 				</div>
 				<a class="more" href="features/team-tools.html">From ticket to merge ${icon('arrow-right')}</a>
+			</div>
+			<div class="tile s12 conf reveal" data-reveal>
+				<div class="txt">
+					<h3 class="serif">Confluence pages, drafted for review.</h3>
+					<p>Agents read your team's pages and draft new ones or new versions. The <b>Review Page</b> shows a draft against the page: keep or undo each change, and <b>Publish</b> sends only what you kept, merged with edits other people made in the meantime.</p>
+					<a class="more" href="docs/team-tools.html#draft-confluence-pages">Drafting Confluence pages ${icon('arrow-right')}</a>
+				</div>
+				${shot('confluence-review', available, 'A Confluence draft on the Review Page, with the kept changes, a table of owners left as it is, and Publish Changes', { sizes: '(max-width: 1100px) calc(100vw - 32px), 640px' })}
 			</div>
 		</div>
 	</section>
@@ -1086,7 +1137,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 	return layout('GeminiCode: code with Gemini agents, review every change', body, c, 'home', '', {
 		path: '',
 		description: siteDescription,
-		schema: [app, { ...website(c), description: siteDescription }, ...available.has('showcase-work-light.mp4') ? [videoObject(c, 'showcase-work', 'An agent at work in GeminiCode: the agent list, its chat and the Changes panel')] : []],
+		schema: [app, { ...website(c), description: siteDescription }, ...available.has('showcase-work-light.mp4') ? [videoObject(c, 'showcase-work', 'An agent at work in GeminiCode: a Jira ticket\'s task started from Home, the agent\'s chat, and its changes kept in the Changes panel')] : []],
 	});
 }
 

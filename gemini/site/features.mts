@@ -76,8 +76,8 @@ export const featurePages: readonly FeaturePage[] = [
 			},
 			{
 				title: 'Fork an agent',
-				body: ['When an agent\'s work splits in two, fork it. The fork starts from the same conversation, so it already knows what was read, decided and planned, and works on its part while the agent carries on. Take the whole session, a compacted copy or just the conversation, on a new branch with the agent\'s uncommitted changes or in the same folder. **Fork** at the end of any reply forks from that point.'],
-				media: { name: 'fork-dialog', alt: 'The Fork dialog with Whole session, Compacted and Conversation only, and a new branch or the same folder' },
+				body: ['When an agent\'s work splits in two, fork it. The fork starts from the same conversation, so it already knows what was read, decided and planned, and works on its part while the agent carries on. Take the whole session, a compacted copy or just the conversation, on a new branch with the agent\'s uncommitted changes or in the same folder. **Fork** at the end of any reply forks from that point. The fork is listed under its agent, whose chat gets a card for it with **Open** and **Try in Workspace**.'],
+				media: { name: 'fork-list', alt: 'A fork listed under its agent in the Agents pane, and the fork\'s card in the agent\'s chat with Open and Try in Workspace' },
 			},
 			{
 				title: 'Pick up where the terminal left off',
