@@ -443,6 +443,7 @@ span.adf-mention {
 	position: sticky;
 	bottom: 0;
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: 8px;
 	padding: 12px 28px;
@@ -454,8 +455,9 @@ span.adf-mention {
 	color: var(--gemini-muted);
 }
 
+/* A real basis, so a narrow page moves the buttons to a second line instead of squeezing the note. */
 .review-foot-text {
-	flex: 1;
+	flex: 1 1 16em;
 	color: var(--gemini-muted);
 	font-size: 12.5px;
 }
@@ -463,6 +465,13 @@ span.adf-mention {
 .review-status {
 	font-size: 12px;
 	color: var(--gemini-muted);
+}
+
+/* The buttons wrap together, and stay at the end of their line. */
+.review-foot-actions {
+	display: flex;
+	gap: 8px;
+	margin-inline-start: auto;
 }
 
 .review-foot-reason {
