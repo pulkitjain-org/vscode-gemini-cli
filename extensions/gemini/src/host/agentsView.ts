@@ -55,10 +55,11 @@ import { WorkspaceFileIndex } from './workspaceFiles';
 import { AgentIndicators } from './agents/agentIndicators';
 import type { AgentMerge } from './agents/agentMerge';
 import type { AgentTries } from './agents/agentTries';
+import type { AgentFilesPages } from './agentFilesPage';
 import type { PlanReviews } from './planReviewPage';
 import { extensionChunk } from './lazyFeature';
 import { setProjectStrings } from './chat/chatHtml';
-import type { TryAction } from './chatProtocol';
+import type { SideLink, TryAction } from './chatProtocol';
 import { AgentProjects } from './agents/agentProjects';
 import { AgentForks } from './agents/agentForks';
 import { AgentStarts } from './agents/agentStarts';
@@ -123,6 +124,8 @@ interface LiveAgent {
 	readonly controller: ChatController;
 	/** The files this agent's tools edited. */
 	readonly changes: AgentChanges;
+	/** The files of its folder, for the @ picker and its Files page's search. */
+	readonly files: FileSearch;
 	panel?: vscode.WebviewPanel;
 	/** A turn finished while its tab was not in front. */
 	unread: boolean;
@@ -188,6 +191,7 @@ export class AgentsView implements vscode.Disposable {
 	/** Plan Review, from dist/pages.js the first time a plan is reviewed. */
 	private readonly pages = extensionChunk<typeof import('../pages')>('pages');
 	private planReviewsLoaded: PlanReviews | undefined;
+	private agentFilesLoaded: AgentFilesPages | undefined;
 	/** An agent started or ended a turn, for Plan Review. */
 	private readonly onDidChangeTurnEmitter = new vscode.EventEmitter<string>();
 	private readonly projectAgents: AgentProjects;
@@ -666,6 +670,27 @@ export class AgentsView implements vscode.Disposable {
 		}
 	}
 
+	private get agentFiles(): AgentFilesPages {
+		if (!this.agentFilesLoaded) {
+			this.agentFilesLoaded = new (this.pages().AgentFilesPages)({
+				extensionUri: this.context.extensionUri,
+				state: this.context.workspaceState,
+				folder: id => {
+					const record = this.model.agent(id);
+					const workspace = record && this.model.workspace(record.workspaceId);
+					return record && workspace ? agentFolder(record, workspace.folder) : undefined;
+				},
+				column: async id => {
+					const live = this.live.get(id);
+					return live ? agentColumn(id, live.panel) : vscode.ViewColumn.Active;
+				},
+				search: (id, query, limit) => this.live.get(id)?.files.search(query, limit) ?? Promise.resolve([]),
+			});
+			this.disposables.push(this.agentFilesLoaded);
+		}
+		return this.agentFilesLoaded;
+	}
+
 	private get planReviews(): PlanReviews {
 		if (!this.planReviewsLoaded) {
 			this.planReviewsLoaded = new (this.pages().PlanReviews)({
@@ -857,6 +882,7 @@ export class AgentsView implements vscode.Disposable {
 		void this.transcripts.delete(id);
 		void this.checkpointFiles.delete(id);
 		this.browser?.closeAgent(id);
+		this.agentFilesLoaded?.close(id);
 		this.terminals.closeAgent(id);
 		this.teamTools?.forgetAgent(id);
 		this.index?.forgetAgent(id);
@@ -1089,6 +1115,7 @@ export class AgentsView implements vscode.Disposable {
 		const live: LiveAgent = {
 			session,
 			changes,
+			files,
 			controller: new ChatController(this.context.extensionUri, session, this.diffPreview, files, {
 				reveal: preserveFocus => this.reveal(record.id, preserveFocus),
 				isShown: () => this.live.get(record.id)?.panel?.visible === true,
@@ -1137,6 +1164,14 @@ export class AgentsView implements vscode.Disposable {
 					reveal: () => this.browser?.revealSharedPage(record.id) ?? Promise.resolve(false),
 				},
 				workspace,
+				// A coordinator works in an empty folder of its own: it has no changes, terminal or files to link to.
+				...(project?.role === 'coordinator' ? {} : {
+					sideLinks: {
+						view: () => ({ place: path.basename(workspace()?.folder ?? folder), added: changes.totals.added, removed: changes.totals.removed }),
+						onDidChange: listener => changes.onDidChange(listener),
+						open: link => this.openSideLink(record.id, link),
+					},
+				}),
 				terminal: this.chatTerminal(record.id, workspace, project?.role === 'coordinator'),
 				// An edit to a file another live agent in the folder has unreviewed changes in says so.
 				sharedFiles: {
@@ -1264,6 +1299,41 @@ export class AgentsView implements vscode.Disposable {
 	}
 
 	/** Open Terminal: the agent's terminal in its folder, or in each of a thread's repositories. */
+	/** A link in an agent's side column: its changes, page, terminal or files, beside its chat. */
+	private openSideLink(id: string, link: SideLink): void {
+		switch (link) {
+			case 'changes':
+				void this.openChanges(id);
+				break;
+			case 'terminal':
+				this.openTerminal(id);
+				break;
+			case 'browser':
+				void this.openBrowser(id);
+				break;
+			case 'files':
+				void this.openFiles(id);
+				break;
+		}
+	}
+
+	/** The Files link: the agent's Files page, in its side group. */
+	private async openFiles(id: string): Promise<void> {
+		await this.open(id);
+		await this.agentFiles.open(id);
+	}
+
+	/** The Browser link: the agent's page, or a blank page of the user's in the agent's side group. */
+	private async openBrowser(id: string): Promise<void> {
+		await this.open(id);
+		if (await this.browser?.revealAgentPage(id)) {
+			return;
+		}
+		const column = await agentColumn(id, this.live.get(id)?.panel, true);
+		await vscode.commands.executeCommand('_gemini.browser.openBlank', column).then(undefined, () =>
+			vscode.commands.executeCommand('workbench.action.browser.open'));
+	}
+
 	private openTerminal(id: string | undefined): void {
 		const record = id ? this.model.agent(id) : undefined;
 		const workspace = record && this.model.workspace(record.workspaceId);
@@ -1396,6 +1466,7 @@ export class AgentsView implements vscode.Disposable {
 			void this.transcripts.delete(node.record.id);
 			void this.checkpointFiles.delete(node.record.id);
 			this.browser?.closeAgent(node.record.id);
+			this.agentFilesLoaded?.close(node.record.id);
 			this.terminals.closeAgent(node.record.id);
 			this.teamTools?.forgetAgent(node.record.id);
 			this.index?.forgetAgent(node.record.id);
@@ -1457,6 +1528,7 @@ export class AgentsView implements vscode.Disposable {
 				void this.transcripts.delete(agent.id);
 				void this.checkpointFiles.delete(agent.id);
 				this.browser?.closeAgent(agent.id);
+				this.agentFilesLoaded?.close(agent.id);
 				this.terminals.closeAgent(agent.id);
 				this.teamTools?.forgetAgent(agent.id);
 				this.index?.forgetAgent(agent.id);

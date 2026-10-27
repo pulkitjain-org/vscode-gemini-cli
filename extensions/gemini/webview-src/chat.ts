@@ -44,6 +44,7 @@ import { openNewThread, showParentProject, showProjectPanel } from './project';
 import { pickedRepository, showProjectSettings } from './projectSettings';
 import { setRunState, setRunView } from './runButtons';
 import { updateOutline } from './promptNav';
+import { setSideLinks } from './sideLinks';
 import { appended, applyItem, isNearBottom, reset, setFoldWork, setStall, settleScroll, updateWorking } from './transcript';
 import { showBreakdown, showContext, showQuota, toggleUsage, updateUsage } from './usage';
 import { state, strings, ui, vscode } from './view';
@@ -205,6 +206,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'sharedPage':
 			setSharedPage(message.page);
+			break;
+		case 'sideLinks':
+			setSideLinks(message.links);
 			break;
 		case 'git':
 			setGit(message.git);

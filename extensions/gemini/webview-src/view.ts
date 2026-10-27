@@ -49,6 +49,7 @@ const reviewChip = byId('review-chip', HTMLButtonElement);
 export const ui = {
 	transcript: byId('transcript', HTMLElement),
 	outline: byId('outline', HTMLElement),
+	sideLinks: byId('side-links', HTMLElement),
 	status: byId('status', HTMLElement),
 	activity: byId('activity', HTMLElement),
 	activityLabel: within(byId('activity', HTMLElement), '.activity-label', HTMLElement),

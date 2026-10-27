@@ -443,6 +443,16 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		remove: vscode.l10n.t("Remove"),
 		sharedPage: vscode.l10n.t("Shared page: {0}"),
 		showSharedPage: vscode.l10n.t("Show the page ({0})"),
+		sideOn: vscode.l10n.t("On {0}"),
+		sideLinks: vscode.l10n.t("The agent's changes, browser, terminal and files"),
+		sideChanges: vscode.l10n.t("Changes"),
+		sideChangesTip: vscode.l10n.t("Review the agent's changes: {0} lines added, {1} removed"),
+		sideBrowser: vscode.l10n.t("Browser"),
+		sideBrowserTip: vscode.l10n.t("Show the agent's page in the browser, or open a new one"),
+		sideTerminal: vscode.l10n.t("Terminal"),
+		sideTerminalTip: vscode.l10n.t("Open a terminal in the agent's folder"),
+		sideFiles: vscode.l10n.t("Files"),
+		sideFilesTip: vscode.l10n.t("Browse the agent's files"),
 		stopSharing: vscode.l10n.t("Stop sharing this page"),
 		fileTooLarge: vscode.l10n.t("{0} is too large to send."),
 		attachFiles: vscode.l10n.t("Attach files. You can also drop files here; hold Shift when dragging from the Explorer."),
@@ -471,6 +481,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 	<svg class="defs" aria-hidden="true"><linearGradient id="gemini-spark-gradient" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f8df7"/><stop offset=".55" stop-color="#9b72cb"/><stop offset="1" stop-color="#d96570"/></linearGradient></svg>
 	<main id="transcript" class="transcript"></main>
 	<nav id="outline" class="prompt-outline" hidden></nav>
+	<nav id="side-links" class="side-links" hidden></nav>
 	<div id="announce" class="announce" aria-live="polite"></div>
 	<div id="dock" class="dock">
 		<button type="button" id="scroll-down" class="scroll-down" hidden><i class="codicon codicon-arrow-down" aria-hidden="true"></i><i class="codicon codicon-chevron-down" aria-hidden="true"></i><span class="scroll-down-label"></span></button>

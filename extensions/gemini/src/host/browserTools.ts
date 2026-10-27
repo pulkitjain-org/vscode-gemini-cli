@@ -201,6 +201,19 @@ export class BrowserTools implements vscode.Disposable {
 		return !!page && await run<boolean>('_gemini.browser.reveal', agent, page.pageId).catch(() => false) === true;
 	}
 
+	/**
+	 * Brings `agent`'s page to the front, for its chat's Browser link: the
+	 * page shared with it, else the newest it opened. False when it has none.
+	 */
+	async revealAgentPage(agent: string): Promise<boolean> {
+		if (await this.revealSharedPage(agent)) {
+			return true;
+		}
+		const pages = await run<string[]>('_gemini.browser.pages', agent).catch(() => []);
+		const newest = pages.at(-1);
+		return !!newest && await run<boolean>('_gemini.browser.reveal', agent, newest).catch(() => false) === true;
+	}
+
 	/** Gives the page shared with `agent` back to the user, still open: the × on its chip. */
 	async stopSharing(agent: string): Promise<void> {
 		const page = this.shared.get(agent);
