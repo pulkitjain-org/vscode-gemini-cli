@@ -45,6 +45,15 @@ Hooks are commands the CLI runs at set points: before or after a tool, when a tu
 
 **Memory** lists the `GEMINI.md` files the CLI loads for the folder, including those in subfolders and extensions. **Add Memory** adds a line to your own or the project's `GEMINI.md`. The page also opens or creates your project's rules (`GEMINI.md`, or the name in `context.fileName`) and your personal rules (`~/.gemini/GEMINI.md`).
 
+## Trusted folders
+
+**Trusted Folders** lists every rule in the Gemini CLI's trust file, `~/.gemini/trustedFolders.json`, in plain words: **Trusted**, with the repository's agents' branches; **Trusted, with subfolders**, naming the repositories inside; and **Never trust**. A rule added in the terminal or by hand says so. GeminiCode's own two rules show too and can't be removed: its project coordinators' folder is **Trusted by GeminiCode**, and merge request checkouts are **Never trusted**.
+
+- **Remove** deletes a rule.
+- **Trust Folder...**, **Trust a Parent Folder...** and **Never Trust a Folder...** add one.
+
+Changes go to the [audit log](team-tools.md#audit-log), and agents pick them up once they finish their current work. See [Folder trust](review.md#folder-trust).
+
 ## Gemini CLI settings
 
 Four of the CLI's own settings, in your personal `~/.gemini/settings.json`:

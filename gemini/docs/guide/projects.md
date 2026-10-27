@@ -13,7 +13,7 @@ A project hands a larger piece of work to a team of agents. You talk to a **coor
 The coordinator plans the work and starts a thread for each part.
 
 > [!NOTE]
-> The first time, GeminiCode asks to trust the folders where coordinators run (`~/.geminicode/projects`) and where threads check out their branches (`~/.geminicode/worktrees/<repository>`). The Gemini CLI loads a project's tools only in trusted folders.
+> A project needs a repository the Gemini CLI trusts, since the CLI loads a project's tools only in trusted folders. The first time you pick a folder for agents, GeminiCode asks once (see [Folder trust](review.md#folder-trust)). Coordinators run in `~/.geminicode/projects`, which GeminiCode trusts itself, and threads check out their branches in `~/.geminicode/worktrees/<repository>`, which is trusted along with the repository.
 
 ![The coordinator starting two threads, whose cards update as they work](../../site/media/showcase-projects-dark.webp "clip")
 
@@ -31,7 +31,7 @@ If a coordinator turn fails, for example on a quota or network error, its error 
 
 ## Threads
 
-Each thread shows as a card in the project chat with its state, branch, changed lines and time, and updates in place. Click its title, or **Open**, to open its chat in a tab of its own. A thread's questions and permission requests stay in its own chat (**Open to answer**).
+Each thread shows as a card in the project chat with its state, branch, changed lines and time, and updates in place. Click its title, or **Open**, to open its chat in a tab of its own. A thread's questions and permission requests stay in its own chat (**Open to Answer**). A line of three steps on the card, **In the thread**, **Trying in your workspace** and **Kept**, shows where its work is.
 
 ![Thread cards in the project chat, with the side panel counting threads by state](../../site/media/project-threads-dark.webp)
 
@@ -41,7 +41,7 @@ When the coordinator passes a thread a note while the thread is working, the not
 
 ### How many threads run at once
 
-At most four of a project's threads work at once (`gemini.projects.maxRunningThreads`, which your administrator can lock). A thread started beyond that, by you or the coordinator, waits: the side panel lists it as waiting, with **Starts when a running thread finishes** and how many run, and it starts on its own when one finishes its turn, is merged or is undone. Notes the coordinator sends it meanwhile wait with it. A thread that is planned or done doesn't count as running.
+At most four of a project's threads work at once (`gemini.projects.maxRunningThreads`, which your administrator can lock). A thread started beyond that, by you or the coordinator, waits: the side panel lists it as waiting, with **Starts when a running thread finishes** and how many run, and it starts on its own when one finishes its turn, is merged or is removed. Notes the coordinator sends it meanwhile wait with it. A thread that is planned or done doesn't count as running.
 
 When today's Gemini quota is over 90% used, as the usage meter in the status bar reads it, new threads wait too: a banner in the side panel says how many it holds and when the quota resets. They start when it resets, or at once with **Start Anyway**. A sign-in with an API key has no quota to read, so nothing waits for it.
 
@@ -49,7 +49,7 @@ When today's Gemini quota is over 90% used, as the usage meter in the status bar
 
 Choose **New thread** in the project chat's **+** menu, or **New Thread** on the project's row in the agent list. Give it a title, what it should do, a branch and a model. It starts at once, and the coordinator hears about it afterwards.
 
-Tick **Plan first** to have it write a short plan and wait for **Approve plan** before changing files.
+Tick **Plan first** to have it write a short plan and wait for **Approve Plan** before changing files.
 
 ![The New thread dialog with a title, a brief, a branch and Plan first](../../site/media/project-new-thread-dark.webp)
 
@@ -57,17 +57,30 @@ Tick **Plan first** to have it write a short plan and wait for **Approve plan** 
 
 **Fork Agent** works on a thread too: the split-arrows icon on its row, the row's right-click menu, the **+** menu, `/fork`, or **Fork** at the end of any reply. The fork is a new thread in the same project, on a new branch made from the thread's branch with its uncommitted changes, and starts with the thread's conversation (whole, compacted or the conversation only). It gets a card in the project chat, and the coordinator is told about it with your next message. A thread that works in several repositories can't be forked.
 
-## Merge back, review or undo
+## Try, keep or take back
 
-When a thread finishes with changes, its card offers:
+When a thread finishes with changes, its card offers **Try in Workspace** and **Review Changes**. **Review Changes** opens the thread's changes as a diff and leaves your workspace alone.
 
-| Button | What it does |
-| --- | --- |
-| Merge back | Merges the thread's branch into the branch your folder has checked out. The thread is then resolved. |
-| Review changes | Opens the thread's changes, to keep or undo each one. |
-| Undo thread | Removes the thread's branch and folder. |
+**Try in Workspace** copies the thread's changes into your own checkout of the repository as unstaged files, so your local server and tests run with them. Nothing is committed, staged or merged: your branch, its index and HEAD stay as they are. The card's line says how many files are in your workspace, and the status bar shows **Trying:** and the thread's name; click it for the same choices as the card. In Source Control, the tried files carry a **T**.
 
-A thread that finished without changes, such as an assessment, offers **Open** to read its answer. Once a thread is merged, the coordinator starts a new thread for further work, and reopens a resolved one only when you ask.
+![A thread's card while its work is tried in your workspace, with Keep Changes and Take Back](../../site/media/try-workspace-dark.webp)
+
+While you try a thread's work:
+
+- **Ask for changes in the thread.** When its turn ends, your workspace updates by itself, and the card counts the updates.
+- **Edit the files yourself.** Your edits stay. **Send My Edits to the Thread** copies them into the thread's folder, so its next turn builds on them.
+- **Keep Changes** makes the changes yours and finishes the thread. They stay unstaged; commit them when you're ready. Committing the tried files yourself keeps them too.
+- **Take Back** removes the thread's changes from your workspace. Edits you made yourself stay, and **Try in Workspace** brings the changes back.
+
+When the thread and you changed the same lines of a file, the file gets conflict markers and updating pauses: **Open the Conflict** opens it, and updating carries on once it's resolved. A file that can't be merged with yours (a binary file, a link, or one deleted on one side) is left as you have it, and the card names it. A file with unsaved edits updates when you save it. One agent's work is tried in a workspace at a time: trying another offers **Take Back and Try**.
+
+The card's **More** menu holds **How Trying Works**, **Open Terminal in Thread Folder**, **Run Checks There**, **Discard Changes…**, **Restore Discarded Work** and **Remove Thread…**. **Discard Changes…** puts the thread's folder back where it started and takes its changes out of your workspace; the work is saved in git, under `refs/geminicode/discarded/`, so **Restore Discarded Work** brings it back until you remove the thread. **Remove Thread…** deletes the thread with its folder and branch; while you try its work, it asks first whether to keep the changes or take them back.
+
+A thread that finished without changes, such as an assessment, offers **Open** to read its answer. Once a thread is kept, the coordinator starts a new thread for further work, and reopens a resolved one only when you ask.
+
+### Merge commits instead
+
+Set `gemini.agents.mergeBack` to `commit` to have the card offer **Merge Back** in place of **Try in Workspace**. It commits the thread's work on its branch and merges the branch into the branch your folder has checked out, and the thread is then resolved.
 
 ![A finished thread card with Merge back, Review changes and Undo thread](../../site/media/project-merge-dark.webp)
 
@@ -78,7 +91,7 @@ A project can hold more than one repository, such as a content site and the app 
 - Each thread gets a worktree of each repository it needs, side by side in its folder, on the same branch name.
 - The coordinator picks the repositories for each thread from what you asked, and asks you when it can't tell. A thread can also add another repository itself mid-task.
 - When you start a thread yourself, tick the repositories it works in.
-- **Merge back** asks which repository's work to merge. The thread stays open until every repository with changes is merged or undone.
+- **Try in Workspace** tries each repository's work in your checkout of that repository. With merge commits, each repository has its own **Merge Back** on the card, and the thread stays open until every repository with changes is merged.
 
 ## Project settings and memory
 

@@ -55,10 +55,10 @@ export const featurePages: readonly FeaturePage[] = [
 		lead: 'Each agent is a tab with its own chat, files and changes, in the folder it works in or on a branch of its own. A local index of every workspace lets agents go straight to the code that matters, instead of reading file by file.',
 		hero: { name: 'showcase-work', alt: 'An agent at work in Agents layout: the agent list on the left, its chat in the middle and its changes on the right', clip: true },
 		steps: [
-			{ title: 'Describe the task', body: 'Type it on Home and press Return. Tick **On its own branch** to give the agent a copy of the repository on a new branch.' },
+			{ title: 'Describe the task', body: 'Type it on Home and press Return. **Here** works in your folder, **On Its Own Branch** gives the agent a copy of the repository on a new branch, and **To a Project** hands the task to a project.' },
 			{ title: 'Watch, or step away', body: 'A status dot per agent: a spinner while it works, amber when it waits for you, green when done. A Mac notification says when one needs you.' },
 			{ title: 'Review its changes', body: 'Every file it changed is in Changes, beside its chat. Keep or undo each change in the file, or all at once.' },
-			{ title: 'Bring the work back', body: '**Merge Back** merges an agent\'s branch into yours, and offers to remove the agent with its branch and folder.' },
+			{ title: 'Bring the work back', body: '**Merge Back** puts an agent\'s changes in your checkout, unstaged, to run and test. **Keep Changes** makes them yours; **Take Back** removes them.' },
 		],
 		sections: [
 			{
@@ -88,6 +88,8 @@ export const featurePages: readonly FeaturePage[] = [
 			'Agents keep to the folder they work in, and can\'t read secret files such as `.env`, private keys or git-ignored files.',
 			'The index never leaves your Mac. Secret files, binaries and git-ignored files are never indexed.',
 			'While any agent works, the Mac doesn\'t go to sleep.',
+			'The first time you pick a folder for agents, GeminiCode asks once whether to trust it. **Agent Setup** lists every trust rule.',
+			'**Archive** puts an agent aside with its conversation and branch, and its next prompt brings it back.',
 		],
 		docs: [
 			{ href: 'agents.html', label: 'Agents' },
@@ -100,14 +102,14 @@ export const featurePages: readonly FeaturePage[] = [
 	{
 		slug: 'chat-and-review',
 		name: 'Chat and review',
-		summary: 'Prompting, Plan mode, reactions, approvals, and Keep, Undo and Rewind.',
+		summary: 'Prompting, Plan Review, reactions, approvals, and Keep, Undo and Rewind.',
 		description: 'Prompt Gemini agents in GeminiCode, steer them while they work, run their commands, and keep, undo or rewind every change they make.',
 		headline: ['Ask in plain words.', 'Review every change.'],
 		lead: 'The chat holds everything a prompt needs: files and context, the model, the approval mode and your slash commands. Every command asks before it runs, and every change an agent makes can be kept, undone or rewound.',
 		hero: { name: 'showcase-review', alt: 'Keeping an agent\'s edits one by one, with Keep and Undo above each change', clip: true },
 		steps: [
 			{ title: 'Write the prompt', body: '`@` adds files, ⌘L the selection, and you can drop in files, images and PDFs. **Enhance prompt** turns plain words into a precise prompt.' },
-			{ title: 'Plan first, if you like', body: 'In Plan mode the agent reads and writes a plan, and changes nothing until you press **Build This Plan**.' },
+			{ title: 'Plan first, if you like', body: 'In Plan mode the agent reads and writes a plan. **Review Plan** opens it to edit and comment on, and nothing changes until you press **Build This Plan**.' },
 			{ title: 'Approve what runs', body: 'A command or an edit shows a card first: allow it once, for the session, or reject it. Pick a looser mode when you trust the task.' },
 			{ title: 'Keep or undo', body: 'Each change shows in its file with **Keep** and **Undo** above it. A reply that changed files undoes in one click, and **Rewind** goes back to before any message.' },
 		],
@@ -124,7 +126,7 @@ export const featurePages: readonly FeaturePage[] = [
 			},
 			{
 				title: 'Steer it while it works',
-				body: ['Spot the agent heading the wrong way? Type while it works and press Return: the chat stops between steps, never mid-command, and the agent carries on with your message. ⌘Return queues a message for after the turn instead, and each waiting message can be sent now, edited or removed.'],
+				body: ['Spot the agent heading the wrong way? Type while it works and press Return: your message goes in at the next safe point, after the tool call it\'s running, and the agent carries on with it. If that takes a while, **Stop Now** is there. ⌘Return queues a message for after the turn instead, and each waiting message can be sent now, edited or removed.'],
 				media: { name: 'queue', alt: 'The composer while an agent runs a command, with one message sending after the current step and another queued for after the turn' },
 			},
 			{
@@ -148,6 +150,14 @@ export const featurePages: readonly FeaturePage[] = [
 				media: { name: 'showcase-plan', alt: 'An agent in Plan mode writing a plan that ends with Build This Plan', clip: true },
 			},
 			{
+				title: 'Review the plan',
+				body: [
+					'**Review Plan** opens the plan beside the chat, one section at a time. Click a section to edit it, or comment on it the way you would on a pull request.',
+					'**Send Comments to Gemini** sends them all at once. The agent revises the plan, and the page marks each section that changed.',
+				],
+				media: { name: 'showcase-plan-review', alt: 'Comments on two sections of a plan sent to Gemini, and the revised plan with the changed sections marked', clip: true },
+			},
+			{
 				title: 'Asks first',
 				body: ['Commands, edits outside the agent\'s folder and writes to your team\'s tools show a permission card with exactly what will run. The actions that are hard to take back ask every time.'],
 				media: { name: 'showcase-wait', alt: 'An agent asking to run npm test, the test run after Allow once, and its summary', clip: true },
@@ -158,6 +168,8 @@ export const featurePages: readonly FeaturePage[] = [
 			'Select code and press ⌘I to change it in place, or let Gemini write the commit message.',
 			'Replies colour code like the editor and typeset math.',
 			'Right-click in any terminal for **Send to Gemini**, or press ⌘I there to ask Gemini for a command.',
+			'⌃⌘I puts the cursor in the chat, ⌘Esc stops the agent, ⌘. changes the approval mode and ⌥⌘. the model.',
+			'A failed turn says what went wrong in plain words, with **Retry**, **Switch Model** or **Sign In** right there.',
 		],
 		docs: [
 			{ href: 'chat.html', label: 'Chat and prompting' },
@@ -169,15 +181,15 @@ export const featurePages: readonly FeaturePage[] = [
 		slug: 'projects',
 		name: 'Projects',
 		summary: 'A coordinator that splits larger work into threads.',
-		description: 'GeminiCode Projects: a coordinator splits larger work into threads, each a Gemini agent on its own branch, that you merge back, review or undo.',
-		headline: ['One chat for the whole job.', 'Threads you can merge.'],
+		description: 'GeminiCode Projects: a coordinator splits larger work into threads, each a Gemini agent on its own branch, that you try in your checkout and keep.',
+		headline: ['One chat for the whole job.', 'Threads you try before you keep.'],
 		lead: 'Describe larger work in a project chat. Its coordinator splits it into threads, each an agent on its own branch, passes your follow-ups to the right one, and keeps track of where each stands.',
 		hero: { name: 'showcase-projects', alt: 'The coordinator starting two threads, whose cards update as they work', clip: true },
 		steps: [
 			{ title: 'Describe the work', body: 'The coordinator answers with a plan of threads, or starts them straight away.' },
 			{ title: 'Threads work side by side', body: 'Each thread is an agent on a new branch in a worktree of its own, with its card in the project chat updating as it works.' },
 			{ title: 'Plan first, when it matters', body: 'A thread can wait for your **Approve plan** before it changes a file.' },
-			{ title: 'Merge, review or undo', body: 'A finished card has **Merge back**, **Review changes** and **Undo thread**.' },
+			{ title: 'Try, then keep', body: '**Try in Workspace** puts a finished thread\'s changes in your checkout. **Keep Changes** makes them yours; **Take Back** removes them.' },
 		],
 		sections: [
 			{
@@ -191,9 +203,12 @@ export const featurePages: readonly FeaturePage[] = [
 				media: { name: 'project-new-thread', alt: 'The New thread dialog with a title, a brief, a branch and Plan first' },
 			},
 			{
-				title: 'Merge back',
-				body: ['When a thread is done, **Merge back** brings its branch into yours, **Review changes** opens its diff, and **Undo thread** throws its work away.'],
-				media: { name: 'project-merge', alt: 'A finished thread card with Merge back, Review changes and Undo thread' },
+				title: 'Try it in your workspace',
+				body: [
+					'When a thread is done, **Try in Workspace** copies its changes into your checkout as unstaged files. Run the app and the tests as you would with your own work. Your index and HEAD are never touched.',
+					'Ask the thread for a fix and your workspace follows its next turn. **Keep Changes** makes the work yours, with nothing staged or committed, and **Take Back** removes it, leaving your own edits alone.',
+				],
+				media: { name: 'try-workspace', alt: 'A finished thread card in the project chat, trying its changes in the workspace, with Keep Changes, Take Back and Ask for Changes' },
 			},
 		],
 		notes: [
@@ -201,6 +216,8 @@ export const featurePages: readonly FeaturePage[] = [
 			'Project instructions and context files are read by the coordinator and every thread.',
 			'Write to the coordinator while it works: your message goes when its turn ends. A thread shows the coordinator\'s notes the same way.',
 			'**Fork Agent** on a thread starts a new thread from its conversation, on a branch of its own.',
+			'Up to four threads of a project work at once, and the rest wait their turn. Near the end of the day\'s quota, new threads wait for it to reset.',
+			'To merge a thread with a commit instead of trying it, set `gemini.agents.mergeBack` to `commit`.',
 			'Projects are on by default. Turn them off with `gemini.projects.enabled`.',
 		],
 		docs: [
@@ -244,10 +261,10 @@ export const featurePages: readonly FeaturePage[] = [
 	{
 		slug: 'team-tools',
 		name: 'Connected tools',
-		summary: 'Jira, GitLab, SonarQube, Snyk and Figma, from ticket to merge.',
-		description: 'Connect Jira, GitLab, SonarQube, Snyk and Figma to GeminiCode. Go from a ticket to a merged merge request, and review merge requests with Gemini.',
+		summary: 'Jira, Confluence, GitLab, SonarQube, Snyk and Figma, from ticket to merge.',
+		description: 'Connect Jira, Confluence, GitLab, SonarQube, Snyk and Figma to GeminiCode. Go from a ticket to a merged merge request, and review it with Gemini.',
 		headline: ['From ticket to merge request.', 'Without leaving the editor.'],
-		lead: 'Connect Jira, GitLab, SonarQube, Snyk and Figma with your own account. Home shows your tickets and merge requests. Start an agent from a ticket, open its merge request, fix the pipeline and the comments, review a teammate\'s work with Gemini, and merge when GitLab\'s checks pass.',
+		lead: 'Connect Jira, Confluence, GitLab, SonarQube, Snyk and Figma with your own account. Home shows your tickets and merge requests. Start an agent from a ticket, open its merge request, fix the pipeline and the comments, review a teammate\'s work with Gemini, and merge when GitLab\'s checks pass.',
 		hero: { name: 'showcase-mr-review', alt: 'Gemini\'s review of a merge request, a comment of your own with a suggested change, and the review posted', clip: true },
 		steps: [
 			{ title: 'Connect', body: 'Paste a token per tool in **Connections**. A checked-in `.gemini/geminicode-tools.json` fills in the addresses for your team.' },
@@ -258,7 +275,7 @@ export const featurePages: readonly FeaturePage[] = [
 		sections: [
 			{
 				title: 'Home',
-				body: ['**Needs you** lists what waits on you across the tools: an agent asking permission, a failed pipeline, a merge request that can merge, a review request. Below it, your tickets by sprint and your merge requests with their pipelines and approvals.'],
+				body: ['**Needs you** lists what waits on you across the tools, most urgent first: an agent asking permission, a reply you owe, a failed pipeline, a merge request that can merge, a review request. Below it, your tickets by sprint, one group per Jira site, and your merge requests with their pipelines and approvals.'],
 				media: { name: 'home', alt: 'Home with the Start Agent composer, Needs you, My tickets and Merge requests' },
 			},
 			{
@@ -274,8 +291,17 @@ export const featurePages: readonly FeaturePage[] = [
 				body: ['Write a Jira comment in Markdown, mention people with @, drop in screenshots and choose who can see it. It is posted as you, with Jira\'s own formatting.'],
 				media: { name: 'jira-comment', alt: 'A Jira comment with formatting, a mention and an attached screenshot' },
 			},
+			{
+				title: 'Draft Confluence pages',
+				body: [
+					'Ask an agent to update a page and it drafts a new version. The **Review Page** shows the draft against the page as it is now, and you keep or undo each change, or edit it yourself.',
+					'**Publish Changes** sends only what you kept. Tables, mentions, macros and images the agent can\'t write stay as they are, and edits someone made to the page in the meantime are merged in.',
+				],
+				media: { name: 'confluence-review', alt: 'A Confluence draft on the Review Page, with the kept changes, a table of owners left as it is, and Publish Changes' },
+			},
 		],
 		notes: [
+			'Connect several Jira sites. Each ticket goes to the site its link names, and Home groups tickets by site.',
 			'Tokens stay in the macOS keychain; agents never see them. Every call runs from your Mac, over your VPN.',
 			'Moving a ticket, logging time, opening a merge request and merging ask every time.',
 			'Every write to Jira or GitLab, by an agent or by you, is recorded in an audit log on your Mac.',

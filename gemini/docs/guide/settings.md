@@ -33,7 +33,8 @@ See [Review and safety](review.md) for how approvals work.
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `gemini.agents.ownBranch` | off | Start every new agent on its own branch, in its own folder under `~/.geminicode/worktrees`: Home's chooser starts on **On Its Own Branch**. |
-| `gemini.agents.defaultMode` | `default` | The approval mode new agents start in: `default`, `autoEdit`, `plan` or `yolo`. Agent Home's mode picker starts on it too. A mode your administrator turns off falls back to Default. |
+| `gemini.agents.mergeBack` | `try` | What finishing an agent on its own branch, or a project's thread, does with its work: `try` copies its changes into your checkout as unstaged files until you keep them or take them back (**Try in Workspace**); `commit` commits the work on its branch and merges the branch into yours (**Merge Back**). See [Agents on their own branch](agents.md#agents-on-their-own-branch). |
+| `gemini.agents.defaultMode` | `default` | The approval mode new agents start in: `default`, `autoEdit`, `plan` or `yolo`. Home's mode picker starts on it too. A mode your administrator turns off falls back to Default. |
 | `gemini.agents.worktreeSetup` | empty | A command run in each new agent branch's folder before the agent starts, such as `npm ci`. Without it, a repository's own `.gemini/worktree-setup.sh` runs, once you have seen it and chosen **Run Once** or **Run and Remember**; a changed script asks again. |
 | `gemini.agents.allWorkspaceFolders` | off | Let every agent read and edit all folders of a multi-folder window, not only its own. |
 | `gemini.projects.enabled` | on | [Projects](projects.md): a coordinator that splits larger work into threads. |
@@ -81,6 +82,7 @@ Inline edit (<kbd>⌘I</kbd> in the editor), commit messages, Enhance prompt's r
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `gemini.team.openMergeRequestsIn` | `ask` | Where a merge request opens when you click it: GeminiCode's browser or your default browser. |
+| `gemini.figma.codeConnect` | off | Let Figma look up Code Connect mappings when an agent reads a design. Off, Figma answers faster. |
 | `gemini.team.runTeamServers` | off | Run the tools' own MCP servers behind the team tools: the team's Jira and GitLab servers and SonarQube's in Docker, and Snyk's from your Snyk CLI. **Take Over Both Servers** in Connections turns it on. See [Your team's own servers](team-tools.md#your-teams-own-servers). |
 
 ## Advanced

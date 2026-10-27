@@ -294,7 +294,7 @@ The diagram describes the brief's rules, not code: the model applies them. The g
 | `start_thread` needs a title and a brief | Threads with nothing to do | `ProjectHub.call` |
 | Notes queue while a thread is busy | Lost follow-ups | `Projects.deliver` |
 | Approvals stay with the thread | The coordinator approving for you | Permission requests go to the thread's own chat |
-| Merging is yours | The coordinator merging or undoing work | Merge back, Review changes and Undo thread are buttons on the card, not tools |
+| Keeping work is yours | The coordinator merging, keeping or undoing work | Try in Workspace, Keep Changes and Take Back (or Merge back, with `gemini.agents.mergeBack` set to `commit`) and Undo thread are buttons on the card, not tools |
 | A named Flash model | An extra routing call per wake, and a slower, costlier hub | `coordinatorModel` |
 
 On a real account with `gemini-3.8-flash`, the coordinator made no edits or commands of its own and handled all five scripted asks as expected ([FINDINGS.md](FINDINGS.md#a-projects-coordinator-and-threads)).
@@ -315,14 +315,16 @@ stateDiagram-v2
     planned --> working: Approve plan
     working --> done: turn ends
     done --> working: a note or your message
-    done --> resolved: Merge back
+    done --> done: Try in Workspace, Take Back
+    done --> resolved: Keep Changes, or Merge back
     resolved --> working: reopened on your request
     done --> [*]: Undo thread or Remove
     resolved --> [*]: Remove with its branch
 ```
 
 - **Queued** threads have no agent yet. At most `gemini.projects.maxRunningThreads` threads (4 by default, lockable by policy) are starting, working or waiting on the user at once; a planned or done thread doesn't count. Above 90% of today's quota (`quotaHold`, from the usage meter's most used model), new threads are queued too, until the quota reads lower or the user presses **Start Anyway**, which lifts the quota hold for the threads queued then. A queued thread gets its id at once, so `start_thread` answers with it and `message_thread` notes wait with it; `read_thread` says it hasn't started. It starts in the order queued, when a running thread stops running, is merged or removed, or the limits change (`ProjectHub.startQueued`).
-- **Resolved** is kept on the agent's record, so a merged thread stays resolved after a reload.
+- **Trying** is not a state of its own: a done thread whose changes are in the user's checkout carries `workspace: 'trying'`, and its card shows the step. A turn the thread takes meanwhile updates the checkout when it ends. **Take Back** clears it, and **Keep Changes** resolves the thread.
+- **Resolved** is kept on the agent's record, so a kept or merged thread stays resolved after a reload.
 - **Undo thread** removes the thread's branch and worktree. Its card says it was removed, and the hub stops listing it.
 - **Merge back** checks that the thread is idle before and after its dialog, and runs once per thread at a time.
 

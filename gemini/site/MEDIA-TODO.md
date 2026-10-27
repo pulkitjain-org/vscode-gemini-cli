@@ -17,9 +17,10 @@ Capture from the real app, against demo data, so no real account, ticket, name o
 
 | Taken on | Against | Media |
 | --- | --- | --- |
+| 2026-10-27 | The demo repository, and a demo Jira (two sites), Confluence, GitLab and SonarQube signed in as Sam Rivera | `plan-review` and the `showcase-plan-review` clip (Plan Review with comments, sent and revised), `try-workspace` (a project thread tried in the workspace), `confluence-review` (a Confluence draft on the Review Page), and `home` retaken for the Here / On Its Own Branch / To a Project chooser and both Jira sites |
 | 2026-10-25 | The demo repository | `reactions` (the reaction bar on a reply) and `run-command` (a reply's shell block with Run and its result), both for the Chat and review feature page |
 | 2026-10-23 | The demo repository | `fork-dialog`, `queue`, `compact-line` |
-| 2026-10-23 | A demo Jira, GitLab and SonarQube with made-up people and tickets, signed in as the demo's Sam Rivera | The feature pages' shots `home`, `index-page`, `files`, `docs/plus-menu`, `mr-review-diff` and `jira-comment`, and the `showcase-work` and `showcase-mr-review` clips |
+| 2026-10-23 | A demo Jira, GitLab and SonarQube with made-up people and tickets, signed in as the demo's Sam Rivera | The feature pages' shots `index-page`, `files`, `docs/plus-menu`, `mr-review-diff` and `jira-comment`, and the `showcase-work` and `showcase-mr-review` clips |
 | 2026-10-19 | | Everything else |
 
 The clips' dates are also in `clipDates` in `build.mts`, which the site's video data uses. Keep the two in step.

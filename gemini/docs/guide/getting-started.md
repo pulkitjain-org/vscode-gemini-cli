@@ -35,6 +35,7 @@ The **Gemini** item in the status bar shows the agent's state. Hover over it for
 
 Describe a task on **Home** and press Return. The agent opens in a tab of its own: it reads your code, asks before each edit and command, and shows every file it changes in the **Changes** panel on the right. Keep or undo each change when it's done.
 
+- The first time you pick a folder for agents, GeminiCode asks whether to trust it. See [Folder trust](review.md#folder-trust).
 - To give the agent its own branch, choose **On Its Own Branch** under the task before you press Return. See [Agents on their own branch](agents.md#agents-on-their-own-branch).
 - To start more agents, choose **New Agent** in the Agents pane, or press <kbd>⌥⌘N</kbd>.
 - Your terminal's `gemini` and GeminiCode share settings, sign-in and saved chats.

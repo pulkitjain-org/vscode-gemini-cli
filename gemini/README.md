@@ -11,15 +11,15 @@ This folder holds everything the fork adds besides its product code, which lives
 
 In a sentence each, with the guide page that covers it:
 
-- **Agents.** Several agents side by side, each in its own tab and folder, optionally on a branch of its own, and forkable when the work splits. [Agents](docs/guide/agents.md)
-- **Chat.** A composer with context, slash commands, Enhance prompt and Plan mode; send or queue messages while an agent works, react to replies with an emoji, and compact long chats. [Chat and prompting](docs/guide/chat.md)
+- **Agents.** Several agents side by side, each in its own tab and folder, optionally on a branch of its own whose work you try in your workspace before keeping it, and forkable when the work splits. [Agents](docs/guide/agents.md)
+- **Chat.** A composer with context, slash commands, Enhance prompt and Plan mode, whose plans you edit and comment on in Plan Review; send or queue messages while an agent works, react to replies with an emoji, and compact long chats. [Chat and prompting](docs/guide/chat.md)
 - **Review.** Approval modes, permission cards, Keep and Undo in the file, Rewind, inline edit and Review My Changes. [Review and safety](docs/guide/review.md)
 - **Terminal.** Each agent has a terminal; a reply's shell commands run there with one click, and terminal output goes back to Gemini. [Terminal](docs/guide/terminal.md)
-- **Projects.** A coordinator that splits larger work into threads, each an agent on its own branch, that you merge back, review or undo. [Projects](docs/guide/projects.md)
+- **Projects.** A coordinator that splits larger work into threads, each an agent on its own branch, whose work you try in your workspace and keep, or take back. [Projects](docs/guide/projects.md)
 - **Browser.** A browser agents can use, with Add to Gemini and notes on the page. [Browser](docs/guide/browser.md)
 - **Workspace index.** A local index of each workspace, and of attached docs, that agents search in one step. [Workspace index and docs](docs/guide/agents.md#workspace-index-and-docs)
-- **Team tools.** Jira, GitLab, SonarQube, Snyk and Figma with your own account, from ticket to merged merge request, and merge request reviews. [Team tools](docs/guide/team-tools.md)
-- **Setup and policy.** A managed Gemini CLI, Agent Setup for MCP servers, skills and rules, and settings an administrator can lock. [Getting started](docs/guide/getting-started.md), [Agent Setup](docs/guide/helpers.md), [Settings](docs/guide/settings.md)
+- **Team tools.** Jira (one site or several), Confluence, GitLab, SonarQube, Snyk and Figma with your own account, from ticket to merged merge request, merge request reviews, and Confluence pages agents draft for you to review and publish. [Team tools](docs/guide/team-tools.md)
+- **Setup and policy.** A managed Gemini CLI, folder trust asked once per repository, Agent Setup for MCP servers, skills, rules and trusted folders, and settings an administrator can lock. [Getting started](docs/guide/getting-started.md), [Agent Setup](docs/guide/helpers.md), [Settings](docs/guide/settings.md)
 
 ## What is in this folder
 
