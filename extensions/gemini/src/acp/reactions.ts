@@ -100,7 +100,7 @@ export function editedMeanings(setting: unknown): [string, string][] {
 	return [...meanings].filter((entry): entry is [string, string] => keys.has(entry[0]) && entry[1] !== undefined);
 }
 
-/** The reaction a message that is only `+` and one emoji (`+👍`) asks for, as Slack does; undefined for any other message. */
+/** The reaction a message that is only `+` and one emoji (a plus sign, then thumbs up) asks for, as Slack does; undefined for any other message. */
 export function reactionShortcut(text: string): string | undefined {
 	const match = /^\+\s*(\S+)$/u.exec(text.trim());
 	return match && isSingleEmoji(match[1]) ? match[1] : undefined;

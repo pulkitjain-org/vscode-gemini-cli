@@ -522,7 +522,7 @@ export class ChatController implements vscode.Disposable {
 			void this.research.run(research);
 			return;
 		}
-		// `+👍` alone reacts to the latest reply instead of being sent.
+		// `+` and one emoji alone reacts to the latest reply instead of being sent.
 		const shortcut = !project && !from && !attachments.length && reactionsOn() ? reactionShortcut(text) : undefined;
 		const latest = shortcut && this.transcript.items.findLast(item => item.kind === 'turnEnd');
 		if (shortcut && latest) {

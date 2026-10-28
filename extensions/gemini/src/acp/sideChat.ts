@@ -48,7 +48,7 @@ interface Block {
 
 function toolBlock(item: Extract<TranscriptItem, { readonly kind: 'toolCall' }>): Block {
 	// Which files a tool changed is short and often what a side question is about, so it stays when outputs go.
-	const changed = item.details.flatMap(detail => detail.type === 'diff' ? [`Changed ${detail.path} (+${detail.added} −${detail.removed})`] : []);
+	const changed = item.details.flatMap(detail => detail.type === 'diff' ? [`Changed ${detail.path} (+${detail.added} -${detail.removed})`] : []);
 	const head = [`[Tool call: ${item.title} (${item.status})${item.locations.length ? `, ${item.locations.map(l => l.path).join(', ')}` : ''}]`, ...changed].join('\n');
 	const output = item.details.flatMap(detail => detail.type === 'text' ? [detail.text + (detail.tail ? `\n…\n${detail.tail}` : '')] : []).join('\n');
 	if (!output.trim()) {

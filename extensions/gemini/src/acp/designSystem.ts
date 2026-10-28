@@ -371,7 +371,7 @@ export function designSystemFiles(read: DesignSystemRead, config: DesignSystemCo
 		'',
 		'| Component | Variants | Page |',
 		'| --- | --- | --- |',
-		...components.map(component => `| ${cell(component.name)} | ${cell(component.properties.map(p => `${p.name}: ${p.values.join(', ')}`).join('; ')) || '–'} | ${cell(component.page)} |`),
+		...components.map(component => `| ${cell(component.name)} | ${cell(component.properties.map(p => `${p.name}: ${p.values.join(', ')}`).join('; ')) || '-'} | ${cell(component.page)} |`),
 		'',
 	].join('\n');
 	const files: Record<string, string> = {

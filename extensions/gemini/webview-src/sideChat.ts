@@ -106,8 +106,8 @@ function build(): void {
 	panel.setAttribute('aria-label', text.title);
 	const head = el('div', 'side-chat-head');
 	position = el('span', 'side-chat-position');
-	const earlier = button('icon-button side-chat-step', '‹', () => step(-1), text.earlier);
-	const later = button('icon-button side-chat-step', '›', () => step(1), text.later);
+	const earlier = button('icon-button side-chat-step', '\u2039', () => step(-1), text.earlier);
+	const later = button('icon-button side-chat-step', '\u203A', () => step(1), text.later);
 	const close = button('icon-button side-chat-close', '×', () => closePanel(), text.close);
 	head.append(el('span', 'side-chat-title', text.title), el('span', 'side-chat-note', text.note), position, earlier, later, close);
 	body = el('div', 'side-chat-body');

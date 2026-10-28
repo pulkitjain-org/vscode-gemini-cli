@@ -34,14 +34,14 @@ const maxPages = 8;
 const scheme = 'geminicode-design-system';
 
 /** The entry a team file needs for a design system, which Copy Example puts on the clipboard. */
-const example = `"figma": {
-  "designSystem": {
-    "name": "Acme DS",
-    "file": "https://www.figma.com/design/…",
-    "pages": ["Foundations", "Components"],
-    "tokens": "src/styles/tokens.css"
-  }
-}`;
+const example = `"figma": ${JSON.stringify({
+	designSystem: {
+		name: 'Acme DS',
+		file: 'https://www.figma.com/design/...',
+		pages: ['Foundations', 'Components'],
+		tokens: 'src/styles/tokens.css',
+	},
+}, undefined, 2)}`;
 
 /**
  * Sync Design System: reads the design system the team's
