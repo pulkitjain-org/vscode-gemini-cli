@@ -8,6 +8,9 @@
 // stores) say to each other about a source.
 
 /** What to fetch: the page alone, pages under its path, or the whole site. */
+/** How many pages a source fetches when nothing says otherwise. */
+export const defaultMaxPages = 500;
+
 export type DocsScope = 'page' | 'prefix' | 'site';
 export type DocsRefresh = 'daily' | 'weekly' | 'manual';
 

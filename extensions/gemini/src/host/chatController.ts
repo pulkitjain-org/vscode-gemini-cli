@@ -19,7 +19,7 @@ import { buildModeAfterPlan, diffsOf, nextApprovalMode, dropOldest, lastPromptAt
 import type { StoredCheckpoints } from '../acp/checkpoints';
 import { buildPromptContent } from '../acp/promptContent';
 import { atSafePoint, PromptQueue, steeringNote, steerWaitMs, type PromptExtras } from '../acp/promptQueue';
-import { meaningOf, olderReplyExcerpt, reactionNote, reactionRule, routeReaction, type ReactionRef, type ReactionRequest } from '../acp/reactions';
+import { meaningOf, olderReplyExcerpt, reactionNote, reactionRule, reactionShortcut, routeReaction, type ReactionRef, type ReactionRequest } from '../acp/reactions';
 import { CoordinatorTurnFailed } from '../acp/projectHub';
 import { TeamCommandCancelled } from '../acp/teamCommandExpansion';
 import { cliHome, ConversationEntry, readCliConversation, readSessionMessages } from '../acp/cliSessions';
@@ -35,7 +35,7 @@ import { classifyTurnError, errorMessage, isContextOverflow, isModelTurnRefusal 
 import { chatProtocolVersion, FromWebview, ProjectPanel, ProjectRepoView, ProjectSettingsView, statusCommands, ToWebview, type ViewStall } from './chatProtocol';
 import { stallNotice, stopReasonActions, stopReasonNotice, toViewStatus, turnErrorNotice, type TurnErrorNotice } from './chatStatus';
 import type { DiffPreview } from './diffPreview';
-import { agentReactionsOn, onDidChangeReactions, reactionMeanings, reactionsOn, recentReactions, rememberReaction } from './chatReactions';
+import { agentReactionsOn, onDidChangeReactions, reactionMeanings, reactionsOn, recentReactions, rememberReaction, shownMeanings } from './chatReactions';
 import { preferredComposerHeight, rememberComposerHeight } from './modelPreference';
 import { onDidChangeThemeTokens, themeTokenColors } from './themeTokens';
 import { ChatAttachments } from './chat/chatAttachments';
@@ -498,6 +498,14 @@ export class ChatController implements vscode.Disposable {
 			await this.restoring;
 		}
 		const project = this.options.project;
+		// `+👍` alone reacts to the latest reply instead of being sent.
+		const shortcut = !project && !from && !attachments.length && reactionsOn() ? reactionShortcut(text) : undefined;
+		const latest = shortcut && this.transcript.items.findLast(item => item.kind === 'turnEnd');
+		if (shortcut && latest) {
+			extras.settle?.(true);
+			this.react(latest.id, shortcut, shortcut);
+			return;
+		}
 		if (project) {
 			if (this.busy) {
 				// The coordinator is working: the message waits for its turn to end, never stopping it.
@@ -624,7 +632,7 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	private postReactions(): void {
-		this.post({ type: 'reactions', on: !this.options.project && reactionsOn(), recents: recentReactions() });
+		this.post({ type: 'reactions', on: !this.options.project && reactionsOn(), recents: recentReactions(), meanings: shownMeanings() });
 	}
 
 	/** The agent's tried files the user edited and hasn't sent it (agentTries.ts): the message box offers to include them. */

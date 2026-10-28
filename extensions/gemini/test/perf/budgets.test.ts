@@ -37,7 +37,7 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// the queue strip and the trace readout added most of what came after. The review fixes took it to about
 	// 255 KB: notices with Retry and the stall notice, prefix approvals answered from the keyboard, trimmed tool
 	// output, the mode, Build and Commit menus, the context breakdown and the @ picker's new groups. The project
-	// settings panel (about 9 KB, project chats only) is the next candidate for a chunk of its own.
+	// settings panel moved to a chunk of its own (media/projectSettings.js), taking it to about 249 KB.
 	'media/chat.js': 260_000,
 	// Home's startup script, about 26 KB: Preview's renderer, the menus and the popups are files of their own.
 	// The dashboard (cards, Needs you, banners), the composer and the themed tooltips take most of it.
@@ -81,6 +81,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// A project thread's card, with its try steps, ⋯ menu and first-try guide, about 5 KB, loaded the first time a
 	// project chat shows a card.
 	'media/threadCard.js': 7_000,
+	// Project settings, about 12 KB with their own copy of the settings logic, loaded the first time a project chat opens them.
+	'media/projectSettings.js': 13_000,
 	// Home's menus (+, folder, mode, From Your Tools, a row's "...") with the menu class, about 7.6 KB, loaded once
 	// Home has settled or on the first click on a menu's button.
 	'media/homeMenus.js': 9_000,
@@ -92,6 +94,7 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// recorder moved to dist/pages.js and dist/onDemand.js, about 60 KB.
 	// More than one Jira site (routing a ticket to its site, Home's tickets by site) and Confluence's connection
 	// and agent tools' definitions added about 13 KB; Confluence's client, calls, drafts and Review Page are in dist/confluence.js.
+	// The Index page moving to dist/pages.js took it from about 1,206 KB to about 1,187 KB.
 	'dist/extension.js': 1_206_000,
 	// Project Helpers and Connections, about 96 KB, loaded the first time one is opened (src/pages.ts): their own code
 	// and their copy of jsonc-parser (about 17 KB), which edits the Gemini CLI's settings files keeping their comments.
@@ -101,8 +104,9 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// The team flows' page (teamFlowPanel.ts: Log Time, Move, Open Merge Request, Run Checks, a merge request review), about 9 KB,
 	// moved here from dist/extension.js and loaded with the first flow opened.
 	// An agent's Files page (agentFilesPage.ts, agentFiles.ts), about 7 KB, loaded the first time one opens.
-	// Sync Design System on Figma's row in Connections added about 0.4 KB.
-	'dist/pages.js': 146_000,
+	// Sync Design System on Figma's row in Connections added about 0.4 KB. The Index page with its docs suggestions
+	// (indexPage.ts, docs/suggest.ts), about 21 KB, moved here from dist/extension.js.
+	'dist/pages.js': 168_000,
 	// Confluence, about 27 KB, loaded the first time an agent or a page uses it (src/confluence.ts): its client, the
 	// agents' calls, the drafts and the Review Page's host, with publishing only the changes kept (draftReview.ts,
 	// blockMerge.ts) and the page's localized strings.

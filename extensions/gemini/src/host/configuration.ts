@@ -19,6 +19,15 @@ import { confirmToolGroups, teamToolsServerName } from '../acp/teamTools';
 
 export const configSection = 'gemini';
 
+/** When a workspace's index is first built (`gemini.index.buildOn`). */
+export type BuildOn = 'agentStart' | 'workspaceOpen' | 'manual';
+
+/** When an index is built (`gemini.index.buildOn`); an unknown value counts as the default. */
+export function indexBuildOn(): BuildOn {
+	const value = vscode.workspace.getConfiguration(configSection).get<string>('index.buildOn', 'agentStart');
+	return value === 'workspaceOpen' || value === 'manual' ? value : 'agentStart';
+}
+
 /** GeminiCode's own fields in the app's product.json. */
 export interface GeminiProductInfo {
 	/** The org default project (`geminiDefaultProjectId`), set by each build. */

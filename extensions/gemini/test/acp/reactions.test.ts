@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { isSingleEmoji, leadingReaction, meaningOf, reactionNote, reactionReport, reactionRule, replyExcerpt, resolveMeanings, routeReaction, withoutReactionNotes } from '../../src/acp/reactions';
+import { editedMeanings, isSingleEmoji, leadingReaction, meaningOf, reactionNote, reactionReport, reactionRule, reactionShortcut, replyExcerpt, resolveMeanings, routeReaction, withoutReactionNotes } from '../../src/acp/reactions';
 
 const meanings = resolveMeanings(undefined);
 const idle = { busy: false, buildPlan: false };
@@ -41,6 +41,17 @@ describe('resolveMeanings', () => {
 		expect(resolveMeanings(['👍']).size).toBe(4);
 		expect(resolveMeanings('👍').size).toBe(4);
 		expect(resolveMeanings(null).size).toBe(4);
+	});
+});
+
+describe('editedMeanings and reactionShortcut', () => {
+	it('lists only the meanings the setting gives, valid ones, built-ins it edits included', () => {
+		expect(editedMeanings({ '\u{1F680}': 'Go ahead, then commit.', '\u{1F44D}\u{FE0F}': 'Ship it.', 'two words': 'no', '\u{1F525}': '' })).toEqual([['\u{1F44D}', 'Ship it.'], ['\u{1F680}', 'Go ahead, then commit.']]);
+		expect([editedMeanings(undefined), editedMeanings(['x'])]).toEqual([[], []]);
+	});
+
+	it('takes a plus and one emoji as a reaction, nothing else', () => {
+		expect(['+\u{1F44D}', ' + \u{1F680} ', '+\u{1F44D}\u{1F44D}', '+1', 'great \u{1F44D}', '\u{1F44D}'].map(reactionShortcut)).toEqual(['\u{1F44D}', '\u{1F680}', undefined, undefined, undefined, undefined]);
 	});
 });
 

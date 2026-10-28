@@ -38,6 +38,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 	const emojiPicker = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'emojiPicker.js'));
 	const figmaDesign = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'figmaDesign.js'));
 	const threadCard = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'threadCard.js'));
+	const projectSettings = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'projectSettings.js'));
 	const strings: ChatStrings = {
 		placeholder: vscode.l10n.t("Ask Gemini anything about this workspace"),
 		fromCoordinator: vscode.l10n.t("From coordinator"),
@@ -534,7 +535,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			<div id="commit-box" class="usage-popover commit-box" role="dialog" hidden><label class="usage-heading" for="commit-message"></label><textarea id="commit-message" class="commit-message" rows="4" spellcheck="${spellCheckOn()}"></textarea><p class="usage-note commit-note" role="status"></p><div class="permission-actions"><button type="button" class="secondary commit-cancel"></button><button type="button" class="primary commit-confirm"></button></div></div>
 		</div>
 	</div>
-	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-fold-work="${foldWorkOn()}" data-emoji-picker="${emojiPicker}" data-figma-design="${figmaDesign}" data-thread-card="${threadCard}" data-reactions="${!project && reactionsOn()}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
+	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-fold-work="${foldWorkOn()}" data-emoji-picker="${emojiPicker}" data-figma-design="${figmaDesign}" data-thread-card="${threadCard}" data-project-settings="${projectSettings}" data-reactions="${!project && reactionsOn()}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
 </html>`;
 }
@@ -552,6 +553,9 @@ function reactionStrings(): ReactionStrings {
 		picker: vscode.l10n.t("Emoji"),
 		search: vscode.l10n.t("Search emoji"),
 		recent: vscode.l10n.t("Recent"),
+		withMeaning: vscode.l10n.t("With a meaning"),
+		readsIt: vscode.l10n.t("Gemini says in one line how it reads this, then acts on it"),
+		chipMeaning: vscode.l10n.t("Reaction {0}: {1}"),
 		noResults: vscode.l10n.t("No emoji found"),
 		groups: [
 			vscode.l10n.t("Smileys and emotion"),

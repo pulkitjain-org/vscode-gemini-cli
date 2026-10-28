@@ -2238,8 +2238,22 @@ button.reaction-line:focus-visible {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	height: 34px;
+	min-height: 40px;
 	border-top: 1px solid var(--gemini-border);
+}
+
+.emoji-footer-names {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+
+/* What the emoji asks Gemini to do, read before picking it. */
+.emoji-footer-meaning {
+	overflow: hidden;
+	font-size: 11px;
+	white-space: nowrap;
+	text-overflow: ellipsis;
 }
 
 .emoji-footer-emoji {

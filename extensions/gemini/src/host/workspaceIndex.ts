@@ -13,7 +13,7 @@ import { IndexClient } from '../acp/index/indexClient';
 import type { IndexerMethod, IndexerParams, IndexerResult, IndexSettings, IndexStatus } from '../acp/index/indexerProtocol';
 import { AttachedDocs, IndexMcpServer } from '../acp/indexMcp';
 import { hasIndex } from '../acp/index/indexPaths';
-import { configSection } from './configuration';
+import { configSection, indexBuildOn } from './configuration';
 import { IndexWatchers } from './indexWatchers';
 
 /** Where the documentation attached to folders comes from (docsSources.ts). */
@@ -23,7 +23,6 @@ export interface DocsProvider {
 }
 
 /** When an index is first built. */
-export type BuildOn = 'agentStart' | 'workspaceOpen' | 'manual';
 
 /**
  * Sent with an agent's first prompt in a folder whose index is built. On a
@@ -400,11 +399,6 @@ export function indexEnabled(): boolean {
 	return vscode.workspace.getConfiguration(configSection).get<boolean>('index.enabled', true);
 }
 
-/** When an index is built (`gemini.index.buildOn`); an unknown value counts as the default. */
-export function indexBuildOn(): BuildOn {
-	const value = vscode.workspace.getConfiguration(configSection).get<string>('index.buildOn', 'agentStart');
-	return value === 'workspaceOpen' || value === 'manual' ? value : 'agentStart';
-}
 
 /** The index settings for `folder`: `exclude` and `include` can differ per workspace folder. */
 export function indexSettings(folder: string): IndexSettings {

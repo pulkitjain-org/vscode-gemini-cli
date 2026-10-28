@@ -7,7 +7,7 @@
 // Recent row, kept in global state so every chat and window shares it.
 
 import * as vscode from 'vscode';
-import { resolveMeanings, withRecent } from '../acp/reactions';
+import { editedMeanings, resolveMeanings, withRecent } from '../acp/reactions';
 
 const recentKey = 'gemini.reactions.recent';
 let storage: vscode.Memento | undefined;
@@ -41,10 +41,15 @@ export function reactionMeanings(): ReadonlyMap<string, string | undefined> {
 	return resolveMeanings(vscode.workspace.getConfiguration('gemini').get<unknown>('chat.reactions.meanings'));
 }
 
-/** Calls `listener` with {@link reactionsOn} when `gemini.chat.reactions.enabled` changes. */
+/** The meanings the user or workspace gave, for the picker and chips to show. */
+export function shownMeanings(): [string, string][] {
+	return editedMeanings(vscode.workspace.getConfiguration('gemini').get<unknown>('chat.reactions.meanings'));
+}
+
+/** Calls `listener` with {@link reactionsOn} when `gemini.chat.reactions.enabled` or the meanings change. */
 export function onDidChangeReactions(listener: (on: boolean) => void): vscode.Disposable {
 	return vscode.workspace.onDidChangeConfiguration(e => {
-		if (e.affectsConfiguration('gemini.chat.reactions.enabled')) {
+		if (e.affectsConfiguration('gemini.chat.reactions.enabled') || e.affectsConfiguration('gemini.chat.reactions.meanings')) {
 			listener(reactionsOn());
 		}
 	});

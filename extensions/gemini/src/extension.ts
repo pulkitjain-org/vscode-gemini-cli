@@ -45,7 +45,6 @@ import { openTeamLink } from './host/teamLinks';
 import { WorkspaceFileIndex } from './host/workspaceFiles';
 import { WorkspaceIndex } from './host/workspaceIndex';
 import { DocsSources } from './host/docsSources';
-import { IndexPage } from './host/indexPage';
 import { IndexStatusBar } from './host/indexStatusBar';
 import { measureFolderContextCost } from './host/contextCostProbe';
 import { ContextMeasures } from './host/chat/chatContext';
@@ -152,7 +151,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	context.subscriptions.push(
 		workspaceIndex,
 		docsSources,
-		new IndexPage(context.extensionUri, workspaceIndex, docsSources, agentsView, service, context.globalState),
+		new LazyFeature(['gemini.index.open', 'gemini.index.rebuild', 'gemini.index.pause', 'gemini.index.addDocs'], () => new (pages().IndexPage)(context.extensionUri, workspaceIndex, docsSources, agentsView, service, context.globalState)),
 		new IndexStatusBar(workspaceIndex),
 		workspaceIndex.onDidChangeEnabled(() => agentsView.refreshSpare()),
 		teamTools.onDidChange(() => agentsView.refreshSpare()),

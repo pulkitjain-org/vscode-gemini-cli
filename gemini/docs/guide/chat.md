@@ -143,6 +143,10 @@ Sometimes a reply only needs a nod, or a quick "no, not that". React to it with 
 
 The smiley at the end of a reply's row opens the reaction bar when you point at it or tab to it. It has four quick reactions, and a smiley of its own that opens every emoji, with search and the ones you used last.
 
+The picker shows what an emoji will do before you pick it: its footer gives the meaning of the emoji under the pointer, such as "Go ahead", or says that Gemini will tell you how it reads it first. Its first row, **With a meaning**, lists every emoji that has one, your own included. Pointing at a reaction chip later shows what it asked for.
+
+To react from the keyboard, send `+` and one emoji, such as `+👍`: it reacts to the latest reply instead of being sent as a message.
+
 ![The reaction bar on a reply, with Go ahead, Not what I meant, Explain more simply and Thanks](../../site/media/reactions-dark.webp)
 
 | Reaction | What Gemini does |

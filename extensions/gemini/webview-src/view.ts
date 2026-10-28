@@ -138,6 +138,8 @@ export const state = {
 	reactions: document.querySelector<HTMLScriptElement>('script[data-strings]')?.dataset.reactions === 'true',
 	/** The picker's Recent row, newest first. */
 	recents: [] as readonly string[],
+	/** The meanings people gave emoji in `gemini.chat.reactions.meanings`. */
+	meanings: [] as readonly (readonly [string, string])[],
 	/** `gemini.chat.sendWith` is cmdEnter: ⌘Return (Ctrl+Enter) sends, Return makes a new line. */
 	cmdEnter: false,
 	/** The mode the mode menu tags "Recommended here" for this folder. */

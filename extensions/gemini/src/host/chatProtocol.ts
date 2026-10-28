@@ -22,7 +22,7 @@ import type { PendingPromptView } from '../acp/promptQueue';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 43;
+export const chatProtocolVersion = 44;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.signIn', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal'] as const;
@@ -370,6 +370,12 @@ export interface ReactionStrings {
 	readonly picker: string;
 	readonly search: string;
 	readonly recent: string;
+	/** The picker's first row: every emoji with a meaning. */
+	readonly withMeaning: string;
+	/** The picker's footer for an emoji with no meaning. */
+	readonly readsIt: string;
+	/** `{0}` is the emoji, `{1}` what it asks for: a chip's tooltip. */
+	readonly chipMeaning: string;
 	readonly noResults: string;
 	/** The picker's categories, in emojibase's group order without its component group. */
 	readonly groups: readonly string[];
@@ -1094,7 +1100,7 @@ export type ToWebview =
 	/** `gemini.chat.foldFinishedWork` changed. */
 	| { readonly type: 'foldWork'; readonly on: boolean }
 	/** Whether reactions are on (`gemini.chat.reactions.enabled`), and the picker's Recent row. */
-	| { readonly type: 'reactions'; readonly on: boolean; readonly recents: readonly string[] }
+	| { readonly type: 'reactions'; readonly on: boolean; readonly recents: readonly string[]; readonly meanings: readonly (readonly [string, string])[] }
 	| { readonly type: 'reset'; readonly items: readonly TranscriptItem[]; readonly busy: boolean; readonly status: ViewStatus; readonly settings: SessionSettings; readonly stall?: ViewStall }
 	/** The running turn has had no update for a while, with Stop and Show Log; undefined once anything arrives. */
 	| { readonly type: 'stall'; readonly stall: ViewStall | undefined }

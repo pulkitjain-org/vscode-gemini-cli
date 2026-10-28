@@ -17,7 +17,6 @@ import type { DocsProvider, WorkspaceIndex } from './workspaceIndex';
 const checkEveryMs = 30 * 60 * 1000;
 /** The first look, after the window has settled. */
 const firstCheckMs = 2 * 60 * 1000;
-export const defaultMaxPages = 500;
 
 export interface NewSource {
 	readonly url: string;

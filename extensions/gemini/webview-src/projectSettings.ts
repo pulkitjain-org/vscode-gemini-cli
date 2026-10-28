@@ -6,15 +6,32 @@
 // Project settings: a popup over the project chat with a
 // General and a Memory tab, and Save and Cancel. Nothing is saved until Save;
 // the extension's refreshes (a finished draft, an added file) keep the user's
-// unsaved edits. Built when opened, so it costs nothing while chatting.
+// unsaved edits. A chunk of its own, loaded the first time it opens
+// (projectSettingsLoader.ts): only project chats have it. What it shares with
+// the chat (its view state, tooltips, menus, repository colours) comes in
+// through `ProjectSettingsHost`, so this chunk keeps no copy of it.
 
 import type { ProjectRepoView, ProjectSettingsView } from '../src/host/chatProtocol';
 import { format } from './chatLogic';
-import { button, el, icon, setLabel } from './dom';
-import { toneOf } from './repoTones';
-import { selectMenu, type SelectMenu } from './selectMenu';
+import { el, icon } from './panelDom';
+import type { SelectMenu, selectMenu as SelectMenuFn } from './selectMenu';
 import { draftOf, mergeRefresh, saveOf, threadTokens, unsavedChanges, withRepo, type SettingsDraft } from './settingsLogic';
-import { state, strings, vscode } from './view';
+import type { state as State, strings as Strings, vscode as Vscode } from './view';
+import type { button as ButtonFn, setLabel as SetLabelFn } from './dom';
+import type { toneOf as ToneOfFn } from './repoTones';
+
+/** What the panel uses of the chat's own modules, passed in so the chunk shares the chat's state. */
+export interface ProjectSettingsHost {
+	readonly state: typeof State;
+	readonly strings: typeof Strings;
+	readonly vscode: typeof Vscode;
+	readonly button: typeof ButtonFn;
+	readonly setLabel: typeof SetLabelFn;
+	readonly selectMenu: typeof SelectMenuFn;
+	readonly toneOf: typeof ToneOfFn;
+}
+
+let host: ProjectSettingsHost;
 
 type Tab = 'general' | 'memory';
 
@@ -43,7 +60,8 @@ let open: Open | undefined;
 let modelMenu: SelectMenu | undefined;
 
 /** Opens Project settings with `view`, or, while open, takes in what changed. */
-export function showProjectSettings(view: ProjectSettingsView, show: boolean): void {
+export function showProjectSettings(view: ProjectSettingsView, show: boolean, from: ProjectSettingsHost): void {
+	host = from;
 	if (open) {
 		open.draft = mergeRefresh(open.view, view, open.draft);
 		open.view = view;
@@ -56,7 +74,8 @@ export function showProjectSettings(view: ProjectSettingsView, show: boolean): v
 }
 
 /** The folder Add repository picked. */
-export function pickedRepository(repo: ProjectRepoView): void {
+export function pickedRepository(repo: ProjectRepoView, from: ProjectSettingsHost): void {
+	host = from;
 	if (open) {
 		open.draft = withRepo(open.draft, repo);
 		render();
@@ -64,7 +83,7 @@ export function pickedRepository(repo: ProjectRepoView): void {
 }
 
 function build(view: ProjectSettingsView): void {
-	const text = strings.project?.settings;
+	const text = host.strings.project?.settings;
 	if (!text) {
 		return;
 	}
@@ -73,15 +92,15 @@ function build(view: ProjectSettingsView): void {
 	const head = el('div', 'project-settings-head');
 	const heading = el('h2');
 	heading.id = 'project-settings-heading';
-	const close = button('icon-button', '', () => tryClose(), 'close');
-	setLabel(close, text.cancel);
+	const close = host.button('icon-button', '', () => tryClose(), 'close');
+	host.setLabel(close, text.cancel);
 	head.append(heading, close);
 
 	const nav = el('div', 'project-settings-nav');
 	nav.setAttribute('role', 'tablist');
 	const tabs = new Map<Tab, HTMLButtonElement>();
 	for (const [tab, label, iconName] of [['general', text.general, 'settings-gear'], ['memory', text.memory, 'book']] as const) {
-		const tabButton = button('project-settings-tab', label, () => {
+		const tabButton = host.button('project-settings-tab', label, () => {
 			if (open) {
 				open.tab = tab;
 				render();
@@ -98,10 +117,10 @@ function build(view: ProjectSettingsView): void {
 
 	const foot = el('div', 'permission-actions project-settings-foot');
 	const note = el('span', 'project-settings-note');
-	const cancel = button('secondary', text.cancel, () => tryClose());
-	const save = button('primary', text.save, () => {
+	const cancel = host.button('secondary', text.cancel, () => tryClose());
+	const save = host.button('primary', text.save, () => {
 		if (open) {
-			vscode.postMessage({ type: 'saveProjectSettings', settings: saveOf(open.draft, open.sawMemory && !!open.view.draftedAt) });
+			host.vscode.postMessage({ type: 'saveProjectSettings', settings: saveOf(open.draft, open.sawMemory && !!open.view.draftedAt) });
 			finish();
 		}
 	});
@@ -145,7 +164,7 @@ function finish(): void {
 
 /** Redraws the heading, the tabs and the shown tab; typing updates only the parts that follow it. */
 function render(): void {
-	const text = strings.project?.settings;
+	const text = host.strings.project?.settings;
 	if (!open || !text) {
 		return;
 	}
@@ -178,7 +197,7 @@ function changed(next: Partial<SettingsDraft>, redraw = false): void {
 }
 
 function updateFoot(): void {
-	const text = strings.project?.settings;
+	const text = host.strings.project?.settings;
 	if (!open || !text) {
 		return;
 	}
@@ -187,7 +206,7 @@ function updateFoot(): void {
 	open.note.classList.toggle('confirming', open.confirming);
 	if (open.confirming) {
 		open.note.append(el('span', undefined, text.discard));
-		open.note.append(button('link-button', text.keepEditing, () => {
+		open.note.append(host.button('link-button', text.keepEditing, () => {
 			if (open) {
 				open.confirming = false;
 				updateFoot();
@@ -213,7 +232,7 @@ function updateFoot(): void {
 }
 
 function general(current: Open): HTMLElement[] {
-	const text = strings.project!.settings;
+	const text = host.strings.project!.settings;
 	const { draft, view } = current;
 	const stats = el('div', 'settings-stats');
 	const stat = (value: string, label: string) => {
@@ -241,24 +260,24 @@ function general(current: Open): HTMLElement[] {
 	draft.repos.forEach((repo, i) => {
 		const row = el('div', 'settings-list-row');
 		const label = el('span', 'settings-repo');
-		label.append(toneOf(el('span', 'repo-pill', repo.key), repo.key), el('span', 'settings-muted', repo.label));
+		label.append(host.toneOf(el('span', 'repo-pill', repo.key), repo.key), el('span', 'settings-muted', repo.label));
 		row.append(label);
 		if (i === 0) {
 			row.append(el('span', 'settings-muted settings-small', text.mainRepo));
 		} else {
-			const remove = button('icon-button', '', () => changed({ repos: (open?.draft.repos ?? []).filter(each => each.folder !== repo.folder) }, true), 'close');
-			setLabel(remove, format(text.removeRepo, repo.key));
+			const remove = host.button('icon-button', '', () => changed({ repos: (open?.draft.repos ?? []).filter(each => each.folder !== repo.folder) }, true), 'close');
+			host.setLabel(remove, format(text.removeRepo, repo.key));
 			row.append(remove);
 		}
 		repos.append(row);
 	});
 	const addRow = el('div', 'settings-list-row settings-list-actions');
-	addRow.append(button('link-button', text.addRepo, () => vscode.postMessage({ type: 'projectSettingsAction', action: 'pickRepository' }), 'add'));
+	addRow.append(host.button('link-button', text.addRepo, () => host.vscode.postMessage({ type: 'projectSettingsAction', action: 'pickRepository' }), 'add'));
 	repos.append(addRow);
 
 	const model = settingsInput('project-settings-model', 'select');
-	model.append(new Option(strings.project!.dialog.defaultModel, ''));
-	for (const choice of state.settings.model?.available ?? []) {
+	model.append(new Option(host.strings.project!.dialog.defaultModel, ''));
+	for (const choice of host.state.settings.model?.available ?? []) {
 		model.append(new Option(choice.name, choice.id));
 	}
 	if (draft.defaults.threadModel && ![...model.options].some(option => option.value === draft.defaults.threadModel)) {
@@ -278,7 +297,7 @@ function general(current: Open): HTMLElement[] {
 
 	const defaults = el('div', 'settings-rows');
 	defaults.append(
-		settingRow(text.threadModel, undefined, (modelMenu = selectMenu(model, text.threadModel)).element, 'project-settings-model'),
+		settingRow(text.threadModel, undefined, (modelMenu = host.selectMenu(model, text.threadModel)).element, 'project-settings-model'),
 		settingRow(text.planFirst, text.planFirstHint, plan),
 		settingRow(text.branchPrefix, text.branchPrefixHint, prefix),
 	);
@@ -291,14 +310,14 @@ function general(current: Open): HTMLElement[] {
 	if (view.stats.merged) {
 		// The extension asks first, with what it would remove and the space it frees.
 		const cleanUp = el('div');
-		cleanUp.append(button('link-button', text.cleanUp, () => vscode.postMessage({ type: 'projectSettingsAction', action: 'cleanUp' }), 'trash'));
+		cleanUp.append(host.button('link-button', text.cleanUp, () => host.vscode.postMessage({ type: 'projectSettingsAction', action: 'cleanUp' }), 'trash'));
 		sections.push(section(text.cleanUpLabel, text.cleanUpHint, cleanUp));
 	}
 	return sections;
 }
 
 function memory(current: Open): HTMLElement[] {
-	const text = strings.project!.settings;
+	const text = host.strings.project!.settings;
 	const { draft, view } = current;
 	const many = draft.repos.length > 1;
 
@@ -320,7 +339,7 @@ function memory(current: Open): HTMLElement[] {
 		status.classList.add('note');
 		status.append(icon('sparkle'), el('span', undefined, format(text.drafted, new Date(view.draftedAt).toLocaleDateString(undefined, { dateStyle: 'medium' }))));
 	}
-	const redraft = button('link-button', view.draftedAt || draft.instructions.trim() ? text.redraft : text.draft, () => vscode.postMessage({ type: 'projectSettingsAction', action: 'draft' }), 'sparkle');
+	const redraft = host.button('link-button', view.draftedAt || draft.instructions.trim() ? text.redraft : text.draft, () => host.vscode.postMessage({ type: 'projectSettingsAction', action: 'draft' }), 'sparkle');
 	current.redraft = redraft;
 	status.append(redraft);
 	const counter = el('div', 'settings-counter');
@@ -337,26 +356,26 @@ function memory(current: Open): HTMLElement[] {
 	}
 	for (const file of draft.files) {
 		const row = el('div', 'settings-list-row settings-file');
-		const name = button('link-button settings-file-name', file.name, () => vscode.postMessage({ type: 'projectSettingsAction', action: 'openFile', name: file.name }));
+		const name = host.button('link-button settings-file-name', file.name, () => host.vscode.postMessage({ type: 'projectSettingsAction', action: 'openFile', name: file.name }));
 		const toggle = (role: 'coordinator' | 'threads', label: string) => {
 			const box = el('input');
 			box.type = 'checkbox';
 			box.checked = file[role];
-			setLabel(box, `${file.name}: ${label}`);
+			host.setLabel(box, `${file.name}: ${label}`);
 			box.addEventListener('change', () => changed({ files: currentFiles().map(each => each.name === file.name ? { ...each, [role]: box.checked } : each) }));
 			const cell = el('span', 'settings-file-toggle');
 			cell.append(box);
 			return cell;
 		};
-		const remove = button('icon-button', '', () => changed({ files: currentFiles().filter(each => each.name !== file.name), removedFiles: [...currentRemoved(), file.name] }, true), 'close');
-		setLabel(remove, format(text.removeFile, file.name));
+		const remove = host.button('icon-button', '', () => changed({ files: currentFiles().filter(each => each.name !== file.name), removedFiles: [...currentRemoved(), file.name] }, true), 'close');
+		host.setLabel(remove, format(text.removeFile, file.name));
 		row.append(name, toggle('coordinator', text.coordinatorColumn), toggle('threads', text.threadsColumn), remove);
 		files.append(row);
 	}
 	const actions = el('div', 'settings-list-row settings-list-actions');
 	actions.append(
-		button('link-button', text.addFiles, () => vscode.postMessage({ type: 'projectSettingsAction', action: 'addFiles' }), 'add'),
-		button('link-button', text.newFile, () => vscode.postMessage({ type: 'projectSettingsAction', action: 'newFile' }), 'new-file'),
+		host.button('link-button', text.addFiles, () => host.vscode.postMessage({ type: 'projectSettingsAction', action: 'addFiles' }), 'add'),
+		host.button('link-button', text.newFile, () => host.vscode.postMessage({ type: 'projectSettingsAction', action: 'newFile' }), 'new-file'),
 		el('span', 'settings-muted settings-small settings-path', view.memoryFolder),
 	);
 	files.append(actions);
@@ -364,7 +383,7 @@ function memory(current: Open): HTMLElement[] {
 	const rules = el('div', 'settings-rules');
 	for (const repo of view.repoRules) {
 		const line = el('div');
-		line.append(toneOf(el('span', 'repo-pill', repo.key), repo.key), el('span', 'settings-muted', repo.files.length ? repo.files.join(' · ') : text.noRules));
+		line.append(host.toneOf(el('span', 'repo-pill', repo.key), repo.key), el('span', 'settings-muted', repo.files.length ? repo.files.join(' · ') : text.noRules));
 		rules.append(line);
 	}
 	const tokens = el('div', 'settings-muted settings-small settings-tokens');
