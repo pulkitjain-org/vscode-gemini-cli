@@ -5,6 +5,7 @@
 	"command.showLog": "Show Log",
 	"command.openAuditLog": "Open Audit Log",
 	"command.designSystemSync": "Sync Design System",
+	"command.sideQuestion": "Ask a Side Question",
 	"command.recordTrace": "Record or Stop Performance Trace",
 	"command.runBenchmark": "Run Benchmark...",
 	"command.checkAgent": "Check Agent Connection",

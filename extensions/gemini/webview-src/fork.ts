@@ -110,6 +110,7 @@ export function openForkDialog(view: ForkView): void {
 	const message = input('fork-message', 'textarea');
 	message.rows = 3;
 	message.placeholder = text.messagePlaceholder;
+	message.value = view.message ?? '';
 	form.append(field(text.message, message));
 
 	const foot = el('div', 'permission-actions new-thread-foot');

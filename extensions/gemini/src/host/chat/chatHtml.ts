@@ -7,7 +7,7 @@
 // from the extension host so they are localized.
 
 import * as vscode from 'vscode';
-import type { ChatStrings, ForkStrings, ProjectChatStrings, ReactionStrings } from '../chatProtocol';
+import type { ChatStrings, ForkStrings, ProjectChatStrings, ReactionStrings, SideStrings } from '../chatProtocol';
 import { reactionsOn } from '../chatReactions';
 import { configSection } from '../configuration';
 import { foldWorkOn } from '../foldWork';
@@ -39,12 +39,14 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 	const figmaDesign = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'figmaDesign.js'));
 	const threadCard = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'threadCard.js'));
 	const projectSettings = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'projectSettings.js'));
+	const sideChat = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'sideChat.js'));
 	const strings: ChatStrings = {
 		placeholder: vscode.l10n.t("Ask Gemini anything about this workspace"),
 		fromCoordinator: vscode.l10n.t("From coordinator"),
 		// A project chat's strings load with the code they serve, from dist/onDemand.js: most chats aren't project chats.
 		...(project && projectStringsOf ? { project: projectStringsOf() } : {}),
 		...(fork ? { fork: forkStrings() } : {}),
+		side: sideStrings(),
 		...(project ? {} : { reactions: reactionStrings() }),
 		placeholderFollowUp: vscode.l10n.t("Ask a follow-up"),
 		placeholderWorking: process.platform === 'darwin' ? vscode.l10n.t("↩ to send, ⌘↩ to queue for later") : vscode.l10n.t("Enter to send, Ctrl+Enter to queue for later"),
@@ -535,7 +537,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			<div id="commit-box" class="usage-popover commit-box" role="dialog" hidden><label class="usage-heading" for="commit-message"></label><textarea id="commit-message" class="commit-message" rows="4" spellcheck="${spellCheckOn()}"></textarea><p class="usage-note commit-note" role="status"></p><div class="permission-actions"><button type="button" class="secondary commit-cancel"></button><button type="button" class="primary commit-confirm"></button></div></div>
 		</div>
 	</div>
-	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-fold-work="${foldWorkOn()}" data-emoji-picker="${emojiPicker}" data-figma-design="${figmaDesign}" data-thread-card="${threadCard}" data-project-settings="${projectSettings}" data-reactions="${!project && reactionsOn()}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
+	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-fold-work="${foldWorkOn()}" data-emoji-picker="${emojiPicker}" data-figma-design="${figmaDesign}" data-thread-card="${threadCard}" data-project-settings="${projectSettings}" data-side-chat="${sideChat}" data-reactions="${!project && reactionsOn()}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
 </html>`;
 }
@@ -568,6 +570,28 @@ function reactionStrings(): ReactionStrings {
 			vscode.l10n.t("Symbols"),
 			vscode.l10n.t("Flags"),
 		],
+	};
+}
+
+function sideStrings(): SideStrings {
+	return {
+		title: vscode.l10n.t("Side question"),
+		note: vscode.l10n.t("The agent keeps working"),
+		placeholder: vscode.l10n.t("Ask about this chat"),
+		ask: vscode.l10n.t("Ask"),
+		close: vscode.l10n.t("Close"),
+		earlier: vscode.l10n.t("Earlier question (⇧←)"),
+		later: vscode.l10n.t("Later question (⇧→)"),
+		empty: vscode.l10n.t("Ask about the conversation so far: what the agent changed, why it chose something, what's left. It answers from the chat alone, without stopping the agent or adding to its history."),
+		answering: vscode.l10n.t("Answering…"),
+		stop: vscode.l10n.t("Stop"),
+		sendToAgent: vscode.l10n.t("Send to Agent"),
+		sendToAgentTip: vscode.l10n.t("Put the question and this answer in the message box, to edit and send to the agent"),
+		fork: vscode.l10n.t("Fork into Agent"),
+		forkTip: vscode.l10n.t("Look into it with tools, in a fork of this agent that starts with this question"),
+		copy: vscode.l10n.t("Copy"),
+		copied: vscode.l10n.t("Copied the answer"),
+		hint: vscode.l10n.t("Esc closes · /btw or ⌥⌘; asks from anywhere in the chat"),
 	};
 }
 

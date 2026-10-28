@@ -120,6 +120,11 @@
         "icon": "$(pulse)"
       },
       {
+        "command": "gemini.agents.sideQuestion",
+        "title": "%command.sideQuestion%",
+        "category": "%category%"
+      },
+      {
         "command": "gemini.designSystem.sync",
         "title": "%command.designSystemSync%",
         "category": "%category%"
@@ -712,6 +717,12 @@
         "when": "activeWebviewPanelId == 'gemini.agent'"
       },
       {
+        "command": "gemini.agents.sideQuestion",
+        "key": "ctrl+alt+;",
+        "mac": "cmd+alt+;",
+        "when": "activeWebviewPanelId == 'gemini.agent'"
+      },
+      {
         "command": "gemini.agents.cycleMode",
         "key": "ctrl+.",
         "mac": "cmd+.",
@@ -1263,6 +1274,10 @@
         },
         {
           "command": "gemini.agents.cycleMode",
+          "when": "activeWebviewPanelId == 'gemini.agent'"
+        },
+        {
+          "command": "gemini.agents.sideQuestion",
           "when": "activeWebviewPanelId == 'gemini.agent'"
         },
         {

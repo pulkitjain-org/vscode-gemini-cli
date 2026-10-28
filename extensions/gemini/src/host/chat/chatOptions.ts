@@ -234,6 +234,8 @@ export interface ChatEnhancer {
 	prepare(): void;
 	/** `onText` is called with the rewrite so far as it arrives. */
 	enhance(input: EnhancePromptInput, signal: AbortSignal, onText?: (text: string) => void): Promise<string>;
+	/** A side question's answer, the same way: a quick request, else a Plan-mode session of its own (chatSide.ts). */
+	ask(system: string, prompt: string, signal: AbortSignal, onText?: (text: string) => void): Promise<string>;
 }
 
 export interface ChatGit {

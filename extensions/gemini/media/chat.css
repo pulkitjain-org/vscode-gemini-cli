@@ -3349,6 +3349,146 @@ body.vscode-high-contrast-light #send {
 	background: var(--gemini-raised);
 }
 
+/* A side question (webview-src/sideChat.ts): above the input, answered while the agent keeps working. */
+.side-chat {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-bottom: 8px;
+	padding: 8px 10px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius);
+	background: var(--gemini-card);
+	box-shadow: 0 4px 16px var(--gemini-shadow);
+}
+
+.side-chat-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+}
+
+.side-chat-title {
+	font-weight: 600;
+}
+
+.side-chat-note,
+.side-chat-position,
+.side-chat-hint,
+.side-chat-empty,
+.side-chat-thinking {
+	color: var(--gemini-muted);
+}
+
+.side-chat-note {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.side-chat-step,
+.side-chat-close {
+	min-width: 20px;
+	font-size: 14px;
+	line-height: 1;
+}
+
+.side-chat-body {
+	max-height: 40vh;
+	overflow-y: auto;
+}
+
+.side-chat-question {
+	margin-bottom: 4px;
+	font-weight: 600;
+	white-space: pre-wrap;
+}
+
+.side-chat-answer > :first-child {
+	margin-top: 0;
+}
+
+.side-chat-answer > :last-child {
+	margin-bottom: 0;
+}
+
+.side-chat-error {
+	color: var(--gemini-error);
+}
+
+.side-chat-empty {
+	margin: 0;
+	font-size: 12px;
+}
+
+.side-chat-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.side-chat-actions:empty {
+	display: none;
+}
+
+.side-chat-actions button,
+.side-chat-ask {
+	padding: 3px 12px;
+	border: 1px solid var(--vscode-button-border, transparent);
+	border-radius: var(--gemini-radius-small);
+	cursor: pointer;
+}
+
+.side-chat-actions button.primary,
+.side-chat-ask {
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+}
+
+.side-chat-actions button.primary:hover,
+.side-chat-ask:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
+.side-chat-actions button.secondary {
+	background: var(--vscode-button-secondaryBackground, transparent);
+	color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+	border-color: var(--vscode-button-secondaryBorder, var(--vscode-button-border, var(--gemini-border)));
+}
+
+.side-chat-actions button.secondary:hover {
+	background: var(--vscode-button-secondaryHoverBackground, var(--gemini-hover));
+}
+
+.side-chat-form {
+	display: flex;
+	gap: 6px;
+}
+
+.side-chat-input {
+	flex: 1;
+	min-width: 0;
+	padding: 4px 8px;
+	resize: none;
+	border: 1px solid var(--vscode-input-border, var(--gemini-border));
+	border-radius: var(--gemini-radius-small);
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	font: inherit;
+}
+
+.side-chat-input:focus {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.side-chat-hint {
+	font-size: 11px;
+}
+
 /* Messages sent while the agent works (webview-src/queueStrip.ts): one line each, above the input. */
 .queue {
 	display: flex;

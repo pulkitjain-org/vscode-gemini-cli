@@ -22,7 +22,7 @@ import type { PendingPromptView } from '../acp/promptQueue';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 44;
+export const chatProtocolVersion = 45;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.signIn', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal'] as const;
@@ -350,6 +350,27 @@ export type RunState =
 	/** How it ended; unset when the shell had no integration to say. */
 	| { readonly kind: 'done'; readonly exitCode?: number; readonly ms?: number };
 
+/** The side question panel (/btw). */
+export interface SideStrings {
+	readonly title: string;
+	readonly note: string;
+	readonly placeholder: string;
+	readonly ask: string;
+	readonly close: string;
+	readonly earlier: string;
+	readonly later: string;
+	readonly empty: string;
+	readonly answering: string;
+	readonly stop: string;
+	readonly sendToAgent: string;
+	readonly sendToAgentTip: string;
+	readonly fork: string;
+	readonly forkTip: string;
+	readonly copy: string;
+	readonly copied: string;
+	readonly hint: string;
+}
+
 /** The reaction button, quick reactions, chips and picker. */
 export interface ReactionStrings {
 	/** The reaction button's tooltip. */
@@ -387,6 +408,8 @@ export interface ChatStrings {
 	readonly project?: ProjectChatStrings;
 	/** Fork Agent's strings, in chats that can fork. */
 	readonly fork?: ForkStrings;
+	/** The side question panel's strings. */
+	readonly side?: SideStrings;
 	/** Emoji reactions' strings; unset in a project's chat, which has none. */
 	readonly reactions?: ReactionStrings;
 	/** The badge on a thread's brief and the notes its coordinator relays. */
@@ -869,6 +892,8 @@ export interface ForkView {
 	readonly title: string;
 	/** Fork from Here on a reply: the prompt item the fork stops before (none for the last reply), and the prompt the reply answered. */
 	readonly fromHere?: { readonly before?: string; readonly answered: string };
+	/** The fork's first message, filled in: a side question that needs tools. */
+	readonly message?: string;
 	/** About how many tokens each choice sends with every request; `compact` is unset when it can't be made now, with `compactWhy`. */
 	readonly tokens: { readonly whole: number; readonly compact?: number; readonly conversation: number };
 	readonly compactWhy?: string;
@@ -1069,7 +1094,10 @@ export type FromWebview =
 	/** A compact card's Undo, Not Now and View Summary. */
 	| { readonly type: 'undoCompact' | 'dismissCompact' | 'viewCompactSummary'; readonly itemId: string }
 	/** Open the Fork dialog: for the whole chat, or (Fork from Here) for the chat up to the reply that ends at `turnEnd`. */
-	| { readonly type: 'requestFork'; readonly turnEnd?: string }
+	| { readonly type: 'requestFork'; readonly turnEnd?: string; readonly message?: string }
+	/** A side question (/btw): answered from the conversation without stopping the agent or entering its history. */
+	| { readonly type: 'sideAsk'; readonly question: string }
+	| { readonly type: 'sideCancel' }
 	/** The Fork dialog's Fork. */
 	| { readonly type: 'fork'; readonly fork: ForkRequest }
 	/** A fork card's buttons, in its parent's chat. */
@@ -1173,6 +1201,11 @@ export type ToWebview =
 	| { readonly type: 'toggleUsage'; readonly open?: boolean }
 	/** Open the Fork dialog. */
 	| { readonly type: 'openFork'; readonly fork: ForkView }
+	/**
+	 * A side question's progress: `open` shows the panel empty, `asked` starts an answer, `text` is the
+	 * answer so far, `done` the whole answer and `error` why there is none. `id` tells answers apart.
+	 */
+	| { readonly type: 'side'; readonly id: number; readonly state: 'open' | 'asked' | 'text' | 'done' | 'error'; readonly question?: string; readonly text?: string }
 	/** A project chat's side panel. */
 	| { readonly type: 'projectPanel'; readonly panel: ProjectPanel }
 	/** Open the New thread dialog, from the New Thread command. */

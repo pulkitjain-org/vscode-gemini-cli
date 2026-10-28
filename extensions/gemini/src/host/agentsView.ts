@@ -411,6 +411,7 @@ export class AgentsView implements vscode.Disposable {
 			}),
 			vscode.commands.registerCommand('gemini.agents.focusChat', () => this.focusChat()),
 			vscode.commands.registerCommand('gemini.agents.cycleMode', () => this.chatInFront()?.cycleMode()),
+			vscode.commands.registerCommand('gemini.agents.sideQuestion', () => this.chatInFront()?.openSide()),
 			vscode.commands.registerCommand('gemini.agents.switchModel', () => this.chatInFront()?.pickModel()),
 			vscode.commands.registerCommand('gemini.agents.remove', (node?: AgentTreeNode) => this.removeAgent(node)),
 			vscode.commands.registerCommand('gemini.agents.removeWorkspace', (node?: AgentTreeNode) => this.removeWorkspace(node)),

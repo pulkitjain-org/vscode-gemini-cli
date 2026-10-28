@@ -83,6 +83,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	'media/threadCard.js': 7_000,
 	// Project settings, about 12 KB with their own copy of the settings logic, loaded the first time a project chat opens them.
 	'media/projectSettings.js': 13_000,
+	// The side question panel (/btw), about 4 KB, loaded the first time a side question is asked.
+	'media/sideChat.js': 5_000,
 	// Home's menus (+, folder, mode, From Your Tools, a row's "...") with the menu class, about 7.6 KB, loaded once
 	// Home has settled or on the first click on a menu's button.
 	'media/homeMenus.js': 9_000,

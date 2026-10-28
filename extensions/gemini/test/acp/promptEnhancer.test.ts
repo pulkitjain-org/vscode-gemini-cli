@@ -214,6 +214,13 @@ describe('PromptEnhancer', () => {
 		expect(onDirectFailed).not.toHaveBeenCalled();
 	});
 
+	it('answers a side question with the slow direct request alone, past the rewrite\'s cap, starting no CLI session', async () => {
+		const { runtime, enhancer } = await start({ turns: [[reply('late')]] }, undefined, { direct: slowDirect(120, ' The agent used axios. '), hedgeAfterMs: 20, directTimeoutMs: 50 });
+		const newSession = vi.spyOn(runtime, 'newSession');
+		expect(await enhancer.ask('system', 'Side question: why axios?')).toBe('The agent used axios.');
+		expect(newSession).not.toHaveBeenCalled();
+	});
+
 	it('uses the CLI\'s rewrite when it answers before the slow direct request, and stops the direct request without counting it as failed', async () => {
 		const direct = slowDirect(5_000, 'Too late.');
 		const onDirectFailed = vi.fn();

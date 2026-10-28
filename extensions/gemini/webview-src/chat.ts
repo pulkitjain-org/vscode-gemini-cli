@@ -42,6 +42,7 @@ import { showCommands, showFiles } from './picker';
 import { updatePlusMenu } from './plusMenu';
 import { openNewThread, showParentProject, showProjectPanel } from './project';
 import { pickedRepository, showProjectSettings } from './projectSettingsLoader';
+import { onSide } from './sideChatLoader';
 import { setRunState, setRunView } from './runButtons';
 import { updateOutline } from './promptNav';
 import { setSideLinks } from './sideLinks';
@@ -265,6 +266,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'openFork':
 			openForkDialog(message.fork);
+			break;
+		case 'side':
+			onSide(message);
 			break;
 		case 'projectSettings':
 			showProjectSettings(message.settings, message.open);

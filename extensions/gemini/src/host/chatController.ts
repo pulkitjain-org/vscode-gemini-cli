@@ -3,6 +3,8 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { sideQuestionOf } from '../acp/sideChat';
+import { ChatSide, sideCommand } from './chat/chatSide';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
 import { promises as fs } from 'node:fs';
@@ -178,6 +180,7 @@ export class ChatController implements vscode.Disposable {
 	private readonly checkpoints: ChatCheckpoints;
 	private readonly compacting: ChatCompact;
 	private readonly forks: ChatFork;
+	private readonly side: ChatSide;
 	private readonly project: ChatProjectView;
 	private readonly runs: ChatRun;
 
@@ -208,7 +211,7 @@ export class ChatController implements vscode.Disposable {
 		this.sideLinks = new SideLinksColumn(options, isViewReady, post);
 		this.settings = new ChatSettings(service, this.transcript, options, post);
 		this.enhance = new ChatEnhance(client, options, () => this.transcript.items, post);
-		this.commands = new ChatCommands(client, this.transcript, [...options.savedSessions ? [resumeCommand()] : [], compactCommand(), contextCommand(), ...options.fork ? [forkCommand()] : []], isAttached, post);
+		this.commands = new ChatCommands(client, this.transcript, [...options.savedSessions ? [resumeCommand()] : [], compactCommand(), contextCommand(), sideCommand(), ...options.fork ? [forkCommand()] : []], isAttached, post);
 		this.sessions = new ChatSessions(service, this.transcript, options, {
 			isBusy,
 			setBusy,
@@ -236,6 +239,7 @@ export class ChatController implements vscode.Disposable {
 			isBusy,
 			title: () => options.title?.() ?? '',
 		}, post);
+		this.side = new ChatSide(options, this.transcript, isBusy, post);
 		this.project = new ChatProjectView(options, isViewReady, post);
 		this.runs = new ChatRun(options, isAttached, post, attachments => void this.addAttachments(attachments),
 			() => this.transcript.items.flatMap(item => item.kind === 'agent' || item.kind === 'user' ? [item.text] : []));
@@ -255,6 +259,7 @@ export class ChatController implements vscode.Disposable {
 			this.attachments,
 			this.settings,
 			this.enhance,
+			this.side,
 			this.commands,
 			this.sessions,
 			this.runs,
@@ -498,6 +503,13 @@ export class ChatController implements vscode.Disposable {
 			await this.restoring;
 		}
 		const project = this.options.project;
+		// `/btw` asks on the side: the agent's turn and history are left alone.
+		const side = !from && !attachments.length ? sideQuestionOf(text) : undefined;
+		if (side !== undefined) {
+			extras.settle?.(true);
+			this.side.open(side);
+			return;
+		}
 		// `+👍` alone reacts to the latest reply instead of being sent.
 		const shortcut = !project && !from && !attachments.length && reactionsOn() ? reactionShortcut(text) : undefined;
 		const latest = shortcut && this.transcript.items.findLast(item => item.kind === 'turnEnd');
@@ -1104,6 +1116,11 @@ export class ChatController implements vscode.Disposable {
 		}
 	}
 
+	/** Opens the side question panel (⌥⌘;): ask about the chat while the agent keeps working. */
+	openSide(): void {
+		this.side.open();
+	}
+
 	/**
 	 * Switches to the next approval mode, as the CLI's ⇧Tab does; the
 	 * composer's mode chip shows it. A project's coordinator has no modes to pick.
@@ -1521,6 +1538,10 @@ export class ChatController implements vscode.Disposable {
 			case 'fork':
 			case 'forkAction':
 				this.forks.onMessage(message);
+				break;
+			case 'sideAsk':
+			case 'sideCancel':
+				this.side.onMessage(message);
 				break;
 			case 'compact':
 			case 'undoCompact':

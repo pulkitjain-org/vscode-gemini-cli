@@ -67,7 +67,7 @@ export class ChatFork {
 	onMessage(message: ForkMessage): void {
 		switch (message.type) {
 			case 'requestFork':
-				void this.open(message.turnEnd);
+				void this.open(message.turnEnd, message.message);
 				break;
 			case 'fork':
 				void this.fork(message.fork);
@@ -79,7 +79,7 @@ export class ChatFork {
 	}
 
 	/** Opens the Fork dialog, for the whole chat or (Fork from Here) for the chat up to the reply that ends at `turnEnd`. */
-	async open(turnEnd?: string): Promise<void> {
+	async open(turnEnd?: string, firstMessage?: string): Promise<void> {
 		const forker = this.options.fork;
 		if (!forker) {
 			return;
@@ -108,6 +108,7 @@ export class ChatFork {
 				branch: place.forkBranch,
 				branchFollowsName: !place.ownBranch,
 				...(place.branchOnly ? { branchOnly: true } : {}),
+				...(firstMessage?.trim() ? { message: firstMessage.trim() } : {}),
 			};
 			this.post({ type: 'openFork', fork: view });
 		} catch (err) {

@@ -126,6 +126,20 @@ Sending now stops the turn between steps, never in the middle of a command, so a
 
 In a project's thread, notes from the coordinator wait in the same place, as **From coordinator: goes after this turn**. In the project chat itself, ↩ and ⌘↩ both wait for the coordinator's turn to end; see [Projects](projects.md#talk-to-the-coordinator).
 
+## Side questions
+
+Ask about the conversation without stopping the agent: type `/btw` and your question, such as `/btw why did it add axios?`, or press <kbd>⌥⌘;</kbd> (<kbd>Ctrl+Alt+;</kbd> on Windows and Linux) to open the side panel above the message box.
+
+A fast model answers from the chat as it is, in a second or two, while the agent keeps working. The question and its answer never go into the agent's conversation, so they don't slow its later steps or change what it does. The side answer sees your messages, Gemini's replies, plans and tool calls, with long tool outputs cut short; it has no tools of its own, so it says when the chat doesn't hold the answer.
+
+Under an answer:
+
+- **Send to Agent** puts the question and the answer in the message box, to edit and send as a steering message.
+- **Fork into Agent** opens Fork Agent with the question as the fork's first message, for a question that needs reading files or running commands.
+- **Copy** copies the answer.
+
+Earlier side questions stay in the panel until the chat closes; <kbd>⇧←</kbd> and <kbd>⇧→</kbd> step through them, and later questions can build on them. Side questions use the quick requests' model (`gemini.inlineEdit.model`); with a sign-in that can't make quick requests, a session of their own on the Gemini CLI answers instead.
+
 ## Replies
 
 - Code is coloured like the editor, and the button at the top of a code block copies it. A shell command also has **Run**, which runs it in the agent's terminal; see [Terminal](terminal.md#run-a-command-from-a-reply).
