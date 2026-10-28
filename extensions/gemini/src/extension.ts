@@ -293,6 +293,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		}),
 		vscode.commands.registerCommand('gemini.showLog', () => log.show()),
 		vscode.commands.registerCommand(logErrorCommand, (message: unknown) => typeof message === 'string' && log.error(message)),
+		new LazyFeature(['gemini.designSystem.sync'], () => new (onDemand().DesignSystemSync)({
+			figma: () => teamTools.connectors.figma,
+			defaults: folder => folder ? teamTools.defaults(folder) : teamTools.workspaceDefaults(),
+		}, log)),
 		new LazyFeature(['gemini.openAuditLog'], () => new (onDemand().AuditPage)(context.extensionUri, teamTools.audit, id => agentsView.summaries().find(agent => agent.id === id)?.title)),
 		vscode.commands.registerCommand('gemini.checkAgent', async () => onDemand().checkAgent(log, {
 			command: await getAgentCommand(),

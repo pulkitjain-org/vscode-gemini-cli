@@ -120,6 +120,11 @@
         "icon": "$(pulse)"
       },
       {
+        "command": "gemini.designSystem.sync",
+        "title": "%command.designSystemSync%",
+        "category": "%category%"
+      },
+      {
         "command": "gemini.runBenchmark",
         "title": "%command.runBenchmark%",
         "category": "%category%",

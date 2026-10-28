@@ -73,6 +73,8 @@ export interface ChatControllerOptions {
 	indexContext?(draft: string): Promise<string | undefined>;
 	/** A note telling the agent to use the index tools, when its folder's index is built; sent once per session. */
 	indexHint?(): string | undefined;
+	/** The note a prompt with a Figma design carries when the repository has a design-system skill (designSystem.ts). */
+	designSystemNote?(): Promise<string | undefined>;
 	/** The workspace pill; without it the composer shows none. */
 	workspace?(): ChatWorkspace | undefined;
 	/** Today's quota, for the usage popover; unset shows it as off. */

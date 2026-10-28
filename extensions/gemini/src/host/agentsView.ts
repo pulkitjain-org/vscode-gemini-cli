@@ -1128,6 +1128,7 @@ export class AgentsView implements vscode.Disposable {
 				indexContext: draft => this.index?.contextFor(folder, draft) ?? Promise.resolve(undefined),
 				// Not for a coordinator, which runs in an empty folder without the index.
 				indexHint: () => cwd === folder ? this.index?.hint(folder) : undefined,
+				designSystemNote: async () => this.teamTools ? this.onDemand().designSystemNoteFor(await this.teamTools.defaults(cwd)) : undefined,
 				usage: () => this.usage,
 				contextCost: () => this.contextCost,
 				// The index's definitions, only while agents get its tools and the folder's index is built.

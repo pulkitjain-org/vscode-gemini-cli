@@ -16,6 +16,7 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import type { AuditCaller, AuditLog } from './auditLog';
 import type { McpContent, McpTool, McpToolResult } from './browserMcp';
+import { annotateTokens, type TokenIndex } from './designSystem';
 import { errorMessage } from './errors';
 import { type FigmaClient, type FigmaContent, isNodeNotFound, parseFigmaLink } from './figma';
 import { describeMr, GitLabClient, parseMrRef, projectPathFromRemote } from './gitlab';
@@ -82,6 +83,8 @@ export interface TeamToolContext {
 	confluence?(): ConfluenceTools | undefined;
 	/** Whether Figma looks up Code Connect mappings in design reads (`gemini.figma.codeConnect`); off, Figma answers faster and never asks about them. */
 	figmaCodeConnect?(): boolean;
+	/** The design system of the repository around `folder`, for Figma reads: Code Connect over the setting, and the tokens that name colours. */
+	designSystem?(folder: string): Promise<{ readonly codeConnect?: boolean; readonly tokens: TokenIndex } | undefined>;
 }
 
 /** The server's name in a session's MCP servers and in `mcp.allowed`. */
@@ -580,8 +583,14 @@ async function runTeamTool(context: TeamToolContext, folder: string | undefined,
 					async server => ok(external('snyk', folder, clip(code ? await snykVia.code(server, folder) : await snykVia.dependencies(server, folder), 20_000))),
 					async () => ok(describeSnyk(code ? await snyk.testCode(folder) : await snyk.testDependencies(folder))));
 			}
-			case 'figma':
-				return connectors.figma ? await figmaCall(connectors.figma, name, args, !!context.figmaCodeConnect?.()) : notConnected('Figma');
+			case 'figma': {
+				if (!connectors.figma) {
+					return notConnected('Figma');
+				}
+				// The repository's design system decides Code Connect over the setting, and its tokens name the colours Figma gives.
+				const design = folder ? await context.designSystem?.(folder).catch(() => undefined) : undefined;
+				return await figmaCall(connectors.figma, name, args, design?.codeConnect ?? !!context.figmaCodeConnect?.(), design?.tokens);
+			}
 			case 'confluence': {
 				const confluence = connectors.confluence?.length ? context.confluence?.() : undefined;
 				return confluence ? await confluence.call(name, args, agent) : notConnected('Confluence');
@@ -958,7 +967,7 @@ async function sonarCall(sonar: SonarClient, via: Through, name: string, args: R
 	});
 }
 
-async function figmaCall(figma: FigmaClient, name: string, args: Record<string, unknown>, codeConnect: boolean): Promise<McpToolResult> {
+async function figmaCall(figma: FigmaClient, name: string, args: Record<string, unknown>, codeConnect: boolean, tokens?: TokenIndex): Promise<McpToolResult> {
 	const link = arg(args, 'link') ?? '';
 	if (!parseFigmaLink(link)) {
 		return fail('That isn\'t a Figma link. Copy the frame\'s link in Figma (it has node-id=…).');
@@ -976,6 +985,6 @@ async function figmaCall(figma: FigmaClient, name: string, args: Record<string, 
 	return ok([
 		...viewport ? [{ type: 'text' as const, text: `The ${viewport} frame. Figma reads the file open in the desktop app: if this isn't the right frame, ask the user to open the file this link is in.` }] : [],
 		// figma.ts keeps each part under the CLI's cap; the clip is only a guard.
-		...content.map(c => c.type === 'text' ? { type: 'text' as const, text: external('figma', link, clip(c.text, 40_000)) } : c),
+		...content.map(c => c.type === 'text' ? { type: 'text' as const, text: external('figma', link, clip(tokens ? annotateTokens(c.text, tokens) : c.text, 40_000)) } : c),
 	]);
 }

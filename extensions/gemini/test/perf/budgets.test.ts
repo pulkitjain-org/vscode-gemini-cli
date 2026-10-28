@@ -101,7 +101,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// The team flows' page (teamFlowPanel.ts: Log Time, Move, Open Merge Request, Run Checks, a merge request review), about 9 KB,
 	// moved here from dist/extension.js and loaded with the first flow opened.
 	// An agent's Files page (agentFilesPage.ts, agentFiles.ts), about 7 KB, loaded the first time one opens.
-	'dist/pages.js': 145_000,
+	// Sync Design System on Figma's row in Connections added about 0.4 KB.
+	'dist/pages.js': 146_000,
 	// Confluence, about 27 KB, loaded the first time an agent or a page uses it (src/confluence.ts): its client, the
 	// agents' calls, the drafts and the Review Page's host, with publishing only the changes kept (draftReview.ts,
 	// blockMerge.ts) and the page's localized strings.
@@ -114,7 +115,9 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// Check Agent with the CLI contract it reads (checkAgent.ts, cli/contract.ts), about 5 KB, moved here from
 	// dist/extension.js, and rebuilding a plan the CLI deleted (sessionReplay.ts), about 1 KB. Try in Workspace's batched git reads,
 	// links, line endings and per-agent action queue (worktreeApply.ts, tryState.ts) added about 14 KB.
-	'dist/onDemand.js': 118_000,
+	// Sync Design System and the design system's reads for Figma (designSystemSync.ts, designSystem.ts, designTokens.ts)
+	// added about 9 KB; the pilot's export, removed, had been about 3 KB.
+	'dist/onDemand.js': 128_000,
 	// The indexer process, about 66 KB: parsing, SQLite queries and docs conversion, forked on first use, never
 	// loaded in the extension host.
 	'dist/indexer.js': 120_000,

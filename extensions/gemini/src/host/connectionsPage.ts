@@ -158,6 +158,9 @@ export class ConnectionsPage implements vscode.Disposable {
 				}
 				return;
 			}
+			case 'syncDesignSystem':
+				void vscode.commands.executeCommand('gemini.designSystem.sync');
+				return;
 			case 'openFigma':
 				await vscode.env.openExternal(vscode.Uri.parse('figma://'));
 				// Its MCP server starts with the app; look again shortly.
@@ -269,6 +272,7 @@ export class ConnectionsPage implements vscode.Disposable {
 			canCreateToken: needsToken && (tool === 'jira' || !!url),
 			...tool === 'jira' && saved ? { siteName: this.connections.jiraName(), sites: this.connections.jiraSiteList().map(site => this.siteRow(site.id, site.name, site.url, site.email)) } : {},
 			...tool === 'confluence' ? this.confluenceSites() : {},
+			...tool === 'figma' && this.defaults.figma?.designSystem ? { designSystem: designSystemTip(this.defaults.figma.designSystem.name) } : {},
 		};
 	}
 
@@ -321,6 +325,7 @@ export class ConnectionsPage implements vscode.Disposable {
 			disconnect: vscode.l10n.t("Disconnect"),
 			tryAgain: vscode.l10n.t("Try Again"),
 			openFigma: vscode.l10n.t("Open Figma"),
+			syncDesignSystem: vscode.l10n.t("Sync Design System"),
 			cancel: vscode.l10n.t("Cancel"),
 			connectTitle: vscode.l10n.t("Connect {0}"),
 			server: vscode.l10n.t("Server"),
@@ -424,6 +429,13 @@ function hostOf(url: string | undefined): string | undefined {
 	} catch {
 		return url;
 	}
+}
+
+/** Sync Design System's tooltip, naming the design system when the team's file does. */
+function designSystemTip(name: unknown): string {
+	return typeof name === 'string' && name.trim()
+		? vscode.l10n.t("Read {0} from Figma into the repository's design-system skill", name.trim())
+		: vscode.l10n.t("Read the design system from Figma into the repository's design-system skill");
 }
 
 function stateDetail(tool: TeamToolId, state: ConnectionState, url: string | undefined): string {

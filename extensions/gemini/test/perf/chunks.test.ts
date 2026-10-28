@@ -23,7 +23,7 @@ const root = path.join(__dirname, '..', '..');
 const moved: Readonly<Record<string, readonly string[]>> = {
 	'src/pages.ts': ['src/host/settingsPage.ts', 'src/host/connectionsPage.ts', 'src/host/siteConnections.ts', 'src/host/planReviewPage.ts', 'src/acp/planReview.ts', 'src/acp/planReviewStore.ts', 'src/host/teamFlowPanel.ts', 'src/host/agentFilesPage.ts', 'src/acp/agentFiles.ts'],
 	'src/confluence.ts': ['src/host/confluenceFeature.ts', 'src/host/confluenceReviewPage.ts', 'src/acp/confluence.ts', 'src/acp/confluenceDrafts.ts', 'src/acp/blockMerge.ts', 'src/acp/draftReview.ts'],
-	'src/onDemand.ts': ['src/host/auditPage.ts', 'src/host/benchmarkCommand.ts', 'src/host/traceRecorder.ts', 'src/host/reviewClone.ts', 'src/acp/cloneSearch.ts', 'src/host/agents/agentMerge.ts', 'src/host/agents/agentTries.ts', 'src/acp/worktreeApply.ts', 'src/acp/tryState.ts', 'src/host/chat/projectStrings.ts', 'src/host/assigneePicker.ts', 'src/host/checkAgent.ts', 'src/acp/cli/contract.ts', 'src/acp/sessionReplay.ts'],
+	'src/onDemand.ts': ['src/host/auditPage.ts', 'src/host/benchmarkCommand.ts', 'src/host/designSystemSync.ts', 'src/host/traceRecorder.ts', 'src/host/reviewClone.ts', 'src/acp/cloneSearch.ts', 'src/host/agents/agentMerge.ts', 'src/host/agents/agentTries.ts', 'src/acp/worktreeApply.ts', 'src/acp/tryState.ts', 'src/host/chat/projectStrings.ts', 'src/host/assigneePicker.ts', 'src/host/checkAgent.ts', 'src/acp/cli/contract.ts', 'src/acp/sessionReplay.ts'],
 };
 
 interface Built {

@@ -762,6 +762,12 @@ export class ChatController implements vscode.Disposable {
 				this.hintedSessions.add(session);
 				content.push({ type: 'text', text: hint });
 			}
+			if (attachments.some(attachment => attachment.kind === 'document' && attachment.tool === 'figma')) {
+				const design = await this.options.designSystemNote?.().catch(() => undefined);
+				if (design) {
+					content.push({ type: 'text', text: design });
+				}
+			}
 			const page = await this.sharedPage.refresh();
 			if (page) {
 				content.push({ type: 'text', text: page.note });
