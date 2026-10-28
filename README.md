@@ -2,7 +2,7 @@
 
 GeminiCode is a code editor built on [VS Code (Code - OSS)](https://github.com/microsoft/vscode) with the [Gemini CLI](https://github.com/google-gemini/gemini-cli) built in as its coding agent. It runs the official `gemini` CLI over the [Agent Client Protocol](https://agentclientprotocol.com), so you get the CLI's agent, sign-in and Gemini Code Assist license inside a full editor.
 
-- **Agents side by side.** Run several agents at once, each in its own tab and folder, optionally on a branch of its own, and try its work in your workspace before you keep it. Fork one to split its work without starting over. Home shows each agent's status, changes and next step.
+- **Agents side by side.** Run several agents at once, each in its own tab and folder, optionally on a branch of its own, and try its work in your workspace before you keep it. Fork one to split its work without starting over. Beside each chat, one click opens the agent's changes, browser, terminal and files. Home shows each agent's status, changes and next step.
 - **Chat that asks first.** Every command and edit asks before it runs unless you pick a looser mode, and each change can be kept or undone in the file. Edit and comment on a plan before it is built. Steer an agent while it works or queue your next message, answer a reply with an emoji, and compact long chats.
 - **A terminal per agent.** Run the commands Gemini suggests with one click, in the agent's own terminal, and send a failed command's output straight back to it.
 - **Context.** `@` to mention files, <kbd>Cmd</kbd>+<kbd>L</kbd> to add the selection, and drag in files, images and PDFs from anywhere. A local workspace index lets agents find code in one step.

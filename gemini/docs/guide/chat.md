@@ -2,7 +2,7 @@
 
 Everything you need to talk to an agent sits in the composer's **+** menu. Attach the files that matter, turn a rough request into a precise prompt, and let the agent plan before it builds.
 
-![The composer's + menu with the mode, files, context, Follow the agent, the model, usage and skills](../../site/media/docs/plus-menu-dark.webp)
+![The composer's + menu with Fork, the mode, files, context, Follow the agent, Open Terminal and your team's tools](../../site/media/docs/plus-menu-dark.webp)
 
 ## The + menu
 
@@ -67,7 +67,7 @@ The rewrite replaces your draft as Gemini writes it; **Cancel** or <kbd>esc</kbd
 
 In **Plan** mode the agent reads and proposes a plan without changing anything. When a reply ends in Plan mode, **Build This Plan** under it switches the chat back to the mode it was in before Plan (Default when it started in Plan) and asks Gemini to carry out the plan. The chevron beside it offers the other choice: **Build, Asking for Each Edit** in Default mode, or **Build in Auto Edit** when you planned from Default. When you switched to another model after planning, a line under the button names both: "Builds with … ; planned with …". The Gemini CLI doesn't say ahead which model Auto will pick, so with Auto there is no such line.
 
-![An agent in Plan mode writing a plan that ends with Build This Plan](../../site/media/showcase-plan-dark.webp "clip")
+![An agent in Plan mode writing a plan that ends with Build This Plan and Review Plan](../../site/media/showcase-plan-dark.webp "clip")
 
 With the model on Auto, Gemini plans with Pro and builds with Flash. Turn off **Plan with Pro, build with Flash** in [Agent Setup](helpers.md#gemini-cli-settings) to keep one model throughout.
 
@@ -194,7 +194,9 @@ Writing the summary is a model turn, so it counts toward your quota.
 
 ### Finding your way
 
-- The thin outline of your prompts down the chat's right edge jumps to each one. <kbd>⌥⌘↑</kbd> and <kbd>⌥⌘↓</kbd> do the same.
+- Once a chat has two prompts, a thin outline of them runs down its left edge, one tick for each. Point at a tick to see the prompt and the start of its reply, and click it to jump there. <kbd>⌥⌘↑</kbd> and <kbd>⌥⌘↓</kbd> do the same.
+
+![The prompt outline at the chat's left edge, with a tick's card showing a prompt and the start of its reply](../../site/media/prompt-outline-dark.webp)
 - **Latest**, above the input, takes you back to the newest message.
 - **Open Chat as Markdown**, in an agent's right-click menu or the Command Palette, opens the whole conversation as a document you can search, save or share.
 

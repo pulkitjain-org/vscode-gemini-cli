@@ -102,8 +102,13 @@ const mediaFiles = {
 	'showcase-review': { width: 2000, height: 1250 },
 	'project-threads': { width: 2000, height: 1250 },
 	'browser-page': { width: 2000, height: 1250 },
-	files: { width: 2000, height: 1250 },
 	'agents-pane': { width: 2000, height: 1250 },
+	'agent-links': { width: 2000, height: 1250 },
+	'agent-files': { width: 2000, height: 1250 },
+	'fork-list': { width: 2000, height: 1250 },
+	'mr-review-diff': { width: 2000, height: 1250 },
+	'run-command': { width: 2000, height: 1250 },
+	'reactions': { width: 2000, height: 1250 },
 	'plan-review': { width: 2000, height: 1250 },
 	'try-scm': { width: 2000, height: 1250 },
 	'confluence-review': { width: 2000, height: 1250 },
@@ -479,7 +484,7 @@ const ogImages = {
 	'home.jpg': 'GeminiCode in Agents layout: the agent list, an agent\'s chat and the files it opened beside it',
 	'agents.jpg': 'The Index page, with two indexed workspaces and attached documentation',
 	'chat-and-review.jpg': 'An agent\'s edits in the file, with Keep and Undo above each change',
-	'projects.jpg': 'Thread cards in a project chat, with the side panel counting threads by state',
+	'projects.jpg': 'Finished thread cards in a project chat, with the side panel counting threads and their requests',
 	'browser.jpg': 'A cart page in GeminiCode\'s browser beside the chat, with Add to Gemini',
 	'team-tools.jpg': 'A merge request\'s diff with Gemini\'s review comments on their lines',
 } as const;
@@ -495,15 +500,15 @@ const indexedPages = new Map<string, string | undefined>();
  */
 const clipDates: Readonly<Record<string, string>> = {
 	'showcase-console': '2026-10-15',
-	'showcase-enhance': '2026-10-19',
+	'showcase-enhance': '2026-10-28',
 	'showcase-mr-review': '2026-10-23',
 	'showcase-notes': '2026-10-19',
-	'showcase-plan': '2026-10-19',
-	'showcase-plan-review': '2026-10-27',
-	'showcase-projects': '2026-10-19',
+	'showcase-plan': '2026-10-28',
+	'showcase-plan-review': '2026-10-28',
+	'showcase-projects': '2026-10-28',
 	'showcase-review': '2026-10-19',
-	'showcase-wait': '2026-10-19',
-	'showcase-work': '2026-10-27',
+	'showcase-wait': '2026-10-28',
+	'showcase-work': '2026-10-28',
 };
 
 /** A clip's length in whole seconds, from its MP4's movie header (the mvhd box). */
@@ -743,33 +748,24 @@ function shot(media: Media, available: ReadonlySet<string>, alt: string, options
 
 // ---- Landing page ----
 
-/** One of the twelve capabilities, as a tile with a caption on the orbit rings around the headline. */
+/** A capability, as a tile with a caption on the orbit rings around the headline. */
 interface Capability { href: string; title: string; cap: string; thumb: string }
 
 /**
- * Two rings of twelve tiles each, every capability once per ring, that turn in opposite
- * directions around the headline (landing.mts moves them). Only the outer ring is in the
- * tab order and the accessibility tree; the inner ring is decoration.
+ * Two rings of tiles, each capability on one of them, that turn in opposite directions
+ * around the headline (landing.mts moves them). The inner ring's tiles are a little smaller.
  */
-function orbit(capabilities: readonly Capability[]): string {
-	const sizes = [138, 152, 164, 152];
-	const ring = (order: readonly number[], listed: boolean) => order.map((which, i) => {
-		const { href, title, cap, thumb } = capabilities[which];
-		const quiet = !listed;
-		return `
-				<a class="float" style="--tsz: ${sizes[i % sizes.length]}" href="${attr(href)}"${quiet ? ' tabindex="-1" aria-hidden="true"' : ''}>
+function orbit(outer: readonly Capability[], inner: readonly Capability[]): string {
+	const ring = (capabilities: readonly Capability[], sizes: readonly number[]) => capabilities.map(({ href, title, cap, thumb }, i) => `
+				<a class="float" style="--tsz: ${sizes[i % sizes.length]}" href="${attr(href)}">
 					${thumb}
 					<span class="txt"><span class="ttl">${text(title)}</span><span class="cap">${text(cap)}</span></span>
-				</a>`;
-	}).join('');
-	const all = capabilities.map((_, i) => i);
-	// The inner ring starts half way round the list, so a capability never sits beside its twin.
-	const inner = all.map(i => (i + all.length / 2) % all.length);
+				</a>`).join('');
 	return `
 		<div class="orbit" data-orbit>
-			<div class="ring" data-ring="outer">${ring(all, true)}
+			<div class="ring" data-ring="outer">${ring(outer, [138, 152, 164, 152])}
 			</div>
-			<div class="ring" data-ring="inner">${ring(inner, false)}
+			<div class="ring" data-ring="inner">${ring(inner, [124, 136, 144, 136])}
 			</div>
 		</div>`;
 }
@@ -783,21 +779,34 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 		? `GeminiCode ${text(c.version)} · macOS 26 or later · Apple silicon · ${c.sizeMb} MB · MIT`
 		: `No release yet · <a href="${attr(c.repoUrl)}/releases">Check GitHub Releases</a> · Mac with Apple silicon, macOS 26 or later`;
 	const thumbShot = (media: Media) => `<span class="thumb">${shot(media, available, '')}</span>`;
-	// Shots and drawn tiles take turns round the ring, and the inner ring starts half way
-	// round, so it takes turns too.
-	const capabilities: Capability[] = [
-		{ href: '#agents', title: 'Agents side by side', cap: 'Each in its own tab, with its own chat', thumb: thumbShot('agents-pane') },
-		{ href: '#agents', title: 'Home', cap: 'Describe a task. Choose where it runs', thumb: `<span class="thumb white" style="justify-content: space-between"><span style="color: var(--fg)">Make the upload client retry twice with backoff<span class="mini-caret"></span></span><span class="where xs" aria-hidden="true"><span>Here</span><span class="on">Branch</span><span>Project</span></span></span>` },
-		{ href: '#flow', title: 'Plan Review', cap: 'Edit and comment, section by section', thumb: thumbShot('plan-review') },
+	// Shots and drawn tiles take turns round each ring.
+	const outer: Capability[] = [
+		{ href: 'features/agents.html', title: 'Agents side by side', cap: 'Each in its own tab, with its own chat', thumb: thumbShot('agents-pane') },
+		{ href: 'docs/agents.html#home', title: 'Home', cap: 'Describe a task. Choose where it runs', thumb: `<span class="thumb white" style="justify-content: space-between"><span style="color: var(--fg)">Make the upload client retry twice with backoff<span class="mini-caret"></span></span><span class="where xs" aria-hidden="true"><span>Here</span><span class="on">Branch</span><span>Project</span></span></span>` },
+		{ href: 'docs/agents.html#files-beside-each-agent', title: 'Beside the chat', cap: 'Changes, Browser, Terminal, Files', thumb: thumbShot('agent-links') },
 		{ href: '#flow', title: 'Try in Workspace', cap: 'Run it in your checkout, then keep it', thumb: `<span class="thumb white" style="justify-content: center; gap: 5px"><span class="row-xs mono"><span>retry.ts</span><span class="tbadge">T</span></span><span class="row-xs mono"><span>client.ts</span><span class="tbadge">T</span></span><span class="row-xs mono"><span>upload.test.ts</span><span class="tbadge">T</span></span><span class="row-xs" style="margin-top: 4px"><span class="mini-btn">Keep</span><span class="mono" style="font-size: 10px; color: var(--muted)">Take Back</span></span></span>` },
-		{ href: '#review', title: 'Review and safety', cap: 'Keep, Undo, Rewind. Ask first', thumb: thumbShot('showcase-review') },
-		{ href: '#agents', title: 'Enhance prompt', cap: 'Plain words in, precise prompt out', thumb: `<span class="thumb white" style="justify-content: center; gap: 5px"><span class="draft">make uploads not fail so much</span><span class="mono" style="font-size: 10px; color: var(--accent); align-self: center">↓ ⌥⌘E</span><span class="better">Add backoff, 3 attempts, with a test</span></span>` },
+		{ href: '#flow', title: 'Plan Review', cap: 'Edit and comment, section by section', thumb: thumbShot('plan-review') },
+		{ href: 'docs/chat.html#enhance-prompt', title: 'Enhance prompt', cap: 'Plain words in, precise prompt out', thumb: `<span class="thumb white" style="justify-content: center; gap: 5px"><span class="draft">make uploads not fail so much</span><span class="mono" style="font-size: 10px; color: var(--accent); align-self: center">↓ ⌥⌘E</span><span class="better">Add backoff, 3 attempts, with a test</span></span>` },
 		{ href: '#projects', title: 'Projects', cap: 'One chat, many threads', thumb: thumbShot('project-threads') },
-		{ href: '#agents', title: 'Workspace index', cap: 'Finds the code in one step', thumb: `<span class="thumb white" style="justify-content: center; gap: 5px"><span class="mono" style="font-size: 10px; color: var(--accent)">code_search</span><span class="row-xs mono"><span>upload.ts:4</span><span style="color: var(--muted)">41 ms</span></span><span class="row-xs mono"><span>upload.test.ts:7</span></span><span class="mono" style="font-size: 10px; color: var(--accent); margin-top: 4px">find_symbol</span><span class="row-xs mono"><span>2 callers</span></span></span>` },
-		{ href: '#beyond', title: 'Agent browser', cap: 'Agents open and use your app', thumb: thumbShot('browser-page') },
-		{ href: '#beyond', title: 'Team tools', cap: 'Ticket to merge request', thumb: `<span class="thumb" style="justify-content: center; gap: 8px"><span style="display: flex; gap: 5px; flex-wrap: wrap"><span class="chip xs">Jira</span><span class="chip xs">GitLab</span><span class="chip xs">Sonar</span><span class="chip xs">Snyk</span><span class="chip xs">Figma</span></span><span class="mono" style="font-size: 10px; color: var(--accent)">ACME-412 → !412</span></span>` },
-		{ href: '#beyond', title: 'Confluence drafts', cap: 'Keep or undo each change, then publish', thumb: thumbShot('confluence-review') },
+		{ href: 'docs/agents.html#workspace-index-and-docs', title: 'Workspace index', cap: 'Finds the code in one step', thumb: `<span class="thumb white" style="justify-content: center; gap: 5px"><span class="mono" style="font-size: 10px; color: var(--accent)">code_search</span><span class="row-xs mono"><span>upload.ts:4</span><span style="color: var(--muted)">41 ms</span></span><span class="row-xs mono"><span>upload.test.ts:7</span></span><span class="mono" style="font-size: 10px; color: var(--accent); margin-top: 4px">find_symbol</span><span class="row-xs mono"><span>2 callers</span></span></span>` },
+		{ href: 'features/browser.html', title: 'Agent browser', cap: 'Agents open and use your app', thumb: thumbShot('browser-page') },
+		{ href: 'features/team-tools.html', title: 'Team tools', cap: 'Ticket to merge request', thumb: `<span class="thumb" style="justify-content: center; gap: 8px"><span style="display: flex; gap: 5px; flex-wrap: wrap"><span class="chip xs">Jira</span><span class="chip xs">GitLab</span><span class="chip xs">Sonar</span><span class="chip xs">Snyk</span><span class="chip xs">Figma</span></span><span class="mono" style="font-size: 10px; color: var(--accent)">ACME-412 → !412</span></span>` },
+		{ href: 'docs/team-tools.html#review-a-merge-request', title: 'Merge request review', cap: 'An agent reviews, you post', thumb: thumbShot('mr-review-diff') },
+		{ href: 'docs/chat.html#sending-while-the-agent-works', title: 'Steer or queue', cap: 'Talk to it while it works', thumb: `<span class="thumb white" style="justify-content: center; gap: 6px"><span class="row-xs"><span class="draft" style="flex: 1">use the shared money helper</span></span><span class="row-xs mono"><span><kbd>↩</kbd> after this step</span></span><span class="row-xs mono"><span><kbd>⌘↩</kbd> after the turn</span></span></span>` },
+		{ href: 'docs/team-tools.html#draft-confluence-pages', title: 'Confluence drafts', cap: 'Keep or undo each change, then publish', thumb: thumbShot('confluence-review') },
 		{ href: 'docs/helpers.html', title: 'Agent Setup', cap: 'MCP, skills, trust rules, storage', thumb: `<span class="thumb white" style="justify-content: center; gap: 6px"><span class="row-xs"><span>MCP servers</span><span class="toggle"></span></span><span class="row-xs"><span>Skills</span><span class="toggle"></span></span><span class="row-xs"><span>Trust rules</span><span class="toggle"></span></span><span class="row-xs"><span>Storage</span><span class="mono" style="font-size: 9px; color: var(--muted)">2.1 GB</span></span></span>` },
+	];
+	const inner: Capability[] = [
+		{ href: 'docs/agents.html#the-files-page', title: 'Files page', cap: 'Search, recent files and the tree', thumb: thumbShot('agent-files') },
+		{ href: 'docs/chat.html#finding-your-way', title: 'Prompt outline', cap: 'Each prompt and its reply, a tick away', thumb: `<span class="thumb white" style="flex-direction: row; align-items: center; gap: 7px"><span class="ticks" aria-hidden="true"><span></span><span class="on"></span><span></span><span></span></span><span class="peek"><b>Round totals to whole cents</b><span>Done: line and cart totals now round…</span></span></span>` },
+		{ href: 'docs/agents.html#fork-an-agent', title: 'Fork an agent', cap: 'Split the work, keep the context', thumb: thumbShot('fork-list') },
+		{ href: 'docs/agents.html#follow-the-agent', title: 'Follow the agent', cap: 'Each file opens as it reads or edits', thumb: `<span class="thumb white" style="justify-content: center; gap: 5px"><span class="row-xs mono"><span>total.ts</span><span style="color: var(--muted)">reading</span></span><span class="row-xs mono" style="color: var(--accent)"><span>discount.ts:42</span><span>editing</span></span><span class="row-xs mono"><span>total.test.ts</span><span style="color: var(--muted)">next</span></span></span>` },
+		{ href: 'docs/terminal.html#run-a-command-from-a-reply', title: 'Run a suggested command', cap: 'In the agent\'s own terminal', thumb: thumbShot('run-command') },
+		{ href: 'docs/chat.html#usage-and-quota', title: 'Usage and quota', cap: 'Context, tokens and today\'s requests', thumb: `<span class="thumb white" style="justify-content: center; gap: 7px"><span class="row-xs"><span>Context</span><span class="mono" style="font-size: 9px; color: var(--muted)">18%</span></span><span class="meter"><span style="width: 18%"></span></span><span class="row-xs"><span>Today</span><span class="mono" style="font-size: 9px; color: var(--muted)">51%</span></span><span class="meter"><span style="width: 51%"></span></span></span>` },
+		{ href: 'docs/chat.html#reacting-to-replies', title: 'React to a reply', cap: '👍 go ahead, ❓ explain more simply', thumb: thumbShot('reactions') },
+		{ href: 'docs/agents.html#pick-up-a-gemini-cli-session', title: 'Pick up a CLI session', cap: 'Carry on what you began in the terminal', thumb: `<span class="thumb" style="justify-content: center; gap: 6px"><span class="mono" style="font-size: 10px; color: var(--accent)">$ gemini</span><span class="row-xs mono"><span>fix flaky upload test</span></span><span class="mono" style="font-size: 10px; color: var(--muted)">↓ resumed in chat</span></span>` },
+		{ href: '#review', title: 'Review and safety', cap: 'Keep, Undo, Rewind. Ask first', thumb: thumbShot('showcase-review') },
+		{ href: 'docs/team-tools.html#comment-on-a-ticket', title: 'Jira comments', cap: '@mentions, files and who can see it', thumb: `<span class="thumb white" style="justify-content: center; gap: 6px"><span class="mono" style="font-size: 10px; color: var(--accent)">ACME-421</span><span>Fixed in !421, <b style="color: var(--accent); font-weight: 500">@Priya Nair</b> can you check?</span><span class="row-xs"><span class="mono" style="font-size: 9px; color: var(--muted)">screenshot.png</span><span class="mini-btn">Comment</span></span></span>` },
 	];
 	const strip = [
 		'<b>Plan mode</b> read first, then build',
@@ -815,6 +824,8 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 		'<b>Add to Gemini</b> from the browser',
 		'<b>Review My Changes</b>',
 		'<b>Follow the agent</b>',
+		'<b>Files</b> beside each agent',
+		'<b>Prompt outline</b> to jump back',
 		'<kbd>⌥⌘M</kbd> Agents ⇄ Editor',
 		'<b>Ticket → MR</b> Jira · GitLab',
 		'<b>Confluence</b> drafts you review',
@@ -849,7 +860,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 
 	const body = `
 	<section class="hero" aria-labelledby="headline">
-		<canvas class="dots" aria-hidden="true"></canvas>${orbit(capabilities)}
+		<canvas class="dots" aria-hidden="true"></canvas>${orbit(outer, inner)}
 		<div class="in">
 			<div class="centre">
 				${logo(56, true, 'mark')}
@@ -941,7 +952,7 @@ export function renderPage(latest: LatestRelease, repo: string, available: Reado
 					<p style="max-width: 480px">A status dot per agent: a spinner while it works, amber when it waits for you, green when done. One short note says how long it has worked or the lines it added.</p>
 				</div>
 				<div class="agents-shot">
-					${shot('agents-pane', available, 'The Agents pane with an agent working, one waiting on a command, one finished with 28 lines added, and others idle, one with a fork under it', { sizes: '(max-width: 1100px) 250vw, 1700px' })}
+					${shot('agents-pane', available, 'The Agents pane with an agent working, one waiting on a command and others idle, one with a fork under it', { sizes: '(max-width: 1100px) 250vw, 1700px' })}
 				</div>
 			</div>
 			<div class="tile s5 reveal" data-reveal style="gap: 20px">

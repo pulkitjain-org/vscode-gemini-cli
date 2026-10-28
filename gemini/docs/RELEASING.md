@@ -58,7 +58,7 @@ Without the Apple secrets, a prerelease (`v1.2.0-rc.1`) or a dev build gets an a
 The landing page has, in order:
 
 - A **New** banner above the nav, linking to the release's headline feature. Change it with each release that has one (`news` in `layout()`).
-- The hero: the headline, **Download for Mac**, a line with the version, macOS 26 or later, Apple silicon, the download size and the licence (MIT). The eight capability tiles turn around it on two rings.
+- The hero: the headline, **Download for Mac**, a line with the version, macOS 26 or later, Apple silicon, the download size and the licence (MIT). Twenty-four capability tiles turn around it on two rings, fourteen on the outer and ten on the inner, each capability once.
 - A showcase card with the `showcase-work` screenshot, and a play button for its clip.
 - A strip of things you can do.
 - Sections on agents, review and safety, Projects, and the browser and team tools, which link to the feature pages.

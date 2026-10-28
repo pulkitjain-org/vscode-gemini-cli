@@ -11,7 +11,7 @@ This folder holds everything the fork adds besides its product code, which lives
 
 In a sentence each, with the guide page that covers it:
 
-- **Agents.** Several agents side by side, each in its own tab and folder, optionally on a branch of its own whose work you try in your workspace before keeping it, and forkable when the work splits. [Agents](docs/guide/agents.md)
+- **Agents.** Several agents side by side, each in its own tab and folder, optionally on a branch of its own whose work you try in your workspace before keeping it, and forkable when the work splits. A column beside each chat opens the agent's changes, browser, terminal and files. [Agents](docs/guide/agents.md)
 - **Chat.** A composer with context, slash commands, Enhance prompt and Plan mode, whose plans you edit and comment on in Plan Review; send or queue messages while an agent works, react to replies with an emoji, and compact long chats. [Chat and prompting](docs/guide/chat.md)
 - **Review.** Approval modes, permission cards, Keep and Undo in the file, Rewind, inline edit and Review My Changes. [Review and safety](docs/guide/review.md)
 - **Terminal.** Each agent has a terminal; a reply's shell commands run there with one click, and terminal output goes back to Gemini. [Terminal](docs/guide/terminal.md)

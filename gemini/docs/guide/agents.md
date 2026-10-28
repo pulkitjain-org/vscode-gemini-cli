@@ -42,19 +42,41 @@ In the Agents layout the agent list highlights the agent, project or thread whos
 
 Each agent opens as a tab with its own chat. The tab shows what the agent is doing: a spinner while it works, an amber dot when it needs you, a tick when it has finished, and how many lines it has changed.
 
-![The Agents pane with an agent working, one waiting on a command, one finished with 28 lines added, and others idle, one with a fork under it](../../site/media/agents-pane-dark.webp)
+![The Agents pane with an agent working, one waiting on a command and others idle, one with a fork under it](../../site/media/agents-pane-dark.webp)
 
 In the Agents pane, each agent's row has the same signal (green when finished, red when something went wrong, grey otherwise). On the right it shows how long the agent has been working, "waiting", the lines it added, or when it was last active. Point at a row to see its branch and folder. Rename, stop or remove an agent from its right-click menu; **Gemini: Stop Agent** (<kbd>⌘esc</kbd>) stops the one in front. Removing an agent deletes its conversation and undo history, and the question names any files whose changes you haven't reviewed yet. **Archive**, in the same question, keeps all of that and moves the agent under an **Archived** row in its workspace, out of the list and off Home; its next prompt brings it back.
 
 - In the Editor layout, agents that are working, waiting, or finished but not yet read show as pills in the title bar.
 - Right-click GeminiCode in the Dock for **New Agent**.
-- In a window with several folders, each agent keeps to the folder it works in. Turn on `gemini.agents.allWorkspaceFolders` to let every agent use all of them.
+- In a window with several folders, each agent keeps to the folder it works in, and **@** in its composer offers only that folder's files. Turn on `gemini.agents.allWorkspaceFolders` to let every agent use all of them.
 
 A new agent starts on your task as soon as you press Return, because GeminiCode keeps a session open and ready.
 
 ## Files beside each agent
 
-Files, diffs and pages an agent opens go in an editor group beside its chat, with a tab row so you can close them. Each agent has its own group. Switching agents hides the other groups without closing them, so when you come back to an agent its files are as you left them. Closing an agent's tab, or removing the agent, closes its files, except those with unsaved changes.
+Files, diffs, pages and terminals an agent opens go in an editor group beside its chat, with a tab row so you can close them. Each agent has its own group. Switching agents hides the other groups without closing them, so when you come back to an agent its files are as you left them. Closing an agent's tab, or removing the agent, closes its files, except those with unsaved changes.
+
+![An agent's chat with the column in its right margin: where it works, Changes with the lines added and removed, Browser, Terminal and Files](../../site/media/agent-links-dark.webp)
+
+The right margin of an agent's or a thread's chat has a column of links, so what the agent has made is one click away:
+
+- **On** names where the agent works: the folder, or its branch.
+- **Changes** opens what the agent changed, with the lines added and removed beside it.
+- **Browser** shows the page the agent has open, or opens a new one in its group.
+- **Terminal** opens the agent's terminal. See [The agent's terminal](terminal.md#the-agents-terminal).
+- **Files** opens the agent's Files page.
+
+The column never moves the chat. In a narrower chat it becomes a row of icons, and it hides when there is no room. A project's coordinator has none, since it changes no files itself.
+
+### The Files page
+
+The Files page lists the agent's folder, which is its own branch's folder for an agent on its own branch. It has a search for files and folders, **New File**, the files you recently opened from it, and the folder as a tree, with ignored files dimmed.
+
+![An agent's Files page beside its chat, with the search, New File, recent files and the folder tree](../../site/media/agent-files-dark.webp)
+
+Opening a file shows it in the agent's group and moves the page into a narrow column beside it, showing only the tree, so you can open the next file from there. The column keeps its width when you switch agents and back, and when you close the last file, the page takes its place again.
+
+![A file open in an agent's group, with the Files page as a narrow tree beside it](../../site/media/agent-files-beside-dark.webp)
 
 ## Follow the agent
 

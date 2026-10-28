@@ -214,22 +214,28 @@ if (hero && canvas && context) {
 const orbit = document.querySelector<HTMLElement>('[data-orbit]');
 const centre = document.querySelector<HTMLElement>('.hero .centre');
 if (hero && orbit && centre) {
-	interface Ring { tiles: HTMLElement[]; reach: number; speed: number; turn: number }
-	// The outer ring runs through the hero's corners and turns anticlockwise once every 49
-	// seconds; the inner one is two thirds as wide and turns clockwise once a minute.
+	interface Ring { tiles: HTMLElement[]; side: number; tall: number; speed: number; turn: number; rx: number; ry: number }
+	// Both rings are ellipses taller than the hero, so their tiles pass down the free space
+	// either side of the headline and leave over its top and bottom. `side` is how far into
+	// that space a ring runs, and `tall` its height against the hero's; the inner ring is
+	// shorter, so the two don't meet where they cross over the headline. The outer ring turns anticlockwise once every 49 seconds, the
+	// inner one clockwise about once a minute.
 	const rings: Ring[] = [
-		{ tiles: [...orbit.querySelectorAll<HTMLElement>('[data-ring="outer"] .float')], reach: 1, speed: -7.4, turn: 0 },
-		{ tiles: [...orbit.querySelectorAll<HTMLElement>('[data-ring="inner"] .float')], reach: 0.66, speed: 6.1, turn: 0.5 },
+		{ tiles: [...orbit.querySelectorAll<HTMLElement>('[data-ring="outer"] .float')], side: 0.78, tall: 0.64, speed: -7.4, turn: 0, rx: 0, ry: 0 },
+		{ tiles: [...orbit.querySelectorAll<HTMLElement>('[data-ring="inner"] .float')], side: 0.3, tall: 0.5, speed: 6.1, turn: 0.5, rx: 0, ry: 0 },
 	];
 	let originX = 0;
 	let originY = 0;
-	let radius = 0;
 	const measure = () => {
 		const box = hero.getBoundingClientRect();
 		const words = centre.getBoundingClientRect();
 		originX = words.left - box.left + words.width / 2;
 		originY = words.top - box.top + words.height / 2;
-		radius = Math.hypot(box.width, box.height) / 2;
+		const free = box.width / 2 - words.width / 2;
+		for (const ring of rings) {
+			ring.rx = words.width / 2 + free * ring.side;
+			ring.ry = box.height * ring.tall;
+		}
 	};
 	// Seconds since the orbit started; the burst out from the centre takes the first 1.4.
 	let clock = 0;
@@ -248,10 +254,9 @@ if (hero && orbit && centre) {
 				// Each tile bursts out a little after the one before it, round the ring.
 				const grow = still ? 1 : ease((clock - burstAt - (r * 0.12 + i / count * 0.5)) / 0.9);
 				const angle = (ring.turn + i / count) * Math.PI * 2 + (1 - grow) * Math.sign(ring.speed) * -0.6;
-				const reach = radius * ring.reach * grow;
 				const size = tile.offsetWidth;
-				const x = originX + Math.cos(angle) * reach - size / 2;
-				const y = originY + Math.sin(angle) * reach - size / 2;
+				const x = originX + Math.cos(angle) * ring.rx * grow - size / 2;
+				const y = originY + Math.sin(angle) * ring.ry * grow - size / 2;
 				tile.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) rotate(${(away * 4 * Math.sign(ring.speed)).toFixed(2)}deg) scale(${(0.4 + grow * 0.6).toFixed(3)})`;
 				tile.style.opacity = (Math.min(1, grow * 1.5) * (1 - away)).toFixed(3);
 			});

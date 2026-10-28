@@ -17,6 +17,7 @@ Capture from the real app, against demo data, so no real account, ticket, name o
 
 | Taken on | Against | Media |
 | --- | --- | --- |
+| 2026-10-28 | The demo repositories, and a demo Jira (two sites), Confluence, GitLab and SonarQube signed in as Sam Rivera, in a build of `feature/folder-own-agent-settings` (7a78aa0efd1) ahead of 1.6.1 | New: `agent-links` (the column beside an agent's chat: where it works, Changes with its line counts, Browser, Terminal, Files), `agent-files` (the Files page), `agent-files-beside` (a file open with the Files page as a narrow tree) and `prompt-outline` (the outline at the chat's left edge with a tick's card). Retaken for the column, the outline on the left and terminals beside the chat: `agents-pane`, `replies`, `reactions`, `run-command`, `queue`, `compact-line`, `enhance-before`, `enhance-after`, `fork-dialog`, `fork-list`, `docs/folded-turn` and `docs/plus-menu`, and the `showcase-work`, `showcase-wait`, `showcase-plan`, `showcase-plan-review` and `showcase-enhance` clips. Retaken for 1.6's thread cards: `project-chat`, `project-threads`, `project-merge`, `project-new-thread`, `docs/project-settings`, `docs/project-memory` and the `showcase-projects` clip (and `og/projects.jpg`). Retaken for Agent Setup's new measuring note: `docs/project-helpers` |
 | 2026-10-27 | The demo repository and a demo Jira (two sites), GitLab and SonarQube signed in as Sam Rivera, in the installed GeminiCode 1.6.0 | The `showcase-work` clip (a Jira ticket's task typed on Home, the agent at work, and Keep in the Changes panel) and its Home poster, and `docs/project-helpers` (Agent Setup) |
 | 2026-10-27 | The demo repository, in the installed GeminiCode 1.6.0 | `agents-pane` (the Agents pane with agents working, waiting, finished and idle, and a fork), `fork-list` (a fork under its agent, with its card in the agent's chat), `try-scm` (an agent's changes tried in the workspace, with **T** in Source Control and Trying in the status bar), `enhance-before` and `enhance-after` (a draft, and the prompt Enhance wrote from it, with Revert) |
 | 2026-10-27 | The demo repository, and a demo Jira (two sites), Confluence, GitLab and SonarQube signed in as Sam Rivera | `plan-review` and the `showcase-plan-review` clip (Plan Review with comments, sent and revised), `try-workspace` (a project thread tried in the workspace), `confluence-review` (a Confluence draft on the Review Page), and `home` retaken for the Here / On Its Own Branch / To a Project chooser and both Jira sites |
@@ -31,22 +32,20 @@ The clips' dates are also in `clipDates` in `build.mts`, which the site's video 
 
 Nothing at the moment.
 
-## Needs retaking for 1.6
+## Checked and kept
 
-These show the app before 1.6 and are still on the site:
+These show a page or diff beside an agent's chat. With a side group open the chat is narrower than the column needs, so it shows no column, and they have one prompt each, so no outline: `files`, `browser-page`, `confluence-review`, `plan-review`, `mr-review-diff`, `try-workspace`, and the `showcase-notes` and `showcase-mr-review` clips. `home`, `index-page`, `jira-comment`, `try-scm` and `showcase-review` show no agent chat.
 
-- `project-threads` (landing page, Projects): thread cards with **Merge back** and a side panel saying "1 merged back". 1.6 offers **Try in Workspace**, and the side panel counts each thread's requests.
-- `project-merge` (Projects guide): a finished thread card with **Merge back**, **Review changes** and **Undo thread**. Retake it with the 1.6 card, and change its alt text in `gemini/docs/guide/projects.md`.
-- The `showcase-projects` clip (Projects guide and feature page): ends on a **Merge back** card.
-- The `showcase-plan` clip (Chat guide and feature page): the reply ends with only **Build This Plan**. 1.6 adds **Review Plan** beside it, and Build This Plan has a ⌄.
-
-Possibly out of date, to check when retaking the ones above: `project-chat` (no request counts in the side panel), the `showcase-wait` clip's permission card, and `docs/project-settings` and `docs/project-memory`.
-
-### For the next capture
+## Notes for the next capture
 
 - Record clips with the window right of the Dock (it sits on the left): x 96, 1960 × 1225 points. A screen recording picks up the Dock over the window; window stills don't.
 - Turn off `gemini.chat.reactions.agentReactions` in the capture profile. Agents otherwise start a later message with `<react>X</react>`, which shows as text.
 - Park the pointer over the empty sidebar, not the status bar, whose items show a hover card.
 - Agent Setup lists the Mac's trusted folders below Rules; keep the shot above them.
+- If the Mac locks during a capture, the window can't take focus: its traffic lights turn grey, keys and typing must go through the debugger, and screen recording shows the lock screen. The 2026-10-28 clips were recorded as `capturePage` frames of the window, with the (grey) traffic lights laid over from a still of the same window, since `capturePage` leaves them out. Keep the display awake (`caffeinate -d`) to avoid this.
+- A chat that isn't in front stops updating while the window is hidden, so bring an agent's tab forward before reading its state.
+- Give the capture profile's terminal a neutral prompt (`terminal.integrated.env.osx` with `ZDOTDIR` pointing at a `.zshrc` that sets `PROMPT='%1~ %# '`), or the agent's terminal shows the Mac's user and host name.
+- Plan mode replies can print the plan file's full path; ask for the plan only. A coordinator's failed `list_directory` calls show home-folder paths while it works; cut that stretch from a clip.
+- Project settings' **Add repository** opens the native folder picker: add the second repository before the screen can lock.
 
 The link preview images in `media/og/` (1200 × 630 JPEG) are crops of the light shots named in `ogImages` in `build.mts`. Remake one when its shot is retaken; [RELEASING.md](../docs/RELEASING.md#search-engines-link-previews-and-ai-tools) has the command.

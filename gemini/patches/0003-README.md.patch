@@ -1,5 +1,5 @@
 diff --git a/README.md b/README.md
-index b7770cecdd10433d6e7f072a3e2adf2f41bbedc2..6ef450d5c0448aea3d5f2dc86813e9ae15c36729 100644
+index b7770cecdd10433d6e7f072a3e2adf2f41bbedc2..4071175cff2301dd9da196475a00b9dd3d4288a8 100644
 --- a/README.md
 +++ b/README.md
 @@ -1,76 +1,30 @@
@@ -12,7 +12,7 @@ index b7770cecdd10433d6e7f072a3e2adf2f41bbedc2..6ef450d5c0448aea3d5f2dc86813e9ae
 +GeminiCode is a code editor built on [VS Code (Code - OSS)](https://github.com/microsoft/vscode) with the [Gemini CLI](https://github.com/google-gemini/gemini-cli) built in as its coding agent. It runs the official `gemini` CLI over the [Agent Client Protocol](https://agentclientprotocol.com), so you get the CLI's agent, sign-in and Gemini Code Assist license inside a full editor.
  
 -This repository ("`Code - OSS`") is where we (Microsoft) develop the [Visual Studio Code](https://code.visualstudio.com) product together with the community. Not only do we work on code and issues here, but we also publish our [roadmap](https://github.com/microsoft/vscode/wiki/Roadmap), [monthly iteration plans](https://github.com/microsoft/vscode/wiki/Iteration-Plans), and our [endgame plans](https://github.com/microsoft/vscode/wiki/Running-the-Endgame). This source code is available to everyone under the standard [MIT license](https://github.com/microsoft/vscode/blob/main/LICENSE.txt).
-+- **Agents side by side.** Run several agents at once, each in its own tab and folder, optionally on a branch of its own, and try its work in your workspace before you keep it. Fork one to split its work without starting over. Home shows each agent's status, changes and next step.
++- **Agents side by side.** Run several agents at once, each in its own tab and folder, optionally on a branch of its own, and try its work in your workspace before you keep it. Fork one to split its work without starting over. Beside each chat, one click opens the agent's changes, browser, terminal and files. Home shows each agent's status, changes and next step.
 +- **Chat that asks first.** Every command and edit asks before it runs unless you pick a looser mode, and each change can be kept or undone in the file. Edit and comment on a plan before it is built. Steer an agent while it works or queue your next message, answer a reply with an emoji, and compact long chats.
 +- **A terminal per agent.** Run the commands Gemini suggests with one click, in the agent's own terminal, and send a failed command's output straight back to it.
 +- **Context.** `@` to mention files, <kbd>Cmd</kbd>+<kbd>L</kbd> to add the selection, and drag in files, images and PDFs from anywhere. A local workspace index lets agents find code in one step.
