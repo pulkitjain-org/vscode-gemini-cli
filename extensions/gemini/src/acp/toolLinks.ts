@@ -186,6 +186,11 @@ export interface IndexToolVerbs {
 	readonly outline: string;
 	readonly outlineFolder: string;
 	readonly searchDocs: string;
+	readonly typeOf: string;
+	readonly checkErrors: string;
+	readonly checkErrorsIn: string;
+	readonly callersOf: string;
+	readonly callsIn: string;
 }
 
 export const englishIndexToolVerbs: IndexToolVerbs = {
@@ -195,11 +200,16 @@ export const englishIndexToolVerbs: IndexToolVerbs = {
 	outline: 'Outline {0}',
 	outlineFolder: 'Outline the folder',
 	searchDocs: 'Search docs for {0}',
+	typeOf: 'Type of {0}',
+	checkErrors: 'Check changed files for errors',
+	checkErrorsIn: 'Check {0} for errors',
+	callersOf: 'Callers of {0}',
+	callsIn: 'Calls in {0}',
 };
 
 /** "Search code for "discount code"": a friendly title for a geminicode-index call, or undefined for other tools. */
 export function indexToolTitle(title: string, verbs: IndexToolVerbs = englishIndexToolVerbs): string | undefined {
-	const call = parseToolCall(title, /^(code_search|find_symbol|related_files|repo_map|docs_search)\b/);
+	const call = parseToolCall(title, /^(code_search|find_symbol|related_files|repo_map|docs_search|code_type|code_diagnostics|code_calls)\b/);
 	if (!call) {
 		return undefined;
 	}
@@ -211,6 +221,12 @@ export function indexToolTitle(title: string, verbs: IndexToolVerbs = englishInd
 		case 'related_files': return fill(verbs.related, s('path'));
 		case 'repo_map': return s('path') ? fill(verbs.outline, s('path')) : verbs.outlineFolder;
 		case 'docs_search': return fill(verbs.searchDocs, quoted(s('query')));
+		case 'code_type': return fill(verbs.typeOf, s('symbol'));
+		case 'code_diagnostics': {
+			const paths = Array.isArray(call.args.paths) ? call.args.paths.filter((p): p is string => typeof p === 'string') : [];
+			return paths.length ? fill(verbs.checkErrorsIn, paths.length === 1 ? paths[0] : `${paths.length} files`) : verbs.checkErrors;
+		}
+		case 'code_calls': return fill(s('direction') === 'outgoing' ? verbs.callsIn : verbs.callersOf, s('symbol'));
 		default: return undefined;
 	}
 }

@@ -331,6 +331,11 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			outline: vscode.l10n.t("Outline {0}"),
 			outlineFolder: vscode.l10n.t("Outline the folder"),
 			searchDocs: vscode.l10n.t("Search docs for {0}"),
+			typeOf: vscode.l10n.t("Type of {0}"),
+			checkErrors: vscode.l10n.t("Check changed files for errors"),
+			checkErrorsIn: vscode.l10n.t("Check {0} for errors"),
+			callersOf: vscode.l10n.t("Callers of {0}"),
+			callsIn: vscode.l10n.t("Calls in {0}"),
 		},
 		teamToolVerbs: {
 			read: vscode.l10n.t("Read {0}"),

@@ -122,8 +122,9 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// dist/extension.js, and rebuilding a plan the CLI deleted (sessionReplay.ts), about 1 KB. Try in Workspace's batched git reads,
 	// links, line endings and per-agent action queue (worktreeApply.ts, tryState.ts) added about 14 KB.
 	// Sync Design System and the design system's reads for Figma (designSystemSync.ts, designSystem.ts, designTokens.ts)
-	// added about 9 KB; the pilot's export, removed, had been about 3 KB.
-	'dist/onDemand.js': 128_000,
+	// added about 9 KB; the pilot's export, removed, had been about 3 KB. The language servers' adapter for agents'
+	// index tools (editorToolsHost.ts), about 4 KB, loaded the first time an agent asks one.
+	'dist/onDemand.js': 136_000,
 	// The indexer process, about 66 KB: parsing, SQLite queries and docs conversion, forked on first use, never
 	// loaded in the extension host.
 	'dist/indexer.js': 120_000,

@@ -22,6 +22,7 @@ export { AuditPage } from './host/auditPage';
 export { BenchmarkCommand } from './host/benchmarkCommand';
 export { checkAgent } from './host/checkAgent';
 export { DesignSystemSync } from './host/designSystemSync';
+export { EditorToolsHost } from './host/editorToolsHost';
 export { designSystemNoteFor } from './acp/designSystem';
 export { figmaDesignSystem } from './acp/designTokens';
 export { TraceRecorder } from './host/traceRecorder';

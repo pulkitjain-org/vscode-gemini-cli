@@ -8,6 +8,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { DocsSearchResult } from '../acp/docs/docsProtocol';
+import type { EditorBackend } from '../acp/editorTools';
+import { isInside, secretPathReason } from '../acp/fileAccess';
 import { appRipgrep } from '../acp/index/ripgrepPath';
 import { IndexClient } from '../acp/index/indexClient';
 import type { IndexerMethod, IndexerParams, IndexerResult, IndexSettings, IndexStatus } from '../acp/index/indexerProtocol';
@@ -15,6 +17,8 @@ import { AttachedDocs, IndexMcpServer } from '../acp/indexMcp';
 import { hasIndex } from '../acp/index/indexPaths';
 import { configSection, indexBuildOn } from './configuration';
 import { IndexWatchers } from './indexWatchers';
+import { extensionChunk } from './lazyFeature';
+import { isIgnoredByGitCached } from './workspaceFileSystem';
 
 /** Where the documentation attached to folders comes from (docsSources.ts). */
 export interface DocsProvider {
@@ -53,6 +57,8 @@ export class WorkspaceIndex implements vscode.Disposable {
 
 	private client: IndexClient | undefined;
 	private server: IndexMcpServer | undefined;
+	/** The language servers' adapter for agents' index tools, loaded the first time an agent needs it. */
+	private editor: EditorBackend | undefined;
 	/** Folders asked for in this window, so a restarted process picks them up again. */
 	private readonly folders = new Map<string, { readonly seedFrom?: string }>();
 	private readonly statuses = new Map<string, IndexStatus>();
@@ -357,6 +363,10 @@ export class WorkspaceIndex implements vscode.Disposable {
 			docs: folder => this.attachedDocs(folder),
 			searchDocs: (_folder, ids, query) => this.docs?.search(ids, query) ?? Promise.resolve({ hits: [], total: 0, terms: [] }),
 			orientation: folder => this.orientations.get(folder)?.text,
+			languageServers: languageServersOn,
+			// The language servers' adapter loads the first time an agent needs one (dist/onDemand.js).
+			editor: async () => languageServersOn() ? this.editor ??= new (extensionChunk<typeof import('../onDemand')>('onDemand')().EditorToolsHost)(
+				async (folder, file) => isInside(folder, file) && !secretPathReason(file) && !await isIgnoredByGitCached(file)) : undefined,
 		}, this.options.version);
 		server.start().catch(err => this.options.log.error(`The index server failed to start: ${err instanceof Error ? err.message : String(err)}`));
 		if (indexBuildOn() === 'workspaceOpen') {
@@ -393,6 +403,11 @@ export class WorkspaceIndex implements vscode.Disposable {
 			// Sessions start without an outline.
 		}
 	}
+}
+
+/** Whether agents' index tools also ask the editor's language servers (`gemini.index.languageServers`). */
+function languageServersOn(): boolean {
+	return vscode.workspace.getConfiguration(configSection).get<boolean>('index.languageServers', true);
 }
 
 export function indexEnabled(): boolean {

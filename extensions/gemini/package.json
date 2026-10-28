@@ -1504,6 +1504,12 @@
             "scope": "machine",
             "markdownDescription": "%configuration.index.enabled%"
           },
+          "gemini.index.languageServers": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.index.languageServers%"
+          },
           "gemini.index.buildOn": {
             "type": "string",
             "enum": [

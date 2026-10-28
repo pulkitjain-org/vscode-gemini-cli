@@ -12,6 +12,7 @@
 import { randomBytes } from 'node:crypto';
 import type { McpTool, McpToolResult } from './browserMcp';
 import type { DocsSearchResult } from './docs/docsProtocol';
+import { baseName, diagnosticFiles, type EditorBackend, editorTools, editorToolsInstruction, formatCalls, formatDiagnostics, formatExactReferences, formatHover, noLanguageServer, resolveTarget } from './editorTools';
 import { formatDocs, formatRelated, formatSearch, formatSymbol } from './index/format';
 import type { Answer } from './index/indexerProtocol';
 import type { RelatedResult, SearchQuery, SearchResult, SymbolResult } from './index/query';
@@ -37,6 +38,10 @@ export interface IndexToolBackend {
 	orientation(folder: string): string | undefined;
 	/** A tool was called, for the agent's folder: keeps its index warm. */
 	used?(folder: string): void;
+	/** Whether the editor's language servers back the tools (`gemini.index.languageServers`). */
+	languageServers?(): boolean;
+	/** The language servers' reads, loaded on first use (editorTools.ts). */
+	editor?(): Promise<EditorBackend | undefined>;
 }
 
 interface Caller {
@@ -138,6 +143,7 @@ export class IndexMcpServer {
 			'- find_symbol: where a function, class or type is defined, and where it is used.',
 			'- related_files: a file\'s imports, importers, tests and the files usually changed with it.',
 			'- repo_map: an outline of the folder or a subfolder.',
+			...this.backend.languageServers?.() ? [editorToolsInstruction] : [],
 			'Results give paths with line ranges and are complete for the folder: read only those lines with read_file, and don\'t repeat the search with grep_search.',
 		];
 		const docs = folder ? this.backend.docs(folder) : [];
@@ -201,6 +207,9 @@ export class IndexMcpServer {
 				},
 			},
 		];
+		if (this.backend.languageServers?.()) {
+			tools.push(...editorTools);
+		}
 		const docs = folder ? this.backend.docs(folder) : [];
 		if (docs.length) {
 			tools.push({
@@ -241,7 +250,46 @@ export class IndexMcpServer {
 					return text('find_symbol needs a name.', true);
 				}
 				const answer = await this.backend.findSymbol(folder, symbol, str('kind') || undefined, args.references === true);
-				return text(formatSymbol(symbol, answer.result, answer.fallback, answer.partial));
+				if (args.references !== true || !this.backend.languageServers?.() || answer.result.definitions.length !== 1) {
+					return text(formatSymbol(symbol, answer.result, answer.fallback, answer.partial));
+				}
+				// One definition: the language server's references are the exact ones, where it answers.
+				const target = resolveTarget(folder, symbol, answer.result.definitions);
+				const exact = typeof target === 'string' ? undefined : await (await this.backend.editor?.())?.references(target).catch(() => undefined);
+				if (!exact) {
+					return text(`${formatSymbol(symbol, answer.result, answer.fallback, answer.partial)}\n\n${noLanguageServer}`);
+				}
+				return text(`${formatSymbol(symbol, { ...answer.result, references: [], referenceTotal: 0 }, answer.fallback, answer.partial)}\n\n${formatExactReferences(folder, exact)}`);
+			}
+			case 'code_type':
+			case 'code_calls': {
+				const symbol = str('symbol');
+				if (!symbol) {
+					return text(`${name} needs a symbol.`, true);
+				}
+				const file = str('path') || undefined;
+				const line = num('line');
+				const definitions = file && line ? [] : (await this.backend.findSymbol(folder, baseName(symbol), undefined, false)).result.definitions;
+				const target = resolveTarget(folder, symbol, definitions, file, line);
+				if (typeof target === 'string') {
+					return text(target, true);
+				}
+				const editor = await this.backend.editor?.();
+				if (name === 'code_type') {
+					const hover = editor ? await editor.hover(target).catch(() => undefined) : undefined;
+					return text(hover === undefined ? `${noLanguageServer} Read the definition with find_symbol instead.` : formatHover(target, folder, hover));
+				}
+				const direction = str('direction') === 'outgoing' ? 'outgoing' : 'incoming';
+				const calls = editor ? await editor.calls(target, direction).catch(() => undefined) : undefined;
+				return text(calls === undefined ? `${noLanguageServer} For callers, use find_symbol with references.` : formatCalls(target, folder, direction, calls));
+			}
+			case 'code_diagnostics': {
+				const editor = await this.backend.editor?.();
+				if (!editor) {
+					return text('The editor\'s language servers are off for agents (gemini.index.languageServers).', true);
+				}
+				const { checked, diagnostics } = await editor.diagnostics(folder, diagnosticFiles(folder, args.paths));
+				return text(formatDiagnostics(folder, checked, diagnostics));
 			}
 			case 'related_files': {
 				const file = str('path');
