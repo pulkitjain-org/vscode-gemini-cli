@@ -195,6 +195,8 @@ export class AgentsView implements vscode.Disposable {
 	private agentFilesLoaded: AgentFilesPages | undefined;
 	/** An agent started or ended a turn, for Plan Review. */
 	private readonly onDidChangeTurnEmitter = new vscode.EventEmitter<string>();
+	/** An agent started or ended a turn: its id. */
+	readonly onDidChangeTurn = this.onDidChangeTurnEmitter.event;
 	private readonly projectAgents: AgentProjects;
 	private readonly starts: AgentStarts;
 	private readonly forks: AgentForks;

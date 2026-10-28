@@ -48,6 +48,8 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 	private readonly disposables: vscode.Disposable[] = [];
 	/** The team tools' part: Open Merge Request, Run Checks and the agent's merge request; set by activate. */
 	private mrPanel: MrPanel | undefined;
+	/** Agents whose current turn opened the panel already: a turn opens it at most once. */
+	private readonly openedThisTurn = new Set<string>();
 
 	constructor(private readonly extensionUri: vscode.Uri) {
 		this.disposables.push(
@@ -70,8 +72,29 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 			this.diffs.clear();
 		}
 		this.source = source;
-		this.sourceListener = source?.changes.onDidChange(() => this.schedule());
+		this.sourceListener = source?.changes.onDidChange(() => {
+			this.openForChanges(source!);
+			this.schedule();
+		});
 		this.schedule(0);
+	}
+
+	/** Agent `agentId` started or ended a turn: its next turn may open the panel again. */
+	turnChanged(agentId: string): void {
+		this.openedThisTurn.delete(agentId);
+	}
+
+	/**
+	 * Opens the panel, closed when a window opens, the first time a turn of
+	 * the agent in front changes something: closed during a turn, it stays
+	 * closed until the next turn changes something.
+	 */
+	private openForChanges(source: ChangesSource): void {
+		if (source.busy() && !this.openedThisTurn.has(source.agentId) && !this.view?.visible) {
+			this.openedThisTurn.add(source.agentId);
+			// The workbench opens it without taking focus from the chat, and only in Agents mode.
+			void vscode.commands.executeCommand('_gemini.showChanges').then(undefined, () => undefined);
+		}
 	}
 
 	resolveWebviewView(view: vscode.WebviewView): void {

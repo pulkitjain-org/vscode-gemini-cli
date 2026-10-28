@@ -8,7 +8,7 @@ Run several Gemini agents side by side, each with its own chat, files, changes a
 
 GeminiCode has two layouts. Switch between them with the **Agents | Editor** switch at the top of the window, or <kbd>⌥⌘M</kbd>.
 
-- **Agents layout**, the default, is for working with agents: your agents on the left, the chat in the middle, and the agent's changes on the right. Opening Explorer, Search or any other view switches to the Editor layout with that view open.
+- **Agents layout**, the default, is for working with agents: your agents on the left and the chat in the middle. The agent's changes open on the right when the agent in front starts changing files; the window opens with them closed, and if you close them during a turn they stay closed until the next turn changes something. Opening Explorer, Search or any other view switches to the Editor layout with that view open.
 - **Editor layout** is the classic VS Code layout, with Explorer, Search and Source Control, for hands-on coding. The agent's changes sit below the Agents pane.
 
 In the Agents layout the top of the window is a single row: the Home button, the layout switch, your open tabs (agents, Home, files and browser pages) in one capsule, then a globe for the browser, a magnifier for Quick Open, and the layout buttons. Each layout remembers which panels you had open.
