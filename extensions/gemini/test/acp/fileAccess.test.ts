@@ -154,4 +154,31 @@ describe('createFileHandlers', () => {
 		await expect(handlers.writeTextFile({ sessionId: 's', path: inRoot('.env'), content: '' })).rejects.toThrow(/denied/);
 		expect(fs.files[inRoot('.env')]).toBe('SECRET=1');
 	});
+
+	it('keeps each session\'s latest refusal, for the tool failure the CLI writes as [object Object]', async () => {
+		const handlers = createFileHandlers(memoryFileSystem({}), () => ({ roots: [root] }));
+		await handlers.readTextFile({ sessionId: 's1', path: inRoot('.env') }).catch(() => undefined);
+		await handlers.writeTextFile({ sessionId: 's1', path: path.resolve('/elsewhere/a.ts'), content: '' }).catch(() => undefined);
+		expect([handlers.lastDenial('s1'), handlers.lastDenial('s2')]).toEqual([`Access to ${path.resolve('/elsewhere/a.ts')} was denied: the file is outside the workspace.`, undefined]);
+	});
+});
+
+describe('a folder opened through a link', () => {
+	it('lets the agent reach its files by their real path, as the CLI names them', async () => {
+		const real = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'gemini-real-')));
+		const linked = `${real}-link`;
+		fs.symlinkSync(real, linked);
+		try {
+			fs.writeFileSync(path.join(real, 'a.ts'), 'x');
+			const options = { roots: [linked] };
+			expect([
+				await checkFileAccess(path.join(linked, 'a.ts'), 'write', options),
+				await checkFileAccess(path.join(real, 'a.ts'), 'write', options),
+				await checkFileAccess(path.join(path.dirname(real), 'other.ts'), 'write', options),
+			]).toEqual([undefined, undefined, 'the file is outside the workspace']);
+		} finally {
+			fs.rmSync(linked);
+			fs.rmSync(real, { recursive: true, force: true });
+		}
+	});
 });
