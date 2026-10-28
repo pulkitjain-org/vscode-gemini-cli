@@ -59,7 +59,7 @@ export class ToolChips {
 	async context(folder?: string): Promise<ToolRefContext> {
 		const connected = [...this.connections.connected].filter(tool => tool === 'jira' || tool === 'gitlab' || tool === 'figma');
 		const defaults: TeamDefaults = await (folder ? this.connections.defaults(folder) : this.connections.workspaceDefaults()).catch(() => ({}));
-		return { connected, jiraProjects: defaults.jira?.projects ?? [], figmaSizes: defaults.figma?.viewports ?? defaultDesignSizes };
+		return { connected, jiraProjects: defaults.jira?.projects ?? [], figmaSizes: defaults.figma?.viewports ?? defaultDesignSizes, designSystem: !!defaults.figma?.designSystem };
 	}
 
 	/** The item's attachment; never throws (a failure gives a chip with a note instead). */

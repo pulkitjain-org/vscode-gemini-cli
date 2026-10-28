@@ -25,7 +25,7 @@ import type { PendingPromptView } from '../acp/promptQueue';
 export const chatProtocolVersion = 46;
 
 /** Commands the status line may offer; the host runs only these. */
-export const statusCommands = ['gemini.restartAgent', 'gemini.signIn', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal'] as const;
+export const statusCommands = ['gemini.restartAgent', 'gemini.signIn', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal', 'gemini.designSystem.sync'] as const;
 export type StatusCommand = typeof statusCommands[number];
 
 export interface ViewStatus {
@@ -365,6 +365,9 @@ export interface ResearchStrings {
 	readonly stop: string;
 	readonly sendToAgent: string;
 	readonly copy: string;
+	/** Under a broad question in the message box. */
+	readonly suggest: string;
+	readonly dontSuggest: string;
 }
 
 /** The side question panel (/btw). */
@@ -731,6 +734,8 @@ export interface ChatStrings {
 	readonly figmaDesignEnd: string;
 	readonly figmaDesignTitle: string;
 	readonly figmaDesignHint: string;
+	readonly figmaSetUpDesignSystem: string;
+	readonly figmaSetUpDesignSystemTip: string;
 	readonly figmaSize: string;
 	/** `{0}` the size. */
 	readonly figmaLinkFor: string;

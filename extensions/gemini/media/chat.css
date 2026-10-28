@@ -1833,6 +1833,47 @@ body.vscode-high-contrast-light {
 }
 
 /* Where a turn's time went: hop, bar, this turn, budget. */
+/* Add Figma Design's offer to set up the design system (webview-src/figmaDesign.ts). */
+.figma-design-system {
+	align-self: flex-start;
+	margin: -4px 0 8px;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: var(--vscode-textLink-foreground);
+	font: inherit;
+	cursor: pointer;
+}
+
+.figma-design-system:hover {
+	text-decoration: underline;
+}
+
+/* "Run as Research" under a broad question in the message box (webview-src/composer.ts). */
+.composer-suggestion {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 6px 4px;
+}
+
+.composer-suggestion-run {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 8px;
+	border: 1px solid var(--gemini-border);
+	border-radius: 999px;
+	background: transparent;
+	color: var(--vscode-textLink-foreground);
+	font-size: 12px;
+	cursor: pointer;
+}
+
+.composer-suggestion-run:hover {
+	background: var(--gemini-hover);
+}
+
 /* A research run (webview-src/items.ts, renderResearch): its parts as they are read, then its report. */
 .research-card {
 	display: flex;

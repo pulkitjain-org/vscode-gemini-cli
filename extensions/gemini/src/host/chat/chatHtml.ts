@@ -311,6 +311,8 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		figmaDesignEnd: vscode.l10n.t("a link for each size"),
 		figmaDesignTitle: vscode.l10n.t("Add Figma Design"),
 		figmaDesignHint: vscode.l10n.t("Paste the frame link for each screen size. Pasting several links at once fills the rows in order."),
+		figmaSetUpDesignSystem: vscode.l10n.t("Set Up Your Design System"),
+		figmaSetUpDesignSystemTip: vscode.l10n.t("Read your design system from Figma once, so agents build every design with its tokens and components"),
 		figmaSize: vscode.l10n.t("Size"),
 		figmaLinkFor: vscode.l10n.t("Frame link for {0}"),
 		figmaAddSize: vscode.l10n.t("Add Size"),
@@ -544,7 +546,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			<div id="commit-box" class="usage-popover commit-box" role="dialog" hidden><label class="usage-heading" for="commit-message"></label><textarea id="commit-message" class="commit-message" rows="4" spellcheck="${spellCheckOn()}"></textarea><p class="usage-note commit-note" role="status"></p><div class="permission-actions"><button type="button" class="secondary commit-cancel"></button><button type="button" class="primary commit-confirm"></button></div></div>
 		</div>
 	</div>
-	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-fold-work="${foldWorkOn()}" data-emoji-picker="${emojiPicker}" data-figma-design="${figmaDesign}" data-thread-card="${threadCard}" data-project-settings="${projectSettings}" data-side-chat="${sideChat}" data-reactions="${!project && reactionsOn()}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
+	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-fold-work="${foldWorkOn()}" data-emoji-picker="${emojiPicker}" data-figma-design="${figmaDesign}" data-thread-card="${threadCard}" data-project-settings="${projectSettings}" data-side-chat="${sideChat}" data-reactions="${!project && reactionsOn()}" data-research="${!project}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
 </html>`;
 }
@@ -600,6 +602,8 @@ function researchStrings(): ResearchStrings {
 		stop: vscode.l10n.t("Stop"),
 		sendToAgent: vscode.l10n.t("Send to Agent"),
 		copy: vscode.l10n.t("Copy"),
+		suggest: vscode.l10n.t("Run as Research: read the code in parallel, read-only"),
+		dontSuggest: vscode.l10n.t("Don't suggest Research in this chat"),
 	};
 }
 

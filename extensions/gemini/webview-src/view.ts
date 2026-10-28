@@ -136,6 +136,8 @@ export const state = {
 	foldWork: document.querySelector<HTMLScriptElement>('script[data-strings]')?.dataset.foldWork !== 'false',
 	/** Whether replies offer reactions (`gemini.chat.reactions.enabled`); never in a project's chat. */
 	reactions: document.querySelector<HTMLScriptElement>('script[data-strings]')?.dataset.reactions === 'true',
+	/** Whether this chat has /research: every chat but a project's. */
+	research: document.querySelector<HTMLScriptElement>('script[data-strings]')?.dataset.research === 'true',
 	/** The picker's Recent row, newest first. */
 	recents: [] as readonly string[],
 	/** The meanings people gave emoji in `gemini.chat.reactions.meanings`. */

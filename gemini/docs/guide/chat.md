@@ -149,7 +149,7 @@ For a broad question about the code, such as `/research where are auth tokens re
 3. One more worker rereads the most serious findings.
 4. A report answers the question, with each finding's `path:line`, verified ones marked.
 
-The card in the chat shows each part as it's read. **Stop** ends every worker and reports what was done. Under the report, **Send to Agent** puts it in the message box for the agent to act on, and **Copy** copies it. The research isn't part of the agent's conversation until you send it. A project's chats have no `/research`: their threads do the reading.
+When a question in the message box reads like a broad one, such as "where are all the places that…", **Run as Research** appears under it; its × stops the suggestion for that chat. The card in the chat shows each part as it's read. **Stop** ends every worker and reports what was done. Under the report, **Send to Agent** puts it in the message box for the agent to act on, and **Copy** copies it. The research isn't part of the agent's conversation until you send it. A project's chats have no `/research`: their threads do the reading.
 
 ## Replies
 

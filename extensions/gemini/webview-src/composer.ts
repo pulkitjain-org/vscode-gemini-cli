@@ -10,7 +10,7 @@ import type { SessionSettings } from '../src/acp/sessionSettings';
 import type { ViewGit, ViewStatus } from '../src/host/chatProtocol';
 import { armStop } from './activity';
 import { renderAttachments } from './attachmentChips';
-import { enterAction, format } from './chatLogic';
+import { enterAction, format, isBroadQuestion } from './chatLogic';
 import { button, el, icon, setLabel, setTip } from './dom';
 import { applyTextEdit } from './panelDom';
 import { autoGrow, updatePlaceholder, updateSendState } from './inputBox';
@@ -321,7 +321,37 @@ input.addEventListener('input', () => {
 	autoGrow();
 	updateSendState();
 	updatePicker();
+	updateSuggestion();
 });
+
+/** "Run as Research" under a broad question; once dismissed, not again in this chat. */
+let suggestion: HTMLElement | undefined;
+let suggestionDismissed = false;
+function updateSuggestion(): void {
+	const show = !suggestionDismissed && !state.busy && !strings.project && state.research && isBroadQuestion(input.value);
+	if (!show) {
+		suggestion?.remove();
+		return;
+	}
+	if (!suggestion) {
+		suggestion = el('div', 'composer-suggestion');
+		const run = button('composer-suggestion-run', strings.research.suggest, () => {
+			input.value = `/research ${input.value.trim()}`;
+			suggestion?.remove();
+			submit();
+		}, 'telescope');
+		const dismiss = button('icon-button', '', () => {
+			suggestionDismissed = true;
+			suggestion?.remove();
+			input.focus();
+		}, 'close');
+		setLabel(dismiss, strings.research.dontSuggest);
+		suggestion.append(run, dismiss);
+	}
+	if (!suggestion.isConnected) {
+		ui.input.closest('.input-wrap')?.after(suggestion);
+	}
+}
 input.addEventListener('click', updatePicker);
 input.addEventListener('blur', () => setTimeout(() => {
 	if (document.activeElement !== input) {

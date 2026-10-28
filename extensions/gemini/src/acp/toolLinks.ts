@@ -22,6 +22,8 @@ export interface ToolRefContext {
 	readonly jiraProjects?: readonly string[];
 	/** The screen sizes the team's Figma designs have a frame for (`figma.viewports` there), for Add Figma Design. */
 	readonly figmaSizes?: readonly string[];
+	/** Whether the team's defaults name a design system (`figma.designSystem`), so Add Figma Design need not offer to set one up. */
+	readonly designSystem?: boolean;
 }
 
 const jiraKey = /(?:^|[^A-Za-z0-9_-])([A-Z][A-Z0-9_]{1,15}-[1-9]\d{0,6})(?![\w-])/g;

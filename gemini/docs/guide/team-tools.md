@@ -107,7 +107,7 @@ Name the file in the team defaults:
 }
 ```
 
-Then open the design-system file in the Figma desktop app and run **Gemini: Sync Design System**, or **Sync Design System** on Figma's row in Connections. GeminiCode reads each page you named (every visible page when `pages` is left out), says what changed since the last sync, such as "4 new tokens, 1 component removed", and offers **Review Changes**, which shows each file's diff, and **Write Files**. It writes:
+Then open the design-system file in the Figma desktop app and run **Gemini: Sync Design System**, or **Sync Design System** on Figma's row in Connections. Until the team file names one, **Add Figma Design** offers **Set Up Your Design System**, which says what to add. GeminiCode reads each page you named (every visible page when `pages` is left out), says what changed since the last sync, such as "4 new tokens, 1 component removed", and offers **Review Changes**, which shows each file's diff, and **Write Files**. It writes:
 
 - a skill in `.gemini/skills/design-system/` (or the folder `skill` names), with the rules for using the design system;
 - `references/tokens.md`, every variable with its value, and `references/components.md`, every component with its variants;

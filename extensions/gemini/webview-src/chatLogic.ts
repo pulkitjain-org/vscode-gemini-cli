@@ -141,6 +141,17 @@ export function matchCommands<T extends { readonly name: string }>(commands: rea
 	return [...prefix, ...inside].slice(0, limit);
 }
 
+/**
+ * Whether a draft reads like a broad question about the code, which /research
+ * answers better than one agent reading in turn: a question word, a word for
+ * "everywhere", and enough words to be about more than one thing.
+ */
+export function isBroadQuestion(text: string): boolean {
+	const draft = text.trim();
+	return !draft.startsWith('/') && draft.split(/\s+/).length >= 6 && /^(where|which|what|how|find|list|audit|show|are there)\b/i.test(draft)
+		&& /\b(all|every|everywhere|each|any|across|anywhere|places)\b/i.test(draft);
+}
+
 /** The "/" menu before anything is typed: GeminiCode's commands, then the team's, the skills and the Gemini CLI's, each in its own order. */
 export function groupCommands<T extends { readonly source: 'cli' | 'team' | 'skill' | 'app' }>(commands: readonly T[]): T[] {
 	const order = ['app', 'team', 'skill', 'cli'];
