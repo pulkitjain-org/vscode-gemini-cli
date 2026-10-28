@@ -284,6 +284,7 @@ export class AgentsView implements vscode.Disposable {
 			openTerminal: id => this.openTerminal(id),
 			changedFiles: id => this.live.get(id)?.changes.files,
 			rename: (id, title) => this.renameAgent(id, title),
+			outline: folder => this.index?.outlineOf(folder) ?? Promise.resolve(undefined),
 			trustThreads: async id => {
 				const record = this.model.agent(id);
 				const folder = record && this.model.workspace(record.workspaceId)?.folder;

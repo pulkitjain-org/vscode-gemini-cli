@@ -8,6 +8,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { DocsSearchResult } from '../acp/docs/docsProtocol';
+import { contextPack, contextPackFiles } from '../acp/contextPack';
 import type { EditorBackend } from '../acp/editorTools';
 import { isInside, secretPathReason } from '../acp/fileAccess';
 import { appRipgrep } from '../acp/index/ripgrepPath';
@@ -221,6 +222,30 @@ export class WorkspaceIndex implements vscode.Disposable {
 
 	skipped(folder: string): Promise<{ readonly path: string; readonly reason: string; readonly includable: boolean }[]> {
 		return this.client?.request('skipped', { root: folder }) ?? Promise.resolve([]);
+	}
+
+	/**
+	 * What the index knows around `files` of `folder` (their tests, users and
+	 * usual companions), for the prompt of an agent that can't call the index
+	 * tools, such as a merge request's reviewer; undefined without a built index.
+	 */
+	async contextPack(folder: string, files: readonly string[]): Promise<string | undefined> {
+		const client = this.client;
+		if (!client || this.statuses.get(folder)?.state.kind !== 'ready') {
+			return undefined;
+		}
+		const shown = files.slice(0, contextPackFiles);
+		const related = await Promise.all(shown.map(file => client.request('related', { root: folder, path: file }).then(answer => answer.result, () => undefined)));
+		return contextPack(shown.map((file, i) => ({ file, ...related[i] ? { related: related[i] } : {} })), files.length);
+	}
+
+	/** The outline of `folder` that sessions start with, fetched now if it isn't cached; undefined without a built index. */
+	async outlineOf(folder: string): Promise<string | undefined> {
+		if (this.statuses.get(folder)?.state.kind !== 'ready') {
+			return undefined;
+		}
+		await this.refreshOrientation(folder);
+		return this.orientations.get(folder)?.text;
 	}
 
 	/** Every indexed file of `folder`, once its index is built; for @-mentions outside the window. */

@@ -19,7 +19,7 @@ The coordinator plans the work and starts a thread for each part.
 
 ## Talk to the coordinator
 
-The coordinator never edits files or reads the code itself. It plans, starts threads, passes your follow-ups to them and answers questions about their progress. It runs on a Flash model in an empty folder of its own, and reads the repository's context files, such as `GEMINI.md` and `AGENTS.md`.
+The coordinator never edits files or reads the code itself. It plans, starts threads, passes your follow-ups to them and answers questions about their progress. It runs on a Flash model in an empty folder of its own, and reads the repository's context files, such as `GEMINI.md` and `AGENTS.md`. Once a repository's [index](agents.md#workspace-index-and-docs) is built, the coordinator also gets its outline (folders, languages and public definitions), so the threads it starts are pointed at the right parts of the code.
 
 Only your messages wake the coordinator. When a thread finishes, asks something or fails, you take it up in that thread; the coordinator sees what changed the next time you write to it. A follow-up on work a thread already has goes to that thread, whether it's working, waiting or done.
 

@@ -40,6 +40,9 @@ import { configSection } from './configuration';
 import { tildify } from './displayText';
 import { showError } from './errorNotice';
 
+/** How much of each repository's outline a coordinator's wake carries. */
+const outlineChars = 2_500;
+
 /** What a new thread gets from its project besides its request. */
 export interface ThreadSetup {
 	/** The repositories it works in, when the project has several. */
@@ -69,6 +72,8 @@ export interface ProjectAgents {
 	/** The files a running agent changed. */
 	changedFiles(id: string): readonly EditedFile[] | undefined;
 	rename(id: string, title: string): void;
+	/** The workspace index's outline of `folder`, when it is built. */
+	outline?(folder: string): Promise<string | undefined>;
 	/** Asks the Gemini CLI to trust the folder multi-repository threads work in; false when the user declines. */
 	trustThreads(coordinatorId: string): Promise<boolean>;
 	/**
@@ -456,6 +461,13 @@ export class Projects implements vscode.Disposable {
 			// The memory is read first in each wake, so the repositories are known by the time they are asked for.
 			memory: async () => projectMemory(home, await project.loading, 'coordinator'),
 			repos: () => repoKeys(project.config),
+			outline: async () => {
+				const repos = (await project.loading).repos;
+				const outlines = await Promise.all(repos.map(async repo => [repo.key, await this.agents.outline?.(repo.folder)] as const));
+				const known = outlines.filter((entry): entry is readonly [string, string] => !!entry[1]);
+				// Each repository's outline trimmed, so several fit in one wake.
+				return known.length ? known.map(([key, text]) => repos.length > 1 ? `[${key}]\n${text.slice(0, outlineChars)}` : text.slice(0, outlineChars)).join('\n\n') : undefined;
+			},
 			conductor: () => conductor.read(),
 			trackBrief: track => conductor.trackBrief(track),
 			maxRunning: () => maxRunningThreads(),

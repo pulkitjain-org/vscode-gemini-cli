@@ -193,7 +193,7 @@ A new version of a page opens on the page as it is in Confluence now, with the a
 
 A review checks the branch out from your clone of the repository. GeminiCode looks for one in the clone it remembers for the project, the window's folders, the folders agents have used and your recent folders, and remembers what it finds. When there is none, it asks **Where is your copy of** the project: **Choose Folder...** picks a clone, and **Clone It...** clones the repository, over HTTPS or SSH when GitLab offers both, into a folder you pick, in a terminal where you answer git's questions. **Fix Pipeline and N Comments** asks the same way.
 
-The reviewer's checkout is in `~/.geminicode/reviews`, which the Gemini CLI never trusts, so nothing in the merge request (its Gemini settings, hooks or MCP servers) runs on your Mac. The merge request's description and the ticket's text go in the reviewer's first prompt instead, and GeminiCode answers its read-only `git status`, `diff`, `log` and `show` itself.
+The reviewer's checkout is in `~/.geminicode/reviews`, which the Gemini CLI never trusts, so nothing in the merge request (its Gemini settings, hooks or MCP servers) runs on your Mac. It also means the reviewer can't call the index tools, so when your clone's index is built, the prompt lists what the index knows around each changed file: its tests, the files that use it and the files usually changed with it. The merge request's description and the ticket's text go in the reviewer's first prompt instead, and GeminiCode answers its read-only `git status`, `diff`, `log` and `show` itself.
 
 The **Review** page lists the merge request's files, its threads and your draft.
 
