@@ -158,10 +158,10 @@ function sections(): MenuSection[] {
 	return result;
 }
 
-/** Jira tickets, GitLab items and Figma frames, for the tools the user connected. */
+/** Jira tickets, GitLab items, Figma frames and Confluence pages, for the tools the user connected. */
 function fromYourTools(): MenuRow[] {
 	const connected = toolRefContext().connected;
-	const pick = (tool: 'jira' | 'gitlab' | 'figma') => () => {
+	const pick = (tool: 'jira' | 'gitlab' | 'figma' | 'confluence') => () => {
 		closePlusMenu();
 		if (tool === 'figma') {
 			// A frame for each screen size, in a dialog of its own.
@@ -170,10 +170,11 @@ function fromYourTools(): MenuRow[] {
 		}
 		vscode.postMessage({ type: 'pickToolItem', tool });
 	};
-	const rows: { readonly tool: 'jira' | 'gitlab' | 'figma'; readonly name: string; readonly end: string }[] = [
+	const rows: { readonly tool: 'jira' | 'gitlab' | 'figma' | 'confluence'; readonly name: string; readonly end: string }[] = [
 		{ tool: 'jira', name: strings.jiraTicket, end: '' },
 		{ tool: 'gitlab', name: strings.gitlabItem, end: '!… #…' },
 		{ tool: 'figma', name: strings.figmaDesign, end: strings.figmaDesignEnd },
+		{ tool: 'confluence', name: strings.confluencePage, end: '' },
 	];
 	return rows.filter(row => connected.includes(row.tool)).map(row => ({
 		iconElement: () => toolLogo(row.tool, 14), name: row.name, end: row.end || undefined, run: pick(row.tool),

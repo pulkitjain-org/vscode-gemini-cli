@@ -305,6 +305,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		fromYourTools: vscode.l10n.t("From your tools"),
 		jiraTicket: vscode.l10n.t("Jira ticket"),
 		gitlabItem: vscode.l10n.t("GitLab merge request or issue"),
+		confluencePage: vscode.l10n.t("Confluence page"),
 		figmaFrame: vscode.l10n.t("Figma frame"),
 		pasteLink: vscode.l10n.t("paste link"),
 		figmaDesign: vscode.l10n.t("Figma Design..."),

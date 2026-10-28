@@ -9,6 +9,9 @@
 // between reading a page and publishing it again; the model reads them as
 // plain text.
 
+import { confluencePageId } from './toolLinks';
+
+export { confluencePageId };
 import { adfToText } from './jira';
 import type { TeamRequest } from './teamHttp';
 
@@ -88,17 +91,6 @@ export function cqlQuery(text: string, space?: string): string {
 	const order = /\s+ORDER\s+BY\s+[\s\S]*$/i.exec(text)?.[0] ?? '';
 	const where = text.slice(0, text.length - order.length).trim();
 	return inSpace ? `(${where})${inSpace}${order}` : text;
-}
-
-/** The page id in a Confluence link: /wiki/spaces/KEY/pages/123/Title, ?pageId=123, or /wiki/x/… is not read. */
-export function confluencePageId(link: string): string | undefined {
-	let url: URL;
-	try {
-		url = new URL(link.trim());
-	} catch {
-		return /^\d+$/.test(link.trim()) ? link.trim() : undefined;
-	}
-	return /\/pages\/(?:edit-v2\/)?(\d+)/.exec(url.pathname)?.[1] ?? url.searchParams.get('pageId') ?? undefined;
 }
 
 export class ConfluenceClient {

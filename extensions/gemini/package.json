@@ -1376,6 +1376,12 @@
             "default": false,
             "markdownDescription": "%configuration.agents.ownBranch%"
           },
+          "gemini.figma.viewports": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": [],
+            "markdownDescription": "%configuration.figma.viewports%"
+          },
           "gemini.figma.codeConnect": {
             "type": "boolean",
             "default": false,

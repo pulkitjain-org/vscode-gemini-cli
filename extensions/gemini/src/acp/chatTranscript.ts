@@ -35,7 +35,7 @@ export interface PromptAttachmentLabel {
 	readonly path?: string;
 	readonly line?: number;
 	/** For a Jira ticket, GitLab item or Figma frame: its tool and its `toolRefId`, so the view can open it there. */
-	readonly tool?: 'jira' | 'gitlab' | 'figma';
+	readonly tool?: 'jira' | 'gitlab' | 'figma' | 'confluence';
 	readonly ref?: string;
 }
 

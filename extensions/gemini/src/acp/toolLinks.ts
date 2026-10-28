@@ -12,7 +12,19 @@
 export type ToolRef =
 	| { readonly tool: 'jira'; readonly key: string }
 	| { readonly tool: 'gitlab'; readonly kind: 'mr' | 'issue'; readonly project: string; readonly iid: number; readonly url: string }
-	| { readonly tool: 'figma'; readonly url: string; readonly fileKey: string; readonly nodeId?: string };
+	| { readonly tool: 'figma'; readonly url: string; readonly fileKey: string; readonly nodeId?: string }
+	| { readonly tool: 'confluence'; readonly url: string; readonly host: string; readonly pageId: string };
+
+/** The page id in a Confluence link: /wiki/spaces/KEY/pages/123/Title, ?pageId=123, or a bare id; /wiki/x/… is not read. */
+export function confluencePageId(link: string): string | undefined {
+	let url: URL;
+	try {
+		url = new URL(link.trim());
+	} catch {
+		return /^\d+$/.test(link.trim()) ? link.trim() : undefined;
+	}
+	return /\/pages\/(?:edit-v2\/)?(\d+)/.exec(url.pathname)?.[1] ?? url.searchParams.get('pageId') ?? undefined;
+}
 
 /** What the view knows of the user's tools, to tell a ticket key from other text. */
 export interface ToolRefContext {
@@ -37,6 +49,11 @@ export function parseToolLink(link: string): ToolRef | undefined {
 		url = new URL(link.replace(/[.,;:!?]+$/, ''));
 	} catch {
 		return undefined;
+	}
+	// Before Jira's: a Confluence page on Atlassian Cloud is on the same site.
+	const pageId = url.pathname.startsWith('/wiki/') ? confluencePageId(url.href) : undefined;
+	if (pageId) {
+		return { tool: 'confluence', url: url.href, host: url.host, pageId };
 	}
 	if (/(^|\.)figma\.com$/i.test(url.hostname)) {
 		const fileKey = /^\/(?:design|file|proto)\/([\w-]+)/.exec(url.pathname)?.[1];
@@ -105,6 +122,7 @@ export function toolRefId(ref: ToolRef): string {
 		case 'jira': return `jira:${ref.key}`;
 		case 'gitlab': return `gitlab:${ref.kind}:${ref.project}:${ref.iid}`;
 		case 'figma': return `figma:${ref.fileKey}:${ref.nodeId ?? ''}`;
+		case 'confluence': return `confluence:${ref.host}:${ref.pageId}`;
 	}
 }
 
@@ -119,6 +137,11 @@ export function toolRefUrl(id: string, sites: ToolSites): string | undefined {
 	const [tool, ...parts] = id.split(':');
 	const base = (site: string | undefined) => site?.replace(/\/+$/, '');
 	switch (tool) {
+		case 'confluence': {
+			// A page opens on its own site, which its id carries.
+			const [host, page] = parts;
+			return host && /^[\w.-]+(?::\d+)?$/.test(host) && /^\d+$/.test(page ?? '') ? `https://${host}/wiki/pages/viewpage.action?pageId=${page}` : undefined;
+		}
 		case 'jira': {
 			const key = parts.join(':');
 			return base(sites.jira) && /^[A-Z][A-Z0-9_]{1,15}-\d+$/.test(key) ? `${base(sites.jira)}/browse/${key}` : undefined;
@@ -147,6 +170,7 @@ export function toolRefLabel(ref: ToolRef): string {
 		case 'jira': return ref.key;
 		case 'gitlab': return ref.kind === 'mr' ? `!${ref.iid}` : `#${ref.iid}`;
 		case 'figma': return ref.nodeId ? `Figma ${ref.nodeId}` : 'Figma';
+		case 'confluence': return `Page ${ref.pageId}`;
 	}
 }
 

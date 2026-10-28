@@ -55,7 +55,7 @@ A checked-in `.gemini/geminicode-tools.json` saves everyone typing addresses. It
 - `jira.transitions` names your workflow's transition ids for the moves GeminiCode suggests: `{ "start": 21, "review": 31, "done": 41 }` for starting on a ticket, opening its merge request and merging it. Without them, GeminiCode looks for the In Progress, In Review and Done statuses by name. Jira lists a workflow's ids under its transitions in the workflow editor.
 - `gitlab.releaseBranches` is the pattern of your release branches.
 - `sonar.projectKey` can also come from the repository's `sonar-project.properties`.
-- `figma.viewports` names the screen sizes **Add Figma Design** asks a frame for, such as `["XS", "S", "M", "L"]`. Without it, the sizes are Mobile, Tablet and Desktop.
+- `figma.viewports` names the screen sizes **Add Figma Design** asks a frame for, such as `["Mobile", "Tablet", "Desktop"]`. Without it, your own `gemini.figma.viewports` setting names them, and without that the sizes are XS, S, M and L.
 - `figma.designSystem` names your team's design system in Figma, for [Sync Design System](#your-design-system).
 
 > [!IMPORTANT]
@@ -83,7 +83,7 @@ A card shows its first few items. When it has more, **Show All** opens the whole
 
 ## In chat
 
-Paste a Jira key or link, a GitLab merge request or issue link, or a Figma link with a node, and it becomes a chip with the tool's logo; sending attaches the ticket, merge request or a hint to read the design. Click a chip, in the composer or in a message you sent, to open its ticket, merge request or frame. **From your tools** in the **+** menu picks a ticket or merge request. Tool calls show the tool's logo and what they did, such as "Read ACME-412".
+Paste a Jira key or link, a GitLab merge request or issue link, a Figma link with a node, or a Confluence page link, and it becomes a chip with the tool's logo; sending attaches the ticket, merge request or page, or a hint to read the design. Click a chip, in the composer or in a message you sent, to open its ticket, merge request or frame. **From your tools** in the **+** menu picks a ticket or merge request, or takes a Confluence page's link. Tool calls show the tool's logo and what they did, such as "Read ACME-412".
 
 **Figma Design...**, under **From your tools**, opens **Add Figma Design**: a frame link for each screen size, as designers lay a design's sizes out side by side. Paste several links at once and they fill the rows in order; **Add Size** adds a row. The design becomes one chip, and clicking it opens the dialog again to change the sizes. Figma reads one open file at a time, so a frame from another file makes the agent ask you to switch files when it gets there.
 

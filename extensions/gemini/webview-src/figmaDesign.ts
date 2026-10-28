@@ -6,7 +6,7 @@
 // Add Figma Design (the + menu's From Your Tools): one frame link for each
 // screen size, as designers lay a design's sizes out side by side. Pasting
 // several links fills the rows in order; the sizes come from the team's
-// defaults (`figma.viewports`), else Mobile, Tablet and Desktop. The design
+// defaults (`figma.viewports`), else the user's setting, else XS, S, M and L. The design
 // becomes one chip; clicking it opens the dialog again. It looks like the New
 // thread dialog and shares its styles. A chunk of its own (media/figmaDesign.js),
 // loaded the first time it opens (figmaDesignLoader.ts): what it needs of the
@@ -22,7 +22,7 @@ export type FigmaDesignStrings = Pick<ChatStrings, 'figmaDesignTitle' | 'figmaDe
 
 export interface FigmaDesignOptions {
 	readonly strings: FigmaDesignStrings;
-	/** The team's sizes, from its defaults; Mobile, Tablet and Desktop when empty. */
+	/** The team's sizes, from its defaults, else the user's; XS, S, M and L when empty. */
 	readonly sizes: readonly string[];
 	/** The design to change, from its chip. */
 	readonly current?: readonly DesignFrame[];

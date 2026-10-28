@@ -22,7 +22,7 @@ import type { PendingPromptView } from '../acp/promptQueue';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 46;
+export const chatProtocolVersion = 47;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.signIn', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal', 'gemini.designSystem.sync'] as const;
@@ -727,6 +727,7 @@ export interface ChatStrings {
 	readonly fromYourTools: string;
 	readonly jiraTicket: string;
 	readonly gitlabItem: string;
+	readonly confluencePage: string;
 	readonly figmaFrame: string;
 	readonly pasteLink: string;
 	/** Add Figma Design: a link for each screen size. */
@@ -1065,7 +1066,7 @@ export type FromWebview =
 	/** A click on a tool chip, in the composer or a sent message: open its item (`toolRefId`) in its tool. */
 	| { readonly type: 'openToolRef'; readonly ref: string }
 	/** The + menu's "From your tools": the extension asks which item, then sends attachToolRef. */
-	| { readonly type: 'pickToolItem'; readonly tool: 'jira' | 'gitlab' | 'figma' }
+	| { readonly type: 'pickToolItem'; readonly tool: 'jira' | 'gitlab' | 'figma' | 'confluence' }
 	/** The × on the shared page's chip: give the page back to the user. */
 	| { readonly type: 'stopSharing' }
 	/** The user dragged the input to `height` pixels, or reset it (0). */

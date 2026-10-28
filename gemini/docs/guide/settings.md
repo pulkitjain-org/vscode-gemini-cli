@@ -82,6 +82,7 @@ Inline edit (<kbd>⌘I</kbd> in the editor), commit messages, Enhance prompt's r
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `gemini.team.openMergeRequestsIn` | `ask` | Where a merge request opens when you click it: GeminiCode's browser or your default browser. |
+| `gemini.figma.viewports` | empty | The screen sizes **Add Figma Design** asks a frame for, such as `["Mobile", "Tablet", "Desktop"]`. Empty uses XS, S, M and L; a repository's `figma.viewports` outranks it. |
 | `gemini.figma.codeConnect` | off | Let Figma look up Code Connect mappings when an agent reads a design. Off, Figma answers faster. |
 | `gemini.team.runTeamServers` | off | Run the tools' own MCP servers behind the team tools: the team's Jira and GitLab servers and SonarQube's in Docker, and Snyk's from your Snyk CLI. **Take Over Both Servers** in Connections turns it on. See [Your team's own servers](team-tools.md#your-teams-own-servers). |
 

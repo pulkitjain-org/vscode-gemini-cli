@@ -35,7 +35,7 @@ export function ticketPickItems(mine: JiraMyTickets): TicketPickItem[] {
 }
 
 /** A chip's attachment: a document the prompt carries, with the tool's logo and the item's id. */
-export type ToolAttachment = Extract<Attachment, { kind: 'document' }> & { readonly tool: 'jira' | 'gitlab' | 'figma'; readonly ref: string };
+export type ToolAttachment = Extract<Attachment, { kind: 'document' }> & { readonly tool: ToolRef['tool']; readonly ref: string };
 
 /**
  * Turns Jira tickets, GitLab merge requests and issues, and Figma frames
@@ -57,9 +57,9 @@ export class ToolChips {
 
 	/** What the view needs to find refs: the connected tools and the team's Jira projects. */
 	async context(folder?: string): Promise<ToolRefContext> {
-		const connected = [...this.connections.connected].filter(tool => tool === 'jira' || tool === 'gitlab' || tool === 'figma');
+		const connected = [...this.connections.connected].filter(tool => tool === 'jira' || tool === 'gitlab' || tool === 'figma' || tool === 'confluence');
 		const defaults: TeamDefaults = await (folder ? this.connections.defaults(folder) : this.connections.workspaceDefaults()).catch(() => ({}));
-		return { connected, jiraProjects: defaults.jira?.projects ?? [], figmaSizes: defaults.figma?.viewports ?? defaultDesignSizes, designSystem: !!defaults.figma?.designSystem };
+		return { connected, jiraProjects: defaults.jira?.projects ?? [], figmaSizes: defaults.figma?.viewports ?? userDesignSizes() ?? defaultDesignSizes, designSystem: !!defaults.figma?.designSystem };
 	}
 
 	/** The item's attachment; never throws (a failure gives a chip with a note instead). */
@@ -96,14 +96,14 @@ export class ToolChips {
 			await openTeamLink(url);
 			return;
 		}
-		const tool = id.startsWith('jira:') ? 'Jira' : id.startsWith('gitlab:') ? 'GitLab' : undefined;
+		const tool = id.startsWith('jira:') ? 'Jira' : id.startsWith('gitlab:') ? 'GitLab' : id.startsWith('confluence:') ? 'Confluence' : undefined;
 		if (tool) {
 			void vscode.window.showInformationMessage(vscode.l10n.t("Connect {0} in Connections to open this item.", tool));
 		}
 	}
 
 	/** Asks the user for a ticket, merge request or frame for the + menu, in a quick pick. */
-	async pick(tool: 'jira' | 'gitlab' | 'figma'): Promise<ToolRef | undefined> {
+	async pick(tool: ToolRef['tool']): Promise<ToolRef | undefined> {
 		switch (tool) {
 			case 'jira': return this.pickTicket();
 			case 'gitlab': return this.pickMergeRequest();
@@ -117,6 +117,17 @@ export class ToolChips {
 				});
 				const ref = link ? parseToolLink(link.trim()) : undefined;
 				return ref?.tool === 'figma' ? ref : undefined;
+			}
+			case 'confluence': {
+				const link = await vscode.window.showInputBox({
+					title: vscode.l10n.t("Confluence page"),
+					prompt: vscode.l10n.t("Paste the page's link, from its address bar or Share menu."),
+					placeHolder: 'https://…/wiki/spaces/…/pages/…',
+					ignoreFocusOut: true,
+					validateInput: value => !value.trim() || parseToolLink(value.trim())?.tool === 'confluence' ? undefined : vscode.l10n.t("That isn't a Confluence page link."),
+				});
+				const ref = link ? parseToolLink(link.trim()) : undefined;
+				return ref?.tool === 'confluence' ? ref : undefined;
 			}
 		}
 	}
@@ -221,6 +232,21 @@ export class ToolChips {
 			}
 			case 'figma':
 				return placeholderAttachment(ref);
+			case 'confluence': {
+				// Read as an agent reads it (confluence_get_page), from Confluence's own bundle, loaded now if it wasn't.
+				const confluence = this.connections.confluence();
+				if (!confluence) {
+					return placeholderAttachment(ref);
+				}
+				const result = await confluence.call('confluence_get_page', { link: ref.url });
+				const text = result.content.map(c => c.type === 'text' ? c.text : '').join('\n');
+				if (result.isError) {
+					throw new Error(text || vscode.l10n.t("Confluence didn't return the page."));
+				}
+				// The page's first line is "Title (link)", inside the frame that marks it as someone else's text.
+				const title = /^(?:<external[^>]*>\n)?(.+?) \(https?:\/\//.exec(text)?.[1];
+				return toolAttachment(ref, title ?? toolRefLabel(ref), text);
+			}
 		}
 	}
 }
@@ -243,7 +269,16 @@ export function placeholderAttachment(ref: ToolRef, problem?: string): ToolAttac
 			return toolAttachment(ref, toolRefLabel(ref), `GitLab ${ref.kind === 'mr' ? 'merge request' : 'issue'} ${ref.url}.${why} Read it with ${ref.kind === 'mr' ? 'gitlab_get_mr' : 'gitlab_get_issue'}.`);
 		case 'figma':
 			return toolAttachment(ref, vscode.l10n.t("Figma frame {0}", ref.nodeId ?? ''), `Figma frame: ${ref.url}\nCall figma_design with this link for its code hints and design variables. Call figma_screenshot only when you need to see it, such as to compare what you built.${why}`);
+		case 'confluence':
+			return toolAttachment(ref, vscode.l10n.t("Confluence page {0}", ref.pageId), `Confluence page ${ref.url}.${why} Read it with confluence_get_page.`);
 	}
+}
+
+/** The sizes `gemini.figma.viewports` names, when it names any: the team's defaults outrank it. */
+function userDesignSizes(): readonly string[] | undefined {
+	const sizes = vscode.workspace.getConfiguration('gemini').get<unknown>('figma.viewports');
+	const names = Array.isArray(sizes) ? sizes.filter((size): size is string => typeof size === 'string' && !!size.trim()).map(size => size.trim()) : [];
+	return names.length ? names : undefined;
 }
 
 const instances = new WeakMap<TeamConnections, ToolChips>();
