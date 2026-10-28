@@ -25,14 +25,14 @@ describe('side questions', () => {
 		const outputsGone = fitConversation(items, 300);
 		const tight = fitConversation(items, 60);
 		expect({
-			whole: { cut: whole.cut, readCut: whole.text.includes('… (1000 more characters)'), diff: whole.text.includes('Changed src/cart/total.ts (+3 −1)'), thought: whole.text.includes('hidden thinking') },
+			whole: { cut: whole.cut, readCut: whole.text.includes('… (1000 more characters)'), diff: whole.text.includes('Changed src/cart/total.ts (+3 -1)'), thought: whole.text.includes('hidden thinking') },
 			outputsGone,
 			tight,
 		}).toEqual({
 			whole: { cut: false, readCut: true, diff: true, thought: false },
 			outputsGone: {
 				cut: true,
-				text: 'Developer: Move the cart totals to the pricing service.\n\n[Tool call: read_file src/api/http.ts (completed), src/api/http.ts]\n\n[Tool call: edit src/cart/total.ts (completed)]\nChanged src/cart/total.ts (+3 −1)\n\nGemini: I added axios for retries.',
+				text: 'Developer: Move the cart totals to the pricing service.\n\n[Tool call: read_file src/api/http.ts (completed), src/api/http.ts]\n\n[Tool call: edit src/cart/total.ts (completed)]\nChanged src/cart/total.ts (+3 -1)\n\nGemini: I added axios for retries.',
 			},
 			tight: { cut: true, text: 'Gemini: I added axios for retries.' },
 		});
