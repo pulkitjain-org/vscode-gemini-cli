@@ -9,7 +9,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { DocsSearchResult } from '../acp/docs/docsProtocol';
 import { contextPack, contextPackFiles } from '../acp/contextPack';
-import type { EditorBackend } from '../acp/editorTools';
+import type { CodeDiagnostic, EditorBackend } from '../acp/editorTools';
 import { isInside, secretPathReason } from '../acp/fileAccess';
 import { appRipgrep } from '../acp/index/ripgrepPath';
 import { IndexClient } from '../acp/index/indexClient';
@@ -239,6 +239,17 @@ export class WorkspaceIndex implements vscode.Disposable {
 		return contextPack(shown.map((file, i) => ({ file, ...related[i] ? { related: related[i] } : {} })), files.length);
 	}
 
+	/** Errors and warnings in `folder`'s uncommitted files from the language servers, when agents use them; undefined when they are off. */
+	async diagnostics(folder: string): Promise<{ readonly checked: number; readonly diagnostics: readonly CodeDiagnostic[] } | undefined> {
+		return this.server && languageServersOn() ? this.editorBackend().diagnostics(folder, undefined) : undefined;
+	}
+
+	/** The language servers' adapter, loaded the first time it is needed (dist/onDemand.js); agents read only files in their folder that are neither secret nor git-ignored. */
+	private editorBackend(): EditorBackend {
+		return this.editor ??= new (extensionChunk<typeof import('../onDemand')>('onDemand')().EditorToolsHost)(
+			async (folder, file) => isInside(folder, file) && !secretPathReason(file) && !await isIgnoredByGitCached(file));
+	}
+
 	/** The outline of `folder` that sessions start with, fetched now if it isn't cached; undefined without a built index. */
 	async outlineOf(folder: string): Promise<string | undefined> {
 		if (this.statuses.get(folder)?.state.kind !== 'ready') {
@@ -390,8 +401,7 @@ export class WorkspaceIndex implements vscode.Disposable {
 			orientation: folder => this.orientations.get(folder)?.text,
 			languageServers: languageServersOn,
 			// The language servers' adapter loads the first time an agent needs one (dist/onDemand.js).
-			editor: async () => languageServersOn() ? this.editor ??= new (extensionChunk<typeof import('../onDemand')>('onDemand')().EditorToolsHost)(
-				async (folder, file) => isInside(folder, file) && !secretPathReason(file) && !await isIgnoredByGitCached(file)) : undefined,
+			editor: async () => languageServersOn() ? this.editorBackend() : undefined,
 		}, this.options.version);
 		server.start().catch(err => this.options.log.error(`The index server failed to start: ${err instanceof Error ? err.message : String(err)}`));
 		if (indexBuildOn() === 'workspaceOpen') {

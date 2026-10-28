@@ -3,6 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { errorsNotice } from '../acp/editorTools';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type * as acp from '@agentclientprotocol/sdk';
@@ -1130,6 +1131,10 @@ export class AgentsView implements vscode.Disposable {
 				indexContext: draft => this.index?.contextFor(folder, draft) ?? Promise.resolve(undefined),
 				// Not for a coordinator, which runs in an empty folder without the index.
 				indexHint: () => cwd === folder ? this.index?.hint(folder) : undefined,
+				errorsAfterTurn: async () => {
+					const found = await this.index?.diagnostics(folder);
+					return found && errorsNotice(folder, found.diagnostics);
+				},
 				designSystemNote: async () => this.teamTools ? this.onDemand().designSystemNoteFor(await this.teamTools.defaults(cwd)) : undefined,
 				// Research reads the agent's own folder with workers of its own; not in a project's chats, whose threads do the reading.
 				...project ? {} : {

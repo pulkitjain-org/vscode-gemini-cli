@@ -1026,7 +1026,7 @@ export type FromWebview =
 	/** The user picked one of a permission request's options. */
 	| { readonly type: 'permission'; readonly id: string; readonly optionId: string }
 	/** Retry or Continue on a failed or cut-short turn's notice (`itemId`). */
-	| { readonly type: 'noticeAction'; readonly itemId: string; readonly action: 'retry' | 'continue' | 'newSession' }
+	| { readonly type: 'noticeAction'; readonly itemId: string; readonly action: 'retry' | 'continue' | 'newSession' | 'fixErrors' }
 	/** Show All on a long tool output: the host answers with `output`. */
 	| { readonly type: 'showOutput'; readonly itemId: string; readonly part: number }
 	/** Show Its Changes on an edit another agent is changing the file too: opens that agent's changes. */

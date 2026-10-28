@@ -45,7 +45,7 @@ export interface PromptAttachmentLabel {
  * open the Gemini log, or stop a stalled turn.
  */
 /** `newSession`: the chat moves to a new session given the conversation so far, for a session Gemini keeps refusing. */
-export type NoticeAction = 'retry' | 'switchModel' | 'signIn' | 'continue' | 'showLog' | 'stop' | 'newSession';
+export type NoticeAction = 'retry' | 'switchModel' | 'signIn' | 'continue' | 'showLog' | 'stop' | 'newSession' | 'fixErrors';
 
 /** Another live agent in the same folder with changes still to review in a file this one edits. */
 export interface OtherAgentChanges {

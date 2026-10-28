@@ -181,6 +181,23 @@ export function formatCalls(target: CodeTarget, folder: string, direction: 'inco
 	].join('\n');
 }
 
+/**
+ * The notice after a turn that left errors in changed files, listing a few;
+ * undefined when there are none. Warnings are left out: a turn's end is no
+ * place to nag about them.
+ */
+export function errorsNotice(folder: string, diagnostics: readonly CodeDiagnostic[]): string | undefined {
+	const errors = diagnostics.filter(d => d.severity === 'error');
+	if (!errors.length) {
+		return undefined;
+	}
+	const shown = errors.slice(0, 5);
+	return [
+		errors.length === 1 ? 'The language server reports 1 error in the changed files:' : `The language servers report ${errors.length} errors in the changed files${errors.length > shown.length ? `, the first ${shown.length} here` : ''}:`,
+		...shown.map(d => `- ${relative(folder, d.file)}:${d.line}  ${d.message.replace(/\s+/g, ' ').trim()}`),
+	].join('\n');
+}
+
 /** The note when no language server answered, so the agent knows the index answered alone. */
 export const noLanguageServer = 'No language server answered for this file (none for its language, or still loading), so this comes from the index alone.';
 

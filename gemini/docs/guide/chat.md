@@ -37,10 +37,10 @@ GeminiCode has no inline (ghost text) completions as you type, and none are plan
 
 ## Slash commands and skills
 
-Type `/` at the start of the composer, or choose **Skills and commands** in the **+** menu, to list commands: team commands first, then skills, then the CLI's own. Keep typing to filter, then press <kbd>Tab</kbd> or <kbd>Enter</kbd> to complete the name and add arguments.
+Type `/` at the start of the composer, or choose **Skills and commands** in the **+** menu, to list commands, under a heading for each source: GeminiCode's own first, then the team's, the skills and the CLI's. Keep typing to filter, then press <kbd>Tab</kbd> or <kbd>Enter</kbd> to complete the name and add arguments.
 
 - **Gemini CLI commands** such as `/init`, `/memory` and `/restore` run in the CLI.
-- **GeminiCode's own**: `/resume` reopens a saved session, `/compact` compacts the chat (below), `/context` shows what each turn carries (see [Usage and quota](#usage-and-quota)), and `/fork` forks the agent.
+- **GeminiCode's own**: `/resume` reopens a saved session, `/compact` compacts the chat (below), `/context` shows what each turn carries (see [Usage and quota](#usage-and-quota)), `/btw` asks a [side question](#side-questions), `/research` reads widely in parallel ([Research](#research)), and `/fork` forks the agent.
 - **Team commands** are TOML files in `.gemini/commands/` in the workspace, or in `~/.gemini/commands/` for your own. It's the Gemini CLI's own format, so the same files work in the terminal: `git/commit.toml` becomes `/git:commit`.
 - **Skills** are folders with a `SKILL.md`, in `.gemini/skills/` (or `.agents/skills/`) in the workspace, or in `~/.gemini/skills/` for your own. Picking one asks the agent to load it, with what you typed after the name as the task.
 
@@ -113,7 +113,7 @@ Gemini sometimes refuses a session's request after a tool result, most often aft
 
 ## Sending while the agent works
 
-You don't have to wait for the agent to finish. While it works, the composer says **↩ to send, ⌘↩ to queue for later**. With `gemini.chat.sendWith` set to `cmdEnter`, ⌘↩ sends, ⇧⌘↩ queues and ↩ makes a new line (Ctrl takes ⌘'s place on Windows and Linux).
+You don't have to wait for the agent to finish. While it works, the composer says **↩ to steer, ⌘↩ to queue · ⌥⌘; asks on the side**. With `gemini.chat.sendWith` set to `cmdEnter`, ⌘↩ sends, ⇧⌘↩ queues and ↩ makes a new line (Ctrl takes ⌘'s place on Windows and Linux).
 
 - **↩ sends now**, to steer the agent: "use pnpm, not npm", or "leave the tests alone". The message shows above the input as **Sending after the current step**. At the next safe point, the chat stops the turn and sends your message, telling the agent to adjust its plan and carry on. A safe point is when no command or edit is running and Gemini has answered the last tool's result, so no tool's work is lost. That is straight away while the agent is thinking or writing, or showing a permission card.
 - **⌘↩ queues** the message for after the turn. It shows as **Queued: goes after this turn**. Several queued messages go together as one.

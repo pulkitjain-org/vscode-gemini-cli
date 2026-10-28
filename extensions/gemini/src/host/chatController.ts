@@ -1085,6 +1085,9 @@ export class ChatController implements vscode.Disposable {
 	private endTurn(durationMs: number, usage?: readonly ModelTokens[], unfinished = false, steered = false): void {
 		const id = this.transcript.addTurnEnd(durationMs, usage);
 		const { files, undoable } = this.checkpoints.endTurn(id);
+		if (files && !unfinished && !this.options.project) {
+			void this.noteErrors();
+		}
 		const build = this.planBuild(usage);
 		const planFile = build && this.options.reviewPlan ? this.turnPlanFile : undefined;
 		this.turnPlanFile = undefined;
@@ -1683,11 +1686,22 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	/** A failed or cut-short turn's Retry or Continue, from its notice, while that notice still offers it. */
-	private noticeAction(itemId: string, action: 'retry' | 'continue' | 'newSession'): void {
-		if (this.busy || !this.transcript.noticeOffering(itemId, action)) {
+	/** After a turn that changed files: a notice when the language servers report errors in them, offering Fix. */
+	private async noteErrors(): Promise<void> {
+		const text = await this.options.errorsAfterTurn?.().catch(() => undefined);
+		if (text && !this.busy) {
+			this.transcript.addNotice(text, 'info', ['fixErrors']);
+		}
+	}
+
+	private noticeAction(itemId: string, action: 'retry' | 'continue' | 'newSession' | 'fixErrors'): void {
+		const notice = this.busy ? undefined : this.transcript.noticeOffering(itemId, action);
+		if (!notice) {
 			return;
 		}
-		if (action === 'newSession') {
+		if (action === 'fixErrors') {
+			void this.send(`Fix these errors in the files you changed, then check again with code_diagnostics:\n${notice.text.split('\n').slice(1).join('\n')}`);
+		} else if (action === 'newSession') {
 			void this.continueAfterOverflow(this.lastPrompt?.text, 'refused');
 		} else if (action === 'continue') {
 			// Carries on where the request limit stopped the turn, as the CLI's own "continue" does.

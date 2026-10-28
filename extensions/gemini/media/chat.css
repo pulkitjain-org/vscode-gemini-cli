@@ -1616,6 +1616,11 @@ body.vscode-high-contrast-light {
 	color: var(--gemini-muted);
 }
 
+/* A notice's text keeps its line breaks, such as a list of errors after a turn. */
+.notice-text {
+	white-space: pre-line;
+}
+
 .notice .codicon {
 	margin-top: 2px;
 	font-size: 14px;

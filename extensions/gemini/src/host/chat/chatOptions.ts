@@ -77,6 +77,8 @@ export interface ChatControllerOptions {
 	indexHint?(): string | undefined;
 	/** What research runs (/research) need: the agent process, the folder, and the index's servers and outline for it. Unset in chats without research. */
 	research?: ChatResearchHost;
+	/** The notice for errors the language servers report in the folder's changed files after a turn that edited them; undefined without any. */
+	errorsAfterTurn?(): Promise<string | undefined>;
 	/** The note a prompt with a Figma design carries when the repository has a design-system skill (designSystem.ts). */
 	designSystemNote?(): Promise<string | undefined>;
 	/** The workspace pill; without it the composer shows none. */

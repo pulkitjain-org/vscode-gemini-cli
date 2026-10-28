@@ -41,7 +41,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 	const projectSettings = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'projectSettings.js'));
 	const sideChat = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'sideChat.js'));
 	const strings: ChatStrings = {
-		placeholder: vscode.l10n.t("Ask Gemini anything about this workspace"),
+		placeholder: vscode.l10n.t("Ask Gemini anything about this workspace · / for commands, @ for files"),
 		fromCoordinator: vscode.l10n.t("From coordinator"),
 		// A project chat's strings load with the code they serve, from dist/onDemand.js: most chats aren't project chats.
 		...(project && projectStringsOf ? { project: projectStringsOf() } : {}),
@@ -49,8 +49,8 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		side: sideStrings(),
 		research: researchStrings(),
 		...(project ? {} : { reactions: reactionStrings() }),
-		placeholderFollowUp: vscode.l10n.t("Ask a follow-up"),
-		placeholderWorking: process.platform === 'darwin' ? vscode.l10n.t("↩ to send, ⌘↩ to queue for later") : vscode.l10n.t("Enter to send, Ctrl+Enter to queue for later"),
+		placeholderFollowUp: vscode.l10n.t("Ask a follow-up · /research reads widely, /btw asks on the side"),
+		placeholderWorking: process.platform === 'darwin' ? vscode.l10n.t("↩ to steer, ⌘↩ to queue · ⌥⌘; asks on the side") : vscode.l10n.t("Enter to steer, Ctrl+Enter to queue · Ctrl+Alt+; asks on the side"),
 		send: process.platform === 'darwin' ? vscode.l10n.t("Send (Return)") : vscode.l10n.t("Send (Enter)"),
 		sendNow: process.platform === 'darwin' ? vscode.l10n.t("Send now (Return). ⌘Return queues it for after this turn.") : vscode.l10n.t("Send now (Enter). Ctrl+Enter queues it for after this turn."),
 		stop: vscode.l10n.t("Stop (Esc Esc)"),
@@ -129,6 +129,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			showLog: vscode.l10n.t("Show Log"),
 			stop: vscode.l10n.t("Stop"),
 			newSession: vscode.l10n.t("Continue in a New Session"),
+			fixErrors: vscode.l10n.t("Fix"),
 		},
 		outputHidden: vscode.l10n.t("{0} lines hidden"),
 		outputShowAll: vscode.l10n.t("Show All"),
@@ -438,7 +439,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			terminalFailed: vscode.l10n.t("{0} \u00b7 failed"),
 		},
 		cmdEnter: {
-			placeholderWorking: process.platform === 'darwin' ? vscode.l10n.t("⌘↩ to send, ⇧⌘↩ to queue for later") : vscode.l10n.t("Ctrl+Enter to send, Shift+Ctrl+Enter to queue for later"),
+			placeholderWorking: process.platform === 'darwin' ? vscode.l10n.t("⌘↩ to steer, ⇧⌘↩ to queue · ⌥⌘; asks on the side") : vscode.l10n.t("Ctrl+Enter to steer, Shift+Ctrl+Enter to queue · Ctrl+Alt+; asks on the side"),
 			send: process.platform === 'darwin' ? vscode.l10n.t("Send (⌘Return)") : vscode.l10n.t("Send (Ctrl+Enter)"),
 			sendNow: process.platform === 'darwin' ? vscode.l10n.t("Send now (⌘Return). ⇧⌘Return queues it for after this turn.") : vscode.l10n.t("Send now (Ctrl+Enter). Shift+Ctrl+Enter queues it for after this turn."),
 		},
