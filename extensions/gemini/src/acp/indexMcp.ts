@@ -42,10 +42,28 @@ export interface IndexToolBackend {
 	languageServers?(): boolean;
 	/** The language servers' reads, loaded on first use (editorTools.ts). */
 	editor?(): Promise<EditorBackend | undefined>;
+	/** Whether agents can start research (research.ts) from a tool. */
+	researchOn?(): boolean;
+	/** Researches `question` in `folder` with read-only workers; resolves with the report. */
+	research?(folder: string, question: string): Promise<string>;
+}
+
+/** What research's workers are called: they get the index tools, but never research itself. */
+export const researchWorkerPrefix = 'research-';
+
+/** The one line a session's first prompt carries once the folder's index is built: without it the model reaches for grep_search first (FINDINGS.md). */
+export function indexHint(options: { readonly languageServers?: boolean; readonly research?: boolean } = {}): string {
+	return [
+		'This workspace has a code index: use the geminicode-index tools (code_search, find_symbol, related_files, repo_map) before grep_search, glob or reading whole files. Their results are complete: read only the lines they point to, and don\'t search again for what they found.',
+		...options.languageServers ? ['Before renaming or changing a signature, list its uses with find_symbol and references. After editing code, check it with code_diagnostics before you finish, instead of running a build.'] : [],
+		...options.research ? ['For a broad question that needs reading many parts of the code (where something happens everywhere, an audit of every place that does X), call research instead of reading them one by one.'] : [],
+	].join(' ');
 }
 
 interface Caller {
 	readonly folder: string | undefined;
+	/** The route: the agent's id, or a spare session's slot. */
+	readonly route: string;
 }
 
 /** Slots kept for spare sessions no agent took. */
@@ -70,13 +88,13 @@ export class IndexMcpServer {
 				}
 				if (route.startsWith('slot-')) {
 					const slot = this.slots.get(route);
-					return slot ? { folder: slot.agent ? this.folders.get(slot.agent) ?? slot.folder : slot.folder } : undefined;
+					return slot ? { folder: slot.agent ? this.folders.get(slot.agent) ?? slot.folder : slot.folder, route } : undefined;
 				}
 				const folder = this.folders.get(route);
-				return folder ? { folder } : undefined;
+				return folder ? { folder, route } : undefined;
 			},
 			instructions: caller => this.instructions(caller.folder),
-			tools: caller => this.tools(caller.folder),
+			tools: caller => this.tools(caller.folder, caller.route),
 			call: (caller, name, args) => this.call(caller.folder, name, args),
 		});
 	}
@@ -144,6 +162,7 @@ export class IndexMcpServer {
 			'- related_files: a file\'s imports, importers, tests and the files usually changed with it.',
 			'- repo_map: an outline of the folder or a subfolder.',
 			...this.backend.languageServers?.() ? [editorToolsInstruction] : [],
+			...this.backend.researchOn?.() ? ['- research: a broad question answered by several read-only readers at once, with file:line evidence; for questions that need many parts of the code read.'] : [],
 			'Results give paths with line ranges and are complete for the folder: read only those lines with read_file, and don\'t repeat the search with grep_search.',
 		];
 		const docs = folder ? this.backend.docs(folder) : [];
@@ -157,7 +176,7 @@ export class IndexMcpServer {
 		return lines.join('\n');
 	}
 
-	private tools(folder: string | undefined): McpTool[] {
+	private tools(folder: string | undefined, route = ''): McpTool[] {
 		const tools: McpTool[] = [
 			{
 				name: 'code_search',
@@ -209,6 +228,17 @@ export class IndexMcpServer {
 		];
 		if (this.backend.languageServers?.()) {
 			tools.push(...editorTools);
+		}
+		if (this.backend.researchOn?.() && !route.startsWith(researchWorkerPrefix)) {
+			tools.push({
+				name: 'research',
+				description: 'Answers a broad question about this folder\'s code by reading many parts of it at once: it splits the question by area, several read-only readers each read one part with these tools, and it returns one report with file:line evidence. Use it for questions such as where something happens everywhere, or an audit of every place that does X; it takes a minute or two. For one lookup, use code_search or find_symbol instead.',
+				inputSchema: {
+					type: 'object',
+					properties: { question: { type: 'string', description: 'The question, in full, as the user would ask it.' } },
+					required: ['question'],
+				},
+			});
 		}
 		const docs = folder ? this.backend.docs(folder) : [];
 		if (docs.length) {
@@ -282,6 +312,16 @@ export class IndexMcpServer {
 				const direction = str('direction') === 'outgoing' ? 'outgoing' : 'incoming';
 				const calls = editor ? await editor.calls(target, direction).catch(() => undefined) : undefined;
 				return text(calls === undefined ? `${noLanguageServer} For callers, use find_symbol with references.` : formatCalls(target, folder, direction, calls));
+			}
+			case 'research': {
+				const question = str('question');
+				if (!question) {
+					return text('research needs a question.', true);
+				}
+				if (!this.backend.research || !this.backend.researchOn?.()) {
+					return text('Research is off for this session.', true);
+				}
+				return text(await this.backend.research(folder, question));
 			}
 			case 'code_diagnostics': {
 				const editor = await this.backend.editor?.();

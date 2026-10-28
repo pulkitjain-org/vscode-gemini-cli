@@ -157,6 +157,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		teamTools.onDidChange(() => agentsView.refreshSpare()),
 		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.browser`) && agentsView.refreshSpare()),
 	);
+	// Agents' research tool runs the research engine from dist/onDemand.js on the agent process, as /research does.
+	workspaceIndex.research = async (folder, question) => {
+		const concurrency = vscode.workspace.getConfiguration(configSection).get<number>('research.concurrency', 4);
+		const run = new (onDemand().ResearchRun)(question, {
+			runtime: service.runtime,
+			cwd: folder,
+			mcpServers: worker => workspaceIndex.mcpServersFor(worker, folder),
+			release: worker => workspaceIndex.forgetAgent(worker),
+			ask: (system, prompt, signal) => enhancer.ask(system, prompt, signal),
+			outline: await workspaceIndex.outlineOf(folder).catch(() => undefined),
+			concurrency: Math.min(8, Math.max(1, Math.floor(concurrency) || 4)),
+			onProgress: progress => progress.state === 'done' || progress.state === 'failed' ? log.info(`Research for an agent in ${folder}: ${progress.state}, ${progress.slices.length} parts`) : undefined,
+		});
+		return run.run();
+	};
 	// What every model call in a folder carries: Agent Setup's Context per model call, and the chat's usage popover (/context).
 	const measureContext = (folder: string, servers: readonly string[]) => measureFolderContextCost({
 		folder,
@@ -218,6 +233,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		agentsView,
 		changesPanel,
 		agentsView.onDidFocus(source => changesPanel.show(source)),
+		agentsView.onDidChangeTurn(agent => changesPanel.turnChanged(agent)),
 		new AgentHome(context.extensionUri, agentsView, () => warmup.startSoon(), { state: context.globalState, version: productInfo.version ?? String(context.extension.packageJSON.version ?? ''), cli: () => service.status.agentVersion, startup: () => ({ activatedAt, agent: agentPhase(service.status.phase), ...readyAt ? { readyAt } : {} }), reviews: { inProgress: () => teamFlows.reviews.inProgress, onDidChange: teamFlows.reviews.onDidChange } }),
 		new LazyFeature(['gemini.projectSettings', 'gemini.newSkill'], () => new (pages().SettingsPage)(context.extensionUri, service, {
 			getAgentCommand,

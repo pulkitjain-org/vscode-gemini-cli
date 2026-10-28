@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { formatSearch, formatSymbol, partialNote, searchFooter, snippet } from '../../src/acp/index/format';
 import type { EditorBackend } from '../../src/acp/editorTools';
-import { IndexMcpServer, IndexToolBackend } from '../../src/acp/indexMcp';
+import { IndexMcpServer, indexHint, IndexToolBackend } from '../../src/acp/indexMcp';
 import type { McpHttpConfig } from '../../src/acp/localMcpServer';
 import { indexToolTitle } from '../../src/acp/toolLinks';
 
@@ -164,6 +164,28 @@ describe('the language servers behind the index tools', () => {
 			indexToolTitle('code_diagnostics ({"paths":["src/a.ts","src/b.ts"]})'),
 			indexToolTitle('code_calls ({"symbol":"checkout","direction":"outgoing"})'),
 		]).toEqual(['Type of CartItem.price', 'Check changed files for errors', 'Check 2 files for errors', 'Calls in checkout']);
+	});
+});
+
+describe('research from an agent', () => {
+	it('offers agents the research tool, never research\'s own workers, and answers with the report', async () => {
+		const asked: string[] = [];
+		const server = new IndexMcpServer({ ...backend([]), researchOn: () => true, research: async (folder, question) => (asked.push(`${folder}: ${question}`), 'Tokens are logged at src/api.ts:5.') }, '1');
+		servers.push(server);
+		await server.start();
+		const list = async (config: McpHttpConfig) => ((await post(config, { jsonrpc: '2.0', id: 1, method: 'tools/list' })).body as { result: { tools: { name: string }[] } }).result.tools.map(t => t.name);
+		const agent = server.configFor('agent-a', '/repo/b')!;
+		const worker = server.configFor('research-1-worker-0', '/repo/b')!;
+		expect({
+			agent: (await list(agent)).includes('research'),
+			worker: (await list(worker)).includes('research'),
+			report: textOf(await call(agent, 'research', { question: 'Where are tokens logged?' })),
+			asked,
+		}).toEqual({ agent: true, worker: false, report: 'Tokens are logged at src/api.ts:5.', asked: ['/repo/b: Where are tokens logged?'] });
+	});
+
+	it('hints at the tools that are on, so agents use them unasked', () => {
+		expect([indexHint().includes('code_diagnostics'), indexHint({ languageServers: true }).includes('check it with code_diagnostics'), indexHint({ research: true }).includes('call research')]).toEqual([false, true, true]);
 	});
 });
 
