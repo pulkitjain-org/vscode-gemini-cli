@@ -41,7 +41,8 @@ import { commitDone, setBranches, setCommitMessage } from './pickers';
 import { showCommands, showFiles } from './picker';
 import { updatePlusMenu } from './plusMenu';
 import { openNewThread, showParentProject, showProjectPanel } from './project';
-import { pickedRepository, showProjectSettings } from './projectSettings';
+import { pickedRepository, showProjectSettings } from './projectSettingsLoader';
+import { onSide } from './sideChatLoader';
 import { setRunState, setRunView } from './runButtons';
 import { updateOutline } from './promptNav';
 import { setSideLinks } from './sideLinks';
@@ -119,6 +120,7 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'reactions':
 			state.recents = message.recents;
+			state.meanings = message.meanings;
 			if (state.reactions !== message.on) {
 				state.reactions = message.on;
 				reset(state.items.slice());
@@ -264,6 +266,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 			break;
 		case 'openFork':
 			openForkDialog(message.fork);
+			break;
+		case 'side':
+			onSide(message);
 			break;
 		case 'projectSettings':
 			showProjectSettings(message.settings, message.open);

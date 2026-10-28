@@ -15,6 +15,7 @@
 // their constructors, never an import; test/perf/chunks.test.ts checks that.
 
 export { ConnectionsPage } from './host/connectionsPage';
+export { IndexPage } from './host/indexPage';
 export { SettingsPage } from './host/settingsPage';
 export { PlanReviews } from './host/planReviewPage';
 export { TeamFlowPanel } from './host/teamFlowPanel';

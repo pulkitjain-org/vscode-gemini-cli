@@ -37,7 +37,6 @@ Tools and assets:
 
 - [site/](site/): the generator for the download page, the feature pages and the docs site (`build.mts`), which the Pages workflow runs.
 - [bench/](bench/README.md): the benchmark's tasks and results.
-- [pilot/](pilot/README.md): the pilot's admin profile.
 - [branding/](branding/README.md): icon sources.
 - [patches/](patches/) and [upstream.json](upstream.json): the fork's edits to upstream files, as a patch series over the pinned upstream tag.
 - [scripts/](scripts/):
@@ -72,7 +71,13 @@ npm run watch            # keep running; rebuilds the workbench, extensions and 
 
 To run the dev build on the bundled CLI, as a release does, run `npm run bundle-cli --prefix extensions/gemini` once. Without it, the dev build uses a copy you installed from GeminiCode or `gemini` on your `PATH`.
 
-Before a pull request, run the extension's checks:
+Before a pull request, run Gemini CI's checks for what your branch changes. The pre-push hook runs this too, once the hooks are installed (`gemini/scripts/git-hooks/install.sh`):
+
+```sh
+gemini/scripts/ci-checks.sh   # lint, hygiene, patch series, type checks, bundles, unit tests; compile and hygiene of changed upstream files when one changed
+```
+
+While working, run the extension's checks:
 
 ```sh
 cd extensions/gemini

@@ -42,6 +42,27 @@ fi
 
 [ "$failed" = 0 ] || { echo >&2 "pre-push: nothing was pushed."; exit 1; }
 
+# Gemini CI's checks for what the pushed branches change (gemini/scripts/ci-checks.sh).
+# Not for a deleted branch or a tag, and not with GEMINI_SKIP_CHECKS=1.
+checks="$(git rev-parse --show-toplevel)/gemini/scripts/ci-checks.sh"
+pushes_branch=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+	case "$local_sha:$remote_ref" in
+		"$zero":* | :* | *:refs/tags/*) ;;
+		*) pushes_branch=1 ;;
+	esac
+done <<REFS
+$refs
+REFS
+if [ "$pushes_branch" = 1 ] && [ "${GEMINI_SKIP_CHECKS:-}" != 1 ]; then
+	if [ ! -f "$checks" ]; then
+		echo >&2 "pre-push: $checks is missing, so CI's checks were not run."
+	elif ! bash "$checks" >&2; then
+		echo >&2 "pre-push: nothing was pushed. Fix what failed, or push with GEMINI_SKIP_CHECKS=1 to leave it to CI."
+		exit 1
+	fi
+fi
+
 if command -v git-lfs >/dev/null 2>&1; then
 	printf '%s\n' "$refs" | git lfs pre-push "$remote_name" "$remote_url"
 fi

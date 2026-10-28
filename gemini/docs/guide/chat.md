@@ -37,10 +37,10 @@ GeminiCode has no inline (ghost text) completions as you type, and none are plan
 
 ## Slash commands and skills
 
-Type `/` at the start of the composer, or choose **Skills and commands** in the **+** menu, to list commands: team commands first, then skills, then the CLI's own. Keep typing to filter, then press <kbd>Tab</kbd> or <kbd>Enter</kbd> to complete the name and add arguments.
+Type `/` at the start of the composer, or choose **Skills and commands** in the **+** menu, to list commands, under a heading for each source: GeminiCode's own first, then the team's, the skills and the CLI's. Keep typing to filter, then press <kbd>Tab</kbd> or <kbd>Enter</kbd> to complete the name and add arguments.
 
 - **Gemini CLI commands** such as `/init`, `/memory` and `/restore` run in the CLI.
-- **GeminiCode's own**: `/resume` reopens a saved session, `/compact` compacts the chat (below), `/context` shows what each turn carries (see [Usage and quota](#usage-and-quota)), and `/fork` forks the agent.
+- **GeminiCode's own**: `/resume` reopens a saved session, `/compact` compacts the chat (below), `/context` shows what each turn carries (see [Usage and quota](#usage-and-quota)), `/btw` asks a [side question](#side-questions), `/research` reads widely in parallel ([Research](#research)), and `/fork` forks the agent.
 - **Team commands** are TOML files in `.gemini/commands/` in the workspace, or in `~/.gemini/commands/` for your own. It's the Gemini CLI's own format, so the same files work in the terminal: `git/commit.toml` becomes `/git:commit`.
 - **Skills** are folders with a `SKILL.md`, in `.gemini/skills/` (or `.agents/skills/`) in the workspace, or in `~/.gemini/skills/` for your own. Picking one asks the agent to load it, with what you typed after the name as the task.
 
@@ -113,7 +113,7 @@ Gemini sometimes refuses a session's request after a tool result, most often aft
 
 ## Sending while the agent works
 
-You don't have to wait for the agent to finish. While it works, the composer says **↩ to send, ⌘↩ to queue for later**. With `gemini.chat.sendWith` set to `cmdEnter`, ⌘↩ sends, ⇧⌘↩ queues and ↩ makes a new line (Ctrl takes ⌘'s place on Windows and Linux).
+You don't have to wait for the agent to finish. While it works, the composer says **↩ to steer, ⌘↩ to queue · ⌥⌘; asks on the side**. With `gemini.chat.sendWith` set to `cmdEnter`, ⌘↩ sends, ⇧⌘↩ queues and ↩ makes a new line (Ctrl takes ⌘'s place on Windows and Linux).
 
 - **↩ sends now**, to steer the agent: "use pnpm, not npm", or "leave the tests alone". The message shows above the input as **Sending after the current step**. At the next safe point, the chat stops the turn and sends your message, telling the agent to adjust its plan and carry on. A safe point is when no command or edit is running and Gemini has answered the last tool's result, so no tool's work is lost. That is straight away while the agent is thinking or writing, or showing a permission card.
 - **⌘↩ queues** the message for after the turn. It shows as **Queued: goes after this turn**. Several queued messages go together as one.
@@ -125,6 +125,31 @@ Each waiting message has **Send now**, **Edit** and **Remove**, and <kbd>↑</kb
 Sending now stops the turn between steps, never in the middle of a command, so a running command or edit always finishes. When a long run of tools gives no safe point for 15 seconds, the message's row says **Waiting to stop safely: a tool is finishing** and offers **Stop Now**, which stops the turn at once; a tool that finished but whose result Gemini hasn't read yet is lost, and the agent may run it again. The turn you steered gets its own end line and **Undo**, and your message starts a new turn. The Gemini CLI can't add a message to a running turn, so steering costs one more model request, mostly served from its cache.
 
 In a project's thread, notes from the coordinator wait in the same place, as **From coordinator: goes after this turn**. In the project chat itself, ↩ and ⌘↩ both wait for the coordinator's turn to end; see [Projects](projects.md#talk-to-the-coordinator).
+
+## Side questions
+
+Ask about the conversation without stopping the agent: type `/btw` and your question, such as `/btw why did it add axios?`, or press <kbd>⌥⌘;</kbd> (<kbd>Ctrl+Alt+;</kbd> on Windows and Linux) to open the side panel above the message box.
+
+A fast model answers from the chat as it is, in a second or two, while the agent keeps working. The question and its answer never go into the agent's conversation, so they don't slow its later steps or change what it does. The side answer sees your messages, Gemini's replies, plans and tool calls, with long tool outputs cut short; it has no tools of its own, so it says when the chat doesn't hold the answer.
+
+Under an answer:
+
+- **Send to Agent** puts the question and the answer in the message box, to edit and send as a steering message.
+- **Fork into Agent** opens Fork Agent with the question as the fork's first message, for a question that needs reading files or running commands.
+- **Copy** copies the answer.
+
+Earlier side questions stay in the panel until the chat closes; <kbd>⇧←</kbd> and <kbd>⇧→</kbd> step through them, and later questions can build on them. Side questions use the quick requests' model (`gemini.inlineEdit.model`); with a sign-in that can't make quick requests, a session of their own on the Gemini CLI answers instead.
+
+## Research
+
+For a broad question about the code, such as `/research where are auth tokens read, stored or logged?`, GeminiCode reads widely in parallel instead of one step at a time:
+
+1. It splits the question into parts by area of the code, from the workspace index's outline.
+2. Read-only workers, four at a time by default (`gemini.research.concurrency`, 1 to 8), each read one part with the index tools. They run in Plan mode and every permission request they make is refused, so nothing changes.
+3. One more worker rereads the most serious findings.
+4. A report answers the question, with each finding's `path:line`, verified ones marked.
+
+When a question in the message box reads like a broad one, such as "where are all the places that…", **Run as Research** appears under it; its × stops the suggestion for that chat. The card in the chat shows each part as it's read. **Stop** ends every worker and reports what was done. Under the report, **Send to Agent** puts it in the message box for the agent to act on, and **Copy** copies it. The research isn't part of the agent's conversation until you send it. A project's chats have no `/research`: their threads do the reading.
 
 ## Replies
 
@@ -142,6 +167,10 @@ Each message you send shows the time you sent it, **Rewind** and **Copy**. Under
 Sometimes a reply only needs a nod, or a quick "no, not that". React to it with an emoji instead of writing a message.
 
 The smiley at the end of a reply's row opens the reaction bar when you point at it or tab to it. It has four quick reactions, and a smiley of its own that opens every emoji, with search and the ones you used last.
+
+The picker shows what an emoji will do before you pick it: its footer gives the meaning of the emoji under the pointer, such as "Go ahead", or says that Gemini will tell you how it reads it first. Its first row, **With a meaning**, lists every emoji that has one, your own included. Pointing at a reaction chip later shows what it asked for.
+
+To react from the keyboard, send `+` and one emoji, such as `+👍`: it reacts to the latest reply instead of being sent as a message.
 
 ![The reaction bar on a reply, with Go ahead, Not what I meant, Explain more simply and Thanks](../../site/media/reactions-dark.webp)
 

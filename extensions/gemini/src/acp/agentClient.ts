@@ -112,6 +112,8 @@ export interface AgentClientOptions {
 	readonly requestPermission: (params: acp.RequestPermissionRequest) => Promise<acp.RequestPermissionResponse>;
 	/** Serves this session's file reads and writes instead of the runtime's handlers. */
 	readonly fileSystem?: FileSystemHandlers;
+	/** Why GeminiCode last refused a file request of session `sessionId`, to show for a tool failure the CLI wrote as "[object Object]". */
+	readonly explainFileError?: (sessionId: string) => string | undefined;
 	/** A session from an earlier run to reopen first, when the agent supports `session/load`. */
 	readonly resumeSessionId?: string;
 	/**
@@ -219,7 +221,7 @@ export class AgentClient {
 	/** YOLO picked during a turn on Auto, sent to the CLI when the turn ends (see `setMode`). */
 	private deferredMode: string | undefined;
 	private connection: AgentConnection | undefined;
-	private adapter = new SessionUpdateAdapter();
+	private adapter = this.newAdapter();
 	private registration: { dispose(): void } | undefined;
 	/** Bumped on every reconnect, so a slow `session/new` for an old process is ignored. */
 	private generation = 0;
@@ -727,7 +729,7 @@ export class AgentClient {
 				return { opened: false };
 			}
 			this.connection = connection;
-			this.adapter = new SessionUpdateAdapter();
+			this.adapter = this.newAdapter();
 			if (replayUpdates !== null) {
 				// Before registering, which hands over the updates that came first; the count follows once the session file is read.
 				this.beginReplay(replayUpdates);
@@ -999,6 +1001,10 @@ export class AgentClient {
 	}
 
 	/** Frees a session the agent keeps in memory, when it can close sessions (gemini-cli 0.64 cannot); never throws. */
+	private newAdapter(): SessionUpdateAdapter {
+		return new SessionUpdateAdapter(() => this.state.kind === 'ready' ? this.options.explainFileError?.(this.state.savedSessionId) : undefined);
+	}
+
 	private closeSession(connection: AgentConnection, agent: acp.InitializeResponse, sessionId: string): void {
 		if (agent.agentCapabilities?.sessionCapabilities?.close) {
 			void connection.close(sessionId).catch(err => this.runtime.debug(`Could not close session ${sessionId}: ${errorMessage(err)}`));

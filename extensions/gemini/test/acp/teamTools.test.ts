@@ -3,10 +3,15 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import * as http from 'node:http';
+import { tmpdir } from 'node:os';
+import * as path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { lastEvent, parseFigmaLink } from '../../src/acp/figma';
+import { designSystemFiles } from '../../src/acp/designSystem';
+import { figmaDesignSystem } from '../../src/acp/designTokens';
+import { type FigmaClient, lastEvent, parseFigmaLink } from '../../src/acp/figma';
 import { describeMr, GitLabClient, GitLabMr, mergeReadiness, parseMrRef, projectPathFromRemote, stripAnsi } from '../../src/acp/gitlab';
 import { adfToText, formatDuration, JiraClient, jiraKeyIn, parseDuration, textToAdf } from '../../src/acp/jira';
 import { locateInLoginShell, parseSnykCode, parseSnykTest, Run, SnykCli } from '../../src/acp/snyk';
@@ -263,6 +268,39 @@ describe('geminicode-tools server', () => {
 		expect({ off: off.isError, offCode: offCode.isError, text: off.content[0], ran }).toEqual({ off: true, offCode: true, text: { type: 'text', text: expect.stringMatching(/shell commands are turned off/) }, ran: [] });
 		const on = await callTeamTool(context(true), 'a1', 'snyk_test', {});
 		expect({ on: !!on.isError, ran: ran.filter(r => r.startsWith('test')) }).toEqual({ on: false, ran: ['test --json --all-projects'] });
+	});
+});
+
+describe('figma_design with the repository\'s design system', () => {
+	it('lets the design system decide Code Connect and names the colours that are its tokens', async () => {
+		const root = await mkdtemp(path.join(tmpdir(), 'gemini-ds-tools-'));
+		try {
+			const skill = path.join('.gemini', 'skills', 'design-system');
+			await mkdir(path.join(root, skill, 'references'), { recursive: true });
+			await writeFile(path.join(root, skill, 'references', 'tokens.md'), designSystemFiles({ fileName: 'DS', tokens: [{ name: 'color/brand/primary', value: '#2F5BD3' }], components: [] }, { skill }, '2026-10-28')[path.join(skill, 'references', 'tokens.md')]);
+			const asked: (boolean | undefined)[] = [];
+			const figma: FigmaClient = {
+				status: async () => ({ running: true }),
+				designContext: async (_link, options) => {
+					asked.push(options?.codeConnect);
+					return [{ type: 'text', text: '<div className="bg-[#2f5bd3]" />' }];
+				},
+				screenshot: async () => [],
+			};
+			const context = (designSystem: boolean): TeamToolContext => ({
+				connected: () => new Set(['figma']), connectors: () => ({ figma }), folder: () => root,
+				defaults: async () => ({}),
+				designSystem: async () => designSystem ? figmaDesignSystem({ file: path.join(root, '.gemini', 'geminicode-tools.json'), figma: { designSystem: { codeConnect: true } } }) : undefined,
+				figmaCodeConnect: () => false,
+			});
+			const link = 'https://www.figma.com/design/AbC/Checkout?node-id=1-2';
+			const withSystem = await callTeamTool(context(true), 'a1', 'figma_design', { link });
+			const without = await callTeamTool(context(false), 'a1', 'figma_design', { link });
+			const text = (result: typeof withSystem) => result.content.map(c => c.type === 'text' ? c.text : '').join('');
+			expect({ asked, withSystem: text(withSystem).includes('#2f5bd3 (color/brand/primary)'), without: text(without).includes('(color/brand/primary)') }).toEqual({ asked: [true, false], withSystem: true, without: false });
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
 	});
 });
 

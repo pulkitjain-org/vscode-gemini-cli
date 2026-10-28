@@ -49,6 +49,8 @@ export class AgentService implements vscode.Disposable {
 	private readonly sidecar: AgentSidecar;
 	/** The agent process; every chat session shares it. */
 	readonly runtime: AgentRuntime;
+	/** The workspace's file requests for every session, with the access policy applied. */
+	readonly files = createFileHandlers(new WorkspaceFileSystem(), getFileAccessPolicy);
 	/**
 	 * A session of the service's own, opened only when something asks for it
 	 * (`ensureReady`), such as the walkthrough's Sign In: the status comes from
@@ -110,7 +112,7 @@ export class AgentService implements vscode.Disposable {
 		this.mcpDiagnostics = debugLog ? new McpDiagnostics(debugLog) : undefined;
 		this.sidecar = new AgentSidecar({ command: () => this.agentCommand(), cwd: this.processFolder });
 		this.runtime = new AgentRuntime(this.sidecar, {
-			fileSystem: createFileHandlers(new WorkspaceFileSystem(), getFileAccessPolicy),
+			fileSystem: this.files,
 			log: message => log.debug(message),
 			folderProcess: {
 				needed: cwd => this.needsOwnProcess(cwd),
@@ -130,6 +132,7 @@ export class AgentService implements vscode.Disposable {
 			isModeAllowed: modeId => isModeAllowed(getApprovalPolicy(), modeId),
 			alwaysAsks: isConfirmToolCall,
 			onDidWriteFile: filePath => this.permissions.approvals.noteWrite(filePath),
+			explainFileError: sessionId => this.files.lastDenial(sessionId),
 		});
 
 		// Redirects into the workspace may be approved for the session; others always ask.

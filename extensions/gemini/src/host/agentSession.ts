@@ -43,6 +43,7 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 		/** Overrides the model each session switches to, such as a project coordinator's Flash model. */
 		preferredModel?: AgentClientOptions['preferredModel'],
 	) {
+		const ownFiles = isInWorkspace(folder) ? undefined : createFileHandlers(new WorkspaceFileSystem(), () => ({ roots: [folder], isIgnored: isIgnoredByGitCached }));
 		this.client = new AgentClient(service.runtime, {
 			cwd: folder,
 			resumeSessionId,
@@ -56,7 +57,8 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 			onDidWriteFile: filePath => this.permissions.approvals.noteWrite(filePath),
 			requestPermission: params => this.permissions.request(params),
 			// A folder outside this window's workspace is the agent's only root.
-			fileSystem: isInWorkspace(folder) ? undefined : createFileHandlers(new WorkspaceFileSystem(), () => ({ roots: [folder], isIgnored: isIgnoredByGitCached })),
+			fileSystem: ownFiles,
+			explainFileError: sessionId => (ownFiles ?? service.files).lastDenial(sessionId),
 		});
 		// Redirects into the agent's folder may be approved for the session; others always ask.
 		this.permissions.roots = () => isInWorkspace(folder) ? getFileAccessPolicy().roots : [folder];

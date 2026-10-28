@@ -18,6 +18,8 @@ export interface PickerOptions {
 	/** The reaction button: the picker opens beside it, and focus goes back to it. */
 	readonly anchor: HTMLElement;
 	readonly recents: readonly string[];
+	/** Every emoji with a meaning, and what it asks for: shown first, and in the footer. */
+	readonly meanings: readonly (readonly [string, string])[];
 	readonly strings: ReactionStrings;
 	onPick(emoji: string, name: string): void;
 }
@@ -27,6 +29,7 @@ const width = 324;
 /** Each category's emoji in the category strip, in emojiData.json's order. */
 const categoryIcons = ['\u{1F600}', '\u{1F9D1}', '\u{1F436}', '\u{1F34E}', '\u{2708}\u{FE0F}', '\u{26BD}', '\u{1F4A1}', '\u{1F523}', '\u{1F3F3}\u{FE0F}'];
 const recentIcon = '\u{1F558}';
+const meaningIcon = '\u{2B50}';
 
 interface Section {
 	readonly title: string;
@@ -93,6 +96,8 @@ class Picker {
 	private readonly body = el('div', 'emoji-body');
 	private readonly footerEmoji = el('span', 'emoji-footer-emoji');
 	private readonly footerName = el('span', 'emoji-footer-name');
+	private readonly footerMeaning = el('span', 'emoji-footer-meaning');
+	private readonly meaningOf: ReadonlyMap<string, string>;
 	private sections: readonly Section[] = [];
 	/** Each shown section's cells, filled in as the section is drawn. */
 	private cells: HTMLButtonElement[][] = [];
@@ -118,22 +123,27 @@ class Picker {
 		this.search.spellcheck = false;
 
 		const recent = recentEmoji(emoji, options.recents);
+		const meant = recentEmoji(emoji, options.meanings.map(([e]) => e));
+		this.meaningOf = new Map(options.meanings.map(([e, meaning]) => [e.replace(/\u{FE0F}/gu, ''), meaning]));
 		this.defaultSections = [
+			{ title: strings.withMeaning, entries: meant },
 			{ title: strings.recent, entries: recent },
 			...strings.groups.map((title, group) => ({ title, entries: emoji.filter(entry => entry.group === group) })),
 		];
 		const tabs = el('div', 'emoji-tabs');
-		[recentIcon, ...categoryIcons].forEach((glyph, section) => {
+		[meaningIcon, recentIcon, ...categoryIcons].forEach((glyph, section) => {
 			const tab = el('button', 'emoji-tab', glyph);
 			tab.type = 'button';
 			tab.tabIndex = -1;
 			tab.setAttribute('aria-label', this.defaultSections[section]?.title ?? '');
 			tab.addEventListener('click', () => this.showSection(section));
-			tab.hidden = section === 0 && !recent.length;
+			tab.hidden = (section === 0 && !meant.length) || (section === 1 && !recent.length);
 			tabs.append(tab);
 		});
 		const footer = el('div', 'emoji-footer');
-		footer.append(this.footerEmoji, this.footerName);
+		const names = el('span', 'emoji-footer-names');
+		names.append(this.footerName, this.footerMeaning);
+		footer.append(this.footerEmoji, names);
 		this.root.append(this.search, tabs, this.body, footer);
 
 		this.search.addEventListener('input', () => this.filter());
@@ -306,6 +316,8 @@ class Picker {
 		const entry = cell && this.entryOf(cell);
 		this.footerEmoji.textContent = entry?.emoji ?? '';
 		this.footerName.textContent = entry?.name ?? '';
+		// What picking it asks Gemini to do, before it is picked.
+		this.footerMeaning.textContent = entry ? this.meaningOf.get(entry.emoji.replace(/\u{FE0F}/gu, '')) ?? this.options.strings.readsIt : '';
 	}
 
 	private pick(cell: HTMLButtonElement): void {

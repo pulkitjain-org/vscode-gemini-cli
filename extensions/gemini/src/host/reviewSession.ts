@@ -217,7 +217,10 @@ export class ReviewSession implements vscode.Disposable, ReviewDiffHost {
 		const threads = this.discussions.filter(d => !d.resolved).map(d => ({ id: d.id, author: d.notes[0].author, body: d.notes.map(n => n.body).join('\n'), path: d.notes[0].path, line: d.notes[0].line }));
 		const read = await issue;
 		const ticket = this.ticketKey ? { key: this.ticketKey, ...read ? { text: `${read.summary}\n\n${read.description}`.trim() } : {} } : undefined;
-		const prompt = reviewPrompt({ iid, title: mr.title, url: mr.url, author: mr.author, sourceBranch: mr.sourceBranch, targetBranch: mr.targetBranch, description: mr.description }, ticket, remote, this.files.map(f => f.newPath), threads);
+		// In its untrusted checkout the reviewer has no index tools either: what the index knows around the changed files comes with the prompt.
+		const files = this.files.map(f => f.newPath);
+		const context = await this.deps.agents.index?.contextPack(repository, files).catch(() => undefined);
+		const prompt = reviewPrompt({ iid, title: mr.title, url: mr.url, author: mr.author, sourceBranch: mr.sourceBranch, targetBranch: mr.targetBranch, description: mr.description }, ticket, remote, files, threads, context);
 		await this.run(async () => {
 			await controller?.send(prompt);
 			await this.readReview();

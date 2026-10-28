@@ -83,12 +83,12 @@ const agentsModeSettings = [activityBarLocation, editorShowTabs];
 const agentsModeClass = 'gemini-agents-mode';
 
 const modeKey = 'gemini.mode';
-const changesPendingKey = 'gemini.mode.changesPending';
 /** Set once the "Switched to Editor mode" hint has been shown. */
 const switchHintKey = 'gemini.mode.switchHintShown';
 const layoutKey = (mode: Mode) => `gemini.mode.layout.${mode}`;
 const defaults: Record<Mode, ModeLayout> = {
-	agents: { sideBar: true, sideBarContainer: geminiContainer, auxiliaryBar: true, auxiliaryBarContainer: changesContainer, panel: false },
+	// Changes stays closed until the agent in front changes something (`_gemini.showChanges`).
+	agents: { sideBar: true, sideBarContainer: geminiContainer, auxiliaryBar: false, auxiliaryBarContainer: changesContainer, panel: false },
 	editor: { sideBar: true, sideBarContainer: explorerContainer, auxiliaryBar: false, panel: false },
 };
 
@@ -111,21 +111,6 @@ class GeminiModes extends Disposable implements IWorkbenchContribution {
 	private readonly context: IContextKey<Mode>;
 	/** True while this class opens views itself, so those opens are not taken as the user's. */
 	private applying = false;
-	/**
-	 * A layout wanted Changes on the right before the extension had registered it, as on a first
-	 * open in Restricted Mode, where the extension does not run. Kept until Changes shows.
-	 */
-	private get changesPending(): boolean {
-		return this.storageService.getBoolean(changesPendingKey, StorageScope.WORKSPACE, false);
-	}
-
-	private set changesPending(pending: boolean) {
-		if (pending) {
-			this.storageService.store(changesPendingKey, true, StorageScope.WORKSPACE, StorageTarget.MACHINE);
-		} else {
-			this.storageService.remove(changesPendingKey, StorageScope.WORKSPACE);
-		}
-	}
 
 	constructor(
 		@IStorageService private readonly storageService: IStorageService,
@@ -175,11 +160,11 @@ class GeminiModes extends Disposable implements IWorkbenchContribution {
 			if (state.mode === 'agents' && this.layoutService.isVisible(Parts.SIDEBAR_PART) && this.sideBarContainer() !== geminiContainer) {
 				void this.openFixed(geminiContainer, ViewContainerLocation.Sidebar);
 			}
-			this.showChanges();
-			// The Changes panel comes from the extension, which can register it after the layout is applied.
+			this.closeChanges();
+			// The Changes panel comes from the extension, which can register it after the layout is restored.
 			this._register(this.viewDescriptorService.onDidChangeViewContainers(({ added }) => {
 				if (added.some(({ container }) => container.id === changesContainer)) {
-					this.showChanges();
+					this.closeChanges();
 				}
 			}));
 			this._register(this.paneCompositeService.onDidPaneCompositeOpen(({ composite, viewContainerLocation }) => {
@@ -202,9 +187,10 @@ class GeminiModes extends Disposable implements IWorkbenchContribution {
 		this.setMode(mode, true);
 		this.storageService.store(modeKey, mode, StorageScope.WORKSPACE, StorageTarget.MACHINE);
 		const layout = this.savedLayout(mode);
-		// Agents mode remembers only which parts were open; its views are always Gemini and Changes.
+		// Agents mode remembers only which parts were open; its views are always Gemini and Changes, and
+		// Changes opens when the agent in front changes something.
 		await this.applyLayout(mode === 'agents'
-			? { ...layout, sideBar: true, sideBarContainer: geminiContainer, auxiliaryBarContainer: changesContainer }
+			? { ...layout, sideBar: true, sideBarContainer: geminiContainer, auxiliaryBar: false, auxiliaryBarContainer: changesContainer }
 			: layout);
 	}
 
@@ -238,20 +224,27 @@ class GeminiModes extends Disposable implements IWorkbenchContribution {
 	}
 
 	/**
-	 * In Agents mode the right side shows Changes when a layout asked for it
-	 * before the extension had registered it, or when the side is open with no
-	 * view in it. A view the user put there is left alone.
+	 * A window opens in Agents mode with Changes closed: the right side comes
+	 * back closed when it shows Changes, or nothing yet. A view the user put
+	 * there is left alone.
 	 */
-	private showChanges(): void {
+	private closeChanges(): void {
+		if (state.mode !== 'agents' || !this.layoutService.isVisible(Parts.AUXILIARYBAR_PART)) {
+			return;
+		}
+		const active = this.paneCompositeService.getActivePaneComposite(ViewContainerLocation.AuxiliaryBar)?.getId();
+		if (!active || active === changesContainer) {
+			this.layoutService.setPartHidden(true, Parts.AUXILIARYBAR_PART);
+		}
+	}
+
+	/** Shows Changes on the right in Agents mode, without taking focus: the agent in front started changing files. */
+	showChanges(): void {
 		if (state.mode !== 'agents' || !this.viewDescriptorService.getViewContainerById(changesContainer)) {
 			return;
 		}
-		const empty = this.layoutService.isVisible(Parts.AUXILIARYBAR_PART) && !this.paneCompositeService.getActivePaneComposite(ViewContainerLocation.AuxiliaryBar);
-		if (this.changesPending || empty) {
-			this.changesPending = false;
-			this.layoutService.setPartHidden(false, Parts.AUXILIARYBAR_PART);
-			void this.openFixed(changesContainer, ViewContainerLocation.AuxiliaryBar);
-		}
+		this.layoutService.setPartHidden(false, Parts.AUXILIARYBAR_PART);
+		void this.openFixed(changesContainer, ViewContainerLocation.AuxiliaryBar);
 	}
 
 	private async openFixed(container: string, location: ViewContainerLocation): Promise<void> {
@@ -309,9 +302,6 @@ class GeminiModes extends Disposable implements IWorkbenchContribution {
 
 	private async applyLayout(layout: ModeLayout): Promise<void> {
 		this.applying = true;
-		if (layout.auxiliaryBar && layout.auxiliaryBarContainer === changesContainer && !this.viewDescriptorService.getViewContainerById(changesContainer)) {
-			this.changesPending = true;
-		}
 		try {
 			this.layoutService.setPartHidden(!layout.panel, Parts.PANEL_PART);
 			this.layoutService.setPartHidden(!layout.auxiliaryBar, Parts.AUXILIARYBAR_PART);
@@ -330,6 +320,9 @@ registerWorkbenchContribution2(GeminiModes.ID, GeminiModes, WorkbenchPhase.Block
 
 /** The mode now, for the extension as it starts. */
 CommandsRegistry.registerCommand('_gemini.getMode', () => state.mode);
+
+/** The extension shows Changes when the agent in front starts changing files; nothing happens in Editor mode. */
+CommandsRegistry.registerCommand('_gemini.showChanges', () => modes?.showChanges());
 
 /** The extension reports the agents worth a pill: working, waiting on the user, or done and unread. */
 CommandsRegistry.registerCommand('_gemini.setAgentStatus', (_accessor, agents: readonly AgentStatus[]) => {

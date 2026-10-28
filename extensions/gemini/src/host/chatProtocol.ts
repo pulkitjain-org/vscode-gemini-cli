@@ -22,10 +22,10 @@ import type { PendingPromptView } from '../acp/promptQueue';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 43;
+export const chatProtocolVersion = 47;
 
 /** Commands the status line may offer; the host runs only these. */
-export const statusCommands = ['gemini.restartAgent', 'gemini.signIn', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal'] as const;
+export const statusCommands = ['gemini.restartAgent', 'gemini.signIn', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal', 'gemini.designSystem.sync'] as const;
 export type StatusCommand = typeof statusCommands[number];
 
 export interface ViewStatus {
@@ -350,6 +350,47 @@ export type RunState =
 	/** How it ended; unset when the shell had no integration to say. */
 	| { readonly kind: 'done'; readonly exitCode?: number; readonly ms?: number };
 
+/** A research run's card (/research). */
+export interface ResearchStrings {
+	readonly title: string;
+	readonly readOnly: string;
+	readonly states: Readonly<Record<'planning' | 'reading' | 'verifying' | 'merging' | 'done' | 'stopped' | 'failed', string>>;
+	readonly slice: Readonly<Record<'queued' | 'reading' | 'done' | 'failed', string>>;
+	/** `{0}` files read so far. */
+	readonly reading: string;
+	/** `{0}` findings. */
+	readonly findings: string;
+	/** `{0}` parts, `{1}` findings: the folded parts above a report. */
+	readonly summary: string;
+	readonly stop: string;
+	readonly sendToAgent: string;
+	readonly copy: string;
+	/** Under a broad question in the message box. */
+	readonly suggest: string;
+	readonly dontSuggest: string;
+}
+
+/** The side question panel (/btw). */
+export interface SideStrings {
+	readonly title: string;
+	readonly note: string;
+	readonly placeholder: string;
+	readonly ask: string;
+	readonly close: string;
+	readonly earlier: string;
+	readonly later: string;
+	readonly empty: string;
+	readonly answering: string;
+	readonly stop: string;
+	readonly sendToAgent: string;
+	readonly sendToAgentTip: string;
+	readonly fork: string;
+	readonly forkTip: string;
+	readonly copy: string;
+	readonly copied: string;
+	readonly hint: string;
+}
+
 /** The reaction button, quick reactions, chips and picker. */
 export interface ReactionStrings {
 	/** The reaction button's tooltip. */
@@ -370,6 +411,12 @@ export interface ReactionStrings {
 	readonly picker: string;
 	readonly search: string;
 	readonly recent: string;
+	/** The picker's first row: every emoji with a meaning. */
+	readonly withMeaning: string;
+	/** The picker's footer for an emoji with no meaning. */
+	readonly readsIt: string;
+	/** `{0}` is the emoji, `{1}` what it asks for: a chip's tooltip. */
+	readonly chipMeaning: string;
 	readonly noResults: string;
 	/** The picker's categories, in emojibase's group order without its component group. */
 	readonly groups: readonly string[];
@@ -381,6 +428,10 @@ export interface ChatStrings {
 	readonly project?: ProjectChatStrings;
 	/** Fork Agent's strings, in chats that can fork. */
 	readonly fork?: ForkStrings;
+	/** The side question panel's strings. */
+	readonly side?: SideStrings;
+	/** A research card's strings. */
+	readonly research: ResearchStrings;
 	/** Emoji reactions' strings; unset in a project's chat, which has none. */
 	readonly reactions?: ReactionStrings;
 	/** The badge on a thread's brief and the notes its coordinator relays. */
@@ -676,6 +727,7 @@ export interface ChatStrings {
 	readonly fromYourTools: string;
 	readonly jiraTicket: string;
 	readonly gitlabItem: string;
+	readonly confluencePage: string;
 	readonly figmaFrame: string;
 	readonly pasteLink: string;
 	/** Add Figma Design: a link for each screen size. */
@@ -683,6 +735,8 @@ export interface ChatStrings {
 	readonly figmaDesignEnd: string;
 	readonly figmaDesignTitle: string;
 	readonly figmaDesignHint: string;
+	readonly figmaSetUpDesignSystem: string;
+	readonly figmaSetUpDesignSystemTip: string;
 	readonly figmaSize: string;
 	/** `{0}` the size. */
 	readonly figmaLinkFor: string;
@@ -863,6 +917,8 @@ export interface ForkView {
 	readonly title: string;
 	/** Fork from Here on a reply: the prompt item the fork stops before (none for the last reply), and the prompt the reply answered. */
 	readonly fromHere?: { readonly before?: string; readonly answered: string };
+	/** The fork's first message, filled in: a side question that needs tools. */
+	readonly message?: string;
 	/** About how many tokens each choice sends with every request; `compact` is unset when it can't be made now, with `compactWhy`. */
 	readonly tokens: { readonly whole: number; readonly compact?: number; readonly conversation: number };
 	readonly compactWhy?: string;
@@ -976,7 +1032,7 @@ export type FromWebview =
 	/** The user picked one of a permission request's options. */
 	| { readonly type: 'permission'; readonly id: string; readonly optionId: string }
 	/** Retry or Continue on a failed or cut-short turn's notice (`itemId`). */
-	| { readonly type: 'noticeAction'; readonly itemId: string; readonly action: 'retry' | 'continue' | 'newSession' }
+	| { readonly type: 'noticeAction'; readonly itemId: string; readonly action: 'retry' | 'continue' | 'newSession' | 'fixErrors' }
 	/** Show All on a long tool output: the host answers with `output`. */
 	| { readonly type: 'showOutput'; readonly itemId: string; readonly part: number }
 	/** Show Its Changes on an edit another agent is changing the file too: opens that agent's changes. */
@@ -1010,7 +1066,7 @@ export type FromWebview =
 	/** A click on a tool chip, in the composer or a sent message: open its item (`toolRefId`) in its tool. */
 	| { readonly type: 'openToolRef'; readonly ref: string }
 	/** The + menu's "From your tools": the extension asks which item, then sends attachToolRef. */
-	| { readonly type: 'pickToolItem'; readonly tool: 'jira' | 'gitlab' | 'figma' }
+	| { readonly type: 'pickToolItem'; readonly tool: 'jira' | 'gitlab' | 'figma' | 'confluence' }
 	/** The × on the shared page's chip: give the page back to the user. */
 	| { readonly type: 'stopSharing' }
 	/** The user dragged the input to `height` pixels, or reset it (0). */
@@ -1063,7 +1119,13 @@ export type FromWebview =
 	/** A compact card's Undo, Not Now and View Summary. */
 	| { readonly type: 'undoCompact' | 'dismissCompact' | 'viewCompactSummary'; readonly itemId: string }
 	/** Open the Fork dialog: for the whole chat, or (Fork from Here) for the chat up to the reply that ends at `turnEnd`. */
-	| { readonly type: 'requestFork'; readonly turnEnd?: string }
+	| { readonly type: 'requestFork'; readonly turnEnd?: string; readonly message?: string }
+	/** A side question (/btw): answered from the conversation without stopping the agent or entering its history. */
+	| { readonly type: 'sideAsk'; readonly question: string }
+	| { readonly type: 'sideCancel' }
+	/** A research card's Stop, and Send to Agent, which puts its report in the message box. */
+	| { readonly type: 'researchStop'; readonly id: string }
+	| { readonly type: 'researchUse'; readonly id: string }
 	/** The Fork dialog's Fork. */
 	| { readonly type: 'fork'; readonly fork: ForkRequest }
 	/** A fork card's buttons, in its parent's chat. */
@@ -1094,7 +1156,7 @@ export type ToWebview =
 	/** `gemini.chat.foldFinishedWork` changed. */
 	| { readonly type: 'foldWork'; readonly on: boolean }
 	/** Whether reactions are on (`gemini.chat.reactions.enabled`), and the picker's Recent row. */
-	| { readonly type: 'reactions'; readonly on: boolean; readonly recents: readonly string[] }
+	| { readonly type: 'reactions'; readonly on: boolean; readonly recents: readonly string[]; readonly meanings: readonly (readonly [string, string])[] }
 	| { readonly type: 'reset'; readonly items: readonly TranscriptItem[]; readonly busy: boolean; readonly status: ViewStatus; readonly settings: SessionSettings; readonly stall?: ViewStall }
 	/** The running turn has had no update for a while, with Stop and Show Log; undefined once anything arrives. */
 	| { readonly type: 'stall'; readonly stall: ViewStall | undefined }
@@ -1167,6 +1229,11 @@ export type ToWebview =
 	| { readonly type: 'toggleUsage'; readonly open?: boolean }
 	/** Open the Fork dialog. */
 	| { readonly type: 'openFork'; readonly fork: ForkView }
+	/**
+	 * A side question's progress: `open` shows the panel empty, `asked` starts an answer, `text` is the
+	 * answer so far, `done` the whole answer and `error` why there is none. `id` tells answers apart.
+	 */
+	| { readonly type: 'side'; readonly id: number; readonly state: 'open' | 'asked' | 'text' | 'done' | 'error'; readonly question?: string; readonly text?: string }
 	/** A project chat's side panel. */
 	| { readonly type: 'projectPanel'; readonly panel: ProjectPanel }
 	/** Open the New thread dialog, from the New Thread command. */

@@ -70,6 +70,8 @@ describe('team flow logic', () => {
 		expect(withThreads).toContain('- [discussion d1] tom.k on a.ts:52: Why a fixed wait?');
 		expect(withThreads).toContain('give `"discussion"` (its id)');
 		expect(reviewPrompt(mr)).not.toContain('discussion');
+		const withContext = reviewPrompt(mr, undefined, 'origin', ['src/a.ts'], [], 'What the workspace index knows…').split('\n');
+		expect(withContext.slice(withContext.indexOf('- src/a.ts'), withContext.indexOf('- src/a.ts') + 3)).toEqual(['- src/a.ts', '', 'What the workspace index knows…']);
 	});
 
 	it('gives a reviewer in its untrusted checkout, which has no MCP tools, the description and the ticket\'s text', () => {

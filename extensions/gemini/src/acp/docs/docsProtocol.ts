@@ -8,6 +8,9 @@
 // stores) say to each other about a source.
 
 /** What to fetch: the page alone, pages under its path, or the whole site. */
+/** How many pages a source fetches when nothing says otherwise. */
+export const defaultMaxPages = 500;
+
 export type DocsScope = 'page' | 'prefix' | 'site';
 export type DocsRefresh = 'daily' | 'weekly' | 'manual';
 
@@ -41,4 +44,11 @@ export interface DocsSearchResult {
 	readonly hits: readonly DocsHit[];
 	readonly total: number;
 	readonly terms: readonly string[];
+}
+
+/** Whether `host` may be fetched from, per patterns such as `react.dev` or `*.example.com`; none allows every site. */
+export function domainAllowed(host: string, patterns: readonly string[]): boolean {
+	const name = host.toLowerCase();
+	const list = patterns.map(p => p.trim().toLowerCase()).filter(Boolean);
+	return !list.length || list.some(pattern => pattern === '*' || (pattern.startsWith('*.') ? name.endsWith(pattern.slice(1)) || name === pattern.slice(2) : name === pattern));
 }

@@ -82,6 +82,7 @@ Inline edit (<kbd>⌘I</kbd> in the editor), commit messages, Enhance prompt's r
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `gemini.team.openMergeRequestsIn` | `ask` | Where a merge request opens when you click it: GeminiCode's browser or your default browser. |
+| `gemini.figma.viewports` | empty | The screen sizes **Add Figma Design** asks a frame for, such as `["Mobile", "Tablet", "Desktop"]`. Empty uses XS, S, M and L; a repository's `figma.viewports` outranks it. |
 | `gemini.figma.codeConnect` | off | Let Figma look up Code Connect mappings when an agent reads a design. Off, Figma answers faster. |
 | `gemini.team.runTeamServers` | off | Run the tools' own MCP servers behind the team tools: the team's Jira and GitLab servers and SonarQube's in Docker, and Snyk's from your Snyk CLI. **Take Over Both Servers** in Connections turns it on. See [Your team's own servers](team-tools.md#your-teams-own-servers). |
 
@@ -94,16 +95,13 @@ These are under **Gemini › Advanced** in Settings.
 | `gemini.chat.reactions.enabled` | on | React to replies with an emoji. See [Reacting to replies](chat.md#reacting-to-replies). |
 | `gemini.chat.reactions.agentReactions` | on | Let Gemini react to your messages when it has something to add. Costs about 50 tokens per session. |
 | `gemini.chat.reactions.meanings` | `{}` | What an emoji asks Gemini to do, such as `{ "🚀": "Go ahead, then commit with a short message." }`. An entry can change a built-in meaning (👍 👎 ❓ ❤️) or add one. |
-| `gemini.pilot.record` | off | Count the pilot's measures on your Mac: launches, waits, permission cards, Undo and Rewind, team tool errors and links that leave the app, with times and no text. |
-| `gemini.developer.showTools` | off | Show GeminiCode's developer tools in the Command Palette: Run Benchmark, Record or Stop Performance Trace, Export Pilot Data, Show Status Menu, New Skill, and installing a Gemini CLI version. They still run from the Gemini status bar menu, Agent Setup and the messages that offer them. |
-
-If you are in the pilot, turn `gemini.pilot.record` on. At the end, run **Gemini: Export Pilot Data**, which the Command Palette shows while it is on, and hand over the `geminicode-pilot` folder in your home folder.
+| `gemini.developer.showTools` | off | Show GeminiCode's developer tools in the Command Palette: Run Benchmark, Record or Stop Performance Trace, Show Status Menu, New Skill, and installing a Gemini CLI version. They still run from the Gemini status bar menu, Agent Setup and the messages that offer them. |
 
 ## Storage
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `gemini.storage.keepLogsDays` | 90 | How many days of the audit log and the pilot's counters to keep. Older days are removed in the background after GeminiCode starts. At least 7 days are kept; 0 keeps everything. |
+| `gemini.storage.keepLogsDays` | 90 | How many days of the audit log to keep. Older days are removed in the background after GeminiCode starts. At least 7 days are kept; 0 keeps everything. |
 
 The **Storage** section at the bottom of Agent Setup shows how much room each part of GeminiCode's data takes on your Mac: agent worktrees, workspace indexes, Gemini CLI copies, undo history, chats and reviews, and logs. The sizes are measured when you scroll to the section, not when GeminiCode starts. The logs row sets `gemini.storage.keepLogsDays`, and **Open Folder** shows GeminiCode's own storage folder in Finder.
 
@@ -146,6 +144,5 @@ An organisation can lock these settings through VS Code's policy system: a macOS
 | `gemini.agents.allWorkspaceFolders` | `GeminiAllWorkspaceFolders` |
 | `gemini.agents.defaultMode` | `GeminiAgentsDefaultMode` |
 | `gemini.browser.keepSignIns` | `GeminiBrowserKeepSignIns` |
-| `gemini.pilot.record` | `GeminiPilotRecord` |
 
 To pin one CLI version for everyone, lock `GeminiCliPath` to an empty string and `GeminiCliVersion` to the version. How each policy reaches the Gemini CLI is described in [the architecture notes](https://github.com/pulkitjain-org/vscode-gemini-cli/blob/main/gemini/docs/ARCHITECTURE.md#security-model).

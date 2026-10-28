@@ -5,7 +5,8 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { formatSearch, formatSymbol, partialNote, searchFooter, snippet } from '../../src/acp/index/format';
-import { IndexMcpServer, IndexToolBackend } from '../../src/acp/indexMcp';
+import type { EditorBackend } from '../../src/acp/editorTools';
+import { IndexMcpServer, indexHint, IndexToolBackend } from '../../src/acp/indexMcp';
 import type { McpHttpConfig } from '../../src/acp/localMcpServer';
 import { indexToolTitle } from '../../src/acp/toolLinks';
 
@@ -87,6 +88,104 @@ describe('IndexMcpServer', () => {
 		server.forget('agent-a');
 		const after = await post(slot, { jsonrpc: '2.0', id: 1, method: 'ping' });
 		expect({ searched, after: after.status }).toEqual({ searched: ['/repo/a: before'], after: 404 });
+	});
+});
+
+describe('the language servers behind the index tools', () => {
+	const definition = { name: 'checkout', kind: 'method', container: 'CartService', path: 'src/cart.ts', line: 12, endLine: 20, exported: true, signature: 'checkout(): void' };
+	function withEditor(editor: EditorBackend | undefined, on = true): IndexToolBackend {
+		return {
+			...backend([]),
+			findSymbol: async (_folder, name) => ({ result: { definitions: name === 'missing' ? [] : [definition], similar: [], references: [{ path: 'docs/notes.md', line: 3, text: 'checkout in prose' }], referenceTotal: 1 } }),
+			languageServers: () => on,
+			editor: async () => editor,
+		};
+	}
+	const editor: EditorBackend = {
+		references: async target => target.name === 'checkout' ? [{ file: '/repo/a/src/cart.ts', line: 12, text: '\tcheckout(): void {' }, { file: '/repo/a/src/api.ts', line: 40, text: '  cart.checkout();' }, { file: '/elsewhere/x.ts', line: 1 }] : undefined,
+		hover: async () => '```ts\n(method) CartService.checkout(): void\n```',
+		calls: async (_target, direction) => direction === 'incoming' ? [{ name: 'submitOrder', file: '/repo/a/src/api.ts', line: 38 }] : [],
+		diagnostics: async (_folder, files) => ({ checked: files?.length ?? 2, diagnostics: [{ file: '/repo/a/src/api.ts', line: 41, severity: 'warning', message: 'Unused  variable.' }, { file: '/repo/a/src/cart.ts', line: 13, severity: 'error', message: 'Type \'string\' is not assignable to type \'number\'.', source: 'ts' }] }),
+	};
+
+	it('lists the language servers\' tools only while they are on', async () => {
+		const names = async (backendOf: IndexToolBackend) => {
+			const server = new IndexMcpServer(backendOf, '1');
+			servers.push(server);
+			await server.start();
+			const config = server.configFor('agent-b', '/repo/b')!;
+			return ((await post(config, { jsonrpc: '2.0', id: 1, method: 'tools/list' })).body as { result: { tools: { name: string }[] } }).result.tools.map(t => t.name);
+		};
+		expect([await names(withEditor(editor)), await names(withEditor(editor, false))]).toEqual([
+			['code_search', 'find_symbol', 'related_files', 'repo_map', 'code_type', 'code_diagnostics', 'code_calls'],
+			['code_search', 'find_symbol', 'related_files', 'repo_map'],
+		]);
+	});
+
+	it('gives exact references, types, callers and errors, and says when the index answers alone', async () => {
+		const server = new IndexMcpServer(withEditor(editor), '1');
+		const noServer = new IndexMcpServer(withEditor({ ...editor, references: async () => undefined, hover: async () => undefined }), '1');
+		servers.push(server, noServer);
+		await server.start();
+		await noServer.start();
+		const a = server.configFor('agent-a', '/repo/a')!;
+		const none = noServer.configFor('agent-a', '/repo/a')!;
+		const exact = textOf(await call(a, 'find_symbol', { name: 'CartService.checkout', references: true }));
+		const fallback = textOf(await call(none, 'find_symbol', { name: 'checkout', references: true }));
+		expect({
+			exact: exact.split('\n').slice(-3),
+			proseGone: exact.includes('checkout in prose'),
+			fallback: [fallback.includes('checkout in prose'), fallback.endsWith('so this comes from the index alone.')],
+			type: textOf(await call(a, 'code_type', { symbol: 'checkout' })),
+			noType: textOf(await call(none, 'code_type', { symbol: 'checkout' })),
+			callers: textOf(await call(a, 'code_calls', { symbol: 'checkout' })),
+			callees: textOf(await call(a, 'code_calls', { symbol: 'checkout', direction: 'outgoing' })),
+			missing: textOf(await call(a, 'code_type', { symbol: 'missing' })),
+			outside: textOf(await call(a, 'code_type', { symbol: 'x', path: '../b/x.ts', line: 1 })),
+			errors: textOf(await call(a, 'code_diagnostics', {})),
+		}).toEqual({
+			exact: ['References from the language server (exact: the same symbol, through imports and aliases; 2):', '  src/cart.ts:12  checkout(): void {', '  src/api.ts:40  cart.checkout();'],
+			proseGone: false,
+			fallback: [true, true],
+			type: 'checkout at src/cart.ts:12, from the language server:\n```ts\n(method) CartService.checkout(): void\n```',
+			noType: 'No language server answered for this file (none for its language, or still loading), so this comes from the index alone. Read the definition with find_symbol instead.',
+			callers: 'Callers of checkout (src/cart.ts:12):\n  submitOrder · src/api.ts:38',
+			callees: 'checkout (src/cart.ts:12) calls nothing the language server resolves.',
+			missing: 'No definition named missing was found. Give path and line where it is used, or look it up with code_search.',
+			outside: '../b/x.ts is outside this folder.',
+			errors: '1 error and 1 warning in 2 files:\n  error src/cart.ts:13  Type \'string\' is not assignable to type \'number\'. (ts)\n  warning src/api.ts:41  Unused variable.',
+		});
+	});
+
+	it('titles the language servers\' calls for the chat', () => {
+		expect([
+			indexToolTitle('code_type ({"symbol":"CartItem.price"})'),
+			indexToolTitle('code_diagnostics ({})'),
+			indexToolTitle('code_diagnostics ({"paths":["src/a.ts","src/b.ts"]})'),
+			indexToolTitle('code_calls ({"symbol":"checkout","direction":"outgoing"})'),
+		]).toEqual(['Type of CartItem.price', 'Check changed files for errors', 'Check 2 files for errors', 'Calls in checkout']);
+	});
+});
+
+describe('research from an agent', () => {
+	it('offers agents the research tool, never research\'s own workers, and answers with the report', async () => {
+		const asked: string[] = [];
+		const server = new IndexMcpServer({ ...backend([]), researchOn: () => true, research: async (folder, question) => (asked.push(`${folder}: ${question}`), 'Tokens are logged at src/api.ts:5.') }, '1');
+		servers.push(server);
+		await server.start();
+		const list = async (config: McpHttpConfig) => ((await post(config, { jsonrpc: '2.0', id: 1, method: 'tools/list' })).body as { result: { tools: { name: string }[] } }).result.tools.map(t => t.name);
+		const agent = server.configFor('agent-a', '/repo/b')!;
+		const worker = server.configFor('research-1-worker-0', '/repo/b')!;
+		expect({
+			agent: (await list(agent)).includes('research'),
+			worker: (await list(worker)).includes('research'),
+			report: textOf(await call(agent, 'research', { question: 'Where are tokens logged?' })),
+			asked,
+		}).toEqual({ agent: true, worker: false, report: 'Tokens are logged at src/api.ts:5.', asked: ['/repo/b: Where are tokens logged?'] });
+	});
+
+	it('hints at the tools that are on, so agents use them unasked', () => {
+		expect([indexHint().includes('code_diagnostics'), indexHint({ languageServers: true }).includes('check it with code_diagnostics'), indexHint({ research: true }).includes('call research')]).toEqual([false, true, true]);
 	});
 });
 

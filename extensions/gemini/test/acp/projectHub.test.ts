@@ -247,6 +247,23 @@ describe('what a wake costs', () => {
 		expect(prompts.map(prompt => /<conductor>\nProduct \(conductor\/product\.md\):\n(.*)\n/.exec(prompt)?.[1] ?? null)).toEqual(['A shop.', null, 'A shop with gift cards.', 'A shop with gift cards.']);
 	});
 
+	it('sends the code\'s outline with the first wake, again only when it changes or to a new session', async () => {
+		let outline = 'src/cart (12 files)';
+		const prompts: string[] = [];
+		const hub = new ProjectHub('p1', { prompt: async text => { prompts.push(text); } }, { start: async () => 't1', message: () => undefined, read: () => '' }, { outline: async () => outline });
+		for (const text of ['one', 'two']) {
+			hub.post(text);
+			await hub.idle();
+		}
+		outline = 'src/cart (13 files)';
+		hub.post('three');
+		await hub.idle();
+		hub.setBriefed(false);
+		hub.post('four');
+		await hub.idle();
+		expect({ outlines: prompts.map(prompt => /<outline>\n(.*)\n<\/outline>/.exec(prompt)?.[1] ?? null), brief: prompts[0].includes('an <outline> of the code') }).toEqual({ outlines: ['src/cart (12 files)', null, 'src/cart (13 files)', 'src/cart (13 files)'], brief: true });
+	});
+
 	it('keeps only each thread\'s latest report for the next wake', async () => {
 		const { hub, prompts } = setup();
 		hub.notify({ kind: 'report', thread: 't1', report: 'result', text: 'Turn 1 done' });

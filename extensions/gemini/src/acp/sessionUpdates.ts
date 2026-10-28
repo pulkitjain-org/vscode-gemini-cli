@@ -48,6 +48,9 @@ export function contentBlockToText(block: acp.ContentBlock): string {
 	}
 }
 
+/** What gemini-cli writes for an error that is not an Error, such as a refused file request's JSON-RPC error. */
+const objectText = '[object Object]';
+
 /** Whether a tool call is over; the agent rarely updates one after that. */
 function isFinished(status: ToolCallModel['status']): boolean {
 	return status === 'completed' || status === 'failed';
@@ -62,6 +65,9 @@ export class SessionUpdateAdapter {
 	 * transcript keeps what it showed of it.
 	 */
 	private readonly toolCalls = new Map<string, ToolCallModel>();
+
+	/** `explainFileError` gives GeminiCode's latest refusal of the session's file requests, for a tool failure the CLI wrote as "[object Object]". */
+	constructor(private readonly explainFileError?: () => string | undefined) { }
 
 	adapt(update: acp.SessionUpdate): ChatEvent {
 		switch (update.sessionUpdate) {
@@ -91,7 +97,7 @@ export class SessionUpdateAdapter {
 					kind: update.kind ?? previous?.kind,
 					status: update.status ?? previous?.status ?? 'pending',
 					locations: update.locations ?? previous?.locations ?? [],
-					content: update.content ?? previous?.content ?? [],
+					content: (update.content ? this.explained(update.content) : undefined) ?? previous?.content ?? [],
 				};
 				this.remember(call);
 				return { kind: 'toolCall', call };
@@ -101,6 +107,21 @@ export class SessionUpdateAdapter {
 			default:
 				return { kind: 'other', type: (update as { sessionUpdate: string }).sessionUpdate, update };
 		}
+	}
+
+	/**
+	 * A tool's content with the CLI's "[object Object]" replaced by why
+	 * GeminiCode refused the request behind it: gemini-cli turns the JSON-RPC
+	 * error of a refused file request into that text.
+	 */
+	private explained(content: readonly acp.ToolCallContent[]): acp.ToolCallContent[] {
+		return content.map(part => {
+			if (part.type !== 'content' || part.content.type !== 'text' || !part.content.text.includes(objectText)) {
+				return part;
+			}
+			const reason = this.explainFileError?.();
+			return { ...part, content: { ...part.content, text: part.content.text.split(objectText).join(reason ?? 'the Gemini CLI did not say why') } };
+		});
 	}
 
 	private remember(call: ToolCallModel): void {

@@ -1,5 +1,5 @@
 diff --git a/product.json b/product.json
-index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..fcace22878781d3472b315f9feac0fba0e39d2e3 100644
+index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..d8bec7786de376a2a8548fcb77a0cd8b2fbbc49d 100644
 --- a/product.json
 +++ b/product.json
 @@ -1,41 +1,49 @@
@@ -117,7 +117,7 @@ index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..fcace22878781d3472b315f9feac0fba
  			"type": "light"
  		},
  		{
-@@ -242,9 +244,316 @@
+@@ -242,9 +244,305 @@
  			"type": "light"
  		}
  	],
@@ -279,17 +279,6 @@ index 64e1c4d2c64e998526ce3b8ef179f45bbe29d068..fcace22878781d3472b315f9feac0fba
 +				"description": {
 +					"key": "gemini.mcp.allowedServers.policy",
 +					"value": "The only MCP servers agents may use, besides GeminiCode's own; it outranks any repository's settings file. Empty leaves it to the Gemini CLI's mcp.allowed setting."
-+				}
-+			}
-+		},
-+		"gemini.pilot.record": {
-+			"name": "GeminiPilotRecord",
-+			"category": "Extensions",
-+			"minimumVersion": "1.141",
-+			"localization": {
-+				"description": {
-+					"key": "gemini.pilot.record.policy",
-+					"value": "Whether GeminiCode counts the pilot's measures (launches, waits, permission cards, Undo and Rewind, team tool errors), with times and no text, on the Mac, for Gemini: Export Pilot Data."
 +				}
 +			}
 +		},

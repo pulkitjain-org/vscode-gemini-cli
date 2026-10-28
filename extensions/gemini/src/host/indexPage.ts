@@ -5,18 +5,18 @@
 
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import type { DocsRefresh } from '../acp/docs/docsProtocol';
+import { defaultMaxPages, type DocsRefresh } from '../acp/docs/docsProtocol';
 import { provisionalTitle } from '../acp/docs/docsRegistry';
 import { suggestDocs } from '../acp/docs/suggest';
 import type { IndexStatus } from '../acp/index/indexerProtocol';
 import { folderTrustApplies, isFolderTrusted, trustedFoldersPath } from '../acp/trustedFolders';
 import type { AgentService } from './agentService';
-import { configSection } from './configuration';
-import { DocsSources, defaultMaxPages, SourceView } from './docsSources';
+import { configSection, indexBuildOn } from './configuration';
+import type { DocsSources, SourceView } from './docsSources';
 import { tildify } from './displayText';
 import type { DocsSourceView, FromIndexPage, IndexPageStrings, IndexPageView, IndexWorkspaceView, ToIndexPage } from './indexProtocol';
 import { createNonce, escapeAttribute } from './webviewHtml';
-import { indexBuildOn, type WorkspaceIndex } from './workspaceIndex';
+import type { WorkspaceIndex } from './workspaceIndex';
 
 const viewType = 'gemini.index';
 const dismissedKey = 'gemini.index.dismissedDocs';

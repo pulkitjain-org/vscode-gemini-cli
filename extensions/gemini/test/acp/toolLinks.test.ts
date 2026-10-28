@@ -61,6 +61,30 @@ describe('tool refs', () => {
 	});
 });
 
+describe('Confluence page links', () => {
+	it('reads a page link as a Confluence ref, before a Jira link on the same site, and opens it on its own site', () => {
+		const page = parseToolLink('https://acme.atlassian.net/wiki/spaces/ENG/pages/123456/Checkout+Design');
+		const byId = parseToolLink('https://acme.atlassian.net/wiki/pages/viewpage.action?pageId=987');
+		expect({
+			page,
+			byId: byId && toolRefId(byId),
+			edit: parseToolLink('https://acme.atlassian.net/wiki/spaces/ENG/pages/edit-v2/555')?.tool,
+			tiny: parseToolLink('https://acme.atlassian.net/wiki/x/AbCd'),
+			label: page && toolRefLabel(page),
+			url: page && toolRefUrl(toolRefId(page), {}),
+			found: findToolRefs('See https://acme.atlassian.net/wiki/spaces/ENG/pages/123456/Checkout and ACME-1', { connected: ['confluence'] }).map(toolRefId),
+		}).toEqual({
+			page: { tool: 'confluence', url: 'https://acme.atlassian.net/wiki/spaces/ENG/pages/123456/Checkout+Design', host: 'acme.atlassian.net', pageId: '123456' },
+			byId: 'confluence:acme.atlassian.net:987',
+			edit: 'confluence',
+			tiny: undefined,
+			label: 'Page 123456',
+			url: 'https://acme.atlassian.net/wiki/pages/viewpage.action?pageId=123456',
+			found: ['confluence:acme.atlassian.net:123456'],
+		});
+	});
+});
+
 describe('team tool titles', () => {
 	it('reads the CLI\'s title for an MCP call', () => {
 		expect(parseTeamToolCall('jira_comment({"key":"ACME-1","text":"Done"})')).toEqual({ tool: 'jira', name: 'jira_comment', args: { key: 'ACME-1', text: 'Done' } });

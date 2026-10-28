@@ -3,6 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { sideQuestionOf } from '../acp/sideChat';
+import { ChatSide, sideCommand } from './chat/chatSide';
+import { ChatResearch, researchCommand } from './chat/chatResearch';
+import { researchQuestionOf } from '../acp/researchQuestion';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
 import { promises as fs } from 'node:fs';
@@ -19,7 +23,7 @@ import { buildModeAfterPlan, diffsOf, nextApprovalMode, dropOldest, lastPromptAt
 import type { StoredCheckpoints } from '../acp/checkpoints';
 import { buildPromptContent } from '../acp/promptContent';
 import { atSafePoint, PromptQueue, steeringNote, steerWaitMs, type PromptExtras } from '../acp/promptQueue';
-import { meaningOf, olderReplyExcerpt, reactionNote, reactionRule, routeReaction, type ReactionRef, type ReactionRequest } from '../acp/reactions';
+import { meaningOf, olderReplyExcerpt, reactionNote, reactionRule, reactionShortcut, routeReaction, type ReactionRef, type ReactionRequest } from '../acp/reactions';
 import { CoordinatorTurnFailed } from '../acp/projectHub';
 import { TeamCommandCancelled } from '../acp/teamCommandExpansion';
 import { cliHome, ConversationEntry, readCliConversation, readSessionMessages } from '../acp/cliSessions';
@@ -32,11 +36,10 @@ import { UpdateBatcher } from '../acp/updateBatcher';
 import { isBlockedWebFetch } from '../acp/webFetchHint';
 import { type AgentClient, type TurnStall, WaitAbortedError } from '../acp/agentClient';
 import { classifyTurnError, errorMessage, isContextOverflow, isModelTurnRefusal } from '../acp/errors';
-import { recordPilot } from '../acp/pilotLog';
 import { chatProtocolVersion, FromWebview, ProjectPanel, ProjectRepoView, ProjectSettingsView, statusCommands, ToWebview, type ViewStall } from './chatProtocol';
 import { stallNotice, stopReasonActions, stopReasonNotice, toViewStatus, turnErrorNotice, type TurnErrorNotice } from './chatStatus';
 import type { DiffPreview } from './diffPreview';
-import { agentReactionsOn, onDidChangeReactions, reactionMeanings, reactionsOn, recentReactions, rememberReaction } from './chatReactions';
+import { agentReactionsOn, onDidChangeReactions, reactionMeanings, reactionsOn, recentReactions, rememberReaction, shownMeanings } from './chatReactions';
 import { preferredComposerHeight, rememberComposerHeight } from './modelPreference';
 import { onDidChangeThemeTokens, themeTokenColors } from './themeTokens';
 import { ChatAttachments } from './chat/chatAttachments';
@@ -179,6 +182,8 @@ export class ChatController implements vscode.Disposable {
 	private readonly checkpoints: ChatCheckpoints;
 	private readonly compacting: ChatCompact;
 	private readonly forks: ChatFork;
+	private readonly side: ChatSide;
+	private readonly research: ChatResearch;
 	private readonly project: ChatProjectView;
 	private readonly runs: ChatRun;
 
@@ -209,7 +214,7 @@ export class ChatController implements vscode.Disposable {
 		this.sideLinks = new SideLinksColumn(options, isViewReady, post);
 		this.settings = new ChatSettings(service, this.transcript, options, post);
 		this.enhance = new ChatEnhance(client, options, () => this.transcript.items, post);
-		this.commands = new ChatCommands(client, this.transcript, [...options.savedSessions ? [resumeCommand()] : [], compactCommand(), contextCommand(), ...options.fork ? [forkCommand()] : []], isAttached, post);
+		this.commands = new ChatCommands(client, this.transcript, [...options.savedSessions ? [resumeCommand()] : [], compactCommand(), contextCommand(), sideCommand(), ...options.research ? [researchCommand()] : [], ...options.fork ? [forkCommand()] : []], isAttached, post);
 		this.sessions = new ChatSessions(service, this.transcript, options, {
 			isBusy,
 			setBusy,
@@ -237,6 +242,8 @@ export class ChatController implements vscode.Disposable {
 			isBusy,
 			title: () => options.title?.() ?? '',
 		}, post);
+		this.side = new ChatSide(options, this.transcript, isBusy, post);
+		this.research = new ChatResearch(options, this.transcript, post);
 		this.project = new ChatProjectView(options, isViewReady, post);
 		this.runs = new ChatRun(options, isAttached, post, attachments => void this.addAttachments(attachments),
 			() => this.transcript.items.flatMap(item => item.kind === 'agent' || item.kind === 'user' ? [item.text] : []));
@@ -256,14 +263,13 @@ export class ChatController implements vscode.Disposable {
 			this.attachments,
 			this.settings,
 			this.enhance,
+			this.side,
+			this.research,
 			this.commands,
 			this.sessions,
 			this.runs,
 			this.usage,
 			service.permissions.onDidChange(event => {
-				if (event.kind === 'requested' && this.timing) {
-					this.timing.permissions++;
-				}
 				this.permissions.apply(event);
 				this.fireActivity();
 				this.trySteer();
@@ -502,6 +508,28 @@ export class ChatController implements vscode.Disposable {
 			await this.restoring;
 		}
 		const project = this.options.project;
+		// `/btw` asks on the side: the agent's turn and history are left alone.
+		const side = !from && !attachments.length ? sideQuestionOf(text) : undefined;
+		if (side !== undefined) {
+			extras.settle?.(true);
+			this.side.open(side);
+			return;
+		}
+		// `/research` reads widely on the side, read-only; the agent's turn and history are left alone.
+		const research = !project && !from && !attachments.length && this.options.research ? researchQuestionOf(text) : undefined;
+		if (research !== undefined) {
+			extras.settle?.(true);
+			void this.research.run(research);
+			return;
+		}
+		// `+` and one emoji alone reacts to the latest reply instead of being sent.
+		const shortcut = !project && !from && !attachments.length && reactionsOn() ? reactionShortcut(text) : undefined;
+		const latest = shortcut && this.transcript.items.findLast(item => item.kind === 'turnEnd');
+		if (shortcut && latest) {
+			extras.settle?.(true);
+			this.react(latest.id, shortcut, shortcut);
+			return;
+		}
 		if (project) {
 			if (this.busy) {
 				// The coordinator is working: the message waits for its turn to end, never stopping it.
@@ -628,7 +656,7 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	private postReactions(): void {
-		this.post({ type: 'reactions', on: !this.options.project && reactionsOn(), recents: recentReactions() });
+		this.post({ type: 'reactions', on: !this.options.project && reactionsOn(), recents: recentReactions(), meanings: shownMeanings() });
 	}
 
 	/** The agent's tried files the user edited and hasn't sent it (agentTries.ts): the message box offers to include them. */
@@ -733,7 +761,7 @@ export class ChatController implements vscode.Disposable {
 		let delivered = false;
 		/** How the turn came to an end, for the messages waiting on it. */
 		let outcome: 'done' | 'steer' | 'stopped' = 'stopped';
-		this.timing = { started, permissions: 0 };
+		this.timing = { started };
 		this._lastTurnError = undefined;
 		// The last failure's Retry and Continue have done their work, or were passed over.
 		this.transcript.clearNoticeActions();
@@ -766,6 +794,12 @@ export class ChatController implements vscode.Disposable {
 				this.hintedSessions.add(session);
 				content.push({ type: 'text', text: hint });
 			}
+			if (attachments.some(attachment => attachment.kind === 'document' && attachment.tool === 'figma')) {
+				const design = await this.options.designSystemNote?.().catch(() => undefined);
+				if (design) {
+					content.push({ type: 'text', text: design });
+				}
+			}
 			const page = await this.sharedPage.refresh();
 			if (page) {
 				content.push({ type: 'text', text: page.note });
@@ -796,7 +830,6 @@ export class ChatController implements vscode.Disposable {
 				content.unshift({ type: 'text', text: steeringNote() });
 			}
 			this.timing.sent = Date.now();
-			recordPilot({ kind: 'prompt', waitedMs: this.timing.ready - started });
 			promptAt = this.transcript.items.length;
 			const { stopReason, usage } = await this.promptRecovering(content);
 			delivered = true;
@@ -1052,6 +1085,9 @@ export class ChatController implements vscode.Disposable {
 	private endTurn(durationMs: number, usage?: readonly ModelTokens[], unfinished = false, steered = false): void {
 		const id = this.transcript.addTurnEnd(durationMs, usage);
 		const { files, undoable } = this.checkpoints.endTurn(id);
+		if (files && !unfinished && !this.options.project) {
+			void this.noteErrors();
+		}
 		const build = this.planBuild(usage);
 		const planFile = build && this.options.reviewPlan ? this.turnPlanFile : undefined;
 		this.turnPlanFile = undefined;
@@ -1059,11 +1095,6 @@ export class ChatController implements vscode.Disposable {
 		this.retryItemId = id;
 		const timing = this.timing;
 		this.timing = undefined;
-		recordPilot({
-			kind: 'turn', permissions: timing?.permissions ?? 0, durationMs,
-			...timing?.sent && timing.firstToken ? { firstTokenMs: timing.firstToken - timing.sent } : {},
-			...timing?.sent && timing.firstText ? { firstTextMs: timing.firstText - timing.sent } : {},
-		});
 		if (timing?.sent && timing.firstToken) {
 			this.transcript.updateTurnEnd(id, { firstTokenMs: timing.firstToken - timing.sent });
 		}
@@ -1098,6 +1129,11 @@ export class ChatController implements vscode.Disposable {
 		if (mode) {
 			await this.settings.change(() => this.service.client.setMode(mode));
 		}
+	}
+
+	/** Opens the side question panel (⌥⌘;): ask about the chat while the agent keeps working. */
+	openSide(): void {
+		this.side.open();
 	}
 
 	/**
@@ -1518,6 +1554,14 @@ export class ChatController implements vscode.Disposable {
 			case 'forkAction':
 				this.forks.onMessage(message);
 				break;
+			case 'sideAsk':
+			case 'sideCancel':
+				this.side.onMessage(message);
+				break;
+			case 'researchStop':
+			case 'researchUse':
+				this.research.onMessage(message);
+				break;
 			case 'compact':
 			case 'undoCompact':
 			case 'dismissCompact':
@@ -1642,11 +1686,22 @@ export class ChatController implements vscode.Disposable {
 	}
 
 	/** A failed or cut-short turn's Retry or Continue, from its notice, while that notice still offers it. */
-	private noticeAction(itemId: string, action: 'retry' | 'continue' | 'newSession'): void {
-		if (this.busy || !this.transcript.noticeOffering(itemId, action)) {
+	/** After a turn that changed files: a notice when the language servers report errors in them, offering Fix. */
+	private async noteErrors(): Promise<void> {
+		const text = await this.options.errorsAfterTurn?.().catch(() => undefined);
+		if (text && !this.busy) {
+			this.transcript.addNotice(text, 'info', ['fixErrors']);
+		}
+	}
+
+	private noticeAction(itemId: string, action: 'retry' | 'continue' | 'newSession' | 'fixErrors'): void {
+		const notice = this.busy ? undefined : this.transcript.noticeOffering(itemId, action);
+		if (!notice) {
 			return;
 		}
-		if (action === 'newSession') {
+		if (action === 'fixErrors') {
+			void this.send(`Fix these errors in the files you changed, then check again with code_diagnostics:\n${notice.text.split('\n').slice(1).join('\n')}`);
+		} else if (action === 'newSession') {
 			void this.continueAfterOverflow(this.lastPrompt?.text, 'refused');
 		} else if (action === 'continue') {
 			// Carries on where the request limit stopped the turn, as the CLI's own "continue" does.
@@ -1692,8 +1747,6 @@ export async function openChatAsMarkdown(title: string, items: readonly Transcri
 /** When a turn's steps happened, in ms since the epoch. */
 interface TurnTiming {
 	readonly started: number;
-	/** Permission cards the turn showed, for the pilot's counters. */
-	permissions: number;
 	ready?: number;
 	sent?: number;
 	/** The model's first output after the prompt was sent: a thought, a tool call, a plan or reply text. */

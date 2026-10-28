@@ -22,7 +22,7 @@ import { chooseFolder } from './agents/agentStarts';
 import { startsQuietly } from './agentWarmup';
 import { detectAuth } from '../acp/directRequest';
 import { tildify } from './displayText';
-import { configSection, getApprovalPolicy, getProjectSettings } from './configuration';
+import { configSection, getApprovalPolicy, getProjectSettings, indexBuildOn } from './configuration';
 import { preferredModel } from './modelPreference';
 import { moveCard, toggleCard, type DashboardLayout } from '../acp/dashboard';
 import { buildDashboard, DashboardInput, StartupState } from './homeDashboard';
@@ -34,7 +34,6 @@ import { projectsEnabled } from './projects';
 import { agentsColumn } from './editorPlacement';
 import { createNonce, escapeAttribute } from './webviewHtml';
 import { openTeamLink } from './teamLinks';
-import { indexBuildOn } from './workspaceIndex';
 import { showError } from './errorNotice';
 
 const homeViewType = 'gemini.agentHome';

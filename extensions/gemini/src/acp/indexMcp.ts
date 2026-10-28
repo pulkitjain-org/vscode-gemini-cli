@@ -12,6 +12,7 @@
 import { randomBytes } from 'node:crypto';
 import type { McpTool, McpToolResult } from './browserMcp';
 import type { DocsSearchResult } from './docs/docsProtocol';
+import { baseName, diagnosticFiles, type EditorBackend, editorTools, editorToolsInstruction, formatCalls, formatDiagnostics, formatExactReferences, formatHover, noLanguageServer, resolveTarget } from './editorTools';
 import { formatDocs, formatRelated, formatSearch, formatSymbol } from './index/format';
 import type { Answer } from './index/indexerProtocol';
 import type { RelatedResult, SearchQuery, SearchResult, SymbolResult } from './index/query';
@@ -37,10 +38,32 @@ export interface IndexToolBackend {
 	orientation(folder: string): string | undefined;
 	/** A tool was called, for the agent's folder: keeps its index warm. */
 	used?(folder: string): void;
+	/** Whether the editor's language servers back the tools (`gemini.index.languageServers`). */
+	languageServers?(): boolean;
+	/** The language servers' reads, loaded on first use (editorTools.ts). */
+	editor?(): Promise<EditorBackend | undefined>;
+	/** Whether agents can start research (research.ts) from a tool. */
+	researchOn?(): boolean;
+	/** Researches `question` in `folder` with read-only workers; resolves with the report. */
+	research?(folder: string, question: string): Promise<string>;
+}
+
+/** What research's workers are called: they get the index tools, but never research itself. */
+export const researchWorkerPrefix = 'research-';
+
+/** The one line a session's first prompt carries once the folder's index is built: without it the model reaches for grep_search first (FINDINGS.md). */
+export function indexHint(options: { readonly languageServers?: boolean; readonly research?: boolean } = {}): string {
+	return [
+		'This workspace has a code index: use the geminicode-index tools (code_search, find_symbol, related_files, repo_map) before grep_search, glob or reading whole files. Their results are complete: read only the lines they point to, and don\'t search again for what they found.',
+		...options.languageServers ? ['Before renaming or changing a signature, list its uses with find_symbol and references. After editing code, check it with code_diagnostics before you finish, instead of running a build.'] : [],
+		...options.research ? ['For a broad question that needs reading many parts of the code (where something happens everywhere, an audit of every place that does X), call research instead of reading them one by one.'] : [],
+	].join(' ');
 }
 
 interface Caller {
 	readonly folder: string | undefined;
+	/** The route: the agent's id, or a spare session's slot. */
+	readonly route: string;
 }
 
 /** Slots kept for spare sessions no agent took. */
@@ -65,13 +88,13 @@ export class IndexMcpServer {
 				}
 				if (route.startsWith('slot-')) {
 					const slot = this.slots.get(route);
-					return slot ? { folder: slot.agent ? this.folders.get(slot.agent) ?? slot.folder : slot.folder } : undefined;
+					return slot ? { folder: slot.agent ? this.folders.get(slot.agent) ?? slot.folder : slot.folder, route } : undefined;
 				}
 				const folder = this.folders.get(route);
-				return folder ? { folder } : undefined;
+				return folder ? { folder, route } : undefined;
 			},
 			instructions: caller => this.instructions(caller.folder),
-			tools: caller => this.tools(caller.folder),
+			tools: caller => this.tools(caller.folder, caller.route),
 			call: (caller, name, args) => this.call(caller.folder, name, args),
 		});
 	}
@@ -138,6 +161,8 @@ export class IndexMcpServer {
 			'- find_symbol: where a function, class or type is defined, and where it is used.',
 			'- related_files: a file\'s imports, importers, tests and the files usually changed with it.',
 			'- repo_map: an outline of the folder or a subfolder.',
+			...this.backend.languageServers?.() ? [editorToolsInstruction] : [],
+			...this.backend.researchOn?.() ? ['- research: a broad question answered by several read-only readers at once, with file:line evidence; for questions that need many parts of the code read.'] : [],
 			'Results give paths with line ranges and are complete for the folder: read only those lines with read_file, and don\'t repeat the search with grep_search.',
 		];
 		const docs = folder ? this.backend.docs(folder) : [];
@@ -151,7 +176,7 @@ export class IndexMcpServer {
 		return lines.join('\n');
 	}
 
-	private tools(folder: string | undefined): McpTool[] {
+	private tools(folder: string | undefined, route = ''): McpTool[] {
 		const tools: McpTool[] = [
 			{
 				name: 'code_search',
@@ -201,6 +226,20 @@ export class IndexMcpServer {
 				},
 			},
 		];
+		if (this.backend.languageServers?.()) {
+			tools.push(...editorTools);
+		}
+		if (this.backend.researchOn?.() && !route.startsWith(researchWorkerPrefix)) {
+			tools.push({
+				name: 'research',
+				description: 'Answers a broad question about this folder\'s code by reading many parts of it at once: it splits the question by area, several read-only readers each read one part with these tools, and it returns one report with file:line evidence. Use it for questions such as where something happens everywhere, or an audit of every place that does X; it takes a minute or two. For one lookup, use code_search or find_symbol instead.',
+				inputSchema: {
+					type: 'object',
+					properties: { question: { type: 'string', description: 'The question, in full, as the user would ask it.' } },
+					required: ['question'],
+				},
+			});
+		}
 		const docs = folder ? this.backend.docs(folder) : [];
 		if (docs.length) {
 			tools.push({
@@ -241,7 +280,56 @@ export class IndexMcpServer {
 					return text('find_symbol needs a name.', true);
 				}
 				const answer = await this.backend.findSymbol(folder, symbol, str('kind') || undefined, args.references === true);
-				return text(formatSymbol(symbol, answer.result, answer.fallback, answer.partial));
+				if (args.references !== true || !this.backend.languageServers?.() || answer.result.definitions.length !== 1) {
+					return text(formatSymbol(symbol, answer.result, answer.fallback, answer.partial));
+				}
+				// One definition: the language server's references are the exact ones, where it answers.
+				const target = resolveTarget(folder, symbol, answer.result.definitions);
+				const exact = typeof target === 'string' ? undefined : await (await this.backend.editor?.())?.references(target).catch(() => undefined);
+				if (!exact) {
+					return text(`${formatSymbol(symbol, answer.result, answer.fallback, answer.partial)}\n\n${noLanguageServer}`);
+				}
+				return text(`${formatSymbol(symbol, { ...answer.result, references: [], referenceTotal: 0 }, answer.fallback, answer.partial)}\n\n${formatExactReferences(folder, exact)}`);
+			}
+			case 'code_type':
+			case 'code_calls': {
+				const symbol = str('symbol');
+				if (!symbol) {
+					return text(`${name} needs a symbol.`, true);
+				}
+				const file = str('path') || undefined;
+				const line = num('line');
+				const definitions = file && line ? [] : (await this.backend.findSymbol(folder, baseName(symbol), undefined, false)).result.definitions;
+				const target = resolveTarget(folder, symbol, definitions, file, line);
+				if (typeof target === 'string') {
+					return text(target, true);
+				}
+				const editor = await this.backend.editor?.();
+				if (name === 'code_type') {
+					const hover = editor ? await editor.hover(target).catch(() => undefined) : undefined;
+					return text(hover === undefined ? `${noLanguageServer} Read the definition with find_symbol instead.` : formatHover(target, folder, hover));
+				}
+				const direction = str('direction') === 'outgoing' ? 'outgoing' : 'incoming';
+				const calls = editor ? await editor.calls(target, direction).catch(() => undefined) : undefined;
+				return text(calls === undefined ? `${noLanguageServer} For callers, use find_symbol with references.` : formatCalls(target, folder, direction, calls));
+			}
+			case 'research': {
+				const question = str('question');
+				if (!question) {
+					return text('research needs a question.', true);
+				}
+				if (!this.backend.research || !this.backend.researchOn?.()) {
+					return text('Research is off for this session.', true);
+				}
+				return text(await this.backend.research(folder, question));
+			}
+			case 'code_diagnostics': {
+				const editor = await this.backend.editor?.();
+				if (!editor) {
+					return text('The editor\'s language servers are off for agents (gemini.index.languageServers).', true);
+				}
+				const { checked, diagnostics } = await editor.diagnostics(folder, diagnosticFiles(folder, args.paths));
+				return text(formatDiagnostics(folder, checked, diagnostics));
 			}
 			case 'related_files': {
 				const file = str('path');

@@ -31,8 +31,12 @@ export interface TeamDefaults {
 	readonly gitlab?: { readonly url?: string; readonly releaseBranches?: string; readonly defaultTarget?: string; readonly project?: string };
 	readonly sonar?: { readonly url?: string; readonly projectKey?: string };
 	readonly snyk?: { readonly endpoint?: string };
-	/** The screen sizes the team's designs have one frame for, as the designers name them. */
-	readonly figma?: { readonly viewports?: readonly string[] };
+	readonly figma?: {
+		/** The screen sizes the team's designs have one frame for, as the designers name them. */
+		readonly viewports?: readonly string[];
+		/** The team's design system in Figma, as the file has it: `designSystemConfig` (designSystem.ts) reads it, in the bundle that uses it. */
+		readonly designSystem?: Readonly<Record<string, unknown>>;
+	};
 	/** The file it came from, for the Connections page. */
 	readonly file?: string;
 }
@@ -95,6 +99,7 @@ function sanitize(raw: unknown): TeamDefaults {
 	const snyk = o.snyk ?? {};
 	const figma = o.figma ?? {};
 	const viewports = Array.isArray(figma.viewports) ? figma.viewports.flatMap(v => str(v) ? [String(v).trim()] : []) : [];
+	const designSystem = figma.designSystem && typeof figma.designSystem === 'object' && !Array.isArray(figma.designSystem) ? figma.designSystem as Record<string, unknown> : undefined;
 	return {
 		jira: {
 			site: str(jira.site), projects: Array.isArray(jira.projects) ? jira.projects.flatMap(p => str(p) ? [String(p).trim().toUpperCase()] : []) : undefined, commentVisibility: str(jira.commentVisibility),
@@ -103,7 +108,7 @@ function sanitize(raw: unknown): TeamDefaults {
 		gitlab: { url: str(gitlab.url), releaseBranches: str(gitlab.releaseBranches), defaultTarget: str(gitlab.defaultTarget), project: str(gitlab.project) },
 		sonar: { url: str(sonar.url), projectKey: str(sonar.projectKey) },
 		snyk: { endpoint: str(snyk.endpoint) },
-		...viewports.length ? { figma: { viewports } } : {},
+		...viewports.length || designSystem ? { figma: { ...viewports.length ? { viewports } : {}, ...designSystem ? { designSystem } : {} } } : {},
 	};
 }
 

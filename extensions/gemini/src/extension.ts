@@ -42,11 +42,9 @@ import { AuditStatusBar } from './host/auditStatusBar';
 import { chunkLoader, LazyFeature, setExtensionDir } from './host/lazyFeature';
 import { teamRequest } from './acp/teamHttp';
 import { openTeamLink } from './host/teamLinks';
-import { recordPilot, setPilotSink } from './acp/pilotLog';
 import { WorkspaceFileIndex } from './host/workspaceFiles';
 import { WorkspaceIndex } from './host/workspaceIndex';
 import { DocsSources } from './host/docsSources';
-import { IndexPage } from './host/indexPage';
 import { IndexStatusBar } from './host/indexStatusBar';
 import { measureFolderContextCost } from './host/contextCostProbe';
 import { ContextMeasures } from './host/chat/chatContext';
@@ -54,9 +52,6 @@ import { FixWithGemini } from './host/quickFix';
 import { parseMemoryList, runCliCommands } from './acp/cliCommands';
 import { disposeGitIgnore } from './host/workspaceFileSystem';
 import { logErrorCommand } from './host/errorNotice';
-
-/** The pilot's setting (pilot.ts): while it is on, the pilot is constructed at launch, to record it. */
-const pilotRecordSetting = 'pilot.record';
 
 /** Finishes the writes that must outlive the window; set by activate. */
 let saveBeforeExit: (() => Promise<void>) | undefined;
@@ -156,12 +151,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	context.subscriptions.push(
 		workspaceIndex,
 		docsSources,
-		new IndexPage(context.extensionUri, workspaceIndex, docsSources, agentsView, service, context.globalState),
+		new LazyFeature(['gemini.index.open', 'gemini.index.rebuild', 'gemini.index.pause', 'gemini.index.addDocs'], () => new (pages().IndexPage)(context.extensionUri, workspaceIndex, docsSources, agentsView, service, context.globalState)),
 		new IndexStatusBar(workspaceIndex),
 		workspaceIndex.onDidChangeEnabled(() => agentsView.refreshSpare()),
 		teamTools.onDidChange(() => agentsView.refreshSpare()),
 		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.browser`) && agentsView.refreshSpare()),
 	);
+	// Agents' research tool runs the research engine from dist/onDemand.js on the agent process, as /research does.
+	workspaceIndex.research = async (folder, question) => {
+		const concurrency = vscode.workspace.getConfiguration(configSection).get<number>('research.concurrency', 4);
+		const run = new (onDemand().ResearchRun)(question, {
+			runtime: service.runtime,
+			cwd: folder,
+			mcpServers: worker => workspaceIndex.mcpServersFor(worker, folder),
+			release: worker => workspaceIndex.forgetAgent(worker),
+			ask: (system, prompt, signal) => enhancer.ask(system, prompt, signal),
+			outline: await workspaceIndex.outlineOf(folder).catch(() => undefined),
+			concurrency: Math.min(8, Math.max(1, Math.floor(concurrency) || 4)),
+			onProgress: progress => progress.state === 'done' || progress.state === 'failed' ? log.info(`Research for an agent in ${folder}: ${progress.state}, ${progress.slices.length} parts`) : undefined,
+		});
+		return run.run();
+	};
 	// What every model call in a folder carries: Agent Setup's Context per model call, and the chat's usage popover (/context).
 	const measureContext = (folder: string, servers: readonly string[]) => measureFolderContextCost({
 		folder,
@@ -205,20 +215,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	context.subscriptions.push(teamFlows.reviews.onDidChange(() => agentsView.refreshChats()));
 	const traceFolder = vscode.Uri.joinPath(context.globalStorageUri, 'traces').fsPath;
 	setTraceFolder(traceFolder);
-	let launching = true;
-	const pilot = new LazyFeature(['gemini.pilot.export'], () => new (onDemand().Pilot)(context.globalStorageUri.fsPath, teamTools, usageMeter, { setSink: setPilotSink, record: recordPilot }, launching));
-	// While recording is on, the pilot starts with the window, to record the launch; turned on later, it starts then.
-	const startPilot = () => {
-		if (vscode.workspace.getConfiguration(configSection).get<boolean>(pilotRecordSetting, false)) {
-			try {
-				pilot.get();
-			} catch (err) {
-				log.error(`The pilot's counters could not start: ${errorMessage(err)}`);
-			}
-		}
-	};
-	startPilot();
-	launching = false;
 	const mrPanel = new MrPanel(teamTools, agentsView, agent => teamFlows.checksSummary(agent));
 	changesPanel.team = mrPanel;
 	// caffeinate watches this process, so it ends with GeminiCode even if GeminiCode crashes.
@@ -237,6 +233,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		agentsView,
 		changesPanel,
 		agentsView.onDidFocus(source => changesPanel.show(source)),
+		agentsView.onDidChangeTurn(agent => changesPanel.turnChanged(agent)),
 		new AgentHome(context.extensionUri, agentsView, () => warmup.startSoon(), { state: context.globalState, version: productInfo.version ?? String(context.extension.packageJSON.version ?? ''), cli: () => service.status.agentVersion, startup: () => ({ activatedAt, agent: agentPhase(service.status.phase), ...readyAt ? { readyAt } : {} }), reviews: { inProgress: () => teamFlows.reviews.inProgress, onDidChange: teamFlows.reviews.onDidChange } }),
 		new LazyFeature(['gemini.projectSettings', 'gemini.newSkill'], () => new (pages().SettingsPage)(context.extensionUri, service, {
 			getAgentCommand,
@@ -274,8 +271,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			// Imported here, so the runner and the ACP SDK it uses stay in this bundle, which carries the SDK anyway.
 			runner: () => import('./acp/benchmark'),
 		})),
-		pilot,
-		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.${pilotRecordSetting}`) && startPilot()),
 		scheduleStorageMaintenance(context.globalStorageUri.fsPath, log),
 		mrPanel,
 		vscode.commands.registerCommand('gemini.confluence.openDraft', (id?: unknown) => teamTools.openConfluenceDraft(typeof id === 'string' ? id : undefined)),
@@ -313,6 +308,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		}),
 		vscode.commands.registerCommand('gemini.showLog', () => log.show()),
 		vscode.commands.registerCommand(logErrorCommand, (message: unknown) => typeof message === 'string' && log.error(message)),
+		new LazyFeature(['gemini.designSystem.sync'], () => new (onDemand().DesignSystemSync)({
+			figma: () => teamTools.connectors.figma,
+			defaults: folder => folder ? teamTools.defaults(folder) : teamTools.workspaceDefaults(),
+		}, log)),
 		new LazyFeature(['gemini.openAuditLog'], () => new (onDemand().AuditPage)(context.extensionUri, teamTools.audit, id => agentsView.summaries().find(agent => agent.id === id)?.title)),
 		vscode.commands.registerCommand('gemini.checkAgent', async () => onDemand().checkAgent(log, {
 			command: await getAgentCommand(),

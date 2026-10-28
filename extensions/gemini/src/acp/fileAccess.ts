@@ -71,7 +71,9 @@ export async function checkFileAccess(filePath: string, mode: FileAccessMode, op
 		return 'the path must be absolute';
 	}
 	const resolved = path.resolve(filePath);
-	const root = options.roots.map(r => path.resolve(r)).find(r => isInside(r, resolved));
+	const roots = options.roots.map(r => path.resolve(r));
+	// The CLI may name a file by its real path when the folder was opened through a link (/tmp is /private/tmp).
+	const root = roots.find(r => isInside(r, resolved)) ?? (await Promise.all(roots.map(realPath))).find(r => isInside(r, resolved));
 	if (!root) {
 		return 'the file is outside the workspace';
 	}
@@ -149,13 +151,32 @@ export class FileAccessDeniedError extends Error {
 	}
 }
 
-/** The `fs/*` handlers for AgentConnection, with the policy applied. */
+/** How many sessions' latest refusals are kept for `lastDenial`. */
+const keptDenials = 50;
+
+/**
+ * The `fs/*` handlers for AgentConnection, with the policy applied.
+ * `lastDenial` gives a session's latest refusal: gemini-cli turns the
+ * JSON-RPC error into "[object Object]" in its tool's failure, so the chat
+ * shows this reason in its place (SessionUpdateAdapter).
+ */
 export function createFileHandlers(fileSystem: ClientFileSystem, policy: () => FileAccessPolicyOptions) {
+	const denials = new Map<string, string>();
+	const refuse = (sessionId: string, filePath: string, reason: string) => {
+		const error = new FileAccessDeniedError(filePath, reason);
+		denials.delete(sessionId);
+		denials.set(sessionId, error.message);
+		for (const old of [...denials.keys()].slice(0, Math.max(0, denials.size - keptDenials))) {
+			denials.delete(old);
+		}
+		return error;
+	};
 	return {
+		lastDenial: (sessionId: string): string | undefined => denials.get(sessionId),
 		async readTextFile(params: acp.ReadTextFileRequest): Promise<acp.ReadTextFileResponse> {
 			const denied = await checkFileAccess(params.path, 'read', policy());
 			if (denied) {
-				throw new FileAccessDeniedError(params.path, denied);
+				throw refuse(params.sessionId, params.path, denied);
 			}
 			const text = await fileSystem.readTextFile(params.path);
 			// A missing file reads as empty. ACP says to answer "Resource not
@@ -169,7 +190,7 @@ export function createFileHandlers(fileSystem: ClientFileSystem, policy: () => F
 		async writeTextFile(params: acp.WriteTextFileRequest): Promise<acp.WriteTextFileResponse> {
 			const denied = await checkFileAccess(params.path, 'write', policy());
 			if (denied) {
-				throw new FileAccessDeniedError(params.path, denied);
+				throw refuse(params.sessionId, params.path, denied);
 			}
 			await fileSystem.writeTextFile(params.path, params.content);
 			return {};

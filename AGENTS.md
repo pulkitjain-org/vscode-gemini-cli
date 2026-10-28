@@ -5,7 +5,7 @@ This repository is GeminiCode, a fork of VS Code with the Gemini CLI built in. B
 - Put new code in `extensions/gemini/`. Edit an upstream file only when the extension API cannot do the job, and mark the edit with a `GEMINI-FORK` comment.
 - Never modify the Gemini CLI's source. The one change GeminiCode makes to the copies it runs is the patch in `extensions/gemini/src/acp/cliPatches.ts` (see below). It also adds the app's ripgrep where the CLI looks for its own (`cliRipgrep.ts`), changing no CLI file.
 - Performance and response time come first.
-- Before a pull request, run the checks in [gemini/README.md](gemini/README.md#developing): `npm run check` in `extensions/gemini`, and the steps under [Validating](#validating) that apply.
+- Before a pull request, run the checks in [gemini/README.md](gemini/README.md#developing): `gemini/scripts/ci-checks.sh` runs Gemini CI's checks for what the branch changes, and the pre-push hook runs it on every push.
 
 ## What overrides the upstream instructions
 
@@ -83,6 +83,7 @@ These rules have no exceptions. They override any tool's default attribution, tr
 
 ### Validating
 
+- `gemini/scripts/ci-checks.sh` runs what Gemini CI's Checks and Compile & hygiene jobs run, for the files the branch changes against `origin/main`: lint and hygiene of the fork's files (non-ASCII characters and space indentation fail it), the patch series, the type checks, both bundles, the unit tests, and `npm run compile` plus hygiene of the changed upstream files when one changed. The pre-push hook runs it, so install the hooks (`gemini/scripts/git-hooks/install.sh`). Never push past it; `GEMINI_SKIP_CHECKS=1` is for a push that only needs CI's result. It leaves the real-CLI tests, bundling the CLI, the site's accessibility and Lighthouse runs and Snyk to CI.
 - In `extensions/gemini`: `npm run check`. It runs `node esbuild.mts` and `node esbuild.webview.mts`, `npx vitest run`, then `tsc --noEmit` on `tsconfig.json`, `webview-src/tsconfig.json` and `tsconfig.test.json`. From the repository root, lint changed files with `npm run eslint -- <files>`.
 - The two builds rebuild `dist/` and `media/`, which the size budgets read, so `check` builds before it tests.
 - The real-CLI tests (`test/acp/real*.test.ts`) run against `GEMINI_CLI_PATH`: a `gemini` executable, a `bundle/gemini.js`, or `bundled` for the copy `npm run bundle-cli` places in `cli/`. Locally they are skipped without it, since they take a full run from about 17 s to about 100 s; in CI they run against the bundled copy, and a missing CLI fails them. Run them on any change to `src/acp/cli/`, the agent's launch, sessions or the protocol.

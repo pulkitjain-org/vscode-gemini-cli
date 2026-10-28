@@ -55,7 +55,8 @@ A checked-in `.gemini/geminicode-tools.json` saves everyone typing addresses. It
 - `jira.transitions` names your workflow's transition ids for the moves GeminiCode suggests: `{ "start": 21, "review": 31, "done": 41 }` for starting on a ticket, opening its merge request and merging it. Without them, GeminiCode looks for the In Progress, In Review and Done statuses by name. Jira lists a workflow's ids under its transitions in the workflow editor.
 - `gitlab.releaseBranches` is the pattern of your release branches.
 - `sonar.projectKey` can also come from the repository's `sonar-project.properties`.
-- `figma.viewports` names the screen sizes **Add Figma Design** asks a frame for, such as `["XS", "S", "M", "L"]`. Without it, the sizes are Mobile, Tablet and Desktop.
+- `figma.viewports` names the screen sizes **Add Figma Design** asks a frame for, such as `["Mobile", "Tablet", "Desktop"]`. Without it, your own `gemini.figma.viewports` setting names them, and without that the sizes are XS, S, M and L.
+- `figma.designSystem` names your team's design system in Figma, for [Sync Design System](#your-design-system).
 
 > [!IMPORTANT]
 > GeminiCode's own servers (`geminicode-tools`, `geminicode-project`, `geminicode-browser`) are always allowed, even when your Gemini settings have an `mcp.allowed` list without them; only `mcp.excluded` keeps them out. Once you've connected, remove any older `jira` and `gitlab` entries from `mcp.allowed` and `mcpServers` yourself; until then agents see two sets of Jira and GitLab tools. The terminal's `gemini` doesn't get these tools.
@@ -82,9 +83,41 @@ A card shows its first few items. When it has more, **Show All** opens the whole
 
 ## In chat
 
-Paste a Jira key or link, a GitLab merge request or issue link, or a Figma link with a node, and it becomes a chip with the tool's logo; sending attaches the ticket, merge request or a hint to read the design. Click a chip, in the composer or in a message you sent, to open its ticket, merge request or frame. **From your tools** in the **+** menu picks a ticket or merge request. Tool calls show the tool's logo and what they did, such as "Read ACME-412".
+Paste a Jira key or link, a GitLab merge request or issue link, a Figma link with a node, or a Confluence page link, and it becomes a chip with the tool's logo; sending attaches the ticket, merge request or page, or a hint to read the design. Click a chip, in the composer or in a message you sent, to open its ticket, merge request or frame. **From your tools** in the **+** menu picks a ticket or merge request, or takes a Confluence page's link. Tool calls show the tool's logo and what they did, such as "Read ACME-412".
 
 **Figma Design...**, under **From your tools**, opens **Add Figma Design**: a frame link for each screen size, as designers lay a design's sizes out side by side. Paste several links at once and they fill the rows in order; **Add Size** adds a row. The design becomes one chip, and clicking it opens the dialog again to change the sizes. Figma reads one open file at a time, so a frame from another file makes the agent ask you to switch files when it gets there.
+
+## Your design system
+
+When your team's design system is a Figma file of its own, GeminiCode can read it once into the repository, so agents build every design with your tokens and components and nobody has to share the design system again.
+
+Name the file in the team defaults:
+
+```json
+{
+  "figma": {
+    "designSystem": {
+      "name": "Acme DS",
+      "file": "https://www.figma.com/design/AbC123/Acme-DS",
+      "pages": ["Foundations", "Components"],
+      "tokens": "src/styles/tokens.css",
+      "codeConnect": true
+    }
+  }
+}
+```
+
+Then open the design-system file in the Figma desktop app and run **Gemini: Sync Design System**, or **Sync Design System** on Figma's row in Connections. Until the team file names one, **Add Figma Design** offers **Set Up Your Design System**, which says what to add. GeminiCode reads each page you named (every visible page when `pages` is left out, as long as the file has no more than eight; Figma limits how many reads its Dev Mode server answers a day, so a larger file has to name its pages), says what changed since the last sync, such as "4 new tokens, 1 component removed", and offers **Review Changes**, which shows each file's diff, and **Write Files**. It writes:
+
+- a skill in `.gemini/skills/design-system/` (or the folder `skill` names), with the rules for using the design system;
+- `references/tokens.md`, every variable with its value, and `references/components.md`, every component with its variants;
+- the tokens as CSS custom properties, when `tokens` names a file.
+
+Commit them like any other change. Syncing again keeps the rules you wrote in the skill's **Rules** section.
+
+Once the skill is there, a prompt with a Figma design asks the agent to load it and build with its tokens and components. Colours in the design that are tokens come to the agent with their names, such as `#2F5BD3 (color/brand/primary)`. `codeConnect` turns Code Connect on or off for this repository, over the `gemini.figma.codeConnect` setting.
+
+Figma gives each variable's value in the mode the file shows, and only the variables a page uses, so sync the pages that show the whole design system, such as its foundations.
 
 ## From ticket to merge request
 
@@ -160,7 +193,7 @@ A new version of a page opens on the page as it is in Confluence now, with the a
 
 A review checks the branch out from your clone of the repository. GeminiCode looks for one in the clone it remembers for the project, the window's folders, the folders agents have used and your recent folders, and remembers what it finds. When there is none, it asks **Where is your copy of** the project: **Choose Folder...** picks a clone, and **Clone It...** clones the repository, over HTTPS or SSH when GitLab offers both, into a folder you pick, in a terminal where you answer git's questions. **Fix Pipeline and N Comments** asks the same way.
 
-The reviewer's checkout is in `~/.geminicode/reviews`, which the Gemini CLI never trusts, so nothing in the merge request (its Gemini settings, hooks or MCP servers) runs on your Mac. The merge request's description and the ticket's text go in the reviewer's first prompt instead, and GeminiCode answers its read-only `git status`, `diff`, `log` and `show` itself.
+The reviewer's checkout is in `~/.geminicode/reviews`, which the Gemini CLI never trusts, so nothing in the merge request (its Gemini settings, hooks or MCP servers) runs on your Mac. It also means the reviewer can't call the index tools, so when your clone's index is built, the prompt lists what the index knows around each changed file: its tests, the files that use it and the files usually changed with it. The merge request's description and the ticket's text go in the reviewer's first prompt instead, and GeminiCode answers its read-only `git status`, `diff`, `log` and `show` itself.
 
 The **Review** page lists the merge request's files, its threads and your draft.
 

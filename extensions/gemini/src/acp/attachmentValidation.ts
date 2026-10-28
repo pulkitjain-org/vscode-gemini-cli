@@ -18,7 +18,7 @@ export function isValidAttachment(attachment: Attachment): boolean {
 		case 'document':
 			return typeof attachment.name === 'string' && typeof attachment.mimeType === 'string'
 				&& (attachment.path === undefined || (typeof attachment.path === 'string' && path.isAbsolute(attachment.path)))
-				&& (attachment.tool === undefined || ['jira', 'gitlab', 'figma'].includes(attachment.tool))
+				&& (attachment.tool === undefined || ['jira', 'gitlab', 'figma', 'confluence'].includes(attachment.tool))
 				&& (attachment.ref === undefined || typeof attachment.ref === 'string')
 				&& (typeof attachment.text === 'string'
 					? attachment.text.length <= maxDocumentTextBytes

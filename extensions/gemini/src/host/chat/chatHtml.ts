@@ -7,7 +7,7 @@
 // from the extension host so they are localized.
 
 import * as vscode from 'vscode';
-import type { ChatStrings, ForkStrings, ProjectChatStrings, ReactionStrings } from '../chatProtocol';
+import type { ChatStrings, ForkStrings, ProjectChatStrings, ReactionStrings, ResearchStrings, SideStrings } from '../chatProtocol';
 import { reactionsOn } from '../chatReactions';
 import { configSection } from '../configuration';
 import { foldWorkOn } from '../foldWork';
@@ -38,15 +38,19 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 	const emojiPicker = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'emojiPicker.js'));
 	const figmaDesign = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'figmaDesign.js'));
 	const threadCard = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'threadCard.js'));
+	const projectSettings = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'projectSettings.js'));
+	const sideChat = webview.asWebviewUri(vscode.Uri.joinPath(mediaUri, 'sideChat.js'));
 	const strings: ChatStrings = {
-		placeholder: vscode.l10n.t("Ask Gemini anything about this workspace"),
+		placeholder: vscode.l10n.t("Ask Gemini anything about this workspace · / for commands, @ for files"),
 		fromCoordinator: vscode.l10n.t("From coordinator"),
 		// A project chat's strings load with the code they serve, from dist/onDemand.js: most chats aren't project chats.
 		...(project && projectStringsOf ? { project: projectStringsOf() } : {}),
 		...(fork ? { fork: forkStrings() } : {}),
+		side: sideStrings(),
+		research: researchStrings(),
 		...(project ? {} : { reactions: reactionStrings() }),
-		placeholderFollowUp: vscode.l10n.t("Ask a follow-up"),
-		placeholderWorking: process.platform === 'darwin' ? vscode.l10n.t("↩ to send, ⌘↩ to queue for later") : vscode.l10n.t("Enter to send, Ctrl+Enter to queue for later"),
+		placeholderFollowUp: vscode.l10n.t("Ask a follow-up · /research reads widely, /btw asks on the side"),
+		placeholderWorking: process.platform === 'darwin' ? vscode.l10n.t("↩ to steer, ⌘↩ to queue · ⌥⌘; asks on the side") : vscode.l10n.t("Enter to steer, Ctrl+Enter to queue · Ctrl+Alt+; asks on the side"),
 		send: process.platform === 'darwin' ? vscode.l10n.t("Send (Return)") : vscode.l10n.t("Send (Enter)"),
 		sendNow: process.platform === 'darwin' ? vscode.l10n.t("Send now (Return). ⌘Return queues it for after this turn.") : vscode.l10n.t("Send now (Enter). Ctrl+Enter queues it for after this turn."),
 		stop: vscode.l10n.t("Stop (Esc Esc)"),
@@ -125,6 +129,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			showLog: vscode.l10n.t("Show Log"),
 			stop: vscode.l10n.t("Stop"),
 			newSession: vscode.l10n.t("Continue in a New Session"),
+			fixErrors: vscode.l10n.t("Fix"),
 		},
 		outputHidden: vscode.l10n.t("{0} lines hidden"),
 		outputShowAll: vscode.l10n.t("Show All"),
@@ -300,12 +305,15 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		fromYourTools: vscode.l10n.t("From your tools"),
 		jiraTicket: vscode.l10n.t("Jira ticket"),
 		gitlabItem: vscode.l10n.t("GitLab merge request or issue"),
+		confluencePage: vscode.l10n.t("Confluence page"),
 		figmaFrame: vscode.l10n.t("Figma frame"),
 		pasteLink: vscode.l10n.t("paste link"),
 		figmaDesign: vscode.l10n.t("Figma Design..."),
 		figmaDesignEnd: vscode.l10n.t("a link for each size"),
 		figmaDesignTitle: vscode.l10n.t("Add Figma Design"),
 		figmaDesignHint: vscode.l10n.t("Paste the frame link for each screen size. Pasting several links at once fills the rows in order."),
+		figmaSetUpDesignSystem: vscode.l10n.t("Set Up Your Design System"),
+		figmaSetUpDesignSystemTip: vscode.l10n.t("Read your design system from Figma once, so agents build every design with its tokens and components"),
 		figmaSize: vscode.l10n.t("Size"),
 		figmaLinkFor: vscode.l10n.t("Frame link for {0}"),
 		figmaAddSize: vscode.l10n.t("Add Size"),
@@ -328,6 +336,11 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			outline: vscode.l10n.t("Outline {0}"),
 			outlineFolder: vscode.l10n.t("Outline the folder"),
 			searchDocs: vscode.l10n.t("Search docs for {0}"),
+			typeOf: vscode.l10n.t("Type of {0}"),
+			checkErrors: vscode.l10n.t("Check changed files for errors"),
+			checkErrorsIn: vscode.l10n.t("Check {0} for errors"),
+			callersOf: vscode.l10n.t("Callers of {0}"),
+			callsIn: vscode.l10n.t("Calls in {0}"),
 		},
 		teamToolVerbs: {
 			read: vscode.l10n.t("Read {0}"),
@@ -429,7 +442,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			terminalFailed: vscode.l10n.t("{0} \u00b7 failed"),
 		},
 		cmdEnter: {
-			placeholderWorking: process.platform === 'darwin' ? vscode.l10n.t("⌘↩ to send, ⇧⌘↩ to queue for later") : vscode.l10n.t("Ctrl+Enter to send, Shift+Ctrl+Enter to queue for later"),
+			placeholderWorking: process.platform === 'darwin' ? vscode.l10n.t("⌘↩ to steer, ⇧⌘↩ to queue · ⌥⌘; asks on the side") : vscode.l10n.t("Ctrl+Enter to steer, Shift+Ctrl+Enter to queue · Ctrl+Alt+; asks on the side"),
 			send: process.platform === 'darwin' ? vscode.l10n.t("Send (⌘Return)") : vscode.l10n.t("Send (Ctrl+Enter)"),
 			sendNow: process.platform === 'darwin' ? vscode.l10n.t("Send now (⌘Return). ⇧⌘Return queues it for after this turn.") : vscode.l10n.t("Send now (Ctrl+Enter). Shift+Ctrl+Enter queues it for after this turn."),
 		},
@@ -534,7 +547,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 			<div id="commit-box" class="usage-popover commit-box" role="dialog" hidden><label class="usage-heading" for="commit-message"></label><textarea id="commit-message" class="commit-message" rows="4" spellcheck="${spellCheckOn()}"></textarea><p class="usage-note commit-note" role="status"></p><div class="permission-actions"><button type="button" class="secondary commit-cancel"></button><button type="button" class="primary commit-confirm"></button></div></div>
 		</div>
 	</div>
-	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-fold-work="${foldWorkOn()}" data-emoji-picker="${emojiPicker}" data-figma-design="${figmaDesign}" data-thread-card="${threadCard}" data-reactions="${!project && reactionsOn()}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
+	<script nonce="${nonce}" type="module" src="${script}" data-highlighter="${highlighter}" data-katex="${katex}" data-katex-style="${katexStyle}" data-fold-work="${foldWorkOn()}" data-emoji-picker="${emojiPicker}" data-figma-design="${figmaDesign}" data-thread-card="${threadCard}" data-project-settings="${projectSettings}" data-side-chat="${sideChat}" data-reactions="${!project && reactionsOn()}" data-research="${!project}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
 </body>
 </html>`;
 }
@@ -552,6 +565,9 @@ function reactionStrings(): ReactionStrings {
 		picker: vscode.l10n.t("Emoji"),
 		search: vscode.l10n.t("Search emoji"),
 		recent: vscode.l10n.t("Recent"),
+		withMeaning: vscode.l10n.t("With a meaning"),
+		readsIt: vscode.l10n.t("Gemini says in one line how it reads this, then acts on it"),
+		chipMeaning: vscode.l10n.t("Reaction {0}: {1}"),
 		noResults: vscode.l10n.t("No emoji found"),
 		groups: [
 			vscode.l10n.t("Smileys and emotion"),
@@ -564,6 +580,53 @@ function reactionStrings(): ReactionStrings {
 			vscode.l10n.t("Symbols"),
 			vscode.l10n.t("Flags"),
 		],
+	};
+}
+
+function researchStrings(): ResearchStrings {
+	return {
+		title: vscode.l10n.t("Research"),
+		readOnly: vscode.l10n.t("Read-only"),
+		states: {
+			planning: vscode.l10n.t("Splitting the question"),
+			reading: vscode.l10n.t("Reading"),
+			verifying: vscode.l10n.t("Checking the serious findings"),
+			merging: vscode.l10n.t("Writing the report"),
+			done: vscode.l10n.t("Done"),
+			stopped: vscode.l10n.t("Stopped"),
+			failed: vscode.l10n.t("Failed"),
+		},
+		slice: { queued: vscode.l10n.t("queued"), reading: vscode.l10n.t("reading"), done: vscode.l10n.t("done"), failed: vscode.l10n.t("not finished") },
+		reading: vscode.l10n.t("{0} files read"),
+		findings: vscode.l10n.t("{0} findings"),
+		summary: vscode.l10n.t("{0} parts read, {1} findings"),
+		stop: vscode.l10n.t("Stop"),
+		sendToAgent: vscode.l10n.t("Send to Agent"),
+		copy: vscode.l10n.t("Copy"),
+		suggest: vscode.l10n.t("Run as Research: read the code in parallel, read-only"),
+		dontSuggest: vscode.l10n.t("Don't suggest Research in this chat"),
+	};
+}
+
+function sideStrings(): SideStrings {
+	return {
+		title: vscode.l10n.t("Side question"),
+		note: vscode.l10n.t("The agent keeps working"),
+		placeholder: vscode.l10n.t("Ask about this chat"),
+		ask: vscode.l10n.t("Ask"),
+		close: vscode.l10n.t("Close"),
+		earlier: vscode.l10n.t("Earlier question (⇧←)"),
+		later: vscode.l10n.t("Later question (⇧→)"),
+		empty: vscode.l10n.t("Ask about the conversation so far: what the agent changed, why it chose something, what's left. It answers from the chat alone, without stopping the agent or adding to its history."),
+		answering: vscode.l10n.t("Answering…"),
+		stop: vscode.l10n.t("Stop"),
+		sendToAgent: vscode.l10n.t("Send to Agent"),
+		sendToAgentTip: vscode.l10n.t("Put the question and this answer in the message box, to edit and send to the agent"),
+		fork: vscode.l10n.t("Fork into Agent"),
+		forkTip: vscode.l10n.t("Look into it with tools, in a fork of this agent that starts with this question"),
+		copy: vscode.l10n.t("Copy"),
+		copied: vscode.l10n.t("Copied the answer"),
+		hint: vscode.l10n.t("Esc closes · /btw or ⌥⌘; asks from anywhere in the chat"),
 	};
 }
 

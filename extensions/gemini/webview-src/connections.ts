@@ -87,6 +87,9 @@ function toolRow(row: ConnectionRowView): HTMLElement {
 		} else if (row.kind !== 'connected' && row.kind !== 'checking') {
 			actions.append(button('', strings.tryAgain, () => post({ type: 'refresh', tool: row.tool })));
 		}
+		if (row.designSystem && row.kind === 'connected') {
+			actions.append(button('', strings.syncDesignSystem, () => post({ type: 'syncDesignSystem' }), undefined, row.designSystem));
+		}
 		if (row.needsToken) {
 			actions.append(button('quiet', strings.replaceToken, () => openDialog(row)));
 		}

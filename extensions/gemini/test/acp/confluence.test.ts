@@ -8,7 +8,7 @@ import { promises as fs } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdfDocument, AdfNode, ConfluenceClient, ConfluenceConflictError, confluencePageId, cqlQuery, describePage } from '../../src/acp/confluence';
 import { blockChanges } from '../../src/acp/blockMerge';
 import { DraftStore } from '../../src/acp/confluenceDrafts';
@@ -223,7 +223,8 @@ describe('ConfluenceFeature', () => {
 		const feature = await setUp(site, () => (asked.push('front'), 'another-agent'));
 		const before = fakePanels().length;
 		await feature.call('confluence_draft_page', { title: 'Checklist', markdown: 'Hi', page: `${site.url}/wiki/spaces/CHK/pages/42/Checklist` }, 'agent-1');
-		await new Promise(resolve => setTimeout(resolve, 20));
+		// The page opens after the call returns: wait for it rather than for a fixed time, which a busy machine outlasts.
+		await vi.waitFor(() => expect(fakePanels().length).toBeGreaterThan(before));
 		expect({ asked, column: fakePanels().slice(before).map(panel => panel.column) }).toEqual({ asked: ['front'], column: [-1] });
 	});
 

@@ -8,7 +8,7 @@ Run several Gemini agents side by side, each with its own chat, files, changes a
 
 GeminiCode has two layouts. Switch between them with the **Agents | Editor** switch at the top of the window, or <kbd>⌥⌘M</kbd>.
 
-- **Agents layout**, the default, is for working with agents: your agents on the left, the chat in the middle, and the agent's changes on the right. Opening Explorer, Search or any other view switches to the Editor layout with that view open.
+- **Agents layout**, the default, is for working with agents: your agents on the left and the chat in the middle. The agent's changes open on the right when the agent in front starts changing files; the window opens with them closed, and if you close them during a turn they stay closed until the next turn changes something. Opening Explorer, Search or any other view switches to the Editor layout with that view open.
 - **Editor layout** is the classic VS Code layout, with Explorer, Search and Source Control, for hands-on coding. The agent's changes sit below the Agents pane.
 
 In the Agents layout the top of the window is a single row: the Home button, the layout switch, your open tabs (agents, Home, files and browser pages) in one capsule, then a globe for the browser, a magnifier for Quick Open, and the layout buttons. Each layout remembers which panels you had open.
@@ -134,6 +134,11 @@ Every agent's session gets the `geminicode-index` tools for the folder it works 
 | `related_files` | A file's imports, the files that import it, its tests, and the files most often changed in the same commits. |
 | `repo_map` | An outline of the folder or a subfolder: what the project says it is, its languages, its folders and the public definitions in each. |
 | `docs_search` | The documentation attached to the workspace, when there is some. |
+| `code_type` | A function's, variable's or class's type and documentation, from the editor's language server: what hovering shows. |
+| `code_diagnostics` | Errors and warnings in the files the agent changed, or the files it names, from the language servers: a check after an edit without running a build. |
+| `code_calls` | What calls a function, or what it calls, as the language server resolves them. |
+
+GeminiCode is an editor, so its language servers are running already: agents ask them through the same tools. `find_symbol` with references lists the exact uses of a symbol, through imports and aliases, where a language server covers the file, instead of every line that shares its name. Where none answers (a language with no extension, a server still loading, or an agent's own branch outside the workspace), the index answers alone and the result says so. When a turn changes files and the language servers report errors in the folder's changed files, a notice under the turn lists them, with **Fix**, which asks the agent to fix them and check again. Agents only reach files in their own folder that are neither secret nor ignored by git. `gemini.index.languageServers` turns this off.
 
 Each session also starts with a short outline of the folder, so the agent knows its way around before its first search. Once the index is built, the session's first prompt asks the agent to use these tools before searching file by file. Results rank the code above its tests, unless you ask about tests, and say when they are complete, so the agent reads only what they point to. In the chat, the calls read as "Search code for …", "Look up …" and so on.
 
@@ -196,6 +201,7 @@ Each source is refreshed daily by default, set with `gemini.docs.refresh` or per
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `gemini.index.enabled` | on | Keep indexes and give agents the index tools. |
+| `gemini.index.languageServers` | on | Let the index tools ask the editor's language servers too: exact references, types, errors and callers. |
 | `gemini.index.buildOn` | `agentStart` | When a workspace's index is first built. |
 | `gemini.index.exclude` | empty | Extra files and folders to leave out, in `.gitignore` syntax. |
 | `gemini.index.include` | empty | Files to index even though they would be left out, in `.gitignore` syntax. |

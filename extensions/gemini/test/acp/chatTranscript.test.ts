@@ -27,6 +27,7 @@ function summary(items: readonly TranscriptItem[]): string[] {
 			case 'trace': return `trace:${item.file}`;
 			case 'turnEnd': return 'turnEnd';
 			case 'thread': return `thread:${item.title}:${item.state}`;
+			case 'research': return `research:${item.progress.state}${item.report ? ':report' : ''}`;
 		}
 	});
 }
@@ -38,6 +39,17 @@ describe('ChatTranscript', () => {
 		transcript.addFork({ role: 'from', agent: 'p', title: 'Refunds', context: 'compact' });
 		transcript.forkRemoved('f1');
 		expect(summary(transcript.items)).toEqual(['fork:child:Refund UI:removed', 'fork:from:Refunds']);
+	});
+
+	it('adds a research card, updates it in place, and stops a running one restored from a saved chat', () => {
+		const transcript = new ChatTranscript(() => 7000);
+		const id = transcript.addResearch('Where are tokens logged?');
+		transcript.updateResearch(id, { state: 'reading', slices: [{ title: 'src/auth', state: 'reading', files: 2, findings: 0 }] });
+		const running = [...transcript.items];
+		transcript.updateResearch(id, { state: 'done', slices: [] }, 'One place.');
+		const restored = new ChatTranscript(() => 7000);
+		restored.restore(running);
+		expect([summary(transcript.items), summary(restored.items)]).toEqual([['research:done:report'], ['research:stopped']]);
 	});
 
 	it('adds a compact card and changes it in place', () => {

@@ -18,7 +18,6 @@ import { checkpointsFit, laterRepeats, rewindPrompts, undoNote } from '../../acp
 import { Checkpoints, type StoredCheckpoints } from '../../acp/checkpoints';
 import { canRewindCliSession, readCliConversation, rewindCliSession } from '../../acp/cliSessions';
 import { errorMessage } from '../../acp/errors';
-import { recordPilot } from '../../acp/pilotLog';
 import type { FromWebview } from '../chatProtocol';
 import { deleteFile, replaceFileText, WorkspaceFileSystem } from '../workspaceFileSystem';
 import type { ChatControllerOptions, ChatHost } from './chatOptions';
@@ -123,7 +122,7 @@ export class ChatCheckpoints {
 	onMessage(message: CheckpointsMessage): void {
 		switch (message.type) {
 			case 'undoTurn':
-				void this.undoTurn(message.itemId).then(done => done && recordPilot({ kind: 'undo', scope: 'turn' }));
+				void this.undoTurn(message.itemId);
 				break;
 			case 'rewind':
 				void this.rewind(message.itemId);
@@ -260,7 +259,6 @@ export class ChatCheckpoints {
 		if (firstTurn && plan && !await this.undoTurn(firstTurn, true)) {
 			return;
 		}
-		recordPilot(found ? { kind: 'rewind' } : { kind: 'undo', scope: 'turn' });
 		if (found) {
 			await this.rewindChat(itemId, prompt.text);
 		}

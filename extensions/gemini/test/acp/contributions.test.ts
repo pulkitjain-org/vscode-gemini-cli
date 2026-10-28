@@ -60,14 +60,14 @@ describe('package.json', () => {
 	});
 
 	it('keeps developer tools out of the palette unless gemini.developer.showTools is on', () => {
-		const tools = ['gemini.runBenchmark', 'gemini.pilot.export', 'gemini.recordTrace', 'gemini.showStatusMenu', 'gemini.newSkill', 'gemini.installCli', 'gemini.installCliVersion'];
+		const tools = ['gemini.runBenchmark', 'gemini.recordTrace', 'gemini.showStatusMenu', 'gemini.newSkill', 'gemini.installCli', 'gemini.installCliVersion'];
 		expect(tools.filter(command => !contributes.menus.commandPalette.find(entry => entry.command === command)?.when?.includes('config.gemini.developer.showTools'))).toEqual([]);
 		expect(contributes.configuration.some(section => Object.hasOwn(section.properties, 'gemini.developer.showTools'))).toBe(true);
 	});
 
-	it('puts the pilot and reaction settings under Advanced', () => {
+	it('puts the reaction and developer settings under Advanced', () => {
 		const advanced = contributes.configuration.find(section => strings[section.title.slice(1, -1)] === 'Advanced');
-		expect(Object.keys(advanced?.properties ?? {}).sort()).toEqual(['gemini.chat.reactions.agentReactions', 'gemini.chat.reactions.enabled', 'gemini.chat.reactions.meanings', 'gemini.developer.showTools', 'gemini.pilot.record']);
+		expect(Object.keys(advanced?.properties ?? {}).sort()).toEqual(['gemini.chat.reactions.agentReactions', 'gemini.chat.reactions.enabled', 'gemini.chat.reactions.meanings', 'gemini.developer.showTools']);
 	});
 
 	it('has a string for every command title and setting description', () => {

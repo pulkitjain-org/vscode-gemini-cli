@@ -225,7 +225,7 @@ const maxReviewText = 4000;
  * the agent has no MCP tools there: the merge request's description and the
  * linked `ticket`'s text come in the prompt, read by GeminiCode.
  */
-export function reviewPrompt(mr: { readonly iid: number; readonly title: string; readonly url: string; readonly author: string; readonly sourceBranch: string; readonly targetBranch: string; readonly description?: string }, ticket?: { readonly key: string; readonly text?: string }, remote = 'origin', files: readonly string[] = [], threads: readonly ReviewThread[] = []): string {
+export function reviewPrompt(mr: { readonly iid: number; readonly title: string; readonly url: string; readonly author: string; readonly sourceBranch: string; readonly targetBranch: string; readonly description?: string }, ticket?: { readonly key: string; readonly text?: string }, remote = 'origin', files: readonly string[] = [], threads: readonly ReviewThread[] = [], context?: string): string {
 	const range = `${remote}/${mr.targetBranch}...HEAD`;
 	const shown = files.slice(0, maxReviewFiles);
 	const listed = threads.slice(0, maxPromptThreads);
@@ -244,6 +244,7 @@ export function reviewPrompt(mr: { readonly iid: number; readonly title: string;
 			`GitLab lists ${files.length === 1 ? '1 changed file' : `${files.length} changed files`}${files.length > shown.length ? `, the first ${shown.length} here` : ''}:`,
 			...shown.map(file => `- ${file}`),
 		] : [],
+		...context ? ['', context] : [],
 		...listed.length ? [
 			'',
 			`Reviewers already opened ${threads.length === 1 ? 'this thread' : `these ${threads.length} threads`}${threads.length > listed.length ? `, the first ${listed.length} here` : ''}. Don't raise what they already raised:`,

@@ -83,6 +83,11 @@ export function chatToMarkdown(title: string, items: readonly TranscriptItem[], 
 			case 'thread':
 				blocks.push(`- **${oneLine(item.title)}**: ${item.state}${item.detail ? `, ${oneLine(item.detail)}` : ''}`);
 				break;
+			case 'research':
+				if (item.report) {
+					blocks.push(`**${oneLine(item.question)}**\n\n${item.report.trim()}`);
+				}
+				break;
 			case 'other':
 				break;
 		}
