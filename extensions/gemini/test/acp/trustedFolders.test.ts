@@ -7,7 +7,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ensureOwnTrustRules, foldersTrusted, folderTrustApplies, folderTrustState, isFolderTrusted, readTrustRules, setFolderTrust, trustedFoldersPath, trustFolder } from '../../src/acp/trustedFolders';
+import { ensureOwnTrustRules, foldersTrusted, folderTrustApplies, folderTrustState, isFolderTrusted, readTrustRules, removeTrustRules, setFolderTrust, staleTrustRules, trustedFoldersPath, trustFolder, type TrustRule } from '../../src/acp/trustedFolders';
 
 describe('trustedFoldersPath', () => {
 	it('follows the CLI: its own variable, then GEMINI_CLI_HOME, then the home folder', async () => {
@@ -145,5 +145,42 @@ describe('setFolderTrust, readTrustRules and GeminiCode\'s own rules', () => {
 		const again = await ensureOwnTrustRules(file, home);
 		expect({ first, again, review: await isFolderTrusted(file, path.join(home, '.geminicode', 'reviews', 'shop', 'review-12')), project: await isFolderTrusted(file, path.join(home, '.geminicode', 'projects', 'p1')) })
 			.toEqual({ first: true, again: false, review: false, project: true });
+	});
+});
+
+describe('staleTrustRules and removeTrustRules', () => {
+	it('removes the rules of folders that are gone, but not of a drive that is unplugged, a never-trust rule, GeminiCode\'s own, or a trusted repository\'s worktrees', async () => {
+		const home = path.resolve('/home/u');
+		// ~/.geminicode/worktrees is gone too: GeminiCode's own folders go with the rules for them.
+		const there = new Set(['/work', '/work/app', '/work/kept-parent', '/tmp', path.join(home, '.geminicode')].map(each => path.resolve(each)));
+		const rules: TrustRule[] = [
+			// Gone, in a temporary folder whose own folder is gone too, as a test run leaves it.
+			{ path: '/tmp/test-home-1/workspace-2', level: 'TRUST_FOLDER' },
+			// Gone, from a folder that is still there.
+			{ path: '/work/deleted', level: 'TRUST_FOLDER' },
+			{ path: path.join(home, '.geminicode', 'worktrees', 'deleted'), level: 'TRUST_FOLDER' },
+			// A TRUST_PARENT rule covers its parent, still there.
+			{ path: '/work/kept-parent/gone-child', level: 'TRUST_PARENT' },
+			// On a drive that isn't mounted.
+			{ path: '/Volumes/Backup/repo', level: 'TRUST_FOLDER' },
+			{ path: '/work/gone-never', level: 'DO_NOT_TRUST' },
+			{ path: path.join(home, '.geminicode', 'projects'), level: 'TRUST_FOLDER' },
+			// A trusted repository and its worktrees folder, which no agent has made yet.
+			{ path: '/work/app', level: 'TRUST_FOLDER' },
+			{ path: path.join(home, '.geminicode', 'worktrees', 'app'), level: 'TRUST_FOLDER' },
+		];
+		const stale = await staleTrustRules(rules, { home, temporary: [path.resolve('/tmp')], exists: async folder => there.has(path.resolve(folder)) });
+		expect(stale.map(rule => rule.path)).toEqual(['/tmp/test-home-1/workspace-2', '/work/deleted', path.join(home, '.geminicode', 'worktrees', 'deleted')]);
+
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gemini-trust-'));
+		try {
+			const file = path.join(dir, 'trustedFolders.json');
+			fs.writeFileSync(file, JSON.stringify(Object.fromEntries(rules.map(rule => [rule.path, rule.level]))));
+			expect(await removeTrustRules(file, stale.map(rule => rule.path))).toBe(true);
+			expect(await removeTrustRules(file, stale.map(rule => rule.path))).toBe(false);
+			expect((await readTrustRules(file)).map(rule => rule.path)).toEqual(rules.slice(3).map(rule => rule.path));
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });

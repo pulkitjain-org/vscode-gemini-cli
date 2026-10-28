@@ -8,10 +8,18 @@
 // session takes under a second and a few MB, against about 3 s and 280 MB for
 // a new process (FINDINGS.md). The runtime runs `initialize` once per process and
 // routes the agent's messages to the session they name.
+//
+// One exception: gemini-cli reopens a session (`session/load`) with the
+// settings the process read in its own folder as it started, where a new
+// session reads its own folder's. A session reopened in a folder whose
+// project settings differ (`AgentRuntimeOptions.folderProcess`) opens on a
+// process started there, made when first needed, shared by that folder's
+// sessions and ended once none is left.
 
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import type * as acp from '@agentclientprotocol/sdk';
 import type { AgentClientHandlers, AgentConnection, SetupTimeouts } from './agentConnection';
+import { comparablePath } from './fsUtil';
 import { AgentError, AgentErrorInfo, AgentErrorKind, classifyAgentError, CliRetry, errorMessage } from './errors';
 import { Emitter } from './events';
 import { isPrompt } from './cliSessions';
@@ -36,6 +44,8 @@ export interface SessionHandlers {
 	requestPermission(params: acp.RequestPermissionRequest): Promise<acp.RequestPermissionResponse>;
 	/** Overrides the runtime's file handlers for this session, for example to give it other roots. */
 	readonly fileSystem?: FileSystemHandlers;
+	/** Told when the session's own process ended (`AgentRuntimeOptions.folderProcess`), so it can open again. */
+	onDidEnd?(): void;
 	/** Told after the agent wrote a file through the client, such as to let shell approvals lapse. */
 	onDidWriteFile?(filePath: string): void;
 	/** Asked before the agent writes a file through the client; rejects to refuse the write. */
@@ -52,6 +62,27 @@ export interface AgentRuntimeOptions {
 	readonly timeouts?: Partial<SetupTimeouts>;
 	/** Writes a debug line to the log, such as for an error the runtime or its sessions get past. */
 	readonly log?: (message: string) => void;
+	/** Processes of a folder's own, for sessions reopened where the shared process would give them another folder's settings. */
+	readonly folderProcess?: {
+		/** Whether a session reopened in `cwd` needs a process of its own. */
+		needed(cwd: string): Promise<boolean>;
+		/** A process for `cwd`, not started; it is ended once its sessions are gone. */
+		sidecar(cwd: string): AgentSidecar;
+		/** How long a folder's process stays up with no session; one minute by default. */
+		readonly idleMs?: number;
+	};
+}
+
+/** A process of a folder's own (`AgentRuntimeOptions.folderProcess`), and the sessions open on it. */
+interface FolderProcess {
+	/** Its folder, as paths compare (`comparablePath`). */
+	readonly key: string;
+	readonly sidecar: AgentSidecar;
+	readonly ready: Promise<{ readonly connection: AgentConnection; readonly agent: acp.InitializeResponse }>;
+	readonly sessions: Set<string>;
+	/** Sessions being reopened on it now, which keep it up as open ones do. */
+	opening: number;
+	idle?: ReturnType<typeof setTimeout>;
 }
 
 /**
@@ -129,6 +160,9 @@ export class AgentRuntime {
 	private readonly onDidChangeSessionHealthEmitter = new Emitter<SessionHealth>();
 	/** Fires when a session opens or fails to open after a different outcome. */
 	readonly onDidChangeSessionHealth = this.onDidChangeSessionHealthEmitter.event;
+	/** Folders' own processes, by folder, and the process each session reopened on one of them is on. */
+	private readonly folders = new Map<string, FolderProcess>();
+	private readonly sessionFolders = new Map<string, FolderProcess>();
 	private readonly onDidRetryEmitter = new Emitter<CliRetry>();
 	/** The CLI retries an API call (from its debug log, see `noteRetry`); not tied to one session. */
 	readonly onDidRetry = this.onDidRetryEmitter.event;
@@ -320,19 +354,95 @@ export class AgentRuntime {
 		this.earlyUpdates.delete(sessionId);
 		this.closedSessions.delete(sessionId);
 		return this.noteOutcome((async () => {
+			const target = await this.processFor(cwd, connection, state.agent);
 			// The CLI deletes the session's plans as it reopens it: keep them (sessionFolder.ts).
 			const putBack = await keepSessionFolder(cwd, sessionId).catch(() => undefined);
 			try {
-				const response = await connection.loadSession(sessionId, cwd, mcpServers).finally(() => putBack?.());
+				const response = await target.connection.loadSession(sessionId, cwd, mcpServers).finally(() => putBack?.());
 				if (firstPrompt !== undefined && !await this.replayStartsWith(sessionId, firstPrompt)) {
 					throw new AgentError({ kind: 'unknown', message: 'The agent opened a different session.' });
 				}
-				return { connection, agent: state.agent, session: { ...response, sessionId }, mcpServers };
+				if (target.folder) {
+					this.sessionFolders.set(sessionId, target.folder);
+				}
+				return { connection: target.connection, agent: target.agent, session: { ...response, sessionId }, mcpServers };
 			} catch (err) {
 				this.earlyUpdates.delete(sessionId);
 				throw err instanceof AgentError ? err : new AgentError(classifyAgentError(err));
+			} finally {
+				// Until the chat registers the session, which it does at once, or gives it up.
+				if (target.folder && !--target.folder.opening && !target.folder.sessions.size) {
+					this.idleFolder(target.folder);
+				}
 			}
 		})());
+	}
+
+	/** The process to reopen a session of `cwd` on: the shared one, or the folder's own when it needs one and it starts. */
+	private async processFor(cwd: string, connection: AgentConnection, agent: acp.InitializeResponse): Promise<{ readonly connection: AgentConnection; readonly agent: acp.InitializeResponse; readonly folder?: FolderProcess }> {
+		const own = this.options.folderProcess;
+		if (!own || !await own.needed(cwd).catch(() => false) || this.connection !== connection) {
+			return { connection, agent };
+		}
+		const folder = this.folders.get(comparablePath(cwd)) ?? this.startFolder(cwd);
+		folder.opening++;
+		try {
+			return { ...await folder.ready, folder };
+		} catch (err) {
+			// As before folders had processes of their own: the conversation is kept, with the shared process's settings.
+			this.debug(`No agent process for ${cwd} (${errorMessage(err)}); using the shared one`);
+			folder.opening--;
+			return { connection, agent };
+		}
+	}
+
+	private startFolder(cwd: string): FolderProcess {
+		const sidecar = this.options.folderProcess!.sidecar(cwd);
+		let connection: AgentConnection | undefined;
+		const folder: FolderProcess = {
+			key: comparablePath(cwd),
+			sidecar,
+			sessions: new Set(),
+			opening: 0,
+			ready: new Promise((resolve, reject) => sidecar.onDidChangeState(async state => {
+				if (state.kind === 'running' && !connection) {
+					connection = this.createConnection(await import('./agentConnection'), state.process);
+					connection.initialize().then(agent => resolve({ connection: connection!, agent }), err => {
+						reject(err);
+						this.endFolder(folder);
+					});
+				} else if (state.kind !== 'starting' && state.kind !== 'running') {
+					reject(new AgentError(state.kind === 'failed' ? { kind: state.reason, message: state.message } : { kind: 'agent-exited', message: 'The agent process stopped.' }));
+					this.endFolder(folder);
+				}
+			})),
+		};
+		folder.ready.catch(() => undefined);
+		this.folders.set(folder.key, folder);
+		this.debug(`Starting an agent process for ${cwd}'s settings`);
+		sidecar.start();
+		return folder;
+	}
+
+	/** Ends `folder`'s process once it has had no session for a while. */
+	private idleFolder(folder: FolderProcess): void {
+		clearTimeout(folder.idle);
+		folder.idle = setTimeout(() => !folder.sessions.size && !folder.opening && this.endFolder(folder), this.options.folderProcess?.idleMs ?? 60_000);
+		folder.idle.unref?.();
+	}
+
+	/** Ends `folder`'s process; the sessions still open on it are told, so they can open again. */
+	private endFolder(folder: FolderProcess): void {
+		if (this.folders.get(folder.key) !== folder) {
+			return;
+		}
+		this.folders.delete(folder.key);
+		clearTimeout(folder.idle);
+		folder.sidecar.dispose();
+		for (const sessionId of folder.sessions) {
+			this.sessionFolders.delete(sessionId);
+			this.sessions.get(sessionId)?.onDidEnd?.();
+		}
 	}
 
 	/**
@@ -359,6 +469,9 @@ export class AgentRuntime {
 	register(sessionId: string, handlers: SessionHandlers): { dispose(): void } {
 		this.sessions.set(sessionId, handlers);
 		this.closedSessions.delete(sessionId);
+		const folder = this.sessionFolders.get(sessionId);
+		folder?.sessions.add(sessionId);
+		clearTimeout(folder?.idle);
 		const early = this.earlyUpdates.get(sessionId);
 		this.earlyUpdates.delete(sessionId);
 		for (const update of early?.updates ?? []) {
@@ -368,6 +481,13 @@ export class AgentRuntime {
 			dispose: () => {
 				if (this.sessions.get(sessionId) === handlers) {
 					this.sessions.delete(sessionId);
+					if (folder && this.sessionFolders.get(sessionId) === folder) {
+						this.sessionFolders.delete(sessionId);
+						folder.sessions.delete(sessionId);
+						if (!folder.sessions.size) {
+							this.idleFolder(folder);
+						}
+					}
 					if (this.closedSessions.size >= maxClosedSessions) {
 						this.closedSessions.clear();
 					}
@@ -430,14 +550,7 @@ export class AgentRuntime {
 		if (this.connectingTo !== agentProcess) {
 			return;
 		}
-		const connection = new module.AgentConnection(agentProcess.stdin, agentProcess.stdout, {
-			sessionUpdate: params => this.routeUpdate(params),
-			requestPermission: async params => {
-				const session = this.sessions.get(params.sessionId);
-				return session ? session.requestPermission(params) : { outcome: { outcome: 'cancelled' } };
-			},
-			...this.fileHandlers(),
-		}, { ...module.defaultSetupTimeouts, ...this.options.timeouts });
+		const connection = this.createConnection(module, agentProcess);
 		this.connection = connection;
 		void connection.closed.then(() => this.onConnectionClosed(connection, agentProcess));
 		this.setState({ kind: 'connecting' });
@@ -453,6 +566,18 @@ export class AgentRuntime {
 				this.setState({ kind: 'error', error: err instanceof AgentError ? err.info : classifyAgentError(err) });
 			}
 		}
+	}
+
+	/** A connection to `agentProcess` that routes the agent's messages to the sessions they name. */
+	private createConnection(module: typeof import('./agentConnection'), agentProcess: ChildProcessWithoutNullStreams): AgentConnection {
+		return new module.AgentConnection(agentProcess.stdin, agentProcess.stdout, {
+			sessionUpdate: params => this.routeUpdate(params),
+			requestPermission: async params => {
+				const session = this.sessions.get(params.sessionId);
+				return session ? session.requestPermission(params) : { outcome: { outcome: 'cancelled' } };
+			},
+			...this.fileHandlers(),
+		}, { ...module.defaultSetupTimeouts, ...this.options.timeouts });
 	}
 
 	/**
@@ -524,6 +649,12 @@ export class AgentRuntime {
 	}
 
 	private dropConnection(): void {
+		// The sessions on folders' processes open again with the shared process's, as every session does.
+		for (const folder of [...this.folders.values()]) {
+			folder.sessions.clear();
+			this.endFolder(folder);
+		}
+		this.sessionFolders.clear();
 		this.connection?.dispose();
 		this.connection = undefined;
 		this.spare = undefined;

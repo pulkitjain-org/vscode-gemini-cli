@@ -1,8 +1,8 @@
 diff --git a/AGENTS.md b/AGENTS.md
-index d6abb76ab8384fb7b391b551b159002657c218c1..037a1c27a2913dcad05c6815988fb645fe48f935 100644
+index d6abb76ab8384fb7b391b551b159002657c218c1..e4f9c907b8ef88bd8a8ed25e50e27a1d50799cca 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -1,3 +1,99 @@
+@@ -1,3 +1,100 @@
 +# GeminiCode fork
 +
 +This repository is GeminiCode, a fork of VS Code with the Gemini CLI built in. Before changing anything, read [gemini/README.md](gemini/README.md) and the [design rules](gemini/docs/ARCHITECTURE.md#design-rules). In short:
@@ -48,6 +48,7 @@ index d6abb76ab8384fb7b391b551b159002657c218c1..037a1c27a2913dcad05c6815988fb645
 +- `extensions/gemini/src/acp/cliPatches.ts` puts that cap back on the ACP path. It is applied to the bundled copy (`npm run bundle-cli`), to each copy GeminiCode installs, and at launch to older installs. When you raise `bundledCli.version` in `extensions/gemini/package.json`, run `npm run bundle-cli` in `extensions/gemini`. It fails when the patch no longer matches the CLI: update the patch rather than ship an uncapped CLI. A CLI the user picks (`gemini.cliPath`, `PATH`) is never patched.
 +- When a turn fails with "input token count exceeds the maximum", the chat moves to a new session that carries the conversation without tool outputs (`chatController.ts`, `continueAfterOverflow`). Never retry the same session: every request carries the same history.
 +- An agent's shell cannot sign in to fetch from GitLab (terminal prompts are off). Fetch what an agent needs in the extension first, as the merge request review does with the target branch.
++- One CLI process serves every agent of a window, started in its first folder. A new session reads its own folder's settings, but `session/load` reopens one with the settings the process read in its folder at launch (still so in 0.65 and the 0.67 nightly). `AgentRuntime` reopens a session whose folder's project settings differ on a process started in that folder, made on first need and ended when its sessions are gone (`folderProcess`, `needsOwnProcess` in `agentService.ts`). `test/acp/realAgentFolders.test.ts` shows the CLI's behaviour: when a CLI release fixes it, that test fails and the folder processes can go.
 +- Never ask an agent for a whole diff or log in one command. Give it the file list and have it read a few files at a time, as `reviewPrompt` in `src/acp/teamFlowLogic.ts` does.
 +
 +### Where pages open

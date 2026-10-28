@@ -122,6 +122,17 @@ export async function measureContextCost(servers: readonly string[], probe: Cont
 	};
 }
 
+/** How many model calls measuring a folder with `servers` MCP servers makes: one per variant of `measureContextCost`. */
+export function measureCalls(servers: number): number {
+	return 4 + servers;
+}
+
+/** About how many input tokens measuring again takes, from the last measure: each call carries the part it measures and the parts under it. */
+export function measureTokens(cost: ContextCost): number {
+	const context = cost.cli + cost.context;
+	return cost.total + cost.cli + context + context + cost.geminicode + cost.servers.reduce((sum, server) => sum + context + server.tokens, 0);
+}
+
 /** The allowlist for a variant: server names, or a name no server has, so none load. */
 export function allowedServersFor(variant: ProbeVariant): string[] {
 	switch (variant.kind) {

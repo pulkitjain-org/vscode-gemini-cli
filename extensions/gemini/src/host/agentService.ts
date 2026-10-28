@@ -17,6 +17,8 @@ import { createFileHandlers } from '../acp/fileAccess';
 import { PermissionBroker } from '../acp/permissions';
 import { CliResolution, isOlderThan } from '../acp/cliResolution';
 import { FolderTrust } from './folderTrust';
+import { samePath } from '../acp/fsUtil';
+import { readSettingsFile } from '../acp/projectSettings';
 import { McpDiagnostics, McpProblem } from '../acp/mcpDiagnostics';
 import { MIN_CLI_VERSION } from '../acp/protocol';
 import { AgentSidecar } from '../acp/sidecar';
@@ -88,6 +90,9 @@ export class AgentService implements vscode.Disposable {
 	/** Fires when an MCP server fails, or the agent restarts and they start afresh. */
 	readonly onDidChangeMcpProblems = this.onDidChangeMcpProblemsEmitter.event;
 
+	/** The folder the agent process starts in, whose project settings it reads once. */
+	private readonly processFolder = getWorkspaceCwd();
+
 	/** Folder trust for agents: the first-use question, and changes reaching the running agents. */
 	readonly trust: FolderTrust;
 
@@ -103,10 +108,18 @@ export class AgentService implements vscode.Disposable {
 			log: message => this.log.info(message),
 		});
 		this.mcpDiagnostics = debugLog ? new McpDiagnostics(debugLog) : undefined;
-		this.sidecar = new AgentSidecar({ command: () => this.agentCommand(), cwd: getWorkspaceCwd() });
+		this.sidecar = new AgentSidecar({ command: () => this.agentCommand(), cwd: this.processFolder });
 		this.runtime = new AgentRuntime(this.sidecar, {
 			fileSystem: createFileHandlers(new WorkspaceFileSystem(), getFileAccessPolicy),
 			log: message => log.debug(message),
+			folderProcess: {
+				needed: cwd => this.needsOwnProcess(cwd),
+				sidecar: cwd => {
+					const sidecar = new AgentSidecar({ command: async () => getAgentCommand({ cli: this._cli ?? await this.resolveCli() }), cwd, restartDelaysMs: [] });
+					sidecar.onStderr(line => log.info(`[agent ${path.basename(cwd)}] ${line}`));
+					return sidecar;
+				},
+			},
 		});
 		this.client = new AgentClient(this.runtime, {
 			cwd: getWorkspaceCwd(),
@@ -204,6 +217,20 @@ export class AgentService implements vscode.Disposable {
 				}
 			}),
 		);
+	}
+
+	/**
+	 * Whether a session reopened in `cwd` needs an agent process of its own:
+	 * gemini-cli reopens a session with the project settings of the folder its
+	 * process started in, which a folder it doesn't trust has none of.
+	 */
+	private async needsOwnProcess(cwd: string): Promise<boolean> {
+		if (samePath(cwd, this.processFolder)) {
+			return false;
+		}
+		const settings = async (folder: string) => await this.trust.isTrusted(folder) ? JSON.stringify(await readSettingsFile(path.join(folder, '.gemini', 'settings.json'))) : '{}';
+		const [own, shared] = await Promise.all([settings(cwd), settings(this.processFolder)]);
+		return own !== shared;
 	}
 
 	/** The CLI the agent process was last started with. */

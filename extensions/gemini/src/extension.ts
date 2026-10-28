@@ -162,7 +162,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		teamTools.onDidChange(() => agentsView.refreshSpare()),
 		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.browser`) && agentsView.refreshSpare()),
 	);
-	// What every model call in a folder carries: Project Helpers' Context cost, and the chat's usage popover (/context).
+	// What every model call in a folder carries: Agent Setup's Context per model call, and the chat's usage popover (/context).
 	const measureContext = (folder: string, servers: readonly string[]) => measureFolderContextCost({
 		folder,
 		servers,
@@ -249,7 +249,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 				removeWorktree: (repository, worktree, item) => agentsView.removeStorageWorktree(repository, worktree, item),
 				cliVersion: () => service.status.agentVersion,
 			},
-		}, measureContext, context.globalState)),
+		}, contextMeasures)),
 		contextMeasures,
 		// A quick fix on every problem: attach it, and the code around it, to the agent in front.
 		new FixWithGemini(() => chatInFront(true)),

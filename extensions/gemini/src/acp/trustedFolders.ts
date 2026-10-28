@@ -14,9 +14,9 @@
 import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { comparablePath, isRecord, writeJsonAtomic } from './fsUtil';
+import { comparablePath, isRecord, samePath, writeJsonAtomic } from './fsUtil';
 import { stripJsonComments } from './projectSettings';
-import { allReviewsHome, projectsHome } from './worktrees';
+import { allReviewsHome, projectsHome, worktreesHome } from './worktrees';
 
 /** gemini-cli's levels: a folder and everything in it, its parent folder and everything in that, or never. */
 export type TrustLevel = 'TRUST_FOLDER' | 'TRUST_PARENT' | 'DO_NOT_TRUST';
@@ -108,6 +108,56 @@ export async function ensureOwnTrustRules(file: string, home: string = os.homedi
 	}
 	await writeConfig(file, config);
 	return true;
+}
+
+/** Removes the entries keyed `rules`, as written in the file, in one write; resolves whether any was there. */
+export async function removeTrustRules(file: string, rules: readonly string[]): Promise<boolean> {
+	const config = await readConfig(file);
+	const present = rules.filter(rule => Object.hasOwn(config, rule));
+	if (!present.length) {
+		return false;
+	}
+	for (const rule of present) {
+		delete config[rule];
+	}
+	await writeConfig(file, config);
+	return true;
+}
+
+export interface StaleTrustOptions {
+	/** Where ~/.geminicode is. */
+	readonly home?: string;
+	readonly temporary?: readonly string[];
+	readonly exists?: (folder: string) => Promise<boolean>;
+}
+
+/**
+ * The rules that trust a folder that is gone, which the file need not keep:
+ * test runs and scripts leave one for every temporary folder they trust, and
+ * a deleted repository leaves its own. A rule goes when its folder (a
+ * TRUST_PARENT rule's parent) is missing and was in a temporary folder or
+ * in ~/.geminicode, whose folders GeminiCode makes and deletes, or the folder
+ * that held it is still there: a rule on an unplugged drive or an unmounted
+ * share stays. Never-trust rules and GeminiCode's own stay, and so
+ * does a trusted repository's worktrees folder, which is trusted before any
+ * agent makes it.
+ */
+export async function staleTrustRules(rules: readonly TrustRule[], options: StaleTrustOptions = {}): Promise<TrustRule[]> {
+	const home = options.home ?? os.homedir();
+	// Where the system keeps temporary folders, which tests and scripts make and delete; /tmp is /private/tmp on macOS.
+	const temporary = options.temporary ?? [os.tmpdir(), '/tmp', '/private/tmp', '/private/var/folders'];
+	const exists = options.exists ?? (folder => fs.stat(folder).then(() => true, () => false));
+	const own = ownTrustRules(home);
+	const managed = [...temporary, path.join(home, '.geminicode')];
+	const gone = await Promise.all(rules.map(async rule => {
+		if (rule.level === 'DO_NOT_TRUST' || own.some(each => samePath(each.path, rule.path))) {
+			return false;
+		}
+		const folder = rule.level === 'TRUST_PARENT' ? path.dirname(rule.path) : rule.path;
+		return !await exists(folder) && (managed.some(each => comparablePath(folder).startsWith(comparablePath(each) + path.sep)) || await exists(path.dirname(folder)));
+	}));
+	const kept = rules.filter((_, i) => !gone[i]);
+	return rules.filter((rule, i) => gone[i] && !kept.some(other => other.level !== 'DO_NOT_TRUST' && samePath(worktreesHome(other.path, home), rule.path)));
 }
 
 /** What decides a folder's trust: the entry that covers it, if any. */

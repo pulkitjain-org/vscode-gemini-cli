@@ -610,13 +610,18 @@ export interface MemoryFileView {
 /** What every model call carries before the prompt (contextCost.ts), for the page's Context cost section. */
 export interface ContextCostView {
 	readonly state: 'none' | 'measuring' | 'ready' | 'failed';
-	/** The folder measured, by name. */
+	/** The folder measured, by name, and its path. */
 	readonly folder: string;
+	readonly folderPath: string;
+	/** The window's folders to pick from, in a multi-root window: each folder's agents get its own context. */
+	readonly folders?: readonly { readonly path: string; readonly name: string }[];
 	readonly total?: number;
 	readonly parts: readonly { readonly label: string; readonly tokens: number; readonly kind: 'cli' | 'context' | 'server' | 'geminicode' }[];
 	/** "2 hours ago, with gemini-3.1-flash-lite". */
 	readonly measured?: string;
 	readonly tips: readonly string[];
+	/** How many model calls and tokens measuring takes, from the user's Gemini quota. */
+	readonly note: string;
 	readonly error?: string;
 }
 
@@ -685,7 +690,8 @@ export interface SettingsPageStrings {
 	readonly measure: string;
 	readonly measureAgain: string;
 	readonly measuring: string;
-	readonly contextNote: string;
+	/** The label of the folder picker in a multi-root window. */
+	readonly contextFolder: string;
 	readonly contextNone: string;
 	/** `{0}` is the tokens. */
 	readonly contextTotal: string;
@@ -765,6 +771,8 @@ export type FromSettingsPage =
 	| { readonly type: 'ready' | 'restart' | 'addServer' | 'connections' | 'newSkill' | 'addHook' | 'installExtension' | 'addMemory' | 'refreshMemory' | 'measureContext' | 'measureStorage' | 'cleanUp' }
 	| { readonly type: 'storageAction'; readonly action: 'showIndex' | 'openFolder' }
 	| { readonly type: 'setKeepLogs'; readonly days: string }
+	/** The folder Context per model call shows, by path. */
+	| { readonly type: 'contextFolder'; readonly folder: string }
 	| { readonly type: 'toggle'; readonly name: string; readonly enabled: boolean }
 	| { readonly type: 'toggleHook'; readonly file: string; readonly name: string; readonly enabled: boolean }
 	| { readonly type: 'toggleSkill'; readonly file: string; readonly name: string; readonly enabled: boolean }

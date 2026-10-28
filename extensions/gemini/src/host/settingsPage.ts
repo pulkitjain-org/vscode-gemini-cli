@@ -15,16 +15,17 @@ import { addHook, disabledHooks, HookEvent, hookEvents, hooksIn, setHookEnabled,
 import { addMcpServer, disabledServers, isServerEnabled, mcpServersIn, readSettingsFile, rulesFileNames, serverConfigFrom, setServerEnabled } from '../acp/projectSettings';
 import { disabledSkills, loadSkills, setSkillEnabled, skillFolders, skillSlug, skillTemplate } from '../acp/skills';
 import type { AuditLog } from '../acp/auditLog';
-import { ownTrustRules, readTrustRules, type TrustLevel, type TrustRule } from '../acp/trustedFolders';
+import { ownTrustRules, readTrustRules, staleTrustRules, type TrustLevel, type TrustRule } from '../acp/trustedFolders';
 import { trustRows, type TrustRow } from '../acp/trustRows';
 import type { AgentService } from './agentService';
-import { type getAgentCommand, getWorkspaceCwd } from './configuration';
+import { type getAgentCommand, getWorkspaceCwd, workspaceFolderPaths } from './configuration';
 import { tildify } from './displayText';
 import { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage, TrustRowView, TrustView } from './panelProtocol';
 import { StorageSection, type StorageHost } from './storageSection';
 import type { forgetSkills } from './teamCommands';
 import { createNonce, escapeAttribute } from './webviewHtml';
-import { ContextCost, estimateTokens, heavyContextTokens, heavyServerTokens } from '../acp/contextCost';
+import { ContextCost, estimateTokens, heavyContextTokens, heavyServerTokens, measureCalls, measureTokens } from '../acp/contextCost';
+import type { ContextMeasures } from './chat/chatContext';
 import { showError } from './errorNotice';
 
 const viewType = 'gemini.projectSettings';
@@ -43,6 +44,9 @@ const viewType = 'gemini.projectSettings';
  * from a bundle of its own (src/pages.ts), whose copies of these modules'
  * state would be empty.
  */
+/** What Context per model call reads and measures, per folder (ContextMeasures in chatContext.ts). */
+export type SettingsContextCost = Pick<ContextMeasures, 'cost' | 'servers' | 'view' | 'measure' | 'onDidChange'>;
+
 export interface SettingsHost {
 	/** The command that starts the CLI, for its subcommands in a terminal. */
 	readonly getAgentCommand: typeof getAgentCommand;
@@ -72,14 +76,15 @@ export class SettingsPage implements vscode.Disposable {
 	/** The Storage section, measured the first time it scrolls into view. */
 	private readonly storage: StorageSection | undefined;
 
-	/** A context cost measurement under way, for the folder it measures. */
-	private measuring: string | undefined;
-	private measureError: string | undefined;
+	/** The folder Context per model call shows, when the user picked one of a multi-root window's. */
+	private contextFolder: string | undefined;
 
-	/** `measureContext` measures what every model call carries in a folder (contextCostProbe.ts); `state` keeps the last result. */
-	constructor(private readonly extensionUri: vscode.Uri, private readonly service: AgentService, private readonly host: SettingsHost, private readonly measureContext?: (folder: string, servers: readonly string[]) => Promise<ContextCost>, private readonly state?: vscode.Memento) {
+	/** `contextCost` measures what every model call carries in each folder and keeps the results (chatContext.ts). */
+	constructor(private readonly extensionUri: vscode.Uri, private readonly service: AgentService, private readonly host: SettingsHost, private readonly contextCost?: SettingsContextCost) {
 		this.storage = host.storage && new StorageSection(host.storage, () => void this.update());
 		this.disposables.push(
+			// A measure started here or from a chat's usage popover.
+			...contextCost ? [contextCost.onDidChange(folder => folder === this.measuredFolder() && void this.update())] : [],
 			vscode.commands.registerCommand('gemini.projectSettings', () => this.show()),
 			vscode.commands.registerCommand('gemini.newSkill', () => this.newSkill()),
 			service.onDidChangeMcpProblems(() => void this.update()),
@@ -126,6 +131,7 @@ export class SettingsPage implements vscode.Disposable {
 		});
 		this.panel = panel;
 		void this.refreshCli();
+		void this.forgetGoneFolders();
 	}
 
 	private refreshCliWhenShown(): void {
@@ -211,6 +217,7 @@ export class SettingsPage implements vscode.Disposable {
 		}));
 		const disabled = await disabledServers(path.join(dir, 'mcp-server-enablement.json'));
 		const problems = new Map(this.service.mcpProblems.filter(p => p.server).map(p => [p.server!, p.message]));
+		const personalLabel = vscode.l10n.t("Personal");
 		const servers: McpServerView[] = [];
 		const seen = new Set<string>();
 		// A project's server of the same name replaces the personal one, as in the CLI.
@@ -222,11 +229,10 @@ export class SettingsPage implements vscode.Disposable {
 		}
 		for (const server of mcpServersIn(personal, this.personalSettings())) {
 			if (!seen.has(server.name)) {
-				servers.push(this.serverView(server, vscode.l10n.t("Personal"), disabled, problems));
+				servers.push(this.serverView(server, personalLabel, disabled, problems));
 			}
 		}
 
-		const personalLabel = vscode.l10n.t("Personal");
 		const home = path.dirname(dir);
 		// skills.disabled is merged across files like hooksConfig.disabled; see the toggleSkill message.
 		const skillsOff = disabledSkills(personal);
@@ -257,13 +263,15 @@ export class SettingsPage implements vscode.Disposable {
 		}
 		const personalRules = path.join(dir, plainFileName(rulesFileNames(personal)[0]));
 		rules.push(await rulesView(vscode.l10n.t("Personal rules"), personalRules, tildify(personalRules)));
-		const folder = getWorkspaceCwd();
-		const cost = this.cachedCost(folder);
+		const folder = this.measuredFolder();
+		const cost = this.contextCost?.cost(folder);
 		const measured = new Map(cost?.servers.map(s => [s.name, s.tokens]));
+		// A measure covers its folder's servers and the personal ones; another folder's server of the same name is another server.
+		const scopes = new Set([personalLabel, folders.find(each => each.uri.fsPath === folder)?.name]);
 		return {
-			servers: servers.map(server => measured.has(server.name) ? { ...server, tokens: measured.get(server.name) } : server),
+			servers: servers.map(server => scopes.has(server.scope) && measured.has(server.name) ? { ...server, tokens: measured.get(server.name) } : server),
 			skills, hooks, extensions: this.extensions, memory: this.memory, rules, preferences: this.preferencesView(personal),
-			contextCost: this.contextCostView(folder, cost),
+			contextCost: await this.contextCostView(folder, cost),
 			trust: await trust,
 			...this.storage ? { storage: this.storage.view() } : {},
 		};
@@ -289,6 +297,18 @@ export class SettingsPage implements vscode.Disposable {
 				return !outside(row) ? view : { ...view, detail: view.detail ? vscode.l10n.t("{0} \u00b7 Added in the terminal or by hand", view.detail) : vscode.l10n.t("Added in the terminal or by hand") };
 			}),
 		};
+	}
+
+	/** Takes out of the trust file the rules of folders that are gone, such as a test run's temporary ones, before the list shows them. */
+	private async forgetGoneFolders(): Promise<void> {
+		try {
+			const stale = await staleTrustRules(await readTrustRules(this.service.trust.file));
+			if (stale.length) {
+				await this.service.trust.forget(stale.map(rule => rule.path));
+			}
+		} catch (err) {
+			this.service.writeLog(`Could not remove gone folders' trust rules: ${errorMessage(err)}`);
+		}
 	}
 
 	/** Trust Folder..., Trust a Parent Folder... or Never Trust a Folder...: asks for the folder, then writes its rule. */
@@ -326,11 +346,12 @@ export class SettingsPage implements vscode.Disposable {
 		await (audit ? audit.record({ caller: 'ui', tool: 'folder_trust', ref: folder, effect }, write) : write());
 	}
 
-	private cachedCost(folder: string): ContextCost | undefined {
-		return this.state?.get<ContextCost>(`gemini.contextCost:${folder}`);
+	/** The folder Context per model call shows: the one picked, while it is still in the window, else the first, where new agents start. */
+	private measuredFolder(): string {
+		return this.contextFolder && workspaceFolderPaths().includes(this.contextFolder) ? this.contextFolder : getWorkspaceCwd();
 	}
 
-	private contextCostView(folder: string, cost: ContextCost | undefined): ContextCostView {
+	private async contextCostView(folder: string, cost: ContextCost | undefined): Promise<ContextCostView> {
 		const n = (tokens: number) => Math.round(tokens).toLocaleString();
 		const parts: ContextCostView['parts'] = cost ? [
 			{ label: vscode.l10n.t("Gemini CLI's own prompt and tools"), tokens: cost.cli, kind: 'cli' },
@@ -342,37 +363,24 @@ export class SettingsPage implements vscode.Disposable {
 			...cost.servers.filter(s => s.tokens >= heavyServerTokens).map(s => vscode.l10n.t("{0} adds about {1} tokens to every model call. Turn it off below when agents don't need it, or list only the tools they use in its includeTools.", s.name, n(s.tokens))),
 			...cost.context >= heavyContextTokens ? [vscode.l10n.t("The context files add about {0} tokens to every model call. Rules needed only for some tasks can move into skills, which load only when a task calls for them.", n(cost.context))] : [],
 		] : [];
-		const state = this.measuring === folder ? 'measuring' : this.measureError ? 'failed' : cost ? 'ready' : 'none';
+		const { state, error } = this.contextCost?.view(folder) ?? { state: 'none' };
+		// Measuring is a model call per part, each carrying the context it measures: say what it takes before anyone asks.
+		const calls = measureCalls((await this.contextCost?.servers(folder).catch(() => undefined))?.length ?? cost?.servers.length ?? 0);
+		const note = cost
+			? vscode.l10n.t("Measuring again sends {0} prompts to the lightest Gemini model, one for each part, about {1} tokens in all. They count against your Gemini quota like any other model call, so measure again only after your setup changes.", calls, n(measureTokens(cost)))
+			: vscode.l10n.t("Measuring sends {0} prompts to the lightest Gemini model, one for each part. Each carries the context it measures, so together they use several times its tokens, and they count against your Gemini quota like any other model call.", calls);
+		const folders = vscode.workspace.workspaceFolders?.filter(each => each.uri.scheme === 'file') ?? [];
 		return {
 			state,
-			folder: path.basename(folder) || folder,
+			folder: folders.find(each => each.uri.fsPath === folder)?.name ?? (path.basename(folder) || folder),
+			folderPath: folder,
+			...folders.length > 1 ? { folders: folders.map(each => ({ path: each.uri.fsPath, name: each.name })) } : {},
 			...cost ? { total: cost.total, measured: cost.model ? vscode.l10n.t("{0}, counted with {1}", relativeAgo(cost.measuredAt), cost.model) : relativeAgo(cost.measuredAt) } : {},
 			parts,
 			tips,
-			...this.measureError ? { error: this.measureError } : {},
+			note,
+			...error ? { error: vscode.l10n.t("Couldn't measure: {0}", error) } : {},
 		};
-	}
-
-	/** Measures the folder's context cost: one short prompt per part, so only when asked. */
-	private async measure(): Promise<void> {
-		if (!this.measureContext || this.measuring) {
-			return;
-		}
-		const folder = getWorkspaceCwd();
-		const view = await this.build();
-		const servers = view.servers.filter(s => s.enabled).map(s => s.name);
-		this.measuring = folder;
-		this.measureError = undefined;
-		await this.update();
-		try {
-			const cost = await this.measureContext(folder, [...new Set(servers)]);
-			await this.state?.update(`gemini.contextCost:${folder}`, cost);
-		} catch (err) {
-			this.measureError = vscode.l10n.t("Couldn't measure: {0}", errorMessage(err));
-		} finally {
-			this.measuring = undefined;
-			await this.update();
-		}
 	}
 
 	private preferencesView(personal: Record<string, unknown>): PreferencesView {
@@ -403,7 +411,14 @@ export class SettingsPage implements vscode.Disposable {
 				case 'ready':
 					break;
 				case 'measureContext':
-					void this.measure();
+					// Measured only when asked: one model call per part.
+					void this.contextCost?.measure(this.measuredFolder(), true);
+					return;
+				case 'contextFolder':
+					if (workspaceFolderPaths().includes(message.folder)) {
+						this.contextFolder = message.folder;
+						await this.update();
+					}
 					return;
 				case 'measureStorage':
 					void this.storage?.measure();
@@ -794,7 +809,7 @@ export class SettingsPage implements vscode.Disposable {
 			measure: vscode.l10n.t("Measure"),
 			measureAgain: vscode.l10n.t("Measure Again"),
 			measuring: vscode.l10n.t("Measuring\u2026"),
-			contextNote: vscode.l10n.t("Measuring sends one short prompt for each part to the lightest Gemini model."),
+			contextFolder: vscode.l10n.t("Folder"),
 			contextNone: vscode.l10n.t("Not measured yet."),
 			contextTotal: vscode.l10n.t("{0} tokens in every model call"),
 			tokensPerCall: vscode.l10n.t("\u2248{0} tokens"),
