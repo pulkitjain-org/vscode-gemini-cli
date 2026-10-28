@@ -23,6 +23,13 @@ export interface DesignSystemSyncHost {
 	defaults(folder?: string): Promise<TeamDefaults>;
 }
 
+/**
+ * The most pages a sync reads. Each page costs two of Figma's Dev Mode reads,
+ * which Figma limits per day, so a file with more pages has to name the ones
+ * that hold the design system.
+ */
+const maxPages = 8;
+
 /** The scheme of the read-only documents Review Changes shows the new files in. */
 const scheme = 'geminicode-design-system';
 
@@ -90,6 +97,12 @@ export class DesignSystemSync implements vscode.Disposable {
 	private async read(figma: FigmaClient, config: DesignSystemConfig, progress: vscode.Progress<{ message?: string; increment?: number }>, token: vscode.CancellationToken) {
 		const { fileName, pages } = documentPages(await figma.outline!('0:0'));
 		const wanted = config.pages?.length ? pages.filter(page => config.pages!.some(name => name.toLowerCase() === page.name.toLowerCase())) : pages.filter(page => !page.hidden);
+		if (wanted.length > maxPages) {
+			void vscode.window.showWarningMessage(config.pages?.length
+				? vscode.l10n.t("figma.designSystem.pages names {0} pages; a sync reads at most {1}, since Figma limits how many reads it answers a day. Name only the pages that show the tokens and components.", wanted.length, maxPages)
+				: vscode.l10n.t("\"{0}\" has {1} pages. Name the pages that hold the design system in figma.designSystem.pages (at most {2}), so the sync reads only those: Figma limits how many reads it answers a day.", fileName, wanted.length, maxPages));
+			return undefined;
+		}
 		if (!wanted.length) {
 			const missing = config.pages?.join(', ') ?? '';
 			void vscode.window.showWarningMessage(config.pages?.length

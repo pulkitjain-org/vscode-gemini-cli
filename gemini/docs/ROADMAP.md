@@ -61,6 +61,8 @@ The app reads `geminiDefaultProjectId` from `product.json`, but no build sets it
 
 The CLI keys a folder's chats by the path it is given, and the terminal always gives the real path. In a workspace opened through a link, chats started with `gemini` in the terminal are saved under another key, so a new agent's list of saved CLI sessions (and `/resume`) does not show them ([FINDINGS.md](FINDINGS.md#reopening-a-session-sessionload)). Running every session on the folder's real path would fix this, but chats saved under the linked path would then need a migration.
 
+
+Agents' edits fail there too: the CLI names files by their real path (a folder opened as `/tmp/x` is `/private/tmp/x`), and GeminiCode's file access policy refuses them as outside the workspace. Seen on 28 Oct 2026 while testing in a folder under `/tmp`.
 ### Sessions are never closed
 
 gemini-cli 0.64.0 offers no `session/close`, so a long-lived agent process keeps every session it opened, a few MB each. That includes Enhance prompt's fallback sessions and hidden command sessions. GeminiCode closes sessions as soon as a CLI advertises `sessionCapabilities.close`. Until a CLI does, restart idle processes to free them, and show in the pane when an agent's process was stopped.
