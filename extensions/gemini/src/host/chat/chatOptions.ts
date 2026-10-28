@@ -7,6 +7,8 @@
 // @-mention file list, and the options that set which of its features show.
 // Types only.
 
+import type * as acp from '@agentclientprotocol/sdk';
+import type { AgentRuntime } from '../../acp/agentRuntime';
 import type * as vscode from 'vscode';
 import type { AgentClient } from '../../acp/agentClient';
 import type { Attachment } from '../../acp/attachments';
@@ -73,6 +75,8 @@ export interface ChatControllerOptions {
 	indexContext?(draft: string): Promise<string | undefined>;
 	/** A note telling the agent to use the index tools, when its folder's index is built; sent once per session. */
 	indexHint?(): string | undefined;
+	/** What research runs (/research) need: the agent process, the folder, and the index's servers and outline for it. Unset in chats without research. */
+	research?: ChatResearchHost;
 	/** The note a prompt with a Figma design carries when the repository has a design-system skill (designSystem.ts). */
 	designSystemNote?(): Promise<string | undefined>;
 	/** The workspace pill; without it the composer shows none. */
@@ -229,6 +233,17 @@ export interface ChatWorkspace {
 }
 
 /** Rewrites drafts as precise prompts; one, shared by every chat. */
+export interface ChatResearchHost {
+	readonly runtime: AgentRuntime;
+	/** The folder researched: the agent's own. */
+	cwd(): string;
+	/** A worker's MCP servers (the index's), and their release when it is done. */
+	mcpServers(worker: string): acp.McpServer[];
+	release(worker: string): void;
+	/** The index's outline of the folder, for the planner. */
+	outline(): Promise<string | undefined>;
+}
+
 export interface ChatEnhancer {
 	/** Gets a rewrite ready, so the next one only waits for the model. */
 	prepare(): void;

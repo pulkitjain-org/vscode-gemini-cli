@@ -1504,6 +1504,14 @@
             "scope": "machine",
             "markdownDescription": "%configuration.index.enabled%"
           },
+          "gemini.research.concurrency": {
+            "type": "number",
+            "default": 4,
+            "minimum": 1,
+            "maximum": 8,
+            "scope": "machine",
+            "markdownDescription": "%configuration.research.concurrency%"
+          },
           "gemini.index.languageServers": {
             "type": "boolean",
             "default": true,

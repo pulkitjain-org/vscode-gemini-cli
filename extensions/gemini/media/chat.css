@@ -1828,6 +1828,102 @@ body.vscode-high-contrast-light {
 }
 
 /* Where a turn's time went: hop, bar, this turn, budget. */
+/* A research run (webview-src/items.ts, renderResearch): its parts as they are read, then its report. */
+.research-card {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	max-width: 820px;
+	margin: 12px 0;
+	padding: 12px 14px;
+	border: 1px solid var(--gemini-border);
+	border-radius: 9px;
+	background: var(--gemini-card);
+}
+
+.research-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.research-pill {
+	padding: 1px 7px;
+	border-radius: 999px;
+	background: var(--gemini-hover);
+	color: var(--gemini-muted);
+	font-size: 11px;
+}
+
+.research-state {
+	margin-left: auto;
+	color: var(--gemini-muted);
+	font-size: 12px;
+}
+
+.research-question {
+	font-weight: 600;
+	white-space: pre-wrap;
+}
+
+.research-parts > summary {
+	color: var(--gemini-muted);
+	font-size: 12px;
+	cursor: pointer;
+}
+
+.research-part {
+	display: grid;
+	grid-template-columns: 16px minmax(0, 1fr) auto;
+	gap: 8px;
+	align-items: center;
+	padding: 3px 0;
+	font-size: 12px;
+}
+
+.research-part-title {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.research-part-detail,
+.research-part.queued {
+	color: var(--gemini-muted);
+}
+
+.research-part.done > .codicon {
+	color: var(--gemini-ok);
+}
+
+.research-part.failed > .codicon {
+	color: var(--gemini-warn);
+}
+
+.research-part.reading > .codicon-loading {
+	animation: codicon-spin 1.5s steps(30) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.research-part.reading > .codicon-loading {
+		animation: none;
+	}
+}
+
+.research-stop {
+	align-self: flex-start;
+}
+
+.research-report {
+	padding-top: 8px;
+	border-top: 1px solid var(--gemini-border);
+}
+
+.research-actions {
+	display: flex;
+	gap: 6px;
+}
+
 .trace-card {
 	display: flex;
 	flex-direction: column;

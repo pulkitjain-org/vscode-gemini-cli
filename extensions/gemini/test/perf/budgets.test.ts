@@ -96,7 +96,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// recorder moved to dist/pages.js and dist/onDemand.js, about 60 KB.
 	// More than one Jira site (routing a ticket to its site, Home's tickets by site) and Confluence's connection
 	// and agent tools' definitions added about 13 KB; Confluence's client, calls, drafts and Review Page are in dist/confluence.js.
-	// The Index page moving to dist/pages.js took it from about 1,206 KB to about 1,187 KB.
+	// The Index page moving to dist/pages.js took it from about 1,206 KB to about 1,187 KB. Side questions, the
+	// language servers' tools and research added about 18 KB; the docs crawler moving to dist/onDemand.js took 9 KB off.
 	'dist/extension.js': 1_206_000,
 	// Project Helpers and Connections, about 96 KB, loaded the first time one is opened (src/pages.ts): their own code
 	// and their copy of jsonc-parser (about 17 KB), which edits the Gemini CLI's settings files keeping their comments.
@@ -123,8 +124,10 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// links, line endings and per-agent action queue (worktreeApply.ts, tryState.ts) added about 14 KB.
 	// Sync Design System and the design system's reads for Figma (designSystemSync.ts, designSystem.ts, designTokens.ts)
 	// added about 9 KB; the pilot's export, removed, had been about 3 KB. The language servers' adapter for agents'
-	// index tools (editorToolsHost.ts), about 4 KB, loaded the first time an agent asks one.
-	'dist/onDemand.js': 136_000,
+	// index tools (editorToolsHost.ts), about 4 KB, loaded the first time an agent asks one. The research engine
+	// (research.ts), about 9 KB, loaded with the first /research. The docs crawler (docs/crawler.ts), about 9 KB,
+	// moved here from dist/extension.js and loaded with the first docs fetch.
+	'dist/onDemand.js': 156_000,
 	// The indexer process, about 66 KB: parsing, SQLite queries and docs conversion, forked on first use, never
 	// loaded in the extension host.
 	'dist/indexer.js': 120_000,

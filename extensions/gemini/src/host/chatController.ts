@@ -5,6 +5,8 @@
 
 import { sideQuestionOf } from '../acp/sideChat';
 import { ChatSide, sideCommand } from './chat/chatSide';
+import { ChatResearch, researchCommand } from './chat/chatResearch';
+import { researchQuestionOf } from '../acp/researchQuestion';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
 import { promises as fs } from 'node:fs';
@@ -181,6 +183,7 @@ export class ChatController implements vscode.Disposable {
 	private readonly compacting: ChatCompact;
 	private readonly forks: ChatFork;
 	private readonly side: ChatSide;
+	private readonly research: ChatResearch;
 	private readonly project: ChatProjectView;
 	private readonly runs: ChatRun;
 
@@ -211,7 +214,7 @@ export class ChatController implements vscode.Disposable {
 		this.sideLinks = new SideLinksColumn(options, isViewReady, post);
 		this.settings = new ChatSettings(service, this.transcript, options, post);
 		this.enhance = new ChatEnhance(client, options, () => this.transcript.items, post);
-		this.commands = new ChatCommands(client, this.transcript, [...options.savedSessions ? [resumeCommand()] : [], compactCommand(), contextCommand(), sideCommand(), ...options.fork ? [forkCommand()] : []], isAttached, post);
+		this.commands = new ChatCommands(client, this.transcript, [...options.savedSessions ? [resumeCommand()] : [], compactCommand(), contextCommand(), sideCommand(), ...options.research ? [researchCommand()] : [], ...options.fork ? [forkCommand()] : []], isAttached, post);
 		this.sessions = new ChatSessions(service, this.transcript, options, {
 			isBusy,
 			setBusy,
@@ -240,6 +243,7 @@ export class ChatController implements vscode.Disposable {
 			title: () => options.title?.() ?? '',
 		}, post);
 		this.side = new ChatSide(options, this.transcript, isBusy, post);
+		this.research = new ChatResearch(options, this.transcript, post);
 		this.project = new ChatProjectView(options, isViewReady, post);
 		this.runs = new ChatRun(options, isAttached, post, attachments => void this.addAttachments(attachments),
 			() => this.transcript.items.flatMap(item => item.kind === 'agent' || item.kind === 'user' ? [item.text] : []));
@@ -260,6 +264,7 @@ export class ChatController implements vscode.Disposable {
 			this.settings,
 			this.enhance,
 			this.side,
+			this.research,
 			this.commands,
 			this.sessions,
 			this.runs,
@@ -508,6 +513,13 @@ export class ChatController implements vscode.Disposable {
 		if (side !== undefined) {
 			extras.settle?.(true);
 			this.side.open(side);
+			return;
+		}
+		// `/research` reads widely on the side, read-only; the agent's turn and history are left alone.
+		const research = !project && !from && !attachments.length && this.options.research ? researchQuestionOf(text) : undefined;
+		if (research !== undefined) {
+			extras.settle?.(true);
+			void this.research.run(research);
 			return;
 		}
 		// `+👍` alone reacts to the latest reply instead of being sent.
@@ -1542,6 +1554,10 @@ export class ChatController implements vscode.Disposable {
 			case 'sideAsk':
 			case 'sideCancel':
 				this.side.onMessage(message);
+				break;
+			case 'researchStop':
+			case 'researchUse':
+				this.research.onMessage(message);
 				break;
 			case 'compact':
 			case 'undoCompact':

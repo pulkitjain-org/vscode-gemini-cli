@@ -1131,6 +1131,16 @@ export class AgentsView implements vscode.Disposable {
 				// Not for a coordinator, which runs in an empty folder without the index.
 				indexHint: () => cwd === folder ? this.index?.hint(folder) : undefined,
 				designSystemNote: async () => this.teamTools ? this.onDemand().designSystemNoteFor(await this.teamTools.defaults(cwd)) : undefined,
+				// Research reads the agent's own folder with workers of its own; not in a project's chats, whose threads do the reading.
+				...project ? {} : {
+					research: {
+						runtime: this.service.runtime,
+						cwd: () => folder,
+						mcpServers: (worker: string) => this.index?.mcpServersFor(worker, folder, record.worktree ? this.model.workspace(record.workspaceId)?.folder : undefined) ?? [],
+						release: (worker: string) => this.index?.forgetAgent(worker),
+						outline: async () => this.index?.outlineOf(folder),
+					},
+				},
 				usage: () => this.usage,
 				contextCost: () => this.contextCost,
 				// The index's definitions, only while agents get its tools and the folder's index is built.

@@ -22,7 +22,7 @@ import type { PendingPromptView } from '../acp/promptQueue';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 45;
+export const chatProtocolVersion = 46;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.signIn', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal'] as const;
@@ -350,6 +350,23 @@ export type RunState =
 	/** How it ended; unset when the shell had no integration to say. */
 	| { readonly kind: 'done'; readonly exitCode?: number; readonly ms?: number };
 
+/** A research run's card (/research). */
+export interface ResearchStrings {
+	readonly title: string;
+	readonly readOnly: string;
+	readonly states: Readonly<Record<'planning' | 'reading' | 'verifying' | 'merging' | 'done' | 'stopped' | 'failed', string>>;
+	readonly slice: Readonly<Record<'queued' | 'reading' | 'done' | 'failed', string>>;
+	/** `{0}` files read so far. */
+	readonly reading: string;
+	/** `{0}` findings. */
+	readonly findings: string;
+	/** `{0}` parts, `{1}` findings: the folded parts above a report. */
+	readonly summary: string;
+	readonly stop: string;
+	readonly sendToAgent: string;
+	readonly copy: string;
+}
+
 /** The side question panel (/btw). */
 export interface SideStrings {
 	readonly title: string;
@@ -410,6 +427,8 @@ export interface ChatStrings {
 	readonly fork?: ForkStrings;
 	/** The side question panel's strings. */
 	readonly side?: SideStrings;
+	/** A research card's strings. */
+	readonly research: ResearchStrings;
 	/** Emoji reactions' strings; unset in a project's chat, which has none. */
 	readonly reactions?: ReactionStrings;
 	/** The badge on a thread's brief and the notes its coordinator relays. */
@@ -1098,6 +1117,9 @@ export type FromWebview =
 	/** A side question (/btw): answered from the conversation without stopping the agent or entering its history. */
 	| { readonly type: 'sideAsk'; readonly question: string }
 	| { readonly type: 'sideCancel' }
+	/** A research card's Stop, and Send to Agent, which puts its report in the message box. */
+	| { readonly type: 'researchStop'; readonly id: string }
+	| { readonly type: 'researchUse'; readonly id: string }
 	/** The Fork dialog's Fork. */
 	| { readonly type: 'fork'; readonly fork: ForkRequest }
 	/** A fork card's buttons, in its parent's chat. */

@@ -140,6 +140,17 @@ Under an answer:
 
 Earlier side questions stay in the panel until the chat closes; <kbd>⇧←</kbd> and <kbd>⇧→</kbd> step through them, and later questions can build on them. Side questions use the quick requests' model (`gemini.inlineEdit.model`); with a sign-in that can't make quick requests, a session of their own on the Gemini CLI answers instead.
 
+## Research
+
+For a broad question about the code, such as `/research where are auth tokens read, stored or logged?`, GeminiCode reads widely in parallel instead of one step at a time:
+
+1. It splits the question into parts by area of the code, from the workspace index's outline.
+2. Read-only workers, four at a time by default (`gemini.research.concurrency`, 1 to 8), each read one part with the index tools. They run in Plan mode and every permission request they make is refused, so nothing changes.
+3. One more worker rereads the most serious findings.
+4. A report answers the question, with each finding's `path:line`, verified ones marked.
+
+The card in the chat shows each part as it's read. **Stop** ends every worker and reports what was done. Under the report, **Send to Agent** puts it in the message box for the agent to act on, and **Copy** copies it. The research isn't part of the agent's conversation until you send it. A project's chats have no `/research`: their threads do the reading.
+
 ## Replies
 
 - Code is coloured like the editor, and the button at the top of a code block copies it. A shell command also has **Run**, which runs it in the agent's terminal; see [Terminal](terminal.md#run-a-command-from-a-reply).

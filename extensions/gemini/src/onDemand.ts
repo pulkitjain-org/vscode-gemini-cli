@@ -23,6 +23,8 @@ export { BenchmarkCommand } from './host/benchmarkCommand';
 export { checkAgent } from './host/checkAgent';
 export { DesignSystemSync } from './host/designSystemSync';
 export { EditorToolsHost } from './host/editorToolsHost';
+export { ResearchRun } from './acp/research';
+export { crawl } from './acp/docs/crawler';
 export { designSystemNoteFor } from './acp/designSystem';
 export { figmaDesignSystem } from './acp/designTokens';
 export { TraceRecorder } from './host/traceRecorder';

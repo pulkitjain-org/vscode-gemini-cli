@@ -7,7 +7,7 @@
 // from the extension host so they are localized.
 
 import * as vscode from 'vscode';
-import type { ChatStrings, ForkStrings, ProjectChatStrings, ReactionStrings, SideStrings } from '../chatProtocol';
+import type { ChatStrings, ForkStrings, ProjectChatStrings, ReactionStrings, ResearchStrings, SideStrings } from '../chatProtocol';
 import { reactionsOn } from '../chatReactions';
 import { configSection } from '../configuration';
 import { foldWorkOn } from '../foldWork';
@@ -47,6 +47,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		...(project && projectStringsOf ? { project: projectStringsOf() } : {}),
 		...(fork ? { fork: forkStrings() } : {}),
 		side: sideStrings(),
+		research: researchStrings(),
 		...(project ? {} : { reactions: reactionStrings() }),
 		placeholderFollowUp: vscode.l10n.t("Ask a follow-up"),
 		placeholderWorking: process.platform === 'darwin' ? vscode.l10n.t("↩ to send, ⌘↩ to queue for later") : vscode.l10n.t("Enter to send, Ctrl+Enter to queue for later"),
@@ -575,6 +576,29 @@ function reactionStrings(): ReactionStrings {
 			vscode.l10n.t("Symbols"),
 			vscode.l10n.t("Flags"),
 		],
+	};
+}
+
+function researchStrings(): ResearchStrings {
+	return {
+		title: vscode.l10n.t("Research"),
+		readOnly: vscode.l10n.t("Read-only"),
+		states: {
+			planning: vscode.l10n.t("Splitting the question"),
+			reading: vscode.l10n.t("Reading"),
+			verifying: vscode.l10n.t("Checking the serious findings"),
+			merging: vscode.l10n.t("Writing the report"),
+			done: vscode.l10n.t("Done"),
+			stopped: vscode.l10n.t("Stopped"),
+			failed: vscode.l10n.t("Failed"),
+		},
+		slice: { queued: vscode.l10n.t("queued"), reading: vscode.l10n.t("reading"), done: vscode.l10n.t("done"), failed: vscode.l10n.t("not finished") },
+		reading: vscode.l10n.t("{0} files read"),
+		findings: vscode.l10n.t("{0} findings"),
+		summary: vscode.l10n.t("{0} parts read, {1} findings"),
+		stop: vscode.l10n.t("Stop"),
+		sendToAgent: vscode.l10n.t("Send to Agent"),
+		copy: vscode.l10n.t("Copy"),
 	};
 }
 

@@ -45,3 +45,10 @@ export interface DocsSearchResult {
 	readonly total: number;
 	readonly terms: readonly string[];
 }
+
+/** Whether `host` may be fetched from, per patterns such as `react.dev` or `*.example.com`; none allows every site. */
+export function domainAllowed(host: string, patterns: readonly string[]): boolean {
+	const name = host.toLowerCase();
+	const list = patterns.map(p => p.trim().toLowerCase()).filter(Boolean);
+	return !list.length || list.some(pattern => pattern === '*' || (pattern.startsWith('*.') ? name.endsWith(pattern.slice(1)) || name === pattern.slice(2) : name === pattern));
+}

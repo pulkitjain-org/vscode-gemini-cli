@@ -77,7 +77,43 @@ export function render(item: TranscriptItem, toggleToolCall: ToggleToolCall): HT
 			return renderTurnEnd(item);
 		case 'thread':
 			return renderThreadCard(item);
+		case 'research':
+			return renderResearch(item);
 	}
+}
+
+/** A research run: its parts as they are read, Stop while it runs, then its report with Send to Agent and Copy. */
+function renderResearch(item: ItemOf<'research'>): HTMLElement {
+	const text = strings.research;
+	const card = el('section', 'research-card');
+	const { state: run, slices } = item.progress;
+	const head = el('div', 'research-head');
+	head.append(icon('telescope'), el('strong', undefined, text.title), el('span', 'research-pill', text.readOnly), el('span', 'research-state', text.states[run]));
+	card.append(head, el('div', 'research-question', item.question));
+	const working = run === 'planning' || run === 'reading' || run === 'verifying' || run === 'merging';
+	const rows = el(item.report ? 'details' : 'div', 'research-parts');
+	if (item.report && slices.length) {
+		const found = slices.reduce((sum, slice) => sum + slice.findings, 0);
+		rows.append(el('summary', undefined, format(text.summary, String(slices.length), String(found))));
+	}
+	for (const slice of slices) {
+		const row = el('div', `research-part ${slice.state}`);
+		row.append(icon(slice.state === 'done' ? 'check' : slice.state === 'failed' ? 'circle-slash' : slice.state === 'reading' ? 'loading' : 'circle-outline'), el('span', 'research-part-title', slice.title),
+			el('span', 'research-part-detail', slice.state === 'done' ? format(text.findings, String(slice.findings)) : slice.state === 'reading' ? format(text.reading, String(slice.files)) : text.slice[slice.state]));
+		rows.append(row);
+	}
+	card.append(rows);
+	if (working) {
+		card.append(button('turn-action research-stop', text.stop, () => vscode.postMessage({ type: 'researchStop', id: item.id }), 'debug-stop'));
+	}
+	if (item.report) {
+		const report = el('div', 'research-report markdown');
+		report.append(...renderBlocks(item.report));
+		const actions = el('div', 'research-actions');
+		actions.append(button('turn-action', text.sendToAgent, () => vscode.postMessage({ type: 'researchUse', id: item.id }), 'send'), copyButton('turn-action', text.copy, () => item.report ?? ''));
+		card.append(report, actions);
+	}
+	return card;
 }
 
 /** Lines added and removed, in green and red. */
