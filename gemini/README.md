@@ -74,7 +74,7 @@ To run the dev build on the bundled CLI, as a release does, run `npm run bundle-
 Before a pull request, run Gemini CI's checks for what your branch changes. The pre-push hook runs this too, once the hooks are installed (`gemini/scripts/git-hooks/install.sh`):
 
 ```sh
-gemini/scripts/ci-checks.sh   # lint, hygiene, patch series, type checks, bundles, unit tests; compile and full hygiene when an upstream file changed
+gemini/scripts/ci-checks.sh   # lint, hygiene, patch series, type checks, bundles, unit tests; compile and hygiene of changed upstream files when one changed
 ```
 
 While working, run the extension's checks:

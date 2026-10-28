@@ -8,9 +8,10 @@
 #                    bundles, hygiene of the generated webview files, the unit
 #                    tests (size budgets included), and the site's build and
 #                    SEO check when gemini/site changed
-#   Compile & hygiene  `npm run compile` and `npm run hygiene`, only when a file
-#                    outside extensions/gemini, gemini and the Gemini workflows
-#                    changed, since those are the only files they add
+#   Compile & hygiene  `npm run compile`, and hygiene of the changed files,
+#                    only when a file outside extensions/gemini, gemini and the
+#                    Gemini workflows changed, since those are the only files
+#                    they add
 #
 # Left to CI: the real-CLI tests against three CLI releases, bundling the CLI,
 # the site's accessibility and Lighthouse runs, and Snyk. Run the real-CLI
@@ -88,7 +89,14 @@ fi
 # Compile & hygiene: the fork's own files are covered above; anything else is upstream code or the build.
 if printf '%s\n' "$changed" | grep -vqE '^(extensions/gemini/|gemini/|\.github/workflows/gemini-)'; then
 	step 'Compile' npm run compile
-	step 'Hygiene' npm run hygiene
+	# CI runs `npm run hygiene` on a clean checkout. Locally that globs ignored
+	# files too (the bundled CLI in extensions/gemini/cli, build output), so check
+	# the changed files instead: unchanged ones passed on the base already.
+	upstream=$(printf '%s\n' "$changed" | grep -vE '^(extensions/gemini/|gemini/|\.github/workflows/gemini-)' | while read -r file; do [ -f "$file" ] && printf '%s\n' "$file"; done || true)
+	if [ -n "$upstream" ]; then
+		# shellcheck disable=SC2086
+		step 'Hygiene' node build/hygiene.ts $upstream
+	fi
 fi
 
 echo >&2
