@@ -42,7 +42,6 @@ import { AuditStatusBar } from './host/auditStatusBar';
 import { chunkLoader, LazyFeature, setExtensionDir } from './host/lazyFeature';
 import { teamRequest } from './acp/teamHttp';
 import { openTeamLink } from './host/teamLinks';
-import { recordPilot, setPilotSink } from './acp/pilotLog';
 import { WorkspaceFileIndex } from './host/workspaceFiles';
 import { WorkspaceIndex } from './host/workspaceIndex';
 import { DocsSources } from './host/docsSources';
@@ -54,9 +53,6 @@ import { FixWithGemini } from './host/quickFix';
 import { parseMemoryList, runCliCommands } from './acp/cliCommands';
 import { disposeGitIgnore } from './host/workspaceFileSystem';
 import { logErrorCommand } from './host/errorNotice';
-
-/** The pilot's setting (pilot.ts): while it is on, the pilot is constructed at launch, to record it. */
-const pilotRecordSetting = 'pilot.record';
 
 /** Finishes the writes that must outlive the window; set by activate. */
 let saveBeforeExit: (() => Promise<void>) | undefined;
@@ -205,20 +201,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	context.subscriptions.push(teamFlows.reviews.onDidChange(() => agentsView.refreshChats()));
 	const traceFolder = vscode.Uri.joinPath(context.globalStorageUri, 'traces').fsPath;
 	setTraceFolder(traceFolder);
-	let launching = true;
-	const pilot = new LazyFeature(['gemini.pilot.export'], () => new (onDemand().Pilot)(context.globalStorageUri.fsPath, teamTools, usageMeter, { setSink: setPilotSink, record: recordPilot }, launching));
-	// While recording is on, the pilot starts with the window, to record the launch; turned on later, it starts then.
-	const startPilot = () => {
-		if (vscode.workspace.getConfiguration(configSection).get<boolean>(pilotRecordSetting, false)) {
-			try {
-				pilot.get();
-			} catch (err) {
-				log.error(`The pilot's counters could not start: ${errorMessage(err)}`);
-			}
-		}
-	};
-	startPilot();
-	launching = false;
 	const mrPanel = new MrPanel(teamTools, agentsView, agent => teamFlows.checksSummary(agent));
 	changesPanel.team = mrPanel;
 	// caffeinate watches this process, so it ends with GeminiCode even if GeminiCode crashes.
@@ -274,8 +256,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			// Imported here, so the runner and the ACP SDK it uses stay in this bundle, which carries the SDK anyway.
 			runner: () => import('./acp/benchmark'),
 		})),
-		pilot,
-		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.${pilotRecordSetting}`) && startPilot()),
 		scheduleStorageMaintenance(context.globalStorageUri.fsPath, log),
 		mrPanel,
 		vscode.commands.registerCommand('gemini.confluence.openDraft', (id?: unknown) => teamTools.openConfluenceDraft(typeof id === 'string' ? id : undefined)),

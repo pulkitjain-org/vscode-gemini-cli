@@ -88,8 +88,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// of emoji data (1,923 emoji with their names and three search words each) and its own code.
 	'media/emojiPicker.js': 105_000,
 	// The extension host's bundle, about 1,061 KB: GeminiCode's own code, the ACP SDK and zod with its English
-	// messages only (esbuild.mts). Project Helpers, Connections, the audit log, Run Benchmark, the pilot and the
-	// trace recorder moved to dist/pages.js and dist/onDemand.js, about 60 KB.
+	// messages only (esbuild.mts). Project Helpers, Connections, the audit log, Run Benchmark and the trace
+	// recorder moved to dist/pages.js and dist/onDemand.js, about 60 KB.
 	// More than one Jira site (routing a ticket to its site, Home's tickets by site) and Confluence's connection
 	// and agent tools' definitions added about 13 KB; Confluence's client, calls, drafts and Review Page are in dist/confluence.js.
 	'dist/extension.js': 1_206_000,
@@ -106,7 +106,7 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// agents' calls, the drafts and the Review Page's host, with publishing only the changes kept (draftReview.ts,
 	// blockMerge.ts) and the page's localized strings.
 	'dist/confluence.js': 29_000,
-	// The audit log, Run Benchmark, the pilot's export and the trace recorder, about 31 KB, loaded the first time
+	// The audit log, Run Benchmark and the trace recorder, about 31 KB, loaded the first time
 	// one of their commands runs (src/onDemand.ts). Finding or cloning a merge request's repository (reviewClone.ts,
 	// cloneSearch.ts) moved here from dist/extension.js: about 44 KB. Merge Back and Try in Workspace (agentMerge.ts,
 	// agentTries.ts, worktreeApply.ts), a project chat's strings (projectStrings.ts) and Figma's client (figma.ts),

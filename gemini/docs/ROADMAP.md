@@ -1,14 +1,14 @@
 # Roadmap
 
-This page lists the work that is still open, before and after the pilot, and the known risks. What is built is described in [ARCHITECTURE.md](ARCHITECTURE.md).
+This page lists the work that is still open, now and later, and the known risks. What is built is described in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 GeminiCode ships as a Mac app for Apple silicon with the Gemini CLI bundled. Builds come from GitHub Releases and the download page, and the app shows a notice when a newer release is out ([RELEASING.md](RELEASING.md)).
 
-## Before the pilot
+## Open now
 
 ### Google Cloud prerequisites
 
-Confirm with the admin of the pilot project:
+Confirm with the admin of the Google Cloud project:
 
 - Gemini Code Assist seats are assigned and `cloudaicompanion.googleapis.com` is enabled.
 - Users have IAM access on the project.
@@ -36,7 +36,7 @@ Projects are on by default (`gemini.projects.enabled`). Check in a signed-in ses
 
 Record a Chromium profile, an extension-host profile and a CLI telemetry file (**Gemini: Record or Stop Performance Trace**) from real working sessions. They time the fork's own steps on a real account: Enter to send, rendering, the extension host's share of tool calls, and a cold start after a reboot. [FINDINGS.md](FINDINGS.md) has the timings for the agent and the model.
 
-### Pilot build clean-up
+### Build clean-up
 
 - Regenerate the policy templates (`policyData.jsonc`) so the templates admins deploy include the Gemini settings. This needs a built app.
 - Release builds leave out upstream's `extensions/copilot`. Leave it out of dev builds too.
@@ -45,7 +45,7 @@ Record a Chromium profile, an extension-host profile and a CLI telemetry file (*
 
 ### Organisation default project
 
-The app reads `geminiDefaultProjectId` from `product.json`, but no build sets it. If the pilot organisation wants a default, add it to the release workflow, for example from a repository variable.
+The app reads `geminiDefaultProjectId` from `product.json`, but no build sets it. If an organisation wants a default, add it to the release workflow, for example from a repository variable.
 
 ### Repository settings
 
@@ -54,10 +54,6 @@ The app reads `geminiDefaultProjectId` from `product.json`, but no build sets it
 - Deleting the old `claude/*` branches once their work is merged; new branches start with `task/`, `feature/` or `bugfix/`.
 - The `GEMINI_UPSTREAM_TOKEN` secret. Without it the upstream job cannot push an upstream move ([README](../README.md#upstream-releases)).
 - The `SNYK_TOKEN` secret, which turns the Snyk job into a gate.
-
-### The pilot
-
-Three developers for two weeks, with the pilot's admin profile ([pilot/README.md](../pilot/README.md)) and `gemini.pilot.record` on. At the end, run **Gemini: Export Pilot Data** on each Mac.
 
 ## Known gaps
 
@@ -77,7 +73,7 @@ gemini-cli 0.64.0 offers no `session/close`, so a long-lived agent process keeps
 
 The confirm-class policy rules name the team's own servers `jira` and `gitlab`. A team that names them otherwise needs its own rules.
 
-## After the pilot
+## Later
 
 ### Semantic search for the index
 
@@ -93,7 +89,7 @@ Check that the release's signing step signs the `rg` binaries added to the bundl
 
 ### More platforms
 
-Windows first: one more runner in the release workflow and a code-signing certificate. Then Intel Macs and Linux if pilot users ask. Bring this forward if the pilot includes Windows users.
+Windows first: one more runner in the release workflow and a code-signing certificate. Then Intel Macs and Linux if users ask. Bring this forward when Windows users join.
 
 ### Auto-update
 

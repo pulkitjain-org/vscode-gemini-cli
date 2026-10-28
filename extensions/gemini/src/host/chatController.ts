@@ -32,7 +32,6 @@ import { UpdateBatcher } from '../acp/updateBatcher';
 import { isBlockedWebFetch } from '../acp/webFetchHint';
 import { type AgentClient, type TurnStall, WaitAbortedError } from '../acp/agentClient';
 import { classifyTurnError, errorMessage, isContextOverflow, isModelTurnRefusal } from '../acp/errors';
-import { recordPilot } from '../acp/pilotLog';
 import { chatProtocolVersion, FromWebview, ProjectPanel, ProjectRepoView, ProjectSettingsView, statusCommands, ToWebview, type ViewStall } from './chatProtocol';
 import { stallNotice, stopReasonActions, stopReasonNotice, toViewStatus, turnErrorNotice, type TurnErrorNotice } from './chatStatus';
 import type { DiffPreview } from './diffPreview';
@@ -261,9 +260,6 @@ export class ChatController implements vscode.Disposable {
 			this.runs,
 			this.usage,
 			service.permissions.onDidChange(event => {
-				if (event.kind === 'requested' && this.timing) {
-					this.timing.permissions++;
-				}
 				this.permissions.apply(event);
 				this.fireActivity();
 				this.trySteer();
@@ -733,7 +729,7 @@ export class ChatController implements vscode.Disposable {
 		let delivered = false;
 		/** How the turn came to an end, for the messages waiting on it. */
 		let outcome: 'done' | 'steer' | 'stopped' = 'stopped';
-		this.timing = { started, permissions: 0 };
+		this.timing = { started };
 		this._lastTurnError = undefined;
 		// The last failure's Retry and Continue have done their work, or were passed over.
 		this.transcript.clearNoticeActions();
@@ -796,7 +792,6 @@ export class ChatController implements vscode.Disposable {
 				content.unshift({ type: 'text', text: steeringNote() });
 			}
 			this.timing.sent = Date.now();
-			recordPilot({ kind: 'prompt', waitedMs: this.timing.ready - started });
 			promptAt = this.transcript.items.length;
 			const { stopReason, usage } = await this.promptRecovering(content);
 			delivered = true;
@@ -1059,11 +1054,6 @@ export class ChatController implements vscode.Disposable {
 		this.retryItemId = id;
 		const timing = this.timing;
 		this.timing = undefined;
-		recordPilot({
-			kind: 'turn', permissions: timing?.permissions ?? 0, durationMs,
-			...timing?.sent && timing.firstToken ? { firstTokenMs: timing.firstToken - timing.sent } : {},
-			...timing?.sent && timing.firstText ? { firstTextMs: timing.firstText - timing.sent } : {},
-		});
 		if (timing?.sent && timing.firstToken) {
 			this.transcript.updateTurnEnd(id, { firstTokenMs: timing.firstToken - timing.sent });
 		}
@@ -1692,8 +1682,6 @@ export async function openChatAsMarkdown(title: string, items: readonly Transcri
 /** When a turn's steps happened, in ms since the epoch. */
 interface TurnTiming {
 	readonly started: number;
-	/** Permission cards the turn showed, for the pilot's counters. */
-	permissions: number;
 	ready?: number;
 	sent?: number;
 	/** The model's first output after the prompt was sent: a thought, a tool call, a plan or reply text. */

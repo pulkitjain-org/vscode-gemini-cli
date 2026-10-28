@@ -8,7 +8,6 @@ import * as vscode from 'vscode';
 import { AgentChanges, EditedFile, othersChanging, reviewBase, reviewOrder } from '../acp/agentChanges';
 import { acceptHunk, diffLines, Hunk, revertHunk, splitLines } from '../acp/lineDiff';
 import { errorMessage } from '../acp/errors';
-import { recordPilot } from '../acp/pilotLog';
 import { deleteFile, replaceFileText } from './workspaceFileSystem';
 import { showError } from './errorNotice';
 
@@ -299,7 +298,6 @@ export class ReviewController implements vscode.CodeLensProvider, vscode.HoverPr
 		if (review.file.created && review.hunks.length === 1 && !review.foreign) {
 			return this.undoFile(document.uri.toString(), sourceId);
 		}
-		recordPilot({ kind: 'undo', scope: 'change' });
 		const reverted = revertHunk(splitLines(review.base), splitLines(document.getText()), hunk).join('\n');
 		// The edits that aren't the agent's stay, in the file and in its new baseline.
 		await this.write(review, reverted, review.base);
@@ -333,7 +331,6 @@ export class ReviewController implements vscode.CodeLensProvider, vscode.HoverPr
 				return;
 			}
 		}
-		recordPilot({ kind: 'undo', scope: 'file' });
 		const next = review.file.created ? undefined : review.file.original;
 		await this.write(review, next, next ?? '');
 	}

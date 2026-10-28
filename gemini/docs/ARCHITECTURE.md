@@ -19,7 +19,7 @@ extensions/gemini/
                     the team tools', a project's and the index's, on one base in localMcpServer.ts),
                     the workspace index and its docs store (index/, docs/), the team
                     connectors and the team's servers as children (mcpStdio.ts, teamContainers.ts), the
-                    audit log, the benchmark and the pilot's counters.
+                    audit log and the benchmark.
   src/host/         The VS Code side: the chat view and agent tabs, the Agents pane, Agent Home, the
                     Changes view, the status bar, the settings and team pages, commands, git actions,
                     update notices and the Get Started walkthrough. ChatController owns a chat's
@@ -45,7 +45,7 @@ src/vs/workbench/contrib/gemini/
                     Fork-only workbench code for what the extension API cannot do (below).
 gemini/             Fork material that is not shipped: docs, the patch series and its pin (patches/,
                     upstream.json), icon sources, the download page and docs generator (site/), the
-                    benchmark's tasks (bench/), the pilot's admin profile (pilot/), maintainer scripts.
+                    benchmark's tasks (bench/), maintainer scripts.
 .github/workflows/gemini-ci.yml, gemini-release.yml, gemini-pages.yml, gemini-upstream.yml
 ```
 
@@ -725,7 +725,7 @@ The confirm class (`teamConfirmTools`) is a ticket's status, a time log, a new m
 
 #### Audit log
 
-Every write, by an agent or from a page, goes through the audit log (`src/acp/auditLog.ts`): one JSON line per record, in a file per day under global storage, never rewritten. Days older than `gemini.storage.keepLogsDays` (90 by default, at least 7) are removed a minute after startup, with the pilot's. Each write records an intent before the call, then a result with the id the tool gave back, or the failure.
+Every write, by an agent or from a page, goes through the audit log (`src/acp/auditLog.ts`): one JSON line per record, in a file per day under global storage, never rewritten. Days older than `gemini.storage.keepLogsDays` (90 by default, at least 7) are removed a minute after startup. Each write records an intent before the call, then a result with the id the tool gave back, or the failure.
 
 An intent with no result is a write that was running when the app quit. **Open Audit Log** (`src/host/auditPage.ts`, a webview page over the same files) highlights those, Home lists them under Unfinished, and the status bar counts the day's writes (`auditStatusBar.ts`).
 
@@ -737,13 +737,11 @@ Once the user takes over a repository's own Jira and GitLab servers (`src/host/t
 - A call waits at most 8 seconds for a start under way, which goes on without it. After a failed start, calls skip the child for 5 minutes. So neither a container starting nor one that can't start holds up an agent's turn.
 - `runTeamTool` sends the calls that map one to one through the children, and the rest, or everything when a child can't start, through the in-process connectors.
 
-#### Performance trace, benchmark and pilot counters
+#### Performance trace and benchmark
 
 **Record Performance Trace** (`src/host/traceCommand.ts`, `src/acp/traceRecording.ts`) restarts the agent once with the CLI's OpenTelemetry export going to a file in `<globalStorage>/traces/`, prompts off. While it records, every turn's end gets a readout in the chat of where the time went, hop by hop against a budget for each hop (`turnReadout`: the fork's own hops from what the chat controller measured, the model's and the tools' from the CLI's file). Stop reads the whole file back into a table of each turn's routing call, model calls, tool calls and cached tokens. The CLI writes its records as JSON objects back to back, not one per line, which `parseTraceFile` handles.
 
 **Run Benchmark** (`src/host/benchmarkCommand.ts`) and `scripts/bench-run.mts` share `src/acp/benchmark.ts`, which the command loads only when it runs.
-
-The pilot's counters (`src/acp/pilotLog.ts`) go nowhere unless `gemini.pilot.record` is on. `recordPilot` calls in the chat, the review, the team requests and writes reach a sink that `src/host/pilot.ts` sets, which appends a file per day. **Export Pilot Data** writes them with the audit log to `~/geminicode-pilot/`.
 
 ### Merge request reviews
 
@@ -916,11 +914,10 @@ Each setting below can be locked through VS Code's policy system (Group Policy, 
 | `gemini.agents.allWorkspaceFolders` | `GeminiAllWorkspaceFolders` | off |
 | `gemini.agents.defaultMode` | `GeminiAgentsDefaultMode` | `default` (`autoEdit`, `plan` or `yolo`; a mode turned off by `GeminiAllowAutoEdit` or `GeminiAllowYolo` falls back to `default`) |
 | `gemini.browser.keepSignIns` | `GeminiBrowserKeepSignIns` | off |
-| `gemini.pilot.record` | `GeminiPilotRecord` | off |
 
 `gemini.agents.worktreeSetup` and `gemini.agents.defaultMode` are machine-scoped, so a repository's own settings can't set the command, or start agents in a mode that asks less. `gemini.projectId` stays window-scoped, since a workspace's own billing project is documented and in use; starting an agent logs a warning when a workspace's value replaces the user's or the organisation's, and a `GeminiProjectId` policy wins over both (`getProjectSettings` reads it through `get`, as `inspect` leaves policies out).
 
-`gemini/pilot/GeminiCode-pilot.mobileconfig` sets the pilot's values as a macOS configuration profile for the app's preferences domain. An array setting's policy is a JSON string.
+An administrator sets these in a macOS configuration profile for the app's preferences domain. An array setting's policy is a JSON string.
 
 To pin a CLI version for everyone, lock `GeminiCliPath` to an empty string and `GeminiCliVersion` to the version.
 
@@ -956,7 +953,7 @@ Everything GeminiCode keeps, for an uninstall or a full disk (`storageAreas` in 
 | `<globalStorage>/records/agents/`, `records/workspaces/` | the agent list, one file per record |
 | `<globalStorage>/agents/`, `checkpoints/` | each agent's chat as shown, and its Undo checkpoints |
 | `<globalStorage>/reviews/`, `flows/` | merge request review drafts, open team flows |
-| `<globalStorage>/audit/`, `pilot/` | the audit log and the pilot's counters, a file per day |
+| `<globalStorage>/audit/` | the audit log, a file per day |
 | `<globalStorage>/traces/`, `cli-logs/` | performance traces; the CLI's debug log, one per window's process |
 | `<globalStorage>/gemini-cli/`, `policy/`, `enhance/` | installed CLI copies, the admin policy file, Enhance prompt's empty folder |
 | `~/.geminicode/index/`, `worktrees/`, `threads/`, `projects/` | the workspace index, agents' worktrees, threads' folders, projects' folders and memory |
@@ -1099,7 +1096,7 @@ The window defaults set `chat.disableAIFeatures`. That hides upstream's chat vie
   - the admin policy, file access, session approvals, project IDs and folder trust;
   - attachments, the agents model, changes, checkpoints, transcript storage, the prompt queue and reactions;
   - the local MCP servers, the team connectors, their writes and audit records, the team's servers as children (against a scripted MCP server, `test/fake-mcp`) and the take-over;
-  - the benchmark and the pilot's counters;
+  - the benchmark;
   - Projects: the hub's wake and thread rules (with several repositories too), its MCP server, how rules are linked into a coordinator's folder and a thread's worktree, project settings and memory storage, memory drafts, and multi-repository thread folders.
 - **Real CLI tests** (`test/acp/real*.test.ts`) run against the bundled CLI once `npm run bundle-cli` has placed it, or the CLI `GEMINI_CLI_PATH` names, against a fake Gemini API on localhost (`test/realCli.ts` picks the CLI; without one they are skipped locally and fail in CI). They cover the `initialize` handshake and the sign-in-required path, the admin policy (modes, shell, the environment commands and the confirm class), the model list's shape, reopening sessions by id and from the terminal with the replay count, Rewind, an MCP server that cannot start, and the contract with the CLI's private formats (`realCliContract.test.ts`). CI runs them against the bundled, `latest` and `preview` CLI.
 - **Fork tests in upstream code** (`src/vs/**/test/`, such as the agents' browser file policy in `geminiAgentFiles.test.ts`) run with upstream's runner, `./scripts/test.sh --run <file>`, after `npm run compile`; Gemini CI's Compile & hygiene job runs them.

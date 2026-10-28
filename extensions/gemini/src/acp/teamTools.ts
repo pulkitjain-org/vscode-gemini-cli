@@ -26,7 +26,6 @@ import { describeSnyk, SnykCli } from './snyk';
 import { describeSonar, SonarClient, sonarProjectKeyIn, SonarTarget } from './sonar';
 import type { TeamDefaults } from './teamDefaults';
 import { ChildServer, McpServerUnavailableError } from './mcpStdio';
-import { recordPilot } from './pilotLog';
 import { gitlabVia, jiraVia, snykVia, sonarVia, TeamChildren } from './teamContainers';
 import { external } from './externalText';
 import { clip, hostOf, TeamToolError, TeamToolId } from './teamHttp';
@@ -480,7 +479,6 @@ async function runAudited(context: TeamToolContext, who: TeamCaller, tool: TeamT
 	const site = routed ? await routed.then(client => hostOf(client.site), () => undefined)
 		: tool.tool === 'confluence' && (context.connectors().confluence?.length ?? 0) > 1 ? arg(args, 'site') : undefined;
 	const result = await auditedWrite(context.audit, who, tool, args, () => runTeamTool(context, folder, tool, args, who.agent, routed), site);
-	recordPilot({ kind: 'write', tool: tool.name, caller: who.caller, ok: !result.isError });
 	return result;
 }
 

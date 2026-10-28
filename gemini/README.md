@@ -37,7 +37,6 @@ Tools and assets:
 
 - [site/](site/): the generator for the download page, the feature pages and the docs site (`build.mts`), which the Pages workflow runs.
 - [bench/](bench/README.md): the benchmark's tasks and results.
-- [pilot/](pilot/README.md): the pilot's admin profile.
 - [branding/](branding/README.md): icon sources.
 - [patches/](patches/) and [upstream.json](upstream.json): the fork's edits to upstream files, as a patch series over the pinned upstream tag.
 - [scripts/](scripts/):

@@ -120,11 +120,6 @@
         "icon": "$(pulse)"
       },
       {
-        "command": "gemini.pilot.export",
-        "title": "%command.pilotExport%",
-        "category": "%category%"
-      },
-      {
         "command": "gemini.runBenchmark",
         "title": "%command.runBenchmark%",
         "category": "%category%",
@@ -1130,10 +1125,6 @@
           "when": "config.gemini.developer.showTools"
         },
         {
-          "command": "gemini.pilot.export",
-          "when": "config.gemini.developer.showTools || config.gemini.pilot.record"
-        },
-        {
           "command": "gemini.recordTrace",
           "when": "config.gemini.developer.showTools"
         },
@@ -1715,12 +1706,6 @@
               "maxLength": 500
             },
             "markdownDescription": "%configuration.chat.reactions.meanings%"
-          },
-          "gemini.pilot.record": {
-            "type": "boolean",
-            "default": false,
-            "scope": "machine",
-            "markdownDescription": "%configuration.pilot.record%"
           },
           "gemini.developer.showTools": {
             "type": "boolean",
