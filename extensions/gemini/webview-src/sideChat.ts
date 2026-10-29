@@ -8,7 +8,8 @@
 // (media/sideChat.js), loaded the first time a side question is asked
 // (sideChatLoader.ts); everything it shares with the chat comes in `SideHost`.
 
-import type { SideStrings, ToWebview } from '../src/host/chatProtocol';
+import type { ToWebview } from '../src/host/chatProtocol';
+import type { SideStrings } from '../src/host/chatStrings';
 import { sideSteeringDraft, type SideExchange } from '../src/acp/sideChat';
 
 /** What the panel uses of the chat's own modules. */

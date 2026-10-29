@@ -10,7 +10,8 @@
 // (homePopups.ts) get the same menu class from here, so opening one menu
 // closes the others.
 
-import type { HomeAction, HomeButton, HomeCard, HomeRow, HomeStrings, HomeView } from '../src/host/panelProtocol';
+import type { HomeAction, HomeButton, HomeCard, HomeRow, HomeView } from '../src/host/panelProtocol';
+import type { HomeStrings } from '../src/host/panelStrings';
 import { Menu, type MenuRow, type MenuSection } from './menu';
 import { modeIcon } from './modeIcon';
 import { format } from './panelDom';

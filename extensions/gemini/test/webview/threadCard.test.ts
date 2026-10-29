@@ -11,7 +11,8 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { HTMLButtonElement, HTMLElement } from 'happy-dom';
 import type { ThreadCard } from '../../src/acp/chatTranscript';
-import type { FromWebview, ProjectChatStrings } from '../../src/host/chatProtocol';
+import type { FromWebview } from '../../src/host/chatProtocol';
+import type { ProjectChatStrings } from '../../src/host/chatStrings';
 import { hostExport, page, startScript } from './pages';
 
 const { document } = page;

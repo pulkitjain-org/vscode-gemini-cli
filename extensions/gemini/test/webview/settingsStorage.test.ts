@@ -10,7 +10,8 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { HTMLElement } from 'happy-dom';
-import type { FromSettingsPage, SettingsPageStrings, StorageView } from '../../src/host/panelProtocol';
+import type { FromSettingsPage, StorageView } from '../../src/host/panelProtocol';
+import type { SettingsPageStrings } from '../../src/host/panelStrings';
 import { page, startScript } from './pages';
 
 type StorageSection = (view: StorageView, strings: Partial<SettingsPageStrings>, post: (message: FromSettingsPage) => void) => HTMLElement;

@@ -7,7 +7,7 @@
 // from the extension host so they are localized.
 
 import * as vscode from 'vscode';
-import type { ChatStrings, ForkStrings, ProjectChatStrings, ReactionStrings, ResearchStrings, SideStrings } from '../chatProtocol';
+import type { ChatStrings, ForkStrings, ProjectChatStrings, ReactionStrings, ResearchStrings, SideStrings } from '../chatStrings';
 import { reactionsOn } from '../chatReactions';
 import { configSection } from '../configuration';
 import { foldWorkOn } from '../foldWork';

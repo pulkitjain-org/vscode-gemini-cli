@@ -5,7 +5,8 @@
 
 // The Project Helpers page (src/host/settingsPage.ts).
 
-import type { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage, TrustRowView, TrustView } from '../src/host/panelProtocol';
+import type { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageView, SkillView, ToSettingsPage, TrustRowView, TrustView } from '../src/host/panelProtocol';
+import type { SettingsPageStrings } from '../src/host/panelStrings';
 import { button, el, format, icon } from './panelDom';
 import { bootPage } from './panelBoot';
 import { selectMenu, type SelectMenu } from './selectMenu';

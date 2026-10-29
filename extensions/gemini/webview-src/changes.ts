@@ -6,7 +6,8 @@
 // Agents mode's Changes panel (src/host/changesPanel.ts): the agent's changed
 // files, each with its changes as a unified diff and Keep and Undo on each.
 
-import type { ChangedFileView, ChangesPanelStrings, ChangesPanelView, FromChangesPanel, ToChangesPanel } from '../src/host/panelProtocol';
+import type { ChangedFileView, ChangesPanelView, FromChangesPanel, ToChangesPanel } from '../src/host/panelProtocol';
+import type { ChangesPanelStrings } from '../src/host/panelStrings';
 import { button, el, format, icon, pageStrings } from './panelDom';
 import { renderTeam } from './mrPanel';
 import { setTip } from './tooltip';

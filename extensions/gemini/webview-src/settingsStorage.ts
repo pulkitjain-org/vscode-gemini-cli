@@ -7,7 +7,8 @@
 // place GeminiCode keeps data, with its size. The sizes are asked for the
 // first time the section scrolls into view, never as the page opens.
 
-import type { FromSettingsPage, SettingsPageStrings, StorageView } from '../src/host/panelProtocol';
+import type { FromSettingsPage, StorageView } from '../src/host/panelProtocol';
+import type { SettingsPageStrings } from '../src/host/panelStrings';
 import { button, el, icon } from './panelDom';
 import { selectMenu, type SelectMenu } from './selectMenu';
 

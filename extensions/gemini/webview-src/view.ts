@@ -10,7 +10,8 @@ import type { Attachment } from '../src/acp/attachments';
 import type { PendingPromptView } from '../src/acp/promptQueue';
 import type { TranscriptItem } from '../src/acp/chatTranscript';
 import type { SessionSettings } from '../src/acp/sessionSettings';
-import type { ChatStrings, FromWebview, SharedPageView } from '../src/host/chatProtocol';
+import type { FromWebview, SharedPageView } from '../src/host/chatProtocol';
+import type { ChatStrings } from '../src/host/chatStrings';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromWebview): void };
 

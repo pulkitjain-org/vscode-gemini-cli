@@ -9,7 +9,8 @@
 // Gemini, and earlier agents to resume.
 
 import { type Attachment, attachmentLabel } from '../src/acp/attachments';
-import type { FromHome, HomeAction, HomeAgent, HomeButton, HomeCard, HomeDashboard, HomeRow, HomeStrings, HomeView, ToHome } from '../src/host/panelProtocol';
+import type { FromHome, HomeAction, HomeAgent, HomeButton, HomeCard, HomeDashboard, HomeRow, HomeView, ToHome } from '../src/host/panelProtocol';
+import type { HomeStrings } from '../src/host/panelStrings';
 import { attachmentIcon, sameAttachment } from './chatLogic';
 import { modeIcon } from './modeIcon';
 import { button, el, format, icon, keepFocus, pageStrings } from './panelDom';

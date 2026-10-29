@@ -8,7 +8,7 @@
 // loaded when the first project chat opens (chatHtml.ts).
 
 import * as vscode from 'vscode';
-import type { ProjectChatStrings } from '../chatProtocol';
+import type { ProjectChatStrings } from '../chatStrings';
 
 export function projectStrings(): ProjectChatStrings {
 	return {

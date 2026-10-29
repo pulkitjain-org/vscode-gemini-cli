@@ -26,7 +26,8 @@ import { configSection, getApprovalPolicy, getProjectSettings, indexBuildOn } fr
 import { preferredModel } from './modelPreference';
 import { moveCard, toggleCard, type DashboardLayout } from '../acp/dashboard';
 import { buildDashboard, DashboardInput, StartupState } from './homeDashboard';
-import { FromHome, HomeAction, HomeAgent, HomeCardId, HomeIndex, HomeProject, HomeStrings, HomeView, ToHome } from './panelProtocol';
+import { FromHome, HomeAction, HomeAgent, HomeCardId, HomeIndex, HomeProject, HomeView, ToHome } from './panelProtocol';
+import { HomeStrings } from './panelStrings';
 import { TeamData } from './teamData';
 import { teamToolIds } from '../acp/teamHttp';
 import type { TeamConnections } from './teamConnections';

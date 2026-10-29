@@ -14,7 +14,8 @@
 // repository colours) comes from the chat's bundle through `ThreadCardDeps`.
 
 import type { ThreadCard } from '../src/acp/chatTranscript';
-import type { FromWebview, ProjectChatStrings, ThreadAction } from '../src/host/chatProtocol';
+import type { FromWebview, ThreadAction } from '../src/host/chatProtocol';
+import type { ProjectChatStrings } from '../src/host/chatStrings';
 import type { Menu, MenuOptions } from './menu';
 
 export interface ThreadCardDeps {
