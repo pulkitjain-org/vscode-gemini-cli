@@ -163,6 +163,8 @@ export class AgentRuntime {
 	/** Folders' own processes, by folder, and the process each session reopened on one of them is on. */
 	private readonly folders = new Map<string, FolderProcess>();
 	private readonly sessionFolders = new Map<string, FolderProcess>();
+	/** Each open session's folder, for the file policy its reads and writes follow. */
+	private readonly sessionCwds = new Map<string, string>();
 	private readonly onDidRetryEmitter = new Emitter<CliRetry>();
 	/** The CLI retries an API call (from its debug log, see `noteRetry`); not tied to one session. */
 	readonly onDidRetry = this.onDidRetryEmitter.event;
@@ -312,7 +314,7 @@ export class AgentRuntime {
 			throw new AgentError({ kind: 'unknown', message: 'The agent is not ready.' });
 		}
 		try {
-			return { connection, agent: state.agent, session: await connection.newSession(cwd, mcpServers), mcpServers };
+			return { connection, agent: state.agent, session: this.noteCwd(await connection.newSession(cwd, mcpServers), cwd), mcpServers };
 		} catch (err) {
 			const info = classifyAgentError(err);
 			const canAuthenticate = state.agent.authMethods?.some(m => m.id === AUTH_METHOD_ID);
@@ -325,7 +327,7 @@ export class AgentRuntime {
 			// user's ~/.gemini/settings.json.
 			this.authenticating ??= connection.authenticate(AUTH_METHOD_ID).then(() => undefined);
 			await this.authenticating;
-			return { connection, agent: state.agent, session: await connection.newSession(cwd, mcpServers), mcpServers };
+			return { connection, agent: state.agent, session: this.noteCwd(await connection.newSession(cwd, mcpServers), cwd), mcpServers };
 		} catch (err) {
 			throw new AgentError(classifyAgentError(err));
 		} finally {
@@ -365,6 +367,7 @@ export class AgentRuntime {
 				if (target.folder) {
 					this.sessionFolders.set(sessionId, target.folder);
 				}
+				this.sessionCwds.set(sessionId, cwd);
 				return { connection: target.connection, agent: target.agent, session: { ...response, sessionId }, mcpServers };
 			} catch (err) {
 				this.earlyUpdates.delete(sessionId);
@@ -376,6 +379,16 @@ export class AgentRuntime {
 				}
 			}
 		})());
+	}
+
+	/** The folder a session was opened in, or undefined for a session this runtime did not open. */
+	folderOf(sessionId: string): string | undefined {
+		return this.sessionCwds.get(sessionId);
+	}
+
+	private noteCwd<T extends acp.NewSessionResponse>(response: T, cwd: string): T {
+		this.sessionCwds.set(response.sessionId, cwd);
+		return response;
 	}
 
 	/** The process to reopen a session of `cwd` on: the shared one, or the folder's own when it needs one and it starts. */
@@ -655,6 +668,7 @@ export class AgentRuntime {
 			this.endFolder(folder);
 		}
 		this.sessionFolders.clear();
+		this.sessionCwds.clear();
 		this.connection?.dispose();
 		this.connection = undefined;
 		this.spare = undefined;

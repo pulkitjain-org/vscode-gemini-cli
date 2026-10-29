@@ -147,6 +147,16 @@ describe('createFileHandlers', () => {
 		expect(await handlers.readTextFile({ sessionId: 's', path: inRoot('missing.ts') })).toEqual({ content: '' });
 	});
 
+	it('holds each session to its own folder', async () => {
+		const other = path.resolve('/work/other');
+		const fs = memoryFileSystem({ [inRoot('a.ts')]: 'a', [path.join(other, 'b.ts')]: 'b' });
+		const handlers = createFileHandlers(fs, sessionId => ({ roots: [sessionId === 'in-root' ? root : other] }));
+		expect(await handlers.readTextFile({ sessionId: 'in-root', path: inRoot('a.ts') })).toEqual({ content: 'a' });
+		await expect(handlers.readTextFile({ sessionId: 'in-root', path: path.join(other, 'b.ts') })).rejects.toThrow(/outside/);
+		expect(await handlers.readTextFile({ sessionId: 'in-other', path: path.join(other, 'b.ts') })).toEqual({ content: 'b' });
+		await expect(handlers.writeTextFile({ sessionId: 'in-other', path: inRoot('a.ts'), content: '' })).rejects.toThrow(/outside/);
+	});
+
 	it('refuses denied paths without touching the file system', async () => {
 		const fs = memoryFileSystem({ [inRoot('.env')]: 'SECRET=1' });
 		const handlers = createFileHandlers(fs, () => ({ roots: [root] }));

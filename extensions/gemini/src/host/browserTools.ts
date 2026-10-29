@@ -8,10 +8,10 @@ import * as vscode from 'vscode';
 import type { Attachment } from '../acp/attachments';
 import { BrowserAction, BrowserBackend, BrowserGate, BrowserMcpServer, BrowserToolHost, NetworkRequest, PageState, sharedPageText } from '../acp/browserMcp';
 import { describeDevServer, findDevServers } from '../acp/devServers';
-import { FileAccessPolicyOptions, isInside } from '../acp/fileAccess';
+import { FileAccessPolicyOptions } from '../acp/fileAccess';
 import { PageContext, pageContextAttachments } from '../acp/pageContext';
 import { configSection } from './configuration';
-import { getFileAccessPolicy, isIgnoredByGitCached } from './workspaceFileSystem';
+import { agentFileAccessPolicy, getFileAccessPolicy } from './workspaceFileSystem';
 import { showError } from './errorNotice';
 
 /**
@@ -264,11 +264,10 @@ export class BrowserTools implements vscode.Disposable {
 		}
 	}
 
-	/** As for the agent's file reads: its own folder when that is outside the workspace, else the workspace's. */
+	/** As for the agent's file reads: its own folder, and the window's others only when the setting shares them; the whole window for an agent whose folder is not known. */
 	private filePolicy(agent: string): FileAccessPolicyOptions {
-		const workspace = getFileAccessPolicy();
 		const folder = this.folders.get(agent);
-		return folder && !workspace.roots.some(root => isInside(root, folder)) ? { roots: [folder], isIgnored: isIgnoredByGitCached } : workspace;
+		return folder ? agentFileAccessPolicy(folder) : getFileAccessPolicy();
 	}
 
 	/** The agent to hand a page to: one the user picks from the open agents, most recent first, or a new one. */

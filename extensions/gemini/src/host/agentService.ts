@@ -23,11 +23,11 @@ import { McpDiagnostics, McpProblem } from '../acp/mcpDiagnostics';
 import { MIN_CLI_VERSION } from '../acp/protocol';
 import { AgentSidecar } from '../acp/sidecar';
 import { AgentStatus, describeAgentStatus, describeRuntimeStatus } from '../acp/status';
-import { isConfirmToolCall } from '../acp/teamTools';
+import { isTeamWriteToolCall } from '../acp/teamTools';
 import { agentErrorText } from './chatStatus';
 import { agentLaunchSettings, configSection, getAgentCommand, getApprovalPolicy, getCliResolution, getProjectSettings, getWorkspaceCwd, includedFolderPaths } from './configuration';
 import { sessionModel, sessionModelList } from './modelPreference';
-import { getFileAccessPolicy, WorkspaceFileSystem } from './workspaceFileSystem';
+import { agentFileAccessPolicy, WorkspaceFileSystem } from './workspaceFileSystem';
 
 /** How long the first agent process of a launch took, from its spawn. */
 export interface StartupTimes {
@@ -50,7 +50,8 @@ export class AgentService implements vscode.Disposable {
 	/** The agent process; every chat session shares it. */
 	readonly runtime: AgentRuntime;
 	/** The workspace's file requests for every session, with the access policy applied. */
-	readonly files = createFileHandlers(new WorkspaceFileSystem(), getFileAccessPolicy);
+	/** The agents' file reads and writes, each session held to its own folder (`agentFileAccessPolicy`). */
+	readonly files = createFileHandlers(new WorkspaceFileSystem(), sessionId => agentFileAccessPolicy(this.runtime.folderOf(sessionId) ?? getWorkspaceCwd()));
 	/**
 	 * A session of the service's own, opened only when something asks for it
 	 * (`ensureReady`), such as the walkthrough's Sign In: the status comes from
@@ -130,13 +131,13 @@ export class AgentService implements vscode.Disposable {
 			preferredModel: sessionModel,
 			modelList: sessionModelList,
 			isModeAllowed: modeId => isModeAllowed(getApprovalPolicy(), modeId),
-			alwaysAsks: isConfirmToolCall,
+			alwaysAsks: isTeamWriteToolCall,
 			onDidWriteFile: filePath => this.permissions.approvals.noteWrite(filePath),
 			explainFileError: sessionId => this.files.lastDenial(sessionId),
 		});
 
-		// Redirects into the workspace may be approved for the session; others always ask.
-		this.permissions.roots = () => getFileAccessPolicy().roots;
+		// Redirects into the agent's folders may be approved for the session; others always ask.
+		this.permissions.roots = () => agentFileAccessPolicy(getWorkspaceCwd()).roots;
 		this.disposables.push(
 			this.onDidChangeStatusEmitter,
 			this.onDidStartEmitter,

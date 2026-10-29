@@ -160,7 +160,7 @@ const keptDenials = 50;
  * JSON-RPC error into "[object Object]" in its tool's failure, so the chat
  * shows this reason in its place (SessionUpdateAdapter).
  */
-export function createFileHandlers(fileSystem: ClientFileSystem, policy: () => FileAccessPolicyOptions) {
+export function createFileHandlers(fileSystem: ClientFileSystem, policy: (sessionId: string) => FileAccessPolicyOptions) {
 	const denials = new Map<string, string>();
 	const refuse = (sessionId: string, filePath: string, reason: string) => {
 		const error = new FileAccessDeniedError(filePath, reason);
@@ -174,7 +174,7 @@ export function createFileHandlers(fileSystem: ClientFileSystem, policy: () => F
 	return {
 		lastDenial: (sessionId: string): string | undefined => denials.get(sessionId),
 		async readTextFile(params: acp.ReadTextFileRequest): Promise<acp.ReadTextFileResponse> {
-			const denied = await checkFileAccess(params.path, 'read', policy());
+			const denied = await checkFileAccess(params.path, 'read', policy(params.sessionId));
 			if (denied) {
 				throw refuse(params.sessionId, params.path, denied);
 			}
@@ -188,7 +188,7 @@ export function createFileHandlers(fileSystem: ClientFileSystem, policy: () => F
 			return { content: sliceLines(text ?? '', params.line, params.limit) };
 		},
 		async writeTextFile(params: acp.WriteTextFileRequest): Promise<acp.WriteTextFileResponse> {
-			const denied = await checkFileAccess(params.path, 'write', policy());
+			const denied = await checkFileAccess(params.path, 'write', policy(params.sessionId));
 			if (denied) {
 				throw refuse(params.sessionId, params.path, denied);
 			}

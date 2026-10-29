@@ -9,6 +9,7 @@ import { GitIgnoreChecker } from '../acp/gitIgnore';
 import { minimalEdit } from '../acp/lineDiff';
 import { memoizeAsync } from '../acp/memoize';
 import { isIgnoreFile } from '../acp/sessionApprovals';
+import { includedFolderPaths } from './configuration';
 
 /**
  * The agent's view of workspace files: reads see unsaved editor changes, and
@@ -93,10 +94,22 @@ export async function deleteFile(filePath: string): Promise<void> {
 	}
 }
 
-/** The access policy for the current workspace (folders, plus git's ignore rules). */
+/** The access policy for the whole window (every folder, plus git's ignore rules): what the user's own commands may name. */
 export function getFileAccessPolicy(): FileAccessPolicyOptions {
 	return {
 		roots: (vscode.workspace.workspaceFolders ?? []).filter(f => f.uri.scheme === 'file').map(f => f.uri.fsPath),
+		isIgnored: isIgnoredByGitCached,
+	};
+}
+
+/**
+ * The access policy for an agent working in `folder`: that folder, and the
+ * window's other folders only with `gemini.agents.allWorkspaceFolders`, the
+ * same folders the CLI's own tools get (`--include-directories`).
+ */
+export function agentFileAccessPolicy(folder: string): FileAccessPolicyOptions {
+	return {
+		roots: [folder, ...includedFolderPaths().filter(other => !isInside(folder, other) && !isInside(other, folder))],
 		isIgnored: isIgnoredByGitCached,
 	};
 }

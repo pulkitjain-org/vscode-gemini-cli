@@ -18,7 +18,7 @@ import { locateInLoginShell, parseSnykCode, parseSnykTest, Run, SnykCli } from '
 import { isReleaseBranch, releaseBranchForVersion, sortReleaseBranches } from '../../src/acp/teamDefaults';
 import { normalizeBaseUrl, teamReachability, teamRequest, TeamToolError } from '../../src/acp/teamHttp';
 import { describeSonar, SonarClient } from '../../src/acp/sonar';
-import { callTeamTool, external, isConfirmToolCall, teamConfirmTools, teamReadTools, TeamToolContext, teamToolsFor, teamWriteTools } from '../../src/acp/teamTools';
+import { callTeamTool, external, isConfirmToolCall, isTeamWriteToolCall, teamConfirmTools, teamReadTools, TeamToolContext, teamToolsFor, teamWriteTools } from '../../src/acp/teamTools';
 import { TeamToolsMcpServer } from '../../src/acp/teamToolsMcp';
 
 /** A local HTTP server answering with `handler`; records each request. */
@@ -311,6 +311,9 @@ describe('the confirm class and external text', () => {
 		expect(isConfirmToolCall({ toolCall: { title: 'merge_merge_request(project_id=1, merge_request_iid=3)' } })).toBe(true);
 		expect(isConfirmToolCall({ toolCall: { title: 'jira_get_issue(key=ACME-1)' } })).toBe(false);
 		expect(isConfirmToolCall({ toolCall: { title: 'jira_comment(key=ACME-1)' } })).toBe(false);
+		// Every write asks in YOLO, not only the confirm class.
+		expect(['jira_comment(key=ACME-1)', 'gitlab_reply(iid=3)', 'jira_assign', 'jira_transition(key=ACME-1, to=Done)', 'merge_merge_request(project_id=1)', 'jira_get_issue(key=ACME-1)', 'jira_commentary'].map(title => isTeamWriteToolCall({ toolCall: { title } })))
+			.toEqual([true, true, true, true, true, false, false]);
 		expect(teamWriteTools.map(t => t.name)).toContain('jira_assign');
 	});
 
