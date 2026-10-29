@@ -8,7 +8,7 @@ import type { TranscriptItem } from '../../src/acp/chatTranscript';
 import {
 	subagentName,
 	acceptsEnhanceReply, coalesceUpdates, HeldUpdates, attachmentIcon, carriesFiles, codeLanguage, composerHeightLimit, currentActivity, currentPrompt, promptStep, replyPreview, formatClock, turnStart, draggedHeight, emptyFence, enhanceButtonPlacement, enhanceOriginal, type EnhancePhase, enhancePhaseAfterInput, enhanceShortcutLabel, enhanceText, fileReference, fileUris, folderOf, format, formatDuration, formatSentAt, isEnhanceShortcut, isQueueShortcut,
-	groupCommands, imageName, isBroadQuestion, indexOfItem, isNearBottom, matchCommands, mentionAt, mentionInsertion, permissionChoices, planIcon, cardKey, waitingPermission, replyBefore, restoredHeight,
+	groupCommands, imageName, indexOfItem, isNearBottom, matchCommands, mentionAt, mentionInsertion, permissionChoices, planIcon, cardKey, waitingPermission, replyBefore, restoredHeight,
 	formatTokens, resetsIn, sameAttachment, slashQuery, thoughtSeconds, toolKindIcon, withAppended, withoutMention, wrapIndex,
 	contextParts, enterAction, mentionGroup, symbolIcon,
 } from '../../webview-src/chatLogic';
@@ -305,19 +305,6 @@ describe('slashQuery', () => {
 		expect(slashQuery('/init ', 6, 6)).toBeUndefined();
 		expect(slashQuery('fix /init', 9, 9)).toBeUndefined();
 		expect(slashQuery('/init', 0, 5)).toBeUndefined();
-	});
-});
-
-describe('isBroadQuestion', () => {
-	it('knows a question about the whole code from a narrow one or a request', () => {
-		expect([
-			'Where are auth tokens read, stored or logged across the services?',
-			'Which endpoints skip the permission check anywhere?',
-			'Find all places that call the old pricing API directly',
-			'Where is checkout?',
-			'Fix all the failing tests in the cart module please',
-			'/research where are all tokens logged in the app',
-		].map(isBroadQuestion)).toEqual([true, true, true, false, false, false]);
 	});
 });
 

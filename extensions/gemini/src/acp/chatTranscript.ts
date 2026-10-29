@@ -7,7 +7,6 @@
 // plain, serialisable items the webview renders. Streaming chunks extend the
 // item they belong to; tool calls and the plan update in place.
 
-import type { ResearchProgress } from './research';
 import type * as acp from '@agentclientprotocol/sdk';
 import { Emitter } from './events';
 import type { PendingPermission } from './permissions';
@@ -113,8 +112,6 @@ export type TranscriptItem =
 	| ForkItem
 	/** Where a turn's time went, from the fork's measurements and the CLI's trace (while a trace is recording). */
 	| { readonly id: string; readonly kind: 'trace'; readonly readout: TurnReadout; readonly file: string }
-	/** A research run (/research, research.ts): its parts as they are read, then its report. Not part of the agent's history. */
-	| { readonly id: string; readonly kind: 'research'; readonly question: string; readonly progress: ResearchProgress; readonly report?: string }
 	/** Ends a turn: how long the agent worked, with a way to copy its reply, retry it, or undo its file changes. */
 	| {
 		readonly id: string; readonly kind: 'turnEnd'; readonly durationMs: number;
@@ -542,21 +539,6 @@ export class ChatTranscript {
 		}
 	}
 
-	/** Adds a research run's card; returns its id. */
-	addResearch(question: string): string {
-		const id = this.newId();
-		this.push({ id, kind: 'research', question, progress: { state: 'planning', slices: [] } });
-		return id;
-	}
-
-	/** A research run's progress, and its report once there is one. */
-	updateResearch(id: string, progress: ResearchProgress, report?: string): void {
-		const item = this._items.find(existing => existing.id === id);
-		if (item?.kind === 'research') {
-			this.upsert({ ...item, progress, ...report !== undefined ? { report } : {} });
-		}
-	}
-
 	/** The last turn's readout, after its end. */
 	addTrace(readout: TurnReadout, file: string): void {
 		this.push({ id: this.newId(), kind: 'trace', readout, file });
@@ -584,10 +566,6 @@ export class ChatTranscript {
 			if (item.kind === 'notice' && item.actions) {
 				const { actions: _actions, ...rest } = item;
 				return rest;
-			}
-			// A research run still going when the chat was saved stopped with the window.
-			if (item.kind === 'research' && !['done', 'stopped', 'failed'].includes(item.progress.state)) {
-				return { ...item, progress: { ...item.progress, state: 'stopped' as const } };
 			}
 			if (item.kind === 'toolCall' && this.trimOutput) {
 				const trim = this.trimOutput;

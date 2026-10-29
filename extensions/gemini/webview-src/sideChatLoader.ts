@@ -10,7 +10,7 @@ import type { ToWebview } from '../src/host/chatProtocol';
 import { setLabel } from './dom';
 import { replaceInput } from './enhance';
 import { renderBlocks } from './items';
-import { strings, ui, vscode } from './view';
+import { state, strings, ui, vscode } from './view';
 
 type Panel = typeof import('./sideChat');
 
@@ -23,6 +23,7 @@ function host(): import('./sideChat').SideHost | undefined {
 		strings: text,
 		composer: ui.form,
 		post: message => vscode.postMessage(message),
+		readsCode: state.research,
 		renderMarkdown: text => renderBlocks(text),
 		setDraft: replaceInput,
 		setLabel,

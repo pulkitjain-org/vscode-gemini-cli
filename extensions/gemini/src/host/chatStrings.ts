@@ -187,26 +187,6 @@ export interface RunStrings {
 	readonly openTerminalDetail: string;
 }
 
-/** A research run's card (/research). */
-export interface ResearchStrings {
-	readonly title: string;
-	readonly readOnly: string;
-	readonly states: Readonly<Record<'planning' | 'reading' | 'verifying' | 'merging' | 'done' | 'stopped' | 'failed', string>>;
-	readonly slice: Readonly<Record<'queued' | 'reading' | 'done' | 'failed', string>>;
-	/** `{0}` files read so far. */
-	readonly reading: string;
-	/** `{0}` findings. */
-	readonly findings: string;
-	/** `{0}` parts, `{1}` findings: the folded parts above a report. */
-	readonly summary: string;
-	readonly stop: string;
-	readonly sendToAgent: string;
-	readonly copy: string;
-	/** Under a broad question in the message box. */
-	readonly suggest: string;
-	readonly dontSuggest: string;
-}
-
 /** The side question panel (/btw). */
 export interface SideStrings {
 	readonly title: string;
@@ -226,6 +206,19 @@ export interface SideStrings {
 	readonly copy: string;
 	readonly copied: string;
 	readonly hint: string;
+	/** The Read the code too switch: workers read the folder before answering. */
+	readonly readCode: string;
+	readonly readCodeTip: string;
+	/** The progress a code-reading answer shows while the workers read. */
+	readonly research: {
+		readonly readOnly: string;
+		readonly states: Readonly<Record<'planning' | 'reading' | 'verifying' | 'merging' | 'done' | 'stopped' | 'failed', string>>;
+		readonly slice: Readonly<Record<'queued' | 'reading' | 'done' | 'failed', string>>;
+		/** `{0}` files read so far. */
+		readonly reading: string;
+		/** `{0}` findings. */
+		readonly findings: string;
+	};
 }
 
 /** The reaction button, quick reactions, chips and picker. */
@@ -267,8 +260,6 @@ export interface ChatStrings {
 	readonly fork?: ForkStrings;
 	/** The side question panel's strings. */
 	readonly side?: SideStrings;
-	/** A research card's strings. */
-	readonly research: ResearchStrings;
 	/** Emoji reactions' strings; unset in a project's chat, which has none. */
 	readonly reactions?: ReactionStrings;
 	/** The badge on a thread's brief and the notes its coordinator relays. */

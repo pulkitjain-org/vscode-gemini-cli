@@ -17,7 +17,9 @@ export interface SideHost {
 	readonly strings: SideStrings;
 	/** The message box's form: the panel sits just above it. */
 	readonly composer: HTMLElement;
-	post(message: { readonly type: 'sideAsk'; readonly question: string } | { readonly type: 'sideCancel' } | { readonly type: 'requestFork'; readonly message: string }): void;
+	post(message: { readonly type: 'sideAsk'; readonly question: string; readonly readCode?: boolean } | { readonly type: 'sideCancel' } | { readonly type: 'requestFork'; readonly message: string }): void;
+	/** Whether Read the code too is offered: the chat can run read-only workers in its folder. */
+	readonly readsCode: boolean;
 	renderMarkdown(text: string): Node[];
 	/** Puts text in the message box, to edit and send. */
 	setDraft(text: string): void;
@@ -122,10 +124,21 @@ function build(): void {
 	const ask = el('button', 'side-chat-ask', text.ask);
 	ask.type = 'submit';
 	form.append(input, ask);
+	let readCode: HTMLInputElement | undefined;
+	if (host.readsCode) {
+		// Read the code too: the workers' report answers instead of the chat alone.
+		const label = el('label', 'side-chat-read-code');
+		readCode = el('input');
+		readCode.type = 'checkbox';
+		label.append(readCode, el('span', undefined, text.readCode));
+		label.title = '';
+		host.setLabel(label, text.readCodeTip);
+		form.append(label);
+	}
 	form.addEventListener('submit', event => {
 		event.preventDefault();
 		if (input.value.trim()) {
-			host.post({ type: 'sideAsk', question: input.value.trim() });
+			host.post({ type: 'sideAsk', question: input.value.trim(), ...readCode?.checked ? { readCode: true } : {} });
 		}
 	});
 	input.addEventListener('keydown', event => {

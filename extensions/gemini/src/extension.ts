@@ -24,6 +24,7 @@ import { PromptEnhancer } from './acp/promptEnhancer';
 import { configSection, getAgentCommand, getWorkspaceCwd, loadProductInfo, productInfo, setAgentEnvOverride, setStorageDirs } from './host/configuration';
 import { initModelList, initModelPreference, knownModelList } from './host/modelPreference';
 import { initReactionRecents } from './host/chatReactions';
+import { defaultConcurrency } from './acp/research';
 import { SetupState } from './host/setupState';
 import { GeminiStatusBar } from './host/statusBar';
 import { findCliEntry, QuickEdits } from './host/quickEdits';
@@ -158,9 +159,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		teamTools.onDidChange(() => agentsView.refreshSpare()),
 		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.browser`) && agentsView.refreshSpare()),
 	);
-	// Agents' research tool runs the research engine from dist/onDemand.js on the agent process, as /research does.
+	// Agents' research tool runs the research engine from dist/onDemand.js on the agent process, as a side question that reads the code does.
 	workspaceIndex.research = async (folder, question) => {
-		const concurrency = vscode.workspace.getConfiguration(configSection).get<number>('research.concurrency', 4);
 		const run = new (onDemand().ResearchRun)(question, {
 			runtime: service.runtime,
 			cwd: folder,
@@ -168,7 +168,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			release: worker => workspaceIndex.forgetAgent(worker),
 			ask: (system, prompt, signal) => enhancer.ask(system, prompt, signal),
 			outline: await workspaceIndex.outlineOf(folder).catch(() => undefined),
-			concurrency: Math.min(8, Math.max(1, Math.floor(concurrency) || 4)),
+			concurrency: defaultConcurrency,
 			onProgress: progress => progress.state === 'done' || progress.state === 'failed' ? log.info(`Research for an agent in ${folder}: ${progress.state}, ${progress.slices.length} parts`) : undefined,
 		});
 		return run.run();

@@ -257,8 +257,6 @@ function isTranscriptItem(value: unknown): value is TranscriptItem {
 			return typeof item.durationMs === 'number' && (item.usage === undefined || (Array.isArray(item.usage) && item.usage.every(isModelTokens)));
 		case 'thread':
 			return typeof item.thread === 'string' && typeof item.title === 'string' && typeof item.state === 'string' && typeof item.startedAt === 'number';
-		case 'research':
-			return typeof item.question === 'string' && typeof item.progress?.state === 'string' && Array.isArray(item.progress.slices) && (item.report === undefined || typeof item.report === 'string');
 	}
 }
 

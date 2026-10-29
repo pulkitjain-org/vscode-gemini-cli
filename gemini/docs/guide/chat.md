@@ -41,7 +41,7 @@ Type `/` at the start of the composer, or choose **Skills and commands** in the 
 
 - **Gemini CLI commands** such as `/init`, `/memory` and `/restore` run in the CLI.
 - **The Gemini CLI's commands, as GeminiCode offers them**, listed first under the names the terminal uses: `/resume` (also `/chat`) browses the saved sessions and restores one, `/rewind` goes back to before a message, `/plan [goal]` switches to Plan mode with a goal and `/plan copy` copies the latest plan, `/compress` summarizes the older work (below), `/context` (also `/stats`) shows what each turn carries (see [Usage and quota](#usage-and-quota)), and `/permissions trust` opens the folder trust dialog.
-- **GeminiCode's own**: `/btw` asks a [side question](#side-questions), `/research` reads widely in parallel ([Research](#research)), and `/fork` forks the agent.
+- **GeminiCode's own**: `/btw` asks a [side question](#side-questions), which can read the code too, and `/fork` forks the agent.
 - **Team commands** are TOML files in `.gemini/commands/` in the workspace, or in `~/.gemini/commands/` for your own. It's the Gemini CLI's own format, so the same files work in the terminal: `git/commit.toml` becomes `/git:commit`.
 - **Skills** are folders with a `SKILL.md`, in `.gemini/skills/` (or `.agents/skills/`) in the workspace, or in `~/.gemini/skills/` for your own. Picking one asks the agent to load it, with what you typed after the name as the task.
 
@@ -141,16 +141,16 @@ Under an answer:
 
 Earlier side questions stay in the panel until the chat closes; <kbd>⇧←</kbd> and <kbd>⇧→</kbd> step through them, and later questions can build on them. Side questions use the quick requests' model (`gemini.inlineEdit.model`); with a sign-in that can't make quick requests, a session of their own on the Gemini CLI answers instead.
 
-## Research
+### Read the code too
 
-For a broad question about the code, such as `/research where are auth tokens read, stored or logged?`, GeminiCode reads widely in parallel instead of one step at a time:
+For a broad question about the code, such as "where are auth tokens read, stored or logged?", tick **Read the code too** beside **Ask**. Instead of answering from the chat alone, GeminiCode reads widely in parallel:
 
 1. It splits the question into parts by area of the code, from the workspace index's outline.
-2. Read-only workers, four at a time by default (`gemini.research.concurrency`, 1 to 8), each read one part with the index tools. They run in Plan mode and every permission request they make is refused, so nothing changes.
+2. Read-only workers, four at a time, each read one part with the index tools. They run in Plan mode and every permission request they make is refused, so nothing changes.
 3. One more worker rereads the most serious findings.
 4. A report answers the question, with each finding's `path:line`, verified ones marked.
 
-When a question in the message box reads like a broad one, such as "where are all the places that…", **Run as Research** appears under it; its × stops the suggestion for that chat. The card in the chat shows each part as it's read. **Stop** ends every worker and reports what was done. Under the report, **Send to Agent** puts it in the message box for the agent to act on, and **Copy** copies it. The research isn't part of the agent's conversation until you send it. A project's chats have no `/research`: their threads do the reading.
+The panel shows each part as it's read; **Stop** ends every worker and reports what was done. The report is the answer, so **Send to Agent**, **Fork into Agent** and **Copy** work on it as on any side answer, and later side questions can build on it. It is slower than an answer from the chat and uses more of your quota. A project's chats don't offer it: the project's threads do the reading.
 
 ## Replies
 

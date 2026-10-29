@@ -130,7 +130,7 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// Sync Design System and the design system's reads for Figma (designSystemSync.ts, designSystem.ts, designTokens.ts)
 	// added about 9 KB; the pilot's export, removed, had been about 3 KB. The language servers' adapter for agents'
 	// index tools (editorToolsHost.ts), about 4 KB, loaded the first time an agent asks one. The research engine
-	// (research.ts), about 9 KB, loaded with the first /research. The docs crawler (docs/crawler.ts), about 9 KB,
+	// (research.ts), about 9 KB, loaded with the first side question that reads the code. The docs crawler (docs/crawler.ts), about 9 KB,
 	// moved here from dist/extension.js and loaded with the first docs fetch.
 	'dist/onDemand.js': 156_000,
 	// The indexer process, about 66 KB: parsing, SQLite queries and docs conversion, forked on first use, never

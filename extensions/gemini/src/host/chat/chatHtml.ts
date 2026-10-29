@@ -7,7 +7,7 @@
 // from the extension host so they are localized.
 
 import * as vscode from 'vscode';
-import type { ChatStrings, ForkStrings, ProjectChatStrings, ReactionStrings, ResearchStrings, SideStrings } from '../chatStrings';
+import type { ChatStrings, ForkStrings, ProjectChatStrings, ReactionStrings, SideStrings } from '../chatStrings';
 import { reactionsOn } from '../chatReactions';
 import { configSection } from '../configuration';
 import { foldWorkOn } from '../foldWork';
@@ -47,9 +47,8 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 		...(project && projectStringsOf ? { project: projectStringsOf() } : {}),
 		...(fork ? { fork: forkStrings() } : {}),
 		side: sideStrings(),
-		research: researchStrings(),
 		...(project ? {} : { reactions: reactionStrings() }),
-		placeholderFollowUp: vscode.l10n.t("Ask a follow-up · /research reads widely, /btw asks on the side"),
+		placeholderFollowUp: vscode.l10n.t("Ask a follow-up · /btw asks on the side"),
 		placeholderWorking: process.platform === 'darwin' ? vscode.l10n.t("↩ to steer, Tab or ⌘↩ to queue · ⌥⌘; asks on the side") : vscode.l10n.t("Enter to steer, Ctrl+Enter to queue · Ctrl+Alt+; asks on the side"),
 		send: process.platform === 'darwin' ? vscode.l10n.t("Send (Return)") : vscode.l10n.t("Send (Enter)"),
 		sendNow: process.platform === 'darwin' ? vscode.l10n.t("Send now (Return). Tab or ⌘Return queues it for after this turn.") : vscode.l10n.t("Send now (Enter). Ctrl+Enter queues it for after this turn."),
@@ -589,32 +588,7 @@ function reactionStrings(): ReactionStrings {
 	};
 }
 
-function researchStrings(): ResearchStrings {
-	return {
-		title: vscode.l10n.t("Research"),
-		readOnly: vscode.l10n.t("Read-only"),
-		states: {
-			planning: vscode.l10n.t("Splitting the question"),
-			reading: vscode.l10n.t("Reading"),
-			verifying: vscode.l10n.t("Checking the serious findings"),
-			merging: vscode.l10n.t("Writing the report"),
-			done: vscode.l10n.t("Done"),
-			stopped: vscode.l10n.t("Stopped"),
-			failed: vscode.l10n.t("Failed"),
-		},
-		slice: { queued: vscode.l10n.t("queued"), reading: vscode.l10n.t("reading"), done: vscode.l10n.t("done"), failed: vscode.l10n.t("not finished") },
-		reading: vscode.l10n.t("{0} files read"),
-		findings: vscode.l10n.t("{0} findings"),
-		summary: vscode.l10n.t("{0} parts read, {1} findings"),
-		stop: vscode.l10n.t("Stop"),
-		sendToAgent: vscode.l10n.t("Send to Agent"),
-		copy: vscode.l10n.t("Copy"),
-		suggest: vscode.l10n.t("Run as Research: read the code in parallel, read-only"),
-		dontSuggest: vscode.l10n.t("Don't suggest Research in this chat"),
-	};
-}
-
-function sideStrings(): SideStrings {
+export function sideStrings(): SideStrings {
 	return {
 		title: vscode.l10n.t("Side question"),
 		note: vscode.l10n.t("The agent keeps working"),
@@ -633,6 +607,23 @@ function sideStrings(): SideStrings {
 		copy: vscode.l10n.t("Copy"),
 		copied: vscode.l10n.t("Copied the answer"),
 		hint: vscode.l10n.t("Esc closes · /btw or ⌥⌘; asks from anywhere in the chat"),
+		readCode: vscode.l10n.t("Read the code too"),
+		readCodeTip: vscode.l10n.t("Read-only workers read the agent's folder in parallel and report with sources. Slower than an answer from the chat, and uses more of your quota."),
+		research: {
+			readOnly: vscode.l10n.t("Read-only"),
+			states: {
+				planning: vscode.l10n.t("Splitting the question"),
+				reading: vscode.l10n.t("Reading"),
+				verifying: vscode.l10n.t("Checking the serious findings"),
+				merging: vscode.l10n.t("Writing the report"),
+				done: vscode.l10n.t("Done"),
+				stopped: vscode.l10n.t("Stopped"),
+				failed: vscode.l10n.t("Failed"),
+			},
+			slice: { queued: vscode.l10n.t("queued"), reading: vscode.l10n.t("reading"), done: vscode.l10n.t("done"), failed: vscode.l10n.t("not finished") },
+			reading: vscode.l10n.t("{0} files read"),
+			findings: vscode.l10n.t("{0} findings"),
+		},
 	};
 }
 

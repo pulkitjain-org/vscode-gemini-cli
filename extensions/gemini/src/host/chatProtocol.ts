@@ -22,7 +22,7 @@ import type { PendingPromptView } from '../acp/promptQueue';
  * Bumped when the messages change, so the host can tell when the webview
  * bundle in media/ is older than the extension (a stale development build).
  */
-export const chatProtocolVersion = 48;
+export const chatProtocolVersion = 49;
 
 /** Commands the status line may offer; the host runs only these. */
 export const statusCommands = ['gemini.restartAgent', 'gemini.signIn', 'gemini.completeSetupInTerminal', 'gemini.setProjectId', 'gemini.showLog', 'gemini.agents.openTerminal', 'gemini.designSystem.sync'] as const;
@@ -431,11 +431,9 @@ export type FromWebview =
 	/** Open the Fork dialog: for the whole chat, or (Fork from Here) for the chat up to the reply that ends at `turnEnd`. */
 	| { readonly type: 'requestFork'; readonly turnEnd?: string; readonly message?: string }
 	/** A side question (/btw): answered from the conversation without stopping the agent or entering its history. */
-	| { readonly type: 'sideAsk'; readonly question: string }
+	/** A side question; with `readCode`, read-only workers read the folder first and the report answers. */
+	| { readonly type: 'sideAsk'; readonly question: string; readonly readCode?: boolean }
 	| { readonly type: 'sideCancel' }
-	/** A research card's Stop, and Send to Agent, which puts its report in the message box. */
-	| { readonly type: 'researchStop'; readonly id: string }
-	| { readonly type: 'researchUse'; readonly id: string }
 	/** The Fork dialog's Fork. */
 	| { readonly type: 'fork'; readonly fork: ForkRequest }
 	/** A fork card's buttons, in its parent's chat. */
