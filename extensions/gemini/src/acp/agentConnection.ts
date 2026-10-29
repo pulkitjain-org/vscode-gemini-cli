@@ -27,6 +27,8 @@ export interface SetupTimeouts {
 	readonly newSession: number;
 	readonly loadSession: number;
 	readonly authenticate: number;
+	/** `session/set_mode`, `session/set_model` and `session/close`: settings of an open session, which the CLI answers at once. */
+	readonly sessionCall: number;
 }
 
 /**
@@ -41,6 +43,7 @@ export const defaultSetupTimeouts: SetupTimeouts = {
 	newSession: 120_000,
 	loadSession: 120_000,
 	authenticate: 330_000,
+	sessionCall: 15_000,
 };
 
 /**
@@ -128,12 +131,12 @@ export class AgentConnection {
 	}
 
 	setMode(sessionId: string, modeId: string): Promise<acp.SetSessionModeResponse> {
-		return this.connection.agent.request('session/set_mode', { sessionId, modeId });
+		return withTimeout(this.connection.agent.request('session/set_mode', { sessionId, modeId }), 'session/set_mode', this.timeouts.sessionCall);
 	}
 
 	/** The unstable `session/set_model` that gemini-cli implements; not in the SDK's stable method list. */
 	setModel(sessionId: string, modelId: string): Promise<unknown> {
-		return this.connection.agent.request('session/set_model', { sessionId, modelId });
+		return withTimeout(this.connection.agent.request('session/set_model', { sessionId, modelId }), 'session/set_model', this.timeouts.sessionCall);
 	}
 
 	cancel(sessionId: string): Promise<void> {
@@ -142,7 +145,7 @@ export class AgentConnection {
 
 	/** Frees a session the agent keeps in memory; only when it advertises `sessionCapabilities.close`. */
 	close(sessionId: string): Promise<unknown> {
-		return this.connection.agent.request('session/close', { sessionId });
+		return withTimeout(this.connection.agent.request('session/close', { sessionId }), 'session/close', this.timeouts.sessionCall);
 	}
 
 	dispose(): void {
@@ -152,7 +155,7 @@ export class AgentConnection {
 
 /**
  * `request`, or a `timeout` AgentError once `ms` pass without an answer. The
- * request is not cancelled: gemini-cli 0.64 implements no `$/cancel_request`,
+ * request is not cancelled: gemini-cli 0.66 implements no `$/cancel_request`,
  * and an answer that comes later is dropped.
  */
 function withTimeout<T>(request: Promise<T>, method: string, ms: number): Promise<T> {

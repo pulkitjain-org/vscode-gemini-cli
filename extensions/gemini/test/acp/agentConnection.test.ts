@@ -6,7 +6,7 @@
 import { ChildProcessWithoutNullStreams } from 'node:child_process';
 import * as acp from '@agentclientprotocol/sdk';
 import { afterEach, describe, expect, it } from 'vitest';
-import { AgentConnection } from '../../src/acp/agentConnection';
+import { AgentConnection, defaultSetupTimeouts } from '../../src/acp/agentConnection';
 import { spawnAgent } from '../../src/acp/agentProcess';
 import { UnsupportedProtocolVersionError } from '../../src/acp/protocol';
 import type { FakeAgentScript } from '../fake-agent/fakeAgent';
@@ -21,7 +21,7 @@ describe('AgentConnection', () => {
 		connection = new AgentConnection(child.stdin, child.stdout, {
 			sessionUpdate: () => { },
 			requestPermission: async () => ({ outcome: { outcome: 'cancelled' } }),
-		});
+		}, { ...defaultSetupTimeouts, sessionCall: 200 });
 		return connection;
 	}
 
@@ -35,6 +35,18 @@ describe('AgentConnection', () => {
 		expect(info.protocolVersion).toBe(acp.PROTOCOL_VERSION);
 		expect(info.agentInfo?.name).toBe('fake-agent');
 		expect(info.authMethods?.map(m => m.id)).toEqual(['oauth-personal']);
+	});
+
+	it('gives up on a session call the agent never answers', async () => {
+		const connection = connect({ hangOn: ['session/set_mode'] });
+		await connection.initialize();
+		const { sessionId } = await connection.newSession(process.cwd());
+		await expect(connection.setMode(sessionId, 'yolo')).rejects.toMatchObject({ info: { kind: 'timeout' } });
+	});
+
+	it('reads past a line on the agent\'s output that is not JSON', async () => {
+		const info = await connect({ garbageStdout: true }).initialize();
+		expect(info.agentInfo?.name).toBe('fake-agent');
 	});
 
 	it('rejects an agent that speaks another protocol version', async () => {
