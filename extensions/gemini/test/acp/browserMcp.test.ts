@@ -85,6 +85,7 @@ function setup(answer = false, otherSites = true, model = 'gemini-3.1-pro-previe
 		enabled: () => on,
 		otherSites: () => otherSites,
 		grant: (agent, url) => void granted.add(`${agent} ${url.origin}`),
+		knows: (agent, url) => granted.has(`${agent} ${url.origin}`),
 		model: () => model,
 		allowedOrigins: () => origins,
 		devServers: async () => ['http://localhost:5173/ (HTTP 200, "My app")'],
@@ -216,11 +217,31 @@ describe('BrowserToolHost', () => {
 			outside: fileUrl(path.resolve('/Users/me/.aws'), 'credentials'),
 			web: 'http://localhost:5173/app.js',
 			bad: 'not a url',
-		}).map(async ([name, url]) => [name, await host.fileAllowed('a1', url)])));
-		expect(await loads()).toEqual({ inside: true, secret: false, ignored: false, outside: false, web: false, bad: false });
+		}).map(async ([name, url]) => [name, await host.loadAllowed('a1', url)])));
+		expect(await loads()).toEqual({ inside: true, secret: false, ignored: false, outside: false, web: true, bad: false });
 		turnOff();
 		expect(await loads()).toEqual({ inside: false, secret: false, ignored: false, outside: false, web: false, bad: false });
 		expect(asked).toEqual([]);
+	});
+
+	it('lets a local page reach only this machine and the sites the user already let the agent see, without asking', async () => {
+		const { host, asked, granted } = setup(true);
+		const reach = async () => Object.fromEntries(await Promise.all(Object.entries({
+			local: 'http://localhost:9000/api',
+			loopback: 'http://127.0.0.1:5173/@vite/client',
+			intranet: 'https://wiki.corp.example/secret',
+			shop: 'https://shop.example/cart',
+			other: 'ftp://files.example/',
+		}).map(async ([name, url]) => [name, await host.loadAllowed('a1', url)])));
+		const before = await reach();
+		granted.add('a1 https://shop.example');
+		expect({ before, after: await reach(), asked }).toEqual({
+			before: { local: true, loopback: true, intranet: false, shop: false, other: false },
+			after: { local: true, loopback: true, intranet: false, shop: true, other: false },
+			asked: [],
+		});
+		const { host: policed } = setup(true, true, 'gemini-3.1-pro-preview', ['https://*.example.com']);
+		expect(await policed.loadAllowed('a1', 'https://shop.example/cart')).toBe(false);
 	});
 
 	it('checks where the page really is: after a redirect on open, and on snapshot and screenshot', async () => {

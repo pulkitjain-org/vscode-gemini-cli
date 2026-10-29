@@ -35,8 +35,8 @@ class TestSession {
 	}
 
 	/** Whether the session lets a load from the page `webContentsId` (none for a worker or the browser itself) through. */
-	load(url: string, webContentsId?: number): Promise<boolean> {
-		return new Promise(resolve => this.beforeRequest!({ url, webContentsId } as Electron.OnBeforeRequestListenerDetails, response => resolve(!response.cancel)));
+	load(url: string, webContentsId?: number, resourceType: string = 'subFrame'): Promise<boolean> {
+		return new Promise(resolve => this.beforeRequest!({ url, webContentsId, resourceType } as Electron.OnBeforeRequestListenerDetails, response => resolve(!response.cancel)));
 	}
 
 	/** The response headers the page `webContentsId` gets, or undefined when they are left alone. */
@@ -53,11 +53,13 @@ class TestView {
 	private readonly _onDidClose = new Emitter<void>();
 	readonly onDidClose = this._onDidClose.event;
 	readonly host = { windowId: 7 };
-	readonly webContents: { readonly id: number };
+	readonly webContents: { readonly id: number; getURL(): string };
 	readonly session: { readonly electronSession: Electron.Session };
+	/** Where the page is. */
+	url = 'file:///w/index.html';
 
 	constructor(id: number, session: TestSession, public owner: IBrowserViewOwner) {
-		this.webContents = { id };
+		this.webContents = { id, getURL: () => this.url };
 		this.session = { electronSession: session.asSession() };
 	}
 
@@ -80,12 +82,12 @@ class TestView {
 const agent: IBrowserViewOwner = { type: 'agent', sessionId: 'gemini-agent:a1' };
 const user: IBrowserViewOwner = { type: 'user' };
 
-/** Allows every file but `.env`, and records what it was asked. */
+/** Allows every file but `.env` and every site but the intranet, and records what it was asked. */
 function setup() {
 	const asked: string[] = [];
 	const files = new GeminiAgentFiles(async (windowId, key, url) => {
 		asked.push(`${windowId} ${key} ${url}`);
-		return !url.endsWith('.env');
+		return !url.endsWith('.env') && !url.includes('intranet');
 	});
 	const session = new TestSession();
 	files.listen(session.asSession());
@@ -116,12 +118,43 @@ suite('GeminiAgentFiles', () => {
 			otherAgentSecret: await session.load('file:///w/.env', 3),
 			asked,
 		}, {
-			filter: { urls: ['file://*/*'] },
+			filter: { urls: ['file://*/*', 'http://*/*', 'https://*/*'] },
 			agentPage: true,
 			agentSecret: false,
 			userSecret: true,
 			otherAgentSecret: true,
 			asked: ['7 a1 file:///w/index.html', '7 a1 file:///w/.env'],
+		});
+		closeAll();
+	});
+
+	test('asks about the sites a Gemini agent\'s local page reaches, and leaves pages on allowed sites alone', async () => {
+		const { asked, session, page, closeAll } = setup();
+		const local = page(1, agent);
+		local.url = 'file:///w/index.html';
+		const remote = page(2, agent);
+		remote.url = 'https://shop.example/cart';
+		const dev = page(3, agent);
+		dev.url = 'http://localhost:5173/';
+		const users = page(4, user);
+		assert.deepStrictEqual({
+			fileToIntranet: await session.load('https://intranet.example/api', 1, 'xhr'),
+			fileToShop: await session.load('https://shop.example/api', 1, 'xhr'),
+			fileToLocal: await session.load('http://127.0.0.1:9000/api', 1, 'xhr'),
+			fileNavigation: await session.load('https://intranet.example/', 1, 'mainFrame'),
+			devToIntranet: await session.load('https://intranet.example/api', 3, 'xhr'),
+			remoteToIntranet: await session.load('https://intranet.example/api', 2, 'xhr'),
+			usersToIntranet: await session.load('https://intranet.example/api', 4, 'xhr'),
+			asked,
+		}, {
+			fileToIntranet: false,
+			fileToShop: true,
+			fileToLocal: true,
+			fileNavigation: true,
+			devToIntranet: false,
+			remoteToIntranet: true,
+			usersToIntranet: true,
+			asked: ['7 a1 https://intranet.example/api', '7 a1 https://shop.example/api', '7 a1 https://intranet.example/api'],
 		});
 		closeAll();
 	});
@@ -179,8 +212,8 @@ suite('GeminiAgentFiles', () => {
 		files.setNetworkFilter(session.asSession(), null);
 		assert.deepStrictEqual({ filtered, unfiltered: session.filter, asked }, {
 			filtered: { filter: undefined, blocked: false, allowed: true, secret: false },
-			unfiltered: { urls: ['file://*/*'] },
-			asked: ['7 a1 file:///w/.env'],
+			unfiltered: { urls: ['file://*/*', 'http://*/*', 'https://*/*'] },
+			asked: ['7 a1 https://blocked.example/', '7 a1 https://allowed.example/', '7 a1 file:///w/.env'],
 		});
 		closeAll();
 	});

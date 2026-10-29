@@ -54,7 +54,7 @@ These rules have no exceptions. They override any tool's default attribution, tr
 
 ### The agents' browser
 
-- Checking the URL an agent opens is not enough. Electron gives `file:` pages fetch, workers and access to `file:` frames, so a page the agent wrote can show it any file the browser serves. Every file a Gemini agent's page loads is checked against the agent's file policy in the main process (`src/vs/platform/browserView/electron-main/geminiAgentFiles.ts`), which asks the extension (`fileAllowed` in `src/acp/browserMcp.ts`).
+- Checking the URL an agent opens is not enough. Electron gives `file:` pages fetch, workers and access to `file:` frames, so a page the agent wrote can show it any file the browser serves, and any local page can fetch the user's intranet or signed-in sites with the browser's cookies. Every file a Gemini agent's page loads, and every other site a local page of the agent's reaches for, is checked in the main process (`src/vs/platform/browserView/electron-main/geminiAgentFiles.ts`), which asks the extension (`loadAllowed` in `src/acp/browserMcp.ts`): files follow the agent's file policy, sites must be ones the user already let the agent see.
 - Workers load `file:` URLs where neither `webRequest` nor the session's `file:` handler sees them, so agents' documents get `worker-src 'none'`. Test a change here with frames, fetch and workers in the real app, not only the snapshot.
 
 ### Webviews

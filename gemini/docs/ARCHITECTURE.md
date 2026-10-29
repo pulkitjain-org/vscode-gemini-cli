@@ -621,10 +621,11 @@ With `gemini.browser.keepSignIns` on, `_gemini.browser.open` creates agents' pag
 - Local http(s) URLs open freely.
 - Any other origin, including one a click or redirect leads to, asks once per agent and site (a modal dialog), and the page goes back if refused. `gemini.browser.allowOtherSites` off refuses them all.
 - `file:` URLs follow the agent's file policy, and so does every file an agent's page loads.
+- A page the agent could have written (a `file:` page, or one on this machine) reaches another site only when the user already let the agent see that site, by answering or by handing it a page there; it never asks. A page on a site the user allowed loads what it likes, as that site's pages do in any browser.
 
-That last rule needs work in the main process. Electron gives `file:` pages more than a browser does, so a page the agent wrote could otherwise show it, in a frame or through fetch or a worker, a file the policy refuses.
+Those last two rules need work in the main process. Electron gives `file:` pages more than a browser does, so a page the agent wrote could otherwise show it, in a frame or through fetch or a worker, a file the policy refuses; and any local page could fetch the user's intranet or signed-in sites with the browser's cookies, which `gemini.browser.keepSignIns` keeps.
 
-- The main process (`platform/browserView/electron-main/geminiAgentFiles.ts`) holds each `file:` load of a Gemini agent's page until the page's window has asked the extension (`_gemini.browser.fileAllowed`, `BrowserToolHost.fileAllowed`).
+- The main process (`platform/browserView/electron-main/geminiAgentFiles.ts`) holds each `file:` load of a Gemini agent's page, and each load of another site by an agent's local page (frames, fetch, XHR and the rest; the navigation itself the extension checks once the page is there), until the page's window has asked the extension (`_gemini.browser.loadAllowed`, `BrowserToolHost.loadAllowed`).
 - An agent's documents get `worker-src 'none'`, because workers load files where neither `webRequest` nor the session's `file:` handler sees them.
 - Loads with no page (a service worker) are refused in a session that held an agent's page.
 - A `file:` page the user hands over is reloaded so its files are checked as the agent's.

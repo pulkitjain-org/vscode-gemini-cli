@@ -54,6 +54,7 @@ export class BrowserTools implements vscode.Disposable {
 			enabled,
 			otherSites,
 			grant: (agent, url) => this.grant(agent, url),
+			knows: (agent, url) => this.allowed.get(agent)?.has(url.origin) ?? false,
 			model: agent => this.agents.model?.(agent),
 			allowedOrigins,
 			devServers: async () => (await findDevServers()).map(describeDevServer),
@@ -71,9 +72,9 @@ export class BrowserTools implements vscode.Disposable {
 			}),
 			vscode.commands.registerCommand('_gemini.browser.addToPrompt', (context: unknown, agent: unknown) =>
 				this.addToPrompt(context as PageContext, typeof agent === 'string' ? agent : undefined)),
-			// The workbench asks before an agent's page loads a file (geminiAgentFiles.ts in the browser view's main process code).
-			vscode.commands.registerCommand('_gemini.browser.fileAllowed', (agent: unknown, url: unknown) =>
-				typeof agent === 'string' && typeof url === 'string' && this.host.fileAllowed(agent, url)),
+			// The workbench asks before an agent's page loads a file, or a local page of the agent's reaches another site (geminiAgentFiles.ts in the browser view's main process code).
+			vscode.commands.registerCommand('_gemini.browser.loadAllowed', (agent: unknown, url: unknown) =>
+				typeof agent === 'string' && typeof url === 'string' && this.host.loadAllowed(agent, url)),
 			vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.browser.enabled`) && this.applyEnabled()),
 		);
 		this.applyEnabled();
