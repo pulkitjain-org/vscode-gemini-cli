@@ -9,6 +9,7 @@ What to do when something doesn't work. Most fixes are one command away in the *
 | The status bar says sign-in is needed | Run **Gemini: Sign In with Google**. If it needs a step the editor can't show, run **Gemini: Complete Setup in Terminal**, finish it, and exit with `/quit`. |
 | "is a project number" | Set the project ID, such as `my-project-123`, with **Gemini: Set Google Cloud Project ID**. |
 | No Gemini CLI found | Only in a build without the bundled CLI. Choose **Install Gemini CLI** in the message, or set `gemini.cliPath`. |
+| A program the agent runs cannot find a token that is set in your shell (`GITHUB_TOKEN`, `NPM_TOKEN`) | GeminiCode leaves every variable whose name looks like a credential out of the agent's environment, except the CLI's own `GEMINI_*` and `GOOGLE_*`. Give the program its token another way, such as its own sign-in (`gh auth login`) or a file it reads. |
 | "older than 0.66.0" | The CLI in use is too old. Choose **Install Latest**, or pick **Install or Change Gemini CLI Version...** from the Gemini status bar item's menu. |
 | Not sure the CLI starts at all | Run **Gemini: Check Agent Connection**. It starts the CLI on its own and reports its version and protocol, or the error. |
 | The agent stops or misbehaves | Click the **Gemini** status bar item and choose **Restart Agent**. Open agents resume their sessions. |
