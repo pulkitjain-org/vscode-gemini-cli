@@ -108,6 +108,7 @@
 	"command.agents.tryInWorkspace": "Try in Workspace",
 	"command.agents.takeBack": "Take Back",
 	"command.agents.fork": "Fork Agent",
+	"command.review": "Review...",
 	"command.reviewChanges": "Review My Changes",
 	"command.projectSettings": "Agent Setup",
 	"command.connections": "Connections",

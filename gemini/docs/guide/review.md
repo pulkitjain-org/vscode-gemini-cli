@@ -100,9 +100,11 @@ Select some code (or put the cursor on a line), press <kbd>⌘I</kbd> and say wh
 
 Inline edit and commit messages use the newest Flash model for speed. `gemini.inlineEdit.model` can switch them to the chat's model or one you name, and `gemini.inlineEdit.enabled` turns them off. They work with Google sign-in or a Gemini API key, but not with Vertex AI.
 
-## Review My Changes
+## Review
 
-**Review My Changes**, in the Source Control title bar and the Agents pane's **...** menu, starts an agent in Plan mode with your uncommitted diff attached. It reads the code around the changes and replies with a summary and its findings, most serious first, without editing anything. Ask it to fix one when you agree.
+**Review**, on Home and in the Command Palette (**Gemini: Review...**), asks what to review: **My Changes**, **An Agent's Changes** (the diff of an agent that changed files), **A Merge Request** with GitLab connected ([Review a merge request](team-tools.md#review-a-merge-request)), or **Run Checks on a Branch** with Snyk or SonarQube connected.
+
+**My Changes** (also **Review My Changes** in the Source Control title bar and the Agents pane's **...** menu) starts an agent in Plan mode with your uncommitted diff attached. It reads the code around the changes and replies with a summary and its findings, most serious first, without editing anything. Ask it to fix one when you agree.
 
 ## What agents can't reach
 

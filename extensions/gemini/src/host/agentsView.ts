@@ -409,6 +409,7 @@ export class AgentsView implements vscode.Disposable {
 			vscode.commands.registerCommand('gemini.tries.menu', (id?: unknown) => this.tries.showMenu(typeof id === 'string' ? id : undefined)),
 			vscode.commands.registerCommand('gemini.agents.fork', (node?: AgentTreeNode) => this.fork(node)),
 			vscode.commands.registerCommand('gemini.reviewChanges', (source?: { readonly rootUri?: vscode.Uri }) => this.starts.reviewChanges(source)),
+			vscode.commands.registerCommand('gemini.review', () => this.pickReview()),
 			vscode.commands.registerCommand('gemini.agents.addWorkspace', () => this.starts.addWorkspace()),
 			// From the keyboard (⌘↓ on a Mac, where Return renames as in Finder) it opens the selected agent.
 			vscode.commands.registerCommand('gemini.agents.open', (id?: string) => {
@@ -687,6 +688,33 @@ export class AgentsView implements vscode.Disposable {
 			return this.tries.showMenu(id).then(() => true);
 		}
 		return this.tryAction(id, 'try');
+	}
+
+	/**
+	 * Review, from Home and the palette: what to review. My Changes starts a
+	 * reviewer on the uncommitted diff; an agent's changes open its diff; a
+	 * merge request starts a reviewer in a checkout of its own (GitLab); Run
+	 * Checks on a Branch runs the team's checks (Snyk or SonarQube).
+	 */
+	async pickReview(): Promise<void> {
+		const withChanges = this.summaries().filter(agent => agent.changes?.files && !agent.archived);
+		const connected = this.teamTools?.connected;
+		const items: (vscode.QuickPickItem & { run(): Thenable<unknown> | void })[] = [
+			{ label: `$(diff) ${vscode.l10n.t("My Changes")}`, detail: vscode.l10n.t("An agent in Plan mode reads your uncommitted changes and reports what it finds, without editing"), run: () => this.starts.reviewChanges() },
+			...withChanges.length ? [{
+				label: `$(git-branch) ${vscode.l10n.t("An Agent's Changes...")}`, detail: withChanges.length === 1 ? vscode.l10n.t("The changes of {0}, as a diff", withChanges[0].title) : vscode.l10n.t("The changes of one of {0} agents, as a diff", withChanges.length),
+				run: async () => {
+					const agent = withChanges.length === 1 ? withChanges[0] : (await vscode.window.showQuickPick(withChanges.map(each => ({ label: each.title, description: each.status, each })), { title: vscode.l10n.t("Whose changes") }))?.each;
+					if (agent) {
+						await this.openChanges(agent.id);
+					}
+				},
+			}] : [],
+			...connected?.has('gitlab') ? [{ label: `$(git-pull-request) ${vscode.l10n.t("A Merge Request...")}`, detail: vscode.l10n.t("A reviewer agent in a checkout of its own reads it against its ticket and drafts comments for you to post"), run: () => vscode.commands.executeCommand('gemini.team.reviewMergeRequest') }] : [],
+			...connected?.has('snyk') || connected?.has('sonar') ? [{ label: `$(checklist) ${vscode.l10n.t("Run Checks on a Branch...")}`, detail: vscode.l10n.t("The team's checks on any branch, with Gemini fixing what fails"), run: () => vscode.commands.executeCommand('gemini.team.runChecksOnBranch') }] : [],
+		];
+		const picked = await vscode.window.showQuickPick(items, { title: vscode.l10n.t("Review"), placeHolder: vscode.l10n.t("What to review") });
+		await picked?.run();
 	}
 
 	/** The choice the Try button runs for the agent's repository. Open Merge Request needs GitLab. */

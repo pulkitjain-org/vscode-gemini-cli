@@ -140,8 +140,7 @@ export function buildDashboard(input: DashboardInput): HomeDashboard {
 		tools,
 		quickActions: [
 			{ label: vscode.l10n.t("New Agent"), icon: 'sparkle', action: command('gemini.agents.newAgent') },
-			...input.projectsOn ? [{ label: vscode.l10n.t("New Project"), icon: 'project', action: command('gemini.projects.new') }] : [],
-			{ label: vscode.l10n.t("Review My Changes"), icon: 'diff', action: command('gemini.reviewChanges') },
+			{ label: vscode.l10n.t("Review"), icon: 'diff', action: command('gemini.review') },
 			...input.connected.has('snyk') || input.connected.has('sonar') ? [{ label: vscode.l10n.t("Run Checks..."), tool: input.connected.has('snyk') ? 'snyk' as const : 'sonar' as const, action: command('gemini.team.runChecksOnBranch') }] : [],
 		],
 		needs: needs(input),

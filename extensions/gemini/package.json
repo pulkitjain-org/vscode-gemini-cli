@@ -194,6 +194,12 @@
         "icon": "$(home)"
       },
       {
+        "command": "gemini.review",
+        "title": "%command.review%",
+        "category": "%category%",
+        "icon": "$(diff)"
+      },
+      {
         "command": "gemini.reviewChanges",
         "title": "%command.reviewChanges%",
         "category": "%category%",
@@ -1273,6 +1279,14 @@
         {
           "command": "gemini.checkAgent",
           "when": "config.gemini.developer.showTools"
+        },
+        {
+          "command": "gemini.reviewChanges",
+          "when": "false"
+        },
+        {
+          "command": "gemini.team.reviewMergeRequest",
+          "when": "false"
         }
       ]
     },
