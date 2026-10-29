@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { allThreadsHome, branchExists, commitAll, createWorktree, createWorktreeAt, createWorktreeFrom, currentBranch, folderInRepository, folderSize, freeBranchName, freeFolder, git, gitNetworkProblem, inRepository, mainRepository, mergeBranch, pathExists, projectFolders, projectsHome, removeThreadFolder, removeWorktree, repositoryRoot, restoreWorktree, runWorktreeSetup, threadGuide, threadsHome, TurnQueue, unfinishedOperation, worktreeSetup, worktreeSetupCommand, worktreesHome, worktreeStatus, writeThreadGuide } from '../../src/acp/worktrees';
+import { allThreadsHome, branchExists, commitAll, createWorktree, createWorktreeAt, createWorktreeFrom, currentBranch, folderInRepository, folderSize, freeBranchName, freeFolder, git, gitNetworkProblem, inRepository, mainRepository, mergeBranch, mergeRefusal, pathExists, projectFolders, projectsHome, removeThreadFolder, removeWorktree, repositoryRoot, restoreWorktree, runWorktreeSetup, threadGuide, threadsHome, TurnQueue, unfinishedOperation, worktreeSetup, worktreeSetupCommand, worktreesHome, worktreeStatus, writeThreadGuide } from '../../src/acp/worktrees';
 
 let root: string;
 let repo: string;
@@ -144,8 +144,15 @@ describe('forking a worktree', () => {
 		await commitAll(repo, 'Main');
 		await git(repo, ['merge', 'other']).catch(() => undefined);
 		expect(await unfinishedOperation(repo)).toBe('merge');
+		expect(await mergeRefusal(repo)).toBe('merge');
 		await expect(createWorktreeFrom(repo, 'gemini/mid-merge', '', home)).rejects.toThrow(/middle of a merge/);
 		expect(await branchExists(repo, 'gemini/mid-merge')).toBe(false);
+	});
+
+	it('refuses a merge into a checkout with no branch, and allows one on a branch', async () => {
+		expect(await mergeRefusal(repo)).toBeUndefined();
+		await git(repo, ['checkout', '--quiet', '--detach']);
+		expect(await mergeRefusal(repo)).toBe('detached');
 	});
 });
 

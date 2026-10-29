@@ -200,6 +200,19 @@ export async function mainRepository(folder: string): Promise<string> {
 }
 
 /** What `folder`'s repository is in the middle of, which a fork can't carry: a merge, rebase, cherry-pick or revert. */
+/**
+ * Why `repository` cannot take a merge now: no branch checked out (a merge
+ * onto a detached HEAD lands on no branch), or a merge, rebase, cherry-pick
+ * or revert still in progress. Undefined when it can.
+ */
+export async function mergeRefusal(repository: string): Promise<'detached' | 'merge' | 'rebase' | 'cherry-pick' | 'revert' | undefined> {
+	const head = (await git(repository, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
+	if (head === 'HEAD') {
+		return 'detached';
+	}
+	return unfinishedOperation(repository);
+}
+
 export async function unfinishedOperation(folder: string): Promise<'merge' | 'rebase' | 'cherry-pick' | 'revert' | undefined> {
 	const marks = [['MERGE_HEAD', 'merge'], ['rebase-merge', 'rebase'], ['rebase-apply', 'rebase'], ['CHERRY_PICK_HEAD', 'cherry-pick'], ['REVERT_HEAD', 'revert']] as const;
 	for (const [mark, operation] of marks) {
