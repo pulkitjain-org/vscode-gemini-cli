@@ -21,6 +21,13 @@
 #   gemini/scripts/ci-checks.sh            # against origin/main
 #   gemini/scripts/ci-checks.sh <base>     # against another base
 #
+# Quick by default, as the pre-push hook runs it: the workflow files, lint of
+# the changed fork files, hygiene, the patch series and the type checks, under
+# a minute for one extension change. GEMINI_FULL_CHECKS=1 adds what CI runs
+# on top: both bundles, the unit tests, the site's build and SEO check, and
+# the full compile when an upstream file changed. CI runs the full set on
+# every push anyway, so the hook keeps the push fast and CI keeps it honest.
+#
 # It checks the working tree, so commit or stash other edits first for the
 # result to be the pushed commits'. GEMINI_SKIP_CHECKS=1 skips it in the hook.
 set -euo pipefail
@@ -29,6 +36,7 @@ cd "$(git rev-parse --show-toplevel)"
 base_ref=${1:-origin/main}
 base=$(git merge-base "$base_ref" HEAD)
 changed=$(git diff --name-only "$base" HEAD)
+full=${GEMINI_FULL_CHECKS:-0}
 
 if [ -z "$changed" ]; then
 	echo "ci-checks: nothing changed against $base_ref."
@@ -59,8 +67,17 @@ step 'Workflow files parse' node -e '
 		if (!flow || !flow.on || !flow.jobs) { throw new Error(`${file} has no "on" or "jobs"`); }
 	}
 ' .github/workflows/gemini-*.yml
-# shellcheck disable=SC2046
-step 'Lint fork files' npx eslint --max-warnings 0 extensions/gemini gemini/site build/hygiene.ts build/filters.ts build/npm/dirs.ts build/gulpfile.extensions.ts build/lib/extensions.ts $(grep '\.ts$' gemini/patches/ADDED)
+if [ "$full" = 1 ]; then
+	# shellcheck disable=SC2046
+	step 'Lint fork files' npx eslint --max-warnings 0 extensions/gemini gemini/site build/hygiene.ts build/filters.ts build/npm/dirs.ts build/gulpfile.extensions.ts build/lib/extensions.ts $(grep '\.ts$' gemini/patches/ADDED)
+else
+	# Only the changed fork files: the rest passed on the base already.
+	lintable=$(printf '%s\n' "$changed" | grep -E '^(extensions/gemini/|gemini/site/).*\.(ts|mts)$' | while read -r file; do [ -f "$file" ] && printf '%s\n' "$file"; done || true)
+	if [ -n "$lintable" ]; then
+		# shellcheck disable=SC2086
+		step 'Lint changed fork files' npx eslint --max-warnings 0 $lintable
+	fi
+fi
 # shellcheck disable=SC2046
 step 'Hygiene (fork files)' node build/hygiene.ts product.json .eslint-ignore build/lib/extensions.ts $(git ls-files extensions/gemini gemini .github/workflows/gemini-*.yml) $(cat gemini/patches/ADDED)
 step 'Patch series matches HEAD' gemini/scripts/upstream-series.sh check
@@ -70,16 +87,18 @@ if touches '^extensions/gemini/'; then
 		npx tsc -p extensions/gemini/tsconfig.json --noEmit &&
 		npm run --silent typecheck-tests --prefix extensions/gemini &&
 		npx tsc -p extensions/gemini/webview-src/tsconfig.json --noEmit'
-	step 'Bundle extension and webview' sh -c 'node extensions/gemini/esbuild.mts && node extensions/gemini/esbuild.webview.mts'
-	generated=$(git ls-files --others --ignored --exclude-standard extensions/gemini/media | grep -E '\.(css|js)$' || true)
-	if [ -n "$generated" ]; then
-		# shellcheck disable=SC2086
-		step 'Hygiene (generated webview files)' node build/hygiene.ts product.json $generated
+	if [ "$full" = 1 ]; then
+		step 'Bundle extension and webview' sh -c 'node extensions/gemini/esbuild.mts && node extensions/gemini/esbuild.webview.mts'
+		generated=$(git ls-files --others --ignored --exclude-standard extensions/gemini/media | grep -E '\.(css|js)$' || true)
+		if [ -n "$generated" ]; then
+			# shellcheck disable=SC2086
+			step 'Hygiene (generated webview files)' node build/hygiene.ts product.json $generated
+		fi
+		step 'Unit tests' npm test --silent --prefix extensions/gemini
 	fi
-	step 'Unit tests' npm test --silent --prefix extensions/gemini
 fi
 
-if touches '^gemini/site/'; then
+if [ "$full" = 1 ] && touches '^gemini/site/'; then
 	site=$(mktemp -d)
 	trap 'rm -rf "$site"' EXIT
 	step 'Build the download page (sample release)' node gemini/site/build.mts "$site" --sample
@@ -88,7 +107,9 @@ fi
 
 # Compile & hygiene: the fork's own files are covered above; anything else is upstream code or the build.
 if printf '%s\n' "$changed" | grep -vqE '^(extensions/gemini/|gemini/|\.github/workflows/gemini-)'; then
-	step 'Compile' npm run compile
+	if [ "$full" = 1 ]; then
+		step 'Compile' npm run compile
+	fi
 	# CI runs `npm run hygiene` on a clean checkout. Locally that globs ignored
 	# files too (the bundled CLI in extensions/gemini/cli, build output), so check
 	# the changed files instead: unchanged ones passed on the base already.
@@ -100,4 +121,8 @@ if printf '%s\n' "$changed" | grep -vqE '^(extensions/gemini/|gemini/|\.github/w
 fi
 
 echo >&2
-echo >&2 "ci-checks: all passed."
+if [ "$full" = 1 ]; then
+	echo >&2 "ci-checks: all passed."
+else
+	echo >&2 "ci-checks: the quick checks passed; CI runs the bundles, the unit tests and the compile on the push (GEMINI_FULL_CHECKS=1 runs them here)."
+fi

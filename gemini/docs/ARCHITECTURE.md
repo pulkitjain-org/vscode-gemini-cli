@@ -1114,3 +1114,51 @@ The window defaults set `chat.disableAIFeatures`. That hides upstream's chat vie
 - **Theme tests** (`test/themes`) check that every text colour pair in GeminiCode Dark and Light reads at 4.5:1, and that nothing blurs.
 - **Webview tests** (`test/webview`) cover the streaming Markdown splitter and the chat's view logic (file names in replies, mentions, attachments, permission defaults, durations, scrolling, the composer height, folded turns), emoji search, the settings popup's state, and that no bare `<select>` opens a system menu.
 - The `src/host` code that needs VS Code is checked by running the dev build.
+
+## Lessons from past work
+
+What was learnt the hard way, kept with the design it belongs to. [AGENTS.md](../../AGENTS.md) points here; add a lesson here when you learn one.
+
+### The Gemini CLI in ACP mode
+
+- GeminiCode runs every agent through `gemini --acp`. In that mode the CLI hands a tool's whole output to the model: the 40,000-character cap its scheduler applies elsewhere is skipped. A single large `git diff` or log once pushed an agent past the model's 1,048,576-token limit, and every later turn failed on the same history.
+- `extensions/gemini/src/acp/cliPatches.ts` puts that cap back on the ACP path. It is applied to the bundled copy (`npm run bundle-cli`), to each copy GeminiCode installs, and at launch to older installs. When you raise `bundledCli.version` in `extensions/gemini/package.json`, run `npm run bundle-cli` in `extensions/gemini`. It fails when the patch no longer matches the CLI: update the patch rather than ship an uncapped CLI. A CLI the user picks (`gemini.cliPath`, `PATH`) is never patched.
+- When a turn fails with "input token count exceeds the maximum", the chat moves to a new session that carries the conversation without tool outputs (`chatController.ts`, `continueAfterOverflow`). Never retry the same session: every request carries the same history.
+- An agent's shell cannot sign in to fetch from GitLab (terminal prompts are off). Fetch what an agent needs in the extension first, as the merge request review does with the target branch.
+- One CLI process serves every agent of a window, started in its first folder. A new session reads its own folder's settings, but `session/load` reopens one with the settings the process read in its folder at launch (still so in 0.65 and the 0.67 nightly). `AgentRuntime` reopens a session whose folder's project settings differ on a process started in that folder, made on first need and ended when its sessions are gone (`folderProcess`, `needsOwnProcess` in `agentService.ts`). `test/acp/realAgentFolders.test.ts` shows the CLI's behaviour: when a CLI release fixes it, that test fails and the folder processes can go.
+- Never ask an agent for a whole diff or log in one command. Give it the file list and have it read a few files at a time, as `reviewPrompt` in `src/acp/teamFlowLogic.ts` does.
+
+### Where pages open
+
+- Anything Home opens (Run Checks, Log Time, Move, Connections, Agent Setup, a merge request review) opens as a tab in the active group, with `vscode.ViewColumn.Active`. Never `ViewColumn.Beside`: that splits Home.
+- An agent's own files, diffs and pages go in that agent's side group (`agentColumn` in `src/host/editorPlacement.ts`), and only after the agent's tab is in front. The side group shows only with its agent, so it never sits beside Home.
+- In the workbench, pages that open in an agent's side group (team flows, Plan Review, Confluence's Review Page) do not make a group "the agents' group" (`sidePageViewTypes` and `isAgentsTab` in `src/vs/workbench/contrib/gemini/electron-browser/geminiAgentGroups.ts`). Without that, the next agent opens beside the page, Home ends up in three columns, and the side group stops hiding with its agent. A new page that opens with `agentColumn` goes in that list.
+
+### The agents' browser
+
+- Checking the URL an agent opens is not enough. Electron gives `file:` pages fetch, workers and access to `file:` frames, so a page the agent wrote can show it any file the browser serves, and any local page can fetch the user's intranet or signed-in sites with the browser's cookies. Every file a Gemini agent's page loads, and every other site a local page of the agent's reaches for, is checked in the main process (`src/vs/platform/browserView/electron-main/geminiAgentFiles.ts`), which asks the extension (`loadAllowed` in `src/acp/browserMcp.ts`): files follow the agent's file policy, sites must be ones the user already let the agent see.
+- Workers load `file:` URLs where neither `webRequest` nor the session's `file:` handler sees them, so agents' documents get `worker-src 'none'`. Test a change here with frames, fetch and workers in the real app, not only the snapshot.
+
+### Webviews
+
+- Use themed tooltips (`setTip` from `webview-src/tooltip.ts`), not `title`. Native tooltips are slow to appear and unthemed. The themed one is a top-layer popover, so it also shows over a modal dialog.
+- A `Menu` that stays open while its data changes must be redrawn (`menu.render()`) when a new view arrives. Otherwise its switches show the old state, and the next click sends the same value again.
+- Size budgets in `extensions/gemini/test/perf/budgets.test.ts` are enforced: `media/home.js` 30 KB, `dist/extension.js` 1.2 MB. A heavy dependency goes in a chunk loaded on first use (`draftMarkdown.js`, `commentBox.js`, through a `data-` attribute on the page's script tag), never in the startup script or the extension host. On the host side, pages opened on request and rarely used tools load from bundles of their own (`dist/pages.js`, `dist/onDemand.js`, through `LazyFeature` in `src/host/lazyFeature.ts`); such a bundle has its own copy of every module it imports, so module state reaches it through constructors, which `test/perf/chunks.test.ts` checks. `dist/extension.js` is at about 1.20 MB, a few KB under its budget: new host features go in one of those bundles unless they are needed at startup.
+- `esbuild.mts` keeps only zod's English messages: its fifty locales were a third of the extension bundle. To measure the bundle again, build with esbuild's `metafile` and group `bytesInOutput` by package.
+- User-visible strings come from the extension host (`HomeStrings`, `vscode.l10n.t`), are never joined from pieces, and use `{0}` placeholders.
+
+### Jira and GitLab from GeminiCode's pages
+
+- A page writes through `teamWrite` (`src/acp/teamTools.ts`), as an agent's tool call does, so every write has the same checks and an audit log record. Page-only writes go in `pageTools` there.
+- Rich Jira comments (Markdown, @mentions, attachments, visibility) always use Jira's REST API (`jira_rich_comment`), never the `mcp-atlassian` container: the container has no mentions and no uploads. The webview turns the Markdown into Jira's document format (`webview-src/commentAdf.ts`), so the extension host carries no Markdown parser. The audit log records file paths, never file contents.
+
+### The workspace index
+
+- Everything that reads, parses or writes an index runs in the indexer process (`src/indexer.ts`, `dist/indexer.js`), never in the extension host, whose bundle is near its budget. The host only forwards requests (`IndexClient`). Keep it that way.
+- Lint bans synchronous `fs` calls, in the indexer process too; `node:sqlite` itself is synchronous, so keep transactions short (`writeSliced` yields every 40 ms).
+- Never run `PRAGMA quick_check` or `integrity_check` when opening an index: it reads the whole file, seconds for a large repository. Damage shows up as a SQLite error; `isCorruption` turns it into a rebuild.
+- The release build ships only six tree-sitter grammars (`build/.moduleignore`); definitions come from the line patterns in `src/acp/index/languages.ts`. Add a language there, with a test in `test/acp/index/parse.test.ts`.
+- BM25 alone ranks a short mention above a long definition. Keep word positions in the full-text index and the definition-first step in `search` (`query.ts`); measure ranking on a large repository, not only the tests' small ones.
+- The docs fetcher runs in the extension host so the Mac's proxy applies; conversion and storage run in the indexer. Fetched pages are reference material: tool results say so.
+- Without a nudge the model reaches for `grep_search` even with the index tools listed. The chat sends `indexHint` (`workspaceIndex.ts`) with a session's first prompt once the folder's index is built, and results say they are complete. Measure a change here with real sessions on a large repository, with and without the index, and check the server got `tools/list`: a repository whose `mcp.allowed` leaves out `geminicode-index` hides the tools unless the CLI starts with `--allowed-mcp-server-names` as GeminiCode starts it.
+- The npm CLI ships no ripgrep, and without it `grep_search` falls back to `git grep`, three to four times slower on a large repository. `cliRipgrep.ts` copies the app's into `bundle/vendor/ripgrep/` of the bundled copy (`npm run bundle-cli`) and of installed copies at launch.
