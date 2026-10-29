@@ -10,7 +10,7 @@ A setting in a workspace's settings applies only to that folder, and is shared w
 | --- | --- | --- |
 | `gemini.projectId` | empty | The Google Cloud Project ID to bill. Use the ID, such as `my-project-123`, not the project number. A workspace value wins over your own, and the Gemini log warns when one does. An admin policy wins over both. |
 | `gemini.cliPath` | empty | A `gemini` executable or a CLI's `bundle/gemini.js` to run instead of GeminiCode's own copies. |
-| `gemini.cli.version` | empty | Which of GeminiCode's own CLI copies to run, such as `0.64.0`. Empty runs the newest. |
+| `gemini.cli.version` | empty | Which of GeminiCode's own CLI copies to run, such as `0.66.0`. Empty runs the newest. |
 | `gemini.cli.checkForUpdates` | on | Offer newer Gemini CLI releases, at most once a day. Nothing installs without your click. |
 | `gemini.cli.registry` | empty | The npm registry, such as your organisation's mirror, that GeminiCode installs and updates its copy of the Gemini CLI from. Empty uses the public registry. |
 | `gemini.app.checkForUpdates` | on | Say when a newer GeminiCode is out, checking every few hours. GeminiCode never downloads it by itself. |

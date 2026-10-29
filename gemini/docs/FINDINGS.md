@@ -4,8 +4,8 @@ This page records what GeminiCode's design relies on about the Gemini CLI, and w
 
 Every entry is one of two kinds:
 
-- **Measured.** Taken on 18 Oct 2026 on an Apple M3 Pro Mac (12 cores, 36 GB, macOS 26.7) with gemini-cli 0.64.0, the version GeminiCode bundles, unless the section gives another date. *Real account* means a Google sign-in with a Gemini Code Assist license, billed to a Google Cloud project, over the network. *Stand-in* means a local fake of the Gemini API that answers each model call after a fixed delay, with an API key and no network; it measures everything except the model and the sign-in. Each table names the script in `extensions/gemini/scripts/` that takes it again.
-- **Read from the CLI.** Behaviour read from the 0.64.0 bundle (`extensions/gemini/cli/0.64.0/bundle/`). Where a real-CLI test (`extensions/gemini/test/acp/real*.test.ts`) checks it, the test is named. All of those tests pass against 0.64.0.
+- **Measured.** Taken on 18 Oct 2026 on an Apple M3 Pro Mac (12 cores, 36 GB, macOS 26.7) with gemini-cli 0.64.0, unless the section gives another date. GeminiCode bundles 0.66.0 since 29 Oct 2026; the real-CLI tests pass against it, and the measurements were not taken again, since nothing in the 0.65 and 0.66 release notes touches the paths they time. *Real account* means a Google sign-in with a Gemini Code Assist license, billed to a Google Cloud project, over the network. *Stand-in* means a local fake of the Gemini API that answers each model call after a fixed delay, with an API key and no network; it measures everything except the model and the sign-in. Each table names the script in `extensions/gemini/scripts/` that takes it again.
+- **Read from the CLI.** Behaviour read from the 0.64.0 bundle and checked again in the 0.66.0 bundle (`extensions/gemini/cli/0.66.0/bundle/`) on 29 Oct 2026. Where a real-CLI test (`extensions/gemini/test/acp/real*.test.ts`) checks it, the test is named. All of those tests pass against 0.66.0.
 
 Re-check both kinds when GeminiCode moves to a new CLI version.
 
@@ -55,7 +55,7 @@ Same runs as above.
 
 - With a Google sign-in a session costs most of a second, against well under 100 ms with an API key. GeminiCode hides it behind a spare session opened while the user types.
 - One process serves any number of sessions, each with its own `cwd`. Each session loads the settings of its own folder, so one process serves agents in different folders. The process environment, such as `GOOGLE_CLOUD_PROJECT`, is shared, so agents that need another project need another process.
-- Over ACP, gemini-cli 0.64.0 implements `initialize`, `authenticate`, `session/new`, `session/load`, `session/cancel`, `session/prompt`, `session/set_mode` and `session/set_model`.
+- Over ACP, gemini-cli 0.66.0 implements `initialize`, `authenticate`, `session/new`, `session/load`, `session/cancel`, `session/prompt`, `session/set_mode` and `session/set_model`, as 0.64.0 did.
 - `session/new` and `initialize` have no time limit of their own, and there is no `$/cancel_request`: a request GeminiCode gives up on keeps running in the CLI. GeminiCode gives `initialize`, `session/new` and `session/load` 120 s and `authenticate` 330 s, since the CLI's browser sign-in waits up to 5 minutes ("Authentication timed out after 5 minutes"). `session/new` does not wait for MCP servers; `session/prompt` does (`waitForMcpInit`), so a hung MCP server holds up the first prompt, not the session.
 - It advertises `loadSession`, `promptCapabilities` (`image`, `audio`, `embeddedContext`) and `mcpCapabilities` (`http`, `sse`), and no `sessionCapabilities`. There is no `session/close`, `session/list`, `session/fork`, `session/resume` or `session/set_config_option`, so a session stays in the process until it exits. GeminiCode closes the sessions it leaves only when a CLI advertises `sessionCapabilities.close`.
 
@@ -310,7 +310,7 @@ Read from the CLI: in ACP mode it finds code with `glob`, `grep_search` (ripgrep
 
 ## Forking and compacting a session
 
-Read from gemini-cli 0.64.0's bundle and checked by `realSessionSnapshot.test.ts`.
+Read from gemini-cli 0.64.0's bundle, the same in 0.66.0, and checked by `realSessionSnapshot.test.ts`.
 
 - There is no fork over ACP. The ACP library the CLI bundles routes `session/fork` to `agent.unstable_forkSession`, which the Gemini agent does not implement, so the call fails as an unknown method. `sessionCapabilities` advertises neither fork nor resume.
 - ACP mode registers six commands: `memory`, `extensions`, `init`, `restore`, `about` and `help`. `/chat save` and `/chat resume` (chat checkpoints) and `/compress` exist only in the terminal UI.
@@ -324,7 +324,7 @@ Read from gemini-cli 0.64.0's bundle and checked by `realSessionSnapshot.test.ts
 
 ## Steering a running turn
 
-Read from gemini-cli 0.64.0's bundle and the 0.67.0 nightly of 2026-10-23; the ACP loop is the same in both.
+Read from gemini-cli 0.64.0's bundle and the 0.67.0 nightly of 2026-10-23; the ACP loop is the same in both, and in 0.66.0.
 
 - The terminal UI queues by default. A message typed while the agent works waits and goes as the next prompt once the turn ends.
 - Steering mid-turn is terminal-only and experimental. With `experimental.modelSteering` on (off by default), a message typed while tools run is kept as a `user_steering` injection (`injectionService.addInjection`). It is put in front of the next tool results as "User steering update", with `USER_STEERING_INSTRUCTION` telling the model to change only the tasks it affects. This happens in the terminal UI's `useGeminiStream`, not in core.

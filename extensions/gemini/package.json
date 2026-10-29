@@ -1820,8 +1820,8 @@
     "test": "vitest run"
   },
   "bundledCli": {
-    "version": "0.64.0",
-    "integrity": "sha512-FHrZ1NPf9QszyVMaa/BP3SsPy40ogBLnbZNWkv/PMi1Uz2zoDNMLGiBzBGmx4Bl7iLRq01K9PY/5kmloXFTpsA=="
+    "version": "0.66.0",
+    "integrity": "sha512-EAtsJ9/JxiphHlduzvhoCkb7I0LdOxyugB5NpUtVqKVGZIWjV3JmurvK89ZrvMbV3kwk5SdWINz1M5ZN/2K/Lw=="
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.9.0",

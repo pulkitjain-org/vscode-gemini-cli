@@ -63,7 +63,7 @@ The CLI keys a folder's chats by the path it is given, and the terminal always g
 
 ### Sessions are never closed
 
-gemini-cli 0.64.0 offers no `session/close`, so a long-lived agent process keeps every session it opened, a few MB each. That includes Enhance prompt's fallback sessions and hidden command sessions. GeminiCode closes sessions as soon as a CLI advertises `sessionCapabilities.close`. Until a CLI does, restart idle processes to free them, and show in the pane when an agent's process was stopped.
+gemini-cli 0.66.0 offers no `session/close`, so a long-lived agent process keeps every session it opened, a few MB each. That includes Enhance prompt's fallback sessions and hidden command sessions. GeminiCode closes sessions as soon as a CLI advertises `sessionCapabilities.close`. Until a CLI does, restart idle processes to free them, and show in the pane when an agent's process was stopped.
 
 ### Build files changed through the shell
 
@@ -121,7 +121,7 @@ Upstream's 1.142 release has these for Copilot's agents. Each could be built on 
 
 - Move a chat to a new worktree: start a branch and worktree from a running chat and carry the conversation over, as an agent's own branch does at start, using the conversation hand-over a new session already gets.
 - Stop a background shell command: a control on a long-running command's row that cancels it without ending the turn.
-- Thinking level and context window in the model picker. This needs the CLI to offer `session/set_config_option`, which 0.64.0 does not.
+- Thinking level and context window in the model picker. This needs the CLI to offer `session/set_config_option`, which 0.66.0 does not.
 - Permission modes as separate policies. Upstream lets an admin allow or remove each permission mode on its own, as GeminiCode's `GeminiAllowAutoEdit` and `GeminiAllowYolo` do. Follow upstream's naming if it settles.
 
 The 1.142 base also brings upstream's Markdown editor (pasting images, renaming links, an outline and breadcrumbs, copying code blocks), `editor.occurrencesHighlightFromAllProviders`, and many leak fixes.

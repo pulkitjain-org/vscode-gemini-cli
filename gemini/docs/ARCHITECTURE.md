@@ -136,7 +136,7 @@ While the user types on Agent Home, `AgentRuntime.prepareSession` opens a spare 
 
 `AgentClient` opens a session (`session/new`, or `session/load` to resume), signs in when the CLI asks, sends prompts, and exposes the modes and models the agent reports, minus any mode the admin policy turns off. Nothing in the UI hardcodes a mode or model ID.
 
-It closes the sessions it leaves (the one a new session replaces, once the new one has opened; its own when disposed; and one an outdated open created) when the CLI advertises `sessionCapabilities.close`. gemini-cli 0.64.0 does not, so with it they stay until the process exits. `newSession` and `loadSession` reject when no session opened, and a session a chat moved away from (a new chat, a full context) is never reopened after a restart.
+It closes the sessions it leaves (the one a new session replaces, once the new one has opened; its own when disposed; and one an outdated open created) when the CLI advertises `sessionCapabilities.close`. gemini-cli 0.66.0 does not (its `sessionCapabilities` is empty), so with it they stay until the process exits. `newSession` and `loadSession` reject when no session opened, and a session a chat moved away from (a new chat, a full context) is never reopened after a restart.
 
 A session that fails to open while the process stays ready (a passing network or MCP error) is opened again the next time the chat needs it (`retryOpen`): at once, then after 2, 5 and 15 s since the last failure, so one failure no longer needs Restart Agent. Waiting for a session (`whenReady`) can be stopped: Stop while a turn waits for its session ends the turn without sending. A stopped turn the CLI has not ended after 10 s is ended in the chat.
 
@@ -374,7 +374,7 @@ An HTML `<select>` opens the system's menu whatever `window.menuStyle` says, so 
 
 #### Session snapshots
 
-gemini-cli 0.64 has no fork over ACP: its ACP library routes `session/fork`, but its agent leaves it out. Its `/restore` over ACP puts files back from a checkpoint but only reports the checkpoint's history, never loading it, and `/compress` is terminal-only. `session/load`, though, rebuilds a session from its file's messages.
+gemini-cli 0.66 has no fork over ACP: its ACP library routes `session/fork`, but its agent leaves it out. Its `/restore` over ACP puts files back from a checkpoint but only reports the checkpoint's history, never loading it, and `/compress` is terminal-only. `session/load`, though, rebuilds a session from its file's messages.
 
 So a snapshot (`sessionSnapshot.ts`) is a copy of the session's file:
 
@@ -808,7 +808,7 @@ GeminiCode picks the CLI in this order:
 3. The copy bundled with the app, in `extensions/gemini/cli/<version>/`, laid out the same way. Without a pinned version, a bundled copy newer than every installed one wins, so an app update is not held back by an older install. A pinned version that is neither installed nor bundled runs the bundled copy and offers to install the pinned one.
 4. `gemini` on `PATH`.
 
-A CLI older than `MIN_CLI_VERSION` (0.64.0) gets a warning.
+A CLI older than `MIN_CLI_VERSION` (0.66.0) gets a warning.
 
 ### The bundled CLI
 
