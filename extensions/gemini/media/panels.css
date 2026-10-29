@@ -6,6 +6,8 @@
 /* Agents mode's webviews (the Changes panel and Agent Home) and the MCP Servers and Rules page. */
 
 :root {
+	/* The process tier (see chat.css): the quietest text, for meta lines. */
+	--gemini-process: color-mix(in srgb, var(--gemini-muted) 85%, transparent);
 	--gemini-radius: 10px;
 	--gemini-radius-small: 6px;
 	--gemini-radius-large: 12px;

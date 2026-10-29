@@ -88,6 +88,7 @@ export class AgentMerge {
 			}
 			const merged = await this.mergeWorktree(record, repository, worktree, live, stillWorking);
 			if (merged) {
+				this.model.setResolved(record.id, 'merged');
 				const into = await currentBranch(repository);
 				const done = vscode.l10n.t("Remove Agent and Branch");
 				const keep = vscode.l10n.t("Keep Working");

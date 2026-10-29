@@ -100,16 +100,10 @@ export interface HomeStrings {
 	readonly projects: string;
 	readonly noProjects: string;
 	readonly newProject: string;
+	/** Open, for a card's fallback focus; the cards' other buttons come with their labels (`HomeAgent.buttons`). */
 	readonly open: string;
-	readonly stop: string;
-	readonly review: string;
-	/** The Try button's labels by the choice remembered for the repository, and its chevron. */
-	readonly tryIn: string;
-	readonly mergeBack: string;
-	readonly openMr: string;
+	/** The Try button's chevron. */
 	readonly tryMenu: string;
-	/** The button of an agent whose work is tried: Keep Changes, Take Back and the rest. */
-	readonly trying: string;
 	readonly noAgents: string;
 	readonly noWorkspace: string;
 	readonly customize: string;

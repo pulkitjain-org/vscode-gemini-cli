@@ -54,6 +54,8 @@ export interface AgentRecord {
 	readonly archivedAt?: number;
 	/** Its work in the user's checkout (Try in Workspace), until taken back; kept across restarts. */
 	readonly tried?: AgentTried;
+	/** A plain agent on a branch whose work was kept or merged: it reads "kept" or "merged", leaves Needs you, and is archived a week on (`isArchived`); its next turn clears it. */
+	readonly resolved?: { readonly kind: 'kept' | 'merged'; readonly at: number };
 	/** Its folder's work, saved by Discard Changes so Restore can bring it back. */
 	readonly discarded?: readonly DiscardedRepo[];
 }
@@ -240,7 +242,10 @@ export function isArchived(record: AgentRecord, now: number): boolean {
 		return true;
 	}
 	const project = record.project;
-	return project?.role === 'thread' && !!project.resolved && (project.resolvedAt ?? record.updatedAt) <= now - archiveAfterMs;
+	if (project?.role === 'thread') {
+		return !!project.resolved && (project.resolvedAt ?? record.updatedAt) <= now - archiveAfterMs;
+	}
+	return !!record.resolved && record.resolved.at <= now - archiveAfterMs;
 }
 
 /** The threads merged back, archived or not: their work is in the repository, so their checkpoints can go. */
@@ -248,9 +253,9 @@ export function mergedThreads(records: readonly AgentRecord[]): string[] {
 	return records.filter(record => record.project?.role === 'thread' && !!record.project.resolved).map(record => record.id);
 }
 
-/** When a thread was merged back: kept since this version, else its last use. */
+/** When a thread was merged back, or a plain agent's work kept or merged: kept since this version, else its last use. */
 export function resolvedAt(record: AgentRecord): number {
-	return record.project?.role === 'thread' ? record.project.resolvedAt ?? record.updatedAt : record.updatedAt;
+	return record.project?.role === 'thread' ? record.project.resolvedAt ?? record.updatedAt : record.resolved?.at ?? record.updatedAt;
 }
 
 /** `base`, or `base 2`, `base 3`... when `taken` has it, as a new project is named after its repository. */
@@ -443,6 +448,15 @@ export class AgentsModel {
 		if (project?.role === 'coordinator' && project.model !== model) {
 			this.update(id, a => ({ ...a, project: { ...project, model } }));
 		}
+	}
+
+	/** Marks a plain agent's work kept or merged, or clears it once the agent works again. */
+	setResolved(id: string, kind: 'kept' | 'merged' | undefined): void {
+		const record = this.agent(id);
+		if (!record || record.project || record.resolved?.kind === kind) {
+			return;
+		}
+		this.update(id, a => ({ ...a, resolved: kind ? { kind, at: this.now() } : undefined }));
 	}
 
 	/** Marks a project's thread resolved (merged back) or open again. */

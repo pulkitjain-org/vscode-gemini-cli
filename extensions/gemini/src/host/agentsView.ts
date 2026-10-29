@@ -571,7 +571,7 @@ export class AgentsView implements vscode.Disposable {
 		for (const workspace of this.model.workspaces) {
 			for (const record of this.model.agentsIn(workspace.id)) {
 				const live = this.live.get(record.id);
-				const state = agentState(live);
+				const state = agentState(record, live);
 				const changes = live?.changes.totals ?? record.changes;
 				summaries.push({
 					id: record.id, title: record.title, folder: workspace.folder, state: state.kind, status: state.status,
@@ -874,6 +874,8 @@ export class AgentsView implements vscode.Disposable {
 				setResolved: (id, resolved) => {
 					if (this.model.agent(id)?.project?.role === 'thread') {
 						this.projects.setThreadKept(id, resolved);
+					} else {
+						this.model.setResolved(id, resolved ? 'kept' : undefined);
 					}
 				},
 			});
@@ -1381,6 +1383,10 @@ export class AgentsView implements vscode.Disposable {
 					void this.tries.turnEnded(record.id);
 				}
 				if (before.busy !== activity.busy) {
+					// Working again after Keep or Merge Back: no longer kept or merged, so it is not archived under it.
+					if (activity.busy) {
+						this.model.setResolved(record.id, undefined);
+					}
 					this.onDidChangeTurnEmitter.fire(record.id);
 				}
 				this.refresh(record.id);

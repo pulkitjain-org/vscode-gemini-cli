@@ -14,7 +14,7 @@ import type { AdfDocument } from '../acp/jiraAdf';
 import type { ChangesTeamView, FromChangesTeam } from './teamFlowProtocol';
 
 /** Where an agent is at, for the title bar, Agent Home and the Changes panel. */
-export type AgentStateKind = 'working' | 'waiting' | 'done' | 'error' | 'idle' | 'stopped';
+export type AgentStateKind = 'working' | 'waiting' | 'done' | 'error' | 'idle' | 'stopped' | 'kept';
 
 // --- Changes panel
 
@@ -87,6 +87,15 @@ export interface HomeAgent {
 	readonly tryChoice?: 'merge' | 'mr';
 	/** "5m" */
 	readonly updated: string;
+	/** The card's buttons, from the one action set (`branchAgentActions`), with the host's labels. */
+	readonly buttons: readonly HomeAgentButton[];
+}
+
+export interface HomeAgentButton {
+	readonly do: 'stop' | 'review' | 'mergeBack' | 'tryMenu' | 'open';
+	readonly label: string;
+	readonly icon?: string;
+	readonly primary?: boolean;
 }
 
 /** A project on Agent Home: its coordinator's chat, and how many threads it has. */

@@ -431,20 +431,12 @@ function card(agent: HomeAgent, old?: HTMLElement): HTMLElement {
 	if (agent.changes) {
 		meta.append(el('span', undefined, agent.changes));
 	}
-	// The buttons are drawn again only when which of them show changes.
-	const shown: AgentButton[] = [
-		...agent.state === 'working' || agent.state === 'waiting' ? [['stop', strings.stop, 'debug-stop'] as const] : [],
-		...agent.changes ? [['review', strings.review, 'diff'] as const] : [],
-		...agent.branch && agent.changes && agent.state !== 'working' ? [
-			['mergeBack', agent.trying ? strings.trying : agent.tryChoice === 'merge' ? strings.mergeBack : agent.tryChoice === 'mr' ? strings.openMr : strings.tryIn, agent.trying ? 'beaker' : agent.tryChoice === 'merge' ? 'git-merge' : agent.tryChoice === 'mr' ? 'git-pull-request' : 'beaker'] as const,
-			...agent.trying ? [] : [['tryMenu', '', 'chevron-down'] as const],
-		] : [],
-		['open', strings.open],
-	];
+	// The buttons come from the host's one action set; drawn again only when they change.
+	const shown: AgentButton[] = agent.buttons.map(b => [b.do, b.label, b.icon] as const);
 	if (changed(actions, shown)) {
-		actions.replaceChildren(...shown.map(([type, label, iconName]) => {
-			const node = button(type === 'open' ? 'primary' : type === 'tryMenu' ? 'secondary try-menu' : 'secondary', label, () => vscode.postMessage({ type, id: agent.id }), iconName);
-			if (type === 'tryMenu') {
+		actions.replaceChildren(...agent.buttons.map(b => {
+			const node = button(b.primary ? 'primary' : b.do === 'tryMenu' ? 'secondary try-menu' : 'secondary', b.label, () => vscode.postMessage({ type: b.do, id: agent.id }), b.icon);
+			if (b.do === 'tryMenu') {
 				node.setAttribute('aria-label', strings.tryMenu);
 			}
 			return node;

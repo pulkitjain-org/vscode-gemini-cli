@@ -412,7 +412,7 @@ export class AgentTree implements vscode.TreeDataProvider<AgentTreeNode>, vscode
 		item.id = `agent:${record.id}${threads ? ':threads' : ''}`;
 		const branch = await this.branchOf(node.folder).catch(() => undefined);
 		const changes = live?.changes.totals ?? record.changes;
-		const state = agentState(live);
+		const state = agentState(record, live);
 		item.description = rowMeta(record, live, state.kind, changes);
 		item.iconPath = coordinator && (state.kind === 'idle' || state.kind === 'stopped') ? new vscode.ThemeIcon('comment-discussion') : state.icon;
 		const parent = this.model.parentOf(record);
@@ -434,13 +434,13 @@ export class AgentTree implements vscode.TreeDataProvider<AgentTreeNode>, vscode
 }
 
 /** Each state's icon is a dot in its colour, or a spinner while the agent works. */
-export function agentState(live: LiveAgentView | undefined): { kind: AgentStateKind; icon: vscode.ThemeIcon; status: string } {
+export function agentState(record: AgentRecord, live: LiveAgentView | undefined): { kind: AgentStateKind; icon: vscode.ThemeIcon; status: string } {
 	const step = live?.activity.step;
 	if (live?.session.status.phase === 'error') {
 		return { kind: 'error', icon: new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor('errorForeground')), status: vscode.l10n.t("Needs attention") };
 	}
 	if (live?.activity.needsPermission) {
-		return { kind: 'waiting', icon: new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor('charts.yellow')), status: step ? vscode.l10n.t("Needs you: {0}", step) : vscode.l10n.t("Waiting for your permission") };
+		return { kind: 'waiting', icon: new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor('charts.yellow')), status: step ? vscode.l10n.t("Needs you: {0}", step) : vscode.l10n.t("Needs you") };
 	}
 	if (live?.activity.busy) {
 		return { kind: 'working', icon: new vscode.ThemeIcon('loading~spin'), status: step ?? vscode.l10n.t("Working") };
@@ -449,12 +449,16 @@ export function agentState(live: LiveAgentView | undefined): { kind: AgentStateK
 		return { kind: 'done', icon: new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor('charts.green')), status: vscode.l10n.t("Done") };
 	}
 	const quiet = new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor('descriptionForeground'));
+	// Kept or merged: the one word every surface uses for an agent on a branch whose work was taken.
+	if (record.resolved) {
+		return { kind: 'kept', icon: new vscode.ThemeIcon('check', new vscode.ThemeColor('descriptionForeground')), status: record.resolved.kind === 'merged' ? vscode.l10n.t("Merged") : vscode.l10n.t("Kept") };
+	}
 	return live
-		? { kind: 'idle', icon: quiet, status: vscode.l10n.t("Idle") }
+		? { kind: 'idle', icon: quiet, status: vscode.l10n.t("Done") }
 		: { kind: 'stopped', icon: quiet, status: vscode.l10n.t("Paused \u00b7 open to continue") };
 }
 
-/** The row's note after the title: the turn's clock, "waiting", lines added, or how old it is. */
+/** The row's note after the title: the turn's clock, "needs you", lines added, or how old it is. */
 function rowMeta(record: AgentRecord, live: LiveAgentView | undefined, state: AgentStateKind, changes: ChangeTotals | undefined): string {
 	const meta = agentRowMeta({ state, startedAt: live?.activity.startedAt, added: changes?.added }, Date.now());
 	switch (meta.kind) {
@@ -462,7 +466,7 @@ function rowMeta(record: AgentRecord, live: LiveAgentView | undefined, state: Ag
 		case 'added':
 			return meta.text;
 		case 'waiting':
-			return vscode.l10n.t("waiting");
+			return vscode.l10n.t("needs you");
 		case 'age':
 			return relativeTime(record.updatedAt, Date.now());
 	}

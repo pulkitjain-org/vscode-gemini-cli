@@ -25,9 +25,10 @@ import { tildify } from './displayText';
 import { configSection, getApprovalPolicy, getProjectSettings, indexBuildOn } from './configuration';
 import { preferredModel } from './modelPreference';
 import { moveCard, toggleCard, type DashboardLayout } from '../acp/dashboard';
+import { branchAgentActions } from '../acp/agentRow';
 import { developerToolsOn } from './developerTools';
 import { buildDashboard, DashboardInput, StartupState } from './homeDashboard';
-import { FromHome, HomeAction, HomeAgent, HomeCardId, HomeIndex, HomeProject, HomeView, ToHome } from './panelProtocol';
+import { FromHome, HomeAction, HomeAgent, HomeAgentButton, HomeCardId, HomeIndex, HomeProject, HomeView, ToHome } from './panelProtocol';
 import { HomeStrings } from './panelStrings';
 import { TeamData } from './teamData';
 import { teamToolIds } from '../acp/teamHttp';
@@ -282,6 +283,7 @@ export class AgentHome implements vscode.Disposable {
 			...(a.trying ? { trying: true } : {}),
 			...(a.tryChoice ? { tryChoice: a.tryChoice } : {}),
 			updated: relativeTime(a.updatedAt, now),
+			buttons: this.cardButtons(a),
 		});
 		return {
 			workspaces,
@@ -416,6 +418,19 @@ export class AgentHome implements vscode.Disposable {
 	 * sends the task to its coordinator. Resolves with whether it started; when
 	 * not, the user has been told why, or turned it down.
 	 */
+	/** A card's buttons: Stop, Review and the Try button with its chevron, from the one action set, then Open. */
+	private cardButtons(a: AgentSummary): HomeAgentButton[] {
+		const actions = branchAgentActions({ state: a.state, hasChanges: !!a.changes?.files, onBranch: !!a.worktree, trying: a.trying });
+		const tryLabel = a.trying ? vscode.l10n.t("Keep or Take Back\u2026") : a.tryChoice === 'merge' ? vscode.l10n.t("Merge Back") : a.tryChoice === 'mr' ? vscode.l10n.t("Open Merge Request") : vscode.l10n.t("Try in Workspace");
+		const tryIcon = a.trying ? 'beaker' : a.tryChoice === 'merge' ? 'git-merge' : a.tryChoice === 'mr' ? 'git-pull-request' : 'beaker';
+		return [
+			...actions.primary.includes('stop') ? [{ do: 'stop' as const, label: vscode.l10n.t("Stop"), icon: 'debug-stop' }] : [],
+			...actions.check.includes('review') ? [{ do: 'review' as const, label: vscode.l10n.t("Review"), icon: 'diff' }] : [],
+			...actions.work.length ? [{ do: 'mergeBack' as const, label: tryLabel, icon: tryIcon }, ...a.trying ? [] : [{ do: 'tryMenu' as const, label: '', icon: 'chevron-down' }]] : [],
+			{ do: 'open' as const, label: vscode.l10n.t("Open"), primary: true },
+		];
+	}
+
 	private async startProject(folder: string, text: string, attachments: Extract<FromHome, { type: 'start' }>['attachments']): Promise<boolean> {
 		const coordinators = () => this.agents.summaries().filter(a => a.project?.role === 'coordinator').map(a => a.id);
 		const before = new Set(coordinators());
@@ -690,13 +705,7 @@ export class AgentHome implements vscode.Disposable {
 			noProjects: vscode.l10n.t("No projects yet. A project's coordinator splits work into threads, each an agent on its own branch."),
 			newProject: vscode.l10n.t("New Project"),
 			open: vscode.l10n.t("Open"),
-			stop: vscode.l10n.t("Stop"),
-			review: vscode.l10n.t("Review"),
-			tryIn: vscode.l10n.t("Try in Workspace"),
-			mergeBack: vscode.l10n.t("Merge Back"),
-			openMr: vscode.l10n.t("Open Merge Request"),
 			tryMenu: vscode.l10n.t("Other ways to take the work"),
-			trying: vscode.l10n.t("Keep or Take Back…"),
 			noAgents: vscode.l10n.t("No agents are running. Start one above."),
 			noWorkspace: vscode.l10n.t("Add a workspace folder for agents to work in."),
 			customize: vscode.l10n.t("Customize"),

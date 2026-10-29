@@ -7,6 +7,7 @@
 // from the extension host so they are localized.
 
 import * as vscode from 'vscode';
+import { developerToolsOn } from '../developerTools';
 import type { ChatStrings, ForkStrings, ProjectChatStrings, ReactionStrings, SideStrings } from '../chatStrings';
 import { reactionsOn } from '../chatReactions';
 import { configSection } from '../configuration';
@@ -494,7 +495,7 @@ export function chatHtml(webview: vscode.Webview, mediaUri: vscode.Uri, project:
 	<link href="${glassStyle}" rel="stylesheet">
 	<title>Gemini</title>
 </head>
-<body spellcheck="false">
+<body spellcheck="false" class="${developerToolsOn() ? 'developer' : ''}">
 	<svg class="defs" aria-hidden="true"><linearGradient id="gemini-spark-gradient" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f8df7"/><stop offset=".55" stop-color="#9b72cb"/><stop offset="1" stop-color="#d96570"/></linearGradient></svg>
 	<main id="transcript" class="transcript"></main>
 	<nav id="outline" class="prompt-outline" hidden></nav>
