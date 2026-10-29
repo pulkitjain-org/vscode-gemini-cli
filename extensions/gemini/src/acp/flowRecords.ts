@@ -30,20 +30,28 @@ export interface FlowRecord {
 	readonly fields?: Readonly<Record<string, string | number | boolean>>;
 }
 
+/** How long a listing is served again before the folder is read for other windows' records. */
+const listTtlMs = 5_000;
+
 export class FlowRecordStore {
 
 	constructor(readonly dir: string, private readonly now: () => Date = () => new Date()) { }
+
+	/** The last listing, served again for a while: Home rebuilds on every agent step and asks each time. */
+	private cached: { readonly at: number; readonly records: Promise<FlowRecord[]> } | undefined;
 
 	/** Writes the record for a flow that just opened; returns its id. */
 	async open(record: Omit<FlowRecord, 'id' | 'startedAt'>): Promise<string> {
 		const id = `${this.now().getTime().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 		await writeJsonAtomic(this.file(id), { ...record, id, startedAt: this.now().toISOString() } satisfies FlowRecord, { indent: '\t', newline: false });
+		this.cached = undefined;
 		return id;
 	}
 
 	/** Removes the record: the flow finished, or the user closed it. */
 	async close(id: string): Promise<void> {
 		await fs.rm(this.file(id), { force: true });
+		this.cached = undefined;
 	}
 
 	/** Keeps what the user typed and ticked on the flow's record; nothing when the record is gone. */
@@ -51,6 +59,7 @@ export class FlowRecordStore {
 		const record = await this.get(id);
 		if (record) {
 			await writeJsonAtomic(this.file(id), { ...record, fields } satisfies FlowRecord, { indent: '\t', newline: false });
+			this.cached = undefined;
 		}
 	}
 
@@ -58,8 +67,23 @@ export class FlowRecordStore {
 		return (await this.list()).find(record => record.id === id);
 	}
 
-	/** The flows that were open when the app last quit, oldest first. */
-	async list(): Promise<FlowRecord[]> {
+	/**
+	 * The flows that were open when the app last quit, oldest first. Read from
+	 * disk once per write of this store's own, and again after `listTtlMs` for
+	 * what other windows wrote.
+	 */
+	list(): Promise<FlowRecord[]> {
+		const now = this.now().getTime();
+		if (this.cached && now - this.cached.at < listTtlMs) {
+			return this.cached.records;
+		}
+		const records = this.read();
+		this.cached = { at: now, records };
+		records.catch(() => this.cached = undefined);
+		return records;
+	}
+
+	private async read(): Promise<FlowRecord[]> {
 		let names: string[];
 		try {
 			names = await fs.readdir(this.dir);

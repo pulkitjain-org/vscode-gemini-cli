@@ -15,7 +15,12 @@ export class UpdateBatcher<T extends { readonly id: string }> {
 	private readonly pending = new Map<string, T>();
 	private timer: ReturnType<typeof setTimeout> | undefined;
 
-	constructor(private readonly send: (items: readonly T[]) => void, private readonly intervalMs = 32) { }
+	constructor(private readonly send: (items: readonly T[]) => void, private intervalMs = 32) { }
+
+	/** Changes how often a burst is sent: a hidden view can wait longer, since nobody sees it until it shows. */
+	setInterval(ms: number): void {
+		this.intervalMs = ms;
+	}
 
 	push(item: T): void {
 		this.pending.set(item.id, item);

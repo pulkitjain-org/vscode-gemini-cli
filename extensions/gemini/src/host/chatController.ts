@@ -88,12 +88,16 @@ export interface ChatActivity {
  * or closed. Each of the chat's features keeps its own webview messages and
  * state in `./chat/`; this class routes the view's messages to them.
  */
+/** How often a burst of transcript updates reaches the view: at a frame's pace while it shows, rarely while it is hidden. */
+const visibleBatchMs = 32;
+const hiddenBatchMs = 500;
+
 export class ChatController implements vscode.Disposable {
 
 	private readonly transcript = new ChatTranscript();
 	/** Streams item changes to the webview at most about 30 times a second. */
 	private readonly textDeltas = new TextDeltas();
-	private readonly items = new UpdateBatcher<TranscriptItem>(items => this.post({ type: 'items', items: this.textDeltas.toUpdates(items) }));
+	private readonly items = new UpdateBatcher<TranscriptItem>(items => this.post({ type: 'items', items: this.textDeltas.toUpdates(items) }), visibleBatchMs);
 	private readonly disposables: vscode.Disposable[] = [];
 	private webview: vscode.Webview | undefined;
 	private webviewListener: vscode.Disposable | undefined;
@@ -431,6 +435,8 @@ export class ChatController implements vscode.Disposable {
 
 	/** The view went out of sight or came back (its tab or pane); a hidden view defers rendering. */
 	setHidden(hidden: boolean): void {
+		// Hidden, the view renders nothing anyone sees: a burst of updates goes every half second, and the whole state follows when it shows.
+		this.items.setInterval(hidden ? hiddenBatchMs : visibleBatchMs);
 		if (this.viewReady) {
 			this.post({ type: 'visibility', hidden });
 		}

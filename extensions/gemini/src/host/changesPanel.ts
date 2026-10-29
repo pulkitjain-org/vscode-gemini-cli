@@ -43,6 +43,8 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 	private generation = 0;
 	/** Each file's last diff, so typing in one file re-diffs only that file. */
 	private readonly diffs = new Map<string, { readonly original: string; readonly agentText?: string; readonly current: string; readonly hunks: NonNullable<ChangedFileView['hunks']> }>();
+	/** Files whose text must be read again for the next refresh; every file when the agent's changes or the source changed. */
+	private stale: Set<string> | 'all' = 'all';
 	/** The last view posted, to skip posting the same one again. */
 	private lastView: string | undefined;
 	private readonly disposables: vscode.Disposable[] = [];
@@ -54,7 +56,15 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 	constructor(private readonly extensionUri: vscode.Uri) {
 		this.disposables.push(
 			vscode.window.registerWebviewViewProvider(changesPanelId, this),
-			vscode.workspace.onDidChangeTextDocument(e => this.source?.changes.file(e.document.uri.fsPath) && this.schedule()),
+			vscode.workspace.onDidChangeTextDocument(e => {
+				if (this.source?.changes.file(e.document.uri.fsPath)) {
+					// Only this document is read again; the others' diffs still hold.
+					if (this.stale !== 'all') {
+						this.stale.add(e.document.uri.fsPath);
+					}
+					this.schedule();
+				}
+			}),
 		);
 	}
 
@@ -72,8 +82,10 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 			this.diffs.clear();
 		}
 		this.source = source;
+		this.stale = 'all';
 		this.sourceListener = source?.changes.onDidChange(() => {
 			this.openForChanges(source!);
+			this.stale = 'all';
 			this.schedule();
 		});
 		this.schedule(0);
@@ -106,6 +118,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		view.onDidChangeVisibility(() => {
 			if (view.visible) {
 				this.lastView = undefined;
+				this.stale = 'all';
 				this.schedule(0);
 			}
 		});
@@ -133,7 +146,9 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 			return;
 		}
 		const generation = ++this.generation;
-		const panelView = await this.build(this.source);
+		const stale = this.stale;
+		this.stale = new Set();
+		const panelView = await this.build(this.source, stale);
 		const json = JSON.stringify(panelView);
 		// Not when a later refresh started, the view closed meanwhile (it throws once disposed), or nothing changed.
 		if (generation === this.generation && this.view === view && json !== this.lastView) {
@@ -144,7 +159,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		}
 	}
 
-	private async build(source: ChangesSource | undefined): Promise<ChangesPanelView> {
+	private async build(source: ChangesSource | undefined, stale: Set<string> | 'all'): Promise<ChangesPanelView> {
 		if (!source) {
 			return { totals: { files: 0, added: 0, removed: 0 }, files: [] };
 		}
@@ -154,11 +169,15 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 			if (file.original === undefined || i >= maxDiffedFiles) {
 				return base;
 			}
+			const cached = this.diffs.get(file.path);
+			if (cached && stale !== 'all' && !stale.has(file.path) && cached.original === file.original && cached.agentText === file.agentText) {
+				// Nothing of this file changed since its last diff: a keystroke elsewhere reads only its own document.
+				return { ...base, hunks: cached.hunks };
+			}
 			const current = await currentText(file.path);
 			if (current === undefined) {
 				return base;
 			}
-			const cached = this.diffs.get(file.path);
 			if (cached?.original === file.original && cached.agentText === file.agentText && cached.current === current) {
 				return { ...base, hunks: cached.hunks };
 			}
@@ -189,6 +208,7 @@ export class ChangesPanel implements vscode.WebviewViewProvider, vscode.Disposab
 		switch (message.type) {
 			case 'ready':
 				this.lastView = undefined;
+				this.stale = 'all';
 				this.schedule(0);
 				return;
 			case 'team':

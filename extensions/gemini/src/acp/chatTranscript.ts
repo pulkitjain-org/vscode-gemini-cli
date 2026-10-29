@@ -716,7 +716,9 @@ export class ChatTranscript {
 	}
 
 	private upsert(item: TranscriptItem): void {
-		const index = this._items.findIndex(existing => existing.id === item.id);
+		// A streamed delta updates the last item, so the search from the front is for the rare edit of an older one.
+		const last = this._items.length - 1;
+		const index = last >= 0 && this._items[last].id === item.id ? last : this._items.findIndex(existing => existing.id === item.id);
 		if (index === -1) {
 			this.push(item);
 		} else {
@@ -761,13 +763,20 @@ function trimDetail(itemId: string, part: number, detail: ToolCallDetail, trim: 
 	return trimmed.hiddenLines ? { type: 'text', text: trimmed.head, tail: trimmed.tail, hiddenLines: trimmed.hiddenLines } : detail;
 }
 
+/** Each diff's line counts, by the content object the model keeps: an update without new content keeps the old objects, so the diff is counted once. */
+const diffCounts = new WeakMap<object, { readonly added: number; readonly removed: number }>();
+
 function toToolCallDetail(content: acp.ToolCallContent): ToolCallDetail {
 	switch (content.type) {
 		case 'content':
 			return { type: 'text', text: contentBlockToText(content.content) };
 		case 'diff': {
-			const { added, removed } = countChangedLines(content.oldText ?? '', content.newText);
-			return { type: 'diff', path: content.path, added, removed };
+			let counts = diffCounts.get(content);
+			if (!counts) {
+				counts = countChangedLines(content.oldText ?? '', content.newText);
+				diffCounts.set(content, counts);
+			}
+			return { type: 'diff', path: content.path, added: counts.added, removed: counts.removed };
 		}
 		case 'terminal':
 			return { type: 'terminal', terminalId: content.terminalId };

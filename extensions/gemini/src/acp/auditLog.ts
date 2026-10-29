@@ -63,12 +63,18 @@ export function auditFileName(time: Date): string {
 	return `${time.toISOString().slice(0, 10)}.jsonl`;
 }
 
+/** How long the unfinished intents are served again before the log is read for other windows' entries. */
+const unfinishedTtlMs = 5_000;
+
 export class AuditLog {
 
 	private queue: Promise<void> = Promise.resolve();
 	private readonly onDidAppendEmitter = new Emitter<AuditEntry>();
 	/** Fires once a record is on disk. */
 	readonly onDidAppend = this.onDidAppendEmitter.event;
+
+	/** The last `unfinished` answer, served again for a while: Home rebuilds on every agent step and asks each time. */
+	private unfinishedCache: { readonly at: number; readonly days: number; readonly entries: Promise<AuditEntry[]> } | undefined;
 
 	constructor(readonly dir: string, private readonly now: () => Date = () => new Date()) { }
 
@@ -128,7 +134,18 @@ export class AuditLog {
 	}
 
 	/** Intents of the last `days` days that got neither a result nor a failure: writes that were running when the app quit. */
-	async unfinished(days = 7): Promise<AuditEntry[]> {
+	unfinished(days = 7): Promise<AuditEntry[]> {
+		const now = this.now().getTime();
+		if (this.unfinishedCache && this.unfinishedCache.days === days && now - this.unfinishedCache.at < unfinishedTtlMs) {
+			return this.unfinishedCache.entries;
+		}
+		const entries = this.readUnfinished(days);
+		this.unfinishedCache = { at: now, days, entries };
+		entries.catch(() => this.unfinishedCache = undefined);
+		return entries;
+	}
+
+	private async readUnfinished(days: number): Promise<AuditEntry[]> {
 		const open = new Map<string, AuditEntry>();
 		for (const day of (await this.days()).slice(0, days).reverse()) {
 			for (const entry of await this.read(new Date(`${day}T00:00:00Z`))) {
@@ -149,6 +166,7 @@ export class AuditLog {
 
 	/** Appends in order. A failed append rejects only for its caller; the next one still runs. */
 	private append(entry: AuditEntry): Promise<void> {
+		this.unfinishedCache = undefined;
 		const run = this.queue.then(async () => {
 			await fs.mkdir(this.dir, { recursive: true, mode: privateWrite.dirMode });
 			await fs.appendFile(path.join(this.dir, auditFileName(new Date(entry.time))), `${JSON.stringify(entry)}\n`, { mode: privateWrite.mode });
