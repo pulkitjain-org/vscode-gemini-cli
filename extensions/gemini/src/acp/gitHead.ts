@@ -6,7 +6,8 @@
 // The branch a folder is on, for the Agents pane. Reading `.git/HEAD`
 // directly costs one or two small file reads; asking the git extension would
 // open the repository in Source Control, and spawning git costs a process.
-// Only `filesMatchingHead`, which runs once a commit lands, spawns git.
+// Only `filesMatchingHead`, which runs once a commit lands, and the index's
+// look at what a commit changed (`headPosition`, `changedBetween`) spawn git.
 
 import { readFile, stat } from 'node:fs/promises';
 import * as path from 'node:path';
@@ -29,6 +30,50 @@ export async function readGitHead(folder: string): Promise<string | undefined> {
 		return ref[1];
 	}
 	return /^[0-9a-f]{40,64}$/i.test(head) ? head.slice(0, 7) : undefined;
+}
+
+/** Where a checkout's HEAD is: the commit, and the branch it is on, if one. */
+export interface HeadPosition {
+	readonly commit: string;
+	/** The branch `HEAD` points at (`refs/heads/...`), or undefined when detached. */
+	readonly branch?: string;
+}
+
+/**
+ * The commit HEAD is at and the branch it points at, from git, so packed
+ * refs and reftable repositories read the same. Undefined outside a
+ * repository, or in one with no commit yet.
+ */
+export async function headPosition(folder: string): Promise<HeadPosition | undefined> {
+	try {
+		const [commit, symbolic] = await Promise.all([
+			git(folder, ['rev-parse', '--verify', '--quiet', 'HEAD']),
+			git(folder, ['symbolic-ref', '--quiet', 'HEAD']).catch(() => ''),
+		]);
+		const branch = symbolic.trim();
+		return commit.trim() ? { commit: commit.trim(), ...branch ? { branch } : {} } : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * The files under `folder` (absolute paths, as `folder` names them) two
+ * commits differ in, for the index of a checkout whose HEAD moved from
+ * `from` to `to`: a commit, a pull, a reset. Undefined when git cannot tell
+ * (a commit it no longer has), so the caller compares everything.
+ */
+export async function changedBetween(folder: string, from: string, to: string): Promise<string[] | undefined> {
+	if (from === to) {
+		return [];
+	}
+	try {
+		// Relative to `folder`, not the repository's real path, so the paths match the folder the index knows.
+		const names = await git(folder, ['diff', '--name-only', '-z', '--no-renames', '--relative', from, to, '--']);
+		return names.split('\0').filter(Boolean).map(file => path.join(folder, file));
+	} catch {
+		return undefined;
+	}
 }
 
 /** The repository's git directory: `.git`, or where a worktree's `.git` file points. */

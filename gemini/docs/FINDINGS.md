@@ -264,6 +264,15 @@ Measured on 25 Oct 2026 on a checkout of this repository (21,368 files), with th
 
 The top five results for six queries were the same before and after.
 
+Taken again on 29 Oct 2026 for what a commit costs the window's index (`src/host/indexWatchers.ts`), on this repository at 22,474 tracked files:
+
+| What | Before | After |
+| --- | --- | --- |
+| A commit on another branch of the same repository (an agent's worktree, which shares the refs) | a reconcile of the whole index, 0.85 s | two git calls to see HEAD did not move (`headPosition`), about 60 ms, and no indexer work |
+| A commit, pull or reset on the checked-out branch | a reconcile, 0.85 s | `git diff --name-only` between the two commits, about 120 ms for three commits, and a change batch of those files; a reconcile only for a branch switch, a commit git no longer has, or more than 300 changed files |
+| The repo map of a folder | `LIKE 'folder/%'` over every row of `files` and `symbols` | a range on the primary key (`prefixRange`) |
+| The files a file changes with | a scan of `cochange` for the second column | an index on it (`cochange_b`) |
+
 ### When the indexer gives up
 
 After three crashes the indexer stops for ten minutes. New sessions then get no `geminicode-index` server in `session/new` and no `indexHint`; `mcpServers` per session is what the CLI already supports. The CLI 0.64.0 does handle `notifications/tools/list_changed` (its MCP client calls `refreshTools`), but GeminiCode's local MCP server (`localMcpServer.ts`) answers requests only and has no stream to send notifications on, so a session already running keeps the tools, and their calls fail with a message.

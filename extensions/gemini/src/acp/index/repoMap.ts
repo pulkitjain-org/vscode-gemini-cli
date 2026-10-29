@@ -10,7 +10,7 @@
 
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
-import type { IndexStore } from './indexStore';
+import { type IndexStore, prefixRange } from './indexStore';
 
 export interface RepoMapOptions {
 	/** A subfolder to outline instead of the whole folder. */
@@ -28,7 +28,8 @@ export async function repoMap(store: IndexStore, root: string, options: RepoMapO
 	const prefix = (options.path ?? '').replace(/^\.?\/+|\/+$/g, '');
 	const depth = Math.min(Math.max(options.depth ?? (prefix ? 2 : 2), 1), 4);
 	const under = prefix ? `${prefix}/` : '';
-	const files = (store.statement('SELECT path, lang FROM files WHERE skipped IS NULL AND path LIKE ? ESCAPE \'\\\' ORDER BY path').all(`${under.replace(/[%_\\]/g, '\\$&')}%`) as { path: string; lang: string }[]);
+	// The files under the prefix by the primary key's order, not a scan of the whole table.
+	const files = (store.statement('SELECT path, lang FROM files WHERE skipped IS NULL AND path >= ? AND path < ? ORDER BY path').all(...prefixRange(under)) as { path: string; lang: string }[]);
 	if (!files.length) {
 		return prefix ? `No indexed files under ${prefix}.` : 'The index has no files yet.';
 	}
@@ -60,7 +61,7 @@ export async function repoMap(store: IndexStore, root: string, options: RepoMapO
 		}
 	}
 	const exportedBy = new Map<string, string[]>();
-	for (const row of store.statement(`SELECT path, name, kind FROM symbols WHERE exported = 1 AND container IS NULL AND kind != 'heading' AND path LIKE ? ESCAPE '\\' ORDER BY path, line`).all(`${under.replace(/[%_\\]/g, '\\$&')}%`) as { path: string; name: string; kind: string }[]) {
+	for (const row of store.statement(`SELECT path, name, kind FROM symbols WHERE exported = 1 AND container IS NULL AND kind != 'heading' AND path >= ? AND path < ? ORDER BY path, line`).all(...prefixRange(under)) as { path: string; name: string; kind: string }[]) {
 		const folder = path.posix.dirname(row.path);
 		const names = exportedBy.get(folder) ?? [];
 		if (names.length < symbolsPerFolder * 3) {
