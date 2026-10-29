@@ -107,8 +107,9 @@ case "$command" in
 	strip) strip_message "$1" ;;
 	commits) check_commits "$@" ;;
 	pull-request) check_pull_request "$1" "$2" ;;
+	upstream-tag) upstream_tag_commit "$1" ;;
 	*)
-		echo "Usage: $0 branch <name> | message <file> | strip <file> | commits <rev-list arguments> | pull-request <base> <branch>" >&2
+		echo "Usage: $0 branch <name> | message <file> | strip <file> | commits <rev-list arguments> | pull-request <base> <branch> | upstream-tag <base>" >&2
 		exit 2
 		;;
 esac

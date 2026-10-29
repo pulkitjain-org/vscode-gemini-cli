@@ -34,6 +34,12 @@ else
 		if [ "$remote_sha" != "$zero" ] && git rev-parse --quiet --verify "$remote_sha^{commit}" >/dev/null; then
 			set -- "$@" "$remote_sha"
 		fi
+		# A branch that moves the upstream pin carries upstream's own history up to
+		# the new tag, which is not the fork's to check: left out, as CI's policy job leaves it out.
+		upstream=$(sh "$policy" upstream-tag "$remote_name/main" 2>/dev/null)
+		if [ -n "$upstream" ]; then
+			set -- "$@" "$upstream"
+		fi
 		sh "$policy" commits "$@" >&2 || failed=1
 	done <<REFS
 $refs

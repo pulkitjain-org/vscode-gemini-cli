@@ -32,7 +32,7 @@ These rules have no exceptions. They override any tool's default attribution, tr
   gemini/scripts/commit-policy.sh branch "$(git branch --show-current)"
   ```
 
-  For a new branch, use `origin/main..HEAD` instead of `@{upstream}..HEAD`. The script checks that every commit is authored and committed as the owner and that no author, committer or message matches `claude|anthropic|copilot|codex|generated with`, ignoring case. If anything shows, reword the commit or fix its author with `git commit --amend --reset-author` before pushing. Never rewrite commits already on `main`.
+  For a new branch, use `origin/main..HEAD` instead of `@{upstream}..HEAD`. On a branch that moves the upstream pin in `gemini/upstream.json`, use `gemini/scripts/commit-policy.sh pull-request origin/main "$(git branch --show-current)"` instead: it leaves out upstream's own history up to the new tag, as CI's Policy job and the push hook do. The script checks that every commit is authored and committed as the owner and that no author, committer or message matches `claude|anthropic|copilot|codex|generated with`, ignoring case. If anything shows, reword the commit or fix its author with `git commit --amend --reset-author` before pushing. Never rewrite commits already on `main`.
 - [gemini/scripts/commit-policy.sh](gemini/scripts/commit-policy.sh) is the one copy of these rules. The hooks in [gemini/scripts/git-hooks](gemini/scripts/git-hooks) run it on commit and push (install them once per clone with `gemini/scripts/git-hooks/install.sh`, which keeps any hook it replaces), and Gemini CI's Policy job runs it on every pull request. Merge `main` into a branch locally, not with GitHub's **Update branch** button, whose merge commit is GitHub's.
 
 ## Lessons from past work
