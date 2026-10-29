@@ -5,6 +5,7 @@
 import path from 'path';
 import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
+import { createHash } from 'crypto';
 
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const rootDir = path.resolve(import.meta.dirname, '..', '..');
@@ -34,8 +35,32 @@ async function ensureNodeModules() {
 
 async function getElectron() {
 	const { shouldDownloadElectron } = await import('./electronVersion.ts');
-	if (shouldDownloadElectron(rootDir)) {
+	// GEMINI-FORK: the dev app also keeps the icons it was built with, so a rebrand needs a fresh copy too.
+	const branding = await brandingStamp();
+	const rebranded = process.env['VSCODE_SKIP_PRELAUNCH'] !== '1' && await readBrandingStamp() !== branding;
+	if (shouldDownloadElectron(rootDir) || rebranded) {
 		await runProcess(npm, ['run', 'electron']);
+		await fs.writeFile(path.join(rootDir, '.build', 'electron', brandingStampFile), branding);
+	}
+}
+
+// GEMINI-FORK: what `npm run electron` copies into the dev app: names from product.json and the app icons.
+const brandingStampFile = 'branding';
+const brandingFiles = ['product.json', 'resources/darwin/code.icns', 'resources/win32/code.ico'];
+
+async function brandingStamp(): Promise<string> {
+	const hash = createHash('sha256');
+	for (const file of brandingFiles) {
+		hash.update(await fs.readFile(path.join(rootDir, file)));
+	}
+	return hash.digest('hex');
+}
+
+async function readBrandingStamp(): Promise<string | undefined> {
+	try {
+		return (await fs.readFile(path.join(rootDir, '.build', 'electron', brandingStampFile), 'utf8')).trim();
+	} catch {
+		return undefined;
 	}
 }
 

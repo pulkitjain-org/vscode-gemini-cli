@@ -1,14 +1,7 @@
-<!-- BEGIN MICROSOFT SECURITY.MD V1.0.0 BLOCK -->
+# Security
 
-## Security
+Please do not report security vulnerabilities in public GitHub issues.
 
-Microsoft takes the security of our software products and services seriously, which
-includes all source code repositories in our GitHub organizations.
+Report them privately through [GitHub's vulnerability reporting](https://github.com/pulkitjain-org/vscode-gemini-cli/security/advisories/new). Include the GeminiCode and Gemini CLI versions, the steps to reproduce, and what an attacker could do.
 
-**Please do not report security vulnerabilities through public GitHub issues.**
-
-For security reporting information, locations, contact information, and policies,
-please review the latest guidance for Microsoft repositories at
-[https://aka.ms/SECURITY.md](https://aka.ms/SECURITY.md).
-
-<!-- END MICROSOFT SECURITY.MD BLOCK -->
+Vulnerabilities in the Gemini CLI itself belong with [its maintainers](https://github.com/google-gemini/gemini-cli/security). Vulnerabilities in upstream VS Code that also affect GeminiCode should be reported to Microsoft as described in [their security policy](https://github.com/microsoft/vscode/security/policy).

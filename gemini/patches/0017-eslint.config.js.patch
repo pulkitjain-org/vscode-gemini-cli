@@ -1,0 +1,47 @@
+diff --git a/eslint.config.js b/eslint.config.js
+index 4397cebb83603ec3667d6788903a89ac529f9da6..03d1e42b271cbec32fd05e1431a0236e0473d246 100644
+--- a/eslint.config.js
++++ b/eslint.config.js
+@@ -3098,4 +3098,42 @@ export default defineConfig(
+ 		rules: {
+ 			'local/code-no-new-javascript-files': 'error',
+ 		},
++	},
++	// GEMINI-FORK: fork-owned code carries its own copyright header.
++	{
++		files: [
++			'extensions/gemini/**/*.{ts,mts}',
++			'gemini/**/*.{ts,mts}',
++		],
++		rules: {
++			'header/header': [
++				2,
++				'block',
++				[
++					'---------------------------------------------------------------------------------------------',
++					' *  Copyright (c) Pulkit Jain. All rights reserved.',
++					' *  Licensed under the MIT License. See License.txt in the project root for license information.',
++					' *--------------------------------------------------------------------------------------------'
++				]
++			]
++		}
++	},
++	// GEMINI-FORK: the ACP client stays host-agnostic so it can move into the workbench.
++	{
++		files: [
++			'extensions/gemini/src/acp/**/*.ts',
++		],
++		rules: {
++			'no-restricted-imports': [
++				'error',
++				{
++					paths: [
++						{
++							name: 'vscode',
++							message: 'extensions/gemini/src/acp must not depend on the vscode API. Put host code in src/host.'
++						}
++					]
++				}
++			]
++		}
+ 	});

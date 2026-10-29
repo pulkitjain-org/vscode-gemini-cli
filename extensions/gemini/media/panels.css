@@ -1,0 +1,1464 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Pulkit Jain. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/* Agents mode's webviews (the Changes panel and Agent Home) and the MCP Servers and Rules page. */
+
+:root {
+	--gemini-radius: 10px;
+	--gemini-radius-small: 6px;
+	--gemini-radius-large: 12px;
+	/* Soft: the theme's own colours, named by their role (as in chat.css). */
+	--gemini-surface: var(--vscode-editor-background);
+	/* Cards and the composer: a step above the page. */
+	--gemini-card: var(--vscode-editorWidget-background, var(--gemini-surface));
+	--gemini-composer: var(--vscode-input-background, var(--gemini-surface));
+	--gemini-raised: var(--vscode-editorWidget-background, var(--vscode-input-background));
+	--gemini-popover: var(--vscode-quickInput-background, var(--gemini-raised));
+	--gemini-border: var(--vscode-widget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.35)));
+	--gemini-border-strong: var(--vscode-input-border, var(--gemini-border));
+	--gemini-muted: var(--vscode-descriptionForeground);
+	--gemini-faint: var(--vscode-disabledForeground, var(--gemini-muted));
+	--gemini-hover: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
+	/* An off switch's track: plain grey that still shows on a hovered row. */
+	--gemini-switch-off: color-mix(in srgb, var(--vscode-foreground) 24%, transparent);
+	--gemini-selected: var(--vscode-list-activeSelectionBackground, var(--gemini-hover));
+	--gemini-shadow: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+	--gemini-accent: var(--vscode-button-background, var(--vscode-focusBorder));
+	--gemini-on-accent: var(--vscode-button-foreground, #fff);
+	--gemini-ok: var(--vscode-testing-iconPassed, #4fb98a);
+	--gemini-warn: var(--vscode-editorWarning-foreground, #e2a94f);
+	--gemini-error: var(--vscode-errorForeground, #e66a72);
+	--gemini-contrast-border: var(--vscode-contrastBorder, transparent);
+	--gemini-gradient: linear-gradient(90deg, #4f8df7, #9b72cb 55%, #d96570);
+}
+
+
+/* The team tools' brand colours (webview-src/toolLogos.ts); lighter Jira and Snyk on dark themes. */
+:root {
+	--gemini-tool-jira: #0052cc;
+	--gemini-tool-confluence: #1868db;
+	--gemini-tool-gitlab: #fc6d26;
+	--gemini-tool-sonar: #4e9bcd;
+	--gemini-tool-snyk: #4c4a73;
+}
+
+body.vscode-dark,
+body.vscode-high-contrast {
+	--gemini-tool-jira: #2684ff;
+	--gemini-tool-confluence: #4c9aff;
+	--gemini-tool-snyk: #9a8fe0;
+}
+
+.tool-logo {
+	flex: none;
+	vertical-align: -0.15em;
+}
+
+body.vscode-high-contrast,
+body.vscode-high-contrast-light {
+	--gemini-gradient: linear-gradient(var(--vscode-foreground), var(--vscode-foreground));
+}
+
+body {
+	margin: 0;
+	padding: 0;
+	font-family: var(--vscode-font-family);
+	font-size: 13px;
+	color: var(--vscode-foreground);
+}
+
+button,
+select,
+textarea {
+	font-family: inherit;
+	font-size: inherit;
+	color: inherit;
+}
+
+button {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 11px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-small);
+	background: var(--gemini-surface);
+	font-size: 12px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+	background: var(--gemini-hover);
+}
+
+button:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+button .codicon {
+	font-size: 13px;
+}
+
+button:focus-visible,
+[tabindex]:focus-visible,
+select:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+button.primary {
+	border-color: var(--gemini-accent);
+	background: var(--gemini-accent);
+	color: var(--gemini-on-accent);
+	font-weight: 500;
+}
+
+button.primary:hover:not(:disabled) {
+	background: var(--vscode-button-hoverBackground, var(--gemini-accent));
+}
+
+button.icon-button {
+	padding: 3px;
+	border-color: transparent;
+	border-radius: 5px;
+	background: none;
+	color: var(--gemini-faint);
+}
+
+button.icon-button:hover:not(:disabled) {
+	color: var(--vscode-foreground);
+	background: var(--gemini-hover);
+}
+
+.muted {
+	color: var(--gemini-muted);
+}
+
+.added {
+	color: var(--gemini-ok);
+}
+
+.removed {
+	color: var(--gemini-error);
+}
+
+.counts {
+	display: inline-flex;
+	gap: 6px;
+	font-family: var(--vscode-editor-font-family);
+	font-size: 11.5px;
+	font-variant-numeric: tabular-nums;
+}
+
+/* --- Changes panel: a summary and the files, each a header over its diff, divided by hairlines */
+
+.changes-panel {
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+}
+
+.changes-bar {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+	padding: 9px 12px 10px;
+	border-bottom: 1px solid var(--gemini-border);
+}
+
+.changes-bar:empty {
+	display: none;
+}
+
+.changes-bar .actions {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-left: auto;
+}
+
+.changes-files {
+	flex: 1;
+	overflow: auto;
+	padding-bottom: 16px;
+}
+
+.changes-panel .empty {
+	margin: 24px 16px;
+	color: var(--gemini-muted);
+	text-align: center;
+	line-height: 1.5;
+}
+
+.file {
+	border-bottom: 1px solid var(--gemini-border);
+}
+
+.file-header {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	padding: 6px 8px 6px 12px;
+	font-size: 12px;
+	cursor: pointer;
+}
+
+.file-header:hover {
+	background: var(--gemini-hover);
+}
+
+.file-name {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	flex: 1;
+}
+
+.file-name .codicon {
+	flex: none;
+	font-size: 13px;
+	color: var(--gemini-faint);
+}
+
+.file.folded .file-name .codicon-chevron-down {
+	transform: rotate(-90deg);
+}
+
+.file-name .name {
+	white-space: nowrap;
+}
+
+.file-name .dir {
+	color: var(--gemini-faint);
+	font-size: 11.5px;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	direction: rtl;
+	text-align: left;
+}
+
+.file-name .tag {
+	flex: none;
+	padding: 0 5px;
+	border-radius: 4px;
+	font-size: 10.5px;
+	color: var(--gemini-ok);
+	border: 1px solid currentColor;
+}
+
+.file-actions {
+	display: flex;
+	gap: 2px;
+}
+
+.file.folded .file-body {
+	display: none;
+}
+
+.file-body .note {
+	margin: 4px 12px 10px;
+	color: var(--gemini-faint);
+}
+
+.hunk {
+	position: relative;
+}
+
+.hunk + .hunk {
+	border-top: 1px dashed var(--gemini-border);
+}
+
+.hunk-lines {
+	padding: 0 0 6px;
+	font-family: var(--vscode-editor-font-family);
+	font-size: 11px;
+	line-height: 1.6;
+	tab-size: 2;
+}
+
+/* The panel is narrow, so long lines wrap rather than scroll. */
+.line {
+	display: flex;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	padding-right: 12px;
+	color: var(--gemini-muted);
+}
+
+.line .sign {
+	flex: none;
+	width: 22px;
+	text-align: center;
+	color: var(--gemini-faint);
+	user-select: none;
+}
+
+.line.add {
+	background: color-mix(in srgb, var(--gemini-ok) 12%, transparent);
+	color: var(--vscode-foreground);
+}
+
+.line.add .sign {
+	color: var(--gemini-ok);
+}
+
+.line.del {
+	background: color-mix(in srgb, var(--gemini-error) 12%, transparent);
+	color: var(--vscode-foreground);
+}
+
+.line.del .sign {
+	color: var(--gemini-error);
+}
+
+.line.more {
+	padding-left: 22px;
+	color: var(--gemini-faint);
+	font-family: var(--vscode-font-family);
+	font-style: italic;
+}
+
+.hunk-actions {
+	position: absolute;
+	top: 2px;
+	right: 8px;
+	display: flex;
+	gap: 4px;
+	opacity: 0;
+}
+
+.hunk:hover .hunk-actions,
+.hunk:focus-within .hunk-actions {
+	opacity: 1;
+}
+
+button.chip {
+	padding: 1px 7px;
+	font-size: 11.5px;
+	background: var(--gemini-popover);
+	box-shadow: 0 2px 8px var(--gemini-shadow);
+}
+
+/* --- Agent Home: start an agent, and every agent at a glance */
+
+.agent-home {
+	background: var(--gemini-surface);
+}
+
+.home {
+	max-width: 820px;
+	margin: 0 auto;
+	padding: 56px 28px 48px;
+}
+
+.home h1 {
+	margin: 0 0 4px;
+	font-size: 20px;
+	font-weight: 600;
+}
+
+.home-start > p {
+	margin: 0 0 18px;
+	line-height: 1.5;
+}
+
+/* The same composer as the chat's: a hairline box whose outline takes the Gemini colours when focused. */
+.home-composer {
+	padding: 10px 10px 8px 12px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-large);
+	background: var(--gemini-composer);
+}
+
+.home-composer:focus-within {
+	border-color: transparent;
+	background:
+		linear-gradient(var(--gemini-composer), var(--gemini-composer)) padding-box,
+		var(--gemini-gradient) border-box;
+}
+
+/* Files the task is sent with, as chips over the text (as in the chat). */
+.attachments {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin-bottom: 6px;
+}
+
+.attachments[hidden] {
+	display: none;
+}
+
+.chip.attachment {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	max-width: 220px;
+	height: 20px;
+	padding: 0 2px 0 9px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: 999px;
+	background: var(--gemini-raised);
+	font-size: 11.5px;
+	white-space: nowrap;
+}
+
+.chip.attachment > span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.chip.attachment > .codicon {
+	font-size: 13px;
+}
+
+button.chip-remove {
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	padding: 0;
+	border: none;
+	border-radius: 50%;
+	background: transparent;
+	color: var(--gemini-muted);
+}
+
+button.chip-remove:hover {
+	background: var(--gemini-hover);
+	color: var(--vscode-foreground);
+}
+
+button.chip-remove .codicon {
+	font-size: 12px;
+}
+
+.home-composer textarea {
+	display: block;
+	width: 100%;
+	box-sizing: border-box;
+	/* Four lines before it grows: room to describe a task without a cramped box. */
+	min-height: 84px;
+	max-height: 40vh;
+	padding: 0;
+	resize: none;
+	field-sizing: content;
+	border: none;
+	outline: none;
+	background: none;
+	font-size: 14px;
+	line-height: 1.5;
+	color: var(--vscode-input-foreground);
+}
+
+.home-composer textarea[hidden] {
+	display: none;
+}
+
+.home-composer textarea::placeholder {
+	color: var(--gemini-faint);
+}
+
+.home-composer-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+.spacer {
+	flex: 1;
+}
+
+/* "+": round and quiet, like the chat's. */
+button.plus-button {
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	border-radius: 50%;
+}
+
+button.plus-button[aria-expanded="true"] {
+	background: var(--gemini-hover);
+}
+
+button.plus-button .codicon {
+	font-size: 14px;
+}
+
+/* Start: round, in the accent, like the chat's Send. */
+button.send {
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	border-color: var(--gemini-accent);
+	border-radius: 50%;
+	background: var(--gemini-accent);
+	color: var(--gemini-on-accent);
+}
+
+button.send:hover:not(:disabled) {
+	background: var(--vscode-button-hoverBackground, var(--gemini-accent));
+}
+
+button.send:disabled {
+	opacity: 1;
+	border-color: var(--gemini-border);
+	background: var(--gemini-raised);
+	color: var(--gemini-faint);
+}
+
+/* The folder and the mode, in the composer's bar. */
+.home-folder,
+.home-mode,
+.home-plus {
+	position: relative;
+}
+
+.home-mode[hidden] {
+	display: none;
+}
+
+/* The "+" menu: modes and files, opening under the button. */
+.home-plus .home-menu {
+	width: 300px;
+}
+
+.home-menu {
+	top: calc(100% + 6px);
+	bottom: auto;
+	left: 0;
+	width: 360px;
+	padding-top: 5px;
+}
+
+button.option-button {
+	gap: 6px;
+	padding: 2px 6px;
+	border-color: transparent;
+	background: none;
+	color: inherit;
+}
+
+button.option-button:hover,
+button.option-button[aria-expanded="true"] {
+	background: var(--gemini-hover);
+	color: var(--vscode-foreground);
+}
+
+button.option-button .codicon-chevron-down {
+	font-size: 11px;
+}
+
+.home-section {
+	margin-top: 30px;
+}
+
+.home-section h2 {
+	margin: 0 0 10px;
+	font-size: 11px;
+	font-weight: normal;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--gemini-faint);
+}
+
+.cards {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+	gap: 10px;
+}
+
+/* Cards are bordered, not shadowed; the state is the dot and one coloured word. */
+.card {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 12px 14px;
+	border: 1px solid var(--gemini-border);
+	border-radius: 9px;
+	background: var(--gemini-surface);
+	cursor: pointer;
+}
+
+.card:hover {
+	border-color: var(--gemini-border-strong);
+}
+
+.card-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.card-head .title {
+	flex: 1;
+	min-width: 0;
+	font-weight: 500;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.card-head .muted {
+	font-size: 11.5px;
+	color: var(--gemini-faint);
+}
+
+.card .dot {
+	flex: none;
+	box-sizing: border-box;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--gemini-faint);
+}
+
+/* Working: a small spinner in place of the dot. */
+.card.working .dot {
+	width: 11px;
+	height: 11px;
+	border: 1.6px solid var(--gemini-border-strong);
+	border-top-color: var(--gemini-accent);
+	background: none;
+}
+
+.card.waiting .dot {
+	background: var(--gemini-warn);
+}
+
+.card.done .dot {
+	background: var(--gemini-ok);
+}
+
+.card.error .dot {
+	background: var(--gemini-error);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.card.working .dot {
+		animation: home-spin 0.8s linear infinite;
+	}
+}
+
+@keyframes home-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+.card-status {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	font-size: 12.5px;
+	color: var(--gemini-muted);
+}
+
+.card.waiting .card-status {
+	color: var(--gemini-warn);
+}
+
+.card-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 12px;
+	font-size: 11.5px;
+	color: var(--gemini-faint);
+}
+
+.card-meta .branch {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+}
+
+.card-meta .codicon {
+	font-size: 12px;
+}
+
+.card-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 6px;
+	margin-top: 4px;
+}
+
+.earlier {
+	display: flex;
+	flex-direction: column;
+}
+
+/* A section's heading with its own +, such as Projects. */
+.section-heading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 6px;
+}
+
+.home-section .section-heading h2 {
+	margin: 0;
+}
+
+.earlier-row {
+	gap: 9px;
+	padding: 5px 8px;
+	border: none;
+	border-radius: var(--gemini-radius-small);
+	background: none;
+	font-size: 12.5px;
+	text-align: left;
+}
+
+.earlier-row .title {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.earlier-row .muted,
+.earlier-row .codicon {
+	color: var(--gemini-faint);
+}
+
+.counts .files {
+	color: var(--gemini-faint);
+}
+
+/* MCP Servers and Rules */
+
+.settings {
+	max-width: 760px;
+	margin: 0 auto;
+	padding: 32px 24px 48px;
+}
+
+.settings h1 {
+	margin: 0 0 4px;
+	font-size: 22px;
+	font-weight: 600;
+}
+
+.settings h2 {
+	margin: 0 0 2px;
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.settings .hint {
+	margin: 0;
+	color: var(--gemini-muted);
+	line-height: 1.45;
+}
+
+.settings-header,
+.section-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 16px;
+}
+
+.settings-section {
+	margin-top: 32px;
+}
+
+.section-actions {
+	display: flex;
+	flex: none;
+	align-items: center;
+	gap: 6px;
+}
+
+.settings .empty.row-problem {
+	margin: 0;
+	color: var(--gemini-warn);
+}
+
+.settings .rows {
+	margin-top: 12px;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius);
+	overflow: hidden;
+}
+
+.settings .row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 10px 12px;
+	background: var(--gemini-surface);
+}
+
+.settings .row + .row {
+	border-top: 1px solid var(--gemini-border);
+}
+
+.settings .row.off .row-main {
+	opacity: 0.6;
+}
+
+.settings .row.preference.off .row-main {
+	opacity: 1;
+}
+
+.settings .select-menu {
+	flex: none;
+}
+
+.settings .select-menu-button.select {
+	flex: none;
+	max-width: 200px;
+	padding: 3px 6px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-small);
+	color: var(--vscode-foreground);
+	background: var(--gemini-surface);
+}
+
+.settings .row-main {
+	flex: 1;
+	min-width: 0;
+}
+
+.settings .row-title {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+
+.settings .row-title .name {
+	font-weight: 600;
+}
+
+.settings .tag {
+	padding: 0 6px;
+	border-radius: 999px;
+	font-size: 11px;
+	line-height: 18px;
+	color: var(--gemini-muted);
+	border: 1px solid var(--gemini-border);
+}
+
+.settings .tag.subtle {
+	color: var(--gemini-faint);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.settings .mono {
+	font-family: var(--vscode-editor-font-family);
+	font-size: 12px;
+}
+
+.settings .storage-size {
+	flex: none;
+	min-width: 64px;
+	text-align: right;
+	color: var(--gemini-muted);
+}
+
+.settings .row-detail {
+	margin-top: 3px;
+	color: var(--gemini-muted);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.settings .row-problem {
+	display: flex;
+	gap: 6px;
+	margin-top: 4px;
+	color: var(--gemini-error);
+}
+
+.settings .empty {
+	margin: 0;
+	padding: 14px 12px;
+	color: var(--gemini-muted);
+}
+
+.switch {
+	position: relative;
+	flex: none;
+	width: 30px;
+	height: 18px;
+	padding: 0;
+	border: none;
+	border-radius: 999px;
+	background: var(--gemini-switch-off);
+}
+
+.switch::after {
+	content: '';
+	position: absolute;
+	top: 2px;
+	left: 2px;
+	width: 12px;
+	height: 12px;
+	border-radius: 50%;
+	background: var(--gemini-surface);
+	transition: transform 120ms ease;
+}
+
+.switch.on {
+	background: var(--gemini-accent);
+}
+
+.switch.on:hover:not(:disabled) {
+	background: var(--gemini-accent);
+}
+
+.switch.on::after {
+	transform: translateX(12px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.switch::after {
+		transition: none;
+	}
+}
+
+/* Write and Preview in Agent Home's composer (markdownPreview.ts), as in the chat's: tabs once there is a draft. */
+.home-composer .composer-tabs {
+	display: flex;
+	gap: 12px;
+	margin: -2px 0 4px;
+	font-size: 11.5px;
+}
+
+.home-composer:has(textarea:placeholder-shown) .composer-tabs {
+	display: none;
+}
+
+.composer-tab {
+	padding: 1px 0;
+	border: none;
+	background: none;
+	color: var(--gemini-faint);
+	font: inherit;
+	cursor: pointer;
+}
+
+.composer-tab:hover,
+.composer-tab[aria-selected="true"] {
+	color: var(--vscode-foreground);
+}
+
+.composer-tab[aria-selected="true"] {
+	box-shadow: inset 0 -1.5px var(--vscode-foreground);
+}
+
+.composer-tab:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 2px;
+	border-radius: 3px;
+}
+
+.composer-preview {
+	max-height: 40vh;
+	overflow-y: auto;
+	font-size: 14px;
+	line-height: 1.5;
+	overflow-wrap: anywhere;
+	cursor: default;
+}
+
+.composer-preview:focus {
+	outline: none;
+}
+
+.preview-empty {
+	color: var(--gemini-faint);
+}
+
+/* The draft's Markdown, as the chat shows a sent message. */
+.composer-preview > :first-child { margin-top: 0; }
+.composer-preview > :last-child { margin-bottom: 0; }
+.composer-preview :is(p, ul, ol) { margin: 0.5em 0; }
+.composer-preview :is(ul, ol) { padding-left: 1.4em; }
+.composer-preview li.task-item { list-style: none; }
+.composer-preview li.task-item > input,
+.composer-preview li.task-item > p > input { margin: 0 6px 0 -1.3em; vertical-align: -1px; }
+.composer-preview :is(h1, h2, h3, h4) { margin: 0.9em 0 0.4em; line-height: 1.3; }
+.composer-preview h1 { font-size: 1.3em; }
+.composer-preview h2 { font-size: 1.18em; }
+.composer-preview :is(h3, h4) { font-size: 1.05em; }
+.composer-preview a { color: var(--vscode-textLink-foreground); text-decoration: none; }
+
+.composer-preview code {
+	font-family: var(--vscode-editor-font-family);
+	font-size: 0.92em;
+	padding: 1px 4px;
+	border-radius: 4px;
+	background: var(--vscode-textCodeBlock-background);
+}
+
+.composer-preview :not(pre) > code {
+	font-size: 0.88em;
+	padding: 0 4px;
+	border: 1px solid var(--gemini-border);
+}
+
+.composer-preview pre {
+	padding: 8px 10px;
+	overflow-x: auto;
+	border-radius: var(--gemini-radius);
+	background: var(--vscode-textCodeBlock-background);
+}
+
+.composer-preview pre code {
+	padding: 0;
+	background: none;
+}
+
+.composer-preview blockquote {
+	margin: 0.5em 0;
+	padding-left: 10px;
+	border-left: 3px solid var(--gemini-border);
+	color: var(--gemini-muted);
+}
+
+.composer-preview blockquote.callout {
+	padding: 8px 12px;
+	border-left-color: var(--gemini-callout);
+	border-radius: 0 var(--gemini-radius) var(--gemini-radius) 0;
+	background: color-mix(in srgb, var(--gemini-callout) 9%, transparent);
+	color: inherit;
+}
+
+.composer-preview .callout-title {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-weight: 600;
+	color: var(--gemini-callout);
+}
+
+.composer-preview .callout-note { --gemini-callout: var(--vscode-editorInfo-foreground, #3794ff); }
+.composer-preview .callout-tip { --gemini-callout: var(--gemini-ok); }
+.composer-preview .callout-important { --gemini-callout: var(--vscode-charts-purple, #b180d7); }
+.composer-preview .callout-warning { --gemini-callout: var(--gemini-warn); }
+.composer-preview .callout-caution { --gemini-callout: var(--gemini-error); }
+
+.composer-preview .table-wrap {
+	margin: 0.6em 0;
+	overflow-x: auto;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius);
+}
+
+.composer-preview table {
+	min-width: 100%;
+	border-collapse: collapse;
+	border-style: hidden;
+}
+
+.composer-preview :is(th, td) {
+	padding: 5px 10px;
+	border: 1px solid var(--gemini-border);
+	text-align: left;
+	vertical-align: top;
+}
+
+/* The Index page (indexPage.ts): each workspace's index and the docs attached to it. */
+.index-page .index-dot {
+	flex: none;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--gemini-switch-off);
+}
+
+.index-page .index-dot.ready {
+	background: var(--gemini-ok);
+}
+
+.index-page .index-dot.building,
+.index-page .index-dot.paused {
+	background: var(--gemini-accent);
+}
+
+.index-page .index-dot.failed {
+	background: var(--gemini-error);
+}
+
+.index-page .index-tag.ready {
+	color: var(--gemini-ok);
+}
+
+.index-page .index-tag.building {
+	color: var(--gemini-accent);
+}
+
+.index-page .index-tag.failed {
+	color: var(--gemini-error);
+}
+
+.index-page .index-bar {
+	max-width: 320px;
+	height: 4px;
+	margin-top: 6px;
+	border-radius: 2px;
+	background: var(--gemini-switch-off);
+	overflow: hidden;
+}
+
+.index-page .index-bar > i {
+	display: block;
+	height: 100%;
+	background: var(--gemini-accent);
+	transition: width 300ms ease;
+}
+
+.index-page .index-off {
+	margin-top: 24px;
+	padding: 0;
+}
+
+.index-page button.link-button {
+	padding: 2px 4px;
+	border: none;
+	background: none;
+	color: var(--vscode-textLink-foreground);
+	cursor: pointer;
+}
+
+.index-page .hint .select-menu {
+	display: inline-flex;
+	vertical-align: middle;
+	margin: 0 2px;
+}
+
+.index-dialog {
+	width: min(560px, calc(100vw - 48px));
+	padding: 18px 20px;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius-large);
+	color: var(--vscode-foreground);
+	background: var(--gemini-popover);
+	box-shadow: 0 16px 48px var(--gemini-shadow);
+}
+
+.index-dialog::backdrop {
+	background: rgba(0, 0, 0, 0.35);
+}
+
+.index-dialog h2 {
+	margin: 0 0 2px;
+	font-size: 15px;
+}
+
+.index-dialog .hint {
+	margin: 0;
+	color: var(--gemini-muted);
+}
+
+.index-dialog-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.index-field {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+	margin-top: 14px;
+}
+
+.index-field > label {
+	color: var(--gemini-muted);
+	font-size: 12px;
+}
+
+.index-input {
+	padding: 5px 8px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-small);
+	color: var(--vscode-input-foreground);
+	background: var(--vscode-input-background);
+	font: inherit;
+}
+
+.index-input:focus {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.index-inline {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.index-inline .index-input {
+	width: 90px;
+}
+
+.index-pair {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 12px;
+}
+
+.index-radios,
+.index-checks {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.index-radio,
+.index-check {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+}
+
+.index-radio small {
+	display: block;
+	color: var(--gemini-muted);
+}
+
+.index-problem {
+	display: flex;
+	gap: 6px;
+	color: var(--gemini-error);
+}
+
+.index-fine {
+	margin-top: 14px !important;
+	font-size: 11.5px;
+}
+
+.index-dialog-foot {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.index-page .index-bar > i {
+		transition: none;
+	}
+}
+
+/* The Files Left Out popup: wide, scrolling inside, paths wrapping in full. */
+.index-skipped {
+	width: min(860px, calc(100vw - 48px));
+}
+
+.index-skipped-hint {
+	margin-top: 10px !important;
+}
+
+.index-skipped .index-input {
+	width: 100%;
+	box-sizing: border-box;
+	margin-top: 12px;
+}
+
+.index-skipped-body {
+	max-height: min(60vh, 560px);
+	margin-top: 12px;
+	overflow-y: auto;
+}
+
+.index-skipped-group + .index-skipped-group {
+	margin-top: 16px;
+}
+
+.index-skipped-group-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 2px 2px 6px;
+}
+
+.index-skipped-group-head .name {
+	font-weight: 600;
+}
+
+.index-skipped .rows {
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius);
+	overflow: hidden;
+}
+
+.index-skipped .row {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	padding: 6px 10px;
+	background: var(--gemini-surface);
+}
+
+.index-skipped .row + .row {
+	border-top: 1px solid var(--gemini-border);
+}
+
+.index-skipped-path {
+	flex: 1;
+	min-width: 0;
+	font-family: var(--vscode-editor-font-family);
+	font-size: 12px;
+	line-height: 18px;
+	overflow-wrap: anywhere;
+}
+
+.index-skipped .row > button,
+.index-skipped .row > .tag {
+	flex: none;
+}
+
+.index-skipped .empty {
+	margin: 0;
+	padding: 10px 12px;
+	color: var(--gemini-muted);
+}
+
+.index-skipped-note {
+	font-size: 11.5px;
+	text-align: right;
+}
+
+/* Project Helpers' Context per model call: a bar of what every call carries, and its parts. */
+.settings .tag.tokens {
+	font-family: var(--vscode-editor-font-family);
+}
+
+.settings .tag.tokens.heavy {
+	color: var(--gemini-warn);
+	border-color: color-mix(in srgb, var(--gemini-warn) 45%, transparent);
+}
+
+.context-bar {
+	display: flex;
+	gap: 2px;
+	height: 8px;
+	margin-top: 8px;
+	border-radius: 4px;
+	overflow: hidden;
+}
+
+.context-bar > i {
+	display: block;
+	min-width: 2px;
+}
+
+.context-cli {
+	background: var(--gemini-switch-off);
+}
+
+.context-context {
+	background: var(--gemini-accent);
+}
+
+.context-server {
+	background: var(--gemini-warn);
+}
+
+.context-geminicode {
+	background: var(--gemini-ok);
+}
+
+.settings .context-part {
+	padding-top: 6px;
+	padding-bottom: 6px;
+}
+
+.context-swatch {
+	flex: none;
+	width: 10px;
+	height: 10px;
+	border-radius: 2px;
+}
+
+.settings .context-tip {
+	align-items: flex-start;
+	color: var(--vscode-foreground);
+}
+
+.settings .context-tip .codicon {
+	color: var(--gemini-warn);
+	margin-top: 2px;
+}
+
+.settings .context-note {
+	display: flex;
+	align-items: flex-start;
+	gap: 6px;
+	margin-top: 8px;
+	font-size: 11.5px;
+}
+
+.settings .context-note .codicon {
+	flex: none;
+	margin-top: 1px;
+}
+
+/* Agent Setup's Trusted Folders: the folder and what its rule covers, how it stands, and Remove. */
+.settings .row.trust {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 150px 80px;
+}
+
+.settings .trust-folder {
+	display: block;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.settings .trust .row-detail {
+	white-space: normal;
+}
+
+.settings .trust > button {
+	justify-self: end;
+}
+
+.trust-status.ok {
+	color: var(--gemini-ok);
+}
+
+.trust-status.warn {
+	color: var(--gemini-warn);
+}
+
+.trust-status.muted {
+	color: var(--gemini-muted);
+}
+
+.settings .trust-actions {
+	flex-wrap: wrap;
+	margin-top: 12px;
+}
+
+.settings .trust-note {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 12px;
+}
+
+.settings .trust-note.problem {
+	color: var(--gemini-warn);
+}

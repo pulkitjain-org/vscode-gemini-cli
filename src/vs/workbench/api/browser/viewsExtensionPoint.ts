@@ -414,7 +414,8 @@ class ViewsExtensionHandler implements IWorkbenchContribution {
 					[id, { mergeViewWithContainerWhenSingleView: true }]
 				),
 				hideIfEmpty: true,
-				order,
+				// GEMINI-FORK: GeminiCode's own view comes first in the activity bar, above Explorer (order 0).
+				order: id === 'workbench.view.extension.gemini' && location === ViewContainerLocation.Sidebar ? -1 : order,
 				icon,
 			}, location);
 

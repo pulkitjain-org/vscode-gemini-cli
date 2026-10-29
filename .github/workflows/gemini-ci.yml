@@ -1,0 +1,355 @@
+# Fork CI for GeminiCode (see gemini/README.md, "CI").
+# Policy checks a pull request's branch name and commits against AGENTS.md.
+# Checks lints, hygiene-checks, type-checks, builds and tests extensions/gemini
+# and the site once, with the Gemini CLI the app bundles; Real CLI runs only
+# the tests that depend on the CLI against the bundled, latest and preview
+# releases. Compile & hygiene compiles the whole fork and runs the fork's tests
+# in upstream code. Packaged builds come from gemini-release.yml.
+# The full compile is skipped on pull requests that only touch GeminiCode's own
+# files (Checks covers those), and node_modules is restored from a cache keyed
+# on the lockfiles, so most pull requests finish in a few minutes.
+name: Gemini CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Every commit on main keeps its run: a release is cut only from a commit Gemini CI passed on.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Changed files
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      upstream: ${{ steps.diff.outputs.upstream }}
+    steps:
+      - name: Check whether upstream files changed
+        id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          # Pushes to main and manual runs always compile everything.
+          if [ -z "$PR" ]; then
+            echo "upstream=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename')
+          echo "$files"
+          # GeminiCode's own files; anything else may affect the full compile.
+          other=$(echo "$files" | grep -Ev '^(extensions/gemini/|gemini/|\.github/workflows/gemini-|[^/]*\.md$)' || true)
+          if [ -n "$other" ]; then
+            echo "upstream=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "upstream=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  policy:
+    name: Policy
+    # AGENTS.md, "Commits, branches and pull requests": the branch name, and every commit's author, committer and message.
+    # The same script runs in the git hooks (gemini/scripts/git-hooks). On pushes and manual runs the job is skipped.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout the pull request's own commits
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Not the merge commit GitHub makes for the run, which is GitHub's, not the author's.
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Branch name and commits
+        env:
+          BASE: ${{ github.event.pull_request.base.ref }}
+          BRANCH: ${{ github.head_ref }}
+        run: gemini/scripts/commit-policy.sh pull-request "origin/$BASE" "$BRANCH"
+
+  checks:
+    name: Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            build/package-lock.json
+            extensions/package-lock.json
+            extensions/gemini/package-lock.json
+
+      - name: Install root and build tooling (no native modules)
+        run: |
+          npm ci --ignore-scripts
+          npm ci --ignore-scripts --prefix build
+
+      - name: Install extension dependencies
+        run: |
+          npm ci --ignore-scripts --prefix extensions
+          npm ci --prefix extensions/gemini
+
+      - name: Workflow files parse
+        # GitHub drops a workflow whose YAML does not parse without running any of its jobs.
+        run: |
+          node -e '
+            const yaml = require("js-yaml");
+            for (const file of process.argv.slice(1)) {
+              const flow = yaml.load(require("fs").readFileSync(file, "utf8"));
+              if (!flow || !flow.on || !flow.jobs) { throw new Error(`${file} has no "on" or "jobs"`); }
+            }
+          ' .github/workflows/gemini-*.yml
+
+      - name: Lint fork files
+        # The fork's own files beside upstream's (gemini/patches/ADDED) too, which the full compile does not lint.
+        run: npx eslint --max-warnings 0 extensions/gemini gemini/site build/hygiene.ts build/filters.ts build/npm/dirs.ts build/gulpfile.extensions.ts build/lib/extensions.ts $(grep '\.ts$' gemini/patches/ADDED)
+
+      - name: Hygiene (fork files)
+        run: node build/hygiene.ts product.json .eslint-ignore build/lib/extensions.ts $(git ls-files extensions/gemini gemini .github/workflows/gemini-*.yml) $(cat gemini/patches/ADDED)
+
+      - name: Patch series matches HEAD
+        # The fork's edits to upstream files, as patches over the pinned tag; an edit made without regenerating them, or an upstream code file edited without a GEMINI-FORK marker, fails here.
+        run: gemini/scripts/upstream-series.sh check
+
+      - name: Compile extension
+        run: npm run gulp compile-extension:gemini
+
+      - name: Build the download page (sample release)
+        run: node gemini/site/build.mts "$RUNNER_TEMP/site" --sample
+
+      - name: Search and link preview tags on the download page
+        # Titles, descriptions, canonical addresses, Open Graph, JSON-LD, sitemap.xml, llms.txt and 404.html.
+        run: node gemini/site/check-seo.mts "$RUNNER_TEMP/site"
+
+      - name: Accessibility and Lighthouse on the download page
+        # axe-core on every page (no violations), Lighthouse on the landing page, the docs home and a feature and a docs page (accessibility 100, the rest 90 or more).
+        run: |
+          npm install --no-save --no-audit --no-fund --prefix "$RUNNER_TEMP/site-checks" axe-core@4.10.3 playwright-core@1.49.1 lighthouse@12.6.1
+          export NODE_PATH="$RUNNER_TEMP/site-checks/node_modules"
+          export CHROME_PATH="$(which google-chrome || which chromium-browser)"
+          node gemini/site/check-a11y.mts "$RUNNER_TEMP/site"
+          node gemini/site/check-lighthouse.mts "$RUNNER_TEMP/site"
+
+      - name: Type check the extension, tests and webview
+        run: |
+          npx tsc -p extensions/gemini/tsconfig.json --noEmit
+          npm run typecheck-tests --prefix extensions/gemini
+          npx tsc -p extensions/gemini/webview-src/tsconfig.json
+
+      - name: Bundle extension and webview
+        run: |
+          node extensions/gemini/esbuild.mts
+          node extensions/gemini/esbuild.webview.mts
+
+      - name: Hygiene (generated webview files)
+        # The webview build copies third-party CSS into media/ (build/filters.ts leaves it out); this fails if a
+        # generated file the filters do not leave out would trip the full compile's hygiene check.
+        run: node build/hygiene.ts product.json $(git ls-files --others --ignored --exclude-standard extensions/gemini/media | grep -E '\.(css|js)$')
+
+      - name: Bundle the Gemini CLI
+        # The same download, checksum check, patch and ripgrep as a release build; a CLI that breaks GeminiCode's
+        # contract with it (src/acp/cli/contract.ts) fails here.
+        run: npm run bundle-cli --prefix extensions/gemini
+
+      - name: Third-party notices
+        # What the release build writes into the app; a missing licence file fails here first.
+        run: node gemini/scripts/third-party-notices.mts "$RUNNER_TEMP/ThirdPartyNotices.txt"
+
+      - name: Unit tests and real-CLI tests (bundled CLI)
+        # The real-CLI tests default to the bundled copy (test/realCli.ts), and fail rather than skip without one in CI.
+        run: npm test --prefix extensions/gemini
+
+      - name: Unused exports and files (report only)
+        # knip lists exports nothing imports and files nothing reaches; it does not fail the job.
+        continue-on-error: true
+        working-directory: extensions/gemini
+        run: npx --yes knip@6.41.0 --no-exit-code --reporter compact --include files,exports,types
+
+  real-cli:
+    name: Real CLI (${{ matrix.gemini-cli }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # A preview CLI may break what GeminiCode reads from it before a release does; that is news, not a red build.
+    continue-on-error: ${{ matrix.gemini-cli == 'preview' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # bundled: the version the app ships (bundledCli in extensions/gemini/package.json).
+        gemini-cli: [bundled, latest, preview]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            extensions/gemini/package-lock.json
+
+      - name: Install extension dependencies
+        run: npm ci --prefix extensions/gemini
+
+      - name: Install Gemini CLI (${{ matrix.gemini-cli }})
+        env:
+          CLI: ${{ matrix.gemini-cli }}
+        run: |
+          if [ "$CLI" = bundled ]; then
+            # The same download, checksum check and layout as a release build; the app's ripgrep comes from the root packages.
+            npm ci --ignore-scripts
+            npm run bundle-cli --prefix extensions/gemini
+            VERSION="$(node -p "require('./extensions/gemini/package.json').bundledCli.version")"
+            echo "GEMINI_CLI_PATH=$GITHUB_WORKSPACE/extensions/gemini/cli/$VERSION/bundle/gemini.js" >> "$GITHUB_ENV"
+          else
+            npm install --prefix "$RUNNER_TEMP/gemini-cli" "@google/gemini-cli@$CLI"
+            echo "GEMINI_CLI_PATH=$RUNNER_TEMP/gemini-cli/node_modules/@google/gemini-cli/bundle/gemini.js" >> "$GITHUB_ENV"
+          fi
+
+      - name: Real-CLI, contract and patch tests
+        working-directory: extensions/gemini
+        run: npx vitest run test/acp/real test/acp/cliPatches.test.ts
+
+  snyk:
+    name: Snyk on the fork's code
+    # The fork's own dependencies and source: extensions/gemini and the site. Upstream's tree has its own process.
+    # Needs the SNYK_TOKEN secret; without it the job says so and passes, so a fork without Snyk still builds.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: extensions/gemini/package-lock.json
+
+      - name: Snyk
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          if [ -z "$SNYK_TOKEN" ]; then
+            echo "No SNYK_TOKEN secret: skipping. Add it under Settings → Secrets to gate on Snyk."
+            exit 0
+          fi
+          npm install -g snyk@1.1308.3
+          npm ci --ignore-scripts --prefix extensions/gemini
+          snyk test --severity-threshold=high --file=extensions/gemini/package.json
+          # snyk code test takes one path.
+          snyk code test --severity-threshold=high extensions/gemini
+          snyk code test --severity-threshold=high gemini/site
+
+  compile:
+    name: Compile & hygiene
+    needs: changes
+    # A skipped job counts as passing for required checks.
+    if: needs.changes.outputs.upstream == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Add swap space
+        run: |
+          sudo fallocate -l 10G /swapfile2
+          sudo chmod 600 /swapfile2
+          sudo mkswap /swapfile2
+          sudo swapon /swapfile2
+
+      - name: Restore node_modules cache
+        id: cache-node-modules
+        uses: ./.github/actions/restore-node-modules
+        with:
+          key-prefix: gemini-ci-node_modules-linux
+          key-args: "linux x64 $(node -p process.arch)"
+
+      - name: Install build tools
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: sudo apt update -y && sudo apt install -y build-essential pkg-config libx11-dev libx11-xcb-dev libxkbfile-dev libnotify-bin libkrb5-dev
+
+      - name: Install Electron headers
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: node build/npm/preinstall.ts
+
+      - name: Install dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          for i in {1..3}; do
+            npm ci && break
+            if [ $i -eq 3 ]; then
+              echo "npm ci failed too many times" >&2
+              exit 1
+            fi
+            echo "npm ci failed $i, trying again..."
+          done
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Save node_modules cache
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        uses: ./.github/actions/save-node-modules
+
+      - name: Prepare Electron types
+        run: node build/npm/electronTypes.ts
+
+      - name: Compile
+        run: npm run compile
+
+      - name: Hygiene
+        run: npm run hygiene
+
+      - name: Install Electron's system libraries
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          ./build/azure-pipelines/linux/apt-retry.sh sudo apt-get update
+          ./build/azure-pipelines/linux/apt-retry.sh sudo apt-get install -y xvfb libgtk-3-0 libgbm1 libnss3 libxss1 libasound2t64
+
+      - name: Setup Electron
+        uses: ./.github/actions/setup-electron
+        with:
+          arch: x64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: The fork's tests in upstream code
+        # The agents' browser file policy (AGENTS.md, "The agents' browser") and the Gemini extension's enablement.
+        # scripts/test.sh runs Electron's unit test runner; each --run loads one compiled test file from out/.
+        timeout-minutes: 15
+        env:
+          VSCODE_SKIP_PRELAUNCH: '1'
+        run: |
+          xvfb-run -a ./scripts/test.sh \
+            --run src/vs/platform/browserView/test/electron-main/geminiAgentFiles.test.ts \
+            --run src/vs/workbench/services/extensionManagement/test/browser/extensionEnablementService.test.ts

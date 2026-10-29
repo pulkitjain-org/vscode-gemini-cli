@@ -1,0 +1,13 @@
+diff --git a/resources/server/manifest.json b/resources/server/manifest.json
+index 443e3fd1cb1fd5a2f7191e54cbd9a414b382346f..3b72791a203aaf4d1721b9d4ec12142213c19ce0 100644
+--- a/resources/server/manifest.json
++++ b/resources/server/manifest.json
+@@ -1,6 +1,6 @@
+ {
+-	"name": "Code - OSS",
+-	"short_name": "Code- OSS",
++	"name": "GeminiCode",
++	"short_name": "GeminiCode",
+ 	"start_url": "/",
+ 	"lang": "en-US",
+ 	"display": "standalone",

@@ -1,0 +1,24 @@
+diff --git a/build/lib/electron.ts b/build/lib/electron.ts
+index 27151cc45465dcf9f8297ac39c026db7169257fc..bddd0c9eec38e85977531b1b86feb0993b46641a 100644
+--- a/build/lib/electron.ts
++++ b/build/lib/electron.ts
+@@ -143,14 +143,15 @@ const electronAssetResolver = electronFeed
+ export const config = {
+ 	version: electronVersion,
+ 	productAppName: product.nameLong,
+-	companyName: 'Microsoft Corporation',
+-	copyright: 'Copyright (C) 2026 Microsoft. All rights reserved',
++	// GEMINI-FORK: publisher shown in the app's file properties and About panel
++	companyName: 'pulkitjain-org',
++	copyright: 'Copyright (C) 2026 Pulkit Jain. Based on Code - OSS, Copyright (C) Microsoft Corporation',
+ 	darwinExecutable: product.nameShort,
+ 	darwinIcon: 'resources/darwin/code.icns',
+ 	darwinBundleIdentifier: product.darwinBundleIdentifier,
+ 	darwinApplicationCategoryType: 'public.app-category.developer-tools',
+-	darwinHelpBookFolder: 'VS Code HelpBook',
+-	darwinHelpBookName: 'VS Code HelpBook',
++	darwinHelpBookFolder: 'GeminiCode HelpBook', // GEMINI-FORK
++	darwinHelpBookName: 'GeminiCode HelpBook', // GEMINI-FORK
+ 	darwinBundleDocumentTypes: [
+ 		...darwinBundleDocumentTypes({ 'C header file': 'h', 'C source code': 'c' }, 'c'),
+ 		...darwinBundleDocumentTypes({ 'Git configuration file': ['gitattributes', 'gitconfig', 'gitignore'] }, 'config'),

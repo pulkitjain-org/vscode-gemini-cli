@@ -1,0 +1,105 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Pulkit Jain. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/* The Audit log page (webview-src/auditLog.ts), on top of panels.css's settings styles. */
+
+.audit {
+	max-width: 1180px;
+}
+
+.audit .hint .mono {
+	font-size: 12px;
+}
+
+.audit-filters {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px 14px;
+	margin-top: 16px;
+}
+
+.audit-filter {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+}
+
+.audit-filter input {
+	margin: 0;
+	accent-color: var(--gemini-accent);
+}
+
+.audit-select {
+	padding: 3px 6px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-small);
+	background: var(--gemini-surface);
+	color: var(--vscode-foreground);
+	font-size: 12px;
+}
+
+.audit-filters .row-actions {
+	gap: 8px;
+}
+
+.audit .tag.warn { color: var(--gemini-warn); border-color: color-mix(in srgb, var(--gemini-warn) 40%, transparent); }
+.audit .tag.ok { color: var(--gemini-ok); border-color: color-mix(in srgb, var(--gemini-ok) 40%, transparent); }
+.audit .tag.error { color: var(--gemini-error); border-color: color-mix(in srgb, var(--gemini-error) 40%, transparent); }
+
+.audit-card {
+	overflow: auto;
+	background: var(--gemini-card);
+}
+
+.audit-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 12px;
+}
+
+.audit-table th {
+	padding: 7px 10px;
+	border-bottom: 1px solid var(--gemini-border);
+	font-weight: 500;
+	color: var(--gemini-faint);
+	text-align: left;
+	white-space: nowrap;
+}
+
+.audit-table td {
+	padding: 7px 10px;
+	border-bottom: 1px solid var(--gemini-border);
+	vertical-align: top;
+}
+
+.audit-table tr:last-child td {
+	border-bottom: none;
+}
+
+.audit-table td.mono {
+	font-size: 11px;
+	white-space: nowrap;
+}
+
+.audit-table td.mono .tool-logo {
+	margin-right: 5px;
+	vertical-align: -2px;
+}
+
+.audit-table td.warn {
+	color: var(--gemini-warn);
+	white-space: normal;
+}
+
+/* An intent with no result: what a quit cut off. */
+.audit-table tr.open td {
+	background: color-mix(in srgb, var(--gemini-warn) 7%, transparent);
+}
+
+.audit-table td .tag + button {
+	margin-left: 8px;
+}

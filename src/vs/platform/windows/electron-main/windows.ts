@@ -151,7 +151,7 @@ export function defaultBrowserWindowOptions(accessor: ServicesAccessor, windowSt
 		height: windowState.height,
 		webPreferences: {
 			...webPreferences,
-			spellcheck: false,
+			spellcheck: true, // GEMINI-FORK: for the chat composers, which opt in; upstream's inputs opt out (geminiSpellCheck.ts)
 			zoomFactor: zoomLevelToZoomFactor(windowState.zoomLevel ?? windowSettings?.zoomLevel),
 			autoplayPolicy: 'user-gesture-required',
 			// Enable experimental css highlight api https://chromestatus.com/feature/5436441440026624

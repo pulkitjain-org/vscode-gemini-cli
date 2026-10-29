@@ -1,0 +1,21 @@
+diff --git a/build/lib/extensions.ts b/build/lib/extensions.ts
+index 10bd9fbd693b764a952fb52d7d97c6a07a676f85..f505eafbe4923b0560725cc4cc3be5f408f3633f 100644
+--- a/build/lib/extensions.ts
++++ b/build/lib/extensions.ts
+@@ -317,6 +317,8 @@ const nativeExtensions = [
+ 
+ const excludedExtensions = [
+ 	'copilot',
++	// GEMINI-FORK: forwards ports through Microsoft dev tunnels with the `code` CLI, which GeminiCode does not ship.
++	'tunnel-forwarding',
+ 	'vscode-api-tests',
+ 	'vscode-colorize-tests',
+ 	'vscode-colorize-perf-tests',
+@@ -631,6 +633,7 @@ const esbuildMediaScripts: { script: string; tsconfig: string }[] = [
+ 	{ script: 'mermaid-markdown-features/esbuild.webview.mts', tsconfig: 'mermaid-markdown-features/preview-src/tsconfig.json' },
+ 	{ script: 'notebook-renderers/esbuild.notebook.mts', tsconfig: 'notebook-renderers/tsconfig.json' },
+ 	{ script: 'simple-browser/esbuild.webview.mts', tsconfig: 'simple-browser/preview-src/tsconfig.json' },
++	{ script: 'gemini/esbuild.webview.mts', tsconfig: 'gemini/webview-src/tsconfig.json' }, // GEMINI-FORK: chat view webview
+ ];
+ 
+ export function buildExtensionMedia(isWatch: boolean, outputRoot?: string): Promise<void> {

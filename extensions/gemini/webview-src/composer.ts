@@ -1,0 +1,369 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Pulkit Jain. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+// The composer: sending a prompt, the mode chip, the model, the branch and
+// folder buttons and the status line above it.
+
+import type { SessionSettings } from '../src/acp/sessionSettings';
+import type { ViewGit, ViewStatus } from '../src/host/chatProtocol';
+import { armStop } from './activity';
+import { renderAttachments } from './attachmentChips';
+import { enterAction, format, isBroadQuestion } from './chatLogic';
+import { button, el, icon, setLabel, setTip } from './dom';
+import { applyTextEdit } from './panelDom';
+import { autoGrow, updatePlaceholder, updateSendState } from './inputBox';
+import { editLastQueued, renderQueue } from './queueStrip';
+import { onEnhanceKey } from './enhance';
+import { continueList, formatShortcut, toggleWrap, type TextEdit } from './markdownEdit';
+import { createPreviewTabs, isPreviewShortcut } from './markdownPreview';
+import { renderUserMarkdown } from './items';
+import { closePicker, onPickerKey, updatePicker } from './picker';
+import { setCommit, setRepos, setWorkspace, updateModel } from './pickers';
+import { modeIcon } from './modeIcon';
+import { openPlusMenu, updatePlusMenu } from './plusMenu';
+import { setTranscriptBusy } from './transcript';
+import { state, strings, ui, vscode } from './view';
+import { letSpellingMenuThrough } from './spellCheck';
+
+const { form, input, status, branchButton } = ui;
+
+const previewTabs = createPreviewTabs({
+	input, inputWrap: input.parentElement!, preview: ui.preview, writeTab: ui.writeTab, previewTab: ui.previewTab, form, strings,
+	render: renderUserMarkdown,
+});
+const mac = /Mac/.test(navigator.platform);
+
+/** The tried files the user edited: the message box offers to send the edits with the next message. */
+export function setTriedEdits(files: readonly string[]): void {
+	const node = document.getElementById('tried-edits');
+	if (!node) {
+		return;
+	}
+	node.hidden = !files.length;
+	node.querySelector('span')!.textContent = format(strings.includeEdits, files.map(file => file.split('/').pop()).join(', '));
+	setTip(node, strings.includeEditsTip);
+}
+
+export function setBusy(value: boolean): void {
+	ui.stopButton.hidden = !value;
+	form.classList.toggle('busy', value);
+	if (!value && document.activeElement === ui.stopButton) {
+		input.focus();
+	}
+	if (!value && state.busy !== value) {
+		ui.announce.textContent = strings.replyFinished;
+	} else if (value) {
+		ui.announce.textContent = '';
+	}
+	setTranscriptBusy(value);
+	updatePlaceholder();
+	updateSendState();
+	// A project chat's waiting messages, and one with the user's edits, offer Send now only once the turn is done.
+	if (strings.project || state.queue.some(item => item.withEdits)) {
+		renderQueue();
+	}
+}
+
+export function setStatus(value: ViewStatus): void {
+	status.className = `status ${value.phase}`;
+	status.replaceChildren();
+	if (value.text) {
+		if (value.phase === 'error') {
+			status.append(icon('warning'));
+		} else if (value.phase === 'starting' || value.phase === 'restarting') {
+			status.append(icon('loading', 'codicon-modifier-spin'));
+		}
+		status.append(el('span', 'status-text', value.text));
+		for (const action of value.actions ?? []) {
+			status.append(button('status-action', action.label, () => vscode.postMessage({ type: 'command', command: action.command })));
+		}
+	}
+	status.hidden = !value.text;
+}
+
+export function setSettings(settings: SessionSettings): void {
+	state.settings = settings;
+	updateModel();
+	updateModeChip();
+	updatePlusMenu();
+}
+
+/** A mode other than the first (the agent's default) shows as a chip beside "+"; its × goes back to the default. */
+function updateModeChip(): void {
+	const mode = state.settings.mode;
+	const current = mode?.available.find(choice => choice.id === mode.currentId);
+	const base = mode?.available[0];
+	ui.modeChip.hidden = !current || !base || current.id === base.id;
+	if (ui.modeChip.hidden || !current || !base) {
+		return;
+	}
+	ui.modeChip.dataset.mode = current.id;
+	ui.modeChipLabel.querySelector('.codicon')!.className = `codicon codicon-${modeIcon(current.id)}`;
+	ui.modeChipLabel.querySelector('span')!.textContent = current.name;
+	const detail = strings.modeDetails[current.id] ?? current.description;
+	setLabel(ui.modeChipLabel, format(strings.modeChip, detail ? `${current.name}: ${detail}` : current.name));
+	setLabel(ui.modeChipReset, format(strings.modeChipReset, base.name));
+}
+
+export function setGit(git: ViewGit): void {
+	branchButton.hidden = !git.branch;
+	ui.branchLabel.textContent = git.branch ?? '';
+	const branchLabel = format(strings.switchBranch, git.branch ?? '');
+	setTip(branchButton, branchLabel);
+	branchButton.setAttribute('aria-label', branchLabel);
+	setCommit(git);
+	const workspace = git.workspace;
+	setWorkspace(workspace);
+	setRepos(git.repos ?? []);
+	ui.workspaceButton.hidden = !workspace;
+	if (workspace) {
+		ui.workspaceLabel.textContent = workspace.worktree ? `${workspace.name} \u00b7 ${strings.worktree}` : workspace.name;
+		setLabel(ui.workspaceButton, format(strings.workspaceTooltip, workspace.path));
+	}
+	ui.reviewChip.hidden = !git.review;
+	if (git.review) {
+		ui.reviewLabel.textContent = git.review.label;
+		setLabel(ui.reviewChip, git.review.tip);
+	}
+	if (state.recommendMode !== git.recommendMode) {
+		state.recommendMode = git.recommendMode;
+		updatePlusMenu();
+	}
+}
+
+/** `gemini.chat.sendWith`: which of Return and ⌘Return sends. */
+export function setSendWith(cmdEnter: boolean): void {
+	state.cmdEnter = cmdEnter;
+	updatePlaceholder();
+	updateSendState();
+}
+
+/** Follow the agent: whether the chat opens each file the agent reads or edits; a switch in the "+" menu. */
+export function setFollow(on: boolean): void {
+	state.following = on;
+	updatePlusMenu();
+}
+
+ui.reviewChip.addEventListener('click', () => vscode.postMessage({ type: 'openReview' }));
+
+const followedName = ui.followed.querySelector<HTMLButtonElement>('.followed-name')!;
+const followedClose = ui.followed.querySelector<HTMLButtonElement>('.followed-close')!;
+followedName.addEventListener('click', () => vscode.postMessage({ type: 'showFollowed' }));
+followedClose.addEventListener('click', () => vscode.postMessage({ type: 'closeFollowed' }));
+
+/** Names the file Follow the agent opened last, with a button to close it, while it is open. */
+export function setFollowed(file: { readonly name: string; readonly path: string } | undefined): void {
+	ui.followed.hidden = !file;
+	if (file) {
+		followedName.querySelector('span')!.textContent = file.name;
+		setLabel(followedName, format(strings.followedFile, file.path));
+		setLabel(followedClose, format(strings.closeFollowed, file.name));
+	}
+}
+
+/** Prompts sent from this view, newest last, for Up and Down in an empty input. */
+const sent: string[] = [];
+let recalled = -1;
+
+/** Up or Down at the edge of the input steps through earlier prompts, as in a terminal. */
+function recall(event: KeyboardEvent): boolean {
+	const up = event.key === 'ArrowUp';
+	if ((!up && event.key !== 'ArrowDown') || event.shiftKey || event.altKey || event.metaKey || event.ctrlKey || !sent.length) {
+		return false;
+	}
+	const browsing = recalled >= 0 && input.value === sent[recalled];
+	if (!browsing && input.value) {
+		return false;
+	}
+	if (up) {
+		recalled = browsing ? Math.max(0, recalled - 1) : sent.length - 1;
+	} else if (!browsing) {
+		return false;
+	} else {
+		recalled++;
+	}
+	input.value = recalled < sent.length ? sent[recalled] : '';
+	if (recalled >= sent.length) {
+		recalled = -1;
+	}
+	autoGrow();
+	updateSendState();
+	previewTabs.update();
+	return true;
+}
+
+/** ⌘B and ⌘E wrap the selection in bold or code, as does typing ` over a selection; Shift+Enter continues a list. */
+function onMarkdownKey(event: KeyboardEvent): boolean {
+	const { selectionStart: start, selectionEnd: end, value } = input;
+	const marker = formatShortcut(event, mac) ?? (event.key === '`' && start !== end && !event.metaKey && !event.ctrlKey && !event.altKey ? '`' : undefined);
+	if (marker) {
+		applyEdit(toggleWrap(value, start, end, marker));
+		return true;
+	}
+	// Shift+Return continues a list, as does Return when ⌘Return sends.
+	if (event.key === 'Enter' && (event.shiftKey || state.cmdEnter) && !event.altKey && !event.metaKey && !event.ctrlKey && start === end) {
+		const edit = continueList(value, start);
+		if (edit) {
+			applyEdit(edit);
+			return true;
+		}
+	}
+	return false;
+}
+
+/** Applies an edit as one step the user can undo. */
+function applyEdit(edit: TextEdit): void {
+	applyTextEdit(input, edit);
+}
+
+/**
+ * Sends what the composer holds. While the agent works, `when` says how:
+ * `now` (Return, or Send) steers the turn, `queue` (⌘Return) waits for it to
+ * end. In a project's chat both wait for the coordinator's turn to end.
+ */
+function submit(when: 'now' | 'queue' = 'now'): void {
+	const text = input.value;
+	if (state.enhancing || (!text.trim() && !state.attachments.length)) {
+		return;
+	}
+	if (text.trim() && sent[sent.length - 1] !== text) {
+		sent.push(text);
+	}
+	recalled = -1;
+	const edits = document.getElementById('tried-edits');
+	const includeEdits = !!edits && !edits.hidden && !!document.querySelector<HTMLInputElement>('#tried-edits-on')?.checked;
+	vscode.postMessage({ type: 'prompt', text, attachments: state.attachments, ...(state.busy ? { when } : {}), ...(includeEdits ? { includeEdits } : {}) });
+	state.attachments = [];
+	renderAttachments();
+	closePicker();
+	input.value = '';
+	autoGrow();
+	updateSendState();
+	previewTabs.close();
+}
+
+form.addEventListener('submit', event => {
+	event.preventDefault();
+	submit();
+});
+form.addEventListener('click', event => {
+	if (event.target === form) {
+		input.focus();
+	}
+});
+letSpellingMenuThrough(input);
+
+/** When Esc was last pressed in an empty box, for Esc twice. */
+let lastEscape = 0;
+const doubleEscapeMs = 500;
+/** How long after one Esc a second one stops a working agent. */
+const stopAgainMs = 1500;
+
+input.addEventListener('keydown', event => {
+	if (!event.isComposing && onPickerKey(event)) {
+		event.preventDefault();
+		event.stopPropagation();
+		return;
+	}
+	if (!event.isComposing && onEnhanceKey(event)) {
+		event.preventDefault();
+		event.stopPropagation();
+		return;
+	}
+	if (event.key === 'Escape' && state.busy) {
+		// Esc twice stops, so an Esc meant for a menu or a pop-up doesn't stop the agent.
+		event.preventDefault();
+		if (armStop(stopAgainMs)) {
+			vscode.postMessage({ type: 'stop' });
+		}
+		return;
+	}
+	if (event.key === 'Escape' && !event.isComposing && !input.value.trim()) {
+		// Esc twice in an empty box rewinds, as in the CLI.
+		const now = Date.now();
+		if (now - lastEscape < doubleEscapeMs) {
+			lastEscape = 0;
+			event.preventDefault();
+			vscode.postMessage({ type: 'pickRewind' });
+			return;
+		}
+		lastEscape = now;
+	}
+	if (!event.isComposing && isPreviewShortcut(event)) {
+		event.preventDefault();
+		event.stopPropagation();
+		previewTabs.toggle();
+		return;
+	}
+	if (!event.isComposing && onMarkdownKey(event)) {
+		event.preventDefault();
+		event.stopPropagation();
+		return;
+	}
+	if (!event.isComposing && event.key === 'ArrowUp' && !input.value && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey && editLastQueued()) {
+		// Up in an empty box takes the last queued message back to edit, before earlier prompts.
+		event.preventDefault();
+		return;
+	}
+	if (!event.isComposing && recall(event)) {
+		event.preventDefault();
+		return;
+	}
+	const enter = event.isComposing ? undefined : enterAction(event, mac, state.cmdEnter);
+	if (enter === 'now' || enter === 'queue') {
+		event.preventDefault();
+		submit(enter);
+	}
+});
+input.addEventListener('input', () => {
+	autoGrow();
+	updateSendState();
+	updatePicker();
+	updateSuggestion();
+});
+
+/** "Run as Research" under a broad question; once dismissed, not again in this chat. */
+let suggestion: HTMLElement | undefined;
+let suggestionDismissed = false;
+function updateSuggestion(): void {
+	const show = !suggestionDismissed && !state.busy && !strings.project && state.research && isBroadQuestion(input.value);
+	if (!show) {
+		suggestion?.remove();
+		return;
+	}
+	if (!suggestion) {
+		suggestion = el('div', 'composer-suggestion');
+		const run = button('composer-suggestion-run', strings.research.suggest, () => {
+			input.value = `/research ${input.value.trim()}`;
+			suggestion?.remove();
+			submit();
+		}, 'telescope');
+		const dismiss = button('icon-button', '', () => {
+			suggestionDismissed = true;
+			suggestion?.remove();
+			input.focus();
+		}, 'close');
+		setLabel(dismiss, strings.research.dontSuggest);
+		suggestion.append(run, dismiss);
+	}
+	if (!suggestion.isConnected) {
+		ui.input.closest('.input-wrap')?.after(suggestion);
+	}
+}
+input.addEventListener('click', updatePicker);
+input.addEventListener('blur', () => setTimeout(() => {
+	if (document.activeElement !== input) {
+		closePicker();
+	}
+}, 0));
+ui.stopButton.addEventListener('click', () => vscode.postMessage({ type: 'stop' }));
+ui.modeChipLabel.addEventListener('click', () => openPlusMenu());
+ui.modeChipReset.addEventListener('click', () => {
+	const base = state.settings.mode?.available[0];
+	if (base) {
+		vscode.postMessage({ type: 'setMode', id: base.id });
+	}
+	input.focus();
+});

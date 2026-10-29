@@ -1,10 +1,9 @@
 name: @@NAME@@
 version: '@@VERSION@@'
-summary: Code editing. Redefined.
+summary: Code editor with the Gemini agent built in.
 description: |
-  Visual Studio Code is a new choice of tool that combines the
-  simplicity of a code editor with what developers need for the core
-  edit-build-debug cycle.
+  GeminiCode is a code editor built on Code - OSS, with the Gemini CLI
+  agent built in.
 
 architectures:
   - build-on: amd64

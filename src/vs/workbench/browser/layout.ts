@@ -1893,7 +1893,10 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 	private setActivityBarHidden(hidden: boolean): void {
 		this.stateModel.setRuntimeValue(LayoutStateKeys.ACTIVITYBAR_HIDDEN, hidden);
 		this.mainContainer.classList.toggle(LayoutClasses.ACTIVITYBAR_HIDDEN, hidden);
-		this.workbenchGrid.setViewVisible(this.activityBarPartView, !hidden);
+		// GEMINI-FORK: GeminiCode's Agents mode hides the activity bar before the grid exists; the grid is then built from the state above.
+		if (this.workbenchGrid) {
+			this.workbenchGrid.setViewVisible(this.activityBarPartView, !hidden);
+		}
 	}
 
 	private setBannerHidden(hidden: boolean): void {

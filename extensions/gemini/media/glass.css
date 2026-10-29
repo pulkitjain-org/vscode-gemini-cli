@@ -1,0 +1,209 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Pulkit Jain. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/*
+ * Glass for every webview page (gemini/docs/ARCHITECTURE.md, "Look"), loaded after the page's own
+ * stylesheets so its rules win at equal specificity. The workbench's half is geminiSoft.css.
+ *
+ * - Cards, the composer, the user's message, permission cards: their top hairline catches the
+ *   light (the rim). It is a border colour, so it costs nothing and adds no layer.
+ * - Buttons, pills and the composer's controls: a translucent fill with the rim; the primary
+ *   button keeps the solid accent with a light inner edge.
+ * - Menus, pickers, popovers and dialogs: opaque, a sheen across the top, the rim, one shadow;
+ *   dialogs sit over a plain scrim.
+ * - Fields: glass wells, with an accent ring when focused.
+ *
+ * Nothing blurs: test/themes/noBlur.test.ts fails on a backdrop-filter or blur filter here.
+ */
+
+:root {
+	--gemini-glass-fill: rgba(255, 255, 255, 0.04);
+	--gemini-glass-fill-strong: rgba(255, 255, 255, 0.07);
+	--gemini-glass-rim-top: rgba(255, 255, 255, 0.14);
+	/* Borders: a hairline, and a lighter top edge. */
+	--gemini-glass-edge: rgba(255, 255, 255, 0.1);
+	--gemini-glass-edge-top: rgba(255, 255, 255, 0.2);
+	--gemini-glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 48px);
+	--gemini-glass-primary-edge: rgba(255, 255, 255, 0.22);
+	--gemini-scrim: rgba(0, 0, 0, 0.38);
+}
+
+body.vscode-light {
+	--gemini-glass-fill: rgba(0, 0, 0, 0.04);
+	--gemini-glass-fill-strong: rgba(0, 0, 0, 0.07);
+	--gemini-glass-rim-top: rgba(255, 255, 255, 0.8);
+	--gemini-glass-edge: rgba(0, 0, 0, 0.12);
+	--gemini-glass-edge-top: rgba(0, 0, 0, 0.06);
+	--gemini-glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 48px);
+	--gemini-scrim: rgba(30, 30, 40, 0.18);
+}
+
+/* High contrast keeps its own borders and flat surfaces. */
+body.vscode-high-contrast,
+body.vscode-high-contrast-light {
+	--gemini-glass-fill: transparent;
+	--gemini-glass-fill-strong: var(--gemini-hover);
+	--gemini-glass-rim-top: transparent;
+	--gemini-glass-edge: var(--vscode-contrastBorder, var(--gemini-border-strong));
+	--gemini-glass-edge-top: var(--vscode-contrastBorder, var(--gemini-border-strong));
+	--gemini-glass-sheen: none;
+	--gemini-glass-primary-edge: transparent;
+}
+
+/* ---- Surfaces: the rim on the top hairline. */
+
+.card,
+.dash-card,
+.dash-needs,
+.dash-setup,
+.settings .rows,
+.team-servers,
+.mr-card,
+.flow-finding,
+.permission,
+.message.user,
+.trace-card,
+.cut-off,
+.compact-card,
+.fork-card,
+.thread-card,
+.restore-card,
+.composer,
+.home-composer {
+	border-top-color: var(--gemini-glass-edge-top);
+}
+
+/* ---- Buttons and pills. */
+
+/* The pages built on panels.css, whose plain buttons take its base look; :where() adds no weight, so every styled variant still wins. */
+:where(.changes-panel, .agent-home, .settings-page, .team-flow) button {
+	border-color: var(--gemini-glass-edge);
+	border-top-color: var(--gemini-glass-edge-top);
+	background: var(--gemini-glass-fill);
+}
+
+:where(.changes-panel, .agent-home, .settings-page, .team-flow) button:hover:not(:disabled) {
+	background: var(--gemini-glass-fill-strong);
+}
+
+button.primary,
+#send:not(:disabled),
+.status-action:first-of-type {
+	box-shadow: inset 0 1px 0 var(--gemini-glass-primary-edge);
+}
+
+.permission-actions button.secondary,
+.status-action,
+.plus-button,
+.mode-chip,
+.enhance-float {
+	border-color: var(--gemini-glass-edge);
+	border-top-color: var(--gemini-glass-edge-top);
+	background: var(--gemini-glass-fill);
+}
+
+.status-action:first-of-type {
+	border-color: var(--gemini-accent);
+	background: var(--gemini-accent);
+}
+
+.permission-actions button.secondary:hover,
+.status-action:hover,
+.plus-button:hover,
+.plus-button[aria-expanded="true"] {
+	background: var(--gemini-glass-fill-strong);
+}
+
+/* Latest floats over the chat's text, so it is opaque glass, like a pop-up. */
+.scroll-down {
+	border-color: var(--gemini-glass-edge);
+	border-top-color: var(--gemini-glass-edge-top);
+	background: var(--gemini-glass-sheen), var(--gemini-popover);
+	color: var(--vscode-foreground);
+	box-shadow: 0 4px 14px var(--gemini-shadow);
+}
+
+.scroll-down:hover {
+	background: linear-gradient(var(--gemini-glass-fill-strong), var(--gemini-glass-fill-strong)), var(--gemini-popover);
+}
+
+/* The Enhance pill sits on the composer: its glass is the composer's colour with the fill on top. */
+.enhance-float {
+	background: linear-gradient(var(--gemini-glass-fill-strong), var(--gemini-glass-fill-strong)), var(--gemini-composer);
+}
+
+.enhance-chip + .enhance-chip {
+	border-left-color: var(--gemini-glass-edge);
+}
+
+.pill,
+.dash-pill,
+.settings .tag,
+.state-pill {
+	background: var(--gemini-glass-fill);
+}
+
+/* ---- Menus, pickers, popovers and tooltips: opaque glass. */
+
+.menu,
+.picker,
+.usage-popover,
+.gemini-tooltip {
+	border-color: var(--gemini-glass-edge);
+	border-top-color: var(--gemini-glass-edge-top);
+	background: var(--gemini-glass-sheen), var(--gemini-popover);
+}
+
+/* The chosen row: the lens. */
+.menu-row.active,
+.picker-row.active {
+	background: var(--gemini-glass-fill-strong);
+	box-shadow: inset 0 1px 0 var(--gemini-glass-rim-top);
+}
+
+/* ---- Dialogs: the same glass, rounder, a deeper shadow, over a plain scrim. */
+
+.new-thread,
+.project-settings,
+.dialog,
+.flow-dialog,
+.dash-list-dialog,
+.dash-comment-dialog {
+	border-color: var(--gemini-glass-edge);
+	border-top-color: var(--gemini-glass-edge-top);
+	border-radius: 14px;
+	background: var(--gemini-glass-sheen), var(--gemini-popover);
+	box-shadow: 0 24px 64px var(--gemini-shadow);
+}
+
+.new-thread::backdrop,
+.project-settings::backdrop,
+.dash-list-dialog::backdrop,
+.dash-comment-dialog::backdrop,
+.dialog-backdrop {
+	background: var(--gemini-scrim);
+}
+
+/* ---- Fields: glass wells, an accent ring on focus. */
+
+.new-thread-input,
+.field-box,
+.flow-input,
+.audit-select,
+.dash-list-filter,
+.dash-comment-editor {
+	border-color: var(--gemini-glass-edge);
+	background: var(--gemini-glass-fill);
+}
+
+.new-thread-input:focus,
+.field-box:focus-within,
+.flow-input:focus,
+.dash-list-filter:focus,
+.dash-comment-editor:focus-within {
+	border-color: var(--vscode-focusBorder);
+	outline: none;
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--vscode-focusBorder) 22%, transparent);
+}

@@ -43,6 +43,7 @@ export const unicodeFilter = Object.freeze<string[]>([
 	'!**/LICENSE',
 
 	'!**/*.{dll,exe,png,bmp,jpg,gif,scpt,cur,ttf,woff,eot,template,ico,icns,opus,wasm}',
+	'!**/*.woff2', // GEMINI-FORK: fonts bundled with the chat webview
 	'!**/test/**',
 	'!**/*.test.ts',
 	'!**/*.{d.ts,json,md}',
@@ -57,6 +58,8 @@ export const unicodeFilter = Object.freeze<string[]>([
 	'!extensions/mermaid-markdown-features/chat-webview-out/**',
 	'!extensions/ipynb/notebook-out/**',
 	'!extensions/notebook-renderers/renderer-out/**',
+	'!extensions/gemini/media/*.js', // GEMINI-FORK: built chat webview bundle
+	'!extensions/gemini/media/{codicon,katex-style}.css', // GEMINI-FORK: third-party CSS the webview build copies in
 	'!extensions/php-language-features/src/features/phpGlobalFunctions.ts',
 	'!extensions/terminal-suggest/src/completions/upstream/**',
 	'!extensions/typescript-language-features/test-workspace/**',
@@ -103,6 +106,7 @@ export const indentationFilter = Object.freeze<string[]>([
 	'!build/ext.js',
 	'!build/darwin/patch-dmg.py',
 	'!build/npm/gyp/patches/gyp_spectre_mitigation_support.patch',
+	'!gemini/patches/**', // GEMINI-FORK: the fork's edits to upstream files, as patches
 	'!product.overrides.json',
 	'!src/vs/platform/endpoint/common/licenseAgreement.ts',
 
@@ -149,6 +153,7 @@ export const indentationFilter = Object.freeze<string[]>([
 	'!src/typings/**/*.d.ts',
 	'!extensions/**/*.d.ts',
 	'!**/*.{svg,exe,png,bmp,jpg,gif,scpt,bat,cmd,cur,ttf,woff,eot,md,ps1,psm1,template,yaml,yml,d.ts.recipe,ico,icns,plist,opus,admx,adml,wasm}',
+	'!**/*.woff2', // GEMINI-FORK: fonts bundled with the chat webview
 	'!build/{lib,download,linux,darwin}/**/*.js',
 	'!build/**/*.sh',
 	'!build/azure-pipelines/**/*.js',
@@ -171,10 +176,15 @@ export const indentationFilter = Object.freeze<string[]>([
 	'!extensions/ipynb/notebook-out/**',
 	'!extensions/notebook-renderers/renderer-out/*.js',
 	'!extensions/simple-browser/media/*.js',
+	'!extensions/gemini/media/*.js', // GEMINI-FORK: built chat webview bundle
+	'!extensions/gemini/media/{codicon,katex-style}.css', // GEMINI-FORK: third-party CSS the webview build copies in
 ]);
 
 export const copyrightFilter = Object.freeze<string[]>([
 	'**',
+	// GEMINI-FORK: fork files carry their own header, checked by ESLint
+	'!extensions/gemini/**',
+	'!gemini/**',
 	'!**/*.desktop',
 	'!**/*.json',
 	'!**/*.jsonc',

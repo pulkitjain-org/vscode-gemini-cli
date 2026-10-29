@@ -29,6 +29,8 @@ import { ILogService } from '../../log/common/log.js';
 import { IAgentNetworkFilterService } from '../../networkFilter/common/networkFilterService.js';
 import { formatBrowserViewAccessibility } from './browserViewAccessibility.js';
 import { ISandboxNetworkRestrictions } from '../../sandbox/common/sandboxSettingsResolutionHelper.js';
+import { geminiContextMenuEntries, showGeminiContextMenu } from '../../windows/electron-main/geminiContextMenu.js'; // GEMINI-FORK
+import { geminiAgentFiles } from './geminiAgentFiles.js'; // GEMINI-FORK
 
 export const IBrowserViewMainService = createDecorator<IBrowserViewMainService>('browserViewMainService');
 
@@ -460,6 +462,7 @@ export class BrowserViewMainService extends Disposable implements IBrowserViewMa
 			options
 		);
 		this.browserViews.set(id, view);
+		geminiAgentFiles.track(view); // GEMINI-FORK: before the page loads anything, so its files are checked when an agent owns it
 		view.presentation = presentation;
 		if (windowConfiguration?.theme) {
 			view.inspector.setTheme(windowConfiguration.theme);
@@ -723,7 +726,6 @@ export class BrowserViewMainService extends Disposable implements IBrowserViewMa
 				click: () => inspectTarget.addComment()
 			}));
 			void inspectTarget.highlight().catch(() => { });
-			menu.on('menu-will-close', () => inspectTarget.dispose());
 		}
 
 		menu.append(new MenuItem({ type: 'separator' }));
@@ -733,6 +735,14 @@ export class BrowserViewMainService extends Disposable implements IBrowserViewMa
 		}));
 
 		const viewBounds = view.getWebContentsView().getBounds();
+		// GEMINI-FORK: shown by the workbench, in the app's theme, when the page is in a workbench window
+		if (this.windowsMainService.getWindowById(win.id)) {
+			showGeminiContextMenu(win, webContents, viewBounds.x + params.x, viewBounds.y + params.y, geminiContextMenuEntries(menu, webContents, windowConfiguration?.keybindings), () => inspectTarget?.dispose());
+			return;
+		}
+		if (inspectTarget) {
+			menu.on('menu-will-close', () => inspectTarget.dispose());
+		}
 		menu.popup({
 			window: win,
 			x: viewBounds.x + params.x,

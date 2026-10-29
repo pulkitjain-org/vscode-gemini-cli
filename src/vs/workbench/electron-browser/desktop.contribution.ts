@@ -290,7 +290,8 @@ import product from '../../platform/product/common/product.js';
 			'window.dialogStyle': {
 				'type': 'string',
 				'enum': ['native', 'custom'],
-				'default': 'native',
+				// GEMINI-FORK: dialogs follow the GeminiCode theme, never the native OS look.
+				'default': 'custom',
 				'scope': ConfigurationScope.APPLICATION,
 				'description': localize('dialogStyle', "Adjust the appearance of dialogs to be native by the OS or custom."),
 				agentsWindow: { default: 'custom' },

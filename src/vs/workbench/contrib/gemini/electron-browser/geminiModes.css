@@ -1,0 +1,528 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/*
+ * GEMINI-FORK: the title bar's Agents | Editor switch, agent pills and (in Agents mode) editor tabs.
+ * The switch sits right after the window controls: the right-hand group of the title bar is laid
+ * out as part of the title bar row, so its first toolbar (the switch and the tabs) can come before
+ * the centre, with the layout buttons still on the right.
+ */
+
+.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-right {
+	display: contents;
+}
+
+.monaco-workbench .part.titlebar > .titlebar-container:is(.has-center, :not(.has-center)) > .titlebar-left {
+	order: 0;
+	flex: 0 0 auto;
+	width: auto;
+}
+
+/* Room for the macOS window controls, which the title bar does not draw. */
+.monaco-workbench.mac:not(.web):not(.fullscreen) .part.titlebar > .titlebar-container:is(.has-center, :not(.has-center)) > .titlebar-left {
+	min-width: 72px;
+}
+
+.monaco-workbench .part.titlebar > .titlebar-container:is(.has-center, :not(.has-center)) > .titlebar-right > .center-adjacent-toolbar-container {
+	order: 1;
+	flex: 1 1 0;
+	min-width: min-content;
+	margin-right: 0;
+	padding-left: 6px;
+}
+
+.monaco-workbench .part.titlebar > .titlebar-container:is(.has-center, :not(.has-center)) > .titlebar-center {
+	order: 2;
+}
+
+.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-right > :not(.center-adjacent-toolbar-container) {
+	order: 3;
+}
+
+.monaco-workbench .part.titlebar > .titlebar-container:is(.has-center, :not(.has-center)) > .titlebar-right > .action-toolbar-container:not(.has-no-actions) {
+	flex: 1 1 0;
+	justify-content: flex-end;
+}
+
+/*
+ * Agents mode: no Command Center or window title (see geminiModes.ts), and the tabs take the
+ * room up to the buttons on the right, scrolling when they do not fit. The toolbar is only as
+ * wide as its items, so the rest of the row still drags the window.
+ */
+.monaco-workbench.gemini-agents-mode .part.titlebar > .titlebar-container:is(.has-center, :not(.has-center)) > .titlebar-center {
+	display: none;
+}
+
+.monaco-workbench.gemini-agents-mode .part.titlebar > .titlebar-container:is(.has-center, :not(.has-center)) > .titlebar-right > .center-adjacent-toolbar-container {
+	flex: 0 1 auto;
+	min-width: 0;
+}
+
+.monaco-workbench.gemini-agents-mode .part.titlebar > .titlebar-container:is(.has-center, :not(.has-center)) > .titlebar-right > .action-toolbar-container:not(.has-no-actions) {
+	flex: 0 0 auto;
+	margin-left: auto;
+	padding-left: 12px;
+}
+
+/*
+ * Agents mode's buttons on the right read browser, search, then the three layout toggles, with no
+ * dividers. A chat tab's Split and its overflow menu are left out; a file's own buttons, such as
+ * those of a review, still show.
+ */
+.monaco-workbench.gemini-agents-mode .part.titlebar > .titlebar-container > .titlebar-right > .action-toolbar-container .action-item:has(> .codicon-globe) {
+	order: -1;
+}
+
+.monaco-workbench.gemini-agents-mode .part.titlebar > .titlebar-container > .titlebar-right > .action-toolbar-container .action-item:is(:has(> :is(.action-label.separator, .codicon-split-horizontal)), :has(.codicon-toolbar-more)) {
+	display: none;
+}
+
+.monaco-workbench.gemini-agents-mode .part.titlebar .center-adjacent-toolbar-container :is(.monaco-toolbar, .monaco-action-bar, .actions-container) {
+	min-width: 0;
+	max-width: 100%;
+}
+
+.monaco-workbench .part.titlebar .center-adjacent-toolbar-container .actions-container {
+	gap: 8px;
+}
+
+.monaco-workbench .part.titlebar .action-item.gemini-mode-switcher {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 100%;
+	padding: 0 6px;
+	cursor: default;
+	-webkit-app-region: no-drag;
+}
+
+.monaco-workbench .gemini-mode-switcher .gemini-agent-pills {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.monaco-workbench .gemini-mode-switcher button {
+	font: inherit;
+	font-size: 12px;
+	color: inherit;
+	background: none;
+	border: none;
+	cursor: pointer;
+	-webkit-app-region: no-drag;
+}
+
+.monaco-workbench .gemini-mode-switcher button:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.monaco-workbench .gemini-agent-pill {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	max-width: 160px;
+	height: 22px;
+	padding: 0 8px;
+	border-radius: 11px;
+	background-color: var(--vscode-toolbar-hoverBackground) !important;
+}
+
+.monaco-workbench .gemini-agent-pill:hover {
+	background-color: var(--vscode-toolbar-activeBackground) !important;
+}
+
+.monaco-workbench .gemini-agent-pill .title {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.monaco-workbench .gemini-agent-pill .dot {
+	flex: none;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background-color: var(--vscode-descriptionForeground);
+}
+
+.monaco-workbench .gemini-agent-pill.working .dot {
+	background-color: var(--vscode-button-background);
+	animation: gemini-pill-pulse 1.4s ease-in-out infinite;
+}
+
+.monaco-workbench .gemini-agent-pill.waiting .dot {
+	background-color: var(--vscode-editorWarning-foreground);
+}
+
+.monaco-workbench .gemini-agent-pill.done .dot {
+	background-color: var(--vscode-testing-iconPassed);
+}
+
+.monaco-workbench .gemini-agent-pill.error .dot {
+	background-color: var(--vscode-errorForeground);
+}
+
+.monaco-workbench .gemini-agent-pill.more {
+	padding: 0 7px;
+	color: var(--vscode-descriptionForeground);
+}
+
+@keyframes gemini-pill-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.35; }
+}
+
+.monaco-workbench.monaco-reduce-motion .gemini-agent-pill.working .dot {
+	animation: none;
+}
+
+/* Home: a round button before the switch. */
+.monaco-workbench .gemini-mode-switcher .gemini-home-button {
+	display: flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: 26px;
+	height: 24px;
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: 12px;
+	color: var(--vscode-foreground);
+}
+
+.monaco-workbench .gemini-mode-switcher .gemini-home-button .codicon {
+	font-size: 14px;
+}
+
+.monaco-workbench .gemini-mode-switcher .gemini-home-button:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+/*
+ * The Agents | Editor switch: two equal halves and a lens behind the chosen one, which slides
+ * across by transform (no layout, no repaint of the words). Outside the GeminiCode themes the
+ * lens is a raised card; geminiSoft.css draws it as glass.
+ */
+.monaco-workbench .gemini-mode-toggle {
+	position: relative;
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	align-items: center;
+	height: 24px;
+	padding: 2px;
+	box-sizing: border-box;
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 7px;
+	background-color: var(--vscode-sideBar-background);
+}
+
+.monaco-workbench .gemini-mode-toggle .gemini-mode-lens {
+	position: absolute;
+	top: 2px;
+	bottom: 2px;
+	left: 2px;
+	width: calc(50% - 2px);
+	border-radius: 5px;
+	background-color: var(--vscode-editor-background);
+	box-shadow: 0 0 0 1px var(--vscode-widget-border);
+	pointer-events: none;
+	transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.monaco-workbench .gemini-mode-toggle.editor .gemini-mode-lens {
+	transform: translateX(100%);
+}
+
+.monaco-workbench.monaco-reduce-motion .gemini-mode-toggle .gemini-mode-lens {
+	transition: none;
+}
+
+/* Each word fills its half and sits in the middle of it, on the lens. */
+.monaco-workbench .gemini-mode-toggle .gemini-mode-button {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 100%;
+	padding: 0 12px;
+	border-radius: 5px;
+	line-height: 1;
+	color: var(--vscode-descriptionForeground);
+}
+
+.monaco-workbench .gemini-mode-toggle .gemini-mode-button:hover,
+.monaco-workbench .gemini-mode-toggle .gemini-mode-button.checked {
+	color: var(--vscode-foreground);
+}
+
+/* Agents mode's editor tabs in the title bar (geminiTitleTabs.ts). */
+.monaco-workbench .part.titlebar .action-item.gemini-title-tabs {
+	flex: 0 1 auto;
+	min-width: 0;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	cursor: default;
+}
+
+.monaco-workbench .gemini-title-tabs-strip {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	min-width: 0;
+	max-width: 100%;
+	height: 100%;
+	padding: 0 1px;
+	box-sizing: border-box;
+	overflow-x: auto;
+	overflow-y: hidden;
+	scrollbar-width: none;
+	-webkit-app-region: no-drag;
+}
+
+.monaco-workbench .gemini-title-tabs-strip:empty {
+	display: none;
+}
+
+.monaco-workbench .gemini-title-tabs-strip::-webkit-scrollbar {
+	display: none;
+}
+
+.monaco-workbench .gemini-title-tab {
+	position: relative;
+	display: flex;
+	flex: none;
+	align-items: center;
+	gap: 6px;
+	max-width: 220px;
+	height: 25px;
+	padding: 0 6px 0 12px;
+	border-radius: 6px;
+	font-size: 12.5px;
+	color: var(--vscode-tab-inactiveForeground, var(--vscode-descriptionForeground));
+	cursor: pointer;
+}
+
+.monaco-workbench .gemini-title-tab:hover:not(.active) {
+	color: var(--vscode-tab-activeForeground, var(--vscode-foreground));
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.monaco-workbench .gemini-title-tab.active {
+	color: var(--vscode-tab-activeForeground, var(--vscode-foreground));
+	background-color: var(--vscode-tab-activeBackground, var(--vscode-toolbar-activeBackground));
+}
+
+.monaco-workbench .gemini-title-tab:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.monaco-workbench .gemini-title-tab-label {
+	min-width: 0;
+	overflow: hidden;
+}
+
+.monaco-workbench .gemini-title-tab-label .monaco-icon-label {
+	display: flex;
+	align-items: center;
+	line-height: 25px;
+}
+
+.monaco-workbench .gemini-title-tab-label .monaco-icon-label-container {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.monaco-workbench .gemini-title-tab-label .monaco-icon-label::before {
+	flex: none;
+	width: 16px;
+	height: 25px;
+	padding-right: 4px;
+	background-size: 16px;
+	background-position: left center;
+	background-repeat: no-repeat;
+}
+
+.monaco-workbench .gemini-title-tab.preview .label-name {
+	font-style: italic;
+}
+
+.monaco-workbench .gemini-title-tab-close {
+	flex: none;
+	width: 16px;
+	height: 16px;
+	border-radius: 8px;
+	font-size: 12px;
+	line-height: 16px;
+	text-align: center;
+	visibility: hidden;
+}
+
+.monaco-workbench .gemini-title-tab:is(.active, :hover, .dirty) .gemini-title-tab-close {
+	visibility: visible;
+}
+
+.monaco-workbench .gemini-title-tab-close:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.monaco-workbench .gemini-title-tab.dirty:not(:hover) .gemini-title-tab-close.codicon-circle-filled {
+	font-size: 9px;
+}
+
+.monaco-workbench .gemini-title-tab.dirty:hover .gemini-title-tab-close.codicon-circle-filled::before {
+	content: var(--vscode-icon-close-content);
+	font-family: var(--vscode-icon-close-font-family);
+}
+
+/* The tabs have their own close buttons; the editor's Close action would repeat it on the right. */
+.monaco-workbench.gemini-agents-mode .part.titlebar .action-toolbar-container .action-item:has(> .action-label.codicon-close) {
+	display: none;
+}
+
+/*
+ * Agents mode's side bar: the agent list with no "Gemini" title and no "Agents" header. It has
+ * two sections (the extension's agentsView.ts): Projects, while Projects are on, and Agents,
+ * each a heading with its + always showing. Under Projects are the projects, with their threads
+ * indented below; a blank row with a rule keeps the sections apart; under Agents, workspaces are small uppercase labels (with their + on hover) over
+ * their agents. Agent rows have a status icon, the title and a right-aligned meta ("0:42",
+ * "+38", "waiting") that the Gemini extension provides. An empty section says so in a muted row.
+ * The side bar shows only the Gemini view in Agents mode, so its one tree is the agent list.
+ */
+.monaco-workbench.gemini-agents-mode .part.sidebar > .composite.title,
+.monaco-workbench.gemini-agents-mode .part.sidebar .pane > .pane-header:has(> .icon.view-gemini-agents) {
+	display: none;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row {
+	left: 6px;
+	width: calc(100% - 12px);
+	border-radius: 5px;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-tl-indent {
+	display: none;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-tl-twistie {
+	width: 0;
+	padding-left: 6px !important;
+	visibility: hidden;
+}
+
+/* Room above the first heading; the hidden header leaves more than this free below the list. */
+.monaco-workbench.gemini-agents-mode .part.sidebar .pane:has(> .pane-header > .icon.view-gemini-agents) > .pane-body {
+	margin-top: 10px;
+}
+
+/* The gap between the sections: a faint rule across its middle, and nothing on hover. */
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row:has(.custom-view-tree-node-item-icon.codicon-blank) {
+	background: linear-gradient(var(--vscode-sideBarSectionHeader-border, var(--vscode-widget-border, rgba(128, 128, 128, 0.25))), var(--vscode-sideBarSectionHeader-border, var(--vscode-widget-border, rgba(128, 128, 128, 0.25)))) center / calc(100% - 12px) 1px no-repeat !important;
+	box-shadow: none !important;
+	pointer-events: none;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row:has(.custom-view-tree-node-item-icon.codicon-blank) > * {
+	visibility: hidden;
+}
+
+/*
+ * Threads and agents sit a step in from their project or workspace; an agent's forks and archived threads a
+ * step further, and forks of forks further still (deeper ones stay at the last step).
+ */
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-level="3"] .monaco-tl-twistie {
+	padding-left: 20px !important;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-level="4"] .monaco-tl-twistie {
+	padding-left: 34px !important;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-level="5"] .monaco-tl-twistie {
+	padding-left: 48px !important;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row:is([aria-level="6"], [aria-level="7"], [aria-level="8"]) .monaco-tl-twistie {
+	padding-left: 62px !important;
+}
+
+/* Section headings: Projects and Agents. */
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-level="1"] :is(.custom-view-tree-node-item-icon, .monaco-icon-description-container) {
+	display: none;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-level="1"] .label-name {
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-foreground));
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-level="1"] .custom-view-tree-node-item .actions {
+	display: block;
+}
+
+/* Workspace labels, which the extension marks with a folder icon. */
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-level="2"]:has(.custom-view-tree-node-item-icon.codicon-folder) :is(.custom-view-tree-node-item-icon, .monaco-icon-description-container) {
+	display: none;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row[aria-level="2"]:has(.custom-view-tree-node-item-icon.codicon-folder) .label-name {
+	font-size: 11px;
+	font-weight: 500;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: var(--vscode-disabledForeground, var(--vscode-descriptionForeground));
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row:is([aria-level="1"], [aria-level="2"]:has(.custom-view-tree-node-item-icon.codicon-folder)):is(.selected, :hover) {
+	background: none !important;
+	box-shadow: none !important;
+}
+
+/* An empty section's note. */
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row:has(.custom-view-tree-node-item-icon.codicon-info) :is(.label-name, .custom-view-tree-node-item-icon) {
+	color: var(--vscode-descriptionForeground);
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row:is([aria-level="2"], [aria-level="3"]) .monaco-icon-label-container {
+	display: flex;
+	align-items: baseline;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row:is([aria-level="2"], [aria-level="3"]) .monaco-icon-name-container {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row:is([aria-level="2"], [aria-level="3"]) .monaco-icon-description-container {
+	flex: none;
+	margin-left: auto;
+	padding-left: 8px;
+}
+
+.monaco-workbench.gemini-agents-mode .part.sidebar .customview-tree .monaco-list-row:is([aria-level="2"], [aria-level="3"]) .label-description {
+	margin-left: 0;
+	font-size: 11.5px;
+	opacity: 1;
+	color: var(--vscode-disabledForeground, var(--vscode-descriptionForeground));
+}
+
+/*
+ * Agents mode's status bar: each agent works in its own folder and on its own branch, which its
+ * chat shows under the composer, so the window's repository, branch, sync and problem counts are
+ * left out here. Editor mode keeps them.
+ */
+.monaco-workbench.gemini-agents-mode .part.statusbar .statusbar-item:is([id^="status.scm."], #status\.problems) {
+	display: none;
+}

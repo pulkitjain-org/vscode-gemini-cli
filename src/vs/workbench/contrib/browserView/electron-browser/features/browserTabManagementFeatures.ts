@@ -9,6 +9,7 @@ import { ServicesAccessor, IInstantiationService } from '../../../../../platform
 import { KeybindingWeight } from '../../../../../platform/keybinding/common/keybindingsRegistry.js';
 import { KeyMod, KeyCode } from '../../../../../base/common/keyCodes.js';
 import { ACTIVE_GROUP, IEditorService, SIDE_GROUP } from '../../../../services/editor/common/editorService.js';
+import { WebviewInput } from '../../../webviewPanel/browser/webviewEditorInput.js';
 import { IEditorGroup, IEditorGroupsService, GroupsOrder } from '../../../../services/editor/common/editorGroupsService.js';
 import { EditorsOrder, EditorResourceAccessor, GroupIdentifier, SideBySideEditor } from '../../../../common/editor.js';
 import { IQuickInputService, IQuickInputButton, IQuickPickItem, IQuickPickSeparator, QuickInputButtonLocation, IQuickPick } from '../../../../../platform/quickinput/common/quickInput.js';
@@ -637,7 +638,11 @@ export class LocalhostLinkOpenerContribution extends Disposable implements IWork
 		const isDefaultLinkOpen = !isConfigured(this.configurationService.inspect('workbench.browser.openLocalhostLinks'));
 
 		const browserUri = BrowserViewUri.forId(generateUuid());
-		await this.editorService.openEditor({ resource: browserUri, options: { pinned: true, viewState: { url: href, isDefaultLinkOpen } } }, await this.browserViewWorkbenchService.getPreferredGroup(ctx.viewColumn === ViewColumn.Beside ? SIDE_GROUP : undefined));
+		// GEMINI-FORK: a link in a Gemini chat opens beside the chat. In the chat's own group the page
+		// would open as a tab behind it, since the chat takes the click's focus back.
+		const active = this.editorService.activeEditor;
+		const fromGeminiChat = active instanceof WebviewInput && active.viewType.startsWith('mainThreadWebview-gemini.');
+		await this.editorService.openEditor({ resource: browserUri, options: { pinned: true, viewState: { url: href, isDefaultLinkOpen } } }, await this.browserViewWorkbenchService.getPreferredGroup(fromGeminiChat || ctx.viewColumn === ViewColumn.Beside ? SIDE_GROUP : undefined));
 		return true;
 	}
 }

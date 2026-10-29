@@ -1,0 +1,1059 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Pulkit Jain. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/*
+ * Home's dashboard (webview-src/home.ts), on top of panels.css's Agent Home styles: the
+ * greeting line, the composer's bar, Needs you and the cards.
+ */
+
+.home.dash {
+	max-width: 1180px;
+	padding: 22px 28px 48px;
+}
+
+/* The greeting, the day and sprint beside it, the tools at the end of the line. */
+.dash-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 6px 14px;
+	margin-bottom: 14px;
+}
+
+.dash-head h1 {
+	margin: 0;
+	font-size: 22px;
+	font-weight: 600;
+}
+
+.dash-head p {
+	margin: 0;
+}
+
+.dash-tools {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-left: auto;
+	align-self: center;
+}
+
+.dash-tool-logos {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+}
+
+.dash-tool {
+	position: relative;
+	display: inline-flex;
+	cursor: pointer;
+}
+
+.dash-tool.off,
+.dash-tool.warn {
+	opacity: 0.45;
+	filter: grayscale(1);
+}
+
+.dash-tool.checking {
+	opacity: 0.7;
+}
+
+.dash-tool.error::after {
+	content: "";
+	position: absolute;
+	right: -2px;
+	bottom: -2px;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--gemini-error);
+}
+
+.dash-customize {
+	position: relative;
+}
+
+.dash-customize .home-menu {
+	left: auto;
+	right: 0;
+	width: 300px;
+}
+
+button.link-button {
+	gap: 4px;
+	padding: 2px 6px;
+	border-color: transparent;
+	background: none;
+	color: var(--vscode-textLink-foreground);
+}
+
+button.link-button:hover {
+	background: var(--gemini-hover);
+}
+
+#refresh.spinning .codicon {
+	animation: dash-spin 1s linear infinite;
+}
+
+@keyframes dash-spin {
+	to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	#refresh.spinning .codicon { animation: none; }
+}
+
+/* One banner per team server that is down (warn) or refused the token (error), above the composer. */
+.dash-banners {
+	display: grid;
+	gap: 8px;
+	margin-bottom: 14px;
+}
+
+.dash-banners[hidden] { display: none; }
+
+.dash-banner {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	border: 1px solid color-mix(in srgb, var(--gemini-warn) 40%, transparent);
+	border-radius: var(--gemini-radius);
+	color: var(--gemini-warn);
+}
+
+.dash-banner.error {
+	border-color: color-mix(in srgb, var(--gemini-error) 45%, transparent);
+	background: color-mix(in srgb, var(--gemini-error) 7%, transparent);
+	color: var(--gemini-error);
+}
+
+.dash-banner > span {
+	flex: 1;
+	min-width: 0;
+}
+
+/* The chooser's row: the chooser, To a Project's project picker, and what needs trust. */
+.home-start-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+/* Where the next task goes: Here, On Its Own Branch or To a Project, as one segmented control; each choice explains itself in its tooltip. */
+.home-start-as {
+	display: inline-flex;
+	gap: 2px;
+	padding: 2px;
+	border: 1px solid var(--gemini-border);
+	border-radius: 8px;
+	background: var(--gemini-surface);
+	font-size: 12px;
+}
+
+.home-start-as[hidden] { display: none; }
+
+.home-project {
+	position: relative;
+	display: inline-flex;
+}
+
+.home-project[hidden],
+.needs-trust[hidden] {
+	display: none;
+}
+
+.home-project button.option-button {
+	height: 26px;
+	padding: 0 8px;
+	border-radius: var(--gemini-radius-small);
+}
+
+/* A choice the folder's trust holds back, said in place with the way to trust it. */
+.needs-trust {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	height: 26px;
+	padding: 0 3px 0 8px;
+	border: 1px solid color-mix(in srgb, var(--gemini-warn) 35%, transparent);
+	border-radius: var(--gemini-radius-small);
+	background: color-mix(in srgb, var(--gemini-warn) 10%, transparent);
+	color: var(--gemini-warn);
+	font-size: 12px;
+}
+
+.needs-trust button.primary {
+	height: 20px;
+	padding: 0 9px;
+	font-size: 12px;
+}
+
+button.start-as-option {
+	height: 22px;
+	padding: 0 10px;
+	border: none;
+	border-radius: var(--gemini-radius-small);
+	background: none;
+	color: var(--gemini-muted);
+	font: inherit;
+	cursor: pointer;
+}
+
+button.start-as-option:hover {
+	color: var(--vscode-foreground);
+}
+
+button.start-as-option[aria-checked="true"] {
+	background: color-mix(in srgb, var(--vscode-foreground) 14%, transparent);
+	color: var(--vscode-foreground);
+}
+
+/* The filled choice is the selection; the focus ring shows only for the keyboard. */
+button.start-as-option:focus {
+	outline: none;
+}
+
+button.start-as-option:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+/* The composer's bar: folder, mode and model, then From Your Tools and Start Agent; every control the same height, set apart by space alone. */
+.dash .home-composer-bar {
+	flex-wrap: wrap;
+	gap: 4px;
+	margin-top: 10px;
+	font-size: 12px;
+	color: var(--gemini-muted);
+}
+
+.home-composer-bar button.option-button {
+	height: 26px;
+	padding: 0 8px;
+	border-radius: var(--gemini-radius-small);
+}
+
+.home-composer-bar .home-model {
+	padding: 0 8px;
+	color: var(--gemini-faint);
+}
+
+.home-folder,
+.home-mode,
+.home-model,
+.home-from-tools {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.home-from-tools {
+	position: relative;
+}
+
+.home-model[hidden],
+.home-from-tools[hidden] {
+	display: none;
+}
+
+.home-from-tools .home-menu {
+	left: auto;
+	right: 0;
+	width: 380px;
+}
+
+.home-composer-bar button.primary {
+	padding: 3px 10px;
+}
+
+/* The quick actions, and Agent Setup at the far right under the composer. */
+.dash-quick-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 12px;
+}
+
+.dash-quick {
+	display: flex;
+	flex: 1;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.dash-quick-row .helpers-button {
+	flex: none;
+	color: var(--gemini-muted);
+}
+
+/* The workspace's index beside its folder: a drum, full when indexed, half while indexing, empty when not. */
+button.index-state {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 26px;
+	margin-left: -4px;
+	padding: 0;
+	border: none;
+	border-radius: var(--gemini-radius-small);
+	background: none;
+	color: var(--gemini-muted);
+	cursor: pointer;
+}
+
+button.index-state[hidden] {
+	display: none;
+}
+
+button.index-state svg {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.2;
+}
+
+button.index-state svg .fill-full,
+button.index-state svg .fill-half {
+	stroke: none;
+	fill: currentColor;
+	opacity: 0;
+}
+
+button.index-state.ready {
+	color: var(--vscode-testing-iconPassed, #3fb86b);
+}
+
+button.index-state.ready svg .fill-full {
+	opacity: 0.55;
+}
+
+button.index-state.building {
+	color: var(--vscode-button-background, #2f7bd8);
+}
+
+button.index-state.building svg .fill-half {
+	opacity: 0.55;
+}
+
+button.index-state:hover {
+	background: var(--gemini-hover);
+}
+
+button.dash-quick-action {
+	gap: 6px;
+	padding: 5px 12px;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius-small);
+	background: var(--gemini-card);
+}
+
+button.dash-quick-action:hover {
+	background: var(--gemini-hover);
+}
+
+/* Get started, Needs you and the cards: panels with a hairline, a step above the page. */
+.dash-setup,
+.dash-needs,
+.dash-card {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	padding: 12px 14px;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius-large);
+	background: var(--gemini-card);
+}
+
+.dash-setup,
+.dash-needs {
+	margin-top: 14px;
+}
+
+.dash-setup[hidden],
+.dash-needs[hidden] { display: none; }
+
+.dash-setup h2 {
+	margin: 0 0 10px;
+	font-size: 13px;
+	font-weight: 600;
+}
+
+.dash-steps {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 10px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.dash-step {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 10px;
+	border: 1px solid var(--gemini-border);
+	border-radius: var(--gemini-radius);
+}
+
+.dash-step-mark {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	border-radius: 50%;
+	background: var(--gemini-hover);
+	font-weight: 600;
+}
+
+.dash-step.done .dash-step-mark {
+	background: var(--gemini-ok);
+	color: var(--gemini-on-accent);
+}
+
+.dash-step-text {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+.dash-cards {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 14px;
+	margin-top: 14px;
+}
+
+.dash-card.stale .dash-rows {
+	opacity: 0.55;
+}
+
+/* What a quit cut off: a warm hairline, as the confirm cards have. */
+.dash-card[data-card="unfinished"] {
+	border-color: color-mix(in srgb, var(--gemini-warn) 45%, var(--gemini-border));
+}
+
+.dash-head > .dash-pill {
+	align-self: center;
+}
+
+/* A card's title line: the tool's logo, the title, and the query that fills it at the end. */
+.dash-card-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	margin-bottom: 4px;
+}
+
+.dash-card-head h3 {
+	flex: none;
+	max-width: 55%;
+	margin: 0;
+	overflow: hidden;
+	font-size: 13px;
+	font-weight: 600;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.dash-card-head .dot.warn {
+	flex: none;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--gemini-warn);
+}
+
+.dash-query {
+	flex: 0 1 auto;
+	max-width: 60%;
+	margin-left: auto;
+	overflow: hidden;
+	font-family: var(--vscode-editor-font-family);
+	font-size: 11px;
+	color: var(--gemini-faint);
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.dash-card.unconnected p {
+	margin: 4px 0 12px;
+	line-height: 1.5;
+}
+
+.dash-card.unconnected > button {
+	align-self: flex-start;
+}
+
+.dash-rows {
+	display: flex;
+	flex-direction: column;
+}
+
+/* A heading inside a card, such as Mine under Pending on me, with its own query. */
+.dash-group {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 10px 0 2px;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--gemini-muted);
+}
+
+.dash-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+	min-height: 30px;
+	padding: 3px 0;
+	border-top: 1px solid var(--gemini-border);
+}
+
+/* A Jira site that can't be reached now: its heading says so, and its last tickets show dimmed. */
+.dash-group .dash-query.warn {
+	color: var(--gemini-warn);
+}
+
+.dash-row.dim {
+	opacity: 0.55;
+}
+
+.dash-group + .dash-row,
+.dash-rows > .dash-row:first-child {
+	border-top: none;
+}
+
+/* A ticket's type before its key, in the theme's chart colours after Jira's own. */
+.dash-type {
+	flex: none;
+	font-size: 14px;
+	color: var(--gemini-muted);
+}
+
+.dash-type.green {
+	color: var(--vscode-charts-green);
+}
+
+.dash-type.red {
+	color: var(--vscode-charts-red);
+}
+
+.dash-type.blue {
+	color: var(--vscode-charts-blue);
+}
+
+.dash-type.purple {
+	color: var(--vscode-charts-purple);
+}
+
+.dash-type.orange {
+	color: var(--vscode-charts-orange);
+}
+
+.dash-type + .dash-key {
+	margin-left: -4px;
+}
+
+.dash-key {
+	flex: none;
+	font-family: var(--vscode-editor-font-family);
+	font-size: 12px;
+	color: var(--gemini-muted);
+}
+
+/* The repository of a merge request, in Show All's popup. */
+.dash-repo {
+	flex: none;
+	max-width: 20%;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	padding: 0 6px;
+	border-radius: 4px;
+	font-size: 11px;
+	line-height: 18px;
+	color: var(--gemini-muted);
+	background: color-mix(in srgb, var(--gemini-muted) 14%, transparent);
+}
+
+.dash-row-title {
+	flex: 1;
+	min-width: 0;
+}
+
+.dash-row-title,
+.dash-row-detail {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+button.dash-row-title {
+	display: block;
+	padding: 0;
+	border: none;
+	background: none;
+	text-align: left;
+}
+
+button.dash-row-title:hover {
+	color: var(--vscode-textLink-foreground);
+}
+
+.dash-row-detail {
+	flex: none;
+	max-width: 40%;
+	font-size: 12px;
+	color: var(--gemini-faint);
+}
+
+/* Needs you reads as one line: the title, then what it is about, then the state and the action. */
+.dash-needs .dash-row-title {
+	flex: none;
+	max-width: 45%;
+}
+
+.dash-needs .dash-row-detail {
+	flex: 1;
+	max-width: none;
+}
+
+/* A bar in a row: the sprint's progress, today's quota. */
+.dash-row-bar {
+	flex: none;
+	width: 120px;
+	height: 8px;
+	overflow: hidden;
+	border-radius: 4px;
+	background: var(--gemini-hover);
+}
+
+.dash-row-bar-fill {
+	display: block;
+	height: 100%;
+	border-radius: 4px;
+	background: var(--gemini-accent);
+}
+
+.dash-card[data-card="tickets"] .dash-row-bar-fill {
+	background: var(--gemini-ok);
+}
+
+.dash-card[data-card="gemini"] .dash-row-bar-fill {
+	background: var(--gemini-gradient);
+}
+
+/* A state in a pill: a hairline in the state's colour. */
+.dash-pill {
+	flex: none;
+	padding: 1px 8px;
+	border: 1px solid var(--gemini-border);
+	border-radius: 999px;
+	font-size: 11px;
+	color: var(--gemini-muted);
+	white-space: nowrap;
+}
+
+.dash-pill.ok { color: var(--gemini-ok); border-color: color-mix(in srgb, var(--gemini-ok) 40%, transparent); }
+.dash-pill.warn { color: var(--gemini-warn); border-color: color-mix(in srgb, var(--gemini-warn) 40%, transparent); }
+.dash-pill.error { color: var(--gemini-error); border-color: color-mix(in srgb, var(--gemini-error) 40%, transparent); }
+.dash-pill.info { color: var(--vscode-textLink-foreground); border-color: color-mix(in srgb, var(--vscode-textLink-foreground) 40%, transparent); }
+
+.dash-row > button.secondary,
+.dash-row > button.primary {
+	flex: none;
+	padding: 1px 8px;
+	font-size: 11px;
+}
+
+.dash-row > button.link-button {
+	flex: none;
+	padding: 0 4px;
+	font-size: 12px;
+}
+
+.dash-row .codicon-circle-filled {
+	font-size: 10px;
+	color: var(--gemini-muted);
+}
+
+.dash-row-more {
+	position: relative;
+	flex: none;
+}
+
+.dash-row-more .home-menu {
+	left: auto;
+	right: 0;
+	width: 220px;
+}
+
+.dash-note {
+	margin: 8px 0 0;
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+@media (max-width: 760px) {
+	.dash-cards {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.dash-steps {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
+/* Show All: under a card whose list is longer than it shows. */
+.dash-show-all {
+	align-self: flex-start;
+	margin-top: 6px;
+	font-size: 12px;
+}
+
+/* While the popup is open the page behind it holds still; the gutter stays so nothing shifts. */
+html:has(.dash-list-dialog[open]),
+html:has(.dash-comment-dialog[open]) {
+	overflow: hidden;
+	scrollbar-gutter: stable;
+}
+
+/* A card's whole list, in a popup over the page, at the overlay tier (glass.css adds the glass). */
+.dash-list-dialog {
+	width: min(1040px, calc(100vw - 48px));
+	/* Most of the window, at a fixed height, so it stays put while the filter shortens the list. */
+	height: min(900px, calc(100vh - 2 * max(24px, 5vh)));
+	max-height: none;
+	box-sizing: border-box;
+	margin: max(24px, 5vh) auto auto;
+	padding: 0;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-large);
+	background: var(--gemini-popover);
+	color: var(--vscode-foreground);
+	box-shadow: 0 20px 60px var(--gemini-shadow);
+	overflow: hidden;
+}
+
+.dash-list-dialog::backdrop {
+	background: color-mix(in srgb, var(--vscode-editor-background, #000) 55%, transparent);
+}
+
+.dash-list-body {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	box-sizing: border-box;
+	padding: 16px 20px 8px;
+}
+
+.dash-list-head h2 {
+	flex: none;
+	max-width: 50%;
+	margin: 0;
+	overflow: hidden;
+	font-size: 14px;
+	font-weight: 600;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.dash-list-count {
+	flex: none;
+	font-size: 12px;
+	font-variant-numeric: tabular-nums;
+	color: var(--gemini-muted);
+}
+
+.dash-list-close {
+	flex: none;
+	margin-left: auto;
+}
+
+.dash-list-head .dash-query + .dash-list-close {
+	margin-left: 0;
+}
+
+.dash-list-filter {
+	margin: 8px 0 6px;
+	padding: 5px 9px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-small);
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	font: inherit;
+}
+
+.dash-list-filter[hidden] {
+	display: none;
+}
+
+/* The list scrolls inside the popup, whose background is opaque, so it keeps the opaque-scroller fast path. */
+.dash-list-rows {
+	flex: 1;
+	min-height: 0;
+	margin: 0 -20px;
+	padding: 0 20px 8px;
+	overscroll-behavior: contain;
+	overflow-y: auto;
+}
+
+/* A comment on a Jira ticket, in a popup like the list's (glass.css adds the glass). */
+.dash-comment-dialog {
+	width: min(760px, calc(100vw - 48px));
+	box-sizing: border-box;
+	margin: max(32px, 12vh) auto auto;
+	padding: 0;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-large);
+	background: var(--gemini-popover);
+	color: var(--vscode-foreground);
+	box-shadow: 0 20px 60px var(--gemini-shadow);
+}
+
+.dash-comment-dialog::backdrop {
+	background: color-mix(in srgb, var(--vscode-editor-background, #000) 55%, transparent);
+}
+
+.dash-comment-body {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 16px 20px;
+}
+
+.dash-comment-summary {
+	margin: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+/* The field: tabs and toolbar, the text or its preview, and the people list for @. */
+.dash-comment-editor {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-small);
+	background: var(--vscode-input-background);
+}
+
+.dash-comment-top {
+	display: flex;
+	align-items: stretch;
+	gap: 12px;
+	min-width: 0;
+	min-height: 34px;
+	padding: 0 6px 0 12px;
+	border-bottom: 1px solid var(--gemini-border);
+}
+
+/* Write and Preview: tabs as tall as the bar, the chosen one underlined on its edge. */
+.dash-comment-tabs {
+	display: flex;
+	flex: none;
+	align-items: stretch;
+	gap: 16px;
+	margin: 0;
+	font-size: 12px;
+}
+
+.dash-comment-tabs .composer-tab {
+	display: flex;
+	align-items: center;
+	padding: 0 2px;
+	border-radius: 0;
+}
+
+.dash-comment-tabs .composer-tab:hover {
+	background: none;
+}
+
+.dash-comment-toolbar {
+	align-self: center;
+}
+
+.dash-comment-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 2px;
+	min-width: 0;
+	margin-left: auto;
+}
+
+.dash-comment-toolbar .icon-button {
+	width: 24px;
+	height: 24px;
+}
+
+.dash-comment-strike {
+	font-weight: 600;
+	text-decoration: line-through;
+}
+
+.dash-comment-gap {
+	width: 1px;
+	height: 16px;
+	margin: 0 4px;
+	background: var(--gemini-border-strong);
+}
+
+.dash-comment-text {
+	min-height: 160px;
+	max-height: 50vh;
+	padding: 10px 12px;
+	border: none;
+	outline: none;
+	background: transparent;
+	color: var(--vscode-input-foreground);
+	font: inherit;
+	line-height: 1.5;
+	resize: vertical;
+}
+
+.dash-comment-preview {
+	max-height: 50vh;
+	padding: 10px 12px;
+	overflow-y: auto;
+}
+
+/* Files dragged over the box: the whole field says where they go. */
+.dash-comment-editor.dragging::after {
+	content: attr(data-drop);
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: 1px dashed var(--vscode-focusBorder);
+	border-radius: inherit;
+	background: color-mix(in srgb, var(--vscode-input-background) 85%, transparent);
+	color: var(--vscode-foreground);
+	pointer-events: none;
+}
+
+/* People for @, under the field, at the overlay tier like Home's menus. */
+.dash-comment-people {
+	position: absolute;
+	top: calc(100% + 4px);
+	left: 8px;
+	z-index: 2;
+	width: min(360px, calc(100% - 16px));
+	max-height: 240px;
+	padding: 4px;
+	overflow-y: auto;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius);
+	background: var(--gemini-popover);
+	box-shadow: 0 8px 24px var(--gemini-shadow);
+}
+
+.dash-comment-person {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	padding: 5px 8px;
+	border-radius: var(--gemini-radius-small);
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.dash-comment-person > span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.dash-comment-person.active {
+	background: var(--vscode-list-activeSelectionBackground);
+	color: var(--vscode-list-activeSelectionForeground);
+}
+
+.dash-comment-person.active .muted {
+	color: inherit;
+	opacity: 0.8;
+}
+
+.dash-comment-files[hidden] {
+	display: none;
+}
+
+/* Who may see the comment, in the bar beside the buttons. */
+.dash-comment-visible {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	font-size: 12px;
+	color: var(--gemini-muted);
+}
+
+.dash-comment-visibility {
+	min-width: 0;
+	max-width: 260px;
+	padding: 3px 6px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius-small);
+	background: var(--vscode-dropdown-background, var(--vscode-input-background));
+	color: var(--vscode-dropdown-foreground, var(--vscode-foreground));
+	font: inherit;
+}
+
+.dash-comment-bar .spacer {
+	flex: 1;
+}
+
+.dash-comment-error {
+	margin: 0;
+	color: var(--gemini-error);
+}
+
+.dash-comment-error:empty {
+	display: none;
+}
+
+.dash-comment-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.dash-comment-note {
+	margin: 0;
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+/* A short confirmation at the foot of the page, at the overlay tier. */
+.dash-toast {
+	position: fixed;
+	left: 50%;
+	bottom: 24px;
+	transform: translateX(-50%);
+	max-width: calc(100vw - 48px);
+	padding: 8px 14px;
+	border: 1px solid var(--gemini-border-strong);
+	border-radius: var(--gemini-radius);
+	background: var(--gemini-popover);
+	box-shadow: 0 8px 24px var(--gemini-shadow);
+}
+
+.dash-toast[hidden] {
+	display: none;
+}

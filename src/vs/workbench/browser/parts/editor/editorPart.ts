@@ -376,7 +376,8 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 		const sourceGroupView = this.assertGroupView(source);
 
 		// Find neighbours and sort by our MRU list
-		const neighbours = this.gridWidget.getNeighborViews(sourceGroupView, this.toGridViewDirection(direction), wrap);
+		// GEMINI-FORK: a group hidden for another agent sits at the boundary with no width; never pick it.
+		const neighbours = this.gridWidget.getNeighborViews(sourceGroupView, this.toGridViewDirection(direction), wrap).filter(neighbour => !this.geminiHiddenGroups.has(neighbour.id));
 		neighbours.sort(((n1, n2) => this.mostRecentActiveGroups.indexOf(n1.id) - this.mostRecentActiveGroups.indexOf(n2.id)));
 
 		return neighbours[0];
@@ -468,6 +469,29 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 				this.gridWidget.expandView(groupView);
 				break;
 		}
+	}
+
+	// GEMINI-FORK: each agent's side group is kept but hidden while another agent is in front
+	// (contrib/gemini/electron-browser/geminiAgentGroups.ts). A hidden group keeps its editors and
+	// their state and is not laid out; the grid's own maximize can't keep two groups in view.
+	// A group hidden while another is maximized is the grid's to show again: it is changed here only
+	// when not maximized, and the caller applies its visibility again once the maximize ends.
+	private readonly geminiHiddenGroups = new Set<GroupIdentifier>();
+
+	geminiSetGroupVisible(group: IEditorGroupView | GroupIdentifier, visible: boolean): void {
+		const groupView = this.assertGroupView(group);
+		if (visible) {
+			this.geminiHiddenGroups.delete(groupView.id);
+		} else {
+			this.geminiHiddenGroups.add(groupView.id);
+		}
+		if (!this.hasMaximizedGroup() && this.gridWidget.isViewVisible(groupView) !== visible) {
+			this.gridWidget.setViewVisible(groupView, visible);
+		}
+	}
+
+	geminiIsGroupVisible(group: IEditorGroupView | GroupIdentifier): boolean {
+		return this.gridWidget.isViewVisible(this.assertGroupView(group));
 	}
 
 	toggleMaximizeGroup(target: IEditorGroupView | GroupIdentifier = this.activeGroup): void {
@@ -625,7 +649,8 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 		if (locationView.groupsView === this) {
 			const restoreFocus = this.shouldRestoreFocus(locationView.element);
 
-			const shouldExpand = this.groupViews.size > 1 && this.isGroupExpanded(locationView);
+			// GEMINI-FORK: a group alone in view because the others are hidden for other agents is not expanded.
+			const shouldExpand = [...this.groupViews.keys()].filter(id => !this.geminiHiddenGroups.has(id)).length > 1 && this.isGroupExpanded(locationView);
 			newGroupView = this.doCreateGroupView(groupToCopy);
 
 			// Add to grid widget
@@ -877,6 +902,8 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 
 		// Update container
 		this.updateContainer();
+
+		this.geminiHiddenGroups.delete(groupView.id); // GEMINI-FORK
 
 		// Event
 		this._onDidRemoveGroup.fire(groupView);

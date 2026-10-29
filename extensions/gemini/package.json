@@ -1,0 +1,1845 @@
+{
+  "name": "gemini",
+  "displayName": "%displayName%",
+  "description": "%description%",
+  "version": "0.1.0",
+  "publisher": "gemini-fork",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "capabilities": {
+    "virtualWorkspaces": false,
+    "untrustedWorkspaces": {
+      "supported": false
+    }
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension",
+  "extensionKind": [
+    "ui"
+  ],
+  "enabledApiProposals": [
+    "terminalSelection",
+    "terminalQuickFixProvider"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "gemini.appearance",
+        "title": "%command.appearance%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.app.checkForUpdates",
+        "title": "%command.checkForAppUpdates%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.sessionApprovals",
+        "title": "%command.sessionApprovals%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.toggleFollowAgent",
+        "title": "%command.toggleFollowAgent%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.openChatAsMarkdown",
+        "title": "%command.openChatAsMarkdown%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.agents.openAsMarkdown",
+        "title": "%command.openChatAsMarkdown%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.newSkill",
+        "title": "%command.newSkill%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.restartAgent",
+        "title": "%command.restartAgent%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.installCli",
+        "title": "%command.installCli%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.installCliVersion",
+        "title": "%command.installCliVersion%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.setProjectId",
+        "title": "%command.setProjectId%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.signIn",
+        "title": "%command.signIn%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.getStarted",
+        "title": "%command.getStarted%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.completeSetupInTerminal",
+        "title": "%command.completeSetupInTerminal%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.checkAgent",
+        "title": "%command.checkAgent%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.openAuditLog",
+        "title": "%command.openAuditLog%",
+        "category": "%category%",
+        "icon": "$(list-unordered)"
+      },
+      {
+        "command": "gemini.recordTrace",
+        "title": "%command.recordTrace%",
+        "category": "%category%",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "gemini.agents.sideQuestion",
+        "title": "%command.sideQuestion%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.designSystem.sync",
+        "title": "%command.designSystemSync%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.runBenchmark",
+        "title": "%command.runBenchmark%",
+        "category": "%category%",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "gemini.showLog",
+        "title": "%command.showLog%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.showStatusMenu",
+        "title": "%command.showStatusMenu%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.showUsage",
+        "title": "%command.showUsage%",
+        "category": "%category%",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "gemini.addFileToChat",
+        "title": "%command.addFileToChat%",
+        "category": "%category%",
+        "icon": "$(attach)"
+      },
+      {
+        "command": "gemini.addSelectionToChat",
+        "title": "%command.addSelectionToChat%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.enhancePrompt",
+        "title": "%command.enhancePrompt%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.agents.newAgent",
+        "title": "%command.agents.newAgent%",
+        "category": "%category%",
+        "icon": "$(add)"
+      },
+      {
+        "command": "gemini.agents.newAgentOnBranch",
+        "title": "%command.agents.newAgentOnBranch%",
+        "category": "%category%",
+        "icon": "$(git-branch)"
+      },
+      {
+        "command": "gemini.projects.new",
+        "title": "%command.projects.new%",
+        "category": "%category%",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "gemini.projects.add",
+        "title": "%command.projects.new%",
+        "category": "%category%",
+        "icon": "$(add)"
+      },
+      {
+        "command": "gemini.projects.newThread",
+        "title": "%command.projects.newThread%",
+        "category": "%category%",
+        "icon": "$(add)"
+      },
+      {
+        "command": "gemini.projects.settings",
+        "title": "%command.projects.settings%",
+        "category": "%category%",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "gemini.agentHome",
+        "title": "%command.agentHome%",
+        "category": "%category%",
+        "icon": "$(home)"
+      },
+      {
+        "command": "gemini.home",
+        "title": "%command.home%",
+        "category": "%category%",
+        "icon": "$(home)"
+      },
+      {
+        "command": "gemini.reviewChanges",
+        "title": "%command.reviewChanges%",
+        "category": "%category%",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "gemini.projectSettings",
+        "title": "%command.projectSettings%",
+        "category": "%category%",
+        "icon": "$(server-environment)"
+      },
+      {
+        "command": "gemini.connections",
+        "title": "%command.connections%",
+        "category": "%category%",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "gemini.confluence.openDraft",
+        "title": "%command.confluenceDrafts%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.agents.addWorkspace",
+        "title": "%command.agents.addWorkspace%",
+        "category": "%category%",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "gemini.agents.open",
+        "title": "%command.agents.open%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.agents.openChanges",
+        "title": "%command.agents.openChanges%",
+        "category": "%category%",
+        "icon": "$(diff-multiple)"
+      },
+      {
+        "command": "gemini.agents.openTerminal",
+        "title": "%command.agents.openTerminal%",
+        "category": "%category%",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "gemini.terminal.sendSelection",
+        "title": "%command.terminal.sendSelection%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.terminal.sendLastCommand",
+        "title": "%command.terminal.sendLastCommand%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.terminal.suggestCommand",
+        "title": "%command.terminal.suggestCommand%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.terminal.askAboutFailure",
+        "title": "%command.terminal.askAboutFailure%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.agents.mergeBack",
+        "title": "%command.agents.mergeBack%",
+        "category": "%category%",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "gemini.agents.tryInWorkspace",
+        "title": "%command.agents.tryInWorkspace%",
+        "category": "%category%",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "gemini.agents.takeBack",
+        "title": "%command.agents.takeBack%",
+        "category": "%category%",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "gemini.agents.fork",
+        "title": "%command.agents.fork%",
+        "category": "%category%",
+        "icon": {
+          "light": "icons/commands/fork-light.svg",
+          "dark": "icons/commands/fork-dark.svg"
+        }
+      },
+      {
+        "command": "gemini.agents.rename",
+        "title": "%command.agents.rename%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.agents.stop",
+        "title": "%command.agents.stop%",
+        "category": "%category%",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "gemini.agents.focusChat",
+        "title": "%command.agents.focusChat%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.agents.cycleMode",
+        "title": "%command.agents.cycleMode%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.agents.switchModel",
+        "title": "%command.agents.switchModel%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.agents.remove",
+        "title": "%command.agents.remove%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.index.open",
+        "title": "%command.index.open%",
+        "category": "%category%",
+        "icon": "$(database)"
+      },
+      {
+        "command": "gemini.index.rebuild",
+        "title": "%command.index.rebuild%",
+        "category": "%category%",
+        "enablement": "config.gemini.index.enabled"
+      },
+      {
+        "command": "gemini.index.pause",
+        "title": "%command.index.pause%",
+        "category": "%category%",
+        "enablement": "config.gemini.index.enabled"
+      },
+      {
+        "command": "gemini.index.addDocs",
+        "title": "%command.index.addDocs%",
+        "category": "%category%",
+        "enablement": "config.gemini.docs.enabled"
+      },
+      {
+        "command": "gemini.agents.removeWorkspace",
+        "title": "%command.agents.removeWorkspace%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.changes.openAll",
+        "title": "%command.changes.openAll%",
+        "category": "%category%",
+        "icon": "$(diff-multiple)",
+        "enablement": "gemini.agentHasChanges"
+      },
+      {
+        "command": "gemini.inlineEdit",
+        "title": "%command.inlineEdit%",
+        "category": "%category%",
+        "icon": "$(sparkle)",
+        "enablement": "config.gemini.inlineEdit.enabled"
+      },
+      {
+        "command": "gemini.generateCommitMessage",
+        "title": "%command.generateCommitMessage%",
+        "category": "%category%",
+        "icon": "$(sparkle)",
+        "enablement": "config.gemini.inlineEdit.enabled"
+      },
+      {
+        "command": "gemini.review.previousChange",
+        "title": "%command.review.previousChange%",
+        "category": "%category%",
+        "icon": "$(arrow-up)",
+        "enablement": "gemini.review.active"
+      },
+      {
+        "command": "gemini.review.nextChange",
+        "title": "%command.review.nextChange%",
+        "category": "%category%",
+        "icon": "$(arrow-down)",
+        "enablement": "gemini.review.active"
+      },
+      {
+        "command": "gemini.review.keepFile",
+        "title": "%command.review.keepFile%",
+        "category": "%category%",
+        "icon": "$(check-all)",
+        "enablement": "gemini.review.active"
+      },
+      {
+        "command": "gemini.review.undoFile",
+        "title": "%command.review.undoFile%",
+        "category": "%category%",
+        "icon": "$(discard)",
+        "enablement": "gemini.review.active"
+      },
+      {
+        "command": "gemini.review.keepChange",
+        "title": "%command.review.keepChange%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.review.undoChange",
+        "title": "%command.review.undoChange%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.review.nextFile",
+        "title": "%command.review.nextFile%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.changes.clear",
+        "title": "%command.changes.clear%",
+        "category": "%category%",
+        "icon": "$(clear-all)",
+        "enablement": "gemini.agentHasChanges"
+      },
+      {
+        "command": "gemini.changes.openFile",
+        "title": "%command.changes.openFile%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.team.startOnTicket",
+        "title": "%command.team.startOnTicket%",
+        "category": "%category%",
+        "icon": "$(play)"
+      },
+      {
+        "command": "gemini.team.openMergeRequest",
+        "title": "%command.team.openMergeRequest%",
+        "category": "%category%",
+        "icon": "$(git-pull-request-create)"
+      },
+      {
+        "command": "gemini.team.moveTicket",
+        "title": "%command.team.moveTicket%",
+        "category": "%category%",
+        "icon": "$(arrow-swap)"
+      },
+      {
+        "command": "gemini.team.logTime",
+        "title": "%command.team.logTime%",
+        "category": "%category%",
+        "icon": "$(watch)"
+      },
+      {
+        "command": "gemini.team.reviewMergeRequest",
+        "title": "%command.team.reviewMergeRequest%",
+        "category": "%category%",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "gemini.team.openReview",
+        "title": "%command.team.openReview%",
+        "category": "%category%",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "gemini.team.startNewReview",
+        "title": "%command.team.startNewReview%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.team.discardReview",
+        "title": "%command.team.discardReview%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.team.openAgentReview",
+        "title": "%command.team.openAgentReview%",
+        "category": "%category%",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "gemini.mrReview.addComment",
+        "title": "%command.mrReview.addComment%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.mrReview.addSuggestion",
+        "title": "%command.mrReview.addSuggestion%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.mrReview.reply",
+        "title": "%command.mrReview.reply%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.mrReview.replyResolve",
+        "title": "%command.mrReview.replyResolve%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.mrReview.resolve",
+        "title": "%command.mrReview.resolve%",
+        "category": "%category%",
+        "icon": "$(check)"
+      },
+      {
+        "command": "gemini.mrReview.editComment",
+        "title": "%command.mrReview.editComment%",
+        "category": "%category%",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "gemini.mrReview.saveComment",
+        "title": "%command.mrReview.saveComment%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.mrReview.cancelEdit",
+        "title": "%command.mrReview.cancelEdit%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.mrReview.deleteComment",
+        "title": "%command.mrReview.deleteComment%",
+        "category": "%category%",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "gemini.mrReview.askSuggestion",
+        "title": "%command.mrReview.askSuggestion%",
+        "category": "%category%",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "gemini.mrReview.openPage",
+        "title": "%command.mrReview.openPage%",
+        "category": "%category%",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "gemini.team.fixMergeRequest",
+        "title": "%command.team.fixMergeRequest%",
+        "category": "%category%",
+        "icon": "$(wrench)"
+      },
+      {
+        "command": "gemini.team.mergeMergeRequest",
+        "title": "%command.team.mergeMergeRequest%",
+        "category": "%category%",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "gemini.team.reassignTicket",
+        "title": "%command.team.reassignTicket%",
+        "category": "%category%",
+        "icon": "$(account)"
+      },
+      {
+        "command": "gemini.team.reopenFlow",
+        "title": "%command.team.reopenFlow%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.team.discardFlow",
+        "title": "%command.team.discardFlow%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.team.settleIntent",
+        "title": "%command.team.settleIntent%",
+        "category": "%category%"
+      },
+      {
+        "command": "gemini.team.runChecks",
+        "title": "%command.team.runChecks%",
+        "category": "%category%",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "gemini.team.runChecksOnBranch",
+        "title": "%command.team.runChecksOnBranch%",
+        "category": "%category%",
+        "icon": "$(shield)"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "gemini.getStarted",
+        "title": "%walkthrough.title%",
+        "description": "%walkthrough.description%",
+        "steps": [
+          {
+            "id": "cli",
+            "title": "%walkthrough.cli.title%",
+            "description": "%walkthrough.cli.description%",
+            "media": { "markdown": "walkthrough/cli.md" },
+            "completionEvents": ["onContext:gemini.setup.cliReady"]
+          },
+          {
+            "id": "signIn",
+            "title": "%walkthrough.signIn.title%",
+            "description": "%walkthrough.signIn.description%",
+            "media": { "markdown": "walkthrough/signIn.md" },
+            "completionEvents": ["onContext:gemini.setup.signedIn"]
+          },
+          {
+            "id": "project",
+            "title": "%walkthrough.project.title%",
+            "description": "%walkthrough.project.description%",
+            "media": { "markdown": "walkthrough/project.md" },
+            "completionEvents": ["onContext:gemini.setup.projectReady"]
+          },
+          {
+            "id": "look",
+            "title": "%walkthrough.look.title%",
+            "description": "%walkthrough.look.description%",
+            "media": { "markdown": "walkthrough/look.md" },
+            "completionEvents": ["onCommand:gemini.appearance"]
+          },
+          {
+            "id": "agent",
+            "title": "%walkthrough.agent.title%",
+            "description": "%walkthrough.agent.description%",
+            "media": { "markdown": "walkthrough/agent.md" },
+            "completionEvents": ["onCommand:gemini.agents.newAgent"]
+          }
+        ]
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "gemini.terminal.suggestCommand",
+        "key": "ctrl+i",
+        "mac": "cmd+i",
+        "when": "terminalFocus && !terminalFindFocused"
+      },
+      {
+        "command": "gemini.home",
+        "key": "ctrl+shift+h",
+        "mac": "cmd+shift+h",
+        "when": "!editorTextFocus && !searchViewletFocus && !inSearchEditor"
+      },
+      {
+        "command": "gemini.addSelectionToChat",
+        "key": "ctrl+l",
+        "mac": "cmd+l",
+        "when": "editorTextFocus && editorHasSelection && resourceScheme == file"
+      },
+      {
+        "command": "gemini.inlineEdit",
+        "key": "ctrl+i",
+        "mac": "cmd+i",
+        "when": "editorTextFocus && !editorReadonly && resourceScheme == file && config.gemini.inlineEdit.enabled"
+      },
+      {
+        "command": "gemini.enhancePrompt",
+        "key": "ctrl+alt+e",
+        "mac": "cmd+alt+e",
+        "when": "!webviewFocus"
+      },
+      {
+        "command": "gemini.agents.newAgent",
+        "key": "ctrl+alt+n",
+        "mac": "cmd+alt+n"
+      },
+      {
+        "command": "gemini.review.keepFile",
+        "key": "ctrl+alt+enter",
+        "mac": "cmd+alt+enter",
+        "when": "gemini.review.active && editorTextFocus && !findWidgetVisible"
+      },
+      {
+        "command": "gemini.review.undoFile",
+        "key": "ctrl+shift+alt+backspace",
+        "mac": "cmd+shift+alt+backspace",
+        "when": "gemini.review.active && editorTextFocus"
+      },
+      {
+        "command": "gemini.review.nextChange",
+        "key": "alt+f5",
+        "when": "gemini.review.active && editorTextFocus"
+      },
+      {
+        "command": "gemini.review.previousChange",
+        "key": "shift+alt+f5",
+        "when": "gemini.review.active && editorTextFocus"
+      },
+      {
+        "command": "gemini.agents.focusChat",
+        "key": "ctrl+alt+i",
+        "mac": "ctrl+cmd+i"
+      },
+      {
+        "command": "gemini.agents.stop",
+        "key": "ctrl+escape",
+        "mac": "cmd+escape",
+        "win": "alt+backspace",
+        "when": "activeWebviewPanelId == 'gemini.agent'"
+      },
+      {
+        "command": "gemini.agents.sideQuestion",
+        "key": "ctrl+alt+;",
+        "mac": "cmd+alt+;",
+        "when": "activeWebviewPanelId == 'gemini.agent'"
+      },
+      {
+        "command": "gemini.agents.cycleMode",
+        "key": "ctrl+.",
+        "mac": "cmd+.",
+        "when": "activeWebviewPanelId == 'gemini.agent'"
+      },
+      {
+        "command": "gemini.agents.switchModel",
+        "key": "ctrl+alt+.",
+        "mac": "cmd+alt+.",
+        "when": "activeWebviewPanelId == 'gemini.agent'"
+      },
+      {
+        "command": "gemini.agents.rename",
+        "key": "f2",
+        "mac": "enter",
+        "when": "focusedView == gemini.agents && !inputFocus"
+      },
+      {
+        "command": "gemini.agents.open",
+        "key": "cmd+down",
+        "when": "isMac && focusedView == gemini.agents && !inputFocus"
+      },
+      {
+        "command": "gemini.agents.remove",
+        "key": "delete",
+        "mac": "cmd+backspace",
+        "when": "focusedView == gemini.agents"
+      }
+     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "gemini",
+          "title": "%viewContainer.title%",
+          "icon": "media/gemini.svg"
+        }
+      ],
+      "secondarySidebar": [
+        {
+          "id": "geminiChanges",
+          "title": "%viewContainer.changes%",
+          "icon": "$(diff-multiple)"
+        }
+      ]
+    },
+    "views": {
+      "gemini": [
+        {
+          "id": "gemini.agents",
+          "name": "%view.agents%",
+          "initialSize": 2
+        },
+        {
+          "id": "gemini.agentChanges",
+          "name": "%view.agentChanges%",
+          "initialSize": 1,
+          "when": "gemini.mode != agents"
+        }
+      ],
+      "geminiChanges": [
+        {
+          "type": "webview",
+          "id": "gemini.changesPanel",
+          "name": "%view.changesPanel%",
+          "when": "gemini.mode == agents"
+        }
+      ]
+    },
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "gemini.addFileToChat",
+          "when": "!explorerResourceIsFolder && resourceScheme == file",
+          "group": "gemini@1"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "gemini.home",
+          "when": "activeWebviewPanelId =~ /^gemini\\./ && activeWebviewPanelId != 'gemini.agentHome'",
+          "group": "navigation@100"
+        },
+        {
+          "command": "gemini.review.previousChange",
+          "when": "gemini.review.active && resourceScheme == file",
+          "group": "navigation@1"
+        },
+        {
+          "command": "gemini.review.nextChange",
+          "when": "gemini.review.active && resourceScheme == file",
+          "group": "navigation@2"
+        },
+        {
+          "command": "gemini.review.keepFile",
+          "when": "gemini.review.active && resourceScheme == file",
+          "group": "navigation@3"
+        },
+        {
+          "command": "gemini.review.undoFile",
+          "when": "gemini.review.active && resourceScheme == file",
+          "group": "navigation@4"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "gemini.addFileToChat",
+          "when": "resourceScheme == file",
+          "group": "gemini@1"
+        },
+        {
+          "command": "gemini.agents.openTerminal",
+          "when": "activeWebviewPanelId == 'gemini.agent'",
+          "group": "gemini@2"
+        }
+      ],
+      "terminal/context": [
+        {
+          "command": "gemini.terminal.sendSelection",
+          "when": "terminalTextSelected",
+          "group": "gemini@1"
+        },
+        {
+          "command": "gemini.terminal.sendLastCommand",
+          "group": "gemini@2"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "gemini.generateCommitMessage",
+          "when": "scmProvider == git && config.gemini.inlineEdit.enabled",
+          "group": "navigation@1"
+        },
+        {
+          "command": "gemini.reviewChanges",
+          "when": "scmProvider == git",
+          "group": "navigation@2"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "gemini.inlineEdit",
+          "when": "!editorReadonly && resourceScheme == file && config.gemini.inlineEdit.enabled",
+          "group": "gemini@0"
+        },
+        {
+          "command": "gemini.addSelectionToChat",
+          "when": "editorHasSelection && resourceScheme == file",
+          "group": "gemini@1"
+        },
+        {
+          "command": "gemini.addFileToChat",
+          "when": "!editorHasSelection && resourceScheme == file",
+          "group": "gemini@1"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "gemini.agents.newAgent",
+          "when": "view == gemini.agents",
+          "group": "navigation@1"
+        },
+        {
+          "command": "gemini.agents.addWorkspace",
+          "when": "view == gemini.agents",
+          "group": "navigation@2"
+        },
+        {
+          "command": "gemini.projects.new",
+          "when": "view == gemini.agents && config.gemini.projects.enabled",
+          "group": "navigation@3"
+        },
+        {
+          "command": "gemini.home",
+          "when": "view == gemini.agents",
+          "group": "navigation@3"
+        },
+        {
+          "command": "gemini.reviewChanges",
+          "when": "view == gemini.agents",
+          "group": "helpers@1"
+        },
+        {
+          "command": "gemini.projectSettings",
+          "when": "view == gemini.agents",
+          "group": "helpers@2"
+        },
+        {
+          "command": "gemini.connections",
+          "when": "view == gemini.agents",
+          "group": "helpers@3"
+        },
+        {
+          "command": "gemini.changes.openAll",
+          "when": "view == gemini.agentChanges",
+          "group": "navigation@1"
+        },
+        {
+          "command": "gemini.changes.clear",
+          "when": "view == gemini.agentChanges",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "gemini.agents.newAgent",
+          "when": "view == gemini.agents && viewItem =~ /^workspace/",
+          "group": "inline"
+        },
+        {
+          "command": "gemini.projects.add",
+          "when": "view == gemini.agents && viewItem == section.projects",
+          "group": "inline"
+        },
+        {
+          "command": "gemini.agents.newAgent",
+          "when": "view == gemini.agents && viewItem == section.agents",
+          "group": "inline"
+        },
+        {
+          "command": "gemini.projects.newThread",
+          "when": "view == gemini.agents && viewItem =~ /\\.project$/ && config.gemini.projects.enabled",
+          "group": "inline"
+        },
+        {
+          "command": "gemini.agents.newAgentOnBranch",
+          "when": "view == gemini.agents && viewItem =~ /^workspace.*\\.git$/",
+          "group": "inline"
+        },
+        {
+          "command": "gemini.agents.openChanges",
+          "when": "view == gemini.agents && viewItem =~ /\\.changes$/",
+          "group": "inline"
+        },
+        {
+          "command": "gemini.agents.fork",
+          "when": "view == gemini.agents && viewItem =~ /\\.forkable/",
+          "group": "inline"
+        },
+        {
+          "command": "gemini.agents.mergeBack",
+          "when": "view == gemini.agents && viewItem =~ /\\.worktree/ && config.gemini.agents.mergeBack == commit",
+          "group": "inline"
+        },
+        {
+          "command": "gemini.agents.tryInWorkspace",
+          "when": "view == gemini.agents && viewItem =~ /\\.worktree/ && config.gemini.agents.mergeBack != commit",
+          "group": "inline"
+        },
+        {
+          "command": "gemini.agents.stop",
+          "when": "view == gemini.agents && viewItem =~ /^agent\\.busy/",
+          "group": "inline"
+        },
+        {
+          "command": "gemini.agents.newAgent",
+          "when": "view == gemini.agents && viewItem =~ /^workspace/",
+          "group": "1_agent@1"
+        },
+        {
+          "command": "gemini.agents.newAgentOnBranch",
+          "when": "view == gemini.agents && viewItem =~ /^workspace.*\\.git$/",
+          "group": "1_agent@2"
+        },
+        {
+          "command": "gemini.projects.new",
+          "when": "view == gemini.agents && viewItem =~ /^workspace.*\\.git$/ && config.gemini.projects.enabled",
+          "group": "1_agent@3"
+        },
+        {
+          "command": "gemini.projects.newThread",
+          "when": "view == gemini.agents && viewItem =~ /\\.project$/ && config.gemini.projects.enabled",
+          "group": "1_agent@0"
+        },
+        {
+          "command": "gemini.projects.settings",
+          "when": "view == gemini.agents && viewItem =~ /\\.project$/ && config.gemini.projects.enabled",
+          "group": "1_agent@1"
+        },
+        {
+          "command": "gemini.index.open",
+          "when": "view == gemini.agents && viewItem =~ /^workspace(\\.git)?$/",
+          "group": "1_index@1"
+        },
+        {
+          "command": "gemini.index.rebuild",
+          "when": "view == gemini.agents && viewItem =~ /^workspace(\\.git)?$/ && config.gemini.index.enabled",
+          "group": "1_index@2"
+        },
+        {
+          "command": "gemini.index.pause",
+          "when": "view == gemini.agents && viewItem =~ /^workspace(\\.git)?$/ && config.gemini.index.enabled",
+          "group": "1_index@3"
+        },
+        {
+          "command": "gemini.agents.removeWorkspace",
+          "when": "view == gemini.agents && viewItem =~ /^workspace(\\.git)?$/",
+          "group": "2_remove@1"
+        },
+        {
+          "command": "gemini.agents.rename",
+          "when": "view == gemini.agents && viewItem =~ /^agent/",
+          "group": "1_agent@1"
+        },
+        {
+          "command": "gemini.agents.openChanges",
+          "when": "view == gemini.agents && viewItem =~ /\\.changes$/",
+          "group": "1_agent@2"
+        },
+        {
+          "command": "gemini.agents.stop",
+          "when": "view == gemini.agents && viewItem =~ /^agent\\.busy/",
+          "group": "1_agent@3"
+        },
+        {
+          "command": "gemini.agents.mergeBack",
+          "when": "view == gemini.agents && viewItem =~ /\\.worktree/ && config.gemini.agents.mergeBack == commit",
+          "group": "1_agent@4"
+        },
+        {
+          "command": "gemini.agents.tryInWorkspace",
+          "when": "view == gemini.agents && viewItem =~ /\\.worktree/ && config.gemini.agents.mergeBack != commit",
+          "group": "1_agent@4"
+        },
+        {
+          "command": "gemini.agents.takeBack",
+          "when": "view == gemini.agents && viewItem =~ /\\.trying/",
+          "group": "1_agent@5"
+        },
+        {
+          "command": "gemini.agents.fork",
+          "when": "view == gemini.agents && viewItem =~ /\\.forkable/",
+          "group": "1_agent@4"
+        },
+        {
+          "command": "gemini.agents.openAsMarkdown",
+          "when": "view == gemini.agents && viewItem =~ /^agent/",
+          "group": "1_agent@5"
+        },
+        {
+          "command": "gemini.agents.openTerminal",
+          "when": "view == gemini.agents && viewItem =~ /^agent/",
+          "group": "1_agent@6"
+        },
+        {
+          "command": "gemini.agents.remove",
+          "when": "view == gemini.agents && viewItem =~ /^agent/",
+          "group": "2_remove@1"
+        }
+      ],
+      "comments/commentThread/context": [
+        {
+          "command": "gemini.mrReview.addComment",
+          "group": "inline@1",
+          "when": "commentController == gemini.review && commentThreadIsEmpty"
+        },
+        {
+          "command": "gemini.mrReview.addSuggestion",
+          "group": "inline@2",
+          "when": "commentController == gemini.review && commentThreadIsEmpty"
+        },
+        {
+          "command": "gemini.mrReview.reply",
+          "group": "inline@1",
+          "when": "commentController == gemini.review && commentThread == gitlab && !commentThreadIsEmpty"
+        },
+        {
+          "command": "gemini.mrReview.replyResolve",
+          "group": "inline@2",
+          "when": "commentController == gemini.review && commentThread == gitlab && !commentThreadIsEmpty"
+        }
+      ],
+      "comments/commentThread/title": [
+        {
+          "command": "gemini.mrReview.resolve",
+          "group": "navigation@1",
+          "when": "commentController == gemini.review && commentThread == gitlab"
+        },
+        {
+          "command": "gemini.mrReview.openPage",
+          "group": "navigation@2",
+          "when": "commentController == gemini.review && !commentThreadIsEmpty"
+        }
+      ],
+      "comments/comment/title": [
+        {
+          "command": "gemini.mrReview.askSuggestion",
+          "group": "inline@1",
+          "when": "commentController == gemini.review && comment =~ /askable/"
+        },
+        {
+          "command": "gemini.mrReview.editComment",
+          "group": "inline@2",
+          "when": "commentController == gemini.review && comment =~ /draft/"
+        },
+        {
+          "command": "gemini.mrReview.deleteComment",
+          "group": "inline@3",
+          "when": "commentController == gemini.review && comment =~ /draft/"
+        }
+      ],
+      "comments/comment/context": [
+        {
+          "command": "gemini.mrReview.cancelEdit",
+          "group": "inline@1",
+          "when": "commentController == gemini.review"
+        },
+        {
+          "command": "gemini.mrReview.saveComment",
+          "group": "inline@2",
+          "when": "commentController == gemini.review"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "gemini.runBenchmark",
+          "when": "config.gemini.developer.showTools"
+        },
+        {
+          "command": "gemini.recordTrace",
+          "when": "config.gemini.developer.showTools"
+        },
+        {
+          "command": "gemini.showStatusMenu",
+          "when": "config.gemini.developer.showTools"
+        },
+        {
+          "command": "gemini.newSkill",
+          "when": "config.gemini.developer.showTools"
+        },
+        {
+          "command": "gemini.installCli",
+          "when": "config.gemini.developer.showTools"
+        },
+        {
+          "command": "gemini.installCliVersion",
+          "when": "config.gemini.developer.showTools"
+        },
+        {
+          "command": "gemini.terminal.askAboutFailure",
+          "when": "false"
+        },
+        {
+          "command": "gemini.team.startNewReview",
+          "when": "false"
+        },
+        {
+          "command": "gemini.team.discardReview",
+          "when": "false"
+        },
+        {
+          "command": "gemini.team.openAgentReview",
+          "when": "false"
+        },
+        {
+          "command": "gemini.mrReview.addComment",
+          "when": "false"
+        },
+        {
+          "command": "gemini.mrReview.addSuggestion",
+          "when": "false"
+        },
+        {
+          "command": "gemini.mrReview.reply",
+          "when": "false"
+        },
+        {
+          "command": "gemini.mrReview.replyResolve",
+          "when": "false"
+        },
+        {
+          "command": "gemini.mrReview.resolve",
+          "when": "false"
+        },
+        {
+          "command": "gemini.mrReview.editComment",
+          "when": "false"
+        },
+        {
+          "command": "gemini.mrReview.saveComment",
+          "when": "false"
+        },
+        {
+          "command": "gemini.mrReview.cancelEdit",
+          "when": "false"
+        },
+        {
+          "command": "gemini.mrReview.deleteComment",
+          "when": "false"
+        },
+        {
+          "command": "gemini.mrReview.askSuggestion",
+          "when": "false"
+        },
+        {
+          "command": "gemini.mrReview.openPage",
+          "when": "false"
+        },
+        {
+          "command": "gemini.agentHome",
+          "when": "false"
+        },
+        {
+          "command": "gemini.team.reopenFlow",
+          "when": "false"
+        },
+        {
+          "command": "gemini.team.discardFlow",
+          "when": "false"
+        },
+        {
+          "command": "gemini.team.settleIntent",
+          "when": "false"
+        },
+        {
+          "command": "gemini.projects.add",
+          "when": "false"
+        },
+        {
+          "command": "gemini.projects.newThread",
+          "when": "false"
+        },
+        {
+          "command": "gemini.projects.settings",
+          "when": "false"
+        },
+        {
+          "command": "gemini.review.keepChange",
+          "when": "false"
+        },
+        {
+          "command": "gemini.review.undoChange",
+          "when": "false"
+        },
+        {
+          "command": "gemini.review.nextFile",
+          "when": "false"
+        },
+        {
+          "command": "gemini.agents.open",
+          "when": "false"
+        },
+        {
+          "command": "gemini.agents.rename",
+          "when": "false"
+        },
+        {
+          "command": "gemini.agents.stop",
+          "when": "activeWebviewPanelId == 'gemini.agent'"
+        },
+        {
+          "command": "gemini.agents.cycleMode",
+          "when": "activeWebviewPanelId == 'gemini.agent'"
+        },
+        {
+          "command": "gemini.agents.sideQuestion",
+          "when": "activeWebviewPanelId == 'gemini.agent'"
+        },
+        {
+          "command": "gemini.agents.switchModel",
+          "when": "activeWebviewPanelId == 'gemini.agent'"
+        },
+        {
+          "command": "gemini.agents.remove",
+          "when": "false"
+        },
+        {
+          "command": "gemini.agents.removeWorkspace",
+          "when": "false"
+        },
+        {
+          "command": "gemini.agents.mergeBack",
+          "when": "false"
+        },
+        {
+          "command": "gemini.agents.tryInWorkspace",
+          "when": "false"
+        },
+        {
+          "command": "gemini.agents.takeBack",
+          "when": "false"
+        },
+        {
+          "command": "gemini.agents.openAsMarkdown",
+          "when": "false"
+        },
+        {
+          "command": "gemini.agents.openChanges",
+          "when": "false"
+        },
+        {
+          "command": "gemini.changes.openFile",
+          "when": "false"
+        },
+        {
+          "command": "gemini.team.fixMergeRequest",
+          "when": "false"
+        }
+      ]
+    },
+    "configuration": [
+      {
+        "title": "%configuration.title%",
+        "order": 1,
+        "properties": {
+          "gemini.cliPath": {
+            "type": "string",
+            "default": "",
+            "scope": "machine",
+            "markdownDescription": "%configuration.cliPath%"
+          },
+          "gemini.cli.version": {
+            "type": "string",
+            "default": "",
+            "scope": "machine",
+            "pattern": "^$|^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$",
+            "markdownDescription": "%configuration.cli.version%"
+          },
+          "gemini.cli.checkForUpdates": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.cli.checkForUpdates%"
+          },
+          "gemini.cli.registry": {
+            "type": "string",
+            "default": "",
+            "scope": "machine",
+            "markdownDescription": "%configuration.cli.registry%"
+          },
+          "gemini.app.checkForUpdates": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.app.checkForUpdates%"
+          },
+          "gemini.projects.enabled": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "%configuration.projects.enabled%"
+          },
+          "gemini.projects.maxRunningThreads": {
+            "type": "integer",
+            "default": 4,
+            "minimum": 1,
+            "maximum": 20,
+            "scope": "machine",
+            "markdownDescription": "%configuration.projects.maxRunningThreads%"
+          },
+          "gemini.agents.ownBranch": {
+            "type": "boolean",
+            "default": false,
+            "markdownDescription": "%configuration.agents.ownBranch%"
+          },
+          "gemini.figma.viewports": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": [],
+            "markdownDescription": "%configuration.figma.viewports%"
+          },
+          "gemini.figma.codeConnect": {
+            "type": "boolean",
+            "default": false,
+            "markdownDescription": "%configuration.figma.codeConnect%"
+          },
+          "gemini.agents.mergeBack": {
+            "type": "string",
+            "enum": [
+              "try",
+              "commit"
+            ],
+            "enumDescriptions": [
+              "%configuration.agents.mergeBack.try%",
+              "%configuration.agents.mergeBack.commit%"
+            ],
+            "default": "try",
+            "markdownDescription": "%configuration.agents.mergeBack%"
+          },
+          "gemini.agents.defaultMode": {
+            "type": "string",
+            "enum": [
+              "default",
+              "autoEdit",
+              "plan",
+              "yolo"
+            ],
+            "enumDescriptions": [
+              "%configuration.agents.defaultMode.default%",
+              "%configuration.agents.defaultMode.autoEdit%",
+              "%configuration.agents.defaultMode.plan%",
+              "%configuration.agents.defaultMode.yolo%"
+            ],
+            "default": "default",
+            "scope": "machine",
+            "markdownDescription": "%configuration.agents.defaultMode%"
+          },
+          "gemini.agents.allWorkspaceFolders": {
+            "type": "boolean",
+            "default": false,
+            "markdownDescription": "%configuration.agents.allWorkspaceFolders%"
+          },
+          "gemini.agents.worktreeSetup": {
+            "type": "string",
+            "default": "",
+            "scope": "machine",
+            "markdownDescription": "%configuration.agents.worktreeSetup%"
+          },
+          "gemini.chat.followAgent": {
+            "type": "boolean",
+            "default": false,
+            "scope": "machine",
+            "markdownDescription": "%configuration.chat.followAgent%"
+          },
+          "gemini.chat.foldFinishedWork": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.chat.foldFinishedWork%"
+          },
+          "gemini.chat.spellCheck": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.chat.spellCheck%"
+          },
+          "gemini.chat.sendWith": {
+            "type": "string",
+            "enum": [
+              "enter",
+              "cmdEnter"
+            ],
+            "enumDescriptions": [
+              "%configuration.chat.sendWith.enter%",
+              "%configuration.chat.sendWith.cmdEnter%"
+            ],
+            "default": "enter",
+            "scope": "machine",
+            "markdownDescription": "%configuration.chat.sendWith%"
+          },
+          "gemini.chat.runCommands": {
+            "type": "string",
+            "enum": [
+              "askWhenRisky",
+              "alwaysAsk",
+              "off"
+            ],
+            "enumDescriptions": [
+              "%configuration.chat.runCommands.askWhenRisky%",
+              "%configuration.chat.runCommands.alwaysAsk%",
+              "%configuration.chat.runCommands.off%"
+            ],
+            "default": "askWhenRisky",
+            "scope": "machine",
+            "markdownDescription": "%configuration.chat.runCommands%"
+          },
+          "gemini.browser.enabled": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.browser.enabled%"
+          },
+          "gemini.browser.allowOtherSites": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.browser.allowOtherSites%"
+          },
+          "gemini.browser.allowedOrigins": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "scope": "machine",
+            "markdownDescription": "%configuration.browser.allowedOrigins%"
+          },
+          "gemini.browser.keepSignIns": {
+            "type": "boolean",
+            "default": false,
+            "scope": "machine",
+            "markdownDescription": "%configuration.browser.keepSignIns%"
+          },
+          "gemini.index.enabled": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.index.enabled%"
+          },
+          "gemini.research.concurrency": {
+            "type": "number",
+            "default": 4,
+            "minimum": 1,
+            "maximum": 8,
+            "scope": "machine",
+            "markdownDescription": "%configuration.research.concurrency%"
+          },
+          "gemini.index.languageServers": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.index.languageServers%"
+          },
+          "gemini.index.buildOn": {
+            "type": "string",
+            "enum": [
+              "agentStart",
+              "workspaceOpen",
+              "manual"
+            ],
+            "enumDescriptions": [
+              "%configuration.index.buildOn.agentStart%",
+              "%configuration.index.buildOn.workspaceOpen%",
+              "%configuration.index.buildOn.manual%"
+            ],
+            "default": "agentStart",
+            "scope": "machine",
+            "markdownDescription": "%configuration.index.buildOn%"
+          },
+          "gemini.index.exclude": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "scope": "resource",
+            "markdownDescription": "%configuration.index.exclude%"
+          },
+          "gemini.index.include": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "scope": "resource",
+            "markdownDescription": "%configuration.index.include%"
+          },
+          "gemini.index.maxFileSizeKb": {
+            "type": "number",
+            "default": 1024,
+            "minimum": 16,
+            "maximum": 16384,
+            "scope": "machine",
+            "markdownDescription": "%configuration.index.maxFileSizeKb%"
+          },
+          "gemini.docs.enabled": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.docs.enabled%"
+          },
+          "gemini.docs.allowedDomains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "scope": "machine",
+            "markdownDescription": "%configuration.docs.allowedDomains%"
+          },
+          "gemini.storage.keepLogsDays": {
+            "type": "number",
+            "default": 90,
+            "minimum": 0,
+            "scope": "machine",
+            "markdownDescription": "%configuration.storage.keepLogsDays%"
+          },
+          "gemini.docs.refresh": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "weekly",
+              "manual"
+            ],
+            "enumDescriptions": [
+              "%configuration.docs.refresh.daily%",
+              "%configuration.docs.refresh.weekly%",
+              "%configuration.docs.refresh.manual%"
+            ],
+            "default": "daily",
+            "scope": "machine",
+            "markdownDescription": "%configuration.docs.refresh%"
+          },
+          "gemini.agents.startEarly": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.agent.startEarly%"
+          },
+          "gemini.agent.startEarly": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.agent.startEarly%",
+            "markdownDeprecationMessage": "%configuration.agent.startEarly.deprecated%"
+          },
+          "gemini.home.openOnStartup": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "%configuration.home.openOnStartup%"
+          },
+          "gemini.team.openMergeRequestsIn": {
+            "type": "string",
+            "enum": [
+              "ask",
+              "geminicode",
+              "browser"
+            ],
+            "enumDescriptions": [
+              "%configuration.team.openMergeRequestsIn.ask%",
+              "%configuration.team.openMergeRequestsIn.geminicode%",
+              "%configuration.team.openMergeRequestsIn.browser%"
+            ],
+            "default": "ask",
+            "markdownDescription": "%configuration.team.openMergeRequestsIn%"
+          },
+          "gemini.keepAwake": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.keepAwake%"
+          },
+          "gemini.inlineEdit.enabled": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.inlineEdit.enabled%"
+          },
+          "gemini.team.runTeamServers": {
+            "type": "boolean",
+            "default": false,
+            "scope": "machine",
+            "markdownDescription": "%configuration.team.runTeamServers%"
+          },
+          "gemini.usageMeter.enabled": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.usageMeter.enabled%"
+          },
+          "gemini.inlineEdit.model": {
+            "type": "string",
+            "default": "latestFlash",
+            "scope": "machine",
+            "markdownDescription": "%configuration.inlineEdit.model%"
+          },
+          "gemini.approval.allowAutoEdit": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.approval.allowAutoEdit%"
+          },
+          "gemini.approval.allowYolo": {
+            "type": "boolean",
+            "default": false,
+            "scope": "machine",
+            "markdownDescription": "%configuration.approval.allowYolo%"
+          },
+          "gemini.tools.allowShell": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.tools.allowShell%"
+          },
+          "gemini.tools.denyEnvironmentCommands": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.tools.denyEnvironmentCommands%"
+          },
+          "gemini.mcp.allowedServers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "scope": "machine",
+            "markdownDescription": "%configuration.mcp.allowedServers%"
+          },
+          "gemini.projectId": {
+            "type": "string",
+            "default": "",
+            "scope": "window",
+            "markdownDescription": "%configuration.projectId%"
+          },
+          "gemini.notifications.enabled": {
+            "type": "boolean",
+            "default": true,
+            "scope": "application",
+            "markdownDescription": "%configuration.notifications.enabled%"
+          },
+          "gemini.layout.showAgentsInNewWorkspaces": {
+            "type": "boolean",
+            "default": true,
+            "scope": "window",
+            "markdownDescription": "%configuration.layout.showAgentsInNewWorkspaces%"
+          }
+        }
+      },
+      {
+        "id": "gemini.advanced",
+        "title": "%configuration.advancedTitle%",
+        "order": 2,
+        "properties": {
+          "gemini.chat.reactions.enabled": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.chat.reactions.enabled%"
+          },
+          "gemini.chat.reactions.agentReactions": {
+            "type": "boolean",
+            "default": true,
+            "scope": "machine",
+            "markdownDescription": "%configuration.chat.reactions.agentReactions%"
+          },
+          "gemini.chat.reactions.meanings": {
+            "type": "object",
+            "default": {},
+            "scope": "window",
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "markdownDescription": "%configuration.chat.reactions.meanings%"
+          },
+          "gemini.developer.showTools": {
+            "type": "boolean",
+            "default": false,
+            "scope": "machine",
+            "markdownDescription": "%configuration.developer.showTools%"
+          }
+        }
+      }
+    ],
+    "configurationDefaults": {
+      "workbench.browser.openLocalhostLinks": true,
+      "breadcrumbs.enabled": false,
+      "editor.minimap.enabled": false,
+      "editor.lineHeight": 20,
+      "editor.padding.top": 10,
+      "editor.renderLineHighlight": "gutter",
+      "editor.overviewRulerBorder": false,
+      "editor.fontFamily": "'JetBrains Mono', Menlo, Monaco, 'Courier New', monospace",
+      "workbench.iconTheme": "geminicode-icons"
+    },
+    "terminalQuickFixes": [
+      {
+        "id": "gemini.askAboutFailure",
+        "commandLineMatcher": ".+",
+        "outputMatcher": {
+          "lineMatcher": ".*",
+          "anchor": "bottom",
+          "offset": 0,
+          "length": 1
+        },
+        "commandExitResult": "error",
+        "kind": "explain"
+      }
+    ],
+    "themes": [
+      {
+        "id": "GeminiCode Dark",
+        "label": "%theme.dark%",
+        "uiTheme": "vs-dark",
+        "path": "./themes/geminicode-dark.json"
+      },
+      {
+        "id": "GeminiCode Light",
+        "label": "%theme.light%",
+        "uiTheme": "vs",
+        "path": "./themes/geminicode-light.json"
+      }
+    ],
+    "iconThemes": [
+      {
+        "id": "geminicode-icons",
+        "label": "%iconTheme.label%",
+        "path": "./icons/geminicode-icon-theme.json"
+      }
+    ],
+    "viewsWelcome": [
+      {
+        "view": "gemini.agents",
+        "contents": "%viewsWelcome.agents%"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "gulp compile-extension:gemini",
+    "watch": "gulp watch-extension:gemini",
+    "typecheck-tests": "tsc -p tsconfig.test.json",
+    "check": "node esbuild.mts && node esbuild.webview.mts && vitest run && tsc -p tsconfig.json --noEmit && tsc -p webview-src/tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "bundle-cli": "node scripts/bundle-cli.mts",
+    "emoji-data": "node scripts/build-emoji-data.mts",
+    "spike-coordinator": "node --experimental-transform-types --no-warnings scripts/coordinator-spike.mts",
+    "test": "vitest run"
+  },
+  "bundledCli": {
+    "version": "0.64.0",
+    "integrity": "sha512-FHrZ1NPf9QszyVMaa/BP3SsPy40ogBLnbZNWkv/PMi1Uz2zoDNMLGiBzBGmx4Bl7iLRq01K9PY/5kmloXFTpsA=="
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "1.9.0",
+    "jsonc-parser": "3.3.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.2.0",
+    "@types/node": "24.x",
+    "@vscode/codicons": "^0.0.36",
+    "happy-dom": "20.10.1",
+    "highlight.js": "^11.12.0",
+    "katex": "^0.16.47",
+    "markdown-it": "^14.3.2",
+    "vitest": "^4.1.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pulkitjain-org/vscode-gemini-cli.git"
+  }
+}

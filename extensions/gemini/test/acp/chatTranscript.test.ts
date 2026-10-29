@@ -1,0 +1,422 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Pulkit Jain. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+import { afterEach, describe, expect, it } from 'vitest';
+import { AgentClient, AgentClientState } from '../../src/acp/agentClient';
+import { ChatTranscript, countChangedLines, TranscriptItem } from '../../src/acp/chatTranscript';
+import { ToolOutputStore } from '../../src/acp/chatMemory';
+import { SessionUpdateAdapter } from '../../src/acp/sessionUpdates';
+import { AgentRuntime } from '../../src/acp/agentRuntime';
+import { AgentSidecar } from '../../src/acp/sidecar';
+import { fakeAgentCommand, waitFor } from '../helpers';
+
+function summary(items: readonly TranscriptItem[]): string[] {
+	return items.map(item => {
+		switch (item.kind) {
+			case 'user': case 'agent': case 'thought': return `${item.kind}:${item.text}`;
+			case 'toolCall': return `tool:${item.title}:${item.status}`;
+			case 'plan': return `plan:${item.entries.map(e => `${e.content}=${e.status}`).join(',')}`;
+			case 'other': return `other:${item.type}`;
+			case 'notice': return `notice:${item.severity}:${item.text}`;
+			case 'permission': return `permission:${item.title}:${item.answer ? (item.answer.kind === 'selected' ? item.answer.name : 'cancelled') : 'pending'}`;
+			case 'cutOff': return `cutOff:${item.prompt}`;
+			case 'compact': return `compact:${item.state}`;
+			case 'fork': return `fork:${item.role}:${item.title}${item.removed ? ':removed' : ''}`;
+			case 'trace': return `trace:${item.file}`;
+			case 'turnEnd': return 'turnEnd';
+			case 'thread': return `thread:${item.title}:${item.state}`;
+			case 'research': return `research:${item.progress.state}${item.report ? ':report' : ''}`;
+		}
+	});
+}
+
+describe('ChatTranscript', () => {
+	it('adds a fork\'s card, and marks it when the fork is removed', () => {
+		const transcript = new ChatTranscript(() => 7000);
+		transcript.addFork({ role: 'child', agent: 'f1', title: 'Refund UI', context: 'whole', branch: 'gemini/ui' });
+		transcript.addFork({ role: 'from', agent: 'p', title: 'Refunds', context: 'compact' });
+		transcript.forkRemoved('f1');
+		expect(summary(transcript.items)).toEqual(['fork:child:Refund UI:removed', 'fork:from:Refunds']);
+	});
+
+	it('adds a research card, updates it in place, and stops a running one restored from a saved chat', () => {
+		const transcript = new ChatTranscript(() => 7000);
+		const id = transcript.addResearch('Where are tokens logged?');
+		transcript.updateResearch(id, { state: 'reading', slices: [{ title: 'src/auth', state: 'reading', files: 2, findings: 0 }] });
+		const running = [...transcript.items];
+		transcript.updateResearch(id, { state: 'done', slices: [] }, 'One place.');
+		const restored = new ChatTranscript(() => 7000);
+		restored.restore(running);
+		expect([summary(transcript.items), summary(restored.items)]).toEqual([['research:done:report'], ['research:stopped']]);
+	});
+
+	it('adds a compact card and changes it in place', () => {
+		const transcript = new ChatTranscript(() => 7000);
+		const id = transcript.addCompact({ state: 'suggested', percent: 42 });
+		transcript.updateCompact(id, { state: 'done', before: 400_000, after: 9_000, from: 's1', to: 's2' });
+		transcript.updateCompact('missing', { state: 'failed' });
+		expect(transcript.items).toEqual([{ id, kind: 'compact', state: 'done', percent: 42, before: 400_000, after: 9_000, from: 's1', to: 's2' }]);
+	});
+
+	it('labels the context sent with a prompt, without keeping its contents', () => {
+		const transcript = new ChatTranscript(() => 7000);
+		transcript.addPrompt('look', [
+			{ kind: 'file', path: '/w/a.ts' },
+			{ kind: 'selection', path: '/w/b.ts', text: 'x', startLine: 3, endLine: 4 },
+			{ kind: 'image', name: 'shot.png', mimeType: 'image/png', data: 'AAAA' },
+		]);
+		expect(transcript.items[0]).toEqual({
+			id: 'item-0', kind: 'user', text: 'look', at: 7000, attachments: [
+				{ kind: 'file', label: 'a.ts', path: '/w/a.ts' },
+				{ kind: 'selection', label: 'b.ts:3-4', path: '/w/b.ts', line: 3 },
+				{ kind: 'image', label: 'shot.png' },
+			],
+		});
+	});
+
+	it('joins streamed chunks into one message and starts a new one when the kind changes', () => {
+		const transcript = new ChatTranscript();
+		const adapter = new SessionUpdateAdapter();
+		transcript.addPrompt('hi');
+		for (const update of [
+			{ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'let me ' } },
+			{ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'think' } },
+			{ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Hel' } },
+			{ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'lo' } },
+		] as const) {
+			transcript.apply(adapter.adapt(update));
+		}
+		expect(summary(transcript.items)).toEqual(['user:hi', 'thought:let me think', 'agent:Hello']);
+	});
+
+	it('cuts the conversation at a prompt for Rewind, and numbers new items after the old ones', () => {
+		const transcript = new ChatTranscript();
+		transcript.addPrompt('one');
+		transcript.apply({ kind: 'text', role: 'agent', text: 'first' });
+		transcript.addTurnEnd(10);
+		transcript.addPrompt('two');
+		transcript.apply({ kind: 'text', role: 'agent', text: 'second' });
+		const second = transcript.items.find(item => item.kind === 'user' && item.text === 'two')!;
+		let resets = 0;
+		transcript.onDidReset(() => resets++);
+		transcript.cutAt(second.id);
+		expect(summary(transcript.items)).toEqual(['user:one', 'agent:first', 'turnEnd']);
+		expect(resets).toBe(1);
+		transcript.addPrompt('three');
+		expect(transcript.items.at(-1)!.id).not.toBe(second.id);
+	});
+
+	it('adds the shared page to the prompt just sent, and nothing without one', () => {
+		const transcript = new ChatTranscript();
+		transcript.addPrompt('check the cart', [{ kind: 'file', path: '/a.ts' }]);
+		transcript.addPromptPage('Cart', 'http://localhost:5173/cart');
+		const prompt = transcript.items[0];
+		expect(prompt.kind === 'user' && prompt.attachments).toEqual([
+			{ kind: 'page', label: 'Cart', path: 'http://localhost:5173/cart' },
+			{ kind: 'file', label: 'a.ts', path: '/a.ts' },
+		]);
+		const empty = new ChatTranscript();
+		empty.addPromptPage('Cart', 'http://localhost:5173/cart');
+		expect(empty.items).toEqual([]);
+	});
+
+	it('starts a new message when the agent sends a new message id', () => {
+		const transcript = new ChatTranscript();
+		transcript.apply({ kind: 'text', role: 'agent', text: 'one', messageId: 'm1' });
+		transcript.apply({ kind: 'text', role: 'agent', text: ' more', messageId: 'm1' });
+		transcript.apply({ kind: 'text', role: 'agent', text: 'two', messageId: 'm2' });
+		expect(summary(transcript.items)).toEqual(['agent:one more', 'agent:two']);
+	});
+
+	it('updates a tool call card in place and keeps one plan per turn', () => {
+		const transcript = new ChatTranscript();
+		const adapter = new SessionUpdateAdapter();
+		const changed: string[] = [];
+		transcript.onDidChangeItem(item => changed.push(item.id));
+		transcript.addPrompt('edit it');
+		transcript.apply(adapter.adapt({ sessionUpdate: 'plan', entries: [{ content: 'Read', priority: 'medium', status: 'in_progress' }] }));
+		transcript.apply(adapter.adapt({
+			sessionUpdate: 'tool_call', toolCallId: 't1', title: 'Edit a.ts', kind: 'edit', status: 'in_progress',
+			locations: [{ path: '/w/a.ts', line: 3 }],
+		}));
+		transcript.apply(adapter.adapt({
+			sessionUpdate: 'tool_call_update', toolCallId: 't1', status: 'completed',
+			content: [{ type: 'diff', path: '/w/a.ts', oldText: 'a\nb\n', newText: 'a\nc\nd\n' }],
+		}));
+		transcript.apply(adapter.adapt({ sessionUpdate: 'plan', entries: [{ content: 'Read', priority: 'medium', status: 'completed' }] }));
+
+		expect(summary(transcript.items)).toEqual(['user:edit it', 'plan:Read=completed', 'tool:Edit a.ts:completed']);
+		expect(transcript.items[2]).toMatchObject({ locations: [{ path: '/w/a.ts', line: 3 }], details: [{ type: 'diff', path: '/w/a.ts', added: 2, removed: 1 }] });
+		expect(changed).toEqual(['item-0', 'item-1', 'tool-t1', 'tool-t1', 'item-1']);
+	});
+
+	it('renders unknown updates generically but skips session-state updates', () => {
+		const transcript = new ChatTranscript();
+		transcript.apply({ kind: 'other', type: 'available_commands_update', update: { sessionUpdate: 'available_commands_update', availableCommands: [] } });
+		transcript.apply({ kind: 'other', type: 'something_new', update: { sessionUpdate: 'something_new' } as never });
+		expect(summary(transcript.items)).toEqual(['other:something_new']);
+	});
+
+	it('clears and tells listeners', () => {
+		const transcript = new ChatTranscript();
+		let resets = 0;
+		transcript.onDidReset(() => resets++);
+		transcript.addPrompt('hi');
+		transcript.addNotice('Stopped.');
+		transcript.clear();
+		expect(transcript.items).toEqual([]);
+		expect(resets).toBe(1);
+	});
+});
+
+describe('ChatTranscript retry on errors', () => {
+	it('offers Retry on the latest error only, and takes it off again', () => {
+		const transcript = new ChatTranscript();
+		transcript.addNotice('quota', 'error');
+		transcript.addNotice('Stopped.');
+		transcript.addNotice('network', 'error');
+		transcript.offerRetry();
+		expect(transcript.items.map(item => item.kind === 'notice' && !!item.retry)).toEqual([false, false, true]);
+		transcript.addNotice('again', 'error');
+		transcript.offerRetry();
+		expect(transcript.items.map(item => item.kind === 'notice' && !!item.retry)).toEqual([false, false, false, true]);
+		transcript.clearRetry();
+		expect(transcript.items.some(item => item.kind === 'notice' && Object.keys(item).includes('retry'))).toBe(false);
+	});
+});
+
+describe('ChatTranscript notice actions', () => {
+	it('puts the ways out on the latest failed turn only, until the next turn or a restore', () => {
+		const transcript = new ChatTranscript();
+		transcript.addNotice('quota', 'error', ['retry', 'switchModel']);
+		transcript.addNotice('limit', 'info', ['continue']);
+		const [quota, limit] = transcript.items;
+		expect([transcript.noticeOffering(quota.id, 'retry'), transcript.noticeOffering(limit.id, 'continue')?.text, transcript.noticeOffering(limit.id, 'retry')]).toEqual([undefined, 'limit', undefined]);
+		const restored = new ChatTranscript();
+		restored.restore(transcript.items);
+		transcript.clearNoticeActions();
+		expect([transcript.items, restored.items].map(items => items.some(item => item.kind === 'notice' && item.actions !== undefined))).toEqual([false, false]);
+	});
+});
+
+describe('ChatTranscript tool outputs', () => {
+	const lines = (count: number) => Array.from({ length: count }, (_, i) => `line ${i + 1}`).join('\n');
+	const call = (text: string, status: 'in_progress' | 'completed' = 'completed') => ({ kind: 'toolCall' as const, call: { id: 't1', title: 'git log', kind: 'execute' as const, status, locations: [], content: [{ type: 'content' as const, content: { type: 'text' as const, text } }] } });
+
+	it('keeps only a long output\'s first and last lines, the whole in the store, and short ones as they are', () => {
+		const store = new ToolOutputStore(1024 * 1024);
+		const transcript = new ChatTranscript();
+		transcript.trimOutput = (itemId, part, text) => store.put(itemId, part, text);
+		transcript.apply(call(lines(100)));
+		const [item] = transcript.items;
+		expect(item.kind === 'toolCall' && item.details[0]).toEqual({ type: 'text', text: lines(20), tail: lines(100).split('\n').slice(-20).join('\n'), hiddenLines: 60 });
+		expect(store.get(item.id, 0)).toBe(lines(100));
+		transcript.apply(call('done'));
+		expect(transcript.items[0].kind === 'toolCall' && transcript.items[0].details[0]).toEqual({ type: 'text', text: 'done' });
+	});
+
+	it('trims a saved chat\'s long outputs as it is restored', () => {
+		const store = new ToolOutputStore(1024 * 1024);
+		const saved = new ChatTranscript();
+		saved.apply(call(lines(90)));
+		const transcript = new ChatTranscript();
+		transcript.trimOutput = (itemId, part, text) => store.put(itemId, part, text);
+		transcript.restore(saved.items);
+		const [item] = transcript.items;
+		expect([item.kind === 'toolCall' && item.details[0].type === 'text' && item.details[0].hiddenLines, store.get(item.id, 0)]).toEqual([50, lines(90)]);
+	});
+
+	it('keeps the note about another agent\'s changes as the call updates', () => {
+		const transcript = new ChatTranscript();
+		transcript.apply(call('editing', 'in_progress'));
+		transcript.setOthers('tool-t1', [{ agent: 'a2', title: 'Login fix' }]);
+		transcript.apply(call('edited'));
+		expect(transcript.items[0].kind === 'toolCall' && transcript.items[0].others).toEqual([{ agent: 'a2', title: 'Login fix' }]);
+	});
+});
+
+describe('ChatTranscript permissions', () => {
+	const request = {
+		sessionId: 's1',
+		toolCall: {
+			toolCallId: 'w1', title: 'Write a.ts',
+			content: [{ type: 'diff' as const, path: '/w/a.ts', oldText: 'a', newText: 'b' }, { type: 'content' as const, content: { type: 'text' as const, text: 'why' } }],
+		},
+		options: [
+			{ optionId: 'proceed_once', name: 'Allow', kind: 'allow_once' as const },
+			{ optionId: 'cancel', name: 'Reject', kind: 'reject_once' as const },
+		],
+	};
+
+	it('shows the request with its own options and the files it would change', () => {
+		const transcript = new ChatTranscript();
+		transcript.addPermission({ id: 'permission-0', request });
+		expect(transcript.items[0]).toEqual({
+			id: 'permission-0', kind: 'permission', title: 'Write a.ts',
+			options: [{ optionId: 'proceed_once', name: 'Allow', kind: 'allow_once' }, { optionId: 'cancel', name: 'Reject', kind: 'reject_once' }],
+			diffPaths: ['/w/a.ts'],
+		});
+	});
+
+	it('carries a shell command\'s prefixes and the other agents changing its files', () => {
+		const transcript = new ChatTranscript();
+		transcript.addPermission({ id: 'permission-0', request, prefixes: ['npx vitest'] }, [{ agent: 'a2', title: 'Login fix' }]);
+		const [item] = transcript.items;
+		expect(item.kind === 'permission' && [item.prefixes, item.others]).toEqual([['npx vitest'], [{ agent: 'a2', title: 'Login fix' }]]);
+	});
+
+	it('records the answer in place', () => {
+		const transcript = new ChatTranscript();
+		transcript.addPermission({ id: 'permission-0', request });
+		transcript.addPermission({ id: 'permission-1', request });
+		transcript.resolvePermission('permission-0', { outcome: 'selected', optionId: 'cancel' });
+		transcript.resolvePermission('permission-1', { outcome: 'cancelled' });
+		expect(summary(transcript.items)).toEqual(['permission:Write a.ts:Reject', 'permission:Write a.ts:cancelled']);
+	});
+
+	it('restores a request that was still open as cancelled, since nothing can answer it', () => {
+		const saved = new ChatTranscript();
+		saved.addPermission({ id: 'permission-0', request });
+		saved.addPermission({ id: 'permission-1', request });
+		saved.resolvePermission('permission-0', { outcome: 'selected', optionId: 'proceed_once' });
+		const transcript = new ChatTranscript();
+		transcript.restore(saved.items);
+		expect(summary(transcript.items)).toEqual(['permission:Write a.ts:Allow', 'permission:Write a.ts:cancelled']);
+	});
+
+	it('marks an answer GeminiCode gave on its own as automatic, and the user\'s as not', () => {
+		const transcript = new ChatTranscript();
+		transcript.addPermission({ id: 'permission-0', request });
+		transcript.addPermission({ id: 'permission-1', request });
+		transcript.resolvePermission('permission-0', { outcome: 'selected', optionId: 'cancel' }, 'Refused automatically');
+		transcript.resolvePermission('permission-1', { outcome: 'selected', optionId: 'cancel' });
+		const answers = transcript.items.map(item => item.kind === 'permission' ? item.answer : undefined);
+		expect(answers).toEqual([{ kind: 'selected', name: 'Refused automatically', automatic: true }, { kind: 'selected', name: 'Reject' }]);
+	});
+});
+
+describe('countChangedLines', () => {
+	it('counts added and removed lines', () => {
+		expect(countChangedLines('', 'a\nb')).toEqual({ added: 2, removed: 0 });
+		expect(countChangedLines('a\nb', 'a\nb')).toEqual({ added: 0, removed: 0 });
+		expect(countChangedLines('a\nb\nc', 'a\nc')).toEqual({ added: 0, removed: 1 });
+	});
+});
+
+describe('ChatTranscript with the fake agent', () => {
+	let sidecar: AgentSidecar | undefined;
+	let runtime: AgentRuntime | undefined;
+	let client: AgentClient | undefined;
+
+	afterEach(() => {
+		client?.dispose();
+		runtime?.dispose();
+		sidecar?.dispose();
+	});
+
+	it('records a whole turn, including a permission answer', async () => {
+		sidecar = new AgentSidecar({
+			command: () => fakeAgentCommand({
+				turns: [[
+					{ step: 'update', update: { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'Need to write.' } } },
+					{ step: 'update', update: { sessionUpdate: 'tool_call', toolCallId: 'w1', title: 'Write notes.md', kind: 'edit', status: 'pending' } },
+					{ step: 'permission', request: { toolCall: { toolCallId: 'w1', title: 'Write notes.md' }, options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }] } },
+					{ step: 'update', update: { sessionUpdate: 'tool_call_update', toolCallId: 'w1', status: 'completed' } },
+				]],
+			}),
+			cwd: undefined,
+			restartDelaysMs: [],
+		});
+		client = new AgentClient(runtime = new AgentRuntime(sidecar), {
+			cwd: process.cwd(),
+			requestPermission: async () => ({ outcome: { outcome: 'selected', optionId: 'allow' } }),
+		});
+		const settled = waitFor<AgentClientState>(client.onDidChangeState, s => s.kind === 'ready' || s.kind === 'error');
+		sidecar.start();
+		expect(await settled).toMatchObject({ kind: 'ready' });
+
+		const transcript = new ChatTranscript();
+		client.onDidReceiveEvent(event => transcript.apply(event));
+		transcript.addPrompt('write notes');
+		expect(await client.prompt('write notes')).toBe('end_turn');
+		expect(summary(transcript.items)).toEqual([
+			'user:write notes', 'thought:Need to write.', 'tool:Write notes.md:completed', 'agent:permission:allow',
+		]);
+	});
+});
+
+describe('ChatTranscript.updateTurnEnd', () => {
+	it('adds and removes what a turn end offers', () => {
+		const transcript = new ChatTranscript(() => 5000);
+		transcript.addPrompt('hi');
+		const id = transcript.addTurnEnd(1200);
+		transcript.updateTurnEnd(id, { retry: true, undo: 'available', files: 2 });
+		expect(transcript.items.at(-1)).toEqual({ id, kind: 'turnEnd', durationMs: 1200, at: 5000, retry: true, undo: 'available', files: 2 });
+		transcript.updateTurnEnd(id, { retry: undefined, undo: 'undone' });
+		expect(transcript.items.at(-1)).toEqual({ id, kind: 'turnEnd', durationMs: 1200, at: 5000, undo: 'undone', files: 2 });
+	});
+});
+
+describe('ChatTranscript reactions', () => {
+	const text = (t: string) => ({ kind: 'text' as const, role: 'agent' as const, text: t });
+
+	it('lifts the agent\'s reaction onto the prompt, across chunks, and never shows the tag', () => {
+		const transcript = new ChatTranscript(() => 1000);
+		transcript.liftReactions = true;
+		transcript.addPrompt('tests are green, ship it');
+		transcript.apply(text('<rea'));
+		transcript.apply(text('ct>🎉</react> Pushed'));
+		transcript.apply(text(' to main.'));
+		transcript.addTurnEnd(10);
+		expect(transcript.items.slice(0, 2)).toEqual([
+			{ id: 'item-0', kind: 'user', text: 'tests are green, ship it', at: 1000, agentReaction: '🎉' },
+			{ id: 'item-1', kind: 'agent', text: 'Pushed to main.' },
+		]);
+	});
+
+	it('looks for the tag after the turn\'s first steps, and shows short or plain replies at once', () => {
+		const transcript = new ChatTranscript();
+		transcript.liftReactions = true;
+		transcript.addPrompt('fix it');
+		transcript.apply({ kind: 'toolCall', call: { id: 't1', title: 'Shell', kind: 'execute', status: 'completed', locations: [], content: [] } });
+		transcript.apply(text('<react>✅</react>Fixed.'));
+		transcript.addTurnEnd(10);
+		transcript.addPrompt('again');
+		transcript.apply(text('Done.'));
+		transcript.addPrompt('and again');
+		transcript.apply(text('<'));
+		transcript.addTurnEnd(10);
+		expect(summary(transcript.items)).toEqual(['user:fix it', 'tool:Shell:completed', 'agent:Fixed.', 'turnEnd', 'user:again', 'agent:Done.', 'user:and again', 'agent:<', 'turnEnd']);
+		expect(transcript.items[0]).toMatchObject({ agentReaction: '✅' });
+	});
+
+	it('leaves the tag as text when reactions are not lifted, or it comes mid-reply', () => {
+		const transcript = new ChatTranscript();
+		transcript.addPrompt('hi');
+		transcript.apply(text('<react>🎉</react> Hello.'));
+		transcript.liftReactions = true;
+		transcript.addPrompt('hi again');
+		transcript.apply(text('Hello. <react>🎉</react>'));
+		expect(summary(transcript.items)).toEqual(['user:hi', 'agent:<react>🎉</react> Hello.', 'user:hi again', 'agent:Hello. <react>🎉</react>']);
+	});
+
+	it('puts each emoji on a reply once, keeps reactions through restore, and drops them with Rewind', () => {
+		const transcript = new ChatTranscript(() => 1000);
+		transcript.addPrompt('hi');
+		const turnEnd = transcript.addTurnEnd(10);
+		transcript.addReaction(turnEnd, '🚀');
+		transcript.addReaction(turnEnd, '🚀');
+		transcript.addReaction(turnEnd, '👍');
+		transcript.addPrompt('', [], undefined, [{ turnEnd, emoji: '🚀', name: 'rocket' }]);
+		const restored = new ChatTranscript();
+		restored.restore(transcript.items);
+		expect(restored.items.slice(1)).toEqual([
+			{ id: turnEnd, kind: 'turnEnd', durationMs: 10, at: 1000, reactions: ['🚀', '👍'] },
+			{ id: 'item-2', kind: 'user', text: '', at: 1000, reactions: [{ turnEnd, emoji: '🚀', name: 'rocket' }] },
+		]);
+		restored.cutAt('item-2');
+		expect(summary(restored.items)).toEqual(['user:hi', 'turnEnd']);
+	});
+});

@@ -1,0 +1,350 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Pulkit Jain. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+// The context ring under the composer and the usage popover it opens: how
+// full this chat's context window is and what each part of it is (also
+// `/context`), today's quota per model for the account, which the extension
+// reads when the popover opens, and the tokens this chat used per model,
+// from its turn ends.
+
+import type { ViewContext, ViewContextBreakdown, ViewQuota } from '../src/host/chatProtocol';
+import { chatUsage } from '../src/acp/turnUsage';
+import { contextParts, format, formatSentAt, formatTokens, resetsIn } from './chatLogic';
+import { button, el, icon, setLabel, setTip } from './dom';
+import { closePicker } from './picker';
+import { state, strings, ui, vscode } from './view';
+
+const { usagePopover: popover, usageRing: ring } = ui;
+let quota: ViewQuota = { kind: 'checking' };
+let context: ViewContext | undefined;
+let breakdown: ViewContextBreakdown | undefined;
+/** A rule file this large is worth trimming: every turn carries it (contextCost.ts `largeRuleFileBytes`). */
+const largeRuleBytes = 20 * 1024;
+/** Whether the popover lists every model's quota, and this chat's tokens per model. */
+let allModels = false;
+let details = false;
+/** The quota rows shown before "All N models". */
+const shownQuota = 4;
+/** Where the CLI starts summarising older history, as a share of the window (its default `model.compressionThreshold`). */
+const summariseAt = 0.5;
+
+popover.setAttribute('aria-label', strings.usage);
+// Focus stays on the popover itself, which survives re-rendering its contents.
+popover.tabIndex = -1;
+
+ring.addEventListener('click', () => toggleUsage());
+updateRing();
+
+/** How full the context window is, in whole percent; undefined until known. */
+export function contextPercent(): number | undefined {
+	return context ? Math.round(Math.min(1, context.used / context.limit) * 100) : undefined;
+}
+
+/** The context window's use from the extension: the ring shows it, and an open popover too. */
+export function showContext(value: ViewContext | undefined): void {
+	context = value;
+	updateRing();
+	if (!popover.hidden) {
+		renderUsage();
+	}
+}
+
+function updateRing(): void {
+	const percent = contextPercent();
+	const share = context ? context.used / context.limit : 0;
+	ring.classList.toggle('high', share >= summariseAt && share < 0.9);
+	ring.classList.toggle('full', share >= 0.9);
+	ring.querySelector('.ring-fill')?.setAttribute('stroke-dasharray', `${percent ?? 0} 100`);
+	ring.querySelector('span')!.textContent = percent === undefined ? '' : `${percent}%`;
+	setLabel(ring, percent === undefined ? strings.usage : format(strings.usageRing, percent));
+}
+
+/** Opens the popover, or closes it if open; `open` (/context) leaves an open one open. */
+export function toggleUsage(open = false): void {
+	if (!popover.hidden) {
+		if (!open) {
+			closeUsage();
+		}
+		return;
+	}
+	closePicker();
+	quota = { kind: 'checking' };
+	allModels = false;
+	details = false;
+	popover.hidden = false;
+	ring.setAttribute('aria-expanded', 'true');
+	ring.classList.add('active');
+	renderUsage();
+	popover.focus();
+	vscode.postMessage({ type: 'readQuota' });
+}
+
+function closeUsage(): void {
+	if (popover.hidden) {
+		return;
+	}
+	popover.hidden = true;
+	ring.setAttribute('aria-expanded', 'false');
+	ring.classList.remove('active');
+	ui.input.focus();
+}
+
+/** Today's quota from the extension; shown if the popover is still open. */
+export function showQuota(value: ViewQuota): void {
+	quota = value;
+	if (!popover.hidden) {
+		renderUsage();
+	}
+}
+
+/** The context breakdown from the extension; shown if the popover is still open. */
+export function showBreakdown(value: ViewContextBreakdown): void {
+	breakdown = value;
+	if (!popover.hidden) {
+		renderUsage();
+	}
+}
+
+/** The transcript changed: a turn that ends adds its tokens. */
+export function updateUsage(): void {
+	if (!popover.hidden) {
+		renderUsage();
+	}
+}
+
+document.addEventListener('keydown', event => {
+	if (event.key === 'Escape' && !popover.hidden) {
+		event.preventDefault();
+		event.stopPropagation();
+		closeUsage();
+	}
+}, true);
+
+document.addEventListener('mousedown', event => {
+	const target = event.target as Node | null;
+	if (!popover.hidden && target && !popover.contains(target) && !ring.contains(target)) {
+		closeUsage();
+	}
+});
+
+function renderUsage(): void {
+	popover.replaceChildren(renderContext(), renderQuota(), renderChat());
+}
+
+/** A link-styled button that shows or hides more of the popover. */
+function moreLink(label: string, expanded: boolean, toggle: () => void): HTMLElement {
+	const link = button('usage-more', label, () => {
+		toggle();
+		renderUsage();
+		popover.focus();
+	});
+	link.setAttribute('aria-expanded', String(expanded));
+	return link;
+}
+
+function renderContext(): HTMLElement {
+	const section = el('section', 'usage-section');
+	const heading = el('div', 'usage-heading');
+	heading.append(el('span', undefined, strings.usageContext), el('span', undefined, strings.usageThisChatScope));
+	section.append(heading);
+	if (!context) {
+		section.append(el('p', 'usage-note', strings.usageContextNone));
+		if (breakdown) {
+			section.append(renderBreakdown(breakdown));
+		}
+		return section;
+	}
+	const share = Math.min(1, context.used / context.limit);
+	const percent = contextPercent() ?? 0;
+	const row = el('div', 'usage-row');
+	const used = el('span');
+	used.append(el('b', undefined, formatTokens(context.used)), ` ${format(strings.usageContextOf, formatTokens(context.limit))}`);
+	setTip(used, context.used.toLocaleString());
+	row.append(used, el('span', 'usage-detail', `${percent}%`));
+	section.append(row, meter(percent, share >= 0.9 ? 'full' : share >= summariseAt ? 'high' : '', strings.usageContext), el('p', 'usage-note', format(strings.usageContextNote, Math.round(summariseAt * 100))));
+	if (breakdown) {
+		section.append(renderBreakdown(breakdown, context.used));
+	}
+	// Compact shows only when it can run now: enough prompts, and no turn or compact going.
+	if (context.canCompact && !state.busy && !state.items.some(item => item.kind === 'compact' && item.state === 'running')) {
+		const compact = el('div', 'usage-row usage-compact');
+		compact.append(el('span', 'usage-note', strings.compact.popoverNote), button('usage-more usage-compact-link', strings.compact.popover, () => {
+			closeUsage();
+			vscode.postMessage({ type: 'compact' });
+		}, 'fold'));
+		section.append(compact);
+	}
+	return section;
+}
+
+/** What each turn carries, from the folder's last measure, and the rule files the CLI loaded; `used` is the latest request's input. */
+function renderBreakdown(value: ViewContextBreakdown, used?: number): HTMLElement {
+	const part = strings.contextParts;
+	const node = el('div', 'context-parts');
+	const rules = value.rules ?? [];
+	const rows = value.parts ? contextParts(value.parts, rules.length, used) : [];
+	const whole = used ?? value.parts?.total ?? 0;
+	for (const row of rows) {
+		const name = row.part === 'servers' ? format(part.servers, row.count ?? 0) : row.part === 'rules' ? format(part.rules, row.count ?? 0) : part[row.part];
+		const line = el('div', 'usage-row');
+		line.append(el('span', undefined, name), el('span', 'usage-detail', formatTokens(row.tokens)));
+		setTip(line, row.tokens.toLocaleString());
+		const percent = whole ? Math.round(Math.min(1, row.tokens / whole) * 100) : 0;
+		node.append(line, meter(percent, '', name));
+	}
+	if (rules.length) {
+		const list = el('div', 'context-rules');
+		list.append(el('div', 'usage-heading', part.ruleFiles));
+		for (const rule of rules) {
+			const large = rule.bytes > largeRuleBytes;
+			const item = el('div', `context-rule${large ? ' large' : ''}`);
+			if (large) {
+				item.append(icon('warning'));
+			}
+			const size = format(part.kilobytes, Math.max(1, Math.round(rule.bytes / 1024)));
+			item.append(el('span', 'usage-model', rule.name), el('span', 'usage-detail', large ? `${size} \u00b7 ${format(part.aboutTokens, formatTokens(Math.round(rule.bytes / 4_000) * 1_000))}` : size));
+			setTip(item, rule.path);
+			list.append(item);
+		}
+		for (const rule of rules.filter(each => each.bytes > largeRuleBytes)) {
+			list.append(el('p', 'usage-note context-warning', format(part.large, rule.name)));
+		}
+		node.append(list);
+	}
+	const foot = el('div', 'usage-row context-foot');
+	const status = value.state === 'measuring' ? part.measuring
+		: value.state === 'failed' ? format(part.failed, value.error ?? '')
+			: value.measuredAt ? format(part.measured, formatSentAt(value.measuredAt, Date.now())) : part.notMeasured;
+	const left = el('span', 'usage-note', status);
+	if (value.state !== 'measuring') {
+		left.append(' \u00b7 ', button('usage-more', part.measureAgain, () => vscode.postMessage({ type: 'measureContext' })));
+	}
+	foot.append(left);
+	if (rows.some(row => row.part === 'conversation')) {
+		foot.append(el('span', 'usage-note', part.compactNote));
+	}
+	node.append(foot);
+	return node;
+}
+
+function renderChat(): HTMLElement {
+	const section = el('section', 'usage-section');
+	const usage = chatUsage(state.items);
+	const heading = el('div', 'usage-heading');
+	heading.append(el('span', undefined, strings.usageThisChat));
+	if (usage.turns) {
+		heading.append(el('span', undefined, usage.turns === 1 ? strings.usageOneTurn : format(strings.usageTurns, usage.turns)));
+	}
+	section.append(heading);
+	if (!usage.turns) {
+		section.append(el('p', 'usage-note', strings.usageNoTurns));
+		return section;
+	}
+	if (!usage.models.length) {
+		section.append(el('p', 'usage-note', strings.usageNoCounts));
+		return section;
+	}
+	const summary = el('div', 'usage-row usage-summary');
+	summary.append(figure(strings.usageInput, usage.input, strings.usageInputNote));
+	if (context?.cached) {
+		summary.append(figure(strings.usageCached, context.cached, strings.usageCachedNote));
+	}
+	summary.append(figure(strings.usageOutput, usage.output));
+	section.append(summary);
+	if (usage.countedTurns < usage.turns) {
+		section.append(el('p', 'usage-note', format(strings.usageSomeCounted, usage.countedTurns, usage.turns)));
+	}
+	section.append(moreLink(details ? strings.usageHideDetails : strings.usageDetails, details, () => details = !details));
+	if (!details) {
+		return section;
+	}
+	const table = el('table', 'usage-table');
+	const header = el('tr');
+	header.append(el('th', undefined, strings.usageModel), el('th', 'num', strings.usageInput), el('th', 'num', strings.usageOutput));
+	table.append(header);
+	const rows = usage.models.length > 1 ? [...usage.models, { model: '', input: usage.input, output: usage.output }] : usage.models;
+	for (const { model, input, output } of rows) {
+		const row = el('tr', model ? undefined : 'usage-total');
+		row.append(el('td', 'usage-model', model || strings.usageTotal), tokensCell(input), tokensCell(output));
+		table.append(row);
+	}
+	section.append(table, el('p', 'usage-note', strings.usageInputNote));
+	return section;
+}
+
+/** "Input 295.8K", with the exact count and what it means on hover. */
+function figure(label: string, count: number, note?: string): HTMLElement {
+	const item = el('span', undefined, `${label} ${formatTokens(count)}`);
+	setTip(item, note ? `${count.toLocaleString()}. ${note}` : count.toLocaleString());
+	return item;
+}
+
+/** A thin bar filled to `percent`: the accent colour, amber when `level` is high and red when full. */
+function meter(percent: number, level: '' | 'high' | 'full', label: string): HTMLElement {
+	const bar = el('div', `usage-bar${level ? ` ${level}` : ''}`);
+	bar.setAttribute('role', 'meter');
+	bar.setAttribute('aria-valuemin', '0');
+	bar.setAttribute('aria-valuemax', '100');
+	bar.setAttribute('aria-valuenow', String(percent));
+	bar.setAttribute('aria-label', label);
+	const fill = el('div', 'usage-fill');
+	fill.style.width = `${Math.max(percent ? 2 : 0, percent)}%`;
+	bar.append(fill);
+	return bar;
+}
+
+function tokensCell(count: number): HTMLElement {
+	const cell = el('td', 'num', formatTokens(count));
+	setTip(cell, count.toLocaleString());
+	return cell;
+}
+
+function renderQuota(): HTMLElement {
+	const section = el('section', 'usage-section');
+	const heading = el('div', 'usage-heading');
+	heading.append(el('span', undefined, strings.usageQuota), el('span', undefined, strings.usageAccount));
+	section.append(heading);
+	switch (quota.kind) {
+		case 'checking':
+			section.append(el('p', 'usage-note', strings.usageChecking));
+			return section;
+		case 'off':
+			section.append(el('p', 'usage-note', strings.usageQuotaOff));
+			return section;
+		case 'none':
+			section.append(el('p', 'usage-note', strings.usageQuotaNone));
+			return section;
+		case 'failed':
+			section.append(el('p', 'usage-note', strings.usageQuotaFailed));
+			return section;
+	}
+	const now = Date.now();
+	const models = [...quota.quota].sort((a, b) => b.used - a.used);
+	const shown = allModels || models.length <= shownQuota + 1 ? models : models.slice(0, shownQuota);
+	for (const model of shown) {
+		const percent = Math.round(model.used * 100);
+		const reset = resetsIn(model.resetTime, now);
+		const detail = [format(strings.usageUsed, percent)];
+		if (reset) {
+			detail.push(format(reset.unit === 'hours' ? strings.usageResetsHours : strings.usageResetsMinutes, reset.value));
+		}
+		const row = el('div', 'usage-row');
+		row.append(el('span', 'usage-model', model.model), el('span', 'usage-detail', detail.join(' \u00b7 ')));
+		section.append(row, meter(percent, model.used >= 0.95 ? 'full' : model.used >= 0.8 ? 'high' : '', model.model));
+	}
+	// "All N models" on the left, when the quota was read on the right.
+	const minutes = Math.floor((now - quota.at) / 60_000);
+	const foot = el('div', 'usage-row');
+	foot.append(models.length > shownQuota + 1
+		? moreLink(allModels ? strings.usageFewerModels : format(strings.usageAllModels, models.length), allModels, () => allModels = !allModels)
+		: el('span'));
+	foot.append(el('span', 'usage-detail', quota.checking ? strings.usageChecking : minutes < 1 ? strings.usageCheckedJustNow : format(strings.usageCheckedMinutes, minutes)));
+	section.append(foot);
+	if (models.some(model => model.used >= 0.8)) {
+		// What the CLI's /upgrade opens; the quota is a Google account's, so it applies.
+		section.append(button('usage-more', strings.usageUpgrade, () => vscode.postMessage({ type: 'openUpgrade' })));
+	}
+	return section;
+}
