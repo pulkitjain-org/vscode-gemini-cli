@@ -323,10 +323,14 @@ export async function worktreeStatus(worktree: AgentWorktree, into: string): Pro
 	return { uncommitted: status.split('\n').filter(Boolean).length, commits: Number(count.trim()) || 0 };
 }
 
-/** Commits everything in the worktree. */
+/**
+ * Commits everything in the worktree, running no hook: the commit is
+ * GeminiCode's, on an agent's behalf, and a hook in the checkout may be
+ * the agent's own work.
+ */
 export async function commitAll(folder: string, message: string): Promise<void> {
 	await git(folder, ['add', '-A']);
-	await git(folder, ['commit', '--quiet', '-m', message]);
+	await git(folder, ['-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '--no-verify', '-m', message]);
 }
 
 export type MergeResult =

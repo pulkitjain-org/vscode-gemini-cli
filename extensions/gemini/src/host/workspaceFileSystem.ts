@@ -8,6 +8,7 @@ import { ClientFileSystem, FileAccessPolicyOptions, isInside } from '../acp/file
 import { GitIgnoreChecker } from '../acp/gitIgnore';
 import { minimalEdit } from '../acp/lineDiff';
 import { memoizeAsync } from '../acp/memoize';
+import { isIgnoreFile } from '../acp/sessionApprovals';
 
 /**
  * The agent's view of workspace files: reads see unsaved editor changes, and
@@ -52,6 +53,9 @@ export class WorkspaceFileSystem implements ClientFileSystem {
 		}
 		if (!await document.save()) {
 			throw new Error(`Edited ${filePath} but could not save it.`);
+		}
+		if (isIgnoreFile(filePath)) {
+			resetIgnoreCache();
 		}
 	}
 }
@@ -115,9 +119,18 @@ const gitIgnore = new GitIgnoreChecker();
 
 /**
  * The agent often reads the same files several times in a turn, so answers
- * are kept for a while; a change to an ignore file is rare mid-turn.
+ * are kept for a while. An agent's write to an ignore file drops them all
+ * (`resetIgnoreCache`), since what git ignores is what the agent may not read.
  */
-export const isIgnoredByGitCached = memoizeAsync(isIgnoredByGit, { ttlMs: 30_000, maxEntries: 2_000 });
+export const isIgnoredByGitCached = (filePath: string): Promise<boolean> => ignoreCache(filePath);
+
+let ignoreCache = memoizeAsync(isIgnoredByGit, { ttlMs: 30_000, maxEntries: 2_000 });
+
+/** Forgets every cached ignore answer and the git processes that gave them. */
+export function resetIgnoreCache(): void {
+	ignoreCache = memoizeAsync(isIgnoredByGit, { ttlMs: 30_000, maxEntries: 2_000 });
+	gitIgnore.reset();
+}
 
 /** Whether git ignores `filePath`. No git, or not a repository, means not ignored. */
 function isIgnoredByGit(filePath: string): Promise<boolean> {

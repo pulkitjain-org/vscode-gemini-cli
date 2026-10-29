@@ -30,6 +30,17 @@ beforeEach(async () => {
 afterEach(() => fs.rm(root, { recursive: true, force: true }));
 
 describe('worktrees', () => {
+	it('commits on an agent\'s behalf without running the checkout\'s hooks', async () => {
+		const hooks = path.join(repo, 'hooks');
+		await fs.mkdir(hooks);
+		await fs.writeFile(path.join(hooks, 'pre-commit'), `#!/bin/sh\ntouch "${path.join(root, 'hook-ran')}"\nexit 1\n`, { mode: 0o755 });
+		await fs.writeFile(path.join(hooks, 'post-commit'), `#!/bin/sh\ntouch "${path.join(root, 'hook-ran')}"\n`, { mode: 0o755 });
+		await git(repo, ['config', 'core.hooksPath', 'hooks']);
+		await fs.writeFile(path.join(repo, 'src', 'cart.ts'), 'export const total = 2;\n');
+		await commitAll(repo, 'Total');
+		expect({ ran: await pathExists(path.join(root, 'hook-ran')), subject: (await git(repo, ['log', '-1', '--format=%s'])).trim() }).toEqual({ ran: false, subject: 'Total' });
+	});
+
 	it('makes a branch in its own folder outside the repository', async () => {
 		expect(await repositoryRoot(path.join(repo, 'src'))).toBe(repo);
 		expect(await repositoryRoot(root)).toBeUndefined();

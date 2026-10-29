@@ -9,7 +9,7 @@ import type { AgentConnection } from './agentConnection';
 import { AgentError, AgentErrorInfo, classifyAgentError, CliRetry, errorMessage, isConnectionClosed } from './errors';
 import { FileAccessDeniedError } from './fileAccess';
 import { isAllowed, protectedWriteRequest } from './permissions';
-import { isProtectedSetting } from './sessionApprovals';
+import { decidesWhatRuns } from './sessionApprovals';
 import { Emitter } from './events';
 import { AgentRuntime, AgentRuntimeState, FileSystemHandlers } from './agentRuntime';
 import { readCliSession } from './cliSessions';
@@ -916,13 +916,14 @@ export class AgentClient {
 
 	/**
 	 * In Auto Edit the CLI applies edits without asking, and its policy engine is
-	 * not consulted for them (gemini-cli 0.64), so an edit to a setting that
-	 * decides what runs next (the worktree setup script, the CLI's project
-	 * settings, the folder's editor settings and tasks) asks here, as a card,
-	 * before the write. Other modes ask already (Default) or never (YOLO).
+	 * not consulted for them (gemini-cli 0.66), so an edit to a file that
+	 * decides what runs next (a git hook, a build file, the worktree setup
+	 * script, the CLI's project settings, the folder's editor settings and
+	 * tasks, the ignore files) asks here, as a card, before the write. Other
+	 * modes ask already (Default) or never (YOLO).
 	 */
 	private async confirmProtectedWrite(sessionId: string, filePath: string, content: string): Promise<void> {
-		if (this._settings.mode?.currentId !== 'autoEdit' || !isProtectedSetting(filePath)) {
+		if (this._settings.mode?.currentId !== 'autoEdit' || !decidesWhatRuns(filePath)) {
 			return;
 		}
 		const oldText = await fs.readFile(filePath, 'utf8').catch(() => null);

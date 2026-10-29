@@ -84,22 +84,35 @@ export function isGitHookFile(filePath: string): boolean {
  * GeminiCode's and the editor's own settings in a repository: the worktree setup script, the CLI's
  * project settings (hooks, MCP servers) and the folder's editor settings and tasks. Writing one decides
  * what runs next, outside any approval, so an agent's write to one always asks (adminPolicy.ts).
+ * The ignore files are here too: what git ignores is what an agent may not read (fileAccess.ts),
+ * so a write that un-ignores a secret would open it.
  */
-const protectedSetting = /(^|[\\/])(\.gemini[\\/]([^\\/]+\.sh|settings\.json)|\.vscode[\\/](settings|tasks)\.json)$/i;
+const protectedSetting = /(^|[\\/])(\.gemini[\\/]([^\\/]+\.sh|settings\.json)|\.vscode[\\/](settings|tasks)\.json|\.gitignore|\.geminiignore|\.git[\\/]info[\\/]exclude)$/i;
 
 /** Whether `filePath` is one of the settings an agent's write to always asks for. */
 export function isProtectedSetting(filePath: string): boolean {
 	return protectedSetting.test(filePath);
 }
 
+/** Whether `filePath` is one of git's ignore files, whose rules decide what an agent may read. */
+export function isIgnoreFile(filePath: string): boolean {
+	return /(^|[\\/])(\.gitignore|\.geminiignore|\.git[\\/]info[\\/]exclude)$/i.test(filePath);
+}
+
 /**
- * Whether writing `filePath` changes what a later approved command runs: a
- * build file (a task runner's scripts), a git hook or anything under `.git`
- * (hooks, aliases, `core.fsmonitor`), or a protected setting.
+ * Whether writing `filePath` decides what runs next, outside any approval: a
+ * build file (a task runner's scripts, which an approved `npm test` then runs),
+ * a git hook or anything under `.git` (hooks, aliases, `core.fsmonitor`, which
+ * the user's next commit runs), or a protected setting. In Auto Edit such a
+ * write shows a card first (agentClient.ts).
  */
+export function decidesWhatRuns(filePath: string): boolean {
+	return isBuildFile(filePath) || isGitHookFile(filePath) || isProtectedSetting(filePath);
+}
+
+/** `decidesWhatRuns` for a path as a command names it, with a redirect's prefix and quotes removed. */
 function changesWhatRuns(filePath: string): boolean {
-	const unquoted = filePath.replace(/^(of|--output)=/, '').replace(/['"]/g, '');
-	return isBuildFile(unquoted) || isGitHookFile(unquoted) || isProtectedSetting(unquoted);
+	return decidesWhatRuns(filePath.replace(/^(of|--output)=/, '').replace(/['"]/g, ''));
 }
 
 /** Programs that write the files their arguments name. */
@@ -164,8 +177,8 @@ function gitRunsCode(args: readonly string[]): boolean {
 		case 'init':
 			return rest.some(arg => /^--template(=|$)/.test(arg));
 		case 'diff': case 'log': case 'show': case 'format-patch':
-			// `--output` writes a file of its choosing.
-			return rest.some(arg => /^--output(=|$)/.test(arg));
+			// `--output` writes a file of its choosing, `--no-index` reads outside the repository and `--ext-diff` runs a diff program.
+			return rest.some(arg => /^--(output|no-index|ext-diff)(=|$)/.test(arg));
 		case 'rebase':
 			return rest.some(arg => arg === '-x' || arg.startsWith('--exec'));
 		case 'submodule':
