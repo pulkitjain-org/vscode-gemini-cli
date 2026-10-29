@@ -11,7 +11,7 @@ import { AuditEntry, AuditLog, renderAudit } from '../acp/auditLog';
 import { teamConfirmTools } from '../acp/teamTools';
 import type { AuditPageView, AuditRowView, AuditStrings, FromAudit, ToAudit } from './auditProtocol';
 import { tildify } from './displayText';
-import { createNonce, escapeAttribute } from './webviewHtml';
+import { PagePanel, PageShell, SinglePage } from './pagePanel';
 
 const viewType = 'gemini.auditLog';
 const confirmTools = new Set(teamConfirmTools.map(tool => tool.name));
@@ -24,7 +24,7 @@ const confirmTools = new Set(teamConfirmTools.map(tool => tool.name));
  */
 export class AuditPage implements vscode.Disposable {
 
-	private panel: vscode.WebviewPanel | undefined;
+	private readonly page = new SinglePage<ToAudit, FromAudit>(() => this.create());
 	private day: string | undefined;
 	private updating = false;
 	private readonly disposables: vscode.Disposable[] = [];
@@ -37,32 +37,24 @@ export class AuditPage implements vscode.Disposable {
 	}
 
 	dispose(): void {
-		this.panel?.dispose();
+		this.page.dispose();
 		vscode.Disposable.from(...this.disposables).dispose();
 	}
 
 	show(): void {
-		if (this.panel) {
-			this.panel.reveal();
+		if (this.page.show()) {
 			this.scheduleUpdate();
-			return;
 		}
-		const media = vscode.Uri.joinPath(this.extensionUri, 'media');
-		const panel = vscode.window.createWebviewPanel(viewType, vscode.l10n.t("Audit log"), vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: false, localResourceRoots: [media] });
-		panel.iconPath = new vscode.ThemeIcon('list-unordered');
-		panel.webview.html = this.html(panel.webview, media);
-		panel.webview.onDidReceiveMessage((message: FromAudit) => void this.onMessage(message));
-		panel.onDidChangeViewState(e => e.webviewPanel.visible && this.scheduleUpdate());
-		panel.onDidDispose(() => {
-			if (this.panel === panel) {
-				this.panel = undefined;
-			}
-		});
-		this.panel = panel;
+	}
+
+	private create(): PagePanel<ToAudit, FromAudit> {
+		const page = new PagePanel<ToAudit, FromAudit>(this.extensionUri, { viewType, title: vscode.l10n.t("Audit log"), icon: new vscode.ThemeIcon('list-unordered') }, this.shell(), message => this.onMessage(message));
+		page.onDidChangeVisibility(visible => visible && this.scheduleUpdate());
+		return page;
 	}
 
 	private scheduleUpdate(): void {
-		if (this.updating || !this.panel) {
+		if (this.updating || !this.page.page) {
 			return;
 		}
 		this.updating = true;
@@ -74,9 +66,7 @@ export class AuditPage implements vscode.Disposable {
 	}
 
 	private async update(): Promise<void> {
-		const view = await this.view();
-		const message: ToAudit = { type: 'view', view };
-		void this.panel?.webview.postMessage(message);
+		this.page.post({ type: 'view', view: await this.view() });
 	}
 
 	private async onMessage(message: FromAudit): Promise<void> {
@@ -121,8 +111,7 @@ export class AuditPage implements vscode.Disposable {
 		};
 	}
 
-	private html(webview: vscode.Webview, media: vscode.Uri): string {
-		const nonce = createNonce();
+	private shell(): PageShell {
 		const strings: AuditStrings = {
 			title: vscode.l10n.t("Audit log"),
 			subtitle: vscode.l10n.t("Every write to Jira or GitLab made from GeminiCode, by you or by an agent you approved. Append-only, on this Mac: {0}"),
@@ -144,28 +133,7 @@ export class AuditPage implements vscode.Disposable {
 			nothing: vscode.l10n.t("Nothing recorded on this day."),
 			unfinished: vscode.l10n.t("{0} unfinished"),
 		};
-		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'auditLog.js'));
-		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
-		const pageStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'auditLog.css'));
-		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'codicon.css'));
-		const glassStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'glass.css'));
-		return `<!DOCTYPE html>
-<html lang="en">
-<head>
-	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<link href="${codicons}" rel="stylesheet">
-	<link href="${style}" rel="stylesheet">
-	<link href="${pageStyle}" rel="stylesheet">
-	<link href="${glassStyle}" rel="stylesheet">
-	<title>${strings.title}</title>
-</head>
-<body class="settings-page audit-page">
-	<main id="page" class="settings audit"></main>
-	<script nonce="${nonce}" type="module" src="${script}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
-</body>
-</html>`;
+		return { script: 'auditLog.js', styles: ['auditLog.css'], title: strings.title, bodyClass: 'settings-page audit-page', mainClass: 'settings audit', strings };
 	}
 }
 

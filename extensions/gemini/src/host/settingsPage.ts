@@ -23,7 +23,7 @@ import { tildify } from './displayText';
 import { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage, TrustRowView, TrustView } from './panelProtocol';
 import { StorageSection, type StorageHost } from './storageSection';
 import type { forgetSkills } from './teamCommands';
-import { createNonce, escapeAttribute } from './webviewHtml';
+import { PagePanel, PageShell, SinglePage } from './pagePanel';
 import { ContextCost, estimateTokens, heavyContextTokens, heavyServerTokens, measureCalls, measureTokens } from '../acp/contextCost';
 import type { ContextMeasures } from './chat/chatContext';
 import { showError } from './errorNotice';
@@ -60,7 +60,7 @@ export interface SettingsHost {
 
 export class SettingsPage implements vscode.Disposable {
 
-	private panel: vscode.WebviewPanel | undefined;
+	private readonly page = new SinglePage<ToSettingsPage, FromSettingsPage>(() => this.create());
 	/** The files the page shows; the only ones it may open or create. */
 	private files = new Set<string>();
 	/** The extension and memory lists the CLI last reported. */
@@ -92,7 +92,7 @@ export class SettingsPage implements vscode.Disposable {
 			service.trust.onDidChange(() => void this.update()),
 			// The CLI could not be asked while the agent was not running; ask now.
 			// Each ask opens a CLI session, so a hidden page asks once it shows again.
-			service.runtime.onDidChangeState(state => state.kind === 'ready' && this.panel && this.refreshCliWhenShown()),
+			service.runtime.onDidChangeState(state => state.kind === 'ready' && this.page.page && this.refreshCliWhenShown()),
 			vscode.window.onDidCloseTerminal(terminal => {
 				if (terminal === this.terminal) {
 					// An install, update or removal finished.
@@ -104,38 +104,28 @@ export class SettingsPage implements vscode.Disposable {
 	}
 
 	show(): void {
-		if (this.panel) {
-			this.panel.reveal();
+		if (this.page.show()) {
 			return;
 		}
-		const media = vscode.Uri.joinPath(this.extensionUri, 'media');
-		const panel = vscode.window.createWebviewPanel(viewType, vscode.l10n.t("Agent Setup"), vscode.ViewColumn.Active, {
-			enableScripts: true,
-			localResourceRoots: [media],
-		});
-		panel.iconPath = new vscode.ThemeIcon('server-environment');
-		panel.webview.html = this.html(panel.webview, media);
-		panel.webview.onDidReceiveMessage((message: FromSettingsPage) => this.onMessage(message));
-		panel.onDidChangeViewState(e => {
-			if (e.webviewPanel.visible && this.cliStale) {
-				this.cliStale = false;
-				void this.refreshCli();
-			} else if (e.webviewPanel.active) {
-				void this.update();
-			}
-		});
-		panel.onDidDispose(() => {
-			if (this.panel === panel) {
-				this.panel = undefined;
-			}
-		});
-		this.panel = panel;
 		void this.refreshCli();
 		void this.forgetGoneFolders();
 	}
 
+	private create(): PagePanel<ToSettingsPage, FromSettingsPage> {
+		const page = new PagePanel<ToSettingsPage, FromSettingsPage>(this.extensionUri, { viewType, title: vscode.l10n.t("Agent Setup"), icon: new vscode.ThemeIcon('server-environment') }, this.shell(), message => this.onMessage(message));
+		page.onDidChangeVisibility(visible => {
+			if (visible && this.cliStale) {
+				this.cliStale = false;
+				void this.refreshCli();
+			} else if (page.active) {
+				void this.update();
+			}
+		});
+		return page;
+	}
+
 	private refreshCliWhenShown(): void {
-		if (this.panel?.visible) {
+		if (this.page.page?.visible) {
 			void this.refreshCli();
 		} else {
 			this.cliStale = true;
@@ -143,24 +133,24 @@ export class SettingsPage implements vscode.Disposable {
 	}
 
 	dispose(): void {
-		this.panel?.dispose();
+		this.page.dispose();
 		vscode.Disposable.from(...this.disposables).dispose();
 	}
 
 	private async update(): Promise<void> {
-		const panel = this.panel;
-		if (!panel?.visible) {
+		const page = this.page.page;
+		if (!page?.visible) {
 			return;
 		}
 		const view = await this.build();
-		if (this.panel !== panel) {
+		if (this.page.page !== page) {
 			return;
 		}
 		this.files = new Set([
 			...view.servers.map(s => s.file), ...view.rules.map(r => r.path), ...view.skills.flatMap(s => [s.file, s.settingsFile]), ...view.hooks.map(h => h.file),
 			...view.memory.state === 'ready' ? view.memory.items.map(m => m.path) : [],
 		]);
-		void panel.webview.postMessage({ type: 'view', view } satisfies ToSettingsPage);
+		page.post({ type: 'view', view });
 	}
 
 	/**
@@ -801,8 +791,7 @@ export class SettingsPage implements vscode.Disposable {
 		void vscode.window.showInformationMessage(message, restart).then(choice => choice === restart && this.service.restart());
 	}
 
-	private html(webview: vscode.Webview, media: vscode.Uri): string {
-		const nonce = createNonce();
+	private shell(): PageShell {
 		const strings: SettingsPageStrings = {
 			contextTitle: vscode.l10n.t("Context per model call"),
 			contextHint: vscode.l10n.t("What every model call sends before your prompt in {0}. A large context makes every step of an agent slower and uses more of your quota."),
@@ -877,28 +866,7 @@ export class SettingsPage implements vscode.Disposable {
 			removeTrust: vscode.l10n.t("Remove"),
 			noTrust: vscode.l10n.t("No trusted folders yet."),
 		};
-		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'settings.js'));
-		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
-		const menuStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'menu.css'));
-		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'codicon.css'));
-		const glassStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'glass.css'));
-		return `<!DOCTYPE html>
-<html lang="en">
-<head>
-	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<link href="${codicons}" rel="stylesheet">
-	<link href="${menuStyle}" rel="stylesheet">
-	<link href="${style}" rel="stylesheet">
-	<link href="${glassStyle}" rel="stylesheet">
-	<title>${strings.title}</title>
-</head>
-<body class="settings-page">
-	<main id="page" class="settings"></main>
-	<script nonce="${nonce}" type="module" src="${script}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
-</body>
-</html>`;
+		return { script: 'settings.js', styles: [], title: strings.title, bodyClass: 'settings-page', mainClass: 'settings', strings };
 	}
 }
 

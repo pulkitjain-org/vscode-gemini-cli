@@ -8,23 +8,16 @@
 // by day and tool, and Export and Open Folder.
 
 import type { AuditPageView, AuditRowView, AuditStrings, FromAudit, ToAudit } from '../src/host/auditProtocol';
-import { button, el, format, pageStrings } from './panelDom';
+import { bootPage } from './panelBoot';
+import { button, el, format } from './panelDom';
 import { toolLogo } from './toolLogos';
 
-declare function acquireVsCodeApi(): { postMessage(message: FromAudit): void };
-
-const vscode = acquireVsCodeApi();
-const strings = pageStrings<AuditStrings>();
-const page = document.getElementById('page')!;
+const { strings, post, main: page, start } = bootPage<ToAudit, FromAudit, AuditStrings>();
 
 let view: AuditPageView | undefined;
 /** The tool filter: all, or one tool. */
 let tool: 'all' | 'jira' | 'gitlab' = 'all';
 let onlyOpen = false;
-
-function post(message: FromAudit): void {
-	vscode.postMessage(message);
-}
 
 function render(): void {
 	if (!view) {
@@ -119,11 +112,9 @@ function auditRow(row: AuditRowView): HTMLElement {
 	return tr;
 }
 
-window.addEventListener('message', (event: MessageEvent<ToAudit>) => {
-	if (event.data.type === 'view') {
-		view = event.data.view;
+start(message => {
+	if (message.type === 'view') {
+		view = message.view;
 		render();
 	}
 });
-
-post({ type: 'ready' });

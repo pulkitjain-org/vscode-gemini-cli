@@ -6,19 +6,12 @@
 // The Project Helpers page (src/host/settingsPage.ts).
 
 import type { CliReport, ContextCostView, ExtensionView, FromSettingsPage, HookView, McpServerView, MemoryFileView, PreferencesView, RulesFileView, SettingsPageStrings, SettingsPageView, SkillView, ToSettingsPage, TrustRowView, TrustView } from '../src/host/panelProtocol';
-import { button, el, format, icon, pageStrings } from './panelDom';
+import { button, el, format, icon } from './panelDom';
+import { bootPage } from './panelBoot';
 import { selectMenu, type SelectMenu } from './selectMenu';
 import { storageSection } from './settingsStorage';
 
-declare function acquireVsCodeApi(): { postMessage(message: FromSettingsPage): void };
-
-const vscode = acquireVsCodeApi();
-const strings = pageStrings<SettingsPageStrings>();
-const page = document.getElementById('page')!;
-
-function post(message: FromSettingsPage): void {
-	vscode.postMessage(message);
-}
+const { strings, post, main: page, start } = bootPage<ToSettingsPage, FromSettingsPage, SettingsPageStrings>();
 
 function section(title: string, hint: string, action?: HTMLElement): HTMLElement {
 	const node = el('section', 'settings-section');
@@ -369,10 +362,8 @@ function render(view: SettingsPageView): void {
 	}
 }
 
-window.addEventListener('message', (event: MessageEvent<ToSettingsPage>) => {
-	if (event.data.type === 'view') {
-		render(event.data.view);
+start(message => {
+	if (message.type === 'view') {
+		render(message.view);
 	}
 });
-
-post({ type: 'ready' });

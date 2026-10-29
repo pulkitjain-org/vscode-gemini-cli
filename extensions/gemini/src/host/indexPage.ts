@@ -15,7 +15,7 @@ import { configSection, indexBuildOn } from './configuration';
 import type { DocsSources, SourceView } from './docsSources';
 import { tildify } from './displayText';
 import type { DocsSourceView, FromIndexPage, IndexPageStrings, IndexPageView, IndexWorkspaceView, ToIndexPage } from './indexProtocol';
-import { createNonce, escapeAttribute } from './webviewHtml';
+import { PagePanel, PageShell, SinglePage } from './pagePanel';
 import type { WorkspaceIndex } from './workspaceIndex';
 
 const viewType = 'gemini.index';
@@ -37,7 +37,7 @@ export interface IndexPageAgents {
  */
 export class IndexPage implements vscode.Disposable {
 
-	private panel: vscode.WebviewPanel | undefined;
+	private readonly page = new SinglePage<ToIndexPage, FromIndexPage>(() => this.create());
 	private docsFolder: string | undefined;
 	private redrawTimer: ReturnType<typeof setTimeout> | undefined;
 	private readonly disposables: vscode.Disposable[] = [];
@@ -67,7 +67,7 @@ export class IndexPage implements vscode.Disposable {
 			}),
 			vscode.commands.registerCommand('gemini.index.addDocs', async () => {
 				await this.show();
-				void this.panel?.webview.postMessage({ type: 'openAdd' } satisfies ToIndexPage);
+				this.page.post({ type: 'openAdd' } satisfies ToIndexPage);
 			}),
 			index.onDidChangeStatus(() => this.redrawSoon()),
 			index.onDidChangeEnabled(() => this.redrawSoon()),
@@ -80,33 +80,25 @@ export class IndexPage implements vscode.Disposable {
 		if (folder) {
 			this.docsFolder = folder;
 		}
-		if (this.panel) {
-			this.panel.reveal(vscode.ViewColumn.Active);
+		if (this.page.show()) {
 			void this.update();
-			return;
 		}
-		const media = vscode.Uri.joinPath(this.extensionUri, 'media');
-		const panel = vscode.window.createWebviewPanel(viewType, vscode.l10n.t("Index"), vscode.ViewColumn.Active, { enableScripts: true, localResourceRoots: [media] });
-		panel.iconPath = new vscode.ThemeIcon('database');
-		panel.webview.html = this.html(panel.webview, media);
-		panel.webview.onDidReceiveMessage((message: FromIndexPage) => void this.onMessage(message));
-		panel.onDidChangeViewState(e => e.webviewPanel.visible && this.redrawSoon());
-		panel.onDidDispose(() => {
-			if (this.panel === panel) {
-				this.panel = undefined;
-			}
-		});
-		this.panel = panel;
+	}
+
+	private create(): PagePanel<ToIndexPage, FromIndexPage> {
+		const page = new PagePanel<ToIndexPage, FromIndexPage>(this.extensionUri, { viewType, title: vscode.l10n.t("Index"), icon: new vscode.ThemeIcon('database') }, this.shell(), message => this.onMessage(message));
+		page.onDidChangeVisibility(visible => visible && this.redrawSoon());
+		return page;
 	}
 
 	dispose(): void {
 		clearTimeout(this.redrawTimer);
-		this.panel?.dispose();
+		this.page.dispose();
 		vscode.Disposable.from(...this.disposables).dispose();
 	}
 
 	private redrawSoon(): void {
-		if (!this.panel?.visible || this.redrawTimer) {
+		if (!this.page.page?.visible || this.redrawTimer) {
 			return;
 		}
 		this.redrawTimer = setTimeout(() => {
@@ -168,14 +160,14 @@ export class IndexPage implements vscode.Disposable {
 				this.docsFolder = message.folder;
 				break;
 			case 'checkUrl':
-				void this.panel?.webview.postMessage({ type: 'urlProblem', url: message.url, problem: message.url.trim() ? this.docs.refusal(message.url.trim()) : undefined } satisfies ToIndexPage);
+				this.page.post({ type: 'urlProblem', url: message.url, problem: message.url.trim() ? this.docs.refusal(message.url.trim()) : undefined } satisfies ToIndexPage);
 				return;
 			case 'addDocs': {
 				try {
 					await this.docs.add({ ...message.request, url: message.request.url.trim(), maxPages: clampPages(message.request.maxPages) });
-					void this.panel?.webview.postMessage({ type: 'added' } satisfies ToIndexPage);
+					this.page.post({ type: 'added' } satisfies ToIndexPage);
 				} catch (err) {
-					void this.panel?.webview.postMessage({ type: 'urlProblem', url: message.request.url, problem: err instanceof Error ? err.message : String(err) } satisfies ToIndexPage);
+					this.page.post({ type: 'urlProblem', url: message.request.url, problem: err instanceof Error ? err.message : String(err) } satisfies ToIndexPage);
 				}
 				break;
 			}
@@ -210,13 +202,13 @@ export class IndexPage implements vscode.Disposable {
 	}
 
 	private async update(): Promise<void> {
-		const panel = this.panel;
-		if (!panel?.visible) {
+		const page = this.page.page;
+		if (!page?.visible) {
 			return;
 		}
 		const view = await this.build();
-		if (this.panel === panel) {
-			void panel.webview.postMessage({ type: 'view', view } satisfies ToIndexPage);
+		if (this.page.page === page) {
+			page.post({ type: 'view', view });
 		}
 	}
 
@@ -253,7 +245,7 @@ export class IndexPage implements vscode.Disposable {
 	/** Sends the files left out of `folder`'s index to the page's popup. */
 	private async postSkipped(folder: string): Promise<void> {
 		const files = await this.index.skipped(folder).catch(() => []);
-		void this.panel?.webview.postMessage({ type: 'skippedList', folder, name: path.basename(folder) || folder, files } satisfies ToIndexPage);
+		this.page.post({ type: 'skippedList', folder, name: path.basename(folder) || folder, files } satisfies ToIndexPage);
 	}
 
 	/**
@@ -290,8 +282,7 @@ export class IndexPage implements vscode.Disposable {
 		return pick?.folder;
 	}
 
-	private html(webview: vscode.Webview, media: vscode.Uri): string {
-		const nonce = createNonce();
+	private shell(): PageShell {
 		const strings: IndexPageStrings = {
 			title: vscode.l10n.t("Index"),
 			subtitle: vscode.l10n.t("What agents can look up without searching file by file: an index of each workspace and the docs you attach. Everything stays on this Mac, in ~/.geminicode/index."),
@@ -368,28 +359,7 @@ export class IndexPage implements vscode.Disposable {
 			openIgnoreFile: vscode.l10n.t("Open .geminiignore"),
 			editInclude: vscode.l10n.t("Edit Included Files"),
 		};
-		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'indexPage.js'));
-		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
-		const menuStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'menu.css'));
-		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'codicon.css'));
-		const glassStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'glass.css'));
-		return `<!DOCTYPE html>
-<html lang="en">
-<head>
-	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<link href="${codicons}" rel="stylesheet">
-	<link href="${menuStyle}" rel="stylesheet">
-	<link href="${style}" rel="stylesheet">
-	<link href="${glassStyle}" rel="stylesheet">
-	<title>${strings.title}</title>
-</head>
-<body class="settings-page index-page">
-	<main id="page" class="settings"></main>
-	<script nonce="${nonce}" type="module" src="${script}" data-strings="${escapeAttribute(JSON.stringify(strings))}" data-max-pages="${defaultMaxPages}"></script>
-</body>
-</html>`;
+		return { script: 'indexPage.js', styles: [], title: strings.title, bodyClass: 'settings-page index-page', mainClass: 'settings', strings, data: { 'max-pages': String(defaultMaxPages) } };
 	}
 }
 

@@ -1032,6 +1032,10 @@ A Plan mode turn that writes a plan file gets Review Plan beside Build This Plan
 
 **Plans across reloads.** gemini-cli 0.64 deletes a session's own folder (`~/.gemini/tmp/<project>/<session>/`, which holds `plans/`) on `session/load`. `keepSessionFolder` (`src/acp/sessionFolder.ts`) copies the folder aside around each load and puts back what the load removed, and `rebuildSessionFile` (`sessionReplay.ts`) rebuilds a plan lost earlier from the write and replace calls the session saved, saying so in the chat.
 
+### The pages' shell
+
+Every page that is a tab of its own (the Audit log, Connections, Index, Agent Setup, an agent's Files, Plan Review, the Review Page and the team flows) is a `PagePanel` (`src/host/pagePanel.ts`): one HTML document (`pageHtml`: one Content-Security-Policy, the shared stylesheets `codicon.css`, `menu.css`, `panels.css` and `glass.css`, which carry the look's tokens, then the page's own, and the page's script with its strings on the script tag), one lifecycle (`post` to a page that may be gone, `onDidChangeVisibility` for a page that refreshes when it shows, `onDidDispose` once) and typed messages both ways. A page of which there is one at a time is a `SinglePage`, whose `show` reveals the open one or makes it. On the webview side `bootPage` (`webview-src/panelBoot.ts`) reads the strings, routes the host's messages to one handler and sends `ready`. A page holds only what is its own: its strings, its view and its answers to the page's messages.
+
 ### Agent Setup
 
 The Agent Setup page (`settingsPage.ts`, `projectSettings.ts`, `skills.ts`, `hooks.ts`, `cliCommands.ts`, `memory.ts`) edits the CLI's own files rather than keeping settings of its own:

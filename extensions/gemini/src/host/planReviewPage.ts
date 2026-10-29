@@ -18,7 +18,7 @@ import { errorMessage } from '../acp/errors';
 import { changedSections, planSections, replaceSection, reviewMessage, type PlanComment, type ReviewWords } from '../acp/planReview';
 import { emptyPlanReview, legacyPlanReviewKey, PlanReviewStore, unsentReview, type PlanReviewState } from '../acp/planReviewStore';
 import type { FromPlan, PlanStrings, PlanView, ToPlan } from './planReviewProtocol';
-import { createNonce, escapeAttribute } from './webviewHtml';
+import { PagePanel, PageShell } from './pagePanel';
 
 /** What Plan Review needs of the agent that wrote the plan. */
 export interface PlanReviewHost {
@@ -103,11 +103,9 @@ export class PlanReviews implements vscode.Disposable {
 
 class PlanReviewPage implements vscode.Disposable {
 
-	private readonly panel: vscode.WebviewPanel;
+	private readonly page: PagePanel<ToPlan, FromPlan>;
 	private readonly disposables: vscode.Disposable[] = [];
-	private readonly onDidDisposeEmitter = new vscode.EventEmitter<void>();
-	readonly onDidDispose = this.onDidDisposeEmitter.event;
-	private disposed = false;
+	readonly onDidDispose: vscode.Event<void>;
 	private markdown = '';
 	/** The plan file isn't there. */
 	private missing = false;
@@ -118,42 +116,30 @@ class PlanReviewPage implements vscode.Disposable {
 	/** Our own write, so the watcher doesn't read it back as the agent's; cleared at the next event. */
 	private writing: string | undefined;
 	constructor(private readonly host: PlanReviewHost, private readonly store: PlanReviewStore, private readonly maintained: Promise<void>, private readonly sends: Map<string, Promise<void>>, private readonly agentId: string, private readonly file: string, column: vscode.ViewColumn) {
-		const media = vscode.Uri.joinPath(host.extensionUri, 'media');
-		this.panel = vscode.window.createWebviewPanel('gemini.planReview', vscode.l10n.t("Plan: {0}", path.basename(file)), { viewColumn: column, preserveFocus: false }, {
-			enableScripts: true,
-			retainContextWhenHidden: true,
-			localResourceRoots: [media],
-		});
-		this.panel.iconPath = new vscode.ThemeIcon('checklist');
-		this.panel.webview.html = this.html(this.panel.webview, media);
+		this.page = new PagePanel<ToPlan, FromPlan>(host.extensionUri, { viewType: 'gemini.planReview', title: vscode.l10n.t("Plan: {0}", path.basename(file)), icon: new vscode.ThemeIcon('checklist'), column: { viewColumn: column, preserveFocus: false }, retainContextWhenHidden: true }, this.shell(), message => this.onMessage(message));
+		this.onDidDispose = this.page.onDidDispose;
 		const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(path.dirname(file)), path.basename(file)));
 		this.disposables.push(
 			watcher,
 			watcher.onDidChange(() => void this.reload()),
 			watcher.onDidCreate(() => void this.reload()),
 			watcher.onDidDelete(() => void this.reload()),
-			this.panel.webview.onDidReceiveMessage((message: FromPlan) => void this.onMessage(message)),
 			// Build and editing follow the agent's turns; a revision ends with its own message's turn (`send`).
 			host.onDidChangeAgent(id => {
 				if (id === this.agentId) {
 					this.postView();
 				}
 			}),
-			this.panel.onDidDispose(() => {
-				this.disposed = true;
-				vscode.Disposable.from(...this.disposables).dispose();
-				this.onDidDisposeEmitter.fire();
-				this.onDidDisposeEmitter.dispose();
-			}),
+			this.page.onDidDispose(() => vscode.Disposable.from(...this.disposables).dispose()),
 		);
 	}
 
 	reveal(): void {
-		this.panel.reveal();
+		this.page.reveal();
 	}
 
 	dispose(): void {
-		this.panel.dispose();
+		this.page.dispose();
 	}
 
 	/** Reads the kept state again, changes it with `change`, and keeps it. */
@@ -236,9 +222,7 @@ class PlanReviewPage implements vscode.Disposable {
 	}
 
 	private post(message: ToPlan): void {
-		if (!this.disposed) {
-			void this.panel.webview.postMessage(message);
-		}
+		this.page.post(message);
 	}
 
 	private async onMessage(message: FromPlan): Promise<void> {
@@ -292,7 +276,7 @@ class PlanReviewPage implements vscode.Disposable {
 					this.postView();
 					return;
 				case 'openSource':
-					await vscode.window.showTextDocument(vscode.Uri.file(this.file), { viewColumn: this.panel.viewColumn, preview: false });
+					await vscode.window.showTextDocument(vscode.Uri.file(this.file), { viewColumn: this.page.panel.viewColumn, preview: false });
 					return;
 			}
 		} catch (err) {
@@ -426,31 +410,11 @@ class PlanReviewPage implements vscode.Disposable {
 		};
 	}
 
-	private html(webview: vscode.Webview, media: vscode.Uri): string {
-		const nonce = createNonce();
-		const strings = planStrings();
-		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'planReview.js'));
-		const draftMarkdown = webview.asWebviewUri(vscode.Uri.joinPath(media, 'draftMarkdown.js'));
-		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
-		const pageStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'planReview.css'));
-		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'codicon.css'));
-		return `<!DOCTYPE html>
-<html lang="en">
-<head>
-	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data: ${webview.cspSource}; style-src ${webview.cspSource}; script-src 'nonce-${nonce}' ${webview.cspSource};">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<link href="${codicons}" rel="stylesheet">
-	<link href="${style}" rel="stylesheet">
-	<link href="${pageStyle}" rel="stylesheet">
-	<title>${escapeAttribute(path.basename(this.file))}</title>
-</head>
-<body class="plan-page">
-	<main id="page"></main>
-	<script nonce="${nonce}" type="module" src="${script}" data-draft-markdown="${draftMarkdown}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
-</body>
-</html>`;
+	private shell(): PageShell {
+		// The Markdown renderer is a chunk of its own (media/draftMarkdown.js), loaded by the page's script.
+		return { script: 'planReview.js', styles: ['planReview.css'], title: path.basename(this.file), bodyClass: 'plan-page', strings: planStrings(), media: { 'draft-markdown': 'draftMarkdown.js' }, loadsMedia: true };
 	}
+
 }
 
 /** The page's words; exported for its tests. */

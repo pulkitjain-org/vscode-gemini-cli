@@ -14,14 +14,12 @@
 
 import { planSections, type PlanComment, type PlanSection } from '../src/acp/planReview';
 import type { FromPlan, PlanStrings, PlanView, ToPlan } from '../src/host/planReviewProtocol';
-import { button, el, format, icon, pageStrings } from './panelDom';
+import { button, el, format, icon } from './panelDom';
+import { bootPage } from './panelBoot';
 import { setTip } from './tooltip';
 
-declare function acquireVsCodeApi(): { postMessage(message: FromPlan): void };
-
-const vscode = acquireVsCodeApi();
-const strings = pageStrings<PlanStrings>();
-const page = document.getElementById('page')!;
+const booted = bootPage<ToPlan, FromPlan, PlanStrings>();
+const { strings, main: page, start } = booted;
 const markdownUrl = document.querySelector<HTMLScriptElement>('script[data-draft-markdown]')?.dataset.draftMarkdown;
 
 let view: PlanView | undefined;
@@ -48,11 +46,10 @@ let selectionButton: HTMLElement | undefined;
 function post(message: FromPlan): void {
 	error = '';
 	errorText = undefined;
-	vscode.postMessage(message);
+	booted.post(message);
 }
 
-window.addEventListener('message', (event: MessageEvent<ToPlan>) => {
-	const message = event.data;
+start(message => {
 	switch (message.type) {
 		case 'view':
 			view = message.view;
@@ -522,4 +519,3 @@ document.addEventListener('mousedown', event => {
 });
 
 void loadMarkdown();
-post({ type: 'ready' });

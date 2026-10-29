@@ -15,7 +15,7 @@ import { tildify } from './displayText';
 import { ConnectionState, createTokenUrl, TeamConnections } from './teamConnections';
 import { connectConfluence, connectJiraSite, disconnectConfluence, disconnectJira, removeJiraSite } from './siteConnections';
 import { takeOverTeamServers } from './teamTakeover';
-import { createNonce, escapeAttribute } from './webviewHtml';
+import { PagePanel, PageShell, SinglePage } from './pagePanel';
 import { showError } from './errorNotice';
 
 const viewType = 'gemini.connections';
@@ -29,7 +29,7 @@ const viewType = 'gemini.connections';
  */
 export class ConnectionsPage implements vscode.Disposable {
 
-	private panel: vscode.WebviewPanel | undefined;
+	private readonly page = new SinglePage<ToConnections, FromConnections>(() => this.create());
 	private defaults: TeamDefaults = {};
 	private allowlist: ConnectionsView['allowlist'] & { readonly path: string } | undefined;
 	private teamServers: ConnectionsView['teamServers'] & { readonly path: string } | undefined;
@@ -44,32 +44,20 @@ export class ConnectionsPage implements vscode.Disposable {
 	}
 
 	dispose(): void {
-		this.panel?.dispose();
+		this.page.dispose();
 		vscode.Disposable.from(...this.disposables).dispose();
 	}
 
 	show(): void {
-		if (this.panel) {
-			this.panel.reveal();
+		if (this.page.show()) {
 			void this.connections.refresh();
-			return;
 		}
-		const media = vscode.Uri.joinPath(this.extensionUri, 'media');
-		const panel = vscode.window.createWebviewPanel(viewType, vscode.l10n.t("Connections"), vscode.ViewColumn.Active, {
-			enableScripts: true,
-			retainContextWhenHidden: false,
-			localResourceRoots: [media],
-		});
-		panel.iconPath = new vscode.ThemeIcon('plug');
-		panel.webview.html = this.html(panel.webview, media);
-		panel.webview.onDidReceiveMessage((message: FromConnections) => void this.onMessage(message));
-		panel.onDidChangeViewState(e => e.webviewPanel.visible && this.scheduleUpdate());
-		panel.onDidDispose(() => {
-			if (this.panel === panel) {
-				this.panel = undefined;
-			}
-		});
-		this.panel = panel;
+	}
+
+	private create(): PagePanel<ToConnections, FromConnections> {
+		const page = new PagePanel<ToConnections, FromConnections>(this.extensionUri, { viewType, title: vscode.l10n.t("Connections"), icon: new vscode.ThemeIcon('plug') }, this.shell(), message => this.onMessage(message));
+		page.onDidChangeVisibility(visible => visible && this.scheduleUpdate());
+		return page;
 	}
 
 	private scheduleUpdate(): void {
@@ -84,7 +72,7 @@ export class ConnectionsPage implements vscode.Disposable {
 	}
 
 	private post(message: ToConnections): void {
-		void this.panel?.webview.postMessage(message);
+		this.page.post(message);
 	}
 
 	private async onMessage(message: FromConnections): Promise<void> {
@@ -304,8 +292,7 @@ export class ConnectionsPage implements vscode.Disposable {
 		return { id, name, url, email, kind: state.kind, label: stateLabel('jira', state), detail: state.kind === 'checking' ? '' : stateDetail('jira', state, url) };
 	}
 
-	private html(webview: vscode.Webview, media: vscode.Uri): string {
-		const nonce = createNonce();
+	private shell(): PageShell {
 		const strings: ConnectionsStrings = {
 			title: vscode.l10n.t("Connections"),
 			subtitle: vscode.l10n.t("Each tool with your own account. Agents can then read tickets, merge requests, designs and checks. Everything runs from this Mac over your VPN, and your tokens stay in the macOS keychain."),
@@ -370,30 +357,7 @@ export class ConnectionsPage implements vscode.Disposable {
 			openFile: vscode.l10n.t("Open File"),
 			close: vscode.l10n.t("Close"),
 		};
-		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'connections.js'));
-		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
-		const pageStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'connections.css'));
-		const menuStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'menu.css'));
-		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'codicon.css'));
-		const glassStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'glass.css'));
-		return `<!DOCTYPE html>
-<html lang="en">
-<head>
-	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<link href="${codicons}" rel="stylesheet">
-	<link href="${menuStyle}" rel="stylesheet">
-	<link href="${style}" rel="stylesheet">
-	<link href="${pageStyle}" rel="stylesheet">
-	<link href="${glassStyle}" rel="stylesheet">
-	<title>${strings.title}</title>
-</head>
-<body class="settings-page connections-page">
-	<main id="page" class="settings connections"></main>
-	<script nonce="${nonce}" type="module" src="${script}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
-</body>
-</html>`;
+		return { script: 'connections.js', styles: ['connections.css'], title: strings.title, bodyClass: 'settings-page connections-page', mainClass: 'settings connections', strings };
 	}
 }
 
