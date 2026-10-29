@@ -136,7 +136,7 @@ suite('GeminiAgentFiles', () => {
 		remote.url = 'https://shop.example/cart';
 		const dev = page(3, agent);
 		dev.url = 'http://localhost:5173/';
-		const users = page(4, user);
+		page(4, user);
 		assert.deepStrictEqual({
 			fileToIntranet: await session.load('https://intranet.example/api', 1, 'xhr'),
 			fileToShop: await session.load('https://shop.example/api', 1, 'xhr'),
