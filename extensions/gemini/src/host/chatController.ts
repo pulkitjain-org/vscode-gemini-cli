@@ -750,6 +750,15 @@ export class ChatController implements vscode.Disposable {
 	/** `steer` carries on after a turn stopped for messages sent now: the agent is told why it stopped. */
 	private async runTurn(text: string, attachments: readonly Attachment[], expand: boolean, steer = false, reactions: readonly ReactionRequest[] = [], extras: PromptExtras = {}): Promise<TurnOutcome> {
 		this.turnRunning = true;
+		try {
+			return await this.runTurnNow(text, attachments, expand, steer, reactions, extras);
+		} finally {
+			// Cleared however the turn ends, so a throw never leaves the chat unable to start the next one.
+			this.turnRunning = false;
+		}
+	}
+
+	private async runTurnNow(text: string, attachments: readonly Attachment[], expand: boolean, steer: boolean, reactions: readonly ReactionRequest[], extras: PromptExtras): Promise<TurnOutcome> {
 		this.checkpoints.beginTurn();
 		this.setBusy(true);
 		const started = Date.now();
@@ -885,10 +894,11 @@ export class ChatController implements vscode.Disposable {
 		if (overflowed) {
 			this.queue.holdSteers();
 			this.postQueue();
-			await this.continueAfterOverflow(expand ? text : undefined);
 			this.turnRunning = false;
+			await this.continueAfterOverflow(expand ? text : undefined);
 			return 'failed';
 		}
+		// The next queued message may start its turn from here, so the flag is cleared before it is sent.
 		this.turnRunning = false;
 		await this.sendPending(outcome);
 		return failed ? 'failed' : outcome;
