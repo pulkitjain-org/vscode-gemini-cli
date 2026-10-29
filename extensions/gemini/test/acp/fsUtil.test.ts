@@ -3,11 +3,11 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { isRecord, KeyedQueue, privateWrite, quarantine, removeOldDayFiles, samePath, writeFileAtomic, writeJsonAtomic } from '../../src/acp/fsUtil';
+import { isRecord, KeyedQueue, privateWrite, quarantine, removeOldDayFiles, removeStaleTempFiles, samePath, writeFileAtomic, writeJsonAtomic } from '../../src/acp/fsUtil';
 
 describe('fsUtil', () => {
 	const dirs: string[] = [];
@@ -41,6 +41,22 @@ describe('fsUtil', () => {
 		await writeJsonAtomic(file, { a: 1 }, privateWrite);
 		const modes = process.platform === 'win32' ? [0o600, 0o700] : [(await stat(file)).mode & 0o777, (await stat(path.dirname(file))).mode & 0o777];
 		expect(modes).toEqual([0o600, 0o700]);
+	});
+
+	it('removes the temporary files of writes a crash interrupted, once they are old', async () => {
+		const dir = await folder();
+		const stale = path.join(dir, 'records', 'a.json.123.0badf00d.tmp');
+		const fresh = path.join(dir, 'records', 'b.json.123.0badf00d.tmp');
+		const tooDeep = path.join(dir, 'a', 'b', 'c', 'c.json.123.0badf00d.tmp');
+		await writeFileAtomic(stale, '');
+		await writeFileAtomic(fresh, '');
+		await writeFileAtomic(tooDeep, '');
+		await writeFileAtomic(path.join(dir, 'records', 'a.json'), '{}');
+		const old = Date.now() - 2 * 24 * 60 * 60 * 1000;
+		await utimes(stale, new Date(old), new Date(old));
+		await utimes(tooDeep, new Date(old), new Date(old));
+		expect(await removeStaleTempFiles(dir, 24 * 60 * 60 * 1000)).toBe(1);
+		expect((await readdir(path.join(dir, 'records'))).sort()).toEqual(['a.json', 'b.json.123.0badf00d.tmp']);
 	});
 
 	it('moves a file aside without writing over an earlier one', async () => {
