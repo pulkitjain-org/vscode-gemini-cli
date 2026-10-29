@@ -20,7 +20,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { AgentRecord, AgentsModel, AgentTried, DiscardedRepo, TriedRepo } from '../../acp/agents';
 import { errorMessage } from '../../acp/errors';
-import { afterTakeBack, changedKeys, discardOffer, editsToSend, foldersMoved, keptRepo, paused, settleConflicts, takeBackTree, triedPaths, withProblems } from '../../acp/tryState';
+import { afterTakeBack, changedKeys, discardOffer, editsToSend, foldersMoved, interruptedTry, keptRepo, paused, settleConflicts, takeBackTree, triedPaths, withProblems } from '../../acp/tryState';
 import { appliedAfterTry, appliedAfterUpdate, applyTrees, changedFiles, contains, deleteRef, deleteRefs, editedSince, filesWithMarkers, resetFolder, restoreSnapshot, saveSnapshot, sendEdits as sendEditTrees, setRef, snapshotTree, startOf, treeOf, treeWithEntries, type ApplyResult } from '../../acp/worktreeApply';
 import { commitAll, git, repositoryRoot } from '../../acp/worktrees';
 import { showError } from '../errorNotice';
@@ -90,6 +90,18 @@ export class AgentTries implements vscode.Disposable {
 		// A try left open last time: commits of its files are noticed again, and the message box offers the edits made meanwhile.
 		this.watchHeads();
 		void this.editsChanged();
+		void this.finishInterrupted();
+	}
+
+	/** A try the last window was still writing is taken back: its files may be half in, and nothing else knows what it wrote. */
+	private async finishInterrupted(): Promise<void> {
+		for (const record of this.host.model.agents.filter(interruptedTry)) {
+			this.host.model.setTried(record.id, { ...record.tried!, state: 'trying' });
+			const taken = await this.takeBack(record.id, true).catch(() => false);
+			void vscode.window.showWarningMessage(taken
+				? vscode.l10n.t("Try in Workspace for \"{0}\" was interrupted last time; its files were put back. Try again when you are ready.", record.title)
+				: vscode.l10n.t("Try in Workspace for \"{0}\" was interrupted last time, and its files could not all be put back. Check the repository's changes.", record.title));
+		}
 	}
 
 	dispose(): void {
@@ -169,6 +181,9 @@ export class AgentTries implements vscode.Disposable {
 			}
 			const repos: TriedRepo[] = [];
 			const problems: Problems = { conflicts: [], unmerged: [], skipped: [] };
+			// Recorded before anything is written: a crash in the middle then leaves a record the next start takes back from.
+			const previous = record.tried;
+			this.host.model.setTried(id, { state: 'applying', repos: plans.map(plan => ({ key: plan.target.key, repository: plan.target.repository, worktree: plan.target.worktree, base: plan.base, ...plan.start ? { start: plan.start } : {}, tree: plan.tree, ...plan.before ? { kept: plan.before.tree } : {}, files: plan.files })), at: Date.now() });
 			try {
 				for (const plan of plans) {
 					const { target, before } = plan;
@@ -188,6 +203,8 @@ export class AgentTries implements vscode.Disposable {
 					this.host.model.setTried(id, { state: 'trying', repos, at: Date.now() });
 					this.host.setResolved(id, false);
 					this.watchHeads();
+				} else {
+					this.host.model.setTried(id, previous);
 				}
 			}
 			this.report(record, problems);

@@ -549,7 +549,7 @@ export class Projects implements vscode.Disposable {
 			if (!config.instructions.trim() && !await fs.access(path.join(home, configFile)).then(() => true, () => false)) {
 				await this.draft(project);
 			}
-		});
+		}).catch(err => this.agents.log(`${home}: the project's settings could not be read: ${errorMessage(err)}`));
 		// The most recently used open threads start with it, so the ones a developer goes back to
 		// are live; however many threads the project has, opening it costs the same. Any other
 		// thread starts when it is needed: the pointer on its card or row, opening it, or a note
@@ -563,7 +563,7 @@ export class Projects implements vscode.Disposable {
 					return;
 				}
 				// A thread with a brief still to send gets it, after its setup runs again (AgentProjects.resumeThread).
-				await this.agents.resume(thread).catch(() => undefined);
+				await this.agents.resume(thread).catch(err => project.hub.updateThread(thread, { state: 'error', detail: `Couldn't start: ${errorMessage(err)}` }));
 				if (pending.includes(thread)) {
 					this.sendHeldNotes(project, thread);
 				}
@@ -720,6 +720,11 @@ export class Projects implements vscode.Disposable {
 		const config = await readProjectConfig(project.home, repository);
 		project.config = config;
 		project.coordinator.refreshGit();
+		if (config.broken) {
+			// The project opens with its repository alone, and the user is told what was lost and where its file is.
+			this.agents.log(`${project.home}: project.json could not be read; moved to ${config.broken}`);
+			void vscode.window.showWarningMessage(vscode.l10n.t("The settings of project \"{0}\" could not be read, so it opened with its repository alone. The file was moved to {1}.", this.agents.record(project.id)?.title ?? project.id, config.broken));
+		}
 		return config;
 	}
 
@@ -994,7 +999,8 @@ export class Projects implements vscode.Disposable {
 		const role = record.project?.role === 'thread' ? record.project : undefined;
 		// Discarded work later turns replaced is offered from the card's ⋯ menu (tryState.ts, discardOffer).
 		const offer = !record.discarded?.length ? undefined : record.discarded.some(repo => repo.superseded) ? 'menu' : 'restore';
-		const workspace = offer === 'restore' ? 'discarded' : record.tried?.state;
+		// A try still being written shows as trying; it is one in a moment, or taken back on the next start.
+		const workspace = offer === 'restore' ? 'discarded' : record.tried?.state === 'applying' ? 'trying' : record.tried?.state;
 		if (info.workspace !== workspace) {
 			project.hub.updateThread(thread, { workspace });
 		}
@@ -1216,7 +1222,7 @@ function triedCard(record: AgentRecord, edits: readonly string[] | undefined): T
 	const conflicts = tried.repos.flatMap(repo => repo.conflicts ?? []);
 	const unmerged = tried.state === 'trying' ? tried.repos.flatMap(repo => repo.unmerged ?? []) : [];
 	return {
-		state: tried.state,
+		state: tried.state === 'applying' ? 'trying' : tried.state,
 		files: tried.repos.reduce((sum, repo) => sum + repo.files.length, 0),
 		...tried.updates ? { updates: tried.updates } : {},
 		...conflicts.length ? { conflicts } : {},

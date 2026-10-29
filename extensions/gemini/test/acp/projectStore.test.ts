@@ -40,6 +40,14 @@ describe('project config', () => {
 		expect(await savedRepoCount(home)).toBe(0);
 	});
 
+	it('moves a project file it cannot read aside, and says so', async () => {
+		await fs.mkdir(home, { recursive: true });
+		await fs.writeFile(path.join(home, configFile), '{"repos": [');
+		const config = await readProjectConfig(home, '/code/shop');
+		expect(config).toEqual({ repos: [{ key: 'shop', folder: '/code/shop' }], instructions: '', files: [], defaults: {}, broken: path.join(home, `${configFile}.broken`) });
+		expect((await fs.readdir(home)).sort()).toEqual([`${configFile}.broken`]);
+	});
+
 	it('saves and reads back repositories, memory, defaults and the draft time', async () => {
 		await writeProjectConfig(home, {
 			repos: [{ key: 'shop', folder: '/code/shop' }, { key: 'cms', folder: '/code/cms' }],

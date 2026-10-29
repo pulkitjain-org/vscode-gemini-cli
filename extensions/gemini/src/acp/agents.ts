@@ -60,8 +60,13 @@ export interface AgentRecord {
 
 /** An agent's work applied to the user's checkout, without a commit: tried, or kept as the user's own. */
 export interface AgentTried {
-	/** Trying: it can be taken back and follows the agent's turns. Kept: the user's now, and the thread is resolved. */
-	readonly state: 'trying' | 'kept';
+	/**
+	 * Applying: Try is writing the repositories, and a crash now leaves the
+	 * record, so the next start can take the files back. Trying: it can be
+	 * taken back and follows the agent's turns. Kept: the user's now, and the
+	 * thread is resolved.
+	 */
+	readonly state: 'applying' | 'trying' | 'kept';
 	readonly repos: readonly TriedRepo[];
 	/** When it was last tried, updated or kept, in ms since the epoch. */
 	readonly at: number;
