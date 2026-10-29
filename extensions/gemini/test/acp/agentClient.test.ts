@@ -129,6 +129,27 @@ describe('AgentClient', () => {
 		expect(texts).toEqual(['permission:allow']);
 	});
 
+	it('fails the turn, and the open permission card with it, when the agent dies while asking', async () => {
+		let cardSettled = false;
+		const { client, settled } = start({ turns: [[{ step: 'permission', request: { toolCall: { toolCallId: 't1', title: 'Run x', status: 'pending' }, options: [{ optionId: 'y', name: 'Yes', kind: 'allow_once' }] } }]], crashOnPermission: true }, () => new Promise(() => undefined));
+		await settled;
+		const events: ChatEvent[] = [];
+		client.onDidReceiveEvent(e => events.push(e));
+		const result = await client.prompt('do it').then(reason => `ended:${reason}`, err => `failed:${(err as AgentError).info.kind}`);
+		cardSettled = true;
+		expect(result).toMatch(/^failed:(agent-exited|agent-restarted)$/);
+		expect(cardSettled).toBe(true);
+	});
+
+	it('ends an agent that stopped reading its input while its process lives on, and starts it again', async () => {
+		const { client, settled } = start({ endsInput: true }, undefined, undefined, { restartDelaysMs: [10] });
+		await settled;
+		// The host's side of the pipe sees the agent's end go: the connection closes, the process is ended, and a fresh one serves the chat.
+		const left = await waitFor<AgentClientState>(client.onDidChangeState, s => s.kind !== 'ready');
+		expect(left.kind).not.toBe('ready');
+		expect(await waitFor<AgentClientState>(client.onDidChangeState, s => s.kind === 'ready')).toMatchObject({ kind: 'ready', sessionId: 'fake-session-1' });
+	});
+
 	it('reports a fatal agent exit', async () => {
 		const { settled } = start({ exitCode: 41 });
 		expect(await settled).toMatchObject({ kind: 'error', error: { kind: 'auth-failed' } });

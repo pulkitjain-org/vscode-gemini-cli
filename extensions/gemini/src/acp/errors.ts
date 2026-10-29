@@ -23,6 +23,8 @@ export type AgentErrorKind =
 	| 'agent-not-found'
 	/** The agent process exited before answering. */
 	| 'agent-exited'
+	/** The agent process could not be started at all: the command failed to spawn, or its command could not be worked out. */
+	| 'not-started'
 	/** Auto Edit or YOLO was refused because the CLI does not trust the folder yet. */
 	| 'untrusted-folder'
 	/** The CLI could not reach Google: no connection, a VPN or proxy in the way, or a certificate it does not trust. */

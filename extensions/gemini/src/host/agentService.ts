@@ -118,8 +118,16 @@ export class AgentService implements vscode.Disposable {
 			folderProcess: {
 				needed: cwd => this.needsOwnProcess(cwd),
 				sidecar: cwd => {
-					const sidecar = new AgentSidecar({ command: async () => getAgentCommand({ cli: this._cli ?? await this.resolveCli() }), cwd, restartDelaysMs: [] });
+					// One restart: its sessions open again on the fresh process; a second crash fails them, and the user hears why.
+					const sidecar = new AgentSidecar({ command: async () => getAgentCommand({ cli: this._cli ?? await this.resolveCli() }), cwd, restartDelaysMs: [1_000] });
 					sidecar.onStderr(line => log.info(`[agent ${path.basename(cwd)}] ${line}`));
+					sidecar.onDidChangeState(state => {
+						if (state.kind === 'restarting') {
+							void vscode.window.showWarningMessage(vscode.l10n.t("The agent process for {0} stopped (exit code {1}) and is starting again. Its chats open a new session with the next prompt.", path.basename(cwd), String(state.exitCode ?? 'none')));
+						} else if (state.kind === 'failed') {
+							void vscode.window.showErrorMessage(vscode.l10n.t("The agent process for {0} stopped again: {1}. Its chats fall back to the window's agent process; use Gemini: Restart Agent to try its own again.", path.basename(cwd), state.message));
+						}
+					});
 					return sidecar;
 				},
 			},
@@ -535,6 +543,10 @@ export class AgentService implements vscode.Disposable {
 				break;
 			case 'agent-not-found':
 				message = vscode.l10n.t("The Gemini CLI was not found. Install it, or set its path in the gemini.cliPath setting.");
+				actions = [installCli, setCliPath, showLog];
+				break;
+			case 'not-started':
+				message = vscode.l10n.t("The Gemini CLI could not be started: {0}", error.message);
 				actions = [installCli, setCliPath, showLog];
 				break;
 			case 'network':

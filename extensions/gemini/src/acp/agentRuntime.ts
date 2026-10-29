@@ -196,7 +196,13 @@ export class AgentRuntime {
 			this.onDidBecomeBusyEmitter.fire();
 		}
 		try {
-			return await turn;
+			const result = await turn;
+			// A served prompt is what makes the process healthy (sidecar.ts); a folder's own process counts the same.
+			this.sidecar.markHealthy();
+			for (const folder of this.folders.values()) {
+				folder.sidecar.markHealthy();
+			}
+			return result;
 		} finally {
 			if (--this.turns === 0) {
 				this.onDidBecomeIdleEmitter.fire();
@@ -424,6 +430,13 @@ export class AgentRuntime {
 						reject(err);
 						this.endFolder(folder);
 					});
+				} else if (state.kind === 'restarting') {
+					// The process is coming back; its sessions are gone with the old one, and open again on the new one.
+					connection = undefined;
+					for (const sessionId of folder.sessions) {
+						this.sessions.get(sessionId)?.onDidEnd?.();
+					}
+					folder.sessions.clear();
 				} else if (state.kind !== 'starting' && state.kind !== 'running') {
 					reject(new AgentError(state.kind === 'failed' ? { kind: state.reason, message: state.message } : { kind: 'agent-exited', message: 'The agent process stopped.' }));
 					this.endFolder(folder);
@@ -566,6 +579,15 @@ export class AgentRuntime {
 		const connection = this.createConnection(module, agentProcess);
 		this.connection = connection;
 		void connection.closed.then(() => this.onConnectionClosed(connection, agentProcess));
+		// An agent that stopped reading its input while its process lives on fails the next write (EPIPE), which nothing else reports: the connection is closed, and the process ended and started again as below.
+		const stoppedReading = () => {
+			if (this.connection === connection) {
+				this.debug('The agent stopped reading its input; closing the connection');
+				connection.dispose();
+			}
+		};
+		agentProcess.stdin.once('error', stoppedReading);
+		agentProcess.stdin.once('close', stoppedReading);
 		this.setState({ kind: 'connecting' });
 		try {
 			const agent = await connection.initialize();

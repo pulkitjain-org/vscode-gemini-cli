@@ -26,7 +26,6 @@ export interface SidecarOptions {
 	/** Delays before successive automatic restarts; their count bounds the restarts. */
 	readonly restartDelaysMs?: readonly number[];
 	/** A process that stays up this long resets the restart count. */
-	readonly healthyAfterMs?: number;
 	readonly spawn?: typeof spawnAgent;
 }
 
@@ -99,16 +98,13 @@ export class AgentSidecar {
 	/** Immediate relaunches the CLI asked for (exit code 199) since the agent last ran healthy. */
 	private relaunches = 0;
 	private restartTimer: ReturnType<typeof setTimeout> | undefined;
-	private healthyTimer: ReturnType<typeof setTimeout> | undefined;
 	private readonly restartDelaysMs: readonly number[];
-	private readonly healthyAfterMs: number;
 	private readonly spawn: typeof spawnAgent;
 	/** Bumped by every launch and stop, so a launch whose command arrives late does nothing. */
 	private launches = 0;
 
 	constructor(private readonly options: SidecarOptions) {
 		this.restartDelaysMs = options.restartDelaysMs ?? defaultRestartDelaysMs;
-		this.healthyAfterMs = options.healthyAfterMs ?? 60_000;
 		this.spawn = options.spawn ?? spawnAgent;
 	}
 
@@ -163,7 +159,7 @@ export class AgentSidecar {
 		const launch = ++this.launches;
 		void (async () => this.options.command())().then(
 			command => launch === this.launches && this.run(command),
-			err => launch === this.launches && this.setState({ kind: 'failed', reason: 'agent-exited', exitCode: null, message: String(err) }));
+			err => launch === this.launches && this.setState({ kind: 'failed', reason: 'not-started', exitCode: null, message: String(err) }));
 	}
 
 	private run(command: AgentCommand): void {
@@ -171,7 +167,7 @@ export class AgentSidecar {
 		try {
 			child = this.spawn(command, this.options.cwd);
 		} catch (err) {
-			this.setState({ kind: 'failed', reason: 'agent-exited', exitCode: null, message: String(err) });
+			this.setState({ kind: 'failed', reason: 'not-started', exitCode: null, message: String(err) });
 			return;
 		}
 
@@ -232,13 +228,22 @@ export class AgentSidecar {
 		track(child);
 
 		this.setState({ kind: 'running', process: child });
-		this.healthyTimer = setTimeout(() => this.restarts = this.relaunches = 0, this.healthyAfterMs);
+	}
+
+	/**
+	 * The agent served a prompt: it is healthy, and a later crash gets the
+	 * whole restart budget again. Uptime alone does not say so: a CLI that
+	 * dies on every first prompt, after a long setup, would otherwise be
+	 * started again without end.
+	 */
+	markHealthy(): void {
+		this.restarts = 0;
+		this.relaunches = 0;
 	}
 
 	private clearTimers(): void {
 		clearTimeout(this.restartTimer);
-		clearTimeout(this.healthyTimer);
-		this.restartTimer = this.healthyTimer = undefined;
+		this.restartTimer = undefined;
 	}
 
 	private setState(state: SidecarState): void {
