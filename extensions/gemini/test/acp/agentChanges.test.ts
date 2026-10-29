@@ -61,6 +61,20 @@ describe('AgentChanges', () => {
 		expect(changes.files[0].original).toBeUndefined();
 	});
 
+	it('keeps all texts together under a cap, dropping the largest files\' texts and keeping their counts', () => {
+		const changes = new AgentChanges(root);
+		const big = 'x\n'.repeat(450_000);
+		for (let i = 0; i < 12; i++) {
+			changes.record([{ path: file(`big${i}.txt`), oldText: big, newText: `${big}y` }]);
+		}
+		changes.record([{ path: file('small.ts'), oldText: 'a', newText: 'b' }]);
+		const kept = changes.files.reduce((sum, f) => sum + (f.original?.length ?? 0) + (f.agentText?.length ?? 0), 0);
+		expect(kept).toBeLessThanOrEqual(8_000_000);
+		expect(changes.files).toHaveLength(13);
+		expect(changes.files.every(f => f.added >= 1)).toBe(true);
+		expect(changes.file(file('small.ts'))?.original).toBe('a');
+	});
+
 	it('restores saved files unless edits came first, and skips bad records', () => {
 		const changes = new AgentChanges(root);
 		changes.restore([{ path: file('a.ts'), created: false, original: 'x', added: 1, removed: 1 }, { path: 'relative.ts', created: false, added: 1, removed: 0 }]);

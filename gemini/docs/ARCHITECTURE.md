@@ -934,7 +934,7 @@ GeminiCode runs only on the Mac, with no server ([ADR 0009](adr/0009-desktop-onl
 | State | Kept in | After a restart |
 | --- | --- | --- |
 | Agents, workspaces, projects and threads | `<globalStorage>/records/`, one file per record (global state before, still written when a window closes) | the same list and cards |
-| Each conversation | one JSON file per agent in global storage, and the CLI's own chat file | shown at once; the session reopens with `session/load` |
+| Each conversation | one JSON file per agent in global storage (its items, and the changed files' paths and counts), the changed files' texts in a `.changes.json` beside it, written only when they change and capped at 8 MB per agent, and the CLI's own chat file | shown at once; the session reopens with `session/load` |
 | Undo and Rewind checkpoints | `<globalStorage>/checkpoints/<agent>.json`, written when a turn ends | up to the last finished turn |
 | A turn that was running | the agent process | lost; the chat shows that it was cut off, with Retry the Turn and Keep and Continue |
 | Permission cards and "Allow for this session" approvals | memory | gone: the next request asks again |
