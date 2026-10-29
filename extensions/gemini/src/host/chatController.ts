@@ -22,6 +22,7 @@ import { ChatTranscript, ForkContext, ThreadCard, toolCallItemId, TranscriptItem
 import { buildModeAfterPlan, diffsOf, nextApprovalMode, dropOldest, lastPromptAt, planBuildChoice, planBuildModels, runningStep, turnShape, wasCutOff } from '../acp/chatTurns';
 import type { StoredCheckpoints } from '../acp/checkpoints';
 import { buildPromptContent } from '../acp/promptContent';
+import { assembleTurnContent } from '../acp/turnContent';
 import { atSafePoint, PromptQueue, steeringNote, steerWaitMs, type PromptExtras } from '../acp/promptQueue';
 import { meaningOf, olderReplyExcerpt, reactionNote, reactionRule, reactionShortcut, routeReaction, type ReactionRef, type ReactionRequest } from '../acp/reactions';
 import { CoordinatorTurnFailed } from '../acp/projectHub';
@@ -794,11 +795,11 @@ export class ChatController implements vscode.Disposable {
 			}
 			this.timing.ready = Date.now();
 			// Built after the agent is ready, so it reflects what this agent accepts.
-			const content = buildPromptContent(expand ? await this.commands.expand(text) : text, attachments, this.service.client.promptCapabilities);
+			const own = buildPromptContent(expand ? await this.commands.expand(text) : text, attachments, this.service.client.promptCapabilities);
 			// A reaction with nothing typed stops the turn for itself: its note says so, in place of the steering note.
 			const reactionOnly = !!reactions.length && !text.trim();
 			const notes = reactions.map(reaction => reactionNote(reaction, steer && reactionOnly));
-			if (!content.length && !notes.length) {
+			if (!own.length && !notes.length) {
 				throw new Error(vscode.l10n.t("The agent cannot take images, so there was nothing to send."));
 			}
 			// Told once per session: without it the model reaches for grep_search first (FINDINGS.md, workspace index).
@@ -807,43 +808,31 @@ export class ChatController implements vscode.Disposable {
 			const hint = session && !this.hintedSessions.has(session) ? this.options.indexHint?.() : undefined;
 			if (session && hint) {
 				this.hintedSessions.add(session);
-				content.push({ type: 'text', text: hint });
 			}
-			if (attachments.some(attachment => attachment.kind === 'document' && attachment.tool === 'figma')) {
-				const design = await this.options.designSystemNote?.().catch(() => undefined);
-				if (design) {
-					content.push({ type: 'text', text: design });
-				}
-			}
+			const design = attachments.some(attachment => attachment.kind === 'document' && attachment.tool === 'figma') ? await this.options.designSystemNote?.().catch(() => undefined) : undefined;
 			const page = await this.sharedPage.refresh();
-			if (page) {
-				content.push({ type: 'text', text: page.note });
-				if (!this.options.project) {
-					this.transcript.addPromptPage(page.title, page.url);
-				}
-			}
-			const undoNote = this.checkpoints.undoNote;
-			if (undoNote) {
-				content.unshift({ type: 'text', text: undoNote });
+			if (page && !this.options.project) {
+				this.transcript.addPromptPage(page.title, page.url);
 			}
 			const carried = this.sessions.carriedConversation;
-			if (carried) {
-				content.unshift({ type: 'text', text: carried });
-			}
 			const context = this.pendingContext;
-			if (context) {
-				content.unshift({ type: 'text', text: context });
+			const reactionRuleDue = !!session && !this.options.project && agentReactionsOn() && !this.reactionRuleSessions.has(session);
+			if (reactionRuleDue) {
+				this.reactionRuleSessions.add(session!);
 			}
-			if (session && !this.options.project && agentReactionsOn() && !this.reactionRuleSessions.has(session)) {
-				this.reactionRuleSessions.add(session);
-				content.unshift({ type: 'text', text: reactionRule() });
-			}
-			for (const note of [...notes].reverse()) {
-				content.unshift({ type: 'text', text: note });
-			}
-			if (steer && !reactionOnly) {
-				content.unshift({ type: 'text', text: steeringNote() });
-			}
+			// In the order the agent should read them (turnContent.ts).
+			const content = assembleTurnContent({
+				content: own,
+				steering: steer && !reactionOnly ? steeringNote() : undefined,
+				notes,
+				reactionRule: reactionRuleDue ? reactionRule() : undefined,
+				context,
+				carried,
+				undoNote: this.checkpoints.undoNote,
+				hint,
+				design,
+				page: page?.note,
+			});
 			this.timing.sent = Date.now();
 			promptAt = this.transcript.items.length;
 			const { stopReason, usage } = await this.promptRecovering(content);
