@@ -37,15 +37,12 @@ import { TeamFlows } from './host/teamFlows';
 import { setTraceFile, setTraceFolder } from './host/traceCommand';
 import { scheduleStorageMaintenance } from './host/storageMaintenance';
 import { MrPanel } from './host/mrPanel';
-import { TeamStatusBar } from './host/teamStatusBar';
-import { AuditStatusBar } from './host/auditStatusBar';
 import { chunkLoader, LazyFeature, setExtensionDir } from './host/lazyFeature';
 import { teamRequest } from './acp/teamHttp';
 import { openTeamLink } from './host/teamLinks';
 import { WorkspaceFileIndex } from './host/workspaceFiles';
 import { WorkspaceIndex } from './host/workspaceIndex';
 import { DocsSources } from './host/docsSources';
-import { IndexStatusBar } from './host/indexStatusBar';
 import { measureFolderContextCost } from './host/contextCostProbe';
 import { ContextMeasures } from './host/chat/chatContext';
 import { FixWithGemini } from './host/quickFix';
@@ -147,6 +144,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	agentsView.teamTools = teamTools;
 	// The indexer runs from indexer.js beside this file, in out/ or dist/.
 	const workspaceIndex = new WorkspaceIndex({ script: path.join(__dirname, 'indexer.js'), version: String(context.extension.packageJSON.version ?? ''), log });
+	// One status bar item for the team tools, the index and the audit log too.
+	statusBar.attach({ connections: teamTools, index: workspaceIndex, audit: teamTools.audit });
 	agentsView.index = workspaceIndex;
 	indexForFiles.current = workspaceIndex;
 	const docsSources = workspaceIndex.docs = new DocsSources(workspaceIndex, log);
@@ -155,7 +154,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		workspaceIndex,
 		docsSources,
 		new LazyFeature(['gemini.index.open', 'gemini.index.rebuild', 'gemini.index.pause', 'gemini.index.addDocs'], () => new (pages().IndexPage)(context.extensionUri, workspaceIndex, docsSources, agentsView, service, context.globalState)),
-		new IndexStatusBar(workspaceIndex),
 		workspaceIndex.onDidChangeEnabled(() => agentsView.refreshSpare()),
 		teamTools.onDidChange(() => agentsView.refreshSpare()),
 		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.browser`) && agentsView.refreshSpare()),
@@ -280,8 +278,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		mrPanel,
 		vscode.commands.registerCommand('gemini.confluence.openDraft', (id?: unknown) => teamTools.openConfluenceDraft(typeof id === 'string' ? id : undefined)),
 		new LazyFeature(['gemini.connections'], () => new (pages().ConnectionsPage)(context.extensionUri, teamTools, log)),
-		new TeamStatusBar(context.extensionUri, teamTools),
-		new AuditStatusBar(teamTools.audit),
 		new TerminalGemini({
 			terminals: agentsView.terminals,
 			attachTo: async (agent, attachments) => {

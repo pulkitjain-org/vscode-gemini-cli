@@ -780,7 +780,7 @@ GeminiCode indexes each folder agents work in, and documentation the user attach
   - The Index page (`src/host/indexPage.ts`, `webview-src/indexPage.ts`) opens as a tab in the active group from Home, the Agents pane's workspace menu or **Gemini: Manage Index**.
   - Home shows a drum icon beside the workspace pill (full, half or empty). Whether a folder has an index is read from the index file, so Home never starts the indexer.
   - The Files Left Out popup groups the left-out files by reason and adds files to `gemini.index.include`.
-  - The status bar shows **Indexing N%** only while a build of 50 files or more runs (`indexStatusBar.ts`).
+  - The Gemini status bar item shows **Indexing N%** only while a build of 50 files or more runs (`statusBar.ts`).
   - Suggested docs come from the folder's manifests and a list that ships with the extension (`src/acp/docs/suggest.ts`).
   - Enhance prompt gets the folder's outline and the files the index finds for the draft, when the index answers within 400 ms, and @-mentions outside the window list files from the index.
 - **Getting the model to use it.** The chat sends `indexHint` with a session's first prompt once the folder's index is built (never shown in the chat). Search results rank tests below the code they test unless the query asks for tests, and say they are complete, so the model reads what they point to instead of checking with `grep_search`. Measurements are in [FINDINGS.md](FINDINGS.md#workspace-index).

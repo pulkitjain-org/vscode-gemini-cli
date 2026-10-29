@@ -158,7 +158,7 @@ After that, the index keeps itself up to date:
 - a checkout or a pull, when the branch moves
 - an agent's edits in its own worktree, as it makes them
 
-The status bar shows **Indexing N%** while a large build runs. Small updates don't show.
+The **Gemini** status bar item shows **Indexing N%** while a large build runs; hover it for each folder's progress. Small updates don't show.
 
 For each workspace, the Index page shows its state and size, with:
 

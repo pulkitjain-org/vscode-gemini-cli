@@ -29,7 +29,7 @@ Home's **Get started** card has a button for each step that is left: **Sign In**
 4. **Make it yours.** Pick a theme, a code font and file icons.
 5. **First agent.** Describe a task on Home and press Return.
 
-The **Gemini** item in the status bar shows the agent's state. Hover over it for the account, project and CLI version. Click it to start or restart the agent, change the project or CLI version, sign in, open the chat or open the log.
+The **Gemini** item in the status bar shows the agent's state. Hover over it for the account, project and CLI version. Click it to start or restart the agent, change the project or CLI version, sign in, open Agent Setup, Connections, the index or the audit log, or show the log. It is GeminiCode's one item at the right of the status bar; **Trying** appears on the left while an agent's work is tried in your workspace.
 
 ## Your first agent
 
