@@ -56,8 +56,11 @@ step() {
 	fi
 }
 
+# grep without -q: with -q it quits on the first match, and on a long list (a
+# branch rebased on a new upstream tag) printf then dies of SIGPIPE, which
+# pipefail turns into "no match".
 touches() {
-	printf '%s\n' "$changed" | grep -qE "$1"
+	printf '%s\n' "$changed" | grep -E "$1" > /dev/null
 }
 
 step 'Workflow files parse' node -e '
@@ -106,7 +109,7 @@ if [ "$full" = 1 ] && touches '^gemini/site/'; then
 fi
 
 # Compile & hygiene: the fork's own files are covered above; anything else is upstream code or the build.
-if printf '%s\n' "$changed" | grep -vqE '^(extensions/gemini/|gemini/|\.github/workflows/gemini-)'; then
+if printf '%s\n' "$changed" | grep -vE '^(extensions/gemini/|gemini/|\.github/workflows/gemini-)' > /dev/null; then
 	if [ "$full" = 1 ]; then
 		step 'Compile' npm run compile
 	fi
