@@ -7,7 +7,7 @@ import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { isRecord, KeyedQueue, quarantine, removeOldDayFiles, samePath, writeFileAtomic, writeJsonAtomic } from '../../src/acp/fsUtil';
+import { isRecord, KeyedQueue, privateWrite, quarantine, removeOldDayFiles, samePath, writeFileAtomic, writeJsonAtomic } from '../../src/acp/fsUtil';
 
 describe('fsUtil', () => {
 	const dirs: string[] = [];
@@ -33,6 +33,14 @@ describe('fsUtil', () => {
 		expect(await readFile(path.join(dir, 'pieces.txt'), 'utf8')).toBe(`one two ${'x'.repeat(70_000)} three`);
 		expect(await readdir(path.join(dir, 'deep'))).toEqual(['a.json']);
 		expect((await stat(path.join(dir, 'pieces.txt'))).isFile()).toBe(true);
+	});
+
+	it('writes GeminiCode\'s own files for the user alone', async () => {
+		const dir = await folder();
+		const file = path.join(dir, 'private', 'a.json');
+		await writeJsonAtomic(file, { a: 1 }, privateWrite);
+		const modes = process.platform === 'win32' ? [0o600, 0o700] : [(await stat(file)).mode & 0o777, (await stat(path.dirname(file))).mode & 0o777];
+		expect(modes).toEqual([0o600, 0o700]);
 	});
 
 	it('moves a file aside without writing over an earlier one', async () => {

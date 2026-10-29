@@ -13,7 +13,7 @@
 import { readdir, readFile, rm } from 'node:fs/promises';
 import * as path from 'node:path';
 import type { StoredCheckpoints } from './checkpoints';
-import { KeyedQueue, quarantine, writeFileAtomic } from './fsUtil';
+import { KeyedQueue, privateWrite, quarantine, writeFileAtomic } from './fsUtil';
 
 const formatVersion = 1;
 /** How long a save waits for the next one, so a burst of turns writes once. */
@@ -111,7 +111,7 @@ export class CheckpointStore {
 				await rm(file, { force: true });
 				return;
 			}
-			await writeFileAtomic(file, serialize(checkpoints));
+			await writeFileAtomic(file, serialize(checkpoints), privateWrite);
 		}).catch(err => this.onError(err));
 		void write.then(waiting.resolve);
 		return write;

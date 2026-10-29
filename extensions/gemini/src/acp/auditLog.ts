@@ -18,6 +18,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { Emitter } from './events';
+import { privateWrite } from './fsUtil';
 
 export type AuditCaller = 'agent' | 'ui';
 export type AuditPhase = 'intent' | 'result' | 'failed';
@@ -149,8 +150,8 @@ export class AuditLog {
 	/** Appends in order. A failed append rejects only for its caller; the next one still runs. */
 	private append(entry: AuditEntry): Promise<void> {
 		const run = this.queue.then(async () => {
-			await fs.mkdir(this.dir, { recursive: true });
-			await fs.appendFile(path.join(this.dir, auditFileName(new Date(entry.time))), `${JSON.stringify(entry)}\n`);
+			await fs.mkdir(this.dir, { recursive: true, mode: privateWrite.dirMode });
+			await fs.appendFile(path.join(this.dir, auditFileName(new Date(entry.time))), `${JSON.stringify(entry)}\n`, { mode: privateWrite.mode });
 			this.onDidAppendEmitter.fire(entry);
 		});
 		this.queue = run.catch(() => undefined);

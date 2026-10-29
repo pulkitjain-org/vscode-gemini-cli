@@ -946,7 +946,7 @@ GeminiCode runs only on the Mac, with no server ([ADR 0009](adr/0009-desktop-onl
 
 ### Storage
 
-Everything GeminiCode keeps, for an uninstall or a full disk (`storageAreas` in `src/acp/storageUsage.ts`):
+Everything GeminiCode keeps, for an uninstall or a full disk (`storageAreas` in `src/acp/storageUsage.ts`). What it writes about the user's work (transcripts, checkpoints, records and the audit log) is created for the user alone, mode 0600 in folders of mode 0700 (`privateWrite` in `fsUtil.ts`), whatever the umask; files from before keep their mode.
 
 | Where | What |
 | --- | --- |

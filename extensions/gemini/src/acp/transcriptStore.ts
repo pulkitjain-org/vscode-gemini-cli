@@ -12,7 +12,7 @@ import { readFile, rm } from 'node:fs/promises';
 import * as path from 'node:path';
 import type { EditedFile } from './agentChanges';
 import type { TranscriptItem } from './chatTranscript';
-import { KeyedQueue, quarantine, writeFileAtomic } from './fsUtil';
+import { KeyedQueue, privateWrite, quarantine, writeFileAtomic } from './fsUtil';
 import { hasReplayMarkers, withoutReplayMarkers } from './replayText';
 import type { ModelTokens } from './turnUsage';
 
@@ -77,7 +77,7 @@ export class TranscriptStore {
 
 	save(agentId: string, agent: StoredAgent): Promise<void> {
 		const stored: StoredTranscript = { version: formatVersion, items: agent.items.slice(-maxItems).map(trim), changes: agent.changes };
-		return this.write(agentId, () => writeFileAtomic(this.file(agentId), JSON.stringify(stored)));
+		return this.write(agentId, () => writeFileAtomic(this.file(agentId), JSON.stringify(stored), privateWrite));
 	}
 
 	/** Resolves once every write queued so far is on disk. */

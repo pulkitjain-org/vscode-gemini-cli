@@ -30,7 +30,16 @@ export function samePath(a: string, b: string): boolean {
 export interface AtomicWriteOptions {
 	/** The file's mode when it is created, such as 0o600 for a file only its owner reads. */
 	readonly mode?: number;
+	/** The mode of the folders created for the file, such as 0o700 for folders only their owner enters. */
+	readonly dirMode?: number;
 }
+
+/**
+ * The modes for what GeminiCode keeps about the user's work (transcripts,
+ * checkpoints with file contents, records, the audit log): the user's alone,
+ * as `~/.ssh` is, whatever the umask. Existing files keep their mode.
+ */
+export const privateWrite = { mode: 0o600, dirMode: 0o700 } as const satisfies AtomicWriteOptions;
 
 /**
  * Writes `text` to a temporary file beside `file`, named for this process
@@ -39,7 +48,7 @@ export interface AtomicWriteOptions {
  * windows never rename each other's half-written file into place.
  */
 export async function writeFileAtomic(file: string, text: string | Iterable<string>, options: AtomicWriteOptions = {}): Promise<void> {
-	await fs.mkdir(path.dirname(file), { recursive: true });
+	await fs.mkdir(path.dirname(file), { recursive: true, mode: options.dirMode });
 	const temp = `${file}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
 	try {
 		if (typeof text === 'string') {
