@@ -98,7 +98,12 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// and agent tools' definitions added about 13 KB; Confluence's client, calls, drafts and Review Page are in dist/confluence.js.
 	// The Index page moving to dist/pages.js took it from about 1,206 KB to about 1,187 KB. Side questions, the
 	// language servers' tools and research added about 18 KB; the docs crawler moving to dist/onDemand.js took 9 KB off.
-	'dist/extension.js': 1_206_000,
+	// The ACP SDK and zod (about 250 KB) moved to dist/connection.js, loaded when the first agent process starts:
+	// from about 1,212 KB to about 955 KB.
+	'dist/extension.js': 1_010_000,
+	// The agent's connection with the ACP SDK and zod (English messages only), and the benchmark's own ACP client,
+	// about 254 KB (src/connection.ts), loaded when the first agent process starts, seconds after activation.
+	'dist/connection.js': 270_000,
 	// Project Helpers and Connections, about 96 KB, loaded the first time one is opened (src/pages.ts): their own code
 	// and their copy of jsonc-parser (about 17 KB), which edits the Gemini CLI's settings files keeping their comments.
 	// Project Helpers' Storage section, with the storage measuring and Clean Up's list, is about 9 KB of it.

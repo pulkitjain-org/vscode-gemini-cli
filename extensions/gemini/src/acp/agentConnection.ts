@@ -5,8 +5,6 @@
 
 import { Readable, Writable } from 'node:stream';
 import * as acp from '@agentclientprotocol/sdk';
-import { AgentError } from './errors';
-import { FileAccessDeniedError } from './fileAccess';
 import { CLIENT_INFO, SUPPORTED_PROTOCOL_VERSION, UnsupportedProtocolVersionError } from './protocol';
 
 /**
@@ -154,25 +152,45 @@ export class AgentConnection {
 }
 
 /**
- * `request`, or a `timeout` AgentError once `ms` pass without an answer. The
+ * A request the agent did not answer in time. Not an `AgentError`: this
+ * module is bundled apart from the extension (src/connection.ts), where
+ * `instanceof` would not hold, so it carries the same `info` and
+ * `classifyAgentError` reads that.
+ */
+export class ConnectionTimeoutError extends Error {
+	readonly info: { readonly kind: 'timeout'; readonly message: string };
+	constructor(method: string, ms: number) {
+		super(`The agent did not answer ${method} within ${Math.round(ms / 1000)} s.`);
+		this.name = 'ConnectionTimeoutError';
+		this.info = { kind: 'timeout', message: this.message };
+	}
+}
+
+/**
+ * `request`, or a `timeout` error once `ms` pass without an answer. The
  * request is not cancelled: gemini-cli 0.66 implements no `$/cancel_request`,
  * and an answer that comes later is dropped.
  */
 function withTimeout<T>(request: Promise<T>, method: string, ms: number): Promise<T> {
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const timeout = new Promise<never>((_, reject) => {
-		timer = setTimeout(() => reject(new AgentError({ kind: 'timeout', message: `The agent did not answer ${method} within ${Math.round(ms / 1000)} s.` })), ms);
+		timer = setTimeout(() => reject(new ConnectionTimeoutError(method, ms)), ms);
 	});
 	return Promise.race([request, timeout]).finally(() => clearTimeout(timer));
 }
 
-/** Runs a file handler; a refused access goes back to the agent as the JSON-RPC error its code names. */
+/**
+ * Runs a file handler; a refused access (`FileAccessDeniedError`, known by
+ * its name and code since the class is the extension bundle's) goes back to
+ * the agent as the JSON-RPC error its code names.
+ */
 async function asRequestError<T>(run: () => Promise<T>): Promise<T> {
 	try {
 		return await run();
 	} catch (err) {
-		if (err instanceof FileAccessDeniedError) {
-			throw new acp.RequestError(err.code, err.message);
+		const code = (err as { code?: unknown } | undefined)?.code;
+		if (err instanceof Error && err.name === 'FileAccessDeniedError' && typeof code === 'number') {
+			throw new acp.RequestError(code, err.message);
 		}
 		throw err;
 	}

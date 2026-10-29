@@ -27,6 +27,7 @@ import { isTeamWriteToolCall } from '../acp/teamTools';
 import { agentErrorText } from './chatStatus';
 import { agentLaunchSettings, configSection, getAgentCommand, getApprovalPolicy, getCliResolution, getProjectSettings, getWorkspaceCwd, includedFolderPaths } from './configuration';
 import { sessionModel, sessionModelList } from './modelPreference';
+import { extensionChunk } from './lazyFeature';
 import { agentFileAccessPolicy, WorkspaceFileSystem } from './workspaceFileSystem';
 
 /** How long the first agent process of a launch took, from its spawn. */
@@ -115,6 +116,8 @@ export class AgentService implements vscode.Disposable {
 		this.runtime = new AgentRuntime(this.sidecar, {
 			fileSystem: this.files,
 			log: message => log.debug(message),
+			// The ACP SDK sits in a bundle of its own (src/connection.ts), loaded when the first agent process starts.
+			connectionModule: async () => extensionChunk<typeof import('../acp/agentConnection')>('connection')(),
 			folderProcess: {
 				needed: cwd => this.needsOwnProcess(cwd),
 				sidecar: cwd => {

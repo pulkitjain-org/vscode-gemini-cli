@@ -79,8 +79,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	context.subscriptions.push({ dispose: () => clearTimeout(ownTrust) });
 	const diffPreview = new DiffPreview();
 	// The @ picker's list comes from the workspace index once it is built (set below), else from the host's own walk.
-	let indexForFiles: WorkspaceIndex | undefined;
-	const fileIndex = new WorkspaceFileIndex(folder => indexForFiles?.files(folder) ?? Promise.resolve(undefined));
+	const indexForFiles: { current?: WorkspaceIndex } = {};
+	const fileIndex = new WorkspaceFileIndex(folder => indexForFiles.current?.files(folder) ?? Promise.resolve(undefined));
 	// Rewrites run on the agent process every chat shares, in an empty folder of their own.
 	const enhancer = new PromptEnhancer(service.runtime, {
 		cwd: vscode.Uri.joinPath(context.globalStorageUri, 'enhance').fsPath,
@@ -148,7 +148,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	// The indexer runs from indexer.js beside this file, in out/ or dist/.
 	const workspaceIndex = new WorkspaceIndex({ script: path.join(__dirname, 'indexer.js'), version: String(context.extension.packageJSON.version ?? ''), log });
 	agentsView.index = workspaceIndex;
-	indexForFiles = workspaceIndex;
+	indexForFiles.current = workspaceIndex;
 	const docsSources = workspaceIndex.docs = new DocsSources(workspaceIndex, log);
 	// A tool connecting, or the browser or the index turned on or off, changes what a new session gets: the spare follows.
 	context.subscriptions.push(
@@ -182,6 +182,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		// What a new agent's session gets from GeminiCode itself.
 		geminicodeServers: () => [...browserTools.spareServers(), ...teamTools.spareServers(), ...workspaceIndex.spareServers(folder)],
 		emptyFolder: vscode.Uri.joinPath(context.globalStorageUri, 'context-probe').fsPath,
+		connection: async () => connection().AgentConnection,
 		log: message => log.info(message),
 	});
 	const contextMeasures = new ContextMeasures(context.globalState, {
@@ -197,6 +198,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	// Pages opened on request and tools used rarely load from bundles of their own, the first time one of their commands runs.
 	const pages = chunkLoader<typeof import('./pages')>(__dirname, 'pages');
 	const onDemand = chunkLoader<typeof import('./onDemand')>(__dirname, 'onDemand');
+	// The ACP SDK's bundle: the agent's connection, the context probe's and the benchmark's.
+	const connection = chunkLoader<typeof import('./connection')>(__dirname, 'connection');
 	const confluence = chunkLoader<typeof import('./confluence')>(__dirname, 'confluence');
 	teamTools.useConfluence(() => new (confluence().ConfluenceFeature)({
 		extensionUri: context.extensionUri,
@@ -271,8 +274,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			getAgentCommand,
 			knownModelList,
 			version: () => productInfo.version,
-			// Imported here, so the runner and the ACP SDK it uses stay in this bundle, which carries the SDK anyway.
-			runner: () => import('./acp/benchmark'),
+			runner: async () => connection().benchmark,
 		})),
 		scheduleStorageMaintenance(context.globalStorageUri.fsPath, log),
 		mrPanel,
@@ -319,7 +321,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		vscode.commands.registerCommand('gemini.checkAgent', async () => onDemand().checkAgent(log, {
 			command: await getAgentCommand(),
 			cwd: getWorkspaceCwd(),
-			connection: async () => (await import('./acp/agentConnection')).AgentConnection,
+			connection: async () => connection().AgentConnection,
 			findCliEntry,
 		})),
 		vscode.commands.registerCommand('gemini.restartAgent', () => service.restart()),

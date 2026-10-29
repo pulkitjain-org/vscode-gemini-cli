@@ -69,9 +69,15 @@ export const FATAL_EXIT_CODES: ReadonlyMap<number, AgentErrorKind> = new Map([
 	[41, 'auth-failed'], // FatalAuthenticationError
 ]);
 
+/** An error that carries its classification, as `AgentError` does and the connection's own errors do across bundles. */
+function isClassified(error: unknown): error is { readonly info: AgentErrorInfo } {
+	const info = (error as { info?: { kind?: unknown; message?: unknown } } | undefined)?.info;
+	return typeof info?.kind === 'string' && typeof info.message === 'string';
+}
+
 export function classifyAgentError(error: unknown): AgentErrorInfo {
-	if (error instanceof AgentError) {
-		// Already classified, such as a timeout the client raised itself.
+	if (error instanceof AgentError || isClassified(error)) {
+		// Already classified, such as a timeout the connection raised itself (agentConnection.ts, bundled apart).
 		return error.info;
 	}
 	const code = typeof (error as { code?: unknown })?.code === 'number' ? (error as { code: number }).code : undefined;

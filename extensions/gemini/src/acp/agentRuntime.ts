@@ -62,6 +62,8 @@ export interface AgentRuntimeOptions {
 	readonly timeouts?: Partial<SetupTimeouts>;
 	/** Writes a debug line to the log, such as for an error the runtime or its sessions get past. */
 	readonly log?: (message: string) => void;
+	/** Loads the connection module (the ACP SDK with it): the host's bundle of its own (dist/connection.js); the module itself by default, as in tests. */
+	readonly connectionModule?: () => Promise<typeof import('./agentConnection')>;
 	/** Processes of a folder's own, for sessions reopened where the shared process would give them another folder's settings. */
 	readonly folderProcess?: {
 		/** Whether a session reopened in `cwd` needs a process of its own. */
@@ -425,7 +427,7 @@ export class AgentRuntime {
 			opening: 0,
 			ready: new Promise((resolve, reject) => sidecar.onDidChangeState(async state => {
 				if (state.kind === 'running' && !connection) {
-					connection = this.createConnection(await import('./agentConnection'), state.process);
+					connection = this.createConnection(await this.loadConnectionModule(), state.process);
 					connection.initialize().then(agent => resolve({ connection: connection!, agent }), err => {
 						reject(err);
 						this.endFolder(folder);
@@ -566,7 +568,7 @@ export class AgentRuntime {
 		let module: typeof import('./agentConnection');
 		try {
 			// The ACP SDK (and zod, which it validates with) loads here, when the agent starts, not when the extension activates.
-			module = await import('./agentConnection');
+			module = await this.loadConnectionModule();
 		} catch (err) {
 			if (this.connectingTo === agentProcess) {
 				this.setState({ kind: 'error', error: { kind: 'unknown', message: `The agent's protocol code did not load: ${errorMessage(err)}` } });
@@ -604,6 +606,17 @@ export class AgentRuntime {
 	}
 
 	/** A connection to `agentProcess` that routes the agent's messages to the sessions they name. */
+	private loadConnectionModule(): Promise<typeof import('./agentConnection')> {
+		if (this.options.connectionModule) {
+			return this.options.connectionModule();
+		}
+		// A specifier the bundler cannot follow, so the SDK stays out of the extension bundle (the host passes its own
+		// bundle above); this path serves the tests and the development build, where each module is a file of its own.
+		const module = './agentConnection';
+		// eslint-disable-next-line no-restricted-syntax
+		return import(module) as Promise<typeof import('./agentConnection')>;
+	}
+
 	private createConnection(module: typeof import('./agentConnection'), agentProcess: ChildProcessWithoutNullStreams): AgentConnection {
 		return new module.AgentConnection(agentProcess.stdin, agentProcess.stdout, {
 			sessionUpdate: params => this.routeUpdate(params),

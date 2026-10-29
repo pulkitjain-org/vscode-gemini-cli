@@ -388,10 +388,11 @@ Production bundle sizes:
 
 | File | Bytes |
 | --- | --- |
-| `dist/extension.js` | 1,178,837 |
-| `media/chat.js` | 240,543 |
+| `dist/extension.js` | 955,144 (29 Oct 2026; 1,212,205 before the ACP SDK moved out) |
+| `dist/connection.js` | 253,633 (the ACP SDK and zod with English messages only, loaded when the first agent process starts) |
+| `media/chat.js` | 253,936 |
 | `media/draftMarkdown.js` | 126,052 |
-| `media/home.js` | 25,894 |
+| `media/home.js` | 28,043 |
 | `media/teamFlow.js` | 25,130 |
 
-KaTeX (271,660 bytes) and the highlighter (158,012) load only when a reply needs them. The ACP SDK and zod are in `extension.js` but run only when the first agent starts, not at activation.
+KaTeX (271,660 bytes) and the highlighter (158,012) load only when a reply needs them. The ACP SDK and zod are in `connection.js` (`src/connection.ts`), loaded by the runtime when the first agent process starts, seconds after activation; the context probe and the benchmark, which speak ACP themselves, come from the same bundle.
