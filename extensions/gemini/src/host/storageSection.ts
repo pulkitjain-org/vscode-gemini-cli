@@ -12,6 +12,7 @@
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { aliasedSetting } from '../acp/settingAlias';
 import { errorMessage } from '../acp/errors';
 import { cleanupPlan, entriesIn, foldersTwoDown, keepLogsDays, measureStorage, runCleanup, storageAreas, storageGroups, type CleanupItem, type CleanupReason, type StorageGroup, type WorktreeCandidate } from '../acp/storageUsage';
 import type { AgentWorktree } from '../acp/worktrees';
@@ -33,7 +34,13 @@ export interface StorageHost {
 	cliVersion(): string | undefined;
 }
 
-const keepLogsSetting = 'storage.keepLogsDays';
+const keepLogsSetting = 'audit.keepDays';
+
+/** `gemini.audit.keepDays`, or its old name `gemini.storage.keepLogsDays` where only that is set, as used (storageUsage.ts). */
+export function keepDaysSetting(): number {
+	const config = vscode.workspace.getConfiguration(configSection);
+	return keepLogsDays(aliasedSetting(config.inspect<number>(keepLogsSetting), config.inspect<number>('storage.keepLogsDays'), 90));
+}
 const keepLogsChoices = [7, 30, 90, 365, 0];
 
 export class StorageSection {
@@ -47,7 +54,7 @@ export class StorageSection {
 	constructor(private readonly host: StorageHost, private readonly changed: () => void, private readonly home: string = os.homedir()) { }
 
 	view(): StorageView {
-		const days = keepLogsDays(vscode.workspace.getConfiguration(configSection).get<number>(keepLogsSetting));
+		const days = keepDaysSetting();
 		const label = (value: number) => value === 0 ? vscode.l10n.t("Keep everything") : value === 90 ? vscode.l10n.t("Keep for {0} days (default)", value) : vscode.l10n.t("Keep for {0} days", value);
 		const values = keepLogsChoices.includes(days) ? keepLogsChoices : [...keepLogsChoices, days];
 		return {
@@ -130,7 +137,7 @@ export class StorageSection {
 		await this.measure();
 	}
 
-	/** The logs row's menu: `gemini.storage.keepLogsDays`, for this machine. */
+	/** The logs row's menu: `gemini.audit.keepDays`, for this machine. */
 	async setKeepLogs(value: string): Promise<void> {
 		const days = Number(value);
 		if (!Number.isInteger(days) || days < 0) {
@@ -156,7 +163,7 @@ export class StorageSection {
 			globalStorage: this.host.globalStorage,
 			agents: agents.all,
 			merged: agents.merged,
-			keepLogsDays: keepLogsDays(vscode.workspace.getConfiguration(configSection).get<number>(keepLogsSetting)),
+			keepLogsDays: keepDaysSetting(),
 			now: new Date(),
 			worktrees,
 		});

@@ -8,14 +8,11 @@ owner='er.pulkit@gmail.com'
 message="$1"
 policy="$(git rev-parse --show-toplevel)/gemini/scripts/commit-policy.sh"
 
-# A tool's trailers and footers go, wherever a tool added them.
-kept="$message.kept.$$"
-grep -viE '^[[:space:]]*(co-authored-by:.*(claude|anthropic|copilot|codex|openai)|claude-session:|.*generated (with|by) .*(claude|copilot|codex|chatgpt))' "$message" > "$kept"
-# Trailing blank lines left behind by a removed footer go too.
-sed -e :a -e '/^[[:space:]]*$/{$d;N;ba' -e '}' "$kept" > "$message"
-rm -f "$kept"
-
-# Anything else that names a tool is the writer's to reword.
+# A tool's trailers and footers go, wherever a tool added them (the one list is in the policy script);
+# anything else that names a tool is the writer's to reword.
+if [ -f "$policy" ]; then
+	sh "$policy" strip "$message"
+fi
 if [ -f "$policy" ] && ! sh "$policy" message "$message" >&2; then
 	echo >&2 "commit-msg: the commit was not made. Your message is in $(git rev-parse --git-dir)/COMMIT_EDITMSG."
 	exit 1

@@ -1,8 +1,8 @@
 diff --git a/build/gulpfile.vscode.ts b/build/gulpfile.vscode.ts
-index 185be479a22566c1babfc42523428834a3b36f09..605a12d50eca4c11bc7024a274eaad1c157ff4a3 100644
+index 0256e9eabefe869e510d16ef40d04d4db46d8c2b..edd60a314d8817a17f76a2ddb35e134988772c36 100644
 --- a/build/gulpfile.vscode.ts
 +++ b/build/gulpfile.vscode.ts
-@@ -544,6 +544,9 @@ function prepareCopilotRipgrepShimTask(platform: string, arch: string, destinati
+@@ -566,6 +566,9 @@ function prepareCopilotRipgrepShimTask(platform: string, arch: string, destinati
  		const appNodeModulesDir = path.join(appBase, 'node_modules.asar.unpacked');
  
  		const builtInCopilotExtensionDir = path.join(appBase, 'extensions', 'copilot');

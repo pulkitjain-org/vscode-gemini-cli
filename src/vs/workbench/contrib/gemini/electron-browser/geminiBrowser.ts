@@ -424,9 +424,10 @@ CommandsRegistry.registerCommand('_gemini.browser.close', async (accessor, key: 
 
 /**
  * Answers the main process, which asks before a Gemini agent's page loads a
- * file (platform/browserView/electron-main/geminiAgentFiles.ts): the Gemini
- * extension checks it against the agent's file access policy. A load nobody
- * answers for fails.
+ * file, or a local page of the agent's reaches another site
+ * (platform/browserView/electron-main/geminiAgentFiles.ts): the Gemini
+ * extension checks a file against the agent's file access policy and a site
+ * against what the user let the agent see. A load nobody answers for fails.
  */
 class GeminiAgentFileChecks extends Disposable implements IWorkbenchContribution {
 
@@ -440,7 +441,7 @@ class GeminiAgentFileChecks extends Disposable implements IWorkbenchContribution
 	}
 
 	private async answer({ id, agent, url }: IGeminiAgentFileRequest): Promise<void> {
-		const allowed = await this.commandService.executeCommand<boolean>('_gemini.browser.fileAllowed', agent, url).catch(() => false);
+		const allowed = await this.commandService.executeCommand<boolean>('_gemini.browser.loadAllowed', agent, url).catch(() => false);
 		ipcRenderer.send(GeminiAgentFileAnswerChannel, id, allowed === true);
 	}
 }

@@ -20,14 +20,11 @@ import { blockChanges, mergeBlocks, type BlockPart, type MergeConflict } from '.
 import { confluenceSafe, holdBlocks, keepAllKeys, keepEdits, lostKinds, rewritesHeld, takeRewrite, undecided, undoBlocks, type DraftReview } from '../src/acp/draftReview';
 import type { FromReview, ReviewStrings, ReviewView, ToReview } from '../src/host/confluenceReviewProtocol';
 import { adfToHtml, htmlToAdf, textOf, type AdfView } from './adfHtml';
-import { button, el, format, icon, pageStrings } from './panelDom';
+import { button, el, format, icon } from './panelDom';
+import { bootPage } from './panelBoot';
 import { setTip } from './tooltip';
 
-declare function acquireVsCodeApi(): { postMessage(message: FromReview): void };
-
-const vscode = acquireVsCodeApi();
-const strings = pageStrings<ReviewStrings>();
-const page = document.getElementById('page')!;
+const { strings, post, main: page, start } = bootPage<ToReview, FromReview, ReviewStrings>();
 const markdownUrl = document.querySelector<HTMLScriptElement>('script[data-draft-markdown]')?.dataset.draftMarkdown;
 
 type Mode = 'edit' | 'marked' | 'now' | 'changes';
@@ -52,10 +49,6 @@ let status: { text: string; tone: 'ok' | 'error' | '' } = { text: '', tone: '' }
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 /** The page and the draft compared, once for each pair. */
 let compared: { readonly base: AdfDocument; readonly doc: AdfDocument; readonly parts: BlockPart[] } | undefined;
-
-function post(message: FromReview): void {
-	vscode.postMessage(message);
-}
 
 /** The page's blocks and the draft's changes to them; none for a new page. */
 function parts(): BlockPart[] {
@@ -638,8 +631,7 @@ buildToolbar();
 document.addEventListener('selectionchange', placeToolbar);
 window.addEventListener('scroll', () => toolbar.hidden || placeToolbar(), { passive: true });
 
-window.addEventListener('message', (event: MessageEvent<ToReview>) => {
-	const message = event.data;
+start(message => {
 	switch (message.type) {
 		case 'view':
 			void (async () => {
@@ -700,5 +692,3 @@ window.addEventListener('message', (event: MessageEvent<ToReview>) => {
 			return;
 	}
 });
-
-post({ type: 'ready' });

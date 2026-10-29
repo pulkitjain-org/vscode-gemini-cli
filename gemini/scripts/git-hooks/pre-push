@@ -34,6 +34,12 @@ else
 		if [ "$remote_sha" != "$zero" ] && git rev-parse --quiet --verify "$remote_sha^{commit}" >/dev/null; then
 			set -- "$@" "$remote_sha"
 		fi
+		# A branch that moves the upstream pin carries upstream's own history up to
+		# the new tag, which is not the fork's to check: left out, as CI's policy job leaves it out.
+		upstream=$(sh "$policy" upstream-tag "$remote_name/main" 2>/dev/null)
+		if [ -n "$upstream" ]; then
+			set -- "$@" "$upstream"
+		fi
 		sh "$policy" commits "$@" >&2 || failed=1
 	done <<REFS
 $refs
@@ -42,8 +48,10 @@ fi
 
 [ "$failed" = 0 ] || { echo >&2 "pre-push: nothing was pushed."; exit 1; }
 
-# Gemini CI's checks for what the pushed branches change (gemini/scripts/ci-checks.sh).
-# Not for a deleted branch or a tag, and not with GEMINI_SKIP_CHECKS=1.
+# Gemini CI's quick checks for what the pushed branches change (gemini/scripts/ci-checks.sh):
+# lint of the changed files, hygiene, the patch series and the type checks. CI runs the rest on
+# the push; GEMINI_FULL_CHECKS=1 runs it here too. Not for a deleted branch or a tag, and not
+# with GEMINI_SKIP_CHECKS=1.
 checks="$(git rev-parse --show-toplevel)/gemini/scripts/ci-checks.sh"
 pushes_branch=0
 while read -r local_ref local_sha remote_ref remote_sha; do

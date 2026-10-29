@@ -1,8 +1,8 @@
 diff --git a/src/vs/workbench/electron-browser/desktop.contribution.ts b/src/vs/workbench/electron-browser/desktop.contribution.ts
-index 41250d7b714865f9584f22bf36ea78fcccb3a534..636757ae9b7288bfadfb29237be836dc10de355a 100644
+index 0580fa6a273f57b6d61841669fd4d002757086e5..a377d347822850a949d8e89e8421551ed5258e3b 100644
 --- a/src/vs/workbench/electron-browser/desktop.contribution.ts
 +++ b/src/vs/workbench/electron-browser/desktop.contribution.ts
-@@ -291,7 +291,8 @@ import product from '../../platform/product/common/product.js';
+@@ -290,7 +290,8 @@ import product from '../../platform/product/common/product.js';
  			'window.dialogStyle': {
  				'type': 'string',
  				'enum': ['native', 'custom'],

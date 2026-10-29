@@ -46,7 +46,7 @@ export const docGroups: readonly { readonly name: string; readonly pages: readon
 	},
 	{
 		name: 'Set up and fix', pages: [
-			{ slug: 'helpers', title: 'Agent Setup', icon: 'blocks', summary: 'Context per model call, MCP servers, skills, hooks, extensions, memory and the CLI\'s settings.', description: 'GeminiCode\'s Agent Setup: what each model call costs, and the MCP servers, skills, hooks, extensions and memory your Gemini agents load.', topics: ['Context cost', 'MCP servers', 'Skills', 'Hooks', 'Memory'] },
+			{ slug: 'helpers', title: 'Agent Setup', icon: 'blocks', summary: 'Four tabs: what agents load, the index and docs, connections, and storage with the audit log.', description: 'GeminiCode\'s Agent Setup: what agents load and what each model call costs, the workspace index and docs, your connections, and storage with the audit log.', topics: ['Loads', 'Index & Docs', 'Connections', 'Storage & Audit'] },
 			{ slug: 'settings', title: 'Settings', icon: 'settings', summary: 'Every GeminiCode setting by area, and the ones an administrator can lock.', description: 'Every GeminiCode setting, grouped by area with its default, and the settings an administrator can lock with a policy.', topics: ['Chat', 'Agents', 'Browser', 'Team tools', 'Policies'] },
 			{ slug: 'shortcuts', title: 'Keyboard shortcuts', icon: 'keyboard', summary: 'Every shortcut in one table, by area.', description: 'Every GeminiCode keyboard shortcut in one place: agents and layout, the chat, the editor, the terminal and the browser.', topics: ['Agents', 'Chat', 'Editor', 'Browser'] },
 			{ slug: 'troubleshooting', title: 'Troubleshooting', icon: 'life-buoy', summary: 'Common problems, a performance trace, and how to report a bug well.', description: 'Fix common GeminiCode problems: sign-in, the Gemini CLI, folder trust, the index, slow agents, and how to report a bug.', topics: ['Common problems', 'Trace', 'Report'] },
@@ -63,7 +63,7 @@ export const featureIndex: readonly { readonly name: string; readonly items: rea
 	{
 		name: 'Agents', items: [
 			{ icon: 'layout-grid', title: 'Agents and Editor layouts', body: 'Agents on the left, the chat in the middle, its changes on the right. ⌥⌘M switches.', href: 'agents.html#agents-and-editor-layouts' },
-			{ icon: 'sparkles', title: 'Home', body: 'Describe a task, choose Here, On Its Own Branch or To a Project, and press Return.', href: 'agents.html#home' },
+			{ icon: 'sparkles', title: 'Home', body: 'Describe a task, choose Here or On a Branch, and press Return.', href: 'agents.html#home' },
 			{ icon: 'bot', title: 'Agents side by side', body: 'Each agent has its own tab and chat, with a status dot.', href: 'agents.html#agents-side-by-side' },
 			{ icon: 'columns-2', title: 'Files beside each agent', body: 'What an agent opens goes in a group of its own beside its chat.', href: 'agents.html#files-beside-each-agent' },
 			{ icon: 'git-branch', title: 'Agents on their own branch', body: 'A copy of the repository on a new branch. Try its work in yours, then keep it.', href: 'agents.html#agents-on-their-own-branch' },
@@ -81,7 +81,7 @@ export const featureIndex: readonly { readonly name: string; readonly items: rea
 			{ icon: 'at-sign', title: 'Context', body: 'Type @ for files, ⌘L for the selection, or drop in files and images.', href: 'chat.html#attaching-context' },
 			{ icon: 'terminal', title: 'Slash commands and skills', body: 'Team commands, skills and the CLI\'s own, from /.', href: 'chat.html#slash-commands-and-skills' },
 			{ icon: 'wand-sparkles', title: 'Enhance prompt', body: 'Plain words in, a precise prompt out. ⌥⌘E.', href: 'chat.html#enhance-prompt' },
-			{ icon: 'list-checks', title: 'Plan, then build', body: 'Plan mode reads and plans. Build This Plan starts the work.', href: 'chat.html#plan-then-build' },
+			{ icon: 'list-checks', title: 'Plan, then build', body: 'Plan mode reads and plans. Approve Plan starts the work.', href: 'chat.html#plan-then-build' },
 			{ icon: 'pencil', title: 'Review the plan', body: 'Edit the plan by section, comment, and send every comment at once.', href: 'chat.html#review-the-plan' },
 			{ icon: 'list-tree', title: 'Folded turns and subagents', body: 'Each finished turn folds under one line, with subagents as rows.', href: 'chat.html#watching-the-agent-work' },
 			{ icon: 'sigma', title: 'Replies that read well', body: 'Typeset math, coloured code, file links and spell check.', href: 'chat.html#replies' },
@@ -142,7 +142,7 @@ export const featureIndex: readonly { readonly name: string; readonly items: rea
 	},
 	{
 		name: 'Set up', items: [
-			{ icon: 'blocks', title: 'Agent Setup', body: 'MCP servers, skills, hooks, extensions, memory and trusted folders.', href: 'helpers.html' },
+			{ icon: 'blocks', title: 'Agent Setup', body: 'Loads, Index & Docs, Connections, and Storage & Audit, in one page with tabs.', href: 'helpers.html' },
 			{ icon: 'terminal', title: 'Gemini CLI inside', body: 'Your terminal\'s gemini and GeminiCode share settings and chats.', href: 'getting-started.html#set-up' },
 			{ icon: 'settings', title: 'Settings', body: 'Every setting by area, and what an administrator can lock.', href: 'settings.html' },
 			{ icon: 'sparkles', title: 'Make it yours', body: 'Theme, code font and file icons.', href: 'getting-started.html#make-it-yours' },

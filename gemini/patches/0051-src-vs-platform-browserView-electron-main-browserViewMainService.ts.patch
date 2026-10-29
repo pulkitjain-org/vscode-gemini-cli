@@ -1,8 +1,8 @@
 diff --git a/src/vs/platform/browserView/electron-main/browserViewMainService.ts b/src/vs/platform/browserView/electron-main/browserViewMainService.ts
-index 6071bc729a8cfced13b7ade8ce4ea21b52d588b3..71c7da8bfdb6488a8f4a83b5e17e8e98534fbc28 100644
+index ce038d2296b0bd6b2957041f8f5692cf00bc54e7..6b076919fda7487fd5a7689ae0471a4ad39b16fa 100644
 --- a/src/vs/platform/browserView/electron-main/browserViewMainService.ts
 +++ b/src/vs/platform/browserView/electron-main/browserViewMainService.ts
-@@ -28,6 +28,8 @@ import { ILogService } from '../../log/common/log.js';
+@@ -29,6 +29,8 @@ import { ILogService } from '../../log/common/log.js';
  import { IAgentNetworkFilterService } from '../../networkFilter/common/networkFilterService.js';
  import { formatBrowserViewAccessibility } from './browserViewAccessibility.js';
  import { ISandboxNetworkRestrictions } from '../../sandbox/common/sandboxSettingsResolutionHelper.js';
@@ -11,7 +11,7 @@ index 6071bc729a8cfced13b7ade8ce4ea21b52d588b3..71c7da8bfdb6488a8f4a83b5e17e8e98
  
  export const IBrowserViewMainService = createDecorator<IBrowserViewMainService>('browserViewMainService');
  
-@@ -443,6 +445,7 @@ export class BrowserViewMainService extends Disposable implements IBrowserViewMa
+@@ -460,6 +462,7 @@ export class BrowserViewMainService extends Disposable implements IBrowserViewMa
  			options
  		);
  		this.browserViews.set(id, view);
@@ -19,7 +19,7 @@ index 6071bc729a8cfced13b7ade8ce4ea21b52d588b3..71c7da8bfdb6488a8f4a83b5e17e8e98
  		view.presentation = presentation;
  		if (windowConfiguration?.theme) {
  			view.inspector.setTheme(windowConfiguration.theme);
-@@ -706,7 +709,6 @@ export class BrowserViewMainService extends Disposable implements IBrowserViewMa
+@@ -723,7 +726,6 @@ export class BrowserViewMainService extends Disposable implements IBrowserViewMa
  				click: () => inspectTarget.addComment()
  			}));
  			void inspectTarget.highlight().catch(() => { });
@@ -27,7 +27,7 @@ index 6071bc729a8cfced13b7ade8ce4ea21b52d588b3..71c7da8bfdb6488a8f4a83b5e17e8e98
  		}
  
  		menu.append(new MenuItem({ type: 'separator' }));
-@@ -716,6 +718,14 @@ export class BrowserViewMainService extends Disposable implements IBrowserViewMa
+@@ -733,6 +735,14 @@ export class BrowserViewMainService extends Disposable implements IBrowserViewMa
  		}));
  
  		const viewBounds = view.getWebContentsView().getBounds();

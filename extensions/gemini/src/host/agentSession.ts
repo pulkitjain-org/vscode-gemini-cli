@@ -10,12 +10,12 @@ import { AgentClient, type AgentClientOptions } from '../acp/agentClient';
 import { createFileHandlers, isInside } from '../acp/fileAccess';
 import { PermissionBroker } from '../acp/permissions';
 import { AgentStatus } from '../acp/status';
-import { isConfirmToolCall } from '../acp/teamTools';
+import { isTeamWriteToolCall } from '../acp/teamTools';
 import { AgentService } from './agentService';
 import { ChatHost } from './chatController';
 import { getApprovalPolicy } from './configuration';
 import { sessionModel, sessionModelList } from './modelPreference';
-import { getFileAccessPolicy, isIgnoredByGitCached, WorkspaceFileSystem } from './workspaceFileSystem';
+import { agentFileAccessPolicy, getFileAccessPolicy, WorkspaceFileSystem } from './workspaceFileSystem';
 
 /**
  * One agent from the Agents pane: its own ACP session, in its workspace's
@@ -43,7 +43,7 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 		/** Overrides the model each session switches to, such as a project coordinator's Flash model. */
 		preferredModel?: AgentClientOptions['preferredModel'],
 	) {
-		const ownFiles = isInWorkspace(folder) ? undefined : createFileHandlers(new WorkspaceFileSystem(), () => ({ roots: [folder], isIgnored: isIgnoredByGitCached }));
+		const ownFiles = isInWorkspace(folder) ? undefined : createFileHandlers(new WorkspaceFileSystem(), () => agentFileAccessPolicy(folder));
 		this.client = new AgentClient(service.runtime, {
 			cwd: folder,
 			resumeSessionId,
@@ -53,15 +53,15 @@ export class AgentSession implements ChatHost, vscode.Disposable {
 			preferredModel: preferredModel ?? sessionModel,
 			modelList: sessionModelList,
 			isModeAllowed: modeId => isModeAllowed(getApprovalPolicy(), modeId),
-			alwaysAsks: isConfirmToolCall,
+			alwaysAsks: isTeamWriteToolCall,
 			onDidWriteFile: filePath => this.permissions.approvals.noteWrite(filePath),
 			requestPermission: params => this.permissions.request(params),
 			// A folder outside this window's workspace is the agent's only root.
 			fileSystem: ownFiles,
 			explainFileError: sessionId => (ownFiles ?? service.files).lastDenial(sessionId),
 		});
-		// Redirects into the agent's folder may be approved for the session; others always ask.
-		this.permissions.roots = () => isInWorkspace(folder) ? getFileAccessPolicy().roots : [folder];
+		// Redirects into the agent's folders may be approved for the session; others always ask.
+		this.permissions.roots = () => agentFileAccessPolicy(folder).roots;
 		const fire = () => this.onDidChangeStatusEmitter.fire(this.status);
 		this.disposables.push(
 			this.onDidChangeStatusEmitter,

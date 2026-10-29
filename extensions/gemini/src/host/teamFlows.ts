@@ -101,13 +101,18 @@ export class TeamFlows implements vscode.Disposable {
 			run('gemini.team.moveTicket', (key?: unknown, agent?: unknown, suggest?: unknown) => this.moveTicket(str(key), str(agent), str(suggest))),
 			run('gemini.team.logTime', (key?: unknown) => this.moveTicket(str(key), undefined, undefined, 'log')),
 			run('gemini.team.reviewMergeRequest', (project?: unknown, iid?: unknown) => this.reviewMergeRequest(str(project), Number(iid) || undefined)),
-			run('gemini.team.openReview', () => this.openReview()),
+			// From the palette: the review in progress; with an agent id, that agent's review; with a comment thread, the review's page.
+			run('gemini.team.openReview', async (target?: unknown) => {
+				if (isCommentThread(target)) {
+					this.reviews.comments.openPage(target);
+					return;
+				}
+				const review = str(target) ? this.reviews.forAgent(str(target)!) : undefined;
+				return review ? this.reviews.open(review.project, review.iid) : this.openReview();
+			}),
+			run('gemini.team.actions', () => this.pickAction()),
 			run('gemini.team.startNewReview', (project?: unknown, iid?: unknown) => this.startNewReview(str(project), Number(iid) || undefined)),
 			run('gemini.team.discardReview', (project?: unknown, iid?: unknown) => this.discardReview(str(project), Number(iid) || undefined)),
-			run('gemini.team.openAgentReview', async (agent?: unknown) => {
-				const review = str(agent) ? this.reviews.forAgent(str(agent)!) : undefined;
-				return review ? this.reviews.open(review.project, review.iid) : undefined;
-			}),
 			run('gemini.team.fixMergeRequest', (project?: unknown, iid?: unknown) => this.fixMergeRequest(str(project), Number(iid) || undefined)),
 			run('gemini.team.reopenFlow', (id?: unknown) => this.reopenFlow(str(id))),
 			run('gemini.team.discardFlow', async (id?: unknown) => str(id) ? this.tools.flows.close(str(id)!) : undefined),
@@ -330,6 +335,22 @@ export class TeamFlows implements vscode.Disposable {
 	}
 
 	// --- Move a ticket, and log time
+
+	/** The palette's one entry for the Jira and GitLab actions Home's cards offer; each then asks for its ticket, agent or branch. */
+	private async pickAction(): Promise<void> {
+		const items: (vscode.QuickPickItem & { readonly command: string })[] = [
+			{ label: vscode.l10n.t("$(git-pull-request) Open Merge Request..."), detail: vscode.l10n.t("From an agent's branch, with a title and description Gemini drafts"), command: 'gemini.team.openMergeRequest' },
+			{ label: vscode.l10n.t("$(checklist) Run Checks"), detail: vscode.l10n.t("The team's checks on an agent's branch, with Gemini fixing what fails"), command: 'gemini.team.runChecks' },
+			{ label: vscode.l10n.t("$(git-branch) Run Checks on a Branch..."), detail: vscode.l10n.t("The same checks on any branch, before a merge request exists"), command: 'gemini.team.runChecksOnBranch' },
+			{ label: vscode.l10n.t("$(arrow-right) Move Jira Ticket..."), detail: vscode.l10n.t("The moves your workflow allows, with a comment Gemini drafts"), command: 'gemini.team.moveTicket' },
+			{ label: vscode.l10n.t("$(clock) Log Time on Jira Ticket..."), command: 'gemini.team.logTime' },
+			{ label: vscode.l10n.t("$(person) Reassign Jira Ticket..."), command: 'gemini.team.reassignTicket' },
+		];
+		const picked = await vscode.window.showQuickPick(items, { title: vscode.l10n.t("Jira and GitLab Actions"), placeHolder: vscode.l10n.t("What to do; it then asks which ticket, agent or branch") });
+		if (picked) {
+			await vscode.commands.executeCommand(picked.command);
+		}
+	}
 
 	private async moveTicket(key: string | undefined, agent: string | undefined, suggest: string | undefined, mode: 'move' | 'log' = 'move'): Promise<void> {
 		const jira = this.jira();
@@ -1220,6 +1241,11 @@ function plainGitError(err: unknown): unknown {
 		: err.problem === 'signIn' ? vscode.l10n.t("Git couldn't sign in to the server. Sign in with git once in a terminal (run git fetch there), then try again.")
 			: vscode.l10n.t("Git got no answer from the server within a minute. Check your VPN.");
 	return new Error(message, { cause: err });
+}
+
+/** A comment thread from the review's gutter menu, as opposed to an agent id. */
+function isCommentThread(value: unknown): value is vscode.CommentThread {
+	return typeof value === 'object' && value !== null && 'uri' in value && 'comments' in value;
 }
 
 function str(value: unknown): string | undefined {

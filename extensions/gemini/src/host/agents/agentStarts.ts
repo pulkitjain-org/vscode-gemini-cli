@@ -7,18 +7,19 @@
 // task from Agent Home, the team flows, the browser's New Agent dialog and
 // Review My Changes. Each adds the agent to the list and opens its tab.
 
+import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Attachment } from '../../acp/attachments';
 import type { AgentRecord, AgentsModel } from '../../acp/agents';
-import { isModeAllowed } from '../../acp/adminPolicy';
+import { branchDefaults } from '../branchDefaults';
 import { branchNameFrom, isValidBranchName } from '../../acp/branchNames';
 import { errorMessage } from '../../acp/errors';
 import { reviewRequest, workingChanges } from '../../acp/reviewPrompt';
 import { AgentWorktree, repositoryRoot } from '../../acp/worktrees';
 import type { AgentSession } from '../agentSession';
 import type { ChatController } from '../chatController';
-import { configSection, getApprovalPolicy } from '../configuration';
+import { configSection } from '../configuration';
 import { tildify } from '../displayText';
 import { knownModelList, sessionModel, sessionModelList } from '../modelPreference';
 import type { HomeMode } from '../panelProtocol';
@@ -37,6 +38,8 @@ export interface AgentStartsHost {
 	pickModel(id: string, model: string): void;
 	/** Folder trust, asked the first time a folder is chosen for agents. */
 	readonly trust: Pick<FolderTrust, 'ask'>;
+	/** The modes a new agent may start in, in the CLI's words, less what policy turns off (`AgentsView.startModes`). */
+	startModes(): HomeMode[];
 }
 
 export class AgentStarts {
@@ -155,18 +158,22 @@ export class AgentStarts {
 			folders: places.map(place => ({ folder: place.folder, label: path.basename(place.folder) || place.folder, description: tildify(place.folder), git: place.git })),
 			models: models.map(model => ({ id: model.id, name: model.name })),
 			...(models.length ? { defaultModel: sessionModel(models) } : {}),
-			modes: startModes().filter(mode => isModeAllowed(getApprovalPolicy(), mode.id)),
-			branchPlaceholder: branchNameFrom(page),
+			modes: this.host.startModes(),
+			branchPlaceholder: branchNameFrom(page, branchDefaults().prefix),
 		});
 		if (!choice || typeof choice.folder !== 'string' || !path.isAbsolute(choice.folder)) {
 			return undefined;
 		}
-		const { folder, ownBranch, model } = choice;
+		const { folder, ownBranch } = choice;
 		const trusted = await this.host.trust.ask(folder);
-		const mode = typeof choice.mode === 'string' && (trusted || choice.mode === 'plan') ? choice.mode : 'default';
+		// On a branch, the workspace's branch defaults fill what the dialog left as it was: the model, and Plan first.
+		const defaults = ownBranch ? branchDefaults(folder) : undefined;
+		const model = choice.model && models.length && choice.model === sessionModel(models) && defaults?.model && models.some(each => each.id === defaults.model) ? defaults.model : choice.model;
+		const picked = typeof choice.mode === 'string' && (trusted || choice.mode === 'plan') ? choice.mode : 'default';
+		const mode = defaults?.planFirst && picked === (this.host.startModes()[0]?.id ?? 'default') ? 'plan' : picked;
 		let worktree: AgentWorktree | undefined;
 		if (ownBranch) {
-			worktree = await this.worktrees.makeFree(folder, choice.branch && isValidBranchName(choice.branch) ? choice.branch : branchNameFrom(page));
+			worktree = await this.worktrees.makeFree(folder, choice.branch && isValidBranchName(choice.branch) ? choice.branch : branchNameFrom(page, defaults!.prefix));
 			if (!worktree) {
 				return undefined;
 			}
@@ -248,8 +255,11 @@ export class AgentStarts {
 			return workspaces[0].folder;
 		}
 		const addWorkspace = vscode.l10n.t("Add Workspace...");
+		// The CLI's own worktrees (`gemini --worktree <name>`, under .gemini/worktrees/), so a terminal's work can be picked up here.
+		const cliWorktrees = (await Promise.all(workspaces.map(w => cliWorktreesOf(w.folder)))).flat();
 		const picks: (vscode.QuickPickItem & { folder?: string })[] = [
 			...workspaces.map(w => ({ label: path.basename(w.folder), description: tildify(w.folder), folder: w.folder })),
+			...cliWorktrees.length ? [{ label: vscode.l10n.t("Gemini CLI worktrees"), kind: vscode.QuickPickItemKind.Separator }, ...cliWorktrees.map(folder => ({ label: path.basename(folder), description: vscode.l10n.t("gemini --worktree, in {0}", tildify(path.dirname(path.dirname(path.dirname(folder))))), folder }))] : [],
 			{ label: '', kind: vscode.QuickPickItemKind.Separator },
 			{ label: `$(new-folder) ${addWorkspace}` },
 		];
@@ -259,15 +269,6 @@ export class AgentStarts {
 		}
 		return pick.folder ?? chooseFolder();
 	}
-}
-
-/** The approval modes a new agent can start in, in the order the chat lists them. */
-export function startModes(): HomeMode[] {
-	return [
-		{ id: 'default', name: vscode.l10n.t("Default"), description: vscode.l10n.t("Asks before changes") },
-		{ id: 'autoEdit', name: vscode.l10n.t("Auto Edit"), description: vscode.l10n.t("Edits without asking") },
-		{ id: 'plan', name: vscode.l10n.t("Plan"), description: vscode.l10n.t("Read-only") },
-	];
 }
 
 /** A folder the user picks to add as a workspace, or with `open`, as Home's Open Folder... asks; undefined when dismissed. */
@@ -288,4 +289,19 @@ async function reviewFolder(): Promise<string | undefined> {
 		return (active ?? folders[0])?.uri.fsPath;
 	}
 	return (await vscode.window.showWorkspaceFolderPick({ placeHolder: vscode.l10n.t("Review the changes in which folder?") }))?.uri.fsPath;
+}
+
+/** The folders under `<repository>/.gemini/worktrees/`, where `gemini --worktree` keeps its branches; none outside a repository. */
+async function cliWorktreesOf(folder: string): Promise<string[]> {
+	const repository = await repositoryRoot(folder);
+	if (!repository) {
+		return [];
+	}
+	const home = path.join(repository, '.gemini', 'worktrees');
+	try {
+		const entries = await fs.readdir(home, { withFileTypes: true });
+		return entries.filter(entry => entry.isDirectory()).map(entry => path.join(home, entry.name));
+	} catch {
+		return [];
+	}
 }

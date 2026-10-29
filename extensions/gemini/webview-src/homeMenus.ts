@@ -10,7 +10,8 @@
 // (homePopups.ts) get the same menu class from here, so opening one menu
 // closes the others.
 
-import type { HomeAction, HomeButton, HomeCard, HomeRow, HomeStrings, HomeView } from '../src/host/panelProtocol';
+import type { HomeAction, HomeButton, HomeCard, HomeRow, HomeView } from '../src/host/panelProtocol';
+import type { HomeStrings } from '../src/host/panelStrings';
 import { Menu, type MenuRow, type MenuSection } from './menu';
 import { modeIcon } from './modeIcon';
 import { format } from './panelDom';
@@ -31,9 +32,11 @@ export interface HomeMenusHost {
 	addFolder(): void;
 	/** Trust...: the folder's trust question, asked again. */
 	trust(folder: string): void;
-	/** The project the next task goes to with To a Project: a coordinator's id, or 'new'; and picking one. */
+	/** The project the next task goes to, when it goes to one: a coordinator's id, or 'new'; picking one, or a plain branch instead. */
 	project(): string;
+	toProject(): boolean;
 	pickProject(id: string): void;
+	pickBranch(): void;
 	run(action: HomeAction): void;
 	logo(tool: 'jira' | 'gitlab', size: number): Element;
 	/** Home's themed tooltip, for the rows. */
@@ -137,15 +140,15 @@ export function createHomeMenus(host: HomeMenusHost): HomeMenus {
 		{ rows: [{ icon: 'add', name: strings.addFolder, run: () => { folderMenu.close(); host.addFolder(); } }] },
 	], () => strings.noWorkspace);
 
-	/** To a Project's projects: the folder's repository's first, then the others', then a new one there. */
-	const projectMenu: Menu = menu('project', strings.project, () => {
+	/** On a Branch's chevron: a branch of its own, or a project (the folder's repository's first, then the others', then a new one there). */
+	const projectMenu: Menu = menu('project', strings.branchMenu, () => {
 		const view = host.view();
 		const current = view?.workspaces.find(w => w.folder === host.folder());
 		const all = view?.projects ?? [];
 		const row = (p: NonNullable<HomeView['projects']>[number], other: boolean): MenuRow => ({
 			name: p.title,
 			detail: [...other ? [p.workspace] : [], p.threads, p.updated].join(' \u00b7 '),
-			checked: p.id === host.project(),
+			checked: host.toProject() && p.id === host.project(),
 			run: () => {
 				projectMenu.close();
 				if (other) {
@@ -157,9 +160,10 @@ export function createHomeMenus(host: HomeMenusHost): HomeMenus {
 		const here = all.filter(p => p.folder === current?.folder);
 		const others = all.filter(p => p.folder !== current?.folder);
 		return [
+			{ rows: [{ icon: 'git-branch', name: strings.branchAlone, detail: strings.startOwnBranchHint, checked: !host.toProject(), run: () => { projectMenu.close(); host.pickBranch(); } }] },
 			...here.length ? [{ heading: format(strings.projectsIn, current?.name ?? ''), rows: here.map(p => row(p, false)) }] : [],
 			...others.length ? [{ heading: strings.otherProjects, rows: others.map(p => row(p, true)) }] : [],
-			{ rows: [{ icon: 'add', name: format(strings.newProjectIn, current?.name ?? ''), checked: host.project() === 'new', run: () => { projectMenu.close(); host.pickProject('new'); } }] },
+			{ heading: here.length || others.length ? undefined : strings.startProject, rows: [{ icon: 'add', name: format(strings.newProjectIn, current?.name ?? ''), detail: strings.startProjectHint, checked: host.toProject() && host.project() === 'new', run: () => { projectMenu.close(); host.pickProject('new'); } }] },
 		];
 	});
 

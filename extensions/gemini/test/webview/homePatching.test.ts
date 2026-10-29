@@ -15,8 +15,8 @@ import { page, sendToPage, showHomePage, startScript } from './pages';
 
 const { document } = page;
 
-const working: HomeAgent = { id: 'a1', title: 'Fix the cart', workspace: 'shop', state: 'working', status: 'Reading files', updated: 'now' };
-const done: HomeAgent = { id: 'a2', title: 'Add a test', workspace: 'shop', state: 'done', status: 'Done', branch: 'gemini/test', changes: '+12 -3 in 2 files', updated: '5m' };
+const working: HomeAgent = { id: 'a1', title: 'Fix the cart', workspace: 'shop', state: 'working', status: 'Reading files', updated: 'now', buttons: [{ do: 'stop', label: 'Stop', icon: 'debug-stop' }, { do: 'open', label: 'Open', primary: true }] };
+const done: HomeAgent = { id: 'a2', title: 'Add a test', workspace: 'shop', state: 'done', status: 'Done', branch: 'gemini/test', changes: '+12 -3 in 2 files', updated: '5m', buttons: [{ do: 'review', label: 'Review', icon: 'diff' }, { do: 'mergeBack', label: 'Try in Workspace', icon: 'beaker' }, { do: 'tryMenu', label: '', icon: 'chevron-down' }, { do: 'open', label: 'Open', primary: true }] };
 const tickets: HomeCard = { id: 'tickets', title: 'Tickets', tool: 'jira', rows: [{ key: 'SHOP-1', title: 'Cart total is wrong', button: { label: 'Start', action: { kind: 'command', command: 'gemini.start' } } }] };
 
 function view(active: readonly HomeAgent[], cards: readonly HomeCard[] = [tickets]): HomeView {
@@ -64,9 +64,9 @@ describe('Home', () => {
 		sendToPage({ type: 'view', view: view([working, done]) });
 		const card = cardOf('a1');
 		buttonIn(card, 'Open').focus();
-		sendToPage({ type: 'view', view: view([{ ...working, state: 'done', status: 'Done', changes: '+1 -0 in 1 file', branch: 'gemini/cart' }, done]) });
-		expect({ same: cardOf('a1') === card, buttons: [...card.querySelectorAll('button')].map(button => button.textContent), focused: document.activeElement === buttonIn(card, 'Open') })
-			.toEqual({ same: true, buttons: ['Review', 'Try in Workspace', 'Open'], focused: true });
+		sendToPage({ type: 'view', view: view([{ ...working, state: 'done', status: 'Done', changes: '+1 -0 in 1 file', branch: 'gemini/cart', buttons: done.buttons }, done]) });
+		expect({ same: cardOf('a1') === card, buttons: [...card.querySelectorAll('button')].map(button => button.textContent || button.getAttribute('aria-label')), focused: document.activeElement === buttonIn(card, 'Open') })
+			.toEqual({ same: true, buttons: ['Review', 'Try in Workspace', 'Other ways to take the work', 'Open'], focused: true });
 	});
 
 	it('keeps an unchanged dashboard card as it is, and drops an agent that is gone', () => {

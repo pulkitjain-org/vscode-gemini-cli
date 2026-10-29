@@ -27,7 +27,7 @@ You can write while the coordinator works. Your message shows above the input as
 
 If a coordinator turn fails, for example on a quota or network error, its error offers **Retry**, which sends the coordinator what that turn was given again. Your next message carries it too, so nothing you wrote is lost.
 
-**Compact** works in the project chat as in any chat: type `/compact`, use the **Compact** link in the usage popover, or the card offered once the context passes 40%. The coordinator's summary lists its threads, and its next turn gets its role and the project memory again.
+**Compress** works in the project chat as in any chat: type `/compress`, use the **Compress** link in the usage popover, or the card offered once the context passes 40%. The coordinator's summary lists its threads, and its next turn gets its role and the project memory again.
 
 ## Threads
 
@@ -80,7 +80,7 @@ A thread that finished without changes, such as an assessment, offers **Open** t
 
 ### Merge commits instead
 
-Set `gemini.agents.mergeBack` to `commit` to have the card offer **Merge Back** in place of **Try in Workspace**. It commits the thread's work on its branch and merges the branch into the branch your folder has checked out, and the thread is then resolved.
+The chevron beside the card's **Try in Workspace** offers **Merge Back** and, with GitLab connected, **Open Merge Request**, and remembers your pick for the repository. Merge Back commits the thread's work on its branch and merges the branch into the branch your folder has checked out, and the thread is then resolved.
 
 ![A finished thread card with Merge back, Review changes and Undo thread](../../site/media/project-merge-dark.webp)
 
@@ -91,7 +91,7 @@ A project can hold more than one repository, such as a content site and the app 
 - Each thread gets a worktree of each repository it needs, side by side in its folder, on the same branch name.
 - The coordinator picks the repositories for each thread from what you asked, and asks you when it can't tell. A thread can also add another repository itself mid-task.
 - When you start a thread yourself, tick the repositories it works in.
-- **Try in Workspace** tries each repository's work in your checkout of that repository. With merge commits, each repository has its own **Merge Back** on the card, and the thread stays open until every repository with changes is merged.
+- **Try in Workspace** tries each repository's work in your checkout of that repository. With Merge Back remembered for the repository, each repository has its own **Merge Back** on the card, and the thread stays open until every repository with changes is merged.
 
 ## Project settings and memory
 

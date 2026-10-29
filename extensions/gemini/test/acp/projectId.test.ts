@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { describe, expect, it } from 'vitest';
-import { buildAgentEnv } from '../../src/acp/env';
+import { buildAgentEnv, withoutSecrets } from '../../src/acp/env';
 import { resolveProjectId, validateProjectId, workspaceOverride } from '../../src/acp/projectId';
 
 describe('resolveProjectId', () => {
@@ -51,6 +51,12 @@ describe('validateProjectId', () => {
 });
 
 describe('buildAgentEnv', () => {
+	it('leaves out variables that look like credentials, except the CLI\'s own', () => {
+		const env = { PATH: '/usr/bin', GITHUB_TOKEN: 'ghp', NPM_TOKEN: 'npm', AWS_SECRET_ACCESS_KEY: 'aws', DB_PASSWORD: 'pw', SLACK_API_KEY: 'sk', KEYBOARD: 'us', MONKEY: 'x', GEMINI_API_KEY: 'g', GOOGLE_API_KEY: 'gk', GOOGLE_APPLICATION_CREDENTIALS: '/c.json' };
+		expect(Object.keys(withoutSecrets(env))).toEqual(['PATH', 'KEYBOARD', 'MONKEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GOOGLE_APPLICATION_CREDENTIALS']);
+		expect(buildAgentEnv({ GITHUB_TOKEN: 'ghp' }, 'p')).toEqual({ GOOGLE_CLOUD_PROJECT: 'p', NODE_USE_SYSTEM_CA: '1' });
+	});
+
 	it('injects the project and keeps proxy settings', () => {
 		const env = buildAgentEnv({ HTTPS_PROXY: 'http://proxy:3128', NODE_EXTRA_CA_CERTS: '/ca.pem', GOOGLE_CLOUD_PROJECT_ID: 'stale' }, 'my-project', { proxy: 'http://editor-proxy:8080', noProxy: ['corp.example'] });
 		expect(env).toEqual({ HTTPS_PROXY: 'http://proxy:3128', NODE_EXTRA_CA_CERTS: '/ca.pem', GOOGLE_CLOUD_PROJECT: 'my-project', NODE_USE_SYSTEM_CA: '1', NO_PROXY: 'corp.example', no_proxy: 'corp.example' });

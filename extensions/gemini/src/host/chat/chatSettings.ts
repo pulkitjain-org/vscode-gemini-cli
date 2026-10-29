@@ -6,22 +6,26 @@
 // The composer's mode and model pickers. A mode the CLI refuses because it
 // does not trust the folder offers to trust it, and the chat says when the
 // agent switches mode by itself. The mode the chat was in before Plan is kept
-// for Build This Plan, which builds in it.
+// for Approve Plan, which builds in it.
 
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { ChatTranscript } from '../../acp/chatTranscript';
+import { setCliDefaultModel } from '../../acp/cliPreferences';
+import { geminiDir } from '../../acp/directRequest';
 import { AgentError, errorMessage } from '../../acp/errors';
 import type { FromWebview, ToWebview } from '../chatProtocol';
 import { rememberModel } from '../modelPreference';
 import type { ChatControllerOptions, ChatHost } from './chatOptions';
 
-export type SettingsMessage = Extract<FromWebview, { readonly type: 'setMode' | 'setModel' }>;
+export type SettingsMessage = Extract<FromWebview, { readonly type: 'setMode' | 'setModel' | 'setCliDefaultModel' }>;
 
 export class ChatSettings implements vscode.Disposable {
 
 	private readonly listeners: { dispose(): void }[];
 	/** The last mode other than Plan the session was in. */
 	private lastBuildMode: string | undefined;
+	private lastPlainMode: string | undefined;
 
 	constructor(
 		private readonly service: Pick<ChatHost, 'client' | 'permissions' | 'askToTrust'>,
@@ -31,24 +35,34 @@ export class ChatSettings implements vscode.Disposable {
 	) {
 		this.noteMode(service.client.settings.mode?.currentId);
 		this.listeners = [
-			service.client.onDidChangeModeByAgent(({ from, to }) => {
+			service.client.onDidChangeModeByAgent(({ from, to, restored }) => {
 				const name = (id: string | undefined) => service.client.settings.mode?.available.find(choice => choice.id === id)?.name ?? id ?? '';
-				this.transcript.addNotice(from === 'plan'
-					? vscode.l10n.t("Plan approved, now in {0} mode.", name(to))
-					: vscode.l10n.t("The agent switched to {0} mode.", name(to)));
+				this.transcript.addNotice(restored
+					? vscode.l10n.t("Gemini CLI switched to {0} after that approval; {1} is back, as you chose.", name(from), name(to))
+					: from === 'plan'
+						? vscode.l10n.t("Plan approved, now in {0} mode.", name(to))
+						: vscode.l10n.t("The agent switched to {0} mode.", name(to)));
 			}),
 			service.client.onDidChangeSettings(settings => this.noteMode(settings.mode?.currentId)),
 		];
 	}
 
-	/** The mode the chat was in before Plan mode, which Build This Plan builds in; unset when it started in Plan. */
+	/** The mode the chat was in before Plan mode, which Approve Plan builds in; unset when it started in Plan. */
 	get modeBeforePlan(): string | undefined {
 		return this.lastBuildMode;
+	}
+
+	/** The last mode that was neither YOLO nor Plan: where ⌘Y goes back to from YOLO. */
+	get modeBeforeYolo(): string | undefined {
+		return this.lastPlainMode;
 	}
 
 	private noteMode(id: string | undefined): void {
 		if (id && id !== 'plan') {
 			this.lastBuildMode = id;
+		}
+		if (id && id !== 'plan' && id !== 'yolo') {
+			this.lastPlainMode = id;
 		}
 	}
 
@@ -71,6 +85,24 @@ export class ChatSettings implements vscode.Disposable {
 					}
 				});
 				break;
+			case 'setCliDefaultModel':
+				void this.setCliDefault(message.id);
+				break;
+		}
+	}
+
+	/** Writes the model to the user's CLI settings, where the terminal's /model dialog saves its default, and says so in the chat. */
+	private async setCliDefault(modelId: string): Promise<void> {
+		const name = this.service.client.settings.model?.available.find(choice => choice.id === modelId)?.name ?? modelId;
+		const file = path.join(geminiDir(), 'settings.json');
+		try {
+			if (await setCliDefaultModel(file, modelId)) {
+				this.transcript.addNotice(vscode.l10n.t("The Gemini CLI now starts on {0}, in the terminal too.", name), 'info');
+			} else {
+				this.transcript.addNotice(vscode.l10n.t("Couldn't write {0}: it isn't valid JSON.", file), 'error');
+			}
+		} catch (err) {
+			this.transcript.addNotice(errorMessage(err), 'error');
 		}
 	}
 

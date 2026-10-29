@@ -27,8 +27,12 @@ export interface ChangesSource {
 	readonly branch?: string;
 	/** Commits the changed files on a new branch (agents in the workspace folder). */
 	commit?(): Promise<void>;
-	/** Merge Back (agents on their own branch): Try in Workspace, or the merge with `gemini.agents.mergeBack` set to "commit". */
+	/** The Try button (agents on their own branch): Try in Workspace, Merge Back or Open Merge Request, as remembered for the repository (`tryChoices.ts`). */
 	mergeBack?(): Promise<void>;
+	/** What the Try button does now. */
+	tryChoice?(): 'try' | 'merge' | 'mr';
+	/** The chevron beside it: pick and remember the choice, then run it. */
+	tryMenu?(): Promise<void>;
 	/** Its work is being tried in the user's checkout: Keep Changes and Take Back instead of Merge Back. */
 	readonly trying?: boolean;
 	keep?(): Promise<void>;
@@ -58,7 +62,6 @@ export class ChangesView implements vscode.TreeDataProvider<EditedFile>, vscode.
 			this.tree,
 			this.onDidChangeTreeDataEmitter,
 			vscode.workspace.registerTextDocumentContentProvider(originalScheme, this),
-			vscode.commands.registerCommand('gemini.changes.openFile', (file?: EditedFile) => file && this.openFile(file)),
 			vscode.commands.registerCommand('gemini.changes.openAll', () => this.source && this.openAll(this.source)),
 			vscode.commands.registerCommand('gemini.changes.clear', () => this.source?.changes.clear()),
 		);
@@ -101,7 +104,7 @@ export class ChangesView implements vscode.TreeDataProvider<EditedFile>, vscode.
 		const counts = formatCounts(file);
 		item.description = relativeDir && !relativeDir.startsWith('..') ? `${counts}  ${relativeDir}` : counts;
 		item.tooltip = file.created ? vscode.l10n.t("{0} (new file)", file.path) : file.path;
-		item.command = { command: 'gemini.changes.openFile', title: vscode.l10n.t("Open Changes"), arguments: [file] };
+		item.command = { command: 'gemini.agents.openChanges', title: vscode.l10n.t("Open Changes"), arguments: [file] };
 		item.contextValue = 'file';
 		return item;
 	}
@@ -122,7 +125,8 @@ export class ChangesView implements vscode.TreeDataProvider<EditedFile>, vscode.
 		vscode.Disposable.from(...this.disposables).dispose();
 	}
 
-	private async openFile(file: EditedFile): Promise<void> {
+	/** Opens the file's diff, from its row. */
+	async openFile(file: EditedFile): Promise<void> {
 		const uri = vscode.Uri.file(file.path);
 		const source = this.source;
 		const viewColumn = await source?.editorColumn();

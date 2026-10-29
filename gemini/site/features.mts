@@ -55,7 +55,7 @@ export const featurePages: readonly FeaturePage[] = [
 		lead: 'Each agent is a tab with its own chat, files and changes, in the folder it works in or on a branch of its own. A local index of every workspace lets agents go straight to the code that matters, instead of reading file by file.',
 		hero: { name: 'showcase-work', alt: 'An agent at work in Agents layout: the agent list on the left, its chat in the middle and its changes on the right', clip: true },
 		steps: [
-			{ title: 'Describe the task', body: 'Type it on Home and press Return. **Here** works in your folder, **On Its Own Branch** gives the agent a copy of the repository on a new branch, and **To a Project** hands the task to a project.' },
+			{ title: 'Describe the task', body: 'Type it on Home and press Return. **Here** works in your folder, **On a Branch** gives the agent a copy of the repository on a new branch, and its chevron hands the task to a project.' },
 			{ title: 'Watch, or step away', body: 'A status dot per agent: a spinner while it works, amber when it waits for you, green when done. A Mac notification says when one needs you.' },
 			{ title: 'Review its changes', body: 'Every file it changed is in Changes, beside its chat. Keep or undo each change in the file, or all at once.' },
 			{ title: 'Bring the work back', body: '**Merge Back** puts an agent\'s changes in your checkout, unstaged, to run and test. **Keep Changes** makes them yours; **Take Back** removes them.' },
@@ -109,7 +109,7 @@ export const featurePages: readonly FeaturePage[] = [
 		hero: { name: 'showcase-review', alt: 'Keeping an agent\'s edits one by one, with Keep and Undo above each change', clip: true },
 		steps: [
 			{ title: 'Write the prompt', body: '`@` adds files, ⌘L the selection, and you can drop in files, images and PDFs. **Enhance prompt** turns plain words into a precise prompt.' },
-			{ title: 'Plan first, if you like', body: 'In Plan mode the agent reads and writes a plan. **Review Plan** opens it to edit and comment on, and nothing changes until you press **Build This Plan**.' },
+			{ title: 'Plan first, if you like', body: 'In Plan mode the agent reads and writes a plan. **Review Plan** opens it to edit and comment on, and nothing changes until you press **Approve Plan**.' },
 			{ title: 'Approve what runs', body: 'A command or an edit shows a card first: allow it once, for the session, or reject it. Pick a looser mode when you trust the task.' },
 			{ title: 'Keep or undo', body: 'Each change shows in its file with **Keep** and **Undo** above it. A reply that changed files undoes in one click, and **Rewind** goes back to before any message.' },
 		],
@@ -146,8 +146,8 @@ export const featurePages: readonly FeaturePage[] = [
 			},
 			{
 				title: 'Plan mode',
-				body: ['The agent reads the code and writes a plan that ends with **Build This Plan**. Nothing changes until you press it.'],
-				media: { name: 'showcase-plan', alt: 'An agent in Plan mode writing a plan that ends with Build This Plan', clip: true },
+				body: ['The agent reads the code and writes a plan that ends with **Approve Plan**. Nothing changes until you press it.'],
+				media: { name: 'showcase-plan', alt: 'An agent in Plan mode writing a plan that ends with Approve Plan', clip: true },
 			},
 			{
 				title: 'Review the plan',

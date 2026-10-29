@@ -47,8 +47,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// The team flows, about 32 KB: Open Merge Request, Move Ticket and Log Time, Review and Checks, with the
 	// review's comments, threads and suggested changes. Loaded only with a flow's page.
 	'media/teamFlow.js': 36_000,
-	// Project Helpers, about 17.3 KB: the Storage section added about 1.4 KB.
-	'media/settings.js': 19_000,
+	// Agent Setup, about 19.4 KB: the Storage section added about 1.4 KB, the CLI's default approval mode as a select about 1 KB.
+	'media/settings.js': 20_500,
 	// Connections, about 17.5 KB: the Jira sites after the first and Confluence's per-site Connect dialog added about 4 KB.
 	'media/connections.js': 20_000,
 	// The Review Page for Confluence drafts, about 27 KB: the in-place editor, its floating toolbar, the marked changes
@@ -61,7 +61,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// An agent's Files page: Recents, search and the folder tree, about 6 KB.
 	'media/agentFiles.js': 7_000,
 	// The audit log page, about 8 KB.
-	'media/auditLog.js': 10_000,
+	// The Storage section (settingsStorage.ts, with its select menu) moved here from Agent Setup's Loads tab, about 7 KB.
+	'media/auditLog.js': 18_500,
 	// The Index page, about 19 KB: workspaces' indexes, attached docs, the Add Docs and Files Left Out popups,
 	// with the shared select menu and tooltips.
 	'media/indexPage.js': 22_000,
@@ -87,7 +88,7 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	'media/sideChat.js': 5_000,
 	// Home's menus (+, folder, mode, From Your Tools, a row's "...") with the menu class, about 7.6 KB, loaded once
 	// Home has settled or on the first click on a menu's button.
-	'media/homeMenus.js': 9_000,
+	'media/homeMenus.js': 9_500,
 	// The emoji picker, about 97 KB, loaded the first time a reaction button is hovered or focused: about 88 KB
 	// of emoji data (1,923 emoji with their names and three search words each) and its own code.
 	'media/emojiPicker.js': 105_000,
@@ -98,7 +99,12 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// and agent tools' definitions added about 13 KB; Confluence's client, calls, drafts and Review Page are in dist/confluence.js.
 	// The Index page moving to dist/pages.js took it from about 1,206 KB to about 1,187 KB. Side questions, the
 	// language servers' tools and research added about 18 KB; the docs crawler moving to dist/onDemand.js took 9 KB off.
-	'dist/extension.js': 1_206_000,
+	// The ACP SDK and zod (about 250 KB) moved to dist/connection.js, loaded when the first agent process starts:
+	// from about 1,212 KB to about 955 KB.
+	'dist/extension.js': 1_010_000,
+	// The agent's connection with the ACP SDK and zod (English messages only), and the benchmark's own ACP client,
+	// about 254 KB (src/connection.ts), loaded when the first agent process starts, seconds after activation.
+	'dist/connection.js': 270_000,
 	// Project Helpers and Connections, about 96 KB, loaded the first time one is opened (src/pages.ts): their own code
 	// and their copy of jsonc-parser (about 17 KB), which edits the Gemini CLI's settings files keeping their comments.
 	// Project Helpers' Storage section, with the storage measuring and Clean Up's list, is about 9 KB of it.
@@ -109,7 +115,8 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// An agent's Files page (agentFilesPage.ts, agentFiles.ts), about 7 KB, loaded the first time one opens.
 	// Sync Design System on Figma's row in Connections added about 0.4 KB. The Index page with its docs suggestions
 	// (indexPage.ts, docs/suggest.ts), about 21 KB, moved here from dist/extension.js.
-	'dist/pages.js': 168_000,
+	// The Storage section's host (storageSection.ts) moved to dist/onDemand.js with the audit page, about 10 KB.
+	'dist/pages.js': 160_000,
 	// Confluence, about 27 KB, loaded the first time an agent or a page uses it (src/confluence.ts): its client, the
 	// agents' calls, the drafts and the Review Page's host, with publishing only the changes kept (draftReview.ts,
 	// blockMerge.ts) and the page's localized strings.
@@ -125,9 +132,9 @@ export const bundleBudgets: Readonly<Record<string, number>> = {
 	// Sync Design System and the design system's reads for Figma (designSystemSync.ts, designSystem.ts, designTokens.ts)
 	// added about 9 KB; the pilot's export, removed, had been about 3 KB. The language servers' adapter for agents'
 	// index tools (editorToolsHost.ts), about 4 KB, loaded the first time an agent asks one. The research engine
-	// (research.ts), about 9 KB, loaded with the first /research. The docs crawler (docs/crawler.ts), about 9 KB,
+	// (research.ts), about 9 KB, loaded with the first side question that reads the code. The docs crawler (docs/crawler.ts), about 9 KB,
 	// moved here from dist/extension.js and loaded with the first docs fetch.
-	'dist/onDemand.js': 156_000,
+	'dist/onDemand.js': 170_000,
 	// The indexer process, about 66 KB: parsing, SQLite queries and docs conversion, forked on first use, never
 	// loaded in the extension host.
 	'dist/indexer.js': 120_000,

@@ -1,8 +1,8 @@
 diff --git a/src/vs/platform/browserView/electron-main/browserSession.ts b/src/vs/platform/browserView/electron-main/browserSession.ts
-index 99a1c114062556506b1fc91f71d3875fb74cf5dc..ae9c3ce617a7015115cffa04fd96f6feb9734a82 100644
+index 5bd08892401fe5fb20d13abe185a66f138e61d22..1274a52a0ccbde875543fc81f2c64f46594b57a9 100644
 --- a/src/vs/platform/browserView/electron-main/browserSession.ts
 +++ b/src/vs/platform/browserView/electron-main/browserSession.ts
-@@ -21,6 +21,7 @@ import { IInstantiationService } from '../../instantiation/common/instantiation.
+@@ -22,6 +22,7 @@ import { IInstantiationService } from '../../instantiation/common/instantiation.
  import { localize } from '../../../nls.js';
  import { IAgentNetworkFilterService } from '../../networkFilter/common/networkFilterService.js';
  import { ISandboxNetworkRestrictions } from '../../sandbox/common/sandboxSettingsResolutionHelper.js';
@@ -10,7 +10,7 @@ index 99a1c114062556506b1fc91f71d3875fb74cf5dc..ae9c3ce617a7015115cffa04fd96f6fe
  
  /**
   * Holds an Electron session along with its storage scope and unique browser
-@@ -332,7 +333,8 @@ export class BrowserSession {
+@@ -389,7 +390,8 @@ export class BrowserSession {
  			return;
  		}
  		this._networkFilterEnabled = enabled;
@@ -20,7 +20,7 @@ index 99a1c114062556506b1fc91f71d3875fb74cf5dc..ae9c3ce617a7015115cffa04fd96f6fe
  			let uri: URI;
  			try {
  				uri = URI.parse(details.url, true);
-@@ -353,12 +355,15 @@ export class BrowserSession {
+@@ -410,12 +412,15 @@ export class BrowserSession {
  			type: 'frame',
  			filePath: FileAccess.asFileUri('vs/platform/browserView/electron-browser/preload-browserView.js').fsPath
  		});

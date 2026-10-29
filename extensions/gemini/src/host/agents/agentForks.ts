@@ -15,6 +15,7 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { AgentProjectRole, AgentRecord, AgentsModel } from '../../acp/agents';
+import { branchDefaults } from '../branchDefaults';
 import { branchNameFrom, isValidBranchName } from '../../acp/branchNames';
 import { forkNote } from '../../acp/chatTurns';
 import { registeredChatsFolder } from '../../acp/cliSessions';
@@ -81,7 +82,7 @@ export class AgentForks {
 		const branch = await currentBranch(repository).catch(() => undefined);
 		const main = await mainRepository(repository);
 		// A fork of an agent on its own branch is named after that branch; otherwise the dialog names it after the fork.
-		const named = record.worktree ? `${record.worktree.branch}-fork` : branchNameFrom(vscode.l10n.t("{0} (fork)", record.title));
+		const named = record.worktree ? `${record.worktree.branch}-fork` : branchNameFrom(vscode.l10n.t("{0} (fork)", record.title), branchDefaults(repository).prefix);
 		return { git: true, ...(branch ? { branch } : {}), forkBranch: await freeBranchName([main], named), ownBranch: !!record.worktree, ...(record.project?.role === 'thread' ? { branchOnly: true } : {}) };
 	}
 
@@ -166,7 +167,7 @@ export class AgentForks {
 			throw new Error(vscode.l10n.t("{0} is not a valid branch name.", name));
 		}
 		const main = await mainRepository(parentFolder);
-		return this.worktrees.makeFrom(parentFolder, await freeBranchName([main], name || 'gemini/fork'));
+		return this.worktrees.makeFrom(parentFolder, await freeBranchName([main], name || `${branchDefaults(parentFolder).prefix}fork`));
 	}
 
 	/**

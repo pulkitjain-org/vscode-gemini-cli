@@ -31,6 +31,20 @@ The clips' dates are also in `clipDates` in `build.mts`, which the site's video 
 
 Nothing at the moment.
 
+## Needs retaking for 1.7
+
+The 1.7 release renames and moves what these show, so each is retaken from the 1.7 dev build before the site is rebuilt:
+
+- `docs/plus-menu` (Chat guide): the model menu now ends in **Set as Default for the CLI**.
+- `compact-line` (Chat guide): the line reads **Compressed**, and the command is `/compress`.
+- The `showcase-plan` clip and `docs/plan-review` (Chat guide, feature pages): **Build This Plan** is **Approve Plan**, with the CLI's four answers on its chevron.
+- Every Home shot (`showcase-work` poster, the Home shots in the Agents guide and the landing page): the chooser is **Here** / **On a Branch** with a chevron, the quick actions are New Agent, Review and Run Checks, there is no Index button, and the tool logos are one line.
+- `agents-pane` (Agents guide): rows say "needs you", "done", "kept" and "merged", not "waiting" and "idle".
+- `docs/project-helpers`, `index-page` and the Connections shot (Agent Setup, Agents and Team tools guides): Agent Setup now has the tab strip (Loads, Index & Docs, Connections, Storage & Audit), and Storage sits on the Storage & Audit tab.
+- Any shot with the status bar: one **Gemini** item carries the team tools, the index and the audit count.
+- `fork-list`, `try-scm` and `try-workspace` (Agents guide): the Try button carries a chevron.
+- The side question shot, if one is taken: **Read the code too** beside **Ask**.
+
 ## Needs retaking for 1.6
 
 These show the app before 1.6 and are still on the site:
@@ -38,7 +52,7 @@ These show the app before 1.6 and are still on the site:
 - `project-threads` (landing page, Projects): thread cards with **Merge back** and a side panel saying "1 merged back". 1.6 offers **Try in Workspace**, and the side panel counts each thread's requests.
 - `project-merge` (Projects guide): a finished thread card with **Merge back**, **Review changes** and **Undo thread**. Retake it with the 1.6 card, and change its alt text in `gemini/docs/guide/projects.md`.
 - The `showcase-projects` clip (Projects guide and feature page): ends on a **Merge back** card.
-- The `showcase-plan` clip (Chat guide and feature page): the reply ends with only **Build This Plan**. 1.6 adds **Review Plan** beside it, and Build This Plan has a ⌄.
+- The `showcase-plan` clip (Chat guide and feature page): the reply ends with only **Approve Plan**. 1.6 adds **Review Plan** beside it, and Approve Plan has a ⌄.
 
 Possibly out of date, to check when retaking the ones above: `project-chat` (no request counts in the side panel), the `showcase-wait` clip's permission card, and `docs/project-settings` and `docs/project-memory`.
 

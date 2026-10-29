@@ -24,7 +24,8 @@ import { PromptEnhancer } from './acp/promptEnhancer';
 import { configSection, getAgentCommand, getWorkspaceCwd, loadProductInfo, productInfo, setAgentEnvOverride, setStorageDirs } from './host/configuration';
 import { initModelList, initModelPreference, knownModelList } from './host/modelPreference';
 import { initReactionRecents } from './host/chatReactions';
-import { SetupWalkthrough, walkthroughId } from './host/setupWalkthrough';
+import { defaultConcurrency } from './acp/research';
+import { SetupState } from './host/setupState';
 import { GeminiStatusBar } from './host/statusBar';
 import { findCliEntry, QuickEdits } from './host/quickEdits';
 import { UsageMeter } from './host/usageMeter';
@@ -37,15 +38,12 @@ import { TeamFlows } from './host/teamFlows';
 import { setTraceFile, setTraceFolder } from './host/traceCommand';
 import { scheduleStorageMaintenance } from './host/storageMaintenance';
 import { MrPanel } from './host/mrPanel';
-import { TeamStatusBar } from './host/teamStatusBar';
-import { AuditStatusBar } from './host/auditStatusBar';
 import { chunkLoader, LazyFeature, setExtensionDir } from './host/lazyFeature';
 import { teamRequest } from './acp/teamHttp';
 import { openTeamLink } from './host/teamLinks';
 import { WorkspaceFileIndex } from './host/workspaceFiles';
 import { WorkspaceIndex } from './host/workspaceIndex';
 import { DocsSources } from './host/docsSources';
-import { IndexStatusBar } from './host/indexStatusBar';
 import { measureFolderContextCost } from './host/contextCostProbe';
 import { ContextMeasures } from './host/chat/chatContext';
 import { FixWithGemini } from './host/quickFix';
@@ -78,7 +76,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const ownTrust = setTimeout(() => void service.trust.startup(), 3000);
 	context.subscriptions.push({ dispose: () => clearTimeout(ownTrust) });
 	const diffPreview = new DiffPreview();
-	const fileIndex = new WorkspaceFileIndex();
+	// The @ picker's list comes from the workspace index once it is built (set below), else from the host's own walk.
+	const indexForFiles: { current?: WorkspaceIndex } = {};
+	const fileIndex = new WorkspaceFileIndex(folder => indexForFiles.current?.files(folder) ?? Promise.resolve(undefined));
 	// Rewrites run on the agent process every chat shares, in an empty folder of their own.
 	const enhancer = new PromptEnhancer(service.runtime, {
 		cwd: vscode.Uri.joinPath(context.globalStorageUri, 'enhance').fsPath,
@@ -117,8 +117,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		},
 		workspaceFolder: getWorkspaceCwd,
 	});
-	const walkthrough = new SetupWalkthrough(service, context.globalState);
-	const warmup = new AgentWarmup(service, () => walkthrough.isSetUp, log);
+	const setup = new SetupState(service, context.globalState);
+	const warmup = new AgentWarmup(service, () => setup.isSetUp, log);
 	const browserTools = new BrowserTools(String(context.extension.packageJSON.version ?? ''), log, {
 		stop: agent => agentsView.stopTurn(agent),
 		title: agent => agentsView.agentTitle(agent) ?? vscode.l10n.t("Agent"),
@@ -145,21 +145,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	agentsView.teamTools = teamTools;
 	// The indexer runs from indexer.js beside this file, in out/ or dist/.
 	const workspaceIndex = new WorkspaceIndex({ script: path.join(__dirname, 'indexer.js'), version: String(context.extension.packageJSON.version ?? ''), log });
+	// One status bar item for the team tools, the index and the audit log too.
+	statusBar.attach({ connections: teamTools, index: workspaceIndex, audit: teamTools.audit });
 	agentsView.index = workspaceIndex;
+	indexForFiles.current = workspaceIndex;
 	const docsSources = workspaceIndex.docs = new DocsSources(workspaceIndex, log);
 	// A tool connecting, or the browser or the index turned on or off, changes what a new session gets: the spare follows.
 	context.subscriptions.push(
 		workspaceIndex,
 		docsSources,
 		new LazyFeature(['gemini.index.open', 'gemini.index.rebuild', 'gemini.index.pause', 'gemini.index.addDocs'], () => new (pages().IndexPage)(context.extensionUri, workspaceIndex, docsSources, agentsView, service, context.globalState)),
-		new IndexStatusBar(workspaceIndex),
 		workspaceIndex.onDidChangeEnabled(() => agentsView.refreshSpare()),
 		teamTools.onDidChange(() => agentsView.refreshSpare()),
 		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.browser`) && agentsView.refreshSpare()),
 	);
-	// Agents' research tool runs the research engine from dist/onDemand.js on the agent process, as /research does.
+	// Agents' research tool runs the research engine from dist/onDemand.js on the agent process, as a side question that reads the code does.
 	workspaceIndex.research = async (folder, question) => {
-		const concurrency = vscode.workspace.getConfiguration(configSection).get<number>('research.concurrency', 4);
 		const run = new (onDemand().ResearchRun)(question, {
 			runtime: service.runtime,
 			cwd: folder,
@@ -167,7 +168,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			release: worker => workspaceIndex.forgetAgent(worker),
 			ask: (system, prompt, signal) => enhancer.ask(system, prompt, signal),
 			outline: await workspaceIndex.outlineOf(folder).catch(() => undefined),
-			concurrency: Math.min(8, Math.max(1, Math.floor(concurrency) || 4)),
+			concurrency: defaultConcurrency,
 			onProgress: progress => progress.state === 'done' || progress.state === 'failed' ? log.info(`Research for an agent in ${folder}: ${progress.state}, ${progress.slices.length} parts`) : undefined,
 		});
 		return run.run();
@@ -179,6 +180,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		// What a new agent's session gets from GeminiCode itself.
 		geminicodeServers: () => [...browserTools.spareServers(), ...teamTools.spareServers(), ...workspaceIndex.spareServers(folder)],
 		emptyFolder: vscode.Uri.joinPath(context.globalStorageUri, 'context-probe').fsPath,
+		connection: async () => connection().AgentConnection,
 		log: message => log.info(message),
 	});
 	const contextMeasures = new ContextMeasures(context.globalState, {
@@ -194,6 +196,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	// Pages opened on request and tools used rarely load from bundles of their own, the first time one of their commands runs.
 	const pages = chunkLoader<typeof import('./pages')>(__dirname, 'pages');
 	const onDemand = chunkLoader<typeof import('./onDemand')>(__dirname, 'onDemand');
+	// The ACP SDK's bundle: the agent's connection, the context probe's and the benchmark's.
+	const connection = chunkLoader<typeof import('./connection')>(__dirname, 'connection');
 	const confluence = chunkLoader<typeof import('./confluence')>(__dirname, 'confluence');
 	teamTools.useConfluence(() => new (confluence().ConfluenceFeature)({
 		extensionUri: context.extensionUri,
@@ -211,7 +215,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		const review = teamFlows.reviews.forAgent(agentId);
 		return review && { label: vscode.l10n.t("Review !{0}", review.iid), tip: vscode.l10n.t("Open the review of !{0}: {1}", review.iid, review.title) };
 	};
-	agentsView.openReview = agentId => void vscode.commands.executeCommand('gemini.team.openAgentReview', agentId);
+	agentsView.openReview = agentId => void vscode.commands.executeCommand('gemini.team.openReview', agentId);
 	context.subscriptions.push(teamFlows.reviews.onDidChange(() => agentsView.refreshChats()));
 	const traceFolder = vscode.Uri.joinPath(context.globalStorageUri, 'traces').fsPath;
 	setTraceFolder(traceFolder);
@@ -239,13 +243,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			getAgentCommand,
 			forgetSkills,
 			audit: teamTools.audit,
-			storage: {
-				globalStorage: context.globalStorageUri.fsPath,
-				agents: () => agentsView.storageAgents(),
-				worktrees: () => agentsView.storageWorktrees(),
-				removeWorktree: (repository, worktree, item) => agentsView.removeStorageWorktree(repository, worktree, item),
-				cliVersion: () => service.status.agentVersion,
-			},
 		}, contextMeasures)),
 		contextMeasures,
 		// A quick fix on every problem: attach it, and the code around it, to the agent in front.
@@ -254,7 +251,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		statusBar,
 		usageMeter,
 		usageMeter.onDidChange(usage => statusBar.setUsage(usage)),
-		walkthrough,
+		setup,
 		warmup,
 		new Appearance(context.extensionUri),
 		new CliManager(service, context.globalState, log),
@@ -268,15 +265,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			getAgentCommand,
 			knownModelList,
 			version: () => productInfo.version,
-			// Imported here, so the runner and the ACP SDK it uses stay in this bundle, which carries the SDK anyway.
-			runner: () => import('./acp/benchmark'),
+			runner: async () => connection().benchmark,
 		})),
 		scheduleStorageMaintenance(context.globalStorageUri.fsPath, log),
 		mrPanel,
 		vscode.commands.registerCommand('gemini.confluence.openDraft', (id?: unknown) => teamTools.openConfluenceDraft(typeof id === 'string' ? id : undefined)),
 		new LazyFeature(['gemini.connections'], () => new (pages().ConnectionsPage)(context.extensionUri, teamTools, log)),
-		new TeamStatusBar(context.extensionUri, teamTools),
-		new AuditStatusBar(teamTools.audit),
 		new TerminalGemini({
 			terminals: agentsView.terminals,
 			attachTo: async (agent, attachments) => {
@@ -291,10 +285,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		vscode.workspace.onDidChangeConfiguration(e => e.affectsConfiguration(`${configSection}.keepAwake`) && readKeepAwake()),
 		vscode.commands.registerCommand('gemini.enhancePrompt', async () => (await chatInFront())?.requestEnhance()),
 		vscode.commands.registerCommand('gemini.toggleFollowAgent', async () => (await chatInFront())?.toggleFollowing()),
-		vscode.commands.registerCommand('gemini.openChatAsMarkdown', async () => {
-			const agent = agentsView.activeAgentId() ?? agentsView.summaries().find(each => each.state !== 'stopped')?.id;
-			return agent ? agentsView.openAsMarkdown(agent) : vscode.window.showInformationMessage(vscode.l10n.t("Open an agent first."));
-		}),
 		vscode.commands.registerCommand('gemini.showUsage', async () => (await chatInFront())?.showUsage()),
 		vscode.commands.registerCommand('gemini.sessionApprovals', async () => (await chatInFront())?.manageApprovals()),
 		vscode.commands.registerCommand('gemini.addFileToChat', async (uri: unknown, uris: unknown) => {
@@ -312,18 +302,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			figma: () => teamTools.connectors.figma,
 			defaults: folder => folder ? teamTools.defaults(folder) : teamTools.workspaceDefaults(),
 		}, log)),
-		new LazyFeature(['gemini.openAuditLog'], () => new (onDemand().AuditPage)(context.extensionUri, teamTools.audit, id => agentsView.summaries().find(agent => agent.id === id)?.title)),
+		new LazyFeature(['gemini.openAuditLog'], () => new (onDemand().AuditPage)(context.extensionUri, teamTools.audit, id => agentsView.summaries().find(agent => agent.id === id)?.title, {
+			globalStorage: context.globalStorageUri.fsPath,
+			agents: () => agentsView.storageAgents(),
+			worktrees: () => agentsView.storageWorktrees(),
+			removeWorktree: (repository, worktree, item) => agentsView.removeStorageWorktree(repository, worktree, item),
+			cliVersion: () => service.status.agentVersion,
+		})),
 		vscode.commands.registerCommand('gemini.checkAgent', async () => onDemand().checkAgent(log, {
 			command: await getAgentCommand(),
 			cwd: getWorkspaceCwd(),
-			connection: async () => (await import('./acp/agentConnection')).AgentConnection,
+			connection: async () => connection().AgentConnection,
 			findCliEntry,
 		})),
 		vscode.commands.registerCommand('gemini.restartAgent', () => service.restart()),
 		vscode.commands.registerCommand('gemini.completeSetupInTerminal', () => service.completeSetupInTerminal()),
 		vscode.commands.registerCommand('gemini.setProjectId', () => setProjectId()),
-		vscode.commands.registerCommand('gemini.signIn', () => walkthrough.signIn()),
-		vscode.commands.registerCommand('gemini.getStarted', () => vscode.commands.executeCommand('workbench.action.openWalkthrough', walkthroughId, false)),
+		vscode.commands.registerCommand('gemini.signIn', () => setup.signIn()),
 	);
 	// One line per launch, to measure startup on real machines (FINDINGS.md, starting the agent).
 	const servicesUpMs = Date.now() - activationStart;

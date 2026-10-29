@@ -51,6 +51,8 @@ export function formatCounts(counts: { readonly added: number; readonly removed:
 
 /** Originals larger than this are not kept; the file still counts, but its diff cannot be shown. */
 const maxOriginalLength = 1_000_000;
+/** All of one agent's kept texts (originals and what it last wrote) stay under this; past it the largest files lose their texts, and keep their counts. */
+const maxTotalTextLength = 8_000_000;
 
 export class AgentChanges {
 
@@ -125,7 +127,29 @@ export class AgentChanges {
 				editedAt,
 			});
 		}
+		this.trimTexts();
 		this.onDidChangeEmitter.fire();
+	}
+
+	/** Keeps the texts of all files together under `maxTotalTextLength`: the largest lose theirs first, and stay counted. */
+	private trimTexts(): void {
+		let total = 0;
+		for (const file of this.byPath.values()) {
+			total += (file.original?.length ?? 0) + (file.agentText?.length ?? 0);
+		}
+		if (total <= maxTotalTextLength) {
+			return;
+		}
+		const largestFirst = [...this.byPath.values()].filter(file => file.original !== undefined || file.agentText !== undefined)
+			.sort((a, b) => ((b.original?.length ?? 0) + (b.agentText?.length ?? 0)) - ((a.original?.length ?? 0) + (a.agentText?.length ?? 0)));
+		for (const file of largestFirst) {
+			if (total <= maxTotalTextLength) {
+				break;
+			}
+			total -= (file.original?.length ?? 0) + (file.agentText?.length ?? 0);
+			const { original: _original, agentText: _agentText, ...counted } = file;
+			this.byPath.set(file.path, counted);
+		}
 	}
 
 	/**
@@ -175,6 +199,7 @@ export class AgentChanges {
 				this.byPath.set(file.path, file);
 			}
 		}
+		this.trimTexts();
 		// Also when everything saved was the CLI's, so the totals saved with the agent go too.
 		if (files.length) {
 			this.onDidChangeEmitter.fire();

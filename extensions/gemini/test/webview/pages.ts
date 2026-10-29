@@ -55,6 +55,9 @@ export const window = {
 				postMessage: async message => (panel.posted.push(message), true),
 			},
 			onDidDispose: none,
+			onDidChangeViewState: none,
+			visible: true,
+			active: true,
 			reveal() { },
 			dispose() { },
 		};

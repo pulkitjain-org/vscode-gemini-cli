@@ -14,7 +14,7 @@ import type { TranscriptItem } from './chatTranscript';
 import type { StoredCheckpoints } from './checkpoints';
 import type { SessionSettings } from './sessionSettings';
 
-/** The CLI's Plan and Default mode IDs (gemini-cli 0.63 `ApprovalMode`); Build This Plan shows only when the agent offers both. */
+/** The CLI's Plan and Default mode IDs (gemini-cli 0.63 `ApprovalMode`); Approve Plan shows only when the agent offers both. */
 const planModeId = 'plan';
 const defaultModeId = 'default';
 const autoEditModeId = 'autoEdit';
@@ -105,7 +105,7 @@ export function undoNote(cwd: string, files: readonly string[]): string {
 }
 
 /**
- * The mode Build This Plan switches to, when the chat is in Plan mode: the
+ * The mode Approve Plan switches to, when the chat is in Plan mode: the
  * mode it was in before Plan (`before`) when the agent still offers it, else
  * Default when the agent offers that.
  */
@@ -118,7 +118,7 @@ export function buildModeAfterPlan(settings: SessionSettings, before?: string): 
 	return offered(before) ? before : offered(defaultModeId) ? defaultModeId : undefined;
 }
 
-/** What Build This Plan offers: the mode it builds in, and the other choice its chevron gives (Default, or Auto Edit from Default). */
+/** What Approve Plan offers: the mode it builds in, and the other choice its chevron gives (Default, or Auto Edit from Default). */
 export interface PlanBuildChoice {
 	readonly mode: string;
 	readonly other?: string;
@@ -134,7 +134,7 @@ export function planBuildChoice(settings: SessionSettings, before?: string): Pla
 }
 
 /**
- * The models Build This Plan's hint names: the model the plan's turn used
+ * The models Approve Plan's hint names: the model the plan's turn used
  * most (from its token counts) and the one the build will use, only when both
  * are known and differ. Auto (`auto…`) picks a model per request, so the
  * build's model isn't known ahead and no hint is given.
@@ -156,6 +156,19 @@ export function defaultStartMode(setting: unknown, isAllowed: (modeId: string) =
 }
 
 /**
+ * The mode a new agent starts in: `gemini.agents.defaultMode` when the user
+ * set it (`setting`), else the CLI's own Default Approval Mode from its
+ * settings (`general.defaultApprovalMode`, which the CLI never lets be YOLO),
+ * so a terminal and GeminiCode start the same way. Undefined for Default.
+ */
+export function effectiveStartMode(setting: string | undefined, cliDefault: string | undefined, isAllowed: (modeId: string) => boolean): string | undefined {
+	if (setting !== undefined) {
+		return defaultStartMode(setting, isAllowed);
+	}
+	return cliDefault !== yoloModeId ? defaultStartMode(cliDefault, isAllowed) : undefined;
+}
+
+/**
  * The mode the mode menu tags "Recommended here": Auto Edit, where its edits
  * can be reviewed with Keep and Undo against Git (the folder is trusted, in a
  * repository with at least one commit). Only a tag, on a mode the agent
@@ -168,12 +181,14 @@ export function recommendedMode(folder: { readonly trusted: boolean; readonly co
 /**
  * The approval mode after `settings`' current one, for Cycle Approval Mode: the
  * next the agent lists, as the CLI's own ⇧Tab steps through them, but never
- * YOLO, which approves everything and is picked on purpose. Undefined when
- * there is nothing to switch to.
+ * YOLO, which approves everything and is picked on purpose (⌘Y toggles it),
+ * and never Plan while a turn runs. Undefined when there is nothing to
+ * switch to.
  */
-export function nextApprovalMode(settings: SessionSettings): string | undefined {
+export function nextApprovalMode(settings: SessionSettings, busy = false): string | undefined {
 	const mode = settings.mode;
-	const cycle = mode?.available.filter(choice => choice.id !== yoloModeId) ?? [];
+	// As the CLI's own Shift+Tab: never YOLO, and not Plan while a turn runs, since the running turn would carry on editing.
+	const cycle = mode?.available.filter(choice => choice.id !== yoloModeId && !(busy && choice.id === planModeId)) ?? [];
 	if (!mode || !cycle.length) {
 		return undefined;
 	}

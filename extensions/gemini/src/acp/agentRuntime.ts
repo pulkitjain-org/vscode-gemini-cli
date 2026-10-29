@@ -16,6 +16,7 @@
 // process started there, made when first needed, shared by that folder's
 // sessions and ended once none is left.
 
+import { promises as fs } from 'node:fs';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import type * as acp from '@agentclientprotocol/sdk';
 import type { AgentClientHandlers, AgentConnection, SetupTimeouts } from './agentConnection';
@@ -62,6 +63,8 @@ export interface AgentRuntimeOptions {
 	readonly timeouts?: Partial<SetupTimeouts>;
 	/** Writes a debug line to the log, such as for an error the runtime or its sessions get past. */
 	readonly log?: (message: string) => void;
+	/** Loads the connection module (the ACP SDK with it): the host's bundle of its own (dist/connection.js); the module itself by default, as in tests. */
+	readonly connectionModule?: () => Promise<typeof import('./agentConnection')>;
 	/** Processes of a folder's own, for sessions reopened where the shared process would give them another folder's settings. */
 	readonly folderProcess?: {
 		/** Whether a session reopened in `cwd` needs a process of its own. */
@@ -145,6 +148,7 @@ export class AgentRuntime {
 	private readonly closedSessions = new Set<string>();
 	/** A session opened ahead of use (`prepareSession`), keyed by its folder and servers. */
 	private spare: { readonly key: string; readonly connection: AgentConnection; readonly session: Promise<RuntimeSession> } | undefined;
+	private readonly realFolders = new Map<string, Promise<string>>();
 	/** Shared by concurrent `session/new` calls so the user's settings are rewritten at most once. */
 	private authenticating: Promise<void> | undefined;
 	private readonly sidecarListener: { dispose(): void };
@@ -163,6 +167,8 @@ export class AgentRuntime {
 	/** Folders' own processes, by folder, and the process each session reopened on one of them is on. */
 	private readonly folders = new Map<string, FolderProcess>();
 	private readonly sessionFolders = new Map<string, FolderProcess>();
+	/** Each open session's folder, for the file policy its reads and writes follow. */
+	private readonly sessionCwds = new Map<string, string>();
 	private readonly onDidRetryEmitter = new Emitter<CliRetry>();
 	/** The CLI retries an API call (from its debug log, see `noteRetry`); not tied to one session. */
 	readonly onDidRetry = this.onDidRetryEmitter.event;
@@ -194,7 +200,13 @@ export class AgentRuntime {
 			this.onDidBecomeBusyEmitter.fire();
 		}
 		try {
-			return await turn;
+			const result = await turn;
+			// A served prompt is what makes the process healthy (sidecar.ts); a folder's own process counts the same.
+			this.sidecar.markHealthy();
+			for (const folder of this.folders.values()) {
+				folder.sidecar.markHealthy();
+			}
+			return result;
 		} finally {
 			if (--this.turns === 0) {
 				this.onDidBecomeIdleEmitter.fire();
@@ -305,14 +317,30 @@ export class AgentRuntime {
 		return spare.session;
 	}
 
-	private async openNewSession(cwd: string, mcpServers: readonly acp.McpServer[]): Promise<RuntimeSession> {
+	/**
+	 * `folder` with its links resolved, as a terminal's CLI keys its sessions
+	 * (process.cwd() resolves links); the folder itself when that fails (it
+	 * may not exist yet). Resolved once per folder, so sessions opened in one
+	 * folder back to back start in the order they were asked for.
+	 */
+	private realFolder(folder: string): Promise<string> {
+		let real = this.realFolders.get(folder);
+		if (!real) {
+			real = fs.realpath(folder).catch(() => folder);
+			this.realFolders.set(folder, real);
+		}
+		return real;
+	}
+
+	private async openNewSession(given: string, mcpServers: readonly acp.McpServer[]): Promise<RuntimeSession> {
 		const state = this._state;
 		const connection = this.connection;
 		if (state.kind !== 'ready' || !connection) {
 			throw new AgentError({ kind: 'unknown', message: 'The agent is not ready.' });
 		}
+		const cwd = await this.realFolder(given);
 		try {
-			return { connection, agent: state.agent, session: await connection.newSession(cwd, mcpServers), mcpServers };
+			return { connection, agent: state.agent, session: this.noteCwd(await connection.newSession(cwd, mcpServers), cwd), mcpServers };
 		} catch (err) {
 			const info = classifyAgentError(err);
 			const canAuthenticate = state.agent.authMethods?.some(m => m.id === AUTH_METHOD_ID);
@@ -325,7 +353,7 @@ export class AgentRuntime {
 			// user's ~/.gemini/settings.json.
 			this.authenticating ??= connection.authenticate(AUTH_METHOD_ID).then(() => undefined);
 			await this.authenticating;
-			return { connection, agent: state.agent, session: await connection.newSession(cwd, mcpServers), mcpServers };
+			return { connection, agent: state.agent, session: this.noteCwd(await connection.newSession(cwd, mcpServers), cwd), mcpServers };
 		} catch (err) {
 			throw new AgentError(classifyAgentError(err));
 		} finally {
@@ -338,7 +366,7 @@ export class AgentRuntime {
 	 * `loadSession`. Rejects with an `AgentError` otherwise, or when the agent
 	 * cannot find it; the caller then opens a new session.
 	 */
-	async loadSession(cwd: string, sessionId: string, firstPrompt?: string, mcpServers: readonly acp.McpServer[] = []): Promise<RuntimeSession> {
+	async loadSession(given: string, sessionId: string, firstPrompt?: string, mcpServers: readonly acp.McpServer[] = []): Promise<RuntimeSession> {
 		const state = this._state;
 		const connection = this.connection;
 		if (state.kind !== 'ready' || !connection) {
@@ -354,6 +382,7 @@ export class AgentRuntime {
 		this.earlyUpdates.delete(sessionId);
 		this.closedSessions.delete(sessionId);
 		return this.noteOutcome((async () => {
+			const cwd = await this.realFolder(given);
 			const target = await this.processFor(cwd, connection, state.agent);
 			// The CLI deletes the session's plans as it reopens it: keep them (sessionFolder.ts).
 			const putBack = await keepSessionFolder(cwd, sessionId).catch(() => undefined);
@@ -365,6 +394,7 @@ export class AgentRuntime {
 				if (target.folder) {
 					this.sessionFolders.set(sessionId, target.folder);
 				}
+				this.sessionCwds.set(sessionId, cwd);
 				return { connection: target.connection, agent: target.agent, session: { ...response, sessionId }, mcpServers };
 			} catch (err) {
 				this.earlyUpdates.delete(sessionId);
@@ -376,6 +406,16 @@ export class AgentRuntime {
 				}
 			}
 		})());
+	}
+
+	/** The folder a session was opened in, or undefined for a session this runtime did not open. */
+	folderOf(sessionId: string): string | undefined {
+		return this.sessionCwds.get(sessionId);
+	}
+
+	private noteCwd<T extends acp.NewSessionResponse>(response: T, cwd: string): T {
+		this.sessionCwds.set(response.sessionId, cwd);
+		return response;
 	}
 
 	/** The process to reopen a session of `cwd` on: the shared one, or the folder's own when it needs one and it starts. */
@@ -406,11 +446,18 @@ export class AgentRuntime {
 			opening: 0,
 			ready: new Promise((resolve, reject) => sidecar.onDidChangeState(async state => {
 				if (state.kind === 'running' && !connection) {
-					connection = this.createConnection(await import('./agentConnection'), state.process);
+					connection = this.createConnection(await this.loadConnectionModule(), state.process);
 					connection.initialize().then(agent => resolve({ connection: connection!, agent }), err => {
 						reject(err);
 						this.endFolder(folder);
 					});
+				} else if (state.kind === 'restarting') {
+					// The process is coming back; its sessions are gone with the old one, and open again on the new one.
+					connection = undefined;
+					for (const sessionId of folder.sessions) {
+						this.sessions.get(sessionId)?.onDidEnd?.();
+					}
+					folder.sessions.clear();
 				} else if (state.kind !== 'starting' && state.kind !== 'running') {
 					reject(new AgentError(state.kind === 'failed' ? { kind: state.reason, message: state.message } : { kind: 'agent-exited', message: 'The agent process stopped.' }));
 					this.endFolder(folder);
@@ -540,7 +587,7 @@ export class AgentRuntime {
 		let module: typeof import('./agentConnection');
 		try {
 			// The ACP SDK (and zod, which it validates with) loads here, when the agent starts, not when the extension activates.
-			module = await import('./agentConnection');
+			module = await this.loadConnectionModule();
 		} catch (err) {
 			if (this.connectingTo === agentProcess) {
 				this.setState({ kind: 'error', error: { kind: 'unknown', message: `The agent's protocol code did not load: ${errorMessage(err)}` } });
@@ -553,6 +600,15 @@ export class AgentRuntime {
 		const connection = this.createConnection(module, agentProcess);
 		this.connection = connection;
 		void connection.closed.then(() => this.onConnectionClosed(connection, agentProcess));
+		// An agent that stopped reading its input while its process lives on fails the next write (EPIPE), which nothing else reports: the connection is closed, and the process ended and started again as below.
+		const stoppedReading = () => {
+			if (this.connection === connection) {
+				this.debug('The agent stopped reading its input; closing the connection');
+				connection.dispose();
+			}
+		};
+		agentProcess.stdin.once('error', stoppedReading);
+		agentProcess.stdin.once('close', stoppedReading);
 		this.setState({ kind: 'connecting' });
 		try {
 			const agent = await connection.initialize();
@@ -569,6 +625,17 @@ export class AgentRuntime {
 	}
 
 	/** A connection to `agentProcess` that routes the agent's messages to the sessions they name. */
+	private loadConnectionModule(): Promise<typeof import('./agentConnection')> {
+		if (this.options.connectionModule) {
+			return this.options.connectionModule();
+		}
+		// A specifier the bundler cannot follow, so the SDK stays out of the extension bundle (the host passes its own
+		// bundle above); this path serves the tests and the development build, where each module is a file of its own.
+		const module = './agentConnection';
+		// eslint-disable-next-line no-restricted-syntax
+		return import(module) as Promise<typeof import('./agentConnection')>;
+	}
+
 	private createConnection(module: typeof import('./agentConnection'), agentProcess: ChildProcessWithoutNullStreams): AgentConnection {
 		return new module.AgentConnection(agentProcess.stdin, agentProcess.stdout, {
 			sessionUpdate: params => this.routeUpdate(params),
@@ -655,6 +722,7 @@ export class AgentRuntime {
 			this.endFolder(folder);
 		}
 		this.sessionFolders.clear();
+		this.sessionCwds.clear();
 		this.connection?.dispose();
 		this.connection = undefined;
 		this.spare = undefined;
@@ -685,3 +753,5 @@ function exitsWithin(child: ChildProcessWithoutNullStreams, ms: number): Promise
 		child.once('exit', onExit);
 	});
 }
+
+

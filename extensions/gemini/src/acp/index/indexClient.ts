@@ -43,6 +43,20 @@ interface Pending {
 	readonly reject: (error: Error) => void;
 }
 
+/**
+ * How long each answer may take. Queries answer from the store in well under
+ * a second even on a large repository (FINDINGS.md); a build, a reconcile or a
+ * docs ingest runs as long as the repository is big, and has no limit. The
+ * host's own callers of the long ones show progress from the status events.
+ */
+const answerTimeoutMs: Partial<Record<IndexerMethod, number>> = {
+	status: 30_000, skipped: 30_000, files: 30_000, search: 30_000, findSymbol: 30_000, related: 30_000, repoMap: 30_000,
+	docsStatus: 30_000, docsSearch: 30_000, docsValidators: 30_000, pause: 30_000, resume: 30_000, remove: 60_000,
+};
+
+/** Unanswered requests from one process before it is ended. */
+const maxTimeouts = 3;
+
 export class IndexClient {
 
 	private readonly onDidChangeStatusEmitter = new Emitter<IndexStatus>();
@@ -70,11 +84,18 @@ export class IndexClient {
 	private disposed = false;
 	/** The process is being stopped on purpose, so its exit is no crash. */
 	private expectedExit = false;
+	/** Answers that never came since the process last started; after a few the process is ended, and the crash path starts it again. */
+	private timeouts = 0;
 
 	private readonly now: () => number;
 
 	constructor(private readonly options: IndexClientOptions) {
 		this.now = options.now ?? Date.now;
+	}
+
+	/** The process's id while it runs, for a measurement of it from outside. */
+	get pid(): number | undefined {
+		return this.child?.pid;
 	}
 
 	/** Whether the process is running now. */
@@ -113,15 +134,37 @@ export class IndexClient {
 		const child = this.child ?? await (this.starting ??= this.start().finally(() => this.starting = undefined));
 		this.lastRequestAt = this.now();
 		const id = this.nextId++;
+		const limit = answerTimeoutMs[method];
 		return new Promise<Awaited<IndexerResult<M>>>((resolve, reject) => {
-			this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject });
+			let timer: ReturnType<typeof setTimeout> | undefined;
+			const settle = { resolve: (value: unknown) => { clearTimeout(timer); resolve(value as Awaited<IndexerResult<M>>); }, reject: (err: Error) => { clearTimeout(timer); reject(err); } };
+			this.pending.set(id, settle);
+			if (limit) {
+				timer = setTimeout(() => this.timedOut(child, id, method, limit), limit);
+				timer.unref?.();
+			}
 			child.send({ id, method, params } satisfies HostMessage, err => {
 				if (err) {
 					this.pending.delete(id);
-					reject(err);
+					settle.reject(err);
 				}
 			});
 		});
+	}
+
+	/** An answer that never came: its caller fails now, and a process that does this a few times running is ended, so the crash path starts a fresh one. */
+	private timedOut(child: ChildProcess, id: number, method: IndexerMethod, limit: number): void {
+		const pending = this.pending.get(id);
+		if (!pending) {
+			return;
+		}
+		this.pending.delete(id);
+		pending.reject(new Error(`The indexer did not answer ${method} within ${Math.round(limit / 1000)} s.`));
+		if (++this.timeouts >= maxTimeouts && this.child === child) {
+			this.options.log(`The indexer did not answer ${this.timeouts} requests; ending it so a fresh one takes over.`);
+			this.timeouts = 0;
+			child.kill();
+		}
 	}
 
 	/** Like `request`, for messages whose answer doesn't matter (file changes); failures are logged. */
@@ -150,6 +193,7 @@ export class IndexClient {
 		this.child = child;
 		this.startedAt = this.now();
 		this.workerIdle = true;
+		this.timeouts = 0;
 		child.stderr?.setEncoding('utf8');
 		child.stderr?.on('data', (text: string) => this.options.log(`Indexer: ${text.trim()}`));
 		child.on('message', message => this.receive(message as IndexerMessage));

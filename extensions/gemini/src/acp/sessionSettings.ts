@@ -28,6 +28,35 @@ export interface SessionSettings {
 }
 
 /**
+ * The CLI's approval modes by id (`ApprovalMode` in gemini-cli): the only
+ * ids GeminiCode's own rules name (the YOLO policy, the protected writes,
+ * Plan Review). Everything else takes the list a session reports.
+ */
+export const knownModes = { default: 'default', autoEdit: 'autoEdit', yolo: 'yolo', plan: 'plan' } as const;
+
+/**
+ * The CLI's own list, with its names and descriptions as `buildAvailableModes`
+ * writes them in gemini-cli 0.66, for before any session has said what it
+ * offers (Home's chooser at startup, the New Agent dialog). A session's list
+ * replaces it as soon as one has opened.
+ */
+export const cliModeList: readonly SessionChoice[] = [
+	{ id: knownModes.default, name: 'Default', description: 'Prompts for approval' },
+	{ id: knownModes.autoEdit, name: 'Auto Edit', description: 'Auto-approves edit tools' },
+	{ id: knownModes.yolo, name: 'YOLO', description: 'Auto-approves all tools' },
+	{ id: knownModes.plan, name: 'Plan', description: 'Read-only mode' },
+];
+
+/**
+ * The modes a new agent may start in, in the CLI's order and words: what a
+ * session offered when one has, else the CLI's list, less what policy turns
+ * off (`isModeAllowed`). YOLO is in the list when policy allows it.
+ */
+export function startModeList(offered: readonly SessionChoice[] | undefined, isAllowed: (modeId: string) => boolean): SessionChoice[] {
+	return (offered?.length ? offered : cliModeList).filter(mode => isAllowed(mode.id));
+}
+
+/**
  * The unstable `models` field gemini-cli 0.62 still sends next to `modes`.
  * It is no longer in the SDK's types, so it is read defensively.
  */

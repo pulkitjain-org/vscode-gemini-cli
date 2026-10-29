@@ -47,6 +47,12 @@
 	--gemini-border-strong: var(--vscode-input-border, var(--gemini-border));
 	--gemini-muted: var(--vscode-descriptionForeground);
 	--gemini-faint: var(--vscode-disabledForeground, var(--gemini-muted));
+	/*
+	 * Three tiers of contrast: content (prompts, replies, code) in the foreground; context (chips, pills,
+	 * state words, the fold's changed files) in --gemini-muted; process (work folds, thoughts, tool rows,
+	 * meta rows) in --gemini-process, a step quieter and never bold. The same in home.css and panels.css.
+	 */
+	--gemini-process: color-mix(in srgb, var(--gemini-muted) 85%, transparent);
 	--gemini-hover: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
 	/* An off switch's track: plain grey that still shows on a hovered row. */
 	--gemini-switch-off: color-mix(in srgb, var(--vscode-foreground) 24%, transparent);
@@ -502,14 +508,15 @@ kbd {
 }
 
 .message {
-	margin: 10px 0;
-	line-height: 1.55;
+	margin: 12px 0;
+	font-size: 14.5px;
+	line-height: 1.65;
 	word-wrap: break-word;
 }
 
 /* The user's message, a graphite bubble on the right (#2b2b2b on #1f1f1f, and the same step in light), and under it its time and Copy. */
 .user-turn {
-	margin: 18px 0 14px;
+	margin: 28px 0 12px;
 }
 
 /* The time and Copy row takes the space under the message. */
@@ -530,10 +537,10 @@ kbd {
 	padding: 10px 14px;
 	border-radius: 12px;
 	background: color-mix(in srgb, var(--vscode-editor-foreground) 7%, var(--gemini-surface));
-	border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground) 15%, var(--gemini-surface));
+	border: 1px solid var(--gemini-contrast-border);
 }
 
-/* The time, Rewind and Copy always show, quiet and steady; the buttons' own hover is their only change. */
+/* The time, Rewind and Copy show when the turn is pointed at or holds focus (process tier); the row keeps its height, so nothing moves. */
 .user-meta {
 	display: flex;
 	justify-content: flex-end;
@@ -541,8 +548,15 @@ kbd {
 	gap: 2px;
 	height: 20px;
 	margin: 2px 0 6px;
-	font-size: 11.5px;
-	color: var(--gemini-faint);
+	font-size: 12px;
+	color: var(--gemini-process);
+	opacity: 0;
+	transition: opacity 120ms ease-out;
+}
+
+.user-turn:hover .user-meta,
+.user-turn:focus-within .user-meta {
+	opacity: 1;
 }
 
 .turn-dot {
@@ -1217,10 +1231,11 @@ body.vscode-high-contrast-light {
 	align-items: center;
 	gap: 8px;
 	min-height: 26px;
-	margin: 0 -6px;
+	margin: 0 -6px 16px;
 	padding: 0 6px;
 	border-radius: 6px;
-	color: var(--gemini-muted);
+	font-size: 12px;
+	color: var(--gemini-process);
 	cursor: pointer;
 	user-select: none;
 }
@@ -1236,7 +1251,8 @@ body.vscode-high-contrast-light {
 
 .work-lead {
 	flex: none;
-	color: var(--vscode-foreground);
+	color: var(--gemini-process);
+	font-weight: 400;
 }
 
 .work-fold.stopped .work-lead {
@@ -1727,9 +1743,26 @@ body.vscode-high-contrast-light {
 	display: flex;
 	align-items: center;
 	gap: 4px;
-	margin: 2px 0 10px;
-	font-size: 0.85em;
-	color: var(--gemini-muted);
+	margin: 2px 0 12px;
+	font-size: 12px;
+	color: var(--gemini-process);
+	opacity: 0;
+	transition: opacity 120ms ease-out;
+}
+
+/* The reply's end row shows for the reply pointed at or holding focus, and always for the latest turn, where Undo and Retry are looked for. */
+.turn-end:hover,
+.turn-end:focus-within,
+.message:hover + .turn-end,
+.work-fold:hover + .turn-end,
+.turn-end:last-child {
+	opacity: 1;
+}
+
+/* How long the first token took is a developer's number. */
+body:not(.developer) .first-token,
+body:not(.developer) .first-token + .turn-dot {
+	display: none;
 }
 
 /* The row's buttons (Copy, Fork, Retry, Undo, React) hover as a prompt's Rewind and Copy do: a background, the same colour. */
@@ -1872,102 +1905,6 @@ body.vscode-high-contrast-light {
 
 .composer-suggestion-run:hover {
 	background: var(--gemini-hover);
-}
-
-/* A research run (webview-src/items.ts, renderResearch): its parts as they are read, then its report. */
-.research-card {
-	display: flex;
-	flex-direction: column;
-	gap: 8px;
-	max-width: 820px;
-	margin: 12px 0;
-	padding: 12px 14px;
-	border: 1px solid var(--gemini-border);
-	border-radius: 9px;
-	background: var(--gemini-card);
-}
-
-.research-head {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-}
-
-.research-pill {
-	padding: 1px 7px;
-	border-radius: 999px;
-	background: var(--gemini-hover);
-	color: var(--gemini-muted);
-	font-size: 11px;
-}
-
-.research-state {
-	margin-left: auto;
-	color: var(--gemini-muted);
-	font-size: 12px;
-}
-
-.research-question {
-	font-weight: 600;
-	white-space: pre-wrap;
-}
-
-.research-parts > summary {
-	color: var(--gemini-muted);
-	font-size: 12px;
-	cursor: pointer;
-}
-
-.research-part {
-	display: grid;
-	grid-template-columns: 16px minmax(0, 1fr) auto;
-	gap: 8px;
-	align-items: center;
-	padding: 3px 0;
-	font-size: 12px;
-}
-
-.research-part-title {
-	overflow: hidden;
-	white-space: nowrap;
-	text-overflow: ellipsis;
-}
-
-.research-part-detail,
-.research-part.queued {
-	color: var(--gemini-muted);
-}
-
-.research-part.done > .codicon {
-	color: var(--gemini-ok);
-}
-
-.research-part.failed > .codicon {
-	color: var(--gemini-warn);
-}
-
-.research-part.reading > .codicon-loading {
-	animation: codicon-spin 1.5s steps(30) infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.research-part.reading > .codicon-loading {
-		animation: none;
-	}
-}
-
-.research-stop {
-	align-self: flex-start;
-}
-
-.research-report {
-	padding-top: 8px;
-	border-top: 1px solid var(--gemini-border);
-}
-
-.research-actions {
-	display: flex;
-	gap: 6px;
 }
 
 .trace-card {
@@ -2565,17 +2502,22 @@ button.reaction-line:focus-visible {
 	margin: 0 var(--gemini-gutter) 12px;
 	padding: 10px 10px 8px 12px;
 	border-radius: var(--gemini-radius-large);
-	border: 1px solid var(--gemini-border-strong);
+	border: 1px solid var(--gemini-border);
 	background: var(--gemini-composer);
+	box-shadow: 0 1px 3px color-mix(in srgb, var(--gemini-shadow) 35%, transparent);
 	cursor: text;
 }
 
-/* Focused, the composer's outline takes the Gemini colours. */
-.composer:focus-within {
+/* While the agent works, the composer's outline takes the Gemini colours: the progress hint it was meant to be. */
+.composer.busy:focus-within {
 	border-color: transparent;
 	background:
 		linear-gradient(var(--gemini-composer), var(--gemini-composer)) padding-box,
 		var(--gemini-gradient) border-box;
+}
+
+.composer:focus-within {
+	border-color: var(--vscode-focusBorder);
 }
 
 body.vscode-high-contrast .composer:focus-within,
@@ -5543,4 +5485,23 @@ textarea.new-thread-input {
 	letter-spacing: 0.06em;
 	text-transform: uppercase;
 	color: var(--gemini-faint);
+}
+
+/* The chevron beside a thread card's Try button: the other ways to take the work. */
+.permission-actions button.thread-try-menu {
+	margin-left: -6px;
+	padding-left: 4px;
+	padding-right: 4px;
+	min-width: 0;
+}
+
+/* The side panel's Read the code too switch, after the Ask button. */
+.side-chat-read-code {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin-left: 8px;
+	font-size: 12px;
+	color: var(--gemini-muted);
+	white-space: nowrap;
 }

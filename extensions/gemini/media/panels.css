@@ -6,6 +6,8 @@
 /* Agents mode's webviews (the Changes panel and Agent Home) and the MCP Servers and Rules page. */
 
 :root {
+	/* The process tier (see chat.css): the quietest text, for meta lines. */
+	--gemini-process: color-mix(in srgb, var(--gemini-muted) 85%, transparent);
 	--gemini-radius: 10px;
 	--gemini-radius-small: 6px;
 	--gemini-radius-large: 12px;
@@ -735,6 +737,41 @@ button.option-button .codicon-chevron-down {
 	color: var(--gemini-faint);
 }
 
+/* Agent Setup's tab strip, above the page: Loads, Index & Docs, Connections, Storage & Audit. */
+.page-tabs {
+	display: flex;
+	gap: 4px;
+	max-width: 760px;
+	margin: 0 auto;
+	padding: 16px 24px 0;
+}
+
+.page-tab {
+	height: 28px;
+	padding: 0 12px;
+	border: none;
+	border-bottom: 2px solid transparent;
+	background: none;
+	color: var(--gemini-muted);
+	font: inherit;
+	font-size: 13px;
+	cursor: pointer;
+}
+
+.page-tab:hover {
+	color: var(--vscode-foreground);
+}
+
+.page-tab.active {
+	color: var(--vscode-foreground);
+	border-bottom-color: var(--vscode-focusBorder);
+}
+
+.page-tab:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
 /* MCP Servers and Rules */
 
 .settings {
@@ -1461,4 +1498,12 @@ button.option-button .codicon-chevron-down {
 
 .settings .trust-note.problem {
 	color: var(--gemini-warn);
+}
+
+/* The chevron beside the Changes panel's Try button: the other ways to take the work. */
+.actions button.try-menu {
+	margin-left: -4px;
+	padding-left: 4px;
+	padding-right: 4px;
+	min-width: 0;
 }

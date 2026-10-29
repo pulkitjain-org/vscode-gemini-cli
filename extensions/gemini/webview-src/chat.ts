@@ -111,9 +111,6 @@ function applyUpdates(updates: readonly ItemUpdate[]): void {
 window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 	const message = event.data;
 	switch (message.type) {
-		case 'spellCheck':
-			ui.input.spellcheck = message.on;
-			break;
 		case 'foldWork':
 			setFoldWork(message.on);
 			updateOutline();
@@ -297,6 +294,9 @@ window.addEventListener('message', (event: MessageEvent<ToWebview>) => {
 				ui.input.focus();
 			}
 			break;
+		default:
+			// A message this script does not know: the host and the webview bundle are out of step (chatProtocolVersion).
+			console.warn(`Chat: unknown message ${String((message as { type?: unknown }).type)}`);
 	}
 });
 

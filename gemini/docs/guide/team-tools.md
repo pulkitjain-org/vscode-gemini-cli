@@ -6,7 +6,7 @@ Everything runs from your Mac, over your VPN. Nothing goes through a GeminiCode 
 
 ## Connect your tools
 
-Open **Connections** from the Command Palette (**Gemini: Connections**), the tools item in the status bar, or the Agents pane's **...** menu. Each tool shows who you're signed in as, the server and when the token expires.
+Open **Connections** from the Command Palette (**Gemini: Connections**), the **Gemini** status bar item's menu (its tooltip lists each connected tool's state), or the Agents pane's **...** menu. The actions Home's cards offer, Open Merge Request, Run Checks, Run Checks on a Branch, Move, Log Time and Reassign, are one Command Palette entry, **Gemini: Jira and GitLab Actions...**, which asks what to do and then which ticket, agent or branch. Each tool shows who you're signed in as, the server and when the token expires.
 
 | Tool | How it connects | What you need |
 | --- | --- | --- |
@@ -107,7 +107,7 @@ Name the file in the team defaults:
 }
 ```
 
-Then open the design-system file in the Figma desktop app and run **Gemini: Sync Design System**, or **Sync Design System** on Figma's row in Connections. Until the team file names one, **Add Figma Design** offers **Set Up Your Design System**, which says what to add. GeminiCode reads each page you named (every visible page when `pages` is left out, as long as the file has no more than eight; Figma limits how many reads its Dev Mode server answers a day, so a larger file has to name its pages), says what changed since the last sync, such as "4 new tokens, 1 component removed", and offers **Review Changes**, which shows each file's diff, and **Write Files**. It writes:
+Then open the design-system file in the Figma desktop app and run **Sync Design System** on Figma's row in Connections (or **Gemini: Sync Design System** from the Command Palette, with `gemini.developer.showTools` on). Until the team file names one, **Add Figma Design** offers **Set Up Your Design System**, which says what to add. GeminiCode reads each page you named (every visible page when `pages` is left out, as long as the file has no more than eight; Figma limits how many reads its Dev Mode server answers a day, so a larger file has to name its pages), says what changed since the last sync, such as "4 new tokens, 1 component removed", and offers **Review Changes**, which shows each file's diff, and **Write Files**. It writes:
 
 - a skill in `.gemini/skills/design-system/` (or the folder `skill` names), with the rules for using the design system;
 - `references/tokens.md`, every variable with its value, and `references/components.md`, every component with its variants;
@@ -115,7 +115,7 @@ Then open the design-system file in the Figma desktop app and run **Gemini: Sync
 
 Commit them like any other change. Syncing again keeps the rules you wrote in the skill's **Rules** section.
 
-Once the skill is there, a prompt with a Figma design asks the agent to load it and build with its tokens and components. Colours in the design that are tokens come to the agent with their names, such as `#2F5BD3 (color/brand/primary)`. `codeConnect` turns Code Connect on or off for this repository, over the `gemini.figma.codeConnect` setting.
+Once the skill is there, a prompt with a Figma design asks the agent to load it and build with its tokens and components. Colours in the design that are tokens come to the agent with their names, such as `#2F5BD3 (color/brand/primary)`. `codeConnect` turns Code Connect on for this repository; it is off unless the file says so.
 
 Figma gives each variable's value in the mode the file shows, and only the variables a page uses, so sync the pages that show the whole design system, such as its foundations.
 
@@ -131,7 +131,7 @@ A ticket's whole journey can happen in GeminiCode:
 
 ### Checks on any branch
 
-**Run Checks on a Branch…**, on Home or in the Command Palette, runs the same checks on any branch before a merge request exists: the branch checked out here, an agent's, a local one or one on origin. In a window with several folders it works in the repository of the agent in front, else of the active editor; when neither says which, it asks, with the agent last in front first, then each folder. Start on Ticket and Move's team defaults pick their folder the same way. A window with one folder never asks.
+**Run Checks on a Branch…**, on Home or under **Gemini: Jira and GitLab Actions...** in the Command Palette, runs the same checks on any branch before a merge request exists: the branch checked out here, an agent's, a local one or one on origin. In a window with several folders it works in the repository of the agent in front, else of the active editor; when neither says which, it asks, with the agent last in front first, then each folder. Start on Ticket and Move's team defaults pick their folder the same way. A window with one folder never asks.
 
 A branch that isn't checked out gets a checkout of its own under `~/.geminicode/worktrees/<repository>/checks/`, with your `gemini.agents.worktreeSetup` command, or the repository's own setup script once you allow it, run in it once. Later runs reuse it, and your own checkout never moves. SonarQube's gate comes from the server's last analysis of the branch, so it needs one push first. With no agent on the branch, **Fix** starts one in that checkout, with the findings as its first prompt.
 
@@ -189,7 +189,7 @@ A new version of a page opens on the page as it is in Confluence now, with the a
 
 ## Review a merge request
 
-**Review** on a merge request waiting for you (on Home, or **Gemini: Review a Merge Request…**) starts a reviewer agent in a checkout of its own, which reads the merge request against its ticket. The reviewer's team tools only read: it can't comment, move a ticket or merge, since you choose what to post. Reviewing the same merge request again, after its author pushes or with **Start a New Review…**, reuses the reviewer and its worktree, moved to the new commits. A merge request with more than 100 changed files is read whole, up to 1,000. Its findings become the first comments of your review, each marked **Bug**, **Should fix**, **Question** or **Nit**. Your review is a draft: nothing reaches GitLab until you post it. Your own checkout is never changed.
+**Review** on a merge request waiting for you (on Home, or **A Merge Request** under **Gemini: Review...**) starts a reviewer agent in a checkout of its own, which reads the merge request against its ticket. The reviewer's team tools only read: it can't comment, move a ticket or merge, since you choose what to post. Reviewing the same merge request again, after its author pushes or with **Start a New Review…**, reuses the reviewer and its worktree, moved to the new commits. A merge request with more than 100 changed files is read whole, up to 1,000. Its findings become the first comments of your review, each marked **Bug**, **Should fix**, **Question** or **Nit**. Your review is a draft: nothing reaches GitLab until you post it. Your own checkout is never changed.
 
 A review checks the branch out from your clone of the repository. GeminiCode looks for one in the clone it remembers for the project, the window's folders, the folders agents have used and your recent folders, and remembers what it finds. When there is none, it asks **Where is your copy of** the project: **Choose Folder...** picks a clone, and **Clone It...** clones the repository, over HTTPS or SSH when GitLab offers both, into a folder you pick, in a terminal where you answer git's questions. **Fix Pipeline and N Comments** asks the same way.
 
@@ -210,13 +210,13 @@ When the source branch gets new commits during a review, the page says so. **Ref
 
 The page shortens long paths and tells apart files with the same name, such as two `index.ts`.
 
-Clicking a merge request asks whether to open it in GeminiCode's browser or your default browser; **Always Use…** stops asking, and `gemini.team.openMergeRequestsIn` changes it later.
+Clicking a merge request opens it in GeminiCode's browser; `gemini.team.openMergeRequestsIn` makes it your default browser instead, and **Open in GitLab** in a card's menu always uses the default browser.
 
 ## Audit log
 
 Every write GeminiCode makes to Jira, Confluence or GitLab for you is recorded on your Mac, whether an agent asked for it or you pressed a button: a comment, a move, a time log, a reassignment, a published page, a merge request, a review comment, an approval, a merge. With several Jira or Confluence sites, the record names the site. Each write gets two lines in a file per day under GeminiCode's storage, one before the call and one after, with what the tool gave back (a comment id, a worklog id, `!321`, the merge commit). The lines hold what changed and where, not the text; the text is in the chat.
 
-**Gemini: Open Audit Log** (also in the Gemini status bar menu, and behind **Audit: 14 actions today** at the right of the status bar) shows the log as a page: one row per write with the time, who asked (an agent or a button of yours), the action, its effect, how you answered, the id the tool gave back and the state. Pick a day, a tool, or only the intents without a result. A row with no result is a write that was running when GeminiCode last quit; it is highlighted, and Home lists it under **Unfinished**. Check the tool before doing it again, then **Mark as Checked**. **Export the Day…** writes the day as Markdown to your home folder, and **Open Folder** shows the files.
+**Gemini: Open Audit Log** (also in the **Gemini** status bar item's menu; its tooltip counts today's actions and any left unfinished) shows the log as a page: one row per write with the time, who asked (an agent or a button of yours), the action, its effect, how you answered, the id the tool gave back and the state. Pick a day, a tool, or only the intents without a result. A row with no result is a write that was running when GeminiCode last quit; it is highlighted, and Home lists it under **Unfinished**. Check the tool before doing it again, then **Mark as Checked**. **Export the Day…** writes the day as Markdown to your home folder, and **Open Folder** shows the files.
 
 ## Your team's own servers
 
@@ -236,7 +236,7 @@ Every agent session gets a `geminicode-tools` MCP server with tools only for the
 
 Four actions are harder to take back, so they ask every time, with Allow once and Reject only: moving a ticket (`jira_transition`), logging time (`jira_log_time`), opening a merge request (`gitlab_create_mr`) and merging one (`gitlab_merge`, which needs the merge request named). The same goes for the matching tools of a `jira` or `gitlab` MCP server your team runs beside GeminiCode. `gitlab_merge` reads GitLab's own checks first (pipeline, approval rules, threads, conflicts, GitLab's mergeable verdict) and refuses when any fails, saying which; when it merges, it names the commit it read, so a push in between makes GitLab refuse rather than merge something else.
 
-`figma_design` reads a large frame a section at a time, so no single answer is cut short, and names the parts not read yet for the agent to ask for next. A read Figma gives up on comes back as the frame's outline and design variables. A frame read in the last ten minutes is answered from memory. Figma's Code Connect lookups are off by default, since Figma answers faster without them; turn on `gemini.figma.codeConnect` to include them.
+`figma_design` reads a large frame a section at a time, so no single answer is cut short, and names the parts not read yet for the agent to ask for next. A read Figma gives up on comes back as the frame's outline and design variables. A frame read in the last ten minutes is answered from memory. Figma's Code Connect lookups are off unless the repository's `.gemini/geminicode-tools.json` sets `codeConnect`, since Figma answers faster without them.
 
 Text an agent reads from a ticket, a page, a merge request, a job log or a design comes wrapped in an `<external>` tag, and the server tells the model to read it as information from other people, never as instructions. The prompts Fix and Review write wrap the job logs, review threads and merge request titles they quote the same way.
 

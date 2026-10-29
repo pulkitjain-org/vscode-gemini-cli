@@ -9,7 +9,8 @@
 // it is open; Customize turns cards on and off, orders them and picks the
 // branch the Quality card reads.
 
-import type { FromHome, HomeCard, HomeCardId, HomeDashboard, HomeList, HomeRow, HomeStrings } from '../src/host/panelProtocol';
+import type { FromHome, HomeCard, HomeCardId, HomeDashboard, HomeList, HomeRow } from '../src/host/panelProtocol';
+import type { HomeStrings } from '../src/host/panelStrings';
 import type { Menu } from './menu';
 import { button, el, icon } from './panelDom';
 

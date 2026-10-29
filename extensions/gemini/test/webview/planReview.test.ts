@@ -56,7 +56,7 @@ describe('Plan Review page', () => {
 			title: query('.plan-title')?.textContent,
 			sections: all('.plan-sec').map(node => node.dataset.section),
 			send: { disabled: button('Send Comments to Gemini')?.disabled },
-			build: { disabled: button('Build This Plan')?.disabled, primary: button('Build This Plan')?.classList.contains('primary') },
+			build: { disabled: button('Approve Plan')?.disabled, primary: button('Approve Plan')?.classList.contains('primary') },
 		}).toEqual({
 			ready: { type: 'ready' },
 			title: 'MCP integration plan',

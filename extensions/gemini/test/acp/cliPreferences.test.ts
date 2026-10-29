@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { applyCliPreference, isKeepChats, keepChatsPeriod, readCliPreferences, setCliPreference } from '../../src/acp/cliPreferences';
+import { applyCliPreference, isKeepChats, keepChatsPeriod, readCliPreferences, setCliDefaultModel, setCliPreference } from '../../src/acp/cliPreferences';
 import { readSettingsFile } from '../../src/acp/projectSettings';
 
 let dir: string;
@@ -16,7 +16,7 @@ afterEach(() => fs.rm(dir, { recursive: true, force: true }));
 
 describe('cliPreferences', () => {
 	it('reads the CLI defaults from empty settings', () => {
-		expect(readCliPreferences({})).toEqual({ permanentApproval: false, planRouting: true, usageStatistics: true, keepChats: '30d' });
+		expect(readCliPreferences({})).toEqual({ defaultApprovalMode: 'default', permanentApproval: false, planRouting: true, usageStatistics: true, keepChats: '30d' });
 	});
 
 	it('reads set values, and forever when cleanup is off', () => {
@@ -24,7 +24,7 @@ describe('cliPreferences', () => {
 			security: { enablePermanentToolApproval: true },
 			general: { plan: { modelRouting: false }, sessionRetention: { enabled: true, maxAge: '90d' } },
 			privacy: { usageStatisticsEnabled: false },
-		})).toEqual({ permanentApproval: true, planRouting: false, usageStatistics: false, keepChats: '90d' });
+		})).toEqual({ defaultApprovalMode: 'default', permanentApproval: true, planRouting: false, usageStatistics: false, keepChats: '90d' });
 		expect(readCliPreferences({ general: { sessionRetention: { enabled: false, maxAge: '7d' } } }).keepChats).toBe('forever');
 	});
 
@@ -58,5 +58,12 @@ describe('cliPreferences', () => {
 		await fs.writeFile(file, '{\n  "a": \n}\n');
 		expect(await setCliPreference(file, 'usageStatistics', false)).toBe(false);
 		await expect(setCliPreference(file, 'keepChats', '1h')).rejects.toThrow();
+	});
+
+	it('sets the model the CLI starts on under model.name, keeping the rest of the model section', async () => {
+		const file = path.join(dir, 'settings.json');
+		await fs.writeFile(file, JSON.stringify({ model: { maxSessionTurns: 5 }, general: { vimMode: true } }));
+		expect(await setCliDefaultModel(file, 'gemini-3.1-pro-preview')).toBe(true);
+		expect(await readSettingsFile(file)).toEqual({ model: { maxSessionTurns: 5, name: 'gemini-3.1-pro-preview' }, general: { vimMode: true } });
 	});
 });

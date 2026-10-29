@@ -14,7 +14,7 @@
 
 import type { Attachment } from '../src/acp/attachments';
 import { designPrompt, designRefId, designWarnings, defaultDesignSizes, type DesignFrame, figmaLinksIn, nextSizes } from '../src/acp/figmaDesign';
-import type { ChatStrings } from '../src/host/chatProtocol';
+import type { ChatStrings } from '../src/host/chatStrings';
 import { el, icon } from './panelDom';
 import type { SelectMenu, selectMenu } from './selectMenu';
 

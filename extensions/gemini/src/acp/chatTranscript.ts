@@ -7,7 +7,6 @@
 // plain, serialisable items the webview renders. Streaming chunks extend the
 // item they belong to; tool calls and the plan update in place.
 
-import type { ResearchProgress } from './research';
 import type * as acp from '@agentclientprotocol/sdk';
 import { Emitter } from './events';
 import type { PendingPermission } from './permissions';
@@ -113,8 +112,6 @@ export type TranscriptItem =
 	| ForkItem
 	/** Where a turn's time went, from the fork's measurements and the CLI's trace (while a trace is recording). */
 	| { readonly id: string; readonly kind: 'trace'; readonly readout: TurnReadout; readonly file: string }
-	/** A research run (/research, research.ts): its parts as they are read, then its report. Not part of the agent's history. */
-	| { readonly id: string; readonly kind: 'research'; readonly question: string; readonly progress: ResearchProgress; readonly report?: string }
 	/** Ends a turn: how long the agent worked, with a way to copy its reply, retry it, or undo its file changes. */
 	| {
 		readonly id: string; readonly kind: 'turnEnd'; readonly durationMs: number;
@@ -130,7 +127,7 @@ export type TranscriptItem =
 		readonly retry?: boolean;
 		/** The latest turn ended in Plan mode: it offers to leave Plan mode and carry out the plan. */
 		readonly buildPlan?: boolean;
-		/** How Build This Plan builds: in `mode`, the mode before Plan; its chevron offers `other`; `models` when the build's model differs from the plan's. */
+		/** How Approve Plan builds: in `mode`, the mode before Plan; its chevron offers `other`; `models` when the build's model differs from the plan's. */
 		readonly build?: { readonly mode: string; readonly other?: string; readonly models?: { readonly plan: string; readonly build: string } };
 		/** Tokens the turn used per model, when the agent reported them. */
 		readonly usage?: readonly ModelTokens[];
@@ -185,8 +182,8 @@ export interface ThreadCard {
 	readonly restorable?: boolean;
 	/** Shows the first-try guide under the card. */
 	readonly guide?: boolean;
-	/** Merge Back makes a merge commit (`gemini.agents.mergeBack` set to "commit"): the card offers it instead of Try in Workspace. */
-	readonly mergeCommits?: boolean;
+	/** What the card's Try button does when not Try in Workspace: the choice remembered for the repository (`tryChoices.ts`). */
+	readonly tryChoice?: 'merge' | 'mr';
 }
 
 /** A thread card's try: how many files, what the last update did, and what the user changed. */
@@ -542,21 +539,6 @@ export class ChatTranscript {
 		}
 	}
 
-	/** Adds a research run's card; returns its id. */
-	addResearch(question: string): string {
-		const id = this.newId();
-		this.push({ id, kind: 'research', question, progress: { state: 'planning', slices: [] } });
-		return id;
-	}
-
-	/** A research run's progress, and its report once there is one. */
-	updateResearch(id: string, progress: ResearchProgress, report?: string): void {
-		const item = this._items.find(existing => existing.id === id);
-		if (item?.kind === 'research') {
-			this.upsert({ ...item, progress, ...report !== undefined ? { report } : {} });
-		}
-	}
-
 	/** The last turn's readout, after its end. */
 	addTrace(readout: TurnReadout, file: string): void {
 		this.push({ id: this.newId(), kind: 'trace', readout, file });
@@ -584,10 +566,6 @@ export class ChatTranscript {
 			if (item.kind === 'notice' && item.actions) {
 				const { actions: _actions, ...rest } = item;
 				return rest;
-			}
-			// A research run still going when the chat was saved stopped with the window.
-			if (item.kind === 'research' && !['done', 'stopped', 'failed'].includes(item.progress.state)) {
-				return { ...item, progress: { ...item.progress, state: 'stopped' as const } };
 			}
 			if (item.kind === 'toolCall' && this.trimOutput) {
 				const trim = this.trimOutput;
@@ -716,7 +694,9 @@ export class ChatTranscript {
 	}
 
 	private upsert(item: TranscriptItem): void {
-		const index = this._items.findIndex(existing => existing.id === item.id);
+		// A streamed delta updates the last item, so the search from the front is for the rare edit of an older one.
+		const last = this._items.length - 1;
+		const index = last >= 0 && this._items[last].id === item.id ? last : this._items.findIndex(existing => existing.id === item.id);
 		if (index === -1) {
 			this.push(item);
 		} else {
@@ -761,13 +741,20 @@ function trimDetail(itemId: string, part: number, detail: ToolCallDetail, trim: 
 	return trimmed.hiddenLines ? { type: 'text', text: trimmed.head, tail: trimmed.tail, hiddenLines: trimmed.hiddenLines } : detail;
 }
 
+/** Each diff's line counts, by the content object the model keeps: an update without new content keeps the old objects, so the diff is counted once. */
+const diffCounts = new WeakMap<object, { readonly added: number; readonly removed: number }>();
+
 function toToolCallDetail(content: acp.ToolCallContent): ToolCallDetail {
 	switch (content.type) {
 		case 'content':
 			return { type: 'text', text: contentBlockToText(content.content) };
 		case 'diff': {
-			const { added, removed } = countChangedLines(content.oldText ?? '', content.newText);
-			return { type: 'diff', path: content.path, added, removed };
+			let counts = diffCounts.get(content);
+			if (!counts) {
+				counts = countChangedLines(content.oldText ?? '', content.newText);
+				diffCounts.set(content, counts);
+			}
+			return { type: 'diff', path: content.path, added: counts.added, removed: counts.removed };
 		}
 		case 'terminal':
 			return { type: 'terminal', terminalId: content.terminalId };

@@ -6,6 +6,7 @@
 #   commit-policy.sh branch <name>                  the branch starts with task/, feature/ or bugfix/
 #   commit-policy.sh commits <rev-list arguments>   every commit is the owner's and names no AI tool
 #   commit-policy.sh message <file>                 a commit message names no AI tool
+#   commit-policy.sh strip <file>                   removes a tool's trailers and footers from a message, in place
 #   commit-policy.sh pull-request <base> <branch>   all of the above for a pull request's commits
 #
 # Each prints what breaks a rule and exits 1, or prints nothing and exits 0.
@@ -13,6 +14,8 @@
 owner='er.pulkit@gmail.com'
 # Matched, ignoring case, against each commit's author, committer and message.
 attribution='claude|anthropic|copilot|codex|generated with'
+# A tool's trailer or footer line, which `strip` removes before `message` checks what is left.
+trailers='^[[:space:]]*(co-authored-by:.*(claude|anthropic|copilot|codex|openai)|claude-session:|.*generated (with|by) .*(claude|copilot|codex|chatgpt))'
 branches='^(task|feature|bugfix)/.'
 
 check_branch() {
@@ -25,6 +28,14 @@ check_branch() {
 # A message as git will keep it: no comment lines, nothing below the scissors line of `git commit -v`.
 message_text() {
 	sed -e '/^# -* >8 -*$/,$d' -e '/^#/d' "$1"
+}
+
+# Removes a tool's trailers and footers from the message file, and the blank lines they leave at its end.
+strip_message() {
+	kept="$1.kept.$$"
+	grep -viE "$trailers" "$1" > "$kept" || true
+	sed -e :a -e '/^[[:space:]]*$/{$d;N;ba' -e '}' "$kept" > "$1"
+	rm -f "$kept"
 }
 
 check_message() {
@@ -93,10 +104,12 @@ command=$1
 case "$command" in
 	branch) check_branch "$1" ;;
 	message) check_message "$1" ;;
+	strip) strip_message "$1" ;;
 	commits) check_commits "$@" ;;
 	pull-request) check_pull_request "$1" "$2" ;;
+	upstream-tag) upstream_tag_commit "$1" ;;
 	*)
-		echo "Usage: $0 branch <name> | message <file> | commits <rev-list arguments> | pull-request <base> <branch>" >&2
+		echo "Usage: $0 branch <name> | message <file> | strip <file> | commits <rev-list arguments> | pull-request <base> <branch> | upstream-tag <base>" >&2
 		exit 2
 		;;
 esac

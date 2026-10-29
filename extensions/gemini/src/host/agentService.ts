@@ -23,11 +23,12 @@ import { McpDiagnostics, McpProblem } from '../acp/mcpDiagnostics';
 import { MIN_CLI_VERSION } from '../acp/protocol';
 import { AgentSidecar } from '../acp/sidecar';
 import { AgentStatus, describeAgentStatus, describeRuntimeStatus } from '../acp/status';
-import { isConfirmToolCall } from '../acp/teamTools';
+import { isTeamWriteToolCall } from '../acp/teamTools';
 import { agentErrorText } from './chatStatus';
 import { agentLaunchSettings, configSection, getAgentCommand, getApprovalPolicy, getCliResolution, getProjectSettings, getWorkspaceCwd, includedFolderPaths } from './configuration';
 import { sessionModel, sessionModelList } from './modelPreference';
-import { getFileAccessPolicy, WorkspaceFileSystem } from './workspaceFileSystem';
+import { extensionChunk } from './lazyFeature';
+import { agentFileAccessPolicy, WorkspaceFileSystem } from './workspaceFileSystem';
 
 /** How long the first agent process of a launch took, from its spawn. */
 export interface StartupTimes {
@@ -50,10 +51,11 @@ export class AgentService implements vscode.Disposable {
 	/** The agent process; every chat session shares it. */
 	readonly runtime: AgentRuntime;
 	/** The workspace's file requests for every session, with the access policy applied. */
-	readonly files = createFileHandlers(new WorkspaceFileSystem(), getFileAccessPolicy);
+	/** The agents' file reads and writes, each session held to its own folder (`agentFileAccessPolicy`). */
+	readonly files = createFileHandlers(new WorkspaceFileSystem(), sessionId => agentFileAccessPolicy(this.runtime.folderOf(sessionId) ?? getWorkspaceCwd()));
 	/**
 	 * A session of the service's own, opened only when something asks for it
-	 * (`ensureReady`), such as the walkthrough's Sign In: the status comes from
+	 * (`ensureReady`), such as Sign In: the status comes from
 	 * the process and every chat's sessions, so no session opens per process start.
 	 */
 	readonly client: AgentClient;
@@ -114,11 +116,21 @@ export class AgentService implements vscode.Disposable {
 		this.runtime = new AgentRuntime(this.sidecar, {
 			fileSystem: this.files,
 			log: message => log.debug(message),
+			// The ACP SDK sits in a bundle of its own (src/connection.ts), loaded when the first agent process starts.
+			connectionModule: async () => extensionChunk<typeof import('../acp/agentConnection')>('connection')(),
 			folderProcess: {
 				needed: cwd => this.needsOwnProcess(cwd),
 				sidecar: cwd => {
-					const sidecar = new AgentSidecar({ command: async () => getAgentCommand({ cli: this._cli ?? await this.resolveCli() }), cwd, restartDelaysMs: [] });
+					// One restart: its sessions open again on the fresh process; a second crash fails them, and the user hears why.
+					const sidecar = new AgentSidecar({ command: async () => getAgentCommand({ cli: this._cli ?? await this.resolveCli() }), cwd, restartDelaysMs: [1_000] });
 					sidecar.onStderr(line => log.info(`[agent ${path.basename(cwd)}] ${line}`));
+					sidecar.onDidChangeState(state => {
+						if (state.kind === 'restarting') {
+							void vscode.window.showWarningMessage(vscode.l10n.t("The agent process for {0} stopped (exit code {1}) and is starting again. Its chats open a new session with the next prompt.", path.basename(cwd), String(state.exitCode ?? 'none')));
+						} else if (state.kind === 'failed') {
+							void vscode.window.showErrorMessage(vscode.l10n.t("The agent process for {0} stopped again: {1}. Its chats fall back to the window's agent process; use Gemini: Restart Agent to try its own again.", path.basename(cwd), state.message));
+						}
+					});
 					return sidecar;
 				},
 			},
@@ -130,13 +142,13 @@ export class AgentService implements vscode.Disposable {
 			preferredModel: sessionModel,
 			modelList: sessionModelList,
 			isModeAllowed: modeId => isModeAllowed(getApprovalPolicy(), modeId),
-			alwaysAsks: isConfirmToolCall,
+			alwaysAsks: isTeamWriteToolCall,
 			onDidWriteFile: filePath => this.permissions.approvals.noteWrite(filePath),
 			explainFileError: sessionId => this.files.lastDenial(sessionId),
 		});
 
-		// Redirects into the workspace may be approved for the session; others always ask.
-		this.permissions.roots = () => getFileAccessPolicy().roots;
+		// Redirects into the agent's folders may be approved for the session; others always ask.
+		this.permissions.roots = () => agentFileAccessPolicy(getWorkspaceCwd()).roots;
 		this.disposables.push(
 			this.onDidChangeStatusEmitter,
 			this.onDidStartEmitter,
@@ -161,7 +173,7 @@ export class AgentService implements vscode.Disposable {
 				if (state.kind === 'ready') {
 					this.log.info(`Session ${state.sessionId} ready`);
 				} else if (state.kind === 'error' && this.runtime.state.kind === 'ready') {
-					// Its own session failed, such as for the walkthrough's Sign In: say why, as for the agent.
+					// Its own session failed, such as for Sign In: say why, as for the agent.
 					this.showOnce(state.error);
 				}
 			}),
@@ -534,6 +546,10 @@ export class AgentService implements vscode.Disposable {
 				break;
 			case 'agent-not-found':
 				message = vscode.l10n.t("The Gemini CLI was not found. Install it, or set its path in the gemini.cliPath setting.");
+				actions = [installCli, setCliPath, showLog];
+				break;
+			case 'not-started':
+				message = vscode.l10n.t("The Gemini CLI could not be started: {0}", error.message);
 				actions = [installCli, setCliPath, showLog];
 				break;
 			case 'network':

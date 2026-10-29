@@ -13,6 +13,15 @@ import * as path from 'node:path';
 import type { AgentRecord, AgentTried, DiscardedRepo, TriedRepo } from './agents';
 
 /** The tree Take Back puts a repository's tried files back to: what was kept, else the base, with the edits the user sent on top. */
+/**
+ * Whether a try was interrupted: Try in Workspace was writing the checkout
+ * when the window ended. Its files may be half in; the next start takes
+ * them back (`AgentTries.finishInterrupted`).
+ */
+export function interruptedTry(record: Pick<AgentRecord, 'tried'>): boolean {
+	return record.tried?.state === 'applying';
+}
+
 export function takeBackTree(repo: TriedRepo): string {
 	return repo.back ?? repo.kept ?? repo.base;
 }

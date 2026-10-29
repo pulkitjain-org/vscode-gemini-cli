@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -61,7 +61,8 @@ describe('PromptEnhancer', () => {
 	let sidecar: AgentSidecar | undefined;
 	let runtime: AgentRuntime | undefined;
 	let enhancer: PromptEnhancer | undefined;
-	const cwd = mkdtempSync(path.join(tmpdir(), 'enhance-test-'));
+	// The real path: sessions open on it, as a terminal's CLI keys them.
+	const cwd = realpathSync(mkdtempSync(path.join(tmpdir(), 'enhance-test-')));
 
 	afterEach(() => {
 		vi.restoreAllMocks();

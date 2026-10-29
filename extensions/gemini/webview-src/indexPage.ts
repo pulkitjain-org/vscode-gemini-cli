@@ -8,22 +8,15 @@
 
 import type { DocsRefresh, DocsScope } from '../src/acp/docs/docsProtocol';
 import type { DocsSourceView, DocsSuggestionView, FromIndexPage, IndexPageStrings, IndexPageView, IndexWorkspaceView, SkippedFileView, ToIndexPage } from '../src/host/indexProtocol';
-import { button, el, format, icon, pageStrings } from './panelDom';
+import { button, el, format, icon } from './panelDom';
+import { bootPage } from './panelBoot';
 import { selectMenu, type SelectMenu } from './selectMenu';
 import { setTip } from './tooltip';
 
-declare function acquireVsCodeApi(): { postMessage(message: FromIndexPage): void };
-
-const vscode = acquireVsCodeApi();
-const strings = pageStrings<IndexPageStrings>();
+const { strings, post, main: page, start } = bootPage<ToIndexPage, FromIndexPage, IndexPageStrings>();
 const defaultMaxPages = Number(document.querySelector<HTMLScriptElement>('script[data-max-pages]')?.dataset.maxPages ?? 500);
-const page = document.getElementById('page')!;
 let view: IndexPageView | undefined;
 let folderMenu: SelectMenu | undefined;
-
-function post(message: FromIndexPage): void {
-	vscode.postMessage(message);
-}
 
 /** A button with a themed tooltip instead of the system's. */
 function tipped<T extends HTMLElement>(node: T, tip: string): T {
@@ -483,8 +476,7 @@ function renderSkipped(): void {
 	skippedBody.replaceChildren(...sections);
 }
 
-window.addEventListener('message', (event: MessageEvent<ToIndexPage>) => {
-	const message = event.data;
+start(message => {
 	switch (message.type) {
 		case 'view':
 			render(message.view);
@@ -510,5 +502,3 @@ window.addEventListener('message', (event: MessageEvent<ToIndexPage>) => {
 			break;
 	}
 });
-
-post({ type: 'ready' });

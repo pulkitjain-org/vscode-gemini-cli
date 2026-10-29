@@ -9,7 +9,6 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AgentRuntime, AgentRuntimeState } from '../../src/acp/agentRuntime';
 import { applyVerdicts, mergePrompt, parseSlices, parseWorkerReply, plainReport, ResearchRun, type ResearchProgress, toVerify, workerModel } from '../../src/acp/research';
-import { researchQuestionOf } from '../../src/acp/researchQuestion';
 import { AgentSidecar } from '../../src/acp/sidecar';
 import type { FakeAgentScript, ScriptedStep } from '../fake-agent/fakeAgent';
 import { fakeAgentCommand, waitFor } from '../helpers';
@@ -18,10 +17,6 @@ const reply = (text: string): ScriptedStep => ({ step: 'update', update: { sessi
 const slice = { title: 'src/auth', focus: 'Where tokens are read', paths: ['src/auth/**'] };
 
 describe('research parts and replies', () => {
-	it('takes the question from /research, and nothing else', () => {
-		expect(['/research where are tokens logged?', '/research', '/researcher x', 'research x'].map(researchQuestionOf)).toEqual(['where are tokens logged?', '', undefined, undefined]);
-	});
-
 	it('reads the planner\'s parts, at most the limit, and falls back to one part', () => {
 		const planned = 'Here:\n```json\n[{"title":"src/auth","focus":"tokens","paths":["src/auth/**"]},{"title":"src/api","paths":["src/api/**"]},{"focus":"no title"},{"title":"c"}]\n```';
 		expect({

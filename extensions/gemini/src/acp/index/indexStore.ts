@@ -28,6 +28,15 @@ import type { ParsedFile } from './parse';
 
 /** Raise when the tables change; an index with another version is rebuilt. */
 export const schemaVersion = 1;
+
+/**
+ * The bounds of every path under `prefix`, for `path >= ? AND path < ?`,
+ * which the primary key answers in order; `LIKE 'prefix%'` scans the table.
+ * The upper bound is the prefix followed by the largest code point.
+ */
+export function prefixRange(prefix: string): readonly [string, string] {
+	return [prefix, `${prefix}\u{10FFFF}`];
+}
 /** Pages the backup copies per step, between which queries run. */
 const backupPagesPerStep = 256;
 
@@ -44,6 +53,7 @@ CREATE TABLE IF NOT EXISTS imports(id INTEGER PRIMARY KEY, path TEXT NOT NULL, s
 CREATE INDEX IF NOT EXISTS imports_path ON imports(path);
 CREATE INDEX IF NOT EXISTS imports_target ON imports(target);
 CREATE TABLE IF NOT EXISTS cochange(a TEXT NOT NULL, b TEXT NOT NULL, count INTEGER NOT NULL, PRIMARY KEY(a, b)) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS cochange_b ON cochange(b);
 `;
 
 export interface FileState {

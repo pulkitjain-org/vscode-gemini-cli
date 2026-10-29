@@ -11,7 +11,8 @@
 // it as Jira rich text through Jira's REST API (teamTools.ts, jira_rich_comment).
 
 import type { AdfDocument, CommentMention } from '../src/acp/jiraAdf';
-import type { FromHome, HomeAction, HomeStrings, ToHome } from '../src/host/panelProtocol';
+import type { FromHome, HomeAction, ToHome } from '../src/host/panelProtocol';
+import type { HomeStrings } from '../src/host/panelStrings';
 import { attachmentIcon, carriesFiles, fileUris } from './chatLogic';
 import { continueList, insertBlock, insertLink, mentionAt, toggleLinePrefix, toggleWrap, type TextEdit } from './markdownEdit';
 import { createPreviewTabs, isPreviewShortcut } from './markdownPreview';

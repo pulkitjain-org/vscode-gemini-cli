@@ -11,7 +11,7 @@ import { isValidBranchName } from '../src/acp/branchNames';
 import type { ViewBranch, ViewGit, ViewRepo, ViewWorkspace } from '../src/host/chatProtocol';
 import { format } from './chatLogic';
 import { el, icon, setLabel } from './dom';
-import { Menu, type MenuRow } from './menu';
+import { Menu, type MenuRow, type MenuSection } from './menu';
 import { toneOf } from './repoTones';
 import { state, strings, ui, vscode } from './view';
 
@@ -31,9 +31,26 @@ const modelMenu = new Menu({
 				modelMenu.close();
 			},
 		})),
-	}],
+	}, ...cliDefaultSection(() => modelMenu.close())],
 	empty: () => strings.loading,
 });
+
+/** The row that makes the session's model the CLI's default, as the terminal's /model dialog offers; none without a model. */
+export function cliDefaultSection(close: () => void): MenuSection[] {
+	const current = state.settings.model?.currentId;
+	if (!current) {
+		return [];
+	}
+	return [{
+		rows: [{
+			icon: 'pin', name: strings.modelDefaultCli, detail: strings.modelDefaultCliDetail,
+			run: () => {
+				vscode.postMessage({ type: 'setCliDefaultModel', id: current });
+				close();
+			},
+		}],
+	}];
+}
 
 /** Shows the session's model on its button, and in the menu if open. */
 export function updateModel(): void {

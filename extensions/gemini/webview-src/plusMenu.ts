@@ -14,6 +14,7 @@ import { Menu, type MenuRow, type MenuSection } from './menu';
 import { modeIcon } from './modeIcon';
 import { openFigmaDesign } from './figmaDesignLoader';
 import { closePicker, startCommand, startMention } from './picker';
+import { cliDefaultSection } from './pickers';
 import { openNewThread, planFirst, setPlanFirst } from './project';
 import { hasTerminal } from './runButtons';
 import { toolRefContext } from './toolChips';
@@ -81,7 +82,7 @@ function sections(): MenuSection[] {
 					},
 				})),
 			],
-		}];
+		}, ...cliDefaultSection(() => closePlusMenu())];
 	}
 	const mode = state.settings.mode;
 	const result: MenuSection[] = [];

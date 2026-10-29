@@ -13,7 +13,7 @@
 
 import type * as acp from '@agentclientprotocol/sdk';
 import { ChildProcessWithoutNullStreams } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, Server } from 'node:http';
 import { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -73,7 +73,8 @@ describeRealCli('session snapshots on the real CLI', () => {
 			});
 		});
 		await new Promise<void>(resolve => server!.listen(0, '127.0.0.1', resolve));
-		home = mkdtempSync(path.join(tmpdir(), 'gemini-home-'));
+		// The real path: GeminiCode opens sessions on it, and the CLI keys them by the path it is given.
+		home = realpathSync(mkdtempSync(path.join(tmpdir(), 'gemini-home-')));
 		const work = path.join(home, 'shop');
 		const fork = path.join(home, 'shop-fork');
 		for (const folder of [work, fork]) {

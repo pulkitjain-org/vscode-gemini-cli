@@ -96,7 +96,7 @@ export class PermissionBroker {
 			return Promise.resolve({ outcome });
 		}
 		const prefixes = command === undefined ? undefined : this.approvals.prefixesOf(command);
-		return this.ask(withApprovalLabels(request, prefixes), false, prefixes);
+		return this.ask(withPermanentScope(withApprovalLabels(request, prefixes)), false, prefixes);
 	}
 
 	/** Shows the card and waits. */
@@ -192,6 +192,23 @@ function confirmOptions(request: acp.RequestPermissionRequest): acp.RequestPermi
 /** Whether `option` is a request's "Allow for this session" (gemini-cli's `proceed_always`), not "for all future sessions". */
 export function isSessionOption(option: acp.PermissionOption): boolean {
 	return option.kind === 'allow_always' && (option.optionId === 'proceed_always' || /for this session/i.test(option.name));
+}
+
+/** Whether `option` is the CLI's "Allow for all future sessions" (`proceed_always_and_save`), which writes a policy rule. */
+export function isPermanentOption(option: acp.PermissionOption): boolean {
+	return option.kind === 'allow_always' && (option.optionId === 'proceed_always_and_save' || /all future sessions/i.test(option.name));
+}
+
+/**
+ * The CLI's permanent allow with its scope spelt out: the rule it writes
+ * (`~/.gemini/policies/auto-saved.toml`) applies in the mode the session is in
+ * and the ones that approve more, never in a stricter one.
+ */
+export function withPermanentScope(request: acp.RequestPermissionRequest): acp.RequestPermissionRequest {
+	if (!request.options.some(isPermanentOption)) {
+		return request;
+	}
+	return { ...request, options: request.options.map(option => isPermanentOption(option) ? { ...option, name: `${option.name} (in this mode and the ones that approve more)` } : option) };
 }
 
 /** Says what "Allow for this session" covers for a shell command: "Allow git status, grep, head for this session". */

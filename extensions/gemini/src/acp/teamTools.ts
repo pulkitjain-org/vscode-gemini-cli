@@ -81,7 +81,7 @@ export interface TeamToolContext {
 	readOnly?(agent: string): boolean;
 	/** Confluence's calls, its bundle loaded now if it was not yet; undefined when Confluence isn't connected. */
 	confluence?(): ConfluenceTools | undefined;
-	/** Whether Figma looks up Code Connect mappings in design reads (`gemini.figma.codeConnect`); off, Figma answers faster and never asks about them. */
+	/** Whether Figma looks up Code Connect mappings in design reads when the repository's defaults file does not say (`designSystem`); off, Figma answers faster and never asks about them. */
 	figmaCodeConnect?(): boolean;
 	/** The design system of the repository around `folder`, for Figma reads: Code Connect over the setting, and the tokens that name colours. */
 	designSystem?(folder: string): Promise<{ readonly codeConnect?: boolean; readonly tokens: TokenIndex } | undefined>;
@@ -293,8 +293,24 @@ export function confirmToolGroups(): { server: string; tools: string[] }[] {
 
 /** Whether a permission request is for a confirm-class tool, by the title the CLI gives MCP calls (`name(args)`). */
 export function isConfirmToolCall(request: { readonly toolCall: { readonly title?: string | null } }): boolean {
+	return isCallOf(request, confirmToolNames);
+}
+
+/** Every write among GeminiCode's own team tools, with the confirm class's names from a team's own servers. */
+const writeToolNames: readonly string[] = [...new Set([...teamTools.filter(tool => tool.write).map(tool => tool.name), ...confirmToolNames])];
+
+/**
+ * Whether a permission request is for a team tool that writes: a comment, a
+ * reply, an assignment, or the confirm class. These ask in every mode, YOLO
+ * included, since a write to a team's tools is never undone by Undo.
+ */
+export function isTeamWriteToolCall(request: { readonly toolCall: { readonly title?: string | null } }): boolean {
+	return isCallOf(request, writeToolNames);
+}
+
+function isCallOf(request: { readonly toolCall: { readonly title?: string | null } }, names: readonly string[]): boolean {
 	const title = request.toolCall.title ?? '';
-	return confirmToolNames.some(name => title === name || title.startsWith(`${name}(`));
+	return names.some(name => title === name || title.startsWith(`${name}(`));
 }
 
 /** The tools for the connected tools; with `readOnly`, only those that read. */

@@ -15,7 +15,7 @@
 
 import { promises as fs, watch, type FSWatcher } from 'node:fs';
 import * as path from 'node:path';
-import { isQuarantined, isRecord, quarantine, writeFileAtomic } from './fsUtil';
+import { isQuarantined, isRecord, privateWrite, quarantine, writeFileAtomic } from './fsUtil';
 
 /** What a record needs: an id that is unique in its list. */
 export interface StoredRecord {
@@ -160,7 +160,7 @@ export class RecordStore<T extends StoredRecord> {
 	 */
 	watch(onChange: (change: RecordChange<T>) => void): { dispose(): void } {
 		this.stopWatching();
-		void fs.mkdir(this.dir, { recursive: true }).then(() => {
+		void fs.mkdir(this.dir, { recursive: true, mode: privateWrite.dirMode }).then(() => {
 			try {
 				const watcher = watch(this.dir, (_event, name) => {
 					if (name && (!name.endsWith('.json') || isQuarantined(name))) {
@@ -308,7 +308,7 @@ export class RecordStore<T extends StoredRecord> {
 		}
 		const text = JSON.stringify({ version: this.version, order, record });
 		try {
-			await writeFileAtomic(file, text);
+			await writeFileAtomic(file, text, privateWrite);
 		} catch (err) {
 			this.options.onError?.(`${path.basename(file)} could not be saved: ${err instanceof Error ? err.message : String(err)}`);
 			return { kind: 'skipped' };
@@ -323,7 +323,7 @@ export class RecordStore<T extends StoredRecord> {
 	private async remove(id: string): Promise<void> {
 		const text = JSON.stringify({ version: this.version, id, deleted: this.now() });
 		try {
-			await writeFileAtomic(this.file(id), text);
+			await writeFileAtomic(this.file(id), text, privateWrite);
 		} catch (err) {
 			this.options.onError?.(`${path.basename(this.file(id))} could not be removed: ${err instanceof Error ? err.message : String(err)}`);
 			return;

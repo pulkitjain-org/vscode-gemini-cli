@@ -7,7 +7,7 @@ import * as vscode from 'vscode';
 import { errorMessage } from '../acp/errors';
 import type { FlowRecordStore } from '../acp/flowRecords';
 import { FromTeamFlow, TeamFlowState, TeamFlowStrings, TeamFlowView, ToTeamFlow } from './teamFlowProtocol';
-import { createNonce, escapeAttribute } from './webviewHtml';
+import { PagePanel, PageShell } from './pagePanel';
 
 export const teamFlowViewType = 'gemini.teamFlow';
 
@@ -34,13 +34,12 @@ const saveFieldsMs = 600;
  */
 export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable {
 
-	readonly panel: vscode.WebviewPanel;
+	private readonly page: PagePanel<ToTeamFlow, FromTeamFlow>;
 	private state: TeamFlowState;
 	/** What the user typed or ticked, by field. */
 	readonly fields = new Map<string, unknown>();
 	private running = false;
-	private readonly onDidDisposeEmitter = new vscode.EventEmitter<void>();
-	readonly onDidDispose = this.onDidDisposeEmitter.event;
+	readonly onDidDispose: vscode.Event<void>;
 	private readonly onDidSetFieldEmitter = new vscode.EventEmitter<string>();
 	/** A field the user typed in or ticked, by name; the page isn't re-rendered. */
 	readonly onDidSetField = this.onDidSetFieldEmitter.event;
@@ -64,18 +63,14 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 		recording?: FlowRecording,
 	) {
 		const media = vscode.Uri.joinPath(extensionUri, 'media');
-		this.panel = vscode.window.createWebviewPanel(teamFlowViewType, title, column, { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [media] });
-		this.panel.iconPath = vscode.Uri.joinPath(media, 'tools', `${icon}.svg`);
 		this.state = { loading };
-		this.panel.webview.html = html(this.panel.webview, media);
-		this.panel.webview.onDidReceiveMessage((message: FromTeamFlow) => this.onMessage(message));
-		this.panel.onDidDispose(() => {
+		this.page = new PagePanel<ToTeamFlow, FromTeamFlow>(extensionUri, { viewType: teamFlowViewType, title, icon: vscode.Uri.joinPath(media, 'tools', `${icon}.svg`), column, retainContextWhenHidden: true }, shell(), message => this.onMessage(message));
+		this.onDidDispose = this.page.onDidDispose;
+		this.page.onDidDispose(() => {
 			this.disposed = true;
 			clearTimeout(this.saveTimer);
 			clearTimeout(this.postTimer);
 			void this.closeRecord();
-			this.onDidDisposeEmitter.fire();
-			this.onDidDisposeEmitter.dispose();
 			this.onDidSetFieldEmitter.dispose();
 		});
 		if (recording) {
@@ -177,8 +172,13 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 		}
 	}
 
+	/** The tab itself, for whoever places or titles it. */
+	get panel(): vscode.WebviewPanel {
+		return this.page.panel;
+	}
+
 	dispose(): void {
-		this.panel.dispose();
+		this.page.dispose();
 	}
 
 	/**
@@ -194,7 +194,7 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 		clearTimeout(this.postTimer);
 		this.postTimer = undefined;
 		if (!this.disposed) {
-			void this.panel.webview.postMessage({ type: 'state', state: this.state } satisfies ToTeamFlow);
+			this.page.post({ type: 'state', state: this.state });
 		}
 	}
 
@@ -204,7 +204,7 @@ export class TeamFlowPanel<V extends TeamFlowView> implements vscode.Disposable 
 			if (this.postTimer) {
 				this.postNow();
 			}
-			void this.panel.webview.postMessage(message);
+			this.page.post(message);
 		}
 	}
 
@@ -234,8 +234,7 @@ function plainFields(fields: ReadonlyMap<string, unknown>): Record<string, strin
 	return Object.fromEntries([...fields].filter((entry): entry is [string, string | number | boolean] => ['string', 'number', 'boolean'].includes(typeof entry[1])));
 }
 
-function html(webview: vscode.Webview, media: vscode.Uri): string {
-	const nonce = createNonce();
+function shell(): PageShell {
 	const strings: TeamFlowStrings = {
 		close: vscode.l10n.t("Close"),
 		cancel: vscode.l10n.t("Cancel"),
@@ -357,20 +356,5 @@ function html(webview: vscode.Webview, media: vscode.Uri): string {
 		noIssues: vscode.l10n.t("No issues found."),
 		fixNote: vscode.l10n.t("No agent works on this branch yet. Fix starts one in this checkout with the findings as its first prompt."),
 	};
-	const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'teamFlow.js'));
-	const styles = ['codicon.css', 'menu.css', 'panels.css', 'teamFlow.css', 'glass.css'].map(file => `<link href="${webview.asWebviewUri(vscode.Uri.joinPath(media, file))}" rel="stylesheet">`).join('\n\t');
-	return `<!DOCTYPE html>
-<html lang="en">
-<head>
-	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data: ${webview.cspSource}; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	${styles}
-	<title>Team flow</title>
-</head>
-<body class="team-flow">
-	<main id="flow"></main>
-	<script nonce="${nonce}" type="module" src="${script}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
-</body>
-</html>`;
+	return { script: 'teamFlow.js', styles: ['teamFlow.css'], title: 'Team flow', bodyClass: 'team-flow', mainId: 'flow', strings, loadsMedia: true };
 }

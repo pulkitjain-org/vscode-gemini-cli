@@ -9,6 +9,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { benchResultsFileName, BenchTask, readBenchTasks, runBenchmark } from '../../src/acp/benchmark';
+import { promptVersions } from '../../src/acp/promptVersions';
 import { fakeAgentCommand } from '../helpers';
 
 const dirs: string[] = [];
@@ -50,7 +51,7 @@ describe('benchmark', () => {
 			...summary, ranAt: undefined, medianFirstTextMs: undefined, medianWallMs: undefined,
 			results: summary.results.map(r => ({ key: r.key, completed: r.completed, graderExit: r.graderExit, requests: r.requests, tokensIn: r.tokensIn, tokensOut: r.tokensOut, stopReason: r.stopReason, error: r.error, sawText: r.firstTextMs !== null })),
 		}).toEqual({
-			ranAt: undefined, geminiCodeVersion: '1.2.0', cliVersion: '0.64.0', model: 'gemini-3.8-flash', tasks: 2, completed: 1, completionRate: 0.5, requestsPerCompletedTask: 2, medianFirstTextMs: undefined, medianWallMs: undefined,
+			ranAt: undefined, promptVersions, geminiCodeVersion: '1.2.0', cliVersion: '0.64.0', model: 'gemini-3.8-flash', tasks: 2, completed: 1, completionRate: 0.5, requestsPerCompletedTask: 2, medianFirstTextMs: undefined, medianWallMs: undefined,
 			results: [
 				{ key: 'ACME-412', completed: true, graderExit: 0, requests: 2, tokensIn: 1200, tokensOut: 80, stopReason: 'end_turn', error: undefined, sawText: true },
 				{ key: 'ACME-413', completed: false, graderExit: 3, requests: 2, tokensIn: 1200, tokensOut: 80, stopReason: 'end_turn', error: undefined, sawText: true },

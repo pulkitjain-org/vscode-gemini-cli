@@ -10,7 +10,7 @@
 // module state with the chat's script: everything it needs comes in
 // `openPicker`'s options.
 
-import type { ReactionStrings } from '../src/host/chatProtocol';
+import type { ReactionStrings } from '../src/host/chatStrings';
 import data from './emojiData.json';
 import { buildIndex, moveInGrid, recentEmoji, searchEmoji, type EmojiEntry, type GridPosition, type IndexedEmoji } from './emojiSearch';
 

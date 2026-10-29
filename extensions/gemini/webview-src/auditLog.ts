@@ -8,23 +8,17 @@
 // by day and tool, and Export and Open Folder.
 
 import type { AuditPageView, AuditRowView, AuditStrings, FromAudit, ToAudit } from '../src/host/auditProtocol';
-import { button, el, format, pageStrings } from './panelDom';
+import { bootPage } from './panelBoot';
+import { button, el, format } from './panelDom';
+import { storageSection } from './settingsStorage';
 import { toolLogo } from './toolLogos';
 
-declare function acquireVsCodeApi(): { postMessage(message: FromAudit): void };
-
-const vscode = acquireVsCodeApi();
-const strings = pageStrings<AuditStrings>();
-const page = document.getElementById('page')!;
+const { strings, post, main: page, start } = bootPage<ToAudit, FromAudit, AuditStrings>();
 
 let view: AuditPageView | undefined;
 /** The tool filter: all, or one tool. */
 let tool: 'all' | 'jira' | 'gitlab' = 'all';
 let onlyOpen = false;
-
-function post(message: FromAudit): void {
-	vscode.postMessage(message);
-}
 
 function render(): void {
 	if (!view) {
@@ -36,9 +30,15 @@ function render(): void {
 	const hint = el('p', 'hint');
 	const [before, after] = strings.subtitle.split('{0}');
 	hint.append(before ?? '', el('code', 'mono', view.folder), after ?? '');
-	intro.append(el('h1', undefined, strings.title), hint);
+	intro.append(el('h1', undefined, strings.title));
 	header.append(intro);
 	page.append(header);
+	if (view.storage) {
+		page.append(storageSection(view.storage, strings, post));
+	}
+	const log = el('div', 'settings-section');
+	log.append(el('h2', undefined, strings.auditTitle), hint);
+	page.append(log);
 
 	// Day, tool, and only the open intents; Export and Open Folder at the end.
 	const filters = el('div', 'audit-filters');
@@ -119,11 +119,9 @@ function auditRow(row: AuditRowView): HTMLElement {
 	return tr;
 }
 
-window.addEventListener('message', (event: MessageEvent<ToAudit>) => {
-	if (event.data.type === 'view') {
-		view = event.data.view;
+start(message => {
+	if (message.type === 'view') {
+		view = message.view;
 		render();
 	}
 });
-
-post({ type: 'ready' });

@@ -11,27 +11,24 @@
 import type { TargetChoice } from '../src/acp/teamFlowLogic';
 import type { ChecksView, FlowPerson, FlowPill, FlowTool, FromTeamFlow, MoveTicketView, OpenMrView, ReviewCommentView, ReviewThreadView, ReviewView, TeamFlowState, TeamFlowStrings, ToTeamFlow } from '../src/host/teamFlowProtocol';
 import { Menu } from './menu';
-import { button, el, format, icon, keepFocus, pageStrings } from './panelDom';
+import { button, el, format, icon, keepFocus } from './panelDom';
 import { selectMenu } from './selectMenu';
 import { toolLogo } from './toolLogos';
+import { bootPage } from './panelBoot';
 import { setTip } from './tooltip';
 
-declare function acquireVsCodeApi(): { postMessage(message: FromTeamFlow): void };
-
-const vscode = acquireVsCodeApi();
-const strings = pageStrings<TeamFlowStrings>();
-const root = document.getElementById('flow')!;
+const { strings, post, main: root, start } = bootPage<ToTeamFlow, FromTeamFlow, TeamFlowStrings>('flow');
 /** Menus of the current render, disposed with it. */
 let disposables: { dispose(): void }[] = [];
 /** The last description and comment revisions shown, so a re-render keeps what the user typed. */
 const shown = new Map<string, { rev: number; text: string }>();
 
 function set(field: string, value: unknown): void {
-	vscode.postMessage({ type: 'set', field, value });
+	post({ type: 'set', field, value });
 }
 
 function act(action: string, value?: unknown): void {
-	vscode.postMessage({ type: 'act', action, value });
+	post({ type: 'act', action, value });
 }
 
 function logo(tool: FlowTool | 'people' | 'review', size = 14): Element {
@@ -768,14 +765,12 @@ function checks(view: ChecksView): ReturnType<typeof dialog> {
 	return d;
 }
 
-window.addEventListener('message', (event: MessageEvent<ToTeamFlow>) => {
-	if (event.data.type === 'state') {
-		render(event.data.state);
-	} else if (event.data.type === 'branches') {
+start(message => {
+	if (message.type === 'state') {
+		render(message.state);
+	} else if (message.type === 'branches') {
 		const known = new Set(searchedBranches.map(b => b.branch));
-		searchedBranches = [...searchedBranches, ...event.data.branches.filter(b => !known.has(b.branch))];
+		searchedBranches = [...searchedBranches, ...message.branches.filter(b => !known.has(b.branch))];
 		targetMenu?.render();
 	}
 });
-
-vscode.postMessage({ type: 'ready' });

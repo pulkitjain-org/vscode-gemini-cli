@@ -17,7 +17,7 @@ import type { DraftReview } from '../acp/draftReview';
 import { hostOf } from '../acp/teamHttp';
 import type { TeamWriteResult } from '../acp/teamTools';
 import type { FromReview, ReviewStrings, ReviewView, ToReview } from './confluenceReviewProtocol';
-import { createNonce, escapeAttribute } from './webviewHtml';
+import { PagePanel, PageShell } from './pagePanel';
 
 export interface ReviewActions {
 	/** The draft as it is kept now. */
@@ -32,32 +32,21 @@ export interface ReviewActions {
 
 export class ConfluenceReviewPage implements vscode.Disposable {
 
-	private readonly panel: vscode.WebviewPanel;
-	private readonly onDidDisposeEmitter = new vscode.EventEmitter<void>();
-	readonly onDidDispose = this.onDidDisposeEmitter.event;
+	private readonly page: PagePanel<ToReview, FromReview>;
+	readonly onDidDispose: vscode.Event<void>;
 
 	constructor(extensionUri: vscode.Uri, private draft: ConfluenceDraft, column: vscode.ViewColumn, private readonly actions: ReviewActions) {
 		const media = vscode.Uri.joinPath(extensionUri, 'media');
-		this.panel = vscode.window.createWebviewPanel('gemini.confluenceReview', vscode.l10n.t("Review Page: {0}", draft.title), column, {
-			enableScripts: true,
-			retainContextWhenHidden: true,
-			localResourceRoots: [media],
-		});
-		this.panel.iconPath = vscode.Uri.joinPath(media, 'tools', 'confluence.svg');
-		this.panel.webview.html = this.html(this.panel.webview, media);
-		this.panel.webview.onDidReceiveMessage((message: FromReview) => void this.onMessage(message));
-		this.panel.onDidDispose(() => {
-			this.onDidDisposeEmitter.fire();
-			this.onDidDisposeEmitter.dispose();
-		});
+		this.page = new PagePanel<ToReview, FromReview>(extensionUri, { viewType: 'gemini.confluenceReview', title: vscode.l10n.t("Review Page: {0}", draft.title), icon: vscode.Uri.joinPath(media, 'tools', 'confluence.svg'), column, retainContextWhenHidden: true }, this.shell(), message => this.onMessage(message));
+		this.onDidDispose = this.page.onDidDispose;
 	}
 
 	reveal(): void {
-		this.panel.reveal();
+		this.page.reveal();
 	}
 
 	dispose(): void {
-		this.panel.dispose();
+		this.page.dispose();
 	}
 
 	/** Someone saved the page since the draft: the webview merges the draft onto `theirs`. */
@@ -66,7 +55,7 @@ export class ConfluenceReviewPage implements vscode.Disposable {
 	}
 
 	private post(message: ToReview): void {
-		void this.panel.webview.postMessage(message);
+		this.page.post(message);
 	}
 
 	private view(): ReviewView {
@@ -107,7 +96,7 @@ export class ConfluenceReviewPage implements vscode.Disposable {
 					const result = await this.actions.publish(message.title, message.document, message.review);
 					if (result.ok) {
 						this.post({ type: 'published', url: String(result.data?.url ?? ''), version: Number(result.data?.version ?? 1) });
-						this.panel.title = vscode.l10n.t("Published: {0}", message.title);
+						this.page.panel.title = vscode.l10n.t("Published: {0}", message.title);
 					} else if (!result.data?.conflict) {
 						// A conflict was sent to the page by the feature, with the latest version.
 						this.post({ type: 'error', message: result.text });
@@ -118,7 +107,7 @@ export class ConfluenceReviewPage implements vscode.Disposable {
 					const discard = vscode.l10n.t("Discard Draft");
 					if (await vscode.window.showWarningMessage(vscode.l10n.t("Discard the draft of {0}?", this.draft.title), { modal: true, detail: vscode.l10n.t("Nothing was published. The draft and your edits are deleted.") }, discard) === discard) {
 						await this.actions.discard();
-						this.panel.dispose();
+						this.page.dispose();
 					}
 					return;
 				}
@@ -133,30 +122,9 @@ export class ConfluenceReviewPage implements vscode.Disposable {
 		}
 	}
 
-	private html(webview: vscode.Webview, media: vscode.Uri): string {
-		const nonce = createNonce();
-		const strings = reviewStrings();
-		const script = webview.asWebviewUri(vscode.Uri.joinPath(media, 'confluenceReview.js'));
-		const draftMarkdown = webview.asWebviewUri(vscode.Uri.joinPath(media, 'draftMarkdown.js'));
-		const style = webview.asWebviewUri(vscode.Uri.joinPath(media, 'panels.css'));
-		const pageStyle = webview.asWebviewUri(vscode.Uri.joinPath(media, 'confluenceReview.css'));
-		const codicons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'codicon.css'));
-		return `<!DOCTYPE html>
-<html lang="en">
-<head>
-	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: ${webview.cspSource}; img-src data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}' ${webview.cspSource};">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<link href="${codicons}" rel="stylesheet">
-	<link href="${style}" rel="stylesheet">
-	<link href="${pageStyle}" rel="stylesheet">
-	<title>${escapeAttribute(this.draft.title)}</title>
-</head>
-<body class="review-page">
-	<main id="page"></main>
-	<script nonce="${nonce}" type="module" src="${script}" data-draft-markdown="${draftMarkdown}" data-strings="${escapeAttribute(JSON.stringify(strings))}"></script>
-</body>
-</html>`;
+	private shell(): PageShell {
+		// The Markdown renderer is a chunk of its own (media/draftMarkdown.js), loaded by the page's script.
+		return { script: 'confluenceReview.js', styles: ['confluenceReview.css'], title: this.draft.title, bodyClass: 'review-page', strings: reviewStrings(), media: { 'draft-markdown': 'draftMarkdown.js' }, loadsMedia: true };
 	}
 }
 

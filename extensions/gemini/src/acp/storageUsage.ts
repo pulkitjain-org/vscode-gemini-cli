@@ -59,7 +59,7 @@ export type CleanupReason =
 	| 'orphaned'
 	/** Checkpoints of a thread merged back. */
 	| 'merged'
-	/** An audit log day older than `gemini.storage.keepLogsDays`. */
+	/** An audit log day older than `gemini.audit.keepDays`. */
 	| 'oldLog'
 	/** A performance trace and its summary. */
 	| 'trace'
@@ -107,7 +107,7 @@ export interface CleanupInput {
 	readonly agents: ReadonlySet<string>;
 	/** The threads merged back (`mergedThreads`). */
 	readonly merged: ReadonlySet<string>;
-	/** `gemini.storage.keepLogsDays`; 0 keeps every day. */
+	/** `gemini.audit.keepDays`; 0 keeps every day. */
 	readonly keepLogsDays: number;
 	readonly now: Date;
 	/** Merged threads' worktrees; only those whose work is all committed and merged are offered. */
@@ -234,7 +234,7 @@ export function applyLogRetention(globalStorage: string, keepDays: number, now: 
 	return removeOldDayFiles(path.join(globalStorage, 'audit'), keepDays, now);
 }
 
-/** `gemini.storage.keepLogsDays` as used: 0 keeps every day; otherwise at least 7, which Home's Unfinished list reads. */
+/** `gemini.audit.keepDays` as used: 0 keeps every day; otherwise at least 7, which Home's Unfinished list reads. */
 export function keepLogsDays(setting: unknown): number {
 	const days = typeof setting === 'number' && Number.isFinite(setting) ? Math.floor(setting) : 90;
 	return days <= 0 ? 0 : Math.max(7, days);

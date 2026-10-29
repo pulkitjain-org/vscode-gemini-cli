@@ -10,23 +10,16 @@
 
 import { fileIcon } from '../src/acp/agentFiles';
 import type { FileRow, FilesStrings, FilesView, FromFiles, ToFiles, TreeEntry } from '../src/host/agentFilesProtocol';
-import { button, el, icon, pageStrings } from './panelDom';
+import { button, el, icon } from './panelDom';
+import { bootPage } from './panelBoot';
 import { setTip } from './tooltip';
-
-declare function acquireVsCodeApi(): {
-	postMessage(message: FromFiles): void;
-	getState(): SavedState | undefined;
-	setState(state: SavedState): void;
-};
 
 interface SavedState {
 	readonly open: readonly string[];
 	readonly treeHidden: boolean;
 }
 
-const vscode = acquireVsCodeApi();
-const strings = pageStrings<FilesStrings>();
-const page = document.getElementById('page')!;
+const { strings, post, main: page, savedState, saveState, start } = bootPage<ToFiles, FromFiles, FilesStrings, SavedState>();
 /** Narrow, beside an open file: the tree alone. */
 const narrow = matchMedia('(max-width: 479px)');
 const searchDelayMs = 80;
@@ -35,8 +28,8 @@ let view: FilesView | undefined;
 /** Each listed folder's entries. */
 const listed = new Map<string, readonly TreeEntry[]>();
 /** The folders open in the tree. */
-const open = new Set<string>(vscode.getState()?.open ?? []);
-let treeHidden = vscode.getState()?.treeHidden ?? false;
+const open = new Set<string>(savedState()?.open ?? []);
+let treeHidden = savedState()?.treeHidden ?? false;
 let query = '';
 let found: readonly FileRow[] | undefined;
 let lastSearch = 0;
@@ -54,12 +47,12 @@ const list = el('div', 'files-list');
 const showTree = button('icon-button files-show-tree', '', () => setTreeHidden(false), 'layout-sidebar-right');
 setTip(showTree, strings.showTree);
 showTree.setAttribute('aria-label', strings.showTree);
-home.append(showTree, searchBox, button('files-row files-new', strings.newFile, () => vscode.postMessage({ type: 'newFile' }), 'new-file'), list);
+home.append(showTree, searchBox, button('files-row files-new', strings.newFile, () => post({ type: 'newFile' }), 'new-file'), list);
 tree.setAttribute('aria-label', strings.tree);
 page.append(home, tree);
 
 function save(): void {
-	vscode.setState({ open: [...open], treeHidden });
+	saveState({ open: [...open], treeHidden });
 }
 
 function setTreeHidden(hidden: boolean): void {
@@ -69,7 +62,7 @@ function setTreeHidden(hidden: boolean): void {
 }
 
 function fileButton(file: FileRow): HTMLButtonElement {
-	const row = button('files-row', '', () => vscode.postMessage({ type: 'open', path: file.path }), file.icon);
+	const row = button('files-row', '', () => post({ type: 'open', path: file.path }), file.icon);
 	row.append(el('span', 'files-name', file.name));
 	if (file.folder) {
 		row.append(el('span', 'files-folder', file.folder));
@@ -95,7 +88,7 @@ function entryRows(folder: string, depth: number): HTMLElement[] {
 	}
 	return entries.flatMap(entry => {
 		const isOpen = entry.folder && open.has(entry.path);
-		const row = button(`files-row tree-row${entry.ignored ? ' ignored' : ''}`, '', () => entry.folder ? toggle(entry) : vscode.postMessage({ type: 'open', path: entry.path }), entry.folder ? (isOpen ? 'folder-opened' : 'folder') : fileIcon(entry.name));
+		const row = button(`files-row tree-row${entry.ignored ? ' ignored' : ''}`, '', () => entry.folder ? toggle(entry) : post({ type: 'open', path: entry.path }), entry.folder ? (isOpen ? 'folder-opened' : 'folder') : fileIcon(entry.name));
 		row.style.paddingLeft = `${8 + depth * 14}px`;
 		row.append(el('span', 'files-name', entry.name));
 		if (entry.folder) {
@@ -111,7 +104,7 @@ function toggle(entry: TreeEntry): void {
 	} else {
 		open.add(entry.path);
 		if (!listed.has(entry.path)) {
-			vscode.postMessage({ type: 'list', folder: entry.path, ignored: entry.ignored });
+			post({ type: 'list', folder: entry.path, ignored: entry.ignored });
 		}
 	}
 	save();
@@ -122,7 +115,7 @@ function renderTree(): void {
 	if (!view) {
 		return;
 	}
-	const close = button('icon-button files-close-tree', '', () => narrow.matches ? vscode.postMessage({ type: 'close' }) : setTreeHidden(true), narrow.matches ? 'close' : 'layout-sidebar-right-off');
+	const close = button('icon-button files-close-tree', '', () => narrow.matches ? post({ type: 'close' }) : setTreeHidden(true), narrow.matches ? 'close' : 'layout-sidebar-right-off');
 	const label = narrow.matches ? strings.closeTree : strings.hideTree;
 	setTip(close, label);
 	close.setAttribute('aria-label', label);
@@ -144,15 +137,14 @@ searchInput.addEventListener('input', () => {
 	found = undefined;
 	clearTimeout(searchTimer);
 	if (query) {
-		searchTimer = setTimeout(() => vscode.postMessage({ type: 'search', requestId: ++lastSearch, query }), searchDelayMs);
+		searchTimer = setTimeout(() => post({ type: 'search', requestId: ++lastSearch, query }), searchDelayMs);
 	}
 	renderList();
 });
 
 narrow.addEventListener('change', render);
 
-window.addEventListener('message', (event: MessageEvent<ToFiles>) => {
-	const message = event.data;
+start(message => {
 	switch (message.type) {
 		case 'view':
 			view = message.view;
@@ -163,7 +155,7 @@ window.addEventListener('message', (event: MessageEvent<ToFiles>) => {
 			// Folders opened before a reload are listed again as they come into view.
 			for (const entry of message.entries) {
 				if (entry.folder && open.has(entry.path) && !listed.has(entry.path)) {
-					vscode.postMessage({ type: 'list', folder: entry.path, ignored: entry.ignored });
+					post({ type: 'list', folder: entry.path, ignored: entry.ignored });
 				}
 			}
 			renderTree();
@@ -179,11 +171,9 @@ window.addEventListener('message', (event: MessageEvent<ToFiles>) => {
 			for (const folder of message.folders) {
 				if (listed.has(folder)) {
 					const parent = [...listed.values()].flat().find(entry => entry.path === folder);
-					vscode.postMessage({ type: 'list', folder, ignored: parent?.ignored });
+					post({ type: 'list', folder, ignored: parent?.ignored });
 				}
 			}
 			break;
 	}
 });
-
-vscode.postMessage({ type: 'ready' });

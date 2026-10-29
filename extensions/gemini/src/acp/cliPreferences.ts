@@ -21,6 +21,8 @@ export const keepChatsChoices: readonly KeepChats[] = ['7d', '30d', '90d', keepC
 export const defaultKeepChats = '30d';
 
 export interface CliPreferences {
+	/** `general.defaultApprovalMode`: the mode a new session starts in; `default`, `autoEdit` or `plan` (the CLI ignores `yolo` here). GeminiCode's `gemini.agents.defaultMode` overrides it when set. */
+	readonly defaultApprovalMode: string;
 	/** `security.enablePermanentToolApproval`: permission prompts offer "Allow for all future sessions". */
 	readonly permanentApproval: boolean;
 	/** `general.plan.modelRouting`: Plan mode plans with Pro and builds with Flash. */
@@ -32,6 +34,9 @@ export interface CliPreferences {
 }
 
 export type CliPreference = keyof CliPreferences;
+
+/** The modes the CLI's Default Approval Mode takes: never YOLO, which the CLI leaves out of it on purpose. */
+export const defaultApprovalModes: readonly string[] = ['default', 'autoEdit', 'plan'];
 
 function at(settings: Record<string, unknown>, ...keys: string[]): unknown {
 	let value: unknown = settings;
@@ -49,7 +54,9 @@ function bool(value: unknown, fallback: boolean): boolean {
 export function readCliPreferences(settings: Record<string, unknown>): CliPreferences {
 	const retention = at(settings, 'general', 'sessionRetention');
 	const maxAge = isRecord(retention) && typeof retention.maxAge === 'string' && retention.maxAge.trim() ? retention.maxAge.trim() : defaultKeepChats;
+	const defaultMode = at(settings, 'general', 'defaultApprovalMode');
 	return {
+		defaultApprovalMode: typeof defaultMode === 'string' && defaultApprovalModes.includes(defaultMode) ? defaultMode : 'default',
 		permanentApproval: bool(at(settings, 'security', 'enablePermanentToolApproval'), false),
 		planRouting: bool(at(settings, 'general', 'plan', 'modelRouting'), true),
 		usageStatistics: bool(at(settings, 'privacy', 'usageStatisticsEnabled'), true),
@@ -86,6 +93,9 @@ export function applyCliPreference<K extends CliPreference>(settings: Record<str
 		return child;
 	};
 	switch (key) {
+		case 'defaultApprovalMode':
+			object(settings, 'general').defaultApprovalMode = value;
+			break;
 		case 'permanentApproval':
 			object(settings, 'security').enablePermanentToolApproval = value;
 			break;
@@ -108,10 +118,27 @@ export function applyCliPreference<K extends CliPreference>(settings: Record<str
 	}
 }
 
+/**
+ * Makes `modelId` the model the CLI starts on (`model.name` in the user
+ * settings), as the terminal's /model dialog saves it. False, leaving the file
+ * alone, when it isn't valid JSON.
+ */
+export function setCliDefaultModel(file: string, modelId: string): Promise<boolean> {
+	return updateSettingsFile(file, settings => {
+		const existing = settings.model;
+		const model = isRecord(existing) ? existing : {};
+		settings.model = model;
+		model.name = modelId;
+	});
+}
+
 /** Writes one preference to a settings file. False, leaving the file alone, when it isn't valid JSON (comments are kept). */
 export async function setCliPreference<K extends CliPreference>(file: string, key: K, value: CliPreferences[K]): Promise<boolean> {
 	if (key === 'keepChats' && !isKeepChats(value as string)) {
 		throw new Error(`Not a retention the Gemini CLI accepts: ${value}`);
+	}
+	if (key === 'defaultApprovalMode' && !defaultApprovalModes.includes(value as string)) {
+		throw new Error(`Not a default approval mode the Gemini CLI accepts: ${value}`);
 	}
 	return updateSettingsFile(file, settings => applyCliPreference(settings, key, value));
 }

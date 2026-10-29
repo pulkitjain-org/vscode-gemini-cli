@@ -12,7 +12,7 @@ import { readFile, rm } from 'node:fs/promises';
 import * as path from 'node:path';
 import type { EditedFile } from './agentChanges';
 import type { TranscriptItem } from './chatTranscript';
-import { KeyedQueue, quarantine, writeFileAtomic } from './fsUtil';
+import { KeyedQueue, privateWrite, quarantine, writeFileAtomic } from './fsUtil';
 import { hasReplayMarkers, withoutReplayMarkers } from './replayText';
 import type { ModelTokens } from './turnUsage';
 
@@ -36,6 +36,20 @@ interface StoredTranscript extends StoredAgent {
 	readonly version: number;
 }
 
+/**
+ * The changed files' texts (what each was before the agent's first edit, and
+ * what the agent last wrote) are a file of their own beside the chat's,
+ * `<id>.changes.json`, written only when they change: the chat file is
+ * written at every turn's end and after every save, and with the texts in
+ * it an agent that edited 300 files rewrote megabytes each time. The chat
+ * file keeps the files' paths and counts, so a chat from before loads, and
+ * a changes file that fails to write loses only the diffs, never the list.
+ */
+interface StoredChanges {
+	readonly version: number;
+	readonly files: readonly EditedFile[];
+}
+
 const empty: StoredAgent = { items: [], changes: [] };
 
 export class TranscriptStore {
@@ -45,6 +59,9 @@ export class TranscriptStore {
 
 	/** `onError` hears of every write that fails, such as on a full disk. */
 	constructor(private readonly directory: string, private readonly onError: (err: unknown) => void = () => undefined) { }
+
+	/** The last written signature of each agent's change texts, so the changes file is written only when they changed. */
+	private readonly changesWritten = new Map<string, string>();
 
 	/** The saved items, ready to show; empty when there are none, or when the file can't be read, which is then moved aside. */
 	load(agentId: string): Promise<StoredAgent> {
@@ -56,6 +73,7 @@ export class TranscriptStore {
 			} catch {
 				return empty;
 			}
+			const changes = await this.loadChanges(agentId);
 			let stored: StoredTranscript;
 			try {
 				stored = JSON.parse(text) as StoredTranscript;
@@ -70,14 +88,45 @@ export class TranscriptStore {
 			const items = Array.isArray(stored.items) ? stored.items.filter(isTranscriptItem).map(settle) : [];
 			return {
 				items: stored.version === 1 ? withoutLeakedReplay(items) : items,
-				changes: Array.isArray(stored.changes) ? stored.changes : [],
+				// The chat file says which files changed; the changes file adds their texts. A chat from before that file carries them itself.
+				changes: (Array.isArray(stored.changes) ? stored.changes : []).map(file => withTexts(file, changes)),
 			};
 		});
 	}
 
 	save(agentId: string, agent: StoredAgent): Promise<void> {
-		const stored: StoredTranscript = { version: formatVersion, items: agent.items.slice(-maxItems).map(trim), changes: agent.changes };
-		return this.write(agentId, () => writeFileAtomic(this.file(agentId), JSON.stringify(stored)));
+		const stored: StoredTranscript = { version: formatVersion, items: agent.items.slice(-maxItems).map(trim), changes: agent.changes.map(withoutTexts) };
+		const signature = changesSignature(agent.changes);
+		return this.write(agentId, async () => {
+			await writeFileAtomic(this.file(agentId), JSON.stringify(stored), privateWrite);
+			// Nothing to write for an agent that changed nothing, unless its changes file holds texts from before.
+			if (this.changesWritten.get(agentId) !== signature && (agent.changes.length || this.changesWritten.has(agentId))) {
+				const changes: StoredChanges = { version: formatVersion, files: agent.changes };
+				await writeFileAtomic(this.changesFile(agentId), JSON.stringify(changes), privateWrite);
+				this.changesWritten.set(agentId, signature);
+			}
+		});
+	}
+
+	/** The changed files with their texts, from the changes file; undefined when there is none, or it cannot be read (then moved aside). */
+	private async loadChanges(agentId: string): Promise<EditedFile[] | undefined> {
+		const file = this.changesFile(agentId);
+		let text: string;
+		try {
+			text = await readFile(file, 'utf8');
+		} catch {
+			return undefined;
+		}
+		try {
+			const stored = JSON.parse(text) as StoredChanges;
+			if (stored?.version !== formatVersion || !Array.isArray(stored.files)) {
+				throw new Error(`version ${String(stored?.version)}`);
+			}
+			return stored.files;
+		} catch {
+			await quarantine(file).catch(err => this.onError(err));
+			return undefined;
+		}
 	}
 
 	/** Resolves once every write queued so far is on disk. */
@@ -86,7 +135,11 @@ export class TranscriptStore {
 	}
 
 	delete(agentId: string): Promise<void> {
-		return this.write(agentId, () => rm(this.file(agentId), { force: true }));
+		this.changesWritten.delete(agentId);
+		return this.write(agentId, async () => {
+			await rm(this.file(agentId), { force: true });
+			await rm(this.changesFile(agentId), { force: true });
+		});
 	}
 
 	/** Queues a write; one that fails goes to `onError` and resolves. */
@@ -97,6 +150,27 @@ export class TranscriptStore {
 	private file(agentId: string): string {
 		return path.join(this.directory, `${agentId.replace(/[^\w-]/g, '_')}.json`);
 	}
+
+	private changesFile(agentId: string): string {
+		return path.join(this.directory, `${agentId.replace(/[^\w-]/g, '_')}.changes.json`);
+	}
+}
+
+/** `file` with the texts the changes file holds for its path, when it holds any. */
+function withTexts(file: EditedFile, changes: readonly EditedFile[] | undefined): EditedFile {
+	const texts = changes?.find(each => each.path === file.path);
+	return texts ? { ...file, ...texts.original !== undefined ? { original: texts.original } : {}, ...texts.agentText !== undefined ? { agentText: texts.agentText } : {} } : file;
+}
+
+/** A changed file as the chat file keeps it: its path and counts, never its texts. */
+function withoutTexts(file: EditedFile): EditedFile {
+	const { original: _original, agentText: _agentText, ...light } = file;
+	return light;
+}
+
+/** What tells one set of change texts from another without reading them: paths, text lengths, counts and edit times. */
+function changesSignature(files: readonly EditedFile[]): string {
+	return files.map(file => `${file.path}\0${file.original?.length ?? -1}\0${file.agentText?.length ?? -1}\0${file.added}\0${file.removed}\0${file.editedAt ?? 0}`).join('\n');
 }
 
 function trim(item: TranscriptItem): TranscriptItem {
@@ -183,8 +257,6 @@ function isTranscriptItem(value: unknown): value is TranscriptItem {
 			return typeof item.durationMs === 'number' && (item.usage === undefined || (Array.isArray(item.usage) && item.usage.every(isModelTokens)));
 		case 'thread':
 			return typeof item.thread === 'string' && typeof item.title === 'string' && typeof item.state === 'string' && typeof item.startedAt === 'number';
-		case 'research':
-			return typeof item.question === 'string' && typeof item.progress?.state === 'string' && Array.isArray(item.progress.slices) && (item.report === undefined || typeof item.report === 'string');
 	}
 }
 

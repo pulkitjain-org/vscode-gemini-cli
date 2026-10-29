@@ -8,7 +8,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
-import { AgentChanges, ChangeTotals } from '../acp/agentChanges';
+import { AgentChanges, ChangeTotals, EditedFile } from '../acp/agentChanges';
 import { cliHome, projectTempDirName } from '../acp/cli/formats';
 import { attentionChange } from '../acp/attention';
 import { branchNameFrom } from '../acp/branchNames';
@@ -20,7 +20,7 @@ import { savedRepoCount } from '../acp/projectStore';
 import type { Attachment } from '../acp/attachments';
 import { FolderFileIndex } from '../acp/folderFiles';
 import { errorMessage } from '../acp/errors';
-import type { SessionChoice } from '../acp/sessionSettings';
+import { type SessionChoice, startModeList } from '../acp/sessionSettings';
 import { TranscriptStore } from '../acp/transcriptStore';
 import { CheckpointStore } from '../acp/checkpointStore';
 import type { CleanupItem, WorktreeCandidate } from '../acp/storageUsage';
@@ -31,7 +31,8 @@ import { AgentTerminals } from './agentTerminals';
 import { AgentService } from './agentService';
 import { AgentSession } from './agentSession';
 import { ChangesSource, ChangesView } from './changesView';
-import type { AgentStateKind } from './panelProtocol';
+import { TryChoice, TryChoices } from './agents/tryChoices';
+import type { AgentStateKind, HomeMode } from './panelProtocol';
 import { ReviewController } from './reviewController';
 import { CommitSettler } from './commitSettler';
 import type { BrowserTools } from './browserTools';
@@ -40,8 +41,12 @@ import type { WorkspaceIndex } from './workspaceIndex';
 import { toolChipsFor } from './toolChips';
 import { ChatActivity, ChatController, ChatEnhancer, ChatTerminal, ChatWorkspace, FileSearch, openChatAsMarkdown } from './chatController';
 import { configSection, getApprovalPolicy, includedFolderPaths } from './configuration';
+import { readCliPreferences } from '../acp/cliPreferences';
+import { configuredDefaultMode } from './defaultMode';
+import { geminiDir } from '../acp/directRequest';
+import { readSettingsFile } from '../acp/projectSettings';
 import { isModeAllowed } from '../acp/adminPolicy';
-import { defaultStartMode } from '../acp/chatTurns';
+import { effectiveStartMode } from '../acp/chatTurns';
 import { type InstantAnswer, shellCommand } from '../acp/permissions';
 import { isReadOnlyGitRead } from '../acp/sessionApprovals';
 import type { ChatContextCost } from './chat/chatOptions';
@@ -69,7 +74,6 @@ import { AgentWorktrees } from './agents/agentWorktrees';
 import { spareDelayMs, SpareSession } from './agents/spareSession';
 import { showError } from './errorNotice';
 import type { FolderTrust } from './folderTrust';
-export { startModes } from './agents/agentStarts';
 export type { WorkspaceSummary } from './agents/agentTree';
 
 const agentPanelType = 'gemini.agent';
@@ -117,6 +121,8 @@ export interface AgentSummary {
 	readonly archived?: boolean;
 	/** Its work is being tried in the user's checkout. */
 	readonly trying?: boolean;
+	/** What its Try button does, when not Try in Workspace (`tryChoices.ts`). */
+	readonly tryChoice?: 'merge' | 'mr';
 }
 
 /** An agent with a live session in this window. */
@@ -156,6 +162,8 @@ const saveMaxWaitMs = 10_000;
  */
 export class AgentsView implements vscode.Disposable {
 
+	private _cliDefaultMode: string | undefined;
+
 	private readonly model: AgentsModel;
 	/** Where the list is saved, shared with every window; undefined when it could not be read. */
 	private readonly agentStore: AgentsStore | undefined;
@@ -171,6 +179,7 @@ export class AgentsView implements vscode.Disposable {
 	/** The model an agent's first session starts on, picked in the New thread dialog or the browser's New Agent. */
 	private readonly threadModels = new Map<string, string>();
 	private readonly changesView: ChangesView;
+	private readonly tryChoices: TryChoices;
 	/** Keep and Undo on each agent change, in the files themselves. */
 	readonly review: ReviewController;
 	/** Takes committed files out of each agent's changes to review. */
@@ -265,6 +274,7 @@ export class AgentsView implements vscode.Disposable {
 		this.tree = new AgentTree(this.model, this.live);
 		this.changesView = new ChangesView(id => this.live.get(id)?.changes);
 		this.worktrees = new AgentWorktrees(this.model, context.globalState);
+		this.tryChoices = new TryChoices(context.globalState);
 		this.projects = new Projects({
 			record: id => this.model.agent(id),
 			workspaceFolder: id => {
@@ -280,7 +290,9 @@ export class AgentsView implements vscode.Disposable {
 			stopTurn: id => this.stopTurn(id),
 			mergeBack: (id, repo) => this.mergeBack(id, repo),
 			tryAction: (id, action) => this.tryAction(id, action),
-			mergeCommits: () => mergeCommits(),
+			mergeCommits: id => this.tryChoiceOf(id) === 'merge',
+			tryChoice: id => this.tryChoiceOf(id),
+			pickTryChoice: id => this.pickTryChoice(id),
 			guideSeen: () => !!context.globalState.get<boolean>('gemini.tries.guideSeen'),
 			setGuideSeen: async seen => { await context.globalState.update('gemini.tries.guideSeen', seen || undefined); },
 			triedEdits: id => this.triedEdits.get(id),
@@ -332,7 +344,7 @@ export class AgentsView implements vscode.Disposable {
 			trust: this.service.trust,
 		};
 		this.projectAgents = new AgentProjects(this.model, this.service, this.projects, this.worktrees, { isMerging: id => this.mergeLoaded?.isMerging(id) ?? false }, this.live, this.tree, { ...host, keptClean: record => this.tries.keptClean(record) });
-		this.starts = new AgentStarts(this.model, this.worktrees, this.tree, this.live, host);
+		this.starts = new AgentStarts(this.model, this.worktrees, this.tree, this.live, { ...host, startModes: () => this.startModes() });
 		this.forks = new AgentForks(this.model, this.service, this.worktrees, this.live, {
 			start: (record, folder) => this.start(record, folder),
 			open: id => this.open(id),
@@ -389,14 +401,15 @@ export class AgentsView implements vscode.Disposable {
 			}),
 			vscode.commands.registerCommand('gemini.agents.newAgent', (node?: AgentTreeNode) => this.starts.newAgent(node)),
 			vscode.commands.registerCommand('gemini.agents.newAgentOnBranch', (node?: AgentTreeNode) => this.starts.newAgent(node, true)),
-			vscode.commands.registerCommand('gemini.agents.mergeBack', (node?: AgentTreeNode) => node?.kind === 'agent' && this.mergeBack(node.record.id)),
-			// The same action, listed instead of Merge Back unless `gemini.agents.mergeBack` is "commit".
-			vscode.commands.registerCommand('gemini.agents.tryInWorkspace', (node?: AgentTreeNode) => node?.kind === 'agent' && this.mergeBack(node.record.id)),
+			// The row's menu lists both; Merge Back from there is remembered for the repository, as the chevron's choice is.
+			vscode.commands.registerCommand('gemini.agents.mergeBack', (node?: AgentTreeNode) => node?.kind === 'agent' && this.runTryChoice(node.record.id, 'merge')),
+			vscode.commands.registerCommand('gemini.agents.tryInWorkspace', (node?: AgentTreeNode) => node?.kind === 'agent' && this.runTryChoice(node.record.id, 'try')),
 			vscode.commands.registerCommand('gemini.agents.takeBack', (node?: AgentTreeNode) => node?.kind === 'agent' && this.tryAction(node.record.id, 'takeBack')),
 			// The status bar item of a try: Keep Changes, Take Back and the rest.
 			vscode.commands.registerCommand('gemini.tries.menu', (id?: unknown) => this.tries.showMenu(typeof id === 'string' ? id : undefined)),
 			vscode.commands.registerCommand('gemini.agents.fork', (node?: AgentTreeNode) => this.fork(node)),
 			vscode.commands.registerCommand('gemini.reviewChanges', (source?: { readonly rootUri?: vscode.Uri }) => this.starts.reviewChanges(source)),
+			vscode.commands.registerCommand('gemini.review', () => this.pickReview()),
 			vscode.commands.registerCommand('gemini.agents.addWorkspace', () => this.starts.addWorkspace()),
 			// From the keyboard (⌘↓ on a Mac, where Return renames as in Finder) it opens the selected agent.
 			vscode.commands.registerCommand('gemini.agents.open', (id?: string) => {
@@ -405,23 +418,38 @@ export class AgentsView implements vscode.Disposable {
 				return target && this.open(target);
 			}),
 			vscode.commands.registerCommand('gemini.agents.openTerminal', (node?: AgentTreeNode) => this.openTerminal(node?.kind === 'agent' ? node.record.id : this.activeAgentId())),
-			vscode.commands.registerCommand('gemini.agents.openChanges', (node?: AgentTreeNode) => node?.kind === 'agent' && this.openChanges(node.record.id)),
+			// From the pane's row, or from the Changes view's file rows with the file.
+			vscode.commands.registerCommand('gemini.agents.openChanges', (target?: AgentTreeNode | EditedFile) => {
+				if (!target) {
+					return undefined;
+				}
+				if (typeof (target as EditedFile).path === 'string') {
+					return this.changesView.openFile(target as EditedFile);
+				}
+				const node = target as AgentTreeNode;
+				return node.kind === 'agent' && this.openChanges(node.record.id);
+			}),
 			vscode.commands.registerCommand('gemini.agents.rename', (node?: AgentTreeNode) => this.rename(node)),
-			vscode.commands.registerCommand('gemini.agents.openAsMarkdown', (node?: AgentTreeNode) => node?.kind === 'agent' && this.openAsMarkdown(node.record.id)),
+			// From the pane's row; from the palette, the agent in front, else the first one not stopped.
+			vscode.commands.registerCommand('gemini.agents.openAsMarkdown', (node?: AgentTreeNode) => {
+				const id = node?.kind === 'agent' ? node.record.id : this.activeAgentId() ?? this.summaries().find(each => each.state !== 'stopped')?.id;
+				return id ? this.openAsMarkdown(id) : vscode.window.showInformationMessage(vscode.l10n.t("Open an agent first."));
+			}),
 			// From the palette or a key: the agent in front.
 			vscode.commands.registerCommand('gemini.agents.stop', (node?: AgentTreeNode) => {
 				const id = node?.kind === 'agent' ? node.record.id : this.activeAgentId();
 				return id && this.stopTurn(id);
 			}),
+			// The CLI's default mode can change in Agent Setup or a terminal; read again whenever the agent starts, which a settings change restarts.
+			service.onDidStart(() => void this.refreshCliDefaultMode()),
 			vscode.commands.registerCommand('gemini.agents.focusChat', () => this.focusChat()),
 			vscode.commands.registerCommand('gemini.agents.cycleMode', () => this.chatInFront()?.cycleMode()),
+			vscode.commands.registerCommand('gemini.agents.toggleYolo', () => this.chatInFront()?.toggleYolo()),
 			vscode.commands.registerCommand('gemini.agents.sideQuestion', () => this.chatInFront()?.openSide()),
 			vscode.commands.registerCommand('gemini.agents.switchModel', () => this.chatInFront()?.pickModel()),
 			vscode.commands.registerCommand('gemini.agents.remove', (node?: AgentTreeNode) => this.removeAgent(node)),
 			vscode.commands.registerCommand('gemini.agents.removeWorkspace', (node?: AgentTreeNode) => this.removeWorkspace(node)),
 			vscode.commands.registerCommand('gemini.projects.new', (node?: AgentTreeNode) => this.projectAgents.newProject(node)),
-			// The Projects section's +: the same command, drawn as a plus.
-			vscode.commands.registerCommand('gemini.projects.add', (node?: AgentTreeNode) => this.projectAgents.newProject(node)),
 			vscode.commands.registerCommand('gemini.projects.newThread', (node?: AgentTreeNode) => node?.kind === 'agent' && this.projects.openNewThread(node.record.id)),
 			vscode.commands.registerCommand('gemini.projects.settings', (node?: AgentTreeNode) => node?.kind === 'agent' && this.projects.openSettingsOf(node.record.id)),
 			this.projects,
@@ -543,13 +571,14 @@ export class AgentsView implements vscode.Disposable {
 		for (const workspace of this.model.workspaces) {
 			for (const record of this.model.agentsIn(workspace.id)) {
 				const live = this.live.get(record.id);
-				const state = agentState(live);
+				const state = agentState(record, live);
 				const changes = live?.changes.totals ?? record.changes;
 				summaries.push({
 					id: record.id, title: record.title, folder: workspace.folder, state: state.kind, status: state.status,
 					...(changes?.files ? { changes } : {}), ...(record.worktree ? { worktree: record.worktree } : {}), updatedAt: record.updatedAt,
 					...(record.archivedAt !== undefined && !live && isArchived(record, Date.now()) ? { archived: true } : {}),
 					...(record.tried?.state === 'trying' ? { trying: true } : {}),
+					...(record.worktree && this.tryChoiceOf(record.id) !== 'try' ? { tryChoice: this.tryChoiceOf(record.id) as 'merge' | 'mr' } : {}),
 					...(projects && record.project?.role === 'coordinator' ? { project: { role: 'coordinator', threads: this.model.threadsOf(record.id).length } } : {}),
 					...(projects && record.project?.role === 'thread' && this.model.coordinatorOf(record) ? { project: { role: 'thread' } } : {}),
 				});
@@ -641,19 +670,99 @@ export class AgentsView implements vscode.Disposable {
 	}
 
 	/**
-	 * Merge Back, wherever it is offered: Try in Workspace, or Keep Changes
-	 * once tried; with `gemini.agents.mergeBack` set to "commit", the merge of
-	 * the agent's branch (returning whether all of its work is now merged).
+	 * The Try button, wherever it is: what was last chosen for the repository
+	 * (Try in Workspace, Merge Back or Open Merge Request; `tryChoices.ts`),
+	 * or Keep Changes and the rest once tried. Returns whether all of the
+	 * agent's work is now merged, for a merge.
 	 */
 	mergeBack(id: string, repo?: string): Promise<boolean> {
-		if (mergeCommits()) {
+		const choice = this.tryChoiceOf(id);
+		if (choice === 'merge') {
 			return this.merge.mergeBack(id, repo);
+		}
+		if (choice === 'mr') {
+			return Promise.resolve(vscode.commands.executeCommand('gemini.team.openMergeRequest', id)).then(() => false);
 		}
 		// One button, wherever it is: once tried, it offers Keep Changes, Take Back and the rest.
 		if (this.model.agent(id)?.tried?.state === 'trying') {
 			return this.tries.showMenu(id).then(() => true);
 		}
 		return this.tryAction(id, 'try');
+	}
+
+	/**
+	 * Review, from Home and the palette: what to review. My Changes starts a
+	 * reviewer on the uncommitted diff; an agent's changes open its diff; a
+	 * merge request starts a reviewer in a checkout of its own (GitLab); Run
+	 * Checks on a Branch runs the team's checks (Snyk or SonarQube).
+	 */
+	async pickReview(): Promise<void> {
+		const withChanges = this.summaries().filter(agent => agent.changes?.files && !agent.archived);
+		const connected = this.teamTools?.connected;
+		const items: (vscode.QuickPickItem & { run(): Thenable<unknown> | void })[] = [
+			{ label: `$(diff) ${vscode.l10n.t("My Changes")}`, detail: vscode.l10n.t("An agent in Plan mode reads your uncommitted changes and reports what it finds, without editing"), run: () => this.starts.reviewChanges() },
+			...withChanges.length ? [{
+				label: `$(git-branch) ${vscode.l10n.t("An Agent's Changes...")}`, detail: withChanges.length === 1 ? vscode.l10n.t("The changes of {0}, as a diff", withChanges[0].title) : vscode.l10n.t("The changes of one of {0} agents, as a diff", withChanges.length),
+				run: async () => {
+					const agent = withChanges.length === 1 ? withChanges[0] : (await vscode.window.showQuickPick(withChanges.map(each => ({ label: each.title, description: each.status, each })), { title: vscode.l10n.t("Whose changes") }))?.each;
+					if (agent) {
+						await this.openChanges(agent.id);
+					}
+				},
+			}] : [],
+			...connected?.has('gitlab') ? [{ label: `$(git-pull-request) ${vscode.l10n.t("A Merge Request...")}`, detail: vscode.l10n.t("A reviewer agent in a checkout of its own reads it against its ticket and drafts comments for you to post"), run: () => vscode.commands.executeCommand('gemini.team.reviewMergeRequest') }] : [],
+			...connected?.has('snyk') || connected?.has('sonar') ? [{ label: `$(checklist) ${vscode.l10n.t("Run Checks on a Branch...")}`, detail: vscode.l10n.t("The team's checks on any branch, with Gemini fixing what fails"), run: () => vscode.commands.executeCommand('gemini.team.runChecksOnBranch') }] : [],
+		];
+		const picked = await vscode.window.showQuickPick(items, { title: vscode.l10n.t("Review"), placeHolder: vscode.l10n.t("What to review") });
+		await picked?.run();
+	}
+
+	/** The choice the Try button runs for the agent's repository. Open Merge Request needs GitLab. */
+	tryChoiceOf(id: string): TryChoice {
+		const choice = this.tryChoices.get(this.tryKey(id));
+		return choice === 'mr' && !this.teamTools?.connectors.gitlab ? 'try' : choice;
+	}
+
+	/** The chevron beside the Try button: the three choices, remembered for the repository and run. */
+	async pickTryChoice(id: string): Promise<void> {
+		const current = this.tryChoiceOf(id);
+		const items: (vscode.QuickPickItem & { readonly choice: TryChoice })[] = [
+			{ choice: 'try' as const, label: `$(beaker) ${vscode.l10n.t("Try in Workspace")}`, detail: vscode.l10n.t("Copy the changes into your workspace as unstaged files, following the agent's later turns, until you keep them or take them back.") },
+			{ choice: 'merge' as const, label: `$(git-merge) ${vscode.l10n.t("Merge Back")}`, detail: vscode.l10n.t("Commit the work on its branch and merge the branch into yours.") },
+			...this.teamTools?.connectors.gitlab ? [{ choice: 'mr' as const, label: `$(git-pull-request) ${vscode.l10n.t("Open Merge Request...")}`, detail: vscode.l10n.t("Push the branch and open a merge request with a title and description Gemini drafts.") }] : [],
+		].map(item => ({ ...item, description: item.choice === current ? vscode.l10n.t("current") : undefined }));
+		const picked = await vscode.window.showQuickPick(items, { title: vscode.l10n.t("How to take the agent's work"), placeHolder: vscode.l10n.t("Remembered for this repository") });
+		if (picked) {
+			await this.runTryChoice(id, picked.choice);
+		}
+	}
+
+	/** Runs one choice and remembers it for the repository. */
+	private async runTryChoice(id: string, choice: TryChoice): Promise<boolean> {
+		await this.tryChoices.set(this.tryKey(id), choice);
+		this.refreshTryLabels(id);
+		return this.mergeBack(id);
+	}
+
+	/** The repository a choice is remembered for: the agent's workspace folder. */
+	private tryKey(id: string): string {
+		const record = this.model.agent(id);
+		return (record && this.model.workspace(record.workspaceId)?.folder) ?? '';
+	}
+
+	/** The label of every Try button in the repository follows the new choice. */
+	private refreshTryLabels(id: string): void {
+		const key = this.tryKey(id);
+		for (const record of this.model.agents) {
+			if (this.tryKey(record.id) === key) {
+				this.projects.refreshThread(record.id);
+			}
+		}
+		const active = this.activeAgentId();
+		if (active) {
+			this.changesView.show(this.changesSource(active));
+		}
+		this.onDidChangeAgentsEmitter.fire();
 	}
 
 	/** Whether an agent's work is being tried in the user's checkout now. */
@@ -765,6 +874,8 @@ export class AgentsView implements vscode.Disposable {
 				setResolved: (id, resolved) => {
 					if (this.model.agent(id)?.project?.role === 'thread') {
 						this.projects.setThreadKept(id, resolved);
+					} else {
+						this.model.setResolved(id, resolved ? 'kept' : undefined);
 					}
 				},
 			});
@@ -1052,6 +1163,8 @@ export class AgentsView implements vscode.Disposable {
 				branch: record.worktree.branch,
 				trying: record.tried?.state === 'trying',
 				mergeBack: async () => { await this.mergeBack(id); },
+				tryChoice: () => this.tryChoiceOf(id),
+				tryMenu: () => this.pickTryChoice(id),
 				keep: async () => { await this.tryAction(id, 'keep'); },
 				takeBack: async () => { await this.tryAction(id, 'takeBack'); },
 			} : { commit: () => live.controller.commit() }),
@@ -1073,6 +1186,30 @@ export class AgentsView implements vscode.Disposable {
 			};
 		}
 		return undefined;
+	}
+
+	/**
+	 * The modes a new agent may start in, in the CLI's words: what a running
+	 * session offers, else the window's own agent's, else the CLI's list; less
+	 * what policy turns off.
+	 */
+	startModes(): HomeMode[] {
+		const offered = [...this.live.values()].map(live => live.session.client.settings.mode?.available).find(modes => modes?.length) ?? this.service.client.settings.mode?.available;
+		return startModeList(offered, modeId => isModeAllowed(getApprovalPolicy(), modeId)).map(mode => ({ id: mode.id, name: mode.name, description: mode.description ?? '' }));
+	}
+
+	/** The CLI's own Default Approval Mode (`general.defaultApprovalMode`), read from its settings when the agent starts; what a new agent starts in unless `gemini.agents.defaultMode` is set. */
+	get cliDefaultMode(): string | undefined {
+		if (this._cliDefaultMode === undefined) {
+			// Not read yet: the first asker gets the CLI's own default, the next ones what the file says.
+			void this.refreshCliDefaultMode();
+		}
+		return this._cliDefaultMode;
+	}
+
+	private async refreshCliDefaultMode(): Promise<void> {
+		const settings = await readSettingsFile(path.join(geminiDir(), 'settings.json')).catch(() => ({}));
+		this._cliDefaultMode = readCliPreferences(settings).defaultApprovalMode;
 	}
 
 	private start(record: AgentRecord, folder: string, openLater = false): LiveAgent {
@@ -1097,8 +1234,8 @@ export class AgentsView implements vscode.Disposable {
 				}
 			},
 		}, this.preferredModel(record));
-		// A new agent starts in `gemini.agents.defaultMode`; one started with a mode of its own (Home, a team flow) switches to it after this.
-		const startMode = !record.sessionId && !project ? defaultStartMode(vscode.workspace.getConfiguration(configSection).get('agents.defaultMode'), modeId => isModeAllowed(getApprovalPolicy(), modeId)) : undefined;
+		// A new agent starts in `gemini.agents.defaultMode`, else the CLI's own default; one started with a mode of its own (Home, a team flow) switches to it after this.
+		const startMode = !record.sessionId && !project ? effectiveStartMode(configuredDefaultMode(), this.cliDefaultMode, modeId => isModeAllowed(getApprovalPolicy(), modeId)) : undefined;
 		if (startMode) {
 			session.client.setModeOnNextSession(startMode);
 		}
@@ -1246,6 +1383,10 @@ export class AgentsView implements vscode.Disposable {
 					void this.tries.turnEnded(record.id);
 				}
 				if (before.busy !== activity.busy) {
+					// Working again after Keep or Merge Back: no longer kept or merged, so it is not archived under it.
+					if (activity.busy) {
+						this.model.setResolved(record.id, undefined);
+					}
 					this.onDidChangeTurnEmitter.fire(record.id);
 				}
 				this.refresh(record.id);
@@ -1639,7 +1780,3 @@ function reviewerGitAnswer(request: acp.RequestPermissionRequest): InstantAnswer
 	return command !== undefined && once && isReadOnlyGitRead(command) ? { optionId: once.optionId, label: vscode.l10n.t("Allowed: the reviewer reads the repository with git") } : undefined;
 }
 
-/** Whether Merge Back makes a merge commit (`gemini.agents.mergeBack` set to "commit") rather than trying the agent's work in the workspace. */
-function mergeCommits(): boolean {
-	return vscode.workspace.getConfiguration(configSection).get<string>('agents.mergeBack') === 'commit';
-}

@@ -18,6 +18,8 @@ run({
 		// extension's own bundle never carries them: pages opened on request, and tools used rarely.
 		'pages': path.join(srcDir, 'pages.ts'),
 		'onDemand': path.join(srcDir, 'onDemand.ts'),
+		// The ACP connection with its SDK and zod, loaded when the agent process starts, seconds after activation.
+		'connection': path.join(srcDir, 'connection.ts'),
 		// Confluence: its client, agents' calls, drafts and the Review Page, loaded the first time Confluence is used.
 		'confluence': path.join(srcDir, 'confluence.ts'),
 	},

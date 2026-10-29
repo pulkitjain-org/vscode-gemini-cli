@@ -75,7 +75,7 @@ export interface ChatControllerOptions {
 	indexContext?(draft: string): Promise<string | undefined>;
 	/** A note telling the agent to use the index tools, when its folder's index is built; sent once per session. */
 	indexHint?(): string | undefined;
-	/** What research runs (/research) need: the agent process, the folder, and the index's servers and outline for it. Unset in chats without research. */
+	/** What Read the code too needs: the agent process, the folder, and the index's servers and outline for it. Unset in a project's chats, whose threads do the reading. */
 	research?: ChatResearchHost;
 	/** The notice for errors the language servers report in the folder's changed files after a turn that edited them; undefined without any. */
 	errorsAfterTurn?(): Promise<string | undefined>;

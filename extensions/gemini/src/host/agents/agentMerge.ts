@@ -15,7 +15,7 @@ import * as vscode from 'vscode';
 import type { AgentChanges } from '../../acp/agentChanges';
 import type { AgentRecord, AgentsModel } from '../../acp/agents';
 import { errorMessage } from '../../acp/errors';
-import { AgentWorktree, commitAll, currentBranch, type inRepository, mergeBranch, repositoryRoot, worktreeStatus } from '../../acp/worktrees';
+import { AgentWorktree, commitAll, currentBranch, type inRepository, mergeBranch, mergeRefusal, repositoryRoot, worktreeStatus } from '../../acp/worktrees';
 import type { ChatActivity } from '../chatController';
 import { tildify } from '../displayText';
 import { awaitCommitMessage } from '../gitActions';
@@ -88,6 +88,7 @@ export class AgentMerge {
 			}
 			const merged = await this.mergeWorktree(record, repository, worktree, live, stillWorking);
 			if (merged) {
+				this.model.setResolved(record.id, 'merged');
 				const into = await currentBranch(repository);
 				const done = vscode.l10n.t("Remove Agent and Branch");
 				const keep = vscode.l10n.t("Keep Working");
@@ -178,6 +179,13 @@ export class AgentMerge {
 	/** Asks, commits the worktree's work and merges its branch into `repository`'s; returns whether it merged. Reports failures itself. */
 	private async mergeWorktree(record: AgentRecord, repository: string, worktree: AgentWorktree, live: MergingAgent | undefined, stillWorking: () => boolean): Promise<boolean> {
 		try {
+			const refusal = await mergeRefusal(repository);
+			if (refusal) {
+				void vscode.window.showWarningMessage(refusal === 'detached'
+					? vscode.l10n.t("{0} has no branch checked out, so {1} cannot be merged into it. Check out a branch first.", path.basename(repository), worktree.branch)
+					: vscode.l10n.t("{0} is in the middle of a {1}. Finish or abort it before merging {2}.", path.basename(repository), refusal, worktree.branch));
+				return false;
+			}
 			const into = await currentBranch(repository);
 			const status = await worktreeStatus(worktree, into);
 			if (!status.uncommitted && !status.commits) {

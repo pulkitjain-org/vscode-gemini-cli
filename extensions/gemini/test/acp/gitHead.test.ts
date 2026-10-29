@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { listFiles, listFolder } from '../../src/acp/folderFiles';
-import { filesMatchingHead, gitDirs, porcelainPaths, readGitHead } from '../../src/acp/gitHead';
+import { changedBetween, filesMatchingHead, gitDirs, headPosition, porcelainPaths, readGitHead } from '../../src/acp/gitHead';
 
 function repo(head: string): string {
 	const root = mkdtempSync(path.join(tmpdir(), 'git-head-'));
@@ -79,6 +79,37 @@ function committedRepo(): { readonly root: string; readonly run: (...args: strin
 	run('commit', '-q', '-m', 'first');
 	return { root, run };
 }
+
+describe('headPosition and changedBetween', () => {
+	it('says where HEAD is, what two commits differ in, and when it cannot tell', async () => {
+		const { root, run } = committedRepo();
+		const first = (await headPosition(root))!;
+		writeFileSync(path.join(root, 'src', 'b.ts'), 'two, changed\n');
+		writeFileSync(path.join(root, 'src', 'c.ts'), 'three\n');
+		run('add', 'src');
+		run('commit', '-q', '-m', 'second');
+		const second = (await headPosition(root))!;
+		run('checkout', '-q', '--detach');
+		const detached = (await headPosition(root))!;
+		expect({
+			branch: first.branch,
+			sameBranch: second.branch === first.branch && second.commit !== first.commit,
+			changed: (await changedBetween(root, first.commit, second.commit))!.sort(),
+			none: await changedBetween(root, second.commit, second.commit),
+			unknown: await changedBetween(root, '0'.repeat(40), second.commit),
+			detached: detached.branch,
+			outside: await headPosition(tmpdir()),
+		}).toEqual({
+			branch: 'refs/heads/main',
+			sameBranch: true,
+			changed: [path.join(root, 'src', 'b.ts'), path.join(root, 'src', 'c.ts')],
+			none: [],
+			unknown: undefined,
+			detached: undefined,
+			outside: undefined,
+		});
+	});
+});
 
 describe('filesMatchingHead', () => {
 	it('finds the files whose text is what HEAD has, from the repository or a subfolder', async () => {

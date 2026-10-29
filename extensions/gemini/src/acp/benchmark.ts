@@ -18,6 +18,7 @@ import * as path from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import { promisify } from 'node:util';
 import * as acp from '@agentclientprotocol/sdk';
+import { promptVersions, type PromptVersions } from './promptVersions';
 
 const run = promisify(execFile);
 
@@ -54,6 +55,8 @@ export interface BenchSummary {
 	readonly ranAt: string;
 	readonly geminiCodeVersion?: string;
 	readonly cliVersion?: string;
+	/** The wording of GeminiCode's prompts the run measured (promptVersions.ts). */
+	readonly promptVersions?: PromptVersions;
 	readonly model: string;
 	readonly tasks: number;
 	readonly completed: number;
@@ -133,6 +136,7 @@ function summarize(results: readonly BenchResult[], options: BenchOptions): Benc
 	const completed = results.filter(r => r.completed);
 	return {
 		ranAt: new Date().toISOString(),
+		promptVersions,
 		...options.geminiCodeVersion ? { geminiCodeVersion: options.geminiCodeVersion } : {},
 		...options.cliVersion ? { cliVersion: options.cliVersion } : {},
 		model: options.model,

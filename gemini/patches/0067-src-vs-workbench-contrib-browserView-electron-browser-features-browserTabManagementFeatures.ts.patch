@@ -1,5 +1,5 @@
 diff --git a/src/vs/workbench/contrib/browserView/electron-browser/features/browserTabManagementFeatures.ts b/src/vs/workbench/contrib/browserView/electron-browser/features/browserTabManagementFeatures.ts
-index 3ace476ef759ac46741f2934036e0786a3a4c60e..7b10a9b43a671f1f87c8fefa78986cd82ede6480 100644
+index afdc75c1b22d4ae4a33d286c3b092b2fdad501b6..f5bc6aec0951ab0746e8f5d7e1338024bf385d4e 100644
 --- a/src/vs/workbench/contrib/browserView/electron-browser/features/browserTabManagementFeatures.ts
 +++ b/src/vs/workbench/contrib/browserView/electron-browser/features/browserTabManagementFeatures.ts
 @@ -9,6 +9,7 @@ import { ServicesAccessor, IInstantiationService } from '../../../../../platform
@@ -10,16 +10,16 @@ index 3ace476ef759ac46741f2934036e0786a3a4c60e..7b10a9b43a671f1f87c8fefa78986cd8
  import { IEditorGroup, IEditorGroupsService, GroupsOrder } from '../../../../services/editor/common/editorGroupsService.js';
  import { EditorsOrder, EditorResourceAccessor, GroupIdentifier, SideBySideEditor } from '../../../../common/editor.js';
  import { IQuickInputService, IQuickInputButton, IQuickPickItem, IQuickPickSeparator, QuickInputButtonLocation, IQuickPick } from '../../../../../platform/quickinput/common/quickInput.js';
-@@ -636,7 +637,11 @@ class LocalhostLinkOpenerContribution extends Disposable implements IWorkbenchCo
+@@ -637,7 +638,11 @@ export class LocalhostLinkOpenerContribution extends Disposable implements IWork
  		const isDefaultLinkOpen = !isConfigured(this.configurationService.inspect('workbench.browser.openLocalhostLinks'));
  
  		const browserUri = BrowserViewUri.forId(generateUuid());
--		await this.editorService.openEditor({ resource: browserUri, options: { pinned: true, viewState: { url: href, isDefaultLinkOpen } } }, await this.browserViewWorkbenchService.getPreferredGroup());
+-		await this.editorService.openEditor({ resource: browserUri, options: { pinned: true, viewState: { url: href, isDefaultLinkOpen } } }, await this.browserViewWorkbenchService.getPreferredGroup(ctx.viewColumn === ViewColumn.Beside ? SIDE_GROUP : undefined));
 +		// GEMINI-FORK: a link in a Gemini chat opens beside the chat. In the chat's own group the page
 +		// would open as a tab behind it, since the chat takes the click's focus back.
 +		const active = this.editorService.activeEditor;
 +		const fromGeminiChat = active instanceof WebviewInput && active.viewType.startsWith('mainThreadWebview-gemini.');
-+		await this.editorService.openEditor({ resource: browserUri, options: { pinned: true, viewState: { url: href, isDefaultLinkOpen } } }, await this.browserViewWorkbenchService.getPreferredGroup(fromGeminiChat ? SIDE_GROUP : undefined));
++		await this.editorService.openEditor({ resource: browserUri, options: { pinned: true, viewState: { url: href, isDefaultLinkOpen } } }, await this.browserViewWorkbenchService.getPreferredGroup(fromGeminiChat || ctx.viewColumn === ViewColumn.Beside ? SIDE_GROUP : undefined));
  		return true;
  	}
  }
