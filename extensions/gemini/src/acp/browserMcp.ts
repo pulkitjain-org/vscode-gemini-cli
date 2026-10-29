@@ -253,7 +253,8 @@ export function isLocalUrl(url: URL): boolean {
  * content is not the user's.
  */
 export function sharedPageText(title: string, url: string): { readonly title: string; readonly text: string } {
-	const oneLine = title.replace(/\s+/g, ' ').trim() || url;
+	// The title is the website's: one line, short, without quotes or tags that could pass as the note's own.
+	const oneLine = title.replace(/\s+/g, ' ').replace(/["<>]/g, '').trim() || url;
 	const short = oneLine.length > 80 ? `${oneLine.slice(0, 79)}\u2026` : oneLine;
 	return {
 		title: short,
