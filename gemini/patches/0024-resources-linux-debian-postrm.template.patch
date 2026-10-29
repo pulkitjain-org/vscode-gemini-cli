@@ -1,8 +1,8 @@
 diff --git a/resources/linux/debian/postrm.template b/resources/linux/debian/postrm.template
-index d9cfd495d6bf48e69238c9ca27f311c51efd702c..921af2cee34c9280602aa87c700b1844d9085532 100755
+index d375e23cc70dc11d17f018bb73d3678302fe7ef8..98cbe77623ced8c628781b41b54a380aad09f882 100755
 --- a/resources/linux/debian/postrm.template
 +++ b/resources/linux/debian/postrm.template
-@@ -20,7 +20,8 @@ if [ -e '/usr/share/debconf/confmodule' ]; then
+@@ -32,7 +32,8 @@ if [ -e '/usr/share/debconf/confmodule' ]; then
  	. /usr/share/debconf/confmodule
  	db_get @@NAME@@/add-microsoft-repo || true
  fi

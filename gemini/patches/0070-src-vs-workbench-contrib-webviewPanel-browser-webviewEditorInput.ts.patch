@@ -1,8 +1,8 @@
 diff --git a/src/vs/workbench/contrib/webviewPanel/browser/webviewEditorInput.ts b/src/vs/workbench/contrib/webviewPanel/browser/webviewEditorInput.ts
-index 945cd431bfd3ebfbd8e00c209cb31890b0610be1..565dc1d3fdcaa89f5369bdb0c2359444fe6f9d99 100644
+index fd00044c405490e8f1db54cb9ea09092c89ffcaa..c0e307f419382e0e7dc326c263fded14e00abc53 100644
 --- a/src/vs/workbench/contrib/webviewPanel/browser/webviewEditorInput.ts
 +++ b/src/vs/workbench/contrib/webviewPanel/browser/webviewEditorInput.ts
-@@ -39,7 +39,19 @@ export class WebviewInput extends EditorInput {
+@@ -43,7 +43,19 @@ export class WebviewInput extends EditorInput {
  	}
  
  	public override get capabilities(): EditorInputCapabilities {
@@ -23,7 +23,7 @@ index 945cd431bfd3ebfbd8e00c209cb31890b0610be1..565dc1d3fdcaa89f5369bdb0c2359444
  	}
  
  	private readonly _resourceId = generateUuid();
-@@ -100,7 +112,7 @@ export class WebviewInput extends EditorInput {
+@@ -104,7 +116,7 @@ export class WebviewInput extends EditorInput {
  	}
  
  	public override getDescription(): string | undefined {

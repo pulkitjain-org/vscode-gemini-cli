@@ -1,5 +1,5 @@
 diff --git a/build/win32/code.iss b/build/win32/code.iss
-index 5b4306143f6c7a1268c7a646c271e79a1ab374cf..7baa2d7e0f6e1236185d3f09492b180a05ef1711 100644
+index f93cb9dc5d72b2e6dea91a4dd6e722087d741378..3411e0e317a6e11ebcd669a1c3a44c80642b4289 100644
 --- a/build/win32/code.iss
 +++ b/build/win32/code.iss
 @@ -8,10 +8,11 @@

@@ -1,5 +1,5 @@
 diff --git a/src/vs/workbench/services/extensionManagement/browser/extensionEnablementService.ts b/src/vs/workbench/services/extensionManagement/browser/extensionEnablementService.ts
-index d7672e8c7e94a2b78e9a4cd48c0c3ed43a021609..cdb1cff3ad8e6eb40e6108c535aa3e0a619a0eac 100644
+index d6f66fdaa2d436ad8c26bd60104994b73b2cf45f..7848d66216d3a1099e9eaa95a3d8b08f7ef5fd6f 100644
 --- a/src/vs/workbench/services/extensionManagement/browser/extensionEnablementService.ts
 +++ b/src/vs/workbench/services/extensionManagement/browser/extensionEnablementService.ts
 @@ -45,6 +45,9 @@ type WorkspaceType = { readonly virtual: boolean; readonly trusted: boolean };
@@ -12,7 +12,7 @@ index d7672e8c7e94a2b78e9a4cd48c0c3ed43a021609..cdb1cff3ad8e6eb40e6108c535aa3e0a
  export class ExtensionEnablementService extends Disposable implements IWorkbenchExtensionEnablementService {
  
  	declare readonly _serviceBrand: undefined;
-@@ -264,6 +267,11 @@ export class ExtensionEnablementService extends Disposable implements IWorkbench
+@@ -267,6 +270,11 @@ export class ExtensionEnablementService extends Disposable implements IWorkbench
  			throw new Error(localize('cannot disable settings sync auth extension', "Cannot change enablement of {0} extension because Settings Sync depends on it.", extension.manifest.displayName || extension.identifier.id));
  		}
  
